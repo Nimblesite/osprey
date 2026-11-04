@@ -309,13 +309,20 @@ int64_t osprey_gpu_elem_bytes(void *buffer) {
 
 // The buffer with its host words current [GPU-BUFFER-RESIDENT]: a result the
 // device holds and the host has not read yet is downloaded first, once. A
-// download that fails cannot become zeros, so it aborts (broken-code quarantine).
-static OspreyGpuBuffer *current(void *buffer) {
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
+// download that fails keeps the buffer stale and records its reason. Language
+// gpuGet checks this status before loading; other raw callers still quarantine
+// failures until their Result migration is complete [FAILURE-EXPLICIT].
+static int synchronize(OspreyGpuBuffer *b) {
   if (b && b->stale && b->device) {
-    if (osprey_gpu_device_download(b->device, b->data, (uint64_t)(b->length * b->elem_bytes)) < 0) (void)osprey_gpu_panic(osp_io_error());
+    if (osprey_gpu_device_download(b->device, b->data, (uint64_t)(b->length * b->elem_bytes)) < 0) return -1;
     b->stale = 0;
   }
+  return 1;
+}
+
+static OspreyGpuBuffer *current(void *buffer) {
+  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
+  if (synchronize(b) < 0) (void)osprey_gpu_panic(osp_io_error());
   return b;
 }
 
@@ -341,6 +348,13 @@ void *osprey_gpu_data(void *buffer) {
 // published-length tail are all out of bounds.
 static int addressable(const OspreyGpuBuffer *b, int64_t index) {
   return b && b->data && index >= 0 && index < b->length;
+}
+
+// [FAILURE-EXPLICIT] The Result-returning language read checks this before
+// loading any word: 0 is out of bounds, -1 carries a download error, 1 is ready.
+int32_t osprey_gpu_readable(void *buffer, int64_t index) {
+  OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
+  return addressable(b, index) ? synchronize(b) : 0;
 }
 
 // The raw word at `index`, or 0 out of bounds. Codegen's counted loops stay

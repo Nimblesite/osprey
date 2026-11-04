@@ -1,7 +1,8 @@
 //! Buffer construction and host transfer for the GPU surface
 //! (docs/specs/runtime/0034-GPUComputation.md): `toGpu` in its three lowerings —
 //! literal [GPU-BUFFER-LITERAL], iterator fusion [GPU-BUFFER-FUSE] and list
-//! copy [GPU-BUFFER-FROM-LIST] — and `fromGpu` [GPU-BUFFER-TO-LIST]. These are
+//! copy [GPU-BUFFER-FROM-LIST] — and `fromGpu` [GPU-BUFFER-TO-LIST] and `gpuGet`
+//! [GPU-GET]. These are
 //! the host↔device boundary; the combinators that run kernels live in the
 //! parent module.
 
@@ -170,4 +171,49 @@ pub(super) fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     Ok(sealed.with_owner(Some(crate::collections::list_owner(
         tagged_elem(&b).map(crate::llty::scalar_spelling),
     ))))
+}
+
+/// [GPU-GET] [FAILURE-EXPLICIT]: a download failure is an Error, not a value.
+pub(super) fn get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let buffer = buffer_arg(cg, args, 0)?;
+    let index = gen_expr(cg, nth(args, 1)?)?;
+    let index = crate::conv::as_i64(cg, index)?;
+    let (failed, reason) = read_status(cg, &buffer, &index.operand);
+    let raw = guarded_get(cg, &buffer, &index.operand, &failed);
+    let value = super::elem_value(cg, raw, tagged_elem(&buffer));
+    let inner = value.ty;
+    crate::result::make_result_if_err_because(
+        cg,
+        value,
+        inner,
+        &failed,
+        Some("gpuGet: index out of bounds"),
+        Some(&reason),
+    )
+}
+
+fn read_status(cg: &mut Codegen, buffer: &Value, index: &str) -> (String, String) {
+    crate::extern_call::clear_io_error(cg);
+    let status = cg.call(
+        "i32",
+        "osprey_gpu_readable",
+        "i8*, i64",
+        &[&buffer.operand, index],
+    );
+    let reason = crate::extern_call::take_io_error(cg);
+    let failed = cg.emit_reg(format!("icmp sle i32 {status}, 0"));
+    (failed, reason)
+}
+
+/// Do not evaluate the raw accessor in either error branch. The zero word
+/// only fills the inactive payload of Error, never a published Success.
+fn guarded_get(cg: &mut Codegen, buffer: &Value, index: &str, failed: &str) -> String {
+    let entry = cg.cur_block().to_owned();
+    let (read, join) = (cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!("br i1 {failed}, label %{join}, label %{read}"));
+    cg.start_block(&read);
+    let value = buffer_get(cg, buffer, index);
+    let ready = cg.snapshot_to(&join);
+    cg.start_block(&join);
+    cg.emit_reg(format!("phi i64 [ 0, %{entry} ], [ {value}, %{ready} ]"))
 }

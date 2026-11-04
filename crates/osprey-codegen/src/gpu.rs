@@ -118,7 +118,7 @@ fn operation(name: &str) -> Option<Lowering> {
         "gpuFold" => gpu_fold,
         "gpuZipWith" => gpu_zip_with,
         "gpuIota" => gpu_iota,
-        "gpuGet" => gpu_get,
+        "gpuGet" => buffer::get,
         "gpuScan" => gpu_scan,
         "gpuFilter" => gpu_filter,
         "gpuMatMul" => io::mat_mul,
@@ -403,24 +403,6 @@ fn gpu_iota(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     buffer_set(cg, &out, &lp.i, &lp.i.clone());
     close_range_loop(cg, &lp);
     Ok(out)
-}
-
-/// `gpuGet(buffer, index)` — bounds-checked gather [GPU-GET], returning
-/// `Result<T, Error>` at the buffer's element type so a float buffer yields a
-/// float rather than its raw bits.
-fn gpu_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let buf = buffer_arg(cg, args, 0)?;
-    let index = gen_expr(cg, nth(args, 1)?)?;
-    let index = crate::conv::as_i64(cg, index)?;
-    let inb = cg.call(
-        "i32",
-        "osprey_gpu_in_bounds",
-        "i8*, i64",
-        &[&buf.operand, &index.operand],
-    );
-    let raw = buffer_get(cg, &buf, &index.operand);
-    let value = elem_value(cg, raw, tagged_elem(&buf));
-    crate::result::make_result_unless_in_bounds(cg, &inb, value, "gpuGet: index out of bounds")
 }
 
 /// `gpuScan(buffer, initial, combine)` — inclusive prefix scan [GPU-SCAN]:

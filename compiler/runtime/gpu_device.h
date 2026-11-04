@@ -56,6 +56,7 @@ int osprey_gpu_device_download(void *object, void *out, uint64_t count);
 // Release a device object its buffer no longer needs.
 void osprey_gpu_device_release(void *object);
 const char *osprey_gpu_device_name(void);
+int32_t osprey_gpu_readable(void *buffer, int64_t index);
 void *osprey_gpu_panic(const char *message);
 
 // The fault word a compiled kernel records when an operation cannot reach its

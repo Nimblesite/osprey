@@ -100,6 +100,20 @@ fn dense_buffer_allocations_follow_the_inferred_element_width() {
 }
 
 #[test]
+fn gpu_get_checks_readback_before_loading_a_scalar() {
+    // [FAILURE-EXPLICIT] A failed download cannot publish a fabricated value.
+    let ir = module("fn read() = gpuGet(toGpu([1.5]), 0)\nprint(read())\n");
+    let body = function_body(&ir, "@read()");
+    let ready = body
+        .find("call i32 @osprey_gpu_readable(")
+        .expect("checked readback");
+    let value = body.find("call i64 @osprey_gpu_get(").expect("scalar read");
+    assert!(ready < value);
+    assert!(body[ready..value].contains("icmp sle i32"), "{body}");
+    assert!(body[ready..value].contains("br i1"), "{body}");
+}
+
+#[test]
 fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
     // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
     let ir = module("let values: List<bool> = [true, false]\nlet table = toGpu(values)\nlet mapped = gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false))\nprint(fromGpu(mapped))\n");

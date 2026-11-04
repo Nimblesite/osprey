@@ -75,6 +75,10 @@ static int mock_dispatch(const OspreyGpuDispatch *d, int64_t mark) {
 
 static int mock_download(void *object, void *out, uint64_t count) {
   downloads++;
+  if (device_error) {
+    osp_io_error_text("mock", "readback", "injected download failure");
+    return -1;
+  }
   memcpy(out, ((MockObject *)object)->words, count);
   return 1;
 }
@@ -164,6 +168,23 @@ static void resident_launch(int64_t mark) {
   assert(releases == freed + 1 && osprey_gpu_get(out, 0) == 5 && downloads == down + 1);
 }
 
+// [FAILURE-EXPLICIT]: failed synchronization leaves the buffer pending and
+// preserves the reason; invalid indices never ask the device to download.
+static void readable_failure(int64_t mark) {
+  void *out = osprey_gpu_alloc(1, 8);
+  assert(launch(out, "", NULL) == 1);
+  unsigned down = downloads;
+  device_error = 1;
+  osp_io_error_clear();
+  assert(osprey_gpu_readable(out, -1) == 0 && osprey_gpu_readable(out, 1) == 0 && downloads == down);
+  assert(osprey_gpu_readable(out, 0) == -1 && downloads == down + 1);
+  assert(strcmp(osp_io_error(), "mock: readback: injected download failure") == 0);
+  device_error = 0;
+  osp_io_error_clear();
+  assert(osprey_gpu_readable(out, 0) == 1 && downloads == down + 2 && !osp_io_error());
+  assert(osprey_gpu_get(out, 0) == mark && downloads == down + 2);
+}
+
 static void device_case(const char *mode, int available, const char *name) {
   select_mode(mode);
   void *a = unit();
@@ -182,6 +203,7 @@ static void device_case(const char *mode, int available, const char *name) {
   unsigned before = dispatches;
   assert(osprey_gpu_matmul(osprey_gpu_alloc(0, 8), a, 0, 1, 1, 8) && dispatches == before);
   resident_launch(name[0] == 'm' ? 42 : 43);
+  readable_failure(name[0] == 'm' ? 42 : 43);
 }
 
 static void invalid_case(void) {
