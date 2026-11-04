@@ -106,7 +106,7 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [x] `cargo test -p osprey-types -p osprey-codegen`: 937 type tests and 221 codegen tests pass (2026-11-03).
 - [x] `cargo clippy -p osprey-types -p osprey-codegen -p osprey-cli --all-targets -- -D warnings` passes (2026-11-03).
 - [x] GC 312/312, ARC 312/312 and wasm 232/232 corpus lanes green with goldens, on the debug compiler (2026-11-03): release builds were on hold for another agent's suite.
-- [ ] Account for the unique `wip/sized-numerics` changes on the feature branch, verify and push. Current repository instructions require the primary checkout only; the inactive historical worktree is retained solely until its unique changes have been accounted for, then removed in Phase 6.
+- [x] Account for the unique `wip/sized-numerics` changes on the feature branch, verify and push. Merge `e778b456` records its three commits while retaining the verified replacement implementations: GPT-2's float32 edits already match, and the old positional loader metadata must not replace the newer inference, ABI, native-width or division fixes. All 38 merge resolutions are recorded in `sized-branch-resolution.json`; current type/IR, loader, dense-width and real checkpoint receipts verify the retained contracts. Remote ancestry of tip `8023bdd6` is verified, and the inactive worktree and merged branch are removed with ignored evidence archived (2026-11-04).
 **Gate:** twins green on all lanes; `grep -rn 'float32(' tests examples packages` finds no emulation call.
 
 Sized division report follow-up (`docs/reviews/sized-float-polymorphic-arithmetic.md`):
@@ -165,7 +165,7 @@ Verified binary32 progress, 2026-11-03: the compiled transformer suite passes al
 - [x] `/spec-check` over numeric sections of 0004, 0012, 0019, 0041 and 0043. Corrected stale math signatures and C extension rules; math corpus runs and host ABI regressions verify the documented behavior (2026-11-03).
 - [ ] `/spec-check` over GPU 0034 against the completed Phase 4/5 implementation and hardware receipts, then cross-check the complete numeric contract across all six specs.
 - [x] Plan 0049 phase 1 delegates sized buffers and native arithmetic to this plan and waits for its Phase 5 gate; mapped weights, block quantization and mutable state remain with 0049. Verified against the current plan (2026-11-03).
-- [ ] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`.
+- [x] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`. Verified the branch tip is an ancestor of the actual remote feature branch, clean source and zero open files. Archived all 1,498 ignored evidence files before removing the exact inactive worktree and deleting the merged branch; archive and per-file hashes are in `target/logs/plan-0050/sized-worktree-archive.json` (2026-11-04). Other workers' worktrees and unrelated files are untouched.
 - [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started).
 
 ### Final verification
