@@ -1,3 +1,10 @@
+(** [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs. *)
+withIndices (n, work) = match gpuIota n
+    Success value => work value
+    Error message => check "index allocation" "success" (toString message)
+iotaError n = match gpuIota n
+    Success value => "unexpected success ${gpuLength value}"
+    Error message => toString message
 // GPU stress, scale and numeric-edge workloads: million-element pipelines,
 // two-dozen-pass chains, buffers rebuilt from their own output, and the
 // checked-arithmetic boundaries where a `?:` fallback is all that stands
@@ -6,12 +13,9 @@
 // the last value that fits and the first that does not ([GPU-BACKEND-HOST],
 // [GPU-FOLD], [GPU-SCAN], [GPU-FILTER], [GPU-ZIPWITH], [GPU-GET],
 // [GPU-CONVERT] — docs/specs/runtime/0034-GPUComputation.md).
-
-(** overflowMark is the sentinel a checked-arithmetic fallback publishes: no
-    kernel below produces it any other way, so reading it back proves the
-    fallback fired. maxInt and minInt are the two's-complement edges these
-    accumulations walk to; hugeFloat is where a double's ulp reaches 2.0.
-    minInt counts down from -maxInt because this flavor rejects -2^63. *)
+(** overflowMark is the sentinel a checked-arithmetic fallback publishes: no kernel below produces it any other way, so reading it back proves the fallback fired.
+    maxInt and minInt are the two's-complement edges these accumulations walk to; hugeFloat is where a double's ulp reaches 2.0. minInt counts down from -maxInt because
+    this flavor rejects -2^63. *)
 marked work =
     handle Arith
         overflow _ _ _ _ => overflowMark ()
@@ -26,30 +30,24 @@ zeroReciprocal work =
     work ()
 overflowMark () = -999
 maxInt () = 9223372036854775807
-minInt () = ((0 - maxInt ()) ) - 1 
+minInt () = ((0 - maxInt ()) ) - 1
 hugeFloat () = 10000000000000000.0
-
-(** The growth kernels and the shared associative reduction — on overflow
-    tally keeps its accumulator, so a saturating fold freezes rather than
-    wraps. bump and lower step an element up and down, so a long chain of them
-    must cancel exactly, and negate, absI and altSign drive the signed
-    buffers. *)
-square x = (x * x) 
-product (a, b) = (a * b) 
+(** The growth kernels and the shared associative reduction — on overflow tally keeps its accumulator, so a saturating fold freezes rather than wraps. bump and lower
+    step an element up and down, so a long chain of them must cancel exactly, and negate, absI and altSign drive the signed buffers. *)
+square x = (x * x)
+product (a, b) = (a * b)
 tally (a, x) = preserving (\() => a + x)
-bump x = (x + 1) 
-lower x = (x - 1) 
-negate x = (0 - x) 
+bump x = (x + 1)
+lower x = (x - 1)
+negate x = (0 - x)
 absI x = match x < 0
-    true => (0 - x) 
+    true => (0 - x)
     false => x
 altSign x = match (x % 2 ) == 0
     true => x
-    false => (0 - x) 
-
-(** negSat, lowerSat and sqSat are the boundary-probing twins of negate, lower
-    and square: the same arithmetic, but the fallback publishes the mark. Then
-    the compaction predicates, and minI, a running minimum for gpuScan. *)
+    false => (0 - x)
+(** negSat, lowerSat and sqSat are the boundary-probing twins of negate, lower and square: the same arithmetic, but the fallback publishes the mark. Then the compaction
+    predicates, and minI, a running minimum for gpuScan. *)
 negSat x = marked (\() => (0 - x))
 lowerSat x = marked (\() => (x - 1))
 sqSat x = marked (\() => (x * x))
@@ -61,11 +59,8 @@ isMax x = x == maxInt ()
 minI (a, b) = match a < b
     true => a
     false => b
-
-(** prodSat and doubleUp are sticky: once the mark reaches the accumulator it
-    stays, so the fold reports the *first* overflow. addOr marks an
-    overflowing sum, clampAdd saturates it, and hugeScale walks elements past
-    the int edge one at a time. *)
+(** prodSat and doubleUp are sticky: once the mark reaches the accumulator it stays, so the fold reports the *first* overflow. addOr marks an overflowing sum, clampAdd
+    saturates it, and hugeScale walks elements past the int edge one at a time. *)
 prodSat (a, x) = match a == overflowMark ()
     true => overflowMark ()
     false => marked (\() => (a * x))
@@ -75,11 +70,8 @@ doubleUp (a, _x) = match a == overflowMark ()
 addOr (a, x) = marked (\() => (a + x))
 clampAdd (a, x) = satAdd a x
 hugeScale x = satMul x 100000000000000000
-
-(** The float kernels. addF's signature is load-bearing: a context-free `a + x`
-    int-defaults [GPU-KERNEL-ELEM-TYPING]. headBig and tailBig plant one
-    enormous value at opposite ends of an otherwise all-ones buffer, so one
-    fold absorbs every small term after it and the other does not. *)
+(** The float kernels. addF's signature is load-bearing: a context-free `a + x` int-defaults [GPU-KERNEL-ELEM-TYPING]. headBig and tailBig plant one enormous value at
+    opposite ends of an otherwise all-ones buffer, so one fold absorbs every small term after it and the other does not. *)
 addF (a, x) = a + x
 half x = x * 0.5
 negF x = 0.0 - x
@@ -93,26 +85,20 @@ headBig x = match x == 0.0
 tailBig x = match x == 1000.0
     true => hugeFloat ()
     false => 1.0
-
-(** simulate and mix rerun a kernel over the whole buffer n times, while
-    rebuild sends the buffer back to the host and in again every pass, so each
-    round trip is a fresh dense copy of its own output. The signatures are
-    load-bearing: recursion needs a real emitted definition. *)
+(** simulate and mix rerun a kernel over the whole buffer n times, while rebuild sends the buffer back to the host and in again every pass, so each round trip is a
+    fresh dense copy of its own output. The signatures are load-bearing: recursion needs a real emitted definition. *)
 simulate (buf, n) = match n
     0 => buf
     _ => simulate (buf |> gpuMap bump, (n - 1) )
-
 mix (buf, n) = match n
     0 => buf
     _ => mix (buf |> gpuMap stir, (n - 1) )
-
 rebuild (buf, n) = match n
     0 => buf
     _ => rebuild (toGpu (fromGpu (buf |> gpuMap bump)), (n - 1) )
-
 (** Run a million elements through map, fold, filter and scan. *)
-megaPipelineCase () =
-    idx = gpuIota 1000000
+megaPipelineCase () = withIndices (1000000, \idx => megaPipelineWith (idx))
+megaPipelineWith (idx) =
     squares = idx |> gpuMap square
     evens = idx |> gpuFilter isEven
     running = idx |> gpuScan 0 tally
@@ -133,11 +119,11 @@ megaPipelineCase () =
         (gpuGet (running, 1) ?: -1) == 1,
         (gpuGet (running, 999999) ?: -1) == 499999500000
     ]
-
 (** Read a 100k prefix sum, a seeded scan and a scan of a scan. *)
-scanScaleCase () =
-    running = gpuIota 100000 |> gpuScan 0 tally
-    seeded = gpuIota 100000 |> gpuScan 1000 tally
+scanScaleCase () = withIndices (100000, \indices100000 => scanScaleWith (indices100000))
+scanScaleWith (indices100000) =
+    running = indices100000 |> gpuScan 0 tally
+    seeded = indices100000 |> gpuScan 1000 tally
     twice = running |> gpuScan 0 tally
     checkAll "100k prefix scan" [
         (gpuGet (running, 0) ?: -1) == 0,
@@ -153,10 +139,10 @@ scanScaleCase () =
         (gpuGet (twice, 99999) ?: -1) == 166666666650000,
         (running |> gpuFold 0 minI) == 0
     ]
-
 (** Run sixteen climbs then sixteen descents, back to back. *)
-longChainCase () =
-    climbed = (gpuIota 100000
+longChainCase () = withIndices (100000, \indices100000 => longChainWith (indices100000))
+longChainWith (indices100000) =
+    climbed = (indices100000
         |> gpuMap bump |> gpuMap bump |> gpuMap bump |> gpuMap bump
         |> gpuMap bump |> gpuMap bump |> gpuMap bump |> gpuMap bump
         |> gpuMap bump |> gpuMap bump |> gpuMap bump |> gpuMap bump
@@ -177,10 +163,10 @@ longChainCase () =
         (cancelled |> gpuFold 0 tally) == 4999950000,
         (cancelled |> gpuFilter isEven |> gpuFold 0 tally) == 2499950000
     ]
-
 (** Rebuild a buffer from its own materialized output six times. *)
-rebuildCase () =
-    settled = rebuild (gpuIota 20000, 6)
+rebuildCase () = withIndices (20000, \indices20000 => withIndices (0, \indices0 => withIndices (1, \indices1 => rebuildWith (indices20000, indices0, indices1))))
+rebuildWith (indices20000, indices0, indices1) =
+    settled = rebuild (indices20000, 6)
     back = fromGpu settled
     again = toGpu back
     checkAll "six host round trips" [
@@ -194,13 +180,12 @@ rebuildCase () =
         gpuLength again == 20000,
         (again |> gpuFold 0 tally) == 200110000,
         (again |> gpuFilter isEven |> gpuFold 0 tally) == 100050000,
-        gpuLength (rebuild (gpuIota 0, 4)) == 0,
-        (rebuild (gpuIota 1, 3) |> gpuFold 0 tally) == 3
+        gpuLength (rebuild (indices0, 4)) == 0,
+        (rebuild (indices1, 3) |> gpuFold 0 tally) == 3
     ]
-
 (** Compact 500k elements and then compact that result. *)
-compactionScaleCase () =
-    src = gpuIota 500000
+compactionScaleCase () = withIndices (500000, \src => compactionScaleWith (src))
+compactionScaleWith (src) =
     evens = src |> gpuFilter isEven
     quads = evens |> gpuFilter isQuad
     checkAll "500k compaction" [
@@ -217,12 +202,11 @@ compactionScaleCase () =
         (src |> gpuFilter isPos |> gpuFold 0 tally) == 124999750000,
         gpuLength (src |> gpuFilter isPos |> gpuFilter isNeg) == 0
     ]
-
 (** Multiply 250k buffers, truncate ragged pairs and cancel. *)
-zipScaleCase () =
-    idx = gpuIota 250000
+zipScaleCase () = withIndices (250000, \idx => withIndices (1000000, \indices1000000 => withIndices (3, \indices3 => withIndices (0, \indices0 => zipScaleWith (idx, indices1000000, indices3, indices0)))))
+zipScaleWith (idx, indices1000000, indices3, indices0) =
     squares = gpuZipWith (idx, idx, product)
-    ragged = gpuZipWith (gpuIota 1000000, gpuIota 3, tally)
+    ragged = gpuZipWith (indices1000000, indices3, tally)
     cancel = gpuZipWith (idx, idx |> gpuMap negate, tally)
     checkAll "250k zip" [
         (squares |> gpuFold 0 tally) == 5208302083375000,
@@ -230,18 +214,17 @@ zipScaleCase () =
         (gpuGet (squares, 249999) ?: -1) == 62499500001,
         gpuLength ragged == 3,
         (ragged |> gpuFold 0 tally) == 6,
-        gpuLength (gpuZipWith (gpuIota 3, gpuIota 1000000, tally)) == 3,
-        gpuLength (gpuZipWith (idx, gpuIota 0, tally)) == 0,
+        gpuLength (gpuZipWith (indices3, indices1000000, tally)) == 3,
+        gpuLength (gpuZipWith (idx, indices0, tally)) == 0,
         gpuLength cancel == 250000,
         (cancel |> gpuFold 0 tally) == 0,
         (gpuGet (cancel, 249999) ?: -1) == 0
     ]
-
-(** Run 500 whole-buffer passes over 10k elements, then split the pass count
-    in half without changing the answer. *)
-simulationCase () =
-    settled = simulate (gpuIota 10000, 500)
-    staged = simulate (simulate (gpuIota 10000, 250), 250)
+(** Run 500 whole-buffer passes over 10k elements, then split the pass count in half without changing the answer. *)
+simulationCase () = withIndices (10000, \indices10000 => withIndices (0, \indices0 => withIndices (1, \indices1 => simulationWith (indices10000, indices0, indices1))))
+simulationWith (indices10000, indices0, indices1) =
+    settled = simulate (indices10000, 500)
+    staged = simulate (simulate (indices10000, 250), 250)
     checkAll "500-pass simulation" [
         (settled |> gpuFold 0 tally) == 54995000,
         gpuLength settled == 10000,
@@ -249,23 +232,22 @@ simulationCase () =
         (gpuGet (settled, 9999) ?: -1) == 10499,
         (staged |> gpuFold 0 tally) == 54995000,
         (gpuGet (staged, 9999) ?: -1) == 10499,
-        gpuLength (simulate (gpuIota 0, 100)) == 0,
-        (simulate (gpuIota 1, 7) |> gpuFold 0 tally) == 7
+        gpuLength (simulate (indices0, 100)) == 0,
+        (simulate (indices1, 7) |> gpuFold 0 tally) == 7
     ]
-
-(** Walk each checked operator to the int edge and one step past: 20! fits and
-    21! does not, 2^62 fits and 2^63 does not, 3037000499 squares and its
-    successor does not, and minInt cannot negate. *)
-overflowBoundaryCase () =
-    fits = gpuIota 20 |> gpuMap bump |> gpuFold 1 prodSat
-    spills = gpuIota 21 |> gpuMap bump |> gpuFold 1 prodSat
+(** Walk each checked operator to the int edge and one step past: 20! fits and 21! does not, 2^62 fits and 2^63 does not, 3037000499 squares and its successor does not,
+    and minInt cannot negate. *)
+overflowBoundaryCase () = withIndices (20, \indices20 => withIndices (21, \indices21 => withIndices (62, \indices62 => withIndices (63, \indices63 => overflowBoundaryWith (indices20, indices21, indices62, indices63)))))
+overflowBoundaryWith (indices20, indices21, indices62, indices63) =
+    fits = indices20 |> gpuMap bump |> gpuFold 1 prodSat
+    spills = indices21 |> gpuMap bump |> gpuFold 1 prodSat
     roots = toGpu [3037000499, 3037000500] |> gpuMap sqSat
     edges = toGpu [minInt (), -1, 0, 1, maxInt ()] |> gpuMap negSat
     checkAll "checked overflow boundaries" [
         fits == 2432902008176640000,
         spills == overflowMark (),
-        (gpuIota 62 |> gpuFold 1 doubleUp) == 4611686018427387904,
-        (gpuIota 63 |> gpuFold 1 doubleUp) == overflowMark (),
+        (indices62 |> gpuFold 1 doubleUp) == 4611686018427387904,
+        (indices63 |> gpuFold 1 doubleUp) == overflowMark (),
         (gpuGet (roots, 0) ?: 0) == 9223372030926249001,
         (gpuGet (roots, 1) ?: 0) == overflowMark (),
         (gpuGet (edges, 0) ?: 0) == overflowMark (),
@@ -279,10 +261,10 @@ overflowBoundaryCase () =
         (toGpu [minInt ()] |> gpuMap lowerSat |> gpuFold 0 addOr) == overflowMark (),
         gpuLength (toGpu [maxInt (), 1] |> gpuFilter isMax) == 1
     ]
-
 (** Cross the int edge part way through two thousand elements. *)
-saturationCase () =
-    bigs = gpuIota 2000 |> gpuMap hugeScale
+saturationCase () = withIndices (2000, \indices2000 => saturationWith (indices2000))
+saturationWith (indices2000) =
+    bigs = indices2000 |> gpuMap hugeScale
     saturated = bigs |> gpuFilter isMax
     checkAll "saturating accumulation" [
         gpuLength bigs == 2000,
@@ -297,10 +279,10 @@ saturationCase () =
         gpuLength (bigs |> gpuFilter isNeg) == 0,
         gpuLength (bigs |> gpuMap isMax) == 2000
     ]
-
 (** Carry a wholly negative buffer through every combinator. *)
-negativeCase () =
-    negs = gpuIota 100000 |> gpuMap negate
+negativeCase () = withIndices (100000, \indices100000 => negativeWith (indices100000))
+negativeWith (indices100000) =
+    negs = indices100000 |> gpuMap negate
     restored = negs |> gpuMap negate
     running = negs |> gpuScan 0 tally
     lows = negs |> gpuScan 0 minI
@@ -319,14 +301,13 @@ negativeCase () =
         (gpuGet (running, 99999) ?: 1) == -4999950000,
         (gpuGet (lows, 0) ?: 1) == 0,
         (gpuGet (lows, 99999) ?: 1) == -99999,
-        (gpuZipWith (negs, gpuIota 100000, tally) |> gpuFold 0 tally) == 0,
+        (gpuZipWith (negs, indices100000, tally) |> gpuFold 0 tally) == 0,
         (negs |> gpuMap absI |> gpuFold 0 tally) == 4999950000
     ]
-
-(** Flip sign on every other element of a 200k buffer: the fold telescopes,
-    the scan oscillates, squaring erases the signs. *)
-alternatingCase () =
-    alt = gpuIota 200000 |> gpuMap altSign
+(** Flip sign on every other element of a 200k buffer: the fold telescopes, the scan oscillates, squaring erases the signs. *)
+alternatingCase () = withIndices (200000, \indices200000 => alternatingWith (indices200000))
+alternatingWith (indices200000) =
+    alt = indices200000 |> gpuMap altSign
     running = alt |> gpuScan 0 tally
     checkAll "alternating signs" [
         (alt |> gpuFold 0 tally) == -100000,
@@ -348,23 +329,22 @@ alternatingCase () =
         (alt |> gpuMap square |> gpuFold 0 tally) == 2666646666700000,
         (gpuZipWith (alt, alt, product) |> gpuFold 0 tally) == 2666646666700000
     ]
-
 (** Pin the empty buffer, the inverted extent and all-zeros. *)
-zeroDegenerateCase () =
-    empty = gpuIota 0
-    inverted = gpuIota (-1000000)
-    zeros = gpuIota 50000 |> gpuMap (\_x => 0)
+zeroDegenerateCase () = withIndices (0, \empty => withIndices (50000, \indices50000 => withIndices (1000000, \indices1000000 => zeroDegenerateWith (empty, indices50000, indices1000000))))
+zeroDegenerateWith (empty, indices50000, indices1000000) =
+    inverted = iotaError (-1000000)
+    zeros = indices50000 |> gpuMap (\_x => 0)
     checkAll "zero and empty at every combinator" [
         gpuLength empty == 0,
-        gpuLength inverted == 0,
+        inverted == "gpu: buffer allocation: a negative element count",
         gpuLength (toGpu []) == 0,
         (empty |> gpuFold 42 tally) == 42,
-        (inverted |> gpuFold (-7) tally) == -7,
+        iotaError (-7) == "gpu: buffer allocation: a negative element count",
         gpuLength (empty |> gpuMap bump) == 0,
         gpuLength (empty |> gpuFilter isEven) == 0,
         gpuLength (empty |> gpuScan 0 tally) == 0,
-        gpuLength (gpuZipWith (empty, gpuIota 1000000, tally)) == 0,
-        gpuLength (gpuZipWith (gpuIota 1000000, empty, tally)) == 0,
+        gpuLength (gpuZipWith (empty, indices1000000, tally)) == 0,
+        gpuLength (gpuZipWith (indices1000000, empty, tally)) == 0,
         (gpuGet (empty, 0) ?: -1) == -1,
         listLength (fromGpu empty) == 0,
         gpuLength (toGpu (fromGpu empty)) == 0,
@@ -374,18 +354,16 @@ zeroDegenerateCase () =
         gpuLength (zeros |> gpuFilter isEven) == 50000,
         gpuLength (zeros |> gpuFilter isPos) == 0,
         (gpuGet (zeros |> gpuScan 0 tally, 49999) ?: -1) == 0,
-        (gpuZipWith (zeros, gpuIota 50000, product) |> gpuFold 0 tally) == 0,
+        (gpuZipWith (zeros, indices50000, product) |> gpuFold 0 tally) == 0,
         (zeros |> gpuMap square |> gpuFold 0 tally) == 0
     ]
-
-(** Read one ahead, one behind and straight across a 100k buffer from inside
-    kernels: each shift falls off exactly one end, and an out-of-range index
-    is a visible Error rather than a silent zero. *)
-gatherBoundaryCase () =
-    src = gpuIota 100000
-    ahead = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (i + 1) ) ?: -7)
-    behind = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (i - 1) ) ?: -7)
-    mirror = gpuIota 100000 |> gpuMap (\i => gpuGet (src, (99999 - i) ) ?: -7)
+(** Read one ahead, one behind and straight across a 100k buffer from inside kernels: each shift falls off exactly one end, and an out-of-range index is a visible Error
+    rather than a silent zero. *)
+gatherBoundaryCase () = withIndices (100000, \src => gatherBoundaryWith (src))
+gatherBoundaryWith (src) =
+    ahead = src |> gpuMap (\i => gpuGet (src, (i + 1) ) ?: -7)
+    behind = src |> gpuMap (\i => gpuGet (src, (i - 1) ) ?: -7)
+    mirror = src |> gpuMap (\i => gpuGet (src, (99999 - i) ) ?: -7)
     checkAll "gathers at the buffer edges" [
         (gpuGet (ahead, 0) ?: 0) == 1,
         (gpuGet (ahead, 99998) ?: 0) == 99999,
@@ -407,10 +385,10 @@ gatherBoundaryCase () =
         (gpuGet (src, minInt ()) ?: -1) == -1,
         (gpuGet (src, maxInt ()) ?: -1) == -1
     ]
-
 (** Widen a 100k index buffer through the float combinators. *)
-floatScaleCase () =
-    xs = gpuIota 100000 |> gpuMap toFloat
+floatScaleCase () = withIndices (100000, \indices100000 => floatScaleWith (indices100000))
+floatScaleWith (indices100000) =
+    xs = indices100000 |> gpuMap toFloat
     halves = xs |> gpuMap half
     flipped = xs |> gpuMap negF
     recips = xs |> gpuMap recip
@@ -434,22 +412,20 @@ floatScaleCase () =
         toFloat 9007199254740991 < toFloat 9007199254740992,
         toFloat (-9007199254740992) == -9007199254740992.0
     ]
-
-(** Make accumulation order observable: [GPU-FOLD] contracts the host backend
-    to combine left-to-right, so a huge leading term absorbs every small one
-    after it while the same terms reversed all survive — why the spec calls a
-    non-associative combine backend-dependent. *)
-floatOrderCase () =
+(** Make accumulation order observable: [GPU-FOLD] contracts the host backend to combine left-to-right, so a huge leading term absorbs every small one after it while
+    the same terms reversed all survive — why the spec calls a non-associative combine backend-dependent. *)
+floatOrderCase () = withIndices (1001, \indices1001 => withIndices (100000, \indices100000 => floatOrderWith (indices1001, indices100000)))
+floatOrderWith (indices1001, indices100000) =
     handle Arith
         divideByZero op lhs =>
             checkAll "zero divisor payload" [op == "/", lhs == 1.0]
             -1.0
-    xs = gpuIota 1001 |> gpuMap toFloat
+    xs = indices1001 |> gpuMap toFloat
     leading = xs |> gpuMap headBig
     trailing = xs |> gpuMap tailBig
     absorbed = leading |> gpuFold 0.0 addF
     survived = trailing |> gpuFold 0.0 addF
-    tenths = gpuIota 100000 |> gpuMap tenthOf |> gpuFold 0.0 addF
+    tenths = indices100000 |> gpuMap tenthOf |> gpuFold 0.0 addF
     checkAll "float accumulation order is observable" [
         absorbed == hugeFloat (),
         survived == hugeFloat () + 1000.0,
@@ -466,10 +442,10 @@ floatOrderCase () =
         tenths < 10000.001,
         ((1.0 / 0.0) ) == -1.0
     ]
-
 (** Run 400 float passes over the canonical [GPU-CONVERT] seed. *)
-floatChurnCase () =
-    mixed = mix (gpuIota 8 |> gpuMap toFloat, 400)
+floatChurnCase () = withIndices (8, \indices8 => withIndices (0, \indices0 => floatChurnWith (indices8, indices0)))
+floatChurnWith (indices8, indices0) =
+    mixed = mix (indices8 |> gpuMap toFloat, 400)
     total = mixed |> gpuFold 0.0 addF
     checkAll "400-pass float churn" [
         total > 1627.8,
@@ -478,10 +454,9 @@ floatChurnCase () =
         (gpuGet (mixed, 0) ?: 0.0) > 0.0,
         (gpuGet (mixed, 7) ?: 0.0) > (gpuGet (mixed, 0) ?: 0.0),
         gpuLength (mixed |> gpuFilter isPositiveF) == 8,
-        gpuLength (mix (gpuIota 0 |> gpuMap toFloat, 50)) == 0,
-        (mix (gpuIota 8 |> gpuMap toFloat, 0) |> gpuFold 0.0 addF) == 28.0
+        gpuLength (mix (indices0 |> gpuMap toFloat, 50)) == 0,
+        (mix (indices8 |> gpuMap toFloat, 0) |> gpuFold 0.0 addF) == 28.0
     ]
-
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith
@@ -495,8 +470,6 @@ exactArithmetic work =
             expectFalse true
             0
     work ()
-
-
 test ("a million elements map, fold, filter and scan in one pipeline", \() => exactArithmetic (megaPipelineCase))
 test ("a 100k prefix scan matches its closed form", \() => exactArithmetic (scanScaleCase))
 test ("twenty-four dependent map passes stay exact", \() => exactArithmetic (longChainCase))

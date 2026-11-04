@@ -1,59 +1,44 @@
-// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and
-// gpuFold behave alone, at their degenerate edges, and composed into deep
-// chains — the empty and one-element buffer, ragged truncation to the shorter
-// operand, order-preserving compaction, the inclusive-prefix seed, the initial
-// value a fold returns with nothing to reduce, and the left-to-right traversal
-// the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH],
-// [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-FUSE],
-// [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] —
-// docs/specs/runtime/0034-GPUComputation.md).
-
-/// The zero-length buffers every combinator is pushed through; the annotation
-/// supplies the element type an empty literal cannot.
+/// [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs.
+fn withIndices(n, work) = match gpuIota(n) {
+    Success { value } => work(value)
+    Error { message } => check("index allocation", "success", toString(message))
+}
+fn iotaError(n) = match gpuIota(n) { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
+// GPU combinator algebra: how gpuMap, gpuFilter, gpuScan, gpuZipWith and gpuFold behave alone, at their degenerate edges, and composed into deep chains — the empty and
+// one-element buffer, ragged truncation to the shorter operand, order-preserving compaction, the inclusive-prefix seed, the initial value a fold returns with nothing to
+// reduce, and the left-to-right traversal the host backend documents ([GPU-MAP], [GPU-FOLD], [GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-SCAN], [GPU-FILTER], [GPU-BUFFER-
+// FUSE], [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] — docs/specs/runtime/0034-GPUComputation.md).
+/// The zero-length buffers every combinator is pushed through; the annotation supplies the element type an empty literal cannot.
 fn emptyInts() -> GpuBuffer<int> = toGpu([])
 fn emptyFloats() -> GpuBuffer<float> = toGpu([])
-
 /// sumI and mulI are the associative int combines fold and scan share.
-fn sumI(a, b) = (a + b) 
-fn mulI(a, b) = (a * b) 
-
-/// subI and horner are deliberately non-commutative. Left-to-right is the
-/// only traversal that reproduces their results, so every assertion on them
-/// pins the order [GPU-BACKEND-HOST] rather than merely the element set.
-fn subI(a, b) = (a - b) 
-fn horner(a, d) = (((a * 10) ) + d) 
-
-/// maxI makes a scan a running maximum; addF is the float reduction; orB is
-/// the boolean any-reduction that latches on the first accepted element.
+fn sumI(a, b) = (a + b)
+fn mulI(a, b) = (a * b)
+/// subI and horner are deliberately non-commutative. Left-to-right is the only traversal that reproduces their results, so every assertion on them pins the order [GPU-
+/// BACKEND-HOST] rather than merely the element set.
+fn subI(a, b) = (a - b)
+fn horner(a, d) = (((a * 10) ) + d)
+/// maxI makes a scan a running maximum; addF is the float reduction; orB is the boolean any-reduction that latches on the first accepted element.
 fn maxI(a, b: int) = match a > b { true => a false => b }
 fn addF(a: float, x: float) = a + x
 fn orB(a, b) = a || b
-
 /// countTrue is the population count that turns a bool buffer into a scalar.
 fn countTrue(a, flag) = match flag {
-    true => (a + 1) 
+    true => (a + 1)
     false => a
 }
-
 /// dbl, inc and half are the one-line stages the deep chains are built from.
-fn dbl(x) = (x * 2) 
-fn inc(x) = (x + 1) 
+fn dbl(x) = (x * 2)
+fn inc(x) = (x + 1)
 fn half(x: float) = x * 0.5
-
-/// toBit widens a bool element back to an int one, closing the type cycle
-/// int -> bool -> int that [GPU-BUFFER-ELEM]'s three scalars allow.
+/// toBit widens a bool element back to an int one, closing the type cycle int -> bool -> int that [GPU-BUFFER-ELEM]'s three scalars allow.
 fn toBit(b) = match b { true => 1 false => 0 }
-
-/// isEven and isOddP are each other's negation; isOddP is spelled with `!` so
-/// the predicate slot is fed by a boolean operator, not just a comparison.
+/// isEven and isOddP are each other's negation; isOddP is spelled with `!` so the predicate slot is fed by a boolean operator, not just a comparison.
 fn isEven(x) = (x % 2 ) == 0
 fn isOddP(x) = !isEven(x)
-
-/// keepEvery and keepNone are the degenerate predicates — total acceptance
-/// and total rejection, independent of the element.
+/// keepEvery and keepNone are the degenerate predicates — total acceptance and total rejection, independent of the element.
 fn keepEvery(x) = x == x
 fn keepNone(x) = x != x
-
 /// The remaining predicates compose comparisons with &&, || and !.
 fn isBig(x) = x > 4
 fn bigEven(x) = isEven(x) && isBig(x)
@@ -62,24 +47,18 @@ fn notBand(x) = !inBand(x)
 fn atEdge(x) = (x < 2) || (x > 7)
 fn isPositive(x) = x > 0.0
 fn truthy(b) = b
-
-/// The zip kernels below all return an element type neither operand has, so
-/// gpuZipWith is exercised as a type-changing combinator too.
+/// The zip kernels below all return an element type neither operand has, so gpuZipWith is exercised as a type-changing combinator too.
 fn sameParity(a, b) = isEven(a) == isEven(b)
 fn lessF(a, b: float) = a < b
 fn meanF(a, b) = (toFloat(a) + toFloat(b)) * 0.5
 fn mixAdd(i, x: float) = toFloat(i) + x
-
-/// oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns
-/// is visible in an assertion instead of being swallowed by a `?:` default.
+/// oobMessage renders a gpuGet outcome as text so the Error [GPU-GET] returns is visible in an assertion instead of being swallowed by a `?:` default.
 fn oobMessage(buf: GpuBuffer<int>, i) = match gpuGet(buf, i) {
     Success { value } => "value ${value}"
     Error { message } => message
 }
-
-/// emptyShapeCase pins that no combinator invents an element from nothing:
-/// map, filter and scan over zero elements are all zero elements, whatever
-/// the kernel does to the element type.
+/// emptyShapeCase pins that no combinator invents an element from nothing: map, filter and scan over zero elements are all zero elements, whatever the kernel does to the
+/// element type.
 fn emptyShapeCase() = {
     let chained = emptyInts() |> gpuMap(dbl) |> gpuFilter(isEven) |> gpuScan(0, sumI) |> gpuMap(inc)
     checkAll("empty shapes", [
@@ -99,11 +78,10 @@ fn emptyShapeCase() = {
         gpuLength(chained) == 0
     ])
 }
-
-/// emptyFoldCase pins [GPU-FOLD]'s base case: with no element to combine, the
-/// result is exactly the initial value — for every combine, and for a buffer
-/// emptied by compaction rather than born empty.
-fn emptyFoldCase() = {
+/// emptyFoldCase pins [GPU-FOLD]'s base case: with no element to combine, the result is exactly the initial value — for every combine, and for a buffer emptied by
+/// compaction rather than born empty.
+fn emptyFoldCase() = withIndices(0, fn(indices0) => emptyFoldWith(indices0))
+fn emptyFoldWith(indices0) = {
     let drained = toGpu([1, 3, 5]) |> gpuFilter(keepNone)
     checkAll("empty folds", [
         (emptyInts() |> gpuFold(0, sumI)) == 0,
@@ -118,14 +96,12 @@ fn emptyFoldCase() = {
         gpuLength(drained) == 0,
         (drained |> gpuFold(11, sumI)) == 11,
         (drained |> gpuScan(0, sumI) |> gpuFold(13, sumI)) == 13,
-        (gpuIota(0) |> gpuFold(5, mulI)) == 5,
+        (indices0 |> gpuFold(5, mulI)) == 5,
         (gpuZipWith(emptyInts(), emptyInts(), sumI) |> gpuFold(6, sumI)) == 6
     ])
 }
-
-/// singletonCase walks the one-element buffer through every combinator: the
-/// smallest shape where a kernel actually runs, and the one where an
-/// off-by-one in a loop bound or a prefix seed shows up immediately.
+/// singletonCase walks the one-element buffer through every combinator: the smallest shape where a kernel actually runs, and the one where an off-by-one in a loop bound or
+/// a prefix seed shows up immediately.
 fn singletonCase() = {
     let one = toGpu([5])
     let scanned = one |> gpuScan(3, sumI)
@@ -145,11 +121,10 @@ fn singletonCase() = {
         (gpuGet(one, 1) ?: 42) == 42
     ])
 }
-
-/// raggedCase pins [GPU-ZIPWITH]'s truncation to the shorter operand in both
-/// argument orders, and uses a non-commutative kernel so a swapped operand
-/// pair could not pass by accident.
-fn raggedCase() = {
+/// raggedCase pins [GPU-ZIPWITH]'s truncation to the shorter operand in both argument orders, and uses a non-commutative kernel so a swapped operand pair could not pass by
+/// accident.
+fn raggedCase() = withIndices(3, fn(indices3) => withIndices(7, fn(indices7) => withIndices(4, fn(indices4) => raggedWith(indices3, indices7, indices4))))
+fn raggedWith(indices3, indices7, indices4) = {
     let leftFirst = gpuZipWith(toGpu([1, 2, 3, 4, 5]), toGpu([10, 20]), subI)
     let rightFirst = gpuZipWith(toGpu([10, 20]), toGpu([1, 2, 3, 4, 5]), subI)
     checkAll("ragged zip", [
@@ -162,15 +137,13 @@ fn raggedCase() = {
         (gpuGet(leftFirst, 2) ?: 77) == 77,
         gpuLength(gpuZipWith(toGpu([1, 2, 3]), toGpu([9]), mulI)) == 1,
         gpuLength(gpuZipWith(toGpu([9]), toGpu([1, 2, 3]), mulI)) == 1,
-        gpuLength(gpuZipWith(gpuIota(3), gpuIota(7), sumI)) == 3,
-        gpuLength(gpuZipWith(gpuIota(7), gpuIota(3), sumI)) == 3,
-        (gpuZipWith(gpuIota(7), gpuIota(3), mulI) |> gpuFold(0, sumI)) == 5,
-        gpuLength(gpuZipWith(gpuIota(4), gpuIota(4), sumI)) == 4
+        gpuLength(gpuZipWith(indices3, indices7, sumI)) == 3,
+        gpuLength(gpuZipWith(indices7, indices3, sumI)) == 3,
+        (gpuZipWith(indices7, indices3, mulI) |> gpuFold(0, sumI)) == 5,
+        gpuLength(gpuZipWith(indices4, indices4, sumI)) == 4
     ])
 }
-
-/// zipTypeCase pins that the zip kernel's result type is the buffer's, not
-/// either operand's, including a pair whose two operands differ in type.
+/// zipTypeCase pins that the zip kernel's result type is the buffer's, not either operand's, including a pair whose two operands differ in type.
 fn zipTypeCase() = {
     let parity = gpuZipWith(toGpu([1, 2, 3, 4]), toGpu([3, 5, 7, 9]), sameParity)
     let means = gpuZipWith(toGpu([1, 3]), toGpu([3, 5]), meanF)
@@ -190,10 +163,8 @@ fn zipTypeCase() = {
         (gpuZipWith(toGpu([1.0, 2.0, 3.0]), toGpu([3.0, 2.0, 1.0]), lessF) |> gpuFold(0, countTrue)) == 1
     ])
 }
-
-/// filterKeepCase pins the three shapes of a compaction — every element kept,
-/// none kept, alternating — and reads the kept run back element by element so
-/// [GPU-FILTER]'s source-order guarantee is checked, not just its count.
+/// filterKeepCase pins the three shapes of a compaction — every element kept, none kept, alternating — and reads the kept run back element by element so [GPU-FILTER]'s
+/// source-order guarantee is checked, not just its count.
 fn filterKeepCase() = {
     let src = toGpu([9, 4, 7, 2, 5, 8])
     let kept = src |> gpuFilter(keepEvery)
@@ -213,12 +184,11 @@ fn filterKeepCase() = {
         (src |> gpuFilter(isOddP) |> gpuFold(0, horner)) == 975
     ])
 }
-
-/// filterPredicateCase feeds the predicate slot from comparisons and from
-/// every boolean operator, over int and float elements and over a bool buffer
-/// whose elements are the predicate.
-fn filterPredicateCase() = {
-    let digits = gpuIota(10)
+/// filterPredicateCase feeds the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the
+/// predicate.
+fn filterPredicateCase() = withIndices(10, fn(indices10) => withIndices(6, fn(indices6) => filterPredicateWith(indices10, indices6)))
+fn filterPredicateWith(indices10, indices6) = {
+    let digits = indices10
     let signed = toGpu([0.0 - 1.5, 0.0, 2.5, 4.0])
     checkAll("filter predicates", [
         gpuLength(digits |> gpuFilter(isBig)) == 5,
@@ -233,14 +203,13 @@ fn filterPredicateCase() = {
         (digits |> gpuFilter(notBand) |> gpuFold(0, sumI)) == 27,
         gpuLength(signed |> gpuFilter(isPositive)) == 2,
         (signed |> gpuFilter(isPositive) |> gpuFold(0.0, addF)) == 6.5,
-        gpuLength(gpuIota(6) |> gpuMap(isEven) |> gpuFilter(truthy)) == 3
+        gpuLength(indices6 |> gpuMap(isEven) |> gpuFilter(truthy)) == 3
     ])
 }
-
-/// scanPrefixCase reads [GPU-SCAN]'s inclusive prefix out one element at a
-/// time: element i is the combine folded through element i, so the last
-/// element must equal the whole-buffer fold and index n is out of bounds.
-fn scanPrefixCase() = {
+/// scanPrefixCase reads [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the
+/// whole-buffer fold and index n is out of bounds.
+fn scanPrefixCase() = withIndices(5, fn(indices5) => scanPrefixWith(indices5))
+fn scanPrefixWith(indices5) = {
     let sums = toGpu([1, 2, 3, 4, 5]) |> gpuScan(0, sumI)
     let twice = sums |> gpuScan(0, sumI)
     let products = toGpu([1, 2, 3, 4]) |> gpuScan(1, mulI)
@@ -256,12 +225,10 @@ fn scanPrefixCase() = {
         (gpuGet(twice, 4) ?: 0) == 35,
         gpuLength(products) == 4,
         (gpuGet(products, 3) ?: 0) == 24,
-        (gpuGet(gpuIota(5) |> gpuScan(0, sumI), 4) ?: 0) == 10
+        (gpuGet(indices5 |> gpuScan(0, sumI), 4) ?: 0) == 10
     ])
 }
-
-/// scanSeedCase pins the seed's role — element 0 is combine(initial, src 0),
-/// never src 0 — over a sum, a maximum a high seed swamps, and a bool latch.
+/// scanSeedCase pins the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch.
 fn scanSeedCase() = {
     let seeded = toGpu([1, 2, 3]) |> gpuScan(10, sumI)
     let running = toGpu([3, 1, 4, 1, 5, 9, 2, 6]) |> gpuScan(0, maxI)
@@ -281,11 +248,8 @@ fn scanSeedCase() = {
         (latched |> gpuFold(0, countTrue)) == 2
     ])
 }
-
-/// orderCase pins the traversal itself. Every combine here is order-sensitive,
-/// so reversing the source has to change the answer, and a scan's last element
-/// has to agree with the fold running the same combine — the left-to-right
-/// host contract [GPU-BACKEND-HOST], written out as numbers.
+/// orderCase pins the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree
+/// with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers.
 fn orderCase() = {
     let digitsUp = toGpu([1, 2, 3, 4])
     let running = digitsUp |> gpuScan(0, horner)
@@ -305,14 +269,13 @@ fn orderCase() = {
         (running |> gpuFold(0, sumI)) == 1370
     ])
 }
-
-/// deepChainCase runs pipelines of five and more dependent stages: each one
-/// allocates a fresh buffer the next stage consumes, so a stage that read a
-/// stale length or a stale pointer would corrupt every number below.
-fn deepChainCase() = {
-    let widened = gpuIota(12) |> gpuMap(dbl) |> gpuMap(toFloat) |> gpuMap(half)
-    let stepped = gpuIota(8) |> gpuMap(inc) |> gpuMap(dbl) |> gpuMap(inc) |> gpuMap(dbl) |> gpuMap(inc)
-    let compacted = gpuIota(20) |> gpuMap(dbl) |> gpuFilter(isBig) |> gpuScan(0, sumI)
+/// deepChainCase runs pipelines of five and more dependent stages: each one allocates a fresh buffer the next stage consumes, so a stage that read a stale length or a
+/// stale pointer would corrupt every number below.
+fn deepChainCase() = withIndices(12, fn(indices12) => withIndices(8, fn(indices8) => withIndices(20, fn(indices20) => deepChainWith(indices12, indices8, indices20))))
+fn deepChainWith(indices12, indices8, indices20) = {
+    let widened = indices12 |> gpuMap(dbl) |> gpuMap(toFloat) |> gpuMap(half)
+    let stepped = indices8 |> gpuMap(inc) |> gpuMap(dbl) |> gpuMap(inc) |> gpuMap(dbl) |> gpuMap(inc)
+    let compacted = indices20 |> gpuMap(dbl) |> gpuFilter(isBig) |> gpuScan(0, sumI)
     checkAll("deep chains", [
         gpuLength(compacted) == 17,
         (gpuGet(compacted, 0) ?: 0) == 6,
@@ -328,21 +291,20 @@ fn deepChainCase() = {
         gpuLength(stepped |> gpuFilter(isEven)) == 0
     ])
 }
-
-/// mixedChainCase interleaves the shape-changing combinators — a compaction
-/// feeding a scan feeding another compaction, a zip feeding a map feeding a
-/// filter — where a wrong published length silently shortens everything after.
-fn mixedChainCase() = {
-    let prefixes = gpuIota(30) |> gpuFilter(isEven) |> gpuScan(0, sumI) |> gpuFilter(bigEven)
-    let tripled = gpuIota(6) |> gpuMap(fn(x) => (x * 3) )
-    let woven = gpuZipWith(gpuIota(6), tripled, mulI) |> gpuMap(inc) |> gpuFilter(isOddP)
+/// mixedChainCase interleaves the shape-changing combinators — a compaction feeding a scan feeding another compaction, a zip feeding a map feeding a filter — where a wrong
+/// published length silently shortens everything after.
+fn mixedChainCase() = withIndices(30, fn(indices30) => withIndices(6, fn(indices6) => mixedChainWith(indices30, indices6)))
+fn mixedChainWith(indices30, indices6) = {
+    let prefixes = indices30 |> gpuFilter(isEven) |> gpuScan(0, sumI) |> gpuFilter(bigEven)
+    let tripled = indices6 |> gpuMap(fn(x) => (x * 3) )
+    let woven = gpuZipWith(indices6, tripled, mulI) |> gpuMap(inc) |> gpuFilter(isOddP)
     checkAll("mixed chains", [
         gpuLength(prefixes) == 13,
         (gpuGet(prefixes, 0) ?: 0) == 6,
         (gpuGet(prefixes, 12) ?: 0) == 210,
         (prefixes |> gpuFold(0, sumI)) == 1118,
         (tripled |> gpuFold(0, sumI)) == 45,
-        (gpuZipWith(tripled, gpuIota(6), subI) |> gpuFold(0, sumI)) == 30,
+        (gpuZipWith(tripled, indices6, subI) |> gpuFold(0, sumI)) == 30,
         gpuLength(woven) == 3,
         (gpuGet(woven, 0) ?: 0) == 1,
         (gpuGet(woven, 2) ?: 0) == 49,
@@ -351,10 +313,8 @@ fn mixedChainCase() = {
         (woven |> gpuScan(0, sumI) |> gpuFold(0, sumI)) == 78
     ])
 }
-
-/// typeChangeCase walks the whole element lattice [GPU-BUFFER-ELEM] allows —
-/// int to float through [GPU-CONVERT]'s toFloat, int and float to bool through
-/// predicates, bool back to int — folding each buffer at its own element type.
+/// typeChangeCase walks the whole element lattice [GPU-BUFFER-ELEM] allows — int to float through [GPU-CONVERT]'s toFloat, int and float to bool through predicates, bool
+/// back to int — folding each buffer at its own element type.
 fn typeChangeCase() = {
     let widened = toGpu([1, 2, 3]) |> gpuMap(toFloat)
     let flags = toGpu([1, 2, 3, 4]) |> gpuMap(isEven)
@@ -374,12 +334,9 @@ fn typeChangeCase() = {
         (toGpu([0, 1, 2]) |> gpuMap(toFloat) |> gpuMap(isPositive) |> gpuFold(0, countTrue)) == 2
     ])
 }
-
-/// fusionSourceCase pins `toGpu` as a consuming stage of an iterator pipeline
-/// [GPU-BUFFER-FUSE]: the pending map/filter stages replay inside the loop
-/// that fills the buffer, so no `List` is built on the way. A filtered chain
-/// publishes the kept prefix exactly as gpuFilter does, an inverted or empty
-/// range yields an empty buffer, and a fused map may change the element type.
+/// fusionSourceCase pins `toGpu` as a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]: the pending map/filter stages replay inside the loop that fills the
+/// buffer, so no `List` is built on the way. A filtered chain publishes the kept prefix exactly as gpuFilter does, an inverted or empty range yields an empty buffer, and a
+/// fused map may change the element type.
 fn fusionSourceCase() = {
     let staged = range(0, 10) |> filter(isEven) |> map(fn(x) => (x * 2) ) |> toGpu()
     checkAll("fused sources", [
@@ -399,10 +356,8 @@ fn fusionSourceCase() = {
         (range(0, 6) |> map(isEven) |> toGpu() |> gpuFold(0, countTrue)) == 3
     ])
 }
-
-/// fusionStageCase feeds a fused buffer into every combinator in turn,
-/// including both operand slots of a ragged zip, so a buffer built by the
-/// fusion path is indistinguishable from one copied out of a list.
+/// fusionStageCase feeds a fused buffer into every combinator in turn, including both operand slots of a ragged zip, so a buffer built by the fusion path is
+/// indistinguishable from one copied out of a list.
 fn fusionStageCase() = {
     let fused = range(0, 10) |> map(fn(x) => (x * 2) ) |> toGpu()
     let kept = range(0, 10) |> filter(isEven) |> toGpu()
@@ -422,12 +377,11 @@ fn fusionStageCase() = {
         (fused |> gpuMap(dbl) |> gpuScan(0, sumI) |> gpuFold(0, sumI)) == 660
     ])
 }
-
-/// iotaCase pins the index buffer [0, n) that gather and stencil start from,
-/// down to n = 1, n = 0, and a negative n — which yields an empty buffer for
-/// the same reason an inverted range does, never a negative allocation.
-fn iotaCase() = {
-    let idx = gpuIota(5)
+/// iotaCase pins the index buffer [0, n) that gather and stencil start from, down to n = 1, n = 0, and a negative n — which yields an empty buffer for the same reason an
+/// inverted range does, never a negative allocation.
+fn iotaCase() = withIndices(5, fn(indices5) => withIndices(1, fn(indices1) => withIndices(0, fn(indices0) => withIndices(3, fn(indices3) => iotaWith(indices5, indices1, indices0, indices3)))))
+fn iotaWith(indices5, indices1, indices0, indices3) = {
+    let idx = indices5
     checkAll("iota", [
         gpuLength(idx) == 5,
         (idx |> gpuFold(0, sumI)) == 10,
@@ -435,24 +389,23 @@ fn iotaCase() = {
         (gpuGet(idx, 4) ?: 0) == 4,
         (gpuGet(idx, 5) ?: 77) == 77,
         (idx |> gpuFold(0, horner)) == 1234,
-        gpuLength(gpuIota(1)) == 1,
-        (gpuGet(gpuIota(1), 0) ?: 9) == 0,
-        gpuLength(gpuIota(0)) == 0,
-        (gpuIota(0) |> gpuFold(3, sumI)) == 3,
-        gpuLength(gpuIota((0 - 4) )) == 0,
+        gpuLength(indices1) == 1,
+        (gpuGet(indices1, 0) ?: 9) == 0,
+        gpuLength(indices0) == 0,
+        (indices0 |> gpuFold(3, sumI)) == 3,
+        iotaError(0 - 4) == "gpu: buffer allocation: a negative element count",
         (gpuZipWith(idx, idx, mulI) |> gpuFold(0, sumI)) == 30,
         (idx |> gpuMap(toFloat) |> gpuFold(0.0, addF)) == 10.0,
-        (gpuIota(3) |> gpuScan(0, horner) |> gpuFold(0, sumI)) == 13
+        (indices3 |> gpuScan(0, horner) |> gpuFold(0, sumI)) == 13
     ])
 }
-
-/// getCase pins typed reads in bounds and a visible Error out of bounds, at
-/// both ends of the index range and at both element types — plus a gather
-/// kernel, since reading a buffer is pure and therefore legal inside one.
-fn getCase() = {
+/// getCase pins typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a
+/// buffer is pure and therefore legal inside one.
+fn getCase() = withIndices(3, fn(indices3) => getWith(indices3))
+fn getWith(indices3) = {
     let ints = toGpu([7, 8, 9])
     let floats = toGpu([1.5, 2.5])
-    let reversed = gpuIota(3) |> gpuMap(fn(i) => gpuGet(ints, (2 - i) ) ?: 0)
+    let reversed = indices3 |> gpuMap(fn(i) => gpuGet(ints, (2 - i) ) ?: 0)
     checkAll("get", [
         (gpuGet(ints, 0) ?: 0) == 7,
         (gpuGet(ints, 1) ?: 0) == 8,
@@ -468,15 +421,12 @@ fn getCase() = {
         (reversed |> gpuFold(0, horner)) == 987
     ])
 }
-
-/// deviceCase pins backend introspection: the host backend names itself, and
-/// says so rather than reporting a device it does not have [GPU-DEVICE].
+/// deviceCase pins backend introspection: the host backend names itself, and says so rather than reporting a device it does not have [GPU-DEVICE].
 fn deviceCase() = checkAll("device", [
     gpuDevice() == "host",
     length(gpuDevice()) == 4,
     gpuDevice() != "cuda:0"
 ])
-
 /// Exact-value tests record any arithmetic fault as a failed assertion.
 fn exactArithmetic(work) = {
     handle Arith {
@@ -495,8 +445,6 @@ fn exactArithmetic(work) = {
     }
     work()
 }
-
-
 test("every combinator over an empty buffer stays empty", fn() => exactArithmetic(emptyShapeCase))
 test("gpuFold over an empty buffer is the initial value", fn() => exactArithmetic(emptyFoldCase))
 test("every combinator handles a one-element buffer", fn() => exactArithmetic(singletonCase))

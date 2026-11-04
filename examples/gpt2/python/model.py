@@ -18,7 +18,7 @@ __all__ = [
     "LAYER_COUNT", "POSITIONS", "END_OF_TEXT", "EPSILON", "WIDTH_F", "SCORE_SCALE",
     "GELU_SCALE", "GELU_CUBIC", "Layer", "Weights", "Acts", "Attn", "Trace", "BlockStep",
     "Stepped", "at", "size", "empty", "device", "total", "plus", "add_f", "max_f", "gelu",
-    "gelus", "loaded", "load_weights", "empty_layer", "layer", "transpose", "product", "sum_range",
+    "gelus", "or_stop", "index_of", "loaded", "load_weights", "empty_layer", "layer", "transpose", "product", "sum_range",
     "squared_deviation", "row_means", "row_variances", "layer_norm", "linear", "q_at", "k_at",
     "v_at", "attention_from", "attention", "block", "embed", "forward", "block_step",
     "embed_one", "forward_step", "qkv_caches",
@@ -151,7 +151,7 @@ def gelu(x):
 
 
 def gelus(f):
-    return perform(Tensor.build(size(f), lambda i: gelu(at(f, i))))
+    return or_stop(perform(Tensor.build(size(f), lambda i: gelu(at(f, i)))), empty)
 
 
 def or_stop(result, abandoned):
@@ -164,6 +164,11 @@ def or_stop(result, abandoned):
         case Error(message=message):
             g = stop(message)
             return abandoned()
+
+
+def index_of(buffer, value):
+    """Find an index or stop before using a failed index allocation."""
+    return or_stop(perform(Tensor.index_of(buffer, value)), lambda: size(buffer))
 
 
 def loaded(path, name):
@@ -210,7 +215,7 @@ def layer(w, i):
 def transpose(m, rows, cols):
     """m [rows, cols] as [cols, rows]: tensors are rank-1, so a product against a
     transposed operand is a gather followed by `mat_mul`."""
-    return perform(Tensor.build(rows * cols, lambda i: at(m, (i % rows) * cols + i // rows)))
+    return or_stop(perform(Tensor.build(rows * cols, lambda i: at(m, (i % rows) * cols + i // rows))), empty)
 
 
 def product(a, b, rows, inner, cols):
@@ -230,11 +235,11 @@ def squared_deviation(x, start, n, mean):
 
 def row_means(x, t):
     """Per-row mean of x [t, width], the first LayerNorm statistic."""
-    return perform(Tensor.build(t, lambda r: sum_range(x, r * WIDTH, WIDTH) / WIDTH_F))
+    return or_stop(perform(Tensor.build(t, lambda r: sum_range(x, r * WIDTH, WIDTH) / WIDTH_F)), empty)
 
 
 def row_variances(x, t, means):
-    return perform(Tensor.build(t, lambda r: squared_deviation(x, r * WIDTH, WIDTH, at(means, r)) / WIDTH_F))
+    return or_stop(perform(Tensor.build(t, lambda r: squared_deviation(x, r * WIDTH, WIDTH, at(means, r)) / WIDTH_F)), empty)
 
 
 def normalised(x, means, variances, g, b, i):
@@ -247,13 +252,13 @@ def layer_norm(x, t, g, b):
     """LayerNorm over each of the t rows of x [t, width]."""
     means = row_means(x, t)
     variances = row_variances(x, t, means)
-    return perform(Tensor.build(t * WIDTH, lambda i: normalised(x, means, variances, g, b, i)))
+    return or_stop(perform(Tensor.build(t * WIDTH, lambda i: normalised(x, means, variances, g, b, i))), empty)
 
 
 def linear(x, rows, inner, cols, w, bias):
     """x [rows, inner] times w [inner, cols], plus the bias on every row."""
     value = product(x, w, rows, inner, cols)
-    return perform(Tensor.build(rows * cols, lambda i: at(value, i) + at(bias, i % cols)))
+    return or_stop(perform(Tensor.build(rows * cols, lambda i: at(value, i) + at(bias, i % cols))), empty)
 
 
 def q_at(qkv, r, h, d):
@@ -300,10 +305,10 @@ def causal_weight(scores, peaks, t, n, first, i):
 def probs_of(scores, t, n, first):
     """Softmax of each causal row of scores [heads, n, t], where row r of a head is
     position first + r and attends to columns c <= first + r only."""
-    peaks = perform(Tensor.build(HEADS * n, lambda row: row_max(scores, row, t, first + row % n)))
-    weights = perform(Tensor.build(HEADS * n * t, lambda i: causal_weight(scores, peaks, t, n, first, i)))
-    sums = perform(Tensor.build(HEADS * n, lambda row: sum_range(weights, row * t, t)))
-    return perform(Tensor.build(HEADS * n * t, lambda i: at(weights, i) / at(sums, i // t)))
+    peaks = or_stop(perform(Tensor.build(HEADS * n, lambda row: row_max(scores, row, t, first + row % n))), empty)
+    weights = or_stop(perform(Tensor.build(HEADS * n * t, lambda i: causal_weight(scores, peaks, t, n, first, i))), empty)
+    sums = or_stop(perform(Tensor.build(HEADS * n, lambda row: sum_range(weights, row * t, t))), empty)
+    return or_stop(perform(Tensor.build(HEADS * n * t, lambda i: at(weights, i) / at(sums, i // t))), empty)
 
 
 def attended(probs, qkv, t, n, first, i):
@@ -320,8 +325,8 @@ def attention_from(qkv, t, first):
     positions' keys and values from qkv instead of recomputing them). Scores and
     probabilities are [heads, t - first, t]."""
     n = t - first
-    probs = probs_of(perform(Tensor.build(HEADS * n * t, lambda i: causal_score(qkv, t, n, first, i))), t, n, first)
-    return Attn(probs=probs, out=perform(Tensor.build(n * WIDTH, lambda i: attended(probs, qkv, t, n, first, i))))
+    probs = probs_of(or_stop(perform(Tensor.build(HEADS * n * t, lambda i: causal_score(qkv, t, n, first, i))), empty), t, n, first)
+    return Attn(probs=probs, out=or_stop(perform(Tensor.build(n * WIDTH, lambda i: attended(probs, qkv, t, n, first, i))), empty))
 
 
 def attention(qkv, t):
@@ -364,7 +369,7 @@ def forward(w, ids, t):
 def appended(rows, more):
     """`rows` followed by `more`: a cache growing by one position."""
     n = size(rows)
-    return perform(Tensor.build(n + size(more), lambda i: at(rows, i) if i < n else at(more, i - n)))
+    return or_stop(perform(Tensor.build(n + size(more), lambda i: at(rows, i) if i < n else at(more, i - n))), empty)
 
 
 def block_step(x, t, l, cached):
@@ -393,7 +398,7 @@ def embed_one(w, token, p):
 
 
 def embed_row(wte, wpe, token, p):
-    return perform(Tensor.build(WIDTH, lambda c: at(wte, token * WIDTH + c) + at(wpe, p * WIDTH + c)))
+    return or_stop(perform(Tensor.build(WIDTH, lambda c: at(wte, token * WIDTH + c) + at(wpe, p * WIDTH + c))), empty)
 
 
 def forward_step(w, token, t, caches):

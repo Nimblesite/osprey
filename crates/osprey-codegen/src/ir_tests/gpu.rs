@@ -83,7 +83,7 @@ fn device_integer_conversions_record_overflow_instead_of_silently_wrapping() {
 fn dense_buffer_allocations_follow_the_inferred_element_width() {
     // [GPU-BUFFER-ELEM]: storage width is independent of the boxed list ABI.
     for (ty, value, width, storage) in DENSE_ROWS {
-        let ir = module(&format!("let values: List<{ty}> = [{value}]\nlet buffer = toGpu(values)\nlet gathered = gpuZipWith(gpuIota(1), buffer, fn(index, value) => gpuGet(buffer, index) ?: value)\nprint(fromGpu(gathered))\n"));
+        let ir = module(&format!("let values: List<{ty}> = [{value}]\nlet buffer = toGpu(values)\nlet gathered = gpuZipWith(toGpu(range(0, 1)), buffer, fn(index, value) => gpuGet(buffer, index) ?: value)\nprint(fromGpu(gathered))\n"));
         let call = ir
             .lines()
             .find(|line| line.contains("call i8* @osprey_gpu_alloc("))
@@ -249,7 +249,7 @@ fn a_captured_buffer_handle_travels_as_a_uniform() {
     let ir = module(
         "fn f() = {\n\
                let w = toGpu([10.0, 20.0])\n\
-               let out = gpuIota(2) |> gpuMap(fn(i) => gpuGet(w, i) ?: 0.0)\n\
+               let out = toGpu(range(0, 2)) |> gpuMap(fn(i) => gpuGet(w, i) ?: 0.0)\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",

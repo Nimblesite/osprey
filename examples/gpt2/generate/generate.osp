@@ -21,12 +21,12 @@ let defaultTokens = 20
 /// holding its peak; endOfText when none does.
 fn nextToken(w, last) = {
     let logits = Model::product(Model::layerNorm(last, 1, w.lnfG, w.lnfB), w.wteT, 1, width, vocabSize)
-    let found = perform Backends::Tensor.indexOf(logits, perform Backends::Tensor.reduce(logits, at(logits, 0), maxF))
+    let found = Model::indexOf(logits, perform Backends::Tensor.reduce(logits, at(logits, 0), maxF))
     match found < vocabSize { true => found  false => endOfText }
 }
 
 /// Row t - 1 of x [t, width].
-fn lastRow(x, t) = perform Backends::Tensor.build(width, fn(c) => at(x, (t - 1) * width + c))
+fn lastRow(x, t) = Model::orStop(perform Backends::Tensor.build(width, fn(c) => at(x, (t - 1) * width + c)), Model::empty)
 
 /// `remaining` more tokens after ids, whose last token `pending` the cached
 /// blocks have not seen yet.

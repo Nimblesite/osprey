@@ -48,9 +48,9 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "gpuIota",
-        "Builds the index buffer [0, n). Gather, stencil, and matrix addressing start here.",
+        "Returns the index buffer [0, n), or Error for a negative count, byte-size overflow or allocation failure. Zero succeeds with an empty buffer.",
         ["n" => "The element count"],
-        "let indices = gpuIota(4) |> fromGpu()\nforEachList(indices, print)  // 0, 1, 2, 3",
+        "match gpuIota(4) {\n    Success { value } => forEachList(fromGpu(value), print)\n    Error { message } => print(message)\n}  // 0, 1, 2, 3",
     ),
     builtin_doc!(
         "gpuGet",

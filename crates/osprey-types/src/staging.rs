@@ -293,7 +293,7 @@ mod tests {
     type Acts<B> = { f: B }\n\
     fn onGpu(work) = {\n\
         handle static Tensor<GpuBuffer<float>> {\n\
-            build n f => gpuIota(n) |> gpuMap(f)\n\
+            build n f => toGpu(range(0, n)) |> gpuMap(f)\n\
             zipWith a b f => gpuZipWith(a, b, f)\n\
         }\n\
         work()\n\

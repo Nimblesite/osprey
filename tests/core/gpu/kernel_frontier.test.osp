@@ -40,16 +40,20 @@ fn genericCombineCase() = {
     ])
 }
 
-fn recursiveHelperCase() = {
-    let matrix = toGpu([1.0, 2.0, 3.0, 4.0])
-    let vector = toGpu([10.0, 20.0])
-    let rows = gpuIota(2) |> gpuMap(fn(row) => rowDot(matrix, vector, 2, row, 0))
-    checkAll("recursive GPU helpers monomorphize from their call site", [
-        gpuLength(rows) == 2,
-        (gpuGet(rows, 0) ?: 0.0) == 50.0,
-        (gpuGet(rows, 1) ?: 0.0) == 110.0,
-        (rows |> gpuFold(0.0, addFloats)) == 160.0
-    ])
+fn recursiveHelperCase() = match gpuIota(2) {
+    Error { message } => check("index allocation", "success", toString(message))
+    Success { value } => {
+        let indices = value
+        let matrix = toGpu([1.0, 2.0, 3.0, 4.0])
+        let vector = toGpu([10.0, 20.0])
+        let rows = indices |> gpuMap(fn(row) => rowDot(matrix, vector, 2, row, 0))
+        checkAll("recursive GPU helpers monomorphize from their call site", [
+            gpuLength(rows) == 2,
+            (gpuGet(rows, 0) ?: 0.0) == 50.0,
+            (gpuGet(rows, 1) ?: 0.0) == 110.0,
+            (rows |> gpuFold(0.0, addFloats)) == 160.0
+        ])
+    }
 }
 
 fn blockBodyCase() = {

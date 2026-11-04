@@ -21,12 +21,12 @@ module Backends {
     /// is the representation the handler picks. A product or load that cannot
     /// be done answers `Error` with the reason ([FAILURE-EXPLICIT]).
     export static effect Tensor<B> {
-        build: fn(int, Kernel) -> B
+        build: fn(int, Kernel) -> Result<B, string>
         get: fn(B, int) -> float32
         length: fn(B) -> int
         zipWith: fn(B, B, Combine) -> B
         reduce: fn(B, float32, Combine) -> float32
-        indexOf: fn(B, float32) -> int
+        indexOf: fn(B, float32) -> Result<int, string>
         matMul: fn(B, B, int, int, int) -> Result<B, string>
         fromList: fn(List<float32>) -> B
         load: fn(string, string) -> Result<B, string>

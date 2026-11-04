@@ -15,7 +15,11 @@ class Tensor[B]:
 @static_handler(Tensor[GpuBuffer[float]])
 class on_gpu:
     def build(n, f):
-        return gpuMap(gpuIota(n), f)
+        match gpuIota(n):
+            case Success(value=value):
+                return Success(value=gpuMap(value, f))
+            case Error(message=message):
+                return Error(message=toString(message))
 
     def mat_mul(a, b, rows, inner, cols):
         return or_abort(gpuMatMul(a, b, rows, inner, cols))

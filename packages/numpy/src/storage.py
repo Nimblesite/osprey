@@ -11,9 +11,10 @@ element order from the seed and products in `k` order from 0.0, so they agree
 bit for bit. Implements [PORT-DEVICE], [FLAVOR-PYTHON-GPU], [GPU-DEVICE].
 """
 from typing import Callable
+from numpy import Errors
 
 __all__ = [
-    "Buffer", "at", "length_of", "lift", "lower", "add_f", "mul_f",
+    "Buffer", "built", "at", "length_of", "lift", "lower", "add_f", "mul_f",
     "max_f", "min_f", "infinity", "not_a_number",
 ]
 
@@ -26,7 +27,7 @@ class Buffer[B]:
     disagrees with the stated shape), lift and lower
     host lists, and say which interpretation is answering. `B` is the
     representation the installed handler picks."""
-    def build(size: int, kernel: Callable[[int], float]) -> B: ...
+    def build(size: int, kernel: Callable[[int], float]) -> Result[B, str]: ...
     def get(buffer: B, index: int) -> float: ...
     def length(buffer: B) -> int: ...
     def zip_with(a: B, b: B, combine: Callable[[float, float], float]) -> B: ...
@@ -35,6 +36,20 @@ class Buffer[B]:
     def from_list(values: list[float]) -> B: ...
     def to_list(buffer: B) -> list[float]: ...
     def device() -> str: ...
+
+
+def built(result):
+    """Use a successful build or leave the checked region with its reason.
+
+    The raising policy never resumes: the final expression only supplies the
+    abandoned branch's buffer type, as in Linalg.product_data.
+    """
+    match result:
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            g = Errors.fail(message)
+            return perform(Buffer.from_list([]))
 
 
 def at(buffer, index):

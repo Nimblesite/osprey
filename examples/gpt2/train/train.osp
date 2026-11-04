@@ -37,7 +37,7 @@ fn geluSlope(x) = {
     toFloat32(0.5) * (toFloat32(1.0) + th) + toFloat32(0.5) * x * (toFloat32(1.0) - th * th) * toFloat32(geluScale) * (toFloat32(1.0) + toFloat32(3.0) * toFloat32(geluCubic) * x * x)
 }
 
-fn columnSums(dy, rows, cols) = perform Backends::Tensor.build(cols, fn(c) => range(0, rows) |> fold(0.0, fn(a, r) => a + at(dy, r * cols + c)))
+fn columnSums(dy, rows, cols) = Model::orStop(perform Backends::Tensor.build(cols, fn(c) => range(0, rows) |> fold(0.0, fn(a, r) => a + at(dy, r * cols + c))), Model::empty)
 
 /// y = x · w + b, so dx = dy · wᵀ, dw = xᵀ · dy and db sums dy's rows.
 fn linearBack(dy, x, rows, inner, cols, w) = Grad {
@@ -57,13 +57,13 @@ fn normDx(dxhat, xhat, m1, m2, variances, i) = {
 fn normBack(dy, x, t, g) = {
     let means = Model::rowMeans(x, t)
     let variances = Model::rowVariances(x, t, means)
-    let xhat = perform Backends::Tensor.build(t * width, fn(i) => (at(x, i) - at(means, intDiv(i, width))) / sqrt(at(variances, intDiv(i, width)) + epsilon))
-    let dxhat = perform Backends::Tensor.build(t * width, fn(i) => at(dy, i) * at(g, i % width))
-    let m1 = perform Backends::Tensor.build(t, fn(r) => Model::sumRange(dxhat, r * width, width) / widthF)
-    let m2 = perform Backends::Tensor.build(t, fn(r) => (range(0, width) |> fold(0.0, fn(a, c) => a + at(dxhat, r * width + c) * at(xhat, r * width + c))) / widthF)
+    let xhat = Model::orStop(perform Backends::Tensor.build(t * width, fn(i) => (at(x, i) - at(means, intDiv(i, width))) / sqrt(at(variances, intDiv(i, width)) + epsilon)), Model::empty)
+    let dxhat = Model::orStop(perform Backends::Tensor.build(t * width, fn(i) => at(dy, i) * at(g, i % width)), Model::empty)
+    let m1 = Model::orStop(perform Backends::Tensor.build(t, fn(r) => Model::sumRange(dxhat, r * width, width) / widthF), Model::empty)
+    let m2 = Model::orStop(perform Backends::Tensor.build(t, fn(r) => (range(0, width) |> fold(0.0, fn(a, c) => a + at(dxhat, r * width + c) * at(xhat, r * width + c))) / widthF), Model::empty)
     NormGrad {
-        dx: perform Backends::Tensor.build(t * width, fn(i) => normDx(dxhat, xhat, m1, m2, variances, i)),
-        dg: perform Backends::Tensor.build(width, fn(c) => range(0, t) |> fold(0.0, fn(a, r) => a + at(dy, r * width + c) * at(xhat, r * width + c))),
+        dx: Model::orStop(perform Backends::Tensor.build(t * width, fn(i) => normDx(dxhat, xhat, m1, m2, variances, i)), Model::empty),
+        dg: Model::orStop(perform Backends::Tensor.build(width, fn(c) => range(0, t) |> fold(0.0, fn(a, r) => a + at(dy, r * width + c) * at(xhat, r * width + c))), Model::empty),
         db: columnSums(dy, t, width)
     }
 }
@@ -96,10 +96,10 @@ fn dqkvAt(dS, probs, dout, qkv, t, i) = {
 /// dout [t, width] back through causal attention, as dqkv [t, 2304]: the
 /// softmax Jacobian per row, then the query, key and value columns of each head.
 fn attentionBack(dout, probs, qkv, t) = {
-    let dP = perform Backends::Tensor.build(heads * t * t, fn(i) => dProbAt(dout, qkv, t, i))
-    let dots = perform Backends::Tensor.build(heads * t, fn(row) => range(0, row % t + 1) |> fold(0.0, fn(a, c) => a + at(dP, row * t + c) * at(probs, row * t + c)))
-    let dS = perform Backends::Tensor.build(heads * t * t, fn(i) => at(probs, i) * (at(dP, i) - at(dots, intDiv(i, t))))
-    perform Backends::Tensor.build(t * qkvWidth, fn(i) => dqkvAt(dS, probs, dout, qkv, t, i))
+    let dP = Model::orStop(perform Backends::Tensor.build(heads * t * t, fn(i) => dProbAt(dout, qkv, t, i)), Model::empty)
+    let dots = Model::orStop(perform Backends::Tensor.build(heads * t, fn(row) => range(0, row % t + 1) |> fold(0.0, fn(a, c) => a + at(dP, row * t + c) * at(probs, row * t + c))), Model::empty)
+    let dS = Model::orStop(perform Backends::Tensor.build(heads * t * t, fn(i) => at(probs, i) * (at(dP, i) - at(dots, intDiv(i, t)))), Model::empty)
+    Model::orStop(perform Backends::Tensor.build(t * qkvWidth, fn(i) => dqkvAt(dS, probs, dout, qkv, t, i)), Model::empty)
 }
 
 /// One block backward: dy is the gradient of the block's output y.
@@ -136,10 +136,10 @@ fn backward(w, trace, dy, i, t, acc) = match i < 0 {
 
 /// Row-wise softmax of logits [t, vocab].
 fn softmaxRows(logits, t) = {
-    let peaks = perform Backends::Tensor.build(t, fn(r) => range(1, vocabSize) |> fold(at(logits, r * vocabSize), fn(a, v) => maxF(a, at(logits, r * vocabSize + v))))
-    let weights = perform Backends::Tensor.build(t * vocabSize, fn(i) => exp(at(logits, i) - at(peaks, intDiv(i, vocabSize))))
-    let sums = perform Backends::Tensor.build(t, fn(r) => Model::sumRange(weights, r * vocabSize, vocabSize))
-    perform Backends::Tensor.build(t * vocabSize, fn(i) => at(weights, i) / at(sums, intDiv(i, vocabSize)))
+    let peaks = Model::orStop(perform Backends::Tensor.build(t, fn(r) => range(1, vocabSize) |> fold(at(logits, r * vocabSize), fn(a, v) => maxF(a, at(logits, r * vocabSize + v)))), Model::empty)
+    let weights = Model::orStop(perform Backends::Tensor.build(t * vocabSize, fn(i) => exp(at(logits, i) - at(peaks, intDiv(i, vocabSize)))), Model::empty)
+    let sums = Model::orStop(perform Backends::Tensor.build(t, fn(r) => Model::sumRange(weights, r * vocabSize, vocabSize)), Model::empty)
+    Model::orStop(perform Backends::Tensor.build(t * vocabSize, fn(i) => at(weights, i) / at(sums, intDiv(i, vocabSize))), Model::empty)
 }
 
 /// The token ids as a tensor, so a kernel reads them where it reads every
@@ -161,7 +161,7 @@ fn targetProb(probs, idsT, r) = range(0, vocabSize) |> fold(0.0, fn(a, v) => a +
 /// one-element tensor, so even the final negation and division run where the
 /// handler runs every other operation; its one element, i = 0, sums from
 /// position i. Negating the in-order sum is exact.
-fn meanLoss(probs, idsT, t, count) = perform Backends::Tensor.build(1, fn(i) => (toFloat32(0.0) - (range(i, t - 1) |> fold(0.0, fn(a, r) => a + ln(targetProb(probs, idsT, r))))) / count)
+fn meanLoss(probs, idsT, t, count) = Model::orStop(perform Backends::Tensor.build(1, fn(i) => (toFloat32(0.0) - (range(i, t - 1) |> fold(0.0, fn(a, r) => a + ln(targetProb(probs, idsT, r))))) / count), Model::empty)
 
 /// Mean next-token cross-entropy over the first t - 1 positions of xf [t, width],
 /// and its gradient into xf and into the tied output embedding.
@@ -170,7 +170,7 @@ fn lossHead(w, xf, ids, t) = {
     let count = toFloat32(t - 1)
     let idsT = idTensor(ids)
     let loss = at(meanLoss(probs, idsT, t, count), 0)
-    let dlogits = perform Backends::Tensor.build(t * vocabSize, fn(i) => dlogitAt(probs, idsT, t, count, i))
+    let dlogits = Model::orStop(perform Backends::Tensor.build(t * vocabSize, fn(i) => dlogitAt(probs, idsT, t, count, i)), Model::empty)
     Head {
         loss: loss,
         dxf: Model::product(dlogits, w.wte, t, vocabSize, width),
@@ -187,8 +187,8 @@ fn dwteAt(dx0, dwteOut, idsT, t, i) = range(0, t) |> fold(at(dwteOut, i), fn(a, 
 fn embedBack(dx0, dwteOut, ids, t) = {
     let idsT = idTensor(ids)
     Embed {
-        dwte: perform Backends::Tensor.build(vocabSize * width, fn(i) => dwteAt(dx0, dwteOut, idsT, t, i)),
-        dwpe: perform Backends::Tensor.build(positions * width, fn(i) => match intDiv(i, width) < t { true => at(dx0, i)  false => 0.0 })
+        dwte: Model::orStop(perform Backends::Tensor.build(vocabSize * width, fn(i) => dwteAt(dx0, dwteOut, idsT, t, i)), Model::empty),
+        dwpe: Model::orStop(perform Backends::Tensor.build(positions * width, fn(i) => match intDiv(i, width) < t { true => at(dx0, i)  false => 0.0 }), Model::empty)
     }
 }
 
@@ -225,7 +225,7 @@ fn descendAll(w, s) = {
 /// thread, then the rows summed — the same two-level sum under either handler.
 /// A flat `total` would fold every element on one device thread.
 fn rowTotal(g, cols, r) = range(0, cols) |> fold(0.0, fn(a, c) => a + at(g, r * cols + c))
-fn checksum(g, rows, cols) = total(perform Backends::Tensor.build(rows, fn(r) => rowTotal(g, cols, r)))
+fn checksum(g, rows, cols) = total(Model::orStop(perform Backends::Tensor.build(rows, fn(r) => rowTotal(g, cols, r)), Model::empty))
 
 fn layerLine(g) = "${total(g.ln1g)} ${total(g.ln1b)} ${checksum(g.qkvW, width, qkvWidth)} ${total(g.qkvB)} ${checksum(g.projW, width, width)} ${total(g.projB)} ${total(g.ln2g)} ${total(g.ln2b)} ${checksum(g.fcW, width, mlpWidth)} ${total(g.fcB)} ${checksum(g.outW, mlpWidth, width)} ${total(g.outB)}"
 

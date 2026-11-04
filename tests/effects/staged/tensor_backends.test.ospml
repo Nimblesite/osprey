@@ -8,6 +8,7 @@
 
 namespace backends
 
+(** The statically selected tensor dialect used by both interpretations. *)
 module Backends
     (** The dense-tensor dialect a model is written in. `B` is the buffer
         representation an interpretation chooses; the model leaves it to
@@ -38,7 +39,7 @@ module Backends
     (** Every operation as a GPU kernel or product; the arms forward the model's callbacks. *)
     export onGpu work =
         handle static Tensor<GpuBuffer<float>>
-            build n f => gpuIota n |> gpuMap f
+            build n f => toGpu (range (0, n)) |> gpuMap f
             get b i => gpuGet b i ?: 0.0
             length b => gpuLength b
             zipWith a b f => gpuZipWith a b f

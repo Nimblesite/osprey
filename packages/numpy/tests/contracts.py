@@ -61,6 +61,15 @@ def malformed_product():
             return "missing error"
 
 
+def failed_index_allocation():
+    """A real invalid build must leave the checked region before a list exists."""
+    match Errors.checked_values(lambda: Storage.lower(Storage.built(perform(Storage.Buffer.build(-1, lambda i: toFloat(i)))))):
+        case Error(message=message):
+            return message
+        case Success():
+            return "missing allocation error"
+
+
 def unit_checked():
     match Errors.checked(lambda: None):
         case Success():
@@ -79,6 +88,7 @@ def error_cases(b):
         Check.equal(f"errors.require.{b}", caught_failure(lambda: Errors.require(False, "required")), "required"),
         Check.truth(f"errors.checked.{b}", unit_checked(), "unit work succeeds"),
         Check.equal(f"errors.product_lengths.{b}", malformed_product(), Errors.product_lengths("left", 3, 4)),
+        Check.equal(f"errors.buffer_build.{b}", failed_index_allocation(), "gpu: buffer allocation: a negative element count" if b == "gpu" else "Storage.Buffer.build: a negative element count"),
     ])
 
 
@@ -128,10 +138,14 @@ def math_cases():
 
 def storage_cases():
     buffer = Storage.lift([1.0, 2.0])
-    built = perform(Storage.Buffer.build(2, lambda i: toFloat(i + 1)))
+    built = Storage.built(perform(Storage.Buffer.build(2, lambda i: toFloat(i + 1))))
+    zipped = perform(Storage.Buffer.zip_with(buffer, built, Storage.add_f))
+    ragged = perform(Storage.Buffer.zip_with(buffer, Storage.lift([10.0]), Storage.add_f))
     return [
         Check.close_all("storage.lower", Storage.lower(buffer), [1.0, 2.0], S.TIGHT, S.ATOL),
         Check.close_all("storage.Buffer.build", Storage.lower(built), [1.0, 2.0], S.TIGHT, S.ATOL),
+        Check.close_all("storage.Buffer.zip_with", Storage.lower(zipped), [2.0, 4.0], S.TIGHT, S.ATOL),
+        Check.close_all("storage.Buffer.zip_with.ragged", Storage.lower(ragged), [11.0], S.TIGHT, S.ATOL),
         Check.equal("storage.length_of", Storage.length_of(buffer), 2),
         Check.equal("storage.at", Storage.at(buffer, 1), 2.0),
         Check.equal("storage.add_f", Storage.add_f(2.0, 3.0), 5.0),

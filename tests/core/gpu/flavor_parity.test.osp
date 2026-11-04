@@ -1,3 +1,4 @@
+fn iotaOutcome(result) = match result { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
 // Aspirational GPU frontend parity. Flavor-equivalent programs must reach the
 // same typed GPU IR, including the full int domain and negative arguments
 // ([GPU-BUFFER-ELEM], [GPU-IOTA], [GPU-KERNEL-EXTRACT]).
@@ -15,11 +16,11 @@ fn minimumIntCase() = {
 fn negativeIotaCase() = {
     let direct = gpuIota(-3)
     let piped = -7 |> gpuIota()
-    checkAll("negative gpuIota arguments are empty", [
-        gpuLength(direct) == 0,
-        gpuLength(piped) == 0,
-        listLength(fromGpu(direct)) == 0,
-        listLength(fromGpu(piped)) == 0
+    checkAll("negative gpuIota arguments report allocation errors", [
+        iotaOutcome(direct) == "gpu: buffer allocation: a negative element count",
+        iotaOutcome(piped) == "gpu: buffer allocation: a negative element count",
+        iotaOutcome(direct) == iotaOutcome(piped),
+        iotaOutcome(gpuIota(-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
     ])
 }
 

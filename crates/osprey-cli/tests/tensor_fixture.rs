@@ -53,10 +53,16 @@ fn run(path: &Path) -> (Option<i32>, String, String) {
 }
 
 fn run_with_gpu(path: &Path, backend: &str) -> (Option<i32>, String, String) {
+    run_with_memory(path, backend, "gc")
+}
+
+fn run_with_memory(path: &Path, backend: &str, memory: &str) -> (Option<i32>, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
         .current_dir(repo())
         .arg(path)
         .args(["--run", "--quiet"])
+        .arg(format!("--memory={memory}"))
+        .env("OSPREY_ARC_DEBUG", "1")
         .env("OSPREY_GPU", backend)
         .output();
     match output {
@@ -77,6 +83,45 @@ fn both_flavors_read_the_safetensors_fixture_exactly() {
         let (code, stdout, stderr) = path.as_deref().map(run).unwrap_or_default();
         assert_eq!(code, Some(0), "{ext}: stderr: {stderr}");
         assert_eq!(stdout, EXPECTED, "{ext}");
+    }
+}
+
+const INDEX_FAILURE_SOURCE: &str = r#"
+fn describe(n) = match gpuIota(n) {
+    Success { value } => "length ${gpuLength(value)}"
+    Error { message } => toString(message)
+}
+print("${describe(0)}\n${describe(3)}\n${describe(-1)}\n${describe(9223372036854775807)}\n${describe(1152921504606846975)}")
+"#;
+const INDEX_FAILURE_ML: &str = r#"
+describe n = match gpuIota n
+    Success value => "length ${gpuLength value}"
+    Error message => toString message
+print "${describe 0}\n${describe 3}\n${describe (-1)}\n${describe 9223372036854775807}\n${describe 1152921504606846975}"
+"#;
+const INDEX_FAILURE_EXPECTED: &str = "length 0\nlength 3\ngpu: buffer allocation: a negative element count\ngpu: buffer allocation: element count overflows the byte size\ngpu: buffer allocation: out of memory\n";
+
+#[test]
+fn index_buffer_allocation_errors_reach_the_caller() {
+    // [FAILURE-EXPLICIT] Invalid/OOM requests never become successful empties.
+    for (ext, source) in [
+        ("index_failures.osp", INDEX_FAILURE_SOURCE),
+        ("index_failures.ospml", INDEX_FAILURE_ML),
+    ] {
+        let path = program(ext, source).expect("write index allocation fixture");
+        for memory in ["gc", "arc"] {
+            let (code, stdout, stderr) = run_with_memory(&path, "host", memory);
+            assert_eq!(code, Some(0), "{ext} {memory}: {stderr}");
+            assert_eq!(stdout, INDEX_FAILURE_EXPECTED, "{ext} {memory}");
+            if memory == "arc" {
+                assert_eq!(
+                    stderr.matches("[osp-arc] exit: 0 live objects").count(),
+                    1,
+                    "{stderr}"
+                );
+            }
+        }
+        std::fs::remove_file(path).expect("remove index allocation fixture");
     }
 }
 
@@ -146,7 +191,7 @@ fn float32_reductions_round_at_the_inferred_accumulator_width() {
 /// [GPU-FOLD] Erased host metadata must retain the device body's numeric width.
 #[test]
 fn effect_handled_float32_maximum_keeps_its_device_result_width() {
-    let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)])\nlet maximum = perform Backends::Tensor.reduce(values, Model::at(values, 0), Model::maxF)\nlet found = perform Backends::Tensor.indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
+    let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)])\nlet maximum = perform Backends::Tensor.reduce(values, Model::at(values, 0), Model::maxF)\nlet found = Model::indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
     let path = gpt2_project("maximum32", source).expect("write float32 maximum fixture");
     let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
     let (code, stdout, stderr) = run_with_gpu(&path, &backend);

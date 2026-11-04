@@ -25,7 +25,7 @@ def misfit(a, b, rows, inner, cols):
 class on_host:
     """Host lists: a buffer is a plain list of doubles."""
     def build(n, f):
-        return toList(map(range(n), f))
+        return Error(message="Storage.Buffer.build: a negative element count") if n < 0 else Success(value=toList(map(range(n), f)))
 
     def get(b, i):
         return unwrap_or(listGet(b, i), 0.0)
@@ -34,7 +34,7 @@ class on_host:
         return len(b)
 
     def zip_with(a, b, f):
-        return toList(map(range(len(a)), lambda i: f(unwrap_or(listGet(a, i), 0.0), unwrap_or(listGet(b, i), 0.0))))
+        return toList(map(range(len(a) if len(a) < len(b) else len(b)), lambda i: f(unwrap_or(listGet(a, i), 0.0), unwrap_or(listGet(b, i), 0.0))))
 
     def reduce(b, seed, f):
         return fold(range(len(b)), seed, lambda acc, i: f(acc, unwrap_or(listGet(b, i), 0.0)))

@@ -27,7 +27,11 @@ def product_of(result):
 class on_gpu:
     """GPU buffers, and `device` reports which backend executes them."""
     def build(n, f):
-        return gpuMap(gpuIota(n), f)
+        match gpuIota(n):
+            case Success(value=value):
+                return Success(value=gpuMap(value, f))
+            case Error(message=message):
+                return Error(message=toString(message))
 
     def get(b, i):
         return unwrap_or(gpuGet(b, i), 0.0)

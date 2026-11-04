@@ -43,7 +43,7 @@ pub(super) fn declare(e: &mut TypeEnv) {
     );
     // [GPU-IOTA] The index buffer: gather, stencil, and matrix addressing all
     // start from element indices.
-    mono(e, "gpuIota", vec![i()], Type::gpu_buffer(i()));
+    mono(e, "gpuIota", vec![i()], res(Type::gpu_buffer(i())));
     // [GPU-GET] Bounds-checked indexed read, usable inside a kernel to gather.
     poly(e, "gpuGet", vec![0], vec![buf_t(), i()], res(t()));
     // [GPU-SCAN] Inclusive prefix scan — the classic parallel primitive.

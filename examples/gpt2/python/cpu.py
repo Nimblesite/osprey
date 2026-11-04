@@ -35,7 +35,7 @@ def loaded(result):
 class on_lists:
     """Host lists, loaded straight into lists from the safetensors file."""
     def build(n, f):
-        return toList(map(range(n), f))
+        return Error(message="Tensor.build: a negative element count") if n < 0 else Success(value=toList(map(range(n), f)))
 
     def get(b, i):
         return unwrap_or(listGet(b, i), toFloat32(0.0))
@@ -50,7 +50,7 @@ class on_lists:
         return fold(range(len(b)), seed, lambda a, i: f(a, unwrap_or(listGet(b, i), toFloat32(0.0))))
 
     def index_of(b, x):
-        return fold(map(range(len(b)), lambda i: hit(unwrap_or(listGet(b, i), toFloat32(0.0)), x, i, len(b))), len(b), min_i)
+        return Success(value=fold(map(range(len(b)), lambda i: hit(unwrap_or(listGet(b, i), toFloat32(0.0)), x, i, len(b))), len(b), min_i))
 
     def mat_mul(a, b, rows, inner, cols):
         return product_of(a, b, rows, inner, cols) if len(a) == rows * inner and len(b) == inner * cols else misfit(a, b, rows, inner, cols)

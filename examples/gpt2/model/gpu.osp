@@ -21,12 +21,18 @@ module Gpu {
     ///   handler answers on the GPU.
     export fn onGpu(work) = {
         handle static Tensor<GpuBuffer<float32>> {
-            build n f => gpuIota(n) |> gpuMap(f)
+            build n f => match gpuIota(n) {
+                Success { value } => Success { value: gpuMap(value, f) }
+                Error { message } => Error { message: toString(message) }
+            }
             get b i => gpuGet(b, i) ?: toFloat32(0.0)
             length b => gpuLength(b)
             zipWith a b f => gpuZipWith(a, b, f)
             reduce b seed f => b |> gpuFold(seed, f)
-            indexOf b x => gpuIota(gpuLength(b)) |> gpuMap(fn(i) => hit(gpuGet(b, i) ?: toFloat32(0.0), x, i, gpuLength(b))) |> gpuFold(gpuLength(b), minI)
+            indexOf b x => match gpuIota(gpuLength(b)) {
+                Success { value } => Success { value: gpuMap(value, fn(i) => hit(gpuGet(b, i) ?: toFloat32(0.0), x, i, gpuLength(b))) |> gpuFold(gpuLength(b), minI) }
+                Error { message } => Error { message: toString(message) }
+            }
             matMul a b rows inner cols => answered(gpuMatMul(a, b, rows, inner, cols))
             fromList xs => toGpu(xs)
             load path name => answered(gpuLoadTensor(path, name))

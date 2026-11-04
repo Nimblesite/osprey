@@ -3,7 +3,6 @@ use super::{
     merge_optional_value, shift_summary_levels, shift_value_levels, BTreeMap, BTreeSet, Callable,
     KnownCallable, Projection, Requirement, Summary, Value,
 };
-
 pub(super) fn project_field(mut value: Value, field: &str) -> Option<Value> {
     project_field_value(
         value.fields.remove(field),
@@ -12,7 +11,6 @@ pub(super) fn project_field(mut value: Value, field: &str) -> Option<Value> {
         field,
     )
 }
-
 pub(super) fn project_field_value(
     mut projected: Option<Value>,
     unknown: bool,
@@ -27,14 +25,12 @@ pub(super) fn project_field_value(
     );
     projected
 }
-
 pub(super) fn project_element(mut value: Value) -> Option<Value> {
     let mut projected = value.element.take().map(|value| *value);
     project_unknown_structure(value.unknown_structure, &mut projected);
     project_callable(value.callable, Projection::Element, &mut projected);
     projected
 }
-
 pub(super) fn project_success_value(mut value: Value) -> Option<Value> {
     let mut projected = value.result_payload.take().map(|value| *value);
     if let Some(field) = value.fields.remove("value") {
@@ -44,20 +40,17 @@ pub(super) fn project_success_value(mut value: Value) -> Option<Value> {
     project_callable(value.callable, Projection::SuccessValue, &mut projected);
     projected
 }
-
 pub(super) fn project_fiber_value(mut value: Value) -> Option<Value> {
     let mut projected = value.fiber_payload.take().map(|value| *value);
     project_unknown_structure(value.unknown_structure, &mut projected);
     project_callable(value.callable, Projection::FiberValue, &mut projected);
     projected
 }
-
 fn project_unknown_structure(unknown: bool, projected: &mut Option<Value>) {
     if unknown {
         merge_optional_value(projected, Value::unknown_value());
     }
 }
-
 /// Resolve [`Projection::Deep`]: the finite summary of a recursive aggregate.
 /// Every callable stored anywhere below this value — fields, elements, result
 /// and fiber payloads — merges into one flat value, so each stored closure's
@@ -68,7 +61,6 @@ pub(super) fn project_deep(value: &Value) -> Value {
     collect_deep(value, &mut merged);
     merged
 }
-
 fn collect_deep(value: &Value, merged: &mut Value) {
     let mut leaf = leaf_metadata(value);
     deepen_symbolic(&mut leaf);
@@ -83,7 +75,6 @@ fn collect_deep(value: &Value, merged: &mut Value) {
         collect_deep(nested, merged);
     }
 }
-
 fn deepen_symbolic(value: &mut Value) {
     match &mut value.callable {
         Some(Callable::Parameter { projection, .. }) => {
@@ -95,7 +86,6 @@ fn deepen_symbolic(value: &mut Value) {
         _ => {}
     }
 }
-
 fn leaf_metadata(value: &Value) -> Value {
     Value {
         #[cfg(test)]
@@ -114,7 +104,6 @@ fn leaf_metadata(value: &Value) -> Value {
         deferred: value.deferred.clone(),
     }
 }
-
 /// Cut the one feedback a single fixed-point pass cannot complete on its own:
 /// `fold`'s accumulator carries its callback's return, so a contribution that
 /// still holds symbolic parameter USES would be consumed and re-grown every
@@ -145,7 +134,6 @@ pub(super) fn stabilize_merged_callables(value: &Value) -> Value {
     stabilized.fiber_payload = stabilize_boxed(value.fiber_payload.as_deref());
     stabilized
 }
-
 fn stabilize_boxed(nested: Option<&Value>) -> Option<Box<Value>> {
     nested.map(|nested| Box::new(stabilize_merged_callables(nested)))
 }
@@ -393,6 +381,7 @@ pub(super) fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
     use crate::ty::{names, Type};
     match ty {
         Type::Con { name, args } if name == names::RESULT => Some(Value {
+            field_names: Some(["value".to_owned(), "message".to_owned()].into()),
             result_payload: args.first().and_then(value_shape).map(Box::new),
             ..Value::default()
         }),

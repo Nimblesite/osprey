@@ -154,13 +154,18 @@ Each may be passed by name as a kernel, not only called directly.
 ```osprey
 toFloat(7)                        // 7.0
 toFloat32(0.1)                    // 0.1, the nearest binary32
-gpuIota(1000) |> gpuMap(toFloat32)  // GpuBuffer<float32>, 0.0 .. 999.0
+match gpuIota(1000) {
+    Success { value } => print(gpuLength(gpuMap(value, toFloat32)))
+    Error { message } => print(message)
+}  // 1000
 ```
 
 ```osprey-ml
 toFloat 7                         // 7.0
 toFloat32 0.1                     // 0.1, the nearest binary32
-gpuIota 1000 |> gpuMap toFloat32  // GpuBuffer<float32>, 0.0 .. 999.0
+match gpuIota 1000
+    Success value => print (gpuLength (gpuMap (value, toFloat32)))
+    Error message => print message  // 1000
 ```
 
 ### `sqrt` / `exp` / `ln` / `tanh` — [BUILTIN-MATH]

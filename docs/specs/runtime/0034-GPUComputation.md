@@ -153,9 +153,9 @@ let total = toGpu([1.5, 2.5]) |> gpuFold(0.0, fn(a, v) => a + v)
 total = toGpu [1.5, 2.5] |> gpuFold 0.0 (\(a, v) => a + v)
 ```
 
-### `gpuIota(n: int) -> GpuBuffer<int>` — [GPU-IOTA]
+### `gpuIota(n: int) -> Result<GpuBuffer<int>, Error>` — [GPU-IOTA]
 
-The index buffer `[0, n)`. Kernels see element values, not positions, so gather, stencil, and matrix addressing all start from `gpuIota`: map over the indices and read neighbours with `gpuGet`. A non-positive `n` names an empty range, so it yields an empty buffer rather than an error — the half-open interval `[0, n)` is empty for every `n <= 0`.
+The index buffer `[0, n)`. Kernels see element values, not positions, so gather, stencil, and matrix addressing all start from `gpuIota`: map over the indices and read neighbours with `gpuGet`. Zero succeeds with an empty buffer. A negative count, an element count whose byte size overflows, or an allocation failure returns `Error` carrying the runtime reason; none becomes a successful empty buffer ([FAILURE-EXPLICIT]). Match the result before mapping or reading its buffer.
 
 ### `gpuGet(buffer: GpuBuffer<T>, index: int) -> Result<T, Error>` — [GPU-GET]
 
@@ -257,11 +257,11 @@ The operand does **not** generalize, because there is no numeric class to quanti
 Scalar element types convert **explicitly, inside kernels** — never implicitly at buffer boundaries. The primitives are the target-named conversions of [BUILTIN-CONVERT-FLOAT](0012-Built-InFunctions.md#float-conversions--builtin-convert-float) and [BUILTIN-CONVERT-INT](0012-Built-InFunctions.md#integer-conversions--builtin-convert-int); `toFloat(n: int) -> float` (round-to-nearest-even; exact for `|n| <= 2^53`) makes the canonical float-pipeline seed expressible, and `toFloat32` the binary32 one:
 
 ```osprey
-let xs = gpuIota(100000) |> gpuMap(toFloat)
+let xs = toGpu(range(0, 100000)) |> gpuMap(toFloat)
 ```
 
 ```osprey-ml
-xs = gpuIota 100000 |> gpuMap toFloat
+xs = toGpu (range (0, 100000)) |> gpuMap toFloat
 ```
 
 Every float conversion is total — every number has a nearest value in the target format — so each returns a bare value rather than a `Result`, and each registers in [0012-Built-InFunctions.md](0012-Built-InFunctions.md) with a docs entry like every builtin. All are usable both as a direct call and, as above, as a first-class kernel passed by name. An integer narrowing (`toUint8`) is an `Arith` operation, which on a device is the overflow fault ([GPU-DEVICE-FAULT]). `floatToInt` returns a `Result` and so stays on the host.
@@ -422,7 +422,7 @@ fn onLists(work) = {
 
 fn onGpu(work) = {
     handle static Tensor<GpuBuffer<float>> {
-        build n f => gpuIota(n) |> gpuMap(f)
+        build n f => toGpu(range(0, n)) |> gpuMap(f)
         get b i => gpuGet(b, i) ?: 0.0
         device => gpuDevice()
     }
@@ -451,7 +451,7 @@ onLists work =
 
 onGpu work =
     handle static Tensor<GpuBuffer<float>>
-        build n f => gpuIota n |> gpuMap f
+        build n f => toGpu (range (0, n)) |> gpuMap f
         get b i => gpuGet b i ?: 0.0
         device => gpuDevice ()
     work ()

@@ -38,7 +38,7 @@ def matvec_inner(a, b):
     """The 1-D x 1-D matmul/dot: the inner product as a rank-0 array."""
     k = unwrap_or(listGet(a.shape, 0), 0)
     g = Errors.require(k == unwrap_or(listGet(b.shape, 0), 0), Errors.matmul_mismatch(unwrap_or(listGet(b.shape, 0), 0), k))
-    return Array.NDArray(shape=[], data=perform(Storage.Buffer.build(1, lambda i: fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t)))))
+    return Array.NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: fold(range(k), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t))))))
 
 
 def batch_base(coords, batch_len, strides, mat_size):
@@ -86,7 +86,7 @@ def matmul_core(a, b):
         sa = Layout.broadcast_strides(batch_a, out_batch)
         sb = Layout.broadcast_strides(batch_b, out_batch)
         blen = len(out_batch)
-        return Array.NDArray(shape=out_shape, data=perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: batched_element(i, out_shape, a, b, blen, sa, sb, m, k, n))))
+        return Array.NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: batched_element(i, out_shape, a, b, blen, sa, sb, m, k, n)))))
 
 
 def matmul(a, b):
@@ -110,7 +110,7 @@ def matmul(a, b):
 def dot_gather(a, b, na, nb, ka, out_shape):
     """The general dot gather: contract a's last axis with b's second-to-last
     (or only) axis."""
-    return Array.NDArray(shape=out_shape, data=perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: dot_element(i, a, b, na, nb, ka, out_shape))))
+    return Array.NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: dot_element(i, a, b, na, nb, ka, out_shape)))))
 
 
 def dot_element(i, a, b, na, nb, ka, out_shape):
@@ -141,7 +141,7 @@ def dot(a, b):
     out_shape = drop_last(a.shape) if nb == 1 else listConcat(drop_last(a.shape), listConcat(drop_last_two(b.shape), [unwrap_or(listGet(b.shape, nb - 1), 1)]))
     g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, b_axis))
     if na == 1 and nb == 1:
-        return Array.NDArray(shape=[], data=perform(Storage.Buffer.build(1, lambda i: fold(range(ka), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t)))))
+        return Array.NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: fold(range(ka), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t))))))
     else:
         return dot_gather(a, b, na, nb, ka, out_shape)
 
@@ -150,7 +150,7 @@ def outer(a, b):
     """np.outer: the outer product of two flattened operands."""
     na = Layout.flat_size(a.shape)
     nb = Layout.flat_size(b.shape)
-    return Array.NDArray(shape=[na, nb], data=perform(Storage.Buffer.build(na * nb, lambda i: Storage.at(a.data, i // nb) * Storage.at(b.data, i % nb))))
+    return Array.NDArray(shape=[na, nb], data=Storage.built(perform(Storage.Buffer.build(na * nb, lambda i: Storage.at(a.data, i // nb) * Storage.at(b.data, i % nb)))))
 
 
 def inner(a, b):
@@ -166,7 +166,7 @@ def inner_vectors(a, b):
     g = Errors.require(ka == kb, Errors.aligned_failed(a.shape, b.shape, ka, na - 1, kb, nb - 1))
     out = listConcat(drop_last(a.shape), drop_last(b.shape))
     b_rows = Layout.flat_size(drop_last(b.shape))
-    return Array.NDArray(shape=out, data=perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: inner_element(i, a, b, ka, b_rows))))
+    return Array.NDArray(shape=out, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: inner_element(i, a, b, ka, b_rows)))))
 
 
 def inner_element(i, a, b, ka, b_rows):
@@ -182,7 +182,7 @@ def vdot(a, b):
     na = Layout.flat_size(a.shape)
     nb = Layout.flat_size(b.shape)
     g = Errors.require(na == nb, Errors.reshape_failed(nb, [na]))
-    return Array.NDArray(shape=[], data=perform(Storage.Buffer.build(1, lambda i: fold(range(na), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t)))))
+    return Array.NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: fold(range(na), 0.0, lambda acc, t: acc + Storage.at(a.data, t) * Storage.at(b.data, t))))))
 
 
 def trace(a):
@@ -192,7 +192,7 @@ def trace(a):
     n = unwrap_or(listGet(a.shape, 1), 0)
     k = m if m < n else n
     head = slice_coords(a.shape, 2, len(a.shape))
-    return Array.NDArray(shape=head, data=perform(Storage.Buffer.build(Layout.flat_size(head), lambda i: trace_element(i, head, a, n, k))))
+    return Array.NDArray(shape=head, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(head), lambda i: trace_element(i, head, a, n, k)))))
 
 
 def trace_element(i, head, a, n, k):

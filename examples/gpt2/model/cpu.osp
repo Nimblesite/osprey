@@ -37,12 +37,15 @@ module Cpu {
     ///   handler answers on host lists without touching the GPU.
     export fn onLists(work) = {
         handle static Tensor<List<float32>> {
-            build n f => range(0, n) |> map(f) |> toList()
+            build n f => match n < 0 {
+                true => Error { message: "Tensor.build: a negative element count" }
+                false => Success { value: range(0, n) |> map(f) |> toList() }
+            }
             get b i => listGet(b, i) ?: toFloat32(0.0)
             length b => listLength(b)
             zipWith a b f => range(0, listLength(a)) |> map(fn(i) => f(listGet(a, i) ?: toFloat32(0.0), listGet(b, i) ?: toFloat32(0.0))) |> toList()
             reduce b seed f => range(0, listLength(b)) |> fold(seed, fn(a, i) => f(a, listGet(b, i) ?: toFloat32(0.0)))
-            indexOf b x => range(0, listLength(b)) |> map(fn(i) => hit(listGet(b, i) ?: toFloat32(0.0), x, i, listLength(b))) |> fold(listLength(b), minI)
+            indexOf b x => Success { value: range(0, listLength(b)) |> map(fn(i) => hit(listGet(b, i) ?: toFloat32(0.0), x, i, listLength(b))) |> fold(listLength(b), minI) }
             matMul a b rows inner cols => product(a, b, rows, inner, cols)
             fromList xs => xs
             load path name => loaded(loadTensor(path, name))

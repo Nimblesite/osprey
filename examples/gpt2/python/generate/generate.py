@@ -24,13 +24,13 @@ def next_token(w, last):
     the tied output projection of its normalised state, then the first index
     holding its peak; END_OF_TEXT when none does."""
     logits = Model.product(Model.layer_norm(last, 1, w.lnf_g, w.lnf_b), w.wte_t, 1, WIDTH, VOCAB_SIZE)
-    found = perform(Tensor.index_of(logits, perform(Tensor.reduce(logits, at(logits, 0), max_f))))
+    found = Model.index_of(logits, perform(Tensor.reduce(logits, at(logits, 0), max_f)))
     return found if found < VOCAB_SIZE else END_OF_TEXT
 
 
 def last_row(x, t):
     """Row t - 1 of x [t, width]."""
-    return perform(Tensor.build(WIDTH, lambda c: at(x, (t - 1) * WIDTH + c)))
+    return Model.or_stop(perform(Tensor.build(WIDTH, lambda c: at(x, (t - 1) * WIDTH + c))), Model.empty)
 
 
 def generate(w, ids, caches, pending, remaining):

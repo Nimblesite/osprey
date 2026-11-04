@@ -42,7 +42,7 @@ fn onLists(work) = {
 }
 fn onGpu(work) = {
     handle static Tensor<GpuBuffer<float>> {
-        build n f => gpuIota(n) |> gpuMap(f)
+        build n f => toGpu(range(0, n)) |> gpuMap(f)
         get b i => gpuGet(b, i) ?: 0.0
         matMul a b rows inner cols => gpuMatMul(a, b, rows, inner, cols) ?: toGpu([])
         fromList xs => toGpu(xs)
@@ -78,7 +78,7 @@ onLists work =
     work ()
 onGpu work =
     handle static Tensor<GpuBuffer<float>>
-        build n f => gpuIota n |> gpuMap f
+        build n f => toGpu (range (0, n)) |> gpuMap f
         get b i => gpuGet b i ?: 0.0
         matMul a b rows inner cols => gpuMatMul a b rows inner cols ?: toGpu []
         fromList xs => toGpu xs
@@ -166,7 +166,7 @@ fn loud(i) = {
 fn twice(n) = perform Build.build(n, loud)
 let out = {
     handle Log { write m => print(m) }
-    handle static Build { build n f => gpuIota(n) |> gpuMap(f) }
+    handle static Build { build n f => toGpu(range(0, n)) |> gpuMap(f) }
     twice(3)
 }
 print("${gpuGet(out, 2) ?: 0.0}")
@@ -185,7 +185,7 @@ out =
     handle Log
         write m => print m
     handle static Build
-        build n f => gpuIota n |> gpuMap f
+        build n f => toGpu (range (0, n)) |> gpuMap f
     twice 3
 print "${gpuGet out 2 ?: 0.0}"
 "#;

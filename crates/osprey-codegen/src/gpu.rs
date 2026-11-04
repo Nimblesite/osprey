@@ -393,16 +393,23 @@ fn gpu_fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn gpu_iota(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let n = gen_expr(cg, nth(args, 0)?)?;
     let n = crate::conv::as_i64(cg, n)?;
+    crate::extern_call::clear_io_error(cg);
     let out = buffer_alloc(cg, &n.operand, elem_owner(Some(LType::I64)));
-    // The trip count is the ALLOCATED length, never the requested `n`: the
-    // runtime clamps negative/oversized requests and a failed data allocation
-    // to the empty buffer, and a loop bounded by `n` would spin up to 2^63
-    // dropped stores against that empty buffer [GPU-IOTA].
+    let reason = crate::extern_call::take_io_error(cg);
+    let failed = cg.emit_reg(format!("icmp eq i8* {}, null", out.operand));
+    // Failed allocation has no iterations and is published only as Error.
     let len = buffer_len(cg, &out);
     let lp = open_range_loop(cg, "0", &len);
     buffer_set(cg, &out, &lp.i, &lp.i.clone());
     close_range_loop(cg, &lp);
-    Ok(out)
+    crate::result::make_result_if_err_because(
+        cg,
+        out,
+        LType::Ptr,
+        &failed,
+        Some("gpuIota: allocation failed"),
+        Some(&reason),
+    )
 }
 
 /// `gpuScan(buffer, initial, combine)` — inclusive prefix scan [GPU-SCAN]:

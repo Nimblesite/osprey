@@ -73,12 +73,12 @@ module Model {
     export fn addF(a, x) = a + x
     export fn maxF(a, x) = match x > a { true => x  false => a }
     export fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
-    export fn gelus(f) = perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i)))
+    export fn gelus(f) = orStop(perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i))), empty)
 
     /// A tensor operation's buffer, or a fault that stops the run with the
     /// reason ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is
     /// never called; it only gives the stopped arm the buffer type.
-    fn orStop(result, abandoned) = match result {
+    export fn orStop(result, abandoned) = match result {
         Success { value } => value
         Error { message } => stopped(message, abandoned)
     }
@@ -87,6 +87,9 @@ module Model {
         let _ = Backends::stop(message)
         abandoned()
     }
+
+    /// Build failures leave the surrounding strictly region before any model work.
+    export fn indexOf(buffer, value) = orStop(perform Backends::Tensor.indexOf(buffer, value), fn() => size(buffer))
 
     /// The tensor `name` of the safetensors file at `path`; a missing or
     /// mis-typed tensor stops the run rather than fabricate a runnable model.
@@ -125,7 +128,7 @@ module Model {
 
     /// m [rows, cols] as [cols, rows]: tensors are rank-1, so a product against a
     /// transposed operand is a gather followed by `matMul`.
-    export fn transpose(m, rows, cols) = perform Backends::Tensor.build(rows * cols, fn(i) => at(m, (i % rows) * cols + intDiv(i, rows)))
+    export fn transpose(m, rows, cols) = orStop(perform Backends::Tensor.build(rows * cols, fn(i) => at(m, (i % rows) * cols + intDiv(i, rows))), empty)
 
     /// a [rows, inner] times b [inner, cols]; operands that disagree with the
     /// stated shape stop the run.
@@ -136,8 +139,8 @@ module Model {
     export fn squaredDeviation(x, start, n, mean) = range(start, start + n) |> fold(0.0, fn(a, i) => a + (at(x, i) - mean) * (at(x, i) - mean))
 
     /// Per-row mean and variance of x [t, width], the LayerNorm statistics.
-    export fn rowMeans(x, t) = perform Backends::Tensor.build(t, fn(r) => sumRange(x, r * width, width) / widthF)
-    export fn rowVariances(x, t, means) = perform Backends::Tensor.build(t, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF)
+    export fn rowMeans(x, t) = orStop(perform Backends::Tensor.build(t, fn(r) => sumRange(x, r * width, width) / widthF), empty)
+    export fn rowVariances(x, t, means) = orStop(perform Backends::Tensor.build(t, fn(r) => squaredDeviation(x, r * width, width, at(means, r)) / widthF), empty)
 
     fn normalised(x, means, variances, g, b, i) = {
         let r = intDiv(i, width)
@@ -149,13 +152,13 @@ module Model {
     export fn layerNorm(x, t, g, b) = {
         let means = rowMeans(x, t)
         let variances = rowVariances(x, t, means)
-        perform Backends::Tensor.build(t * width, fn(i) => normalised(x, means, variances, g, b, i))
+        orStop(perform Backends::Tensor.build(t * width, fn(i) => normalised(x, means, variances, g, b, i)), empty)
     }
 
     /// x [rows, inner] times w [inner, cols], plus the bias on every row.
     export fn linear(x, rows, inner, cols, w, bias) = {
         let value = product(x, w, rows, inner, cols)
-        perform Backends::Tensor.build(rows * cols, fn(i) => at(value, i) + at(bias, i % cols))
+        orStop(perform Backends::Tensor.build(rows * cols, fn(i) => at(value, i) + at(bias, i % cols)), empty)
     }
 
     /// qkv is [t, 2304]: the query, key and value of head h occupy 64 columns each.
@@ -184,10 +187,10 @@ module Model {
     /// Softmax of each causal row of scores [heads, n, t], where row r of a head
     /// is position first + r and attends to columns c <= first + r only.
     fn probsOf(scores, t, n, first) = {
-        let peaks = perform Backends::Tensor.build(heads * n, fn(row) => rowMax(scores, row, t, first + row % n))
-        let weights = perform Backends::Tensor.build(heads * n * t, fn(i) => causalWeight(scores, peaks, t, n, first, i))
-        let sums = perform Backends::Tensor.build(heads * n, fn(row) => sumRange(weights, row * t, t))
-        perform Backends::Tensor.build(heads * n * t, fn(i) => at(weights, i) / at(sums, intDiv(i, t)))
+        let peaks = orStop(perform Backends::Tensor.build(heads * n, fn(row) => rowMax(scores, row, t, first + row % n)), empty)
+        let weights = orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => causalWeight(scores, peaks, t, n, first, i)), empty)
+        let sums = orStop(perform Backends::Tensor.build(heads * n, fn(row) => sumRange(weights, row * t, t)), empty)
+        orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => at(weights, i) / at(sums, intDiv(i, t))), empty)
     }
 
     /// Element i of the attention output [n, width].
@@ -204,8 +207,8 @@ module Model {
     /// Scores and probabilities are [heads, t - first, t].
     export fn attentionFrom(qkv, t, first) = {
         let n = t - first
-        let probs = probsOf(perform Backends::Tensor.build(heads * n * t, fn(i) => causalScore(qkv, t, n, first, i)), t, n, first)
-        Attn { probs: probs, out: perform Backends::Tensor.build(n * width, fn(i) => attended(probs, qkv, t, n, first, i)) }
+        let probs = probsOf(orStop(perform Backends::Tensor.build(heads * n * t, fn(i) => causalScore(qkv, t, n, first, i)), empty), t, n, first)
+        Attn { probs: probs, out: orStop(perform Backends::Tensor.build(n * width, fn(i) => attended(probs, qkv, t, n, first, i)), empty) }
     }
 
     /// Every position of qkv [t, 2304] at once, as [t, width].
@@ -242,7 +245,7 @@ module Model {
     /// `rows` followed by `more`: a cache growing by one position.
     fn appended(rows, more) = {
         let n = size(rows)
-        perform Backends::Tensor.build(n + size(more), fn(i) => match i < n { true => at(rows, i)  false => at(more, i - n) })
+        orStop(perform Backends::Tensor.build(n + size(more), fn(i) => match i < n { true => at(rows, i)  false => at(more, i - n) }), empty)
     }
 
     /// One block for the newest position t - 1 alone: its row x [1, width] and
@@ -267,7 +270,7 @@ module Model {
 
     /// The embedding of one token at position p, [1, width].
     export fn embedOne(w, token, p) = embedRow(w.wte, w.wpe, token, p)
-    fn embedRow(wte, wpe, token, p) = perform Backends::Tensor.build(width, fn(c) => at(wte, token * width + c) + at(wpe, p * width + c))
+    fn embedRow(wte, wpe, token, p) = orStop(perform Backends::Tensor.build(width, fn(c) => at(wte, token * width + c) + at(wpe, p * width + c)), empty)
 
     /// The newest position, token at index t - 1, through the twelve blocks over
     /// their caches of the t - 1 earlier positions.

@@ -69,11 +69,11 @@ fn declined_reasons(ir: &str) -> Vec<String> {
 /// zip and a fold.
 const DEVICE_KERNELS: [(&str, Flavor); 2] = [
     (
-        "let width = 4\nlet widthF = 4.0\nfn at(m, i) = gpuGet(m, i) ?: 0.0\nfn addF(a, x) = a + x\nfn sumRange(x, start, n) = range(start, start + n) |> fold(0.0, fn(a, i) => a + at(x, i))\nfn main() = {\n    handle Arith {\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    }\n    let xs = gpuIota(16) |> gpuMap(fn(i) => toFloat(i) / widthF - 1.5)\n    let es = gpuMap(xs, exp)\n    let zs = gpuZipWith(xs, es, addF)\n    let means = gpuIota(4) |> gpuMap(fn(r) => sumRange(zs, r * width, width) / widthF)\n    let peak = fn(r) => match at(zs, r * width) > 0.0 { true => at(zs, r * width) * 2.0  false => 0.0 }\n    let peaks = gpuIota(4) |> gpuMap(peak)\n    let ints = gpuIota(5) |> gpuMap(fn(i) => intDiv(i * 7, 2) % 5 + abs(0 - i))\n    print(\"${gpuFold(means, 0.0, addF)} ${gpuLength(peaks)} ${gpuLength(ints)}\")\n}\n",
+        "let width = 4\nlet widthF = 4.0\nfn at(m, i) = gpuGet(m, i) ?: 0.0\nfn addF(a, x) = a + x\nfn sumRange(x, start, n) = range(start, start + n) |> fold(0.0, fn(a, i) => a + at(x, i))\nfn main() = {\n    handle Arith {\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    }\n    let xs = toGpu(range(0, 16)) |> gpuMap(fn(i) => toFloat(i) / widthF - 1.5)\n    let es = gpuMap(xs, exp)\n    let zs = gpuZipWith(xs, es, addF)\n    let means = toGpu(range(0, 4)) |> gpuMap(fn(r) => sumRange(zs, r * width, width) / widthF)\n    let peak = fn(r) => match at(zs, r * width) > 0.0 { true => at(zs, r * width) * 2.0  false => 0.0 }\n    let peaks = toGpu(range(0, 4)) |> gpuMap(peak)\n    let ints = toGpu(range(0, 5)) |> gpuMap(fn(i) => intDiv(i * 7, 2) % 5 + abs(0 - i))\n    print(\"${gpuFold(means, 0.0, addF)} ${gpuLength(peaks)} ${gpuLength(ints)}\")\n}\n",
         Flavor::Default,
     ),
     (
-        "width = 4\nwidthF = 4.0\nat (m, i) = gpuGet (m, i) ?: 0.0\naddF (a, x) = a + x\nsumRange (x, start, n) = range (start, start + n) |> fold (0.0, \\(a, i) => a + at (x, i))\nmain () =\n    handle Arith\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    xs = gpuIota 16 |> gpuMap (\\i => toFloat i / widthF - 1.5)\n    es = gpuMap xs exp\n    zs = gpuZipWith (xs, es, addF)\n    means = gpuIota 4 |> gpuMap (\\r => sumRange (zs, r * width, width) / widthF)\n    peak = \\r => match at (zs, r * width) > 0.0\n        true => at (zs, r * width) * 2.0\n        false => 0.0\n    peaks = gpuIota 4 |> gpuMap peak\n    ints = gpuIota 5 |> gpuMap (\\i => intDiv (i * 7, 2) % 5 + abs (0 - i))\n    print \"${gpuFold (means, 0.0, addF)} ${gpuLength peaks} ${gpuLength ints}\"\n",
+        "width = 4\nwidthF = 4.0\nat (m, i) = gpuGet (m, i) ?: 0.0\naddF (a, x) = a + x\nsumRange (x, start, n) = range (start, start + n) |> fold (0.0, \\(a, i) => a + at (x, i))\nmain () =\n    handle Arith\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    xs = toGpu (range (0, 16)) |> gpuMap (\\i => toFloat i / widthF - 1.5)\n    es = gpuMap xs exp\n    zs = gpuZipWith (xs, es, addF)\n    means = toGpu (range (0, 4)) |> gpuMap (\\r => sumRange (zs, r * width, width) / widthF)\n    peak = \\r => match at (zs, r * width) > 0.0\n        true => at (zs, r * width) * 2.0\n        false => 0.0\n    peaks = toGpu (range (0, 4)) |> gpuMap peak\n    ints = toGpu (range (0, 5)) |> gpuMap (\\i => intDiv (i * 7, 2) % 5 + abs (0 - i))\n    print \"${gpuFold (means, 0.0, addF)} ${gpuLength peaks} ${gpuLength ints}\"\n",
         Flavor::Ml,
     ),
 ];
@@ -176,15 +176,15 @@ fn kernels_reducing_through_higher_order_helpers_keep_their_device_form() -> Res
     let mut sources = Vec::new();
     for (source, flavor) in [
         (
-            "fn addAll(size, valueAt) = range(0, size) |> fold(0.0, fn(acc, i) => acc + valueAt(i))\nfn main() = {\n    let sums = gpuIota(4) |> gpuMap(fn(r) => addAll(3, fn(c) => toFloat(c) * toFloat(r)))\n    print(\"${gpuLength(sums)}\")\n}\n",
+            "fn addAll(size, valueAt) = range(0, size) |> fold(0.0, fn(acc, i) => acc + valueAt(i))\nfn main() = {\n    let sums = toGpu(range(0, 4)) |> gpuMap(fn(r) => addAll(3, fn(c) => toFloat(c) * toFloat(r)))\n    print(\"${gpuLength(sums)}\")\n}\n",
             Flavor::Default,
         ),
         (
-            "addAll (size, valueAt) = range (0, size) |> fold (0.0, \\(acc, i) => acc + valueAt i)\nmain () =\n    sums = gpuIota 4 |> gpuMap (\\r => addAll (3, \\c => toFloat c * toFloat r))\n    print \"${gpuLength sums}\"\n",
+            "addAll (size, valueAt) = range (0, size) |> fold (0.0, \\(acc, i) => acc + valueAt i)\nmain () =\n    sums = toGpu (range (0, 4)) |> gpuMap (\\r => addAll (3, \\c => toFloat c * toFloat r))\n    print \"${gpuLength sums}\"\n",
             Flavor::Ml,
         ),
         (
-            "def add_all(size, value_at):\n    return fold(range(size), 0.0, lambda acc, i: acc + value_at(i))\n\n\ndef main():\n    sums = gpuMap(gpuIota(4), lambda r: add_all(3, lambda c: toFloat(c) * toFloat(r)))\n    print(f\"{gpuLength(sums)}\")\n",
+            "def add_all(size, value_at):\n    return fold(range(size), 0.0, lambda acc, i: acc + value_at(i))\n\n\ndef main():\n    sums = gpuMap(toGpu(range(0, 4)), lambda r: add_all(3, lambda c: toFloat(c) * toFloat(r)))\n    print(f\"{gpuLength(sums)}\")\n",
             Flavor::Python,
         ),
     ] {
@@ -208,11 +208,11 @@ fn kernels_reducing_through_higher_order_helpers_keep_their_device_form() -> Res
 fn kernels_bound_through_handler_arms_keep_their_device_form() -> Result<(), String> {
     for (source, flavor) in [
         (
-            "static effect Tensor<B> {\n    build: fn(int, fn(int) -> float) -> B\n    reduce: fn(B, float, fn(float, float) -> float) -> float\n}\nfn onGpu(work) = {\n    handle static Tensor<GpuBuffer<float>> {\n        build n f => gpuIota(n) |> gpuMap(f)\n        reduce b seed f => b |> gpuFold(seed, f)\n    }\n    work()\n}\nfn addF(a, x) = a + x\nfn total(b) = perform Tensor.reduce(b, 0.0, addF)\nfn squares(n) = perform Tensor.build(n, fn(i) => toFloat(i * i))\nfn run() = {\n    handle Arith {\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    }\n    print(total(squares(4)))\n}\nfn main() = onGpu(run)\n",
+            "static effect Tensor<B> {\n    build: fn(int, fn(int) -> float) -> B\n    reduce: fn(B, float, fn(float, float) -> float) -> float\n}\nfn onGpu(work) = {\n    handle static Tensor<GpuBuffer<float>> {\n        build n f => toGpu(range(0, n)) |> gpuMap(f)\n        reduce b seed f => b |> gpuFold(seed, f)\n    }\n    work()\n}\nfn addF(a, x) = a + x\nfn total(b) = perform Tensor.reduce(b, 0.0, addF)\nfn squares(n) = perform Tensor.build(n, fn(i) => toFloat(i * i))\nfn run() = {\n    handle Arith {\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    }\n    print(total(squares(4)))\n}\nfn main() = onGpu(run)\n",
             Flavor::Default,
         ),
         (
-            "static effect Tensor B\n    build : (int, (int) -> float) => B\n    reduce : (B, float, (float, float) -> float) => float\n\nonGpu work =\n    handle static Tensor<GpuBuffer<float>>\n        build n f => gpuIota n |> gpuMap f\n        reduce b seed f => b |> gpuFold seed f\n    work ()\n\naddF (a, x) = a + x\ntotal b = perform Tensor.reduce b 0.0 addF\nsquares n = perform Tensor.build n (\\i => toFloat (i * i))\nrun () =\n    handle Arith\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    print (total (squares 4))\n\nmain () = onGpu run\n",
+            "static effect Tensor B\n    build : (int, (int) -> float) => B\n    reduce : (B, float, (float, float) -> float) => float\n\nonGpu work =\n    handle static Tensor<GpuBuffer<float>>\n        build n f => toGpu (range (0, n)) |> gpuMap f\n        reduce b seed f => b |> gpuFold seed f\n    work ()\n\naddF (a, x) = a + x\ntotal b = perform Tensor.reduce b 0.0 addF\nsquares n = perform Tensor.build n (\\i => toFloat (i * i))\nrun () =\n    handle Arith\n        overflow _ _ _ wrapped => wrapped\n        divideByZero _ _ => 0.0\n        remainderByZero _ => 0\n    print (total (squares 4))\n\nmain () = onGpu run\n",
             Flavor::Ml,
         ),
     ] {

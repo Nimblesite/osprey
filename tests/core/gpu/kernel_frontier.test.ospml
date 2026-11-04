@@ -35,16 +35,19 @@ genericCombineCase () =
         (gpuGet (xs |> gpuScan 0.0 plus, 2) ?: 0.0) == 6.0
     ]
 
-recursiveHelperCase () =
-    matrix = toGpu [1.0, 2.0, 3.0, 4.0]
-    vector = toGpu [10.0, 20.0]
-    rows = gpuIota 2 |> gpuMap (\row => rowDot (matrix, vector, 2, row, 0))
-    checkAll "recursive GPU helpers monomorphize from their call site" [
-        gpuLength rows == 2,
-        (gpuGet (rows, 0) ?: 0.0) == 50.0,
-        (gpuGet (rows, 1) ?: 0.0) == 110.0,
-        (rows |> gpuFold 0.0 addFloats) == 160.0
-    ]
+recursiveHelperCase () = match gpuIota 2
+    Error message => check "index allocation" "success" (toString message)
+    Success value =>
+        indices = value
+        matrix = toGpu [1.0, 2.0, 3.0, 4.0]
+        vector = toGpu [10.0, 20.0]
+        rows = indices |> gpuMap (\row => rowDot (matrix, vector, 2, row, 0))
+        checkAll "recursive GPU helpers monomorphize from their call site" [
+            gpuLength rows == 2,
+            (gpuGet (rows, 0) ?: 0.0) == 50.0,
+            (gpuGet (rows, 1) ?: 0.0) == 110.0,
+            (rows |> gpuFold 0.0 addFloats) == 160.0
+        ]
 
 blockBodyCase () =
     t = 2.0
