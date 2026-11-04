@@ -65,3 +65,110 @@ Softmax uses a fixed four-lane binary32 sum and reciprocal multiplication matchi
 ## Bug hunts
 
 `hunt/` holds `osprey hunt` drivers ([PORT-HUNT]), each mixing symbolic logits with concrete NaN, ±inf, huge (`exp(700.0)`) and subnormal (`exp(-745.0)`) values: `math` (softmax, log_softmax, argmax, multinomial; 7,165 paths), `warpers` (temperature with a symbolic temperature, so `0.0` reaches the divide-by-zero policy, min-p, epsilon; 680 paths) and `topp` (top-p, typical, eta; 680 paths). No findings.
+
+## Tool calls: `qwen3_5_tool_*`
+
+The Qwen3.5 tool-call layer: a streaming parser for the chat template's
+`<tool_call><function=…><parameter=…>` format, a logits processor that makes a
+schema-invalid call unsamplable, and the typed tool error a harness recovers from
+([LLM-TOOL-PARSE], [LLM-TOOL-CONSTRAIN], [LLM-TOOL-REPAIR] of
+[LocalCodingModel](../../../docs/specs/applications/LocalCodingModel.md)). There is no
+Hugging Face analogue to port: the format is the model's, so the reference is the
+published chat template and the parser a serving engine ships for it.
+
+| Module | Contents |
+| --- | --- |
+| `transformers.ToolSchema` | the JSON Schema sub-language: `validate`, `coerce`, the readers (`kind`, `members`, `property_names`, `property_schema`, `required_names`, `items_schema`, `allows_extra`, `enum_values`, `kind_matches`), the tool-list readers (`tool_list`, `tool_name`, `tool_named`, `parameters`) and violation text (`violation`, `violation_keyword`, `violation_path`) |
+| `transformers.ToolParser` | `start(tools)`, `feed(state, chunk)`, `finish(state)`, `parse(tools, text)`, and the `Step`/`Call` results; `error_field(error, name)` reads a tool error |
+| `transformers.ToolJsonScan` | `begin(schema)`, `feed(stack, byte)`, `finished(stack)`: the schema-directed JSON scanner the mask is built on |
+| `transformers.ToolConstrain` | `Constrain(tools, vocabulary, filter_value)`, `apply`, `mask`, `start`, `advance`, `complete`, `accepts`, `decode` |
+
+### The format
+
+The template at `Qwen/Qwen3.8-27B` revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`
+(`scripts/oracles/qwen3_5_chat_template.jinja`, sha256 `c3cf9e34…`) writes a call as
+`<tool_call>`, `<function=NAME>`, one `<parameter=NAME>` per argument, `</function>`,
+`</tool_call>`, and a turn as `<think>reasoning</think>` followed by free text. The
+`tokenizer.chat_template` inside the pinned `unsloth/Qwen3.8-27B-GGUF` weights renders
+the identical `<think>`, `<tool_call>`, `<function=` and `<parameter=` bytes; only
+system-message merging differs. A string argument is written verbatim, so it may span
+lines; every other argument is the JSON literal the template's `tojson` produced.
+vLLM's [`Qwen3CoderToolParser`](https://github.com/vllm-project/vllm/blob/v0.12.0/vllm/entrypoints/openai/tool_parsers/qwen3coder_tool_parser.py)
+reads the same tags and strips one newline at each end of a value; its framing rules are
+the reference here.
+
+`feed` is incremental: a chunk may split anywhere, including inside a tag, and any split
+produces the same steps as one whole-text call (the suite parses every Phase 0 turn in
+1-, 2-, 5- and 11-byte chunks). `text` and `think` are the turn's own bytes — everything
+between `</think>` and `<tool_call>` is text — so a harness trims what it displays.
+`finish` reports a turn that stopped inside `<think>` or `<tool_call>` as a
+`truncated` error instead of truncating it silently.
+
+A call whose arguments do not satisfy the tool's schema closes as a `Call` with
+`arguments = JsonNull` and a JSON tool error in `error`:
+`{"kind", "keyword", "parameter", "detail", "recoverable": true}`, where `keyword` is the
+JSON Schema keyword that failed. The harness sends that text back inside
+`<tool_response>`, so the model can correct itself; fabricated arguments never reach it.
+
+### The mask
+
+Once `<tool_call>` opens, `apply`/`mask` leave `filter_value` (`-inf`) on every token
+that would leave the language: only declared function names, declared and unwritten
+parameter names, and values the parameter's schema accepts. Before `<tool_call>` and
+after `</tool_call>` nothing is masked, so free text stays free. The language is the
+template's own, so the mask never admits a turn the parser rejects — and a JSON argument
+is scanned against its nested schema, which is why `{"mode": "delete"}` cannot be
+sampled where the schema declares `enum ["check","apply","preview"]`, and why an object
+closes only once its `required` properties are present.
+
+`apply` follows `LogitsProcess.apply`'s shape (a token history and one logits row);
+`mask` takes the machine `start`/`advance` built, so a sampler between steps pays no
+replay. Both are `fold`s over the byte range, never a stack frame per byte: a 64K-token
+turn must not exhaust the stack.
+
+### Divergences
+
+- **`Result` errors, not exceptions** (`[FAILURE-EXPLICIT]`), everywhere.
+- **Coercion is stricter than vLLM's**, which degenerates to the raw string (and to
+  `false` for a bad boolean) when conversion fails. Here a bad literal is a `type`
+  violation, so the harness sees a recoverable tool error instead of a made-up value.
+  A string argument keeps the template's text verbatim; `integer` takes a JSON integer
+  literal only (`jsonschema`'s integer type would also accept `3.0`, which the template
+  never writes for an integer argument); `number`, `boolean`, `array` and `object` take
+  one JSON literal.
+- **The mask is stricter than the parser** in one place: it requires the template's
+  newline between `<parameter=NAME>` and the value, where the parser also accepts a value
+  immediately after the tag. A masked turn therefore always parses, but a hand-written
+  turn may parse where the mask would have refused.
+- **`ToolSchema.validate` reports the first violation** in `jsonschema`'s own order
+  (`type`, `enum`, `items`, `properties`, `required`, `additionalProperties`) as
+  `keyword@path`, and the suite compares that pair with `jsonschema` 4.26.0's for every
+  mutation of every corpus argument.
+
+### Tests
+
+`tests/` runs 2,138 assertions under `Check.strictly`; `tests/expected_tools.py` is
+regenerated by `scripts/oracles/tool_calls.py` (run through
+`python -I scripts/oracles/oracle.py tool_calls`), which renders every turn of the 200
+`src/osprey/examples/llms/qwen/eval/tool_cases.py` cases with the **real** chat template through jinja2 3.1.6
+and records:
+
+- `CASES`: the rendered turn, its `<think>`/text split, the call it encodes, and that
+  case's constrained-sampling fixture (a token table, the prefix token ids and the ids
+  the corpus turn uses);
+- `COERCE`: every parameter text the template wrote (round-tripped to the argument the
+  caller passed) plus boundary texts, each with `jsonschema`'s verdict;
+- `VALIDATE`: every single-part mutation of a real argument with `jsonschema` 4.26.0's
+  keyword and instance path;
+- `REPAIR`: calls the template would never write, each with `jsonschema`'s keyword for
+  why it fails.
+
+The suite parses all 200 turns whole and in chunks, validates and coerces the oracle
+cases, checks each masked target walk (the mask must admit every token of the corpus
+turn), samples 13 of the 200 adversarially (a seeded draw is taken whenever the mask
+admits it, so a corrupting token is what the run takes by default), and keeps four clean
+controls: with the mask off, the same seeded source stops producing a parseable call.
+
+Not covered: the same adversarial run for all 200 cases (13 are sampled; all 200 are
+covered by the target walk), the real 248k-token Qwen vocabulary (the fixture is a
+per-case table of a few dozen tokens), and a live model.

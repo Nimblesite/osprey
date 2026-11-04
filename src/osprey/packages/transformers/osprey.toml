@@ -1,7 +1,7 @@
 [project]
 name = "transformers"
 source_roots = ["src"]
-python_sources = ["src/math.py", "src/lists.py", "src/logits_process.py", "src/stopping_criteria.py", "src/generation.py"]
+python_sources = ["src/math.py", "src/lists.py", "src/logits_process.py", "src/stopping_criteria.py", "src/generation.py", "src/qwen3_5_tool_schema.py", "src/qwen3_5_tool_json_scan.py", "src/qwen3_5_tool_constrain.py", "src/qwen3_5_tool_parser.py"]
 default_namespace = "transformers"
 
 [package]
