@@ -56,6 +56,6 @@ Manual `osprey program.osp --run` retains normal application semantics: relative
 
 ## Supporting material
 
-`scripts/carbon/` renders source screenshots using the editor grammars. `scripts/homebrew/` contains historical local packaging experiments; official releases use `.github/workflows/release.yml` and the external Homebrew tap. `scripts/schemas/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
+Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `scripts/schemas/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
 
 Configuration files stay at the root when their tools discover them there. Workspace, compiler and release manifests are entry points, not miscellaneous project documentation.

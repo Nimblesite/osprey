@@ -27,10 +27,6 @@
     {
       "name": ".github",
       "path": ".github"
-    },
-    {
-      "name": "scripts/homebrew",
-      "path": "scripts/homebrew"
     }
   ],
   "settings": {
