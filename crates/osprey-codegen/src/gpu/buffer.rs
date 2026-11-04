@@ -41,23 +41,29 @@ fn buffer_literal(
     elements: &[Expr],
     position: Option<osprey_ast::Position>,
 ) -> Result<Value> {
-    let pending = super::allocation::Pending::new(cg, &elements.len().to_string());
-    let out = &pending.value;
+    let mut words = Vec::with_capacity(elements.len());
     let mut elem = crate::listlit::inferred_elem(cg, position);
     // A literal element still spelled at its default type is fitted to the
     // published width before boxing ([TYPE-NUMERIC-WORD]).
     let sized = elem.as_deref().and_then(crate::llty::sized_of_spelling);
-    for (i, e) in elements.iter().enumerate() {
+    for e in elements {
         let v = gen_expr(cg, e)?;
         let v = crate::conv::fit_literal(cg, v, sized)?;
         elem = elem.or_else(|| Some(crate::llty::scalar_spelling(v.ty).to_string()));
         let word = scalar_word(cg, v, "a GPU buffer literal element")?;
-        buffer_set(cg, out, &i.to_string(), &word.operand);
+        words.push(word);
     }
     let elem = elem
         .as_deref()
         .map(|tag| crate::llty::elem_of_spelling(tag).0);
-    pending.finish(cg, elem)
+    crate::extern_call::clear_io_error(cg);
+    let pending = super::allocation::Pending::new(cg, &elements.len().to_string());
+    let (join, reason) = allocated_guard(cg, &pending.value);
+    for (i, word) in words.iter().enumerate() {
+        buffer_set(cg, &pending.value, &i.to_string(), &word.operand);
+    }
+    let out = pending.finish(cg, elem)?;
+    allocation_result(cg, out, &join, &reason, None)
 }
 
 /// The compaction counter shared by `gpuFilter` and iterator fusion: a stack
@@ -102,9 +108,11 @@ pub(super) fn take_kept(cg: &mut Codegen, out: &Value, kept: &str) {
 fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     let stages = crate::iter::stages_of(cg, range);
     let (start, end) = crate::iter::bounds(cg, range);
-    let span = span_of(cg, &start, &end);
+    let (span, overflow) = span_of(cg, &start, &end);
+    crate::extern_call::clear_io_error(cg);
     let pending = super::allocation::Pending::new(cg, &span);
     let out = &pending.value;
+    let (join, reason) = allocated_guard(cg, out);
     let kept = kept_counter(cg);
     let lp = open_range_loop(cg, &start, &end);
     crate::arc::push_frame(cg, crate::arc::FrameKind::Scope);
@@ -115,15 +123,22 @@ fn fuse_iterator(cg: &mut Codegen, range: &Value) -> Result<Value> {
     crate::arc::pop_frame(cg);
     close_range_loop(cg, &lp);
     take_kept(cg, out, &kept);
-    pending.finish(cg, Some(elem))
+    let out = pending.finish(cg, Some(elem))?;
+    allocation_result(cg, out, &join, &reason, Some(&overflow))
 }
 
 /// The element count of `[start, end)`. An inverted range yields no elements,
-/// so its buffer is empty, not a negative-length allocation [GPU-BUFFER-FUSE].
-fn span_of(cg: &mut Codegen, start: &str, end: &str) -> String {
+/// so its buffer is empty. A forward span that overflows i64 is refused,
+/// with a range-specific reason rather than a fabricated empty [GPU-BUFFER-FUSE].
+fn span_of(cg: &mut Codegen, start: &str, end: &str) -> (String, String) {
     let span = cg.emit_reg(format!("sub i64 {end}, {start}"));
-    let empty = cg.emit_reg(format!("icmp slt i64 {span}, 0"));
-    cg.emit_reg(format!("select i1 {empty}, i64 0, i64 {span}"))
+    let inverted = cg.emit_reg(format!("icmp sle i64 {end}, {start}"));
+    let overflow = cg.emit_reg(format!("icmp slt i64 {span}, 0"));
+    let count = cg.emit_reg(format!("select i1 {overflow}, i64 -1, i64 {span}"));
+    let count = cg.emit_reg(format!("select i1 {inverted}, i64 0, i64 {count}"));
+    let forward = cg.emit_reg(format!("xor i1 {inverted}, true"));
+    let failed = cg.emit_reg(format!("and i1 {forward}, {overflow}"));
+    (count, failed)
 }
 
 /// `toGpu(list)` — dense copy of a scalar list [GPU-BUFFER-FROM-LIST]. A flat
@@ -143,12 +158,58 @@ pub(super) fn to_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = crate::listlit::to_runtime_list(cg, source);
     let l = crate::cast::coerce_to(cg, l, LType::Ptr)?;
     let len = cg.call("i64", "osprey_list_length", "i8*", &[&l.operand]);
+    crate::extern_call::clear_io_error(cg);
     let buf = buffer_alloc(cg, &len, elem_owner(elem));
+    let (join, reason) = allocated_guard(cg, &buf);
     let lp = open_range_loop(cg, "0", &len);
     let elem = cg.call("i64", "osprey_list_get", "i8*, i64", &[&l.operand, &lp.i]);
     buffer_set(cg, &buf, &lp.i, &elem);
     close_range_loop(cg, &lp);
-    Ok(buf)
+    allocation_result(cg, buf, &join, &reason, None)
+}
+
+/// Preserve the allocator's reason before any stores and skip every write on
+/// refusal. Literal argument effects have already run before entering here.
+fn allocated_guard(cg: &mut Codegen, buffer: &Value) -> (String, String) {
+    let reason = crate::extern_call::take_io_error(cg);
+    let failed = cg.emit_reg(format!("icmp eq i8* {}, null", buffer.operand));
+    let ready = cg.emit_reg(format!("xor i1 {failed}, true"));
+    (cg.open_guard(&ready), reason)
+}
+
+/// [GPU-BUFFER-FROM-LIST] [GPU-BUFFER-FUSE] A NULL payload belongs only to Error.
+fn allocation_result(
+    cg: &mut Codegen,
+    buffer: Value,
+    join: &str,
+    reason: &str,
+    overflow: Option<&str>,
+) -> Result<Value> {
+    cg.emit(format!("br label %{join}"));
+    cg.start_block(join);
+    let reason = allocation_reason(cg, reason, overflow);
+    let failed = cg.emit_reg(format!("icmp eq i8* {}, null", buffer.operand));
+    crate::result::make_result_if_err_because(
+        cg,
+        buffer,
+        LType::Ptr,
+        &failed,
+        Some("toGpu: allocation failed"),
+        Some(&reason),
+    )
+}
+
+fn allocation_reason(cg: &mut Codegen, reason: &str, overflow: Option<&str>) -> String {
+    match overflow {
+        Some(overflow) => {
+            let text = cg.string_constant("toGpu: range span overflows the element count");
+            cg.emit_reg(format!(
+                "select i1 {overflow}, i8* {}, i8* {reason}",
+                text.operand
+            ))
+        }
+        None => reason.to_owned(),
+    }
 }
 
 /// `fromGpu(buffer)` — materialize a buffer as a list [GPU-BUFFER-TO-LIST].

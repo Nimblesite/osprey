@@ -1,7 +1,5 @@
-//! Native end-to-end pins for the file-backed tensor loaders — the GPU
-//! surface's [GPU-BUFFER-TENSOR] and [GPU-BUFFER-LOAD], the host's
-//! [BUILTIN-FILE-TENSOR] — for [GPU-MATMUL] over a loaded tensor, and for the
-//! separation of GPT-2's two `Tensor` handlers in both flavors.
+//! Native end-to-end pins for the file-backed tensor loaders — [GPU-BUFFER-TENSOR],
+//! [GPU-BUFFER-LOAD], [BUILTIN-FILE-TENSOR], [GPU-MATMUL] and GPT-2's two handlers.
 //!
 //! The corpus harness cannot read a committed file — wasm runs in a fresh
 //! preopened sandbox and the mobile hosts chdir into a scratch directory — so
@@ -87,22 +85,24 @@ fn both_flavors_read_the_safetensors_fixture_exactly() {
 }
 
 const INDEX_FAILURE_SOURCE: &str = r#"
-fn describe(n) = match gpuIota(n) {
+fn describe(result: Result<GpuBuffer<int>, Error>) = match result {
     Success { value } => "length ${gpuLength(value)}"
     Error { message } => toString(message)
 }
-print("${describe(0)}\n${describe(3)}\n${describe(-1)}\n${describe(9223372036854775807)}\n${describe(1152921504606846975)}")
+fn copied(xs) = toGpu(xs)
+print("${describe(gpuIota(0))}\n${describe(gpuIota(3))}\n${describe(gpuIota(-1))}\n${describe(gpuIota(9223372036854775807))}\n${describe(gpuIota(1152921504606846975))}\n${describe(toGpu(range(0, 9223372036854775807)))}\n${describe(toGpu(range(-9223372036854775807, 9223372036854775807)))}\n${describe(toGpu(range(3, 0)))}\n${describe(toGpu(range(-2, 2)))}\n${describe(toGpu([7, 8]))}\n${describe(copied([4, 5, 6]))}\n${describe(toGpu([]))}\n${describe(copied([]))}\n${describe(toGpu(range(9223372036854775807, -9223372036854775807)))}")
 "#;
 const INDEX_FAILURE_ML: &str = r#"
-describe n = match gpuIota n
+describe : Result<GpuBuffer<int>, Error> -> string
+describe result = match result
     Success value => "length ${gpuLength value}"
     Error message => toString message
-print "${describe 0}\n${describe 3}\n${describe (-1)}\n${describe 9223372036854775807}\n${describe 1152921504606846975}"
+copied xs = toGpu xs
+print "${describe (gpuIota 0)}\n${describe (gpuIota 3)}\n${describe (gpuIota (-1))}\n${describe (gpuIota 9223372036854775807)}\n${describe (gpuIota 1152921504606846975)}\n${describe (toGpu (range (0, 9223372036854775807)))}\n${describe (toGpu (range (-9223372036854775807, 9223372036854775807)))}\n${describe (toGpu (range (3, 0)))}\n${describe (toGpu (range (-2, 2)))}\n${describe (toGpu [7, 8])}\n${describe (copied [4, 5, 6])}\n${describe (toGpu [])}\n${describe (copied [])}\n${describe (toGpu (range (9223372036854775807, -9223372036854775807)))}"
 "#;
-const INDEX_FAILURE_EXPECTED: &str = "length 0\nlength 3\ngpu: buffer allocation: a negative element count\ngpu: buffer allocation: element count overflows the byte size\ngpu: buffer allocation: out of memory\n";
-
+const INDEX_FAILURE_EXPECTED: &str = "length 0\nlength 3\ngpu: buffer allocation: a negative element count\ngpu: buffer allocation: element count overflows the byte size\ngpu: buffer allocation: out of memory\ngpu: buffer allocation: element count overflows the byte size\ntoGpu: range span overflows the element count\nlength 0\nlength 4\nlength 2\nlength 3\nlength 0\nlength 0\nlength 0\n";
 #[test]
-fn index_buffer_allocation_errors_reach_the_caller() {
+fn buffer_allocation_errors_reach_the_caller() {
     // [FAILURE-EXPLICIT] Invalid/OOM requests never become successful empties.
     for (ext, source) in [
         ("index_failures.osp", INDEX_FAILURE_SOURCE),

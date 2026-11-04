@@ -83,12 +83,20 @@ fn device_integer_conversions_record_overflow_instead_of_silently_wrapping() {
 fn dense_buffer_allocations_follow_the_inferred_element_width() {
     // [GPU-BUFFER-ELEM]: storage width is independent of the boxed list ABI.
     for (ty, value, width, storage) in DENSE_ROWS {
-        let ir = module(&format!("let values: List<{ty}> = [{value}]\nlet buffer = toGpu(values)\nlet gathered = gpuZipWith(toGpu(range(0, 1)), buffer, fn(index, value) => gpuGet(buffer, index) ?: value)\nprint(fromGpu(gathered))\n"));
+        let ir = module(&format!("let values: List<{ty}> = [{value}]\nmatch toGpu(values) {{ Success {{ value }} => {{ let buffer = value\nmatch toGpu(range(0, 1)) {{ Success {{ value }} => {{ let indices = value\nlet gathered = gpuZipWith(indices, buffer, fn(index, value) => gpuGet(buffer, index) ?: value)\nprint(fromGpu(gathered)) }} Error {{ message }} => print(message) }} }} Error {{ message }} => print(message) }}\n"));
         let call = ir
             .lines()
             .find(|line| line.contains("call i8* @osprey_gpu_alloc("))
             .expect("allocation");
         assert!(call.ends_with(&format!(", i64 {width})")), "{ty}: {call}");
+        for call in ir
+            .lines()
+            .filter(|line| line.contains("call i8* @osprey_gpu_alloc("))
+            .take(2)
+        {
+            let allocated = call.split(" = ").next().expect("allocation result").trim();
+            shows(&ir, &[&format!("icmp eq i8* {allocated}, null")]);
+        }
         for parameter in [
             format!("GPU_GLOBAL const {storage} *in1"),
             format!("GPU_GLOBAL {storage} *out"),
