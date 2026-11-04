@@ -40,6 +40,8 @@ Gate: all three memory backends pass, ARC clean.
 - [ ] Port GPT-2's handlers to `float32` as the first end-to-end proof.
 - [ ] Synthetic workload with the real tensor shapes and 26G operations per token, on random weights.
 
+Early probe, 2026-11-05, on the real 5120×17408 shape over mapped random `float32` weights, with the machine shared (load about 20); receipts in `target/local-coding-model/speed/metal-matmul.csv`. This is not the gate. 5 tokens/s at 26G operations needs 130 Gop/s. `gpuMatMul` reached 26 Gop/s one row at a time and 36–49 at 64 rows, and the same per-element kernel in a standalone Metal program reached 33 and 64–97. Tiling columns per thread for cache locality was slower at every size (best 48 at 64 rows), so it was rejected. Each one-row dispatch cost about 1.8 ms beyond its arithmetic, and a token needs several hundred, so encoding them into one command buffer comes first. The running Ollama journal's median was 8.0 tokens/s on Q4_K_XL, measured under load.
+
 Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Phase 0 Ollama rate on the same quant (a 2,000-token turn ≈ 7 min). Go/no-go: if missed, stop and report before porting the model; next options are kernel fusion (0023-gpu.md) and a multithreaded NEON path — binding a native engine is not an option.
 
 ## Phase 3 — Model on a tiny checkpoint
