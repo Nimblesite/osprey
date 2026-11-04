@@ -61,6 +61,7 @@ fn lower(source: &str) -> (Program, Lowerer<'_>) {
     let program = match parse_python_tree(source) {
         Ok(tree) => {
             indentation(source, tree.root_node(), &mut lowerer);
+            alignment(source, tree.root_node(), &mut lowerer);
             syntax_errors(tree.root_node(), &mut lowerer);
             lowerer.program(tree.root_node())
         }
@@ -89,6 +90,54 @@ fn indentation(source: &str, root: Node<'_>, lowerer: &mut Lowerer<'_>) {
         }
         offset += text.len();
     }
+}
+
+/// A misaligned line can still parse, because the grammar only opens and closes
+/// suites: it reads a line dedented to no enclosing level as the next statement of
+/// an outer suite. So every suite's lines and every clause are checked here.
+/// [FLAVOR-PYTHON-CST]
+fn alignment(source: &str, node: Node<'_>, lowerer: &mut Lowerer<'_>) {
+    let mut cursor = node.walk();
+    let children: Vec<_> = node.children(&mut cursor).collect();
+    let mut lines = children
+        .iter()
+        .filter(|child| aligned_with_siblings(node.kind(), child) && starts_line(source, child));
+    let expected = match node.kind() {
+        "module" => Some(0),
+        "block" => lines
+            .clone()
+            .next()
+            .map(|line| line.start_position().column),
+        _ => Some(node.start_position().column),
+    };
+    for line in lines.by_ref() {
+        if Some(line.start_position().column) != expected {
+            lowerer.errors.push(Lowerer::error(
+                *line,
+                "this line's indentation does not match its enclosing block",
+            ));
+        }
+    }
+    for child in children {
+        alignment(source, child, lowerer);
+    }
+}
+
+/// Whether `child` of a `parent` must start in the column its layout dictates.
+fn aligned_with_siblings(parent: &str, child: &Node<'_>) -> bool {
+    match parent {
+        "module" | "block" | "decorated_definition" => child.is_named() && !child.is_extra(),
+        "if_statement" | "for_statement" | "while_statement" | "try_statement"
+        | "match_statement" => child.kind().ends_with("_clause"),
+        _ => false,
+    }
+}
+
+fn starts_line(source: &str, node: &Node<'_>) -> bool {
+    source[..node.start_byte()]
+        .rsplit('\n')
+        .next()
+        .is_some_and(|before| before.trim().is_empty())
 }
 
 fn inside_string(root: Node<'_>, offset: usize) -> bool {

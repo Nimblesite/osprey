@@ -38,18 +38,19 @@ impl Lowerer<'_> {
         Ok(parts)
     }
 
+    /// Brace syntax belongs to the source text, so it is split before escapes
+    /// decode: `\x7b\x7b` is two literal braces, not one escaped brace.
     fn content(&self, node: Node<'_>, raw: bool, formatted: bool) -> Result<String> {
         let text = self.text(node);
-        let decoded = if raw {
+        let braces = if formatted {
+            text.replace("{{", "{").replace("}}", "}")
+        } else {
             text.into()
-        } else {
-            decode(text).map_err(|message| Self::error(node, message))?
         };
-        Ok(if formatted {
-            decoded.replace("{{", "{").replace("}}", "}")
-        } else {
-            decoded
-        })
+        if raw {
+            return Ok(braces);
+        }
+        decode(&braces).map_err(|message| Self::error(node, message))
     }
 
     fn interpolation(&mut self, node: Node<'_>) -> Result<Expr> {

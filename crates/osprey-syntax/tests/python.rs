@@ -433,9 +433,59 @@ fn python_reports_malformed_indentation_and_incomplete_cst_nodes() {
         "def f(:\n",
         "def f():\n\treturn 1\n",
         "def f():\n    x = 1\n  return x\n",
+        "match a:\n    case 1:\n        x\n  case 2:\n        y\n",
     ] {
         let parsed = parse(source);
         assert!(!parsed.errors.is_empty(), "silently accepted {source}");
+    }
+}
+
+/// Whether `source` gets an indentation diagnostic, as opposed to any other.
+fn refuses_indentation(source: &str) -> bool {
+    let parsed = parse(source);
+    parsed
+        .errors
+        .iter()
+        .any(|error| error.message.contains("indentation"))
+}
+
+/// [FLAVOR-PYTHON-CST] Every case agrees with `compile` in `CPython`: the first list
+/// raises `IndentationError` there, and the second compiles.
+#[test]
+fn python_indentation_matches_cpython_for_every_statement_and_clause() {
+    for source in [
+        "if False:\n    print(\"hidden\")\n  print(\"leaked\")\n",
+        "if a:\n    if b:\n        x\n      y\n",
+        "x = 1\n  y = 2\n",
+        "  x = 1\n",
+        "if a:\n    x\n  else:\n    y\n",
+        "if a:\n    x\n  elif b:\n    y\n",
+        "for i in a:\n    x\n  else:\n    y\n",
+        "def f():\n    return 1\n  def g():\n    return 2\n",
+        "if a: x = 1\n  y = 2\n",
+        "class A:\n    x = 1\n  y = 2\n",
+        "if a:\n    x\n    y\n  z\nw\n",
+        "@dec\n  def f():\n    pass\n",
+    ] {
+        assert!(refuses_indentation(source), "accepted {source:?}");
+    }
+    for source in [
+        "if a:\n    x\n  # odd comment\ny\n",
+        "if a:\n  x\nelse:\n      y\n",
+        "if a:\n    if b:\n        x\n    y\nz\n",
+        "x = [\n      1,\n  2,\n]\ny = 1\n",
+        "def f(\n        a,\n  b):\n    return a\n",
+        "if a: x = 1\ny = 2\n",
+        "x = 1; y = 2\n",
+        "if a:\n    x = 1; y = 2\n    z = 3\n",
+        "x = 1 + \\\n      2\ny = 3\n",
+        "s = \"\"\"\n  odd\n      lines\n\"\"\"\nt = 1\n",
+        "if a:\n    x\n   \n\ny\n",
+        "if a:\n    s = \"\"\"\n  odd\n\"\"\"\n    t = 1\n",
+        "# first\n   # second\nx = 1\n",
+        "@dec\ndef f():\n    pass\n",
+    ] {
+        assert!(!refuses_indentation(source), "refused {source:?}");
     }
 }
 
