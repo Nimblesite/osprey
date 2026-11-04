@@ -30,6 +30,11 @@ typedef struct {
   void **slot;
   // [GPU-BUFFER-ELEM]: element width; scalar uniforms still carry one raw word.
   uint64_t elem_bytes;
+  // [LLM-WEIGHTS-MAPPED] A mapped input: the page-aligned mapping an adapter may
+  // share without a copy, its length, and where `words` starts inside it.
+  const void *map_base;
+  uint64_t map_bytes;
+  uint64_t map_skip;
 } OspreyGpuArg;
 
 #define OSPREY_GPU_MAX_ARGS 40
@@ -88,7 +93,7 @@ static inline void osprey_gpu_arg_at(OspreyGpuDispatch *dispatch, OspreyGpuArgKi
   if (dispatch->count >= OSPREY_GPU_MAX_ARGS) return;
   const void *uploaded = words ? words : &osprey_gpu_zero_word;
   uint64_t kept = kind != OSPREY_GPU_SCALAR && !words ? 0 : count;
-  dispatch->args[dispatch->count++] = (OspreyGpuArg){kind, uploaded, out, kept, slot, elem_bytes};
+  dispatch->args[dispatch->count++] = (OspreyGpuArg){kind, uploaded, out, kept, slot, elem_bytes, NULL, 0, 0};
 }
 
 // Append one transient argument: its bytes serve this dispatch only.

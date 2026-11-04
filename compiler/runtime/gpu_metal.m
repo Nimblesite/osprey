@@ -103,7 +103,7 @@ uint64_t osprey_gpu_metal_completed(void) { return atomic_load(&gpu_completed); 
 
 static bool within_limits(const OspreyGpuDispatch *d) {
   for (unsigned i = 0; i < d->count; i++) {
-    if (d->args[i].kind != OSPREY_GPU_SCALAR && osprey_gpu_arg_bytes(&d->args[i]) > gpu_device.maxBufferLength)
+    if (d->args[i].kind != OSPREY_GPU_SCALAR && MAX(osprey_gpu_arg_bytes(&d->args[i]), d->args[i].map_bytes) > gpu_device.maxBufferLength)
       return false;
   }
   return d->threads <= UINT32_MAX;
@@ -114,8 +114,11 @@ static bool within_limits(const OspreyGpuDispatch *d) {
 // of a resident argument and alive only for this dispatch otherwise.
 static id<MTLBuffer> object_of(const OspreyGpuArg *arg) {
   if (arg->slot && *arg->slot) return (__bridge id<MTLBuffer>)*arg->slot;
-  id<MTLBuffer> buffer = [gpu_device newBufferWithBytes:arg->words length:(NSUInteger)osprey_gpu_arg_bytes(arg)
-                                                options:MTLResourceStorageModeShared];
+  id<MTLBuffer> buffer =
+      arg->map_base ? [gpu_device newBufferWithBytesNoCopy:(void *)(uintptr_t)arg->map_base length:(NSUInteger)arg->map_bytes
+                                                   options:MTLResourceStorageModeShared deallocator:nil]
+                    : [gpu_device newBufferWithBytes:arg->words length:(NSUInteger)osprey_gpu_arg_bytes(arg)
+                                             options:MTLResourceStorageModeShared];
   if (buffer != nil && arg->slot) {
     CFTypeRef retained = CFBridgingRetain(buffer);
     *arg->slot = (void *)(uintptr_t)retained;
@@ -138,7 +141,7 @@ static bool bind_arguments(id<MTLComputeCommandEncoder> encoder, const OspreyGpu
       osp_io_error_text(d->kernel, "Metal", "buffer allocation failed");
       return false;
     }
-    [encoder setBuffer:buffers[i] offset:0 atIndex:i];
+    [encoder setBuffer:buffers[i] offset:(NSUInteger)arg->map_skip atIndex:i];
   }
   return true;
 }

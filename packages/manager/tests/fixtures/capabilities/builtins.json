@@ -7,6 +7,7 @@
     {"builtin": "cleanupProcess", "capability": "io/process"},
     {"builtin": "gpuLoad", "capability": "io/files"},
     {"builtin": "gpuLoadTensor", "capability": "io/files"},
+    {"builtin": "gpuMapFile", "capability": "io/files"},
     {"builtin": "httpCloseClient", "capability": "io/network"},
     {"builtin": "httpDelete", "capability": "io/network"},
     {"builtin": "httpGet", "capability": "io/network"},

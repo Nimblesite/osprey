@@ -90,7 +90,7 @@ static const OspreyOpenCLApi mock = {platforms, devices, info, context, queue, p
     build_info, kernel, buffer, arg, launch, read_buffer, release, release, release, release, release};
 
 static OspreyGpuDispatch product_of(const int64_t *in, int64_t *out, void **in_slot, void **out_slot) {
-  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 1};
   osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 1, 8, in_slot);
   osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 1, 8, in_slot);
   osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 1, 8, out_slot);
@@ -107,7 +107,7 @@ static int product(int64_t *out) {
 
 static int compiled(const char *name, const char *source, int64_t *out, size_t threads) {
   int64_t in = 7, fault = 0;
-  OspreyGpuDispatch d = {name, source, {{0, NULL, NULL, 0, NULL, 8}}, 0, threads};
+  OspreyGpuDispatch d = {name, source, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads};
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2, 8);

@@ -202,7 +202,7 @@ static void fault_case(const char *name, const int64_t input[4], const int64_t e
   void *a = osprey_gpu_alloc(4, 8);
   memcpy(osprey_gpu_data(a), input, 4 * sizeof(int64_t));
   int64_t out[4] = {7, 7, 7, 7}, fault = 0;
-  OspreyGpuDispatch d = {name, KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 4};
+  OspreyGpuDispatch d = {name, KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 4};
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 4, 8);
@@ -225,7 +225,7 @@ static void compiled_fault(void) {
 static void native_float32_rounding(void) {
   float a[4] = {0x1.000002p0f, -1.0f, 0x1p24f, 1.0f};
   float b[4] = {0x1.fffffcp-1f, 0.0f, 0.0f, 0.0f}, actual[2] = {99.0f, 99.0f};
-  OspreyGpuDispatch d = {"osprey_kernel_float32", KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  OspreyGpuDispatch d = {"osprey_kernel_float32", KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 1};
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, a, NULL, 4, 4);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, b, NULL, 4, 4);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, actual, actual, 2, 4);
@@ -238,7 +238,7 @@ static void native_float32_rounding(void) {
 // [GPU-BUFFER-ELEM]: a three-byte GPU output cannot overwrite either guard.
 static void native_byte_transfers(void) {
   uint8_t input[3] = {0, 127, 254}, output[5] = {0xaa, 0, 0, 0, 0xbb};
-  OspreyGpuDispatch d = {"osprey_kernel_bytes", KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 3};
+  OspreyGpuDispatch d = {"osprey_kernel_bytes", KERNELS, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 3};
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, input, NULL, 3, 1);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, output + 1, output + 1, 3, 1);
   assert(osprey_gpu_device_dispatch(&d) == 1);

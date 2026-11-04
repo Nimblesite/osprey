@@ -92,6 +92,11 @@ fn file_builtins_include_the_host_tensor_loader() {
         builtin_signature("loadTensor").as_deref(),
         Some("loadTensor : (string, string) -> Result<List<float>, Error>")
     );
+    // [LLM-WEIGHTS-MAPPED] The program's use of the result picks the element.
+    assert_eq!(
+        builtin_signature("gpuMapFile").as_deref(),
+        Some("gpuMapFile : (string, int, int) -> Result<GpuBuffer<t0>, Error>")
+    );
     // [BUILTIN-FILE-BYTES] Binary stays bytes; a string would stop at a NUL.
     assert_eq!(
         builtin_signature("readFileBytes").as_deref(),

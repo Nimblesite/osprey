@@ -122,14 +122,39 @@ pub(super) fn load_tensor(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     )
 }
 
-/// [GPU-BUFFER-TENSOR]: use the existing unique inferred application, never
-/// an enclosing expression's position or the file's dtype.
-fn tensor_elem(cg: &Codegen) -> Result<Numeric> {
+/// `gpuMapFile(path, offset, count)` [LLM-WEIGHTS-MAPPED]: a read-only mapped
+/// region at the numeric type this call's result pins.
+pub(super) fn map_file(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let path = arg_as(cg, args, 0, LType::Str)?;
+    let offset = arg_as(cg, args, 1, LType::I64)?;
+    let count = arg_as(cg, args, 2, LType::I64)?;
+    let asked = result_elem(cg).ok_or_else(|| {
+        CodegenError::unsupported("gpuMapFile needs a concrete numeric result type")
+    })?;
+    let bytes = i64::from(asked.bytes()).to_string();
+    fallible_buffer(
+        cg,
+        "osprey_gpu_map_file",
+        "i8*, i64, i64, i64",
+        &[&path, &offset, &count, &bytes],
+        LType::Num(asked),
+        "gpuMapFile: could not map the region",
+    )
+}
+
+/// The numeric element of this call's `Result<GpuBuffer<T>, Error>`.
+fn result_elem(cg: &Codegen) -> Option<Numeric> {
     cg.expression_type
         .as_ref()
         .and_then(|ty| type_argument(ty, osprey_types::names::RESULT))
         .and_then(|ty| type_argument(ty, osprey_types::names::GPU_BUFFER))
         .and_then(Numeric::of_type)
+}
+
+/// [GPU-BUFFER-TENSOR]: use the existing unique inferred application, never
+/// an enclosing expression's position or the file's dtype.
+fn tensor_elem(cg: &Codegen) -> Result<Numeric> {
+    result_elem(cg)
         .filter(|n| n.is_float() && n.bytes() >= 2)
         .ok_or_else(|| {
             CodegenError::unsupported(

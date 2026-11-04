@@ -374,6 +374,51 @@ fn square_projects(module: &str, handlers: [&str; 2]) -> Vec<(&'static str, Opti
         ),
     ]
 }
+/// [LLM-WEIGHTS-MAPPED] A mapped region is the file's own bytes on the host and
+/// on the GPU: `w` at byte 124, its square through the device product, single
+/// bytes at `uint8`, and each refusal naming its reason.
+#[test]
+fn a_mapped_file_region_reads_the_same_on_host_and_device() {
+    let path = manifest()
+        .join("tests/fixtures/transformer.safetensors")
+        .display()
+        .to_string();
+    let osp = "let nine: float32 = toFloat32(9.0)\nlet small: uint8 = 9\n\
+fn wide(b: GpuBuffer<float32>) = print(\"${gpuLength(b)} ${gpuGet(b, 0) ?: nine} ${gpuGet(b, 3) ?: nine}\")\n\
+fn region(offset: int, count: int) -> Result<GpuBuffer<float32>, Error> = gpuMapFile(\"@P@\", offset, count)\n\
+fn bytes() -> Result<GpuBuffer<uint8>, Error> = gpuMapFile(\"@P@\", 0, 8)\n\
+fn refused(read: Result<GpuBuffer<float32>, Error>) = match read {\n    Success { value } => wide(value)\n    Error { message } => print(message)\n}\n\
+match region(124, 4) {\n    Success { value } => {\n        wide(value)\n        refused(gpuMatMul(value, value, 2, 2, 2))\n    }\n    Error { message } => print(message)\n}\n\
+match bytes() {\n    Success { value } => print(\"${gpuLength(value)} ${gpuGet(value, 0) ?: small} ${gpuGet(value, 1) ?: small}\")\n    Error { message } => print(message)\n}\n\
+refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
+        .replace("@P@", &path);
+    let expected = format!(
+        "4 0.5 3.0\n4 -1.75 7.0\n8 116 0\n\
+         gpuMapFile: {path}: offset is not a multiple of the element width\n\
+         gpuMapFile: {path}: the file ends before the region does\n\
+         gpuMapFile: {path}: a negative offset\n"
+    );
+    let program = std::env::temp_dir().join(format!("osprey_map_{}.osp", std::process::id()));
+    assert!(std::fs::write(&program, osp).is_ok(), "not written");
+    for gpu in ["host", "metal"] {
+        let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+            .arg(&program)
+            .arg("--run")
+            .env("OSPREY_GPU", gpu)
+            .output();
+        assert!(output.is_ok(), "{gpu}: not run");
+        let output = output.unwrap_or_else(|_| unreachable!());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{gpu}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let reported = String::from_utf8_lossy(&output.stderr).contains("[gpu] metal:");
+        assert_eq!(reported, gpu == "metal", "{gpu}: where the product ran");
+    }
+    let _ = std::fs::remove_file(&program);
+}
 /// [BUILTIN-FILE-BYTES] Both flavors read binary through its NUL bytes: the
 /// fixture's 8-byte header prefix is 116 then seven zeros, the F32 `0.5` at
 /// byte 124 is `00 00 00 3f`, a span past the end stops at the end, and bad

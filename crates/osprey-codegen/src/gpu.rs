@@ -107,7 +107,7 @@ type Lowering = fn(&mut Codegen, &[Expr]) -> Result<Value>;
 /// A loader's element type comes from each call's own result, so a name bound
 /// to one forwards its calls to the loader instead of holding a single value.
 pub(crate) fn is_loader(name: &str) -> bool {
-    matches!(name, "gpuLoad" | "gpuLoadTensor")
+    matches!(name, "gpuLoad" | "gpuLoadTensor" | "gpuMapFile")
 }
 
 fn operation(name: &str) -> Option<Lowering> {
@@ -125,6 +125,7 @@ fn operation(name: &str) -> Option<Lowering> {
         "gpuMatMul" => io::mat_mul,
         "gpuLoad" => io::load,
         "gpuLoadTensor" => io::load_tensor,
+        "gpuMapFile" => io::map_file,
         _ => return None,
     })
 }

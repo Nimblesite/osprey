@@ -18,11 +18,18 @@
 #include "gpu_opencl_api.h"
 #endif
 
+#include <errno.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if !defined(__wasm__) && !defined(_WIN32)
+#include <fcntl.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 typedef struct OspreyGpuBuffer {
   int64_t length;
@@ -31,6 +38,9 @@ typedef struct OspreyGpuBuffer {
   uint8_t stale;
   uint8_t adapter; // Owning SDK; fits the existing header padding.
   int64_t elem_bytes;
+  // [LLM-WEIGHTS-MAPPED] The page-aligned file mapping `data` points into, or NULL.
+  void *map_base;
+  size_t map_bytes;
 } OspreyGpuBuffer;
 
 int64_t osprey_gpu_len(void *buffer);
@@ -130,6 +140,12 @@ static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, 
     b->adapter = selected > 0 ? (uint8_t)selected : 0;
   }
   osprey_gpu_arg_at(dispatch, kind, words, NULL, (uint64_t)osprey_gpu_len(handle), b ? (uint64_t)b->elem_bytes : 8, words ? &b->device : NULL);
+  if (b && b->map_base && dispatch->count > 0) {
+    OspreyGpuArg *bound = &dispatch->args[dispatch->count - 1];
+    bound->map_base = b->map_base;
+    bound->map_bytes = b->map_bytes;
+    bound->map_skip = (uint64_t)(b->data - (uint8_t *)b->map_base);
+  }
 }
 
 // A completed dispatch leaves its result on the device; the host reads it on demand.
@@ -147,7 +163,7 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
     return -1;
   }
   const char *kernel = width == 4 ? "osprey_matmul32" : "osprey_matmul64";
-  OspreyGpuDispatch dispatch = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, (uint64_t)(rows * cols)};
+  OspreyGpuDispatch dispatch = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols)};
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, left);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, right);
   buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
@@ -193,7 +209,7 @@ static int32_t failed_launch(const char *kernel, const char *reason) {
 int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *kinds, const int64_t *uniforms,
                           void *in0, void *in1, void *out, int64_t *acc, int64_t count) {
   int64_t fault = 0;
-  OspreyGpuDispatch dispatch = {kernel, source, {{0, NULL, NULL, 0, NULL, 8}}, 0, acc ? 1 : (uint64_t)count};
+  OspreyGpuDispatch dispatch = {kernel, source, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, acc ? 1 : (uint64_t)count};
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in0);
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in1);
   if (acc && !out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
@@ -227,6 +243,21 @@ int32_t osprey_gpu_declined(const char *what) {
 // with it under every memory backend that reclaims.
 #define GPU_HDR_LAYOUT ((int64_t)OSP_MEM_LIST_HDR_EXTERN)
 
+// Unmap a mapped buffer's pages once nothing can reach them. Clearing `data`
+// keeps the memory backend from releasing a pointer it never allocated.
+static void release_mapping(OspreyGpuBuffer *b) {
+#if !defined(__wasm__) && !defined(_WIN32)
+  if (b->map_base) {
+    (void)munmap(b->map_base, b->map_bytes);
+    b->map_base = NULL;
+    b->map_bytes = 0;
+    b->data = NULL;
+  }
+#else
+  (void)b;
+#endif
+}
+
 // The memory backends' drop of a buffer [GPU-BUFFER-RESIDENT]: its device
 // object is released with it through its owner [GPU-BUFFER-RESIDENT-OWNER].
 void osprey_gpu_finalize(void *buffer) {
@@ -240,6 +271,7 @@ void osprey_gpu_finalize(void *buffer) {
   b->device = NULL;
   b->stale = 0;
   b->adapter = 0;
+  release_mapping(b);
 }
 
 static void register_finalizer(void) {
@@ -288,6 +320,8 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   b->stale = 0;
   b->adapter = 0;
   b->elem_bytes = elem_bytes;
+  b->map_base = NULL;
+  b->map_bytes = 0;
   b->data = zeroed_words(length, elem_bytes);
   if (!b->data) {
     osp_release(b);
@@ -297,6 +331,74 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   b->length = length;
   return b;
 }
+
+#if !defined(__wasm__) && !defined(_WIN32)
+// The reason a region cannot be mapped, or NULL when it can.
+static const char *unmappable(int64_t offset, int64_t count, int64_t elem_bytes, int64_t file_bytes) {
+  if (offset < 0) return "a negative offset";
+  if (count < 0) return "a negative element count";
+  if (elem_bytes != 1 && elem_bytes != 2 && elem_bytes != 4 && elem_bytes != 8) return "element width must be 1, 2, 4 or 8 bytes";
+  if (offset % elem_bytes != 0) return "offset is not a multiple of the element width";
+  if (offset > file_bytes || count > (file_bytes - offset) / elem_bytes) return "the file ends before the region does";
+  return NULL;
+}
+
+// [LLM-WEIGHTS-MAPPED] `count` elements of `path` from byte `offset` as an
+// immutable buffer over a read-only mapping: pages load on first touch and the
+// file stays the only copy. Only input arguments can name it, so no kernel
+// writes it. A file shortened while mapped is outside this contract.
+void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes) {
+  static const char OP[] = "gpuMapFile";
+  if (path == NULL) {
+    osp_io_error_text(OP, NULL, "no path");
+    return NULL;
+  }
+  struct stat status;
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd < 0 || fstat(fd, &status) != 0) {
+    osp_io_error_set(OP, path, errno);
+    if (fd >= 0) (void)close(fd);
+    return NULL;
+  }
+  const char *reason = S_ISREG(status.st_mode) ? unmappable(offset, count, elem_bytes, status.st_size) : "not a regular file";
+  if (reason != NULL) {
+    osp_io_error_text(OP, path, reason);
+    (void)close(fd);
+    return NULL;
+  }
+  void *b = osprey_gpu_alloc(0, elem_bytes);
+  if (b == NULL || count == 0) {
+    (void)close(fd);
+    return b;
+  }
+  int64_t page = sysconf(_SC_PAGESIZE);
+  int64_t skip = offset % page;
+  size_t mapped = (size_t)(((skip + count * elem_bytes - 1) / page + 1) * page);
+  void *base = mmap(NULL, mapped, PROT_READ, MAP_SHARED, fd, (off_t)(offset - skip));
+  int failure = errno;
+  (void)close(fd);
+  if (base == MAP_FAILED) {
+    osp_release(b);
+    osp_io_error_set(OP, path, failure);
+    return NULL;
+  }
+  OspreyGpuBuffer *buffer = (OspreyGpuBuffer *)b;
+  osp_release(buffer->data);
+  buffer->data = (uint8_t *)base + skip;
+  buffer->map_base = base;
+  buffer->map_bytes = mapped;
+  buffer->length = count;
+  return b;
+}
+#else
+void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes) {
+  (void)offset;
+  (void)count;
+  (void)elem_bytes;
+  osp_io_error_text("gpuMapFile", path, "memory-mapped files are not available on this target");
+  return NULL;
+}
+#endif
 
 // The element count. Empty/NULL-safe [GPU-BUFFER-LENGTH].
 int64_t osprey_gpu_len(void *buffer) {

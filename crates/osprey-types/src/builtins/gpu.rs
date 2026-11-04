@@ -87,6 +87,11 @@ pub(super) fn declare(e: &mut TypeEnv) {
     let mut loader = super::Scheme::poly(vec![0], Type::fun(vec![s(), s()], res(buf_t())));
     loader.obligations = vec![("float gpuLoadTensor".into(), t())];
     e.insert("gpuLoadTensor", loader);
+    // [LLM-WEIGHTS-MAPPED] A read-only mapped file region at the numeric type
+    // `T` the program's use pins; the file stays the only copy.
+    let mut mapper = super::Scheme::poly(vec![0], Type::fun(vec![s(), i(), i()], res(buf_t())));
+    mapper.obligations = vec![("numeric gpuMapFile".into(), t())];
+    e.insert("gpuMapFile", mapper);
     // [GPU-DEVICE] The active execution backend's name. Selection between
     // devices arrives with the `Gpu` effect at roadmap stage 5.
     mono(e, "gpuDevice", vec![], s());

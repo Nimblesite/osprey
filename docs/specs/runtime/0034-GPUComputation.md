@@ -80,6 +80,14 @@ let wte = gpuLoad("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu([toFloat32(0.0)])
 wte = gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768) ?: toGpu [toFloat32 0.0]
 ```
 
+### `gpuMapFile(path: string, offset: int, count: int) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-MAPPED]
+
+Maps `count` elements of the file at `path`, starting at byte `offset`, as an immutable buffer of the numeric type `T` the program's use pins. Nothing is read or copied up front: pages load when first touched, and on unified memory the GPU reads those same pages ([LLM-WEIGHTS-MAPPED](../applications/LocalCodingModel.md)). OpenCL devices upload from the mapping. A negative offset or count, an offset that isn't a multiple of the element width, a region past the end of the file, anything but a regular file and a failed map are each an `Error` naming the reason. WASM has no mapping, so it answers an `Error`. `--no-fs` refuses it. Shortening the file while it's mapped is outside this contract.
+
+```osprey
+let weights: Result<GpuBuffer<float32>, Error> = gpuMapFile("weights.bin", 1024, 50257 * 768)
+```
+
 ### `gpuLoadTensor(path: string, name: string) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-TENSOR]
 
 Reads one named tensor out of a [safetensors](https://github.com/huggingface/safetensors/blob/main/README.md) file — the Hugging Face interchange format: an 8-byte little-endian header length `N`, then `N` bytes of JSON mapping each tensor name to its `dtype`, `shape` and `data_offsets`, then the tensor bytes — into a buffer of the float type `T` the program's own use of the result pins (an annotation, a `gpuMatMul` operand, a kernel's element type); `T` is never inferred from the file. The entry is located by its quoted name followed by a colon, so `h.1.attn.weight` never matches inside `h.11.attn.weight`, and the header's entry order is irrelevant: `__metadata__` may come first or last. `data_offsets` are relative to the start of the data section, byte `8 + N`. Four storage types are admitted, each into exactly one element type: `F64` into `float`, `F32` into `float32`, `F16` (binary16, including subnormals, infinities and NaN) into `float16`, and `BF16` (the upper sixteen bits of a binary32) into `float32` by exact widening. A tensor whose `dtype` is not the one `T` admits is `tensor wte.weight is F16, the program asked for float32`, never a silent conversion. The byte span must be a whole number of elements.

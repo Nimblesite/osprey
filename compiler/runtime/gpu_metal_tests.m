@@ -11,17 +11,21 @@
 static unsigned failure, libraries, functions, bound, creations, deallocs;
 static NSUInteger expected_threads = 1;
 static NSUInteger dense_bytes;
+static void *mapped_base;
+static NSUInteger mapped_bytes, mapped_skip;
+static unsigned no_copies;
 // The buffers bound to the encoder since the last commit.
 static NSMutableArray *encoded;
 
 @interface OspreyMockMetal : NSObject
 @property(nonatomic, strong) NSMutableData *data;
+@property(nonatomic, assign) void *mapped;
 @end
 @implementation OspreyMockMetal
 - (NSString *)name { return @"mock Metal"; }
 - (NSUInteger)maxBufferLength { return failure == 10 ? 1 : 1 << 20; }
 - (NSUInteger)maxTotalThreadsPerThreadgroup { return 256; }
-- (void *)contents { return self.data.mutableBytes; }
+- (void *)contents { return self.mapped ? self.mapped : self.data.mutableBytes; }
 - (void)dealloc { if (self.data) deallocs++; }
 - (id)newCommandQueue { return failure == 2 ? nil : [OspreyMockMetal new]; }
 - (id)newLibraryWithSource:(NSString *)source options:(id)options error:(NSError **)error {
@@ -62,13 +66,21 @@ static NSMutableArray *encoded;
   creations++;
   return buffer;
 }
+- (id)newBufferWithBytesNoCopy:(void *)bytes length:(NSUInteger)length options:(MTLResourceOptions)options deallocator:(id)deallocator {
+  assert(bytes == mapped_base && length == mapped_bytes && options == MTLResourceStorageModeShared && deallocator == nil);
+  no_copies++;
+  OspreyMockMetal *buffer = [OspreyMockMetal new];
+  buffer.mapped = bytes;
+  return buffer;
+}
 - (id)commandBuffer { return failure == 7 ? nil : [OspreyMockMetal new]; }
 - (id)computeCommandEncoder { return failure == 8 ? nil : [OspreyMockMetal new]; }
 - (void)setComputePipelineState:(id)pipeline { assert(pipeline); }
 - (void)setBuffer:(id)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index {
-  assert(buffer && !offset && index < OSPREY_GPU_MAX_ARGS);
+  OspreyMockMetal *object = buffer;
+  assert(buffer && offset == (object.mapped ? mapped_skip : 0) && index < OSPREY_GPU_MAX_ARGS);
   bound++;
-  [encoded addObject:buffer];
+  if (!object.mapped) [encoded addObject:buffer];
 }
 - (void)setBytes:(const void *)bytes length:(NSUInteger)length atIndex:(NSUInteger)index {
   assert(bytes && length == 8 && index < OSPREY_GPU_MAX_ARGS);
@@ -96,7 +108,7 @@ id<MTLDevice> MTLCreateSystemDefaultDevice(void) {
 }
 
 static OspreyGpuDispatch product_of(const int64_t *in, int64_t *out, void **in_slot, void **out_slot) {
-  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 1};
   osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, 8, in_slot);
   osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, 8, in_slot);
   osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 2, 8, out_slot);
@@ -113,7 +125,7 @@ static int product(int64_t *out) {
 
 static int compiled(const char *source, int64_t *out, uint64_t threads) {
   int64_t in = 7, fault = 0;
-  OspreyGpuDispatch d = {"osprey_kernel_1", source, {{0, NULL, NULL, 0, NULL, 8}}, 0, threads};
+  OspreyGpuDispatch d = {"osprey_kernel_1", source, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, threads};
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2, 8);
@@ -123,6 +135,34 @@ static int compiled(const char *source, int64_t *out, uint64_t threads) {
   int status = osprey_gpu_metal_dispatch(&d);
   assert(status != 1 || fault == MOCK_MARK);
   return status;
+}
+
+// [LLM-WEIGHTS-MAPPED] A mapped argument becomes one no-copy object over its
+// page-aligned mapping, bound at the region's offset, however many dispatches
+// read it: nothing is uploaded, and the mapping's pages are the object's.
+static void mapped_case(void) {
+  mapped_bytes = 2 * (NSUInteger)getpagesize();
+  mapped_skip = 32;
+  mapped_base = valloc(mapped_bytes);
+  assert(mapped_base);
+  int64_t out[2] = {99, 99};
+  void *slot = NULL;
+  for (unsigned round = 0; round < 3; round++) {
+    OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 1};
+    osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, (char *)mapped_base + mapped_skip, NULL, 2, 8, &slot);
+    d.args[d.count - 1].map_base = mapped_base;
+    d.args[d.count - 1].map_bytes = mapped_bytes;
+    d.args[d.count - 1].map_skip = mapped_skip;
+    osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, out, NULL, 2, 8, NULL);
+    osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2, 8);
+    for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1, 8);
+    unsigned before = creations;
+    assert(osprey_gpu_metal_dispatch(&d) == 1 && slot);
+    assert(no_copies == 1 && creations == before + 2);
+  }
+  assert(((__bridge OspreyMockMetal *)slot).contents == mapped_base);
+  osprey_gpu_metal_release(slot);
+  free(mapped_base);
 }
 
 // A resident buffer is created once however many dispatches bind it (twice
@@ -184,6 +224,7 @@ static void success_case(void) {
   assert(product(out) == 1 && libraries == 2 && functions == 3 && osprey_gpu_metal_completed() == 4);
   assert(strcmp(osprey_gpu_metal_name(), "metal:0 (mock Metal)") == 0);
   resident_case();
+  mapped_case();
   dense_transfers();
 }
 

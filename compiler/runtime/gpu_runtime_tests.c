@@ -34,6 +34,7 @@ int32_t osprey_gpu_in_bounds(void *buffer, int64_t index);
 void osprey_gpu_take(void *buffer, int64_t count);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
 void *osprey_gpu_load_f32(const char *path, int64_t offset, int64_t count);
+void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes);
 void *osprey_gpu_load_tensor(const char *path, const char *name, int64_t elem_bytes);
 int64_t osprey_gpu_elem_bytes(void *buffer);
 const char *osp_io_error(void);
@@ -160,6 +161,7 @@ static void t_take_shrinks_only(void) {
 
 // --- float words and the io_error channel --------------------------------------
 
+#include "memory_hooks.h"
 #include "tensor_file.h"
 #include "tensor_file_tests.h"
 
@@ -358,6 +360,52 @@ static void t_matmul_element_type_errors(void) {
 
 // --- files on disk ---------------------------------------------------------------
 
+// [LLM-WEIGHTS-MAPPED] A mapped buffer reads the file's own bytes at any aligned
+// offset across a page boundary, at every width, and refuses what it can't map.
+static void t_map_file(void) {
+  enum { SIZE = 3 * 16384 + 40 };
+  static unsigned char bytes[SIZE];
+  for (size_t i = 0; i < SIZE; i++) bytes[i] = (unsigned char)(i * 13 + (i >> 8));
+  const char *path = temp_file(bytes, SIZE);
+  static const struct { int64_t offset, count, width; } spans[] = {
+      {0, SIZE, 1},  {1, 1, 1},     {SIZE - 1, 1, 1}, {16384, 16384, 1}, {16380, 8, 2},
+      {16380, 8, 4}, {16376, 8, 8}, {32, 100, 4},     {SIZE - 8, 1, 8},  {0, SIZE / 8, 8},
+  };
+  for (size_t s = 0; s < sizeof spans / sizeof spans[0]; s++) {
+    osp_io_error_clear();
+    void *b = osprey_gpu_map_file(path, spans[s].offset, spans[s].count, spans[s].width);
+    CHECK(b != NULL && osp_io_error() == NULL);
+    CHECK(osprey_gpu_len(b) == spans[s].count && osprey_gpu_elem_bytes(b) == spans[s].width);
+    CHECK(memcmp(osprey_gpu_data(b), bytes + spans[s].offset, (size_t)(spans[s].count * spans[s].width)) == 0);
+    osp_release(b);
+  }
+  void *empty = osprey_gpu_map_file(path, 4, 0, 4);
+  CHECK(empty != NULL && osprey_gpu_len(empty) == 0);
+  osp_release(empty);
+  static const struct { int64_t offset, count, width; const char *reason; } refused[] = {
+      {-1, 1, 4, "a negative offset"},          {0, -1, 4, "a negative element count"},
+      {2, 1, 4, "not a multiple of"},           {0, 1, 3, "element width"},
+      {SIZE, 1, 1, "the file ends before"},     {SIZE - 3, 1, 4, "not a multiple of"},
+      {0, SIZE + 1, 1, "the file ends before"}, {4, INT64_MAX, 4, "the file ends before"},
+      {INT64_MAX - 3, 1, 4, "the file ends before"},
+  };
+  for (size_t r = 0; r < sizeof refused / sizeof refused[0]; r++) {
+    osp_io_error_clear();
+    CHECK(osprey_gpu_map_file(path, refused[r].offset, refused[r].count, refused[r].width) == NULL);
+    CHECK(strstr(osp_io_error(), refused[r].reason) != NULL);
+  }
+  osp_io_error_clear();
+  CHECK(osprey_gpu_map_file("/nonexistent/osprey/weights.bin", 0, 1, 4) == NULL);
+  expect_errno("gpuMapFile: /nonexistent/osprey/weights.bin: ", ENOENT);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_map_file(NULL, 0, 1, 4) == NULL);
+  CHECK(strstr(osp_io_error(), "gpuMapFile") != NULL);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_map_file("/tmp", 0, 1, 4) == NULL);
+  CHECK(strstr(osp_io_error(), "not a regular file") != NULL);
+  (void)unlink(path);
+}
+
 // Raw binary32 words widen exactly — sign of zero, infinities, NaN and a
 // subnormal included — from a byte offset, a short read is an error and count
 // zero is the empty buffer.
@@ -480,6 +528,7 @@ int main(int argc, char **argv) {
   t_matmul_zero_dimensions();
   t_matmul_shape_errors();
   t_load_f32();
+  t_map_file();
   t_tensor_loader(&(TensorLoader){"gpuLoadTensor", osprey_gpu_load_tensor, osprey_gpu_len, at});
   t_tensor_requested_widths();
   t_tensor_mismatch_wording();

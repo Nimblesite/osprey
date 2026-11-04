@@ -78,6 +78,7 @@ const FS_FNS: &[&str] = &[
     "loadTensor",
     "gpuLoadTensor",
     "gpuLoad",
+    "gpuMapFile",
 ];
 pub(crate) const PROCESS_FNS: &[&str] = &["spawnProcess", "awaitProcess", "cleanupProcess"];
 
@@ -167,12 +168,12 @@ mod tests {
         let mut policy = Policy::allow_all();
         policy.fs = false;
         let v = violations(
-            &prog("let b = readFileBytes(\"a\", 0, 1)\nlet c = readFile(\"a.txt\")\nlet w = writeFile(\"b\", c)\nlet t = loadTensor(\"m\", \"w\")\nlet g = gpuLoadTensor(\"m\", \"w\")\nlet r = gpuLoad(\"m\", 0, 1)\n"),
+            &prog("let b = readFileBytes(\"a\", 0, 1)\nlet c = readFile(\"a.txt\")\nlet w = writeFile(\"b\", c)\nlet m: Result<GpuBuffer<float32>, Error> = gpuMapFile(\"m\", 0, 1)\nlet t = loadTensor(\"m\", \"w\")\nlet g = gpuLoadTensor(\"m\", \"w\")\nlet r = gpuLoad(\"m\", 0, 1)\n"),
             policy,
         );
         assert_eq!(
             v.len(),
-            6,
+            7,
             "every builtin that reads or writes a file is gated: {v:?}"
         );
         assert!(v.iter().all(|m| m.contains("--no-fs")));
@@ -183,6 +184,7 @@ mod tests {
             "loadTensor",
             "gpuLoadTensor",
             "gpuLoad",
+            "gpuMapFile",
         ] {
             assert!(v.iter().any(|m| m.contains(f)), "{f} is not gated: {v:?}");
         }

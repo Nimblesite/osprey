@@ -89,6 +89,12 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "let loaded: Result<GpuBuffer<float32>, Error> = gpuLoadTensor(\"model.safetensors\", \"wte.weight\")\nmatch loaded {\n    Success { value } => print(\"${gpuLength(value)} values\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
+        "gpuMapFile",
+        "Maps count elements of a file, starting at a byte offset, as a read-only `GpuBuffer` of the requested numeric type. Nothing is copied: on unified memory the GPU reads the file's own pages.",
+        ["path" => "The file to map", "offset" => "The byte offset, a multiple of the element width", "count" => "How many elements to map"],
+        "let weights: Result<GpuBuffer<float32>, Error> = gpuMapFile(\"weights.bin\", 0, 1024)\nprint(\"mapped\")"
+    ),
+    builtin_doc!(
         "gpuDevice",
         "Returns the name of the backend GPU kernels and products run on: \"host\", or the adapter OSPREY_GPU selected, such as \"metal:0 (Apple M4 Max)\" or \"opencl:0 (Apple M4 Max)\".",
         [],
