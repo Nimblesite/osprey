@@ -301,7 +301,7 @@ def entropy(logits):
 
 
 def entropy_term(x):
-    return toFloat32(0.0) if x == neg_inf() else (toFloat32(0.0) - x) * exp(x)
+    return 0.0 if x == neg_inf() else (0.0 - x) * exp(x)
 
 
 def sort_indices_by(values):
@@ -380,7 +380,7 @@ def min_p_warper(p, fv, m, scores):
 
 
 def typical_warper(mass, fv, m, scores):
-    shifted = mapList(log_softmax(scores), lambda x: abs((toFloat32(0.0) - x) - entropy(scores)))
+    shifted = mapList(log_softmax(scores), lambda x: abs((0.0 - x) - entropy(scores)))
     idx = sort_indices_by(shifted)
     sorted_shifted = mapList(idx, lambda j: score_at(shifted, j))
     sorted_logits = mapList(idx, lambda j: score_at(scores, j))
@@ -400,7 +400,7 @@ def epsilon_warper(e, fv, m, scores):
 
 
 def eta_warper(e, fv, m, scores):
-    return below_cutoff(min_f(e, sqrt(e) * exp(toFloat32(0.0) - entropy(scores))), fv, m, scores)
+    return below_cutoff(min_f(e, sqrt(e) * exp(0.0 - entropy(scores))), fv, m, scores)
 
 
 def below_cutoff(limit, fv, m, scores):
@@ -428,7 +428,7 @@ def masked(scores, ids):
 
 def forced(scores, ids):
     """A row that allows only the listed token ids: 0 for them, -inf elsewhere."""
-    return toList(map(range(len(scores)), lambda i: toFloat32(0.0) if contains_int(ids, i) else neg_inf()))
+    return toList(map(range(len(scores)), lambda i: 0.0 if contains_int(ids, i) else neg_inf()))
 
 
 def no_repeat_warper(n, ids, scores):
