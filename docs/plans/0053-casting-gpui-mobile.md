@@ -58,3 +58,4 @@ Both:
 Windows:
 
 - [ ] Finish the audit above. Until then casting stays on `hosts/winui`, whose pictures in `examples/casting/goldens/windows` must match the current scene.
+- [ ] Recapture `examples/casting/goldens/windows/150` on a 150% display: CI's runner draws at 100%, so only `100` was refreshed after the shared scene changed.
