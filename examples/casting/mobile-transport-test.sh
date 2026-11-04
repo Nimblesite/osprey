@@ -69,8 +69,11 @@ do {
     _ = castRead(handle, 1, 3000)
     try require(castStatus(handle) == 2, "peer EOF")
     try require(castClose(handle) == 0 && castClose(handle) == -1, "close and duplicate close")
-    let route = "127.0.0.1".withCString { castRoute($0, 8009).map { String(cString: $0) } }
-    try require(route == "127.0.0.1", "local route")
+    // [CAST-MOBILE-ROUTE] The shared HTTP media server binds IPv4, including dual-stack names.
+    for host in ["127.0.0.1", "localhost"] {
+        let route = host.withCString { castRoute($0, 8009).map { String(cString: $0) } }
+        try require(route == "127.0.0.1", "IPv4 media-server route for \(host): \(route ?? "nil")")
+    }
     print("PASS: connection refusal, TLS rejection, handshake, partial-read timeout, retained bytes, write, EOF, cleanup and route")
 } catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
 SWIFT

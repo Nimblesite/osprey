@@ -280,7 +280,7 @@ def failure_cases(l):
         Check.equal("fail.stop_all", outcome(Cast.stop_all(refused), lambda xs: join(xs, ",")), f"error 127.0.0.1:{l.port + 9}: connection refused or timed out"),
         Check.equal("fail.start", outcome(Player.begin(refused, f"{l.dir}/song.mp3", 0), lambda p: p.transport), f"error 127.0.0.1:{l.port + 9}: connection refused or timed out"),
         Check.equal("fail.no_route", outcome(Media.media_url(f"{l.dir}/song.mp3", "no-such-host.invalid"), lambda m: m.url), "error no-such-host.invalid: no route to the device"),
-        Check.equal("fail.no_file", outcome(Media.media_url(f"{l.dir}/missing.mp3", "127.0.0.1"), lambda m: m.url), f"error {l.dir}/missing.mp3: cannot serve the file (-2)"),
+        Check.equal("fail.no_file", outcome(Media.media_url(f"{l.dir}/missing.mp3", "127.0.0.1"), lambda m: m.url), "error Cannot open missing.mp3. Choose the file again."),
     ]
 
 

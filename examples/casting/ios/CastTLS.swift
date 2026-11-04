@@ -170,10 +170,25 @@ func castClose(_ handle: Int64) -> Int64 {
     return 0
 }
 
+// [CAST-MOBILE-ROUTE] Resolve the family supported by the shared HTTP media listener.
+private func mediaHost(_ host: UnsafePointer<CChar>) -> NWEndpoint.Host? {
+    var hints = addrinfo()
+    hints.ai_family = AF_INET
+    hints.ai_socktype = SOCK_DGRAM
+    var result: UnsafeMutablePointer<addrinfo>?
+    guard getaddrinfo(host, nil, &hints, &result) == 0, let result else { return nil }
+    defer { freeaddrinfo(result) }
+    var address = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+    guard getnameinfo(result.pointee.ai_addr, result.pointee.ai_addrlen, &address,
+                      socklen_t(address.count), nil, 0, NI_NUMERICHOST) == 0 else { return nil }
+    return NWEndpoint.Host(String(decoding: address.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self))
+}
+
 @_cdecl("osprey_net_local_address")
 func castRoute(_ host: UnsafePointer<CChar>?, _ port: Int64) -> UnsafePointer<CChar>? {
-    guard let host, port > 0, port <= 65535, let endpoint = NWEndpoint.Port(rawValue: UInt16(port)) else { return CastTLS.shared.text("") }
-    let connection = NWConnection(host: NWEndpoint.Host(String(cString: host)), port: endpoint, using: .udp)
+    guard let host, port > 0, port <= 65535, let endpoint = NWEndpoint.Port(rawValue: UInt16(port)),
+          let destination = mediaHost(host) else { return CastTLS.shared.text("") }
+    let connection = NWConnection(host: destination, port: endpoint, using: .udp)
     let ready = DispatchSemaphore(value: 0)
     connection.stateUpdateHandler = { state in
         switch state { case .ready, .failed, .cancelled: ready.signal(); default: break }

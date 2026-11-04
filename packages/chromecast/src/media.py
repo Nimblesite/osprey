@@ -61,6 +61,18 @@ def served(address, port, folder):
         return Served(url=f"http://{address}:{port}/media", port=port, folder="", content_type="audio/mpeg")
 
 
+def serve_failure(path, reason):
+    """A readable sharing failure: keep the private folder out of the player UI."""
+    if reason == -2:
+        return f"Cannot open {base_name(path)}. Choose the file again."
+    elif reason == -4:
+        return "Cannot share audio on this network."
+    elif reason == -3:
+        return "Audio sharing is busy. Stop and retry."
+    else:
+        return "Cannot start audio sharing. Try again."
+
+
 def media_url(path, host) -> Result[Served, str]:
     """Serves `path` on the interface that routes to `host`, as a visualiser
     video when it can be rendered, and returns what was served."""
@@ -71,7 +83,7 @@ def media_url(path, host) -> Result[Served, str]:
         return Error(message=f"{host}: no route to the device")
     elif port < 1:
         _dropped = perform(Wire.Wire.unrender(folder)) if folder != "" else 0
-        return Error(message=f"{path}: cannot serve the file ({port})")
+        return Error(message=serve_failure(path, port))
     else:
         return Success(value=served(address, port, folder))
 
