@@ -38,6 +38,26 @@ fn pattern_ctor<'a>(cg: &Codegen, p: &'a Pattern) -> Option<(&'a str, Vec<String
             sub_patterns.iter().map(binder_name).collect(),
             BindMode::BySlot,
         )),
+        Pattern::Constructor {
+            name,
+            fields,
+            sub_patterns,
+        } if !sub_patterns.is_empty() => {
+            let view = cg.ctor_layout(name)?;
+            let binders = view
+                .fields
+                .iter()
+                .map(|(label, _)| {
+                    fields
+                        .iter()
+                        .position(|field| field == label)
+                        .and_then(|index| sub_patterns.get(index))
+                        .map(binder_name)
+                        .unwrap_or_default()
+                })
+                .collect();
+            Some((name, binders, BindMode::BySlot))
+        }
         Pattern::Constructor { name, fields, .. } => Some((name, fields.clone(), BindMode::ByName)),
         Pattern::Binding(name) if cg.is_ctor(name) => Some((name, Vec::new(), BindMode::BySlot)),
         _ => None,

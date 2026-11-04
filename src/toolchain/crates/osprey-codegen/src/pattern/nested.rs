@@ -136,6 +136,9 @@ fn field_patterns(fields: &[String], patterns: &[Pattern]) -> (Vec<Pattern>, uni
     if fields.is_empty() {
         return (patterns.to_vec(), union::BindMode::BySlot);
     }
+    if !patterns.is_empty() {
+        return (patterns.to_vec(), union::BindMode::ByName);
+    }
     let named = fields
         .iter()
         .map(|name| {

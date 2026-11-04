@@ -188,7 +188,7 @@ impl Resolver {
                     // `value`, `message` and the `?:` payload are field labels
                     // the checker types by name ([PATTERN-RESULT-DEFAULT]), so
                     // they keep their spelling and shadow by scope alone.
-                    for binder in &*fields {
+                    for binder in fields.iter().filter(|_| sub_patterns.is_empty()) {
                         let _ = scope.insert(binder.clone(), binder.clone());
                     }
                 } else if let Some(order) = self
@@ -198,13 +198,16 @@ impl Resolver {
                 {
                     *sub_patterns = order
                         .iter()
-                        .map(|field| {
-                            if fields.contains(field) {
-                                Pattern::Binding(field.clone())
-                            } else {
-                                Pattern::Wildcard
-                            }
-                        })
+                        .map(
+                            |field| match fields.iter().position(|label| label == field) {
+                                Some(index) if !sub_patterns.is_empty() => sub_patterns
+                                    .get(index)
+                                    .cloned()
+                                    .unwrap_or(Pattern::Wildcard),
+                                Some(_) => Pattern::Binding(field.clone()),
+                                None => Pattern::Wildcard,
+                            },
+                        )
                         .collect();
                     fields.clear();
                 }

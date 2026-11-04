@@ -12,7 +12,9 @@ pub(crate) fn pattern_names(pattern: &Pattern, names: &mut BTreeSet<String>) {
             sub_patterns,
             ..
         } => {
-            names.extend(fields.iter().cloned());
+            if sub_patterns.is_empty() {
+                names.extend(fields.iter().cloned());
+            }
             for nested in sub_patterns {
                 pattern_names(nested, names);
             }

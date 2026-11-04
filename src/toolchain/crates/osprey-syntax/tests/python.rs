@@ -574,11 +574,23 @@ fn python_variant_construction_and_patterns_equal_default_ast() {
 
 #[test]
 fn python_variant_pattern_renames_bind_the_written_name() {
-    // A `field = binder` keyword pattern with a differing binder lowers to the
-    // field bound under its own name plus a `let binder = field` arm prefix.
-    equal(
-        "type Shape = Circle { r: float } | Square { side: float }\nfn area(shape) = match shape { Circle { r } => 3.0 * r * r\n Square { side } => { let x = side\n x * x } }\n",
-        "@union\nclass Shape:\n    class Circle:\n        r: float\n    class Square:\n        side: float\ndef area(shape):\n    match shape:\n        case Circle(r=r):\n            return 3.0 * r * r\n        case Square(side=x):\n            return x * x\n",
+    // Labels select slots; only the written binders enter scope.
+    let arms = python_match_arms("@union\nclass Shape:\n    class Circle:\n        r: float\n    class Square:\n        side: float\ndef area(shape):\n    match shape:\n        case Circle(r=r):\n            return 3.0 * r * r\n        case Square(side=x):\n            return x * x\n");
+    let patterns = arms.into_iter().map(|arm| arm.pattern).collect::<Vec<_>>();
+    assert_eq!(
+        patterns,
+        vec![
+            osprey_ast::Pattern::Constructor {
+                name: "Circle".into(),
+                fields: vec!["r".into()],
+                sub_patterns: vec![]
+            },
+            osprey_ast::Pattern::Constructor {
+                name: "Square".into(),
+                fields: vec!["side".into()],
+                sub_patterns: vec![osprey_ast::Pattern::Binding("x".into())]
+            },
+        ]
     );
 }
 
@@ -727,9 +739,22 @@ fn python_pep695_function_type_parameters_equal_default_ast() {
 
 #[test]
 fn python_result_pattern_renames_bind_the_written_name() {
-    equal(
-        "fn read(text) = match parseInt(text) { Success { value } => { let v = value\n v }\n Error { message } => 0 }\n",
-        "def read(text):\n    match parseInt(text):\n        case Success(value=v):\n            return v\n        case Error(message=message):\n            return 0\n",
+    let arms = python_match_arms("def read(text):\n    match parseInt(text):\n        case Success(value=v):\n            return v\n        case Error(message=message):\n            return 0\n");
+    let patterns = arms.into_iter().map(|arm| arm.pattern).collect::<Vec<_>>();
+    assert_eq!(
+        patterns,
+        vec![
+            osprey_ast::Pattern::Constructor {
+                name: "Success".into(),
+                fields: vec!["value".into()],
+                sub_patterns: vec![osprey_ast::Pattern::Binding("v".into())]
+            },
+            osprey_ast::Pattern::Constructor {
+                name: "Error".into(),
+                fields: vec!["message".into()],
+                sub_patterns: vec![]
+            },
+        ]
     );
 }
 

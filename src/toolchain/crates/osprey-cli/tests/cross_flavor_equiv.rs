@@ -345,3 +345,72 @@ print(f"{numbers[0]}:{numbers[1]}:{words["answer"]}:{identity(True)}:{parsed("42
         "Success(7):Success(9):Success(seven):true:42:0:9:Success(a:b):Error(split: separator must not be empty)\n",
     );
 }
+
+/// [FLAVOR-PYTHON-CLASS] A field label never introduces a hidden source binding.
+#[test]
+fn python_named_pattern_aliases_preserve_nested_and_sibling_values() {
+    let source = r#"class Issue:
+    issues: list[str]
+def combine(first, rest):
+    match rest:
+        case Issue(issues=issues):
+            match first:
+                case Issue(issues=earlier):
+                    return join(listConcat(earlier, issues), ":")
+class Pair:
+    first: str
+    second: str
+def siblings(items):
+    match items:
+        case [Issue(issues=left), Issue(issues=right)]:
+            return join(listConcat(left, right), ":")
+        case _:
+            return "different"
+def retained(issues, item):
+    match item:
+        case Issue(issues=alias):
+            callback = lambda suffix: join(listConcat(listConcat(issues, alias), [suffix]), ":")
+            return callback("tail")
+def reordered(pair):
+    match pair:
+        case Pair(second=right, first=left):
+            return left + ":" + right
+def partial(pair):
+    match pair:
+        case Pair(second=right):
+            return right
+def result_alias(value, result):
+    match result:
+        case Success(value=inside):
+            return value + ":" + inside
+        case Error(message=inside):
+            return value + ":error:" + inside
+def ignored(item):
+    match item:
+        case Issue(issues=_):
+            return "ignored"
+def main():
+    left = Issue(issues=["left"])
+    right = Issue(issues=["right"])
+    pair = Pair(first="first", second="second")
+    print(f"{combine(left, right)}:{combine(right, left)}|{siblings([left, right])}|{siblings([right, left])}|{siblings([])}|{retained(["outer"], right)}|{reordered(pair)}|{partial(pair)}|{result_alias("outer", Success(value="inner"))}|{result_alias("outer", Error(message="bad"))}|{ignored(left)}")
+"#;
+    effect_execution::assert_flavored_output(
+        "python_pattern_alias",
+        "py",
+        source,
+        "left:right:right:left|left:right|right:left|different|outer:right:tail|first:second|second|outer:inner|outer:error:bad|ignored\n",
+    );
+    for (name, source, diagnostic) in [
+        ("unknown_field", "class Item:\n    value: int\ndef read(item):\n    match item:\n        case Item(missing=other):\n            return other\nprint(read(Item(value=1)))\n", "unknown pattern field `missing`"),
+        ("duplicate_field", "class Item:\n    value: int\ndef read(item):\n    match item:\n        case Item(value=left, value=right):\n            return left + right\nprint(read(Item(value=1)))\n", "duplicate pattern field `value`"),
+        ("result_field", "def read(item):\n    match item:\n        case Success(message=other):\n            return other\n        case Error():\n            return 0\nprint(read(Success(value=1)))\n", "expected pattern field `value`"),
+    ] {
+        for memory in ["gc", "arc"] {
+            let output = effect_execution::execute(name, "py", source, memory).expect("run rejected pattern");
+            assert!(!output.status.success(), "{name}/{memory} accepted an invalid pattern");
+            assert!(output.stdout.is_empty(), "{name}/{memory} ran invalid source");
+            assert!(String::from_utf8_lossy(&output.stderr).contains(diagnostic), "{name}/{memory}: {}", String::from_utf8_lossy(&output.stderr));
+        }
+    }
+}

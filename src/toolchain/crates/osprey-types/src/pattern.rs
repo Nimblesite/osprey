@@ -373,6 +373,10 @@ impl Checker {
         disc: &Type,
         local: &mut TypeEnv,
     ) {
+        if !fields.is_empty() && !sub_patterns.is_empty() {
+            self.bind_named_aliases(name, fields, sub_patterns, disc, local);
+            return;
+        }
         // `Success { value }` / `Error { message }` over a real `Result` always
         // bind the built-in variant's fields, even when a user union shadows
         // those constructor names.
@@ -419,6 +423,57 @@ impl Checker {
             let field_ty = declared.get(i).map(|(_, t)| t.clone());
             let target = field_ty.unwrap_or_else(|| self.ctx.fresh());
             self.bind_pattern(sub, &target, local);
+        }
+    }
+
+    /// Named field labels select payloads; only written binders enter scope.
+    fn bind_named_aliases(
+        &mut self,
+        name: &str,
+        fields: &[String],
+        patterns: &[Pattern],
+        disc: &Type,
+        local: &mut TypeEnv,
+    ) {
+        if is_result_variant(name)
+            && (is_result(&self.ctx.expose(disc))
+                || self
+                    .ctors
+                    .get(name)
+                    .is_some_and(|ctor| ctor.owner == names::RESULT))
+        {
+            let expected = if name == names::SUCCESS {
+                "value"
+            } else {
+                "message"
+            };
+            if fields != [expected] {
+                self.errors.push(TypeError::new(format!(
+                    "expected pattern field `{expected}` on `{name}`"
+                )));
+            }
+            let binders = patterns
+                .iter()
+                .flat_map(pattern_binder_names)
+                .collect::<Vec<_>>();
+            self.bind_result_fields(name, &binders, disc, local);
+            return;
+        }
+        let Some((args, declared, owner, record)) = self.ctor_instance(name) else {
+            self.errors.push(TypeError::new(format!(
+                "unknown constructor `{name}` in match pattern"
+            )));
+            return;
+        };
+        let owner_ty = ctor_owner_ty(owner, args, declared.iter().cloned().collect(), record);
+        self.push_unify(&owner_ty, disc);
+        for (label, pattern) in fields.iter().zip(patterns) {
+            match declared.iter().find(|(field, _)| field == label) {
+                Some((_, ty)) => self.bind_pattern(pattern, ty, local),
+                None => self.errors.push(TypeError::new(format!(
+                    "unknown pattern field `{label}` on `{name}`"
+                ))),
+            }
         }
     }
 
@@ -724,6 +779,7 @@ pub(crate) fn pattern_binders_where(
             ..
         } => fields
             .iter()
+            .filter(|_| sub_patterns.is_empty())
             .cloned()
             .chain(
                 sub_patterns

@@ -26,7 +26,7 @@ pub(super) fn bind_pattern(
             sub_patterns,
         } => {
             let constructor = pattern_owner(name, value, owner);
-            for field in fields {
+            for field in fields.iter().filter(|_| sub_patterns.is_empty()) {
                 let _ = env.shadowed.insert(field.clone());
                 let projected = value.and_then(|value| {
                     // `Success` carries its payload in the result slot under
@@ -49,10 +49,14 @@ pub(super) fn bind_pattern(
                 }
             }
             for (position, sub_pattern) in sub_patterns.iter().enumerate() {
-                let field = index
-                    .constructors
-                    .get(name)
-                    .and_then(|fields| fields.get(position));
+                let field = if fields.is_empty() {
+                    index
+                        .constructors
+                        .get(name)
+                        .and_then(|fields| fields.get(position))
+                } else {
+                    fields.get(position)
+                };
                 let projected = value.and_then(|value| {
                     // A positional ML binder is the same payload: `Success`
                     // is a builtin, so the constructor table has no field

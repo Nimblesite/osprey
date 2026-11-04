@@ -2,14 +2,8 @@
 //! Implements [FLAVOR-PYTHON-EXPRESSIONS], [FLAVOR-PYTHON-TYPING],
 //! [FLAVOR-PYTHON-CLASS].
 use super::context::{children, position, Lowerer, Result};
-use osprey_ast::{Expr, MatchArm, Pattern, Stmt};
+use osprey_ast::{Expr, MatchArm, Pattern};
 use tree_sitter::Node;
-
-/// A constructor-field renaming: the field `field` is bound to the written
-/// name `binder`, which the canonical constructor pattern cannot spell (its
-/// named fields bind under their own names). The frontend binds the field
-/// under its own name and prepends `let binder = field` to the arm body.
-type Renames = Vec<(String, String)>;
 
 impl Lowerer<'_> {
     pub(super) fn matching(&mut self, node: Node<'_>, tail: bool) -> Result<Expr> {
@@ -24,26 +18,22 @@ impl Lowerer<'_> {
     fn match_arm(&mut self, node: Node<'_>, tail: bool) -> Result<MatchArm> {
         self.reject_field(node, "guard")?;
         self.scoped(false, |lowerer| {
-            let mut renames = Vec::new();
-            let pattern = lowerer.pattern(Self::first(node)?, &mut renames)?;
+            let pattern = lowerer.pattern(Self::first(node)?)?;
             let body = lowerer.suite(Self::field(node, "consequence")?, tail)?;
             Ok(MatchArm {
                 pattern,
-                body: crate::desugar::positioned(
-                    with_renames(body, &renames),
-                    Some(position(node)),
-                ),
+                body: crate::desugar::positioned(body, Some(position(node))),
             })
         })
     }
 
-    fn pattern(&mut self, node: Node<'_>, renames: &mut Renames) -> Result<Pattern> {
+    fn pattern(&mut self, node: Node<'_>) -> Result<Pattern> {
         match node.kind() {
             "case_pattern" if self.text(node) == "_" => Ok(Pattern::Wildcard),
-            "case_pattern" => self.pattern(Self::first(node)?, renames),
+            "case_pattern" => self.pattern(Self::first(node)?),
             "dotted_name" | "identifier" => self.capture(node),
-            "class_pattern" => self.constructor_pattern(node, renames),
-            "list_pattern" => self.list_pattern(node, renames),
+            "class_pattern" => self.constructor_pattern(node),
+            "list_pattern" => self.list_pattern(node),
             "true" | "false" | "integer" | "float" | "string" => self.literal_pattern(node),
             _ => self.unsupported(node),
         }
@@ -73,9 +63,9 @@ impl Lowerer<'_> {
         Ok(Pattern::Literal(Box::new(expr)))
     }
 
-    fn constructor_pattern(&mut self, node: Node<'_>, renames: &mut Renames) -> Result<Pattern> {
+    fn constructor_pattern(&mut self, node: Node<'_>) -> Result<Pattern> {
         let name = Self::first(node)?;
-        let (fields, sub_patterns) = self.constructor_fields(node, renames)?;
+        let (fields, sub_patterns) = self.constructor_fields(node)?;
         Ok(Pattern::Constructor {
             name: self.text(name).replace('.', "::"),
             fields,
@@ -83,52 +73,58 @@ impl Lowerer<'_> {
         })
     }
 
-    fn constructor_fields(
-        &mut self,
-        node: Node<'_>,
-        renames: &mut Renames,
-    ) -> Result<(Vec<String>, Vec<Pattern>)> {
+    fn constructor_fields(&mut self, node: Node<'_>) -> Result<(Vec<String>, Vec<Pattern>)> {
         let mut fields = Vec::new();
         let mut sub_patterns = Vec::new();
         for child in children(node).into_iter().skip(1) {
             let inner = Self::first(child)?;
             if inner.kind() == "keyword_pattern" {
-                fields.push(self.field_pattern(inner, renames)?);
+                let (field, binder) = self.field_pattern(inner)?;
+                if fields.contains(&field) {
+                    return Err(Self::error(
+                        inner,
+                        format!("duplicate pattern field `{field}`"),
+                    ));
+                }
+                fields.push(field);
+                sub_patterns.push(binder);
             } else {
-                sub_patterns.push(self.pattern(child, renames)?);
+                sub_patterns.push(self.pattern(child)?);
             }
         }
-        if !fields.is_empty() && !sub_patterns.is_empty() {
+        if !fields.is_empty() && fields.len() != sub_patterns.len() {
             return self.unsupported(node);
+        }
+        if !fields.is_empty()
+            && fields.iter().zip(&sub_patterns).all(
+                |(field, pattern)| matches!(pattern, Pattern::Binding(binder) if binder == field),
+            )
+        {
+            sub_patterns.clear();
         }
         Ok((fields, sub_patterns))
     }
 
-    /// A `field = binder` keyword pattern. The canonical constructor pattern
-    /// binds each named field under its own name, so a differing binder is a
-    /// rename performed in the arm body ([FLAVOR-PYTHON-CLASS]).
-    fn field_pattern(&mut self, node: Node<'_>, renames: &mut Renames) -> Result<String> {
-        let parts = children(node);
-        let [field, binder] = parts.as_slice() else {
-            return self.unsupported(node);
-        };
-        if !matches!(binder.kind(), "identifier" | "dotted_name") {
+    /// Preserve labels separately from source binders. [FLAVOR-PYTHON-CLASS]
+    fn field_pattern(&mut self, node: Node<'_>) -> Result<(String, Pattern)> {
+        let field = Self::first(node)?;
+        let binder = node
+            .child(node.child_count().saturating_sub(1))
+            .ok_or_else(|| Self::error(node, "missing pattern binder"))?;
+        let pattern = if self.text(binder) == "_" {
+            Pattern::Wildcard
+        } else if matches!(binder.kind(), "identifier" | "dotted_name") {
+            self.capture(binder)?
+        } else {
             return Err(Self::error(
-                *binder,
-                "a nested pattern cannot destructure a variant field; bind it and match in a second expression",
+                binder,
+                "bind a variant field before matching a nested pattern",
             ));
-        }
-        let field_name = self.text(*field).to_owned();
-        let binder_name = self.text(*binder).to_owned();
-        self.bind(*field, false)?;
-        if binder_name != field_name {
-            self.bind(*binder, false)?;
-            renames.push((field_name.clone(), binder_name));
-        }
-        Ok(field_name)
+        };
+        Ok((self.text(field).to_owned(), pattern))
     }
 
-    fn list_pattern(&mut self, node: Node<'_>, renames: &mut Renames) -> Result<Pattern> {
+    fn list_pattern(&mut self, node: Node<'_>) -> Result<Pattern> {
         let mut elements = Vec::new();
         let mut rest = None;
         for child in children(node) {
@@ -141,7 +137,7 @@ impl Lowerer<'_> {
                 self.bind(name, false)?;
                 rest = Some(self.text(name).into());
             } else {
-                elements.push(self.pattern(child, renames)?);
+                elements.push(self.pattern(child)?);
             }
         }
         Ok(Pattern::List { elements, rest })
@@ -155,31 +151,6 @@ impl Lowerer<'_> {
             ));
         }
         Ok(())
-    }
-}
-
-/// Wraps the arm body in a block that first binds each renamed field to the
-/// binder the source wrote. The body block stays intact, so a one-statement
-/// arm keeps its own position and coverage still counts its line.
-fn with_renames(body: Expr, renames: &[(String, String)]) -> Expr {
-    if renames.is_empty() {
-        return body;
-    }
-    let statements = renames
-        .iter()
-        .map(|(field, binder)| Stmt::Let {
-            name: binder.clone(),
-            mutable: false,
-            ty: None,
-            value: Expr::Identifier(field.clone()),
-            doc: None,
-            position: None,
-        })
-        .collect();
-    Expr::Block {
-        statements,
-        value: Some(Box::new(body)),
-        position: None,
     }
 }
 

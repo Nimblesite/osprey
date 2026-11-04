@@ -31,7 +31,9 @@ impl Resolver<'_> {
                 sub_patterns,
             } => {
                 self.rewrite_constructor_name(name, context, "destructured");
-                locals.values.extend(fields.iter().cloned());
+                if sub_patterns.is_empty() {
+                    locals.values.extend(fields.iter().cloned());
+                }
                 for nested in sub_patterns {
                     self.rewrite_pattern(nested, context, locals);
                 }

@@ -795,7 +795,8 @@ pub enum Pattern {
         name: String,
         /// Bound field names (`{ a, b }` form).
         fields: Vec<String>,
-        /// Positional sub-patterns (`Ctor(p, ...)` form).
+        /// Positional sub-patterns (`Ctor(p, ...)`), or binders aligned with
+        /// `fields` for explicitly named aliases (`Ctor(field=binder)`).
         sub_patterns: Vec<Pattern>,
     },
     /// `value: Int` type-annotated binding.

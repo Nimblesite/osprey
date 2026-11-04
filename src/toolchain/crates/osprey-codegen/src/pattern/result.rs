@@ -202,8 +202,21 @@ fn emit_result_body(
         return Ok(());
     };
     emit_arm(cg, arm, phi_in, |cg| {
-        if let Pattern::Constructor { fields, .. } = &arm.pattern {
-            if let Some(f) = fields.first() {
+        if let Pattern::Constructor {
+            fields,
+            sub_patterns,
+            ..
+        } = &arm.pattern
+        {
+            let binder = if sub_patterns.is_empty() {
+                fields.first()
+            } else {
+                sub_patterns.first().and_then(|pattern| match pattern {
+                    Pattern::Binding(name) => Some(name),
+                    _ => None,
+                })
+            };
+            if let Some(f) = binder {
                 bind_value(cg, f.clone(), bound);
             }
         } else if let (false, Some(disc)) = (is_result_arm(&arm.pattern), disc) {

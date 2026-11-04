@@ -162,7 +162,11 @@ pub(crate) fn pattern_bindings(p: &Pattern) -> Vec<String> {
             sub_patterns,
             ..
         } => {
-            let mut names = fields.clone();
+            let mut names = if sub_patterns.is_empty() {
+                fields.clone()
+            } else {
+                Vec::new()
+            };
             for sp in sub_patterns {
                 names.extend(pattern_bindings(sp));
             }
