@@ -7,3 +7,6 @@ date,device,load_avg,rows,inner,cols,dispatches,seconds,gop_per_s,note
 2026-11-05,Apple M4 Max,20,64,5120,17408,10,1.19,47.9,standalone best tiled kernel (tile=64); tiling slower so rejected
 2026-11-05,Apple M4 Max,15,1,5120,17408,1200,1.94,91.8,[LLM-DISPATCH-BATCH] gpuMatMul batched into one command buffer with one read at the end; slope between 100 and 1300 dispatches (process start excluded); 1.62 ms per product vs 3.4 before and 2.7 standalone unbatched
 2026-11-05,Apple M4 Max,17,1,5120,5120,2000,3.78,13.9,2000-step dependent chain batched; the same chain with a gpuGet after every step took 4.17-4.87 s; the small 5120-thread grid is the cost here, not dispatch
+2026-11-05,Apple M4 Max,13,1,5120,17408,100,0.09,198,Q4_K matvec as a compiled Osprey kernel (gpuMap over 17408 rows; decode in-kernel; 50 MB random Q4_K blocks mapped as uint8); slope between 20 and 120 batched dispatches; bit-exact with numpy on host and Metal
+2026-11-05,Apple M4 Max,15,1,5120,17408,400,0.78,91,same kernel; slope between 120 and 520 batched dispatches (1.95 ms each); take this as the conservative figure
+2026-11-05,Apple M4 Max,16,1,5120,17408,400,0.90,79,same kernel with float16FromBits decoded in-kernel (device form added today); slope between 120 and 520 batched dispatches (2.25 ms each); src/osprey/examples/llms/qwen/speed/q4k_matvec.osp

@@ -55,8 +55,8 @@ target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
 # no git.
 .SECONDEXPANSION:
 LOCAL_REGISTRY_SOURCES = $(shell git ls-files src/osprey/packages | grep -v '^src/osprey/packages/manager/')
-target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
-	scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
+target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
+	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
 _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/local-registry.stamp target/workbench.wasm
@@ -70,7 +70,7 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-regi
 	$(RM) "$$DEST/workbench"; $(MKDIR) "$$DEST/workbench"; \
 	cp -R src/osprey/workbench/lessons "$$DEST/workbench/"; \
 	cp -R src/osprey/workbench/assets/. "$$DEST/workbench/"; \
-	python3 scripts/workbench-proof-assets.py "$$DEST/workbench"; \
+	python3 scripts/proof/workbench-proof-assets.py "$$DEST/workbench"; \
 	cp src/toolchain/website/src/assets/images/logo.png "$$DEST/workbench/osprey-logo.png"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
@@ -90,7 +90,7 @@ _vsix_verify:
 	done
 	diff -qr src/osprey/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
 	diff -qr -x lessons -x osprey-logo.png -x proof-libraries src/osprey/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
-	python3 scripts/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
+	python3 scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
 	cmp src/toolchain/website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
 	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
 

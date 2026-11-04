@@ -36,8 +36,8 @@ name: CI
 # calls the Windows, GPUI and WinUI workflows as jobs, so every check on a PR
 # sits under that one root job. It runs `if: always()` and fails when any job
 # it needs failed or was cancelled. A new job goes into its `needs:` list;
-# scripts/ci-scope.test.mjs fails if one is missing, and
-# scripts/verify-branch-protection.mjs checks the ruleset and the root job.
+# scripts/ci/ci-scope.test.mjs fails if one is missing, and
+# scripts/ci/verify-branch-protection.mjs checks the ruleset and the root job.
 #
 # Skipping a job via an `if:` condition reports it as "skipped", which the root
 # job treats as PASSING — so a website-only PR still merges. Do NOT give
@@ -80,7 +80,7 @@ jobs:
         id: filter
 
       - name: Change detection contracts
-        run: node --test scripts/ci-scope.test.mjs
+        run: node --test scripts/ci/ci-scope.test.mjs
 
       - name: Install benchmark harness shell
         if: steps.filter.outputs.benchmarks == 'true' || steps.filter.outputs.code == 'true'
@@ -100,7 +100,7 @@ jobs:
       - name: Branch protection intact
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/verify-branch-protection.mjs
+        run: node scripts/ci/verify-branch-protection.mjs
 
   # ═══ STAGE 1 ════════════════════════════════════════════════════════════════
   # Every artifact the test stage consumes. Nothing here executes a test suite
@@ -214,8 +214,8 @@ jobs:
       # through links in .claude/skills.
       - name: Every skill is linked for Claude Code
         run: |
-          node --test scripts/link-skills.test.mjs
-          node scripts/link-skills.mjs --check .
+          node --test scripts/ci/link-skills.test.mjs
+          node scripts/ci/link-skills.mjs --check .
 
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
@@ -231,7 +231,7 @@ jobs:
       # there. It is a step in an existing job, which the root `ci` job
       # already needs.
       - name: Make node dependency guard intact
-        run: node scripts/verify-node-deps-guard.mjs
+        run: node scripts/ci/verify-node-deps-guard.mjs
 
       # The release pipeline runs only on a tag, so nothing on a PR exercises
       # it. Every way it had of publishing nothing and reporting success was
@@ -239,28 +239,28 @@ jobs:
       # stay closed, on the PR that would reopen one.
       - name: Release failure gates intact
         run: |
-          node scripts/verify-release-gates.mjs
-          python3 scripts/test-release-gate.py
+          node scripts/ci/verify-release-gates.mjs
+          python3 scripts/ci/test-release-gate.py
 
       # `_lint` (scripts/make/tests.mk) also runs these three; the analysis job
       # re-implements the rest of that recipe inline. Without them a licence
       # bundle or dead-code regression cannot fail a merge.
       - name: Dead-code gate intact
-        run: node scripts/verify-no-dead-code.mjs
+        run: node scripts/ci/verify-no-dead-code.mjs
 
       - name: Package licence bundles intact
-        run: node scripts/verify-package-licenses.mjs
+        run: node scripts/packages/verify-package-licenses.mjs
 
       - name: Package licence guard regressions
-        run: node --test scripts/test-package-licenses.mjs
+        run: node --test scripts/packages/test-package-licenses.mjs
 
       - name: Package coverage wiring contracts
         run: |
-          python3 scripts/test-package-coverage.py
-          python3 scripts/test-package-coverage-projects.py
+          python3 scripts/packages/test-package-coverage.py
+          python3 scripts/packages/test-package-coverage-projects.py
 
       - name: Python application runner contracts
-        run: python3 scripts/test-python-app-ports-contracts.py
+        run: python3 scripts/packages/test-python-app-ports-contracts.py
 
       - name: Format check
         run: cargo fmt --manifest-path src/toolchain/Cargo.toml --all --check
@@ -282,7 +282,7 @@ jobs:
       # The local and hosted gates install the latest release and read the same
       # committed threshold. A failed download or breached ceiling fails CI.
       - name: Install the pinned Deslop
-        run: bash scripts/install-deslop.sh
+        run: bash scripts/ci/install-deslop.sh
         env:
           GITHUB_TOKEN: ${{ github.token }}
 
@@ -647,24 +647,24 @@ jobs:
 
       # The recorded fixture must be what the pinned exporter writes today.
       - name: Recorded Lean export reproduces byte for byte
-        run: bash scripts/proof-export.sh --check
+        run: bash scripts/proof/proof-export.sh --check
 
       - name: Recorded conjunction export reproduces byte for byte
-        run: bash scripts/proof-export.sh --check --theorem and_swap
+        run: bash scripts/proof/proof-export.sh --check --theorem and_swap
 
       - name: Recorded arithmetic export reproduces byte for byte
-        run: bash scripts/proof-export.sh --check --theorem Nat.add_comm
+        run: bash scripts/proof/proof-export.sh --check --theorem Nat.add_comm
 
       - name: Proof export recorder regressions
-        run: node --test scripts/test-proof-export.mjs
+        run: node --test scripts/proof/test-proof-export.mjs
 
       - name: OpenAI proof corpus trust ledger regressions
-        run: python3 scripts/test-proof-openai.py
+        run: python3 scripts/proof/test-proof-openai.py
 
       # One bounded Make graph builds fresh checkers once for both complete
       # corpora and Unicode. The speed gate runs after all checks finish.
       - name: Proof scheduling regressions
-        run: node --test scripts/ci-proof-schedule.test.mjs
+        run: node --test scripts/ci/ci-proof-schedule.test.mjs
 
       - name: Full proof acceptance and Lean speed gate
         run: make -j3 _test_proof_ci
@@ -849,8 +849,8 @@ jobs:
           target/release/osprey src/osprey/examples/wasm/hello.osp --target=wasm32 \
             --compile -o src/osprey/examples/wasm/build/hello.wasm
           wasm-validate src/osprey/examples/wasm/build/hello.wasm
-          node scripts/wasm-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
-          node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+          node scripts/wasm/wasm-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+          node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
 
       # Both source flavors compile to portable WASI modules and must produce
       # the same committed manifest under Node and the browser WASI shim.
@@ -861,8 +861,8 @@ jobs:
             target/release/osprey "src/osprey/examples/wasm/studio.$flavor" --target=wasm32 \
               --compile -o "src/osprey/examples/wasm/build/studio.$flavor.wasm"
             wasm-validate "src/osprey/examples/wasm/build/studio.$flavor.wasm"
-            node scripts/wasm-smoke.mjs "src/osprey/examples/wasm/build/studio.$flavor.wasm" src/osprey/examples/wasm/studio.expectedoutput
-            node scripts/wasm-browser-smoke.mjs "src/osprey/examples/wasm/build/studio.$flavor.wasm" src/osprey/examples/wasm/studio.expectedoutput
+            node scripts/wasm/wasm-smoke.mjs "src/osprey/examples/wasm/build/studio.$flavor.wasm" src/osprey/examples/wasm/studio.expectedoutput
+            node scripts/wasm/wasm-browser-smoke.mjs "src/osprey/examples/wasm/build/studio.$flavor.wasm" src/osprey/examples/wasm/studio.expectedoutput
           done
 
       - name: WebAssembly differential — whole src/osprey/tests/ corpus vs the native goldens
@@ -989,7 +989,7 @@ jobs:
 
       - name: Shared mobile domain and build-tool regressions
         run: |
-          python3 scripts/test-mobile-tools.py
+          python3 scripts/mobile/test-mobile-tools.py
           target/release/osprey src/osprey/examples/mobile/inbox/test --run
           target/release/osprey src/osprey/examples/projects/modules/mobile/app/test --run
 
@@ -1093,7 +1093,7 @@ jobs:
       # defect this step has caught passed those unit tests first. It reuses the
       # Chromium and node_modules the bank e2e step above already installed.
       - name: Documentation HTML browser acceptance
-        run: node scripts/verify-docs-html.mjs target/release/osprey
+        run: node scripts/ci/verify-docs-html.mjs target/release/osprey
 
       - name: Upload bank e2e results on failure
         uses: actions/upload-artifact@v7
@@ -1207,7 +1207,7 @@ jobs:
           pattern: coverage-rust-*
           path: target/coverage/rust/
       - name: Merge the Rust shards' coverage
-        run: python3 scripts/merge_lcov.py target/coverage/rust/*/lcov.info > target/coverage/lcov.info
+        run: python3 scripts/ci/merge_lcov.py target/coverage/rust/*/lcov.info > target/coverage/lcov.info
       - uses: actions/download-artifact@v8
         with:
           name: coverage-extension

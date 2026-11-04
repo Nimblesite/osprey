@@ -42,7 +42,7 @@ The output is byte for byte the Default example's output for the same stdin: the
 The E2E compiler test compares every element of 24 deterministic tensors against the independent [Python reference](../reference.py), at the real embedding width and sequence lengths 1/2/3, under both handlers and GC/ARC memory, including all intermediate values from a transformer block. Memory variants compile concurrently, then all handler variants run concurrently. Run it directly with an existing compiler:
 
 ```sh
-python3 scripts/check-python-gpt2.py --compiler target/debug/osprey
+python3 scripts/tests/check-python-gpt2.py --compiler target/debug/osprey
 ```
 
 Pass `--device metal`, `--device opencl` or `--device auto` for a strict hardware comparison. That mode requires an adapter identity and completed device dispatches. Host arithmetic compares exactly; only values downstream of `exp`/`tanh` use the existing GPU precision bound.

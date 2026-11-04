@@ -205,6 +205,15 @@ remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0
 remainder32Case () = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat32(2.0)), \output => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), \x => float32Bits(x) == 1069547520) && gpuSatisfies(gpuGet(output, 1), \x => float32Bits(x) == -1077936128) && gpuSatisfies(gpuGet(output, 2), \x => float32Bits(x) == -2147483648) && gpuSatisfies(gpuGet(output, 3), \x => float32Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 16. *)
 remainder16Case () = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat16(2.0)), \output => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), \x => float16Bits(x) == 15872) && gpuSatisfies(gpuGet(output, 1), \x => float16Bits(x) == -16896) && gpuSatisfies(gpuGet(output, 2), \x => float16Bits(x) == -32768) && gpuSatisfies(gpuGet(output, 3), \x => float16Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))
+(** The sized bit views run as kernels too: binary32 words through
+    float32FromBits/float32Bits and binary16 words through float16FromBits/float16Bits
+    come back as the words they were, on the host and on a device. *)
+sized32BitsCase () =
+    words = [toInt32(0), toInt32(-2147483648), toInt32(1065353216), toInt32(-1082130432), toInt32(2139095040), toInt32(2143289344), toInt32(-4194304), toInt32(1), toInt32(8388607)]
+    gpuSatisfies(toGpu(words), \input => gpuSatisfies(gpuMap(input, float32FromBits), \floats => gpuSatisfies(gpuMap(floats, float32Bits), \restored => gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, \(ok, i) => ok && (gpuGet(restored, i) ?: toInt32(0)) == (listGet(words, i) ?: toInt32(1))))))
+sized16BitsCase () =
+    words = [toInt16(0), toInt16(-32768), toInt16(15360), toInt16(-17408), toInt16(31744), toInt16(32256), toInt16(1), toInt16(1023), toInt16(-1025)]
+    gpuSatisfies(toGpu(words), \input => gpuSatisfies(gpuMap(input, float16FromBits), \halves => gpuSatisfies(gpuMap(halves, float16Bits), \restored => gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, \(ok, i) => ok && (gpuGet(restored, i) ?: toInt16(0)) == (listGet(words, i) ?: toInt16(1))))))
 (** Emitted bit-conversion kernels must preserve signed zeros and NaN payloads. *)
 gpuBitRoundTripCase () =
     words = [0, -9223372036854775808, 4607182418800017408, -4616189618054758400,
@@ -217,7 +226,7 @@ gpuBitRoundTripCase () =
                     match gpuMap(uploaded1, floatBits)
                         Success restored =>
                             checkAll "GPU bit conversions retain every payload bit" [
-                                remainder64Case(), remainder32Case(), remainder16Case(),
+                                remainder64Case(), remainder32Case(), remainder16Case(), sized32BitsCase(), sized16BitsCase(),
                                 gpuLength restored == listLength words, fold (range (0, listLength words)) true (\(ok, i) => ok && (gpuGet (restored, i) ?: 0) == (listGet (words, i) ?: 1))
                             ]
                         Error message => check ("GPU operation", "success", toString message)

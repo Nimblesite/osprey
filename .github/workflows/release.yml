@@ -173,7 +173,7 @@ jobs:
         run: |
           set -euo pipefail
           target/release/osprey build src/osprey/packages/manager/api --quiet --no-warnings -o target/osprey-registry
-          scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
+          scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
       # osprey.exe is a native Windows process, so it resolves clang on the
       # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
       # and `link.exe` cannot find ssl.lib. Pin the UCRT64 clang, as ci-windows.yml does.
@@ -543,7 +543,7 @@ jobs:
           # Same stager the Makefile bundle runs: the approved proof exports and
           # their upstream licenses are pinned, so copying the asset tree alone
           # would ship whatever bodies this checkout happens to hold.
-          python3 scripts/workbench-proof-assets.py "$dest/workbench"
+          python3 scripts/proof/workbench-proof-assets.py "$dest/workbench"
           cp src/toolchain/website/src/assets/images/logo.png "$dest/workbench/osprey-logo.png"
           # Stamp + bundle shipwright.json so the extension can version-check the
           # bundled binary at activation. [EDITOR-VERSIONING]
@@ -736,7 +736,7 @@ jobs:
   # It cancels nothing: `if: always()` waits for every job to reach a conclusion
   # first, so a failing leg still lets its siblings finish and report.
   #
-  # scripts/verify-release-gates.mjs asserts on every PR that this `needs:` list
+  # scripts/ci/verify-release-gates.mjs asserts on every PR that this `needs:` list
   # names every other job in this file — add a publish channel without wiring it
   # in here and CI fails before a release can quietly skip it.
   release-complete:

@@ -120,7 +120,7 @@ backend_setup() {
   # that failed to boot look like every program failing. `ios-simulator.sh` boots
   # and waits; a failure here is fatal rather than a corpus of red programs.
   if [[ $TARGET == ios-sim ]]; then
-    IOS_DEVICE=${OSPREY_IOS_DEVICE:-$(bash "$ROOT/scripts/ios-simulator.sh")} || exit 1
+    IOS_DEVICE=${OSPREY_IOS_DEVICE:-$(bash "$ROOT/scripts/mobile/ios-simulator.sh")} || exit 1
     APPLE_SDK_NAME=iphonesimulator APPLE_TRIPLE=arm64-apple-ios15.0-simulator
     APPLE_SDK=${OSPREY_IOS_SDK:-$(xcrun --sdk iphonesimulator --show-sdk-path)} || exit 1
     [[ -n $IOS_DEVICE && -d $APPLE_SDK ]] || { echo "no iPhone simulator or simulator SDK available" >&2; exit 1 }
@@ -138,10 +138,10 @@ backend_setup() {
   # pushing an arm64 binary to an x86-64 emulator fails per program and would
   # read as the whole corpus being broken rather than as one wrong flag.
   if [[ $TARGET == android* ]]; then
-    sdk_root=$(bash -c 'source "$1"/scripts/android-env.sh >/dev/null 2>&1; printf %s "$ANDROID_HOME"' _ "$ROOT")
-    ANDROID_TOOLS=$(bash -c 'source "$1"/scripts/android-env.sh >/dev/null 2>&1; printf %s "$android_tools"' _ "$ROOT")
+    sdk_root=$(bash -c 'source "$1"/scripts/mobile/android-env.sh >/dev/null 2>&1; printf %s "$ANDROID_HOME"' _ "$ROOT")
+    ANDROID_TOOLS=$(bash -c 'source "$1"/scripts/mobile/android-env.sh >/dev/null 2>&1; printf %s "$android_tools"' _ "$ROOT")
     adb_bin=${OSPREY_ADB:-$sdk_root/platform-tools/adb}
-    [[ -x $adb_bin && -x $ANDROID_TOOLS/clang ]] || { echo "Android SDK/NDK not found; see scripts/android-env.sh" >&2; exit 1 }
+    [[ -x $adb_bin && -x $ANDROID_TOOLS/clang ]] || { echo "Android SDK/NDK not found; see scripts/mobile/android-env.sh" >&2; exit 1 }
     serial=${OSPREY_ANDROID_SERIAL:-${ANDROID_SERIAL:-$($adb_bin devices | awk 'NR>1 && $2=="device" {print $1}')}}
     [[ -n $serial && $serial != *$'\n'* ]] || { echo "Select one Android device with OSPREY_ANDROID_SERIAL" >&2; exit 1 }
     ANDROID_ADB=("$adb_bin" -s "$serial")

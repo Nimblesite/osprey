@@ -26,7 +26,7 @@ fn harness(report: &str, status: i32, documented: bool, target: &str) -> (Out, s
     let _ = command.args(["-c", "source \"$HARNESS\"; FILES=(\"$FIXTURES/default.osp\" \"$FIXTURES/ml.ospml\"); run_corpus_doctests"])
         .env("HARNESS", repo_root().join("src/toolchain/crates/corpus_doctests.sh")).env("FIXTURES", &root)
         .env("BIN", binary).env("TARGET", target).env("MEMORY", "default").env("RESULTDIR", &root)
-        .env("SMOKE", repo_root().join("scripts/wasm-smoke.mjs"))
+        .env("SMOKE", repo_root().join("scripts/wasm/wasm-smoke.mjs"))
         .env("DOCTEST_REPORT", report).env("DOCTEST_STATUS", status.to_string());
     (finish(command), root)
 }

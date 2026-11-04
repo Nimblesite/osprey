@@ -12,7 +12,7 @@ if [[ -n "$mode" && "$mode" != --smoke ]]; then
 fi
 if [[ ${OSPREY_IOS_SKIP_BUILD:-0} != 1 ]]; then "$script_dir/build.sh" ios-sim; fi
 
-device=$("$script_dir/../../scripts/ios-simulator.sh")
+device=$("$script_dir/../../scripts/mobile/ios-simulator.sh")
 bundle_id=${OSPREY_IOS_BUNDLE_ID:-org.ospreylang.OspreyCounter}
 xcrun simctl install "$device" "$example_dir/build/ios-sim/products/$scheme.app"
 

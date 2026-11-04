@@ -28,4 +28,4 @@ runs:
       shell: bash
       env:
         CHANGED_FILES: ${{ steps.files.outputs.all_files }}
-      run: node scripts/ci-scope.mjs
+      run: node scripts/ci/ci-scope.mjs

@@ -38,7 +38,7 @@
     "sources": [
       "src/osprey/examples/proof/openai/corpus.json",
       "src/osprey/examples/proof/lean-core/corpus.json",
-      "scripts/proof-openai.py"
+      "scripts/proof/proof-openai.py"
     ]
   },
   "proofs-that-say-no": {
@@ -48,7 +48,7 @@
     "guide": "/docs/mathlib-port/",
     "sources": [
       "src/osprey/examples/proof/kernel/tests/export.ospml",
-      "scripts/test-proof-openai.py"
+      "scripts/proof/test-proof-openai.py"
     ]
   },
   "navier-stokes-proof": {

@@ -40,9 +40,9 @@ _runtime:
 	@$(MAKE) --no-print-directory -s $(NATIVE_RUNTIME_STAMP)
 
 GPU_SHADER_SRC := src/toolchain/compiler/runtime/gpu_f64.metal src/toolchain/compiler/runtime/gpu_math64.metal src/toolchain/compiler/runtime/gpu_math_ext.metal src/toolchain/compiler/runtime/gpu_device_lib.metal
-src/toolchain/compiler/bin/gpu_shader_source.h: $(GPU_SHADER_SRC) scripts/embed_gpu_shader.awk
+src/toolchain/compiler/bin/gpu_shader_source.h: $(GPU_SHADER_SRC) scripts/make/embed_gpu_shader.awk
 	@$(MKDIR) src/toolchain/compiler/bin
-	awk -f scripts/embed_gpu_shader.awk $(GPU_SHADER_SRC) > $@
+	awk -f scripts/make/embed_gpu_shader.awk $(GPU_SHADER_SRC) > $@
 
 src/toolchain/compiler/bin/gpu_metal.o: src/toolchain/compiler/runtime/gpu_metal.m src/toolchain/compiler/bin/gpu_shader_source.h src/toolchain/compiler/runtime/gpu_device.h Makefile scripts/make/config.mk scripts/make/runtime.mk
 	$(CC) $(A) -fobjc-arc $(GPU_DEVICE_FLAGS) $< -o $@

@@ -1,0 +1,58 @@
+fn weights() -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("q4k.bin", 0, 50135040)
+fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
+fn byte(w, i) = toInt(gpuGet(w, i) ?: toUint8(0))
+fn half(w, i) = {
+    let bits = byte(w, i) + byte(w, i + 1) * 256
+    toFloat32(float16FromBits(toInt16(match bits >= 32768 { true => bits - 65536  false => bits })))
+}
+fn xAt(x, i) = gpuGet(x, i) ?: toFloat32(0.0)
+fn scaleOf(w, base, j) = match j < 4 {
+    true => bitAnd(byte(w, base + 4 + j), 63)
+    false => bitOr(bitAnd(byte(w, base + 8 + j), 15), shiftLeft(shiftRight(byte(w, base + j), 6), 4))
+}
+fn minOf(w, base, j) = match j < 4 {
+    true => bitAnd(byte(w, base + 8 + j), 63)
+    false => bitOr(shiftRight(byte(w, base + 8 + j), 4), shiftLeft(shiftRight(byte(w, base + 4 + j), 6), 4))
+}
+fn nibble(w, i, high) = match high == 1 { true => shiftRight(byte(w, i), 4)  false => bitAnd(byte(w, i), 15) }
+fn subBlock(w, x, d, dmin, base, first, j, acc) = {
+    let d1 = d * toFloat32(scaleOf(w, base, j))
+    let m1 = dmin * toFloat32(minOf(w, base, j))
+    let g = intDiv(j, 2)
+    let high = j % 2
+    let q = base + 16 + g * 32
+    let e = first + g * 64 + high * 32
+    fold(range(0, 32), acc, fn(s, l) => s + xAt(x, e + l) * (d1 * toFloat32(nibble(w, q + l, high)) - m1))
+}
+fn block(w, x, r, blk, acc) = {
+    let base = (r * 20 + blk) * 144
+    let d = half(w, base)
+    let dmin = half(w, base + 2)
+    fold(range(0, 8), acc, fn(a, j) => subBlock(w, x, d, dmin, base, blk * 256, j, a))
+}
+fn row(w, x, r) = fold(range(0, 20), toFloat32(0.0), fn(acc, blk) => block(w, x, r, blk, acc))
+fn matvec(w, x) = match gpuIota(17408) {
+    Success { value } => match value |> gpuMap(fn(r) => row(w, x, r)) {
+        Success { value } => value
+        Error { message } => x
+    }
+    Error { message } => x
+}
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    run()
+}
+fn run() = match inputs() {
+    Error { message } => print(message)
+    Success { value } => {
+        let x = value
+        match weights() {
+            Error { message } => print(message)
+            Success { value } => {
+                let w = value
+                let y = fold(range(0, 120), x, fn(acc, _i) => matvec(w, x))
+                print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 1) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 17407) ?: toFloat32(0.0))}")
+            }
+        }
+    }
+}

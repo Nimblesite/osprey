@@ -29,7 +29,7 @@ cp "$products/Workbench" "$app/Contents/MacOS/Workbench"
 rm -rf "$app/Contents/Resources/lessons"
 cp -R ../../lessons "$app/Contents/Resources/lessons"
 cp -R ../../assets/. "$app/Contents/Resources/"
-python3 "$repo/scripts/workbench-proof-assets.py" "$app/Contents/Resources"
+python3 "$repo/scripts/proof/workbench-proof-assets.py" "$app/Contents/Resources"
 cp "$repo/src/toolchain/website/src/assets/images/logo.png" "$app/Contents/Resources/osprey-logo.png"
 bash icon.sh "$app/Contents/Resources/osprey-logo.png" "$app/Contents/Resources/Osprey.icns"
 cat > "$app/Contents/Info.plist" <<PLIST

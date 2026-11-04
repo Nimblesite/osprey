@@ -186,6 +186,17 @@ fn remainder64Case() = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(
 fn remainder32Case() = gpuSatisfies(toGpu([toFloat32(5.5), toFloat32(-5.5), toFloat32(-0.0), float32FromBits(1), float32FromBits(2139095040), float32FromBits(2143289344)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat32(2.0)), fn(output) => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), fn(x) => float32Bits(x) == 1069547520) && gpuSatisfies(gpuGet(output, 1), fn(x) => float32Bits(x) == -1077936128) && gpuSatisfies(gpuGet(output, 2), fn(x) => float32Bits(x) == -2147483648) && gpuSatisfies(gpuGet(output, 3), fn(x) => float32Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), fn(x) => x != x) && gpuSatisfies(gpuGet(output, 5), fn(x) => x != x)))
 /// [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 16.
 fn remainder16Case() = gpuSatisfies(toGpu([toFloat16(5.5), toFloat16(-5.5), toFloat16(-0.0), float16FromBits(1), float16FromBits(31744), float16FromBits(32256)]), fn(input) => gpuSatisfies(gpuMap(input, fn(x) => x % toFloat16(2.0)), fn(output) => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), fn(x) => float16Bits(x) == 15872) && gpuSatisfies(gpuGet(output, 1), fn(x) => float16Bits(x) == -16896) && gpuSatisfies(gpuGet(output, 2), fn(x) => float16Bits(x) == -32768) && gpuSatisfies(gpuGet(output, 3), fn(x) => float16Bits(x) == 1) && gpuSatisfies(gpuGet(output, 4), fn(x) => x != x) && gpuSatisfies(gpuGet(output, 5), fn(x) => x != x)))
+/// The sized bit views run as kernels too: binary32 words through
+/// float32FromBits/float32Bits and binary16 words through float16FromBits/float16Bits
+/// come back as the words they were, on the host and on a device.
+fn sized32BitsCase() = {
+    let words = [toInt32(0), toInt32(-2147483648), toInt32(1065353216), toInt32(-1082130432), toInt32(2139095040), toInt32(2143289344), toInt32(-4194304), toInt32(1), toInt32(8388607)]
+    gpuSatisfies(toGpu(words), fn(input) => gpuSatisfies(gpuMap(input, float32FromBits), fn(floats) => gpuSatisfies(gpuMap(floats, float32Bits), fn(restored) => gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: toInt32(0)) == (listGet(words, i) ?: toInt32(1))))))
+}
+fn sized16BitsCase() = {
+    let words = [toInt16(0), toInt16(-32768), toInt16(15360), toInt16(-17408), toInt16(31744), toInt16(32256), toInt16(1), toInt16(1023), toInt16(-1025)]
+    gpuSatisfies(toGpu(words), fn(input) => gpuSatisfies(gpuMap(input, float16FromBits), fn(halves) => gpuSatisfies(gpuMap(halves, float16Bits), fn(restored) => gpuLength(restored) == listLength(words) && fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: toInt16(0)) == (listGet(words, i) ?: toInt16(1))))))
+}
 /// Emitted bit-conversion kernels must preserve signed zeros and NaN payloads.
 fn gpuBitRoundTripCase() = {
     let words = [0, -9223372036854775808, 4607182418800017408, -4616189618054758400,
@@ -194,7 +205,7 @@ fn gpuBitRoundTripCase() = {
     match toGpu(words) { Success { value } => {match gpuMap(value, floatFromBits) { Success { uploaded1 } => {
                     match gpuMap(uploaded1, floatBits) { Success { restored } => {
                             checkAll("GPU bit conversions retain every payload bit", [
-                                    remainder64Case(), remainder32Case(), remainder16Case(),
+                                    remainder64Case(), remainder32Case(), remainder16Case(), sized32BitsCase(), sized16BitsCase(),
                                     gpuLength(restored) == listLength(words), fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: 0) == (listGet(words, i) ?: 1))
                             ])
                         } Error { message } => check("GPU operation", "success", toString(message)) }

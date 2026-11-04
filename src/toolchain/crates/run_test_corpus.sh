@@ -35,7 +35,7 @@ SCRIPT=${0:A}
 BIN=${OSPREY_BIN:-$ROOT/target/release/osprey}
 BIN=${BIN:A}
 TESTDIR=$ROOT/src/osprey/tests
-SMOKE=$ROOT/scripts/wasm-smoke.mjs
+SMOKE=$ROOT/scripts/wasm/wasm-smoke.mjs
 
 # Which backend executes each program: `native` runs it through the compiler's
 # own `--run`, `wasm32` compiles it to a WebAssembly module and executes that
@@ -51,7 +51,7 @@ SMOKE=$ROOT/scripts/wasm-smoke.mjs
 # same Apple archives directly on an Apple silicon Mac.
 TARGET=${OSPREY_TARGET:-native}
 
-# The Node version rule is NOT restated here: `scripts/wasm-smoke.mjs`
+# The Node version rule is NOT restated here: `scripts/wasm/wasm-smoke.mjs`
 # re-executes itself under a sound interpreter when this host's is too old
 # ([WASM-TARGET-NODE]). One copy of that policy, so this harness cannot drift
 # from it — an earlier copy here is exactly what let a box on Node 22 report the

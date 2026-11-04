@@ -98,9 +98,9 @@ An exported certificate is evidence to check. Osprey reconstructs its dependency
 From the repository root after building `target/release/osprey`:
 
 ```sh
-python3 scripts/proof-openai.py --compiler target/release/osprey
-python3 scripts/proof-openai.py --corpus lean-core --compiler target/release/osprey
-python3 scripts/test-proof-literals.py
+python3 scripts/proof/proof-openai.py --compiler target/release/osprey
+python3 scripts/proof/proof-openai.py --corpus lean-core --compiler target/release/osprey
+python3 scripts/proof/test-proof-literals.py
 ```
 
 The first command expects 51 successful root checks, each accompanied by corrupted-proof and false-statement rejection. The second expects 525 successful root checks and 1,050 rejected mutations. Both perform source validation and fresh Lean replay; the pinned authoring toolchain is required. The Unicode command uses the three batch binaries produced by the preceding corpus checks and expects six successful root checks with twelve rejections.
@@ -134,7 +134,7 @@ The Navier-Stokes films show measured numerical flow, the OpenAI solution publis
 - [Current delivery ledger and remaining work](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0041-dependent-types-and-mathlib.md)
 - [OpenAI sources, exact statements, pins and licences](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/openai/corpus.json)
 - [Lean-core corpus](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/lean-core/corpus.json) and [compatible proof manifest](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/lean-core/compatible.json)
-- [Canonical source/export/replay checker](https://github.com/Nimblesite/osprey/blob/main/scripts/proof-openai.py)
+- [Canonical source/export/replay checker](https://github.com/Nimblesite/osprey/blob/main/scripts/proof/proof-openai.py)
 - [Bundled Workbench library inventory](https://github.com/Nimblesite/osprey/blob/main/src/osprey/workbench/assets/proof-libraries.json)
 
 [Use the Workbench](/docs/proof-workbench/) or [choose a proof learning path](/docs/proofs/). Osprey is actively evolving.

@@ -136,8 +136,8 @@ ordinary wasm linear memory.
 - `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli wasm::tests`
 - `make -C src/toolchain/website wasm`
 - `wasm-validate src/osprey/examples/wasm/build/hello.wasm`
-- `node scripts/wasm-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput`
-- `node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput`
+- `node scripts/wasm/wasm-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput`
+- `node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput`
 - `make _test_wasm_goldens` runs the pointer-ownership regression, then the 213-golden ARC corpus with zero live allocations.
 
 The CI `wasm` job runs the validate, Node-WASI, browser-shim, and golden-harness
@@ -150,12 +150,12 @@ afterwards touches freed memory: on x86_64 a SIGSEGV inside node — no stderr, 
 wasm trap — and where the stale page is still mapped, the module's output is
 silently dropped instead. A twelve-line hand-written module that writes, grows
 and writes again reproduces it, so the constraint is the host's, not this
-target's. `scripts/wasm-browser-smoke.mjs` reads the memory afresh per call and
+target's. `scripts/wasm/wasm-browser-smoke.mjs` reads the memory afresh per call and
 runs on any supported Node, which is what makes it a second, independent oracle
 rather than a copy of the first.
 
 **`[WASM-TARGET-NODE]`** The version rule lives in exactly one place:
-`scripts/wasm-smoke.mjs` re-executes itself under a sound interpreter when the
+`scripts/wasm/wasm-smoke.mjs` re-executes itself under a sound interpreter when the
 one it was started with is too old — `OSPREY_NODE` when set, else the newest
 qualifying `~/.nvm` install — and fails with the defect's own explanation only
 when no such interpreter exists. Every caller therefore invokes a plain `node`:

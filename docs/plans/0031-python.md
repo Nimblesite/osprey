@@ -43,7 +43,7 @@ Constraints:
 
 ## Phase E — GPT-2 edge checks and sampling-boundary record
 
-- [ ] [FLAVOR-PYTHON-GPU] Extend `scripts/check-python-gpt2.py` with weight-download-free tiny-tensor edge checks: ordered reductions, final projection, first-index tie, EOS, malformed tensor/shape errors, empty/overlong prompts, zero/negative token counts, one-token prompt, context exhaustion, unavailable devices. Acceptance: runs in the ordinary corpus; a device case without an actual adapter is ignored, never green.
+- [ ] [FLAVOR-PYTHON-GPU] Extend `scripts/tests/check-python-gpt2.py` with weight-download-free tiny-tensor edge checks: ordered reductions, final projection, first-index tie, EOS, malformed tensor/shape errors, empty/overlong prompts, zero/negative token counts, one-token prompt, context exhaustion, unavailable devices. Acceptance: runs in the ordinary corpus; a device case without an actual adapter is ignored, never green.
 - [ ] [FLAVOR-PYTHON-GPU] [GPU-DEVICE] Record the real-checkpoint sampling boundary (token IDs plus decoded bytes, EOS/tie behavior, process status, weights hash `248dfc3911869ec493c76e65bf2fcf7f615828b0254c12b473182f0f81d3a707`, exact commands) for `The capital of France is` and `Melbourne is the capital of` at 0/1/20/50 tokens on host/Metal/OpenCL.
 
 ## Phase F — backward pass and training (deferred)

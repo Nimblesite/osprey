@@ -178,7 +178,7 @@ jobs:
       # holds what the screen shows of the whole window.
       - name: A desktop that holds every app's window
         shell: pwsh
-        run: scripts/display-size.ps1 -Width 1920 -Height 1080
+        run: scripts/mobile/display-size.ps1 -Width 1920 -Height 1080
 
       # Every app in a real window on the runner's desktop, inside its sandbox, driven by its
       # self-test; each picture of the window's content is compared with the app's goldens and a

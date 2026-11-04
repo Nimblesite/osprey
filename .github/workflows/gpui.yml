@@ -69,7 +69,7 @@ jobs:
         run: cargo clippy --release -- -D warnings
 
       - name: Mac archive and host string ownership
-        run: bash scripts/test-macos.sh
+        run: bash scripts/mobile/test-macos.sh
         env:
           OSPREY_BIN: ${{ github.workspace }}/target/release/osprey
 
@@ -228,10 +228,10 @@ jobs:
           shots="$RUNNER_TEMP/gpui"
           bash src/osprey/examples/gpui/flock/run.sh --build
           OSPREY_GPUI_APP_NAME=flock \
-            pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/flock.png"
+            pwsh -NoProfile -File scripts/mobile/window-picture.ps1 -Exe "$host" -Picture "$shots/flock.png"
           bash src/osprey/examples/gpui/painting/run.sh --build
           OSPREY_GPUI_APP_NAME=painting OSPREY_GPUI_WINDOW=default \
-            pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/painting.png"
+            pwsh -NoProfile -File scripts/mobile/window-picture.ps1 -Exe "$host" -Picture "$shots/painting.png"
 
       # The host appends every panic to this log as well as stderr, so a window that died says why.
       - name: The host's panic log

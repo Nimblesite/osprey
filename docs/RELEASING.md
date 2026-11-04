@@ -42,7 +42,7 @@ Website deployment depends on scope and the dependency audit; it does not wait f
 - **Required channels must succeed.** `release-complete` runs with `if: always()`, rejects failed/cancelled jobs, and requires success for each channel selected by scope and tag type. An expected scope-based skip is permitted; skipping a required channel fails.
 - **Matrix failures remain visible.** `fail-fast: false` lets sibling build/package legs finish; it does not suppress a failing result.
 
-[`scripts/verify-release-gates.mjs`](../scripts/verify-release-gates.mjs) checks the workflow shape during `make lint` and the required build job. Publication/deployment jobs must remain connected to `audit` and `release-complete`. The verifier's reviewed exceptions must still match their intended commands; stale exceptions fail.
+[`scripts/ci/verify-release-gates.mjs`](../scripts/ci/verify-release-gates.mjs) checks the workflow shape during `make lint` and the required build job. Publication/deployment jobs must remain connected to `audit` and `release-complete`. The verifier's reviewed exceptions must still match their intended commands; stale exceptions fail.
 
 ## Versioning — never hard-code it ([SWR-VERSION-BUILD-STAMPING])
 

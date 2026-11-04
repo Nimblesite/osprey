@@ -56,7 +56,7 @@ runs:
       # shipped libc.so.6 is stripped of local symbols, so glibc's allocator
       # internals -- `_int_free` and friends, where an Osprey program built on
       # `?:` spends most of its time -- have no entry in .dynsym and come back
-      # as raw hex. scripts/test_profiler.sh asserts that NO frame is hex while
+      # as raw hex. scripts/tests/test_profiler.sh asserts that NO frame is hex while
       # a symbolizer is installed [PROF-SYMBOLIZE-OFFLINE], and that assertion
       # is satisfiable: with libc6-dbg present llvm-symbolizer finds the
       # build-id debug file and names those same addresses `_int_free`. Fixing

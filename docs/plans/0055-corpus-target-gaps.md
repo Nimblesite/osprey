@@ -9,7 +9,7 @@ Every program in `src/osprey/tests/` and `src/osprey/examples/` should run on ev
 `src/osprey/tests/WASM_UNPORTABLE.txt`, `MOBILE_UNPORTABLE.txt` and `HUNT_UNPORTABLE.txt` stay in the tree, because they are live test inputs and this plan is not a replacement for them:
 
 - `src/toolchain/crates/run_test_corpus.sh` compares each target's rejections against the wasm and mobile files exactly, and fails on a new, removed or changed entry. An unexpected LLVM, clang or simulator failure is a test failure, never a skip. There is no regeneration flag. Deleting a file fails the run with `MISSING`, and without the pin a target could lose a capability unnoticed.
-- `scripts/hunt_corpus.sh` skips the programs in the hunt file, and `scripts/test-hunt-scripts.py` reads it.
+- `scripts/hunt/hunt_corpus.sh` skips the programs in the hunt file, and `scripts/hunt/test-hunt-scripts.py` reads it.
 
 So a row leaves its manifest only when the program works on that target, and the gate forces the row out in the same commit as the fix. Wasm and mobile reasons are the compiler's own diagnostics.
 
@@ -19,7 +19,7 @@ So a row leaves its manifest only when the program works on that target, and the
 
 ## `osprey hunt` (KLEE) cannot explore: `HUNT_UNPORTABLE.txt` (100 rows)
 
-`scripts/hunt_corpus.sh` skips these unless `--all` is given. Each hunt ends on its first path with an `unmodelled` finding, because the call named has no model in the mock C library or the path reaches native code outside the module KLEE explores. Listed from the sweeps of 2026-10-24. Nothing checks this list yet (#341). Parent: [plan 0034](0034-symbolic-execution.md) [SYMEX-CORPUS].
+`scripts/hunt/hunt_corpus.sh` skips these unless `--all` is given. Each hunt ends on its first path with an `unmodelled` finding, because the call named has no model in the mock C library or the path reaches native code outside the module KLEE explores. Listed from the sweeps of 2026-10-24. Nothing checks this list yet (#341). Parent: [plan 0034](0034-symbolic-execution.md) [SYMEX-CORPUS].
 
 - [ ] Model the fiber runtime for KLEE. `__osprey_coro_new`, `fiber_spawn_env_owned`, `fiber_set_deterministic_mode`, `channel_select` and `channel_create_checked` are native code outside the explored module, so every path through a resumable handler, spawn or channel ends `unmodelled`. Bring a portable fiber and channel runtime into `_runtime_klee`. Acceptance: these programs finish a hunt with no `unmodelled` finding and their rows are deleted. (59 rows)
 

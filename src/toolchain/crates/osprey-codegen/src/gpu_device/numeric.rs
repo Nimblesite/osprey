@@ -151,6 +151,25 @@ impl Emitter<'_> {
             // cast of the word.
             ("floatBits", [(Ty::FLOAT, a)]) => unary(Ty::INT, a.clone()),
             ("floatFromBits", [(Ty::INT, a)]) => unary(Ty::FLOAT, a.clone()),
+            // The sized views go through the library's exact bit casts. A
+            // `float16` value computes as binary32 in a kernel, so its bits
+            // widen on the way in and narrow on the way out, exactly, the
+            // value being a binary16; the host type checker has already
+            // fixed which width `float16Bits` was applied to.
+            ("float32Bits", [(Ty::FLOAT32, a)]) => unary(
+                Ty::Num(Numeric::INT32),
+                format!("((int)gpu_float32_bits({a}))"),
+            ),
+            ("float32FromBits", [(Ty::Num(Numeric::INT32), a)]) => {
+                unary(Ty::FLOAT32, format!("gpu_float32_from_bits((uint)({a}))"))
+            }
+            ("float16Bits", [(Ty::FLOAT32, a)]) => unary(
+                Ty::Num(Numeric::INT16),
+                format!("((short)gpu_f32_to_f16({a}))"),
+            ),
+            ("float16FromBits", [(Ty::Num(Numeric::INT16), a)]) => {
+                unary(Ty::FLOAT32, format!("gpu_f16_to_f32((ushort)({a}))"))
+            }
             ("abs", [(Ty::Num(n), a)]) if n.is_integer() => {
                 unary(Ty::Num(*n), format!("osprey_abs{}({a}, fault)", suffix(*n)))
             }

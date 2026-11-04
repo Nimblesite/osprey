@@ -40,7 +40,7 @@ base.hlsl                  the Direct3D 12 twin of base.metal, entry for entry
 macos/Bridge.h             imports ospgfx_abi.h and the scene's generated header
 macos/GraphicsBridge.swift macOS host: the six imports with @_cdecl, AppKit window, Metal layer
 macos/main.swift           calls osprey_main, which runs the scene until its window closes
-macos/run.sh               builds a scene with scripts/macos-host.sh and runs it
+macos/run.sh               builds a scene with scripts/mobile/macos-host.sh and runs it
 ospgfx_d3d12.h             Windows bridge: D3D12 context and constants
 ospgfx_d3d12_window.c      Windows bridge: the Win32 window a scene draws into
 ospgfx_d3d12_setup.c       Windows bridge: one-time device/swap-chain bring-up

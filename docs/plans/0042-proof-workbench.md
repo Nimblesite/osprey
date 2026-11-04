@@ -9,7 +9,7 @@ Depends on: [plan 0041](0041-dependent-types-and-mathlib.md) phase 0 (delete the
 - The `feat/type-disciplines` PR merged (`ca35a22a`); the `.lean`-only direction of [PROOF-SOURCE](../specs/language/0049-DependentTypesAndProofs.md#proof-source-proof-source) is in force.
 - `@osprey/native` already ships `Maths::decode`, `Media` `Image`/`Video` with encodings, and the `Run`/`SaveFile` capabilities.
 - The three lesson films, posters, captions and image stills exist under `src/osprey/workbench/lessons/media/` and meet the [LESSONS-MEDIA] budget; narration re-verification is the remaining media task.
-- `src/osprey/workbench/assets/proof-libraries.json` and `scripts/workbench-proof-assets.py` stage the bundled exports and licences.
+- `src/osprey/workbench/assets/proof-libraries.json` and `scripts/proof/workbench-proof-assets.py` stage the bundled exports and licences.
 - Visual oracle: [Paper & Slate handoff](../designs/proof-workbench/README.md) and its screens; screens that showed the deleted document are re-captured before they bind.
 
 ## Constraints

@@ -56,7 +56,7 @@ A second review on 25 October 2026 freshly retrieved and verified all 80 referen
 
 The publisher retains root `LICENSE`, `COPYING`, `NOTICE`, `AUTHORS` and `THIRD_PARTY_NOTICES` files, including `.txt`/`.md` forms, and a `LICENSES/` directory when one is present. It does not infer upstream dependencies or add license texts from a package's name. Legal files participate in `SourceDigest`, survive fetch/install, and tampering invalidates a bundle. Applications distributing compiled code that contains the specifically identified reused material must supply its applicable documents; compiling does not embed them automatically.
 
-Run `node scripts/verify-package-licenses.mjs` from the repository root. It checks Nimblesite's MIT grant, the reviewed metadata, evidence for retained material and only the modification/data notices required for that material. It rejects unreviewed license files. This also runs under `make lint` and `make ci`.
+Run `node scripts/packages/verify-package-licenses.mjs` from the repository root. It checks Nimblesite's MIT grant, the reviewed metadata, evidence for retained material and only the modification/data notices required for that material. It rejects unreviewed license files. This also runs under `make lint` and `make ci`.
 
 Regression cases in [publish_tests.osp](manager/cli/tests/src/publish_tests.osp) and [fetch_tests.osp](manager/cli/tests/src/fetch_tests.osp) check legal-file retention and rejection of altered attribution. Filters are exact test names; each command must execute one passing case:
 
@@ -65,4 +65,4 @@ target/release/osprey test src/osprey/packages/manager/cli/tests --filter "publi
 target/release/osprey test src/osprey/packages/manager/cli/tests --filter "fetch: licenses and attribution are preserved"
 ```
 
-`node --test scripts/test-package-licenses.mjs` checks the reviewed bundles, required original attribution, unnecessary upstream license copies and the distinction between libraries and manager tooling; expect five passing tests.
+`node --test scripts/packages/test-package-licenses.mjs` checks the reviewed bundles, required original attribution, unnecessary upstream license copies and the distinction between libraries and manager tooling; expect five passing tests.

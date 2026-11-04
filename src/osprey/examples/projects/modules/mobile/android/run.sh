@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../../../../.." && pwd)
-source "$root/scripts/android-env.sh"
+source "$root/scripts/mobile/android-env.sh"
 app="$root/src/osprey/examples/projects/modules/mobile/android"
 if [[ ${OSPREY_ANDROID_SKIP_BUILD:-0} != 1 ]]; then bash "$app/build.sh"; fi
 adb="$android_sdk/platform-tools/adb"

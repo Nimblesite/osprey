@@ -3,7 +3,7 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../../.." && pwd)
 bash "$here/build.sh" ios-sim
-device=$(bash "$repo/scripts/ios-simulator.sh")
+device=$(bash "$repo/scripts/mobile/ios-simulator.sh")
 # Each suite owns a fresh test app; it seeds its documents below and exercises
 # process-restart persistence within the suite. Stored UIKit scene delegates
 # from an earlier app renderer can otherwise survive replacing its executable.

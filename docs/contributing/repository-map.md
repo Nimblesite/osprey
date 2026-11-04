@@ -34,7 +34,7 @@ The root Makefile defines every public target, so `make` and editor task panels,
 | `scripts/make/apps.mk` | Graphics hosts, GPT-2 weights, benchmark tooling and website steps |
 | `scripts/make/extension.mk` | Extension packaging and installation verification |
 
-`scripts/ios.mk` and `scripts/android.mk` own the mobile runtime archives and test steps. Add a public target to the root Makefile and its private steps to the fragment for their responsibility; preserve its prerequisite checks. Keep `NAME := value` assignments in the fragments, because task panels list them as targets. The node dependency guard follows nested includes, so a moved recipe retains the same enforcement. Release detection classifies the shared fragments as binary inputs.
+`scripts/make/ios.mk` and `scripts/make/android.mk` own the mobile runtime archives and test steps. Add a public target to the root Makefile and its private steps to the fragment for their responsibility; preserve its prerequisite checks. Keep `NAME := value` assignments in the fragments, because task panels list them as targets. The node dependency guard follows nested includes, so a moved recipe retains the same enforcement. Release detection classifies the shared fragments as binary inputs.
 
 ## Applications and presentation
 
@@ -56,6 +56,6 @@ Manual `osprey program.osp --run` retains normal application semantics: relative
 
 ## Supporting material
 
-Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `scripts/schemas/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
+Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `.github/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
 
 Configuration files stay at the root when their tools discover them there. Workspace, compiler and release manifests are entry points, not miscellaneous project documentation.

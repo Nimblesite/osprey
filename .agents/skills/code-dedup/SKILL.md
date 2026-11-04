@@ -44,7 +44,7 @@ No MCP? Use the installed CLI — what `make _deslop` runs:
 deslop . --nohtml --nojson --output "$PWD/target/deslop-report" --log-to-console --log-level error --no-color
 ```
 
-Exit `3` means over the ceiling in `.deslop.toml`. Run `bash scripts/install-deslop.sh` before measuring: both local and hosted CI resolve the latest published release through this installer. Never change the version or threshold to move a number. The MCP index may use a different engine, so **find** with the MCP and **measure** with `make _deslop`.
+Exit `3` means over the ceiling in `.deslop.toml`. Run `bash scripts/ci/install-deslop.sh` before measuring: both local and hosted CI resolve the latest published release through this installer. Never change the version or threshold to move a number. The MCP index may use a different engine, so **find** with the MCP and **measure** with `make _deslop`.
 
 ## The ratchet
 

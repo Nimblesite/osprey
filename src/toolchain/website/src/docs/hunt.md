@@ -122,7 +122,7 @@ From the repository, `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/h
 From a built checkout with KLEE installed:
 
 ```sh
-python3 scripts/hunt_sample.py --out target/my-hunt-sample
+python3 scripts/hunt/hunt_sample.py --out target/my-hunt-sample
 ```
 
 This inventories runnable programs across tests, examples, book examples, package apps, registry apps and benchmarks. Projects are counted once; their individual modules and libraries without an entry point are excluded. Default/ML files, standalone Python-flavor files and Python-entry projects are included. Known engine limitations are sampled rather than silently skipped.
@@ -134,7 +134,7 @@ Open `index.html` for each program's run status and issues. Logs and path counts
 To gate the JSON list in CI, use a fresh output directory:
 
 ```sh
-python3 scripts/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
+python3 scripts/hunt/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
 ```
 
 This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The required CI job runs the pinned 215-program `src/osprey/tests/hunt/safe-runs.json` corpus at those same limits and uploads its reports.

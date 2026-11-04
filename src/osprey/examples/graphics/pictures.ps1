@@ -12,6 +12,6 @@ $root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
 # A scene needs the bridge beside this script and the MinGW runtime it links, which PowerShell's PATH lacks.
 $env:PATH = "$PSScriptRoot;$(Join-Path $Msys 'ucrt64\bin');$env:PATH"
 foreach ($scene in 'kali', 'opal', 'character') {
-    & (Join-Path $root 'scripts\window-picture.ps1') -Exe (Join-Path $root "target\gfx\$scene.exe") `
+    & (Join-Path $root 'scripts\mobile\window-picture.ps1') -Exe (Join-Path $root "target\gfx\$scene.exe") `
         -Picture (Join-Path $Shots "$scene.png") -Seconds $Seconds
 }

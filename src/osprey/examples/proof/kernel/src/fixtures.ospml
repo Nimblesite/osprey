@@ -16,7 +16,7 @@ module Fixtures
 
     (** `theorem id_imp : ∀ (p : Prop), p → p := fun _ h => h` exactly as
         the pinned lean4export (tag v4.25.0) wrote it: NDJSON format 3.1.0,
-        24 lines, recorded by scripts/proof-export.sh — sha256
+        24 lines, recorded by scripts/proof/proof-export.sh — sha256
         `2adb6bc5ff4e2fcaf9d804548fc2eaf0753902effbac3d70e1657d1b5998330d`.
         The binder names are Lean's hygienic ones
         ([review](../../../../../docs/reviews/review.md#recorded-proof-evidence)). *)

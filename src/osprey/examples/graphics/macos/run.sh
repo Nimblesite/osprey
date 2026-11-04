@@ -15,7 +15,7 @@ if [[ ${1:-} == --build ]]; then build_only=1; shift; fi
 scene=${1:-kali}
 host="$macos_dir/build/$scene/osprey-$scene"
 if [[ ${OSPREY_MACOS_SKIP_BUILD:-0} != 1 ]]; then
-    bash "$repo_dir/scripts/macos-host.sh" "$graphics_dir/$scene" "$macos_dir" "$host" --entry-only \
+    bash "$repo_dir/scripts/mobile/macos-host.sh" "$graphics_dir/$scene" "$macos_dir" "$host" --entry-only \
         -- -I "$graphics_dir" -framework AppKit -framework Metal -framework QuartzCore >&2
 fi
 [[ $build_only == 1 ]] && exit 0

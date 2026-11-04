@@ -26,9 +26,9 @@ _test_proof_kernel_gc _test_proof_kernel_arc: _test_proof_kernel_%:
 _test_proof_kernel_wasm:
 	@$(MKDIR) target/proof
 	./$(BIN) src/osprey/examples/proof/kernel --target=wasm32 --compile -o target/proof/kernel.wasm >/dev/null 2>&1
-	node scripts/wasm-smoke.mjs target/proof/kernel.wasm src/osprey/examples/proof/kernel/expectedoutput
+	node scripts/wasm/wasm-smoke.mjs target/proof/kernel.wasm src/osprey/examples/proof/kernel/expectedoutput
 	./$(BIN) src/osprey/examples/proof/kernel/tests --target=wasm32 --compile -o target/proof/kernel-tests.wasm >/dev/null 2>&1
-	node scripts/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
+	node scripts/wasm/wasm-smoke.mjs target/proof/kernel-tests.wasm >/dev/null
 	grep -q "failed=0" target/proof/kernel-tests.wasm.stdout.txt
 
 # _test_disciplines_passthrough: the `passthrough` reference discipline of spec
@@ -47,7 +47,7 @@ _test_disciplines_passthrough:
 	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/roundtrip --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/roundtrip/expectedoutput
 	@$(MKDIR) target/disciplines
 	./$(BIN) src/osprey/examples/disciplines/roundtrip --target=wasm32 --compile -o target/disciplines/roundtrip.wasm >/dev/null 2>&1
-	node scripts/wasm-smoke.mjs target/disciplines/roundtrip.wasm src/osprey/examples/disciplines/roundtrip/expectedoutput
+	node scripts/wasm/wasm-smoke.mjs target/disciplines/roundtrip.wasm src/osprey/examples/disciplines/roundtrip/expectedoutput
 	@echo "==> [disciplines] the same program under hm alone (marker removed)..."
 	@rm -rf target/disciplines/roundtrip-hm && $(MKDIR) target/disciplines/roundtrip-hm/src
 	@cp src/osprey/examples/disciplines/roundtrip/src/main.ospml src/osprey/examples/disciplines/roundtrip/src/numbers.ospml target/disciplines/roundtrip-hm/src/
@@ -87,7 +87,7 @@ _test_goldens: _conformance-gc
 # matching everywhere else.
 _test_wasm_goldens:
 	@echo "==> [wasm32] golden stdout comparison under WASI..."
-	@WASM_CC="$(WASM_CC)" WASI_SYSROOT="$(WASI_SYSROOT)" bash scripts/test-wasm-arc-ownership.sh
+	@WASM_CC="$(WASM_CC)" WASI_SYSROOT="$(WASI_SYSROOT)" bash scripts/wasm/test-wasm-arc-ownership.sh
 	@OSPREY_TARGET=wasm32 zsh src/toolchain/crates/run_test_corpus.sh
 
 # _conformance-gc: run every assertion suite under the tracing GC backend.
@@ -121,7 +121,7 @@ _test_disciplines:
 	set -o pipefail && ./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --run --memory=arc 2>/dev/null | diff - src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
 	@$(MKDIR) target/disciplines
 	./$(BIN) src/osprey/examples/disciplines/bounded_roundtrip --target=wasm32 --compile -o target/disciplines/bounded.wasm >/dev/null 2>&1
-	node scripts/wasm-smoke.mjs target/disciplines/bounded.wasm src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
+	node scripts/wasm/wasm-smoke.mjs target/disciplines/bounded.wasm src/osprey/examples/disciplines/bounded_roundtrip/expectedoutput
 	@echo "==> [disciplines] bounded: an out-of-range call site is rejected..."
 	@$(RM) target/disciplines/bounded target/disciplines/bounded_roundtrip
 	cp -R src/osprey/examples/disciplines/bounded target/disciplines/bounded
@@ -160,12 +160,12 @@ _test_proof_batch_wasm:
 $(PROOF_CORPUS_TARGETS): $(PROOF_BATCH_TARGETS)
 
 _test_proof_openai:
-	python3 scripts/proof-openai.py --compiler $(abspath $(BIN)) --reuse-binaries
+	python3 scripts/proof/proof-openai.py --compiler $(abspath $(BIN)) --reuse-binaries
 
 _test_proof_lean_core:
-	python3 scripts/proof-openai.py --corpus lean-core --compiler $(abspath $(BIN)) --reuse-binaries
+	python3 scripts/proof/proof-openai.py --corpus lean-core --compiler $(abspath $(BIN)) --reuse-binaries
 
 _test_proof_unicode:
-	python3 scripts/test-proof-literals.py
+	python3 scripts/proof/test-proof-literals.py
 
 .PHONY: _test_proof_ci $(PROOF_BATCH_TARGETS) $(PROOF_CORPUS_TARGETS)

@@ -1,4 +1,4 @@
-# Programs `scripts/hunt_corpus.sh` skips, with the exact reason, in the format
+# Programs `scripts/hunt/hunt_corpus.sh` skips, with the exact reason, in the format
 # of src/osprey/tests/WASM_UNPORTABLE.txt [SYMEX-CORPUS]. Each hunt of these ends on its
 # first path with an `unmodelled` finding: the call named has no model in the
 # mock C library, or the path reaches native code that is not in the module

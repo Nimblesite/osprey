@@ -15,7 +15,7 @@ _test_rust: _runtime_wasm
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
 # CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
-# The coverage job merges their reports; scripts/ci-scope.test.mjs holds the shards to one another.
+# The coverage job merges their reports; scripts/ci/ci-scope.test.mjs holds the shards to one another.
 RUST_SHARD_PACKAGES := every_ported_package_matches_its_cpython_oracle_under_every_memory_backend
 RUST_SHARD_WORKBENCH := workbench_retains_record_identity_through_shared_proof_helpers workbench_apple_host_includes_shared_proof_dependencies a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom
 RUST_SHARD_ARGS_packages := --test python_packages -- $(RUST_SHARD_PACKAGES)
@@ -241,7 +241,7 @@ _test_hunt_clean:
 	set -e; fail=0; for backend in gc arc; do \
 	  out="target/hunt-tests/$$backend/clean.json"; $(MKDIR) "target/hunt-tests/$$backend"; \
 	  status=0; ./target/release/osprey hunt src/osprey/tests/hunt/clean.osp --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt_expect.py "$$out" src/osprey/tests/hunt/clean.expected "$$status" || fail=1; \
+	  python3 scripts/hunt/hunt_expect.py "$$out" src/osprey/tests/hunt/clean.expected "$$status" || fail=1; \
 	done; exit $$fail
 
 _test_hunt:
@@ -254,7 +254,7 @@ _test_hunt:
 	  e="$${p%.osp}.expected"; out="target/hunt-tests/$$backend/$$(basename "$${p%.osp}").json"; \
 	  $(MKDIR) "target/hunt-tests/$$backend"; \
 	  status=0; ./target/release/osprey hunt "$$p" --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
+	  python3 scripts/hunt/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; done; exit $$fail
 
 # No skip path: run by hand (`make -C src/osprey/tests/hunt hunt-crashes`), it must detect and natively
@@ -264,8 +264,8 @@ _test_hunt_crashes:
 	@test -x "$(KLEE_PREFIX)/bin/klee" || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
 	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc
 	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_arc.bc
-	python3 scripts/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
-	@set -e; for backend in gc arc; do python3 scripts/hunt_crashes.py --memory $$backend; done
+	python3 scripts/hunt/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
+	@set -e; for backend in gc arc; do python3 scripts/hunt/hunt_crashes.py --memory $$backend; done
 
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
@@ -278,8 +278,9 @@ _test_hunt_mock:
 	  done && \
 	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
 	@echo "==> [hunt] corpus scripts and the format oracle..."
-	@python3 scripts/test-hunt-scripts.py
-	@python3 scripts/test-hunt-sample.py
+	@python3 scripts/hunt/test-hunt-scripts.py
+	@python3 scripts/hunt/test-hunt-sample.py
+	@python3 scripts/hunt/test-hunt-default-budget.py
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
 # instrumentation into src/toolchain/compiler/bin/cov/<suite>/, reruns it there (a failing
@@ -349,7 +350,7 @@ _coverage_check_c_runtime:
 # [PROF-TEST] end-to-end profiler gate: --profile runs, exports, and reports.
 _test_profiler:
 	@echo "==> [profiler] osprey --profile end-to-end..."
-	@bash scripts/test_profiler.sh
+	@bash scripts/tests/test_profiler.sh
 
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the
@@ -471,8 +472,8 @@ _test_registry:
 	  mkdir -p "$(CURDIR)/target/registry-tests" && \
 	  "$(abspath $(BIN))" build src/osprey/packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
 	fi
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-publication.py
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-interruption.py
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/packages/test-package-publication.py
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/packages/test-package-interruption.py
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;
@@ -488,17 +489,17 @@ _language-test: build
 
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
-	node --test scripts/root-layout.test.mjs
-	node scripts/root-layout.mjs
-	node scripts/verify-node-deps-guard.mjs
-	node scripts/verify-no-dead-code.mjs
-	node scripts/verify-release-gates.mjs
-	node scripts/verify-package-licenses.mjs
-	node --test scripts/test-package-licenses.mjs
-	python3 scripts/test-release-gate.py
-	python3 scripts/test-package-coverage.py
-	python3 scripts/test-package-coverage-projects.py
-	python3 scripts/test-python-app-ports-contracts.py
+	node --test scripts/ci/root-layout.test.mjs
+	node scripts/ci/root-layout.mjs
+	node scripts/ci/verify-node-deps-guard.mjs
+	node scripts/ci/verify-no-dead-code.mjs
+	node scripts/ci/verify-release-gates.mjs
+	node scripts/packages/verify-package-licenses.mjs
+	node --test scripts/packages/test-package-licenses.mjs
+	python3 scripts/ci/test-release-gate.py
+	python3 scripts/packages/test-package-coverage.py
+	python3 scripts/packages/test-package-coverage-projects.py
+	python3 scripts/packages/test-python-app-ports-contracts.py
 	cargo fmt --manifest-path src/toolchain/Cargo.toml --all --check
 	cargo clippy --manifest-path src/toolchain/Cargo.toml --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
@@ -510,5 +511,5 @@ _lint: $(EXT_NODE_DEPS)
 
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
-	bash scripts/install-deslop.sh
+	bash scripts/ci/install-deslop.sh
 	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color

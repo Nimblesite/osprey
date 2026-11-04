@@ -2,7 +2,7 @@
 //
 // Single source of truth used by BOTH the browser loader (src/osprey/examples/wasm/
 // index.html, via `<script type="module">`) and the headless smoke test
-// (scripts/wasm-browser-smoke.mjs, under Node) — so the exact code that runs in
+// (scripts/wasm/wasm-browser-smoke.mjs, under Node) — so the exact code that runs in
 // the browser is the code CI exercises. It implements only the preview1 calls a
 // print-only command module touches; any other import degrades to ENOSYS rather
 // than trapping. Output is gathered by `fd_write` and handed to a caller-supplied

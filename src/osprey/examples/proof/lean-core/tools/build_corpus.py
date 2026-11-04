@@ -33,7 +33,7 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[6]
-PROOF_SPEC = importlib.util.spec_from_file_location("proof_openai", REPO / "scripts/proof-openai.py")
+PROOF_SPEC = importlib.util.spec_from_file_location("proof_openai", REPO / "scripts/proof/proof-openai.py")
 PROOF = importlib.util.module_from_spec(PROOF_SPEC)
 PROOF_SPEC.loader.exec_module(PROOF)
 TOOLCHAIN = Path.home() / ".elan/toolchains/leanprover--lean4---v4.25.0"

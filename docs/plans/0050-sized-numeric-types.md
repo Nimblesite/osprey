@@ -204,7 +204,7 @@ Verified binary32 progress, 2026-11-03: the compiled transformer suite passes al
 
 - [x] Derive CI checks from `ci.yml`, `ci-windows.yml`, `gpui.yml` and `winui.yml`, including their platform and coverage requirements (2026-11-03).
 - [x] Run the CI scope, release-gate, skill-link, node-dependency, package-license, package-coverage wiring and Python app-port contracts. All eleven commands pass; exact commands, statuses and logs are in `target/logs/plan-0050/ci-contract-receipts.json` (2026-11-03).
-- [x] Product-code reachability: `node scripts/verify-no-dead-code.mjs` finds all 2,715 public items reachable from product code; `ci-dead-code-contract.log` records the result (2026-11-03).
+- [x] Product-code reachability: `node scripts/ci/verify-no-dead-code.mjs` finds all 2,715 public items reachable from product code; `ci-dead-code-contract.log` records the result (2026-11-03).
 - [ ] Run final `make ci` against the completed implementation, with all required coverage thresholds intact.
 - [ ] Run workflow checks beyond `make ci`, record host-only gaps explicitly, and verify the branch's required root `CI` check is green before integration.
 

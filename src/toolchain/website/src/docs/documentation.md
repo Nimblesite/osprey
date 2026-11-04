@@ -90,17 +90,6 @@ your modules and guides. Expand navigation groups to browse the reference, or
 press `/` to search. Article outlines link to sections, and code examples retain
 their exact text when copied.
 
-From the Osprey repository, generate all three designs and a comparison gallery:
-
-```sh
-node scripts/preview-docs.mjs ./my-project
-```
-
-Open `target/api-docs-previews/index.html` to compare complete sites and desktop
-and phone screenshots. The optional second argument chooses another output
-directory. The preview script uses the built compiler and the website's
-Playwright installation.
-
 Omit the source to export the built-in reference alone. Omit `--docs-format html`
 to generate Markdown with front matter for use in an existing documentation site.
 

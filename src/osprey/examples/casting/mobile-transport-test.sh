@@ -397,7 +397,7 @@ run_ios_probe() {
 }
 
 ios_boundary_probes() {
-    device=$(bash "$repo/scripts/ios-simulator.sh")
+    device=$(bash "$repo/scripts/mobile/ios-simulator.sh")
     write_capability_probe
     build_ios_probe "$work/capability" \
         "$here/ios/CastTLS.swift" "$here/ios/CastDiscovery.swift" "$here/ios/PlatformServices.swift"

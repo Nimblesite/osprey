@@ -2,7 +2,7 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../../.." && pwd)
-source "$repo/scripts/android-env.sh"
+source "$repo/scripts/mobile/android-env.sh"
 adb="$ANDROID_HOME/platform-tools/adb"
 serial=${OSPREY_ANDROID_SERIAL:?Set OSPREY_ANDROID_SERIAL to the emulator or device to run}
 architecture=$("$adb" -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')

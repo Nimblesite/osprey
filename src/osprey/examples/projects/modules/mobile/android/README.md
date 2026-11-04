@@ -6,7 +6,7 @@ semantic view with Android buttons, editable fields, spinners and scrolling
 cards. There is no WebView or second banking implementation.
 
 Requires JDK 17+, Android SDK 34, NDK 28.2 and a phone/emulator on Android 8+.
-`scripts/android-env.sh` discovers `ANDROID_HOME` / `ANDROID_NDK_HOME` or their
+`scripts/mobile/android-env.sh` discovers `ANDROID_HOME` / `ANDROID_NDK_HOME` or their
 usual installation locations. The checked-in Gradle launcher verifies its
 download checksum.
 
@@ -30,7 +30,7 @@ the same connection dialog. Local emulator aliases also support HTTP.
 Run the real device tests against an isolated live ledger:
 
 ```sh
-python3 scripts/bank-mobile-test.py -- \
+python3 scripts/mobile/bank-mobile-test.py -- \
   bash src/osprey/examples/projects/modules/mobile/android/test.sh
 ```
 

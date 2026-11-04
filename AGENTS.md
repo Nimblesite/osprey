@@ -71,7 +71,7 @@ Three phases, each once — ❌ mixing them:
 - Read [`docs/messaging.md`](docs/messaging.md) before touching user-facing text.
 
 ## Commands
-`make help` + [`Makefile`](Makefile) first; new features add their command and expected result there. Skills: `.agents/skills/<name>/SKILL.md`, then `node scripts/link-skills.mjs`. ❌ commit generated files (`src/toolchain/website/src/spec/*.md`, `src/toolchain/website/src/assets/vendor/`) — edit `docs/specs/`.
+`make help` + [`Makefile`](Makefile) first; new features add their command and expected result there. Skills: `.agents/skills/<name>/SKILL.md`, then `node scripts/ci/link-skills.mjs`. ❌ commit generated files (`src/toolchain/website/src/spec/*.md`, `src/toolchain/website/src/assets/vendor/`) — edit `docs/specs/`.
 
 ## Architecture
 - `src/toolchain/crates/` pipeline: tree-sitter parse (`osprey-syntax`, grammar `src/toolchain/tree-sitter-osprey/`) → AST (`osprey-ast`) → HM inference (`osprey-types`) → LLVM IR (`osprey-codegen`) → CLI (`osprey-cli`, `osprey` binary); `osprey-runtime-sys` links the C runtime.

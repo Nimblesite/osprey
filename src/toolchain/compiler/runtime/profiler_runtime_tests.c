@@ -9,10 +9,10 @@
 //   [PROF-ACTIVATE-ENV]     body_inactive_without_env, body_rate_default_997,
 //                           body_rate_clamped_low/_high, body_rate_passthrough,
 //                           body_stacks_are_leaf_first (written at exit);
-//                           scripts/test_profiler.sh (OSPREY_PROFILE_HZ)
+//                           scripts/tests/test_profiler.sh (OSPREY_PROFILE_HZ)
 //   [PROF-COLLECT-SAMPLER]  test_sample_state_encoding_matches_spec,
 //                           test_macos_capture_arm_produces_samples,
-//                           scripts/test_profiler.sh (per-fiber state split)
+//                           scripts/tests/test_profiler.sh (per-fiber state split)
 //   [PROF-COLLECT-UNWIND]   test_walk_recovers_planted_chain, _dedupes_lr,
 //                           _rejects_invalid_fp, _rejects_every_misalignment,
 //                           _stack_bounds_are_half_open,
@@ -22,7 +22,7 @@
 //                           _rejects_pc_below_min_code_addr,
 //                           _applies_same_floor_to_pc_as_to_lr,
 //                           test_frame_zero_is_the_precise_pc;
-//                           scripts/test_profiler.sh (frame 0 is the precise PC)
+//                           scripts/tests/test_profiler.sh (frame 0 is the precise PC)
 //   [PROF-COLLECT-REGISTRY] test_slot_snapshot_generation,
 //                           body_registry_noop_when_inactive,
 //                           body_registry_labels_round_trip, body_label_is_bounded
@@ -30,12 +30,12 @@
 //                           body_stacks_are_leaf_first, body_raw_header_fields
 //   [PROF-ATTACH-ENDPOINT]  profiler_stream_tests.c, profiler_stream_lifecycle_tests.c
 //   [PROF-ATTACH-PROTOCOL]  profiler_stream_tests.c, profiler_stream_lifecycle_tests.c
-//   [PROF-SYMBOLIZE-OFFLINE] scripts/test_profiler.sh (no raw hex when a
+//   [PROF-SYMBOLIZE-OFFLINE] scripts/tests/test_profiler.sh (no raw hex when a
 //                           symbolizer is installed) — CURRENTLY RED
 //   [PROF-BUILD-MODE]       osprey-cli driver flags (not covered here)
 //   [PROF-CODEGEN-FP]       osprey-codegen "frame-pointer"="all" (not here)
-//   [PROF-CLI-RUN]          scripts/test_profiler.sh (four exports + folded root)
-//   [PROF-CLI-REPORT]       scripts/test_profiler.sh (header, columns, no calls)
+//   [PROF-CLI-RUN]          scripts/tests/test_profiler.sh (four exports + folded root)
+//   [PROF-CLI-REPORT]       scripts/tests/test_profiler.sh (header, columns, no calls)
 //   [PROF-VSCODE-FLAME]     vscode-extension tests (not here)
 //   [PROF-VSCODE-HEAT]      vscode-extension tests (not here)
 #include "profiler_tests.h"

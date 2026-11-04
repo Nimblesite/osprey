@@ -13,7 +13,7 @@ import { profileActiveFile, PROFILER_COMMANDS, type ProfileArtifacts, type Progr
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import { BUILD_MS, EXTENSION_ID } from "./profiler-kit";
 
-// The same workload scripts/test_profiler.sh profiles: a spawned worker fiber
+// The same workload scripts/tests/test_profiler.sh profiles: a spawned worker fiber
 // beside the main fiber, both burning CPU in `fib`.
 const PROGRAM = `fn add(a, b) = match b {
     0 => a

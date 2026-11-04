@@ -14,7 +14,7 @@ Contract: ../specs/ecosystem/0033-OspreyGitHubAction.md
 - Fail the action by returning a non-zero int from `main`; a returned `Error` does not fail it ([ENTRY-EXIT-STATUS]).
 - No hard-coded version; the tag stamps it ([SWR-VERSION-BUILD-STAMPING]).
 - Docker actions run on Linux runners only ([GHA-PACKAGING-DOCKER]).
-- Every job added to `.github/workflows/release.yml` must be listed in `release-complete.needs` and its credential checked in `preflight` (`node scripts/verify-release-gates.mjs` runs in `make ci` and fails otherwise).
+- Every job added to `.github/workflows/release.yml` must be listed in `release-complete.needs` and its credential checked in `preflight` (`node scripts/ci/verify-release-gates.mjs` runs in `make ci` and fails otherwise).
 - Owner decisions needed before Phase 2/4: what the published action computes (the spec fixes only its shape) and the GHCR org + Marketplace listing.
 
 ## Phase 2 — Docker packaging [GHA-PACKAGING-DOCKER]
@@ -23,7 +23,7 @@ Contract: ../specs/ecosystem/0033-OspreyGitHubAction.md
 - [ ] Add a root `Dockerfile` baking `clang`, the `osprey` binary, the `libfiber_runtime*.a` archives, and `main.osp` at a fixed path; optionally pre-compile `main.osp` to a native binary. (`src/toolchain/webcompiler/Dockerfile` and `.devcontainer/Dockerfile` are unrelated.)
 - [ ] Add the container entrypoint: pass the ferried stdin line through unchanged and route the program's stdout to `$GITHUB_OUTPUT`.
 - [ ] Root `action.yml`: `runs.using: docker`, image pinned by GHCR `sha256` digest, typed `inputs`/`outputs`.
-- [ ] Add a GHCR build/publish job to `.github/workflows/release.yml`, wired into `release-complete.needs` and `preflight`. Check: `node scripts/verify-release-gates.mjs` passes and a consuming workflow reproduces the Phase 1 output for the same inputs.
+- [ ] Add a GHCR build/publish job to `.github/workflows/release.yml`, wired into `release-complete.needs` and `preflight`. Check: `node scripts/ci/verify-release-gates.mjs` passes and a consuming workflow reproduces the Phase 1 output for the same inputs.
 
 ## Phase 3 — Composite packaging [GHA-PACKAGING-COMPOSITE]
 

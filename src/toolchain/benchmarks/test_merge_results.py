@@ -21,7 +21,7 @@ class LspFixtureTests(unittest.TestCase):
     def test_synthetic_project_compiles_and_runs_with_an_explicit_arithmetic_policy(self):
         repo = Path(__file__).resolve().parent.parent.parent.parent
         compiler = os.environ.get("OSPREY_BIN", str(repo / "target/release/osprey"))
-        generate = runpy.run_path(str(repo / "scripts/benchmark-lsp.py"))["synthetic_project"]
+        generate = runpy.run_path(str(repo / "scripts/tests/benchmark-lsp.py"))["synthetic_project"]
         with tempfile.TemporaryDirectory() as directory:
             root = generate(Path(directory))
             self.assertEqual(len(list((root / "src").glob("*.ospml"))), 10)

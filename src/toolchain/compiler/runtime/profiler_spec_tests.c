@@ -290,7 +290,7 @@ static void test_raw_format_fields_conform_to_spec(void) {
 // captured correctly for a plain cc-built binary (measured 17/17 unique stacks
 // resolving to the test image via dladdr). It reproduces only for an
 // Osprey-compiled program, so the assertion that pins it lives in
-// scripts/test_profiler.sh, which [PROF-TEST] designates for exactly that:
+// scripts/tests/test_profiler.sh, which [PROF-TEST] designates for exactly that:
 // "The end-to-end profiler script runs an example under `--profile` and parses
 // every export." That assertion was measured RED before the quarantine landed
 // (72.2% of self-samples on kernel or unsymbolized leaves) and is now masked by

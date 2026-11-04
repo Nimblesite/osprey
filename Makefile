@@ -14,8 +14,8 @@ include scripts/make/proof.mk
 include scripts/make/apps.mk
 include scripts/make/extension.mk
 
-include scripts/ios.mk
-include scripts/android.mk
+include scripts/make/ios.mk
+include scripts/make/android.mk
 
 # =============================================================================
 # Standard Targets
@@ -92,10 +92,10 @@ _package-coverage: build
 # fails on a package below its projects.packages threshold or on missing,
 # empty, malformed or incomplete evidence.
 _test_packages:
-	python3 scripts/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+	python3 scripts/packages/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
 
 _coverage_check_packages:
-	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+	python3 scripts/packages/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
 
 .PHONY: _test_agent _agent-suites
 # Osprey Agent's turn logic and real update path: no network and no window.
@@ -112,7 +112,7 @@ _python-app-ports: build
 	$(MAKE) _test_python_app_ports
 
 _test_python_app_ports:
-	python3 scripts/test-python-app-ports.py --compiler $(BIN)
+	python3 scripts/packages/test-python-app-ports.py --compiler $(BIN)
 
 
 _hunt: build
@@ -120,14 +120,14 @@ _hunt: build
 
 .PHONY: _hunt-sample _hunt-crashes
 _hunt-sample: build
-	python3 scripts/hunt_sample.py $(HUNT_ARGS)
+	python3 scripts/hunt/hunt_sample.py $(HUNT_ARGS)
 
 _hunt-crashes: build
 	$(MAKE) _test_hunt_crashes
 
 _hunt-corpus: build
-	scripts/hunt_corpus.sh $(HUNT_ARGS)
-	python3 scripts/hunt_summary.py target/hunt-corpus --findings-only
+	scripts/hunt/hunt_corpus.sh $(HUNT_ARGS)
+	python3 scripts/hunt/hunt_summary.py target/hunt-corpus --findings-only
 
 _registry-test: build
 	$(MAKE) _test_registry
@@ -172,7 +172,7 @@ _bank-e2e: _bank-web $(BANK_E2E_NODE_DEPS)
 _docs-html-test: build $(BANK_E2E_NODE_DEPS)
 	@echo "==> Documentation HTML browser acceptance..."
 	cd src/osprey/examples/projects/modules/e2e && npx playwright install chromium
-	node scripts/verify-docs-html.mjs $(BIN)
+	node scripts/ci/verify-docs-html.mjs $(BIN)
 
 ## lint: Run all linters/analyzers (read-only). Checks formatting but does
 ## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
@@ -186,7 +186,7 @@ lint: _deslop _lint
 ## hawk counts the workspace's TEST binaries as reachability roots, so an item
 ## whose only callers are its own `#[cfg(test)]` module passes this gate — that
 ## is how `osprey_debug::DebugBuild` and `osprey_syntax::dependency_sets` lived
-## in the tree. `scripts/verify-no-dead-code.mjs` (run by `_lint`) answers the
+## in the tree. `scripts/ci/verify-no-dead-code.mjs` (run by `_lint`) answers the
 ## narrower question "does PRODUCT code name this?" and catches that class.
 ## Neither gate subsumes the other; both run. Scoped
 ## to dead_public ONLY — unnecessary_public / restricted-visibility findings are
@@ -242,17 +242,17 @@ _wasm: build _runtime_wasm
 	$(BIN) src/osprey/examples/wasm/hello.osp --target=wasm32 --compile -o src/osprey/examples/wasm/build/hello.wasm
 	@echo "==> validating + smoke-running src/osprey/examples/wasm/build/hello.wasm"
 	$(call wasm_validate,src/osprey/examples/wasm/build/hello.wasm)
-	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
 	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> src/osprey/examples/wasm/build/"
 	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
 	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
 	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
 	@echo "==> both Studio flavors must emit the SAME manifest (byte-identical golden)"
-	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
 	$(MAKE) _test_wasm_goldens
 	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
@@ -266,10 +266,10 @@ _wasm-site: _runtime_wasm
 	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
 	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
 	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
-	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
 	@echo "==> website wasm demo ready"
 
 _wasm-serve: _wasm
@@ -286,8 +286,8 @@ setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	@echo "==> Setting up development environment..."
 	rustup component add rustfmt clippy llvm-tools-preview
 	command -v cargo-llvm-cov >/dev/null 2>&1 || cargo install cargo-llvm-cov
-	bash scripts/install-deslop.sh
-	node scripts/link-skills.mjs
+	bash scripts/ci/install-deslop.sh
+	node scripts/ci/link-skills.mjs
 	@echo "==> Setup complete. Run 'make ci' to validate."
 
 ## help: List every public target with its usage and expected result.
@@ -302,15 +302,15 @@ help:
 
 .PHONY: _proof
 _proof: build
-	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof-export.sh --check --theorem $$theorem || exit 1; done
-	node --test scripts/test-proof-export.mjs
-	python3 scripts/test-proof-openai.py
+	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof/proof-export.sh --check --theorem $$theorem || exit 1; done
+	node --test scripts/proof/test-proof-export.mjs
+	python3 scripts/proof/test-proof-openai.py
 	$(MAKE) -j3 _test_proof_ci
 
 .PHONY: _workbench-proof-assets
 _workbench-proof-assets:
-	python3 scripts/workbench-proof-assets.py target/workbench-proof-assets
-	python3 scripts/workbench-proof-assets.py target/workbench-proof-assets --check
+	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
+	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
 
 .PHONY: _workbench-test
 _workbench-test: build
@@ -354,9 +354,9 @@ cli-contracts:
 
 .PHONY: _package-checks
 _package-checks: build
-	node scripts/verify-package-licenses.mjs
-	node --test scripts/test-package-licenses.mjs
-	python3 scripts/test-package-sha256.py
+	node scripts/packages/verify-package-licenses.mjs
+	node --test scripts/packages/test-package-licenses.mjs
+	python3 scripts/packages/test-package-sha256.py
 	$(BIN) src/osprey/packages/manager/fixture-check --run
 	for filter in "schema-check: model declarations" "schema-check: accepted values" "schema-check: rejected values" \
 	  "schema: spec block equals canonical file" "fixtures: names"; do \
@@ -379,7 +379,7 @@ _package-checks: build
 
 .PHONY: _package-coverage-record
 _package-coverage-record:
-	python3 scripts/package_coverage.py --record-measurements
+	python3 scripts/packages/package_coverage.py --record-measurements
 
 .PHONY: _vsix-e2e
 _vsix-e2e: $(EXT_NODE_DEPS)
@@ -530,7 +530,7 @@ _mobile-ios-test: _mobile-ios
 	OSPREY_IOS_SKIP_BUILD=1 bash src/osprey/examples/mobile/ios/run.sh --smoke
 
 _mobile-domain-test: _runtime
-	python3 scripts/test-mobile-tools.py
+	python3 scripts/mobile/test-mobile-tools.py
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(BIN) src/osprey/examples/mobile/inbox/test --run
 
@@ -544,7 +544,7 @@ _android: _runtime_android
 # siblings may run at once, and the corpus would race the archive it links.
 _android-test: _android
 	$(MAKE) _test_android_goldens
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-android.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/mobile/test-android.sh
 	OSPREY_ANDROID_SKIP_BUILD=1 bash src/osprey/examples/mobile/android/run.sh --smoke
 
 # Native Talon clients share the browser's Osprey application and live API.
@@ -559,7 +559,7 @@ _bank-android: _runtime_android
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_ANDROID_SKIP_RUNTIME=1 bash src/osprey/examples/projects/modules/mobile/android/build.sh
 
 _bank-android-test: _bank-android _runtime
-	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/android/test.sh
+	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/mobile/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/android/test.sh
 
 _bank-ios: _runtime_ios _runtime_ios_sim
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
@@ -567,7 +567,7 @@ _bank-ios: _runtime_ios _runtime_ios_sim
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios-sim
 
 _bank-ios-test: _bank-ios _runtime
-	OSPREY_IOS_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/ios/test.sh
+	OSPREY_IOS_SKIP_BUILD=1 python3 scripts/mobile/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/ios/test.sh
 
 _bank-mobile-test: _bank-mobile-domain-test
 	$(MAKE) _bank-android-test

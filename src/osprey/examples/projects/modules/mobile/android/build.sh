@@ -3,7 +3,7 @@ set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../../../../.." && pwd)
 app="$root/src/osprey/examples/projects/modules/mobile/android"
 cd "$root"
-source scripts/android-env.sh
+source scripts/mobile/android-env.sh
 if [[ ${OSPREY_ANDROID_SKIP_RUNTIME:-0} != 1 ]]; then make _runtime_android; fi
 if [[ -z ${OSPREY_BIN:-} ]]; then cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli; fi
 compiler=${OSPREY_BIN:-$root/target/release/osprey}
