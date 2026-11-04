@@ -10,30 +10,38 @@ namespace backends;
 
 /// The statically selected tensor dialect used by both interpretations.
 module Backends {
+    /// [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error.
+    export fn andThen(result, next) = match result {
+        Success { value } => next(value)
+        Error { message } => Error { message: message }
+    }
     /// The dense-tensor dialect a model is written in. `B` is the buffer
     /// representation an interpretation chooses; the model leaves it to
     /// inference everywhere.
+    /// The buffer-producing operations answer with a `Result` [FAILURE-EXPLICIT]:
+    /// an interpretation that runs them on a device has a failure channel, and the
+    /// list interpretation answers `Success`.
     export static effect Tensor<B> {
-        build: fn(int, fn(int) -> float) -> B
+        build: fn(int, fn(int) -> float) -> Result<B, Error>
         get: fn(B, int) -> float
         length: fn(B) -> int
-        zipWith: fn(B, B, fn(float, float) -> float) -> B
-        reduce: fn(B, float, fn(float, float) -> float) -> float
-        matMul: fn(B, B, int, int, int) -> B
-        fromList: fn(List<float>) -> B
+        zipWith: fn(B, B, fn(float, float) -> float) -> Result<B, Error>
+        reduce: fn(B, float, fn(float, float) -> float) -> Result<float, Error>
+        matMul: fn(B, B, int, int, int) -> Result<B, Error>
+        fromList: fn(List<float>) -> Result<B, Error>
         device: fn() -> string
     }
 
     /// Every operation as host list code; the product accumulates in k order from 0.0.
     export fn onLists(work) = {
         handle static Tensor<List<float>> {
-            build n f => range(0, n) |> map(f) |> toList()
+            build n f => Success { value: range(0, n) |> map(f) |> toList() }
             get b i => listGet(b, i) ?: 0.0
             length b => listLength(b)
-            zipWith a b f => range(0, listLength(a)) |> map(fn(i) => f(listGet(a, i) ?: 0.0, listGet(b, i) ?: 0.0)) |> toList()
-            reduce b seed f => range(0, listLength(b)) |> fold(seed, fn(a, i) => f(a, listGet(b, i) ?: 0.0))
-            matMul a b rows inner cols => range(0, rows * cols) |> map(fn(i) => range(0, inner) |> fold(0.0, fn(acc, k) => acc + (listGet(a, intDiv(i, cols) * inner + k) ?: 0.0) * (listGet(b, k * cols + i % cols) ?: 0.0))) |> toList()
-            fromList xs => xs
+            zipWith a b f => Success { value: range(0, listLength(a)) |> map(fn(i) => f(listGet(a, i) ?: 0.0, listGet(b, i) ?: 0.0)) |> toList() }
+            reduce b seed f => Success { value: range(0, listLength(b)) |> fold(seed, fn(a, i) => f(a, listGet(b, i) ?: 0.0)) }
+            matMul a b rows inner cols => Success { value: range(0, rows * cols) |> map(fn(i) => range(0, inner) |> fold(0.0, fn(acc, k) => acc + (listGet(a, intDiv(i, cols) * inner + k) ?: 0.0) * (listGet(b, k * cols + i % cols) ?: 0.0))) |> toList() }
+            fromList xs => Success { value: xs }
             device => "lists"
         }
         work()
@@ -42,12 +50,12 @@ module Backends {
     /// Every operation as a GPU kernel or product; the arms forward the model's callbacks.
     export fn onGpu(work) = {
         handle static Tensor<GpuBuffer<float>> {
-            build n f => toGpu(range(0, n)) |> gpuMap(f)
+            build n f => andThen(toGpu(range(0, n)), fn(xs) => gpuMap(xs, f))
             get b i => gpuGet(b, i) ?: 0.0
             length b => gpuLength(b)
             zipWith a b f => gpuZipWith(a, b, f)
-            reduce b seed f => b |> gpuFold(seed, f)
-            matMul a b rows inner cols => gpuMatMul(a, b, rows, inner, cols) ?: toGpu([])
+            reduce b seed f => gpuFold(b, seed, f)
+            matMul a b rows inner cols => gpuMatMul(a, b, rows, inner, cols)
             fromList xs => toGpu(xs)
             device => gpuDevice()
         }
@@ -68,6 +76,25 @@ let geluScale = 0.7978845608028654
 let geluCubic = 0.044715
 let tolerance = 0.000000001
 
+/// [FAILURE-EXPLICIT] A failed tensor operation fails the predicate with its reason.
+fn tensorSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("tensor operation", "success", toString(message))
+        false }
+}
+/// [FAILURE-EXPLICIT] A case ends here; a failure has already failed an assertion.
+fn settled(result) = match result {
+    Success _ => 0
+    Error { message } => { check("tensor operation", "success", toString(message))
+        0 }
+}
+/// [FAILURE-EXPLICIT] The same for a string-producing case: the empty text can
+/// never equal the expected rendering, so a failure cannot pass.
+fn settledText(result) = match result {
+    Success { value } => value
+    Error { message } => { check("tensor operation", "success", toString(message))
+        "" }
+}
 fn at(m, i) = perform Backends::Tensor.get(m, i)
 fn size(m) = perform Backends::Tensor.length(m)
 fn vector(xs) = perform Backends::Tensor.fromList(xs)
@@ -96,6 +123,15 @@ fn outB() = weight(width, 3, 7, 3, 4.0)
 fn tokenTable() = weight(vocab * width, 9, 17, 8, 4.0)
 fn positionTable() = weight(3 * width, 4, 9, 4, 8.0)
 
+/// Every block parameter in one bundle, so the model unwraps each once.
+fn blockParams() =
+    Backends::andThen(ln1g(), fn(g1) => Backends::andThen(ln1b(), fn(b1) =>
+    Backends::andThen(qkvW(), fn(qw) => Backends::andThen(qkvB(), fn(qb) =>
+    Backends::andThen(projW(), fn(pw) => Backends::andThen(projB(), fn(pb) =>
+    Backends::andThen(ln2g(), fn(g2) => Backends::andThen(ln2b(), fn(b2) =>
+    Backends::andThen(fcW(), fn(fw) => Backends::andThen(fcB(), fn(fb) =>
+    Backends::andThen(outW(), fn(ow) => Backends::andThen(outB(), fn(ob) => Success { value: { ln1gain: g1, ln1bias: b1, qkvWeight: qw, qkvBias: qb, projWeight: pw, projBias: pb, ln2gain: g2, ln2bias: b2, fcWeight: fw, fcBias: fb, outWeight: ow, outBias: ob } }))))))))))))
+
 fn sumRange(x, start, n) = range(start, start + n) |> fold(0.0, fn(a, i) => a + at(x, i))
 fn squaredDeviation(x, start, n, mean) = range(start, start + n) |> fold(0.0, fn(a, i) => a + (at(x, i) - mean) * (at(x, i) - mean))
 fn rowMeans(x, t) = perform Backends::Tensor.build(t, fn(r) => sumRange(x, r * width, width) / widthF)
@@ -103,17 +139,15 @@ fn rowVariances(x, t, means) = perform Backends::Tensor.build(t, fn(r) => square
 fn normalised(x, means, variances, g, b, i) = (at(x, i) - at(means, intDiv(i, width))) / sqrt(at(variances, intDiv(i, width)) + epsilon) * at(g, i % width) + at(b, i % width)
 
 /// LayerNorm over each of the t rows of x [t, width].
-fn layerNorm(x, t, g, b) = {
-    let means = rowMeans(x, t)
-    let variances = rowVariances(x, t, means)
-    perform Backends::Tensor.build(t * width, fn(i) => normalised(x, means, variances, g, b, i))
-}
+fn layerNorm(x, t, g, b) =
+    Backends::andThen(rowMeans(x, t), fn(means) =>
+        Backends::andThen(rowVariances(x, t, means), fn(variances) =>
+            perform Backends::Tensor.build(t * width, fn(i) => normalised(x, means, variances, g, b, i))))
 
 /// x [rows, inner] times w [inner, cols], plus the bias on every row.
-fn linear(x, rows, inner, cols, w, bias) = {
-    let value = product(x, w, rows, inner, cols)
-    perform Backends::Tensor.build(rows * cols, fn(i) => at(value, i) + at(bias, i % cols))
-}
+fn linear(x, rows, inner, cols, w, bias) =
+    Backends::andThen(product(x, w, rows, inner, cols), fn(value) =>
+        perform Backends::Tensor.build(rows * cols, fn(i) => at(value, i) + at(bias, i % cols)))
 
 fn qAt(qkv, r, h, d) = at(qkv, r * qkvWidth + h * headWidth + d)
 fn kAt(qkv, r, h, d) = at(qkv, r * qkvWidth + width + h * headWidth + d)
@@ -125,66 +159,74 @@ fn causalWeight(scores, peaks, t, i) = match i % t <= intDiv(i, t) % t { true =>
 fn weighted(probs, qkv, t, r, h, d) = range(0, r + 1) |> fold(0.0, fn(a, c) => a + at(probs, (h * t + r) * t + c) * vAt(qkv, c, h, d))
 
 /// Softmax of every causal row of the [heads, t, t] scores.
-fn probsOf(scores, t) = {
-    let peaks = perform Backends::Tensor.build(heads * t, fn(row) => rowMax(scores, row, t))
-    let weights = perform Backends::Tensor.build(heads * t * t, fn(i) => causalWeight(scores, peaks, t, i))
-    let sums = perform Backends::Tensor.build(heads * t, fn(row) => sumRange(weights, row * t, t))
-    perform Backends::Tensor.build(heads * t * t, fn(i) => at(weights, i) / at(sums, intDiv(i, t)))
-}
+fn probsOf(scores, t) =
+    Backends::andThen(perform Backends::Tensor.build(heads * t, fn(row) => rowMax(scores, row, t)), fn(peaks) =>
+        Backends::andThen(perform Backends::Tensor.build(heads * t * t, fn(i) => causalWeight(scores, peaks, t, i)), fn(weights) =>
+            Backends::andThen(perform Backends::Tensor.build(heads * t, fn(row) => sumRange(weights, row * t, t)), fn(sums) =>
+                perform Backends::Tensor.build(heads * t * t, fn(i) => at(weights, i) / at(sums, intDiv(i, t))))))
 
 /// Causal multi-head self-attention over qkv [t, qkvWidth], as [t, width].
-fn attention(qkv, t) = {
-    let probs = probsOf(perform Backends::Tensor.build(heads * t * t, fn(i) => causalScore(qkv, intDiv(i, t * t), intDiv(i % (t * t), t), i % t)), t)
-    perform Backends::Tensor.build(t * width, fn(i) => weighted(probs, qkv, t, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))
-}
+fn attention(qkv, t) =
+    Backends::andThen(perform Backends::Tensor.build(heads * t * t, fn(i) => causalScore(qkv, intDiv(i, t * t), intDiv(i % (t * t), t), i % t)), fn(scores) =>
+        Backends::andThen(probsOf(scores, t), fn(probs) =>
+            perform Backends::Tensor.build(t * width, fn(i) => weighted(probs, qkv, t, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))))
 
 /// One pre-norm block: attention and MLP, each with a residual.
-fn block(x, t) = {
-    let qkv = linear(layerNorm(x, t, ln1g(), ln1b()), t, width, qkvWidth, qkvW(), qkvB())
-    let x2 = perform Backends::Tensor.zipWith(x, linear(attention(qkv, t), t, width, width, projW(), projB()), addF)
-    let f = linear(layerNorm(x2, t, ln2g(), ln2b()), t, width, mlpWidth, fcW(), fcB())
-    let hidden = perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i)))
-    perform Backends::Tensor.zipWith(x2, linear(hidden, t, mlpWidth, width, outW(), outB()), addF)
-}
+fn block(x, t) =
+    Backends::andThen(blockParams(), fn(w) =>
+        Backends::andThen(layerNorm(x, t, w.ln1gain, w.ln1bias), fn(normed) =>
+            Backends::andThen(linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias), fn(qkv) =>
+                Backends::andThen(attention(qkv, t), fn(attended) =>
+                    Backends::andThen(linear(attended, t, width, width, w.projWeight, w.projBias), fn(projected) =>
+                        Backends::andThen(perform Backends::Tensor.zipWith(x, projected, addF), fn(x2) =>
+                            Backends::andThen(layerNorm(x2, t, w.ln2gain, w.ln2bias), fn(normed2) =>
+                                Backends::andThen(linear(normed2, t, width, mlpWidth, w.fcWeight, w.fcBias), fn(f) =>
+                                    Backends::andThen(perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i))), fn(hidden) =>
+                                        Backends::andThen(linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias), fn(out) =>
+                                            perform Backends::Tensor.zipWith(x2, out, addF)))))))))))
 
 /// Token plus position embeddings of the host-side ids, [t, width].
 fn embed(tokens, positions, ids, t) = perform Backends::Tensor.build(t * width, fn(i) => at(tokens, (listGet(ids, intDiv(i, width)) ?: 0) * width + i % width) + at(positions, i))
-fn blockOutput() = block(embed(tokenTable(), positionTable(), [3, 1], 2), 2)
+fn blockOutput() =
+    Backends::andThen(tokenTable(), fn(tokens) =>
+        Backends::andThen(positionTable(), fn(positions) =>
+            Backends::andThen(embed(tokens, positions, [3, 1], 2), fn(x) => block(x, 2))))
 fn rendered(y) = range(0, size(y)) |> fold("", fn(acc, i) => acc + " " + toString(at(y, i)))
 
 /// The oracle values of the block, plus which interpretation answered.
-fn blockChecks(name, expectedDevice) = {
-    let y = blockOutput()
-    checkAll(name, [
-        size(y) == 8, device() == expectedDevice,
-        near(at(y, 0), -1.6005739040598597), near(at(y, 1), 1.6570609567125532),
-        near(at(y, 2), 0.7819120177177687), near(at(y, 3), 2.600026966458822),
-        near(at(y, 4), -1.4874618953251921), near(at(y, 5), 0.04813056859620782),
-        near(at(y, 6), -0.6083624491502386), near(at(y, 7), 1.4214195552139615),
-        near(total(y), 2.8121518161640227)
-    ])
-}
-
-fn listsCase() = Backends::onLists(fn() => blockChecks("the block over lists matches the reference pass", "lists"))
-fn gpuCase() = Backends::onGpu(fn() => blockChecks("the same block over GPU buffers matches the reference pass", "host"))
+fn blockChecks(name, expectedDevice) =
+    Backends::andThen(blockOutput(), fn(y) => {
+        checkAll(name, [
+            size(y) == 8, device() == expectedDevice,
+            near(at(y, 0), -1.6005739040598597), near(at(y, 1), 1.6570609567125532),
+            near(at(y, 2), 0.7819120177177687), near(at(y, 3), 2.600026966458822),
+            near(at(y, 4), -1.4874618953251921), near(at(y, 5), 0.04813056859620782),
+            near(at(y, 6), -0.6083624491502386), near(at(y, 7), 1.4214195552139615),
+            tensorSatisfies(total(y), fn(grand) => near(grand, 2.8121518161640227))
+        ])
+        Success { value: 0 } })
+fn listsCase() = settled(Backends::onLists(fn() => blockChecks("the block over lists matches the reference pass", "lists")))
+fn gpuCase() = settled(Backends::onGpu(fn() => blockChecks("the same block over GPU buffers matches the reference pass", "host")))
 
 /// Both interpretations print every element identically: the products
 /// accumulate in the same order, so the answers are the same doubles.
-fn agreementCase() = {
-    let lists = Backends::onLists(fn() => rendered(blockOutput()))
-    let gpu = Backends::onGpu(fn() => rendered(blockOutput()))
-    checkAll("both interpretations compute the same doubles", [
-        lists == gpu, lists != "", length(lists) > 8 * 4
-    ])
-}
+fn listsText() = Backends::andThen(blockOutput(), fn(y) => Success { value: rendered(y) })
+fn agreementCase() =
+    Backends::andThen(Backends::onLists(fn() => listsText()), fn(lists) =>
+        Backends::andThen(Backends::onGpu(fn() => listsText()), fn(gpu) => {
+            checkAll("both interpretations compute the same doubles", [
+                lists == gpu, lists != "", length(lists) > 8 * 4
+            ])
+            Success { value: 0 } }))
+fn agreementSettled() = settled(agreementCase())
 
 /// A request that leaves its instantiation to inference is answered by the
 /// innermost region, through helpers that never name a buffer type.
 fn inferenceCase() = checkAll("an inferred instantiation selects the innermost region", [
     Backends::onLists(fn() => Backends::onGpu(device)) == "host",
     Backends::onGpu(fn() => Backends::onLists(device)) == "lists",
-    Backends::onGpu(fn() => at(vector([1.0, 2.0]), 1)) == 2.0,
-    Backends::onLists(fn() => total(vector([1.0, 2.0, 3.0]))) == 6.0
+    Backends::onGpu(fn() => tensorSatisfies(vector([1.0, 2.0]), fn(uploaded) => at(uploaded, 1) == 2.0)),
+    Backends::onLists(fn() => tensorSatisfies(vector([1.0, 2.0, 3.0]), fn(t) => tensorSatisfies(total(t), fn(grand) => grand == 6.0)))
 ])
 
 /// A static arm forwards the model's callback to the kernel it builds: an
@@ -195,12 +237,12 @@ fn smoothed(x) = perform Backends::Tensor.build(size(x), fn(i) => gelu(at(x, i))
 fn forwardedKernelCase() = {
     let scale = 3.0
     checkAll("a static arm forwards the model's callback to its kernel", [
-        Backends::onGpu(fn() => at(doubled(3), 2)) == 4.0,
-        Backends::onGpu(fn() => at(smoothed(vector([1.0, 2.0])), 1)) == gelu(2.0),
-        Backends::onGpu(fn() => at(scaled(2, scale), 1)) == 3.0,
-        Backends::onLists(fn() => at(scaled(2, scale), 1)) == 3.0,
-        Backends::onGpu(fn() => at(product(vector([1.0, 2.0, 3.0, 4.0]), vector([5.0, 6.0, 7.0, 8.0]), 2, 2, 2), 3)) == 50.0,
-        Backends::onLists(fn() => at(product(vector([1.0, 2.0, 3.0, 4.0]), vector([5.0, 6.0, 7.0, 8.0]), 2, 2, 2), 3)) == 50.0
+        Backends::onGpu(fn() => tensorSatisfies(doubled(3), fn(t) => at(t, 2) == 4.0)),
+        Backends::onGpu(fn() => tensorSatisfies(vector([1.0, 2.0]), fn(uploaded) => tensorSatisfies(smoothed(uploaded), fn(t) => at(t, 1) == gelu(2.0)))),
+        Backends::onGpu(fn() => tensorSatisfies(scaled(2, scale), fn(t) => at(t, 1) == 3.0)),
+        Backends::onLists(fn() => tensorSatisfies(scaled(2, scale), fn(t) => at(t, 1) == 3.0)),
+        Backends::onGpu(fn() => tensorSatisfies(vector([1.0, 2.0, 3.0, 4.0]), fn(left) => tensorSatisfies(vector([5.0, 6.0, 7.0, 8.0]), fn(right) => tensorSatisfies(product(left, right, 2, 2, 2), fn(assembled) => at(assembled, 3) == 50.0)))),
+        Backends::onLists(fn() => tensorSatisfies(vector([1.0, 2.0, 3.0, 4.0]), fn(left) => tensorSatisfies(vector([5.0, 6.0, 7.0, 8.0]), fn(right) => tensorSatisfies(product(left, right, 2, 2, 2), fn(assembled) => at(assembled, 3) == 50.0))))
     ])
 }
 
@@ -211,10 +253,16 @@ fn forwardedKernelCase() = {
 /// float back as a raw word.
 fn firstOf(a, b) = perform Backends::Tensor.zipWith(a, b, fn(g, _x) => g)
 fn secondDoubled(a, b) = perform Backends::Tensor.zipWith(a, b, fn(_g, x) => x * 2.0)
-fn declaredTypes() = "${total(firstOf(doubled(3), scaled(3, 3.0)))} ${total(secondDoubled(doubled(3), scaled(3, 3.0)))}"
+fn declaredTypes() =
+    Backends::andThen(doubled(3), fn(first) =>
+        Backends::andThen(scaled(3, 3.0), fn(second) =>
+            Backends::andThen(firstOf(first, second), fn(heads) =>
+                Backends::andThen(total(heads), fn(headTotal) =>
+                    Backends::andThen(secondDoubled(first, second), fn(doubles) =>
+                        Backends::andThen(total(doubles), fn(doubleTotal) => Success { value: "${headTotal} ${doubleTotal}" }))))))
 fn declaredTypesCase() = checkAll("a kernel keeps the operation's declared element types inside a generic function", [
-    Backends::onGpu(declaredTypes) == "6.0 18.0",
-    Backends::onLists(declaredTypes) == "6.0 18.0"
+    Backends::onGpu(fn() => settledText(declaredTypes())) == "6.0 18.0",
+    Backends::onLists(fn() => settledText(declaredTypes())) == "6.0 18.0"
 ])
 
 /// Exact-value tests record any arithmetic fault as a failed assertion.
@@ -238,7 +286,7 @@ fn exactArithmetic(work) = {
 
 test("the block over lists matches the reference pass", fn() => exactArithmetic(listsCase))
 test("the same block over GPU buffers matches the reference pass", fn() => exactArithmetic(gpuCase))
-test("both interpretations compute the same doubles", fn() => exactArithmetic(agreementCase))
+test("both interpretations compute the same doubles", fn() => exactArithmetic(agreementSettled))
 test("an inferred instantiation selects the innermost region", fn() => exactArithmetic(inferenceCase))
 test("a static arm forwards the model's callback to its kernel", fn() => exactArithmetic(forwardedKernelCase))
 test("a kernel keeps the operation's declared element types inside a generic function", fn() => exactArithmetic(declaredTypesCase))

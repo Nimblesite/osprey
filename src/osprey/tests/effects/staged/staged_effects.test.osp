@@ -1,4 +1,10 @@
 /// Exact-value tests record any arithmetic fault as a failed assertion.
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU operation", "success", toString(message))
+        false }
+}
 fn exactArithmetic(work) = {
     handle Arith {
         overflow op _ _ wrapped => {
@@ -129,16 +135,21 @@ fn sharedAcrossStagesCase() = {
 /// ([GPU-KERNEL-PURE]) sees an empty row because discharge ran first —
 /// [STAGE-GPU-LEGAL] needs no separate check.
 fn stagedKernelCase() = {
-    let scaled = {
+    let uploaded = {
         handle static Tile {
             size => 3
         }
-        toGpu([1, 2, 3, 4]) |> gpuMap(tiled)
+        match toGpu([1, 2, 3, 4]) {
+            Success { value } => gpuMap(value, tiled)
+            Error { message } => Error { message: message }
+        }
     }
-    checkAll("a static effect is legal inside a GPU kernel", [
-        gpuFold(scaled, 0, fn(a, v) => (a + v) ) == 30,
-        gpuLength(scaled) == 4
-    ])
+    match uploaded { Success { scaled } =>
+        checkAll("a static effect is legal inside a GPU kernel", [
+            gpuSatisfies(gpuFold(scaled, 0, fn(a, v) => (a + v) ), fn(total) => total == 30),
+            gpuLength(scaled) == 4
+        ])
+      Error { message } => check("GPU operation", "success", toString(message)) }
 }
 
 /// `kernel` is a handler region, not a magic block: ONE region supplies the
