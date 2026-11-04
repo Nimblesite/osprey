@@ -1,0 +1,6 @@
+[project]
+name = "fastapi-http-service"
+source_roots = ["..", "../../src"]
+python_sources = ["../../src/models.py", "../../src/responses.py", "../../src/routing.py", "../../src/applications.py", "../fixture.py", "../server.py"]
+default_namespace = "fastapi_tests"
+entry = "../server.py"

@@ -147,11 +147,36 @@ pub(crate) fn gen(
     args: &[Expr],
     named: &[NamedArgument],
 ) -> Result<Option<Value>> {
-    let Some(sig) = lookup(name) else {
+    let Some(sig) = callback_signature(cg, name, args, named) else {
         return Ok(None);
     };
     let ops = eval_args(cg, name, &sig, args, named)?;
     Ok(Some(emit(cg, &sig, &ops)?))
+}
+
+fn callback_signature(
+    cg: &Codegen,
+    name: &str,
+    args: &[Expr],
+    named: &[NamedArgument],
+) -> Option<Sig> {
+    let mut sig = lookup(name)?;
+    if name == "httpListen"
+        && crate::expr::arg_exprs(args, named)
+            .get(1)
+            .is_some_and(|expr| closure_callback(cg, expr))
+    {
+        sig.cname = "http_listen_closure";
+    }
+    Some(sig)
+}
+
+fn closure_callback(cg: &Codegen, expr: &Expr) -> bool {
+    match expr {
+        Expr::TypeApply { function, .. } => closure_callback(cg, function),
+        Expr::Identifier(name) => cg.lookup(name).is_some() || !cg.fn_params.contains_key(name),
+        _ => true,
+    }
 }
 
 /// Evaluate each argument (positional, or named in written order) and coerce it

@@ -1,0 +1,6 @@
+[project]
+name = "fastapi-tests"
+source_roots = [".", "../src"]
+python_sources = ["../src/models.py", "../src/responses.py", "../src/routing.py", "../src/applications.py", "fixture.py", "main.py"]
+default_namespace = "fastapi_tests"
+entry = "main.py"

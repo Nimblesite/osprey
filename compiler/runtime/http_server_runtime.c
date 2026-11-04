@@ -6,6 +6,11 @@
 extern int64_t fiber_await(int64_t fiber_id);
 extern int64_t fiber_spawn_env(int64_t (*fn)(void *), void *environment);
 
+// Managed closures must be direct data roots: malloc'd server records are
+// outside the tracing heap. ARC owns one reference until listener teardown.
+static void *handler_closures[MAX_SERVERS];
+typedef HttpResponse *(*ClosureHandler)(void *, char *, char *, char *, char *);
+
 static const char *simple_response_body = "Hello, World!";
 
 #ifdef _WIN32
@@ -42,6 +47,13 @@ static void reject_request(int client_fd, HttpRequestBuffer *request,
 
 static struct HttpResponse *call_handler(HttpServer *server,
                                          HttpRequestBuffer *request) {
+  void *closure = handler_closures[server->id];
+  if (closure) {
+    ClosureHandler callback;
+    memcpy(&callback, closure, sizeof(callback));
+    return callback(closure, request->method, request->path, request->headers,
+                    request->body);
+  }
   return server->handler ? server->handler(request->method, request->path,
                                            request->headers, request->body)
                          : NULL;
@@ -110,6 +122,9 @@ static void release_client(HttpServer *server, int client_fd) {
 }
 
 static void destroy_server(HttpServer *server) {
+  void *closure = handler_closures[server->id];
+  handler_closures[server->id] = NULL;
+  osp_release(closure);
   free(server->address);
   pthread_mutex_destroy(&server->mutex);
   free(server);
@@ -367,6 +382,32 @@ int64_t http_listen(int64_t server_id, HttpRequestHandler handler) {
   pthread_mutex_lock(&runtime_mutex);
   HttpServer *server = servers[server_id];
   int status = server ? listen_registered_server(server, handler) : -1;
+  pthread_mutex_unlock(&runtime_mutex);
+  return status;
+}
+
+static int listen_with_closure(HttpServer *server, void *closure) {
+  osp_retain(closure);
+  handler_closures[server->id] = closure;
+  int status = listen_registered_server(server, NULL);
+  if (status < 0) {
+    handler_closures[server->id] = NULL;
+    osp_release(closure);
+  }
+  return status;
+}
+
+// Closure-aware bridge for Osprey function values. Raw C callbacks keep the
+// existing bridge, including their compile-time specialised ABI.
+int64_t http_listen_closure(int64_t server_id, void *closure) {
+  if (!valid_server_id(server_id) || !closure) return -1;
+  pthread_mutex_lock(&runtime_mutex);
+  HttpServer *server = servers[server_id];
+  if (!server || !server_can_listen(server)) {
+    pthread_mutex_unlock(&runtime_mutex);
+    return -1;
+  }
+  int status = listen_with_closure(server, closure);
   pthread_mutex_unlock(&runtime_mutex);
   return status;
 }

@@ -1,0 +1,11 @@
+[project]
+name = "fastapi"
+source_roots = ["src"]
+python_sources = ["src/models.py", "src/responses.py", "src/routing.py", "src/applications.py"]
+default_namespace = "fastapi"
+
+[package]
+name = "@osprey/fastapi"
+license = "MIT"
+summary = "FastAPI behavior port in Python flavor Osprey"
+keywords = ["http", "api", "fastapi", "python-flavor"]

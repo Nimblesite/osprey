@@ -54,3 +54,9 @@ registry-serve-sample:
 ##                    FAIL until each capability lands; never part of `test`.
 registry-blockers:
 	$(MAKE) -C $(ROOT) _registry-blockers
+
+## fastapi-e2e: Compile the Python flavor FastAPI port under GC and ARC in
+##              parallel; verify real HTTP routing, errors, bodies and headers.
+.PHONY: fastapi-e2e
+fastapi-e2e:
+	cd $(ROOT) && python3 packages/fastapi/tests/e2e.py
