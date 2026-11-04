@@ -52,7 +52,7 @@ static long g_checks = 0;
 #define CHURN_BODY ((size_t)48)
 #define CHAIN_LEN ((size_t)50000)
 #define GPU_LEN ((int64_t)10)
-#define GPU_HDR_BYTES ((size_t)40)     // { len, data, device, stale, elem_bytes }
+#define GPU_HDR_BYTES ((size_t)40)     // { len, data, device, stale/adapter in one slot, elem_bytes }
 #define REALLOC_OLD ((size_t)32)
 #define REALLOC_NEW ((size_t)128)
 

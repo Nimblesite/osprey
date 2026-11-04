@@ -27,6 +27,7 @@ int osprey_gpu_buffer_tests(int argc, char **argv);
 
 static int device_error;
 static unsigned dispatches, last_args, uploads, downloads, releases;
+static unsigned releases_by_adapter[4];
 static uint64_t last_threads;
 
 #if defined(OSPREY_GPU_METAL) || defined(OSPREY_GPU_OPENCL)
@@ -83,8 +84,9 @@ static int mock_download(void *object, void *out, uint64_t count) {
   return 1;
 }
 
-static void mock_release(void *object) {
+static void mock_release(void *object, unsigned adapter) {
   releases++;
+  releases_by_adapter[adapter]++;
   free(object);
 }
 #endif
@@ -92,13 +94,13 @@ static void mock_release(void *object) {
 const char *osprey_gpu_metal_name(void) { return "metal:mock"; }
 int osprey_gpu_metal_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 42); }
 int osprey_gpu_metal_download(void *object, void *out, uint64_t count) { return mock_download(object, out, count); }
-void osprey_gpu_metal_release(void *object) { mock_release(object); }
+void osprey_gpu_metal_release(void *object) { mock_release(object, 2); }
 #endif
 #if defined(OSPREY_GPU_OPENCL)
 const char *osprey_gpu_opencl_name(void) { return "opencl:mock"; }
 int osprey_gpu_opencl_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 43); }
 int osprey_gpu_opencl_download(void *object, void *out, uint64_t count) { return mock_download(object, out, count); }
-void osprey_gpu_opencl_release(void *object) { mock_release(object); }
+void osprey_gpu_opencl_release(void *object) { mock_release(object, 3); }
 #endif
 
 static void select_mode(const char *mode) {
@@ -202,6 +204,51 @@ static void matmul_readback_failure(const char *mode) {
   assert(osprey_gpu_matmul(pending, ready, 1, 1, 1, 8) && downloads == down && !osp_io_error());
 }
 
+// [GPU-BUFFER-RESIDENT] Both uploaded inputs and resident outputs retain
+// their owning adapter when selection changes; finalization never changes IO.
+// Implements [GPU-BUFFER-RESIDENT-OWNER].
+static void finalized_pair(void *input, void *out, unsigned owner) {
+  unsigned freed = releases, owned = releases_by_adapter[owner];
+  osp_io_error_text("test", "preserved", "read error");
+  osprey_gpu_finalize(input);
+  osprey_gpu_finalize(out);
+  assert(releases == freed + 2 && releases_by_adapter[owner] == owned + 2);
+  assert(strcmp(osp_io_error(), "test: preserved: read error") == 0);
+  osprey_gpu_finalize(input);
+  osprey_gpu_finalize(out);
+  assert(releases == freed + 2);
+}
+
+static void owned_finalization(const char *mode, unsigned owner) {
+  const char *next[] = {"host", "invalid-for-release", owner == 2 ? "opencl" : "metal"};
+  for (unsigned i = 0; i < sizeof next / sizeof next[0]; i++) {
+    select_mode(mode);
+    void *input = unit();
+    void *out = osprey_gpu_matmul(input, input, 1, 1, 1, 8);
+    assert(out);
+    select_mode(next[i]);
+    finalized_pair(input, out, owner);
+  }
+  select_mode(mode);
+}
+
+// A host write discards an already synchronized device copy through the same
+// owner-aware path, even after selection changes to the host.
+static void writable_finalization(const char *mode, unsigned owner) {
+  select_mode(mode);
+  void *input = unit();
+  void *out = osprey_gpu_matmul(input, input, 1, 1, 1, 8);
+  assert(out && osprey_gpu_readable(out, 0) == 1);
+  unsigned freed = releases, owned = releases_by_adapter[owner];
+  select_mode("host");
+  osprey_gpu_set(out, 0, 99);
+  assert(osprey_gpu_get(out, 0) == 99);
+  osprey_gpu_finalize(input);
+  osprey_gpu_finalize(out);
+  assert(releases == freed + 2 && releases_by_adapter[owner] == owned + 2);
+  select_mode(mode);
+}
+
 static void device_case(const char *mode, int available, const char *name) {
   select_mode(mode);
   void *a = unit();
@@ -222,6 +269,8 @@ static void device_case(const char *mode, int available, const char *name) {
   resident_launch(name[0] == 'm' ? 42 : 43);
   readable_failure(name[0] == 'm' ? 42 : 43);
   matmul_readback_failure(mode);
+  owned_finalization(mode, name[0] == 'm' ? 2 : 3);
+  writable_finalization(mode, name[0] == 'm' ? 2 : 3);
 }
 
 static void invalid_case(void) {
@@ -288,7 +337,12 @@ int main(void) {
   aborts(too_many_uniforms, "too many kernel arguments");
   aborts(device_failure_on_launch, "kernel osprey_kernel_1:");
 #else
-  device_case("auto", 0, "unavailable:device"); device_case("metal", 0, "unavailable:device");
+#if defined(OSPREY_GPU_OPENCL)
+  device_case("auto", 1, "opencl:mock");
+#else
+  device_case("auto", 0, "unavailable:device");
+#endif
+  device_case("metal", 0, "unavailable:device");
   aborts(declined_on_device, "a selected device cannot run it");
 #endif
 #if defined(OSPREY_GPU_OPENCL)

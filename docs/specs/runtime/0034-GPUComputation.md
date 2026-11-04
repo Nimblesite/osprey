@@ -396,6 +396,8 @@ A device kernel cannot reach a runtime `Arith` policy ([ARITH-TOTAL](../language
 
 A buffer has one copy on the selected device, created from its words the first time a launch reads or writes it and bound to every later launch without another transfer. A launch's result buffer stays on the device: no words come back until the host reads them, through `gpuGet`, `fromGpu`, a product's host fallback or a loader, and then the whole buffer comes down once. A `gpuFold` result is a scalar, so it comes straight back to the accumulator. The weights of a model upload once, every intermediate buffer of a layer stays where the next kernel reads it, and the only downloads are the values the program itself inspects.
 
+[GPU-BUFFER-RESIDENT-OWNER] A device copy is released through the adapter that created it, including when the backend selection changes before cleanup. Finalization and a host write that discards a synchronized device copy release it exactly once and preserve any pending I/O error.
+
 A buffer is immutable at the language surface, so the two copies never diverge; the one write path, the runtime's own fill of a fresh buffer, forgets the device copy, which a later launch recreates. The device copy belongs to the buffer: when the memory backend reclaims the buffer, its finalizer releases the device object ([MEM-BACKENDS-CUSTOM](../compiler/0018-MemoryManagement.md#backend-hook-abi-mem-backends-custom)), so under ARC a device buffer dies at the last release and under the tracing GC at the sweep that reclaims its owner. A download that fails aborts the program naming the device; a buffer never reads back as zeros.
 
 ### Device selection — [GPU-DEVICE]

@@ -53,8 +53,6 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
 // Copy a device object's first `count` bytes to `out`: 1, or -1 with the
 // reason on the io_error channel.
 int osprey_gpu_device_download(void *object, void *out, uint64_t count);
-// Release a device object its buffer no longer needs.
-void osprey_gpu_device_release(void *object);
 const char *osprey_gpu_device_name(void);
 int32_t osprey_gpu_readable(void *buffer, int64_t index);
 void *osprey_gpu_panic(const char *message);

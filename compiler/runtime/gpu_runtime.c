@@ -1,7 +1,7 @@
 // Dense scalar buffers for GPU computation — the host execution backend
 // [GPU-BACKEND-HOST] behind toGpu/fromGpu and every gpu* combinator
 // (docs/specs/runtime/0034-GPUComputation.md). A buffer is { length, data, device,
-// stale, elem_bytes }: length in elements, data contiguous scalar bytes
+// stale, adapter, elem_bytes }: length in elements, data contiguous scalar bytes
 // with an explicit element width (1, 2, 4 or 8) — the staging layout a device
 // transfer consumes — device the selected adapter's object holding the same
 // words once a kernel has used the buffer, and stale whether that object
@@ -28,17 +28,26 @@ typedef struct OspreyGpuBuffer {
   int64_t length;
   uint8_t *data;
   void *device;
-  int64_t stale;
+  uint8_t stale;
+  uint8_t adapter; // Owning SDK; fits the existing header padding.
   int64_t elem_bytes;
 } OspreyGpuBuffer;
 
 int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_elem_bytes(void *buffer);
 
+#if defined(OSPREY_GPU_METAL)
+#define GPU_AUTO_ADAPTER 2
+#elif defined(OSPREY_GPU_OPENCL)
+#define GPU_AUTO_ADAPTER 3
+#else
+#define GPU_AUTO_ADAPTER 1
+#endif
+
 static int device_selection(void) {
   const char *mode = getenv("OSPREY_GPU");
   if (!mode || !*mode || strcmp(mode, "host") == 0) return 0;
-  if (strcmp(mode, "auto") == 0) return 1;
+  if (strcmp(mode, "auto") == 0) return GPU_AUTO_ADAPTER;
   if (strcmp(mode, "metal") == 0) return 2;
   if (strcmp(mode, "opencl") == 0) return 3;
   osp_io_error_text("gpu", "device selection", "unknown backend; expected host, auto, metal, or opencl");
@@ -50,10 +59,10 @@ const char *osprey_gpu_device_name(void) {
   int selected = device_selection();
   if (!selected) return "host";
 #if defined(OSPREY_GPU_METAL)
-  if (selected == 1 || selected == 2) return osprey_gpu_metal_name();
+  if (selected == 2) return osprey_gpu_metal_name();
 #endif
 #if defined(OSPREY_GPU_OPENCL)
-  if (selected == 1 || selected == 3) return osprey_gpu_opencl_name();
+  if (selected == 3) return osprey_gpu_opencl_name();
 #endif
   return selected < 0 ? "invalid:device" : "unavailable:device";
 }
@@ -74,10 +83,10 @@ int osprey_gpu_device_dispatch(OspreyGpuDispatch *dispatch) {
   }
   if (!dispatch->threads) return 1;
 #if defined(OSPREY_GPU_METAL)
-  if (selected == 1 || selected == 2) return osprey_gpu_metal_dispatch(dispatch);
+  if (selected == 2) return osprey_gpu_metal_dispatch(dispatch);
 #endif
 #if defined(OSPREY_GPU_OPENCL)
-  if (selected == 1 || selected == 3) return osprey_gpu_opencl_dispatch(dispatch);
+  if (selected == 3) return osprey_gpu_opencl_dispatch(dispatch);
 #endif
   return no_adapter(dispatch->kernel, "device selection");
 }
@@ -86,35 +95,16 @@ int osprey_gpu_device_dispatch(OspreyGpuDispatch *dispatch) {
 int osprey_gpu_device_download(void *object, void *out, uint64_t count) {
   int selected = device_selection();
 #if defined(OSPREY_GPU_METAL)
-  if (selected == 1 || selected == 2) return osprey_gpu_metal_download(object, out, count);
+  if (selected == 2) return osprey_gpu_metal_download(object, out, count);
 #endif
 #if defined(OSPREY_GPU_OPENCL)
-  if (selected == 1 || selected == 3) return osprey_gpu_opencl_download(object, out, count);
+  if (selected == 3) return osprey_gpu_opencl_download(object, out, count);
 #endif
   (void)selected;
   (void)object;
   (void)out;
   (void)count;
   return no_adapter("gpu", "device readback");
-}
-
-// Release a device object its buffer no longer needs [GPU-BUFFER-RESIDENT].
-void osprey_gpu_device_release(void *object) {
-  int selected = device_selection();
-#if defined(OSPREY_GPU_METAL)
-  if (selected == 1 || selected == 2) {
-    osprey_gpu_metal_release(object);
-    return;
-  }
-#endif
-#if defined(OSPREY_GPU_OPENCL)
-  if (selected == 1 || selected == 3) {
-    osprey_gpu_opencl_release(object);
-    return;
-  }
-#endif
-  (void)selected;
-  (void)object;
 }
 
 // The stored words of a buffer with any: NULL for an empty, failed or NULL
@@ -135,6 +125,10 @@ static void scalar_argument(OspreyGpuDispatch *dispatch, int64_t word) {
 static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, void *handle) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)handle;
   uint8_t *words = stored(b);
+  if (words && !b->device) {
+    int selected = device_selection();
+    b->adapter = selected > 0 ? (uint8_t)selected : 0;
+  }
   osprey_gpu_arg_at(dispatch, kind, words, NULL, (uint64_t)osprey_gpu_len(handle), b ? (uint64_t)b->elem_bytes : 8, words ? &b->device : NULL);
 }
 
@@ -243,11 +237,18 @@ int32_t osprey_gpu_declined(const char *what) {
 #define GPU_HDR_LAYOUT ((int64_t)OSP_MEM_LIST_HDR_EXTERN)
 
 // The memory backends' drop of a buffer [GPU-BUFFER-RESIDENT]: its device
-// object is released with it.
+// object is released with it through its owner [GPU-BUFFER-RESIDENT-OWNER].
 void osprey_gpu_finalize(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
-  if (b->device) osprey_gpu_device_release(b->device);
+#if defined(OSPREY_GPU_METAL)
+  if (b->device && b->adapter == 2) osprey_gpu_metal_release(b->device);
+#endif
+#if defined(OSPREY_GPU_OPENCL)
+  if (b->device && b->adapter == 3) osprey_gpu_opencl_release(b->device);
+#endif
   b->device = NULL;
+  b->stale = 0;
+  b->adapter = 0;
 }
 
 static void register_finalizer(void) {
@@ -294,6 +295,7 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   b->data = NULL;
   b->device = NULL;
   b->stale = 0;
+  b->adapter = 0;
   b->elem_bytes = elem_bytes;
   b->data = zeroed_words(length, elem_bytes);
   if (!b->data) {
@@ -336,13 +338,6 @@ static OspreyGpuBuffer *current(void *buffer) {
   return b;
 }
 
-// Forget the device copy of a buffer whose host words are about to diverge.
-static void forget_device(OspreyGpuBuffer *b) {
-  if (b->device) osprey_gpu_device_release(b->device);
-  b->device = NULL;
-  b->stale = 0;
-}
-
 // The current words themselves, for the host-backend operations in gpu_host.c
 // that walk whole buffers (the dense product, the file loaders) and read-outs;
 // NULL for an empty or failed buffer, whose length is 0, so a caller bounding
@@ -383,7 +378,7 @@ void osprey_gpu_set(void *buffer, int64_t index, int64_t word) {
   OspreyGpuBuffer *b = current(buffer);
   if (addressable(b, index)) {
     memcpy(b->data + index * b->elem_bytes, &word, (size_t)b->elem_bytes);
-    forget_device(b);
+    osprey_gpu_finalize(b);
   }
 }
 
