@@ -118,7 +118,9 @@ fn gpu_materialization_checks_readback_before_loading_any_scalar() {
     // [FAILURE-EXPLICIT] Bulk readback must carry the same reason as gpuGet.
     let ir = module("fn read() = fromGpu(toGpu([1.5]))\nlet values = read()\nprint(1)\n");
     let body = function_body(&ir, "@read()");
-    let ready = body.find("call i32 @osprey_gpu_readable(").expect("checked bulk readback");
+    let ready = body
+        .find("call i32 @osprey_gpu_readable(")
+        .expect("checked bulk readback");
     let value = body.find("call i64 @osprey_gpu_get(").expect("scalar copy");
     assert!(ready < value, "{body}");
     assert!(body[ready..value].contains("select i1"), "{body}");

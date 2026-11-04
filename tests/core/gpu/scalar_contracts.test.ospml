@@ -1,3 +1,5 @@
+emptyRead : List<int>
+emptyRead = []
 (** [FAILURE-EXPLICIT] A read error fails the predicate with its reason. *)
 readSatisfies (result, predicate) = match result
     Success value => predicate value
@@ -94,7 +96,7 @@ emptyTypedLiteralCase () =
         gpuLength (toGpu []) == 0,
         (gpuGet (toGpu [], 0) ?: 9.5) == 9.5,
         (gpuGet (toGpu [], 0) ?: true) == true,
-        readSatisfies (fromGpu (toGpu []), \checked0 => listLength (checked0) == 0)
+        readSatisfies (fromGpu (toGpu emptyRead), \checked0 => listLength (checked0) == 0)
     ]
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =

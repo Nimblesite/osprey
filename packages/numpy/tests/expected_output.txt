@@ -415,6 +415,7 @@ ok errors.require.host
 ok errors.checked.host
 ok errors.product_lengths.host
 ok errors.buffer_build.host
+ok errors.buffer_readback.host
 ok layout.broadcast_two
 ok layout.broadcast_strides
 ok layout.coords_of
@@ -888,6 +889,7 @@ ok errors.require.gpu
 ok errors.checked.gpu
 ok errors.product_lengths.gpu
 ok errors.buffer_build.gpu
+ok errors.buffer_readback.gpu
 ok layout.broadcast_two
 ok layout.broadcast_strides
 ok layout.coords_of
@@ -944,4 +946,4 @@ ok array.ones_like
 ok array.full_like
 ok array.identity
 ok array.eye_m
-946 passed, 0 failed
+948 passed, 0 failed

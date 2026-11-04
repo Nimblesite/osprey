@@ -124,6 +124,43 @@ fn index_buffer_allocation_errors_reach_the_caller() {
         std::fs::remove_file(path).expect("remove index allocation fixture");
     }
 }
+const READBACK_SOURCE: &str = r#"
+extern fn osprey_gpu_alloc(count: int, bytes: int) -> GpuBuffer<int>
+fn describe(buffer) = match fromGpu(buffer) {
+    Success { value } => "${listLength(value)}:${listGet(value, 0) ?: -1}"
+    Error { message } => toString(message)
+}
+print("${describe(osprey_gpu_alloc(-1, 8))}\n${describe(toGpu([]))}\n${describe(toGpu([7, 8]))}")
+"#;
+const READBACK_ML: &str = r#"
+extern osprey_gpu_alloc (count: int) (bytes: int) -> GpuBuffer<int>
+describe buffer = match fromGpu buffer
+    Success value => "${listLength value}:${listGet (value, 0) ?: -1}"
+    Error message => toString message
+print "${describe (osprey_gpu_alloc (-1) 8)}\n${describe (toGpu [])}\n${describe (toGpu [7, 8])}"
+"#;
+#[test]
+fn readback_preserves_lists_and_refuses_a_missing_buffer() {
+    // [FAILURE-EXPLICIT] The raw ABI makes NULL reachable without faking OOM.
+    for (ext, source) in [
+        ("readback.osp", READBACK_SOURCE),
+        ("readback.ospml", READBACK_ML),
+    ] {
+        let path = program(ext, source).expect("write readback fixture");
+        for memory in ["gc", "arc"] {
+            let (code, stdout, stderr) = run_with_memory(&path, "host", memory);
+            assert_eq!(code, Some(0), "{ext} {memory}: {stderr}");
+            assert_eq!(stdout, "fromGpu: buffer unavailable\n0:-1\n2:7\n");
+            if memory == "arc" {
+                assert!(
+                    stderr.contains("[osp-arc] exit: 0 live objects"),
+                    "{stderr}"
+                );
+            }
+        }
+        std::fs::remove_file(path).expect("remove readback fixture");
+    }
+}
 
 #[test]
 fn tensor_loader_calls_in_one_record_keep_distinct_requested_element_types() {

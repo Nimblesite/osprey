@@ -13,9 +13,8 @@ from numpy import Storage
 __all__ = ["on_gpu"]
 
 
-def product_of(result):
-    """The GPU product as `Storage.Buffer.mat_mul` answers it: the buffer, or
-    the runtime's reason as text."""
+def answered(result):
+    """Keep a successful GPU value or translate its runtime error into text."""
     match result:
         case Success(value=value):
             return Success(value=value)
@@ -46,13 +45,13 @@ class on_gpu:
         return gpuFold(b, seed, f)
 
     def mat_mul(a, b, rows, inner, cols):
-        return product_of(gpuMatMul(a, b, rows, inner, cols))
+        return answered(gpuMatMul(a, b, rows, inner, cols))
 
     def from_list(xs):
         return toGpu(xs)
 
     def to_list(b):
-        return fromGpu(b)
+        return answered(fromGpu(b))
 
     def device():
         return gpuDevice()

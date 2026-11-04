@@ -2,7 +2,7 @@
 # osprey: namespace=numpy_tests
 # osprey: module=Contracts
 """Public helper contracts and errors recorded by the CPython oracle."""
-from numpy import Array, Errors, Layout, Linalg, Math, Storage
+from numpy import Array, Errors, Host, Layout, Linalg, Math, Storage
 from numpy_expected import Expected
 from numpy_tests import Support as S
 from testing import Check
@@ -70,6 +70,46 @@ def failed_index_allocation():
             return "missing allocation error"
 
 
+@static_handler(Storage.Buffer[list[float]])
+class unavailable_readback:
+    """A boundary that refuses the read; no caller may receive fabricated data."""
+    def build(n, f):
+        return Host.on_host(lambda: perform(Storage.Buffer.build(n, f)))
+
+    def get(b, i):
+        return Host.on_host(lambda: perform(Storage.Buffer.get(b, i)))
+
+    def length(b):
+        return Host.on_host(lambda: perform(Storage.Buffer.length(b)))
+
+    def zip_with(a, b, f):
+        return Host.on_host(lambda: perform(Storage.Buffer.zip_with(a, b, f)))
+
+    def reduce(b, seed, f):
+        return Host.on_host(lambda: perform(Storage.Buffer.reduce(b, seed, f)))
+
+    def mat_mul(a, b, rows, inner, cols):
+        return Host.on_host(lambda: perform(Storage.Buffer.mat_mul(a, b, rows, inner, cols)))
+
+    def from_list(xs):
+        return Host.on_host(lambda: perform(Storage.Buffer.from_list(xs)))
+
+    def device():
+        return Host.on_host(lambda: perform(Storage.Buffer.device()))
+
+    def to_list(_buffer):
+        return Error(message="injected readback failure")
+
+def failed_readback():
+    with Host.on_host:
+        with unavailable_readback:
+            match Errors.checked_values(lambda: Storage.lower([1.0])):
+                case Error(message=message):
+                    return message
+                case Success():
+                    return "missing readback error"
+
+
 def unit_checked():
     match Errors.checked(lambda: None):
         case Success():
@@ -89,6 +129,7 @@ def error_cases(b):
         Check.truth(f"errors.checked.{b}", unit_checked(), "unit work succeeds"),
         Check.equal(f"errors.product_lengths.{b}", malformed_product(), Errors.product_lengths("left", 3, 4)),
         Check.equal(f"errors.buffer_build.{b}", failed_index_allocation(), "gpu: buffer allocation: a negative element count" if b == "gpu" else "Storage.Buffer.build: a negative element count"),
+        Check.equal(f"errors.buffer_readback.{b}", failed_readback(), "injected readback failure"),
     ])
 
 

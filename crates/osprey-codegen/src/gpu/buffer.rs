@@ -163,7 +163,12 @@ pub(super) fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let len = cg.emit_reg(format!("select i1 {failed}, i64 0, i64 {count}"));
     let values = materialize(cg, &buffer, &len)?;
     crate::result::make_result_if_err_because(
-        cg, values, LType::Ptr, &failed, Some("fromGpu: buffer unavailable"), Some(&reason),
+        cg,
+        values,
+        LType::Ptr,
+        &failed,
+        Some("fromGpu: buffer unavailable"),
+        Some(&reason),
     )
 }
 
