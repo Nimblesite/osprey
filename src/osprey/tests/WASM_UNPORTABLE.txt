@@ -10,6 +10,7 @@
 # built-in HTTP/WebSocket needs sockets, and foreign C imports need a native
 # implementation. The two documented browser host imports remain supported.
 # File operations, stdin, random numbers and substituting effects are supported.
+# Work to shrink this list: docs/plans/0055-corpus-target-gaps.md [CORPUS-TARGET-GAPS].
 src/osprey/tests/core/collections/nested_generic_collections_fibers.test.osp fiber concurrency
 src/osprey/tests/core/collections/nested_generic_collections_fibers.test.ospml fiber concurrency
 src/osprey/tests/effects/multiplicity/multiplicity.test.osp a continuation for `Charge.charge` (wasm32 acquires one-shot continuations when the stack-switching proposal lands)

@@ -8,6 +8,8 @@ Contract: [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md
 - The KLEE engine targets (`_test_hunt`, `_test_hunt_crashes`, `_test_hunt_clean`) run by hand only; `make test`/CI exclude them while issues #306 and #307 are open (`scripts/make/tests.mk`).
 - `_test_hunt` skips `clean.osp` via `HUNT_KNOWN_BUGS ?= clean`; its complete-exploration defect is #306, at the pinned 64-byte/30-second settings.
 
+- The programs `src/osprey/tests/HUNT_UNPORTABLE.txt` skips, and the model work to bring them in, are in [plan 0055](0055-corpus-target-gaps.md) [CORPUS-TARGET-GAPS].
+
 ## Phase 3 completion proof `[SYMEX-CLI]`
 
 - [ ] Fix `clean.osp` complete exploration (#306): `src/osprey/tests/hunt/clean.osp` prints a symbolic integer whose digit/length queries over the unconstrained value need ~49 s solver work, over the 30 s budget on both gc and arc. Do not relax the 64-byte/30-second settings; do not retry the dead ends recorded in `docs/reviews/review.md` (raw-view bounded parse, O(n) line copy, GC scan alignment filter, binary-search digit length). Acceptance: `make _test_hunt_clean` exits 0 on both backends.

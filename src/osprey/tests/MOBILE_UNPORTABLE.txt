@@ -13,18 +13,18 @@
 # LLVM, clang or simulator failure is a test failure, never a skip. There is no
 # regeneration flag. [IOS-TARGET-CAPABILITIES] [IOS-HOST-ABI]
 #
-# Three reasons appear, and they are not the same kind of limit. The corpus host
+# Five reasons appear, and they are not the same kind of limit. The corpus host
 # calls only `osprey_main`, so `--entry-only` keeps internal helpers off the C
-# boundary. Ordinary app archives still check all scalar exports.
+# boundary. Ordinary app archives still check all scalar exports. Work to shrink
+# this list: docs/plans/0055-corpus-target-gaps.md [CORPUS-TARGET-GAPS].
 #
 #   * a continuation — the mobile C ABI is synchronous, so a suspended
 #     continuation cannot cross or outlive a host call. Named by the OPERATION
 #     that cannot be suspended, so a reader can see which effects would start
 #     working if that changed [MULTI-WASM].
-#   * HTTP and process spawning builtins — no iOS implementation; the Swift
-#     host supplies networking and platform services through explicit imports.
-#   * C ABI: an unsupported extern signature — a `Ptr` parameter has no
-#     portable scalar C representation.
+#   * HTTP, WebSocket and process spawning builtins — no iOS implementation; the
+#     Swift host supplies networking and platform services through explicit imports.
+#   * a link directive — the mobile archive cannot link the named native library.
 src/osprey/tests/effects/multiplicity/multiplicity.test.osp a continuation for `Charge.charge` (a suspended continuation cannot cross or outlive a synchronous host call)
 src/osprey/tests/effects/multiplicity/multiplicity.test.ospml a continuation for `Charge.charge` (a suspended continuation cannot cross or outlive a synchronous host call)
 src/osprey/tests/effects/resume/answer_transform.test.osp a continuation for `ControlAsk.value` (a suspended continuation cannot cross or outlive a synchronous host call)

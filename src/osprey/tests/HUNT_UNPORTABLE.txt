@@ -4,7 +4,8 @@
 # mock C library, or the path reaches native code that is not in the module
 # KLEE explores (the fiber runtime, GPU, HTTP, database and platform
 # libraries). `--all` hunts them anyway, which is how this list was produced
-# from the corpus sweeps of 2026-10-24.
+# from the corpus sweeps of 2026-10-24. Nothing compares this list to reality yet (#341).
+# Work to shrink it: docs/plans/0055-corpus-target-gaps.md [CORPUS-TARGET-GAPS].
 #
 src/osprey/examples/db_postgres/pg_smoke.osp `PQlibVersion` is native code outside the module (not in the portable runtime)
 src/osprey/examples/llms/gpt2/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
@@ -28,7 +29,7 @@ src/osprey/examples/projects/modules/client `osprey_web_render` is native code o
 src/osprey/examples/python/interop.osp `osprey_python_call` is native code outside the module (not in the portable runtime)
 src/osprey/examples/statefulhttp/server.osp HTTP needs sockets: `http_create_server` is outside the module
 src/osprey/examples/statefulhttp/tui.osp `term_raw_mode` is native code outside the module (not in the portable runtime)
-src/osprey/examples/tui/api_browser.osp does not compile: recursive generic `awaitSpinning` has no inferred return type (open compiler bug, plan 0034)
+src/osprey/examples/tui/api_browser.osp does not compile: recursive `awaitSpinning` awaits a Fiber parameter (#340)
 src/osprey/examples/websocketserver/osprey_websocket_server.osp `websocket_create_server` is native code outside the module (not in the portable runtime)
 src/osprey/tests/core/collections/nested_generic_collections_fibers.test.osp fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
 src/osprey/tests/core/collections/nested_generic_collections_fibers.test.ospml fibers and continuations: `fiber_spawn_env_owned` is the native fiber runtime, outside the module
