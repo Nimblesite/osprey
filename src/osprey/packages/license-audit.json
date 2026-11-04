@@ -90,7 +90,24 @@
     "gguf": {
       "license": "MIT",
       "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
-      "upstreams": [],
+      "upstreams": [
+        {
+          "component": "llama.cpp",
+          "repository": "https://github.com/ggml-org/llama.cpp",
+          "reference": "ggml-quants.c",
+          "file": "LICENSES/llama.cpp-MIT.txt",
+          "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+          "source": "https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
+          "git_blob_sha1": "e7dca554bcb802f98408383a864404e3aa4eacca",
+          "applies_to": [
+            "src/quant.py"
+          ],
+          "basis": "Block layouts and decode arithmetic of the ggml quantized tensor types",
+          "notice_attribution": [
+            "Copyright (c) 2023-2026 The ggml authors"
+          ]
+        }
+      ],
       "references": [
         {
           "component": "gguf",

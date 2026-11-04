@@ -8,6 +8,10 @@ These repositories and releases are acknowledged as API, behavior and test-oracl
 
 - [gguf](https://github.com/ggml-org/llama.cpp/tree/master/gguf-py): 0.19.0.
 
+## Specifically retained third-party material
+
+`src/quant.py` follows the block layouts and decode arithmetic of the ggml quantized tensor types from `ggml-quants.c` in [llama.cpp](https://github.com/ggml-org/llama.cpp), Copyright (c) 2023-2026 The ggml authors, under the MIT license in [`LICENSES/llama.cpp-MIT.txt`](LICENSES/llama.cpp-MIT.txt).
+
 ## License scope
 
 No additional upstream software license is imposed based solely on the API name, file-format behavior, output of an oracle, short compatibility diagnostics or the label “port”. No substantive shared implementation block was identified in the recorded comparison. A matching API does not establish either copying or independent authorship; review any future incorporation of upstream source or data separately.
