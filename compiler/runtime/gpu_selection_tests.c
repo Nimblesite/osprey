@@ -12,6 +12,7 @@
 #include <string.h>
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
+void *osprey_gpu_data(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
@@ -244,9 +245,18 @@ static void launch_failures_return_error(void) {
 
   void *resident = osprey_gpu_alloc(1, 8);
   assert(launch(resident, "", NULL) == 1);
+  // A failed download leaves every accessor NULL-safe and named on the io_error
+  // channel: the read returns the zero word, the data pointer is NULL, and a
+  // store is dropped ([FAILURE-EXPLICIT]).
   download_error = 1;
   osp_io_error_clear();
   assert(osprey_gpu_get(resident, 0) == 0);
+  assert(strstr(osp_io_error(), "mock readback failed") != NULL);
+  osp_io_error_clear();
+  assert(osprey_gpu_data(resident) == NULL);
+  assert(strstr(osp_io_error(), "mock readback failed") != NULL);
+  osp_io_error_clear();
+  osprey_gpu_set(resident, 0, 99);
   assert(strstr(osp_io_error(), "mock readback failed") != NULL);
   download_error = 0;
   assert(osprey_gpu_get(resident, 0) == mock_mark());
