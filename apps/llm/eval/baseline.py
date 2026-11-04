@@ -28,6 +28,8 @@ HERE = Path(__file__).resolve().parent
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
 TEMPERATURES = (0.6, 1.0)
 MAX_TOOL_RETRIES = 2
+MAX_NEW_TOKENS = 8192
+REQUEST_TIMEOUT_SECONDS = 1800
 CODING_TASK_COUNT = 30
 GGUF_MAGIC = b"GGUF"
 MB = 1024.0
@@ -88,25 +90,47 @@ def measurement(response, elapsed):
     }
 
 
+def read_journal(path):
+    """Completed generations by request hash, so a failed long run resumes instead of restarting."""
+    if not path.exists():
+        return {}
+    try:
+        entries = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    except ValueError as error:
+        raise RuntimeError(f"unreadable journal {path}: {error}") from error
+    return {entry["key"]: entry for entry in entries}
+
+
 class Client:
     """Loopback Ollama /api/chat client (stream=false); failures raise RuntimeError naming the status."""
 
-    def __init__(self, base_url, model, temperature, timeout=300):
+    def __init__(self, base_url, model, temperature, timeout=REQUEST_TIMEOUT_SECONDS, journal=None):
         assert_loopback(base_url)
         self.base_url = base_url.rstrip("/")
         self.model, self.temperature, self.timeout = model, temperature, timeout
         self.last_messages, self.measurements = [], []
+        self.journal = Path(journal) if journal else None
+        self.completed = read_journal(self.journal) if self.journal else {}
 
     def chat(self, messages, tools=None):
         payload = {"model": self.model, "messages": messages, "stream": False,
-                   "options": {"temperature": self.temperature}}
+                   "options": {"temperature": self.temperature, "num_predict": MAX_NEW_TOKENS}}
         if tools:
             payload["tools"] = tools
         self.last_messages = messages
-        started = time.monotonic()
-        response = http_json("POST", f"{self.base_url}/api/chat", payload, self.timeout)
-        self.measurements.append(measurement(response, time.monotonic() - started))
-        return response
+        key = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        if key in self.completed:
+            entry = self.completed[key]
+        else:
+            started = time.monotonic()
+            response = http_json("POST", f"{self.base_url}/api/chat", payload, self.timeout)
+            entry = {"key": key, "response": response, "elapsed": time.monotonic() - started}
+            if self.journal:
+                self.completed[key] = entry
+                with self.journal.open("a", encoding="utf-8") as journal:
+                    journal.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        self.measurements.append(measurement(entry["response"], entry["elapsed"]))
+        return entry["response"]
 
     def version(self):
         return http_json("GET", f"{self.base_url}/api/version", None, self.timeout)
@@ -386,7 +410,7 @@ def limitations(rates, sampler):
 def build_result(args, client, digest, version, show, from_lines, tools, coding, sampler):
     rates = rate_summary(client)
     return {"schema": "apps/llm/eval/baseline/1", "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            **run_identity(args, digest), "ollama": ollama_info(version, show, from_lines),
+            **run_identity(args, digest), "max_new_tokens": MAX_NEW_TOKENS, "ollama": ollama_info(version, show, from_lines),
             "tools": tools, "coding": coding, "rates": rates,
             "tests_run": {"tool_goals": tools["goals"], "tool_sessions": tools["sessions"],
                           "coding_tasks": coding["total"], "chat_requests": rates["responses"]},
@@ -411,13 +435,14 @@ def parse_args(argv):
     parser.add_argument("--temperature", type=float, choices=TEMPERATURES, required=True)
     parser.add_argument("--base-url", default="http://127.0.0.1:11434", help="loopback Ollama endpoint")
     parser.add_argument("--output", required=True, help="atomic result JSON path")
+    parser.add_argument("--journal", default=None, help="JSONL of completed generations; rerunning resumes from it")
     parser.add_argument("--server-pid", type=int, default=None, help="optional Ollama server pid for RSS sampling")
     return parser.parse_args(argv)
 
 
 def run_baseline(args):
     digest = verify_gguf(args.gguf)
-    client = Client(args.base_url, args.model, args.temperature)
+    client = Client(args.base_url, args.model, args.temperature, journal=args.journal)
     version = client.version().get("version")
     show = client.show()
     from_lines = verify_weights(show, digest)

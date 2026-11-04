@@ -94,6 +94,63 @@ class EvaluationUseCases(unittest.TestCase):
             worker.join()
             sys.path.remove(str(HERE))
 
+    def test_journal_resumes_after_a_failed_request_without_repeating_generation(self):
+        driver = module("baseline")
+        requests = []
+        state = {"fail": False}
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_args):
+                pass
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                if state["fail"]:
+                    self.send_error(503)
+                    return
+                requests.append(body)
+                raw = json.dumps({"message": {"role": "assistant", "content": f"reply {len(requests)}"}, "done": True, "eval_count": 8,
+                                  "eval_duration": 2000000000, "prompt_eval_count": 4, "prompt_eval_duration": 1000000000}).encode()
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        worker = threading.Thread(target=server.serve_forever, daemon=True)
+        worker.start()
+        url = f"http://127.0.0.1:{server.server_port}"
+        first_turn, second_turn = [{"role": "user", "content": "one"}], [{"role": "user", "content": "two"}]
+        try:
+            with tempfile.TemporaryDirectory() as directory:
+                journal = Path(directory) / "journal.jsonl"
+                client = driver.Client(url, "fixture-only", 0.6, journal=journal)
+                first = client.chat(first_turn)
+                self.assertEqual(first["message"]["content"], "reply 1")
+                self.assertEqual(requests[0]["options"]["num_predict"], driver.MAX_NEW_TOKENS)
+                state["fail"] = True
+                with self.assertRaisesRegex(RuntimeError, "503"):
+                    client.chat(second_turn)
+                self.assertEqual(len(journal.read_text().splitlines()), 1)
+                state["fail"] = False
+                resumed = driver.Client(url, "fixture-only", 0.6, journal=journal)
+                self.assertEqual(resumed.chat(first_turn), first)
+                self.assertEqual(len(requests), 1)
+                self.assertEqual(resumed.measurements[0]["tokens_per_second"], 4.0)
+                self.assertEqual(resumed.measurements[0]["prompt_tokens_per_second"], 4.0)
+                self.assertEqual(resumed.chat(second_turn)["message"]["content"], "reply 2")
+                self.assertEqual(len(requests), 2)
+                other = driver.Client(url, "fixture-only", 1.0, journal=journal)
+                self.assertEqual(other.chat(first_turn)["message"]["content"], "reply 3")
+                truncated = journal.read_text() + '{"key": "torn'
+                journal.write_text(truncated)
+                with self.assertRaisesRegex(RuntimeError, "journal"):
+                    driver.Client(url, "fixture-only", 0.6, journal=journal)
+        finally:
+            server.shutdown()
+            server.server_close()
+            worker.join()
+
     def test_corpus_and_reference_solution_acceptance(self):
         corpus_file = HERE / "coding_tasks.json"
         corpus = json.loads(corpus_file.read_text())
