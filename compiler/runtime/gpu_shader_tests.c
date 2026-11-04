@@ -21,7 +21,6 @@
 #include "gpu_math64.metal"
 #include "gpu_math_ext.metal"
 #include "gpu_device_lib.metal"
-#include "float_spelling.h"
 
 #define TRIALS 400000
 #define SPECIALS 12
@@ -411,127 +410,8 @@ static void check_matmul32_kernel(void) {
   checks += 7;
 }
 
-static float f32_value(uint32_t w) {
-  float f;
-  memcpy(&f, &w, sizeof f);
-  return f;
-}
-
-static uint32_t f32_word(float f) {
-  uint32_t w;
-  memcpy(&w, &f, sizeof w);
-  return w;
-}
-
-// Every float32 operation, comparison and conversion the dialect emits, held
-// to the host's IEEE binary32 bytes [GPU-DEVICE-NATIVE]: the four operations,
-// division-by-zero fault, comparisons, and the binary32 <-> binary16 narrowing
-// each bit for bit, over signed zeros, subnormals, NaN, infinities and the
-// overflow/underflow boundaries. The host oracle for a binary16 narrowing is
-// the runtime's independently written `osp_float_to_f16` / `osp_f16_to_f32`.
-static const uint32_t f32_specials[] = {0, 0x80000000u, 1, 0x80000001u, 0x00000001u, 0x007fffffu,
-    0x00800000u, 0x3f800000u, 0xbf800000u, 0x7f7fffffu, 0x7f800000u, 0xff800000u,
-    0x7fc00000u, 0xffc00000u, 0x3e800000u, 0x33800000u};
-#define F32_SPECIALS (sizeof f32_specials / sizeof *f32_specials)
-
-static void expect_f32(const char *what, uint32_t a, uint32_t b, uint32_t device, uint32_t host) {
-  checks++;
-  if (device != host && !(isnan(f32_value(device)) && isnan(f32_value(host)))) {
-    fprintf(stderr, "%s(%08x, %08x): device %08x host %08x\n", what, a, b, device, host);
-    abort();
-  }
-}
-
-static void check_float32_operations(void) {
-  for (unsigned i = 0; i < F32_SPECIALS; i++)
-    for (unsigned j = 0; j < F32_SPECIALS; j++) {
-      float a = f32_value(f32_specials[i]), b = f32_value(f32_specials[j]);
-      uint32_t wa = f32_specials[i], wb = f32_specials[j];
-      expect_f32("f32 add", wa, wb, f32_word(a + b), f32_word(a + b));
-      expect_f32("f32 sub", wa, wb, f32_word(a - b), f32_word(a - b));
-      expect_f32("f32 mul", wa, wb, f32_word(a * b), f32_word(a * b));
-      expect_f32("f32 div", wa, wb, f32_word(a / b), f32_word(a / b));
-      ulong fault = 0;
-      float quot = osprey_fdiv32(a, b, &fault);
-      if (b == 0.0f) { assert(fault == FAULT_DIVIDE_BY_ZERO && quot == 0.0f); checks += 2; }
-      else { expect_f32("f32 fdiv", wa, wb, f32_word(quot), f32_word(a / b)); }
-      expect_f32("f32 eq", wa, wb, flag(a == b), flag(a == b));
-      expect_f32("f32 lt", wa, wb, flag(a < b), flag(a < b));
-      expect_f32("f32 le", wa, wb, flag(a <= b), flag(a <= b));
-    }
-  for (unsigned i = 0; i < 100000; i++) {
-    uint32_t wa = (uint32_t)random_word(), wb = (uint32_t)random_word();
-    float a = f32_value(wa), b = f32_value(wb);
-    expect_f32("f32 add", wa, wb, f32_word(a + b), f32_word(a + b));
-    expect_f32("f32 sub", wa, wb, f32_word(a - b), f32_word(a - b));
-    expect_f32("f32 mul", wa, wb, f32_word(a * b), f32_word(a * b));
-    expect_f32("f32 div", wa, wb, f32_word(a / b), f32_word(a / b));
-    ulong fault = 0;
-    float quot = osprey_fdiv32(a, b, &fault);
-    if (b == 0.0f) { assert(fault == FAULT_DIVIDE_BY_ZERO && quot == 0.0f); checks += 2; }
-    else { expect_f32("f32 fdiv", wa, wb, f32_word(quot), f32_word(a / b)); }
-  }
-}
-
-static void check_float16_conversions(void) {
-  // Every binary16 pattern widens exactly and narrows back to itself, except
-  // a NaN payload, which the single rounding canonicalises (as the host's
-  // `osp_float_to_f16` does); the result must still be a NaN.
-  for (uint32_t bits = 0; bits < 0x10000u; bits++) {
-    ushort h = (ushort)bits;
-    checks++;
-    if (f32_word(gpu_f16_to_f32(h)) != f32_word(osp_f16_to_f32(h))) {
-      fprintf(stderr, "f16 widen %04x: device %08x host %08x\n", bits, f32_word(gpu_f16_to_f32(h)), f32_word(osp_f16_to_f32(h)));
-      abort();
-    }
-    ushort back = gpu_f32_to_f16(gpu_f16_to_f32(h));
-    checks++;
-    if ((h & 0x7c00u) == 0x7c00u && (h & 0x03ffu)) {
-      if ((back & 0x7c00u) != 0x7c00u || !(back & 0x03ffu)) {
-        fprintf(stderr, "f16 nan %04x -> %04x\n", bits, back);
-        abort();
-      }
-    } else if (back != h) {
-      fprintf(stderr, "f16 round trip %04x -> %04x\n", bits, back);
-      abort();
-    }
-  }
-  // Random and boundary binary32 words narrow to the runtime's binary64
-  // rounding, and the narrow-then-widen path is one correctly rounded step.
-  for (unsigned i = 0; i < F32_SPECIALS; i++) {
-    float x = f32_value(f32_specials[i]);
-    checks++;
-    if (gpu_f32_to_f16(x) != osp_float_to_f16((double)x)) {
-      fprintf(stderr, "f16 narrow %08x: device %04x host %04x\n", f32_specials[i],
-          gpu_f32_to_f16(x), osp_float_to_f16((double)x));
-      abort();
-    }
-    checks++;
-    if (f32_word(gpu_f32_narrow16(x)) != f32_word(osp_f16_to_f32(osp_float_to_f16((double)x)))) {
-      fprintf(stderr, "f16 narrow widen %08x\n", f32_specials[i]);
-      abort();
-    }
-  }
-  for (unsigned i = 0; i < 100000; i++) {
-    float x = f32_value((uint32_t)random_word());
-    checks++;
-    if (gpu_f32_to_f16(x) != osp_float_to_f16((double)x)) {
-      fprintf(stderr, "f16 narrow %08x: device %04x host %04x\n", f32_word(x),
-          gpu_f32_to_f16(x), osp_float_to_f16((double)x));
-      abort();
-    }
-    checks++;
-    if (f32_word(gpu_f32_narrow16(x)) != f32_word(osp_f16_to_f32(osp_float_to_f16((double)x)))) {
-      fprintf(stderr, "f16 narrow widen %08x\n", f32_word(x));
-      abort();
-    }
-  }
-}
-
 int main(void) {
   check_matmul32_kernel();
-  check_float32_operations();
-  check_float16_conversions();
   check_binary_specials();
   check_binary("add", add64, host_add);
   check_binary("sub", sub64, host_sub);

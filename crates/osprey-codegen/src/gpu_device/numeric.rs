@@ -66,9 +66,11 @@ pub(super) fn convert(target: Ty, source: Ty, value: &str) -> Option<(Ty, String
             (Numeric::FLOAT, Numeric::FLOAT32) => format!("widen32(gpu_float32_bits({value}))"),
             (Numeric::FLOAT16, Numeric::FLOAT32) => format!("gpu_f32_narrow16({value})"),
             (Numeric::FLOAT16, Numeric::FLOAT) => {
-                format!("gpu_f32_narrow16(gpu_float32_from_bits(narrow32({value})))")
+                format!("gpu_f16_to_f32(gpu_f64_to_f16({value}))")
             }
-            (Numeric::FLOAT16, _) if s.is_integer() => format!("gpu_f32_narrow16((float)({value}))"),
+            (Numeric::FLOAT16, _) if s.is_integer() => {
+                format!("gpu_f16_to_f32(gpu_f64_to_f16(from_long((long)({value}))))")
+            }
             (Numeric::FLOAT, _) if s.is_integer() => format!("from_long((long)({value}))"),
             (Numeric::FLOAT32, _) if s.is_integer() => format!("((float)({value}))"),
             (_, _) if t.is_integer() && s.is_integer() => format!("({})({value})", t.device()),

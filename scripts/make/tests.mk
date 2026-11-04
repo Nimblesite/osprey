@@ -90,7 +90,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # a suite into testing AND coverage measurement.
 C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   host_import_gc_tests host_import_arc_tests \
-  memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
+  memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_float_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
   list_tests map_tests string_runtime_tests float_spelling_portable_tests json_runtime_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
   test_file_runtime tensor_list_tests \
@@ -120,9 +120,12 @@ C_LIBS_gpu_runtime_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c runtime/float_spelling.c
+C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
 C_FLAGS_gpu_shader_tests = -ffp-contract=off
 C_LIBS_gpu_shader_tests = -lm
+C_SRC_gpu_float_tests = runtime/gpu_float_tests.c runtime/float_spelling.c
+C_FLAGS_gpu_float_tests = -ffp-contract=off
+C_LIBS_gpu_float_tests = -lm
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
