@@ -158,7 +158,8 @@ def stage_fixture(root, target, version):
         file = root/name
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(STAGER_STUB if name.endswith(".py") else "fixture")
-    (root/"shipwright.json").write_text('{"product": {"version": "0.0.0"}, "components": []}')
+    (root/".github").mkdir(exist_ok=True)
+    (root/".github/shipwright.json").write_text('{"product": {"version": "0.0.0"}, "components": []}')
 
 
 def stage_result(text, target="linux-x64", version="0.0.0-test"):

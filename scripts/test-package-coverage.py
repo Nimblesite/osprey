@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regressions for independent package coverage thresholds and missing evidence.
 
-The real `coverage-thresholds.json` is asserted to gate every shipped package
+The real `src/osprey/tests/coverage-thresholds.json` is asserted to gate every shipped package
 with its own entry, a 90% minimum and optional higher thresholds. The checker is driven
 through a throwaway checkout so each rule — threshold boundary, own-source-only
 accounting, cross-host paths, malformed rows, oracle replay, stale evidence and
@@ -23,7 +23,7 @@ from package_coverage_test_support import (
 
 class PackageThresholdTests(CoverageTestCase):
     def test_extracted_runtime_headers_preserve_the_library_threshold(self):
-        gates = json.loads((ROOT / "coverage-thresholds.json").read_text())["projects"]["c_runtime"]
+        gates = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())["projects"]["c_runtime"]
         headers = list((ROOT / "src/toolchain/compiler/runtime").glob("memory_arc_*.h"))
         self.assertTrue(headers)
         for header in headers + [ROOT / "src/toolchain/compiler/runtime/system_process_posix.h"]:
@@ -32,7 +32,7 @@ class PackageThresholdTests(CoverageTestCase):
             self.assertGreaterEqual(gates[header.stem].get("threshold", 90), baseline)
 
     def test_threshold_configuration_has_no_measurements(self):
-        config = json.loads((ROOT / "coverage-thresholds.json").read_text())
+        config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
         self.assertNotIn("package_measurements", config)
         for group in config["projects"].values():
             for entry in group.values():
@@ -44,7 +44,7 @@ class PackageThresholdTests(CoverageTestCase):
         self.assertEqual(writer.literal("\r"), '"\\r"')
 
     def test_every_shipped_package_has_an_individual_threshold_of_at_least_90(self):
-        config = json.loads((ROOT / "coverage-thresholds.json").read_text())
+        config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
         packages = config["projects"].get("packages", {})
         shipped = {p.name for p in (ROOT / "src" / "osprey" / "packages").iterdir() if (p / "osprey.toml").is_file()}
         self.assertEqual(set(packages), shipped, "Every package must have its own coverage gate")
@@ -66,7 +66,7 @@ class PackageThresholdTests(CoverageTestCase):
                 checker["worker_count"](names, cpus=4)
 
     def test_only_thresholds_above_the_minimum_are_explicit(self):
-        config = json.loads((ROOT / "coverage-thresholds.json").read_text())
+        config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
         for group in config["projects"].values():
             for name, entry in group.items():
                 if "threshold" in entry:

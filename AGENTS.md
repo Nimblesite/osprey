@@ -2,6 +2,11 @@
 
 **Stabilization mode:** harden existing features until tests prove them complete. ❌ new features.
 
+## Memory safety and security
+- 1️⃣ PRIORITY
+- 0️⃣ tolerance for memory safety issues. Attack first
+- Fix safety/security issues above all else
+
 ## Workflow
 - ❌ subagents, linked worktrees, git hooks (delete them). Primary checkout only; git = commit/push.
 - **Offload legwork (repetitive, simple work) to pi agents** — exact ids only, in this precedence: `kimi-coding/k3.1-pro-highspeed` → `zai/glm-5.3` → `zai/glm-5.3-flash` → `deepseek/deepseek-flash`. `pi auth check --model <id>` first; out of credit → tell user, fall to the next. You own their output: review and fix it.
@@ -28,6 +33,7 @@
 - **A new app adds its Makefile entries in the same PR, for every platform it runs on:** a target that opens it in `src/toolchain/targets/<platform>/Makefile`, its tests in `src/toolchain/targets/<platform>/tests/Makefile` (`<app>` and `<app>-headless`), and its host-free headless suite in `src/toolchain/targets/tests/Makefile`. A test target runs that one app. ❌ targets that run every app's tests.
 - **Every app has a working Windows version.** It uses WinUI from the latest Windows App SDK (❌ WPF, WinForms, raw Win32 windows). The GPUI examples run on the WinUI host there.
 - **Sandboxed by default:** on Windows each app is its own MSIX package in an AppContainer (`uap10:TrustLevel="appContainer"`) that declares only the capabilities it uses. An app that cannot be sandboxed says why in its README.
+- **All apps output structured diagnostic logging as an effect (cross-cutting)** using the standard Osprey package. ❌ Logging to the repo root 
 - **Automated app tests run headless or with a window.** Both modes take screenshots and compare them with committed goldens. They are part of the required `CI` check.
 
 ## CI
