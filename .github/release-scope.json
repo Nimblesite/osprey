@@ -34,7 +34,7 @@
     "src/toolchain/.clippy.toml",
     "src/toolchain/.rustfmt.toml",
     "src/osprey/tests/coverage-thresholds.json",
-    "osprey.code-workspace",
+    ".vscode/osprey.code-workspace",
     "test_output.txt"
   ]
 }

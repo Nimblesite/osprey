@@ -2,31 +2,31 @@
   "folders": [
     {
       "name": "Osprey Workspace",
-      "path": "."
+      "path": ".."
     },
     {
       "name": "Osprey Compiler",
-      "path": "src/toolchain/compiler"
+      "path": "../src/toolchain/compiler"
     },
     {
       "name": "Osprey VS Code Extension",
-      "path": "src/toolchain/vscode-extension"
+      "path": "../src/toolchain/vscode-extension"
     },
     {
       "name": "webcompiler",
-      "path": "src/toolchain/webcompiler"
+      "path": "../src/toolchain/webcompiler"
     },
     {
       "name": "website",
-      "path": "src/toolchain/website"
+      "path": "../src/toolchain/website"
     },
     {
       "name": ".devcontainer",
-      "path": ".devcontainer"
+      "path": "../.devcontainer"
     },
     {
       "name": ".github",
-      "path": ".github"
+      "path": "../.github"
     }
   ],
   "settings": {
@@ -39,7 +39,7 @@
     "go.toolsManagement.checkForUpdates": "local",
     "rust-analyzer.testExplorer": true,
     "rust-analyzer.linkedProjects": [
-      "/Users/christianfindlay/Documents/Code/osprey/Cargo.toml"
+      "/Users/christianfindlay/Documents/Code/osprey/src/toolchain/Cargo.toml"
     ],
     "rust-analyzer.cargo.allTargets": true,
     "rust-analyzer.cargo.autoreload": true,
