@@ -185,6 +185,23 @@ static void readable_failure(int64_t mark) {
   assert(osprey_gpu_get(out, 0) == mark && downloads == down + 2);
 }
 
+// [FAILURE-EXPLICIT] A host matrix product must propagate resident read errors.
+static void matmul_readback_failure(const char *mode) {
+  void *pending = osprey_gpu_alloc(1, 8), *ready = unit();
+  assert(launch(pending, "", NULL) == 1);
+  unsigned down = downloads;
+  select_mode("host");
+  osp_io_error_clear();
+  assert(!osprey_gpu_matmul(pending, ready, 1, 1, 1, 8));
+  assert(downloads == down && strstr(osp_io_error(), "device readback: no GPU adapter") != NULL);
+  osp_io_error_clear();
+  assert(!osprey_gpu_matmul(ready, pending, 1, 1, 1, 8));
+  assert(downloads == down && strstr(osp_io_error(), "device readback: no GPU adapter") != NULL);
+  select_mode(mode);
+  osp_io_error_clear();
+  assert(osprey_gpu_matmul(pending, ready, 1, 1, 1, 8) && downloads == down && !osp_io_error());
+}
+
 static void device_case(const char *mode, int available, const char *name) {
   select_mode(mode);
   void *a = unit();
@@ -204,6 +221,7 @@ static void device_case(const char *mode, int available, const char *name) {
   assert(osprey_gpu_matmul(osprey_gpu_alloc(0, 8), a, 0, 1, 1, 8) && dispatches == before);
   resident_launch(name[0] == 'm' ? 42 : 43);
   readable_failure(name[0] == 'm' ? 42 : 43);
+  matmul_readback_failure(mode);
 }
 
 static void invalid_case(void) {

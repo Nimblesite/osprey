@@ -121,6 +121,10 @@ void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, in
   if (!out) return NULL;
   int device = osprey_gpu_device_matmul(left, right, out, rows, inner, cols);
   if (device != 0) return device > 0 ? out : abandoned(out);
+  // [FAILURE-EXPLICIT] Synchronize before either raw accessor can quarantine
+  // a failed download; the Result channel retains the reason and owns no out.
+  if (rows && inner && cols &&
+      (osprey_gpu_readable(left, 0) != 1 || osprey_gpu_readable(right, 0) != 1)) return abandoned(out);
   if (elem_bytes == 4)
     product32(osprey_gpu_data(out), osprey_gpu_data(left), osprey_gpu_data(right), rows, inner, cols);
   else
