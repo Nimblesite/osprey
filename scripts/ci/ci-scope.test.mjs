@@ -314,7 +314,7 @@ test('package manager security suites gate CI and local tests under GC and ARC',
     assert.ok(coverage.includes('test "${{ needs.test-registry-' + memory + '.result }}" = "success"'))
   }
   const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
-  for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/test-package-${script}\\.py`))
+  for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/packages/test-package-${script}\\.py`))
   for (const suite of ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']) {
     assert.ok(commands.includes(`./$(BIN) test src/osprey/packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
   }
