@@ -8,6 +8,7 @@ use crate::check::Checker;
 
 use crate::env::TypeEnv;
 use crate::error::TypeError;
+use crate::numeric::Numeric;
 use crate::ty::{names, Type};
 use crate::unify::unify;
 use osprey_ast::{
@@ -49,6 +50,7 @@ impl Checker {
                 self.errors.push(error);
             }
             let ty = self.infer_expr_raw(e, env);
+            self.record_constant(e, &ty);
             let _ = self
                 .expression_types
                 .insert(std::ptr::from_ref(e).addr(), ty.clone());
@@ -60,8 +62,8 @@ impl Checker {
 
     fn infer_expr_raw(&mut self, e: &Expr, env: &TypeEnv) -> Type {
         match e {
-            Expr::Integer(_) => Type::int(),
-            Expr::Float(_) => Type::float(),
+            Expr::Integer(value) => self.integer_literal(*value),
+            Expr::Float(value) => self.float_literal(*value),
             Expr::Str(_) => Type::string(),
             Expr::Bool(_) => Type::bool(),
             Expr::InterpolatedStr(parts) => self.infer_interpolation(parts, env),
@@ -729,9 +731,7 @@ impl Checker {
             Type::Con { name, args } => {
                 let primitive = matches!(
                     name.as_str(),
-                    names::INT
-                        | names::FLOAT
-                        | names::BOOL
+                    names::BOOL
                         | names::STRING
                         | names::UNIT
                         | names::ANY
@@ -739,7 +739,7 @@ impl Checker {
                         | names::CHANNEL
                         | names::ITERATOR
                         | names::GPU_BUFFER
-                );
+                ) || Numeric::of_name(name).is_some();
                 if !primitive
                     && self.ctx.variance_of(name).is_none()
                     && !self.ctors.values().any(|ctor| ctor.owner == *name)
@@ -794,7 +794,9 @@ impl Checker {
     ) -> Type {
         let receiver = self.infer_expr(parts.target, env);
         let field = crate::methods::field_name(parts.method);
-        if matches!(self.ctx.expose(&receiver), Type::Var(_)) && env.get(parts.method).is_some() {
+        if matches!(self.ctx.expose_settled(&receiver), Type::Var(_))
+            && env.get(parts.method).is_some()
+        {
             self.record_method_target(site, crate::methods::Target::Deferred(field.clone()));
             return self.infer_deferred_method(site, receiver, &field, &parts, env);
         }
@@ -1492,6 +1494,9 @@ fn locatable_obligation(name: &str) -> bool {
     }
     is_deferred_arith(name)
         || name.starts_with(crate::builtin_constraints::NUMERIC_OPERAND_PREFIX)
+        || name.starts_with(crate::builtin_constraints::INTEGER_OPERAND_PREFIX)
+        || name.starts_with(crate::builtin_constraints::FLOAT_OPERAND_PREFIX)
+        || name.starts_with(crate::builtin_constraints::MATRIX_OPERAND_PREFIX)
         || name.starts_with(crate::comparison::COMPARED_OPERAND_PREFIX)
         || name == "interpolation"
         || name == "structuralEquals"
@@ -1519,6 +1524,12 @@ fn parse_deferred_arith(name: &str) -> Option<&str> {
 /// built-in's representation constraint.
 pub(crate) fn is_deferred_arith(name: &str) -> bool {
     parse_deferred_arith(name).is_some()
+}
+
+/// Division has a result relation, not one shared overload: integer operands
+/// still yield float, and each sized-float instantiation yields its own width.
+pub(crate) fn is_monomorphic_arith(name: &str) -> bool {
+    parse_deferred_arith(name).is_some_and(|op| op != "/")
 }
 
 fn is_result(t: &Type) -> bool {
@@ -1586,7 +1597,7 @@ impl Checker {
                     // unrelated types would compare representations: `true < 1`
                     // answered, and an opaque alias answered to an integer.
                     // Implements [BOOL-COMPARE-OPERANDS].
-                    let (l, r) = (self.ctx.apply(&l), self.ctx.apply(&r));
+                    let (l, r) = (self.ctx.displayed(&l), self.ctx.displayed(&r));
                     self.errors.push(TypeError::new(format!(
                         "cannot compare `{l}` with `{r}`: `{op}` needs two operands of one type"
                     )));
@@ -1608,7 +1619,25 @@ impl Checker {
     ) -> Type {
         let l = self.ctx.expose(lt);
         let r = self.ctx.expose(rt);
+        // [TYPE-NUMERIC-ARITH-WIDTH] Division's result follows its operands,
+        // except integer division, whose result remains binary64.
+        if op == "/" && self.defers(&l, &r) {
+            let result = self.ctx.fresh();
+            let name = self.located_use(&deferred_arith_name(op), position);
+            self.builtin_uses
+                .push((name, Type::fun(vec![l, r], result.clone())));
+            return result;
+        }
         let string_concat = op == "+" && (l.is_named(names::STRING) || r.is_named(names::STRING));
+        if !string_concat {
+            if let Some(result) = self.sized_arith(op, &l, &r) {
+                return result;
+            }
+        }
+        // [TYPE-NUMERIC-LITERAL] With no sized sibling, an open float literal
+        // settles before the existing float overload and int promotion run.
+        let l = self.settle_arith_float(&l);
+        let r = self.settle_arith_float(&r);
         if !string_concat && (op == "/" || l.is_named(names::FLOAT) || r.is_named(names::FLOAT)) {
             self.constrain_numeric_operands(op, &l, &r, position);
         }
@@ -1658,6 +1687,14 @@ impl Checker {
         }
     }
 
+    fn settle_arith_float(&mut self, operand: &Type) -> Type {
+        if self.ctx.is_open_float_literal(operand) {
+            self.ctx.expose_settled(operand)
+        } else {
+            self.ctx.expose(operand)
+        }
+    }
+
     /// [FLOAT-OPERANDS] Keep the numeric requirement on each scheme variable;
     /// unifying with float here would wrongly reject valid integer callers.
     fn constrain_numeric_operands(
@@ -1681,8 +1718,11 @@ impl Checker {
     /// inference is still running — the resolution pass re-enters
     /// [`Self::infer_arith`] with deferral CLOSED, so a site nothing ever
     /// constrained lands on the integer default there.
-    fn defers(&self, left: &Type, right: &Type) -> bool {
-        self.defer_arith && both_vars(left, right)
+    fn defers(&mut self, left: &Type, right: &Type) -> bool {
+        self.defer_arith
+            && both_vars(left, right)
+            && !self.ctx.is_open_literal(left)
+            && !self.ctx.is_open_literal(right)
     }
 
     /// Type an arithmetic operator whose BOTH operands are still unconstrained
@@ -1794,26 +1834,37 @@ impl Checker {
             return;
         };
         let position = crate::builtin_constraints::source_position(name);
+        if crate::arithmetic::is_float_open(op) {
+            for operand in &params {
+                if matches!(self.ctx.apply(operand), Type::Var(_)) {
+                    self.push_unify(&Type::float(), operand);
+                }
+            }
+        }
         // The operator reads its operands where it was written, and its
         // diagnostics say so too.
         let written = self.use_sites.get(name).cloned().unwrap_or_default();
         let outer = self.ctx.enter(written);
         let outer_position = self.expr_position;
         self.expr_position = position;
-        if !matches!(self.ctx.apply(&ret), Type::Var(_)) {
+        if op != "/" && !matches!(self.ctx.apply(&ret), Type::Var(_)) {
             for operand in &params {
                 if matches!(self.ctx.apply(operand), Type::Var(_)) {
                     self.push_unify(&ret, operand);
                 }
             }
         }
+        let uses_before = self.builtin_uses.len();
         let answer = match params.as_slice() {
-            [operand] if op == "abs" && crate::arithmetic::absolute_operand(operand) => {
+            [operand] if crate::arithmetic::absolute_operand(operand) => {
                 Some(self.infer_negation(operand))
             }
             [left, right] => Some(self.infer_arith(op, left, right, position)),
             _ => None,
         };
+        if op == "/" {
+            self.place_arithmetic_uses(name, site, uses_before);
+        }
         if let Some(answer) = answer {
             self.push_unify(&answer, &ret);
         }
@@ -1821,20 +1872,56 @@ impl Checker {
         let _ = self.ctx.enter(outer);
     }
 
-    /// Constrain both operands to integers. The result is a plain `int`: an
-    /// out-of-range result performs `Arith.overflow` instead ([ARITH-EFFECT]).
+    /// Instantiation may decide division late; its diagnostics retain the
+    /// obligation's original position in the validation sequence.
+    fn place_arithmetic_uses(&mut self, name: &str, site: &Type, start: usize) {
+        let introduced = self.builtin_uses.split_off(start);
+        let at = self
+            .builtin_uses
+            .iter()
+            .position(|(pending, pending_site)| pending == name && pending_site == site)
+            .map_or(start, |index| index + 1);
+        drop(self.builtin_uses.splice(at..at, introduced));
+    }
+
+    /// [TYPE-NUMERIC-SAME-TYPE] An operator with a sized operand takes both at
+    /// that one type, so `int32 + int` and `float32 + float` do not unify; the
+    /// `int`→`float` promotion does not reach a sized type. `/` over integers
+    /// is `float` at every width; `None` when neither operand is sized.
+    fn sized_arith(&mut self, op: &str, left: &Type, right: &Type) -> Option<Type> {
+        let (ty, numeric) = [left, right].into_iter().find_map(|ty| {
+            Numeric::of_type(ty)
+                .filter(|n| n.is_sized())
+                .map(|n| (ty.clone(), n))
+        })?;
+        self.push_unify(left, right);
+        Some(if op == "/" && numeric.is_integer() {
+            Type::float()
+        } else {
+            ty
+        })
+    }
+
+    /// Constrain both operands to integers. An out-of-range result performs
+    /// `Arith.overflow` instead ([ARITH-EFFECT]). Two open literals stay open
+    /// together, so `let x: uint8 = 1 + 2` is `uint8` ([TYPE-NUMERIC-LITERAL]).
     fn int_arithmetic_result(&mut self, left: &Type, right: &Type) -> Type {
+        if self.ctx.is_open_literal(left) && self.ctx.is_open_literal(right) {
+            self.push_unify(left, right);
+            return left.clone();
+        }
         self.push_unify(&Type::int(), left);
         self.push_unify(&Type::int(), right);
         Type::int()
     }
 
-    /// Float negation is total; integer negation is a plain `int` whose
-    /// `INT64_MIN` case performs `Arith.overflow` ([ARITH-EFFECT]).
+    /// Negation keeps its operand's numeric type; float negation is total and
+    /// integer negation performs `Arith.overflow` where the result does not
+    /// fit ([ARITH-EFFECT], [TYPE-NUMERIC-ARITH-WIDTH]).
     fn infer_negation(&mut self, operand: &Type) -> Type {
         let inner = self.ctx.expose(operand);
-        if inner.is_named(names::FLOAT) {
-            Type::float()
+        if Numeric::of_type(&inner).is_some() || self.ctx.is_open_literal(&inner) {
+            inner
         } else {
             self.push_unify(&Type::int(), &inner);
             Type::int()

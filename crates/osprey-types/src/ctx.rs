@@ -4,6 +4,7 @@
 //! so a chain of variable bindings is walked once and then answers in one hop.
 
 use crate::error::TypeError;
+use crate::numeric::Numeric;
 use crate::ty::{Type, VarId};
 use osprey_ast::{TypeExpr, Variance};
 use std::collections::{BTreeSet, HashMap};
@@ -25,6 +26,9 @@ pub(crate) struct InferCtx {
     /// The declaration being checked. An opaque alias is its representation
     /// exactly where this sits inside the alias's owning module.
     site: String,
+    /// Open numeric literals: a variable a literal's type rests on, with the
+    /// type it defaults to. Implements [TYPE-NUMERIC-LITERAL].
+    literals: HashMap<VarId, Numeric>,
 }
 
 impl InferCtx {
@@ -166,7 +170,8 @@ impl InferCtx {
     /// names the module that keeps its representation: the author can read
     /// `type T = int` there and would otherwise learn only that `int` is not
     /// `T`.
-    pub(crate) fn mismatch(&self, a: &Type, b: &Type) -> TypeError {
+    pub(crate) fn mismatch(&mut self, a: &Type, b: &Type) -> TypeError {
+        let (a, b) = (&self.displayed(a), &self.displayed(b));
         let error = TypeError::mismatch(a, b);
         let sealed = [a, b].into_iter().find_map(|t| match t {
             Type::Con { name, .. } if self.equations.contains_key(name) => {
@@ -198,6 +203,81 @@ impl InferCtx {
             self.exposed_at(a, &self.site),
             self.exposed_at(b, &self.site),
         )
+    }
+
+    /// A variable for a numeric literal whose context may still pick its type
+    /// among `default`'s family ([TYPE-NUMERIC-LITERAL]).
+    pub(crate) fn fresh_literal(&mut self, default: Numeric) -> Type {
+        let var = self.fresh();
+        if let Type::Var(id) = var {
+            let _ = self.literals.insert(id, default);
+        }
+        var
+    }
+
+    /// The default of a variable that is an open numeric literal.
+    pub(crate) fn literal_default(&self, id: VarId) -> Option<Numeric> {
+        self.literals.get(&id).copied()
+    }
+
+    /// Whether `t` is still an open numeric literal.
+    pub(crate) fn is_open_literal(&mut self, t: &Type) -> bool {
+        matches!(self.prune(t), Type::Var(id) if self.literals.contains_key(&id))
+    }
+
+    /// Whether arithmetic must settle this open float literal to `float` now
+    /// [TYPE-NUMERIC-LITERAL].
+    pub(crate) fn is_open_float_literal(&mut self, t: &Type) -> bool {
+        matches!(self.prune(t), Type::Var(id) if self.literal_default(id).is_some_and(Numeric::is_float))
+    }
+
+    /// Fix to its default every open literal free in `t`: a binding's type is
+    /// decided at the binding, so nothing quantifies over a literal.
+    pub(crate) fn settle_literals_in(&mut self, t: &Type) {
+        if self.literals.is_empty() {
+            return;
+        }
+        let mut free = BTreeSet::new();
+        let applied = self.apply(t);
+        self.free_vars(&applied, &mut free);
+        for id in free {
+            self.settle_literal(id);
+        }
+    }
+
+    /// [`Self::expose`] for a rule that must act on the shape now: a literal
+    /// has nothing further to wait for, so it takes its default here.
+    pub(crate) fn expose_settled(&mut self, t: &Type) -> Type {
+        if let Type::Var(id) = self.prune(t) {
+            self.settle_literal(id);
+        }
+        self.expose(t)
+    }
+
+    /// `t` as a diagnostic names it: an open literal reads as its default, the
+    /// type it will have unless something decides otherwise.
+    pub(crate) fn displayed(&mut self, t: &Type) -> Type {
+        let applied = self.apply(t);
+        crate::ty::map_type_vars(&applied, &mut |id| match self.literal_default(id) {
+            Some(default) => Type::prim(default.name()),
+            None => Type::Var(id),
+        })
+    }
+
+    /// Fix to its default every literal nothing has decided.
+    pub(crate) fn settle_all_literals(&mut self) {
+        let open: Vec<VarId> = self.literals.keys().copied().collect();
+        for id in open {
+            self.settle_literal(id);
+        }
+    }
+
+    fn settle_literal(&mut self, id: VarId) {
+        if let Some(default) = self.literals.get(&id).copied() {
+            if matches!(self.prune(&Type::Var(id)), Type::Var(root) if root == id) {
+                self.bind(id, Type::prim(default.name()));
+            }
+        }
     }
 
     /// Allocate a fresh, unbound type variable.

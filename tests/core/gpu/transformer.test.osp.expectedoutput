@@ -1,7 +1,7 @@
 ok 1 - gpuMatMul forms the row-major product of the stated shapes
 ok 2 - gpuMatMul accumulates in k order from 0.0 without a fused multiply-add
 ok 3 - gpuMatMul names the operand whose length disagrees with the stated shape
-ok 4 - sqrt, exp, ln and tanh are total kernels over IEEE doubles
+ok 4 - sqrt, exp, ln and tanh are total kernels over IEEE binary32 values
 ok 5 - gelu is the tanh approximation GPT-2 was trained with
 ok 6 - layerNorm normalises each row and applies the column gain and bias
 ok 7 - softmax normalises every causal row, shifted by its peak
@@ -11,7 +11,7 @@ ok 10 - attention over the embedded pair matches the reference pass
 ok 11 - the newest position attends through the cache exactly as the full pass does
 ok 12 - one pre-norm block matches the reference pass
 ok 13 - the tied readout scores every token row and argmax picks the first peak
-ok 14 - gpuLoad widens little-endian binary32 words and refuses a short read
+ok 14 - gpuLoad keeps little-endian binary32 words and refuses a short read
 ok 15 - gpuLoadTensor names the file and the reason its header cannot be read
 1..15
 # tests=15 passed=15 failed=0 skipped=0

@@ -6,6 +6,39 @@ use super::{attempt, parse, tree, Attempt};
 use crate::envelope;
 use crate::regions::Regions;
 
+#[test]
+fn packaged_launch_keeps_overrides_and_rejects_invalid_argument_documents() {
+    // [CAST-MOBILE-GPUI] The same host reads bundled defaults on mobile and desktop.
+    let folder = std::path::Path::new("/Applications/A player's ☄.app");
+    let given = vec!["--skin".to_owned(), "midnight".to_owned()];
+    let result = crate::launch::configured(
+        given.clone(),
+        folder,
+        r#"["--machine","${RESOURCES}/player.machine.json","--skin","sherbet"]"#,
+    );
+    assert_eq!(
+        result,
+        Ok(vec![
+            "--skin".into(),
+            "midnight".into(),
+            "--machine".into(),
+            "/Applications/A player's ☄.app/player.machine.json".into(),
+            "--skin".into(),
+            "sherbet".into()
+        ])
+    );
+    assert_eq!(
+        crate::launch::configured(given.clone(), folder, "[]"),
+        Ok(given.clone())
+    );
+    for invalid in ["null", "{}", "[37]", "[true]", "[\"valid\",null]", "[", ""] {
+        assert!(
+            crate::launch::configured(given.clone(), folder, invalid).is_err(),
+            "{invalid}"
+        );
+    }
+}
+
 fn regions() -> Regions {
     let envelope = json!({"version": envelope::VERSION, "state": "s", "requests": [], "patches": [{"key": "root", "revision": 7, "node": {"kind": "stack", "children": [
         {"kind": "button", "label": "Add", "event": 1},

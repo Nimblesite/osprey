@@ -1,17 +1,42 @@
 use super::*;
 
+/// Parse `source` in `flavor`, asserting the result is syntactically valid.
+#[track_caller]
+fn parse_ok_flavored(source: &str, flavor: osprey_syntax::Flavor) -> Program {
+    let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    parsed.program
+}
+
+/// Parse `source` in the default flavor and collect its top-level symbols.
+#[track_caller]
+fn symbols_for(source: &str) -> Vec<SymbolInfo> {
+    let parsed = osprey_syntax::parse_program(source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    collect_symbols(&parsed.program)
+}
+
+/// Assert `pointer` resolves in `json` to the string `expected`.
+#[track_caller]
+fn assert_doc_value(json: &serde_json::Value, pointer: &str, expected: &str) {
+    assert_eq!(
+        json.pointer(pointer).and_then(serde_json::Value::as_str),
+        Some(expected),
+        "{pointer}"
+    );
+}
+
 /// [LSP-EFFECT-REQUIREMENTS] Inferred requirements are distinct from written bounds.
 #[test]
 fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<(), String> {
-    for (source, flavor) in EFFECT_REQUIREMENT_SOURCES {
-        let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    for (source, flavor, ..) in EFFECT_REQUIREMENT_SOURCES {
+        let program = parse_ok_flavored(source, flavor);
         assert_eq!(
-            osprey_types::check_program(&parsed.program),
+            osprey_types::check_program(&program),
             Vec::<osprey_types::TypeError>::new()
         );
-        let symbols: serde_json::Value = serde_json::from_str(&symbols_json(&parsed.program))
-            .map_err(|error| error.to_string())?;
+        let symbols: serde_json::Value =
+            serde_json::from_str(&symbols_json(&program)).map_err(|error| error.to_string())?;
         let entries = symbols.as_array().ok_or("symbol array missing")?;
         for (name, expected) in [
             ("leaf", vec!["Read.get"]),
@@ -37,32 +62,22 @@ fn symbols_publish_transitive_effect_requirements_in_both_flavors() -> Result<()
     Ok(())
 }
 
-const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor); 2] = [
-    ("effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\n", osprey_syntax::Flavor::Default),
-    ("effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\n", osprey_syntax::Flavor::Ml),
+const EFFECT_REQUIREMENT_SOURCES: [(&str, osprey_syntax::Flavor, &str, u32, u32); 2] = [
+    ("effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\n", osprey_syntax::Flavor::Default, "file:///requirements.osp", 2, 4),
+    ("effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\n", osprey_syntax::Flavor::Ml, "file:///requirements.ospml", 3, 1),
 ];
 
 #[test]
 fn effect_requirements_follow_every_editor_view() -> Result<(), String> {
     use lspkit::vfs::PositionEncoding::Utf16;
-    for (source, flavor) in EFFECT_REQUIREMENT_SOURCES {
-        let (uri, line, column) = match flavor {
-            osprey_syntax::Flavor::Default => ("file:///requirements.osp", 2, 4),
-            osprey_syntax::Flavor::Ml => ("file:///requirements.ospml", 3, 1),
-            osprey_syntax::Flavor::Python => ("file:///requirements.py", 3, 1),
-        };
+    for (source, _flavor, uri, line, column) in EFFECT_REQUIREMENT_SOURCES {
         let expected = "Requires on full application: `Read.get`.";
         let hover = crate::test_support::hover(source, uri, line, column, Utf16).ok_or("hover")?;
         assert!(hover.contains(expected), "{hover}");
         let signature = crate::wire::signature_result(crate::test_support::signature_help(
             source, uri, line, column, Utf16,
         ));
-        assert_eq!(
-            signature
-                .pointer("/signatures/0/documentation/value")
-                .and_then(serde_json::Value::as_str),
-            Some(expected)
-        );
+        assert_doc_value(&signature, "/signatures/0/documentation/value", expected);
         let completions = crate::test_support::completion(source, uri, line, column, Utf16);
         let items = crate::wire::completion_result(&completions);
         let relay = items
@@ -72,26 +87,14 @@ fn effect_requirements_follow_every_editor_view() -> Result<(), String> {
             .iter()
             .find(|item| item.get("label").and_then(serde_json::Value::as_str) == Some("relay"))
             .ok_or("relay completion")?;
-        assert_eq!(
-            relay
-                .pointer("/documentation/value")
-                .and_then(serde_json::Value::as_str),
-            Some(expected)
-        );
+        assert_doc_value(relay, "/documentation/value", expected);
     }
     Ok(())
 }
 
 #[test]
 fn structured_sections_render_in_hover() {
-    let src = "/// Divides two numbers.\n\
-                   ///\n\
-                   /// # Parameters\n\
-                   /// - a: the numerator\n\
-                   ///\n\
-                   /// # Returns\n\
-                   /// the quotient\n\
-                   fn div(a, b) = intDiv(a, b)\n";
+    let src = "/// Divides two numbers.\n///\n/// # Parameters\n/// - a: the numerator\n///\n/// # Returns\n/// the quotient\nfn div(a, b) = intDiv(a, b)\n";
     let d = doc_for(src, "div").expect("div doc");
     crate::testkit::shows(&d, &["Divides two numbers."]);
     assert!(d.contains("**Parameters**") && d.contains("`a`"), "{d}");
@@ -105,13 +108,8 @@ fn structured_sections_render_in_hover() {
 fn ml_flavor_doc_comments_reach_hover() {
     // The ML (** … *) doc form lowers to the same DocComment and renders
     // identically ([DOC-SIGIL-ML]).
-    let src = "(** Doubles the input. *)\n\
-                   double x = x * 2\n\
-                   (** A performance tier. *)\n\
-                   type Tier =\n    Epic\n    Solid\n";
-    let parsed = osprey_syntax::parse_program_with_flavor(src, osprey_syntax::Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let syms = collect_all_symbols(&parsed.program);
+    let src = "(** Doubles the input. *)\ndouble x = x * 2\n(** A performance tier. *)\ntype Tier =\n    Epic\n    Solid\n";
+    let syms = collect_all_symbols(&parse_ok_flavored(src, osprey_syntax::Flavor::Ml));
     assert_doc(&syms, "double", "Doubles the input.");
     assert_doc(&syms, "Tier", "A performance tier.");
 }
@@ -121,14 +119,16 @@ fn hover_renders_builtin_signature_and_rejects_unknowns() {
     // [BUILTIN-PRINT] Hover uses the constrained public signature, not the
     // internal `any` scheme used to implement receiver dispatch.
     let md = builtin_hover("print");
+    let signature = osprey_types::builtin_doc_view("print")
+        .expect("print documentation")
+        .signature;
     // The rich hover carries the call signature and the description, not just
     // a bare `name : type` line.
     assert!(
-            md.as_deref().is_some_and(|m| m.contains(
-                "print(value: int | float | bool | string | Unit | any | Result<printable, printable>) -> Unit"
-            ) && m.contains("supported scalar or Result")),
-            "{md:?}"
-        );
+        md.as_deref()
+            .is_some_and(|m| m.contains(&signature) && m.contains("supported scalar or Result")),
+        "{md:?}"
+    );
     assert!(builtin_hover("notARealBuiltin").is_none());
 }
 
@@ -143,44 +143,38 @@ fn json_strings_escape_quotes_and_control_chars() {
 #[test]
 fn render_type_covers_named_array_generic_and_function_forms() {
     use osprey_ast::TypeExpr;
-    // A bare named type renders as its name.
-    assert_eq!(render_type(&TypeExpr::named("int")), "int");
-
-    // An array type renders as `[element]`, and the empty array as `[]`.
-    let mut array = TypeExpr::named("");
-    array.is_array = true;
-    array.array_element = Some(Box::new(TypeExpr::named("string")));
-    assert_eq!(render_type(&array), "[string]");
-    let mut bare_array = TypeExpr::named("");
-    bare_array.is_array = true;
-    assert_eq!(render_type(&bare_array), "[]");
-
-    // A generic type renders as `Name<args>`.
+    let array = |element: Option<&str>| {
+        let mut ty = TypeExpr::named("");
+        ty.is_array = true;
+        ty.array_element = element.map(|e| Box::new(TypeExpr::named(e)));
+        ty
+    };
+    let function = |params: &[&str], ret: Option<&str>| {
+        let mut ty = TypeExpr::named("");
+        ty.is_function = true;
+        ty.parameter_types = params.iter().map(|p| TypeExpr::named(*p)).collect();
+        ty.return_type = ret.map(|r| Box::new(TypeExpr::named(r)));
+        ty
+    };
     let mut generic = TypeExpr::named("Result");
     generic.generic_params = vec![TypeExpr::named("int"), TypeExpr::named("string")];
-    assert_eq!(render_type(&generic), "Result<int, string>");
-
-    // A function type renders parameter and return types; a missing return
-    // type defaults to `Unit`.
-    let mut func = TypeExpr::named("");
-    func.is_function = true;
-    func.parameter_types = vec![TypeExpr::named("int")];
-    func.return_type = Some(Box::new(TypeExpr::named("bool")));
-    assert_eq!(render_type(&func), "fn(int) -> bool");
-    let mut func_unit = TypeExpr::named("");
-    func_unit.is_function = true;
-    assert_eq!(render_type(&func_unit), "fn() -> Unit");
+    for (ty, expected) in [
+        (TypeExpr::named("int"), "int"),
+        (array(Some("string")), "[string]"),
+        (array(None), "[]"),
+        (generic, "Result<int, string>"),
+        (function(&["int"], Some("bool")), "fn(int) -> bool"),
+        (function(&[], None), "fn() -> Unit"),
+    ] {
+        assert_eq!(render_type(&ty), expected, "case {expected}");
+    }
 }
 
 #[test]
 fn collect_symbols_qualifies_module_members_and_skips_non_declarations() {
     // [MODULES-ABI] A flat wire outline keeps collision-safe source names:
     // the module itself plus qualified members, never flattened leaves.
-    let parsed = osprey_syntax::parse_program(
-        "module Inner {\n  fn helper() -> int = 1\n  let seed = 2\n}\n",
-    );
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let syms = collect_symbols(&parsed.program);
+    let syms = symbols_for("module Inner {\n  fn helper() -> int = 1\n  let seed = 2\n}\n");
     let names: Vec<&str> = syms.iter().map(|s| s.name.as_str()).collect();
     assert_eq!(names, ["Inner", "Inner::helper", "Inner::seed"]);
     // The `let` carries no annotation, so its rendered type is empty and its
@@ -197,13 +191,9 @@ fn collect_symbols_qualifies_module_members_and_skips_non_declarations() {
 fn namespace_module_and_signature_symbols_never_flatten_collisions() {
     // [MODULES-NAMESPACE] Two modules may export the same leaf name. The
     // outline preserves both ownership paths and the container kinds.
-    let parsed = osprey_syntax::parse_program(
-        "namespace sales { module Tax { export fn rate() = 10 } }\n\
-             namespace payroll { module Tax { export fn rate() = 20 } }\n\
-             signature TaxSig { fn rate() -> int }\n",
+    let symbols = symbols_for(
+        "namespace sales { module Tax { export fn rate() = 10 } }\nnamespace payroll { module Tax { export fn rate() = 20 } }\nsignature TaxSig { fn rate() -> int }\n",
     );
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    let symbols = collect_symbols(&parsed.program);
     let named = |name: &str| symbols.iter().find(|symbol| symbol.name == name);
     assert_eq!(named("sales").map(|s| s.kind), Some(SymbolKind::Namespace));
     assert_eq!(
@@ -347,6 +337,10 @@ fn every_container_with_a_nested_let() -> Vec<Expr> {
     ]
 }
 
+/// The `let` names `every_container_with_a_nested_let` buries, in creation
+/// order — every one must surface through the deep walker.
+const EVERY_CONTAINER_LET_NAMES: &str = "list mapk mapv obj binl binr pipel piper unary interp callfn callarg callnamed mtarget marg mnamed fatarget idxt idxi lambda matchval matcharm tc update spawn await recv yield sendc sendv select perform performnamed handlerarm handlerbody";
+
 #[test]
 fn collect_all_symbols_descends_into_every_expression_form() {
     // A `let` is buried inside each container expression variant; the deep
@@ -367,43 +361,7 @@ fn collect_all_symbols_descends_into_every_expression_form() {
         .into_iter()
         .map(|s| s.name)
         .collect();
-    for expected in [
-        "list",
-        "mapk",
-        "mapv",
-        "obj",
-        "binl",
-        "binr",
-        "pipel",
-        "piper",
-        "unary",
-        "interp",
-        "callfn",
-        "callarg",
-        "callnamed",
-        "mtarget",
-        "marg",
-        "mnamed",
-        "fatarget",
-        "idxt",
-        "idxi",
-        "lambda",
-        "matchval",
-        "matcharm",
-        "tc",
-        "update",
-        "spawn",
-        "await",
-        "recv",
-        "yield",
-        "sendc",
-        "sendv",
-        "select",
-        "perform",
-        "performnamed",
-        "handlerarm",
-        "handlerbody",
-    ] {
+    for expected in EVERY_CONTAINER_LET_NAMES.split_whitespace() {
         assert!(found.iter().any(|n| n == expected), "missing `{expected}`");
     }
 }

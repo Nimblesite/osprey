@@ -1,73 +1,11 @@
 #include "http_client_internal.h"
 #include "http_shared.h"
 
-#include <strings.h> // strncasecmp
-
 #include <pthread.h>
 
 // Generic response-handle implementation, split from the client transport
 // (http_client_runtime.c) so each TU stays under the repo size budget.
 // Implements [HTTP-RESPONSE-HANDLE].
-
-// http_header_is_chunked reports whether the response header block declares
-// Transfer-Encoding: chunked (case-insensitive header name).
-bool http_header_is_chunked(const char *headers) {
-  if (!headers) {
-    return false;
-  }
-  for (const char *p = headers; *p; p++) {
-    if ((p[0] == 'T' || p[0] == 't') &&
-        strncasecmp(p, "Transfer-Encoding:", 18) == 0) {
-      const char *v = p + 18;
-      return strstr(v, "chunked") != NULL || strstr(v, "Chunked") != NULL;
-    }
-  }
-  return false;
-}
-
-// http_decode_chunked decodes an HTTP/1.1 chunked body in place: each chunk is
-// "<hex-length>\r\n<data>\r\n", terminated by a zero-length chunk. Returns a
-// freshly allocated, NUL-terminated decoded body (caller frees), or NULL.
-char *http_decode_chunked(const char *body) {
-  size_t cap = strlen(body) + 1;
-  char *out = malloc(cap);
-  if (!out) {
-    return NULL;
-  }
-  size_t out_len = 0;
-  const char *p = body;
-  for (;;) {
-    char *end = NULL;
-    long chunk = strtol(p, &end, 16); // chunk size in hex
-    if (end == p) {
-      break; // no valid size: stop
-    }
-    const char *line_end = strstr(end, "\r\n");
-    if (!line_end) {
-      break;
-    }
-    const char *data = line_end + 2;
-    if (chunk <= 0) {
-      break; // terminating zero chunk
-    }
-    memcpy(out + out_len, data, (size_t)chunk);
-    out_len += (size_t)chunk;
-    p = data + chunk;
-    if (strncmp(p, "\r\n", 2) == 0) {
-      p += 2; // skip trailing CRLF after the chunk data
-    }
-  }
-  out[out_len] = '\0';
-  return out;
-}
-
-// http_parse_status_line returns the numeric status from an HTTP status line, or -8.
-int64_t http_parse_status_line(const char *raw) {
-  if (strncmp(raw, "HTTP/1.1 ", 9) == 0 || strncmp(raw, "HTTP/1.0 ", 9) == 0) {
-    return atoi(raw + 9);
-  }
-  return -8;
-}
 
 // ---------------------------------------------------------------------------
 // Response-handle API. Implements [HTTP-RESPONSE-HANDLE].
@@ -91,44 +29,38 @@ static bool valid_response_handle(int64_t handle) {
 
 // http_request_capture performs the request, retains status/body/headers in a
 // heap slot, and returns a 1-based handle (>=1) or a negative error code.
+// Implements [HTTP-RESPONSE-FRAMING].
 static int64_t http_request_capture(int64_t client_id, int64_t method,
                                     char *path, char *headers, char *body) {
   char *raw = NULL;
   size_t len = 0;
-  int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len);
+  bool closed = false;
+  int64_t rc = http_perform(client_id, method, path, headers, body, &raw, &len, &closed);
   if (rc != 0) {
     return rc;
   }
-
-  int64_t status = http_parse_status_line(raw);
-
-  char *sep = strstr(raw, "\r\n\r\n");
-  char *body_start = sep ? sep + 4 : raw;
-  char *first_eol = strstr(raw, "\r\n");
-
+  const char *sep = NULL;
+  int64_t status = 0;
+  const char *head = http_checked_head(raw, len, &sep, &status, &rc);
+  if (!head) {
+    free(raw);
+    return rc;
+  }
   char *resp_headers = NULL;
-  if (first_eol && sep && sep >= first_eol + 2) {
-    size_t hlen = (size_t)(sep - (first_eol + 2));
-    resp_headers = malloc(hlen + 1);
-    if (resp_headers) {
-      memcpy(resp_headers, first_eol + 2, hlen);
-      resp_headers[hlen] = '\0';
-    }
+  if (!http_copy_response_headers(head, sep, &resp_headers)) {
+    free(raw);
+    return -9; // without its headers, a chunked body would pass for a plain one
   }
 
   // Decode a chunked body so callers see the real payload, not chunk framing.
+  const char *body_start = sep + 4;
   char *resp_body = NULL;
-  if (http_header_is_chunked(resp_headers)) {
-    resp_body = http_decode_chunked(body_start);
-  }
-  if (!resp_body) {
-    resp_body = strdup(body_start);
-  }
+  rc = http_response_body_of(status, resp_headers, body_start,
+                             len - (size_t)(body_start - raw), closed, &resp_body);
   free(raw);
-
-  if (!resp_body) {
+  if (rc != 0) {
     free(resp_headers);
-    return -9;
+    return rc;
   }
 
   pthread_mutex_lock(&g_http_resp_mutex);

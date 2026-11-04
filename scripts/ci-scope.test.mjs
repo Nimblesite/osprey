@@ -111,6 +111,18 @@ test('the required macOS gate runs every Apple part, the native Workbench host a
   assert.match(job('ci', '.github/workflows/ci.yml'), /^ {6}- test-apple$/m)
 })
 
+// [CAST-MOBILE-GPUI] iOS and Android casting are unfinished: no CI job may build, run or test them.
+// Plan 0053's last step lifts this once their journeys are green.
+test('unfinished mobile casting stays out of every CI path', () => {
+  const unfinished = /casting\/(ios|android|mobile)|casting-(ios|android|mobile)|mobile_test|mobile_receiver|mobile-bridge-tests/
+  for (const name of readdirSync('.github/workflows')) {
+    assert.doesNotMatch(readFileSync(join('.github/workflows', name), 'utf8'), unfinished, name)
+  }
+  assert.doesNotMatch(readFileSync('scripts/test-mobile-tools.py', 'utf8'), /examples\/casting|apps\/ios\/tests/)
+  assert.match(readFileSync('hosts/gpui/src/adapters.rs', 'utf8'), /feature = "mobile-bridge-tests"/)
+  assert.doesNotMatch(readFileSync('hosts/gpui/src/adapters.rs', 'utf8'), /target_os = "android", test\)/)
+})
+
 test('the coverage gate only compares collected reports and never builds or tests', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
   const runs = [...coverage.matchAll(/^ {8}run: (.+)$/gm)].map((m) => m[1]).filter((r) => r !== '|')

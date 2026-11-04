@@ -49,6 +49,12 @@ quiescent, normal program teardown MUST release the runtime's completed-result
 roots after language-owned values have dropped; it MUST NOT release a cached
 result while another fiber can still await it.
 
+## How many fibers and channels [CONCURRENCY-HANDLES]
+
+A program can create any number of fibers and channels over its life. Each handle stays valid for the rest of the process and is never reused, because a `Fiber<T>` can be awaited again for as long as the program holds it. So every fiber's record and result, and every channel, stay in memory until the process ends: a program that spawns without end grows without end, by a few hundred bytes per fiber plus what it returned.
+
+A fiber's thread ends when the fiber does, whether or not it is awaited. When the system has no thread left to give, `spawn` runs the body on the spawning thread instead, and the fiber has finished when `spawn` returns. A body that then waits for its spawner blocks for ever.
+
 ## Buffered channels [CONCURRENCY-CHANNEL]
 
 `Channel(capacity)` creates a FIFO channel whose positive integer `capacity` is
@@ -155,9 +161,18 @@ extern fn fiber_set_deterministic_mode(enabled: bool) -> int
 
 When enabled before spawning, `spawn` queues computations without creating
 pthreads. `await` executes queued computations in spawn order through the
-requested fiber. This mode is sequential, not an interleaving scheduler;
+requested fiber. A fiber can use the whole runtime as it runs, on the stack of
+whatever ran it. A `send`, `recv` or `select` that would block runs the next
+queued fiber instead, as nothing else could unblock it. An `await` that nothing
+on the stack could ever answer, such as a fiber awaiting itself, returns `-1` in
+the native runtime. This mode is sequential, not an interleaving scheduler;
 `yield` therefore cannot switch fibers. `fiberDone` returns `1` for a queued
 fiber because its following `await` is what drives execution.
+
+`cancel` before the victim's driving `await` MUST still dequeue the victim
+from the deterministic execution queue before it is driven. This is part of
+the [Structured Concurrency](0036-StructuredConcurrency.md) target and is not
+implemented yet, as stated in [CONCURRENCY-CANCEL-DESIGN].
 
 ## Cancellation and scopes — design direction [CONCURRENCY-CANCEL-DESIGN]
 

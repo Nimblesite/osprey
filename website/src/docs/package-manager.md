@@ -6,7 +6,9 @@ permalink: /docs/package-manager/
 tags: [packages, registry, resolution]
 ---
 
-The package client, folder-registry server, manifest parser, resolver, digests and tests are written in Osprey. Platform operations use the existing runtime builtins; the current filesystem and process handlers invoke POSIX `find`, `mkdir` and shell redirection. Windows host support is not established. The [implementation contract](/spec/0029-packagemanagement/) requires the package-system logic to remain Osprey source.
+{% from "native-capture.njk" import capture %}
+
+Resolve, verify and build source packages with the Osprey package client. Its filesystem and process handlers currently use POSIX `find`, `mkdir` and shell redirection; Windows host support is not established. The [implementation contract](/spec/0029-packagemanagement/) keeps package-system logic in Osprey.
 
 The contracts cover [manifests and commands](/spec/0029-packagemanagement/), [trust services](/spec/0030-packageregistrytrustanddiscovery/), the [domain model](/spec/0031-packagedomainmodel/) and [verification evidence](/spec/0032-packageevidenceanddiscovery/).
 
@@ -18,6 +20,8 @@ Browse the registry, inspect a release, add a package and remove it from your pr
 
 Follow [Packages in VS Code](/docs/packages-in-vscode/) for the screenshots and step-by-step instructions. The registry connection is already configured in the video.
 
+{{ capture("/assets/images/packages/workspace-open.jpg", "Open Osprey: Manage Packages · the local registry is explicitly marked audit unverified.", "Open Osprey: Manage Packages · the local registry is explicitly marked audit unverified.", 2400, 1600) }}
+
 ## Get started with the working registry
 
 The folder registry and package client run today. The public package website, hosted publishing and trust services are planned; you do not need them to try packages locally or run a private registry.
@@ -26,7 +30,7 @@ The folder registry and package client run today. The public package website, ho
 
 The local registry serves the packages in this repository's `packages/` folder (`@osprey/re`, `@osprey/torch`, `@osprey/native` and the rest) on `http://127.0.0.1:8787`, the address the client and the VS Code extension use by default.
 
-**In VS Code**, run **Osprey: Start Local Package Registry** from the Command Palette, click **Registry: off** in the status bar, or right-click an `osprey.toml` and choose it there. If you open **Osprey: Manage Packages** (or Add or Remove Package) while nothing is answering on the registry address, the extension asks whether to start the local registry first. The extension bundles the server and a snapshot of the packages, so you need no checkout. Its output is in the **Osprey Package Registry** output channel, and **Osprey: Stop Local Package Registry** or the status-bar item stops it.
+**In VS Code**, run **Osprey: Start Local Package Registry**, click **Registry: off**, or choose the command from an `osprey.toml` context menu. Manage/Add/Remove Package offers to start it when the configured address is unavailable. The extension bundles the server and package snapshot; no checkout is needed. Read its **Osprey Package Registry** output channel. Stop it with **Osprey: Stop Local Package Registry** or the status-bar item.
 
 **From a checkout**, build the toolchain and serve:
 
@@ -35,14 +39,12 @@ make build
 make -C packages registry-serve
 ```
 
-`make -C packages registry-serve` builds the package client and the server, publishes every package under `packages/` into `target/local-registry` with `publish --folder`, and serves it. Each package passes the same source, capability and digest checks the server applies. Add a package to your own project with the extension, or with the client directly:
+The target builds client/server, publishes `packages/` into `target/local-registry`, applies source/capability/digest checks and serves the result. Add and fetch a dependency with the client:
 
 ```sh
 echo "add @osprey/re --registry http://127.0.0.1:8787 --project $PWD/my-app" | ./target/osprey-pkg
 echo "fetch --project $PWD/my-app --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 ```
-
-The cloud registry will replace this for everyday use; the local registry stays available for private and offline work.
 
 ### Try the sample registry
 
@@ -63,24 +65,17 @@ echo "verify --offline --project $PWD/packages/manager/e2e/consumer" | ./target/
 echo "build --run --compiler $PWD/target/release/osprey --project $PWD/packages/manager/e2e/consumer" | ./target/osprey-pkg
 ```
 
-`--compiler` selects the compiler just built; otherwise `build` uses `osprey` on PATH. Each command prints `status: N`; check that it is `0`. The frontend currently reads one command from stdin and cannot set a process exit status. It splits the command on whitespace; paths containing spaces are not supported by this entry point. For your own project, create an `osprey.toml`, declare dependencies as below, and use its absolute directory with `--project`. The command table describes `package init`, `add` and local checkout overrides.
+Check each command's final `status: N`: success is `0`. This stdin frontend cannot set a process exit status and splits on whitespace, so paths with spaces are unsupported. `--compiler` overrides the default `osprey` on PATH. For your own project, declare dependencies in `osprey.toml` and pass its absolute directory with `--project`.
 
-## How the package website will work
+## Public registry: delivery status
 
-The package manager has its own website in the planned public service. The language website keeps this guide: installation, manifests, commands and how dependencies become part of an Osprey build. The package website is where you will discover libraries and inspect a particular release before choosing it.
+The hosted package website, search, authenticated publishing and trust evidence are planned. Today, use the local registry or `publish --folder <registry-root>`; restart the folder server after publication. Public `login` and signed publication are unavailable.
 
-| Surface | Responsibility |
-| --- | --- |
-| Language documentation | Teach the package workflow and link to package discovery. |
-| Package website (planned) | Search and package pages with source, dependencies, effects and capabilities, release history, advisories and verification evidence; authenticated publishing and ownership workflows. |
-| Registry API | Supply package metadata and digest-addressed source to the website and command-line client. Today's folder server implements the public-read subset listed below. |
-| Local client | Resolve dependencies, verify downloaded source, write locks and build from installed packages. |
+The planned website lets you review source, dependencies, effects, capabilities, advisories and release history. Your manifest, lock and client verification determine what you build; installed locked trees support offline builds. Supabase will supply Postgres, authentication and storage behind a versioned Osprey API. Clients will verify releases and trust proofs. The folder registry remains available for private networks and self-hosting.
 
-The intended workflow is: find a package on the package website, review its API and required capabilities, copy its scoped key and epoch into your project, then use the client to lock and fetch the exact releases. Browsing selects what you want; your manifest, lock and client verification determine what you build. Once the locked trees are installed, ordinary builds and runs work offline without the website.
+Public publication will use a signed intent naming a forge repository and commit; the registry will assemble and verify the source. [Plan 0020](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) tracks delivery.
 
-The browser application is planned as Osprey compiled to WebAssembly, using the same versioned Osprey API as the client. Supabase will provide hosted Postgres, authentication and storage behind that API; clients will verify releases and trust proofs rather than treating the database or website as the authority. The database-free folder registry remains supported for private networks and self-hosting.
-
-Public publishing is planned around a signed intent naming a forge repository and commit: the registry will assemble and verify the source itself. Today, use `publish --folder <registry-root>` and restart the folder server to expose the new release. Public `login`, signed publication, search, evidence pages and the hosted website are not available yet. [Plan 0020](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) tracks those delivery stages.
+{{ capture("/assets/images/packages/workspace-installed.jpg", "After adding a dependency, the editor shows the installed release and its finding status. Audit unverified.", "After adding a dependency, the editor shows the installed release and its finding status. Capture status: audit unverified.", 2400, 1600) }}
 
 ## Resolve, fetch, then build offline
 
@@ -148,13 +143,13 @@ echo "fetch @demo/report --registry http://127.0.0.1:8787" | ./target/osprey-pkg
 
 The release lands in `.osprey/packages/@demo/report/<digest>/`. You can also fetch by epoch (`fetch @demo/report@e1`) or directly by digest (`fetch sha256:…`). The folder registry proves integrity: the bytes you build are the bytes the server holds. It does not yet prove who published them; that is the trust plane of Milestone B, described below.
 
-The client reads one command line from standard input and prints `status: N` as its last line, because Osprey has no argument-vector or exit-status builtin yet. Those are recorded as blocked host capabilities, not design choices.
+{{ capture("/assets/images/packages/workspace-details.jpg", "A release uses an epoch and ordinal; inspect its details and unverified audit status.", "A release uses an epoch and ordinal; inspect its details and unverified audit status.", 2400, 1600) }}
 
 ## No SemVer
 
-Osprey releases use epochs and ordinals rather than SemVer strings. A package key such as `@osprey/http` has a sequence of releases, each identified by an **epoch** and an **ordinal**:
+A package key such as `@osprey/http` identifies releases by **epoch** and **ordinal**, rather than SemVer:
 
-- An **epoch** is a compatibility lineage. Every release inside an epoch is an additive contract over the ones before it: code written against `@osprey/http` epoch 2 release 17 keeps compiling and keeps its meaning on release 18. A breaking change starts a new epoch.
+- An **epoch** is an additive compatibility lineage: code for epoch 2 release 17 keeps its contract on release 18. Breaking changes start a new epoch.
 - An **ordinal** counts releases inside an epoch. It only grows.
 
 A dependency names one epoch and a floor:
@@ -164,7 +159,9 @@ A dependency names one epoch and a floor:
 "@osprey/http" = { epoch = 2, min_release = 17 }
 ```
 
-`min_release = 0` accepts any release in the epoch. There are no upper bounds, no ranges, no caret or tilde, no pre-release tags and no version strings in Osprey release identities. Python interop projects retain the separate version fields uv requires. Peer dependencies, optional features, Git URLs, branches and published path dependencies are rejected by the manifest rules with the line and column of the offending key. This keeps the resolver's job honest: for every package key exactly one release is selected, from exactly one epoch, and it is the one the whole graph can agree on.
+`min_release = 0` accepts any release in the epoch. Osprey release identities have no upper bounds, ranges, caret/tilde notation, prerelease tags or version strings. Python interop projects retain the separate version fields uv requires. Peer dependencies, optional features, Git URLs, branches and published path dependencies are rejected by the manifest rules with the line and column of the offending key. Resolution selects one release and epoch per key for the entire graph.
+
+{{ capture("/assets/images/packages/workspace-add-confirm.jpg", "Review the package and the unverified-registry warning before confirming an addition.", "Review the package and the unverified-registry warning before confirming an addition.", 2400, 1600) }}
 
 ## The manifest
 
@@ -189,7 +186,7 @@ capability = "sqlite/c-api"
 min_revision = 3045000
 ```
 
-The parser is a strict TOML subset written in Osprey: tables, arrays of tables, dotted and quoted keys, inline tables, integers, strings and booleans. Floats, dates and non-ASCII text are rejected with located codes. Names are scoped ASCII, licenses are SPDX expressions, source roots are checked for duplicates and case-fold collisions, and every unknown table or key is an error before anything is hashed. A spec example round-trips to its canonical JSON and manifest digest byte for byte.
+The strict TOML subset accepts tables, table arrays, dotted/quoted keys, inline tables, integers, strings and booleans. It rejects floats, dates, non-ASCII text and unknown keys with located errors before hashing. Names use scoped ASCII; licenses use SPDX expressions. Source-root duplicates and case-fold collisions are rejected.
 
 A published package may be written in Osprey's **Python flavor**: `[project].python_sources` lists its `.py` files, each beginning with `# osprey: flavor=python`, inside a source root. The list is part of the canonical manifest, the marker is checked on every file of a release tree (`source.python-flavor-header`), and the Osprey compiler reads those files as Osprey source. Python-flavor `.py` files are compiled by Osprey rather than run by CPython, so ports such as `@osprey/numpy` publish exactly like any other package.
 
@@ -201,9 +198,11 @@ A **system capability** names something the operating system provides, such as S
 
 ## Resolution
 
-Resolution is one deterministic solver, with no greedy fallback and no "good enough" path. The engine is a conflict-driven clause-learning SAT solver written in Osprey: two watched literals per clause, first-unique-implication-point learning, deterministic decisions, a proof trace of every learned clause, and a core of the input clauses behind an unsatisfiable result. The package layer builds hard clauses for root requirements, each candidate's own edges, one release per key across all epochs, and an acyclic package graph, then minimises a lexicographic cost tuple exactly in the order the spec fixes: changed releases against the current lock first, then package count, then technical lag, with the canonical graph vector as the final tie-break.
+The deterministic CDCL SAT solver enforces root requirements, candidate edges, one release per key across epochs, and an acyclic graph. It uses watched literals, first-UIP learning, deterministic decisions and a proof trace. There is no greedy fallback. Its lexicographic objective is: minimise changes from the current lock, then package count, then technical lag, then the canonical graph vector.
 
-An unsatisfiable graph is explained deterministically, with a stable code and the package keys it concerns: `resolution.epoch-conflict` names the keys that demand two epochs, `resolution.cycle` names the ring, `resolution.missing-package` names the key no release satisfies, `resolution.capability` names the key whose ambient capability the root did not grant. The packages an explanation names come from the solver's own proof: every hard clause records the package keys it is about, the UNSAT core behind the refutation is minimised by deletion until no clause can be dropped, and the explanation is chosen, in the order the spec fixes, among the causes that hold for the keys that minimal core mentions. The exhaustive test oracle shares candidate and explanation helpers with the resolver; it checks the search and optimum independently, rather than independently deriving the conflict core. The same inputs in any order produce the same lock and the same explanation, and an independent exhaustive oracle in the test suite agrees with the solver on every bounded fixture.
+Unsatisfiable graphs report stable codes and package keys: `resolution.epoch-conflict`, `resolution.cycle`, `resolution.missing-package` or `resolution.capability`. Explanations come from a deletion-minimised UNSAT core and follow the specification's cause order. Input order changes neither the lock nor the explanation. A bounded exhaustive test oracle independently checks search and optimality; it shares candidate and explanation helpers and does not independently derive conflict cores.
+
+{{ capture("/assets/images/packages/workspace-remove.jpg", "Selected dependency in the package workspace before removal. Audit unverified.", "Select the installed dependency before removing it; keep its finding status in view. Capture status: audit unverified.", 1920, 1280) }}
 
 ## Locks
 
@@ -222,6 +221,8 @@ It pins the root manifest's digest and dependency edges, and for every selected 
 `build` compiles the project through the existing compiler with the installed packages as source roots. `build --run` then executes your program, whose own effects may use the network; there is no standalone package-client `run` command. Osprey packages have no install hooks or build scripts. Packages declaring Python interop also use the separate uv environment described below.
 
 Local manifest/lock updates roll back on a reported relock failure. Crash-safe activation is still blocked on atomic rename and fsync support; rollback is not a durable filesystem transaction.
+
+{{ capture("/assets/images/packages/workspace-remove-confirm.jpg", "Removal requires a confirmation for the selected dependency. Audit unverified.", "Removal requires a confirmation for the selected dependency. Capture status: audit unverified.", 2400, 1600) }}
 
 ## Commands
 
@@ -248,6 +249,8 @@ Local manifest/lock updates roll back on a reported relock failure. Crash-safe a
 | `publish --folder <registry-root> [--breaking]` | place this project as the next release of a folder registry, checked and digested exactly as the server will; the server reads the folder at startup |
 | `audit`, `yank`, `login` | specified in spec 0029; answered with a "not yet implemented" status today |
 
+{{ capture("/assets/images/packages/workspace-browse-5.jpg", "The catalog includes Osprey source ports; their names do not mean CPython packages are loaded implicitly. Audit unverified.", "The catalog includes Osprey source ports; their names do not mean CPython packages are loaded implicitly. Capture status: audit unverified.", 2400, 1600) }}
+
 ## Python and uv
 
 The Osprey resolver selects Osprey releases. Programs using [Python interop](/spec/0042-pythoninterop/) resolve and lock their CPython dependencies through [uv](https://docs.astral.sh/uv/):
@@ -258,6 +261,8 @@ The Osprey resolver selects Osprey releases. Programs using [Python interop](/sp
 - A graph with no member declaring the capability has no `root.python` in its lock, gets no generated project and never runs uv.
 
 Osprey never installs uv or CPython; `osprey-pkg doctor` reports where uv is, or that it is missing and needed only by packages declaring `python/interop`. The [Python flavor](/docs/python-flavor/) needs none of this: it is Osprey source with no Python dependency.
+
+{{ capture("/assets/images/packages/workspace-after-remove.jpg", "After removal, the installed list is empty; the registry audit remains unverified.", "After removal, the installed list is empty; the registry audit remains unverified.", 2400, 1600) }}
 
 ## Supply-chain controls and remaining work
 

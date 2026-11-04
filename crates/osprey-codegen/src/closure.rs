@@ -164,7 +164,8 @@ pub(crate) fn raw_callback_lambda(
     let params = bind_params_from(cg, parameters, param_tys, 0);
     source_parameters(cg, parameters, 0);
     let emitted = closure_return(cg, body, sig);
-    cg.exit_nested_fn(saved, &ret_spelling, &name, &params);
+    let boundary_type = if sig.2.is_some() { LType::Ptr } else { sig.1 };
+    cg.exit_c_callback(saved, (&ret_spelling, boundary_type), &name, &params);
     emitted?;
     let reg = cg.emit_reg(format!("bitcast {ret_spelling} ({plist})* @{name} to i8*"));
     Ok(Value::new(reg, LType::Ptr))
@@ -329,10 +330,13 @@ fn specialized_named_cell(
 fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     let sig = named_fn_sig(cg, name)
         .ok_or_else(|| CodegenError::invalid(format!("`{name}` has no resolved signature")))?;
-    let real_ret = cg.fn_ret_spelling(name);
-    let (ret_spelling, plist) = spelling(&sig);
+    let real_ret = cg.foreign_return(name);
+    let (ret_spelling, _) = spelling(&sig);
     if !cg.fn_params.contains_key(name) {
-        cg.add_extern(format!("declare {real_ret} @{name}({plist})"));
+        let parameters = crate::llty::comma_join(&sig.0, |slot| {
+            cg.foreign_parameter(name, &Value::new("", slot.ty))
+        });
+        cg.add_extern(format!("declare {real_ret} @{name}({parameters})"));
     }
     let fwd = format!("__fnval_{name}");
     let saved = cg.enter_nested_fn();
@@ -340,7 +344,10 @@ fn emit_forwarder(cg: &mut Codegen, name: &str) -> Result<String> {
     let mut typed = Vec::new();
     for (i, t) in sig.0.iter().enumerate() {
         let reg = crate::llty::param_register(i);
-        typed.push(format!("{} %{reg}", t.ty));
+        typed.push(format!(
+            "{} %{reg}",
+            cg.foreign_parameter(name, &Value::new("", t.ty))
+        ));
         params.push((t.ty, reg));
     }
     let r = cg.emit_call_result(&real_ret, name, &typed.join(", "));

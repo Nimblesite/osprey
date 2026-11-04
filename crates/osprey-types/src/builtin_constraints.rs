@@ -50,7 +50,7 @@ pub(crate) fn operation_name(name: &str) -> &str {
 }
 
 pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
-    ty.is_named(names::INT) || ty.is_named(names::FLOAT)
+    crate::numeric::Numeric::of_type(ty).is_some()
 }
 
 /// A known outer constructor cannot become numeric by resolving its arguments.
@@ -59,25 +59,53 @@ pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
     operation_name(name).starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
 }
 
+/// [TYPE-NUMERIC-SIZED] The integer-only form of [`NUMERIC_OPERAND_PREFIX`],
+/// for a builtin open over the integer types.
+pub(crate) const INTEGER_OPERAND_PREFIX: &str = "integer ";
+
+/// [BUILTIN-MATH] The float-only form of [`NUMERIC_OPERAND_PREFIX`].
+pub(crate) const FLOAT_OPERAND_PREFIX: &str = "float ";
+pub(crate) const MATRIX_OPERAND_PREFIX: &str = "matrix ";
+
 const SIZED_DISPLAY: &str = "string | List<T> | Map<string, V>";
 const SORTABLE_DISPLAY: &str = "List<int> | List<string>";
-const PRINTABLE_DISPLAY: &str =
-    "int | float | bool | string | Unit | any | Result<printable, printable>";
-const GPU_SOURCE_DISPLAY: &str = "List<int> | List<float> | List<bool> \
-     | Iterator<int> | Iterator<float> | Iterator<bool>";
-const GPU_BUFFER_DISPLAY: &str = "GpuBuffer<int> | GpuBuffer<float> | GpuBuffer<bool>";
+fn scalar_names() -> impl Iterator<Item = &'static str> {
+    crate::numeric::Numeric::ALL
+        .into_iter()
+        .map(crate::numeric::Numeric::name)
+        .chain(std::iter::once(names::BOOL))
+}
+
+fn container_display(containers: &[&str]) -> String {
+    containers
+        .iter()
+        .flat_map(|container| scalar_names().map(move |element| format!("{container}<{element}>")))
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
 
 /// Human-facing parameter type for a constrained `any` scheme.
-pub(crate) fn display_param_type(name: &str, index: usize) -> Option<&'static str> {
+pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
     if index != 0 {
         return None;
     }
     match name {
-        "length" | "isEmpty" => Some(SIZED_DISPLAY),
-        "listSort" => Some(SORTABLE_DISPLAY),
-        "print" | "toString" => Some(PRINTABLE_DISPLAY),
-        "toGpu" => Some(GPU_SOURCE_DISPLAY),
-        name if is_gpu_buffer_builtin(name) => Some(GPU_BUFFER_DISPLAY),
+        "length" | "isEmpty" => Some(SIZED_DISPLAY.to_owned()),
+        "listSort" => Some(SORTABLE_DISPLAY.to_owned()),
+        "print" | "toString" => Some(
+            scalar_names()
+                .chain([
+                    names::STRING,
+                    names::UNIT,
+                    names::ANY,
+                    "Result<printable, printable>",
+                ])
+                .collect::<Vec<_>>()
+                .join(" | "),
+        ),
+        "toGpu" => Some(container_display(&["List", "Iterator"])),
+        "gpuMatMul" => Some("GpuBuffer<float> | GpuBuffer<float32>".to_owned()),
+        name if is_gpu_buffer_builtin(name) => Some(container_display(&["GpuBuffer"])),
         _ => None,
     }
 }
@@ -87,10 +115,27 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
     if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
-        return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
+        let sized_float =
+            crate::numeric::Numeric::of_type(ty).is_some_and(|n| n.is_sized() && n.is_float());
+        let arithmetic = matches!(op, "+" | "-" | "*" | "/" | "%");
+        let valid = is_numeric_scalar(ty) && !(arithmetic && sized_float);
+        return (!valid && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
+    if let Some(op) = operation_name(name).strip_prefix(FLOAT_OPERAND_PREFIX) {
+        let float =
+            crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_float);
+        return (!float && !matches!(ty, Type::Var(_)))
+            .then(|| format!("`{op}` requires a float; got {ty}"));
+    }
+    if let Some(op) = operation_name(name).strip_prefix(INTEGER_OPERAND_PREFIX) {
+        let integer =
+            crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
+        return (!integer && !matches!(ty, Type::Var(_)))
+            .then(|| format!("`{op}` requires an integer; got {ty}"));
+    }
     let name = operation_name(name);
+    let name = name.strip_prefix(MATRIX_OPERAND_PREFIX).unwrap_or(name);
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(
             "a closure value with a still-generic type cannot be interpolated; apply it or give it a concrete function type".to_owned()
@@ -109,12 +154,27 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         // GPU buffer elements are scalars [GPU-BUFFER-ELEM]
         // (docs/specs/runtime/0034-GPUComputation.md).
         "toGpu" if !is_gpu_source(ty) => Some(format!(
-            "`toGpu` supports only {GPU_SOURCE_DISPLAY}; got {ty}"
+            "`toGpu` supports only {}; got {ty}", container_display(&["List", "Iterator"])
         )),
         name if is_gpu_buffer_builtin(name) && !is_gpu_buffer(ty) => Some(format!(
-            "`{name}` supports only {GPU_BUFFER_DISPLAY}; got {ty}"
+            "`{name}` supports only {}; got {ty}", container_display(&["GpuBuffer"])
+        )),
+        "gpuMatMul" if !is_float_matrix(ty) => Some(format!(
+            "`gpuMatMul` supports only GpuBuffer<float> | GpuBuffer<float32>; got {ty}"
         )),
         _ => None,
+    }
+}
+
+// [GPU-MATMUL]: retain a generic obligation until its actual element is known.
+fn is_float_matrix(ty: &Type) -> bool {
+    match ty {
+        Type::Var(_) => true,
+        Type::Con { name, args } if name == names::GPU_BUFFER => {
+            matches!(args.as_slice(), [elem] if matches!(elem, Type::Var(_)) ||
+            crate::numeric::Numeric::of_type(elem).is_some_and(|n| n == crate::numeric::Numeric::FLOAT || n == crate::numeric::Numeric::FLOAT32))
+        }
+        _ => false,
     }
 }
 
@@ -140,7 +200,8 @@ pub fn is_gpu_scalar(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Con { name, args } => {
-            args.is_empty() && matches!(name.as_str(), names::INT | names::FLOAT | names::BOOL)
+            args.is_empty()
+                && (name == names::BOOL || crate::numeric::Numeric::of_name(name).is_some())
         }
         _ => false,
     }
@@ -201,7 +262,10 @@ fn is_sortable_elem(ty: &Type) -> bool {
     match ty {
         Type::Var(_) => true,
         Type::Con { name, args } => {
-            args.is_empty() && matches!(name.as_str(), names::INT | names::STRING)
+            args.is_empty()
+                && (name == names::STRING
+                    || crate::numeric::Numeric::of_name(name)
+                        .is_some_and(crate::numeric::Numeric::is_integer))
         }
         _ => false,
     }
@@ -216,15 +280,11 @@ fn is_printable(ty: &Type) -> bool {
         Type::Var(_) => true,
         Type::Con { name, args }
             if args.is_empty()
-                && matches!(
-                    name.as_str(),
-                    names::INT
-                        | names::FLOAT
-                        | names::STRING
-                        | names::BOOL
-                        | names::UNIT
-                        | names::ANY
-                ) =>
+                && (crate::numeric::Numeric::of_name(name).is_some()
+                    || matches!(
+                        name.as_str(),
+                        names::STRING | names::BOOL | names::UNIT | names::ANY
+                    )) =>
         {
             true
         }
@@ -257,6 +317,32 @@ mod tests {
     use super::*;
     use std::collections::BTreeMap;
 
+    #[test]
+    fn numeric_signatures_name_every_accepted_width() {
+        // [TYPE-NUMERIC-SIZED] Hover and generated docs must not omit accepted types.
+        for numeric in crate::numeric::Numeric::ALL {
+            for name in ["print", "toString", "toGpu", "fromGpu"] {
+                let signature = crate::builtin_signature(name).expect("builtin signature");
+                assert!(
+                    signature
+                        .split(|c: char| !c.is_ascii_alphanumeric())
+                        .any(|word| word == numeric.name()),
+                    "{name}: {signature}"
+                );
+                let docs = crate::builtin_doc_view(name).expect("builtin documentation");
+                let parameter = docs.params.first().expect("first parameter");
+                assert!(
+                    parameter
+                        .ty
+                        .split(|c: char| !c.is_ascii_alphanumeric())
+                        .any(|word| word == numeric.name()),
+                    "{name}: {}",
+                    parameter.ty
+                );
+            }
+        }
+    }
+
     /// A fiber renders as its id — `print("ids ${f1} ${f2}")` in
     /// `tests/regressions/fiber/fiber_showcase.test.osp` prints `ids 1 2`. The
     /// aggregate guard must not take that away. `print` has never accepted a
@@ -280,7 +366,10 @@ mod tests {
         assert!(invalid_use("listSort", &Type::list(Type::bool())).is_some());
         assert!(invalid_use("listSort", &Type::list(Type::list(Type::int()))).is_some());
         assert!(invalid_use("listSort", &Type::int()).is_some());
-        assert_eq!(display_param_type("listSort", 0), Some(SORTABLE_DISPLAY));
+        assert_eq!(
+            display_param_type("listSort", 0),
+            Some(SORTABLE_DISPLAY.to_owned())
+        );
         assert_eq!(display_param_type("listSort", 1), None);
     }
 
@@ -308,8 +397,14 @@ mod tests {
         // Still-unresolved receivers are deferred, exactly as `is_sized` defers.
         assert!(invalid_use("fromGpu", &Type::Var(9)).is_none());
         assert!(invalid_use("gpuFold", &Type::gpu_buffer(Type::Var(9))).is_none());
-        assert_eq!(display_param_type("toGpu", 0), Some(GPU_SOURCE_DISPLAY));
-        assert_eq!(display_param_type("gpuFold", 0), Some(GPU_BUFFER_DISPLAY));
+        assert_eq!(
+            display_param_type("toGpu", 0),
+            Some(container_display(&["List", "Iterator"]))
+        );
+        assert_eq!(
+            display_param_type("gpuFold", 0),
+            Some(container_display(&["GpuBuffer"]))
+        );
         assert_eq!(display_param_type("gpuFold", 1), None);
     }
 

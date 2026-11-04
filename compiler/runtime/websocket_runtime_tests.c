@@ -10,6 +10,7 @@
 //   [BUILTIN-WEBSOCKET-SERVER]    upgrade, welcome frame, echo, broadcast
 //   [BUILTIN-WEBSOCKET-LIFECYCLE] keep-alive blocks until SIGINT/SIGTERM
 #include "http_shared.h"
+#include "websocket_test_helpers.h"
 #include <assert.h>
 #include <signal.h>
 #include <sys/wait.h>
@@ -17,10 +18,6 @@
 int64_t websocket_connect(char *url);
 int64_t websocket_send(int64_t ws_id, char *message);
 int64_t websocket_close(int64_t ws_id);
-int64_t websocket_create_server(int64_t port, char *address, char *path);
-int64_t websocket_server_listen(int64_t server_id);
-int64_t websocket_server_broadcast(int64_t server_id, char *message);
-int64_t websocket_stop_server(int64_t server_id);
 void websocket_keep_alive(void);
 
 enum {
@@ -38,7 +35,7 @@ static const char *const WS_SAMPLE_ACCEPT = "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
 
 // Loopback TCP connect with a bounded retry: the server's accept thread may
 // still be binding when the first attempt runs.
-static int ws_raw_connect(int port) {
+int ws_raw_connect(int port) {
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
@@ -82,7 +79,7 @@ static bool ws_read_exact(int fd, void *buf, size_t len) {
 
 // Reads the upgrade response one byte at a time so the welcome frame that
 // follows it stays in the socket buffer intact.
-static void ws_read_headers(int fd, char *out, size_t capacity) {
+void ws_read_headers(int fd, char *out, size_t capacity) {
   size_t len = 0;
   while (len + 1 < capacity) {
     char c = 0;
@@ -99,7 +96,7 @@ static void ws_read_headers(int fd, char *out, size_t capacity) {
 // Reads exactly one server text frame off the wire and returns its payload.
 // Length is decoded from the header before the body is read, so a frame split
 // across TCP segments is reassembled instead of truncated.
-static char *ws_read_text_frame(int fd) {
+char *ws_read_text_frame(int fd) {
   unsigned char head[4] = {0};
   assert(ws_read_exact(fd, head, 2));
   size_t header_len = 2;
@@ -137,7 +134,7 @@ static void ws_send_masked_text(int fd, const char *text) {
   ws_send_all(fd, frame, 6 + len);
 }
 
-static void ws_send_upgrade(int fd, const char *key_header) {
+void ws_send_upgrade(int fd, const char *key_header) {
   char request[512];
   int n = snprintf(request, sizeof(request),
                    "GET /chat HTTP/1.1\r\n"
@@ -152,12 +149,12 @@ static void ws_send_upgrade(int fd, const char *key_header) {
   ws_send_all(fd, request, (size_t)n);
 }
 
-// The peer closed: recv drains anything already buffered and then returns 0.
-static void ws_expect_peer_close(int fd) {
+// The peer closed: drained EOF or a TCP reset; a timeout is still a failure.
+void ws_expect_peer_close(int fd) {
   char scratch[256];
   for (int i = 0; i < WS_TRIES; i++) {
     ssize_t n = recv(fd, scratch, sizeof(scratch), 0);
-    if (n == 0) {
+    if (n == 0 || (n < 0 && errno == ECONNRESET)) {
       return;
     }
     assert(n > 0); // a timeout (-1) means the server never closed
@@ -422,6 +419,7 @@ int main(void) {
   test_live_loopback_exchange();
   test_non_websocket_connections();
   test_client_connect_failures();
+  test_websocket_lifecycle();
   test_keep_alive_until_signal(); // LAST: latches the shutdown flag
   printf("✅ WebSocket runtime tests passed\n");
   return 0;

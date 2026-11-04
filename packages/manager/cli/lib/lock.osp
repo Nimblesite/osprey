@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Flags
 import registry_cli::Reports
@@ -144,10 +145,7 @@ module Lock {
     // ---- fetching the listing ----
 
     /// Fetch, verify and install one listed release, keeping its files.
-    fn appendFetched(done, base, project, release) = match Fetch::fetched(project, base, digestOf(release)) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: listAppend(done, Fetched { fetchedRelease: release, bundle: value }) }
-    }
+    fn appendFetched(done, base, project, release) = Checked::andThen(Fetch::fetched(project, base, digestOf(release)), fn(value) => Success { value: listAppend(done, Fetched { fetchedRelease: release, bundle: value }) })
 
     fn fetchOne(base, project, acc, release) = match acc {
         Error => acc
@@ -215,46 +213,25 @@ module Lock {
         override: Lockfile::Override { package: Overlay::keyOf(m), path: Overlay::pathOf(m), epoch: Overlay::epochOf(m), manifestDigest: manifestDigest }
     }
 
-    fn withDigest(m, fileList, mf, digest) = match ManifestJson::digest(mf) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: treeOf(m, fileList, mf, digest, value) }
-    }
+    fn withDigest(m, fileList, mf, digest) = Checked::andThen(ManifestJson::digest(mf), fn(value) => Success { value: treeOf(m, fileList, mf, digest, value) })
 
-    fn withManifestOfLocal(m, fileList, mf) = match Install::digestOfFiles(fileList) {
-        Error { message } => Error { message: message }
-        Success { value } => withDigest(m, fileList, mf, value)
-    }
+    fn withManifestOfLocal(m, fileList, mf) = Checked::andThen(Install::digestOfFiles(fileList), fn(value) => withDigest(m, fileList, mf, value))
 
-    fn withLocalFiles(m, fileList) = match localManifest(m, fileList) {
-        Error { message } => Error { message: message }
-        Success { value } => withManifestOfLocal(m, fileList, value)
-    }
+    fn withLocalFiles(m, fileList) = Checked::andThen(localManifest(m, fileList), fn(value) => withManifestOfLocal(m, fileList, value))
 
-    fn localTreeOf(project, m) = match localFiles(project, m) {
-        Error { message } => Error { message: message }
-        Success { value } => withLocalFiles(m, value)
-    }
+    fn localTreeOf(project, m) = Checked::andThen(localFiles(project, m), fn(value) => withLocalFiles(m, value))
 
-    fn appendTree(done, project, m) = match localTreeOf(project, m) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: listAppend(done, value) }
-    }
+    fn appendTree(done, project, m) = Checked::andThen(localTreeOf(project, m), fn(value) => Success { value: listAppend(done, value) })
 
     fn localTrees(project, mappings) = foldList(mappings, Success { value: [] }, fn(acc, m) => match acc {
         Error => acc
         Success { value } => appendTree(value, project, m)
     })
 
-    fn withMappings(project, mappings) = match localTrees(project, mappings) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Locals { mappings: mappings, trees: value } }
-    }
+    fn withMappings(project, mappings) = Checked::andThen(localTrees(project, mappings), fn(value) => Success { value: Locals { mappings: mappings, trees: value } })
 
     /// The overlay and its checkouts in local mode; nothing otherwise.
-    fn localsAt(cmd: CommandLine) = if !cmd.local { Success { value: Locals { mappings: [], trees: [] } } } else { match Overlay::readAt(cmd.project) {
-        Error { message } => Error { message: message }
-        Success { value } => withMappings(cmd.project, value)
-    } }
+    fn localsAt(cmd: CommandLine) = if !cmd.local { Success { value: Locals { mappings: [], trees: [] } } } else { Checked::andThen(Overlay::readAt(cmd.project), fn(value) => withMappings(cmd.project, value)) }
 
     // ---- the lock and its delta ----
 
@@ -295,10 +272,7 @@ module Lock {
 
     fn lockPath(cmd: CommandLine) = if cmd.local { Project::localLockPathAt(cmd.project) } else { Project::lockPathAt(cmd.project) }
 
-    fn writeLock(cmd, lock) = match Lockfile::encode(lock) {
-        Error { message } => Error { message: message }
-        Success { value } => perform Host::Files.write(lockPath(cmd), value)
-    }
+    fn writeLock(cmd, lock) = Checked::andThen(Lockfile::encode(lock), fn(value) => perform Host::Files.write(lockPath(cmd), value))
 
     /// The root's per-dependency grants are the only grants; nothing is granted to every key.
     fn graphOf(manifest, prev: Previous, catalog: Catalog, fresh) = Resolution::Graph { target: "", granted: [], grants: grantsOf(manifest), rootDeps: edgesOf(manifest), current: if fresh { [] } else { prev.current }, catalog: catalog.candidates }
@@ -323,16 +297,10 @@ module Lock {
 
     fn memberFor(release, locals, fetched) = {
         let fileList = filesFor(release, locals, fetched)
-        match Manifest::accepted(Manifest::parse(Install::manifestTextIn(fileList))) {
-            Error { message } => Error { message: message }
-            Success { value } => PythonPlane::memberOf(value, pythonPathFor(release, locals), fileNamed(fileList, "pyproject.toml"))
-        }
+        Checked::andThen(Manifest::accepted(Manifest::parse(Install::manifestTextIn(fileList))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(release, locals), fileNamed(fileList, "pyproject.toml")))
     }
 
-    fn appendMember(done, member) = match member {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) }
-    }
+    fn appendMember(done, member) = Checked::andThen(member, fn(value) => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) })
 
     fn rootMember(cmd: CommandLine, manifest) = PythonPlane::memberOf(manifest, "../..", perform Host::Files.read(Project::pathAt(cmd.project, "pyproject.toml")) ?: "")
 
@@ -343,10 +311,7 @@ module Lock {
     })
 
     /// The plane's pins when any member declares it, none otherwise.
-    fn pythonPins(cmd: CommandLine, memberList) = if isEmpty(memberList) { Success { value: Maybe::none() } } else { match PythonPlane::locked(cmd.project, memberList) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Maybe::some(value) }
-    } }
+    fn pythonPins(cmd: CommandLine, memberList) = if isEmpty(memberList) { Success { value: Maybe::none() } } else { Checked::andThen(PythonPlane::locked(cmd.project, memberList), fn(value) => Success { value: Maybe::some(value) }) }
 
     fn pythonLines(cmd: CommandLine, python) = Maybe::fold(python, [], fn(p) => [PythonPlane::lockedLine(cmd.project)])
 

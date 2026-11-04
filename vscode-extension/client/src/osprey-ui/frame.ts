@@ -18,7 +18,7 @@ function token(style: Record<string, unknown>, key: string): string {
 }
 
 function validateSwitches(style: Record<string, unknown>): void {
-  for (const key of ["italic", "hug", "quietControls", "iconOnly", "flatRows", "fadeBackdrop", "trailingSymbols"]) {
+  for (const key of ["italic", "hug", "quietControls", "iconOnly", "flatRows", "fadeBackdrop", "trailingSymbols", "selectionGroup"]) {
     if (style[key] !== undefined && typeof style[key] !== "boolean") throw new Error(`Frame ${key} must be a boolean`);
   }
 }

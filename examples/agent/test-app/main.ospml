@@ -1,14 +1,21 @@
 // Osprey Agent's real update path with scripted completions: typing, the whole
-// model and tool loop, Stop, a stale answer, failures, new conversations and a
-// restart, with no network and no window ([NATIVE-APPS-ALL], [UI-EFFECTS]).
+// model and tool loop, Stop, a stale answer, failures, new conversations, keys,
+// the settings pane, effort and a restart, with no network and no window
+// ([NATIVE-APPS-ALL], [UI-EFFECTS]).
 namespace agentapptests
 
 import ui::Doc
+import ui::Lists
+import ui::Encode
 import ui::Requests
 import ui::Runtime
 import agent::Engine
 import agentapp::App
 import agentapp::Model
+import agentapp::McpModel
+import agentapp::View
+import agent::McpClient
+import pydantic_ai::Mcp
 import agentapptests::Drive
 
 context now = ui::Context(now = now, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project", "/keys/env"])
@@ -16,6 +23,10 @@ context now = ui::Context(now = now, offset = 0, platform = "macos", home = "/ho
 toolReply = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Looking.\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"read_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\"}\"}},{\"id\":\"c2\",\"type\":\"function\",\"function\":{\"name\":\"write_file\",\"arguments\":\"{\\\"path\\\":\\\"a.py\\\",\\\"content\\\":\\\"x\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}"
 
 textReply = "{\"id\":\"r2\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Done.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":3,\"total_tokens\":23}}"
+
+codeReply = "{\"id\":\"rc\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Here:\\n\\n```python\\ndef add(a, b):\\n    name = \\\"x\\\"\\n    return a + b + 1  # sum\\n```\\n\\nDone.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":4,\"total_tokens\":14}}"
+
+blankReply = "{\"id\":\"rb\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}"
 
 ok status = Success(value = JsonObject [Doc::num ("status", status)])
 
@@ -25,12 +36,19 @@ testing (name, body) = test (name, \() => Runtime::guarded body)
 (** Steps the application's real `update` with messages a host would deliver. *)
 module Drive
     (** One message, with `slice` as every host-held slice it reads. *)
-    export deliver (store, message, slice) =
-        handle ui::Slices
-            fetch _ => slice
-        App::update (context 100, store, message)
+    export deliver (store, message, slice) = deliverWhere (store, message, \_ => slice)
 
-    (** The store at launch, with its key loaded. *)
+    (** One message, with each host-held slice answered by name. *)
+    export deliverWhere (store, message, of) = deliverAt (100, store, message, of)
+
+    (** The same at the host's time `now`. *)
+    export deliverAt (now, store, message, of) =
+        handle ui::Slices
+            fetch key =>
+                of (key)
+        App::update (context now, store, message)
+
+    (** The store at launch, with its key file loaded into every empty slot. *)
     export started () = (deliver ((App::initial (context 100)).stepStore, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-test\n")).stepStore
 
     (** The person types `text`. *)
@@ -39,19 +57,36 @@ module Drive
     (** The completion of what the open conversation waits on. *)
     export answering (store, outcome, slice) = deliver (store, ui::Completed(ticket = (Model::active store).chatTicket, outcome = outcome), slice)
 
+    (** A region's encoded controls and text, with the store answering its signals. *)
+    export showing (store, view) =
+        handle static Signal<agentapp::Chats>
+            read => agentapp::Chats(chatList = store.chats)
+        handle static Signal<agentapp::Draft>
+            read => store.draft
+        handle static Signal<agentapp::Panel>
+            read => store.panel
+        handle static Signal<agentapp::Settings>
+            read => store.settings
+        handle static Signal<agentapp::McpSignal>
+            read => agentapp::McpSignal(signalState = store.mcp)
+        jsonEncode (listGet (Encode::walk ([], view ())).nodes 0 ?: JsonNull) ?: ""
+
     (** A step's requests as the host receives them. *)
     export asked step = mapList (step.requests, \request => Requests::encode request)
 
     (** The kinds of a step's requests, joined. *)
     export kinds step = join (mapList (asked step, \request => Doc::text (request, "kind")), ",")
 
-testing ("launch asks for the conversations and the key file, and starts empty", \() =>
+    (** The saved key for `provider` in a store. *)
+    export keyOf (store, provider) = Model::keyOf (store.settings, provider)
+
+testing ("launch asks for the conversations, providers and the key file, and starts empty", \() =>
     first = App::initial (context 100)
-    expect (Drive::kinds first, "run,store-read")
+    expect (Drive::kinds first, "run,store-read,store-read,store-read,store-read,run")
     expect (length first.stepStore.chats, 1)
     expect ((Model::active first.stepStore).chatFolder, "/work/project")
-    expect (first.stepStore.settings.apiKey, "")
-    expect ((Drive::started ()).settings.apiKey, "sk-test"))
+    expect (Drive::keyOf (first.stepStore, "deepseek"), "")
+    expect (Drive::keyOf (Drive::started (), "deepseek"), "sk-test"))
 
 testing ("typing keeps the draft and sends nothing", \() =>
     step = Drive::typing (Drive::started (), "half a thou")
@@ -63,7 +98,7 @@ testing ("Return sends the words to the model with the key, and clears the compo
     chat = Model::active step.stepStore
     request = listGet (Drive::asked step) 0 ?: JsonNull
     expect (Drive::kinds step, "http")
-    expect (Doc::text (request, "url"), Engine::DEEPSEEK_URL)
+    expect (Doc::text (request, "url"), Engine::url "deepseek/deepseek-chat")
     expect (Doc::text (request, "method"), "POST")
     expectTrue (contains (Doc::text (request, "body")) "Fix the bug")
     expectTrue (contains (Doc::write request) "Bearer sk-test")
@@ -109,6 +144,18 @@ testing ("a whole turn: model, each tool in order, model again, then saved witho
     expectTrue (contains file "Done.")
     expectFalse (contains file "sk-test"))
 
+testing ("a fenced python block draws as a rich node of coloured runs, more than one ink", \() =>
+    opened = (Drive::typing (Drive::started (), "Show the code\n")).stepStore
+    replied = Drive::answering (opened, ok 200, codeReply)
+    shown = Drive::showing (replied.stepStore, View::transcript)
+    expectTrue (contains shown "\"kind\":\"rich-text\"")
+    expectTrue (contains shown "\"ink\":\"codeKeyword\"")
+    expectTrue (contains shown "\"ink\":\"codeString\"")
+    expectTrue (contains shown "\"ink\":\"codeComment\"")
+    expectTrue (contains shown "\"ink\":\"codeNumber\"")
+    expectTrue (contains shown "\"text\":\"def\"")
+    expectTrue (contains shown "\\n"))
+
 testing ("Stop cancels what runs and answers each owed call, so the next turn is accepted", \() =>
     opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
     calling = (Drive::answering (opened, ok 200, toolReply)).stepStore
@@ -131,6 +178,29 @@ testing ("a refused request or a lost connection shows why, and Try again resend
     expect ((Model::active lost.stepStore).chatProblem, "offline")
     expect (Drive::kinds (Drive::deliver (lost.stepStore, ui::Act(act = agentapp::Retry), "")), "http"))
 
+testing ("a blank reply fails in words and leaves no gap", \() =>
+    opened = (Drive::typing (Drive::started (), "yo\n")).stepStore
+    blank = Drive::answering (opened, ok 200, blankReply)
+    chat = Model::active blank.stepStore
+    expect (chat.chatStage, "failed")
+    expectTrue (contains chat.chatProblem "no answer")
+    shown = Drive::showing (blank.stepStore, View::transcript)
+    expectTrue (contains shown "The model returned no answer.")
+    expectTrue (contains shown "Try again"))
+
+testing ("each refusal status says what to do in words, with Open Settings", \() =>
+    opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    refused = Drive::answering (opened, ok 401, "{}")
+    expect ((Model::active refused.stepStore).chatProblemStatus, 401)
+    expectTrue (contains (Drive::showing (refused.stepStore, View::transcript)) "This key was refused.")
+    expectTrue (contains (Drive::showing (refused.stepStore, View::transcript)) "Open Settings")
+    forbidden = Drive::answering (opened, ok 403, "{}")
+    expectTrue (contains (Drive::showing (forbidden.stepStore, View::transcript)) "This key was refused.")
+    credit = Drive::answering (opened, ok 402, "{}")
+    expectTrue (contains (Drive::showing (credit.stepStore, View::transcript)) "DeepSeek has no credit left. Pick another model, or add credit.")
+    limited = Drive::answering (opened, ok 429, "{}")
+    expectTrue (contains (Drive::showing (limited.stepStore, View::transcript)) "DeepSeek is rate limiting: try again shortly."))
+
 testing ("a failed tool tells the model and the turn goes on", \() =>
     opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
     calling = (Drive::answering (opened, ok 200, toolReply)).stepStore
@@ -145,12 +215,235 @@ testing ("new conversations, switching and the model choice stay per conversatio
     expect ((Model::active fresh).chatTitle, "New chat")
     again = (Drive::deliver (fresh, ui::Act(act = agentapp::NewChat), "")).stepStore
     expect (length again.chats, 2)
-    chosen = (Drive::deliver (again, ui::Chose(chooser = agentapp::PickModel, chosen = "deepseek-reasoner"), "")).stepStore
-    expect ((Model::active chosen).chatModel, "deepseek-reasoner")
+    chosen = (Drive::deliver (again, ui::Chose(chooser = agentapp::PickModel, chosen = "deepseek/deepseek-reasoner"), "")).stepStore
+    expect ((Model::active chosen).chatModel, "deepseek/deepseek-reasoner")
     other = listGet chosen.chats 1 ?: Model::active chosen
     back = (Drive::deliver (chosen, ui::Chose(chooser = agentapp::PickChat, chosen = other.chatId), "")).stepStore
     expect ((Model::active back).chatTitle, "One")
-    expect ((Model::active back).chatModel, "deepseek-chat"))
+    expect ((Model::active back).chatModel, "deepseek/deepseek-chat"))
+
+testing ("the composer pick changes only that chat, and effort is kept or cleared on a model change", \() =>
+    first = (Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)).stepStore
+    chosen = (Drive::deliver (first, ui::Chose(chooser = agentapp::PickModel, chosen = "zai/glm-5.3"), "")).stepStore
+    efforted = (Drive::deliver (chosen, ui::Chose(chooser = agentapp::PickEffort, chosen = "high"), "")).stepStore
+    expect ((Model::active efforted).chatModel, "zai/glm-5.3")
+    expect ((Model::active efforted).chatEffort, "high")
+    kept = (Drive::deliver (efforted, ui::Chose(chooser = agentapp::PickModel, chosen = "kimi-coding/k3"), "")).stepStore
+    expect ((Model::active kept).chatEffort, "high")
+    cleared = (Drive::deliver (kept, ui::Chose(chooser = agentapp::PickModel, chosen = "deepseek/deepseek-chat"), "")).stepStore
+    expect ((Model::active cleared).chatEffort, "")
+    other = listGet cleared.chats 1 ?: Model::active cleared
+    expect (other.chatModel, "deepseek/deepseek-chat")
+    expect (other.chatEffort, ""))
+
+testing ("the settings pane opens in place of the conversation and closes", \() =>
+    opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    expect (opened.settings.settingsOpen, true)
+    expect (Drive::kinds (Drive::deliver (opened, ui::Act(act = agentapp::OpenSettings), "")), "")
+    shown = Drive::showing (opened, View::settings)
+    expectTrue (contains shown "Providers")
+    expectTrue (contains shown "MCP servers")
+    expectTrue (contains shown "DeepSeek")
+    expectTrue (contains shown "GLM (Z.ai API)")
+    expectTrue (contains shown "Save DeepSeek key")
+    closed = (Drive::deliver (opened, ui::Act(act = agentapp::CloseSettings), "")).stepStore
+    expect (closed.settings.settingsOpen, false))
+
+testing ("a saved key is written to providers.json, never to the conversations file", \() =>
+    opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    typed = (Drive::deliver (opened, ui::Entered(entry = agentapp::TypedKey(keyProvider = "zai"), entered = "sk-zai"), "")).stepStore
+    saved = Drive::deliver (typed, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")
+    expect (Drive::kinds saved, "store-write")
+    request = listGet (Drive::asked saved) 0 ?: JsonNull
+    expect (Doc::text (request, "name"), "providers.json")
+    content = (listGet saved.writes 0 ?: Requests::write ("", "")).sliceText
+    expectTrue (contains content "zai")
+    expectTrue (contains content "sk-zai")
+    expect (Drive::keyOf (saved.stepStore, "zai"), "sk-zai")
+    expectFalse (contains (Doc::write (Model::saveDoc (saved.stepStore, "chats.json"))) "sk-zai"))
+
+testing ("removing a key clears it and writes providers.json", \() =>
+    opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    typed = (Drive::deliver (opened, ui::Entered(entry = agentapp::TypedKey(keyProvider = "zai"), entered = "sk-zai"), "")).stepStore
+    saved = Drive::deliver (typed, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")
+    ticket = Doc::text (listGet (Drive::asked saved) 0 ?: JsonNull, "ticket")
+    settled = (Drive::deliver (saved.stepStore, ui::Completed(ticket = ticket, outcome = ok 0), "")).stepStore
+    removed = Drive::deliver (settled, ui::Act(act = agentapp::RemoveKey(keyProvider = "zai")), "")
+    expect (Drive::kinds removed, "store-write")
+    expect (Drive::keyOf (removed.stepStore, "zai"), ""))
+
+testing ("a key saved during a conversation write still reaches providers.json, and the reverse", \() =>
+    opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    typed = (Drive::deliver (opened, ui::Entered(entry = agentapp::TypedKey(keyProvider = "zai"), entered = "sk-zai"), "")).stepStore
+    writing = Model::persisting (typed, "chats.json")
+    expect (Doc::text (listGet (Drive::asked writing) 0 ?: JsonNull, "name"), "chats.json")
+    ticket = Doc::text (listGet (Drive::asked writing) 0 ?: JsonNull, "ticket")
+    queued = Drive::deliver (writing.stepStore, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")
+    expect (Drive::kinds queued, "")
+    next = Drive::deliver (queued.stepStore, ui::Completed(ticket = ticket, outcome = ok 0), "")
+    expect (Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "name"), "providers.json")
+    nextTicket = Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "ticket")
+    chatsAgain = Model::persisting (next.stepStore, "chats.json")
+    expect (Drive::kinds chatsAgain, "")
+    twice = Model::persisting (chatsAgain.stepStore, "chats.json")
+    last = Drive::deliver (twice.stepStore, ui::Completed(ticket = nextTicket, outcome = ok 0), "")
+    expect (Doc::text (listGet (Drive::asked last) 0 ?: JsonNull, "name"), "chats.json")
+    lastTicket = Doc::text (listGet (Drive::asked last) 0 ?: JsonNull, "ticket")
+    done = Drive::deliver (last.stepStore, ui::Completed(ticket = lastTicket, outcome = ok 0), "")
+    expect (Drive::kinds done, ""))
+
+testing ("a restart restores saved keys and the default model and effort", \() =>
+    opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    typed = (Drive::deliver (opened, ui::Entered(entry = agentapp::TypedKey(keyProvider = "zai"), entered = "sk-zai"), "")).stepStore
+    saved = (Drive::deliver (typed, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")).stepStore
+    providers = Doc::write (Model::providersJson saved.settings)
+    relaunched = (App::initial (ui::Context(now = 200, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project"]))).stepStore
+    restored = (Drive::deliver (relaunched, ui::Completed(ticket = "providers", outcome = Success(value = JsonObject [Doc::bit ("found", true)])), providers)).stepStore
+    expect (Drive::keyOf (restored, "zai"), "sk-zai"))
+
+testing ("a dotenv fills every empty slot and never overwrites a pasted key", \() =>
+    launched = (App::initial (context 100)).stepStore
+    filled = (Drive::deliver (launched, ui::Completed(ticket = "env", outcome = ok 0), "ZAI_API_KEY=sk-zai\nGLM_API_KEY=sk-glm\n")).stepStore
+    expect (Drive::keyOf (filled, "zai"), "sk-zai")
+    expect (Drive::keyOf (filled, "deepseek"), "")
+    settings = filled.settings
+    pasted = filled(settings = Model::withKey (settings, "zai", "sk-pasted"))
+    late = Drive::deliver (pasted, ui::Completed(ticket = "env", outcome = ok 0), "ZAI_API_KEY=sk-file\n")
+    expect (Drive::keyOf (late.stepStore, "zai"), "sk-pasted"))
+
+testing ("the default model, provider and effort chosen in Settings are inherited by a new chat", \() =>
+    opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    provided = (Drive::deliver (opened, ui::Chose(chooser = agentapp::PickProvider, chosen = "zai"), "")).stepStore
+    expect (provided.settings.defaultModel, "zai/glm-5.3")
+    modelled = (Drive::deliver (provided, ui::Chose(chooser = agentapp::PickDefaultModel, chosen = "zai/glm-5.3"), "")).stepStore
+    expect (modelled.settings.defaultModel, "zai/glm-5.3")
+    efforted = (Drive::deliver (modelled, ui::Chose(chooser = agentapp::PickDefaultEffort, chosen = "high"), "")).stepStore
+    expect (efforted.settings.defaultModel, "zai/glm-5.3")
+    expect (efforted.settings.defaultEffort, "high")
+    fresh = (Drive::deliver (efforted, ui::Act(act = agentapp::NewChat), "")).stepStore
+    expect ((Model::active fresh).chatModel, "zai/glm-5.3")
+    expect ((Model::active fresh).chatEffort, "high"))
+
+testing ("the conversation a launch opens takes the saved default model, and a conversation already under way keeps its own", \() =>
+    launched = (App::initial (context 100)).stepStore
+    saved = "{\"keys\":[{\"provider\":\"zai\",\"value\":\"sk-glm\"}],\"model\":\"zai/glm-5.3\",\"effort\":\"high\"}"
+    loaded = (Drive::deliver (launched, ui::Completed(ticket = "providers", outcome = okJson [Doc::bit ("found", true)]), saved)).stepStore
+    expect ((Model::active loaded).chatModel, "zai/glm-5.3")
+    expect ((Model::active loaded).chatEffort, "high")
+    busy = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    keptModel = (Model::active busy).chatModel
+    after = (Drive::deliver (busy, ui::Completed(ticket = "providers", outcome = okJson [Doc::bit ("found", true)]), saved)).stepStore
+    expect ((Model::active after).chatModel, keptModel))
+
+testing ("the composer lists keyed providers' models and an Add an API key button with none", \() =>
+    launched = (App::initial (context 100)).stepStore
+    noKey = Drive::showing (launched, View::composer)
+    expectTrue (contains noKey "\"label\":\"Add an API key\"")
+    expectFalse (contains noKey "\"label\":\"Send\"")
+    keyed = Drive::showing (Drive::started (), View::composer)
+    expectTrue (contains keyed "\"label\":\"Send\"")
+    expectTrue (contains keyed "\"label\":\"Model\""))
+
+testing ("no key says what is wrong in words, never as a lone lock", \() =>
+    launched = (App::initial (context 100)).stepStore
+    noKey = Drive::showing (launched, View::composer)
+    expectFalse (contains noKey "\"symbol\":\"lock\"")
+    expectFalse (contains noKey "\"iconOnly\":true")
+    expectTrue (contains noKey "No API key for DeepSeek. Add one to send.")
+    keyed = Drive::showing (Drive::started (), View::composer)
+    expectFalse (contains keyed "No API key for")
+    expectTrue (contains keyed "\"iconOnly\":true"))
+
+testing ("a launch with no key file argument finds the key file kept in the app's own store", \() =>
+    bare = ui::Context(now = 100, offset = 0, platform = "macos", home = "/home/ada", arguments = [])
+    first = App::initial bare
+    expect (Drive::kinds first, "store-read,store-read,store-read,store-read,store-read,run")
+    expect (Drive::keyOf ((Drive::deliver (first.stepStore, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-kept\n")).stepStore, "deepseek"), "sk-kept"))
+
+// A failure of any kind leaves Send live, and the next send asks the provider again and can succeed.
+recoversFrom status =
+    opened = (Drive::typing (Drive::started (), "Go\n")).stepStore
+    failed = (Drive::answering (opened, ok status, "{}")).stepStore
+    expect ((Model::active failed).chatStage, "failed")
+    shown = Drive::showing ((Drive::typing (failed, "Again")).stepStore, View::composer)
+    expectTrue (contains shown "\"label\":\"Send\"")
+    expectFalse (contains shown "\"enabled\":false")
+    expectFalse (contains shown "\"symbol\":\"lock\"")
+    again = Drive::typing (failed, "Again\n")
+    expect (Drive::kinds again, "http")
+    expect ((Model::active again.stepStore).chatStage, "thinking")
+    expect ((Model::active again.stepStore).chatProblem, "")
+    recovered = Drive::answering (again.stepStore, ok 200, textReply)
+    expect ((Model::active recovered.stepStore).chatStage, "idle")
+    answers = Drive::showing (recovered.stepStore, View::transcript)
+    expectTrue (contains answers "Done.")
+    expectFalse (contains answers "The request failed")
+
+testing ("no credit, a refused key, a rate limit and a server fault never stop the next send", \() =>
+    recoversFrom 402
+    recoversFrom 401
+    recoversFrom 403
+    recoversFrom 429
+    recoversFrom 500)
+
+testing ("the sidebar shows a Settings button with a warning when the open provider has no key", \() =>
+    launched = (App::initial (context 100)).stepStore
+    noKey = Drive::showing (launched, View::sidebar)
+    expectTrue (contains noKey "\"label\":\"Settings\"")
+    expectTrue (contains noKey "\"symbol\":\"warning\"")
+    keyed = Drive::showing (Drive::started (), View::sidebar)
+    expectTrue (contains keyed "\"symbol\":\"settings\""))
+
+testing ("changing folder keeps the active history, saves it and leaves every other chat alone", \() =>
+    first = (Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)).stepStore
+    firstId = (Model::active first).chatId
+    second = (Drive::answering ((Drive::typing ((Drive::deliver (first, ui::Act(act = agentapp::NewChat), "")).stepStore, "Two\n")).stepStore, ok 200, textReply)).stepStore
+    secondId = (Model::active second).chatId
+    chosen = (Drive::deliver (second, ui::Chose(chooser = agentapp::PickChat, chosen = firstId), "")).stepStore
+    before = Model::active chosen
+    asked = Drive::deliver (chosen, ui::Act(act = agentapp::ChangeFolder), "")
+    expect (Drive::kinds asked, "choose-folder")
+    expect (Doc::write (App::save asked.stepStore), Doc::write (App::save chosen))
+    moved = Drive::deliver (asked.stepStore, ui::Completed(ticket = "folder", outcome = Success(value = JsonObject [Doc::str ("path", "/work/other")])), "")
+    active = Model::active moved.stepStore
+    other = listGet moved.stepStore.chats 0 ?: active
+    expect (active.chatId, firstId)
+    expect (active.chatFolder, "/work/other")
+    expect (Doc::write active.chatHistory, Doc::write before.chatHistory)
+    expect (other.chatId, secondId)
+    expect (other.chatFolder, "/work/project")
+    expect (Drive::kinds moved, "run")
+    resaved = Drive::deliver (moved.stepStore, ui::Completed(ticket = "save:0", outcome = Success(value = JsonObject [])), "")
+    expect (Drive::kinds resaved, "store-write")
+    expectTrue (contains (listGet resaved.writes 0 ?: Requests::write ("", "")).sliceText "/work/other")
+    movedComposer = Drive::showing (moved.stepStore, View::composer)
+    expectTrue (contains movedComposer "\"kind\":\"button\",\"label\":\"other\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":true")
+    expectFalse (contains movedComposer "\"label\":\"project\"")
+    cancelled = Drive::deliver (moved.stepStore, ui::Completed(ticket = "folder", outcome = Success(value = JsonObject [Doc::str ("path", "")])), "")
+    expect (Doc::write (App::save cancelled.stepStore), Doc::write (App::save moved.stepStore))
+    failed = Drive::deliver (moved.stepStore, ui::Completed(ticket = "folder", outcome = Error(message = "denied")), "")
+    expect (Doc::write (App::save failed.stepStore), Doc::write (App::save moved.stepStore))
+    inherited = (Drive::deliver (moved.stepStore, ui::Act(act = agentapp::NewChat), "")).stepStore
+    expect ((Model::active inherited).chatFolder, "/work/other"))
+
+testing ("the folder chip follows busy state, the old sidebar action is gone and the access warning stays visible", \() =>
+    started = Drive::started ()
+    idle = Drive::showing (started, View::composer)
+    busyStore = (Drive::typing (started, "One\n")).stepStore
+    busy = Drive::showing (busyStore, View::composer)
+    failedStore = (Drive::answering (busyStore, ok 429, "{\"error\":\"busy\"}")).stepStore
+    failed = Drive::showing (failedStore, View::composer)
+    sidebar = Drive::showing (started, View::sidebar)
+    enabledChip = "\"kind\":\"button\",\"label\":\"project\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":true"
+    disabledChip = "\"kind\":\"button\",\"label\":\"project\",\"symbol\":\"folder\",\"role\":\"plain\",\"enabled\":false"
+    warning = "Not sandboxed: the agent can run any command and change any file your account can."
+    expectTrue (contains idle enabledChip)
+    expectTrue (contains busy disabledChip)
+    expectFalse (contains sidebar "Open folder")
+    expectTrue (contains idle warning)
+    expectTrue (contains busy warning)
+    expectTrue (contains failed warning)
+    expectTrue (contains idle "\"symbol\":\"warning\""))
 
 testing ("a restart restores conversations with distinct identities and fresh tickets", \() =>
     first = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
@@ -166,7 +459,7 @@ testing ("a restart restores conversations with distinct identities and fresh ti
 
 testing ("a turn cut off by quitting answers what it owed, so the restored conversation can go on", \() =>
     calling = (Drive::answering ((Drive::typing (Drive::started (), "Go\n")).stepStore, ok 200, toolReply)).stepStore
-    file = (listGet (Model::persisting calling).writes 0 ?: Requests::write ("", "")).sliceText
+    file = (listGet (Model::persisting (calling, "chats.json")).writes 0 ?: Requests::write ("", "")).sliceText
     fresh = (App::initial (ui::Context(now = 200, offset = 0, platform = "macos", home = "/home/ada", arguments = ["/work/project"]))).stepStore
     restored = (Drive::deliver (fresh, ui::Completed(ticket = "chats", outcome = Success(value = JsonObject [Doc::bit ("found", true)])), file)).stepStore
     old = listGet restored.chats 1 ?: Model::active restored
@@ -174,7 +467,7 @@ testing ("a turn cut off by quitting answers what it owed, so the restored conve
     expect (old.chatStage, "idle")
     keyed = (Drive::deliver (restored, ui::Chose(chooser = agentapp::PickChat, chosen = old.chatId), "")).stepStore
     settings = keyed.settings
-    next = Drive::typing (keyed(settings = settings(apiKey = "sk-test")), "Again\n")
+    next = Drive::typing (keyed(settings = Model::withKey (settings, "deepseek", "sk-test")), "Again\n")
     expect (Drive::kinds next, "http")
     expectTrue (contains (Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "body")) "before it ran"))
 
@@ -188,9 +481,9 @@ testing ("a first message the model refused is kept and is not reused as a new c
 testing ("a key file arriving late never replaces a key the person pasted", \() =>
     launched = (App::initial (context 100)).stepStore
     settings = launched.settings
-    pasted = launched(settings = settings(apiKey = "sk-pasted"))
+    pasted = launched(settings = Model::withKey (settings, "deepseek", "sk-pasted"))
     late = Drive::deliver (pasted, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-file\n")
-    expect (late.stepStore.settings.apiKey, "sk-pasted"))
+    expect (Drive::keyOf (late.stepStore, "deepseek"), "sk-pasted"))
 
 testing ("a failed save is shown and the next good save clears it", \() =>
     done = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
@@ -204,7 +497,7 @@ testing ("saves run one at a time and the newest state is written last", \() =>
     first = Drive::answering ((Drive::typing (Drive::started (), "One\n")).stepStore, ok 200, textReply)
     expect (Drive::kinds first, "store-write")
     ticket = Doc::text (listGet (Drive::asked first) 0 ?: JsonNull, "ticket")
-    second = Model::persisting first.stepStore
+    second = Model::persisting (first.stepStore, "chats.json")
     expect (Drive::kinds second, "")
     changed = second.stepStore
     chat = Model::active changed
@@ -217,3 +510,273 @@ testing ("saves run one at a time and the newest state is written last", \() =>
 testing ("the session document restores the store it saved", \() =>
     calling = (Drive::answering ((Drive::typing (Drive::started (), "Go\n")).stepStore, ok 200, toolReply)).stepStore
     expect (Doc::write (App::save (App::restore (App::save calling))), Doc::write (App::save calling)))
+
+replyLine (id, result) = "${Doc::write (JsonObject [Doc::str ("jsonrpc", "2.0"), JsonMember "id" id, JsonMember "result" result])}\n"
+
+initializeReply () = replyLine (JsonInt 1, JsonObject [Doc::str ("protocolVersion", "2025-06-18"), JsonMember "capabilities" (JsonObject [JsonMember "tools" (JsonObject [])]), JsonMember "serverInfo" (JsonObject [Doc::str ("name", "osprey-test-server"), Doc::str ("version", "1")])])
+
+toolJson (name, description) = JsonObject [Doc::str ("name", name), Doc::str ("description", description), JsonMember "inputSchema" (JsonObject [Doc::str ("type", "object")])]
+
+toolsReply (id, names, cursor) = replyLine (JsonInt id, JsonObject [JsonMember "tools" (JsonArray (mapList (names, \name => toolJson (name, "The ${name} tool.")))), Doc::str ("nextCursor", cursor)])
+
+callReply (id, text, failed) = replyLine (JsonInt id, JsonObject [JsonMember "content" (JsonArray [JsonObject [Doc::str ("type", "text"), Doc::str ("text", text)]]), Doc::bit ("isError", failed)])
+
+serverPing () = "{\"jsonrpc\":\"2.0\",\"id\":\"server-ping-1\",\"method\":\"ping\"}\n"
+
+readDone (output, exited) = JsonObject [Doc::str ("output", output), Doc::str ("stderr", ""), Doc::bit ("exited", exited), Doc::num ("status", 0)]
+
+okJson members = Success(value = JsonObject members)
+
+okDone result = Success(value = result)
+
+// The demo server in a step's store, or a blank one when absent.
+demoOf step = McpModel::named (step.stepStore.mcp, "demo") ?: agentapp::McpServer(serverName = "", serverOrigin = "", serverKind = "", serverEndpoint = "", serverConfig = "", serverEnabled = false, serverPhase = "", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0, serverCallText = "", serverCallDone = false)
+
+// Launch with the MCP documents answered, so the demo server is connecting.
+// The standard MCP documents this suite loads, with a secret that must never leave mcp.json.
+mcpDoc () = "{\"mcpServers\":{\"demo\":{\"command\":\"python3\",\"args\":[\"server.py\"],\"env\":{\"MCP_TEST_WORD\":\"zephyr-secret\",\"TOKEN\":\"mcp-env-secret\"}}}}"
+
+mcpSlice key =
+    match key
+        "env" => "DEEPSEEKKEY=sk-test\n"
+        "mcp-file" => mcpDoc ()
+        _ => ""
+
+mcpLaunched () =
+    opened = App::initial (context 100)
+    envDone = Drive::deliverWhere (opened.stepStore, ui::Completed(ticket = "env", outcome = ok 0), mcpSlice)
+    providersDone = Drive::deliverWhere (envDone.stepStore, ui::Completed(ticket = "providers", outcome = okJson [Doc::bit ("found", false)]), mcpSlice)
+    chatsDone = Drive::deliverWhere (providersDone.stepStore, ui::Completed(ticket = "chats", outcome = okJson [Doc::bit ("found", false)]), mcpSlice)
+    globalDone = Drive::deliverWhere (chatsDone.stepStore, ui::Completed(ticket = "mcp-global", outcome = okJson [Doc::bit ("found", true)]), mcpSlice)
+    stateDone = Drive::deliverWhere (globalDone.stepStore, ui::Completed(ticket = "mcp-state", outcome = okJson [Doc::bit ("found", false)]), mcpSlice)
+    Drive::deliverWhere (stateDone.stepStore, ui::Completed(ticket = "mcp-project", outcome = ok 0), mcpSlice)
+
+// The project file's slice: `doc` for the project read, nothing for any other key.
+projectOnly doc key =
+    match key
+        "mcp-project-file" => doc
+        _ => ""
+
+// The store after the save in flight completed, so the next queued document can be written.
+saveDone step = saveTicket (step, ticketOf (step.requests))
+
+ticketOf requests = Doc::text (Requests::encode (listGet (filterList (requests, \r => Doc::text (Requests::encode r, "kind") == "store-write")) 0 ?: Requests::ask ("none", ui::Cancel(cancelled = ""))), "ticket")
+
+saveTicket (step, ticket) = Drive::deliverWhere (step.stepStore, ui::Completed(ticket = ticket, outcome = okJson []), mcpSlice)
+
+
+// The local project server's switch in a step's store.
+expectLocalOn step want = match Lists::find (step.stepStore.mcp.stateServers, \one => one.serverName == "local")
+    Success value => expect (value.serverEnabled, want)
+    Error _ => expect ("local", "found")
+
+expectRememberedOn step want = match Lists::find (step.stepStore.mcp.stateServers, \one => one.serverName == "local")
+    Success value => expect (value.serverEnabled, want)
+    Error _ => expect ("local", "found")
+
+testing ("launch asks for the MCP documents, connects enabled servers and keeps project servers off", \() =>
+    first = App::initial (context 100)
+    expect (Drive::kinds first, "run,store-read,store-read,store-read,store-read,run")
+    started = mcpLaunched ()
+    // The demo stdio server starts with its configured environment.
+    request = listGet (Drive::asked started) 0 ?: JsonNull
+    expect (Doc::text (request, "kind"), "process-start")
+    expect (Doc::text (request, "command"), "python3")
+    expect (Doc::text (request, "name"), "mcp:demo")
+    expectTrue (contains (Doc::write request) "MCP_TEST_WORD")
+    expectTrue (contains (Doc::write request) "zephyr-secret")
+    server = demoOf started
+    expect (server.serverPhase, "connecting")
+    // A project server from .mcp.json stays off until the person turns it on.
+    projectDoc = "{\"mcpServers\":{\"local\":{\"command\":\"node\",\"args\":[\"local.js\"]}}}"
+    reopened = Drive::deliverWhere (started.stepStore, ui::Completed(ticket = "mcp-project", outcome = ok 0), projectOnly (projectDoc))
+    names = mapList (reopened.stepStore.mcp.stateServers, \one => "${one.serverName}:${toString one.serverEnabled}")
+    expect (join (names, ","), "demo:true,local:false")
+    onTab = Drive::deliver (reopened.stepStore, ui::Act(act = agentapp::ShowSettingsTab(tabKey = "mcp")), "")
+    expectTrue (contains (Drive::showing (onTab.stepStore, View::settings)) ".mcp.json"))
+
+testing ("no MCP documents at all is no problem and no servers", \() =>
+    missing = McpModel::projectMissing (McpModel::globalMissing (McpModel::fresh "/work/project"))
+    expect (length missing.stateProblems, 0)
+    expect (length missing.stateServers, 0)
+    empty = McpModel::projectLoaded (McpModel::globalLoaded (McpModel::fresh "/work/project", "{}"), "{\"mcpServers\":{}}")
+    expect (length empty.stateServers, 0)
+    expect (join empty.stateProblems "|", "mcp.json: the configuration must have an mcpServers object")
+    // The first server has to be addable: the form shows with no servers and no problems.
+    launched = (App::initial (context 100)).stepStore
+    onTab = Drive::deliver (launched, ui::Act(act = agentapp::ShowSettingsTab(tabKey = "mcp")), "")
+    shown = Drive::showing (onTab.stepStore, View::settings)
+    expectTrue (contains shown "No MCP servers yet")
+    expectTrue (contains shown "Add server")
+    expectTrue (contains shown "Paste JSON"))
+
+testing ("a stdio server connects: initialize, both list pages, the server ping answered, tools offered to the model", \() =>
+    started = mcpLaunched ()
+    begun = Drive::deliver (started.stepStore, ui::Completed(ticket = "mcpstart:demo", outcome = okJson [Doc::num ("pid", 4321)]), "")
+    write = listGet (Drive::asked begun) 0 ?: JsonNull
+    expect (Drive::kinds begun, "process-write")
+    expectTrue (contains (Doc::text (write, "input")) "\"method\":\"initialize\"")
+    afterWrite = Drive::deliver (begun.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 96)]), "")
+    expect (Drive::kinds afterWrite, "process-read")
+    // The initialize answer and the server ping arrive in one read; the ping must be answered.
+    answered = Drive::deliver (afterWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (initializeReply () + serverPing (), false))), "")
+    listing = listGet (Drive::asked answered) 0 ?: JsonNull
+    expect (Drive::kinds answered, "process-write")
+    expectTrue (contains (Doc::text (listing, "input")) "notifications/initialized")
+    expectTrue (contains (Doc::text (listing, "input")) "\"method\":\"tools/list\"")
+    expectTrue (contains (Doc::text (listing, "input")) "\"id\":\"server-ping-1\"")
+    pageTwo = Drive::deliver ((Drive::deliver (answered.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 96)]), "")).stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (toolsReply (2, ["secret_word", "add"], "2"), false))), "")
+    expectTrue (contains (Doc::text (listGet (Drive::asked pageTwo) 0 ?: JsonNull, "input")) "\"cursor\":\"2\"")
+    final = Drive::deliver ((Drive::deliver (pageTwo.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 64)]), "")).stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (toolsReply (3, ["fails", "slow", "die"], ""), false))), "")
+    server = demoOf final
+    expect (server.serverPhase, "connected")
+    expect (length (Doc::items (Doc::parse server.serverTools)), 5)
+    expect (Drive::kinds final, "process-read"))
+
+// The connected state every later MCP test starts from.
+mcpConnected () =
+    started = mcpLaunched ()
+    begun = Drive::deliver (started.stepStore, ui::Completed(ticket = "mcpstart:demo", outcome = okJson [Doc::num ("pid", 4321)]), "")
+    afterWrite = Drive::deliver (begun.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 96)]), "")
+    answered = Drive::deliver (afterWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (initializeReply () + serverPing (), false))), "")
+    pageOne = Drive::deliver (answered.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 96)]), "")
+    pageTwo = Drive::deliver (pageOne.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (toolsReply (2, ["secret_word", "add"], "2"), false))), "")
+    pageThree = Drive::deliver (pageTwo.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 64)]), "")
+    Drive::deliver (pageThree.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (toolsReply (3, ["fails", "slow", "die"], ""), false))), "")
+
+testing ("a prefixed tool call goes through its server, the answer reaches the next request and isError stays tool text", \() =>
+    connected = mcpConnected ()
+    opened = Drive::typing (connected.stepStore, "What is the word?\n")
+    askingReply = "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Looking.\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_secret_word\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":2,\"total_tokens\":12}}"
+    asking = Drive::answering (opened.stepStore, ok 200, askingReply)
+    // The call is written to the server, not run as a process.
+    expect (Drive::kinds asking, "process-write")
+    expectTrue (contains (Doc::text (listGet (Drive::asked asking) 0 ?: JsonNull, "input")) "\"name\":\"secret_word\"")
+    expect ((Model::active asking.stepStore).chatTicket, "mcpcall:demo")
+    afterWrite = Drive::deliver (asking.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 80)]), "")
+    expect (Drive::kinds afterWrite, "process-read")
+    // The read that was listening is replaced by the host, and its cancellation is no failure of the call.
+    superseded = Drive::deliver (afterWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = Error(message = "Cancelled")), "")
+    expect (Drive::kinds superseded, "")
+    expect ((Model::active superseded.stepStore).chatStage, "tools")
+    answered = Drive::deliver (superseded.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (callReply (4, "zephyr-secret", false), false))), "")
+    // The server's real answer went back to the model in the next request's body.
+    expect (Drive::kinds answered, "process-read,http")
+    expectTrue (contains (Doc::text (listGet (Drive::asked answered) 1 ?: JsonNull, "body")) "zephyr-secret")
+    expect (length (Model::active answered.stepStore).chatResults, 0)
+    // An isError reply is the tool's text, and the turn carries on.
+    failing = Drive::answering (answered.stepStore, ok 200, "{\"id\":\"r2\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c2\",\"type\":\"function\",\"function\":{\"name\":\"demo_fails\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":9,\"completion_tokens\":2,\"total_tokens\":11}}")
+    afterFailWrite = Drive::deliver (failing.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 70)]), "")
+    failedRead = Drive::deliver (afterFailWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone (callReply (5, "this tool always fails", true), false))), "")
+    expectTrue (contains (Doc::text (listGet (Drive::asked failedRead) 1 ?: JsonNull, "body")) "this tool always fails")
+    done = Drive::answering (failedRead.stepStore, ok 200, textReply)
+    expect ((Model::active done.stepStore).chatStage, "idle")
+    // A tool step names its server.
+    expectTrue (contains (Drive::showing (done.stepStore, View::transcript)) "Used 2 tools")
+    expectFalse (contains (Drive::showing (done.stepStore, View::transcript)) "Read 2 files"))
+
+testing ("a dead server fails its call in words, Reconnect restarts it, and a slow server times out its own call", \() =>
+    connected = mcpConnected ()
+    opened = Drive::typing (connected.stepStore, "Go\n")
+    asking = Drive::answering (opened.stepStore, ok 200, "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_die\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":8,\"completion_tokens\":2,\"total_tokens\":10}}")
+    afterWrite = Drive::deliver (asking.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 60)]), "")
+    died = Drive::deliver (afterWrite.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", true))), "")
+    server = demoOf died
+    expect (server.serverPhase, "failed")
+    expectTrue (contains server.serverProblem "exited")
+    expect (Drive::kinds died, "http")
+    expectTrue (contains (Doc::text (listGet (Drive::asked died) 0 ?: JsonNull, "body")) "exited before answering")
+    // Only a person pressing Reconnect restarts it.
+    reconnected = Drive::deliver (died.stepStore, ui::Act(act = agentapp::ReconnectMcp(mcpActionName = "demo")), "")
+    expect (Doc::text (listGet (Drive::asked reconnected) 0 ?: JsonNull, "kind"), "process-start")
+    expect ((demoOf reconnected).serverPhase, "connecting")
+    // A slow server fails that one call past its deadline, says so to the model, and stays connected.
+    slowOpened = Drive::typing ((mcpConnected ()).stepStore, "Go slow\n")
+    slowAsking = Drive::answering (slowOpened.stepStore, ok 200, "{\"id\":\"r1\",\"model\":\"m\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\",\"tool_calls\":[{\"id\":\"c1\",\"type\":\"function\",\"function\":{\"name\":\"demo_slow\",\"arguments\":\"{}\"}}]},\"finish_reason\":\"tool_calls\"}]}")
+    slowWritten = Drive::deliver (slowAsking.stepStore, ui::Completed(ticket = "mcpwrite:demo", outcome = okJson [Doc::num ("written", 60)]), "")
+    stillWaiting = Drive::deliver (slowWritten.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), "")
+    expect ((Model::active stillWaiting.stepStore).chatStage, "tools")
+    timedOut = Drive::deliverAt (100000, stillWaiting.stepStore, ui::Completed(ticket = "mcpread:demo", outcome = okDone (readDone ("", false))), \_ => "")
+    expect ((demoOf timedOut).serverPhase, "connected")
+    expectTrue (contains (Doc::text (listGet (filterList (Drive::asked timedOut, \asked => Doc::text (asked, "kind") == "http")) 0 ?: JsonNull, "body")) "did not answer within"))
+
+testing ("remove stops the process, rewrites mcp.json and takes the tools out of the next request; the switch is remembered per folder", \() =>
+    connected = mcpConnected ()
+    removed = Drive::deliver (connected.stepStore, ui::Act(act = agentapp::RemoveMcp(mcpActionName = "demo")), "")
+    expect (Drive::kinds removed, "process-stop,store-write")
+    expect (Doc::text (listGet (Drive::asked removed) 1 ?: JsonNull, "name"), "mcp.json")
+    expectFalse (contains (listGet removed.writes 0 ?: Requests::write ("", "")).sliceText "demo")
+    expect (length removed.stepStore.mcp.stateServers, 0)
+    settled = saveDone removed
+    opened = Drive::typing (settled.stepStore, "Again\n")
+    expectFalse (contains (Doc::text (listGet (Drive::asked opened) 0 ?: JsonNull, "body")) "demo_secret_word")
+    // A project server toggled on in one folder is remembered off in another.
+    projectDoc = "{\"mcpServers\":{\"local\":{\"command\":\"node\",\"args\":[\"local.js\"]}}}"
+    withProject = Drive::deliverWhere (settled.stepStore, ui::Completed(ticket = "mcp-project", outcome = ok 0), projectOnly (projectDoc))
+    toggled = Drive::deliver (withProject.stepStore, ui::Switched(toggle = agentapp::ToggleMcp(mcpActionName = "local"), switched = true), "")
+    expect (Drive::kinds toggled, "process-start,store-write")
+    expect (Doc::text (listGet (Drive::asked toggled) 1 ?: JsonNull, "name"), "mcp-state.json")
+    settledToggle = saveDone toggled
+    moved = Drive::deliver (settledToggle.stepStore, ui::Completed(ticket = "folder", outcome = okJson [Doc::str ("path", "/work/other")]), "")
+    again = Drive::deliverWhere (moved.stepStore, ui::Completed(ticket = "mcp-project", outcome = ok 0), projectOnly (projectDoc))
+    expectLocalOn again false
+    back = Drive::deliver (again.stepStore, ui::Completed(ticket = "folder", outcome = okJson [Doc::str ("path", "/work/project")]), "")
+    returned = Drive::deliverWhere (back.stepStore, ui::Completed(ticket = "mcp-project", outcome = ok 0), projectOnly (projectDoc))
+    expectRememberedOn returned true)
+
+testing ("the add form validates in words, paste is atomic, broken files report words and secrets stay in mcp.json", \() =>
+    started = mcpLaunched ()
+    named = Drive::deliver (started.stepStore, ui::Entered(entry = agentapp::McpName, entered = "demo"), "")
+    onTab = Drive::deliver (named.stepStore, ui::Act(act = agentapp::ShowSettingsTab(tabKey = "mcp")), "")
+    expectTrue (contains (Drive::showing (onTab.stepStore, View::settings)) "Add server")
+    named2 = Drive::deliver (named.stepStore, ui::Entered(entry = agentapp::McpName, entered = "weather"), "")
+    commanded = Drive::deliver (named2.stepStore, ui::Entered(entry = agentapp::McpCommand, entered = "python3"), "")
+    argued = Drive::deliver (commanded.stepStore, ui::Entered(entry = agentapp::McpArguments, entered = "server.py"), "")
+    environed = Drive::deliver (argued.stepStore, ui::Entered(entry = agentapp::McpEnvironment, entered = "KEY=mcp-env-secret"), "")
+    added = Drive::deliver (environed.stepStore, ui::Act(act = agentapp::AddMcpServer), "")
+    expect (Drive::kinds added, "process-start,store-write")
+    expectTrue (contains (listGet added.writes 0 ?: Requests::write ("", "")).sliceText "mcp-env-secret")
+    // The form forgets what it was given, so a secret is never on show after Add.
+    expect (added.stepStore.mcp.stateForm.formEnvironment, "")
+    expect (added.stepStore.mcp.stateForm.formName, "")
+    expectFalse (contains (Drive::showing (added.stepStore, View::settings)) "mcp-env-secret")
+    // A name that clashes is refused in words and nothing is asked.
+    clashingName = Drive::deliver (added.stepStore, ui::Entered(entry = agentapp::McpName, entered = "demo"), "")
+    clashing = Drive::deliver (clashingName.stepStore, ui::Entered(entry = agentapp::McpCommand, entered = "python3"), "")
+    clash = Drive::deliver (clashing.stepStore, ui::Act(act = agentapp::AddMcpServer), "")
+    expect (Drive::kinds clash, "")
+    expectTrue (contains clash.stepStore.mcp.stateForm.formProblem "already exists")
+    cleared = Drive::deliver (clash.stepStore, ui::Entered(entry = agentapp::McpName, entered = ""), "")
+    emptyName = Drive::deliver (cleared.stepStore, ui::Act(act = agentapp::AddMcpServer), "")
+    expect (emptyName.stepStore.mcp.stateForm.formProblem, "Enter a server name.")
+    renamed = Drive::deliver (emptyName.stepStore, ui::Entered(entry = agentapp::McpName, entered = "far"), "")
+    picked = Drive::deliver (renamed.stepStore, ui::Chose(chooser = agentapp::PickMcpType, chosen = "url"), "")
+    urlled = Drive::deliver (picked.stepStore, ui::Entered(entry = agentapp::McpUrl, entered = "ftp://example.test/mcp"), "")
+    badUrl = Drive::deliver (urlled.stepStore, ui::Act(act = agentapp::AddMcpServer), "")
+    expectTrue (contains badUrl.stepStore.mcp.stateForm.formProblem "HTTPS URL")
+    // Pasting the standard block adds every server at once; a broken entry adds nothing.
+    settledAdd = saveDone added
+    filled = Drive::deliver (settledAdd.stepStore, ui::Entered(entry = agentapp::McpPaste, entered = "{\"mcpServers\":{\"one\":{\"command\":\"node\",\"args\":[\"one.js\"]}}}"), "")
+    pasted = Drive::deliver (filled.stepStore, ui::Act(act = agentapp::PasteMcpServers), "")
+    expect (Drive::kinds pasted, "process-start,store-write")
+    refilled = Drive::deliver (pasted.stepStore, ui::Entered(entry = agentapp::McpPaste, entered = "{\"mcpServers\":{\"ok\":{\"command\":\"node\"},\"bad\":{}}}"), "")
+    brokenPaste = Drive::deliver (refilled.stepStore, ui::Act(act = agentapp::PasteMcpServers), "")
+    expect (Drive::kinds brokenPaste, "")
+    expectTrue (contains brokenPaste.stepStore.mcp.stateForm.formProblem "must have either")
+    // A broken file and an unsupported entry are words, never a crash.
+    brokenFile = Drive::deliver (brokenPaste.stepStore, ui::Completed(ticket = "mcp-global", outcome = okJson [Doc::bit ("found", true)]), "{broken")
+    expectTrue (contains (join brokenFile.stepStore.mcp.stateProblems "\n") "not valid JSON")
+    unsupported = Drive::deliver (brokenFile.stepStore, ui::Completed(ticket = "mcp-global", outcome = okJson [Doc::bit ("found", true)]), "{\"mcpServers\":{\"nope\":{\"command\":\"\"},\"cwd\":{\"command\":\"x\",\"cwd\":\"/tmp\"},\"plain\":{\"url\":\"http://example.test/mcp\"}}}")
+    expectTrue (contains (join unsupported.stepStore.mcp.stateProblems "\n") "needs a command")
+    expectTrue (contains (join unsupported.stepStore.mcp.stateProblems "\n") "cwd")
+    expectTrue (contains (join unsupported.stepStore.mcp.stateProblems "\n") "HTTPS")
+    // The secrets never reach the conversations file, the switch file or the session document.
+    sent = Drive::typing (unsupported.stepStore, "Done\n")
+    answered = Drive::answering (sent.stepStore, ok 200, textReply)
+    final = answered.stepStore
+    expectFalse (contains (Doc::write (Model::saveDoc (final, "chats.json"))) "mcp-env-secret")
+    expectFalse (contains (Doc::write (McpModel::switchesJson final.mcp)) "mcp-env-secret")
+    expectFalse (contains (Doc::write (App::save final)) "zephyr-secret")
+    expectFalse (contains (Doc::write (Model::saveDoc (final, "mcp.json"))) "zephyr-secret")
+    expectTrue (contains (Doc::write (Model::saveDoc ((mcpLaunched ()).stepStore, "mcp.json"))) "zephyr-secret")
+    expect (Doc::write (App::save (App::restore (App::save final))), Doc::write (App::save final)))

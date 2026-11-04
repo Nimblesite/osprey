@@ -135,8 +135,24 @@ fn typed_initializer(
     let inner = binding_result_inner(cg, name, position, declaration);
     let generated = generate_initializer(cg, value, position)?;
     let fitted = fit_result(cg, generated, inner)?;
+    let fitted = fit_literal(cg, position, fitted)?;
     let bound = tag_handle_element(cg, position, fitted);
     infer_binding(cg, position, bound)
+}
+
+/// A literal reaches a sized binding with its default spelling — `int` as
+/// `i64`, `float` as `double`: `let x: uint8 = if c { 1 } else { 2 }`,
+/// `let w: float32 = 1.5`. It holds the value exactly ([TYPE-NUMERIC-LITERAL]).
+pub(super) fn fit_literal(
+    cg: &mut Codegen,
+    position: Option<Position>,
+    value: Value,
+) -> Result<Value> {
+    let wanted = cg
+        .prog
+        .let_type(cg.source_function.as_deref(), position)
+        .and_then(osprey_types::numeric::Numeric::of_type);
+    crate::conv::fit_literal(cg, value, wanted)
 }
 
 fn binding_result_inner(

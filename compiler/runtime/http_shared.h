@@ -1,32 +1,9 @@
 #ifndef HTTP_SHARED_H
 #define HTTP_SHARED_H
 
-#include <errno.h>
-#include <inttypes.h>
+#include "socket_platform.h"
 #include <openssl/evp.h>
 #include <openssl/sha.h>
-#include <pthread.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-// Sockets: Winsock2 on Windows (via the compat header), BSD sockets elsewhere.
-#ifdef _WIN32
-#include "osprey_win_compat.h"
-#else
-#include <arpa/inet.h>
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <sys/time.h>
-#include <unistd.h>
-// Winsock needs starting before the first socket call; BSD sockets do not.
-static inline void osprey_wsa_init(void) {}
-#endif
 
 // Constants
 #define MAX_HTTP_BUFFER 8192
@@ -107,12 +84,14 @@ typedef struct {
   char *address;
   char *path; // WebSocket endpoint path (e.g., "/chat")
   int socket_fd;
-  bool is_listening;
+  atomic_bool is_listening;
   bool thread_started;
   pthread_t server_thread;
-  pthread_mutex_t mutex;
-  WebSocket *connections[MAX_CONNECTIONS_PER_SERVER];
+  pthread_mutex_t mutex; // guards the three below
+  pthread_cond_t handlers_gone;
+  WebSocket *connections[MAX_CONNECTIONS_PER_SERVER]; // the upgraded, live ones
   int connection_count;
+  int handler_count; // threads that may still read this server, upgraded or not
 } WebSocketServer;
 
 // Global runtime state

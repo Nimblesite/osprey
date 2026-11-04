@@ -28,11 +28,17 @@ __all__ = [
 
 
 def provider_profile(provider, model_name):
-    """`Provider.model_profile(model_name)` for the ported providers."""
+    """`Provider.model_profile(model_name)` for the ported providers. A provider serving one of these
+    APIs under another name (a coding plan endpoint) passes the provider profile function's result as the
+    model's `profile` argument instead, so no further names are needed here."""
     if provider.name == "deepseek":
         return Profiles.deepseek_model_profile(model_name)
     elif provider.name == "ollama":
         return Profiles.ollama_model_profile(model_name)
+    elif provider.name == "moonshotai":
+        return Profiles.moonshotai_provider_profile(model_name)
+    elif provider.name == "zai":
+        return Profiles.zai_provider_profile(model_name)
     else:
         return Profiles.openai_model_profile(model_name)
 
@@ -170,12 +176,8 @@ def has_thinking(response):
 def backfill(profile, mapped):
     """`_map_messages`' backfill: an assistant message with tool calls and no thinking field gets an empty one, so a provider that must see reasoning on every turn is satisfied."""
     field = Profiles.profile_text(profile, "openai_chat_thinking_field", "")
-    needs = J.text_at(mapped, "role", "") == "assistant" and len(J.list_at(mapped, "tool_calls")) > 0 and not has_member(mapped, field)
+    needs = J.text_at(mapped, "role", "") == "assistant" and len(J.list_at(mapped, "tool_calls")) > 0 and not J.has(mapped, field)
     return J.obj(listAppend(J.members_of(mapped), J.member(field, JsonString("")))) if needs else mapped
-
-
-def has_member(value, name):
-    return len(filterList(J.members_of(value), lambda m: J.member_name(m) == name)) > 0
 
 
 def map_message(profile, backfill_field, message):
@@ -230,21 +232,22 @@ def setting_member(settings, key, name):
 
 
 def completions_body(model_name, profile, messages, settings, parameters) -> Json:
-    """`_completions_create`'s request body: model, messages, tools, tool_choice and the given settings."""
+    """`_completions_create`'s request body: model, messages, tools, tool_choice and the given settings;
+    the unified `thinking` setting becomes `reasoning_effort` (Z.AI's profile sends it as `extra_body`
+    instead, where `ZaiModel.prepare_request` builds the `thinking` object)."""
     tools = mapList(parameters.function_tools, lambda t: map_tool_definition(profile, t))
-    supports_required = Profiles.profile_bool(profile, "openai_supports_tool_choice_required", True)
-    tool_choice = "auto" if parameters.allow_text_output or not supports_required else "required"
     supports_max_completion = Profiles.profile_bool(profile, "openai_chat_supports_max_completion_tokens", True)
     sampling = Profiles.profile_bool(profile, "openai_supports_sampling_settings", True)
     base = [J.member("model", JsonString(model_name)), J.member("messages", JsonArray(map_messages(profile, messages, parameters)))]
-    with_tools = listConcat(base, [J.member("tools", JsonArray(tools)), J.member("tool_choice", JsonString(tool_choice))]) if len(tools) > 0 else base
+    with_tools = listConcat(base, [J.member("tools", JsonArray(tools)), J.member("tool_choice", JsonString(tool_choice(profile, settings, parameters)))]) if len(tools) > 0 else base
     with_stream = listAppend(with_tools, J.member("stream", JsonBool(False)))
     members = listConcat(with_stream, listConcat(
         listConcat(setting_member(settings, "stop_sequences", "stop"), setting_member(settings, "max_tokens", "max_completion_tokens" if supports_max_completion else "max_tokens")),
         listConcat(setting_member(settings, "seed", "seed"), sampling_members(settings) if sampling else []),
     ))
-    with_effort = listConcat(members, reasoning_members(settings))
-    extra = extra_body_members(settings)
+    zai = Profiles.profile_bool(profile, "zai_thinking_body", False)
+    with_effort = members if zai else listConcat(members, reasoning_members(profile, settings))
+    extra = zai_extra(profile, settings) if zai else extra_body_members(settings)
     names = mapList(extra, lambda member: J.member_name(member))
     return J.obj(listConcat(filterList(with_effort, lambda member: not listContains(names, J.member_name(member))), extra))
 
@@ -256,10 +259,127 @@ def sampling_members(settings):
     )
 
 
-def reasoning_members(settings):
-    """`_translate_thinking`: the `openai_reasoning_effort` setting becomes `reasoning_effort`."""
+def tool_choice(profile, settings, parameters):
+    """`_get_tool_choice`'s `required` branch: `required` unless the provider rejects it (Kimi), or the
+    model rejects forcing while reasoning is active (`_support_tool_forcing`'s DeepSeek V4 rule)."""
+    if parameters.allow_text_output or not Profiles.profile_bool(profile, "openai_supports_tool_choice_required", True):
+        return "auto"
+    elif Profiles.profile_bool(profile, "openai_supports_forced_tool_choice_with_thinking", True) or not reasoning_active(profile, settings):
+        return "required"
+    else:
+        return "auto"
+
+
+def resolved_thinking(profile, settings):
+    """`Model.prepare_request`'s `thinking` resolution: the setting's value when the model takes one,
+    `JsonNull()` when it does not — a model that cannot think ignores the setting, and `false` on a model
+    that always thinks is dropped rather than sent."""
+    match mapGet(settings, "thinking"):
+        case Error(message=_m):
+            return JsonNull()
+        case Success(value=value):
+            always = Profiles.profile_bool(profile, "thinking_always_enabled", False)
+            takes = Profiles.profile_bool(profile, "supports_thinking", False) or always
+            return value if takes and not (always and thinking_off(value)) else JsonNull()
+
+
+def thinking_off(value):
+    """Whether a resolved thinking value is `false`."""
+    return not unwrap_or(jsonBool(value), True)
+
+
+def reasoning_active(profile, settings):
+    """`_reasoning_active`: an explicit `openai_reasoning_effort` wins, then the resolved `thinking`
+    setting, then the profile's `openai_reasoning_enabled_by_default`."""
     effort = Settings.setting_text(settings, "openai_reasoning_effort", "")
-    return [] if effort == "" else [J.member("reasoning_effort", JsonString(effort))]
+    if effort != "":
+        return effort != "none"
+    else:
+        value = resolved_thinking(profile, settings)
+        return not thinking_off(value) if not J.is_null(value) else Profiles.profile_bool(profile, "openai_reasoning_enabled_by_default", False)
+
+
+def reasoning_members(profile, settings):
+    """`_translate_thinking`: an explicit `openai_reasoning_effort` wins; otherwise the unified `thinking`
+    setting becomes `reasoning_effort` through `OPENAI_REASONING_EFFORT_MAP` (`true` is `medium`, `false` is
+    `none`)."""
+    effort = Settings.setting_text(settings, "openai_reasoning_effort", "")
+    if effort != "":
+        return [J.member("reasoning_effort", JsonString(effort))]
+    else:
+        value = resolved_thinking(profile, settings)
+        return [] if J.is_null(value) else [J.member("reasoning_effort", JsonString(effort_of(value)))]
+
+
+def effort_of(value):
+    """`OPENAI_REASONING_EFFORT_MAP`: a thinking value as the effort the API takes — `true` is `medium`,
+    `false` is `none`, a level is itself."""
+    match value:
+        case JsonString(level):
+            return level
+        case _:
+            return "medium" if unwrap_or(jsonBool(value), False) else "none"
+
+
+def zai_extra(profile, settings):
+    """Z.AI's request `extra_body`: the computed `thinking` and `reasoning_effort` replace the same-named
+    members of the user's `extra_body`, as `_zai_settings_to_openai_settings` overwrites those keys in the
+    dict it hands the SDK (and the SDK's `extra_body` merge then replaces top-level members of the same name)."""
+    computed = zai_extra_members(profile, settings)
+    computed_names = mapList(computed, J.member_name)
+    kept = filterList(extra_body_members(settings), lambda member: not listContains(computed_names, J.member_name(member)))
+    return listConcat(kept, computed)
+
+
+def zai_extra_members(profile, settings):
+    """`_zai_settings_to_openai_settings`: the `extra_body` members Z.AI's endpoint takes — `thinking`
+    with its `type` and `clear_thinking`, and `reasoning_effort` mapped from the level on the models that
+    accept one. These merge over (and replace same-named members of) the request body and the given
+    `extra_body`, as the OpenAI SDK's `extra_body` merge does."""
+    return listConcat(zai_thinking_members(profile, settings), zai_effort_member(profile, settings))
+
+
+def zai_thinking_members(profile, settings):
+    payload = listConcat(zai_type_members(profile, settings), zai_clear_members(profile, settings))
+    return [J.member("thinking", J.obj(payload))] if len(payload) > 0 else []
+
+
+def zai_type_members(profile, settings):
+    """The payload's `type`: `enabled` or `disabled` for a thinking setting, absent when none was given."""
+    value = resolved_thinking(profile, settings)
+    if J.is_null(value):
+        return []
+    else:
+        return [J.member("type", JsonString("disabled" if thinking_off(value) else "enabled"))]
+
+
+def zai_clear_members(profile, settings):
+    """`zai_clear_thinking`: the setting when given, else `false` on a thinking-capable model (preserved
+    thinking), else absent."""
+    match mapGet(settings, "zai_clear_thinking"):
+        case Success(value=value):
+            match value:
+                case JsonBool(clear):
+                    return [J.member("clear_thinking", JsonBool(clear))]
+                case _:
+                    return []
+        case Error(message=_m):
+            return [J.member("clear_thinking", JsonBool(False))] if Profiles.profile_bool(profile, "supports_thinking", False) else []
+
+
+def zai_effort_member(profile, settings):
+    """The payload's `reasoning_effort`: the level through the profile's mapping, on the models that take
+    one (`_zai_settings_to_openai_settings` forwards an explicit level, never a bare `true`/`false`)."""
+    if not Profiles.profile_bool(profile, "zai_supports_reasoning_effort", False):
+        return []
+    else:
+        value = resolved_thinking(profile, settings)
+        match value:
+            case JsonString(level):
+                mapping = J.to_map(unwrap_or(mapGet(profile, "zai_reasoning_effort_mapping"), JsonNull()))
+                return [J.member("reasoning_effort", JsonString(unwrap_or(jsonText(unwrap_or(mapGet(mapping, level), JsonNull())), level)))]
+            case _:
+                return []
 
 
 def extra_body_members(settings):

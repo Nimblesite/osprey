@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Bytes
 
 /// Character-level scanning for the TOML subset Osprey manifests use: a byte
@@ -171,10 +172,7 @@ module TomlLexer {
         }
     }
 
-    fn unicodeEscape(c, acc, start, n) = match readHex(c, n, 0) {
-        Error { message } => Error { message: message }
-        Success { value } => unicodeEscapeChar(c, n, acc, start, value)
-    }
+    fn unicodeEscape(c, acc, start, n) = Checked::andThen(readHex(c, n, 0), fn(value) => unicodeEscapeChar(c, n, acc, start, value))
 
     fn unicodeEscapeChar(c, n, acc, start, cp) = match fromCodePoint(cp) {
         Success { value } => decoded(afterHex(c, n), acc + value)

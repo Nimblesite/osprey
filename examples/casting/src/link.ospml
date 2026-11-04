@@ -9,6 +9,7 @@ import ui::Runtime
 import ui::Requests
 import ui::Machines
 import ui::Canvases
+import ui::Templates
 import ui::Values
 import ui::Ui
 import ui::Inputs
@@ -94,7 +95,10 @@ module Link
         Success next => asked (fed (relinked (store, true, next, store.link.clock), [fact ("connected", Values::flag true), fact ("error", Values::text ""), fact ("ended", Values::text "")]), [])
         Error problem => asked (failed (store, problem), [])
 
-    start (store, ask) = match ui::Lists::find (store.link.devices, \d => d.name == Machines::askedText (ask, "receiver"))
+    // [CAST-MOBILE-RECEIVER-IDENTITY] Friendly names are labels, never routing keys.
+    endpoint d = "${d.host}:${toString d.port}"
+
+    start (store, ask) = match ui::Lists::find (store.link.devices, \d => endpoint d == Machines::askedText (ask, "receiver"))
         Success device => started (store, Player::begin (device, Machines::askedText (ask, "file"), store.link.clock))
         Error _ => asked (failed (store, "choose a receiver first"), [])
 
@@ -133,7 +137,14 @@ module Link
     (** The store after answering every pending machine request, as a framework step. *)
     export settled store =
         out = draining (store, [], 8)
-        Runtime::asking (out.servedStore, out.servedAsks)
+        Runtime::asking (namedReceiver out.servedStore, out.servedAsks)
+
+    namedReceiver store =
+        machine = machineOf store
+        label = match ui::Lists::find (Machines::choicesOf (machine, "receivers"), \c => c.choiceKey == Machines::text (machine, "receiver"))
+            Success choice => choice.choiceLabel
+            Error _ => ""
+        fed (store, [fact ("receiverName", Values::text label)])
 
     (** A control's lever pulled with its value, then the requests answered. *)
     export pulled (store, lever, value) = settled (store(screen = Screen(screenMachine = Machines::pull (machineOf store, lever, value))))
@@ -144,28 +155,57 @@ module Link
     (** The store as launched: the canvas artwork's folder as `assets`, a `--skin` when given and an MP3 the app was opened with. *)
     export launched (store, folder, skin, path) =
         skinned = listConcat [fact ("assets", Values::text folder)] (ui::Pick::either (skin == "", [], [fact ("skin", Values::text skin)]))
-        fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+        prepared = fed (store, listConcat skinned (ui::Pick::either (path == "", [], fileFacts path)))
+        // [CAST-MOBILE-APPEARANCE-RECOVERY] The rendered fallback is the real selection.
+        chosen = (Templates::skin (machineOf prepared)).skinName
+        match chosen == ""
+            true => prepared
+            false => fed (prepared, [fact ("skin", Values::text chosen)])
 
-    (** A lifecycle phase: `open:<path>` is an MP3 Finder opened while the app runs, loaded as the file ([GPUI-HOST-OPEN]); other phases change nothing. *)
-    export phased (store, phase) = match startsWith phase "open:"
-        true => settled (fed (store, fileFacts (drop phase 5)))
+    (** Native lifecycle: open a document, choose a bundled skin or close services; other phases change nothing. [CAST-MOBILE-SKINS] *)
+    export phased (store, phase) = match phase == "closed"
+        true => closed store
+        false => match startsWith phase "open:"
+            true => settled (fed (store, fileFacts (drop phase 5)))
+            false => match startsWith phase "skin:"
+                true => skinned (store, drop phase 5)
+                false => Runtime::step store
+
+    skinned (store, key) = match length (filterList (Machines::choicesOf (machineOf store, "skins"), \choice => choice.choiceKey == key)) > 0
+        true => settled (fed (store, [fact ("skin", Values::text key)]))
         false => Runtime::step store
+
+    // [CAST-MOBILE-DELIVERY] A native shell releases both services once, even
+    // when one cleanup fails; the failure stays visible in the returned store.
+    closed store = match store.link.linked
+        false => Runtime::step store
+        true =>
+            code = Player::end store.link.player
+            ended = relinked (store, false, Player::idle (), store.link.polled)
+            Runtime::step (ui::Pick::either (code < 0, failed (ended, "Cannot close cast services (${toString code})"), ended))
 
     pointer (store, x, y, down) = settled (store(screen = Screen(screenMachine = Canvases::pointer (machineOf store, x, y, down))))
 
-    (** A canvas pointer event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, and a hover changes nothing; keys change nothing. *)
-    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down), \(_, _) => Runtime::step store)
+    // A resize is room, never a cast command: the machine keeps the region and the artboard reflows from it.
+    viewed (store, width, height) = Runtime::step (store(screen = Screen(screenMachine = Canvases::viewed (machineOf store, width, height))))
+
+    (** A canvas event ([UI-MACHINE-CANVAS]): a press grips, a drag slides, the release acts once on the listener under it, a hover or key changes nothing, and a resize moves the artboard into the region's room without touching the cast. *)
+    export pointed (store, input) = Inputs::route (input, \(_, _) => Runtime::step store, \(x, y, down, _) => pointer (store, x, y, down), \(width, height) => viewed (store, width, height))
 
     // ---- completions ----
 
-    receiver d = Ui::choice (d.name, d.name)
+    receiver (devices, d) =
+        duplicate = length (filterList (devices, \other => other.name == d.name)) > 1
+        Ui::choice (endpoint d, ui::Pick::either (duplicate, "${d.name} (${endpoint d})", d.name))
 
     discovered (store, text) =
         devices = Discovery::browse text
-        first = listGet devices 0 ?: chromecast::Discovery::Device(name = "", host = "", port = 0)
+        first = match listGet devices 0
+            Success device => endpoint device
+            Error _ => ""
         chosen = Machines::text (machineOf store, "receiver")
-        keep = ui::Lists::any (devices, \d => d.name == chosen)
-        settled (fed (withDevices (store, devices), [fact ("searched", Values::flag true), fact ("receivers", Values::list (mapList (devices, receiver))), fact ("receiver", Values::text (ui::Pick::either (keep, chosen, first.name)))]))
+        keep = ui::Lists::any (devices, \d => endpoint d == chosen)
+        settled (fed (withDevices (store, devices), [fact ("searched", Values::flag true), fact ("receivers", Values::list (mapList (devices, \d => receiver (devices, d)))), fact ("receiver", Values::text (ui::Pick::either (keep, chosen, first)))]))
 
     picked (store, doc) = match Doc::flag (doc, "cancelled")
         true => Runtime::step store

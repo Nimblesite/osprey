@@ -78,7 +78,7 @@ suite("native shared frame", () => {
     for (const expected of ["--osp-frame-font:var(--osp-font-serif)", "--osp-frame-text-size:27px", "--osp-frame-font-style:italic", "width:fit-content", "align-content:center", "align-items:end", "--osp-frame-control-height:40px", "--osp-frame-control-padding:12px", "--osp-frame-line-height:32.48px", "--osp-frame-tracking:-0.6px", "--osp-frame-math-scale:1.08", "--osp-frame-control-fill:transparent", "--osp-frame-icon-label:none"]) {
       assert.ok(html.includes(expected), expected);
     }
-    for (const bad of [{ font: "serif;display:none" }, { textSize: -1 }, { italic: "yes" }, { hug: 1 }, { align: "diagonal" }, { cross: "diagonal" }, { controlHeight: -1 }, { controlPadding: -2 }, { lineHeight: -1 }, { lineHeight: Infinity }, { tracking: NaN }, { mathScale: -1 }, { mathScale: Infinity }, { quietControls: "yes" }, { iconOnly: "yes" }]) {
+    for (const bad of [{ font: "serif;display:none" }, { textSize: -1 }, { italic: "yes" }, { hug: 1 }, { align: "diagonal" }, { cross: "diagonal" }, { controlHeight: -1 }, { controlPadding: -2 }, { lineHeight: -1 }, { lineHeight: Infinity }, { tracking: NaN }, { mathScale: -1 }, { mathScale: Infinity }, { quietControls: "yes" }, { iconOnly: "yes" }, { selectionGroup: "yes" }]) {
       assert.throws(() => frame({ ...style, ...bad }), /frame/i);
     }
   });

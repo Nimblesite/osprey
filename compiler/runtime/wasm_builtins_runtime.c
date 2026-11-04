@@ -1,12 +1,13 @@
-// Compiler helpers required by LLVM's wasm32 lowering. [WASM-TARGET-RUNTIME]
+// Portable helpers required by wasm32 lowering and WASI. [WASM-TARGET-RUNTIME]
 //
 // `llvm.smul.with.overflow.i64` widens its operands while checking signed
 // overflow. WebAssembly has no native i128 multiply, so LLVM lowers that
 // widened operation to the standard compiler-runtime `__multi3` ABI. The
 // Homebrew LLVM package and the sysroot-only WASI SDK used in CI do not ship a
 // wasm compiler-rt archive, so the portable Osprey runtime provides the one
-// helper its generated IR requires.
+// helper its generated IR requires, along with the WASI math correction below.
 
+#include <math.h>
 #include <stdint.h>
 
 typedef __int128 osp_i128;
@@ -53,4 +54,11 @@ osp_i128 __multi3(osp_i128 left, osp_i128 right) {
                      + left_words.words.low * (uint64_t)right_words.words.high;
     result.words.high = (int64_t)((uint64_t)result.words.high + cross);
     return result.whole;
+}
+
+// [FLOAT-IEEE-RESULTS] WASI tanhf loses an ulp at +/-0.5. Its binary64 tanh
+// entry point gives the expected value before one binary32 rounding. The corpus
+// pins signed zero and subnormals. Keep this in the wasm-only runtime archive.
+float tanhf(float value) {
+    return (float)tanh((double)value);
 }

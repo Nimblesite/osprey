@@ -90,7 +90,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # a suite into testing AND coverage measurement.
 C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   host_import_gc_tests host_import_arc_tests \
-  memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
+  memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_float_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
   list_tests map_tests string_runtime_tests float_spelling_portable_tests json_runtime_tests \
   effects_runtime_tests builtins_runtime_tests test_system_runtime \
   test_file_runtime tensor_list_tests \
@@ -108,23 +108,28 @@ C_SRC_host_import_arc_tests = $(filter-out runtime/memory_gc.c,$(C_SRC_host_impo
 C_FLAGS_host_import_arc_tests = -DHOST_IMPORT_ARC
 C_LIBS_memory_gc_tests = -pthread
 C_SRC_memory_pool_tests = runtime/memory_pool_tests.c
-C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c runtime/tensor_file.c runtime/file_runtime.c
+# Every tensor-reader suite shares the numeric binary16 conversion.
+TENSOR_READER_SRC = runtime/tensor_file.c runtime/float_spelling.c
+C_SRC_memory_golden_tests = runtime/memory_golden_tests.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c
 C_LIBS_memory_golden_tests = -pthread
 C_FLAGS_memory_golden_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_memory_golden_tests += $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c runtime/tensor_file.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_runtime_tests = runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_runtime_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_runtime_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c runtime/tensor_file.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
 C_FLAGS_gpu_shader_tests = -ffp-contract=off
 C_LIBS_gpu_shader_tests = -lm
+C_SRC_gpu_float_tests = runtime/gpu_float_tests.c runtime/float_spelling.c
+C_FLAGS_gpu_float_tests = -ffp-contract=off
+C_LIBS_gpu_float_tests = -lm
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
-C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c runtime/tensor_file.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_gpu_selection_tests = runtime/gpu_selection_tests.c runtime/gpu_runtime_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_selection_tests = -DOSPREY_GPU_BUFFER_SUITE=1 -DOSPREY_GPU_METAL=1 -DOSPREY_GPU_OPENCL=1
 C_SRC_gpu_no_device_tests = $(C_SRC_gpu_selection_tests)
 C_FLAGS_gpu_no_device_tests = -DOSPREY_GPU_BUFFER_SUITE=1
@@ -148,7 +153,7 @@ C_SRC_builtins_runtime_tests = runtime/builtins_runtime_tests.c runtime/random_e
 C_SRC_test_system_runtime = runtime/test_system_runtime.c runtime/test_system_failures.c runtime/system_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_test_system_runtime = -pthread
 C_SRC_test_file_runtime = runtime/test_file_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
-C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c runtime/tensor_file.c runtime/list_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TENSOR_READER_SRC) runtime/list_runtime.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
 C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
@@ -157,10 +162,10 @@ C_LIBS_http_server_send_tests = -pthread
 C_FLAGS_http_server_request_tests = $(OSSL_CFLAGS)
 C_SRC_http_server_request_tests = runtime/http_server_request_tests.c $(C_TEST_MEMORY_SRC)
 C_LIBS_http_server_request_tests = -pthread
-C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c $(C_TEST_MEMORY_SRC) $(RT_THREADS)
+C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/fiber_handle_tests.c $(C_TEST_MEMORY_SRC) $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_client_runtime.c runtime/http_client_response.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_client_runtime.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
 # http_shared.c's coverage number is OWNED by this suite: it is the only one
 # that drives every helper in the unit rather than the subset one transport
@@ -174,12 +179,12 @@ C_LIBS_http_shared_tests = -pthread $(OSSL_LIBS)
 # loopback ports (18086/18087) and runs a real accept loop, so it is single
 # threaded across suites by construction -- the Makefile runs suites serially.
 C_FLAGS_websocket_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_websocket_runtime_tests = runtime/websocket_runtime_tests.c runtime/websocket_lifecycle_tests.c runtime/websocket_client_runtime.c runtime/websocket_server_runtime.c runtime/http_shared.c runtime/random_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_websocket_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns tls_client_runtime.c and file_server_runtime.c: a loopback OpenSSL echo
 # server (18092/18093) and a plain TCP client against the one-file server.
 C_FLAGS_net_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
+C_SRC_net_runtime_tests = runtime/net_runtime_tests.c runtime/file_server_tests.c runtime/tls_client_runtime.c runtime/file_server_runtime.c $(C_TEST_MEMORY_SRC)
 C_LIBS_net_runtime_tests = -pthread $(OSSL_LIBS)
 # Owns media_render_runtime.c: real posix_spawnp calls against fake tools.
 C_SRC_media_render_runtime_tests = runtime/media_render_runtime_tests.c runtime/media_render_runtime.c
@@ -224,7 +229,7 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # by the expectation suite. clean.osp cannot finish inside the pinned
 # 64-byte/30-second settings on either backend (~49s of solver work on idle
 # Apple silicon; strictly worse under GC) — GitHub issue #306, plan 0034
-# known-bug items, docs/reports/klee-gc-status-2026-10-26.md. Verify a fix
+# known-bug items, docs/reviews/review.md#hunt. Verify a fix
 # with `make _test_hunt_clean`; it stays red until the fix lands.
 HUNT_KNOWN_BUGS ?= clean
 

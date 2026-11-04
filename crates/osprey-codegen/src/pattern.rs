@@ -219,6 +219,7 @@ fn finish_phi(
     // catch-all's string joined a narrowed field ([TYPE-ANY]).
     let wants_any = phi_in.iter().any(|(v, _)| v.ty == LType::Any);
     let adapted_arms = adapt_phi_arms(cg, phi_in, target_result_inner, wants_any)?;
+    let adapted_arms = fit_literal_arms(cg, adapted_arms)?;
     let arm_values = adapted_arms
         .iter()
         .map(|(value, _)| value.clone())
@@ -322,6 +323,31 @@ fn finish_phi(
         .collect::<Vec<_>>();
     crate::arc::move_phi_owners(cg, &incoming_ops, &out, mark);
     Ok(out)
+}
+
+/// An arm that is a literal joins its sized siblings at their type: the checker
+/// proved one type, and the literal still spells its default — `int` as `i64`,
+/// `float` as `double` ([TYPE-NUMERIC-LITERAL]).
+fn fit_literal_arms(cg: &mut Codegen, arms: Vec<(Value, String)>) -> Result<Vec<(Value, String)>> {
+    let sized = arms.iter().find_map(|(value, _)| match value.ty {
+        LType::Num(n) if n.is_sized() => Some(n),
+        _ => None,
+    });
+    let Some(sized) = sized else {
+        return Ok(arms);
+    };
+    arms.into_iter()
+        .map(|(value, exit)| {
+            if !matches!(value.ty, LType::I64 | LType::F64) {
+                return Ok((value, exit));
+            }
+            cg.start_block(&exit);
+            let fitted = crate::conv::fit_literal(cg, value, Some(sized))?;
+            let next = cg.fresh_label();
+            cg.emit(format!("br label %{next}"));
+            Ok((fitted, next))
+        })
+        .collect()
 }
 
 fn adapt_phi_arms(

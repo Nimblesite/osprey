@@ -52,6 +52,17 @@ generates its own key as base64 of 16 random bytes.
 `websocketKeepAlive` blocks until `SIGINT` or `SIGTERM`, then stops every
 server the process created and returns.
 
+A server's connection list holds its live connections and nothing else. A
+connection leaves it before its descriptor closes, so `websocketServerBroadcast`
+counts and writes to live connections only, and no number of connections over a
+server's life uses up the 1,000 it can hold at once. A broadcast to a peer whose
+socket has stayed full for a second doesn't count that peer, and ends its
+connection, as it has missed a frame.
+
+Stopping a server ends its connections and waits for the threads serving them
+before it returns. A connection that hasn't finished its handshake ends within a
+second.
+
 ## Framing limits [BUILTIN-WEBSOCKET-FRAMING]
 
 The runtime handles single text frames only. It does not implement fragmented,

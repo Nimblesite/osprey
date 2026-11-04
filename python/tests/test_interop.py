@@ -3,6 +3,7 @@
 import gc
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -30,6 +31,8 @@ fn object(operation, objectId, name, args) = osprey_python_object(operation, obj
 let started = osprey_python_call("builtins", "setattr", "[null, null, null]")
 fn startup() = started
 '''
+SOURCE += "".join(f"fn numeric_{kind}(value: {kind}) = value\n" for kind in
+                  ["int8", "int16", "int32", "uint8", "uint16", "uint32", "float16", "float32"])
 
 
 class InteropTests(unittest.TestCase):
@@ -44,6 +47,49 @@ class InteropTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.scratch.cleanup()
+
+    def test_sized_numbers_keep_their_width_and_validate_before_native_calls(self):
+        # [FFI-NUMERIC-WIDTH] Binary16 crosses the C boundary as uint16 bits.
+        for kind, low, high in [
+            ("int8", -128, 127), ("int16", -32768, 32767),
+            ("int32", -(2**31), 2**31 - 1), ("uint8", 0, 255),
+            ("uint16", 0, 65535), ("uint32", 0, 2**32 - 1), ("float16", 0, 65535),
+        ]:
+            function = getattr(self.library, "numeric_" + kind)
+            for value in [low, high, 0]:
+                with self.subTest(kind=kind, value=value):
+                    self.assertEqual(function(value), value)
+            for value in [low - 1, high + 1]:
+                with self.assertRaises(OverflowError):
+                    function(value)
+            for value in [True, 1.0, "1"]:
+                with self.assertRaises(TypeError):
+                    function(value)
+        self.assertEqual(self.library.numeric_float32(0.1), 0.10000000149011612)
+        self.assertEqual(self.library.numeric_float32(-123.5), -123.5)
+        with self.assertRaises(OverflowError):
+            self.library.numeric_float32(1e40)
+        with self.assertRaises(TypeError):
+            self.library.numeric_float32(1)
+
+    def test_copied_string_results_release_their_native_arc_reference(self):
+        # [PYTHON-HOST-ABI] A Python copy must not lose the native owned pointer.
+        probe = '''import pathlib, tempfile, osprey
+with tempfile.TemporaryDirectory(prefix="osprey-return-arc-") as directory:
+    path = pathlib.Path(directory) / "probe.osp"
+    path.write_text('fn echo(value) = value + "!"\\n')
+    library = osprey.build(path)
+    for _ in range(COUNT):
+        assert library.echo("世界 🐦") == "世界 🐦!"
+'''
+        for count in [0, 100]:
+            result = subprocess.run(
+                [sys.executable, "-c", probe.replace("COUNT", str(count))],
+                capture_output=True, text=True,
+                env={**os.environ, "OSPREY_ARC_DEBUG": "1"})
+            self.assertEqual(result.returncode, 0, result.stderr)
+            counts = re.findall(r"\[osp-arc\] exit: (\d+) live objects", result.stderr)
+            self.assertEqual(counts, ["0"], f"{count} calls: {result.stderr}")
 
     def test_scalars_and_utf8_are_checked_before_native_calls(self):
         lib = self.library

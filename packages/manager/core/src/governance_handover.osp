@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Governance
 import registry::Maybe
 
@@ -18,11 +19,11 @@ module GovernanceHandover {
     /// A proposal is only a proposal: it grants no rights and the admin
     /// reference does not move.
     export fn proposeHandover(registry, id, transferId, proposed, proof, now) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
-            Governance::andThen(Governance::writable(pkg), fn(_) =>
-                Governance::andThen(noLiveProposal(registry, id), fn(_) =>
-                    Governance::andThen(recipient(registry, pkg, proposed), fn(_) =>
-                        Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+            Checked::andThen(Governance::writable(pkg), fn(_) =>
+                Checked::andThen(noLiveProposal(registry, id), fn(_) =>
+                    Checked::andThen(recipient(registry, pkg, proposed), fn(_) =>
+                        Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                             Governance::proposalStatement(pkg.key, pkg.authorityEpoch, pkg.admin, proposed)), fn(_) =>
                             Success { value: registry { transfers: listAppend(registry.transfers,
                                 Governance::Transfer { id: transferId, package: id, current: pkg.admin, proposed: proposed,
@@ -35,13 +36,13 @@ module GovernanceHandover {
     /// Acceptance is still not administration: only the package's admin
     /// reference decides who administers.
     export fn acceptHandover(registry, transferId, proof) =
-        Governance::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
-            Governance::andThen(liveTransfer(t), fn(_) =>
-                Governance::andThen(Governance::membershipOf(registry, t.proposed), fn(m: Governance::Membership) =>
-                    Governance::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
-                        Governance::andThen(liveAcceptingHuman(p, proof), fn(_) =>
-                            Governance::andThen(Governance::packageOf(registry, t.package), fn(pkg: Governance::Package) =>
-                                Governance::andThen(Governance::requireProof(proof, m.principal, t.proposed,
+        Checked::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
+            Checked::andThen(liveTransfer(t), fn(_) =>
+                Checked::andThen(Governance::membershipOf(registry, t.proposed), fn(m: Governance::Membership) =>
+                    Checked::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
+                        Checked::andThen(liveAcceptingHuman(p, proof), fn(_) =>
+                            Checked::andThen(Governance::packageOf(registry, t.package), fn(pkg: Governance::Package) =>
+                                Checked::andThen(Governance::requireProof(proof, m.principal, t.proposed,
                                     Governance::handoverAcceptanceStatement(t.id, pkg.key, t.expectedEpoch, t.current, t.proposed)), fn(_) =>
                                     Success { value: Governance::replaceTransfer(registry,
                                         t { acceptance: Maybe::some(proof), status: Governance::Accepted }) })))))))
@@ -55,37 +56,37 @@ module GovernanceHandover {
     /// hold window; the expected admin and epoch must both still match, so a
     /// stale proposal can never replace a newer admin.
     export fn finalizeHandover(registry, transferId, decidedAt) =
-        Governance::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
-            Governance::andThen(acceptedTransfer(t), fn(_) =>
-                Governance::andThen(withinHold(t, decidedAt), fn(_) =>
-                    Governance::andThen(Governance::packageOf(registry, t.package), fn(pkg: Governance::Package) =>
-                        Governance::andThen(stillCurrent(t, pkg), fn(_) =>
-                            Governance::andThen(Governance::writable(pkg), fn(_) =>
+        Checked::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
+            Checked::andThen(acceptedTransfer(t), fn(_) =>
+                Checked::andThen(withinHold(t, decidedAt), fn(_) =>
+                    Checked::andThen(Governance::packageOf(registry, t.package), fn(pkg: Governance::Package) =>
+                        Checked::andThen(stillCurrent(t, pkg), fn(_) =>
+                            Checked::andThen(Governance::writable(pkg), fn(_) =>
                                 Success { value: completed(registry, pkg, t) })))))) 
 
     /// The current administrator cancels a live proposal; the evidence row stays.
     export fn cancelHandover(registry, transferId, proof) =
-        Governance::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
-            Governance::andThen(liveTransfer(t), fn(_) =>
-                Governance::andThen(Governance::packageOf(registry, t.package), fn(pkg: Governance::Package) =>
-                    Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
+            Checked::andThen(liveTransfer(t), fn(_) =>
+                Checked::andThen(Governance::packageOf(registry, t.package), fn(pkg: Governance::Package) =>
+                    Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                         Governance::cancelStatement(transferId)), fn(_) =>
                         Success { value: Governance::replaceTransfer(registry, t { status: Governance::Cancelled }) }))))
 
     /// The intended recipient declines a live proposal; the evidence row stays.
     export fn declineHandover(registry, transferId, proof) =
-        Governance::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
-            Governance::andThen(liveTransfer(t), fn(_) =>
-                Governance::andThen(recipientPrincipal(registry, t.proposed), fn(actor) =>
-                    Governance::andThen(Governance::requireProof(proof, actor, t.proposed,
+        Checked::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
+            Checked::andThen(liveTransfer(t), fn(_) =>
+                Checked::andThen(recipientPrincipal(registry, t.proposed), fn(actor) =>
+                    Checked::andThen(Governance::requireProof(proof, actor, t.proposed,
                         Governance::declineStatement(transferId)), fn(_) =>
                         Success { value: Governance::replaceTransfer(registry, t { status: Governance::Declined }) }))))
 
     /// Mark a live proposal expired once its window has passed; the row
     /// stays as evidence and can never replace a newer admin.
     export fn expireHandover(registry, transferId, now) =
-        Governance::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
-            Governance::andThen(liveTransfer(t), fn(_) =>
+        Checked::andThen(Governance::transferOf(registry, transferId), fn(t: Governance::Transfer) =>
+            Checked::andThen(liveTransfer(t), fn(_) =>
                 match now > t.expiresAt {
                     true => Success { value: Governance::replaceTransfer(registry, t { status: Governance::Expired }) }
                     false => Error { message: "governance.transfer.not-expired" }
@@ -95,11 +96,11 @@ module GovernanceHandover {
     export fn hold() = holdHours
 
     fn recipientPrincipal(registry, id) =
-        Governance::andThen(Governance::membershipOf(registry, id), fn(m: Governance::Membership) =>
-            Governance::andThen(Governance::activeMemberOf(m), fn(_) =>
-                Governance::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
-                    Governance::andThen(Governance::livePrincipal(p), fn(_) =>
-                        Governance::andThen(Governance::humanPrincipal(p), fn(_) => Success { value: p.id })))))
+        Checked::andThen(Governance::membershipOf(registry, id), fn(m: Governance::Membership) =>
+            Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
+                Checked::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
+                    Checked::andThen(Governance::livePrincipal(p), fn(_) =>
+                        Checked::andThen(Governance::humanPrincipal(p), fn(_) => Success { value: p.id })))))
 
     fn noLiveProposal(registry, id) = match Maybe::isPresent(Governance::liveTransferFor(registry, id)) {
         true => Error { message: "governance.transfer.pending-exists" }
@@ -108,21 +109,21 @@ module GovernanceHandover {
 
     fn recipient(registry, pkg: Governance::Package, proposed) = match proposed == pkg.admin {
         true => Error { message: "governance.recipient.self" }
-        false => Governance::andThen(Governance::membershipOf(registry, proposed), fn(m: Governance::Membership) =>
-            Governance::andThen(Governance::activeMemberOf(m), fn(_) =>
-                Governance::andThen(Governance::sameOrgMember(m, pkg.org), fn(_) => humanRecipient(registry, m))))
+        false => Checked::andThen(Governance::membershipOf(registry, proposed), fn(m: Governance::Membership) =>
+            Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
+                Checked::andThen(Governance::sameOrgMember(m, pkg.org), fn(_) => humanRecipient(registry, m))))
     }
 
     fn humanRecipient(registry, m: Governance::Membership) =
-        Governance::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
+        Checked::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
             Governance::humanPrincipal(p))
 
     fn liveAcceptingHuman(p: Governance::Principal, proof) =
-        Governance::andThen(Governance::livePrincipal(p), fn(_) =>
-            Governance::andThen(Governance::humanPrincipal(p), fn(_) => Governance::requireHumanCeremony(proof)))
+        Checked::andThen(Governance::livePrincipal(p), fn(_) =>
+            Checked::andThen(Governance::humanPrincipal(p), fn(_) => Governance::requireHumanCeremony(proof)))
 
     fn principalOfMembership(registry, membership) =
-        Governance::andThen(Governance::membershipOf(registry, membership), fn(m: Governance::Membership) =>
+        Checked::andThen(Governance::membershipOf(registry, membership), fn(m: Governance::Membership) =>
             Success { value: m.principal })
 
     fn liveTransfer(t: Governance::Transfer) = match Governance::isLiveTransfer(t) {

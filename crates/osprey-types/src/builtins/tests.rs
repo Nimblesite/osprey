@@ -60,11 +60,11 @@ fn registers_core_and_polymorphic_builtins() {
     );
     assert_eq!(
         builtin_signature("intDiv").as_deref(),
-        Some("intDiv : (int, int) -> int")
+        Some("intDiv : (t0, t0) -> t0")
     );
     assert_eq!(
         builtin_signature("wrapAdd").as_deref(),
-        Some("wrapAdd : (int, int) -> int")
+        Some("wrapAdd : (t0, t0) -> t0")
     );
 }
 
@@ -91,6 +91,84 @@ fn file_builtins_include_the_host_tensor_loader() {
     assert_eq!(
         builtin_signature("loadTensor").as_deref(),
         Some("loadTensor : (string, string) -> Result<List<float>, Error>")
+    );
+}
+
+/// [GPU-BUFFER-TENSOR] Reject unsupported requested storage before codegen.
+#[test]
+fn tensor_loader_result_obligations_survive_aliases_and_helpers() {
+    for (prefix, callee) in [
+        ("", "gpuLoadTensor"),
+        ("let load = gpuLoadTensor\n", "load"),
+        ("fn load(path, name) = gpuLoadTensor(path, name)\n", "load"),
+    ] {
+        for name in ["float", "float32", "float16"].into_iter().chain(
+            crate::numeric::Numeric::ALL
+                .into_iter()
+                .filter(|n| !n.is_float())
+                .map(crate::numeric::Numeric::name)
+                .chain(["bool", "string"]),
+        ) {
+            assert_tensor_request(prefix, callee, name);
+        }
+    }
+}
+
+fn assert_tensor_request(prefix: &str, callee: &str, name: &str) {
+    let source = format!(
+        "{prefix}fn wanted() -> Result<GpuBuffer<{name}>, Error> = {callee}(\"x\", \"w\")\n"
+    );
+    let errors = crate::testutil::check(&source);
+    if matches!(name, "float" | "float32" | "float16") {
+        assert!(errors.is_empty(), "{source}: {errors:?}");
+    } else {
+        assert!(
+            !errors.is_empty(),
+            "unsupported tensor element accepted: {source}"
+        );
+    }
+}
+
+/// [GPU-MATMUL] Function values retain the float/float32 operand restriction.
+#[test]
+fn matrix_operand_obligations_survive_aliases_and_helpers() {
+    for (prefix, callee) in [
+        ("", "gpuMatMul"),
+        ("let product = gpuMatMul\n", "product"),
+        (
+            "fn product(a, b, r, k, c) = gpuMatMul(a, b, r, k, c)\n",
+            "product",
+        ),
+    ] {
+        for name in ["float", "float32", "float16", "int", "uint8", "bool"] {
+            assert_matrix_request(prefix, callee, name);
+        }
+    }
+}
+
+fn assert_matrix_request(prefix: &str, callee: &str, name: &str) {
+    let source = format!(
+        "{prefix}fn wanted(a: GpuBuffer<{name}>, b: GpuBuffer<{name}>) = {callee}(a, b, 1, 1, 1)\n"
+    );
+    let errors = crate::testutil::check(&source);
+    assert_eq!(
+        errors.is_empty(),
+        matches!(name, "float" | "float32"),
+        "{source}: {errors:?}"
+    );
+}
+
+/// [GPU-MATMUL] A better constraint diagnostic keeps the original call site.
+#[test]
+fn matrix_operand_rejection_keeps_its_source_position() {
+    let errors = crate::testutil::check(include_str!(
+        "../../../../examples/failscompilation/gpu_matmul_int_buffer.ospo"
+    ));
+    assert!(
+        errors.iter().any(|error| error
+            .position
+            .is_some_and(|at| at.line == 5 && at.column == 4)),
+        "{errors:?}"
     );
 }
 

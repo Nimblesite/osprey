@@ -72,13 +72,13 @@ editor integration are specified in [Testing Framework](../language/0027-Testing
 
 The numeric builtins are inside the arithmetic totality guarantee: none may trap, panic, wrap silently, or return an unspecified value ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)). `abs` preserves the input numeric type and `intDiv` returns `int`; an unrepresentable integer result performs an `Arith` operation whose handler supplies the value ([ARITH-EFFECT](../language/0037-ArithmeticEffects.md#the-model--arith-effect)). `checkedAdd`/`checkedSub`/`checkedMul` are the explicit value-level form for code that wants overflow as data, and keep the runtime's generic `Error` channel. The wrapping and saturating helpers are total and perform nothing.
 
-### `abs(n: T) -> T`, where `T` is `int` or `float` — [BUILTIN-ABS]
-Returns the absolute value with the input's numeric type. Because `2^63` is not representable, `abs(-9223372036854775808)` performs `Arith.overflow` and the enclosing policy supplies the result; it never wraps or panics. A constant integer argument other than the minimum is total.
+### `abs(n: T) -> T`, where `T` is any numeric type — [BUILTIN-ABS]
+Returns the absolute value with the input's numeric type. Because the most negative value of a signed type has no positive counterpart, `abs(-9223372036854775808)` and `abs` of `int8` `-128` perform `Arith.overflow` and the enclosing policy supplies the result; it never wraps or panics. On an unsigned type `abs` is the identity. A constant integer argument other than the minimum is total.
 
 For a float, `abs` clears the sign: `abs(-0.0)` is positive zero, either infinity becomes positive infinity, and NaN remains NaN. This overload is total and requires no `Arith` policy. Both overloads remain usable through function values, including aliases, callbacks and returned or stored functions. Numeric overload inference follows the existing arithmetic rule: a helper or alias with an unresolved numeric type retains one overload selected by its uses; separate builtin uses can select different numeric types. Nonnumeric arguments and Result wrappers are rejected. See [FLOAT-IEEE-RESULTS](../language/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results).
 
-### `intDiv(a: int, b: int) -> int` — [BUILTIN-INTDIV]
-Truncates toward zero. A zero divisor performs `Arith.remainderByZero`, and `intDiv(-9223372036854775808, -1)` performs `Arith.overflow`; every other input yields the quotient. A literal divisor other than `0` and `-1` is total, so `half` below needs no handler, while `ratio` requires an `Arith` handler for both operations. The `/` operator instead returns `float`.
+### `intDiv(a: T, b: T) -> T`, where `T` is any integer type — [BUILTIN-INTDIV]
+Truncates toward zero at the operand type. A zero divisor performs `Arith.remainderByZero`, and the most negative signed value divided by `-1` (`intDiv(-9223372036854775808, -1)`, `int8` `intDiv(-128, -1)`) performs `Arith.overflow`; every other input yields the quotient. A literal divisor other than `0` and `-1` is total, so `half` below needs no handler, while `ratio` requires an `Arith` handler for both operations. The `/` operator instead returns `float`.
 
 ```osprey
 intDiv(7, 2)        // 3
@@ -95,7 +95,7 @@ ratio (a, b) = intDiv (a, b)
 ```
 
 ### `wrapAdd` / `wrapSub` / `wrapMul` / `satAdd` / `satSub` / `satMul` — [BUILTIN-TOTAL-ARITH]
-Each has signature `(a: int, b: int) -> int` and never performs an `Arith` operation. The `wrap` helpers return the two's-complement result; the `sat` helpers clamp to the `int` range. They are the sanctioned spelling for code where wraparound or clamping is the definition rather than a fault — hashes, checksums, PRNGs — and for `Arith` arms that must not require an outer policy ([ARITH-EFFECT-TOTAL-HELPERS](../language/0037-ArithmeticEffects.md#total-helpers--arith-effect-total-helpers)).
+Each has signature `(a: T, b: T) -> T` for any integer type `T` and never performs an `Arith` operation. The `wrap` helpers return the result modulo 2 to the type's width; the `sat` helpers clamp to the type's range ([TYPE-NUMERIC-ARITH-WIDTH](../language/0004-TypeSystem.md#arithmetic-at-width--type-numeric-arith-width)). They are the sanctioned spelling for code where wraparound or clamping is the definition rather than a fault — hashes, checksums, PRNGs — and for `Arith` arms that must not require an outer policy ([ARITH-EFFECT-TOTAL-HELPERS](../language/0037-ArithmeticEffects.md#total-helpers--arith-effect-total-helpers)).
 
 ```osprey
 wrapAdd(9223372036854775807, 1)   // -9223372036854775808
@@ -111,25 +111,62 @@ satAdd (9223372036854775807, 1)    // 9223372036854775807
 satSub (-9223372036854775808, 1)   // -9223372036854775808
 ```
 
-### `toFloat(n: int) -> float` — [BUILTIN-TOFLOAT]
-Widens an integer to the nearest `double`, rounding ties to even. Exact for
-`|n| <= 2^53`; larger magnitudes round, which is the IEEE-754 result and not
-an error. The conversion is total — every `int` has a nearest `double` — so
-it returns a bare `float`, not a `Result`.
+### Integer conversions — [BUILTIN-CONVERT-INT]
 
-This is the explicit element conversion GPU kernels use; a buffer never
-widens implicitly at its boundary ([GPU-CONVERT](0034-GPUComputation.md)).
-It may be passed by name as a kernel, not only called directly.
+`toInt`, `toInt8`, `toInt16`, `toInt32`, `toUint8`, `toUint16` and `toUint32`
+each take one value of any integer type ([TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized))
+and return the type they are named for. A widening or same-kind conversion
+that fits is exact. A result outside the target's range performs
+`Arith.overflow` with the source value as its operand, exactly as `+` does,
+so `toUint8(300)` under a wrapping handler is `44` and under no handler is a
+compile-time rejection ([ARITH-TOTAL](../language/0037-ArithmeticEffects.md#the-guarantee--arith-total)).
+A constant argument that fits is total and needs no handler. Each is open over
+its source type the way `abs` is: one helper selects one source type per
+program. Pure, so a kernel may call or name any of them; on a device an
+out-of-range conversion records the overflow fault ([GPU-DEVICE-FAULT](0034-GPUComputation.md#faults--gpu-device-fault)).
+
+```osprey
+toInt32(70000)            // 70000
+toUint8(200)              // 200
+toInt(toUint32(4000000000)) // 4000000000
+```
+
+```osprey-ml
+toInt32 70000             // 70000
+toUint8 200               // 200
+toInt (toUint32 4000000000) // 4000000000
+```
+
+### Float conversions — [BUILTIN-CONVERT-FLOAT]
+
+`toFloat`, `toFloat32` and `toFloat16` each take one value of any numeric
+type — integer or float, any width — and return the float type they are
+named for, rounding to nearest with ties to even. The conversion is total:
+every number has a nearest value in the target format, an overflow is the
+signed infinity, and no `Result` is involved. `toFloat` is exact for every
+`int` with `|n| <= 2^53`; `toFloat32(16777217)` is `16777216.0`;
+`toFloat16(65520.0)` is infinity. Widening a float to a wider float is exact.
+
+These are the explicit element conversions GPU kernels use; a buffer never
+widens or narrows implicitly at its boundary ([GPU-CONVERT](0034-GPUComputation.md#element-conversion--gpu-convert)).
+Each may be passed by name as a kernel, not only called directly.
 
 ```osprey
 toFloat(7)                        // 7.0
-toFloat(-3)                       // -3.0
-gpuIota(1000) |> gpuMap(toFloat)  // GpuBuffer<float>, 0.0 .. 999.0
+toFloat32(0.1)                    // 0.1, the nearest binary32
+gpuIota(1000) |> gpuMap(toFloat32)  // GpuBuffer<float32>, 0.0 .. 999.0
+```
+
+```osprey-ml
+toFloat 7                         // 7.0
+toFloat32 0.1                     // 0.1, the nearest binary32
+gpuIota 1000 |> gpuMap toFloat32  // GpuBuffer<float32>, 0.0 .. 999.0
 ```
 
 ### `sqrt` / `exp` / `ln` / `tanh` — [BUILTIN-MATH]
-Each has signature `(x: float) -> float` and is total over IEEE doubles, so
-it returns a bare `float` and never performs an `Arith` operation
+Each has signature `(x: T) -> T`, where `T` is `float`, `float32` or `float16`.
+An undecided argument defaults to `float`. Each is total over IEEE values,
+returns the argument's floating-point type and never performs an `Arith` operation
 ([FLOAT-IEEE-RESULTS](../language/0037-ArithmeticEffects.md#floating-point-results--float-ieee-results)):
 a domain error yields NaN (`sqrt(-1.0)`, `ln(-1.0)`), `ln(0.0)` is negative
 infinity, an `exp` too large for a double is positive infinity, and `tanh`
@@ -138,11 +175,15 @@ so a program keeps `log` for its own logger. `sqrt`, `exp`, `ln` and `tanh`
 are reserved builtin names like every other builtin: a program may not define
 its own function under one of them (`cannot redefine built-in function`).
 
-The argument is a `float` and nothing else. There is no implicit widening:
-`exp(3)` is a type error (`cannot unify float with int`), and the program
-writes `exp(toFloat(3))`. Each function is pure, so a GPU kernel may call it
+The argument must be a floating-point value. There is no implicit integer conversion:
+`exp(3)` is a type error, and the program writes `exp(toFloat(3))`
+or `exp(toFloat32(3))`. Each function is pure, so a GPU kernel may call it
 or *be* it, passed by name ([GPU-KERNEL-FORM](0034-GPUComputation.md)):
 `scores |> gpuMap(exp)` extracts a kernel whose body is the function.
+
+At `float32`, intrinsic names end in `.f32` and C math symbols take the `f` suffix.
+At `float16`, the operation computes in binary32 and rounds back once.
+The `f64` symbols below describe the default `float` case.
 
 Lowering: `sqrt`, `exp` and `ln` are the LLVM `llvm.sqrt.f64`,
 `llvm.exp.f64` and `llvm.log.f64` intrinsics; `tanh` is the C library's
@@ -164,9 +205,9 @@ probabilities = scores |> gpuMap exp
 ### Trigonometric functions — [BUILTIN-MATH-TRIG]
 `sin`, `cos`, `tan`, `asin`, `acos`, `atan` and the two-argument `atan2`
 extend [BUILTIN-MATH] with the elementary trigonometric functions. Each
-unary one has signature `(x: float) -> float`; `atan2` is
-`(y: float, x: float) -> float`. All are total over IEEE doubles and return a
-bare `float`, never an `Arith` operation ([FLOAT-IEEE-RESULTS]): `asin` and
+unary one has signature `(x: T) -> T`; `atan2` is
+`(y: T, x: T) -> T`, with the float types and width rules of [BUILTIN-MATH]. All are total over IEEE values and return
+the same floating-point type, never an `Arith` operation ([FLOAT-IEEE-RESULTS]): `asin` and
 `acos` of an argument outside `[-1.0, 1.0]` yield NaN, `tan` at a pole yields
 the large finite neighbour (the argument is an approximation of π/2, so the
 exact pole is unreachable). `atan2(y, x)` returns the angle of `(x, y)` in `[-π, π]`, including signed-zero quadrants: `atan2(0.0, 0.0)` is `0.0`, `atan2(±0.0, -1.0)` is `±π`, and `atan2(±0.0, 1.0)` is `±0.0`. Each function can be called inside a GPU kernel or passed by name, as in `gpuMap(sin)` ([GPU-KERNEL-FORM]).
@@ -185,7 +226,7 @@ atan2(1.0, -1.0)  // 2.356194490192345
 ### Hyperbolic functions — [BUILTIN-MATH-HYPERBOLIC]
 `sinh`, `cosh`, `asinh`, `acosh` and `atanh` complete the hyperbolic family
 started by `tanh` in [BUILTIN-MATH]. Each has signature
-`(x: float) -> float`, is total over IEEE doubles and returns a bare `float`:
+`(x: T) -> T` at the float types and widths of [BUILTIN-MATH], is total over IEEE values and returns the same type:
 `sinh` and `cosh` of a large argument yield infinity, `acosh` of an argument
 below `1.0` yields NaN, `atanh` of a magnitude above `1.0` yields NaN and
 `atanh(±1.0)` yields `±infinity`. Pure, so a kernel may call or name them.
@@ -202,7 +243,7 @@ asinh(1.0)   // 0.881373587019543
 ### Logarithmic and exponential families — [BUILTIN-MATH-LOG]
 `log2`, `log10`, `log1p` and `expm1` extend [BUILTIN-MATH] with the base-2
 and base-10 logarithms and the cancellation-avoiding companions of `ln` and
-`exp`. Each has signature `(x: float) -> float` and is total: `log2(0.0)` and
+`exp`. Each has signature `(x: T) -> T` and is total: `log2(0.0)` and
 `log10(0.0)` are negative infinity, `log2`/`log10` of a negative argument are
 NaN, `log1p(-1.0)` is negative infinity, `log1p` below `-1.0` is NaN, and
 `expm1` of a large argument is infinity. `log1p(x)` is `ln(1.0 + x)` computed
@@ -222,7 +263,7 @@ log1p(1e-16)  // 1e-16
 
 ### Error functions — [BUILTIN-MATH-SPECIAL]
 `erf` and `erfc` are the Gaussian error function and its complement. Each has
-signature `(x: float) -> float` and is total: `erf(±infinity)` is `±1.0`,
+signature `(x: T) -> T` and is total: `erf(±infinity)` is `±1.0`,
 `erfc(+infinity)` is `0.0`, `erfc(-infinity)` is `2.0`. `erfc` is computed
 as `1.0 - erf(x)` without cancellation, so the tail keeps its relative
 precision. Pure, so a kernel may call or name them. Both are the C library's
@@ -234,13 +275,13 @@ erfc(1.0)  // 0.15729920705028516
 ```
 
 ### Rounding and floating-point classification — [BUILTIN-MATH-ROUNDING]
-`floor`, `ceil`, `trunc` and `round` have signature `(x: float) -> float`;
+`floor`, `ceil`, `trunc` and `round` have signature `(x: T) -> T`;
 `pow`, `atan2` (see [BUILTIN-MATH-TRIG]), `hypot`, `fmod` and `copysign`
-have signature `(x: float, y: float) -> float`. All are total and pure, so a
+have signature `(x: T, y: T) -> T` at one float type `T` ([BUILTIN-MATH]). All are total and pure, so a
 kernel may call or name them.
 
 - `floor` is the greatest integer `<= x`, `ceil` the least `>= x`, `trunc`
-  the integer part toward zero. Each returns a `float`, so
+  the integer part toward zero. Each returns its input type, so
   `floor(-2.7)` is `-3.0`. `floor`/`ceil`/`trunc` of an infinity or NaN is
   that value itself; a signed zero is preserved.
 - `round` rounds to the nearest integer, with **halfway cases rounded to
@@ -278,47 +319,41 @@ fmod(-7.5, 2.0)  // -1.5
 copysign(3.0, -1.0)  // -3.0
 ```
 
-### `float32(x: float) -> float` — [BUILTIN-FLOAT32]
-Rounds a double to the nearest binary32 (ties to even) and widens back, so the
-result is exactly the value a float32 pipeline holds: `float32(0.1)` is
-`0.10000000149011612`. Total and pure, so a kernel may call or name it.
+### `floatBits` / `float32Bits` / `float16Bits` and their inverses — [BUILTIN-FLOAT-BITS]
+Bit-level views of the three float formats as the integer type of the same
+width. All six are total and pure bitcasts: they preserve NaN payloads, signed
+zeros, infinities and subnormals exactly, and each pair inverts.
 
-Arithmetic outside the conversion still uses binary64. When porting a float32 pipeline, apply `float32` at its rounding boundaries and compare the results with the original implementation; the conversion alone does not establish bit-for-bit agreement for the complete calculation. Lowering is one `fptrunc double … to float` and one `fpext float … to double`.
-
-### `floatBits` / `floatFromBits` / `float32Bits` / `float32FromBits` — [BUILTIN-FLOAT-BITS]
-Bit-level views of the two float formats, as `int` words. All are total and
-pure.
-
-- `floatBits(x: float) -> int` is the binary64 word of `x`: a bitcast, so it
-  preserves NaN payloads, signed zeros and infinities exactly.
+- `floatBits(x: float) -> int` and `floatFromBits(bits: int) -> float`.
   `floatBits(1.0)` is `4607182418800017408`.
-- `floatFromBits(bits: int) -> float` is the binary64 the word `bits` holds.
-  It is the exact inverse of `floatBits`.
-- `float32Bits(x: float) -> int` is the binary32 pattern of the nearest
-  float32 to `x` (the low 32 bits of the float32 word), as an int.
-  `float32Bits(0.1)` is `1036831949`.
-- `float32FromBits(bits: int) -> float` is the double the binary32 pattern
-  `bits` holds, widened exactly — the inverse of `float32Bits` on float32
-  values.
+- `float32Bits(x: float32) -> int32` and `float32FromBits(bits: int32) -> float32`.
+  `float32Bits(toFloat32(0.1))` is `1036831949`.
+- `float16Bits(x: float16) -> int16` and `float16FromBits(bits: int16) -> float16`.
+  `float16Bits(toFloat16(1.0))` is `15360`.
 
-### `floatToInt(x: float) -> Result<int, Error>` — [BUILTIN-FLOATTOINT]
-Checked truncation toward zero. `Success(n)` when `x` is finite and `n` fits
+There is no rounding builtin: rounding to a narrower format is
+`toFloat32` or `toFloat16` ([BUILTIN-CONVERT-FLOAT](#float-conversions--builtin-convert-float)),
+and arithmetic at that format stays there ([TYPE-NUMERIC-ARITH-WIDTH](../language/0004-TypeSystem.md#arithmetic-at-width--type-numeric-arith-width)).
+
+### `floatToInt(x: F) -> Result<int, Error>`, where `F` is any float type — [BUILTIN-FLOATTOINT]
+Checked truncation toward zero from `float`, `float32` or `float16`. `Success(n)` when `x` is finite and `n` fits
 in the `int` range (`-2^63 <= n < 2^63`); `Error` with a clear message when
 `x` is NaN, an infinity, or a finite value whose truncation falls outside the
-range. `floatToInt(-2.9)` is `Success(-2)`; `floatToInt(sqrt(-1.0))` is `Error`. Because it returns a `Result`, it cannot occupy a GPU combinator's scalar return slot. Convert on the host before creating a buffer, or keep a rounded value as a float with `trunc`.
+range. A narrower integer is reached with `toInt32` and its siblings afterwards. `floatToInt(-2.9)` is `Success(-2)`; `floatToInt(sqrt(-1.0))` is `Error`. Because it returns a `Result`, it cannot occupy a GPU combinator's scalar return slot. Convert on the host before creating a buffer, or keep a rounded value as a float with `trunc`.
 
 ### Bitwise integer builtins — [BUILTIN-BITWISE]
-`bitAnd`, `bitOr`, `bitXor` (`(a: int, b: int) -> int`), `bitNot`
-(`(a: int) -> int`), and the three shifts `shiftLeft`, `shiftRight`,
-`shiftRightLogical` (`(a: int, n: int) -> int`) are the two's-complement word
-operations. None of them performs an `Arith` operation and none of them can
-fault; the shifts are **total** over every shift count, defined as the limit
-of repeated shifting:
+`bitAnd`, `bitOr`, `bitXor` (`(a: T, b: T) -> T`), `bitNot`
+(`(a: T) -> T`), and the three shifts `shiftLeft`, `shiftRight`,
+`shiftRightLogical` (`(a: T, n: T) -> T`), for any integer type `T`, are the
+two's-complement operations at `T`'s width. None of them performs an `Arith`
+operation and none of them can fault; the shifts are **total** over every
+shift count, defined as the limit of repeated shifting, with `W` the width:
 
 - `shiftLeft(a, n)` and `shiftRightLogical(a, n)` are `0` for a count outside
-  `0..63`.
+  `0..W-1`.
 - `shiftRight(a, n)` is the arithmetic shift: `0` for `a >= 0` and `-1` for
-  `a < 0` when the count is outside `0..63`.
+  `a < 0` when the count is outside `0..W-1`; on an unsigned type it is the
+  logical shift.
 
 `shiftRightLogical(-16, 2)` is `4611686018427387900` (the bits move, the sign
 is not copied); `shiftRight(-16, 2)` is `-4` (the sign is copied). All are

@@ -74,6 +74,8 @@ tests/regressions/effects/retry_until_valid.test.ospml a continuation for `Promp
 tests/regressions/effects/staged_shared.test.osp a continuation for `Audit.note` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/effects/staged_shared.test.ospml a continuation for `Audit.note` (a suspended continuation cannot cross or outlive a synchronous host call)
 tests/regressions/fiber/cpu_profiling_demo.test.osp a continuation for `Tuning.baseline` (a suspended continuation cannot cross or outlive a synchronous host call)
+tests/regressions/http/chunked_hostile_server.test.osp HTTP builtin `httpResponseFree`
+tests/regressions/http/chunked_hostile_server.test.ospml HTTP builtin `httpResponseFree`
 tests/regressions/http/http_client_example.test.osp HTTP builtin `httpCreateServer`
 tests/regressions/http/http_client_example.test.ospml HTTP builtin `httpCreateServer`
 tests/regressions/http/http_create_client.test.osp HTTP builtin `httpCreateClient`
@@ -86,3 +88,5 @@ tests/regressions/http/net_local_address.test.osp link directive `// @link: ssl`
 tests/regressions/http/net_local_address.test.ospml link directive `// @link: ssl`
 tests/regressions/http/tui_repo_table.test.osp HTTP builtin `httpResponseBody`
 tests/regressions/http/tui_repo_table.test.ospml HTTP builtin `httpResponseBody`
+tests/regressions/http/websocket_connections.test.osp WebSocket builtin `websocketServerBroadcast`
+tests/regressions/http/websocket_connections.test.ospml WebSocket builtin `websocketServerBroadcast`

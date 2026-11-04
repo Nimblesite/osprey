@@ -1,49 +1,49 @@
-# Plan 0045 — Compile-time ownership (`--memory=ownership`)
+# Plan Compile-time ownership (`--memory=ownership`)
 
-> **NOT IN ACTIVE WORK.** Written on 2026-11-01 to record the design. Nobody implements, tests or benchmarks anything in this plan until the owner schedules it. Until then the `none` backend stays exactly as [spec 0018](../specs/compiler/0018-MemoryManagement.md) describes it.
+Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#compile-time-ownership-mem-ownership-static)
 
-Contract: [MEM-OWNERSHIP-STATIC](../specs/compiler/0018-MemoryManagement.md#compile-time-ownership-mem-ownership-static). Status: **not started.**
+## Constraints
 
-## Summary
+- Leave `--memory=none`, `compiler/runtime/memory_runtime.c`, and the wasm `none` passthrough unchanged until Phase 3; they stay as [MEM-BACKENDS] describes.
+- `ownership` adds no lifetimes, borrow markers, or ownership annotations to source; unprovable ownership is a compile error naming the value and both uses [MEM-OWNERSHIP-STATIC].
+- Collection stays unobservable: the backend changes only which programs compile and when memory is freed, never a compiled program's output [MEM-OPAQUE].
 
-A third memory backend, after tracing GC and ARC: the compiler proves when every managed value dies and emits the free itself, the way Rust's ownership and borrowing rules do. There is no collector and no reference count at run time. Unlike Rust, Osprey source carries no lifetimes, `&`, `move` or ownership annotations; the existing ownership ledger ([MEM-OWNERSHIP]) infers owners and borrows, and a program whose ownership the compiler cannot prove is rejected with a diagnostic naming the value and both uses.
+## Prerequisites in place
 
-`ownership` replaces the unmanaged `none` backend (the old `--memory=default`). `none` never reclaims general allocations; `ownership` reclaims all of them with the same zero run-time bookkeeping. When this plan lands, `none` and `compiler/runtime/memory_runtime.c` are deleted, not deprecated.
+- Perceus ownership ledger with proved last uses and `osp_release_unique` already exists in crates/osprey-codegen/src/arc.rs [MEM-OWNERSHIP].
 
-## Why it fits Osprey
+## Phase 0 — design decisions recorded in spec 0018
 
-- **The heap is acyclic** ([MEM-ACYCLIC]): immutable values cannot form cycles, so a single-owner tree plus borrows covers the whole heap.
-- **The ledger already exists**: codegen already tracks fresh owners, moves, borrows, proved last uses and proved-unique values (`osp_release_unique`). Today an unproved case falls back to `osp_retain`/`osp_release`; under `ownership` an unproved case is a compile error instead.
-- **Collection stays unobservable** ([MEM-OPAQUE]): the backend changes when memory is freed and which programs compile, never a compiled program's output.
-
-## Open design questions
-
-Decide these before phase 1; record each answer in spec 0018.
-
-- **Sharing.** Persistent lists and maps share structure between versions. Either the backend rejects programs that keep two live versions, or shared nodes are copied on the second use (an implicit clone the diagnostic can recommend instead).
-- **Fibers and channels.** `spawn`, `await` and channel sends currently co-own values with the runtime ([MEM-FIBER-ISOLATION]). Ownership must transfer to exactly one side, or repeated `await` of a managed result is rejected.
-- **Closures and effects.** Captured values, resumptions and handler state need an owner the analysis can see across `perform`/`resume`.
-- **Host libraries.** Exported globals and C ABI results ([MEM-BACKENDS]) need a documented transfer rule for WASM, iOS, Android and Python callers.
-- **Diagnostics.** The rejection must say what to change in source with no annotation syntax available, for example binding a copy or restructuring the second use.
+- [ ] Decide the persistent-list/map sharing rule (reject two live versions vs. copy shared nodes on second use) and record it in docs/specs/compiler/0018-MemoryManagement.md under [MEM-OWNERSHIP-STATIC].
+- [ ] Decide the fiber/channel transfer rule (ownership transfers to exactly one side, or repeated `await` of a managed result is rejected) and record it in spec 0018 [MEM-FIBER-ISOLATION].
+- [ ] Decide the closure/effect owner for captured values, resumptions, and handler state across `perform`/`resume`, and record it in spec 0018.
+- [ ] Decide the host-library transfer rule for exported globals and C ABI results (WASM, iOS, Android, Python callers) and record it in spec 0018 [MEM-BACKENDS].
+- [ ] Decide the rejection diagnostic's recommended source change (e.g. bind a copy or restructure the second use) and record it in spec 0018.
+- Acceptance: each answer is written into spec 0018 before Phase 1 starts.
 
 ## Phase 1 — analysis without codegen
 
-- [ ] `--memory=ownership` accepted by the CLI; it runs the ledger in checking mode and reports every value that would need a run-time retain.
-- [ ] `examples/failscompilation/` programs for each rejected pattern; `tests/regressions/` programs that must be accepted.
-- [ ] A measurement of how much of `tests/` and `examples/` passes the check unchanged; numbers only.
-
-Exit: the check rejects every failscompilation program with a precise diagnostic and accepts the regression set.
+- [ ] Accept `--memory=ownership` in `parse_memory` (crates/osprey-cli/src/invocation.rs) and in the usage strings; run the ownership ledger in checking mode and report every value that would need a run-time retain.
+- Acceptance: `osprey --memory=ownership` compiles a simple program; an unprovable program fails with a diagnostic naming the value and both uses; `parse_memory("ownership")` returns Ok and the tests in crates/osprey-cli/src/tests/execution.rs cover it.
+- [ ] Add `examples/failscompilation/*.ospo` programs for each rejected pattern and `tests/regressions/` programs that must be accepted under `ownership`.
+- Acceptance: the check rejects every failscompilation program with a precise diagnostic and accepts the regression set.
+- [ ] Measure how much of `tests/` and `examples/` passes the check unchanged; record numbers only.
+- Acceptance: a passing-fraction number is recorded.
 
 ## Phase 2 — codegen and runtime
 
-- [ ] Codegen emits direct frees at proved last uses and region exits; no retain/release calls survive in `ownership` IR.
-- [ ] A runtime archive with allocation and free only; the backend hook ABI ([MEM-BACKENDS-CUSTOM]) keeps the other hooks as no-ops.
-- [ ] `crates/run_test_corpus.sh` runs the corpus under `ownership` alongside GC, ARC and wasm32, with zero live allocations at exit as ARC already checks.
-
-Exit: identical corpus output under all backends; zero leaks under `ownership`.
+- [ ] Emit direct frees at proved last uses and region exits in crates/osprey-codegen/src/arc.rs and arc/last_use.rs; no `@osp_retain`/`@osp_release` calls survive in `ownership` IR.
+- Acceptance: `ownership` IR contains frees only, no retain/release calls.
+- [ ] Add `compiler/runtime/memory_ownership.c` with allocation and free only; implement the remaining [MEM-BACKENDS-CUSTOM] hooks as no-ops.
+- Acceptance: the archive builds and links; every ABI hook symbol is present with retain/release/finalizer/collection as no-ops.
+- [ ] Run the corpus under `ownership` in crates/run_test_corpus.sh alongside GC, ARC and wasm32, with zero live allocations at exit (the check ARC already performs).
+- Acceptance: identical corpus output under all backends; zero leaks under `ownership`.
 
 ## Phase 3 — replace `none`
 
-- [ ] Delete `--memory=none`, `memory_runtime.c`, the wasm `none` passthrough and every test, bench and doc reference; the old spelling is rejected like `--memory=default`.
-- [ ] Benchmarks report `ownership` beside GC and ARC.
-- [ ] Spec 0018 states the shipped contract; this plan is retired.
+- [ ] Delete `--memory=none` from `parse_memory` (crates/osprey-cli/src/invocation.rs), `compiler/runtime/memory_runtime.c`, the wasm `none` passthrough (`RUNTIME_LIB_NONE` / `libosprey_runtime_wasm.a` in crates/osprey-cli/src/wasm.rs), and every test, bench and doc reference; `--memory=none` and `--memory=default` are both rejected.
+- Acceptance: `parse_memory` rejects both spellings; grep finds no `memory_runtime.c` or `none`-backend references outside history.
+- [ ] Report `ownership` beside GC and ARC in benchmarks/run.sh (`LANGS`, `EXT`, and the compile case).
+- Acceptance: `osprey-ownership` appears in benchmark output alongside `osprey-gc` and `osprey-arc`.
+- [ ] Update docs/specs/compiler/0018-MemoryManagement.md [MEM-OWNERSHIP-STATIC] to state the shipped contract, removing the "Planned; not implemented" status; retire this plan.
+- Acceptance: the spec no longer marks the backend planned.

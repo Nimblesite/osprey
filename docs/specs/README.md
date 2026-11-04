@@ -13,11 +13,11 @@ The **language** and **compiler** contracts are separate from runtime libraries,
 - [Platform integration](platforms/README.md): WASI/browser hosts, iOS and Android applications.
 - [Developer tooling](tooling/README.md): Language server, editor, documentation and test tools.
 - [Packages and automation](ecosystem/README.md): Package registry, evidence and GitHub automation.
-- [Application frameworks](applications/README.md): Reactive mobile applications, the proof workbench and its lessons, and host protocols.
+- [Application frameworks](applications/README.md): Reactive mobile applications, the proof workbench and its lessons, the Osprey Agent, host protocols, and the local coding model.
 
 ## Contract and delivery
 
-A normative specification defines required behavior; it does not establish implementation or passing tests. [Active plans](../plans/README.md) track unfinished delivery. Keep specifications, implementation, tests and public claims coherent. Preserve hierarchical contract identifiers when moving a rule so comments and assertions continue to name the same requirement.
+A normative specification defines required behavior; it does not establish implementation or passing tests. [Active plans](../plans/) track unfinished delivery. Keep specifications, implementation, tests and public claims coherent. Preserve hierarchical contract identifiers when moving a rule so comments and assertions continue to name the same requirement.
 
 Mixed documents split at their implementation boundary. iOS and Android application integration live under `platforms/`; their option checking, lowering, C ABI and symbol rules live under `compiler/`. Documentation syntax and test built-ins live under `language/`; export tools, test discovery, coverage and editor workflows live under `tooling/`. Debug artifacts belong to `compiler/`, while debugger/editor launch belongs to `tooling/`.
 

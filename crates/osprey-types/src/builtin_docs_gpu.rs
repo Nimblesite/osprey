@@ -12,7 +12,7 @@ use crate::builtin_docs_lang::builtin_doc;
 pub(crate) static GPU: &[BuiltinDoc] = &[
     builtin_doc!(
         "toGpu",
-        "Copies a list of scalars (int, float, or bool) into a dense GpuBuffer. Also consumes an iterator pipeline, replaying its map/filter stages into the buffer with no list in between.",
+        "Copies a list of numeric scalars at any width, or bools, into a dense GpuBuffer. Also consumes an iterator pipeline, replaying its map/filter stages into the buffer with no list in between.",
         ["source" => "The scalar list or iterator to copy into a buffer"],
         "let buf = toGpu([1, 2, 3, 4])",
     ),

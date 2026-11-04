@@ -39,6 +39,8 @@ ok multinomial[10]
 ok multinomial[11]
 ok multinomial[12]
 ok multinomial[13]
+ok softmax_empty
+ok log_softmax_empty
 ok temperature[0]
 ok temperature[1]
 ok temperature[2]
@@ -393,4 +395,4 @@ ok max_i
 ok min_f
 ok max_f
 ok generate
-395 passed, 0 failed
+397 passed, 0 failed

@@ -7,21 +7,25 @@ permalink: /docs/python-flavor-for-ai/
 tags: [flavors, python, algebraic-effects, ai-agents]
 ---
 
-**Audience: AI coding agents (LLMs) with no prior knowledge of Osprey.** This page records operating rules, supported constructs and links to runnable examples. Human readers want the [Python flavor guide](/docs/python-flavor/).
+{% from "native-capture.njk" import capture %}
+
+**For AI coding agents:** operating rules, supported constructs and runnable examples. Human introduction: [Python flavor guide](/docs/python-flavor/).
+
+{% videoPlayer "static-typing-python", true %}
 
 ## Mandatory rules
 
-1. **Every loose `.py` script you write is Osprey source in the Python flavor.** Run it with `osprey script.py --run`. Never run it with `python`, `python3`, `uv`, `pip` or any CPython tool; CPython cannot execute it.
-2. **Line 1 of every file is `# osprey: flavor=python`.** No exceptions, even though `.py` alone selects the flavor when the file is passed to `osprey` directly.
+1. **Write Osprey Python-flavor scripts.** Run `.py` files with `osprey script.py --run`, never `python`, `python3`, `uv`, `pip` or other CPython tools.
+2. **Begin every file with `# osprey: flavor=python`.** The `.py` extension also selects this flavor when passed directly to `osprey`.
 3. **Use the supported Python annotation notation over Osprey semantics.** Formatting follows [PEP 8](https://peps.python.org/pep-0008/) (four-space indent, `snake_case` functions and bindings, two blank lines between top-level definitions). Annotations, when you write them, use [PEP 484](https://peps.python.org/pep-0484/), [PEP 526](https://peps.python.org/pep-0526/), [PEP 585](https://peps.python.org/pep-0585/), [PEP 591](https://peps.python.org/pep-0591/) and [PEP 695](https://peps.python.org/pep-0695/) notation. Osprey also supplies `@union` and the algebraic-effect forms: `@effect`, `@static_effect`, `@control`, `@handler(E)`, `@static_handler(E[T])`, `@requires(...)`, `perform(...)`, `resume(...)`, `update(...)` and handler `with` blocks.
-4. **Every value has a static type, checked before the program runs, but you omit every annotation inference can derive.** Osprey uses Hindley–Milner type inference. A redundant annotation compiles but emits `warning: redundant type annotation on ...`. Treat every warning as a defect and delete the annotation. Annotate only where the compiler reports it cannot infer a type (see [Annotations you must write](#annotations-you-must-write)).
+4. **Omit inferred annotations.** Hindley–Milner inference checks types before execution. Fix every warning, including `redundant type annotation`; annotate only where inference needs help ([required annotations](#annotations-you-must-write)).
 5. **Choose an `Arith` policy for fallible arithmetic.** The compiler names missing operations. Integer overflow and integer/float zero divisors have distinct arms; constants, proven-total sites and explicit total helpers need no handler. See [arithmetic policies](#arithmetic-needs-a-policy).
 6. **Use Result, immutable data and iterator-based computation.** `for` and comprehensions lower to existing iterator operations. Mutation remains confined to handler-owned state; `Final` forbids reassignment. There are no language exceptions or `while` loops.
 7. **🚨 CRITICAL: when a script fails, file a GitHub issue of type Bug.** See [Report every failure as a Bug](#report-every-failure-as-a-bug). Do not silently work around a compiler failure.
 
 ## Report every failure as a Bug
 
-Whenever an Osprey script, an `osprey` command, or a `make` target in the Osprey repository fails, log a GitHub issue **with the issue type `Bug`** on [Nimblesite/osprey](https://github.com/Nimblesite/osprey/issues). This applies to:
+Report unexpected script, compiler and repository-command failures as a GitHub issue of type **Bug** on [Nimblesite/osprey](https://github.com/Nimblesite/osprey/issues), including:
 
 - The compiler crashing, panicking, hanging, or printing an internal error.
 - The compiler rejecting a program that this page says is valid.
@@ -41,32 +45,14 @@ Do this procedure every time:
    If one matches exactly, add the new reproduction as a comment (`gh issue comment <number> --repo Nimblesite/osprey --body-file report.md`) instead of filing a duplicate.
 3. Otherwise write `report.md` with every section below, then file it with `--type Bug`:
 
-   ````markdown
-   ## Summary
-   One sentence: what failed.
-
-   ## Environment
-   - osprey: output of `osprey --version`
-   - OS: output of `uname -a` (or the Windows version)
-   - clang: first line of `clang --version`
-
-   ## Command
-   ```bash
-   osprey repro.py --run
-   ```
-
-   ## Source (repro.py)
-   ```python
-   # osprey: flavor=python
-   ...
-   ```
-
-   ## Expected
-   What this page or the specification says should happen.
-
-   ## Actual
-   The complete stdout and stderr, unedited, plus the exit status (`echo $?`).
-   ````
+   | Section | Include |
+   | --- | --- |
+   | Summary | One sentence describing the failure. |
+   | Environment | `osprey --version`, OS (`uname -a` or Windows version), and the first `clang --version` line. |
+   | Command | The exact failing command. |
+   | Source | Complete `repro.py`, beginning with `# osprey: flavor=python`. |
+   | Expected | The documented or specified behavior. |
+   | Actual | Unedited stdout/stderr and exit status (`echo $?`). |
 
    ```bash
    gh issue create --repo Nimblesite/osprey --type Bug \
@@ -76,11 +62,13 @@ Do this procedure every time:
 
 4. Put the issue URL in your final report to the user, then continue the task using a documented alternative construct if one exists.
 
-The issue type is the `Bug` issue type, set with `--type Bug`. It is not a label: do not substitute `--label bug`. If `gh` is not authenticated (`gh auth status` fails), tell the user that the issue could not be filed and include the full `report.md` text in your reply.
+Use `--type Bug`, not `--label bug`. If `gh auth status` fails, report that filing was blocked and include `report.md` in your reply.
+
+{{ capture("/assets/images/native/macos-agent.png", "Osprey Agent native SwiftUI interface with project suggestions and usage inspector", "Osprey Agent · native SwiftUI, Osprey turn logic. Not sandboxed: it can run commands and change your files.", 2640, 1720) }}
 
 ## What Osprey is
 
-Osprey is a functional language with algebraic effects, inferred static types, exhaustive matching and LLVM compilation. A handler chooses how an operation runs. Native executables, WebAssembly, Apple/Android C ABI archives and Python-callable shared libraries use the same compiler. Default, ML and Python-flavor modules can share a project.
+Osprey combines typed effects, inference, exhaustive matching and LLVM compilation. Handlers implement operations. One compiler builds native executables, WebAssembly, mobile C ABI archives and Python-callable libraries; projects can mix syntax flavors.
 
 Osprey is actively evolving. Validate it against your workload before relying on it in production.
 
@@ -104,6 +92,8 @@ clang --version
 ```
 
 `make build` creates the runtime archives, release Rust workspace and VS Code extension. After the archives exist, `cargo build --release -p osprey-cli` rebuilds the compiler alone.
+
+{{ capture("/assets/images/guides/python-hello.png", "Python-flavor source compiled and executed by Osprey · a greeting appears in the output.", "Python-flavor source compiled and executed by Osprey · a greeting appears in the output.", 1440, 920) }}
 
 ## Run a script
 
@@ -138,8 +128,8 @@ hello from the Python flavor
 | `osprey f.py --ast` | Print the canonical AST |
 | `osprey f.py --llvm` | Print the generated LLVM IR |
 | `osprey f.py --symbols` | Print the file's symbols as JSON |
-| `osprey f.py --run --memory=arc` | Choose the memory backend: `gc` (default tracing collector), `arc` (reference counting) or explicit `none` (unmanaged allocation) |
-| `osprey f.py --compile --target=wasm32 --memory=none` | WebAssembly. Other targets: `native` (default), `ios`, `ios-sim`, `macos`, `android-arm64`, `android-x64`, `python` |
+| `osprey f.py --run --memory=arc` | Choose managed memory: native `gc` (default tracing collector) or `arc` (reference counting); Windows uses ARC |
+| `osprey f.py --compile --target=wasm32 --memory=arc` | WebAssembly. Other targets: `native` (default), `ios`, `ios-sim`, `macos`, `android-arm64`, `android-x64`, `python` |
 | `osprey f.py --run --sandbox` | Deny HTTP, WebSocket, file system, process and FFI capabilities. Individual subset flags: `--no-http`, `--no-websocket`, `--no-fs`, `--no-ffi` |
 | `osprey f.py --run --quiet` | Suppress compiler progress output; warnings and errors still print |
 | `osprey f.py --run --no-warnings` | Skip the warning pass entirely; errors still print |
@@ -150,6 +140,8 @@ hello from the Python flavor
 | `osprey --version` | Print the compiler version |
 
 Compile errors are printed to stderr prefixed with the file name, plus `line:column` when the error has a source position, and the exit status is non-zero. Standard input reaches the program (`input()` reads one line), so `echo 42 | osprey f.py --run` works.
+
+{{ capture("/assets/images/guides/python-functions.png", "Inferred functions, a lambda and a fold · verified native compiler output.", "Inferred functions, a lambda and a fold · verified native compiler output.", 1440, 920) }}
 
 ## Types
 
@@ -197,6 +189,8 @@ The [functions example](/docs/python-flavor/#functions-and-inference) shows infe
 - `/` produces `float`. Integer `//` and `%` truncate toward zero: `-7 // 2` is `-3`; `-7 % 3` is `-1`. Their fallible sites need an arithmetic policy.
 - Mixed integer/float arithmetic promotes to `float`. `toFloat(n)` converts explicitly.
 
+{{ capture("/assets/images/guides/python-strings.png", "An interpolated string and byte length · Osprey prints the visible result.", "An interpolated string and byte length · Osprey prints the visible result.", 1440, 920) }}
+
 ## Strings
 
 - Literals: `"..."` or `'...'`, Python escapes (`\n`, `\t`, `\"`, `\\`).
@@ -204,6 +198,8 @@ The [functions example](/docs/python-flavor/#functions-and-inference) shows infe
 - `+` concatenates two strings: `"a" + toString(1)`.
 - Use one interpolated `print` instead of consecutive `print` calls.
 - Every string function is listed in [Built-in functions](#built-in-functions). Functions that can fail (`substring`, `split`, `replace`, `indexOf`, `parseInt`, `parseFloat`) return `Result`.
+
+{{ capture("/assets/images/guides/python-records.png", "Immutable account updates and exhaustive Result handling · success and refusal remain distinct.", "Immutable account updates and exhaustive Result handling · success and refusal remain distinct.", 1440, 920) }}
 
 ## Records, Result and match
 
@@ -216,6 +212,8 @@ The [record example](/docs/python-flavor/#records-result-and-match) shows constr
 - `Success(value=...)` and `Error(message=...)` construct `Result`. Match both cases or supply `unwrap_or(result, fallback)`, whose fallback is evaluated only on Error.
 - `match` is exhaustive. Literal, wildcard and constructor patterns are supported. Keyword fields can bind a different name: `case Success(value=answer):` and `case Circle(radius=r):` work.
 - `@union` on a class declares a sum type; each immediately nested record class supplies one variant. Construct a variant with its fields by keyword. See [union syntax](/spec/0041-pythonflavorsyntax/#closed-classes--flavor-python-class).
+
+{{ capture("/assets/images/guides/python-lists.png", "An iterator comprehension builds a list, then join renders 0,1,2.", "An iterator comprehension builds a list, then join renders 0,1,2.", 1440, 920) }}
 
 ## Lists, maps and iteration
 
@@ -237,6 +235,8 @@ This prints `0: 1,4,9` and `1: 1,4,9` on separate lines. `wrapMul` chooses wrapp
 - A list cannot be interpolated into an f-string. Convert elements with `toString` and `join` them. `len` handles strings, lists and maps.
 - `mapGet` returns Result; `mapContains` returns bool; `mapKeys`/`mapValues` return lists. `mapSet`, `mapRemove` and `mapMerge` produce maps.
 - `while`, loop `else`, `break`, `continue`, tuple unpacking, generator/set/dictionary comprehensions, `zip`, `sum`, `sorted` and `enumerate` are rejected. Use folds and records.
+
+{{ capture("/assets/images/guides/python-effects.png", "Two handlers answer the same request and produce different visible logging.", "Two handlers answer the same request and produce different visible logging.", 1440, 920) }}
 
 ## Algebraic effects
 
@@ -450,7 +450,9 @@ entry = "src/main.py"
 | `if __name__ == "__main__":` | rejected | `def main():` |
 | `None` as a nullable value | `None` is `Unit`, never null | `Result` |
 
-Supported `for` loops, comprehensions, unions and renamed pattern bindings are documented above. The [Python flavor specification](/spec/0041-pythonflavorsyntax/) and [delivery plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md) record remaining limits; rejection of an explicitly unsupported construct is expected.
+Supported `for` loops, comprehensions, unions and renamed pattern bindings are documented above. The [Python flavor specification](/spec/0041-pythonflavorsyntax/) and [delivery plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md) record remaining limits; rejection of an explicitly unsupported construct is expected.
+
+{{ capture("/assets/images/guides/python-type-error.png", "A string mixed into integer addition is rejected by the compiler.", "A string mixed into integer addition is rejected by the compiler.", 1440, 920) }}
 
 ## Diagnostics you will see
 
@@ -471,6 +473,8 @@ Supported `for` loops, comprehensions, unions and renamed pattern bindings are d
 | `error: could not invoke clang: No such file or directory` | no LLVM toolchain on `PATH`, or a wrong `OSPREY_CC` | install `clang` or set `OSPREY_CC` |
 
 Anything else that blocks a program this page says is valid: [file a Bug](#report-every-failure-as-a-bug).
+
+{{ capture("/assets/images/guides/python-effect-error.png", "Missing effect handlers produce a compiler error rather than an implicit implementation.", "Missing effect handlers produce a compiler error rather than an implicit implementation.", 1440, 920) }}
 
 ## Checklist before you finish
 

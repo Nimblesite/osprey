@@ -1,7 +1,7 @@
 """CPython oracle for @osprey/transformers.
 
 Runs the real transformers 5.20.2 logits processors, warpers and stopping
-criteria (torch 2.14.1, float64) and torch's own softmax/log_softmax/argmax/
+criteria (torch 2.14.1, float32) and torch's own softmax/log_softmax/argmax/
 inverse-CDF sampling over hand-built logits rows, then hands every computed
 value to `expected_module.write` to emit
 packages/transformers/tests/expected.py ([PORT-TEST-ORACLE]).
@@ -15,6 +15,7 @@ cumulative boundaries away from tie groups; MinP rows keep distinct scores
 because torch.topk's tie order is unspecified.
 """
 import sys
+import struct
 
 from expected_module import write
 
@@ -48,7 +49,12 @@ from transformers.generation.stopping_criteria import (
     StoppingCriteriaList,
 )
 
-torch.set_default_dtype(torch.float64)
+torch.set_default_dtype(torch.float32)
+
+
+def f32(value):
+    """Round a scalar to IEEE binary32, the width the port's `Processor` fields hold."""
+    return struct.unpack("<f", struct.pack("<f", value))[0]
 
 NEG_INF = float("-inf")
 
@@ -70,8 +76,8 @@ R10 = [NEG_INF, NEG_INF, NEG_INF]
 
 
 def tensor(values):
-    """A float64 torch tensor holding one logits/probability row."""
-    return torch.tensor(values, dtype=torch.float64)
+    """A float32 torch tensor holding one logits/probability row."""
+    return torch.tensor(values, dtype=torch.float32)
 
 
 def softmax_ref(scores):
@@ -176,7 +182,7 @@ def add_warper(C, prefix, name, make, settings, rows):
 def add_warpers(C):
     add_warper(C, "TOPK", "K", lambda k, m: TopKLogitsWarper(top_k=k, min_tokens_to_keep=m),
                ((3, 1), (1, 1), (5, 1), (1, 2), (2, 2), (10, 1)), (R0, R1, R2, R3, R7))
-    add_warper(C, "TOPP", "P", lambda p, m: TopPLogitsWarper(top_p=p, min_tokens_to_keep=m),
+    add_warper(C, "TOPP", "P", lambda p, m: TopPLogitsWarper(top_p=f32(p), min_tokens_to_keep=m),
                ((0.9, 1), (0.5, 1), (1.0, 1), (0.0, 1), (0.6, 2), (0.95, 3)), (R0, R1, R2, R4, R6, R7))
     add_warper(C, "MINP", "P", lambda p, m: MinPLogitsWarper(min_p=p, min_tokens_to_keep=m),
                ((0.0, 1), (0.5, 1), (0.2, 1), (1.0, 1), (0.1, 2), (0.3, 3)), (R0, R4, R6, R7, R8))
@@ -267,8 +273,8 @@ def add_suppress_tokens(C):
 def bad_words_ref(bad_words_ids, eos_ids, ids, scores):
     """NoBadWordsLogitsProcessor's intended semantics: bias -inf on the last token
     of a bad-word sequence the context is about to complete, or on a length-1 bad
-    word unconditionally. transformers 5.20.2 crashes on the length-1 path under
-    float64 (Index put dtype mismatch), so the oracle reproduces the intended
+    word unconditionally. transformers 5.20.2 crashes on the length-1 path for
+    some dtypes (Index put dtype mismatch), so the oracle reproduces the intended
     semantics here and cross-checks the length >= 2 path against the real
     processor below."""
     filtered = [bw for bw in bad_words_ids if not (len(bw) == 1 and bw[0] in eos_ids)]
@@ -296,7 +302,7 @@ def add_bad_words(C):
     cases = []
     for ids in ids_rows:
         cases.append((bad_words, ids, R0, bad_words_ref(bad_words, [5], ids, R0)))
-    # Cross-check the length >= 2 subset against the real processor (float64-safe).
+    # Cross-check the length >= 2 subset against the real processor (dtype-safe).
     long_bad_words = [[1, 3], [0, 2, 4]]
     for ids in ids_rows:
         proc = NoBadWordsLogitsProcessor(bad_words_ids=long_bad_words, eos_token_id=[5])
@@ -455,7 +461,7 @@ def main():
 
     target = write(
         "transformers",
-        "transformers generation layer: logits warpers/processors, torch softmax/log_softmax/argmax/inverse-CDF multinomial, and stopping criteria (float64).",
+        "transformers generation layer: logits warpers/processors, torch softmax/log_softmax/argmax/inverse-CDF multinomial, and stopping criteria (float32).",
         {"transformers": transformers.__version__, "torch": torch.__version__},
         C,
     )

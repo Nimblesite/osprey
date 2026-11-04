@@ -97,4 +97,4 @@ make gpui-compare    # captures the port and the Rust original and diffs them
 make gpui-test       # the Osprey suites, the host's tests and clippy, and both smoke runs
 ```
 
-Linux and Windows are next. GPUI already runs on both, so the work is Osprey library targets for them and CI that runs the same smoke tests there. The plan, with its measured numbers, is [plan 0036](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0036-gpui-desktop-host.md). The host's contract is [spec 0046](/spec/0046-gpuidesktophost/).
+Linux and Windows are next. GPUI already runs on both, so the work is Osprey library targets for them and CI that runs the same smoke tests there. The plan, with its measured numbers, is [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native.md). The host's contract is [spec 0046](/spec/0046-gpuidesktophost/).

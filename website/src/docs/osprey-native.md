@@ -1,60 +1,100 @@
 ---
 mlTwins: manual
 layout: page
-title: "Osprey Native: one application, every host"
-description: Osprey Native is the application framework of the Osprey ecosystem. The application owns its state, screens and rules; a host draws them with SwiftUI, HTML and CSS or the GPU.
+title: "Osprey Native: native power, every platform"
+description: Build beautiful multiplatform apps with AOT native compilation, real platform controls, typed effects and shared Osprey logic. See macOS, Windows, iOS, Android and web applications in action.
 permalink: /docs/osprey-native/
 tags: [native, applications, ui, gpui, vscode]
 ---
 
-Osprey Native is the framework for writing applications in Osprey. The application owns everything a test can state: its state, its update function, its screens, the actions a control fires and the words a person reads. A **host** owns what only a platform can do: drawing, input, windows, files, network and the clock. Write the application once and it runs on every host unchanged.
+{% from "mobile-gallery.njk" import gallery %}
+{% from "native-capture.njk" import capture %}
 
-The name says the application compiles to native code and reaches native services. It does not say the host draws with native widgets, and it is not React Native: that framework is explicitly not for the web, while Osprey Native treats web hosts as first-class. One host draws with SwiftUI, one with HTML and CSS inside VS Code, and the next draws with GPU primitives.
+**Safe, elegant, fast.** Build ambitious apps around one Osprey application model: typed effects for platform services, inferred types for concise code, and ahead-of-time LLVM compilation for native execution.
 
-## How it works
+**macOS · Windows · iOS · Android · Web**
 
-The application keeps all of its state in one store and reads it through Osprey's built-in signals. Screens are typed `Node` trees, built with the `Ui` constructors, grouped into keyed regions. A control is bound to a typed action. Platform work is a typed capability request: read a folder, fetch a URL, save a file.
+{% videoPlayer "agent-native", true %}
 
-A host calls two functions, `start` and `dispatch`. Each returns an envelope: the opaque session to hand back next time, the regions whose signals changed, the capability requests to run and any diagnostics. The host draws the regions, runs the requests, and sends back events by the ids the framework issued. The host never interprets an action or a model; the compiler derives which regions depend on which signals, so only the regions that changed are sent.
+[Watch the agent walkthrough with chapters and transcript →](/docs/tutorials/agent-native/)
 
-```mermaid
-flowchart LR
-    E[Host event] --> D[dispatch]
-    D --> U["update: Context, Store, Message -> Step"]
-    U --> R[Regions whose signals changed]
-    U --> C[Capability requests]
-    R --> H[Host draws]
-    C --> A[Host adapters]
-    A -->|completion events| D
-    H -->|events by binding id| D
-```
+**Osprey Agent is not sandboxed:** it can run commands and change files your account can.
 
-Because `update` is pure, the application's tests drive the real `start`/`dispatch` path with fixture messages and assert the envelopes. No host is needed to test an application.
+## Native builds: no JavaScript engine to ship.
 
-## The hosts
+Osprey application logic compiles **ahead of time to native machine code** on desktop and mobile. Native builds ship no JavaScript engine or JavaScript application bundle; Osprey code needs no JIT warm-up. On the web, Osprey compiles to **WebAssembly**; its browser host can use JavaScript.
 
-| Host | Draws with | Runs on | Status |
-| --- | --- | --- | --- |
-| SwiftUI | SwiftUI controls | macOS and iOS, in [Vigil](https://github.com/Nimblesite/vigil) | running |
-| Webview | HTML, CSS, Codicons | VS Code on every desktop | running, used by the [package manager](/docs/packages-in-vscode/) |
-| Browser | HTML, CSS | any browser | planned |
-| GPUI | Zed's GPU-accelerated Rust UI framework | macOS today, then Linux and Windows | running on macOS, with the [Flock and painting examples](https://github.com/Nimblesite/osprey/tree/main/examples/gpui) |
+### Real platform controls
 
-The SwiftUI and GPUI hosts link the application as a C ABI static library. The webview and browser hosts run it as WebAssembly and exchange one JSON frame per call. Both carry the same envelope.
+SwiftUI on Apple platforms. WinUI on Windows. Android widgets on Android. Native text fields, buttons and scrolling come from the platform. Choose GPUI for custom GPU-rendered scenes.
 
-A host may draw only the nodes it knows and answer only the capabilities it supports. Anything else is rejected with a diagnostic, never drawn as a guess. Every host runs the same recorded-event conformance set, so two hosts cannot disagree about what a screen means.
+{{ gallery(mobile.screenshots) }}
 
-The framework names no host. Icons are a typed `Symbol` union (`Add`, `Delete`, `Warning`, `Package` and so on) that each host maps to its own icon set: Lucide in GPUI, Codicons in VS Code, SF Symbols in a SwiftUI host. The start context's platform is a union (`Macos`, `Linux`, `Windows`, `Ios`, `Android`, `Web`). Work only one host can do, such as reading one operating system's settings, is a `HostCall` in that host's namespace rather than a framework capability.
+**Issue Inbox:** search GitHub issues, save an issue, open its description and add a local note. Real iPhone simulator and Pixel emulator captures. [Build it →](/docs/mobile-apps/)
 
-## GPUI is not GPU compute
+### The casting player on phones
 
-Osprey can reach the GPU in two unrelated ways. [GPU compute](/spec/0034-gpucomputation/) is raw access: `gpuMap`, `gpuFold` and `gpuMatMul` run your own Osprey kernels on Metal or OpenCL, checked pure by the compiler, and the numbers come back to your program. The GPUI host is a UI framework that draws with the GPU: your application is ordinary CPU code that returns a scene (rectangles, discs, paths, glyphs) each frame, and Zed's Rust renderer batches and rasterizes it. You write no shader and touch no device buffer. Use compute for tensors and simulations, GPUI for windows and 2D drawing; nothing stops one program using both.
+{{ gallery(mobile.casting) }}
 
-## Where things are
+The mobile UI runs through real simulator/emulator journeys. Full playback integration, screenshot goldens and physical-device verification remain delivery work; [see the verified scope](https://github.com/Nimblesite/osprey/blob/main/examples/casting/mobile.md).
 
-- [`packages/native`](https://github.com/Nimblesite/osprey/tree/main/packages/native): the framework and its tests.
-- [`packages/vscode`](https://github.com/Nimblesite/osprey/tree/main/packages/vscode): typed VS Code capabilities for applications hosted in the extension.
-- [Osprey Native and its hosts](/spec/0047-OspreyNativeHosts/): the host contract, transports, coverage and conformance.
-- [GPUI desktop host](/spec/0046-gpuidesktophost/) and its [plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0036-gpui-desktop-host.md).
+## See what you can build
 
-Osprey is actively evolving. The framework runs Vigil, the package manager's editor and the GPUI examples today; the browser host, Linux and Windows builds of the GPUI host, the conformance suite and the coverage matrix are delivery work tracked in [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native-hosts.md).
+### Windows: real WinUI, shared Osprey logic
+
+{{ capture("/assets/images/native/windows-storage.png", "Osprey Storage in WinUI showing folder sizes, native buttons and disk usage", "Storage · Windows WinUI · browse folders, reveal hidden items and find what takes up space.", 1164, 741) }}
+
+{{ capture("/assets/images/native/windows-flock.png", "Flock boids simulation running in the Windows host", "Flock · Windows · steer a live flock, pause it and resume.", 1168, 745) }}
+
+{{ capture("/assets/images/native/windows-painting.png", "Painting on Windows showing coloured paths and native controls", "Painting · Windows · draw freehand, switch stroke styles and clear the canvas.", 1164, 741) }}
+
+{{ capture("/assets/images/native/windows-casting.png", "Casting player on Windows with receiver and playback controls", "Casting · Windows · discover receivers and control playback.", 434, 557) }}
+
+### macOS: tools, instruments and custom scenes
+
+{{ capture("/assets/images/native/macos-synth.png", "Prism Synth native macOS app with a signal flow editor and piano keyboard", "Prism Synth · macOS · connect a patch, change its controls and play the keyboard.", 2304, 1512) }}
+
+{{ capture("/assets/images/blog/chromecast-from-mac-player.webp", "Casting player on macOS with receiver selection, transport and volume", "Casting · macOS GPUI · choose audio and a receiver, then press Play.", 868, 1114) }}
+
+{% videoPlayer "chromecast-from-mac", true %}
+
+{{ capture("/assets/images/native/macos-painting.png", "Osprey Painting on macOS showing shapes, gradients and a freehand stroke", "Painting · macOS GPUI · GPU-rendered paths and gradients from an Osprey application.", 3128, 2122) }}
+
+{% videoPlayer "rust-ui-framework-without-rust", true %}
+
+### Web: WebAssembly logic, real browser UI
+
+{{ capture("/assets/images/native/web-bank.png", "Talon Bank browser dashboard showing balances, accounts and activity", "Talon Bank · Chromium · Osprey WebAssembly owns the state and rules; React renders the browser UI.", 1440, 960) }}
+
+[Run the bank →](/docs/web-apps/) · [Explore Proof Workbench →](/docs/proof-workbench/)
+
+### VS Code: application UI inside your editor
+
+{{ capture("/assets/images/packages/workspace-details.jpg", "Osprey package details inside VS Code. Audit unverified.", "Package workspace · VS Code · inspect a release and its trust information before adding it. Capture status: audit unverified.", 2400, 1600) }}
+
+{% videoPlayer "package-manager", true %}
+
+### Proof Workbench: mathematics as an application
+
+{{ capture("/assets/images/guides/mathlib-library.png", "Proof Workbench showing a checked imported theorem and its propext assumption", "Proof Workbench · recorded tutorial frame · an imported theorem is checked under its visible propext assumption.", 1920, 1080) }}
+
+Independent Mathlib operation remains delivery work; [inspect the current evidence](/docs/mathlib-port/).
+
+{% videoPlayer "proof-workbench", true %}
+
+## Why this model goes further
+
+| What you want | Osprey Native's advantage |
+| --- | --- |
+| Native execution and native controls | For native builds: AOT Osprey code plus SwiftUI, WinUI or Android widgets, with coverage depending on the host and app. React Native also uses native components, but runs JavaScript through an engine such as [Hermes](https://reactnative.dev/docs/hermes). |
+| Platform identity and custom graphics | Native widget hosts preserve platform controls; GPUI handles custom scenes. Compose Multiplatform's shared UI uses [Skia](https://kotlinlang.org/docs/multiplatform/kotlin-multiplatform-react-native.html); it also supports native UI integration. |
+| Test the rules you share | Pure updates describe state changes. Typed effects request files, networking and storage; test handlers supply controlled responses through each application's own boundary. |
+| Less code to maintain | Inferred types, exhaustive matching and shared transitions keep rules in Osprey instead of repeating them per host. |
+
+**Share the decisions. Let each platform do what it does best.** Host coverage varies: mobile and bank examples use their own bridges; common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
+
+## Build your first app
+
+[Install →](/docs/installation/) · [First app →](/docs/my-first-app/) · [Watch Mac and iPhone interop →](/docs/tutorials/swift-interop/)
+
+[Framework source](https://github.com/Nimblesite/osprey/tree/main/packages/native) · [Host contract](/spec/0047-ospreynativehosts/) · [Capture sources](https://github.com/Nimblesite/osprey/blob/main/website/src/assets/images/native/README.md)

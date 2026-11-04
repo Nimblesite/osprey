@@ -11,11 +11,15 @@ tags:
 - algebraic-data-types
 ---
 
+{% from "native-capture.njk" import capture %}
+
 Build a native command-line app that remembers how many times it has run. It reads `first-app.json`, turns the file into typed Osprey data, advances the state, and writes valid JSON back.
 
 The program represents JSON's six value shapes with one recursive algebraic data type.
 
 You need a working native installation. Complete [Installing Osprey](/docs/installation/) first if `osprey --version` does not work.
+
+{{ capture("/assets/images/guides/first-app-run.png", "Run the complete tutorial program · a local native compiler writes first-app.json and reports the saved byte count.", "Run the complete tutorial program · a local native compiler writes first-app.json and reports the saved byte count.", 1440, 920) }}
 
 ## Create the app
 
@@ -244,7 +248,7 @@ fn parseDocument(source) = match jsonParse(source) {
     Error { message } => Error { message: message }
     Success { value } => {
         let decoded = decodeDocument(value)
-        let released = jsonFree(value) ?: 0
+        let _released = jsonFree(value) ?: 0
         decoded
     }
 }
@@ -275,7 +279,7 @@ fn advance(document) = match document {
 
 fn load(path) = match readFile(path) {
     Success { value } => parseDocument(value)
-    Error { message } => Success { value: defaultDocument() }
+    Error _ => Success { value: defaultDocument() }
 }
 
 fn main() = {
@@ -294,6 +298,8 @@ fn main() = {
 ```
 
 Any `readFile` failure starts from `defaultDocument`. Before using this policy in production, distinguish a missing file from permission, device and other I/O failures.
+
+{{ capture("/assets/images/guides/first-app-json.png", "The actual saved file after two runs · Chrome JSON viewer · runs is 2.0 and the other JSON cases remain.", "The actual saved file after two runs · Chrome JSON viewer · runs is 2.0 and the other JSON cases remain.", 1440, 1000) }}
 
 ## Run it twice
 

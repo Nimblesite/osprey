@@ -208,21 +208,33 @@ renderer!(picker, bound_picker);
 /// Uses simple choice buttons rather than introducing another stateful adapter.
 fn bound_picker(ctx: &mut Ctx, node: &Value, ordinal: u64) -> AnyElement {
     let choices = items(ctx, node, "choices", ordinal, choice);
-    picker_row(ctx, node, choices)
+    picker_row(ctx, node, ordinal, choices)
 }
 
-/// Draws the picker label and its validated choices.
-fn picker_row(ctx: &Ctx, node: &Value, choices: Vec<AnyElement>) -> AnyElement {
+/// Draws the picker label and its validated choices, wrapping them in a narrow container.
+fn picker_row(ctx: &Ctx, node: &Value, ordinal: u64, choices: Vec<AnyElement>) -> AnyElement {
     div()
         .flex()
+        .flex_wrap()
+        .min_w_0()
         .items_center()
         .gap(gap(ctx))
-        .child(Label::new(string(node, "label")))
+        .child(picker_label(ctx, ordinal, string(node, "label")))
         .children(choices)
         .into_any_element()
 }
 
-/// Draws one picker choice and returns its framework key when clicked.
+/// Exposes the picker's real visible label to native accessibility clients ([UI-MACHINE-A11Y]).
+fn picker_label(ctx: &Ctx, ordinal: u64, label: &str) -> AnyElement {
+    div()
+        .id(SharedString::from(control_id(ctx, ordinal) + ":label"))
+        .role(Role::Label)
+        .aria_label(label.to_owned())
+        .child(Label::new(label))
+        .into_any_element()
+}
+
+/// Draws one picker choice, announcing its selection and returning its framework key when clicked.
 fn choice(ctx: &mut Ctx, choice: &Value, selected: &str, ordinal: u64, index: usize) -> AnyElement {
     let handle = ctx.cx.entity();
     let binding = binding(ctx, ordinal);
@@ -230,6 +242,9 @@ fn choice(ctx: &mut Ctx, choice: &Value, selected: &str, ordinal: u64, index: us
     Button::new(format!("{}:{index}", control_id(ctx, ordinal)))
         .compact()
         .selected(key == selected)
+        .aria_selected(key == selected)
+        .min_w_0()
+        .max_w_full()
         .label(string(choice, "label"))
         .on_click(choose(handle, binding, key))
         .into_any_element()

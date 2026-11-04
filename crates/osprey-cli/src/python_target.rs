@@ -81,7 +81,7 @@ fn validate_exports(abi: &HostAbi) -> Result<(), String> {
 fn validate_import(import: &Import) -> Result<(), String> {
     let expected = match import.symbol.as_str() {
         CALL => vec![CType::Str; 3],
-        OBJECT => vec![CType::Str, CType::Int, CType::Str, CType::Str],
+        OBJECT => vec![CType::Str, CType::INT, CType::Str, CType::Str],
         _ => Vec::new(),
     };
     let actual: Vec<_> = import.params.iter().map(|(_, ty)| *ty).collect();

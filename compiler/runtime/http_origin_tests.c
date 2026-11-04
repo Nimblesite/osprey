@@ -5,109 +5,12 @@
 // [HTTP-RESPONSE-HANDLE].
 #include "http_runtime_tests.h"
 #include "http_shared.h"
+#include "io_error.h"
 #include "socket_safety.h"
 
 #include <signal.h>
 #include <assert.h>
 #include <stdio.h>
-
-// ---------------------------------------------------------------------------
-// Scripted origin: a raw TCP server that answers with EXACT bytes. It lets the
-// client be asserted against wire responses the Osprey server would never
-// produce -- chunked framing, a bogus status line, a silent close -- and
-// records the request the client actually sent [HTTP-STATUS-CLIENT].
-// ---------------------------------------------------------------------------
-
-#define ORIGIN_PORT 18088
-
-typedef struct {
-  int listen_fd;
-  const char *reply; // NULL: accept and close without writing a byte
-  char request[MAX_HTTP_BUFFER];
-  pthread_t thread;
-} ScriptedOrigin;
-
-// Reads one whole HTTP request: headers, then Content-Length bytes of body.
-static void origin_read_request(int fd, char *out, size_t capacity) {
-  size_t len = 0;
-  char *blank = NULL;
-  while (len + 1 < capacity && blank == NULL) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-    out[len] = '\0';
-    blank = strstr(out, "\r\n\r\n");
-  }
-  if (blank == NULL) {
-    return;
-  }
-  const char *marker = strstr(out, "Content-Length: ");
-  size_t want = marker ? (size_t)atoi(marker + 16) : 0;
-  size_t have = len - (size_t)(blank + 4 - out);
-  while (have < want && len + 1 < capacity) {
-    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-    have += (size_t)n;
-    out[len] = '\0';
-  }
-}
-
-static void *origin_thread(void *arg) {
-  ScriptedOrigin *origin = (ScriptedOrigin *)arg;
-  int fd = accept(origin->listen_fd, NULL, NULL);
-  if (fd < 0) {
-    return NULL;
-  }
-  origin_read_request(fd, origin->request, sizeof(origin->request));
-  if (origin->reply) {
-    size_t total = strlen(origin->reply);
-    size_t sent = 0;
-    while (sent < total) {
-      ssize_t n = osp_socket_send(fd, origin->reply + sent, total - sent);
-      if (n <= 0) {
-        break;
-      }
-      sent += (size_t)n;
-    }
-  }
-  close(fd); // Connection: close is what makes the client stop draining
-  return NULL;
-}
-
-static void origin_start(ScriptedOrigin *origin, const char *reply) {
-  memset(origin, 0, sizeof(*origin));
-  origin->reply = reply;
-  origin->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
-  assert(origin->listen_fd >= 0);
-  int opt = 1;
-  assert(setsockopt(origin->listen_fd, SOL_SOCKET, SO_REUSEADDR,
-                    (const char *)&opt, sizeof(opt)) == 0);
-  struct sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(ORIGIN_PORT);
-  addr.sin_addr.s_addr = inet_addr("127.0.0.1");
-  assert(bind(origin->listen_fd, (struct sockaddr *)&addr, sizeof(addr)) == 0);
-  assert(listen(origin->listen_fd, 1) == 0);
-  assert(pthread_create(&origin->thread, NULL, origin_thread, origin) == 0);
-}
-
-static void origin_stop(ScriptedOrigin *origin) {
-  assert(pthread_join(origin->thread, NULL) == 0);
-  close(origin->listen_fd);
-}
-
-static int64_t origin_client(void) {
-  int64_t client_id = http_create_client(
-      (char *)(uintptr_t) "http://127.0.0.1:18088", 2000);
-  assert(client_id > 0);
-  return client_id;
-}
 
 // A chunked response is decoded before the caller sees it, and header lookup
 // ignores case [HTTP-RESPONSE-HANDLE].
@@ -362,9 +265,9 @@ void test_client_large_response(void) {
   http_close_client(client_id);
 }
 
-// Chunked framing the origin got wrong stops decoding at the damage instead of
-// walking off the end of the body [HTTP-RESPONSE-HANDLE].
-static void expect_chunked_body(const char *chunks, const char *expected) {
+// Sends `chunks` as the body of a chunked response and returns what the client
+// made of it, with the origin already finished [HTTP-CHUNKED-DECODE].
+static int64_t chunked_exchange(const char *chunks, int64_t client_id) {
   static char reply[512];
   int written = snprintf(reply, sizeof(reply),
                          "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n%s",
@@ -372,14 +275,38 @@ static void expect_chunked_body(const char *chunks, const char *expected) {
   assert(written > 0 && (size_t)written < sizeof(reply));
   ScriptedOrigin origin;
   origin_start(&origin, reply);
-  int64_t client_id = origin_client();
   int64_t handle = http_get_response(client_id, (char *)(uintptr_t) "/c",
                                      (char *)(uintptr_t) "");
   origin_stop(&origin);
+  return handle;
+}
+
+static void expect_chunked_body(const char *chunks, const char *expected) {
+  int64_t client_id = origin_client();
+  int64_t handle = chunked_exchange(chunks, client_id);
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, expected) == 0);
   free(body);
+  assert(http_response_free(handle) == 0);
+  http_close_client(client_id);
+}
+
+// Broken framing is an error with its reason on the channel. It takes no
+// response slot, leaks nothing and leaves the client usable.
+static void expect_chunked_refused(const char *chunks, const char *reason) {
+  char message[128];
+  snprintf(message, sizeof(message), "http response: chunked body: %s", reason);
+  int64_t client_id = origin_client();
+  long live = test_alloc_live();
+  osp_io_error_clear();
+  assert(chunked_exchange(chunks, client_id) == -14);
+  assert(osp_io_error() != NULL && strcmp(osp_io_error(), message) == 0);
+  assert(test_alloc_live() == live);
+  osp_io_error_clear();
+  int64_t handle = chunked_exchange("2\r\nok\r\n0\r\n\r\n", client_id);
+  assert(handle >= 1);
+  assert(osp_io_error() == NULL);
   assert(http_response_free(handle) == 0);
   http_close_client(client_id);
 }
@@ -409,11 +336,51 @@ void test_client_response_allocation_failures(void) {
   expect_response_allocation_failure(big, MAX_HTTP_BUFFER * 2);
 }
 
+// Running out of memory while decoding is -9, not a verdict on the body, and it
+// leaks nothing. The size is one no other allocation in the exchange asks for.
+static void check_chunked_allocation_failure(void) {
+  char chunks[300];
+  memset(chunks, 'x', sizeof(chunks) - 1);
+  chunks[sizeof(chunks) - 1] = '\0';
+  memcpy(chunks, "11f\r\n", 5);
+  memcpy(chunks + sizeof(chunks) - 8, "\r\n0\r\n\r\n", 7);
+  int64_t client_id = origin_client();
+  long live = test_alloc_live();
+  osp_io_error_clear();
+  test_alloc_fail_size(sizeof(chunks));
+  assert(chunked_exchange(chunks, client_id) == -9);
+  test_alloc_fail_off();
+  assert(osp_io_error() == NULL);
+  assert(test_alloc_live() == live);
+  int64_t handle = chunked_exchange(chunks, client_id);
+  assert(handle >= 1);
+  char *body = http_response_body(handle);
+  assert(body != NULL && strlen(body) == 0x11f && body[0] == 'x');
+  free(body);
+  assert(http_response_free(handle) == 0);
+  http_close_client(client_id);
+}
+
 void test_client_malformed_chunks(void) {
-  expect_chunked_body("zz\r\nhello\r\n0\r\n\r\n", "");   // size is not hex
-  expect_chunked_body("4", "");                          // size line unfinished
-  expect_chunked_body("3\r\nabc\r\nzz\r\n", "abc");      // damage after a chunk
-  expect_chunked_body("0\r\n\r\n", "");                  // terminator only
+  static const char too_big[] = "chunk size exceeds the remaining body";
+  static const char bad_size[] = "invalid chunk size";
+  static const char no_crlf[] = "chunk data not followed by CRLF";
+  static const char cut_short[] = "truncated";
+  expect_chunked_refused("7FFFFFFF\r\nhi\r\n0\r\n\r\n", too_big);
+  expect_chunked_refused("FFFFFFFFFFFFFFFF\r\nhi\r\n0\r\n\r\n", too_big);
+  expect_chunked_refused("10\r\nhi\r\n0\r\n\r\n", too_big);
+  expect_chunked_refused("3\r\nabc\r\n100\r\nhi\r\n", too_big);
+  expect_chunked_refused("10000000000000005\r\nhello\r\n0\r\n\r\n", bad_size);
+  expect_chunked_refused("-1\r\nhi\r\n0\r\n\r\n", bad_size);
+  expect_chunked_refused("zz\r\nhello\r\n0\r\n\r\n", bad_size);
+  expect_chunked_refused("3\r\nabc\r\nzz\r\n", bad_size);
+  expect_chunked_refused("5\r\nhelloXX0\r\n\r\n", no_crlf);
+  expect_chunked_refused("4", cut_short);
+  expect_chunked_refused("5\r\nhello\r\n", cut_short);
+  expect_chunked_refused("5\r\nhello\r\n0\r\n", cut_short);
+  expect_chunked_body("0\r\n\r\n", "");
+  expect_chunked_body("3\r\nabc\r\n0\r\nX-T: y\r\n\r\n", "abc");
+  check_chunked_allocation_failure();
 }
 
 // An https:// client negotiates TLS before it sends anything; a plaintext peer

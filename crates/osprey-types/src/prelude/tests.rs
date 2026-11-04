@@ -28,81 +28,46 @@ fn statement_position(statement: &Stmt) -> Option<Position> {
     }
 }
 
-fn statement_lines(unit: &Loaded) -> Vec<u32> {
+fn statement_lines(unit: &Loaded, position_of: fn(&Stmt) -> Option<Position>) -> Vec<u32> {
     unit.program
         .statements
         .iter()
-        .filter_map(statement_position)
+        .filter_map(position_of)
         .map(|position| position.line)
         .collect()
 }
 
-#[test]
-fn the_prelude_source_parses_clean_and_lives_past_every_source_line() {
-    let parsed = parse_program(JSON);
-    assert!(
-        parsed.errors.is_empty(),
-        "prelude syntax: {:?}",
-        parsed.errors
-    );
-    let rebased = json();
+/// The unit's own source parses without syntax errors and rebases one-to-one.
+#[track_caller]
+fn assert_unit_rebases_cleanly(source: &str, unit: &Loaded) {
+    let parsed = parse_program(source);
+    assert!(parsed.errors.is_empty(), "syntax: {:?}", parsed.errors);
     assert_eq!(
-        rebased.program.statements.len(),
+        unit.program.statements.len(),
         parsed.program.statements.len()
     );
+}
+
+/// The lines are non-empty and every one satisfies `satisfies`.
+#[track_caller]
+fn assert_all_lines(lines: &[u32], satisfies: impl Fn(u32) -> bool) {
     assert!(
-        attached(&rebased.program),
-        "the prelude must recognise itself"
-    );
-    let lines: Vec<u32> = rebased
-        .program
-        .statements
-        .iter()
-        .filter_map(type_position)
-        .map(|p| p.line)
-        .collect();
-    assert!(
-        !lines.is_empty() && lines.iter().all(|line| is_prelude_line(*line)),
+        !lines.is_empty() && lines.iter().all(|line| satisfies(*line)),
         "{lines:?}"
     );
-    assert!(!is_prelude_line(PRELUDE_LINE_BASE) && is_prelude_line(PRELUDE_LINE_BASE + 1));
 }
 
-#[test]
-fn a_program_that_names_nothing_from_the_prelude_is_left_exactly_as_written() {
-    let source = program("fn jsonish(x) = x\nprint(toString(jsonish(1)))\n");
-    assert!(matches!(with_prelude(&source), Cow::Borrowed(_)));
-    // Naming an internal primitive does not pull the prelude in either.
-    let internal = program("print(toString(__jsonNodeKind(1, 0)))\n");
-    assert!(matches!(with_prelude(&internal), Cow::Borrowed(_)));
-}
-
-#[test]
-fn naming_any_offered_declaration_attaches_the_whole_prelude_once() {
-    for source in [
-        "print(jsonEncode(JsonNull) ?: \"\")\n",
-        "let decoded = jsonDecode(\"[]\")\n",
-        "let member = JsonMember(\"k\", JsonInt(1))\n",
-        "fn f(v) = jsonText(v)\n",
-    ] {
+/// Naming any `offered` declaration attaches the prelude exactly once per
+/// name, and attaching the already-attached program again borrows it.
+#[track_caller]
+fn assert_offers_attach_once(sources: &[&str], offered: &str) {
+    for source in sources {
         let names = attached_names(source);
-        for offered in [
-            "Json",
-            "JsonMember",
-            "jsonEncode",
-            "jsonDecode",
-            "jsonQuote",
-            "jsonField",
-            "jsonIndex",
-            "jsonText",
-            "jsonInt",
-            "jsonFloat",
-            "jsonBool",
-        ] {
+        for name in offered.split_whitespace() {
             assert_eq!(
-                names.iter().filter(|name| *name == offered).count(),
+                names.iter().filter(|n| *n == name).count(),
                 1,
-                "{offered} in {source}"
+                "{name} in {source}"
             );
         }
         let once = with_prelude(&program(source)).into_owned();
@@ -113,16 +78,59 @@ fn naming_any_offered_declaration_attaches_the_whole_prelude_once() {
     }
 }
 
+/// Each source is left exactly as written: the prelude never attaches.
+#[track_caller]
+fn assert_left_as_written(sources: &[&str]) {
+    for source in sources {
+        let parsed = program(source);
+        assert!(
+            matches!(with_prelude(&parsed), Cow::Borrowed(_)),
+            "must stay borrowed: {source}"
+        );
+    }
+}
+
+#[test]
+fn the_prelude_source_parses_clean_and_lives_past_every_source_line() {
+    let rebased = json();
+    assert_unit_rebases_cleanly(JSON, rebased);
+    assert!(
+        attached(&rebased.program),
+        "the prelude must recognise itself"
+    );
+    assert_all_lines(&statement_lines(rebased, type_position), is_prelude_line);
+    assert!(!is_prelude_line(PRELUDE_LINE_BASE) && is_prelude_line(PRELUDE_LINE_BASE + 1));
+}
+
+#[test]
+fn a_program_that_names_nothing_from_the_prelude_is_left_exactly_as_written() {
+    // Naming an internal primitive does not pull the prelude in either.
+    assert_left_as_written(&[
+        "fn jsonish(x) = x\nprint(toString(jsonish(1)))\n",
+        "print(toString(__jsonNodeKind(1, 0)))\n",
+    ]);
+}
+
+#[test]
+fn naming_any_offered_declaration_attaches_the_whole_prelude_once() {
+    assert_offers_attach_once(
+        &[
+            "print(jsonEncode(JsonNull) ?: \"\")\n",
+            "let decoded = jsonDecode(\"[]\")\n",
+            "let member = JsonMember(\"k\", JsonInt(1))\n",
+            "fn f(v) = jsonText(v)\n",
+        ],
+        "Json JsonMember jsonEncode jsonDecode jsonQuote jsonField jsonIndex jsonText jsonInt jsonFloat jsonBool",
+    );
+}
+
 #[test]
 fn a_program_declaring_a_prelude_type_or_constructor_keeps_its_own_and_gets_none() {
-    for source in [
+    assert_left_as_written(&[
         "type JsonMember = JsonMember(string, int)\nprint(jsonEncode(JsonNull) ?: \"\")\n",
         "type Json = { raw: string }\nlet j = Json { raw: \"x\" }\n",
         "type Mine = JsonNull | Other\nlet m = JsonNull\n",
-    ] {
-        let source = program(source);
-        assert!(matches!(with_prelude(&source), Cow::Borrowed(_)));
-    }
+    ]);
 }
 
 #[test]
@@ -155,73 +163,32 @@ fn the_prelude_type_checks_clean_beside_a_program_that_uses_all_of_it() {
 
 #[test]
 fn the_signals_source_parses_clean_and_lives_in_its_own_rebased_range() {
-    let parsed = parse_program(SIGNALS);
-    assert!(
-        parsed.errors.is_empty(),
-        "signals syntax: {:?}",
-        parsed.errors
-    );
     let rebased = signals();
-    assert_eq!(
-        rebased.program.statements.len(),
-        parsed.program.statements.len()
-    );
-    let lines = statement_lines(rebased);
-    assert!(
-        !lines.is_empty()
-            && lines
-                .iter()
-                .all(|line| *line >= PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE),
-        "{lines:?}"
-    );
+    assert_unit_rebases_cleanly(SIGNALS, rebased);
+    let signals_base = PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE;
+    assert_all_lines(&statement_lines(rebased, statement_position), |line| {
+        line >= signals_base
+    });
     // The two units share no line: json's range ends where signals' begins.
-    let json_lines = statement_lines(json());
-    assert!(
-        !json_lines.is_empty()
-            && json_lines
-                .iter()
-                .all(|line| *line < PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE),
-        "{json_lines:?}"
-    );
-    assert!(is_prelude_line(PRELUDE_LINE_BASE + PRELUDE_UNIT_STRIDE + 1));
+    assert_all_lines(&statement_lines(json(), statement_position), |line| {
+        line < signals_base
+    });
+    assert!(is_prelude_line(signals_base + 1));
 }
 
 #[test]
 fn naming_a_signals_declaration_attaches_signals_and_json_exactly_once() {
-    for source in [
-        "fn slice() = (perform Signal<Route>.read()).tab\n",
-        "let frames = signalForced([], \"route\")\n",
-        "let frame = SignalFrame(\"route\", [], 1)\n",
-        "let keyed = signalRefreshKeyed([], \"route\", [], \"\", fn() => \"x\")\n",
-        "let changed = signalChanges(1, 2, toString, [])\n",
-        "let text = jsonEncode(signalFramesJson([])) ?: \"\"\n",
-    ] {
-        let names = attached_names(source);
-        for offered in [
-            "Json",
-            "JsonMember",
-            "jsonEncode",
-            "jsonDecode",
-            "SignalFrame",
-            "signalFrameKey",
-            "signalFrame",
-            "signalRefreshKeyed",
-            "signalChanges",
-            "signalFramesJson",
-            "signalFramesFromJson",
-        ] {
-            assert_eq!(
-                names.iter().filter(|name| *name == offered).count(),
-                1,
-                "{offered} in {source}"
-            );
-        }
-        let once = with_prelude(&program(source)).into_owned();
-        assert!(
-            matches!(with_prelude(&once), Cow::Borrowed(_)),
-            "attaching twice: {source}"
-        );
-    }
+    assert_offers_attach_once(
+        &[
+            "fn slice() = (perform Signal<Route>.read()).tab\n",
+            "let frames = signalForced([], \"route\")\n",
+            "let frame = SignalFrame(\"route\", [], 1)\n",
+            "let keyed = signalRefreshKeyed([], \"route\", [], \"\", fn() => \"x\")\n",
+            "let changed = signalChanges(1, 2, toString, [])\n",
+            "let text = jsonEncode(signalFramesJson([])) ?: \"\"\n",
+        ],
+        "Json JsonMember jsonEncode jsonDecode SignalFrame signalFrameKey signalFrame signalRefreshKeyed signalChanges signalFramesJson signalFramesFromJson",
+    );
 }
 
 #[test]

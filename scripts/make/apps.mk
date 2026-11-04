@@ -161,6 +161,30 @@ _gpui-self-test: _gpui-apps
 		OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --self-test "$(CURDIR)/$$script/self-test.json" "$(CURDIR)/target/gpui-self-test/$$(basename $$script)" $(GPUI_WINDOW) || exit 1; \
 	done
 
+## _gpui-app-self-test: One app's self-test.json on the GPUI host. [UI-MACHINE-SELF-TEST]
+.PHONY: _gpui-app-self-test
+_gpui-app-self-test: _runtime_macos
+	cargo build --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash $(APP_DIR)/run.sh --self-test "$(CURDIR)/$(SCRIPT_DIR)/self-test.json" "$(CURDIR)/target/gpui-self-test/$(notdir $(SCRIPT_DIR))" $(GPUI_WINDOW)
+
+## _gpui-synth-smoke: The synth's recorded events through the GPUI host, with no window.
+.PHONY: _gpui-synth-smoke
+_gpui-synth-smoke: _runtime_macos
+	cargo build --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/synth/run.sh --smoke
+
+## _storage-smoke: The Mac storage app through its Swift host.
+.PHONY: _storage-smoke
+_storage-smoke: _runtime_macos
+	cargo build --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/macos/run.sh --smoke
+
+## _app-suite: One app's host-free suites, named by SUITES.
+.PHONY: _app-suite
+_app-suite: _runtime
+	cargo build --release -p osprey-cli
+	for suite in $(SUITES); do $(BIN) test $$suite || exit 1; done
+
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test

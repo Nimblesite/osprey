@@ -1,6 +1,6 @@
 # Dependent types, proofs and the Mathlib port [PROOF]
 
-> **STOP — NOT YET IN FORCE.** The `.lean`-only direction in this document ([PROOF-SOURCE], the format ban, the deletion list, and the matching sections of specs 0051 and 0052 and plans 0041 to 0044) was written on 2026-10-31 while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores every `.lean`-source section until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test or document because of this text before then. After the merge, [plan 0044](../../plans/0044-lean-source-compatibility.md) is the order of work.
+> **STOP — NOT YET IN FORCE.** The `.lean`-only direction in this document ([PROOF-SOURCE], the format ban, the deletion list, and the matching sections of specs 0051 and 0052 and plans 0041 to 0044) was written on 2026-10-31 while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores every `.lean`-source section until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test or document because of this text before then. After the merge, [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) is the order of work.
 
 ## First goal: soundness, trust, verifiability [PROOF-GOAL]
 
@@ -39,7 +39,7 @@ This contract adds; it never alters. The rules below are testable and each has a
 
 ## Discipline [PROOF-DISCIPLINE]
 
-`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Its input is `.lean` files ([PROOF-SOURCE]); it never reads proof text written inside a `.ospml` module. How an Osprey module names the `.lean` file that proves things about it is an open design item of plan 0041 phase 6. Everything about registration, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here.
+`lean4` is a discipline under [spec 0050](0050-TypeDisciplines.md): a package declaring `[discipline] name = "lean4"`, run as a checker process through [TYPES-DISCIPLINE-PROTOCOL](0050-TypeDisciplines.md#checker-protocol-types-discipline-protocol), and meeting every other module at an HM export signature. Its input is `.lean` files ([PROOF-SOURCE]); it never reads proof text written inside a `.ospml` module. How an Osprey module names the `.lean` file that proves things about it is an open design item of plan 0041. Everything about registration, the seam, the protocol, caching and the no-harm rules lives in spec 0050 and is not restated here.
 
 ### Boundary with Hindley-Milner [PROOF-BOUNDARY]
 
@@ -51,7 +51,7 @@ How the `lean4` checker reads and writes the signatures of [TYPES-DISCIPLINE-BOU
 
 ## Kernel [PROOF-KERNEL]
 
-The kernel is the only trusted component. It is a type checker for terms of Lean 4's type theory, written in Osprey, compiled through the native backend, and small enough to audit: under 5,000 lines of Osprey, with a published prose specification of every judgement.
+The kernel is the only trusted component. It is a type checker for terms of Lean 4's type theory, written in Osprey, compiled through the native backend, and small enough to audit: under 5,000 lines of Osprey, with a published prose specification of every judgement. The kernel's coverage is defined by an inventory of every declaration form, typing judgement and reduction rule required by the pinned Lean core and `Std`, each with an implementing function, a positive example and a rejection control. The inventory is not complete yet; it states the completion requirement, not what the kernel checks today.
 
 `[PROOF-KERNEL-THEORY]` The compatible profile implements the specified rules of Lean 4's type theory so valid exported proof terms check without translation. Erroneous implementation behaviour is excluded by [PROOF-ORACLE]:
 
@@ -75,7 +75,7 @@ Trust claims name the checker, intended rules, assumptions and independently rep
 
 1. **Specification.** The kernel's judgements are written as prose and inference rules in this contract's companion document before the code, and every kernel function names the rule it implements.
 2. **Cross-checking.** Every release re-checks the same Lean export with the Osprey kernel and with at least one independent checker of Lean's theory (`lean4lean` or `nanoda`), with agreement required on the intended compatible fragment. A disagreement blocks the release until explained in the report. Known unsound certificates remain mandatory rejections even when an affected reference release accepts them; their original reproduction, corrected rule and Osprey rejection must remain explicit tests. No declaration is silently skipped.
-3. **Report.** `docs/reports/proof-trust-<date>.md` records the Mathlib commit, the export hash, declarations checked, wall time, the axioms used, and the cross-check result. The website's claim is a link to the latest report.
+3. **Report.** `docs/reviews/review.md` records the Mathlib commit, the export hash, declarations checked, wall time, the axioms used, and the cross-check result. The website's claim is a link to the latest report.
 4. **No trusted tactics.** A tactic, an SMT solver or a learned guide proposes terms; only the kernel accepts them ([PROOF-TACTICS-CERT]).
 
 `[PROOF-TRUST-LESSONS]` The [wrong-structure projection exploit in Lean issue 14576](https://github.com/leanprover/lean4/issues/14576) supplies a concrete rejection fixture. Each additional published exploit requires its own primary report, affected/fixed revision and reproducer before attribution. The following are requirements, not claims that every regression or isolation mechanism is already implemented:
@@ -109,7 +109,7 @@ Timing is a record, never a gate, and never a claim. There is no "faster than Le
 
 `[PROOF-SOURCE-LEAN]` **The proof source format is `.lean`.** A proof file is a Lean 4 source file exactly as the pinned toolchain (Lean v4.25.0, Lake, Mathlib at its pin) accepts it: same syntax, same elaboration, same tactics, same imports, same `lakefile`. Osprey adds no keyword, marker, header or dialect. A file Lean accepts, Osprey accepts; a file Lean rejects, Osprey rejects, with the same error at the same position. Lean's own test suite, `Init`, `Std` and Mathlib are the acceptance corpus, in that order, and the verdicts must match declaration for declaration.
 
-`[PROOF-SOURCE-STAGES]` Three stages, each a shipped product and each gated on the corpus above ([plan 0044](../../plans/0044-lean-source-compatibility.md)):
+`[PROOF-SOURCE-STAGES]` Three stages, each a shipped product and each gated on the corpus above ([plan 0041](../../plans/0041-dependent-types-and-mathlib.md)):
 
 1. **Toolchain stage.** `osprey prove check Foo.lean` runs the pinned Lean toolchain on the file, exports it through the pinned `lean4export`, and checks the export with Osprey's kernel ([PROOF-KERNEL]). Goals, hovers and errors come from Lean's language server. The toolchain is a bundled or required dependency; without it there is no verdict, and the tool says so.
 2. **Front-end stage.** Osprey reads `.olean` files and runs Lean's compiled front end (parser, elaborator, tactics, Mathlib's metaprograms) itself through an interpreter for Lean's IR, with no Lean executable installed. Verdicts and exported terms are byte-identical to stage 1.
@@ -135,7 +135,7 @@ Elaboration and tactics are Lean's. At stage 1 the toolchain runs them; at stage
 
 `[PROOF-RUNNABLE-LIBRARY]` Delivery proceeds through runnable library theorems. Each selected theorem has a pinned Lean export containing its complete dependency closure, checked from an empty Osprey environment without skipping or assuming unsupported declarations. Acceptance requires the intended statement checked structurally, its actual proof checked by the Osprey kernel, its axiom dependencies reported, and corrupted-proof and changed-statement controls rejected. The exact command and output run under GC, ARC and wasm32. A successful common theorem is evidence for that theorem and its dependencies; larger targets such as Navier–Stokes retain their own unmet requirements.
 
-Mathlib is used as Mathlib: the pinned commit's `.lean` files, Apache-2.0 with its notices, built through Lake at stage 1 and by Osprey at stage 2. There is no translation, no `@osprey/mathlib` rewrite and no re-proving. The kernel-checked environment of the pinned commit (`[PROOF-MATHLIB-CHECKED]`) is the one deliverable: every declaration available by its Lean name, every proof Osprey-checked, every axiom reported.
+Mathlib is used as Mathlib: the pinned commit's `.lean` files, Apache-2.0 with its notices, built through Lake at stage 1 and by Osprey at stage 2. There is no translation, no `@osprey/mathlib` rewrite and no re-proving. The kernel-checked environment of the pinned commit (`[PROOF-MATHLIB-CHECKED]`) is the one deliverable: every declaration available by its Lean name, every proof Osprey-checked, every axiom reported. Two ledgers close that deliverable, neither implemented yet: checked-export coverage, closed only when every original required declaration and dependency in the pinned export passes the compatible kernel; and source build, closed only when every module of the pinned Mathlib tree builds from its unmodified `.lean` sources. Only the first ledger establishes full imported-certificate coverage; both are required to close the library completion milestone. Counts always use the fixed denominator; no sample, excluded directory or alternate body silently shrinks it.
 
 `[PROOF-MATHLIB-UPSTREAM]` The bridge is two-way. A defect found in a Mathlib statement, proof or notation during checking, syncing or adversarial testing is reported to Mathlib with the Osprey evidence and fixed upstream; a local patch is carried only while the upstream fix is pending, listed in the trust report with its upstream link. A fork of a Mathlib file is never a feature. Kernel findings about Lean itself ([PROOF-TRUST-LESSONS]) are disclosed to the Lean maintainers before publication, with the dated report following the fix.
 
@@ -182,4 +182,4 @@ The workbench is measured by one test: a mathematician who has never used Osprey
 
 ## Verification [PROOF-VERIFICATION]
 
-A phase of plan 0041 or 0044 is complete only with the evidence named there. The gates, in order: Lean's own test suite giving identical verdicts through `osprey prove check`; Lean's core library checked; Mathlib checked and cross-checked; `Mathlib/Algebra/Group/Basic.lean`, unmodified, checked at stage 2 with no Lean executable present; the automation benchmark recorded; a dependent module calling into and being called from an HM module in the differential corpus under both memory backends and on wasm32.
+A phase of plan 0041 or 0044 is complete only with the evidence named there; no milestone is complete because a plan, demonstration, benchmark result or badge exists on its own. The gates, in order: Lean's own test suite giving identical verdicts through `osprey prove check`; Lean's core library checked; Mathlib checked and cross-checked; `Mathlib/Algebra/Group/Basic.lean`, unmodified, checked at stage 2 with no Lean executable present; the automation benchmark recorded; a dependent module calling into and being called from an HM module in the differential corpus under both memory backends and on wasm32.

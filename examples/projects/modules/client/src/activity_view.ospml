@@ -42,7 +42,7 @@ module ActivityView
         owner = BankData::value doc "[${index}].owner" "Talon customer"
         account = BankData::value doc "[${index}].account" "—"
         cents = BankData::integer doc "[${index}].cents"
-        icon = UI::leaf "span" (UI::prop "className" "movement-icon ${kind}") (mark kind)
+        icon = UI::text "movement-icon ${kind}" (mark kind)
         copy = UI::node "span" (UI::prop "className" "movement-copy") (UI::leaf "strong" "" note + "," + UI::leaf "small" "" "${owner} · Account #${account}")
         meta = UI::node "span" (UI::prop "className" "movement-meta") (UI::leaf "strong" (UI::prop "className" "movement-amount ${kind}") (amount kind cents) + "," + UI::leaf "small" "" (label kind))
         UI::node "div" (UI::prop "className" "movement-row ${kind}") (icon + "," + copy + "," + meta)

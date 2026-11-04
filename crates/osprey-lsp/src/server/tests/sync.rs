@@ -34,10 +34,9 @@ async fn did_open_publishes_warnings_then_errors_on_change() {
     let expected: Vec<_> = [
         "redundant type annotation on parameter `a` of `add`: inference derives `int` without it",
         "redundant type annotation on parameter `b` of `add`: inference derives `int` without it",
-        "redundant return type annotation on `add`: inference derives `int` without it",
     ]
     .into_iter()
-    .zip([(8, 13), (16, 21), (23, 29)])
+    .zip([(8, 13), (16, 21)])
     .map(|(message, (start, end))| {
         json!({
             "code": "redundant-annotation",

@@ -282,6 +282,7 @@ pub(super) fn arithmetic_builtin_operations(
         "abs" if !crate::arithmetic::absolute_overflow_possible(ty) => &[],
         "abs" => &["overflow"],
         "intDiv" => &["overflow", "remainderByZero"],
+        _ if crate::arithmetic::conversion_overflow_possible(name, ty) => &["overflow"],
         _ => &[],
     }
 }
@@ -294,6 +295,15 @@ pub(super) fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -
             "abs"
                 | "intDiv"
                 | "toFloat"
+                | "toFloat32"
+                | "toFloat16"
+                | "toInt"
+                | "toInt8"
+                | "toInt16"
+                | "toInt32"
+                | "toUint8"
+                | "toUint16"
+                | "toUint32"
                 | "sqrt"
                 | "exp"
                 | "ln"
@@ -324,11 +334,12 @@ pub(super) fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -
                 | "hypot"
                 | "fmod"
                 | "copysign"
-                | "float32"
                 | "floatBits"
                 | "floatFromBits"
                 | "float32Bits"
                 | "float32FromBits"
+                | "float16Bits"
+                | "float16FromBits"
                 | "floatToInt"
                 | "bitAnd"
                 | "bitOr"
@@ -347,6 +358,8 @@ pub(super) fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -
                 | "satAdd"
                 | "satSub"
                 | "satMul"
+                | "gpuLoad"
+                | "gpuLoadTensor"
         )
     {
         return None;
@@ -384,21 +397,20 @@ pub(super) fn value_shape(ty: &crate::ty::Type) -> Option<Value> {
             ..Value::default()
         }),
         Type::Con { name, .. }
-            if matches!(
-                name.as_str(),
-                names::INT
-                    | names::FLOAT
-                    | names::STRING
-                    | names::BOOL
-                    | names::UNIT
-                    | names::LIST
-                    | names::MAP
-                    | names::ITERATOR
-                    | names::FIBER
-                    | names::CHANNEL
-                    | names::PTR
-                    | names::GPU_BUFFER
-            ) =>
+            if crate::numeric::Numeric::of_name(name).is_some()
+                || matches!(
+                    name.as_str(),
+                    names::STRING
+                        | names::BOOL
+                        | names::UNIT
+                        | names::LIST
+                        | names::MAP
+                        | names::ITERATOR
+                        | names::FIBER
+                        | names::CHANNEL
+                        | names::PTR
+                        | names::GPU_BUFFER
+                ) =>
         {
             Some(Value {
                 field_names: Some(BTreeSet::new()),

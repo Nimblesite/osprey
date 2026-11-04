@@ -33,6 +33,12 @@ public typealias Outcome = Result<JSONValue, CapabilityError>
 public protocol CapabilityAdapter: Sendable {
     var kinds: [String] { get }
     func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue
+    /// A completed result nobody will receive, because its request was cancelled or replaced first.
+    func discarded(_ request: Request, _ value: JSONValue)
+}
+
+public extension CapabilityAdapter {
+    func discarded(_ request: Request, _ value: JSONValue) {}
 }
 
 @MainActor
@@ -58,7 +64,9 @@ public final class CapabilityRunner {
         let store = slices.staged(), identity = UUID()
         let task = Task { [weak self] in
             let outcome = await CapabilityRunner.outcome(adapter, request, store)
-            completion(self?.publish(request.ticket, identity, store, outcome, Task.isCancelled) ?? .failure(.cancelled))
+            let published = self?.publish(request.ticket, identity, store, outcome, Task.isCancelled) ?? .failure(.cancelled)
+            if case .success(let value) = outcome, case .failure = published { adapter.discarded(request, value) }
+            completion(published)
         }
         inflight[request.ticket] = (identity, task)
     }

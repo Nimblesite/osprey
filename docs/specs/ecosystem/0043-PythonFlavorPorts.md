@@ -30,7 +30,7 @@ The namespace is the Python package's import name. Each Python submodule or conc
 
 ## Device placement — [PORT-DEVICE]
 
-A port that computes over tensors performs a static storage effect and never names a buffer type, as the GPT-2 port's `Tensor` effect does ([FLAVOR-PYTHON-GPU], [STAGE-BACKEND]). A host handler answers it with lists. A GPU handler answers it with `GpuBuffer` operations, and those kernels run on Metal or OpenCL when `OSPREY_GPU` selects a device ([spec 0034](../runtime/0034-GPUComputation.md)). The handler the program installs decides where arithmetic runs: there is one body for both, with no CuPy-style duplicate API. Each such suite runs its assertions under both handlers. Kernel purity, scalar elements, binary64 arithmetic and explicit transfers follow spec 0034; a port claims no float32 or float16 arithmetic.
+A port that computes over tensors performs a static storage effect and never names a buffer type, as the GPT-2 port's `Tensor` effect does ([FLAVOR-PYTHON-GPU], [STAGE-BACKEND]). A host handler answers it with lists. A GPU handler answers it with `GpuBuffer` operations, and those kernels run on Metal or OpenCL when `OSPREY_GPU` selects a device ([spec 0034](../runtime/0034-GPUComputation.md)). The handler the program installs decides where arithmetic runs: there is one body for both, with no CuPy-style duplicate API. Each such suite runs its assertions under both handlers. Kernel purity, scalar elements, explicit transfers and arithmetic at the declared element width follow spec 0034. A port states the numeric type its tests exercise; conversion to binary32 is `toFloat32`, and conversion to binary16 is `toFloat16` ([BUILTIN-CONVERT-FLOAT](../runtime/0012-Built-InFunctions.md)).
 
 ## Tests against the real package — [PORT-TEST-ORACLE]
 
@@ -90,7 +90,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/pydantic-ai` | the pydantic-ai 2.46.0 agent engine: messages and their wire form, `OpenAIChatModel` request/response mapping, `TestModel`, direct requests, the tool-calling `Agent` loop, against pydantic-ai over a mock transport (111 oracle assertions) plus a live DeepSeek agent run judged by a model | shipped |
 | `@osprey/scipy` | `scipy.special` functions | in progress |
 | `@osprey/sklearn` | metrics, preprocessing and model selection over lists against scikit-learn 1.9.1 (312 oracle assertions) | shipped |
-| `@osprey/transformers` | generation layer of transformers 5.20.2: 19 logits processors and warpers, `LogitsProcessorList` order, softmax/argmax/inverse-CDF sampling, stopping criteria, a model-independent `generate` driver (375 oracle assertions) | generation shipped; LLaMA/GPT-2 models in progress |
+| `@osprey/transformers` | generation layer of transformers 5.20.2 and torch 2.14.1 at binary32: 19 logits processors and warpers, `LogitsProcessorList` order, softmax/argmax/inverse-CDF sampling, stopping criteria, a model-independent `generate` driver (395 oracle assertions and two empty-row controls) | generation shipped; LLaMA/GPT-2 models in progress |
 | `@osprey/peft` | LoRA adapters | planned; no package source yet |
 | `@osprey/bitsandbytes` | int8 absmax and 4-bit NF4 quantization | planned; no package source yet |
 | `@osprey/flash-attn` | `flash_attn_func` and `flash_attn_varlen_func` as the online-softmax tiled pass: causal and sliding-window masks, ALiBi, GQA head mapping, log-sum-exp, against torch SDPA in float64 (1035 oracle assertions) | shipped |

@@ -68,7 +68,7 @@
       "version": "0.8.1",
       "archiveSha256": "46ce53430332e30f303364eaabfa10ed2aa23dfaf2a147e04370e0e9c423578b",
       "edits": "patches/gpui-component.json",
-      "treeSha256": "e48b045440a195939ce58de83f569849d25cdbf14c5a26e37e88cd893940825c"
+      "treeSha256": "fa58fd52341164373da9203a0ccc70974f11730baa8d454aeb2f5465c2d017b5"
     },
     {
       "name": "gpui-pre-reqwest",
@@ -118,6 +118,13 @@
       "archiveSha256": "78f2bfed90f1618b4b48dcad9307f25e14ae894e2949642c87c351601d62cebd",
       "treeSha256": "bf232d78f227c12f36e27b8420f959160d13233c37bb7c62e9f1774e30e1bb11",
       "edits": "patches/oo7.json"
+    },
+    {
+      "name": "gpui-pre-ios",
+      "version": "0.3.10",
+      "archiveSha256": "5773a1e3a399df64f3ecc5538727fd0575279bd190959cf97a9e2b698c0310b8",
+      "treeSha256": "caef732cf752edce427245797bd507ede16f179dd301db4f77abd2e6c2bdcc03",
+      "edits": "patches/gpui-pre-ios.json"
     }
   ]
 }

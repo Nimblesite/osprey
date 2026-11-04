@@ -8,6 +8,10 @@ struct LeafView: View {
     @Environment(\.ospreyInherited) private var inherited
     @Environment(\.ospreyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
+    #if os(macOS)
+    @Environment(\.ospreySelectionGroup) private var group
+    @Environment(\.ospreyInk) private var frameInk
+    #endif
 
     private var dark: Bool { scheme == .dark }
 
@@ -29,7 +33,7 @@ struct LeafView: View {
     }
 
     private func tone(_ name: String) -> AnyShapeStyle {
-        if name == "primary" { return AnyShapeStyle(.foreground) }
+        if name == "primary" { return theme.foreground(dark: dark) }
         if let colour = theme.color(name, dark: dark) { return AnyShapeStyle(colour) }
         return AnyShapeStyle(.secondary)
     }
@@ -37,9 +41,13 @@ struct LeafView: View {
     private func setting(_ text: Text, role: String) -> some View {
         text
             .font(Type.font(role, inherited))
-            .tracking(inherited.tracking != 0 ? inherited.tracking : role == "eyebrow" ? 0.6 : 0)
+            .tracking(tracking(role))
             .lineSpacing(leading(role))
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func tracking(_ role: String) -> CGFloat {
+        inherited.tracking != 0 ? inherited.tracking : role == "eyebrow" ? 0.6 : 0
     }
 
     private func leading(_ role: String) -> CGFloat {
@@ -47,16 +55,36 @@ struct LeafView: View {
         return inherited.lineHeight > size ? inherited.lineHeight - size * 1.2 : 0
     }
 
-    private var plain: some View {
+    @ViewBuilder private var plain: some View {
         let role = node.text("role")
         let words = role == "eyebrow" ? node.text("text").uppercased() : node.text("text")
-        return setting(Text(words), role: role).foregroundStyle(tone(node.text("tone"))).textSelection(.enabled)
+        #if os(macOS)
+        if let group {
+            setting(Text(words), role: role).hidden().overlay(alignment: .topLeading) {
+                SelectableText(attributed: attributed(words, role: role, ink: nsTone(node.text("tone"))), group: group)
+            }
+        } else {
+            setting(Text(words), role: role).foregroundStyle(tone(node.text("tone"))).textSelection(.enabled)
+        }
+        #else
+        setting(Text(words), role: role).foregroundStyle(tone(node.text("tone"))).textSelection(.enabled)
+        #endif
     }
 
-    private var rich: some View {
+    @ViewBuilder private var rich: some View {
         let role = node.text("role")
         let joined = node.list("runs").reduce(AttributedString()) { acc, run in acc + styled(run, role: role) }
-        return setting(Text(joined), role: role).textSelection(.enabled)
+        #if os(macOS)
+        if let group {
+            setting(Text(joined), role: role).hidden().overlay(alignment: .topLeading) {
+                SelectableText(attributed: attributed(joined, role: role), group: group)
+            }
+        } else {
+            setting(Text(joined), role: role).textSelection(.enabled)
+        }
+        #else
+        setting(Text(joined), role: role).textSelection(.enabled)
+        #endif
     }
 
     private func styled(_ run: JSONValue, role: String) -> AttributedString {
@@ -73,8 +101,59 @@ struct LeafView: View {
         default: if run.flag("italic") { piece.font = base.italic() }
         }
         if let ink = theme.color(run.text("ink"), dark: dark) { piece.foregroundColor = ink }
+        #if os(macOS)
+        // The same run for the AppKit text a selection group draws, which reads none of the above.
+        var face = inherited
+        if run.text("emphasis") == "code" {
+            face.family = "mono"
+            face.size = (inherited.size > 0 ? inherited.size : 13) - 1
+            piece.appKit.backgroundColor = theme.color("codeFill", dark: dark).map(NSColor.init)
+        } else if run.flag("italic") {
+            face.italic = true
+        }
+        let font = Type.nsFont(role, face)
+        piece.appKit.font = run.text("emphasis") == "strong" ? NSFont.systemFont(ofSize: font.pointSize, weight: .semibold) : font
+        piece.appKit.foregroundColor = theme.color(run.text("ink"), dark: dark).map(NSColor.init)
+        #endif
         return piece
     }
+
+    #if os(macOS)
+    /// The tone `tone` resolves, as AppKit ink for a leaf a selection group draws.
+    private func nsTone(_ name: String) -> NSColor {
+        if name == "primary" { return theme.color("text", dark: dark).map(NSColor.init) ?? .labelColor }
+        return theme.color(name, dark: dark).map(NSColor.init) ?? .secondaryLabelColor
+    }
+
+    /// TextKit's line spacing, the same extra between lines the SwiftUI twin's `setting` adds.
+    private func paragraph(_ role: String) -> NSParagraphStyle {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = leading(role)
+        return paragraph
+    }
+
+    /// Plain words as AppKit draws them: this leaf's face, ink, tracking and spacing.
+    private func attributed(_ words: String, role: String, ink: NSColor) -> NSAttributedString {
+        var attributes: [NSAttributedString.Key: Any] = [.font: Type.nsFont(role, inherited), .foregroundColor: ink, .paragraphStyle: paragraph(role)]
+        if tracking(role) != 0 { attributes[.kern] = tracking(role) }
+        return NSAttributedString(string: words, attributes: attributes)
+    }
+
+    /// The runs `styled` built, over AppKit: faces and inks a run left unset fill from this leaf.
+    private func attributed(_ joined: AttributedString, role: String) -> NSAttributedString {
+        let appKit = (try? NSAttributedString(joined, including: \.appKit)) ?? NSAttributedString(string: String(joined.characters))
+        let runs = NSMutableAttributedString(attributedString: appKit)
+        let whole = NSRange(location: 0, length: runs.length)
+        for (key, value) in [(NSAttributedString.Key.foregroundColor, frameInk ?? .labelColor), (.font, Type.nsFont(role, inherited))] {
+            var missing: [NSRange] = []
+            runs.enumerateAttribute(key, in: whole) { found, range, _ in if found == nil { missing.append(range) } }
+            missing.forEach { runs.addAttribute(key, value: value, range: $0) }
+        }
+        runs.addAttributes([.paragraphStyle: paragraph(role)], range: whole)
+        if tracking(role) != 0 { runs.addAttribute(.kern, value: tracking(role), range: whole) }
+        return runs
+    }
+    #endif
 
     private var labelled: some View {
         HStack(spacing: 6) {

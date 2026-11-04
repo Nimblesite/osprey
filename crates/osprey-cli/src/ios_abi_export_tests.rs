@@ -3,6 +3,127 @@
 use super::selection::{host_abi, host_abi_selected};
 use super::tests::{abi_of, checked};
 use super::ExportScope;
+use std::fmt::Write as _;
+
+#[test]
+fn numeric_exports_and_imports_execute_against_real_c() -> Result<(), Box<dyn std::error::Error>> {
+    // [FFI-NUMERIC-WIDTH] Real C calls both directions, including high bits and signs.
+    let mut source = String::new();
+    let mut host = String::from("#include <stdint.h>\n#include <assert.h>\nvoid osp_mem_boot(void){}\nvoid osp_prof_boot(void){}\nvoid osp_release(void *p){(void)p;}\n");
+    let mut assertions = String::from("int main(void){\n");
+    for (i, (ty, c, values)) in [
+        ("int8", "int8_t", "-128,127"),
+        ("int16", "int16_t", "-32768,32767"),
+        ("int32", "int32_t", "INT32_MIN,INT32_MAX"),
+        ("int", "int64_t", "INT64_MIN,INT64_MAX"),
+        ("uint8", "uint8_t", "0,255"),
+        ("uint16", "uint16_t", "0,65535"),
+        ("uint32", "uint32_t", "0,UINT32_MAX"),
+        ("float16", "uint16_t", "0x8000,0x7bff"),
+        ("float32", "float", "-123.5f,0x1.fffffep127f"),
+        ("float", "double", "-123.5,0x1.fffffffffffffp1023"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        writeln!(
+            source,
+            "extern fn host{i}(value: {ty}) -> {ty}\nfn relay{i}(value) = host{i}(value)"
+        )?;
+        writeln!(
+            host,
+            "{c} osprey_relay{i}({c});\n{c} host{i}({c} value){{return value;}}"
+        )?;
+        for value in values.split(',') {
+            writeln!(
+                assertions,
+                "assert(osprey_relay{i}(({c})({value})) == ({c})({value}));"
+            )?;
+        }
+    }
+    writeln!(host, "{assertions}return 0;}}")?;
+    let (abi, ir) = abi_of(&source);
+    let extended = !cfg!(any(
+        target_os = "windows",
+        all(target_os = "linux", target_arch = "aarch64")
+    ));
+    let adapted = super::with_host_abi_for_target(&ir, &abi, extended)?;
+    let root = std::env::temp_dir().join(format!("osprey-numeric-c-{}", std::process::id()));
+    std::fs::create_dir_all(&root)?;
+    std::fs::write(root.join("numeric.ll"), adapted)?;
+    std::fs::write(root.join("host.c"), host)?;
+    let build = std::process::Command::new("clang")
+        .current_dir(&root)
+        .args([
+            "-O2",
+            "-Wno-override-module",
+            "numeric.ll",
+            "host.c",
+            "-o",
+            "numeric",
+        ])
+        .output()?;
+    assert!(
+        build.status.success(),
+        "{}",
+        String::from_utf8_lossy(&build.stderr)
+    );
+    assert!(std::process::Command::new(root.join("numeric"))
+        .status()?
+        .success());
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn every_numeric_width_crosses_the_host_boundary_without_widening() -> Result<(), String> {
+    // [FFI-NUMERIC-WIDTH] Exercise both imports and exports of every numeric row.
+    for (ty, c, llvm, extension) in [
+        ("int8", "int8_t", "i8", "signext "),
+        ("int16", "int16_t", "i16", "signext "),
+        ("int32", "int32_t", "i32", ""),
+        ("int", "int64_t", "i64", ""),
+        ("uint8", "uint8_t", "i8", "zeroext "),
+        ("uint16", "uint16_t", "i16", "zeroext "),
+        ("uint32", "uint32_t", "i32", ""),
+        ("float16", "uint16_t", "i16", "zeroext "),
+        ("float32", "float", "float", ""),
+        ("float", "double", "double", ""),
+    ] {
+        let python = osprey_syntax::parse_program_with_flavor(
+            &format!("def identity(value: {ty}) -> {ty}:\n    return value\n"),
+            osprey_syntax::Flavor::Python,
+        );
+        assert!(python.errors.is_empty(), "{ty}: {:?}", python.errors);
+        assert!(
+            osprey_types::check_program(&python.program).is_empty(),
+            "{ty}"
+        );
+        let (abi, ir) = abi_of(&format!(
+            "extern fn host(value: {ty}) -> {ty}\nfn relay(value) = host(value)\n"
+        ));
+        assert_eq!(abi.exports.len(), 1, "missing {ty} export");
+        assert_eq!(abi.exports.first().map(|export| export.ret.c()), Some(c));
+        for extended in [true, false] {
+            let ext = if extended { extension } else { "" };
+            let adapted = super::with_host_abi_for_target(&ir, &abi, extended)?;
+            for expected in [
+                format!(
+                    "declare {ext}{llvm} @host({})",
+                    format!("{llvm} {ext}").trim_end()
+                ),
+                format!("define {ext}{llvm} @osprey_relay({llvm} {ext}%p0)"),
+                format!("call {ext}{llvm} @host({llvm} {ext}%p0)"),
+            ] {
+                assert!(
+                    adapted.contains(&expected),
+                    "{ty}: missing {expected}\n{adapted}"
+                );
+            }
+        }
+    }
+    Ok(())
+}
 
 #[test]
 fn borrowed_string_import_references_use_the_owned_adapter() -> Result<(), String> {

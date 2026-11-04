@@ -39,6 +39,12 @@ fn main() {
     match env::var("CARGO_CFG_TARGET_OS").as_deref() {
         Ok("macos") => println!("cargo:rustc-link-lib=static=osprey_runtime_macos_arc"),
         Ok("windows") => println!("cargo:rustc-link-lib=dylib=ws2_32"),
+        // Bionic folds pthread into libc, so only dl and m are separate libraries there.
+        Ok("android") => {
+            for system in ["dl", "m"] {
+                println!("cargo:rustc-link-lib=dylib={system}");
+            }
+        }
         _ => {
             for system in ["pthread", "dl", "m"] {
                 println!("cargo:rustc-link-lib=dylib={system}");

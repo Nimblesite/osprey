@@ -1,5 +1,5 @@
 {
-  "_comment": "Every video tutorial, keyed by the id a page names in its `video` front matter. lib/videos.mjs derives the player, key moments, transcript, VideoObject markup and video sitemap entry from this and the two WebVTT tracks, so nothing is written twice. The duration is the end of the last chapter, in whole seconds.",
+  "_comment": "One source for video players, VideoObject markup and the video sitemap. durationSeconds is measured from the delivered MP4 with ffprobe; captions and chapters are WebVTT. Preserve original upload dates when updating metadata.",
   "swift-interop": {
     "name": "Osprey and Swift interop: Mac and iPhone app tutorial",
     "description": "A three-minute video tutorial. Osprey exports compile to a C header that Swift calls, Swift @_cdecl functions become Osprey imports, and one Xcode target ships the same app to the Mac and the iPhone.",
@@ -21,7 +21,8 @@
       "@_cdecl",
       "Xcode",
       "algebraic effects"
-    ]
+    ],
+    "durationSeconds": 194.224
   },
   "profiler": {
     "name": "Profiling Osprey in VS Code: CPU, memory and leaks",
@@ -43,7 +44,8 @@
       "memory management",
       "ARC",
       "leak detection"
-    ]
+    ],
+    "durationSeconds": 120.073
   },
   "package-manager": {
     "name": "Add and remove Osprey packages in VS Code",
@@ -62,7 +64,8 @@
       "package manager",
       "dependencies",
       "package registry"
-    ]
+    ],
+    "durationSeconds": 48.779
   },
   "dependent-types": {
     "name": "What are dependent types?: for programmers",
@@ -82,7 +85,8 @@
       "programmers"
     ],
     "proofTopic": "dependent-types",
-    "audience": "programmers"
+    "audience": "programmers",
+    "durationSeconds": 100.464
   },
   "osprey-proof-kernel": {
     "name": "How Osprey checks a proof: for programmers",
@@ -102,7 +106,8 @@
       "programmers"
     ],
     "proofTopic": "osprey-proof-kernel",
-    "audience": "programmers"
+    "audience": "programmers",
+    "durationSeconds": 109.789
   },
   "proof-workbench": {
     "name": "Meet the proof workbench: for programmers",
@@ -122,7 +127,8 @@
       "programmers"
     ],
     "proofTopic": "proof-workbench",
-    "audience": "programmers"
+    "audience": "programmers",
+    "durationSeconds": 109.68
   },
   "mathlib-bridge": {
     "name": "The Mathlib port is already underway: for programmers",
@@ -142,7 +148,8 @@
       "programmers"
     ],
     "proofTopic": "mathlib-bridge",
-    "audience": "programmers"
+    "audience": "programmers",
+    "durationSeconds": 166.298
   },
   "proofs-that-say-no": {
     "name": "A proof checker must say no: for programmers",
@@ -162,7 +169,8 @@
       "programmers"
     ],
     "proofTopic": "proofs-that-say-no",
-    "audience": "programmers"
+    "audience": "programmers",
+    "durationSeconds": 107.131
   },
   "navier-stokes-proof": {
     "name": "Navier-Stokes: OpenAI's published solution: for programmers",
@@ -182,7 +190,8 @@
       "programmers"
     ],
     "proofTopic": "navier-stokes-proof",
-    "audience": "programmers"
+    "audience": "programmers",
+    "durationSeconds": 138.567
   },
   "dependent-types-math": {
     "name": "What are dependent types?: for mathematicians",
@@ -202,7 +211,8 @@
       "mathematicians"
     ],
     "proofTopic": "dependent-types",
-    "audience": "mathematicians"
+    "audience": "mathematicians",
+    "durationSeconds": 106.124
   },
   "osprey-proof-kernel-math": {
     "name": "Inside a small proof kernel: for mathematicians",
@@ -222,7 +232,8 @@
       "mathematicians"
     ],
     "proofTopic": "osprey-proof-kernel",
-    "audience": "mathematicians"
+    "audience": "mathematicians",
+    "durationSeconds": 119.411
   },
   "proof-workbench-math": {
     "name": "The proof workbench: goals and evidence: for mathematicians",
@@ -242,7 +253,8 @@
       "mathematicians"
     ],
     "proofTopic": "proof-workbench",
-    "audience": "mathematicians"
+    "audience": "mathematicians",
+    "durationSeconds": 110.745
   },
   "mathlib-bridge-math": {
     "name": "Osprey rechecks imported mathematical proofs: for mathematicians",
@@ -262,7 +274,8 @@
       "mathematicians"
     ],
     "proofTopic": "mathlib-bridge",
-    "audience": "mathematicians"
+    "audience": "mathematicians",
+    "durationSeconds": 172.052
   },
   "proofs-that-say-no-math": {
     "name": "Rejection is part of the proof: for mathematicians",
@@ -282,7 +295,8 @@
       "mathematicians"
     ],
     "proofTopic": "proofs-that-say-no",
-    "audience": "mathematicians"
+    "audience": "mathematicians",
+    "durationSeconds": 105.514
   },
   "navier-stokes-proof-math": {
     "name": "Navier-Stokes: the published solution, then an exact flow: for mathematicians",
@@ -302,7 +316,8 @@
       "mathematicians"
     ],
     "proofTopic": "navier-stokes-proof",
-    "audience": "mathematicians"
+    "audience": "mathematicians",
+    "durationSeconds": 145.781
   },
   "chromecast-from-mac": {
     "name": "How to Chromecast from a Mac to a TV",
@@ -322,7 +337,8 @@
       "macOS",
       "casting",
       "GPUI"
-    ]
+    ],
+    "durationSeconds": 96.804
   },
   "static-typing-python": {
     "name": "Static typing for Python-style code, with no type hints",
@@ -341,7 +357,8 @@
       "static typing",
       "type inference",
       "Python"
-    ]
+    ],
+    "durationSeconds": 90.11
   },
   "ui-testing-by-label": {
     "name": "An accessibility tree AI agents can drive: UI testing by label",
@@ -360,7 +377,8 @@
       "accessibility",
       "AI agents",
       "end-to-end tests"
-    ]
+    ],
+    "durationSeconds": 128.239
   },
   "rust-ui-framework-without-rust": {
     "name": "A Rust UI framework without writing Rust: GPUI apps as state machines",
@@ -380,6 +398,27 @@
       "UI framework",
       "state machines",
       "Osprey Native"
-    ]
+    ],
+    "durationSeconds": 104.154
+  },
+  "agent-native": {
+    "name": "Osprey Agent: a native coding agent in action",
+    "description": "Watch the real macOS SwiftUI agent: inspect failed tests, review an edit and its successful verification, then read the corrected code. Narrated walkthrough of a recorded calculator conversation, with native controls and AOT Osprey application logic.",
+    "content": "/assets/videos/osprey-agent-native.mp4",
+    "poster": "/assets/videos/osprey-agent-native-poster.jpg",
+    "posterAlt": "Osprey Agent showing syntax-highlighted calculator code and its native usage inspector",
+    "captions": "/assets/videos/osprey-agent-native.en.vtt",
+    "chapters": "/assets/videos/osprey-agent-native.chapters.vtt",
+    "width": 1920,
+    "height": 1080,
+    "uploadDate": "2026-11-03T18:48:19+11:00",
+    "tags": [
+      "Osprey Native",
+      "SwiftUI",
+      "AI coding agent",
+      "AOT",
+      "native applications"
+    ],
+    "durationSeconds": 80.157
   }
 }

@@ -83,25 +83,32 @@ module Runtime
     emit (out, save) = encoded (out, saveSession (out.nextSession, save))
 
     encoded<S, A> : (Outgoing<S, A>, string) -> string !e
-    encoded (out, sessionText) = Doc::write (JsonObject [
+    encoded (out, sessionText) = Doc::write (envelope (out, sessionText, patches (out.rendered, out.previousFrames)))
+
+    envelope<S, A> : (Outgoing<S, A>, string, List<Json>) -> Json !e
+    envelope (out, sessionText, changed) = JsonObject [
         Doc::num ("version", version),
         Doc::str ("state", sessionText),
         JsonMember "slices" (JsonArray (mapList (out.outWrites, \write => slice write))),
-        JsonMember "patches" (JsonArray (patches (out.rendered, out.previousFrames))),
+        JsonMember "patches" (JsonArray changed),
         JsonMember "removed" (Doc::strings (removed (out.rendered, out.previousFrames))),
         JsonMember "requests" (JsonArray (mapList (out.outRequests, \request => Requests::encode request))),
         JsonMember "diagnostics" (Doc::strings out.diagnostics),
         JsonMember "theme" out.themeJson,
-    ])
+    ]
 
     (** The first envelope for a host `context` (`now`, `offset`, `platform`), with the theme and every region. *)
     export start<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, Theme) -> string !e
     start (source, init, render, save, theme) =
+        emit (initial (source, init, render, theme), save)
+
+    initial<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Theme) -> Outgoing<S, A> !e
+    initial (source, init, render, theme) =
         host = context (Doc::parse source)
         first = init host
         regions = render (first.stepStore, first.stepStore, [], first.writes)
         session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions)
-        emit (Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme), save)
+        Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme)
 
     // A rejected event alters nothing and says why.
     refuse<S, A> : (Session<S>, string, (S) -> Json, List<KeyedSnapshot<Node<A>>>) -> string !e
@@ -169,10 +176,14 @@ module Runtime
 
     advance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json) -> string !e
     advance (session, now, delivered, update, render, save) =
+        emit (advanced (session, now, delivered, update, render), save)
+
+    advanced<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Outgoing<S, A> !e
+    advanced (session, now, delivered, update, render) =
         next = update (now, session.sessionStore, delivered)
         regions = render (session.sessionStore, next.stepStore, session.sessionFrames, next.writes)
         moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
-        emit (Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull), save)
+        Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull)
 
     deliver<S, A> : (Session<S>, Event, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, (S) -> Json, (Json) -> S) -> string !e
     deliver (session, event, update, render, save, restoreStore) =
@@ -190,16 +201,7 @@ module Runtime
     streamedPatch region = JsonObject [Doc::str ("key", region.snapshotKey), Doc::num ("revision", region.snapshotRevision), JsonMember "node" (tree (Streams::split region.snapshotValue))]
 
     resident<S, A> : Outgoing<S, A> -> Resident<S> ![SceneStream | e]
-    resident out = Resident(residentSession = out.nextSession, residentEnvelope = Doc::write (JsonObject [
-        Doc::num ("version", version),
-        Doc::str ("state", residentState),
-        JsonMember "slices" (JsonArray (mapList (out.outWrites, \write => slice write))),
-        JsonMember "patches" (JsonArray (mapList (filterList (out.rendered, \region => region.snapshotRevision != signalRevisionOf out.previousFrames region.snapshotKey), \region => streamedPatch region))),
-        JsonMember "removed" (Doc::strings (removed (out.rendered, out.previousFrames))),
-        JsonMember "requests" (JsonArray (mapList (out.outRequests, \request => Requests::encode request))),
-        JsonMember "diagnostics" (Doc::strings out.diagnostics),
-        JsonMember "theme" out.themeJson,
-    ]))
+    resident out = Resident(residentSession = out.nextSession, residentEnvelope = Doc::write (envelope (out, residentState, mapList (filterList (out.rendered, \region => region.snapshotRevision != signalRevisionOf out.previousFrames region.snapshotKey), \region => streamedPatch region))))
 
     (** Runs `work` with integer faults resolved for an application's C boundary: an overflow keeps the wrapped result and a division by zero its dividend. Interface arithmetic is counters, clocks and coordinates, none near the limits. *)
     export guarded work =
@@ -216,11 +218,7 @@ module Runtime
     (** [UI-RESIDENT] `start` for a library that keeps the session itself: the first envelope, whose state is only a marker, and the session to keep. *)
     export begin<S, A> : (string, (Context) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>, Theme) -> Resident<S> ![SceneStream | e]
     begin (source, init, render, theme) =
-        host = context (Doc::parse source)
-        first = init host
-        regions = render (first.stepStore, first.stepStore, [], first.writes)
-        session = Session(sessionContext = host, sessionStore = first.stepStore, sessionFrames = frames regions)
-        resident (Outgoing(nextSession = session, previousFrames = [], rendered = regions, outWrites = first.writes, outRequests = first.requests, diagnostics = [], themeJson = Themes::encode theme))
+        resident (initial (source, init, render, theme))
 
     // A resident session has no saved prior state, so an edit made against an older revision cannot be recovered.
     residentMessage<S, A> : (Session<S>, Incoming, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Result<Message<A>, Error> !e
@@ -244,10 +242,7 @@ module Runtime
 
     residentAdvance<S, A> : (Session<S>, Context, Message<A>, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]
     residentAdvance (session, now, delivered, update, render) =
-        next = update (now, session.sessionStore, delivered)
-        regions = render (session.sessionStore, next.stepStore, session.sessionFrames, next.writes)
-        moved = Session(sessionContext = now, sessionStore = next.stepStore, sessionFrames = frames regions)
-        resident (Outgoing(nextSession = moved, previousFrames = session.sessionFrames, rendered = regions, outWrites = next.writes, outRequests = next.requests, diagnostics = [], themeJson = JsonNull))
+        resident (advanced (session, now, delivered, update, render))
 
     (** [UI-RESIDENT] `dispatch` for a library that keeps the session itself: the envelope after one host event and the session to keep. The store is never serialized, so a frame costs only `update`, the changed regions and the envelope. *)
     export proceed<S, A> : (Session<S>, string, (Context, S, Message<A>) -> Step<S>, (S, S, List<SignalFrame>, List<SliceWrite>) -> List<KeyedSnapshot<Node<A>>>) -> Resident<S> ![SceneStream | e]

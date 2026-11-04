@@ -206,7 +206,7 @@ fn paint_shape(
             size,
             colour,
             ..
-        } => paint_glyphs(text, *x, *y, *size, *colour, transform, window, cx)?,
+        } => super::text::paint_glyphs(text, *x, *y, *size, *colour, transform, window, cx)?,
         Shape::Lettering {
             text,
             x,
@@ -216,7 +216,7 @@ fn paint_shape(
             anchor,
             weight,
             ..
-        } => paint_lettering(
+        } => super::text::paint_lettering(
             text,
             (*x, *y, *size),
             *colour,
@@ -257,36 +257,6 @@ fn sprite_colour(atlas: usize, tint: u32) -> Rgba {
     }
 }
 
-/// Shapes one text run in the system font at `weight` and paints it with its left edge, centre or
-/// right edge (`anchor` 0, 1 or 2) at x, the top of its line at y.
-fn paint_lettering(
-    text: &str,
-    (x, y, size): (f32, f32, f32),
-    colour: u32,
-    (anchor, weight): (u8, f32),
-    transform: Transform,
-    window: &mut Window,
-    cx: &mut App,
-) -> Result<(), String> {
-    let scaled = px(size * transform.scale);
-    let run = TextRun {
-        len: text.len(),
-        color: Hsla::from(rgba(colour)),
-        font: Font {
-            weight: FontWeight(weight),
-            ..font(".SystemUIFont")
-        },
-        ..Default::default()
-    };
-    let line = window
-        .text_system()
-        .shape_line(text.to_owned().into(), scaled, &[run], None);
-    let shift = line.width * (f32::from(anchor) / 2.);
-    let at = transform.point(x, y) - point(shift, px(0.));
-    line.paint(at, scaled, TextAlign::Left, None, window, cx)
-        .map_err(|problem| format!("scene lettering could not be painted: {problem}"))
-}
-
 /// Strokes a decoded polyline at the uniformly scaled width.
 fn paint_strip(
     points: &[(f32, f32)],
@@ -308,38 +278,6 @@ fn paint_strip(
         .map_err(|problem| format!("scene strip could not be built: {problem}"))?;
     window.paint_path(path, rgba(colour));
     Ok(())
-}
-
-/// Shapes and paints one coloured glyph run at its scaled position.
-#[allow(clippy::too_many_arguments)]
-fn paint_glyphs(
-    text: &str,
-    x: f32,
-    y: f32,
-    size: f32,
-    colour: u32,
-    transform: Transform,
-    window: &mut Window,
-    cx: &mut App,
-) -> Result<(), String> {
-    let scaled = px(size * transform.scale);
-    let run = TextRun {
-        len: text.len(),
-        color: Hsla::from(rgba(colour)),
-        ..Default::default()
-    };
-    let line = window
-        .text_system()
-        .shape_line(text.to_owned().into(), scaled, &[run], None);
-    line.paint(
-        transform.point(x, y),
-        scaled,
-        TextAlign::Left,
-        None,
-        window,
-        cx,
-    )
-    .map_err(|problem| format!("scene glyphs could not be painted: {problem}"))
 }
 
 /// Replays a path's steps on GPUI's builder in the original call order; the application's own

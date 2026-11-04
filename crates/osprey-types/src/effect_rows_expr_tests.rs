@@ -8,44 +8,55 @@
 //! reachable at all. Implements [EFFECTS-STATIC-DISCHARGE].
 
 use super::effect_rows_tests::{assert_accepted, assert_rejected_with};
-use crate::{check_program, TypeError};
+use crate::check_program;
 use osprey_ast::{Expr, FieldAssignment, Program, Stmt};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// Fragments every "this escaped to the entry point" diagnostic carries.
 const UNHANDLED_RING: &[&str] = &["unhandled effect operations at program entry", "Alarm.ring"];
 
+/// The `Alarm` effect every fixture declares — see the module docs for why.
+const ALARM: &str = "effect Alarm { ring: fn() -> int }\n";
+
+/// `ALARM` plus its performer: the most common fixture opening.
+const ARMED: &str = "effect Alarm { ring: fn() -> int }\n\
+                     fn ring() = perform Alarm.ring()\n";
+
+/// `ALARM` plus the `wake` that performs while it adds.
+const WOKEN: &str = "effect Alarm { ring: fn() -> int }\n\
+                     fn wake(n) = wrapAdd(n, perform Alarm.ring())\n";
+
+/// `ARMED` plus the eager-callback invoker `apply`.
+const APPLIED: &str = "effect Alarm { ring: fn() -> int }\n\
+                       fn ring() = perform Alarm.ring()\n\
+                       fn apply(callback) = callback()\n";
+
+/// A `bells` namespace opened over the `Alarm` effect.
+const BELLS: &str = "namespace bells;\neffect Alarm { ring: fn() -> int }\n";
+
+/// Binds `name` to a `handle Alarm` block answering `ring` with `value`,
+/// wrapping `body`.
+fn handled(name: &str, value: &str, body: &str) -> String {
+    format!("let {name} = {{\nhandle Alarm {{\nring => {value}\n}}\n{body}\n}}\n")
+}
+
 #[test]
 fn both_pipe_shapes_carry_the_callee_row_to_the_call_site() {
     // A bare identifier on the right applies the piped value as the sole
     // argument; a call on the right prepends it to the written arguments.
+    assert_rejected_with(&format!("{WOKEN}let woken = 1 |> wake\n"), UNHANDLED_RING);
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
-         let woken = 1 |> wake\n",
-        UNHANDLED_RING,
-    );
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n, m) = wrapAdd(wrapAdd(n, m), perform Alarm.ring())\n\
-         let woken = 1 |> wake(2)\n",
+        &format!("{ALARM}fn wake(n, m) = wrapAdd(wrapAdd(n, m), perform Alarm.ring())\nlet woken = 1 |> wake(2)\n"),
         UNHANDLED_RING,
     );
 }
 
 #[test]
 fn a_handler_discharges_both_pipe_shapes() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
-         fn twice(n, m) = wrapAdd(wrapAdd(n, m), perform Alarm.ring())\n\
-         let quiet = {\n\
-             handle Alarm {\n\
-                 ring => 0\n\
-             }\n\
-             ((1 |> wake) |> twice(2))\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{WOKEN}fn twice(n, m) = wrapAdd(wrapAdd(n, m), perform Alarm.ring())\n{}",
+        handled("quiet", "0", "((1 |> wake) |> twice(2))")
+    ));
 }
 
 #[test]
@@ -53,23 +64,13 @@ fn a_piped_callback_keeps_its_provenance_through_the_pipe() {
     // The pipe hands `ring` to `apply` as a VALUE: discharge must still see a
     // known callable on the other side, not an unprovable dynamic call.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn apply(callback) = callback()\n\
-         fn ring() = perform Alarm.ring()\n\
-         let answer = ring |> apply\n",
+        &format!("{APPLIED}let answer = ring |> apply\n"),
         UNHANDLED_RING,
     );
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn apply(callback) = callback()\n\
-         fn ring() = perform Alarm.ring()\n\
-         let answer = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             (ring |> apply)\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{APPLIED}{}",
+        handled("answer", "42", "(ring |> apply)")
+    ));
 }
 
 #[test]
@@ -77,58 +78,34 @@ fn a_ufcs_method_call_carries_the_row_of_the_function_it_names() {
     // `value.wake()` lowers to `wake(value)`, so the row travels through the
     // method-call form exactly as through the call form.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
-         let start = 1\n\
-         let woken = start.wake()\n",
+        &format!("{WOKEN}let start = 1\nlet woken = start.wake()\n"),
         UNHANDLED_RING,
     );
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn wake(n) = wrapAdd(n, perform Alarm.ring())\n\
-         let start = 1\n\
-         let quiet = {\n\
-             handle Alarm {\n\
-                 ring => 0\n\
-             }\n\
-             start.wake()\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{WOKEN}let start = 1\n{}",
+        handled("quiet", "0", "start.wake()")
+    ));
 }
 
 #[test]
 fn a_ufcs_method_call_returning_a_callable_keeps_its_provenance() {
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         fn pick(n) = ring\n\
-         let one = 1\n\
-         let answer = one.pick()()\n",
+        &format!("{ARMED}fn pick(n) = ring\nlet one = 1\nlet answer = one.pick()()\n"),
         UNHANDLED_RING,
     );
 }
 
 #[test]
 fn a_select_arm_body_contributes_its_row() {
+    let selected =
+        |arms: &str| format!("{ARMED}let channel = Channel(1)\nlet chosen = select {{\n{arms}}}\n");
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let channel = Channel(1)\n\
-         let chosen = select {\n\
-           recv(channel) => ring()\n\
-           _ => 0\n\
-         }\n",
+        &selected("recv(channel) => ring()\n_ => 0\n"),
         &["Alarm.ring"],
     );
     // An operand runs on entry, so its row counts whichever arm is chosen.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let channel = Channel(1)\n\
-         let chosen = select {\n\
-           send(channel, ring()) => 1\n\
-           timeout(5) => 0\n\
-         }\n",
+        &selected("send(channel, ring()) => 1\ntimeout(5) => 0\n"),
         &["Alarm.ring"],
     );
 }
@@ -137,27 +114,19 @@ fn a_select_arm_body_contributes_its_row() {
 fn a_record_update_keeps_the_callable_provenance_of_every_field() {
     // The updated record inherits the untouched fields from the original and
     // replaces the named ones; invoking either must resolve to a real callee.
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Handlers = { onTick: fn() -> int, onDone: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         fn quiet() = 0\n\
-         let base = Handlers { onTick: quiet, onDone: quiet }\n\
-         let armed = base { onTick: ring }\n\
-         let chosen = armed.onTick\n\
-         let answer = chosen()\n",
-        UNHANDLED_RING,
-    );
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Handlers = { onTick: fn() -> int, onDone: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         fn quiet() = 0\n\
-         let base = Handlers { onTick: ring, onDone: quiet }\n\
-         let disarmed = base { onTick: quiet }\n\
-         let chosen = disarmed.onTick\n\
-         let answer = chosen()\n",
-    );
+    let through = |base: &str, updated: &str| {
+        format!(
+            "{ALARM}type Handlers = {{ onTick: fn() -> int, onDone: fn() -> int }}\n\
+             fn ring() = perform Alarm.ring()\n\
+             fn quiet() = 0\n\
+             let base = Handlers {{ onTick: {base}, onDone: quiet }}\n\
+             let armed = base {{ onTick: {updated} }}\n\
+             let chosen = armed.onTick\n\
+             let answer = chosen()\n"
+        )
+    };
+    assert_rejected_with(&through("quiet", "ring"), UNHANDLED_RING);
+    assert_accepted(&through("ring", "quiet"));
 }
 
 #[test]
@@ -166,38 +135,24 @@ fn a_namespaced_declaration_is_indexed_and_checked_against_its_declared_row() {
     // row contract has to be resolved through the qualified name to be checked
     // at all.
     assert_rejected_with(
-        "namespace bells;\n\
-         effect Alarm { ring: fn() -> int }\n\
-         effect Clock { now: fn() -> int }\n\
-         fn peal() -> int !Clock = perform Alarm.ring()\n",
+        &format!("{BELLS}effect Clock {{ now: fn() -> int }}\nfn peal() -> int !Clock = perform Alarm.ring()\n"),
         &["outside its declared row", "Alarm.ring"],
     );
-    assert_accepted(
-        "namespace bells;\n\
-         effect Alarm { ring: fn() -> int }\n\
-         fn peal() -> int !Alarm = perform Alarm.ring()\n",
-    );
+    assert_accepted(&format!(
+        "{BELLS}fn peal() -> int !Alarm = perform Alarm.ring()\n"
+    ));
 }
 
 #[test]
 fn a_spawned_fiber_carries_its_bodys_row_and_its_awaited_provenance() {
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let running = spawn ring()\n\
-         let answer = await running\n",
+        &format!("{ARMED}let running = spawn ring()\nlet answer = await running\n"),
         UNHANDLED_RING,
     );
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let answer = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             await (spawn ring())\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{ARMED}{}",
+        handled("answer", "42", "await (spawn ring())")
+    ));
 }
 
 #[test]
@@ -205,12 +160,7 @@ fn a_channel_payload_keeps_the_provenance_of_what_was_sent() {
     // What comes back out of `recv` is what went in through `send`: a callable
     // sent down a channel and invoked on the far side is still a KNOWN callee.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let channel = Channel()\n\
-         let sent = send(channel, ring)\n\
-         let received = recv(channel)\n\
-         let answer = received()\n",
+        &format!("{ARMED}let channel = Channel()\nlet sent = send(channel, ring)\nlet received = recv(channel)\nlet answer = received()\n"),
         &["Alarm.ring"],
     );
 }
@@ -235,14 +185,14 @@ fn an_element_mapped_into_one_callback_and_invoked_in_another_fails_closed() {
 #[test]
 fn an_indexed_element_of_an_unprovable_list_still_fails_closed() {
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let hidden = [ring]\n\
-         fn pick(list) = list[0]\n\
-         let answer = match pick(hidden) {\n\
-             Ok(callback) => callback()\n\
-             Error(_) => 0\n\
-         }\n",
+        &format!(
+            "{ARMED}let hidden = [ring]\n\
+             fn pick(list) = list[0]\n\
+             let answer = match pick(hidden) {{\n\
+                 Ok(callback) => callback()\n\
+                 Error(_) => 0\n\
+             }}\n"
+        ),
         &["effect provenance cannot be proven"],
     );
 }
@@ -268,7 +218,10 @@ const SYNTHETIC_BASE: &str = "effect Alarm { ring: fn() -> int }\n\
                               fn quiet() = 0\n\
                               let base = Handlers { onTick: quiet }\n";
 
-fn check_with_synthetic(extra: Vec<Stmt>) -> Vec<TypeError> {
+/// Checks `SYNTHETIC_BASE` plus `extra` and asserts some diagnostic mentions
+/// `fragment`.
+#[track_caller]
+fn assert_synthetic_mentions(extra: Vec<Stmt>, fragment: &str) {
     let parsed = parse_program_with_flavor(SYNTHETIC_BASE, Flavor::Default);
     assert!(
         parsed.errors.is_empty(),
@@ -277,10 +230,14 @@ fn check_with_synthetic(extra: Vec<Stmt>) -> Vec<TypeError> {
     );
     let mut statements = parsed.program.statements;
     statements.extend(extra);
-    check_program(&Program {
+    let errors = check_program(&Program {
         statements,
         doc: None,
-    })
+    });
+    assert!(
+        errors.iter().any(|error| error.message.contains(fragment)),
+        "expected a diagnostic containing {fragment:?}, got: {errors:#?}"
+    );
 }
 
 fn binding(name: &str, value: Expr) -> Stmt {
@@ -306,11 +263,14 @@ fn identifier(name: &str) -> Expr {
     Expr::Identifier(name.into())
 }
 
-fn assert_mentions(errors: &[TypeError], fragment: &str) {
-    assert!(
-        errors.iter().any(|error| error.message.contains(fragment)),
-        "expected a diagnostic containing {fragment:?}, got: {errors:#?}"
-    );
+/// `1.<method>()`, as an `Expr::MethodCall` node.
+fn method_call(method: &str) -> Expr {
+    Expr::MethodCall {
+        target: Box::new(Expr::Integer(1)),
+        method: method.into(),
+        arguments: Vec::new(),
+        named_arguments: Vec::new(),
+    }
 }
 
 /// The two pipe shapes, as `Expr::Pipe` nodes: a bare callee on the right, and
@@ -331,10 +291,7 @@ fn pipes(callee: &str) -> [Expr; 2] {
 #[test]
 fn a_pipe_node_carries_the_row_of_whatever_stands_on_its_right() {
     for piped in pipes("wake") {
-        assert_mentions(
-            &check_with_synthetic(vec![binding("piped", piped)]),
-            "Alarm.ring",
-        );
+        assert_synthetic_mentions(vec![binding("piped", piped)], "Alarm.ring");
     }
 }
 
@@ -344,11 +301,13 @@ fn a_pipe_node_carries_the_provenance_of_the_callable_it_yields() {
     // survive: invoking the result must resolve to a known performer rather
     // than to an unprovable dynamic call.
     for piped in pipes("pick") {
-        let errors = check_with_synthetic(vec![
-            binding("piped", piped),
-            binding("answer", call(identifier("piped"), Vec::new())),
-        ]);
-        assert_mentions(&errors, "Alarm.ring");
+        assert_synthetic_mentions(
+            vec![
+                binding("piped", piped),
+                binding("answer", call(identifier("piped"), Vec::new())),
+            ],
+            "Alarm.ring",
+        );
     }
 }
 
@@ -356,31 +315,14 @@ fn a_pipe_node_carries_the_provenance_of_the_callable_it_yields() {
 fn a_method_call_node_carries_both_the_row_and_the_provenance_of_its_method() {
     // `1.wake()` names `wake` with the receiver prepended, exactly as the call
     // form does.
-    assert_mentions(
-        &check_with_synthetic(vec![binding(
-            "woken",
-            Expr::MethodCall {
-                target: Box::new(Expr::Integer(1)),
-                method: "wake".into(),
-                arguments: Vec::new(),
-                named_arguments: Vec::new(),
-            },
-        )]),
+    assert_synthetic_mentions(vec![binding("woken", method_call("wake"))], "Alarm.ring");
+    assert_synthetic_mentions(
+        vec![
+            binding("picked", method_call("pick")),
+            binding("answer", call(identifier("picked"), Vec::new())),
+        ],
         "Alarm.ring",
     );
-    let errors = check_with_synthetic(vec![
-        binding(
-            "picked",
-            Expr::MethodCall {
-                target: Box::new(Expr::Integer(1)),
-                method: "pick".into(),
-                arguments: Vec::new(),
-                named_arguments: Vec::new(),
-            },
-        ),
-        binding("answer", call(identifier("picked"), Vec::new())),
-    ]);
-    assert_mentions(&errors, "Alarm.ring");
 }
 
 #[test]
@@ -394,18 +336,20 @@ fn an_update_node_replaces_only_the_fields_it_names() {
             value: identifier(value),
         }],
     };
-    let errors = check_with_synthetic(vec![
-        binding("armed", update("onTick", "ring")),
-        binding(
-            "chosen",
-            Expr::FieldAccess {
-                target: Box::new(identifier("armed")),
-                field: "onTick".into(),
-            },
-        ),
-        binding("answer", call(identifier("chosen"), Vec::new())),
-    ]);
-    assert_mentions(&errors, "Alarm.ring");
+    assert_synthetic_mentions(
+        vec![
+            binding("armed", update("onTick", "ring")),
+            binding(
+                "chosen",
+                Expr::FieldAccess {
+                    target: Box::new(identifier("armed")),
+                    field: "onTick".into(),
+                },
+            ),
+            binding("answer", call(identifier("chosen"), Vec::new())),
+        ],
+        "Alarm.ring",
+    );
 }
 
 #[test]
@@ -413,13 +357,13 @@ fn a_structural_pattern_binds_each_field_it_names() {
     // `{ onTick }` destructures without naming the type, so the binding has to
     // be projected out of the matched record's own provenance.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Handlers = { onTick: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         let armed = Handlers { onTick: ring }\n\
-         let answer = match armed {\n\
-           { onTick } => onTick()\n\
-         }\n",
+        &format!(
+            "{ARMED}type Handlers = {{ onTick: fn() -> int }}\n\
+             let armed = Handlers {{ onTick: ring }}\n\
+             let answer = match armed {{\n\
+               {{ onTick }} => onTick()\n\
+             }}\n"
+        ),
         UNHANDLED_RING,
     );
 }
@@ -430,10 +374,7 @@ fn named_arguments_are_matched_to_their_parameter_by_name() {
     // value slots and a performed operation's argument slots have to be filled
     // by NAME or the callable travelling in one would be lost.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         fn apply(callback) = callback()\n\
-         let answer = apply(callback: ring)\n",
+        &format!("{APPLIED}let answer = apply(callback: ring)\n"),
         UNHANDLED_RING,
     );
     assert_rejected_with(
@@ -450,12 +391,12 @@ fn a_qualified_path_resolves_to_the_declaration_it_names() {
     // path used as a VALUE has to resolve through the qualified name to keep
     // its provenance.
     assert_rejected_with(
-        "namespace bells;\n\
-         effect Alarm { ring: fn() -> int }\n\
-         effect Clock { now: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
-         fn apply(callback) = callback()\n\
-         fn drive() -> int !Clock = apply(bells::ring)\n",
+        &format!(
+            "{BELLS}effect Clock {{ now: fn() -> int }}\n\
+             fn ring() = perform Alarm.ring()\n\
+             fn apply(callback) = callback()\n\
+             fn drive() -> int !Clock = apply(bells::ring)\n"
+        ),
         &["outside its declared row", "Alarm.ring"],
     );
 }
@@ -479,10 +420,9 @@ fn invoking_what_an_idle_channel_yields_fails_closed() {
     // Nothing was ever sent, so `recv` yields a callable of unknown
     // provenance. Invoking it must be refused rather than assumed pure.
     assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let idle = Channel()\n\
-         let received = recv(idle)\n\
-         let answer = received()\n",
+        &format!(
+            "{ALARM}let idle = Channel()\nlet received = recv(idle)\nlet answer = received()\n"
+        ),
         &["effect provenance cannot be proven"],
     );
 }

@@ -7,6 +7,8 @@ permalink: /docs/python-flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---
 
+{% from "native-capture.njk" import capture %}
+
 Osprey's flavors share type inference, effect checking, modules, memory management and native code generation. Each parses its own syntax into the same canonical abstract syntax tree (AST).
 
 The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary.
@@ -39,6 +41,8 @@ osprey hello.py --run
 
 Projects opt in file by file. List each Python-flavor file under `python_sources` in `osprey.toml`; other `.py` files below a source root, such as build scripts, are ignored.
 
+{{ capture("/assets/images/guides/python-functions.png", "Run inferred functions and a fold: 42, 42 and 55 appear in the output.", "Run inferred functions and a fold: 42, 42 and 55 appear in the output.", 1440, 920) }}
+
 ## Functions and inference
 
 ```python
@@ -64,9 +68,11 @@ def main():
 scale: 42, twice: 42, sum of squares: 55
 ```
 
-None of these functions has an annotation, but every type is known. Osprey's Hindley–Milner inference works out each function's type from the body. Annotations are optional, and you only add one when inference cannot decide. A call passes its arguments either all by position or all by keyword.
+Types are inferred from function bodies; annotate only where inference needs help. Pass arguments all positionally or all by keyword.
 
 Integer arithmetic can overflow, so `+`, `-` and `*` on integers perform the built-in `Arith` effect. The `wrapping` handler gives it a policy: return the wrapped result. If no handler covers the arithmetic, the compiler rejects the program; it does not pick a policy for you. [Arithmetic needs a policy](/docs/effects/#arithmetic-needs-a-policy) shows the alternatives.
+
+{{ capture("/assets/images/guides/python-records.png", "The same account accepts one withdrawal and returns a visible declined Result for another.", "The same account accepts one withdrawal and returns a visible declined Result for another.", 1440, 920) }}
 
 ## Records, Result and match
 
@@ -110,7 +116,9 @@ Alice now has 70
 declined: Alice has only 100
 ```
 
-A plain `class` declares a closed, immutable record. `Account(owner=..., balance=...)` builds one, and `update(account, balance=...)` returns a copy with one field changed. A failure that callers should expect is returned as a `Result` value; there are no exceptions. `match` must cover every case. `return` may only appear at the end of a function or at the end of every branch of a final `if` or `match`, so each function remains a single expression.
+A plain `class` declares a closed immutable record; keyword construction builds it and `update` returns a modified copy. Expected failures are Result values, with exhaustive matching and no exceptions. `return` belongs at a function's tail or in every branch of its final `if`/`match`.
+
+{{ capture("/assets/images/guides/python-effects.png", "Change the handler: the output switches from log to audit while load remains unchanged.", "Change the handler: the output switches from log to audit while load remains unchanged.", 1440, 920) }}
 
 ## Effects and handlers
 
@@ -168,14 +176,8 @@ GPT-2 is written against a static effect called `Tensor`. Static effects are res
 
 ```python
 # osprey: flavor=python
-# examples/gpt2/python/backends.py, abridged
-@static_effect
-class Tensor[B]:
-    def build(size: int, kernel: Kernel) -> B: ...
-    def get(buffer: B, index: int) -> float: ...
-    def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> B: ...
-    def load(path: str, name: str) -> B: ...
-    def device() -> str: ...
+# Selected operations from the current implementation.
+{{ gpuExample.tensor | safe }}
 ```
 
 The model performs the operations and never names a buffer type:
@@ -191,31 +193,19 @@ Two handlers, each in its own file, answer every operation. [`cpu.py`](https://g
 
 ```python
 # osprey: flavor=python
-# examples/gpt2/python/cpu.py, abridged
-@static_handler(Tensor[list[float]])
-class on_lists:
-    def mat_mul(a, b, rows, inner, cols):
-        return toList(map(range(rows * cols), lambda i: dot(a, b, i, inner, cols)))
-
-    def device():
-        return "lists"
+# Selected operations from the current implementation.
+{{ gpuExample.cpu | safe }}
 ```
 
 [`gpu.py`](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/python/gpu.py) uses GPU buffers, run on Metal or OpenCL:
 
 ```python
 # osprey: flavor=python
-# examples/gpt2/python/gpu.py, abridged
-@static_handler(Tensor[GpuBuffer[float]])
-class on_gpu:
-    def mat_mul(a, b, rows, inner, cols):
-        return or_abort(gpuMatMul(a, b, rows, inner, cols))
-
-    def device():
-        return gpuDevice()
+# Selected operations from the current implementation.
+{{ gpuExample.gpu | safe }}
 ```
 
-The model source is the same for both. The handler the program installs decides where the arithmetic runs, and the compiler checks that both handlers answer every operation with the right types. [One model, two backends](/docs/one-model-two-backends/) walks through the full effect and both handlers.
+The installed handler selects the backend. Both must answer every operation with compatible types; products and loads return Result so callers handle failure. [One model, two backends](/docs/one-model-two-backends/) walks through the full effect and both handlers.
 
 ## Modules and mixed-flavor projects
 
@@ -267,7 +257,7 @@ The Python flavor borrows Python's look, not its runtime. Code that depends on P
 - `while`, `break`, `continue`, `try`/`except`, `raise`, `async`/`await` and `yield` are rejected. Use `fold`, recursion, `Result` and fibers instead.
 - Classes are records, effects or handlers. There is no inheritance, `__init__`, `self` or method dispatch.
 
-`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). These forms share Osprey's type and effect checks. Frontend and tooling coverage remain incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python-flavor.md) tracks the remaining requirements.
+`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). These forms share Osprey's type and effect checks. Frontend and tooling coverage remain incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md) tracks the remaining requirements.
 
 ## Run the Python-flavor GPT-2
 

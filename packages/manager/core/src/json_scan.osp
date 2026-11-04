@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Bytes
 
 /// JSON string decoding with balanced scan budgets and chunk concatenation. The traversal stops at the first closing quote or error without relying on tail calls. Implements [PACKAGE-PUBLISH].
@@ -51,10 +52,7 @@ module JsonScan {
         splitBlock(text, i, budget, intDiv(budget, 2))
     }
 
-    fn splitBlock(text, i, budget, leftBudget) = match scanBlock(text, i, leftBudget) {
-        Error { message } => Error { message: message }
-        Success { value } => appendBlock(text, value, budget - leftBudget)
-    }
+    fn splitBlock(text, i, budget, leftBudget) = Checked::andThen(scanBlock(text, i, leftBudget), fn(value) => appendBlock(text, value, budget - leftBudget))
 
     fn appendBlock(text, first, rest) = if first.complete { Success { value: first } } else {
         match scanBlock(text, first.cursor, rest) {

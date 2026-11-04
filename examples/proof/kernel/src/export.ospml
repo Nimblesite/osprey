@@ -1,8 +1,5 @@
 namespace proof
 
-import proof::Levels
-import proof::Terms
-import proof::Environment
 import proof::ExportJson
 import proof::ExportInductive
 import proof::Naturals
@@ -114,8 +111,6 @@ module Export
 
     (** A kind the format defines but the kernel does not read, or no kind
         the reader knows: refused either way, with the kind named. *)
-    refused (json, skip, kinds) = ExportJson::upon (kindOf (json, skip), \kind => refusal (kind, listContains (kinds, kind)))
-
     refusal (kind, known) = match known
         true => Error(message = "unsupported: ${kind}")
         false => Error(message = "unknown item: ${kind}")
@@ -186,19 +181,16 @@ module Export
     (** A level is `succ`, `max`, `imax` or `param`. *)
     levelLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "il"), \index => ExportJson::upon (freshIn (reading.tables.levels, index, 1, "level"), \fresh => levelForm (reading, json, fresh)))
 
-    levelForm (reading, json, index) = match ExportJson::hasField (json, "succ")
-        true => levelSucc (reading, json, index)
-        false => levelPair (reading, json, index)
+    levelForm (reading, json, index) = ExportJson::upon (kindOf (json, "il"), \kind => levelKind (reading, json, index, kind))
+
+    levelKind (reading, json, index, kind) = match kind
+        "succ" => levelSucc (reading, json, index)
+        "max" => paired (reading, json, index, "max", false)
+        "imax" => paired (reading, json, index, "imax", true)
+        "param" => paramLevel (reading, json, index)
+        other => refusal (other, false)
 
     levelSucc (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "succ"), \ref => ExportJson::upon (ExportJson::levelOf (reading.tables, ref), \level => Success(value = setLevel (reading, index, Succ level))))
-
-    levelPair (reading, json, index) = match ExportJson::hasField (json, "max")
-        true => paired (reading, json, index, "max", false)
-        false => levelIMax (reading, json, index)
-
-    levelIMax (reading, json, index) = match ExportJson::hasField (json, "imax")
-        true => paired (reading, json, index, "imax", true)
-        false => levelParam (reading, json, index)
 
     (** `max` and `imax` carry their two sides as one two-element array. *)
     paired (reading, json, index, key, imax) = ExportJson::upon (ExportJson::arrayIn (json, key), \sides => pairSides (reading, sides, index, key, imax))
@@ -220,55 +212,25 @@ module Export
         false => Max first second
 
     (** A parameter level names its parameter through the name table. *)
-    levelParam (reading, json, index) = match ExportJson::hasField (json, "param")
-        true => paramLevel (reading, json, index)
-        false => refused (json, "il", [])
-
     paramLevel (reading, json, index) = ExportJson::upon (ExportJson::intIn (json, "param"), \ref => ExportJson::upon (ExportJson::nameOf (reading.tables, ref), \name => Success(value = setLevel (reading, index, Param name))))
 
     (** Read a supported expression; unknown kinds are refused. *)
     exprLine (reading, json) = ExportJson::upon (ExportJson::intIn (json, "ie"), \index => ExportJson::upon (freshIn (reading.tables.exprs, index, 0, "expr"), \fresh => exprForm (reading, json, fresh)))
 
-    exprForm (reading, json, index) = match ExportJson::hasField (json, "sort")
-        true => sorted (reading, json, index)
-        false => exprBvar (reading, json, index)
+    exprForm (reading, json, index) = ExportJson::upon (kindOf (json, "ie"), \kind => exprKind (reading, json, index, kind))
 
-    exprBvar (reading, json, index) = match ExportJson::hasField (json, "bvar")
-        true => varred (reading, json, index)
-        false => exprConst (reading, json, index)
-
-    exprConst (reading, json, index) = match ExportJson::hasField (json, "const")
-        true => consted (reading, json, index)
-        false => exprApp (reading, json, index)
-
-    exprApp (reading, json, index) = match ExportJson::hasField (json, "app")
-        true => applied (reading, json, index)
-        false => exprLam (reading, json, index)
-
-    exprLam (reading, json, index) = match ExportJson::hasField (json, "lam")
-        true => lammed (reading, json, index)
-        false => exprForall (reading, json, index)
-
-    exprForall (reading, json, index) = match ExportJson::hasField (json, "forallE")
-        true => foralled (reading, json, index)
-        false => exprLet (reading, json, index)
-
-    (** Let expressions retain their type, value and body for checking. *)
-    exprLet (reading, json, index) = match ExportJson::hasField (json, "letE")
-        true => letted (reading, json, index)
-        false => exprProj (reading, json, index)
-
-    exprProj (reading, json, index) = match ExportJson::hasField (json, "proj")
-        true => projected (reading, json, index)
-        false => exprNatural (reading, json, index)
-
-    exprNatural (reading, json, index) = match ExportJson::hasField (json, "natVal")
-        true => ExportJson::upon (ExportJson::textIn (json, "natVal"), \text => ExportJson::upon (Naturals::parse text, \value => Success(value = setExpr (reading, index, NatLit value))))
-        false => exprString (reading, json, index)
-
-    exprString (reading, json, index) = match ExportJson::hasField (json, "strVal")
-        true => ExportJson::upon (ExportJson::textIn (json, "strVal"), \text => ExportJson::upon (Literals::string text, \value => Success(value = setExpr (reading, index, value))))
-        false => refused (json, "ie", ["mdata", "fvar", "mvar"])
+    exprKind (reading, json, index, kind) = match kind
+        "sort" => sorted (reading, json, index)
+        "bvar" => varred (reading, json, index)
+        "const" => consted (reading, json, index)
+        "app" => applied (reading, json, index)
+        "lam" => lammed (reading, json, index)
+        "forallE" => foralled (reading, json, index)
+        "letE" => letted (reading, json, index)
+        "proj" => projected (reading, json, index)
+        "natVal" => ExportJson::upon (ExportJson::textIn (json, "natVal"), \text => ExportJson::upon (Naturals::parse text, \value => Success(value = setExpr (reading, index, NatLit value))))
+        "strVal" => ExportJson::upon (ExportJson::textIn (json, "strVal"), \text => ExportJson::upon (Literals::string text, \value => Success(value = setExpr (reading, index, value))))
+        other => refusal (other, listContains (["mdata", "fvar", "mvar"], other))
 
     (** Projections retain their family and field index for kernel checking;
         reading one never substitutes an unchecked field. [PROOF-KERNEL-THEORY] *)
@@ -315,33 +277,16 @@ module Export
     (** A declaration line names one constant or one inductive block:
         `thm`, `def`, `axiom`, `opaque` and `inductive` are the forms the
         kernel reads, everything else is refused. *)
-    declLine (reading, json) = match ExportJson::hasField (json, "thm")
-        true => theoremed (reading, json)
-        false => declDef (reading, json)
+    declLine (reading, json) = ExportJson::upon (kindOf (json, ""), \kind => declKind (reading, json, kind))
 
-    declDef (reading, json) = match ExportJson::hasField (json, "def")
-        true => defined (reading, json)
-        false => declAxiom (reading, json)
-
-    declAxiom (reading, json) = match ExportJson::hasField (json, "axiom")
-        true => axiomed (reading, json)
-        false => declInductive (reading, json)
-
-    declInductive (reading, json) = match ExportJson::hasField (json, "inductive")
-        true => inducted (reading, json)
-        false => declOpaque (reading, json)
-
-    (** An opaque declaration is read exactly like a theorem — name,
-        universe parameters, statement and value through the same tables —
-        but only after its safety: the exporter's `isUnsafe` flag must be
-        present and explicitly false. *)
-    declOpaque (reading, json) = match ExportJson::hasField (json, "opaque")
-        true => opaqued (reading, json)
-        false => declQuotient (reading, json)
-
-    declQuotient (reading, json) = match ExportJson::hasField (json, "quot")
-        true => quotiented (reading, json)
-        false => refused (json, "", [])
+    declKind (reading, json, kind) = match kind
+        "thm" => theoremed (reading, json)
+        "def" => defined (reading, json)
+        "axiom" => axiomed (reading, json)
+        "inductive" => inducted (reading, json)
+        "opaque" => opaqued (reading, json)
+        "quot" => quotiented (reading, json)
+        other => refusal (other, false)
 
     quotiented (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "quot"), \raw => ExportJson::upon (quotientShape raw, \data => ExportJson::upon (ExportJson::textIn (data, "kind"), \kind => ExportJson::upon (quotientKind kind, \tag => quotientDeclaration (reading, data, tag)))))
 
@@ -370,6 +315,7 @@ module Export
 
     quotientDeclaration (reading, data, kind) = ExportJson::upon (ExportJson::declName (reading.tables, data), \name => ExportJson::upon (ExportJson::paramsOf (reading.tables, data), \params => ExportJson::upon (ExportJson::typedOf (reading.tables, data), \ty => Success(value = addItem (reading, Single (Decl(name = name, params = params, ty = ty, body = Quotient kind)))))))
 
+    (** Opaque declarations require an explicit false `isUnsafe` flag before reading their type and value. *)
     opaqued (reading, json) = ExportJson::upon (ExportJson::fieldIn (json, "opaque"), \opq => ExportJson::upon (ExportJson::boolIn (opq, "isUnsafe"), \unsafe => opaqueSafety (reading, opq, unsafe)))
 
     opaqueSafety (reading, opq, unsafe) = match unsafe

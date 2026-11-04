@@ -173,6 +173,9 @@ pub(crate) struct Checker {
     /// Effect name -> its generic declaration (type params + raw op sigs).
     pub(crate) effects: HashMap<String, EffectInfo>,
     pub(crate) expression_types: HashMap<usize, Type>,
+    /// Literals and folded operators awaiting their resolved width
+    /// ([`Checker::validate_constants`]).
+    pub(crate) constants: Vec<crate::arithmetic::ConstantSite>,
     /// Union/Result type name -> its variant constructor names (exhaustiveness).
     pub(crate) union_variants: HashMap<String, Vec<String>>,
     /// Function/extern name -> declared parameter names (for named arguments).

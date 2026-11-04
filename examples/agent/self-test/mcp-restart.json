@@ -1,0 +1,14 @@
+{
+  "steps": [
+    {"wait": "Settings"},
+    {"invoke": "Settings"},
+    {"invoke": "MCP servers"},
+    {"wait": "http://127.0.0.1:@WEB_PORT@/mcp"},
+    {"gone": "demo tools"},
+    {"wait": "Connected"},
+    {"gone": "hdr-secret-token"},
+    {"sleep": "2"},
+    {"shot": "37-mcp-restarted"},
+    {"invoke": "Close"}
+  ]
+}

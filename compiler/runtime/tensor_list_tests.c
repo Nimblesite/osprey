@@ -8,6 +8,8 @@
 #include <signal.h>
 
 #include "collection_runtime.h"
+#include "float_spelling.h"
+#include "memory_hooks.h"
 #include "test_death.h"
 
 OspreyList *osprey_load_tensor(const char *path, const char *name);
@@ -24,7 +26,10 @@ static long g_checks = 0;
 
 #include "tensor_file_tests.h"
 
-static void *load(const char *path, const char *name) {
+// The host list widens every dtype to float [BUILTIN-FILE-TENSOR], so the
+// asked-for element width is not part of its contract and is ignored here.
+static void *load(const char *path, const char *name, int64_t elem) {
+  (void)elem;
   return osprey_load_tensor(path, name);
 }
 
@@ -39,6 +44,37 @@ static double at(void *list, int64_t i) {
   double d;
   memcpy(&d, &word, sizeof d);
   return d;
+}
+
+// [GPU-BUFFER-TENSOR] Exercise the shared reader through real safetensors IO.
+#define HALF_WORDS 65536
+static const char *half_fixture(void) {
+  const char header[] = "{\"half\":{\"dtype\":\"F16\",\"shape\":[65536],\"data_offsets\":[0,131072]}}";
+  size_t prefix = 8 + strlen(header), count = prefix + 2 * HALF_WORDS;
+  unsigned char *image = malloc(count);
+  CHECK(image != NULL);
+  put_u64(image, (uint64_t)strlen(header));
+  memcpy(image + 8, header, strlen(header));
+  for (uint32_t bits = 0; bits < HALF_WORDS; bits++) put_u16(image + prefix + 2 * bits, (uint16_t)bits);
+  const char *path = temp_file(image, count);
+  free(image);
+  return path;
+}
+
+static void expect_same_float(double actual, double expected) {
+  if (isnan(expected)) CHECK(isnan(actual) && signbit(actual) == signbit(expected));
+  else CHECK(memcmp(&actual, &expected, sizeof actual) == 0);
+}
+
+static void t_half_tensor_matches_numeric_widening(void) {
+  const char *path = half_fixture();
+  OspreyList *list = osprey_load_tensor(path, "half");
+  CHECK(list != NULL && osprey_list_length(list) == HALF_WORDS);
+  for (uint32_t bits = 0; bits < HALF_WORDS; bits++) {
+    expect_same_float(at(list, bits), (double)osp_f16_to_f32((uint16_t)bits));
+  }
+  osp_release(list);
+  CHECK(unlink(path) == 0);
 }
 
 static void panic_named(void) {
@@ -58,6 +94,7 @@ static void t_panic_aborts(void) {
 
 int main(void) {
   t_tensor_loader(&(TensorLoader){"loadTensor", load, length, at});
+  t_half_tensor_matches_numeric_widening();
   t_panic_aborts();
   printf("[ok] tensor_list: %ld assertions\n", g_checks);
   return 0;

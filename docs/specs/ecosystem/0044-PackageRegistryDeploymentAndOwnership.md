@@ -1,6 +1,6 @@
 # Package Registry Deployment and Ownership
 
-**Status:** normative delivery target; hosted authentication, ownership enforcement and deployment are not implemented. This completes the operational and tenancy requirements of [plan 0020](../../plans/0020-package-manager.md). The [rollout plan](../../plans/0020-package-manager-rollout.md) defines sequencing and required evidence. Existing [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) remain mandatory.
+**Status:** normative delivery target; hosted authentication, ownership enforcement and deployment are not implemented. This completes the operational and tenancy requirements of [plan 0020](../../plans/0020-package-manager.md). The [rollout plan](../../plans/0020-package-manager.md) defines sequencing and required evidence. Existing [publication and trust requirements](0030-PackageRegistryTrustAndDiscovery.md) remain mandatory.
 
 ## Security boundary `[PACKAGE-HOSTED-BOUNDARY]`
 
@@ -99,6 +99,27 @@ Mutation contracts require one-use action proofs where specified, expected autho
 Implement and test the four server-side modes before any promotion: `read-only`, `allowlisted-publishers`, `public-publishers`, `write-frozen`. Check the current durable mode/version at every sensitive mutation and queued publication boundary; mode-store failure denies writes, and stale permissive caches cannot extend authority. The allowlist only restricts already authorized principals. User-provided headers, query parameters and package grants cannot change a mode. Ordinary package administrators and org custodians have no deployment/incident privilege.
 
 The deployment operator may advance a wave only with its recorded gate evidence. A separately credentialed incident operator may freeze writes or suspend a principal/org using an Osprey operations job independent of the public Cloudflare/API route. Its narrow database role can append incident/control decisions and apply the corresponding deny state, but cannot reassign package admins, grant permissions, change digests or mark releases eligible. Independent signed status revocation still requires spec 0030's security threshold. Unfreezing after an incident needs deployment plus independent security approval and a new successful rehearsal; it cannot reactivate revoked grants/nonces or bypass audit gates. Test the incident path while the public edge/API is unavailable.
+
+Rollout wave progression and operational gates are delivery targets, not
+implemented yet. A rollout wave is one of `read-only`, internal publishers
+(explicit enrolled staff/org allowlist for at least 24 hours), invited
+organizations (fixed invited organizations for at least 48 hours), then public
+enrollment. For a new API revision within each wave, traffic progresses
+1% → 10% → 50% → 100%, holding each step at least thirty minutes and requiring
+at least one hundred successful synthetic/API checks plus completed
+publication/revocation probes. With sparse traffic, synthetic probes MUST be
+actively run; elapsed time alone never promotes.
+
+Initial operational gates: API 5xx below 1% over fifteen minutes, metadata p95
+below one second excluding explicit cold-start probes, no outbox item stalled
+beyond five minutes, zero unexplained proof/RLS/origin failures, and all signed
+metadata within its freshness window.
+
+Alert on denied cross-scope attempts, privilege/policy drift, identity/owner
+changes, secret/JWKS failures, GitHub suspension, queue/outbox age,
+signature/witness freshness, digest mismatches and unexpected storage writes.
+Log request/trace/principal/scope/package/operation IDs and policy versions,
+but never cookies, tokens, private source or secret values.
 
 ## RLS enforcement `[PACKAGE-OWNERSHIP-RLS]`
 

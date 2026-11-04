@@ -1,0 +1,10 @@
+// Shared failure propagation for the package boundaries and governance guards.
+namespace registry;
+
+module Checked {
+    /// Continue only after success, returning the first typed failure unchanged.
+    export fn andThen(result, next) = match result {
+        Success { value } => next(value)
+        Error { message } => Error { message: message }
+    }
+}

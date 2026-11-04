@@ -80,8 +80,137 @@ fn both_flavors_read_the_safetensors_fixture_exactly() {
     }
 }
 
+#[test]
+fn tensor_loader_calls_in_one_record_keep_distinct_requested_element_types() {
+    // [GPU-BUFFER-TENSOR] Both calls share the record's source position, not its type.
+    let source = r#"
+type Loaded = { wide: Result<GpuBuffer<float32>, Error>, small: Result<GpuBuffer<float16>, Error> }
+fn loaded() = Loaded {
+    wide: gpuLoadTensor("@FIXTURE@", "w"),
+    small: gpuLoadTensor("@FIXTURE@", "h.1.b")
+}
+fn main() = {
+    let pair = loaded()
+    let wide = match pair.wide {
+        Success { value } => "wide ${gpuLength(value)} ${gpuGet(value, 0) ?: toFloat32(0.0)} ${gpuGet(value, 3) ?: toFloat32(0.0)}"
+        Error { message } => "wrong wide: ${message}"
+    }
+    let small = match pair.small {
+        Success { value } => "small ${gpuLength(value)} ${gpuGet(value, 0) ?: toFloat16(0.0)} ${gpuGet(value, 1) ?: toFloat16(0.0)}"
+        Error { message } => "wrong small: ${message}"
+    }
+    print("${wide}\n${small}")
+}
+"#;
+    for prefix in [
+        "",
+        "let load = gpuLoadTensor\n",
+        "fn load(path, name) = gpuLoadTensor(path, name)\n",
+    ] {
+        let body = if prefix.is_empty() {
+            source.to_owned()
+        } else {
+            source.replace("gpuLoadTensor(", "load(")
+        };
+        let source = format!("{prefix}{body}");
+        let path = program("typed_sites.osp", &source).expect("write typed tensor fixture");
+        let (code, stdout, stderr) = run(&path);
+        assert_eq!(code, Some(0), "{prefix}: {stderr}");
+        assert_eq!(
+            stdout, "wide 4 0.5 3.0\nsmall 2 1.0 -2.5\n",
+            "{prefix}: {stderr}"
+        );
+        std::fs::remove_file(path).expect("remove typed tensor fixture");
+    }
+}
+
 fn repo() -> PathBuf {
     manifest().join("..").join("..")
+}
+
+/// [GPU-DEVICE-NATIVE] An open literal seed uses the inferred binary32 slot.
+#[test]
+fn float32_reductions_round_at_the_inferred_accumulator_width() {
+    let source = "fn add(a, b) = a + b\nfn main() = {\nlet xs = toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777216.0)])\nprint(\"${gpuFold(xs, 0.0, add)} ${gpuGet(xs, 0) ?: toFloat32(99.0)}\")\n}\n";
+    let path = program("reduction32.osp", source).expect("write reduction fixture");
+    assert!(
+        !llvm(&path).contains("@osprey_gpu_declined"),
+        "binary32 reduction must have a device form"
+    );
+    let (code, stdout, stderr) = run(&path);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "0.0 16777216.0\n", "{stderr}");
+    std::fs::remove_file(path).expect("remove reduction fixture");
+}
+
+/// [GPU-FOLD] Erased host metadata must retain the device body's numeric width.
+#[test]
+fn effect_handled_float32_maximum_keeps_its_device_result_width() {
+    let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)])\nlet maximum = perform Backends::Tensor.reduce(values, Model::at(values, 0), Model::maxF)\nlet found = perform Backends::Tensor.indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
+    let path = gpt2_project("maximum32", source).expect("write float32 maximum fixture");
+    let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
+    let (code, stdout, stderr) = run_with_gpu(&path, &backend);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "1.25 1\n", "{stderr}");
+    std::fs::remove_dir_all(path).expect("remove maximum fixture");
+}
+
+/// [GPU-SCAN] [GPU-FILTER] Both sequential shapes preserve binary32 elements.
+#[test]
+fn typed_scan_and_filter_keep_their_device_form_and_order() {
+    let source = "fn add(a, b) = a + b\nfn main() = {\nlet xs = toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)])\nlet positives = gpuFilter(xs, fn(x) => x > 0.0)\nlet scanned = gpuScan(xs, 0.0, add)\nprint(\"${gpuLength(positives)} ${gpuGet(positives, 0) ?: toFloat32(99.0)} ${gpuGet(positives, 1) ?: toFloat32(99.0)} ${gpuGet(scanned, 2) ?: toFloat32(99.0)}\")\n}\n";
+    let path = program("sequence32.osp", source).expect("write sequence fixture");
+    assert!(
+        !llvm(&path).contains("@osprey_gpu_declined"),
+        "scan and filter must have device forms"
+    );
+    let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
+    let (code, stdout, stderr) = run_with_gpu(&path, &backend);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "2 1.0 3.0 2.0\n", "{stderr}");
+    std::fs::remove_file(path).expect("remove sequence fixture");
+}
+
+/// [GPU-BUFFER-ELEM]: actual compiled uint8 storage, not a reported width.
+#[test]
+fn a_million_uint8_elements_allocate_one_megabyte_and_drop_cleanly() {
+    let source = "extern fn osp_arc_live_bytes() -> int\nfn main() = {\nlet byte: uint8 = 127\nlet before = osp_arc_live_bytes()\nlet buffer = range(0, 1000000) |> map(fn(_index) => byte) |> toGpu()\nlet used = wrapSub(osp_arc_live_bytes(), before)\nprint(\"${used} ${gpuLength(buffer)} ${gpuGet(buffer, 999999) ?: byte}\")\n}\n";
+    for mode in ["extract", "inline"] {
+        let path = std::env::temp_dir().join(format!(
+            "osprey_dense_uint8_{}_{mode}.osp",
+            std::process::id()
+        ));
+        std::fs::write(&path, source).expect("write dense buffer fixture");
+        let output = dense_fixture_output(&path, mode).expect("compile and run dense fixture");
+        assert_dense_fixture(&output, mode);
+        std::fs::remove_file(path).expect("remove dense fixture");
+    }
+}
+
+fn dense_fixture_output(path: &Path, mode: &str) -> std::io::Result<std::process::Output> {
+    Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .current_dir(repo())
+        .arg(path)
+        .args(["--run", "--quiet", "--memory=arc", "--no-warnings"])
+        .env("OSPREY_ARC_DEBUG", "1")
+        .env("OSPREY_GPU_KERNELS", mode)
+        .output()
+}
+
+fn assert_dense_fixture(output: &std::process::Output, mode: &str) {
+    assert!(
+        output.status.success(),
+        "{mode}: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        output.stdout, b"1000040 1000000 127\n",
+        "{mode}: payload + 40-byte header"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
+        "{mode}: leaked"
+    );
 }
 
 /// `directory` holding `config` and the entry `entry`, whose `@FIXTURE@` names
@@ -234,7 +363,7 @@ fn every_gpt2_kernel_has_a_device_form() {
 
 #[test]
 fn gpt2_rejects_a_failed_gpu_dispatch_instead_of_generating_with_empty_matrices() {
-    let source = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::Gpu\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([1.0]), toGpu([1.0]), 1, 1, 1))))) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
+    let source = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::Gpu\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([toFloat32(1.0)]), toGpu([toFloat32(1.0)]), 1, 1, 1))))) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
     let path = gpt2_project("failure", source);
     assert!(path.is_some(), "GPU failure project could not be written");
     let (code, stdout, stderr) = path

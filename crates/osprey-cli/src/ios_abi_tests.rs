@@ -168,7 +168,7 @@ fn c_types_map_only_scalars() {
         name: name.to_string(),
         args: vec![],
     };
-    assert_eq!(CType::from_type(&con("int")), Some(CType::Int));
+    assert_eq!(CType::from_type(&con("int")), Some(CType::INT));
     assert_eq!(CType::from_type(&con("Unit")), Some(CType::Unit));
     assert_eq!(CType::from_type(&con("Ptr")), Some(CType::Ptr));
     assert_eq!(CType::from_type(&con("Point")), None);
@@ -260,7 +260,7 @@ fn header_parameter_names_do_not_collide_with_c_keywords_or_macros() {
     let abi = HostAbi {
         exports: vec![export(
             "run",
-            vec![("switch".into(), CType::Bool), ("class".into(), CType::Int)],
+            vec![("switch".into(), CType::Bool), ("class".into(), CType::INT)],
             CType::Unit,
         )],
         imports: vec![],
@@ -439,9 +439,9 @@ fn headers_accept_standard_c_macros_and_typedefs_as_parameters(
         exports: vec![export(
             "run",
             vec![
-                ("INT64_MAX".into(), CType::Int),
-                ("uint_fast64_t".into(), CType::Int),
-                ("osprey_arg0".into(), CType::Int),
+                ("INT64_MAX".into(), CType::INT),
+                ("uint_fast64_t".into(), CType::INT),
+                ("osprey_arg0".into(), CType::INT),
             ],
             CType::Unit,
         )],

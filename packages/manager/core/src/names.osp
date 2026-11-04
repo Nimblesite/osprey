@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 
 /// Canonical package keys `@scope/name`. Components are lowercase ASCII
 /// letters, digits and interior hyphens; a scope is 1-39 bytes and a name is
@@ -47,10 +48,7 @@ module Names {
     /// Parse a display key such as `@finch/ledger` into its canonical parts.
     export fn parse(text) = match startsWith(text, "@") {
         false => Error { message: "name.missing-at" }
-        true => match split(drop(text, 1)) {
-            Success { value } => validate(value)
-            Error { message } => Error { message: message }
-        }
+        true => Checked::andThen(split(drop(text, 1)), fn(value) => validate(value))
     }
 
     /// The display form `@scope/name`.

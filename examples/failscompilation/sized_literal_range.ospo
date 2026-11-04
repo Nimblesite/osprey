@@ -1,0 +1,12 @@
+// [TYPE-NUMERIC-LITERAL] A literal must fit the type its context gives it.
+let a: uint8 = 300
+let b: uint32 = -1
+let c: int8 = 128
+let d: int8 = -129
+let e: List<uint8> = [1, 256]
+fn bump(n: int16) = n + 40000
+let f: uint8 = 200 + 100
+let g = match a {
+    256 => 1
+    _ => 2
+}

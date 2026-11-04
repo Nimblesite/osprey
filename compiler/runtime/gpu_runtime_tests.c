@@ -26,15 +26,17 @@
 #include <string.h>
 #include <unistd.h>
 
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
+void *osprey_gpu_data(void *buffer);
 int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 int32_t osprey_gpu_in_bounds(void *buffer, int64_t index);
 void osprey_gpu_take(void *buffer, int64_t count);
-void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols);
+void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
 void *osprey_gpu_load_f32(const char *path, int64_t offset, int64_t count);
-void *osprey_gpu_load_tensor(const char *path, const char *name);
+void *osprey_gpu_load_tensor(const char *path, const char *name, int64_t elem_bytes);
+int64_t osprey_gpu_elem_bytes(void *buffer);
 const char *osp_io_error(void);
 void osp_io_error_clear(void);
 
@@ -52,7 +54,7 @@ static long g_checks = 0;
 
 // A fresh buffer reports its exact length and reads zero at every index.
 static void t_alloc_zero_filled(void) {
-  void *b = osprey_gpu_alloc(SMALL_LEN);
+  void *b = osprey_gpu_alloc(SMALL_LEN, 8);
   CHECK(b != NULL);
   CHECK(osprey_gpu_len(b) == SMALL_LEN);
   for (int64_t i = 0; i < SMALL_LEN; i++) {
@@ -67,7 +69,7 @@ static void t_alloc_zero_filled(void) {
 static void t_alloc_clamps_to_empty(void) {
   int64_t bad[] = {-1, INT64_MIN, GPU_MAX_LEN + 1, INT64_MAX};
   for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
-    void *b = osprey_gpu_alloc(bad[i]);
+    void *b = osprey_gpu_alloc(bad[i], 8);
     CHECK(b != NULL);
     CHECK(osprey_gpu_len(b) == 0);
     CHECK(osprey_gpu_in_bounds(b, 0) == 0);
@@ -75,14 +77,14 @@ static void t_alloc_clamps_to_empty(void) {
     osprey_gpu_set(b, 0, 99); // ignored, not a wild store
     CHECK(osprey_gpu_get(b, 0) == 0);
   }
-  void *zero = osprey_gpu_alloc(0);
+  void *zero = osprey_gpu_alloc(0, 8);
   CHECK(zero != NULL && osprey_gpu_len(zero) == 0);
 }
 
 // An IN-range length whose data allocation fails (no machine has 2^63-aligned
 // bytes) still yields the empty buffer, never NULL-deref or a partial length.
 static void t_alloc_failure_is_empty(void) {
-  void *b = osprey_gpu_alloc(GPU_MAX_LEN);
+  void *b = osprey_gpu_alloc(GPU_MAX_LEN, 8);
   CHECK(b != NULL);
   CHECK(osprey_gpu_len(b) == 0);
   CHECK(osprey_gpu_in_bounds(b, 0) == 0);
@@ -103,7 +105,7 @@ static void t_null_safety(void) {
 // Full write/read round trip, and out-of-bounds stores land NOWHERE: after
 // poking every invalid index the whole payload is still byte-identical.
 static void t_set_get_roundtrip(void) {
-  void *b = osprey_gpu_alloc(ROUND_LEN);
+  void *b = osprey_gpu_alloc(ROUND_LEN, 8);
   CHECK(b != NULL && osprey_gpu_len(b) == ROUND_LEN);
   for (int64_t i = 0; i < ROUND_LEN; i++) {
     osprey_gpu_set(b, i, i * i - 3);
@@ -119,7 +121,7 @@ static void t_set_get_roundtrip(void) {
 
 // Extreme word values survive storage exactly (raw 8-byte words, no coercion).
 static void t_boundary_words(void) {
-  void *b = osprey_gpu_alloc(2);
+  void *b = osprey_gpu_alloc(2, 8);
   CHECK(b != NULL);
   osprey_gpu_set(b, 0, INT64_MIN);
   osprey_gpu_set(b, 1, INT64_MAX);
@@ -130,7 +132,7 @@ static void t_boundary_words(void) {
 // take publishes a compaction prefix: it only ever SHRINKS, the surviving
 // prefix is untouched, and the amputated tail becomes unaddressable.
 static void t_take_shrinks_only(void) {
-  void *b = osprey_gpu_alloc(10);
+  void *b = osprey_gpu_alloc(10, 8);
   CHECK(b != NULL);
   for (int64_t i = 0; i < 10; i++) {
     osprey_gpu_set(b, i, 100 + i);
@@ -154,19 +156,20 @@ static void t_take_shrinks_only(void) {
 
 // --- float words and the io_error channel --------------------------------------
 
+#include "tensor_file.h"
 #include "tensor_file_tests.h"
 
 // The double a buffer word holds [GPU-BUFFER-ELEM].
 static double at(void *b, int64_t i) {
   int64_t word = osprey_gpu_get(b, i);
-  double d;
-  memcpy(&d, &word, sizeof d);
-  return d;
+  int64_t width = osprey_gpu_elem_bytes(b);
+  return osp_tensor_widen(width == 8 ? OSP_DT_F64 : width == 4 ? OSP_DT_F32 : OSP_DT_F16,
+                          (const unsigned char *)&word);
 }
 
 // A float buffer holding `xs` verbatim.
 static void *floats(const double *xs, int64_t n) {
-  void *b = osprey_gpu_alloc(n);
+  void *b = osprey_gpu_alloc(n, 8);
   CHECK(b != NULL && osprey_gpu_len(b) == n);
   for (int64_t i = 0; i < n; i++) {
     int64_t word;
@@ -184,12 +187,71 @@ static void t_matmul_exact(void) {
   double r[] = {7, 8, 9, 10, 11, 12};
   double expected[] = {58, 64, 139, 154};
   osp_io_error_clear();
-  void *out = osprey_gpu_matmul(floats(l, 6), floats(r, 6), 2, 3, 2);
+  void *out = osprey_gpu_matmul(floats(l, 6), floats(r, 6), 2, 3, 2, 8);
   CHECK(out != NULL && osp_io_error() == NULL);
   CHECK(osprey_gpu_len(out) == 4);
   for (int64_t i = 0; i < 4; i++) {
     CHECK(at(out, i) == expected[i]);
   }
+}
+
+// The element type a requested width names, for the refusal sentence.
+static const char *asked_name(int64_t width) {
+  switch (width) {
+  case 8: return "float";
+  case 4: return "float32";
+  case 2: return "float16";
+  }
+  return "a non-float buffer";
+}
+
+// [GPU-BUFFER-TENSOR]: requested storage is never inferred from the file, and
+// a mismatch names both the stored dtype and the asked-for type — never a
+// silent conversion.
+static void t_tensor_requested_widths(void) {
+  unsigned char image[2048];
+  size_t size = safetensors_image(image, sizeof image);
+  const char *path = temp_file(image, size);
+  const char *names[] = {"a", "h.1.w", "h.11.w", "d"};
+  const char *dtypes[] = {"F32", "F16", "BF16", "F64"};
+  const int64_t widths[] = {4, 2, 4, 8};
+  for (size_t i = 0; i < 4; i++) {
+    for (int64_t width = 1; width <= 8; width *= 2) {
+      osp_io_error_clear();
+      void *buffer = osprey_gpu_load_tensor(path, names[i], width);
+      if (width == widths[i]) {
+        CHECK(buffer != NULL && osprey_gpu_elem_bytes(buffer) == width && osp_io_error() == NULL);
+      } else {
+        CHECK(buffer == NULL);
+        char expected[160];
+        (void)snprintf(expected, sizeof expected,
+                       "gpuLoadTensor: %s: tensor %s is %s, the program asked for %s",
+                       names[i], names[i], dtypes[i], asked_name(width));
+        expect_text(expected);
+      }
+    }
+  }
+  CHECK(unlink(path) == 0);
+}
+
+// [GPU-BUFFER-TENSOR]: the refusal sentence the plan pins, word for word — a
+// binary16 weight asked as binary32 names both.
+static void t_tensor_mismatch_wording(void) {
+  const char *header = "{\"wte.weight\":{\"dtype\":\"F16\",\"shape\":[2],\"data_offsets\":[0,4]}}";
+  size_t n = strlen(header);
+  unsigned char image[512] = {0};
+  put_u64(image, (uint64_t)n);
+  memcpy(image + 8, header, n);
+  put_u16(image + 8 + n, 0x3C00);     // 1.0
+  put_u16(image + 8 + n + 2, 0xC100); // -2.5
+  const char *path = temp_file(image, 8 + n + 4);
+  void *small = osprey_gpu_load_tensor(path, "wte.weight", 2);
+  CHECK(small != NULL && osprey_gpu_len(small) == 2 && osprey_gpu_elem_bytes(small) == 2);
+  CHECK(at(small, 0) == 1.0 && at(small, 1) == -2.5);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_load_tensor(path, "wte.weight", 4) == NULL);
+  expect_text("gpuLoadTensor: wte.weight: tensor wte.weight is F16, the program asked for float32");
+  CHECK(unlink(path) == 0);
 }
 
 // The sum runs in k order from 0.0: (2^53 + 1) absorbs the 1 before -2^53
@@ -200,8 +262,8 @@ static void t_matmul_accumulates_in_k_order(void) {
   double forward[] = {big, 1.0, -big};
   double mirrored[] = {-big, 1.0, big};
   double ones[] = {1.0, 1.0, 1.0};
-  void *a = osprey_gpu_matmul(floats(forward, 3), floats(ones, 3), 1, 3, 1);
-  void *b = osprey_gpu_matmul(floats(mirrored, 3), floats(ones, 3), 1, 3, 1);
+  void *a = osprey_gpu_matmul(floats(forward, 3), floats(ones, 3), 1, 3, 1, 8);
+  void *b = osprey_gpu_matmul(floats(mirrored, 3), floats(ones, 3), 1, 3, 1, 8);
   CHECK(a != NULL && osprey_gpu_len(a) == 1 && at(a, 0) == 0.0);
   CHECK(b != NULL && osprey_gpu_len(b) == 1 && at(b, 0) == 1.0);
 }
@@ -211,14 +273,14 @@ static void t_matmul_accumulates_in_k_order(void) {
 static void t_matmul_zero_dimensions(void) {
   double two[] = {1.0, 2.0};
   osp_io_error_clear();
-  void *inner0 = osprey_gpu_matmul(NULL, NULL, 2, 0, 2);
+  void *inner0 = osprey_gpu_matmul(NULL, NULL, 2, 0, 2, 8);
   CHECK(inner0 != NULL && osprey_gpu_len(inner0) == 4 && osp_io_error() == NULL);
   for (int64_t i = 0; i < 4; i++) {
     CHECK(at(inner0, i) == 0.0);
   }
-  void *rows0 = osprey_gpu_matmul(osprey_gpu_alloc(0), floats(two, 2), 0, 2, 1);
+  void *rows0 = osprey_gpu_matmul(osprey_gpu_alloc(0, 8), floats(two, 2), 0, 2, 1, 8);
   CHECK(rows0 != NULL && osprey_gpu_len(rows0) == 0);
-  void *cols0 = osprey_gpu_matmul(floats(two, 2), osprey_gpu_alloc(0), 1, 2, 0);
+  void *cols0 = osprey_gpu_matmul(floats(two, 2), osprey_gpu_alloc(0, 8), 1, 2, 0, 8);
   CHECK(cols0 != NULL && osprey_gpu_len(cols0) == 0);
 }
 
@@ -229,23 +291,65 @@ static void t_matmul_shape_errors(void) {
   void *l = floats(six, 6);
   void *r = floats(six, 6);
   osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, -1, 3, 2) == NULL);
+  CHECK(osprey_gpu_matmul(l, r, -1, 3, 2, 8) == NULL);
   expect_text("gpuMatMul: result: rows * cols is negative or overflows");
   osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, GPU_MAX_LEN, 1, 2) == NULL);
+  CHECK(osprey_gpu_matmul(l, r, GPU_MAX_LEN, 1, 2, 8) == NULL);
   expect_text("gpuMatMul: result: rows * cols is negative or overflows");
   osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, 2, 4, 2) == NULL);
+  CHECK(osprey_gpu_matmul(l, r, 2, 4, 2, 8) == NULL);
   expect_text("gpuMatMul: left operand: has 6 elements, the stated shape needs 8");
   osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, 2, 3, 3) == NULL);
+  CHECK(osprey_gpu_matmul(l, r, 2, 3, 3, 8) == NULL);
   expect_text("gpuMatMul: right operand: has 6 elements, the stated shape needs 9");
   osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(NULL, r, 1, 1, 6) == NULL);
+  CHECK(osprey_gpu_matmul(NULL, r, 1, 1, 6, 8) == NULL);
   expect_text("gpuMatMul: left operand: has 0 elements, the stated shape needs 1");
   osp_io_error_clear();
-  CHECK(osprey_gpu_matmul(l, r, 2, -3, 2) == NULL);
+  CHECK(osprey_gpu_matmul(l, r, 2, -3, 2, 8) == NULL);
   CHECK(strncmp(osp_io_error(), "gpuMatMul: left operand:", 24) == 0);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(NULL, NULL, GPU_MAX_LEN, 0, 1, 8) == NULL);
+  expect_errno("gpuMatMul: result: ", ENOMEM);
+}
+
+static void *singles(const float *xs, int64_t n) {
+  void *buffer = osprey_gpu_alloc(n, 4);
+  memcpy(osprey_gpu_data(buffer), xs, (size_t)n * sizeof(float));
+  return buffer;
+}
+
+// [GPU-MATMUL]: a float32 product rounds at binary32 after every operation, so
+// 2^24 + 1 - 2^24 is 0 here and 1 at binary64.
+static void t_matmul_float32_rounds_at_its_width(void) {
+  float l[] = {1, 2, 3, 4, 5, 6};
+  float r[] = {7, 8, 9, 10, 11, 12};
+  float expected[] = {58, 64, 139, 154};
+  osp_io_error_clear();
+  void *out = osprey_gpu_matmul(singles(l, 6), singles(r, 6), 2, 3, 2, 4);
+  CHECK(out != NULL && osp_io_error() == NULL);
+  CHECK(osprey_gpu_len(out) == 4 && osprey_gpu_elem_bytes(out) == 4);
+  CHECK(memcmp(osprey_gpu_data(out), expected, sizeof expected) == 0);
+  float big[] = {16777216.0f, 1.0f, -16777216.0f};
+  float ones[] = {1, 1, 1};
+  void *sum = osprey_gpu_matmul(singles(big, 3), singles(ones, 3), 1, 3, 1, 4);
+  float zero = 0;
+  CHECK(sum != NULL && memcmp(osprey_gpu_data(sum), &zero, sizeof zero) == 0);
+}
+
+// [GPU-MATMUL]: only float and float32 multiply, and both operands share one width.
+static void t_matmul_element_type_errors(void) {
+  double six[] = {1, 2, 3, 4, 5, 6};
+  float singles_six[] = {1, 2, 3, 4, 5, 6};
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(floats(six, 6), floats(six, 6), 2, 3, 2, 2) == NULL);
+  expect_text("gpuMatMul: result: must hold float or float32 elements");
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(floats(six, 6), singles(singles_six, 6), 2, 3, 2, 8) == NULL);
+  expect_text("gpuMatMul: operands: must hold the same float or float32 element type");
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(singles(singles_six, 6), floats(six, 6), 2, 3, 2, 4) == NULL);
+  expect_text("gpuMatMul: operands: must hold the same float or float32 element type");
 }
 
 // --- files on disk ---------------------------------------------------------------
@@ -264,6 +368,9 @@ static void t_load_f32(void) {
   osp_io_error_clear();
   void *b = osprey_gpu_load_f32(path, 4, 6);
   CHECK(b != NULL && osprey_gpu_len(b) == 6 && osp_io_error() == NULL);
+  // [GPU-BUFFER-LOAD]: binary32 stays binary32, including signed zero/NaN bytes.
+  CHECK(osprey_gpu_get(b, 0) == INT64_C(0x3fc00000));
+  CHECK(memcmp(osprey_gpu_data(b), bytes + 4, sizeof stored) == 0);
   CHECK(at(b, 0) == 1.5 && at(b, 1) == 0.0 && signbit(at(b, 1)));
   CHECK(isinf(at(b, 2)) && isnan(at(b, 3)));
   CHECK(at(b, 4) == (double)1e-45f && at(b, 5) == (double)-2.5e-3f);
@@ -287,6 +394,9 @@ static void t_load_f32(void) {
   osp_io_error_clear();
   CHECK(osprey_gpu_load_f32(NULL, 0, 1) == NULL);
   expect_errno("gpuLoad: ", EINVAL);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_load_f32(path, 0, INT64_MAX) == NULL);
+  expect_errno(prefix, ENOMEM);
   (void)unlink(path);
 }
 
@@ -305,6 +415,37 @@ static void t_matmul_reaches_metal(void) {
 #if defined(OSPREY_GPU_BUFFER_SUITE)
 #define main osprey_gpu_buffer_tests
 #endif
+
+// [GPU-BUFFER-ELEM]: narrowing preserves low bits without touching neighbours.
+static void t_dense_word_roundtrip(void) {
+  int64_t values[] = {0, -1, INT64_MIN, INT64_MAX, 127};
+  for (int64_t width = 1; width <= 8; width *= 2) {
+    void *buffer = osprey_gpu_alloc(5, width);
+    uint64_t mask = width == 8 ? UINT64_MAX : (UINT64_C(1) << (width * 8)) - 1;
+    for (int64_t i = 0; i < 5; i++) osprey_gpu_set(buffer, i, values[i]);
+    for (int64_t i = 0; i < 5; i++) CHECK((uint64_t)osprey_gpu_get(buffer, i) == ((uint64_t)values[i] & mask));
+    CHECK(!osprey_gpu_in_bounds(buffer, 5));
+    CHECK(!osprey_gpu_in_bounds(buffer, -1));
+  }
+}
+
+// [GPU-BUFFER-ELEM]: a million uint8 elements occupy one megabyte of payload —
+// one byte each, not eight — pinned by the buffer's own byte accounting and by
+// storing through the data pointer at the final byte.
+static void t_uint8_million_allocates_one_megabyte(void) {
+  void *buffer = osprey_gpu_alloc(1000000, 1);
+  CHECK(buffer != NULL && osprey_gpu_len(buffer) == 1000000);
+  CHECK(osprey_gpu_elem_bytes(buffer) == 1);
+  unsigned char *data = (unsigned char *)osprey_gpu_data(buffer);
+  CHECK(data != NULL);
+  osprey_gpu_set(buffer, 999999, 255);
+  CHECK(data[999999] == 255 && osprey_gpu_get(buffer, 999999) == 255);
+  // A store wider than one byte truncates and never touches its neighbour.
+  osprey_gpu_set(buffer, 999998, 0x1FF);
+  CHECK(data[999998] == 255 && data[999999] == 255 && osprey_gpu_get(buffer, 999998) == 255);
+  CHECK(osprey_gpu_in_bounds(buffer, 1000000) == 0);
+}
+
 int main(int argc, char **argv) {
 #if defined(__APPLE__)
   if (argc == 2 && strcmp(argv[1], "--metal") == 0) {
@@ -319,6 +460,8 @@ int main(int argc, char **argv) {
   (void)argc;
   (void)argv;
 #endif
+  t_dense_word_roundtrip();
+  t_uint8_million_allocates_one_megabyte();
   t_alloc_zero_filled();
   t_alloc_clamps_to_empty();
   t_alloc_failure_is_empty();
@@ -327,11 +470,15 @@ int main(int argc, char **argv) {
   t_boundary_words();
   t_take_shrinks_only();
   t_matmul_exact();
+  t_matmul_float32_rounds_at_its_width();
+  t_matmul_element_type_errors();
   t_matmul_accumulates_in_k_order();
   t_matmul_zero_dimensions();
   t_matmul_shape_errors();
   t_load_f32();
   t_tensor_loader(&(TensorLoader){"gpuLoadTensor", osprey_gpu_load_tensor, osprey_gpu_len, at});
+  t_tensor_requested_widths();
+  t_tensor_mismatch_wording();
   printf("[ok] gpu_runtime: %ld assertions\n", g_checks);
   return 0;
 }

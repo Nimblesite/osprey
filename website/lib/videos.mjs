@@ -47,19 +47,22 @@ export const clock = (value) => {
 };
 
 /** ISO 8601 duration, e.g. `PT3M15S`. */
-export const isoDuration = (value) => {
-  const [h, m, s] = hms(value);
+export const isoDuration = (value, precise = false) => {
+  const measured = precise ? Math.round(value * 1000) / 1000 : Math.floor(value);
+  const [h, m, whole] = hms(measured);
+  const s = precise ? Number((measured % 60).toFixed(3)) : whole;
   return `PT${h ? `${h}H` : ""}${m ? `${m}M` : ""}${s || !(h || m) ? `${s}S` : ""}`;
 };
 
-/** A video by id, with its chapters, transcript and duration worked out. */
+/** A video by id, with measured duration and parsed chapter/caption tracks. */
 export const video = (id) => {
   const entry = VIDEOS[id];
   if (!entry || id.startsWith("_")) throw new Error(`No video "${id}" in src/_data/videos.json`);
+  if (!(entry.durationSeconds > 0)) throw new Error(`Video "${id}" needs its measured duration; run make -C website video-metadata`);
   const chapters = cues(entry.chapters);
   const starts = chapters.map((chapter) => Math.floor(chapter.start));
   if (new Set(starts).size !== starts.length) throw new Error(`Video "${id}" has two chapters starting at the same second`);
-  return { id, ...entry, chapterTrack: entry.chapters, chapters, transcript: cues(entry.captions), duration: Math.floor(chapters.at(-1).end) };
+  return { id, ...entry, chapterTrack: entry.chapters, chapters, transcript: cues(entry.captions), duration: Math.floor(entry.durationSeconds) };
 };
 
 // A link that starts the video at `start`: `?t=` is what Google's key moments
@@ -113,12 +116,14 @@ export const videoObject = (id, pageUrl, site) => {
     description: v.description,
     thumbnailUrl: [absolute(v.poster)],
     uploadDate: v.uploadDate,
-    duration: isoDuration(v.duration),
+    duration: isoDuration(v.durationSeconds, true),
     contentUrl: absolute(v.content),
     encodingFormat: "video/mp4",
     width: v.width,
     height: v.height,
     inLanguage: "en",
+    isAccessibleForFree: true,
+    accessibilityFeature: ["captions", "transcript"],
     isFamilyFriendly: true,
     keywords: v.tags.join(", "),
     url: pageUrl,

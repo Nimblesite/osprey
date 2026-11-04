@@ -357,7 +357,7 @@ fn hover_on_a_written_type_name_explains_it() {
     // Hovering the `int` in an annotation used to return nothing, because
     // no source file declares it. Implements [LSP-HOVER-WRITTEN].
     let md = hover(SRC, "file:///a.osp", 0, 11, U16).expect("hover over `int`");
-    shows(&md, &["int", "64-bit integer"]);
+    shows(&md, &["int", "64 bits, signed"]);
     // A declared type still resolves to its declaration, not to this table.
     let declared = "type Shade = Light | Dark\nfn pick(s: Shade) = s\n";
     let hovered = hover(declared, "file:///a.osp", 1, 12, U16).expect("hover over `Shade`");

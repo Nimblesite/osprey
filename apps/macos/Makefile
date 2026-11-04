@@ -1,8 +1,16 @@
 # The desktop apps on macOS, each in the GPUI host. Each target runs its recipe in the root Makefile,
 # where it is a private `_` target; `make help` at the root lists these too. Windows: apps/windows.
+# Each app's tests: apps/macos/tests, and with no host at all, apps/tests.
 ROOT ?= ../..
 
-.PHONY: casting flock painting signal-flow synth storage probe bench compare test
+.PHONY: agent casting flock painting signal-flow synth storage probe bench compare
+
+## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
+##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
+PROJECT ?= $(CURDIR)
+agent:
+	$(MAKE) -C $(ROOT) build _runtime_macos
+	bash $(ROOT)/examples/agent/run.sh "$(PROJECT)"
 
 ## casting: Open the casting player: pick a file or stream and cast it to a TV
 ##          found on the network, with the HLS visualiser. [CAST-DESIGN-NATIVE]
@@ -46,9 +54,3 @@ bench:
 ##          permission for the terminal.
 compare:
 	$(MAKE) -C $(ROOT) _gpui-compare
-
-## test: The native and signal-flow packages, the synth, Flock and painting
-##       suites, the host's unit tests and clippy, and the probe and Flock
-##       recorded-event smokes.
-test:
-	$(MAKE) -C $(ROOT) _gpui-test

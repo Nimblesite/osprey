@@ -139,8 +139,8 @@ typedef ulong (*device_unary)(ulong);
 typedef long double (*host_unary)(long double);
 
 // Every function whose result is exactly defined — rounding, remainder,
-// sign, the binary32 emulation and the total shifts — must agree with the
-// host bit for bit on every word [BUILTIN-MATH-ROUNDING] [BUILTIN-FLOAT32]
+// sign, binary32 narrowing and the total shifts — must agree with the
+// host bit for bit on every word [BUILTIN-MATH-ROUNDING] [GPU-DEVICE-NATIVE]
 // [BUILTIN-BITWISE].
 static void check_exact_unary(const char *what, device_unary device, double (*host)(double)) {
   for (unsigned i = 0; i < SPECIALS; i++) expect(what, specials[i], 0, device(specials[i]), bits(host(of(specials[i]))));
@@ -171,18 +171,16 @@ static uint32_t narrow_reference(uint64_t x) {
 
 static void check_binary32(void) {
   for (unsigned i = 0; i < SPECIALS; i++) {
-    expect("float32", specials[i], 0, float32_64(specials[i]),
+    expect("round trip", specials[i], 0, widen32(narrow32(specials[i])),
            isnan(of(specials[i])) ? bits(f32_widen(nan32_of(specials[i]))) : bits(f32_widen(f32_bits_of(of(specials[i])))));
-    expect("float32Bits", specials[i], 0, float32_bits(specials[i]), narrow_reference(specials[i]));
-    expect("float32FromBits", specials[i], 0, float32_from_bits(float32_bits(specials[i])), float32_64(specials[i]));
+    expect("narrow32", specials[i], 0, narrow32(specials[i]), narrow_reference(specials[i]));
   }
   for (unsigned i = 0; i < TRIALS; i++) {
     uint64_t x = word_in(0, 2047);
-    expect("float32", x, 0, float32_64(x), bits(f32_widen(narrow_reference(x))));
-    expect("float32Bits", x, 0, float32_bits(x), narrow_reference(x));
-    expect("float32FromBits", x, 0, float32_from_bits(float32_bits(x)), float32_64(x));
+    expect("round trip", x, 0, widen32(narrow32(x)), bits(f32_widen(narrow_reference(x))));
+    expect("narrow32", x, 0, narrow32(x), narrow_reference(x));
     uint64_t edge = (word_in(0, 2047) & UINT64_C(0xffffffffe0000000)) | (random_word() & UINT64_C(0x1fffffff));
-    expect("float32 tie", edge, 0, float32_64(edge), bits(f32_widen(narrow_reference(edge))));
+    expect("narrow32 tie", edge, 0, widen32(narrow32(edge)), bits(f32_widen(narrow_reference(edge))));
   }
   // Emitted floatBits/floatFromBits kernels are exercised by
   // tests/core/gpu/scalar_contracts.test.osp and its ML twin.
@@ -315,6 +313,73 @@ static void check_transcendental(const char *what, device_unary device, host_una
   assert(trials - exact <= trials / 100);
 }
 
+// [GPU-DEVICE-NATIVE] Independent wide host arithmetic, never the shader's
+// overflow formula: all byte pairs, boundary pairs and random wider words.
+static void expect_integer(__int128 got, __int128 expected, __int128 low,
+                           __int128 high, ulong fault, ulong special) {
+  ulong wanted = special ? special : expected < low || expected > high ? FAULT_OVERFLOW : 0;
+  assert(fault == wanted);
+  assert(got == (wanted ? 0 : expected));
+  checks += 2;
+}
+
+#define INTEGER_ORACLE(SUFFIX, T, U, BITS, SIGNED) \
+static void conversion_case##SUFFIX(long value) { \
+  const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
+  const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
+  ulong fault = 0; T got = osprey_convert##SUFFIX(value, &fault); \
+  expect_integer(got, value, low, high, fault, 0); \
+} \
+static void integer_pair##SUFFIX(T a, T b) { \
+  const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
+  const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
+  __int128 x = a, y = b; \
+  ulong fault = 0; T got = osprey_add##SUFFIX(a, b, &fault); \
+  expect_integer(got, x + y, low, high, fault, 0); \
+  fault = 0; got = osprey_sub##SUFFIX(a, b, &fault); \
+  expect_integer(got, x - y, low, high, fault, 0); \
+  fault = 0; got = osprey_mul##SUFFIX(a, b, &fault); \
+  expect_integer(got, x * y, low, high, fault, 0); \
+  fault = 0; got = osprey_div##SUFFIX(a, b, &fault); \
+  expect_integer(got, y ? x / y : 0, low, high, fault, y ? 0 : FAULT_REMAINDER_BY_ZERO); \
+  fault = 0; got = osprey_rem##SUFFIX(a, b, &fault); \
+  expect_integer(got, y ? x % y : 0, low, high, fault, y ? 0 : FAULT_REMAINDER_BY_ZERO); \
+  fault = 0; got = osprey_neg##SUFFIX(a, &fault); \
+  expect_integer(got, -x, low, high, fault, 0); \
+  fault = 0; got = osprey_abs##SUFFIX(a, &fault); \
+  expect_integer(got, x < 0 ? -x : x, low, high, fault, 0); \
+} \
+static void integer_cases##SUFFIX(void) { \
+  const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
+  const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
+  T edges[] = {0, 1, (T)-1, (T)low, (T)(low + 1), (T)(high - 1), (T)high, 2}; \
+  for (long value = -65536; value <= 65536; value++) conversion_case##SUFFIX(value); \
+  for (int delta = -1; delta <= 1; delta++) { \
+    if (low + delta >= INT64_MIN) conversion_case##SUFFIX((long)(low + delta)); \
+    if (high + delta <= INT64_MAX) conversion_case##SUFFIX((long)(high + delta)); \
+  } \
+  for (uint i = 0; i < 10000; i++) conversion_case##SUFFIX((long)random_word()); \
+  for (size_t i = 0; i < 8; i++) for (size_t j = 0; j < 8; j++) integer_pair##SUFFIX(edges[i], edges[j]); \
+  if (BITS == 8) { \
+    for (uint i = 0; i < 256; i++) for (uint j = 0; j < 256; j++) integer_pair##SUFFIX((T)(U)i, (T)(U)j); \
+  } else { \
+    for (uint i = 0; i < 10000; i++) integer_pair##SUFFIX((T)random_word(), (T)random_word()); \
+  } \
+}
+INTEGER_ORACLE(_i8, signed char, unsigned char, 8, 1)
+INTEGER_ORACLE(_i16, short, unsigned short, 16, 1)
+INTEGER_ORACLE(_i32, int, uint, 32, 1)
+INTEGER_ORACLE(, long, ulong, 64, 1)
+INTEGER_ORACLE(_u8, unsigned char, unsigned char, 8, 0)
+INTEGER_ORACLE(_u16, unsigned short, unsigned short, 16, 0)
+INTEGER_ORACLE(_u32, uint, uint, 32, 0)
+#undef INTEGER_ORACLE
+
+static void check_sized_integer_oracles(void) {
+  integer_cases_i8(); integer_cases_i16(); integer_cases_i32(); integer_cases();
+  integer_cases_u8(); integer_cases_u16(); integer_cases_u32();
+}
+
 static void check_checked_integers(void) {
   ulong fault = 0;
   assert(osprey_add(2, 3, &fault) == 5 && osprey_sub(2, 3, &fault) == -1 && osprey_mul(-4, 5, &fault) == -20);
@@ -343,7 +408,22 @@ static void check_matmul_kernel(void) {
   checks += 4;
 }
 
+// [GPU-MATMUL]: binary32 product shape, bounds, k-order and separate rounding.
+static void check_matmul32_kernel(void) {
+  float square[] = {0.5f, -1.0f, 2.0f, 3.0f}, out[] = {99, 99, 99, 99, 123};
+  for (ulong i = 0; i <= 4; i++) osprey_matmul32(square, square, out, 2, 2, 2, i);
+  assert(out[0] == -1.75f && out[1] == -3.5f && out[2] == 7.0f && out[3] == 7.0f && out[4] == 123);
+  float ordered[] = {0x1p24f, 1.0f, -0x1p24f}, ones[] = {1, 1, 1};
+  osprey_matmul32(ordered, ones, out, 1, 3, 1, 0);
+  assert(out[0] == 0.0f && !signbit(out[0]));
+  float a[] = {0x1.000002p0f, -1.0f}, b[] = {0x1.fffffcp-1f, 1.0f};
+  osprey_matmul32(a, b, out, 1, 2, 1, 0);
+  assert(out[0] == 0.0f && !signbit(out[0]));
+  checks += 7;
+}
+
 int main(void) {
+  check_matmul32_kernel();
   check_binary_specials();
   check_binary("add", add64, host_add);
   check_binary("sub", sub64, host_sub);
@@ -376,6 +456,7 @@ int main(void) {
   check_soft_binary("pow", pow64, pow, 1021, 4, 1018, 10);
   check_soft_binary("atan2", atan264, atan2, 990, 60, 990, 60);
   check_soft_binary("hypot", hypot64, hypot, 990, 60, 990, 60);
-  printf("[ok] device binary64 library: %lu host parity checks\n", checks);
+  check_sized_integer_oracles();
+  printf("[ok] device numeric library: %lu host parity checks\n", checks);
   return 0;
 }

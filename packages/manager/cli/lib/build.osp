@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Flags
 import registry_cli::Reports
@@ -83,10 +84,7 @@ module Build {
         }
     }
 
-    fn appendManifest(done, project, lock, p) = match packageManifestIn(project, lock, p) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: listAppend(done, value) }
-    }
+    fn appendManifest(done, project, lock, p) = Checked::andThen(packageManifestIn(project, lock, p), fn(value) => Success { value: listAppend(done, value) })
 
     /// Every locked package's manifest in lock order; the first rejection stops the build.
     fn packageManifests(project, lock) = foldList(packagesOf(lock), Success { value: [] }, fn(acc, p) => match acc {

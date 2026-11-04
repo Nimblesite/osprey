@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import Combine
 import Foundation
 
@@ -22,6 +24,22 @@ public final class RegionCell: ObservableObject, Identifiable {
     func replace(revision: Int, node: JSONValue) {
         self.revision = revision
         self.node = node
+    }
+
+    // [UI-EVENTS] A click can outlive a frame, never a changed control binding.
+    func controlRevision(for expected: JSONValue, value: JSONValue) -> Int? {
+        func contains(_ value: JSONValue) -> Bool {
+            if value == expected { return true }
+            return (value.array ?? Array(value.object?.values ?? [:].values)).contains(where: contains)
+        }
+        let valid: Bool
+        switch expected.text("kind") {
+        case "button": valid = expected.flag("enabled") && value == .null
+        case "picker": valid = value.string.map { key in expected.list("choices").contains { $0.text("key") == key } } ?? false
+        default: valid = false
+        }
+        guard valid, expected["event"]?.int != nil, contains(node) else { return nil }
+        return revision
     }
 }
 
@@ -54,17 +72,30 @@ public final class RegionStore: ObservableObject {
     private let context: HostContext
     private let capabilities: CapabilityRunner
     private let slices: SliceStore
+    // [CAST-MOBILE-SKIN-PERSISTENCE] Native persistence observes accepted writes.
+    private let onSliceWrite: (SliceText) throws -> Void
 
-    public init(library: Library, context: HostContext, capabilities: CapabilityRunner, slices: SliceStore = .shared) {
+    public init(library: Library, context: HostContext, capabilities: CapabilityRunner, slices: SliceStore = .shared,
+                onSliceWrite: @escaping (SliceText) throws -> Void = { _ in }) {
         self.library = library
         self.context = context
         self.capabilities = capabilities
         self.slices = slices
+        self.onSliceWrite = onSliceWrite
     }
 
     public var root: RegionCell? { cells["root"] }
 
     public func cell(_ key: String) -> RegionCell? { cells[key] }
+
+    public func frame(elapsed: Double) {
+        guard elapsed.isFinite, elapsed >= 0 else { return }
+        deliver(.object(["kind": "frame", "elapsed": .number(elapsed), "now": .number(Double(context.now))]))
+    }
+
+    public func lifecycle(_ phase: String) {
+        deliver(.object(["kind": "lifecycle", "phase": .string(phase), "now": .number(Double(context.now))]))
+    }
 
     public func start() {
         guard state.isEmpty, failure == nil else { return }
@@ -95,7 +126,10 @@ public final class RegionStore: ObservableObject {
     private func accept(_ text: String) throws {
         let envelope = try Envelope.decode(text)
         state = envelope.state
-        envelope.slices.forEach { slices.write($0.key, $0.text) }
+        for slice in envelope.slices {
+            try onSliceWrite(slice)
+            slices.write(slice.key, slice.text)
+        }
         if let theme = envelope.theme { self.theme = theme }
         for patch in envelope.patches {
             if let cell = cells[patch.key] { cell.replace(revision: patch.revision, node: patch.node) } else { cells[patch.key] = RegionCell(key: patch.key, revision: patch.revision, node: patch.node) }
@@ -120,11 +154,16 @@ public final class RegionStore: ObservableObject {
 /// The standard adapters this host answers ([GPUI-HOST-CAPABILITIES] names the same kinds).
 public enum Adapters {
     public static func standard(store: StoreAdapter) -> [CapabilityAdapter] {
-        [RunAdapter(), HttpAdapter(), store, ChooseFolderAdapter()]
+        #if os(macOS)
+        [RunAdapter(), ProcessAdapter(), HttpAdapter(), store, ChooseFolderAdapter()]
+        #else
+        [HttpAdapter(), store, DocumentAdapter()]
+        #endif
     }
 }
 
 /// The system's folder picker; the person's choice comes back as a path, or `cancelled`.
+#if os(macOS)
 public struct ChooseFolderAdapter: CapabilityAdapter {
     public let kinds = ["choose-folder"]
     public init() {}
@@ -140,3 +179,5 @@ public struct ChooseFolderAdapter: CapabilityAdapter {
         }
     }
 }
+
+#endif

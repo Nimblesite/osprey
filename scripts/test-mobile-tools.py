@@ -2,6 +2,8 @@
 """Portable mobile tooling checks and an explicit macOS host ownership oracle."""
 
 import os
+import json
+import shlex
 from pathlib import Path
 import re
 import shutil
@@ -9,7 +11,6 @@ import subprocess
 import sys
 import tempfile
 import unittest
-
 
 ROOT = Path(__file__).resolve().parent.parent
 WRAPPER = ROOT / "examples/mobile/android/gradlew"
@@ -34,7 +35,6 @@ case "$*" in
     esac ;;
 esac
 """
-
 
 # Compile the actual host; doubles isolate string ownership from platform services.
 STORAGE_HOST_PROBE = r'''
@@ -96,7 +96,6 @@ func fullDiskAccess() -> Bool { false }
 }
 '''
 
-
 COUNTER_HOST_PROBE = r'''
 @_silgen_name("osp_arc_live_objects") func liveObjects() -> UInt64
 @_silgen_name("osp_arc_live_bytes") func liveBytes() -> UInt64
@@ -125,7 +124,6 @@ COUNTER_HOST_PROBE = r'''
     }
 }
 '''
-
 
 GPUI_HOST_PROBE = r'''
 #[path = "__FFI__"] mod ffi;
@@ -170,12 +168,10 @@ fn main() -> Result<(), String> {
 }
 '''
 
-
 def run_swift_probe(source, binary, *inputs):
     subprocess.run(["swiftc", "-parse-as-library", str(source), *inputs, "-o", str(binary)],
                    check=True, timeout=60)
     subprocess.run([str(binary)], check=True, timeout=10)
-
 
 def storage_host_probe():
     host = ROOT / "examples/macos/OspreyStorage/StorageStore.swift"
@@ -184,7 +180,6 @@ def storage_host_probe():
         binary = Path(scratch) / "probe"
         source.write_text("import Foundation\nimport Darwin\n" + STORAGE_HOST_PROBE)
         run_swift_probe(source, binary, str(host))
-
 
 def counter_host_probe():
     host = ROOT / "examples/ios/OspreyCounter/OspreyCounterApp.swift"
@@ -198,7 +193,6 @@ def counter_host_probe():
         source.write_text("import Foundation\n" + helper + COUNTER_HOST_PROBE)
         run_swift_probe(source, Path(scratch) / "probe", "-import-objc-header",
                         str(archive.with_suffix(".h")), str(archive))
-
 
 def gpui_host_probe(archive):
     with tempfile.TemporaryDirectory(prefix="osprey-gpui-ownership-") as scratch:
@@ -216,7 +210,6 @@ def gpui_host_probe(archive):
         subprocess.run([str(binary)], check=True, timeout=10,
                        env=dict(os.environ, OSPREY_ARC_DEBUG="1"))
 
-
 def corpus_jobs(target, override=None):
     harness = (ROOT / "crates/run_test_corpus.sh").read_text()
     functions = harness.split("detected_jobs() {", 1)[1].split("\n\nbackend_setup", 1)[0]
@@ -229,7 +222,6 @@ def corpus_jobs(target, override=None):
         ["zsh", "-c", script + "\nconfigured_jobs"], env=env,
         capture_output=True, text=True, check=False,
     )
-
 
 class BuildFragments(unittest.TestCase):
     def test_task_panels_list_every_public_target_and_no_variable(self):
@@ -256,7 +248,6 @@ class BuildFragments(unittest.TestCase):
                     )
                     self.assertEqual(result.returncode == 0, succeeds, result.stderr)
                     self.assertIn("1 node-tool recipes" if succeeds else "site: runs a node tool in website/", result.stderr)
-
 
 class CorpusScheduling(unittest.TestCase):
     def test_native_worker_isolates_writes_and_preserves_failure_output(self):
@@ -303,6 +294,51 @@ class CorpusScheduling(unittest.TestCase):
                 self.assertIn("must be a positive integer", result.stderr)
                 self.assertEqual(result.stdout, "")
 
+class SimulatorSelection(unittest.TestCase):
+    def test_renamed_iphones_are_selected_by_device_type_not_display_name(self):
+        phone = {"name": "ci-prep-iphone", "udid": "phone", "state": "Booted",
+                 "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPhone-17"}
+        tablet = {"name": "iPhone misleading name", "udid": "tablet", "state": "Booted",
+                  "deviceTypeIdentifier": "com.apple.CoreSimulator.SimDeviceType.iPad-Pro"}
+        for devices, requested, expected in [([phone], None, "phone"), ([tablet, phone], None, "phone"),
+                                              ([tablet, phone], "tablet", "tablet"), ([tablet], None, None)]:
+            with self.subTest(devices=devices, requested=requested), tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                fixture = root / "devices.json"
+                fixture.write_text(json.dumps({"devices": {"com.apple.CoreSimulator.SimRuntime.iOS-27-0": devices}}))
+                stub = root / "xcrun"
+                stub.write_text("#!/bin/sh\ncase \"$*\" in\n  *'list devices'*) cat " + shlex.quote(str(fixture)) + ";;\nesac\n")
+                stub.chmod(0o755)
+                developer = root / "Selected Xcode.app/Contents/Developer"
+                developer.mkdir(parents=True)
+                (root / "xcode-select").write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_XCODE_DEVELOPER"\n')
+                (root / "open").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$TEST_OPEN_LOG"\n')
+                for name in ["xcode-select", "open"]: (root / name).chmod(0o755)
+                env = dict(os.environ, PATH=folder + os.pathsep + os.environ["PATH"])
+                env.update(TEST_XCODE_DEVELOPER=str(developer), TEST_OPEN_LOG=str(root / "opened"))
+                env.pop("OSPREY_SIMULATOR_UDID", None)
+                if requested: env["OSPREY_SIMULATOR_UDID"] = requested
+                result = subprocess.run(["bash", str(ROOT / "scripts/ios-simulator.sh")], env=env,
+                                        text=True, capture_output=True, timeout=10)
+                if expected is None:
+                    self.assertNotEqual(result.returncode, 0, result.stdout)
+                    self.assertIn("No matching iPhone simulator", result.stderr)
+                else:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(result.stdout.strip(), expected)
+                    self.assertFalse((root / "opened").exists(), "Headless selection opened a window")
+                    missing = subprocess.run(["bash", str(ROOT / "scripts/ios-simulator.sh")],
+                        env=dict(env, OSPREY_SIMULATOR_VISIBLE="1"), text=True, capture_output=True, timeout=10)
+                    self.assertNotEqual(missing.returncode, 0)
+                    self.assertIn("No simulator viewer", missing.stderr)
+                    for viewer in ["DeviceHub.app", "Simulator.app"]:
+                        app = developer.parent / "Applications" / viewer if viewer == "DeviceHub.app" else developer / "Applications" / viewer
+                        app.mkdir(parents=True)
+                        result = subprocess.run(["bash", str(ROOT / "scripts/ios-simulator.sh")],
+                            env=dict(env, OSPREY_SIMULATOR_VISIBLE="1"), text=True, capture_output=True, timeout=10)
+                        self.assertEqual(result.returncode, 0, result.stderr)
+                        expected_open = ["-a", str(app), "devices://device/open?id=" + expected] if viewer == "DeviceHub.app" else ["-a", str(app), "--args", "-CurrentDeviceUDID", expected]
+                        self.assertEqual((root / "opened").read_text().splitlines(), expected_open)
 
 class GradleSelection(unittest.TestCase):
     def test_unrelated_gradle_on_path_cannot_override_pinned_distribution(self):
@@ -323,7 +359,6 @@ class GradleSelection(unittest.TestCase):
             )
             self.assertEqual(result.stdout.strip(), "Gradle 9.6.0")
 
-
 def stub_android_tree(root):
     """Copy the bank driver beside a stub SDK whose adb prints $REPORT."""
     hosts = ["darwin-x86_64", "linux-x86_64"]
@@ -336,7 +371,6 @@ def stub_android_tree(root):
         (root / script).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy(ROOT / script, root / script)
     (root / BANK_RUN).parent.joinpath("build").mkdir()
-
 
 def instrumentation_result(report, screenshot_mode="valid"):
     """Exit status of the bank's Android test driver for a device that prints `report`."""
@@ -353,7 +387,6 @@ def instrumentation_result(report, screenshot_mode="valid"):
             capture_output=True, text=True, check=False,
         )
 
-
 class BankAndroidVerdict(unittest.TestCase):
     def test_report_is_judged_with_tools_every_runner_has(self):
         self.assertEqual(instrumentation_result("Time: 23.282\n\nOK (6 tests)").returncode, 0)
@@ -367,7 +400,6 @@ class BankAndroidVerdict(unittest.TestCase):
                 result = instrumentation_result("OK (6 tests)", mode)
                 self.assertNotEqual(result.returncode, 0, result.stderr)
                 self.assertIn("screenshot", result.stderr.lower())
-
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--storage-host"]:

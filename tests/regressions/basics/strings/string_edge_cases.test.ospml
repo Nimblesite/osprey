@@ -384,7 +384,7 @@ interpolationScalarCase () =
     ]
 
     // Floats keep a visible fractional part so a whole-valued float never
-    // renders as an int; [BUILTIN-TOFLOAT] pins toFloat 7 == 7.0 and
+    // renders as an int; [BUILTIN-CONVERT-FLOAT] pins toFloat 7 == 7.0 and
     // toFloat (-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
     checkAll "floats and booleans render with their scalar spelling" [
         "${0.0}" == "0.0",

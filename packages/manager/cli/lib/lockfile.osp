@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry::Canonical
 import registry::Digests
 import registry::Identity
@@ -187,10 +188,7 @@ module Lockfile {
         _ => Error { message: formatCode }
     }
 
-    fn readKey(object) = match textMember(object, "scope") {
-        Error { message } => Error { message: message }
-        Success { value } => readName(object, value)
-    }
+    fn readKey(object) = Checked::andThen(textMember(object, "scope"), fn(value) => readName(object, value))
 
     /// A key only when scope and name pass [PACKAGE-NAMES]; anything else is
     /// `lock.shape`, so no lock string reaches a filesystem path
@@ -199,10 +197,7 @@ module Lockfile {
         Success { value: Names::Key { scope: scope, name: name } }
     } else { Error { message: shapeCode } }
 
-    fn readName(object, scope) = match textMember(object, "name") {
-        Error { message } => Error { message: message }
-        Success { value } => keyOf(scope, value)
-    }
+    fn readName(object, scope) = Checked::andThen(textMember(object, "name"), fn(value) => keyOf(scope, value))
 
     fn parsedDigest(text) = match Digests::parse(text) {
         Success { value } => Success { value: value }
@@ -210,55 +205,25 @@ module Lockfile {
     }
 
     /// A member that must be a well-formed `sha256:` envelope ([PACKAGE-HARDENING] C3).
-    fn digestMember(object, key) = match textMember(object, key) {
-        Error { message } => Error { message: message }
-        Success { value } => parsedDigest(value)
-    }
+    fn digestMember(object, key) = Checked::andThen(textMember(object, key), fn(value) => parsedDigest(value))
 
-    fn readRelease(object) = match objMember(object, "package") {
-        Error { message } => Error { message: message }
-        Success { value } => readReleaseWithKey(object, readKey(value))
-    }
+    fn readRelease(object) = Checked::andThen(objMember(object, "package"), fn(value) => readReleaseWithKey(object, readKey(value)))
 
-    fn readReleaseWithKey(object, key) = match key {
-        Error { message } => Error { message: message }
-        Success { value } => readEpoch(object, value)
-    }
+    fn readReleaseWithKey(object, key) = Checked::andThen(key, fn(value) => readEpoch(object, value))
 
-    fn readEpoch(object, key) = match intMember(object, "epoch") {
-        Error { message } => Error { message: message }
-        Success { value } => readOrdinal(object, key, value)
-    }
+    fn readEpoch(object, key) = Checked::andThen(intMember(object, "epoch"), fn(value) => readOrdinal(object, key, value))
 
-    fn readOrdinal(object, key, epoch) = match intMember(object, "ordinal") {
-        Error { message } => Error { message: message }
-        Success { value } => readDigest(object, key, epoch, value)
-    }
+    fn readOrdinal(object, key, epoch) = Checked::andThen(intMember(object, "ordinal"), fn(value) => readDigest(object, key, epoch, value))
 
-    fn readDigest(object, key, epoch, ordinal) = match digestMember(object, "digest") {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Identity::ReleaseId { key: key, epoch: epoch, ordinal: ordinal, digest: value } }
-    }
+    fn readDigest(object, key, epoch, ordinal) = Checked::andThen(digestMember(object, "digest"), fn(value) => Success { value: Identity::ReleaseId { key: key, epoch: epoch, ordinal: ordinal, digest: value } })
 
-    fn readRequirement(object) = match objMember(object, "package") {
-        Error { message } => Error { message: message }
-        Success { value } => readRequirementWithKey(object, readKey(value))
-    }
+    fn readRequirement(object) = Checked::andThen(objMember(object, "package"), fn(value) => readRequirementWithKey(object, readKey(value)))
 
-    fn readRequirementWithKey(object, key) = match key {
-        Error { message } => Error { message: message }
-        Success { value } => readReqEpoch(object, value)
-    }
+    fn readRequirementWithKey(object, key) = Checked::andThen(key, fn(value) => readReqEpoch(object, value))
 
-    fn readReqEpoch(object, key) = match intMember(object, "epoch") {
-        Error { message } => Error { message: message }
-        Success { value } => readReqFloor(object, key, value)
-    }
+    fn readReqEpoch(object, key) = Checked::andThen(intMember(object, "epoch"), fn(value) => readReqFloor(object, key, value))
 
-    fn readReqFloor(object, key, epoch) = match intMember(object, "minimumOrdinal") {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } }
-    }
+    fn readReqFloor(object, key, epoch) = Checked::andThen(intMember(object, "minimumOrdinal"), fn(value) => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } })
 
     // The variant is chosen by the union member key; any other name is `lock.shape`.
     fn readEdgeNamed(kind, requirement) = match kind {
@@ -277,55 +242,28 @@ module Lockfile {
     // spelled out by `firstMember`.
     fn edgeOfValue(object) = {
         let m = firstMember(object)
-        match objMember(m.value, "requirement") {
-            Error { message } => Error { message: message }
-            Success { value } => edgeFromRequirement(m, value)
-        }
+        Checked::andThen(objMember(m.value, "requirement"), fn(value) => edgeFromRequirement(m, value))
     }
 
-    fn edgeFromRequirement(m, reqObj) = match readRequirement(reqObj) {
-        Error { message } => Error { message: message }
-        Success { value } => readEdgeNamed(m.key, value)
-    }
+    fn edgeFromRequirement(m, reqObj) = Checked::andThen(readRequirement(reqObj), fn(value) => readEdgeNamed(m.key, value))
 
     // A recursive accumulator avoids `foldList` over a `Result<List<…>>`.
     fn edgesAt(items, i, acc) -> Result<List<ManifestModel::Edge>, string> = match i >= length(items) {
         true => Success { value: acc }
-        false => match edgeOfValue(listGet(items, i) ?: Json::Null) {
-            Error { message } => Error { message: message }
-            Success { value } => edgesAt(items, i + 1, listAppend(acc, value))
-        }
+        false => Checked::andThen(edgeOfValue(listGet(items, i) ?: Json::Null), fn(value) => edgesAt(items, i + 1, listAppend(acc, value)))
     }
 
-    fn edgesOf(object) = match arrMember(object, "dependencies") {
-        Error { message } => Error { message: message }
-        Success { value } => edgesAt(value, 0, [])
-    }
+    fn edgesOf(object) = Checked::andThen(arrMember(object, "dependencies"), fn(value) => edgesAt(value, 0, []))
 
-    fn readRoot(object) = match digestMember(object, "manifestDigest") {
-        Error { message } => Error { message: message }
-        Success { value } => readRootWithDeps(object, value)
-    }
+    fn readRoot(object) = Checked::andThen(digestMember(object, "manifestDigest"), fn(value) => readRootWithDeps(object, value))
 
-    fn readRootWithDeps(object, digest) = match edgesOf(object) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Root { manifestDigest: digest, dependencies: value } }
-    }
+    fn readRootWithDeps(object, digest) = Checked::andThen(edgesOf(object), fn(value) => Success { value: Root { manifestDigest: digest, dependencies: value } })
 
-    fn packageOf(pkg) = match objMember(pkg, "release") {
-        Error { message } => Error { message: message }
-        Success { value } => packageWithRelease(pkg, readRelease(value))
-    }
+    fn packageOf(pkg) = Checked::andThen(objMember(pkg, "release"), fn(value) => packageWithRelease(pkg, readRelease(value)))
 
-    fn packageWithRelease(pkg, release) = match release {
-        Error { message } => Error { message: message }
-        Success { value } => packageWithDeps(pkg, value)
-    }
+    fn packageWithRelease(pkg, release) = Checked::andThen(release, fn(value) => packageWithDeps(pkg, value))
 
-    fn packageWithDeps(pkg, release) = match edgesOf(pkg) {
-        Error { message } => Error { message: message }
-        Success { value } => packageWithSurface(pkg, release, value)
-    }
+    fn packageWithDeps(pkg, release) = Checked::andThen(edgesOf(pkg), fn(value) => packageWithSurface(pkg, release, value))
 
     fn textsOf(items) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
         Error => acc
@@ -341,25 +279,13 @@ module Lockfile {
         Error => Error { message: shapeCode }
     }
 
-    fn surfaceOf(pkg) = match arrMember(pkg, "surface") {
-        Error { message } => Error { message: message }
-        Success { value } => match textsOf(value) {
-            Error { message } => Error { message: message }
-            Success { value } => canonicalSurface(value)
-        }
-    }
+    fn surfaceOf(pkg) = Checked::andThen(arrMember(pkg, "surface"), fn(value) => Checked::andThen(textsOf(value), fn(value) => canonicalSurface(value)))
 
-    fn packageWithSurface(pkg, release, deps) = match surfaceOf(pkg) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Package { release: release, dependencies: deps, surface: value } }
-    }
+    fn packageWithSurface(pkg, release, deps) = Checked::andThen(surfaceOf(pkg), fn(value) => Success { value: Package { release: release, dependencies: deps, surface: value } })
 
     fn packagesAt(items, i, acc) -> Result<List<Package>, string> = match i >= length(items) {
         true => Success { value: acc }
-        false => match packageOf(listGet(items, i) ?: Json::Null) {
-            Error { message } => Error { message: message }
-            Success { value } => packagesAt(items, i + 1, listAppend(acc, value))
-        }
+        false => Checked::andThen(packageOf(listGet(items, i) ?: Json::Null), fn(value) => packagesAt(items, i + 1, listAppend(acc, value)))
     }
 
     fn packageKeyText(p: Package) = Names::display(p.release.key)
@@ -371,35 +297,17 @@ module Lockfile {
 
     // ---- overrides of a development lock ----
 
-    fn overridePath(object, key) = match textMember(object, "path") {
-        Error { message } => Error { message: message }
-        Success { value } => if value == "" { Error { message: shapeCode } } else { overrideEpoch(object, key, value) }
-    }
+    fn overridePath(object, key) = Checked::andThen(textMember(object, "path"), fn(value) => if value == "" { Error { message: shapeCode } } else { overrideEpoch(object, key, value) })
 
-    fn overrideEpoch(object, key, path) = match intMember(object, "epoch") {
-        Error { message } => Error { message: message }
-        Success { value } => if value < 1 { Error { message: shapeCode } } else { overrideDigest(object, key, path, value) }
-    }
+    fn overrideEpoch(object, key, path) = Checked::andThen(intMember(object, "epoch"), fn(value) => if value < 1 { Error { message: shapeCode } } else { overrideDigest(object, key, path, value) })
 
-    fn overrideDigest(object, key, path, epoch) = match digestMember(object, "manifestDigest") {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } }
-    }
+    fn overrideDigest(object, key, path, epoch) = Checked::andThen(digestMember(object, "manifestDigest"), fn(value) => Success { value: Override { package: key, path: path, epoch: epoch, manifestDigest: value } })
 
-    fn overrideOf(object) = match objMember(object, "package") {
-        Error { message } => Error { message: message }
-        Success { value } => match readKey(value) {
-            Error { message } => Error { message: message }
-            Success { value } => overridePath(object, value)
-        }
-    }
+    fn overrideOf(object) = Checked::andThen(objMember(object, "package"), fn(value) => Checked::andThen(readKey(value), fn(value) => overridePath(object, value)))
 
     fn overridesAt(items, i, acc) -> Result<List<Override>, string> = match i >= length(items) {
         true => Success { value: acc }
-        false => match overrideOf(listGet(items, i) ?: Json::Null) {
-            Error { message } => Error { message: message }
-            Success { value } => overridesAt(items, i + 1, listAppend(acc, value))
-        }
+        false => Checked::andThen(overrideOf(listGet(items, i) ?: Json::Null), fn(value) => overridesAt(items, i + 1, listAppend(acc, value)))
     }
 
     /// `overrides` is optional: absent means none; present, it is an array of
@@ -416,19 +324,13 @@ module Lockfile {
 
     fn overridesOrdered(overrides) = Order::strictlyAscending(mapList(overrides, overrideKeyText))
 
-    fn pinsWith(object, pyprojectDigest) = match digestMember(object, "uvLockDigest") {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Maybe::some(PythonPins { pyprojectDigest: pyprojectDigest, uvLockDigest: value }) }
-    }
+    fn pinsWith(object, pyprojectDigest) = Checked::andThen(digestMember(object, "uvLockDigest"), fn(value) => Success { value: Maybe::some(PythonPins { pyprojectDigest: pyprojectDigest, uvLockDigest: value }) })
 
     /// `root.python` is optional: absent means no Python plane; present, it
     /// holds the two well-formed digests.
     fn pythonOf(rootValue) = {
         let value = JsonRead::field(rootValue, "python")
-        if Json::isNull(value) { Success { value: Maybe::none() } } else { match digestMember(value, "pyprojectDigest") {
-            Error { message } => Error { message: message }
-            Success { value } => pinsWith(JsonRead::field(rootValue, "python"), value)
-        } }
+        if Json::isNull(value) { Success { value: Maybe::none() } } else { Checked::andThen(digestMember(value, "pyprojectDigest"), fn(value) => pinsWith(JsonRead::field(rootValue, "python"), value)) }
     }
 
     fn finish(packages, root, overrides, python) = if !keysUnique(packages) { Error { message: duplicateCode } }
@@ -448,33 +350,15 @@ module Lockfile {
         Success => decodePackages(root)
     }
 
-    fn decodePackages(root) = match arrMember(root, "packages") {
-        Error { message } => Error { message: message }
-        Success { value } => decodePackageItems(root, value)
-    }
+    fn decodePackages(root) = Checked::andThen(arrMember(root, "packages"), fn(value) => decodePackageItems(root, value))
 
-    fn decodePackageItems(root, items) = match packagesAt(items, 0, []) {
-        Error { message } => Error { message: message }
-        Success { value } => decodeRoot(root, value)
-    }
+    fn decodePackageItems(root, items) = Checked::andThen(packagesAt(items, 0, []), fn(value) => decodeRoot(root, value))
 
-    fn decodeRoot(root, packages) = match objMember(root, "root") {
-        Error { message } => Error { message: message }
-        Success { value } => decodeRootValue(root, packages, value)
-    }
+    fn decodeRoot(root, packages) = Checked::andThen(objMember(root, "root"), fn(value) => decodeRootValue(root, packages, value))
 
-    fn decodeRootValue(document, packages, rootValue) = match readRoot(rootValue) {
-        Error { message } => Error { message: message }
-        Success { value } => withPython(document, packages, value, rootValue)
-    }
+    fn decodeRootValue(document, packages, rootValue) = Checked::andThen(readRoot(rootValue), fn(value) => withPython(document, packages, value, rootValue))
 
-    fn withPython(document, packages, root, rootValue) = match pythonOf(rootValue) {
-        Error { message } => Error { message: message }
-        Success { value } => withOverrides(document, packages, root, value)
-    }
+    fn withPython(document, packages, root, rootValue) = Checked::andThen(pythonOf(rootValue), fn(value) => withOverrides(document, packages, root, value))
 
-    fn withOverrides(document, packages, root, python) = match overridesOf(document) {
-        Error { message } => Error { message: message }
-        Success { value } => finish(packages, root, value, python)
-    }
+    fn withOverrides(document, packages, root, python) = Checked::andThen(overridesOf(document), fn(value) => finish(packages, root, value, python))
 }

@@ -5,7 +5,7 @@
 //! test. A handler is lexical authority, not permission that may escape in a
 //! closure.
 
-use crate::testutil::{accepts, rejects_with};
+use crate::testutil::{accepts, rejects_with, typecheck};
 use crate::{check_program, TypeError};
 use osprey_ast::Stmt;
 use osprey_syntax::{parse_program_with_flavor, Flavor};
@@ -16,20 +16,16 @@ use std::{
 };
 
 pub(crate) fn diagnostics(source: &str) -> Vec<TypeError> {
-    let parsed = parse_program_with_flavor(source, Flavor::Default);
-    assert!(
-        parsed.errors.is_empty(),
-        "test fixture has syntax errors: {:?}",
-        parsed.errors
-    );
-    check_program(&parsed.program)
+    typecheck(Flavor::Default, source)
 }
 
+#[track_caller]
 pub(crate) fn assert_accepted(source: &str) {
     let errors = diagnostics(source);
     assert!(errors.is_empty(), "unexpected diagnostics: {errors:#?}");
 }
 
+#[track_caller]
 pub(crate) fn assert_rejected_with(source: &str, expected: &[&str]) {
     let errors = diagnostics(source);
     assert!(!errors.is_empty(), "expected static rejection, got none");
@@ -48,16 +44,50 @@ pub(crate) fn assert_rejected_with(source: &str, expected: &[&str]) {
 
 /// `source`, parsed under `flavor`, is rejected for performing `print`
 /// outside its declared row.
+#[track_caller]
 fn assert_print_outside_its_row(source: &str, flavor: Flavor) {
-    let parsed = parse_program_with_flavor(source, flavor);
-    assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-    let errors = check_program(&parsed.program);
+    let errors = typecheck(flavor, source);
     assert!(
         errors.iter().any(|error| {
             error.message.contains("outside its declared row") && error.message.contains("print")
         }),
         "{flavor:?}: {errors:?}"
     );
+}
+
+/// The fixture most of this matrix is written against: one effect, one
+/// `int`-returning operation.
+const ALARM: &str = "effect Alarm { ring: fn() -> int }\n";
+
+/// Variant whose operation takes the iterated value.
+const ALARM_ARG: &str = "effect Alarm { ring: fn(int) -> int }\n";
+
+/// Two-operation fixture for partial-handler coverage.
+const PAIR: &str = "effect Pair { first: fn() -> int second: fn() -> int }\n";
+
+/// Generic fixture whose handler must match the performed instantiation.
+const STASH: &str = "effect Stash<T> { put: fn(T) -> Unit take: fn() -> T }\n";
+
+#[track_caller]
+fn accept_alarm(body: &str) {
+    assert_accepted(&format!("{ALARM}{body}"));
+}
+
+#[track_caller]
+fn reject_alarm(body: &str, expected: &[&str]) {
+    assert_rejected_with(&format!("{ALARM}{body}"), expected);
+}
+
+/// `let {binding} = { handle {effect} {arms} {body} }` — the handle block the
+/// discharge tests wrap their body in.
+fn handled(binding: &str, effect: &str, arms: &str, body: &str) -> String {
+    format!("let {binding} = {{\nhandle {effect} {{\n{arms}\n}}\n{body}\n}}\n")
+}
+
+/// `match {lookup} { Success { value } => value, Error => fn() => 0 }` — how
+/// the collection-escape tests project a callable element out of a `Result`.
+fn unwrap_success(lookup: &str) -> String {
+    format!("match {lookup} {{\nSuccess {{ value }} => value\nError {{ message }} => fn() => 0\n}}")
 }
 
 #[test]
@@ -72,9 +102,7 @@ fn duplicate_handler_arms_are_rejected_in_both_flavors() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "syntax errors: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
+        let errors = typecheck(flavor, source);
         assert!(
             errors.iter().any(|error| error.message.contains("duplicate handler arm `Read.value`")),
             "{flavor:?}: expected a duplicate-arm error, got {errors:?}"
@@ -94,19 +122,14 @@ fn explicitly_empty_rows_reject_effects_but_omitted_rows_still_infer_them() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
+        let errors = typecheck(flavor, source);
         assert!(
             errors.iter().any(|error| error.message.contains("performs effects outside its declared row: E.ping")),
             "{flavor:?}: {errors:?}"
         );
 
-        let inferred = source.replace(" ![]", "");
-        let parsed = parse_program_with_flavor(&inferred, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
-        assert!(errors.is_empty(), "{flavor:?}: omitted row should infer: {errors:?}");
+        let inferred = typecheck(flavor, &source.replace(" ![]", ""));
+        assert!(inferred.is_empty(), "{flavor:?}: omitted row should infer: {inferred:?}");
     }
     for (source, flavor) in [
         (
@@ -118,9 +141,7 @@ fn explicitly_empty_rows_reject_effects_but_omitted_rows_still_infer_them() {
             Flavor::Ml,
         ),
     ] {
-        let parsed = parse_program_with_flavor(source, flavor);
-        assert!(parsed.errors.is_empty(), "{flavor:?}: {:?}", parsed.errors);
-        let errors = check_program(&parsed.program);
+        let errors = typecheck(flavor, source);
         assert!(errors.is_empty(), "{flavor:?}: pure empty row: {errors:?}");
     }
 }
@@ -371,9 +392,8 @@ fn branching_recursive_callback_accepts_a_matching_handler() {
 /// later iteration, condemning the function forever.
 #[test]
 fn a_pure_recursive_curried_function_is_accepted() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn countDown(n) = fn(acc) => match n <= 0 {\n\
+    accept_alarm(
+        "fn countDown(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
            false => countDown(wrapSub(n, 1))(wrapAdd(acc, n))\n\
          }\n\
@@ -383,9 +403,8 @@ fn a_pure_recursive_curried_function_is_accepted() {
 
 #[test]
 fn mutually_recursive_curried_functions_are_accepted() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn evens(n) = fn(acc) => match n <= 0 {\n\
+    accept_alarm(
+        "fn evens(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
            false => odds(wrapSub(n, 1))(wrapAdd(acc, n))\n\
          }\n\
@@ -399,9 +418,8 @@ fn mutually_recursive_curried_functions_are_accepted() {
 
 #[test]
 fn a_recursive_curried_function_still_carries_its_effect_to_the_call_site() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn countDown(n) = fn(acc) => match n <= 0 {\n\
+    reject_alarm(
+        "fn countDown(n) = fn(acc) => match n <= 0 {\n\
            true => acc\n\
            false => countDown(wrapSub(n, 1))(wrapAdd(acc, perform Alarm.ring()))\n\
          }\n\
@@ -412,19 +430,14 @@ fn a_recursive_curried_function_still_carries_its_effect_to_the_call_site() {
 
 #[test]
 fn a_handler_discharges_a_recursive_curried_function() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn countDown(n) = fn(acc) => match n <= 0 {\n\
+    accept_alarm(&format!(
+        "fn countDown(n) = fn(acc) => match n <= 0 {{\n\
          true => acc\n\
          false => countDown(wrapSub(n, 1))(wrapAdd(acc, perform Alarm.ring()))\n\
-         }\n\
-         let total = {\n\
-             handle Alarm {\n\
-                 ring => 1\n\
-             }\n\
-             countDown(3)(0)\n\
-         }\n",
-    );
+         }}\n\
+         {}",
+        handled("total", "Alarm", "ring => 1", "countDown(3)(0)")
+    ));
 }
 
 /// A curried binding's declared row bounds its full application. `pair a b`
@@ -509,18 +522,10 @@ fn a_file_scope_alias_reports_the_effect_it_performs() {
 /// provenance check used to fail closed on the pair.
 #[test]
 fn a_handled_file_scope_alias_is_accepted() {
-    assert_accepted(
-        "effect Alarm { control ring: fn() -> int }\n\
-         fn ringer() = perform Alarm.ring()\n\
-         let siren = ringer\n\
-         fn relay() = siren()\n\
-         let got = {\n\
-             handle Alarm {\n\
-                 ring => resume(7)\n\
-             }\n\
-             relay()\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "effect Alarm {{ control ring: fn() -> int }}\nfn ringer() = perform Alarm.ring()\nlet siren = ringer\nfn relay() = siren()\n{}",
+        handled("got", "Alarm", "ring => resume(7)", "relay()")
+    ));
 }
 
 #[test]
@@ -535,18 +540,16 @@ fn colliding_interpolation_perform_positions_keep_every_generic_instance() {
 
 #[test]
 fn direct_unhandled_perform_is_rejected_at_entry() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let answer = perform Alarm.ring()\n",
+    reject_alarm(
+        "let answer = perform Alarm.ring()\n",
         &["unhandled effect operations at program entry", "Alarm.ring"],
     );
 }
 
 #[test]
 fn inferred_helper_and_transitive_call_chain_propagate_effects() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
+    reject_alarm(
+        "fn ring() = perform Alarm.ring()\n\
          fn relay() = ring()\n\
          fn relayAgain() = relay()\n\
          let answer = relayAgain()\n",
@@ -556,9 +559,8 @@ fn inferred_helper_and_transitive_call_chain_propagate_effects() {
 
 #[test]
 fn an_unused_effectful_function_is_latent_and_accepted() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn dormant() = perform Alarm.ring()\n\
+    accept_alarm(
+        "fn dormant() = perform Alarm.ring()\n\
          let answer = 42\n",
     );
 }
@@ -574,24 +576,18 @@ fn implicit_main_body_must_have_an_empty_effect_row() {
 
 #[test]
 fn complete_handler_discharges_inferred_transitive_effect() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
+    accept_alarm(&format!(
+        "fn ring() = perform Alarm.ring()\n\
          fn relay() = ring()\n\
-         let answer = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             relay()\n\
-         }\n",
-    );
+         {}",
+        handled("answer", "Alarm", "ring => 42", "relay()")
+    ));
 }
 
 #[test]
 fn user_higher_order_function_propagates_callback_effect() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn apply(callback) = callback()\n\
+    reject_alarm(
+        "fn apply(callback) = callback()\n\
          fn forward(callback) = apply(callback)\n\
          fn ring() = perform Alarm.ring()\n\
          let answer = forward(ring)\n",
@@ -601,28 +597,22 @@ fn user_higher_order_function_propagates_callback_effect() {
 
 #[test]
 fn user_higher_order_callback_is_discharged_at_call_site() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn apply(callback) = callback()\n\
+    accept_alarm(&format!(
+        "fn apply(callback) = callback()\n\
          fn ring() = perform Alarm.ring()\n\
-         let answer = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             apply(ring)\n\
-         }\n",
-    );
+         {}",
+        handled("answer", "Alarm", "ring => 42", "apply(ring)")
+    ));
 }
 
 #[test]
 fn higher_order_function_may_handle_its_callback_internally() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn guarded(callback) = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             callback()\n\
+    accept_alarm(
+        "fn guarded(callback) = {\n\
+         handle Alarm {\n\
+             ring => 42\n\
+         }\n\
+         callback()\n\
          }\n\
          fn ring() = perform Alarm.ring()\n\
          let answer = guarded(ring)\n",
@@ -631,18 +621,16 @@ fn higher_order_function_may_handle_its_callback_internally() {
 
 #[test]
 fn constructing_an_effectful_lambda_is_pure_until_invoked() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         let delayed = fn() => perform Alarm.ring()\n\
+    accept_alarm(
+        "let delayed = fn() => perform Alarm.ring()\n\
          let answer = 42\n",
     );
 }
 
 #[test]
 fn invoking_an_effectful_lambda_outside_a_handler_is_rejected() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let delayed = fn() => perform Alarm.ring()\n\
+    reject_alarm(
+        "let delayed = fn() => perform Alarm.ring()\n\
          let answer = delayed()\n",
         &["Alarm.ring"],
     );
@@ -650,38 +638,32 @@ fn invoking_an_effectful_lambda_outside_a_handler_is_rejected() {
 
 #[test]
 fn lambda_constructed_under_handler_cannot_escape_its_authority() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let delayed = {\n\
-             handle Alarm {\n\
-                 ring => 41\n\
-             }\n\
-             fn() => perform Alarm.ring()\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let delayed = {}let answer = delayed()\n",
+            handled(
+                "delayed",
+                "Alarm",
+                "ring => 41",
+                "fn() => perform Alarm.ring()"
+            )
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn invoking_an_effectful_lambda_inside_handler_is_accepted() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         let delayed = fn() => perform Alarm.ring()\n\
-         let answer = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             delayed()\n\
-         }\n",
-    );
+    accept_alarm(&format!(
+        "let delayed = fn() => perform Alarm.ring()\n{}",
+        handled("answer", "Alarm", "ring => 42", "delayed()")
+    ));
 }
 
 #[test]
 fn lambda_returned_by_higher_order_function_keeps_captured_callback_effects() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn defer(callback) = fn() => callback()\n\
+    reject_alarm(
+        "fn defer(callback) = fn() => callback()\n\
          fn ring() = perform Alarm.ring()\n\
          let delayed = defer(ring)\n\
          let answer = delayed()\n",
@@ -691,9 +673,8 @@ fn lambda_returned_by_higher_order_function_keeps_captured_callback_effects() {
 
 #[test]
 fn nested_returned_lambdas_keep_captured_callback_effects() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
+    reject_alarm(
+        "fn ring() = perform Alarm.ring()\n\
          fn deferTwice(callback) = fn() => fn() => callback()\n\
          let first = deferTwice(ring)\n\
          let second = first()\n\
@@ -704,9 +685,8 @@ fn nested_returned_lambdas_keep_captured_callback_effects() {
 
 #[test]
 fn named_callback_argument_keeps_its_effect_when_returned() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
+    reject_alarm(
+        "fn ring() = perform Alarm.ring()\n\
          fn identity(callback) = callback\n\
          let delayed = identity(callback: ring)\n\
          let answer = delayed()\n",
@@ -716,9 +696,8 @@ fn named_callback_argument_keeps_its_effect_when_returned() {
 
 #[test]
 fn local_identity_lambda_keeps_a_returned_callback_effect() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() = perform Alarm.ring()\n\
+    reject_alarm(
+        "fn ring() = perform Alarm.ring()\n\
          let identity = fn(callback) => callback\n\
          let delayed = identity(ring)\n\
          let answer = delayed()\n",
@@ -728,9 +707,8 @@ fn local_identity_lambda_keeps_a_returned_callback_effect() {
 
 #[test]
 fn closure_returned_through_match_keeps_every_branch_effect() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn choose(flag) = match flag {\n\
+    reject_alarm(
+        "fn choose(flag) = match flag {\n\
            true => fn() => perform Alarm.ring()\n\
            false => fn() => 0\n\
            }\n\
@@ -742,14 +720,13 @@ fn closure_returned_through_match_keeps_every_branch_effect() {
 
 #[test]
 fn closure_returned_through_handler_block_cannot_escape_authority() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let delayed = {\n\
-             handle Alarm {\n\
-                 ring => 41\n\
-             }\n\
-             let nested = fn() => perform Alarm.ring()\n\
-             nested\n\
+    reject_alarm(
+        "let delayed = {\n\
+         handle Alarm {\n\
+             ring => 41\n\
+         }\n\
+         let nested = fn() => perform Alarm.ring()\n\
+         nested\n\
          }\n\
          let answer = delayed()\n",
         &["Alarm.ring"],
@@ -758,9 +735,8 @@ fn closure_returned_through_handler_block_cannot_escape_authority() {
 
 #[test]
 fn callable_returned_by_a_handler_arm_keeps_its_latent_effect() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         effect Factory { make: fn() -> () -> int }\n\
+    reject_alarm(
+        "effect Factory { make: fn() -> () -> int }\n\
          let delayed = {\n\
              handle Factory {\n\
                  make => fn() => perform Alarm.ring()\n\
@@ -774,9 +750,8 @@ fn callable_returned_by_a_handler_arm_keeps_its_latent_effect() {
 
 #[test]
 fn handler_arm_invocation_keeps_effects_of_operation_callback_arguments() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         effect Gate { apply: fn(() -> int) -> int }\n\
+    reject_alarm(
+        "effect Gate { apply: fn(() -> int) -> int }\n\
          let answer = {\n\
              handle Gate {\n\
                  apply callback => callback()\n\
@@ -789,235 +764,196 @@ fn handler_arm_invocation_keeps_effects_of_operation_callback_arguments() {
 
 #[test]
 fn operation_callback_argument_effect_can_be_discharged_by_an_outer_handler() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         effect Gate { apply: fn(() -> int) -> int }\n\
-         let answer = {\n\
-             handle Alarm {\n\
-                 ring => 42\n\
-             }\n\
-             handle Gate {\n\
-                 apply callback => callback()\n\
-             }\n\
-             perform Gate.apply(fn() => perform Alarm.ring())\n\
-         }\n",
-    );
+    accept_alarm(&format!(
+        "effect Gate {{ apply: fn(() -> int) -> int }}\n{}",
+        handled(
+            "answer",
+            "Alarm",
+            "ring => 42",
+            "handle Gate {\napply callback => callback()\n}\nperform Gate.apply(fn() => perform Alarm.ring())"
+        )
+    ));
 }
 
 #[test]
 fn lazy_iterator_callback_cannot_escape_its_construction_handler() {
     assert_rejected_with(
-        "effect Alarm { ring: fn(int) -> int }\n\
-         let mapped = {\n\
-             handle Alarm {\n\
-                 ring value => value\n\
-             }\n\
-             map(range(0, 1), fn(value) => perform Alarm.ring(value))\n\
-         }\n\
-         forEach(mapped, fn(value) => print(toString(value)))\n",
+        &format!(
+            "{ALARM_ARG}let mapped = {}\nforEach(mapped, fn(value) => print(toString(value)))\n",
+            handled(
+                "mapped",
+                "Alarm",
+                "ring value => value",
+                "map(range(0, 1), fn(value) => perform Alarm.ring(value))"
+            )
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn lazy_iterator_callback_is_discharged_when_consumed_inside_handler() {
-    assert_accepted(
-        "effect Alarm { ring: fn(int) -> int }\n\
-         let _ = {\n\
-             handle Alarm {\n\
-                 ring value => value\n\
-             }\n\
-             forEach(\n\
-             map(range(0, 1), fn(value) => perform Alarm.ring(value)),\n\
-             fn(value) => print(toString(value))\n\
-             )\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{ALARM_ARG}{}",
+        handled(
+            "_",
+            "Alarm",
+            "ring value => value",
+            "forEach(\nmap(range(0, 1), fn(value) => perform Alarm.ring(value)),\nfn(value) => print(toString(value))\n)"
+        )
+    ));
 }
 
 #[test]
 fn effectful_closure_cannot_escape_through_a_channel_alias() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let channel = Channel(1)\n\
-         let alias = channel\n\
-         let _ = {\n\
-             handle Alarm {\n\
-                 ring => 41\n\
-             }\n\
-             send(alias, fn() => perform Alarm.ring())\n\
-         }\n\
-         let delayed = recv(channel)\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let channel = Channel(1)\nlet alias = channel\nlet _ = {}\nlet delayed = recv(channel)\nlet answer = delayed()\n",
+            handled("_", "Alarm", "ring => 41", "send(alias, fn() => perform Alarm.ring())")
+        ),
         &["Alarm.ring"],
     );
 }
 
+/// A pure closure round-tripped through a channel alias and invoked after
+/// `recv`; both tests below assert this exact program stays callable.
+fn pure_channel_round_trip() -> String {
+    format!("{ALARM}let channel = Channel(1)\nlet alias = channel\nsend(alias, fn() => 42)\nlet delayed = recv(channel)\nlet answer = delayed()\n")
+}
+
 #[test]
 fn pure_dynamic_closure_survives_a_channel_alias() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         let channel = Channel(1)\n\
-         let alias = channel\n\
-         send(alias, fn() => 42)\n\
-         let delayed = recv(channel)\n\
-         let answer = delayed()\n",
-    );
+    assert_accepted(&pure_channel_round_trip());
 }
 
 #[test]
 fn pure_closure_round_tripped_through_a_channel_alias_remains_callable() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         let channel = Channel(1)\n\
-         let alias = channel\n\
-         send(alias, fn() => 42)\n\
-         let delayed = recv(channel)\n\
-         let answer = delayed()\n",
-    );
+    assert_accepted(&pure_channel_round_trip());
 }
 
 #[test]
 fn effectful_closure_cannot_escape_through_spawn_and_await() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let fiber = {\n\
-             handle Alarm {\n\
-                 ring => 41\n\
-             }\n\
-             spawn (fn() => perform Alarm.ring())\n\
-         }\n\
-         let delayed = await(fiber)\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let fiber = {}\nlet delayed = await(fiber)\nlet answer = delayed()\n",
+            handled(
+                "fiber",
+                "Alarm",
+                "ring => 41",
+                "spawn (fn() => perform Alarm.ring())"
+            )
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn pure_dynamic_closure_survives_spawn_and_await() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         let fiber = spawn (fn() => 42)\n\
-         let delayed = await(fiber)\n\
-         let answer = delayed()\n",
+    accept_alarm(
+        "let fiber = spawn (fn() => 42)\nlet delayed = await(fiber)\nlet answer = delayed()\n",
     );
 }
 
 #[test]
 fn statically_known_and_proven_pure_calls_are_not_rejected_as_unresolved() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         extern fn pureExtern() -> int\n\
+    accept_alarm(
+        "extern fn pureExtern() -> int\n\
          let pureLocal = fn() => 42\n\
          let first = pureExtern()\n\
          let second = pureLocal()\n",
     );
 }
 
+/// Record fixtures of the field-provenance tests: a record with one callable
+/// field, and the same record plus a label the update tests override.
+const RUNNER: &str = "type Runner = { run: () -> int }\n";
+
+const LABELLED_RUNNER: &str = "type Runner = { run: () -> int, label: string }\n\
+    let runner = Runner {\n\
+      run: fn() => perform Alarm.ring(),\n\
+      label: \"old\"\n\
+    }\n";
+
 #[test]
 fn effectful_closure_cannot_escape_through_a_record_field_alias() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Runner = { run: () -> int }\n\
-         let runner = Runner { run: fn() => perform Alarm.ring() }\n\
-         let delayed = runner.run\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!("{RUNNER}let runner = Runner {{ run: fn() => perform Alarm.ring() }}\nlet delayed = runner.run\nlet answer = delayed()\n"),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn record_field_effect_propagates_through_a_function_parameter() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Runner = { run: () -> int }\n\
-         fn execute(runner: Runner) = {\n\
-           let delayed = runner.run\n\
-           delayed()\n\
-         }\n\
-         let runner = Runner { run: fn() => perform Alarm.ring() }\n\
-         let answer = execute(runner)\n",
+    reject_alarm(
+        &format!(
+            "{RUNNER}fn execute(runner: Runner) = {{\nlet delayed = runner.run\ndelayed()\n}}\n\
+             let runner = Runner {{ run: fn() => perform Alarm.ring() }}\n\
+             let answer = execute(runner)\n"
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn record_field_effect_propagates_from_a_function_return() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Runner = { run: () -> int }\n\
-         fn makeRunner() = Runner { run: fn() => perform Alarm.ring() }\n\
-         let runner = makeRunner()\n\
-         let delayed = runner.run\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "{RUNNER}fn makeRunner() = Runner {{ run: fn() => perform Alarm.ring() }}\n\
+             let runner = makeRunner()\n\
+             let delayed = runner.run\n\
+             let answer = delayed()\n"
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn record_update_preserves_callable_provenance_in_unchanged_fields() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Runner = { run: () -> int, label: string }\n\
-         let runner = Runner {\n\
-           run: fn() => perform Alarm.ring(),\n\
-           label: \"old\"\n\
-         }\n\
-         let updated = runner { label: \"new\" }\n\
-         let delayed = updated.run\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "{LABELLED_RUNNER}let updated = runner {{ label: \"new\" }}\n\
+             let delayed = updated.run\n\
+             let answer = delayed()\n"
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn record_update_replaces_callable_provenance_in_overridden_fields() {
-    assert_accepted(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Runner = { run: () -> int, label: string }\n\
-         let runner = Runner {\n\
-           run: fn() => perform Alarm.ring(),\n\
-           label: \"old\"\n\
-         }\n\
-         let updated = runner { run: fn() => 42 }\n\
-         let delayed = updated.run\n\
-         let answer = delayed()\n",
-    );
+    accept_alarm(&format!(
+        "{LABELLED_RUNNER}let updated = runner {{ run: fn() => 42 }}\n\
+             let delayed = updated.run\n\
+             let answer = delayed()\n"
+    ));
 }
 
 #[test]
 fn effectful_closure_cannot_escape_through_list_lookup() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let runners = [fn() => perform Alarm.ring()]\n\
-         let delayed = match runners[0] {\n\
-           Success { value } => value\n\
-           Error { message } => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let runners = [fn() => perform Alarm.ring()]\nlet delayed = {}\nlet answer = delayed()\n",
+            unwrap_success("runners[0]")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn list_concatenation_preserves_callable_element_provenance() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let runners = [fn() => perform Alarm.ring()] + [fn() => 42]\n\
-         let delayed = match listGet(runners, 0) {\n\
-           Success { value } => value\n\
-           Error { message } => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let runners = [fn() => perform Alarm.ring()] + [fn() => 42]\nlet delayed = {}\nlet answer = delayed()\n",
+            unwrap_success("listGet(runners, 0)")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn map_merge_preserves_callable_value_provenance() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let runners = {\"a\": fn() => perform Alarm.ring()} + {\"b\": fn() => 42}\n\
+    reject_alarm(
+        "let runners = {\"a\": fn() => perform Alarm.ring()} + {\"b\": fn() => 42}\n\
          let delayed = mapGet(runners, \"a\") ?: fn() => 0\n\
          let answer = delayed()\n",
         &["Alarm.ring"],
@@ -1026,87 +962,63 @@ fn map_merge_preserves_callable_value_provenance() {
 
 #[test]
 fn persistent_list_transforms_preserve_callable_element_provenance() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let runners = listReverse(\n\
-           listAppend([], fn() => perform Alarm.ring())\n\
-         )\n\
-         let delayed = match listGet(runners, 0) {\n\
-           Success { value } => value\n\
-           Error { message } => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let runners = listReverse(\nlistAppend([], fn() => perform Alarm.ring())\n)\nlet delayed = {}\nlet answer = delayed()\n",
+            unwrap_success("listGet(runners, 0)")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn persistent_map_transforms_preserve_callable_value_provenance() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let runners = mapMerge(\n\
-           mapSet(Map(), \"alarm\", fn() => perform Alarm.ring()),\n\
-           Map()\n\
-         )\n\
-         let retained = mapRemove(runners, \"other\")\n\
-         let delayed = match mapGet(retained, \"alarm\") {\n\
-           Success { value } => value\n\
-           Error { message } => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let runners = mapMerge(\nmapSet(Map(), \"alarm\", fn() => perform Alarm.ring()),\nMap()\n)\nlet retained = mapRemove(runners, \"other\")\nlet delayed = {}\nlet answer = delayed()\n",
+            unwrap_success("mapGet(retained, \"alarm\")")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn list_element_effect_propagates_through_a_function_parameter() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn execute(runners) = {\n\
-           let delayed = match runners[0] {\n\
-             Success { value } => value\n\
-             Error { message } => fn() => 0\n\
-           }\n\
-           delayed()\n\
-         }\n\
-         let answer = execute([fn() => perform Alarm.ring()])\n",
+    reject_alarm(
+        &format!(
+            "fn execute(runners) = {{\nlet delayed = {}\ndelayed()\n}}\nlet answer = execute([fn() => perform Alarm.ring()])\n",
+            unwrap_success("runners[0]")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn effectful_closure_cannot_escape_through_map_lookup() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let runners = { \"alarm\": (fn() => perform Alarm.ring()) }\n\
-         let delayed = match runners[\"alarm\"] {\n\
-           Success { value } => value\n\
-           Error { message } => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let runners = {{ \"alarm\": (fn() => perform Alarm.ring()) }}\nlet delayed = {}\nlet answer = delayed()\n",
+            unwrap_success("runners[\"alarm\"]")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn effectful_closure_cannot_escape_through_an_explicit_success_value() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         let wrapped = Success { value: fn() => perform Alarm.ring() }\n\
-         let delayed = match wrapped {\n\
-           Success { value } => value\n\
-           Error { message } => fn() => 0\n\
-         }\n\
-         let answer = delayed()\n",
+    reject_alarm(
+        &format!(
+            "let wrapped = Success {{ value: fn() => perform Alarm.ring() }}\nlet delayed = {}\nlet answer = delayed()\n",
+            unwrap_success("wrapped")
+        ),
         &["Alarm.ring"],
     );
 }
 
 #[test]
 fn effectful_closure_cannot_escape_through_positional_union_destructuring() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         type Wrapped = Empty | Has { run: () -> int }\n\
+    reject_alarm(
+        "type Wrapped = Empty | Has { run: () -> int }\n\
          let wrapped = Has { run: fn() => perform Alarm.ring() }\n\
          let delayed = match wrapped {\n\
            Has(value) => value\n\
@@ -1119,9 +1031,8 @@ fn effectful_closure_cannot_escape_through_positional_union_destructuring() {
 
 #[test]
 fn branch_reassignment_cannot_hide_an_effectful_closure() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         effect Switch { replace: fn() -> Unit }\n\
+    reject_alarm(
+        "effect Switch { replace: fn() -> Unit }\n\
          mut delayed = fn() => 0\n\
          let _ = {\n\
              handle Switch {\n\
@@ -1136,9 +1047,8 @@ fn branch_reassignment_cannot_hide_an_effectful_closure() {
 
 #[test]
 fn one_branch_with_an_effect_makes_the_whole_function_effectful() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn choose(flag) = match flag {\n\
+    reject_alarm(
+        "fn choose(flag) = match flag {\n\
            true => perform Alarm.ring()\n\
            false => 0\n\
          }\n\
@@ -1150,64 +1060,54 @@ fn one_branch_with_an_effect_makes_the_whole_function_effectful() {
 #[test]
 fn partial_handler_leaves_unhandled_operation_in_row() {
     assert_rejected_with(
-        "effect Pair { first: fn() -> int second: fn() -> int }\n\
-         fn both() = [perform Pair.first(), perform Pair.second()]\n\
-         let answer = {\n\
-             handle Pair {\n\
-                 first => 20\n\
-             }\n\
-             both()\n\
-         }\n",
+        &format!(
+            "{PAIR}fn both() = [perform Pair.first(), perform Pair.second()]\n{}",
+            handled("answer", "Pair", "first => 20", "both()")
+        ),
         &["Pair.second"],
     );
 }
 
 #[test]
 fn complementary_nested_partial_handlers_discharge_each_operation() {
-    assert_accepted(
-        "effect Pair { first: fn() -> int second: fn() -> int }\n\
-         fn both() = [perform Pair.first(), perform Pair.second()]\n\
-         let answer = {\n\
-             handle Pair {\n\
-                 second => 22\n\
-             }\n\
-             handle Pair {\n\
-                 first => 20\n\
-             }\n\
-             both()\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{PAIR}fn both() = [perform Pair.first(), perform Pair.second()]\n{}",
+        handled(
+            "answer",
+            "Pair",
+            "second => 22",
+            "handle Pair {\nfirst => 20\n}\nboth()"
+        )
+    ));
 }
 
 #[test]
 fn generic_effect_handler_must_match_the_performed_instantiation() {
     assert_rejected_with(
-        "effect Stash<T> { put: fn(T) -> Unit take: fn() -> T }\n\
-         fn storeNumber() = perform Stash.put(42)\n\
-         let done = {\n\
-             handle Stash {\n\
-                 put value => {}\n\
-                 take => \"cached text\"\n\
-             }\n\
-             storeNumber()\n\
-         }\n",
+        &format!(
+            "{STASH}fn storeNumber() = perform Stash.put(42)\n{}",
+            handled(
+                "done",
+                "Stash",
+                "put value => {}\ntake => \"cached text\"",
+                "storeNumber()"
+            )
+        ),
         &["Stash<int>.put"],
     );
 }
 
 #[test]
 fn generic_effect_handler_discharges_matching_instantiation() {
-    assert_accepted(
-        "effect Stash<T> { put: fn(T) -> Unit take: fn() -> T }\n\
-         fn storeText() = perform Stash.put(\"fresh text\")\n\
-         let done = {\n\
-             handle Stash {\n\
-                 put value => {}\n\
-                 take => \"cached text\"\n\
-             }\n\
-             storeText()\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{STASH}fn storeText() = perform Stash.put(\"fresh text\")\n{}",
+        handled(
+            "done",
+            "Stash",
+            "put value => {}\ntake => \"cached text\"",
+            "storeText()"
+        )
+    ));
 }
 
 #[test]
@@ -1226,18 +1126,15 @@ fn handler_arm_performing_its_own_operation_forwards_to_an_outer_handler() {
     // performing the operation it answers delegates that request outward —
     // the ordinary way a handler implements part of an interface in terms of
     // an enclosing one. [EFFECTS-STATIC-DISCHARGE]
-    assert_accepted(
-        "effect Loop { again: fn() -> int }\n\
-         let answer = {\n\
-             handle Loop {\n\
-                 again => 7\n\
-             }\n\
-             handle Loop {\n\
-                 again => perform Loop.again()\n\
-             }\n\
-             perform Loop.again()\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "effect Loop {{ again: fn() -> int }}\n{}",
+        handled(
+            "answer",
+            "Loop",
+            "again => 7",
+            "handle Loop {\nagain => perform Loop.again()\n}\nperform Loop.again()"
+        )
+    ));
 }
 
 #[test]
@@ -1246,81 +1143,75 @@ fn a_self_forwarding_arm_with_no_outer_handler_is_unhandled_at_entry() {
     // recursion rule: the requirement simply survives to program entry and is
     // reported there, naming the operation that escaped. [EFFECTS-STATIC-DISCHARGE]
     assert_rejected_with(
-        "effect Loop { again: fn() -> int }\n\
-         let answer = {\n\
-             handle Loop {\n\
-                 again => perform Loop.again()\n\
-             }\n\
-             perform Loop.again()\n\
-         }\n",
+        &format!(
+            "effect Loop {{ again: fn() -> int }}\n{}",
+            handled(
+                "answer",
+                "Loop",
+                "again => perform Loop.again()",
+                "perform Loop.again()"
+            )
+        ),
         &["Loop.again"],
     );
 }
 
 #[test]
 fn handler_arm_may_perform_a_different_generic_instance_for_an_outer_handler() {
-    assert_accepted(
-        "effect Relay<T> { fire: fn(T) -> int }\n\
-         let answer = {\n\
-             handle Relay {\n\
-                 fire value => wrapAdd(value, 0)\n\
-             }\n\
-             handle Relay {\n\
-                 fire text => perform Relay.fire(42)\n\
-             }\n\
-             perform Relay.fire(\"start\")\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "effect Relay<T> {{ fire: fn(T) -> int }}\n{}",
+        handled(
+            "answer",
+            "Relay",
+            "fire value => wrapAdd(value, 0)",
+            "handle Relay {\nfire text => perform Relay.fire(42)\n}\nperform Relay.fire(\"start\")"
+        )
+    ));
 }
 
 #[test]
 fn partial_handler_arm_may_perform_an_uncovered_operation_for_an_outer_handler() {
-    assert_accepted(
-        "effect Pair { first: fn() -> int second: fn() -> int }\n\
-         let answer = {\n\
-             handle Pair {\n\
-                 second => 22\n\
-             }\n\
-             handle Pair {\n\
-                 first => perform Pair.second()\n\
-             }\n\
-             perform Pair.first()\n\
-         }\n",
-    );
+    assert_accepted(&format!(
+        "{PAIR}{}",
+        handled(
+            "answer",
+            "Pair",
+            "second => 22",
+            "handle Pair {\nfirst => perform Pair.second()\n}\nperform Pair.first()"
+        )
+    ));
 }
 
 #[test]
 fn handler_arm_secondary_effect_requires_an_outer_handler() {
-    let source = "effect Primary { ask: fn() -> int }\n\
-         effect Audit { record: fn() -> int }\n\
-         let answer = {\n\
-             handle Primary {\n\
-                 ask => perform Audit.record()\n\
-             }\n\
-             perform Primary.ask()\n\
-         }\n";
-    assert_rejected_with(source, &["Audit.record"]);
-
-    assert_accepted(
-        "effect Primary { ask: fn() -> int }\n\
-         effect Audit { record: fn() -> int }\n\
-         let answer = {\n\
-             handle Audit {\n\
-                 record => 42\n\
-             }\n\
-             handle Primary {\n\
-                 ask => perform Audit.record()\n\
-             }\n\
-             perform Primary.ask()\n\
-         }\n",
+    assert_rejected_with(
+        &format!(
+            "effect Primary {{ ask: fn() -> int }}\neffect Audit {{ record: fn() -> int }}\n{}",
+            handled(
+                "answer",
+                "Primary",
+                "ask => perform Audit.record()",
+                "perform Primary.ask()"
+            )
+        ),
+        &["Audit.record"],
     );
+
+    assert_accepted(&format!(
+        "effect Primary {{ ask: fn() -> int }}\neffect Audit {{ record: fn() -> int }}\n{}",
+        handled(
+            "answer",
+            "Audit",
+            "record => 42",
+            "handle Primary {\nask => perform Audit.record()\n}\nperform Primary.ask()"
+        )
+    ));
 }
 
 #[test]
 fn declared_effect_row_is_a_contract_not_a_handler() {
-    assert_rejected_with(
-        "effect Alarm { ring: fn() -> int }\n\
-         fn ring() -> int !Alarm = perform Alarm.ring()\n\
+    reject_alarm(
+        "fn ring() -> int !Alarm = perform Alarm.ring()\n\
          let answer = ring()\n",
         &["Alarm.ring"],
     );

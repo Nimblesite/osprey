@@ -28,7 +28,7 @@ __all__ = [
     "model_response", "model_request", "text", "tool_calls", "has_tool_calls", "args_as_dict", "args_as_json_str",
     "retry_model_response", "tool_call_id_of", "tool_name_of", "dump_messages", "validate_messages",
     "dump_message", "validate_message", "is_response", "is_request", "request_parts", "response_parts",
-    "generate_tool_call_id", "part_text", "is_text", "is_tool_call",
+    "generate_tool_call_id", "part_text", "is_text", "is_tool_call", "collect",
 ]
 
 

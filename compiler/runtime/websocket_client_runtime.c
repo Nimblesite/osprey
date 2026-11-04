@@ -17,18 +17,15 @@ static int ws_dial(const char *host, int port, int64_t *error) {
         *error = -4;
         return -1;
     }
-    struct hostent *server = gethostbyname(host);
-    if (!server) {
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    if (!osp_socket_resolve_ipv4(host, &server_addr.sin_addr)) {
         close(sock);
         *error = -5;
         return -1;
     }
-    struct sockaddr_in server_addr;
-    memset(&server_addr, 0, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons((uint16_t)port);
-    memcpy(&server_addr.sin_addr.s_addr, server->h_addr,
-           (size_t)server->h_length);
     if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) <
         0) {
         close(sock);

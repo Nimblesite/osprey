@@ -3,6 +3,7 @@ use crate::builder::{Codegen, ParamSig};
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use osprey_ast::Expr;
+use osprey_types::numeric::Numeric;
 use osprey_types::Type;
 
 /// Retain every function arrow and concrete generic field instantiation.
@@ -168,10 +169,18 @@ pub(crate) fn restore_field(
 }
 
 fn restored_operand(cg: &mut Codegen, value: Value, shape: &Value) -> String {
-    let value = if value.ty == LType::I64 && shape.ty != LType::I64 {
-        crate::conv::unbox_from_i64(cg, &value.operand, shape.ty)
-    } else {
-        value
+    let value = match (value.ty, shape.ty) {
+        // A generic instantiation's slot can hold a literal at its default
+        // spelling where the field's instantiated type reads at its own width;
+        // the checker proved one type, so the refit is exact
+        // ([TYPE-NUMERIC-LITERAL]).
+        (LType::F64, LType::Num(to)) if to != Numeric::FLOAT => {
+            crate::conv::cast_num(cg, &value.operand, Numeric::FLOAT, to)
+        }
+        (LType::I64, refit) if refit != LType::I64 => {
+            crate::conv::unbox_from_i64(cg, &value.operand, refit)
+        }
+        _ => value,
     };
     if shape.result_inner.is_some() {
         cg.emit_reg(format!(

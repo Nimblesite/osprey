@@ -9,7 +9,7 @@ CPython code does inline (`data.get('x')`, `to_json`, `from_json`).
 
 __all__ = [
     "text_at", "int_at", "float_at", "bool_at", "list_at", "object_at", "member", "obj",
-    "encode", "decode", "members_of", "items_of", "of_map", "to_map", "is_null", "jtext", "jint", "member_name", "member_value",
+    "encode", "decode", "members_of", "items_of", "of_map", "to_map", "is_null", "has", "jtext", "jint", "member_name", "member_value",
 ]
 
 
@@ -75,6 +75,11 @@ def list_at(value, name) -> list[Json]:
 def object_at(value, name) -> Json:
     """`value[name]`, `JsonNull()` when absent."""
     return unwrap_or(jsonField(value, name), JsonNull())
+
+
+def has(value, name) -> bool:
+    """Whether an object carries a member `name`; a JSON null member is present, an absent one is not."""
+    return len(filterList(members_of(value), lambda m: member_name(m) == name)) > 0
 
 
 def member(name, value) -> JsonMember:

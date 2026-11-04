@@ -1149,7 +1149,6 @@ jobs:
               cargo build --release -p osprey-cli
               bash apps/workbench/hosts/apple/run.sh --build
               swift test --package-path apps/workbench/hosts/apple
-              swift test --package-path hosts/swift/Tests
     steps:
       - uses: actions/checkout@v7
         with:
@@ -1238,6 +1237,45 @@ jobs:
             vscode-extension/coverage/
           retention-days: 7
 
+  # Osprey Agent's whole UI against its goldens, which exist per macOS release: only macos-26 for now.
+  test-agent:
+    name: "Tests: Osprey Agent UI (macos-26)"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          lfs: true
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore the compiler's cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      - name: Host tests and the self-test against goldens
+        run: |
+          make _runtime
+          OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make _agent-self-test
+
+      - name: Osprey Agent self-test pictures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: agent-self-test
+          path: target/agent-self-test/
+          if-no-files-found: ignore
+
   # ─── The Windows, GPUI and WinUI workflows ─────────────────────────────────
   # Called here rather than run by themselves, so the root job below needs them.
   windows:
@@ -1278,6 +1316,7 @@ jobs:
       - test-website
       - test-integration
       - test-apple
+      - test-agent
       - coverage
       - windows
       - gpui

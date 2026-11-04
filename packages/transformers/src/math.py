@@ -20,7 +20,7 @@ __all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "max_f"
 
 def neg_inf():
     """Negative infinity, the value every warper's filter lands on."""
-    return 0.0 - exp(1000.0)
+    return toFloat32(0.0) - exp(toFloat32(1000.0))
 
 
 def list_max(xs):
@@ -50,19 +50,36 @@ def min_i(a, b):
 
 def softmax(logits):
     """torch.softmax(logits, dim=-1): exp(x - max) / sum(exp(x - max))."""
-    m = list_max(logits)
-    exps = mapList(logits, lambda x: exp(x - m))
-    s = foldList(exps, 0.0, lambda a, x: a + x)
-    return mapList(exps, lambda e: e / s)
+    if len(logits) == 0:
+        return logits
+    else:
+        m = list_max(logits)
+        exps = mapList(logits, lambda x: exp(x - m))
+        inverse = toFloat32(1.0) / sum_exps(exps)
+        return mapList(exps, lambda e: e * inverse)
+
+
+def sum_lane(xs, lane):
+    """One binary32 lane of the pinned torch CPU oracle's four-lane reduction."""
+    return fold(range(len(xs)), toFloat32(0.0), lambda total, i: total + unwrap_or(listGet(xs, i), toFloat32(0.0)) if i % 4 == lane else total)
+
+
+def sum_exps(xs):
+    """[PORT-TEST-ORACLE]: preserve the pinned binary32 reduction order."""
+    if len(xs) < 4:
+        return foldList(xs, toFloat32(0.0), lambda a, x: a + x)
+    else:
+        return (sum_lane(xs, 0) + sum_lane(xs, 2)) + (sum_lane(xs, 1) + sum_lane(xs, 3))
 
 
 def log_softmax(logits):
-    """torch.log_softmax(logits, dim=-1) with max subtraction."""
+    """torch.log_softmax(logits, dim=-1) with max subtraction: `(x - max) -
+    ln(sum(exp(x - max)))`, so a large max never cancels the log term against x."""
     m = list_max(logits)
     exps = mapList(logits, lambda x: exp(x - m))
-    s = foldList(exps, 0.0, lambda a, x: a + x)
-    lse = m + ln(s)
-    return mapList(logits, lambda x: x - lse)
+    s = sum_exps(exps)
+    lse = ln(s)
+    return mapList(logits, lambda x: (x - m) - lse)
 
 
 def argmax(scores):
@@ -74,12 +91,12 @@ def multinomial(probs, u):
     """torch.multinomial's inverse CDF: the first index whose cumulative
     probability strictly exceeds the uniform draw `u` in `[0, 1)`; the last
     index when none does."""
-    return first_above(probs, u, 0, 0.0)
+    return first_above(probs, u, 0, toFloat32(0.0))
 
 
 def first_above(probs, u, i, running):
     if i == len(probs):
         return len(probs) - 1
     else:
-        acc = running + unwrap_or(listGet(probs, i), 0.0)
+        acc = running + unwrap_or(listGet(probs, i), toFloat32(0.0))
         return i if acc > u else first_above(probs, u, i + 1, acc)

@@ -9,10 +9,10 @@ struct ControlView: View {
 
     var body: some View {
         switch node.text("kind") {
-        case "button": ButtonView(node: node) { drawing.send(node.count("event"), .null) }
+        case "button": ButtonView(node: node) { drawing.act(node, .null) }
         case "field": FieldView(node: node, revision: drawing.revision) { drawing.send(node.count("event"), .string($0)) }
         case "toggle": Toggle(node.text("label"), isOn: Binding(get: { node.flag("on") }, set: { drawing.send(node.count("event"), .bool($0)) })).toggleStyle(.switch).controlSize(.small)
-        case "picker": PickerView(node: node) { drawing.send(node.count("event"), .string($0)) }
+        case "picker": PickerView(node: node) { drawing.act(node, .string($0)) }.equatable()
         case "disclosure": DisclosureView(node: node, drawing: drawing)
         default: AlertView(node: node) { drawing.send(node.count("event"), .null) }
         }
@@ -75,7 +75,7 @@ struct Surface: ButtonStyle {
             configuration.label
                 .foregroundStyle(ink)
                 .padding(.horizontal, style.padding >= 0 ? style.padding : 12)
-                .frame(minWidth: style.round && style.height > 0 ? style.height : nil, minHeight: style.height > 0 ? style.height : 28)
+                .frame(minWidth: minimumWidth, minHeight: max(minimumTouch, style.height > 0 ? style.height : 28))
                 .background(fill, in: RoundedRectangle(cornerRadius: style.round ? max(style.height, 28) / 2 : 8, style: .continuous))
                 .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .opacity(enabled ? 1 : 0.45)
@@ -87,11 +87,25 @@ struct Surface: ButtonStyle {
 
         private var accent: Color { style.theme.color("accent", dark: style.dark) ?? .accentColor }
 
+        // [CAST-DESIGN-NATIVE] Desktop metrics remain native; phone controls keep a touch-sized target.
+        private var minimumTouch: CGFloat {
+            #if os(iOS)
+            return 44
+            #else
+            return 0
+            #endif
+        }
+
+        private var minimumWidth: CGFloat? {
+            if minimumTouch > 0 { return max(minimumTouch, style.round ? style.height : 0) }
+            return style.round && style.height > 0 ? style.height : nil
+        }
+
         private var ink: AnyShapeStyle {
             switch style.role {
             case "filled", "prominent": return AnyShapeStyle(style.theme.color("onAccent", dark: style.dark) ?? .white)
             case "destructive": return AnyShapeStyle(style.theme.color("danger", dark: style.dark) ?? .red)
-            default: return AnyShapeStyle(.foreground)
+            default: return style.theme.foreground(dark: style.dark)
             }
         }
 
@@ -168,10 +182,15 @@ struct AnyTextFieldStyle: TextFieldStyle {
     }
 }
 
-struct PickerView: View {
+struct PickerView: View, Equatable {
     let node: JSONValue
     let choose: (String) -> Void
     @Environment(\.ospreyInherited) private var inherited
+    @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
+
+    // Frame-only revisions must not replace an open native menu and restart its animation.
+    static func == (left: Self, right: Self) -> Bool { left.node == right.node }
 
     private var selected: String {
         node.list("choices").first { $0.text("key") == node.text("selected") }?.text("label") ?? node.text("selected")
@@ -187,13 +206,14 @@ struct PickerView: View {
                 Text(selected).font(Type.font("body", inherited))
                 Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(theme.color("secondary", dark: scheme == .dark) ?? .secondary)
         }
         .menuStyle(.button)
-        .buttonStyle(Surface(role: "plain", quiet: true, round: false, height: inherited.controlHeight, padding: 8, theme: ThemeResolver(theme: nil), dark: false))
+        .buttonStyle(Surface(role: "plain", quiet: true, round: false, height: inherited.controlHeight, padding: 8, theme: theme, dark: scheme == .dark))
         .menuIndicator(.hidden)
         .fixedSize()
         .accessibilityLabel(node.text("label"))
+        .accessibilityValue(selected)
     }
 }
 
@@ -202,7 +222,9 @@ struct DisclosureView: View {
     let drawing: Drawing
     @Environment(\.ospreyInherited) private var inherited
     @Environment(\.ospreyTheme) private var theme
+    @Environment(\.ospreyReveal) private var reveal
     @State private var hovering = false
+    @State private var id = UUID()
 
     var body: some View {
         let open = node.flag("expanded")
@@ -222,7 +244,12 @@ struct DisclosureView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .id(id)
         .animation(.snappy(duration: 0.2), value: open)
+        .onChange(of: open) { _, opened in
+            // After the column has laid out what opened.
+            if opened { DispatchQueue.main.async { reveal?(id) } }
+        }
     }
 }
 
@@ -262,7 +289,12 @@ struct RowsView: View {
     private var source: some View {
         List(selection: Binding(get: { selected.isEmpty ? nil : selected }, set: { if let key = $0 { choose(key) } })) {
             ForEach(Array(groups.enumerated()), id: \.offset) { _, group in
-                if group.title.isEmpty { items(group.rows) } else { Section(group.title) { items(group.rows) } }
+                if group.title.isEmpty { items(group.rows) } else {
+                    Section(group.title) { items(group.rows) }
+                    #if os(macOS)
+                        .collapsible(false)
+                    #endif
+                }
             }
         }
         .listStyle(.sidebar)

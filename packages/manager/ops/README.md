@@ -1,6 +1,6 @@
 # Registry deployment preparation
 
-[Plan 0020](../../../docs/plans/0020-package-manager-rollout.md) defines the deployment stages. [environment-inventory.schema.json](environment-inventory.schema.json) defines the reviewed provisioning inventory format using JSON Schema Draft 2020-12. Prepare a separate private record for each environment; no populated inventory or cloud resources are supplied here.
+[Plan 0020](../../../docs/plans/0020-package-manager.md) defines the deployment stages. [environment-inventory.schema.json](environment-inventory.schema.json) defines the reviewed provisioning inventory format using JSON Schema Draft 2020-12. Prepare a separate private record for each environment; no populated inventory or cloud resources are supplied here.
 
 Every required resource records its actual provider reference, accountable owner and evidence reference. Collection resources such as DNS records, Cloud Run services, private buckets and WAF rules must reference a versioned manifest enumerating every member. Secret entries contain Secret Manager resource names and numeric versions only; never commit credentials, connection strings, tokens or secret values. Supply database credentials through the approved mounted passfile/secret mechanism, since the pinned migration tool logs command arguments.
 

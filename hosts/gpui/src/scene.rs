@@ -13,6 +13,7 @@ pub mod atlas;
 mod decode;
 mod input;
 mod paint;
+mod text;
 
 /// One decoded scene, replaced only when its region revision changes.
 #[derive(Clone)]
@@ -169,12 +170,15 @@ pub struct Transform {
 impl Transform {
     /// Places the scene's origin at the region's top left at its fixed `zoom`, so a larger window
     /// shows more of the canvas and never resizes what is on it, or with zoom 0 as large as fits the
-    /// region whole. A zero-sized scene is in window pixels, so its origin is the window's.
+    /// region whole. A fixed zoom never magnifies the scene past what its region fits whole either,
+    /// so a narrow window or phone sees the whole artboard instead of clipping it. A zero-sized
+    /// scene is in window pixels, so its origin is the window's.
     fn new(bounds: Bounds<Pixels>, decoded: &Decoded) -> Self {
         let (width, height) = (f32::from(bounds.size.width), f32::from(bounds.size.height));
-        let scale = match decoded.zoom == 0. {
-            true => (width / decoded.width).min(height / decoded.height),
-            false => decoded.zoom,
+        let whole = (width / decoded.width).min(height / decoded.height);
+        let scale = match decoded.zoom {
+            0. => whole,
+            zoom => zoom.min(whole),
         };
         match decoded.width == 0. {
             true => Self {
@@ -264,10 +268,12 @@ mod tests {
     use gpui_kit::{bounds, point, px, size};
     use serde_json::Value;
 
-    /// Zoom 0 grows and shrinks the scene to fit its region whole; a fixed zoom ignores the region
-    /// and a window-pixel scene stays in window pixels, and pointer input maps back through each.
+    /// Zoom 0 grows and shrinks the scene to fit its region whole; a fixed zoom keeps its size
+    /// while the scene fits and never magnifies it past what the region fits whole, so a narrow
+    /// window or phone sees the whole artboard instead of clipping it; a window-pixel scene stays
+    /// in window pixels. Pointer input maps back through each, and the scene never leaves its region.
     #[test]
-    fn zoom_zero_fits_the_region_and_a_fixed_zoom_does_not() {
+    fn the_scene_fits_its_region_whole_whatever_the_zoom() {
         let region = |w: f32, h: f32| bounds(point(px(10.), px(20.)), size(px(w), px(h)));
         let scene =
             |json: &str| decode::decode(&serde_json::from_str(json).unwrap(), 1, &[]).unwrap();
@@ -279,7 +285,10 @@ mod tests {
             (&fit, 400., 100., 1.),
             (&fit, 100., 900., 0.5),
             (&fixed, 400., 400., 0.75),
-            (&fixed, 100., 50., 0.75),
+            (&fixed, 160., 400., 0.75),
+            (&fixed, 100., 900., 0.5),
+            (&fixed, 100., 50., 0.5),
+            (&fixed, 50., 25., 0.25),
             (&pixels, 400., 400., 1.),
         ];
         for (decoded, w, h, scale) in cases {
@@ -297,6 +306,11 @@ mod tests {
             );
             assert_eq!(transform.scene(corner), (200., 100.));
             assert_eq!(transform.viewed, (w / transform.scale, h / transform.scale));
+            let (right, bottom) = (
+                origin.0 + decoded.width * scale,
+                origin.1 + decoded.height * scale,
+            );
+            assert!(right <= 10. + w + 1e-4 && bottom <= 20. + h + 1e-4);
         }
         assert!(decode::decode(
             &serde_json::from_str(r#"{"width":2,"height":2,"zoom":-1,"shapes":[]}"#).unwrap(),

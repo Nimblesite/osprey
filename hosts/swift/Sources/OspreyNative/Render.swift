@@ -10,6 +10,8 @@ public struct Drawing {
     let region: String
     let revision: Int
     let send: (Int, JSONValue) -> Void
+    let point: (Int, JSONValue) -> Void
+    let act: (JSONValue, JSONValue) -> Void
 }
 
 extension JSONValue {
@@ -26,6 +28,9 @@ public struct NodeView: View {
 
     public var body: some View {
         switch node.text("kind") {
+        #if os(iOS)
+        case "scene": SceneView(node: node, drawing: drawing)
+        #endif
         case "text", "rich-text", "label", "icon", "badge", "pair", "evidence", "link", "spacer", "divider", "progress", "meter", "empty": LeafView(node: node)
         case "button", "field", "toggle", "picker", "disclosure", "alert": ControlView(node: node, drawing: drawing)
         case "rows": RowsView(node: node, drawing: drawing)
@@ -57,6 +62,7 @@ struct ContainerView: View {
     let drawing: Drawing
     @Environment(\.ospreyInherited) private var inherited
     @Environment(\.ospreyTheme) private var theme
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
         switch node.text("kind") {
@@ -78,14 +84,21 @@ struct ContainerView: View {
     @ViewBuilder private var stack: some View {
         let gap = inherited.gap ?? theme.spacing(1)
         if node.text("axis") == "horizontal" {
-            HStack(alignment: .center, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, true) }
+            HStack(alignment: inherited.rowsFromTop ? .top : .center, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, true) }
         } else {
             VStack(alignment: .leading, spacing: gap) { Children(nodes: node.list("children"), drawing: drawing).environment(\.ospreyInRow, false) }
         }
     }
 
     @ViewBuilder private var themed: some View {
-        NodeView(node: node["body"] ?? .null, drawing: drawing).environment(\.ospreyTheme, ThemeResolver(theme: decodedTheme))
+        let resolver = ThemeResolver(theme: decodedTheme)
+        NodeView(node: node["body"] ?? .null, drawing: drawing)
+            .environment(\.ospreyTheme, resolver)
+            .foregroundStyle(resolver.color("text", dark: scheme == .dark) ?? .primary)
+            .tint(resolver.color("accent", dark: scheme == .dark) ?? .accentColor)
+            .padding(resolver.spacing(1) * 3)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(resolver.color("background", dark: scheme == .dark) ?? .clear)
     }
 
     private var decodedTheme: Theme? {
@@ -106,6 +119,10 @@ struct FramedView: View {
     @Environment(\.ospreyTheme) private var theme
     @Environment(\.colorScheme) private var scheme
     @Environment(\.ospreyInRow) private var inRow
+    #if os(macOS)
+    @Environment(\.ospreySelectionGroup) private var outerGroup
+    @State private var selection = SelectionGroup()
+    #endif
 
     private var style: JSONValue { node["style"] ?? .null }
     private var dark: Bool { scheme == .dark }
@@ -124,28 +141,54 @@ struct FramedView: View {
     }
 
     private var content: some View {
-        NodeView(node: node["body"] ?? .null, drawing: drawing)
+        let leaf = NodeView(node: node["body"] ?? .null, drawing: drawing)
             .environment(\.ospreyInherited, inherited.merging(style.object ?? [:]))
             .environment(\.ospreyInRow, false)
+        #if os(macOS)
+        return leaf.environment(\.ospreySelectionGroup, style.flag("selectionGroup") ? selection : outerGroup)
+        #else
+        return leaf
+        #endif
     }
 
     var body: some View {
-        sized
+        let dressed = sized
             .background { surface }
             .overlay { outline }
             .modifier(Lifted(on: style.text("shadow") == "floating", radius: radius))
             .foregroundStyle(ink)
+        #if os(macOS)
+        return dressed.modifier(FrameInk(colour: inkColour))
+        #else
+        return dressed
+        #endif
+    }
+
+    #if os(macOS)
+    /// The frame's ink as AppKit ink, for the leaves a selection group draws.
+    private var inkColour: NSColor {
+        token("ink").map(NSColor.init) ?? theme.color("text", dark: dark).map(NSColor.init) ?? .labelColor
+    }
+    #endif
+
+    private func revealing(_ proxy: ScrollViewProxy) -> (@MainActor (UUID) -> Void)? {
+        guard style.text("align") == "end" else { return nil }
+        return { id in proxy.scrollTo(id, anchor: .top) }
     }
 
     @ViewBuilder private var inner: some View {
         if style.flag("scrollY") {
-            // A column that lines up from its end follows new content, as a conversation does.
-            ScrollView {
-                content.padding(insets).frame(maxWidth: .infinity, alignment: alignment)
+            // A column that lines up from its end follows new content, as a conversation does, so what
+            // opens inside it would grow upward past its own title; it asks to be shown instead.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    content.padding(insets).frame(maxWidth: .infinity, alignment: alignment)
+                        .environment(\.ospreyReveal, revealing(proxy))
+                }
+                .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .sizeChanges)
+                .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .initialOffset)
+                .scrollIndicators(.automatic)
             }
-            .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .sizeChanges)
-            .defaultScrollAnchor(style.text("align") == "end" ? .bottom : .top, for: .initialOffset)
-            .scrollIndicators(.automatic)
         } else {
             content.padding(insets)
         }
@@ -176,7 +219,7 @@ struct FramedView: View {
 
     private var ink: AnyShapeStyle {
         if let colour = token("ink") { return AnyShapeStyle(colour) }
-        return AnyShapeStyle(.foreground)
+        return theme.foreground(dark: dark)
     }
 
     private func token(_ key: String) -> Color? {
@@ -215,7 +258,14 @@ struct CellView: View {
 
     private var drawing: Drawing {
         let region = cell.key, revision = cell.revision
-        return Drawing(region: region, revision: revision) { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) }
+        return Drawing(region: region, revision: revision,
+                       send: { ordinal, value in store.send(region: region, revision: revision, ordinal: ordinal, value: value) },
+                       point: { ordinal, value in store.send(region: region, revision: cell.revision, ordinal: ordinal, value: value) },
+                       act: { node, value in
+                           if let current = cell.controlRevision(for: node, value: value) {
+                               store.send(region: region, revision: current, ordinal: node.count("event"), value: value)
+                           }
+                       })
     }
 }
 

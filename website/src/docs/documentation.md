@@ -5,6 +5,8 @@ title: Documenting your modules
 description: Generate HTML API documentation, add Markdown guides and custom CSS, and run executable examples.
 ---
 
+{% from "native-capture.njk" import capture %}
+
 Osprey builds API documentation directly from your modules and the compiler's
 inferred types. Both Default and ML sources support documentation comments.
 
@@ -57,21 +59,19 @@ Example code is interpreted in the source file's flavor. The structured sections
 also support `# Raises`, `# See also`, `# Since`, and `# Deprecated`, plus aliases
 such as `@param`, `@return`, and `@author`. Use `[Name]` to refer to another API.
 
+{{ capture("/assets/images/guides/api-index.png", "Generated JSON-library reference · midnight theme · modules and searchable APIs.", "Generated JSON-library reference · midnight theme · modules and searchable APIs.", 1440, 1000) }}
+
 ## Generate a site
 
 ```sh
 osprey --docs ./my-project --docs-dir ./site --docs-format html
 ```
 
-Open `site/index.html` or publish the directory with any static file server.
-The site includes public APIs, module descriptions, inferred signatures, examples,
-search, and the built-in reference. Single `.osp` and `.ospml` files work too.
-Library projects can generate documentation without an application entry point.
-Module pages link directly to their public members.
+Open `site/index.html` or serve it statically. Browse modules, public members, inferred signatures, examples, search and built-ins. Single `.osp`/`.ospml` files and libraries without entry points also work.
 
 Function pages show which effect operations their callers must provide, including requests made through helpers. They also list runtime operations and explicitly flag callbacks whose effects remain unresolved. These are the same details shown in editor hover, signature help and completion. Written effect annotations remain visible as bounds; they are separate from the operations the compiler finds.
 
-Projects with state modules also get a **State boundaries** page at `api/project/state-boundaries.html`. It lists every state owner, its private cell count and exported effects, including owners inside private modules. Cell names, initial values and private helper APIs stay out of the reference. The same ownership information appears as a warning at each state declaration in the editor and CLI. Installing a handler creates fresh cells; importing its module does not share an instance.
+The **State boundaries** page (`api/project/state-boundaries.html`) lists state owners, private-cell counts and exported effects, including private-module owners. It hides cell names, initial values and private helpers. Editor/CLI state warnings show the same ownership information. Handler installation creates fresh cells; imports do not share an instance.
 
 Choose a built-in theme:
 
@@ -103,6 +103,8 @@ Playwright installation.
 
 Omit the source to export the built-in reference alone. Omit `--docs-format html`
 to generate Markdown with front matter for use in an existing documentation site.
+
+{{ capture("/assets/images/guides/api-function.png", "Generated function page · inferred signature, documentation and parameters.", "Generated function page · inferred signature, documentation and parameters.", 1440, 1000) }}
 
 ## Add guides and branding
 

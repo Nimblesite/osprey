@@ -12,7 +12,10 @@ import ui::Pick
 import ui::Requests
 import ui::Runtime
 import agent::Engine
+import agent::McpClient
 import agent::Transcript
+import agentapp::McpModel
+import agentapp::McpRun
 import agentapp::Model
 import agentapp::View
 
@@ -26,10 +29,11 @@ module Turn
 
     toolLimit () = 8000000
 
-    (** The model request for `chat`'s next step, under a new ticket. *)
+    (** The model request for `chat`'s next step, under a new ticket, with the key of its provider. *)
     export asking (store, chat) =
         ticket = "model:${chat.chatId}:${store.ticketCount}"
-        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${store.settings.apiKey}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = Engine::request_body (chat.chatHistory, chat.chatModel), responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
+        key = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel)
+        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = Engine::request_body_with_mcp (chat.chatHistory, chat.chatModel, chat.chatEffort, McpModel::toolsDocument store.mcp), responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
         moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "thinking", chatTicket = ticket, chatProblem = ""))
         Runtime::asking (moved, [request])
 
@@ -41,9 +45,11 @@ module Turn
         moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "tools", chatTicket = ticket, chatCall = call.callId))
         Runtime::asking (moved, [request])
 
-    // The next call still owed an answer, or the model again once none is.
+    // The next call still owed an answer: through its server when it is an MCP tool, else as a process.
     advance (store, chat) = match Lists::find (Model::pendingCalls chat, \_ => true)
-        Success call => runCall (store, chat, call)
+        Success call => match McpModel::forTool (store.mcp, call.callName)
+            Success server => mcpCall (store, chat, server, call)
+            Error _ => runCall (store, chat, call)
         Error _ => match length chat.chatResults > 0
             true => asking (store, chat(chatHistory = Engine::add_returns (chat.chatHistory, chat.chatResults), chatResults = []))
             false => finished (store, chat)
@@ -51,18 +57,19 @@ module Turn
     // A turn over: the agent idle and the conversations kept.
     finished (store, chat) =
         moved = Model::putChat (store, chat(chatStage = "idle", chatTicket = "", chatCall = ""))
-        Model::persisting moved
+        Model::persisting (moved, "chats.json")
 
-    failed (store, chat, problem) = Model::persisting (Model::putChat (store, chat(chatStage = "failed", chatTicket = "", chatCall = "", chatProblem = problem)))
+    failed (store, chat, problem, status) = Model::persisting (Model::putChat (store, chat(chatStage = "failed", chatTicket = "", chatCall = "", chatProblem = problem, chatProblemStatus = status)), "chats.json")
 
     (** A model answer: add the response and run what it asks for. *)
     export modelAnswered (store, chat, ticket, outcome) = match outcome
-        Error problem => failed (store, chat, problem)
+        Error problem => failed (store, chat, problem, 0)
         Success result =>
             body = perform ui::Slices.fetch ticket
-            reply = Engine::accept (chat.chatHistory, chat.chatModel, Doc::number (result, "status"), body)
+            status = Doc::number (result, "status")
+            reply = Engine::accept (chat.chatHistory, chat.chatModel, status, body)
             match reply.replyOk
-                false => failed (store, chat, reply.replyProblem)
+                false => failed (store, chat, reply.replyProblem, status)
                 true => advance (store, chat(chatHistory = reply.replyHistory, chatStage = "tools"))
 
     (** A tool's answer: keep it and move on. *)
@@ -73,23 +80,71 @@ module Turn
             Error problem => Engine::tool_result_text (call.callName, 1, "", problem)
         advance (store, chat(chatResults = listAppend chat.chatResults (Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = output))))
 
-    (** Starts a turn in the active conversation with `text`, unless it is already working or the words are empty. *)
+    (** An MCP tool's answer: its server already framed the text, whatever the server said. *)
+    export mcpAnswered (store, chat, call, text) =
+        advance (store, chat(chatResults = listAppend chat.chatResults (Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = text))))
+
+    // One tool call through its connected server, under a deadline: the request is built inline so this file owns the whole turn recursion. A call that cannot be sent is answered in words at once.
+    mcpCall (store, chat, server, call) =
+        wire = McpClient::call_line (server.serverNextId, McpClient::bare_tool (server.serverName, call.callName), call.callArgs)
+        match wire.problem == ""
+            false => handOver (Runtime::step (store(mcp = McpModel::putServer (store.mcp, server(serverCallChat = chat.chatId, serverCallId = call.callId, serverCallText = "The tool could not run: ${wire.problem}", serverCallDone = true)))))
+            true => match server.serverPhase == "connected"
+                false => handOver (Runtime::step (store(mcp = McpModel::putServer (store.mcp, server(serverCallChat = chat.chatId, serverCallId = call.callId, serverCallText = "The tool could not run: ${server.serverName} is not connected.", serverCallDone = true)))))
+                true =>
+                    ident = server.serverNextId
+                    waiting = server(serverRpc = toString ident, serverAwait = "call", serverNextId = satAdd ident 1, serverCallChat = chat.chatId, serverCallId = call.callId, serverCallUntil = satAdd store.clock (McpRun::callMs ()))
+                    moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1, mcp = McpModel::putServer (store.mcp, waiting)), chat(chatStage = "tools", chatTicket = "mcpcall:${server.serverName}", chatCall = call.callId))
+                    request = match server.serverKind
+                        "url" =>
+                            brief = Doc::parse (McpClient::start_brief server.serverConfig)
+                            headers = listConcat [ui::Header(headerName = "Accept", headerValue = "application/json, text/event-stream"), ui::Header(headerName = "MCP-Protocol-Version", headerValue = McpClient::protocol_version ()), ui::Header(headerName = "Content-Type", headerValue = "application/json")] (listConcat (Pick::either (waiting.serverSession == "", [], [ui::Header(headerName = "Mcp-Session-Id", headerValue = waiting.serverSession)])) (mapList (Doc::items (Doc::field (brief, "headers")), \item => ui::Header(headerName = Doc::text (item, "name"), headerValue = Doc::text (item, "value")))))
+                            Requests::ask ("mcphttp:${server.serverName}", ui::Http(method = "POST", url = Doc::text (brief, "url"), headers = headers, body = wire.text, responseLimit = McpRun::httpLimit (), deadline = McpRun::callMs (), httpSlice = "mcphttp:${server.serverName}"))
+                        _ => Requests::ask ("mcpwrite:${server.serverName}", ui::ProcessWrite(writeHandle = "mcp:${server.serverName}", writeBytes = wire.text))
+                    Runtime::asking (moved, [request])
+
+    // A server that finished a call hands its text to the conversation waiting on it, if it still is, keeping any requests the server still needs.
+    export handOver stepped = match listGet (filterList (stepped.stepStore.mcp.stateServers, \server => server.serverCallDone)) 0
+        Error _ => stepped
+        Success marked =>
+            before = stepped.stepStore
+            cleared = before(mcp = McpModel::putServer (before.mcp, marked(serverCallDone = false, serverCallText = "")))
+            match listGet (filterList (cleared.chats, \chat => chat.chatId == marked.serverCallChat && Model::busy chat)) 0
+                Error _ => Runtime::step cleared
+                Success chat =>
+                    afterCall = mcpAnswered (cleared, chat, Model::callNamed (chat, marked.serverCallId), marked.serverCallText)
+                    Runtime::asking (afterCall.stepStore, listConcat stepped.requests afterCall.requests)
+
+    (** Starts a turn in the active conversation with `text`, unless it is already working, the words are empty, its provider has no key, or the model is unknown. *)
     export submit (store, text) =
         words = trim text
         chat = Model::active store
-        match words == "" || Model::busy chat || store.settings.apiKey == ""
+        missing = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel) == ""
+        problem = Engine::provider_problem chat.chatModel
+        match words == "" || Model::busy chat || missing || problem != ""
             true => Runtime::step (store(draft = Draft(draftText = words)))
             false =>
                 titled = Pick::either (length (Transcript::items_of chat.chatHistory) == 0, chat(chatTitle = Transcript::title_of words), chat)
                 opened = titled(chatHistory = Engine::add_user (chat.chatHistory, chat.chatFolder, words))
                 asking (store(draft = Draft(draftText = "")), opened)
 
-    (** Stops the turn: whatever was asked is cancelled, and the conversation comes to rest. *)
+    (** Stops the turn: whatever was asked is cancelled, and the conversation comes to rest. A call in flight through an MCP server cancels that server's outstanding request. *)
     export stop store =
         chat = Model::active store
-        cancels = Pick::either (chat.chatTicket == "", [], [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = chat.chatTicket))])
-        moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), Model::halted chat)
-        saving = Model::persisting moved
+        mcpCancels = match startsWith chat.chatTicket "mcpcall:"
+            true => match McpModel::named (store.mcp, drop chat.chatTicket 8)
+                Success server => [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = Pick::either (server.serverKind == "url", "mcphttp:${server.serverName}", Pick::either (server.serverReadTicket == "", "mcpread:${server.serverName}", server.serverReadTicket))))]
+                Error _ => []
+            false => []
+        plainCancels = Pick::either (chat.chatTicket == "" || startsWith chat.chatTicket "mcpcall:", [], [Requests::ask ("cancel:${store.ticketCount}", ui::Cancel(cancelled = chat.chatTicket))])
+        cancels = listConcat plainCancels mcpCancels
+        cleared = match startsWith chat.chatTicket "mcpcall:"
+            true => match McpModel::named (store.mcp, drop chat.chatTicket 8)
+                Success server => store(mcp = McpModel::putServer (store.mcp, server(serverRpc = "", serverAwait = Pick::either (server.serverPhase == "connected", "listen", server.serverAwait), serverCallChat = "", serverCallId = "", serverCallUntil = 0)))
+                Error _ => store
+            false => store
+        moved = Model::putChat (cleared(ticketCount = satAdd store.ticketCount 1), Model::halted chat)
+        saving = Model::persisting (moved, "chats.json")
         saving(requests = listConcat cancels saving.requests)
 
 (** How Osprey Agent answers each message: taps, text, choices, flags and completions. *)
@@ -97,7 +152,7 @@ module Answers
     (** Applies a tap. *)
     export tapped (store, action) = match action
         NewChat => Runtime::step (Model::opening (store, (Model::active store).chatFolder))
-        OpenFolder => Runtime::asking (store, [Requests::ask ("folder", ui::ChooseFolder)])
+        ChangeFolder => Runtime::asking (store, [Requests::ask ("folder", ui::ChooseFolder)])
         SendDraft => Turn::submit (store, store.draft.draftText)
         StopTurn => Turn::stop store
         Retry => Turn::asking (store, Model::active store)
@@ -105,12 +160,39 @@ module Answers
             panel = store.panel
             Runtime::step (store(panel = panel(panelOpen = panel.panelOpen == false)))
         Suggest words => Turn::submit (store, words)
-        SaveKey =>
+        SaveKey provider =>
             settings = store.settings
-            Runtime::step (store(settings = settings(apiKey = trim settings.keyDraft, keyDraft = "")))
+            value = Model::draftOf (settings, provider)
+            match value == ""
+                true => Runtime::step store
+                false => Model::persisting (store(settings = Model::withKey (Model::withDraft (settings, provider, ""), provider, value)), "providers.json")
+        RemoveKey provider =>
+            settings = store.settings
+            Model::persisting (store(settings = Model::withKey (settings, provider, "")), "providers.json")
+        ShowSettingsTab key =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsTab = key)))
+        OpenSettings =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsOpen = true)))
+        OpenMcpSettings =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsOpen = true, settingsTab = "mcp")))
+        CloseSettings =>
+            settings = store.settings
+            Runtime::step (store(settings = settings(settingsOpen = false)))
+        AddMcpServer => addServer store
+        PasteMcpServers => pasteServers store
+        RemoveMcp name =>
+            stopped = McpRun::stop (store, name)
+            after = stopped.stepStore
+            mcp = after.mcp
+            saving = Model::persisting (after(mcp = mcp(stateGlobal = McpClient::remove_global_text (mcp.stateGlobal, name), stateServers = filterList (mcp.stateServers, \server => server.serverName != name || server.serverOrigin != "global"))), "mcp.json")
+            saving(requests = listConcat stopped.requests saving.requests)
+        ReconnectMcp name => McpRun::begin (store, name)
         _ => Runtime::step store
 
-    (** Applies text or a choice: the composer's words, where a final newline sends; a conversation; a model. *)
+    (** Applies text or a choice: the composer's words, where a final newline sends; a conversation; a model, effort or a settings picker. *)
     export typed (store, action, text) = match action
         Typed => match endsWith text "\n"
             true => Turn::submit (store, text)
@@ -120,11 +202,70 @@ module Answers
             Runtime::step (store(panel = panel(panelActive = text)))
         PickModel =>
             chat = Model::active store
-            Runtime::step (Model::putChat (store, chat(chatModel = text)))
-        TypedKey =>
+            effort = Pick::either (Lists::any (Engine::model_levels text, \level => level == chat.chatEffort), chat.chatEffort, "")
+            Runtime::step (Model::putChat (store, chat(chatModel = text, chatEffort = effort)))
+        PickEffort =>
+            chat = Model::active store
+            Runtime::step (Model::putChat (store, chat(chatEffort = text)))
+        PickProvider =>
             settings = store.settings
-            Runtime::step (store(settings = settings(keyDraft = text)))
+            first = listGet (Engine::model_ids text) 0 ?: "deepseek-chat"
+            Model::persisting (store(settings = settings(providerOpen = text, defaultModel = Engine::full_model (text, first), defaultEffort = "")), "providers.json")
+        PickDefaultModel =>
+            settings = store.settings
+            effort = Pick::either (Lists::any (Engine::model_levels text, \level => level == settings.defaultEffort), settings.defaultEffort, "")
+            Model::persisting (store(settings = settings(defaultModel = text, defaultEffort = effort)), "providers.json")
+        PickDefaultEffort =>
+            settings = store.settings
+            Model::persisting (store(settings = settings(defaultEffort = text)), "providers.json")
+        TypedKey provider =>
+            settings = store.settings
+            Runtime::step (store(settings = Model::withDraft (settings, provider, text)))
+        McpName => withForm (store, \form => form(formName = text))
+        McpCommand => withForm (store, \form => form(formCommand = text))
+        McpArguments => withForm (store, \form => form(formArguments = text))
+        McpUrl => withForm (store, \form => form(formUrl = text))
+        McpEnvironment => withForm (store, \form => form(formEnvironment = text))
+        McpHeaders => withForm (store, \form => form(formHeaders = text))
+        McpPaste => withForm (store, \form => form(formPaste = text))
+        PickMcpType => withForm (store, \form => form(formType = text, formProblem = ""))
         _ => Runtime::step store
+
+    // The Add server form, with its problem cleared.
+    withForm (store, change) =
+        mcp = store.mcp
+        changed = change (mcp.stateForm)
+        Runtime::step (store(mcp = mcp(stateForm = changed(formProblem = ""))))
+
+    // Adding through the form: validate in words, then write mcp.json and connect at once.
+    addServer store =
+        mcp = store.mcp
+        form = mcp.stateForm
+        entry = McpClient::form_config (form.formName, form.formType, form.formCommand, form.formArguments, form.formUrl, form.formEnvironment, form.formHeaders)
+        match entry.problem == ""
+            false => Runtime::step (store(mcp = mcp(stateForm = form(formProblem = entry.problem))))
+            true =>
+                saved = McpClient::add_global (mcp.stateGlobal, trim form.formName, entry.text)
+                match saved.problem == ""
+                    false => Runtime::step (store(mcp = mcp(stateForm = form(formProblem = saved.problem))))
+                    true =>
+                        loaded = McpModel::globalLoaded (mcp(stateForm = McpModel::blankForm ()), saved.text)
+                        connected = McpRun::connectAll (store(mcp = loaded))
+                        saving = Model::persisting (connected.stepStore, "mcp.json")
+                        saving(requests = listConcat connected.requests saving.requests)
+
+    // Pasting the standard block: atomic, with each fault in words.
+    pasteServers store =
+        mcp = store.mcp
+        saved = McpClient::paste_global (mcp.stateGlobal, mcp.stateForm.formPaste)
+        form = mcp.stateForm
+        match saved.problem == ""
+            false => Runtime::step (store(mcp = mcp(stateForm = form(formProblem = saved.problem))))
+            true =>
+                loaded = McpModel::globalLoaded (mcp(stateForm = McpModel::blankForm ()), saved.text)
+                connected = McpRun::connectAll (store(mcp = loaded))
+                saving = Model::persisting (connected.stepStore, "mcp.json")
+                saving(requests = listConcat connected.requests saving.requests)
 
     (** Applies a disclosure's flag. *)
     export toggled (store, action, on) = match action
@@ -132,6 +273,16 @@ module Answers
             panel = store.panel
             others = filterList (panel.panelExpanded, \item => item != key)
             Runtime::step (store(panel = panel(panelExpanded = Pick::either (on, listAppend others key, others))))
+        ToggleMcpTools name =>
+            mcp = store.mcp
+            others = filterList (mcp.stateExpanded, \item => item != name)
+            Runtime::step (store(mcp = mcp(stateExpanded = Pick::either (on, listAppend others name, others))))
+        ToggleMcp name =>
+            before = store.mcp
+            moved = McpModel::withMemory (before, name, on)
+            settled = Pick::either (on, McpRun::connectAll (store(mcp = moved)), McpRun::stop (store(mcp = moved), name))
+            saving = Model::persisting (settled.stepStore, "mcp-state.json")
+            saving(requests = listConcat settled.requests saving.requests)
         _ => Runtime::step store
 
     (** Applies the inspector's new width. *)
@@ -145,10 +296,19 @@ module Answers
         Error _ => Runtime::step store
         Success _ =>
             settings = store.settings
-            // A key pasted while the file was being read is the newer word.
-            match settings.apiKey == ""
-                true => Runtime::step (store(settings = settings(apiKey = Model::keyIn (perform ui::Slices.fetch "env"))))
-                false => Runtime::step store
+            // A key pasted while the file was being read is the newer word; the dotenv fills only empty slots.
+            seeded = Model::keysIn (perform ui::Slices.fetch "env")
+            filled = foldList (seeded, settings, \(acc, key) => Pick::either (Model::keyOf (acc, key.keyProvider) == "" && key.keyValue != "", Model::withKey (acc, key.keyProvider, key.keyValue), acc))
+            Runtime::step (store(settings = filled))
+
+    providersLoaded (store, outcome) = match outcome
+        Error _ => Runtime::step store
+        Success result => match Doc::flag (result, "found")
+            false => Runtime::step store
+            true =>
+                settings = Model::providersOf (store.settings, Doc::parse (perform ui::Slices.fetch "providers-file"))
+                // A conversation with nothing said yet was opened before the saved default was known.
+                Runtime::step (store(settings = settings, chats = mapList (store.chats, \chat => Model::withDefaultModel (chat, settings))))
 
     chatsLoaded (store, outcome) = match outcome
         Error _ => Runtime::step store
@@ -160,42 +320,101 @@ module Answers
         Error _ => Runtime::step store
         Success result => match Doc::text (result, "path") == ""
             true => Runtime::step store
-            false => Runtime::step (Model::opening (store, Doc::text (result, "path")))
+            false =>
+                chat = Model::active store
+                folder = Doc::text (result, "path")
+                mcp = store.mcp
+                moved = Model::putChat (store(mcp = mcp(stateFolder = folder, stateProjectLoaded = false)), chat(chatFolder = folder))
+                saving = Model::persisting (moved, "chats.json")
+                saving(requests = listAppend saving.requests (Requests::ask ("mcp-project", Model::readTextAt (moved.settings.platform, "${folder}/.mcp.json", "mcp-project-file"))))
+
+    // The three MCP documents answered: merge, stop what left the list, connect what is new.
+    mcpGlobalLoaded (store, outcome) = match outcome
+        Error _ => afterMcp (McpModel::globalMissing (store.mcp), store, [])
+        Success result =>
+            text = perform ui::Slices.fetch "mcp-file"
+            loaded = Pick::either (Doc::flag (result, "found") && text != "", McpModel::globalLoaded (store.mcp, text), McpModel::globalMissing (store.mcp))
+            afterMcp (loaded, store, [])
+
+    mcpStateLoaded (store, outcome) = match outcome
+        Error _ => afterMcp (McpModel::memoriesOf (store.mcp, JsonObject []), store, [])
+        Success result =>
+            text = perform ui::Slices.fetch "mcp-state-file"
+            loaded = Pick::either (Doc::flag (result, "found") && text != "", McpModel::memoriesOf (store.mcp, Doc::parse (text)), McpModel::memoriesOf (store.mcp, JsonObject []))
+            afterMcp (loaded, store, [])
+
+    mcpProjectLoaded (store, outcome) = match outcome
+        Error _ =>
+            loaded = McpModel::projectMissing (store.mcp)
+            afterMcp (loaded, store, McpRun::stopsFor (store.mcp, loaded))
+        Success result =>
+            text = perform ui::Slices.fetch "mcp-project-file"
+            loaded = Pick::either (Doc::number (result, "status") == 0 && text != "", McpModel::projectLoaded (store.mcp, text), McpModel::projectMissing (store.mcp))
+            afterMcp (loaded, store, McpRun::stopsFor (store.mcp, loaded))
+
+    // Once every document has answered, connect what is enabled and off.
+    afterMcp (loaded, store, extra) = match McpModel::ready loaded
+        false => Runtime::asking (store(mcp = loaded), extra)
+        true =>
+            connected = McpRun::connectAll (store(mcp = loaded))
+            Runtime::asking (connected.stepStore, listConcat extra connected.requests)
+
+    // One MCP ticket's kind and server name, as `mcpread:demo`.
+    mcpParts ticket = match indexOf (drop ticket 3) ":"
+        Success at => JsonObject [Doc::str ("kind", take (drop ticket 3) at), Doc::str ("name", drop (drop ticket 3) (satAdd at 1))]
+        Error _ => JsonObject []
+
+    mcpAnswerOf (store, ticket, outcome) =
+        parts = mcpParts ticket
+        name = Doc::text (parts, "name")
+        match Doc::text (parts, "kind")
+            "start" => McpRun::started (store, name, outcome)
+            "write" => McpRun::written (store, name, outcome)
+            "read" => Turn::handOver (McpRun::readDone (store, name, outcome))
+            "http" => Turn::handOver (McpRun::postDone (store, name, outcome))
+            _ => Runtime::step store
 
     // The write in flight ended: say if it failed, and write what changed meanwhile.
     saved (store, outcome) =
         settings = store.settings
         problem = match outcome
-            Error reason => "Your conversations could not be saved: ${reason}"
+            Error reason => "Your ${Model::saveLabel settings.saveName} could not be saved: ${reason}"
             Success _ => ""
-        settledStore = store(settings = settings(saving = false, saveAgain = false, saveProblem = problem))
-        Pick::either (settings.saveAgain, Model::persisting settledStore, Runtime::step settledStore)
+        next = listGet settings.savePending 0 ?: ""
+        settledStore = store(settings = settings(saving = false, savePending = filterList (settings.savePending, \name => name != next), saveName = "", saveProblem = problem))
+        Pick::either (next == "", Runtime::step settledStore, Model::persisting (settledStore, next))
 
     chatOf (store, ticket) = Lists::find (store.chats, \chat => chat.chatTicket == ticket)
 
     (** Applies a completion: only the ticket a conversation is waiting on counts, so a stopped turn's late answer changes nothing. *)
     export completed (store, ticket, outcome) = match ticket
         "env" => settingsLoaded (store, outcome)
+        "providers" => providersLoaded (store, outcome)
         "chats" => chatsLoaded (store, outcome)
         "folder" => folderChosen (store, outcome)
-        _ => match startsWith ticket "save:"
-            true => saved (store, outcome)
-            false => match chatOf (store, ticket)
-                Error _ => Runtime::step store
-                Success chat => match startsWith ticket "model:"
-                    true => Turn::modelAnswered (store, chat, ticket, outcome)
-                    false => Turn::toolAnswered (store, chat, ticket, outcome)
+        "mcp-global" => mcpGlobalLoaded (store, outcome)
+        "mcp-state" => mcpStateLoaded (store, outcome)
+        "mcp-project" => mcpProjectLoaded (store, outcome)
+        _ => match startsWith ticket "mcp"
+            true => mcpAnswerOf (store, ticket, outcome)
+            false => match startsWith ticket "save:"
+                true => saved (store, outcome)
+                false => match chatOf (store, ticket)
+                    Error _ => Runtime::step store
+                    Success chat => match startsWith ticket "model:"
+                        true => Turn::modelAnswered (store, chat, ticket, outcome)
+                        false => Turn::toolAnswered (store, chat, ticket, outcome)
 
 (** Osprey Agent as the framework runs it: launch, update, regions, the session document and the theme ([UI-STORE], [UI-REGIONS]). *)
 module App
-    (** The store at launch, with the conversations and the key asked for. The first launch argument names the project folder and the second a dotenv file. *)
+    (** The store at launch, with the conversations, the providers and the key file asked for. The first launch argument names the project folder and the second a dotenv file; without one, the `key.env` in the app's own store is the dotenv file, so opening the app from the Dock finds the key. *)
     export initial context =
         home = context.home
         folder = Pick::either ((listGet context.arguments 0 ?: "") == "", home, listGet context.arguments 0 ?: "")
         store = Model::launched (context.platform, home, folder, context.now)
         envFile = listGet context.arguments 1 ?: ""
-        env = Pick::either (envFile == "", [], [Requests::ask ("env", Model::readText (context.platform, envFile))])
-        Runtime::asking (store, listConcat env [Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file"))])
+        env = Requests::ask ("env", Pick::either (envFile == "", ui::StoreRead(readName = "key.env", readLimit = 1000000, readSlice = "env"), Model::readText (context.platform, envFile)))
+        Runtime::asking (store, [env, Requests::ask ("providers", ui::StoreRead(readName = "providers.json", readLimit = 1000000, readSlice = "providers-file")), Requests::ask ("chats", ui::StoreRead(readName = "chats.json", readLimit = 64000000, readSlice = "chats-file")), Requests::ask ("mcp-global", ui::StoreRead(readName = "mcp.json", readLimit = 1000000, readSlice = "mcp-file")), Requests::ask ("mcp-state", ui::StoreRead(readName = "mcp-state.json", readLimit = 1000000, readSlice = "mcp-state-file")), Requests::ask ("mcp-project", Model::readTextAt (context.platform, "${folder}/.mcp.json", "mcp-project-file"))])
 
     (** Applies one message: a tap, text or a choice, a flag, a splitter's width or a completion. *)
     export update (context, before, message) =
@@ -210,7 +429,9 @@ module App
 
     settingsSlice () = perform Signal<Settings>.read ()
 
-    (** The regions: the window's split, the sidebar, the conversation's header and transcript, the composer and the inspector, each rebuilt only when a slice it read changed. *)
+    mcpSlice () = (perform Signal<McpSignal>.read ()).signalState
+
+    (** The regions: the window's split, the sidebar, the conversation's header and transcript, the composer, the inspector and the settings pane, each rebuilt only when a slice it read changed. *)
     export regions (before, store, frames, _) =
         chats = Chats(chatList = store.chats)
         previous = Chats(chatList = before.chats)
@@ -222,8 +443,11 @@ module App
             read => store.panel
         handle static Signal<Settings>
             read => store.settings
-        changed = listConcat (signalChanges previous chats Model::chatsJson (signalDependencies chatsSlice)) (listConcat (signalChanges before.draft store.draft Model::draftJson (signalDependencies draftSlice)) (listConcat (signalChanges before.panel store.panel Model::panelJson (signalDependencies panelSlice)) (signalChanges before.settings store.settings Model::settingsJson (signalDependencies settingsSlice))))
-        [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "sidebar", changed, View::sidebar), Keyed::region (frames, "header", changed, View::header), Keyed::region (frames, "transcript", changed, View::transcript), Keyed::region (frames, "composer", changed, View::composer), Keyed::region (frames, "inspector", changed, View::inspector)]
+        handle static Signal<McpSignal>
+            read => McpSignal(signalState = store.mcp)
+        mcpChanged = signalChanges before.mcp store.mcp McpModel::storeJson (signalDependencies mcpSlice)
+        changed = listConcat (signalChanges previous chats Model::chatsJson (signalDependencies chatsSlice)) (listConcat (signalChanges before.draft store.draft Model::draftJson (signalDependencies draftSlice)) (listConcat (signalChanges before.panel store.panel Model::panelJson (signalDependencies panelSlice)) (listConcat (signalChanges before.settings store.settings Model::settingsJson (signalDependencies settingsSlice)) mcpChanged)))
+        [Keyed::region (frames, "root", changed, View::root), Keyed::region (frames, "sidebar", changed, View::sidebar), Keyed::region (frames, "header", changed, View::header), Keyed::region (frames, "transcript", changed, View::transcript), Keyed::region (frames, "composer", changed, View::composer), Keyed::region (frames, "inspector", changed, View::inspector), Keyed::region (frames, "settings", changed, View::settings)]
 
     (** The store as the opaque session document. *)
     export save store = Model::storeJson store
@@ -241,4 +465,7 @@ module App
         token ("canvas", "#FBFBFC", "#141417"), token ("sidebar", "#EFEFF3", "#1B1B20"), token ("surface", "#FFFFFF", "#1E1E23"), token ("raised", "#F3F3F6", "#26262C"),
         token ("bubble", "#EEEEF3", "#2A2A31"), token ("line", "#E4E4EA", "#2C2C33"), token ("inset", "#F6F6F9", "#18181C"),
         token ("codeFill", "#F2F2F6", "#0E0E11"), token ("codeInk", "#5B45D6", "#C2B5FF"),
+        token ("codeKeyword", "#6D4AE0", "#A996FF"), token ("codeString", "#116D3F", "#7CE0A5"), token ("codeComment", "#62626E", "#8E8E9B"),
+        token ("codeNumber", "#9A5B00", "#F5B454"), token ("codeFunction", "#1D4FD7", "#82B1FF"), token ("codeType", "#0E7468", "#5FDFCB"),
+        token ("codeBuiltin", "#B02A62", "#FF9EC7"), token ("codeMeta", "#5551C9", "#AFAAFF"), token ("codeInserted", "#116D3F", "#7CE0A5"), token ("codeRemoved", "#BC2424", "#FF9E9E"),
     ], spacing = [4, 8, 12, 16, 24, 32], feedback = 120, settle = 220)

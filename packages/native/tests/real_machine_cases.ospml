@@ -82,6 +82,10 @@ realCanvasEdits () =
     hovered = realPointer (dropped, body, false)
     expect (Doc::write (MachineDocs::snapshot hovered), Doc::write (MachineDocs::snapshot dropped))
 
+sceneSize machine =
+    node = listGet (Encode::walk ([], Templates::view machine)).nodes 0 ?: JsonNull
+    take (jsonEncode node ?: "", 45)
+
 realCanvasRoomAndSliders () =
     prism = realSkinned (signalMachine (), "prism")
     grown = Canvases::viewed (prism, 1936.0, 1128.0)
@@ -89,6 +93,10 @@ realCanvasRoomAndSliders () =
     expect (Machines::number (grown, "viewHeight"), 1128.0)
     expect (Machines::number (grown, "spareWidth"), 400.0)
     expect (Machines::number (grown, "spareHeight"), 300.0)
+    // A host fits the scene's own size into its region, so room spared must not grow it: a window that
+    // later got shorter would fit the grown size and be told the same spare room for ever.
+    expect (sceneSize grown, "{\"kind\":\"scene\",\"width\":1536.0,\"height\":828.0")
+    expect (sceneSize (prism), sceneSize grown)
     shrunk = Canvases::viewed (grown, 1000.0, 600.0)
     expect (Machines::number (shrunk, "spareWidth"), 0.0)
     expect (Machines::number (shrunk, "spareHeight"), 0.0)
@@ -114,7 +122,8 @@ realPlayerJourney () =
     expect (nativeShows (native, "Looking for TVs…"), true)
     expect (nativeShows (native, "Choose an audio file"), true)
     ready = Machines::feed (native, [
-        Machines::fact ("receiver", Values::text "Living Room TV"),
+        Machines::fact ("receiver", Values::text "192.168.1.20:8009"),
+        Machines::fact ("receiverName", Values::text "Living Room TV"),
         Machines::fact ("file", Values::text "/music/demo.mp3"),
         Machines::fact ("title", Values::text "A very long track name that will not fit on one line at all.mp3"),
     ])

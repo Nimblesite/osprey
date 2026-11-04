@@ -92,7 +92,11 @@ fn named(cg: &Codegen, name: &str, slots: &[LType]) -> Result<DeviceBody, Device
         .get(name)
         .cloned()
         .ok_or_else(|| format!("`{name}` is not a function the device can compile"))?;
-    super::compile(cg, &parameters, &body, slots, &[])
+    let result = cg
+        .prog
+        .return_type(name)
+        .map_or(LType::I64, crate::types::ltype_of);
+    super::compile(cg, &parameters, &body, slots, &[], result)
 }
 
 /// Launch `kernel` over `inputs` into `out`, one thread per element; the
@@ -150,6 +154,34 @@ pub(crate) fn launch_fold(
         Err(failure) => declined(
             cg,
             &format!("gpuFold kernel: {}", failure.decline_reason()?),
+        ),
+    })
+}
+
+/// Scan/filter share one ordered launch with a result buffer and host state.
+pub(crate) fn launch_sequence(
+    cg: &mut Codegen,
+    kernel: &Callback,
+    slots: &[LType],
+    buffers: [&Value; 2],
+    state: &str,
+    len: &str,
+    shape: Shape,
+) -> crate::error::Result<String> {
+    Ok(match twin(cg, kernel, slots) {
+        Ok((body, uniforms)) => {
+            let installed = install(cg, &body, shape);
+            let site = Site {
+                inputs: &buffers[..1],
+                out: &buffers[1].operand,
+                acc: state,
+                count: len,
+            };
+            emit(cg, &installed, &uniforms, &site)
+        }
+        Err(failure) => declined(
+            cg,
+            &format!("{shape:?} kernel: {}", failure.decline_reason()?),
         ),
     })
 }

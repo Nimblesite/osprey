@@ -55,7 +55,7 @@ The existing Osprey sidebar's Program and Processes headers expose a **Manage Pa
 
 ## Module explorer `[EDITOR-MODULE-EXPLORER]`
 
-**Status: partially implemented.** Membership, sources, direct dependencies, navigation and failure states are live; the remainder of this contract is tracked in the [module explorer plan](../../plans/module-explorer.md). Provide a Module Explorer in the existing Osprey sidebar, analogous in purpose to Basilisk's module browser and SharpLsp's Solution Explorer.
+**Status: partially implemented.** Membership, sources, direct dependencies, navigation and failure states are live; the remainder of this contract is tracked in the [module explorer plan](../../plans/0012-developer-tools.md). Provide a Module Explorer in the existing Osprey sidebar, analogous in purpose to Basilisk's module browser and SharpLsp's Solution Explorer.
 
 The tree groups workspace projects, their declared modules, namespaces and source files, then direct and transitive package dependencies with organization-qualified identities. Resolve semantic membership and imports through the compiler's checked project/source graph, including all supported syntax flavors; directory names alone cannot establish module membership. Distinguish local overrides and locked releases. Do not infer that a package is removable from source-graph data alone.
 

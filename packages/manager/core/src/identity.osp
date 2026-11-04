@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Names
 import registry::Order
 import registry::Digests
@@ -45,15 +46,9 @@ module Identity {
     /// `[epoch, ordinal]` from their decimal spellings: positive, no sign, no
     /// leading zero; otherwise `release.epoch` or `release.ordinal`. Shared by
     /// every textual form of a release version.
-    export fn numbers(epochText, ordinalText) = match positive(epochText, firstEpoch, "release.epoch") {
-        Success { value } => ordinalWith(value, ordinalText)
-        Error { message } => Error { message: message }
-    }
+    export fn numbers(epochText, ordinalText) = Checked::andThen(positive(epochText, firstEpoch, "release.epoch"), fn(value) => ordinalWith(value, ordinalText))
 
-    fn ordinalWith(epoch, text) = match positive(text, firstOrdinal, "release.ordinal") {
-        Success { value } => Success { value: [epoch, value] }
-        Error { message } => Error { message: message }
-    }
+    fn ordinalWith(epoch, text) = Checked::andThen(positive(text, firstOrdinal, "release.ordinal"), fn(value) => Success { value: [epoch, value] })
 
     fn assemble(key, numbers, digest) = ReleaseId {
         key: key,
@@ -67,15 +62,9 @@ module Identity {
         Success { value } => withParts(take(head, value + 1), drop(head, value + 2), digest)
     }
 
-    fn withParts(keyText, versionText, digest) = match Names::parse(keyText) {
-        Error { message } => Error { message: message }
-        Success { value } => withVersion(value, versionText, digest)
-    }
+    fn withParts(keyText, versionText, digest) = Checked::andThen(Names::parse(keyText), fn(value) => withVersion(value, versionText, digest))
 
-    fn withVersion(key, versionText, digest) = match version(versionText) {
-        Success { value } => Success { value: assemble(key, value, digest) }
-        Error { message } => Error { message: message }
-    }
+    fn withVersion(key, versionText, digest) = Checked::andThen(version(versionText), fn(value) => Success { value: assemble(key, value, digest) })
 
     /// Parse a display form; failures are reason codes.
     export fn parse(text) = match split(text, "#") {
@@ -86,10 +75,7 @@ module Identity {
         }
     }
 
-    fn parseHalves(head, digestText) = match Digests::parse(digestText) {
-        Error { message } => Error { message: message }
-        Success { value } => withKey(head, value)
-    }
+    fn parseHalves(head, digestText) = Checked::andThen(Digests::parse(digestText), fn(value) => withKey(head, value))
 
     /// Canonical `(package, epoch, ordinal, digest)` order.
     export fn compare(a: ReleaseId, b: ReleaseId) = Order::thenCompare(Names::compare(a.key, b.key),

@@ -15,10 +15,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
-void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols);
+void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
 int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *kinds, const int64_t *uniforms,
                           void *in0, void *in1, void *out, int64_t *acc, int64_t count);
 int32_t osprey_gpu_declined(const char *what);
@@ -67,15 +67,15 @@ static int mock_dispatch(const OspreyGpuDispatch *d, int64_t mark) {
     if (arg->kind == OSPREY_GPU_SCALAR) continue;
     MockObject *o = bind(arg);
     if (arg->kind == OSPREY_GPU_OUTPUT) o->words[0] = i == 3 ? injected_fault : mark;
-    if (arg->kind == OSPREY_GPU_OUTPUT && arg->out) memcpy(arg->out, o->words, arg->count * 8);
+    if (arg->kind == OSPREY_GPU_OUTPUT && arg->out) memcpy(arg->out, o->words, arg->count * arg->elem_bytes);
     if (!arg->slot) free(o);
   }
   return device_error ? -1 : 1;
 }
 
-static int mock_download(void *object, int64_t *out, uint64_t count) {
+static int mock_download(void *object, void *out, uint64_t count) {
   downloads++;
-  memcpy(out, ((MockObject *)object)->words, count * 8);
+  memcpy(out, ((MockObject *)object)->words, count);
   return 1;
 }
 
@@ -87,13 +87,13 @@ static void mock_release(void *object) {
 #if defined(OSPREY_GPU_METAL)
 const char *osprey_gpu_metal_name(void) { return "metal:mock"; }
 int osprey_gpu_metal_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 42); }
-int osprey_gpu_metal_download(void *object, int64_t *out, uint64_t count) { return mock_download(object, out, count); }
+int osprey_gpu_metal_download(void *object, void *out, uint64_t count) { return mock_download(object, out, count); }
 void osprey_gpu_metal_release(void *object) { mock_release(object); }
 #endif
 #if defined(OSPREY_GPU_OPENCL)
 const char *osprey_gpu_opencl_name(void) { return "opencl:mock"; }
 int osprey_gpu_opencl_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 43); }
-int osprey_gpu_opencl_download(void *object, int64_t *out, uint64_t count) { return mock_download(object, out, count); }
+int osprey_gpu_opencl_download(void *object, void *out, uint64_t count) { return mock_download(object, out, count); }
 void osprey_gpu_opencl_release(void *object) { mock_release(object); }
 #endif
 
@@ -111,23 +111,23 @@ static int64_t one_word(void) {
 
 // A one-element float buffer holding 1.0.
 static void *unit(void) {
-  void *b = osprey_gpu_alloc(1);
+  void *b = osprey_gpu_alloc(1, 8);
   osprey_gpu_set(b, 0, one_word());
   return b;
 }
 
 static int32_t launch(void *out, const char *kinds, const int64_t *uniforms) {
-  void *in = osprey_gpu_alloc(3);
+  void *in = osprey_gpu_alloc(3, 8);
   return osprey_gpu_launch("osprey_kernel_1", "kernel void osprey_kernel_1() {}", kinds, uniforms, in, NULL, out, NULL, 3);
 }
 
 static void host_case(const char *mode) {
   select_mode(mode);
-  void *a = unit(), *out = osprey_gpu_alloc(1);
+  void *a = unit(), *out = osprey_gpu_alloc(1, 8);
   osprey_gpu_set(out, 0, 99);
   unsigned before = dispatches;
   assert(strcmp(osprey_gpu_device_name(), "host") == 0);
-  assert(osprey_gpu_get(osprey_gpu_matmul(a, a, 1, 1, 1), 0) == one_word() && dispatches == before);
+  assert(osprey_gpu_get(osprey_gpu_matmul(a, a, 1, 1, 1, 8), 0) == one_word() && dispatches == before);
   assert(launch(out, "", NULL) == 0 && osprey_gpu_get(out, 0) == 99);
   assert(osprey_gpu_declined("gpuScan") == 0);
 }
@@ -139,7 +139,7 @@ static void resident_product(void *a, void *product, int64_t mark) {
   unsigned up = uploads, down = downloads;
   assert(osprey_gpu_get(product, 0) == mark && downloads == down + 1);
   assert(osprey_gpu_get(product, 0) == mark && downloads == down + 1);
-  void *again = osprey_gpu_matmul(a, a, 1, 1, 1);
+  void *again = osprey_gpu_matmul(a, a, 1, 1, 1, 8);
   assert(again && uploads == up + 1);
   unsigned freed = releases;
   osprey_gpu_finalize(again);
@@ -151,7 +151,7 @@ static void resident_product(void *a, void *product, int64_t mark) {
 // as a resident input with its length, a fold's accumulator comes straight
 // back, and a host write forgets the device copy.
 static void resident_launch(int64_t mark) {
-  void *out = osprey_gpu_alloc(1), *table = osprey_gpu_alloc(4), *in = osprey_gpu_alloc(3);
+  void *out = osprey_gpu_alloc(1, 8), *table = osprey_gpu_alloc(4, 8), *in = osprey_gpu_alloc(3, 8);
   int64_t uniforms[2] = {7, (int64_t)(intptr_t)table}, acc = 5;
   unsigned down = downloads;
   assert(launch(out, "sb", uniforms) == 1 && downloads == down);
@@ -169,7 +169,7 @@ static void device_case(const char *mode, int available, const char *name) {
   void *a = unit();
   osp_io_error_clear();
   assert(strcmp(osprey_gpu_device_name(), name) == 0);
-  void *product = osprey_gpu_matmul(a, a, 1, 1, 1);
+  void *product = osprey_gpu_matmul(a, a, 1, 1, 1, 8);
   if (!available) {
     assert(!product && strstr(osp_io_error(), "no GPU adapter") != NULL);
     return;
@@ -177,10 +177,10 @@ static void device_case(const char *mode, int available, const char *name) {
   assert(product && last_args == 6 && last_threads == 1);
   resident_product(a, product, name[0] == 'm' ? 42 : 43);
   device_error = 1;
-  assert(!osprey_gpu_matmul(a, a, 1, 1, 1));
+  assert(!osprey_gpu_matmul(a, a, 1, 1, 1, 8));
   device_error = 0;
   unsigned before = dispatches;
-  assert(osprey_gpu_matmul(osprey_gpu_alloc(0), a, 0, 1, 1) && dispatches == before);
+  assert(osprey_gpu_matmul(osprey_gpu_alloc(0, 8), a, 0, 1, 1, 8) && dispatches == before);
   resident_launch(name[0] == 'm' ? 42 : 43);
 }
 
@@ -188,7 +188,7 @@ static void invalid_case(void) {
   select_mode("invalid");
   void *a = unit();
   assert(strcmp(osprey_gpu_device_name(), "invalid:device") == 0);
-  assert(!osprey_gpu_matmul(a, a, 1, 1, 1) && strstr(osp_io_error(), "unknown backend") != NULL);
+  assert(!osprey_gpu_matmul(a, a, 1, 1, 1, 8) && strstr(osp_io_error(), "unknown backend") != NULL);
 }
 
 // Runs `scenario` in a child that must abort with `expected` on stderr.
@@ -221,7 +221,7 @@ static void declined_on_device(void) {
 static void faulting_launch(void) {
   select_mode("auto");
   injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
-  (void)launch(osprey_gpu_alloc(1), "", NULL);
+  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
 }
 static void too_many_uniforms(void) {
   select_mode("auto");
@@ -229,12 +229,12 @@ static void too_many_uniforms(void) {
   char kinds[OSPREY_GPU_MAX_ARGS + 1];
   memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
   kinds[OSPREY_GPU_MAX_ARGS] = '\0';
-  (void)launch(osprey_gpu_alloc(1), kinds, uniforms);
+  (void)launch(osprey_gpu_alloc(1, 8), kinds, uniforms);
 }
 static void device_failure_on_launch(void) {
   select_mode("auto");
   device_error = 1;
-  (void)launch(osprey_gpu_alloc(1), "", NULL);
+  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
 }
 #endif
 

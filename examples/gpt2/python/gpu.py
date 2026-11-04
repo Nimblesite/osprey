@@ -19,7 +19,7 @@ def answered(result):
             return Error(message=toString(message))
 
 
-@static_handler(Tensor[GpuBuffer[float]])
+@static_handler(Tensor[GpuBuffer[float32]])
 class on_gpu:
     """GPU buffers, and `device` reports which backend executes them. Kernels and
     products run on Metal or OpenCL when `OSPREY_GPU` selects a device."""
@@ -27,7 +27,7 @@ class on_gpu:
         return gpuMap(gpuIota(n), f)
 
     def get(b, i):
-        return unwrap_or(gpuGet(b, i), 0.0)
+        return unwrap_or(gpuGet(b, i), toFloat32(0.0))
 
     def length(b):
         return gpuLength(b)
@@ -39,7 +39,7 @@ class on_gpu:
         return gpuFold(b, seed, f)
 
     def index_of(b, x):
-        return gpuFold(gpuMap(gpuIota(gpuLength(b)), lambda i: hit(unwrap_or(gpuGet(b, i), 0.0), x, i, gpuLength(b))), gpuLength(b), min_i)
+        return gpuFold(gpuMap(gpuIota(gpuLength(b)), lambda i: hit(unwrap_or(gpuGet(b, i), toFloat32(0.0)), x, i, gpuLength(b))), gpuLength(b), min_i)
 
     def mat_mul(a, b, rows, inner, cols):
         return answered(gpuMatMul(a, b, rows, inner, cols))

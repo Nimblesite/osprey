@@ -1,4 +1,13 @@
 use super::{any, i, mono, poly, res, runtime_mono, s, u, Type, TypeEnv};
+use crate::arithmetic::{open_float_scheme, open_integer_scheme, open_numeric_scheme};
+use crate::numeric::Numeric;
+
+/// `toInt8` for `int8`: the builtin named for a numeric type.
+fn conversion_name(target: Numeric) -> String {
+    let name = target.name();
+    let (first, rest) = name.split_at(1);
+    format!("to{}{rest}", first.to_uppercase())
+}
 
 pub(super) fn declare(e: &mut TypeEnv) {
     runtime_mono(e, "print", vec![any()], u());
@@ -16,59 +25,93 @@ pub(super) fn declare(e: &mut TypeEnv) {
 
 fn numbers(e: &mut TypeEnv) {
     e.insert("abs", crate::arithmetic::absolute_scheme());
-    mono(e, "intDiv", vec![i(), i()], i());
+    // Open over the integer types [TYPE-NUMERIC-ARITH-WIDTH], one overload per
+    // use like `abs`.
     for name in [
-        "wrapAdd", "wrapSub", "wrapMul", "satAdd", "satSub", "satMul",
+        "intDiv",
+        "wrapAdd",
+        "wrapSub",
+        "wrapMul",
+        "satAdd",
+        "satSub",
+        "satMul",
+        "bitAnd",
+        "bitOr",
+        "bitXor",
+        "shiftLeft",
+        "shiftRight",
+        "shiftRightLogical",
     ] {
-        mono(e, name, vec![i(), i()], i());
+        e.insert(name, open_integer_scheme(name, 2, Type::Var(0)));
     }
-    // Widening int → float. Total, so it is bare `float` rather than a Result:
-    // every i64 has a nearest double. Implements [BUILTIN-TOFLOAT] and the GPU
-    // surface's explicit element conversion [GPU-CONVERT].
-    mono(e, "toFloat", vec![i()], Type::float());
+    e.insert("bitNot", open_integer_scheme("bitNot", 1, Type::Var(0)));
+    // Conversions named for their target, over any integer source
+    // [BUILTIN-CONVERT-INT]; out of range performs `Arith.overflow`.
+    for target in Numeric::ALL.into_iter().filter(|n| n.is_integer()) {
+        let name = conversion_name(target);
+        e.insert(
+            &name,
+            open_integer_scheme(&name, 1, Type::prim(target.name())),
+        );
+    }
+    // Every numeric source converts to the target's float width. Total, so no
+    // Result [BUILTIN-CONVERT-FLOAT] [GPU-CONVERT].
+    for target in Numeric::ALL.into_iter().filter(|n| n.is_float()) {
+        let name = conversion_name(target);
+        e.insert(
+            &name,
+            open_numeric_scheme(&name, 1, Type::prim(target.name())),
+        );
+    }
     // The unary float functions every numeric kernel is written from. Total
-    // over IEEE doubles (a domain error yields NaN, an overflow infinity), so
-    // bare `float`; pure, so a kernel may call or name them [BUILTIN-MATH],
+    // over each float width (a domain error yields NaN, an overflow infinity),
+    // returning that width; pure, so a kernel may call or name them [BUILTIN-MATH],
     // [BUILTIN-MATH-TRIG], [BUILTIN-MATH-HYPERBOLIC], [BUILTIN-MATH-LOG],
     // [BUILTIN-MATH-ROUNDING], [BUILTIN-MATH-SPECIAL].
-    for name in [
-        "sqrt", "exp", "ln", "tanh", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh",
-        "asinh", "acosh", "atanh", "log2", "log10", "log1p", "expm1", "erf", "erfc", "floor",
-        "ceil", "trunc", "round",
-    ] {
-        mono(e, name, vec![Type::float()], Type::float());
+    for name in crate::arithmetic::UNARY_FLOAT_BUILTINS {
+        e.insert(name, open_float_scheme(name, 1, Type::Var(0)));
     }
     // Total binary float functions [BUILTIN-MATH-ROUNDING], [BUILTIN-MATH-TRIG],
     // [BUILTIN-MATH-LOG]: C pow/atan2/hypot/fmod/copysign semantics, so no
     // Arith operation and no Result.
-    for name in ["pow", "atan2", "hypot", "fmod", "copysign"] {
-        mono(e, name, vec![Type::float(), Type::float()], Type::float());
+    for name in crate::arithmetic::BINARY_FLOAT_BUILTINS {
+        e.insert(name, open_float_scheme(name, 2, Type::Var(0)));
     }
-    // Binary64 → binary32 emulation and the bit-level views of both formats
-    // [BUILTIN-FLOAT32], [BUILTIN-FLOAT-BITS]. All total and pure.
-    mono(e, "float32", vec![Type::float()], Type::float());
+    // Bit-level views at each width [BUILTIN-FLOAT-BITS]. All total and pure.
     mono(e, "floatBits", vec![Type::float()], i());
     mono(e, "floatFromBits", vec![i()], Type::float());
-    mono(e, "float32Bits", vec![Type::float()], i());
-    mono(e, "float32FromBits", vec![i()], Type::float());
+    mono(
+        e,
+        "float32Bits",
+        vec![Type::prim("float32")],
+        Type::prim("int32"),
+    );
+    mono(
+        e,
+        "float32FromBits",
+        vec![Type::prim("int32")],
+        Type::prim("float32"),
+    );
+    mono(
+        e,
+        "float16Bits",
+        vec![Type::prim("float16")],
+        Type::prim("int16"),
+    );
+    mono(
+        e,
+        "float16FromBits",
+        vec![Type::prim("int16")],
+        Type::prim("float16"),
+    );
     // Checked truncation float → int [BUILTIN-FLOATTOINT]: NaN, ±inf and
     // magnitudes outside the i64 range are Error, so it is a Result and not a
     // kernel (is_gpu_scalar rejects the Error return).
-    mono(e, "floatToInt", vec![Type::float()], res(i()));
-    // Bitwise integer builtins [BUILTIN-BITWISE]. Total — a shift count
-    // outside 0..63 is the limit of repeated shifting, never a fault and
-    // never an Arith operation.
-    for name in ["bitAnd", "bitOr", "bitXor"] {
-        mono(e, name, vec![i(), i()], i());
-    }
-    mono(e, "bitNot", vec![i()], i());
-    for name in ["shiftLeft", "shiftRight", "shiftRightLogical"] {
-        mono(e, name, vec![i(), i()], i());
-    }
-    // Named equivalents of the overflow-checked integer operators. These retain
-    // the runtime builtins' generic Error channel for compatibility.
+    e.insert("floatToInt", open_float_scheme("floatToInt", 1, res(i())));
+    // Named equivalents of the overflow-checked integer operators, carrying the
+    // runtime builtins' generic Error channel.
     for checked in ["checkedAdd", "checkedSub", "checkedMul"] {
-        mono(e, checked, vec![i(), i()], res(i()));
+        e.insert(checked, open_integer_scheme(checked, 2, res(Type::Var(0))));
     }
 }
 

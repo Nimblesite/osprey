@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 
 /// An optional value, the `Option<T>` of the typeDiagram model. A field that
 /// is `Absent` is omitted from canonical JSON and is never `null`
@@ -27,10 +28,7 @@ module Maybe {
     }
 
     /// `Present` of a successful result, or the failure unchanged.
-    export fn ofResult(result) = match result {
-        Success { value } => Success { value: Present { value: value } }
-        Error { message } => Error { message: message }
-    }
+    export fn ofResult(result) = Checked::andThen(result, fn(value) => Success { value: Present { value: value } })
 
     /// A present value.
     export fn some(value) = Present { value: value }

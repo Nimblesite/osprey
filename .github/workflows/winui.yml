@@ -1,12 +1,12 @@
 name: WinUI host
 
-# Plan 0038 ([WINUI-HOST]): build the CLI and its MinGW runtime, compile the apps to windows-x64
+# Plan 0037 ([WINUI-HOST]): build the CLI and its MinGW runtime, compile the apps to windows-x64
 # DLLs, then run the WinUI host's tests and publish the host with
 # Native AOT. The tests drive the real DLL boundary, the envelope, the region store, the
 # capabilities and the folder walk, and guard coverage, no XAML and host neutrality. No test opens
 # a window. Then every app runs as its own sandboxed MSIX package in a real window on the runner's
 # desktop, driven by its self-test script, and each picture is compared with the app's screenshot
-# goldens (plan 0046); the pictures and any diffs are kept as an artifact.
+# goldens (plan 0037); the pictures and any diffs are kept as an artifact.
 #
 # ci.yml calls this workflow on every pull request, and its root `ci` job, the required check,
 # needs both jobs here. A PR that changes no code skips the host at the job level, which reports

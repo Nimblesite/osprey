@@ -98,6 +98,7 @@ impl Codegen {
     /// SSA/label counters and an isolated scope stack (handlers capture nothing).
     pub(crate) fn enter_nested_fn(&mut self) -> SavedFn {
         let saved = SavedFn {
+            expression_type: self.expression_type.take(),
             lines: std::mem::take(&mut self.cur_lines),
             block: std::mem::replace(&mut self.cur_block, String::from("entry")),
             regs: self.reg_count,
@@ -143,6 +144,23 @@ impl Codegen {
         params: &[(LType, String)],
     ) {
         self.finish_function(ret, name, params);
+        self.restore_function(saved);
+    }
+
+    pub(crate) fn exit_c_callback(
+        &mut self,
+        saved: SavedFn,
+        ret: (&str, LType),
+        name: &str,
+        params: &[(LType, String)],
+    ) {
+        let signature = format!("{}{}", self.c_scalar_extension(ret.1), ret.0);
+        self.finish_function_with_abi(&signature, name, params, true);
+        self.restore_function(saved);
+    }
+
+    fn restore_function(&mut self, saved: SavedFn) {
+        self.expression_type = saved.expression_type;
         self.cur_lines = saved.lines;
         self.cur_block = saved.block;
         self.reg_count = saved.regs;
@@ -242,11 +260,28 @@ impl Codegen {
     }
 
     pub(crate) fn finish_function(&mut self, ret: &str, name: &str, params: &[(LType, String)]) {
+        self.finish_function_with_abi(ret, name, params, false);
+    }
+
+    fn finish_function_with_abi(
+        &mut self,
+        ret: &str,
+        name: &str,
+        params: &[(LType, String)],
+        c_boundary: bool,
+    ) {
         let lines = std::mem::take(&mut self.cur_lines);
         self.cur_lines = crate::arc::instrument_unwind(self, self.arc_slot_count, lines);
         let param_list = params
             .iter()
-            .map(|(ty, n)| format!("{ty} %{n}"))
+            .map(|(ty, n)| {
+                let extension = if c_boundary {
+                    self.c_scalar_extension(*ty)
+                } else {
+                    ""
+                };
+                format!("{ty} {extension}%{n}")
+            })
             .collect::<Vec<_>>()
             .join(", ");
         let body = std::mem::take(&mut self.cur_lines).join("\n");

@@ -201,9 +201,9 @@ def byte_read_cases():
 def float_byte_cases():
     """IEEE words for 1.5 also match CPython struct.pack's little-endian bytes."""
     return [
-        Check.equal("bytes.f16_from_bits", Bytes.f16_from_bits(15872), 1.5),
+        Check.truth("bytes.f16_from_bits", Bytes.f16_from_bits(15872) == toFloat16(1.5), "f16_from_bits(15872) != toFloat16(1.5)"),
         Check.equal("bytes.bf16_from_bits", Bytes.bf16_from_bits(16320), 1.5),
-        Check.equal("bytes.f32_from_bits", Bytes.f32_from_bits(1069547520), 1.5),
+        Check.truth("bytes.f32_from_bits", Bytes.f32_from_bits(1069547520) == toFloat32(1.5), "f32_from_bits(1069547520) != toFloat32(1.5)"),
         Check.equal("bytes.f64_from_parts", Bytes.f64_from_parts(0, 1023, 2251799813685248), 1.5),
         Check.equal("bytes.decode_f16", Bytes.decode_f16(F16_WORD, 0), 1.5),
         Check.equal("bytes.decode_bf16", Bytes.decode_bf16(BF16_WORD, 0), 1.5),
@@ -254,7 +254,7 @@ def binary_edge_cases():
 
 
 def helper_cases():
-    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), json_helper_cases(), json_value_cases(), binary_edge_cases(), byte_guard_cases(), utf8_cases(), f64_encode_cases(), f16_encode_cases(), f32_encode_cases(), int_encode_cases(), json_hex_case(), json_empty_case(), json_number_case(), json_reject_cases(), [tensor_info_case()]])
+    return concat_all([dtype_helper_cases(), byte_read_cases(), float_byte_cases(), json_helper_cases(), json_value_cases(), binary_edge_cases(), byte_guard_cases(), utf8_cases(), f64_encode_cases(), f16_encode_cases(), bf16_encode_cases(), f32_encode_cases(), int_encode_cases(), json_hex_case(), json_empty_case(), json_number_case(), json_reject_cases(), [tensor_info_case()]])
 
 
 def header_prefix_case(tag, data, prefix):
@@ -397,6 +397,30 @@ def f16_encode_cases():
         Check.ints_equal("bytes.f16_boundary", Bytes.f16_bytes(Check.float_of("6.103e-05")), Expected.F16_BOUNDARY_BYTES),
         Check.ints_equal("bytes.f16_round", Bytes.f16_bytes(2047.5), Expected.F16_ROUND_BYTES),
         Check.ints_equal("bytes.f16_min_subnormal", Bytes.f16_bytes(Bytes.pow2(-24)), Expected.F16_MIN_SUBNORMAL_BYTES),
+    ]
+
+
+def bf16_encode_cases():
+    """torch bfloat16 bytes: specials, overflow, carry, ties and the subnormal range."""
+    return [
+        Check.ints_equal("bytes.bf16_zero", Bytes.bf16_bytes(0.0), Expected.BF16_ZERO_BYTES),
+        Check.ints_equal("bytes.bf16_neg_zero", Bytes.bf16_bytes(-0.0), Expected.BF16_NEG_ZERO_BYTES),
+        Check.ints_equal("bytes.bf16_nan", Bytes.bf16_bytes(Check.float_of("nan")), Expected.BF16_NAN_BYTES),
+        Check.ints_equal("bytes.bf16_inf", Bytes.bf16_bytes(Check.float_of("inf")), Expected.BF16_INF_BYTES),
+        Check.ints_equal("bytes.bf16_neg_inf", Bytes.bf16_bytes(Check.float_of("-inf")), Expected.BF16_NEG_INF_BYTES),
+        Check.ints_equal("bytes.bf16_overflow", Bytes.bf16_bytes(Check.float_of("1e39")), Expected.BF16_OVERFLOW_BYTES),
+        Check.ints_equal("bytes.bf16_half", Bytes.bf16_bytes(0.5), Expected.BF16_HALF_BYTES),
+        Check.ints_equal("bytes.bf16_negative", Bytes.bf16_bytes(-0.75), Expected.BF16_NEGATIVE_BYTES),
+        Check.ints_equal("bytes.bf16_carry", Bytes.bf16_bytes(1.9999), Expected.BF16_CARRY_BYTES),
+        Check.ints_equal("bytes.bf16_tie_up", Bytes.bf16_bytes(1.01171875), Expected.BF16_TIE_UP_BYTES),
+        Check.ints_equal("bytes.bf16_tie_down", Bytes.bf16_bytes(1.00390625), Expected.BF16_TIE_DOWN_BYTES),
+        Check.ints_equal("bytes.bf16_min_subnormal", Bytes.bf16_bytes(Bytes.pow2(-133)), Expected.BF16_MIN_SUBNORMAL_BYTES),
+        Check.ints_equal("bytes.bf16_below_normal", Bytes.bf16_bytes(Bytes.pow2(-126) - Bytes.pow2(-135)), Expected.BF16_BELOW_NORMAL_BYTES),
+        Check.ints_equal("bytes.bf16_min_normal", Bytes.bf16_bytes(Bytes.pow2(-126)), Expected.BF16_MIN_NORMAL_BYTES),
+        Check.ints_equal("bytes.bf16_double_subnormal", Bytes.bf16_bytes(Check.float_of("5e-324")), Expected.BF16_DOUBLE_SUBNORMAL_BYTES),
+        Check.ints_equal("bytes.bf16_neg_double_subnormal", Bytes.bf16_bytes(Check.float_of("-5e-324")), Expected.BF16_NEG_DOUBLE_SUBNORMAL_BYTES),
+        Check.truth("bytes.f64_from_parts_neg_inf", Bytes.f64_from_parts(1, 2047, 0) == Check.float_of("-inf"), "exponent 2047, fraction 0 is not an infinity"),
+        Check.truth("bytes.f64_from_parts_nan", Bytes.f64_from_parts(0, 2047, 1) != Bytes.f64_from_parts(0, 2047, 1), "exponent 2047, fraction 1 is not a NaN"),
     ]
 
 

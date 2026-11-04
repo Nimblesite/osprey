@@ -1,8 +1,10 @@
 //! Arithmetic values and implicit requests. Implements [ARITH-EFFECT].
 
+use crate::check::Checker;
 use crate::effect_rows::ExprArgs;
 use crate::error::TypeError;
-use crate::ty::{names, Type};
+use crate::numeric::Numeric;
+use crate::ty::Type;
 use osprey_ast::{AstNode, Expr, Position};
 use std::collections::HashMap;
 
@@ -18,6 +20,73 @@ pub(crate) fn absolute_scheme() -> crate::ty::Scheme {
     scheme
 }
 
+/// [TYPE-NUMERIC-SIZED] A builtin `(T, …) -> ret` open over the integer types:
+/// one overload per use, retained by wrappers until their call sites resolve
+/// it, exactly as [`absolute_scheme`] is. `ret` is written over `Type::Var(0)`.
+pub(crate) fn open_integer_scheme(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
+    open_scheme(
+        crate::builtin_constraints::INTEGER_OPERAND_PREFIX,
+        op,
+        arity,
+        ret,
+    )
+}
+
+/// [BUILTIN-MATH] A builtin open over the three float widths.
+pub(crate) fn open_float_scheme(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
+    open_scheme(
+        crate::builtin_constraints::FLOAT_OPERAND_PREFIX,
+        op,
+        arity,
+        ret,
+    )
+}
+
+/// [BUILTIN-CONVERT-FLOAT] A conversion open over every numeric source type.
+pub(crate) fn open_numeric_scheme(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
+    open_scheme(
+        crate::builtin_constraints::NUMERIC_OPERAND_PREFIX,
+        op,
+        arity,
+        ret,
+    )
+}
+
+fn open_scheme(prefix: &str, op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
+    let operands = vec![Type::Var(0); arity];
+    let mut scheme = crate::ty::Scheme::poly(vec![0], Type::fun(operands.clone(), ret));
+    scheme
+        .obligations
+        .push((format!("arith {op}"), Type::fun(operands, Type::Var(0))));
+    scheme
+        .obligations
+        .push((format!("{prefix}{op}"), Type::Var(0)));
+    scheme
+}
+
+/// The float builtins whose unresolved operands default to `float`, never `int`.
+pub(crate) fn is_float_open(op: &str) -> bool {
+    op == "floatToInt" || UNARY_FLOAT_BUILTINS.contains(&op) || BINARY_FLOAT_BUILTINS.contains(&op)
+}
+
+/// The unary functions open over the float widths [BUILTIN-MATH].
+pub(crate) const UNARY_FLOAT_BUILTINS: [&str; 25] = [
+    "sqrt", "exp", "ln", "tanh", "sin", "cos", "tan", "asin", "acos", "atan", "sinh", "cosh",
+    "asinh", "acosh", "atanh", "log2", "log10", "log1p", "expm1", "erf", "erfc", "floor", "ceil",
+    "trunc", "round",
+];
+
+/// The binary functions open over the float widths [BUILTIN-MATH].
+pub(crate) const BINARY_FLOAT_BUILTINS: [&str; 5] = ["pow", "atan2", "hypot", "fmod", "copysign"];
+
+fn is_integer(ty: &Type) -> bool {
+    Numeric::of_type(ty).is_some_and(Numeric::is_integer)
+}
+
+fn is_float(ty: &Type) -> bool {
+    Numeric::of_type(ty).is_some_and(Numeric::is_float)
+}
+
 /// Open overloads resolve at the end of inference; known invalid types are
 /// reported once by the numeric operand obligation.
 pub(crate) fn absolute_operand(ty: &Type) -> bool {
@@ -28,11 +97,28 @@ pub(crate) fn absolute_operand(ty: &Type) -> bool {
 pub(crate) fn absolute_overflow_possible(ty: Option<&Type>) -> bool {
     match ty {
         Some(Type::Fun { params, .. }) => match params.as_slice() {
-            [operand] => operand.is_named(names::INT) || matches!(operand, Type::Var(_)),
+            [operand] => is_integer(operand) || matches!(operand, Type::Var(_)),
             _ => true,
         },
         _ => true,
     }
+}
+
+/// Whether an integer conversion can leave its target's range: never when the
+/// target holds every value of the known source ([BUILTIN-CONVERT-INT]).
+pub(crate) fn conversion_overflow_possible(name: &str, ty: Option<&Type>) -> bool {
+    let Some(target) = Numeric::conversion_target(name).filter(|n| n.is_integer()) else {
+        return false;
+    };
+    let source = match ty {
+        Some(Type::Fun { params, .. }) => params.first().and_then(Numeric::of_type),
+        _ => None,
+    };
+    let contained = source
+        .and_then(Numeric::range)
+        .zip(target.range())
+        .is_some_and(|((low, high), (least, most))| least <= low && high <= most);
+    !contained
 }
 
 /// Evaluate literal arithmetic without executing a fallible instruction.
@@ -69,6 +155,125 @@ pub(crate) fn constant_overflow(expr: &Expr) -> Option<TypeError> {
     };
     let message = fold_arithmetic(expr).err().filter(|_| operands_fold)?;
     Some(TypeError::new(message).with_pos(operator_position(expr)))
+}
+
+/// A constant whose type may still be decided: a literal, or a folded operator
+/// over literals. Checked at its resolved width once inference has finished.
+/// Implements [TYPE-NUMERIC-LITERAL] and [ARITH-EFFECT-CONST].
+pub(crate) struct ConstantSite {
+    value: Constant,
+    ty: Type,
+    position: Option<Position>,
+    /// The operator's own spelling; `None` for a literal.
+    operator: Option<String>,
+}
+
+/// A source constant checked once against its resolved numeric type.
+#[derive(Clone, Copy)]
+enum Constant {
+    Integer(i64),
+    Float(f64),
+}
+
+impl Constant {
+    /// Whether the value fits `numeric`: an integer against its range, a float
+    /// by whether its nearest narrower value is infinite — `float32` rounds
+    /// `1e40` to infinity; `float16` overflows from `65520.0` up
+    /// ([TYPE-NUMERIC-LITERAL]).
+    #[expect(
+        clippy::as_conversions,
+        clippy::cast_possible_truncation,
+        reason = "the narrowing cast IS the question: whether the literal's nearest float32 is infinite"
+    )]
+    fn fits(self, numeric: Numeric) -> bool {
+        match self {
+            Constant::Integer(value) => numeric.fits(i128::from(value)),
+            Constant::Float(value) if numeric == Numeric::FLOAT32 => !(value as f32).is_infinite(),
+            Constant::Float(value) if numeric == Numeric::FLOAT16 => value.abs() < 65520.0,
+            Constant::Float(_) => true,
+        }
+    }
+
+    /// The literal as its diagnostic spells it ([TYPE-NUMERIC-LITERAL]).
+    fn spelling(self) -> String {
+        match self {
+            Constant::Integer(value) => value.to_string(),
+            Constant::Float(value) => format!("{value:e}"),
+        }
+    }
+}
+
+impl Checker {
+    /// The type of an integer literal: open until a context decides it.
+    pub(crate) fn integer_literal(&mut self, value: i64) -> Type {
+        let ty = self.ctx.fresh_literal(Numeric::INT);
+        self.constants.push(ConstantSite {
+            value: Constant::Integer(value),
+            ty: ty.clone(),
+            position: self.expr_position,
+            operator: None,
+        });
+        ty
+    }
+
+    /// The type of a float literal: open until a float context decides it.
+    pub(crate) fn float_literal(&mut self, value: f64) -> Type {
+        let ty = self.ctx.fresh_literal(Numeric::FLOAT);
+        self.constants.push(ConstantSite {
+            value: Constant::Float(value),
+            ty: ty.clone(),
+            position: self.expr_position,
+            operator: None,
+        });
+        ty
+    }
+
+    /// Bank a folded operator for the width check.
+    pub(crate) fn record_constant(&mut self, expr: &Expr, ty: &Type) {
+        let (Expr::Binary { .. } | Expr::Unary { .. }) = expr else {
+            return;
+        };
+        if let Ok(Some(Expr::Integer(value))) = fold_arithmetic(expr) {
+            self.constants.push(ConstantSite {
+                value: Constant::Integer(value),
+                ty: ty.clone(),
+                position: operator_position(expr).or(self.expr_position),
+                operator: Some(spelling(expr)),
+            });
+        }
+    }
+
+    /// Reject each constant outside the type it resolved to.
+    pub(crate) fn validate_constants(&mut self) {
+        for site in std::mem::take(&mut self.constants) {
+            let ty = self.ctx.apply(&site.ty);
+            let Some(numeric) = Numeric::of_type(&ty).filter(|n| !site.value.fits(*n)) else {
+                continue;
+            };
+            let name = numeric.name();
+            let message = match site.operator {
+                Some(written) => format!("constant arithmetic overflows: {written} at {name}"),
+                None => format!("literal {} does not fit {name}", site.value.spelling()),
+            };
+            self.errors
+                .push(TypeError::new(message).with_pos(site.position));
+        }
+    }
+}
+
+/// A constant operator written out over its folded operands.
+fn spelling(expr: &Expr) -> String {
+    let folded = |e: &Expr| match fold_arithmetic(e) {
+        Ok(Some(Expr::Integer(value))) => value.to_string(),
+        _ => String::new(),
+    };
+    match expr {
+        Expr::Binary {
+            op, left, right, ..
+        } => format!("{} {op} {}", folded(left), folded(right)),
+        Expr::Unary { operand, .. } => format!("-({})", folded(operand)),
+        _ => String::new(),
+    }
 }
 
 /// A binary operator's own position; a negation borrows its operand's.
@@ -123,20 +328,16 @@ pub(crate) fn operation(expr: &Expr, ty: Option<&Type>) -> Option<&'static str> 
             if nonzero_literal(right) {
                 return None;
             }
-            Some(
-                if op == "/" || ty.is_some_and(|ty| ty.is_named(names::FLOAT)) {
-                    "divideByZero"
-                } else {
-                    "remainderByZero"
-                },
-            )
+            Some(if op == "/" || ty.is_some_and(is_float) {
+                "divideByZero"
+            } else {
+                "remainderByZero"
+            })
         }
         Expr::Binary { op, .. } if matches!(op.as_str(), "+" | "-" | "*") => {
-            ty.filter(|ty| ty.is_named(names::INT)).map(|_| "overflow")
+            ty.filter(|ty| is_integer(ty)).map(|_| "overflow")
         }
-        Expr::Unary { op, .. } if op == "-" => {
-            ty.filter(|ty| ty.is_named(names::INT)).map(|_| "overflow")
-        }
+        Expr::Unary { op, .. } if op == "-" => ty.filter(|ty| is_integer(ty)).map(|_| "overflow"),
         _ => None,
     }
 }
@@ -157,6 +358,11 @@ pub(crate) fn total_builtin_operations(name: &str, arguments: ExprArgs<'_>) -> V
     };
     match name {
         "abs" if integer(0).is_some_and(|n| n != i64::MIN) => vec!["overflow"],
+        _ if Numeric::conversion_target(name)
+            .is_some_and(|to| integer(0).is_some_and(|n| to.fits(i128::from(n)))) =>
+        {
+            vec!["overflow"]
+        }
         "intDiv" => {
             let mut total = Vec::new();
             if integer(1).is_some_and(|n| n != 0) {

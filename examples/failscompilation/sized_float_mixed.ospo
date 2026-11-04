@@ -1,0 +1,7 @@
+// [TYPE-NUMERIC-SAME-TYPE] A binary operator takes both operands at one numeric type.
+let narrow: float32 = 1.0
+let wide = 2.0
+let small: float16 = 3.0
+print("${narrow + wide}")
+print("${narrow < wide}")
+print("${small + narrow}")

@@ -16,6 +16,7 @@ use super::loops::uniform_local;
 use super::{DeviceBody, DeviceFailure, Ty, Uniform};
 use crate::builder::Codegen;
 use osprey_ast::{Expr, MatchArm, NamedArgument, Parameter, Stmt};
+use osprey_types::numeric::Numeric;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -46,19 +47,23 @@ pub(super) struct Emitter<'a> {
     scopes: Vec<HashMap<String, Local>>,
     pub(super) depth: usize,
     foreign_call: Option<String>,
+    pub(super) default_float: Ty,
 }
 
 /// Helper inlining deeper than this is treated as recursion.
 pub(super) const MAX_INLINE_DEPTH: usize = 24;
 
 /// Compile `body` with the kernel's parameters bound to `p0`, `p1`, … and
-/// its captures to `u0`, `u1`, ….
+/// its captures to `u0`, `u1`, …. `params` are compute types, `storages` the
+/// buffer element types they read from; `result_storage` types the `out`.
 pub(super) fn body(
     cg: &Codegen,
     parameters: &[Parameter],
     body: &Expr,
     params: &[Ty],
+    storages: &[Ty],
     captures: &[(String, Uniform)],
+    result_storage: Option<Ty>,
 ) -> Result<DeviceBody, DeviceFailure> {
     if parameters.len() != params.len() {
         return Err("the kernel's arity disagrees with the combinator's slots".into());
@@ -70,6 +75,11 @@ pub(super) fn body(
         scopes: vec![HashMap::new()],
         depth: 0,
         foreign_call: None,
+        default_float: if result_storage.is_some_and(|ty| ty.compute() == Ty::FLOAT32) {
+            Ty::FLOAT32
+        } else {
+            Ty::FLOAT
+        },
     };
     for (i, (parameter, ty)) in parameters.iter().zip(params).enumerate() {
         emitter.bind(&parameter.name, Local::Scalar(*ty, format!("p{i}")));
@@ -77,12 +87,18 @@ pub(super) fn body(
     for (i, (name, uniform)) in captures.iter().enumerate() {
         emitter.bind(name, uniform_local(i, uniform));
     }
-    let (result_ty, result) = emitter.checked_expression(body)?;
+    let (result_type, result) = emitter.checked_expression(body)?;
     Ok(DeviceBody {
         lines: emitter.blocks.pop().unwrap_or_default(),
         result,
-        result_ty,
+        // A boxed host return may look like an integer word. The emitted
+        // scalar determines its representation; storage can refine it (half)
+        // only when both have the same compute type [GPU-DEVICE-NATIVE].
+        result_storage: result_storage
+            .filter(|storage| storage.compute() == result_type)
+            .unwrap_or(result_type),
         params: params.to_vec(),
+        param_storage: storages.to_vec(),
         uniforms: captures
             .iter()
             .map(|(_, uniform)| uniform.clone())
@@ -112,7 +128,7 @@ impl Emitter<'_> {
 
     pub(super) fn declare(&mut self, ty: Ty, value: &str) -> String {
         let name = self.temp();
-        self.line(format!("{} {name} = {value};", ty.spelling()));
+        self.line(format!("{} {name} = {value};", ty.compute_spelling()));
         name
     }
 
@@ -152,8 +168,13 @@ impl Emitter<'_> {
 
     pub(super) fn expression(&mut self, expression: &Expr) -> Emitted {
         match expression {
-            Expr::Integer(n) => Ok((Ty::Int, int_literal(*n))),
-            Expr::Float(f) => Ok((Ty::Float, float_literal(*f))),
+            Expr::Integer(n) => Ok((Ty::INT, int_literal(*n))),
+            Expr::Float(f) => Ok((
+                self.default_float,
+                super::numeric::convert(self.default_float, Ty::FLOAT, &float_literal(*f))
+                    .map(|(_, text)| text)
+                    .ok_or_else(|| "float literal has no device representation".to_string())?,
+            )),
             Expr::Bool(b) => Ok((Ty::Bool, if *b { "true" } else { "false" }.into())),
             Expr::Identifier(name) => self.identifier(name),
             Expr::Binary {
@@ -181,7 +202,19 @@ impl Emitter<'_> {
             Some(Local::Buffer(..)) => Err(format!("`{name}` is a buffer, not a kernel value")),
             Some(Local::Function(_)) => Err(format!("`{name}` is a function, not a kernel value")),
             None => match self.cg.device.constants.get(name).cloned() {
-                Some(literal) => self.expression(&literal),
+                Some((target, literal)) => {
+                    let (ty, value) = self
+                        .with_float_context(target.map_or(Ty::FLOAT, Ty::compute), |emitter| {
+                            emitter.expression(&literal)
+                        })?;
+                    match target {
+                        Some(storage) if storage.compute() != ty => {
+                            super::numeric::convert(storage, ty, &value)
+                                .ok_or_else(|| "constant has no device conversion".into())
+                        }
+                        _ => Ok((ty, value)),
+                    }
+                }
                 None => Err(format!("`{name}` is not a value a device kernel can reach")),
             },
         }
@@ -193,13 +226,19 @@ impl Emitter<'_> {
         }
         let (left_ty, l) = self.expression(left)?;
         let (right_ty, r) = self.expression(right)?;
+        let (left_ty, l) = super::numeric::fit_literal(left, left_ty, l, right_ty);
+        let (right_ty, r) = super::numeric::fit_literal(right, right_ty, r, left_ty);
         match (left_ty, right_ty) {
-            (Ty::Int, Ty::Int) => int_binary(op, &l, &r),
-            (Ty::Float, Ty::Float) => float_binary(op, &l, &r),
+            (Ty::Num(a), Ty::Num(b)) if a == b && a.is_integer() => int_binary(op, a, &l, &r),
+            (Ty::Num(a), Ty::Num(b)) if a == b && a.is_float() => float_binary(op, a, &l, &r),
             (Ty::Bool, Ty::Bool) if op == "==" || op == "!=" => {
                 Ok((Ty::Bool, format!("({l} {op} {r})")))
             }
-            _ => Err(format!("`{op}` over {left_ty:?} and {right_ty:?} operands")),
+            _ => Err(format!(
+                "`{op}` over {} and {} operands",
+                left_ty.name(),
+                right_ty.name()
+            )),
         }
     }
 
@@ -208,7 +247,7 @@ impl Emitter<'_> {
     fn short_circuit(&mut self, op: &str, left: &Expr, right: &Expr) -> Emitted {
         let (ty, condition) = self.expression(left)?;
         if ty != Ty::Bool {
-            return Err(format!("`{op}` over a {ty:?} operand"));
+            return Err(format!("`{op}` over a {} operand", ty.name()));
         }
         if op == "&&" {
             self.branch(&condition, right, &Expr::Bool(false))
@@ -220,10 +259,16 @@ impl Emitter<'_> {
     fn unary(&mut self, op: &str, operand: &Expr) -> Emitted {
         let (ty, value) = self.expression(operand)?;
         match (op, ty) {
-            ("-", Ty::Int) => Ok((Ty::Int, format!("osprey_neg({value}, fault)"))),
-            ("-", Ty::Float) => Ok((Ty::Float, format!("neg64({value})"))),
+            ("-", Ty::Num(n)) if n.is_integer() => Ok((
+                ty,
+                format!("osprey_neg{}({value}, fault)", super::numeric::suffix(n)),
+            )),
+            ("-", Ty::Num(n)) if n.is_float() => match n.float_compute() {
+                Numeric::FLOAT => Ok((Ty::FLOAT, format!("neg64({value})"))),
+                _ => Ok((Ty::Num(n.float_compute()), format!("(-({value}))"))),
+            },
             ("!" | "not", Ty::Bool) => Ok((Ty::Bool, format!("(!{value})"))),
-            _ => Err(format!("unary `{op}` over a {ty:?} operand")),
+            _ => Err(format!("unary `{op}` over a {} operand", ty.name())),
         }
     }
 
@@ -256,73 +301,6 @@ impl Emitter<'_> {
         }
     }
 
-    fn builtin(&mut self, name: &str, arguments: &[Expr]) -> Emitted {
-        let values = arguments
-            .iter()
-            .map(|argument| self.expression(argument))
-            .collect::<Result<Vec<_>, _>>()?;
-        let unary = |ty: Ty, text: String| Ok((ty, text));
-        match (name, values.as_slice()) {
-            ("intDiv", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("osprey_div({a}, {b}, fault)"))
-            }
-            ("toFloat", [(Ty::Int, a)]) => unary(Ty::Float, format!("from_long({a})")),
-            ("sqrt" | "exp" | "ln" | "tanh", [(Ty::Float, a)]) => {
-                unary(Ty::Float, format!("{name}64({a})"))
-            }
-            // The unary float functions of [BUILTIN-MATH] and its sections:
-            // one call into the device math library, total and pure.
-            (
-                "sin" | "cos" | "tan" | "asin" | "acos" | "atan" | "sinh" | "cosh" | "asinh"
-                | "acosh" | "atanh" | "log2" | "log10" | "log1p" | "expm1" | "erf" | "erfc"
-                | "floor" | "ceil" | "trunc" | "round",
-                [(Ty::Float, a)],
-            ) => unary(Ty::Float, format!("{name}64({a})")),
-            // Binary float functions [BUILTIN-MATH-TRIG] [BUILTIN-MATH-LOG]
-            // [BUILTIN-MATH-ROUNDING].
-            ("pow" | "atan2" | "hypot" | "fmod" | "copysign", [(Ty::Float, a), (Ty::Float, b)]) => {
-                unary(Ty::Float, format!("{name}64({a}, {b})"))
-            }
-            // [BUILTIN-FLOAT32] the binary32 emulation; [BUILTIN-FLOAT-BITS]
-            // the bit-level views. A device float IS its binary64 word, so
-            // floatBits is the identity and floatFromBits a cast of the word.
-            ("float32", [(Ty::Float, a)]) => unary(Ty::Float, format!("float32_64({a})")),
-            ("floatBits", [(Ty::Float, a)]) => unary(Ty::Int, a.clone()),
-            ("floatFromBits", [(Ty::Int, a)]) => unary(Ty::Float, a.clone()),
-            ("float32Bits", [(Ty::Float, a)]) => unary(Ty::Int, format!("float32_bits({a})")),
-            ("float32FromBits", [(Ty::Int, a)]) => {
-                unary(Ty::Float, format!("float32_from_bits({a})"))
-            }
-            ("abs", [(Ty::Int, a)]) => unary(Ty::Int, format!("osprey_abs({a}, fault)")),
-            ("abs", [(Ty::Float, a)]) => unary(Ty::Float, format!("abs64({a})")),
-            // [BUILTIN-BITWISE] the word operations; the shifts are total on
-            // the device exactly as on the host.
-            ("bitAnd", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) & ({b}))")),
-            ("bitOr", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) | ({b}))")),
-            ("bitXor", [(Ty::Int, a), (Ty::Int, b)]) => unary(Ty::Int, format!("(({a}) ^ ({b}))")),
-            ("bitNot", [(Ty::Int, a)]) => unary(Ty::Int, format!("(~({a}))")),
-            ("shiftLeft", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("shl64({a}, {b})"))
-            }
-            ("shiftRight", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("shr64({a}, {b})"))
-            }
-            ("shiftRightLogical", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("shru64({a}, {b})"))
-            }
-            ("wrapAdd", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("(long)((ulong)({a}) + (ulong)({b}))"))
-            }
-            ("wrapSub", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("(long)((ulong)({a}) - (ulong)({b}))"))
-            }
-            ("wrapMul", [(Ty::Int, a), (Ty::Int, b)]) => {
-                unary(Ty::Int, format!("(long)((ulong)({a}) * (ulong)({b}))"))
-            }
-            _ => Err(format!("`{name}` has no device form")),
-        }
-    }
-
     /// Inline a helper: each argument is bound once, in order, then the body
     /// is emitted in a scope holding the parameters.
     fn inline(&mut self, name: &str, arguments: &[Expr]) -> Emitted {
@@ -330,7 +308,15 @@ impl Emitter<'_> {
             return Err(format!("`{name}` is not a function the device can inline"));
         };
         let bindings = self.bindings(name, &parameters, arguments)?;
-        self.apply(&body, bindings)
+        let target = self
+            .cg
+            .prog
+            .return_type(name)
+            .and_then(Numeric::of_type)
+            .filter(|n| n.is_float())
+            .map_or(self.default_float, Ty::Num);
+        self.with_float_context(target, |emitter| emitter.apply(&body, bindings))
+            .map_err(|reason| format!("{name}: {reason}"))
     }
 
     /// Inline a function argument the way a helper is inlined, in its own
@@ -421,7 +407,7 @@ impl Emitter<'_> {
     fn length(&mut self, arguments: &[Expr]) -> Emitted {
         match arguments {
             [Expr::Identifier(name)] => match self.lookup(name) {
-                Some(Local::Buffer(_, len)) => Ok((Ty::Int, format!("(long){len}"))),
+                Some(Local::Buffer(_, len)) => Ok((Ty::INT, format!("(long){len}"))),
                 _ => Err(format!(
                     "gpuLength of `{name}`, which is not a captured buffer"
                 )),
@@ -458,7 +444,10 @@ impl Emitter<'_> {
         };
         let (ty, condition) = self.expression(value)?;
         if ty != Ty::Bool {
-            return Err(format!("a match over a {ty:?} scrutinee with boolean arms"));
+            return Err(format!(
+                "a match over a {} scrutinee with boolean arms",
+                ty.name()
+            ));
         }
         self.branch(&condition, then, otherwise)
     }
@@ -469,10 +458,14 @@ impl Emitter<'_> {
         let (else_lines, else_ty, else_value) =
             self.nested(|emitter| emitter.expression(otherwise))?;
         if then_ty != else_ty {
-            return Err(format!("arms of a {then_ty:?} and a {else_ty:?}"));
+            return Err(format!(
+                "arms of a {} and a {}",
+                then_ty.name(),
+                else_ty.name()
+            ));
         }
         let result = self.temp();
-        self.line(format!("{} {result};", then_ty.spelling()));
+        self.line(format!("{} {result};", then_ty.compute_spelling()));
         self.line(format!("if ({condition}) {{"));
         self.indented(then_lines);
         self.line(format!("  {result} = {then_value};"));

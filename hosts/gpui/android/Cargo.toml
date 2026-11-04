@@ -1,0 +1,23 @@
+[package]
+name = "osprey-gpui-android"
+version = "0.1.0"
+edition = "2021"
+description = "The Android GPUI platform backend of the Osprey GPUI host: NativeActivity lifecycle, an ANativeWindow rendered through gpui-pre-wgpu, touch input, density and night mode [CAST-MOBILE-GPUI]"
+license = "MIT"
+publish = false
+
+[dependencies]
+# Pinned to the same pre-family the host renders with on every platform.
+gpui = { package = "gpui-pre", version = "=0.3.10" }
+gpui_wgpu = { package = "gpui-pre-wgpu", version = "=0.3.10" }
+
+[target.'cfg(target_os = "android")'.dependencies]
+accesskit = "=0.24.1"
+accesskit_android = { version = "=0.7.5", features = ["embedded-dex"] }
+android-activity = { version = "0.6", features = ["native-activity"] }
+jni = "=0.21.1"
+anyhow = "1"
+futures = "0.3"
+log = "0.4"
+raw-window-handle = "0.6"
+uuid = { version = "1", features = ["v5"] }

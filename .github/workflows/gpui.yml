@@ -1,6 +1,6 @@
 name: GPUI host
 
-# Plan 0036 phase 4 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): Linux runs every native, UI
+# Plan 0037 ([GPUI-HOST-TARGETS], [GPUI-HOST-VERIFICATION]): Linux runs every native, UI
 # and example suite in one job and the host's tests, clippy and headless app checks in another. The
 # Mac runs every scripted app in a real window, clippy, and its archive and string-ownership tests.
 # Windows runs the probe smoke and opens Flock and Painting in real windows on the runner's desktop.

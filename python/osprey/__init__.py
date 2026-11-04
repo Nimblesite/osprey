@@ -2,6 +2,7 @@
 
 import ctypes
 import json
+import math
 import os
 from pathlib import Path
 import subprocess
@@ -16,6 +17,9 @@ _LIBRARIES = {}
 _FILES = {}
 _LOADING = set()
 _CTYPES = {"int": ctypes.c_int64, "float": ctypes.c_double,
+           "int8": ctypes.c_int8, "int16": ctypes.c_int16, "int32": ctypes.c_int32,
+           "uint8": ctypes.c_uint8, "uint16": ctypes.c_uint16, "uint32": ctypes.c_uint32,
+           "float16": ctypes.c_uint16, "float32": ctypes.c_float,
            "bool": ctypes.c_bool, "string": ctypes.c_char_p, "Unit": None}
 
 
@@ -26,11 +30,17 @@ def _argument(value, kind):
         if "\0" in value:
             raise ValueError("Osprey C ABI strings cannot contain NUL")
         return value.encode("utf-8")
-    expected = {"int": int, "float": float, "bool": bool}[kind]
+    expected = bool if kind == "bool" else float if kind in ("float", "float32") else int
     if type(value) is not expected:
         raise TypeError(f"Osprey {kind} arguments require {expected.__name__}")
-    if kind == "int" and not -(2**63) <= value < 2**63:
-        raise OverflowError("Osprey int arguments must fit signed 64 bits")
+    if expected is int:
+        bits = ctypes.sizeof(_CTYPES[kind]) * 8
+        signed = kind.startswith("int")
+        low, high = (-(2**(bits - 1)), 2**(bits - 1)) if signed else (0, 2**bits)
+        if not low <= value < high:
+            raise OverflowError(f"Osprey {kind} arguments must fit {'signed' if signed else 'unsigned'} {bits} bits")
+    if kind == "float32" and math.isfinite(value) and not math.isfinite(ctypes.c_float(value).value):
+        raise OverflowError("Osprey float32 arguments must fit binary32")
     return value
 
 
@@ -38,18 +48,27 @@ def _function(library, descriptor):
     function = getattr(library._native, descriptor["symbol"])
     kinds = descriptor["parameters"]
     function.argtypes = [_CTYPES[kind] for kind in kinds]
-    function.restype = _CTYPES[descriptor["returns"]]
+    returns_string = descriptor["returns"] == "string"
+    function.restype = ctypes.c_void_p if returns_string else _CTYPES[descriptor["returns"]]
     def call(*arguments, **keywords):
         library._check_thread()
         arguments = _bind(descriptor, arguments, keywords)
         converted = [_argument(value, kind) for value, kind in zip(arguments, kinds)]
         result = function(*converted)
-        if descriptor["returns"] == "string" and result is None:
-            raise RuntimeError("Osprey returned a null string")
-        return result.decode("utf-8") if descriptor["returns"] == "string" else result
+        return _copy_string(library, result) if returns_string else result
     call.__name__ = descriptor["name"]
     call.__doc__ = _signature(descriptor)
     return call
+
+
+def _copy_string(library, pointer):
+    # [PYTHON-HOST-ABI] Copy before releasing the C export's owned reference.
+    if pointer is None:
+        raise RuntimeError("Osprey returned a null string")
+    try:
+        return ctypes.string_at(pointer).decode("utf-8")
+    finally:
+        library._release_string(pointer)
 
 
 def _signature(descriptor):
@@ -78,6 +97,8 @@ class Library:
     def __init__(self, path):
         self._thread = threading.current_thread()
         self._native = ctypes.PyDLL(str(path))
+        self._release_string = self._native.osprey_release_string
+        self._release_string.argtypes, self._release_string.restype = [ctypes.c_void_p], None
         self._bridge = Bridge()
         self._callback = CALLBACK(self._bridge.call)
         self._object_callback = OBJECT_CALLBACK(self._bridge.object)

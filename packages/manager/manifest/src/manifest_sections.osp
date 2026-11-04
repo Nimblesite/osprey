@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Toml
 import registry::Names
 import registry::Paths
@@ -114,10 +115,7 @@ module ManifestSections {
         Error => false
     }
 
-    fn roots(pairs, key, fallback, code, span) = match stringList(pairs, key, fallback, code) {
-        Error { message } => Error { message: message }
-        Success { value } => if allValidPaths(value) && uniqueStrings(value) { Success { value: value } } else { fail(code, spanOf(pairs, key, span)) }
-    }
+    fn roots(pairs, key, fallback, code, span) = Checked::andThen(stringList(pairs, key, fallback, code), fn(value) => if allValidPaths(value) && uniqueStrings(value) { Success { value: value } } else { fail(code, spanOf(pairs, key, span)) })
 
     fn flavorOf(pairs) = match optionalString(pairs, "flavor", "manifest.project.flavor") {
         Error { message } => Error { message: message }
@@ -147,44 +145,23 @@ module ManifestSections {
         name: name, sourceRoots: sourceRoots, defaultNamespace: ns, entry: entry, flavor: flavor, testRoots: testRoots, pythonSources: pythonSources
     }
 
-    fn projectBody(pairs, span) = match requiredString(pairs, "name", "manifest.project.name", span) {
-        Error { message } => Error { message: message }
-        Success { value } => if value == "" { fail("manifest.project.name", spanOf(pairs, "name", span)) } else { projectRoots(pairs, span, value) }
-    }
+    fn projectBody(pairs, span) = Checked::andThen(requiredString(pairs, "name", "manifest.project.name", span), fn(value) => if value == "" { fail("manifest.project.name", spanOf(pairs, "name", span)) } else { projectRoots(pairs, span, value) })
 
-    fn projectRoots(pairs, span, name) = match roots(pairs, "source_roots", defaultRoots, "manifest.project.source-roots", span) {
-        Error { message } => Error { message: message }
-        Success { value } => projectNamespace(pairs, span, name, value)
-    }
+    fn projectRoots(pairs, span, name) = Checked::andThen(roots(pairs, "source_roots", defaultRoots, "manifest.project.source-roots", span), fn(value) => projectNamespace(pairs, span, name, value))
 
-    fn projectNamespace(pairs, span, name, sourceRoots) = match optionalString(pairs, "default_namespace", "manifest.project.default-ns") {
-        Error { message } => Error { message: message }
-        Success { value } => projectEntry(pairs, span, name, sourceRoots, value)
-    }
+    fn projectNamespace(pairs, span, name, sourceRoots) = Checked::andThen(optionalString(pairs, "default_namespace", "manifest.project.default-ns"), fn(value) => projectEntry(pairs, span, name, sourceRoots, value))
 
-    fn projectEntry(pairs, span, name, sourceRoots, ns) = match entryOf(pairs) {
-        Error { message } => Error { message: message }
-        Success { value } => projectFlavor(pairs, span, name, sourceRoots, ns, value)
-    }
+    fn projectEntry(pairs, span, name, sourceRoots, ns) = Checked::andThen(entryOf(pairs), fn(value) => projectFlavor(pairs, span, name, sourceRoots, ns, value))
 
-    fn projectFlavor(pairs, span, name, sourceRoots, ns, entry) = match flavorOf(pairs) {
-        Error { message } => Error { message: message }
-        Success { value } => projectEnd(pairs, span, name, sourceRoots, ns, entry, value)
-    }
+    fn projectFlavor(pairs, span, name, sourceRoots, ns, entry) = Checked::andThen(flavorOf(pairs), fn(value) => projectEnd(pairs, span, name, sourceRoots, ns, entry, value))
 
     // Python-flavor sources are root-confined relative paths ending in `.py`
     // ([PACKAGE-MANIFEST]); the `.py` rule shares the roots failure's code and span.
     fn allEndInPy(paths) = foldList(paths, true, fn(ok, path) => ok && endsWith(path, ".py"))
 
-    fn pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, testRoots) = match roots(pairs, "python_sources", [], "manifest.project.python-sources", span) {
-        Error { message } => Error { message: message }
-        Success { value } => if allEndInPy(value) { Success { value: assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, value) } } else { fail("manifest.project.python-sources", spanOf(pairs, "python_sources", span)) }
-    }
+    fn pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, testRoots) = Checked::andThen(roots(pairs, "python_sources", [], "manifest.project.python-sources", span), fn(value) => if allEndInPy(value) { Success { value: assembleProject(name, sourceRoots, ns, entry, flavor, testRoots, value) } } else { fail("manifest.project.python-sources", spanOf(pairs, "python_sources", span)) })
 
-    fn projectEnd(pairs, span, name, sourceRoots, ns, entry, flavor) = match roots(pairs, "test_roots", [], "manifest.project.test-roots", span) {
-        Error { message } => Error { message: message }
-        Success { value } => pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, value)
-    }
+    fn projectEnd(pairs, span, name, sourceRoots, ns, entry, flavor) = Checked::andThen(roots(pairs, "test_roots", [], "manifest.project.test-roots", span), fn(value) => pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, value))
 
     /// `[project]`: required, with validated roots, entry and flavor.
     export fn project(root) = match find(pairsOf(root), "project") {
@@ -235,10 +212,7 @@ module ManifestSections {
         Error { message } => fail(message, span)
     }
 
-    fn packageName(pairs, span) = match requiredString(pairs, "name", "manifest.package.name", span) {
-        Error { message } => Error { message: message }
-        Success { value } => parsedKey(value, spanOf(pairs, "name", span))
-    }
+    fn packageName(pairs, span) = Checked::andThen(requiredString(pairs, "name", "manifest.package.name", span), fn(value) => parsedKey(value, spanOf(pairs, "name", span)))
 
     fn license(pairs, span) = match requiredString(pairs, "license", "manifest.license", span) {
         Error { message } => Error { message: message }
@@ -249,10 +223,7 @@ module ManifestSections {
     }
 
     fn keywords(pairs, span) = if !has(pairs, "keywords") { fail("manifest.keywords.missing", span) }
-        else { match stringList(pairs, "keywords", [], "manifest.keyword.grammar") {
-            Error { message } => Error { message: message }
-            Success { value } => keywordsOk(value, spanOf(pairs, "keywords", span))
-        } }
+        else { Checked::andThen(stringList(pairs, "keywords", [], "manifest.keyword.grammar"), fn(value) => keywordsOk(value, spanOf(pairs, "keywords", span))) }
 
     fn discovery(pairs, span) = match requiredString(pairs, "summary", "manifest.summary.missing", span) {
         Error { message } => Error { message: message }
@@ -262,25 +233,13 @@ module ManifestSections {
         }
     }
 
-    fn discoveryWith(pairs, span, summary) = match keywords(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: ManifestModel::Discovery { summary: summary, keywords: value } }
-    }
+    fn discoveryWith(pairs, span, summary) = Checked::andThen(keywords(pairs, span), fn(value) => Success { value: ManifestModel::Discovery { summary: summary, keywords: value } })
 
-    fn packageBody(pairs, span) = match packageName(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => packageLicensed(pairs, span, value)
-    }
+    fn packageBody(pairs, span) = Checked::andThen(packageName(pairs, span), fn(value) => packageLicensed(pairs, span, value))
 
-    fn packageLicensed(pairs, span, key) = match license(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => packageEnd(pairs, span, key, value)
-    }
+    fn packageLicensed(pairs, span, key) = Checked::andThen(license(pairs, span), fn(value) => packageEnd(pairs, span, key, value))
 
-    fn packageEnd(pairs, span, key, licenseText) = match discovery(pairs, span) {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Maybe::some(ManifestModel::Publication { package: key, licenseExpression: licenseText, discovery: value }) }
-    }
+    fn packageEnd(pairs, span, key, licenseText) = Checked::andThen(discovery(pairs, span), fn(value) => Success { value: Maybe::some(ManifestModel::Publication { package: key, licenseExpression: licenseText, discovery: value }) })
 
     /// `[package]`: optional for application roots; complete when present.
     export fn publication(root) = match find(pairsOf(root), "package") {

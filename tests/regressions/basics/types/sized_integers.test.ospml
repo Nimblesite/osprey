@@ -1,0 +1,175 @@
+(** Every small integer type: both ends of its range, each operator at its
+    width, overflow through the one `Arith` policy, and each boxed journey — list,
+    map, record, `Result`, `any`, closure and generic function.
+    Implements [TYPE-NUMERIC-SIZED], [TYPE-NUMERIC-LITERAL],
+    [TYPE-NUMERIC-ARITH-WIDTH], [TYPE-NUMERIC-WORD], [BUILTIN-CONVERT-INT],
+    [BUILTIN-TOTAL-ARITH] and [BUILTIN-BITWISE]. *)
+
+type Packet =
+    tag : uint8
+    delta : int16
+    count : uint32
+    seq : int32
+
+type Holder T =
+    held : T
+
+wrapping = handler Arith
+    overflow _ _ _ wrapped => wrapped
+    divideByZero _ _ => 0.0
+    remainderByZero _ => 0
+
+i8Low : int8
+i8Low = -128
+i8High : int8
+i8High = 127
+i16Low : int16
+i16Low = -32768
+i16High : int16
+i16High = 32767
+i32Low : int32
+i32Low = -2147483648
+i32High : int32
+i32High = 2147483647
+u8High : uint8
+u8High = 255
+u16High : uint16
+u16High = 65535
+u32High : uint32
+u32High = 4294967295
+u8Zero : uint8
+u8Zero = 0
+
+print "${i8Low} ${i8High} ${i16Low} ${i16High} ${i32Low} ${i32High}"
+print "${u8Zero} ${u8High} ${u16High} ${u32High}"
+
+bump : int16 -> int16
+bump n = n + 1
+identity x = x
+twice (f, x) = f (f x)
+
+arithmetic () =
+    print "${i8High + 1} ${i8Low - 1} ${i8High * 2} ${-i8Low}"
+    print "${i16High + 1} ${i16Low - 1} ${i16High * 2} ${-i16Low}"
+    print "${i32High + 1} ${i32Low - 1} ${i32High * 2} ${-i32Low}"
+    print "${u8High + 1} ${u8Zero - 1} ${u8High * 2} ${-u8High}"
+    print "${u16High + 1} ${u16High * 2}"
+    print "${u32High + 1} ${u32High * 2}"
+    print "${abs i8Low} ${abs i16High} ${abs u8High}"
+    print "${u8High % 7} ${i8Low % 7} ${i8Low % -1} ${u32High % 10}"
+    print "${u8High % u8Zero} ${intDiv i8Low (-1)} ${intDiv u8High 2} ${intDiv u8High u8Zero}"
+    print "${u8High / 2} ${i8Low / 2}"
+    print "${bump 32767} ${bump 41}"
+
+totalHelpers () =
+    print "${wrapAdd u8High 1} ${wrapSub u8Zero 1} ${wrapMul u8High 2} ${wrapAdd i8High 1}"
+    print "${satAdd u8High 1} ${satSub u8Zero 1} ${satMul u8High 2}"
+    print "${satAdd i8High 1} ${satSub i8Low 1} ${satMul i8Low (-1)} ${satAdd u32High 1}"
+    print "${bitAnd u8High 15} ${bitOr u8Zero 3} ${bitXor u8High 15} ${bitNot u8Zero} ${bitNot i8High}"
+    print "${shiftLeft u8High 1} ${shiftRight u8High 1} ${shiftRight i8Low 1} ${shiftRightLogical i8Low 1}"
+    print "${shiftLeft u8High 8} ${shiftRight u8High 8} ${shiftRight i8Low 8} ${shiftLeft i16High 15}"
+    print "${checkedAdd u8High 1} ${checkedAdd u8Zero 1} ${checkedSub u8Zero 1} ${checkedMul i8High 2}"
+
+comparisons () =
+    print "${u8High > 100} ${u32High > 2147483648} ${i8Low < 0} ${i32Low < i32High}"
+    print "${u8High == 255} ${u8High != 255} ${u32High >= 4294967295} ${u8Zero <= 0}"
+    label = match u8High
+        255 => "top"
+        0 => "bottom"
+        _ => "middle"
+    signed = match i8Low
+        -128 => "least"
+        _ => "other"
+    print "${label} ${signed}"
+
+conversions () =
+    print "${toInt u8High} ${toInt i8Low} ${toInt u32High} ${toInt i32Low}"
+    print "${toInt16 i8Low} ${toInt32 u16High} ${toUint16 u8High} ${toUint32 u16High}"
+    print "${toUint8 300} ${toInt8 u8High} ${toUint8 i8Low} ${toUint32 (-1)} ${toInt32 u32High}"
+    print "${toInt8 100} ${toUint8 255} ${toFloat u8High} ${toFloat i8Low} ${toFloat u32High}"
+    print "${toInt (bitNot u8Zero) + 1}"
+
+journeys () =
+    small : List<uint8>
+    small = [1, 200, u8High]
+    first = match small[1]
+        Success value => value + 100
+        _ => u8Zero
+    negatives = [i8Low, -1, i8High]
+    last = match negatives[0]
+        Success value => value - 1
+        _ => i8High
+    print "${first} ${last} ${length small}"
+    total = foldList small u8Zero (\(sum, x) => sum + x)
+    print "${total}"
+    kept = Holder(held = u8High)
+    print "${kept.held + 1}"
+    packet = Packet(tag = 250, delta = -32768, count = 4294967295, seq = 7)
+    print "${packet.tag + 10} ${packet.delta - 1} ${packet.count + 1} ${packet.seq * 2}"
+    print "${identity u8High + 1} ${identity i8Low - 1}"
+    print "${twice ((\x => x + 200), u8Zero)}"
+    scores = Map () |> mapSet "low" u8Zero |> mapSet "high" u8High
+    high = match scores["high"]
+        Success value => value + 1
+        _ => u8Zero
+    print "${high}"
+    chosen : uint8
+    chosen = match length small > 1
+        true => 7
+        false => u8High
+    joined = match length small
+        3 => u8High
+        _ => 5
+    print "${chosen} ${joined + 1}"
+    parsed : Result<uint8, string>
+    parsed = Success(value = 200)
+    unpacked = match parsed
+        Success value => value + 100
+        _ => u8Zero
+    print "${unpacked}"
+    erased : any
+    erased = u8High
+    print "${erased}"
+    print "${1 + 2} ${identity 9 + 1}"
+
+wrapping arithmetic
+wrapping totalHelpers
+comparisons ()
+wrapping conversions
+wrapping journeys
+
+strict work =
+    handle Arith
+        overflow op lhs rhs wrapped =>
+            print "overflow ${op} ${lhs} ${rhs} ${wrapped}"
+            99
+        divideByZero op lhs =>
+            print "zero ${op} ${lhs}"
+            0.0
+        remainderByZero lhs =>
+            print "remainder ${lhs}"
+            77
+    work ()
+
+counting () =
+    seen : uint8
+    mut seen = 250
+    handle Arith
+        overflow _ _ _ wrapped =>
+            seen := seen + 10
+            wrapped
+    moved = u8High + 2
+    print "${moved} ${seen}"
+
+wrapping counting
+
+print "${strict (\() => u8High + 1)}"
+print "${strict (\() => i8Low - 1)}"
+print "${strict (\() => -u8High)}"
+print "${strict (\() => abs i8Low)}"
+print "${strict (\() => intDiv i16Low (-1))}"
+print "${strict (\() => u8High % u8Zero)}"
+print "${strict (\() => toUint8 i8Low)}"
+print "${strict (\() => toUint32 i32Low)}"
+print "${strict (\() => toInt8 u8High)}"
+print "${strict (\() => u32High * 2)}"

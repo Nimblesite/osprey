@@ -1,0 +1,250 @@
+(** Every float width: rounding boundaries, subnormals, signed zero, the
+    non-finite values, the IEEE comparison table, arithmetic and math at each
+    width, bit views, and conversions in every direction.
+    Implements [TYPE-NUMERIC-SIZED], [TYPE-NUMERIC-LITERAL],
+    [TYPE-NUMERIC-ARITH-WIDTH], [TYPE-NUMERIC-PRINT], [TYPE-NUMERIC-WORD],
+    [BUILTIN-CONVERT-FLOAT], [BUILTIN-FLOAT-BITS], [BUILTIN-MATH],
+    [BUILTIN-MATH-ROUNDING] and [FLOAT-IEEE-RESULTS]. *)
+
+type Reading =
+    level : float32
+    ratio : float16
+    wide : float
+
+type Box T =
+    held : T
+
+wrapping = handler Arith
+    divideByZero _ _ => 0.0
+    overflow _ _ _ wrapped => wrapped
+    remainderByZero _ => 0
+
+f32One : float32
+f32One = 1.0
+f32Two : float32
+f32Two = 2.0
+f32Tenth : float32
+f32Tenth = 0.1
+f16One : float16
+f16One = 1.0
+f16Two : float16
+f16Two = 2.0
+f16Tenth : float16
+f16Tenth = 0.1
+
+narrow : float32 -> float32
+narrow x = x + 0.0
+returnsFloat32 : Unit -> float32
+returnsFloat32 () = 0.5
+halve : float32 -> float32
+halve x = x / 2.0
+quarter : Unit -> float16
+quarter () = 0.25
+
+rounding () =
+    print "${f32Tenth} ${f16Tenth}"
+    print "${toFloat32 1.0000000596046448} ${toFloat16 1.00048828125}"
+    print "${toFloat32 16777217} ${toFloat16 65519.9}"
+    print "${toFloat32 65504.0} ${toFloat16 65504.0}"
+    print "${toFloat32 1234567936} ${toFloat16 2048.0}"
+    print "${toFloat32 1.00048828125} ${toFloat16 1.0000000596046448}"
+
+subnormals () =
+    print "${toFloat32 0.000000000000000000000000000000000000000000001} ${toFloat16 0.00000006}"
+    print "${toFloat32 0.000000000000000000000000000000000000011754943508222875} ${toFloat16 0.00006103515625}"
+    print "${toFloat32 0.000000000000000000000000000000000000000000001 * toFloat32 0.5}"
+    print "${toFloat16 0.00000006 * toFloat16 0.5}"
+
+nonfinite () =
+    inf32 = toFloat32 350000000000000000000000000000000000000.0
+    nan32 = inf32 - inf32
+    inf16 = toFloat16 340000000000000000000000000000000000000.0
+    nan16 = inf16 - inf16
+    print "${inf32} ${nan32} ${inf16} ${nan16}"
+    print "${toFloat32 (sqrt (-1.0))} ${toFloat16 (sqrt (-1.0))}"
+    print "${inf32 / inf32} ${inf16 / inf16}"
+    print "${toFloat32 1.0 / toFloat32 0.000000000000000000000000000000000000000000001}"
+    print "${toFloat16 1.0 / toFloat16 0.00000006}"
+    print "${toFloat32 1.0 / toFloat32 0.0} ${1.0 / 0.0}"
+    print "${-inf32} ${-inf16}"
+    print "${toFloat32 (-0.0)} ${toFloat16 (-0.0)}"
+    print "${toFloat32 (-0.0) == toFloat32 0.0} ${toFloat16 (-0.0) == toFloat16 0.0}"
+
+comparisonTable () =
+    inf32 = toFloat32 350000000000000000000000000000000000000.0
+    nan32 = inf32 - inf32
+    inf16 = toFloat16 340000000000000000000000000000000000000.0
+    nan16 = inf16 - inf16
+    print "${nan32 == nan32} ${nan32 != nan32} ${nan32 < nan32} ${nan32 <= nan32} ${nan32 > nan32} ${nan32 >= nan32}"
+    print "${nan32 == f32One} ${nan32 != f32One} ${nan32 < f32One} ${nan32 <= f32One} ${nan32 > f32One} ${nan32 >= f32One}"
+    print "${f32One == nan32} ${f32One != nan32} ${f32One < nan32} ${f32One <= nan32} ${f32One > nan32} ${f32One >= nan32}"
+    print "${nan16 == nan16} ${nan16 != nan16} ${nan16 < nan16} ${nan16 <= nan16} ${nan16 > nan16} ${nan16 >= nan16}"
+    print "${nan16 == f16One} ${nan16 != f16One} ${nan16 < f16One} ${nan16 <= f16One} ${nan16 > f16One} ${nan16 >= f16One}"
+    print "${inf32 == inf32} ${inf32 > f32Two} ${inf32 < f32Two} ${f32Two < inf32}"
+    print "${inf16 == inf16} ${inf16 > f16Two} ${-inf16 < f16Two}"
+    print "${toFloat32 (-0.0) == toFloat32 0.0} ${toFloat32 (-0.0) != toFloat32 0.0} ${toFloat32 (-0.0) < toFloat32 0.0} ${toFloat32 (-0.0) <= toFloat32 0.0} ${toFloat32 (-0.0) > toFloat32 0.0} ${toFloat32 (-0.0) >= toFloat32 0.0}"
+    print "${toFloat16 (-0.0) == toFloat16 0.0} ${toFloat16 (-0.0) != toFloat16 0.0} ${toFloat16 (-0.0) < toFloat16 0.0} ${toFloat16 (-0.0) <= toFloat16 0.0} ${toFloat16 (-0.0) > toFloat16 0.0} ${toFloat16 (-0.0) >= toFloat16 0.0}"
+
+arithmetic () =
+    print "${f32One + f32One} ${f32Two - f32Tenth} ${toFloat32 3.0 * toFloat32 0.1} ${f32One / 2.0}"
+    print "${f16One + f16One} ${f16Two - f16Tenth} ${toFloat16 3.0 * toFloat16 0.1} ${f16One / 2.0}"
+    print "${toFloat32 5.5 % 2.0} ${toFloat32 (-5.5) % 2.0} ${toFloat32 5.5 % (-2.0)}"
+    print "${toFloat16 5.5 % 2.0} ${toFloat16 (-5.5) % 2.0}"
+    print "${-f32Tenth} ${-f16Tenth} ${abs (toFloat32 (-2.5))} ${abs (toFloat16 (-2.5))}"
+    print "${toFloat32 1.0 / 3.0} ${toFloat16 1.0 / 3.0}"
+
+mathBuiltins () =
+    print "${sqrt (toFloat32 2.0)} ${sqrt (toFloat16 2.0)}"
+    print "${pow (toFloat32 2.0) (toFloat32 10.0)} ${pow (toFloat16 2.0) (toFloat16 10.0)}"
+    print "${pow (toFloat32 2.0) (toFloat32 0.5)} ${pow (toFloat16 2.0) (toFloat16 0.5)}"
+    print "${floor (toFloat32 (-2.7))} ${floor (toFloat16 (-2.7))}"
+    print "${round (toFloat32 2.5)} ${round (toFloat32 3.5)} ${round (toFloat32 (-2.5))}"
+    print "${round (toFloat16 2.5)} ${round (toFloat16 3.5)} ${round (toFloat16 (-2.5))}"
+
+(** [FLOAT-IEEE-RESULTS] Runtime list inputs prevent folding away libm calls. *)
+portableTanh () =
+    inputs = [toFloat32 0.0, toFloat32 (-0.0), toFloat32 0.5, toFloat32 (-0.5), toFloat32 2.0, toFloat32 (-2.0), toFloat32 1000.0, toFloat32 (-1000.0), float32FromBits 1, float32FromBits (-2147483647)]
+    results = mapList inputs tanh
+    print (join (mapList results (\value => toString (float32Bits value))) " ")
+
+bitViews () =
+    print "${float32Bits (toFloat32 0.1)} ${float16Bits (toFloat16 1.0)}"
+    print "${float32FromBits 1036831949} ${float16FromBits 15360}"
+    print "${float32FromBits (float32Bits f32Tenth)} ${float16FromBits (float16Bits f16One)}"
+    print "${floatBits 1.0} ${floatFromBits 4607182418800017408}"
+    print "${float32Bits (toFloat32 (-0.0))} ${float16Bits (toFloat16 (-0.0))}"
+    print "${float32FromBits (-2147483648)} ${float16FromBits (-32768)}"
+
+conversions () =
+    print "${toFloat 7} ${toFloat32 7} ${toFloat16 7}"
+    print "${toFloat (toInt8 (-3))} ${toFloat32 (toUint8 200)} ${toFloat16 (toInt16 (-100))}"
+    print "${toFloat32 16777217} ${toFloat16 65519.9} ${toFloat32 f16Tenth} ${toFloat16 f32Tenth}"
+    print "${toFloat32 (toFloat 0.1)} ${toFloat16 (toFloat32 0.1)} ${toFloat (toFloat16 1.5)}"
+    print "${floatToInt (toFloat32 2.9)} ${floatToInt (toFloat16 (-2.9))} ${floatToInt 2.9} ${floatToInt (sqrt (toFloat32 (-1.0)))}"
+    print "${toInt8 200} ${toUint8 (-1)} ${toInt32 (toUint16 40000)} ${toInt (toUint32 4000000000)}"
+
+journeys () =
+    small : List<float32>
+    small = [0.5, 1.5, 0.1]
+    first = small[0] ?: toFloat32 0.0
+    last = small[2] ?: toFloat32 0.0
+    print "${first} ${last} ${length small}"
+    total = foldList small (toFloat32 0.0) (\(sum, x) => sum + x)
+    print "${total}"
+    inMap : Map<string, float32>
+    inMap = Map () |> mapSet "k" 0.25
+    fromMap = inMap["k"] ?: toFloat32 0.0
+    succeeded : Result<float32, string>
+    succeeded = Success(value = 0.5)
+    unpacked = match succeeded
+        Success value => value + 0.25
+        _ => toFloat32 0.0
+    print "${fromMap} ${unpacked}"
+    reading = Reading(level = 0.75, ratio = 0.5, wide = 0.25)
+    print "${reading.level + 0.25} ${reading.ratio + 0.25} ${reading.wide + 0.25}"
+    held : Box<float32>
+    held = Box(held = 0.125)
+    print "${held.held * toFloat32 2.0}"
+    erased : any
+    erased = f16Tenth
+    print "${erased}"
+
+matchSites () =
+    chosen : float32
+    chosen = match f32Tenth > 0.0
+        true => 0.2
+        false => 0.4
+    picked : float16
+    picked = match f16One > 0.0
+        true => 0.5
+        false => 0.25
+    print "${chosen} ${picked}"
+    tenth = match f32Tenth
+        0.1 => "tenth"
+        _ => "other"
+    negative = match toFloat16 (-1.5)
+        -1.5 => "minus"
+        _ => "other"
+    wide = match 0.1
+        0.5 => "half"
+        0.1 => "tenth"
+        _ => "other"
+    print "${tenth} ${negative} ${wide}"
+
+closureSites () =
+    captured : float32
+    captured = 0.25
+    scale = \x => x + captured
+    boost = \(x : float16) => x + 0.25
+    print "${scale (toFloat32 0.5)} ${boost (toFloat16 0.5)}"
+
+builtinsByName () =
+    roots32 = mapList [toFloat32 1.0, toFloat32 4.0, toFloat32 9.0] sqrt
+    roots16 = mapList [toFloat16 1.0, toFloat16 4.0, toFloat16 9.0] sqrt
+    print "${roots32[0] ?: toFloat32 0.0} ${roots32[2] ?: toFloat32 0.0} ${roots16[1] ?: toFloat16 0.0}"
+    widened = mapList roots32 toFloat
+    print "${widened[0] ?: 0.0} ${length widened}"
+    narrowed = mapList roots16 toFloat32
+    print "${narrowed[2] ?: toFloat32 0.0}"
+    floored = mapList [toFloat32 (-2.5), toFloat32 2.5] floor
+    print "${floored[0] ?: toFloat32 0.0} ${floored[1] ?: toFloat32 0.0}"
+
+rounding ()
+subnormals ()
+wrapping nonfinite
+comparisonTable ()
+arithmetic ()
+mathBuiltins ()
+portableTanh ()
+bitViews ()
+wrapping conversions
+journeys ()
+matchSites ()
+closureSites ()
+builtinsByName ()
+print "${halve (toFloat32 1.0)} ${quarter ()} ${narrow 0.5} ${returnsFloat32 ()}"
+
+strict work =
+    handle Arith
+        overflow op lhs rhs wrapped =>
+            print "overflow ${op} ${lhs} ${rhs} ${wrapped}"
+            99
+        divideByZero op lhs =>
+            print "zero ${op} ${lhs}"
+            0.0
+        remainderByZero lhs =>
+            print "remainder ${lhs}"
+            77
+    work ()
+
+print "${strict (\() => toFloat32 1.0 / toFloat32 0.0)}"
+print "${strict (\() => 1.0 / 0.0)}"
+print "${strict (\() => toFloat16 1.0 % toFloat16 0.0)}"
+
+(** [TYPE-NUMERIC-ARITH-WIDTH] Helpers infer their arithmetic width. *)
+generic32Add (a, b) = a + b
+generic32Sub (a, b) = a - b
+generic32Mul (a, b) = a * b
+genericDiv (a, b) = a / b
+generic32Rem (a, b) = a % b
+generic16Add (a, b) = a + b
+generic16Sub (a, b) = a - b
+generic16Mul (a, b) = a * b
+generic16Rem (a, b) = a % b
+generic32Cancel (a, b) = (a + b) - a
+generic16Cancel (a, b) = (a + b) - a
+generic64Cancel (a, b) = (a + b) - a
+genericResult (a, b) =
+    quotient = genericDiv (a, b)
+    Success(value = quotient)
+divisionAlias = genericDiv
+genericArithmetic () =
+    print "${float32Bits (generic32Add (toFloat32 5.5, toFloat32 2.25))} ${float32Bits (generic32Sub (toFloat32 5.5, toFloat32 2.25))} ${float32Bits (generic32Mul (toFloat32 5.5, toFloat32 2.25))} ${float32Bits (genericDiv (toFloat32 5.5, toFloat32 2.25))} ${float32Bits (generic32Rem (toFloat32 5.5, toFloat32 2.25))}"
+    print "${float16Bits (generic16Add (toFloat16 5.5, toFloat16 2.25))} ${float16Bits (generic16Sub (toFloat16 5.5, toFloat16 2.25))} ${float16Bits (generic16Mul (toFloat16 5.5, toFloat16 2.25))} ${float16Bits (genericDiv (toFloat16 5.5, toFloat16 2.25))} ${float16Bits (generic16Rem (toFloat16 5.5, toFloat16 2.25))}"
+    print "${genericDiv (3, 1.5)} ${genericDiv (2.5, 2)} ${genericDiv (3, 2)} ${float32Bits (genericDiv (toFloat32 1.0, toFloat32 3.0))} ${float16Bits (genericDiv (toFloat16 1.0, toFloat16 3.0))}"
+    print "${float32Bits (divisionAlias (toFloat32 (-0.0), toFloat32 2.0))} ${float16Bits (divisionAlias (toFloat16 (-0.0), toFloat16 2.0))} ${float32Bits (genericDiv (float32FromBits 2, toFloat32 2.0))} ${float16Bits (genericDiv (float16FromBits 2, toFloat16 2.0))}"
+    result32 = genericResult (toFloat32 5.5, toFloat32 2.25)
+    result16 = genericResult (toFloat16 5.5, toFloat16 2.25)
+    print "${float32Bits (result32 ?: toFloat32 0.0)} ${float16Bits (result16 ?: toFloat16 0.0)}"
+    print "${generic32Cancel (toFloat32 16777216.0, toFloat32 1.0)} ${generic16Cancel (toFloat16 2048.0, toFloat16 1.0)} ${generic64Cancel (16777216.0, 1.0)}"
+wrapping genericArithmetic

@@ -20,7 +20,9 @@ pub(super) fn interactive(ctx: &mut Ctx, ordinal: u64, decoded: Decoded) -> AnyE
         .scene_transforms
         .get(&key)
         .map_or(decoded.zoom, |t| t.scale);
-    let access = super::access::overlay(&handle, &binding, &decoded.access, scale);
+    let mut elements = decoded.access.to_vec();
+    elements.extend(super::text::labels(&decoded.shapes, scale, ctx.window));
+    let access = super::access::overlay(&handle, &binding, &elements, scale);
     let binding_for_paint = binding.clone();
     let surface = div()
         .id(render::control_id(ctx, ordinal))

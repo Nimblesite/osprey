@@ -48,6 +48,8 @@ char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill)
 int64_t osp_parse_int_strict(const char *s, int64_t *out);
 int64_t osp_parse_float_strict(const char *s, double *out);
 char *osp_float_to_string(double d);
+char *osp_float32_to_string(float value);
+char *osp_float16_to_string(uint16_t bits);
 
 /* O(1) byte / codepoint cursor — BUILTIN-STRING-CURSOR. The fallible three
  * write their result through `*out` and return NULL on success, else a static

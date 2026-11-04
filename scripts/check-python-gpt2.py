@@ -5,6 +5,7 @@ import importlib.util
 import math
 import os
 from pathlib import Path
+import struct
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor
@@ -23,8 +24,13 @@ def reference():
     return module
 
 
+def f32(value):
+    """Round `value` to IEEE 754 binary32, as check.py's `toFloat32` does."""
+    return struct.unpack("<f", struct.pack("<f", value))[0]
+
+
 def vector(size, scale):
-    return [(i % 7) * scale for i in range(size)]
+    return [f32(f32(i % 7) * f32(scale)) for i in range(size)]
 
 
 def layer(module):
@@ -41,7 +47,7 @@ def expected(module):
     a, b, bias = vector(6, 0.25), vector(6, -0.125), vector(2, 0.1)
     result = {"transpose": module.transpose(a, 2, 3), "matmul": module.matmul(a, b, 2, 3, 2),
               "linear": module.linear(a, 2, 3, 2, b, bias), "residual": module.residual(a, b),
-              "gelu": [module.gelu((i - 3) / 2.0) for i in range(7)]}
+              "gelu": [module.gelu(f32(f32(i - 3) / 2.0)) for i in range(7)]}
     for t in (1, 2, 3):
         x, qkv = vector(t * module.WIDTH, 0.25), vector(t * module.QKV, 0.125)
         result[f"norm{t}"] = module.layer_norm(x, t, vector(module.WIDTH, 0.1), vector(module.WIDTH, -0.05))
@@ -81,7 +87,7 @@ def parsed(text):
         name, numbers = line.split(":", 1)
         if name in result:
             raise AssertionError(f"duplicate tensor {name}")
-        result[name] = [float(value) for value in numbers.split(",") if value]
+        result[name] = [f32(float(value)) for value in numbers.split(",") if value]
     return result
 
 

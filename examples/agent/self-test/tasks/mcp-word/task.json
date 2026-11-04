@@ -1,0 +1,1 @@
+{"steps": [{"wait": "Send"}, {"wait": "Connected"}, {"type": ["Message", "This project needs the secret word. Only your MCP tools can tell you it. Write the word, and nothing else, to WORD.txt in the project.\n"]}, {"wait": "This project needs the secret word. Only"}, {"wait": "Stop"}, {"gone": "Stop"}, {"shot": "mcp-word"}]}

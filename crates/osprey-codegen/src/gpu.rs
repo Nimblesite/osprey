@@ -6,6 +6,7 @@
 //! layout is the staging layout a device transfer will use; kernels reaching
 //! codegen are already proven pure by the effect checker [GPU-KERNEL-PURE].
 
+mod allocation;
 mod buffer;
 mod io;
 
@@ -13,7 +14,7 @@ use crate::builder::Codegen;
 use crate::conv::box_to_i64;
 use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
-use crate::gpu_device::{declined, launch_fold, launch_map};
+use crate::gpu_device::{launch_fold, launch_map, launch_sequence, Shape};
 use crate::gpu_kernel::{extract, kernel_elem, kernel_of, slot};
 use crate::iter::{acc_init, acc_result, acc_step, invoke, nth, Callback};
 use crate::llty::{LType, Value};
@@ -25,18 +26,23 @@ use osprey_ast::{Expr, NamedArgument};
 /// not statically known.
 const GPU_OWNER: &str = "GpuBuffer";
 
-/// Whether `ty` is a buffer word — `int`, `float` or `bool`. This is the
-/// device sublanguage's element restriction [GPU-BUFFER-ELEM], spelled ONCE:
-/// element data, kernel results, reduction accumulators and extracted-kernel
-/// uniforms ([`crate::gpu_kernel`]) all consult this predicate.
+/// Scalar representations supported by device emission [GPU-DEVICE-NATIVE]:
+/// every numeric width and `bool`.
 pub(crate) fn is_scalar(ty: LType) -> bool {
-    matches!(ty, LType::I64 | LType::Double | LType::I1)
+    matches!(ty, LType::Num(_) | LType::I1)
 }
 
-/// Whether `v` is a bare scalar word — [`is_scalar`] with no `Result` wrapper,
+/// Whether `ty` uses the host accessors' raw-word ABI: every numeric
+/// ([TYPE-NUMERIC-WORD] — a sized integer sign- or zero-extended, a sized
+/// float its bit pattern zero-extended) and `bool`.
+fn is_word(ty: LType) -> bool {
+    matches!(ty, LType::Num(_) | LType::I1)
+}
+
+/// Whether `v` is a bare scalar word — [`is_word`] with no `Result` wrapper,
 /// which would travel as an erased pointer the flat ABI has no slot for.
 fn is_scalar_value(v: &Value) -> bool {
-    v.result_inner.is_none() && is_scalar(v.ty)
+    v.result_inner.is_none() && is_word(v.ty)
 }
 
 /// Owner-tag prefix marking a buffer whose element `LType` is known; the suffix
@@ -77,7 +83,7 @@ pub(crate) fn is_buffer_owner(owner: &str) -> bool {
 
 /// The owner tag for a buffer holding `elem` words.
 fn elem_owner(elem: Option<LType>) -> String {
-    owner_of(elem.and_then(crate::llty::scalar_spelling))
+    owner_of(elem.map(crate::llty::scalar_spelling))
 }
 
 /// Dispatch a GPU builtin by name, or `None` if `name` is not one.
@@ -96,6 +102,12 @@ pub(crate) fn gen(
 
 /// Resolve one lowering function; argument evaluation stays in that function.
 type Lowering = fn(&mut Codegen, &[Expr]) -> Result<Value>;
+
+/// A loader's element type comes from each call's own result, so a name bound
+/// to one forwards its calls to the loader instead of holding a single value.
+pub(crate) fn is_loader(name: &str) -> bool {
+    matches!(name, "gpuLoad" | "gpuLoadTensor")
+}
 
 fn operation(name: &str) -> Option<Lowering> {
     Some(match name {
@@ -125,7 +137,7 @@ fn buffer_arg(cg: &mut Codegen, args: &[Expr], i: usize) -> Result<Value> {
 /// A freshly allocated buffer of `len` elements, owned by the current region
 /// and tagged with its element's owner tag.
 fn buffer_alloc(cg: &mut Codegen, len: &str, owner: String) -> Value {
-    let raw = cg.call("i8*", "osprey_gpu_alloc", "i64", &[len]);
+    let raw = allocation::raw(cg, len, &owner);
     let v = Value::handle(raw, owner);
     crate::arc::own(cg, &v);
     v
@@ -151,20 +163,21 @@ fn buffer_set(cg: &mut Codegen, buf: &Value, index: &str, word: &str) {
 /// raw bits become a `double` operand (never an integer conversion), a `bool`
 /// becomes `i1`, and an unknown element passes through as the raw word.
 fn elem_value(cg: &mut Codegen, raw: String, elem: Option<LType>) -> Value {
-    crate::conv::from_word(cg, raw, elem.and_then(crate::llty::scalar_spelling))
+    crate::conv::from_word(cg, raw, elem.map(crate::llty::scalar_spelling))
 }
 
-/// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is an `int`,
-/// `float`, or `bool`, boxed to its raw `i64` word. An unhandled `Result` gets
-/// its own diagnostic, because the fix (handle it inside the kernel) differs
-/// from a non-scalar's.
+/// The scalar-element backstop [GPU-BUFFER-ELEM]: a buffer word is a numeric
+/// or `bool`, boxed to its raw `i64` word; storage then narrows to the element
+/// width ([TYPE-NUMERIC-WORD]). An unhandled `Result` gets its own
+/// diagnostic, because the fix (handle it inside the kernel) differs from a
+/// non-scalar's.
 fn scalar_word(cg: &mut Codegen, v: Value, what: &str) -> Result<Value> {
     if v.result_inner.is_some() {
         return Err(CodegenError::unsupported(format!(
             "{what} cannot be an unhandled Result; handle it inside the kernel"
         )));
     }
-    if !is_scalar(v.ty) {
+    if !is_word(v.ty) {
         return Err(CodegenError::unsupported(format!(
             "{what} must be a scalar (int, float, or bool)"
         )));
@@ -229,19 +242,20 @@ fn map_into(
     launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
-    let out = buffer_alloc(cg, len, GPU_OWNER.to_string());
-    let done = launch(cg, &out)?;
+    let pending = allocation::Pending::new(cg, len);
+    let out = &pending.value;
+    let done = launch(cg, out)?;
     let join = host_fallback(cg, &done);
     let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
         let mapped = apply(cg, arg, i)?;
         mapped_ty = mapped.ty;
         let stored = scalar_word(cg, mapped, what)?;
-        buffer_set(cg, &out, i, &stored.operand);
+        buffer_set(cg, out, i, &stored.operand);
         Ok(())
     })?;
     rejoin(cg, &join);
-    Ok(out.with_owner(Some(elem_owner(Some(mapped_ty)))))
+    pending.finish(cg, Some(mapped_ty))
 }
 
 /// `(buffer, kernel)` — the preamble `gpuMap` and `gpuFilter` share: the source
@@ -414,9 +428,18 @@ fn gpu_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// The running accumulator is the same scalar slot `gpuFold` uses, so a device
 /// backend can swap in a work-efficient parallel scan without changing meaning.
 fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let _ = declined(cg, "gpuScan has no device form yet");
     let r = reduction(cg, args, "gpuScan")?;
     let out = buffer_alloc(cg, &r.len, elem_owner(Some(r.tmpl.ty)));
+    let done = launch_sequence(
+        cg,
+        &r.combine,
+        &[r.tmpl.ty, slot(r.elem)],
+        [&r.src, &out],
+        &r.acc,
+        &r.len,
+        Shape::Scan,
+    )?;
+    let join = host_fallback(cg, &done);
     kernel_loop(cg, &r.src, &r.len, r.elem, |cg, arg, i| {
         step(cg, &r, arg)?;
         // The slot already holds the boxed running value — exactly a buffer
@@ -425,6 +448,7 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         buffer_set(cg, &out, i, &running);
         Ok(())
     })?;
+    rejoin(cg, &join);
     Ok(out)
 }
 
@@ -432,11 +456,20 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// length is unknown until the predicate has run, so this fills a
 /// source-length scratch buffer and publishes the exact prefix length.
 fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let _ = declined(cg, "gpuFilter has no device form yet");
     let (src, elem, predicate) = unary_kernel(cg, args)?;
     let len = buffer_len(cg, &src);
     let out = buffer_alloc(cg, &len, elem_owner(elem));
     let kept = kept_counter(cg);
+    let done = launch_sequence(
+        cg,
+        &predicate,
+        &[slot(elem)],
+        [&src, &out],
+        &kept,
+        &len,
+        Shape::Filter,
+    )?;
+    let join = host_fallback(cg, &done);
     kernel_loop(cg, &src, &len, elem, |cg, arg, _i| {
         // The loop already loaded this element: box the typed value back to its
         // storage word rather than reading the buffer a second time per element.
@@ -446,6 +479,7 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         push_if_kept(cg, &verdict.operand, &out, &kept, &raw);
         Ok(())
     })?;
+    rejoin(cg, &join);
     take_kept(cg, &out, &kept);
     Ok(out)
 }

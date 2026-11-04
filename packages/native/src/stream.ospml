@@ -10,6 +10,9 @@ effect SceneStream
 
 (** Splits a region's scenes into streamed and enveloped primitives, and reads a streamed primitive's fields for the host import ([UI-SCENE-STREAM]). *)
 module Streams
+    (** [UI-SCENE-STREAM] Sends the fixed-size host fields of `primitive` through the boundary import. *)
+    export transmit (primitive, write) = write (code primitive, index primitive, value (primitive, 0), value (primitive, 1), value (primitive, 2), value (primitive, 3), value (primitive, 4), colour primitive, depth primitive)
+
     (** Whether `primitive` has a fixed size and so travels in the stream: a rect, a disc or a sprite. *)
     export streamed : Primitive -> bool
     streamed primitive = match primitive

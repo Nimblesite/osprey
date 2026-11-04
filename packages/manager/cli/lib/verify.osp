@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Flags
 import registry_cli::Reports
@@ -104,16 +105,10 @@ module Verify {
     /// A locked package's member of the uv project, from its installed tree or checkout.
     fn packageMember(project, lock, pkg) = {
         let dir = Project::treeDirAt(project, lock, pkg)
-        match Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))) {
-            Error { message } => Error { message: message }
-            Success { value } => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml"))
-        }
+        Checked::andThen(Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml")))
     }
 
-    fn appendMember(done, member) = match member {
-        Error { message } => Error { message: message }
-        Success { value } => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) }
-    }
+    fn appendMember(done, member) = Checked::andThen(member, fn(value) => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) })
 
     fn members(project, lock, manifest) = foldList(packagesOf(lock), appendMember([], PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml")))), fn(acc, p) => match acc {
         Error => acc

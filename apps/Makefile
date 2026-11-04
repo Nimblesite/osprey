@@ -3,20 +3,18 @@
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ..
 
-.PHONY: agent agent-test python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
+## casting-ios: Install and launch the shared-GPUI casting player in an iPhone simulator.
+##            Shared viewport fitting and service integration are in progress; see examples/casting/mobile.md.
+.PHONY: casting-ios casting-android
+casting-ios:
+	$(MAKE) -C ios casting
 
-## agent: Open Osprey Agent, the coding agent on @osprey/native, in the SwiftUI
-##        host (macOS). PROJECT names the folder it works in; the key comes from
-##        DEEPSEEKKEY in the repository's .env. See examples/agent/README.md.
-PROJECT ?= $(CURDIR)
-agent:
-	$(MAKE) -C $(ROOT) build
-	bash $(ROOT)/examples/agent/run.sh "$(PROJECT)"
+## casting-android: Build and open casting on the selected Android emulator or device.
+##                  The shared-GPUI Android backend is in progress; see examples/casting/mobile.md.
+casting-android:
+	$(MAKE) -C android casting
 
-## agent-test: Osprey Agent's offline suites and its host's process adapter: no network and no window.
-agent-test:
-	bash $(ROOT)/examples/agent/run.sh --test
-	swift test --package-path $(ROOT)/hosts/swift/Tests
+.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports:

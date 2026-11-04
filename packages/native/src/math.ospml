@@ -55,12 +55,14 @@ module Maths
             JsonArray items => decodeAll items
             _ => Error(message = "a math node of kind `${name}` has a non-array `${key}`")
 
-    // Decodes every element; the first error is the result.
-    decodeStep (trees, item) = match trees
+    // Propagate the first decoding error without evaluating later fields.
+    then<T, U> : (Result<T, Error>, (T) -> Result<U, Error>) -> Result<U, Error> !e
+    then (result, next) = match result
         Error problem => Error(message = problem)
-        Success kept => match decode item
-            Error problem => Error(message = problem)
-            Success tree => Success(value = listAppend kept tree)
+        Success value => next value
+
+    // Decodes every element; the first error is the result.
+    decodeStep (trees, item) = then (trees, \kept => then (decode item, \tree => Success(value = listAppend kept tree)))
 
     decodeAll items = foldList (items, Success(value = []), decodeStep)
 
@@ -68,58 +70,28 @@ module Maths
         "sym" => Sym text
         _ => Num text
 
-    textLeaf (name, doc) = match stringAt (name, doc, "text")
-        Error problem => Error(message = problem)
-        Success text => Success(value = symOrNum name text)
+    textLeaf (name, doc) = then (stringAt (name, doc, "text"), \text => Success(value = symOrNum name text))
 
     pairTree name first second = match name
         "sup" => Sup first second
         "sub" => Sub first second
         _ => Frac first second
 
-    pairNode (name, firstKey, secondKey, doc) = match child (name, doc, firstKey)
-        Error problem => Error(message = problem)
-        Success first => match child (name, doc, secondKey)
-            Error problem => Error(message = problem)
-            Success second => Success(value = pairTree name first second)
+    pairNode (name, firstKey, secondKey, doc) = then (child (name, doc, firstKey), \first => then (child (name, doc, secondKey), \second => Success(value = pairTree name first second)))
 
     bodyTree name body = match name
         "root" => Root body
         _ => Paren body
 
-    bodyNode (name, doc) = match child (name, doc, "body")
-        Error problem => Error(message = problem)
-        Success body => Success(value = bodyTree name body)
+    bodyNode (name, doc) = then (child (name, doc, "body"), \body => Success(value = bodyTree name body))
 
-    seqNode doc = match arrayAt ("seq", doc, "items")
-        Error problem => Error(message = problem)
-        Success items => Success(value = Seq items)
+    seqNode doc = then (arrayAt ("seq", doc, "items"), \items => Success(value = Seq items))
 
-    binderNode doc = match stringAt ("binder", doc, "symbol")
-        Error problem => Error(message = problem)
-        Success symbol => match arrayAt ("binder", doc, "names")
-            Error problem => Error(message = problem)
-            Success names => match child ("binder", doc, "body")
-                Error problem => Error(message = problem)
-                Success body => Success(value = Binder symbol names body)
+    binderNode doc = then (stringAt ("binder", doc, "symbol"), \symbol => then (arrayAt ("binder", doc, "names"), \names => then (child ("binder", doc, "body"), \body => Success(value = Binder symbol names body))))
 
-    opNode doc = match stringAt ("op", doc, "symbol")
-        Error problem => Error(message = problem)
-        Success symbol => match child ("op", doc, "left")
-            Error problem => Error(message = problem)
-            Success left => match child ("op", doc, "right")
-                Error problem => Error(message = problem)
-                Success right => Success(value = Op symbol left right)
+    opNode doc = then (stringAt ("op", doc, "symbol"), \symbol => then (child ("op", doc, "left"), \left => then (child ("op", doc, "right"), \right => Success(value = Op symbol left right))))
 
-    bigNode doc = match stringAt ("big", doc, "symbol")
-        Error problem => Error(message = problem)
-        Success symbol => match child ("big", doc, "lower")
-            Error problem => Error(message = problem)
-            Success lower => match child ("big", doc, "upper")
-                Error problem => Error(message = problem)
-                Success upper => match child ("big", doc, "body")
-                    Error problem => Error(message = problem)
-                    Success body => Success(value = Big symbol lower upper body)
+    bigNode doc = then (stringAt ("big", doc, "symbol"), \symbol => then (child ("big", doc, "lower"), \lower => then (child ("big", doc, "upper"), \upper => then (child ("big", doc, "body"), \body => Success(value = Big symbol lower upper body)))))
 
     (** The inverse of `encode`: the mathematics tree its protocol form names, or an error naming an unknown kind, a missing child, a non-object node or a non-string text or symbol ([UI-COMPONENTS-MATH]). *)
     export decode doc = match doc

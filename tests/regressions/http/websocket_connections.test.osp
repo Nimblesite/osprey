@@ -1,0 +1,58 @@
+// [BUILTIN-WEBSOCKET-LIFECYCLE] A broadcast counts the connections that are alive. A
+// closed one once stayed counted for ever, and its descriptor stayed written to.
+
+extern fn websocket_stop_server(serverId: int) -> int
+
+fn awaitRecipients(server, want, polls) = {
+    let reached = websocketServerBroadcast(server, "ping")
+    match reached == want {
+        true => reached
+        false => match polls {
+            0 => reached
+            _ => {
+                let _slept = sleep(20)
+                awaitRecipients(server, want, wrapSub(polls, 1))
+            }
+        }
+    }
+}
+
+fn dialAll(url, remaining, last) = match remaining {
+    0 => last
+    _ => dialAll(url, wrapSub(remaining, 1), websocketConnect(url))
+}
+
+fn closedConnectionsStopCounting() = {
+    let server = websocketCreateServer(18124, "127.0.0.1", "/live")
+    check("listens", "0", "${websocketServerListen(server)}")
+    let url = "ws://127.0.0.1:18124/live"
+    let first = websocketConnect(url)
+    let second = websocketConnect(url)
+    check("both counted", "2", "${awaitRecipients(server, 2, 100)}")
+    check("closes the first", "0", "${websocketClose(first)}")
+    check("only the second counted", "1", "${awaitRecipients(server, 1, 100)}")
+    check("the second still sends", "0", "${websocketSend(second, "hi")}")
+    check("closes the second", "0", "${websocketClose(second)}")
+    check("none counted", "0", "${awaitRecipients(server, 0, 100)}")
+    let third = websocketConnect(url)
+    check("a new one counted", "1", "${awaitRecipients(server, 1, 100)}")
+    check("closes the third", "0", "${websocketClose(third)}")
+    check("stops", "0", "${websocket_stop_server(server)}")
+}
+
+fn stopEndsLiveConnections() = {
+    let server = websocketCreateServer(18125, "127.0.0.1", "/live")
+    check("listens", "0", "${websocketServerListen(server)}")
+    let url = "ws://127.0.0.1:18125/live"
+    let live = dialAll(url, 5, 0)
+    check("all counted", "5", "${awaitRecipients(server, 5, 100)}")
+    check("stops with them connected", "0", "${websocket_stop_server(server)}")
+    check("a stopped server broadcasts to nobody", "-2", "${websocketServerBroadcast(server, "x")}")
+    check("the last client closes", "0", "${websocketClose(live)}")
+    let again = websocketCreateServer(18125, "127.0.0.1", "/live")
+    check("the port serves again", "0", "${websocketServerListen(again)}")
+    check("stops again", "0", "${websocket_stop_server(again)}")
+}
+
+test("closed connections stop counting", closedConnectionsStopCounting)
+test("stop ends live connections", stopEndsLiveConnections)

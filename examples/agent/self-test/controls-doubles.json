@@ -1,0 +1,37 @@
+{
+  "replies": [
+    {
+      "status": 500,
+      "body": "{\"error\":\"the double refuses this one\"}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Answered after trying again.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"It explains itself.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Nothing wrong with it.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"The reasoned answer.\", \"reasoning_content\": \"Considering the question.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Never shown: Stop comes first.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}",
+      "delayMs": 30000
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"\", \"tool_calls\": [{\"id\": \"move-write\", \"type\": \"function\", \"function\": {\"name\": \"write_file\", \"arguments\": \"{\\\"path\\\":\\\"moved.txt\\\",\\\"content\\\":\\\"after folder move\\\\n\\\"}\"}}]}, \"finish_reason\": \"tool_calls\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    },
+    {
+      "status": 200,
+      "body": "{\"id\": \"r\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"Wrote moved.txt after the move.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 40, \"completion_tokens\": 8, \"total_tokens\": 48}}"
+    }
+  ]
+}

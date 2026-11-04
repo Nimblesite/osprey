@@ -6,11 +6,15 @@ permalink: /docs/hunt/
 tags: [testing, hunt, symbolic-execution, fuzzing, klee]
 ---
 
+{% from "native-capture.njk" import capture %}
+
 ## What is Osprey Hunt?
 
-`osprey hunt` is an **automated bug finder** built into the Osprey compiler. You point it at a program and it finds the **exact input that makes it crash** — no test cases to write.
+`osprey hunt` searches for failing inputs using [KLEE symbolic execution](https://klee-se.org/). It solves path constraints within a time budget; fuzzers explore concrete inputs. Both approaches complement tests and static analysis.
 
-It works by **symbolic execution** with [KLEE](https://klee-se.org/). A **fuzzer** throws random input at a program and hopes to hit a bug. Hunt instead treats the input as unknown and solves for values that steer execution down as many branches as its time budget allows, including the edge case a random fuzzer rarely reaches. Each finding is then **replayed on a normal native build**, so you know the crash is real.
+Inspect each finding's verdict: a **reproduced crash** failed in a native replay; an **unmodelled operation** records an engine limitation. An empty report is not a correctness proof.
+
+{{ capture("/assets/images/guides/hunt-crash.png", "Verified finding first: a deliberately planted C abort is reproduced with input 9; this fixture demonstrates detection.", "Verified finding first: a deliberately planted C abort is reproduced with input 9; this fixture demonstrates detection.", 1440, 1000) }}
 
 ## Why use it?
 
@@ -86,6 +90,8 @@ Each finding includes its class, Osprey source location when available, runtime 
 
 A memory-safety failure outside deliberate or unsafe C-boundary misuse points to a compiler, runtime or symbolic-model defect. Keep the reported source location and input when reporting it.
 
+{{ capture("/assets/images/guides/hunt-finding.png", "The finding card includes the source line, replay verdict, concrete input and next action.", "The finding card includes the source line, replay verdict, concrete input and next action.", 1120, 649) }}
+
 ## Options and automation
 
 ```sh
@@ -108,6 +114,8 @@ osprey hunt ./my-project --out ./hunt-results --input-bytes 4
 Exit status is `0` when there is no failing finding, `1` for a native reproduction, any finding with replay disabled, or a compilation failure, and `2` for usage or toolchain errors. Skipped findings and incomplete paths can coexist with status `0`; automation that needs full exploration must inspect the report as well as the exit code.
 
 From the repository, `make -C tests/hunt hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make -C tests/hunt hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
+
+{{ capture("/assets/images/guides/hunt-clean.png", "Clean control: no findings within this recorded budget and input size; this is not a proof of correctness.", "Clean control: no findings within this recorded budget and input size; this is not a proof of correctness.", 1440, 1000) }}
 
 ## Qualify a quick corpus
 
@@ -146,6 +154,8 @@ These tests deliberately violate application invariants or the unsafe C boundary
 Open an `.osp` or `.ospml` file and select **Osprey: Hunt for Bugs** from the command palette or editor context menu. The extension saves the file, runs the compiler selected by the language server, and shows findings in the **Osprey Hunt** output channel and editor diagnostics. Set `osprey.hunt.maxTime` to change its time budget.
 
 A reproduced finding is an error, an unreplayed or KLEE-only finding is a warning, and an unmodelled operation is information.
+
+{{ capture("/assets/images/guides/hunt-limits.png", "Engine limitation control: an unmodelled process operation stops a path; it is not a reproduced application crash.", "Engine limitation control: an unmodelled process operation stops a path; it is not a reproduced application crash.", 1440, 1000) }}
 
 ## Current boundaries
 

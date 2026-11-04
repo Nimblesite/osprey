@@ -10,6 +10,7 @@
 #define MOCK_MARK 0x2a
 static unsigned failure, libraries, functions, bound, creations, deallocs;
 static NSUInteger expected_threads = 1;
+static NSUInteger dense_bytes;
 // The buffers bound to the encoder since the last commit.
 static NSMutableArray *encoded;
 
@@ -24,7 +25,23 @@ static NSMutableArray *encoded;
 - (void)dealloc { if (self.data) deallocs++; }
 - (id)newCommandQueue { return failure == 2 ? nil : [OspreyMockMetal new]; }
 - (id)newLibraryWithSource:(NSString *)source options:(id)options error:(NSError **)error {
-  assert([source containsString:@"osprey_matmul64"] && !options); (void)error;
+  assert([source containsString:@"osprey_matmul64"]); (void)error;
+  // [GPU-DEVICE-NATIVE]: the driver must request safe math for every library.
+  assert([options isKindOfClass:[MTLCompileOptions class]]);
+  MTLCompileOptions *compile = options;
+#if (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 150000) || \
+    (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 180000)
+  assert(compile.mathMode == MTLMathModeSafe);
+  assert(compile.mathFloatingPointFunctions == MTLMathFloatingPointFunctionsPrecise);
+#else
+  if (@available(macOS 15.0, iOS 18.0, *)) {
+    assert(compile.mathMode == MTLMathModeSafe);
+    assert(compile.mathFloatingPointFunctions == MTLMathFloatingPointFunctionsPrecise);
+  } else {
+    assert(!compile.fastMathEnabled);
+  }
+#endif
+  assert([source containsString:@"#pragma METAL fp contract(off)"]);
   libraries++;
   return failure == 3 ? nil : [OspreyMockMetal new];
 }
@@ -38,7 +55,7 @@ static NSMutableArray *encoded;
   return failure == 5 ? nil : [OspreyMockMetal new];
 }
 - (id)newBufferWithBytes:(const void *)bytes length:(NSUInteger)length options:(MTLResourceOptions)options {
-  assert(bytes && length >= 8 && options == MTLResourceStorageModeShared);
+  assert(bytes && (dense_bytes ? length == dense_bytes : length >= 8) && options == MTLResourceStorageModeShared);
   if (failure == 6) return nil;
   OspreyMockMetal *buffer = [OspreyMockMetal new];
   buffer.data = [NSMutableData dataWithBytes:bytes length:length];
@@ -63,7 +80,10 @@ static NSMutableArray *encoded;
 - (void)endEncoding {}
 // The mock "runs" every kernel by stamping word 0 of each buffer bound to it.
 - (void)commit {
-  for (OspreyMockMetal *buffer in encoded) ((int64_t *)buffer.data.mutableBytes)[0] = MOCK_MARK;
+  for (OspreyMockMetal *buffer in encoded) {
+    if (dense_bytes) memset(buffer.data.mutableBytes, MOCK_MARK, buffer.data.length);
+    else ((int64_t *)buffer.data.mutableBytes)[0] = MOCK_MARK;
+  }
   [encoded removeAllObjects];
 }
 - (void)waitUntilCompleted {}
@@ -76,11 +96,11 @@ id<MTLDevice> MTLCreateSystemDefaultDevice(void) {
 }
 
 static OspreyGpuDispatch product_of(const int64_t *in, int64_t *out, void **in_slot, void **out_slot) {
-  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL}}, 0, 1};
-  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, in_slot);
-  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, in_slot);
-  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 2, out_slot);
-  for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1);
+  OspreyGpuDispatch d = {"osprey_matmul64", NULL, {{0, NULL, NULL, 0, NULL, 8}}, 0, 1};
+  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, 8, in_slot);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_INPUT, in, NULL, 2, 8, in_slot);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, out_slot ? NULL : out, 2, 8, out_slot);
+  for (uint64_t i = 0; i < 3; i++) osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 1, 8);
   expected_threads = 1;
   return d;
 }
@@ -93,12 +113,12 @@ static int product(int64_t *out) {
 
 static int compiled(const char *source, int64_t *out, uint64_t threads) {
   int64_t in = 7, fault = 0;
-  OspreyGpuDispatch d = {"osprey_kernel_1", source, {{0, NULL, NULL, 0, NULL}}, 0, threads};
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2);
-  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1);
-  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, threads);
+  OspreyGpuDispatch d = {"osprey_kernel_1", source, {{0, NULL, NULL, 0, NULL, 8}}, 0, threads};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, &in, NULL, 0, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 2, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
+  osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, threads, 8);
   expected_threads = (NSUInteger)threads;
   int status = osprey_gpu_metal_dispatch(&d);
   assert(status != 1 || fault == MOCK_MARK);
@@ -117,11 +137,39 @@ static void resident_case(void) {
     assert(osprey_gpu_metal_dispatch(&d) == 1 && in_slot && out_slot);
     assert(creations == before + (round ? 0 : 2) && out[0] == 99);
   }
-  assert(osprey_gpu_metal_download(out_slot, out, 2) == 1 && out[0] == MOCK_MARK && out[1] == 99);
+  assert(osprey_gpu_metal_download(out_slot, out, sizeof out) == 1 && out[0] == MOCK_MARK && out[1] == 99);
   unsigned before = deallocs;
   osprey_gpu_metal_release(in_slot);
   osprey_gpu_metal_release(out_slot);
   assert(deallocs == before + 2);
+}
+
+// [GPU-BUFFER-ELEM]: exact transfers, including one-element empty allocations.
+static void dense_transfers(void) {
+  expected_threads = 1;
+  for (uint64_t width = 1; width <= 8; width *= 2) {
+    for (uint64_t count = 0; count <= 3; count += 3) {
+      for (unsigned resident = 0; resident <= 1; resident++) {
+        unsigned char input[24] = {0}, output[26];
+        void *slot = NULL;
+        memset(output, 0xa5, sizeof output);
+        dense_bytes = (NSUInteger)((count ? count : 1) * width);
+        OspreyGpuDispatch d = {"dense_transfer", "kernel void dense_transfer() {}", {{0}}, 0, 1};
+        osprey_gpu_arg(&d, OSPREY_GPU_INPUT, input, NULL, count, width);
+        osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, output + 1, resident ? NULL : output + 1,
+                          count, width, resident ? &slot : NULL);
+        assert(osprey_gpu_metal_dispatch(&d) == 1);
+        if (resident) {
+          for (size_t i = 0; i < sizeof output; i++) assert(output[i] == 0xa5);
+          if (count) assert(osprey_gpu_metal_download(slot, output + 1, count * width) == 1);
+          osprey_gpu_metal_release(slot);
+        }
+        for (size_t i = 0; i < sizeof output; i++)
+          assert(output[i] == (i > 0 && i <= count * width ? MOCK_MARK : 0xa5));
+      }
+    }
+  }
+  dense_bytes = 0;
 }
 
 // The success path: the product, then a program's kernels, which recompile
@@ -136,6 +184,7 @@ static void success_case(void) {
   assert(product(out) == 1 && libraries == 2 && functions == 3 && osprey_gpu_metal_completed() == 4);
   assert(strcmp(osprey_gpu_metal_name(), "metal:0 (mock Metal)") == 0);
   resident_case();
+  dense_transfers();
 }
 
 static void test_case(unsigned mode) {

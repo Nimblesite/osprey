@@ -6,6 +6,8 @@ description: Derive signal dependencies, cache immutable results, and rebuild af
 permalink: /docs/reactive-signals/
 ---
 
+{% from "native-capture.njk" import capture %}
+
 # Rebuild only the views that depend on a change
 
 Declare signal reads as static effects. A handler supplies their current values; the compiler derives each computation's possible signal reads through helpers and callbacks. You do not maintain a dependency array.
@@ -49,6 +51,8 @@ Supply every changed signal identity together in one refresh to batch an update.
 
 Dependencies are conservative **may-read** sets. Both arms of a runtime choice contribute possible reads, including an arm not taken on this execution. A resolved callback keeps its actual requirements. An unresolved callback, generic instance or open remainder contributes `<unknown>`, which forces refresh rather than risk retaining a stale value. Builtin I/O is still checked as an effect obligation; metadata queries do not make their argument expressions pure.
 
+{{ capture("/assets/images/native/macos-synth.png", "Prism Synth is an Osprey Native application: its controls and patch editor show the application built around the framework.", "Prism Synth is an Osprey Native application: its controls and patch editor show the application built around the framework.", 2304, 1512) }}
+
 ## The built-in signals layer
 
 Every reactive app used to declare the same reader effect and hand-roll the same frame cache. Both are standard now: the `Signal<T>` reader effect, `SignalFrame`, `KeyedSnapshot<T>`, and the keyed refresh functions are prelude source attached on demand, so a program that names them stops declaring its own. A program that declares its own `Signal` keeps it and gets none of the standard layer.
@@ -91,5 +95,7 @@ print "nav@${toString (signalRevisionOf second "nav")} kept@${toString (signalRe
 This prints `nav@2 kept@2`: the region rebuilt because `Route` changed, and the frames read back from JSON keep that revision for the next render. `signalRetained` supplies the snapshot to refresh for a key — an unseen or forced key carries `<unknown>` dependencies and therefore rebuilds, and its placeholder value is never reused unless nothing the region read changed. `signalForced(frames, key)` rebuilds one key at its next refresh whatever changed, and `signalRevisionOf(frames, key)` reads a key's kept revision.
 
 Run the [complete dashboard examples](https://github.com/Nimblesite/osprey/tree/main/examples/handlers), in Default and ML, with `python3 examples/handlers/run.py all --demo staged-rows --check`. They update counter and cursor views independently, rebuild a combined status view for either change, and retain all three on an idle update. Native programs can also rebuild computations that use fibers and deep one-shot continuations.
+
+{{ capture("/assets/images/native/windows-flock.png", "Flock on Windows · a live scene with pause and resume controls; this capture is not a cache-performance measurement.", "Flock on Windows · a live scene with pause and resume controls; this capture is not a cache-performance measurement.", 1168, 745) }}
 
 The [effects specification](/spec/0017-algebraiceffects/#reactive-signals--stage-signals) defines the contract.

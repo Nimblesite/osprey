@@ -1,10 +1,8 @@
 """Slices the Sherbet Signal mock (designs/sherbet-signal.png) into the canvas skin's artwork.
 
-The canvas draws the mock's own pixels wherever they do not change: `backdrop.png` is the window
-interior with every live part (the disc, the texts, the slider fills and knobs, the play/pause
-glyph and the traffic lights the OS draws) painted out to the surface beneath. `disc.png` is the
-disc alone, masked to its rim, which the host turns while playing. `transport.png` is the round
-transport button without its glyph. Run with Pillow and NumPy:
+The responsive canvas draws its background and controls as vectors. `disc.png` is the
+disc alone, masked to its rim, which the host turns while playing. `transport.png` is
+the round transport button without its glyph. Run with Pillow and NumPy:
 
     python3 examples/casting/skins/slice.py
 """
@@ -17,8 +15,6 @@ HERE = Path(__file__).resolve().parent
 MOCK = HERE.parent / "designs" / "sherbet-signal.png"
 OUT = HERE / "sherbet"
 
-# The window interior in mock pixels, which are the canvas's units.
-LEFT, TOP, RIGHT, BOTTOM = 193, 70, 1061, 1183
 DISC_X, DISC_Y, DISC_R = 624, 377, 246
 BUTTON_X, BUTTON_Y, BUTTON_R = 626, 1000, 78
 
@@ -34,21 +30,6 @@ def fill_rows(px, x0, y0, x1, y1):
         for x in range(x0, x1):
             t = (x - x0) / max(1, x1 - x0)
             px[y, x] = a * (1 - t) + b * t
-
-
-def backdrop(px):
-    out = px.copy()
-    fill_rows(out, 210, 82, 320, 115)       # traffic lights: the OS draws its own
-    fill_rows(out, 470, 650, 790, 720)      # title
-    fill_rows(out, 550, 724, 700, 760)      # status bars and word
-    fill_rows(out, 512, 798, 700, 834)  # receiver name inside the pill
-    fill_rows(out, 225, 880, 305, 913)      # elapsed
-    fill_rows(out, 950, 880, 1030, 913)     # duration
-    fill_rows(out, 310, 876, 945, 921)      # timeline track, fill and knob
-    fill_rows(out, 285, 1094, 605, 1139)    # volume track, fill and knob
-    fill_rows(out, 730, 1100, 772, 1128)  # speed label inside its pill
-    fill_rows(out, 540, 920, 712, 1084)     # transport button: drawn from transport.png
-    return out[TOP:BOTTOM, LEFT:RIGHT]
 
 
 def circle(px, cx, cy, r, edge=1.5):
@@ -74,7 +55,6 @@ def save(array, name):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     px = mock()
-    save(backdrop(px), "backdrop.png")
     save(circle(px, DISC_X, DISC_Y, DISC_R), "disc.png")
     save(transport(px), "transport.png")
 

@@ -60,6 +60,11 @@ pub(crate) fn definition(
         return operation;
     }
     let program = project.program(uri, text);
+    // Before the binders: in a `match` arm, a variant's name is the variant, though it
+    // is shaped like a pattern binding one.
+    if let Some(span) = variants::definition(&program.statements, text, &word, enc) {
+        return vec![located(uri, span)];
+    }
     if let Some(binding) = scope::binding(
         text,
         &program,
@@ -83,6 +88,14 @@ pub(crate) fn definition(
     let project = project_locations(siblings, &word, enc, Scan::Declarations);
     if !project.is_empty() {
         return project;
+    }
+    let sibling_variant = siblings.iter().find_map(|sibling| {
+        let statements = &sibling.program.statements;
+        variants::definition(statements, &sibling.source, &word, enc)
+            .map(|span| located(&sibling.uri, span))
+    });
+    if let Some(found) = sibling_variant {
+        return vec![found];
     }
     // A documented built-in has no source declaration to navigate to. Anchor it
     // on the identifier under the cursor — a graceful self-definition — so the
@@ -435,6 +448,7 @@ fn step_call(c: char, names: &mut Vec<String>, commas: &mut Vec<u32>, last: &mut
 }
 
 pub(crate) mod scope;
+pub(crate) mod variants;
 
 #[cfg(test)]
 mod tests;

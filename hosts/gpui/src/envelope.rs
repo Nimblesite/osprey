@@ -52,7 +52,7 @@ pub struct Request {
 
 /// One theme colour in both appearances.
 // Decoded whole for the renderer; the window that resolves these fields is not
-// built yet (plan 0036 phase 1).
+// built yet (plan 0037).
 #[allow(dead_code)]
 #[derive(Debug, Clone, Deserialize)]
 pub struct Token {

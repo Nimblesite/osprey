@@ -79,6 +79,31 @@ static inline bool osp_socket_timed_out(int error) {
 #endif
 }
 
+// Resolves `host` (a name or dotted address) to one IPv4 address. getaddrinfo
+// is reentrant where gethostbyname returns one static record per process, so
+// two fibers dialing at once no longer read each other's answer. Asking for
+// AF_INET is what bounds the copy: a resolver that answered with a 16-byte
+// address used to be copied into this 4-byte field.
+static inline bool osp_socket_resolve_ipv4(const char *host,
+                                           struct in_addr *address) {
+  if (!host) {
+    return false;
+  }
+  struct addrinfo hints;
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  struct addrinfo *found = NULL;
+  if (getaddrinfo(host, NULL, &hints, &found) != 0 || !found) {
+    return false;
+  }
+  struct sockaddr_in resolved; // copied out: ai_addr is only byte-aligned
+  memcpy(&resolved, found->ai_addr, sizeof resolved);
+  *address = resolved.sin_addr;
+  freeaddrinfo(found);
+  return true;
+}
+
 // Whether a socket error means the peer went away without closing, as a device
 // that loses power or a process that is killed does.
 static inline bool osp_socket_reset(int error) {

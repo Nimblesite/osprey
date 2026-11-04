@@ -349,6 +349,33 @@ def closure_float_encodings():
     }
 
 
+def bf16_bytes(value):
+    """The little-endian bytes of the binary64 `value` cast to torch bfloat16."""
+    return list(bytes(torch.tensor([value], dtype=torch.float64).to(torch.bfloat16).untyped_storage()))
+
+
+def closure_bf16_encodings():
+    """torch bfloat16 bytes: specials, overflow, carry, ties and the subnormal range."""
+    return {
+        "BF16_ZERO_BYTES": bf16_bytes(0.0),
+        "BF16_NEG_ZERO_BYTES": bf16_bytes(-0.0),
+        "BF16_NAN_BYTES": bf16_bytes(float("nan")),
+        "BF16_INF_BYTES": bf16_bytes(float("inf")),
+        "BF16_NEG_INF_BYTES": bf16_bytes(float("-inf")),
+        "BF16_OVERFLOW_BYTES": bf16_bytes(1e39),
+        "BF16_HALF_BYTES": bf16_bytes(0.5),
+        "BF16_NEGATIVE_BYTES": bf16_bytes(-0.75),
+        "BF16_CARRY_BYTES": bf16_bytes(1.9999),
+        "BF16_TIE_UP_BYTES": bf16_bytes(1.0 + 3.0 / 256.0),
+        "BF16_TIE_DOWN_BYTES": bf16_bytes(1.0 + 1.0 / 256.0),
+        "BF16_MIN_SUBNORMAL_BYTES": bf16_bytes(2.0 ** -133),
+        "BF16_BELOW_NORMAL_BYTES": bf16_bytes(2.0 ** -126 - 2.0 ** -135),
+        "BF16_MIN_NORMAL_BYTES": bf16_bytes(2.0 ** -126),
+        "BF16_DOUBLE_SUBNORMAL_BYTES": bf16_bytes(5e-324),
+        "BF16_NEG_DOUBLE_SUBNORMAL_BYTES": bf16_bytes(-5e-324),
+    }
+
+
 def closure_f32_encodings():
     """numpy binary32 bytes: zero, the largest finite value and overflow to inf."""
     f32 = numpy.float32
@@ -408,7 +435,7 @@ def json_closure():
 def closure_constants():
     """Every constant this oracle adds after the original fixture set."""
     merged = {}
-    for part in (header_errors(), header_limit_errors(), closure_slices(), closure_float_encodings(),
+    for part in (header_errors(), header_limit_errors(), closure_slices(), closure_float_encodings(), closure_bf16_encodings(),
                  closure_f32_encodings(), closure_int_encodings(), json_closure()):
         merged.update(part)
     return merged

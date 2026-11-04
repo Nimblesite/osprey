@@ -32,7 +32,7 @@ size_t osp_arc_live_objects(void);
 size_t osp_arc_live_bytes(void);
 size_t osp_arc_peak_bytes(void);
 void osp_arc_peak_reset(void);
-void *osprey_gpu_alloc(int64_t length);
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 int64_t osprey_gpu_len(void *buffer);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
@@ -51,7 +51,7 @@ static long g_checks = 0;
 #define CHURN_BODY ((size_t)48)
 #define CHAIN_LEN ((size_t)50000)
 #define GPU_LEN ((int64_t)10)
-#define GPU_HDR_BYTES ((size_t)32)     // { i64 len, ptr data, ptr device, i64 stale }
+#define GPU_HDR_BYTES ((size_t)40)     // { len, data, device, stale, elem_bytes }
 #define REALLOC_OLD ((size_t)32)
 #define REALLOC_NEW ((size_t)128)
 
@@ -195,7 +195,7 @@ static void t_strdup_exact(void) {
 // buffer's drop under ARC is one release.
 static void t_gpu_buffer_accounting(void) {
   osp_arc_peak_reset();
-  void *buf = osprey_gpu_alloc(GPU_LEN);
+  void *buf = osprey_gpu_alloc(GPU_LEN, 8);
   CHECK(buf != NULL && osprey_gpu_len(buf) == GPU_LEN);
   size_t data_bytes = (size_t)GPU_LEN * W;
   CHECK(osp_arc_live_objects() == g_floor_objs + 2);
@@ -205,8 +205,8 @@ static void t_gpu_buffer_accounting(void) {
   osp_release(buf);
   at_floor();
   // Empty and clamped-negative buffers still cost header + one guard word.
-  void *empty = osprey_gpu_alloc(0);
-  void *neg = osprey_gpu_alloc(-7);
+  void *empty = osprey_gpu_alloc(0, 8);
+  void *neg = osprey_gpu_alloc(-7, 8);
   CHECK(empty && neg);
   CHECK(osprey_gpu_len(empty) == 0 && osprey_gpu_len(neg) == 0);
   CHECK(osp_arc_live_objects() == g_floor_objs + 4);
@@ -222,7 +222,7 @@ static void t_gpu_churn_flat(void) {
   osp_arc_peak_reset();
   size_t one = GPU_HDR_BYTES + (size_t)GPU_LEN * W;
   for (size_t i = 0; i < CHURN_ITERS / 100; i++) {
-    void *buf = osprey_gpu_alloc(GPU_LEN);
+    void *buf = osprey_gpu_alloc(GPU_LEN, 8);
     CHECK(buf != NULL);
     osprey_gpu_set(buf, (int64_t)(i % (size_t)GPU_LEN), (int64_t)i);
     osp_release(buf);
@@ -272,10 +272,29 @@ static void t_immortal_floor(void) {
   at_floor();
 }
 
+// [GPU-BUFFER-ELEM]: dense storage is measured by ARC, not a reported capacity.
+static void t_gpu_dense_element_widths(void) {
+  for (int64_t width = 1; width <= 8; width *= 2) {
+    size_t before = osp_arc_live_bytes();
+    void *buffer = osprey_gpu_alloc(1000000, width);
+    CHECK(buffer && osprey_gpu_len(buffer) == 1000000);
+    size_t allocated = osp_arc_live_bytes() - before;
+    CHECK(allocated >= (size_t)(1000000 * width));
+    CHECK(allocated <= (size_t)(1000000 * width) + 64);
+    CHECK(allocated == (size_t)(1000000 * width) + GPU_HDR_BYTES);
+    osprey_gpu_set(buffer, 999999, 127);
+    CHECK(osprey_gpu_get(buffer, 999999) == 127);
+    osp_release(buffer);
+    CHECK(osp_arc_live_bytes() == before);
+    at_floor();
+  }
+}
+
 int main(void) {
   // Precede the first allocation, exactly like a compiled program's preamble.
   (void)setenv("OSPREY_ARC_DEBUG", "1", 1);
   t_boot_arms_exact_zero();
+  t_gpu_dense_element_widths();
   t_exact_checkpoints();
   t_failed_alloc_no_drift();
   t_churn_peak_stays_flat();

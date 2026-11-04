@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Names
 import registry::Maybe
 
@@ -48,12 +49,6 @@ module Governance {
 
     export type Registry = { principals: List<Principal>, organizations: List<Organization>, memberships: List<Membership>, packages: List<Package>, grants: List<Grant>, transfers: List<Transfer> }
 
-    /// Sequence two `Result`s, threading the first value: every transition
-    /// is one nested chain of these, so each guard reads on its own line.
-    export fn andThen(result, next) = match result {
-        Success { value } => next(value)
-        Error { message } => Error { message: message }
-    }
 
     fn firstWhere(list, predicate) = foldList(list, Maybe::none(), fn(found, item) =>
         match Maybe::isPresent(found) {
@@ -203,12 +198,12 @@ module Governance {
     /// other organizations' admins and workflows all fail here.
     export fn requireAdmin(registry, pkg: Package, proof, statement) = match proof.membership == pkg.admin {
         false => Error { message: "governance.admin.not-current" }
-        true => andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
-            andThen(activeMemberOf(m), fn(_) =>
-                andThen(principalOf(registry, m.principal), fn(p: Principal) =>
-                    andThen(livePrincipal(p), fn(_) =>
-                        andThen(humanPrincipal(p), fn(_) =>
-                            andThen(requireHumanCeremony(proof), fn(_) =>
+        true => Checked::andThen(membershipOf(registry, proof.membership), fn(m: Membership) =>
+            Checked::andThen(activeMemberOf(m), fn(_) =>
+                Checked::andThen(principalOf(registry, m.principal), fn(p: Principal) =>
+                    Checked::andThen(livePrincipal(p), fn(_) =>
+                        Checked::andThen(humanPrincipal(p), fn(_) =>
+                            Checked::andThen(requireHumanCeremony(proof), fn(_) =>
                                 requireProof(proof, m.principal, m.id, statement)))))))
     }
 

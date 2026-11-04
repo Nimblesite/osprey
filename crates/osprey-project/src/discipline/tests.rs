@@ -54,13 +54,16 @@ fn temp_project(name: &str) -> ProjectConfig {
     ProjectConfig::for_root(&dir)
 }
 
+fn write_file(root: &Path, relative: &str, text: &str) {
+    let path = root.join(relative);
+    std::fs::create_dir_all(path.parent().unwrap_or(root)).expect("dir");
+    std::fs::write(path, text).expect("write");
+}
+
 fn source(text: &str) -> SourceFile {
     let parsed = osprey_syntax::parse_program_with_flavor(text, Flavor::Ml);
-    assert!(
-        parsed.errors.is_empty(),
-        "fixture parses: {:?}",
-        parsed.errors
-    );
+    let errors = &parsed.errors;
+    assert!(errors.is_empty(), "fixture parses: {errors:?}");
     SourceFile {
         path: PathBuf::from("src/Proof.ospml"),
         flavor: Flavor::Ml,
@@ -95,6 +98,15 @@ fn accepted(signature: &str, erased: &str) -> String {
     .to_string()
 }
 
+/// A fresh project plus a scripted checker that answers every request with an
+/// `accepted` response for `signature` and `erased`, and its registry.
+fn seam(name: &str, signature: &str, erased: &str) -> (ProjectConfig, Scripted, Registry) {
+    let config = temp_project(name);
+    let runner = scripted(Ok(&accepted(signature, erased)));
+    let registry = registry(&config.directory);
+    (config, runner, registry)
+}
+
 const MARKED: &str =
     "// osprey: types=bounded\nnamespace proof\n\nmodule Nat\n    export zero = 0\n";
 const SIGNATURE: &str = "signature Nat\n    zero : int\n";
@@ -105,10 +117,8 @@ fn selection_is_marker_then_project_then_hm() {
     // Implements [TYPES-DISCIPLINE-SELECT].
     let mut config = temp_project("select");
     assert_eq!(select(&config, "namespace x\n"), HM);
-    assert_eq!(
-        select(&config, "// osprey: types=lean4\nnamespace x\n"),
-        "lean4"
-    );
+    let lean4 = "// osprey: types=lean4\nnamespace x\n";
+    assert_eq!(select(&config, lean4), "lean4");
     assert_eq!(select(&config, "# osprey: types=lean4\n"), "lean4");
     config.types = Some("bounded".into());
     assert_eq!(select(&config, "namespace x\n"), "bounded");
@@ -138,12 +148,9 @@ fn unknown_discipline_is_one_error_on_the_marker_line() {
     let runner = scripted(Err("must not run"));
     let errors = apply(&config, vec![source(MARKED)], &runner).expect_err("unknown name");
     assert_eq!(errors.len(), 1);
-    assert!(
-        errors[0].message.starts_with(ERROR_PREFIX),
-        "{}",
-        errors[0].message
-    );
-    assert!(errors[0].message.contains("`bounded`"));
+    let message = &errors[0].message;
+    assert!(message.starts_with(ERROR_PREFIX), "{message}");
+    assert!(message.contains("`bounded`"));
     assert_eq!(errors[0].line, Some(1));
     assert_eq!(runner.calls.get(), 0);
 }
@@ -157,17 +164,14 @@ fn duplicate_registration_names_both_packages() {
     assert!(error.message.contains("@osprey/bounded") && error.message.contains("@other/bounded"));
 }
 
+const REGISTRY_MANIFEST: &str = "[package]\nname = \"@osprey/bounded\"\n[discipline]\nname = \"bounded\"\nchecker = \"checker.ospml\"\ntimeout_seconds = 7\n";
+
 #[test]
 fn registry_reads_discipline_tables_from_path_dependencies() {
     // Implements [TYPES-DISCIPLINE-REGISTRY].
     let mut config = temp_project("registry");
     let pkg = config.directory.join("bounded");
-    std::fs::create_dir_all(&pkg).expect("pkg dir");
-    std::fs::write(
-        pkg.join("osprey.toml"),
-        "[package]\nname = \"@osprey/bounded\"\n[discipline]\nname = \"bounded\"\nchecker = \"checker.ospml\"\ntimeout_seconds = 7\n",
-    )
-    .expect("manifest");
+    write_file(&config.directory, "bounded/osprey.toml", REGISTRY_MANIFEST);
     config.dependencies.push(Dependency {
         name: "@osprey/bounded".into(),
         path: Some("bounded".into()),
@@ -230,6 +234,7 @@ fn every_checker_fault_is_a_discipline_error() {
     let wrong_version = accepted(SIGNATURE, ERASED).replace("\"version\":2", "\"version\":3");
     let unparsable = accepted(SIGNATURE, "module Nat\n    export zero = = 0\n");
     let unsigned = accepted("", ERASED);
+    let no_erased = r#"{"version":2,"result":"accepted","signature":"","diagnostics":[]}"#;
     let cases: Vec<(&str, Result<&str, &str>, &str)> = vec![
         (
             "crash",
@@ -249,24 +254,13 @@ fn every_checker_fault_is_a_discipline_error() {
             Ok(&unsigned),
             "wrote no signature for module `Nat`",
         ),
-        (
-            "noerased",
-            Ok(r#"{"version":2,"result":"accepted","signature":"","diagnostics":[]}"#),
-            "no erased module",
-        ),
+        ("noerased", Ok(no_erased), "no erased module"),
     ];
     for (name, answer, expected) in cases {
         let errors = apply_one(name, answer).expect_err(name);
-        assert!(
-            errors[0].message.starts_with(ERROR_PREFIX),
-            "{name}: {}",
-            errors[0].message
-        );
-        assert!(
-            errors[0].message.contains(expected),
-            "{name}: {}",
-            errors[0].message
-        );
+        let message = &errors[0].message;
+        assert!(message.starts_with(ERROR_PREFIX), "{name}: {message}");
+        assert!(message.contains(expected), "{name}: {message}");
     }
 }
 
@@ -286,9 +280,7 @@ fn request_carries_module_flavor_and_marker_and_protocol_version() {
 
 #[test]
 fn unchanged_request_is_answered_from_the_cache() {
-    let config = temp_project("cache");
-    let runner = scripted(Ok(&accepted(SIGNATURE, ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("cache", SIGNATURE, ERASED);
     for _ in 0..2 {
         let _erased =
             apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
@@ -309,6 +301,9 @@ const NAT_HM: &str =
     "namespace proof\n\nmodule Nat\n    export label s = \"n${s}\"\n    export same x = x\n    hidden () = 0\n";
 const THM_MARKED: &str = "// osprey: types=bounded\nnamespace proof\n\nimport proof::Nat\n\nmodule Thm\n    export zero = Nat::label \"0\"\n";
 const THM_SIGNATURE: &str = "signature Thm\n    zero : string\n";
+const NAT_SIGNATURE: &str =
+    "signature Nat\n    label<t0> : (t0) -> string\n    same<t0> : (t0) -> t0\n";
+const SHAPES_SIGNATURE: &str = "signature Shapes\n    size<t0> : (t0) -> int\n";
 const THM_ERASED: &str =
     "namespace proof\n\nimport proof::Nat\n\nmodule Thm\n    export zero = Nat::label \"0\"\n";
 const USER_MARKED: &str = "// osprey: types=bounded\nnamespace proof\n\nimport proof::Thm\n\nmodule User\n    export one = Thm::zero\n";
@@ -324,9 +319,7 @@ fn requests_of(runner: &Scripted) -> Vec<serde_json::Value> {
 
 #[test]
 fn a_checker_receives_the_inferred_signature_of_each_hm_module_its_source_imports() {
-    let config = temp_project("imports-hm");
-    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("imports-hm", THM_SIGNATURE, THM_ERASED);
     // The disciplined file is listed first: dependency order, not file order, decides.
     let sources = vec![
         source_at("src/Thm.ospml", THM_MARKED),
@@ -340,10 +333,7 @@ fn a_checker_receives_the_inferred_signature_of_each_hm_module_its_source_import
     assert_eq!(imports[0]["name"], "proof::Nat");
     assert_eq!(imports[0]["discipline"], HM);
     let signature = imports[0]["signature"].as_str().expect("signature");
-    assert_eq!(
-        signature,
-        "signature Nat\n    label<t0> : (t0) -> string\n    same<t0> : (t0) -> t0\n"
-    );
+    assert_eq!(signature, NAT_SIGNATURE);
     let parsed = osprey_syntax::parse_program_with_flavor(signature, Flavor::Ml);
     assert!(
         parsed.errors.is_empty(),
@@ -354,9 +344,7 @@ fn a_checker_receives_the_inferred_signature_of_each_hm_module_its_source_import
 
 #[test]
 fn a_checker_receives_the_signature_another_checker_wrote_for_an_imported_module() {
-    let config = temp_project("imports-checked");
-    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("imports-checked", THM_SIGNATURE, THM_ERASED);
     let sources = vec![
         source_at("src/User.ospml", USER_MARKED),
         source_at("src/Nat.ospml", NAT_HM),
@@ -378,9 +366,7 @@ fn a_checker_receives_the_signature_another_checker_wrote_for_an_imported_module
 
 #[test]
 fn an_hm_module_nobody_disciplined_imports_is_never_inferred_on_its_own() {
-    let config = temp_project("imports-lazy");
-    let runner = scripted(Ok(&accepted(SIGNATURE, ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("imports-lazy", SIGNATURE, ERASED);
     // A broken `hm` file the disciplined module does not import: assembly of
     // the whole project reports it later, the seam does not.
     let sources = vec![
@@ -398,27 +384,27 @@ fn an_hm_module_nobody_disciplined_imports_is_never_inferred_on_its_own() {
     );
 }
 
+/// Fixture texts shared by the checker-package and checker-project builders
+/// and the digest tests that rewrite them.
+const PACKAGE_MANIFEST: &str =
+    "[package]\nname = \"@osprey/bounded\"\n\n[discipline]\nname = \"bounded\"\nchecker = \"checker.ospml\"\n";
+const PROJECT_MANIFEST: &str =
+    "[package]\nname = \"@osprey/bounded\"\n\n[discipline]\nname = \"bounded\"\nchecker = \"checker\"\n";
+const CHECKER_MANIFEST: &str =
+    "[project]\nname = \"checker\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n";
+const CHECKER_MANIFEST_STRICT: &str =
+    "[project]\nname = \"checker\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n\n[modules]\nallow_wildcard_imports = false\n";
+const RANGE_MAIN: &str = "namespace bounded\n\nimport bounded::Range\n\nmain () = Range::zero\n";
+const RANGE_ZERO: &str = "namespace bounded\n\nmodule Range\n    export zero = 0\n";
+const RANGE_ONE: &str = "namespace bounded\n\nmodule Range\n    export zero = 1\n";
+
 /// A package on disk: manifest, entry module and one imported module whose
 /// text a test rewrites.
 fn checker_package(name: &str) -> PathBuf {
     let root = temp_project(name).directory;
-    let write = |relative: &str, text: &str| {
-        let path = root.join(relative);
-        std::fs::create_dir_all(path.parent().unwrap_or(&root)).expect("dir");
-        std::fs::write(path, text).expect("write");
-    };
-    write(
-        "osprey.toml",
-        "[package]\nname = \"@osprey/bounded\"\n\n[discipline]\nname = \"bounded\"\nchecker = \"checker.ospml\"\n",
-    );
-    write(
-        "checker.ospml",
-        "namespace bounded\n\nimport bounded::Range\n\nmain () = Range::zero\n",
-    );
-    write(
-        "src/Range.ospml",
-        "namespace bounded\n\nmodule Range\n    export zero = 0\n",
-    );
+    write_file(&root, "osprey.toml", PACKAGE_MANIFEST);
+    write_file(&root, "checker.ospml", RANGE_MAIN);
+    write_file(&root, "src/Range.ospml", RANGE_ZERO);
     root
 }
 
@@ -430,39 +416,28 @@ fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name(
     let root = checker_package("build-digest");
     let discipline = bounded(&root);
     let digest = inputs::build_digest(&discipline).expect("digest");
-    assert_eq!(
-        inputs::build_digest(&discipline).expect("digest"),
-        digest,
-        "unchanged inputs keep the digest"
-    );
+    let same = inputs::build_digest(&discipline).expect("digest");
+    assert_eq!(same, digest, "unchanged inputs keep the digest");
     let compiler = root.join("fake-compiler");
     std::fs::write(&compiler, b"compiler one").expect("compiler");
     let build_dir = root.join("build");
-    let built = build_dir.join(format!(
-        "bounded-{digest:016x}-{:016x}",
-        inputs::compiler_digest(&compiler).expect("compiler digest")
-    ));
+    let compiler_digest = inputs::compiler_digest(&compiler).expect("compiler digest");
+    let built = build_dir.join(format!("bounded-{digest:016x}-{compiler_digest:016x}"));
     std::fs::create_dir_all(&build_dir).expect("build dir");
     std::fs::write(&built, b"built").expect("prebuilt binary");
     let runner = ProcessRunner::new(compiler, build_dir);
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    let found = runner
+        .executable(&discipline, deadline)
+        .expect("reused binary");
     assert_eq!(
-        runner
-            .executable(
-                &discipline,
-                std::time::Instant::now() + Duration::from_secs(5)
-            )
-            .expect("reused binary"),
-        built,
+        found, built,
         "a built binary is found again under the name its inputs hash to"
     );
-    std::fs::write(
-        root.join("src/Range.ospml"),
-        "namespace bounded\n\nmodule Range\n    export zero = 1\n",
-    )
-    .expect("rewrite imported module");
+    std::fs::write(root.join("src/Range.ospml"), RANGE_ONE).expect("rewrite imported module");
+    let after = inputs::build_digest(&discipline).expect("digest");
     assert_ne!(
-        inputs::build_digest(&discipline).expect("digest"),
-        digest,
+        after, digest,
         "a change to an imported module is a change to an input"
     );
     let _ = std::fs::remove_dir_all(&root);
@@ -472,9 +447,7 @@ fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name(
 fn a_rebuilt_checker_binary_misses_the_result_cache() {
     // Implements [TYPES-DISCIPLINE-PROTOCOL]: "results are cached by the hash
     // of the request and the checker binary".
-    let config = temp_project("cache-binary");
-    let runner = scripted(Ok(&accepted(SIGNATURE, ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("cache-binary", SIGNATURE, ERASED);
     for _ in 0..2 {
         let _erased =
             apply_with(&config, vec![source(MARKED)], &runner, &registry).expect("accepted");
@@ -508,9 +481,7 @@ const BROKEN_HM: &str = "namespace proof\n\nmodule Nat\n    export label s = lis
 
 #[test]
 fn an_inferred_signature_names_every_exported_item_it_leaves_out() {
-    let config = temp_project("imports-omitted");
-    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("imports-omitted", THM_SIGNATURE, THM_ERASED);
     let sources = vec![
         source_at("src/Shapes.ospml", SHAPES_HM),
         source_at("src/Thm.ospml", USES_SHAPES),
@@ -518,10 +489,7 @@ fn an_inferred_signature_names_every_exported_item_it_leaves_out() {
     let _ = apply_with(&config, sources, &runner, &registry);
     let requests = requests_of(&runner);
     let import = &requests[0]["imports"][0];
-    assert_eq!(
-        import["signature"],
-        "signature Shapes\n    size<t0> : (t0) -> int\n"
-    );
+    assert_eq!(import["signature"], SHAPES_SIGNATURE);
     assert_eq!(
         import["omitted"],
         serde_json::json!(["type Shape", "value limit"]),
@@ -532,9 +500,7 @@ fn an_inferred_signature_names_every_exported_item_it_leaves_out() {
 
 #[test]
 fn an_hm_import_that_does_not_type_check_is_an_error_and_never_a_signature() {
-    let config = temp_project("imports-broken");
-    let runner = scripted(Ok(&accepted(THM_SIGNATURE, THM_ERASED)));
-    let registry = registry(&config.directory);
+    let (config, runner, registry) = seam("imports-broken", THM_SIGNATURE, THM_ERASED);
     let sources = vec![
         source_at("src/Nat.ospml", BROKEN_HM),
         source_at("src/Thm.ospml", THM_MARKED),
@@ -558,28 +524,20 @@ fn an_hm_import_that_does_not_type_check_is_an_error_and_never_a_signature() {
 /// entry, and the entry imports a sibling module.
 fn checker_project(name: &str) -> PathBuf {
     let root = temp_project(name).directory;
-    let write = |relative: &str, text: &str| {
-        let path = root.join(relative);
-        std::fs::create_dir_all(path.parent().unwrap_or(&root)).expect("dir");
-        std::fs::write(path, text).expect("write");
-    };
-    write(
-        "osprey.toml",
-        "[package]\nname = \"@osprey/bounded\"\n\n[discipline]\nname = \"bounded\"\nchecker = \"checker\"\n",
-    );
-    write(
-        "checker/osprey.toml",
-        "[project]\nname = \"checker\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n",
-    );
-    write(
-        "checker/src/main.ospml",
-        "namespace bounded\n\nimport bounded::Range\n\nmain () = Range::zero\n",
-    );
-    write(
-        "checker/src/range.ospml",
-        "namespace bounded\n\nmodule Range\n    export zero = 0\n",
-    );
+    write_file(&root, "osprey.toml", PROJECT_MANIFEST);
+    write_file(&root, "checker/osprey.toml", CHECKER_MANIFEST);
+    write_file(&root, "checker/src/main.ospml", RANGE_MAIN);
+    write_file(&root, "checker/src/range.ospml", RANGE_ZERO);
     root
+}
+
+/// A discipline whose checker is the `checker/` project directory beside
+/// the package manifest.
+fn checker_discipline(root: &Path) -> Discipline {
+    Discipline {
+        checker: root.join("checker"),
+        ..bounded(root)
+    }
 }
 
 #[test]
@@ -588,31 +546,18 @@ fn a_checker_project_directory_is_digested_over_its_manifest_and_every_module() 
     // built by the ordinary pipeline, so it may be a project of many modules;
     // every module and the project manifest are build inputs.
     let root = checker_project("checker-dir");
-    let discipline = Discipline {
-        checker: root.join("checker"),
-        ..bounded(&root)
-    };
+    let discipline = checker_discipline(&root);
     let digest = inputs::build_digest(&discipline).expect("digest");
-    std::fs::write(
-        root.join("checker/src/range.ospml"),
-        "namespace bounded\n\nmodule Range\n    export zero = 1\n",
-    )
-    .expect("rewrite module");
+    std::fs::write(root.join("checker/src/range.ospml"), RANGE_ONE).expect("rewrite module");
     let changed = inputs::build_digest(&discipline).expect("digest");
     assert_ne!(
         changed, digest,
         "a module of the checker project is an input"
     );
-    std::fs::write(
-        root.join("checker/osprey.toml"),
-        "[project]\nname = \"checker\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n\n[modules]\nallow_wildcard_imports = false\n",
-    )
-    .expect("rewrite manifest");
-    assert_ne!(
-        inputs::build_digest(&discipline).expect("digest"),
-        changed,
-        "the checker project's manifest is an input"
-    );
+    std::fs::write(root.join("checker/osprey.toml"), CHECKER_MANIFEST_STRICT)
+        .expect("rewrite manifest");
+    let after = inputs::build_digest(&discipline).expect("digest");
+    assert_ne!(after, changed, "the checker project's manifest is an input");
     let _ = std::fs::remove_dir_all(&root);
 }
 
@@ -620,15 +565,10 @@ fn a_checker_project_directory_is_digested_over_its_manifest_and_every_module() 
 fn a_checker_directory_without_a_manifest_is_an_error_naming_it() {
     let root = checker_project("checker-dir-no-manifest");
     std::fs::remove_file(root.join("checker/osprey.toml")).expect("remove manifest");
-    let discipline = Discipline {
-        checker: root.join("checker"),
-        ..bounded(&root)
-    };
+    let discipline = checker_discipline(&root);
     let message = inputs::build_digest(&discipline).expect_err("no manifest");
-    assert!(
-        message.contains("checker/osprey.toml")
-            || message.contains("checker") && message.contains("osprey.toml"),
-        "{message}"
-    );
+    let mentions_manifest = message.contains("checker/osprey.toml")
+        || message.contains("checker") && message.contains("osprey.toml");
+    assert!(mentions_manifest, "{message}");
     let _ = std::fs::remove_dir_all(&root);
 }

@@ -11,6 +11,7 @@
 use lspkit::vfs::PositionEncoding;
 use osprey_ast::Program;
 use osprey_syntax::Flavor;
+use osprey_types::numeric::Numeric;
 use osprey_types::{names, ProgramTypes, Type};
 
 use crate::analysis::{collect_all_symbols, collect_inferred_symbols, SymbolInfo, SymbolKind};
@@ -23,9 +24,17 @@ use crate::workspace;
 
 /// The type names every program can write without declaring them. Spelled from
 /// the checker's own constants so the two can never drift.
-const BUILTIN_TYPES: [&str; 8] = [
+const BUILTIN_TYPES: [&str; 16] = [
     names::INT,
     names::FLOAT,
+    Numeric::INT8.name(),
+    Numeric::INT16.name(),
+    Numeric::INT32.name(),
+    Numeric::UINT8.name(),
+    Numeric::UINT16.name(),
+    Numeric::UINT32.name(),
+    Numeric::FLOAT16.name(),
+    Numeric::FLOAT32.name(),
     names::STRING,
     names::BOOL,
     names::UNIT,

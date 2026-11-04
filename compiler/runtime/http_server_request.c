@@ -13,17 +13,7 @@ static pthread_mutex_t request_sequence_mutex = PTHREAD_MUTEX_INITIALIZER;
 static uint64_t next_request_sequence = 1;
 
 #ifndef HTTP_MONOTONIC_MS
-static uint64_t monotonic_milliseconds(void) {
-#ifdef _WIN32
-  return (uint64_t)GetTickCount64();
-#else
-  struct timespec now;
-  return clock_gettime(CLOCK_MONOTONIC, &now) == 0
-             ? (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U
-             : 0;
-#endif
-}
-#define HTTP_MONOTONIC_MS monotonic_milliseconds
+#define HTTP_MONOTONIC_MS osp_monotonic_ms
 #endif
 
 bool http_socket_interrupted(void) {

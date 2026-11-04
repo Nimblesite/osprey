@@ -37,6 +37,7 @@ type FrameStyle =
     frameFadeBackdrop : bool
     frameTrailingSymbols : bool
     frameFlatRows : bool
+    frameSelectionGroup : bool
     frameShadow : string
 
 (** One inline text run; its semantic colour, italics and emphasis (empty, `strong` or `code`) are authored by the application. *)
@@ -49,7 +50,7 @@ type TextRun =
 (** Pure frame values; hosts apply them without making application layout decisions. *)
 module Frames
     (** A natural-size, transparent frame. *)
-    export plain = FrameStyle(frameName = "", frameWidth = 0, frameHeight = 0, frameViewportHeightInset = -1, frameScrollY = false, frameTop = 0, frameRight = 0, frameBottom = 0, frameLeft = 0, frameRadius = 0, frameGap = 0, frameFill = "", frameInk = "", frameLine = "", frameLineEdge = "all", frameGrow = false, frameFont = "", frameTextSize = 0, frameMathScale = 0.0, frameLineHeight = 0.0, frameTracking = 0.0, frameItalic = false, frameHug = false, frameAlign = "start", frameCross = "stretch", frameControlHeight = 0, frameControlPadding = -1, frameSymbolSize = 0, frameQuietControls = false, frameIconOnly = false, frameFadeBackdrop = false, frameTrailingSymbols = false, frameFlatRows = false, frameShadow = "")
+    export plain = FrameStyle(frameName = "", frameWidth = 0, frameHeight = 0, frameViewportHeightInset = -1, frameScrollY = false, frameTop = 0, frameRight = 0, frameBottom = 0, frameLeft = 0, frameRadius = 0, frameGap = 0, frameFill = "", frameInk = "", frameLine = "", frameLineEdge = "all", frameGrow = false, frameFont = "", frameTextSize = 0, frameMathScale = 0.0, frameLineHeight = 0.0, frameTracking = 0.0, frameItalic = false, frameHug = false, frameAlign = "start", frameCross = "stretch", frameControlHeight = 0, frameControlPadding = -1, frameSymbolSize = 0, frameQuietControls = false, frameIconOnly = false, frameFadeBackdrop = false, frameTrailingSymbols = false, frameFlatRows = false, frameSelectionGroup = false, frameShadow = "")
 
     (** Insets in points, clockwise from the top. *)
     export inset (top, right, bottom, left) =

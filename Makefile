@@ -97,11 +97,15 @@ _test_packages:
 _coverage_check_packages:
 	python3 scripts/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
 
-.PHONY: _test_agent
+.PHONY: _test_agent _agent-suites
 # Osprey Agent's turn logic and real update path: no network and no window.
 _test_agent:
-	$(BIN) examples/agent/test --run --quiet --no-warnings
+	set -o pipefail && $(BIN) examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 	$(BIN) examples/agent/test-app --run --quiet --no-warnings
+
+_agent-suites: _runtime
+	cargo build --release -p osprey-cli
+	$(MAKE) _test_agent
 
 .PHONY: _python-app-ports _test_python_app_ports
 _python-app-ports: build
@@ -314,6 +318,18 @@ _workbench-test: build
 	  $(BIN) test apps/workbench/tests --memory=$$memory --filter "proof library file import displays its actual checked statement" || exit 1; \
 	  $(BIN) test apps/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
 	done
+
+.PHONY: _agent-self-test _agent-live-test
+# [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
+_agent-self-test: _runtime_macos
+	cargo build --release -p osprey-cli
+	swift test --package-path hosts/swift/Tests
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/agent/self-test.sh
+
+# The same script and harder tasks in a real window with real DeepSeek calls. Spends tokens.
+_agent-live-test: _runtime_macos
+	cargo build --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/agent/self-test.sh --live
 
 .PHONY: _workbench-native-test
 _workbench-native-test: build

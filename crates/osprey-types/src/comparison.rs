@@ -87,8 +87,9 @@ fn is_equality(op: &str) -> bool {
 }
 
 fn is_scalar(ty: &Type) -> bool {
-    matches!(ty, Type::Con { name, args } if args.is_empty()
-        && matches!(name.as_str(), names::INT | names::FLOAT | names::STRING | names::BOOL))
+    crate::numeric::Numeric::of_type(ty).is_some()
+        || ty.is_named(names::STRING)
+        || ty.is_named(names::BOOL)
 }
 
 fn undecided_message(op: &str, ty: &Type) -> String {

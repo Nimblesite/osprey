@@ -25,48 +25,35 @@ countOdd (acc, flag) = match flag
     true => (acc + 1) 
     false => acc
 
-(** The identity kernel: every scalar word must come back out unchanged, at
-    the element type its source buffer was tagged with. *)
+(** The identity kernel: every scalar word must come back out unchanged, at the element type its source buffer was tagged with. *)
 same x = x
 
-(** The exact payload [GPU-GET] contracts for a read outside the buffer, so a
-    wrong gather is a visible failure and never a sentinel element. *)
+(** The exact payload [GPU-GET] contracts for a read outside the buffer, so a wrong gather is a visible failure and never a sentinel element. *)
 oobMessage () = "gpuGet: index out of bounds"
 
-(** Render one gpuGet outcome as text — the element for a hit, the error
-    payload for a miss. Being polymorphic over the element type, it is itself
-    the assertion that gpuGet recovers int, float and bool alike. *)
+(** Render one gpuGet outcome as text — the element for a hit, the error payload for a miss. Being polymorphic over the element type, it is itself the assertion that gpuGet recovers int, float and bool alike. *)
 readback (b, i) = match gpuGet (b, i)
     Success value => toString value
     Error message => message
 
-(** Compute the final index from the length: the read that sits exactly on
-    the in-bounds boundary. *)
+(** Compute the final index from the length: the read that sits exactly on the in-bounds boundary. *)
 lastOf b = gpuGet (b, (gpuLength b - 1) )
 
-(** Take a buffer as a plain parameter — the handle and its element tag have
-    to survive the call. *)
+(** Take a buffer as a plain parameter — the handle and its element tag have to survive the call. *)
 widthOf b = gpuLength b
 
-(** Both receive and return a buffer, so the tag must survive a parameter and
-    a return in one call. *)
+(** Both receive and return a buffer, so the tag must survive a parameter and a return in one call. *)
 doubledInts b = b |> gpuMap (\x => (x * 2) )
 
-(** doubledInts' float twin: tags are per-buffer, so a float buffer must come
-    back out of a return still reading as float. *)
+(** doubledInts' float twin: tags are per-buffer, so a float buffer must come back out of a return still reading as float. *)
 scaledFloats b = b |> gpuMap scale
 
-(** Return a buffer out of a match arm — the fourth binding form a handle
-    travels through. *)
+(** Return a buffer out of a match arm — the fourth binding form a handle travels through. *)
 chooseBuffer (flag, a, b) = match flag
     true => a
     false => b
 
-(** Pin [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight
-    into the dense buffer at constant indices, with no list built at all.
-    Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the
-    degenerate one- and zero-element literals and the sign and magnitude
-    extremes an int word must hold. *)
+(** Pin [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold. *)
 literalCase () =
     ints = toGpu [3, 1, 4, 1, 5]
     floats = toGpu [0.25, 0.5, 0.75, 1.0]
@@ -95,10 +82,7 @@ literalCase () =
         (flags |> gpuFold 0 countOdd) == 2
     ]
 
-(** Pin [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than
-    the literal path and must land on a buffer indistinguishable from the
-    literal one — same length, same elements, same reduction — down to the
-    one- and zero-element lists. *)
+(** Pin [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists. *)
 listCopyCase () =
     source = [2, 4, 6, 8]
     copied = toGpu source
@@ -120,9 +104,7 @@ listCopyCase () =
         (toGpu source |> gpuFold 0 addInts) == (copied |> gpuFold 0 addInts)
     ]
 
-(** Pin toGpu/fromGpu as an order-preserving dense copy in both directions
-    [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index
-    checked at every hop, with a list index past the end still failing. *)
+(** Pin toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing. *)
 roundTripCase () =
     buf = toGpu [3, 1, 4, 1, 5]
     back = fromGpu buf
@@ -144,9 +126,7 @@ roundTripCase () =
         (gpuGet (toGpu (fromGpu (gpuIota 6)), 5) ?: 0) == 5
     ]
 
-(** Pin the zero-element buffer through every builtin that takes one: no
-    element is readable at any index, it materializes as an empty list, maps
-    to another empty buffer, and folds to its seed untouched. *)
+(** Pin the zero-element buffer through every builtin that takes one: no element is readable at any index, it materializes as an empty list, maps to another empty buffer, and folds to its seed untouched. *)
 emptyCase () =
     none = gpuIota 0
     mapped = none |> gpuMap square
@@ -167,8 +147,7 @@ emptyCase () =
         readback (flags, 0) == oobMessage (), readback (widened, 0) == oobMessage ()
     ]
 
-(** Pin the one-element buffer: index 0 is the only address in bounds, so both
-    1 and -1 fail, and a fold sees exactly one element. *)
+(** Pin the one-element buffer: index 0 is the only address in bounds, so both 1 and -1 fail, and a fold sees exactly one element. *)
 singletonCase () =
     lone = toGpu [42]
     loneF = toGpu [2.5]
@@ -192,10 +171,7 @@ singletonCase () =
         gpuLength (toGpu (fromGpu lone)) == 1
     ]
 
-(** Pin [GPU-GET] at both ends and far outside them for every element type: an
-    in-bounds read returns the element at the buffer's own scalar type, and
-    index == length, index == -1 and indices a million past either edge all
-    return the identical Error payload. *)
+(** Pin [GPU-GET] at both ends and far outside them for every element type: an in-bounds read returns the element at the buffer's own scalar type, and index == length, index == -1 and indices a million past either edge all return the identical Error payload. *)
 boundsCase () =
     ints = toGpu [10, 20, 30]
     floats = toGpu [1.25, 2.5]
@@ -220,10 +196,7 @@ boundsCase () =
         (lastOf flags ?: true) == false
     ]
 
-(** Pin [GPU-IOTA] across its domain: the empty, one- and two-element index
-    buffers, a large one whose closed-form sum a miscounted loop cannot match,
-    and a negative count, which has no indices to generate and so yields an
-    empty buffer rather than a negative allocation. *)
+(** Pin [GPU-IOTA] across its domain: the empty, one- and two-element index buffers, a large one whose closed-form sum a miscounted loop cannot match, and a negative count, which has no indices to generate and so yields an empty buffer rather than a negative allocation. *)
 iotaCase () =
     one = gpuIota 1
     pair = gpuIota 2
@@ -249,9 +222,7 @@ iotaCase () =
         listLength (fromGpu seven) == 7, (listGet (fromGpu seven, 3) ?: 0) == 3
     ]
 
-(** Pin [GPU-BUFFER-ELEM]: int, float and bool words go through the identity
-    kernel and come back bit-for-bit at their own type — a float buffer must
-    never read back as the integer its bits spell. *)
+(** Pin [GPU-BUFFER-ELEM]: int, float and bool words go through the identity kernel and come back bit-for-bit at their own type — a float buffer must never read back as the integer its bits spell. *)
 elementCase () =
     ints = toGpu [-9, 0, 9]
     floats = toGpu [-0.5, 0.0, 0.125]
@@ -277,10 +248,7 @@ elementCase () =
         (lastOf (floats |> gpuMap same) ?: 9.5) == 0.125
     ]
 
-(** Pin the handle and its element tag through all four binding forms a value
-    takes — a let, a pipe, a function parameter and a function return — plus a
-    match arm and a lambda parameter. A float buffer that lost its tag
-    anywhere along the way would read back as raw bits. *)
+(** Pin the handle and its element tag through all four binding forms a value takes — a let, a pipe, a function parameter and a function return — plus a match arm and a lambda parameter. A float buffer that lost its tag anywhere along the way would read back as raw bits. *)
 flowCase () =
     held = toGpu [1.5, 2.5, 3.5]
     piped = held |> gpuMap scale
@@ -307,9 +275,7 @@ flowCase () =
         listLength (fromGpu held) == 3
     ]
 
-(** Pin two bindings onto one buffer. Buffers are immutable values
-    [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and
-    leaves every alias of the source reading what it read before. *)
+(** Pin two bindings onto one buffer. Buffers are immutable values [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and leaves every alias of the source reading what it read before. *)
 aliasCase () =
     source = toGpu [1, 2, 3, 4]
     alias = source
@@ -332,10 +298,7 @@ aliasCase () =
         listLength (fromGpu alias) == 4, (listGet (fromGpu alsoAlias, 2) ?: 0) == 3
     ]
 
-(** Pin [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused
-    into the buffer has to be addressable element by element, the published
-    length has to bound gpuGet exactly, and a one-element or empty range has
-    to land on a buffer of that size. *)
+(** Pin [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size. *)
 fusionCase () =
     straight = range (0, 6) |> toGpu ()
     squares = range (1, 5) |> map square |> toGpu ()
@@ -358,8 +321,7 @@ fusionCase () =
         (toGpu (fromGpu squares) |> gpuFold 0 addInts) == 30
     ]
 
-(** Pipe a buffer through a named kernel and fold it away, including over
-    negative elements and over no elements at all. *)
+(** Pipe a buffer through a named kernel and fold it away, including over negative elements and over no elements at all. *)
 intKernelCase () =
     total = toGpu [1, 2, 3, 4] |> gpuMap square |> gpuFold 0 addInts
     squares = toGpu [1, 2, 3] |> gpuMap (\x => (x * x) ) |> fromGpu
@@ -374,8 +336,7 @@ intKernelCase () =
         (gpuIota 0 |> gpuMap square |> gpuFold 0 addInts) == 0
     ]
 
-(** Prove float words keep their bits through map and fold, including the
-    [GPU-CONVERT] seed that widens an index buffer. *)
+(** Prove float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer. *)
 floatKernelCase () =
     sum = toGpu [1.0, 2.0, 3.0] |> gpuMap scale |> gpuFold 0.0 addFloats
     halves = toGpu [0.5, 0.25, 0.125]
@@ -390,8 +351,7 @@ floatKernelCase () =
         (gpuIota 0 |> gpuMap toFloat |> gpuFold 2.5 addFloats) == 2.5
     ]
 
-(** Map int elements to bool elements and count the odd ones, covering the
-    all-true and all-false buffers beside the mixed one. *)
+(** Map int elements to bool elements and count the odd ones, covering the all-true and all-false buffers beside the mixed one. *)
 boolKernelCase () =
     odds = toGpu [1, 2, 3, 4, 5] |> gpuMap isOdd
     allTrue = toGpu [1, 3] |> gpuMap isOdd
@@ -407,9 +367,7 @@ boolKernelCase () =
         gpuLength (gpuIota 0 |> gpuMap isOdd) == 0
     ]
 
-(** Push the copy path itself to scale: a hundred thousand elements out to a
-    list and back into a buffer, boundary indices and closed-form sums checked
-    on every hop. *)
+(** Push the copy path itself to scale: a hundred thousand elements out to a list and back into a buffer, boundary indices and closed-form sums checked on every hop. *)
 bigCase () =
     wide = gpuIota 100000
     doubled = doubledInts wide
@@ -429,13 +387,7 @@ bigCase () =
         readback (rebuilt, -1) == oobMessage (), widthOf rebuilt == widthOf wide
     ]
 
-(** A kernel whose body is a BLOCK with an internal binding. Plan 0002 recorded
-    this as failing with `unknown identifier \`base\`` — the inline-callback path
-    was said to lose the block's local scope, with named kernels as the
-    workaround. It lowers correctly; nothing pinned it, so the item could not be
-    closed. The suite runs under BOTH `OSPREY_GPU_KERNELS=extract` and
-    `=inline`, so this holds for the extracted and the inlined lowering alike.
-    Implements [GPU-KERNEL-FORM]. *)
+(** A kernel whose body is a BLOCK with an internal binding. Plan 0002 recorded this as failing with `unknown identifier \`base\`` — the inline-callback path was said to lose the block's local scope, with named kernels as the workaround. It lowers correctly; nothing pinned it, so the item could not be closed. The suite runs under BOTH `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted and the inlined lowering alike. Implements [GPU-KERNEL-FORM]. *)
 blockBodiedKernelCase () =
     fromFn = gpuIota 4 |> gpuMap (\r =>
         base = (r * 3) 
@@ -460,6 +412,61 @@ blockBodiedKernelCase () =
         (gpuGet (widened, 2) ?: 9.5) == 1.0
     ]
 
+(** [GPU-BUFFER-ELEM]: one index read back through gpuGet equals the source. *)
+denseRead (buffer, values, i) = match gpuGet (buffer, i)
+    Success actual => match listGet (values, i)
+        Success expected => actual == expected
+        Error _ => false
+    Error _ => false
+
+(** [GPU-BUFFER-ELEM]: an out-of-bounds gpuGet errors, never a sentinel. *)
+denseOutOfBounds (buffer, index) = match gpuGet (buffer, index)
+    Error _ => true
+    Success _ => false
+(** [GPU-BUFFER-ELEM]: the ML twin uses the same dense element widths and reads each index back through gpuGet. *)
+denseRoundTrip (label, values) =
+    buffer = toGpu values
+    mapped = gpuMap (buffer, \value => value)
+    gathered = gpuZipWith (gpuIota (length values), buffer, \(index, value) => gpuGet (buffer, index) ?: value)
+    checkAll label [
+        gpuLength buffer == length values,
+        structuralEquals (fromGpu buffer, values),
+        structuralEquals (fromGpu mapped, values),
+        structuralEquals (fromGpu gathered, values),
+        range (0, length values) |> fold (true, \(ok, i) => ok && denseRead (buffer, values, i)),
+        denseOutOfBounds (buffer, -1),
+        denseOutOfBounds (buffer, length values)
+    ]
+denseIntegerWidthsCase () =
+    i8 : List<int8>
+    i8 = [-128, 0, 127]
+    u8 : List<uint8>
+    u8 = [0, 128, 255]
+    i16 : List<int16>
+    i16 = [-32768, 0, 32767]
+    u16 : List<uint16>
+    u16 = [0, 32768, 65535]
+    i32 : List<int32>
+    i32 = [-2147483648, 0, 2147483647]
+    u32 : List<uint32>
+    u32 = [0, 2147483648, 4294967295]
+    denseRoundTrip ("dense int8", i8)
+    denseRoundTrip ("dense uint8", u8)
+    denseRoundTrip ("dense int16", i16)
+    denseRoundTrip ("dense uint16", u16)
+    denseRoundTrip ("dense int32", i32)
+    denseRoundTrip ("dense uint32", u32)
+denseWidthsCase () =
+    denseIntegerWidthsCase ()
+    f16 : List<float16>
+    f16 = [-0.5, 0.0, 1.5]
+    f32 : List<float32>
+    f32 = [-0.5, 0.0, 1.5]
+    denseRoundTrip ("dense float16", f16)
+    denseRoundTrip ("dense float32", f32)
+    denseRoundTrip ("dense bool", [true, false, true])
+    denseRoundTrip ("dense int", [-9223372036854775808, 0, 9223372036854775807])
+    denseRoundTrip ("dense float", [-0.5, 0.0, 1.5])
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith
@@ -473,8 +480,6 @@ exactArithmetic work =
             expectFalse true
             0
     work ()
-
-
 test ("buffer literals store elements densely at constant indices", \() => exactArithmetic (literalCase))
 test ("a list value copies into a buffer element for element", \() => exactArithmetic (listCopyCase))
 test ("gpu buffers round-trip lists densely", \() => exactArithmetic (roundTripCase))
@@ -491,3 +496,4 @@ test ("float kernels keep element bits through map and fold", \() => exactArithm
 test ("kernels may change the element scalar type", \() => exactArithmetic (boolKernelCase))
 test ("the copy path stays exact at a hundred thousand elements", \() => exactArithmetic (bigCase))
 test ("a block-bodied kernel keeps its internal let bindings", \() => exactArithmetic (blockBodiedKernelCase))
+test ("every scalar width survives dense storage and round-trips through gpuGet", \() => exactArithmetic (denseWidthsCase))

@@ -12,9 +12,9 @@ extern native_slice (key : string) -> string
 start source =
     handle ui::Slices
         fetch key => native_slice key
-    Runtime::start (source, \context => App::initial context, \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, App::theme ())
+    Runtime::start (source, App::initial, App::regions, App::save, App::theme ())
 
 dispatch (saved, event) =
     handle ui::Slices
         fetch key => native_slice key
-    Runtime::dispatch (saved, event, \(context, store, message) => App::update (context, store, message), \(before, after, frames, writes) => App::regions (before, after, frames, writes), \store => App::save store, \doc => App::restore doc)
+    Runtime::dispatch (saved, event, App::update, App::regions, App::save, App::restore)

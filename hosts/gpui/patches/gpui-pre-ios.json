@@ -1,0 +1,65 @@
+[
+  {
+    "file": "Cargo.toml",
+    "before": [
+      "[target.'cfg(target_os = \"ios\")'.dependencies.anyhow]\nversion = \"1.0.86\"\n"
+    ],
+    "after": [
+      "[target.'cfg(target_os = \"ios\")'.dependencies.accesskit_ios]\nversion = \"=0.1.2\"\n\n[target.'cfg(target_os = \"ios\")'.dependencies.anyhow]\nversion = \"1.0.86\"\n"
+    ]
+  },
+  {
+    "file": "src/ios/window.rs",
+    "before": [
+      "use super::{CallbackSlot, IosDisplay, platform::IosPlatformState};\n"
+    ],
+    "after": [
+      "use super::{CallbackSlot, IosDisplay, platform::IosPlatformState};\nuse accesskit_ios::SubclassingAdapter;\nuse gpui::accesskit::{\n    ActionHandler, ActionRequest, ActivationHandler, DeactivationHandler, TreeUpdate,\n};\n"
+    ]
+  },
+  {
+    "file": "src/ios/window.rs",
+    "before": [
+      "pub(crate) struct IosWindow {\n    state: Rc<IosWindowState>,\n}\n"
+    ],
+    "after": [
+      "/// The accessibility handlers GPUI installs after the window is constructed.\n#[derive(Default)]\nstruct IosA11y {\n    callbacks: Option<gpui::A11yCallbacks>,\n    /// UIKit requested a tree before GPUI installed its callbacks.\n    activation_pending: bool,\n}\n\n/// Forwards the adapter's callbacks to the GPUI callbacks currently installed.\n#[derive(Clone)]\nstruct IosA11yHandlers(Rc<RefCell<IosA11y>>);\n\nimpl ActivationHandler for IosA11yHandlers {\n    fn request_initial_tree(&mut self) -> Option<TreeUpdate> {\n        if self.0.borrow().callbacks.is_none() {\n            // A later `a11y_init` activates the adapter once GPUI is ready.\n            self.0.borrow_mut().activation_pending = true;\n            return None;\n        }\n        with_a11y_callbacks(&self.0, |callbacks| (callbacks.activation)()).flatten()\n    }\n}\n\nimpl ActionHandler for IosA11yHandlers {\n    fn do_action(&mut self, request: ActionRequest) {\n        let _ = with_a11y_callbacks(&self.0, |callbacks| (callbacks.action)(request));\n    }\n}\n\nimpl DeactivationHandler for IosA11yHandlers {\n    fn deactivate_accessibility(&mut self) {\n        if with_a11y_callbacks(&self.0, |callbacks| (callbacks.deactivation)()).is_none() {\n            // UIKit withdrew an activation that arrived before `a11y_init`.\n            self.0.borrow_mut().activation_pending = false;\n        }\n    }\n}\n\n/// Runs one GPUI callback with the callbacks taken out of the cell, so a\n/// handler that re-enters the platform cannot borrow the cell twice.\nfn with_a11y_callbacks<R>(\n    a11y: &Rc<RefCell<IosA11y>>,\n    run: impl FnOnce(&mut gpui::A11yCallbacks) -> R,\n) -> Option<R> {\n    let mut callbacks = a11y.borrow_mut().callbacks.take()?;\n    let result = run(&mut callbacks);\n    let mut shared = a11y.borrow_mut();\n    // Callbacks installed by a re-entrant `a11y_init` win.\n    if shared.callbacks.is_none() {\n        shared.callbacks = Some(callbacks);\n    }\n    Some(result)\n}\n\n/// Installs the AccessKit adapter on `view` before UIKit can show it.\n///\n/// QUARANTINE: `accesskit_ios` 0.1.2 exposes only a constructor that panics on\n/// a null view, off the main thread, or for a view that already has an adapter.\n/// The preconditions hold by construction: `view` is a live `Retained<MetalView>`,\n/// `IosWindow::new` runs on the main thread, and it adds one adapter per window.\nfn install_a11y_adapter(\n    view: &Retained<MetalView>,\n    a11y: &Rc<RefCell<IosA11y>>,\n) -> SubclassingAdapter {\n    let handlers = IosA11yHandlers(Rc::clone(a11y));\n    // SAFETY: the window keeps `view` alive for as long as the adapter exists.\n    unsafe {\n        SubclassingAdapter::new(\n            Retained::as_ptr(view).cast_mut().cast(),\n            handlers.clone(),\n            handlers.clone(),\n            handlers,\n        )\n    }\n}\n\npub(crate) struct IosWindow {\n    state: Rc<IosWindowState>,\n}\n"
+    ]
+  },
+  {
+    "file": "src/ios/window.rs",
+    "before": [
+      "    /// Current modifiers\n    modifiers: Cell<Modifiers>,\n    renderer: Mutex<MetalRenderer>,\n}\n"
+    ],
+    "after": [
+      "    /// Current modifiers\n    modifiers: Cell<Modifiers>,\n    renderer: Mutex<MetalRenderer>,\n    /// State shared with the accessibility adapter's handlers.\n    a11y: Rc<RefCell<IosA11y>>,\n    /// The AccessKit adapter subclassing `view`, installed before the window is shown.\n    a11y_adapter: RefCell<Option<SubclassingAdapter>>,\n}\n"
+    ]
+  },
+  {
+    "file": "src/ios/window.rs",
+    "before": [
+      "        let metal_frame = CGRect::new(CGPoint::ZERO, screen_bounds_cg.size);\n        let view = MetalView::new(metal_frame, main_thread);\n\n        let layer = view.layer();\n"
+    ],
+    "after": [
+      "        let metal_frame = CGRect::new(CGPoint::ZERO, screen_bounds_cg.size);\n        let view = MetalView::new(metal_frame, main_thread);\n\n        // The adapter subclasses the view, which UIKit only permits before the\n        // view is shown; GPUI installs its accessibility callbacks afterwards.\n        let a11y = Rc::new(RefCell::new(IosA11y::default()));\n        let a11y_adapter = install_a11y_adapter(&view, &a11y);\n\n        let layer = view.layer();\n"
+    ]
+  },
+  {
+    "file": "src/ios/window.rs",
+    "before": [
+      "            modifiers: Cell::new(Modifiers::default()),\n            renderer: Mutex::new(renderer),\n        };\n"
+    ],
+    "after": [
+      "            modifiers: Cell::new(Modifiers::default()),\n            renderer: Mutex::new(renderer),\n            a11y,\n            a11y_adapter: RefCell::new(Some(a11y_adapter)),\n        };\n"
+    ]
+  },
+  {
+    "file": "src/ios/window.rs",
+    "before": [
+      "    fn set_text_input_configuration(&mut self, configuration: TextInputConfiguration) {\n        self.text_input_view.set_configuration(&configuration);\n    }\n}\n"
+    ],
+    "after": [
+      "    fn set_text_input_configuration(&mut self, configuration: TextInputConfiguration) {\n        self.text_input_view.set_configuration(&configuration);\n    }\n\n    fn a11y_init(&self, callbacks: gpui::A11yCallbacks) {\n        let pending = {\n            let mut a11y = self.a11y.borrow_mut();\n            a11y.callbacks = Some(callbacks);\n            std::mem::take(&mut a11y.activation_pending)\n        };\n        if !pending {\n            return;\n        }\n        // UIKit activated the adapter before GPUI could serve a tree, so it\n        // holds a placeholder. Activation returns GPUI's initial window tree and\n        // schedules the full frame whose update replaces it.\n        let initial = with_a11y_callbacks(&self.a11y, |callbacks| (callbacks.activation)());\n        if let Some(initial) = initial.flatten() {\n            self.a11y_tree_update(initial);\n        }\n    }\n\n    fn a11y_tree_update(&self, tree_update: TreeUpdate) {\n        let events = self\n            .a11y_adapter\n            .borrow_mut()\n            .as_ref()\n            .and_then(|adapter| adapter.update_if_active(|| tree_update));\n        if let Some(events) = events {\n            events.raise();\n        }\n    }\n}\n"
+    ]
+  }
+]

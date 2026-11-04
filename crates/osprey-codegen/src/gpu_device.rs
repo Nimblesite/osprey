@@ -18,57 +18,88 @@
 
 mod dialect;
 mod emit;
+mod entries;
 mod launch;
 mod loops;
+mod numeric;
 
-pub(crate) use launch::{declined, launch_fold, launch_map};
+pub(crate) use launch::{launch_fold, launch_map, launch_sequence};
 
 use crate::builder::Codegen;
 use crate::llty::LType;
 use osprey_ast::{Expr, Parameter, Program, Stmt};
+use osprey_types::numeric::Numeric;
 use std::collections::HashMap;
-use std::fmt::Write as _;
 
 /// The device dialect's spelling of a kernel's scalar word.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Ty {
-    Int,
-    Float,
+    Num(Numeric),
     Bool,
 }
 
 impl Ty {
+    pub(crate) const INT: Ty = Ty::Num(Numeric::INT);
+    pub(crate) const FLOAT: Ty = Ty::Num(Numeric::FLOAT);
+    pub(super) const FLOAT32: Ty = Ty::Num(Numeric::FLOAT32);
+
     fn of(ty: LType) -> Option<Ty> {
         match ty {
-            LType::I64 => Some(Ty::Int),
-            LType::Double => Some(Ty::Float),
+            LType::Num(n) => Some(Ty::Num(n)),
             LType::I1 => Some(Ty::Bool),
             _ => None,
         }
     }
 
-    fn spelling(self) -> &'static str {
+    /// The type arithmetic runs at: `float16` computes in binary32 and narrows
+    /// once at the store boundary ([GPU-DEVICE-NATIVE]).
+    fn compute(self) -> Ty {
         match self {
-            Ty::Int => "long",
-            Ty::Float => "ulong",
+            Ty::Num(n) if n.is_float() && n.bits == 16 => Ty::FLOAT32,
+            other => other,
+        }
+    }
+
+    /// The source spelling, for diagnostics.
+    fn name(self) -> &'static str {
+        match self {
+            Ty::Num(n) => n.name(),
             Ty::Bool => "bool",
         }
     }
 
-    /// A raw buffer word as a value of this type.
+    /// The storage spelling: a buffer element's type (`half` for `float16`).
+    fn spelling(self) -> &'static str {
+        match self {
+            Ty::Num(n) => n.device(),
+            Ty::Bool => "bool",
+        }
+    }
+
+    /// The compute spelling: the variable type inside a kernel (`float` for
+    /// `float16`).
+    fn compute_spelling(self) -> &'static str {
+        self.compute().spelling()
+    }
+
+    /// A raw buffer word as a value of this type: `float16` storage reads
+    /// through binary32, sized integers cast from the word.
     fn value_of(self, word: &str) -> String {
         match self {
-            Ty::Int => format!("(long)({word})"),
-            Ty::Float => word.to_string(),
+            Ty::Num(n) if n.is_float() && n.bits == 16 => format!("((float)({word}))"),
+            Ty::Num(n) if n.is_float() => word.to_string(),
+            Ty::Num(n) => format!("({})({word})", n.device()),
             Ty::Bool => format!("({word} != 0ul)"),
         }
     }
 
-    /// A value of this type as the raw buffer word that stores it.
+    /// A value of this type as the raw buffer word that stores it: a `float16`
+    /// result narrows to `half` in one rounding.
     fn word_of(self, value: &str) -> String {
         match self {
-            Ty::Float => value.to_string(),
-            Ty::Int | Ty::Bool => format!("(ulong)({value})"),
+            Ty::Num(n) if n.is_float() && n.bits == 16 => format!("(half)({value})"),
+            Ty::Num(n) if n.is_float() => value.to_string(),
+            Ty::Num(_) | Ty::Bool => format!("(ulong)({value})"),
         }
     }
 }
@@ -78,27 +109,30 @@ impl Ty {
 #[derive(Clone, Debug)]
 pub(crate) enum Uniform {
     Scalar(Ty),
-    Buffer,
+    Buffer(Ty),
 }
 
 impl Uniform {
     fn kind(&self) -> char {
         match self {
             Uniform::Scalar(_) => 's',
-            Uniform::Buffer => 'b',
+            Uniform::Buffer(_) => 'b',
         }
     }
 }
 
 /// A kernel body compiled to the device dialect, shape-independent: `lines`
 /// compute `result` from the slot values `p0`, `p1`, … and the uniforms
-/// `u0`, `u1`, … that the entry point binds.
+/// `u0`, `u1`, … that the entry point binds. `params` and `result_ty` are the
+/// compute types (`float16` is binary32 here); `param_storage` and
+/// `result_storage` are the buffer element types (`float16` is `half`).
 #[derive(Clone, Debug)]
 pub(crate) struct DeviceBody {
     lines: Vec<String>,
     result: String,
-    result_ty: Ty,
+    result_storage: Ty,
     params: Vec<Ty>,
+    param_storage: Vec<Ty>,
     uniforms: Vec<Uniform>,
 }
 
@@ -148,7 +182,7 @@ pub(crate) struct DeviceState {
     /// Every function definition, for inlining a kernel's helpers.
     defs: HashMap<String, (Vec<Parameter>, Expr)>,
     /// File-scope immutable bindings with literal values.
-    constants: HashMap<String, Expr>,
+    constants: HashMap<String, (Option<Ty>, Expr)>,
     /// Bindings that merely rename another name (`let f = addF`, or the
     /// `let f$stage = g` a static handler arm binds), resolved to the name
     /// at the end of the chain, so a kernel passed through such a binding is
@@ -183,9 +217,18 @@ pub(crate) fn record(cg: &mut Codegen, program: &Program) {
                 name,
                 mutable: false,
                 value,
+                position,
                 ..
             } if dialect::is_literal(value) => {
-                let _ = cg.device.constants.insert(name.clone(), value.clone());
+                let ty = cg
+                    .prog
+                    .let_type(None, *position)
+                    .and_then(Numeric::of_type)
+                    .map(Ty::Num);
+                let _ = cg
+                    .device
+                    .constants
+                    .insert(name.clone(), (ty, value.clone()));
             }
             _ => {}
         }
@@ -220,16 +263,38 @@ pub(crate) fn compile(
     body: &Expr,
     slots: &[LType],
     captures: &[crate::closure::Capture],
+    result: LType,
 ) -> Result<DeviceBody, DeviceFailure> {
-    let params = slots
+    let storages = slots
         .iter()
-        .map(|slot| Ty::of(*slot).ok_or_else(|| format!("a {slot} slot is not a device word")))
+        .map(|slot| {
+            Ty::of(*slot).ok_or_else(|| format!("a {} slot is not a device word", slot_name(*slot)))
+        })
         .collect::<Result<Vec<_>, _>>()?;
+    let params: Vec<Ty> = storages.iter().map(|ty| ty.compute()).collect();
+    let result_storage = Ty::of(result);
     let uniforms = captures
         .iter()
         .map(|capture| uniform_of(&capture.val).map(|uniform| (capture.name.clone(), uniform)))
         .collect::<Result<Vec<_>, _>>()?;
-    emit::body(cg, parameters, body, &params, &uniforms)
+    emit::body(
+        cg,
+        parameters,
+        body,
+        &params,
+        &storages,
+        &uniforms,
+        result_storage,
+    )
+}
+
+/// The source name of a slot for a decline reason, not its LLVM spelling.
+fn slot_name(ty: LType) -> &'static str {
+    match ty {
+        LType::Num(n) => n.name(),
+        LType::I1 => "bool",
+        LType::Str | LType::Ptr | LType::Any => "a handle",
+    }
 }
 
 fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {
@@ -244,7 +309,10 @@ fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {
                 .as_deref()
                 .is_some_and(crate::gpu::is_buffer_owner) =>
         {
-            Ok(Uniform::Buffer)
+            crate::gpu::tagged_elem(value)
+                .and_then(Ty::of)
+                .map(Uniform::Buffer)
+                .ok_or_else(|| "a captured buffer has no concrete element type".to_string())
         }
         None => Err(format!(
             "a {} capture has no device representation",
@@ -253,130 +321,35 @@ fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {
     }
 }
 
-/// The two entry-point shapes.
+/// The entry-point shapes sharing the runtime dispatch contract.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Shape {
     /// One thread per element over `inputs` buffers.
     Map { inputs: usize },
     /// One thread folding `in0` into the accumulator seeded in `out[0]`.
     Fold,
+    /// One thread publishes each inclusive prefix and its final accumulator.
+    Scan,
+    /// One thread compacts matching elements and publishes the kept count.
+    Filter,
+}
+
+impl Shape {
+    fn has_state(self) -> bool {
+        matches!(self, Self::Scan | Self::Filter)
+    }
 }
 
 /// Install an entry point around `body` and hand back its name and kinds.
 fn install(cg: &mut Codegen, body: &DeviceBody, shape: Shape) -> DeviceKernel {
     let name = format!("{KERNEL_PREFIX}{}", cg.device.installed);
     cg.device.installed += 1;
-    cg.device.source.push_str(&entry(&name, body, shape));
+    cg.device
+        .source
+        .push_str(&entries::entry(&name, body, shape));
     DeviceKernel {
         name,
         kinds: body.uniforms.iter().map(Uniform::kind).collect(),
-    }
-}
-
-/// The fixed leading parameters every entry point takes, which the runtime
-/// binds first: the element buffers, the result, the fault word, the count.
-const FIXED_PARAMETERS: &str = "GPU_GLOBAL const ulong *in0 GPU_BUFFER(0), GPU_GLOBAL const ulong *in1 GPU_BUFFER(1), \
-GPU_GLOBAL ulong *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4)";
-
-fn entry(name: &str, body: &DeviceBody, shape: Shape) -> String {
-    let mut text = format!(
-        "kernel void {name}({FIXED_PARAMETERS}{} GPU_THREAD) {{\n",
-        uniform_parameters(body)
-    );
-    text.push_str(&uniform_bindings(body));
-    match shape {
-        Shape::Map { inputs } => map_entry(&mut text, body, inputs),
-        Shape::Fold => fold_entry(&mut text, body),
-    }
-    text.push_str("}\n");
-    text
-}
-
-fn uniform_parameters(body: &DeviceBody) -> String {
-    let mut index = 5;
-    let mut text = String::new();
-    for (i, uniform) in body.uniforms.iter().enumerate() {
-        match uniform {
-            Uniform::Scalar(_) => {
-                let _ = write!(text, ", GPU_PARAM u{i} GPU_BUFFER({index})");
-                index += 1;
-            }
-            Uniform::Buffer => {
-                let _ = write!(
-                    text,
-                    ", GPU_GLOBAL const ulong *u{i} GPU_BUFFER({index}), GPU_PARAM u{i}_len GPU_BUFFER({})",
-                    index + 1
-                );
-                index += 2;
-            }
-        }
-    }
-    text
-}
-
-/// Scalar uniforms arrive as words; bind each at its type under the name the
-/// body reads (`u{i}_v`).
-fn uniform_bindings(body: &DeviceBody) -> String {
-    body.uniforms
-        .iter()
-        .enumerate()
-        .filter_map(|(i, uniform)| match uniform {
-            Uniform::Scalar(ty) => Some(format!(
-                "  {} u{i}_v = {};\n",
-                ty.spelling(),
-                ty.value_of(&format!("u{i}"))
-            )),
-            Uniform::Buffer => None,
-        })
-        .collect()
-}
-
-fn map_entry(text: &mut String, body: &DeviceBody, inputs: usize) {
-    text.push_str("  ulong gid = GPU_INDEX;\n  if (gid >= count) return;\n");
-    for (i, ty) in body.params.iter().enumerate().take(inputs) {
-        let _ = writeln!(
-            text,
-            "  {} p{i} = {};",
-            ty.spelling(),
-            ty.value_of(&format!("in{i}[gid]"))
-        );
-    }
-    indented(text, &body.lines, "  ");
-    let _ = writeln!(
-        text,
-        "  out[gid] = {};",
-        body.result_ty.word_of(&body.result)
-    );
-}
-
-fn fold_entry(text: &mut String, body: &DeviceBody) {
-    let acc = body.params.first().copied().unwrap_or(Ty::Int);
-    let elem = body.params.get(1).copied().unwrap_or(Ty::Int);
-    let _ = writeln!(
-        text,
-        "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",
-        acc.spelling(),
-        acc.value_of("out[0]")
-    );
-    let _ = writeln!(
-        text,
-        "    {} p0 = acc;\n    {} p1 = {};",
-        acc.spelling(),
-        elem.spelling(),
-        elem.value_of("in0[i]")
-    );
-    indented(text, &body.lines, "    ");
-    let _ = writeln!(
-        text,
-        "    acc = {};\n  }}\n  out[0] = {};",
-        body.result,
-        acc.word_of("acc")
-    );
-}
-
-fn indented(text: &mut String, lines: &[String], indent: &str) {
-    for line in lines {
-        let _ = writeln!(text, "{indent}{line}");
     }
 }
 

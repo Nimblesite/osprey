@@ -9,8 +9,8 @@ use osprey_ast::{Expr, Stmt};
 
 pub(super) fn uniform_local(i: usize, uniform: &Uniform) -> Local {
     match uniform {
-        Uniform::Scalar(ty) => Local::Scalar(*ty, format!("u{i}_v")),
-        Uniform::Buffer => Local::Buffer(format!("u{i}"), format!("u{i}_len")),
+        Uniform::Scalar(ty) => Local::Scalar(ty.compute(), format!("u{i}_v")),
+        Uniform::Buffer(_) => Local::Buffer(format!("u{i}"), format!("u{i}_len")),
     }
 }
 
@@ -51,12 +51,14 @@ impl Emitter<'_> {
         let index = self.temp();
         let step = [
             Local::Scalar(seed_ty, acc.clone()),
-            Local::Scalar(Ty::Int, index.clone()),
+            Local::Scalar(Ty::INT, index.clone()),
         ];
         let (lines, ty, value) = self.nested(|emitter| emitter.callback(combine, &step))?;
         if ty != seed_ty {
             return Err(format!(
-                "a fold over a {seed_ty:?} seed combines to a {ty:?}"
+                "a fold over a {} seed combines to a {}",
+                seed_ty.name(),
+                ty.name()
             ));
         }
         self.line(format!(
@@ -88,10 +90,10 @@ impl Emitter<'_> {
         };
         let (start_ty, start) = self.expression(start)?;
         let (end_ty, end) = self.expression(end)?;
-        if start_ty != Ty::Int || end_ty != Ty::Int {
+        if start_ty != Ty::INT || end_ty != Ty::INT {
             return Err("range bounds that are not ints".into());
         }
-        Ok((self.declare(Ty::Int, &start), self.declare(Ty::Int, &end)))
+        Ok((self.declare(Ty::INT, &start), self.declare(Ty::INT, &end)))
     }
 
     /// Apply a callback — a lambda, a named helper or a function argument —
@@ -127,13 +129,13 @@ impl Emitter<'_> {
             ));
         };
         let (index_ty, index) = self.expression(index)?;
-        if index_ty != Ty::Int {
+        if index_ty != Ty::INT {
             return Err("a gpuGet index that is not an int".into());
         }
         let (fallback_lines, ty, fallback_value) =
             self.nested(|emitter| emitter.expression(fallback))?;
         let (result, at) = (self.temp(), self.temp());
-        self.line(format!("{} {result};", ty.spelling()));
+        self.line(format!("{} {result};", ty.compute_spelling()));
         self.line(format!("long {at} = {index};"));
         self.line(format!("if ({at} >= 0 && (ulong){at} < {len}) {{"));
         self.line(format!(

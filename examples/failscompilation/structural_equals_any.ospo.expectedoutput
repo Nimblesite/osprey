@@ -1,4 +1,4 @@
 cannot compare `any` with `structuralEquals`: the operand is `any`, whose equality is not decided
 cannot compare `List<any>` with `structuralEquals`: list element is `any`, whose equality is not decided
-cannot compare `Result<int, t15>` with `structuralEquals`: the operand is a `Result`, whose equality is not decided
-cannot compare `{ load: Result<int, t20> }` with `structuralEquals`: field `load` is a `Result`, whose equality is not decided
+cannot compare `Result<int, t17>` with `structuralEquals`: the operand is a `Result`, whose equality is not decided
+cannot compare `{ load: Result<int, t24> }` with `structuralEquals`: field `load` is a `Result`, whose equality is not decided

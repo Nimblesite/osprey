@@ -361,6 +361,13 @@ test ("desktop requests preserve picker export and cancellation payloads", \() =
     expect (requestText (ui::SaveFile(suggested = "report.txt", exportSlice = "export")), "{\"ticket\":\"job:7\",\"kind\":\"save-file\",\"name\":\"report.txt\",\"slice\":\"export\"}")
     expect (requestText (ui::Reveal(revealPath = "/tmp/report.txt")), "{\"ticket\":\"job:7\",\"kind\":\"reveal\",\"path\":\"/tmp/report.txt\"}")
     expect (requestText (ui::Cancel(cancelled = "old:7")), "{\"ticket\":\"job:7\",\"kind\":\"cancel\",\"target\":\"old:7\"}"))
+// [UI-EFFECTS-PROCESS]: the four long-lived process capabilities encode their handles, bounds, arguments and merged environment.
+test ("process capabilities encode their handles bounds arguments and environment", \() =>
+    expect (requestText (ui::ProcessStart(processCommand = "npx", processArguments = ["-y", "filesystem"], processEnv = [ui::EnvVar(envName = "TOKEN", envValue = "s"), ui::EnvVar(envName = "DEBUG", envValue = "1")], processHandle = "fs")), "{\"ticket\":\"job:7\",\"kind\":\"process-start\",\"command\":\"npx\",\"arguments\":[\"-y\",\"filesystem\"],\"env\":[{\"name\":\"TOKEN\",\"value\":\"s\"},{\"name\":\"DEBUG\",\"value\":\"1\"}],\"name\":\"fs\"}")
+    expect (requestText (ui::ProcessStart(processCommand = "/usr/bin/env", processArguments = [], processEnv = [], processHandle = "plain")), "{\"ticket\":\"job:7\",\"kind\":\"process-start\",\"command\":\"/usr/bin/env\",\"arguments\":[],\"env\":[],\"name\":\"plain\"}")
+    expect (requestText (ui::ProcessWrite(writeHandle = "fs", writeBytes = "ping")), "{\"ticket\":\"job:7\",\"kind\":\"process-write\",\"name\":\"fs\",\"input\":\"ping\"}")
+    expect (requestText (ui::ProcessRead(readHandle = "fs", readBytesLimit = 1, readDeadline = 0)), "{\"ticket\":\"job:7\",\"kind\":\"process-read\",\"name\":\"fs\",\"limit\":1,\"timeout\":0}")
+    expect (requestText (ui::ProcessStop(stopHandle = "fs")), "{\"ticket\":\"job:7\",\"kind\":\"process-stop\",\"name\":\"fs\"}"))
 
 roleText role =
     doc = listGet (Encode::walk ([], Ui::column [ui::Text(content = "sample", role = role, tone = ui::Primary), Ui::button ("Go", "play", Increment)])).nodes 0 ?: JsonNull
@@ -450,10 +457,12 @@ test ("presentation frames explicitly disable viewport sizing by default", \() =
     expect (Doc::has (style, "viewportHeightInset"), true)
     expect (Doc::number (style, "viewportHeightInset"), -1)
     expect (Doc::has (style, "scrollY"), true)
-    expect (Doc::flag (style, "scrollY"), false))
+    expect (Doc::flag (style, "scrollY"), false)
+    expect (Doc::has (style, "selectionGroup"), true)
+    expect (Doc::flag (style, "selectionGroup"), false))
 
 test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
-    style = plain(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameShadow = "floating", frameSymbolSize = 13)
+    style = plain(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
     walked = Encode::walk ([], Ui::framed (style, Ui::button ("Continue", "", Increment)))
     encoded = listGet walked.nodes 0 ?: JsonNull
     geometry = Doc::field (encoded, "style")
@@ -462,6 +471,7 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     expect (Doc::number (geometry, "height"), 440)
     expect (Doc::number (geometry, "viewportHeightInset"), 270)
     expect (Doc::flag (geometry, "scrollY"), true)
+    expect (Doc::flag (geometry, "selectionGroup"), true)
     expect (Doc::number (geometry, "left"), 30)
     expect (Doc::number (geometry, "gap"), 24)
     expect (Doc::text (geometry, "fill"), "canvas")

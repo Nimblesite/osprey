@@ -88,14 +88,18 @@ module Terms
         true => term
         false => shifted (term, cutoff, by)
 
+    // [PROOF-KERNEL-THEORY] The shared structural walk advances depth only under binders.
+    mapChildren (term, depth, walk) = match term
+        App head arg => App (walk (head, depth)) (walk (arg, depth))
+        Lam name domain body => Lam name (walk (domain, depth)) (walk (body, satAdd depth 1))
+        Pi name domain body => Pi name (walk (domain, depth)) (walk (body, satAdd depth 1))
+        Proj family index target => Proj family index (walk (target, depth))
+        Let name ty value body => Let name (walk (ty, depth)) (walk (value, depth)) (walk (body, satAdd depth 1))
+        other => other
+
     shifted (term, cutoff, by) = match term
         BVar index => shiftVar (index, cutoff, by)
-        App head arg => App (shifted (head, cutoff, by)) (shifted (arg, cutoff, by))
-        Lam name domain body => Lam name (shifted (domain, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
-        Pi name domain body => Pi name (shifted (domain, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
-        Proj family index target => Proj family index (shifted (target, cutoff, by))
-        Let name ty value body => Let name (shifted (ty, cutoff, by)) (shifted (value, cutoff, by)) (shifted (body, satAdd cutoff 1, by))
-        other => other
+        other => mapChildren (other, cutoff, \(child, innerDepth) => shifted (child, innerDepth, by))
 
     shiftVar (index, cutoff, by) = match index >= cutoff
         true => BVar (satAdd index by)
@@ -109,12 +113,7 @@ module Terms
 
     substituted (term, depth, value) = match term
         BVar index => substituteVar (index, depth, value)
-        App head arg => App (substituted (head, depth, value)) (substituted (arg, depth, value))
-        Lam name domain body => Lam name (substituted (domain, depth, value)) (substituted (body, satAdd depth 1, value))
-        Pi name domain body => Pi name (substituted (domain, depth, value)) (substituted (body, satAdd depth 1, value))
-        Proj family index target => Proj family index (substituted (target, depth, value))
-        Let name ty inner body => Let name (substituted (ty, depth, value)) (substituted (inner, depth, value)) (substituted (body, satAdd depth 1, value))
-        other => other
+        other => mapChildren (other, depth, \(child, innerDepth) => substituted (child, innerDepth, value))
 
     substituteVar (index, depth, value) = match index == depth
         true => shift (value, 0, depth)
@@ -139,12 +138,7 @@ module Terms
 
     substitutedMany (term, depth, values) = match term
         BVar index => manyVar (index, depth, values)
-        App head arg => App (substitutedMany (head, depth, values)) (substitutedMany (arg, depth, values))
-        Lam name domain body => Lam name (substitutedMany (domain, depth, values)) (substitutedMany (body, satAdd depth 1, values))
-        Pi name domain body => Pi name (substitutedMany (domain, depth, values)) (substitutedMany (body, satAdd depth 1, values))
-        Proj family index target => Proj family index (substitutedMany (target, depth, values))
-        Let name ty value body => Let name (substitutedMany (ty, depth, values)) (substitutedMany (value, depth, values)) (substitutedMany (body, satAdd depth 1, values))
-        other => other
+        other => mapChildren (other, depth, \(child, innerDepth) => substitutedMany (child, innerDepth, values))
 
     manyVar (index, depth, values) = match index < depth
         true => BVar index

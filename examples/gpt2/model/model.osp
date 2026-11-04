@@ -2,11 +2,11 @@
 // gpt2::Backends. The model performs `build`, `get`, `matMul` and friends and
 // never names a buffer type: the handler a program installs — `onLists` or
 // `onGpu` — decides whether a tensor is a host list or a GPU buffer, and both
-// compute the same doubles in the same order. The forward pass keeps every
+// compute the same binary32 values in the same order. The forward pass keeps every
 // block's activations, so examples/gpt2/generate reads the final state and
 // examples/gpt2/train runs the backward pass over the same trace.
 //
-// This is plan 0023's reference application (docs/plans/0023-gpu-computation.md)
+// This is plan 0023's reference application (docs/plans/0023-gpu.md)
 // and its stage 5, effect-selected execution: one model, two interpretations,
 // chosen per lexical region ([STAGE-BACKEND], [GPU-DEVICE]). Under `onGpu`,
 // kernels and matrix products run on Metal or OpenCL when a device is selected,
@@ -27,13 +27,13 @@ module Model {
     export let layerCount = 12
     export let positions = 1024
     export let endOfText = 50256
-    export let epsilon = 0.00001
-    export let widthF = 768.0
+    export let epsilon: float32 = 0.00001
+    export let widthF: float32 = 768.0
     /// 1 / sqrt(headWidth)
-    export let scoreScale = 0.125
+    export let scoreScale: float32 = 0.125
     /// sqrt(2 / pi) and the cubic coefficient of the tanh GELU approximation.
-    export let geluScale = 0.7978845608028654
-    export let geluCubic = 0.044715
+    export let geluScale: float32 = 0.7978845608028654
+    export let geluCubic: float32 = 0.044715
 
     /// One block's parameters. `B` is whatever the installed `Tensor` handler
     /// represents a tensor as; the model never looks inside.
@@ -72,7 +72,7 @@ module Model {
     export fn plus(a, b) = perform Backends::Tensor.zipWith(a, b, addF)
     export fn addF(a, x) = a + x
     export fn maxF(a, x) = match x > a { true => x  false => a }
-    export fn gelu(x) = 0.5 * x * (1.0 + tanh(geluScale * (x + geluCubic * x * x * x)))
+    export fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
     export fn gelus(f) = perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i)))
 
     /// A tensor operation's buffer, or a fault that stops the run with the

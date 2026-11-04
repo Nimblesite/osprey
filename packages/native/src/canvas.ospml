@@ -161,11 +161,11 @@ module Canvases
             RectFigure => turned (machine, m, at m.markX, at m.markY, at m.markW, at m.markH, at m.markAngle + at m.markTurn, depth)
             _ => polyline (machine, m, mapList (m.markPoints, at), depth)
 
-    (** A skin's artboard as one scene at its fixed `zoom`, grown by the room its region spares: its atlas, every shape whose `when` holds, repeats expanded, and the accessibility tree a host announces. *)
+    (** A skin's artboard as one scene at its fixed `zoom` and its declared size, which a host fits into its region, with shapes pinned into any room spared: its atlas, every shape whose `when` holds, repeats expanded, and the accessibility tree a host announces. *)
     export artboard (given, zoom, w, h, atlas, marks) =
         machine = roomy given
-        width = Templates::measure (machine, w) + Machines::number (machine, "spareWidth")
-        height = Templates::measure (machine, h) + Machines::number (machine, "spareHeight")
+        width = Templates::measure (machine, w)
+        height = Templates::measure (machine, h)
         drawn = Lists::flatten (mapList (filterList (marksOf (machine, marks), \m => Machines::holds (machine, m.markWhen)), \m => primitives (machine, m)))
         Ui::described (Ui::zoomed (Templates::measure (machine, zoom), width, height, mapList (atlas, \path => Templates::fill (machine, path)), drawn, Fire(fireName = "")), semantics machine)
 

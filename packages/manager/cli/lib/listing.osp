@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_cli::Fetch
 import registry::Identity
 import registry::Names
@@ -18,10 +19,7 @@ module Listing {
     fn ordinalOf(id: Identity::ReleaseId) = id.ordinal
 
     /// Every release the registry lists, in listing order.
-    export fn fetch(base) = match Fetch::getBody(base, Fetch::packagesListingPath) {
-        Error { message } => Error { message: message }
-        Success { value } => Fetch::parsePackages(value)
-    }
+    export fn fetch(base) = Checked::andThen(Fetch::getBody(base, Fetch::packagesListingPath), fn(value) => Fetch::parsePackages(value))
 
     fn ofKey(listing, key) = filterList(listing, fn(r) => Names::same(keyOf(r), key))
 

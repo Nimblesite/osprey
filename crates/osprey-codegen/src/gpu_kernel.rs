@@ -341,8 +341,8 @@ fn emit(cg: &mut Codegen, k: &Lifting<'_>, params: Vec<ParamSig>) -> Result<Call
     let symbol = format!("{KERNEL_PREFIX}{}", cg.next_kernel_id());
     let uniforms: Vec<Value> = k.caps.iter().map(|c| c.val.clone()).collect();
     let slots: Vec<LType> = params.iter().map(|p| p.ty).collect();
-    let device = crate::gpu_device::compile(cg, k.parameters, k.body, &slots, k.caps);
     let value = define(cg, k, &symbol, &params)?;
+    let device = crate::gpu_device::compile(cg, k.parameters, k.body, &slots, k.caps, value.ty);
     let sig = (
         params,
         value.ty,

@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Governance
 import registry::Names
 import registry::Maybe
@@ -16,9 +17,9 @@ module GovernanceTransitions {
     /// [PACKAGE-OWNERSHIP-MODEL]. A one-member organization carries the same
     /// governance rules as a larger one.
     export fn enrollOrganization(registry, id, orgHandle, founder, founderMembership, proof) =
-        Governance::andThen(handleChecks(registry, id, orgHandle), fn(_) =>
-            Governance::andThen(humanFounder(registry, founder), fn(_) =>
-                Governance::andThen(Governance::requireProof(proof, founder, founderMembership,
+        Checked::andThen(handleChecks(registry, id, orgHandle), fn(_) =>
+            Checked::andThen(humanFounder(registry, founder), fn(_) =>
+                Checked::andThen(Governance::requireProof(proof, founder, founderMembership,
                     Governance::organizationStatement(id, orgHandle, founderMembership)), fn(_) =>
                     Success { value: registry {
                         organizations: listAppend(registry.organizations,
@@ -33,11 +34,11 @@ module GovernanceTransitions {
     /// ceremony with a pre-enrolled independent recovery principal, and is
     /// deliberately not modeled here.
     export fn grantCustodianship(registry, org, target, proofA, proofB) =
-        Governance::andThen(Governance::membershipOf(registry, target), fn(m: Governance::Membership) =>
-            Governance::andThen(Governance::activeMemberOf(m), fn(_) =>
-                Governance::andThen(Governance::sameOrgMember(m, org), fn(_) =>
-                    Governance::andThen(humanMember(registry, m), fn(_) =>
-                        Governance::andThen(custodianQuorum(registry, org, target, proofA, proofB), fn(_) =>
+        Checked::andThen(Governance::membershipOf(registry, target), fn(m: Governance::Membership) =>
+            Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
+                Checked::andThen(Governance::sameOrgMember(m, org), fn(_) =>
+                    Checked::andThen(humanMember(registry, m), fn(_) =>
+                        Checked::andThen(custodianQuorum(registry, org, target, proofA, proofB), fn(_) =>
                             Success { value: Governance::replaceMembership(registry,
                                 m { role: Governance::Custodian, authorityEpoch: m.authorityEpoch + 1 }) })))))
 
@@ -46,11 +47,11 @@ module GovernanceTransitions {
     /// still administering a package. The row stays as evidence; its grants
     /// die through the live predicate, not through deletion.
     export fn revokeMembership(registry, target, proof) =
-        Governance::andThen(Governance::membershipOf(registry, target), fn(m: Governance::Membership) =>
-            Governance::andThen(Governance::activeMemberOf(m), fn(_) =>
-                Governance::andThen(notLastCustodian(registry, m), fn(_) =>
-                    Governance::andThen(administersNothing(registry, m), fn(_) =>
-                        Governance::andThen(custodianProof(registry, m.org,
+        Checked::andThen(Governance::membershipOf(registry, target), fn(m: Governance::Membership) =>
+            Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
+                Checked::andThen(notLastCustodian(registry, m), fn(_) =>
+                    Checked::andThen(administersNothing(registry, m), fn(_) =>
+                        Checked::andThen(custodianProof(registry, m.org,
                             Governance::revocationStatement(m.org, target), proof), fn(_) =>
                             Success { value: Governance::replaceMembership(registry,
                                 m { status: Governance::Revoked, authorityEpoch: m.authorityEpoch + 1 }) })))))
@@ -60,12 +61,12 @@ module GovernanceTransitions {
     /// departed member rejoins under a brand-new membership id; the revoked
     /// row and its grants are never reactivated.
     export fn acceptMembership(registry, org, principal, membership, invitationProof, acceptanceProof) =
-        Governance::andThen(noActiveMembership(registry, org, principal), fn(_) =>
-            Governance::andThen(Governance::principalOf(registry, principal), fn(p: Governance::Principal) =>
-                Governance::andThen(Governance::humanPrincipal(p), fn(_) =>
-                    Governance::andThen(custodianProof(registry, org,
+        Checked::andThen(noActiveMembership(registry, org, principal), fn(_) =>
+            Checked::andThen(Governance::principalOf(registry, principal), fn(p: Governance::Principal) =>
+                Checked::andThen(Governance::humanPrincipal(p), fn(_) =>
+                    Checked::andThen(custodianProof(registry, org,
                         Governance::invitationStatement(org, principal, membership), invitationProof), fn(_) =>
-                        Governance::andThen(Governance::requireProof(acceptanceProof, principal, membership,
+                        Checked::andThen(Governance::requireProof(acceptanceProof, principal, membership,
                             Governance::membershipAcceptanceStatement(org, principal, membership)), fn(_) =>
                             Success { value: registry { memberships: listAppend(registry.memberships,
                                 Governance::Membership { id: membership, org: org, principal: principal, role: Governance::Member, status: Governance::MemberActive, authorityEpoch: 1 }) } })))))
@@ -75,7 +76,7 @@ module GovernanceTransitions {
     /// that principal is denied. Performed only by the separately
     /// credentialed incident operator path [PACKAGE-HOSTED-CONTROL].
     export fn suspendPrincipal(registry, principal) =
-        Governance::andThen(Governance::principalOf(registry, principal), fn(p: Governance::Principal) =>
+        Checked::andThen(Governance::principalOf(registry, principal), fn(p: Governance::Principal) =>
             Success { value: registry {
                 principals: mapList(registry.principals, fn(q: Governance::Principal) =>
                     if q.id == principal { q { status: Governance::Suspended } } else { q }),
@@ -88,13 +89,13 @@ module GovernanceTransitions {
     /// them the single administrator. There is no zero-admin draft and no
     /// way to install an admin without the nominee's credential.
     export fn createPackage(registry, org, key: Names::Key, id, admin, custodianProof, adminAcceptance) =
-        Governance::andThen(Governance::organizationOf(registry, org), fn(o: Governance::Organization) =>
-            Governance::andThen(keyChecks(registry, o, key, id), fn(_) =>
-                Governance::andThen(adminMember(registry, org, admin), fn(m: Governance::Membership) =>
-                    Governance::andThen(humanMember(registry, m), fn(_) =>
-                        Governance::andThen(custodianProof(registry, org,
+        Checked::andThen(Governance::organizationOf(registry, org), fn(o: Governance::Organization) =>
+            Checked::andThen(keyChecks(registry, o, key, id), fn(_) =>
+                Checked::andThen(adminMember(registry, org, admin), fn(m: Governance::Membership) =>
+                    Checked::andThen(humanMember(registry, m), fn(_) =>
+                        Checked::andThen(custodianProof(registry, org,
                             Governance::creationStatement(id, key, admin), custodianProof), fn(_) =>
-                            Governance::andThen(Governance::requireProof(adminAcceptance, m.principal, admin,
+                            Checked::andThen(Governance::requireProof(adminAcceptance, m.principal, admin,
                                 Governance::creationStatement(id, key, admin)), fn(_) =>
                                 Success { value: registry { packages: listAppend(registry.packages,
                                     Governance::Package { id: id, key: key, org: org, admin: admin, status: Governance::Draft, authorityEpoch: 1 }) } }))))))
@@ -102,7 +103,7 @@ module GovernanceTransitions {
     /// A first accepted release moves a draft to active; the publication
     /// worker owns this step [PACKAGE-OWNERSHIP-MAINTENANCE].
     export fn activatePackage(registry, id) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
             match Governance::isDraft(pkg) {
                 true => Success { value: Governance::replacePackage(registry, pkg { status: Governance::Active }) }
                 false => Error { message: "governance.package.not-draft" }
@@ -111,9 +112,9 @@ module GovernanceTransitions {
     /// Deprecation keeps old releases verifiable and the key permanent
     /// [PACKAGE-OWNERSHIP-MAINTENANCE]; only the administrator decides it.
     export fn deprecate(registry, id, proof) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
-            Governance::andThen(Governance::writable(pkg), fn(_) =>
-                Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+            Checked::andThen(Governance::writable(pkg), fn(_) =>
+                Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                     Governance::deprecateStatement(pkg.key, pkg.authorityEpoch)), fn(_) =>
                     Success { value: Governance::replacePackage(registry, pkg { status: Governance::Deprecated }) })))
 
@@ -121,9 +122,9 @@ module GovernanceTransitions {
     /// historical release stay, and the leaf never becomes available again
     /// [PACKAGE-NAMES-NO-SITTING].
     export fn tombstone(registry, id, proof) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
-            Governance::andThen(Governance::writable(pkg), fn(_) =>
-                Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+            Checked::andThen(Governance::writable(pkg), fn(_) =>
+                Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                     Governance::tombstoneStatement(pkg.key, pkg.authorityEpoch)), fn(_) =>
                     Success { value: Governance::replacePackage(registry, pkg { status: Governance::Tombstoned }) })))
 
@@ -132,13 +133,13 @@ module GovernanceTransitions {
     /// capturing both authority epochs. There is no `admin` permission and
     /// no implicit operational authority for the administrator.
     export fn grantPermission(registry, id, grantId, proof, membership, permission, expiresAt, now) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
-            Governance::andThen(Governance::writable(pkg), fn(_) =>
-                Governance::andThen(subject(registry, pkg, membership), fn(m: Governance::Membership) =>
-                    Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+            Checked::andThen(Governance::writable(pkg), fn(_) =>
+                Checked::andThen(subject(registry, pkg, membership), fn(m: Governance::Membership) =>
+                    Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                         Governance::grantStatement(pkg.key, pkg.authorityEpoch, membership, permission, expiresAt)), fn(_) =>
-                        Governance::andThen(freshExpiry(expiresAt, now), fn(_) =>
-                            Governance::andThen(unduplicated(registry, id, membership, permission), fn(_) =>
+                        Checked::andThen(freshExpiry(expiresAt, now), fn(_) =>
+                            Checked::andThen(unduplicated(registry, id, membership, permission), fn(_) =>
                                 Success { value: registry { grants: listAppend(registry.grants,
                                     Governance::Grant { id: grantId, package: id, membership: membership, permission: permission,
                                         grantor: pkg.admin, packageEpoch: pkg.authorityEpoch, memberEpoch: m.authorityEpoch,
@@ -147,19 +148,19 @@ module GovernanceTransitions {
     /// The administrator can revoke one grant immediately
     /// [PACKAGE-OWNERSHIP-PERMISSIONS]; the row remains auditable.
     export fn revokeGrant(registry, grantId, proof) =
-        Governance::andThen(Governance::grantOf(registry, grantId), fn(g: Governance::Grant) =>
-            Governance::andThen(Governance::packageOf(registry, g.package), fn(pkg: Governance::Package) =>
-                Governance::andThen(Governance::writable(pkg), fn(_) =>
-                    Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::grantOf(registry, grantId), fn(g: Governance::Grant) =>
+            Checked::andThen(Governance::packageOf(registry, g.package), fn(pkg: Governance::Package) =>
+                Checked::andThen(Governance::writable(pkg), fn(_) =>
+                    Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                         Governance::revokeGrantStatement(pkg.key, pkg.authorityEpoch, grantId)), fn(_) =>
                         Success { value: Governance::replaceGrant(registry, g { status: Governance::GrantRevoked }) }))))
 
     /// The administrator can revoke every grant immediately
     /// [PACKAGE-OWNERSHIP-PERMISSIONS]; the rows remain auditable.
     export fn revokeAllGrants(registry, id, proof) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
-            Governance::andThen(Governance::writable(pkg), fn(_) =>
-                Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+            Checked::andThen(Governance::writable(pkg), fn(_) =>
+                Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                     Governance::revokeAllStatement(pkg.key, pkg.authorityEpoch)), fn(_) =>
                     Success { value: Governance::revokeGrantsOf(registry, id) })))
 
@@ -169,12 +170,12 @@ module GovernanceTransitions {
     /// Permission holders cannot renew their own grant: only the
     /// administrator's proof is accepted.
     export fn renewGrant(registry, grantId, newGrantId, proof, expiresAt, now) =
-        Governance::andThen(Governance::grantOf(registry, grantId), fn(old: Governance::Grant) =>
-            Governance::andThen(Governance::packageOf(registry, old.package), fn(pkg: Governance::Package) =>
-                Governance::andThen(Governance::writable(pkg), fn(_) =>
-                    Governance::andThen(soleActive(registry, old), fn(_) =>
-                        Governance::andThen(freshExpiry(expiresAt, now), fn(_) =>
-                            Governance::andThen(Governance::requireAdmin(registry, pkg, proof,
+        Checked::andThen(Governance::grantOf(registry, grantId), fn(old: Governance::Grant) =>
+            Checked::andThen(Governance::packageOf(registry, old.package), fn(pkg: Governance::Package) =>
+                Checked::andThen(Governance::writable(pkg), fn(_) =>
+                    Checked::andThen(soleActive(registry, old), fn(_) =>
+                        Checked::andThen(freshExpiry(expiresAt, now), fn(_) =>
+                            Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                                 Governance::renewalStatement(pkg.key, pkg.authorityEpoch, old.membership, old.permission, expiresAt)), fn(_) =>
                                 Success { value: renewed(registry, pkg, old, newGrantId, expiresAt) })))))) 
 
@@ -185,13 +186,13 @@ module GovernanceTransitions {
     /// organization role are absent here on purpose: they grant no
     /// operational capability.
     export fn authorize(registry, id, membership, permission, now) =
-        Governance::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
-            Governance::andThen(Governance::operational(pkg), fn(_) =>
-                Governance::andThen(subject(registry, pkg, membership), fn(m: Governance::Membership) =>
-                    Governance::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
-                        Governance::andThen(Governance::livePrincipal(p), fn(_) =>
-                            Governance::andThen(liveGrant(registry, pkg, m, permission), fn(g: Governance::Grant) =>
-                                Governance::andThen(currentEpochs(g, pkg, m), fn(_) =>
+        Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
+            Checked::andThen(Governance::operational(pkg), fn(_) =>
+                Checked::andThen(subject(registry, pkg, membership), fn(m: Governance::Membership) =>
+                    Checked::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
+                        Checked::andThen(Governance::livePrincipal(p), fn(_) =>
+                            Checked::andThen(liveGrant(registry, pkg, m, permission), fn(g: Governance::Grant) =>
+                                Checked::andThen(currentEpochs(g, pkg, m), fn(_) =>
                                     unexpired(g, now))))))))
 
     fn handleChecks(registry, id, orgHandle) = match Names::scopeCode(orgHandle) {
@@ -203,21 +204,21 @@ module GovernanceTransitions {
     }
 
     fn humanFounder(registry, founder) =
-        Governance::andThen(Governance::principalOf(registry, founder), fn(p: Governance::Principal) =>
-            Governance::andThen(Governance::livePrincipal(p), fn(_) => Governance::humanPrincipal(p)))
+        Checked::andThen(Governance::principalOf(registry, founder), fn(p: Governance::Principal) =>
+            Checked::andThen(Governance::livePrincipal(p), fn(_) => Governance::humanPrincipal(p)))
 
     fn humanMember(registry, m: Governance::Membership) =
-        Governance::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
+        Checked::andThen(Governance::principalOf(registry, m.principal), fn(p: Governance::Principal) =>
             Governance::humanPrincipal(p))
 
     fn adminMember(registry, org, admin) =
-        Governance::andThen(Governance::membershipOf(registry, admin), fn(m: Governance::Membership) =>
-            Governance::andThen(Governance::activeMemberOf(m), fn(_) => Governance::sameOrgMember(m, org)))
+        Checked::andThen(Governance::membershipOf(registry, admin), fn(m: Governance::Membership) =>
+            Checked::andThen(Governance::activeMemberOf(m), fn(_) => Governance::sameOrgMember(m, org)))
 
     /// One custodian's fresh proof for `statement`: the prover must be an
     /// active custodian of `org`. Custodianship grants no package authority.
     fn custodianProof(registry, org, statement, proof) =
-        Governance::andThen(Governance::membershipOf(registry, proof.membership), fn(m: Governance::Membership) =>
+        Checked::andThen(Governance::membershipOf(registry, proof.membership), fn(m: Governance::Membership) =>
             match Governance::isActive(m) && Governance::isCustodian(m) && m.org == org {
                 false => Error { message: "governance.custodian.required" }
                 true => Governance::requireProof(proof, m.principal, m.id, statement)
@@ -225,7 +226,7 @@ module GovernanceTransitions {
 
     fn custodianQuorum(registry, org, target, proofA, proofB) = match proofA.membership == proofB.membership {
         true => Error { message: "governance.custodian.quorum" }
-        false => Governance::andThen(custodianProof(registry, org, Governance::custodianStatement(org, target), proofA), fn(_) =>
+        false => Checked::andThen(custodianProof(registry, org, Governance::custodianStatement(org, target), proofA), fn(_) =>
             custodianProof(registry, org, Governance::custodianStatement(org, target), proofB))
     }
 
@@ -271,8 +272,8 @@ module GovernanceTransitions {
     }
 
     fn subject(registry, pkg: Governance::Package, membership) =
-        Governance::andThen(Governance::membershipOf(registry, membership), fn(m: Governance::Membership) =>
-            Governance::andThen(Governance::activeMemberOf(m), fn(_) => Governance::sameOrgMember(m, pkg.org)))
+        Checked::andThen(Governance::membershipOf(registry, membership), fn(m: Governance::Membership) =>
+            Checked::andThen(Governance::activeMemberOf(m), fn(_) => Governance::sameOrgMember(m, pkg.org)))
 
     fn freshExpiry(expiresAt, now) = Maybe::fold(expiresAt, Success { value: now }, fn(at) =>
         match at > now {

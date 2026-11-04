@@ -1,6 +1,6 @@
 import Foundation
 
-// Implements [UI-EFFECTS] and [AGENT-CLIENT]: HTTPS only, no redirects,
+// Implements [UI-EFFECTS] and [AGENT-CLIENT]: HTTPS, or HTTP on this machine, no redirects,
 // cookies or disk cache, a total resource deadline and a streamed response
 // limit [UI-EFFECTS-HTTP-BOUNDS]. Nothing is retried or published partially.
 
@@ -57,8 +57,13 @@ public struct HttpAdapter: CapabilityAdapter {
         }
     }
 
-    private static func outgoing(_ request: Request, timeout: Int) throws -> URLRequest {
-        guard let url = URL(string: try request.text("url")), url.scheme == "https", url.host != nil else { throw CapabilityError.notAllowed("Only https URLs are allowed") }
+    /// Plain HTTP stays on this machine: nothing leaves it unencrypted, and local MCP servers are reachable.
+    static func isLoopback(_ url: URL) -> Bool {
+        url.scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(url.host ?? "")
+    }
+
+    static func outgoing(_ request: Request, timeout: Int) throws -> URLRequest {
+        guard let url = URL(string: try request.text("url")), url.scheme == "https" && url.host != nil || isLoopback(url) else { throw CapabilityError.notAllowed("Only https URLs, or http on this machine, are allowed") }
         var outgoing = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData, timeoutInterval: Double(timeout) / 1000)
         outgoing.httpMethod = try request.text("method")
         outgoing.httpShouldHandleCookies = false

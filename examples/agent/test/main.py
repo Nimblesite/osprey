@@ -4,8 +4,12 @@ whole two-round tool conversation over canned replies, the commands each tool
 becomes on each platform, what the transcript shows at each step, and the
 Markdown the model writes. Live runs are driven through the window by drive/."""
 from agent import Engine
+from agent import Highlight
 from agent import Transcript
 from pydantic_ai import JsonUtil as J
+from pydantic_ai import Messages as M
+from pydantic_ai import Mcp
+from agent import McpClient
 from testing import Check
 
 MODEL = "deepseek-chat"
@@ -34,7 +38,7 @@ def result(call_id, name, text):
 
 def conversation_cases():
     opened = Engine.add_user(Engine.new_history(), FOLDER, "Fix it")
-    body = Engine.request_body(opened, MODEL)
+    body = Engine.request_body(opened, MODEL, "")
     first = Engine.accept(opened, MODEL, 200, FIRST)
     owed = Engine.pending(first.replyHistory, [])
     partial = [result("c1", "read_file", "print(1)")]
@@ -84,6 +88,51 @@ def step_blank():
     return Transcript.Step(stepId="", stepTool="", stepSummary="", stepOutput="", stepDone=False, stepFailed=False)
 
 
+def system_text(part):
+    match part:
+        case M.SystemPromptPart(content=content):
+            return content
+        case _:
+            return ""
+
+
+def last_request(history):
+    requests = M.requests(unwrap_or(M.validate_messages(history), []))
+    return at(requests, len(requests) - 1, M.ModelRequest(parts=[], instructions=""))
+
+
+def last_systems(history):
+    return filterList(mapList(last_request(history).parts, system_text), lambda text: text != "")
+
+
+def folder_prompt_cases():
+    other = "/work/other"
+    empty = Engine.add_user(Engine.new_history(), FOLDER, "one")
+    same = Engine.add_user(empty, FOLDER, "two")
+    moved = Engine.add_user(same, other, "three")
+    unchanged = Engine.add_user(moved, other, "four")
+    back = Engine.add_user(unchanged, FOLDER, "five")
+    corrupt = Engine.add_user(JsonString("broken"), FOLDER, "fresh")
+    wire = J.list_at(unwrap_or(J.decode(Engine.request_body(moved, MODEL, "")), JsonNull()), "messages")
+    prompt = J.text_at(at(wire, len(wire) - 2, JsonNull()), "content", "")
+    return [
+        Check.equal("folder.empty_gets_prompt", len(last_systems(empty)), 1),
+        Check.truth("folder.empty_names_path", contains(at(last_systems(empty), 0, ""), FOLDER), J.encode(empty)),
+        Check.equal("folder.same_adds_no_part", len(last_request(same).parts), 1),
+        Check.equal("folder.changed_adds_one_prompt", len(last_systems(moved)), 1),
+        Check.truth("folder.changed_names_new_not_old", contains(at(last_systems(moved), 0, ""), other) and not contains(at(last_systems(moved), 0, ""), FOLDER), J.encode(moved)),
+        Check.equal("folder.only_last_prompt_counts", len(last_request(unchanged).parts), 1),
+        Check.equal("folder.changing_back_adds_prompt", len(last_systems(back)), 1),
+        Check.truth("folder.changing_back_names_original", contains(at(last_systems(back), 0, ""), FOLDER), J.encode(back)),
+        Check.equal("folder.corrupt_reads_empty", len(M.requests(unwrap_or(M.validate_messages(corrupt), []))), 1),
+        Check.equal("folder.corrupt_gets_prompt", len(last_systems(corrupt)), 1),
+        Check.equal("folder.wire_system_role", J.text_at(at(wire, len(wire) - 2, JsonNull()), "role", ""), "system"),
+        Check.equal("folder.wire_user_role", J.text_at(at(wire, len(wire) - 1, JsonNull()), "role", ""), "user"),
+        Check.equal("folder.wire_user_words", J.text_at(at(wire, len(wire) - 1, JsonNull()), "content", ""), "three"),
+        Check.truth("folder.wire_prompt_before_user", contains(prompt, other) and not contains(prompt, FOLDER), J.encode(JsonArray(wire))),
+    ]
+
+
 def in_flight_cases():
     opened = Engine.add_user(Engine.new_history(), FOLDER, "Go")
     first = Engine.accept(opened, MODEL, 200, FIRST)
@@ -94,17 +143,90 @@ def in_flight_cases():
     ]
 
 
+def prov_pairs():
+    """Every `provider/model` in the catalogue, in order."""
+    return foldList(Engine.provider_ids(), [], lambda acc, pid: listConcat(acc, mapList(Engine.model_ids(pid), lambda mid: Engine.full_model(pid, mid))))
+
+
+def prov_zai(model):
+    pid = Engine.provider_id_of(model)
+    return pid == "zai" or pid == "zai-coding"
+
+
+def prov_strict(model):
+    pid = Engine.provider_id_of(model)
+    return pid == "deepseek" or pid == "zai" or pid == "zai-coding"
+
+
+def prov_effort(model, level):
+    return "" if level == "" or level == "off" else level
+
+
+def prov_body_checks(model, level):
+    opened = Engine.add_user(Engine.new_history(), FOLDER, "Go")
+    text = Engine.request_body(opened, model, level)
+    doc = unwrap_or(J.decode(text), JsonNull())
+    pid = Engine.provider_id_of(model)
+    mid = Engine.model_id_of(model)
+    suffix = pid + "." + mid + "." + (level if level != "" else "default")
+    zai = prov_zai(model)
+    effort = prov_effort(model, level)
+    kind = "disabled" if level == "off" else ("enabled" if level != "" else "")
+    base = [
+        Check.equal("prov.url." + suffix, Engine.url(model), Engine.provider_base(pid) + "/chat/completions"),
+        Check.equal("prov.model." + suffix, J.text_at(doc, "model", ""), mid),
+        Check.truth("prov.strict." + suffix, contains(text, "\"strict\":true") == prov_strict(model), text),
+        Check.equal("prov.effort." + suffix, J.text_at(doc, "reasoning_effort", ""), effort),
+        Check.equal("prov.tool_choice." + suffix, J.text_at(doc, "tool_choice", ""), "auto"),
+        Check.equal("prov.stream." + suffix, J.bool_at(doc, "stream", True), False),
+    ]
+    thinking = [Check.equal("prov.thinking.type." + suffix, J.text_at(J.object_at(doc, "thinking"), "type", ""), kind)] if zai else [Check.equal("prov.no_thinking." + suffix, J.has(doc, "thinking"), False)]
+    return listConcat(base, thinking)
+
+
+def prov_level_checks(model):
+    return foldList(listPrepend(Engine.model_levels(model), ""), [], lambda acc, level: listConcat(acc, prov_body_checks(model, level)))
+
+
+def prov_cases():
+    bodies = foldList(prov_pairs(), [], lambda acc, model: listConcat(acc, prov_level_checks(model)))
+    roundtrip = prov_roundtrip_cases()
+    return listConcat(bodies, roundtrip)
+
+
+def prov_roundtrip_cases():
+    opened = Engine.add_user(Engine.new_history(), FOLDER, "Think")
+    reply = "{\"id\":\"r\",\"model\":\"glm-5.3\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Done.\",\"reasoning_content\":\"I reasoned.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}"
+    accepted = Engine.accept(opened, "zai/glm-5.3", 200, reply)
+    body = unwrap_or(J.decode(Engine.request_body(accepted.replyHistory, "zai/glm-5.3", "high")), JsonNull())
+    messages = J.list_at(body, "messages")
+    assistant = at(messages, len(messages) - 1, JsonNull())
+    return [
+        Check.equal("prov.roundtrip_ok", accepted.replyOk, True),
+        Check.equal("prov.roundtrip_reasoning_back", J.text_at(assistant, "reasoning_content", ""), "I reasoned."),
+        Check.equal("prov.old_deepseek_resolves", Engine.provider_id_of("deepseek-chat"), "deepseek"),
+        Check.equal("prov.old_deepseek_url", Engine.url("deepseek-chat"), "https://api.deepseek.com/chat/completions"),
+        Check.equal("prov.old_deepseek_label", Engine.model_label("deepseek-chat"), "DeepSeek Chat"),
+        Check.truth("prov.unknown_provider_words", contains(Engine.provider_problem("nosuch/glm-5.3"), "Unknown provider"), Engine.provider_problem("nosuch/glm-5.3")),
+        Check.truth("prov.unknown_model_words", contains(Engine.provider_problem("deepseek/nosuch"), "no model"), Engine.provider_problem("deepseek/nosuch")),
+    ]
+
+
 def failure_cases():
     opened = Engine.add_user(Engine.new_history(), FOLDER, "Go")
     limited = Engine.accept(opened, MODEL, 429, "{\"error\":\"busy\"}")
     garbage = Engine.accept(opened, MODEL, 200, "not json")
     empty = Engine.accept(opened, MODEL, 200, "{\"choices\":[]}")
+    blank = Engine.accept(opened, MODEL, 200, "{\"id\":\"r\",\"model\":\"deepseek-chat\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"total_tokens\":2}}")
     return [
         Check.equal("fail.http_ok", limited.replyOk, False),
         Check.truth("fail.http_words", contains(limited.replyProblem, "status_code: 429"), limited.replyProblem),
         Check.equal("fail.history_kept", J.encode(limited.replyHistory), J.encode(opened)),
         Check.equal("fail.garbage", garbage.replyOk, False),
         Check.equal("fail.empty_choices", empty.replyOk, False),
+        Check.equal("fail.blank_no_text", blank.replyOk, False),
+        Check.truth("fail.blank_words", contains(blank.replyProblem, "no answer"), blank.replyProblem),
+        Check.equal("fail.blank_history_kept", J.encode(blank.replyHistory), J.encode(opened)),
         Check.equal("fail.tool_error_words", Engine.tool_result_text("read_file", 1, "", "no such file"), "The tool could not run: no such file"),
         Check.equal("fail.command_status", Engine.tool_result_text("run_command", 3, "out", ""), "exit 3\nout"),
         Check.equal("fail.read_status", Engine.tool_result_text("read_file", 1, "nope", ""), "failed with status 1\nnope"),
@@ -165,14 +287,269 @@ def markdown_cases():
         Check.equal("md.inline", span_text(Transcript.spans_of("a `b` **c** *d* e")), ":a |code:b|: |strong:c|: |em:d|: e"),
         Check.truth("md.unclosed_marker", contains(join(mapList(Transcript.spans_of("2 * 3"), lambda s: s.spanText), ""), "2 * 3"), "lost text"),
         Check.equal("md.strong_code", span_text(Transcript.spans_of("**`a.py`** — x")), "code:a.py|: — x"),
+        Check.equal("md.strong_mixed_code", span_text(Transcript.spans_of("**Fix (`a.py`, `b`):** x")), "strong:Fix (|code:a.py|strong:, |code:b|strong:):|: x"),
+        Check.equal("md.heading_code_first", span_text(Transcript.spans_of("**`a` fix**")), "code:a|strong: fix"),
         Check.equal("md.empty", len(Transcript.blocks_of("")), 0),
         Check.equal("title.first_line", Transcript.title_of("  Fix it\nplease"), "Fix it"),
         Check.truth("title.cut", endsWith(Transcript.title_of(fold(range(10), "", lambda acc, _i: acc + "0123456789")), "…"), "not cut"),
     ]
 
 
+# Syntax colouring: each language's snippet, then the checks on it and the
+# round-trip law over everything malformed.
+
+class Snip:
+    """One language's real snippet."""
+    snipName: str
+    snipCode: str
+
+
+HL_SNIPPETS = [
+    Snip(snipName="python", snipCode="class Point:\n    def add(self, first):\n        \"\"\"Sum.\"\"\"\n        return first + 1  # forty two"),
+    Snip(snipName="javascript", snipCode="export class Counter {\n  run(name) {\n    // once\n    return `hi ${name}` + 1;\n  }\n}"),
+    Snip(snipName="typescript", snipCode="interface Shape {\n  area(): number;\n}\nconst make = (n: number): string => `a${n}`;\n// done"),
+    Snip(snipName="rust", snipCode="struct Span {\n    start: usize,\n}\n\nfn len<'a>(s: &'a str) -> usize {\n    // size\n    s.len() + 0x1F\n}"),
+    Snip(snipName="go", snipCode="type Node struct {\n    Name string\n}\n\nfunc main() {\n    // go\n    fmt.Println(\"hi\", 42)\n}"),
+    Snip(snipName="swift", snipCode="class View {\n    func draw() -> Int {\n        // once\n        return 7\n    }\n}"),
+    Snip(snipName="c", snipCode="#include <stdio.h>\n/* add */\nint add(int a) {\n    // sum\n    return a + 2;\n}"),
+    Snip(snipName="cpp", snipCode="class Engine {\npublic:\n    virtual int run() = 0;  // pure\n};\n/* block */"),
+    Snip(snipName="java", snipCode="public class Main {\n    int run(String arg) {\n        // once\n        return 9;\n    }\n}"),
+    Snip(snipName="kotlin", snipCode="data class User(val name: String)\n\nfun main() {\n    // start\n    println(\"hi\", 3)\n}"),
+    Snip(snipName="csharp", snipCode="public class Server {\n    int Run() {\n        // once\n        return 5;\n    }\n}"),
+    Snip(snipName="ruby", snipCode="class Gem\n  def name\n    # plain\n    \"gem\" + 1.to_s\n  end\nend"),
+    Snip(snipName="php", snipCode="<?php\nclass Site {\n  function run($path) {\n    // once\n    return 'home' . 2;\n  }\n}"),
+    Snip(snipName="bash", snipCode="run_job() {\n  if [ -f \"$TARGET\" ]; then\n    # present\n    echo \"${HOME}/ok\" 3\n  fi\n}"),
+    Snip(snipName="sql", snipCode="CREATE TABLE users (id INT, name VARCHAR(10));\nSELECT id, COUNT(*) AS total\nFROM users -- picks\nWHERE name = 'bob' AND age > 21"),
+    Snip(snipName="json", snipCode="{\"schema\": \"v2\", \"n\": 12, \"ok\": true}\n// note"),
+    Snip(snipName="yaml", snipCode="name: agent\n# note\nlevel: 3\nalive: true\npath: \"src/a.py\""),
+    Snip(snipName="toml", snipCode="[package]\nname = \"agent\"  # note\nversion = 2"),
+    Snip(snipName="css", snipCode=".menu {\n  color: #1E1E24;  /* dark */\n  width: rgb(4, 8, 16);\n}"),
+    Snip(snipName="html", snipCode="<div class=\"card\">\n  <!-- note -->\n  <span>4</span>\n</div>"),
+    Snip(snipName="markdown", snipCode="# Title\n\n> quoted\n\n1. first\n\nUse `agent`."),
+    Snip(snipName="diff", snipCode="+++ b/new\n--- a/old\n@@ -1 +1 @@\n+added line\n-removed line\n context"),
+    Snip(snipName="osprey", snipCode="type Point\nmodule Math\n\nexport fn add (a, b) =\n    // sum\n    a + b + 2"),
+]
+
+HL_MALFORMED = ["", "\n\n\n", "\t\t", "a\r\nb\r\n", "héllo → wörld ✓", "'", "\"", "'''", "\"unclosed", "/* unclosed block", "def", "0x", "${", "#[", "<", "</a>", "<!--", "`x`", "@word", "\"\"\"\"\"\"", "```\"'''<!--/*/#@${!:`"]
+
+
+def hl_flow(language, name, code, words):
+    """Every control-flow word of a language draws as a keyword."""
+    marked = hl_marked(language, code)
+    return Check.truth("hl." + language + ".flow." + name, len(filterList(words, lambda word: not contains(marked, "|keyword:" + word + "|"))) == 0, marked)
+
+
+def hl_marked(language, code):
+    """The tokens as `kind:text`, fenced, so one token can be asserted exactly."""
+    return "|" + join(mapList(Highlight.tokens_of(language, code), lambda t: t.tokenKind + ":" + t.tokenText), "|") + "|"
+
+
+def hl_code(name):
+    found = filterList(HL_SNIPPETS, lambda s: s.snipName == name)
+    return unwrap_or(listGet(found, 0), Snip(snipName="", snipCode="")).snipCode
+
+
+def hl_has(name, code, kind, text):
+    marked = hl_marked(name, code)
+    return Check.truth("hl." + name + "." + kind, contains(marked, "|" + kind + ":" + text + "|"), marked)
+
+
+def hl_snip(name, kind, text):
+    return hl_has(name, hl_code(name), kind, text)
+
+
+def hl_roundtrip_checks():
+    """Joining every token's text gives the code back, for every snippet and every malformed input in every language."""
+    codes = listConcat(HL_MALFORMED, mapList(HL_SNIPPETS, lambda s: s.snipCode))
+    pairs = foldList(HL_SNIPPETS, [], lambda acc, s: listConcat(acc, mapList(codes, lambda code: Snip(snipName=s.snipName, snipCode=code))))
+    return mapList(pairs, lambda p: Check.truth("hl.roundtrip." + p.snipName, join(mapList(Highlight.tokens_of(p.snipName, p.snipCode), lambda t: t.tokenText), "") == p.snipCode, hl_marked(p.snipName, p.snipCode)))
+
+
+def highlight_cases():
+    kinds = [
+        hl_snip("python", "type", "Point"), hl_snip("python", "keyword", "def"), hl_snip("python", "function", "add"), hl_snip("python", "builtin", "self"),
+        hl_snip("python", "string", "\"\"\"Sum.\"\"\""), hl_snip("python", "number", "1"), hl_snip("python", "comment", "# forty two"),
+        hl_snip("javascript", "keyword", "export"), hl_snip("javascript", "type", "Counter"), hl_snip("javascript", "function", "run"),
+        hl_snip("javascript", "string", "`hi ${name}`"), hl_snip("javascript", "number", "1"), hl_snip("javascript", "comment", "// once"),
+        hl_snip("typescript", "type", "Shape"), hl_snip("typescript", "type", "number"), hl_snip("typescript", "function", "area"),
+        hl_snip("typescript", "string", "`a${n}`"), hl_snip("typescript", "comment", "// done"), hl_snip("typescript", "keyword", "const"),
+        hl_snip("rust", "type", "Span"), hl_snip("rust", "type", "'a"), hl_snip("rust", "function", "len"), hl_snip("rust", "keyword", "fn"),
+        hl_snip("rust", "number", "0x1F"), hl_snip("rust", "comment", "// size"), hl_snip("rust", "type", "usize"),
+        hl_snip("go", "keyword", "func"), hl_snip("go", "type", "Node"), hl_snip("go", "string", "\"hi\""), hl_snip("go", "number", "42"),
+        hl_snip("go", "comment", "// go"), hl_snip("go", "function", "Println"), hl_snip("go", "type", "string"),
+        hl_snip("swift", "keyword", "class"), hl_snip("swift", "type", "View"), hl_snip("swift", "function", "draw"),
+        hl_snip("swift", "number", "7"), hl_snip("swift", "comment", "// once"), hl_snip("swift", "type", "Int"),
+        hl_snip("c", "meta", "#include"), hl_snip("c", "comment", "/* add */"), hl_snip("c", "function", "add"),
+        hl_snip("c", "number", "2"), hl_snip("c", "comment", "// sum"), hl_snip("c", "keyword", "return"),
+        hl_snip("cpp", "keyword", "class"), hl_snip("cpp", "type", "Engine"), hl_snip("cpp", "function", "run"),
+        hl_snip("cpp", "comment", "// pure"), hl_snip("cpp", "comment", "/* block */"), hl_snip("cpp", "number", "0"),
+        hl_snip("java", "keyword", "public"), hl_snip("java", "type", "Main"), hl_snip("java", "function", "run"),
+        hl_snip("java", "comment", "// once"), hl_snip("java", "number", "9"), hl_snip("java", "type", "int"),
+        hl_snip("kotlin", "keyword", "data"), hl_snip("kotlin", "type", "User"), hl_snip("kotlin", "function", "main"),
+        hl_snip("kotlin", "string", "\"hi\""), hl_snip("kotlin", "number", "3"), hl_snip("kotlin", "comment", "// start"),
+        hl_snip("csharp", "keyword", "public"), hl_snip("csharp", "type", "Server"), hl_snip("csharp", "function", "Run"),
+        hl_snip("csharp", "comment", "// once"), hl_snip("csharp", "number", "5"), hl_snip("csharp", "type", "int"),
+        hl_snip("ruby", "keyword", "class"), hl_snip("ruby", "type", "Gem"), hl_snip("ruby", "function", "name"),
+        hl_snip("ruby", "string", "\"gem\""), hl_snip("ruby", "number", "1"), hl_snip("ruby", "comment", "# plain"),
+        hl_snip("php", "keyword", "class"), hl_snip("php", "type", "Site"), hl_snip("php", "function", "run"), hl_snip("php", "meta", "$path"),
+        hl_snip("php", "string", "'home'"), hl_snip("php", "number", "2"), hl_snip("php", "comment", "// once"),
+        hl_snip("bash", "function", "run_job"), hl_snip("bash", "keyword", "if"), hl_snip("bash", "keyword", "fi"),
+        hl_snip("bash", "string", "\"${HOME}/ok\""), hl_snip("bash", "number", "3"), hl_snip("bash", "comment", "# present"),
+        hl_snip("sql", "keyword", "CREATE"), hl_snip("sql", "type", "INT"), hl_snip("sql", "type", "VARCHAR"),
+        hl_snip("sql", "function", "COUNT"), hl_snip("sql", "string", "'bob'"), hl_snip("sql", "number", "21"), hl_snip("sql", "comment", "-- picks"),
+        hl_snip("json", "meta", "\"schema\""), hl_snip("json", "string", "\"v2\""), hl_snip("json", "number", "12"),
+        hl_snip("json", "builtin", "true"), hl_snip("json", "comment", "// note"),
+        hl_snip("yaml", "meta", "name"), hl_snip("yaml", "comment", "# note"), hl_snip("yaml", "number", "3"),
+        hl_snip("yaml", "builtin", "true"), hl_snip("yaml", "string", "\"src/a.py\""),
+        hl_snip("toml", "type", "[package]"), hl_snip("toml", "meta", "name"), hl_snip("toml", "string", "\"agent\""),
+        hl_snip("toml", "comment", "# note"), hl_snip("toml", "number", "2"),
+        hl_snip("css", "keyword", ".menu"), hl_snip("css", "meta", "color"), hl_snip("css", "number", "#1E1E24"),
+        hl_snip("css", "comment", "/* dark */"), hl_snip("css", "function", "rgb"),
+        hl_snip("html", "keyword", "div"), hl_snip("html", "meta", "class"), hl_snip("html", "string", "\"card\""),
+        hl_snip("html", "comment", "<!-- note -->"), hl_snip("html", "number", "4"),
+        hl_snip("markdown", "keyword", "# Title"), hl_snip("markdown", "comment", "> quoted"), hl_snip("markdown", "number", "1."),
+        hl_snip("markdown", "string", "`agent`"),
+        hl_snip("diff", "meta", "+++ b/new"), hl_snip("diff", "meta", "--- a/old"), hl_snip("diff", "meta", "@@ -1 +1 @@"),
+        hl_snip("diff", "inserted", "+added line"), hl_snip("diff", "removed", "-removed line"),
+        hl_snip("osprey", "keyword", "type"), hl_snip("osprey", "function", "add"), hl_snip("osprey", "comment", "// sum"),
+        hl_snip("osprey", "number", "2"), hl_snip("osprey", "keyword", "export"),
+    ]
+    rules = [
+        hl_has("python", "formatted classy", "", "formatted"),
+        hl_flow("python", "return", "if x:\n    return y\nelse:\n    for i in z:\n        while i:\n            break\n    continue\n", ["if", "return", "else", "for", "while", "break", "continue"]),
+        Check.truth("hl.python.whole_words", not contains(hl_marked("python", "formatted classy"), "keyword:"), hl_marked("python", "formatted classy")),
+        hl_has("python", "x = \"def class 42 # no\"", "string", "\"def class 42 # no\""),
+        Check.truth("hl.python.hash_in_string", not contains(hl_marked("python", "y = \"a # b\""), "comment:"), hl_marked("python", "y = \"a # b\"")),
+        hl_has("python", "# say \"hi\"", "comment", "# say \"hi\""),
+        hl_has("python", "s = '''\ndocs\n'''", "string", "'''\ndocs\n'''"),
+        hl_has("c", "/* a\nb */", "comment", "/* a\nb */"),
+        hl_has("bash", "cd ${HOME}\necho $USER", "meta", "${HOME}"),
+        hl_has("bash", "cd ${HOME}\necho $USER", "meta", "$USER"),
+        Check.truth("hl.bash.hash_not_comment", not contains(hl_marked("bash", "echo a#b"), "comment:"), hl_marked("bash", "echo a#b")),
+        hl_has("css", "a:hover {\n}", "type", ":hover"),
+        hl_has("sql", "select * from t", "keyword", "select"),
+        hl_has("markdown", "```\nfence\n```", "meta", "```"),
+        Check.equal("hl.unknown.one_plain", len(Highlight.tokens_of("brainfuck", "x = 1")), 1),
+        Check.equal("hl.unknown.plain_kind", unwrap_or(listGet(Highlight.tokens_of("brainfuck", "x = 1"), 0), Highlight.Token(tokenText="", tokenKind="x")).tokenKind, ""),
+        Check.equal("hl.empty_language.one_plain", len(Highlight.tokens_of("", "x = 1")), 1),
+    ]
+    alias_pairs = [["py", "python"], ["js", "javascript"], ["jsx", "javascript"], ["ts", "typescript"], ["tsx", "typescript"], ["rs", "rust"], ["kt", "kotlin"], ["cs", "csharp"], ["c#", "csharp"], ["c++", "cpp"], ["h", "cpp"], ["hpp", "cpp"], ["rb", "ruby"], ["sh", "bash"], ["shell", "bash"], ["zsh", "bash"], ["console", "bash"], ["yml", "yaml"], ["scss", "css"], ["xml", "html"], ["svg", "html"], ["md", "markdown"], ["patch", "diff"], ["ospml", "osprey"], ["osp", "osprey"], ["golang", "go"]]
+    aliases = mapList(alias_pairs, lambda p: Check.equal("hl.alias." + unwrap_or(listGet(p, 0), ""), hl_marked(unwrap_or(listGet(p, 0), ""), hl_code(unwrap_or(listGet(p, 1), ""))), hl_marked(unwrap_or(listGet(p, 1), ""), hl_code(unwrap_or(listGet(p, 1), "")))))
+    same = mapList(["Python", "PYTHON", "Rust", "JSON", "Markdown"], lambda n: Check.equal("hl.case." + n, hl_marked(n, hl_code("python")), hl_marked(toLowerCase(n), hl_code("python"))))
+    paths = [
+        Check.equal("hl.path.py", Highlight.language_of_path("a.py"), "python"),
+        Check.equal("hl.path.case", Highlight.language_of_path("lib/x.TS"), "typescript"),
+        Check.equal("hl.path.rs", Highlight.language_of_path("main.rs"), "rust"),
+        Check.equal("hl.path.html", Highlight.language_of_path("index.html"), "html"),
+        Check.equal("hl.path.svg", Highlight.language_of_path("x.svg"), "html"),
+        Check.equal("hl.path.scss", Highlight.language_of_path("styles.scss"), "css"),
+        Check.equal("hl.path.md", Highlight.language_of_path("doc.md"), "markdown"),
+        Check.equal("hl.path.go", Highlight.language_of_path("g.go"), "go"),
+        Check.equal("hl.path.swift", Highlight.language_of_path("m.swift"), "swift"),
+        Check.equal("hl.path.h", Highlight.language_of_path("x.h"), "cpp"),
+        Check.equal("hl.path.hpp", Highlight.language_of_path("x.hpp"), "cpp"),
+        Check.equal("hl.path.sh", Highlight.language_of_path("run.sh"), "bash"),
+        Check.equal("hl.path.sql", Highlight.language_of_path("db.sql"), "sql"),
+        Check.equal("hl.path.toml", Highlight.language_of_path("c.toml"), "toml"),
+        Check.equal("hl.path.yml", Highlight.language_of_path("v.yml"), "yaml"),
+        Check.equal("hl.path.ospml", Highlight.language_of_path("a.ospml"), "osprey"),
+        Check.equal("hl.path.osp", Highlight.language_of_path("o.osp"), "osprey"),
+        Check.equal("hl.path.patch", Highlight.language_of_path("p.patch"), "diff"),
+        Check.equal("hl.path.kt", Highlight.language_of_path("k.kt"), "kotlin"),
+        Check.equal("hl.path.cs", Highlight.language_of_path("c.cs"), "csharp"),
+        Check.equal("hl.path.rb", Highlight.language_of_path("r.rb"), "ruby"),
+        Check.equal("hl.path.php", Highlight.language_of_path("p.php"), "php"),
+        Check.equal("hl.path.tsx", Highlight.language_of_path("t.tsx"), "typescript"),
+        Check.equal("hl.path.jsx", Highlight.language_of_path("j.jsx"), "javascript"),
+        Check.equal("hl.path.no_extension", Highlight.language_of_path("Makefile"), ""),
+        Check.equal("hl.path.dotfile", Highlight.language_of_path(".gitignore"), ""),
+        Check.equal("hl.path.dotfolder", Highlight.language_of_path("dir/.env"), ""),
+        Check.equal("hl.path.unknown_extension", Highlight.language_of_path("archive.tar.gz"), ""),
+    ]
+    huge = repeat_text("# line\n", 28572)
+    just_under = repeat_text("# line\n", 28571)
+    size = [
+        Check.equal("hl.max_bytes.one_plain", len(Highlight.tokens_of("python", huge)), 1),
+        Check.equal("hl.max_bytes.whole_text", unwrap_or(listGet(Highlight.tokens_of("python", huge), 0), Highlight.Token(tokenText="", tokenKind="")).tokenText, huge),
+        Check.truth("hl.max_bytes.still_scans_under", len(Highlight.tokens_of("python", just_under)) > 1, toString(len(Highlight.tokens_of("python", just_under)))),
+        Check.equal("hl.max_bytes.constant", Highlight.MAX_BYTES, 200000),
+    ]
+    return listConcat(listConcat(listConcat(listConcat(kinds, rules), aliases), listConcat(same, paths)), listConcat(size, hl_roundtrip_checks()))
+
+
+def mcp_cases():
+    tricky = Mcp.parse_config('{"mcpServers":{"same":{"command":"global"},"private":{"command":"python3","env":{"TOKEN":"mcp-secret"}}}}', {})
+    load = McpClient.parse_config('{"mcpServers":{"demo":{"command":"python3","args":["server.py"],"env":{"TOKEN":"configured-secret"}}}}')
+    tool = Mcp.Tool(name="secret_word", description="Reads the word.", input_schema=unwrap_or(jsonDecode('{"type":"object","properties":{}}'), JsonNull()))
+    history = Engine.add_user(Engine.new_history(), FOLDER, "Use MCP")
+    body = Engine.request_body_with_tools(history, MODEL, "", [Mcp.tool_definition_of("demo", tool)])
+    saved = McpClient.config_json(load.servers)
+    restored = McpClient.parse_config(saved)
+    ok_text = McpClient.message_json('{"jsonrpc":"2.0","id":7,"result":{"content":[{"type":"text","text":"planet"}]}}')
+    failed_text = McpClient.message_json('{"jsonrpc":"2.0","id":8,"result":{"content":[{"type":"text","text":"tool failed"}],"isError":true}}')
+    error_text = McpClient.message_json('{"jsonrpc":"2.0","id":9,"error":{"code":-32000,"message":"no such tool"}}')
+    ping_text = McpClient.message_json('{"jsonrpc":"2.0","id":"server-ping-1","method":"ping"}')
+    initialize_text = McpClient.message_json('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-06-18","serverInfo":{"name":"s","version":"1"},"capabilities":{}}}')
+    refused_text = McpClient.message_json('{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"1999-01-01"}}')
+    page_text = McpClient.message_json('{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"secret_word","description":"The word.","inputSchema":{"type":"object"}}],"nextCursor":"3"}}')
+    headers = JsonObject([JsonMember("headers", JsonArray([JsonObject([JsonMember("name", JsonString("Content-Type")), JsonMember("value", JsonString("text/event-stream"))]), JsonObject([JsonMember("name", JsonString("Mcp-Session-Id")), JsonMember("value", JsonString("session-1"))])]))])
+    messages = McpClient.http_messages(headers, 'event: message\ndata: {"jsonrpc":"2.0","id":7,"result":{}}\n\n')
+    merged = McpClient.merge_view(saved, '{"mcpServers":{"same":{"command":"project"},"local":{"command":"local"}}}')
+    added = McpClient.add_global(saved, "extra", '{"command":"node","args":["server.js"]}')
+    clash = McpClient.add_global(saved, "demo", '{"command":"node"}')
+    pasted = McpClient.paste_global("{}", '{"mcpServers":{"one":{"command":"one"},"two":{"url":"https://example.test/mcp"}}}')
+    bad_paste = McpClient.paste_global("{}", '{"mcpServers":{"ok":{"command":"one"},"bad":{}}}')
+    form = McpClient.form_config("httpd", "url", "", "", "http://127.0.0.1:8919/mcp", "", "Authorization=Bearer mcp-token")
+    brief = McpClient.start_brief(form.text)
+    step = McpClient.read_step("par", "tial\n{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{}}\nfrag")
+    wire = McpClient.call_line(5, "add", '{"a":1,"b":2}')
+    bad_wire = McpClient.call_line(5, "add", "[1]")
+    return [
+        Check.equal("mcp.two_servers_with_env", len(tricky.servers), 2),
+        Check.equal("mcp.app_config_roundtrip", join(mapList(restored.servers, Mcp.name_of), ","), "demo"),
+        Check.truth("mcp.app_config_keeps_secret_only_in_mcp", contains(saved, "configured-secret"), saved),
+        Check.equal("mcp.app_form_empty_name", McpClient.form_problem("", "command", "python3", "", "", ""), "Enter a server name."),
+        Check.equal("mcp.app_form_empty_command", McpClient.form_problem("demo", "command", "", "", "", ""), "Enter a command."),
+        Check.equal("mcp.app_form_bad_url", McpClient.form_problem("demo", "url", "", "ftp://example.test/mcp", "", ""), "Enter an HTTPS URL, or an HTTP URL on this machine."),
+        Check.equal("mcp.app_form_bad_env", McpClient.form_problem("demo", "command", "python3", "", "BROKEN", ""), "Environment lines must look like NAME=value."),
+        Check.equal("mcp.app_form_valid", McpClient.form_problem("demo", "url", "", "http://127.0.0.1:8000/mcp", "Authorization=Bearer secret", ""), ""),
+        Check.truth("mcp.app_model_tool", contains(body, '"name":"demo_secret_word"'), body),
+        Check.equal("mcp.app_response_by_id", McpClient.call_text_of(McpClient.find_response([ok_text], "7")), "planet"),
+        Check.equal("mcp.app_is_error_is_tool_text", McpClient.call_text_of(McpClient.find_response([failed_text], "8")), "tool failed"),
+        Check.equal("mcp.app_error_response_words", McpClient.call_text_of(McpClient.find_response([error_text], "9")), "no such tool (code: -32000)"),
+        Check.equal("mcp.app_no_response", McpClient.find_response([ok_text], "4"), "{}"),
+        Check.truth("mcp.app_server_ping", contains(McpClient.ping_replies([ping_text]), '"id":"server-ping-1"'), McpClient.ping_replies([ping_text])),
+        Check.equal("mcp.app_no_ping", McpClient.ping_replies([ok_text]), ""),
+        Check.equal("mcp.app_initialize_ok", McpClient.initialize_outcome(initialize_text), '{"ok":true,"problem":""}'),
+        Check.truth("mcp.app_initialize_refused", contains(McpClient.initialize_outcome(refused_text), "does not support"), McpClient.initialize_outcome(refused_text)),
+        Check.truth("mcp.app_tools_page", contains(McpClient.tools_page(page_text), '"name":"secret_word"'), McpClient.tools_page(page_text)),
+        Check.truth("mcp.app_tools_page_cursor", contains(McpClient.tools_page(page_text), '"cursor":"3"'), McpClient.tools_page(page_text)),
+        Check.equal("mcp.app_http_session", McpClient.header_value(headers, "mcp-session-id"), "session-1"),
+        Check.equal("mcp.app_http_sse", len(messages), 1),
+        Check.equal("mcp.app_merge_names", join(mapList(merged.mergedServers, lambda view: view.viewName + ":" + view.viewOrigin + ":" + ("on" if view.viewEnabled else "off")), ","), "demo:global:on,same:project:off,local:project:off"),
+        Check.equal("mcp.app_merge_project_wins", join(mapList(filterList(merged.mergedServers, lambda view: view.viewName == "same"), lambda view: view.viewOrigin), ","), "project"),
+        Check.truth("mcp.app_add_keeps_secret", contains(added.text, "configured-secret") and contains(added.text, "extra"), added.text),
+        Check.equal("mcp.app_add_clash", clash.problem, "An MCP server named 'demo' already exists."),
+        Check.equal("mcp.app_paste_atomic", len(McpClient.parse_config(pasted.text).servers), 2),
+        Check.truth("mcp.app_paste_bad_reports", contains(bad_paste.problem, "must have either"), bad_paste.problem),
+        Check.truth("mcp.app_paste_repeated_reports", contains(McpClient.paste_global("{}", '{"mcpServers":{"twice":{"command":"a"},"twice":{"command":"b"}}}').problem, "not valid JSON"), McpClient.paste_global("{}", '{"mcpServers":{"twice":{"command":"a"},"twice":{"command":"b"}}}').problem),
+        Check.equal("mcp.app_remove_keeps_rest", join(mapList(McpClient.parse_config(McpClient.remove_global_text(added.text, "extra")).servers, Mcp.name_of), ","), "demo"),
+        Check.truth("mcp.app_form_entry", contains(form.text, "127.0.0.1:8919") and contains(form.text, "mcp-token"), form.text),
+        Check.equal("mcp.app_form_problem_words", McpClient.form_config("x", "url", "", "", "nope", "", "").problem, "Enter an HTTPS URL, or an HTTP URL on this machine."),
+        Check.truth("mcp.app_brief_http", contains(brief, '"kind":"http"') and contains(brief, '"name":"Authorization"') and contains(brief, "mcp-token"), brief),
+        Check.truth("mcp.app_brief_stdio", contains(McpClient.start_brief('{"command":"python3","args":["-u","s.py"],"env":{"A":"b"}}'), '"kind":"stdio"'), McpClient.start_brief('{"command":"python3","args":["-u","s.py"],"env":{"A":"b"}}')),
+        Check.equal("mcp.app_read_step", join(step.lines, "|") + "/" + step.buffer, 'partial|{"jsonrpc":"2.0","id":7,"result":{}}/frag'),
+        Check.truth("mcp.app_call_line", contains(wire.text, '"name":"add"') and contains(wire.text, '"a":1') and contains(wire.text, '"b":2'), wire.text),
+        Check.truth("mcp.app_call_line_bad_args", len(bad_wire.problem) > 0, bad_wire.problem),
+        Check.truth("mcp.app_initialize_line", contains(McpClient.initialize_line(1), '"method":"initialize"'), McpClient.initialize_line(1)),
+        Check.truth("mcp.app_initialized_line", contains(McpClient.initialized_line(), "notifications/initialized"), McpClient.initialized_line()),
+        Check.truth("mcp.app_list_line_pages", contains(McpClient.list_tools_line(2, "3"), '"cursor":"3"'), McpClient.list_tools_line(2, "3")),
+        Check.equal("mcp.app_protocol_version", McpClient.protocol_version(), "2025-06-18"),
+    ]
+
+
 def suite():
-    return listConcat(listConcat(listConcat(conversation_cases(), in_flight_cases()), listConcat(failure_cases(), command_cases())), markdown_cases())
+    return listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(conversation_cases(), folder_prompt_cases()), in_flight_cases()), listConcat(failure_cases(), command_cases())), prov_cases()), markdown_cases()), highlight_cases()), mcp_cases())
 
 
 def report_suite():

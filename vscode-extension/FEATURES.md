@@ -14,10 +14,10 @@ Syntax highlighting uses the bundled [Default](syntaxes/osprey.tmGrammar.json) a
 
 - **Compile:** `Osprey: Compile Osprey File`, bound to Ctrl/Cmd+Shift+B.
 - **Run:** `Osprey: Compile and Run Osprey File` in the Command Palette.
-- **Debug:** `Osprey: Debug Osprey File`, bound to F5, compiles native DWARF and launches LLDB-DAP. Breakpoints, stepping, primitive values and supported record fields are implemented. Collection/union renderers, optimized values and concurrency inspection remain open in [plan 0012](../docs/plans/0012-osprey-debugger.md).
+- **Debug:** `Osprey: Debug Osprey File`, bound to F5, compiles native DWARF and launches LLDB-DAP. Breakpoints, stepping, primitive values and supported record fields are implemented. Collection/union renderers, optimized values and concurrency inspection remain open in [plan 0012](../docs/plans/0012-developer-tools.md).
 - **Test Explorer:** discovers Default and ML test suites and provides Run, Coverage, Profile and Debug profiles. Case documentation and skipped/unexecuted-case warnings appear in the editor.
 - **Hunt:** `Osprey: Hunt for Bugs` invokes `osprey hunt --json`; findings become diagnostics and the report appears in the Osprey Hunt output channel. KLEE and runtime bitcode are separate prerequisites; see the [Hunt guide](../website/src/docs/hunt.md).
-- **Profile:** launch or attach CPU sampling on supported macOS/Linux runtimes. The shared profiler UI presents captured samples; a Windows sampler and ARC/GC heap profiling remain delivery work in [plan 0035](../docs/plans/0035-native-profiler-backends.md).
+- **Profile:** launch or attach CPU sampling on supported macOS/Linux runtimes. The shared profiler UI presents captured samples; a Windows sampler and ARC/GC heap profiling remain delivery work in [plan 0012](../docs/plans/0012-developer-tools.md).
 
 Native compilation requires the host C/LLVM toolchain. Debugging requires `lldb-dap`; terminal input requires LLDB-DAP 21 or newer. Platform-specific compiler capabilities still apply to every editor command.
 

@@ -1,8 +1,6 @@
 //! The GPUI window and synchronous Osprey dispatch seam ([GPUI-HOST-SEAM]).
 
 use std::collections::{BTreeSet, HashMap, VecDeque};
-#[cfg(not(windows))]
-use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use gpui_kit::component::{input::InputState, ActiveTheme as _, Theme};
@@ -105,6 +103,11 @@ impl HostView {
                 "store-read" | "store-write" | "store-list" | "store-delete" => {
                     self.dispatch(store::completion(&request), window, cx);
                 }
+                // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
+                // picker is answered across the OS bridge like any blocking adapter.
+                "choose-file" if cfg!(any(target_os = "ios", target_os = "android")) => {
+                    self.answer_in_background(request, window, cx);
+                }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {
                     if let Some(completion) = adapters::dispatch_platform(&request, window, cx) {
                         self.dispatch(completion, window, cx);
@@ -188,15 +191,19 @@ impl HostView {
 }
 
 impl Render for HostView {
-    /// Draws the root region above the host-only diagnostic strip.
+    /// Draws the root region above the host-only diagnostic strip, both contained in the window's
+    /// safe area ([GPUI-HOST-RENDER]): the platform's insets clear the status bar, notch and home
+    /// indicator, and a window that reports zero insets (every desktop window) keeps its framed
+    /// padding unchanged.
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         clock::schedule(self, window, cx);
         let framed = !bare();
+        let safe = window.insets().safe_area;
         div()
             .size_full()
             .flex()
             .flex_col()
-            .when(framed, |this| this.gap_4().p_4())
+            .when(framed, |this| this.p_4())
             .bg(self.background(window, cx))
             .text_color(cx.theme().foreground)
             .child(
@@ -205,9 +212,14 @@ impl Render for HostView {
                     .flex_col()
                     .flex_grow(1.)
                     .min_h_0()
-                    .child(render::region(self, "root", window, cx)),
+                    .pt(safe.top)
+                    .pr(safe.right)
+                    .pb(safe.bottom)
+                    .pl(safe.left)
+                    .when(framed, |this| this.gap_4())
+                    .child(render::region(self, "root", window, cx))
+                    .child(render::diagnostics(self, cx)),
             )
-            .child(render::diagnostics(self, cx))
     }
 }
 
@@ -237,7 +249,7 @@ pub fn run() -> i32 {
 fn start() -> Result<(Regions, Vec<Request>), String> {
     Library::init()?;
     let home = crate::home()?;
-    let arguments = crate::self_test::app_arguments();
+    let arguments = crate::launch::arguments()?;
     let context = events::start_context(
         now(),
         local_offset()?,
@@ -253,7 +265,17 @@ fn start() -> Result<(Regions, Vec<Request>), String> {
 
 /// Opens the native window; this is the only permitted infallible window-open boundary.
 fn open(regions: Regions, pending: Vec<Request>, bench: Option<clock::Bench>) {
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
     let application = gpui_kit::application();
+    // [CAST-MOBILE-GPUI] gpui-kit leaves the mobile backend to the application.
+    #[cfg(target_os = "ios")]
+    let application = gpui_kit::Application::with_platform(gpui_ios::current_platform(false));
+    // [CAST-MOBILE-GPUI] the same host code draws through the Android backend over gpui-pre-wgpu.
+    #[cfg(target_os = "android")]
+    let Some(application) = android_application() else {
+        eprintln!("GPUI host failed: no Android activity to draw through");
+        return;
+    };
     application.on_open_urls(|urls| opened().extend(urls));
     application.run(move |cx| {
         gpui_kit::init(cx);
@@ -293,6 +315,26 @@ fn new_view(
     view
 }
 
+/// The NativeActivity handle `android_main` installed before the host starts
+/// ([CAST-MOBILE-GPUI]).
+#[cfg(target_os = "android")]
+pub(crate) static ANDROID_APP: std::sync::OnceLock<android_activity::AndroidApp> = std::sync::OnceLock::new();
+
+/// Installs the activity the Android platform backend draws through.
+#[cfg(target_os = "android")]
+pub fn set_android_app(app: android_activity::AndroidApp) {
+    let _ = ANDROID_APP.set(app);
+}
+
+/// The application on this activity's GPUI backend.
+#[cfg(target_os = "android")]
+fn android_application() -> Option<gpui_kit::Application> {
+    let app = ANDROID_APP.get()?.clone();
+    Some(gpui_kit::Application::with_platform(gpui_android::current_platform(
+        &app,
+    )))
+}
+
 /// Files Finder asked the application to open and no frame has delivered yet ([GPUI-HOST-OPEN]).
 static OPENED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
@@ -322,7 +364,8 @@ pub fn deliver_opened(view: &mut HostView, window: &mut Window, cx: &mut Context
 /// padding or frame-time strip, and a transparent title bar its canvas runs under, with the
 /// traffic lights where `OSPREY_GPUI_LIGHTS=x,y` puts them ([UI-MACHINE-CANVAS]).
 pub fn bare() -> bool {
-    std::env::var("OSPREY_GPUI_CHROME").is_ok_and(|chrome| chrome == "bare")
+    cfg!(any(target_os = "ios", target_os = "android"))
+        || std::env::var("OSPREY_GPUI_CHROME").is_ok_and(|chrome| chrome == "bare")
 }
 
 /// The traffic lights' origin for a bare window, `OSPREY_GPUI_LIGHTS=x,y` in points.
@@ -401,16 +444,17 @@ pub(crate) fn now() -> i64 {
 /// Reads the platform timezone offset without adding a date/time dependency.
 #[cfg(not(windows))]
 fn local_offset() -> Result<i64, String> {
-    let output = Command::new("date")
-        .arg("+%z")
-        .output()
-        .map_err(|problem| format!("Could not read the local UTC offset: {problem}"))?;
-    if !output.status.success() {
-        return Err("The local UTC offset command failed".to_owned());
+    let seconds = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?;
+    let timestamp = libc::time_t::try_from(seconds.as_secs()).map_err(|error| error.to_string())?;
+    let mut local = std::mem::MaybeUninit::<libc::tm>::uninit();
+    // SAFETY: both pointers are live, correctly aligned, and owned for this call.
+    if unsafe { libc::localtime_r(&timestamp, local.as_mut_ptr()) }.is_null() {
+        return Err("Could not read the local UTC offset".to_owned());
     }
-    let text = String::from_utf8(output.stdout)
-        .map_err(|problem| format!("The local UTC offset was not UTF-8: {problem}"))?;
-    parse_offset(text.trim())
+    // SAFETY: localtime_r initialized the structure after returning a non-null pointer.
+    Ok(unsafe { local.assume_init() }.tm_gmtoff)
 }
 
 /// Reads the local UTC offset from the time zone Windows reports, with daylight saving applied:
@@ -450,24 +494,4 @@ fn local_offset() -> Result<i64, String> {
         _ => 0,
     };
     Ok(-i64::from(zone.bias + extra) * 60)
-}
-
-/// Converts a `date +%z` value such as `+1030` to seconds.
-#[cfg(not(windows))]
-fn parse_offset(text: &str) -> Result<i64, String> {
-    let valid = text.len() == 5 && matches!(text.as_bytes()[0], b'+' | b'-');
-    if !valid || !text[1..].bytes().all(|byte| byte.is_ascii_digit()) {
-        return Err(format!("Invalid local UTC offset {text:?}"));
-    }
-    let hours = text[1..3]
-        .parse::<i64>()
-        .map_err(|problem| problem.to_string())?;
-    let minutes = text[3..5]
-        .parse::<i64>()
-        .map_err(|problem| problem.to_string())?;
-    if hours > 23 || minutes > 59 {
-        return Err(format!("Invalid local UTC offset {text:?}"));
-    }
-    let sign = if text.starts_with('-') { -1 } else { 1 };
-    Ok(sign * (hours * 3600 + minutes * 60))
 }

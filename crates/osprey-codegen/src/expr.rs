@@ -5,7 +5,7 @@
 //! [`CodegenError::Unsupported`] rather than miscompiling.
 
 use crate::builder::{Codegen, FnSig};
-use crate::conv::{as_double, as_i1, as_i64};
+use crate::conv::as_i1;
 use crate::error::{CodegenError, Result};
 use crate::llty::{LType, Value};
 use crate::pattern::gen_match;
@@ -67,7 +67,10 @@ fn list_type(cg: &Codegen, position: Option<Position>) -> Option<osprey_types::T
 pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     let inferred = static_type(cg, expr);
     let folded = osprey_types::fold_arithmetic(expr).map_err(CodegenError::invalid)?;
-    let mut value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value))?;
+    let enclosing = std::mem::replace(&mut cg.expression_type, inferred.clone());
+    let value = gen_expr_raw(cg, folded.as_ref().map_or(expr, |value| value));
+    cg.expression_type = enclosing;
+    let mut value = value?;
     if let Some(ty) = inferred.filter(|ty| !osprey_types::has_type_var(ty)) {
         value.inferred_type = Some(ty);
     }
@@ -77,7 +80,7 @@ pub(crate) fn gen_expr(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
 fn gen_expr_raw(cg: &mut Codegen, expr: &Expr) -> Result<Value> {
     match expr {
         Expr::Integer(n) => Ok(Value::new(n.to_string(), LType::I64)),
-        Expr::Float(f) => Ok(Value::new(fmt_double(*f), LType::Double)),
+        Expr::Float(f) => Ok(Value::new(fmt_double(*f), LType::F64)),
         Expr::Bool(b) => Ok(Value::new(if *b { "1" } else { "0" }, LType::I1)),
         Expr::Str(s) => Ok(cg.string_constant(s)),
         Expr::InterpolatedStr(parts) => gen_interpolation(cg, parts),

@@ -140,6 +140,24 @@ ok bytes.f16_tiny
 ok bytes.f16_boundary
 ok bytes.f16_round
 ok bytes.f16_min_subnormal
+ok bytes.bf16_zero
+ok bytes.bf16_neg_zero
+ok bytes.bf16_nan
+ok bytes.bf16_inf
+ok bytes.bf16_neg_inf
+ok bytes.bf16_overflow
+ok bytes.bf16_half
+ok bytes.bf16_negative
+ok bytes.bf16_carry
+ok bytes.bf16_tie_up
+ok bytes.bf16_tie_down
+ok bytes.bf16_min_subnormal
+ok bytes.bf16_below_normal
+ok bytes.bf16_min_normal
+ok bytes.bf16_double_subnormal
+ok bytes.bf16_neg_double_subnormal
+ok bytes.f64_from_parts_neg_inf
+ok bytes.f64_from_parts_nan
 ok bytes.f32_zero
 ok bytes.f32_max
 ok bytes.f32_overflow
@@ -173,4 +191,4 @@ ok json.reject_14
 ok json.unterminated_escape
 ok json.unterminated_member_escape
 ok tensor_info.byte_extent
-175 passed, 0 failed
+193 passed, 0 failed

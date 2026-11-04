@@ -1,6 +1,6 @@
 # WinUI Host [WINUI-HOST]
 
-**Status:** `hosts/winui` draws the node kinds its renderer has WinUI controls for, scenes included, shows a visible diagnostic for the rest, answers the folder walk, the pickers, the store and the frame clock, and publishes with Native AOT. Its tests run with no window and drive [Osprey Storage](../../../examples/storage/README.md), [Flock](../../../examples/gpui/flock/README.md) and [Painting](../../../examples/gpui/painting/README.md) through their real DLLs; `--self-test` then drives each in a real window on the CI runner's desktop ([WINUI-HOST-SELF-TEST]), where all three passed on 2026-10-28. That historical checkpoint does not establish acceptance of the newly combined framework; fresh Windows execution is required. Delivery is tracked by [plan 0038](../../plans/0038-winui-windows-hosts.md).
+**Status:** `hosts/winui` draws the node kinds its renderer has WinUI controls for, scenes included, shows a visible diagnostic for the rest, answers the folder walk, the pickers, the store and the frame clock, and publishes with Native AOT. Its tests run with no window and drive [Osprey Storage](../../../examples/storage/README.md), [Flock](../../../examples/gpui/flock/README.md) and [Painting](../../../examples/gpui/painting/README.md) through their real DLLs; `--self-test` then drives each in a real window on the CI runner's desktop ([WINUI-HOST-SELF-TEST]), where all three passed on 2026-10-28. That historical checkpoint does not establish acceptance of the newly combined framework; fresh Windows execution is required. Delivery is tracked by [plan 0037](../../plans/0037-osprey-native.md).
 
 The WinUI host renders an [Osprey Native](../../../packages/native/README.md) application with WinUI, the UI framework of the Windows App SDK. It is a host in the [Osprey Native host family](../applications/0047-OspreyNativeHosts.md) and the native Windows one: the controls are the ones Windows draws its own apps with, on Mica, with Segoe Fluent Icons.
 
@@ -89,9 +89,23 @@ Every other kind completes with the error "The Windows host does not answer *kin
 - The deadline runs from the request across all its folders. Past it, the walk enters nothing more and marks what it measured `truncated`.
 - Names that are not valid UTF-16, which NTFS allows, are written with U+FFFD in place of each unpaired surrogate rather than failing the walk.
 
+A `HostCall` in the `windows` namespace, "restart as administrator", is answered with `ShellExecuteExW` and the `runas` verb, and passes `--elevated` back in the launch arguments. Osprey decides when to offer it: on Windows, when the walk could not read some folders and the process is not elevated. Not implemented yet: `host-call` is unanswered in this host, so a `windows` request completes with an error.
+
 ## Deployment [WINUI-HOST-DEPLOY]
 
-The host is unpackaged and self-contained: the Windows App SDK runtime ships beside the executable, so nothing is installed first. `EnableMsixTooling` publishes the resource index, `OspreyHost.pri`, that holds WinUI's theme dictionaries; without it the published host cannot load its controls' styles. Before WinUI starts, the host checks that its window station is visible and, in a Windows service's session, says it needs a desktop instead of ending with WinUI's `E_ACCESSDENIED`. `dotnet publish OspreyHost -c Release` compiles it with Native AOT, with trim and AOT warnings as errors. On 2026-10-28 the published folder held a 6.1 MB `OspreyHost.exe` and 237 files totalling 90 MB, most of them the WinUI runtime. MSIX packaging and ARM64 are plan 0038 phase 5.
+The host is unpackaged and self-contained: the Windows App SDK runtime ships beside the executable, so nothing is installed first. `EnableMsixTooling` publishes the resource index, `OspreyHost.pri`, that holds WinUI's theme dictionaries; without it the published host cannot load its controls' styles. Before WinUI starts, the host checks that its window station is visible and, in a Windows service's session, says it needs a desktop instead of ending with WinUI's `E_ACCESSDENIED`. `dotnet publish OspreyHost -c Release` compiles it with Native AOT, with trim and AOT warnings as errors. On 2026-10-28 the published folder held a 6.1 MB `OspreyHost.exe` and 237 files totalling 90 MB, most of them the WinUI runtime. MSIX packaging and its AppContainer sandbox follow below ([WINUI-HOST-SANDBOX]); ARM64 is plan 0037.
+
+## The AppContainer sandbox [WINUI-HOST-SANDBOX]
+
+One package per app. [`app.ps1 -App <name>`](../../../hosts/winui/app.ps1) lays out `OspreyHost.exe`, the Windows App SDK runtime (self-contained), the app's DLL, a logo drawn from the app's name, and an `AppxManifest.xml` generated from the app's entry in [`apps/windows.json`](../../../apps/windows.json), which holds the app's name, description and capabilities. The manifest sets `uap10:TrustLevel="appContainer"` and `uap10:RuntimeBehavior="packagedClassicApp"`, and does not declare `runFullTrust`. The layout is registered with `Add-AppxPackage -Register`, which needs Developer Mode and no signing, and launched through `shell:AppsFolder`. CI signs a real `.msix` with a test certificate; that is not implemented yet, and CI registers the loose layout.
+
+The host finds its app beside itself. With no DLL argument, a packaged host loads `app\app.dll` and reads its default arguments from `app\arguments.txt` in its package folder. An AppContainer process can read its own package and nothing it was not granted.
+
+The store moves into the package. When packaged, the store capabilities use `ApplicationData.GetDefault()` (the package's LocalState) in place of `%APPDATA%\Osprey\<app>`.
+
+Files go through the broker. The folder walk opens directories with `CreateFile2FromApp`, which honours picker grants and `broadFileSystemAccess`. A folder the sandbox refuses counts as `unreadable`, as a folder its ACL denies does today.
+
+Elevation is refused in the sandbox. Storage's "restart as administrator" `HostCall` completes with an error while the host runs in an AppContainer, and Osprey does not offer it there. Not implemented yet: the `windows` namespace it travels in is unanswered ([WINUI-HOST-CAPABILITIES]).
 
 ## Scenes [WINUI-HOST-SCENE]
 

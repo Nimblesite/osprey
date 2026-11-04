@@ -39,6 +39,13 @@ static void init_device(void) {
   }
 }
 
+// The math options that replaced `fastMathEnabled`, which fails the build once
+// the deployment target reaches the release that deprecated it.
+static void use_safe_math(MTLCompileOptions *options) API_AVAILABLE(macos(15.0), ios(18.0)) {
+  options.mathMode = MTLMathModeSafe;
+  options.mathFloatingPointFunctions = MTLMathFloatingPointFunctionsPrecise;
+}
+
 // Compile the library when there is none, or when a dispatch brings program
 // kernels the current one lacks; the pipelines of the old library are dropped.
 static bool ensure_library(const char *source) {
@@ -46,7 +53,19 @@ static bool ensure_library(const char *source) {
   if (gpu_library != nil && (!source || source == gpu_source)) return true;
   NSString *text = [NSString stringWithFormat:@"%s\n%s", osprey_gpu_shader, source ? source : ""];
   NSError *error = nil;
-  gpu_library = [gpu_device newLibraryWithSource:text options:nil error:&error];
+  // [GPU-DEVICE-NATIVE]: preserve IEEE arithmetic independently of driver defaults.
+  MTLCompileOptions *options = [MTLCompileOptions new];
+#if (defined(__MAC_OS_X_VERSION_MIN_REQUIRED) && __MAC_OS_X_VERSION_MIN_REQUIRED >= 150000) || \
+    (defined(__IPHONE_OS_VERSION_MIN_REQUIRED) && __IPHONE_OS_VERSION_MIN_REQUIRED >= 180000)
+  use_safe_math(options);
+#else
+  if (@available(macOS 15.0, iOS 18.0, *)) {
+    use_safe_math(options);
+  } else {
+    options.fastMathEnabled = NO;
+  }
+#endif
+  gpu_library = [gpu_device newLibraryWithSource:text options:options error:&error];
   [gpu_pipelines removeAllObjects];
   gpu_source = source;
   if (gpu_library == nil)
@@ -128,17 +147,17 @@ static bool bind_arguments(id<MTLComputeCommandEncoder> encoder, const OspreyGpu
 static void write_back(const OspreyGpuDispatch *d, id<MTLBuffer> __strong *buffers) {
   for (unsigned i = 0; i < d->count; i++) {
     if (d->args[i].kind == OSPREY_GPU_OUTPUT && d->args[i].out)
-      memcpy(d->args[i].out, buffers[i].contents, (size_t)(d->args[i].count * 8));
+      memcpy(d->args[i].out, buffers[i].contents, (size_t)(d->args[i].count * d->args[i].elem_bytes));
   }
 }
 
 // Every dispatch waits for completion under the lock, so a shared-storage
 // buffer's contents are the device's final words by the time they are read.
 // The caller is plain C with no autorelease pool, so the bridge gets its own.
-int osprey_gpu_metal_download(void *object, int64_t *out, uint64_t count) {
+int osprey_gpu_metal_download(void *object, void *out, uint64_t count) {
   (void)pthread_mutex_lock(&gpu_lock);
   @autoreleasepool {
-    memcpy(out, ((__bridge id<MTLBuffer>)object).contents, (size_t)(count * 8));
+    memcpy(out, ((__bridge id<MTLBuffer>)object).contents, (size_t)count);
   }
   (void)pthread_mutex_unlock(&gpu_lock);
   return 1;

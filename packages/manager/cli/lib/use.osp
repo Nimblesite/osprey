@@ -1,4 +1,5 @@
 namespace registry_cli;
+import registry::Checked
 import registry_host::Host
 import registry_cli::Flags
 import registry_cli::Reports
@@ -65,13 +66,7 @@ module Use {
     fn keyOfLocal(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
 
     /// The package key a checkout's `[package]` declares, or `use.no-package`.
-    export fn localKey(project, path) = match perform Host::Files.read("${Project::localDirAt(project, path)}/osprey.toml") {
-        Error { message } => Error { message: message }
-        Success { value } => match Manifest::accepted(Manifest::parse(value)) {
-            Error { message } => Error { message: message }
-            Success { value } => keyOfLocal(value)
-        }
-    }
+    export fn localKey(project, path) = Checked::andThen(perform Host::Files.read("${Project::localDirAt(project, path)}/osprey.toml"), fn(value) => Checked::andThen(Manifest::accepted(Manifest::parse(value)), fn(value) => keyOfLocal(value)))
 
     fn lockKeys(project) = match Overlay::activeLockAt(project) {
         Success { value } => mapList(packagesOf(value), fn(p) => Identity::blank().key)

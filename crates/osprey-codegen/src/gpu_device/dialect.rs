@@ -5,6 +5,7 @@
 use super::emit::Emitted;
 use super::Ty;
 use osprey_ast::{Expr, MatchArm, Pattern};
+use osprey_types::numeric::Numeric;
 
 const RESULT_OK: &str = "Success";
 const RESULT_ERR: &str = "Error";
@@ -13,6 +14,15 @@ pub(super) fn is_literal(expression: &Expr) -> bool {
     match expression {
         Expr::Integer(_) | Expr::Float(_) | Expr::Bool(_) => true,
         Expr::Unary { op, operand } => op == "-" && is_literal(operand),
+        Expr::Call {
+            function,
+            arguments,
+            ..
+        } => {
+            matches!(callee(function), Expr::Identifier(name)
+            if Numeric::conversion_target(name).is_some())
+                && matches!(arguments.as_slice(), [value] if is_literal(value))
+        }
         _ => false,
     }
 }
@@ -99,33 +109,43 @@ pub(super) fn bool_arms(arms: &[MatchArm]) -> Option<(&Expr, &Expr)> {
     })
 }
 
-pub(super) fn int_binary(op: &str, l: &str, r: &str) -> Emitted {
+pub(super) fn int_binary(op: &str, n: Numeric, l: &str, r: &str) -> Emitted {
+    let suffix = super::numeric::suffix(n);
     Ok(match op {
-        "+" => (Ty::Int, format!("osprey_add({l}, {r}, fault)")),
-        "-" => (Ty::Int, format!("osprey_sub({l}, {r}, fault)")),
-        "*" => (Ty::Int, format!("osprey_mul({l}, {r}, fault)")),
-        "%" => (Ty::Int, format!("osprey_rem({l}, {r}, fault)")),
+        "+" => (Ty::Num(n), format!("osprey_add{suffix}({l}, {r}, fault)")),
+        "-" => (Ty::Num(n), format!("osprey_sub{suffix}({l}, {r}, fault)")),
+        "*" => (Ty::Num(n), format!("osprey_mul{suffix}({l}, {r}, fault)")),
+        "%" => (Ty::Num(n), format!("osprey_rem{suffix}({l}, {r}, fault)")),
         "/" => (
-            Ty::Float,
-            format!("osprey_fdiv(from_long({l}), from_long({r}), fault)"),
+            Ty::FLOAT,
+            format!("osprey_fdiv(from_long((long)({l})), from_long((long)({r})), fault)"),
         ),
         "==" | "!=" | "<" | "<=" | ">" | ">=" => (Ty::Bool, format!("({l} {op} {r})")),
-        _ => return Err(format!("`{op}` over ints has no device form")),
+        _ => return Err(format!("`{op}` over {} has no device form", n.name())),
     })
 }
 
-pub(super) fn float_binary(op: &str, l: &str, r: &str) -> Emitted {
-    Ok(match op {
-        "+" => (Ty::Float, format!("add64({l}, {r})")),
-        "-" => (Ty::Float, format!("sub64({l}, {r})")),
-        "*" => (Ty::Float, format!("multiply64({l}, {r})")),
-        "/" => (Ty::Float, format!("osprey_fdiv({l}, {r}, fault)")),
-        "==" => (Ty::Bool, format!("eq64({l}, {r})")),
-        "!=" => (Ty::Bool, format!("(!eq64({l}, {r}))")),
-        "<" => (Ty::Bool, format!("lt64({l}, {r})")),
-        "<=" => (Ty::Bool, format!("le64({l}, {r})")),
-        ">" => (Ty::Bool, format!("lt64({r}, {l})")),
-        ">=" => (Ty::Bool, format!("le64({r}, {l})")),
-        _ => return Err(format!("`{op}` over floats has no device form")),
+pub(super) fn float_binary(op: &str, n: Numeric, l: &str, r: &str) -> Emitted {
+    let compute = n.float_compute();
+    Ok(match compute {
+        Numeric::FLOAT => match op {
+            "+" => (Ty::FLOAT, format!("add64({l}, {r})")),
+            "-" => (Ty::FLOAT, format!("sub64({l}, {r})")),
+            "*" => (Ty::FLOAT, format!("multiply64({l}, {r})")),
+            "/" => (Ty::FLOAT, format!("osprey_fdiv({l}, {r}, fault)")),
+            "==" => (Ty::Bool, format!("eq64({l}, {r})")),
+            "!=" => (Ty::Bool, format!("(!eq64({l}, {r}))")),
+            "<" => (Ty::Bool, format!("lt64({l}, {r})")),
+            "<=" => (Ty::Bool, format!("le64({l}, {r})")),
+            ">" => (Ty::Bool, format!("lt64({r}, {l})")),
+            ">=" => (Ty::Bool, format!("le64({r}, {l})")),
+            _ => return Err(format!("`{op}` over floats has no device form")),
+        },
+        _ => match op {
+            "+" | "-" | "*" => (Ty::Num(compute), format!("((float)(({l}) {op} ({r})))")),
+            "/" => (Ty::Num(compute), format!("osprey_fdiv32({l}, {r}, fault)")),
+            "==" | "!=" | "<" | "<=" | ">" | ">=" => (Ty::Bool, format!("(({l}) {op} ({r}))")),
+            _ => return Err(format!("`{op}` over floats has no device form")),
+        },
     })
 }

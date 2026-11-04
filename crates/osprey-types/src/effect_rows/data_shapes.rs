@@ -145,17 +145,11 @@ fn constructor_free(name: &str, args: &[Type], known: &impl Fn(&str) -> Option<b
 }
 
 fn builtin_data(name: &str) -> bool {
-    matches!(
-        name,
-        names::INT
-            | names::FLOAT
-            | names::BOOL
-            | names::STRING
-            | names::UNIT
-            | names::LIST
-            | names::MAP
-            | names::RESULT
-    )
+    crate::numeric::Numeric::of_name(name).is_some()
+        || matches!(
+            name,
+            names::BOOL | names::STRING | names::UNIT | names::LIST | names::MAP | names::RESULT
+        )
 }
 
 #[cfg(test)]

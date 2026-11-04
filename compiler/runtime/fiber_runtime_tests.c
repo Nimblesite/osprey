@@ -38,6 +38,8 @@ extern int64_t spawn_process_with_handler(const char *command,
                                           void (*handler)(int64_t, int64_t,
                                                           char *));
 
+void run_fiber_handle_tests(void); // fiber_handle_tests.c
+
 static int64_t test_function_1(void) { return 42; }
 
 static int64_t test_function_2(void) { return 100; }
@@ -403,7 +405,7 @@ void test_channel_blocks_both_directions(void) {
 // In range but never handed out: the slot is NULL and both probes must say so
 // instead of reading it as a fiber. [CONCURRENCY-SPAWN-AWAIT]
 void test_unassigned_fiber_handles(void) {
-  const int64_t unassigned[] = {997, 998, 999};
+  const int64_t unassigned[] = {INT32_MAX, INT64_C(1) << 40, INT64_MAX};
   for (unsigned i = 0; i < sizeof(unassigned) / sizeof(unassigned[0]); i++) {
     assert(fiber_await(unassigned[i]) == -1 &&
            "awaiting an unassigned handle is an error, not a read of NULL");
@@ -425,36 +427,6 @@ void test_cleanup_defers_while_a_fiber_runs(void) {
   fiber_cleanup_results();
   assert(fiber_await(slow) == 999 &&
          "a released root still answers the cached value");
-}
-
-// Fibers and channels draw from ONE finite handle space. Once it is spent both
-// constructors must report -4 rather than index past their arrays, and the
-// range guards must keep answering — they do not depend on the id supply.
-// Runs LAST: it consumes the process's remaining handles.
-void test_handle_space_exhaustion(void) {
-  int64_t created = 0;
-  int64_t last = 0;
-  while ((last = channel_create(1)) > 0) {
-    created++;
-    assert(created < 1000 && "the id supply must be finite");
-  }
-  assert(created > 0 && "the loop must have created channels before failing");
-  assert(last == -4 && "an exhausted handle space reports -4");
-  assert(channel_create(1) == -4 && "exhaustion is sticky");
-  assert(channel_create(CHANNEL_CAP) == -4 && "capacity does not matter now");
-  int64_t env_val = 21;
-  assert(fiber_spawn(test_function_1) == -4 &&
-         "fibers share the exhausted id space");
-  assert(fiber_spawn_env(env_doubler, &env_val) == -4);
-  assert(fiber_spawn_env_owned(env_doubler, &env_val, 1) == -4);
-  assert(channel_create(0) == -1 &&
-         "an invalid capacity is still rejected before the id supply is read");
-  assert(fiber_spawn(NULL) == -1 && "a null thunk is still rejected first");
-  // The array is now mostly channels, so the cleanup walk steps over NULL
-  // fiber slots for nearly every id and must survive the gaps.
-  fiber_cleanup_results();
-  assert(fiber_await(99999) == -1);
-  assert(fiber_done(99999) == -1);
 }
 
 // A value sent and never received holds the reference `send` transferred to the
@@ -528,7 +500,7 @@ void run_all_fiber_tests(void) {
   test_cleanup_defers_while_a_fiber_runs();
   test_cleanup_drains_unreceived_values();
   test_rejected_managed_send_releases_its_value();
-  test_handle_space_exhaustion(); // LAST: spends the process's handle space
+  run_fiber_handle_tests();
 
   puts("fiber runtime tests passed");
 }

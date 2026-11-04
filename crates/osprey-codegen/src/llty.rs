@@ -1,23 +1,22 @@
 //! The small slice of the LLVM type system the code generator emits. Osprey
-//! primitives map to `i64` (int), `i1` (bool) and `i8*` (string); `i32` is the
-//! C `main` return and `puts`/`sprintf` result. Records, unions, collections,
+//! numbers map to the LLVM type of their row in the numeric table, `bool` to
+//! `i1` and `string` to `i8*`; `i32` is also the C `main` return and
+//! `puts`/`sprintf` result. Records, unions, collections,
 //! fibers, and effect closures use opaque pointer values.
 
+use osprey_types::numeric::Numeric;
 use std::fmt;
 
 /// An LLVM first-class type the emitter knows how to name and move around.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum LType {
-    /// 64-bit integer — Osprey `int`.
-    I64,
+    /// A number of one of the ten numeric types ([TYPE-NUMERIC-SIZED]); its
+    /// LLVM spelling, tag and device form come from the one numeric table.
+    Num(Numeric),
     /// 1-bit integer — Osprey `bool`.
     I1,
     /// `i8*` — an Osprey `string` (NUL-terminated C string).
     Str,
-    /// 32-bit integer — `main` return / libc call results.
-    I32,
-    /// `double` — Osprey `float`.
-    Double,
     /// `i8*` carrying a runtime handle/pointer (record, list, map, fiber, …).
     /// Distinguished from [`LType::Str`] so it is never strcmp'd or printed as
     /// text directly.
@@ -30,6 +29,15 @@ pub enum LType {
     /// made #208's over-release and the address-as-integer prints
     /// undetectable.
     Any,
+}
+
+impl LType {
+    /// 64-bit integer — Osprey `int`, and the uniform container word.
+    pub const I64: LType = LType::Num(Numeric::INT);
+    /// 32-bit integer — Osprey `int32`, the C `main` return and libc results.
+    pub const I32: LType = LType::Num(Numeric::INT32);
+    /// `double` — Osprey `float`.
+    pub const F64: LType = LType::Num(Numeric::FLOAT);
 }
 
 /// The generator role of a parameter register, in the shared role table of
@@ -54,10 +62,12 @@ pub(crate) fn param_register(index: usize) -> String {
 /// new [`LType`] cannot acquire a different zero in each caller.
 pub(crate) const fn zero_literal(ty: LType) -> &'static str {
     match ty {
-        LType::Double => "0.0",
+        // A binary16 value travels as its `i16` bits [TYPE-NUMERIC-SIZED].
+        LType::Num(Numeric::FLOAT16) => "0",
+        LType::Num(n) if n.is_float() => "0.0",
+        LType::Num(_) => "0",
         LType::Str | LType::Ptr | LType::Any => "null",
         LType::I1 => "false",
-        LType::I64 | LType::I32 => "0",
     }
 }
 
@@ -66,10 +76,8 @@ impl LType {
     #[must_use]
     pub(crate) fn as_str(self) -> &'static str {
         match self {
-            LType::I64 => "i64",
+            LType::Num(n) => n.llvm(),
             LType::I1 => "i1",
-            LType::I32 => "i32",
-            LType::Double => "double",
             // `Str`, `Ptr` and `Any` are semantically distinct handles that
             // share the same LLVM spelling `i8*`.
             LType::Str | LType::Ptr | LType::Any => "i8*",
@@ -121,10 +129,19 @@ pub(crate) const PTR_TAG_SPELLING: &str = "ptr";
 /// `List<int>` — without it the retrieved word was typed `int`, and
 /// `listLength` of it, or a `?: [0]` default beside it, could not be emitted at
 /// all. [BUILTIN-MAP-GET] [BUILTIN-LIST-GET]
+/// The sized numeric an element tag names, if any: what a literal still at its
+/// default spelling must be fitted to before it boxes [TYPE-NUMERIC-WORD].
+pub(crate) fn sized_of_spelling(tag: &str) -> Option<Numeric> {
+    Numeric::ALL
+        .into_iter()
+        .find(|n| n.is_sized() && n.tag() == tag)
+}
+
 pub(crate) fn elem_of_spelling(tag: &str) -> (LType, Option<String>) {
+    if let Some(n) = Numeric::ALL.into_iter().find(|n| n.tag() == tag) {
+        return (LType::Num(n), None);
+    }
     match tag {
-        "i64" => (LType::I64, None),
-        "double" => (LType::Double, None),
         "i1" => (LType::I1, None),
         // Before `i8*`: an erased box IS an `i8*`, but recovering it as
         // `LType::Str` would strcmp and print the box instead of dispatching
@@ -159,18 +176,17 @@ pub(crate) fn elem_spelling(elem: &Value) -> Option<String> {
     }
     elem.osp_ty
         .clone()
-        .or_else(|| scalar_spelling(elem.ty).map(str::to_string))
+        .or_else(|| Some(scalar_spelling(elem.ty).to_string()))
 }
 
 /// The tag spelling of a scalar element `LType` — the whole vocabulary of a
 /// container whose element is never a handle, such as a GPU buffer.
-pub(crate) fn scalar_spelling(ty: LType) -> Option<&'static str> {
+pub(crate) fn scalar_spelling(ty: LType) -> &'static str {
     match ty {
-        LType::I64 | LType::Double | LType::I1 | LType::Str => Some(ty.as_str()),
-        LType::Any => Some(ANY_TAG_SPELLING),
-        LType::Ptr => Some(PTR_TAG_SPELLING),
-        // The C `main` return width is never an Osprey element.
-        LType::I32 => None,
+        LType::Num(n) => n.tag(),
+        LType::I1 | LType::Str => ty.as_str(),
+        LType::Any => ANY_TAG_SPELLING,
+        LType::Ptr => PTR_TAG_SPELLING,
     }
 }
 

@@ -202,7 +202,16 @@ int send_websocket_frame(int socket_fd, const char *payload) {
   // `frame` is unsigned char; Winsock's send() takes `const char *` (POSIX
   // takes `const void *`). Cast at the call site — portable both ways, mirrors
   // the setsockopt/accept/bind casts.
-  return osp_socket_send(socket_fd, (const char *)frame, frame_len);
+  // A frame goes whole or not at all: part of one corrupts the stream for good.
+  int sent = 0;
+  while (sent < frame_len) {
+    int n = osp_socket_send(socket_fd, (const char *)frame + sent, (size_t)(frame_len - sent));
+    if (n <= 0) {
+      return -1;
+    }
+    sent += n;
+  }
+  return sent;
 }
 
 // WebSocket frame parsing (shared)

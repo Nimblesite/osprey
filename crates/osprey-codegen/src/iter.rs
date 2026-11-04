@@ -179,21 +179,36 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// [`rebuild_acc`] to recover the accumulator from the uniform `i64` slot. The
 /// operand of the template is stale; only its type tags are read [MEM-BACKENDS].
 pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
-    let initial = gen_expr(cg, nth(args, 1)?)?;
-    // The seed's representation is the loop-carried slot's for every
-    // iteration, and a flat list literal (`fold([], …)`) is not what
-    // `listAppend` hands back: left flat, the second iteration read a runtime
-    // list's header as `{ length, data }` and segfaulted. The slot is an
-    // escape, so the literal takes the runtime layout here, once.
+    let initial = initial_value(cg, args)?;
+    // The slot escapes: materialize flat literals once before retaining it.
     let initial = crate::listlit::escaping(cg, initial);
-    // A pointer accumulator escapes into the loop-carried slot: dup it so the
-    // per-iteration region drop cannot free it [GC-ARC-PERCEUS].
+    // Retain pointer accumulators across iteration scopes [GC-ARC-PERCEUS].
     crate::arc::escape_retain(cg, &initial);
     let tmpl = initial.clone();
     let boxed = box_to_i64(cg, initial);
     let acc = cg.hoist_slot("i64");
     cg.emit(format!("store i64 {}, i64* {acc}", boxed.operand));
     Ok((acc, tmpl))
+}
+
+fn seed_numeric(ty: &osprey_types::Type) -> Option<osprey_types::numeric::Numeric> {
+    match ty {
+        osprey_types::Type::Con { name, args } if name == osprey_types::names::GPU_BUFFER => args
+            .first()
+            .and_then(osprey_types::numeric::Numeric::of_type),
+        _ => osprey_types::numeric::Numeric::of_type(ty),
+    }
+}
+
+fn initial_value(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let numeric = cg.expression_type.as_ref().and_then(seed_numeric);
+    let initial = gen_expr(cg, nth(args, 1)?)?;
+    match numeric {
+        Some(n) if matches!(initial.ty, LType::Num(_)) => {
+            crate::cast::coerce_to(cg, initial, LType::Num(n))
+        }
+        _ => Ok(initial),
+    }
 }
 
 /// The accumulator template, tagged with the element its callback inferred.

@@ -8,6 +8,7 @@ use crate::builder::Codegen;
 use crate::conv::as_i64;
 use crate::error::Result;
 use crate::llty::{LType, Value};
+use osprey_types::numeric::Numeric;
 
 /// Convert a supported value to its `i8*` string form (`toString` /
 /// interpolation / `print`). Strings pass through; the rest go through libc
@@ -24,8 +25,10 @@ pub(crate) fn to_string_value(cg: &mut Codegen, v: Value) -> Result<Value> {
             Ok(crate::anybox::any_to_string(cg, &boxed))
         }
         LType::I1 => Ok(bool_to_string(cg, &v)),
-        LType::Double => Ok(float_to_string(cg, &v)),
-        LType::I64 | LType::I32 => int_to_string(cg, v),
+        // Every float width prints through the runtime function that finds the
+        // shortest decimal reading back at THAT width [TYPE-NUMERIC-PRINT].
+        LType::Num(n) if n.is_float() => Ok(float_to_string(cg, &v)),
+        LType::Num(_) => int_to_string(cg, v),
         // An erased value renders through its shape descriptor — never the
         // raw word, which printed heap addresses as integers (finding D,
         // [TYPE-ANY]).
@@ -162,15 +165,28 @@ fn int_to_string(cg: &mut Codegen, v: Value) -> Result<Value> {
     Ok(v)
 }
 
-/// Whole-valued floats must print with a trailing `.0`; the runtime handles
-/// that (and NaN/inf) — see `runtime/string_runtime.c`.
+/// Whole-valued floats keep their visible `.0`; NaN and the infinities keep
+/// their spellings. Each width prints the shortest decimal that reads back
+/// as the same value at that width [TYPE-NUMERIC-PRINT], so
+/// `toFloat32(0.1)` prints `0.1`; a binary16 value travels as its `i16` bits,
+/// and its runtime function takes them (`i16` is ABI-sensitive: `zeroext`).
 fn float_to_string(cg: &mut Codegen, v: &Value) -> Value {
-    cg.add_extern("declare i8* @osp_float_to_string(double)");
-    let reg = cg.emit_reg(format!(
-        "call i8* @osp_float_to_string(double {})",
-        v.operand
-    ));
-    let out = Value::new(reg, LType::Str);
+    let (decl, call) = match v.ty {
+        LType::Num(Numeric::FLOAT32) => (
+            "declare i8* @osp_float32_to_string(float)",
+            format!("call i8* @osp_float32_to_string(float {})", v.operand),
+        ),
+        LType::Num(Numeric::FLOAT16) => (
+            "declare i8* @osp_float16_to_string(i16 zeroext)",
+            format!("call i8* @osp_float16_to_string(i16 zeroext {})", v.operand),
+        ),
+        _ => (
+            "declare i8* @osp_float_to_string(double)",
+            format!("call i8* @osp_float_to_string(double {})", v.operand),
+        ),
+    };
+    cg.add_extern(decl);
+    let out = Value::new(cg.emit_reg(call), LType::Str);
     crate::arc::own(cg, &out);
     out
 }

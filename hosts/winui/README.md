@@ -1,6 +1,6 @@
 # WinUI host
 
-`OspreyHost.exe <app.dll> [arguments]` opens one window and draws the [Osprey Native](../../packages/native/README.md) application compiled into `app.dll` with WinUI, the native UI framework of the Windows App SDK. It uses Mica and Segoe Fluent Icons, with no XAML anywhere. The host is generic: every application decision, word and screen is Osprey, and the host only draws regions, returns events by the ids the framework issued and answers capabilities. The contract is [spec 0048](../../docs/specs/platforms/0048-WinUiHost.md) [WINUI-HOST]; delivery is [plan 0038](../../docs/plans/0038-winui-windows-hosts.md).
+`OspreyHost.exe <app.dll> [arguments]` opens one window and draws the [Osprey Native](../../packages/native/README.md) application compiled into `app.dll` with WinUI, the native UI framework of the Windows App SDK. It uses Mica and Segoe Fluent Icons, with no XAML anywhere. The host is generic: every application decision, word and screen is Osprey, and the host only draws regions, returns events by the ids the framework issued and answers capabilities. The contract is [spec 0048](../../docs/specs/platforms/0048-WinUiHost.md) [WINUI-HOST]; delivery is [plan 0037](../../docs/plans/0037-osprey-native.md).
 
 | Project | Holds |
 | --- | --- |
@@ -21,7 +21,7 @@ dotnet run --project hosts/winui/OspreyHost -c Release -- examples/gpui/flock/bu
 
 ## Sandboxed apps
 
-Each app ships as its own MSIX package that runs in an AppContainer ([WINUI-HOST-SANDBOX]): `uap10:TrustLevel="appContainer"`, no `runFullTrust`, and only the capabilities its entry in [`apps/windows.json`](../../apps/windows.json) lists. [`app.ps1`](app.ps1) builds the compiler, the MinGW runtime, the app's DLL and the host, lays them out from [`AppxManifest.xml`](AppxManifest.xml), registers the layout (Developer Mode, no signing) and opens it. The packaged host finds the app as `app\app.dll` beside itself, keeps the store in its LocalState and opens folders through the broker (`CreateFile2FromApp`), which honours a picked folder and `broadFileSystemAccess`. `make -C apps/windows <app>` opens one; `make -C apps/windows test` self-tests every app in a real window.
+Each app ships as its own MSIX package that runs in an AppContainer ([WINUI-HOST-SANDBOX]): `uap10:TrustLevel="appContainer"`, no `runFullTrust`, and only the capabilities its entry in [`apps/windows.json`](../../apps/windows.json) lists. [`app.ps1`](app.ps1) builds the compiler, the MinGW runtime, the app's DLL and the host, lays them out from [`AppxManifest.xml`](AppxManifest.xml), registers the layout (Developer Mode, no signing) and opens it. The packaged host finds the app as `app\app.dll` beside itself, keeps the store in its LocalState and opens folders through the broker (`CreateFile2FromApp`), which honours a picked folder and `broadFileSystemAccess`. `make -C apps/windows <app>` opens one; `make -C apps/windows/tests <app>` self-tests one in a real window.
 
 `examples/storage/run.sh --host=winui` does the unpackaged build and run for Storage. The window must open in a desktop session: a shell running as a Windows service, such as an SSH session in session 0, can run every test but not the window, and the host says so and exits with code 3.
 

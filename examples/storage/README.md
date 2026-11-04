@@ -1,6 +1,6 @@
 # Osprey Storage
 
-Osprey Storage shows what takes the space in a folder: the volume it sits on, then every child ranked by the bytes it and everything below it allocate. It is written entirely in Osprey with `@osprey/native` ([NATIVE-APPS-ALL](../../docs/plans/0039-examples-on-osprey-native.md)). The store, the rules, the words and the screens are Osprey. A host only walks folders through the generic `MeasureFolders` capability ([UI-EFFECTS-MEASURE](../../packages/native/README.md)) and draws the nodes.
+Osprey Storage shows what takes the space in a folder: the volume it sits on, then every child ranked by the bytes it and everything below it allocate. It is written entirely in Osprey with `@osprey/native` ([NATIVE-APPS-ALL](../../docs/plans/0037-osprey-native.md)). The store, the rules, the words and the screens are Osprey. A host only walks folders through the generic `MeasureFolders` capability ([UI-EFFECTS-MEASURE](../../packages/native/README.md)) and draws the nodes.
 
 ## Run
 
@@ -16,7 +16,7 @@ examples/storage/run.sh --test         # the suite: no disk, no window, every op
 | Host | State |
 | --- | --- |
 | WinUI ([hosts/winui](../../hosts/winui)) | Draws every node Storage uses and answers `measure-folders`, `choose-folder`, `reveal` and `cancel`. On CI's Windows runner it passes `self-test.json` on a fixture tree, and `self-test-drive.json` on the whole C drive, in a real window |
-| GPUI ([hosts/gpui](../../hosts/gpui)) | Lacks `split`, `meter`, `context-menu` and `measure-folders` until [plan 0039](../../docs/plans/0039-examples-on-osprey-native.md) phase 1 lands, and reports each as a diagnostic |
+| GPUI ([hosts/gpui](../../hosts/gpui)) | Lacks `split`, `meter`, `context-menu` and `measure-folders` until [plan 0037](../../docs/plans/0037-osprey-native.md) phase 1 lands, and reports each as a diagnostic |
 
 ## How it works
 

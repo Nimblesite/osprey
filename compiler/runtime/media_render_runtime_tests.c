@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 char *osprey_media_render(char *audio);
@@ -39,6 +40,7 @@ static const char *FFMPEG =
     "for last do :; done\n"
     "folder=${last%/*}\n"
     "printf '%s\\n' \"$@\" > \"$folder/args\"\n"
+    "printf '%s\\n' $$ > \"$folder/renderer\"\n"
     "audio=; pattern=\n"
     "while [ \"$#\" -gt 0 ]; do\n"
     "  case \"$1\" in\n"
@@ -100,7 +102,7 @@ static int exists(const char *file) {
 static void wait_for_start(const char *folder) {
   char file[1120];
   path(file, sizeof file, folder, "started");
-  for (int i = 0; i < 200 && !exists(file); i++) {
+  for (int i = 0; i < 3000 && !exists(file); i++) { // a loaded machine is slow to spawn
     usleep(10000);
   }
   assert(exists(file));
@@ -108,7 +110,7 @@ static void wait_for_start(const char *folder) {
 
 static long renderer_pid(const char *folder) {
   char file[1120];
-  path(file, sizeof file, folder, "pid");
+  path(file, sizeof file, folder, "renderer");
   char *text = read_text(file);
   long pid = strtol(text, NULL, 10);
   free(text);
@@ -277,7 +279,35 @@ static void make_folder(const char *suffix, char *folder, size_t size) {
   assert(mkdir(folder, 0700) == 0);
 }
 
-static void test_unrender_rejections_and_stale_pid(void) {
+// A process that must outlive every refused unrender, and its folder's `pid` file.
+static pid_t start_victim(void) {
+  pid_t victim = fork();
+  assert(victim >= 0);
+  if (victim == 0) {
+    execl("/bin/sleep", "sleep", "60", (char *)NULL);
+    _exit(127);
+  }
+  return victim;
+}
+
+static void plant_pid(const char *folder, pid_t victim) {
+  char file[1120];
+  char text[32];
+  path(file, sizeof file, folder, "pid");
+  assert(snprintf(text, sizeof text, "%ld\n", (long)victim) > 0);
+  write_text(file, text);
+}
+
+static void assert_alive_then_stop(pid_t victim) {
+  assert(kill(victim, 0) == 0);
+  int status = 0;
+  assert(waitpid(victim, &status, WNOHANG) == 0); // still running, not just a zombie
+  assert(kill(victim, SIGKILL) == 0 && waitpid(victim, &status, 0) == victim);
+}
+
+// Only a folder this process rendered counts, whatever its name says: a planted one
+// must neither kill the process its `pid` file names nor lose a single file.
+static void test_unrender_refuses_what_it_did_not_render(void) {
   assert(osprey_media_unrender(NULL) == -1);
   char unknown[1120];
   path(unknown, sizeof unknown, ROOT, "unknown");
@@ -286,28 +316,88 @@ static void test_unrender_rejections_and_stale_pid(void) {
   make_folder("absent", absent, sizeof absent);
   assert(rmdir(absent) == 0);
   assert(osprey_media_unrender(absent) == -1);
-  char stale[1120];
-  make_folder("stale", stale, sizeof stale);
+  pid_t victim = start_victim();
+  char planted[1120];
+  char keep[1120];
   char pid[1120];
-  path(pid, sizeof pid, stale, "pid");
-  write_text(pid, "2147483647\n");
-  assert(osprey_media_unrender(stale) == 0);
-  assert(!exists(stale) && !exists(pid));
+  make_folder("planted", planted, sizeof planted);
+  path(keep, sizeof keep, planted, "keep.txt");
+  path(pid, sizeof pid, planted, "pid");
+  write_text(keep, "precious");
+  plant_pid(planted, victim);
+  assert(osprey_media_unrender(planted) == -1);
+  assert(exists(keep) && exists(pid));
+  assert_alive_then_stop(victim);
+  assert(unlink(keep) == 0 && unlink(pid) == 0 && rmdir(planted) == 0);
 }
 
-static void test_unrender_without_valid_pid(void) {
-  char folder[1120];
-  make_folder("no-pid", folder, sizeof folder);
-  char media[1120];
-  path(media, sizeof media, folder, "media.m3u8");
-  write_text(media, "playlist");
-  assert(osprey_media_unrender(folder) == 0);
-  assert(!exists(folder) && !exists(media));
-  make_folder("bad-pid", folder, sizeof folder);
-  path(media, sizeof media, folder, "pid");
-  write_text(media, "not-a-pid\n");
+// A render's own folder is no more trusted than a planted one: only the child the
+// runtime started is stopped, and only the exact folder it made is accepted, once.
+static void test_unrender_trusts_only_its_own_record(void) {
+  assert(setenv("FAKE_DURATION", "8", 1) == 0);
+  char *folder = osprey_media_render(AUDIO);
+  assert(folder != NULL && folder[0] != '\0');
+  wait_for_start(folder);
+  long renderer = renderer_pid(folder);
+  pid_t victim = start_victim();
+  plant_pid(folder, victim);
+  char alias[1200];
+  char *base = strrchr(folder, '/');
+  assert(snprintf(alias, sizeof alias, "%s/.%s", ROOT, base) > 0);
+  assert(osprey_media_unrender(alias) == -1);
+  assert(exists(folder) && kill((pid_t)renderer, 0) == 0);
   assert(osprey_media_unrender(folder) == 0);
   assert(!exists(folder));
+  errno = 0;
+  assert(kill((pid_t)renderer, 0) == -1 && errno == ESRCH);
+  assert_alive_then_stop(victim);
+  assert(osprey_media_unrender(folder) == -1);
+  free(folder);
+  assert_no_render_folders();
+}
+
+// Two renders at once are told apart, and stopped in either order.
+static void test_renders_are_independent(void) {
+  assert(setenv("FAKE_DURATION", "8", 1) == 0);
+  char *first = osprey_media_render(AUDIO);
+  char *second = osprey_media_render(AUDIO);
+  assert(first[0] != '\0' && second[0] != '\0' && strcmp(first, second) != 0);
+  wait_for_start(first);
+  wait_for_start(second);
+  long second_renderer = renderer_pid(second);
+  assert(osprey_media_unrender(first) == 0);
+  assert(!exists(first) && exists(second) && kill((pid_t)second_renderer, 0) == 0);
+  assert(osprey_media_unrender(second) == 0);
+  assert(!exists(second));
+  free(first);
+  free(second);
+  assert_no_render_folders();
+}
+
+// Past the record's capacity a render is refused, leaving no child or folder behind,
+// and a stopped render makes room again.
+static void test_renders_past_the_record(void) {
+  enum { RECORDED = 16 };
+  assert(setenv("FAKE_DURATION", "8", 1) == 0);
+  char *folders[RECORDED];
+  for (int i = 0; i < RECORDED; i++) {
+    folders[i] = osprey_media_render(AUDIO);
+    assert(folders[i][0] != '\0');
+    wait_for_start(folders[i]);
+  }
+  char *refused = osprey_media_render(AUDIO);
+  assert(refused[0] == '\0');
+  free(refused);
+  assert(osprey_media_unrender(folders[7]) == 0);
+  free(folders[7]);
+  folders[7] = osprey_media_render(AUDIO);
+  assert(folders[7][0] != '\0');
+  wait_for_start(folders[7]);
+  for (int i = 0; i < RECORDED; i++) {
+    assert(osprey_media_unrender(folders[i]) == 0);
+    free(folders[i]);
+  }
+  assert_no_render_folders();
 }
 
 static void setup(void) {
@@ -343,8 +433,10 @@ int main(void) {
   test_unreported_durations();
   test_successful_playlists();
   test_unwritable_playlist_folder();
-  test_unrender_rejections_and_stale_pid();
-  test_unrender_without_valid_pid();
+  test_unrender_refuses_what_it_did_not_render();
+  test_unrender_trusts_only_its_own_record();
+  test_renders_are_independent();
+  test_renders_past_the_record();
   cleanup();
   printf("✅ media render runtime tests passed\n");
   return 0;

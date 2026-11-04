@@ -1,0 +1,19 @@
+{
+  "replies": [
+    {
+      "status": 200,
+      "requireUrl": "https://api.z.ai/api/paas/v4/chat/completions",
+      "body": "{\"id\":\"r1\",\"model\":\"glm-5.3\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Answered at high effort.\",\"reasoning_content\":\"Considered it at high effort.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":8,\"total_tokens\":18}}"
+    },
+    {
+      "status": 200,
+      "requireUrl": "https://api.kimi.com/coding/v1/chat/completions",
+      "body": "{\"id\":\"r2\",\"model\":\"k3\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Answered at max effort.\",\"reasoning_content\":\"Considered it at max effort.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":6,\"total_tokens\":26}}"
+    },
+    {
+      "status": 402,
+      "requireUrl": "https://api.kimi.com/coding/v1/chat/completions",
+      "body": "{\"error\":{\"message\":\"insufficient balance\"}}"
+    }
+  ]
+}
