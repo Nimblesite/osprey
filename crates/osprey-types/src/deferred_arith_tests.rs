@@ -9,7 +9,7 @@
 //! is the last resort, not the first guess. Implements [ARITH-EFFECT],
 //! [FLOAT-OPERANDS].
 
-use crate::testutil::{accepts, typecheck};
+use crate::testutil::{accepts, rejects_with, typecheck};
 use osprey_syntax::Flavor;
 
 /// The tolerance helper from the ports: every operand is float, so the whole
@@ -114,4 +114,29 @@ fn collection_addition_accumulates_diagnostics_instead_of_panicking() {
         2,
         "both incompatible additions must return diagnostics: {errors:?}"
     );
+}
+
+/// [TYPE-NUMERIC-SAME-TYPE] A binary64 literal still fixes the overload.
+#[test]
+fn inferred_binary64_helpers_reject_sized_float_arguments() {
+    for op in ["+", "-", "*", "/", "%"] {
+        for width in ["32", "16"] {
+            for (flavor, source) in [
+                (
+                    Flavor::Default,
+                    format!("fn scale(x) = x {op} 1.5\nlet value = scale(toFloat{width}(2.0))\n"),
+                ),
+                (
+                    Flavor::Ml,
+                    format!("scale x = x {op} 1.5\nvalue = scale (toFloat{width} 2.0)\n"),
+                ),
+            ] {
+                rejects_with(
+                    flavor,
+                    source,
+                    format!("operator `{op}` requires int or float; got float{width}"),
+                );
+            }
+        }
+    }
 }
