@@ -76,8 +76,8 @@ const TENSOR_PERFORMS: Record<string, string[]> = {
 };
 
 const TENSOR_HEADS = [
-  site(CPU, "handle static Tensor<List<float>>", "Tensor"),
-  site(GPU, "handle static Tensor<GpuBuffer<float>>", "Tensor"),
+  site(CPU, "handle static Tensor<List<float32>>", "Tensor"),
+  site(GPU, "handle static Tensor<GpuBuffer<float32>>", "Tensor"),
 ];
 
 /** The arm answering `op` in each handler: onLists in cpu.osp, then onGpu in gpu.osp. */
@@ -211,7 +211,7 @@ const metricsCases = (): Case[] => [
 const NOTHING: Site[] = [
   site(GPU, "fn answered(result)", "answered"),
   site(BACKENDS, "export type Kernel", "Kernel"),
-  site(CPU, "handle static Tensor<List<float>>", "List"),
+  site(CPU, "handle static Tensor<List<float32>>", "List"),
   site(MODEL, "perform Backends::Tensor.get", "Backends"),
   site(ROUTES, "perform Ledger::Store.owner", "Ledger"),
   site(LEDGER, "export sqlite db", "sqlite"),
