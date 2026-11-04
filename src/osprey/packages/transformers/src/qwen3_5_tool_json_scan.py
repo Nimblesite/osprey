@@ -395,8 +395,10 @@ def after_step(frame, byte):
     """After a value: a comma continues the container, a closer finishes it."""
     if byte == of_char(",") and frame.container == "array":
         return Success(value=Turn(frame=update(frame, stage="value"), consumed=True, done=False))
-    elif byte == of_char(",") and frame.container == "object":
+    elif byte == of_char(",") and frame.container == "object" and len(key_candidates(frame)) > 0:
         return Success(value=Turn(frame=update(frame, stage="keyNext"), consumed=True, done=False))
+    elif byte == of_char(",") and frame.container == "object":
+        return Error(message=ToolSchema.violation("json", "object", "no property left to write"))
     elif byte == of_char("]") and frame.container == "array":
         return Success(value=Turn(frame=frame, consumed=True, done=True))
     elif byte == of_char("}") and frame.container == "object" and required_met(frame):

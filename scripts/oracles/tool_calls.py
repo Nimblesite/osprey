@@ -207,7 +207,17 @@ def tokenizer(text, table):
     return out
 
 
-def unstranded(candidates):
+def nested_property_names(schema):
+    """Every property name a schema declares, at any depth: the mask confines keys to them."""
+    names = list(schema.get("properties", {}))
+    for child in schema.get("properties", {}).values():
+        names += nested_property_names(child)
+    for child in [schema.get("items")] if isinstance(schema.get("items"), dict) else []:
+        names += nested_property_names(child)
+    return names
+
+
+def unstranded(candidates, confined):
     """`candidates`, closed under the remainders of the closed-set literals.
 
     A tag, name, parameter name or enum member accepts only continuations of itself, so a
@@ -216,18 +226,18 @@ def unstranded(candidates):
     legal choice that the mask is right to allow."""
     keep = list(dict.fromkeys(candidates))
     for _ in range(4):
-        added = [rest for rest in remainders(keep) if rest not in keep]
+        added = [rest for rest in remainders(keep, confined) if rest not in keep]
         if not added:
             break
         keep += added
     return keep
 
 
-def remainders(keep):
+def remainders(keep, confined):
     """Every unspellable remainder of a closed-set literal that `keep` already starts."""
     return [
         literal[len(token):]
-        for literal in CONFINED
+        for literal in confined
         for token in keep
         if token and literal != token and literal.startswith(token) and not spellable(literal[len(token):], keep)
     ]
@@ -254,7 +264,7 @@ def vocabulary(case, wire, tools):
     table carries the case's literals (tool and parameter names, enum values, the
     words of its string arguments) and then single characters."""
     names = [tool["function"]["name"] for tool in tools]
-    params = sorted({name for tool in tools for name in tool["function"]["parameters"]["properties"]})
+    params = sorted({name for tool in tools for name in nested_property_names(tool["function"]["parameters"])})
     words = [word for word in re.split(r"[\s\"{}]+", wire) if 1 <= len(word) <= 24]
     literals = ["check", "apply", "preview", "true", "false", "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     spelled = names + params + literals
@@ -263,7 +273,7 @@ def vocabulary(case, wire, tools):
     # names and members, so the seeded source cannot strand the grammar inside a name it
     # has no continuation for.
     table += sorted({char for text in [wire] + spelled for char in text if char.isdigit() or not char.isalnum()})
-    tokens = unstranded(list(dict.fromkeys(table + ADVERSARIAL)))
+    tokens = unstranded(list(dict.fromkeys(table + ADVERSARIAL)), CONFINED + names + params)
     stray = [token for token in tokenizer(wire, table) if token not in tokens]
     if stray:
         raise SystemExit(f"the vocabulary cannot spell the wire: {stray}")

@@ -462,13 +462,10 @@ def constrain_case(tools, record, i):
     tokens = texts_of(unwrap_or(jsonField(record, "tokens"), JsonNull))
     constraint = ToolConstrain.Constrain(tools, tokens, toFloat32(0.0) - toFloat32(exp(1000.0)))
     started = spelled(tokens, ints_of(unwrap_or(jsonField(record, "prefix"), JsonNull)))
-    if i % 16 == 0:
-        return [
-            Check.equal(f"target[{i}]", walked(tools, constraint, record, started), want_fingerprint(record)),
-            Check.equal(f"adversarial[{i}]", sampled(tools, constraint, record, started), ""),
-        ]
-    else:
-        return [Check.equal(f"target[{i}]", walked(tools, constraint, record, started), want_fingerprint(record))]
+    return [
+        Check.equal(f"target[{i}]", walked(tools, constraint, record, started), want_fingerprint(record)),
+        Check.equal(f"adversarial[{i}]", sampled(tools, constraint, record, started), ""),
+    ]
 
 
 def spelled(tokens, ids):
@@ -532,7 +529,7 @@ def sampled_step(tools, constraint, record, ids, text, step, machine):
     corpus = unwrap_or(listGet(ints_of(unwrap_or(jsonField(record, "want"), JsonNull)), step), 0 - 1)
     chosen = choose(constraint, machine, drawn, corpus)
     if chosen < 0:
-        return f"stalled at {toString(step)} in {machine.stage}"
+        return f"stalled at {toString(step)} in {machine.stage} inner={inner_stage(machine)} key={inner_text(machine)} seen={join(machine.seen, ',')}"
     else:
         return sample(tools, constraint, record, listAppend(ids, chosen), text + token_at(constraint, chosen), step + 1)
 
@@ -580,7 +577,7 @@ def first_progressing(constraint, machine, k, found):
 def progressed(constraint, machine, k, found):
     match ToolConstrain.advance(machine, constraint.tools, token_at(constraint, k)):
         case Success(value=advanced):
-            if found < 0 and progresses(machine, advanced):
+            if found < 0 and moves(machine, advanced):
                 return k
             else:
                 return first_progressing(constraint, machine, k + 1, found)
@@ -589,8 +586,25 @@ def progressed(constraint, machine, k, found):
 
 
 def progresses(machine, advanced):
-    """Whether one token changed the grammar's stage or completed a JSON value."""
-    return advanced.stage != machine.stage or advanced.mode != machine.mode or len(advanced.stack) < len(machine.stack)
+    """Whether one token moved the grammar to a new stage, finished a JSON value or
+    advanced a literal: what a draw has to do to be worth taking."""
+    return advanced.stage != machine.stage or advanced.mode != machine.mode or len(advanced.stack) < len(machine.stack) or advanced.progress != machine.progress
+
+
+def moves(machine, advanced):
+    """Whether one token moved at all, including a step inside a JSON value, so a stuck run
+    always has a deterministic token to take. Text growth alone is not a move: at a closed
+    stage the first allowed token already continues the name or member."""
+    return progresses(machine, advanced) or top_stage(advanced) != top_stage(machine)
+
+
+def top_stage(machine):
+    return foldList(machine.stack, "", lambda _acc, frame: frame.stage)
+
+
+def inner_text(machine):
+    """The key or literal text the JSON scan has accumulated: what a stall names."""
+    return foldList(machine.stack, "", lambda _acc, frame: frame.text)
 
 
 def inner_stage(machine):

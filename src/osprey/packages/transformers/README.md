@@ -164,11 +164,15 @@ and records:
   why it fails.
 
 The suite parses all 200 turns whole and in chunks, validates and coerces the oracle
-cases, checks each masked target walk (the mask must admit every token of the corpus
-turn), samples 13 of the 200 adversarially (a seeded draw is taken whenever the mask
-admits it, so a corrupting token is what the run takes by default), and keeps four clean
-controls: with the mask off, the same seeded source stops producing a parseable call.
+cases, walks each of the 200 masked target paths (the mask must admit every token of the
+corpus turn), samples the same 200 cases adversarially (a seeded draw is taken whenever
+the mask admits it, so a corrupting token is what the run takes by default; all 200 end a
+schema-valid call), and keeps four clean controls: with the mask off, the same seeded
+source stops producing a parseable call. Every case's fixture vocabulary carries the tags,
+the declared names, the nested property names and the members it needs, and closes it
+under the remainders of every confined literal, so a seeded draw can never strand the
+grammar inside a name it has no token to finish.
 
-Not covered: the same adversarial run for all 200 cases (13 are sampled; all 200 are
-covered by the target walk), the real 248k-token Qwen vocabulary (the fixture is a
-per-case table of a few dozen tokens), and a live model.
+Not covered: the real 248k-token Qwen vocabulary (the fixture is a per-case table of a few
+dozen tokens, so a token boundary the real vocabulary has and this one does not is
+untested) and a live model.
