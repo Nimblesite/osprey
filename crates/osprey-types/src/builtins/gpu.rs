@@ -29,7 +29,8 @@ pub(super) fn declare(e: &mut TypeEnv) {
         v(),
     );
     // [GPU-ZIPWITH] Elementwise binary combination of two buffers — the
-    // primitive every vector, tensor, and particle workload needs.
+    // primitive every vector, tensor, and particle workload needs; a launch
+    // failure is an Error ([FAILURE-EXPLICIT]).
     let w = || Type::Var(2);
     poly(
         e,
@@ -40,7 +41,7 @@ pub(super) fn declare(e: &mut TypeEnv) {
             Type::gpu_buffer(v()),
             Type::fun(vec![t(), v()], w()),
         ],
-        Type::gpu_buffer(w()),
+        res(Type::gpu_buffer(w())),
     );
     // [GPU-IOTA] The index buffer: gather, stencil, and matrix addressing all
     // start from element indices.

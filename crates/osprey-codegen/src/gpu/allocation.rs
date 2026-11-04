@@ -25,13 +25,42 @@ pub(super) fn raw(cg: &mut Codegen, len: &str, owner: &str) -> String {
 #[must_use]
 pub(super) struct Pending {
     pub(super) value: Value,
+    /// `i1` that is 1 when the allocation returned NULL; the literal `0` when
+    /// the allocation is infallible.
+    pub(super) failed: String,
+    /// The reason the allocation recorded (`i8*`; `null` when none).
+    pub(super) reason: String,
 }
 
 impl Pending {
     pub(super) fn new(cg: &mut Codegen, len: &str) -> Self {
-        let value = Value::handle(raw(cg, len, GPU_OWNER), GPU_OWNER.to_string());
+        Self::build(cg, len, false)
+    }
+
+    /// A fallible allocation bracketed by the io_error channel: NULL is an
+    /// Error carrying the recorded reason ([FAILURE-EXPLICIT]).
+    pub(super) fn fallible(cg: &mut Codegen, len: &str) -> Self {
+        Self::build(cg, len, true)
+    }
+
+    fn build(cg: &mut Codegen, len: &str, fallible: bool) -> Self {
+        if fallible {
+            crate::extern_call::clear_io_error(cg);
+        }
+        let allocated = raw(cg, len, GPU_OWNER);
+        let reason = if fallible {
+            crate::extern_call::take_io_error(cg)
+        } else {
+            "null".to_string()
+        };
+        let value = Value::handle(allocated.clone(), GPU_OWNER.to_string());
         crate::arc::own(cg, &value);
-        Self { value }
+        let failed = if fallible {
+            cg.emit_reg(format!("icmp eq i8* {allocated}, null"))
+        } else {
+            "0".to_string()
+        };
+        Self { value, failed, reason }
     }
 
     pub(super) fn finish(self, cg: &mut Codegen, elem: Option<LType>) -> Result<Value> {

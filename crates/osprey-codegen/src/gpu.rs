@@ -244,20 +244,27 @@ fn map_into(
     launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
-    crate::extern_call::clear_io_error(cg);
-    let raw = allocation::raw(cg, len, GPU_OWNER);
-    let out = Value::handle(raw.clone(), GPU_OWNER.to_string());
-    crate::arc::own(cg, &out);
-    let done = launch(cg, &out)?;
-    let reason = crate::extern_call::take_io_error(cg);
+    let pending = allocation::Pending::fallible(cg, len);
+    let out = pending.value.clone();
+    // Branch before the launch: an allocation failure skips the device ask and
+    // the host loop entirely, so the launch never sees a NULL output buffer
+    // ([FAILURE-EXPLICIT]).
+    let entry = cg.cur_block().to_string();
+    let (launch_blk, join) = (cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!(
+        "br i1 {}, label %{join}, label %{launch_blk}",
+        pending.failed
+    ));
+    cg.start_block(&launch_blk);
 
-    let alloc_failed = cg.emit_reg(format!("icmp eq i8* {raw}, null"));
+    crate::extern_call::clear_io_error(cg);
+    let done = launch(cg, &out)?;
+    let launch_reason = crate::extern_call::take_io_error(cg);
     let launch_failed = cg.emit_reg(format!("icmp slt i32 {done}, 0"));
-    let failed = cg.emit_reg(format!("or i1 {alloc_failed}, {launch_failed}"));
     let ran = cg.emit_reg(format!("icmp ne i32 {done}, 0"));
-    let skip = cg.emit_reg(format!("or i1 {ran}, {failed}"));
-    let (host, join) = (cg.fresh_label(), cg.fresh_label());
-    cg.emit(format!("br i1 {skip}, label %{join}, label %{host}"));
+    let skip = cg.emit_reg(format!("or i1 {ran}, {launch_failed}"));
+    let (host, after) = (cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!("br i1 {skip}, label %{after}, label %{host}"));
     cg.start_block(&host);
     let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
@@ -267,14 +274,21 @@ fn map_into(
         buffer_set(cg, &out, i, &stored.operand);
         Ok(())
     })?;
-    rejoin(cg, &join);
-    let owner = elem_owner(Some(mapped_ty));
-    cg.fix_instruction(
-        &out.operand,
-        ", i64 8)",
-        &format!(", i64 {})", allocation::width(&owner)),
-    )?;
-    let buffer = out.with_owner(Some(owner));
+    cg.emit(format!("br label %{after}"));
+    cg.start_block(&after);
+    let after_pred = cg.snapshot_to(&join);
+    cg.start_block(&join);
+
+    let launch_failed_phi = cg.emit_reg(format!(
+        "phi i1 [ 0, %{entry} ], [ {launch_failed}, %{after_pred} ]"
+    ));
+    let reason = cg.emit_reg(format!(
+        "phi i8* [ {}, %{entry} ], [ {launch_reason}, %{after_pred} ]",
+        pending.reason
+    ));
+    let failed = cg.emit_reg(format!("or i1 {}, {launch_failed_phi}", pending.failed));
+
+    let buffer = pending.finish(cg, Some(mapped_ty))?;
     let fallback = format!("{what}: the device could not run the kernel");
     crate::result::make_result_if_err_because(
         cg,
