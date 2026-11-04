@@ -381,7 +381,10 @@ const INVALID_DEBUG_OPTIONS: &[(&[&str], &str)] = &[
 
 #[test]
 fn parse_args_source_graph_mode() {
-    let cli = parse_args(&args(&["src/osprey/examples/projects/modules", "--source-graph"]))
-        .expect("source graph mode parses");
+    let cli = parse_args(&args(&[
+        "src/osprey/examples/projects/modules",
+        "--source-graph",
+    ]))
+    .expect("source graph mode parses");
     assert_eq!(cli.mode, "--source-graph");
 }

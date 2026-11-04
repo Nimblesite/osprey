@@ -119,7 +119,10 @@ pub(crate) fn validate(cli: &Cli, target: Target) -> Result<(), ExitCode> {
     crate::reject_cross_target_options(
         cli,
         slice.platform,
-        Some(&format!("a Swift host (see src/osprey/examples/{}/)", slice.goal)),
+        Some(&format!(
+            "a Swift host (see src/osprey/examples/{}/)",
+            slice.goal
+        )),
     )
 }
 

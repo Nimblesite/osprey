@@ -45,7 +45,9 @@ impl Fixture {
         fs::create_dir_all(root.join("sdk"))?;
         for runtime in ["ios", "ios_sim", "macos", "android_arm64", "android_x64"] {
             fs::write(
-                root.join(format!("src/toolchain/compiler/bin/libosprey_runtime_{runtime}_arc.a")),
+                root.join(format!(
+                    "src/toolchain/compiler/bin/libosprey_runtime_{runtime}_arc.a"
+                )),
                 "runtime fixture",
             )?;
         }
@@ -252,7 +254,10 @@ fn desktop_slices_build_with_the_hosts_tools() -> std::io::Result<()> {
     assert!(ir.contains("define i64 @osprey_answer()"), "{ir}");
     let log = fs::read_to_string(fixture.0.join("tools.log"))?;
     assert!(log.lines().any(|line| line == "-fPIC"), "{log}");
-    assert!(log.contains("src/toolchain/compiler/bin/libfiber_runtime"), "{log}");
+    assert!(
+        log.contains("src/toolchain/compiler/bin/libfiber_runtime"),
+        "{log}"
+    );
     Ok(())
 }
 

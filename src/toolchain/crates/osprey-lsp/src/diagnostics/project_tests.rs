@@ -9,7 +9,10 @@ fn module_files_use_the_assembled_project_graph() {
             "src/osprey/examples/projects/modules/src/main.ospml",
             main_warnings.as_slice(),
         ),
-        ("src/osprey/examples/projects/modules/src/web/pages.ospml", &[]),
+        (
+            "src/osprey/examples/projects/modules/src/web/pages.ospml",
+            &[],
+        ),
     ] {
         let path = root.join(relative);
         let source = std::fs::read_to_string(&path).expect("read module example");

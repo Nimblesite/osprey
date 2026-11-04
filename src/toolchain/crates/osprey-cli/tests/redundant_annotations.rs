@@ -393,7 +393,11 @@ fn the_scanner_reads_every_shape_a_declaration_can_take() {
 fn no_corpus_program_carries_a_removable_return_annotation() {
     let root = repo_root();
     let mut offenders = Vec::new();
-    for dir in ["src/osprey/tests", "src/osprey/examples", "src/toolchain/benchmarks"] {
+    for dir in [
+        "src/osprey/tests",
+        "src/osprey/examples",
+        "src/toolchain/benchmarks",
+    ] {
         for path in sources(&root.join(dir), "osp") {
             let Ok(source) = fs::read_to_string(&path) else {
                 continue;

@@ -37,7 +37,14 @@ fn comprehension_aliases_execute_in_their_lexical_scope() -> std::io::Result<()>
 fn python_interoperability() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
     let output = std::process::Command::new("python3")
-        .args(["-m", "unittest", "discover", "-s", "src/toolchain/python/tests", "-v"])
+        .args([
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "src/toolchain/python/tests",
+            "-v",
+        ])
         .current_dir(&root)
         .env("PYTHONPATH", root.join("python"))
         .env("OSPREY", env!("CARGO_BIN_EXE_osprey"))

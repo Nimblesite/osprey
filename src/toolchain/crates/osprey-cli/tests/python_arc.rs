@@ -23,6 +23,8 @@ fn an_escaped_brace_in_an_f_string_stays_one_brace_per_escape() {
         "fstring_brace_escapes",
         "py",
         include_str!("../../../../osprey/tests/regressions/python/fstring_brace_escapes.py"),
-        include_str!("../../../../osprey/tests/regressions/python/fstring_brace_escapes.expectedoutput"),
+        include_str!(
+            "../../../../osprey/tests/regressions/python/fstring_brace_escapes.expectedoutput"
+        ),
     );
 }

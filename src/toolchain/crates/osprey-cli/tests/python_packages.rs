@@ -60,7 +60,8 @@ fn package_tooling_containers_do_not_enter_the_library_matrix() {
 /// All existing Torch groups must discharge before the native oracle run.
 #[test]
 fn the_complete_torch_suite_discharges_its_storage_handlers() {
-    let assembled = osprey_project::load_and_assemble(&repo().join("src/osprey/packages/torch/tests"));
+    let assembled =
+        osprey_project::load_and_assemble(&repo().join("src/osprey/packages/torch/tests"));
     assert!(assembled.is_ok(), "{assembled:#?}");
     let Ok(assembled) = assembled else { return };
     let lowered = osprey_types::lower_static_checked(&assembled.program);
@@ -213,7 +214,10 @@ fn the_package_matrix_runs_all_54_suite_backend_pairs_once() {
 fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
 ) -> std::io::Result<()> {
     let suites = suites();
-    assert!(!suites.is_empty(), "no src/osprey/packages/*/tests suites were found");
+    assert!(
+        !suites.is_empty(),
+        "no src/osprey/packages/*/tests suites were found"
+    );
     let cache = package_cache()?;
     let mut problems = matrix_problems(&suites, &cache);
     if let Err(error) = std::fs::remove_dir_all(cache) {

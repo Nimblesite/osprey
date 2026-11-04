@@ -351,8 +351,8 @@ fn a_symbol_declared_in_a_sibling_file_resolves_across_the_project() {
     // `Ledger::sqlite` in the composition root said nothing and
     // go-to-definition went nowhere, even though the compiler links both
     // files into one program. Implements [LSP-WORKSPACE].
-    let root =
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../osprey/examples/projects/modules");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../osprey/examples/projects/modules");
     let entry = root.join("src/main.ospml");
     let text = std::fs::read_to_string(&entry).expect("read the composition root");
     let uri = format!("file://{}", entry.display());

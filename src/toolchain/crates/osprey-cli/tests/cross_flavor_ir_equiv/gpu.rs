@@ -80,7 +80,8 @@ const CLOSED_KERNELS: [(&str, Flavor); 2] = [
 
 #[test]
 fn extraction_floors_require_definitions_and_both_fixture_flavors() {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../osprey/tests/core/gpu");
+    let root =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../osprey/tests/core/gpu");
     for (stem, _) in EXTRACTION_FLOORS {
         for extension in ["osp", "ospml"] {
             let label = format!("{stem}.{extension}");

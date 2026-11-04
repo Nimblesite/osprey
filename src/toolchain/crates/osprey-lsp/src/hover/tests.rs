@@ -111,7 +111,9 @@ fn hover_on_a_documented_default_function_renders_its_docs() {
     let md = hover(src, "file:///a.osp", 1, 4, U16).expect("hover over `dbl`");
     shows(&md, &["fn dbl(x: int) -> int", "Doubles `x`."]);
 
-    let src = include_str!("../../../../../osprey/tests/effects/resume/resume_outer_handler_bridge.test.osp");
+    let src = include_str!(
+        "../../../../../osprey/tests/effects/resume/resume_outer_handler_bridge.test.osp"
+    );
     let (line, col) = decl_of(src, "resumeOuterHandlerBridgeCase()");
     let md = hover(
         src,
@@ -261,7 +263,8 @@ fn undocumented_operation_falls_back_to_the_effect_doc() {
 
 #[test]
 fn ml_pipeline_hover_shows_its_native_documentation() {
-    let src = include_str!("../../../../../osprey/tests/effects/resume/resume_lifo_audit.test.ospml");
+    let src =
+        include_str!("../../../../../osprey/tests/effects/resume/resume_lifo_audit.test.ospml");
     // The declaration is located by CONTENT, not a hard-coded line: this
     // fixture is a live regression suite that gains and loses lines.
     let (line, col) = decl_of(src, "pipeline ()");

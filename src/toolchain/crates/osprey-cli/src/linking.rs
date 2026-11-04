@@ -238,16 +238,27 @@ fn rebuild_goal(archive: &Path) -> String {
 }
 
 pub(super) fn runtime_lib_candidates(lib: &str, executable_dir: Option<&Path>) -> Vec<String> {
-    let mut roots: Vec<_> = ["src/toolchain/compiler/bin", "src/toolchain/compiler/lib", "bin", "../bin", "../../bin"]
-        .map(|directory| format!("{directory}/{lib}"))
-        .into();
+    let mut roots: Vec<_> = [
+        "src/toolchain/compiler/bin",
+        "src/toolchain/compiler/lib",
+        "bin",
+        "../bin",
+        "../../bin",
+    ]
+    .map(|directory| format!("{directory}/{lib}"))
+    .into();
     if let Some(dir) = executable_dir {
         roots.push(dir.join(lib).display().to_string());
         for ancestor in dir.ancestors() {
             roots.extend(library_paths(
                 ancestor,
                 lib,
-                &["src/toolchain/compiler/lib", "src/toolchain/compiler/bin", "bin", "lib"],
+                &[
+                    "src/toolchain/compiler/lib",
+                    "src/toolchain/compiler/bin",
+                    "bin",
+                    "lib",
+                ],
             ));
         }
     }
@@ -258,7 +269,11 @@ pub(super) fn runtime_lib_candidates(lib: &str, executable_dir: Option<&Path>) -
 
 fn workspace_libraries(lib: &str) -> Vec<String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    library_paths(&root, lib, &["src/toolchain/compiler/lib", "src/toolchain/compiler/bin"])
+    library_paths(
+        &root,
+        lib,
+        &["src/toolchain/compiler/lib", "src/toolchain/compiler/bin"],
+    )
 }
 
 fn library_paths(root: &Path, library: &str, directories: &[&str]) -> Vec<String> {
@@ -293,7 +308,10 @@ mod tests {
         // A stale archive lacks the objects newer sources added, and the host
         // linker would report their symbols undefined instead.
         let root = std::env::temp_dir().join(format!("osprey-stale-rt-{}", std::process::id()));
-        let (bin, runtime) = (root.join("src/toolchain/compiler/bin"), root.join("src/toolchain/compiler/runtime"));
+        let (bin, runtime) = (
+            root.join("src/toolchain/compiler/bin"),
+            root.join("src/toolchain/compiler/runtime"),
+        );
         std::fs::create_dir_all(&bin).expect("bin");
         std::fs::create_dir_all(&runtime).expect("runtime");
         let archive = bin.join("libosprey_runtime_macos.a");

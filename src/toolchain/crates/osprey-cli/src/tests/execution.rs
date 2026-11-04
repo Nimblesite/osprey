@@ -63,7 +63,11 @@ fn runtime_search_walks_above_arbitrarily_nested_cargo_profiles() {
     let executable_dir = root.join("target/llvm-cov-target/ci/deps");
     let lib = "libfiber_runtime.a";
     let candidates = runtime_lib_candidates(lib, Some(&executable_dir));
-    let expected = root.join("src/toolchain/compiler/bin").join(lib).display().to_string();
+    let expected = root
+        .join("src/toolchain/compiler/bin")
+        .join(lib)
+        .display()
+        .to_string();
     assert!(candidates.contains(&expected), "{candidates:?}");
     let fallbacks = runtime_lib_candidates(lib, None);
     assert!(fallbacks.contains(&format!("/usr/local/lib/{lib}")));
