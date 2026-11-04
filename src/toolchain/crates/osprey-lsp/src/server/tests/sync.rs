@@ -128,3 +128,182 @@ async fn incremental_change_and_close_update_the_vfs() {
     );
     h.shutdown_and_exit().await;
 }
+
+/// Configured roots, warnings and unsaved buffers use the real framed server.
+/// Implements [LSP-DIAGNOSTICS-SCOPE].
+#[tokio::test]
+async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("osprey scope roots {}", std::process::id()));
+    let a = root.join("a");
+    let b = root.join("b");
+    for folder in [&a, &b] {
+        std::fs::create_dir_all(folder)?;
+    }
+    let warning = a.join("warning.ospml");
+    let python = b.join("bad.py");
+    std::fs::write(&warning, "double : int -> int\ndouble x = x * 2\n")?;
+    std::fs::write(
+        &python,
+        "# osprey: flavor=python\ndef broken():\n    return missing\n",
+    )?;
+    std::fs::write(a.join("tool.py"), "import sys\n")?;
+    let warning_uri = crate::workspace::uri_of(&warning).ok_or("warning URI")?;
+    let python_uri = crate::workspace::uri_of(&python).ok_or("python URI")?;
+    let a_uri = crate::workspace::uri_of(&a).ok_or("a URI")?;
+    let b_uri = crate::workspace::uri_of(&b).ok_or("b URI")?;
+    let mut h = Harness::start();
+    let _ = h.request(500, "initialize", json!({"rootUri":a_uri,"initializationOptions":{"diagnostics":{"scope":"roots","roots":[a,b_uri]}}})).await;
+    h.notify("initialized", json!({})).await;
+    let reports = scope_reports(&mut h, 501).await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == warning_uri
+            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))
+            && p.pointer("/diagnostics/0/severity") == Some(&json!(2))),
+        "unopened warning: {reports:?}"
+    );
+    assert!(
+        reports.iter().any(|p| p["uri"] == python_uri
+            && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+        "Python flavor: {reports:?}"
+    );
+    assert!(
+        !reports.iter().any(|p| p["uri"]
+            .as_str()
+            .is_some_and(|uri| uri.ends_with("tool.py"))),
+        "CPython excluded"
+    );
+    let report = h.open_at(&warning_uri, "double x = x * 2\n").await;
+    assert_eq!(
+        diagnostics(&report),
+        Some(&json!([])),
+        "unsaved source wins"
+    );
+    h.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({"changes":[{"uri":warning_uri,"type":2}]}),
+    )
+    .await;
+    let reports = scope_reports(&mut h, 502).await;
+    assert!(
+        !reports
+            .iter()
+            .any(|p| p["uri"] == warning_uri && p["diagnostics"] != json!([])),
+        "disk cannot override dirty buffer"
+    );
+    h.notify("textDocument/didClose", text_doc(&warning_uri))
+        .await;
+    let reports = scope_reports(&mut h, 503).await;
+    assert!(
+        reports.iter().any(|p| p["uri"] == warning_uri
+            && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
+        "close restores disk warning: {reports:?}"
+    );
+    std::fs::remove_file(&python)?;
+    h.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({"changes":[{"uri":python_uri,"type":3}]}),
+    )
+    .await;
+    let reports = scope_reports(&mut h, 504).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == python_uri && p["diagnostics"] == json!([])),
+        "deleted finding clears"
+    );
+    scope_disable_and_remove(&mut h, &warning_uri, &a_uri, &b_uri).await;
+    h.shutdown_and_exit().await;
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &str, b_uri: &str) {
+    h.notify(
+        "workspace/didChangeConfiguration",
+        json!({"settings":{"osprey":{"diagnostics":{"enabled":false}}}}),
+    )
+    .await;
+    let reports = scope_reports(h, 505).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == warning_uri && p["diagnostics"] == json!([])),
+        "disable clears findings"
+    );
+    h.notify(
+        "workspace/didChangeConfiguration",
+        json!({"settings":{"osprey":{"diagnostics":{"scope":"repository"}}}}),
+    )
+    .await;
+    let reports = scope_reports(h, 506).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == warning_uri
+                && p.pointer("/diagnostics/0/severity") == Some(&json!(2))),
+        "reenable restores warning"
+    );
+    h.notify(
+        "workspace/didChangeWorkspaceFolders",
+        json!({"event":{"removed":[{"uri":a_uri}],"added":[{"uri":b_uri}]}}),
+    )
+    .await;
+    let reports = scope_reports(h, 507).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == warning_uri && p["diagnostics"] == json!([])),
+        "removed workspace clears"
+    );
+}
+
+#[tokio::test]
+async fn unreadable_closed_source_reports_error_instead_of_clean_file() {
+    let root = std::env::temp_dir().join(format!("osprey unreadable {}.osp", std::process::id()));
+    std::fs::create_dir_all(&root).expect("directory cannot be read as source");
+    let engine = OspreyEngine::new(Vfs::new(ENCODING));
+    let uri = DocumentUri::new(crate::workspace::uri_of(&root).expect("URI"));
+    let report = engine
+        .report(Query::Diagnostics(uri), CancellationToken::new())
+        .await
+        .expect("report");
+    let Report::Diagnostics(diagnostics) = report.data else {
+        panic!("expected diagnostics")
+    };
+    assert_eq!(
+        diagnostics
+            .first()
+            .and_then(|diagnostic| diagnostic.code.as_deref()),
+        Some("source-read-error")
+    );
+    std::fs::remove_dir(root).expect("cleanup");
+}
+
+/// Opening a repository subfolder must still check the whole repository.
+#[tokio::test]
+async fn repository_scope_expands_git_parent_and_initial_open_only_does_not_scan() {
+    let root = std::env::temp_dir().join(format!("osprey git scope {}", std::process::id()));
+    std::fs::create_dir_all(root.join(".git")).expect("repository marker");
+    std::fs::create_dir_all(root.join("nested")).expect("workspace folder");
+    let file = root.join("outside.osp");
+    std::fs::write(&file, "fn outside() { missing }\n").expect("closed source");
+    let file_uri = crate::workspace::uri_of(&file).expect("file URI");
+    for (id, options, expect_error) in [
+        (600, json!({}), true),
+        (610, json!({"diagnostics":{"scope":"openFiles"}}), false),
+    ] {
+        let mut h = Harness::start();
+        let _ = h.request(id, "initialize", json!({"rootUri":crate::workspace::uri_of(&root.join("nested")), "initializationOptions":options})).await;
+        h.notify("initialized", json!({})).await;
+        let reports = scope_reports(&mut h, id + 1).await;
+        assert_eq!(
+            reports.iter().any(|p| p["uri"] == file_uri
+                && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+            expect_error,
+            "scope: {reports:?}"
+        );
+        h.shutdown_and_exit().await;
+    }
+    std::fs::remove_dir_all(root).expect("fixture cleanup");
+}

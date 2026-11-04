@@ -147,7 +147,7 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed {
 /// the source has one. Only comments and blank lines may precede it, so flavor
 /// selection never depends on a deep scan. Implements [FLAVOR-SELECT],
 /// [FLAVOR-PYTHON-SELECT].
-fn flavor_marker(source: &str) -> Option<&str> {
+pub fn flavor_marker(source: &str) -> Option<&str> {
     source
         .lines()
         .map(str::trim)

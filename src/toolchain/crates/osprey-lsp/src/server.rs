@@ -22,6 +22,7 @@ use crate::model::{At, Query, Report};
 use crate::profiler::{self, ProfilerHost};
 use crate::wire;
 
+pub(crate) mod scope;
 mod work;
 
 /// The fixed wire position encoding advertised and used throughout.
@@ -136,20 +137,29 @@ async fn notify(
     params: Value,
 ) {
     match method {
+        "initialized" => scope::refresh(engine, bus).await,
+        "workspace/didChangeConfiguration" => {
+            scope::lock(engine).configure(params.get("settings").unwrap_or(&Value::Null));
+            scope::refresh(engine, bus).await;
+        }
+        "workspace/didChangeWorkspaceFolders" => {
+            scope::lock(engine).folders_changed(params.get("event").unwrap_or(&Value::Null));
+            scope::refresh(engine, bus).await;
+        }
         "textDocument/didOpen" => did_open(engine, bus, &params).await,
         "textDocument/didChange" => did_change(engine, bus, &params).await,
         "textDocument/didClose" => {
             if let Some(uri) = wire::doc_uri(&params) {
                 let doc = DocumentUri::new(uri);
                 engine.vfs().close(&doc);
+                scope::lock(engine).opened(doc.as_str(), false);
                 engine.project_cache.opened(doc.as_str(), false);
                 publish_siblings(engine, bus, &doc).await;
+                scope::refresh(engine, bus).await;
             }
         }
         "workspace/didChangeWatchedFiles" => {
-            for doc in engine.project_cache.documents() {
-                publish(engine, bus, doc).await;
-            }
+            scope::refresh(engine, bus).await;
         }
         "$/cancelRequest" => {
             if let Some(id) = cancel_id(&params) {
@@ -171,6 +181,7 @@ async fn did_open(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, pa
         DocumentVersion::new(wire::version(params)),
     );
     engine.project_cache.opened(doc.as_str(), true);
+    scope::lock(engine).opened(doc.as_str(), true);
     publish(engine, bus, doc.clone()).await;
     publish_siblings(engine, bus, &doc).await;
 }
@@ -182,6 +193,7 @@ async fn did_change(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, 
     let doc = DocumentUri::new(uri);
     apply_changes(engine.vfs(), &doc, params);
     engine.project_cache.opened(doc.as_str(), true);
+    scope::lock(engine).opened(doc.as_str(), true);
     publish(engine, bus, doc.clone()).await;
     publish_siblings(engine, bus, &doc).await;
 }
@@ -195,7 +207,7 @@ async fn publish_siblings(
     bus: &lspkit_server::DiagnosticsBus,
     changed: &DocumentUri,
 ) {
-    for doc in engine.project_cache.documents() {
+    for doc in diagnostic_documents(engine) {
         if doc != *changed
             && engine
                 .project_cache
@@ -204,6 +216,14 @@ async fn publish_siblings(
             publish(engine, bus, doc).await;
         }
     }
+}
+
+fn diagnostic_documents(engine: &OspreyEngine) -> Vec<DocumentUri> {
+    let mut docs = scope::lock(engine).tracked();
+    docs.extend(engine.project_cache.documents());
+    docs.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+    docs.dedup();
+    docs
 }
 
 /// Apply a `didChange`. A conformant client sends either a single full-document
@@ -231,6 +251,10 @@ fn apply_changes(vfs: &Vfs, doc: &DocumentUri, params: &Value) {
 /// Compute and broadcast diagnostics for `doc`.
 /// Implements [LSP-DIAGNOSTICS].
 async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc: DocumentUri) {
+    if !scope::lock(engine).enabled() {
+        return;
+    }
+    scope::lock(engine).remember(doc.as_str());
     let snapshot = engine
         .report(Query::Diagnostics(doc.clone()), CancellationToken::new())
         .await;

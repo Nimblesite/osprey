@@ -39,9 +39,11 @@
   ],
   "main": "./out/client/src/extension.js",
   "activationEvents": [
+    "onStartupFinished",
     "onDebugResolve:osprey",
-    "workspaceContains:**/*.test.osp",
-    "workspaceContains:**/*.test.ospml"
+    "workspaceContains:**/*.osp",
+    "workspaceContains:**/*.ospml",
+    "workspaceContains:**/osprey.toml"
   ],
   "contributes": {
     "languages": [
@@ -661,6 +663,32 @@
           "type": "boolean",
           "default": true,
           "description": "Enable/disable diagnostic messages"
+        },
+        "osprey.diagnostics.scope": {
+          "type": "string",
+          "enum": [
+            "repository",
+            "roots",
+            "openFiles"
+          ],
+          "enumDescriptions": [
+            "Analyze all Osprey files in each workspace repository, including closed files.",
+            "Analyze the folders listed in Osprey: Diagnostics Roots, plus open files.",
+            "Analyze open files only."
+          ],
+          "default": "repository",
+          "scope": "window",
+          "description": "Choose which files receive compiler errors and warnings."
+        },
+        "osprey.diagnostics.roots": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "default": [],
+          "scope": "window",
+          "description": "Folders to analyze when Diagnostics Scope is roots. Use absolute paths, file URIs, or paths relative to each workspace folder. Multiple folders are supported; open files are always analyzed."
         },
         "osprey.hunt.maxTime": {
           "type": "number",

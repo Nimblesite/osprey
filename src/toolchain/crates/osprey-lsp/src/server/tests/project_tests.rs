@@ -351,3 +351,100 @@ async fn references_from_a_shared_source_root_reach_every_project_that_includes_
     h.shutdown_and_exit().await;
     Ok(())
 }
+
+/// Unopened files must be checked on startup, then removed when out of scope.
+/// Implements [LSP-DIAGNOSTICS-SCOPE].
+#[tokio::test]
+async fn repository_diagnostics_default_and_live_scope_roots(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("osprey scopes {}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    for folder in ["one", "two", "other", "target"] {
+        std::fs::create_dir_all(root.join(folder))?;
+        std::fs::write(
+            root.join(folder).join("bad.osp"),
+            "fn broken() { missing }\n",
+        )?;
+    }
+    let uri =
+        |folder: &str| crate::workspace::uri_of(&root.join(folder).join("bad.osp")).expect("uri");
+    let mut h = Harness::start();
+    let _ = h
+        .request(
+            400,
+            "initialize",
+            json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}]}),
+        )
+        .await;
+    h.notify("initialized", json!({})).await;
+    let reports = scope_reports(&mut h, 401).await;
+    for folder in ["one", "two", "other"] {
+        assert!(
+            reports.iter().any(|p| p["uri"] == uri(folder)
+                && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
+            "unopened {folder}: {reports:?}"
+        );
+    }
+    assert!(
+        !reports.iter().any(|p| p["uri"] == uri("target")),
+        "build outputs excluded"
+    );
+    h.notify(
+        "workspace/didChangeConfiguration",
+        json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"]}}}}),
+    )
+    .await;
+    let reports = scope_reports(&mut h, 402).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri("other") && p["diagnostics"] == json!([])),
+        "clear excluded diagnostics: {reports:?}"
+    );
+    std::fs::write(root.join("two/bad.osp"), "fn broken() { 1 }\n")?;
+    h.notify(
+        "workspace/didChangeWatchedFiles",
+        json!({"changes":[{"uri":uri("two"),"type":2}]}),
+    )
+    .await;
+    let reports = scope_reports(&mut h, 403).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri("two") && p["diagnostics"] == json!([])),
+        "refresh unopened repair: {reports:?}"
+    );
+    h.notify(
+        "workspace/didChangeConfiguration",
+        json!({"settings":{"osprey":{"diagnostics":{"scope":"openFiles"}}}}),
+    )
+    .await;
+    let reports = scope_reports(&mut h, 404).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
+        "clear closed files: {reports:?}"
+    );
+    let report = h.open_at(&uri("one"), "fn broken() { missing }\n").await;
+    assert_at(
+        &report.params.ok_or("open report")?,
+        "/diagnostics/0/code",
+        "type-error",
+    );
+    h.notify(
+        "textDocument/didClose",
+        json!({"textDocument":{"uri":uri("one")}}),
+    )
+    .await;
+    let reports = scope_reports(&mut h, 405).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri("one") && p["diagnostics"] == json!([])),
+        "close clears: {reports:?}"
+    );
+    h.shutdown_and_exit().await;
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}

@@ -164,6 +164,9 @@ impl Context {
 
     async fn handle(&self, work: Work) {
         if let Some(id) = work.id {
+            if work.method == "initialize" {
+                super::scope::lock(&self.engine).initialize(&work.params);
+            }
             let reply = request(&self.dispatcher, &id, &work.method, work.params).await;
             if !self.stopped.is_cancelled() {
                 let _ = self.writer.write_message(&reply).await;

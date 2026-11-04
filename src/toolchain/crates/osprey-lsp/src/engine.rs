@@ -26,6 +26,7 @@ use crate::model::{At, EngineError, Query, Report};
 /// The Osprey analysis engine.
 #[derive(Debug, Clone)]
 pub struct OspreyEngine {
+    pub(crate) scope: Arc<std::sync::Mutex<crate::server::scope::Scope>>,
     vfs: Vfs,
     session: Session,
     shutdown: Arc<AtomicBool>,
@@ -37,6 +38,7 @@ impl OspreyEngine {
     #[must_use]
     pub(crate) fn new(vfs: Vfs) -> Self {
         Self {
+            scope: Arc::default(),
             vfs,
             session: Session::new(),
             shutdown: Arc::new(AtomicBool::new(false)),
@@ -62,20 +64,39 @@ impl OspreyEngine {
         self.vfs.text(uri).unwrap_or_default()
     }
 
+    fn diagnostic_text(&self, uri: &lspkit::vfs::DocumentUri) -> std::io::Result<String> {
+        if let Some(text) = self.vfs.text(uri) {
+            return Ok(text);
+        }
+        match crate::workspace::file_path(uri.as_str()) {
+            Some(path) => std::fs::read_to_string(path),
+            None => Ok(String::new()),
+        }
+    }
+
     /// Compute the report for `query` against current document state.
     fn answer(&self, query: Query) -> Report {
         let enc = self.encoding();
         match query {
-            Query::Diagnostics(uri) => Report::Diagnostics(
-                diagnostics::analyze_cached(
-                    &self.text(&uri),
-                    uri.as_str(),
-                    enc,
-                    Some(&self.vfs),
-                    &self.project_cache,
+            Query::Diagnostics(uri) => Report::Diagnostics(match self.diagnostic_text(&uri) {
+                Ok(text) => {
+                    diagnostics::analyze_cached(
+                        &text,
+                        uri.as_str(),
+                        enc,
+                        Some(&self.vfs),
+                        &self.project_cache,
+                    )
+                    .diagnostics
+                }
+                Err(error) => vec![lspkit_server::Diagnostic::new(
+                    lspkit_server::Severity::Error,
+                    format!("Cannot read source file: {error}"),
+                    (0, 0, 0, 1),
                 )
-                .diagnostics,
-            ),
+                .with_source("osprey")
+                .with_code("source-read-error")],
+            }),
             Query::CodeActions { uri, range, only } => Report::CodeActions(
                 crate::code_actions::actions(&self.vfs, &uri, range, &only, &self.project_cache),
             ),

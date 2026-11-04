@@ -188,9 +188,10 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
     debug: serverExecutable,
   };
 
-  // Client options. The server analyzes document text (not the filesystem), so
-  // unsaved `untitled:` buffers are supported alongside on-disk files.
+  // Closed workspace files are checked from disk; unsaved buffers take precedence.
+  // Implements [LSP-DIAGNOSTICS-SCOPE].
   const clientOptions: LanguageClientOptions = {
+    initializationOptions: { diagnostics: config.get("diagnostics") },
     middleware: warningFixMiddleware,
     documentSelector: [
       { scheme: "file", language: "osprey" },
@@ -199,9 +200,11 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
       { scheme: "untitled", language: "osprey-ml" },
     ],
     synchronize: {
+      configurationSection: "osprey",
       fileEvents: [
         workspace.createFileSystemWatcher("**/*.osp{,ml}"),
         workspace.createFileSystemWatcher("**/osprey.toml"),
+        workspace.createFileSystemWatcher("**/*.py"),
       ],
     },
     outputChannelName: "Osprey Language Server",
@@ -353,6 +356,8 @@ export function activate(context: ExtensionContext): OspreyExtensionApi {
         client.restart().catch((error: unknown) => {
           outputChannel.appendLine(`Language server restart failed: ${error}`);
         });
+      } else if (event.affectsConfiguration("osprey.diagnostics")) {
+        outputChannel.appendLine("Diagnostic settings applied live.");
       } else if (event.affectsConfiguration("osprey")) {
         window.showInformationMessage(
           "Osprey configuration changed. Restart required.",

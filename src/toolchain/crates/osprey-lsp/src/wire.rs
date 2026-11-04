@@ -161,6 +161,7 @@ pub(crate) fn code_actions_result(actions: &[crate::model::CodeAction]) -> Value
 pub(crate) fn initialize_result(encoding: &str) -> Value {
     json!({
         "capabilities": {
+            "workspace": { "workspaceFolders": { "supported": true, "changeNotifications": true } },
             "positionEncoding": encoding,
             "textDocumentSync": 2,
             "hoverProvider": true,

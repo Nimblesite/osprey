@@ -98,8 +98,9 @@ The extension registers Default (`.osp`) and ML (`.ospml`) documents for its lan
 - **Syntax highlighting** — keywords, types, string interpolation
   (`"Hello ${name}!"`), operators, and comments. Default (`.osp`) is fully
   supported alongside ML (`.ospml`); highlighting uses the bundled TextMate grammars.
-- **Live diagnostics** — errors and warnings from the Osprey compiler as you
-  type, inline in the editor.
+- **Repository diagnostics** — compiler errors and warnings appear for closed
+  files by default, with live updates as you type. Choose specified folders or
+  open files only in Settings.
 - **Hover, go-to-definition, find-references, document symbols, signature help,
   completion and formatting** — driven by the compiler's parser, type checker and project loader.
 - **Compile & run** from the editor:
@@ -164,7 +165,9 @@ Debugging also requires `lldb-dap`. Set `osprey.debug.lldbDapPath` when it is ou
 | Setting                      | Default | Description                                                                                                                                       |
 | ---------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `osprey.server.enabled`      | `true`  | Enable/disable the language server.                                                                                                               |
-| `osprey.diagnostics.enabled` | `true`  | Enable/disable inline diagnostics.                                                                                                                |
+| `osprey.diagnostics.enabled` | `true`  | Enable/disable compiler diagnostics.                                                                                                                |
+| `osprey.diagnostics.scope` | `repository` | Analyze the repository, specified `roots`, or `openFiles` only. Changes apply immediately. |
+| `osprey.diagnostics.roots` | `[]` | In roots mode, list multiple absolute paths, file URIs, or folders relative to each workspace folder. Open files remain included. |
 | `osprey.server.compilerPath` | `""`    | Path to an Osprey compiler. **Leave empty** to use the version-matched compiler bundled with this extension (falling back to `osprey` on `PATH`). |
 | `osprey.debug.lldbDapPath` | `""` | LLDB-DAP executable; empty uses `lldb-dap` on `PATH`. |
 | `osprey.hunt.maxTime` | `60` | KLEE exploration budget in seconds; requires at least 1. |

@@ -267,3 +267,26 @@ fn diagnostics(published: &Message) -> Option<&Value> {
         .as_ref()
         .and_then(|params| params.get("diagnostics"))
 }
+
+async fn scope_reports(h: &mut Harness, id: i64) -> Vec<Value> {
+    h.send(&Message::request(
+        RequestId::Number(id),
+        "textDocument/documentSymbol",
+        json!({"textDocument":{"uri":"untitled:barrier"}}),
+    ))
+    .await;
+    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        let mut reports = Vec::new();
+        loop {
+            let message = h.read_message().await;
+            if message.id == Some(RequestId::Number(id)) {
+                return reports;
+            }
+            if message.method.as_deref() == Some("textDocument/publishDiagnostics") {
+                reports.push(message.params.expect("diagnostics"));
+            }
+        }
+    })
+    .await
+    .expect("scope analysis responds")
+}

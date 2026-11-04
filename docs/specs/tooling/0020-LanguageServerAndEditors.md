@@ -96,6 +96,28 @@ The server exposes:
 
 ## Diagnostics `[LSP-DIAGNOSTICS]`
 
+### Analysis scope `[LSP-DIAGNOSTICS-SCOPE]`
+
+Compiler diagnostics default to **repository** scope: after initialization, the
+server checks unopened Osprey sources under each workspace folder's enclosing
+Git repository (or the workspace folder when there is no Git repository).
+`osprey.diagnostics.scope` selects `repository`, `roots`, or `openFiles`.
+`roots` analyzes every folder in `osprey.diagnostics.roots`; entries can be
+absolute paths, file URIs, or paths relative to each workspace folder. Multiple
+folders are supported. Open buffers are included in every enabled scope, and
+unsaved text takes precedence over disk. `openFiles` performs no background scan.
+
+Scope settings apply live without a restart. Startup, workspace-folder changes,
+and watched source/manifest changes refresh findings; shrinking the scope,
+closing an excluded buffer, deleting a file, or disabling diagnostics clears
+stale findings. Closing a buffer inside the active disk scope restores its disk
+diagnostics. Discovery skips hidden directories, `target`, `node_modules`,
+`build`, `dist`, and `__pycache__`, and does not follow directory symlinks.
+`.osp` and `.ospml` files are included, as are `.py` files explicitly selected by
+an Osprey manifest or a leading Python-flavor marker; ordinary CPython scripts
+are excluded. Other LSP clients can send the same diagnostics options through
+`initializationOptions` and `workspace/didChangeConfiguration`.
+
 Opening or changing a document publishes compiler diagnostics for that buffer.
 Flavor conflicts are reported alone as `flavor-error`; otherwise syntax errors
 short-circuit type checking. A syntax-error-free parse is assembled and type-checked through
