@@ -58,8 +58,9 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 - [x] All C runtime tests and per-library C coverage floors pass in the full run, including exhaustive binary16 conversion and binary32 spelling checks.
 - [x] Full GC conformance passes: 318 programs, 318 exact goldens, 20 alternate GPU-lowering cases and all six doctests.
 - [x] Full ARC conformance passes: 318 programs, 318 exact goldens, zero leaky programs, 20 alternate GPU-lowering cases and all six doctests.
-- [x] Source VS Code extension suites pass (880 + 14 tests). Installed VSIX checks are still running.
-- [ ] Finish full GC, ARC and wasm32 corpus lanes and final regression assertions. Transformer package GC and ARC both retain all 395 assertions (ARC: zero live objects).
+- [x] Source VS Code extension suites pass (880 + 14 tests). Installed VSIX checks also pass (170 tests); all four extension coverage measures meet their 95% floors.
+- [x] Full `make test` exits 0, including all host suites and coverage floors. Transformer package GC and ARC retain all 395 assertions (ARC: zero live objects). Receipt: `polymorphic-make-test-exit.json`.
+- [ ] Resolve the separately identified wasm `tanh(float32(0.5))` one-ulp discrepancy and rerun complete wasm conformance.
 
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
 

@@ -114,7 +114,8 @@ Sized division report follow-up (`docs/reviews/sized-float-polymorphic-arithmeti
 - [x] Reproduce the inferred helper rejection; correct the per-call division result relation while retaining fixed-binary64 operand guards while preserving integer and mixed binary64 division. All 941 type-checker tests pass, including 20 mixed-width rejection controls; the unchanged cross-flavor IR parity gate passes (2026-11-04).
 - [x] Verify the final bit-exact Default/ML regression under GC, ARC and wasm32, including aliases, subnormals, signed zero and local `Result` payloads; nine golden comparisons pass. Retain all 395 transformer package assertions under GC and ARC (zero live ARC objects). Receipts: `target/logs/plan-0050/polymorphic-verified-receipts.json` and `polymorphic-transformers-{gc,arc}.*` (2026-11-04).
 - [x] Full Rust workspace tests and all Rust coverage floors pass on the fixed compiler: codegen 96.3% >= 95%, types 98.3% >= 98%; the 941 type tests, exact rejection goldens and declaration-documentation gates pass (2026-11-04).
-- [ ] Finish the whole-suite gate: `make test` is running; the first wasm corpus run has transformer math failures also reproduced with the older release compiler. Keep this report's broad verification open until those gates pass.
+- [x] Full `make test` passes (exit 0), including 318-program GC and ARC corpora, zero ARC leaks, all Rust/package/C/extension coverage floors, source extension suites (880 + 14) and installed VSIX tests (170). Receipt: `target/logs/plan-0050/polymorphic-make-test-exit.json` (2026-11-04).
+- [ ] Close the remaining wasm gate: transformer math fails because WASI `tanhf(0.5)` differs from native by one binary32 ulp; the same failure was reproduced with the older release compiler. Root owns the bounded runtime fix.
 
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
 
