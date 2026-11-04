@@ -104,6 +104,7 @@ fn main() = {
 "#;
     for prefix in [
         "",
+        "let load = gpuLoadTensor\n",
         "fn load(path, name) = gpuLoadTensor(path, name)\n",
     ] {
         let body = if prefix.is_empty() {
