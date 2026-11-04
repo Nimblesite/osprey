@@ -28,7 +28,7 @@ Gate [LLM-BASELINE]: the model passes enough tasks to be worth porting, and the 
 
 ## Phase 1 — Storage
 - [ ] `float32`/`float16` buffers and native device arithmetic come from plan 0050 ([TYPE-NUMERIC-SIZED], [GPU-DEVICE-NATIVE]); wait on its Phase 5 gate; add nothing of its own here.
-- [ ] [LLM-WEIGHTS-MAPPED]: a read-only buffer over a memory-mapped file region, shared with the GPU without a copy on unified memory.
+- [x] [LLM-WEIGHTS-MAPPED]: a read-only buffer over a memory-mapped file region, shared with the GPU without a copy on unified memory. `gpuMapFile` on host and Metal; `@osprey/gguf` `read_path` parsed the real 17.6 GB Q4 header (866 tensors, data at byte 10,996,640, 667 MB peak).
 - [ ] [LLM-WEIGHTS-QUANT]: block decoders for each tensor type the chosen GGUF uses (listed from the file in Phase 0); compare against `gguf-py` on every block of a generated fixture.
 - [ ] [LLM-STATE-OWNED]: one mutable, single-owner state buffer for KV and recurrent state, relaxing [GPU-BUFFER] immutability for this type only; checks: no aliasing, compile error on capture by an escaping closure.
 - [ ] [LLM-ARITH-IEEE]: an `Arith` policy with IEEE semantics in kernels and a finite check on each token's logits that faults the request instead of emitting garbage.
@@ -43,7 +43,7 @@ Gate: all three memory backends pass, ARC clean.
 Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Phase 0 Ollama rate on the same quant (a 2,000-token turn ≈ 7 min). Go/no-go: if missed, stop and report before porting the model; next options are kernel fusion (0023-gpu.md) and a multithreaded NEON path — binding a native engine is not an option.
 
 ## Phase 3 — Model on a tiny checkpoint
-- [ ] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `scripts/oracles/gguf.py`.
+- [x] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `scripts/oracles/gguf.py`.
 - [ ] `src/osprey/packages/transformers/src/qwen3_5_*.py`: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE].
 - [ ] Tiny random `Qwen3_5TextConfig` (4 layers, a few MB) written by `scripts/oracles/transformers.py`; every layer's activations compared to Transformers in `float32` under [PORT-TEST-ORACLE].
 - [ ] Permutations: one token at a time vs a batch, cached vs uncached, recurrent vs chunked rule, `float16` KV vs `float32`.
@@ -65,9 +65,9 @@ Gate [LLM-MEMORY]: peak RSS at or under 24 GB at full context, measured by the t
 Gate: byte-identical prompts and token IDs against the oracle.
 
 ## Phase 6 — Tool calls
-- [ ] [LLM-TOOL-PARSE]: a streaming parser for the template's `<tool_call><function=…><parameter=…>` format, coercing values by the tool's JSON Schema; separate `<think>` content from replies.
-- [ ] [LLM-TOOL-CONSTRAIN]: once the model opens `<tool_call>`, mask tokens so only declared function names, declared parameter names, and enum/number/boolean-valid values can be sampled; free text stays free. Implement as a logits processor.
-- [ ] [LLM-TOOL-REPAIR]: a call that still fails its schema goes back to the harness as a recoverable tool error, never as made-up arguments.
+- [x] [LLM-TOOL-PARSE]: a streaming parser for the template's `<tool_call><function=…><parameter=…>` format, coercing values by the tool's JSON Schema; separate `<think>` content from replies.
+- [ ] [LLM-TOOL-CONSTRAIN]: once the model opens `<tool_call>`, mask tokens so only declared function names, declared parameter names, and enum/number/boolean-valid values can be sampled; free text stays free. Implement as a logits processor. Implemented and masked adversarially across all 200 cases on a fixture vocabulary (2,330 suite checks on all three memory backends); stays open until the real 248,320-token vocabulary has been run.
+- [x] [LLM-TOOL-REPAIR]: a call that still fails its schema goes back to the harness as a recoverable tool error, never as made-up arguments.
 
 Gate: 100% of the 200 Phase 0 cases schema-valid; tool-selection accuracy not below the Ollama baseline.
 
