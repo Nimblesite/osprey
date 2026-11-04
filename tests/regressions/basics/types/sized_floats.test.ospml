@@ -213,3 +213,25 @@ strict work =
 print "${strict (\() => toFloat32 1.0 / toFloat32 0.0)}"
 print "${strict (\() => 1.0 / 0.0)}"
 print "${strict (\() => toFloat16 1.0 % toFloat16 0.0)}"
+
+(* [TYPE-NUMERIC-ARITH-WIDTH] Helpers infer their arithmetic width. *)
+generic32Add a b = a + b
+generic32Sub a b = a - b
+generic32Mul a b = a * b
+genericDiv a b = a / b
+generic32Rem a b = a % b
+generic16Add a b = a + b
+generic16Sub a b = a - b
+generic16Mul a b = a * b
+generic16Rem a b = a % b
+generic32Cancel a b = (a + b) - a
+generic16Cancel a b = (a + b) - a
+generic64Cancel a b = (a + b) - a
+divisionAlias = genericDiv
+genericArithmetic () =
+    print "${float32Bits (generic32Add (toFloat32 5.5) (toFloat32 2.25))} ${float32Bits (generic32Sub (toFloat32 5.5) (toFloat32 2.25))} ${float32Bits (generic32Mul (toFloat32 5.5) (toFloat32 2.25))} ${float32Bits (genericDiv (toFloat32 5.5) (toFloat32 2.25))} ${float32Bits (generic32Rem (toFloat32 5.5) (toFloat32 2.25))}"
+    print "${float16Bits (generic16Add (toFloat16 5.5) (toFloat16 2.25))} ${float16Bits (generic16Sub (toFloat16 5.5) (toFloat16 2.25))} ${float16Bits (generic16Mul (toFloat16 5.5) (toFloat16 2.25))} ${float16Bits (genericDiv (toFloat16 5.5) (toFloat16 2.25))} ${float16Bits (generic16Rem (toFloat16 5.5) (toFloat16 2.25))}"
+    print "${genericDiv 3 1.5} ${genericDiv 2.5 2} ${genericDiv 3 2} ${float32Bits (genericDiv (toFloat32 1.0) (toFloat32 3.0))} ${float16Bits (genericDiv (toFloat16 1.0) (toFloat16 3.0))}"
+    print "${float32Bits (divisionAlias (toFloat32 (-0.0)) (toFloat32 2.0))} ${float16Bits (divisionAlias (toFloat16 (-0.0)) (toFloat16 2.0))} ${float32Bits (genericDiv (float32FromBits 2) (toFloat32 2.0))} ${float16Bits (genericDiv (float16FromBits 2) (toFloat16 2.0))}"
+    print "${generic32Cancel (toFloat32 16777216.0) (toFloat32 1.0)} ${generic16Cancel (toFloat16 2048.0) (toFloat16 1.0)} ${generic64Cancel 16777216.0 1.0}"
+wrapping genericArithmetic

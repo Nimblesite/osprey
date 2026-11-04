@@ -115,11 +115,7 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
     if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
-        let sized_float =
-            crate::numeric::Numeric::of_type(ty).is_some_and(|n| n.is_sized() && n.is_float());
-        let arithmetic = matches!(op, "+" | "-" | "*" | "/" | "%");
-        let valid = is_numeric_scalar(ty) && !(arithmetic && sized_float);
-        return (!valid && !matches!(ty, Type::Var(_)))
+        return (!is_numeric_scalar(ty) && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
     if let Some(op) = operation_name(name).strip_prefix(FLOAT_OPERAND_PREFIX) {

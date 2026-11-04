@@ -61,7 +61,7 @@ impl Checker {
     pub(super) fn arith_operand_vars(&mut self, obligations: &[(String, Type)]) -> BTreeSet<VarId> {
         let mut vars = BTreeSet::new();
         for (name, ty) in obligations {
-            if crate::expr::is_deferred_arith(name) {
+            if crate::expr::is_monomorphic_arith(name) {
                 self.ctx.free_vars(ty, &mut vars);
             }
         }
@@ -82,12 +82,12 @@ impl Checker {
         let mut deferred = Vec::new();
         let mut kept = Vec::new();
         for (name, ty) in resolved {
-            // A pending arithmetic overload never travels into a scheme: it is
+            // A monomorphic arithmetic overload never travels into a scheme: it is
             // settled once for the whole program
             // ([`Checker::deferred_arith`]), and the variables it rests on stay
             // monomorphic so every use of the definition constrains the SAME
             // choice.
-            if crate::expr::is_deferred_arith(&name)
+            if crate::expr::is_monomorphic_arith(&name)
                 || crate::builtin_constraints::fixed_numeric_operand(&name, &ty)
                 || !self.mentions_any(&ty, vars)
             {

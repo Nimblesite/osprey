@@ -1,6 +1,6 @@
 # Bug: unannotated helpers can't do arithmetic on `float32` or `float16`
 
-Status: open. Spec: [TYPE-NUMERIC-ARITH-WIDTH] in `docs/specs/language/0004-TypeSystem.md`. Tracked in plan 0050, Phase 3.
+Status: fix implemented; full corpus verification in progress. Spec: [TYPE-NUMERIC-ARITH-WIDTH] in `docs/specs/language/0004-TypeSystem.md`. Tracked in plan 0050, Phase 3.
 
 ## Reproduce
 
@@ -44,3 +44,15 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 2. Fix the checker, plus codegen if it needs it.
 3. Remove the `toFloat32(0.0)` anchors in `packages/transformers/src` that this bug forced, and keep its 395 assertions passing under GC and ARC.
 4. Run the GC, ARC and wasm32 corpus lanes, then tick the item in `docs/plans/0050-sized-numeric-types.md`. That item is on `wip/plan-0050-pis`, commit 3dc2821b.
+
+## Verification checklist
+
+- [x] Reproduce RED in the existing `sized_floats` corpus regression: inferred division rejects both widths and incorrectly fixes its result to `float`.
+- [x] Fix the operand guard and retain division's operand/result relation in each instantiation. Integer `/` still returns `float`; mixed `int`/`float` calls remain valid.
+- [x] Native Default regression matches independently computed Python `struct` bit goldens for all five operators at both widths. Cancellation distinguishes binary32 and binary16 intermediate rounding from binary64.
+- [x] All 940 type-checker tests and strict package clippy pass.
+- [x] Current primary checkout transformer package retains all 395 GC assertions. It has no `toFloat32(0.0)` workaround anchors; the separate Phase 4/5 migration owner has been notified.
+- [ ] Verify the final Default/ML regression, aliases, signed zero and subnormals under GC, ARC and wasm32.
+- [ ] Finish full GC, ARC and wasm32 corpus lanes and transformer ARC assertions.
+
+Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.

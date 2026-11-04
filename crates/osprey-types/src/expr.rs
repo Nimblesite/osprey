@@ -1526,6 +1526,12 @@ pub(crate) fn is_deferred_arith(name: &str) -> bool {
     parse_deferred_arith(name).is_some()
 }
 
+/// Division has a result relation, not one shared overload: integer operands
+/// still yield float, and each sized-float instantiation yields its own width.
+pub(crate) fn is_monomorphic_arith(name: &str) -> bool {
+    parse_deferred_arith(name).is_some_and(|op| op != "/")
+}
+
 fn is_result(t: &Type) -> bool {
     t.is_named(names::RESULT)
 }
@@ -1613,6 +1619,15 @@ impl Checker {
     ) -> Type {
         let l = self.ctx.expose(lt);
         let r = self.ctx.expose(rt);
+        // [TYPE-NUMERIC-ARITH-WIDTH] Division's result follows its operands,
+        // except integer division, whose result remains binary64.
+        if op == "/" && self.defers(&l, &r) {
+            let result = self.ctx.fresh();
+            let name = self.located_use(&deferred_arith_name(op), position);
+            self.builtin_uses
+                .push((name, Type::fun(vec![l, r], result.clone())));
+            return result;
+        }
         let string_concat = op == "+" && (l.is_named(names::STRING) || r.is_named(names::STRING));
         if !string_concat {
             if let Some(result) = self.sized_arith(op, &l, &r) {
@@ -1832,7 +1847,7 @@ impl Checker {
         let outer = self.ctx.enter(written);
         let outer_position = self.expr_position;
         self.expr_position = position;
-        if !matches!(self.ctx.apply(&ret), Type::Var(_)) {
+        if op != "/" && !matches!(self.ctx.apply(&ret), Type::Var(_)) {
             for operand in &params {
                 if matches!(self.ctx.apply(operand), Type::Var(_)) {
                     self.push_unify(&ret, operand);

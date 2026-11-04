@@ -109,6 +109,11 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [ ] Account for the unique `wip/sized-numerics` changes on the feature branch, verify and push. Current repository instructions require the primary checkout only; the inactive historical worktree is retained solely until its unique changes have been accounted for, then removed in Phase 6.
 **Gate:** twins green on all lanes; `grep -rn 'float32(' tests examples packages` finds no emulation call.
 
+Sized division report follow-up (`docs/reviews/sized-float-polymorphic-arithmetic.md`):
+
+- [x] Reproduce the inferred helper rejection; correct the numeric guard and per-call division result relation while preserving integer and mixed binary64 division. All 940 type-checker tests and strict type-checker clippy pass (2026-11-04).
+- [ ] Verify the final bit-exact Default/ML regression under GC, ARC and wasm32, complete all three corpus lanes, and retain 395 transformer assertions under both memory backends before closing this report.
+
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
 
 - [x] `OspreyGpuBuffer` gains `elem_bytes`; `data` becomes bytes. `OspreyGpuArg` carries bytes and an element size; `osprey_gpu_arg_bytes` uses it. Metal and OpenCL adapters upload and download by byte count. C/runtime and both mock-driver suites pass; real Metal verifies byte and binary32 transfers, including output guards. Parent independently verified 16 width/empty/transient/resident cases per mock driver with exact transfer lengths and untouched output canaries; a legacy eight-byte upload mutation is rejected (2026-11-03).
