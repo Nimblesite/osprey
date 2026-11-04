@@ -73,19 +73,14 @@ Reads `count` little-endian IEEE-754 binary32 values starting at byte `offset` o
 Every failure is an `Error` whose message names the operation, the path and the reason, through the channel `readFile` uses ([BUILTIN-FILE-ERRMSG](0012-Built-InFunctions.md#failure-reasons--builtin-file-errmsg)): the operating system's own wording for a file that is missing or unreadable and for a negative `offset` (`Invalid argument`), `a negative element count`, the short-read sentence above, and `read failed` when the stream reports an error mid-way.
 
 ```osprey
-let wte = match gpuLoad("gpt2_124M.bin", 1024, 50257 * 768) {
-    Success { value } => value
-    Error { message } => zeroFloat32()
-}
+let wte = gpuLoad("gpt2_124M.bin", 1024, 50257 * 768)
 ```
 
 ```osprey-ml
-wte = match gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768)
-    Success value => value
-    Error message => zeroFloat32 ()
+wte = gpuLoad ("gpt2_124M.bin", 1024, 50257 * 768)
 ```
 
-`zeroFloat32` names the program's own fallback buffer. Every buffer-producing builtin now returns `Result` ([FAILURE-EXPLICIT]), so a fallback is obtained from a `Success` arm — a silent zero fallback has no expression.
+The value is the `Result` itself: a failed load is an `Error` the program handles where the weights are used, never replaced by fabricated zeros ([FAILURE-EXPLICIT]).
 
 ### `gpuLoadTensor(path: string, name: string) -> Result<GpuBuffer<T>, Error>` — [GPU-BUFFER-TENSOR]
 
@@ -96,16 +91,11 @@ The tensor's `shape` is read past but **not returned**: a buffer is rank-1, whic
 Errors are an `Error` naming the file or the tensor and one of: `shorter than a safetensors header prefix`, `header length is not plausible for safetensors` (above 100 MiB), `file ends inside the header`, `no tensor of that name in the header`, `dtype is not F64, F32, F16 or BF16`, the dtype mismatch sentence above, `data_offsets are missing or inverted`, `byte span is not a whole number of elements` — plus every reason [GPU-BUFFER-LOAD] reports for reading the bytes themselves.
 
 ```osprey
-let wte: GpuBuffer<float32> = match gpuLoadTensor("model.safetensors", "wte.weight") {
-    Success { value } => value
-    Error { message } => zeroFloat32()
-}
+let wte: Result<GpuBuffer<float32>, Error> = gpuLoadTensor("model.safetensors", "wte.weight")
 ```
 
 ```osprey-ml
-wte : GpuBuffer<float32> = match gpuLoadTensor ("model.safetensors", "wte.weight")
-    Success value => value
-    Error message => zeroFloat32 ()
+wte : Result<GpuBuffer<float32>, Error> = gpuLoadTensor ("model.safetensors", "wte.weight")
 ```
 
 ## Kernels
@@ -203,17 +193,12 @@ A matrix is a flat buffer plus the shape the program states, because a buffer is
 
 ```osprey
 fn linear(x, w, tokens, inputs, outputs) = gpuMatMul(x, w, tokens, inputs, outputs)
-let logits = match linear(hidden, wte, 64, 768, 50257) {
-    Success { value } => value
-    Error { message } => zeroFloat32()
-}
+let logits = linear(hidden, wte, 64, 768, 50257)
 ```
 
 ```osprey-ml
 linear (x, w, tokens, inputs, outputs) = gpuMatMul (x, w, tokens, inputs, outputs)
-logits = match linear (hidden, wte, 64, 768, 50257)
-    Success value => value
-    Error message => zeroFloat32 ()
+logits = linear (hidden, wte, 64, 768, 50257)
 ```
 
 ## Kernel purity — [GPU-KERNEL-PURE]
