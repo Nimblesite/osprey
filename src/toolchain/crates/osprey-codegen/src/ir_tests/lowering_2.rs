@@ -471,7 +471,7 @@ fn list_pattern_match_binds_head_tail_and_fixed_lengths() {
     );
     let corpus = module(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"
+        "/../../../osprey/tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp"
     )));
     shows(&corpus, &["osprey_list_get", "icmp eq i64"]);
 }

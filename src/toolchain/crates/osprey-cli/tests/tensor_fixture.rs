@@ -378,7 +378,8 @@ fn square_projects(module: &str, handlers: [&str; 2]) -> Vec<(&'static str, Opti
 /// on the GPU: `w` at byte 124, its square through the device product, single
 /// bytes at `uint8`, and each refusal naming its reason.
 #[test]
-fn a_mapped_file_region_reads_the_same_on_host_and_device() {
+fn a_mapped_file_region_reads_the_same_on_host_and_device() -> Result<(), Box<dyn std::error::Error>>
+{
     let path = manifest()
         .join("tests/fixtures/transformer.safetensors")
         .display()
@@ -407,7 +408,7 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
             .env("OSPREY_GPU", gpu)
             .output();
         assert!(output.is_ok(), "{gpu}: not run");
-        let output = output.unwrap_or_else(|_| unreachable!());
+        let output = output?;
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             expected,
@@ -417,16 +418,17 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
         let reported = String::from_utf8_lossy(&output.stderr).contains("[gpu] metal:");
         assert_eq!(reported, gpu == "metal", "{gpu}: where the product ran");
     }
-    let _ = std::fs::remove_file(&program);
+    std::fs::remove_file(&program)?;
+    Ok(())
 }
 /// [BUILTIN-FILE-BYTES] Both flavors read binary through its NUL bytes: the
 /// fixture's 8-byte header prefix is 116 then seven zeros, the F32 `0.5` at
 /// byte 124 is `00 00 00 3f`, a span past the end stops at the end, and bad
 /// numbers and a missing file are the operation's own errors.
 #[test]
-fn both_flavors_read_binary_bytes_through_every_nul() {
+fn both_flavors_read_binary_bytes_through_every_nul() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = manifest().join("tests/fixtures/transformer.safetensors");
-    let size = std::fs::metadata(&fixture).map(|m| m.len()).unwrap_or(0);
+    let size = std::fs::metadata(&fixture)?.len();
     let path = fixture.display().to_string();
     let osp = format!(
         "fn render(value: List<int>, i: int) -> string = match i >= listLength(value) {{\n    true => \"\"\n    false => \" ${{listGet(value, i) ?: -1}}${{render(value, satAdd(i, 1))}}\"\n}}\n\
@@ -449,8 +451,11 @@ fn both_flavors_read_binary_bytes_through_every_nul() {
          show(\"missing\", readFileBytes(\"/nonexistent/osprey.bin\", 0, 1))\n",
         tail = size - 2,
     );
-    let bytes = std::fs::read(&fixture).unwrap_or_default();
-    let tail = format!("{} {}", bytes[bytes.len() - 2], bytes[bytes.len() - 1]);
+    let bytes = std::fs::read(&fixture)?;
+    let [first, second] = bytes
+        .last_chunk::<2>()
+        .ok_or("fixture needs two tail bytes")?;
+    let tail = format!("{first} {second}");
     let expected = format!(
         "head 8: 116 0 0 0 0 0 0 0\nhalf 4: 0 0 0 63\ntail 2: {tail}\npast 0:\n\
          negative readFileBytes: {path}: a negative offset\n\
@@ -469,7 +474,7 @@ fn both_flavors_read_binary_bytes_through_every_nul() {
             .output();
         let _ = std::fs::remove_file(&program);
         assert!(output.is_ok(), "{ext}: not run");
-        let output = output.unwrap_or_else(|_| unreachable!());
+        let output = output?;
         assert_eq!(
             String::from_utf8_lossy(&output.stdout),
             expected,
@@ -477,6 +482,7 @@ fn both_flavors_read_binary_bytes_through_every_nul() {
             String::from_utf8_lossy(&output.stderr)
         );
     }
+    Ok(())
 }
 /// [BUILTIN-FILE-TENSOR] The CPU handler loads and multiplies over host lists
 /// with no GPU surface in the program at all: its IR names no `osprey_gpu_`
