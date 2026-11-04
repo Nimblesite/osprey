@@ -127,6 +127,7 @@ struct FieldView: View {
     @State private var draft: String
     @FocusState private var focused: Bool
     @Environment(\.ospreyInherited) private var inherited
+    private static let singleLineHeight: CGFloat = 25
 
     init(node: JSONValue, revision: Int, send: @escaping (String) -> Void) {
         self.node = node
@@ -160,7 +161,8 @@ struct FieldView: View {
             // Return is a newline at the end of the text, on every host; the application decides what it means.
             TextField("", text: $draft, prompt: Text(node.text("prompt")), axis: .vertical).lineLimit(1...12).textFieldStyle(.plain).onSubmit(returned)
         } else {
-            TextField("", text: $draft, prompt: Text(node.text("prompt"))).onSubmit(submit).textFieldStyle(inherited.quiet ? AnyTextFieldStyle(.plain) : AnyTextFieldStyle(.roundedBorder))
+            // A fixed height: left to fit, a field in a growing frame settles at 22 or 25 points from one layout to the next.
+            TextField("", text: $draft, prompt: Text(node.text("prompt"))).onSubmit(submit).textFieldStyle(inherited.quiet ? AnyTextFieldStyle(.plain) : AnyTextFieldStyle(.roundedBorder)).frame(height: Self.singleLineHeight)
         }
     }
 
