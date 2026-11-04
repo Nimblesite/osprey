@@ -17,8 +17,8 @@ mod unix {
     const MODEL: &str = "gpt2/model/model.osp";
     const TENSOR: &str = "Tensor";
     const TENSOR_HANDLES: [&str; 2] = [
-        "handle static Tensor<List<float>>",
-        "handle static Tensor<GpuBuffer<float>>",
+        "handle static Tensor<List<float32>>",
+        "handle static Tensor<GpuBuffer<float32>>",
     ];
 
     type Span = (u32, u32, u32, u32);

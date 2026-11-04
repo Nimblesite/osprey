@@ -14,5 +14,7 @@
 {"file": "Cargo.toml", "before": ["[dependencies.instant]\nversion = \"0.1\"\nfeatures = [\"wasm-bindgen\"]\n\n"], "after": [""]},
 {"file": "Cargo.toml", "before": ["[dependencies.uuid]\nversion = \"1.10\"\n\n"], "after": ["[dependencies.uuid]\nversion = \"1.10\"\n\n[dependencies.web-time]\nversion = \"1\"\n\n"]},
 {"file": "Cargo.toml", "before": ["[dependencies.paste]\nversion = \"1\"\n"], "after": ["[dependencies.paste]\nversion = \"0.2.3\"\npackage = \"pastey\"\n"]},
-{"file": "Cargo.toml", "before": ["[target.'cfg(target_os = \"windows\")'.dependencies.resvg]\nversion = \"0.45.1\"\n"], "after": ["[target.'cfg(target_os = \"windows\")'.dependencies.resvg]\nversion = \"0.48.1\"\n"]}
+{"file": "Cargo.toml", "before": ["[target.'cfg(target_os = \"windows\")'.dependencies.resvg]\nversion = \"0.45.1\"\n"], "after": ["[target.'cfg(target_os = \"windows\")'.dependencies.resvg]\nversion = \"0.48.1\"\n"]},
+{"file": "src/button/button.rs", "before": ["    Role, SharedString, StatefulInteractiveElement as _, StyleRefinement, Styled, Window, div,\n"], "after": ["    Role, SharedString, StatefulInteractiveElement, StyleRefinement, Styled, Window, div,\n"]},
+{"file": "src/button/button.rs", "before": ["impl InteractiveElement for Button {\n    fn interactivity(&mut self) -> &mut Interactivity {\n        self.base.interactivity()\n    }\n}\n"], "after": ["impl InteractiveElement for Button {\n    fn interactivity(&mut self) -> &mut Interactivity {\n        self.base.interactivity()\n    }\n}\n\nimpl StatefulInteractiveElement for Button {}\n"]}
 ]
