@@ -144,9 +144,7 @@ pub(super) fn float_binary(op: &str, n: Numeric, l: &str, r: &str) -> Emitted {
         _ => match op {
             "+" | "-" | "*" => (Ty::Num(compute), format!("((float)(({l}) {op} ({r})))")),
             "/" => (Ty::Num(compute), format!("osprey_fdiv32({l}, {r}, fault)")),
-            "==" | "!=" | "<" | "<=" | ">" | ">=" => {
-                (Ty::Bool, format!("(({l}) {op} ({r}))"))
-            }
+            "==" | "!=" | "<" | "<=" | ">" | ">=" => (Ty::Bool, format!("(({l}) {op} ({r}))")),
             _ => return Err(format!("`{op}` over floats has no device form")),
         },
     })

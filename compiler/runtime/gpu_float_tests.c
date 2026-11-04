@@ -67,36 +67,46 @@ static void expect_f32(const char *what, uint32_t a, uint32_t b, uint32_t device
   }
 }
 
-// The four float32 operations, the guarded division, and the comparisons,
-// each bit for bit against the host's binary32.
+// A separately computed IEEE ordering, including unordered NaNs and equal
+// signed zeros. This oracle uses only words, not the comparison under test.
+static void check_float32_comparisons(uint32_t wa, uint32_t wb) {
+  float a = f32_value(wa), b = f32_value(wb);
+  bool unordered = (wa & 0x7fffffffu) > 0x7f800000u || (wb & 0x7fffffffu) > 0x7f800000u;
+  bool equal = !unordered && (wa == wb || !((wa | wb) & 0x7fffffffu));
+  uint32_t ka = wa & 0x80000000u ? ~wa : wa ^ 0x80000000u;
+  uint32_t kb = wb & 0x80000000u ? ~wb : wb ^ 0x80000000u;
+  bool less = !unordered && !equal && ka < kb;
+  expect_f32("f32 eq", wa, wb, flag(a == b), flag(equal));
+  expect_f32("f32 ne", wa, wb, flag(a != b), flag(!equal));
+  expect_f32("f32 lt", wa, wb, flag(a < b), flag(less));
+  expect_f32("f32 le", wa, wb, flag(a <= b), flag(less || equal));
+  expect_f32("f32 gt", wa, wb, flag(a > b), flag(!unordered && !less && !equal));
+  expect_f32("f32 ge", wa, wb, flag(a >= b), flag(!unordered && !less));
+}
+
+// Exercise the actual shared device helpers against binary64 host arithmetic
+// rounded to binary32. Subtraction uses the emitted native expression; its
+// oracle still computes at a separate width. No expression is its own oracle.
+static void check_float32_pair(uint32_t wa, uint32_t wb) {
+  float a = f32_value(wa), b = f32_value(wb);
+  double wide_a = (double)a, wide_b = (double)b;
+  expect_f32("f32 add", wa, wb, f32_word(add32(a, b)), f32_word((float)(wide_a + wide_b)));
+  expect_f32("f32 sub", wa, wb, f32_word(a - b), f32_word((float)(wide_a - wide_b)));
+  expect_f32("f32 mul", wa, wb, f32_word(multiply32(a, b)), f32_word((float)(wide_a * wide_b)));
+  ulong fault = 0;
+  float quotient = osprey_fdiv32(a, b, &fault);
+  if (b == 0.0f) { assert(fault == FAULT_DIVIDE_BY_ZERO && quotient == 0.0f); checks += 2; }
+  else { assert(fault == 0); expect_f32("f32 div", wa, wb, f32_word(quotient), f32_word((float)(wide_a / wide_b))); }
+  check_float32_comparisons(wa, wb);
+}
+
 static void check_float32_operations(void) {
   for (unsigned i = 0; i < F32_SPECIALS; i++)
-    for (unsigned j = 0; j < F32_SPECIALS; j++) {
-      float a = f32_value(f32_specials[i]), b = f32_value(f32_specials[j]);
-      uint32_t wa = f32_specials[i], wb = f32_specials[j];
-      expect_f32("f32 add", wa, wb, f32_word(a + b), f32_word(a + b));
-      expect_f32("f32 sub", wa, wb, f32_word(a - b), f32_word(a - b));
-      expect_f32("f32 mul", wa, wb, f32_word(a * b), f32_word(a * b));
-      expect_f32("f32 div", wa, wb, f32_word(a / b), f32_word(a / b));
-      ulong fault = 0;
-      float quot = osprey_fdiv32(a, b, &fault);
-      if (b == 0.0f) { assert(fault == FAULT_DIVIDE_BY_ZERO && quot == 0.0f); checks += 2; }
-      else expect_f32("f32 fdiv", wa, wb, f32_word(quot), f32_word(a / b));
-      expect_f32("f32 eq", wa, wb, flag(a == b), flag(a == b));
-      expect_f32("f32 lt", wa, wb, flag(a < b), flag(a < b));
-      expect_f32("f32 le", wa, wb, flag(a <= b), flag(a <= b));
-    }
+    for (unsigned j = 0; j < F32_SPECIALS; j++)
+      check_float32_pair(f32_specials[i], f32_specials[j]);
   for (unsigned i = 0; i < 100000; i++) {
     uint32_t wa = (uint32_t)random_word(), wb = (uint32_t)random_word();
-    float a = f32_value(wa), b = f32_value(wb);
-    expect_f32("f32 add", wa, wb, f32_word(a + b), f32_word(a + b));
-    expect_f32("f32 sub", wa, wb, f32_word(a - b), f32_word(a - b));
-    expect_f32("f32 mul", wa, wb, f32_word(a * b), f32_word(a * b));
-    expect_f32("f32 div", wa, wb, f32_word(a / b), f32_word(a / b));
-    ulong fault = 0;
-    float quot = osprey_fdiv32(a, b, &fault);
-    if (b == 0.0f) { assert(fault == FAULT_DIVIDE_BY_ZERO && quot == 0.0f); checks += 2; }
-    else expect_f32("f32 fdiv", wa, wb, f32_word(quot), f32_word(a / b));
+    check_float32_pair(wa, wb);
   }
 }
 

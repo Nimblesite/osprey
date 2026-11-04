@@ -62,7 +62,9 @@ pub(super) fn convert(target: Ty, source: Ty, value: &str) -> Option<(Ty, String
         value.to_owned()
     } else {
         match (t, s) {
-            (Numeric::FLOAT32, Numeric::FLOAT) => format!("gpu_float32_from_bits(narrow32({value}))"),
+            (Numeric::FLOAT32, Numeric::FLOAT) => {
+                format!("gpu_float32_from_bits(narrow32({value}))")
+            }
             (Numeric::FLOAT, Numeric::FLOAT32) => format!("widen32(gpu_float32_bits({value}))"),
             (Numeric::FLOAT16, Numeric::FLOAT32) => format!("gpu_f32_narrow16({value})"),
             (Numeric::FLOAT16, Numeric::FLOAT) => {
@@ -92,7 +94,9 @@ pub(super) fn builtin(name: &str, values: &[(Ty, String)]) -> Option<Emitted> {
     if let Some(target) = conversion(name) {
         return convert(Ty::Num(target), *ty, value).map(|(ty, text)| Ok((ty, text)));
     }
-    if matches!(*ty, Ty::Num(Numeric::FLOAT32)) && matches!(name, "sqrt" | "exp" | "ln" | "tanh" | "abs") {
+    if matches!(*ty, Ty::Num(Numeric::FLOAT32))
+        && matches!(name, "sqrt" | "exp" | "ln" | "tanh" | "abs")
+    {
         return Some(Ok((*ty, format!("gpu32_{name}({value})"))));
     }
     None
@@ -120,9 +124,10 @@ impl Emitter<'_> {
         }
         let unary = |ty: Ty, text: String| Ok((ty, text));
         match (name, values.as_slice()) {
-            ("intDiv", [(Ty::Num(n), a), (Ty::Num(m), b)]) if n == m && n.is_integer() => {
-                unary(Ty::Num(*n), format!("osprey_div{}({a}, {b}, fault)", suffix(*n)))
-            }
+            ("intDiv", [(Ty::Num(n), a), (Ty::Num(m), b)]) if n == m && n.is_integer() => unary(
+                Ty::Num(*n),
+                format!("osprey_div{}({a}, {b}, fault)", suffix(*n)),
+            ),
             ("sqrt" | "exp" | "ln" | "tanh", [(Ty::FLOAT, a)]) => {
                 unary(Ty::FLOAT, format!("{name}64({a})"))
             }

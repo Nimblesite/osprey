@@ -439,7 +439,10 @@ impl Emitter<'_> {
         };
         let (ty, condition) = self.expression(value)?;
         if ty != Ty::Bool {
-            return Err(format!("a match over a {} scrutinee with boolean arms", ty.name()));
+            return Err(format!(
+                "a match over a {} scrutinee with boolean arms",
+                ty.name()
+            ));
         }
         self.branch(&condition, then, otherwise)
     }
@@ -450,7 +453,11 @@ impl Emitter<'_> {
         let (else_lines, else_ty, else_value) =
             self.nested(|emitter| emitter.expression(otherwise))?;
         if then_ty != else_ty {
-            return Err(format!("arms of a {} and a {}", then_ty.name(), else_ty.name()));
+            return Err(format!(
+                "arms of a {} and a {}",
+                then_ty.name(),
+                else_ty.name()
+            ));
         }
         let result = self.temp();
         self.line(format!("{} {result};", then_ty.compute_spelling()));
