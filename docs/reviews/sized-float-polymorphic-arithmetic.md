@@ -48,9 +48,9 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 ## Verification checklist
 
 - [x] Reproduce RED in the existing `sized_floats` corpus regression: inferred division rejects both widths and incorrectly fixes its result to `float`.
-- [x] Fix the operand guard and retain division's operand/result relation in each instantiation. Integer `/` still returns `float`; mixed `int`/`float` calls remain valid.
+- [x] Retain division's operand/result relation in each instantiation, while preserving the existing rejection for helpers fixed to binary64 by a literal. Integer `/` still returns `float`; mixed `int`/`float` calls remain valid.
 - [x] Native Default regression matches independently computed Python `struct` bit goldens for all five operators at both widths. Cancellation distinguishes binary32 and binary16 intermediate rounding from binary64.
-- [x] All 940 type-checker tests and strict package clippy pass.
+- [x] All 941 type-checker tests pass, including 20 Default/ML negative controls for fixed-binary64 helpers; strict package clippy is being rechecked.
 - [x] Current primary checkout transformer package retains all 395 GC assertions. It has no `toFloat32(0.0)` workaround anchors; the separate Phase 4/5 migration owner has been notified.
 - [x] Verify the final Default/ML regression, aliases, signed zero, subnormals and local `Result` wrappers under GC, ARC and wasm32. All nine exact-golden runs pass, including the unchanged legacy pattern-matching golden; native ARC runs each report zero live objects. Receipt: `polymorphic-verified-receipts.json`.
 - [ ] Finish full GC, ARC and wasm32 corpus lanes and final regression assertions. Transformer package GC and ARC both retain all 395 assertions (ARC: zero live objects).
@@ -58,3 +58,5 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
 
 The first wide run exposed a division `Result` regression (`good elvis = 0.0` instead of `5.0`), fixed by keeping computed numeric values monomorphic and generalizing the relation only with all its operand variables. The original golden is unchanged. Wasm transformer math assertion 4 also fails with the older release compiler; the GPU owner has its receipts, and this remains an open whole-corpus gate.
+
+The full test command caught an IR mismatch in the new ML regression, corrected by spelling its parameter and argument tuples like the Default twin. The unchanged cross-flavor IR gate now passes. A separate RED negative-control test caught an overly broad removal of the numeric guard; the guard is retained, and only the deferred division result relation changes. The report's minimal example also needs the existing `Arith.divideByZero` handler to execute; with that policy installed it prints `0.75`.

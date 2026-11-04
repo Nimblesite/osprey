@@ -258,6 +258,33 @@ mod tests {
         ok("let value = (4.0 / 2.0) * 1.5\n");
     }
 
+    /// [TYPE-NUMERIC-SAME-TYPE] A binary64 literal still fixes the overload.
+    #[test]
+    fn inferred_binary64_helpers_reject_sized_float_arguments() {
+        for op in ["+", "-", "*", "/", "%"] {
+            for width in ["32", "16"] {
+                for (flavor, source) in [
+                    (
+                        Flavor::Default,
+                        format!(
+                            "fn scale(x) = x {op} 1.5\nlet value = scale(toFloat{width}(2.0))\n"
+                        ),
+                    ),
+                    (
+                        Flavor::Ml,
+                        format!("scale x = x {op} 1.5\nvalue = scale (toFloat{width} 2.0)\n"),
+                    ),
+                ] {
+                    rejects_with(
+                        flavor,
+                        source,
+                        format!("operator `{op}` requires int or float; got float{width}"),
+                    );
+                }
+            }
+        }
+    }
+
     /// [FLOAT-OPERANDS] Aliasing and higher-order calls cannot shed the obligation.
     #[test]
     fn float_operand_constraints_follow_aliases_and_higher_order_calls() {
