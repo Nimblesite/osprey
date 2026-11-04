@@ -1,7 +1,8 @@
 //! Launch sites [GPU-BACKEND-DEVICE]: every combinator asks the runtime to
 //! run its kernel on the selected device first. The answer is 1 when the
-//! device completed the work, 0 when the host loop must run; a device failure
-//! never returns ([GPU-DEVICE-FAULT]). A kernel without a device form declines
+//! device completed the work, 0 when the host loop must run, and a negative
+//! status with a recorded reason on failure ([GPU-DEVICE-FAULT]). Callers check
+//! failure before entering either consumer. A kernel without a device form declines
 //! by name, which the host honours and a selected device rejects.
 
 use super::{install, DeviceBody, DeviceFailure, DeviceKernel, Shape, SOURCE_POINTER};

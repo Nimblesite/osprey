@@ -18,14 +18,14 @@ pub(super) fn declare(e: &mut TypeEnv) {
         "gpuMap",
         vec![0, 1],
         vec![buf_t(), Type::fun(vec![t()], v())],
-        Type::gpu_buffer(v()),
+        res(Type::gpu_buffer(v())),
     );
     poly(
         e,
         "gpuFold",
         vec![0, 1],
         vec![buf_t(), v(), Type::fun(vec![v(), t()], v())],
-        v(),
+        res(v()),
     );
     // [GPU-ZIPWITH] Elementwise binary combination of two buffers — the
     // primitive every vector, tensor, and particle workload needs.
@@ -39,7 +39,7 @@ pub(super) fn declare(e: &mut TypeEnv) {
             Type::gpu_buffer(v()),
             Type::fun(vec![t(), v()], w()),
         ],
-        Type::gpu_buffer(w()),
+        res(Type::gpu_buffer(w())),
     );
     // [GPU-IOTA] The index buffer: gather, stencil, and matrix addressing all
     // start from element indices.
@@ -52,7 +52,7 @@ pub(super) fn declare(e: &mut TypeEnv) {
         "gpuScan",
         vec![0],
         vec![buf_t(), t(), Type::fun(vec![t(), t()], t())],
-        buf_t(),
+        res(buf_t()),
     );
     // [GPU-FILTER] Stream compaction.
     poly(
@@ -60,7 +60,7 @@ pub(super) fn declare(e: &mut TypeEnv) {
         "gpuFilter",
         vec![0],
         vec![buf_t(), Type::fun(vec![t()], b())],
-        buf_t(),
+        res(buf_t()),
     );
     // [GPU-MATMUL] The dense row-major product of two float buffers at a
     // caller-stated shape — one float type for all three buffers, `float` or

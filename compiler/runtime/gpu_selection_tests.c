@@ -3,19 +3,18 @@
 // [GPU-BUFFER-RESIDENT]: the host oracle runs when the host is selected, a
 // selected device never falls back to it, a buffer is uploaded once and its
 // result downloaded once, when first read, and a fault or a kernel without a
-// device form aborts by name.
+// device form returns a failure with its reason.
 #include "gpu_device.h"
 #include "gpu_opencl_api.h"
 #include "io_error.h"
-#include "test_death.h"
 #include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
+void *osprey_gpu_data(void *buffer);
+int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
@@ -280,50 +279,97 @@ static void invalid_case(void) {
   assert(!osprey_gpu_matmul(a, a, 1, 1, 1, 8) && strstr(osp_io_error(), "unknown backend") != NULL);
 }
 
-// Runs `scenario` in a child that must abort with `expected` on stderr.
-static void aborts(void (*scenario)(void), const char *expected) {
-  int pipes[2];
-  assert(pipe(pipes) == 0);
-  pid_t child = fork();
-  assert(child >= 0);
-  if (!child) {
-    // The guard's own lines count: dump the coverage counters before the abort.
-    (void)signal(SIGABRT, osp_death_dump_and_reraise);
-    assert(dup2(pipes[1], 2) >= 0);
-    scenario();
-    _exit(0);
-  }
-  close(pipes[1]);
-  char text[1024] = {0};
-  ssize_t n = read(pipes[0], text, sizeof text - 1);
-  close(pipes[0]);
-  int status = 0;
-  assert(waitpid(child, &status, 0) == child && n > 0);
-  assert(WIFSIGNALED(status) && strstr(text, expected) != NULL);
+// [FAILURE-EXPLICIT] Preserve every former death-test input and reason as a
+// handled status; an Error never masquerades as a device success or host retry.
+static void fails(int32_t status, const char *expected) {
+  assert(status == -1);
+  if (!osp_io_error() || !strstr(osp_io_error(), expected))
+    fprintf(stderr, "expected failure %s; actual %s\n", expected, osp_io_error() ? osp_io_error() : "missing");
+  assert(osp_io_error() && strstr(osp_io_error(), expected) != NULL);
+  osp_io_error_clear();
+  device_error = 0;
+#if defined(OSPREY_GPU_METAL) || defined(OSPREY_GPU_OPENCL)
+  injected_fault = 0;
+#endif
 }
 
-static void declined_on_device(void) {
+static int32_t declined_on_device(void) {
   select_mode("auto");
-  (void)osprey_gpu_declined("gpuScan over a kernel the device cannot run");
+  return osprey_gpu_declined("gpuScan over a kernel the device cannot run");
 }
 #if defined(OSPREY_GPU_METAL)
-static void faulting_launch(void) {
+static int32_t faulting_launch(void) {
   select_mode("auto");
   injected_fault = OSPREY_GPU_FAULT_OVERFLOW;
-  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
+  return launch(osprey_gpu_alloc(1, 8), "", NULL);
 }
-static void too_many_uniforms(void) {
+static int32_t too_many_uniforms(void) {
   select_mode("auto");
   int64_t uniforms[OSPREY_GPU_MAX_ARGS] = {0};
   char kinds[OSPREY_GPU_MAX_ARGS + 1];
   memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
   kinds[OSPREY_GPU_MAX_ARGS] = '\0';
-  (void)launch(osprey_gpu_alloc(1, 8), kinds, uniforms);
+  return launch(osprey_gpu_alloc(1, 8), kinds, uniforms);
 }
-static void device_failure_on_launch(void) {
+static int32_t device_failure_on_launch(void) {
   select_mode("auto");
   device_error = 1;
-  (void)launch(osprey_gpu_alloc(1, 8), "", NULL);
+  return launch(osprey_gpu_alloc(1, 8), "", NULL);
+}
+
+// [FAILURE-EXPLICIT] [GPU-DEVICE-FAULT] A recorded device fault, a refused
+// decline and a dispatch failure are failures the caller handles: -1 with the
+// reason on the io_error channel, never an abort. The same launch works again
+// once the device recovers, so a failure leaves nothing to retry behind.
+static void handled_launch_failure(void) {
+  select_mode("auto");
+  void *out = osprey_gpu_alloc(1, 8);
+  injected_fault = OSPREY_GPU_FAULT_DIVIDE_BY_ZERO;
+  osp_io_error_clear();
+  assert(launch(out, "", NULL) == -1);
+  assert(strstr(osp_io_error(), "kernel: osprey_kernel_1") != NULL);
+  assert(strstr(osp_io_error(), "division by zero") != NULL);
+  injected_fault = 0;
+  osp_io_error_clear();
+  assert(launch(out, "", NULL) == 1 && !osp_io_error());
+  int64_t uniforms[OSPREY_GPU_MAX_ARGS] = {0};
+  char kinds[OSPREY_GPU_MAX_ARGS + 1];
+  memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
+  kinds[OSPREY_GPU_MAX_ARGS] = '\0';
+  osp_io_error_clear();
+  assert(launch(osprey_gpu_alloc(1, 8), kinds, uniforms) == -1);
+  assert(strstr(osp_io_error(), "too many kernel arguments") != NULL);
+  device_error = 1;
+  osp_io_error_clear();
+  assert(launch(osprey_gpu_alloc(1, 8), "", NULL) == -1 && osp_io_error());
+  device_error = 0;
+  osp_io_error_clear();
+  assert(launch(osprey_gpu_alloc(1, 8), "", NULL) == 1 && !osp_io_error());
+  osp_io_error_clear();
+  assert(osprey_gpu_declined("gpuScan over a kernel the device cannot run") == -1);
+  assert(strstr(osp_io_error(), "cannot run it") != NULL);
+}
+
+// [FAILURE-EXPLICIT] A readback that fails records its reason and yields no
+// words: no accessor aborts, a host write is refused rather than landing in
+// half-current data, and the retry after recovery returns the device's result.
+static void handled_readback_failure(int64_t mark) {
+  select_mode("auto");
+  void *out = osprey_gpu_alloc(1, 8);
+  int64_t *host_words = osprey_gpu_data(out);
+  assert(host_words && *host_words == 0);
+  assert(launch(out, "", NULL) == 1);
+  device_error = 1;
+  osp_io_error_clear();
+  assert(osprey_gpu_data(out) == NULL);
+  assert(strcmp(osp_io_error(), "mock: readback: injected download failure") == 0);
+  assert(osprey_gpu_get(out, 0) == 0 && osp_io_error() != NULL);
+  osprey_gpu_set(out, 0, 99);
+  assert(*host_words == 0 && osprey_gpu_len(out) == 1);
+  assert(strcmp(osp_io_error(), "mock: readback: injected download failure") == 0);
+  device_error = 0;
+  osp_io_error_clear();
+  assert(osprey_gpu_get(out, 0) == mark && !osp_io_error());
 }
 #endif
 
@@ -332,10 +378,12 @@ int main(void) {
   assert(osprey_gpu_buffer_tests(0, NULL) == 0);
 #if defined(OSPREY_GPU_METAL)
   device_case("auto", 1, "metal:mock"); device_case("metal", 1, "metal:mock");
-  aborts(faulting_launch, "kernel osprey_kernel_1: integer overflow");
-  aborts(declined_on_device, "gpuScan over a kernel the device cannot run; a selected device cannot run it");
-  aborts(too_many_uniforms, "too many kernel arguments");
-  aborts(device_failure_on_launch, "kernel osprey_kernel_1:");
+  handled_launch_failure();
+  handled_readback_failure(42);
+  fails(faulting_launch(), "kernel: osprey_kernel_1: integer overflow");
+  fails(declined_on_device(), "gpuScan over a kernel the device cannot run; a selected device cannot run it");
+  fails(too_many_uniforms(), "too many kernel arguments");
+  fails(device_failure_on_launch(), "kernel: osprey_kernel_1:");
 #else
 #if defined(OSPREY_GPU_OPENCL)
   device_case("auto", 1, "opencl:mock");
@@ -343,7 +391,7 @@ int main(void) {
   device_case("auto", 0, "unavailable:device");
 #endif
   device_case("metal", 0, "unavailable:device");
-  aborts(declined_on_device, "a selected device cannot run it");
+  fails(declined_on_device(), "a selected device cannot run it");
 #endif
 #if defined(OSPREY_GPU_OPENCL)
   device_case("opencl", 1, "opencl:mock");
@@ -354,6 +402,6 @@ int main(void) {
   assert(unsetenv("OSPREY_GPU_TRACE") == 0 && osprey_gpu_traced(1) && !osprey_gpu_traced(2));
   assert(setenv("OSPREY_GPU_TRACE", "0", 1) == 0 && !osprey_gpu_traced(2));
   assert(setenv("OSPREY_GPU_TRACE", "1", 1) == 0 && osprey_gpu_traced(2));
-  puts("[ok] GPU selection: host, auto, Metal, OpenCL, missing adapter, compiled-kernel launch, resident buffers uploaded once and read back on demand, faults and declines abort by name, trace switch and no silent CPU fallback");
+  puts("[ok] GPU selection: host, auto, Metal, OpenCL, missing adapter, compiled-kernel launch, resident buffers uploaded once and read back on demand, handled faults, declines and readback failures with their reasons, trace switch and no silent CPU fallback");
   return 0;
 }

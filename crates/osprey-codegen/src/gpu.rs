@@ -19,6 +19,7 @@ use crate::gpu_kernel::{extract, kernel_elem, kernel_of, slot};
 use crate::iter::{acc_init, acc_result, acc_step, invoke, nth, Callback};
 use crate::llty::{LType, Value};
 use crate::loops::{close_range_loop, open_range_loop};
+use allocation::{host_fallback, rejoin, Operation};
 use buffer::{kept_counter, push_if_kept, take_kept};
 use osprey_ast::{Expr, NamedArgument};
 
@@ -212,21 +213,6 @@ fn kernel_loop(
     Ok(())
 }
 
-/// Branch to the host loop only when the runtime did not run the kernel on
-/// the device ([GPU-BACKEND-DEVICE]); the loop rejoins at the returned label.
-fn host_fallback(cg: &mut Codegen, done: &str) -> String {
-    let (host, join) = (cg.fresh_label(), cg.fresh_label());
-    let ran = cg.emit_reg(format!("icmp ne i32 {done}, 0"));
-    cg.emit(format!("br i1 {ran}, label %{join}, label %{host}"));
-    cg.start_block(&host);
-    join
-}
-
-fn rejoin(cg: &mut Codegen, join: &str) {
-    cg.emit(format!("br label %{join}"));
-    cg.start_block(join);
-}
-
 /// The shared chassis of `gpuMap`/`gpuZipWith`: `launch` asks the device to
 /// fill the fresh `len`-element buffer, and otherwise `apply` runs at every
 /// index of `src` and each scalar result is stored at that index. The
@@ -235,17 +221,26 @@ fn rejoin(cg: &mut Codegen, join: &str) {
 /// kernel signature.
 fn map_into(
     cg: &mut Codegen,
-    src: &Value,
+    sources: &[&Value],
     len: &str,
     elem: Option<LType>,
     what: &str,
     launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
+    let src = sources
+        .first()
+        .ok_or_else(|| CodegenError::unsupported("a GPU map requires an input"))?;
+    let operation = Operation::new(cg);
     let pending = allocation::Pending::new(cg, len);
     let out = &pending.value;
+    operation.allocated(cg, out);
     let done = launch(cg, out)?;
+    operation.status(cg, &done);
     let join = host_fallback(cg, &done);
+    for source in sources {
+        operation.readable(cg, source);
+    }
     let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
         let mapped = apply(cg, arg, i)?;
@@ -255,7 +250,7 @@ fn map_into(
         Ok(())
     })?;
     rejoin(cg, &join);
-    pending.finish(cg, Some(mapped_ty))
+    operation.finish(cg, |cg| pending.finish(cg, Some(mapped_ty)))
 }
 
 /// `(buffer, kernel)` — the preamble `gpuMap` and `gpuFilter` share: the source
@@ -275,7 +270,7 @@ fn gpu_map(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let len = buffer_len(cg, &src);
     map_into(
         cg,
-        &src,
+        &[&src],
         &len,
         elem,
         "a gpuMap kernel result",
@@ -295,7 +290,7 @@ fn gpu_zip_with(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let slots = [slot(left_elem), slot(right_elem)];
     map_into(
         cg,
-        &left,
+        &[&left, &right],
         &len,
         left_elem,
         "a gpuZipWith kernel result",
@@ -374,6 +369,7 @@ fn step(cg: &mut Codegen, r: &Reduction, arg: Value) -> Result<()> {
 /// `gpuFold(buffer, initial, combine)` — reduce to one scalar [GPU-FOLD].
 fn gpu_fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let r = reduction(cg, args, "gpuFold")?;
+    let operation = Operation::new(cg);
     let done = launch_fold(
         cg,
         &r.combine,
@@ -382,10 +378,12 @@ fn gpu_fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &r.acc,
         &r.len,
     )?;
+    operation.status(cg, &done);
     let join = host_fallback(cg, &done);
+    operation.readable(cg, &r.src);
     kernel_loop(cg, &r.src, &r.len, r.elem, |cg, arg, _| step(cg, &r, arg))?;
     rejoin(cg, &join);
-    Ok(acc_result(cg, &r.acc, &r.tmpl))
+    operation.finish(cg, |cg| Ok(acc_result(cg, &r.acc, &r.tmpl)))
 }
 
 /// `gpuIota(n)` — the index buffer `[0, n)` [GPU-IOTA]. Gather, stencil, and
@@ -418,7 +416,9 @@ fn gpu_iota(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// backend can swap in a work-efficient parallel scan without changing meaning.
 fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let r = reduction(cg, args, "gpuScan")?;
+    let operation = Operation::new(cg);
     let out = buffer_alloc(cg, &r.len, elem_owner(Some(r.tmpl.ty)));
+    operation.allocated(cg, &out);
     let done = launch_sequence(
         cg,
         &r.combine,
@@ -428,7 +428,9 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &r.len,
         Shape::Scan,
     )?;
+    operation.status(cg, &done);
     let join = host_fallback(cg, &done);
+    operation.readable(cg, &r.src);
     kernel_loop(cg, &r.src, &r.len, r.elem, |cg, arg, i| {
         step(cg, &r, arg)?;
         // The slot already holds the boxed running value — exactly a buffer
@@ -438,7 +440,7 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         Ok(())
     })?;
     rejoin(cg, &join);
-    Ok(out)
+    operation.finish(cg, |_| Ok(out))
 }
 
 /// `gpuFilter(buffer, predicate)` — stream compaction [GPU-FILTER]. The output
@@ -447,7 +449,9 @@ fn gpu_scan(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let (src, elem, predicate) = unary_kernel(cg, args)?;
     let len = buffer_len(cg, &src);
+    let operation = Operation::new(cg);
     let out = buffer_alloc(cg, &len, elem_owner(elem));
+    operation.allocated(cg, &out);
     let kept = kept_counter(cg);
     let done = launch_sequence(
         cg,
@@ -458,7 +462,9 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         &len,
         Shape::Filter,
     )?;
+    operation.status(cg, &done);
     let join = host_fallback(cg, &done);
+    operation.readable(cg, &src);
     kernel_loop(cg, &src, &len, elem, |cg, arg, _i| {
         // The loop already loaded this element: box the typed value back to its
         // storage word rather than reading the buffer a second time per element.
@@ -470,5 +476,5 @@ fn gpu_filter(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     })?;
     rejoin(cg, &join);
     take_kept(cg, &out, &kept);
-    Ok(out)
+    operation.finish(cg, |_| Ok(out))
 }

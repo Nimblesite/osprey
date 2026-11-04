@@ -41,7 +41,6 @@ fn assert_conversion_pair(source: Numeric, target: Numeric) {
     assert!(!ir.contains("@osprey_gpu_declined"), "{ty} -> {name}: {ir}");
     shows(&ir, &["call i32 @osprey_gpu_launch("]);
 }
-
 #[test]
 fn every_valid_numeric_conversion_pair_has_a_device_form() {
     for source in Numeric::ALL {
@@ -52,7 +51,6 @@ fn every_valid_numeric_conversion_pair_has_a_device_form() {
         }
     }
 }
-
 #[test]
 fn captured_half_uniforms_convert_from_their_binary32_compute_type() {
     // [GPU-DEVICE-NATIVE]: a half uniform is stored as bits but bound as float.
@@ -61,7 +59,6 @@ fn captured_half_uniforms_convert_from_their_binary32_compute_type() {
         assert!(!ir.contains("@osprey_gpu_declined"), "to{target}: {ir}");
     }
 }
-
 #[test]
 fn device_integer_conversions_record_overflow_instead_of_silently_wrapping() {
     // [BUILTIN-CONVERT-INT] [GPU-DEVICE-FAULT]: the source must reach the
@@ -78,24 +75,35 @@ fn device_integer_conversions_record_overflow_instead_of_silently_wrapping() {
         );
     }
 }
-
 #[test]
 fn dense_buffer_allocations_follow_the_inferred_element_width() {
     // [GPU-BUFFER-ELEM]: storage width is independent of the boxed list ABI.
     for (ty, value, width, storage) in DENSE_ROWS {
-        let ir = module(&format!("let values: List<{ty}> = [{value}]\nmatch toGpu(values) {{ Success {{ value }} => {{ let buffer = value\nmatch toGpu(range(0, 1)) {{ Success {{ value }} => {{ let indices = value\nlet gathered = gpuZipWith(indices, buffer, fn(index, value) => gpuGet(buffer, index) ?: value)\nprint(fromGpu(gathered)) }} Error {{ message }} => print(message) }} }} Error {{ message }} => print(message) }}\n"));
-        let call = ir
+        let ir = module(&format!("let values: List<{ty}> = [{value}]\nmatch toGpu(values) {{ Success {{ value }} => {{ let buffer = value\nmatch toGpu(range(0, 1)) {{ Success {{ value }} => {{ let indices = value\nmatch gpuZipWith(indices, buffer, fn(index, value) => gpuGet(buffer, index) ?: value) {{ Success {{ value }} => print(fromGpu(value)) Error {{ message }} => print(message) }} }} Error {{ message }} => print(message) }} }} Error {{ message }} => print(message) }}\n"));
+        let host = function_body(&ir, "define i32 @main()");
+        shows(&host, &["icmp slt i32", "call i32 @osprey_gpu_readable("]);
+        let call = host
             .lines()
             .find(|line| line.contains("call i8* @osprey_gpu_alloc("))
             .expect("allocation");
         assert!(call.ends_with(&format!(", i64 {width})")), "{ty}: {call}");
-        for call in ir
+        for call in host
             .lines()
             .filter(|line| line.contains("call i8* @osprey_gpu_alloc("))
-            .take(2)
         {
             let allocated = call.split(" = ").next().expect("allocation result").trim();
-            shows(&ir, &[&format!("icmp eq i8* {allocated}, null")]);
+            shows(&host, &[&format!("icmp eq i8* {allocated}, null")]);
+            let rest = host.split_once(call).expect("allocation in host").1;
+            let guarded = rest
+                .find(&format!("icmp eq i8* {allocated}, null"))
+                .expect("NULL guard");
+            let used = rest
+                .find("call i32 @osprey_gpu_launch(")
+                .unwrap_or(rest.len());
+            assert!(
+                guarded < used,
+                "{ty}: launch must follow allocation guard: {rest}"
+            );
         }
         for parameter in [
             format!("GPU_GLOBAL const {storage} *in1"),
@@ -106,7 +114,6 @@ fn dense_buffer_allocations_follow_the_inferred_element_width() {
         }
     }
 }
-
 #[test]
 fn gpu_get_checks_readback_before_loading_a_scalar() {
     // [FAILURE-EXPLICIT] A failed download cannot publish a fabricated value.
@@ -120,7 +127,6 @@ fn gpu_get_checks_readback_before_loading_a_scalar() {
     assert!(body[ready..value].contains("icmp sle i32"), "{body}");
     assert!(body[ready..value].contains("br i1"), "{body}");
 }
-
 #[test]
 fn gpu_materialization_checks_readback_before_loading_any_scalar() {
     // [FAILURE-EXPLICIT] Bulk readback must carry the same reason as gpuGet.
@@ -134,14 +140,12 @@ fn gpu_materialization_checks_readback_before_loading_any_scalar() {
     assert!(body[ready..value].contains("select i1"), "{body}");
     assert!(ir.contains("fromGpu: buffer unavailable"), "{body}");
 }
-
 #[test]
 fn an_immediately_called_lambda_keeps_its_device_capture() {
     // [GPU-KERNEL-FORM] The ML workload calls nested lambdas over captures.
     let ir = module("let k = toFloat32(3.0)\nlet xs = toGpu([toFloat32(2.0)])\nprint(fromGpu(gpuMap(xs, fn(x) => (fn(z) => k * z)(x))))\n");
     assert!(!ir.contains("a computed callee has no device form"), "{ir}");
 }
-
 #[test]
 fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
     // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
@@ -151,7 +155,6 @@ fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
         &["GPU_GLOBAL const bool *in0", "GPU_GLOBAL const bool *u0"],
     );
 }
-
 #[test]
 fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
     let ir = module("extern fn abs(value: int) -> int\nlet answer = abs(-3)\n");
@@ -162,7 +165,6 @@ fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
         .to_string()
         .contains("foreign function `abs` has no device form"));
 }
-
 #[test]
 fn foreign_calls_fail_before_each_gpu_launch_form() {
     for expression in [
@@ -178,14 +180,12 @@ fn foreign_calls_fail_before_each_gpu_launch_form() {
             .contains("foreign function `abs` has no device form"));
     }
 }
-
 #[test]
 fn foreign_kernel_aliases_do_not_capture_a_nearer_local_function() {
     let ir = module("extern fn importedWord(value: int) -> int\nfn main() = {\nlet importedWord = fn(value) => wrapMul(value, 2)\nlet selected = importedWord\nlet out = gpuMap(toGpu([3]), selected)\nprint(gpuLength(out))\n}\n");
     shows(&ir, &["mul i64"]);
     testkit::contents(&ir, &[], &["call i64 @importedWord("]);
 }
-
 #[test]
 fn named_device_callbacks_keep_their_defining_scope() {
     let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    let out = toGpu([3.0]) |> gpuMap(fn(x) => caller(100.0, x))\n    print(gpuLength(out))\n}\n");
@@ -222,7 +222,6 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
     shows(&host, &["call double @__gpu_kernel_0(double "]);
     testkit::contents(&host, &[], &["fmul double"]);
 }
-
 #[test]
 fn each_distinct_kernel_gets_its_own_symbol() {
     let ir = module(
@@ -242,7 +241,6 @@ fn each_distinct_kernel_gets_its_own_symbol() {
         ],
     );
 }
-
 #[test]
 fn captures_become_leading_parameters_sorted_by_name() {
     // Uniforms lead the element slot and are ordered by identifier —
@@ -265,7 +263,6 @@ fn captures_become_leading_parameters_sorted_by_name() {
     let host = function_body(&ir, "define internal i64 @f()");
     shows(&host, &["@__gpu_kernel_0(double 2.0, double 5.0, double "]);
 }
-
 #[test]
 fn a_captured_buffer_handle_travels_as_a_uniform() {
     let ir = module(
@@ -281,7 +278,6 @@ fn a_captured_buffer_handle_travels_as_a_uniform() {
         &["define internal double @__gpu_kernel_0(i8* %$p0, i64 %$p1)"],
     );
 }
-
 #[test]
 fn a_fold_kernel_takes_uniforms_then_accumulator_then_element() {
     let ir = module(
@@ -296,7 +292,6 @@ fn a_fold_kernel_takes_uniforms_then_accumulator_then_element() {
     let kernel = function_body(&ir, header);
     shows(&kernel, &["fmul double %$p0, %$p2", "fadd double %$p1,"]);
 }
-
 #[test]
 fn a_named_kernel_reuses_its_own_definition() {
     // A named function already has an emitted symbol the loop calls, so
@@ -317,7 +312,6 @@ fn a_named_kernel_reuses_its_own_definition() {
     assert_eq!(ir.matches("define internal double @twice(").count(), 1);
     assert!(function_body(&ir, "define internal i64 @f()").contains("call double @twice(double "));
 }
-
 #[test]
 fn a_known_let_bound_kernel_is_extracted() {
     let ir = module("fn f() = { let k = fn(v) => v * 2.0\n let out = toGpu([1.0, 2.0]) |> gpuMap(k)\n gpuLength(out) }\nprint(f())\n");
@@ -334,7 +328,6 @@ fn a_known_let_bound_kernel_is_extracted() {
     shows(&host, &["call double @__gpu_kernel_0(double "]);
     testkit::contents(&host, &[], &["fmul double"]);
 }
-
 #[test]
 fn a_closure_valued_kernel_keeps_its_cell_call() {
     // A factory result is opaque; its environment retains the ordinary cell ABI.
@@ -349,7 +342,6 @@ fn a_closure_valued_kernel_keeps_its_cell_call() {
     );
     assert!(!ir.contains(KERNEL_PREFIX), "{ir}");
 }
-
 #[test]
 fn a_result_returning_kernel_keeps_its_scalar_diagnostic() {
     // `checkedMul` makes the kernel return Result<int, Error> (`*` itself
@@ -368,7 +360,6 @@ fn a_result_returning_kernel_keeps_its_scalar_diagnostic() {
         "{err}"
     );
 }
-
 #[test]
 fn twin_flavors_number_their_kernels_identically() {
     // Kernel symbols come from a counter advanced in AST walk order, never
@@ -412,7 +403,6 @@ fn assert_one_bracketed_call(ir: &str, symbol: &str) {
     let take = host.find("call i8* @osp_io_error_take()").unwrap_or(0);
     assert!(clear < at && at < take, "{host}");
 }
-
 #[test]
 fn gpu_matmul_is_one_bracketed_runtime_call() {
     let ir = module(
@@ -425,7 +415,6 @@ fn gpu_matmul_is_one_bracketed_runtime_call() {
     );
     assert_one_bracketed_call(&ir, "osprey_gpu_matmul");
 }
-
 #[test]
 fn gpu_load_is_one_bracketed_runtime_call() {
     let ir = module(
@@ -437,7 +426,6 @@ fn gpu_load_is_one_bracketed_runtime_call() {
     );
     assert_one_bracketed_call(&ir, "osprey_gpu_load_f32");
 }
-
 #[test]
 fn gpu_load_tensor_is_one_bracketed_runtime_call() {
     let ir = module(
@@ -469,7 +457,6 @@ fn sqrt_exp_log_are_llvm_intrinsics_and_tanh_is_libm() {
         ],
     );
 }
-
 #[test]
 fn a_float_function_by_name_is_an_extracted_kernel_in_both_flavors() {
     // `gpuMap(exp)` lifts the builtin into a scalar kernel whose body is the

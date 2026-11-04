@@ -168,14 +168,6 @@ static void uniform_argument(OspreyGpuDispatch *dispatch, char kind, int64_t wor
   }
 }
 
-// Broken-code quarantine: a failed load, product or kernel launch used to
-// become an empty buffer, and GPT-2 generated from fabricated zeros. Every
-// handler and launch site aborts through this instead.
-void *osprey_gpu_panic(const char *message) {
-  (void)fprintf(stderr, "GPU execution cannot continue: %s\n", message ? message : "unknown GPU failure");
-  abort();
-}
-
 static const char *fault_message(int64_t fault) {
   switch (fault) {
   case OSPREY_GPU_FAULT_OVERFLOW: return "integer overflow, which no device kernel can hand to an Arith policy";
@@ -185,17 +177,16 @@ static const char *fault_message(int64_t fault) {
   }
 }
 
-// Broken-code quarantine: a `gpuMap` has no error channel, so a device failure
-// aborts naming the kernel rather than continuing with an unwritten buffer.
-static int32_t abort_launch(const char *kernel, const char *reason) {
+// [FAILURE-EXPLICIT] Preserve the kernel name and the operation's reason.
+static int32_t failed_launch(const char *kernel, const char *reason) {
   char text[512];
-  (void)snprintf(text, sizeof text, "kernel %s: %s", kernel, reason ? reason : "device failure");
-  (void)osprey_gpu_panic(text);
+  (void)snprintf(text, sizeof text, "%s", reason ? reason : "device failure");
+  osp_io_error_text("kernel", kernel, text);
   return -1;
 }
 
 // A compiled kernel's launch site [GPU-BACKEND-DEVICE]: 1 when the device ran
-// the kernel, 0 when the host loop must run. A map runs one thread per
+// the kernel, 0 when the host loop must run, -1 with a recorded failure. A map runs one thread per
 // element into `out`, a buffer left on the device [GPU-BUFFER-RESIDENT]; a
 // fold runs one thread over `count` elements seeded from and reducing into
 // `acc`, the host's accumulator. The `kinds` string names each uniform's kind.
@@ -212,8 +203,8 @@ int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *ki
   if (acc && out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   for (size_t i = 0; kinds[i]; i++) uniform_argument(&dispatch, kinds[i], uniforms[i]);
   int status = settled(osprey_gpu_device_dispatch(&dispatch), out);
-  if (status < 0) return abort_launch(kernel, osp_io_error());
-  if (status > 0 && fault) return abort_launch(kernel, fault_message(fault));
+  if (status < 0) return failed_launch(kernel, osp_io_error());
+  if (status > 0 && fault) return failed_launch(kernel, fault_message(fault));
   return status;
 }
 
@@ -223,10 +214,10 @@ int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *ki
 int32_t osprey_gpu_declined(const char *what) {
   int selected = device_selection();
   if (!selected) return 0;
-  if (selected < 0) return abort_launch(what, osp_io_error());
+  if (selected < 0) return failed_launch(what, osp_io_error());
   char text[512];
   (void)snprintf(text, sizeof text, "%s; a selected device cannot run it", what);
-  (void)osprey_gpu_panic(text);
+  osp_io_error_text("gpu", "kernel decline", text);
   return -1;
 }
 
@@ -334,15 +325,15 @@ static int synchronize(OspreyGpuBuffer *b) {
 
 static OspreyGpuBuffer *current(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
-  if (synchronize(b) < 0) (void)osprey_gpu_panic(osp_io_error());
+  if (synchronize(b) < 0) return NULL;
   return b;
 }
 
 // The current words themselves, for the host-backend operations in gpu_host.c
 // that walk whole buffers (the dense product, the file loaders) and read-outs;
-// NULL for an empty or failed buffer, whose length is 0, so a caller bounding
-// its loops by osprey_gpu_len never dereferences it. Only a buffer no kernel
-// has used yet is written through this pointer.
+// NULL for an empty buffer or failed synchronization. Read-status gates must
+// precede non-empty access; failed readback retains length and stale state for
+// retry. Only a buffer no kernel has used yet is written through this pointer.
 void *osprey_gpu_data(void *buffer) {
   return stored(current(buffer));
 }
