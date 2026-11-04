@@ -74,3 +74,5 @@ Final focused verification at `02d1c952`: all nine Default/ML/legacy golden comp
 The next full-suite pass reached the exact must-reject diagnostics gate and exposed ordering drift in the Default/ML `float_operand_constraint` cases. The checker now inserts late division diagnostics at their original obligation site; the complete rejection-golden gate passes with every golden unchanged.
 
 The host `make test` pass precedes the wasm-only runtime follow-up. After that follow-up, the rebuilt wasm runtime passes the complete wasm corpus, the 400-case wasm proof suite and both flavors of the focused regression under all three execution lanes; the native `tanhf` path and compiler lowering are unchanged.
+
+PR #339 cross-platform follow-up: the earlier `6612e263` Linux jobs also fail to link the binary32 libm symbols (`expf`, `logf`, `tanhf`) and differ in generated NaN signs. Those are distinct from the division bit regressions and remain with the CI owner; the local wasm follow-up is held for a coordinated push so it does not cancel the live run. Local passes above do not claim the PR CI is green.
