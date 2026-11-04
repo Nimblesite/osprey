@@ -1,8 +1,8 @@
 # FastAPI in Python flavor Osprey
 
-An independent port of FastAPI's public behavior, targeting the API use cases in NimblesiteAgenticPlatform (the local successor repository to NimblesiteAgenticFramework). This is implementation work in progress: it is not yet a replacement for that application's CPython server.
+A port of FastAPI's public behavior, targeting the API use cases in NimblesiteAgenticPlatform (the local successor repository to NimblesiteAgenticFramework). This is implementation work in progress: it is not yet a replacement for that application's CPython server.
 
-The reference is FastAPI 0.135.3, pinned in NAP's `uv.lock`. Source modules are original Osprey code under MIT from NIMBLESITE PTY LTD, Australia; see [NOTICE.md](NOTICE.md). Compiled applications do not embed the CPython framework.
+The reference is FastAPI 0.135.3, pinned in NAP's `uv.lock`. This port is MIT licensed by NIMBLESITE PTY LTD, Australia, and retains FastAPI's MIT notice, Copyright (c) 2018 Sebastián Ramírez; see [NOTICE.md](NOTICE.md). Compiled applications do not embed the CPython framework.
 
 ## HTTP boundary [FASTAPI-HTTP]
 

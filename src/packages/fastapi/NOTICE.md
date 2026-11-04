@@ -1,7 +1,7 @@
-# FastAPI behavior port
+# FastAPI port: licensing and acknowledgement
 
-This Python flavor Osprey implementation is licensed under MIT, copyright NIMBLESITE PTY LTD, Australia. The package LICENSE contains the distribution terms.
+This package is a port of [FastAPI](https://github.com/fastapi/fastapi), pinned to 0.135.3, the version in NimblesiteAgenticPlatform's uv.lock. FastAPI is MIT licensed, Copyright (c) 2018 Sebastián Ramírez. We aim not to copy its Python code verbatim, but a port inevitably resembles the original, so FastAPI's copyright and permission notice is retained in [LICENSES/FastAPI-MIT.txt](LICENSES/FastAPI-MIT.txt) and applies to everything here derived from FastAPI.
 
-API and behavioral reference: [FastAPI](https://github.com/fastapi/fastapi), pinned to 0.135.3, the version in NimblesiteAgenticPlatform's uv.lock. FastAPI is MIT licensed, copyright Sebastián Ramírez. Its independent implementation is not included in this package; names and observed public protocol behavior guide this port. No upstream implementation or documentation text has been copied into these source modules.
+The Osprey implementation is licensed under MIT, copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE). This does not replace or claim ownership of FastAPI's rights.
 
-The reference framework is not a dependency of compiled Osprey applications. Development oracle runs use the separately installed upstream distribution and its own license. If upstream implementation or substantial documentation is incorporated later, its original copyright and permission notice must accompany that material; the Nimblesite MIT license does not replace those rights.
+FastAPI is not a dependency of compiled Osprey applications. Development oracle runs use the separately installed upstream distribution under its own license.
