@@ -4,7 +4,7 @@ normalization compared with the real `tokenizers` package's output
 (scripts/oracles/tokenizers.py generates tests/expected.py)."""
 from testing import Check
 from tokenizers_expected import Expected
-from tokenizers.Decoders import byte_fallback_decode_chain, metaspace_decode_chain, wordpiece_decode
+from tokenizers.Decoders import byte_fallback_decode_chain, metaspace_decode_chain, utf8_decode, wordpiece_decode
 from tokenizers.Models import (
     Token, build_unigram, build_wordlevel, build_wordpiece, char_starts,
     id_to_token, unigram_encode, unigram_tokenize, wordlevel_tokenize, wordpiece_tokenize,
@@ -21,8 +21,8 @@ from tokenizers.Tokenizer import (
     wordpiece_encode, wordpiece_encode_pair,
 )
 from tokenizers.Unicode import (
-    is_chinese_char, is_control, is_numeric, is_punctuation, is_whitespace,
-    is_word_char, lowercase, strip_base,
+    cps_text, is_chinese_char, is_control, is_numeric, is_punctuation,
+    is_whitespace, is_word_char, lowercase, strip_base, text_cps,
 )
 
 
@@ -361,9 +361,52 @@ def direct_cases():
     ])
 
 
+def utf8_cases():
+    """The UTF-8 decoder over long text and every malformed shape.
+
+    A per-codepoint recursion overflows the stack here, so the long case is the
+    regression: 150,000 three-byte characters in one byte list.
+    """
+    long_cps = toList(map(range(450000), wide_byte))
+    long_text = cps_text(toList(map(range(150000), lambda i: 26085)))
+    names = ["utf8.empty", "utf8.ascii", "utf8.two", "utf8.three", "utf8.four", "utf8.long"]
+    byte_rows = [[], [104, 105], [195, 169], [230, 151, 165], [240, 159, 152, 128], long_cps]
+    text_rows = ["", "hi", cps_text([233]), cps_text([26085]), cps_text([128512]), long_text]
+    cases = fold(range(len(names)), [], lambda acc, i: listAppend(acc, utf8_text(unwrap_or(listGet(names, i), ""), unwrap_or(listGet(byte_rows, i), []), unwrap_or(listGet(text_rows, i), ""))))
+    return listConcat(cases, [
+        Check.truth("utf8.lone continuation", is_error(utf8_decode([128], 0, "")), "a lone continuation byte decoded"),
+        Check.truth("utf8.truncated", is_error(utf8_decode([230, 151], 0, "")), "a truncated sequence decoded"),
+        Check.truth("utf8.bad lead", is_error(utf8_decode([245], 0, "")), "0xF5 decoded"),
+        Check.truth("utf8.overlong lead", is_error(utf8_decode([192, 128], 0, "")), "an overlong pair decoded"),
+        Check.truth("utf8.surrogate", is_error(utf8_decode([237, 160, 128], 0, "")), "a surrogate decoded"),
+        Check.truth("utf8.bad continuation", is_error(utf8_decode([230, 65, 165], 0, "")), "a bad continuation byte decoded"),
+    ])
+
+
+def wide_byte(i):
+    """The i-th byte of a repeating three-byte sequence: U+65E5, 150,000 times."""
+    return 230 if i % 3 == 0 else 151 if i % 3 == 1 else 165
+
+
+def utf8_text(name, bytes_, want):
+    match utf8_decode(bytes_, 0, ""):
+        case Success(value=value):
+            return Check.equal(name, value, want)
+        case Error(message=message):
+            return Check.failed(name, "Error: " + message)
+
+
+def is_error(r):
+    match r:
+        case Success(value=_value):
+            return False
+        case Error(message=_message):
+            return True
+
+
 def all_cases():
     """Every suite case, grouped by pipeline layer."""
-    return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases()])
+    return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases(), utf8_cases()])
 
 
 def main():

@@ -7,8 +7,11 @@ returns the list of strings a Decoder::decode_chain produces; the Tokenizer
 joins that list with the empty separator, matching Decoder::decode.
 """
 
+from tokenizers.Unicode import cps_text
+
 __all__ = [
     "wordpiece_decode", "metaspace_decode_chain", "byte_fallback_decode_chain",
+    "utf8_decode",
 ]
 
 
@@ -132,15 +135,21 @@ def flush_bytes(buf, acc):
 
 
 def seq_len(b):
+    """How many bytes the sequence starting with lead byte b takes, or -1.
+
+    0xC0 and 0xC1 only ever start an overlong form and 0xF5..0xFF exceed U+10FFFF,
+    so they are rejected here; the second-byte bounds that exclude the remaining
+    overlongs and the surrogates live in `second_ok`.
+    """
     if b < 128:
         return 1
     elif b <= 191:
         return -1
     elif b <= 223:
-        return 2
+        return 2 if b >= 194 else -1
     elif b <= 239:
         return 3
-    elif b <= 247:
+    elif b <= 244:
         return 4
     else:
         return -1
@@ -158,15 +167,59 @@ def in_cont(b):
     return b >= 128 and b <= 191
 
 
-def utf8_decode(bytes, i, acc) -> Result[str, str]:
-    """Decode a byte list as UTF-8, Error on any malformed sequence."""
-    if i >= len(bytes):
-        return Success(value=acc)
+def second_ok(lead, second):
+    """RFC 3629's bounds on the byte after the lead: they exclude the overlong
+    forms of E0, F0 and above and the surrogate range of ED."""
+    if lead == 224:
+        return second >= 160 and second <= 191
+    elif lead == 237:
+        return second >= 128 and second <= 159
+    elif lead == 240:
+        return second >= 144 and second <= 191
+    elif lead == 244:
+        return second >= 128 and second <= 143
     else:
-        b = unwrap_or(listGet(bytes, i), 0)
-        n = seq_len(b)
-        if n < 1 or i + n > len(bytes) or not cont_ok(bytes, i, n):
-            return Error(message="bad utf8")
-        else:
-            cp = fold(range(1, n), lead_bits(b, n), lambda code, k: code * 64 + unwrap_or(listGet(bytes, i + k), 128) - 128)
-            return utf8_decode(bytes, i + n, acc + unwrap_or(fromCodePoint(cp), "?"))
+        return True
+
+
+class Walk:
+    """A left-to-right UTF-8 read: where the next sequence starts, the code points
+    so far and the index of the first bad sequence (-1 while there is none)."""
+    next: int
+    cps: list[int]
+    bad: int
+
+
+def utf8_decode(bytes, i, acc) -> Result[str, str]:
+    """bytes[i:] decoded as UTF-8 and appended to acc, Error on a malformed sequence.
+
+    A fold, not a recursion: one frame per code point overflows the stack on the
+    long text the byte-level decoder feeds it (safetensors' port had the same bug).
+    """
+    walk = fold(range(i, len(bytes)), Walk(next=i, cps=[], bad=-1), lambda st, k: utf8_step(bytes, st, k))
+    if walk.bad >= 0:
+        return Error(message="bad utf8 at byte " + toString(walk.bad))
+    else:
+        return Success(value=acc + cps_text(walk.cps))
+
+
+def utf8_step(bytes, st, k):
+    """Read the sequence at byte k when one starts there; skip continuation bytes."""
+    if st.bad >= 0 or k < st.next:
+        return st
+    else:
+        return utf8_sequence(bytes, st, k)
+
+
+def utf8_sequence(bytes, st, k):
+    lead = unwrap_or(listGet(bytes, k), 0)
+    width = seq_len(lead)
+    if width < 1 or k + width > len(bytes) or not cont_ok(bytes, k, width) or not second_ok(lead, unwrap_or(listGet(bytes, k + 1), 0)):
+        return Walk(next=st.next, cps=st.cps, bad=k)
+    else:
+        return Walk(next=k + width, cps=listAppend(st.cps, code_point(bytes, k, lead, width)), bad=-1)
+
+
+def code_point(bytes, i, lead, n):
+    """The code point a checked n-byte sequence from byte i spells."""
+    return fold(range(1, n), lead_bits(lead, n), lambda code, k: code * 64 + unwrap_or(listGet(bytes, i + k), 128) - 128)
