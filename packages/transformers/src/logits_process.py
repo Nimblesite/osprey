@@ -48,15 +48,15 @@ class Processor:
     """One processor's configuration; `kind` selects the behaviour `apply`
     dispatches on, and each constructor leaves the unrelated fields blank."""
     kind: str
-    temperature: float
+    temperature: float32
     top_k: int
-    filter_value: float
+    filter_value: float32
     min_tokens_to_keep: int
-    top_p: float
-    min_p: float
-    mass: float
-    epsilon: float
-    penalty: float
+    top_p: float32
+    min_p: float32
+    mass: float32
+    epsilon: float32
+    penalty: float32
     prompt_ignore_length: int
     ngram_size: int
     min_length: int
@@ -202,13 +202,13 @@ def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
     return update(base, kind="bad_words", eos_ids=eos_ids, bad_words_ids=bad_words_ids)
 
 
-def apply_list(processors, input_ids, scores):
+def apply_list(processors, input_ids, scores: list[float32]):
     """`LogitsProcessorList.__call__`: fold the processors left to right over the
     scores, so the first processor in the list runs first."""
     return foldList(processors, scores, lambda s, p: apply(p, input_ids, s))
 
 
-def apply(processor, input_ids, scores):
+def apply(processor: Processor, input_ids, scores: list[float32]):
     """Run one `Processor` over a token history and a logits row."""
     match processor.kind:
         case "temperature":
@@ -276,19 +276,19 @@ def score_at(xs, i):
 
 
 def prob_at(xs, i):
-    return unwrap_or(listGet(xs, i), 0.0)
+    return unwrap_or(listGet(xs, i), toFloat32(0.0))
 
 
 def cumsum(xs):
     """Prefix sums of a float list."""
-    return cumsum_from(xs, 0, 0.0, [])
+    return cumsum_from(xs, 0, toFloat32(0.0), [])
 
 
 def cumsum_from(xs, i, running, acc):
     if i == len(xs):
         return acc
     else:
-        r = running + unwrap_or(listGet(xs, i), 0.0)
+        r = running + unwrap_or(listGet(xs, i), toFloat32(0.0))
         return cumsum_from(xs, i + 1, r, listAppend(acc, r))
 
 
@@ -297,7 +297,7 @@ def entropy(logits):
     `Categorical(logits=...).entropy()`; -inf logits (probability 0) contribute
     0 and NaN propagates when every logit is -inf."""
     nls = log_softmax(logits)
-    return fold(range(len(nls)), 0.0, lambda acc, i: acc + entropy_term(unwrap_or(listGet(nls, i), neg_inf())))
+    return fold(range(len(nls)), toFloat32(0.0), lambda acc, i: acc + entropy_term(unwrap_or(listGet(nls, i), neg_inf())))
 
 
 def entropy_term(x):
@@ -359,7 +359,10 @@ def top_p_warper(p, fv, m, scores):
     idx = sort_indices_by(scores)
     sorted_scores = mapList(idx, lambda j: score_at(scores, j))
     cum = cumsum(softmax(sorted_scores))
-    cutoff = 1.0 - p
+    # torch computes `1 - top_p` as a Python float64 scalar and casts it to the
+    # tensor's dtype; match that rather than subtracting in binary32, so a
+    # boundary lands on the same side torch chose.
+    cutoff = toFloat32(1.0 - toFloat(p))
     keep_from = len(scores) - m
     return toList(map(range(len(scores)), lambda i: fv if removed_top_p(i, idx, cum, cutoff, keep_from) else score_at(scores, i)))
 
@@ -415,7 +418,7 @@ def repetition_warper(pen, ig, ids, scores):
 
 
 def penalized(score, penalty):
-    return score * penalty if score < 0.0 else score / penalty
+    return score * penalty if score < toFloat32(0.0) else score / penalty
 
 
 def masked(scores, ids):

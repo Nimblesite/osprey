@@ -15,6 +15,7 @@ cumulative boundaries away from tie groups; MinP rows keep distinct scores
 because torch.topk's tie order is unspecified.
 """
 import sys
+import struct
 
 from expected_module import write
 
@@ -49,6 +50,11 @@ from transformers.generation.stopping_criteria import (
 )
 
 torch.set_default_dtype(torch.float32)
+
+
+def f32(value):
+    """Round a scalar to IEEE binary32, the width the port's `Processor` fields hold."""
+    return struct.unpack("<f", struct.pack("<f", value))[0]
 
 NEG_INF = float("-inf")
 
@@ -176,7 +182,7 @@ def add_warper(C, prefix, name, make, settings, rows):
 def add_warpers(C):
     add_warper(C, "TOPK", "K", lambda k, m: TopKLogitsWarper(top_k=k, min_tokens_to_keep=m),
                ((3, 1), (1, 1), (5, 1), (1, 2), (2, 2), (10, 1)), (R0, R1, R2, R3, R7))
-    add_warper(C, "TOPP", "P", lambda p, m: TopPLogitsWarper(top_p=p, min_tokens_to_keep=m),
+    add_warper(C, "TOPP", "P", lambda p, m: TopPLogitsWarper(top_p=f32(p), min_tokens_to_keep=m),
                ((0.9, 1), (0.5, 1), (1.0, 1), (0.0, 1), (0.6, 2), (0.95, 3)), (R0, R1, R2, R4, R6, R7))
     add_warper(C, "MINP", "P", lambda p, m: MinPLogitsWarper(min_p=p, min_tokens_to_keep=m),
                ((0.0, 1), (0.5, 1), (0.2, 1), (1.0, 1), (0.1, 2), (0.3, 3)), (R0, R4, R6, R7, R8))

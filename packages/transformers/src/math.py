@@ -20,7 +20,7 @@ __all__ = ["softmax", "log_softmax", "argmax", "multinomial", "neg_inf", "max_f"
 
 def neg_inf():
     """Negative infinity, the value every warper's filter lands on."""
-    return 0.0 - exp(1000.0)
+    return toFloat32(0.0) - exp(toFloat32(1000.0))
 
 
 def list_max(xs):
@@ -52,17 +52,18 @@ def softmax(logits):
     """torch.softmax(logits, dim=-1): exp(x - max) / sum(exp(x - max))."""
     m = list_max(logits)
     exps = mapList(logits, lambda x: exp(x - m))
-    s = foldList(exps, 0.0, lambda a, x: a + x)
+    s = foldList(exps, toFloat32(0.0), lambda a, x: a + x)
     return mapList(exps, lambda e: e / s)
 
 
 def log_softmax(logits):
-    """torch.log_softmax(logits, dim=-1) with max subtraction."""
+    """torch.log_softmax(logits, dim=-1) with max subtraction: `(x - max) -
+    ln(sum(exp(x - max)))`, so a large max never cancels the log term against x."""
     m = list_max(logits)
     exps = mapList(logits, lambda x: exp(x - m))
-    s = foldList(exps, 0.0, lambda a, x: a + x)
-    lse = m + ln(s)
-    return mapList(logits, lambda x: x - lse)
+    s = foldList(exps, toFloat32(0.0), lambda a, x: a + x)
+    lse = ln(s)
+    return mapList(logits, lambda x: (x - m) - lse)
 
 
 def argmax(scores):
@@ -74,12 +75,12 @@ def multinomial(probs, u):
     """torch.multinomial's inverse CDF: the first index whose cumulative
     probability strictly exceeds the uniform draw `u` in `[0, 1)`; the last
     index when none does."""
-    return first_above(probs, u, 0, 0.0)
+    return first_above(probs, u, 0, toFloat32(0.0))
 
 
 def first_above(probs, u, i, running):
     if i == len(probs):
         return len(probs) - 1
     else:
-        acc = running + unwrap_or(listGet(probs, i), 0.0)
+        acc = running + unwrap_or(listGet(probs, i), toFloat32(0.0))
         return i if acc > u else first_above(probs, u, i + 1, acc)
