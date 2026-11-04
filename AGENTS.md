@@ -7,6 +7,7 @@
 - **Offload legwork (repetitive, simple work) to pi agents** — exact ids only, in this precedence: `kimi-coding/k3.1-pro-highspeed` → `zai/glm-5.3` → `zai/glm-5.3-flash` → `deepseek/deepseek-flash`. `pi auth check --model <id>` first; out of credit → tell user, fall to the next. You own their output: review and fix it.
 - **Tokens:** check file size before reading, grep first, smallest diff.
 - **Entry points = commented make targets.** Answer usage questions from `make help`. Demo findings with a verified finding first; label clean controls and engine limitations.
+- **Root is locked ([REPO-ROOT-LAYOUT]):** `src/osprey/` = Osprey code; `src/toolchain/` = Rust, C, TypeScript and everything that builds it. No logs or new files in the root. Cargo workspace = `src/toolchain/Cargo.toml`: run `cd src/toolchain && cargo ...` or pass `--manifest-path`; artifacts stay in root `target/`.
 
 ## Correctness
 - **Accuracy above all.** False positive/negative = 🛑 stop and tell user. Listing items without their security warnings is the worst false negative → hide incomplete screens.
@@ -20,7 +21,7 @@
 - `src/osprey/tests/` programs run via `src/toolchain/crates/run_test_corpus.sh` under GC, ARC, wasm32 (`OSPREY_TARGET=wasm32`); output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
 - `src/osprey/examples/failscompilation/` = programs the compiler must reject.
 - Expand existing tests/examples, ❌ new files; mix many constructs per program.
-- 💯 coverage aim per package/project; `coverage-thresholds.json` only goes ⬆️.
+- 💯 coverage aim per package/project; `src/osprey/tests/coverage-thresholds.json` only goes ⬆️.
 
 ## Apps
 - **One folder, every app:** [`src/toolchain/targets/Makefile`](src/toolchain/targets/Makefile) has one target per app; desktop apps have one per OS in [`src/toolchain/targets/macos`](src/toolchain/targets/macos/Makefile) and [`src/toolchain/targets/windows`](src/toolchain/targets/windows/Makefile). `make -C apps[/<os>] <app>` builds whatever it needs and opens the app. ❌ app targets in the root Makefile.

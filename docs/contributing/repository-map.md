@@ -1,6 +1,6 @@
 # Repository map
 
-Start with the component you need to change. Run build and verification commands from the repository root.
+Start with the component you need to change. Run build and verification commands from the repository root. `src/osprey/` holds Osprey code; `src/toolchain/` holds the Rust, C and TypeScript that build it. The Cargo workspace is `src/toolchain/Cargo.toml`, so run `cargo` from there or pass `--manifest-path`; artifacts stay in the root `target/`.
 
 ## Compiler and runtime
 
