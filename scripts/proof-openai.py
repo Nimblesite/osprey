@@ -11,10 +11,10 @@ import tempfile
 from functools import reduce
 
 ROOT = Path(__file__).resolve().parent.parent
-CORPUS = ROOT / "src/examples/proof/openai"
-TOOLS = ROOT / "src/benchmarks/proof/tools"
+CORPUS = ROOT / "src/osprey/examples/proof/openai"
+TOOLS = ROOT / "src/toolchain/benchmarks/proof/tools"
 OUTPUT = ROOT / "target/proof/openai"
-CORE = ROOT / "src/examples/proof/lean-core"
+CORE = ROOT / "src/osprey/examples/proof/lean-core"
 CORE_AXIOMS = {"nat-basic": ["propext"], "nat-lemmas": ["propext"], "bool": ["propext"],
                "option-basic": ["Quot.sound"], "list-basic": ["propext"],
                "list-lemmas": ["propext", "Quot.sound"], "prod": ["Quot.sound", "propext"]}
@@ -322,7 +322,7 @@ def checker_command(compiler, memory, reuse):
     binary = OUTPUT / ("check-batch." + suffix)
     if not reuse:
         option = "--target=wasm32" if memory == "wasm32" else "--memory=" + memory
-        run([str(compiler), "src/examples/proof/batch", "--compile", "--quiet", "--no-warnings", option, "-o", str(binary)], cwd=ROOT)
+        run([str(compiler), "src/osprey/examples/proof/batch", "--compile", "--quiet", "--no-warnings", option, "-o", str(binary)], cwd=ROOT)
     return binary_command(binary)
 
 
@@ -383,7 +383,7 @@ def verify_group(command, group, memory):
 
 def verify_contract(command):
     verify_unused_axiom(command)
-    path = ROOT / "src/examples/proof/kernel/exports/nat_add_comm.ndjson"
+    path = ROOT / "src/osprey/examples/proof/kernel/exports/nat_add_comm.ndjson"
     kinds = {"Nat": "a type former", "Nat.zero": "a constructor", "Nat.rec": "a recursor", "Nat.add": "a definition"}
     for name, kind in kinds.items():
         expected = f"FAIL {name}: declared {kind}, not a theorem"
@@ -399,7 +399,7 @@ def verify_contract(command):
 
 
 def verify_unused_axiom(command):
-    source = ROOT / "src/examples/proof/kernel/exports/id_imp.ndjson"
+    source = ROOT / "src/osprey/examples/proof/kernel/exports/id_imp.ndjson"
     rows = [json.loads(line) for line in source.read_text().splitlines()]
     fresh = max(row.get("in", 0) for row in rows) + 1
     prop = next(row["ie"] for row in rows if row.get("sort") == 0)

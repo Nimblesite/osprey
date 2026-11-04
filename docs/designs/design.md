@@ -1,4 +1,4 @@
-The palette and screenshots are visual references. Use `src/website/src/` and the [messaging guide](../messaging.md) for current copy, runnable examples and supported behavior. Screenshots record earlier design studies.
+The palette and screenshots are visual references. Use `src/toolchain/website/src/` and the [messaging guide](../messaging.md) for current copy, runnable examples and supported behavior. Screenshots record earlier design studies.
 
 ![Colors](design.png)
 
@@ -108,6 +108,6 @@ spacing:
 
 ## Applying the palette
 
-The [Osprey design system](../../src/website/design_system.md) defines typography, layout, components, motion, and video. The [website tokens](../../src/website/src/css/variables.css) implement this palette. Use those working values directly; avoid maintaining another set of component colors here.
+The [Osprey design system](../../src/toolchain/website/design_system.md) defines typography, layout, components, motion, and video. The [website tokens](../../src/toolchain/website/src/css/variables.css) implement this palette. Use those working values directly; avoid maintaining another set of component colors here.
 
 Every website and video brief starts with [messaging](../messaging.md): effects first, real code, visible results, one next step.

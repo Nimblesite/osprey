@@ -1,0 +1,556 @@
+//! Source-level rejection coverage for [MODULES-DIAG].
+//!
+//! `modules.rs` and `state_modules.rs` drive most of these branches from
+//! hand-built AST, which proves the checker rejects a *shape*. This file drives
+//! them from **written source in both flavors**, which is the only way to prove
+//! the surface a user actually types reaches that checker at all — a lowering
+//! that dropped an `export` marker or a `mut` would leave every AST-built test
+//! green while the language silently accepted the program.
+//!
+//! Each case is asserted on BOTH surfaces with the SAME expected message, so a
+//! diagnostic that regresses on one flavor cannot hide behind the other
+//! ([FLAVOR-IR-EQUIV], [MODULES-FLAVOR-PROJECTION]).
+
+mod support;
+
+use osprey_ast::Stmt;
+use osprey_project::{assemble, SourceFile};
+use osprey_syntax::{parse_program_with_flavor, Flavor};
+use std::path::PathBuf;
+use support::{config, contains, error_messages, parsed};
+
+/// Every diagnostic one written source produces, the way the CLI collects them:
+/// parse errors first — some boundary rules (ML's exact ascription) are decided
+/// by the grammar and never reach assembly — otherwise the assembler's.
+fn diagnose(flavor: Flavor, text: &str) -> Vec<String> {
+    let name = match flavor {
+        Flavor::Ml => "main.ospml",
+        Flavor::Default => "main.osp",
+        Flavor::Python => "main.py",
+    };
+    let parsed = parse_program_with_flavor(text, flavor);
+    if !parsed.errors.is_empty() {
+        return parsed.errors.into_iter().map(|e| e.message).collect();
+    }
+    let source = SourceFile {
+        path: PathBuf::from(name),
+        flavor,
+        source: text.to_string(),
+        program: parsed.program,
+        discipline: None,
+    };
+    error_messages(&config(name), &[source])
+}
+
+/// Assert one expected substring against the Default and ML spellings of the
+/// same program. Both surfaces lower to one AST, so both must report it.
+fn both_reject(expected: &str, default_source: &str, ml_source: &str) {
+    let default = diagnose(Flavor::Default, default_source);
+    assert!(
+        contains(&default, expected),
+        "Default surface lost {expected:?}: {default:?}"
+    );
+    let ml = diagnose(Flavor::Ml, ml_source);
+    assert!(
+        contains(&ml, expected),
+        "ML surface lost {expected:?}: {ml:?}"
+    );
+}
+
+#[test]
+fn exported_mutable_cell_is_rejected_on_both_surfaces() {
+    // Implements [MODULES-STATE-TOPLEVEL]: `export mut` is always an error.
+    // The two surfaces decide it at different stages — ML's grammar refuses the
+    // marker outright, Default's assembler refuses the cell — so each message is
+    // pinned separately. What must not drift is that BOTH still reject.
+    let default = diagnose(
+        Flavor::Default,
+        "namespace app;\nmodule M { export mut counter = 0 }\n",
+    );
+    assert!(
+        contains(&default, "plain modules cannot declare module-level `mut`"),
+        "{default:?}"
+    );
+    let ml = diagnose(
+        Flavor::Ml,
+        "namespace app\n\nmodule M\n    export mut counter = 0\n",
+    );
+    assert!(contains(&ml, "mutable cells cannot be exported"), "{ml:?}");
+}
+
+#[test]
+fn signature_cannot_export_a_state_cell_on_either_surface() {
+    // Implements [MODULES-EXPORTS]: a signature's `let` entry names an
+    // immutable value, so an ascribed state module whose cell matches that
+    // entry would publish the cell. Both grammars accept the entry, so the
+    // assembler must be the one to refuse it — the `export mut` route of
+    // [MODULES-STATE-TOPLEVEL] never sees this spelling.
+    both_reject(
+        "state cell `total` cannot be exported by a signature",
+        concat!(
+            "namespace app;\n",
+            "signature Api {\n    let total: int\n",
+            "    effect Counter { reads : fn() -> int }\n",
+            "    fn withTally(body: fn() -> int) -> int\n}\n",
+            "state module Tally : Api {\n    mut total = 0\n",
+            "    effect Counter { reads : fn() -> int }\n",
+            "    fn withTally(body) = {\n        handle Counter { reads => total }\n",
+            "        body()\n    }\n}\n",
+        ),
+        concat!(
+            "namespace app\n\n",
+            "signature Api\n    total : int\n",
+            "    effect Counter\n        reads : Unit => int\n",
+            "    withTally : (Unit -> int) -> int\n\n",
+            "state Tally : Api\n    mut total = 0\n",
+            "    effect Counter\n        reads : Unit => int\n",
+            "    withTally body =\n        handle Counter\n            reads => total\n",
+            "        body ()\n",
+        ),
+    );
+}
+
+#[test]
+fn plain_module_cannot_own_a_cell_on_either_surface() {
+    // Implements [MODULES-STATE-TOPLEVEL]: only a state module owns cells.
+    both_reject(
+        "plain modules cannot declare module-level `mut`",
+        "namespace app;\nmodule M {\n    mut counter = 0\n    export fn get() = counter\n}\n",
+        "namespace app\n\nmodule M\n    mut counter = 0\n    export get () = counter\n",
+    );
+}
+
+#[test]
+fn a_signature_empty_row_rejects_an_effectful_implementation_in_both_flavors() {
+    for (flavor, name, text) in [
+        (
+            Flavor::Default,
+            "main.osp",
+            "namespace app;\neffect E { ping: fn() -> Unit }\nsignature Api { fn f() -> Unit ![] }\nmodule M : Api { fn f() = perform E.ping() }\n",
+        ),
+        (
+            Flavor::Ml,
+            "main.ospml",
+            "namespace app\n\neffect E\n    ping : Unit => Unit\n\nsignature Api\n    f : Unit -> Unit ![]\n\nmodule M : Api\n    f () = perform E.ping ()\n",
+        ),
+    ] {
+        let source = parsed(name, flavor, text);
+        let assembled = assemble(&config(name), &[source]).expect("module should assemble");
+        let errors = osprey_types::check_program(&assembled.program);
+        assert!(
+            errors.iter().any(|error| error.message.contains("performs effects outside its declared row: app::E.ping")),
+            "{flavor:?}: {errors:?}"
+        );
+    }
+}
+
+#[test]
+fn a_signature_open_row_reaches_its_implementation_in_both_flavors() {
+    for (flavor, name, text) in [
+        (
+            Flavor::Default,
+            "main.osp",
+            "namespace app;\nsignature Api { fn invoke(callback: fn() -> Unit) -> Unit ![|e] }\nmodule M : Api { fn invoke(callback) = callback() }\n",
+        ),
+        (
+            Flavor::Ml,
+            "main.ospml",
+            "namespace app\nsignature Api\n    invoke : (Unit -> Unit) -> Unit ![|e]\nmodule M : Api\n    invoke callback = callback ()\n",
+        ),
+    ] {
+        let source = parsed(name, flavor, text);
+        let assembled = assemble(&config(name), &[source]).expect("module should assemble");
+        let invoke = assembled
+            .program
+            .statements
+            .iter()
+            .find_map(|statement| match statement {
+                Stmt::Function { effect_tail, .. } => effect_tail.as_deref(),
+                _ => None,
+            });
+        assert_eq!(invoke, Some("e"), "{flavor:?}: {:?}", assembled.program);
+        let errors = osprey_types::check_program(&assembled.program);
+        assert!(errors.is_empty(), "{flavor:?}: {errors:?}");
+    }
+}
+
+#[test]
+fn duplicate_module_items_are_rejected_on_both_surfaces() {
+    // Implements [MODULES-EXPORTS]: one module, one declaration per name.
+    both_reject(
+        "duplicate declaration `app::M::a`",
+        "namespace app;\nmodule M {\n    export let a = 1\n    export let a = 2\n}\n",
+        "namespace app\n\nmodule M\n    export a = 1\n    export a = 2\n",
+    );
+}
+
+#[test]
+fn private_module_item_cannot_be_read_from_outside() {
+    // Implements [MODULES-EXPORTS]: unmarked items are private.
+    both_reject(
+        "declaration `app::M::secret` is private",
+        "namespace app;\nmodule M { let secret = 1 }\nprint(\"${M::secret}\")\n",
+        "namespace app\n\nmodule M\n    secret = 1\n\nprint \"${M::secret}\"\n",
+    );
+}
+
+#[test]
+fn private_nested_module_cannot_be_imported() {
+    // Implements [MODULES-EXPORTS], [MODULES-IMPORT]: no private traversal.
+    both_reject(
+        "module `app::Outer::Priv` is private",
+        "namespace app;\nmodule Outer { module Priv { export let v = 1 } }\nimport app::Outer::Priv\n",
+        "namespace app\n\nmodule Outer\n    module Priv\n        export v = 1\n\nimport app::Outer::Priv\n",
+    );
+}
+
+#[test]
+fn unknown_imported_member_is_rejected_on_both_surfaces() {
+    // Implements [MODULES-IMPORT]: a member import selects an existing export.
+    both_reject(
+        "unknown imported member `app::M::nope`",
+        "namespace app;\nmodule M { export let a = 1 }\nimport app::M::{nope}\n",
+        "namespace app\n\nmodule M\n    export a = 1\n\nimport app::M\n    nope\n",
+    );
+}
+
+#[test]
+fn wildcard_import_is_refused_while_the_manifest_forbids_it() {
+    // Implements [MODULES-IMPORT]: `[modules].allow_wildcard_imports` gates `*`.
+    both_reject(
+        "wildcard imports are disabled by `[modules].allow_wildcard_imports`",
+        "namespace app;\nmodule M { export let a = 1 }\nimport app::M::*\n",
+        "namespace app\n\nmodule M\n    export a = 1\n\nimport app::M\n    *\n",
+    );
+}
+
+/// The written return type of every function `program` declares, by source name.
+fn return_types(program: &osprey_ast::Program) -> Vec<(String, String)> {
+    let source_name = |name: &str| osprey_ast::symbol::demangle(name).unwrap_or(name.to_string());
+    program
+        .statements
+        .iter()
+        .filter_map(|statement| match statement {
+            Stmt::Function {
+                name,
+                return_type: Some(ty),
+                ..
+            } => Some((source_name(name), source_name(&ty.name))),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn manifest_opaque_alias_stays_a_name_for_the_checker_and_expands_for_the_backend() {
+    // Implements [MODULES-OPAQUE-TYPES]: `export opaque type T = int` is one
+    // declaration in two programs. The checked program keeps `T` as a name,
+    // its representation attached for the checker to grant to the owning
+    // module alone; the backend program has no `T` left in it.
+    let sources = [
+        (
+            Flavor::Default,
+            "main.osp",
+            "namespace app;\nmodule M {\n    export opaque type UserId = int\n    export fn make(n) -> UserId = n\n}\n",
+        ),
+        (
+            Flavor::Ml,
+            "main.ospml",
+            "namespace app\n\nmodule M\n    export opaque type UserId = int\n\n    export make : int -> UserId\n    make n = n\n",
+        ),
+    ];
+    for (flavor, name, text) in sources {
+        let project = assemble(&config(name), &[parsed(name, flavor, text)])
+            .unwrap_or_else(|errors| panic!("{name}: an opaque alias assembles: {errors:?}"));
+        let make = |ty: &str| vec![("app::M::make".to_string(), ty.to_string())];
+        assert_eq!(
+            return_types(&project.program),
+            make("app::M::UserId"),
+            "{name}"
+        );
+        let declared = project.program.statements.iter().any(|statement| {
+            matches!(statement, Stmt::Type { opaque: true, alias: Some(alias), .. } if alias.name == "int")
+        });
+        assert!(
+            declared,
+            "{name}: the checker needs the alias and what it stands for"
+        );
+        let backend = project
+            .backend
+            .as_ref()
+            .expect("an expanded backend program");
+        assert_eq!(return_types(backend), make("int"), "{name}");
+        let erased = !backend
+            .statements
+            .iter()
+            .any(|statement| matches!(statement, Stmt::Type { alias: Some(_), .. }));
+        assert!(erased, "{name}: the backend never meets an opaque alias");
+    }
+}
+
+#[test]
+fn a_project_without_opaque_aliases_has_one_program() {
+    // The second assembly exists only to expand opaque aliases.
+    let text = "namespace app;\nmodule M { export type Meters = int\n export fn of(n: Meters) -> Meters = n }\n";
+    let project = assemble(
+        &config("main.osp"),
+        &[parsed("main.osp", Flavor::Default, text)],
+    )
+    .unwrap_or_else(|errors| panic!("a transparent alias assembles: {errors:?}"));
+    assert!(project.backend.is_none());
+    assert_eq!(
+        return_types(project.backend_program()),
+        vec![("app::M::of".to_string(), "int".to_string())]
+    );
+}
+
+#[test]
+fn opaque_alias_cycle_and_arity_are_rejected_on_both_surfaces() {
+    // Implements [MODULES-CYCLES] for an alias that keeps its name: only the
+    // expanding assembly can notice that `Loop` stands for itself.
+    both_reject(
+        "type alias cycle involving `app::M::Loop`",
+        "namespace app;\nmodule M { export opaque type Loop = List<Loop> }\n",
+        "namespace app\n\nmodule M\n    export opaque type Loop = (List Loop)\n",
+    );
+    both_reject(
+        "type alias `app::M::Pair` expects 1 type argument(s), found 0",
+        "namespace app;\nmodule M {\n    export opaque type Pair<T> = List<T>\n    export fn none() -> Pair = []\n}\n",
+        "namespace app\n\nmodule M\n    export opaque type Pair T = (List T)\n\n    export none : Unit -> Pair\n    none () = []\n",
+    );
+}
+
+#[test]
+fn state_cannot_leave_its_module_as_a_pointer_or_inside_a_closure() {
+    // Implements [MODULES-STATE-MODULE]: a cell cannot start as a foreign
+    // pointer, because its initializer must be pure and a `Ptr` comes only
+    // from an extern call, and a lambda written in an arm cannot carry the
+    // cell out. The checker-level half (a cell is never ASSIGNED a `Ptr`) is
+    // `src/osprey/examples/failscompilation/state_cell_cannot_hold_a_pointer.ospo`.
+    both_reject(
+        "state initializer `conn` must be pure",
+        "namespace app;\nextern fn osprey_ffi_null() -> Ptr\nstate module Db {\n    mut conn = osprey_ffi_null()\n    export effect Store { opened : fn() -> int }\n    export fn withDb(body) = {\n        handle Store { opened => 1 }\n        body()\n    }\n}\n",
+        "namespace app\n\nextern osprey_ffi_null -> Ptr\n\nstate Db\n    mut conn = osprey_ffi_null ()\n\n    export effect Store\n        opened : Unit => int\n\n    export withDb body =\n        handle Store\n            opened => 1\n        body ()\n",
+    );
+    both_reject(
+        "state cell `total` is only accessible inside its owning handler arms",
+        "namespace app;\nstate module Tally {\n    mut total = 0\n    export effect Counter { reader : fn() -> fn() -> int }\n    export fn withTally(body) = {\n        handle Counter { reader => fn() => total }\n        body()\n    }\n}\n",
+        "namespace app\n\nstate Tally\n    mut total = 0\n\n    export effect Counter\n        reader : Unit => (Unit -> int)\n\n    export withTally body =\n        handle Counter\n            reader => \\() => total\n        body ()\n",
+    );
+}
+
+#[test]
+fn signature_item_without_an_implementation_is_rejected() {
+    // Implements [MODULES-SIGNATURE]: every signature item needs a body.
+    both_reject(
+        "signature item `missing` has no implementation",
+        concat!(
+            "namespace app;\n",
+            "signature Api {\n    fn add(a: int) -> int\n    fn missing(a: int) -> int\n}\n",
+            "module M : Api { fn add(a) = a }\n",
+        ),
+        concat!(
+            "namespace app\n\n",
+            "signature Api\n    add : int -> int\n    missing : int -> int\n\n",
+            "module M : Api\n    add a = a\n",
+        ),
+    );
+}
+
+#[test]
+fn ml_ascription_refuses_a_redundant_export_marker() {
+    // Implements [MODULES-EXPORTS]: ML ascription is exact. Default's
+    // `: Api + extra` is the sanctioned escape hatch, so this one is ML-only.
+    let messages = diagnose(
+        Flavor::Ml,
+        "namespace app\n\nsignature Api\n    add : int -> int\n\nmodule M : Api\n    export add a = a\n",
+    );
+    assert!(
+        contains(
+            &messages,
+            "an ascribed module exports exactly its signature"
+        ),
+        "{messages:?}"
+    );
+}
+
+#[test]
+fn default_ascription_gates_extra_exports_behind_plus_extra() {
+    // Implements [MODULES-EXPORTS]: in Default, `: Signature + extra` is the one
+    // way an ascribed module may export beyond its signature. ML has no such
+    // form — its ascription is exact — so this surface is Default-only and
+    // cannot be asserted through a twin pair.
+    const WITHOUT: &str = concat!(
+        "namespace app;\n",
+        "signature Api {\n    fn add(a: int) -> int\n}\n",
+        "module M : Api {\n    fn add(a) = a\n    export fn extraOne() = 1\n}\n",
+    );
+    let refused = diagnose(Flavor::Default, WITHOUT);
+    assert!(
+        contains(&refused, "extra export `extraOne` requires `+ extra`"),
+        "{refused:?}"
+    );
+    let permitted = diagnose(
+        Flavor::Default,
+        &WITHOUT.replace(": Api {", ": Api + extra {"),
+    );
+    assert!(
+        permitted.is_empty(),
+        "`+ extra` must permit the same export: {permitted:?}"
+    );
+}
+
+#[test]
+fn state_cell_cannot_be_read_outside_its_owning_handler_arms() {
+    // Implements [MODULES-STATE-SOURCE-OF-TRUTH]: the effect is the only route.
+    both_reject(
+        "state cell `cell` is only accessible inside its owning handler arms",
+        concat!(
+            "namespace app;\n",
+            "state module S {\n",
+            "    mut cell = 0\n",
+            "    export effect Fx { get : fn() -> int }\n",
+            "    export fn install(body) = {\n",
+            "        handle Fx {\n",
+            "            get => cell\n",
+            "        }\n",
+            "        body()\n",
+            "    }\n",
+            "    export fn peek() = cell\n",
+            "}\n",
+        ),
+        concat!(
+            "namespace app\n",
+            "\n",
+            "state S\n",
+            "    mut cell = 0\n",
+            "    export effect Fx\n",
+            "        get : Unit => int\n",
+            "    export install body =\n",
+            "        handle Fx\n",
+            "            get => cell\n",
+            "        body ()\n",
+            "    export peek () = cell\n",
+        ),
+    );
+}
+
+#[test]
+fn a_namespace_cannot_own_two_state_modules() {
+    // Implements [MODULES-STATE-MODULE]: at most one state owner per namespace.
+    both_reject(
+        "namespace `app` may contain at most one state module",
+        concat!(
+            "namespace app;\n",
+            "state module A {\n",
+            "    mut x = 0\n",
+            "    export effect FxA { get : fn() -> int }\n",
+            "    export fn install(body) = {\n",
+            "        handle FxA {\n",
+            "            get => x\n",
+            "        }\n",
+            "        body()\n",
+            "    }\n",
+            "}\n",
+            "state module B {\n",
+            "    mut y = 0\n",
+            "    export effect FxB { get : fn() -> int }\n",
+            "    export fn install(body) = {\n",
+            "        handle FxB {\n",
+            "            get => y\n",
+            "        }\n",
+            "        body()\n",
+            "    }\n",
+            "}\n",
+        ),
+        concat!(
+            "namespace app\n",
+            "\n",
+            "state A\n",
+            "    mut x = 0\n",
+            "    export effect FxA\n",
+            "        get : Unit => int\n",
+            "    export install body =\n",
+            "        handle FxA\n",
+            "            get => x\n",
+            "        body ()\n",
+            "\n",
+            "state B\n",
+            "    mut y = 0\n",
+            "    export effect FxB\n",
+            "        get : Unit => int\n",
+            "    export install body =\n",
+            "        handle FxB\n",
+            "            get => y\n",
+            "        body ()\n",
+        ),
+    );
+}
+
+#[test]
+fn constant_initializer_cycles_are_rejected_before_codegen() {
+    // Implements [MODULES-CYCLES], [MODULES-INIT].
+    both_reject(
+        "constant initializer cycle involving `app::M::a`",
+        "namespace app;\nmodule M {\n    export let a = b\n    export let b = a\n}\n",
+        "namespace app\n\nmodule M\n    export a = b\n    export b = a\n",
+    );
+}
+
+#[test]
+fn a_module_constant_cannot_call_a_project_function() {
+    // Implements [MODULES-INIT]: constant initializers stay compile-time pure.
+    both_reject(
+        "must be a compile-time constant",
+        "namespace app;\nmodule A { export fn base() = 10 }\nmodule B { export let scaled = A::base() * 2 }\n",
+        "namespace app\n\nmodule A\n    export base () = 10\n\nmodule B\n    export scaled = A::base () * 2\n",
+    );
+}
+
+#[test]
+fn a_module_constant_can_depend_on_another_constant() {
+    // [MODULES-INIT] Resolving a pure constant does not execute runtime setup.
+    for (flavor, source) in [
+        (Flavor::Default, "namespace app;\nmodule A { export let base = 10 }\nmodule B { export let scaled = A::base * 2 }\n"),
+        (Flavor::Ml, "namespace app\nmodule A\n    export base = 10\nmodule B\n    export scaled = A::base * 2\n"),
+    ] {
+        let errors = diagnose(flavor, source);
+        assert!(errors.is_empty(), "{flavor}: {errors:?}");
+    }
+}
+
+#[test]
+fn misspelled_import_targets_offer_ranked_public_candidates() {
+    both_report(
+        "unknown import target `app::Dats`; candidates: `app::Data`, `app::Dates`, `app::Datum`",
+        "namespace app;\nmodule Datum {}\nmodule Dates {}\nmodule Data {}\nimport app::Dats\n",
+        "namespace app\nmodule Datum\n    v = 0\nmodule Dates\n    v = 0\nmodule Data\n    v = 0\nimport app::Dats\n",
+    );
+}
+
+#[test]
+fn misspelled_import_members_only_suggest_exports() {
+    both_report(
+        "unknown imported member `app::Data::rea`; candidates: `app::Data::read`",
+        "namespace app;\nmodule Data { let real = 1\n export let read = 2 }\nimport app::Data::{rea}\n",
+        "namespace app\nmodule Data\n    real = 1\n    export read = 2\nimport app::Data\n    rea\n",
+    );
+}
+
+#[test]
+fn import_suggestions_never_reveal_private_intermediate_modules() {
+    for (flavor, source) in [
+        (Flavor::Default, "namespace app;\nmodule Outer { module Secret { export module Data {} } }\nimport app::Outer::Secre\n"),
+        (Flavor::Ml, "namespace app\nmodule Outer\n    module Secret\n        export module Data\n            v = 1\nimport app::Outer::Secre\n"),
+    ] {
+        let messages = diagnose(flavor, source);
+        assert!(contains(&messages, "unknown import target `app::Outer::Secre`"), "{messages:?}");
+        assert!(!messages.iter().any(|message| message.contains("Secret")), "{messages:?}");
+    }
+}
+
+fn both_report(expected: &str, default: &str, ml: &str) {
+    for (flavor, source) in [(Flavor::Default, default), (Flavor::Ml, ml)] {
+        assert_eq!(diagnose(flavor, source), vec![expected], "{flavor}");
+    }
+}

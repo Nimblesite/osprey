@@ -7,7 +7,7 @@
 > [spec 0029](0029-PackageManagement.md); everything in this document layers
 > onto that running service.
 
-**Status:** normative target. This specification is the src/packages/manager/security half
+**Status:** normative target. This specification is the src/osprey/packages/manager/security half
 of [Osprey Package Registry and Manager](0029-PackageManagement.md). Its
 requirements are mandatory for the public registry. The full academic and
 standards basis is [annotated here](PackageResearchBasis.md).
@@ -262,7 +262,7 @@ isolated/ephemeral execution, and authentic unforgeable provenance. Osprey adds
 separate hermeticity rules: only complete declared CAS closures are visible,
 network and host files are denied, and the pinned reproducibility profile fixes
 clock, RNG, locale, timezone, environment, filesystem ordering, sandbox image,
-kernel ABI, CPU features, src/compiler/runtime, and target. Two separately
+kernel ABI, CPU features, src/toolchain/compiler/runtime, and target. Two separately
 administered operators on distinct build platforms reproduce each output. The
 source-assembly snapshot and each reference output are separate provenance
 subjects. `@osprey` and privileged packages also meet SLSA Source L4 before GA.

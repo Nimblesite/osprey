@@ -24,7 +24,7 @@ grep -q -- '-include' "$scratch/argv" && fail "an unselected unit must not get t
 rm -f "$scratch/argv"
 (OSPREY_RUNTIME_SHIMS="memory_arc" compile_runtime_source memory_arc fake_cc -O2) || true
 [[ -s "$scratch/argv" ]] || fail "a selected unit never reached the compiler"
-grep -q -- '^src/compiler/runtime/osp_arc_shim.h$' "$scratch/argv" || fail "a selected unit must get the ARC shim"
+grep -q -- '^src/toolchain/compiler/runtime/osp_arc_shim.h$' "$scratch/argv" || fail "a selected unit must get the ARC shim"
 echo "runtime-memory.sh: shim selection PASS (bash $BASH_VERSION)"
 
 if [[ $(uname -s) == Darwin ]]; then
@@ -36,15 +36,15 @@ import subprocess
 import sys
 
 project = Path(sys.argv[1]) / "apple-cache"
-for folder in ["scripts", "src/compiler/runtime", "src/compiler/bin"]:
+for folder in ["scripts", "src/toolchain/compiler/runtime", "src/toolchain/compiler/bin"]:
     (project / folder).mkdir(parents=True, exist_ok=True)
 for name in ["scripts/ios-runtime.sh", "scripts/runtime-memory.sh", "scripts/ios.mk", "Makefile"]:
     shutil.copyfile(name, project / name)
-header = project / "src/compiler/runtime/cache_fixture.h"
+header = project / "src/toolchain/compiler/runtime/cache_fixture.h"
 header.write_text("#define CACHE_VALUE 1\n")
-(project / "src/compiler/runtime/cache_fixture.c").write_text('#include "cache_fixture.h"\nint cache_fixture(void) { return CACHE_VALUE; }\n')
-archive = project / "src/compiler/bin/libcache_fixture.a"
-mirror = project / "src/compiler/lib/libcache_fixture.a"
+(project / "src/toolchain/compiler/runtime/cache_fixture.c").write_text('#include "cache_fixture.h"\nint cache_fixture(void) { return CACHE_VALUE; }\n')
+archive = project / "src/toolchain/compiler/bin/libcache_fixture.a"
+mirror = project / "src/toolchain/compiler/lib/libcache_fixture.a"
 command = [sys.argv[2], str(project / "scripts/ios-runtime.sh"), "macosx", "arm64-apple-macos12.0", str(archive), "-c", "-O0", "--", "cache_fixture"]
 subprocess.run(command, check=True)
 older = header.stat().st_mtime_ns - 2_000_000_000

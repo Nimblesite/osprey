@@ -7,14 +7,14 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCE = path.resolve(process.argv[2] ?? path.join(REPO, 'src/examples/projects/modules'));
+const SOURCE = path.resolve(process.argv[2] ?? path.join(REPO, 'src/osprey/examples/projects/modules'));
 const OUTPUT = path.resolve(process.argv[3] ?? path.join(REPO, 'target/api-docs-previews'));
 const THEMES = [
   ['osprey', 'Osprey', 'Clear structure. Room to read.', 'A blue reference layout with a quiet sidebar, module cards, and an outline beside the article.'],
   ['midnight', 'Midnight', 'The developer’s desk.', 'Dark surfaces, compact spacing, and monospaced details for an API reference that feels at home beside your editor.'],
   ['paper', 'Paper', 'A reference worth reading.', 'An editorial layout with serif headings, generous margins, and simple ruled lists.'],
 ];
-const { chromium } = createRequire(path.join(REPO, 'src/website/package.json'))('playwright');
+const { chromium } = createRequire(path.join(REPO, 'src/toolchain/website/package.json'))('playwright');
 fs.mkdirSync(OUTPUT, { recursive: true });
 const browser = await chromium.launch();
 try {
@@ -22,7 +22,7 @@ try {
   for (const [theme] of THEMES) {
     execFileSync(path.join(REPO, 'target/release/osprey'), [
       '--docs', SOURCE, '--docs-format', 'html', '--docs-theme', theme,
-      '--docs-dir', path.join(OUTPUT, theme), '--docs-page', path.join(REPO, 'src/website/src/docs/documentation.md'),
+      '--docs-dir', path.join(OUTPUT, theme), '--docs-page', path.join(REPO, 'src/toolchain/website/src/docs/documentation.md'),
     ], { cwd: REPO, stdio: 'pipe' });
     await capture(page, theme, 'index.html', 'desktop', 1440, 1000);
     await capture(page, theme, 'functions/byteat.html', 'reference', 1440, 1000);

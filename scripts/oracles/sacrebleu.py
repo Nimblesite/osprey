@@ -1,6 +1,6 @@
 """CPython oracle for @osprey/sacrebleu: BLEU, chrF and tokenizer values.
 
-Writes src/packages/sacrebleu/tests/expected.py. Run with the oracle virtualenv:
+Writes src/osprey/packages/sacrebleu/tests/expected.py. Run with the oracle virtualenv:
 `python scripts/oracles/sacrebleu.py` (no `-I`: the script dir must be on sys.path
 so `from expected_module import write` resolves).
 """

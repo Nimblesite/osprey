@@ -58,7 +58,7 @@ Produce a one-page build plan with domain states, pure functions, failure routes
 
 ## Source map
 
-- Working application boundaries: `src/examples/projects/modules/README.md`, `src/examples/projects/modules/mobile/README.md`, and `src/examples/mobile/README.md`.
+- Working application boundaries: `src/osprey/examples/projects/modules/README.md`, `src/osprey/examples/projects/modules/mobile/README.md`, and `src/osprey/examples/mobile/README.md`.
 - Project and target contracts: `docs/specs/language/0025-ModulesAndNamespaces.md`, `docs/specs/compiler/0022-WebAssemblyTarget.md`, `docs/specs/platforms/0038-iOSTarget.md`, and `docs/specs/platforms/0039-AndroidTarget.md`.
 - Delivery boundaries: `docs/plans/0016-algebraic-effects-and-handlers.md`, `0020-package-manager.md`, `0023-gpu.md`, and `0026-structured-concurrency.md` in the same directory.
-- `src/website/src/status.md` provides orientation; confirm a chosen capability against its current specification and runnable evidence before promising it in the capstone.
+- `src/toolchain/website/src/status.md` provides orientation; confirm a chosen capability against its current specification and runnable evidence before promising it in the capstone.

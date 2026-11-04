@@ -1,0 +1,264 @@
+#!/usr/bin/env python3
+"""Aggregate harness output into an HTML report — generated MECHANICALLY, never
+hand-edited.
+
+Reads <out>/raw.jsonl (per case/lang: status + peak RSS), the hyperfine
+exports in <out>/hf/<case>.json (per case/lang: timing) and, for a case with no
+export on this machine, the timing already published in <out>/results.json,
+then renders:
+
+  <out>/results.html  — self-contained report (Osprey website CSS inlined)
+  <out>/results.json  — same data, structured, for tracking over time
+  src/toolchain/website/src/_includes/benchmarks-tables.html — the same tables as a fragment,
+      "baked" into the website so the /benchmarks page renders without the
+      per-case hyperfine exports present.
+  src/toolchain/benchmarks/README.md — measured binarytrees figures between generated markers.
+
+The tables (CPU time, peak memory) use the website's own `.comparison-table`
+classes; the fastest cell per row is badged and Osprey's outright wins starred.
+"""
+import html
+import json
+import math
+import sys
+from pathlib import Path
+from typing import Callable, Optional
+
+from merge_results import TIMING, atomic_write, valid_timing
+
+ORDER: list[str] = ["osprey-arc", "osprey-gc", "osprey", "rust", "rust-checked", "c", "csharp",
+                    "dart", "ocaml", "haskell", "osprey-wasm", "rust-wasm", "c-wasm"]
+LABEL: dict[str, str] = {"osprey": "Osprey", "osprey-arc": "Osprey (ARC)",
+                         "osprey-gc": "Osprey (GC)",
+                         "rust": "Rust", "rust-checked": "Rust (checked)", "c": "C",
+                         "csharp": "C# (AOT)", "dart": "Dart (AOT)",
+                         "ocaml": "OCaml", "haskell": "Haskell",
+                         "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
+                         "c-wasm": "C (wasm)"}
+REPO = Path(__file__).resolve().parent.parent.parent.parent
+
+Cell = dict[str, object]
+Data = dict[str, dict[str, Cell]]
+
+
+def recorded_results(path: Path) -> Data:
+    return json.loads(path.read_text()).get("cases", {}) if path.exists() else {}
+
+
+def load(out: Path) -> Data:
+    """Merge raw status/RSS records with timings, keyed by case/lang.
+
+    Start from complete published cells, then overwrite only measured values.
+    Missing rows, failed runs and zero RSS samples retain their previous values.
+    Hyperfine exports replace timings only when all four fields are valid.
+    """
+    data = recorded_results(out / "results.json")
+    for line in (out / "raw.jsonl").read_text().splitlines():
+        r = json.loads(line)
+        cell = data.setdefault(r["case"], {}).setdefault(r["lang"], {})
+        if r["status"] == "ok" or cell.get("status") != "ok":
+            cell.update(status=r["status"], rss=r["rss"] or cell.get("rss", 0))
+    for hf in (out / "hf").glob("*.json"):
+        for res in json.loads(hf.read_text())["results"]:
+            cell = data.get(hf.stem, {}).get(res.get("command"))
+            if cell is not None and cell.get("status") == "ok" and valid_timing(res):
+                cell.update({k: res[k] for k in TIMING})
+    return data
+
+
+def present_langs(data: Data) -> list[str]:
+    seen = {lang for case in data.values() for lang, c in case.items() if c.get("status") == "ok"}
+    return [l for l in ORDER if l in seen]
+
+
+def fmt_time(sec: float) -> str:
+    ms = sec * 1000.0
+    return f"{ms:.1f}&nbsp;ms" if ms < 1000 else f"{sec:.3f}&nbsp;s"
+
+
+def fmt_mem(b: float) -> str:
+    mib = b / (1024 * 1024)
+    return f"{b / 1024:.0f}&nbsp;KiB" if mib < 1 else f"{mib:.1f}&nbsp;MiB"
+
+
+def geomean(xs: list[float]) -> float:
+    ys = [x for x in xs if x and x > 0]
+    return math.exp(sum(math.log(x) for x in ys) / len(ys)) if ys else float("nan")
+
+
+def vals(case: dict[str, Cell], key: str) -> dict[str, float]:
+    """The numeric `key` (mean / rss) of every language that ran OK in this case.
+
+    A falsy value (rss == 0) means "not measured" — wasm runs under wasmtime, whose
+    host RSS isn't comparable — so it is excluded here and rendered as "—"."""
+    return {l: float(c[key]) for l, c in case.items()
+            if c.get("status") == "ok" and c.get(key)}
+
+
+def ratios(data: Data, cases: list[str], lang: str, key: str) -> list[float]:
+    rs: list[float] = []
+    for n in cases:
+        o, x = data[n].get("osprey", {}), data[n].get(lang, {})
+        if o.get("status") == "ok" and x.get("status") == "ok" and o.get(key) and x.get(key):
+            rs.append(float(o[key]) / float(x[key]))
+    return rs
+
+
+def wins(data: Data, cases: list[str], key: str) -> list[str]:
+    """Cases where Osprey is STRICTLY the fastest / lightest of all languages."""
+    return [n for n in cases
+            if (v := vals(data[n], key)) and "osprey" in v
+            and all(v["osprey"] < x for l, x in v.items() if l != "osprey")]
+
+
+def cell_missing(c: Cell) -> str:
+    return {"build_failed": "build✗", "wrong_output": "wrong✗"}.get(str(c.get("status")), "—")
+
+
+def value_table(data: Data, langs: list[str], cases: list[str], key: str, fmt: Callable[[float], str]) -> str:
+    """A `.comparison-table` of `key` per case/lang: fastest cell badged, Osprey wins starred."""
+    head = "<tr><th>Benchmark</th>" + "".join(
+        f'<th class="num{" col-osprey" if l.startswith("osprey") else ""}">{LABEL[l]}</th>' for l in langs) + "</tr>"
+    body = "".join(_row(data[n], n, langs, key, fmt) for n in cases)
+    return ('<div class="comparison-table"><table><thead>' + head
+            + "</thead><tbody>" + body + "</tbody></table></div>")
+
+
+def _row(case: dict[str, Cell], name: str, langs: list[str], key: str, fmt: Callable[[float], str]) -> str:
+    v = vals(case, key)
+    best = min(v.values()) if v else None
+    return (f"<tr><td>{html.escape(name)}</td>"
+            + "".join(_td(case.get(l, {}), l, key, fmt, v, best) for l in langs) + "</tr>")
+
+
+def _td(c: Cell, lang: str, key: str, fmt: Callable[[float], str],
+        v: dict[str, float], best: Optional[float]) -> str:
+    ok = c.get("status") == "ok" and bool(c.get(key))
+    txt = fmt(float(c[key])) if ok else cell_missing(c)
+    classes = ["num"] + (["col-osprey"] if lang.startswith("osprey") else [])
+    if ok and best is not None and float(c[key]) == best:
+        strict = all(float(c[key]) < o for l, o in v.items() if l != lang)
+        if lang == "osprey" and strict:
+            classes.append("win")
+            txt += " ★"
+        else:
+            classes.append("best")
+    return f'<td class="{" ".join(classes)}">{txt}</td>'
+
+
+def summary(data: Data, langs: list[str], cases: list[str]) -> str:
+    """Headline cards: outright CPU wins + Osprey's CPU geomean vs each language."""
+    cw = wins(data, cases, "mean")
+    cards = [_card(str(len(cw)), "CPU wins (fastest of all)", "is-accent")]
+    for lang in langs:
+        if not lang.startswith("osprey") and (rs := ratios(data, cases, lang, "mean")):
+            g = geomean(rs)
+            cards.append(_card(f"{g:.2f}×", f"CPU vs {LABEL[lang]}", "is-good" if g <= 1.05 else ""))
+    note = (f'<p>Osprey is the fastest of all five languages on <strong>'
+            f'{html.escape(", ".join(cw)) or "—"}</strong>. Lower is better; ★ marks an Osprey win.</p>')
+    return '<div class="bench-summary">' + "".join(cards) + "</div>" + note
+
+
+def _card(big: str, label: str, kind: str) -> str:
+    return (f'<div class="bench-card {kind}"><span class="big">{big}</span>'
+            f'<span class="lbl">{html.escape(label)}</span></div>')
+
+
+def tables_fragment(data: Data, langs: list[str], cases: list[str]) -> str:
+    """The shared report body — summary + both tables — with no page shell or CSS.
+    Reused verbatim by the standalone file and the website /benchmarks page."""
+    return (summary(data, langs, cases)
+            + "\n<h2>CPU time</h2>\n" + value_table(data, langs, cases, "mean", fmt_time)
+            + "\n<h2>Peak memory</h2>\n" + value_table(data, langs, cases, "rss", fmt_mem))
+
+
+def website_css() -> str:
+    """The actual Osprey website CSS (tokens + base + components), concatenated so
+    the standalone report renders identically to the site with no network."""
+    css_dir = REPO / "src" / "toolchain" / "website" / "src" / "css"
+    return "\n".join((css_dir / f).read_text() for f in ("variables.css", "base.css", "components.css")
+                     if (css_dir / f).exists())
+
+
+def render_standalone(fragment: str, langs: list[str]) -> str:
+    return STANDALONE.format(css=website_css(), langs=html.escape(", ".join(LABEL[l] for l in langs)), body=fragment)
+
+
+def bake_website_fragment(fragment: str) -> Optional[Path]:
+    """Write the tables fragment into the website includes so /benchmarks renders
+    it at site-build time without the (gitignored) results present."""
+    inc = REPO / "src" / "toolchain" / "website" / "src" / "_includes"
+    if not inc.exists():
+        return None
+    path = inc / "benchmarks-tables.html"
+    atomic_write(path, "<!-- Generated by src/toolchain/benchmarks/report.py — do not edit. Run `make -C src/toolchain/benchmarks bench`. -->\n" + fragment + "\n")
+    return path
+
+
+def measured_peak(cell: Cell) -> str:
+    """Human-readable decimal peak RSS, e.g. `2.53 GB` or `2.98 MB`.
+
+    `:.3g` alone rendered a gigabyte-scale peak as `2.53e+03 MB` — technically
+    right, unreadable in prose, and this string is baked into the README and the
+    published website page. The unit is chosen AFTER rounding: 999,999,999
+    bytes rounds to 1000 MB, which `:.3g` renders as `1e+03 MB` again.
+    """
+    mb = float(cell["rss"]) / 1_000_000
+    return f"{mb / 1000:.3g} GB" if float(f"{mb:.3g}") >= 1000 else f"{mb:.3g} MB"
+
+
+README = REPO / "src" / "toolchain" / "benchmarks" / "README.md"
+
+
+def update_readme(data: Data, path: Path = README) -> Optional[Path]:
+    """Refresh measured prose without making the whole hand-written README generated."""
+    start = "> <!-- binarytrees-results:start -->"
+    end = "> <!-- binarytrees-results:end -->"
+    before, marked, after = path.read_text().partition(start)
+    _, found, after = after.partition(end)
+    if not marked or not found:
+        raise ValueError("benchmarks README is missing binarytrees result markers")
+    cells = data.get("binarytrees", {})
+    if not {"osprey", "osprey-arc", "osprey-gc"} <= cells.keys():
+        return None  # filtered run: nothing measured for the prose figures
+    default, arc, gc = (measured_peak(cells[lang]) for lang in ("osprey", "osprey-arc", "osprey-gc"))
+    generated = (
+        f"{start}\n"
+        f"> Current measured peaks: default **{default}**, "
+        f"`--memory=arc` **{arc}**, and `--memory=gc` **{gc}**.\n"
+        f"{end}"
+    )
+    atomic_write(path, before + generated + after)
+    return path
+
+
+def render(out: Path) -> None:
+    data = load(out)
+    langs, cases = present_langs(data), sorted(data)
+    fragment = tables_fragment(data, langs, cases)
+    atomic_write(out / "results.html", render_standalone(fragment, langs))
+    atomic_write(out / "results.json", json.dumps({"languages": langs, "cases": data}, indent=2, allow_nan=False))
+    baked = bake_website_fragment(fragment)
+    readme = update_readme(data)
+    print(f"wrote {out / 'results.html'}" + (f" and baked {baked}" if baked else "")
+          + (f" and refreshed {readme}" if readme else " (README figures unchanged)"))
+
+
+STANDALONE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Osprey benchmarks</title>
+<style>{css}</style></head>
+<body><main class="container" style="padding-top:3rem;padding-bottom:4rem">
+<h1>Osprey cross-language benchmarks</h1>
+<p>{langs} — same naive algorithm and parameters in every language, native
+release builds, output checked against an integer oracle. CPU = hyperfine
+mean&nbsp;±&nbsp;stddev; memory = peak resident set size. Generated mechanically
+by <code>src/toolchain/benchmarks/report.py</code>; re-run with <code>make -C src/toolchain/benchmarks bench</code>.</p>
+{body}
+</main></body></html>
+"""
+
+
+if __name__ == "__main__":
+    render(Path(sys.argv[1]))

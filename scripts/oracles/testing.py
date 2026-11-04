@@ -1,6 +1,6 @@
 """CPython oracle for @osprey/testing: numpy.isclose verdicts.
 
-Writes src/packages/testing/tests/expected.py, which the suite compares `Check.near`
+Writes src/osprey/packages/testing/tests/expected.py, which the suite compares `Check.near`
 against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python scripts/oracles/testing.py`.
 """

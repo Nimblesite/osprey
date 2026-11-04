@@ -30,7 +30,7 @@ def compile_server():
     compiler = os.environ.get("OSPREY_BIN", str(ROOT / "target/release/osprey"))
     binary = OUTPUT / "talon-server"
     with (OUTPUT / "server-build.log").open("w") as log:
-        subprocess.run([compiler, "src/examples/projects/modules", "--compile", "-o",
+        subprocess.run([compiler, "src/osprey/examples/projects/modules", "--compile", "-o",
                         str(binary)], cwd=ROOT, stdout=log, stderr=log, check=True)
     return binary
 

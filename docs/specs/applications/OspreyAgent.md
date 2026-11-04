@@ -1,8 +1,8 @@
 # Osprey Agent
 
-**Status:** most of this application contract is not implemented yet. [`src/examples/agent/src/engine.py`](../../../src/examples/agent/src/engine.py) answers every model with DeepSeek's endpoint and profile, `model.ospml` holds no effort and seeds one key from two `.env` names alone, `view.ospml` has no Settings pane, and the SwiftUI host selects one `Text` at a time. [Plan 0052](../../plans/0052-agent.md) delivers it over contract that already exists: the process capabilities [UI-EFFECTS-PROCESS] of [`@osprey/native`](../../../src/packages/native/README.md) and the thinking levels of [`@osprey/pydantic-ai`](../../../src/packages/pydantic_ai/README.md).
+**Status:** most of this application contract is not implemented yet. [`src/osprey/examples/agent/src/engine.py`](../../../src/osprey/examples/agent/src/engine.py) answers every model with DeepSeek's endpoint and profile, `model.ospml` holds no effort and seeds one key from two `.env` names alone, `view.ospml` has no Settings pane, and the SwiftUI host selects one `Text` at a time. [Plan 0052](../../plans/0052-agent.md) delivers it over contract that already exists: the process capabilities [UI-EFFECTS-PROCESS] of [`@osprey/native`](../../../src/osprey/packages/native/README.md) and the thinking levels of [`@osprey/pydantic-ai`](../../../src/osprey/packages/pydantic_ai/README.md).
 
-The Osprey Agent is the coding agent application at [`src/examples/agent/`](../../../src/examples/agent/README.md): one store, one `update` and one set of regions over `@osprey/native`, with model requests and tools driven through capabilities.
+The Osprey Agent is the coding agent application at [`src/osprey/examples/agent/`](../../../src/osprey/examples/agent/README.md): one store, one `update` and one set of regions over `@osprey/native`, with model requests and tools driven through capabilities.
 
 ## What the person asked for [AGENT-REQUESTS]
 
@@ -22,13 +22,13 @@ Each request, in the words it was made, with the section that holds it. A reques
 | "make sure that the syntax higlighting works good, verify in tests"; "no fucking syntax highlighting" | [AGENT-HIGHLIGHT] | Done |
 | "the button that says calc here should allow the user to change the path" | [AGENT-FOLDER] | Done |
 | "there should be a note somewhere on the screen conveying that the agent is not sandboxed" | [AGENT-FOLDER] | Done |
-| "We need to give credit to all the original authors of ported libraries and apps etc. on the website" | [the credits page](../../../src/website/src/credits.md) | Done |
+| "We need to give credit to all the original authors of ported libraries and apps etc. on the website" | [the credits page](../../../src/toolchain/website/src/credits.md) | Done |
 | "automated tests to PROVE it fucking works!"; "allow the tests to run headless (with test doubles) OR for real with ACTUAL LLM CALLS" | [AGENT-PROOF] | Open |
 | "prove a) all the actual agent harness UI works (remove controls that are not necessary and don't work) b) that it can solve coding problems c) that it looks fucking amazing" | [AGENT-PROOF] | Open |
 
 ## Providers, models and effort [AGENT-PROVIDERS]
 
-The catalogue is one table in `src/examples/agent/src/engine.py`, `Provider(id, label, keyNames, base, models)` and `ModelEntry(id, label, levels, wire)`, and every lookup goes through it. Nothing else names a provider.
+The catalogue is one table in `src/osprey/examples/agent/src/engine.py`, `Provider(id, label, keyNames, base, models)` and `ModelEntry(id, label, levels, wire)`, and every lookup goes through it. Nothing else names a provider.
 
 | Id | Label | Base URL | Key names in `.env` |
 | --- | --- | --- | --- |
@@ -78,7 +78,7 @@ The transcript renders as one selectable group of AppKit text views in the Swift
 
 ## Highlighting [AGENT-HIGHLIGHT]
 
-Fenced code in an answer and `read_file` output draw through `Highlight.tokens_of` in [`src/examples/agent/src/highlight.py`](../../../src/examples/agent/src/highlight.py) as `Ui::rich` runs, with every token colour at 4.5:1 or better on the code fill in both themes.
+Fenced code in an answer and `read_file` output draw through `Highlight.tokens_of` in [`src/osprey/examples/agent/src/highlight.py`](../../../src/osprey/examples/agent/src/highlight.py) as `Ui::rich` runs, with every token colour at 4.5:1 or better on the code fill in both themes.
 
 ## Folder [AGENT-FOLDER]
 
@@ -90,4 +90,4 @@ A turn that ends with no text says so in words, with `Try again`, and leaves no 
 
 ## Proof [AGENT-PROOF]
 
-`src/examples/agent/self-test.sh` runs the real window with doubled requests and asserts records and goldens; `--live` runs it with real LLM calls through the first provider with a key, in the order `zai-coding`, `zai`, `kimi-coding`, `moonshotai`, `deepseek`, with acceptance checks the model never sees, and never prints the key. MCP proofs use real server processes (`self-test/mcp_server.py`), not doubles. A strict HTTP double can require a bearer token and a URL and answers 401 or 404 otherwise, as a real server would, and `self-test/verify_providers.py` and `verify_mcp.py` assert each request's URL and exact body. Controls that do nothing are removed, not hidden. The look is judged by reading every golden.
+`src/osprey/examples/agent/self-test.sh` runs the real window with doubled requests and asserts records and goldens; `--live` runs it with real LLM calls through the first provider with a key, in the order `zai-coding`, `zai`, `kimi-coding`, `moonshotai`, `deepseek`, with acceptance checks the model never sees, and never prints the key. MCP proofs use real server processes (`self-test/mcp_server.py`), not doubles. A strict HTTP double can require a bearer token and a URL and answers 401 or 404 otherwise, as a real server would, and `self-test/verify_providers.py` and `verify_mcp.py` assert each request's URL and exact body. Controls that do nothing are removed, not hidden. The look is judged by reading every golden.

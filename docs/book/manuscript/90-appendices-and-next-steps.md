@@ -26,7 +26,7 @@ For a multi-file project, supply its directory or `osprey.toml` in place of the 
 
 The formatting command keeps the selected source flavor. It does not translate a `.osp` program into `.ospml`. Never replace a platform rejection with a different target flag and claim the original target was tested.
 
-Hunt uses KLEE to explore symbolic inputs and replays findings on a native build. It needs KLEE and Osprey's symbolic runtime. For a verified finding example, run `./target/release/osprey hunt src/tests/hunt/crash.osp --input-bytes 1 --max-time 10` from the repository root: input `"9"` triggers the deliberately planted abort. HTML and JSON reports are saved under `target/hunt/`. A clean result within a time/input bound does not prove safety; incomplete paths and skipped replay can coexist with exit status 0. See the [Hunt guide](https://www.ospreylang.dev/docs/hunt/) for setup and report interpretation.
+Hunt uses KLEE to explore symbolic inputs and replays findings on a native build. It needs KLEE and Osprey's symbolic runtime. For a verified finding example, run `./target/release/osprey hunt src/osprey/tests/hunt/crash.osp --input-bytes 1 --max-time 10` from the repository root: input `"9"` triggers the deliberately planted abort. HTML and JSON reports are saved under `target/hunt/`. A clean result within a time/input bound does not prove safety; incomplete paths and skipped replay can coexist with exit status 0. See the [Hunt guide](https://www.ospreylang.dev/docs/hunt/) for setup and report interpretation.
 
 ## Appendix B — Default syntax on one page
 

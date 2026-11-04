@@ -14,13 +14,13 @@ Work proceeds in this order; an unchecked gate blocks the dependent step. Receip
 
 ## Prerequisites in place
 - Model pins: `Qwen/Qwen3.8-27B` revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`, weights from `unsloth/Qwen3.8-27B-GGUF` revision `4ca720788d1e01f1bff70c033e0d0028fd02e502`; fallback `Qwen/Qwen3.6-27B` (same `qwen3_5` architecture, 27,781,427,952 params) is a weights swap if 3.8 fails Phase 0.
-- Harnesses already ported: `@osprey/pydantic-ai` `OllamaProvider` (src/packages/pydantic_ai/src/providers_http.py) and the tool-calling `Agent` (src/packages/pydantic_ai/src/agent.py).
-- Reusable: `@osprey/tiktoken` byte-level BPE (src/packages/tiktoken/src/core.py); `@osprey/transformers` top-k/top-p (src/packages/transformers/src/logits_process.py) and model-independent `generate` (generation.py); `@osprey/jinja2` parses macros (parser.py `parse_macro`) but rendering errors (render.py:102); `@osprey/tokenizers` has no BPE and no NFC.
-- `HttpResponse` has `streamFd` (src/compiler/runtime/http_shared.h:57); `gpuLoad` now preserves binary32 bytes and `gpuLoadTensor` checks the requested storage width (src/compiler/runtime/gpu_host.c); dense storage and binary32 matrix products are implemented under plan 0050, whose full Phase 5 gate remains open.
+- Harnesses already ported: `@osprey/pydantic-ai` `OllamaProvider` (src/osprey/packages/pydantic_ai/src/providers_http.py) and the tool-calling `Agent` (src/osprey/packages/pydantic_ai/src/agent.py).
+- Reusable: `@osprey/tiktoken` byte-level BPE (src/osprey/packages/tiktoken/src/core.py); `@osprey/transformers` top-k/top-p (src/osprey/packages/transformers/src/logits_process.py) and model-independent `generate` (generation.py); `@osprey/jinja2` parses macros (parser.py `parse_macro`) but rendering errors (render.py:102); `@osprey/tokenizers` has no BPE and no NFC.
+- `HttpResponse` has `streamFd` (src/toolchain/compiler/runtime/http_shared.h:57); `gpuLoad` now preserves binary32 bytes and `gpuLoadTensor` checks the requested storage width (src/toolchain/compiler/runtime/gpu_host.c); dense storage and binary32 matrix products are implemented under plan 0050, whose full Phase 5 gate remains open.
 
 ## Phase 0 — Baseline, before any port code
 - [ ] Free disk: needs 60 GB for two GGUFs. Available space fell from 67 GiB to 21 GiB during concurrent builds on 2026-11-03; the prerequisite is currently unmet. Recheck before each GGUF download and clean inactive caches without deleting live build outputs.
-- [ ] `src/llm/eval/`: 30 coding tasks with deterministic pass/fail scripts (this repo's closed bugs and small features) + 200 tool-call cases covering nested objects, multi-line strings, enums and error recovery over 15+ turns.
+- [ ] `src/toolchain/llm/eval/`: 30 coding tasks with deterministic pass/fail scripts (this repo's closed bugs and small features) + 200 tool-call cases covering nested objects, multi-line strings, enums and error recovery over 15+ turns.
 - [ ] Run them on real Ollama with the unmodified GGUFs `UD-Q4_K_XL`, `UD-Q5_K_M`, `UD-IQ3_XXS`, at temperature 1.0 vs 0.6.
 - [ ] Record pass rate, tool-call validity, tokens/s, prompt-processing rate and peak RSS in `docs/reviews/review.md`.
 
@@ -44,7 +44,7 @@ Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Ph
 
 ## Phase 3 — Model on a tiny checkpoint
 - [ ] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `scripts/oracles/gguf.py`.
-- [ ] `src/packages/transformers/src/qwen3_5_*.py`: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE].
+- [ ] `src/osprey/packages/transformers/src/qwen3_5_*.py`: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE].
 - [ ] Tiny random `Qwen3_5TextConfig` (4 layers, a few MB) written by `scripts/oracles/transformers.py`; every layer's activations compared to Transformers in `float32` under [PORT-TEST-ORACLE].
 - [ ] Permutations: one token at a time vs a batch, cached vs uncached, recurrent vs chunked rule, `float16` KV vs `float32`.
 

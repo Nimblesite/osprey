@@ -1,0 +1,82 @@
+WEBVTT
+
+00:00.500 --> 00:10.261
+This is Osprey Storage: one app for the Mac and the iPhone. Its logic is written in Osprey, and its platform code in Swift. Here's how the two work together.
+
+00:11.011 --> 00:15.792
+The app measures a folder, hidden files included, and ranks what takes up the space.
+
+00:16.545 --> 00:20.281
+Open any folder, and it ranks what's inside, all the way down.
+
+00:24.645 --> 00:32.160
+The work is split in two. Osprey owns the browser: its state, its events, the ranking, the hidden-file rule, and every screen.
+
+00:32.360 --> 00:38.126
+Swift owns what only the platform can do: the window, the folder picker, and the walk over the disk.
+
+00:38.876 --> 00:44.231
+Osprey exposes the app as two functions. Start builds the first screen for a home folder.
+
+00:44.431 --> 00:49.668
+Dispatch takes the state the last screen came with, and one event, and returns the next screen.
+
+00:50.418 --> 01:04.167
+The compiler builds the project for the Mac into a static library, and writes a C header beside it. Every export gets a plain C prototype: Osprey strings become char pointers, and integers become sixty-four bit ints.
+
+01:04.917 --> 01:11.123
+Swift includes that header through a bridging header, initializes Osprey once, and asks it for the first screen.
+
+01:11.323 --> 01:17.699
+Each tap or toggle goes back through dispatch, with the state Swift was handed, which it keeps as opaque text.
+
+01:18.449 --> 01:24.101
+Calls go the other way too. Osprey declares each function it needs from the host with extern.
+
+01:24.301 --> 01:28.138
+Storage scan, for example, lists one folder of the measured walk.
+
+01:28.888 --> 01:34.009
+The same header lists these as imports, functions the host must define with C linkage.
+
+01:34.209 --> 01:39.086
+Here is storage scan's prototype: a C string in, a sixty-four bit int out.
+
+01:39.836 --> 01:45.127
+Swift defines it with @_cdecl, so the linker finds exactly that C name and signature.
+
+01:45.327 --> 01:50.013
+The body reads the tree Swift measured, and returns how many entries the folder has.
+
+01:50.763 --> 01:56.352
+The browser's logic never calls those externs directly. It renders through a Disk Facts effect.
+
+01:56.552 --> 02:00.517
+At the boundary, this handler answers that effect with the Swift functions.
+
+02:01.267 --> 02:07.463
+That makes the Osprey side testable on its own. The test suite answers the same effect with fixed data.
+
+02:07.663 --> 02:12.824
+So the browser and every screen run natively in the tests, with no Swift and no disk.
+
+02:13.574 --> 02:21.787
+Each screen Osprey returns is a tree of native nodes. Here, the Hidden Files toggle is a node, with its value and the event it sends.
+
+02:21.987 --> 02:28.244
+A shared SwiftUI renderer draws that node as a real toggle, and sends its event straight back to Osprey.
+
+02:28.994 --> 02:32.679
+Flip it in the app, and the hidden folders drop out of every total.
+
+02:37.061 --> 02:44.571
+One Xcode target builds for the Mac, the iPhone, and the simulator. Its settings name the platform for each SDK.
+
+02:44.771 --> 02:50.416
+Then it links the Osprey library built for that platform, and imports its header through the bridging header.
+
+02:51.166 --> 02:58.291
+So the same Osprey code runs on iPhone, drawn with the phone's own controls, dark mode and larger text included.
+
+02:59.041 --> 03:12.068
+To try it, run make run-mac-hd for the Mac, and src/osprey/examples/macos/run.sh ios-sim for the simulator. The full source is in the repository. Try it on your projects.

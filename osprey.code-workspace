@@ -66,7 +66,7 @@
     "go.testExplorer.enable": true,
     "go.testExplorer.packageDisplayMode": "nested",
     "go.testExplorer.showDynamicSubtestsInEditor": true,
-    "mochaExplorer.files": "src/vscode-extension/test/**/*.test.{js,ts}",
+    "mochaExplorer.files": "src/toolchain/vscode-extension/test/**/*.test.{js,ts}",
     "mochaExplorer.env": {},
     "mochaExplorer.cwd": "${workspaceFolder}/vscode-extension",
     "jestTestExplorer.rootPath": "webcompiler",

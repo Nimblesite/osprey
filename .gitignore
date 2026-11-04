@@ -10,17 +10,17 @@
 .mcp.json
 
 # Terraform state and inputs hold secrets
-src/packages/manager/ops/terraform/.terraform/
-src/packages/manager/ops/terraform/*.tfstate
-src/packages/manager/ops/terraform/*.tfstate.*
-src/packages/manager/ops/terraform/*.tfplan
-src/packages/manager/ops/terraform/*.tfvars
-src/packages/manager/ops/terraform/*.tfvars.json
-src/packages/manager/ops/terraform/crash.log
+src/osprey/packages/manager/ops/terraform/.terraform/
+src/osprey/packages/manager/ops/terraform/*.tfstate
+src/osprey/packages/manager/ops/terraform/*.tfstate.*
+src/osprey/packages/manager/ops/terraform/*.tfplan
+src/osprey/packages/manager/ops/terraform/*.tfvars
+src/osprey/packages/manager/ops/terraform/*.tfvars.json
+src/osprey/packages/manager/ops/terraform/crash.log
 
 # Coverage and test reports
 coverage/
-!src/crates/osprey-codegen/src/coverage/
+!src/toolchain/crates/osprey-codegen/src/coverage/
 lcov.info
 coverage-summary.json
 TestResults/
@@ -47,7 +47,7 @@ node_modules/
 dist/
 out/
 .build/
-src/examples/wasm/build/
+src/osprey/examples/wasm/build/
 *.wasm
 *.exe
 *.dll
@@ -59,11 +59,11 @@ src/examples/wasm/build/
 __pycache__/
 .osprey/
 .osprey-debug
-src/benchmarks/proof/tools/.lake/
+src/toolchain/benchmarks/proof/tools/.lake/
 
 # Generated benchmark exports and downloaded model weights
-src/benchmarks/results/hf/
-src/examples/gpt2/weights/
+src/toolchain/benchmarks/results/hf/
+src/osprey/examples/gpt2/weights/
 
 # Core dumps from a crashed C test binary (a container run leaves them here)
 /core

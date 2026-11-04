@@ -13,8 +13,8 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parent.parent
-WRAPPER = ROOT / "src/examples/mobile/android/gradlew"
-BANK_RUN = "src/examples/projects/modules/mobile/android/run.sh"
+WRAPPER = ROOT / "src/osprey/examples/mobile/android/gradlew"
+BANK_RUN = "src/osprey/examples/projects/modules/mobile/android/run.sh"
 ANDROID_ENV = "scripts/android-env.sh"
 # What every runner has: no Homebrew, no cargo bin, no developer extras.
 BASE_PATH = "/usr/bin:/bin"
@@ -174,7 +174,7 @@ def run_swift_probe(source, binary, *inputs):
     subprocess.run([str(binary)], check=True, timeout=10)
 
 def storage_host_probe():
-    host = ROOT / "src/examples/macos/OspreyStorage/StorageStore.swift"
+    host = ROOT / "src/osprey/examples/macos/OspreyStorage/StorageStore.swift"
     with tempfile.TemporaryDirectory(prefix="osprey-storage-ownership-") as scratch:
         source = Path(scratch) / "probe.swift"
         binary = Path(scratch) / "probe"
@@ -182,11 +182,11 @@ def storage_host_probe():
         run_swift_probe(source, binary, str(host))
 
 def counter_host_probe():
-    host = ROOT / "src/examples/ios/OspreyCounter/OspreyCounterApp.swift"
+    host = ROOT / "src/osprey/examples/ios/OspreyCounter/OspreyCounterApp.swift"
     compiler = os.environ.get("OSPREY_BIN", str(ROOT / "target/release/osprey"))
     with tempfile.TemporaryDirectory(prefix="osprey-counter-ownership-") as scratch:
         source, archive = Path(scratch) / "probe.swift", Path(scratch) / "counter.a"
-        subprocess.run([compiler, str(ROOT / "src/examples/ios/app.osp"), "--compile", "--target=macos",
+        subprocess.run([compiler, str(ROOT / "src/osprey/examples/ios/app.osp"), "--compile", "--target=macos",
                         "--memory=arc", "--quiet", "--no-warnings", "-o", str(archive)],
                        check=True, timeout=60)
         helper = "func ospreyString(" + host.read_text().split("func ospreyString(", 1)[1]
@@ -197,7 +197,7 @@ def counter_host_probe():
 def gpui_host_probe(archive):
     with tempfile.TemporaryDirectory(prefix="osprey-gpui-ownership-") as scratch:
         source, fixture, binary = (Path(scratch) / name for name in ["probe.rs", "fixture.o", "probe"])
-        source.write_text(GPUI_HOST_PROBE.replace("__FFI__", str(ROOT / "src/hosts/gpui/src/ffi.rs")))
+        source.write_text(GPUI_HOST_PROBE.replace("__FFI__", str(ROOT / "src/toolchain/hosts/gpui/src/ffi.rs")))
         subprocess.run(["xcrun", "clang", "-O2", "-std=c11", "-Wall", "-Wextra", "-Werror",
                         "-Dmain=mobile_fixture_unused_main", "-I", str(archive.parent), "-c",
                         str(ROOT / "scripts/mobile-abi.c"), "-o", str(fixture)], check=True, timeout=60)
@@ -211,7 +211,7 @@ def gpui_host_probe(archive):
                        env=dict(os.environ, OSPREY_ARC_DEBUG="1"))
 
 def corpus_jobs(target, override=None):
-    harness = (ROOT / "src/crates/run_test_corpus.sh").read_text()
+    harness = (ROOT / "src/toolchain/crates/run_test_corpus.sh").read_text()
     functions = harness.split("detected_jobs() {", 1)[1].split("\n\nbackend_setup", 1)[0]
     script = "nproc() { print -r -- 32; }\ndetected_jobs() {" + functions
     env = dict(os.environ, TARGET=target)
@@ -224,11 +224,11 @@ def corpus_jobs(target, override=None):
     )
 
 def swift_packaging_result(root):
-    host = root / "src/hosts/swift"
+    host = root / "src/toolchain/hosts/swift"
     host.mkdir(parents=True)
     launcher = host / "run.sh"
-    shutil.copyfile(ROOT / "src/hosts/swift/run.sh", launcher)
-    compiler = root / "src" / "compiler"
+    shutil.copyfile(ROOT / "src/toolchain/hosts/swift/run.sh", launcher)
+    compiler = root / "src" / "toolchain" / "compiler"
     compiler.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAPTURE\"\n"
                         "echo 'compile error sentinel' >&2\nexit 37\n")
     compiler.chmod(0o755)
@@ -244,7 +244,7 @@ class BuildFragments(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             result = swift_packaging_result(root)
-            host, app = root / "src/hosts/swift", root / "app with spaces"
+            host, app = root / "src/toolchain/hosts/swift", root / "app with spaces"
             self.assertEqual(result.returncode, 37, result.stderr)
             self.assertIn("compile error sentinel", result.stderr)
             self.assertEqual((root / "arguments").read_text().splitlines(), [
@@ -276,7 +276,7 @@ class BuildFragments(unittest.TestCase):
                         cwd=root, capture_output=True, text=True,
                     )
                     self.assertEqual(result.returncode == 0, succeeds, result.stderr)
-                    self.assertIn("1 node-tool recipes" if succeeds else "site: runs a node tool in src/website/", result.stderr)
+                    self.assertIn("1 node-tool recipes" if succeeds else "site: runs a node tool in src/toolchain/website/", result.stderr)
 
 class CorpusScheduling(unittest.TestCase):
     def test_native_worker_isolates_writes_and_preserves_failure_output(self):
@@ -287,7 +287,7 @@ class CorpusScheduling(unittest.TestCase):
             compiler.write_text('#!/bin/sh\nprintf payload > worker-artifact\nprintf failed\nexit 7\n')
             compiler.chmod(0o755)
             result = subprocess.run(
-                ["zsh", str(ROOT / "src/crates/run_test_corpus.sh"), "--worker", "default", str(root), "1", "unused.osp"],
+                ["zsh", str(ROOT / "src/toolchain/crates/run_test_corpus.sh"), "--worker", "default", str(root), "1", "unused.osp"],
                 cwd=root, env=dict(os.environ, OSPREY_ROOT=str(root)), capture_output=True, text=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)

@@ -1,0 +1,473 @@
+use super::*;
+
+fn usage_input(body: &str) -> Result<CompilationInput, Vec<ProjectError>> {
+    usage_project(&[
+        ("src/main.osp", format!("namespace app;\n{body}\n")),
+        (
+            "vendor/@demo/actions/fallback.osp",
+            "namespace app;\nfn run(value) = 99\n".into(),
+        ),
+    ])
+}
+
+fn usage_project(inputs: &[(&str, String)]) -> Result<CompilationInput, Vec<ProjectError>> {
+    let sources: Vec<_> = inputs
+        .iter()
+        .map(|(path, source)| SourceFile {
+            path: PathBuf::from(path),
+            flavor: Flavor::Default,
+            program: osprey_syntax::parse_program(source).program,
+            discipline: None,
+            source: source.clone(),
+        })
+        .collect();
+    CompilationInput::documentation_project(".", &ProjectConfig::for_root(Path::new(".")), &sources)
+}
+
+#[test]
+fn checked_source_graph_uses_inferred_method_dispatch() {
+    for (body, required) in [
+        (
+            "fn main() = { let action = { run: fn() => 42 }\naction.run() }",
+            false,
+        ),
+        ("fn main() = 42.run()", true),
+        ("fn main() = run(42)", true),
+    ] {
+        let input = usage_input(body).expect("assembled usage fixture");
+        let graph = input.dependency_graph_json().expect("checked source graph");
+        let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
+        let edges = value
+            .get("dependencies")
+            .expect("dependencies")
+            .as_array()
+            .expect("dependency array");
+        assert_eq!(
+            edges.iter().any(
+                |edge| edge.get("symbol").and_then(serde_json::Value::as_str) == Some("app::run")
+            ),
+            required
+        );
+    }
+}
+
+#[test]
+fn checked_source_graph_refuses_invalid_and_unresolved_programs() {
+    for body in [
+        "fn main() = missing.run()",
+        "fn apply(value) = value.run()\nfn main() = 42",
+    ] {
+        let input = usage_input(body).expect("assembled usage fixture");
+        assert!(input.dependency_graph_json().is_err(), "{body}");
+    }
+}
+
+#[test]
+fn checked_source_graph_preserves_inlined_method_dependency() {
+    let input = usage_project(&[
+        (
+            "src/main.osp",
+            "namespace app;\nfn main() = action()\n".into(),
+        ),
+        (
+            "vendor/@demo/actions/helper.osp",
+            "namespace app;\nfn invoke() = 42.run()\nlet action = invoke\n".into(),
+        ),
+        (
+            "vendor/@demo/fallback/run.osp",
+            "namespace app;\nfn run(value) = 99\n".into(),
+        ),
+    ])
+    .expect("assembled inline fixture");
+    let graph = input.dependency_graph_json().expect("checked inline graph");
+    let value: serde_json::Value = serde_json::from_str(&graph).expect("graph JSON");
+    let edges = value
+        .get("dependencies")
+        .and_then(serde_json::Value::as_array)
+        .expect("dependencies");
+    assert!(
+        edges
+            .iter()
+            .any(|edge| edge.get("symbol").and_then(serde_json::Value::as_str) == Some("app::run")),
+        "inlined UFCS target must remain required: {graph}"
+    );
+}
+
+#[test]
+fn recognizes_directory_and_manifest_project_inputs() {
+    assert!(is_project_path("osprey.toml"));
+    assert!(!is_project_path("main.osp"));
+    assert!(is_project_path(
+        std::env::temp_dir().to_string_lossy().as_ref()
+    ));
+}
+
+#[test]
+fn lexical_and_absolute_project_roots_have_one_identity() {
+    let lexical = project_root(Path::new("."));
+    let absolute = normalize_path(Path::new("."));
+    assert_eq!(lexical, absolute);
+    assert_eq!(
+        ProjectConfig::for_root(&lexical).name,
+        ProjectConfig::for_root(&absolute).name
+    );
+}
+
+#[test]
+fn only_module_aware_programs_request_single_source_assembly() {
+    let script = osprey_syntax::parse_program("let answer = 42\n").program;
+    let module =
+        osprey_syntax::parse_program("module Answers {\n    export let answer = 42\n}\n").program;
+    assert!(!needs_assembly(&script));
+    assert!(needs_assembly(&module));
+}
+
+#[test]
+fn assembled_client_preserves_string_results_for_length() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../osprey/examples/projects/modules/client");
+    let input = CompilationInput::load_project(root.to_string_lossy().as_ref())
+        .expect("client project assembles");
+    let errors = osprey_types::check_program(input.program());
+    assert!(errors.is_empty(), "unexpected type errors: {errors:?}");
+}
+
+#[test]
+fn source_output_defaults_match_the_existing_cli() {
+    let program = osprey_syntax::parse_program("let answer = 42\n").program;
+    let input = CompilationInput::script("nested/main.osp", String::new(), program);
+    assert_eq!(input.output_path(None, "native"), PathBuf::from("main"));
+    assert_eq!(input.output_path(None, "ios"), PathBuf::from("main.a"));
+    assert_eq!(input.output_path(None, "ios-sim"), PathBuf::from("main.a"));
+    assert_eq!(
+        input.output_path(None, "wasm32"),
+        PathBuf::from("main.wasm")
+    );
+    assert_eq!(
+        input.output_path(Some("custom/out"), "native"),
+        PathBuf::from("custom/out")
+    );
+}
+
+#[test]
+fn aggregate_sources_keeps_link_directives_from_every_file() {
+    let sources = [
+        ("first.osp", "// @link: sqlite3\nlet x = 1\n"),
+        ("second.ospml", "// @linkdir: /opt/lib\ny = 2\n"),
+    ];
+    let sources = sources
+        .iter()
+        .enumerate()
+        .map(|(index, (path, source))| osprey_project::SourceMetadata {
+            index,
+            path: PathBuf::from(path),
+            flavor: Flavor::Default,
+            source: (*source).to_string(),
+            global_line_start: 1,
+            global_line_end: 2,
+            discipline: None,
+        })
+        .collect();
+    let project = AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
+        warnings: Vec::new(),
+        state_boundaries: Vec::new(),
+        program: Program {
+            statements: Vec::new(),
+            doc: None,
+        },
+        backend: None,
+        entry_prologue: Vec::new(),
+        entry_source: 0,
+        sources,
+        source_name_by_mangled: std::collections::BTreeMap::new(),
+        public_api: std::collections::BTreeMap::new(),
+        documentation_bindings: Vec::new(),
+    };
+    let aggregated = aggregate_sources(&project);
+    crate::testkit::shows(&aggregated, &["// @link: sqlite3", "// @linkdir: /opt/lib"]);
+
+    let input = CompilationInput::assembled(
+        project,
+        aggregated,
+        "demo".to_string(),
+        OutputDefault::Project {
+            root: PathBuf::from("out"),
+            name: "demo".to_string(),
+        },
+    );
+    assert_eq!(input.debug_path(), "first.osp");
+    assert_eq!(
+        input.diagnostic(Some(Position { line: 2, column: 3 }), "bad"),
+        "first.osp:2:3: bad"
+    );
+    assert_eq!(
+        input.output_path(None, "wasm32"),
+        PathBuf::from("out/demo.wasm")
+    );
+}
+
+#[test]
+fn project_symbol_mapping_changes_exact_names_and_localizes_positions() {
+    let program = osprey_syntax::parse_program("fn main() = 1\nfn remaining() = 2\n").program;
+    let source = osprey_project::SourceMetadata {
+        index: 0,
+        path: PathBuf::from("src/main.osp"),
+        flavor: Flavor::Default,
+        source: String::new(),
+        global_line_start: 1,
+        global_line_end: 2,
+        discipline: None,
+    };
+    let mut source_names = std::collections::BTreeMap::new();
+    let _ = source_names.insert("main".to_string(), "app::main".to_string());
+    let project = AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
+        warnings: Vec::new(),
+        state_boundaries: Vec::new(),
+        program,
+        backend: None,
+        entry_prologue: Vec::new(),
+        entry_source: 0,
+        sources: vec![source],
+        source_name_by_mangled: source_names,
+        public_api: std::collections::BTreeMap::new(),
+        documentation_bindings: Vec::new(),
+    };
+    let json = project_symbols_json(osprey_lsp::symbols_json(&project.program), &project);
+    crate::testkit::contents(
+        &json,
+        &[
+            "\"name\":\"app::main\"",
+            "\"name\":\"remaining\"",
+            "\"path\":\"src/main.osp\"",
+        ],
+        &["reapp::maining"],
+    );
+}
+
+fn empty_project(
+    source_name_by_mangled: std::collections::BTreeMap<String, String>,
+) -> AssembledProject {
+    AssembledProject {
+        source_dependencies: Vec::new(),
+        method_candidates: Vec::new(),
+        warnings: Vec::new(),
+        state_boundaries: Vec::new(),
+        program: Program {
+            statements: Vec::new(),
+            doc: None,
+        },
+        backend: None,
+        entry_prologue: Vec::new(),
+        entry_source: 0,
+        sources: Vec::new(),
+        source_name_by_mangled,
+        public_api: std::collections::BTreeMap::new(),
+        documentation_bindings: Vec::new(),
+    }
+}
+
+fn folded_initializer_input() -> CompilationInput {
+    let parsed = osprey_syntax::parse_program("let alias = 7\nfn main() = print(\"ok\")\n");
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    let mut project = empty_project(std::collections::BTreeMap::new());
+    let mut statements = parsed.program.statements.into_iter();
+    project.documentation_bindings = statements.by_ref().take(1).collect();
+    project.program.statements = statements.collect();
+    CompilationInput::assembled(
+        project,
+        String::new(),
+        "main.osp".into(),
+        OutputDefault::Source("main.osp".into()),
+    )
+}
+
+#[test]
+fn coverage_initializers_preserve_main_and_discard_contracts() {
+    let input = folded_initializer_input();
+    for covered in [false, true] {
+        let program = input.codegen_program(covered);
+        let errors = osprey_types::check_program(&program);
+        assert!(errors.is_empty(), "coverage={covered}: {errors:#?}");
+    }
+}
+
+#[test]
+fn an_entryless_project_falls_back_to_its_display_path() {
+    let input = CompilationInput::assembled(
+        empty_project(std::collections::BTreeMap::new()),
+        String::new(),
+        "whole/project".to_string(),
+        OutputDefault::Project {
+            root: PathBuf::from("out"),
+            name: "demo".to_string(),
+        },
+    );
+    // No entry source → debug_path and an unlocatable diagnostic both use display_path.
+    assert_eq!(input.debug_path(), "whole/project");
+    assert_eq!(
+        input.diagnostic(Some(Position { line: 7, column: 2 }), "oops"),
+        "whole/project:7:2: oops"
+    );
+    assert_eq!(input.diagnostic(None, "oops"), "whole/project: oops");
+}
+
+#[test]
+fn project_symbol_projection_is_a_noop_on_unmappable_input() {
+    let project = empty_project(std::collections::BTreeMap::new());
+    // Non-JSON input is returned verbatim.
+    assert_eq!(
+        project_symbols_json("not json".to_string(), &project),
+        "not json"
+    );
+    // Valid JSON that is not an array is also returned verbatim.
+    assert_eq!(
+        project_symbols_json("{\"a\":1}".to_string(), &project),
+        "{\"a\":1}"
+    );
+    // An array entry that is not an object, has no mapped name, and no
+    // position exercises every early-return guard in update_project_symbol.
+    assert_eq!(project_symbols_json("[42]".to_string(), &project), "[42]");
+}
+
+#[test]
+fn project_errors_include_every_available_location_component() {
+    let cases = [
+        (
+            Some(PathBuf::from("src/a.osp")),
+            Some(2),
+            Some(3),
+            "src/a.osp:2:3: bad",
+        ),
+        (None, Some(4), None, "fallback:4: bad"),
+        (
+            Some(PathBuf::from("src/b.osp")),
+            None,
+            Some(9),
+            "src/b.osp: bad",
+        ),
+    ];
+    for (path, line, column, expected) in cases {
+        let error = ProjectError {
+            message: "bad".to_string(),
+            path,
+            line,
+            column,
+        };
+        assert_eq!(format_project_error(&error, "fallback"), expected);
+    }
+}
+
+// LLDB binds a breakpoint only on the path spelling the editor opened. macOS
+// spells its temp dir `/var/folders/…` and canonicalizes it to
+// `/private/var/…`, so a canonical debug path left every breakpoint in a
+// module-aware source unbound ([DEBUGGER-SOURCE-MAP]).
+#[cfg(unix)]
+#[test]
+fn module_aware_source_keeps_the_path_spelling_it_was_given() {
+    let real = std::env::temp_dir().join(format!("osprey_spelling_{}", std::process::id()));
+    let link = real.with_extension("link");
+    std::fs::create_dir_all(&real).expect("real dir");
+    let _ = std::fs::remove_file(&link);
+    std::os::unix::fs::symlink(&real, &link).expect("symlinked dir");
+    let path = link.join("module.osp");
+    let source = "module Tax {\n    export fn add(n) = n + 1\n}\nfn main() = print(Tax::add(41))\n";
+    std::fs::write(&path, source).expect("source written");
+    let program = osprey_syntax::parse_program(source).program;
+    let path = path.to_string_lossy();
+    let input = CompilationInput::one_source(&path, Flavor::Default, source.into(), program)
+        .unwrap_or_else(|errors| panic!("{errors:?}"));
+    let _ = std::fs::remove_file(&link);
+    let _ = std::fs::remove_dir_all(&real);
+    assert_eq!(input.debug_path(), path);
+}
+
+#[test]
+fn a_library_exports_only_the_functions_its_entry_source_declares() {
+    // [IOS-HOST-ABI] `lib::Flow::fetch` performs an effect nobody handles and
+    // `shout` looks exportable; both live outside the entry file, so neither
+    // is a C export nor a reason to refuse the build.
+    let root = temp_project(
+        "entry-exports",
+        &[
+        ("osprey.toml", "[project]\nname = \"exp\"\nsource_roots = [\"src\", \"main.ospml\"]\ndefault_namespace = \"app\"\nentry = \"main.ospml\"\n"),
+        ("src/helpers.ospml", "namespace lib\n\neffect Slices\n    fetch : string => string\n\nmodule Flow\n    export fetch (key : string) = perform Slices.fetch key\n    export shout (text : string) = \"${text}!\"\n"),
+        ("main.ospml", "namespace app\n\nimport lib::Flow\n\nstart (source : string) = Flow::shout source\n"),
+        ],
+    );
+    let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
+    let scope = input.export_scope(false);
+    let built = crate::ios::source(
+        input.backend_program(),
+        "main.ospml",
+        crate::ios::Target::Mac,
+        &scope,
+    );
+    std::fs::remove_dir_all(&root).expect("cleanup");
+    let (_, header) = built.expect("entry-only exports");
+    crate::testkit::contents(&header, &["osprey_app_start("], &["osprey_lib_"]);
+}
+
+/// A project under the system temp directory holding `files`.
+fn temp_project(name: &str, files: &[(&str, &str)]) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("osprey-{name}-{}", std::process::id()));
+    for (path, text) in files {
+        let file = root.join(path);
+        std::fs::create_dir_all(file.parent().expect("parent")).expect("project dir");
+        std::fs::write(file, text).expect("project file");
+    }
+    root
+}
+
+#[test]
+fn an_exported_module_members_signature_is_never_reported_redundant() {
+    // [TYPE-ANNOTATION-REDUNDANT] `shout`'s signature is API for every project
+    // using `lib::Flow`; the private `loud` beside it is judged as usual:
+    // `text + "!"` alone derives `string -> string`.
+    let root = temp_project(
+        "contract-warnings",
+        &[
+            ("osprey.toml", "[project]\nname = \"exp\"\nsource_roots = [\"src\", \"main.ospml\"]\ndefault_namespace = \"app\"\nentry = \"main.ospml\"\n"),
+            ("src/flow.ospml", "namespace lib\n\n(** Loud text. *)\nmodule Flow\n    (** `text`, shouted. *)\n    export shout : string -> string\n    shout text = loud text\n    loud : string -> string\n    loud text = text + \"!\"\n"),
+            ("main.ospml", "namespace app\n\nimport lib::Flow\n\nprint (Flow::shout \"hi\")\n"),
+        ],
+    );
+    let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
+    let warnings = crate::warnings::collect(&input);
+    std::fs::remove_dir_all(&root).expect("cleanup");
+    let messages: Vec<&str> = warnings.iter().map(|w| w.message.as_str()).collect();
+    assert_eq!(
+        messages,
+        ["redundant type signature on `lib::Flow::loud`: inference derives `(string) -> string` without it"]
+    );
+}
+
+#[test]
+fn an_undocumented_export_is_located_in_the_file_that_wrote_it() {
+    // [DOC-EXPORT-REQUIRED] Assembly flattens modules away, so the warning is
+    // read from each source as written and still resolves to its own file
+    // and line, here the second of two sources.
+    let root = temp_project(
+        "undocumented-exports",
+        &[
+            ("osprey.toml", "[project]\nname = \"doc\"\nsource_roots = [\"src\", \"main.ospml\"]\ndefault_namespace = \"app\"\nentry = \"main.ospml\"\n"),
+            ("src/flow.ospml", "namespace lib\n\n(** Loud text. *)\nmodule Flow\n    export shout text = text + \"!\"\n"),
+            ("main.ospml", "namespace app\n\nimport lib::Flow\n\nprint (Flow::shout \"hi\")\n"),
+        ],
+    );
+    let input = CompilationInput::load_project(root.to_string_lossy().as_ref()).expect("assembles");
+    let warnings = input.undocumented_exports();
+    std::fs::remove_dir_all(&root).expect("cleanup");
+    let [warning] = warnings.as_slice() else {
+        panic!("one warning expected: {warnings:?}");
+    };
+    assert_eq!(
+        warning.message,
+        "exported function `Flow::shout` has no documentation comment"
+    );
+    let (file, line, _) = input.location(warning.position.expect("positioned"));
+    assert!(file.ends_with("flow.ospml"), "{file}");
+    assert_eq!(line, 5);
+}

@@ -1,7 +1,7 @@
 """CPython oracle for @osprey/faiss: flat indexes, selectors, ID maps, L2 norm.
 
 Computes every case with faiss-cpu 1.15.1 and writes
-src/packages/faiss/tests/expected.py ([PORT-TEST-ORACLE], spec 0043). Run with the
+src/osprey/packages/faiss/tests/expected.py ([PORT-TEST-ORACLE], spec 0043). Run with the
 oracle virtualenv: `python scripts/oracles/faiss.py`.
 
 Inputs are dyadic rationals (multiples of 1/16 in [-8, 8], d <= 64, n <= 200)
@@ -330,7 +330,7 @@ def main():
         {"numpy": np.__version__, "faiss": faiss.__version__},
         D,
     )
-    print(f"wrote src/packages/faiss/tests/expected.py with {len(D)} constants")
+    print(f"wrote src/osprey/packages/faiss/tests/expected.py with {len(D)} constants")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,494 @@
+import { spawn } from 'child_process'
+import express from 'express'
+import fs from 'fs/promises'
+import { createServer } from 'http'
+import path from 'path'
+import { fileURLToPath } from 'url'
+import { WebSocketServer } from 'ws'
+import { randomUUID } from 'crypto'
+import { execSync } from 'child_process'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
+
+const app = express()
+const server = createServer(app)
+
+const PORT = process.env.PORT || 3001
+
+// STARTUP LOGGING - Make it super obvious the server is starting
+console.log('\n' + '='.repeat(80))
+console.log('🚀 OSPREY WEB COMPILER STARTING UP')
+console.log('='.repeat(80))
+console.log(`📍 Server file: ${__filename}`)
+console.log(`📁 Working directory: ${process.cwd()}`)
+console.log(`🐳 Docker environment: ${process.env.DOCKER_ENV || 'false'}`)
+console.log(`🏃 Node environment: ${process.env.NODE_ENV || 'development'}`)
+console.log(`🔌 Target port: ${PORT}`)
+console.log('='.repeat(80))
+
+// Request logging middleware - track ALL requests
+app.use((req, res, next) => {
+    const timestamp = new Date().toISOString()
+    console.log(`\n📨 [${timestamp}] ${req.method} ${req.url}`)
+    console.log(`📍 User-Agent: ${req.headers['user-agent'] || 'unknown'}`)
+    console.log(`📍 Origin: ${req.headers.origin || 'none'}`)
+    console.log(`📍 Content-Type: ${req.headers['content-type'] || 'none'}`)
+
+    // Log body size for POST requests
+    if (req.method === 'POST' && req.body) {
+        const bodySize = JSON.stringify(req.body).length
+        console.log(`📏 Body size: ${bodySize} bytes`)
+    }
+
+    next()
+})
+
+// Middleware
+app.use(express.json({ limit: '10mb' }))
+
+// CORS middleware
+app.use((req, res, next) => {
+    // Allow requests from the website running on localhost:8080
+    const origin = req.headers.origin;
+    const allowedOrigins = [
+        'http://localhost:8080',
+        'http://127.0.0.1:8080',
+        'http://localhost:3001',
+        'http://127.0.0.1:3001',
+        'https://ospreylang.dev',
+        'https://www.ospreylang.dev'
+    ];
+
+    if (allowedOrigins.includes(origin)) {
+        res.header('Access-Control-Allow-Origin', origin);
+    }
+
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Allow-Credentials', 'true');
+
+    if (req.method === 'OPTIONS') {
+        return res.sendStatus(200);
+    }
+    next();
+})
+
+// Health check endpoint
+app.get('/api', (req, res) => {
+    res.json({
+        status: 'ok',
+        service: 'osprey-web-compiler',
+        version: '0.2.0',
+        timestamp: new Date().toISOString()
+    })
+})
+
+function logCompilerResult(result) {
+    console.log('🔨 COMPILER OUTPUT (stderr):')
+    console.log('-'.repeat(50))
+    console.log(result.stderr || 'NO COMPILER OUTPUT')
+    console.log('-'.repeat(50))
+
+    console.log('📋 PROGRAM OUTPUT (stdout):')
+    console.log('-'.repeat(50))
+    console.log(result.stdout || 'NO PROGRAM OUTPUT')
+    console.log('-'.repeat(50))
+}
+
+function sendSystemError(res, error) {
+    console.error('❌ System error:', error.message)
+    res.status(500).json({ success: false, error: error.message })
+}
+
+// One trace shape for both directions of the LSP bridge.
+function logLspTraffic(direction, count, message) {
+    console.log(`${direction} [${count}]:`, message.substring(0, 200) + (message.length > 200 ? '...' : ''))
+    try {
+        const parsed = JSON.parse(message)
+        console.log(`  📌 Message type: ${parsed.method || parsed.id ? 'request/response' : 'notification'}`)
+        if (parsed.method) {
+            console.log(`  📌 Method: ${parsed.method}`)
+        }
+    } catch (e) {
+        console.log('  ⚠️ Could not parse message as JSON')
+    }
+}
+
+// An internal compiler error is never surfaced verbatim: log it, answer 502.
+// Returns true when it has already answered the request.
+function internalErrorHandled(res, errorOutput) {
+    if (!errorOutput.includes('INTERNAL_COMPILER_ERROR:')) {
+        return false
+    }
+    console.error('🚨 INTERNAL COMPILER ERROR DETECTED:', errorOutput)
+    res.status(502).json({
+        success: false,
+        error: 'The compiler encountered an internal error. Please report this code to help us fix the issue.',
+        isInternalError: true
+    })
+    return true
+}
+
+// /api/compile and /api/run differ only in the compiler flags they pass and in
+// how a failing exit code maps onto a status + body, so they share one handler.
+function compilerEndpoint({ label, requestLog, codeLog, args, failure }) {
+    return async (req, res) => {
+        const { code, flavor } = req.body
+        console.log(requestLog)
+        console.log('📄 Code length:', code?.length || 0)
+        console.log(codeLog)
+        console.log('='.repeat(50))
+        console.log(code || 'NO CODE PROVIDED')
+        console.log('='.repeat(50))
+
+        if (!code) {
+            return res.status(400).json({ success: false, error: 'No code provided' })
+        }
+
+        try {
+            const result = await runOspreyCompiler(args, code, flavor)
+
+            logCompilerResult(result)
+
+            if (result.success) {
+                console.log(`✅ ${label} success, exit code:`, result.exitCode)
+                return res.status(200).json({
+                    success: true,
+                    compilerOutput: result.stderr || '',
+                    programOutput: result.stdout || ''
+                })
+            }
+
+            console.error(`❌ ${label} failed, exit code:`, result.exitCode)
+            const errorOutput = result.stderr || result.stdout || ''
+            if (internalErrorHandled(res, errorOutput)) {
+                return
+            }
+            const { status, body } = failure(result, errorOutput)
+            res.status(status).json({
+                success: false,
+                compilerOutput: result.stderr || '',
+                programOutput: result.stdout || '',
+                ...body
+            })
+        } catch (error) {
+            sendSystemError(res, error)
+        }
+    }
+}
+
+// Compile endpoint — AST output goes to stdout; every failure is 422
+// (Unprocessable Entity) because nothing ran.
+app.post('/api/compile', compilerEndpoint({
+    label: 'Compile',
+    requestLog: '📝 Compile request received',
+    codeLog: '🔍 CODE BEING COMPILED:',
+    args: ['--ast'],
+    failure: (result, errorOutput) => ({
+        status: 422,
+        body: { error: errorOutput || `Compilation failed with exit code ${result.exitCode}` }
+    })
+}))
+
+// Run endpoint — a failure is 422 when the program never compiled and 400 when
+// it compiled and then failed at runtime.
+app.post('/api/run', compilerEndpoint({
+    label: 'Run',
+    requestLog: '🏃 Run request received',
+    codeLog: '🔍 CODE BEING RUN:',
+    args: ['--run'],
+    failure: (result, errorOutput) => {
+        const isCompilationError = errorOutput.includes('parse errors') ||
+            errorOutput.includes('undefined variable') ||
+            errorOutput.includes('syntax error') ||
+            errorOutput.includes('type mismatch') ||
+            errorOutput.includes('Compilation failed') ||
+            errorOutput.includes('security:')
+        return {
+            status: isCompilationError ? 422 : 400,
+            body: {
+                isCompilationError: isCompilationError,
+                error: errorOutput || `Process failed with exit code ${result.exitCode}`
+            }
+        }
+    }
+}))
+
+// STARTUP: Delete ALL temp folders on server startup
+async function deleteAllTempFolders() {
+    const tempBaseDir = '/tmp/osprey-temp'
+    try {
+        console.log('🗑️ Deleting ALL temp folders on startup...')
+        await fs.rm(tempBaseDir, { recursive: true, force: true })
+        console.log('✅ All temp folders deleted')
+    } catch (error) {
+        console.error('⚠️ Error deleting temp folders:', error.message)
+    }
+}
+
+// Cleanup old temp folders periodically to prevent disk space issues
+async function cleanupOldTempFolders() {
+    const tempBaseDir = '/tmp/osprey-temp'
+    try {
+        const folders = await fs.readdir(tempBaseDir)
+        const now = Date.now()
+        const oneHourAgo = now - (60 * 60 * 1000) // 1 hour ago
+
+        for (const folder of folders) {
+            const folderPath = path.join(tempBaseDir, folder)
+            const stats = await fs.stat(folderPath)
+            if (stats.isDirectory() && stats.mtime.getTime() < oneHourAgo) {
+                await fs.rm(folderPath, { recursive: true, force: true })
+                console.log(`🗑️ Cleaned up old temp folder: ${folder}`)
+            }
+        }
+    } catch (error) {
+        console.error('⚠️ Error cleaning up temp folders:', error.message)
+    }
+}
+
+// Run cleanup every 30 minutes
+setInterval(cleanupOldTempFolders, 30 * 60 * 1000)
+
+// DELETE ALL TEMP FOLDERS ON STARTUP
+deleteAllTempFolders()
+
+// THREAD-SAFE Helper function to run Osprey compiler
+// Each request gets its own UUID-named folder for complete isolation
+// Implements [SECURITY-CAPABILITY-GATES]: compile and run share one mandatory sandbox.
+function runOspreyCompiler(args, code = '', flavor = 'default') {
+    return new Promise(async (resolve, reject) => {
+        // Create a unique UUID folder for this request - THREAD SAFE!
+        const requestId = randomUUID()
+        const tempBaseDir = '/tmp/osprey-temp'
+        const tempRequestDir = path.join(tempBaseDir, requestId)
+        // Implements [FLAVOR-SELECT]: use the requested syntax frontend.
+        const extensions = { ml: 'ospml', ospml: 'ospml', python: 'py', py: 'py' }
+        const extension = extensions[flavor] || 'osp'
+        const tempFile = path.join(tempRequestDir, `main.${extension}`)
+
+        try {
+            // Create the unique temp directory for this request
+            console.log(`📁 Creating temp directory: ${tempRequestDir}`)
+            await fs.mkdir(tempRequestDir, { recursive: true })
+            console.log(`📁 Created temp folder: ${requestId}`)
+
+            console.log(`💾 Writing temp file: ${tempFile}`)
+            await fs.writeFile(tempFile, code)
+            
+            // Use the osprey binary from PATH (installed in Docker) or fall back
+            // to the local Rust release build (cargo build --release)
+            const ospreyPath = process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV
+                ? 'osprey'
+                : path.resolve(__dirname, '../../../../target/release/osprey')
+            
+            const startTime = Date.now()
+            console.log(`🔨 Running: ${ospreyPath} ${tempFile} ${args.join(' ')}`)
+            console.log(`⏰ Started at: ${new Date().toISOString()}`)
+            
+            const child = spawn(ospreyPath, [tempFile, '--sandbox', ...args], {
+                stdio: 'pipe',
+                cwd: tempRequestDir, // Run in the temp directory
+                timeout: 20000 
+            })
+
+            let stdout = ''
+            let stderr = ''
+
+            child.stdout.on('data', (data) => {
+                stdout += data.toString()
+            })
+
+            child.stderr.on('data', (data) => {
+                stderr += data.toString()
+            })
+
+            child.on('close', async (exitCode, signal) => {
+                const endTime = Date.now()
+                const duration = endTime - startTime
+                
+                // Log detailed exit information with timing
+                console.log(`🔚 Process finished - Exit code: ${exitCode}, Signal: ${signal}`)
+                console.log(`⏰ Ended at: ${new Date().toISOString()}`)
+                console.log(`⏱️ Duration: ${duration}ms`)
+                
+                // Clean up the ENTIRE temp folder for this request
+                try {
+                    await fs.rm(tempRequestDir, { recursive: true, force: true })
+                    console.log(`🗑️ Cleaned up temp folder: ${requestId}`)
+                } catch (e) {
+                    console.error('⚠️ Failed to clean up temp folder:', e.message)
+                }
+
+                // Handle timeout/signal termination
+                if (exitCode === null && signal) {
+                    console.error(`⏰ Process was killed by signal: ${signal} after ${duration}ms`)
+                    stderr += `\nProcess was terminated by signal: ${signal} (likely timeout) after ${duration}ms`
+                }
+
+                // Always resolve with the result - let the caller determine success/failure
+                resolve({
+                    exitCode: exitCode || -1, // Convert null to -1 for consistency
+                    stdout,
+                    stderr,
+                    success: exitCode === 0
+                })
+            })
+
+            child.on('error', async (error) => {
+                // Clean up temp folder on error
+                try {
+                    await fs.rm(tempRequestDir, { recursive: true, force: true })
+                    console.log(`🗑️ Cleaned up temp folder after error: ${requestId}`)
+                } catch (e) {
+                    console.error('⚠️ Failed to clean up temp folder after error:', e.message)
+                }
+                reject(error)
+            })
+        } catch (error) {
+            // Clean up temp folder if creation failed
+            try {
+                await fs.rm(tempRequestDir, { recursive: true, force: true })
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+            reject(error)
+        }
+    })
+}
+
+// WebSocket server for LSP bridge
+const wss = new WebSocketServer({
+    server,
+    path: '/lsp',
+    verifyClient: (info) => {
+        // Check origin for CORS on WebSocket connections
+        const origin = info.origin;
+        const allowedOrigins = [
+            'http://localhost:8080',
+            'http://127.0.0.1:8080',
+            'http://localhost:3001',
+            'http://127.0.0.1:3001',
+            'https://ospreylang.dev',
+            'https://www.ospreylang.dev'
+        ];
+
+        console.log('🔍 WebSocket upgrade request from origin:', origin);
+
+        if (!origin || allowedOrigins.includes(origin)) {
+            return true;
+        }
+
+        console.error('❌ WebSocket connection rejected - invalid origin:', origin);
+        return false;
+    }
+})
+
+console.log(`🌐 WebSocket server configured for path: /lsp`)
+
+wss.on('connection', (ws, req) => {
+    console.log('🔌 New WebSocket connection from:', req.socket.remoteAddress)
+    console.log('🔍 Connection headers:', JSON.stringify(req.headers, null, 2))
+
+    // The Osprey language server is the Rust `osprey lsp` subcommand, spoken over
+    // stdio — the same binary that backs /api/run. In Docker it's on PATH; in
+    // local dev it's the release build under target/release.
+    const ospreyPath = process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV
+        ? 'osprey'
+        : path.resolve(__dirname, '../../../../target/release/osprey')
+
+    console.log('🚀 Starting Osprey LSP:', `${ospreyPath} lsp`)
+
+    // Spawn the LSP server process
+    const lspProcess = spawn(ospreyPath, ['lsp'], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+        cwd: process.cwd(),
+        env: { ...process.env }
+    })
+
+    lspProcess.on('error', (error) => {
+        console.error('❌ LSP process error:', error)
+        ws.close(1011, 'LSP server failed to start')
+    })
+
+    lspProcess.on('spawn', () => {
+        console.log('✅ LSP process started successfully')
+        console.log(`📊 LSP process PID: ${lspProcess.pid}`)
+    })
+
+    // Message counter for debugging
+    let clientToServerCount = 0
+    let serverToClientCount = 0
+
+    // Forward messages between WebSocket and LSP stdio
+    ws.on('message', (data) => {
+        const message = data.toString()
+        clientToServerCount++
+        logLspTraffic('📨 Client -> LSP', clientToServerCount, message)
+
+        if (lspProcess.stdin && !lspProcess.stdin.destroyed) {
+            lspProcess.stdin.write(message)
+        } else {
+            console.error('❌ LSP stdin not available!')
+        }
+    })
+
+    lspProcess.stdout.on('data', (data) => {
+        const message = data.toString()
+        serverToClientCount++
+        logLspTraffic('📤 LSP -> Client', serverToClientCount, message)
+
+        if (ws.readyState === ws.OPEN) {
+            ws.send(data)
+        } else {
+            console.error('❌ WebSocket not open, cannot send message')
+        }
+    })
+
+    lspProcess.stderr.on('data', (data) => {
+        const errorMsg = data.toString()
+        console.error('🔴 LSP stderr:', errorMsg)
+    })
+
+    ws.on('close', (code, reason) => {
+        console.log(`🔌 WebSocket disconnected: code=${code}, reason=${reason}`)
+        console.log(`📊 Total messages: Client->Server: ${clientToServerCount}, Server->Client: ${serverToClientCount}`)
+        if (!lspProcess.killed) {
+            console.log('🛑 Killing LSP process')
+            lspProcess.kill()
+        }
+    })
+
+    lspProcess.on('close', (code, signal) => {
+        console.log(`🛑 LSP process exited: code=${code}, signal=${signal}`)
+        if (ws.readyState === ws.OPEN) {
+            ws.close()
+        }
+    })
+
+    ws.on('error', (error) => {
+        console.error('❌ WebSocket error:', error)
+    })
+})
+
+wss.on('error', (error) => {
+    console.error('❌ WebSocket server error:', error)
+})
+
+// Error handling middleware
+app.use((error, req, res, next) => {
+    console.error('💥 Unhandled error:', error)
+    res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+        message: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
+    })
+})
+
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ WebSocket LSP Bridge running at ws://0.0.0.0:${PORT}/lsp`)
+    console.log(`🔨 Compile/Run API available at http://0.0.0.0:${PORT}/api`)
+    console.log(`🏥 Health check: http://0.0.0.0:${PORT}/api`)
+    console.log(`🌐 Server accessible from external hosts on port ${PORT}`)
+})

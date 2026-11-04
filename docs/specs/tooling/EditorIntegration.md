@@ -9,7 +9,7 @@ The VS Code integration is a thin client over `[LSP-TRANSPORT]`.
 ### VS Code `[EDITOR-VSCODE]`
 
 - Extension id `nimblesite.osprey`; client in
-  [`src/vscode-extension/client/src/extension.ts`](../../../src/vscode-extension/client/src/extension.ts)
+  [`src/toolchain/vscode-extension/client/src/extension.ts`](../../../src/toolchain/vscode-extension/client/src/extension.ts)
   spawns `osprey lsp` over stdio.
 - Packaged as a **per-platform VSIX** (`darwin-arm64`, `linux-x64`,
   `win32-x64`). Each VSIX **bundles** a version-matched `osprey` binary + runtime

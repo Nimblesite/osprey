@@ -4,7 +4,7 @@ The real flash-attn package needs CUDA, so this oracle uses torch.nn.functional
 .scaled_dot_product_attention in float64 where it applies (square sequences, no window,
 no ALiBi) and explicit math for everything else: the window/causal mask, ALiBi bias,
 GQA head mapping and the log-sum-exp. Causal masking is bottom-right aligned exactly
-like flash-attn 2.1+ when seqlen_q != seqlen_k. Writes src/packages/flash_attn/tests/
+like flash-attn 2.1+ when seqlen_q != seqlen_k. Writes src/osprey/packages/flash_attn/tests/
 expected.py, which the suite compares the online-softmax tiled pass against
 ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python scripts/oracles/flash_attn.py`.

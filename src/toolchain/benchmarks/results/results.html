@@ -1,0 +1,670 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Osprey benchmarks</title>
+<style>/* ============================================================================
+   Osprey design tokens — Material-3 dark theme (authoritative: docs/designs/*).
+   One source of truth for colour, type, spacing, radius. Dark-only by design.
+   ============================================================================ */
+:root {
+  /* ---- Surfaces ---- */
+  --bg: #0c1325;
+  --surface: #0c1325;
+  --surface-lowest: #070d1f;
+  --surface-low: #151b2d;
+  --surface-container: #191f32;
+  --surface-high: #23293d;
+  --surface-highest: #2e3448;
+
+  /* ---- Foreground ---- */
+  --on-surface: #dce1fb;
+  --on-surface-variant: #bdc8cd;
+
+  /* ---- Accents ---- */
+  --primary: #bdeeff;
+  --primary-container: #77d7f4;
+  --on-primary: #003642;
+  --on-primary-container: #005d70;
+  --secondary: #bbc5ec;
+  --secondary-container: #3e4868;
+  --on-secondary-container: #adb7dd;
+  --tertiary: #ffe1c0;
+  --tertiary-dim: #fbba62;
+  --tertiary-container: #ffbe65;
+  --outline: #889297;
+  --outline-variant: #3e484c;
+  --error: #ffb4ab;
+
+  /* ---- Glass panel ---- */
+  --glass-bg: rgba(13, 24, 54, 0.7);
+  --glass-border: rgba(255, 255, 255, 0.06);
+  --glass-blur: blur(12px);
+
+  /* ---- Typography ---- */
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Monaco, monospace;
+
+  --fs-display: clamp(2.4rem, 5.2vw, 4rem);
+  --fs-h1: clamp(1.9rem, 4vw, 2.5rem);
+  --fs-h2: clamp(1.6rem, 3vw, 2.1rem);
+  --fs-h3: 1.25rem;
+  --fs-body-lg: 1.125rem;
+  --fs-body: 1rem;
+  --fs-code: 0.875rem;
+  --fs-label: 0.75rem;
+  --lh-tight: 1.2;
+  --lh-body: 1.6;
+
+  /* ---- Spacing (techdoc structural CSS reads --space-*) ---- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --space-20: 5rem;
+  --space-24: 6rem;
+
+  /* ---- Layout (techdoc structural CSS reads these) ---- */
+  --max-width: 1200px;
+  --content-width: 820px;
+  --sidebar-width: 250px;
+  --header-height: 64px;
+  --gutter: 24px;
+  --pad-x: clamp(1rem, 4vw, 3rem);
+
+  /* ---- Radius ---- */
+  --radius-sm: 6px;
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  /* ---- Motion ---- */
+  --transition-fast: 150ms ease;
+  --transition: 250ms ease;
+
+  /* ---- techdoc colour contract (its structural CSS references these) ---- */
+  --color-bg: var(--bg);
+  --color-text: var(--on-surface);
+  --color-primary: var(--primary-container);
+  --color-border: var(--outline-variant);
+  --color-muted: var(--on-surface-variant);
+}
+
+/* ============================================================================
+   Base elements — dark Material-3 surface. Content is always visible (no JS
+   dependency); entrance motion is additive only.
+   ============================================================================ */
+html {
+  scroll-behavior: smooth;
+  scroll-padding-top: calc(var(--header-height) + var(--space-4));
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--on-surface);
+  background-color: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+svg,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Centred content column shared by every section. */
+.container {
+  width: 100%;
+  max-width: var(--max-width);
+  margin-inline: auto;
+  padding-inline: var(--pad-x);
+}
+
+/* ---- Headings ---- */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  color: var(--on-surface);
+  line-height: var(--lh-tight);
+  font-weight: 700;
+  margin: 0 0 var(--space-4);
+  letter-spacing: -0.01em;
+}
+h1 { font-size: var(--fs-h1); }
+h2 { font-size: var(--fs-h2); }
+h3 { font-size: var(--fs-h3); }
+h4 { font-size: 1.05rem; }
+
+p {
+  margin: 0 0 var(--space-4);
+}
+
+strong { color: var(--on-surface); font-weight: 600; }
+em { color: inherit; }
+
+/* ---- Links ---- */
+a {
+  color: var(--primary-container);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover { color: var(--primary); }
+
+/* ---- Lists ---- */
+ul,
+ol { margin: 0 0 var(--space-4); padding-left: 1.4rem; }
+li { margin: 0.35rem 0; }
+
+/* ---- Inline + block code ---- */
+code {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
+:not(pre) > code {
+  background: var(--surface-container);
+  color: var(--primary);
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-sm);
+}
+pre {
+  font-family: var(--font-mono);
+  font-size: var(--fs-code);
+  line-height: 1.6;
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  padding: var(--space-5);
+  margin: var(--space-6) 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+pre code { background: none; padding: 0; font-size: inherit; color: inherit; }
+
+/* ---- Buttons ---- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.95rem;
+  line-height: 1;
+  padding: 0.7rem 1.25rem;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: transform var(--transition-fast), background var(--transition-fast),
+    box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+.btn:hover { transform: translateY(-1px); }
+.btn-lg { padding: 0.95rem 1.6rem; font-size: 1rem; }
+
+.btn-primary {
+  background: var(--primary);
+  color: var(--on-primary);
+}
+.btn-primary:hover {
+  color: var(--on-primary);
+  box-shadow: 0 0 24px rgba(119, 215, 244, 0.35);
+}
+.btn-secondary {
+  background: transparent;
+  border-color: var(--primary-container);
+  color: var(--primary);
+}
+.btn-secondary:hover {
+  background: rgba(119, 215, 244, 0.1);
+  color: var(--primary);
+}
+
+/* ---- Selection + scrollbars ---- */
+::selection {
+  background: var(--primary-container);
+  color: var(--on-primary);
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--surface-lowest); }
+::-webkit-scrollbar-thumb {
+  background: var(--surface-highest);
+  border-radius: var(--radius-pill);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--outline-variant); }
+
+/* ---- Entrance motion (additive — content is visible without JS) ---- */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-on-scroll {
+    animation: fade-up 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+/* ============================================================================
+   Site shell, homepage components, installation and benchmark tables.
+   Built on the techdoc structural shell (.site-header/.nav/.site-footer) and
+   the existing page markup. Authoritative design: docs/designs/*.
+   ============================================================================ */
+
+/* ============================ Site shell ================================== */
+.site-header {
+  background: rgba(12, 19, 37, 0.82);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid rgba(62, 72, 76, 0.4);
+}
+.nav { height: var(--header-height); }
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+.logo:hover { color: var(--primary); }
+.logo::before {
+  content: "";
+  width: 30px;
+  height: 30px;
+  background: url("/assets/images/logo.png?v=78c86be1f1f7") center / contain no-repeat;
+  flex-shrink: 0;
+}
+
+.nav-links { gap: clamp(0.75rem, 2vw, 1.5rem); align-items: center; }
+.nav-links li { margin: 0; min-width: 0; }
+.nav-link {
+  color: var(--on-surface-variant);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast);
+}
+.nav-link:hover { color: var(--primary); }
+.nav-link.active {
+  color: var(--primary);
+  font-weight: 600;
+  border-bottom-color: var(--primary);
+}
+.site-header :is(a, button, summary):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 4px; }
+.nav-group { position: relative; }
+.nav-group > summary { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::after { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg); }
+.nav-group[open] > summary::after { transform: rotate(225deg); }
+.nav-submenu { position: absolute; right: -0.5rem; top: calc(100% + 0.75rem); z-index: 1; min-width: 15rem; list-style: none; margin: 0; padding: 0.4rem; background: var(--surface-container); border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); box-shadow: 0 12px 32px #0004; }
+.nav-submenu .nav-link { display: block; min-height: 44px; padding: 0.6rem 0.75rem; font-size: 0.875rem; white-space: nowrap; border: 0; border-radius: 4px; }
+.nav-submenu .nav-link:hover, .nav-submenu .nav-link.active { background: #77d7f40d; }
+
+/* Dark-only design — the theme toggle has no second theme to switch to. */
+.theme-toggle { display: none; }
+
+.mobile-menu-toggle {
+  color: var(--on-surface);
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  align-items: center;
+  justify-content: center;
+}
+.mobile-menu-toggle span { width: 20px; background: currentColor; }
+.mobile-menu-toggle[aria-expanded="true"] span:first-child { transform: translateY(6px) rotate(45deg); }
+.mobile-menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.mobile-menu-toggle[aria-expanded="true"] span:last-child { transform: translateY(-6px) rotate(-45deg); }
+
+/* ---- Footer ---- */
+.site-footer {
+  background: var(--surface-lowest);
+  border-top: 1px solid var(--outline-variant);
+}
+.footer-section h3 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface);
+  margin-bottom: var(--space-4);
+}
+.footer-section a {
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+.footer-section a:hover { color: var(--primary); }
+.footer-bottom {
+  border-top: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  font-size: 0.85rem;
+}
+
+/* ============================ Hero ======================================= */
+/* Fill the viewport (minus the in-flow sticky header) before any scroll. */
+.hero {
+  min-height: calc(100dvh - var(--header-height));
+  display: flex;
+  align-items: center;
+  padding-block: clamp(2rem, 5vh, 4rem);
+}
+.hero .container {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+  width: 100%;
+}
+/* Grid/flex children holding non-wrapping code must be allowed to shrink,
+   or `white-space: pre` blows the column past the viewport. */
+.hero .container > *,
+.two-column > *,
+.grid > *,
+.philosophy-grid > *,
+.showcase-grid > *,
+.install-grid > * { min-width: 0; }
+.code-example,
+.code-example pre,
+.install-code pre { max-width: 100%; }
+.hero-content { display: flex; flex-direction: column; gap: var(--space-6); }
+.hero-title {
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.hero-title .accent,
+.hero-title strong { color: var(--primary); font-weight: 700; }
+.hero-subtitle {
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface-variant);
+  max-width: 38ch;
+  margin: 0;
+}
+.hero-actions, .mobile-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.hero-code { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.hero-code-caption {
+  font-size: var(--fs-code);
+  color: var(--on-surface-variant);
+  margin: 0;
+}
+.flavor-split { display: grid; gap: var(--space-4); min-width: 0; }
+.flavor-split .code-example { min-width: 0; }
+.flavor-tag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--fs-label);
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.flavor-tag span { color: var(--on-surface-variant); font-weight: 500; font-family: var(--font-mono); }
+/* These code windows label the flavor themselves, so drop the traffic-light chrome. */
+.flavor-split .code-example::before { display: none; }
+.flavor-split .code-example pre { font-size: 0.82rem; }
+
+/* ---- Code window chrome (home only; prose code is styled separately) ---- */
+.code-example {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.code-example::before {
+  content: "";
+  display: block;
+  height: 38px;
+  background-color: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+  background-image:
+    radial-gradient(circle 5px at 20px 19px, #ff5f57 96%, transparent),
+    radial-gradient(circle 5px at 40px 19px, #febc2e 96%, transparent),
+    radial-gradient(circle 5px at 60px 19px, #28c840 96%, transparent);
+}
+.code-example pre,
+.code-example pre[class*="language-"] {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-5);
+}
+
+/* ============================ Sections =================================== */
+.section { padding-block: clamp(3rem, 7vw, 6rem); }
+.section-alt {
+  background: var(--surface-low);
+  border-block: 1px solid rgba(62, 72, 76, 0.4);
+}
+.section-title {
+  font-size: var(--fs-h2);
+  text-align: center;
+  margin-bottom: var(--space-4);
+}
+.section-subtitle {
+  text-align: center;
+  max-width: 60ch;
+  margin: 0 auto var(--space-12);
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface-variant);
+}
+
+/* Two-column feature rows */
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+.two-column + .two-column { margin-top: clamp(2.5rem, 6vw, 4.5rem); }
+.two-column .content h2,
+.two-column .content h3 { margin-bottom: var(--space-4); }
+.two-column .content p { color: var(--on-surface-variant); }
+.two-column .content ul { color: var(--on-surface-variant); }
+.two-column .content li::marker { color: var(--primary-container); }
+
+/* ---- Card grids (features / philosophy) ---- */
+.grid,
+.philosophy-grid {
+  display: grid;
+  gap: var(--gutter);
+}
+.grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.philosophy-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+/* Code is NEVER squeezed into narrow columns — it clips. Real-world example
+   cards stack full-width; the heading sits beside a generous code column so
+   every line has room. Collapses to a single column on narrow screens. */
+.showcase-grid { display: flex; flex-direction: column; gap: var(--gutter); }
+.showcase-grid .card-code {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.45fr) minmax(0, 2fr);
+  gap: clamp(1rem, 3vw, 2.5rem);
+  align-items: start;
+}
+.showcase-grid .card-code h3 { margin: 0; padding-top: var(--space-1); }
+.showcase-grid .card-code .code-example { margin-top: 0; }
+@media (max-width: 900px) {
+  .showcase-grid .card-code { grid-template-columns: 1fr; }
+  .showcase-grid .card-code .code-example { margin-top: var(--space-4); }
+}
+
+.card,
+.card-code {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  transition: border-color var(--transition), transform var(--transition);
+}
+.card:hover,
+.card-code:hover {
+  border-color: rgba(119, 215, 244, 0.4);
+  transform: translateY(-3px);
+}
+.card h3,
+.card-code h3 { margin-bottom: var(--space-3); }
+.card p { color: var(--on-surface-variant); margin: 0; }
+.card-code .code-example { margin-top: var(--space-4); box-shadow: none; }
+
+/* ============================ Install grid =============================== */
+.blue-box-installation { padding-block: clamp(3rem, 7vw, 5rem); }
+.install-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--gutter);
+}
+.install-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.install-card.primary { border-color: rgba(119, 215, 244, 0.35); }
+.install-card h3 { margin: 0; font-size: 1.1rem; }
+.install-card p { color: var(--on-surface-variant); margin: 0; flex: 1; }
+.install-card .btn { align-self: flex-start; }
+.install-code pre,
+.install-code pre[class*="language-"] {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-4);
+  font-size: 0.82rem;
+}
+/* Shell commands (e.g. the long scoop URL) wrap rather than clip. */
+.install-code pre,
+.install-code pre[class*="language-"],
+.install-code code,
+.install-code code[class*="language-"] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ============================ Blue-box CTA bands ========================== */
+.blue-box {
+  padding-block: clamp(3rem, 7vw, 6rem);
+  background: linear-gradient(135deg, var(--surface-low) 0%, var(--surface-container) 100%);
+  border-block: 1px solid rgba(62, 72, 76, 0.4);
+}
+.blue-box-content {
+  max-width: 640px;
+  margin-inline: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.blue-box-content p { color: var(--on-surface-variant); margin: 0; }
+.blue-box-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+/* ============================ Comparison table =========================== */
+.comparison-table { overflow-x: auto; }
+.comparison-table table {
+  width: 100%;
+  min-width: 40rem;
+  border-collapse: collapse;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.95rem;
+}
+/* `table` in the selector keeps these ahead of the `.prose td` defaults that
+   would otherwise win on a source-order tie inside an `<article class="prose">`. */
+.comparison-table table th,
+.comparison-table table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.comparison-table thead th {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.comparison-table tbody td { color: var(--on-surface-variant); }
+.comparison-table tbody td:first-child { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody tr:last-child td { border-bottom: 0; }
+.comparison-table tbody tr:hover td { background: rgba(46, 52, 72, 0.4); }
+
+/* ---- Benchmark report (shared by src/toolchain/benchmarks/report.py + /benchmarks page) ---- */
+.comparison-table th.num,
+.comparison-table td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.comparison-table thead th.col-osprey { background: var(--primary-container); color: var(--on-primary); }
+.comparison-table tbody td.col-osprey { background: rgba(119, 215, 244, 0.08); }
+.comparison-table tbody td.best { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody td.win { color: var(--tertiary-dim); font-weight: 700; }
+.bench-summary { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-6) 0; }
+.bench-card {
+  flex: 1 1 150px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.bench-card .big { font-family: var(--font-mono); font-size: 1.7rem; font-weight: 700; color: var(--on-surface); }
+.bench-card .lbl { color: var(--on-surface-variant); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; }
+.bench-card.is-accent .big { color: var(--tertiary-dim); }
+.bench-card.is-good .big { color: var(--primary-container); }
+.comparison-cta { text-align: center; margin-top: var(--space-6); color: var(--on-surface-variant); }
+.comparison-cta a { font-weight: 600; }
+</style></head>
+<body><main class="container" style="padding-top:3rem;padding-bottom:4rem">
+<h1>Osprey cross-language benchmarks</h1>
+<p>Osprey (ARC), Osprey (GC), Osprey, Rust, C, C# (AOT), Dart (AOT), OCaml, Haskell, Osprey (wasm), Rust (wasm) — same naive algorithm and parameters in every language, native
+release builds, output checked against an integer oracle. CPU = hyperfine
+mean&nbsp;±&nbsp;stddev; memory = peak resident set size. Generated mechanically
+by <code>src/toolchain/benchmarks/report.py</code>; re-run with <code>make -C src/toolchain/benchmarks bench</code>.</p>
+<div class="bench-summary"><div class="bench-card is-accent"><span class="big">4</span><span class="lbl">CPU wins (fastest of all)</span></div><div class="bench-card "><span class="big">2.00×</span><span class="lbl">CPU vs Rust</span></div><div class="bench-card "><span class="big">2.38×</span><span class="lbl">CPU vs C</span></div><div class="bench-card "><span class="big">1.72×</span><span class="lbl">CPU vs C# (AOT)</span></div><div class="bench-card is-good"><span class="big">0.85×</span><span class="lbl">CPU vs Dart (AOT)</span></div><div class="bench-card "><span class="big">1.66×</span><span class="lbl">CPU vs OCaml</span></div><div class="bench-card "><span class="big">1.09×</span><span class="lbl">CPU vs Haskell</span></div><div class="bench-card is-good"><span class="big">1.00×</span><span class="lbl">CPU vs Rust (wasm)</span></div></div><p>Osprey is the fastest of all five languages on <strong>factorial, gcdsum, josephus, primes</strong>. Lower is better; ★ marks an Osprey win.</p>
+<h2>CPU time</h2>
+<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey (ARC)</th><th class="num col-osprey">Osprey (GC)</th><th class="num col-osprey">Osprey</th><th class="num">Rust</th><th class="num">C</th><th class="num">C# (AOT)</th><th class="num">Dart (AOT)</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">137.1&nbsp;ms</td><td class="num col-osprey">129.3&nbsp;ms</td><td class="num col-osprey">130.2&nbsp;ms</td><td class="num">129.3&nbsp;ms</td><td class="num">130.6&nbsp;ms</td><td class="num">132.4&nbsp;ms</td><td class="num">185.3&nbsp;ms</td><td class="num">111.3&nbsp;ms</td><td class="num best">65.3&nbsp;ms</td><td class="num col-osprey">159.0&nbsp;ms</td><td class="num">145.5&nbsp;ms</td></tr><tr><td>binarytrees</td><td class="num col-osprey">206.6&nbsp;ms</td><td class="num col-osprey">1.214&nbsp;s</td><td class="num col-osprey">1.212&nbsp;s</td><td class="num">1.967&nbsp;s</td><td class="num">891.5&nbsp;ms</td><td class="num">128.4&nbsp;ms</td><td class="num">128.6&nbsp;ms</td><td class="num">52.3&nbsp;ms</td><td class="num best">17.0&nbsp;ms</td><td class="num col-osprey">384.3&nbsp;ms</td><td class="num">818.6&nbsp;ms</td></tr><tr><td>coins</td><td class="num col-osprey">81.7&nbsp;ms</td><td class="num col-osprey">83.3&nbsp;ms</td><td class="num col-osprey">79.0&nbsp;ms</td><td class="num">84.5&nbsp;ms</td><td class="num">79.8&nbsp;ms</td><td class="num">104.4&nbsp;ms</td><td class="num">126.0&nbsp;ms</td><td class="num">103.3&nbsp;ms</td><td class="num best">52.3&nbsp;ms</td><td class="num col-osprey">113.4&nbsp;ms</td><td class="num">114.0&nbsp;ms</td></tr><tr><td>collatz</td><td class="num col-osprey">55.0&nbsp;ms</td><td class="num col-osprey">55.8&nbsp;ms</td><td class="num col-osprey">53.1&nbsp;ms</td><td class="num">13.4&nbsp;ms</td><td class="num best">10.8&nbsp;ms</td><td class="num">59.3&nbsp;ms</td><td class="num">72.7&nbsp;ms</td><td class="num">64.6&nbsp;ms</td><td class="num">40.2&nbsp;ms</td><td class="num col-osprey">73.6&nbsp;ms</td><td class="num">25.4&nbsp;ms</td></tr><tr><td>coprime</td><td class="num col-osprey">74.4&nbsp;ms</td><td class="num col-osprey">73.6&nbsp;ms</td><td class="num col-osprey">72.5&nbsp;ms</td><td class="num">66.4&nbsp;ms</td><td class="num best">65.0&nbsp;ms</td><td class="num">80.5&nbsp;ms</td><td class="num">111.6&nbsp;ms</td><td class="num">119.4&nbsp;ms</td><td class="num">220.3&nbsp;ms</td><td class="num col-osprey">86.5&nbsp;ms</td><td class="num">163.3&nbsp;ms</td></tr><tr><td>digitsum</td><td class="num col-osprey">14.9&nbsp;ms</td><td class="num col-osprey">14.7&nbsp;ms</td><td class="num col-osprey">14.7&nbsp;ms</td><td class="num">6.1&nbsp;ms</td><td class="num best">6.1&nbsp;ms</td><td class="num">21.2&nbsp;ms</td><td class="num">32.8&nbsp;ms</td><td class="num">19.5&nbsp;ms</td><td class="num">29.4&nbsp;ms</td><td class="num col-osprey">29.7&nbsp;ms</td><td class="num">18.8&nbsp;ms</td></tr><tr><td>exprtree</td><td class="num col-osprey">5.8&nbsp;ms</td><td class="num col-osprey">24.7&nbsp;ms</td><td class="num col-osprey">24.4&nbsp;ms</td><td class="num">11.1&nbsp;ms</td><td class="num">6.1&nbsp;ms</td><td class="num">7.7&nbsp;ms</td><td class="num">15.8&nbsp;ms</td><td class="num best">5.1&nbsp;ms</td><td class="num">16.3&nbsp;ms</td><td class="num col-osprey">14.0&nbsp;ms</td><td class="num">20.4&nbsp;ms</td></tr><tr><td>factorial</td><td class="num col-osprey">32.5&nbsp;ms</td><td class="num col-osprey">34.5&nbsp;ms</td><td class="num col-osprey win">32.0&nbsp;ms ★</td><td class="num">35.6&nbsp;ms</td><td class="num">35.3&nbsp;ms</td><td class="num">37.4&nbsp;ms</td><td class="num">51.2&nbsp;ms</td><td class="num">48.7&nbsp;ms</td><td class="num">53.5&nbsp;ms</td><td class="num col-osprey">41.7&nbsp;ms</td><td class="num">48.6&nbsp;ms</td></tr><tr><td>fib</td><td class="num col-osprey">22.1&nbsp;ms</td><td class="num col-osprey best">21.8&nbsp;ms</td><td class="num col-osprey">21.9&nbsp;ms</td><td class="num">29.2&nbsp;ms</td><td class="num">28.1&nbsp;ms</td><td class="num">43.3&nbsp;ms</td><td class="num">59.8&nbsp;ms</td><td class="num">29.5&nbsp;ms</td><td class="num">56.5&nbsp;ms</td><td class="num col-osprey">45.2&nbsp;ms</td><td class="num">49.4&nbsp;ms</td></tr><tr><td>gcdsum</td><td class="num col-osprey">89.1&nbsp;ms</td><td class="num col-osprey">86.0&nbsp;ms</td><td class="num col-osprey win">85.3&nbsp;ms ★</td><td class="num">86.1&nbsp;ms</td><td class="num">86.5&nbsp;ms</td><td class="num">92.8&nbsp;ms</td><td class="num">122.0&nbsp;ms</td><td class="num">107.7&nbsp;ms</td><td class="num">115.0&nbsp;ms</td><td class="num col-osprey">98.5&nbsp;ms</td><td class="num">104.3&nbsp;ms</td></tr><tr><td>hanoi</td><td class="num col-osprey">58.0&nbsp;ms</td><td class="num col-osprey">57.4&nbsp;ms</td><td class="num col-osprey">56.3&nbsp;ms</td><td class="num best">37.5&nbsp;ms</td><td class="num">38.5&nbsp;ms</td><td class="num">38.7&nbsp;ms</td><td class="num">103.9&nbsp;ms</td><td class="num">62.9&nbsp;ms</td><td class="num">54.4&nbsp;ms</td><td class="num col-osprey">78.6&nbsp;ms</td><td class="num">52.3&nbsp;ms</td></tr><tr><td>isqrt</td><td class="num col-osprey">14.0&nbsp;ms</td><td class="num col-osprey">14.4&nbsp;ms</td><td class="num col-osprey">14.2&nbsp;ms</td><td class="num">10.9&nbsp;ms</td><td class="num best">10.6&nbsp;ms</td><td class="num">17.1&nbsp;ms</td><td class="num">32.5&nbsp;ms</td><td class="num">20.6&nbsp;ms</td><td class="num">41.0&nbsp;ms</td><td class="num col-osprey">29.5&nbsp;ms</td><td class="num">22.9&nbsp;ms</td></tr><tr><td>josephus</td><td class="num col-osprey">33.2&nbsp;ms</td><td class="num col-osprey">33.6&nbsp;ms</td><td class="num col-osprey win">33.0&nbsp;ms ★</td><td class="num">33.8&nbsp;ms</td><td class="num">33.4&nbsp;ms</td><td class="num">35.9&nbsp;ms</td><td class="num">42.0&nbsp;ms</td><td class="num">42.0&nbsp;ms</td><td class="num">44.5&nbsp;ms</td><td class="num col-osprey">39.3&nbsp;ms</td><td class="num">44.4&nbsp;ms</td></tr><tr><td>listops</td><td class="num col-osprey">4.5&nbsp;ms</td><td class="num col-osprey">9.7&nbsp;ms</td><td class="num col-osprey">9.9&nbsp;ms</td><td class="num">1.5&nbsp;ms</td><td class="num best">1.3&nbsp;ms</td><td class="num">3.3&nbsp;ms</td><td class="num">10.8&nbsp;ms</td><td class="num">2.2&nbsp;ms</td><td class="num">16.6&nbsp;ms</td><td class="num col-osprey">10.8&nbsp;ms</td><td class="num">12.5&nbsp;ms</td></tr><tr><td>mergesort</td><td class="num col-osprey">279.0&nbsp;ms</td><td class="num col-osprey">393.0&nbsp;ms</td><td class="num col-osprey">391.4&nbsp;ms</td><td class="num">3.4&nbsp;ms</td><td class="num best">2.5&nbsp;ms</td><td class="num">3.8&nbsp;ms</td><td class="num">14.0&nbsp;ms</td><td class="num">4.8&nbsp;ms</td><td class="num">16.3&nbsp;ms</td><td class="num col-osprey">416.9&nbsp;ms</td><td class="num">14.9&nbsp;ms</td></tr><tr><td>mutual</td><td class="num col-osprey">19.1&nbsp;ms</td><td class="num col-osprey">19.4&nbsp;ms</td><td class="num col-osprey">18.6&nbsp;ms</td><td class="num">13.1&nbsp;ms</td><td class="num best">12.9&nbsp;ms</td><td class="num">21.5&nbsp;ms</td><td class="num">335.0&nbsp;ms</td><td class="num">29.1&nbsp;ms</td><td class="num">40.7&nbsp;ms</td><td class="num col-osprey">24.9&nbsp;ms</td><td class="num">30.0&nbsp;ms</td></tr><tr><td>nestedloop</td><td class="num col-osprey">45.4&nbsp;ms</td><td class="num col-osprey best">43.5&nbsp;ms</td><td class="num col-osprey">43.8&nbsp;ms</td><td class="num">46.4&nbsp;ms</td><td class="num">46.0&nbsp;ms</td><td class="num">48.4&nbsp;ms</td><td class="num">60.6&nbsp;ms</td><td class="num">58.5&nbsp;ms</td><td class="num">65.2&nbsp;ms</td><td class="num col-osprey">55.6&nbsp;ms</td><td class="num">62.9&nbsp;ms</td></tr><tr><td>pascal</td><td class="num col-osprey">40.3&nbsp;ms</td><td class="num col-osprey">40.0&nbsp;ms</td><td class="num col-osprey">40.4&nbsp;ms</td><td class="num best">27.9&nbsp;ms</td><td class="num">28.2&nbsp;ms</td><td class="num">34.1&nbsp;ms</td><td class="num">65.2&nbsp;ms</td><td class="num">45.1&nbsp;ms</td><td class="num">65.0&nbsp;ms</td><td class="num col-osprey">70.6&nbsp;ms</td><td class="num">46.9&nbsp;ms</td></tr><tr><td>powmod</td><td class="num col-osprey">31.2&nbsp;ms</td><td class="num col-osprey">31.0&nbsp;ms</td><td class="num col-osprey">31.5&nbsp;ms</td><td class="num best">27.4&nbsp;ms</td><td class="num">27.5&nbsp;ms</td><td class="num">40.1&nbsp;ms</td><td class="num">58.8&nbsp;ms</td><td class="num">71.1&nbsp;ms</td><td class="num">65.4&nbsp;ms</td><td class="num col-osprey">44.6&nbsp;ms</td><td class="num">39.5&nbsp;ms</td></tr><tr><td>primes</td><td class="num col-osprey">6.7&nbsp;ms</td><td class="num col-osprey">6.9&nbsp;ms</td><td class="num col-osprey win">6.7&nbsp;ms ★</td><td class="num">7.1&nbsp;ms</td><td class="num">7.1&nbsp;ms</td><td class="num">10.7&nbsp;ms</td><td class="num">52.6&nbsp;ms</td><td class="num">10.0&nbsp;ms</td><td class="num">18.7&nbsp;ms</td><td class="num col-osprey">23.5&nbsp;ms</td><td class="num">21.0&nbsp;ms</td></tr><tr><td>quicksort</td><td class="num col-osprey">153.2&nbsp;ms</td><td class="num col-osprey">225.2&nbsp;ms</td><td class="num col-osprey">226.4&nbsp;ms</td><td class="num">4.1&nbsp;ms</td><td class="num best">2.5&nbsp;ms</td><td class="num">6.3&nbsp;ms</td><td class="num">14.9&nbsp;ms</td><td class="num">5.8&nbsp;ms</td><td class="num">16.6&nbsp;ms</td><td class="num col-osprey">244.2&nbsp;ms</td><td class="num">14.8&nbsp;ms</td></tr><tr><td>tak</td><td class="num col-osprey">33.1&nbsp;ms</td><td class="num col-osprey best">32.9&nbsp;ms</td><td class="num col-osprey">33.1&nbsp;ms</td><td class="num">37.5&nbsp;ms</td><td class="num">37.3&nbsp;ms</td><td class="num">40.5&nbsp;ms</td><td class="num">93.3&nbsp;ms</td><td class="num">51.2&nbsp;ms</td><td class="num">75.0&nbsp;ms</td><td class="num col-osprey">84.5&nbsp;ms</td><td class="num">92.0&nbsp;ms</td></tr><tr><td>textstats</td><td class="num col-osprey">4.1&nbsp;ms</td><td class="num col-osprey">3.8&nbsp;ms</td><td class="num col-osprey">3.6&nbsp;ms</td><td class="num best">2.0&nbsp;ms</td><td class="num">2.2&nbsp;ms</td><td class="num">3.8&nbsp;ms</td><td class="num">11.4&nbsp;ms</td><td class="num">4.0&nbsp;ms</td><td class="num">16.7&nbsp;ms</td><td class="num col-osprey">11.3&nbsp;ms</td><td class="num">14.9&nbsp;ms</td></tr><tr><td>wordfreq</td><td class="num col-osprey">26.2&nbsp;ms</td><td class="num col-osprey">64.1&nbsp;ms</td><td class="num col-osprey">63.5&nbsp;ms</td><td class="num">9.1&nbsp;ms</td><td class="num best">1.9&nbsp;ms</td><td class="num">3.3&nbsp;ms</td><td class="num">10.6&nbsp;ms</td><td class="num">2.5&nbsp;ms</td><td class="num">16.4&nbsp;ms</td><td class="num col-osprey">42.0&nbsp;ms</td><td class="num">15.7&nbsp;ms</td></tr></tbody></table></div>
+<h2>Peak memory</h2>
+<div class="comparison-table"><table><thead><tr><th>Benchmark</th><th class="num col-osprey">Osprey (ARC)</th><th class="num col-osprey">Osprey (GC)</th><th class="num col-osprey">Osprey</th><th class="num">Rust</th><th class="num">C</th><th class="num">C# (AOT)</th><th class="num">Dart (AOT)</th><th class="num">OCaml</th><th class="num">Haskell</th><th class="num col-osprey">Osprey (wasm)</th><th class="num">Rust (wasm)</th></tr></thead><tbody><tr><td>ackermann</td><td class="num col-osprey">1.9&nbsp;MiB</td><td class="num col-osprey">1.9&nbsp;MiB</td><td class="num col-osprey">1.9&nbsp;MiB</td><td class="num">1.8&nbsp;MiB</td><td class="num best">1.7&nbsp;MiB</td><td class="num">7.1&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.7&nbsp;MiB</td><td class="num">15.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>binarytrees</td><td class="num col-osprey">2.9&nbsp;MiB</td><td class="num col-osprey">17.8&nbsp;MiB</td><td class="num col-osprey">17.8&nbsp;MiB</td><td class="num">3.0&nbsp;MiB</td><td class="num best">2.2&nbsp;MiB</td><td class="num">16.1&nbsp;MiB</td><td class="num">22.5&nbsp;MiB</td><td class="num">5.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coins</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>collatz</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>coprime</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>digitsum</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>exprtree</td><td class="num col-osprey">3.5&nbsp;MiB</td><td class="num col-osprey">22.3&nbsp;MiB</td><td class="num col-osprey">22.3&nbsp;MiB</td><td class="num best">2.7&nbsp;MiB</td><td class="num">11.5&nbsp;MiB</td><td class="num">15.2&nbsp;MiB</td><td class="num">22.5&nbsp;MiB</td><td class="num">6.1&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>factorial</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>fib</td><td class="num col-osprey best">1.6&nbsp;MiB</td><td class="num col-osprey best">1.6&nbsp;MiB</td><td class="num col-osprey best">1.6&nbsp;MiB</td><td class="num">2.1&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.2&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>gcdsum</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>hanoi</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.8&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.2&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>isqrt</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>josephus</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.8&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>listops</td><td class="num col-osprey">2.2&nbsp;MiB</td><td class="num col-osprey">9.7&nbsp;MiB</td><td class="num col-osprey">8.0&nbsp;MiB</td><td class="num">1.7&nbsp;MiB</td><td class="num best">1.5&nbsp;MiB</td><td class="num">7.1&nbsp;MiB</td><td class="num">14.3&nbsp;MiB</td><td class="num">2.6&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>mergesort</td><td class="num col-osprey">2.2&nbsp;MiB</td><td class="num col-osprey">10.6&nbsp;MiB</td><td class="num col-osprey">8.8&nbsp;MiB</td><td class="num">2.1&nbsp;MiB</td><td class="num best">1.7&nbsp;MiB</td><td class="num">10.7&nbsp;MiB</td><td class="num">16.5&nbsp;MiB</td><td class="num">5.1&nbsp;MiB</td><td class="num">11.3&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>mutual</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>nestedloop</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>pascal</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>powmod</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>primes</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">11.1&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>quicksort</td><td class="num col-osprey best">2.0&nbsp;MiB</td><td class="num col-osprey">10.7&nbsp;MiB</td><td class="num col-osprey">8.9&nbsp;MiB</td><td class="num">2.1&nbsp;MiB</td><td class="num">2.5&nbsp;MiB</td><td class="num">15.0&nbsp;MiB</td><td class="num">16.6&nbsp;MiB</td><td class="num">5.0&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>tak</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.9&nbsp;MiB</td><td class="num">13.9&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.2&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>textstats</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num col-osprey">1.6&nbsp;MiB</td><td class="num">1.6&nbsp;MiB</td><td class="num best">1.4&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr><tr><td>wordfreq</td><td class="num col-osprey best">1.7&nbsp;MiB</td><td class="num col-osprey">10.3&nbsp;MiB</td><td class="num col-osprey">9.8&nbsp;MiB</td><td class="num">2.2&nbsp;MiB</td><td class="num">1.8&nbsp;MiB</td><td class="num">6.8&nbsp;MiB</td><td class="num">14.0&nbsp;MiB</td><td class="num">2.3&nbsp;MiB</td><td class="num">11.4&nbsp;MiB</td><td class="num col-osprey">—</td><td class="num">—</td></tr></tbody></table></div>
+</main></body></html>

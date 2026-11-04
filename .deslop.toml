@@ -59,31 +59,31 @@ exclude = [
   # Test code, in every layout the repo uses. The gate scopes to hand-written
   # PRODUCT code; test suites intentionally repeat setup/fixture scaffolding
   # (that repetition is what keeps each test independently readable), so
-  # deduping them trades clarity for a metric. Covers Rust `src/tests/`, the VS Code
+  # deduping them trades clarity for a metric. Covers Rust `src/osprey/tests/`, the VS Code
   # extension's `test/suite/` (DAP harness + e2e), and any `*.test.ts`.
   "**/tests/**",
   "**/test/**",
   "**/*.test.ts",
   # Vendored, generated tree-sitter grammar bindings — not hand-written.
-  "src/tree-sitter-osprey/**",
+  "src/toolchain/tree-sitter-osprey/**",
   # Cross-language benchmark baselines: each case is a standalone single-file
-  # program compiled in isolation by src/benchmarks/run.sh (no shared crate exists
+  # program compiled in isolation by src/toolchain/benchmarks/run.sh (no shared crate exists
   # to factor into), so the identical scaffolding across cases is intrinsic to
   # the benchmark design, not a refactorable product-code clone.
-  "src/benchmarks/**",
+  "src/toolchain/benchmarks/**",
   # One-off website build/generation tooling (e.g. add-ml-twins.py, which emits
   # the ML twin of each Default snippet for the docs). Same category as the
   # benchmark baselines above: standalone generator scripts, not the shipped
   # compiler product code the gate exists to guard. Their per-case scaffolding
   # is intrinsic to a code generator, not a refactorable product clone.
-  "src/website/scripts/**",
+  "src/toolchain/website/scripts/**",
   # Vendored, minified third-party JS (mermaid + katex ESM chunks) copied in by
   # `npm run build`. This dir is gitignored build output, NOT hand-written
   # product code — but deslop does NOT read .gitignore (only these explicit
   # patterns are honored), so without this line the minified chunk-*.mjs /
   # *Diagram-*.mjs bundles dominate the report as near-100% self-duplication and
   # blow past the ceiling. They duplicate by design and we don't own them.
-  "src/website/src/assets/vendor/**",
+  "src/toolchain/website/src/assets/vendor/**",
   # Built-in documentation DATA tables: `builtin_doc!(name, description,
   # [params], example)` rows — one per builtin — fill these files. deslop
   # counts them as Type-1 clones because every row is the same macro shape, but

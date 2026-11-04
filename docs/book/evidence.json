@@ -236,10 +236,10 @@
       "observed": "The handler returns the correct string, but assignment to its captured recording cell is not visible after calling it through another callable handler.",
       "verification": "Reproduced on the rebuilt current compiler in Default and ML with default, GC, and ARC; existing handler_scoping cases 1\u20133 pass and the added case 4 fails.",
       "regressions": [
-        "../../src/tests/regressions/effects/handler_scoping.test.osp",
-        "../../src/tests/regressions/effects/handler_scoping.test.ospml"
+        "../../src/osprey/tests/regressions/effects/handler_scoping.test.osp",
+        "../../src/osprey/tests/regressions/effects/handler_scoping.test.ospml"
       ],
-      "expectedOutput": "../../src/tests/regressions/effects/handler_scoping.test.osp.expectedoutput",
+      "expectedOutput": "../../src/osprey/tests/regressions/effects/handler_scoping.test.osp.expectedoutput",
       "bookTreatment": "Do not teach nested mutable recording as working. Chapter 9 uses verified immutable configuration captures and direct assertions in handler arms. No compiler fix is claimed."
     }
   ],

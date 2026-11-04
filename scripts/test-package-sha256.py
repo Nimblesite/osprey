@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def emit_ir(directory):
-    sources = [str(ROOT / "src/packages/manager/core/src" / name)
+    sources = [str(ROOT / "src/osprey/packages/manager/core/src" / name)
                for name in ("bytes.osp", "sha256.osp", "policy.osp")]
     roots = json.dumps(["main.osp", *sources], ensure_ascii=False)
     (directory / "osprey.toml").write_text(
@@ -40,7 +40,7 @@ class ManifestRootEncodingTests(unittest.TestCase):
             fake_root = Path(directory) / "hostile" / self.HOSTILE
             fixture = Path(directory) / "fixture"
             fixture.mkdir()
-            declared = [str(fake_root / "src/packages/manager/core/src" / name)
+            declared = [str(fake_root / "src/osprey/packages/manager/core/src" / name)
                         for name in ("bytes.osp", "sha256.osp", "policy.osp")]
             with patch.object(sys.modules[__name__], "ROOT", fake_root), \
                     patch.object(subprocess, "run", return_value=SimpleNamespace(stdout="")):

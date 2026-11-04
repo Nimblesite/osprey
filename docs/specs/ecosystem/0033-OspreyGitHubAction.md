@@ -146,10 +146,10 @@ Delivery still requires a packaged WASI invocation or host shim that supplies th
 
 ## Verification
 
-- An `src/tests/regressions/` program that reads one JSON line via `input()`, parses
+- An `src/osprey/tests/regressions/` program that reads one JSON line via `input()`, parses
   it with the JSON builtins, and prints `key=value` lines — the ferry +
   parse + emit round-trip, checked byte-for-byte by the differential harness
-  (`src/crates/run_test_corpus.sh`).
+  (`src/toolchain/crates/run_test_corpus.sh`).
 - `osprey <program>.osp --run < payload.json` reproduces the harness output,
   proving the stdin channel end to end.
 - The Docker image builds and its entrypoint reproduces the same output for the

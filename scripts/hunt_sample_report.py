@@ -93,7 +93,7 @@ def write(out, records, proof=False):
     (out/'excluded.json').write_text(json.dumps(excluded, indent=2)+'\n')
     counts = Counter(outcome(record) for record in records)
     (out/'SUMMARY.txt').write_text('\n'.join(f'{key}: {value}' for key, value in sorted(counts.items()))+'\n')
-    tokens = (Path(__file__).resolve().parent.parent/'src/website/src/css/variables.css').read_text()
+    tokens = (Path(__file__).resolve().parent.parent/'src/toolchain/website/src/css/variables.css').read_text()
     (out/'index.html').write_text(document(out, quick, excluded, tokens, proof))
 
 

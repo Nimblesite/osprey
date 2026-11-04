@@ -121,7 +121,7 @@ Use portrait explanations for a short sequence that would make labels too small 
 
 ## Cover direction
 
-The cover is a midnight launch field. A single cyan program line rises through three checking planes and becomes an abstract osprey flight path. The canonical Osprey mark is composited from `../../src/website/src/assets/images/logo.png`; it is never redrawn by a generative model.
+The cover is a midnight launch field. A single cyan program line rises through three checking planes and becomes an abstract osprey flight path. The canonical Osprey mark is composited from `../../src/toolchain/website/src/assets/images/logo.png`; it is never redrawn by a generative model.
 
 Required text:
 

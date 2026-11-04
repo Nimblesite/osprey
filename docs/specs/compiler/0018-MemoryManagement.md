@@ -86,9 +86,9 @@ The current GC is supported on Apple and glibc-Linux, not Windows, and stops col
 All code-generated heap allocation sites use the same IR symbols, so native
 backend selection only changes the runtime archive passed to the linker:
 
-- Explicit `--memory=none` uses `src/compiler/runtime/memory_runtime.c`.
-- `gc` uses `src/compiler/runtime/memory_gc.c`.
-- `arc` uses `src/compiler/runtime/memory_arc.c`.
+- Explicit `--memory=none` uses `src/toolchain/compiler/runtime/memory_runtime.c`.
+- `gc` uses `src/toolchain/compiler/runtime/memory_gc.c`.
+- `arc` uses `src/toolchain/compiler/runtime/memory_arc.c`.
 
 The C runtime memory tests exercise each backend directly. The differential
 conformance targets exercise compiled Osprey programs and compare their output;

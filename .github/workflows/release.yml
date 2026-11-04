@@ -74,9 +74,9 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: src/vscode-extension/package-lock.json
+          cache-dependency-path: src/toolchain/vscode-extension/package-lock.json
       - name: Install Shipwright validator dependencies
-        working-directory: src/vscode-extension
+        working-directory: src/toolchain/vscode-extension
         run: npm ci
       - name: Derive version + validate manifest
         id: v
@@ -86,7 +86,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "Releasing osprey $version"
           # [EDITOR-VERSIONING] Validate shipwright.json before building anything.
-          npm run test:shipwright --prefix src/vscode-extension
+          npm run test:shipwright --prefix src/toolchain/vscode-extension
 
   # --------------------------------------------------------------------------
   build:
@@ -163,7 +163,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         # --no-warnings skips the warning pass (see scripts/make/extension.mk).
-        run: target/release/osprey build src/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
+        run: target/release/osprey build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg
       # The local package registry [PACKAGE-LOCAL-REGISTRY]: the folder-registry
       # server and this repository's packages published into a folder registry.
       # Not on Windows yet: the server's tree walk shells out to POSIX `find`.
@@ -172,7 +172,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          target/release/osprey build src/packages/manager/api --quiet --no-warnings -o target/osprey-registry
+          target/release/osprey build src/osprey/packages/manager/api --quiet --no-warnings -o target/osprey-registry
           scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
       # osprey.exe is a native Windows process, so it resolves clang on the
       # Windows PATH, where the runner's MSVC-target clang shadows the MSYS2 one
@@ -188,7 +188,7 @@ jobs:
       - name: Compile package manager client (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: target/release/osprey.exe build src/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+        run: target/release/osprey.exe build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
 
       - name: Build portable package workspace
         if: runner.os == 'Linux'
@@ -250,10 +250,10 @@ jobs:
           # a compiler that can link nothing, shipped green. Find the directory
           # that has them and fail when neither does.
           libdir=""
-          for candidate in src/compiler/lib src/compiler/bin; do
+          for candidate in src/toolchain/compiler/lib src/toolchain/compiler/bin; do
             if ls "$candidate"/lib*.a >/dev/null 2>&1; then libdir="$candidate"; break; fi
           done
-          [ -n "$libdir" ] || { echo "::error::no runtime archives in src/compiler/lib or src/compiler/bin"; exit 1; }
+          [ -n "$libdir" ] || { echo "::error::no runtime archives in src/toolchain/compiler/lib or src/toolchain/compiler/bin"; exit 1; }
           cp "$libdir"/lib*.a "dist/$staging/"
           # Every memory backend must be in the tarball. A missing one is
           # otherwise found by the user whose --memory=gc build fails to link.
@@ -510,7 +510,7 @@ jobs:
       # editor GIFs must be real bytes for verify-readme.mjs.
       - name: Fetch extension icon, README media and workbench assets
         shell: bash
-        run: git lfs install --local && git lfs pull --include="src/website/src/assets/images/logo.png,src/vscode-extension/media/package-tour.gif,src/vscode-extension/media/showcase.gif,src/workbench/assets/**,src/workbench/lessons/media/**"
+        run: git lfs install --local && git lfs pull --include="src/toolchain/website/src/assets/images/logo.png,src/toolchain/vscode-extension/media/package-tour.gif,src/toolchain/vscode-extension/media/showcase.gif,src/osprey/workbench/assets/**,src/osprey/workbench/lessons/media/**"
       - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - uses: actions/download-artifact@v8
@@ -532,19 +532,19 @@ jobs:
         run: |
           set -euo pipefail
           tar -xzf "dist/osprey-${VERSION}-${{ matrix.target }}.tar.gz" -C dist
-          dest="src/vscode-extension/bin/${{ matrix.target }}"
+          dest="src/toolchain/vscode-extension/bin/${{ matrix.target }}"
           mkdir -p "$dest"
           cp -r "dist/osprey-${VERSION}-${{ matrix.target }}/." "$dest/"
           cp dist/package-workspace/package-workspace.wasm "$dest/"
           cp dist/workbench/workbench.wasm "$dest/"
           mkdir -p "$dest/workbench"
-          cp -R src/workbench/lessons "$dest/workbench/"
-          cp -R src/workbench/assets/. "$dest/workbench/"
+          cp -R src/osprey/workbench/lessons "$dest/workbench/"
+          cp -R src/osprey/workbench/assets/. "$dest/workbench/"
           # Same stager the Makefile bundle runs: the approved proof exports and
           # their upstream licenses are pinned, so copying the asset tree alone
           # would ship whatever bodies this checkout happens to hold.
           python3 scripts/workbench-proof-assets.py "$dest/workbench"
-          cp src/website/src/assets/images/logo.png "$dest/workbench/osprey-logo.png"
+          cp src/toolchain/website/src/assets/images/logo.png "$dest/workbench/osprey-logo.png"
           # Stamp + bundle shipwright.json so the extension can version-check the
           # bundled binary at activation. [EDITOR-VERSIONING]
           node -e '
@@ -552,22 +552,22 @@ jobs:
             const m=JSON.parse(fs.readFileSync("shipwright.json","utf8"));
             m.product.version=v;
             for (const c of m.components) if (c.expectedVersion) c.expectedVersion=v;
-            fs.writeFileSync("src/vscode-extension/shipwright.json", JSON.stringify(m,null,2)+"\n");
+            fs.writeFileSync("src/toolchain/vscode-extension/shipwright.json", JSON.stringify(m,null,2)+"\n");
           '
       - name: Install deps + stamp package.json
-        working-directory: src/vscode-extension
+        working-directory: src/toolchain/vscode-extension
         run: |
           npm install
           npm version "${{ needs.version.outputs.version }}" --no-git-tag-version --allow-same-version
           npm run compile
       - name: Package VSIX
-        working-directory: src/vscode-extension
+        working-directory: src/toolchain/vscode-extension
         run: |
           npx vsce package --target ${{ matrix.target }}
           node scripts/verify-readme.mjs osprey-${{ matrix.target }}-${{ needs.version.outputs.version }}.vsix
       - name: Verify bundled binary is inside the VSIX
         shell: bash
-        working-directory: src/vscode-extension
+        working-directory: src/toolchain/vscode-extension
         run: |
           set -euo pipefail
           exe=""; [ "${{ runner.os }}" = "Windows" ] && exe=".exe"
@@ -587,7 +587,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: osprey-vsix-${{ matrix.target }}
-          path: src/vscode-extension/*.vsix
+          path: src/toolchain/vscode-extension/*.vsix
           if-no-files-found: error
           retention-days: 7
 

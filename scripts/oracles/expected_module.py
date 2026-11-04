@@ -41,7 +41,7 @@ def literal(value, floats_as_text=False):
 
 
 def write(package, summary, versions, constants, docs=None):
-    """Write src/packages/<package>/tests/expected.py holding `constants` (name -> value).
+    """Write src/osprey/packages/<package>/tests/expected.py holding `constants` (name -> value).
 
     `versions` maps each oracle package name to its version string, recorded with the
     CPython version in the module docstring so a regenerated module states its source.
@@ -65,6 +65,6 @@ def write(package, summary, versions, constants, docs=None):
     for name, value in constants.items():
         doc = (docs or {}).get(name, f"Oracle value `{name}`, computed by scripts/oracles/{package}.py.")
         lines += [f"{name} = {literal(value, non_finite(value))}", f'"""{doc}"""']
-    target = ROOT / "src" / "packages" / package / "tests" / "expected.py"
+    target = ROOT / "src" / "osprey" / "packages" / package / "tests" / "expected.py"
     target.write_text("\n".join(lines) + "\n")
     return target

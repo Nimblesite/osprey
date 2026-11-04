@@ -40,7 +40,7 @@ echo "==> Android scalar imports/exports, bool, Unit and persistent global ABI p
 # The seven hand-picked goldens that used to run here are gone: `make
 # _test_android_goldens` now runs the WHOLE corpus on this device against the
 # same byte-exact goldens, with its rejections pinned in
-# src/tests/MOBILE_UNPORTABLE.txt. Repeating fourteen of them here would observe a
+# src/osprey/tests/MOBILE_UNPORTABLE.txt. Repeating fourteen of them here would observe a
 # strict subset of what that harness already observed.
 
 cat >"$scratch/golden.c" <<'C'
@@ -49,7 +49,7 @@ int main(void) { return osprey_main(); }
 C
 
 # Run the same app tests on the device ABI, including the UTF-8 regressions.
-"$compiler" src/examples/mobile/inbox/test --target="$target" --compile -o "$scratch/golden.a"
+"$compiler" src/osprey/examples/mobile/inbox/test --target="$target" --compile -o "$scratch/golden.a"
 link_host "$scratch/golden.c" "$scratch/golden.a" "$scratch/golden"
 run_host "$scratch/golden"
 cat "$scratch/actual"

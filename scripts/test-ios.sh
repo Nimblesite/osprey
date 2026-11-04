@@ -33,9 +33,9 @@ diff -u "$scratch/abi.expected" "$scratch/abi.stdout"
 echo "==> iOS device C host linked; simulator scalar imports/exports and global lifetime passed"
 
 # The seven hand-picked goldens that used to run here are gone, and nothing is
-# lost: `OSPREY_TARGET=ios-sim src/crates/run_test_corpus.sh` now runs the WHOLE
+# lost: `OSPREY_TARGET=ios-sim src/toolchain/crates/run_test_corpus.sh` now runs the WHOLE
 # corpus on the simulator against the same byte-exact goldens, with its
-# rejections pinned in src/tests/MOBILE_UNPORTABLE.txt. Running fourteen of those
+# rejections pinned in src/osprey/tests/MOBILE_UNPORTABLE.txt. Running fourteen of those
 # programs a second time here would double the slowest stage to observe a
 # strict subset of what the harness already observed.
 
@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
 C
 
 # Exercise the shared app logic, including Unicode limits, on the real target.
-"$compiler" src/examples/mobile/inbox/test --target=ios-sim --compile -o "$scratch/golden.a"
+"$compiler" src/osprey/examples/mobile/inbox/test --target=ios-sim --compile -o "$scratch/golden.a"
 link_host iphonesimulator arm64-apple-ios15.0-simulator \
     "$scratch/golden.c" "$scratch/golden.a" "$scratch/golden"
 xcrun simctl spawn "$simulator" "$scratch/golden" "$scratch"

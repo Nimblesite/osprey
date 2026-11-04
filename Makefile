@@ -1,8 +1,8 @@
 # Build from the repository root. See docs/contributing/repository-map.md.
 # This file holds the repository-wide targets. Every other public target lives
-# in a folder Makefile, one folder per area, as docs/book/Makefile does: src/targets/ (every
-# app), src/packages/, src/tests/hunt/, src/vscode-extension/, src/website/, src/benchmarks/ and
-# src/examples/proof/. Each folder target runs the private `_` target of the same
+# in a folder Makefile, one folder per area, as docs/book/Makefile does: src/toolchain/targets/ (every
+# app), src/osprey/packages/, src/osprey/tests/hunt/, src/toolchain/vscode-extension/, src/toolchain/website/, src/toolchain/benchmarks/ and
+# src/osprey/examples/proof/. Each folder target runs the private `_` target of the same
 # name here; the included fragments hold the configuration and those steps. Keep `NAME := value` lines in the
 # fragments: those panels list them as targets.
 .DEFAULT_GOAL := build
@@ -30,8 +30,8 @@ build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 ## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
 .PHONY: audit
 audit:
-	python3 src/hosts/gpui/dependencies.py
-	python3 src/hosts/gpui/dependencies_test.py
+	python3 src/toolchain/hosts/gpui/dependencies.py
+	python3 src/toolchain/hosts/gpui/dependencies_test.py
 	osv-scanner scan source --recursive --all-vulns .
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
@@ -55,7 +55,7 @@ test: build
 # #307 are open. Run them by hand on a machine with KLEE. [SYMEX-CRASH-GATE]
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
-# src/tests/ through the TAP subcommand, and _test_goldens then runs every one of
+# src/osprey/tests/ through the TAP subcommand, and _test_goldens then runs every one of
 # them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
 # byte-exact golden in a single pass (see its header), so the golden run is
 # strictly the stronger of the two observations. Executing the same assertions
@@ -77,7 +77,7 @@ test: build
 # stay green when the package's own manifest cannot resolve its dependencies.
 .PHONY: _check_packages
 _check_packages:
-	for manifest in src/packages/*/osprey.toml; do \
+	for manifest in src/osprey/packages/*/osprey.toml; do \
 		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
 	done
 
@@ -86,7 +86,7 @@ _package-coverage: build
 	$(MAKE) _coverage_check_packages
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
-# reruns all src/packages/<name>/tests suites concurrently with --coverage-json
+# reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
 # into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
 # reports alone — no suite is re-run to check what it already measured — and
 # fails on a package below its projects.packages threshold or on missing,
@@ -100,8 +100,8 @@ _coverage_check_packages:
 .PHONY: _test_agent _agent-suites
 # Osprey Agent's turn logic and real update path: no network and no window.
 _test_agent:
-	set -o pipefail && $(BIN) src/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
-	$(BIN) src/examples/agent/test-app --run --quiet --no-warnings
+	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
+	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
 
 _agent-suites: _runtime
 	cargo build --release -p osprey-cli
@@ -139,7 +139,7 @@ _registry-serve: target/osprey-registry target/local-registry.stamp
 	cd target/local-registry-server && $(abspath target/osprey-registry)
 
 _registry-serve-sample: build
-	cd src/packages/manager/api && $(abspath $(BIN)) . --run
+	cd src/osprey/packages/manager/api && $(abspath $(BIN)) . --run
 
 _registry-blockers: build
 	$(MAKE) _test_registry_blockers
@@ -155,23 +155,23 @@ _bank: _bank-web
 	    done; \
 	    open http://127.0.0.1:18790; \
 	  fi) & \
-	  ./$(BIN) src/examples/projects/modules --run
+	  ./$(BIN) src/osprey/examples/projects/modules --run
 
 _bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
 	@echo "==> Building Talon Bank browser application..."
-	cd src/examples/projects/modules/web && npm run build
+	cd src/osprey/examples/projects/modules/web && npm run build
 
 _bank-test: build
 	$(MAKE) _bank_test
 
 _bank-e2e: _bank-web $(BANK_E2E_NODE_DEPS)
 	@echo "==> Bank e2e (Playwright)..."
-	cd src/examples/projects/modules/e2e && npx playwright install chromium && npx playwright test
+	cd src/osprey/examples/projects/modules/e2e && npx playwright install chromium && npx playwright test
 	@test ! -e /tmp/talon_bank.hold || { echo "FAIL: bank e2e left /tmp/talon_bank.hold behind; its webServer was stopped without running its trap"; exit 1; }
 
 _docs-html-test: build $(BANK_E2E_NODE_DEPS)
 	@echo "==> Documentation HTML browser acceptance..."
-	cd src/examples/projects/modules/e2e && npx playwright install chromium
+	cd src/osprey/examples/projects/modules/e2e && npx playwright install chromium
 	node scripts/verify-docs-html.mjs $(BIN)
 
 ## lint: Run all linters/analyzers (read-only). Checks formatting but does
@@ -230,29 +230,29 @@ fmt: $(EXT_NODE_DEPS)
 clean:
 	@echo "==> Cleaning..."
 	cargo clean
-	$(RM) $(RTB) src/compiler/lib outputs
+	$(RM) $(RTB) src/toolchain/compiler/lib outputs
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 ## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)
 ci: lint hawk test _bank-test _bank-e2e _docs-html-test _mobile-domain-test _bank-mobile-domain-test build
 
 _wasm: build _runtime_wasm
-	@echo "==> compiling the wasm example -> src/examples/wasm/build/"
-	@$(MKDIR) src/examples/wasm/build
-	$(BIN) src/examples/wasm/hello.osp --target=wasm32 --compile -o src/examples/wasm/build/hello.wasm
-	@echo "==> validating + smoke-running src/examples/wasm/build/hello.wasm"
-	$(call wasm_validate,src/examples/wasm/build/hello.wasm)
-	node scripts/wasm-smoke.mjs         src/examples/wasm/build/hello.wasm src/examples/wasm/hello.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/examples/wasm/build/hello.wasm src/examples/wasm/hello.expectedoutput
-	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> src/examples/wasm/build/"
-	$(BIN) src/examples/wasm/studio.osp   --target=wasm32 --compile -o src/examples/wasm/build/studio.osp.wasm
-	$(BIN) src/examples/wasm/studio.ospml --target=wasm32 --compile -o src/examples/wasm/build/studio.ospml.wasm
-	$(call wasm_validate,src/examples/wasm/build/studio.osp.wasm src/examples/wasm/build/studio.ospml.wasm)
+	@echo "==> compiling the wasm example -> src/osprey/examples/wasm/build/"
+	@$(MKDIR) src/osprey/examples/wasm/build
+	$(BIN) src/osprey/examples/wasm/hello.osp --target=wasm32 --compile -o src/osprey/examples/wasm/build/hello.wasm
+	@echo "==> validating + smoke-running src/osprey/examples/wasm/build/hello.wasm"
+	$(call wasm_validate,src/osprey/examples/wasm/build/hello.wasm)
+	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> src/osprey/examples/wasm/build/"
+	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
+	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
+	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
 	@echo "==> both Studio flavors must emit the SAME manifest (byte-identical golden)"
-	node scripts/wasm-smoke.mjs         src/examples/wasm/build/studio.osp.wasm   src/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/examples/wasm/build/studio.osp.wasm   src/examples/wasm/studio.expectedoutput
-	node scripts/wasm-smoke.mjs         src/examples/wasm/build/studio.ospml.wasm src/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/examples/wasm/build/studio.ospml.wasm src/examples/wasm/studio.expectedoutput
+	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
 	$(MAKE) _test_wasm_goldens
 	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
@@ -261,15 +261,15 @@ _wasm _wasm-site _runtime_wasm _bank-web _test_wasm_goldens: export PATH := $(WA
 _wasm-site: _runtime_wasm
 	@echo "==> building osprey compiler for the website wasm demo"
 	cargo build --release -p osprey-cli
-	@echo "==> compiling Osprey Data Studio website assets -> src/examples/wasm/build/"
-	@$(MKDIR) src/examples/wasm/build
-	$(BIN) src/examples/wasm/studio.osp   --target=wasm32 --compile -o src/examples/wasm/build/studio.osp.wasm
-	$(BIN) src/examples/wasm/studio.ospml --target=wasm32 --compile -o src/examples/wasm/build/studio.ospml.wasm
-	$(call wasm_validate,src/examples/wasm/build/studio.osp.wasm src/examples/wasm/build/studio.ospml.wasm)
-	node scripts/wasm-smoke.mjs         src/examples/wasm/build/studio.osp.wasm   src/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/examples/wasm/build/studio.osp.wasm   src/examples/wasm/studio.expectedoutput
-	node scripts/wasm-smoke.mjs         src/examples/wasm/build/studio.ospml.wasm src/examples/wasm/studio.expectedoutput
-	node scripts/wasm-browser-smoke.mjs src/examples/wasm/build/studio.ospml.wasm src/examples/wasm/studio.expectedoutput
+	@echo "==> compiling Osprey Data Studio website assets -> src/osprey/examples/wasm/build/"
+	@$(MKDIR) src/osprey/examples/wasm/build
+	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
+	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
+	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
+	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
 	@echo "==> website wasm demo ready"
 
 _wasm-serve: _wasm
@@ -315,31 +315,31 @@ _workbench-proof-assets:
 .PHONY: _workbench-test
 _workbench-test: build
 	for memory in gc arc; do \
-	  $(BIN) test src/workbench/tests --memory=$$memory --filter "proof library file import displays its actual checked statement" || exit 1; \
-	  $(BIN) test src/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
+	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "proof library file import displays its actual checked statement" || exit 1; \
+	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
 	done
 
 .PHONY: _agent-self-test _agent-live-test
 # [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
 _agent-self-test: _runtime_macos
 	cargo build --release -p osprey-cli
-	swift test --package-path src/hosts/swift/Tests
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/agent/self-test.sh
+	swift test --package-path src/toolchain/hosts/swift/Tests
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
 
 # The same script and harder tasks in a real window with real DeepSeek calls. Spends tokens.
 _agent-live-test: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/agent/self-test.sh --live
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
 
 .PHONY: _workbench-native-test
 _workbench-native-test: build
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/workbench/hosts/apple/run.sh --build
-	swift test --package-path src/workbench/hosts/apple
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/workbench/hosts/apple/run.sh --build
+	swift test --package-path src/osprey/workbench/hosts/apple
 
 WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
 .PHONY: _workbench-render-review
 _workbench-render-review:
-	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash src/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
+	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash src/osprey/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
 
 ## cli-contracts: Compiler CLI contracts: --quiet and --no-warnings (2 each),
 ##                closed-stdin launcher (3, OSPREY_TEST_COMPILER/OSPREY_TEST_MEMORY
@@ -357,23 +357,23 @@ _package-checks: build
 	node scripts/verify-package-licenses.mjs
 	node --test scripts/test-package-licenses.mjs
 	python3 scripts/test-package-sha256.py
-	$(BIN) src/packages/manager/fixture-check --run
+	$(BIN) src/osprey/packages/manager/fixture-check --run
 	for filter in "schema-check: model declarations" "schema-check: accepted values" "schema-check: rejected values" \
 	  "schema: spec block equals canonical file" "fixtures: names"; do \
-	  $(BIN) test src/packages/manager/tests --filter "$$filter" || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/tests --filter "$$filter" || exit 1; \
 	done
 	for filter in "publish: licenses survive publication" "fetch: licenses and attribution are preserved"; do \
-	  $(BIN) test src/packages/manager/cli/tests --filter "$$filter" || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/cli/tests --filter "$$filter" || exit 1; \
 	done
 	for memory in gc arc; do \
-	  $(BIN) test src/packages/manager/tests --memory=$$memory --filter "sha256: raw digest" || exit 1; \
-	  $(BIN) test src/packages/manager/cli/tests --memory=$$memory --filter "add: partial" || exit 1; \
-	  $(BIN) test src/packages/manager/cli/tests --memory=$$memory --filter "tree graph: diamond and identical leaf across orgs" || exit 1; \
-	  $(BIN) test src/packages/manager/cli/tests --memory=$$memory --filter "reports: success output is not a finding" || exit 1; \
-	  $(BIN) test src/packages/manager/editor/tests --memory=$$memory || exit 1; \
-	  $(BIN) test src/packages/manager/editor/wire-tests --memory=$$memory || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/tests --memory=$$memory --filter "sha256: raw digest" || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/cli/tests --memory=$$memory --filter "add: partial" || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/cli/tests --memory=$$memory --filter "tree graph: diamond and identical leaf across orgs" || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/cli/tests --memory=$$memory --filter "reports: success output is not a finding" || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/editor/tests --memory=$$memory || exit 1; \
+	  $(BIN) test src/osprey/packages/manager/editor/wire-tests --memory=$$memory || exit 1; \
 	done
-	$(BIN) src/packages/vscode/tests --run --quiet
+	$(BIN) src/osprey/packages/vscode/tests --run --quiet
 	$(MAKE) target/package-workspace.wasm
 	node $(EXT_DIR)/scripts/verify-package-workspace.mjs target/package-workspace.wasm
 
@@ -387,7 +387,7 @@ _vsix-e2e: $(EXT_NODE_DEPS)
 
 .PHONY: _hunt-demo
 _hunt-demo:
-	$(MAKE) _hunt FILE=src/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
+	$(MAKE) _hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
 
 # =============================================================================
 # Applications
@@ -410,16 +410,16 @@ run: build
 
 ## install: Install osprey + runtime archives system-wide
 install: build
-	cargo install --path src/crates/osprey-cli --force
+	cargo install --path src/toolchain/crates/osprey-cli --force
 	sudo $(MKDIR) /usr/local/lib
 	sudo cp $(RTB)/libfiber_runtime*.a $(RTB)/libhttp_runtime*.a /usr/local/lib/
 	@echo "==> installed osprey and runtime archives."
 
 _bench: build
-	@zsh src/benchmarks/run.sh $(BENCH_FILTER)
+	@zsh src/toolchain/benchmarks/run.sh $(BENCH_FILTER)
 
 _bench-osprey: build
-	@BENCH_PARTIAL=1 zsh src/benchmarks/run.sh $(BENCH_FILTER)
+	@BENCH_PARTIAL=1 zsh src/toolchain/benchmarks/run.sh $(BENCH_FILTER)
 
 _vsix-rebuild-reinstall:
 	$(MAKE) _vsix_clean
@@ -434,78 +434,78 @@ _vsix-rebuild-reinstall:
 
 _ios: _runtime_ios _runtime_ios_sim
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/ios/build.sh ios
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/ios/build.sh ios-sim
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios-sim
 
 _ios-test: _ios
 	$(MAKE) _test_ios
 
 _macos: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/macos/run.sh --build
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --build
 	for scene in kali opal character; do \
-		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/graphics/macos/run.sh --build $$scene || exit 1; \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/graphics/macos/run.sh --build $$scene || exit 1; \
 	done
 
 .PHONY: _run-mac-hd
 _run-mac-hd: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/macos/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
 
 .PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-smoke _gpui-signal-flow _gpui-synth _casting
 _gpui-flock: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/gpui/flock/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh
 
 _gpui-painting: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/gpui/painting/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/run.sh
 
 _gpui-signal-flow: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/packages/signal_flow/app/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
 
 _gpui-synth: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/synth/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
 
 _casting: _runtime_macos _runtime
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/casting/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/casting/run.sh
 
 _gpui-probe: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/hosts/gpui/run.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
 
 _gpui-bench: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/gpui/flock/run.sh --bench 20
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh --bench 20
 
 _gpui-compare: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/gpui/painting/reference/compare.sh
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/gpui/painting/reference/compare.sh --draw
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh --draw
 
 _gpui-test: _runtime_macos _runtime
-	python3 src/hosts/gpui/dependencies.py
-	python3 src/hosts/gpui/dependencies_test.py
+	python3 src/toolchain/hosts/gpui/dependencies.py
+	python3 src/toolchain/hosts/gpui/dependencies_test.py
 	cargo build --release -p osprey-cli
-	for suite in src/packages/native/tests src/packages/signal_flow/tests src/examples/synth/test src/examples/gpui/flock/test src/examples/gpui/painting/test; do \
+	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
 	$(MAKE) _gpui-smoke _gpui-self-test
-	cd src/hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
+	cd src/toolchain/hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
 
 # Compile every app's archive once for the smoke and self-test targets. The synth wrapper bundles
 # and opens the app after its inner run.sh returns, so compile its archive directly instead.
 .PHONY: _gpui-apps
 _gpui-apps:
 	pids=; \
-	for app in src/hosts/gpui src/examples/gpui/flock src/examples/gpui/painting src/packages/signal_flow/app src/examples/casting; do \
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/casting; do \
 		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
 		pids="$$pids $$!"; \
 	done; \
-	OSPREY_GPUI_APP="$(CURDIR)/src/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/hosts/gpui/run.sh --compile & \
+	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
 	pids="$$pids $$!"; \
 	status=0; \
 	for pid in $$pids; do wait $$pid || status=1; done; \
@@ -515,7 +515,7 @@ _gpui-apps:
 # Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
 _gpui-smoke: _gpui-apps
-	for app in src/hosts/gpui src/examples/gpui/flock src/examples/gpui/painting src/packages/signal_flow/app src/examples/synth src/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
 
 _macos-test: _macos _runtime
 	$(MAKE) _test_macos
@@ -523,51 +523,51 @@ _macos-test: _macos _runtime
 .PHONY: _mobile-ios _mobile-ios-test _mobile-domain-test _mobile-test
 _mobile-ios: _runtime_ios _runtime_ios_sim
 	cargo build --release -p osprey-cli
-	bash src/examples/mobile/ios/run.sh --build ios
-	bash src/examples/mobile/ios/run.sh --build ios-sim
+	bash src/osprey/examples/mobile/ios/run.sh --build ios
+	bash src/osprey/examples/mobile/ios/run.sh --build ios-sim
 
 _mobile-ios-test: _mobile-ios
-	OSPREY_IOS_SKIP_BUILD=1 bash src/examples/mobile/ios/run.sh --smoke
+	OSPREY_IOS_SKIP_BUILD=1 bash src/osprey/examples/mobile/ios/run.sh --smoke
 
 _mobile-domain-test: _runtime
 	python3 scripts/test-mobile-tools.py
 	cargo build --release -p osprey-cli
-	$(BIN) src/examples/mobile/inbox/test --run
+	$(BIN) src/osprey/examples/mobile/inbox/test --run
 
 _mobile-test: _mobile-domain-test _mobile-ios-test _android-test
 
 _android: _runtime_android
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/mobile/android/build.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/mobile/android/build.sh
 # The goldens need the runtime archives `android` builds, so they are ordered by
 # a recipe line rather than listed as a sibling prerequisite: under `make -j`
 # siblings may run at once, and the corpus would race the archive it links.
 _android-test: _android
 	$(MAKE) _test_android_goldens
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-android.sh
-	OSPREY_ANDROID_SKIP_BUILD=1 bash src/examples/mobile/android/run.sh --smoke
+	OSPREY_ANDROID_SKIP_BUILD=1 bash src/osprey/examples/mobile/android/run.sh --smoke
 
 # Native Talon clients share the browser's Osprey application and live API.
 .PHONY: _bank-mobile-domain-test _bank-android _bank-android-test _bank-ios _bank-ios-test _bank-mobile-test
 
 _bank-mobile-domain-test: _runtime
 	cargo build --release -p osprey-cli
-	$(BIN) src/examples/projects/modules/mobile/app/test --run
+	$(BIN) src/osprey/examples/projects/modules/mobile/app/test --run
 
 _bank-android: _runtime_android
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_ANDROID_SKIP_RUNTIME=1 bash src/examples/projects/modules/mobile/android/build.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_ANDROID_SKIP_RUNTIME=1 bash src/osprey/examples/projects/modules/mobile/android/build.sh
 
 _bank-android-test: _bank-android _runtime
-	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/examples/projects/modules/mobile/android/test.sh
+	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/android/test.sh
 
 _bank-ios: _runtime_ios _runtime_ios_sim
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/projects/modules/mobile/ios/run.sh --build ios
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/projects/modules/mobile/ios/run.sh --build ios-sim
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios-sim
 
 _bank-ios-test: _bank-ios _runtime
-	OSPREY_IOS_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/examples/projects/modules/mobile/ios/test.sh
+	OSPREY_IOS_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/ios/test.sh
 
 _bank-mobile-test: _bank-mobile-domain-test
 	$(MAKE) _bank-android-test

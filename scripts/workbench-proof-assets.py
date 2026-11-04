@@ -8,13 +8,13 @@ import shutil
 
 PROOF = importlib.import_module("proof-openai")
 ROOT = PROOF.ROOT
-MANIFEST = ROOT / "src/workbench/assets/proof-libraries.json"
+MANIFEST = ROOT / "src/osprey/workbench/assets/proof-libraries.json"
 LIBRARIES = "proof-libraries"
 
 
 def groups():
     openai = json.loads((PROOF.CORPUS / "corpus.json").read_text())["groups"]
-    strings = json.loads((ROOT / "src/examples/proof/kernel/exports/string_cases.json").read_text())
+    strings = json.loads((ROOT / "src/osprey/examples/proof/kernel/exports/string_cases.json").read_text())
     return PROOF.core_groups() + openai + [strings]
 
 

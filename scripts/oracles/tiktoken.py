@@ -4,8 +4,8 @@
 Imports the real tiktoken (and its educational module) plus the `regex`
 module, computes every case the port's suite asserts, and writes:
 
-  src/packages/tiktoken/src/tables.py      the Unicode class range tables
-  src/packages/tiktoken/tests/expected.py  the expected values as a constants module
+  src/osprey/packages/tiktoken/src/tables.py      the Unicode class range tables
+  src/osprey/packages/tiktoken/tests/expected.py  the expected values as a constants module
 
 Deterministic: no randomness, fixed corpora. The real gpt2/cl100k_base
 vocabularies are downloaded once through tiktoken's own cache (network on the
@@ -25,7 +25,7 @@ import tiktoken
 from tiktoken._educational import SimpleBytePairEncoding, bpe_encode, bpe_train
 
 REPO = Path(__file__).resolve().parents[2]
-PKG = REPO / "src" / "packages" / "tiktoken"
+PKG = REPO / "src" / "osprey" / "packages" / "tiktoken"
 
 CLASSIC_GPT2_PAT = r"'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"
 CLASSIC_CL100K_PAT = (

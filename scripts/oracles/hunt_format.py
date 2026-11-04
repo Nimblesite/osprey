@@ -1,4 +1,4 @@
-"""Writes src/compiler/runtime/klee/hunt_format_cases.inc: the expected output of every float
+"""Writes src/toolchain/compiler/runtime/klee/hunt_format_cases.inc: the expected output of every float
 format in the mock libc's printf engine over a matrix of values ([SYMEX-MOCK-STATELESS],
 docs/specs/tooling/SymbolicExecution.md: "printed digits match the host libc's exactly").
 
@@ -12,7 +12,7 @@ Run `python3 scripts/oracles/hunt_format.py` after changing VALUES or FORMATS.
 import pathlib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-OUT = ROOT / "src" / "compiler" / "runtime" / "klee" / "hunt_format_cases.inc"
+OUT = ROOT / "src" / "toolchain" / "compiler" / "runtime" / "klee" / "hunt_format_cases.inc"
 
 # Ties, near-ties, powers of ten around every %g switch-over, the subnormal and
 # normal limits, and values whose binary expansion rounds the "wrong" way.

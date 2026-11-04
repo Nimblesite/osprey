@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Runs `osprey hunt` over every Osprey program under src/tests/ and src/examples/ and
+# Runs `osprey hunt` over every Osprey program under src/osprey/tests/ and src/osprey/examples/ and
 # collects one JSON report per program [SYMEX-CORPUS]
 # (docs/specs/tooling/SymbolicExecution.md). KLEE is the engine; it runs
 # natively on this host against the mock C library bitcode.
 #
 #   scripts/hunt_corpus.sh [--all] [--out DIR] [--max-time S] [--jobs N] [--osprey PATH] [PROGRAM...]
 #
-# Programs listed in src/tests/HUNT_UNPORTABLE.txt are skipped unless --all is
+# Programs listed in src/osprey/tests/HUNT_UNPORTABLE.txt are skipped unless --all is
 # given. With no PROGRAM arguments the whole corpus is swept. Results land in
 # DIR/json/<slug>.json (the report), DIR/log/<slug>.log (stderr) and
 # DIR/code/<slug> (exit code); scripts/hunt_summary.py turns them into a table.
@@ -36,13 +36,13 @@ done
 # Shared inventory keeps standalone files separate from project modules.
 if [ ${#PROGRAMS[@]} -eq 0 ]; then
   while IFS= read -r program; do PROGRAMS+=("$program"); done < <(
-    python3 scripts/hunt_programs.py tests src/examples | sed '\#^src/tests/hunt/#d'
+    python3 scripts/hunt_programs.py tests src/osprey/examples | sed '\#^src/osprey/tests/hunt/#d'
   )
 fi
-if [ "$ALL" -eq 0 ] && [ -f src/tests/HUNT_UNPORTABLE.txt ]; then
+if [ "$ALL" -eq 0 ] && [ -f src/osprey/tests/HUNT_UNPORTABLE.txt ]; then
   kept=()
   for program in "${PROGRAMS[@]}"; do
-    grep -q "^$program " src/tests/HUNT_UNPORTABLE.txt || kept+=("$program")
+    grep -q "^$program " src/osprey/tests/HUNT_UNPORTABLE.txt || kept+=("$program")
   done
   PROGRAMS=("${kept[@]}")
 fi

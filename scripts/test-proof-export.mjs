@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SCRIPT = path.join(REPO, 'scripts/proof-export.sh');
-const TOOLS_DIR = path.join(REPO, 'src/benchmarks/proof/tools');
+const TOOLS_DIR = path.join(REPO, 'src/toolchain/benchmarks/proof/tools');
 const RUN_TIMEOUT_MS = 60_000;
 const EXPORTER_REV = 'cfefafacc917b2d14c5f9bb092ed337f71317a4a';
 const CHECKER_REV = 'aa03950243dc18750c1546602ab054609ea8d57d';
@@ -21,9 +21,9 @@ const PINNED_LEAN = '4.25.0';
 const HEADER_ERROR = /3\.2\.0/;
 
 const RECORDED = Object.freeze({
-  id_imp: path.join(REPO, 'src/examples/proof/kernel/exports/id_imp.ndjson'),
-  and_swap: path.join(REPO, 'src/examples/proof/kernel/exports/and_swap.ndjson'),
-  'Nat.add_comm': path.join(REPO, 'src/examples/proof/kernel/exports/nat_add_comm.ndjson'),
+  id_imp: path.join(REPO, 'src/osprey/examples/proof/kernel/exports/id_imp.ndjson'),
+  and_swap: path.join(REPO, 'src/osprey/examples/proof/kernel/exports/and_swap.ndjson'),
+  'Nat.add_comm': path.join(REPO, 'src/osprey/examples/proof/kernel/exports/nat_add_comm.ndjson'),
 });
 
 const VALID_EXPORT = [

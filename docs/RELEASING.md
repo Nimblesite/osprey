@@ -49,8 +49,8 @@ Website deployment depends on scope and the dependency audit; it does not wait f
 Source-controlled version fields MUST stay at the placeholder **`0.0.0-dev`**:
 
 - `Cargo.toml` (`[workspace.package] version`) and the CLI fallback in
-  `src/crates/osprey-cli/src/main.rs`
-- `src/vscode-extension/package.json` (`version`)
+  `src/toolchain/crates/osprey-cli/src/main.rs`
+- `src/toolchain/vscode-extension/package.json` (`version`)
 - `shipwright.json` (`product.version` + each component `expectedVersion`)
 
 The real version is stamped from the tag at build time — the `osprey` binary
@@ -102,7 +102,7 @@ scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
 scoop install osprey
 ```
 
-Osprey invokes the native LLVM/C toolchain to compile and link generated IR. Released package-manager definitions declare these dependencies: `llvm` for Homebrew and `llvm` plus `gcc` for Scoop. See the [installation guide](../src/website/src/docs/installation.md) for host prerequisites.
+Osprey invokes the native LLVM/C toolchain to compile and link generated IR. Released package-manager definitions declare these dependencies: `llvm` for Homebrew and `llvm` plus `gcc` for Scoop. See the [installation guide](../src/toolchain/website/src/docs/installation.md) for host prerequisites.
 
 ## Windows support status
 

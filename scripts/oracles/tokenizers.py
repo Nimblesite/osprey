@@ -3,7 +3,7 @@
 
 Imports the real `tokenizers` package, trains the small WordPiece and Unigram
 vocabularies on fixed corpora, and computes every id, token, offset, type id and
-decode the port's suite asserts. Writes src/packages/tokenizers/tests/expected.py
+decode the port's suite asserts. Writes src/osprey/packages/tokenizers/tests/expected.py
 through the shared writer ([PORT-TEST-ORACLE]). Deterministic: fixed corpora,
 no randomness. Run with the oracle virtualenv, from the repository root:
 
@@ -595,7 +595,7 @@ def main():
         {"tokenizers": tokenizers.__version__},
         constants,
     )
-    print(f"wrote src/packages/tokenizers/tests/expected.py ({len(constants)} constants)")
+    print(f"wrote src/osprey/packages/tokenizers/tests/expected.py ({len(constants)} constants)")
 
 
 if __name__ == "__main__":

@@ -23,15 +23,15 @@ sources=("$@")
 sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
 clang=$(xcrun --sdk "$sdk" --find clang)
 libtool=$(xcrun --sdk "$sdk" --find libtool)
-mkdir -p "$(dirname "$archive")" src/compiler/lib
+mkdir -p "$(dirname "$archive")" src/toolchain/compiler/lib
 scratch=$(mktemp -d "$(dirname "$archive")/.ios-runtime.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 fingerprint="$archive.inputs"
-mirror="src/compiler/lib/$(basename "$archive")"
+mirror="src/toolchain/compiler/lib/$(basename "$archive")"
 
 runtime_inputs_are_newer() {
     local input
-    for input in src/compiler/runtime/*.c src/compiler/runtime/*.h; do
+    for input in src/toolchain/compiler/runtime/*.c src/toolchain/compiler/runtime/*.h; do
         [[ "$input" -nt "$archive" ]] && return 0
     done
     return 1
@@ -41,10 +41,10 @@ runtime_inputs_are_newer() {
     printf '%s\n' "$triple" "$sdk_path" "$clang" "$libtool" "${flags[@]}" "${OSPREY_RUNTIME_SHIMS:-}"
     "$clang" --version
     xcrun --sdk "$sdk" --show-sdk-build-version
-    for source in "${sources[@]}"; do cksum "src/compiler/runtime/$source.c"; done
-    for source in ${OSPREY_RUNTIME_OBJC:-}; do cksum "src/compiler/runtime/$source.m"; done
-    if [[ -n ${OSPREY_RUNTIME_OBJC:-} ]]; then cksum src/compiler/bin/gpu_shader_source.h src/compiler/runtime/*.metal; fi
-    cksum src/compiler/runtime/*.h scripts/ios-runtime.sh scripts/runtime-memory.sh scripts/ios.mk Makefile
+    for source in "${sources[@]}"; do cksum "src/toolchain/compiler/runtime/$source.c"; done
+    for source in ${OSPREY_RUNTIME_OBJC:-}; do cksum "src/toolchain/compiler/runtime/$source.m"; done
+    if [[ -n ${OSPREY_RUNTIME_OBJC:-} ]]; then cksum src/toolchain/compiler/bin/gpu_shader_source.h src/toolchain/compiler/runtime/*.metal; fi
+    cksum src/toolchain/compiler/runtime/*.h scripts/ios-runtime.sh scripts/runtime-memory.sh scripts/ios.mk Makefile
 } >"$scratch/inputs"
 
 if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint" || runtime_inputs_are_newer; then
@@ -55,7 +55,7 @@ if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint" || runtime
     # Objective-C units, such as the Metal device adapter of the Mac slice ([GPU-DEVICE]).
     for source in ${OSPREY_RUNTIME_OBJC:-}; do
         "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}" -fobjc-arc \
-            "src/compiler/runtime/$source.m" -o "$scratch/$source.o"
+            "src/toolchain/compiler/runtime/$source.m" -o "$scratch/$source.o"
     done
     "$libtool" -static -o "$scratch/runtime.a" "$scratch"/*.o
     mv "$scratch/runtime.a" "$archive"

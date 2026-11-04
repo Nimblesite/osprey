@@ -2,7 +2,7 @@
 // Render Osprey source into a Carbon-style PNG.
 //
 // Highlighting is NOT reinvented here: it reuses the repository's real
-// TextMate grammars (src/vscode-extension/syntaxes/osprey*.json) through Shiki,
+// TextMate grammars (src/toolchain/vscode-extension/syntaxes/osprey*.json) through Shiki,
 // so the colours match VS Code exactly. The framed result is rasterised to
 // PNG via @resvg/resvg-js — no headless browser required.
 
@@ -14,7 +14,7 @@ import { createHighlighter } from "shiki";
 import { Resvg } from "@resvg/resvg-js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const SYNTAXES = resolve(HERE, "..", "..", "src", "vscode-extension", "syntaxes");
+const SYNTAXES = resolve(HERE, "..", "..", "src", "toolchain", "vscode-extension", "syntaxes");
 const GRAMMARS = {
   osprey: join(SYNTAXES, "osprey.tmGrammar.json"),
   "osprey-ml": join(SYNTAXES, "osprey-ml.tmLanguage.json"),

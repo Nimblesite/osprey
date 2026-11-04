@@ -123,13 +123,13 @@ jobs:
 
       # release.yml compiles the package manager client on this same runner
       # and ships it in the win32 tarball, so a Windows-only compile failure
-      # of src/packages/manager/cli must be caught here, not at tag time.
+      # of src/osprey/packages/manager/cli must be caught here, not at tag time.
       # --no-warnings skips the warning pass (see scripts/make/extension.mk).
       - name: Compile package manager client
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe build src/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+          ./target/release/osprey.exe build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
           test -s target/osprey-pkg.exe
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the
@@ -140,7 +140,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test src/tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
+          ./target/release/osprey.exe test src/osprey/tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
           cat out.txt
           grep -Fq "=== Fiber Showcase Complete ===" out.txt
           grep -Fq "map-reduce total = 1400" out.txt
@@ -150,7 +150,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test src/tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
+          ./target/release/osprey.exe test src/osprey/tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
           cat omni.txt
 
       # Each invocation recursively exercises both Default and ML programs with

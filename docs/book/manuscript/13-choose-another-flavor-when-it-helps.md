@@ -51,7 +51,7 @@ Create an ML twin of one pure module, run both checks, and compare stdout or tes
 - `docs/specs/language/0023-LanguageFlavors.md`: `[FLAVOR-SELECT]`, `[FLAVOR-CURRY]`, conversion, and cross-flavor imports.
 - `docs/specs/language/0024-MLFlavorSyntax.md`: the current ML surface.
 - `docs/specs/language/0025-ModulesAndNamespaces.md`: project source discovery and project-wide flavor overrides.
-- Executable evidence: `src/crates/osprey-cli/tests/cross_flavor_equiv.rs`, `src/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs`, and the Chapter 1 twins.
+- Executable evidence: `src/toolchain/crates/osprey-cli/tests/cross_flavor_equiv.rs`, `src/toolchain/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs`, and the Chapter 1 twins.
 
 ## Edition note
 

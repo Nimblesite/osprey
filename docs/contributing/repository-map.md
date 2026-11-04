@@ -8,15 +8,15 @@ The compiler pipeline follows these directories in order:
 
 | Stage | Source | Responsibility |
 | --- | --- | --- |
-| Parse | `src/tree-sitter-osprey/`, `src/crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
-| Lower | `src/crates/osprey-ast/` | Shared AST and static interpretation |
-| Check | `src/crates/osprey-types/` | Type inference and effect requirements |
-| Generate | `src/crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
-| Execute | `src/crates/osprey-cli/`, `src/compiler/runtime/` | CLI, target linking and C runtime |
+| Parse | `src/toolchain/tree-sitter-osprey/`, `src/toolchain/crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
+| Lower | `src/toolchain/crates/osprey-ast/` | Shared AST and static interpretation |
+| Check | `src/toolchain/crates/osprey-types/` | Type inference and effect requirements |
+| Generate | `src/toolchain/crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
+| Execute | `src/toolchain/crates/osprey-cli/`, `src/toolchain/compiler/runtime/` | CLI, target linking and C runtime |
 
-The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `src/compiler/runtime/` contains the native and portable runtime units; `src/compiler/bin/` and `src/compiler/lib/` are generated outputs.
+The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `src/toolchain/compiler/runtime/` contains the native and portable runtime units; `src/toolchain/compiler/bin/` and `src/toolchain/compiler/lib/` are generated outputs.
 
-A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `src/tests/` and, when appropriate, a rejection in `src/examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
+A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `src/osprey/tests/` and, when appropriate, a rejection in `src/osprey/examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
 
 ## Specification subjects
 
@@ -38,13 +38,13 @@ The root Makefile defines every public target, so `make` and editor task panels,
 
 ## Applications and presentation
 
-`src/examples/` contains runnable applications and their platform hosts. `src/website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `src/website/src/spec/`.
+`src/osprey/examples/` contains runnable applications and their platform hosts. `src/toolchain/website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `src/toolchain/website/src/spec/`.
 
-The homepage, effects guide and handler post share their runnable draft-saving example through `src/website/src/_data/draftExample.json`. Browser tests execute all three homepage syntax flavors and the guide/post examples, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
+The homepage, effects guide and handler post share their runnable draft-saving example through `src/toolchain/website/src/_data/draftExample.json`. Browser tests execute all three homepage syntax flavors and the guide/post examples, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
 
-`src/packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `src/python/` contains the separate CPython interoperability bridge.
+`src/osprey/packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `src/toolchain/python/` contains the separate CPython interoperability bridge.
 
-`src/vscode-extension/` and `src/webcompiler/` are separate Node projects with their own dependency locks. `docs/book/` and `src/benchmarks/` contain verification and publishing tools.
+`src/toolchain/vscode-extension/` and `src/toolchain/webcompiler/` are separate Node projects with their own dependency locks. `docs/book/` and `src/toolchain/benchmarks/` contain verification and publishing tools.
 
 ## Generated files and test isolation
 

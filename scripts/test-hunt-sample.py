@@ -23,7 +23,7 @@ class InventoryTests(unittest.TestCase):
                      'examples/app/helper.osp': 'print(2)', 'examples/shared/lib.osp': 'fn id(x) = x', 'examples/library/osprey.toml': '[project]',
                      'examples/library/lib.osp': 'fn id(x) = x', 'examples/one.osp': 'print(1)',
                      'examples/one.ospml': 'print 1', 'examples/py.py': '# osprey: flavor=python\nprint(1)',
-                     'examples/tool.py': 'print(3)', 'src/examples/failscompilation/bad.osp': 'bad'}
+                     'examples/tool.py': 'print(3)', 'src/osprey/examples/failscompilation/bad.osp': 'bad'}
             for name, text in files.items():
                 path = root/name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -42,9 +42,9 @@ class QualificationTests(unittest.TestCase):
             with self.subTest(memory=memory), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 fake_sampler_root(root)
-                runtime = root/f'src/compiler/bin/libosprey_runtime_klee_{memory}.bc'
+                runtime = root/f'src/toolchain/compiler/bin/libosprey_runtime_klee_{memory}.bc'
                 runtime.write_bytes(memory.encode())
-                (root/'src/compiler/bin/libosprey_gc_roots.so').write_bytes(b'plugin')
+                (root/'src/toolchain/compiler/bin/libosprey_gc_roots.so').write_bytes(b'plugin')
                 options = argparse.Namespace(root=root, out=root/'out', osprey=root/'osprey', memory=memory)
                 previous = os.environ.get('OSPREY_KLEE_RUNTIME')
                 try:
@@ -125,7 +125,7 @@ class CrashGateTests(unittest.TestCase):
 
     def test_every_planted_input_is_pinned_and_has_a_real_program(self):
         root = Path(__file__).resolve().parent.parent
-        cases = json.loads((root/'src/tests/hunt/crash-cases.json').read_text())
+        cases = json.loads((root/'src/osprey/tests/hunt/crash-cases.json').read_text())
         self.assertEqual(sum(len(case['cases']) for case in cases), 15)
         inputs = {item['stdin'] for case in cases for item in case['cases']}
         self.assertEqual(inputs, set('9PALKCRUBJFGDY'))
@@ -147,9 +147,9 @@ class CrashGateTests(unittest.TestCase):
         self.assertNotIn('make _test_hunt_crashes', workflow)
         self.assertNotIn('brew install klee', workflow)
         self.assertNotIn('make _runtime_klee', workflow)
-        self.assertNotIn('--manifest src/tests/hunt/safe-runs.json', workflow)
+        self.assertNotIn('--manifest src/osprey/tests/hunt/safe-runs.json', workflow)
         self.assertIn('make _test_hunt_mock', workflow)
-        manifest = json.loads((root/'src/tests/hunt/safe-runs.json').read_text())
+        manifest = json.loads((root/'src/osprey/tests/hunt/safe-runs.json').read_text())
         self.assertGreaterEqual(len(manifest['programs']), 215)
         self.assertEqual(len(manifest['programs']), len(set(manifest['programs'])))
         self.assertTrue(all((root/program).is_file() or (root/program/'osprey.toml').is_file() for program in manifest['programs']))
@@ -229,11 +229,11 @@ class ReviewReportTests(unittest.TestCase):
 
 
 def fake_sampler_root(root):
-    (root/'src/compiler/bin').mkdir(parents=True)
-    (root/'src/compiler/bin/libosprey_runtime_klee_gc.bc').write_bytes(b'fake runtime')
-    (root/'src/compiler/bin/libosprey_gc_roots.so').write_bytes(b'fake plugin')
-    (root/'src/tests/hunt').mkdir(parents=True)
-    (root/'src/tests/hunt/crash-cases.json').write_text('[]')
+    (root/'src/toolchain/compiler/bin').mkdir(parents=True)
+    (root/'src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc').write_bytes(b'fake runtime')
+    (root/'src/toolchain/compiler/bin/libosprey_gc_roots.so').write_bytes(b'fake plugin')
+    (root/'src/osprey/tests/hunt').mkdir(parents=True)
+    (root/'src/osprey/tests/hunt/crash-cases.json').write_text('[]')
     script = root/'osprey'
     script.write_text(f'''#!{sys.executable}
 import json, pathlib, sys

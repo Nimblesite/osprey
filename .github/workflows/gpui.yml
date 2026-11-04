@@ -44,7 +44,7 @@ jobs:
 
       # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
       - name: Pull the apps' LFS pictures
-        run: git lfs install --local && git lfs pull --include="src/examples/**,src/hosts/**,src/packages/**"
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/**,src/toolchain/hosts/**,src/osprey/packages/**"
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -57,15 +57,15 @@ jobs:
       - name: Cache GPUI host
         uses: actions/cache@v6
         with:
-          path: src/hosts/gpui/target
-          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/hosts/gpui/Cargo.lock', 'src/hosts/gpui/rust-toolchain*') }}
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
           restore-keys: ${{ runner.os }}-gpui-host-
 
       - name: Every desktop app's self-test in a real window
         run: make _gpui-self-test GPUI_WINDOW=
 
       - name: Host clippy
-        working-directory: src/hosts/gpui
+        working-directory: src/toolchain/hosts/gpui
         run: cargo clippy --release -- -D warnings
 
       - name: Mac archive and host string ownership
@@ -84,28 +84,28 @@ jobs:
 
       # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
       - name: Pull the apps' LFS pictures
-        run: git lfs install --local && git lfs pull --include="src/examples/**,src/hosts/**,src/packages/**"
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/**,src/toolchain/hosts/**,src/osprey/packages/**"
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
         uses: ./.github/actions/setup-osprey-compiler
 
       - name: Native framework suite
-        run: ./target/release/osprey test src/packages/native/tests
+        run: ./target/release/osprey test src/osprey/packages/native/tests
 
       # [UI-MACHINE-TEST]: the same suites as `make _ui-test`.
       - name: UI test framework suites
         run: |
-          ./target/release/osprey test src/packages/uitest/tests
-          ./target/release/osprey test src/examples/casting/test
-          ./target/release/osprey test src/packages/signal_flow/tests
-          ./target/release/osprey test src/examples/synth/test
+          ./target/release/osprey test src/osprey/packages/uitest/tests
+          ./target/release/osprey test src/osprey/examples/casting/test
+          ./target/release/osprey test src/osprey/packages/signal_flow/tests
+          ./target/release/osprey test src/osprey/examples/synth/test
 
       - name: Example suites
         run: |
-          ./target/release/osprey test src/examples/gpui/flock/test
-          ./target/release/osprey test src/examples/gpui/painting/test
-          ./target/release/osprey test src/examples/storage/test
+          ./target/release/osprey test src/osprey/examples/gpui/flock/test
+          ./target/release/osprey test src/osprey/examples/gpui/painting/test
+          ./target/release/osprey test src/osprey/examples/storage/test
 
   ubuntu:
     name: GPUI host (ubuntu-latest)
@@ -118,7 +118,7 @@ jobs:
 
       # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
       - name: Pull the apps' LFS pictures
-        run: git lfs install --local && git lfs pull --include="src/examples/**,src/hosts/**,src/packages/**"
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/**,src/toolchain/hosts/**,src/osprey/packages/**"
 
       # Rust, clang/LLVM, the native C runtime archives and the release CLI.
       - name: Setup Osprey Compiler
@@ -134,15 +134,15 @@ jobs:
       - name: Cache GPUI host
         uses: actions/cache@v6
         with:
-          path: src/hosts/gpui/target
-          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/hosts/gpui/Cargo.lock', 'src/hosts/gpui/rust-toolchain*') }}
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
           restore-keys: ${{ runner.os }}-gpui-host-
 
       - name: Every desktop app's headless smoke and self-test
         run: make _gpui-smoke _gpui-self-test
 
       - name: Host tests and clippy
-        working-directory: src/hosts/gpui
+        working-directory: src/toolchain/hosts/gpui
         run: |
           cargo test --release
           cargo clippy --release -- -D warnings
@@ -158,7 +158,7 @@ jobs:
 
       # The apps' skins are LFS pictures; without them a window's sprites are pointer text.
       - name: Pull the apps' LFS pictures
-        run: git lfs install --local && git lfs pull --include="src/examples/**,src/hosts/**,src/packages/**"
+        run: git lfs install --local && git lfs pull --include="src/osprey/examples/**,src/toolchain/hosts/**,src/osprey/packages/**"
 
       # The C runtime is built with MinGW (as in ci-windows.yml) and the host with MSYS2's UCRT64
       # Rust, so its build scripts run as GNU programs and the host, GPUI and the Osprey runtime all
@@ -202,8 +202,8 @@ jobs:
       - name: Cache GPUI host
         uses: actions/cache@v6
         with:
-          path: src/hosts/gpui/target
-          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/hosts/gpui/Cargo.lock', 'src/hosts/gpui/rust-toolchain*') }}
+          path: src/toolchain/hosts/gpui/target
+          key: ${{ runner.os }}-gpui-host-${{ hashFiles('src/toolchain/hosts/gpui/Cargo.lock', 'src/toolchain/hosts/gpui/rust-toolchain*') }}
           restore-keys: ${{ runner.os }}-gpui-host-
 
       - name: Probe smoke
@@ -213,7 +213,7 @@ jobs:
           test "$(command -v cargo)" = /ucrt64/bin/cargo  # MSYS2's Rust, ahead of rustup's on PATH
           cargo --version
           export OSPREY_BIN="$PWD/target/release/osprey.exe"
-          bash src/hosts/gpui/run.sh --smoke
+          bash src/toolchain/hosts/gpui/run.sh --smoke
 
       # Flock and Painting in real windows on the runner's desktop: each is linked into the host and
       # pictured after it has drawn for a while. PowerShell starts the host from MSYS2's environment,
@@ -224,12 +224,12 @@ jobs:
         run: |
           set -euo pipefail
           export OSPREY_BIN="$PWD/target/release/osprey.exe"
-          host=src/hosts/gpui/target/release/osprey-gpui.exe
+          host=src/toolchain/hosts/gpui/target/release/osprey-gpui.exe
           shots="$RUNNER_TEMP/gpui"
-          bash src/examples/gpui/flock/run.sh --build
+          bash src/osprey/examples/gpui/flock/run.sh --build
           OSPREY_GPUI_APP_NAME=flock \
             pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/flock.png"
-          bash src/examples/gpui/painting/run.sh --build
+          bash src/osprey/examples/gpui/painting/run.sh --build
           OSPREY_GPUI_APP_NAME=painting OSPREY_GPUI_WINDOW=default \
             pwsh -NoProfile -File scripts/window-picture.ps1 -Exe "$host" -Picture "$shots/painting.png"
 

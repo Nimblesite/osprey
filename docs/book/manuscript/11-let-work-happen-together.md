@@ -48,5 +48,5 @@ Process independent entries in finite fibers, await each result, and print the c
 
 - Current contract: `docs/specs/language/0011-LightweightFibersAndConcurrency.md`, especially `[CONCURRENCY-SPAWN-AWAIT]`, `[CONCURRENCY-CHANNEL]`, `[CONCURRENCY-DETERMINISTIC]`, and `[CONCURRENCY-CANCEL-DESIGN]`.
 - Ownership: `docs/specs/compiler/0018-MemoryManagement.md`, `[MEM-FIBER-ISOLATION]`.
-- Executable evidence: `src/tests/regressions/fiber/fiber_determinism.test.osp`, `src/tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp`, and `src/tests/regressions/effects/fiber_effects.test.osp`.
+- Executable evidence: `src/osprey/tests/regressions/fiber/fiber_determinism.test.osp`, `src/osprey/tests/regressions/basics/types/channel_element_type_in_generic_field.test.osp`, and `src/osprey/tests/regressions/effects/fiber_effects.test.osp`.
 - Future design, not shipped API: `docs/specs/language/0036-StructuredConcurrency.md` and `docs/plans/0026-structured-concurrency.md`.

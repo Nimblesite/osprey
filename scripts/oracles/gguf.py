@@ -1,7 +1,7 @@
 """CPython oracle for @osprey/gguf: GGUF files written by gguf 0.19.0's GGUFWriter
 and read back with its GGUFReader, plus the inputs that reader rejects.
 
-Writes src/packages/gguf/tests/expected.py, which the suite compares the port against
+Writes src/osprey/packages/gguf/tests/expected.py, which the suite compares the port against
 ([PORT-TEST-ORACLE], docs/specs/ecosystem/0043-PythonFlavorPorts.md). Run it in the
 oracle virtualenv: `python -I scripts/oracles/oracle.py gguf`.
 

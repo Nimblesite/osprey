@@ -1,6 +1,6 @@
 """CPython oracle for @osprey/einops: parser, recipe and reconstruct verdicts.
 
-Writes src/packages/einops/tests/expected.py, which the suite compares `Parsing`
+Writes src/osprey/packages/einops/tests/expected.py, which the suite compares `Parsing`
 and `Recipe` against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle
 virtualenv: `python scripts/oracles/einops.py`.
 

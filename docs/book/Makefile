@@ -55,9 +55,9 @@ check-examples:
 
 render-assets: assets/cover/cover.png $(DIAGRAM_PNGS)
 
-assets/cover/cover.png: assets/cover/cover.svg ../../src/website/src/assets/images/logo.png Makefile
+assets/cover/cover.png: assets/cover/cover.svg ../../src/toolchain/website/src/assets/images/logo.png Makefile
 	@$(RSVG_CONVERT) --width 1600 --height 2560 --output $@.base.png $<
-	@$(MAGICK) $@.base.png \( ../../src/website/src/assets/images/logo.png -resize 184x184 \) -geometry +112+104 -composite $@
+	@$(MAGICK) $@.base.png \( ../../src/toolchain/website/src/assets/images/logo.png -resize 184x184 \) -geometry +112+104 -composite $@
 	@rm -f $@.base.png
 
 assets/diagrams/%.png: assets/diagrams/%.svg

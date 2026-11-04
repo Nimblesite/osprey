@@ -21,8 +21,8 @@ $(eval $(call android_arc_runtime,x64,x86_64-linux-android26))
 
 ## _test_android_goldens: the whole corpus on the attached device, held to the
 ## byte-exact output the native backend produces, with rejections pinned in
-## src/tests/MOBILE_UNPORTABLE.txt — the same file ios-sim is held to, because the
+## src/osprey/tests/MOBILE_UNPORTABLE.txt — the same file ios-sim is held to, because the
 ## two targets share one C ABI implementation and therefore one set of holes.
 _test_android_goldens:
 	@echo "==> [$(ANDROID_GOLDEN_TARGET)] golden stdout comparison on the device..."
-	@OSPREY_TARGET=$(ANDROID_GOLDEN_TARGET) zsh src/crates/run_test_corpus.sh
+	@OSPREY_TARGET=$(ANDROID_GOLDEN_TARGET) zsh src/toolchain/crates/run_test_corpus.sh

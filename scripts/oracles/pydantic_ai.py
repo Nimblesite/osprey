@@ -4,7 +4,7 @@
 Runs the real pydantic-ai (2.46.0) with the OpenAI SDK over an httpx mock
 transport, so every Chat Completions request body the library sends and every
 reply it parses is recorded without a network, and writes
-src/packages/pydantic_ai/tests/expected.py. Covers request bodies for eight
+src/osprey/packages/pydantic_ai/tests/expected.py. Covers request bodies for eight
 message/setting/profile scenarios, response parsing of nine canned replies,
 `ModelResponse.text`, tool-call argument helpers, retry prompt text, the
 `ModelMessagesTypeAdapter` wire form, `TestModel`'s schema-driven arguments,

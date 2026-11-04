@@ -483,8 +483,8 @@ let same = structuralEquals(Route { tab: "home", depth: 1 }, Route { tab: "home"
 let differ = structuralEquals([1, 2], [1, 2, 3])                                                 // false
 ```
 
-The Default/ML twins `src/tests/regressions/basics/operators/structural_equals.test.*`
-pin every row; `src/examples/failscompilation/structural_equals_*.ospo` pin the
+The Default/ML twins `src/osprey/tests/regressions/basics/operators/structural_equals.test.*`
+pin every row; `src/osprey/examples/failscompilation/structural_equals_*.ospo` pin the
 rejected types.
 
 ## String Functions

@@ -8,7 +8,7 @@
 
 The synchronous host target rejects dynamic control continuations, fibers, HTTP/WebSocket and process-spawning operations. Value effects and static discharge remain available. Native fiber callbacks cannot safely enter a Python host whose loading thread retains the GIL; rejecting them is part of the host contract, not an optional runtime convention.
 
-The `src/python/` package installs as `osprey-interop` and imports as `osprey`. `osprey.build(path, output=None, compiler=None)` invokes the compiler and loads its artifact. `osprey.load(path)` loads a previously built artifact. `python -m osprey path` compiles and runs an entry inside the Python host. The host installs callbacks before running the program's top-level statements and `main`, exactly once per loaded library. Repeated loading, including symlink/hard-link aliases, returns the existing native image and its object registry. Rebuilding over a loaded path or its hard-link alias is rejected; loading a previously loaded path replaced by a different file is also rejected. Reentrant initialization/loading is an error. Compilation never imports or runs the Python modules named by foreign calls.
+The `src/toolchain/python/` package installs as `osprey-interop` and imports as `osprey`. `osprey.build(path, output=None, compiler=None)` invokes the compiler and loads its artifact. `osprey.load(path)` loads a previously built artifact. `python -m osprey path` compiles and runs an entry inside the Python host. The host installs callbacks before running the program's top-level statements and `main`, exactly once per loaded library. Repeated loading, including symlink/hard-link aliases, returns the existing native image and its object registry. Rebuilding over a loaded path or its hard-link alias is rejected; loading a previously loaded path replaced by a different file is also rejected. Reentrant initialization/loading is an error. Compilation never imports or runs the Python modules named by foreign calls.
 
 ## Initialization and lifetime — [PYTHON-TARGET-ENTRY]
 
@@ -39,7 +39,7 @@ The implemented low-level declaration is:
 extern fn osprey_python_call(module: string, name: string, args: string) -> string
 ```
 
-Python flavor spells the same declaration `@extern` above a fully typed signature-only `def ...: ...`; [the runnable example](../../../src/examples/python/interop.py) executes both directions through this shared boundary. This verifies the frontend subset used there, not every planned Python surface form.
+Python flavor spells the same declaration `@extern` above a fully typed signature-only `def ...: ...`; [the runnable example](../../../src/osprey/examples/python/interop.py) executes both directions through this shared boundary. This verifies the frontend subset used there, not every planned Python surface form.
 
 `module` is an importable Python module, `name` a dot-separated attribute path, and `args` a JSON array of positional values. The host imports the module at runtime and calls the selected object. Python uses the active host's environment and module search path. Arguments and results are JSON values; this entry serializes values and is not the tensor path.
 
@@ -72,7 +72,7 @@ The handle path does not serialize or copy the referenced payload. Calling a Pyt
 
 ## Training-data application — [PYTHON-DATASET-AUDIT]
 
-The installed `osprey-dataset-audit` application uses the same bridge in both directions for every record. A native Python-flavor `Audit` effect drives Python JSONL/gzip, SQLite and optional offline Hugging Face tokenization services; the Python service calls native Osprey acceptance policy back. No separate native Python runtime or application-specific C shim is introduced. [The application guide](../../../src/python/osprey/dataset_audit/README.md) defines supported record schemas, formatting, policy priorities, outputs and reproducible public-data acceptance.
+The installed `osprey-dataset-audit` application uses the same bridge in both directions for every record. A native Python-flavor `Audit` effect drives Python JSONL/gzip, SQLite and optional offline Hugging Face tokenization services; the Python service calls native Osprey acceptance policy back. No separate native Python runtime or application-specific C shim is introduced. [The application guide](../../../src/toolchain/python/osprey/dataset_audit/README.md) defines supported record schemas, formatting, policy priorities, outputs and reproducible public-data acceptance.
 
 Evaluation prompts are indexed before training. Exact identity uses configurable normalization and includes chat history/roles; conflicting completions are distinguished from duplicate targets. Optional indexed near matching verifies candidate Jaccard scores without promising exhaustive recall. Privacy detection is explicitly heuristic. Requested token budgets require the actual local tokenizer; chat uses its model chat template. Clean outputs preserve original JSON values. Diagnostic artifacts identify rejected records without republishing their text.
 

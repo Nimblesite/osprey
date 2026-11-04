@@ -137,10 +137,10 @@ def snapshot(options):
     shutil.copy2(options.osprey, folder/'osprey')
     options.osprey = folder/'osprey'
     memory = getattr(options, 'memory', 'gc')
-    runtime = options.root/f'src/compiler/bin/libosprey_runtime_klee_{memory}.bc'
+    runtime = options.root/f'src/toolchain/compiler/bin/libosprey_runtime_klee_{memory}.bc'
     shutil.copy2(runtime, folder/runtime.name)
     if memory == 'gc':
-        shutil.copy2(options.root/'src/compiler/bin/libosprey_gc_roots.so', folder/'libosprey_gc_roots.so')
+        shutil.copy2(options.root/'src/toolchain/compiler/bin/libosprey_gc_roots.so', folder/'libosprey_gc_roots.so')
     os.environ['OSPREY_KLEE_RUNTIME'] = str(folder/runtime.name)
     return {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in folder.iterdir()}
 
@@ -148,7 +148,7 @@ def snapshot(options):
 def main():
     options = parse()
     programs = options.programs or discover(options.root)
-    cases = json.loads((options.root/'src/tests/hunt/crash-cases.json').read_text())
+    cases = json.loads((options.root/'src/osprey/tests/hunt/crash-cases.json').read_text())
     options.expected_crashes = {case['program'] for case in cases}
     options.out.mkdir(parents=True, exist_ok=True)
     fingerprints = snapshot(options)

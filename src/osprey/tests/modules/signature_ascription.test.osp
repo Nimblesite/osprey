@@ -1,0 +1,145 @@
+/// Default surface for [MODULES-SIGNATURE] and [MODULES-EXPORTS]: an ascribed
+/// module publishes exactly the items its signature names, keeps everything
+/// else private, and conforms in kind, arity, types, effects and nesting.
+
+namespace store;
+
+
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+
+signature CounterApi {
+    type Counter
+    fn empty() -> Counter
+    fn bump(c: Counter) -> Counter
+    fn size(c: Counter) -> int
+}
+
+signature ClockApi {
+    effect Clock {
+        control now : fn() -> int
+    }
+    fn reading() -> int
+}
+
+signature LeafApi {
+    fn value() -> int
+}
+
+signature TreeApi {
+    module Leaf : LeafApi
+    fn doubled() -> int
+}
+
+/// An ascribed module's signature is its whole public surface.
+module Counters : CounterApi {
+    type Counter = { count: int }
+
+    /// A private helper is not in the signature, so it stays module-private.
+    fn step(n) = (n + 1) 
+
+    fn empty() = Counter { count: 0 }
+    fn bump(c) = Counter { count: step(c.count) }
+    fn size(c) = c.count
+}
+
+/// The same contract implemented by a manifest alias: `Counter` is an `int`
+/// inside `Tallies` and stays abstract outside it, at no run-time cost
+/// ([MODULES-OPAQUE-TYPES]).
+module Tallies : CounterApi {
+    type Counter = int
+
+    fn empty() = 0
+    fn bump(c) = c + 1
+    fn size(c) = c
+}
+
+/// A signature may carry an effect declaration alongside its functions.
+module Clocks : ClockApi {
+    effect Clock {
+        control now : fn() -> int
+    }
+
+    fn reading() = perform Clock.now()
+}
+
+/// Nested-module ascription conforms recursively.
+module Trees : TreeApi {
+    module Leaf : LeafApi {
+        fn value() = 21
+    }
+
+    fn doubled() = (Leaf::value() * 2) 
+}
+
+/// An unascribed module reaches the same surface through plain `export`.
+/// The Default-only `: Signature + extra` ascription cannot appear in a twin
+/// pair — ML ascription is exact — so it is asserted in
+/// `src/toolchain/crates/osprey-project/tests/module_diagnostics.rs` instead.
+module Extended {
+    type Counter = { count: int }
+    export fn empty() = Counter { count: 5 }
+    export fn bump(c) = Counter { count: ((c.count + 2)) }
+    export fn size(c) = c.count
+
+    export fn seeded() = size(empty())
+}
+
+/// The abstract `Counter` flows through the ascribed surface without leaking.
+fn abstractTypeCase() = checkAll("abstract signature type round-trips", [
+    Counters::size(Counters::empty()) == 0,
+    Counters::size(Counters::bump(Counters::empty())) == 1,
+    Counters::size(Counters::bump(Counters::bump(Counters::empty()))) == 2,
+    Counters::size(Counters::bump(Counters::bump(Counters::bump(Counters::empty())))) == 3,
+    Tallies::size(Tallies::empty()) == 0,
+    Tallies::size(Tallies::bump(Tallies::bump(Tallies::empty()))) == 2
+])
+
+/// Reads the module's clock through a caller-installed handler.
+fn readAs(stamp) = {
+    handle Clocks::Clock {
+        now => resume(stamp)
+    }
+    Clocks::reading()
+}
+
+/// A signature effect is declared by the module and handled by the caller.
+fn signatureEffectCase() = checkAll("signature effect stays performable", [
+    readAs(7) == 7,
+    readAs(0) == 0,
+    readAs(41) == 41,
+    ((readAs(41) + 1) ) == 42,
+    readAs(readAs(3)) == 3
+])
+
+/// Nested ascription and the plain-export surface both stay addressable.
+fn nestedAndExtraCase() = checkAll("nested ascription and extra exports", [
+    Trees::Leaf::value() == 21,
+    Trees::doubled() == 42,
+    Extended::size(Extended::empty()) == 5,
+    Extended::size(Extended::bump(Extended::empty())) == 7,
+    Extended::seeded() == 5
+])
+
+exactArithmetic(fn() => print("${Counters::size(Counters::bump(Counters::empty()))} ${Trees::doubled()} ${Extended::seeded()}"))
+
+test("abstract signature types stay abstract", fn() => exactArithmetic(abstractTypeCase))
+test("signature effects remain performable", fn() => exactArithmetic(signatureEffectCase))
+test("nested ascription and extra exports conform", fn() => exactArithmetic(nestedAndExtraCase))

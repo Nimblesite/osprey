@@ -1,6 +1,6 @@
 """CPython oracle for @osprey/safetensors: files, decodes, slices and errors.
 
-Writes src/packages/safetensors/tests/expected.py, which the suite compares the
+Writes src/osprey/packages/safetensors/tests/expected.py, which the suite compares the
 port against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python scripts/oracles/safetensors.py` (no `-I`, so `expected_module` resolves).
 """
@@ -248,7 +248,7 @@ def main():
     # current compiler binary does not lower yet (it lands with PiFrontend's
     # rebuild). Strip those so the suite compiles; the module docstring and
     # provenance line remain.
-    target = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "packages", "safetensors", "tests", "expected.py")
+    target = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "src", "osprey", "packages", "safetensors", "tests", "expected.py")
     lines = [ln for ln in open(target).read().splitlines() if not ln.startswith('"""Oracle value')]
     open(target, "w").write("\n".join(lines) + "\n")
 

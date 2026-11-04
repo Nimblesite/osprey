@@ -132,7 +132,7 @@ The workflow calls `preview` only after a successful write. That leads through `
 
 ```sh
 book_compiler="$(cd .. && pwd)/target/release/osprey"
-book_source="$PWD/src/examples/chapter-10/flight-log.osp"
+book_source="$PWD/src/osprey/examples/chapter-10/flight-log.osp"
 (
     book_tmp=$(mktemp -d)
     trap 'rm -r "$book_tmp"' EXIT
@@ -201,7 +201,7 @@ An Osprey update computes a new model and describes an HTTP or storage command. 
 
 This is the practical connection to our title loader: keep validation and model decisions in Osprey, and choose outside implementations at a narrow boundary. It does not mean this chapter's synchronous `Store.read` can simply wait inside every mobile host. The mobile operation may return a command description; completion belongs to a later event.
 
-Start with the bank's `src/examples/projects/modules/mobile/README.md` and the smaller `src/examples/mobile/README.md` when exploring that architecture. They document the actual host protocol. Do not infer support for mobile control continuations or a future reactive runtime from the presence of value-effect handlers.
+Start with the bank's `src/osprey/examples/projects/modules/mobile/README.md` and the smaller `src/osprey/examples/mobile/README.md` when exploring that architecture. They document the actual host protocol. Do not infer support for mobile control continuations or a future reactive runtime from the presence of value-effect handlers.
 
 When adding diagnostics, record the operation and outcome you need to understand the failure. Avoid printing entire HTTP headers, credentials, or private bodies as a debugging shortcut. Our local title is deliberately harmless; a banking payload needs a different presentation policy. Preserve useful failure information inside the program and decide deliberately what belongs on screen or in a log.
 
@@ -253,4 +253,4 @@ The Flight Log can now cross a real boundary without concealing where work or fa
 - Osprey [Effects and handlers](https://github.com/Nimblesite/osprey/blob/main/docs/specs/language/0017-AlgebraicEffects.md): callable handlers, value operations, operation typing, and required handlers.
 - Osprey [Built-In Functions](https://github.com/Nimblesite/osprey/blob/main/docs/specs/runtime/0012-Built-InFunctions.md): `[BUILTIN-FILE]`, `[BUILTIN-FILE-ERRMSG]`, and string operations; [Error Handling](https://github.com/Nimblesite/osprey/blob/main/docs/specs/language/0013-ErrorHandling.md): results and their preservation.
 - Osprey [HTTP](https://github.com/Nimblesite/osprey/blob/main/docs/specs/runtime/0014-HTTP.md): integer status conventions and `[HTTP-RESPONSE-HANDLE]`; [WebAssembly Target](https://github.com/Nimblesite/osprey/blob/main/docs/specs/compiler/0022-WebAssemblyTarget.md): host-dependent file access and excluded networking APIs.
-- Executable evidence: this chapter's sources and goldens; the runtime corpus at `src/tests/regressions/basics/files/file_io_json_workflow.test.osp` and `src/tests/regressions/http/http_response_handle.test.osp`; the native banking host protocol in `src/examples/projects/modules/mobile/README.md`.
+- Executable evidence: this chapter's sources and goldens; the runtime corpus at `src/osprey/tests/regressions/basics/files/file_io_json_workflow.test.osp` and `src/osprey/tests/regressions/http/http_response_handle.test.osp`; the native banking host protocol in `src/osprey/examples/projects/modules/mobile/README.md`.

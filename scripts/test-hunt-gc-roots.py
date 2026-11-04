@@ -52,7 +52,7 @@ def verify(out):
 def call_graph_regressions(llvm, folder):
     source, output = folder / "calls.ll", folder / "calls-rooted.ll"
     source.write_text(CALL_GRAPH)
-    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/compiler/bin/libosprey_gc_roots.so"),
+    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
          "-passes=osprey-gc-roots,osprey-gc-roots", "-verify-each", "-S", str(source), "-o", str(output)])
     text = output.read_text()
     bodies = dict(re.findall(r"define[^@]*@(\w+)\([^\n]*\).*?\{(.*?)^\}", text, re.S | re.M))
@@ -73,7 +73,7 @@ def pass_regressions(llvm, folder):
                       'declare i64 @free(ptr)\n'
                       'define void @unused_return(ptr %p, i1 %flag) { entry: br i1 %flag, label %yes, label %no yes: %ignored = call i64 @free(ptr %p) br label %end no: br label %end end: %dead = phi i64 [ %ignored, %yes ], [ 0, %no ] ret void }\n')
     output = folder / "attributes-rooted.ll"
-    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/compiler/bin/libosprey_gc_roots.so"),
+    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
          "-passes=osprey-gc-roots,osprey-gc-roots", "-verify-each", "-S", str(source), "-o", str(output)])
     text = output.read_text()
     assert "memory(none)" not in text and "speculatable" not in text, "stale LLVM effects after rooting"
@@ -87,7 +87,7 @@ def execute_module(klee, folder, memory, module):
     out = folder / "klee"
     run([str(klee), "--libc=klee", "--ubsan-runtime", "--optimize", "--kdalloc",
                   "--external-calls=none", "--max-time=30s", "--watchdog",
-                  "-link-llvm-lib=" + str(ROOT / f"src/compiler/bin/libosprey_runtime_klee_{memory}.bc"),
+                  "-link-llvm-lib=" + str(ROOT / f"src/toolchain/compiler/bin/libosprey_runtime_klee_{memory}.bc"),
                   "--output-dir=" + str(out), str(module)])
     return out
 
@@ -95,9 +95,9 @@ def execute_module(klee, folder, memory, module):
 def compile_module(llvm, source, module, memory):
     run([str(llvm / "clang"), "--target=x86_64-unknown-linux-gnu", "-nostdlibinc",
          "-isystem", "runtime/klee/include", "-emit-llvm", "-c", "-g", "-O1",
-         "-DOSP_SYMBOLIC", *( ["-DOSP_HUNT_ARC"] if memory == "arc" else []), str(source), "-o", str(module)], ROOT / "src" / "compiler")
+         "-DOSP_SYMBOLIC", *( ["-DOSP_HUNT_ARC"] if memory == "arc" else []), str(source), "-o", str(module)], ROOT / "src" / "toolchain" / "compiler")
     if memory == "gc":
-        run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/compiler/bin/libosprey_gc_roots.so"),
+        run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
              "-passes=osprey-gc-roots", "-verify-each", str(module), "-o", str(module)])
 
 
@@ -105,7 +105,7 @@ def regression(llvm, klee, folder, memory):
     folder = folder / memory
     folder.mkdir()
     module = folder / "roots.bc"
-    source = ROOT / "src/compiler/runtime/memory_gc_stack_root_tests.c"
+    source = ROOT / "src/toolchain/compiler/runtime/memory_gc_stack_root_tests.c"
     compile_module(llvm, source, module, memory)
     out = execute_module(klee, folder, memory, module)
     verify(out)
@@ -134,7 +134,7 @@ def global_regressions(llvm, folder):
     source.write_text('target datalayout = "e-p:64:64"\n' +
                       ''.join(f'@root{i} = global ptr null\n' for i in range(64)))
     output = folder / "globals-rooted.ll"
-    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/compiler/bin/libosprey_gc_roots.so"),
+    run([str(llvm / "opt"), "-load-pass-plugin=" + str(ROOT / "src/toolchain/compiler/bin/libosprey_gc_roots.so"),
          "-passes=osprey-gc-roots", "-verify-each", "-S", str(source), "-o", str(output)])
     text = output.read_text()
     assert len(re.findall(r'@osp\.gc\.global\.table(?:\.\d+)? =', text)) == 1, "one module needs one global root table"

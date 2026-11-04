@@ -5,7 +5,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const ROOT = fileURLToPath(new URL('../src/packages/', import.meta.url))
+const ROOT = fileURLToPath(new URL('../src/osprey/packages/', import.meta.url))
 const AUDIT = JSON.parse(readFileSync(join(ROOT, 'license-audit.json'), 'utf8'))
 const HOLDER = 'NIMBLESITE PTY LTD, Australia'
 const MARKER = '# osprey: flavor=python'
@@ -19,7 +19,7 @@ const packageNames = readdirSync(ROOT, { withFileTypes: true })
   .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && existsSync(join(ROOT, entry.name, 'osprey.toml')))
   .map((entry) => entry.name).sort()
 requireThat(JSON.stringify(packageNames) === JSON.stringify(Object.keys(AUDIT.packages).sort()),
-  'Every package needs an entry in src/packages/license-audit.json')
+  'Every package needs an entry in src/osprey/packages/license-audit.json')
 requireThat(AUDIT.copyright_holder === HOLDER, 'Unexpected Osprey copyright holder')
 
 const verifySource = (dir, manifest, entry) => {

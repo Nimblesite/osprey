@@ -8,13 +8,13 @@
 **/out
 **/target
 
-src/compiler/bin
-src/compiler/lib/*.a
-compiler/coverage.out*
-compiler/test.log
+src/toolchain/compiler/bin
+src/toolchain/compiler/lib/*.a
+src/toolchain/compiler/coverage.out*
+src/toolchain/compiler/test.log
 
-src/vscode-extension/bin
-src/vscode-extension/*.vsix
-src/vscode-extension/test.log
+src/toolchain/vscode-extension/bin
+src/toolchain/vscode-extension/*.vsix
+src/toolchain/vscode-extension/test.log
 
 mutation_testing/mutants.out*

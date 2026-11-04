@@ -4,19 +4,19 @@
 [workspace]
 resolver = "2"
 members = [
-    "src/tree-sitter-osprey",
-    "src/crates/osprey-ast",
-    "src/crates/osprey-syntax",
-    "src/crates/osprey-project",
-    "src/crates/osprey-types",
-    "src/crates/osprey-debug",
-    "src/crates/osprey-codegen",
-    "src/crates/osprey-runtime-sys",
-    "src/crates/osprey-fmt",
-    "src/crates/osprey-lsp",
-    "src/crates/osprey-profiler",
-    "src/crates/lsp-profiler-osprey",
-    "src/crates/osprey-cli",
+    "src/toolchain/tree-sitter-osprey",
+    "src/toolchain/crates/osprey-ast",
+    "src/toolchain/crates/osprey-syntax",
+    "src/toolchain/crates/osprey-project",
+    "src/toolchain/crates/osprey-types",
+    "src/toolchain/crates/osprey-debug",
+    "src/toolchain/crates/osprey-codegen",
+    "src/toolchain/crates/osprey-runtime-sys",
+    "src/toolchain/crates/osprey-fmt",
+    "src/toolchain/crates/osprey-lsp",
+    "src/toolchain/crates/osprey-profiler",
+    "src/toolchain/crates/lsp-profiler-osprey",
+    "src/toolchain/crates/osprey-cli",
 ]
 
 [workspace.package]
@@ -31,17 +31,17 @@ tree-sitter-language = "0.1"
 # Drives tree-sitter query matches in tests; already in the lockfile as a
 # dependency of `tree-sitter` itself.
 streaming-iterator = "0.1"
-osprey-ast = { path = "src/crates/osprey-ast" }
-osprey-syntax = { path = "src/crates/osprey-syntax" }
-osprey-project = { path = "src/crates/osprey-project" }
-osprey-types = { path = "src/crates/osprey-types" }
-osprey-debug = { path = "src/crates/osprey-debug" }
-osprey-codegen = { path = "src/crates/osprey-codegen" }
-osprey-fmt = { path = "src/crates/osprey-fmt" }
-osprey-lsp = { path = "src/crates/osprey-lsp" }
-osprey-profiler = { path = "src/crates/osprey-profiler" }
-lsp-profiler-osprey = { path = "src/crates/lsp-profiler-osprey" }
-tree-sitter-osprey = { path = "src/tree-sitter-osprey" }
+osprey-ast = { path = "src/toolchain/crates/osprey-ast" }
+osprey-syntax = { path = "src/toolchain/crates/osprey-syntax" }
+osprey-project = { path = "src/toolchain/crates/osprey-project" }
+osprey-types = { path = "src/toolchain/crates/osprey-types" }
+osprey-debug = { path = "src/toolchain/crates/osprey-debug" }
+osprey-codegen = { path = "src/toolchain/crates/osprey-codegen" }
+osprey-fmt = { path = "src/toolchain/crates/osprey-fmt" }
+osprey-lsp = { path = "src/toolchain/crates/osprey-lsp" }
+osprey-profiler = { path = "src/toolchain/crates/osprey-profiler" }
+lsp-profiler-osprey = { path = "src/toolchain/crates/lsp-profiler-osprey" }
+tree-sitter-osprey = { path = "src/toolchain/tree-sitter-osprey" }
 
 # Grows a recursive compiler pass onto the heap when a deeply nested program
 # would overflow the thread stack; used only through `osprey_ast::with_stack`.

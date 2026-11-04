@@ -149,7 +149,7 @@ suites that measured the same file add their hits.
 
 **`[TESTING-COVERAGE-CODEGEN]`** With coverage on
 (`osprey_codegen::compile_program_coverage`,
-`src/crates/osprey-codegen/src/coverage.rs`), the coverable-line universe is
+`src/toolchain/crates/osprey-codegen/src/coverage.rs`), the coverable-line universe is
 seeded from the AST up front — function definition lines and positioned
 statements, recursing through blocks, lambdas, match/handler arms, and
 module/namespace bodies — so a never-executed (even never-lowered) line
@@ -160,7 +160,7 @@ each positioned statement. A generated `__osp_cov_init`, called at the top
 of `main` before user code, registers every counter with the runtime.
 Coverage builds keep release optimization and emit no DWARF.
 
-**`[TESTING-COVERAGE-RUNTIME]`** `src/compiler/runtime/coverage_runtime.c`
+**`[TESTING-COVERAGE-RUNTIME]`** `src/toolchain/compiler/runtime/coverage_runtime.c`
 (dependency-free C11, in every runtime archive) exposes
 `osp_cov_register_line(line, &counter)`. Inert unless
 **`[TESTING-COVERAGE-ENV]`** `OSPREY_COVERAGE=<path>` names the dump file at

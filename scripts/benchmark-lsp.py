@@ -3,7 +3,7 @@
 
 Run after building the compiler:
   python3 scripts/benchmark-lsp.py --compiler target/release/osprey
-  python3 scripts/benchmark-lsp.py --project src/examples/projects/modules
+  python3 scripts/benchmark-lsp.py --project src/osprey/examples/projects/modules
 
 A request queued after each edit measures completion of the server's serial
 notification handler, even when identical diagnostic publishes are coalesced.

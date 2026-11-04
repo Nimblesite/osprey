@@ -17,7 +17,7 @@ export const proofAssets = Object.keys(proofPayloads).map(name => `workbench/${n
 const proofStager = [
   'from pathlib import Path', 'import sys',
   'assert sys.argv[2:] == ["--check"]',
-  'source = Path(__file__).resolve().parents[1] / "src/workbench/assets"',
+  'source = Path(__file__).resolve().parents[1] / "src/osprey/workbench/assets"',
   'destination = Path(sys.argv[1])',
   `files = ${JSON.stringify(Object.keys(proofPayloads))}`,
   'for name in files:',
@@ -28,7 +28,7 @@ const proofStager = [
 
 function writeProofAssets(root, platform) {
   for (const [name, bytes] of Object.entries(proofPayloads)) {
-    for (const directory of ['src/workbench/assets', `${platform}/workbench`]) {
+    for (const directory of ['src/osprey/workbench/assets', `${platform}/workbench`]) {
       const file = join(root, directory, name)
       mkdirSync(dirname(file), { recursive: true })
       writeFileSync(file, bytes)
@@ -39,11 +39,11 @@ function writeProofAssets(root, platform) {
 }
 
 function restoreStagedBundle(root, restoreJob) {
-  cpSync(join(root, 'src/vscode-extension/bin'), join(root, 'extension/bin'), { recursive: true })
-  const zipped = spawnSync('zip', ['-qr', 'src/vscode-extension/osprey-fixture.vsix', 'extension'], { cwd: root, encoding: 'utf8' })
+  cpSync(join(root, 'src/toolchain/vscode-extension/bin'), join(root, 'extension/bin'), { recursive: true })
+  const zipped = spawnSync('zip', ['-qr', 'src/toolchain/vscode-extension/osprey-fixture.vsix', 'extension'], { cwd: root, encoding: 'utf8' })
   assert.equal(zipped.status, 0, zipped.stderr)
   rmSync(join(root, 'extension'), { recursive: true })
-  rmSync(join(root, 'src/vscode-extension/bin'), { recursive: true })
+  rmSync(join(root, 'src/toolchain/vscode-extension/bin'), { recursive: true })
   const block = restoreJob.split('- name: Restore bundled extension assets\n')[1] ?? ''
   const run = block.match(/^ {8}run: \|\n((?: {10}.*\n)+)/m)?.[1] ?? ''
   assert.notEqual(run, '', 'CI must restore assets from the built VSIX')
@@ -60,10 +60,10 @@ function writeExecutablePayloads(root, platform) {
   const payloads = [['target/release/osprey', 'osprey'], ['target/osprey-pkg', 'osprey-pkg'],
     ['target/osprey-registry', 'osprey-registry'],
     ['target/package-workspace.wasm', 'package-workspace.wasm'], ['target/workbench.wasm', 'workbench.wasm'],
-    ...nativeArchives.map(name => [`src/compiler/bin/${name}`, name])]
-  for (const dir of ['target/release', 'src/compiler/bin', platform, 'src/vscode-extension/scripts', 'src/vscode-extension/out/client/src/osprey-ui']) mkdirSync(join(root, dir), { recursive: true })
-  writeFileSync(join(root, 'src/vscode-extension/scripts/verify-package-client.mjs'), readFileSync('src/vscode-extension/scripts/verify-package-client.mjs'))
-  for (const name of ['wasi', 'wasi-runner', 'wasi-worker']) writeFileSync(join(root, `src/vscode-extension/out/client/src/osprey-ui/${name}.js`), 'export {};\n')
+    ...nativeArchives.map(name => [`src/toolchain/compiler/bin/${name}`, name])]
+  for (const dir of ['target/release', 'src/toolchain/compiler/bin', platform, 'src/toolchain/vscode-extension/scripts', 'src/toolchain/vscode-extension/out/client/src/osprey-ui']) mkdirSync(join(root, dir), { recursive: true })
+  writeFileSync(join(root, 'src/toolchain/vscode-extension/scripts/verify-package-client.mjs'), readFileSync('src/toolchain/vscode-extension/scripts/verify-package-client.mjs'))
+  for (const name of ['wasi', 'wasi-runner', 'wasi-worker']) writeFileSync(join(root, `src/toolchain/vscode-extension/out/client/src/osprey-ui/${name}.js`), 'export {};\n')
   for (const [source, name] of payloads) {
     const bytes = name.endsWith('.wasm') ? wasiCommand : '#!/bin/sh\nexit 97\n'
     for (const file of [source, `${platform}/${name}`]) writeFileSync(join(root, file), bytes, { mode: 0o755 })
@@ -71,25 +71,25 @@ function writeExecutablePayloads(root, platform) {
 }
 
 function writeWorkbenchAssets(root, platform) {
-  for (const directory of ['src/workbench/lessons', `${platform}/workbench/lessons`]) {
+  for (const directory of ['src/osprey/workbench/lessons', `${platform}/workbench/lessons`]) {
     mkdirSync(join(root, directory), { recursive: true })
     writeFileSync(join(root, directory, 'catalogue.json'), JSON.stringify({ format: 1, lessons: ['and-swap'] }))
     writeFileSync(join(root, directory, 'and-swap.json'), JSON.stringify({ slug: 'and-swap', blocks: [] }))
   }
-  mkdirSync(join(root, 'src/website/src/assets/images'), { recursive: true })
-  for (const file of ['src/website/src/assets/images/logo.png', `${platform}/workbench/osprey-logo.png`]) writeFileSync(join(root, file), 'fixture logo')
-  // The bundle rule copies src/workbench/assets/. as-is, so the study image
+  mkdirSync(join(root, 'src/toolchain/website/src/assets/images'), { recursive: true })
+  for (const file of ['src/toolchain/website/src/assets/images/logo.png', `${platform}/workbench/osprey-logo.png`]) writeFileSync(join(root, file), 'fixture logo')
+  // The bundle rule copies src/osprey/workbench/assets/. as-is, so the study image
   // the client verifier requires comes from that directory.
-  for (const directory of ['src/workbench/assets', `${platform}/workbench`]) mkdirSync(join(root, directory), { recursive: true })
-  for (const file of ['src/workbench/assets/chalk-study.png', `${platform}/workbench/chalk-study.png`]) writeFileSync(join(root, file), 'fixture study image')
+  for (const directory of ['src/osprey/workbench/assets', `${platform}/workbench`]) mkdirSync(join(root, directory), { recursive: true })
+  for (const file of ['src/osprey/workbench/assets/chalk-study.png', `${platform}/workbench/chalk-study.png`]) writeFileSync(join(root, file), 'fixture study image')
 }
 
 function writePresentationAssets(root, platform) {
-  for (const directory of ['src/workbench/assets/fonts', `${platform}/workbench/fonts`]) {
+  for (const directory of ['src/osprey/workbench/assets/fonts', `${platform}/workbench/fonts`]) {
     mkdirSync(join(root, directory), { recursive: true })
     for (const file of ['STIXTwoMath-Regular.ttf', 'STIX-Two-Math-LICENSE.txt', 'STIXTwoText.ttf', 'STIXTwoText-Italic.ttf', 'STIX-Two-Text-LICENSE.txt', 'Geist-LICENSE.txt']) writeFileSync(join(root, directory, file), 'fixture font')
   }
-  for (const directory of ['src/workbench/assets', `${platform}/workbench`]) {
+  for (const directory of ['src/osprey/workbench/assets', `${platform}/workbench`]) {
     for (const file of ['workbench.css', 'workbench-fonts.css']) writeFileSync(join(root, directory, file), '/* fixture style */')
   }
 }
@@ -98,7 +98,7 @@ function writeSymbolAssets(root, platform) {
   const payloads = { 'symbols.json': JSON.stringify({ moon: 'icons/moon.svg' }),
     'icons/moon.svg': '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M1 1h1v1H1z"/></svg>',
     'icons/LICENSE.txt': 'fixture icon license\n' }
-  for (const directory of ['src/workbench/assets', `${platform}/workbench`]) {
+  for (const directory of ['src/osprey/workbench/assets', `${platform}/workbench`]) {
     mkdirSync(join(root, directory, 'icons'), { recursive: true })
     for (const [name, bytes] of Object.entries(payloads)) writeFileSync(join(root, directory, name), bytes)
   }
@@ -124,14 +124,14 @@ function writeBundlePayloads(root, platform) {
 export function runStagedBundleFixture(restoreJob, change = () => {}) {
   const root = mkdtempSync(join(tmpdir(), 'osprey-staged-bundle-'))
   const host = `${process.platform === 'win32' ? 'win32' : process.platform === 'darwin' ? 'darwin' : 'linux'}-${process.arch === 'arm64' ? 'arm64' : 'x64'}`
-  const platform = `src/vscode-extension/bin/${host}`
+  const platform = `src/toolchain/vscode-extension/bin/${host}`
   try {
     writeBundlePayloads(root, platform)
     restoreStagedBundle(root, restoreJob)
     change(root, platform)
     return spawnSync('make', ['-f', resolve('scripts/make/extension.mk'), '_vsix_verify',
-      'BIN=target/release/osprey', 'EXT_DIR=src/vscode-extension', `EXT_PLATFORM=${host}`, 'RTB=src/compiler/bin',
-      `NATIVE_RUNTIME_ARCHIVES=${nativeArchives.map(name => `src/compiler/bin/${name}`).join(' ')}`], { cwd: root, encoding: 'utf8' })
+      'BIN=target/release/osprey', 'EXT_DIR=src/toolchain/vscode-extension', `EXT_PLATFORM=${host}`, 'RTB=src/toolchain/compiler/bin',
+      `NATIVE_RUNTIME_ARCHIVES=${nativeArchives.map(name => `src/toolchain/compiler/bin/${name}`).join(' ')}`], { cwd: root, encoding: 'utf8' })
   } finally { rmSync(root, { recursive: true, force: true }) }
 }
 

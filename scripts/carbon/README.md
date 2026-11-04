@@ -5,7 +5,7 @@ social cards.
 
 Highlighting is **not** reinvented: the tool loads the repository's real
 TextMate grammars
-([`src/vscode-extension/syntaxes/osprey.tmGrammar.json`](../../src/vscode-extension/syntaxes/osprey.tmGrammar.json)
+([`src/toolchain/vscode-extension/syntaxes/osprey.tmGrammar.json`](../../src/toolchain/vscode-extension/syntaxes/osprey.tmGrammar.json)
 and `osprey-ml.tmLanguage.json`) through [Shiki](https://shiki.style), so the
 colours match VS Code exactly. The framed result is rasterised to PNG with
 [`@resvg/resvg-js`](https://github.com/thx/resvg-js) — no headless browser.
@@ -21,7 +21,7 @@ npm install
 
 ```bash
 # Flavor is chosen from the extension: .osp → osprey, .ospml → osprey-ml
-node render.mjs ../../src/examples/projects/modules/client/src/main.ospml
+node render.mjs ../../src/osprey/examples/projects/modules/client/src/main.ospml
 
 # Pick a theme and write somewhere specific
 node render.mjs path/to/file.osp --theme github-dark -o out.png

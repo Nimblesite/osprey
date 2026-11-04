@@ -13,35 +13,35 @@ import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 
 const cases = [
   ['book chapter and runnable example', ['docs/book/manuscript/04.md', 'docs/book/examples/chapter-04/main.osp'], false, true, false],
-  ['benchmark tooling and data', ['src/benchmarks/run.sh', 'src/benchmarks/results/results.json'], false, false, true],
+  ['benchmark tooling and data', ['src/toolchain/benchmarks/run.sh', 'src/toolchain/benchmarks/results/results.json'], false, false, true],
   ['specification prose', ['docs/specs/language/0007-PatternMatching.md'], false, false, false],
   ['repository prose', ['README.md', 'CLAUDE.md'], false, false, false],
-  ['compiler source', ['src/crates/osprey-codegen/src/lib.rs'], true, false, false],
-  ['runtime source', ['src/compiler/runtime/random_runtime.c'], true, false, false],
+  ['compiler source', ['src/toolchain/crates/osprey-codegen/src/lib.rs'], true, false, false],
+  ['runtime source', ['src/toolchain/compiler/runtime/random_runtime.c'], true, false, false],
   ['build orchestration', ['Makefile'], true, false, false],
   ['included build rules', ['scripts/make/runtime.mk'], true, false, false],
   ['changed CI classifier', ['scripts/ci-scope.mjs'], true, false, false],
   ['changed CI workflow', ['.github/workflows/ci.yml'], true, false, false],
   ['unknown future component', ['new-compiler/main.py'], true, false, false],
-  ['embedded compiler documentation', ['src/crates/osprey-cli/assets/help.md'], true, false, false],
-  ['ported package documentation the package suite checks', ['src/packages/testing/README.md'], true, false, false],
-  ['Python-flavor package regression', ['src/packages/faiss/tests/main.py'], true, false, false],
+  ['embedded compiler documentation', ['src/toolchain/crates/osprey-cli/assets/help.md'], true, false, false],
+  ['ported package documentation the package suite checks', ['src/osprey/packages/testing/README.md'], true, false, false],
+  ['Python-flavor package regression', ['src/osprey/packages/faiss/tests/main.py'], true, false, false],
   ['symbolic execution regression', ['scripts/test-hunt-default-budget.py'], true, false, false],
-  ['GPU regression in both flavors', ['src/tests/core/gpu/scalar_contracts.test.osp', 'src/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
-  ['proof kernel sources are compiler code', ['src/examples/proof/kernel/main.ospml', 'src/examples/proof/kernel/expectedoutput'], true, false, false],
-  ['proof speed benchmark harness and cases', ['src/benchmarks/proof/run.sh', 'src/benchmarks/proof/m0_identity/id_imp.lean'], false, false, true],
+  ['GPU regression in both flavors', ['src/osprey/tests/core/gpu/scalar_contracts.test.osp', 'src/osprey/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
+  ['proof kernel sources are compiler code', ['src/osprey/examples/proof/kernel/main.ospml', 'src/osprey/examples/proof/kernel/expectedoutput'], true, false, false],
+  ['proof speed benchmark harness and cases', ['src/toolchain/benchmarks/proof/run.sh', 'src/toolchain/benchmarks/proof/m0_identity/id_imp.lean'], false, false, true],
 ]
 for (const [label, files, code, book, benchmarks] of cases) {
   test(label, () => assert.deepEqual(classify(files), { code, website: false, book, benchmarks }))
 }
 
 test('website content skips compiler checks but the embedded grammar never does', () => {
-  assert.deepEqual(classify(['src/website/src/benchmarks.md']), { code: false, website: true, book: false, benchmarks: false })
-  assert.equal(classify(['src/website/src/js/osprey-grammar.mjs']).code, true)
+  assert.deepEqual(classify(['src/toolchain/website/src/benchmarks.md']), { code: false, website: true, book: false, benchmarks: false })
+  assert.equal(classify(['src/toolchain/website/src/js/osprey-grammar.mjs']).code, true)
 })
 
 test('mixed content and compiler changes retain every applicable check', () => {
-  assert.deepEqual(classify(['docs/book/book.json', 'src/benchmarks/run.sh', 'src/compiler/runtime/memory.c']),
+  assert.deepEqual(classify(['docs/book/book.json', 'src/toolchain/benchmarks/run.sh', 'src/toolchain/compiler/runtime/memory.c']),
     { code: true, website: false, book: true, benchmarks: true })
 })
 
@@ -50,7 +50,7 @@ test('all workflows use the shared classifier and content checks remain required
   const windows = readFileSync('.github/workflows/ci-windows.yml', 'utf8')
   assert.equal(linux.split('uses: ./.github/actions/detect-ci-scope').length - 1, 2)
   assert.match(windows, /uses: \.\/\.github\/actions\/detect-ci-scope/)
-  assert.match(linux, /python3 src\/benchmarks\/test_merge_results.py --tooling-only/)
+  assert.match(linux, /python3 src\/toolchain\/benchmarks\/test_merge_results.py --tooling-only/)
   assert.match(linux, /make -C docs\/book check-examples/)
   assert.match(linux, /make -C docs\/book check\n/)
 })
@@ -69,7 +69,7 @@ test('extension tests receive and reuse the build job\'s complete bundle', () =>
   assert.ok(commands.indexOf('$(MAKE) _vsix_bundle') < commands.indexOf('$(MAKE) _test_vscode_extension'))
   const extension = job('test-extension', '.github/workflows/ci.yml')
   for (const required of [/name: Restore bundled extension assets/, /chmod \+x[^\n]*target\/osprey-pkg/,
-    /chmod \+x[^\n]*src\/vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
+    /chmod \+x[^\n]*src\/toolchain\/vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
 })
 
 test('extension source fixtures have the WASI linker and sysroot before coverage', () => {
@@ -83,14 +83,14 @@ test('extension source fixtures have the WASI linker and sysroot before coverage
   assert.match(build, /compiler\/bin\/\*\.a/)
 })
 
-// The bundle stages src/workbench/assets/. and src/workbench/lessons/media/.
+// The bundle stages src/osprey/workbench/assets/. and src/osprey/workbench/lessons/media/.
 // Their *.png, *.gif and *.mp4 are LFS-stored, so a fetch that omits either path
 // stages a pointer and the packaged extension ships bytes the Marketplace (and
 // the client verifier) reject. The logo and both README editor GIFs are
 // LFS-stored too, so each job fetches exactly the paths its bundle stages.
 test('LFS fetches cover every workbench source asset the bundle stages', () => {
-  const required = ['src/website/src/assets/images/logo.png', 'src/vscode-extension/media/package-tour.gif',
-    'src/vscode-extension/media/showcase.gif', 'src/workbench/assets/**', 'src/workbench/lessons/media/**']
+  const required = ['src/toolchain/website/src/assets/images/logo.png', 'src/toolchain/vscode-extension/media/package-tour.gif',
+    'src/toolchain/vscode-extension/media/showcase.gif', 'src/osprey/workbench/assets/**', 'src/osprey/workbench/lessons/media/**']
   for (const [name, file] of [['test-extension', '.github/workflows/ci.yml'], ['vsix', '.github/workflows/release.yml']]) {
     const include = job(name, file).match(/git lfs pull --include="([^"]+)"/)?.[1] ?? ''
     for (const path of required) assert.ok(include.split(',').includes(path), `${name}: LFS fetch omits ${path}`)
@@ -99,8 +99,8 @@ test('LFS fetches cover every workbench source asset the bundle stages', () => {
 
 test('the required macOS gate runs every Apple part, the native Workbench host among them', () => {
   const apple = job('test-apple', '.github/workflows/ci.yml')
-  for (const command of ['make -C src/targets ios-test mobile-ios-test', 'make -C src/targets macos-test', 'make -C src/targets bank-ios-test',
-    'bash src/workbench/hosts/apple/run.sh --build', 'swift test --package-path src/workbench/hosts/apple']) {
+  for (const command of ['make -C src/toolchain/targets ios-test mobile-ios-test', 'make -C src/toolchain/targets macos-test', 'make -C src/toolchain/targets bank-ios-test',
+    'bash src/osprey/workbench/hosts/apple/run.sh --build', 'swift test --package-path src/osprey/workbench/hosts/apple']) {
     assert.ok(apple.includes(command), command)
   }
   assert.match(apple, /^ {8}run: \$\{\{ matrix\.run \}\}$/m)
@@ -118,9 +118,9 @@ test('unfinished mobile casting stays out of every CI path', () => {
   for (const name of readdirSync('.github/workflows')) {
     assert.doesNotMatch(readFileSync(join('.github/workflows', name), 'utf8'), unfinished, name)
   }
-  assert.doesNotMatch(readFileSync('scripts/test-mobile-tools.py', 'utf8'), /src\/examples\/casting|src\/targets\/ios\/tests/)
-  assert.match(readFileSync('src/hosts/gpui/src/adapters.rs', 'utf8'), /feature = "mobile-bridge-tests"/)
-  assert.doesNotMatch(readFileSync('src/hosts/gpui/src/adapters.rs', 'utf8'), /target_os = "android", test\)/)
+  assert.doesNotMatch(readFileSync('scripts/test-mobile-tools.py', 'utf8'), /src\/osprey\/examples\/casting|src\/toolchain\/targets\/ios\/tests/)
+  assert.match(readFileSync('src/toolchain/hosts/gpui/src/adapters.rs', 'utf8'), /feature = "mobile-bridge-tests"/)
+  assert.doesNotMatch(readFileSync('src/toolchain/hosts/gpui/src/adapters.rs', 'utf8'), /target_os = "android", test\)/)
 })
 
 test('the coverage gate only compares collected reports and never builds or tests', () => {
@@ -188,8 +188,8 @@ function rustCoverageFixture(entries, covered = 100) {
   const root = mkdtempSync(join(tmpdir(), 'osprey-rust-coverage-'))
   try {
     for (const name of ['one', 'two']) {
-      mkdirSync(join(root, 'src', 'crates', name), { recursive: true })
-      writeFileSync(join(root, 'src', 'crates', name, 'Cargo.toml'), `[package]\nname = "${name}"\n`)
+      mkdirSync(join(root, 'src', 'toolchain', 'crates', name), { recursive: true })
+      writeFileSync(join(root, 'src', 'toolchain', 'crates', name, 'Cargo.toml'), `[package]\nname = "${name}"\n`)
     }
     writeFileSync(join(root, 'thresholds.json'), JSON.stringify({ projects: { rust: entries } }))
     writeFileSync(join(root, 'lcov.info'), ['one', 'two'].map(name =>
@@ -246,7 +246,7 @@ test('the KLEE engine gates stay out of CI and make ci; the mock oracle and know
   const expectations = readFileSync('scripts/make/tests.mk', 'utf8')
   assert.match(expectations, /HUNT_KNOWN_BUGS \?= clean/)
   assert.match(expectations, /^_test_hunt_clean:/m)
-  for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`src/tests/hunt/${control}`).length > 0)
+  for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`src/osprey/tests/hunt/${control}`).length > 0)
   assert.match(readFileSync('scripts/test-hunt-default-budget.py', 'utf8'), /\('gc', 'arc'\), \('crash',\)/)
 })
 
@@ -316,7 +316,7 @@ test('package manager security suites gate CI and local tests under GC and ARC',
   const commands = makeRecipe('_test_registry', 'scripts/make/tests.mk')
   for (const script of ['publication', 'interruption']) assert.match(commands.join('\n'), new RegExp(`OSPREY_PACKAGE_CLIENT=.*REGISTRY_NATIVE_CLIENT.*python3 scripts/test-package-${script}\\.py`))
   for (const suite of ['fixture-check', 'manifest/tests', 'cli/tests', 'tests', 'e2e']) {
-    assert.ok(commands.includes(`./$(BIN) test src/packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
+    assert.ok(commands.includes(`./$(BIN) test src/osprey/packages/manager/${suite} --memory=$(REGISTRY_MEMORY)`), suite)
   }
 })
 
@@ -391,12 +391,12 @@ test('registry nested compiler invocations retain the selected compiler and memo
     assert.equal(result.status, 0, result.stdout + result.stderr)
     assertNativeRegistryCalls(native, fixture, 'arc')
     // Order proves the fail-fast fixture suite still runs first.
-    const expected = registrySuites.map(suite => ['test', `src/packages/manager/${suite}`])
-    if (!process.env.OSPREY_PACKAGE_CLIENT) expected.push(['build', 'src/packages/manager/cli'])
+    const expected = registrySuites.map(suite => ['test', `src/osprey/packages/manager/${suite}`])
+    if (!process.env.OSPREY_PACKAGE_CLIENT) expected.push(['build', 'src/osprey/packages/manager/cli'])
     assert.deepEqual(invocations.map(seen => seen.argv.slice(0, 2)), expected)
     const builds = invocations.filter(seen => seen.argv[0] === 'build')
     assert.equal(builds.length, process.env.OSPREY_PACKAGE_CLIENT ? 0 : 1)
-    if (builds.length) assert.ok(['src/packages/manager/cli', '--memory=arc', '--no-warnings', resolve('target/registry-tests/osprey-pkg-arc')].every(arg => builds[0].argv.includes(arg)))
+    if (builds.length) assert.ok(['src/osprey/packages/manager/cli', '--memory=arc', '--no-warnings', resolve('target/registry-tests/osprey-pkg-arc')].every(arg => builds[0].argv.includes(arg)))
     for (const seen of invocations) {
       assert.equal(seen.OSPREY_E2E_COMPILER, fixture.compiler)
       assert.ok(isAbsolute(seen.OSPREY_E2E_COMPILER), 'selection must stay absolute')

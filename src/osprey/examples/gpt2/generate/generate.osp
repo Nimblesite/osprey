@@ -1,0 +1,71 @@
+// Greedy text generation with the trained GPT-2 model: no training from
+// scratch, no conversion step, no Python. `make -C src/toolchain/targets gpt2 PROMPT="..."` downloads the
+// published weights into src/osprey/examples/gpt2/weights and runs this project. Three
+// lines of stdin: the prompt, the number of tokens to generate (default 20), and
+// the interpretation to run the model under — `gpu` for the GPU surface (its
+// products on the device `OSPREY_GPU` selects) or `lists` for plain host lists. The model lives in
+// ../model and performs the `Tensor` effect; this file is the sampler, and
+// `main` is the one place that chooses a handler. The prompt takes one full
+// forward pass; every later token takes one forwardStep over the blocks' cached
+// qkv rows, so a token costs one position rather than the whole sequence.
+import gpt2::Tokenizer
+import gpt2::Model
+import gpt2::Backends
+import gpt2::Model::{at, maxF, width, vocabSize, layerCount, endOfText}
+
+let defaultPrompt = "The capital of France is"
+let defaultTokens = 20
+
+/// The most likely token after the last block's output row `last` [1, width]:
+/// the tied output projection of its normalised state, then the first index
+/// holding its peak; endOfText when none does.
+fn nextToken(w, last) = {
+    let logits = Model::product(Model::layerNorm(last, 1, w.lnfG, w.lnfB), w.wteT, 1, width, vocabSize)
+    let found = Model::indexOf(logits, perform Backends::Tensor.reduce(logits, at(logits, 0), maxF))
+    match found < vocabSize { true => found  false => endOfText }
+}
+
+/// Row t - 1 of x [t, width].
+fn lastRow(x, t) = Model::orStop(perform Backends::Tensor.build(width, fn(c) => at(x, (t - 1) * width + c)), Model::empty)
+
+/// `remaining` more tokens after ids, whose last token `pending` the cached
+/// blocks have not seen yet.
+fn generate(w, ids, caches, pending, remaining) = match remaining == 0 {
+    true => ids
+    false => {
+        let step = Model::forwardStep(w, pending, listLength(ids), caches)
+        let next = nextToken(w, step.x)
+        match next == endOfText { true => ids  false => generate(w, listAppend(ids, next), step.caches, next, remaining - 1) }
+    }
+}
+
+/// The prompt's continuation: the full pass's last row predicts the first
+/// token, and the pass's qkv rows seed the caches for every later one.
+fn continuation(w, ids, trace, t, count) = {
+    let first = nextToken(w, lastRow(trace.x, t))
+    match first == endOfText { true => ids  false => generate(w, listAppend(ids, first), Model::qkvCaches(trace), first, count - 1) }
+}
+
+/// Load, tokenize, generate and print, under whichever interpretation the
+/// caller installed.
+fn run(prompt, count) = {
+    let bpe = Tokenizer::loadBpe(Model::weightsDir + "/merges.txt")
+    let w = Model::loadWeights()
+    let ids = Tokenizer::encode(bpe, prompt)
+    let t = listLength(ids)
+    print("gpt2 (124M) on ${Model::device()} — ${listLength(bpe.merges)} merges, ${intDiv(Model::size(w.wte), width)} vocabulary rows, ${layerCount} layers")
+    print("prompt: ${prompt}\ntokens:${Tokenizer::idsText(ids)}")
+    let out = match count < 1 { true => ids  false => continuation(w, ids, Model::forward(w, ids, t), t, count) }
+    print("generated ${listLength(out) - listLength(ids)} tokens\n${Tokenizer::decode(bpe, out)}")
+}
+
+fn main() = {
+    let promptLine = input()
+    let prompt = match promptLine == "" { true => defaultPrompt  false => promptLine }
+    let count = parseInt(input()) ?: defaultTokens
+    let backend = input()
+    match Backends::strictly(fn() => Backends::under(backend, fn() => run(prompt, count))) {
+        Success { value } => value
+        Error { message } => print("generation stopped: ${message}")
+    }
+}

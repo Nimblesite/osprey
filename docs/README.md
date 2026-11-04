@@ -3,6 +3,6 @@
 - [Repository map](contributing/repository-map.md): compiler pipeline, build rules and where changes belong.
 - [Specifications](specs/README.md): normative language and engineering contracts.
 - [Active plans](plans/): delivery status and remaining work.
-- [Language guides](../src/website/src/docs/index.md): using Osprey.
+- [Language guides](../src/toolchain/website/src/docs/index.md): using Osprey.
 - [Release process](RELEASING.md): building and publishing releases.
 - [Review](reviews/review.md): regressions by commit and system issues not logged on GitHub.

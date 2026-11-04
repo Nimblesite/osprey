@@ -1,25 +1,25 @@
 {
   "binary": [
-    "src/crates/**",
-    "src/compiler/**",
-    "src/tree-sitter-osprey/**",
-    "src/webcompiler/**",
+    "src/toolchain/crates/**",
+    "src/toolchain/compiler/**",
+    "src/toolchain/tree-sitter-osprey/**",
+    "src/toolchain/webcompiler/**",
     "Cargo.toml",
     "Cargo.lock",
     "Makefile",
     "scripts/make/**"
   ],
   "vsix": [
-    "src/vscode-extension/**"
+    "src/toolchain/vscode-extension/**"
   ],
   "website": [
-    "src/website/**",
-    "src/benchmarks/**"
+    "src/toolchain/website/**",
+    "src/toolchain/benchmarks/**"
   ],
   "ignore": [
     "**/*.md",
     "docs/**",
-    "src/examples/**",
+    "src/osprey/examples/**",
     ".github/**",
     ".devcontainer/**",
     ".vscode/**",

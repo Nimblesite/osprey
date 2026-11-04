@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Checks one `osprey hunt --json` report against a `.expected` file: the
-deterministic main-mode programs under src/tests/hunt/ [SYMEX-CLI]
+deterministic main-mode programs under src/osprey/tests/hunt/ [SYMEX-CLI]
 (docs/specs/tooling/SymbolicExecution.md, delivery checklist).
 
     scripts/hunt_expect.py <report.json> <program.expected> [process-status]

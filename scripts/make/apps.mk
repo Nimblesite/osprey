@@ -1,6 +1,6 @@
-# Graphics: settings and the platform hosts behind `make -C src/targets graphics` and
-# `make -C src/targets graphics-smoke`, which the root Makefile documents.
-GFX_DIR := src/examples/graphics
+# Graphics: settings and the platform hosts behind `make -C src/toolchain/targets graphics` and
+# `make -C src/toolchain/targets graphics-smoke`, which the root Makefile documents.
+GFX_DIR := src/osprey/examples/graphics
 GFX_WARN ?= -Wall -Werror
 SCENE ?= kali
 
@@ -28,7 +28,7 @@ GFX_OUT := target/gfx
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
 _graphics _graphics-shader _graphics-smoke:
-	@Write-Host "make -C src/targets graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+	@Write-Host "make -C src/toolchain/targets graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
@@ -111,7 +111,7 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 endif
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
-GPT2_DIR    := src/examples/gpt2
+GPT2_DIR    := src/osprey/examples/gpt2
 GPT2_SOURCE := https://huggingface.co/openai-community/gpt2/resolve/main
 PROMPT      ?= The capital of France is
 TOKENS      ?= 20
@@ -133,11 +133,11 @@ _uninstall:
 
 # _website-dev: Start local website development server
 _website-dev: $(WEBSITE_NODE_DEPS)
-	cd src/website && npm run dev
+	cd src/toolchain/website && npm run dev
 
 # _website-build: Build static site
 _website-build: $(WEBSITE_NODE_DEPS)
-	cd src/website && npm run build
+	cd src/toolchain/website && npm run build
 
 # _test_bench_tools: Unit-test the benchmark result merger and the README figure
 # generator. Every benchmark run stages and merges validated replacements, so
@@ -146,15 +146,15 @@ _website-build: $(WEBSITE_NODE_DEPS)
 # quoted binarytrees figure in step with that data.
 _test_bench_tools:
 	@echo "==> Bench tooling tests..."
-	python3 src/benchmarks/test_merge_results.py
-	python3 src/benchmarks/test_instruction_gate.py
+	python3 src/toolchain/benchmarks/test_merge_results.py
+	python3 src/toolchain/benchmarks/test_instruction_gate.py
 
 ## _gpui-self-test: Every desktop app's self-test.json, the script the WinUI host runs in a real
 ##                  window, on the GPUI host. Without a window by default; GPUI_WINDOW= opens one.
 ##                  [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-self-test
 GPUI_WINDOW ?= --headless
-GPUI_SCRIPTED := src/hosts/gpui:src/hosts/gpui/probe src/examples/gpui/flock:src/examples/gpui/flock src/examples/gpui/painting:src/examples/gpui/painting src/packages/signal_flow/app:src/packages/signal_flow/app src/examples/casting:src/examples/casting
+GPUI_SCRIPTED := src/toolchain/hosts/gpui:src/toolchain/hosts/gpui/probe src/osprey/examples/gpui/flock:src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting:src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app:src/osprey/packages/signal_flow/app src/osprey/examples/casting:src/osprey/examples/casting
 _gpui-self-test: _gpui-apps
 	for pair in $(GPUI_SCRIPTED); do \
 		app=$${pair%%:*}; script=$${pair##*:}; \
@@ -171,13 +171,13 @@ _gpui-app-self-test: _runtime_macos
 .PHONY: _gpui-synth-smoke
 _gpui-synth-smoke: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/synth/run.sh --smoke
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --smoke
 
 ## _storage-smoke: The Mac storage app through its Swift host.
 .PHONY: _storage-smoke
 _storage-smoke: _runtime_macos
 	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/examples/macos/run.sh --smoke
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --smoke
 
 ## _app-suite: One app's host-free suites, named by SUITES.
 .PHONY: _app-suite
@@ -188,7 +188,7 @@ _app-suite: _runtime
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test
-UI_SUITES := src/packages/uitest/tests src/examples/casting/test src/packages/signal_flow/tests src/examples/synth/test
+UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test
 _ui-test: _runtime
 	cargo build --release -p osprey-cli
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done

@@ -2,7 +2,7 @@
 
 > **STOP — NOT YET IN FORCE.** This document was rewritten on 2026-10-31 for the `.lean`-only direction of [PROOF-SOURCE](../language/0049-DependentTypesAndProofs.md#proof-source-proof-source) while the `feat/type-disciplines` PR is still open. **Any agent working on that PR ignores this rewrite until the PR has merged.** Do not delete, rename, rewrite or stop maintaining any code, test, fixture or screen because of this text before then; the previous revision in git history is the contract for that PR. After the merge, [plan 0041](../../plans/0041-dependent-types-and-mathlib.md) is the order of work.
 
-**Status:** rewritten for `.lean`; the application at `src/workbench/` still carries the deleted formats and is brought into line by [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), then [plan 0042](../../plans/0042-proof-workbench.md). Learn mode: [spec 0052](0052-WorkbenchLessons.md). The workbench depends on the proof kernel and tooling of [spec 0049](../language/0049-DependentTypesAndProofs.md) for its verdicts and on [`@osprey/native`](../../../src/packages/native/README.md) for everything it draws; it adds nothing to either that another editor could not use.
+**Status:** rewritten for `.lean`; the application at `src/osprey/workbench/` still carries the deleted formats and is brought into line by [plan 0041](../../plans/0041-dependent-types-and-mathlib.md), then [plan 0042](../../plans/0042-proof-workbench.md). Learn mode: [spec 0052](0052-WorkbenchLessons.md). The workbench depends on the proof kernel and tooling of [spec 0049](../language/0049-DependentTypesAndProofs.md) for its verdicts and on [`@osprey/native`](../../../src/osprey/packages/native/README.md) for everything it draws; it adds nothing to either that another editor could not use.
 
 ## Aim [WORKBENCH-AIM]
 
@@ -16,7 +16,7 @@ Before 2026-10-31 the workbench had its own English-sentence proof document (`Th
 
 ## Layout [WORKBENCH-LAYOUT]
 
-The application lives at [`src/workbench/`](../../../src/workbench/README.md), ML flavor, namespace `workbench`, source roots `src`, the shared `@osprey/native`, `graphics`, `json` and `vscode` packages, and the proof kernel sources under `src/examples/proof/kernel/src/` ([`osprey.toml`](../../../src/workbench/osprey.toml)).
+The application lives at [`src/osprey/workbench/`](../../../src/osprey/workbench/README.md), ML flavor, namespace `workbench`, source roots `src`, the shared `@osprey/native`, `graphics`, `json` and `vscode` packages, and the proof kernel sources under `src/osprey/examples/proof/kernel/src/` ([`osprey.toml`](../../../src/osprey/workbench/osprey.toml)).
 
 | Path | Module | Owns |
 | --- | --- | --- |
@@ -30,7 +30,7 @@ The application lives at [`src/workbench/`](../../../src/workbench/README.md), M
 | `src/library.ospml` | `Library` | Search over the checked environment by name and shape ([WORKBENCH-LIBRARY]) |
 | `src/app.ospml` | `App` | The store, `update`, the regions and the theme ([WORKBENCH-STORE], [WORKBENCH-REGIONS]) |
 | `src/main.ospml` | entry | `Runtime::start` and `Runtime::dispatch` for native hosts; `Webview::respond` for VS Code and the browser |
-| `src/tests/` | | The fixture-driven suite of [WORKBENCH-VERIFICATION] |
+| `src/osprey/tests/` | | The fixture-driven suite of [WORKBENCH-VERIFICATION] |
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 
@@ -111,7 +111,7 @@ The reading view lays the file out as a page: each declaration's statement as di
 
 | Host | How |
 | --- | --- |
-| VS Code | [`@osprey/vscode`](../../../src/packages/vscode/README.md): the application compiled to WASI, the existing webview renderer; the `Lean` capability runs the pinned toolchain the extension finds or installs |
+| VS Code | [`@osprey/vscode`](../../../src/osprey/packages/vscode/README.md): the application compiled to WASI, the existing webview renderer; the `Lean` capability runs the pinned toolchain the extension finds or installs |
 | Browser | the same renderer as a standalone page under `hosts/web/`; the `Lean` capability is a local service or Unavailable |
 | macOS and iPadOS | the SwiftUI host under `hosts/apple/`, `--target=macos`, `ios`, `ios-sim`; the toolchain bundled with the macOS app, Unavailable on iPadOS until stage 2 |
 
@@ -119,7 +119,7 @@ One application, three hosts, proved by the same fixture-driven `update` tests; 
 
 ### VSIX adapter [WORKBENCH-VSIX]
 
-`Osprey: Open Workbench` (`osprey.workbench.open`) opens the application without requiring a project folder and reuses its panel. The VSIX bundles `src/workbench/` compiled as `workbench.wasm` with the lesson catalogue, lesson `.lean` files, media and the bundled exports and licences staged by `scripts/workbench-proof-assets.py`; packaging rejects missing, invalid, stale or extra files. The package manager and workbench share the session, WASI runner, panel lifecycle, renderer and event transport; platform adapters only create the panel, map approved assets, read bounded files, run the `Lean` capability and store progress under the extension's own directory. No second proof or lesson implementation in TypeScript. VS Code's editor appearance selects the starting palette (`Dark`/`HighContrast` → `dark`, `Light`/`HighContrastLight` → `light`).
+`Osprey: Open Workbench` (`osprey.workbench.open`) opens the application without requiring a project folder and reuses its panel. The VSIX bundles `src/osprey/workbench/` compiled as `workbench.wasm` with the lesson catalogue, lesson `.lean` files, media and the bundled exports and licences staged by `scripts/workbench-proof-assets.py`; packaging rejects missing, invalid, stale or extra files. The package manager and workbench share the session, WASI runner, panel lifecycle, renderer and event transport; platform adapters only create the panel, map approved assets, read bounded files, run the `Lean` capability and store progress under the extension's own directory. No second proof or lesson implementation in TypeScript. VS Code's editor appearance selects the starting palette (`Dark`/`HighContrast` → `dark`, `Light`/`HighContrastLight` → `light`).
 
 Acceptance uses the compiled application in the real webview: open and reuse the panel, open a `.lean` file, see Lean's goals and diagnostics, a `Checked` badge from the kernel, the actual rejection of a corrupted proof, lesson navigation, accessible MathML and progress persistence. The bundled-library gate of plan 0041 (the complete `Nat.add_comm` closure and the pinned OpenAI corpus checked in-process, corrupted proofs refused, axioms per root) stands; a CLI recording does not satisfy the host gate. The captures in [`docs/designs/proof-workbench/screens/`](../../designs/proof-workbench/screens/) are the visual oracle for every screen that survives the format change; screens that showed the deleted document or its generated pane are re-captured by plan 0042 before they bind. The production VSIX matches the surviving reference screens pixel for pixel at identical viewport and state.
 
@@ -187,16 +187,16 @@ Every service the workbench uses is a capability of [PROOF-TOOLS](../language/00
 
 ## Verification [WORKBENCH-VERIFICATION]
 
-`osprey src/workbench/tests --run --quiet` and `python3 scripts/package_coverage.py --collect --project src/workbench` are the suite, at the 90% floor in `coverage-thresholds.json`. Each case is a fixture through the real `start`/`dispatch`:
+`osprey src/osprey/workbench/tests --run --quiet` and `python3 scripts/package_coverage.py --collect --project src/osprey/workbench` are the suite, at the 90% floor in `coverage-thresholds.json`. Each case is a fixture through the real `start`/`dispatch`:
 
 - every row of the notation table expands and is idempotent;
-- open then save of every `.lean` fixture (`AndSwap.lean`, `OpenAIStacks.lean` and the rest of `src/benchmarks/proof/tools/`) is byte-identical;
+- open then save of every `.lean` fixture (`AndSwap.lean`, `OpenAIStacks.lean` and the rest of `src/toolchain/benchmarks/proof/tools/`) is byte-identical;
 - a `LeanCheck` completion for the current revision fills `Checked`; a stale completion is dropped; a Lean error underlines Lean's range; a corrupted export is `Rejected` by the kernel; `sorry` is `Unchecked`;
 - no toolchain: every badge `Unchecked`, the reason shown, open and save still work;
 - a keystroke refreshes exactly `document` and `goal`;
 - the chalk and paper themes pass contrast on the exact pairs rendered;
 - a source-only version 2 workspace survives open/save, while obsolete versions and drawing data are explicitly refused;
 - `ProofTerms` presents `Nat.add_comm` with standard notation and refuses it for a same-named custom relation;
-- no module, test, golden or lesson contains the deleted formats (a grep gate over `src/workbench/`).
+- no module, test, golden or lesson contains the deleted formats (a grep gate over `src/osprey/workbench/`).
 
 Each host adds a smoke test: VS Code through the extension's `compiled SDK renderer E2E`, the browser through a headless page, the native host through the Apple simulator, each opening `AndSwap.lean` and seeing a `Checked` badge with the toolchain present. The road test of plan 0041 is the acceptance: a mathematician new to Osprey writes and checks `and_swap` in a fresh `.lean` file in under ten minutes without documentation, recorded in `docs/reviews/review.md`.

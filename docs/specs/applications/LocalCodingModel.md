@@ -51,7 +51,7 @@ More accuracy: `UD-Q5_K_M` (19.8 GB) at 32K also totals about 23 GB. 16 GB machi
 - **[LLM-ARITH-IEEE]:** an `Arith` policy with IEEE semantics in kernels and a finite check on each token's logits, which faults the request instead of emitting garbage.
 - **[LLM-MATMUL-QUANT]:** a product of a quantized matrix and a `float32` matrix.
 - **[LLM-SPEED]:** at least 5 tokens per second on the M4 Max, and at least 25% of the Ollama baseline rate on the same quant.
-- **[LLM-MODEL-DELTANET] / [LLM-MODEL-ATTENTION] / [LLM-MODEL-ROPE] / [LLM-MODEL-CACHE]:** the `qwen3_5` text model split across `src/packages/transformers/src/qwen3_5_*.py`.
+- **[LLM-MODEL-DELTANET] / [LLM-MODEL-ATTENTION] / [LLM-MODEL-ROPE] / [LLM-MODEL-CACHE]:** the `qwen3_5` text model split across `src/osprey/packages/transformers/src/qwen3_5_*.py`.
 - **[LLM-MODEL-ORACLE]:** all activations within tolerance, on host and GPU handlers. This is what CI runs, and CI never downloads real weights.
 - **[LLM-MEMORY]:** peak RSS at or under 24 GB at full context, measured by the test. A local gate, since hosted runners can't hold this model.
 - **[LLM-TOKENIZER]:** NFC, the split pattern and ByteLevel in `@osprey/tokenizers`, using `@osprey/tiktoken`'s merge code so it isn't duplicated. Read the vocabulary and merges from GGUF metadata if the file is confirmed to hold them, so one file is enough.

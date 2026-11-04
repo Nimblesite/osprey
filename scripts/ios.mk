@@ -19,13 +19,13 @@ _runtime_ios_sim: _runtime_ios_sim_arc
 # GPUI can run Osprey kernels on the GPU ([GPU-DEVICE], [GPUI-HOST-TARGETS]).
 MACOS_GPU_FLAGS ?= -DOSPREY_GPU_METAL=1 -Icompiler/bin
 
-_runtime_macos: _runtime_macos_arc src/compiler/bin/gpu_shader_source.h
+_runtime_macos: _runtime_macos_arc src/toolchain/compiler/bin/gpu_shader_source.h
 	@OSPREY_RUNTIME_OBJC=gpu_metal bash scripts/ios-runtime.sh macosx arm64-apple-macos12.0 \
 		$(RTB)/libosprey_runtime_macos.a $(B) -DOSPREY_IOS $(MACOS_GPU_FLAGS) -- $(IOS_RT_SRC)
 
 define apple_arc_runtime
 .PHONY: _runtime_$(1)_arc
-_runtime_$(1)_arc: $(if $(4),src/compiler/bin/gpu_shader_source.h)
+_runtime_$(1)_arc: $(if $(4),src/toolchain/compiler/bin/gpu_shader_source.h)
 	@OSPREY_RUNTIME_SHIMS="$(MOBILE_ARC_SHIM_SRC)" OSPREY_RUNTIME_OBJC="$(4)" bash scripts/ios-runtime.sh $(2) $(3) \
 		$(RTB)/libosprey_runtime_$(1)_arc.a $(B) -DOSPREY_IOS $(if $(4),$(MACOS_GPU_FLAGS)) -- $(MOBILE_ARC_RT_SRC)
 endef
@@ -36,24 +36,24 @@ $(eval $(call apple_arc_runtime,macos,macosx,arm64-apple-macos12.0,gpu_metal))
 _test_macos:
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-macos.sh
 	@echo "==> [macos] golden stdout comparison on this Mac..."
-	@OSPREY_TARGET=macos zsh src/crates/run_test_corpus.sh
-	$(BIN) src/examples/macos/storage/test --run
-	OSPREY_MACOS_SKIP_BUILD=1 bash src/examples/macos/run.sh --smoke
+	@OSPREY_TARGET=macos zsh src/toolchain/crates/run_test_corpus.sh
+	$(BIN) src/osprey/examples/macos/storage/test --run
+	OSPREY_MACOS_SKIP_BUILD=1 bash src/osprey/examples/macos/run.sh --smoke
 
 _test_ios: _test_ios_goldens
 	/bin/bash scripts/test-runtime-memory.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/test-ios.sh
-	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_IOS_SKIP_BUILD=1 bash src/examples/ios/run.sh --smoke
+	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_IOS_SKIP_BUILD=1 bash src/osprey/examples/ios/run.sh --smoke
 
 ## _test_ios_goldens: the whole corpus, the same goldens, the mobile C ABI.
 ## Every program that the ios-sim target accepts is built as a library, linked
 ## into a C host and run in an iPhone simulator, then held to the byte-exact
 ## output the native backend produces. The rest report as named skips pinned in
-## src/tests/MOBILE_UNPORTABLE.txt — the same manifest Android is held to, because
+## src/osprey/tests/MOBILE_UNPORTABLE.txt — the same manifest Android is held to, because
 ## the two targets share one C ABI implementation and therefore one set of
 ## holes. Without this the target was gated by seven hand-picked programs,
 ## which cannot notice a boundary that truncates a string, loses a bool's high
 ## bits or miscompiles arithmetic inside an archive.
 _test_ios_goldens:
 	@echo "==> [ios-sim] golden stdout comparison in the simulator..."
-	@OSPREY_TARGET=ios-sim zsh src/crates/run_test_corpus.sh
+	@OSPREY_TARGET=ios-sim zsh src/toolchain/crates/run_test_corpus.sh

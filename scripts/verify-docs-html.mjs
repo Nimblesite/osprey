@@ -26,7 +26,7 @@ const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..')
 // an ES import resolves from THIS file's directory rather than the caller's. Ask
 // each subproject that already installs it, and say which ones were tried when
 // none has it: a gate that cannot run must fail, never quietly report success.
-const PLAYWRIGHT_HOSTS = ['src/examples/projects/modules/e2e', 'website'];
+const PLAYWRIGHT_HOSTS = ['src/osprey/examples/projects/modules/e2e', 'website'];
 const loadChromium = () => {
   for (const host of PLAYWRIGHT_HOSTS) {
     const anchor = path.join(REPO, host, 'package.json');
@@ -75,11 +75,11 @@ for (const theme of THEMES) {
     '--docs-page', path.join(WORK, 'guides'),
     '--docs-css', path.join(WORK, 'brand.css'),
     '--docs-css', path.join(WORK, 'override.css'),
-    path.join(REPO, 'src/examples/projects/modules'),
+    path.join(REPO, 'src/osprey/examples/projects/modules'),
   ]);
   // …and without, so the themes can be compared as themselves rather than as
   // the override that was deliberately forced on all three above.
-  generate(`plain-${theme}`, ['--docs-theme', theme, path.join(REPO, 'src/examples/projects/modules')]);
+  generate(`plain-${theme}`, ['--docs-theme', theme, path.join(REPO, 'src/osprey/examples/projects/modules')]);
 }
 generate('site-symbols', [path.join(WORK, 'symbols')]);
 

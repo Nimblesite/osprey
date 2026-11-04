@@ -1,7 +1,7 @@
 """CPython oracle for @osprey/sklearn: metrics, preprocessing and model
 selection over array-likes (lists), compared against scikit-learn.
 
-Writes src/packages/sklearn/tests/expected.py, which the suite compares the port
+Writes src/osprey/packages/sklearn/tests/expected.py, which the suite compares the port
 against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python scripts/oracles/sklearn.py`.
 """
@@ -254,7 +254,7 @@ def main():
         VERSION,
         cases,
     )
-    print(f"wrote {len(cases)} constants to src/packages/sklearn/tests/expected.py")
+    print(f"wrote {len(cases)} constants to src/osprey/packages/sklearn/tests/expected.py")
 
 
 if __name__ == "__main__":

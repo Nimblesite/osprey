@@ -9,7 +9,7 @@ Each flavor has its own declaration spelling; both lower to `Stmt::Extern`.
 ABI mapping, link directives, and linking are shared after that boundary
 ([FLAVOR-BOUNDARY]).
 
-For an iOS or macOS application, the compiler also exposes Osprey functions to a C/Swift host: `--target=ios`, `--target=ios-sim` and `--target=macos` emit a static library with a generated scalar C header. Swift owns the platform APIs and supplies `extern fn` implementations. The narrower supported signatures, string ownership, initialization, and compile-time rejection of unsupported target features are specified by the [iOS application target](../platforms/0038-iOSTarget.md), with a runnable [SwiftUI example](../../../src/examples/ios) and a [Mac storage example](../../../src/examples/macos) that calls Swift. General native FFI features below must not be assumed available across that target's host boundary.
+For an iOS or macOS application, the compiler also exposes Osprey functions to a C/Swift host: `--target=ios`, `--target=ios-sim` and `--target=macos` emit a static library with a generated scalar C header. Swift owns the platform APIs and supplies `extern fn` implementations. The narrower supported signatures, string ownership, initialization, and compile-time rejection of unsupported target features are specified by the [iOS application target](../platforms/0038-iOSTarget.md), with a runnable [SwiftUI example](../../../src/osprey/examples/ios) and a [Mac storage example](../../../src/osprey/examples/macos) that calls Swift. General native FFI features below must not be assumed available across that target's host boundary.
 
 ## Link Directives [FFI-LINK-DIRECTIVES]
 
@@ -26,7 +26,7 @@ it. Invalid library names or paths therefore fail in the compiler driver rather
 than executing as commands.
 
 A directive may name the operating system whose native executables it links:
-`// @link(windows): ospgfx` and `// @linkdir(windows): src/examples/graphics` apply
+`// @link(windows): ospgfx` and `// @linkdir(windows): src/osprey/examples/graphics` apply
 when the compiler builds on Windows and are ignored elsewhere, so shared source
 can carry one platform's library. `windows`, `macos` and `linux` are recognized.
 
@@ -45,7 +45,7 @@ Osprey function values retain their normal calling convention. A wrapper around 
 
 ## Numeric widths [FFI-NUMERIC-WIDTH]
 
-An `extern` parameter or return of a numeric type crosses the boundary as the C type of its row in [TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized): the LLVM type and the C type both come from the one numeric table (`src/crates/osprey-types/src/numeric.rs`), and the mobile ABI tables read the same row. `bool` remains `i1`.
+An `extern` parameter or return of a numeric type crosses the boundary as the C type of its row in [TYPE-NUMERIC-SIZED](../language/0004-TypeSystem.md#sized-numeric-types--type-numeric-sized): the LLVM type and the C type both come from the one numeric table (`src/toolchain/crates/osprey-types/src/numeric.rs`), and the mobile ABI tables read the same row. `bool` remains `i1`.
 
 | Type | LLVM | C | Parameter ABI |
 | --- | --- | --- | --- |
@@ -110,7 +110,7 @@ extern fn osprey_tls_close(handle: int) -> int
 extern fn osprey_net_local_address(host: string, port: int) -> string
 ```
 
-`osprey_tls_connect` returns a handle of at least 1, or a negative reason: `-1` bad argument, `-2` the host does not resolve, `-3` no socket, `-4` refused or timed out, `-5` all 64 sessions in use, `-6` no TLS context, `-7` handshake failed. `osprey_tls_send_hex` returns `0`, `-1` for an unknown handle, `-2` for text that is not hex, or `-3` when the write failed. `osprey_tls_recv_hex` returns exactly `count` bytes, or `""` when they did not all arrive in time. `osprey_tls_status` then gives `0` ok, `1` timed out, `2` the peer closed, `3` failed, or `-1` for an unknown handle. A timed-out read keeps the bytes it has, so the next read of the same count resumes the frame. `osprey_net_local_address` names the local IPv4 interface that routes to a host, or `""`. A program that names any of these links the HTTP archive and OpenSSL. `src/compiler/runtime/net_runtime_tests.c` tests each result code against a loopback OpenSSL server.
+`osprey_tls_connect` returns a handle of at least 1, or a negative reason: `-1` bad argument, `-2` the host does not resolve, `-3` no socket, `-4` refused or timed out, `-5` all 64 sessions in use, `-6` no TLS context, `-7` handshake failed. `osprey_tls_send_hex` returns `0`, `-1` for an unknown handle, `-2` for text that is not hex, or `-3` when the write failed. `osprey_tls_recv_hex` returns exactly `count` bytes, or `""` when they did not all arrive in time. `osprey_tls_status` then gives `0` ok, `1` timed out, `2` the peer closed, `3` failed, or `-1` for an unknown handle. A timed-out read keeps the bytes it has, so the next read of the same count resumes the frame. `osprey_net_local_address` names the local IPv4 interface that routes to a host, or `""`. A program that names any of these links the HTTP archive and OpenSSL. `src/toolchain/compiler/runtime/net_runtime_tests.c` tests each result code against a loopback OpenSSL server.
 
 `[FFI-TLS-UNVERIFIED]` The session does not verify the peer. It exists for local devices with self-signed certificates, such as a Cast device on port 8009. `httpCreateClient` keeps mandatory verification for `https://` ([HTTP-STATUS-CLIENT](../runtime/0014-HTTP.md#status-only-client-http-status-client)).
 
@@ -138,9 +138,9 @@ extern fn osprey_media_render(audio: string) -> string
 extern fn osprey_media_unrender(folder: string) -> int
 ```
 
-`osprey_media_render` makes a fresh `osprey-cast.*` folder under `TMPDIR` and at once writes `media.m3u8`: a complete VOD playlist of 4-second segments, computed from the duration `ffprobe` reports, so the receiver knows the whole length and can seek straight away. It then starts `ffmpeg` in the background. ffmpeg draws a constant-Q spectrum of the audio at 1280×720 and 30 fps and cuts `segNNNNN.ts` files on exactly those 4-second keyframes, each written under a temporary name and renamed when it is complete. A [FFI-FILE-SERVER-FOLDER] server on the folder waits for a segment that is not there yet. Rendering runs far faster than playback, so the wait happens only after a seek far ahead. Render returns the folder, or `""` when the file does not exist, ffmpeg or ffprobe is not on the `PATH`, or the platform has no `posix_spawn` (Windows). The sender then casts the audio as it is. `osprey_media_unrender` stops ffmpeg and deletes the folder, returning `0`, or `-1` for anything but a folder this process's render made and has not yet stopped. The runtime keeps its own record of each folder and child. It reads nothing from disk to decide what to stop, so a planted folder can't get a process killed or files deleted. At most 16 renders run at once, and render returns `""` past that. `src/compiler/runtime/net_runtime_tests.c` serves a folder over loopback, and `@osprey/chromecast` reaches both functions through its `Wire` effect.
+`osprey_media_render` makes a fresh `osprey-cast.*` folder under `TMPDIR` and at once writes `media.m3u8`: a complete VOD playlist of 4-second segments, computed from the duration `ffprobe` reports, so the receiver knows the whole length and can seek straight away. It then starts `ffmpeg` in the background. ffmpeg draws a constant-Q spectrum of the audio at 1280×720 and 30 fps and cuts `segNNNNN.ts` files on exactly those 4-second keyframes, each written under a temporary name and renamed when it is complete. A [FFI-FILE-SERVER-FOLDER] server on the folder waits for a segment that is not there yet. Rendering runs far faster than playback, so the wait happens only after a seek far ahead. Render returns the folder, or `""` when the file does not exist, ffmpeg or ffprobe is not on the `PATH`, or the platform has no `posix_spawn` (Windows). The sender then casts the audio as it is. `osprey_media_unrender` stops ffmpeg and deletes the folder, returning `0`, or `-1` for anything but a folder this process's render made and has not yet stopped. The runtime keeps its own record of each folder and child. It reads nothing from disk to decide what to stop, so a planted folder can't get a process killed or files deleted. At most 16 renders run at once, and render returns `""` past that. `src/toolchain/compiler/runtime/net_runtime_tests.c` serves a folder over loopback, and `@osprey/chromecast` reaches both functions through its `Wire` effect.
 
 ## Databases Are Libraries [FFI-NO-DB-BUILTINS]
 
 Database access is not compiler surface. Database drivers use `extern fn`
-declarations; the SQLite example is tested in `src/tests/regressions/db/`.
+declarations; the SQLite example is tested in `src/osprey/tests/regressions/db/`.

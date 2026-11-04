@@ -12,7 +12,7 @@ export function registerProofContracts(proof) {
 
 function assertProofWorkflow(proof) {
   assert.match(proof, /needs: \[changes, build\]/)
-  // src/examples/proof/** classifies as code and src/benchmarks/proof/** as
+  // src/osprey/examples/proof/** classifies as code and src/toolchain/benchmarks/proof/** as
   // benchmarks; both outputs gate the job exactly as the changes job gates
   // its own benchmark steps.
   assert.match(proof, /needs\.changes\.outputs\.code == 'true' \|\| needs\.changes\.outputs\.benchmarks == 'true'/)
@@ -22,9 +22,9 @@ function assertProofWorkflow(proof) {
   // release (`stable` floats) and a non-zero exit is never softened. The pin
   // lives in the tools' lean-toolchain, which the job installs and the tools
   // cache key hashes, so the two cannot disagree.
-  assert.match(proof, /--default-toolchain "\$\(cat src\/benchmarks\/proof\/tools\/lean-toolchain\)"/)
-  assert.match(readFileSync('src/benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
-  assert.match(proof, /hashFiles\([^)]*src\/benchmarks\/proof\/tools\/lean-toolchain/)
+  assert.match(proof, /--default-toolchain "\$\(cat src\/toolchain\/benchmarks\/proof\/tools\/lean-toolchain\)"/)
+  assert.match(readFileSync('src/toolchain/benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
+  assert.match(proof, /hashFiles\([^)]*src\/toolchain\/benchmarks\/proof\/tools\/lean-toolchain/)
   assert.doesNotMatch(proof, /--default-toolchain stable/)
   assert.doesNotMatch(proof, /continue-on-error/)
   assert.doesNotMatch(proof, /\|\| true/)
@@ -42,7 +42,7 @@ function assertProofCommands(proof) {
 
 function assertProofGraph() {
   const graph = readFileSync('scripts/make/proof.mk', 'utf8')
-  assert.match(graph, /_test_proof_ci: _test_proof_kernel _test_disciplines \$\(PROOF_CORPUS_TARGETS\)\n\tOSPREY_BIN="\$\(abspath \$\(BIN\)\)" zsh benchmarks\/proof\/run\.sh/)
+  assert.match(graph, /_test_proof_ci: _test_proof_kernel _test_disciplines \$\(PROOF_CORPUS_TARGETS\)\n\tOSPREY_BIN="\$\(abspath \$\(BIN\)\)" zsh src\/toolchain\/benchmarks\/proof\/run\.sh/)
   assert.match(graph, /PROOF_CORPUS_TARGETS := _test_proof_openai _test_proof_lean_core _test_proof_unicode/)
   assert.match(graph, /PROOF_BATCH_TARGETS := _test_proof_batch_gc _test_proof_batch_arc _test_proof_batch_wasm/)
   assert.match(graph, /\$\(PROOF_CORPUS_TARGETS\): \$\(PROOF_BATCH_TARGETS\)/)

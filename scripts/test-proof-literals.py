@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 SPEC = importlib.util.spec_from_file_location("proof_openai", ROOT / "scripts/proof-openai.py")
 PROOF = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(PROOF)
-GROUP = json.loads((ROOT / "src/examples/proof/kernel/exports/string_cases.json").read_text())
+GROUP = json.loads((ROOT / "src/osprey/examples/proof/kernel/exports/string_cases.json").read_text())
 
 
 def commands():

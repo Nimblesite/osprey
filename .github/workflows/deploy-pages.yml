@@ -54,7 +54,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          # 24 because `make -C src/website wasm-site` runs the modules under `node:wasi`,
+          # 24 because `make -C src/toolchain/website wasm-site` runs the modules under `node:wasi`,
           # whose cached memory backing store goes stale on `memory.grow`
           # before Node 24 — see the comment on the ci.yml wasm job.
           node-version: "24"
@@ -87,24 +87,24 @@ jobs:
           wasm-ld --version
 
       - name: Install website dependencies
-        working-directory: ./src/website
+        working-directory: ./src/toolchain/website
         run: npm ci
 
       - name: Build runtimes and website WebAssembly demo
-        run: make _runtime && make -C src/website wasm-site
+        run: make _runtime && make -C src/toolchain/website wasm-site
 
       - name: Build website (regenerates reference docs from the compiler)
-        working-directory: ./src/website
+        working-directory: ./src/toolchain/website
         run: npm run build
 
       # Gate the live deploy on the Playwright e2e suite — a broken or visually
       # regressed site never reaches production.
       - name: Install Playwright browser
-        working-directory: ./src/website
+        working-directory: ./src/toolchain/website
         run: npx playwright install --with-deps chromium
 
       - name: End-to-end tests
-        working-directory: ./src/website
+        working-directory: ./src/toolchain/website
         run: npx playwright test
 
       - name: Setup Pages
@@ -113,7 +113,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: src/website/_site
+          path: src/toolchain/website/_site
 
       - name: Deploy to GitHub Pages
         id: deployment

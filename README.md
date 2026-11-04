@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/website/src/assets/images/logo.png" alt="Osprey logo" width="120" />
+  <img src="src/toolchain/website/src/assets/images/logo.png" alt="Osprey logo" width="120" />
 </p>
 
 # Osprey
@@ -60,17 +60,17 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 
 | Start here | What you will find |
 | --- | --- |
-| [src/examples/](src/examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
-| [src/crates/](crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
-| [src/packages/](src/packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
-| [src/compiler/runtime/](src/compiler/runtime) | C runtime and GPU adapters |
-| [src/tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
-| [src/tests/](tests) | Default and ML language suites with shared golden output |
+| [src/osprey/examples/](src/osprey/examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
+| [src/toolchain/crates/](crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
+| [src/osprey/packages/](src/osprey/packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
+| [src/toolchain/compiler/runtime/](src/toolchain/compiler/runtime) | C runtime and GPU adapters |
+| [src/toolchain/tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
+| [src/osprey/tests/](tests) | Default and ML language suites with shared golden output |
 | [docs/](docs/README.md) | Specifications, delivery plans and contributor architecture |
-| [src/website/](website) | Language guides, reference pages and public website |
-| [src/vscode-extension/](src/vscode-extension/README.md), [src/webcompiler/](webcompiler) | Editor integration and online compiler |
+| [src/toolchain/website/](website) | Language guides, reference pages and public website |
+| [src/toolchain/vscode-extension/](src/toolchain/vscode-extension/README.md), [src/toolchain/webcompiler/](webcompiler) | Editor integration and online compiler |
 | [scripts/](scripts/README.md) | Build rules, validation, platform tooling and packaging support |
-| [docs/book/](docs/book/README.md), [src/benchmarks/](src/benchmarks/README.md) | The Osprey book and measured comparisons |
+| [docs/book/](docs/book/README.md), [src/toolchain/benchmarks/](src/toolchain/benchmarks/README.md) | The Osprey book and measured comparisons |
 
 The [repository map](docs/contributing/repository-map.md) explains the compilation pipeline, build entry points and where a change belongs. The [contributing guide](CONTRIBUTING.md) covers setup and coordination.
 
@@ -85,11 +85,11 @@ make ci
 
 Run these from the repository root. The compiler is written to `target/release/osprey`. The root Makefile defines every public target; their configuration and private steps live in `scripts/make/`.
 
-[Hunt](src/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C src/tests/hunt hunt FILE=src/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/packages registry-test` runs its separate suites.
+[Hunt](src/toolchain/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/toolchain/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/osprey/packages registry-test` runs its separate suites.
 
 ## Language and applications
 
-- **Effects:** typed requests, reusable value handlers, native single-shot control operations and static interpretation. [Guide](src/website/src/docs/algebraic-effects.md).
+- **Effects:** typed requests, reusable value handlers, native single-shot control operations and static interpretation. [Guide](src/toolchain/website/src/docs/algebraic-effects.md).
 - **Types:** inference, algebraic data types, exhaustive matching and explicit `Result` failures.
 - **Any syntax, one language:** every flavor's concrete syntax tree lowers into one canonical AST, so types, effects and project modules are shared. Default braces (`.osp`), ML layout (`.ospml`) and the [Python flavor](https://www.ospreylang.dev/docs/python-flavor/) (`.py`, Osprey that looks like Python) ship today and mix in one project.
 - **Arithmetic:** integer faults require an explicit `Arith` policy. [Contract](docs/specs/language/0037-ArithmeticEffects.md).
@@ -97,8 +97,8 @@ Run these from the repository root. The compiler is written to `target/release/o
 
 GC is the native default to avoid ARC's per-ownership-change reference-count work, at the cost of deferred reclamation and collection pauses. Choose ARC for prompt reclamation, Windows or allocating fibers; neither backend is universally faster. See [memory choices and limits](docs/specs/compiler/0018-MemoryManagement.md#backend-selection-mem-backends).
 
-[Talon Bank](src/examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](src/examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](src/examples/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
+[Talon Bank](src/osprey/examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](src/osprey/examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](src/osprey/examples/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
 
-Dynamic control effects require native execution. WebAssembly and mobile support value handlers and static discharge; unsupported capabilities are rejected. Full scoped effect rows and reusable continuations remain unfinished. See [feature status](src/website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
+Dynamic control effects require native execution. WebAssembly and mobile support value handlers and static discharge; unsupported capabilities are rejected. Full scoped effect rows and reusable continuations remain unfinished. See [feature status](src/toolchain/website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
 
 MIT licensed. See [LICENSE](LICENSE) and the [release process](docs/RELEASING.md).

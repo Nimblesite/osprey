@@ -1,2 +1,0 @@
-# src/llm/eval dependencies for plan 0049 Phase 0 [LLM-BASELINE]; stdlib otherwise.
-jsonschema==4.26.0

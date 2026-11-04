@@ -16,9 +16,9 @@ function executable(root, name, mode) {
 
 function prepare(root) {
   for (const source of ['kernel', 'export_check']) {
-    const destination = join(root, 'src/examples/proof', source)
+    const destination = join(root, 'src/osprey/examples/proof', source)
     mkdirSync(destination, { recursive: true })
-    copyFileSync(`src/examples/proof/${source}/expectedoutput`, join(destination, 'expectedoutput'))
+    copyFileSync(`src/osprey/examples/proof/${source}/expectedoutput`, join(destination, 'expectedoutput'))
   }
   executable(root, 'target/osprey', 'compiler')
   executable(root, 'bin/node', 'wasm')
@@ -55,14 +55,14 @@ export function runSchedule(target, environment = {}) {
 }
 
 export function benchmarkSetup(compiler) {
-  const source = readFileSync('src/benchmarks/proof/run.sh', 'utf8')
+  const source = readFileSync('src/toolchain/benchmarks/proof/run.sh', 'utf8')
   const boundary = source.indexOf('\nhave()')
   if (boundary < 0) throw new Error('proof benchmark setup boundary moved')
   const script = source.slice(0, boundary)
   const env = { ...process.env }
   delete env.OSPREY_BIN
   if (compiler !== undefined) env.OSPREY_BIN = compiler
-  return spawnSync('zsh', ['-c', script + '\nprint -rn -- "$OSP"', resolve('src/benchmarks/proof/run.sh')], { encoding: 'utf8', env })
+  return spawnSync('zsh', ['-c', script + '\nprint -rn -- "$OSP"', resolve('src/toolchain/benchmarks/proof/run.sh')], { encoding: 'utf8', env })
 }
 
 function barrier(root, memory) {
@@ -76,7 +76,7 @@ function barrier(root, memory) {
 
 function output(root, source) {
   if (source.endsWith('/tests')) return `passed=400 failed=${process.env.FIXTURE_BAD_TAP ? 1 : 0}\n`
-  return readFileSync(join(root, 'src/examples/proof', source === '.' ? 'export_check' : 'kernel', 'expectedoutput'), 'utf8')
+  return readFileSync(join(root, 'src/osprey/examples/proof', source === '.' ? 'export_check' : 'kernel', 'expectedoutput'), 'utf8')
 }
 
 function compiler(args) {
@@ -84,7 +84,7 @@ function compiler(args) {
   const source = args[0]
   const memory = args.includes('--target=wasm32') ? 'wasm32' : args.includes('--memory=arc') ? 'arc' : 'gc'
   appendFileSync(join(root, 'calls'), JSON.stringify({ source, memory }) + '\n')
-  if (source === 'src/examples/proof/kernel') barrier(root, memory)
+  if (source === 'src/osprey/examples/proof/kernel') barrier(root, memory)
   if (process.env.FIXTURE_FAIL_BACKEND === memory) process.exit(17)
   if (!args.includes('--compile')) return process.stdout.write(output(root, source))
   writeFileSync(args[args.indexOf('-o') + 1], JSON.stringify({ source }))

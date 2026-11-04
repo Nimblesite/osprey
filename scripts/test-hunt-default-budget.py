@@ -22,7 +22,7 @@ class DefaultBudgetTests(unittest.TestCase):
             with self.subTest(memory=memory, program=name):
                 out = root/'target/hunt-default-budget-regression'/f'{memory}-{name}-{time.time_ns()}'
                 process = subprocess.run([
-                    str(root/'target/release/osprey'), 'hunt', f'src/tests/hunt/{name}.osp',
+                    str(root/'target/release/osprey'), 'hunt', f'src/osprey/tests/hunt/{name}.osp',
                     f'--memory={memory}',
                     '--json', '--quiet', '--no-replay', '--max-time', '30', '--out', str(out),
                 ], cwd=root, capture_output=True, text=True, timeout=150)
@@ -30,14 +30,14 @@ class DefaultBudgetTests(unittest.TestCase):
                 report = json.loads(process.stdout)
                 self.assertEqual(report['memory'], memory)
                 validate(report)
-                self.assertEqual(actual_findings(report), expected_findings(root/f'src/tests/hunt/{name}.expected'))
+                self.assertEqual(actual_findings(report), expected_findings(root/f'src/osprey/tests/hunt/{name}.expected'))
                 self.assertEqual(process.returncode, int(bool(report['findings'])))
 
     def test_safe_manifest_gate_rejects_a_real_reproduced_crash(self):
         root = Path(__file__).resolve().parent.parent
         out = root/'target/hunt-manifest-regression'/f'run-{time.time_ns()}'
         out.mkdir(parents=True, exist_ok=True)
-        programs = ['src/tests/hunt/json_empty.osp', 'src/tests/hunt/crash.osp']
+        programs = ['src/osprey/tests/hunt/json_empty.osp', 'src/osprey/tests/hunt/crash.osp']
         manifest = {'version': 1, 'programs': programs, 'limits': {'wallTimeSeconds': 10, 'engineTimeSeconds': 8, 'inputBytesPerStream': 2}}
         (out/'manifest.json').write_text(json.dumps(manifest))
         process = subprocess.run([sys.executable, str(root/'scripts/hunt_sample.py'), '--manifest', str(out/'manifest.json'), '--out', str(out/'runs'), '--jobs', '1'], cwd=root, capture_output=True, text=True, timeout=45)
@@ -48,7 +48,7 @@ class DefaultBudgetTests(unittest.TestCase):
         self.assertEqual(len(finding), 1)
         self.assertEqual(finding[0]['replay'], 'reproduced')
         self.assertEqual(finding[0]['stdin'], '9')
-        self.assertEqual(actual_findings(records[programs[1]]['report']), expected_findings(root/'src/tests/hunt/crash.expected'))
+        self.assertEqual(actual_findings(records[programs[1]]['report']), expected_findings(root/'src/osprey/tests/hunt/crash.expected'))
         self.assertEqual(json.loads((out/'runs/safe-runs.json').read_text())['programs'], [programs[0]])
         self.assertTrue((out/'runs/index.html').is_file())
 

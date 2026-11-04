@@ -1,4 +1,4 @@
-"""Generates src/packages/micrograd/tests/expected.py from the real micrograd.
+"""Generates src/osprey/packages/micrograd/tests/expected.py from the real micrograd.
 
 Runs in the development oracle venv (CPython + micrograd + torch), never in CI.
 It ports micrograd's own test cases (test/test_engine.py) and the README demo,
@@ -365,7 +365,7 @@ def main():
         "TANH_LOSSES": tanh_losses, "TANH_W": tanh_w,
         "TWICE_ONCE": twice_once, "TWICE_TWICE": twice_twice,
     })
-    print("wrote src/packages/micrograd/tests/expected.py")
+    print("wrote src/osprey/packages/micrograd/tests/expected.py")
 
 
 main()

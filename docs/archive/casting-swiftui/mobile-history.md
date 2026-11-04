@@ -2,9 +2,9 @@
 
 **⚠️ HISTORICAL DOCUMENT — NOT A REAL EXAMPLE. Kept for posterity only. ⚠️**
 
-Everything below this banner is the verbatim text of `src/examples/casting/mobile.md` as it stood at commit `ed6d8794`, immediately before the SwiftUI casting renderer was retired. It describes the **retired implementations**: the SwiftUI iOS renderer and the Java Android views. None of its checked boxes, test passes, screenshots, coverage numbers or physical-device notes are evidence about the active apps, which now render through the same shared Rust `src/hosts/gpui` code as the desktop ([plan 0053](../../docs/plans/0053-casting-gpui-mobile.md)).
+Everything below this banner is the verbatim text of `src/osprey/examples/casting/mobile.md` as it stood at commit `ed6d8794`, immediately before the SwiftUI casting renderer was retired. It describes the **retired implementations**: the SwiftUI iOS renderer and the Java Android views. None of its checked boxes, test passes, screenshots, coverage numbers or physical-device notes are evidence about the active apps, which now render through the same shared Rust `src/toolchain/hosts/gpui` code as the desktop ([plan 0053](../../docs/plans/0053-casting-gpui-mobile.md)).
 
-Do not restore this implementation, treat its results as current, or use it as a starting point for new work. The former sources are in [source.tar.gz](source.tar.gz); see the [archive README](README.md). Paths, commands and relative links inside the record below resolved against `src/examples/casting/` at the time and are not maintained here. The active status and mandatory checklist live in [src/examples/casting/mobile.md](../../src/examples/casting/mobile.md).
+Do not restore this implementation, treat its results as current, or use it as a starting point for new work. The former sources are in [source.tar.gz](source.tar.gz); see the [archive README](README.md). Paths, commands and relative links inside the record below resolved against `src/osprey/examples/casting/` at the time and are not maintained here. The active status and mandatory checklist live in [src/osprey/examples/casting/mobile.md](../../src/osprey/examples/casting/mobile.md).
 
 ---
 
@@ -14,9 +14,9 @@ Both native apps build and run in the simulator/emulator. All three skins pass n
 
 ## Shared boundary [CAST-MOBILE-ABI]
 
-`make -C src/targets/tests casting-mobile-build TARGET=ios-sim` builds the ARC runtime and the existing casting library. The other targets are `ios`, `android-arm64` and `android-x64`. The output is `build/<target>/libOspreyApp.a`. The native shell must implement `native_slice` and `native_shape`, link the Cast networking services, and drive the resident start/dispatch boundary.
+`make -C src/toolchain/targets/tests casting-mobile-build TARGET=ios-sim` builds the ARC runtime and the existing casting library. The other targets are `ios`, `android-arm64` and `android-x64`. The output is `build/<target>/libOspreyApp.a`. The native shell must implement `native_slice` and `native_shape`, link the Cast networking services, and drive the resident start/dispatch boundary.
 
-`make -C src/targets/android casting-build` builds a universal ARM64/x64 APK. Both JNI libraries are relinked before packaging; a SHA-256 receipt records their archive, header, C sources, build recipe and output bytes. The installed-package gate verifies current receipts, both ELF architectures, the exact freshly stripped libraries and the machine document. It rejects missing or empty receipts, changed inputs and stale binaries. The universal APK passes the complete ARM64 native journey, unchanged goldens and Android lint, including ChromeOS ABI support. x64 execution remains unverified on this ARM64 host.
+`make -C src/toolchain/targets/android casting-build` builds a universal ARM64/x64 APK. Both JNI libraries are relinked before packaging; a SHA-256 receipt records their archive, header, C sources, build recipe and output bytes. The installed-package gate verifies current receipts, both ELF architectures, the exact freshly stripped libraries and the machine document. It rejects missing or empty receipts, changed inputs and stale binaries. The universal APK passes the complete ARM64 native journey, unchanged goldens and Android lint, including ChromeOS ABI support. x64 execution remains unverified on this ARM64 host.
 
 ## Delivery checklist [CAST-MOBILE-DELIVERY]
 
@@ -86,7 +86,7 @@ The visible iOS suite also discovers a real Bonjour advertisement published by a
 
 A physical iPhone is paired and has Developer Mode enabled. The current production ARM64 app builds with warnings as errors, was signed with the installed development identity and matching provisioning profile, passes `codesign --verify --strict` and installed successfully. Foreground launch was refused by SpringBoard with `FBSOpenApplicationErrorDomain` error 7 (`Locked`). CoreDevice reporting `passcodeRequired: false` did not prove the display was unlocked. Physical rendering and playback remain unverified. Android currently has emulator targets only. The workspace format check still fails in GPU compiler code, and the casting Make target fails on a deprecated Metal API in the runtime build; this branch is not ready to push.
 
-Entry points: `make -C src/targets/ios casting`, `make -C src/targets/android casting`, and each platform's `tests` directory with `casting` or `casting-headless`. Android selects a connected device with `OSPREY_ANDROID_SERIAL`; `OSPREY_BIN` selects the compiler binary.
+Entry points: `make -C src/toolchain/targets/ios casting`, `make -C src/toolchain/targets/android casting`, and each platform's `tests` directory with `casting` or `casting-headless`. Android selects a connected device with `OSPREY_ANDROID_SERIAL`; `OSPREY_BIN` selects the compiler binary.
 
 ## Native screenshot checks [CAST-MOBILE-GOLDENS]
 
@@ -94,7 +94,7 @@ The platform test targets compare both ready and restarted captures with one rev
 
 The checked references use an iPhone 17 simulator on iOS 27 at 1206 pixels wide and a Pixel 7 emulator on API 34 at 1080 pixels wide. Start the Android emulator with `-gpu swiftshader_indirect` in both visible and headless modes so the renderer is consistent. The host GPU backend produced an entirely black framebuffer while the control journey passed; the image gate correctly rejected that run. With SwiftShader, both Android modes match the reference exactly. Both iOS modes also match exactly. The visible iOS journey passes in Xcode 27's Device Hub, with native coverage and the same command, palette and screenshot gates. The shared simulator selector opens the chosen device in the selected Xcode's Simulator or Device Hub; headless targets explicitly disable opening a viewer. Tooling regressions cover both installations, paths containing spaces, missing viewers and preservation of device selection.
 
-Use `make -C src/targets/ios/tests casting-headless` or `make -C src/targets/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `src/examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.
+Use `make -C src/toolchain/targets/ios/tests casting-headless` or `make -C src/toolchain/targets/android/tests casting-headless` for comparison. Each platform also has `casting-update`, which runs the native journey, rewrites only the ready reference, and checks that restarting still matches it. Review the images under `src/osprey/examples/casting/goldens/<platform>` before committing an update. A missing reference or changed dimensions fails; tests never silently create a baseline. The runner uses the ffmpeg already required for its audio fixture, without an extra image-library dependency.
 
 ## Native coverage [CAST-MOBILE-COVERAGE]
 
