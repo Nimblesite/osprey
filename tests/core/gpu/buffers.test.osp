@@ -415,7 +415,7 @@ fn blockBodiedKernelCase() = {
 }
 /// [GPU-BUFFER-ELEM]: one index read back through gpuGet must equal the source list's element — the exact gpuGet round-trip for that index.
 fn denseRead(buffer, values, i) = match gpuGet(buffer, i) {
-    Success actual => match listGet(values, i) { Success expected => actual == expected Error _ => false }
+    Success { actual } => match listGet(values, i) { Success { expected } => actual == expected Error _ => false }
     Error _ => false
 }
 /// [GPU-BUFFER-ELEM]: an out-of-bounds gpuGet errors rather than yielding a sentinel element.
