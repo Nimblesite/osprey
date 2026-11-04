@@ -1,7 +1,8 @@
 /// [FAILURE-EXPLICIT] A read error fails the predicate with its reason.
 fn readSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
-    Error { message } => { check("GPU readback", "success", toString(message)) false }
+    Error { message } => { check("GPU readback", "success", toString(message))
+        false }
 }
 fn iotaOutcome(result) = match result { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
 // Aspirational GPU frontend parity. Flavor-equivalent programs must reach the

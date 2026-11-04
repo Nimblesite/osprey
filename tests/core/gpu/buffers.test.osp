@@ -1,7 +1,8 @@
 /// [FAILURE-EXPLICIT] A read error fails the predicate with its reason.
 fn readSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
-    Error { message } => { check("GPU readback", "success", toString(message)) false }
+    Error { message } => { check("GPU readback", "success", toString(message))
+        false }
 }
 /// [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs.
 fn withIndices(n, work) = match gpuIota(n) {

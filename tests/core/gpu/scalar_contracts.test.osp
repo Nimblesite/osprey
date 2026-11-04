@@ -1,7 +1,8 @@
 /// [FAILURE-EXPLICIT] A read error fails the predicate with its reason.
 fn readSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
-    Error { message } => { check("GPU readback", "success", toString(message)) false }
+    Error { message } => { check("GPU readback", "success", toString(message))
+        false }
 }
 // Scalar transfer conformance: inferred element types survive runtime lists,
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
