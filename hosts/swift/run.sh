@@ -14,7 +14,8 @@ if [ "${1:-}" = --build ]; then build_only=1; shift; fi
 if [ "${1:-}" = -- ]; then shift; fi
 
 mkdir -p "$here/build/app"
-"$compiler" "$app" --compile --target=macos --memory=arc --quiet -o "$here/build/app/libOspreyApp.a"
+# Packaging still checks types; advisory annotation proofs belong to analysis.
+"$compiler" "$app" --compile --target=macos --memory=arc --quiet --no-warnings -o "$here/build/app/libOspreyApp.a"
 symbols="$(nm "$here/build/app/libOspreyApp.a" 2>/dev/null)"
 for symbol in osprey_main osprey_app_start osprey_app_dispatch osprey_host_abi_version osprey_release_string; do
     grep -q " T _$symbol\$" <<<"$symbols" || { echo "The application does not export $symbol" >&2; exit 1; }

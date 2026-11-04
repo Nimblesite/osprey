@@ -223,7 +223,36 @@ def corpus_jobs(target, override=None):
         capture_output=True, text=True, check=False,
     )
 
+def swift_packaging_result(root):
+    host = root / "hosts/swift"
+    host.mkdir(parents=True)
+    launcher = host / "run.sh"
+    shutil.copyfile(ROOT / "hosts/swift/run.sh", launcher)
+    compiler = root / "compiler"
+    compiler.write_text("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$CAPTURE\"\n"
+                        "echo 'compile error sentinel' >&2\nexit 37\n")
+    compiler.chmod(0o755)
+    return subprocess.run(
+        ["bash", str(launcher), "--build"], timeout=10,
+        env=dict(os.environ, OSPREY_BIN=str(compiler),
+                 OSPREY_SWIFT_APP=str(root / "app with spaces"),
+                 CAPTURE=str(root / "arguments")), capture_output=True, text=True,
+    )
+
 class BuildFragments(unittest.TestCase):
+    def test_swift_packaging_skips_advice_and_preserves_compile_errors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = swift_packaging_result(root)
+            host, app = root / "hosts/swift", root / "app with spaces"
+            self.assertEqual(result.returncode, 37, result.stderr)
+            self.assertIn("compile error sentinel", result.stderr)
+            self.assertEqual((root / "arguments").read_text().splitlines(), [
+                str(app), "--compile", "--target=macos", "--memory=arc", "--quiet",
+                "--no-warnings", "-o", str(host / "build/app/libOspreyApp.a"),
+            ])
+            self.assertFalse((host / "build/app with spaces.app").exists())
+
     def test_task_panels_list_every_public_target_and_no_variable(self):
         fragments = [*ROOT.glob("scripts/make/*.mk"), *ROOT.glob("scripts/*.mk")]
         hidden = {f"{path.name}: {name}" for path in fragments for name in RULE.findall(path.read_text())
@@ -313,11 +342,13 @@ class SimulatorSelection(unittest.TestCase):
                 developer.mkdir(parents=True)
                 (root / "xcode-select").write_text('#!/bin/sh\nprintf "%s\\n" "$TEST_XCODE_DEVELOPER"\n')
                 (root / "open").write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$TEST_OPEN_LOG"\n')
-                for name in ["xcode-select", "open"]: (root / name).chmod(0o755)
+                for name in ["xcode-select", "open"]:
+                    (root / name).chmod(0o755)
                 env = dict(os.environ, PATH=folder + os.pathsep + os.environ["PATH"])
                 env.update(TEST_XCODE_DEVELOPER=str(developer), TEST_OPEN_LOG=str(root / "opened"))
                 env.pop("OSPREY_SIMULATOR_UDID", None)
-                if requested: env["OSPREY_SIMULATOR_UDID"] = requested
+                if requested:
+                    env["OSPREY_SIMULATOR_UDID"] = requested
                 result = subprocess.run(["bash", str(ROOT / "scripts/ios-simulator.sh")], env=env,
                                         text=True, capture_output=True, timeout=10)
                 if expected is None:
