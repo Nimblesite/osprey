@@ -226,7 +226,9 @@ fn rejoin(cg: &mut Codegen, join: &str) {
 /// index of `src` and each scalar result is stored at that index. The
 /// kernel's result `LType` is codegen-time knowledge, so the handle is
 /// retagged with it and downstream combinators recover the element without a
-/// kernel signature.
+/// kernel signature. A failed allocation or a negative launch status is an
+/// `Error` carrying the runtime reason, never a fabricated empty buffer
+/// ([FAILURE-EXPLICIT]).
 fn map_into(
     cg: &mut Codegen,
     src: &Value,
@@ -236,20 +238,46 @@ fn map_into(
     launch: impl FnOnce(&mut Codegen, &Value) -> Result<String>,
     mut apply: impl FnMut(&mut Codegen, Value, &str) -> Result<Value>,
 ) -> Result<Value> {
-    let pending = allocation::Pending::new(cg, len);
-    let out = &pending.value;
-    let done = launch(cg, out)?;
-    let join = host_fallback(cg, &done);
+    crate::extern_call::clear_io_error(cg);
+    let raw = allocation::raw(cg, len, GPU_OWNER);
+    let out = Value::handle(raw.clone(), GPU_OWNER.to_string());
+    crate::arc::own(cg, &out);
+    let done = launch(cg, &out)?;
+    let reason = crate::extern_call::take_io_error(cg);
+
+    let alloc_failed = cg.emit_reg(format!("icmp eq i8* {raw}, null"));
+    let launch_failed = cg.emit_reg(format!("icmp slt i32 {done}, 0"));
+    let failed = cg.emit_reg(format!("or i1 {alloc_failed}, {launch_failed}"));
+    let ran = cg.emit_reg(format!("icmp ne i32 {done}, 0"));
+    let skip = cg.emit_reg(format!("or i1 {ran}, {failed}"));
+    let (host, join) = (cg.fresh_label(), cg.fresh_label());
+    cg.emit(format!("br i1 {skip}, label %{join}, label %{host}"));
+    cg.start_block(&host);
     let mut mapped_ty = LType::I64;
     kernel_loop(cg, src, len, elem, |cg, arg, i| {
         let mapped = apply(cg, arg, i)?;
         mapped_ty = mapped.ty;
         let stored = scalar_word(cg, mapped, what)?;
-        buffer_set(cg, out, i, &stored.operand);
+        buffer_set(cg, &out, i, &stored.operand);
         Ok(())
     })?;
     rejoin(cg, &join);
-    pending.finish(cg, Some(mapped_ty))
+    let owner = elem_owner(Some(mapped_ty));
+    cg.fix_instruction(
+        &out.operand,
+        ", i64 8)",
+        &format!(", i64 {})", allocation::width(&owner)),
+    )?;
+    let buffer = out.with_owner(Some(owner));
+    let fallback = format!("{what}: the device could not run the kernel");
+    crate::result::make_result_if_err_because(
+        cg,
+        buffer,
+        LType::Ptr,
+        &failed,
+        Some(&fallback),
+        Some(&reason),
+    )
 }
 
 /// `(buffer, kernel)` — the preamble `gpuMap` and `gpuFilter` share: the source
@@ -412,9 +440,22 @@ fn gpu_get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
         "i8*, i64",
         &[&buf.operand, &index.operand],
     );
+    crate::extern_call::clear_io_error(cg);
     let raw = buffer_get(cg, &buf, &index.operand);
+    let reason = crate::extern_call::take_io_error(cg);
     let value = elem_value(cg, raw, tagged_elem(&buf));
-    crate::result::make_result_unless_in_bounds(cg, &inb, value, "gpuGet: index out of bounds")
+    let inner = value.ty;
+    let oob = cg.emit_reg(format!("icmp eq i32 {inb}, 0"));
+    let io = cg.emit_reg(format!("icmp ne i8* {reason}, null"));
+    let failed = cg.emit_reg(format!("or i1 {oob}, {io}"));
+    crate::result::make_result_if_err_because(
+        cg,
+        value,
+        inner,
+        &failed,
+        Some("gpuGet: index out of bounds"),
+        Some(&reason),
+    )
 }
 
 /// `gpuScan(buffer, initial, combine)` — inclusive prefix scan [GPU-SCAN]:

@@ -12,13 +12,14 @@ pub(super) fn declare(e: &mut TypeEnv) {
     poly(e, "toGpu", vec![0], vec![Type::list(t())], buf_t());
     poly(e, "fromGpu", vec![0], vec![buf_t()], Type::list(t()));
     poly(e, "gpuLength", vec![0], vec![buf_t()], i());
-    // [GPU-MAP] / [GPU-FOLD]
+    // [GPU-MAP] / [GPU-FOLD]: a launch failure is an Error, never a plain
+    // buffer ([FAILURE-EXPLICIT]).
     poly(
         e,
         "gpuMap",
         vec![0, 1],
         vec![buf_t(), Type::fun(vec![t()], v())],
-        Type::gpu_buffer(v()),
+        res(Type::gpu_buffer(v())),
     );
     poly(
         e,

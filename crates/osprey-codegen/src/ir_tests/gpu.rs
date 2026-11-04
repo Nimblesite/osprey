@@ -28,7 +28,7 @@ fn dense_buffer_allocations_follow_the_inferred_element_width() {
 #[test]
 fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
     // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
-    let ir = module("let values: List<bool> = [true, false]\nlet table = toGpu(values)\nlet mapped = gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false))\nprint(fromGpu(mapped))\n");
+    let ir = module("let values: List<bool> = [true, false]\nlet table = toGpu(values)\nlet mapped = gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false)) ?: table\nprint(fromGpu(mapped))\n");
     shows(
         &ir,
         &["GPU_GLOBAL const bool *in0", "GPU_GLOBAL const bool *u0"],
@@ -64,14 +64,14 @@ fn foreign_calls_fail_before_each_gpu_launch_form() {
 
 #[test]
 fn foreign_kernel_aliases_do_not_capture_a_nearer_local_function() {
-    let ir = module("extern fn importedWord(value: int) -> int\nfn main() = {\nlet importedWord = fn(value) => wrapMul(value, 2)\nlet selected = importedWord\nlet out = gpuMap(toGpu([3]), selected)\nprint(gpuLength(out))\n}\n");
+    let ir = module("extern fn importedWord(value: int) -> int\nfn main() = {\nlet importedWord = fn(value) => wrapMul(value, 2)\nlet selected = importedWord\nlet out = gpuMap(toGpu([3]), selected) ?: toGpu([0])\nprint(gpuLength(out))\n}\n");
     shows(&ir, &["mul i64"]);
     testkit::contents(&ir, &[], &["call i64 @importedWord("]);
 }
 
 #[test]
 fn named_device_callbacks_keep_their_defining_scope() {
-    let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    let out = toGpu([3.0]) |> gpuMap(fn(x) => caller(100.0, x))\n    print(gpuLength(out))\n}\n");
+    let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    let out = (toGpu([3.0]) |> gpuMap(fn(x) => caller(100.0, x))) ?: toGpu([0.0])\n    print(gpuLength(out))\n}\n");
     testkit::contents(&ir, &[], &["call i32 @osprey_gpu_declined("]);
     shows(&ir, &["0x4000000000000000ul"]);
 }
@@ -87,7 +87,7 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
     // symbol is defined exactly once however many elements run through it.
     let ir = module(
         "fn f() = {\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)\n\
+               let out = (toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
@@ -110,8 +110,8 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
 fn each_distinct_kernel_gets_its_own_symbol() {
     let ir = module(
         "fn f() = {\n\
-               let a = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)\n\
-               let b = a |> gpuMap(fn(v) => v + 1.0)\n\
+               let a = (toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)) ?: toGpu([0.0])\n\
+               let b = (a |> gpuMap(fn(v) => v + 1.0)) ?: toGpu([0.0])\n\
                gpuLength(b)\n\
              }\n\
              print(f())\n",
@@ -135,7 +135,7 @@ fn captures_become_leading_parameters_sorted_by_name() {
         "fn f() = {\n\
                let beta = 5.0\n\
                let alpha = 2.0\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => beta * v + alpha)\n\
+               let out = (toGpu([1.0, 2.0]) |> gpuMap(fn(v) => beta * v + alpha)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
@@ -154,7 +154,7 @@ fn a_captured_buffer_handle_travels_as_a_uniform() {
     let ir = module(
         "fn f() = {\n\
                let w = toGpu([10.0, 20.0])\n\
-               let out = gpuIota(2) |> gpuMap(fn(i) => gpuGet(w, i) ?: 0.0)\n\
+               let out = (gpuIota(2) |> gpuMap(fn(i) => gpuGet(w, i) ?: 0.0)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
@@ -191,7 +191,7 @@ fn a_named_kernel_reuses_its_own_definition() {
         // symbol for the loop to call.
         "fn twice(x: float) -> float = x * 2.0\n\
              fn f() = {\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(twice)\n\
+               let out = (toGpu([1.0, 2.0]) |> gpuMap(twice)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
@@ -203,7 +203,7 @@ fn a_named_kernel_reuses_its_own_definition() {
 
 #[test]
 fn a_known_let_bound_kernel_is_extracted() {
-    let ir = module("fn f() = { let k = fn(v) => v * 2.0\n let out = toGpu([1.0, 2.0]) |> gpuMap(k)\n gpuLength(out) }\nprint(f())\n");
+    let ir = module("fn f() = { let k = fn(v) => v * 2.0\n let out = (toGpu([1.0, 2.0]) |> gpuMap(k)) ?: toGpu([0.0])\n gpuLength(out) }\nprint(f())\n");
     assert_eq!(
         ir.matches("define internal double @__gpu_kernel_").count(),
         1,
@@ -225,7 +225,7 @@ fn a_closure_valued_kernel_keeps_its_cell_call() {
         "fn make(scale) = fn(v) => v * scale\n\
              fn f() = {\n\
                let k = make(2.0)\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(k)\n\
+               let out = (toGpu([1.0, 2.0]) |> gpuMap(k)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
@@ -253,13 +253,45 @@ fn a_result_returning_kernel_keeps_its_scalar_diagnostic() {
 }
 
 #[test]
+fn a_gpu_map_result_is_an_error_wrapped_buffer() {
+    // [FAILURE-EXPLICIT]: gpuMap returns Result<GpuBuffer<T>, Error>, so a
+    // plain-buffer use no longer type-checks — a launch failure is an Error the
+    // caller handles, never an unwritten buffer.
+    let err = compile_err(
+        "fn f() = {\n\
+               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)\n\
+               gpuLength(out)\n\
+             }\n\
+             print(f())\n",
+    );
+    assert!(err.to_string().contains("Result"), "{err}");
+}
+
+#[test]
+fn a_gpu_map_launch_failure_checks_the_negative_status_and_takes_its_reason() {
+    // [FAILURE-EXPLICIT]: `osprey_gpu_launch` returns -1 on a device failure,
+    // which codegen turns into an Error — never into "the device ran", the old
+    // `icmp ne` host-skip that published an unwritten buffer. The launch status
+    // is checked with a signed less-than and its reason taken from the channel.
+    let ir = module(
+        "fn f() = {\n\
+               let a = toGpu([1.0, 2.0])\n\
+               let out = a |> gpuMap(fn(v) => v * 2.0)\n\
+               gpuLength(out ?: a)\n\
+             }\n\
+             print(f())\n",
+    );
+    shows(&ir, &["icmp slt i32", "call i8* @osp_io_error_take()"]);
+}
+
+#[test]
 fn twin_flavors_number_their_kernels_identically() {
     // Kernel symbols come from a counter advanced in AST walk order, never
     // from a position or an identifier spelling [FLAVOR-IR-EQUIV].
     let default_ir = module(
         "fn f() = {\n\
                let m = 2.0\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v - m)\n\
+               let out = (toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v - m)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
@@ -267,7 +299,7 @@ fn twin_flavors_number_their_kernels_identically() {
     let ml_ir = ml_module(
         "f () =\n    \
                  m = 2.0\n    \
-                 out = toGpu [1.0, 2.0] |> gpuMap (\\v => v - m)\n    \
+                 out = (toGpu [1.0, 2.0] |> gpuMap (\\v => v - m)) ?: toGpu [0.0]\n    \
                  gpuLength out\n\
              \n\
              print (f ())\n",
@@ -359,14 +391,14 @@ fn a_float_function_by_name_is_an_extracted_kernel_in_both_flavors() {
     // intrinsic call — no closure cell, no environment [GPU-KERNEL-EXTRACT].
     let default_ir = module(
         "fn f() = {\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(exp)\n\
+               let out = (toGpu([1.0, 2.0]) |> gpuMap(exp)) ?: toGpu([0.0])\n\
                gpuLength(out)\n\
              }\n\
              print(f())\n",
     );
     let ml_ir = ml_module(
         "f () =\n    \
-                 out = toGpu [1.0, 2.0] |> gpuMap exp\n    \
+                 out = (toGpu [1.0, 2.0] |> gpuMap exp) ?: toGpu [0.0]\n    \
                  gpuLength out\n\
              \n\
              print (f ())\n",
