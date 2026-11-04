@@ -1854,6 +1854,7 @@ impl Checker {
                 }
             }
         }
+        let uses_before = self.builtin_uses.len();
         let answer = match params.as_slice() {
             [operand] if crate::arithmetic::absolute_operand(operand) => {
                 Some(self.infer_negation(operand))
@@ -1861,11 +1862,26 @@ impl Checker {
             [left, right] => Some(self.infer_arith(op, left, right, position)),
             _ => None,
         };
+        if op == "/" {
+            self.place_arithmetic_uses(name, site, uses_before);
+        }
         if let Some(answer) = answer {
             self.push_unify(&answer, &ret);
         }
         self.expr_position = outer_position;
         let _ = self.ctx.enter(outer);
+    }
+
+    /// Instantiation may decide division late; its diagnostics retain the
+    /// obligation's original position in the validation sequence.
+    fn place_arithmetic_uses(&mut self, name: &str, site: &Type, start: usize) {
+        let introduced = self.builtin_uses.split_off(start);
+        let at = self
+            .builtin_uses
+            .iter()
+            .position(|(pending, pending_site)| pending == name && pending_site == site)
+            .map_or(start, |index| index + 1);
+        drop(self.builtin_uses.splice(at..at, introduced));
     }
 
     /// [TYPE-NUMERIC-SAME-TYPE] An operator with a sized operand takes both at

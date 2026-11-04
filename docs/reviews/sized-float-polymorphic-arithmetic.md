@@ -62,3 +62,5 @@ The first wide run exposed a division `Result` regression (`good elvis = 0.0` in
 The full test command caught an IR mismatch in the new ML regression, corrected by spelling its parameter and argument tuples like the Default twin. The unchanged cross-flavor IR gate now passes. A separate RED negative-control test caught an overly broad removal of the numeric guard; the guard is retained, and only the deferred division result relation changes. The report's minimal example also needs the existing `Arith.divideByZero` handler to execute; with that policy installed it prints `0.75`.
 
 Final focused verification at `02d1c952`: all nine Default/ML/legacy golden comparisons pass again after restoring the fixed-width controls. Both code fixes and checklist updates are committed; the final `make test` receipt is `polymorphic-make-test-final.log`.
+
+The next full-suite pass reached the exact must-reject diagnostics gate and exposed ordering drift in the Default/ML `float_operand_constraint` cases. The checker now inserts late division diagnostics at their original obligation site; the complete rejection-golden gate passes with every golden unchanged.
