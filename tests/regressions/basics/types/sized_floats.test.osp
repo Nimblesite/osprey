@@ -215,7 +215,7 @@ print("${strict(fn() => toFloat32(1.0) / toFloat32(0.0))}")
 print("${strict(fn() => 1.0 / 0.0)}")
 print("${strict(fn() => toFloat16(1.0) % toFloat16(0.0))}")
 
-// [TYPE-NUMERIC-ARITH-WIDTH] Helpers infer their arithmetic width.
+/// [TYPE-NUMERIC-ARITH-WIDTH] Helpers infer their arithmetic width.
 fn generic32Add(a, b) = a + b
 fn generic32Sub(a, b) = a - b
 fn generic32Mul(a, b) = a * b

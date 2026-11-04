@@ -214,7 +214,7 @@ print "${strict (\() => toFloat32 1.0 / toFloat32 0.0)}"
 print "${strict (\() => 1.0 / 0.0)}"
 print "${strict (\() => toFloat16 1.0 % toFloat16 0.0)}"
 
-(* [TYPE-NUMERIC-ARITH-WIDTH] Helpers infer their arithmetic width. *)
+(** [TYPE-NUMERIC-ARITH-WIDTH] Helpers infer their arithmetic width. *)
 generic32Add (a, b) = a + b
 generic32Sub (a, b) = a - b
 generic32Mul (a, b) = a * b
