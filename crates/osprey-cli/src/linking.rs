@@ -96,7 +96,14 @@ const LIBM_SPELLINGS: [&str; 28] = [
 ];
 
 fn needs_libm(ir: &str) -> bool {
-    LIBM_SPELLINGS.iter().any(|spelling| ir.contains(spelling))
+    LIBM_SPELLINGS
+        .iter()
+        .any(|spelling| ir.contains(spelling) || ir.contains(&binary32_spelling(spelling)))
+}
+
+/// The `float32` form of a libm spelling: `@llvm.exp.f32` and `@tanhf(`.
+fn binary32_spelling(spelling: &str) -> String {
+    spelling.replace(".f64", ".f32").replace('(', "f(")
 }
 
 fn platform_flags(http: bool, libm: bool) -> Vec<String> {
@@ -349,6 +356,9 @@ mod tests {
             "call double @erf(double 1.0)",
             "call double @erfc(double 1.0)",
             "call double @hypot(double 1.0, double 2.0)",
+            "call float @tanhf(float 1.0)",
+            "call float @llvm.exp.f32(float 1.0)",
+            "call float @llvm.log.f32(float 1.0)",
         ] {
             assert!(needs_libm(ir), "{ir}");
         }
@@ -356,7 +366,7 @@ mod tests {
             "",
             "call double @llvm.sqrt.f64(double 1.0)",
             "%r = fadd double %a, %b",
-            "call float @tanhf(float 1.0)",
+            "call float @llvm.sqrt.f32(float 1.0)",
             "declare double @tanh2(double)",
             "call double @sinf(float 1.0)",
             "call double @powf(float 1.0, float 2.0)",

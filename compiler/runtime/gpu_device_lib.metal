@@ -17,6 +17,10 @@ long osprey_fault(GPU_GLOBAL ulong *fault, ulong code) {
 // Magnitudes as unsigned words: the device backends have no signed 64-bit
 // division, so every checked product, quotient and remainder works on these.
 ulong magnitude(long a) { return a < 0 ? 0ul - (ulong)a : (ulong)a; }
+// Functions, not comparisons in the template: at an unsigned row these are
+// always false, which a compiler rejects when written at the `long` cast.
+bool is_negative(long a) { return a < 0; }
+bool is_minus_one(long a) { return a == -1; }
 long signed_word(ulong magnitude_word, bool negative) {
     return negative ? (long)(0ul - magnitude_word) : (long)magnitude_word;
 }
@@ -40,7 +44,7 @@ T osprey_sub##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
     return overflow ? (T)osprey_fault(fault, FAULT_OVERFLOW) : (T)(U)r; \
 } \
 T osprey_mul##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
-    bool negative = SIGNED && (((long)a < 0) != ((long)b < 0)); \
+    bool negative = SIGNED && ((is_negative((long)a)) != (is_negative((long)b))); \
     Wide p = wide_product(SIGNED ? magnitude((long)a) : (ulong)(U)a, SIGNED ? magnitude((long)b) : (ulong)(U)b); \
     ulong limit = SIGNED ? (negative ? INTEGER_SIGN##SUFFIX : INTEGER_SIGN##SUFFIX - 1) : INTEGER_MASK##SUFFIX; \
     if (p.high != 0 || p.low > limit) return (T)osprey_fault(fault, FAULT_OVERFLOW); \
@@ -48,14 +52,14 @@ T osprey_mul##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
 } \
 T osprey_div##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
     if (b == 0) return (T)osprey_fault(fault, FAULT_REMAINDER_BY_ZERO); \
-    if (SIGNED && (ulong)(U)a == INTEGER_SIGN##SUFFIX && (long)b == -1) return (T)osprey_fault(fault, FAULT_OVERFLOW); \
+    if (SIGNED && (ulong)(U)a == INTEGER_SIGN##SUFFIX && is_minus_one((long)b)) return (T)osprey_fault(fault, FAULT_OVERFLOW); \
     ulong x = SIGNED ? magnitude((long)a) : (ulong)(U)a, y = SIGNED ? magnitude((long)b) : (ulong)(U)b; \
-    return (T)signed_word(x / y, SIGNED && (((long)a < 0) != ((long)b < 0))); \
+    return (T)signed_word(x / y, SIGNED && ((is_negative((long)a)) != (is_negative((long)b)))); \
 } \
 T osprey_rem##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
     if (b == 0) return (T)osprey_fault(fault, FAULT_REMAINDER_BY_ZERO); \
     ulong x = SIGNED ? magnitude((long)a) : (ulong)(U)a, y = SIGNED ? magnitude((long)b) : (ulong)(U)b; \
-    return (T)signed_word(x % y, SIGNED && (long)a < 0); \
+    return (T)signed_word(x % y, SIGNED && is_negative((long)a)); \
 } \
 T osprey_neg##SUFFIX(T a, GPU_GLOBAL ulong *fault) { \
     ulong x = (ulong)(U)a; \
@@ -63,7 +67,7 @@ T osprey_neg##SUFFIX(T a, GPU_GLOBAL ulong *fault) { \
     return overflow ? (T)osprey_fault(fault, FAULT_OVERFLOW) : (T)(U)(0ul - x); \
 } \
 T osprey_abs##SUFFIX(T a, GPU_GLOBAL ulong *fault) { \
-    return SIGNED && (long)a < 0 ? osprey_neg##SUFFIX(a, fault) : a; \
+    return SIGNED && is_negative((long)a) ? osprey_neg##SUFFIX(a, fault) : a; \
 }
 CHECKED_INTEGER(_i8, signed char, unsigned char, 8, 1)
 CHECKED_INTEGER(_i16, short, unsigned short, 16, 1)

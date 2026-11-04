@@ -374,30 +374,34 @@ static int sized_spelling(double value, int negative, uint32_t (*word)(double),
     return -1;
 }
 
+/* A NaN's sign is whatever the host's arithmetic left there (x86 sets it on
+ * 0/0, ARM does not) and printf shows it, so only the name is spelled. */
+static int nonfinite_spelling(double d, char *buf, size_t cap) {
+    return snprintf(buf, cap, "%s", d != d ? "nan" : d < 0 ? "-inf" : "inf");
+}
+
 int osp_float32_spelling(float value, char *buf, size_t cap) {
     uint32_t bits;
     memcpy(&bits, &value, sizeof(bits));
     if ((bits & 0x7F800000u) == 0x7F800000u) {
-        return snprintf(buf, cap, "%g", (double)value);
+        return nonfinite_spelling((double)value, buf, cap);
     }
     return sized_spelling((double)value, bits >> 31, float32_word, 9, buf, cap);
 }
 
 int osp_float16_spelling(uint16_t bits, char *buf, size_t cap) {
     float value = osp_f16_to_f32(bits);
-    if ((bits & 0x7C00) == 0x7C00) return snprintf(buf, cap, "%g", (double)value);
+    if ((bits & 0x7C00) == 0x7C00) return nonfinite_spelling((double)value, buf, cap);
     return sized_spelling((double)value, bits >> 15, float16_word, 5, buf, cap);
 }
 
 int osp_float_spelling(double d, char *buf, size_t cap) {
     uint64_t bits;
     memcpy(&bits, &d, sizeof(bits));
+    if ((bits & FLOAT_EXPONENT_BITS) == FLOAT_EXPONENT_BITS) return nonfinite_spelling(d, buf, cap);
     if (cap < 32) return snprintf(buf, cap, "%.*g", MAX_PRECISION, d);
     int n = whole_spelling(d, bits, buf);
     if (n > 0) return n;
-    if ((bits & FLOAT_EXPONENT_BITS) == FLOAT_EXPONENT_BITS) {
-        return snprintf(buf, cap, "%.*g", MAX_PRECISION, d); /* nan, inf */
-    }
     return shortest_spelling(d, bits, buf, cap);
 }
 

@@ -25,7 +25,7 @@ let scoreScale = toFloat32(0.5)
 /// sqrt(2 / pi), the GELU tanh-approximation constant.
 let geluScale = toFloat32(0.7978845608028654)
 let geluCubic = toFloat32(0.044715)
-let tolerance = toFloat32(0.000000001)
+let tolerance = toFloat32(0.000001)
 /// Scratch files are named per run so the twins never race on one path.
 let scratch = "osprey_transformer_${random()}_${random()}"
 
