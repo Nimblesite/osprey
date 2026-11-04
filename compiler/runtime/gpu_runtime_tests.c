@@ -270,6 +270,45 @@ static void t_matmul_shape_errors(void) {
   CHECK(strncmp(osp_io_error(), "gpuMatMul: left operand:", 24) == 0);
 }
 
+static void *singles(const float *xs, int64_t n) {
+  void *buffer = osprey_gpu_alloc(n, 4);
+  memcpy(osprey_gpu_data(buffer), xs, (size_t)n * sizeof(float));
+  return buffer;
+}
+
+// [GPU-MATMUL]: a float32 product rounds at binary32 after every operation, so
+// 2^24 + 1 - 2^24 is 0 here and 1 at binary64.
+static void t_matmul_float32_rounds_at_its_width(void) {
+  float l[] = {1, 2, 3, 4, 5, 6};
+  float r[] = {7, 8, 9, 10, 11, 12};
+  float expected[] = {58, 64, 139, 154};
+  osp_io_error_clear();
+  void *out = osprey_gpu_matmul(singles(l, 6), singles(r, 6), 2, 3, 2, 4);
+  CHECK(out != NULL && osp_io_error() == NULL);
+  CHECK(osprey_gpu_len(out) == 4 && osprey_gpu_elem_bytes(out) == 4);
+  CHECK(memcmp(osprey_gpu_data(out), expected, sizeof expected) == 0);
+  float big[] = {16777216.0f, 1.0f, -16777216.0f};
+  float ones[] = {1, 1, 1};
+  void *sum = osprey_gpu_matmul(singles(big, 3), singles(ones, 3), 1, 3, 1, 4);
+  float zero = 0;
+  CHECK(sum != NULL && memcmp(osprey_gpu_data(sum), &zero, sizeof zero) == 0);
+}
+
+// [GPU-MATMUL]: only float and float32 multiply, and both operands share one width.
+static void t_matmul_element_type_errors(void) {
+  double six[] = {1, 2, 3, 4, 5, 6};
+  float singles_six[] = {1, 2, 3, 4, 5, 6};
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(floats(six, 6), floats(six, 6), 2, 3, 2, 2) == NULL);
+  expect_text("gpuMatMul: result: must hold float or float32 elements");
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(floats(six, 6), singles(singles_six, 6), 2, 3, 2, 8) == NULL);
+  expect_text("gpuMatMul: operands: must hold the same float or float32 element type");
+  osp_io_error_clear();
+  CHECK(osprey_gpu_matmul(singles(singles_six, 6), floats(six, 6), 2, 3, 2, 4) == NULL);
+  expect_text("gpuMatMul: operands: must hold the same float or float32 element type");
+}
+
 // --- files on disk ---------------------------------------------------------------
 
 // Raw binary32 words widen exactly — sign of zero, infinities, NaN and a
@@ -367,6 +406,8 @@ int main(int argc, char **argv) {
   t_boundary_words();
   t_take_shrinks_only();
   t_matmul_exact();
+  t_matmul_float32_rounds_at_its_width();
+  t_matmul_element_type_errors();
   t_matmul_accumulates_in_k_order();
   t_matmul_zero_dimensions();
   t_matmul_shape_errors();
