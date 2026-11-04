@@ -32,7 +32,12 @@ class BankInstrumentedTest : InstrumentationTestCase() {
     }
 
     override fun tearDown() {
-        if (::app.isInitialized) ui { app.finish() }
+        // Instrumentation kills the process when the last test returns. Killing it with this window still
+        // closing has taken the CI emulator down with it, before the screenshots could be collected.
+        if (::app.isInitialized) {
+            ui { app.finish() }
+            await("activity destroyed") { app.isDestroyed }
+        }
         instrumentation.waitForIdleSync()
         super.tearDown()
     }
