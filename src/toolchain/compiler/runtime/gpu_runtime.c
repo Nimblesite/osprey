@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#if !defined(__wasm__) && !defined(_WIN32)
+#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -246,7 +246,7 @@ int32_t osprey_gpu_declined(const char *what) {
 // Unmap a mapped buffer's pages once nothing can reach them. Clearing `data`
 // keeps the memory backend from releasing a pointer it never allocated.
 static void release_mapping(OspreyGpuBuffer *b) {
-#if !defined(__wasm__) && !defined(_WIN32)
+#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
   if (b->map_base) {
     (void)munmap(b->map_base, b->map_bytes);
     b->map_base = NULL;
@@ -332,7 +332,7 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   return b;
 }
 
-#if !defined(__wasm__) && !defined(_WIN32)
+#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
 // The reason a region cannot be mapped, or NULL when it can.
 static const char *unmappable(int64_t offset, int64_t count, int64_t elem_bytes, int64_t file_bytes) {
   if (offset < 0) return "a negative offset";
