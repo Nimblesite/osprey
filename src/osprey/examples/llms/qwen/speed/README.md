@@ -16,3 +16,13 @@ The host oracle takes about 17 s per product, so check it with the step count
 lowered to 1 (`sed 's/range(0, 120)/range(0, 1)/'`) rather than all 120.
 
 Receipts: `src/toolchain/benchmarks/gpu-metal-dispatch.csv`.
+
+## Files
+
+- `q4k_matvec.osp`: one thread per row, bytes read one at a time (about 2 ms per product).
+- `q4k_words.osp`: the same product reading `uint32` words (no faster).
+- `token.osp`, `token_split4.osp`, `token_fixture.py`: one synthetic decode step at the
+  real shapes, 64 blocks, with and without four threads per row (0.72 s and 0.98 s per token).
+- `q4k_standalone.m`: the same product in plain Metal with 32-bit indices (0.37 ms), the
+  target for the library kernel [LLM-MATMUL-QUANT]. Build with
+  `clang -fobjc-arc -framework Metal -framework Foundation -O2 q4k_standalone.m -o q4k_standalone`.
