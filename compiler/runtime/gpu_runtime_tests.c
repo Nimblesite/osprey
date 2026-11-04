@@ -195,22 +195,62 @@ static void t_matmul_exact(void) {
   }
 }
 
-// [GPU-BUFFER-TENSOR]: requested storage is never inferred from the file.
+// The element type a requested width names, for the refusal sentence.
+static const char *asked_name(int64_t width) {
+  switch (width) {
+  case 8: return "float";
+  case 4: return "float32";
+  case 2: return "float16";
+  }
+  return "a non-float buffer";
+}
+
+// [GPU-BUFFER-TENSOR]: requested storage is never inferred from the file, and
+// a mismatch names both the stored dtype and the asked-for type — never a
+// silent conversion.
 static void t_tensor_requested_widths(void) {
   unsigned char image[2048];
   size_t size = safetensors_image(image, sizeof image);
   const char *path = temp_file(image, size);
   const char *names[] = {"a", "h.1.w", "h.11.w", "d"};
+  const char *dtypes[] = {"F32", "F16", "BF16", "F64"};
   const int64_t widths[] = {4, 2, 4, 8};
   for (size_t i = 0; i < 4; i++) {
     for (int64_t width = 1; width <= 8; width *= 2) {
       osp_io_error_clear();
       void *buffer = osprey_gpu_load_tensor(path, names[i], width);
-      CHECK((buffer != NULL) == (width == widths[i]));
-      if (buffer) CHECK(osprey_gpu_elem_bytes(buffer) == width && osp_io_error() == NULL);
-      else CHECK(osp_io_error() != NULL && strstr(osp_io_error(), "program asked for") != NULL);
+      if (width == widths[i]) {
+        CHECK(buffer != NULL && osprey_gpu_elem_bytes(buffer) == width && osp_io_error() == NULL);
+      } else {
+        CHECK(buffer == NULL);
+        char expected[160];
+        (void)snprintf(expected, sizeof expected,
+                       "gpuLoadTensor: %s: tensor %s is %s, the program asked for %s",
+                       names[i], names[i], dtypes[i], asked_name(width));
+        expect_text(expected);
+      }
     }
   }
+  CHECK(unlink(path) == 0);
+}
+
+// [GPU-BUFFER-TENSOR]: the refusal sentence the plan pins, word for word — a
+// binary16 weight asked as binary32 names both.
+static void t_tensor_mismatch_wording(void) {
+  const char *header = "{\"wte.weight\":{\"dtype\":\"F16\",\"shape\":[2],\"data_offsets\":[0,4]}}";
+  size_t n = strlen(header);
+  unsigned char image[512] = {0};
+  put_u64(image, (uint64_t)n);
+  memcpy(image + 8, header, n);
+  put_u16(image + 8 + n, 0x3C00);     // 1.0
+  put_u16(image + 8 + n + 2, 0xC100); // -2.5
+  const char *path = temp_file(image, 8 + n + 4);
+  void *small = osprey_gpu_load_tensor(path, "wte.weight", 2);
+  CHECK(small != NULL && osprey_gpu_len(small) == 2 && osprey_gpu_elem_bytes(small) == 2);
+  CHECK(at(small, 0) == 1.0 && at(small, 1) == -2.5);
+  osp_io_error_clear();
+  CHECK(osprey_gpu_load_tensor(path, "wte.weight", 4) == NULL);
+  expect_text("gpuLoadTensor: wte.weight: tensor wte.weight is F16, the program asked for float32");
   CHECK(unlink(path) == 0);
 }
 
@@ -383,6 +423,23 @@ static void t_dense_word_roundtrip(void) {
   }
 }
 
+// [GPU-BUFFER-ELEM]: a million uint8 elements occupy one megabyte of payload —
+// one byte each, not eight — pinned by the buffer's own byte accounting and by
+// storing through the data pointer at the final byte.
+static void t_uint8_million_allocates_one_megabyte(void) {
+  void *buffer = osprey_gpu_alloc(1000000, 1);
+  CHECK(buffer != NULL && osprey_gpu_len(buffer) == 1000000);
+  CHECK(osprey_gpu_elem_bytes(buffer) == 1);
+  unsigned char *data = (unsigned char *)osprey_gpu_data(buffer);
+  CHECK(data != NULL);
+  osprey_gpu_set(buffer, 999999, 255);
+  CHECK(data[999999] == 255 && osprey_gpu_get(buffer, 999999) == 255);
+  // A store wider than one byte truncates and never touches its neighbour.
+  osprey_gpu_set(buffer, 999998, 0x1FF);
+  CHECK(data[999998] == 255 && data[999999] == 255 && osprey_gpu_get(buffer, 999998) == 255);
+  CHECK(osprey_gpu_in_bounds(buffer, 1000000) == 0);
+}
+
 int main(int argc, char **argv) {
 #if defined(__APPLE__)
   if (argc == 2 && strcmp(argv[1], "--metal") == 0) {
@@ -398,6 +455,7 @@ int main(int argc, char **argv) {
   (void)argv;
 #endif
   t_dense_word_roundtrip();
+  t_uint8_million_allocates_one_megabyte();
   t_alloc_zero_filled();
   t_alloc_clamps_to_empty();
   t_alloc_failure_is_empty();
@@ -414,6 +472,7 @@ int main(int argc, char **argv) {
   t_load_f32();
   t_tensor_loader(&(TensorLoader){"gpuLoadTensor", osprey_gpu_load_tensor, osprey_gpu_len, at});
   t_tensor_requested_widths();
+  t_tensor_mismatch_wording();
   printf("[ok] gpu_runtime: %ld assertions\n", g_checks);
   return 0;
 }
