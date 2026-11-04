@@ -1,8 +1,8 @@
 // Device support for the kernels the compiler emits [GPU-BACKEND-DEVICE] and
 // the builtin product [GPU-MATMUL]. A kernel cannot reach a runtime `Arith`
 // policy, so a fallible integer operation or a division by zero records a
-// fault word instead; the runtime aborts the program naming the kernel when a
-// dispatch completes with a fault ([GPU-DEVICE-FAULT]). Follows gpu_f64.metal
+// fault word instead; the runtime reports a typed failure naming the kernel
+// when a dispatch completes with a fault ([GPU-DEVICE-FAULT]). Follows gpu_f64.metal
 // and gpu_math64.metal in the embedded shader source.
 
 constant ulong FAULT_OVERFLOW = 1;
@@ -87,6 +87,13 @@ CHECKED_INTEGER(_u32, uint, uint, 32, 0)
 ulong osprey_fdiv(ulong a, ulong b, GPU_GLOBAL ulong *fault) {
     if (!is_zero(b)) return divide64(a, b);
     long zero = osprey_fault(fault, FAULT_DIVIDE_BY_ZERO);
+    return (ulong)zero;
+}
+
+// [GPU-DEVICE-NATIVE] [%] shares the exact software binary64 remainder.
+ulong osprey_frem(ulong a, ulong b, GPU_GLOBAL ulong *fault) {
+    if (!is_zero(b)) return fmod64(a, b);
+    long zero = osprey_fault(fault, FAULT_REMAINDER_BY_ZERO);
     return (ulong)zero;
 }
 
@@ -201,6 +208,19 @@ float osprey_fdiv32(float a, float b, GPU_GLOBAL ulong *fault) {
     if (b != 0.0f) return a / b;
     long zero = osprey_fault(fault, FAULT_DIVIDE_BY_ZERO);
     return (float)zero;
+}
+
+// [GPU-DEVICE-NATIVE] Binary16 computes here and rounds once on storage.
+float osprey_frem32(float a, float b, GPU_GLOBAL ulong *fault) {
+    if (b == 0.0f) {
+        long zero = osprey_fault(fault, FAULT_REMAINDER_BY_ZERO);
+        return (float)zero;
+    }
+#if defined(__METAL_VERSION__) || defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+    return fmod(a, b);
+#else
+    return fmodf(a, b);
+#endif
 }
 
 #if defined(__METAL_VERSION__) || defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)

@@ -133,6 +133,7 @@ pub(super) fn float_binary(op: &str, n: Numeric, l: &str, r: &str) -> Emitted {
             "-" => (Ty::FLOAT, format!("sub64({l}, {r})")),
             "*" => (Ty::FLOAT, format!("multiply64({l}, {r})")),
             "/" => (Ty::FLOAT, format!("osprey_fdiv({l}, {r}, fault)")),
+            "%" => (Ty::FLOAT, format!("osprey_frem({l}, {r}, fault)")),
             "==" => (Ty::Bool, format!("eq64({l}, {r})")),
             "!=" => (Ty::Bool, format!("(!eq64({l}, {r}))")),
             "<" => (Ty::Bool, format!("lt64({l}, {r})")),
@@ -144,6 +145,7 @@ pub(super) fn float_binary(op: &str, n: Numeric, l: &str, r: &str) -> Emitted {
         _ => match op {
             "+" | "-" | "*" => (Ty::Num(compute), format!("((float)(({l}) {op} ({r})))")),
             "/" => (Ty::Num(compute), format!("osprey_fdiv32({l}, {r}, fault)")),
+            "%" => (Ty::Num(compute), format!("osprey_frem32({l}, {r}, fault)")),
             "==" | "!=" | "<" | "<=" | ">" | ">=" => (Ty::Bool, format!("(({l}) {op} ({r}))")),
             _ => return Err(format!("`{op}` over floats has no device form")),
         },

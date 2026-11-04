@@ -97,6 +97,14 @@ static void check_float32_pair(uint32_t wa, uint32_t wb) {
   float quotient = osprey_fdiv32(a, b, &fault);
   if (b == 0.0f) { assert(fault == FAULT_DIVIDE_BY_ZERO && quotient == 0.0f); checks += 2; }
   else { assert(fault == 0); expect_f32("f32 div", wa, wb, f32_word(quotient), f32_word((float)(wide_a / wide_b))); }
+  fault = 0;
+  float remainder = osprey_frem32(a, b, &fault);
+  if (b == 0.0f) { assert(fault == FAULT_REMAINDER_BY_ZERO && remainder == 0.0f); checks += 2; }
+  else { assert(fault == 0); expect_f32("f32 rem", wa, wb, f32_word(remainder), f32_word((float)fmod(wide_a, wide_b))); }
+  fault = 0;
+  ulong remainder64 = osprey_frem(bits(wide_a), bits(wide_b), &fault);
+  if (b == 0.0f) { assert(fault == FAULT_REMAINDER_BY_ZERO && remainder64 == 0); checks += 2; }
+  else { assert(fault == 0); assert(remainder64 == bits(fmod(wide_a, wide_b)) || (isnan(of(remainder64)) && isnan(fmod(wide_a, wide_b)))); checks += 2; }
   check_float32_comparisons(wa, wb);
 }
 

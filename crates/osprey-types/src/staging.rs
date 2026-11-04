@@ -234,26 +234,12 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
-    const GPU_ARMS_WITH_RESULT_FALLBACKS: &str = "static effect Tensor<B> {\n\
-        get: fn(B, int) -> float\n\
-        matMul: fn(B, B, int, int, int) -> B\n\
-    }\n\
-    fn onGpu(work) = {\n\
-        handle static Tensor<GpuBuffer<float>> {\n\
-            get b i => gpuGet(b, i) ?: 0.0\n\
-            matMul a b rows inner cols => gpuMatMul(a, b, rows, inner, cols) ?: toGpu([])\n\
-        }\n\
-        work()\n\
-    }\n\
-    fn main() = {\n\
-        let ones = toGpu([1.0, 1.0, 1.0, 1.0])\n\
-        onGpu(fn() => perform Tensor.get(perform Tensor.matMul(ones, ones, 2, 2, 2), 0))\n\
-    }\n";
+    const GPU_ARMS_WITH_RESULT_FALLBACKS: &str = "static effect Tensor<B> {\n    get: fn(B, int) -> Result<float, Error>\n    matMul: fn(B, B, int, int, int) -> B\n}\nfn chain(result, next) = match result { Success { value } => next(value) Error { message } => Error { message: message } }\nfn onGpu(work) = {\n    handle static Tensor<Result<GpuBuffer<float>, Error>> {\n        get b i => chain(b, fn(buffer) => gpuGet(buffer, i))\n        matMul a b rows inner cols => chain(a, fn(left) => chain(b, fn(right) => Success { value: gpuMatMul(left, right, rows, inner, cols) } ?: toGpu([])))\n    }\n    work()\n}\nfn main() = {\n    let ones = toGpu([1.0, 1.0, 1.0, 1.0])\n    onGpu(fn() => perform Tensor.get(perform Tensor.matMul(ones, ones, 2, 2, 2), 0))\n}\n";
 
-    /// [PATTERN-RESULT-DEFAULT] types a `Success` payload by its field label,
-    /// so the lowering's hygiene must leave `value` and the `?:` binder
-    /// unrenamed: renamed, the fallback `toGpu([])` kept an open element type
-    /// and the backend read the float buffer back as `int`.
+    /// [PATTERN-RESULT-DEFAULT] The outer Success carries the complete matrix
+    /// Result, including its Error. The pure default control still constrains
+    /// the empty literal's float element type; no GPU failure selects an empty
+    /// buffer. Static lowering must preserve both payload layers and labels.
     #[test]
     fn a_static_arm_keeps_its_result_field_labels_so_the_residual_types_its_fallback() {
         let parsed = osprey_syntax::parse_program_with_flavor(
@@ -286,23 +272,7 @@ mod tests {
         );
     }
 
-    const GENERIC_MODEL_OVER_A_TENSOR_EFFECT: &str = "static effect Tensor<B> {\n\
-        build: fn(int, fn(int) -> float) -> B\n\
-        zipWith: fn(B, B, fn(float, float) -> float) -> B\n\
-    }\n\
-    type Acts<B> = { f: B }\n\
-    fn onGpu(work) = {\n\
-        handle static Tensor<GpuBuffer<float>> {\n\
-            build n f => toGpu(range(0, n)) |> gpuMap(f)\n\
-            zipWith a b f => gpuZipWith(a, b, f)\n\
-        }\n\
-        work()\n\
-    }\n\
-    fn blockLike(dy, acts) = perform Tensor.zipWith(dy, acts.f, fn(g, x) => g)\n\
-    fn main() = onGpu(fn() => {\n\
-        let ones = perform Tensor.build(4, fn(i) => 1.0)\n\
-        blockLike(ones, Acts { f: ones })\n\
-    })\n";
+    const GENERIC_MODEL_OVER_A_TENSOR_EFFECT: &str = "static effect Tensor<B> {\n    build: fn(int, fn(int) -> float) -> B\n    zipWith: fn(B, B, fn(float, float) -> float) -> B\n}\ntype Acts<B> = { f: B }\nfn chain(result, next) = match result { Success { value } => next(value) Error { message } => Error { message: message } }\nfn onGpu(work) = {\n    handle static Tensor<Result<GpuBuffer<float>, Error>> {\n        build n f => chain(toGpu(range(0, n)), fn(indices) => gpuMap(indices, f))\n        zipWith a b f => chain(a, fn(left) => chain(b, fn(right) => gpuZipWith(left, right, f)))\n    }\n    work()\n}\nfn blockLike(dy, acts) = perform Tensor.zipWith(dy, acts.f, fn(g, x) => g)\nfn main() = onGpu(fn() => {\n    let ones = perform Tensor.build(4, fn(i) => 1.0)\n    blockLike(ones, Acts { f: ones })\n})\n";
 
     /// A static operation's declared callback type is part of the contract the
     /// model was checked against. The residual must keep it: a kernel written

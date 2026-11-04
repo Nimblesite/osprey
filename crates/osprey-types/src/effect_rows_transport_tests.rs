@@ -322,7 +322,9 @@ fn computed_builtin_containers_select_the_generic_free_function() {
     for expression in [
         "dispatch(mapKeys(mapSet(Map(),\"x\",1)))",
         "dispatch(toGpu([1,2]))",
-        "dispatch(fromGpu(toGpu([1,2])))",
+        "match toGpu([1,2]) { Success { value } => match fromGpu(value) { Success { value } => dispatch(value) Error { message } => dispatch(message) } Error { message } => dispatch(message) }",
+        "match toGpu([1,2]) { Success { value } => dispatch(value) Error { message } => dispatch(message) }",
+        "match gpuIota(2) { Success { value } => dispatch(value) Error { message } => dispatch(message) }",
         "dispatch(gpuIota(2))",
     ] {
         probe_call(DISPATCH, expression, false);

@@ -479,3 +479,17 @@ fn a_float_function_by_name_is_an_extracted_kernel_in_both_flavors() {
     shows(&kernel, &["call double @llvm.exp.f64(double %$p0)"]);
     testkit::contents(&kernel, &[], &["__env"]);
 }
+
+#[test]
+fn floating_remainder_kernels_keep_their_checked_device_form() {
+    // [GPU-DEVICE-NATIVE] [%] is checked arithmetic at every float width.
+    for (ty, convert, helper) in [
+        ("float", "toFloat", "osprey_frem"),
+        ("float32", "toFloat32", "osprey_frem32"),
+        ("float16", "toFloat16", "osprey_frem32"),
+    ] {
+        let ir = module(&format!("let xs: List<{ty}> = [1.5, -0.0]\nmatch toGpu(xs) {{ Success {{ value }} => match gpuMap(value, fn(x) => x % {convert}(1.0)) {{ Success {{ value }} => print(gpuLength(value)) Error {{ message }} => print(message) }} Error {{ message }} => print(message) }}\n"));
+        assert!(!ir.contains("@osprey_gpu_declined"), "{ty}: {ir}");
+        shows(&ir, &[helper]);
+    }
+}
