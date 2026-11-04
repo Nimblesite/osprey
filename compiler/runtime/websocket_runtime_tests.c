@@ -149,12 +149,12 @@ void ws_send_upgrade(int fd, const char *key_header) {
   ws_send_all(fd, request, (size_t)n);
 }
 
-// The peer closed: recv drains anything already buffered and then returns 0.
+// The peer closed: drained EOF or a TCP reset; a timeout is still a failure.
 void ws_expect_peer_close(int fd) {
   char scratch[256];
   for (int i = 0; i < WS_TRIES; i++) {
     ssize_t n = recv(fd, scratch, sizeof(scratch), 0);
-    if (n == 0) {
+    if (n == 0 || (n < 0 && errno == ECONNRESET)) {
       return;
     }
     assert(n > 0); // a timeout (-1) means the server never closed
