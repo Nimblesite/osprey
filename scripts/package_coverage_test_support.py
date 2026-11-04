@@ -145,7 +145,7 @@ def c_runtime_gate_cases():
 
 def check_c_runtime(root, percentage, entry, suffix="c"):
     write_json(root / "coverage-thresholds.json", {"projects": {"c_runtime": {"probe": entry}}})
-    summary = root / "src/compiler/bin/cov/probe/summary.txt"
+    summary = root / "src/toolchain/compiler/bin/cov/probe/summary.txt"
     summary.parent.mkdir(parents=True)
     summary.write_text("" if percentage is None else f"File '../../../runtime/probe.{suffix}'\nLines executed:{percentage}% of 100\n")
     source = (ROOT / "scripts/make/tests.mk").read_text()
@@ -156,17 +156,17 @@ def check_c_runtime(root, percentage, entry, suffix="c"):
 
 
 def bad_report_cases():
-    good = "packages/bad/src/lib.py"
+    good = "src/osprey/packages/bad/src/lib.py"
     return {
         "no-files-object": {},
-        "no-own-source": {"files": {"packages/bad/tests/main.py": {"lines": {"1": 1}}}},
+        "no-own-source": {"files": {"src/osprey/packages/bad/tests/main.py": {"lines": {"1": 1}}}},
         "line-zero": {"files": {good: {"lines": {"0": 1}}}},
         "non-integer-line": {"files": {good: {"lines": {"two": 1}}}},
         "line-past-end": {"files": {good: {"lines": {"6": 1}}}},
         "negative-count": {"files": {good: {"lines": {"1": -1}}}},
         "non-integer-count": {"files": {good: {"lines": {"1": "3"}}}},
         "empty-line-table": {"files": {good: {"lines": {}}}},
-        "missing-source-file": {"files": {"packages/bad/src/ghost.py": {"lines": {"1": 1}}}},
+        "missing-source-file": {"files": {"src/osprey/packages/bad/src/ghost.py": {"lines": {"1": 1}}}},
     }
 
 
@@ -196,12 +196,12 @@ ENTRY_FOOTER = "# coverage total: 100.0% (2/2 lines)\n# suites: 1 passed, 0 fail
 ENTRY_MANIFEST = '[project]\nname = "workbench"\nentry = "src/lib.py"\n'
 
 
-def entry_report(covered, total=10, key="src/workbench/src/lib.py"):
+def entry_report(covered, total=10, key="src/osprey/workbench/src/lib.py"):
     lines = {str(line): 1 if line <= covered else 0 for line in range(1, total + 1)}
     return {"files": {key: {"lines": lines}}}
 
 
-def masked_report(hits, key="src/workbench/src/lib.py"):
+def masked_report(hits, key="src/osprey/workbench/src/lib.py"):
     return {"files": {key: {"lines": {str(line): hits.get(line, 0) for line in range(1, 11)}}}}
 
 
@@ -221,7 +221,7 @@ def app_spec(primary=None, entry=None):
         suite = {"report": entry_report(9, 10)}
     else:
         suite = {"report": primary} if "files" in primary else dict(primary)
-    return {"workbench": suite, "apps": {} if entry is None else entry}
+    return {"workbench": suite, Path(APPS_DIR).name: {} if entry is None else entry}
 
 
 class CoverageTestCase(unittest.TestCase):
@@ -237,10 +237,10 @@ class CoverageTestCase(unittest.TestCase):
 
     def workbench(self, primary=None, entry=None, oracle=ENTRY_ORACLE, manifest=ENTRY_MANIFEST,
                   suite_manifest=None):
-        """The one src/workbench fixture every entry-probe regression starts from."""
+        """The one src/osprey/workbench fixture every entry-probe regression starts from."""
         fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(10)}}},
                                apps={"workbench": {"sources": {"src/lib.py": py_source(10)}}})
-        project = fixture.root / "apps" / "workbench"
+        project = fixture.root / APPS_DIR / "workbench"
         (project / "osprey.toml").write_text(manifest)
         if suite_manifest is not None:
             (project / "tests" / "osprey.toml").write_text(suite_manifest)
@@ -260,7 +260,7 @@ class CoverageTestCase(unittest.TestCase):
 
     def assert_entry_refused(self, fixture, message, also=()):
         """Collect the Workbench app once and require the refusal `message`."""
-        result = fixture.collect("--project", "src/workbench")
+        result = fixture.collect("--project", "src/osprey/workbench")
         self.assert_exit(result, 1)
         for expected in (message, *also):
             self.assertIn(expected, result.stdout)

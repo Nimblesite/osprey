@@ -24,9 +24,9 @@ from package_coverage_test_support import (
 class PackageThresholdTests(CoverageTestCase):
     def test_extracted_runtime_headers_preserve_the_library_threshold(self):
         gates = json.loads((ROOT / "coverage-thresholds.json").read_text())["projects"]["c_runtime"]
-        headers = list((ROOT / "src/compiler/runtime").glob("memory_arc_*.h"))
+        headers = list((ROOT / "src/toolchain/compiler/runtime").glob("memory_arc_*.h"))
         self.assertTrue(headers)
-        for header in headers + [ROOT / "src/compiler/runtime/system_process_posix.h"]:
+        for header in headers + [ROOT / "src/toolchain/compiler/runtime/system_process_posix.h"]:
             self.assertIn(header.stem, gates)
             baseline = gates["memory_arc"]["threshold"] if header.stem.startswith("memory_arc_") else gates["system_runtime"].get("threshold", 90)
             self.assertGreaterEqual(gates[header.stem].get("threshold", 90), baseline)
@@ -46,9 +46,9 @@ class PackageThresholdTests(CoverageTestCase):
     def test_every_shipped_package_has_an_individual_threshold_of_at_least_90(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())
         packages = config["projects"].get("packages", {})
-        shipped = {p.name for p in (ROOT / "src" / "packages").iterdir() if (p / "osprey.toml").is_file()}
+        shipped = {p.name for p in (ROOT / "src" / "osprey" / "packages").iterdir() if (p / "osprey.toml").is_file()}
         self.assertEqual(set(packages), shipped, "Every package must have its own coverage gate")
-        self.assert_gated_group(packages, ROOT / "src" / "packages")
+        self.assert_gated_group(packages, ROOT / "src" / "osprey" / "packages")
 
     def test_collection_runs_at_most_one_compiler_per_cpu(self):
         # 19 concurrent `osprey test` collections exhausted the CI runner's
@@ -142,7 +142,7 @@ class CheckerTests(CoverageTestCase):
         fixture = self.simple_fixture()
         config = fixture.config()
         def changing_gate(*_args):
-            path = fixture.root / "packages/demo/src/lib.py"
+            path = fixture.root / "src/osprey/packages/demo/src/lib.py"
             path.write_text(path.read_text() + "\n")
             return {"covered": 4, "total": 4, "percentage": 100.0, "missing_evidence": []}
         problem = record_measurements(fixture.root, fixture.root / "coverage-thresholds.json", fixture.reports, config, changing_gate)
@@ -189,7 +189,7 @@ class CheckerTests(CoverageTestCase):
                 fixture = self.simple_fixture()
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
                 self.assertEqual(fixture.collect("--record-measurements").returncode, 0)
-                path = fixture.root / "src" / "packages" / "demo" / relative
+                path = fixture.root / "src" / "osprey" / "packages" / "demo" / relative
                 path.write_text(path.read_text() + "\n# changed after collection\n")
                 result = fixture.check("--record-measurements")
                 self.assertEqual(result.returncode, 1, "Changed inputs need fresh evidence: " + result.stdout)
@@ -205,7 +205,7 @@ class CheckerTests(CoverageTestCase):
 
     def test_changed_data_fixtures_invalidate_collected_evidence(self):
         fixture = self.simple_fixture()
-        data = fixture.root / "packages/demo/tests/fixtures/input.json"
+        data = fixture.root / "src/osprey/packages/demo/tests/fixtures/input.json"
         write_json(data, {"value": 1})
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         self.assertEqual(fixture.collect().returncode, 0)
@@ -234,9 +234,9 @@ class CheckerTests(CoverageTestCase):
     def test_perfect_test_and_helper_lines_cannot_mask_uncovered_source(self):
         fixture = self.simple_fixture("mask", 10)
         fixture.write_report("mask", {"files": {
-            "packages/mask/src/lib.py": {"lines": {str(i): 0 for i in range(1, 11)}},
-            "packages/mask/tests/main.py": {"lines": {str(i): 90 for i in range(1, 101)}},
-            "src/packages/testing/src/check.py": {"lines": {str(i): 90 for i in range(1, 51)}},
+            "src/osprey/packages/mask/src/lib.py": {"lines": {str(i): 0 for i in range(1, 11)}},
+            "src/osprey/packages/mask/tests/main.py": {"lines": {str(i): 90 for i in range(1, 101)}},
+            "src/osprey/packages/testing/src/check.py": {"lines": {str(i): 90 for i in range(1, 51)}},
         }})
         write_json(fixture.root / "coverage-thresholds.json", {**fixture.config(),
                    "package_measurements": {"packages": {"mask": {"percentage": 100}}}})
@@ -249,8 +249,8 @@ class CheckerTests(CoverageTestCase):
     def test_cross_host_and_relative_paths_map_to_local_source(self):
         fixture = self.simple_fixture()
         cases = {
-            "ubuntu": file_report("/home/runner/work/osprey/osprey/packages/demo/src/lib.py", 4, 4),
-            "relative": file_report("packages/demo/tests/../src/lib.py", 4, 4),
+            "ubuntu": file_report("/home/runner/work/osprey/osprey/src/osprey/packages/demo/src/lib.py", 4, 4),
+            "relative": file_report("src/osprey/packages/demo/tests/../src/lib.py", 4, 4),
         }
         for label, report in cases.items():
             with self.subTest(label):
@@ -259,8 +259,8 @@ class CheckerTests(CoverageTestCase):
                 self.assert_exit(result, 0)
                 self.assertEqual(fixture.result("demo")["covered"], 4)
         duplicate = {"files": {
-            "/home/runner/work/osprey/osprey/packages/demo/src/lib.py": {"lines": {"1": 1}},
-            "packages/demo/tests/../src/lib.py": {"lines": {"2": 1}},
+            "/home/runner/work/osprey/osprey/src/osprey/packages/demo/src/lib.py": {"lines": {"1": 1}},
+            "src/osprey/packages/demo/tests/../src/lib.py": {"lines": {"2": 1}},
         }}
         fixture.write_report("demo", duplicate)
         result = fixture.check()
@@ -299,7 +299,7 @@ class CheckerTests(CoverageTestCase):
         fixture.write_report("tabled", own_report("tabled", 4, 4))
         self.assertEqual(fixture.check().returncode, 0)
         fixture.write_report("tabled", {"files": {
-            "packages/tabled/src/table.py": {"lines": {"1": 1}},
+            "src/osprey/packages/tabled/src/table.py": {"lines": {"1": 1}},
         }})
         result = fixture.check()
         self.assert_exit(result, 1)
@@ -339,7 +339,7 @@ class CheckerTests(CoverageTestCase):
     def test_abstract_effect_declarations_have_no_body_to_cover(self):
         source = "@effect\nclass Buffer:\n    def length(buffer) -> int: ...\n\n" + py_source(4)
         fixture = self.fixture({"demo": {"sources": {"src/lib.py": source}}})
-        fixture.write_report("demo", {"files": {"packages/demo/src/lib.py": {
+        fixture.write_report("demo", {"files": {"src/osprey/packages/demo/src/lib.py": {
             "lines": {str(line): 1 for line in range(5, 9)},
         }}})
         self.assert_exit(fixture.check(), 0)
@@ -349,8 +349,8 @@ class CheckerTests(CoverageTestCase):
             "mldemo": {"sources": {"src/base.ospml": "namespace demo\n\nexport find (items, matches) = listGet items 0\n"}},
             "defaultdemo": {"sources": {"src/main.osp": "fn entry(value) = value\n"}},
         })
-        fixture.write_report("mldemo", file_report("packages/mldemo/tests/../src/base.ospml", 1, 1))
-        fixture.write_report("defaultdemo", file_report("packages/defaultdemo/src/main.osp", 1, 1))
+        fixture.write_report("mldemo", file_report("src/osprey/packages/mldemo/tests/../src/base.ospml", 1, 1))
+        fixture.write_report("defaultdemo", file_report("src/osprey/packages/defaultdemo/src/main.osp", 1, 1))
         self.assertEqual(fixture.check().returncode, 0)
         fixture.write_report("mldemo", {"files": {}})
         result = fixture.check()
@@ -383,14 +383,14 @@ class CheckerTests(CoverageTestCase):
         fixture = self.simple_fixture()
         report = fixture.reports / "demo.json"
         report.parent.mkdir(parents=True)
-        report.write_text('{"files":{"packages/demo/src/lib.py":{"lines":{"1":1,"2":1,"3":1,"4":0,"4":1}}}}')
+        report.write_text('{"files":{"src/osprey/packages/demo/src/lib.py":{"lines":{"1":1,"2":1,"3":1,"4":0,"4":1}}}}')
         seal_evidence(fixture.root, "demo", report, source_inputs(fixture.root, "demo"))
         self.assert_invalid(fixture, "duplicate JSON key")
 
     def test_documentation_match_examples_are_not_executable_arms(self):
         source = '(**\n    true => ignored\n    (* nested " quotation *)\n*)\nchoose x = x\n'
         fixture = self.simple_fixture(source=source, relative="src/lib.ospml")
-        fixture.write_report("demo", {"files": {"packages/demo/src/lib.ospml": {"lines": {"5": 1}}}})
+        fixture.write_report("demo", {"files": {"src/osprey/packages/demo/src/lib.ospml": {"lines": {"5": 1}}}})
         self.assert_exit(fixture.check(), 0)
 
     def test_failed_collection_invalidates_a_stale_report(self):
@@ -489,7 +489,7 @@ class CheckerTests(CoverageTestCase):
         result = fixture.check("--package", "unknown")
         self.assert_exit(result, 2)
         self.assertIn("unknown package", result.stderr)
-        (fixture.root / "src" / "packages" / "demo" / "tests" / "osprey.toml").unlink()
+        (fixture.root / "src" / "osprey" / "packages" / "demo" / "tests" / "osprey.toml").unlink()
         result = fixture.check()
         self.assert_exit(result, 2)
         self.assertIn("missing tests/osprey.toml", result.stderr)

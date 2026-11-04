@@ -32,7 +32,7 @@ from package_coverage_evidence import (
     definition_problems, record_measurements, seal_evidence, sealed_inputs, unique_object,
 )
 from package_coverage_projects import (
-    GATED_KINDS, PACKAGES_DIR, gate_entries, kind_map_problems, kind_noun, project_dirs,
+    GATED_KINDS, PACKAGES_DIR, PROJECT_KEYS, gate_entries, kind_map_problems, kind_noun, project_dirs,
     project_label, report_name, required_source_files, own_source_relative,
 )
 
@@ -78,7 +78,7 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
 
 
 def suite_problems(tests: Path, verify_golden: bool) -> list[str]:
-    problems = [f"missing src/osprey/tests/{name}" for name in ("osprey.toml", "expected_output.txt")
+    problems = [f"missing tests/{name}" for name in ("osprey.toml", "expected_output.txt")
                 if not (tests / name).is_file()]
     if verify_golden and (tests / "expected_output.txt").is_file():
         problems += golden_problems(tests / "expected_output.txt")
@@ -415,8 +415,9 @@ def fail(message: str, code: int = EXIT_USAGE) -> int:
 
 def selected_projects(entries: dict, package: str | None, project: str | None) -> list[tuple[str, str]] | None:
     if project is not None:
-        kind, _, name = project.partition("/")
-        return [(kind, name)] if name in entries.get(kind, {}) else None
+        matches = [(kind, name) for kind, group in entries.items() for name in group
+                   if project in (f"{kind}/{name}", f"{PROJECT_KEYS[kind]}/{name}")]
+        return matches or None
     if package is not None:
         return [(PACKAGES_DIR, package)] if package in entries.get(PACKAGES_DIR, {}) else None
     return sorted((kind, name) for kind, group in entries.items() for name in group)

@@ -12,9 +12,10 @@ import ast
 import re
 from pathlib import Path
 
-PACKAGES_DIR = "src/packages"
-APPS_DIR = "src"
-GATED_KINDS = (PACKAGES_DIR, APPS_DIR)
+PACKAGES_DIR = "src/osprey/packages"
+APPS_DIR = "src/osprey"
+PROJECT_KEYS = {PACKAGES_DIR: "packages", APPS_DIR: "apps"}
+GATED_KINDS = tuple(PROJECT_KEYS)
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?fn[ \t]+\w+")
 ML_DEF_RE = re.compile(
@@ -50,15 +51,15 @@ def python_coverable(text):
 def gate_entries(config: object) -> dict[str, dict]:
     projects = config.get("projects") if isinstance(config, dict) else None
     source = projects if isinstance(projects, dict) else {}
-    return {kind: source[kind] for kind in GATED_KINDS if isinstance(source.get(kind), dict)}
+    return {kind: source[key] for kind, key in PROJECT_KEYS.items() if isinstance(source.get(key), dict)}
 
 
 def kind_map_problems(config: object) -> list[str]:
     projects = config.get("projects") if isinstance(config, dict) else None
     if not isinstance(projects, dict):
         return []
-    return [f"projects.{kind} must be an object" for kind in GATED_KINDS
-            if kind in projects and not isinstance(projects[kind], dict)]
+    return [f"projects.{key} must be an object" for key in PROJECT_KEYS.values()
+            if key in projects and not isinstance(projects[key], dict)]
 
 
 def kind_noun(kind: str) -> str:
@@ -70,7 +71,7 @@ def project_label(kind: str, name: str) -> str:
 
 
 def report_name(kind: str, name: str) -> str:
-    return name if kind == PACKAGES_DIR else f"{kind}-{name}"
+    return name if kind == PACKAGES_DIR else f"{PROJECT_KEYS[kind]}-{name}"
 
 
 def project_dirs(root: Path, kind: str) -> set[str]:
@@ -100,10 +101,10 @@ def own_source_relative(raw: object, kind: str, name: str) -> tuple[str, ...] | 
     parts = normalize_components(raw)
     if parts is None:
         return None
-    marker = [kind, name, "src"]
-    for start in range(len(parts) - 4, -1, -1):
-        if parts[start : start + 3] == marker:
-            return tuple(parts[start + 3 :])
+    marker = kind.split("/") + [name, "src"]
+    for start in range(len(parts) - len(marker), -1, -1):
+        if parts[start : start + len(marker)] == marker:
+            return tuple(parts[start + len(marker) :])
     return None
 
 

@@ -17,9 +17,9 @@ On 2026-11-05, independently compared all 5,228 tracked files in `31a3aa71a^` wi
 
 - [x] Compare every pre-move tracked path and blob against the destination tree.
 - [x] Review changed-file deletion blocks; inspect apparent deleted manifests at their new paths.
-- [ ] Repair and independently verify coverage migration: JSON keys remain `packages`/`apps`, while `gate_entries` now looks up `src/osprey/packages`/`src`; `own_source_relative` also treats a slash-containing directory as one component. The collector currently refuses inventory before collecting any evidence. FolderCleanup owns the correction.
+- [x] Repair coverage configuration keys, physical source markers, selectors, report names and fixture paths; all 42 package contracts, 45 app/entry contracts and three process-level watchdog regressions pass.
 
-The subsequent staged split into `src/osprey/` and `src/toolchain/` was checked independently against HEAD `3b38ffc35`: all 5,232 tracked paths have staged and live destinations, 4,576 with identical blobs/modes and 656 changed. Evidence: `target/logs/resource-audit/folder-second-move-inventory.json`. This is a second retention check; functional coverage-path errors remain open.
+The subsequent staged split into `src/osprey/` and `src/toolchain/` was checked independently against HEAD `3b38ffc35`: all 5,232 tracked paths have staged and live destinations, 4,576 with identical blobs/modes and 656 changed. Evidence: `target/logs/resource-audit/folder-second-move-inventory.json`. This is a second retention check; coverage-path regressions have since passed the independent 87-contract suite.
 
 Detailed local evidence: `target/logs/resource-audit/folder-move-inventory.json` and `folder-move-content-review.json`. The sole missing worktree document found during the first check, `docs/RELEASING.md`, is present again; no restoration of code was needed from this inventory.
 
