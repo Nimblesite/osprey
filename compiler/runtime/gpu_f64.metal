@@ -23,6 +23,7 @@ using namespace metal;
 #include <stdint.h>
 typedef uint64_t ulong;
 typedef unsigned int uint;
+typedef uint16_t ushort;
 #define GPU_GLOBAL
 #define GPU_BUFFER(N)
 #define GPU_PARAM ulong

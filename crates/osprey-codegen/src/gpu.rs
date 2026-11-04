@@ -26,10 +26,10 @@ use osprey_ast::{Expr, NamedArgument};
 /// not statically known.
 const GPU_OWNER: &str = "GpuBuffer";
 
-/// Scalar representations supported by device emission [GPU-DEVICE-NATIVE].
+/// Scalar representations supported by device emission [GPU-DEVICE-NATIVE]:
+/// every numeric width and `bool`.
 pub(crate) fn is_scalar(ty: LType) -> bool {
-    matches!(ty, LType::I64 | LType::F64 | LType::I1)
-        || ty == LType::Num(osprey_types::numeric::Numeric::FLOAT32)
+    matches!(ty, LType::Num(_) | LType::I1)
 }
 
 /// Whether `ty` uses the host accessors' raw-word ABI: every numeric

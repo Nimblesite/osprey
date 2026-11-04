@@ -103,6 +103,58 @@ uint gpu_float32_bits(float value) {
 #endif
 }
 
+// [GPU-DEVICE-NATIVE] binary16 <-> binary32 on integer bits, so `float16`
+// computes in binary32 and narrows once: the exact widening of a half into a
+// float, and the correctly rounded (ties to even) narrowing back, the same
+// rounding the host's `osp_float_to_f16` applies from binary64.
+float gpu_f16_to_f32(ushort bits) {
+    uint sign = (uint)(bits & 0x8000u) << 16;
+    uint exponent = (bits >> 10) & 0x1fu;
+    uint fraction = bits & 0x03ffu;
+    uint word;
+    if (exponent == 0x1fu) {
+        word = sign | 0x7f800000u | (fraction << 13);
+    } else if (exponent) {
+        word = sign | ((exponent + 112u) << 23) | (fraction << 13);
+    } else {
+        if (!fraction) return gpu_float32_from_bits(sign);
+        uint significand = fraction;
+        uint e = 113u;
+        while (!(significand & 0x0400u)) { significand <<= 1; e--; }
+        word = sign | (e << 23) | ((significand & 0x03ffu) << 13);
+    }
+    return gpu_float32_from_bits(word);
+}
+
+ushort gpu_f32_to_f16(float value) {
+    uint bits = gpu_float32_bits(value);
+    ushort sign = (ushort)((bits >> 16) & 0x8000u);
+    uint exponent = (bits >> 23) & 0xffu;
+    uint fraction = bits & 0x7fffffu;
+    if (exponent == 0xffu) {
+        if (!fraction) return (ushort)(sign | 0x7c00u);
+        return (ushort)(sign | 0x7c00u | 0x0200u | (fraction >> 13));
+    }
+    if (!(bits & 0x7fffffffu)) return sign;
+    uint significand = fraction | (exponent ? 0x800000u : 0u);
+    int e2 = (int)exponent - 127;
+    if (exponent && e2 >= -14) {
+        if (e2 > 15) return (ushort)(sign | 0x7c00u);
+        uint rounded = (significand >> 13) + (uint)((significand & 0x1fffu) > 0x1000u
+            || ((significand & 0x1fffu) == 0x1000u && ((significand >> 13) & 1u)));
+        return (ushort)(sign + (((uint)(exponent - 113)) << 10) + rounded);
+    }
+    int shift = exponent ? (-e2 - 1) : 125;
+    if (shift >= 32) return sign;
+    uint low = significand & (((uint)1 << (uint)shift) - 1u);
+    uint narrowed = significand >> (uint)shift;
+    uint halfway = (uint)1 << ((uint)shift - 1);
+    if (low > halfway || (low == halfway && (narrowed & 1u))) narrowed++;
+    return (ushort)(sign + narrowed);
+}
+
+float gpu_f32_narrow16(float value) { return gpu_f16_to_f32(gpu_f32_to_f16(value)); }
+
 float osprey_fdiv32(float a, float b, GPU_GLOBAL ulong *fault) {
     if (b != 0.0f) return a / b;
     long zero = osprey_fault(fault, FAULT_DIVIDE_BY_ZERO);

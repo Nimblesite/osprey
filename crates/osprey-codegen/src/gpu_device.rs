@@ -51,6 +51,24 @@ impl Ty {
         }
     }
 
+    /// The type arithmetic runs at: `float16` computes in binary32 and narrows
+    /// once at the store boundary ([GPU-DEVICE-NATIVE]).
+    fn compute(self) -> Ty {
+        match self {
+            Ty::Num(n) if n.is_float() && n.bits == 16 => Ty::FLOAT32,
+            other => other,
+        }
+    }
+
+    /// The source spelling, for diagnostics.
+    fn name(self) -> &'static str {
+        match self {
+            Ty::Num(n) => n.name(),
+            Ty::Bool => "bool",
+        }
+    }
+
+    /// The storage spelling: a buffer element's type (`half` for `float16`).
     fn spelling(self) -> &'static str {
         match self {
             Ty::Num(n) => n.device(),
@@ -58,18 +76,28 @@ impl Ty {
         }
     }
 
-    /// A raw buffer word as a value of this type.
+    /// The compute spelling: the variable type inside a kernel (`float` for
+    /// `float16`).
+    fn compute_spelling(self) -> &'static str {
+        self.compute().spelling()
+    }
+
+    /// A raw buffer word as a value of this type: `float16` storage reads
+    /// through binary32, sized integers cast from the word.
     fn value_of(self, word: &str) -> String {
         match self {
+            Ty::Num(n) if n.is_float() && n.bits == 16 => format!("((float)({word}))"),
             Ty::Num(n) if n.is_float() => word.to_string(),
             Ty::Num(n) => format!("({})({word})", n.device()),
             Ty::Bool => format!("({word} != 0ul)"),
         }
     }
 
-    /// A value of this type as the raw buffer word that stores it.
+    /// A value of this type as the raw buffer word that stores it: a `float16`
+    /// result narrows to `half` in one rounding.
     fn word_of(self, value: &str) -> String {
         match self {
+            Ty::Num(n) if n.is_float() && n.bits == 16 => format!("(half)({value})"),
             Ty::Num(n) if n.is_float() => value.to_string(),
             Ty::Num(_) | Ty::Bool => format!("(ulong)({value})"),
         }
@@ -95,13 +123,16 @@ impl Uniform {
 
 /// A kernel body compiled to the device dialect, shape-independent: `lines`
 /// compute `result` from the slot values `p0`, `p1`, … and the uniforms
-/// `u0`, `u1`, … that the entry point binds.
+/// `u0`, `u1`, … that the entry point binds. `params` and `result_ty` are the
+/// compute types (`float16` is binary32 here); `param_storage` and
+/// `result_storage` are the buffer element types (`float16` is `half`).
 #[derive(Clone, Debug)]
 pub(crate) struct DeviceBody {
     lines: Vec<String>,
     result: String,
-    result_ty: Ty,
+    result_storage: Ty,
     params: Vec<Ty>,
+    param_storage: Vec<Ty>,
     uniforms: Vec<Uniform>,
 }
 
@@ -234,15 +265,36 @@ pub(crate) fn compile(
     captures: &[crate::closure::Capture],
     result: LType,
 ) -> Result<DeviceBody, DeviceFailure> {
-    let params = slots
+    let storages = slots
         .iter()
-        .map(|slot| Ty::of(*slot).ok_or_else(|| format!("a {slot} slot is not a device word")))
+        .map(|slot| {
+            Ty::of(*slot).ok_or_else(|| format!("a {} slot is not a device word", slot_name(*slot)))
+        })
         .collect::<Result<Vec<_>, _>>()?;
+    let params: Vec<Ty> = storages.iter().map(|ty| ty.compute()).collect();
+    let result_storage = Ty::of(result).unwrap_or(Ty::INT);
     let uniforms = captures
         .iter()
         .map(|capture| uniform_of(&capture.val).map(|uniform| (capture.name.clone(), uniform)))
         .collect::<Result<Vec<_>, _>>()?;
-    emit::body(cg, parameters, body, &params, &uniforms, Ty::of(result))
+    emit::body(
+        cg,
+        parameters,
+        body,
+        &params,
+        &storages,
+        &uniforms,
+        result_storage,
+    )
+}
+
+/// The source name of a slot for a decline reason, not its LLVM spelling.
+fn slot_name(ty: LType) -> &'static str {
+    match ty {
+        LType::Num(n) => n.name(),
+        LType::I1 => "bool",
+        LType::Str | LType::Ptr | LType::Any => "a handle",
+    }
 }
 
 fn uniform_of(value: &crate::llty::Value) -> Result<Uniform, String> {

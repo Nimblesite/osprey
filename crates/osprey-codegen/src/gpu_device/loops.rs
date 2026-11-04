@@ -56,7 +56,9 @@ impl Emitter<'_> {
         let (lines, ty, value) = self.nested(|emitter| emitter.callback(combine, &step))?;
         if ty != seed_ty {
             return Err(format!(
-                "a fold over a {seed_ty:?} seed combines to a {ty:?}"
+                "a fold over a {} seed combines to a {}",
+                seed_ty.name(),
+                ty.name()
             ));
         }
         self.line(format!(
@@ -133,7 +135,7 @@ impl Emitter<'_> {
         let (fallback_lines, ty, fallback_value) =
             self.nested(|emitter| emitter.expression(fallback))?;
         let (result, at) = (self.temp(), self.temp());
-        self.line(format!("{} {result};", ty.spelling()));
+        self.line(format!("{} {result};", ty.compute_spelling()));
         self.line(format!("long {at} = {index};"));
         self.line(format!("if ({at} >= 0 && (ulong){at} < {len}) {{"));
         self.line(format!(
