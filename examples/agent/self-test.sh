@@ -20,8 +20,8 @@ case "${1:-}" in
     *) echo "Usage: self-test.sh [--live [dotenv] | --update-goldens]" >&2; exit 2 ;;
 esac
 records=${OSPREY_AGENT_RECORDS:-$(mktemp -d "${TMPDIR:-/tmp}/osprey-agent-self-test.XXXXXX")}
-# One fixed folder: its path shows in the pictures, so a random name would differ from the goldens.
-work="${TMPDIR:-/tmp}/osprey-agent-work"
+# One fixed folder on every machine: its path shows in the pictures, and TMPDIR differs per user.
+work=/tmp/osprey-agent-work
 rm -rf "$work"
 mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT

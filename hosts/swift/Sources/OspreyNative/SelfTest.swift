@@ -473,9 +473,22 @@ public final class SelfTestRun {
         return data
     }
 
-    private func record(_ name: String) throws {
+    /// The first picture no different from the one 100 ms before: a fixed wait can catch a layout mid-move on a loaded machine.
+    private func steadyPicture() async throws -> Data {
+        var earlier = try picture()
+        for _ in 0..<50 {
+            try await Task.sleep(for: .milliseconds(100))
+            window.contentView?.layoutSubtreeIfNeeded()
+            let later = try picture()
+            if let moved = SelfTestPicture.difference(earlier, later), moved <= SelfTestPicture.tolerance { return later }
+            earlier = later
+        }
+        throw SelfTestProblem("The window never came to rest")
+    }
+
+    private func record(_ name: String) async throws {
         let shots = URL(fileURLWithPath: options.shots)
-        let data = try picture()
+        let data = try await steadyPicture()
         try data.write(to: shots.appendingPathComponent("\(name).png"))
         try regions.outline.write(to: shots.appendingPathComponent("\(name).access.txt"), atomically: true, encoding: .utf8)
         guard let goldens = options.goldens else { return }
@@ -519,7 +532,7 @@ public final class SelfTestRun {
                 return
             case let .recording(name):
                 await settle()
-                try record(name)
+                try await record(name)
                 return
             case let .sleeping(seconds):
                 try await Task.sleep(for: .seconds(seconds))
