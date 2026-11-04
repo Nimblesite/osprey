@@ -3,10 +3,10 @@
 # osprey: module=Generation
 """A model-independent generate driver.
 
-`generate` takes a `next_logits` callback (`list[int] -> list[float]`, any model
+`generate` takes a `next_logits` callback (`list[int] -> list[float32]`, any model
 that scores a token history), a starting token history, a list of
 `LogitsProcess` processors, a list of `StoppingCriterion` rules, a sampler
-(`list[float] -> int`; `Math.argmax` for greedy, `Math.multinomial(probs, u)`
+(`list[float32] -> int`; `Math.argmax` for greedy, `Math.multinomial(probs, u)`
 for a fixed-draw sample), and a new-token budget. Each step scores the history,
 folds the processors over the logits left to right, draws the next token, and
 stops as soon as a criterion fires, mirroring `transformers`' generation loop
