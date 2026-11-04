@@ -31,6 +31,12 @@ long signed_word(ulong magnitude_word, bool negative) {
 #define CHECKED_INTEGER(SUFFIX, T, U, BITS, SIGNED) \
 constant ulong INTEGER_SIGN##SUFFIX = 1ul << (BITS - 1); \
 constant ulong INTEGER_MASK##SUFFIX = (ulong)(U)~(U)0; \
+T osprey_convert##SUFFIX(long value, GPU_GLOBAL ulong *fault) { \
+    long low = SIGNED ? (long)(0ul - INTEGER_SIGN##SUFFIX) : 0; \
+    ulong high = SIGNED ? INTEGER_SIGN##SUFFIX - 1 : INTEGER_MASK##SUFFIX; \
+    bool overflow = value < low || (value >= 0 && (ulong)value > high); \
+    return overflow ? (T)osprey_fault(fault, FAULT_OVERFLOW) : (T)value; \
+} \
 T osprey_add##SUFFIX(T a, T b, GPU_GLOBAL ulong *fault) { \
     ulong x = (ulong)(U)a, y = (ulong)(U)b; \
     ulong r = (x + y) & INTEGER_MASK##SUFFIX; \

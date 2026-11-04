@@ -47,6 +47,9 @@ static const char KERNELS[] =
     " GPU_GLOBAL ulong *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4) GPU_THREAD) {\n"
     "  ulong i = GPU_INDEX;\n  if (i >= count) return;\n"
     "  out[i] = (ulong)osprey_add((long)in0[i], (long)in0[i], fault);\n}\n"
+    "kernel void osprey_kernel_convert(GPU_GLOBAL const long *in0 GPU_BUFFER(0), GPU_GLOBAL const long *in1 GPU_BUFFER(1),"
+    " GPU_GLOBAL long *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), GPU_PARAM count GPU_BUFFER(4) GPU_THREAD) {\n"
+    "  if (GPU_INDEX < count) out[GPU_INDEX] = (long)osprey_convert_i8(in0[GPU_INDEX], fault);\n}\n"
     "kernel void osprey_kernel_float32(GPU_GLOBAL const float *a GPU_BUFFER(0),"
     " GPU_GLOBAL const float *b GPU_BUFFER(1), GPU_GLOBAL float *out GPU_BUFFER(2) GPU_THREAD) {\n"
     "  if (GPU_INDEX != 0) return;\n"
@@ -195,19 +198,26 @@ static void compiled_reduction(void) {
 // A faulting kernel records the fault word the runtime aborts on; the abort
 // itself is covered by gpu_selection_tests.c, since a Metal device must not be
 // used across a fork.
-static void compiled_fault(void) {
+static void fault_case(const char *name, const int64_t input[4], const int64_t expected[4]) {
   void *a = osprey_gpu_alloc(4, 8);
-  ((int64_t *)osprey_gpu_data(a))[2] = INT64_MAX;
+  memcpy(osprey_gpu_data(a), input, 4 * sizeof(int64_t));
   int64_t out[4] = {7, 7, 7, 7}, fault = 0;
-  OspreyGpuDispatch d = {"osprey_kernel_fault", KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 4};
+  OspreyGpuDispatch d = {name, KERNELS, {{0, NULL, NULL, 0, NULL, 8}}, 0, 4};
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_INPUT, osprey_gpu_data(a), NULL, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, out, out, 4, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
   osprey_gpu_arg(&d, OSPREY_GPU_SCALAR, NULL, NULL, 4, 8);
   assert(osprey_gpu_device_dispatch(&d) == 1 && fault == OSPREY_GPU_FAULT_OVERFLOW);
-  assert(out[0] == 0 && out[1] == 0 && out[2] == 0 && out[3] == 0);
+  for (unsigned i = 0; i < 4; i++) assert(out[i] == expected[i]);
   checks += 5;
+}
+
+static void compiled_fault(void) {
+  const int64_t addition[4] = {0, 0, INT64_MAX, 0}, zeros[4] = {0, 0, 0, 0};
+  fault_case("osprey_kernel_fault", addition, zeros);
+  const int64_t conversion[4] = {127, 128, -128, -129}, narrowed[4] = {127, 0, -128, 0};
+  fault_case("osprey_kernel_convert", conversion, narrowed);
 }
 
 // [GPU-DEVICE-NATIVE]: FMA and reassociation each change these binary32 results.
@@ -250,19 +260,19 @@ int main(void) {
   compiled_reduction();
   compiled_fault();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 9);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 10);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 10);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 11);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 11);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 12);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 14);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 15);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults and byte transfers\n", checks);
   return 0;

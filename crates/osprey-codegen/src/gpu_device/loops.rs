@@ -9,7 +9,7 @@ use osprey_ast::{Expr, Stmt};
 
 pub(super) fn uniform_local(i: usize, uniform: &Uniform) -> Local {
     match uniform {
-        Uniform::Scalar(ty) => Local::Scalar(*ty, format!("u{i}_v")),
+        Uniform::Scalar(ty) => Local::Scalar(ty.compute(), format!("u{i}_v")),
         Uniform::Buffer(_) => Local::Buffer(format!("u{i}"), format!("u{i}_len")),
     }
 }

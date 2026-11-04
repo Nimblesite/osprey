@@ -324,6 +324,12 @@ static void expect_integer(__int128 got, __int128 expected, __int128 low,
 }
 
 #define INTEGER_ORACLE(SUFFIX, T, U, BITS, SIGNED) \
+static void conversion_case##SUFFIX(long value) { \
+  const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
+  const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
+  ulong fault = 0; T got = osprey_convert##SUFFIX(value, &fault); \
+  expect_integer(got, value, low, high, fault, 0); \
+} \
 static void integer_pair##SUFFIX(T a, T b) { \
   const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
   const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
@@ -347,6 +353,12 @@ static void integer_cases##SUFFIX(void) { \
   const __int128 low = SIGNED ? -((__int128)1 << (BITS - 1)) : 0; \
   const __int128 high = ((__int128)1 << (BITS - SIGNED)) - 1; \
   T edges[] = {0, 1, (T)-1, (T)low, (T)(low + 1), (T)(high - 1), (T)high, 2}; \
+  for (long value = -65536; value <= 65536; value++) conversion_case##SUFFIX(value); \
+  for (int delta = -1; delta <= 1; delta++) { \
+    if (low + delta >= INT64_MIN) conversion_case##SUFFIX((long)(low + delta)); \
+    if (high + delta <= INT64_MAX) conversion_case##SUFFIX((long)(high + delta)); \
+  } \
+  for (uint i = 0; i < 10000; i++) conversion_case##SUFFIX((long)random_word()); \
   for (size_t i = 0; i < 8; i++) for (size_t j = 0; j < 8; j++) integer_pair##SUFFIX(edges[i], edges[j]); \
   if (BITS == 8) { \
     for (uint i = 0; i < 256; i++) for (uint j = 0; j < 256; j++) integer_pair##SUFFIX((T)(U)i, (T)(U)j); \

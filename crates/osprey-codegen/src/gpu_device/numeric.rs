@@ -51,9 +51,9 @@ pub(super) fn state_word(ty: Ty, value: &str) -> String {
 
 /// One kernel conversion [BUILTIN-CONVERT-FLOAT] [BUILTIN-CONVERT-INT]:
 /// `toFloat32` of a `float` is `narrow32`, `toFloat` of a `float32` its
-/// `widen32`; every other pair is the device's cast, and a `float16` target
-/// rounds through binary32 once ([GPU-DEVICE-NATIVE]). Returns the compute
-/// type the converted value travels at.
+/// `widen32`; integer narrowing records overflow before the device cast.
+/// A `float16` target rounds once from the source width, then widens exactly
+/// to its binary32 compute type ([GPU-DEVICE-NATIVE]).
 pub(super) fn convert(target: Ty, source: Ty, value: &str) -> Option<(Ty, String)> {
     let Ty::Num(t) = target else { return None };
     let Ty::Num(s) = source else { return None };
@@ -75,7 +75,9 @@ pub(super) fn convert(target: Ty, source: Ty, value: &str) -> Option<(Ty, String
             }
             (Numeric::FLOAT, _) if s.is_integer() => format!("from_long((long)({value}))"),
             (Numeric::FLOAT32, _) if s.is_integer() => format!("((float)({value}))"),
-            (_, _) if t.is_integer() && s.is_integer() => format!("({})({value})", t.device()),
+            (_, _) if t.is_integer() && s.is_integer() => {
+                format!("osprey_convert{}((long)({value}), fault)", suffix(t))
+            }
             _ => return None,
         }
     };
