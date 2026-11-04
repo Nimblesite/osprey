@@ -63,7 +63,7 @@ pub(super) fn body(
     params: &[Ty],
     storages: &[Ty],
     captures: &[(String, Uniform)],
-    result_storage: Ty,
+    result_storage: Option<Ty>,
 ) -> Result<DeviceBody, DeviceFailure> {
     if parameters.len() != params.len() {
         return Err("the kernel's arity disagrees with the combinator's slots".into());
@@ -75,7 +75,7 @@ pub(super) fn body(
         scopes: vec![HashMap::new()],
         depth: 0,
         foreign_call: None,
-        default_float: if result_storage.compute() == Ty::FLOAT32 {
+        default_float: if result_storage.is_some_and(|ty| ty.compute() == Ty::FLOAT32) {
             Ty::FLOAT32
         } else {
             Ty::FLOAT
@@ -87,11 +87,16 @@ pub(super) fn body(
     for (i, (name, uniform)) in captures.iter().enumerate() {
         emitter.bind(name, uniform_local(i, uniform));
     }
-    let (_, result) = emitter.checked_expression(body)?;
+    let (result_type, result) = emitter.checked_expression(body)?;
     Ok(DeviceBody {
         lines: emitter.blocks.pop().unwrap_or_default(),
         result,
-        result_storage,
+        // A boxed host return may look like an integer word. The emitted
+        // scalar determines its representation; storage can refine it (half)
+        // only when both have the same compute type [GPU-DEVICE-NATIVE].
+        result_storage: result_storage
+            .filter(|storage| storage.compute() == result_type)
+            .unwrap_or(result_type),
         params: params.to_vec(),
         param_storage: storages.to_vec(),
         uniforms: captures

@@ -272,7 +272,7 @@ pub(crate) fn compile(
         })
         .collect::<Result<Vec<_>, _>>()?;
     let params: Vec<Ty> = storages.iter().map(|ty| ty.compute()).collect();
-    let result_storage = Ty::of(result).unwrap_or(Ty::INT);
+    let result_storage = Ty::of(result);
     let uniforms = captures
         .iter()
         .map(|capture| uniform_of(&capture.val).map(|uniform| (capture.name.clone(), uniform)))

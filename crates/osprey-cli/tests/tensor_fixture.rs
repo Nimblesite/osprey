@@ -143,6 +143,18 @@ fn float32_reductions_round_at_the_inferred_accumulator_width() {
     std::fs::remove_file(path).expect("remove reduction fixture");
 }
 
+/// [GPU-FOLD] Erased host metadata must retain the device body's numeric width.
+#[test]
+fn effect_handled_float32_maximum_keeps_its_device_result_width() {
+    let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)])\nlet maximum = perform Backends::Tensor.reduce(values, Model::at(values, 0), Model::maxF)\nlet found = perform Backends::Tensor.indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
+    let path = gpt2_project("maximum32", source).expect("write float32 maximum fixture");
+    let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
+    let (code, stdout, stderr) = run_with_gpu(&path, &backend);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, "1.25 1\n", "{stderr}");
+    std::fs::remove_dir_all(path).expect("remove maximum fixture");
+}
+
 /// [GPU-SCAN] [GPU-FILTER] Both sequential shapes preserve binary32 elements.
 #[test]
 fn typed_scan_and_filter_keep_their_device_form_and_order() {
