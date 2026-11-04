@@ -7,10 +7,9 @@
 // file_runtime.c (the io_error channel) and memory_runtime.c (the default
 // backend) by the Makefile's _test_c_runtime.
 //
-// The load-bearing contract is TOTALITY: a negative length, an overflowing
-// length, and a failed data allocation must all yield an observably EMPTY
-// buffer — never a trap, never a partial buffer, never an out-of-bounds
-// write. Every accessor must be NULL-safe and bounds-checked, because these
+// [FAILURE-EXPLICIT]: negative lengths, overflowing byte sizes and allocation
+// failures must return NULL with a recorded reason, never a successful empty
+// buffer. Every accessor must be NULL-safe and bounds-checked, because these
 // are the no-trap backstops behind codegen's counted loops. The host
 // operations extend it: every failure is NULL plus a recorded reason, never a
 // partial result.
@@ -65,27 +64,32 @@ static void t_alloc_zero_filled(void) {
   CHECK(osprey_gpu_in_bounds(b, -1) == 0);
 }
 
-// Out-of-range lengths clamp to the EMPTY buffer — allocation is total.
-static void t_alloc_clamps_to_empty(void) {
+// Invalid allocation requests fail; every raw accessor remains NULL-safe.
+static void t_alloc_refuses_invalid(void) {
   int64_t bad[] = {-1, INT64_MIN, GPU_MAX_LEN + 1, INT64_MAX};
   for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+    osp_io_error_clear();
     void *b = osprey_gpu_alloc(bad[i], 8);
-    CHECK(b != NULL);
+    CHECK(b == NULL);
+    CHECK(strstr(osp_io_error(), i < 2 ? "negative element count" : "overflows the byte size") != NULL);
     CHECK(osprey_gpu_len(b) == 0);
     CHECK(osprey_gpu_in_bounds(b, 0) == 0);
     CHECK(osprey_gpu_get(b, 0) == 0);
     osprey_gpu_set(b, 0, 99); // ignored, not a wild store
     CHECK(osprey_gpu_get(b, 0) == 0);
   }
+  osp_io_error_clear();
   void *zero = osprey_gpu_alloc(0, 8);
-  CHECK(zero != NULL && osprey_gpu_len(zero) == 0);
+  CHECK(zero != NULL && osprey_gpu_len(zero) == 0 && osp_io_error() == NULL);
 }
 
 // An IN-range length whose data allocation fails (no machine has 2^63-aligned
-// bytes) still yields the empty buffer, never NULL-deref or a partial length.
-static void t_alloc_failure_is_empty(void) {
+// bytes) fails explicitly; the NULL-safe backstops must still hold.
+static void t_alloc_failure_is_error(void) {
+  osp_io_error_clear();
   void *b = osprey_gpu_alloc(GPU_MAX_LEN, 8);
-  CHECK(b != NULL);
+  CHECK(b == NULL);
+  CHECK(strstr(osp_io_error(), "out of memory") != NULL);
   CHECK(osprey_gpu_len(b) == 0);
   CHECK(osprey_gpu_in_bounds(b, 0) == 0);
   osprey_gpu_set(b, 0, 7);
@@ -463,8 +467,8 @@ int main(int argc, char **argv) {
   t_dense_word_roundtrip();
   t_uint8_million_allocates_one_megabyte();
   t_alloc_zero_filled();
-  t_alloc_clamps_to_empty();
-  t_alloc_failure_is_empty();
+  t_alloc_refuses_invalid();
+  t_alloc_failure_is_error();
   t_null_safety();
   t_set_get_roundtrip();
   t_boundary_words();

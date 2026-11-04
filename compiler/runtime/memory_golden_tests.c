@@ -12,6 +12,7 @@
 // assertions even when the program's OUTPUT is still correct — the property
 // exit-status tests and RSS eyeballing cannot give.
 #include "memory_hooks.h"
+#include "io_error.h"
 
 #include <assert.h>
 #include <stdint.h>
@@ -204,16 +205,24 @@ static void t_gpu_buffer_accounting(void) {
   CHECK(osprey_gpu_get(buf, 0) == 41);
   osp_release(buf);
   at_floor();
-  // Empty and clamped-negative buffers still cost header + one guard word.
+  // A successful empty buffer still costs its header and one guard word.
   void *empty = osprey_gpu_alloc(0, 8);
-  void *neg = osprey_gpu_alloc(-7, 8);
-  CHECK(empty && neg);
-  CHECK(osprey_gpu_len(empty) == 0 && osprey_gpu_len(neg) == 0);
-  CHECK(osp_arc_live_objects() == g_floor_objs + 4);
-  CHECK(osp_arc_live_bytes() == g_floor_bytes + 2 * (GPU_HDR_BYTES + W));
+  CHECK(empty != NULL);
+  CHECK(osprey_gpu_len(empty) == 0);
+  CHECK(osp_arc_live_objects() == g_floor_objs + 2);
+  CHECK(osp_arc_live_bytes() == g_floor_bytes + GPU_HDR_BYTES + W);
   osp_release(empty);
-  osp_release(neg);
   at_floor();
+  // [FAILURE-EXPLICIT] Failed allocations owe no header or payload at any width.
+  for (int64_t width = 1; width <= 8; width *= 2) {
+    int64_t counts[] = {-7, INT64_MIN, INT64_MAX / width};
+    for (unsigned i = 0; i < sizeof counts / sizeof counts[0]; i++) {
+      osp_io_error_clear();
+      CHECK(osprey_gpu_alloc(counts[i], width) == NULL);
+      CHECK(osp_io_error() != NULL);
+      at_floor();
+    }
+  }
 }
 
 // GPU churn holds its ceiling exactly like scalar churn: map-style pipelines

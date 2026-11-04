@@ -258,12 +258,6 @@ static void register_finalizer(void) {
   }
 }
 
-// A requested length made total: negative or byte-overflowing requests
-// become zero, so every allocation below is for a representable size.
-static int64_t clamped_len(int64_t length, int64_t elem_bytes) {
-  return (length < 0 || length > INT64_MAX / elem_bytes) ? 0 : length;
-}
-
 // `length` zero-filled scalar words (at least one, so the empty buffer still
 // owns a payload), or NULL when the data allocation fails.
 static uint8_t *zeroed_words(int64_t length, int64_t elem_bytes) {
@@ -273,25 +267,41 @@ static uint8_t *zeroed_words(int64_t length, int64_t elem_bytes) {
   return data;
 }
 
-// Allocate a zero-filled buffer of `length` scalar words. Out-of-range
-// lengths clamp to zero and allocation failure yields NULL; every accessor
-// below treats both as an empty buffer instead of trapping.
+// Allocate a zero-filled buffer of `length` scalar words. A negative or
+// byte-overflowing length and a failed allocation are NULL with the reason on
+// the io_error channel, never a fabricated empty buffer ([FAILURE-EXPLICIT]);
+// a zero length is the one valid empty buffer.
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   if (elem_bytes != 1 && elem_bytes != 2 && elem_bytes != 4 && elem_bytes != 8) {
     osp_io_error_text("gpu", "buffer allocation", "element width must be 1, 2, 4 or 8 bytes");
     return NULL;
   }
-  register_finalizer();
-  length = clamped_len(length, elem_bytes);
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)osp_alloc_tagged((int64_t)sizeof(OspreyGpuBuffer), GPU_HDR_LAYOUT);
-  if (!b) {
+  if (length < 0) {
+    osp_io_error_text("gpu", "buffer allocation", "a negative element count");
     return NULL;
   }
-  b->data = zeroed_words(length, elem_bytes);
-  b->length = b->data ? length : 0;
+  if (length > INT64_MAX / elem_bytes) {
+    osp_io_error_text("gpu", "buffer allocation", "element count overflows the byte size");
+    return NULL;
+  }
+  register_finalizer();
+  OspreyGpuBuffer *b = (OspreyGpuBuffer *)osp_alloc_tagged((int64_t)sizeof(OspreyGpuBuffer), GPU_HDR_LAYOUT);
+  if (!b) {
+    osp_io_error_text("gpu", "buffer allocation", "out of memory");
+    return NULL;
+  }
+  b->length = 0;
+  b->data = NULL;
   b->device = NULL;
   b->stale = 0;
   b->elem_bytes = elem_bytes;
+  b->data = zeroed_words(length, elem_bytes);
+  if (!b->data) {
+    osp_release(b);
+    osp_io_error_text("gpu", "buffer allocation", "out of memory");
+    return NULL;
+  }
+  b->length = length;
   return b;
 }
 
