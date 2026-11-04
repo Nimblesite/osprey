@@ -24,6 +24,6 @@ make test
 make lint
 ```
 
-The compiler lands at `target/release/osprey`. [build-compiler.sh](build-compiler.sh) wraps the root build. For extension development, run `npm run compile` from `/workspace/vscode-extension` and use its [test guide](../src/toolchain/vscode-extension/TESTING.md).
+The compiler lands at `target/release/osprey`. [build-compiler.sh](build-compiler.sh) wraps the root build. For extension development, run `npm run compile` from `/workspace/src/toolchain/vscode-extension` and use its [test guide](../src/toolchain/vscode-extension/TESTING.md).
 
 Useful version checks are `rustc --version`, `cargo --version`, `clang --version`, `node --version` and `npm --version`. For setup failures, inspect the Docker build and post-create logs; a fresh container alone does not repair a pinned incompatible toolchain.

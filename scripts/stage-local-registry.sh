@@ -24,7 +24,7 @@ mkdir -p "$out"
 published=0
 refused=0
 mistakes=0
-for manifest in "$repo"/packages/*/osprey.toml; do
+for manifest in "$repo"/src/osprey/packages/*/osprey.toml; do
   project="$(dirname "$manifest")"
   grep -q '^\[package\]' "$manifest" || continue
   key="$(sed -n 's/^name = "\(@[^"]*\)"/\1/p' "$manifest" | head -1)"

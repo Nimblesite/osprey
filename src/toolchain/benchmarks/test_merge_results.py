@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Optional
 import sys
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_results import atomic_write, merge, valid_timing
 from report import load, update_readme
 
@@ -36,7 +36,7 @@ class LspFixtureTests(unittest.TestCase):
 class PublishedMeasurementsTests(unittest.TestCase):
     def test_recorded_timings_stay_above_the_recovered_baseline(self) -> None:
         # 24 cases × 11 measured columns recovered on 2026-10-11. Only raise this floor.
-        out = Path(__file__).resolve().parent.parent.parent.parent / "results"
+        out = Path(__file__).resolve().parent / "results"
         data = json.loads((out / "results.json").read_text())["cases"]
         measured = sum(cell.get("status") == "ok" and valid_timing(cell)
                        for langs in data.values() for cell in langs.values())
@@ -221,7 +221,7 @@ class HarnessPublicationTests(unittest.TestCase):
     def fixture(self, root: Path) -> Path:
         bench = root / "src" / "toolchain" / "benchmarks"
         bench.mkdir()
-        source = Path(__file__).resolve().parent.parent.parent.parent
+        source = Path(__file__).resolve().parent
         for name in ("run.sh", "merge_results.py", "report.py"):
             shutil.copy(source / name, bench / name)
         (bench / "README.md").write_text(f"{UpdateReadmeTests.START}\n{UpdateReadmeTests.END}\n")

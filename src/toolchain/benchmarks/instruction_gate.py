@@ -16,8 +16,8 @@ import sys
 import tempfile
 from pathlib import Path
 
-BENCHMARKS = Path(__file__).resolve().parent.parent.parent.parent
-OSPREY = BENCHMARKS.parent / "target" / "release" / "osprey"
+BENCHMARKS = Path(__file__).resolve().parent
+OSPREY = BENCHMARKS.parents[2] / "target" / "release" / "osprey"
 RATIOS = BENCHMARKS / "instruction-ratios.json"
 CASES = ("collatz", "coprime", "digitsum", "fib", "gcdsum", "hanoi", "isqrt", "tak")
 # Cachegrind differs by well under 1% between runs and between runners.

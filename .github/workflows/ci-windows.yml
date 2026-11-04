@@ -159,10 +159,10 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=gc
+          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test src/osprey/tests --memory=gc
 
       - name: Core language assertion corpus — ARC
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=arc
+          OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test src/osprey/tests --memory=arc

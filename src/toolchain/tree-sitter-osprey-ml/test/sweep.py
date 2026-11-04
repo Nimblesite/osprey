@@ -3,8 +3,8 @@ from pathlib import Path
 import subprocess
 import sys
 
-GRAMMAR = Path(__file__).resolve().parents[4]
-REPOSITORY = GRAMMAR.parent
+GRAMMAR = Path(__file__).resolve().parents[1]
+REPOSITORY = GRAMMAR.parents[2]
 CLI = REPOSITORY / "src/toolchain/tree-sitter-osprey/node_modules/.bin/tree-sitter"
 ROOTS = ("src/osprey/tests", "src/osprey/examples")
 EXCLUDED = {"failscompilation", "node_modules", "target"}

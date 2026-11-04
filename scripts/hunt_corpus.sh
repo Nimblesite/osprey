@@ -36,7 +36,7 @@ done
 # Shared inventory keeps standalone files separate from project modules.
 if [ ${#PROGRAMS[@]} -eq 0 ]; then
   while IFS= read -r program; do PROGRAMS+=("$program"); done < <(
-    python3 scripts/hunt_programs.py tests src/osprey/examples | sed '\#^src/osprey/tests/hunt/#d'
+    python3 scripts/hunt_programs.py src/osprey/tests src/osprey/examples | sed '\#^src/osprey/tests/hunt/#d'
   )
 fi
 if [ "$ALL" -eq 0 ] && [ -f src/osprey/tests/HUNT_UNPORTABLE.txt ]; then

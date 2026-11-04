@@ -16,7 +16,7 @@ case "$abi" in
     x86_64) target=android-x64; triple=x86_64-linux-android26 ;;
     *) echo "Unsupported Android ABI: $abi" >&2; exit 1 ;;
 esac
-scratch=$(mktemp -d "$root/compiler/bin/.android-tests.XXXXXX")
+scratch=$(mktemp -d "$root/src/toolchain/compiler/bin/.android-tests.XXXXXX")
 remote="/data/local/tmp/osprey-tests-$$"
 cleanup() { rm -rf "$scratch"; "$adb" -s "$serial" shell rm -rf "$remote" >/dev/null; }
 trap cleanup EXIT

@@ -64,8 +64,8 @@
     "go.testExplorer.showDynamicSubtestsInEditor": true,
     "mochaExplorer.files": "src/toolchain/vscode-extension/test/**/*.test.{js,ts}",
     "mochaExplorer.env": {},
-    "mochaExplorer.cwd": "${workspaceFolder}/vscode-extension",
-    "jestTestExplorer.rootPath": "webcompiler",
+    "mochaExplorer.cwd": "${workspaceFolder}/src/toolchain/vscode-extension",
+    "jestTestExplorer.rootPath": "src/toolchain/webcompiler",
     "C_Cpp.default.cStandard": "c11",
     "C_Cpp.default.compilerPath": "/usr/bin/clang",
     "C_Cpp.default.compilerArgs": [

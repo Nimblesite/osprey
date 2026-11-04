@@ -230,7 +230,7 @@ fmt: $(EXT_NODE_DEPS)
 clean:
 	@echo "==> Cleaning..."
 	cargo clean
-	$(RM) $(RTB) src/toolchain/compiler/lib outputs
+	$(RM) $(RTB) src/toolchain/compiler/lib
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
 ## ci: lint + hawk + test + bank-test + bank-e2e + build (full CI simulation)

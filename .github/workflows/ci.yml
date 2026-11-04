@@ -940,7 +940,7 @@ jobs:
 
       - name: Benchmark compiler fixture
         if: steps.filter.outputs.benchmarks == 'true' || steps.filter.outputs.code == 'true'
-        run: python3 -m unittest benchmarks.test_merge_results.LspFixtureTests
+        run: python3 -m unittest src.toolchain.benchmarks.test_merge_results.LspFixtureTests
 
       - name: Upload Playwright report on failure
         if: failure()

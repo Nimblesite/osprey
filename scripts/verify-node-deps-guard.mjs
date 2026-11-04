@@ -32,15 +32,15 @@ const readMakefiles = (file, seen = new Set()) => {
 // Subproject directory -> the make variable holding its install stamp. A recipe
 // running a node tool in one of these must list that variable as a prerequisite.
 const GUARDED = new Map([
-  ['vscode-extension', 'EXT_NODE_DEPS'],
-  ['website', 'WEBSITE_NODE_DEPS'],
-  ['webcompiler', 'WEBCOMPILER_NODE_DEPS'],
+  ['src/toolchain/vscode-extension', 'EXT_NODE_DEPS'],
+  ['src/toolchain/website', 'WEBSITE_NODE_DEPS'],
+  ['src/toolchain/webcompiler', 'WEBCOMPILER_NODE_DEPS'],
   ['src/osprey/examples/projects/modules/web', 'BANK_WEB_NODE_DEPS'],
   ['src/osprey/examples/projects/modules/e2e', 'BANK_E2E_NODE_DEPS'],
 ])
 
 // Make variables that resolve to a guarded directory.
-const DIR_VARS = new Map([['$(EXT_DIR)', 'vscode-extension']])
+const DIR_VARS = new Map([['$(EXT_DIR)', 'src/toolchain/vscode-extension']])
 
 // The install rule itself runs npm without a stamp prerequisite — it *is* the
 // stamp. Exempting it by name keeps the rule from having to depend on itself.

@@ -151,7 +151,7 @@ class DatasetAuditTests(unittest.TestCase):
         result = subprocess.run([sys.executable, "-m", "osprey.dataset_audit", "--train", str(source),
             "--output", str(self.root / "output"), "--compiler", os.environ["OSPREY"]],
             cwd=self.root, capture_output=True, text=True,
-            env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[4])))
+            env=dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1])))
         self.assertEqual(result.returncode, 2, result.stderr)
         self.assertIn("quarantined", result.stdout)
         self.assertNotIn("person@example.invalid", result.stdout + result.stderr)

@@ -21,7 +21,7 @@ import room
 from spec import RATES, ROLES, SKINS, WAVES
 from traces import meters, shape, traces
 
-PACKAGE = Path(__file__).resolve().parents[2] / "packages" / "signal_flow"
+PACKAGE = Path(__file__).resolve().parents[2] / "src" / "osprey" / "packages" / "signal_flow"
 HERE = PACKAGE / "skins"
 DESIGNS = PACKAGE / "design"
 DOCUMENT = PACKAGE / "signal_flow.machine.json"

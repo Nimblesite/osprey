@@ -18,7 +18,7 @@ _test_proof_kernel_gc _test_proof_kernel_arc: _test_proof_kernel_%:
 	@$(MKDIR) target/proof
 	./$(BIN) src/osprey/examples/proof/kernel --run --memory=$* 2>/dev/null > target/proof/kernel.$*.txt
 	diff target/proof/kernel.$*.txt src/osprey/examples/proof/kernel/expectedoutput
-	cd src/osprey/examples/proof/export_check && ../../../$(BIN) . --run --memory=$* 2>/dev/null > ../../../target/proof/export-check.$*.txt
+	cd src/osprey/examples/proof/export_check && ../../../../../$(BIN) . --run --memory=$* 2>/dev/null > ../../../../../target/proof/export-check.$*.txt
 	diff target/proof/export-check.$*.txt src/osprey/examples/proof/export_check/expectedoutput
 	./$(BIN) src/osprey/examples/proof/kernel/tests --run --memory=$* 2>/dev/null > target/proof/kernel-tests.$*.txt; status=$$?; tail -1 target/proof/kernel-tests.$*.txt; test $$status -eq 0
 	grep -q "failed=0" target/proof/kernel-tests.$*.txt
@@ -58,7 +58,7 @@ _test_disciplines_passthrough:
 	@rm -rf target/disciplines/roundtrip-broken && $(MKDIR) target/disciplines/roundtrip-broken/src
 	@cp src/osprey/examples/disciplines/roundtrip/src/main.ospml src/osprey/examples/disciplines/roundtrip/src/numbers.ospml src/osprey/examples/disciplines/roundtrip/src/count.ospml target/disciplines/roundtrip-broken/src/
 	@printf '    export broken () = 1 + "x"\n' >> target/disciplines/roundtrip-broken/src/count.ospml
-	@sed 's|"../passthrough"|"../../../examples/disciplines/passthrough"|' src/osprey/examples/disciplines/roundtrip/osprey.toml > target/disciplines/roundtrip-broken/osprey.toml
+	@sed 's|"../passthrough"|"../../../src/osprey/examples/disciplines/passthrough"|' src/osprey/examples/disciplines/roundtrip/osprey.toml > target/disciplines/roundtrip-broken/osprey.toml
 	@if ./$(BIN) target/disciplines/roundtrip-broken --check > target/disciplines/broken.txt 2>&1; then \
 	  echo "FAIL: the module with a planted type error was accepted"; cat target/disciplines/broken.txt; exit 1; fi
 	@grep -q 'passthrough/check: type mismatch' target/disciplines/broken.txt
@@ -67,7 +67,7 @@ _test_disciplines_passthrough:
 
 _test_language_corpus:
 	@echo "==> [language] Default + ML assertion corpus..."
-	@OSPREY_TEST_JOBS=1 ./$(BIN) test tests
+	@OSPREY_TEST_JOBS=1 ./$(BIN) test src/osprey/tests
 
 # _test_goldens: byte-exact stdout comparison against the .expectedoutput
 # goldens. Distinct from the target above, which runs the same corpus through
