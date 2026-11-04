@@ -353,6 +353,11 @@ def unicode_step(frame, byte):
         return Success(value=Turn(frame=update(frame, progress=frame.progress + 1), consumed=True, done=False))
 
 
+def may_write_key(frame):
+    """Whether one more key may be written: a declared name is left, or any name is allowed."""
+    return ToolSchema.allows_extra(frame.schema) or len(key_candidates(frame)) > 0
+
+
 def key_candidates(frame):
     """The property names a key may still name: the declared ones not written yet."""
     declared = ToolSchema.property_names(frame.schema)
@@ -360,7 +365,26 @@ def key_candidates(frame):
 
 
 def key_step(frame, byte):
-    """A key's text: only a declared, unwritten property name, closed by its quote."""
+    """A key's text: only a declared, unwritten property name, closed by its quote. An
+    object that admits undeclared properties takes any key instead."""
+    if ToolSchema.allows_extra(frame.schema):
+        return free_key_step(frame, byte)
+    else:
+        return declared_key_step(frame, byte)
+
+
+def free_key_step(frame, byte):
+    """A key of an object that admits undeclared properties: any text, closed by a quote."""
+    if byte == of_char('"'):
+        return Success(value=Turn(frame=update(frame, stage="colon"), consumed=True, done=False))
+    elif byte < 32:
+        return Error(message=ToolSchema.violation("json", "key", "unescaped control byte"))
+    else:
+        return Success(value=Turn(frame=update(frame, text=frame.text + char_of(byte)), consumed=True, done=False))
+
+
+def declared_key_step(frame, byte):
+    """A key confined to the object's own declared, unwritten property names."""
     longer = frame.text + char_of(byte)
     if len(filterList(frame.candidates, lambda candidate: startsWith(candidate, longer))) > 0:
         return Success(value=Turn(frame=update(frame, text=longer), consumed=True, done=False))
@@ -395,7 +419,7 @@ def after_step(frame, byte):
     """After a value: a comma continues the container, a closer finishes it."""
     if byte == of_char(",") and frame.container == "array":
         return Success(value=Turn(frame=update(frame, stage="value"), consumed=True, done=False))
-    elif byte == of_char(",") and frame.container == "object" and len(key_candidates(frame)) > 0:
+    elif byte == of_char(",") and frame.container == "object" and may_write_key(frame):
         return Success(value=Turn(frame=update(frame, stage="keyNext"), consumed=True, done=False))
     elif byte == of_char(",") and frame.container == "object":
         return Error(message=ToolSchema.violation("json", "object", "no property left to write"))

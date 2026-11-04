@@ -395,6 +395,11 @@ ok max_i
 ok min_f
 ok max_f
 ok generate
+ok corner_number
+ok corner_number_bad
+ok corner_escapes
+ok corner_extra
+ok corner_two_calls
 ok reader_kind
 ok reader_kind_matches
 ok reader_members
@@ -2323,4 +2328,4 @@ ok processor_accepts[2]
 ok processor_pick[7]
 ok processor_mask[7]
 ok processor_accepts[7]
-2325 passed, 0 failed
+2330 passed, 0 failed

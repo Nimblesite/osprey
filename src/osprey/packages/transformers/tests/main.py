@@ -803,5 +803,45 @@ def corpus_score(record, k):
     return toFloat32(1.0) if k == unwrap_or(listGet(ints_of(unwrap_or(jsonField(record, "want"), JsonNull)), 0), 0) else toFloat32(0.0)
 
 
+# The corners the corpus leaves out: numbers with exponents, string escapes, an
+# unconstrained object, and a turn that carries two calls.
+
+def corner_cases():
+    """Scanner and parser corners: what the 200 turns happen not to exercise."""
+    tools = tool_list()
+    records = records_of(ExpectedTools.CASES)
+    number = decoded("{\"type\":\"number\"}")
+    text_schema = decoded("{\"type\":\"string\"}")
+    free = decoded("{\"type\":\"object\",\"properties\":{\"x\":{\"type\":\"integer\"}}}")
+    return [
+        Check.equal("corner_number", scanned(number, "-1.5e3"), "complete"),
+        Check.equal("corner_number_bad", scanned(number, "1.5e"), "incomplete"),
+        Check.equal("corner_escapes", scanned(text_schema, "\"a\\u00e9\\n\""), "complete"),
+        Check.equal("corner_extra", scanned(free, "{\"x\": 1, \"y\": 2}"), "complete"),
+        Check.equal("corner_two_calls", two_call_fingerprint(tools, records), two_call_want(records)),
+    ]
+
+
+def two_call_fingerprint(tools, records):
+    """One turn with the call blocks of the first two cases: two calls, in order."""
+    first = text_of(record_at(records, 0), "wire")
+    second = text_of(record_at(records, 1), "wire")
+    wire = keep_from(first, "<tool_call>") + keep_from(second, "<tool_call>")
+    return turn_fingerprint(parsed_turn(tools, "<think>\n</think>\n\n" + wire))
+
+
+def keep_from(wire, marker):
+    """`wire` from `marker` on: the call block without the think-and-text prefix."""
+    return drop(wire, unwrap_or(indexOf(wire, marker), 0))
+
+
+def two_call_want(records):
+    return "\n\n|\n|" + call_fingerprint_of(record_at(records, 0)) + ";" + call_fingerprint_of(record_at(records, 1))
+
+
+def call_fingerprint_of(record):
+    return f"{text_of(record, 'name')}|{text_of(record, 'args')}|"
+
+
 def tool_cases():
-    return listConcat(reader_cases(), listConcat(scanner_cases(), listConcat(validation_cases(), listConcat(coercion_cases(), listConcat(parse_cases(), listConcat(chunked_cases(), listConcat(repair_cases(), listConcat(constrain_cases(), listConcat(control_cases(), logits_processor_cases())))))))))
+    return listConcat(corner_cases(), listConcat(reader_cases(), listConcat(scanner_cases(), listConcat(validation_cases(), listConcat(coercion_cases(), listConcat(parse_cases(), listConcat(chunked_cases(), listConcat(repair_cases(), listConcat(constrain_cases(), listConcat(control_cases(), logits_processor_cases()))))))))))
