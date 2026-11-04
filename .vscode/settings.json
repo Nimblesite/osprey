@@ -8,7 +8,7 @@
     },
        "rust-analyzer.testExplorer": true,
     "rust-analyzer.linkedProjects": [
-        "Cargo.toml"
+        "src/toolchain/Cargo.toml"
     ],
     "rust-analyzer.cargo.allTargets": true,
     "rust-analyzer.cargo.autoreload": true,

@@ -263,10 +263,10 @@ jobs:
         run: python3 scripts/test-python-app-ports-contracts.py
 
       - name: Format check
-        run: cargo fmt --all --check
+        run: cargo fmt --manifest-path src/toolchain/Cargo.toml --all --check
 
       - name: Clippy (all targets, warnings as errors)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --manifest-path src/toolchain/Cargo.toml --workspace --all-targets -- -D warnings
 
       - name: Extension lint (tsc --noEmit)
         run: npm run lint
@@ -904,7 +904,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-website-wasm-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-website-wasm-
 
       # Website tests execute native documentation examples as well as WASM.
@@ -1146,7 +1146,7 @@ jobs:
             minutes: 15
             run: |
               make _runtime _runtime_macos
-              cargo build --release -p osprey-cli
+              cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
               bash src/osprey/workbench/hosts/apple/run.sh --build
               swift test --package-path src/osprey/workbench/hosts/apple
     steps:
@@ -1168,7 +1168,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
       - name: ${{ matrix.part }} builds, ABI, goldens and app tests
@@ -1260,7 +1260,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
       - name: Host tests and the self-test against goldens

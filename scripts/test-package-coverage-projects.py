@@ -19,7 +19,7 @@ from package_coverage_test_support import (
 
 class AppThresholdTests(CoverageTestCase):
     def test_every_shipped_app_is_registered_under_projects_apps_at_the_90_floor(self):
-        config = json.loads((ROOT / "coverage-thresholds.json").read_text())
+        config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
         apps = config["projects"].get("apps", {})
         shipped = {p.name for p in (ROOT / APPS_DIR).iterdir() if (p / "osprey.toml").is_file()}
         self.assertEqual(set(apps), shipped, "Every shipped app must have its own coverage gate")

@@ -71,7 +71,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
-    thresholds = Path(args.thresholds) if args.thresholds else root / "coverage-thresholds.json"
+    thresholds = Path(args.thresholds) if args.thresholds else root / "src/osprey/tests/coverage-thresholds.json"
     reports = Path(args.reports) if args.reports else root / "target" / "coverage" / "packages"
     compiler = Path(args.compiler) if args.compiler else root / "target" / "release" / "osprey"
     return root, thresholds, reports, compiler

@@ -67,7 +67,8 @@ async function startDebugRaced(
 const stagedManifestPath = path.join(extensionRoot, "shipwright.json");
 const repoRootManifestPath = path.resolve(
   extensionRoot,
-  "..",
+  "../../..",
+  ".github",
   "shipwright.json",
 );
 let manifestWasStaged = false;

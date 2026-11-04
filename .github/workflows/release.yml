@@ -157,7 +157,7 @@ jobs:
         run: |
           set -euo pipefail
           make _runtime CC=gcc AR=ar SHELL=/usr/bin/bash MKDIR='mkdir -p'
-          cargo build --release -p osprey-cli
+          cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 
       - name: Compile package manager client (Linux/macOS)
         if: runner.os != 'Windows'
@@ -549,7 +549,7 @@ jobs:
           # bundled binary at activation. [EDITOR-VERSIONING]
           node -e '
             const fs=require("fs"); const v=process.env.VERSION;
-            const m=JSON.parse(fs.readFileSync("shipwright.json","utf8"));
+            const m=JSON.parse(fs.readFileSync(".github/shipwright.json","utf8"));
             m.product.version=v;
             for (const c of m.components) if (c.expectedVersion) c.expectedVersion=v;
             fs.writeFileSync("src/toolchain/vscode-extension/shipwright.json", JSON.stringify(m,null,2)+"\n");

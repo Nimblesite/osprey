@@ -24,7 +24,7 @@ include scripts/android.mk
 ## build: C runtime archives + Rust workspace (release) + VSCode extension
 build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 	@echo "==> Building..."
-	cargo build --release --workspace
+	cargo build --manifest-path src/toolchain/Cargo.toml --release --workspace
 	cd $(EXT_DIR) && npm run compile
 
 ## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
@@ -104,7 +104,7 @@ _test_agent:
 	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
 
 _agent-suites: _runtime
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(MAKE) _test_agent
 
 .PHONY: _python-app-ports _test_python_app_ports
@@ -223,13 +223,13 @@ hawk:
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt: $(EXT_NODE_DEPS)
 	@echo "==> Formatting$(if $(CHECK), (check mode),)..."
-	cargo fmt --all$(if $(CHECK), --check,)
+	cargo fmt --manifest-path src/toolchain/Cargo.toml --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
 
 ## clean: Remove all build artifacts
 clean:
 	@echo "==> Cleaning..."
-	cargo clean
+	cargo clean --manifest-path src/toolchain/Cargo.toml
 	$(RM) $(RTB) src/toolchain/compiler/lib
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
@@ -260,7 +260,7 @@ _wasm _wasm-site _runtime_wasm _bank-web _test_wasm_goldens: export PATH := $(WA
 
 _wasm-site: _runtime_wasm
 	@echo "==> building osprey compiler for the website wasm demo"
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	@echo "==> compiling Osprey Data Studio website assets -> src/osprey/examples/wasm/build/"
 	@$(MKDIR) src/osprey/examples/wasm/build
 	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
@@ -322,13 +322,13 @@ _workbench-test: build
 .PHONY: _agent-self-test _agent-live-test
 # [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
 _agent-self-test: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	swift test --package-path src/toolchain/hosts/swift/Tests
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
 
 # The same script and harder tasks in a real window with real DeepSeek calls. Spends tokens.
 _agent-live-test: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
 
 .PHONY: _workbench-native-test
@@ -346,11 +346,11 @@ _workbench-render-review:
 ##                forwarded), checked source graph (3), Windows DLL boundary (6).
 .PHONY: cli-contracts
 cli-contracts:
-	cargo test -p osprey-cli --test cli_e2e quiet
-	cargo test -p osprey-cli --test cli_e2e no_warnings
-	cargo test --profile ci -p osprey-cli --test input_never_blocks
-	cargo test --profile ci -p osprey-cli checked_source_graph
-	cargo test -p osprey-cli windows_dll
+	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cli_e2e quiet
+	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cli_e2e no_warnings
+	cargo test --manifest-path src/toolchain/Cargo.toml --profile ci -p osprey-cli --test input_never_blocks
+	cargo test --manifest-path src/toolchain/Cargo.toml --profile ci -p osprey-cli checked_source_graph
+	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli windows_dll
 
 .PHONY: _package-checks
 _package-checks: build
@@ -433,7 +433,7 @@ _vsix-rebuild-reinstall:
 # =============================================================================
 
 _ios: _runtime_ios _runtime_ios_sim
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios-sim
 
@@ -441,7 +441,7 @@ _ios-test: _ios
 	$(MAKE) _test_ios
 
 _macos: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --build
 	for scene in kali opal character; do \
 		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/graphics/macos/run.sh --build $$scene || exit 1; \
@@ -449,47 +449,47 @@ _macos: _runtime_macos
 
 .PHONY: _run-mac-hd
 _run-mac-hd: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
 
 .PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-smoke _gpui-signal-flow _gpui-synth _casting
 _gpui-flock: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh
 
 _gpui-painting: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/run.sh
 
 _gpui-signal-flow: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
 
 _gpui-synth: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
 
 _casting: _runtime_macos _runtime
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/casting/run.sh
 
 _gpui-probe: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
 
 _gpui-bench: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh --bench 20
 
 _gpui-compare: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh --draw
 
 _gpui-test: _runtime_macos _runtime
 	python3 src/toolchain/hosts/gpui/dependencies.py
 	python3 src/toolchain/hosts/gpui/dependencies_test.py
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
 		$(BIN) test $$suite || exit 1; \
 	done
@@ -522,7 +522,7 @@ _macos-test: _macos _runtime
 
 .PHONY: _mobile-ios _mobile-ios-test _mobile-domain-test _mobile-test
 _mobile-ios: _runtime_ios _runtime_ios_sim
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	bash src/osprey/examples/mobile/ios/run.sh --build ios
 	bash src/osprey/examples/mobile/ios/run.sh --build ios-sim
 
@@ -531,13 +531,13 @@ _mobile-ios-test: _mobile-ios
 
 _mobile-domain-test: _runtime
 	python3 scripts/test-mobile-tools.py
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(BIN) src/osprey/examples/mobile/inbox/test --run
 
 _mobile-test: _mobile-domain-test _mobile-ios-test _android-test
 
 _android: _runtime_android
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/mobile/android/build.sh
 # The goldens need the runtime archives `android` builds, so they are ordered by
 # a recipe line rather than listed as a sibling prerequisite: under `make -j`
@@ -551,18 +551,18 @@ _android-test: _android
 .PHONY: _bank-mobile-domain-test _bank-android _bank-android-test _bank-ios _bank-ios-test _bank-mobile-test
 
 _bank-mobile-domain-test: _runtime
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	$(BIN) src/osprey/examples/projects/modules/mobile/app/test --run
 
 _bank-android: _runtime_android
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_ANDROID_SKIP_RUNTIME=1 bash src/osprey/examples/projects/modules/mobile/android/build.sh
 
 _bank-android-test: _bank-android _runtime
 	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/android/test.sh
 
 _bank-ios: _runtime_ios _runtime_ios_sim
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios-sim
 

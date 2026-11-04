@@ -190,7 +190,7 @@ jobs:
         run: make _runtime CC=gcc AR=ar
 
       - name: Build osprey (release)
-        run: cargo build --release -p osprey-cli
+        run: cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 
       - name: Pin the MinGW clang and llvm-ar
         shell: msys2 {0}

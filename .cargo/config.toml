@@ -1,3 +1,5 @@
 # Bound local builds, including cargo invoked by pi workers.
 [build]
+# The workspace manifest lives in src/toolchain; artifacts stay at the repo root.
+target-dir = "target"
 jobs = 2

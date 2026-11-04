@@ -7,7 +7,7 @@ import addFormats from "ajv-formats";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const extensionRoot = resolve(scriptDir, "..");
 const repoRoot = resolve(extensionRoot, "../../..");
-const manifestPath = join(repoRoot, "shipwright.json");
+const manifestPath = join(repoRoot, ".github", "shipwright.json");
 const manifestSchemaPath = join(repoRoot, "scripts", "schemas", "shipwright.schema.json");
 
 function readJson(file) {

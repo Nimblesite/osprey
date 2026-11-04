@@ -75,7 +75,7 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-regi
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
-	cp shipwright.json $(EXT_DIR)/shipwright.json; \
+	cp .github/shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
 # Refuse missing or stale build artifacts before running the full editor suite.

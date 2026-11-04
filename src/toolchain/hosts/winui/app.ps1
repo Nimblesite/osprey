@@ -46,7 +46,7 @@ function Build-Helpers {
 
 # The compiler, the runtime archives it links against and the application's DLL, built into the package.
 function Build-Application {
-    Invoke-Checked 'building the compiler' { cargo build --release -p osprey-cli --manifest-path (Join-Path $repo 'Cargo.toml') }
+    Invoke-Checked 'building the compiler' { cargo build --release -p osprey-cli --manifest-path (Join-Path $repo 'src/toolchain/Cargo.toml') }
     $env:MSYSTEM = 'UCRT64'; $env:CHERE_INVOKING = '1'
     $unix = $repo -replace '\\','/'
     Invoke-Checked 'building the MinGW runtime' { & (Join-Path $Msys 'usr\bin\bash.exe') -lc "cd '$unix' && make _runtime CC=gcc AR=ar" }

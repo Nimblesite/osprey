@@ -2,7 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: "/"
+    directory: "/src/toolchain"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly

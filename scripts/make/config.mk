@@ -46,7 +46,7 @@ endif
 # lists `:=` assignments as if they were targets; `?=` keeps the panel clean.
 # ---------------------------------------------------------------------------
 # Coverage — single source of truth is coverage-thresholds.json.
-COVERAGE_THRESHOLDS_FILE ?= coverage-thresholds.json
+COVERAGE_THRESHOLDS_FILE ?= src/osprey/tests/coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
 MAKE_FOLDERS ?= src/toolchain/targets src/toolchain/targets/tests src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof

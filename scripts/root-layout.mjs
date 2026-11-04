@@ -10,10 +10,8 @@ export const ALLOWED_TRACKED = new Set([
   '.agents', '.cargo', '.claude', '.clinerules', '.config', '.cursor', '.opencode',
   '.deslop.toml', '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
   '.vscode', '.windsurf', 'AGENTS.md', 'CONTRIBUTING.md',
-  'Cargo.lock', 'Cargo.toml', 'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'coverage-thresholds.json',
-  'docs', 'osprey.code-workspace', 'pyproject.toml', 'scripts', 'shipwright.json', 'src',
-  'uv.lock',
-])
+  'LICENSE', 'Makefile', 'README.md', 'SECURITY.md',   'docs', 'osprey.code-workspace', 'scripts', 'src',
+  ])
 
 /** Local, ignored files that tools keep in the root by design. */
 export const ALLOWED_LOCAL_FILES = new Set(['.DS_Store', '.env', '.mcp.json'])

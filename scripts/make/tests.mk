@@ -1,7 +1,7 @@
 # --- rust (src/toolchain/crates/) ---------------------------------------------------------
 # cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
-# `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
+# `--profile ci` is the workspace's fast-compile profile (see src/toolchain/Cargo.toml).
 # `_runtime_wasm` is a prerequisite because the coverage gate below already
 # DEPENDS on it: osprey-cli's wasm end-to-end test (src/toolchain/crates/osprey-cli/src/wasm.rs)
 # self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
@@ -12,7 +12,7 @@
 _test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
-	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
 # CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
 # The coverage job merges their reports; scripts/ci-scope.test.mjs holds the shards to one another.
@@ -26,7 +26,7 @@ RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHA
 _test_rust_shard: _runtime_wasm
 	@echo "==> [rust] running shard $(RUST_SHARD) with coverage..."
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
-	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
 
 # Every crate under src/toolchain/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
@@ -499,8 +499,8 @@ _lint: $(EXT_NODE_DEPS)
 	python3 scripts/test-package-coverage.py
 	python3 scripts/test-package-coverage-projects.py
 	python3 scripts/test-python-app-ports-contracts.py
-	cargo fmt --all --check
-	cargo clippy --workspace --all-targets -- -D warnings
+	cargo fmt --manifest-path src/toolchain/Cargo.toml --all --check
+	cargo clippy --manifest-path src/toolchain/Cargo.toml --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
 # _deslop: Code-duplication gate. Fails the build when measured

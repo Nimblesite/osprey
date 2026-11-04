@@ -41,7 +41,7 @@ runs:
           ~/.cargo/registry/cache/
           ~/.cargo/git/db/
           target/
-        key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-osprey-
 
     - name: Install clang/LLVM, lldb-dap, OpenSSL and SQLite (Linux)
@@ -159,7 +159,7 @@ runs:
       run: |
         set -euo pipefail
         if [ -z "${OSPREY_VERSION}" ]; then unset OSPREY_VERSION; fi
-        cargo build --release -p osprey-cli
+        cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
         echo "compiler-path=$GITHUB_WORKSPACE/target/release/osprey" >> "$GITHUB_OUTPUT"
         echo "$GITHUB_WORKSPACE/target/release" >> "$GITHUB_PATH"
         target/release/osprey --version

@@ -10,10 +10,10 @@ case "$target" in
 esac
 cd "$repo"
 make "$runtime"
-if [[ -z ${OSPREY_BIN:-} ]]; then cargo build --release -p osprey-cli; fi
+if [[ -z ${OSPREY_BIN:-} ]]; then cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli; fi
 compiler=${OSPREY_BIN:-$repo/target/release/osprey}
 if [[ ! -x "$compiler" ]]; then
-    echo 'Build the compiler with cargo build --release -p osprey-cli' >&2
+    echo 'Build the compiler with cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli' >&2
     exit 1
 fi
 output="$repo/src/osprey/examples/casting/build/$target"

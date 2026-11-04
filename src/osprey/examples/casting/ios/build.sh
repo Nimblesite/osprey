@@ -31,7 +31,7 @@ swift_search=$(xcrun --sdk "$sdk" swiftc -print-target-info -target "$triple" -s
 python3 src/toolchain/hosts/gpui/dependencies.py
 OSPREY_GPUI_APP_DIR="$output" OSPREY_GPUI_LINK_SEARCH="$output:$swift_search" \
 OSPREY_GPUI_LINK_LIBS="static=osprey_cast_services,framework=Network,framework=Security,framework=Foundation" \
-    cargo build --manifest-path src/toolchain/hosts/gpui/Cargo.toml --target "$rust_target" --locked
+    CARGO_TARGET_DIR=src/toolchain/hosts/gpui/target cargo build --manifest-path src/toolchain/hosts/gpui/Cargo.toml --target "$rust_target" --locked
 cp "$repo/src/toolchain/hosts/gpui/target/$rust_target/debug/osprey-gpui" "$bundle/Casting"
 python3 - "$bundle/osprey-arguments.json" <<'ARGS'
 import json,sys

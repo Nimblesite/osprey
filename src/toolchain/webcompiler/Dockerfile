@@ -15,7 +15,8 @@ RUN apt-get update && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the Rust workspace + the C runtime sources (root Makefile builds both)
-COPY Cargo.toml Cargo.lock Makefile /workspace/
+COPY src/toolchain/Cargo.toml src/toolchain/Cargo.lock /workspace/src/toolchain/
+COPY Makefile /workspace/
 COPY src/toolchain/.rustfmt.toml src/toolchain/.clippy.toml /workspace/src/toolchain/
 COPY scripts /workspace/scripts
 COPY src/toolchain/crates /workspace/src/toolchain/crates
@@ -32,7 +33,7 @@ RUN make _runtime
 
 # Build the Rust compiler binary (release). The same `osprey` binary serves the
 # language server over stdio (`osprey lsp`), so there is no separate LSP build.
-RUN cargo build --release -p osprey-cli
+RUN CARGO_TARGET_DIR=/workspace/target cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 
 # Runtime stage
 FROM node:26-bookworm

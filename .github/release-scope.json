@@ -4,8 +4,8 @@
     "src/toolchain/compiler/**",
     "src/toolchain/tree-sitter-osprey/**",
     "src/toolchain/webcompiler/**",
-    "Cargo.toml",
-    "Cargo.lock",
+    "src/toolchain/Cargo.toml",
+    "src/toolchain/Cargo.lock",
     "Makefile",
     "scripts/make/**"
   ],
@@ -33,7 +33,7 @@
     ".dockerignore",
     "src/toolchain/.clippy.toml",
     "src/toolchain/.rustfmt.toml",
-    "coverage-thresholds.json",
+    "src/osprey/tests/coverage-thresholds.json",
     "osprey.code-workspace",
     "test_output.txt"
   ]

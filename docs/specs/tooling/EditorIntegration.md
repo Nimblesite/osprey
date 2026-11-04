@@ -17,7 +17,7 @@ The VS Code integration is a thin client over `[LSP-TRANSPORT]`.
   time.
 - Client resolves the server command in priority order: user setting
   (`osprey.server.compilerPath`) → bundled binary → `PATH` (per the Shipwright
-  `sources` list in [`shipwright.json`](../../../shipwright.json)).
+  `sources` list in [`shipwright.json`](../../../.github/shipwright.json)).
 - The extension's native DAP integration is specified in
   [Debugger](0021-Debugger.md); it is separate from the LSP request path.
 - Marketplace publication uses **OIDC** (no PAT) — see `[EDITOR-VERSIONING]` and
@@ -33,7 +33,7 @@ extension and bundled binary MUST be version-matched.
 
 - The binary is the source of truth: `osprey --version` → `osprey X.Y.Z`;
   `osprey --version --json` → the version manifest (`[SWR-VERSION-CLI-OUTPUT]`).
-- Components are declared in [`shipwright.json`](../../../shipwright.json):
+- Components are declared in [`shipwright.json`](../../../.github/shipwright.json):
   `osprey` (the CLI — which _is_ the language server, via the `lsp`
   subcommand) and `osprey-vscode`. The component id **must** equal the name the
   binary reports from `osprey --version` (Shipwright matches the probed name

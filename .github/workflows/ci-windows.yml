@@ -63,7 +63,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
       # gcc + winpthreads back the fiber/effects C runtime; the `clang` package
@@ -100,7 +100,7 @@ jobs:
         run: make _test_gc_stack_root CC=gcc
 
       - name: Build osprey (release)
-        run: cargo build --release -p osprey-cli
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 
       - name: Verify version contract
         shell: msys2 {0}

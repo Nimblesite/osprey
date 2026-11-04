@@ -6,7 +6,7 @@ app="$root/src/osprey/examples/mobile/android"
 cd "$root"
 source scripts/android-env.sh
 make _runtime_android
-if [[ -z ${OSPREY_BIN:-} ]]; then cargo build --release -p osprey-cli; fi
+if [[ -z ${OSPREY_BIN:-} ]]; then cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli; fi
 compiler=${OSPREY_BIN:-$root/target/release/osprey}
 for slice in arm64 x64; do
     if [[ "$slice" == arm64 ]]; then abi=arm64-v8a; triple=aarch64-linux-android26; else abi=x86_64; triple=x86_64-linux-android26; fi

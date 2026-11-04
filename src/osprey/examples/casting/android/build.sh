@@ -43,7 +43,7 @@ python3 src/toolchain/hosts/gpui/dependencies.py
 linker_variable=CARGO_TARGET_$(echo "$rust_target" | tr 'a-z-' 'A-Z_')_LINKER
 env "$linker_variable=$tools/$clang_target-clang" OSPREY_GPUI_APP_DIR="$output" \
     OSPREY_GPUI_LINK_SEARCH="$output:$openssl/lib" OSPREY_GPUI_LINK_LIBS="static=osprey_cast_net,static=ssl,static=crypto" \
-    cargo build --manifest-path src/toolchain/hosts/gpui/Cargo.toml --target "$rust_target" --lib --release --locked
+    CARGO_TARGET_DIR=src/toolchain/hosts/gpui/target cargo build --manifest-path src/toolchain/hosts/gpui/Cargo.toml --target "$rust_target" --lib --release --locked
 
 export JAVA_HOME="${JAVA_HOME:-/Applications/Android Studio.app/Contents/jbr/Contents/Home}" PATH="$JAVA_HOME/bin:$PATH"
 apk="$output/apk"

@@ -188,7 +188,7 @@ fi
 if [[ "${BENCH_NO_BUILD:-0}" != 1 ]]; then
   echo "==> rebuilding osprey (C runtime archives + release compiler) so the bench times CURRENT sources"
   ( cd "$ROOT" && make _runtime ) || { echo "FATAL: C runtime archive build failed" >&2; exit 1; }
-  ( cd "$ROOT" && cargo build --release --workspace -q ) || { echo "FATAL: release compiler build failed" >&2; exit 1; }
+  ( cd "$ROOT" && cargo build --manifest-path src/toolchain/Cargo.toml --release --workspace -q ) || { echo "FATAL: release compiler build failed" >&2; exit 1; }
 fi
 
 if [[ ! -x "$OSP" ]]; then

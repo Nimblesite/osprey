@@ -13,7 +13,7 @@ video-metadata:
 ## docs: Rebuild the compiler and regenerate built-in reference pages and ML twins.
 ##       Removed builtins are pruned; generated pages remain untracked.
 docs:
-	cd $(ROOT) && cargo build -p osprey-cli
+	cd $(ROOT) && cargo build --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 	OSPREY_BIN="$(abspath $(ROOT))/target/debug/osprey" npm run generate-docs
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
