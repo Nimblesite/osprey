@@ -50,6 +50,7 @@ More accuracy: `UD-Q5_K_M` (19.8 GB) at 32K also totals about 23 GB. 16 GB machi
 - **[LLM-STATE-OWNED]:** one mutable, single-owner state buffer for KV and recurrent state. This relaxes [GPU-BUFFER](../runtime/0034-GPUComputation.md#buffers--gpu-buffer)'s immutability for that type only, so it needs its own checks: no aliasing, and a compile error on capture by an escaping closure.
 - **[LLM-ARITH-IEEE]:** an `Arith` policy with IEEE semantics in kernels and a finite check on each token's logits, which faults the request instead of emitting garbage.
 - **[LLM-MATMUL-QUANT]:** a product of a quantized matrix and a `float32` matrix.
+- **[LLM-DISPATCH-BATCH]:** the Metal adapter encodes consecutive dispatches into one command buffer and submits it only where the host reads a result (a write-back, a download, or the batch cap), so a token's kernels are one submission. Bytes match the host and a failed batch is reported by its first kernel.
 - **[LLM-SPEED]:** at least 5 tokens per second on the M4 Max, and at least 25% of the Ollama baseline rate on the same quant.
 - **[LLM-MODEL-DELTANET] / [LLM-MODEL-ATTENTION] / [LLM-MODEL-ROPE] / [LLM-MODEL-CACHE]:** the `qwen3_5` text model split across `src/osprey/packages/transformers/src/qwen3_5_*.py`.
 - **[LLM-MODEL-ORACLE]:** all activations within tolerance, on host and GPU handlers. This is what CI runs, and CI never downloads real weights.

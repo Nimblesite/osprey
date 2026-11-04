@@ -1,0 +1,9 @@
+date,device,load_avg,rows,inner,cols,dispatches,seconds,gop_per_s,note
+2026-11-05,Apple M4 Max,17,1,5120,17408,4000,13.51,26.4,random float32 weights via gpuMapFile; machine shared with other agents
+2026-11-05,Apple M4 Max,17,64,5120,17408,20,2.94,38.8,same
+2026-11-05,Apple M4 Max,17,256,5120,17408,6,3.17,43.2,same
+2026-11-05,Apple M4 Max,20,1,5120,17408,200,0.54,33.3,standalone Metal per-element kernel in tile.m; baseline for Osprey overhead
+2026-11-05,Apple M4 Max,20,64,5120,17408,10,0.59,96.5,standalone Metal per-element kernel in tile.m
+2026-11-05,Apple M4 Max,20,64,5120,17408,10,1.19,47.9,standalone best tiled kernel (tile=64); tiling slower so rejected
+2026-11-05,Apple M4 Max,15,1,5120,17408,1200,1.94,91.8,[LLM-DISPATCH-BATCH] gpuMatMul batched into one command buffer with one read at the end; slope between 100 and 1300 dispatches (process start excluded); 1.62 ms per product vs 3.4 before and 2.7 standalone unbatched
+2026-11-05,Apple M4 Max,17,1,5120,5120,2000,3.78,13.9,2000-step dependent chain batched; the same chain with a gpuGet after every step took 4.17-4.87 s; the small 5120-thread grid is the cost here, not dispatch

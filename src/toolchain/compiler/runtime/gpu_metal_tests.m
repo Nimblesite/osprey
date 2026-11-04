@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 #define MOCK_MARK 0x2a
-static unsigned failure, libraries, functions, bound, creations, deallocs;
+static unsigned failure, libraries, functions, bound, creations, deallocs, commits;
 static NSUInteger expected_threads = 1;
 static NSUInteger dense_bytes;
 static void *mapped_base;
@@ -92,6 +92,7 @@ static NSMutableArray *encoded;
 - (void)endEncoding {}
 // The mock "runs" every kernel by stamping word 0 of each buffer bound to it.
 - (void)commit {
+  commits++;
   for (OspreyMockMetal *buffer in encoded) {
     if (dense_bytes) memset(buffer.data.mutableBytes, MOCK_MARK, buffer.data.length);
     else ((int64_t *)buffer.data.mutableBytes)[0] = MOCK_MARK;
@@ -184,6 +185,27 @@ static void resident_case(void) {
   assert(deallocs == before + 2);
 }
 
+// [LLM-DISPATCH-BATCH] Dispatches whose outputs stay on the device are encoded
+// into one command buffer, submitted once when the host reads a result, and
+// each is reported as completed then; a write-back submits at once.
+static void batched_case(void) {
+  int64_t in[2] = {5, 6}, out[2] = {99, 99};
+  void *in_slot = NULL, *out_slot = NULL;
+  unsigned before = commits;
+  uint64_t done = osprey_gpu_metal_completed();
+  for (unsigned round = 0; round < 3; round++) {
+    OspreyGpuDispatch d = product_of(in, out, &in_slot, &out_slot);
+    assert(osprey_gpu_metal_dispatch(&d) == 1 && commits == before && osprey_gpu_metal_completed() == done);
+  }
+  assert(osprey_gpu_metal_download(out_slot, out, sizeof out) == 1 && out[0] == MOCK_MARK);
+  assert(commits == before + 1 && osprey_gpu_metal_completed() == done + 3);
+  assert(osprey_gpu_metal_download(out_slot, out, sizeof out) == 1 && commits == before + 1);
+  OspreyGpuDispatch d = product_of(in, out, &in_slot, NULL);
+  assert(osprey_gpu_metal_dispatch(&d) == 1 && commits == before + 2 && osprey_gpu_metal_completed() == done + 4);
+  osprey_gpu_metal_release(in_slot);
+  osprey_gpu_metal_release(out_slot);
+}
+
 // [GPU-BUFFER-ELEM]: exact transfers, including one-element empty allocations.
 static void dense_transfers(void) {
   expected_threads = 1;
@@ -226,6 +248,7 @@ static void success_case(void) {
   resident_case();
   mapped_case();
   dense_transfers();
+  batched_case();
 }
 
 static void test_case(unsigned mode) {
@@ -249,6 +272,6 @@ static void test_case(unsigned mode) {
 
 int main(void) {
   for (unsigned i = 0; i <= 10; i++) test_case(i);
-  puts("[ok] Metal driver: product and compiled-kernel dispatch, library recompilation, pipeline reuse, resident buffers created once and read back on demand, every initialization/allocation/launch/readback error");
+  puts("[ok] Metal driver: product and compiled-kernel dispatch, library recompilation, pipeline reuse, resident buffers created once and read back on demand, batched submission, every initialization/allocation/launch/readback error");
   return 0;
 }
