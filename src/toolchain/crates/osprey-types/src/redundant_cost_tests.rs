@@ -16,6 +16,8 @@ static CALLS: AtomicUsize = AtomicUsize::new(0);
 static MEMO_CALLS: AtomicUsize = AtomicUsize::new(0);
 static FLIGHT_CALLS: AtomicUsize = AtomicUsize::new(0);
 static DENSE_CALLS: AtomicUsize = AtomicUsize::new(0);
+const SPACED_SENTINEL: &str = "annotation_spaced_cost_sentinel";
+static SPACED_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 type CostExample = (String, usize, Vec<usize>);
@@ -36,6 +38,7 @@ fn count_calls(program: &Program) {
         (MEMO_SENTINEL, &MEMO_CALLS),
         (FLIGHT_SENTINEL, &FLIGHT_CALLS),
         (DENSE_SENTINEL, &DENSE_CALLS),
+        (SPACED_SENTINEL, &SPACED_CALLS),
     ] {
         if contains_marker(program, marker) {
             let _previous = calls.fetch_add(1, Ordering::Relaxed);
@@ -356,5 +359,27 @@ fn isolated_load_bearing_sites_do_not_force_every_annotation_through_a_full_solv
         calls <= budget,
         "{calls} full solves for {sites} annotations exceeds {budget}"
     );
+    Ok(())
+}
+
+/// [TYPE-ANNOTATION-REDUNDANT] Necessary annotations spread through a large
+/// application must not permanently turn later independent proofs into singles.
+#[test]
+fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), std::fmt::Error> {
+    let mut source = format!("fn {SPACED_SENTINEL}() = 0\n");
+    for group in 0..8 {
+        writeln!(source, "fn required{group}(x: int) = 0")?;
+        for item in 0..15 {
+            writeln!(source, "fn greeting{group}_{item}() -> string = \"hi\"")?;
+        }
+    }
+    let program = program(&source);
+    let written = crate::redundant_sites::sites(&program);
+    assert_eq!(written.len(), 128);
+    let expected: Vec<_> = (0..128).filter(|index| index % 16 != 0).collect();
+    SPACED_CALLS.store(0, Ordering::Relaxed);
+    assert_default_sites(&program, &written, &expected);
+    let calls = SPACED_CALLS.load(Ordering::Relaxed);
+    assert!(calls <= 96, "{calls} full solves for 128 sites exceeds 96");
     Ok(())
 }
