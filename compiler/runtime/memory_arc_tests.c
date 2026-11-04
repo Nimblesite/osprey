@@ -123,6 +123,19 @@ static void t_alloc_sizes_oom(void) {
   // uint32_t header `size` is the hard ceiling: oversize is REJECTED, never
   // truncated (OSP_ARC_HDR + SIZE_MAX wraps to a malloc(15) that SUCCEEDS).
   CHECK(osp_alloc_tagged((int64_t)UINT32_MAX + 1, OSP_MEM_RAW) == NULL);
+  // [FAILURE-EXPLICIT] Check the i64 request before narrowing to size_t.
+  int64_t wide[] = {(int64_t)UINT32_MAX + 9, (int64_t)1 << 40, INT64_MAX - 7};
+  for (unsigned i = 0; i < sizeof wide / sizeof wide[0]; i++) {
+    CHECK(osp_alloc_tagged(wide[i], OSP_MEM_RAW) == NULL);
+    CHECK(osp_alloc_tagged_noinit(wide[i], OSP_MEM_RAW) == NULL);
+  }
+#if SIZE_MAX == UINT32_MAX
+  // Pool rounding plus the header must not wrap into a tiny allocation.
+  for (int64_t tail = 0; tail < 31; tail++) {
+    CHECK(osp_alloc_tagged((int64_t)UINT32_MAX - tail, OSP_MEM_RAW) == NULL);
+    CHECK(osp_alloc_tagged_noinit((int64_t)UINT32_MAX - tail, OSP_MEM_RAW) == NULL);
+  }
+#endif
   CHECK(osp_arc_malloc((size_t)-1) == NULL);
   CHECK(osp_arc_calloc((size_t)-1, 2) == NULL); // n * size overflows first
   osp_release(mk(32, OSP_MEM_RAW)); // allocator state survives OOM

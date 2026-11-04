@@ -5,10 +5,11 @@
 // ----------------------------------------------------------------
 
 // The header records `size` in a uint32_t, so that is the hard per-object
-// ceiling. Rejecting above it does double duty: it keeps h->size EXACT (a
-// truncated size would make the drop walk read the wrong number of words and
-// g_live_bytes drift), and it makes `OSP_ARC_HDR + size` unable to wrap —
-// without the check, size = SIZE_MAX gives malloc(15), which SUCCEEDS and
+// ceiling. Rejecting above it keeps h->size exact: a truncated size would make
+// the drop walk read the wrong number of words and
+// g_live_bytes drift. The target-size guard below also prevents header and
+// pool-rounding overflow on 32-bit targets, where UINT32_MAX is SIZE_MAX.
+// Without the check, size = SIZE_MAX gives malloc(15), which SUCCEEDS and
 // returns a body sitting entirely outside the block.
 #define OSP_ARC_MAX_BODY ((size_t)UINT32_MAX)
 
@@ -35,7 +36,7 @@ static void arc_init_body(void *body, int64_t meta, size_t size, int zero) {
 // bucket, and registers it.
 static void *arc_alloc_locked(size_t size, int64_t meta, int zero) {
   arc_arm_debug();
-  if (size > OSP_ARC_MAX_BODY) {
+  if (size > OSP_ARC_MAX_BODY || size > SIZE_MAX - OSP_ARC_HDR - (OSP_POOL_GRAIN - 1)) {
     return NULL;
   }
   size_t cap = osp_pool_cap(size);

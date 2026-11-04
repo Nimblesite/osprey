@@ -247,20 +247,23 @@ void osp_mem_boot(void) {
   arc_unlock();
 }
 
-void *osp_alloc_tagged(int64_t size, int64_t meta) {
+// [FAILURE-EXPLICIT] Validate the ABI's i64 size before a 32-bit size_t cast.
+static void *arc_request(int64_t size, int64_t meta, int zero) {
   arc_lock();
-  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 1);
+  void *p = size > 0 && (uint64_t)size > OSP_ARC_MAX_BODY
+      ? NULL : arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, zero);
   arc_unlock();
   return p;
+}
+
+void *osp_alloc_tagged(int64_t size, int64_t meta) {
+  return arc_request(size, meta, 1);
 }
 
 // Fully-initialized-by-caller twin: skip the drop-safety pre-zero (see
 // arc_init_body). Every masked word MUST be stored before the block can drop.
 void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
-  arc_lock();
-  void *p = arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, 0);
-  arc_unlock();
-  return p;
+  return arc_request(size, meta, 0);
 }
 
 void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
