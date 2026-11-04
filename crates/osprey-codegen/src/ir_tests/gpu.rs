@@ -25,7 +25,7 @@ const NARROW_INTEGER_TARGETS: [(&str, &str); 6] = [
 ];
 
 fn conversion_program(source: &str, builtin: &str, values: &str) -> String {
-    format!("let policy = handler Arith {{ overflow _ _ _ wrapped => wrapped }}\nfn main() = policy(fn() => {{\nlet values: List<{source}> = [{values}]\nlet out = gpuMap(toGpu(values), {builtin})\nprint(gpuLength(out))\n}})\n")
+    format!("let policy = handler Arith {{ overflow _ _ _ wrapped => wrapped }}\nfn main() = policy(fn() => {{\nlet values: List<{source}> = [{values}]\nmatch toGpu(values) {{\nSuccess {{ value }} => match gpuMap(value, {builtin}) {{\nSuccess {{ value }} => print(gpuLength(value))\nError {{ message }} => print(message)\n}}\nError {{ message }} => print(message)\n}}\n}})\n")
 }
 
 fn assert_conversion_pair(source: Numeric, target: Numeric) {
@@ -55,7 +55,7 @@ fn every_valid_numeric_conversion_pair_has_a_device_form() {
 fn captured_half_uniforms_convert_from_their_binary32_compute_type() {
     // [GPU-DEVICE-NATIVE]: a half uniform is stored as bits but bound as float.
     for target in ["Float", "Float32", "Float16"] {
-        let ir = module(&format!("fn main() = {{\nlet seed = toFloat16(1.5)\nlet out = gpuMap(toGpu([0]), fn(_index) => to{target}(seed))\nprint(gpuLength(out))\n}}\n"));
+        let ir = module(&format!("fn main() = {{\nlet seed = toFloat16(1.5)\nmatch toGpu([0]) {{ Success {{ value }} => match gpuMap(value, fn(_index) => to{target}(seed)) {{ Success {{ value }} => print(gpuLength(value)) Error {{ message }} => print(message) }} Error {{ message }} => print(message) }}\n}}\n"));
         assert!(!ir.contains("@osprey_gpu_declined"), "to{target}: {ir}");
     }
 }
@@ -117,7 +117,7 @@ fn dense_buffer_allocations_follow_the_inferred_element_width() {
 #[test]
 fn gpu_get_checks_readback_before_loading_a_scalar() {
     // [FAILURE-EXPLICIT] A failed download cannot publish a fabricated value.
-    let ir = module("fn read() = gpuGet(toGpu([1.5]), 0)\nprint(read())\n");
+    let ir = module("fn read() = match toGpu([1.5]) { Success { value } => match gpuGet(value, 0) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) }\nprint(read())\n");
     let body = function_body(&ir, "@read()");
     let ready = body
         .find("call i32 @osprey_gpu_readable(")
@@ -130,7 +130,7 @@ fn gpu_get_checks_readback_before_loading_a_scalar() {
 #[test]
 fn gpu_materialization_checks_readback_before_loading_any_scalar() {
     // [FAILURE-EXPLICIT] Bulk readback must carry the same reason as gpuGet.
-    let ir = module("fn read() = fromGpu(toGpu([1.5]))\nlet values = read()\nprint(1)\n");
+    let ir = module("fn read() = match toGpu([1.5]) { Success { value } => match fromGpu(value) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) }\nprint(read())\nprint(1)\n");
     let body = function_body(&ir, "@read()");
     let ready = body
         .find("call i32 @osprey_gpu_readable(")
@@ -143,13 +143,13 @@ fn gpu_materialization_checks_readback_before_loading_any_scalar() {
 #[test]
 fn an_immediately_called_lambda_keeps_its_device_capture() {
     // [GPU-KERNEL-FORM] The ML workload calls nested lambdas over captures.
-    let ir = module("let k = toFloat32(3.0)\nlet xs = toGpu([toFloat32(2.0)])\nprint(fromGpu(gpuMap(xs, fn(x) => (fn(z) => k * z)(x))))\n");
+    let ir = module("let k = toFloat32(3.0)\nmatch toGpu([toFloat32(2.0)]) { Success { value } => match gpuMap(value, fn(x) => (fn(z) => k * z)(x)) { Success { value } => match fromGpu(value) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) } Error { message } => print(message) }\n");
     assert!(!ir.contains("a computed callee has no device form"), "{ir}");
 }
 #[test]
 fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
     // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
-    let ir = module("let values: List<bool> = [true, false]\nlet table = toGpu(values)\nlet mapped = gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false))\nprint(fromGpu(mapped))\n");
+    let ir = module("let values: List<bool> = [true, false]\nmatch toGpu(values) { Success { value } => { let table = value\nmatch gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false)) { Success { value } => match fromGpu(value) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) } } Error { message } => print(message) }\n");
     shows(
         &ir,
         &["GPU_GLOBAL const bool *in0", "GPU_GLOBAL const bool *u0"],
@@ -160,7 +160,7 @@ fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
     let ir = module("extern fn abs(value: int) -> int\nlet answer = abs(-3)\n");
     shows(&ir, &["call i64 @abs(i64"]);
     testkit::contents(&ir, &[], &["osprey_abs(p0, fault)"]);
-    let error = compile_err("extern fn abs(value: int) -> int\nlet out = toGpu([-3, 4]) |> gpuMap(fn(x) => abs(x))\nprint(gpuLength(out))\n");
+    let error = compile_err("extern fn abs(value: int) -> int\nmatch toGpu([-3, 4]) { Success { value } => match gpuMap(value, fn(x) => abs(x)) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n");
     assert!(error
         .to_string()
         .contains("foreign function `abs` has no device form"));
@@ -168,13 +168,13 @@ fn foreign_intrinsics_keep_host_identity_and_refuse_device_emission() {
 #[test]
 fn foreign_calls_fail_before_each_gpu_launch_form() {
     for expression in [
-        "gpuMap(toGpu([-3, 4]), abs)",
-        "gpuMap(toGpu([-3, 4]), foreign)",
-        "gpuMap(toGpu([-3, 4]), fn(value) => helper(value))",
-        "gpuZipWith(toGpu([-3]), toGpu([4]), fn(a, b) => abs(wrapAdd(a, b)))",
-        "gpuFold(toGpu([-3, 4]), 0, fn(total, value) => abs(wrapAdd(total, value)))",
+        "gpuMap(buffer, abs)",
+        "gpuMap(buffer, foreign)",
+        "gpuMap(buffer, fn(value) => helper(value))",
+        "gpuZipWith(single, other, fn(a, b) => abs(wrapAdd(a, b)))",
+        "gpuFold(buffer, 0, fn(total, value) => abs(wrapAdd(total, value)))",
     ] {
-        let error = compile_err(&format!("extern fn abs(value: int) -> int\nfn helper(value) = abs(value)\nlet foreign = abs\nlet answer = {expression}\n"));
+        let error = compile_err(&format!("extern fn abs(value: int) -> int\nfn helper(value) = abs(value)\nlet foreign = abs\nmatch toGpu([-3, 4]) {{ Success {{ value }} => {{ let buffer = value\nmatch toGpu([-3]) {{ Success {{ single }} => match toGpu([4]) {{ Success {{ value }} => {{ let other = value\nmatch {expression} {{ Success => print(\"ok\") Error {{ message }} => print(message) }}\n}} Error {{ message }} => print(message) }} Error {{ message }} => print(message) }}\n}} Error {{ message }} => print(message) }}\n"));
         assert!(error
             .to_string()
             .contains("foreign function `abs` has no device form"));
@@ -182,13 +182,13 @@ fn foreign_calls_fail_before_each_gpu_launch_form() {
 }
 #[test]
 fn foreign_kernel_aliases_do_not_capture_a_nearer_local_function() {
-    let ir = module("extern fn importedWord(value: int) -> int\nfn main() = {\nlet importedWord = fn(value) => wrapMul(value, 2)\nlet selected = importedWord\nlet out = gpuMap(toGpu([3]), selected)\nprint(gpuLength(out))\n}\n");
+    let ir = module("extern fn importedWord(value: int) -> int\nfn main() = {\nlet importedWord = fn(value) => wrapMul(value, 2)\nlet selected = importedWord\nmatch toGpu([3]) { Success { value } => match gpuMap(value, selected) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n}\n");
     shows(&ir, &["mul i64"]);
     testkit::contents(&ir, &[], &["call i64 @importedWord("]);
 }
 #[test]
 fn named_device_callbacks_keep_their_defining_scope() {
-    let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    let out = toGpu([3.0]) |> gpuMap(fn(x) => caller(100.0, x))\n    print(gpuLength(out))\n}\n");
+    let ir = module("let factor = 2.0\nfn scale(x) = x * factor\nfn apply(f, x) = f(x)\nfn caller(factor, x) = apply(scale, x)\nfn main() = {\n    match toGpu([3.0]) { Success { value } => match gpuMap(value, fn(x) => caller(100.0, x)) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n}\n");
     testkit::contents(&ir, &[], &["call i32 @osprey_gpu_declined("]);
     shows(&ir, &["0x4000000000000000ul"]);
 }
@@ -204,8 +204,7 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
     // symbol is defined exactly once however many elements run through it.
     let ir = module(
         "fn f() = {\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)\n\
-               gpuLength(out)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, fn(v) => v * 2.0) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -226,9 +225,7 @@ fn a_lambda_kernel_is_lifted_to_one_function_the_loop_calls() {
 fn each_distinct_kernel_gets_its_own_symbol() {
     let ir = module(
         "fn f() = {\n\
-               let a = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v * 2.0)\n\
-               let b = a |> gpuMap(fn(v) => v + 1.0)\n\
-               gpuLength(b)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, fn(v) => v * 2.0) { Success { value } => match gpuMap(value, fn(v) => v + 1.0) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -250,8 +247,7 @@ fn captures_become_leading_parameters_sorted_by_name() {
         "fn f() = {\n\
                let beta = 5.0\n\
                let alpha = 2.0\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => beta * v + alpha)\n\
-               gpuLength(out)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, fn(v) => beta * v + alpha) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -267,9 +263,8 @@ fn captures_become_leading_parameters_sorted_by_name() {
 fn a_captured_buffer_handle_travels_as_a_uniform() {
     let ir = module(
         "fn f() = {\n\
-               let w = toGpu([10.0, 20.0])\n\
-               let out = toGpu(range(0, 2)) |> gpuMap(fn(i) => gpuGet(w, i) ?: 0.0)\n\
-               gpuLength(out)\n\
+               match toGpu([10.0, 20.0]) { Success { value } => { let w = value\n\
+               match toGpu(range(0, 2)) { Success { value } => match gpuMap(value, fn(i) => gpuGet(w, i) ?: 0.0) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) } } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -283,7 +278,7 @@ fn a_fold_kernel_takes_uniforms_then_accumulator_then_element() {
     let ir = module(
         "fn f() = {\n\
                let k = 3.0\n\
-               toGpu([1.0, 2.0]) |> gpuFold(0.0, fn(acc, v) => acc + k * v)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuFold(value, 0.0, fn(acc, v) => acc + k * v) { Success { value } => print(value) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(\"${f()}\")\n",
     );
@@ -303,8 +298,7 @@ fn a_named_kernel_reuses_its_own_definition() {
         // symbol for the loop to call.
         "fn twice(x: float) -> float = x * 2.0\n\
              fn f() = {\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(twice)\n\
-               gpuLength(out)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, twice) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -314,7 +308,7 @@ fn a_named_kernel_reuses_its_own_definition() {
 }
 #[test]
 fn a_known_let_bound_kernel_is_extracted() {
-    let ir = module("fn f() = { let k = fn(v) => v * 2.0\n let out = toGpu([1.0, 2.0]) |> gpuMap(k)\n gpuLength(out) }\nprint(f())\n");
+    let ir = module("fn f() = { let k = fn(v) => v * 2.0\n match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, k) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) } }\nprint(f())\n");
     assert_eq!(
         ir.matches("define internal double @__gpu_kernel_").count(),
         1,
@@ -335,8 +329,7 @@ fn a_closure_valued_kernel_keeps_its_cell_call() {
         "fn make(scale) = fn(v) => v * scale\n\
              fn f() = {\n\
                let k = make(2.0)\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(k)\n\
-               gpuLength(out)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, k) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -349,8 +342,7 @@ fn a_result_returning_kernel_keeps_its_scalar_diagnostic() {
     // did, with the same message.
     let err = compile_err(
         "fn f() = {\n\
-               let out = toGpu([1, 2]) |> gpuMap(fn(v) => checkedMul(v, 2))\n\
-               gpuLength(out)\n\
+               match toGpu([1, 2]) { Success { value } => match gpuMap(value, fn(v) => checkedMul(v, 2)) { Success => print(\"ok\") Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -367,16 +359,18 @@ fn twin_flavors_number_their_kernels_identically() {
     let default_ir = module(
         "fn f() = {\n\
                let m = 2.0\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(fn(v) => v - m)\n\
-               gpuLength(out)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, fn(v) => v - m) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
     let ml_ir = ml_module(
         "f () =\n    \
                  m = 2.0\n    \
-                 out = toGpu [1.0, 2.0] |> gpuMap (\\v => v - m)\n    \
-                 gpuLength out\n\
+                 match toGpu [1.0, 2.0]\n        \
+                 Success value => match gpuMap value (\\v => v - m)\n            \
+                 Success value => print (gpuLength value)\n            \
+                 Error message => print message\n        \
+                 Error message => print message\n\
              \n\
              print (f ())\n",
     );
@@ -405,11 +399,13 @@ fn assert_one_bracketed_call(ir: &str, symbol: &str) {
 }
 #[test]
 fn gpu_matmul_is_one_bracketed_runtime_call() {
+    // The operands are copied in `operand`, so the `io_error` pair the
+    // assertion pairs around the launch is the matmul call's own: a fallible
+    // `toGpu` inside `f` would bracket its own copy first.
     let ir = module(
-        "fn f() = {\n\
-               let a = toGpu([1.0, 2.0])\n\
-               let m = gpuMatMul(a, a, 1, 2, 1) ?: a\n\
-               gpuLength(m)\n\
+        "fn operand() = toGpu([1.0, 2.0])\n\
+             fn f() = {\n\
+               match operand() { Success { value } => match gpuMatMul(value, value, 1, 2, 1) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -419,8 +415,7 @@ fn gpu_matmul_is_one_bracketed_runtime_call() {
 fn gpu_load_is_one_bracketed_runtime_call() {
     let ir = module(
         "fn f() = {\n\
-               let w = gpuLoad(\"w.bin\", 8, 2) ?: toGpu([0.0])\n\
-               gpuLength(w)\n\
+               match gpuLoad(\"w.bin\", 8, 2) { Success { value } => print(gpuLength(value)) Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -430,8 +425,8 @@ fn gpu_load_is_one_bracketed_runtime_call() {
 fn gpu_load_tensor_is_one_bracketed_runtime_call() {
     let ir = module(
         "fn f() = {\n\
-               let w = gpuLoadTensor(\"m.safetensors\", \"wte\") ?: toGpu([0.0])\n\
-               gpuLength(w)\n\
+               match gpuLoadTensor(\"m.safetensors\", \"wte\") { Success { value } => { let w: GpuBuffer<float> = value\n\
+               print(gpuLength(w)) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
@@ -463,15 +458,17 @@ fn a_float_function_by_name_is_an_extracted_kernel_in_both_flavors() {
     // intrinsic call — no closure cell, no environment [GPU-KERNEL-EXTRACT].
     let default_ir = module(
         "fn f() = {\n\
-               let out = toGpu([1.0, 2.0]) |> gpuMap(exp)\n\
-               gpuLength(out)\n\
+               match toGpu([1.0, 2.0]) { Success { value } => match gpuMap(value, exp) { Success { value } => print(gpuLength(value)) Error { message } => print(message) } Error { message } => print(message) }\n\
              }\n\
              print(f())\n",
     );
     let ml_ir = ml_module(
         "f () =\n    \
-                 out = toGpu [1.0, 2.0] |> gpuMap exp\n    \
-                 gpuLength out\n\
+                 match toGpu [1.0, 2.0]\n        \
+                 Success value => match gpuMap value exp\n            \
+                 Success value => print (gpuLength value)\n            \
+                 Error message => print message\n        \
+                 Error message => print message\n\
              \n\
              print (f ())\n",
     );
