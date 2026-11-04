@@ -488,6 +488,8 @@ _language-test: build
 
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
+	node --test scripts/root-layout.test.mjs
+	node scripts/root-layout.mjs
 	node scripts/verify-node-deps-guard.mjs
 	node scripts/verify-no-dead-code.mjs
 	node scripts/verify-release-gates.mjs

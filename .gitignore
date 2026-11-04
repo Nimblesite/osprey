@@ -38,6 +38,8 @@ test-results/
 # Temporary
 tmp/
 *.log
+# Logs are embargoed from the root; `make lint` fails on one, so keep it visible.
+!/*.log
 
 # Build output
 target/
