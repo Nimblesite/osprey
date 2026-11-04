@@ -123,6 +123,23 @@ fn main() = {
     }
 }
 
+/// [GPU-BUFFER-TENSOR] A builtin held as a let-bound value is a dynamic
+/// callable the effect checker cannot track, so it is rejected by name. The
+/// distinct-width pin above uses a helper function instead; this pins the
+/// rejection itself so it cannot silently start running.
+#[test]
+fn a_let_bound_builtin_is_rejected_as_a_dynamic_callable() {
+    let source = "let load = gpuLoadTensor\nfn main() = {\n    let w = load(\"x.safetensors\", \"w\")\n    print(\"${gpuLength(w ?: toGpu([]))}\")\n}\n";
+    let path = program("alias.osp", source).expect("write alias fixture");
+    let (code, stdout, stderr) = run(&path);
+    assert_ne!(code, Some(0), "a let-bound builtin must not run: {stdout}");
+    assert!(
+        stderr.contains("dynamic callable whose effect provenance cannot be proven"),
+        "unexpected rejection: {stderr}"
+    );
+    std::fs::remove_file(path).expect("remove alias fixture");
+}
+
 fn repo() -> PathBuf {
     manifest().join("..").join("..")
 }
