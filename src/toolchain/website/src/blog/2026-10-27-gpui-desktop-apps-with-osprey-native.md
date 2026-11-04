@@ -14,12 +14,12 @@ imageAlt: "The Flock example in a GPUI window: a thousand pale blue birds wheeli
 
 [GPUI](https://gpui.rs) is the UI framework [Zed](https://zed.dev) is built with. It is written in Rust, it draws everything with the GPU, and it is fast enough to hold a code editor at the display's refresh rate. Osprey can now use it. An Osprey application runs in a GPUI window through [Osprey Native](/docs/osprey-native/), the framework that already drives a SwiftUI app and the package manager inside VS Code.
 
-The application is all Osprey: its state, its rules, its screens, every number it draws. A small Rust crate, [`src/toolchain/hosts/gpui`](https://github.com/Nimblesite/osprey/tree/main/hosts/gpui), opens the window and turns what Osprey returns into GPUI elements. It makes no decisions of its own.
+The application is all Osprey: its state, its rules, its screens, every number it draws. A small Rust crate, [`src/toolchain/hosts/gpui`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/hosts/gpui), opens the window and turns what Osprey returns into GPUI elements. It makes no decisions of its own.
 
 Two examples run on it today, on macOS:
 
-- **[Flock](https://github.com/Nimblesite/osprey/tree/main/examples/gpui/flock)**: a herding game with a thousand boids, hawks that hunt them, and a dog you steer to drive them into a pen. A thousand birds ran at **119–120 fps on a 120 Hz M4 Max**; 5,000 birds now cost **4.7 ms** of the 8.3 ms a 120 Hz frame allows.
-- **[Painting](https://github.com/Nimblesite/osprey/tree/main/examples/gpui/painting)**: a port of GPUI's own `examples/painting.rs`. Captured side by side at the same window size, the Osprey port and the Rust original differ in **zero pixels**, both on first paint and after the same freehand strokes are drawn into each.
+- **[Flock](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/gpui/flock)**: a herding game with a thousand boids, hawks that hunt them, and a dog you steer to drive them into a pen. A thousand birds ran at **119–120 fps on a 120 Hz M4 Max**; 5,000 birds now cost **4.7 ms** of the 8.3 ms a 120 Hz frame allows.
+- **[Painting](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/gpui/painting)**: a port of GPUI's own `examples/painting.rs`. Captured side by side at the same window size, the Osprey port and the Rust original differ in **zero pixels**, both on first paint and after the same freehand strokes are drawn into each.
 
 ## Two functions across the boundary
 
@@ -30,7 +30,7 @@ const char *start(const char *context);
 const char *dispatch(const char *saved, const char *event);
 ```
 
-Here is the painting port's whole boundary, from [`main.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/gpui/painting/main.ospml):
+Here is the painting port's whole boundary, from [`main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/gpui/painting/main.ospml):
 
 ```osprey-ml
 extern gpui_slice (key : string) -> string

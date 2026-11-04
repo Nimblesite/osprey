@@ -56,7 +56,7 @@ def run_app(compiler: Path, directory: Path, memory: str) -> subprocess.Complete
     if memory == "arc":
         env["OSPREY_ARC_DEBUG"] = "1"
     command = [str(compiler), str(directory), "--run", f"--memory={memory}"]
-    result = subprocess.run(command, cwd=directory.parents[3], env=env, capture_output=True, timeout=TIMEOUT_SECONDS)
+    result = subprocess.run(command, cwd=directory.parents[5], env=env, capture_output=True, timeout=TIMEOUT_SECONDS)
     result.stdout = result.stdout.decode("utf-8")
     result.stderr = result.stderr.decode("utf-8")
     return result

@@ -137,7 +137,7 @@ print(describePort("8080"))
 
 Failure is now ordinary data. Code can return it, store it, test it or transform it. The caller decides what to do because the failure is right there in the return value. If another outcome is added later, existing matches fail to compile until they handle it.
 
-Use `Result<T, E>` for failures that callers expect to deal with: invalid input, a missing record, checked arithmetic, file access or an HTTP error. The runnable [validation pipeline](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/basics/errors/validation_pipeline.test.osp) returns `Result<int, string>`, keeps the original error messages and handles both outcomes.
+Use `Result<T, E>` for failures that callers expect to deal with: invalid input, a missing record, checked arithmetic, file access or an HTTP error. The runnable [validation pipeline](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/basics/errors/validation_pipeline.test.osp) returns `Result<int, string>`, keeps the original error messages and handles both outcomes.
 
 ## Algebraic effects vs exceptions: direct code without hidden exits
 
@@ -198,7 +198,7 @@ The handler returns `8080`, which becomes the result of `perform`, and `readPort
 
 This keeps the convenience people want from exceptions without hiding what can happen. `!InvalidPort` says that `readPort` may make this request, and the surrounding handler shows how the application will answer it.
 
-The runnable [recoverable_errors.osp](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/recoverable_errors.test.osp) and [recoverable_errors.ospml](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/recoverable_errors.test.ospml) use the same pattern in a batch workflow. One handler skips an impossible order; another reduces it to the available stock. The paired [retry_until_valid.osp](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/retry_until_valid.test.osp) and [ML version](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/retry_until_valid.test.ospml) retry validation and continue once they receive a valid value.
+The runnable [recoverable_errors.osp](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/recoverable_errors.test.osp) and [recoverable_errors.ospml](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/recoverable_errors.test.ospml) use the same pattern in a batch workflow. One handler skips an impossible order; another reduces it to the available stock. The paired [retry_until_valid.osp](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/retry_until_valid.test.osp) and [ML version](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/retry_until_valid.test.ospml) retry validation and continue once they receive a valid value.
 
 ### Algebraic effect exception example: resume or abort
 
@@ -229,7 +229,7 @@ let exitCode = guarded(|| => boot("not-a-port"))
 
 On success, `resume(value)` returns to `boot`, which prints the startup message and returns `0`. On failure, the handler prints the error and returns `1`; the rest of `boot` never runs. This has the early-exit behaviour of an exception, but the operation has a name and type, and its handler is visible around the code.
 
-The repository's paired Default/ML [resume regression suites](https://github.com/Nimblesite/osprey/tree/main/tests/effects/resume) exercise both branches and assert internal continuation state. The paired [direct recovery suites](https://github.com/Nimblesite/osprey/tree/main/tests/effects/errors) test fallback substitution, collect-all validation, nested policies, state and recursion. The runnable [algebraic effects examples](https://github.com/Nimblesite/osprey/tree/main/tests/regressions/effects) cover handler scoping, state, fibers and code that runs after `resume` returns.
+The repository's paired Default/ML [resume regression suites](https://github.com/Nimblesite/osprey/tree/main/src/osprey/tests/effects/resume) exercise both branches and assert internal continuation state. The paired [direct recovery suites](https://github.com/Nimblesite/osprey/tree/main/src/osprey/tests/effects/errors) test fallback substitution, collect-all validation, nested policies, state and recursion. The runnable [algebraic effects examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/tests/regressions/effects) cover handler scoping, state, fibers and code that runs after `resume` returns.
 
 ### Combine algebraic effects with `Result`
 
@@ -257,7 +257,7 @@ match lookup {
 
 A production `Accounts` handler could query a database. A test handler could return a fixed value. The effect lets surrounding code provide the lookup, while `Result` tells the immediate caller that `greeting` may fail. No database exception has to travel invisibly through the layers in between.
 
-The tested suite includes paired Default/ML versions of [result_and_effects](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/result_and_effects.test.osp), [typed_error_channels](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/typed_error_channels.test.osp) and [collect_all_errors](https://github.com/Nimblesite/osprey/blob/main/tests/regressions/effects/collect_all_errors.test.osp). They show local Results feeding a handler policy, separate named error channels, and accumulation of multiple validation failures instead of stopping at the first one. The ML twins sit beside those files with the `.ospml` extension.
+The tested suite includes paired Default/ML versions of [result_and_effects](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/result_and_effects.test.osp), [typed_error_channels](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/typed_error_channels.test.osp) and [collect_all_errors](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/regressions/effects/collect_all_errors.test.osp). They show local Results feeding a handler policy, separate named error channels, and accumulation of multiple validation failures instead of stopping at the first one. The ML twins sit beside those files with the `.ospml` extension.
 
 An operation can also return a whole `Result<T, E>`. Both its success and error values are checked across the handler boundary.
 

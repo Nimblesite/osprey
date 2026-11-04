@@ -10,4 +10,4 @@ Snapshot commit: `1ac118af3c8e4c8614d3221b913baf56b663522e`.
 
 SHA-256 of `source.tar.gz`: `8450898a3206dcdcfd437d1adf81f1b01e3a235dfa9a123700288f743a187c95`.
 
-The shared Swift host under `src/toolchain/hosts/swift` remains available for applications that intentionally use SwiftUI, including Osprey Agent. It is not the casting renderer going forward. Track the replacement in [the shared GPUI mobile plan](../../docs/plans/0053-casting-gpui-mobile.md).
+The shared Swift host under `src/toolchain/hosts/swift` remains available for applications that intentionally use SwiftUI, including Osprey Agent. It is not the casting renderer going forward. Track the replacement in [the shared GPUI mobile plan](../../plans/0053-casting-gpui-mobile.md).

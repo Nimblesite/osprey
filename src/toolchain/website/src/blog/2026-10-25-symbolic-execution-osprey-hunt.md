@@ -22,7 +22,7 @@ findings: 1
              replay   reproduced (SIGABRT)
 ```
 
-This is a deliberately planted failure in [`src/osprey/tests/hunt/crash.osp`](https://github.com/Nimblesite/osprey/blob/main/tests/hunt/crash.osp). The useful part is the workflow: Hunt produces an input you can run again, a source location, and a separate native reproduction verdict. You can turn that evidence into a regression test.
+This is a deliberately planted failure in [`src/osprey/tests/hunt/crash.osp`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/tests/hunt/crash.osp). The useful part is the workflow: Hunt produces an input you can run again, a source location, and a separate native reproduction verdict. You can turn that evidence into a regression test.
 
 ## Run the crash demo
 

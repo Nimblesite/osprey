@@ -91,7 +91,7 @@ osprey --version
 clang --version
 ```
 
-`make build` creates the runtime archives, release Rust workspace and VS Code extension. After the archives exist, `cargo build --release -p osprey-cli` rebuilds the compiler alone.
+`make build` creates the runtime archives, release Rust workspace and VS Code extension. After the archives exist, `cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli` rebuilds the compiler alone.
 
 {{ capture("/assets/images/guides/python-hello.png", "Python-flavor source compiled and executed by Osprey · a greeting appears in the output.", "Python-flavor source compiled and executed by Osprey · a greeting appears in the output.", 1440, 920) }}
 
@@ -388,7 +388,7 @@ Use `with total:` around the computation. A smaller `wrapping` handler can provi
 
 `@static_effect` declares operations resolved through a statically selected `@static_handler(E[T])`. Every static operation needs an answer; static operations cannot be control operations. Specialization removes runtime effect dispatch, not every function call or allocation.
 
-GPT-2's [backends.py](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/python/backends.py) declares `Tensor[B]`; [cpu.py](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/python/cpu.py) answers with lists and [gpu.py](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/python/gpu.py) with GPU buffers. [model.py](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/python/model.py) performs the same operations under either handler. Static selection adds no automatic offloading.
+GPT-2's [backends.py](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/python/backends.py) declares `Tensor[B]`; [cpu.py](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/python/cpu.py) answers with lists and [gpu.py](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/python/gpu.py) with GPU buffers. [model.py](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/python/model.py) performs the same operations under either handler. Static selection adds no automatic offloading.
 
 ## Built-in functions
 
@@ -491,4 +491,4 @@ Anything else that blocks a program this page says is valid: [file a Bug](#repor
 - [Python flavor guide](/docs/python-flavor/), the human-oriented introduction.
 - [Python flavor specification](/spec/0041-pythonflavorsyntax/), the full contract.
 - [Algebraic effects guide](/docs/effects/) and [effects specification](/spec/0017-algebraiceffects/).
-- [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/python), the largest working program.
+- [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python), the largest working program.

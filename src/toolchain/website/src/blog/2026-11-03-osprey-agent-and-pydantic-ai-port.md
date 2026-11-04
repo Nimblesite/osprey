@@ -16,7 +16,7 @@ to native code, and the agent is a desktop application on Osprey Native.
 
 ## The port
 
-[`@osprey/pydantic-ai`](https://github.com/Nimblesite/osprey/tree/main/packages/pydantic_ai)
+[`@osprey/pydantic-ai`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/pydantic_ai)
 reimplements enough of the upstream library to run a tool-calling agent against
 any OpenAI-compatible chat API: the message and event shapes, the Chat
 Completions request and response mapping, `TestModel`'s schema rules, the
@@ -28,11 +28,11 @@ CPython one, but it is a reimplementation, not a copy, and the upstream Python
 package is not bundled. The original work belongs to Pydantic Services Inc. and
 its contributors, and this port is not endorsed by them; the licence and author
 acknowledgement live in the package's
-[NOTICE.md](https://github.com/Nimblesite/osprey/blob/main/packages/pydantic_ai/NOTICE.md).
+[NOTICE.md](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/pydantic_ai/NOTICE.md).
 
 ## The agent
 
-[Osprey Agent](https://github.com/Nimblesite/osprey/tree/main/examples/agent) is
+[Osprey Agent](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/agent) is
 a coding agent as a desktop application: give it a project folder and a task,
 and it reads, edits and runs commands through tools while showing its work as it
 goes. Its interface is drawn by [Osprey Native](/docs/osprey-native/), and a

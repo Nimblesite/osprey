@@ -15,9 +15,9 @@ These are actual captures of the running application. The iOS screenshot comes f
 
 {{ gallery(mobile.screenshots) }}
 
-The [complete source and launch scripts](https://github.com/Nimblesite/osprey/tree/main/examples/mobile) are in `src/osprey/examples/mobile/`. Build this example from a repository checkout using the platform prerequisites below.
+The [complete source and launch scripts](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/mobile) are in `src/osprey/examples/mobile/`. Build this example from a repository checkout using the platform prerequisites below.
 
-For a banking example, [Talon Bank's native clients](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules/mobile) share the web app's screens, state transitions, validation and API commands. SwiftUI and Android widgets use the same `Bridge::Render` effect through native C exports. The [web app guide](/docs/web-apps/#native-android-and-ios) explains the shared boundary; its source README includes build and device-test commands.
+For a banking example, [Talon Bank's native clients](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules/mobile) share the web app's screens, state transitions, validation and API commands. SwiftUI and Android widgets use the same `Bridge::Render` effect through native C exports. The [web app guide](/docs/web-apps/#native-android-and-ios) explains the shared boundary; its source README includes build and device-test commands.
 
 ## What Issue Inbox does
 
@@ -31,7 +31,7 @@ Notes and priorities remain local. The example reads public GitHub data and does
 
 ## Application effects
 
-The [`Storage` module](https://github.com/Nimblesite/osprey/blob/main/examples/mobile/inbox/src/storage.ospml) declares the operations needed by the update code:
+The [`Storage` module](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/mobile/inbox/src/storage.ospml) declares the operations needed by the update code:
 
 ```osprey-ml
 export effect Requests
@@ -73,7 +73,7 @@ Use an Apple silicon Mac with Xcode, the iOS SDKs, an installed iPhone simulator
 
 ```bash
 make _runtime_ios _runtime_ios_sim
-cargo build --release -p osprey-cli
+cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 src/osprey/examples/mobile/ios/run.sh ios-sim
 ```
 

@@ -196,7 +196,7 @@ suite("workbench VSIX browser", () => {
       assert.strictEqual(await frame.getByRole("link", { name: "Built with Osprey", exact: true }).getAttribute("href"), "https://ospreylang.dev/");
       await frame.getByRole("button", { name: "Notation", exact: true }).click();
       await frame.getByRole("img", { name: "Osprey", exact: true }).waitFor();
-      for (const [name, href] of [["Osprey website", "https://ospreylang.dev/"], ["Language documentation", "https://ospreylang.dev/docs/"], ["Workbench source", "https://github.com/Nimblesite/osprey/tree/main/apps/workbench"]])
+      for (const [name, href] of [["Osprey website", "https://ospreylang.dev/"], ["Language documentation", "https://ospreylang.dev/docs/"], ["Workbench source", "https://github.com/Nimblesite/osprey/tree/main/src/osprey/workbench"]])
         assert.strictEqual(await frame.getByRole("link", { name, exact: true }).getAttribute("href"), href);
     }, "failure-branding");
   });

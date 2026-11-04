@@ -15,8 +15,8 @@ param(
     [string] $Msys = $(if ($env:MSYS2_ROOT) { $env:MSYS2_ROOT } else { 'C:\msys64' })
 )
 $ErrorActionPreference = 'Stop'
-$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$apps = Get-Content (Join-Path $repo 'apps\windows.json') -Raw | ConvertFrom-Json
+$repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
+$apps = Get-Content (Join-Path $repo 'src\toolchain\targets\windows.json') -Raw | ConvertFrom-Json
 $entry = $apps.apps.$App
 if (-not $entry) { throw "src/toolchain/targets/windows.json has no app called $App; it has $($apps.apps.PSObject.Properties.Name -join ', ')" }
 $source = Join-Path $repo $entry.source

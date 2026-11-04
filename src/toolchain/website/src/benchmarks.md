@@ -8,7 +8,7 @@ tags: ["benchmarks", "performance"]
 author: "Christian Findlay"
 ---
 
-Elapsed execution time and peak resident memory for arithmetic, collections and allocation workloads. [Sources and expected outputs](https://github.com/Nimblesite/osprey/tree/main/benchmarks/cases) are public; each language must produce the same result before it is timed.
+Elapsed execution time and peak resident memory for arithmetic, collections and allocation workloads. [Sources and expected outputs](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/benchmarks/cases) are public; each language must produce the same result before it is timed.
 
 ## Reading the figures
 
@@ -38,7 +38,7 @@ These are microbenchmarks. Collection representations and iteration styles diffe
 | Rust | `rustc -C opt-level=3 -C overflow-checks=off` |
 | C | `cc -O2` |
 
-Other toolchain commands and optional columns are defined in [`src/toolchain/benchmarks/run.sh`](https://github.com/Nimblesite/osprey/blob/main/benchmarks/run.sh).
+Other toolchain commands and optional columns are defined in [`src/toolchain/benchmarks/run.sh`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/run.sh).
 
 ## Measurement provenance
 
@@ -63,4 +63,4 @@ make -C src/toolchain/benchmarks bench-osprey                # refresh all Ospre
 BENCH_FILTER=wordfreq make -C src/toolchain/benchmarks bench # one workload across installed toolchains
 ```
 
-[`src/toolchain/benchmarks/report.py`](https://github.com/Nimblesite/osprey/blob/main/benchmarks/report.py) generates the website tables and `src/toolchain/benchmarks/results/results.html` from `results.json`. Partial reruns preserve older values for skipped, unavailable or failed cases. Record the date, machine, toolchain versions, selected languages and variance when sharing a comparison.
+[`src/toolchain/benchmarks/report.py`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/benchmarks/report.py) generates the website tables and `src/toolchain/benchmarks/results/results.html` from `results.json`. Partial reruns preserve older values for skipped, unavailable or failed cases. Record the date, machine, toolchain versions, selected languages and variance when sharing a comparison.

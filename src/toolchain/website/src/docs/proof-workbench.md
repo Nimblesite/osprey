@@ -35,7 +35,7 @@ From the repository on an Apple silicon Mac with the compiler and Xcode toolchai
 OSPREY_BIN="$PWD/target/release/osprey" bash src/osprey/workbench/hosts/apple/run.sh
 ```
 
-The native and VS Code hosts share the Osprey proof model and kernel. Their rendering and platform capabilities have separate acceptance checks. Follow [installation](/docs/installation/) to build the compiler; consult the [Workbench source guide](https://github.com/Nimblesite/osprey/tree/main/apps/workbench) for current host build and packaging status.
+The native and VS Code hosts share the Osprey proof model and kernel. Their rendering and platform capabilities have separate acceptance checks. Follow [installation](/docs/installation/) to build the compiler; consult the [Workbench source guide](https://github.com/Nimblesite/osprey/tree/main/src/osprey/workbench) for current host build and packaging status.
 
 ## Try a first argument
 

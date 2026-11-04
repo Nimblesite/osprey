@@ -48,14 +48,14 @@ Website deployment depends on scope and the dependency audit; it does not wait f
 
 Source-controlled version fields MUST stay at the placeholder **`0.0.0-dev`**:
 
-- `Cargo.toml` (`[workspace.package] version`) and the CLI fallback in
+- `src/toolchain/Cargo.toml` (`[workspace.package] version`) and the CLI fallback in
   `src/toolchain/crates/osprey-cli/src/main.rs`
 - `src/toolchain/vscode-extension/package.json` (`version`)
-- `shipwright.json` (`product.version` + each component `expectedVersion`)
+- `.github/shipwright.json` (`product.version` + each component `expectedVersion`)
 
 The real version is stamped from the tag at build time — the `osprey` binary
 via the `OSPREY_VERSION` environment variable at `cargo build` time,
-`package.json`/`shipwright.json` via the release job. **A PR that changes a placeholder to a real version is a defect and
+`package.json`/`.github/shipwright.json` via the release job. **A PR that changes a placeholder to a real version is a defect and
 must be rejected in review.**
 
 The compiler honors the version contract ([SWR-VERSION-CLI-OUTPUT]):

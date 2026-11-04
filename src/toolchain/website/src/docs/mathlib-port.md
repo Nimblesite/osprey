@@ -83,7 +83,7 @@ Full-library coverage, readable source translation and the complete independent 
 
 The imported theorem `OAI.LowSpaceSubsetSum.WordSeedPowerExecution.run_work` states that, for every natural-number `width`, the second component of `run(width)` equals `3 × width + 1`. That component is an abstract work counter. For example, the equation gives 1 at width 0 and 13 at width 4. It does not measure seconds or promise a machine-specific runtime.
 
-The proof establishes the equation for every natural-number width, rather than testing those two examples. Its dependency report includes propositional extensionality (`propext`): an assumption relating logically equivalent propositions. Keep that assumption alongside the result when inspecting the theorem. The [pinned source and export](https://github.com/Nimblesite/osprey/blob/main/examples/proof/openai/corpus.json) identify the exact statement and evidence being checked.
+The proof establishes the equation for every natural-number width, rather than testing those two examples. Its dependency report includes propositional extensionality (`propext`): an assumption relating logically equivalent propositions. Keep that assumption alongside the result when inspecting the theorem. The [pinned source and export](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/openai/corpus.json) identify the exact statement and evidence being checked.
 
 In the [Workbench](/docs/proof-workbench/), the second-component notation and arithmetic make the statement easier to read; the fully qualified function name and raw statement preserve its identity. This supporting lemma demonstrates imported mathematics with explicit assumptions. It does not establish the headline research theorem or verify an unrelated program.
 
@@ -132,9 +132,9 @@ The Navier-Stokes films show measured numerical flow, the OpenAI solution publis
 ## Inspect the evidence
 
 - [Current delivery ledger and remaining work](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0041-dependent-types-and-mathlib.md)
-- [OpenAI sources, exact statements, pins and licences](https://github.com/Nimblesite/osprey/blob/main/examples/proof/openai/corpus.json)
-- [Lean-core corpus](https://github.com/Nimblesite/osprey/blob/main/examples/proof/lean-core/corpus.json) and [compatible proof manifest](https://github.com/Nimblesite/osprey/blob/main/examples/proof/lean-core/compatible.json)
+- [OpenAI sources, exact statements, pins and licences](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/openai/corpus.json)
+- [Lean-core corpus](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/lean-core/corpus.json) and [compatible proof manifest](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/proof/lean-core/compatible.json)
 - [Canonical source/export/replay checker](https://github.com/Nimblesite/osprey/blob/main/scripts/proof-openai.py)
-- [Bundled Workbench library inventory](https://github.com/Nimblesite/osprey/blob/main/apps/workbench/assets/proof-libraries.json)
+- [Bundled Workbench library inventory](https://github.com/Nimblesite/osprey/blob/main/src/osprey/workbench/assets/proof-libraries.json)
 
 [Use the Workbench](/docs/proof-workbench/) or [choose a proof learning path](/docs/proofs/). Osprey is actively evolving.

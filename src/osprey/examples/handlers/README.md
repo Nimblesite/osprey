@@ -9,7 +9,7 @@ Run from the repository root:
 python3 src/osprey/examples/handlers/run.py
 ```
 
-This runs actual Osprey, Koka, OCaml, Eff, and Effekt programs. Both Osprey flavors are included. Their tools are installed locally under `target/demo-tools` (OCaml is already on PATH). Build the prototype compiler after editing it with `cargo build --release -p osprey-cli`.
+This runs actual Osprey, Koka, OCaml, Eff, and Effekt programs. Both Osprey flavors are included. Their tools are installed locally under `target/demo-tools` (OCaml is already on PATH). Build the prototype compiler after editing it with `cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli`.
 
 Edit a language's `handlers` file and rerun just that language:
 
@@ -109,7 +109,7 @@ static handler captures under default, GC and ARC memory modes.
 
 ## Try an open-row callback prototype
 
-After `cargo build --release -p osprey-cli`, run the [Default](open-rows.osp),
+After `cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli`, run the [Default](open-rows.osp),
 [ML](open-rows.ospml) and [Koka](open-rows.kk) versions:
 
 ```sh

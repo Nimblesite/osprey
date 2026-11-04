@@ -32,10 +32,10 @@ The ports have defined scopes:
 
 | Osprey package | Code in the repository | Boundary |
 | --- | --- | --- |
-| [`@osprey/numpy`](https://github.com/Nimblesite/osprey/tree/main/packages/numpy) | Float64 arrays, broadcasting, reductions, shape operations and linear algebra | Integer, object and complex arrays are outside the port. |
-| [`@osprey/torch`](https://github.com/Nimblesite/osprey/tree/main/packages/torch) | Float64 tensor operations, autograd, optimizers and learning-rate schedules | Uses Osprey storage; it is not a binding to the PyTorch runtime or its complete operator catalogue. |
-| [`@osprey/einops`](https://github.com/Nimblesite/osprey/tree/main/packages/einops) | Pattern parsing, transformation recipes and shape reconstruction | Does not expose the upstream tensor-backend execution API. |
-| [`@osprey/safetensors`](https://github.com/Nimblesite/osprey/tree/main/packages/safetensors) | Headers, tensor metadata, byte decoding and serialization | Uses Osprey values and explicit file capabilities rather than Python tensor objects. |
+| [`@osprey/numpy`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/numpy) | Float64 arrays, broadcasting, reductions, shape operations and linear algebra | Integer, object and complex arrays are outside the port. |
+| [`@osprey/torch`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/torch) | Float64 tensor operations, autograd, optimizers and learning-rate schedules | Uses Osprey storage; it is not a binding to the PyTorch runtime or its complete operator catalogue. |
+| [`@osprey/einops`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/einops) | Pattern parsing, transformation recipes and shape reconstruction | Does not expose the upstream tensor-backend execution API. |
+| [`@osprey/safetensors`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/safetensors) | Headers, tensor metadata, byte decoding and serialization | Uses Osprey values and explicit file capabilities rather than Python tensor objects. |
 
 These are source packages in the checkout, not a claim that a public catalog already hosts them. Check each package's README, implementation and tests against the operations your project needs. GPU placement is explicit; neither the file extension nor the package manager automatically accelerates a calculation.
 
@@ -49,7 +49,7 @@ The default-backend run checked for this post finishes with `103 passed, 0 faile
 
 ## A manifest identifies the Python-flavor source
 
-The [`@osprey/einops` manifest](https://github.com/Nimblesite/osprey/blob/main/packages/einops/osprey.toml) declares its source roots and Python-flavor modules:
+The [`@osprey/einops` manifest](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/einops/osprey.toml) declares its source roots and Python-flavor modules:
 
 ```toml
 [project]

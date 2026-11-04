@@ -14,7 +14,7 @@ The build publishes Prism and SQLite from the website’s locked npm dependencie
 
 ### `generate-docs.sh`
 Regenerates the API reference (`src/docs/`) via `osprey --docs` when a Rust
-compiler binary (`../../../target/release/osprey`, built with `cargo build
+compiler binary (`../../../../target/release/osprey`, built with `cargo build
 --release`) is present and supports the flag. Otherwise the committed docs in
 `src/docs/` are used as-is, so the website build never requires a Rust
 toolchain.
@@ -37,6 +37,6 @@ Syncs the playground editor content from
 ## Manual Documentation Generation
 
 ```bash
-cargo build --release
+cargo build --manifest-path src/toolchain/Cargo.toml --release
 ./target/release/osprey --docs --docs-dir src/toolchain/website/src/docs
 ```

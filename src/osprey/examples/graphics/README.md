@@ -177,7 +177,7 @@ Steps 1 to 4 need no display and no GPU. Step 5 needs a desktop session.
 
 4. **Run the drift guard:**
 
-       cargo test -p osprey-cli --test graphics_scenes
+       cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test graphics_scenes
 
 5. **Open a window and draw.** This is the step that actually proves the
    backend, and the only one that needs a desktop:

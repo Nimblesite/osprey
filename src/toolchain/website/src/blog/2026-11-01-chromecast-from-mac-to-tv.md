@@ -16,7 +16,7 @@ A Mac has no Cast button. Chrome can cast a browser tab, and a phone can cast fr
 
 <img src="/assets/images/blog/chromecast-from-mac-player.webp" alt="The casting player in its Sherbet Signal skin: a spinning pastel disc above the title, a receiver menu, a seek bar from 00:00 to 00:00, the play and stop buttons, a volume slider, a 1× speed menu and an Open file button" width="434" height="557">
 
-The player is written in [Osprey](/), a functional language built for safety, elegance and performance. It is also the first real application built on two things Osprey gained this week: [UI machines](/blog/2026-11-01-rust-ui-framework-without-rust/), where the whole interface is one data file, and [`@osprey/chromecast`](https://github.com/Nimblesite/osprey/tree/main/packages/chromecast), a Cast sender package.
+The player is written in [Osprey](/), a functional language built for safety, elegance and performance. It is also the first real application built on two things Osprey gained this week: [UI machines](/blog/2026-11-01-rust-ui-framework-without-rust/), where the whole interface is one data file, and [`@osprey/chromecast`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/chromecast), a Cast sender package.
 
 {% videoPlayer "chromecast-from-mac", true %}
 
@@ -42,7 +42,7 @@ The window never waits on the network. Discovery runs as a host process, and eac
 
 ## Built from a state machine
 
-There is no layout code in the player. Its interface is [`player.machine.json`](https://github.com/Nimblesite/osprey/blob/main/examples/casting/player.machine.json): four parallel state machines (`receivers`, `playback`, `commands` and `menu`), the inputs they read, and three skins. When a state is entered, it asks for work by name. Entering `connecting` asks for `cast.start` with the chosen file and TV. A small Osprey adapter answers those requests with the Chromecast package:
+There is no layout code in the player. Its interface is [`player.machine.json`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/casting/player.machine.json): four parallel state machines (`receivers`, `playback`, `commands` and `menu`), the inputs they read, and three skins. When a state is entered, it asks for work by name. Entering `connecting` asks for `cast.start` with the chosen file and TV. A small Osprey adapter answers those requests with the Chromecast package:
 
 ```osprey-ml
 answer (store, ask) = match ask.askName
@@ -84,4 +84,4 @@ Pick a TV, choose an MP3 and press play.
 
 Limits to know first. It plays MP3 files only. It accepts the TV's certificate without verifying it, because Cast devices present self-signed certificates. It has been tested on macOS. The other two skins in the document, Midnight Mint and Poolside Pop, are still being laid out, so the player opens in Sherbet Signal.
 
-Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. The [player's README](https://github.com/Nimblesite/osprey/tree/main/examples/casting) and the [Chromecast package README](https://github.com/Nimblesite/osprey/tree/main/packages/chromecast) cover the rest.
+Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. The [player's README](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/casting) and the [Chromecast package README](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/chromecast) cover the rest.

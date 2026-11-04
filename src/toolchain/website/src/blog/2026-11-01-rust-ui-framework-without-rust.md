@@ -33,7 +33,7 @@ The last row trades flexibility for something specific. Every state the interfac
 
 ## One document: inputs, layers, view, skins
 
-[`player.machine.json`](https://github.com/Nimblesite/osprey/blob/main/examples/casting/player.machine.json) has four parts.
+[`player.machine.json`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/casting/player.machine.json) has four parts.
 
 **Inputs** are the interface's state besides its current states: `file`, `receiver`, `position`, `volume`, the list of `receivers` found, and triggers such as `play`.
 
@@ -86,4 +86,4 @@ bash src/osprey/examples/casting/run.sh
 
 What to know first. The casting player runs in the GPUI host on macOS today. The document becomes ordinary Osprey Native views, which the WinUI, VS Code and Apple hosts also draw, but only the GPUI host has run this player. The two skins without a canvas, Midnight Mint and Poolside Pop, still need layout work, so the player opens in Sherbet Signal. The GPUI host maps the accessibility tree to AccessKit, so the platform's screen reader sees every labelled control; the other hosts do not map it yet.
 
-The format is defined in the [UI machines spec](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/UiMachines.md), and [`@osprey/native`](https://github.com/Nimblesite/osprey/tree/main/packages/native) holds the interpreter. Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.
+The format is defined in the [UI machines spec](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/UiMachines.md), and [`@osprey/native`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/native) holds the interpreter. Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.

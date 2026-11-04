@@ -78,7 +78,7 @@ The important part is what does not happen. The return path does not retain the 
 
 ## What the compiler actually emits
 
-The implementation lives in Osprey's [Perceus ownership ledger](https://github.com/Nimblesite/osprey/blob/main/crates/osprey-codegen/src/arc.rs). It threads ownership information through the normal AST-to-LLVM walk rather than adding a second ARC-only compiler pipeline.
+The implementation lives in Osprey's [Perceus ownership ledger](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/crates/osprey-codegen/src/arc.rs). It threads ownership information through the normal AST-to-LLVM walk rather than adding a second ARC-only compiler pipeline.
 
 The compiler assigns every tracked managed-pointer owner a null-initialised slot in the function entry block. If a branch never produces the value, the compiler leaves that slot null. Region cleanup can therefore load and release the slot safely without solving a separate dominance problem for every match arm and loop edge.
 
@@ -94,7 +94,7 @@ The generated IR always names the same hooks. `--memory=arc` simply links the AR
 
 ## Inside the ARC runtime
 
-The [ARC runtime](https://github.com/Nimblesite/osprey/blob/main/compiler/runtime/memory_arc.c) puts a 16-byte header before every managed allocation:
+The [ARC runtime](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/compiler/runtime/memory_arc.c) puts a 16-byte header before every managed allocation:
 
 ```c
 { int64_t meta; int32_t rc; uint32_t size; }

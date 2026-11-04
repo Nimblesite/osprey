@@ -121,7 +121,7 @@ print("${yes(|| => submit("A-1"))} / ${cancel(|| => submit("A-1"))}")
 Submitted A-1 / Cancelled A-1
 ```
 
-Osprey used to infer the mode by searching an arm for `resume`, so a `resume` in a branch that never ran changed what the program did. The declaration now decides, as Koka's `fun`/`ctl` split does. The [handler comparison](https://github.com/Nimblesite/osprey/tree/main/examples/handlers) runs the same four probes in both Osprey flavors, Koka, OCaml, Eff and Effekt. All six print `42/142/0/0`.
+Osprey used to infer the mode by searching an arm for `resume`, so a `resume` in a branch that never ran changed what the program did. The declaration now decides, as Koka's `fun`/`ctl` split does. The [handler comparison](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers) runs the same four probes in both Osprey flavors, Koka, OCaml, Eff and Effekt. All six print `42/142/0/0`.
 
 ## `return` transforms the answer
 

@@ -12,7 +12,7 @@ remarkable open-source projects, and the language leans on several more as
 development oracles. We are grateful to the authors named below: their work made
 these ports possible, they retain ownership of it, and none of this is an
 endorsement by them. The package audit that pins every fact is
-[`src/osprey/packages/license-audit.json`](https://github.com/Nimblesite/osprey/blob/main/packages/license-audit.json).
+[`src/osprey/packages/license-audit.json`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/license-audit.json).
 
 ## Announcements
 

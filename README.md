@@ -61,14 +61,14 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 | Start here | What you will find |
 | --- | --- |
 | [src/osprey/examples/](src/osprey/examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
-| [src/toolchain/crates/](crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
+| [src/toolchain/crates/](src/toolchain/crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
 | [src/osprey/packages/](src/osprey/packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
 | [src/toolchain/compiler/runtime/](src/toolchain/compiler/runtime) | C runtime and GPU adapters |
-| [src/toolchain/tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
-| [src/osprey/tests/](tests) | Default and ML language suites with shared golden output |
+| [src/toolchain/tree-sitter-osprey/](src/toolchain/tree-sitter-osprey) | Default-flavor grammar |
+| [src/osprey/tests/](src/osprey/tests) | Default and ML language suites with shared golden output |
 | [docs/](docs/README.md) | Specifications, delivery plans and contributor architecture |
-| [src/toolchain/website/](website) | Language guides, reference pages and public website |
-| [src/toolchain/vscode-extension/](src/toolchain/vscode-extension/README.md), [src/toolchain/webcompiler/](webcompiler) | Editor integration and online compiler |
+| [src/toolchain/website/](src/toolchain/website) | Language guides, reference pages and public website |
+| [src/toolchain/vscode-extension/](src/toolchain/vscode-extension/README.md), [src/toolchain/webcompiler/](src/toolchain/webcompiler) | Editor integration and online compiler |
 | [scripts/](scripts/README.md) | Build rules, validation, platform tooling and packaging support |
 | [docs/book/](docs/book/README.md), [src/toolchain/benchmarks/](src/toolchain/benchmarks/README.md) | The Osprey book and measured comparisons |
 

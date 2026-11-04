@@ -24,7 +24,7 @@ Source: [Databricks Dolly dataset/card](https://huggingface.co/datasets/databric
 The normal integration gate uses the compiler Cargo builds and no optional dependencies/downloads:
 
 ```sh
-cargo test -p osprey-cli --test python_interop
+cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test python_interop
 ```
 
 It covers both directions in Default/ML/Python, checked scalars and JSON, object lifetimes, loading/thread restrictions, and the real application with disk-backed inputs/workers. Application regressions include callback failure after an earlier row succeeded (entire batch rolls back), cross-batch conflicts, sensitive-data handling, malformed/oversized records, Unicode/numeric overflow, output permissions, input aliases and failed-publication cleanup.

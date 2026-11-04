@@ -23,6 +23,6 @@ From a repository checkout, after installing the build prerequisites:
 make -C src/toolchain/targets/macos agent PROJECT=/path/to/your/project
 ```
 
-[Explore Osprey Native →](/docs/osprey-native/) · [Agent source and setup](https://github.com/Nimblesite/osprey/tree/main/examples/agent)
+[Explore Osprey Native →](/docs/osprey-native/) · [Agent source and setup](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/agent)
 
 {% videoTranscript video %}

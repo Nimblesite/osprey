@@ -17,7 +17,7 @@ Osprey compiles to native code with a plain C interface ([the iOS target specifi
 **Interop** here means two languages calling each other inside one process. The calls go both ways:
 
 - **Swift calls Osprey.** The compiler builds the project into a static library, `libOspreyApp.a`, with a C header, `libOspreyApp.h`. Entry-source functions with supported scalar signatures become C prototypes that Swift calls through a bridging header.
-- **Osprey calls Swift.** Osprey declares host functions with `extern`; Swift defines them with `@_cdecl`. Disk operations live in [`StorageServices.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/StorageServices.swift), and Photos operations in [`PhotoLibrary.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/PhotoLibrary.swift).
+- **Osprey calls Swift.** Osprey declares host functions with `extern`; Swift defines them with `@_cdecl`. Disk operations live in [`StorageServices.swift`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/macos/OspreyStorage/StorageServices.swift), and Photos operations in [`PhotoLibrary.swift`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/macos/OspreyStorage/PhotoLibrary.swift).
 
 The video then shows how the app stays testable. Osprey only reaches the Swift functions through an [algebraic effect](/docs/effects/) handler at the boundary. A test handler answers the same effect with fixed data, so the whole browser runs in tests with no Swift and no disk. Finally, it shows one Xcode target building the same Osprey code for the Mac, the iPhone and the iPhone simulator.
 
@@ -47,7 +47,7 @@ target/release/osprey src/osprey/examples/macos/storage/test --run   # the Ospre
 src/osprey/examples/macos/run.sh --smoke                             # the real walk and screens on this Mac
 ```
 
-On Mac, the app starts at the whole disk. macOS can ask for access to protected folders during the walk; refused folders count as unreadable. Without Full Disk Access, other apps' data stays guarded until you choose a folder in the system picker or grant access in Settings. The [example's README](https://github.com/Nimblesite/osprey/tree/main/examples/macos#permissions) explains the permission flow.
+On Mac, the app starts at the whole disk. macOS can ask for access to protected folders during the walk; refused folders count as unreadable. Without Full Disk Access, other apps' data stays guarded until you choose a folder in the system picker or grant access in Settings. The [example's README](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/macos#permissions) explains the permission flow.
 
 Choose a folder to rank it, click a folder to open it, or use the eye button (⇧⌘.) to exclude hidden files from the totals. On Mac, right-click a folder to open it in Finder. The iPhone app measures its own container and, with permission, the photo library.
 

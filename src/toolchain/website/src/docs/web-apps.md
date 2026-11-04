@@ -15,7 +15,7 @@ title: Building Osprey Web Apps with React and WebAssembly
 
 {% from "native-capture.njk" import capture %}
 
-[Talon Bank](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules) uses algebraic effects for storage, audit logging and browser rendering. Reusable handlers select SQLite and console output on the server, or the browser bridge in the WebAssembly client. Tests replace these implementations around the same application code.
+[Talon Bank](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules) uses algebraic effects for storage, audit logging and browser rendering. Reusable handlers select SQLite and console output on the server, or the browser bridge in the WebAssembly client. Tests replace these implementations around the same application code.
 
 Osprey owns the model, transitions, routes, validation and view description. A JavaScript host executes browser commands and gives the view to React, which updates the DOM. Start with the [effects guide](/docs/effects/) if `handler` and `perform` are new to you.
 
@@ -60,7 +60,7 @@ The server and Wasm client share the bank’s `Money` module. Its signature expo
 
 ## The complete startup and event loop
 
-The [client entry point](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/main.ospml) defines the browser-facing dispatcher and `main`:
+The [client entry point](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/main.ospml) defines the browser-facing dispatcher and `main`:
 
 ```osprey-ml
 // Browser composition root. The compiler exposes osprey_web_dispatch as a
@@ -191,7 +191,7 @@ The current Talon client places commands in its render envelope, so it uses the 
 
 ## State management in Osprey
 
-Talon's [`AppModel`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/model.ospml) is the authoritative application snapshot. It contains route selection, loading flags, notices, modal/menu state, filters, the selected account, and JSON API documents.
+Talon's [`AppModel`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/model.ospml) is the authoritative application snapshot. It contains route selection, loading flags, notices, modal/menu state, filters, the selected account, and JSON API documents.
 
 The transition shape is explicit:
 
@@ -245,7 +245,7 @@ consoleAudit (\() => storage (\() => serve db))
 
 Calling a handler with a callback installs it while that work runs. Tests supply an in-memory store, reuse it across operations, and create independent stores for separate scenarios. The surrounding `Metrics::track` block supplies the request counter.
 
-The client uses the same handler model for its rendering boundary. In [`Bridge`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/bridge.ospml):
+The client uses the same handler model for its rendering boundary. In [`Bridge`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/bridge.ospml):
 
 ```osprey-ml
 export effect Render
@@ -372,18 +372,18 @@ When extending the framework:
 
 | Concern | Reference implementation |
 |----|----|
-| Composition and page selection | [`client/src/app.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/app.ospml) |
-| Serializable model | [`client/src/model.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/model.ospml) |
-| Event transitions | [`client/src/update.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/update.ospml) |
-| View constructors | [`client/src/ui.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/ui.ospml) |
-| Browser commands | [`client/src/commands.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/commands.ospml) |
-| Render boundary | [`client/src/bridge.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/client/src/bridge.ospml) |
-| Wasm + React lifecycle | [`web/src/host.js`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/web/src/host.js) |
-| Element/event protocol | [`web/src/protocol.js`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/web/src/protocol.js) |
-| Browser WASI shim | [`web/src/wasi.js`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/web/src/wasi.js) |
-| Compile/bundle pipeline | [`web/scripts/build.mjs`](https://github.com/Nimblesite/osprey/blob/main/examples/projects/modules/web/scripts/build.mjs) |
-| Wasm ABI runtime | [`src/toolchain/compiler/runtime/web_runtime.c`](https://github.com/Nimblesite/osprey/blob/main/compiler/runtime/web_runtime.c) |
-| Compiler Wasm linker | [`src/toolchain/crates/osprey-cli/src/wasm.rs`](https://github.com/Nimblesite/osprey/blob/main/crates/osprey-cli/src/wasm.rs) |
+| Composition and page selection | [`client/src/app.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/app.ospml) |
+| Serializable model | [`client/src/model.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/model.ospml) |
+| Event transitions | [`client/src/update.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/update.ospml) |
+| View constructors | [`client/src/ui.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/ui.ospml) |
+| Browser commands | [`client/src/commands.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/commands.ospml) |
+| Render boundary | [`client/src/bridge.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/client/src/bridge.ospml) |
+| Wasm + React lifecycle | [`web/src/host.js`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/src/host.js) |
+| Element/event protocol | [`web/src/protocol.js`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/src/protocol.js) |
+| Browser WASI shim | [`web/src/wasi.js`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/src/wasi.js) |
+| Compile/bundle pipeline | [`web/scripts/build.mjs`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/web/scripts/build.mjs) |
+| Wasm ABI runtime | [`src/toolchain/compiler/runtime/web_runtime.c`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/compiler/runtime/web_runtime.c) |
+| Compiler Wasm linker | [`src/toolchain/crates/osprey-cli/src/wasm.rs`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/crates/osprey-cli/src/wasm.rs) |
 
 {{ capture("/assets/images/native/web-bank-security.png", "Talon Bank security page · an application demo, not evidence of complete runtime confinement.", "Talon Bank security page · an application demo, not evidence of complete runtime confinement.", 1440, 960) }}
 
@@ -413,14 +413,14 @@ cd ../../../../../..
 make -C src/toolchain/targets bank-e2e
 
 # Compiler Wasm ABI/linker tests
-cargo test -p osprey-cli wasm::tests
+cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli wasm::tests
 ```
 
 The browser suite covers Wasm boot, route changes, HTTP round trips, model updates, forms, responsive navigation, bridge telemetry, and injection-safe text rendering. The compiler's Wasm differential suite separately compares the portable Osprey examples with their native expected output.
 
 ## Native Android and iOS
 
-The [native Talon Bank apps](https://github.com/Nimblesite/osprey/tree/main/examples/projects/modules/mobile) reuse these Osprey screens, validation, state transitions, and command descriptions. SwiftUI and Android widgets render the same view tree; a mobile handler returns its envelope through the C ABI. They connect to the same bank API, with native form controls and a shared font and palette. See the mobile README for build commands and platform test results.
+The [native Talon Bank apps](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/projects/modules/mobile) reuse these Osprey screens, validation, state transitions, and command descriptions. SwiftUI and Android widgets render the same view tree; a mobile handler returns its envelope through the C ABI. They connect to the same bank API, with native form controls and a shared font and palette. See the mobile README for build commands and platform test results.
 
 ## Related documentation
 

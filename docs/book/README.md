@@ -44,7 +44,7 @@ ML flavor appears later as an **optional alternative**, not a decision the reade
 
 ## Production commands
 
-The build uses Pandoc, EPUBCheck, librsvg, ImageMagick, jq and Mermaid CLI. Mermaid CLI needs a compatible Chrome installation; when using an existing browser, set `PUPPETEER_EXECUTABLE_PATH` to its executable. Run these commands from `Book`:
+The build uses Pandoc, EPUBCheck, librsvg, ImageMagick, jq and Mermaid CLI. Mermaid CLI needs a compatible Chrome installation; when using an existing browser, set `PUPPETEER_EXECUTABLE_PATH` to its executable. Run these commands from `docs/book`:
 
 ```sh
 make check          # validate manifests and parse every manuscript file

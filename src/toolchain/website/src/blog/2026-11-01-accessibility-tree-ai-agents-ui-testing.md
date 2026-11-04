@@ -41,7 +41,7 @@ Every control in a UI machine declares a role and a label. Labels are templates,
 
 ## UI tests that read like the user's journey
 
-[`@osprey/uitest`](https://github.com/Nimblesite/osprey/tree/main/packages/uitest) is a small kit on top of the tree. It has three modules: `Views` reads what the view and canvas draw, `Semantics` finds controls and works out pointer positions from their bounds, and `Events` builds the same event JSON a real host sends. This is part of the casting player's canvas test:
+[`@osprey/uitest`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/uitest) is a small kit on top of the tree. It has three modules: `Views` reads what the view and canvas draw, `Semantics` finds controls and works out pointer positions from their bounds, and `Events` builds the same event JSON a real host sends. This is part of the casting player's canvas test:
 
 ```osprey-ml
 expect (labels (), "Receiver: Living Room TV|Play|Open file…")
@@ -81,7 +81,7 @@ The second journey switches skins and checks that the controls are still offered
 
 ## The same tree reaches screen readers
 
-The tests read the tree from the envelope the app sends its host, so they read exactly what the host gets. The GPUI desktop host lays one invisible AccessKit element over the canvas for each entry, with its role, label and, for a slider, its value and range ([`access.rs`](https://github.com/Nimblesite/osprey/blob/main/hosts/gpui/src/scene/access.rs)). A screen reader's click becomes a pointer press and release at the element's centre, and setting a slider lands at that value along it, so the app cannot tell a screen reader or an agent from a hand.
+The tests read the tree from the envelope the app sends its host, so they read exactly what the host gets. The GPUI desktop host lays one invisible AccessKit element over the canvas for each entry, with its role, label and, for a slider, its value and range ([`access.rs`](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/hosts/gpui/src/scene/access.rs)). A screen reader's click becomes a pointer press and release at the element's centre, and setting a slider lands at that value along it, so the app cannot tell a screen reader or an agent from a hand.
 
 ## Why this suits AI agents
 
@@ -101,6 +101,6 @@ From a checkout of [the repository](https://github.com/Nimblesite/osprey), after
 ./target/release/osprey src/osprey/examples/casting/test --run
 ```
 
-Then read the test, [`src/osprey/examples/casting/test/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/casting/test/main.ospml), and the [UI machines spec](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/UiMachines.md#accessibility-ui-machine-a11y).
+Then read the test, [`src/osprey/examples/casting/test/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/casting/test/main.ospml), and the [UI machines spec](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/UiMachines.md#accessibility-ui-machine-a11y).
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.

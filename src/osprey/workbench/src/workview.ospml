@@ -108,7 +108,7 @@ module WorkViews
 
     footer () = Ui::framed (plain(frameName = "app-footer", frameAlign = "center", frameFont = "sans", frameTextSize = 11, frameHeight = 43, frameLine = "divider", frameLineEdge = "top", frameLeft = 26, frameRight = 26), Ui::row [Ui::caption "Your working stays yours. Checked proofs are marked by the kernel.", ui::Spacer, Ui::link ("Built with Osprey", "https://ospreylang.dev/")])
 
-    about () = Ui::section ("Built with Osprey", "Explore the language behind the workbench.", [Media::image ("osprey-logo.png", "Osprey", 64, 64), Ui::link ("Osprey website", "https://ospreylang.dev/"), Ui::link ("Language documentation", "https://ospreylang.dev/docs/"), Ui::link ("Workbench source", "https://github.com/Nimblesite/osprey/tree/main/apps/workbench")])
+    about () = Ui::section ("Built with Osprey", "Explore the language behind the workbench.", [Media::image ("osprey-logo.png", "Osprey", 64, 64), Ui::link ("Osprey website", "https://ospreylang.dev/"), Ui::link ("Language documentation", "https://ospreylang.dev/docs/"), Ui::link ("Workbench source", "https://github.com/Nimblesite/osprey/tree/main/src/osprey/workbench")])
 
     surface current = match inspectingLibrary current
         true => librarySurface ()

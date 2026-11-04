@@ -2,9 +2,9 @@
 
 **⚠️ HISTORICAL DOCUMENT — NOT A REAL EXAMPLE. Kept for posterity only. ⚠️**
 
-Everything below this banner is the verbatim text of `src/osprey/examples/casting/mobile.md` as it stood at commit `ed6d8794`, immediately before the SwiftUI casting renderer was retired. It describes the **retired implementations**: the SwiftUI iOS renderer and the Java Android views. None of its checked boxes, test passes, screenshots, coverage numbers or physical-device notes are evidence about the active apps, which now render through the same shared Rust `src/toolchain/hosts/gpui` code as the desktop ([plan 0053](../../docs/plans/0053-casting-gpui-mobile.md)).
+Everything below this banner is the verbatim text of `src/osprey/examples/casting/mobile.md` as it stood at commit `ed6d8794`, immediately before the SwiftUI casting renderer was retired. It describes the **retired implementations**: the SwiftUI iOS renderer and the Java Android views. None of its checked boxes, test passes, screenshots, coverage numbers or physical-device notes are evidence about the active apps, which now render through the same shared Rust `src/toolchain/hosts/gpui` code as the desktop ([plan 0053](../../plans/0053-casting-gpui-mobile.md)).
 
-Do not restore this implementation, treat its results as current, or use it as a starting point for new work. The former sources are in [source.tar.gz](source.tar.gz); see the [archive README](README.md). Paths, commands and relative links inside the record below resolved against `src/osprey/examples/casting/` at the time and are not maintained here. The active status and mandatory checklist live in [src/osprey/examples/casting/mobile.md](../../src/osprey/examples/casting/mobile.md).
+Do not restore this implementation, treat its results as current, or use it as a starting point for new work. The former sources are in [source.tar.gz](source.tar.gz); see the [archive README](README.md). Paths, commands and relative links inside the record below resolved against `src/osprey/examples/casting/` at the time and are not maintained here. The active status and mandatory checklist live in [src/osprey/examples/casting/mobile.md](../../../src/osprey/examples/casting/mobile.md).
 
 ---
 

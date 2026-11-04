@@ -72,7 +72,7 @@ The Qwen3.5 tool-call layer: a streaming parser for the chat template's
 `<tool_call><function=…><parameter=…>` format, a logits processor that makes a
 schema-invalid call unsamplable, and the typed tool error a harness recovers from
 ([LLM-TOOL-PARSE], [LLM-TOOL-CONSTRAIN], [LLM-TOOL-REPAIR] of
-[LocalCodingModel](../../../docs/specs/applications/LocalCodingModel.md)). There is no
+[LocalCodingModel](../../../../docs/specs/applications/LocalCodingModel.md)). There is no
 Hugging Face analogue to port: the format is the model's, so the reference is the
 published chat template and the parser a serving engine ships for it.
 

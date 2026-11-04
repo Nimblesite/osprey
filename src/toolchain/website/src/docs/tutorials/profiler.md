@@ -20,7 +20,7 @@ Osprey's VS Code extension has a CPU profiler built in. It samples a running Osp
 - **Memory.** Osprey values never change once built, so the managed heap can never hold a reference cycle. You choose a memory backend when you build: `gc` is the default conservative tracing collector; `arc` releases a value when its last owner is dropped. Explicit `--memory=none` selects unmanaged allocation, which retains general allocations. Osprey has no live heap tracker yet, so the profiler offers no memory tracking.
 - **Leaks.** Build with `--memory=arc` and run with `OSPREY_ARC_DEBUG=1`. When the program exits, ARC reports how many objects are still alive. `OSPREY_ARC_DEBUG=2` also lists each one by kind.
 
-Every frame in the video is the real editor and language server. Both programs are in [`src/osprey/examples/profiling`](https://github.com/Nimblesite/osprey/tree/main/examples/profiling).
+Every frame in the video is the real editor and language server. Both programs are in [`src/osprey/examples/profiling`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/profiling).
 
 ## Get it working
 

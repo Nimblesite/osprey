@@ -1,6 +1,6 @@
 # Mobile casting through the shared GPUI host [CAST-MOBILE-GPUI]
 
-The native casting apps are migrating to one renderer: the same Rust `src/toolchain/hosts/gpui` code that draws the desktop player, per [plan 0053](../../../../docs/plans/0053-casting-gpui-mobile.md). The separate SwiftUI iOS renderer is retired; its sources are archived in [archive/casting-swiftui](../../archive/casting-swiftui/README.md) and its full delivery record — every checked box, screenshot and coverage number — is preserved verbatim in [mobile-history.md](../../archive/casting-swiftui/mobile-history.md). Those results belong to the retired implementations and are not evidence for the shared GPUI apps. The migration is incomplete.
+The native casting apps are migrating to one renderer: the same Rust `src/toolchain/hosts/gpui` code that draws the desktop player, per [plan 0053](../../../../docs/plans/0053-casting-gpui-mobile.md). The separate SwiftUI iOS renderer is retired; its sources are archived in [archive/casting-swiftui](../../../../docs/archive/casting-swiftui/README.md) and its full delivery record — every checked box, screenshot and coverage number — is preserved verbatim in [mobile-history.md](../../../../docs/archive/casting-swiftui/mobile-history.md). Those results belong to the retired implementations and are not evidence for the shared GPUI apps. The migration is incomplete.
 
 ## Current status [CAST-MOBILE-GPUI-STATUS]
 

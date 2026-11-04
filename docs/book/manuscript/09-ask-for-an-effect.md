@@ -24,7 +24,7 @@ Ready to learn, Rowan?
 
 There is one `greeting` function. Each call uses a different answer to its request. Neither call changes the function's source.
 
-All commands in this chapter assume you are in `Book`. For the first example, use `../../target/release/osprey examples/chapter-09/greeting.osp --check`, then repeat the command with `--run`. An installed compiler can be invoked as `osprey` instead.
+All commands in this chapter assume you are in `docs/book`. For the first example, use `../../target/release/osprey examples/chapter-09/greeting.osp --check`, then repeat the command with `--run`. An installed compiler can be invoked as `osprey` instead.
 
 ## 1. Read a request and its answer
 
@@ -283,5 +283,5 @@ Chapter 10 adds unreliable outside work. The next question is how an effect oper
 ### Authoritative sources
 
 - [Effects and handlers](https://github.com/Nimblesite/osprey/blob/main/docs/specs/language/0017-AlgebraicEffects.md): callable handlers, rest-of-block scope, operation typing, value/control modes, and static interpretation. This specification also contains planned features; use [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) for delivery limits.
-- [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/examples/handlers): current execution examples and comparisons with other languages.
+- [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers): current execution examples and comparisons with other languages.
 - Executable source, exact output, tests, and rejection fixtures in `examples/chapter-09/`. The compiler identity and verification are recorded in `evidence.json`; the publication release remains unpinned.

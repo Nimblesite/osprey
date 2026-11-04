@@ -147,6 +147,6 @@ Integer `+`, `-` and `*` request the built-in `Arith` effect on overflow, and `/
 
 - [Talon Bank](/docs/web-apps/#algebraic-effects-what-runs-where) uses handlers for server storage and audit work, and for its browser application boundary. Browser commands carry asynchronous work to JavaScript.
 - [Issue Inbox](/docs/mobile-apps/#application-effects) uses handlers to turn application requests into commands for the Swift and Android hosts. Platform completion arrives as another event.
-- [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/examples/handlers) cover factories, control flow, return clauses and static selection, alongside executable Koka and OCaml comparisons.
+- [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers) cover factories, control flow, return clauses and static selection, alongside executable Koka and OCaml comparisons.
 
 Everything above works in Default and ML; the [Python flavor](/docs/python-flavor/#effects-and-handlers) spells the same effects with `@effect` classes, `perform(...)`, handler classes and `with`. [Feature status](/status/#algebraic-effects) lists what remains unfinished; the [effects specification](/spec/0017-algebraiceffects/) defines the full contract.

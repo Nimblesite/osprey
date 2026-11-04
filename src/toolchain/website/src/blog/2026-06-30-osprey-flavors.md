@@ -48,5 +48,5 @@ Flavor selection works per file through `.osp` or `.ospml`, a leading source mar
 
 Default and ML support `effect`, `perform`, `handle` and `handler`, and the Python flavor spells the same effects with `@effect` classes, `perform(...)`, handler classes and `with`; see [Effect Handlers You Can Call](/blog/2026-10-05-effect-handlers-you-can-call/).
 
-See the [tested examples](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
+See the [tested examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/tests/regressions)
 and [language-flavor specification](/spec/0023-languageflavors/).

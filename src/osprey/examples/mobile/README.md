@@ -55,7 +55,7 @@ Use an Apple silicon Mac with Xcode, the iOS SDKs, an installed iPhone simulator
 
 ```sh
 make _runtime_ios _runtime_ios_sim
-cargo build --release -p osprey-cli
+cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 src/osprey/examples/mobile/ios/run.sh ios-sim
 src/osprey/examples/mobile/ios/run.sh --smoke
 ```

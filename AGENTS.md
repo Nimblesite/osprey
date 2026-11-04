@@ -29,7 +29,7 @@
 - 💯 coverage aim per package/project; `src/osprey/tests/coverage-thresholds.json` only goes ⬆️.
 
 ## Apps
-- **One folder, every app:** [`src/toolchain/targets/Makefile`](src/toolchain/targets/Makefile) has one target per app; desktop apps have one per OS in [`src/toolchain/targets/macos`](src/toolchain/targets/macos/Makefile) and [`src/toolchain/targets/windows`](src/toolchain/targets/windows/Makefile). `make -C apps[/<os>] <app>` builds whatever it needs and opens the app. ❌ app targets in the root Makefile.
+- **One folder, every app:** [`src/toolchain/targets/Makefile`](src/toolchain/targets/Makefile) has one target per app; desktop apps have one per OS in [`src/toolchain/targets/macos`](src/toolchain/targets/macos/Makefile) and [`src/toolchain/targets/windows`](src/toolchain/targets/windows/Makefile). `make -C src/toolchain/targets[/<os>] <app>` builds whatever it needs and opens the app. ❌ app targets in the root Makefile.
 - **A new app adds its Makefile entries in the same PR, for every platform it runs on:** a target that opens it in `src/toolchain/targets/<platform>/Makefile`, its tests in `src/toolchain/targets/<platform>/tests/Makefile` (`<app>` and `<app>-headless`), and its host-free headless suite in `src/toolchain/targets/tests/Makefile`. A test target runs that one app. ❌ targets that run every app's tests.
 - **Every app has a working Windows version.** It uses WinUI from the latest Windows App SDK (❌ WPF, WinForms, raw Win32 windows). The GPUI examples run on the WinUI host there.
 - **Sandboxed by default:** on Windows each app is its own MSIX package in an AppContainer (`uap10:TrustLevel="appContainer"`) that declares only the capabilities it uses. An app that cannot be sandboxed says why in its README.

@@ -207,8 +207,8 @@ The implementation is shared by the compiler, editor, CLI exporter and doctest r
 From the repository root:
 
 ```sh
-cargo test -p osprey-cli --test cli_e2e api_docs
-cargo test -p osprey-cli --test cli_e2e doctests
+cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cli_e2e api_docs
+cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cli_e2e doctests
 make -C src/toolchain/website docs-html-test
 ```
 

@@ -13,7 +13,7 @@ Osprey Storage is a native disk browser for the Mac and iPhone. The Mac app star
 
 {% videoCard "swift-interop", "/docs/tutorials/swift-interop/" %}
 
-The source is in [`src/osprey/examples/macos/`](https://github.com/Nimblesite/osprey/tree/main/examples/macos). You need an Apple silicon Mac with Xcode and the [Osprey toolchain](/docs/installation/).
+The source is in [`src/osprey/examples/macos/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/macos). You need an Apple silicon Mac with Xcode and the [Osprey toolchain](/docs/installation/).
 
 {{ capture("/assets/images/guides/storage-macos.png", "Osprey Storage on macOS · recorded frame from the Swift interop tutorial.", "Osprey Storage on macOS · recorded frame from the Swift interop tutorial.", 1920, 1080) }}
 
@@ -37,7 +37,7 @@ src/osprey/examples/macos/run.sh ios-sim      # build and launch it in the iPhon
 
 ## 3. Export the app entry points
 
-[`storage/src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/storage/src/main.ospml) exports `start` and `dispatch` for the browser, plus the formatting helpers `formatBytes`, `formatCount` and `percent`. `start` returns the first screen and requests a disk walk; `dispatch` takes the previous state and one event, then returns the next screen:
+[`storage/src/main.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/macos/storage/src/main.ospml) exports `start` and `dispatch` for the browser, plus the formatting helpers `formatBytes`, `formatCount` and `percent`. `start` returns the first screen and requests a disk walk; `dispatch` takes the previous state and one event, then returns the next screen:
 
 ```osprey-ml
 start (home, platform, full) = envelope (Browse::start home platform full)
@@ -69,7 +69,7 @@ A returned string carries an Osprey reference valid until `osprey_release_string
 
 ## 5. Swift calls Osprey
 
-`Bridge.h` includes the generated header, and the target uses it as its bridging header, so Swift sees the prototypes directly. [`StorageStore.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/StorageStore.swift) initializes Osprey once, asks for the first screen, and sends every event back through `dispatch`, keeping the state as opaque text:
+`Bridge.h` includes the generated header, and the target uses it as its bridging header, so Swift sees the prototypes directly. [`StorageStore.swift`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/macos/OspreyStorage/StorageStore.swift) initializes Osprey once, asks for the first screen, and sends every event back through `dispatch`, keeping the state as opaque text:
 
 ```swift
 let status = osprey_main()
@@ -94,7 +94,7 @@ The same header lists it as an import, a function the host must define with C li
 int64_t storage_scan(const char *folder);
 ```
 
-Swift defines it with `@_cdecl`, so the linker finds exactly that C name and signature. [`StorageServices.swift`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage/StorageServices.swift):
+Swift defines it with `@_cdecl`, so the linker finds exactly that C name and signature. [`StorageServices.swift`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/macos/OspreyStorage/StorageServices.swift):
 
 ```swift
 @_cdecl("storage_scan")
@@ -163,7 +163,7 @@ if node.kind == "toggle" {
 
 ## 10. One target, three SDKs
 
-[`OspreyStorage.xcconfig`](https://github.com/Nimblesite/osprey/blob/main/examples/macos/OspreyStorage.xcconfig) names the Osprey platform for each SDK and links the library built for it:
+[`OspreyStorage.xcconfig`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/macos/OspreyStorage.xcconfig) names the Osprey platform for each SDK and links the library built for it:
 
 ```text
 OSPREY_PLATFORM[sdk=macosx*] = macos

@@ -42,7 +42,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — handle application requests as native commands for SQLite, GitHub and reactive controls.
 - **[Build a web app](/docs/web-apps/)** — follow Talon Bank from storage and audit handlers to shared web, Android and iOS clients.
 - **[Explore the WebAssembly studio](/wasm/)** — compare the Default and ML flavors in a browser-hosted example.
-- **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/examples)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
+- **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
 - **[Document your modules](/docs/documentation/)** — generate HTML API references, add Markdown guides and custom CSS, and test documentation examples.
 
 ## Test and investigate

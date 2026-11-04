@@ -57,7 +57,7 @@ The last two rows matter as much as the first. Osprey has no exceptions and no p
 
 ## A real program: a Chromecast sender
 
-To test this on something bigger than a sample, I ported a stdlib-only CPython Chromecast sender, `cast.py`, to Python flavor. It became [`@osprey/chromecast`](https://github.com/Nimblesite/osprey/tree/main/packages/chromecast): 1,262 lines covering network discovery, protobuf framing, a TLS session with heartbeats, media loading and playback controls. It powers the [Mac casting player](/blog/2026-11-01-chromecast-from-mac-to-tv/).
+To test this on something bigger than a sample, I ported a stdlib-only CPython Chromecast sender, `cast.py`, to Python flavor. It became [`@osprey/chromecast`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/chromecast): 1,262 lines covering network discovery, protobuf framing, a TLS session with heartbeats, media loading and playback controls. It powers the [Mac casting player](/blog/2026-11-01-chromecast-from-mac-to-tv/).
 
 Here is how it reads a device's friendly name out of a discovery record:
 

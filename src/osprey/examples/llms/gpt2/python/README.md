@@ -47,7 +47,7 @@ python3 scripts/check-python-gpt2.py --compiler target/debug/osprey
 
 Pass `--device metal`, `--device opencl` or `--device auto` for a strict hardware comparison. That mode requires an adapter identity and completed device dispatches. Host arithmetic compares exactly; only values downstream of `exp`/`tanh` use the existing GPU precision bound.
 
-The generator comparison itself is `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` in `src/toolchain/crates/osprey-cli/tests/cross_flavor_equiv.rs`. It needs the downloaded checkpoint, so it runs with `cargo test -p osprey-cli --test cross_flavor_equiv -- --ignored`; the checkpoint-free message comparison and the no-`.osp` check run in every suite.
+The generator comparison itself is `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` in `src/toolchain/crates/osprey-cli/tests/cross_flavor_equiv.rs`. It needs the downloaded checkpoint, so it runs with `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cross_flavor_equiv -- --ignored`; the checkpoint-free message comparison and the no-`.osp` check run in every suite.
 
 Only generation is ported. The [training program](../train) is not being ported at the moment and stays Default-only; `make -C src/toolchain/targets gpt2-train` rejects `FLAVOR=python`.
 

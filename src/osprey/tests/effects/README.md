@@ -45,7 +45,7 @@ Value handlers and static discharge have portable native, WebAssembly, and mobil
 ## Run the tests
 
 ```sh
-cargo build --release -p osprey-cli
+cargo build --release --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 target/release/osprey test src/osprey/tests/effects/errors
 target/release/osprey test src/osprey/tests/effects/injection
 target/release/osprey test src/osprey/tests/effects/resume
