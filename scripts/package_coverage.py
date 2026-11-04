@@ -64,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--thresholds", help="coverage-thresholds.json path")
     parser.add_argument("--root", help="checkout root (default: repo root)")
     selection.add_argument("--package", help="gate one package (inventory still checked)")
-    selection.add_argument("--project", help="gate one project as <kind>/<name>, e.g. apps/workbench")
+    selection.add_argument("--project", help="gate one project as <kind>/<name>, e.g. src/workbench")
     return parser
 
 

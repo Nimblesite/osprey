@@ -10,17 +10,17 @@
 .mcp.json
 
 # Terraform state and inputs hold secrets
-packages/manager/ops/terraform/.terraform/
-packages/manager/ops/terraform/*.tfstate
-packages/manager/ops/terraform/*.tfstate.*
-packages/manager/ops/terraform/*.tfplan
-packages/manager/ops/terraform/*.tfvars
-packages/manager/ops/terraform/*.tfvars.json
-packages/manager/ops/terraform/crash.log
+src/packages/manager/ops/terraform/.terraform/
+src/packages/manager/ops/terraform/*.tfstate
+src/packages/manager/ops/terraform/*.tfstate.*
+src/packages/manager/ops/terraform/*.tfplan
+src/packages/manager/ops/terraform/*.tfvars
+src/packages/manager/ops/terraform/*.tfvars.json
+src/packages/manager/ops/terraform/crash.log
 
 # Coverage and test reports
 coverage/
-!crates/osprey-codegen/src/coverage/
+!src/crates/osprey-codegen/src/coverage/
 lcov.info
 coverage-summary.json
 TestResults/
@@ -47,7 +47,7 @@ node_modules/
 dist/
 out/
 .build/
-examples/wasm/build/
+src/examples/wasm/build/
 *.wasm
 *.exe
 *.dll
@@ -59,11 +59,11 @@ examples/wasm/build/
 __pycache__/
 .osprey/
 .osprey-debug
-benchmarks/proof/tools/.lake/
+src/benchmarks/proof/tools/.lake/
 
 # Generated benchmark exports and downloaded model weights
-benchmarks/results/hf/
-examples/gpt2/weights/
+src/benchmarks/results/hf/
+src/examples/gpt2/weights/
 
 # Core dumps from a crashed C test binary (a container run leaves them here)
 /core

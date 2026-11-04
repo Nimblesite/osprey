@@ -441,12 +441,12 @@ cycles. Unknown import targets and members include up to three visible candidate
 
 ## Tested Example
 
-[`examples/projects/modules/`](../../../examples/projects/modules) is the
-end-to-end project fixture. `crates/osprey-cli/tests/project_e2e.rs` checks
+[`src/examples/projects/modules/`](../../../src/examples/projects/modules) is the
+end-to-end project fixture. `src/crates/osprey-cli/tests/project_e2e.rs` checks
 directory/manifest inputs, AST flattening, LLVM output, source-name restoration,
-and byte-exact execution. `crates/osprey-project/tests/` covers graph,
+and byte-exact execution. `src/crates/osprey-project/tests/` covers graph,
 visibility, signature, state, entry, cycle, and opaque-boundary behavior.
 
-`mixed_flavor_project_graphs_emit_identical_ir` in `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` requires byte-identical IR for all eight flavor assignments to a three-file graph. It covers split namespace contributions, imported modules, abstract and manifest signature types, and caller-supplied effect and arithmetic handlers.
+`mixed_flavor_project_graphs_emit_identical_ir` in `src/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` requires byte-identical IR for all eight flavor assignments to a three-file graph. It covers split namespace contributions, imported modules, abstract and manifest signature types, and caller-supplied effect and arithmetic handlers.
 
 The editor's incremental project support shares compiler discovery and parsing rules, overlays all open Default/ML sources, and reuses unchanged syntax and checked programs. Source creation/deletion, buffer closure and manifest changes invalidate the affected inputs. The normative editor contract and named transport tests are [LSP-WORKSPACE] and [LSP-PROJECT-BATCH] in [spec 0020](../tooling/0020-LanguageServerAndEditors.md#project-wide-analysis-lsp-workspace).

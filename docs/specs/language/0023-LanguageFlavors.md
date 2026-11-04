@@ -41,7 +41,7 @@ Every frontend preserves declarations, handler arms and operations in the canoni
 
 ## Flavor Frontend
 
-`[FLAVOR-FRONTEND]` `crates/osprey-syntax/src/lib.rs` exposes the shared entry
+`[FLAVOR-FRONTEND]` `src/crates/osprey-syntax/src/lib.rs` exposes the shared entry
 points:
 
 ```rust
@@ -63,12 +63,12 @@ pub fn parse_program_with_flavor(source: &str, flavor: Flavor) -> Parsed;
 The physical split is:
 
 ```text
-crates/osprey-syntax/src/
+src/crates/osprey-syntax/src/
   lib.rs       selection and dispatch
   strings.rs   shared interpolation and escape helpers
   default/     tree-sitter parsing and lowering
   ml/          layout lexing, parsing, CST, and lowering
-  python/      tree-sitter-python CST validation and lowering
+  src/python/      tree-sitter-python CST validation and lowering
 ```
 
 Each flavor supplies its own interpolation fragment parser to the shared text
@@ -169,11 +169,11 @@ canonical identity across flavors.
 
 ## Cross-Flavor Equivalence Tests
 
-`crates/osprey-cli/tests/cross_flavor_equiv.rs` compares
+`src/crates/osprey-cli/tests/cross_flavor_equiv.rs` compares
 canonical ASTs after removing source positions. It covers equal curried twins,
 equal flat twins, and the expected unequal curried/flat pair.
 
-`[FLAVOR-IR-EQUIV]` `crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` compiles
+`[FLAVOR-IR-EQUIV]` `src/crates/osprey-cli/tests/cross_flavor_ir_equiv.rs` compiles
 paired `.osp` and `.ospml` examples and requires byte-identical LLVM IR. Each ML
 example has a Default twin and shares its expected-output file, except for the
 explicit ML-only allowlist in that test.

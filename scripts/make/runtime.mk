@@ -39,20 +39,20 @@ _runtime:
 	  done
 	@$(MAKE) --no-print-directory -s $(NATIVE_RUNTIME_STAMP)
 
-GPU_SHADER_SRC := compiler/runtime/gpu_f64.metal compiler/runtime/gpu_math64.metal compiler/runtime/gpu_math_ext.metal compiler/runtime/gpu_device_lib.metal
-compiler/bin/gpu_shader_source.h: $(GPU_SHADER_SRC) scripts/embed_gpu_shader.awk
-	@$(MKDIR) compiler/bin
+GPU_SHADER_SRC := src/compiler/runtime/gpu_f64.metal src/compiler/runtime/gpu_math64.metal src/compiler/runtime/gpu_math_ext.metal src/compiler/runtime/gpu_device_lib.metal
+src/compiler/bin/gpu_shader_source.h: $(GPU_SHADER_SRC) scripts/embed_gpu_shader.awk
+	@$(MKDIR) src/compiler/bin
 	awk -f scripts/embed_gpu_shader.awk $(GPU_SHADER_SRC) > $@
 
-compiler/bin/gpu_metal.o: compiler/runtime/gpu_metal.m compiler/bin/gpu_shader_source.h compiler/runtime/gpu_device.h Makefile scripts/make/config.mk scripts/make/runtime.mk
+src/compiler/bin/gpu_metal.o: src/compiler/runtime/gpu_metal.m src/compiler/bin/gpu_shader_source.h src/compiler/runtime/gpu_device.h Makefile scripts/make/config.mk scripts/make/runtime.mk
 	$(CC) $(A) -fobjc-arc $(GPU_DEVICE_FLAGS) $< -o $@
 
-compiler/bin/gpu_opencl.o: compiler/runtime/gpu_opencl.c compiler/bin/gpu_shader_source.h compiler/runtime/gpu_opencl_api.h Makefile scripts/make/config.mk scripts/make/runtime.mk
+src/compiler/bin/gpu_opencl.o: src/compiler/runtime/gpu_opencl.c src/compiler/bin/gpu_shader_source.h src/compiler/runtime/gpu_opencl_api.h Makefile scripts/make/config.mk scripts/make/runtime.mk
 	$(CC) $(B) $< -o $@
 
 $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makefile scripts/make/config.mk scripts/make/runtime.mk $(GPU_DEVICE_NATIVE)
 	@echo "==> building C runtime archives ($(RTB)/lib*_runtime.a)"
-	@cd compiler && set -e && $(MKDIR) bin lib bin/gc bin/arc && \
+	@cd src/compiler && set -e && $(MKDIR) bin lib bin/gc bin/arc && \
 	  $(CC) $(B) runtime/memory_runtime.c       -o bin/memory_runtime.o && \
 	  $(CC) $(B) runtime/memory_gc.c            -o bin/memory_gc.o && \
 	  $(CC) $(B) runtime/memory_arc.c           -o bin/memory_arc.o && \
@@ -127,7 +127,7 @@ $(NATIVE_RUNTIME_STAMP): $(NATIVE_RUNTIME_INPUTS) $(NATIVE_RUNTIME_CONFIG) Makef
 
 # Cross-compile the portable C-runtime subset to a wasm32-wasip1 archive that
 # osprey links for `--target=wasm32`. One shell so `cd` persists. Fails loudly
-# if no WASI sysroot is found. Output: compiler/{bin,lib}/libosprey_runtime_wasm.a
+# if no WASI sysroot is found. Output: src/compiler/{bin,lib}/libosprey_runtime_wasm.a
 # (the `--memory=none` passthrough) and the ARC twin
 # libosprey_runtime_wasm_arc.a that `--memory=arc` links [WASM-TARGET-MEMORY].
 _runtime_wasm:
@@ -136,7 +136,7 @@ _runtime_wasm:
 	  echo "       (macOS) or the wasi-sdk, or set WASI_SYSROOT=/path/to/wasi-sysroot."; \
 	  exit 1; fi
 	@echo "==> building wasm runtime archives ($(WASM_TARGET), sysroot $(WASI_SYSROOT))"
-	@cd compiler && set -e && $(MKDIR) bin/wasm bin/wasm/arc lib && \
+	@cd src/compiler && set -e && $(MKDIR) bin/wasm bin/wasm/arc lib && \
 	  for u in $(WASM_RT_SRC); do \
 	    $(WASM_CC) $(WASM_CFLAGS) runtime/$$u.c -o bin/wasm/$$u.o || exit 1; \
 	  done && \
@@ -157,11 +157,11 @@ _runtime_wasm:
 _runtime_klee:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -x "$(KLEE_CC)" ]; then \
 	  echo "(KLEE toolchain not found — symbolic GC/ARC runtimes not built)"; exit 0; fi; \
-	set -e; mkdir -p compiler/bin; \
+	set -e; mkdir -p src/compiler/bin; \
 	$(KLEE_LLVM_BIN)/clang++ -fPIC -fno-exceptions -fno-rtti -shared \
-	  $$($(KLEE_LLVM_BIN)/llvm-config --cxxflags) compiler/llvm/gc_roots.cpp \
+	  $$($(KLEE_LLVM_BIN)/llvm-config --cxxflags) src/compiler/llvm/gc_roots.cpp \
 	  -o $(KLEE_ROOT_PLUGIN) $$($(KLEE_LLVM_BIN)/llvm-config --ldflags --libs --system-libs); \
-	cd compiler; \
+	cd src/compiler; \
 	for backend in gc arc; do \
 	  echo "==> building symbolic $$backend runtime"; mkdir -p bin/klee/$$backend; \
 	  case $$backend in gc) shims="$(KLEE_GC_SHIMS)";; arc) shims="$(KLEE_ARC_SHIMS)";; esac; \

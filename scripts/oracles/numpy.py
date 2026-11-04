@@ -1,7 +1,7 @@
 """CPython oracle for @osprey/numpy: every value and error message the suite
 compares against.
 
-Computes each case with the real numpy 2.5.4 and writes packages/numpy/tests/
+Computes each case with the real numpy 2.5.4 and writes src/packages/numpy/tests/
 expected.py ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python scripts/oracles/numpy.py`. Osprey lists are homogeneous, so every
 field (values, shapes, axes, indices) is written as its own parallel constant:

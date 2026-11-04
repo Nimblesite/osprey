@@ -123,13 +123,13 @@ jobs:
 
       # release.yml compiles the package manager client on this same runner
       # and ships it in the win32 tarball, so a Windows-only compile failure
-      # of packages/manager/cli must be caught here, not at tag time.
+      # of src/packages/manager/cli must be caught here, not at tag time.
       # --no-warnings skips the warning pass (see scripts/make/extension.mk).
       - name: Compile package manager client
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+          ./target/release/osprey.exe build src/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
           test -s target/osprey-pkg.exe
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the

@@ -1,0 +1,212 @@
+//! `[SYMEX-CODEGEN]`: the module a symbolic-execution engine explores.
+
+use super::*;
+
+#[test]
+fn a_result_with_a_narrow_payload_is_a_pointer_at_the_c_boundary() {
+    // [FFI-NUMERIC-WIDTH] Extension belongs to scalar values, never Result pointers.
+    let ir = module("extern fn returned(value: Result<int8, string>) -> Result<int8, string>\nextern fn run(callback: fn() -> Result<int8, string>) -> Result<int8, string>\nlet result = returned(Success { value: toInt8(7) })\nlet callbackResult = run(fn() => Success { value: toInt8(7) })\n");
+    for line in ir.lines().filter(|line| {
+        line.contains("@returned(") || line.contains("@run(") || line.contains("@__callback_")
+    }) {
+        assert!(
+            !line.contains("signext") && !line.contains("zeroext"),
+            "{line}"
+        );
+    }
+    assert!(ir.contains("@returned("), "{ir}");
+}
+
+#[test]
+fn narrow_c_callbacks_have_the_same_signature_as_the_c_caller() {
+    // [FFI-NUMERIC-WIDTH] The callback definition, not just its code pointer, is C ABI.
+    let ir = module("extern fn run(callback: fn(int8) -> int8, value: int8) -> int8\nfn relay(value: int8) = run(fn(x) => x, value)\n");
+    let extended = !cfg!(any(
+        target_os = "windows",
+        all(target_os = "linux", target_arch = "aarch64")
+    ));
+    let attr = if extended { "signext " } else { "" };
+    assert!(
+        ir.contains(&format!(
+            "define internal {attr}i8 @__callback_0(i8 {attr}%$p0)"
+        )),
+        "{ir}"
+    );
+}
+
+#[test]
+fn narrow_foreign_calls_and_function_values_preserve_the_c_abi() {
+    // [FFI-NUMERIC-WIDTH] Every route to an extern uses the same attributes.
+    for (name, llvm, attr) in [
+        ("int8", "i8", "signext "),
+        ("uint16", "i16", "zeroext "),
+        ("float16", "i16", "zeroext "),
+        ("float32", "float", ""),
+    ] {
+        let extension = if cfg!(any(
+            target_os = "windows",
+            all(target_os = "linux", target_arch = "aarch64")
+        )) {
+            ""
+        } else {
+            attr
+        };
+        let ir = module(&format!("extern fn foreign(value: {name}) -> {name}\nfn direct(value) = foreign(value)\nfn apply(f, value) = f(value)\nfn indirect(value: {name}) = apply(foreign, value)\n"));
+        assert!(
+            ir.contains(&format!(
+                "declare {extension}{llvm} @foreign({})",
+                format!("{llvm} {extension}").trim_end()
+            )),
+            "{ir}"
+        );
+        assert!(
+            ir.matches(&format!(
+                "call {extension}{llvm} @foreign({llvm} {extension}"
+            ))
+            .count()
+                >= 2,
+            "direct call and forwarder: {ir}"
+        );
+    }
+}
+
+#[test]
+fn ffi_callbacks_never_substitute_a_shadowed_global_declaration() {
+    let known = module("extern fn sink(callback: fn(int) -> int) -> int\nfn callback(value) = 1\nfn forward() = {\nlet callback = fn(value) => bitXor(value, 0)\nsink(callback)\n}\nlet answer = forward()\n");
+    shows(&known, &["bitcast i64 (i64)* @__callback_"]);
+    for body in [
+        "let callback = fn() => 1\nfn forward(callback) = sink(callback)\nlet answer = forward(fn() => 41)\n",
+        "let callback = fn() => 1\nfn forward(flag) = {\nlet callback = if flag { fn() => 41 } else { fn() => 42 }\nsink(callback)\n}\nlet answer = forward(true)\n",
+        "fn callback() = 1\nfn forward(callback) = sink(callback)\nlet answer = forward(fn() => 41)\n",
+        "extern fn callback() -> int\nfn forward(callback) = sink(callback)\nlet answer = forward(fn() => 41)\n",
+        "fn callback() = 1\nfn forward(flag) = {\nlet callback = if flag { fn() => 41 } else { fn() => 42 }\nsink(callback)\n}\nlet answer = forward(true)\n",
+        "extern fn callback() -> int\nfn forward(flag) = {\nlet callback = if flag { fn() => 41 } else { fn() => 42 }\nsink(callback)\n}\nlet answer = forward(true)\n",
+    ] {
+        let source = format!("extern fn sink(callback: fn() -> int) -> int\n{body}");
+        assert!(compile_err(&source)
+            .to_string()
+            .contains("a dynamic closure as an FFI callback"));
+    }
+}
+
+const DYNAMIC_EFFECT: &str = "effect Wide { control op: fn(int, string) -> int }\n\
+     fn body() -> int !Wide = perform Wide.op(1, \"x\")\n\
+     fn main() -> int { let r = {\n\
+         handle Wide {\n\
+             op a b => resume(a)\n\
+         }\n\
+         body()\n\
+     }\n\
+       print(\"r=${toString(r)}\")\n\
+       0 }\n";
+
+fn symbolic_module(src: &str) -> String {
+    compile_program_symbolic(&parsed(src, Flavor::Default), tmp_source("debug.osp"))
+        .expect("symbolic codegen should succeed")
+}
+
+#[test]
+fn klee_mode_aborts_on_the_unhandled_effect_guard() {
+    let plain = module(DYNAMIC_EFFECT);
+    let symbolic = symbolic_module(DYNAMIC_EFFECT);
+    assert!(
+        plain.contains("call void @exit(i32 1)") && !plain.contains("@abort"),
+        "a native build keeps exit on the guard path"
+    );
+    assert!(
+        symbolic.contains("call void @abort()") && !symbolic.contains("call void @exit"),
+        "a symbolic build aborts on the guard path"
+    );
+}
+
+#[test]
+fn klee_mode_carries_debug_metadata_without_debug_flag() {
+    let symbolic = symbolic_module("print(\"hello\")\n");
+    assert!(
+        symbolic.contains("!DICompileUnit") && symbolic.contains("!DILocation"),
+        "{symbolic}"
+    );
+    testkit::contents(&symbolic, &[], &["optnone"]);
+}
+
+/// Programs whose symbolic and `--debug` builds are compared line for line:
+/// a guard-free one, a dynamic handler with its guard, and the `osprey hunt`
+/// corpus [SYMEX-CODEGEN].
+const PROGRAMS: [&str; 5] = [
+    "print(\"hello\")
+",
+    DYNAMIC_EFFECT,
+    include_str!("../../../../../tests/hunt/clean.osp"),
+    include_str!("../../../../../tests/hunt/process.osp"),
+    include_str!("../../../../../tests/hunt/record_update_list.osp"),
+];
+
+/// A module's instructions in order and its declarations as a set: the
+/// symbolic switch swaps one extern, which may sort differently.
+fn shape(module: &str) -> (Vec<&str>, std::collections::BTreeSet<&str>) {
+    let (declares, body): (Vec<&str>, Vec<&str>) = module
+        .lines()
+        .partition(|line| line.starts_with("declare "));
+    (body, declares.into_iter().collect())
+}
+
+/// "Builds without it do not change": the symbolic module is the `--debug`
+/// module with each fatal `exit` turned into `abort`, nothing else.
+#[test]
+fn klee_mode_is_the_debug_build_with_abort_for_exit() {
+    for src in PROGRAMS {
+        let symbolic = symbolic_module(src);
+        let as_native = symbolic
+            .replace("call void @abort()", "call void @exit(i32 1)")
+            .replace("declare void @abort()", "declare void @exit(i32)");
+        let debug = debug_module(src);
+        assert_eq!(shape(&as_native), shape(&debug), "{src}");
+    }
+}
+
+#[test]
+fn every_klee_module_has_metadata_no_optnone_and_no_fatal_exit() {
+    for src in PROGRAMS {
+        let symbolic = symbolic_module(src);
+        shows(&symbolic, &["!DICompileUnit", "debug.osp"]);
+        testkit::contents(&symbolic, &[], &["optnone"]);
+        testkit::contents(&symbolic, &[], &["call void @exit(i32 1)"]);
+        assert_eq!(symbolic, symbolic_module(src), "deterministic: {src}");
+    }
+}
+
+/// Each fatal path prints its message, then aborts, then is unreachable.
+#[test]
+fn every_abort_follows_its_message_and_ends_the_block() {
+    let symbolic = symbolic_module(DYNAMIC_EFFECT);
+    let lines: Vec<&str> = symbolic.lines().map(str::trim).collect();
+    let aborts: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|(_, line)| line.starts_with("call void @abort()"))
+        .map(|(at, _)| at)
+        .collect();
+    assert!(!aborts.is_empty(), "{symbolic}");
+    for at in aborts {
+        let before = lines.get(at.wrapping_sub(1)).copied().unwrap_or_default();
+        let after = lines.get(at + 1).copied().unwrap_or_default();
+        shows(before, &["call i32 @puts("]);
+        assert!(after.starts_with("unreachable"), "{after}");
+    }
+    shows(
+        &symbolic,
+        &["unhandled effect: Wide.op", "declare void @abort()"],
+    );
+    testkit::contents(&symbolic, &[], &["declare void @exit(i32)"]);
+}
+
+/// The plain build is untouched by the switch: same guard count, `exit`.
+#[test]
+fn the_native_build_keeps_one_exit_per_guard() {
+    let plain = module(DYNAMIC_EFFECT);
+    let symbolic = symbolic_module(DYNAMIC_EFFECT);
+    assert_eq!(
+        plain.matches("call void @exit(i32 1)").count(),
+        symbolic.matches("call void @abort()").count()
+    );
+}

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Stage the repository's own packages as a folder registry ([PACKAGE-FOLDER-REGISTRY]).
 #
-# Every packages/<dir>/osprey.toml that declares a [package] name is published
+# Every src/packages/<dir>/osprey.toml that declares a [package] name is published
 # with the package client's `publish --folder`, so each release is checked and
 # digested exactly as the server will check it. The result is the tree the local
-# registry serves (`make -C packages registry-serve`) and the VS Code extension bundles.
+# registry serves (`make -C src/packages registry-serve`) and the VS Code extension bundles.
 # A package that binds a raw native function is refused by design (source.unclassified-builtin);
 # any other refusal, a bad manifest or name, is a mistake and fails the staging.
 #

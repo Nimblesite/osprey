@@ -9,7 +9,7 @@ Run commands from the repository root. The root Makefile is the build entry poin
 | `verify-*.mjs`, `test-*.py`, `ci-scope.*` | CI assertions, branch-protection checks and regression tooling |
 | `wasm-*.mjs` | WASI and browser execution with byte-exact golden checks |
 | `carbon/` | Source-image rendering with the editor's syntax grammars |
-| `schemas/` | Tooling manifest schemas |
+| `src/schemas/` | Tooling manifest schemas |
 | `homebrew/` | Historical local packaging experiments; official releases use the [release workflow](../.github/workflows/release.yml) |
 
 See the [repository map](../docs/contributing/repository-map.md) for the responsibilities of each build fragment. Test artifacts belong in temporary directories or ignored build output, not beside source files.

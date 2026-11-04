@@ -2,7 +2,7 @@
 """Checks the `osprey hunt` corpus tooling without KLEE [SYMEX-CORPUS] [SYMEX-CLI]
 (docs/specs/tooling/SymbolicExecution.md): scripts/hunt_expect.py, scripts/hunt_summary.py,
 scripts/hunt_corpus.sh against a stand-in `osprey`, and that
-compiler/runtime/klee/hunt_format_cases.inc is what scripts/oracles/hunt_format.py writes.
+src/compiler/runtime/klee/hunt_format_cases.inc is what scripts/oracles/hunt_format.py writes.
 """
 
 import contextlib
@@ -249,7 +249,7 @@ class CorpusScriptTests(unittest.TestCase):
         self.assertEqual(codes, {"tests_hunt_clean.osp": "3", "tests_hunt_process.osp": "3"}, "exit codes are recorded")
 
     def test_the_skip_list_is_honoured_unless_all_is_given(self):
-        skipped = "examples/db_postgres/pg_smoke.osp"
+        skipped = "src/examples/db_postgres/pg_smoke.osp"
         listed = (ROOT / "tests/HUNT_UNPORTABLE.txt").read_text()
         self.assertIn(f"{skipped} ", listed)
         _, calls, _ = self.sweep(skipped, "tests/hunt/clean.osp")
@@ -259,7 +259,7 @@ class CorpusScriptTests(unittest.TestCase):
         self.assertIn(f"hunt {skipped} --json --quiet --max-time 20", calls)
 
     def test_a_project_directory_is_one_program(self):
-        project = "examples/gpt2/generate"
+        project = "src/examples/gpt2/generate"
         self.assertTrue((ROOT / project / "osprey.toml").exists() or (ROOT / project).is_dir())
         _, _, codes = self.sweep("--all", project)
         self.assertEqual(list(codes), ["examples_gpt2_generate.project"])
@@ -274,7 +274,7 @@ class HostCompilerTests(unittest.TestCase):
         source = '#include <stdint.h>\n#include <stdarg.h>\n#include <stdio.h>\n#include "hunt_mock.h"\nint64_t mock_header_probe(FILE *f) { return f->readable; }\n'
         compiler = shlex.split(os.environ.get("CC", "cc"))
         process = subprocess.run(compiler + shlex.split(flags) + ["-I", "runtime/klee", "-fsyntax-only", "-x", "c", "-"],
-                                 cwd=ROOT / "compiler", input=source, text=True, capture_output=True)
+                                 cwd=ROOT / "src" / "compiler", input=source, text=True, capture_output=True)
         self.assertEqual(process.returncode, 0, process.stderr)
 
 
@@ -316,7 +316,7 @@ class KleeClosureTests(unittest.TestCase):
             root = Path(tmp)
             if " " not in str(root):
                 raise AssertionError("the fixture path must contain a space")
-            (root / "compiler").mkdir()
+            (root / "src" / "compiler").mkdir()
             receipt = root / "inspected"
             nm = stub(root, "llvm-nm", f'printf \'%s\\n\' "$*" >> "{receipt}"\n' + nm_script)
             runtime = root / "libosprey_runtime_klee_gc.bc"
@@ -372,7 +372,7 @@ class FormatOracleTests(unittest.TestCase):
     """The committed float matrix is exactly what the oracle writes today."""
 
     def test_the_committed_cases_match_the_oracle(self):
-        committed = (ROOT / "compiler/runtime/klee/hunt_format_cases.inc").read_text().replace("\r\n", "\n")
+        committed = (ROOT / "src/compiler/runtime/klee/hunt_format_cases.inc").read_text().replace("\r\n", "\n")
         with tempfile.TemporaryDirectory() as tmp:
             original = hunt_format.OUT
             hunt_format.OUT = Path(tmp) / "cases.inc"
@@ -384,7 +384,7 @@ class FormatOracleTests(unittest.TestCase):
         self.assertEqual(committed, fresh, "run python3 scripts/oracles/hunt_format.py")
 
     def test_every_value_meets_every_format(self):
-        rows = [line for line in (ROOT / "compiler/runtime/klee/hunt_format_cases.inc").read_text().splitlines() if line.startswith("{")]
+        rows = [line for line in (ROOT / "src/compiler/runtime/klee/hunt_format_cases.inc").read_text().splitlines() if line.startswith("{")]
         self.assertEqual(len(rows), len(hunt_format.VALUES) * len(hunt_format.FORMATS))
         self.assertEqual(len(set(hunt_format.FORMATS)), len(hunt_format.FORMATS))
         self.assertEqual(len(set(hunt_format.VALUES)), len(hunt_format.VALUES))

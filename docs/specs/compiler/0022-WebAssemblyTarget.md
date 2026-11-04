@@ -6,14 +6,14 @@ The backend reuses Osprey's LLVM IR, compiles it with clang, and links it with
 
 The portable language core runs under a WASI host. CI compiles and validates the
 hello fixture, runs it through Node's WASI host and the browser shim, then runs
-`OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh` — the same corpus harness
+`OSPREY_TARGET=wasm32 zsh src/crates/run_test_corpus.sh` — the same corpus harness
 the native backend uses, pointed at the other code generator. It compiles every
 program under `tests/` to wasm32, runs it under Node's WASI host, and compares
 stdout byte-for-byte to the same `.expectedoutput` golden the native run must
 match. Only an explicit compiler diagnostic that ``target `wasm32` does not support`` a named capability qualifies as `SKIP`; the excluded programs and their diagnostic reasons are pinned in `tests/WASM_UNPORTABLE.txt`. Unexpected linker errors fail, as do other build or runtime errors. CI requires
 `TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
 `TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor so coverage cannot quietly
-shrink — currently 213 on wasm32 and 285 natively (`crates/run_test_corpus.sh`, with no
+shrink — currently 213 on wasm32 and 285 natively (`src/crates/run_test_corpus.sh`, with no
 override). The floor ratchets up as goldens are added and is never
 lowered to turn a red build green.
 
@@ -24,7 +24,7 @@ The wasm runtime includes strings, persistent collections, JSON, file operations
 The target is `wasm32-wasip1` (the current spelling of `wasm32-wasi`). wasi-libc
 provides the C allocation, string, formatting, memory, and stdout functions used
 by the portable runtime. Browser execution uses the WASI Preview 1 shim in
-`examples/wasm/wasi-shim.mjs`.
+`src/examples/wasm/wasi-shim.mjs`.
 
 ## Target-Neutral LLVM IR [WASM-TARGET-IR]
 
@@ -69,7 +69,7 @@ compiler-rt archive.
 
 ## Portable Runtime Archive [WASM-TARGET-RUNTIME]
 
-`make _runtime_wasm` builds `compiler/bin/libosprey_runtime_wasm_arc.a` from `WASM_ARC_RT_SRC`, with ownership shims on `WASM_ARC_SHIM_SRC`. It also retains the separate unmanaged archive for explicit opt-out builds. Static archive members are linked on
+`make _runtime_wasm` builds `src/compiler/bin/libosprey_runtime_wasm_arc.a` from `WASM_ARC_RT_SRC`, with ownership shims on `WASM_ARC_SHIM_SRC`. It also retains the separate unmanaged archive for explicit opt-out builds. Static archive members are linked on
 demand, so a command-line program that does not use the browser bridge has no
 `osprey_web` imports.
 
@@ -83,7 +83,7 @@ extern fn osprey_web_render(message: string) -> int
 extern fn osprey_web_command(message: string) -> int
 ```
 
-`compiler/runtime/web_runtime.c` imports `render(pointer)` and
+`src/compiler/runtime/web_runtime.c` imports `render(pointer)` and
 `command(pointer)` from the `osprey_web` import module. The host must decode the
 message synchronously; each Osprey wrapper returns status `0`.
 
@@ -134,10 +134,10 @@ ordinary wasm linear memory.
 ## Verification
 
 - `cargo test -p osprey-cli wasm::tests`
-- `make -C website wasm`
-- `wasm-validate examples/wasm/build/hello.wasm`
-- `node scripts/wasm-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
-- `node scripts/wasm-browser-smoke.mjs examples/wasm/build/hello.wasm examples/wasm/hello.expectedoutput`
+- `make -C src/website wasm`
+- `wasm-validate src/examples/wasm/build/hello.wasm`
+- `node scripts/wasm-smoke.mjs src/examples/wasm/build/hello.wasm src/examples/wasm/hello.expectedoutput`
+- `node scripts/wasm-browser-smoke.mjs src/examples/wasm/build/hello.wasm src/examples/wasm/hello.expectedoutput`
 - `make _test_wasm_goldens` runs the pointer-ownership regression, then the 213-golden ARC corpus with zero live allocations.
 
 The CI `wasm` job runs the validate, Node-WASI, browser-shim, and golden-harness
@@ -159,7 +159,7 @@ rather than a copy of the first.
 one it was started with is too old — `OSPREY_NODE` when set, else the newest
 qualifying `~/.nvm` install — and fails with the defect's own explanation only
 when no such interpreter exists. Every caller therefore invokes a plain `node`:
-the `Makefile` targets, the CI workflow, `crates/run_test_corpus.sh` and
+the `Makefile` targets, the CI workflow, `src/crates/run_test_corpus.sh` and
 osprey-cli's wasm end-to-end test carry no version logic of their own, so none
 of them can drift from this one. A relaunched child is marked in its
 environment, so a second too-old hop fails loudly rather than recursing.

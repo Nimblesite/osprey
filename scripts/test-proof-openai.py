@@ -86,10 +86,10 @@ class CorpusTests(unittest.TestCase):
             self.assertTrue(set(group["theorems"]) <= theorems.keys())
 
     def test_workbench_custom_operator_fixtures_match_pinned_lean_sources(self):
-        path = PROOF.ROOT / "examples/proof/kernel/exports/notation_cases.json"
+        path = PROOF.ROOT / "src/examples/proof/kernel/exports/notation_cases.json"
         controls = json.loads(path.read_text())
         self.assertEqual(controls["toolchain"], "leanprover/lean4:v4.25.0")
-        tests = (PROOF.ROOT / "apps/workbench/tests/imported.ospml").read_text()
+        tests = (PROOF.ROOT / "src/workbench/tests/imported.ospml").read_text()
         for group in controls["groups"]:
             PROOF.check_files(group)
             found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
@@ -97,9 +97,9 @@ class CorpusTests(unittest.TestCase):
             self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
 
     def test_kernel_export_fixture_twin_is_byte_identical_to_the_pinned_export(self):
-        group = json.loads((PROOF.ROOT / "examples/proof/kernel/exports/recursor_cases.json").read_text())
+        group = json.loads((PROOF.ROOT / "src/examples/proof/kernel/exports/recursor_cases.json").read_text())
         PROOF.check_files(group)
-        tests = (PROOF.ROOT / "examples/proof/kernel/tests/export.ospml").read_text()
+        tests = (PROOF.ROOT / "src/examples/proof/kernel/tests/export.ospml").read_text()
         found = re.search(r"^    (?:export )?" + re.escape(group["embedded"]) + r" \(\) = (.+)$", tests, re.MULTILINE)
         self.assertIsNotNone(found, group["id"])
         self.assertEqual(json.loads(found.group(1)), PROOF.export_path(group).read_text())
@@ -113,12 +113,12 @@ class CorpusTests(unittest.TestCase):
         self.assertEqual(PROOF.statement_shapes(rows, group["theorems"]),
                          PROOF.statement_shapes(PROOF.export_rows(group["original"]), group["theorems"]))
         self.assertNotEqual(group["export_sha256"], group["original"]["export_sha256"])
-        self.assertEqual(group["lean_project"], "examples/proof/openai-number-theory/lean")
+        self.assertEqual(group["lean_project"], "src/examples/proof/openai-number-theory/lean")
         self.assertEqual(set(group["theorem_axioms"]), set(group["theorems"]))
         self.assertTrue(all(basis == ["propext"] for basis in group["theorem_axioms"].values()))
 
     def test_fresh_lean_replay_builds_the_existing_port_project(self):
-        group = {**self.groups[0], "lean_project": "examples/proof/openai-number-theory/lean"}
+        group = {**self.groups[0], "lean_project": "src/examples/proof/openai-number-theory/lean"}
         project = PROOF.ROOT / group["lean_project"]
         recorded = PROOF.export_path(group).read_text()
         with mock.patch.object(PROOF, "run", return_value=recorded) as runner, \
@@ -332,11 +332,11 @@ class ClassicalChoiceTests(unittest.TestCase):
         PROOF.check_axioms(self.rows, self.names, self.expected)
 
     def test_actual_choice_oracle_and_embedded_twin_remain_pinned(self):
-        base = PROOF.ROOT / "examples/proof/kernel/exports/choice_cases"
+        base = PROOF.ROOT / "src/examples/proof/kernel/exports/choice_cases"
         manifest = json.loads(base.with_suffix(".json").read_text())
         source = base.with_suffix(".ndjson").read_text()
         self.assertEqual(PROOF.digest(source.encode()), manifest["export_sha256"])
-        fixtures = (PROOF.ROOT / "examples/proof/kernel/src/fixtures.ospml").read_text()
+        fixtures = (PROOF.ROOT / "src/examples/proof/kernel/src/fixtures.ospml").read_text()
         embedded = re.search(r"^    export choiceCases \(\) = (.+)$", fixtures, re.MULTILINE)
         self.assertIsNotNone(embedded)
         self.assertEqual(json.loads(embedded.group(1)), source)

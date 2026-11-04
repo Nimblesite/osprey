@@ -49,7 +49,7 @@ int main(void) { return osprey_main(); }
 C
 
 # Run the same app tests on the device ABI, including the UTF-8 regressions.
-"$compiler" examples/mobile/inbox/test --target="$target" --compile -o "$scratch/golden.a"
+"$compiler" src/examples/mobile/inbox/test --target="$target" --compile -o "$scratch/golden.a"
 link_host "$scratch/golden.c" "$scratch/golden.a" "$scratch/golden"
 run_host "$scratch/golden"
 cat "$scratch/actual"

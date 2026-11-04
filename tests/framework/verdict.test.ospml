@@ -603,7 +603,7 @@ layoutBuilt =
     is re-read afterwards — a destructive update would pass the derived checks
     and only fail the source ones. The headless brace literal
     [FLAVOR-ML-RECORD-ANON] is deliberately absent: the spec marks it not
-    implemented and pins its rejection in examples/failscompilation/. *)
+    implemented and pins its rejection in src/examples/failscompilation/. *)
 recordLayoutAndUpdateCase () =
     inlineBuilt = Reading(sensor = "north", value = 1.5, depth = 3, valid = true)
     renamed = inlineBuilt(sensor = "south")

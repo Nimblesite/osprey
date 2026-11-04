@@ -24,9 +24,9 @@ from package_coverage_test_support import (
 class PackageThresholdTests(CoverageTestCase):
     def test_extracted_runtime_headers_preserve_the_library_threshold(self):
         gates = json.loads((ROOT / "coverage-thresholds.json").read_text())["projects"]["c_runtime"]
-        headers = list((ROOT / "compiler/runtime").glob("memory_arc_*.h"))
+        headers = list((ROOT / "src/compiler/runtime").glob("memory_arc_*.h"))
         self.assertTrue(headers)
-        for header in headers + [ROOT / "compiler/runtime/system_process_posix.h"]:
+        for header in headers + [ROOT / "src/compiler/runtime/system_process_posix.h"]:
             self.assertIn(header.stem, gates)
             baseline = gates["memory_arc"]["threshold"] if header.stem.startswith("memory_arc_") else gates["system_runtime"].get("threshold", 90)
             self.assertGreaterEqual(gates[header.stem].get("threshold", 90), baseline)
@@ -46,9 +46,9 @@ class PackageThresholdTests(CoverageTestCase):
     def test_every_shipped_package_has_an_individual_threshold_of_at_least_90(self):
         config = json.loads((ROOT / "coverage-thresholds.json").read_text())
         packages = config["projects"].get("packages", {})
-        shipped = {p.name for p in (ROOT / "packages").iterdir() if (p / "osprey.toml").is_file()}
+        shipped = {p.name for p in (ROOT / "src" / "packages").iterdir() if (p / "osprey.toml").is_file()}
         self.assertEqual(set(packages), shipped, "Every package must have its own coverage gate")
-        self.assert_gated_group(packages, ROOT / "packages")
+        self.assert_gated_group(packages, ROOT / "src" / "packages")
 
     def test_collection_runs_at_most_one_compiler_per_cpu(self):
         # 19 concurrent `osprey test` collections exhausted the CI runner's
@@ -189,7 +189,7 @@ class CheckerTests(CoverageTestCase):
                 fixture = self.simple_fixture()
                 fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
                 self.assertEqual(fixture.collect("--record-measurements").returncode, 0)
-                path = fixture.root / "packages" / "demo" / relative
+                path = fixture.root / "src" / "packages" / "demo" / relative
                 path.write_text(path.read_text() + "\n# changed after collection\n")
                 result = fixture.check("--record-measurements")
                 self.assertEqual(result.returncode, 1, "Changed inputs need fresh evidence: " + result.stdout)
@@ -236,7 +236,7 @@ class CheckerTests(CoverageTestCase):
         fixture.write_report("mask", {"files": {
             "packages/mask/src/lib.py": {"lines": {str(i): 0 for i in range(1, 11)}},
             "packages/mask/tests/main.py": {"lines": {str(i): 90 for i in range(1, 101)}},
-            "packages/testing/src/check.py": {"lines": {str(i): 90 for i in range(1, 51)}},
+            "src/packages/testing/src/check.py": {"lines": {str(i): 90 for i in range(1, 51)}},
         }})
         write_json(fixture.root / "coverage-thresholds.json", {**fixture.config(),
                    "package_measurements": {"packages": {"mask": {"percentage": 100}}}})
@@ -489,7 +489,7 @@ class CheckerTests(CoverageTestCase):
         result = fixture.check("--package", "unknown")
         self.assert_exit(result, 2)
         self.assertIn("unknown package", result.stderr)
-        (fixture.root / "packages" / "demo" / "tests" / "osprey.toml").unlink()
+        (fixture.root / "src" / "packages" / "demo" / "tests" / "osprey.toml").unlink()
         result = fixture.check()
         self.assert_exit(result, 2)
         self.assertIn("missing tests/osprey.toml", result.stderr)

@@ -51,7 +51,7 @@ Running KLEE by hand gives a fixed-size symbolic stdin, a libc model that only b
 
 ## Proof of the comparison — `[SYMEX-PROOF]`
 
-The table above is a claim until it is measured; this section is a contract for work that is not built yet. `benchmarks/symex/` will hold the same planted bugs in four languages and one script that runs every tool and writes the results, in the same style as the cross-language performance suite in `benchmarks/`.
+The table above is a claim until it is measured; this section is a contract for work that is not built yet. `benchmarks/symex/` will hold the same planted bugs in four languages and one script that runs every tool and writes the results, in the same style as the cross-language performance suite in `src/benchmarks/`.
 
 **The subjects.** Each bug is written four times with identical behaviour and the same input format:
 
@@ -136,7 +136,7 @@ KLEE runs natively on the host; there is no container in this pipeline. The supp
 - `--no-replay` skips the native replay.
 - `--quiet` suppresses the progress line on stderr. `--help` prints the synopsis and exits `0`.
 - Exits `0` with no findings (or only `klee-only` findings after replay), `1` when a finding reproduced natively, when any finding exists with `--no-replay`, or when the program does not compile, and `2` for a usage or toolchain error.
-- The `klee` binary comes from `OSPREY_KLEE`, else `klee` on `PATH`, else the Homebrew prefixes `/opt/homebrew/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, which GUI editors often drop from `PATH`. The runtime bitcode is `compiler/bin/libosprey_runtime_klee_gc.bc`, built by `make build` (target `_runtime_klee`); `OSPREY_KLEE_RUNTIME` overrides its path. An override must retain the selected backend's filename (`libosprey_runtime_klee_gc.bc` or `libosprey_runtime_klee_arc.bc`); a missing file or mismatched backend is an error.
+- The `klee` binary comes from `OSPREY_KLEE`, else `klee` on `PATH`, else the Homebrew prefixes `/opt/homebrew/bin`, `/usr/local/bin`, `/home/linuxbrew/.linuxbrew/bin`, which GUI editors often drop from `PATH`. The runtime bitcode is `src/compiler/bin/libosprey_runtime_klee_gc.bc`, built by `make build` (target `_runtime_klee`); `OSPREY_KLEE_RUNTIME` overrides its path. An override must retain the selected backend's filename (`libosprey_runtime_klee_gc.bc` or `libosprey_runtime_klee_arc.bc`); a missing file or mismatched backend is an error.
 
 `make -C tests/hunt hunt FILE=<path>` wraps the CLI, and `make -C tests/hunt hunt-corpus` runs it over the corpus ([SYMEX-CORPUS](#corpus--symex-corpus)).
 
@@ -158,7 +158,7 @@ Every run uses this command; the tool never lets an option through from the user
 
 ```text
 klee --libc=klee --ubsan-runtime --external-calls=none --external-call-warnings=all
-     -link-llvm-lib=compiler/bin/libosprey_runtime_klee_gc.bc
+     -link-llvm-lib=src/compiler/bin/libosprey_runtime_klee_gc.bc
      --optimize --kdalloc --rng-initial-seed=5489 --search=dfs
      --solver-backend=z3 --solver-optimize-divides
      --check-div-zero --check-overshift --emit-all-errors
@@ -182,7 +182,7 @@ The program module is textual `.ll`, which KLEE accepts directly. The compiler l
 
 ## Mock C library
 
-It lives in `compiler/runtime/klee/`: `hunt_stream.c` (the one stateful model), `hunt_libc.c` (stateless doubles), `hunt_math.c` (libm), `hunt_format.c` + `hunt_decimal.c` (the printf family and its exact decimal expansion), `hunt_unsupported.c` (the stubs), with headers under `include/`. It includes only headers it defines itself, plus its own `klee/klee.h` stand-in, so the library builds without KLEE installed. Every exported function is one of the models below or an unsupported stub, and the `[SYMEX-MOCK-CLOSED]` check — `llvm-nm --undefined-only` over the linked runtime bitcode, accepting only what KLEE itself provides (its intrinsics, UBSan handlers, allocator and `--libc=klee`) — runs inside `_runtime_klee` and fails the build on any symbol the mock forgot.
+It lives in `src/compiler/runtime/klee/`: `hunt_stream.c` (the one stateful model), `hunt_libc.c` (stateless doubles), `hunt_math.c` (libm), `hunt_format.c` + `hunt_decimal.c` (the printf family and its exact decimal expansion), `hunt_unsupported.c` (the stubs), with headers under `include/`. It includes only headers it defines itself, plus its own `klee/klee.h` stand-in, so the library builds without KLEE installed. Every exported function is one of the models below or an unsupported stub, and the `[SYMEX-MOCK-CLOSED]` check — `llvm-nm --undefined-only` over the linked runtime bitcode, accepting only what KLEE itself provides (its intrinsics, UBSan handlers, allocator and `--libc=klee`) — runs inside `_runtime_klee` and fails the build on any symbol the mock forgot.
 
 `hunt_mock_tests.c` holds the native unit tests and the shared harness (`hunt_mock_tests.h`), run on the host by `make _test_hunt_mock` (part of `make test`), with a shim standing in for KLEE so symbolic bytes come from a queue the test fills and every `klee_range` name is recorded. Each check asserts the call reaches the mock's double. `hunt_mock_format_tests.c` drives the printf engine through hand-written integer, string, `*` and non-finite rows and a 1,296-row float matrix (`hunt_format_cases.inc`, written by `scripts/oracles/hunt_format.py` from CPython's correctly rounded formatting), plus every truncation cap. `hunt_mock_stream_tests.c` drives every stream cap against every symbolic length, every read shape, seeks from every origin, fresh streams per open, open failure, the slot limit, modes, the standard descriptors, and the entropy, clock and object names. The float formatter was differential-fuzzed against the host libc with 200,000 random doubles across 18 formats, with zero mismatches.
 
@@ -283,7 +283,7 @@ The expandable **For AI** section embeds the complete JSON, including every find
 
 ## Corpus — `[SYMEX-CORPUS]`
 
-`scripts/hunt_corpus.sh` runs `osprey hunt` over every `.osp`/`.ospml` under `tests/` and `examples/` (skipping `tests/hunt/` and `failscompilation`), in parallel, writing one JSON report per program; `scripts/hunt_summary.py` renders the table. Programs listed in `tests/HUNT_UNPORTABLE.txt` — one program and reason per line, the same format as `tests/WASM_UNPORTABLE.txt` — are skipped unless `--all` is given. `make -C tests/hunt hunt FILE=<path>` wraps one run, and `make -C tests/hunt hunt-corpus` sweeps the corpus. The corpus runs `main` mode only. A finding in the corpus is a defect; an "incomplete" result is not. A historical 2026-10-24 sweep covered 224 programs with no findings and 20 cut at the 20-second budget. Those unfinished runs were not proven clean. This sweep is not a required CI check.
+`scripts/hunt_corpus.sh` runs `osprey hunt` over every `.osp`/`.ospml` under `tests/` and `src/examples/` (skipping `tests/hunt/` and `failscompilation`), in parallel, writing one JSON report per program; `scripts/hunt_summary.py` renders the table. Programs listed in `tests/HUNT_UNPORTABLE.txt` — one program and reason per line, the same format as `tests/WASM_UNPORTABLE.txt` — are skipped unless `--all` is given. `make -C tests/hunt hunt FILE=<path>` wraps one run, and `make -C tests/hunt hunt-corpus` sweeps the corpus. The corpus runs `main` mode only. A finding in the corpus is a defect; an "incomplete" result is not. A historical 2026-10-24 sweep covered 224 programs with no findings and 20 cut at the 20-second budget. Those unfinished runs were not proven clean. This sweep is not a required CI check.
 
 ### Quick corpus qualification — `[SYMEX-CORPUS-QUICK]`
 
@@ -315,7 +315,7 @@ Tests are written first at each step. The compiler items are specified in [KLEE 
 - [x] **Mock library:** headers, the stream model, stateless models and unsupported stubs, with native unit tests (`make _test_hunt_mock`, part of `make test`) and the `[SYMEX-MOCK-CLOSED]` undefined-symbol check inside `_runtime_klee` (part of `make build`).
 - [x] **`_runtime_klee`** builds the runtime bitcode from the shared `WASM_RT_SRC` list (minus `web_runtime` and `wasm_builtins_runtime`) plus the mock, with KLEE's clang.
 - [x] **Symbolic codegen** (`compile_program_symbolic`; there is no `--klee` CLI flag): `abort()` on fatal paths, debug metadata on, no `optnone`. The planned `llvm-as` parse check over the corpus is not built; KLEE itself parses the module on every hunt.
-- [ ] **`osprey hunt` main mode completion proof:** the command is implemented, but the unchanged deterministic and default-budget gates must complete every path before this item closes. Fixing `clean.osp` complete exploration is an open item, not a budget change; the 64-byte/30-second settings are not relaxed. Deterministic programs under `tests/hunt/`, each with an `.expected` file, run by hand with `make _test_hunt` on a machine with KLEE installed — `crash.osp` finds input `"9"` and reproduces its planted C abort at line 4; `clean.osp` expects no findings; `process.osp` expects one unsupported-operation finding. Fixed compiler/runtime regressions remain separate controls. The harness rejects incomplete exploration rather than treating it as a passing control.
+- [ ] **`osprey hunt` main mode completion proof:** the command is implemented, but the unchanged deterministic and default-budget gates must complete every path before this item closes. Fixing `clean.osp` complete exploration is an open item, not a budget change; the 64-byte/30-second settings are not relaxed. Deterministic programs under `tests/hunt/`, each with an `.expected` file, run by hand with `make _test_hunt` on a machine with KLEE installed — `crash.osp` finds input `"9"` and reproduces its planted C abort at line 4; `clean.osp` expects no findings; `process.osp` expects one unsupported-operation finding. Fixed src/compiler/runtime regressions remain separate controls. The harness rejects incomplete exploration rather than treating it as a passing control.
 - [ ] **`libkleeRuntest` replay**, including the entropy/clock provider, on top of the native stdin/file replay that ships today; tested by a planted bug that only fires on one symbolic random byte.
 - [ ] **`[SYMEX-HARNESS-TYPED]`:** a planted bug in a function taking `List<int>` and a union must be found with `--fn`; `--all-fns` lists skips with reasons. Not built.
 - [ ] **`[SYMEX-REGRESSION]`** test generation. Not built.

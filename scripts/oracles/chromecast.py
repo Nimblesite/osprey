@@ -1,4 +1,4 @@
-"""Generates packages/chromecast/tests/expected.py from the reference CAST v2 script.
+"""Generates src/packages/chromecast/tests/expected.py from the reference CAST v2 script.
 
 The reference is the stdlib-only `cast.py` Chromecast sender (varint and
 protobuf framing, the message parser, mDNS browse parsing and the launch and

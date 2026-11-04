@@ -98,7 +98,7 @@ def write_tables():
         "UPPER = " + literal(upper),
         "",
     ]
-    target = ROOT / "packages" / "re" / "src" / "tables.py"
+    target = ROOT / "src" / "packages" / "re" / "src" / "tables.py"
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text("\n".join(lines))
     return target

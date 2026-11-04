@@ -1,6 +1,6 @@
 # The Osprey Book
 
-<a href="https://ospreylang.dev/"><img src="../website/src/assets/images/logo.png" alt="Osprey" width="96" /></a>
+<a href="https://ospreylang.dev/"><img src="../src/website/src/assets/images/logo.png" alt="Osprey" width="96" /></a>
 
 *The Osprey Book* is a practical introduction to programming with Osprey for beginner-to-intermediate developers. It starts with a program you can run in minutes, then builds toward typed data, explicit failure, effects, concurrency, and native or WebAssembly delivery.
 
@@ -27,7 +27,7 @@ By the end of the finished book, a reader should be able to:
 
 The book leads with the Default flavor (`.osp`). Its braces, `fn`, `let`, and parenthesised calls are familiar to readers arriving from JavaScript, TypeScript, C#, Java, Kotlin, Swift, Go, or Rust.
 
-ML flavor appears later as an **optional alternative**, not a decision the reader must make before learning Osprey. A file can be translated between surfaces—often conveniently with a coding agent—then checked and tested like any other code change. Python syntax is also available: `def`, `lambda`, f-strings and decorated effect declarations compile through Osprey, with inferred static types and checked effects. It does not run arbitrary Python packages; CPython libraries require the separate interop bridge. See the [Python flavor guide](../website/src/docs/python-flavor.md).
+ML flavor appears later as an **optional alternative**, not a decision the reader must make before learning Osprey. A file can be translated between surfaces—often conveniently with a coding agent—then checked and tested like any other code change. Python syntax is also available: `def`, `lambda`, f-strings and decorated effect declarations compile through Osprey, with inferred static types and checked effects. It does not run arbitrary Python packages; CPython libraries require the separate interop bridge. See the [Python flavor guide](../src/website/src/docs/python-flavor.md).
 
 ## Project map
 

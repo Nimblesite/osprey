@@ -1,0 +1,483 @@
+// Perceus ARC backend for Osprey — the swappable `@osp_alloc` implementation
+// selected at link time by `osprey --memory=arc`. Implements [MEM-BACKENDS]
+// and [GC-ARC-PERCEUS] (docs/specs/compiler/0018-MemoryManagement.md).
+//
+// Algorithm: precise reference counting after Reinking, Xie, de Moura & Leijen,
+// "Perceus: Garbage Free Reference Counting with Reuse", MSR-TR-2020-42
+// (https://www.microsoft.com/en-us/research/wp-content/uploads/2020/11/perceus-tr-v1.pdf).
+// Complete without a cycle collector because the Osprey value heap is acyclic
+// [MEM-ACYCLIC] (Bacon/Cheng/Rajan duality). Each allocation carries a 16-byte
+// header (TR §2.5's Koka header, widened to hold the per-site layout word):
+//
+//   { int64_t meta; int32_t rc; uint32_t size; }   at body-16
+//
+// `meta` is the layout word codegen passes to osp_alloc_tagged: low 8 bits a
+// kind, upper 56 a word bitmask (bit i => the 8-byte word at body offset 8*i
+// is a managed pointer). `rc` is SIGNED: rc >= 1 counts owners; rc < 0 marks
+// immortal/persistent objects that dup/drop skip.
+//
+// Pointer slots at runtime also carry rodata literals, static C strings,
+// foreign malloc/strdup memory,
+// borrowed FFI pointers, and NULL. osp_retain/osp_release therefore probe an
+// exact live-allocation registry FIRST; WASM uses a bitmap mirror for the hot
+// membership check. A miss means
+// "not ours" and is a safe no-op. No IR special-casing, no FFI annotations —
+// non-ARC pointers are unmanaged by construction.
+//
+// Concurrency scope: operations use a lock-free fast path until the fiber
+// runtime announces its first pthread, then use one mutex across fiber threads
+// [MEM-FIBER-ISOLATION].
+
+#include "memory_hooks.h"
+#include "memory_pool.h"
+
+#ifndef __wasi__
+#include <pthread.h>
+#endif
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// --- header ------------------------------------------------------------------
+
+typedef struct {
+  int64_t meta;  // low 8 bits kind, upper 56 word-pointer bitmask
+  int32_t rc;    // >=1 live owners; <0 immortal/persistent (skip dup/drop)
+  uint32_t size; // body bytes (leak stats + realloc)
+} OspArcHdr;
+
+#define OSP_ARC_HDR ((size_t)sizeof(OspArcHdr))
+
+// Layout-word kinds live in memory_hooks.h — the one place codegen
+// (src/crates/osprey-codegen/src/meta.rs) and every C runtime unit agree.
+
+#define OSP_ARC_KIND(meta) ((int)((meta) & 0xFF))
+#define OSP_ARC_MASK_BITS(meta) (((uint64_t)(meta)) >> 8)
+
+static OspArcHdr *arc_hdr(void *body) {
+  return (OspArcHdr *)(void *)((char *)body - OSP_ARC_HDR);
+}
+
+// --- live-allocation registry (open addressing, tombstone deletion)
+// -----------
+
+#ifdef OSP_SYMBOLIC
+#define OSP_ARC_INIT_CAP ((size_t)16)
+#else
+#define OSP_ARC_INIT_CAP ((size_t)1u << 14)
+#endif
+#define OSP_ARC_TOMB ((uintptr_t)1)
+
+#ifndef __wasi__
+static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Adaptive locking. The heap starts single-threaded, where the sole thread
+// already serializes every ARC op and the mutex is pure overhead — binarytrees
+// alone runs ~19.6M locked allocs, and pthread_mutex_* was ~17% of its wall.
+// osp_mem_notify_multithreaded() (memory_hooks.h) trips this flag from the
+// fiber runtime *before* the pthread_create that first lets a second thread
+// reach the heap. pthread_create is a full barrier, so that write
+// happens-before the child's first ARC op: no unlocked op can ever race a
+// locked one. The flag is monotonic (fibers never un-share the heap), and it
+// only ever transitions in a single-threaded context, so within one ARC op
+// arc_lock and arc_unlock always observe the same value.
+static atomic_int g_arc_mt = 0;
+
+static inline void arc_lock(void) {
+  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    pthread_mutex_lock(&g_lock);
+  }
+}
+
+static inline void arc_unlock(void) {
+  if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    pthread_mutex_unlock(&g_lock);
+  }
+}
+
+#else
+// WASI preview1 has one execution thread; thread creation is rejected upstream.
+static inline void arc_lock(void) {}
+static inline void arc_unlock(void) {}
+#endif
+
+#include "memory_arc_registry.h"
+
+static size_t g_live = 0; // live objects (leak stats)
+static size_t g_live_bytes = 0;
+static size_t g_peak_bytes =
+    0; // high-water mark of g_live_bytes (spike goldens)
+static int g_debug_armed = 0;
+
+// Live-object accounting for the leak report [GC-ARC-PERCEUS], armed only by
+// OSPREY_ARC_DEBUG (arc_arm_debug). The two counters feed arc_report_leaks
+// alone, which runs only when that env registered the atexit hook — so an
+// unaudited run skips two hot global RMWs on every alloc and every free
+// (binarytrees churns ~16M objects: ~64M skipped). g_present is NOT gated: it
+// is load-bearing for table sizing (arc_target_cap) on every run.
+static int g_arc_track = 0;
+
+static inline void arc_live_inc(size_t bytes) {
+  if (g_arc_track) {
+    g_live++;
+    g_live_bytes += bytes;
+    if (g_live_bytes > g_peak_bytes) {
+      g_peak_bytes = g_live_bytes;
+    }
+  }
+}
+
+static inline void arc_live_dec(size_t bytes) {
+  if (g_arc_track) {
+    g_live--;
+    g_live_bytes -= bytes;
+  }
+}
+
+// --- size-classed recycling pool ---------------------------------------------
+// The free-list mechanics live in memory_pool.h (shared with the tracing GC).
+// ARC's specialisation: a parked body KEEPS its registry slot (never
+// tombstoned) with an rc==0 sentinel the leak report skips, so a same-size
+// reuse pops the SAME address with no registry insert/remove/grow churn — the
+// surrounding logic in arc_alloc_locked / arc_free_or_recycle owns that; the
+// pool itself only threads the free-lists. Pooled slots count toward g_present,
+// never g_live. Oversized bodies, or pushes past the retention ceiling, fall
+// back to the malloc/free + registry-remove path (rare, large objects).
+static OspPool g_arc_pool; // cap_bytes 0 → OSP_POOL_DEFAULT_CAP_BYTES
+
+// --- leak accounting (OSPREY_ARC_DEBUG=1)
+// --------------------------------------
+
+// Kinds RAW..MASK_DIRECT (memory_hooks.h) — one histogram bucket per kind.
+#define OSP_ARC_NKINDS 6
+
+// OSPREY_ARC_DEBUG=2 additionally dumps every survivor — kind, size, rc, and a
+// printable preview of its first bytes. That triple is what actually identifies
+// a leak: a 40-byte MASK is a list header, a 24-byte MASK a map header, a RAW
+// whose preview reads as text is a runtime-minted string. Triage tool, not a
+// log.
+#define OSP_ARC_PREVIEW 24
+
+static void arc_dump_object(const void *body, const OspArcHdr *h) {
+  char preview[OSP_ARC_PREVIEW + 1];
+  size_t n = h->size < (uint32_t)OSP_ARC_PREVIEW ? h->size : OSP_ARC_PREVIEW;
+  const unsigned char *b = (const unsigned char *)body;
+  for (size_t i = 0; i < n; i++) {
+    preview[i] = (b[i] >= 0x20 && b[i] < 0x7f) ? (char)b[i] : '.';
+  }
+  preview[n] = '\0';
+  fprintf(stderr, "[osp-arc]     kind %d size %u rc %d |%s|\n",
+          OSP_ARC_KIND(h->meta), h->size, h->rc, preview);
+}
+
+static void arc_report_leaks(void) {
+  const char *level = getenv("OSPREY_ARC_DEBUG");
+  int dump = (level != NULL && level[0] >= '2');
+  arc_lock();
+  size_t count[OSP_ARC_NKINDS] = {0};
+  size_t bytes[OSP_ARC_NKINDS] = {0};
+  // Immortals (rc<0 — the empty-list singleton and friends) are excluded from
+  // the leak count on purpose: they are unreclaimable BY DESIGN, so counting
+  // them would put a permanent floor under the [GC-ARC-PERCEUS] "zero leaked
+  // language values" gate the differential harness reads off this line.
+  size_t immortal = 0;
+  for (size_t i = 0; i < g_cap; i++) {
+    if (g_tab[i] > OSP_ARC_TOMB) {
+      OspArcHdr *h = arc_hdr((void *)g_tab[i]);
+      int kind = OSP_ARC_KIND(h->meta);
+      int k = (kind >= 0 && kind < OSP_ARC_NKINDS) ? kind : 0;
+      if (h->rc == 0) {
+        continue; // parked on the recycling pool — resident, not leaked
+      }
+      if (h->rc < 0) {
+        immortal++;
+        continue;
+      }
+      count[k]++;
+      bytes[k] += h->size;
+      if (dump) {
+        arc_dump_object((const void *)g_tab[i], h);
+      }
+    }
+  }
+  // stderr only: stdout must stay byte-identical under [MEM-BACKENDS].
+  fprintf(stderr, "[osp-arc] exit: %zu live objects, %zu KiB (+%zu immortal)\n",
+          g_live - immortal, g_live_bytes / 1024, immortal);
+  for (int k = 0; k < OSP_ARC_NKINDS; k++) {
+    if (count[k]) {
+      fprintf(stderr, "[osp-arc]   kind %d: %zu objects, %zu bytes\n", k,
+              count[k], bytes[k]);
+    }
+  }
+  arc_unlock();
+}
+
+static void arc_arm_debug(void) {
+  if (!g_debug_armed) {
+    g_debug_armed = 1;
+    if (getenv("OSPREY_ARC_DEBUG")) {
+      g_arc_track = 1; // gate the hot-path live counters on (arc_live_inc/dec)
+      (void)atexit(arc_report_leaks);
+    }
+  }
+}
+
+#include "memory_arc_alloc.h"
+
+#include "memory_arc_drop.h"
+
+// --- public ABI
+// ------------------------------------------------------------------ Implements
+// the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
+
+// Finalizer registration (memory_hooks.h).
+void osp_mem_set_finalizer(void (*finalize)(void *body)) {
+  g_finalizer = finalize;
+}
+
+// Link anchor AND unconditional arming (memory_hooks.h): the leak sentinel
+// must print under OSPREY_ARC_DEBUG even when the program never allocates —
+// lazy arming on first alloc left an allocation-free program with no report,
+// which the corpus harness cannot tell apart from a crashed exit path.
+void osp_mem_boot(void) {
+  arc_lock();
+  arc_arm_debug();
+  arc_unlock();
+}
+
+// [FAILURE-EXPLICIT] Validate the ABI's i64 size before a 32-bit size_t cast.
+static void *arc_request(int64_t size, int64_t meta, int zero) {
+  arc_lock();
+  void *p = size > 0 && (uint64_t)size > OSP_ARC_MAX_BODY
+      ? NULL : arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, zero);
+  arc_unlock();
+  return p;
+}
+
+void *osp_alloc_tagged(int64_t size, int64_t meta) {
+  return arc_request(size, meta, 1);
+}
+
+// Fully-initialized-by-caller twin: skip the drop-safety pre-zero (see
+// arc_init_body). Every masked word MUST be stored before the block can drop.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  return arc_request(size, meta, 0);
+}
+
+void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
+
+// dup — probe first: only live ARC objects with a non-negative rc count.
+void osp_retain(void *o) {
+  if (!o) {
+    return;
+  }
+  arc_lock();
+  OspArcHdr *h = arc_lookup_body((uintptr_t)o);
+  if (h) {
+    if (h->rc >= 0) {
+      h->rc++;
+    }
+  }
+  arc_unlock();
+}
+
+// drop — probe first; on rc==0 run the kind/mask worklist drop.
+void osp_release(void *o) {
+  if (!o) {
+    return;
+  }
+  arc_lock();
+  OspArcHdr *h = arc_lookup_body((uintptr_t)o);
+  if (h) {
+    if (h->rc > 0 && --h->rc == 0) {
+      arc_release_zero_locked((uintptr_t)o);
+    }
+  }
+  arc_unlock();
+}
+
+// Codegen-proved-unique drop (memory_hooks.h): the caller proved rc == 1, so
+// this is exactly osp_release — the distinct symbol only exists to carry
+// LLVM's free-pair attributes so -O2 can delete non-escaping alloc+release
+// pairs before they ever reach the runtime.
+void osp_release_unique(void *o) { osp_release(o); }
+
+// Full-collection hook: nothing to do — acyclic naive RC is already complete
+// (Bacon/Cheng/Rajan; TR §2.2).
+void osp_collect(void) {}
+
+// Trip the adaptive lock (memory_hooks.h): the fiber runtime calls this before
+// the pthread_create that first lets a second thread reach the heap. Monotonic
+// and idempotent — once shared, the heap stays locked for the process.
+void osp_mem_notify_multithreaded(void) {
+#ifdef __wasi__
+  // No WASI threads are implemented; accepting this notification would lie.
+  fputs("FATAL: WASI ARC cannot activate multiple threads\n", stderr);
+  abort();
+#else
+  atomic_store_explicit(&g_arc_mt, 1, memory_order_release);
+#endif
+}
+
+// Immortalize a shared C-runtime singleton (memory_hooks.h): rc < 0 makes
+// every later dup/drop skip it, so alias returns of e.g. the empty-list
+// singleton can never free it. Foreign pointers probe-miss (no-op).
+void osp_mem_immortal(void *p) {
+  if (!p) {
+    return;
+  }
+  arc_lock();
+  uintptr_t *slot = arc_find((uintptr_t)p);
+  if (slot) {
+    arc_hdr((void *)*slot)->rc = -1;
+  }
+  arc_unlock();
+}
+
+// Stamp a shim-allocated object with its layout word (memory_hooks.h): the
+// value-container units allocate through the zeroing `calloc` redirect and tag
+// afterwards, which is what keeps a PTR_ARRAY walk over allocation slack safe.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  if (!p) {
+    return;
+  }
+  arc_lock();
+  uintptr_t *slot = arc_find((uintptr_t)p);
+  if (slot) {
+    arc_hdr((void *)*slot)->meta = meta;
+  }
+  arc_unlock();
+}
+
+// --- diagnostics (read-only snapshots; not on any hot path) ------------------
+// Mirrors the tracing GC's osp_gc_live_objects/osp_gc_collections surface so
+// the memory GOLDEN tests can pin exact numbers: live counts must return to a
+// known baseline and the peak must never exceed a workload's stated ceiling.
+// The counters are armed by OSPREY_ARC_DEBUG (osp_mem_boot / first alloc);
+// unarmed they read 0 — callers must arm before allocating. [GC-ARC-PERCEUS]
+
+size_t osp_arc_live_objects(void) {
+  arc_lock();
+  size_t n = g_live;
+  arc_unlock();
+  return n;
+}
+
+size_t osp_arc_live_bytes(void) {
+  arc_lock();
+  size_t n = g_live_bytes;
+  arc_unlock();
+  return n;
+}
+
+// High-water mark of live bytes since arming (or the last reset). A memory
+// spike between two checkpoints is visible here even when the live set has
+// already returned to baseline — the property RSS assertions cannot give.
+size_t osp_arc_peak_bytes(void) {
+  arc_lock();
+  size_t n = g_peak_bytes;
+  arc_unlock();
+  return n;
+}
+
+// Restart the high-water mark at the current live level, so a test can bound
+// one workload's transient footprint in isolation.
+void osp_arc_peak_reset(void) {
+  arc_lock();
+  g_peak_bytes = g_live_bytes;
+  arc_unlock();
+}
+
+// --- allocation shim for the C runtime units (osp_arc_shim.h)
+// --------------------- Value-producing units (list/map/string/json) are
+// recompiled with their libc allocation calls redirected here, so
+// runtime-minted strings and container nodes carry headers and live in the
+// registry (kind RAW until milestone M4 teaches the container ops their own
+// dup/drop).
+
+void *osp_arc_malloc(size_t size) {
+  arc_lock();
+  void *p = arc_alloc_locked(size, OSP_MEM_RAW, 1);
+  arc_unlock();
+  return p;
+}
+
+void *osp_arc_calloc(size_t n, size_t size) {
+  size_t total = n * size;
+  if (n != 0 && total / n != size) {
+    return NULL; // overflow
+  }
+  void *p = osp_arc_malloc(total);
+  if (p) {
+    memset(p, 0, total);
+  }
+  return p;
+}
+
+// Manual free from C runtime code is authoritative: it drops the object
+// regardless of rc (the C units own their transients) and releases whatever its
+// layout word says it owns, so freeing a tagged transient can never strand its
+// children. Foreign pointers fall through to libc free.
+void osp_arc_free(void *p) {
+  if (!p) {
+    return;
+  }
+  arc_lock();
+  uintptr_t *slot = arc_find((uintptr_t)p);
+  if (slot) {
+    // Immortals (rc < 0 — the empty-list singleton and friends) are returned
+    // from many call sites by construction: "authoritative" does not extend to
+    // them, or the next caller reads freed memory.
+    if (arc_hdr((void *)*slot)->rc >= 0) {
+      arc_release_zero_locked(*slot);
+    }
+    arc_unlock();
+    return;
+  }
+  arc_unlock();
+  free(p);
+}
+
+void *osp_arc_realloc(void *old, size_t size) {
+  if (!old) {
+    return osp_arc_malloc(size);
+  }
+  arc_lock();
+  uintptr_t *slot = arc_find((uintptr_t)old);
+  size_t oldsize = slot ? arc_hdr((void *)*slot)->size : 0;
+  int64_t oldmeta = slot ? arc_hdr((void *)*slot)->meta : (int64_t)OSP_MEM_RAW;
+  arc_unlock();
+  if (!slot) {
+    return realloc(old, size); // foreign block: libc owns it
+  }
+  void *p = osp_arc_malloc(size);
+  if (!p) {
+    return NULL;
+  }
+  if (oldsize) {
+    memcpy(p, old, oldsize < size ? oldsize : size);
+  }
+  // The copy ALIASES old's children, so ownership moves wholesale: the new
+  // block takes the layout word, and old's is stripped to RAW before it dies —
+  // otherwise its drop walk would decrement children the copy never dup'd.
+  osp_mem_set_layout(p, oldmeta);
+  arc_lock();
+  uintptr_t *dead = arc_find((uintptr_t)old);
+  if (dead) {
+    arc_hdr((void *)*dead)->meta = (int64_t)OSP_MEM_RAW;
+  }
+  arc_unlock();
+  osp_arc_free(old);
+  return p;
+}
+
+char *osp_arc_strdup(const char *s) {
+  size_t len = strlen(s) + 1;
+  char *p = (char *)osp_arc_malloc(len);
+  if (p) {
+    memcpy(p, s, len);
+  }
+  return p;
+}

@@ -3,7 +3,7 @@
 /// constructor as a variant test on a union whose other variants carry
 /// payloads, a generic caller at each decided type, and `listContains`
 /// searching by the same `==` ([BUILTIN-LIST-CONTAINS]). The undecided
-/// comparisons are pinned by examples/failscompilation/equality_undecided.ospo.
+/// comparisons are pinned by src/examples/failscompilation/equality_undecided.ospo.
 
 type Area = Apps | Files | Reports
 type Shape = Dot | Circle { r: int } | Square { side: int }

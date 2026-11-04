@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-const PACKAGES = fileURLToPath(new URL('../packages/', import.meta.url))
+const PACKAGES = fileURLToPath(new URL('../src/packages/', import.meta.url))
 const CHECKER = fileURLToPath(new URL('./verify-package-licenses.mjs', import.meta.url))
 const verify = (root) => spawnSync(process.execPath, [join(root, 'scripts/verify-package-licenses.mjs')], { encoding: 'utf8' })
 
@@ -16,7 +16,7 @@ const inFixture = (check) => {
   try {
     mkdirSync(join(root, 'scripts'))
     cpSync(CHECKER, join(root, 'scripts/verify-package-licenses.mjs'))
-    cpSync(PACKAGES, join(root, 'packages'), { recursive: true, filter: (path) => !path.includes('/.deslop') })
+    cpSync(PACKAGES, join(root, 'src', 'packages'), { recursive: true, filter: (path) => !path.includes('/.deslop') })
     check(root)
   } finally {
     rmSync(root, { recursive: true, force: true })
@@ -29,7 +29,7 @@ test('reviewed packages retain their MIT grants and scoped material notices', ()
 }))
 
 test('required original attribution cannot be removed while retaining generic license text', () => inFixture((root) => {
-  const path = join(root, 'packages/scipy/NOTICE.md')
+  const path = join(root, 'src/packages/scipy/NOTICE.md')
   const original = readFileSync(path, 'utf8')
   const credit = '(C) Copyright John Maddock 2006.'
   assert.ok(original.includes(credit))
@@ -38,14 +38,14 @@ test('required original attribution cannot be removed while retaining generic li
 }))
 
 test('an API reference does not authorize an unreviewed upstream license copy', () => inFixture((root) => {
-  const dir = join(root, 'packages/einops/LICENSES')
+  const dir = join(root, 'src/packages/einops/LICENSES')
   mkdirSync(dir)
   writeFileSync(join(dir, 'unrequired.txt'), 'Unreviewed upstream license text')
   assert.notEqual(verify(root).status, 0)
 }))
 
 test('package tooling containers do not become published libraries', () => inFixture((root) => {
-  const dir = join(root, 'packages/manager/core')
+  const dir = join(root, 'src/packages/manager/core')
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'osprey.toml'), '[project]\nname = "package-core"\n')
   const result = verify(root)

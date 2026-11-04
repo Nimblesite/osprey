@@ -10,9 +10,9 @@ compile_ownership() {
   shift
   "${WASM_CC:-clang}" --target=wasm32-wasip1 --sysroot="${WASI_SYSROOT:?WASI_SYSROOT is required}" \
     -O2 -std=c11 -Wall -Wextra -Werror -nodefaultlibs -lc "$@" \
-    -I"$ROOT/compiler/runtime" \
-    "$ROOT/compiler/runtime/memory_arc_ownership_wasm_tests.c" \
-    "$ROOT/compiler/runtime/memory_arc.c" -o "$TEST_DIR/$name.wasm"
+    -I"$ROOT/src/compiler/runtime" \
+    "$ROOT/src/compiler/runtime/memory_arc_ownership_wasm_tests.c" \
+    "$ROOT/src/compiler/runtime/memory_arc.c" -o "$TEST_DIR/$name.wasm"
 }
 
 check_ownership() {

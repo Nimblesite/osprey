@@ -88,5 +88,5 @@ ordering.
 
 The Default/ML twins `tests/regressions/basics/operators/equality_domain.test.*`
 pin every accepted row in both flavors. Each rejected kind has a program under
-`examples/failscompilation/` (`equality_*.ospo`), which the must-reject ratchet
+`src/examples/failscompilation/` (`equality_*.ospo`), which the must-reject ratchet
 keeps rejected.

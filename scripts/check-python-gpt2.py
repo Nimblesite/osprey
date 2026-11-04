@@ -11,12 +11,12 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 
 ROOT = Path(__file__).resolve().parents[1]
-PORT = ROOT / "examples/gpt2/python"
+PORT = ROOT / "src/examples/gpt2/python"
 MEMORIES = ("gc", "arc")
 
 
 def reference():
-    spec = importlib.util.spec_from_file_location("gpt2_oracle", ROOT / "examples/gpt2/reference.py")
+    spec = importlib.util.spec_from_file_location("gpt2_oracle", ROOT / "src/examples/gpt2/reference.py")
     if spec is None or spec.loader is None:
         raise RuntimeError("cannot load independent GPT-2 reference")
     module = importlib.util.module_from_spec(spec)

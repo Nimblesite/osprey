@@ -1,0 +1,56 @@
+// The CPU interpretation of `gpt2::Backends::Tensor`: every operation answered
+// with host list code, accumulating in the same k order from 0.0 as
+// src/examples/gpt2/reference.py. Nothing here names the GPU surface: weights load
+// through the host `loadTensor`, and a failed load or product answers its
+// reason. Implements [STAGE-BACKEND], [BUILTIN-FILE-TENSOR].
+
+namespace gpt2;
+
+import gpt2::Backends::{Tensor, hit, minI, productLengths}
+
+module Cpu {
+    /// The rows x cols product of well-shaped lists, accumulated in k order from 0.0.
+    fn productOf(a, b, rows, inner, cols) = Success { value: range(0, rows * cols) |> map(fn(i) => range(0, inner) |> fold(0.0, fn(acc, k) => acc + (listGet(a, intDiv(i, cols) * inner + k) ?: toFloat32(0.0)) * (listGet(b, k * cols + i % cols) ?: toFloat32(0.0)))) |> toList() }
+
+    /// The first operand whose length disagrees with its stated shape, named as the GPU runtime names it.
+    fn misfit(a, b, rows, inner, cols) = match listLength(a) == rows * inner {
+        false => Error { message: productLengths("left", listLength(a), rows * inner) }
+        true => Error { message: productLengths("right", listLength(b), inner * cols) }
+    }
+
+    /// A product, or the reason its operands do not fit the stated shape.
+    fn product(a, b, rows, inner, cols) = match listLength(a) == rows * inner && listLength(b) == inner * cols {
+        true => productOf(a, b, rows, inner, cols)
+        false => misfit(a, b, rows, inner, cols)
+    }
+
+    /// A loaded tensor, or the loader's reason as text.
+    fn loaded(result) = match result {
+        Success { value } => Success { value: mapList(value, toFloat32) }
+        Error { message } => Error { message: toString(message) }
+    }
+
+    /// Host lists, loaded straight into lists from the safetensors file.
+    ///
+    /// # Parameters
+    /// - work: the computation to run, whose every `Tensor` operation this
+    ///   handler answers on host lists without touching the GPU.
+    export fn onLists(work) = {
+        handle static Tensor<List<float32>> {
+            build n f => match n < 0 {
+                true => Error { message: "Tensor.build: a negative element count" }
+                false => Success { value: range(0, n) |> map(f) |> toList() }
+            }
+            get b i => listGet(b, i) ?: toFloat32(0.0)
+            length b => listLength(b)
+            zipWith a b f => range(0, listLength(a)) |> map(fn(i) => f(listGet(a, i) ?: toFloat32(0.0), listGet(b, i) ?: toFloat32(0.0))) |> toList()
+            reduce b seed f => range(0, listLength(b)) |> fold(seed, fn(a, i) => f(a, listGet(b, i) ?: toFloat32(0.0)))
+            indexOf b x => Success { value: range(0, listLength(b)) |> map(fn(i) => hit(listGet(b, i) ?: toFloat32(0.0), x, i, listLength(b))) |> fold(listLength(b), minI) }
+            matMul a b rows inner cols => product(a, b, rows, inner, cols)
+            fromList xs => xs
+            load path name => loaded(loadTensor(path, name))
+            device => "lists"
+        }
+        work()
+    }
+}

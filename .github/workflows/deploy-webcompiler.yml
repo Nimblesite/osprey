@@ -42,7 +42,7 @@ jobs:
             echo "::error title=Missing FLY_API_TOKEN::The FLY_API_TOKEN secret is empty. Mint one with 'fly tokens create deploy -a osprey' and set it via 'gh secret set FLY_API_TOKEN'."
             exit 1
           fi
-          flyctl deploy --remote-only --app osprey --config webcompiler/fly.toml
+          flyctl deploy --remote-only --app osprey --config src/webcompiler/fly.toml
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 

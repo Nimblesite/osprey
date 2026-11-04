@@ -16,7 +16,7 @@ The keypad removes that prerequisite. The implication arrow is a wide, accented,
 | Slate | The same challenge and field, with the same geometry | The keypad uses the existing Paper & Slate tokens rather than inventing a dark surface |
 | Narrow · phone width · p and q | The real `state-swapped-goal` challenge, completed as `q ∧ p`, with both declared variables enabled | The p-and-q variable rule and the narrow wrap, with no horizontal page overflow and no reduced hit areas |
 
-The Paper and Slate views use a real challenge from [`what-is-a-proof.json`](../../../apps/workbench/lessons/what-is-a-proof.json): “Write the claim that p implies itself.” Its expected formula is `p → p` and its only declared variable is `p`. The narrow view uses the real `state-swapped-goal` challenge from [`and-swap.json`](../../../apps/workbench/lessons/and-swap.json): “Write the conclusion with q on the left and p on the right,” expected `q ∧ p`, with both `p` and `q` declared. Both formulas are valid under [`formula.ospml`](../../../apps/workbench/src/formula.ospml), so the board does not show an invented or false statement.
+The Paper and Slate views use a real challenge from [`what-is-a-proof.json`](../../../src/workbench/lessons/what-is-a-proof.json): “Write the claim that p implies itself.” Its expected formula is `p → p` and its only declared variable is `p`. The narrow view uses the real `state-swapped-goal` challenge from [`and-swap.json`](../../../src/workbench/lessons/and-swap.json): “Write the conclusion with q on the left and p on the right,” expected `q ∧ p`, with both `p` and `q` declared. Both formulas are valid under [`formula.ospml`](../../../src/workbench/src/formula.ospml), so the board does not show an invented or false statement.
 
 No proof badge appears in the design. “Right”, “Not yet” and “Unfinished” are the kernel-facing feedback of [LESSONS-FEEDBACK] and are not supplied by the keypad.
 
@@ -41,7 +41,7 @@ The action row keeps Submit, Hint and Open in the workbench. Show solution is om
 
 ## Symbols and wording
 
-Only symbols accepted by the current grammar are shown. [`formula.ospml`](../../../apps/workbench/src/formula.ospml) accepts `∧ ∨ → ↔ ¬ ∀ ⊤ ⊥ ( ) ,` and names; the notation table supplies the same glyphs for `→`, `∧`, `∨`, `¬`, `↔` and the abbreviations.
+Only symbols accepted by the current grammar are shown. [`formula.ospml`](../../../src/workbench/src/formula.ospml) accepts `∧ ∨ → ↔ ¬ ∀ ⊤ ⊥ ( ) ,` and names; the notation table supplies the same glyphs for `→`, `∧`, `∨`, `¬`, `↔` and the abbreviations.
 
 | Key | Visible name | Tooltip / accessible name | Source |
 | --- | --- | --- | --- |
@@ -57,7 +57,7 @@ Only symbols accepted by the current grammar are shown. [`formula.ospml`](../../
 
 The seven current state challenges use only variables, `¬`, `∧`, `∨`, `→`, `↔` and parentheses. The keypad is scoped to that fragment: `⊤`, `⊥`, `∀` and `,` are accepted by the grammar but do not occur in any current state answer, so they are not placed in the primary row. A quantifier key without a binder hint or a comma is a trap; if a state challenge later needs one, add a separate Quantifier group containing `∀`, `,` and the sentence-level guidance, rather than adding an unexplained glyph to Connectives.
 
-The reviewed shared [`FormulaKeys`](../../../apps/workbench/src/learnview.ospml) limits this primary pad to the current lesson fragment and uses short paired rows. Key labels combine glyph and plain-language name (`→ implies`); the notation table remains unchanged. The backslash abbreviation table in [`notation.ospml`](../../../apps/workbench/src/notation.ospml) is the glyph authority for the key set, but its `expand` function is not applied to the lesson answer today; the optional help therefore mentions sentence words only.
+The reviewed shared [`FormulaKeys`](../../../src/workbench/src/learnview.ospml) limits this primary pad to the current lesson fragment and uses short paired rows. Key labels combine glyph and plain-language name (`→ implies`); the notation table remains unchanged. The backslash abbreviation table in [`notation.ospml`](../../../src/workbench/src/notation.ospml) is the glyph authority for the key set, but its `expand` function is not applied to the lesson answer today; the optional help therefore mentions sentence words only.
 
 ### Why “Both ways”
 
@@ -90,7 +90,7 @@ The keypad inserts the glyph exactly. It does **not** add invisible characters o
 
 Keyboard order is the formula field, then Variables, Connectives, Grouping, then Submit and Hint. Every key is a real button with a visible focus ring on `:focus-visible`; Enter and Space activate it. Group labels and the keypad heading are announced with the group. The arrow keeps its position at the start of Connectives so its location is stable across lessons.
 
-The current [`Tutors::insert`](../../../apps/workbench/src/tutor.ospml) already inserts at the stored cursor, advances it by the inserted length and clears the mark. Returning keyboard focus to the field is a host/runtime requirement to verify; the action that inserts text currently focuses the challenge, not necessarily the editor.
+The current [`Tutors::insert`](../../../src/workbench/src/tutor.ospml) already inserts at the stored cursor, advances it by the inserted length and clears the mark. Returning keyboard focus to the field is a host/runtime requirement to verify; the action that inserts text currently focuses the challenge, not necessarily the editor.
 
 ## Feedback, disabled and error states
 
@@ -138,7 +138,7 @@ The HTML is a static review board, not an application implementation. It contain
 
 The production implementation belongs in the shared Osprey application and `@osprey/native`, not in a host-specific transplant of this HTML:
 
-- Reuse `Editors::inline` and the caret/cursor model from [`learnview.ospml`](../../../apps/workbench/src/learnview.ospml) and [`tutor.ospml`](../../../apps/workbench/src/tutor.ospml).
+- Reuse `Editors::inline` and the caret/cursor model from [`learnview.ospml`](../../../src/workbench/src/learnview.ospml) and [`tutor.ospml`](../../../src/workbench/src/tutor.ospml).
 - Keep the keypad immediately after the field, before `Feedback::marks` and `Feedback::controls`. The shared `posed` function now authors that order.
 - Build the key set from one ordered table containing symbol, visible name, tooltip and accepted-fragment membership. Do not duplicate symbols in the host or in lesson JSON. The notation table remains the spelling authority.
 - Keep the disabled-variable decision explicit and test it with a p-only and a p-and-q challenge.

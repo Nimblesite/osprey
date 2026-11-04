@@ -1,0 +1,1855 @@
+//! End-to-end CLI tests that drive the real `osprey` binary.
+//!
+//! `main`, `run_lsp`, and the full compile -> link -> run pipeline are process
+//! entry points the in-process twins (the `src` unit tests and
+//! `tests/examples_compile.rs`) can never reach. Spawning the built binary does
+//! reach them, and because `cargo llvm-cov` instruments `CARGO_BIN_EXE_osprey`
+//! too, each child's coverage is merged back into the report — so these tests
+//! count toward the per-crate gate.
+
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+
+#[cfg(unix)]
+#[path = "cases/doctest_harness.rs"]
+mod doctest_harness;
+
+#[path = "cases/memory_backend.rs"]
+mod memory_backend;
+
+#[path = "cases/suite_scratch.rs"]
+mod suite_scratch;
+
+/// Repo root: `src/crates/osprey-cli` -> `../../..`. The C runtime archives `osprey`
+/// links at `--run`/`--compile` time live under `src/compiler/bin/` there, and
+/// `find_runtime_lib` resolves them relative to the process cwd — so every
+/// child runs from here.
+fn repo_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
+}
+
+/// A `Command` for the built `osprey`, rooted at the repo so the runtime
+/// archives resolve.
+fn osprey() -> Command {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_osprey"));
+    let _ = cmd.current_dir(repo_root());
+    cmd
+}
+
+/// Write `body` to a uniquely-named temp `.osp` (the name doubles as the file
+/// stem, which `--compile` turns into the output executable's name).
+fn temp_osp(name: &str, body: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!("osprey_cli_e2e_{name}.osp"));
+    // A failed write surfaces as a downstream "cannot read"/parse failure that
+    // trips the test's own assertions — so no panic is needed here.
+    let _ = std::fs::write(&path, body);
+    path
+}
+
+fn temp_dir(name: &str) -> PathBuf {
+    let path = std::env::temp_dir().join(format!("osprey_cli_e2e_{name}_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&path);
+    let _ = std::fs::create_dir_all(&path);
+    path
+}
+
+fn read_text(path: &Path) -> String {
+    match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(e) => format!("read failed: {e}"),
+    }
+}
+
+const HELLO: &str = "let g = \"hi\"\nprint(\"v=${g}\")\n";
+
+#[path = "cases/doctests.rs"]
+mod doctests;
+
+#[path = "cases/api_docs.rs"]
+mod api_docs;
+
+#[path = "cases/api_docs_extra.rs"]
+mod api_docs_extra;
+
+/// The captured result of one invocation.
+struct Out {
+    code: Option<i32>,
+    stdout: String,
+    stderr: String,
+}
+
+fn finish(mut cmd: Command) -> Out {
+    // A spawn failure becomes an empty, code-less `Out`; every caller asserts on
+    // an expected code/stdout, so the failure reports loudly through them.
+    match cmd.output() {
+        Ok(out) => Out {
+            code: out.status.code(),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        },
+        Err(e) => Out {
+            code: None,
+            stdout: String::new(),
+            stderr: format!("spawn failed: {e}"),
+        },
+    }
+}
+
+/// Run with literal args (no source file): `--version`, `--hover`, etc.
+fn run_args(args: &[&str]) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd.args(args);
+    finish(cmd)
+}
+
+fn run_args_with_stdin(args: &[&str], input: &str) -> Out {
+    use std::io::Write;
+
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    let mut child = match cmd.spawn() {
+        Ok(child) => child,
+        Err(e) => {
+            return Out {
+                code: None,
+                stdout: String::new(),
+                stderr: format!("spawn failed: {e}"),
+            };
+        }
+    };
+    if let Some(stdin) = child.stdin.as_mut() {
+        let _ = stdin.write_all(input.as_bytes());
+    }
+    match child.wait_with_output() {
+        Ok(out) => Out {
+            code: out.status.code(),
+            stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
+        },
+        Err(e) => Out {
+            code: None,
+            stdout: String::new(),
+            stderr: format!("wait failed: {e}"),
+        },
+    }
+}
+
+/// [BUILTIN-STRING-JOIN] over a RUNTIME string list. `join` works on a list
+/// literal and on an unbound `words`/`lines` result (both flat) and SEGFAULTS
+/// (exit 139, no output) on every runtime list: one built by `listAppend`,
+/// one returned by `toList`, and a `words` result bound to a name — which the
+/// binding now settles into the runtime layout [BUILTIN-LIST-GET], so
+/// `let ws = words(s)` then `join(ws, …)` crashes where it used to work.
+/// This pins the crash; the fix belongs to `osp_string_join`'s lowering.
+#[test]
+fn join_accepts_every_string_list_representation() {
+    let path = temp_osp(
+        "join_runtime_lists",
+        "fn main() = {\n\
+             let appended = listAppend(listAppend(List(), \"a\"), \"b\")\n\
+             let collected = range(0, 2) |> map(fn(i) => \"c${i}\") |> toList()\n\
+             let bound = words(\"x y\")\n\
+             print(\"${join(appended, \"-\")} ${join(collected, \"-\")} ${join(bound, \"-\")}\")\n\
+         }\n",
+    );
+    let out = run_file(&path, &["--run", "--quiet"]);
+    assert_eq!(out.code, Some(0), "stderr: {}", out.stderr);
+    assert_eq!(out.stdout, "a-b c0-c1 x-y\n");
+}
+
+/// Run against a source `path` plus extra flags — the common compiling shape.
+fn run_file(path: &Path, extra: &[&str]) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd.arg(path).args(extra);
+    finish(cmd)
+}
+
+/// Run a single `mode` against `path` with `OSPREY_CC` overridden — used to
+/// drive the C-driver failure branches of `build_executable`.
+fn run_file_cc(path: &Path, mode: &str, cc: &str) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd.arg(path).arg(mode).env("OSPREY_CC", cc);
+    finish(cmd)
+}
+
+/// Type-clean but codegen-rejected: an FFI callback slot is a raw C code
+/// pointer, so a capturing lambda has nowhere to carry its environment
+/// ([FFI-CALLBACKS]). It passes the type gate, so every compiling mode reaches
+/// codegen and fails there — exercising the `Err` arms `compile_program` feeds.
+///
+/// `satAdd` is total ([ARITH-EFFECT-TOTAL-HELPERS]), so the callback performs
+/// nothing and the capture of `base` is the only defect. A plain `x + base`
+/// would perform `Arith.overflow` on the C side of the boundary, where no
+/// handler can discharge it, so the fixture must not depend on that verdict.
+const CODEGEN_REJECTED: &str = concat!(
+    "extern fn registerCallback(cb: fn(int) -> int) -> int\n",
+    "let base = 10\n",
+    "let r = registerCallback(fn(x) => satAdd(x, base))\n",
+    "print(\"${r}\")\n",
+);
+
+/// A still-generic lambda used as a bare VALUE: no ABI to fix and no call site
+/// to specialise against ([TYPE-GENERICS-FN]).
+///
+/// This drove the two codegen-error tests until the checker learned to reject
+/// it, which is a strictly better place to catch it. It stays here to pin
+/// WHERE it is rejected, so the move cannot happen again unnoticed.
+const GENERIC_AS_VALUE: &str = "fn mk<T>(x: T) = |y| => x\nprint(\"${mk(1)}\")\n";
+
+/// Explicit effect resume must run the rest of the handled computation and then
+/// return the handled computation's answer to the arm.
+const RESUME_EFFECT: &str = r#"
+effect Audit {
+    control step: fn(string) -> int
+}
+
+fn pipeline() -> int !Audit = {
+    let a = perform Audit.step("load")
+    let b = perform Audit.step("parse")
+    satAdd(a, b)
+}
+
+fn main() = {
+    mut n = 0
+    let total = {
+        handle Audit {
+            step label => {
+                n = satAdd(n, 1)
+                let answer = resume(n)
+                print("after " + label + ": answer=" + toString(answer))
+                answer
+            }
+        }
+        pipeline()
+    }
+    print("total=" + toString(total))
+}
+"#;
+
+/// A handler arm that resumes its continuation TWICE on ONE control path.
+/// `Choose.pick` carries no multiplicity keyword, so it is `once`, and the arm
+/// is rejected before it can run ([MULTI-HANDLE-ONCE], [MULTI-COMPAT]).
+///
+/// This lived as `src/examples/failscompilation/multishot_resume_rejected.ospo`,
+/// which was a category error while the rejection was a RUNTIME one: the
+/// program was well formed, so a must-reject fixture could never observe the
+/// abort. It "passed" only because of an unrelated arithmetic type error,
+/// which the corpus recorded as the expected rejection. Multiplicity moves the
+/// verdict back to compile time, where the arm has always been visible; the
+/// total `satAdd` keeps multiplicity the program's only defect.
+const MULTISHOT_RESUME: &str = r#"
+effect Choose {
+    control pick: fn() -> int
+}
+
+fn both() -> int !Choose = {
+    let x = perform Choose.pick()
+    satAdd(x, 1)
+}
+
+fn main() = {
+    let total = {
+        handle Choose {
+            pick => {
+                let a = resume(10)
+                let b = resume(20)
+                satAdd(a, b)
+            }
+        }
+        both()
+    }
+    print("total=" + toString(total))
+}
+"#;
+
+/// The same effect answered by an arm with one `resume` per `match` branch.
+/// Two `resume` SITES, at most one per control path — the shape
+/// [MULTI-HANDLE-ONCE] must keep accepting.
+const BRANCHWISE_RESUME: &str = r#"
+effect Choose {
+    control pick: fn() -> int
+}
+
+fn both() -> int !Choose = {
+    let x = perform Choose.pick()
+    satAdd(x, 1)
+}
+
+fn main() = {
+    let total = {
+        handle Choose {
+            pick => match true {
+                true => resume(29)
+                false => resume(0)
+            }
+        }
+        both()
+    }
+    print("total=" + toString(total))
+}
+"#;
+
+#[test]
+fn version_plain_and_json() {
+    // [SWR-VERSION-BUILD-STAMPING] [SWR-VERSION-CLI-OUTPUT] The first line is
+    // exactly `name version`, as a version probe parses it; the commit the
+    // binary was built from follows, so a stale build is visible.
+    let commit = env!("OSPREY_COMMIT");
+    assert!(commit.len() >= 7, "{commit}");
+    let plain = run_args(&["--version"]);
+    assert_eq!(plain.code, Some(0));
+    assert_eq!(plain.stdout, format!("osprey 0.0.0-dev\ncommit {commit}\n"));
+
+    let json = run_args(&["--version", "--json"]);
+    assert_eq!(json.code, Some(0));
+    assert_eq!(
+        json.stdout,
+        format!("{{\"manifestVersion\":1,\"name\":\"osprey\",\"version\":\"0.0.0-dev\",\"kind\":\"cli\",\"product\":\"osprey\",\"commit\":\"{commit}\"}}\n")
+    );
+}
+
+#[test]
+fn lsp_exits_cleanly_on_closed_stdin() {
+    let status = osprey()
+        .arg("lsp")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("spawn lsp");
+    assert!(status.success(), "lsp should exit 0 at EOF");
+}
+
+#[test]
+fn hover_prints_known_builtin_and_is_silent_for_unknown() {
+    let known = run_args(&["--hover", "print"]);
+    assert_eq!(known.code, Some(0));
+    assert!(known.stdout.contains("print"), "{}", known.stdout);
+    let unknown = run_args(&["--hover", "__definitely_not_a_builtin__"]);
+    assert_eq!(unknown.code, Some(0));
+    assert!(unknown.stdout.trim().is_empty(), "{}", unknown.stdout);
+}
+
+#[test]
+fn deps_refuses_a_file_that_did_not_parse() {
+    // [STAGE-SIGNALS-EXACT] A dependency set is only exact if it is derived
+    // from a program that exists. Parsing is best-effort, so a broken file
+    // still yields a partial tree, and reading dependencies off it prints
+    // FEWER than the source asks for — with no way to tell that apart from a
+    // view that genuinely reads nothing. A wrongly empty dirty set is a
+    // subtree that never rebuilds, which is the one bug [STAGE-SIGNALS-DIRTY]
+    // exists to remove, so `--deps` must refuse rather than under-report.
+    let broken = temp_osp(
+        "deps_unparsed",
+        "static effect Signal<T> { read: fn( -> T }\n",
+    );
+    let out = run_file(&broken, &["--deps"]);
+    assert_eq!(
+        out.code,
+        Some(1),
+        "a file that did not parse must not report a dependency set; stdout={} stderr={}",
+        out.stdout,
+        out.stderr
+    );
+    assert!(
+        out.stderr.contains("syntax error"),
+        "the refusal must name the syntax error; stderr={}",
+        out.stderr
+    );
+    assert!(
+        out.stdout.trim().is_empty(),
+        "no dependency line may be printed from a partial tree; stdout={}",
+        out.stdout
+    );
+
+    let unresolved = temp_osp(
+        "deps_unknown_effect",
+        "static effect Signal { read: fn() -> int }\nfn value() = perform Missing.read()\n",
+    );
+    let invalid = run_file(&unresolved, &["--deps"]);
+    assert_eq!(invalid.code, Some(1), "stderr={}", invalid.stderr);
+    assert!(
+        invalid.stderr.contains("unknown effect `Missing`"),
+        "stderr={}",
+        invalid.stderr
+    );
+    assert!(
+        invalid.stdout.trim().is_empty(),
+        "stdout={}",
+        invalid.stdout
+    );
+
+    // The positive control: the same shape, parsing, still reports and exits 0.
+    let good = temp_osp(
+        "deps_parsed",
+        "type Count = { value: int }\nstatic effect Signal<T> { read: fn() -> T }\n         fn counterLabel() = \"count: ${(perform Signal<Count>.read()).value}\"\n",
+    );
+    let ok = run_file(&good, &["--deps"]);
+    assert_eq!(ok.code, Some(0), "stderr={}", ok.stderr);
+    assert!(
+        ok.stdout.contains("counterLabel: Signal<Count>.read"),
+        "stdout={}",
+        ok.stdout
+    );
+
+    let polymorphic = temp_osp(
+        "deps_open_callback",
+        "static effect Signal { read: fn() -> int }\nfn invoke(callback) = callback()\nfn reading() = perform Signal.read()\nfn widget() = invoke(reading)\n",
+    );
+    let open = run_file(&polymorphic, &["--deps"]);
+    assert_eq!(open.code, Some(0), "stderr={}", open.stderr);
+    assert!(
+        open.stdout.contains("invoke: <unknown>"),
+        "stdout={}",
+        open.stdout
+    );
+    assert!(
+        open.stdout.contains("widget: Signal.read"),
+        "stdout={}",
+        open.stdout
+    );
+}
+
+#[path = "cases/formatting.rs"]
+mod formatting;
+
+#[path = "cases/signature_contracts.rs"]
+mod signature_contracts;
+
+#[test]
+fn unknown_flag_exits_two_with_usage() {
+    let prog = temp_osp("flag", HELLO);
+    let o = run_file(&prog, &["--bogus"]);
+    assert_eq!(o.code, Some(2));
+    assert!(o.stderr.contains("unknown flag --bogus"), "{}", o.stderr);
+}
+
+#[test]
+fn check_ok_reports_statement_count() {
+    let prog = temp_osp("ok", HELLO);
+    let o = run_file(&prog, &[]); // default mode is --check
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.contains("ok"), "{}", o.stdout);
+}
+
+#[test]
+fn check_missing_file_exits_two() {
+    let o = run_args(&["/no/such/osprey_e2e_missing.osp"]);
+    assert_eq!(o.code, Some(2));
+    assert!(o.stderr.contains("cannot read"), "{}", o.stderr);
+}
+
+#[test]
+fn check_parse_error_is_reported() {
+    let prog = temp_osp("parse", "fn = = =\n");
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0));
+    assert_ne!(o.stderr, "");
+}
+
+#[test]
+fn flavor_marker_conflict_exits_two() {
+    let prog = temp_osp("flavor_conflict", "// osprey: flavor=ml\nprint 1\n");
+    let o = run_file(&prog, &["--check"]);
+    assert_eq!(o.code, Some(2));
+    assert!(o.stderr.contains("flavor marker"), "{}", o.stderr);
+}
+
+#[test]
+fn check_type_error_is_reported() {
+    let prog = temp_osp("typed", "let y = 1 + \"oops\" - true\n");
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0));
+    assert!(!o.stderr.is_empty(), "{}", o.stderr);
+}
+
+#[test]
+fn llvm_emits_ir_and_rejects_ill_typed() {
+    let ok = temp_osp("llok", HELLO);
+    let good = run_file(&ok, &["--llvm"]);
+    assert_eq!(good.code, Some(0), "stderr={}", good.stderr);
+    assert!(good.stdout.contains("define"), "{}", good.stdout);
+    let bad = temp_osp("llbad", "let y = 1 + true\n");
+    let rejected = run_file(&bad, &["--llvm"]);
+    assert_ne!(rejected.code, Some(0));
+}
+
+#[test]
+fn ast_and_symbols_modes() {
+    let prog = temp_osp("astsym", HELLO);
+    let ast = run_file(&prog, &["--ast"]);
+    assert_eq!(ast.code, Some(0));
+    assert_ne!(ast.stdout, "");
+    let sym = run_file(&prog, &["--symbols"]);
+    assert_eq!(sym.code, Some(0));
+    assert!(sym.stdout.contains("\"name\""), "{}", sym.stdout);
+}
+
+#[test]
+fn run_compiles_links_and_executes() {
+    let prog = temp_osp("run", HELLO);
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.contains("v=hi"), "{}", o.stdout);
+}
+
+#[test]
+fn explicit_resume_runs_the_performer_continuation() {
+    // [EFFECTS-RESUME]
+    let prog = temp_osp("resume_effect", RESUME_EFFECT);
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(
+        o.stdout,
+        "after parse: answer=3\nafter load: answer=3\ntotal=3\n"
+    );
+}
+
+#[test]
+fn a_second_resume_on_one_path_is_rejected_at_compile_time() {
+    // [MULTI-HANDLE-ONCE] An arm for a `once` operation may use `resume` at most
+    // once on every control path, and `Choose.pick` is `once` because it carries
+    // no multiplicity keyword ([MULTI-COMPAT]). The arm is visible at compile
+    // time, so the rejection is too: this program aborted at run time with
+    // `fatal: continuation already resumed` before multiplicity existed, and
+    // [MULTI-COMPAT] narrows exactly that program to a compile-time error — the
+    // same program rejected earlier, not a program that stops working.
+    //
+    // The runtime guard in `src/compiler/runtime/effects_coro.c` stays as a
+    // defensive backstop for invalid compiler output, in the same sense as the
+    // generic handler-key null lookup ([EFFECTS-GENERIC-RUNTIME]). It is no
+    // longer reachable from a source program, which is why this test asserts
+    // the diagnostic instead of the abort.
+    let prog = temp_osp("multishot_resume", MULTISHOT_RESUME);
+    let check = run_file(&prog, &["--check"]);
+    assert_ne!(
+        check.code,
+        Some(0),
+        "two `resume` sites on one path must not type-check; stdout={} stderr={}",
+        check.stdout,
+        check.stderr
+    );
+    let diagnostic = format!("{}{}", check.stdout, check.stderr);
+    for fragment in ["Choose.pick", "may resume more than once", "once"] {
+        assert!(
+            diagnostic.contains(fragment),
+            "expected the [MULTI-HANDLE-ONCE] diagnostic to name {fragment:?}; got {diagnostic}"
+        );
+    }
+    // Rejected at the checker, so nothing is emitted and nothing runs.
+    let run = run_file(&prog, &["--run"]);
+    assert_ne!(run.code, Some(0), "stdout={}", run.stdout);
+    assert!(
+        !run.stdout.contains("total="),
+        "the program must not reach its print; stdout={}",
+        run.stdout
+    );
+}
+
+#[test]
+fn two_resume_sites_on_different_branches_stay_legal() {
+    // [MULTI-HANDLE-ONCE] is affine per PATH, not per arm: only one branch of a
+    // `match` runs, so an arm with a `resume` in each branch resumes at most
+    // once. Osprey has no loop construct ([BUILTIN-ITER]), so branch and
+    // sequence are the only two shapes, and this is the positive control that
+    // keeps the check from degenerating into `contains_resume`. The corpus
+    // program `tests/regressions/effects/abort_vs_resume.test.osp` is the same
+    // shape end to end; this pins the CLI verdict beside its negative.
+    let prog = temp_osp("branchwise_resume", BRANCHWISE_RESUME);
+    let check = run_file(&prog, &["--check"]);
+    assert_eq!(
+        check.code,
+        Some(0),
+        "one `resume` per branch is at most one per path; stderr={}",
+        check.stderr
+    );
+    let run = run_file(&prog, &["--run"]);
+    assert_eq!(run.code, Some(0), "stderr={}", run.stderr);
+    assert!(
+        run.stdout.contains("total=30"),
+        "expected the resumed answer; stdout={}",
+        run.stdout
+    );
+}
+
+#[test]
+fn compile_writes_executable_to_cwd() {
+    let prog = temp_osp("compile", HELLO);
+    // `compile_program_to_disk` names the output after the source stem, in cwd.
+    let artifact = repo_root().join("osprey_cli_e2e_compile");
+    let _ = std::fs::remove_file(&artifact);
+    let o = run_file(&prog, &["--compile"]);
+    let produced = artifact.exists();
+    let _ = std::fs::remove_file(&artifact);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(produced, "expected executable at {}", artifact.display());
+    assert!(o.stdout.contains("osprey_cli_e2e_compile"), "{}", o.stdout);
+}
+
+#[test]
+fn sandbox_blocks_filesystem_capability() {
+    // [SECURITY-CAPABILITY-GATES]
+    let prog = temp_osp("fs", "let c = readFile(\"x.txt\")\n");
+    let o = run_file(&prog, &["--llvm", "--no-fs"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("security: `readFile` is disabled by --no-fs"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn network_gates_run_before_type_checking() {
+    // [SECURITY-CAPABILITY-GATES] Both calls have the wrong arity. The security
+    // diagnostic wins because policy enforcement precedes type checking.
+    for (name, source, flag, expected) in [
+        (
+            "blocked_http",
+            "let r = httpGet()\n",
+            "--no-http",
+            "security: `httpGet` is disabled by --no-http",
+        ),
+        (
+            "blocked_websocket",
+            "let r = websocketConnect()\n",
+            "--no-websocket",
+            "security: `websocketConnect` is disabled by --no-websocket",
+        ),
+    ] {
+        let prog = temp_osp(name, source);
+        let o = run_file(&prog, &["--llvm", flag]);
+        assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+        assert!(o.stderr.contains(expected), "{}", o.stderr);
+        assert!(!o.stderr.contains("expects exactly"), "{}", o.stderr);
+    }
+}
+
+#[test]
+fn no_ffi_rejects_foreign_declarations() {
+    // [SECURITY-FFI-GATE]
+    let prog = temp_osp(
+        "blocked_ffi",
+        "extern fn foreignCall(value: int) -> int\nlet value = foreignCall(1)\n",
+    );
+    let o = run_file(&prog, &["--check", "--no-ffi"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("security: extern function `foreignCall` is disabled by --no-ffi"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn websocket_language_surface_links_to_runtime() {
+    // [BUILTIN-WEBSOCKET] This crosses the language/codegen/archive boundary;
+    // an accidental camel-case external symbol fails at link time.
+    let prog = temp_osp(
+        "websocket_runtime",
+        "let server = websocketCreateServer(19093, \"127.0.0.1\", \"/chat\")\n\
+         print(server > 0)\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "true\n");
+}
+
+#[test]
+fn quiet_suppresses_the_ok_line() {
+    let prog = temp_osp("quiet", HELLO);
+    let o = run_file(&prog, &["--check", "--quiet"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
+}
+
+#[test]
+fn llvm_reports_a_codegen_error() {
+    let prog = temp_osp("cgllvm", CODEGEN_REJECTED);
+    let o = run_file(&prog, &["--llvm"]);
+    assert_ne!(o.code, Some(0));
+    assert!(o.stderr.contains("codegen"), "{}", o.stderr);
+}
+
+#[test]
+fn run_reports_a_codegen_error() {
+    let prog = temp_osp("cgrun", CODEGEN_REJECTED);
+    let o = run_file(&prog, &["--run"]);
+    assert_ne!(o.code, Some(0));
+    assert!(o.stderr.contains("codegen"), "{}", o.stderr);
+}
+
+#[test]
+fn a_generic_closure_value_is_rejected_by_the_type_gate() {
+    // The two tests above assert a CODEGEN failure, so they go quiet the moment
+    // their input starts being rejected earlier — which is exactly what happened
+    // to this program. Pinning the checker's message here means a future move of
+    // the gate fails a test that names the gate, instead of silently draining
+    // the codegen arms of coverage.
+    let prog = temp_osp("genval", GENERIC_AS_VALUE);
+    let o = run_file(&prog, &["--llvm"]);
+    assert_ne!(o.code, Some(0));
+    assert!(
+        o.stderr
+            .contains("a closure value with a still-generic type cannot be interpolated"),
+        "{}",
+        o.stderr
+    );
+}
+
+#[test]
+fn compile_reports_a_failing_c_compiler() {
+    // `false` runs and exits non-zero -> the "cc failed to compile" branch.
+    let prog = temp_osp("ccfail", HELLO);
+    let o = run_file_cc(&prog, "--compile", "false");
+    let _ = std::fs::remove_file(repo_root().join("osprey_cli_e2e_ccfail"));
+    assert_ne!(o.code, Some(0));
+    assert!(!o.stderr.is_empty(), "{}", o.stderr);
+}
+
+#[test]
+fn run_reports_an_uninvokable_c_compiler() {
+    // A missing driver can't be spawned at all -> the "could not invoke" branch.
+    let prog = temp_osp("ccmiss", HELLO);
+    let o = run_file_cc(&prog, "--run", "osprey_no_such_cc_zzz");
+    assert_ne!(o.code, Some(0));
+    assert!(!o.stderr.is_empty(), "{}", o.stderr);
+}
+
+// --- testing framework (docs/specs/language/0027-TestingFramework.md) ---------------
+
+const PASSING_TESTS: &str = "test(\"adds\", fn() => expect(1 + 1, 2))\n\
+test(\"labeled\", fn() => check(\"sum\", 4, 2 + 2))\n";
+
+const FAILING_TESTS: &str = "test(\"bad math\", fn() => expect(1 + 1, 3))\n\
+test(\"good math\", fn() => expect(2 + 2, 4))\n";
+
+/// Write `body` to `<dir>/<name>` and return the path.
+fn write_in(dir: &Path, name: &str, body: &str) -> PathBuf {
+    let path = dir.join(name);
+    let _ = std::fs::write(&path, body);
+    path
+}
+
+#[cfg(unix)]
+fn executable_script(dir: &Path, name: &str, body: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let script = write_in(dir, name, body);
+    if let Ok(metadata) = std::fs::metadata(&script) {
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(0o755);
+        let _ = std::fs::set_permissions(&script, permissions);
+    }
+    script
+}
+
+#[cfg(unix)]
+const CONCURRENCY_PROBE_SCRIPT: &str = "#!/bin/sh\nmarker=\"$OSPREY_PARALLEL_PROBE/worker-$$\"\n\
+         : > \"$marker\"\n\
+         count=$(find \"$OSPREY_PARALLEL_PROBE\" -name 'worker-*' | wc -l)\n\
+         if [ \"$count\" -gt 1 ]; then : > \"$OSPREY_PARALLEL_PROBE/overlap\"; fi\n\
+         sleep 1\nrm -f \"$marker\"\nexit 1\n";
+
+#[cfg(unix)]
+fn parallel_probe_fixture(
+    root: &Path,
+    tests: &Path,
+    bin: &Path,
+    driver_name: &str,
+) -> (PathBuf, PathBuf) {
+    let probe = root.join("probe");
+    for dir in [tests, bin, &probe] {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = write_in(tests, "one.test.osp", PASSING_TESTS);
+    let _ = write_in(tests, "two.test.osp", PASSING_TESTS);
+    let driver = executable_script(bin, driver_name, CONCURRENCY_PROBE_SCRIPT);
+    (probe, driver)
+}
+
+#[cfg(unix)]
+fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
+        .env("OSPREY_CC", driver)
+        .env("OSPREY_PARALLEL_PROBE", dir.join("probe"));
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+    finish(cmd)
+}
+
+#[cfg(unix)]
+fn run_conformance_probe(root: &Path, jobs: Option<&str>) -> Out {
+    let mut cmd = Command::new("zsh");
+    let _ = cmd
+        .arg(repo_root().join("src/crates/run_test_corpus.sh"))
+        .arg("default")
+        .current_dir(repo_root())
+        .env("OSPREY_ROOT", root)
+        .env("OSPREY_PARALLEL_PROBE", root.join("probe"));
+    if let Some(value) = jobs {
+        let _ = cmd.env("OSPREY_TEST_JOBS", value);
+    }
+    finish(cmd)
+}
+
+#[cfg(unix)]
+fn assert_parallel_default_has_serial_escape(
+    probe: &Path,
+    mut run: impl FnMut(Option<&str>) -> Out,
+    failure: &str,
+) {
+    let parallel = run(None);
+    assert_eq!(parallel.code, Some(1), "{}", parallel.stderr);
+    let overlap = probe.join("overlap");
+    assert!(overlap.exists(), "{failure}");
+    let _ = std::fs::remove_file(&overlap);
+    let serial = run(Some("1"));
+    assert_eq!(serial.code, Some(1), "{}", serial.stderr);
+    assert!(!overlap.exists(), "OSPREY_TEST_JOBS=1 was not serial");
+}
+
+#[cfg(unix)]
+fn run_cache_probe(dir: &Path, driver: &Path) -> Out {
+    let mut cmd = osprey();
+    let _ = cmd
+        .args(["test", dir.to_string_lossy().as_ref(), "--quiet"])
+        .env("OSPREY_CC", driver)
+        .env("OSPREY_CC_COUNT", dir.join("cc-count"))
+        .env("OSPREY_TEST_CACHE_DIR", dir.join("cache"));
+    finish(cmd)
+}
+
+// [TESTING-BUILTIN-TEST][TESTING-BUILTIN-EXPECT][TESTING-BUILTIN-CHECK]
+// [TESTING-RUNTIME][TESTING-TAP][TESTING-EXIT] a test binary reports TAP and
+// exits by outcome.
+#[test]
+fn test_builtins_emit_tap_and_exit_status() {
+    let pass = temp_osp("tap_pass", PASSING_TESTS);
+    let o = run_file(&pass, &["--run"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert!(o.stdout.contains("ok 1 - adds"), "{}", o.stdout);
+    assert!(o.stdout.contains("1..2"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=2 passed=2 failed=0"),
+        "{}",
+        o.stdout
+    );
+
+    let fail = temp_osp("tap_fail", FAILING_TESTS);
+    let o = run_file(&fail, &["--run"]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# expect failed: expected 3, got 2"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("not ok 1 - bad math"), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 2 - good math"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=2 passed=1 failed=1"),
+        "{}",
+        o.stdout
+    );
+}
+
+// [TESTING-FILTER] the env var exact-matches one case; others skip silently.
+#[test]
+fn test_filter_env_selects_one_case() {
+    let prog = temp_osp("tap_filter", FAILING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .arg(&prog)
+        .arg("--run")
+        .env("OSPREY_TEST_FILTER", "good math");
+    let o = finish(cmd);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 1 - good math"), "{}", o.stdout);
+    assert!(!o.stdout.contains("bad math"), "{}", o.stdout);
+    assert!(o.stdout.contains("1..1"), "{}", o.stdout);
+}
+
+// [TESTING-LIST] static discovery lists literal names with positions and
+// skips dynamic names; a testless file lists as [].
+#[test]
+fn list_tests_reports_literal_cases_as_json() {
+    let prog = temp_osp(
+        "list_tests",
+        "let name = \"dyn\"\ntest(\"first\", fn() => expect(1, 1))\ntest(name, fn() => expect(1, 1))\n",
+    );
+    let o = run_file(&prog, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert_eq!(
+        o.stdout.trim(),
+        "[{\"name\":\"first\",\"line\":2,\"column\":1}]"
+    );
+
+    let none = temp_osp("list_none", HELLO);
+    let o = run_file(&none, &["--list-tests"]);
+    assert_eq!(o.stdout.trim(), "[]");
+}
+
+// [TESTING-DOC] a `///` block above a case travels through `--list-tests` as
+// `summary` (the Test Explorer's inline description) and `doc` (the hover
+// markdown); an undocumented case emits neither key.
+#[test]
+fn list_tests_carries_case_documentation() {
+    let prog = temp_osp(
+        "list_tests_docs",
+        "fn add(a, b) = a + b\n\
+         /// Addition is commutative.\n\
+         ///\n\
+         /// # Parameters\n\
+         /// - left: the first addend\n\
+         ///\n\
+         /// # Since\n\
+         /// 0.3\n\
+         test(\"commutes\", fn() => expect(add(1, 2), add(2, 1)))\n\
+         test(\"bare\", fn() => expect(1, 1))\n",
+    );
+    let o = run_file(&prog, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    let out = o.stdout.trim();
+    assert!(
+        out.contains("\"summary\":\"Addition is commutative.\""),
+        "{out}"
+    );
+    assert!(out.contains("**Parameters**"), "sections render: {out}");
+    assert!(
+        out.contains("- `left` \\u2014 the first addend")
+            || out.contains("- `left` — the first addend"),
+        "{out}"
+    );
+    assert!(out.contains("**Since**"), "{out}");
+    // The case's own line, not the doc block's first line.
+    assert!(out.contains("\"name\":\"commutes\",\"line\":9"), "{out}");
+    // The undocumented case keeps the bare three-key shape.
+    assert!(
+        out.contains("{\"name\":\"bare\",\"line\":10,\"column\":1}"),
+        "{out}"
+    );
+    // Whatever the content, the whole array must be a single JSON line the
+    // extension can JSON.parse.
+    assert!(!out.trim_end().contains('\n'), "one line of JSON: {out}");
+
+    // The ML twin lowers the `(** … *)` form to the same wire shape.
+    let ml_dir = temp_dir("list_tests_docs_ml");
+    let ml = write_in(
+        &ml_dir,
+        "docs.test.ospml",
+        "add a b = a + b\n\
+         (** Addition is commutative. *)\n\
+         test \"commutes\" (\\() => check \"c\" (add 1 2) (add 2 1))\n",
+    );
+    let o = run_file(&ml, &["--list-tests"]);
+    assert_eq!(o.code, Some(0), "{}", o.stderr);
+    assert!(
+        o.stdout
+            .contains("\"summary\":\"Addition is commutative.\""),
+        "{}",
+        o.stdout
+    );
+}
+
+// [TESTING-CLI-RUN][TESTING-FILE-CONVENTION] the runner discovers
+// *.test.osp{,ml} under a directory, streams TAP under headers, and aggregates
+// the exit status.
+/// [TESTING-SKIP-WARNING] a skipped case is never silent: `osprey test` echoes
+/// every TAP `# SKIP` directive as a stderr warning naming the case and reason.
+#[test]
+fn test_subcommand_warns_on_every_skipped_case() {
+    let dir = temp_dir("skip-warns");
+    let _ = write_in(
+        &dir,
+        "skips.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip(string)\n\
+         test(\"parked case\", fn() => Skip(\"blocked on #123\"))\n\
+         test(\"live case\", fn() => expect(1, 1))\n",
+    );
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(0), "{}\n{}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("# SKIP blocked on #123"), "{}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("warning: test 'parked case' skipped: blocked on #123"),
+        "{}",
+        o.stderr
+    );
+    assert!(!o.stderr.contains("live case"), "{}", o.stderr);
+}
+
+/// [TESTING-VERDICT] `test` reports the states the program's OWN `Verdict`
+/// declares. A payload-free `Skip`/`Fail` reports with no reason rather than
+/// failing codegen on a binder the declaration never named, and a reasonless
+/// skip still prints a bare `# SKIP` directive that the diagnostic path sees.
+///
+/// [TESTING-SKIP-REASON] and that reasonless skip is an ERROR: the TAP is
+/// unchanged — the case still reports skipped, not failed — but the runner
+/// fails the suite, because a hole in coverage nobody wrote a cause for is a
+/// defect rather than a debt someone chose.
+#[test]
+fn a_verdict_declaring_payload_free_states_reports_each_of_them() {
+    let dir = temp_dir("verdict-bare");
+    let _ = write_in(
+        &dir,
+        "bare.test.osp",
+        "type Verdict = Pass | Fail | Skip\n\
+         test(\"parked\", fn() => Skip)\n\
+         test(\"green\", fn() => Pass)\n",
+    );
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}\n{}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("ok 1 - parked # SKIP\n"), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 2 - green\n"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=2 passed=1 failed=0 skipped=1"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        o.stderr
+            .contains("error: test 'parked' skipped with no reason; every skip must name one"),
+        "{}",
+        o.stderr
+    );
+    assert!(
+        !o.stderr.contains("warning: test 'parked'"),
+        "an unexplained skip is an error, never also a warning: {}",
+        o.stderr
+    );
+}
+
+/// [TESTING-SKIP-REASON] a skip that NAMES a reason stays a warning and keeps
+/// the suite green — the two strengths are decided by the reason alone, not by
+/// whether the `Verdict` declaration gives `Skip` a payload at all.
+#[test]
+fn a_reasoned_skip_warns_while_an_unexplained_one_fails_the_suite() {
+    let reasoned = temp_dir("skip-reasoned");
+    let _ = write_in(
+        &reasoned,
+        "ok.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip(string)\n\
+         test(\"parked\", fn() => Skip(\"blocked on #123\"))\n",
+    );
+    let green = run_args(&["test", reasoned.to_string_lossy().as_ref()]);
+    assert_eq!(green.code, Some(0), "{}\n{}", green.stdout, green.stderr);
+    assert!(
+        green
+            .stderr
+            .contains("warning: test 'parked' skipped: blocked on #123"),
+        "{}",
+        green.stderr
+    );
+
+    // The SAME declaration with an empty reason is the error case: the author
+    // had somewhere to write the cause and left it blank.
+    let blank = temp_dir("skip-blank");
+    let _ = write_in(
+        &blank,
+        "blank.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip(string)\n\
+         test(\"parked\", fn() => Skip(\"\"))\n",
+    );
+    let red = run_args(&["test", blank.to_string_lossy().as_ref()]);
+    assert_eq!(red.code, Some(1), "{}\n{}", red.stdout, red.stderr);
+    assert!(
+        red.stderr
+            .contains("error: test 'parked' skipped with no reason"),
+        "{}",
+        red.stderr
+    );
+    assert!(
+        red.stdout.contains("# suites: 0 passed, 1 failed"),
+        "{}",
+        red.stdout
+    );
+}
+
+/// [TESTING-VERDICT] the payload is read per state, not per union: a `Verdict`
+/// that gives `Fail` a reason and `Skip` none reports both correctly.
+#[test]
+fn a_verdict_may_give_one_state_a_reason_and_another_none() {
+    let dir = temp_dir("verdict-mixed");
+    let _ = write_in(
+        &dir,
+        "mixed.test.osp",
+        "type Verdict = Pass | Fail(string) | Skip\n\
+         test(\"parked\", fn() => Skip)\n\
+         test(\"broken\", fn() => Fail(\"expected 3\"))\n",
+    );
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}\n{}", o.stdout, o.stderr);
+    assert!(o.stdout.contains("ok 1 - parked # SKIP\n"), "{}", o.stdout);
+    assert!(o.stdout.contains("# fail: expected 3"), "{}", o.stdout);
+    assert!(o.stdout.contains("not ok 2 - broken"), "{}", o.stdout);
+}
+
+/// [TESTING-VERDICT] a `Verdict` state `test` has no report primitive for is
+/// rejected by name, not by a binder error from a pattern nobody wrote.
+#[test]
+fn a_verdict_state_test_cannot_report_is_rejected_by_name() {
+    let prog = temp_osp(
+        "verdict_extra_state",
+        "type Verdict = Pass | Fail(string) | Skip(string) | Todo(string)\n\
+         test(\"case\", fn() => Pass)\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_ne!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stderr.contains("Todo"), "{}", o.stderr);
+    assert!(o.stderr.contains("Verdict"), "{}", o.stderr);
+}
+
+#[test]
+fn test_subcommand_runs_directories_and_files() {
+    let dir = temp_dir("suite");
+    let _ = write_in(&dir, "pass.test.osp", PASSING_TESTS);
+    let _ = write_in(
+        &dir,
+        "fail.test.ospml",
+        "test \"ml bad\" (\\() => check \"v\" 3 (1 + 1))\n",
+    );
+    let _ = write_in(&dir, "ignored.osp", HELLO);
+
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(o.stdout.contains("# file:"), "{}", o.stdout);
+    assert!(o.stdout.contains("ok 1 - adds"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# check 'v' failed: expected 3, got 2"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        o.stdout.contains("# suites: 1 passed, 1 failed"),
+        "{}",
+        o.stdout
+    );
+    assert!(
+        !o.stdout.contains("v=hi"),
+        "plain .osp files must be ignored"
+    );
+
+    // A single file runs regardless of naming; --filter reaches the children.
+    let single = write_in(&dir, "single.osp", FAILING_TESTS);
+    let o = run_args(&[
+        "test",
+        single.to_string_lossy().as_ref(),
+        "--filter",
+        "good math",
+        "--quiet",
+    ]);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# suites: 1 passed, 0 failed"),
+        "{}",
+        o.stdout
+    );
+    assert!(!o.stdout.contains("# file:"), "--quiet drops headers");
+}
+
+// [TESTING-PARALLEL] Independent suites compile concurrently by default, while
+// configuration can force serial execution for constrained or diagnostic runs.
+#[cfg(unix)]
+#[test]
+fn test_subcommand_parallel_default_has_serial_escape_hatch() {
+    let dir = temp_dir("suite_parallel");
+    let (probe, driver) = parallel_probe_fixture(&dir, &dir, &dir, "probe-cc.sh");
+    assert_parallel_default_has_serial_escape(
+        &probe,
+        |jobs| run_concurrency_probe(&dir, &driver, jobs),
+        "test suites compiled serially by default",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
+    let root = temp_dir("conformance_parallel");
+    let tests = root.join("tests");
+    let bin = root.join("target/release");
+    let (probe, _) = parallel_probe_fixture(&root, &tests, &bin, "osprey");
+    assert_parallel_default_has_serial_escape(
+        &probe,
+        |jobs| run_conformance_probe(&root, jobs),
+        "conformance suites ran serially by default",
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn test_subcommand_reuses_unchanged_compiled_suites() {
+    // [TESTING-NATIVE-CACHE] cached suites reuse compilation and linking;
+    // untracked link directories still rebuild on every invocation.
+    let dir = temp_dir("suite_cache");
+    let _ = write_in(&dir, "cached.test.osp", PASSING_TESTS);
+    let _ = write_in(
+        &dir,
+        "cached_http.test.osp",
+        "let client = httpCreateClient(\"http://127.0.0.1:1\", 1) ?: -1\n\
+         let closed = httpCloseClient(client) ?: -1\n\
+         test(\"http client\", fn() => expect(closed, 0))\n",
+    );
+    let linked = format!("// @link: m\n{PASSING_TESTS}");
+    let _ = write_in(&dir, "cached_link.test.osp", &linked);
+    let custom_search = format!("// @linkdir: {}\n{PASSING_TESTS}", dir.display());
+    let _ = write_in(&dir, "uncached_linkdir.test.osp", &custom_search);
+    let driver = executable_script(
+        &dir,
+        "counting-cc.sh",
+        "#!/bin/sh\nprintf x >> \"$OSPREY_CC_COUNT\"\nexec clang \"$@\"\n",
+    );
+
+    let first = run_cache_probe(&dir, &driver);
+    assert_eq!(first.code, Some(0), "{}", first.stderr);
+    // Three cached object/link pairs, plus one uncached combined invocation.
+    assert_eq!(read_text(&dir.join("cc-count")), "xxxxxxx");
+    let second = run_cache_probe(&dir, &driver);
+    assert_eq!(second.code, Some(0), "{}", second.stderr);
+    assert_eq!(read_text(&dir.join("cc-count")), "xxxxxxxx");
+}
+
+#[cfg(unix)]
+#[test]
+fn run_removes_temporary_native_artifacts() {
+    let dir = temp_dir("native_cleanup");
+    let scratch = dir.join("scratch");
+    let _ = std::fs::create_dir_all(&scratch);
+    let suite = write_in(&dir, "cleanup.test.osp", PASSING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .args([suite.to_string_lossy().as_ref(), "--run", "--quiet"])
+        .env("TMPDIR", &scratch)
+        .env_remove("OSPREY_TEST_CACHE_DIR");
+    let output = finish(cmd);
+    assert_eq!(output.code, Some(0), "{}", output.stderr);
+    let leaked = std::fs::read_dir(&scratch)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .map(|entry| entry.path())
+        .collect::<Vec<_>>();
+    assert!(leaked.is_empty(), "temporary artifacts leaked: {leaked:?}");
+}
+
+// [TESTING-CLI-RUN-SCRATCH] `--run` on a test file keeps relative output out of
+// the caller's directory, in both flavors; an ordinary program still writes there.
+#[test]
+fn run_keeps_test_file_output_out_of_the_callers_directory() {
+    const OUTPUT: &str = "relative_output.txt";
+    let osp = "let saved = writeFile(\"relative_output.txt\", \"kept\")\n\
+               match saved {\n    Success => print(\"saved\")\n    Error => print(\"failed\")\n}\n\
+               match readFile(\"relative_output.txt\") {\n    Success => print(\"read\")\n    Error => print(\"lost\")\n}\n";
+    let ospml = "saved = writeFile \"relative_output.txt\" \"kept\"\n\
+                 match saved\n    Success _value => print \"saved\"\n    Error _message => print \"failed\"\n\
+                 match readFile \"relative_output.txt\"\n    Success _value => print \"read\"\n    Error _message => print \"lost\"\n";
+    for (name, body, leaves_output) in [
+        ("suite.test.osp", osp, false),
+        ("suite.test.ospml", ospml, false),
+        ("program.osp", osp, true),
+        ("program.ospml", ospml, true),
+    ] {
+        let dir = temp_dir(&format!("run_cwd_{}", name.replace('.', "_")));
+        let caller = dir.join("caller");
+        let scratch = dir.join("scratch");
+        let _ = std::fs::create_dir_all(&caller);
+        let _ = std::fs::create_dir_all(&scratch);
+        let source = write_in(&dir, name, body);
+        let mut cmd = osprey();
+        let _ = cmd
+            .args([source.to_string_lossy().as_ref(), "--run", "--quiet"])
+            .current_dir(&caller)
+            .env("TMPDIR", &scratch)
+            .env_remove("OSPREY_TEST_CACHE_DIR");
+        let output = finish(cmd);
+        assert_eq!(output.code, Some(0), "{name}: {}", output.stderr);
+        assert_eq!(output.stdout, "saved\nread\n", "{name}");
+        assert_eq!(caller.join(OUTPUT).exists(), leaves_output, "{name}");
+        let leaked = std::fs::read_dir(&scratch)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        assert!(leaked.is_empty(), "{name}: scratch leaked: {leaked:?}");
+    }
+}
+
+// A compile-error suite fails the run; an empty discovery set is loud.
+#[test]
+fn test_subcommand_reports_broken_and_missing_suites() {
+    let dir = temp_dir("suite_bad");
+    let _ = write_in(&dir, "broken.test.osp", "test(\"x\", fn() => expect(1)\n");
+    let o = run_args(&["test", dir.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# suites: 0 passed, 1 failed"),
+        "{}",
+        o.stdout
+    );
+
+    let empty = temp_dir("suite_empty");
+    let o = run_args(&["test", empty.to_string_lossy().as_ref()]);
+    assert_eq!(o.code, Some(1), "{}", o.stderr);
+    assert!(o.stderr.contains("no test files found"), "{}", o.stderr);
+
+    let o = run_args(&["test", "--filter"]);
+    assert_eq!(o.code, Some(2), "{}", o.stderr);
+    let o = run_args(&["test", "--nonsense"]);
+    assert_eq!(o.code, Some(2), "{}", o.stderr);
+    let o = run_args(&["test", "a", "b"]);
+    assert_eq!(o.code, Some(2), "{}", o.stderr);
+}
+
+// [TESTING-COVERAGE-CLI][TESTING-COVERAGE-JSON] --coverage instruments each
+// suite and prints per-file and total line rates; --coverage-json also writes
+// the merged machine-readable report the editor integration consumes.
+#[test]
+fn test_subcommand_coverage_reports_lines_and_writes_json() {
+    let dir = temp_dir("suite_cov");
+    let _ = write_in(&dir, "pass.test.osp", PASSING_TESTS);
+    let json = dir.join("cov.json");
+    let o = run_args(&[
+        "test",
+        dir.to_string_lossy().as_ref(),
+        "--coverage-json",
+        json.to_string_lossy().as_ref(),
+    ]);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stdout.contains("# coverage: "), "{}", o.stdout);
+    assert!(o.stdout.contains("# coverage total: "), "{}", o.stdout);
+    let report = std::fs::read_to_string(&json).expect("coverage json");
+    assert!(report.starts_with("{\"files\":{"), "{report}");
+    assert!(report.contains("pass.test.osp"), "{report}");
+    assert!(report.contains("\"lines\":{"), "{report}");
+
+    // --quiet drops the per-file rows but keeps the aggregate.
+    let o = run_args(&[
+        "test",
+        dir.to_string_lossy().as_ref(),
+        "--coverage",
+        "--quiet",
+    ]);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(!o.stdout.contains("# coverage: "), "{}", o.stdout);
+    assert!(o.stdout.contains("# coverage total: "), "{}", o.stdout);
+}
+
+// A type-error suite fails before execution, so it produces no dump; the run
+// keeps going, and an unwritable JSON path is reported without aborting.
+#[test]
+fn test_subcommand_coverage_survives_type_errors_and_bad_json_paths() {
+    let dir = temp_dir("suite_cov_bad");
+    let _ = write_in(&dir, "pass.test.osp", PASSING_TESTS);
+    let _ = write_in(&dir, "typebad.test.osp", "let n: int = \"nope\"\n");
+    let bogus = dir.join("no-such-dir").join("cov.json");
+    let o = run_args(&[
+        "test",
+        dir.to_string_lossy().as_ref(),
+        "--coverage-json",
+        bogus.to_string_lossy().as_ref(),
+        "--quiet",
+    ]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# suites: 1 passed, 1 failed"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stderr.contains("type mismatch"), "{}", o.stderr);
+    assert!(o.stderr.contains("no coverage dump"), "{}", o.stderr);
+    assert!(
+        o.stderr.contains("cannot write coverage json"),
+        "{}",
+        o.stderr
+    );
+}
+
+// A nested test() must not silently reshuffle counters: it fails the
+// enclosing case loudly [TESTING-BUILTIN-TEST], and a zero-case run still
+// prints its plan so a matchless filter is visible [TESTING-TAP].
+#[test]
+fn nested_tests_fail_loudly_and_zero_case_runs_keep_the_plan() {
+    let nested = temp_osp(
+        "tap_nested",
+        "test(\"outer\", fn() => {\n    expect(1, 2)\n    test(\"inner\", fn() => expect(3, 3))\n})\n",
+    );
+    let o = run_file(&nested, &["--run"]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# nested test 'inner' skipped"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("not ok 1 - outer"), "{}", o.stdout);
+
+    let prog = temp_osp("tap_nomatch", PASSING_TESTS);
+    let mut cmd = osprey();
+    let _ = cmd
+        .arg(&prog)
+        .arg("--run")
+        .env("OSPREY_TEST_FILTER", "matches nothing");
+    let o = finish(cmd);
+    assert_eq!(o.code, Some(0), "{}", o.stdout);
+    assert!(o.stdout.contains("1..0"), "{}", o.stdout);
+    assert!(
+        o.stdout.contains("# tests=0 passed=0 failed=0"),
+        "{}",
+        o.stdout
+    );
+}
+
+// [TESTING-EQUALITY] an Error operand is a visible mismatch, never a blind
+// payload read. `checkedAdd` is the value-level overflow spelling; `intDiv`
+// returns a plain `int` under [ARITH-EFFECT], so it has no Error to render.
+#[test]
+fn error_result_assertions_render_the_error() {
+    let prog = temp_osp(
+        "tap_err_result",
+        "test(\"overflow\", fn() => expect(checkedAdd(9223372036854775807, 1), 2))\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(1), "{}", o.stdout);
+    assert!(
+        o.stdout
+            .contains("# expect failed: expected 2, got Error(integer overflow)"),
+        "{}",
+        o.stdout
+    );
+    assert!(o.stdout.contains("not ok 1 - overflow"), "{}", o.stdout);
+}
+
+/// The whole call-site type-application pipeline — parse, check, lower, emit,
+/// link, run — for the shape that has no other spelling: a binder appearing in
+/// no parameter position. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_pins_an_instantiation_end_to_end() {
+    let prog = temp_osp(
+        "turbofish_run",
+        "fn identity<T>(x: T) -> T = x\n\
+         fn emptyOf<T>() -> List<T> = []\n\
+         fn pickOf<T, U>(first: T, second: U) -> T = first\n\
+         let n = identity<int>(5)\n\
+         let s = identity<string>(\"os\")\n\
+         let nested = length(identity<List<int>>([1, 2]))\n\
+         let empty = length(emptyOf<int>())\n\
+         let kept = pickOf<int, string>(7, \"seven\")\n\
+         print(\"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\")\n",
+    );
+    let o = run_file(&prog, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// The ML twin of the same program prints the same bytes ([FLAVOR-IR-EQUIV]).
+#[test]
+fn the_ml_written_type_argument_prints_the_same_bytes() {
+    let path = std::env::temp_dir().join("osprey_cli_e2e_turbofish_run_ml.ospml");
+    let _ = std::fs::write(
+        &path,
+        "identity<T> : T -> T\n\
+         identity x = x\n\
+         emptyOf<T> : Unit -> List<T>\n\
+         emptyOf () = []\n\
+         pickOf<T, U> : (T, U) -> T\n\
+         pickOf (first, second) = first\n\
+         n = identity<int> 5\n\
+         s = identity<string> \"os\"\n\
+         nested = length (identity<List<int>> [1, 2])\n\
+         empty = length (emptyOf<int> ())\n\
+         kept = pickOf<int, string> (7, \"seven\")\n\
+         print \"n=${n} s=${s} nested=${nested} empty=${empty} kept=${kept}\"\n",
+    );
+    let o = run_file(&path, &["--run"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert_eq!(o.stdout, "n=5 s=os nested=2 empty=0 kept=7\n");
+}
+
+/// A written list that misses the declared binder count is rejected before
+/// anything is emitted, naming both counts. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_arity",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int, string>(5)}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr
+            .contains("function `identity` takes 1 type argument(s), got 2"),
+        "stderr={}",
+        o.stderr
+    );
+}
+
+/// A written argument contradicting the value argument is a type error, not a
+/// silently ignored annotation. [TYPE-GENERICS-APPLY]
+#[test]
+fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
+    let prog = temp_osp(
+        "turbofish_contradiction",
+        "fn identity<T>(x: T) -> T = x\n\
+         print(\"${identity<int>(\\\"text\\\")}\")\n",
+    );
+    let o = run_file(&prog, &["--check"]);
+    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
+    assert!(
+        o.stderr.contains("cannot unify int with string"),
+        "stderr={}",
+        o.stderr
+    );
+}
+
+/// A program ends by returning: `main`'s integer is its exit status in every
+/// flavor, and every other shape of program exits 0. [ENTRY-EXIT-STATUS]
+#[test]
+fn main_returning_an_integer_sets_the_exit_status_in_every_flavor() {
+    for (name, source, status, stdout) in [
+        (
+            "default_3",
+            "fn main() -> int = {\n print(\"failing\")\n 3\n}\n",
+            3,
+            "failing\n",
+        ),
+        ("default_0", "fn main() -> int = 0\n", 0, ""),
+        ("default_255", "fn main() = 255\n", 255, ""),
+        ("default_unit", "fn main() = print(\"fine\")\n", 0, "fine\n"),
+        ("default_string", "fn main() = \"text\"\n", 0, ""),
+        ("default_bool", "fn main() = true\n", 0, ""),
+        (
+            "default_script",
+            "print(\"script\")\nlet x = 4\nprint(\"${x}\")\n",
+            0,
+            "script\n4\n",
+        ),
+        (
+            "default_computed",
+            "fn fails(n) = n > 2\nfn main() = match fails(3) {\n true => 7\n false => 0\n}\n",
+            7,
+            "",
+        ),
+    ] {
+        let program = temp_osp(&format!("exit_status_{name}"), source);
+        let run = run_file(&program, &["--run", "--quiet", "--no-warnings"]);
+        assert_eq!(run.code, Some(status), "{name}: stderr={}", run.stderr);
+        assert_eq!(run.stdout, stdout, "{name}");
+    }
+    for (name, extension, source, status) in [
+        (
+            "ml",
+            "ospml",
+            "main () =\n    print \"failing\"\n    3\n",
+            3,
+        ),
+        ("ml_unit", "ospml", "main () = print \"fine\"\n", 0),
+        (
+            "python",
+            "py",
+            "# osprey: flavor=python\n\ndef main():\n    print(\"failing\")\n    return 3\n",
+            3,
+        ),
+        (
+            "python_none",
+            "py",
+            "# osprey: flavor=python\n\ndef main():\n    print(\"fine\")\n",
+            0,
+        ),
+    ] {
+        let directory =
+            std::env::temp_dir().join(format!("osprey_exit_{}_{name}", std::process::id()));
+        std::fs::create_dir_all(&directory).expect("create temp dir");
+        let program = directory.join(format!("exit.{extension}"));
+        std::fs::write(&program, source).expect("write source");
+        let run = run_file(&program, &["--run", "--quiet", "--no-warnings"]);
+        assert_eq!(run.code, Some(status), "{name}: stderr={}", run.stderr);
+        std::fs::remove_dir_all(&directory).expect("remove temp dir");
+    }
+    // A failed test outranks whatever `main` returned; a passing one defers to it.
+    let failed = temp_osp(
+        "exit_status_failed_test",
+        "fn main() = {\n test(\"no\", fn() => expect(1, 2))\n 0\n}\n",
+    );
+    assert_eq!(
+        run_file(&failed, &["--run", "--quiet", "--no-warnings"]).code,
+        Some(1)
+    );
+    let passed = temp_osp(
+        "exit_status_passed_test",
+        "fn main() = {\n test(\"yes\", fn() => expect(1, 1))\n 9\n}\n",
+    );
+    assert_eq!(
+        run_file(&passed, &["--run", "--quiet", "--no-warnings"]).code,
+        Some(9)
+    );
+}
+
+/// The GitHub Action's contract: one JSON line on stdin, `key=value` lines on stdout,
+/// and the exit status of `main`. [GHA-FERRY-STDIN] [GHA-IO-CONTRACT] [ENTRY-EXIT-STATUS]
+#[test]
+fn a_json_line_on_stdin_becomes_outputs_and_an_exit_status() {
+    let program = temp_osp(
+        "gha_ferry",
+        "fn member(members, name, position) = match listGet(members, position) {\n\
+             Success { value } => match value {\n\
+                 JsonMember(key, json) => if key == name { json } else { member(members, name, position + 1) }\n\
+             }\n\
+             Error => JsonNull\n\
+         }\n\
+         fn answer(members) = match member(members, \"who\", 0) {\n\
+             JsonString(who) => {\n\
+                 print(\"greeting=hello ${who}\\nlength=${length(who)}\")\n\
+                 0\n\
+             }\n\
+             _ => {\n\
+                 print(\"error=who is required\")\n\
+                 3\n\
+             }\n\
+         }\n\
+         fn run() = match jsonDecode(input()) {\n\
+             Success { value } => match value {\n\
+                 JsonObject(members) => answer(members)\n\
+                 _ => 2\n\
+             }\n\
+             Error => 1\n\
+         }\n\
+         fn main() = {\n\
+             handle Arith { overflow _ _ _ wrapped => wrapped }\n\
+             run()\n\
+         }\n",
+    );
+    let path = program.to_str().unwrap_or_default();
+    for (line, status, stdout) in [
+        (
+            "{\"who\":\"Osprey\"}\n",
+            0,
+            "greeting=hello Osprey\nlength=6\n",
+        ),
+        (
+            "{\"other\":1,\"who\":\"🦅\"}",
+            0,
+            "greeting=hello 🦅\nlength=4\n",
+        ),
+        ("{\"other\":1}\n", 3, "error=who is required\n"),
+        ("{\"who\":7}\n", 3, "error=who is required\n"),
+        ("[1,2]\n", 2, ""),
+        ("not json\n", 1, ""),
+        ("", 1, ""),
+    ] {
+        let run = run_args_with_stdin(&[path, "--run", "--quiet", "--no-warnings"], line);
+        assert_eq!(run.code, Some(status), "{line}: {}", run.stderr);
+        assert_eq!(run.stdout, stdout, "{line}");
+    }
+}
+
+/// The compiler answers which namespaces and modules each source declares, in both
+/// flavors, nested and repeated across files. [EDITOR-MODULE-EXPLORER]
+#[test]
+fn the_source_graph_names_each_sources_namespaces_and_modules() {
+    let dir = temp_dir("source_graph_declarations");
+    std::fs::create_dir_all(dir.join("src")).expect("create project");
+    for (file, text) in [
+        (
+            "osprey.toml",
+            "[project]\nname = \"graph\"\nsource_roots = [\"src\"]\nentry = \"src/main.ospml\"\n",
+        ),
+        (
+            "src/main.ospml",
+            "namespace app\n\nmodule Outer\n    export module Inner\n        export one = 1\n\nprint \"${Outer::Inner::one}\"\n",
+        ),
+        ("src/more.osp", "namespace app;\n\nmodule Extra {\n    export fn two() = 2\n}\n"),
+    ] {
+        std::fs::write(dir.join(file), text).expect("write project file");
+    }
+    let run = run_args(&[
+        dir.to_str().unwrap_or_default(),
+        "--source-graph",
+        "--no-warnings",
+    ]);
+    assert_eq!(run.code, Some(0), "{}", run.stderr);
+    let graph: serde_json::Value = serde_json::from_str(&run.stdout).expect("graph json");
+    let found = graph
+        .get("declarations")
+        .and_then(serde_json::Value::as_array)
+        .expect("declarations")
+        .iter()
+        .map(|entry| {
+            let text = |key: &str| {
+                entry
+                    .get(key)
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or_default()
+            };
+            (
+                text("kind").to_owned(),
+                text("name").to_owned(),
+                text("source")
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or_default()
+                    .to_owned(),
+                entry.get("line").is_some_and(serde_json::Value::is_u64),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (kind, name, file) in [
+        ("namespace", "app", "main.ospml"),
+        ("module", "app::Outer", "main.ospml"),
+        ("module", "app::Outer::Inner", "main.ospml"),
+        ("namespace", "app", "more.osp"),
+        ("module", "app::Extra", "more.osp"),
+    ] {
+        let want = (kind.to_owned(), name.to_owned(), file.to_owned(), true);
+        assert!(found.contains(&want), "{want:?} missing from {found:?}");
+    }
+}
+
+/// `--warnings-as-errors` keeps the warning text and fails; the default stays
+/// advisory, `--no-warnings` stays silent, and errors fail as ever.
+#[test]
+fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
+    let warned = temp_osp(
+        "strict_warned",
+        "fn choose(value, ignored) = value\nprint(choose(1, 2))\n",
+    );
+    let clean = temp_osp(
+        "strict_clean",
+        "fn shout(value) = \"${value}!\"\nprint(shout(\"x\"))\n",
+    );
+    let broken = temp_osp("strict_broken", "fn f() -> string = 1\nprint(f())\n");
+    for mode in ["--check", "--run", "--llvm"] {
+        let advisory = run_file(&warned, &[mode]);
+        assert_eq!(advisory.code, Some(0), "{mode}: {}", advisory.stderr);
+        assert!(
+            advisory.stderr.contains("unused parameter `ignored`"),
+            "{mode}"
+        );
+
+        let strict = run_file(&warned, &[mode, "--warnings-as-errors"]);
+        assert_ne!(strict.code, Some(0), "{mode} must fail on a warning");
+        assert!(
+            strict.stderr.contains("unused parameter `ignored`"),
+            "{mode}: {}",
+            strict.stderr
+        );
+        assert!(
+            strict.stderr.contains("1 warning (unused-parameter)"),
+            "{mode}: {}",
+            strict.stderr
+        );
+        assert!(!strict.stdout.contains("ok ("), "{mode}: {}", strict.stdout);
+
+        let skipped = run_file(&warned, &[mode, "--no-warnings"]);
+        assert_eq!(skipped.code, Some(0), "{mode}: {}", skipped.stderr);
+        assert!(
+            !skipped.stderr.contains("warning"),
+            "{mode}: {}",
+            skipped.stderr
+        );
+
+        let fine = run_file(&clean, &[mode, "--warnings-as-errors"]);
+        assert_eq!(fine.code, Some(0), "{mode}: {}", fine.stderr);
+
+        let errors = run_file(&broken, &[mode, "--warnings-as-errors"]);
+        assert_ne!(errors.code, Some(0), "{mode}");
+        assert!(
+            errors.stderr.contains("cannot unify string with int"),
+            "{mode}: {}",
+            errors.stderr
+        );
+    }
+    let output = warned.with_extension("bin");
+    let output = output.to_str().unwrap_or_default();
+    let refused = run_file(
+        &warned,
+        &["--compile", "--warnings-as-errors", "-o", output],
+    );
+    assert_ne!(refused.code, Some(0), "{}", refused.stderr);
+    assert!(
+        !Path::new(output).exists(),
+        "a refused build writes nothing"
+    );
+}
+
+#[test]
+fn bare_result_variants_compile_and_select_the_correct_arm() {
+    for (index, source) in [
+        "let a = match checkedAdd(0, 1) { Success { value } => value Error => 0 }\nlet b = match checkedAdd(9223372036854775807, 1) { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
+        "type Outcome = Success | Error\nlet a = match Success { Success => 1 Error => 0 }\nlet b = match Error { Success => 7 Error => 9 }\nprint(\"${a},${b}\")\n",
+        "let a = match 1 { Success { value } => value Error => 0 }\nlet b = match 9 { Success { value } => value Error => 0 }\nprint(\"${a},${b}\")\n",
+        "let a = match checkedAdd(0, 1) { Error => 0 whole => match whole { Success { value } => value Error => 0 } }\nlet b = match checkedAdd(9223372036854775807, 1) { Success => 7 _ => 9 }\nprint(\"${a},${b}\")\n",
+        "// osprey: flavor=ml\na = match checkedAdd (0, 1)\n    Success value => value\n    Error => 0\nb = match checkedAdd (9223372036854775807, 1)\n    Success => 7\n    Error => 9\nprint \"${a},${b}\"\n",
+    ].iter().enumerate() {
+        let source = temp_osp(&format!("bare_result_variants_{index}"), source);
+        for memory in ["gc", "arc"] {
+            let flavor = if index == 4 { "ml" } else { "default" };
+            let output = run_file(&source, &[
+                "--run", "--quiet", &format!("--memory={memory}"),
+                &format!("--flavor={flavor}"),
+            ]);
+            assert_eq!(output.code, Some(0), "{}", output.stderr);
+            assert_eq!(output.stdout, "1,9\n");
+        }
+    }
+}
+
+#[test]
+fn quiet_silences_progress_and_keeps_warnings() {
+    // `--quiet` is progress-only. A warning is a diagnostic: it names a defect
+    // in the program, so it prints under `--quiet` exactly as it does without.
+    let prog = temp_osp("quiet_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
+    let loud = run_file(&prog, &["--check"]);
+    assert_eq!(loud.code, Some(0), "stderr={}", loud.stderr);
+    assert!(loud.stderr.contains("redundant"), "{}", loud.stderr);
+    assert!(loud.stdout.contains(": ok ("), "{}", loud.stdout);
+    let o = run_file(&prog, &["--check", "--quiet"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
+    assert_eq!(o.stderr, loud.stderr, "--quiet changed the diagnostics");
+}
+
+#[test]
+fn no_warnings_skips_the_warning_pass() {
+    // The explicit opt-out drops advice: nothing on stderr, nothing computed.
+    let prog = temp_osp("no_warn", "let n: int = 42\nprint(\"v=${n}\")\n");
+    let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
+    assert_eq!(o.code, Some(0), "stderr={}", o.stderr);
+    assert!(o.stdout.trim().is_empty(), "{}", o.stdout);
+    assert!(o.stderr.trim().is_empty(), "{}", o.stderr);
+}
+
+#[test]
+fn no_warnings_never_hides_type_errors() {
+    // Errors are never advice: the opt-out drops warnings, not the reason a
+    // build failed.
+    let prog = temp_osp("no_warn_error", "fn broken(unused) = missing\n");
+    let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
+    assert_ne!(o.code, Some(0));
+    assert!(o.stderr.contains("missing"), "{}", o.stderr);
+}
+
+#[test]
+fn hunt_reports_a_compile_error_before_looking_for_the_engine() {
+    // [SYMEX-CLI]: exit 1 for a program that does not compile, 2 for a
+    // toolchain problem. The compile verdict comes first, so a machine without
+    // KLEE still tells the author about the syntax error instead of about KLEE.
+    let prog = temp_osp("hunt_broken", "fn broken( = \n");
+    let out = Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .args(["hunt", &prog.to_string_lossy(), "--quiet"])
+        .env("OSPREY_KLEE", "/nonexistent/klee")
+        .output()
+        .expect("spawn osprey hunt");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("syntax error"), "{stderr}");
+    assert!(!stderr.contains("klee was not found"), "{stderr}");
+}

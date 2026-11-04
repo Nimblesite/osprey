@@ -1,9 +1,9 @@
-# --- rust (crates/) ---------------------------------------------------------
+# --- rust (src/crates/) ---------------------------------------------------------
 # cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
 # `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
 # `_runtime_wasm` is a prerequisite because the coverage gate below already
-# DEPENDS on it: osprey-cli's wasm end-to-end test (crates/osprey-cli/src/wasm.rs)
+# DEPENDS on it: osprey-cli's wasm end-to-end test (src/crates/osprey-cli/src/wasm.rs)
 # self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
 # present, and skipping it drops osprey-cli from 96.7% to 94.8% — under its 95%
 # floor. Without this line the archive is whatever an earlier target happened to
@@ -28,13 +28,13 @@ _test_rust_shard: _runtime_wasm
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
 	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
 
-# Every crate under crates/ must have a valid threshold and measured lines.
+# Every crate under src/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
 _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f $(RUST_LCOV) ]; then echo "[rust] FAIL: $(RUST_LCOV) not produced"; exit 1; fi; \
 	fail=0; \
-	for manifest in crates/*/Cargo.toml; do \
+	for manifest in src/crates/*/Cargo.toml; do \
 	  crate=$${manifest%/Cargo.toml}; crate=$${crate#crates/}; \
 	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
 	    echo "[rust] $$crate FAIL: missing coverage threshold"; fail=1; }; \
@@ -82,7 +82,7 @@ RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/file_runt
 PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -std=c11 -D_GNU_SOURCE
 
 # --- C runtime suite TABLE ---------------------------------------------------
-# One row per test binary. C_SRC_<name> lists sources relative to compiler/,
+# One row per test binary. C_SRC_<name> lists sources relative to src/compiler/,
 # C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
 # C_PROFILE_<name> optionally replaces the default $(T) flag core. BOTH the
 # hardened run (_test_c_runtime) and the per-library coverage gate
@@ -207,14 +207,14 @@ C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$
 
 _test_gc_stack_root:
 	@echo "==> [c-runtime] GC caller-stack root regression..."
-	@cd compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
+	@cd src/compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
 
 _test_c_runtime: $(GPU_DEVICE_NATIVE)
 	@echo "==> [c-runtime] memory/gpu/effects/json/builtins/system/string/HTTP/fiber suites..."
-	@cd compiler && set -e; $(foreach s,$(C_TEST_SUITES),$(call C_SUITE_CMD,$(s)) && ) true
+	@cd src/compiler && set -e; $(foreach s,$(C_TEST_SUITES),$(call C_SUITE_CMD,$(s)) && ) true
 
 _test_gpu_device: $(GPU_DEVICE_NATIVE)
-	@cd compiler && $(call C_SUITE_CMD,gpu_device_tests)
+	@cd src/compiler && $(call C_SUITE_CMD,gpu_device_tests)
 
 # [SYMEX-MOCK-TESTS] the mock C library behind `osprey hunt`, compiled for the
 # host against its own headers and linked with the runtime units it must
@@ -236,7 +236,7 @@ HUNT_KNOWN_BUGS ?= clean
 # Known-bug verification target, run by hand: red until the fix lands.
 .PHONY: _test_hunt_clean
 _test_hunt_clean:
-	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
 	set -e; fail=0; for backend in gc arc; do \
 	  out="target/hunt-tests/$$backend/clean.json"; $(MKDIR) "target/hunt-tests/$$backend"; \
@@ -245,7 +245,7 @@ _test_hunt_clean:
 	done; exit $$fail
 
 _test_hunt:
-	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
 	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
 	echo "==> [hunt] tests/hunt expectations..."; \
 	set -e; fail=0; for backend in gc arc; do for p in tests/hunt/*.osp; do \
@@ -262,14 +262,14 @@ _test_hunt:
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
 	@test -x "$(KLEE_PREFIX)/bin/klee" || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
-	@test -f compiler/bin/libosprey_runtime_klee_gc.bc
-	@test -f compiler/bin/libosprey_runtime_klee_arc.bc
+	@test -f src/compiler/bin/libosprey_runtime_klee_gc.bc
+	@test -f src/compiler/bin/libosprey_runtime_klee_arc.bc
 	python3 scripts/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
 	@set -e; for backend in gc arc; do python3 scripts/hunt_crashes.py --memory $$backend; done
 
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
-	@cd compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
+	@cd src/compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
 	  for u in $(HUNT_MOCK_SRC) random_runtime file_runtime; do \
 	    $(CC) $(HUNT_MOCK_HOST_CFLAGS) -c runtime/$$u.c -o bin/hunt_mock/$$(basename $$u).o; \
 	  done && \
@@ -282,7 +282,7 @@ _test_hunt_mock:
 	@python3 scripts/test-hunt-sample.py
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
-# instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing
+# instrumentation into src/compiler/bin/cov/<suite>/, reruns it there (a failing
 # suite still contributes whatever it covered before aborting), reduces each
 # suite's gcov summaries, and gates every `language: "c"` entry in
 # coverage-thresholds.json at its threshold. A library's number is the MAX
@@ -309,7 +309,7 @@ C_SHIPPED_UNITS = $(sort $(basename $(notdir $(FIB_OBJ_GC) $(HTTP_OBJ_GC) $(FIB_
 # be: every one of their cases runs in a FORKED CHILD, whose gcov counters were
 # never flushed back, so gcov reported 0% against thousands of passing
 # assertions. The harness now calls __gcov_dump before the child _exits
-# (compiler/runtime/test_gcov.h), which is what that exemption was waiting for.
+# (src/compiler/runtime/test_gcov.h), which is what that exemption was waiting for.
 C_COV_EXEMPT ?=
 GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
     if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
@@ -318,8 +318,8 @@ GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
 
 _coverage_check_c_runtime:
 	@echo "==> [c-runtime] per-library line coverage (gcov)..."
-	@rm -rf compiler/bin/cov
-	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
+	@rm -rf src/compiler/bin/cov
+	@set -e; cd src/compiler/bin && mkdir -p cov && cd cov; \
 	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(call C_SUITE_BUILD,$(s),../../../,$(s),--coverage -DOSP_COVERAGE_DUMP) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
 	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
 	@libs=$$(jq -r --arg platform "$(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,windows))" '.projects.c_runtime | to_entries[] | select((.value.platform // $$platform)==$$platform) | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
@@ -331,7 +331,7 @@ _coverage_check_c_runtime:
 	done; \
 	for lib in $$libs; do \
 	  thr=$$(jq -er --arg l "$$lib" '.projects.c_runtime[$$l] | (if has("threshold") then .threshold else 90 end) | if type == "number" and . >= 90 and . <= 100 and floor == . then . else error("coverage threshold must be an integer in 90..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
-	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
+	  best=$$(for f in src/compiler/bin/cov/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
       sed -n "\#File '.*/runtime/$$lib\.[cmh]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
 	  done | sort -rn | head -1); \
@@ -417,12 +417,12 @@ _coverage_check_vscode_extension:
 #       Runs in the current terminal so the raw-mode key reader gets real stdin.
 _tui: build
 	@echo "==> launching TUI demo (live GitHub API browser)"
-	./$(BIN) examples/tui/api_browser.osp --run
+	./$(BIN) src/examples/tui/api_browser.osp --run
 
 # _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            on the host backend [GPU-BACKEND-HOST]; the raster suite uses
 #            gpuScan/gpuFilter, which have no device form yet, so a selected
-#            device would decline it. For pixels on the actual GPU, see `make -C apps graphics`.
+#            device would decline it. For pixels on the actual GPU, see `make -C src/targets graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
@@ -435,18 +435,18 @@ _gpu-demo: build
 # TS2688 errors and a dead stage, for work the build job had already done.
 _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
-	./$(BIN) test examples/projects/modules/test
+	./$(BIN) test src/examples/projects/modules/test
 
-# Osprey package system (packages/manager/): one process runs every suite from the
-# packages/manager/tests project with core, host and CLI sources assembled together,
+# Osprey package system (src/packages/manager/): one process runs every suite from the
+# src/packages/manager/tests project with core, host and CLI sources assembled together,
 # because `osprey test` compiles suites in isolation and cannot import them.
-# packages/manager/fixture-check runs first and fails fast: every fixture is data,
+# src/packages/manager/fixture-check runs first and fails fast: every fixture is data,
 # parses strictly, cites a defined spec section and is indexed, every typed
 # fixture value is schema-valid and canonically ordered, and every registry
-# source cites only defined sections. packages/manager/manifest/tests is the TOML
+# source cites only defined sections. src/packages/manager/manifest/tests is the TOML
 # parser and manifest-rule suite, a separate program until that code joins
-# core. packages/manager/e2e runs last: it starts the
-# server over packages/manager/sample-registry on 127.0.0.1:18797, compares every
+# core. src/packages/manager/e2e runs last: it starts the
+# server over src/packages/manager/sample-registry on 127.0.0.1:18797, compares every
 # endpoint with the pure router, fetches every release, and builds and runs a
 # consumer project against the fetched sources. Local tests and CI run all
 # suites under both managed backends; the TAP runner propagates failed checks.
@@ -457,19 +457,19 @@ _test_registry: export OSPREY_E2E_MEMORY = $(REGISTRY_MEMORY)
 _test_registry:
 	@case "$(REGISTRY_MEMORY)" in gc|arc) ;; *) echo "Registry tests require GC or ARC"; exit 1 ;; esac
 	@echo "==> Registry fixture and schema validation (fail-fast)..."
-	./$(BIN) test packages/manager/fixture-check --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/packages/manager/fixture-check --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry manifest (TOML parser and manifest rules) tests..."
-	./$(BIN) test packages/manager/manifest/tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/packages/manager/manifest/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry CLI (package frontend) tests..."
-	./$(BIN) test packages/manager/cli/tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/packages/manager/cli/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry (Osprey package system) tests..."
-	./$(BIN) test packages/manager/tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/packages/manager/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
-	./$(BIN) test packages/manager/e2e --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/packages/manager/e2e --memory=$(REGISTRY_MEMORY)
 	@echo "==> Native publication and installed-source integrity regressions..."
 	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
 	  mkdir -p "$(CURDIR)/target/registry-tests" && \
-	  "$(abspath $(BIN))" build packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
+	  "$(abspath $(BIN))" build src/packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
 	fi
 	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-publication.py
 	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-interruption.py
@@ -477,10 +477,10 @@ _test_registry:
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;
 # a probe turning green is the signal to delete its entry from
-# packages/manager/core/src/capabilities.osp.
+# src/packages/manager/core/src/capabilities.osp.
 _test_registry_blockers:
 	@echo "==> Registry blocked-capability probes (expected red until each lands)..."
-	./$(BIN) packages/manager/blockers --run
+	./$(BIN) src/packages/manager/blockers --run
 
 # _language-test: Run the assertion-driven Default + ML core language corpus.
 _language-test: build

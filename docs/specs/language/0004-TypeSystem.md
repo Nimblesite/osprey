@@ -357,7 +357,7 @@ Mixed arithmetic between `int` and `float` promotes the `int` to `float`; that i
 
 ### Sized numeric types — [TYPE-NUMERIC-SIZED]
 
-Ten numeric types share one description: a kind (signed, unsigned or binary floating point) and a width. Every rule in this section is stated once over that description, and the compiler holds it in one table (`crates/osprey-types/src/numeric.rs`), so no type has a rule of its own.
+Ten numeric types share one description: a kind (signed, unsigned or binary floating point) and a width. Every rule in this section is stated once over that description, and the compiler holds it in one table (`src/crates/osprey-types/src/numeric.rs`), so no type has a rule of its own.
 
 | Type | Kind | Bits | Range or format | LLVM | C |
 | --- | --- | --- | --- | --- | --- |

@@ -202,20 +202,20 @@ values fail with a usage error instead of silently generating a different result
 
 ## Implementation and verification
 
-The implementation is shared by the compiler, editor, CLI exporter and doctest runner. [The usage guide](../../../website/src/docs/documentation.md) includes Default and ML examples extracted from the rendered page and executed by the browser suite.
+The implementation is shared by the compiler, editor, CLI exporter and doctest runner. [The usage guide](../../../src/website/src/docs/documentation.md) includes Default and ML examples extracted from the rendered page and executed by the browser suite.
 
 From the repository root:
 
 ```sh
 cargo test -p osprey-cli --test cli_e2e api_docs
 cargo test -p osprey-cli --test cli_e2e doctests
-make -C website docs-html-test
+make -C src/website docs-html-test
 ```
 
-The CLI tests check source validation, public API visibility, inferred signatures, authored pages and doctest execution. Renderer unit tests live under `crates/osprey-cli/src/docs/html/tests*`. The corpus harness separately runs doctests under native memory backends and WebAssembly, rejecting output drift, malformed summaries and ARC leaks.
+The CLI tests check source validation, public API visibility, inferred signatures, authored pages and doctest execution. Renderer unit tests live under `src/crates/osprey-cli/src/docs/html/tests*`. The corpus harness separately runs doctests under native memory backends and WebAssembly, rejecting output drift, malformed summaries and ARC leaks.
 
-`make -C website docs-html-test` builds the compiler and runs [the standalone Chromium checks](../../../scripts/verify-docs-html.mjs). They cover generated sites opened over `file://`, all three themes, custom CSS ordering, search, links, mobile/keyboard navigation and inert Markdown.
+`make -C src/website docs-html-test` builds the compiler and runs [the standalone Chromium checks](../../../scripts/verify-docs-html.mjs). They cover generated sites opened over `file://`, all three themes, custom CSS ordering, search, links, mobile/keyboard navigation and inert Markdown.
 
-For the [website's generated-documentation tests](../../../website/tests/api-docs.spec.js), run `cd website && npm test -- tests/api-docs.spec.js`. They additionally exercise HTTP hosting under a URL prefix, executable guide examples, responsive layouts and navigation without JavaScript.
+For the [website's generated-documentation tests](../../../src/website/tests/api-docs.spec.js), run `cd src/website && npm test -- tests/api-docs.spec.js`. They additionally exercise HTTP hosting under a URL prefix, executable guide examples, responsive layouts and navigation without JavaScript.
 
 `node scripts/preview-docs.mjs` generates all three themed sites and a comparison gallery with desktop and phone screenshots. Passing documentation tests does not establish that unrelated compiler, editor or application checks pass; use the current CI results for that status.

@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import tomllib
 
-ROOTS = ('tests', 'examples', 'Book/examples', 'packages', 'registry', 'benchmarks')
+ROOTS = ('tests', 'src/examples', 'Book/examples', 'src/packages', 'registry', 'src/benchmarks')
 
 
 def project(manifest):

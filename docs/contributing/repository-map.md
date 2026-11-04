@@ -8,15 +8,15 @@ The compiler pipeline follows these directories in order:
 
 | Stage | Source | Responsibility |
 | --- | --- | --- |
-| Parse | `tree-sitter-osprey/`, `crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
-| Lower | `crates/osprey-ast/` | Shared AST and static interpretation |
-| Check | `crates/osprey-types/` | Type inference and effect requirements |
-| Generate | `crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
-| Execute | `crates/osprey-cli/`, `compiler/runtime/` | CLI, target linking and C runtime |
+| Parse | `src/tree-sitter-osprey/`, `src/crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
+| Lower | `src/crates/osprey-ast/` | Shared AST and static interpretation |
+| Check | `src/crates/osprey-types/` | Type inference and effect requirements |
+| Generate | `src/crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
+| Execute | `src/crates/osprey-cli/`, `src/compiler/runtime/` | CLI, target linking and C runtime |
 
-The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `compiler/runtime/` contains the native and portable runtime units; `compiler/bin/` and `compiler/lib/` are generated outputs.
+The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `src/compiler/runtime/` contains the native and portable runtime units; `src/compiler/bin/` and `src/compiler/lib/` are generated outputs.
 
-A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `tests/` and, when appropriate, a rejection in `examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
+A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `tests/` and, when appropriate, a rejection in `src/examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
 
 ## Specification subjects
 
@@ -38,13 +38,13 @@ The root Makefile defines every public target, so `make` and editor task panels,
 
 ## Applications and presentation
 
-`examples/` contains runnable applications and their platform hosts. `website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `website/src/spec/`.
+`src/examples/` contains runnable applications and their platform hosts. `src/website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `src/website/src/spec/`.
 
-The homepage, effects guide and handler post share their runnable draft-saving example through `website/src/_data/draftExample.json`. Browser tests execute all three homepage syntax flavors and the guide/post examples, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
+The homepage, effects guide and handler post share their runnable draft-saving example through `src/website/src/_data/draftExample.json`. Browser tests execute all three homepage syntax flavors and the guide/post examples, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
 
-`packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `python/` contains the separate CPython interoperability bridge.
+`src/packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `src/python/` contains the separate CPython interoperability bridge.
 
-`vscode-extension/` and `webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain verification and publishing tools.
+`src/vscode-extension/` and `src/webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `src/benchmarks/` contain verification and publishing tools.
 
 ## Generated files and test isolation
 

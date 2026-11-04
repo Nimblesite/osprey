@@ -82,7 +82,7 @@
     {
       "id": "installation-guide",
       "kind": "maintained-documentation",
-      "path": "../website/src/docs/installation.md",
+      "path": "../src/website/src/docs/installation.md",
       "use": "no-install Playground path, local prerequisites, install commands, and verification"
     },
     {
@@ -100,7 +100,7 @@
     {
       "id": "website-tokens",
       "kind": "visual-implementation",
-      "path": "../website/src/css/variables.css",
+      "path": "../src/website/src/css/variables.css",
       "use": "implemented dark-theme tokens and long-form layout values"
     },
     {

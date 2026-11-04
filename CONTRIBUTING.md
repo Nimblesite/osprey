@@ -10,14 +10,14 @@ Start with the [repository map](docs/contributing/repository-map.md) to find the
 
 The compiler and runtime use:
 
-- **[Rust](https://www.rust-lang.org/)** - Compiler implementation (`crates/`)
-- **[tree-sitter](https://tree-sitter.github.io/)** - Grammar parsing (`tree-sitter-osprey/`)
+- **[Rust](https://www.rust-lang.org/)** - Compiler implementation (`src/crates/`)
+- **[tree-sitter](https://tree-sitter.github.io/)** - Grammar parsing (`src/tree-sitter-osprey/`)
 - **[LLVM](https://llvm.org/)** - Code generation (textual IR handed to clang)
-- **C** - The runtime (fibers, HTTP/WebSocket, collections) in `compiler/runtime/`
+- **C** - The runtime (fibers, HTTP/WebSocket, collections) in `src/compiler/runtime/`
 
 ## Getting Started
 
-Start with the [installation guide](website/src/docs/installation.md) for host toolchain prerequisites. The [development-container guide](.devcontainer/README.md) records its configured environment and current LLVM/setup limits.
+Start with the [installation guide](src/website/src/docs/installation.md) for host toolchain prerequisites. The [development-container guide](.devcontainer/README.md) records its configured environment and current LLVM/setup limits.
 
 ```bash
 # Fork and clone

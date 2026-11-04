@@ -8,7 +8,7 @@ Osprey has one type system today, the Hindley-Milner discipline of [spec 0004](0
 
 1. A dependent type theory, a refinement-type checker over an SMT solver, a higher-order logic, a separation logic or a linear type system is a **package**, written in Osprey, published like any other, and chosen per module.
 2. Modules under different disciplines link into one program. They meet at the signature boundary; nothing below the canonical AST knows which discipline checked a module.
-3. The compiler never grows a second type system. `crates/osprey-types` gains one dispatch point and no theory.
+3. The compiler never grows a second type system. `src/crates/osprey-types` gains one dispatch point and no theory.
 
 ## Definitions [TYPES-DISCIPLINE-DEF]
 
@@ -50,7 +50,7 @@ checker = "src"                  # an Osprey program: one source file, or a proj
                                  # with its own osprey.toml whose entry is the checker
 ```
 
-- The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test (`crates/osprey-project/tests/discipline_purity.rs`) scans the code under `crates/` for every registered discipline name in a string literal and for the words `tactic`, `theorem`, `refinement` and `lean4` anywhere, and fails on a hit outside comments and test modules. `kernel` is not searched because it is the keyword of the `kernel` handler region of spec 0035 and names the GPU pipeline throughout; the proof kernel lives under `examples/`, never under `crates/`.
+- The compiler holds no list of discipline names, no knowledge of any theory, and no code that runs only for one discipline. A CI test (`src/crates/osprey-project/tests/discipline_purity.rs`) scans the code under `src/crates/` for every registered discipline name in a string literal and for the words `tactic`, `theorem`, `refinement` and `lean4` anywhere, and fails on a hit outside comments and test modules. `kernel` is not searched because it is the keyword of the `kernel` handler region of spec 0035 and names the GPU pipeline throughout; the proof kernel lives under `src/examples/`, never under `src/crates/`.
 - A project uses a discipline by listing its package under `[dependencies]`; nothing else is configured. Two dependencies registering the same `name` is a `discipline-error` at project load, naming both packages.
 - The checker program is built once by the ordinary build pipeline, under the project's memory backend, and cached beside the package by content hash. A discipline is therefore itself an Osprey program under every rule of the language: no panics, typed `Result`, both backends, wasm32 where the package claims it.
 
@@ -121,9 +121,9 @@ Modules of different disciplines meet only through export signatures.
 
 The rules of [PROOF-NO-HARM](0049-DependentTypesAndProofs.md#the-existing-language-is-untouched-proof-no-harm) are the rules of this contract, restated for the seam alone:
 
-1. A file with no `types=` marker and a project with no `[project].types` are lexed, parsed, inferred, effect-checked and lowered exactly as before; the differential corpus and `examples/` change no `.expectedoutput`.
+1. A file with no `types=` marker and a project with no `[project].types` are lexed, parsed, inferred, effect-checked and lowered exactly as before; the differential corpus and `src/examples/` change no `.expectedoutput`.
 2. No new token, keyword or operator in `hm` modules. The marker is a comment, as the flavor marker is.
-3. No change to `Type`, unification, effect rows, redundancy analysis, monomorphisation or any diagnostic text in `crates/osprey-types`; the diff of phase 1 is the seam function, the marker scan, the manifest table and their tests.
+3. No change to `Type`, unification, effect rows, redundancy analysis, monomorphisation or any diagnostic text in `src/crates/osprey-types`; the diff of phase 1 is the seam function, the marker scan, the manifest table and their tests.
 4. A program that uses no discipline runs no checker process, builds no checker and links nothing new.
 5. Deleting the seam and the `[discipline]` table restores the compiler as it was.
 
@@ -131,8 +131,8 @@ The rules of [PROOF-NO-HARM](0049-DependentTypesAndProofs.md#the-existing-langua
 
 Two packages exist to prove the seam, independent of any prover:
 
-- **`passthrough`** (`examples/disciplines/passthrough/`): the checker runs `check_program`'s own rules by shelling out to `osprey check` on the module, then returns the module's inferred signature and the module itself as its erased form. It checks nothing new and demonstrates the round trip: an `hm` module importing a `passthrough` module, and the reverse, in the differential corpus under GC, ARC and wasm32, with output identical to the same program under `hm` alone.
-- **`bounded`** (`examples/disciplines/bounded/`): a deliberately small discipline that reads `// @bound n in 0..100` annotations on `int` parameters, checks every call site inside the module against them by interval arithmetic, and erases to plain `int`. It is the template for a real discipline: a theory the HM checker cannot express, diagnostics through the protocol, erasure to HM, and about two hundred lines. The refinement-type discipline over the KLEE/Z3 tooling of [plan 0034](../../plans/0034-symbolic-execution.md) grows from this template, outside `crates/`.
+- **`passthrough`** (`src/examples/disciplines/passthrough/`): the checker runs `check_program`'s own rules by shelling out to `osprey check` on the module, then returns the module's inferred signature and the module itself as its erased form. It checks nothing new and demonstrates the round trip: an `hm` module importing a `passthrough` module, and the reverse, in the differential corpus under GC, ARC and wasm32, with output identical to the same program under `hm` alone.
+- **`bounded`** (`src/examples/disciplines/bounded/`): a deliberately small discipline that reads `// @bound n in 0..100` annotations on `int` parameters, checks every call site inside the module against them by interval arithmetic, and erases to plain `int`. It is the template for a real discipline: a theory the HM checker cannot express, diagnostics through the protocol, erasure to HM, and about two hundred lines. The refinement-type discipline over the KLEE/Z3 tooling of [plan 0034](../../plans/0034-symbolic-execution.md) grows from this template, outside `src/crates/`.
 
 The `lean4` discipline of spec 0049 is the first discipline with its own theory, kernel and library; it is built on this seam and adds nothing to it.
 
@@ -143,5 +143,5 @@ Phase 1 of plan 0041 is complete when, in CI:
 - `passthrough` and `bounded` build as packages, and the corpus programs that use them pass under both memory backends and on wasm32;
 - a program with no marker produces byte-identical output and diagnostics before and after the seam, measured over the whole differential corpus;
 - every `discipline-error` case has a test: unknown name, duplicate name, checker crash, checker timeout, malformed response, unparsable erased module, erased module failing its own signature, unsupported protocol version;
-- the grep test over `crates/` is green;
+- the grep test over `src/crates/` is green;
 - the benchmark suite shows no change for `hm`-only projects.

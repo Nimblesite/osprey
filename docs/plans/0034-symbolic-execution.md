@@ -20,14 +20,14 @@ Contract: [Symbolic bug hunting with KLEE](../specs/tooling/SymbolicExecution.md
 
 ## Phase 4: typed harness and libkleeRuntest replay `[SYMEX-HARNESS-TYPED]` `[SYMEX-REPLAY]`
 
-- [ ] Implement the typed function harness: emit `__osprey_klee_entry` in codegen for `--fn <name>`, add `--fn`/`--all-fns` parsing to `crates/osprey-cli/src/hunt/options.rs`, pass `--entry-point=__osprey_klee_entry` to KLEE, and add the `osp_sym_*` builders to `compiler/runtime/klee/` per the builders table in [SYMEX-HARNESS-TYPED](../specs/compiler/KleeCodegen.md). Acceptance: test `klee_entry_is_built_from_inferred_types` passes; a planted bug in a function taking `List<int>` and a union is found with `--fn`; `--all-fns` reports skips with reasons.
-- [ ] Implement `libkleeRuntest` replay in `crates/osprey-cli/src/hunt/replay.rs`: link the replay build against `libkleeRuntest` with `KTEST_FILE`, rebuild harness arguments and serve entropy/clock from a provider over the recorded objects. Acceptance: a planted bug that fires only on one symbolic random byte reproduces natively.
+- [ ] Implement the typed function harness: emit `__osprey_klee_entry` in codegen for `--fn <name>`, add `--fn`/`--all-fns` parsing to `src/crates/osprey-cli/src/hunt/options.rs`, pass `--entry-point=__osprey_klee_entry` to KLEE, and add the `osp_sym_*` builders to `src/compiler/runtime/klee/` per the builders table in [SYMEX-HARNESS-TYPED](../specs/compiler/KleeCodegen.md). Acceptance: test `klee_entry_is_built_from_inferred_types` passes; a planted bug in a function taking `List<int>` and a union is found with `--fn`; `--all-fns` reports skips with reasons.
+- [ ] Implement `libkleeRuntest` replay in `src/crates/osprey-cli/src/hunt/replay.rs`: link the replay build against `libkleeRuntest` with `KTEST_FILE`, rebuild harness arguments and serve entropy/clock from a provider over the recorded objects. Acceptance: a planted bug that fires only on one symbolic random byte reproduces natively.
 
 ## Phase 5: regression writer, corpus gate, Windows `[SYMEX-REGRESSION]` `[SYMEX-CORPUS]` `[SYMEX-HOSTS]`
 
 - [ ] Implement the regression writer: write each `reproduced` finding to `tests/regressions/klee/<file>_<fn-or-main>_<class>.osp` with the concrete input as literals and a failing `.expectedoutput` placeholder; keep the `.ktest` beside the test for `--seed-file`; never overwrite an existing test.
 - [ ] Make `make -C tests/hunt hunt-corpus` a required check in `scripts/verify-branch-protection.mjs`, gated on a fully completed sweep (zero budget-cut programs). Blocked by #306 (`clean.osp`) and #307 (the GC root pass refuses 47 of 215 corpus programs, `docs/reviews/review.md`). Acceptance: a full sweep completes every program and `verify-branch-protection.mjs` fails on any incomplete exploration.
-- [ ] Windows: run KLEE inside WSL2 and add `--replay-host=windows` to `osprey hunt` (parse in `crates/osprey-cli/src/hunt/options.rs`, native replay in `replay.rs`) to cover Windows `#if` branches.
+- [ ] Windows: run KLEE inside WSL2 and add `--replay-host=windows` to `osprey hunt` (parse in `src/crates/osprey-cli/src/hunt/options.rs`, native replay in `replay.rs`) to cover Windows `#if` branches.
 
 ## Phase 6: proof benchmarks `[SYMEX-PROOF]`
 

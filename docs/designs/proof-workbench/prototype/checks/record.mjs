@@ -1,4 +1,4 @@
-import {chromium} from '../../../../../website/node_modules/playwright/index.mjs';
+import {chromium} from '../../../../../src/website/node_modules/playwright/index.mjs';
 import {mkdir,rename} from 'node:fs/promises';
 import {pathToFileURL} from 'node:url';
 import path from 'node:path';

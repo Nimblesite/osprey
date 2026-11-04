@@ -484,7 +484,7 @@ let differ = structuralEquals([1, 2], [1, 2, 3])                                
 ```
 
 The Default/ML twins `tests/regressions/basics/operators/structural_equals.test.*`
-pin every row; `examples/failscompilation/structural_equals_*.ospo` pin the
+pin every row; `src/examples/failscompilation/structural_equals_*.ospo` pin the
 rejected types.
 
 ## String Functions

@@ -1,0 +1,870 @@
+/**
+ * tree-sitter-osprey — the single canonical grammar for the Osprey language.
+ *
+ * This grammar replaced three earlier copies — the original parser grammar,
+ * the VSCode TextMate grammar, and the website Monaco/Monarch grammar —
+ * collapsed to one (docs/plans/go-to-rust-migration.md). It is the compiler
+ * front-end's parser: src/crates/osprey-syntax lowers this CST to the AST.
+ *
+ * Precedence climbs or < and < cmp < add < mul < pipe < unary < call via
+ * tree-sitter prec.left/right with the PREC table below (higher = binds
+ * tighter), preserving the associativity the language has always had.
+ */
+
+const PREC = {
+  ternary: 1,
+  or: 2,
+  and: 3,
+  compare: 4,
+  add: 5,
+  mul: 6,
+  pipe: 7,
+  unary: 8,
+  call: 9,
+  member: 10,
+};
+
+module.exports = grammar({
+  name: 'osprey',
+
+  // Whitespace + comments are skipped between tokens. DOC_COMMENT (///) is NOT
+  // extra — it is consumed by declarations.
+  extras: ($) => [/\s/, $.line_comment, $._interpolation_space],
+
+  word: ($) => $.identifier,
+
+  // Two zero-width markers lexed by src/scanner.c, each answering a question
+  // about the line a token sits on — the one thing the parser cannot see,
+  // because whitespace is an extra.
+  //
+  //   _call_open_gap   holds only when the next `(` sits on the SAME LINE as
+  //                    the callee — the one thing that tells a postfix call
+  //                    from the following match arm's tuple pattern, and a
+  //                    decision no precedence can encode [PATTERN-TUPLE].
+  //   _statement_break holds only where the statement's line ends — the
+  //                    statement terminator. Without it nothing delimited two
+  //                    statements, so `let r = add 2 3` silently split into
+  //                    `let r = add` plus the orphans `2` and `3`
+  //                    [LEX-STATEMENT-BREAK].
+  externals: ($) => [
+    $._call_open_gap, $._statement_break, $._type_application_ahead,
+    $._string_start, $._string_end, $._interpolation_start, $._interpolation_end,
+    $.string_content, $.escape_sequence, $._interpolation_space,
+  ],
+
+  conflicts: ($) => [
+    // `control` / `abort` / `once` / `many` / `replayable` opening an operation line are
+    // either the modifier or the operation's own name; only the token after
+    // them tells which. Implements [MULTI-DECL].
+    [$.operation_declaration],
+    // `ID { ... }` is ambiguous between an update/type-constructor expression and
+    // an object/map literal until the brace body is seen; GLR resolves it.
+    [$.update_expression, $.type_constructor],
+    [$.primary_expression, $.pattern],
+    [$.handler_value_expression, $.primary_expression],
+    [$.call_expression, $.pattern],
+    // `ID <` is ambiguous between a variable reference followed by `<` (comparison)
+    // and the start of a generic type constructor `ID<T>{...}`; GLR resolves it.
+    [$.primary_expression, $.type_constructor],
+    [$.primary_expression, $.generic_type],
+    [$.type_identifier, $.type_constructor],
+    // `import a::b::{x}` must keep both parses alive until the token following
+    // `::` distinguishes another target segment from an import tail.
+    [$.import_target],
+    // `ID {` — bare variable ref vs type-constructor vs record update.
+    [$.primary_expression, $.type_constructor, $.update_expression],
+    // `{` opens a block, a map literal, or an object literal; brace body decides.
+    [$.block, $.map_literal],
+    [$.block, $.object_literal],
+    [$.map_literal, $.object_literal],
+    [$.block, $.map_literal, $.object_literal],
+    // `{ ID :` — object field assignment vs map entry with an identifier key.
+    [$.primary_expression, $.field_assignment],
+    [$.map_entry, $.field_assignment],
+    // `{ expr }` — trailing block value vs a lone expression-statement in a block.
+    [$.expression_statement, $.block],
+    // `if cond { ID }` — the brace opens the `if` consequence (a bare identifier
+    // expression), NOT a structural-ternary field-pattern on the condition; the
+    // `}` with no trailing `?` rules the field-pattern out, GLR resolves it.
+    [$.primary_expression, $.field_pattern],
+    // `… => body` then `{ x, y }` — an arm body followed by a brace opens the
+    // NEXT arm's structural pattern, not a structural ternary extending the
+    // body; the token after the closing brace (`=>` vs `?`) decides, GLR
+    // resolves it. The field_pattern self-conflict keeps the fork alive at
+    // the `identifier ,` reduce, where `../..` is not yet visible
+    // [PATTERN-STRUCTURAL].
+    [$.primary_expression, $.structural_pattern],
+    [$.field_pattern],
+    [$.ternary_expression, $.match_arm],
+    [$.expression_statement, $.ternary_expression],
+    [$.let_declaration, $.ternary_expression],
+    [$.lambda_expression, $.ternary_expression],
+    [$.handler_arm, $.ternary_expression],
+    [$.function_declaration, $.ternary_expression],
+    // `await ( x )` — the await_call form vs unary `await` over a parenthesized expr.
+    [$.primary_expression, $.await_call],
+    // `Name [` / `Name <` — array/generic type vs a bare type identifier.
+    [$.array_type, $.type_identifier],
+    [$.generic_type, $.type_identifier],
+    // A single bare identifier remains an identifier; qualified paths require
+    // at least one `::`, so these only overlap while the lexer has not yet seen
+    // the separator.
+    // `type Alias = Name` is intentionally kept as the historical one-variant
+    // union spelling. Unambiguous function/generic/array aliases use type_alias;
+    // opaque aliases are disambiguated by their module-item prefix.
+  ],
+
+  rules: {
+    // ---------- TOP LEVEL ----------
+    // A leading `//!` block documents the FILE, not the first declaration in
+    // it, so it is consumed here rather than by `statement` [DOC-SIGIL-INNER].
+    source_file: ($) => seq(optional($.inner_doc_comment), repeat($.statement)),
+
+    // Every statement ends at its line's end: the trailing `_statement_break`
+    // (zero-width, scanner.c) demands a newline, `//` comment, `}`, or EOF
+    // before anything else follows. Two constructs on one line are therefore a
+    // parse error, never a silent split [LEX-STATEMENT-BREAK].
+    statement: ($) =>
+      seq(
+        choice(
+          $.import_statement,
+          $.namespace_declaration,
+          $.let_declaration,
+          $.assignment,
+          $.function_declaration,
+          $.extern_declaration,
+          $.type_declaration,
+          $.effect_declaration,
+          $.module_declaration,
+          $.signature_declaration,
+          $.expression_statement,
+        ),
+        $._statement_break,
+      ),
+
+    import_statement: ($) =>
+      seq(
+        'import',
+        choice(
+          // Compatibility with the original Default spelling. It lowers to
+          // the same namespace + SymbolPath model as `::` imports.
+          field('legacy_target', $.legacy_import_path),
+          seq(
+            field('target', $.import_target),
+            optional(field('tail', $.import_tail)),
+          ),
+        ),
+      ),
+
+    legacy_import_path: ($) =>
+      seq($.identifier, repeat1(seq('.', $.identifier))),
+
+    import_target: ($) =>
+      seq(
+        field('namespace', $.namespace_name),
+        repeat(seq('::', field('segment', $.identifier))),
+      ),
+
+    import_tail: ($) =>
+      choice(
+        seq('as', field('alias', $.identifier)),
+        seq('::', '{', optional($.import_member_list), '}'),
+        seq('::', '*'),
+      ),
+
+    import_member_list: ($) => sep1(',', $.import_member),
+    import_member: ($) =>
+      seq(
+        field('name', $.identifier),
+        optional(seq('as', field('alias', $.identifier))),
+      ),
+
+    namespace_name: ($) => choice($.identifier, $.string),
+
+    namespace_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        field('keyword', 'namespace'),
+        field('name', $.namespace_name),
+        choice(';', field('body', $.namespace_body)),
+      ),
+
+    namespace_body: ($) =>
+      seq('{', optional($.inner_doc_comment), repeat($.statement), '}'),
+
+    // ---------- DECLARATIONS ----------
+    let_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        field('keyword', choice('let', 'mut')),
+        field('name', $.identifier),
+        optional(seq(':', field('type', $._type))),
+        '=',
+        field('value', $.expression),
+      ),
+
+    assignment: ($) =>
+      prec(-1, seq(field('name', $.identifier), '=', field('value', $.expression))),
+
+    function_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'fn',
+        field('name', $.identifier),
+        // `fn map<T, U>(...)` — declared type parameters. Implements
+        // [TYPE-GENERICS-FN].
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        '(',
+        optional(field('parameters', $.parameter_list)),
+        ')',
+        optional(seq('->', field('return_type', $._type))),
+        optional(field('effects', $.effect_set)),
+        choice(
+          seq('=', field('body', $.expression)),
+          field('body', $.block),
+        ),
+      ),
+
+    extern_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'extern',
+        'fn',
+        field('name', $.identifier),
+        '(',
+        optional(field('parameters', $.extern_parameter_list)),
+        ')',
+        optional(seq('->', field('return_type', $._type))),
+      ),
+
+    extern_parameter_list: ($) => sep1(',', $.extern_parameter),
+    extern_parameter: ($) => seq(field('name', $.identifier), ':', field('type', $._type)),
+
+    parameter_list: ($) => sep1(',', $.parameter),
+    // `_` declares an argument the body ignores. Shared core, not ML sugar:
+    // without it ML's `\(acc, _) => …` has no `|acc, _| => …` twin and the pair
+    // breaks [FLAVOR-IR-EQUIV]. Implements [PARAM-WILDCARD].
+    parameter: ($) =>
+      seq(
+        field('name', choice($.identifier, '_')),
+        optional(seq(':', field('type', $._type))),
+      ),
+
+    type_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'type',
+        field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        '=',
+        field('definition', choice($.record_type, $.union_type, $.type_alias)),
+        optional($.type_validation),
+      ),
+
+    // A type parameter optionally carries declaration-site variance:
+    // `out T` (covariant) / `in T` (contravariant). `out`/`in` are contextual
+    // keywords reserved only inside `<...>` parameter lists. Implements
+    // [TYPE-VARIANCE-DECL].
+    type_parameter_list: ($) => sep1(',', $.type_parameter),
+    type_parameter: ($) =>
+      seq(optional(field('variance', choice('in', 'out'))), field('name', $.identifier)),
+
+    union_type: ($) => prec.right(sep1('|', $.variant)),
+    type_alias: ($) => prec.dynamic(-1, $._type),
+    // A variant's payload is named (`Node { l: Tree }`) or POSITIONAL
+    // (`Node(Tree, Tree)`), the latter having no field names to supply and so
+    // resolved by slot. Implements [TYPE-UNION-POSITIONAL].
+    variant: ($) =>
+      prec.right(
+        1,
+        seq(
+          field('name', choice($.qualified_path, $.identifier)),
+          optional(
+            choice(
+              seq('{', $.field_declarations, '}'),
+              seq('(', field('positional', $.positional_payload), ')'),
+            ),
+          ),
+        ),
+      ),
+
+    positional_payload: ($) => sep1(',', $._type),
+
+    record_type: ($) => seq('{', $.field_declarations, '}'),
+
+    field_declarations: ($) => sep1(',', $.field_declaration),
+    field_declaration: ($) =>
+      seq(
+        field('name', $.identifier),
+        ':',
+        field('type', $._type),
+        optional(field('effects', $.closed_effect_set)),
+        optional(seq('where', $.call_expression)),
+      ),
+
+    type_validation: ($) => seq('where', $.identifier),
+
+    // ---------- EFFECTS ----------
+    // `effect State<T> { ... }` — effects accept type parameters (with
+    // variance) for full polymorphism. Implements [EFFECTS-GENERIC-DECL].
+    // A `static effect` is a compile-time dialect: its operations are rewritten
+    // away and never reach the runtime. Implements [STAGE-DECL].
+    static_stage: ($) => 'static',
+    effect_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        optional(field('stage', $.static_stage)),
+        'effect',
+        field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        '{',
+        repeat($.operation_declaration),
+        '}',
+      ),
+    // `control` declares that answering this operation takes the performer's
+    // continuation: the arm returns the HANDLER's answer and may `resume`. An
+    // undecorated operation is a value operation whose arm returns the
+    // operation's result. Contextual, like the modifiers below.
+    // Implements [EFFECTS-HANDLER-ARMS].
+    operation_mode: ($) => 'control',
+    // How many times an operation's request may be answered — `abort` (never),
+    // `once` (the default, at most one) or `many` (any number). A bare keyword
+    // node in `static_stage`'s shape, not a general modifier list. Both this
+    // and `replayable` are CONTEXTUAL: `word: $.identifier` above means the
+    // lexer only reads them as keywords where the parser accepts one, so
+    // `abort: fn() -> Unit` still declares an operation called `abort`.
+    // Implements [MULTI-DECL].
+    multiplicity: ($) => choice('abort', 'once', 'many'),
+    // Asserts that performing the operation twice with the same arguments in
+    // the same handler context is acceptable to the program — the property a
+    // multi-shot handler's replay check reads. Implements [MULTI-REPLAY].
+    replayable: ($) => 'replayable',
+    // Each operation carries its OWN `///` docs — an effect's operations are
+    // independent entry points, so `Prompt.ask` and `Prompt.tell` must hover
+    // with their own prose, not the effect's. Implements [DOC-EFFECT-OP].
+    operation_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        optional(seq(
+          field('mode', $.operation_mode),
+          optional(field('multiplicity', $.multiplicity)),
+        )),
+        optional(field('replayable', $.replayable)),
+        // The modifier words are also legal operation NAMES. The lexer emits
+        // the keyword token wherever a modifier is acceptable, so recovering
+        // `abort: fn() -> Unit` cannot be a lexical decision — it is a parse
+        // one, and the alias lets GLR carry both readings until `:` (a name)
+        // or an identifier (a modifier) settles it. Implements [MULTI-DECL].
+        field(
+          'name',
+          choice(
+            $.identifier,
+            alias($.operation_mode, $.identifier),
+            alias($.multiplicity, $.identifier),
+            alias($.replayable, $.identifier),
+          ),
+        ),
+        ':',
+        field('type', $._type),
+      ),
+
+    // Effect rows reference effects optionally applied to type arguments:
+    // `!State<int>`, `![State<int>, Log]`. Implements [EFFECTS-GENERIC-ROWS].
+    effect_set: ($) =>
+      choice(
+        seq('!', $.effect_ref),
+        seq('!', '[', optional($.effect_list), optional(seq('|', field('tail', $.identifier))), ']'),
+      ),
+    // A function-typed field's row names exactly what a call through the
+    // field may perform, so it has no open tail. Implements [EFFECTS-FIELD-ROWS].
+    closed_effect_set: ($) =>
+      choice(seq('!', $.effect_ref), seq('!', '[', optional($.effect_list), ']')),
+    effect_list: ($) => sep1(',', $.effect_ref),
+    effect_ref: ($) => seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments)),
+
+    // ---------- TYPES ----------
+    _type: ($) =>
+      choice(
+        $.function_type,
+        $.generic_type,
+        $.array_type,
+        $.type_identifier,
+      ),
+
+    function_type: ($) =>
+      choice(
+        seq('(', optional($.type_list), ')', '->', $._type),
+        seq('fn', '(', optional($.type_list), ')', '->', $._type),
+      ),
+    generic_type: ($) =>
+      seq(field('name', choice($.qualified_path, $.identifier)), '<', $.type_list, '>'),
+    array_type: ($) => seq(field('name', choice($.qualified_path, $.identifier)), '[', $._type, ']'),
+    type_identifier: ($) => choice($.qualified_path, $.identifier),
+    type_list: ($) => sep1(',', $._type),
+
+    // ---------- EXPRESSIONS ----------
+    // A leading `///` block documents the statement it precedes — the only way
+    // to document a `test("name", …)` case, which is a call expression rather
+    // than a declaration. Implements [DOC-ATTACH], [TESTING-DOC].
+    expression_statement: ($) => seq(optional($.doc_comment), $.expression),
+
+    expression: ($) =>
+      choice(
+        $.match_expression,
+        $.if_expression,
+        $.handler_expression,
+        $.handler_value_expression,
+        $.kernel_expression,
+        $.select_expression,
+        $.ternary_expression,
+        $.binary_expression,
+        $.unary_expression,
+        $.pipe_expression,
+        $.call_expression,
+        $.primary_expression,
+      ),
+
+    match_expression: ($) =>
+      prec.dynamic(2, seq('match', field('value', $.expression), '{', repeat($.match_arm), '}')),
+
+    match_arm: ($) => seq(field('pattern', $.pattern), '=>', field('body', $.expression)),
+
+    // Populist Default-flavor conditional [GRAMMAR-IF-ELSE]
+    // (Kotlin/Swift/Rust shape). Osprey is
+    // expression-oriented, so `if` yields a value and the `else` branch is
+    // required; each branch is a single expression wrapped in braces. `else if`
+    // chains nest into `alternative`. Lowers to the same boolean `match` the
+    // ternary desugars to — no new AST node, no type/codegen changes
+    // ([FLAVOR-BOUNDARY]). The ML flavor keeps its layout `match`; this
+    // spelling is Default-only. The braces here are literal delimiters of the
+    // `if`, distinct from a `block` expression, which sidesteps the structural
+    // ternary's `cond { field } ? …` form.
+    if_expression: ($) =>
+      prec.right(
+        PREC.ternary,
+        seq(
+          'if',
+          field('condition', $.expression),
+          '{',
+          field('consequence', $.expression),
+          '}',
+          'else',
+          choice(
+            seq('{', field('alternative', $.expression), '}'),
+            field('alternative', $.if_expression),
+          ),
+        ),
+      ),
+
+    // A block-scoped handler governs the following statements. Static selection
+    // discharges the same region during compilation. Explicit computations use
+    // callable handler values. Implements [EFFECTS-HANDLE-REST], [STAGE-HANDLE-STATIC].
+    handler_expression: ($) =>
+      seq('handle', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', $._handler_clauses, '}'),
+    // `handler E { arm… }` is the handler ITSELF, with no region attached: a
+    // value that can be bound, passed and called. Calling it with a
+    // zero-argument computation runs that computation under these arms, so one
+    // handler serves many regions. Implements [EFFECTS-HANDLER-VALUE].
+    handler_value_expression: ($) =>
+      prec.right(seq('handler', optional(field('stage', $.static_stage)), field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '{', $._handler_clauses, '}')),
+    // Arms plus at most one `return` clause and at most one `finally` clause,
+    // in any order. Implements [EFFECTS-HANDLER-ARMS], [EFFECTS-FINALIZATION].
+    _handler_clauses: ($) =>
+      choice(
+        repeat1($.handler_arm),
+        seq(repeat($.handler_arm), $.handler_return, repeat($.handler_arm), optional(seq($.handler_finally, repeat($.handler_arm)))),
+        seq(repeat($.handler_arm), $.handler_finally, repeat($.handler_arm), optional(seq($.handler_return, repeat($.handler_arm)))),
+      ),
+    handler_return: ($) => seq('return', field('parameter', $.identifier), '=>', field('body', $.expression)),
+    // `finally => cleanup` runs once when the activation ends.
+    handler_finally: ($) => seq('finally', '=>', field('body', $.expression)),
+    handler_arm: ($) =>
+      seq(field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
+    handler_params: ($) => repeat1($.identifier),
+
+    // `kernel E op ... in body` is not a magic block: it is a handler region
+    // that supplies the STATIC handlers for the device dialects its body may
+    // use, and admits only bodies whose residual dynamic row is empty. Each arm
+    // names its effect because one kernel answers several dialects — `Parallel`,
+    // `Alloc`, `Tensor` — where `handle` answers exactly one.
+    // Implements [STAGE-GPU-KERNEL], [STAGE-GPU-LEGAL].
+    kernel_expression: ($) =>
+      prec.right(seq('kernel', repeat1($.kernel_arm), 'in', field('body', $.expression))),
+    kernel_arm: ($) =>
+      seq(field('effect', $.identifier), field('operation', $.identifier), optional($.handler_params), '=>', field('body', $.expression)),
+
+    select_expression: ($) => seq('select', '{', repeat1($.select_arm), '}'),
+    select_arm: ($) =>
+      choice(
+        seq(field('binding', choice($.identifier, '_')), '=', field('operation', $.recv_call), '=>', field('body', $.expression)),
+        seq(field('operation', choice($.recv_call, $.send_call, $.select_timeout)), '=>', field('body', $.expression)),
+        seq('_', '=>', field('body', $.expression)),
+      ),
+    select_timeout: ($) => seq('timeout', '(', $.expression, ')'),
+
+    ternary_expression: ($) =>
+      choice(
+        // The structural form carries NO static precedence: after a match-arm
+        // body, `{ f }` is equally the next arm's structural pattern, and a
+        // static winner would make one of the two spellings unparseable. The
+        // declared conflict with match_arm forks instead, and the token after
+        // `}` (`?` vs `=>`) settles it [PATTERN-STRUCTURAL].
+        prec.right(seq(field('condition', $.expression), '{', $.field_pattern, '}', '?', $.expression, ':', $.expression)),
+        prec.right(
+          PREC.ternary,
+          seq(field('condition', $.expression), '?', field('then', $.expression), ':', field('else', $.expression)),
+        ),
+        prec.right(
+          PREC.ternary,
+          // `?:` is one token ([LEX-RESULT-DEFAULT-TOKEN]).
+          seq(field('condition', $.expression), '?:', field('else', $.expression)),
+        ),
+      ),
+
+    binary_expression: ($) => {
+      const table = [
+        ['||', PREC.or],
+        ['&&', PREC.and],
+        ['==', PREC.compare],
+        ['!=', PREC.compare],
+        ['<', PREC.compare],
+        ['>', PREC.compare],
+        ['<=', PREC.compare],
+        ['>=', PREC.compare],
+        ['+', PREC.add],
+        ['-', PREC.add],
+        ['*', PREC.mul],
+        ['/', PREC.mul],
+        ['%', PREC.mul],
+      ];
+      return choice(
+        ...table.map(([op, p]) =>
+          prec.left(p, seq(field('left', $.expression), field('operator', op), field('right', $.expression))),
+        ),
+      );
+    },
+
+    unary_expression: ($) =>
+      prec.right(PREC.unary, seq(field('operator', choice('+', '-', '!', 'await')), field('operand', $.expression))),
+
+    pipe_expression: ($) =>
+      prec.left(PREC.pipe, seq(field('left', $.expression), '|>', field('right', $.expression))),
+
+    // Left-recursive postfix chain: field access (obj.f), method/function call
+    // (f(args)), and index (a[i]) — composes to obj.f.m()[0] naturally.
+    call_expression: ($) =>
+      prec.left(
+        PREC.member,
+        seq(
+          field('callee', $.expression),
+          choice(
+            seq('.', field('member', $.identifier)),
+            // `f(args)` and `f (args)` both — the argument `(` may be preceded
+            // by horizontal space but must stay on the callee's line, which is
+            // what `_call_open_gap` (zero-width, src/scanner.c) asserts. That
+            // keeps the call binding at PREC.member, so `1 + id (2)` is still
+            // `1 + id(2)`, while a `(` opening the next line belongs to that
+            // arm's `(a, b)` tuple pattern instead. Implements [PATTERN-TUPLE]
+            // coexistence with postfix calls.
+            seq($._call_open_gap, '(', optional($.argument_list), ')'),
+            // [TYPE-GENERICS-APPLY]: both delimiters abut the call. Alias the
+            // immediate opening form to the shared construction-site CST.
+            seq(field('type_arguments', alias($._call_type_arguments, $.type_arguments)),
+              token.immediate('('), optional($.argument_list), ')'),
+            // The index `[` must IMMEDIATELY follow its target — a stricter rule
+            // than the call's same-line one, and deliberately so. List-pattern
+            // arms are written on ONE line in real source:
+            //
+            //     match xs { [] => 0  [head, ...tail] => add(head, sumL(tail)) }
+            //
+            // so a same-line `[` gap would read `0  [head` as an index and
+            // break src/benchmarks/cases/listops/listops.osp. Tuple-pattern arms
+            // have no such single-line usage, which is why `(` can afford the
+            // looser rule and `[` cannot. Implements [TYPE-LIST-PATTERNS]
+            // coexistence with postfix indexing.
+            seq(token.immediate('['), field('index', $.expression), ']'),
+          ),
+        ),
+      ),
+
+    argument_list: ($) =>
+      choice(
+        $.named_argument_list,
+        sep1(',', $.expression),
+      ),
+    named_argument_list: ($) => sep1(',', $.named_argument),
+    named_argument: ($) => seq(field('name', $.identifier), ':', field('value', $.expression)),
+
+    primary_expression: ($) =>
+      choice(
+        $.spawn_expression,
+        $.yield_expression,
+        $.await_call,
+        $.send_call,
+        $.recv_call,
+        $.perform_expression,
+        $.mask_expression,
+        $.instance_expression,
+        $.resume_expression,
+        $.type_constructor,
+        $.update_expression,
+        $.block,
+        $.object_literal,
+        $.literal,
+        $.lambda_expression,
+        $.qualified_path,
+        $.identifier,
+        // A handler value needs an effect name and arms. Existing callbacks
+        // named `handler` remain ordinary references/calls in other contexts.
+        alias('handler', $.identifier),
+        seq('(', $.expression, ')'),
+      ),
+
+    spawn_expression: ($) => prec.right(seq('spawn', $.expression)),
+    yield_expression: ($) => prec.right(seq('yield', optional($.expression))),
+    await_call: ($) => seq('await', '(', $.expression, ')'),
+    send_call: ($) => seq('send', '(', $.expression, ',', $.expression, ')'),
+    recv_call: ($) => seq('recv', '(', $.expression, ')'),
+    // `mask E { body }` skips one enclosing activation of E (or of a named
+    // capability) while `body` runs. Implements [EFFECTS-MASK].
+    mask_expression: ($) =>
+      seq('mask', field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), field('body', $.block)),
+    // `instance E` creates a fresh capability identity. Implements [EFFECTS-INSTANCE].
+    instance_expression: ($) =>
+      prec.right(seq('instance', field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)))),
+    perform_expression: ($) =>
+      seq('perform', field('effect', choice($.qualified_path, $.identifier)), optional(field('instantiation', $.type_arguments)), '.', field('operation', $.identifier), '(', optional($.argument_list), ')'),
+    // `resume(v)` resumes the performer's delimited continuation with `v`;
+    // `resume()` resumes with Unit. Only legal inside a handler arm body.
+    // Implements [EFFECTS-RESUME].
+    resume_expression: ($) =>
+      seq('resume', '(', field('value', optional($.expression)), ')'),
+
+    type_constructor: ($) =>
+      prec.dynamic(1, seq(field('name', choice($.qualified_path, $.identifier)), optional($.type_arguments), '{', $.field_assignments, '}')),
+    type_arguments: ($) => seq('<', $.type_list, '>'),
+    // Implements [SYNTAX-TYPE-ARGUMENTS]: `<` touches the callee.
+    _call_type_arguments: ($) => seq($._type_application_ahead, token.immediate('<'), alias($._call_type_list, $.type_list), '>'),
+    // Keep misplaced declaration markers visible for a precise diagnostic.
+    _call_type_list: ($) => sep1(',', seq(optional(field('variance', choice('in', 'out'))), $._type)),
+
+    update_expression: ($) =>
+      prec.dynamic(0, seq(field('record', $.identifier), '{', $.field_assignments, '}')),
+
+    field_assignments: ($) => sep1(',', $.field_assignment),
+    field_assignment: ($) => seq(field('name', $.identifier), ':', field('value', $.expression)),
+
+    block: ($) => seq('{', repeat($.statement), optional($.expression), '}'),
+
+    object_literal: ($) => prec(-1, seq('{', $.field_assignments, '}')),
+
+    lambda_expression: ($) =>
+      choice(
+        seq('fn', '(', optional($.parameter_list), ')', optional(seq('->', $._type)), '=>', field('body', $.expression)),
+        seq('|', optional($.parameter_list), '|', '=>', field('body', $.expression)),
+      ),
+
+    // ---------- LITERALS ----------
+    literal: ($) =>
+      choice($.float, $.integer, $.string, $.interpolated_string, $.boolean, $.list_literal, $.map_literal),
+
+    list_literal: ($) => seq('[', optional(sep1(',', $.expression)), ']'),
+    map_literal: ($) =>
+      choice(seq('{', sep1(',', $.map_entry), '}'), seq('{', '}')),
+    map_entry: ($) => seq(field('key', $.expression), ':', field('value', $.expression)),
+
+    // ---------- PATTERNS ----------
+    // The `pattern` forms: scalar literal/number (incl. negative), list
+    // destructuring, constructor & destructuring forms, type-annotation,
+    // structural, wildcard. Collection (list/map) literals are *not* pattern
+    // literals — `[…]` is a list_pattern, so `[head, tail]` never collides with
+    // a two-element list literal. Implements [TYPE-LIST-PATTERNS].
+    pattern: ($) =>
+      choice(
+        $.integer, $.float, $.string, $.interpolated_string, $.boolean, // 0, 1.5, "x", true
+        prec.right(seq(field('operator', choice('-', '+')), choice($.integer, $.float))), // -1, +42
+        $.list_pattern, // [], [x], [a, b], [head, ...tail]
+        seq(field('name', choice($.qualified_path, $.identifier)), '{', $.field_pattern, '}'), // Ok { value }
+        seq(field('name', choice($.qualified_path, $.identifier)), '(', sep1(',', $.pattern), ')'), // Some(x)
+        seq(field('name', $.identifier), ':', '{', $.field_pattern, '}'), // p: { x, y }
+        seq(field('name', $.identifier), ':', field('type', $._type)), // value: Int
+        seq(field('name', $.identifier), optional(field('binding', $.identifier))), // bare var / capture
+        $.structural_pattern, // { name, age } / { name, ../.. }
+        $.tuple_pattern, // (a, b) — positional row [PATTERN-TUPLE]
+        '_',
+      ),
+    // `{ name, age }` closed row / `{ name, ../.. }` open row. The `../..` marker
+    // lives here, not in field_pattern, so the structural ternary and the
+    // `Ctor { … }` forms — which share field_pattern — cannot spell an open
+    // row [PATTERN-STRUCTURAL].
+    structural_pattern: ($) => seq('{', $.field_pattern, optional(seq(',', '../..')), '}'),
+    // Two or more comma-separated slots; `(x)` stays expression grouping and
+    // never reaches pattern position, so a one-element tuple is unspellable.
+    // A slot is a binder or `_` — a nested pattern has no fall-through
+    // spelling, exactly as in positional constructor slots; the ML parser
+    // rejects the same shape ([FLAVOR-ML-PATTERN-GROUP], [PATTERN-TUPLE]).
+    tuple_pattern: ($) =>
+      seq(
+        '(',
+        field('element', choice($.identifier, '_')),
+        repeat1(seq(',', field('element', choice($.identifier, '_')))),
+        ')',
+      ),
+    // The rest binder `...id` is allowed only at the tail; a fixed-length form
+    // (`[]`, `[a, b]`) omits it. Mid-list rest (`[a, ...m, b]`) is unrepresentable.
+    list_pattern: ($) =>
+      seq(
+        '[',
+        optional(
+          seq(
+            field('element', $.pattern),
+            repeat(seq(',', field('element', $.pattern))),
+            optional(seq(',', '...', field('rest', $.identifier))),
+          ),
+        ),
+        ']',
+      ),
+    field_pattern: ($) => sep1(',', $.identifier),
+
+    // ---------- MODULES ----------
+    module_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        optional(field('state', 'state')),
+        field('keyword', 'module'),
+        field('path', $.symbol_path),
+        optional(field('signature', $.signature_ascription)),
+        '{',
+        optional($.inner_doc_comment),
+        repeat($.module_item),
+        '}',
+      ),
+
+    signature_ascription: ($) =>
+      seq(
+        ':',
+        field('path', $.symbol_path),
+        optional(seq('+', field('extra', 'extra'))),
+      ),
+
+    module_item: ($) =>
+      choice($.export_declaration, $._module_declaration),
+
+    export_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        'export',
+        choice(
+          seq(field('opaque', 'opaque'), field('declaration', $.type_declaration)),
+          field('declaration', $._module_declaration),
+        ),
+      ),
+
+    _module_declaration: ($) =>
+      choice(
+        $.let_declaration,
+        $.function_declaration,
+        $.extern_declaration,
+        $.type_declaration,
+        $.effect_declaration,
+        $.module_declaration,
+        $.signature_declaration,
+      ),
+
+    // ---------- SIGNATURES ----------
+    signature_declaration: ($) =>
+      seq(
+        optional($.doc_comment),
+        field('keyword', 'signature'),
+        field('name', $.identifier),
+        '{',
+        repeat($.signature_item),
+        '}',
+      ),
+
+    signature_item: ($) =>
+      choice(
+        $.signature_value,
+        $.signature_function,
+        $.signature_type,
+        $.effect_declaration,
+        $.signature_module,
+      ),
+
+    signature_value: ($) =>
+      seq('let', field('name', $.identifier), ':', field('type', $._type)),
+
+    signature_function: ($) =>
+      seq(
+        'fn',
+        field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        '(',
+        optional(field('parameters', $.extern_parameter_list)),
+        ')',
+        optional(seq('->', field('return_type', $._type))),
+        optional(field('effects', $.effect_set)),
+      ),
+
+    signature_type: ($) =>
+      seq(
+        optional(field('opaque', 'opaque')),
+        'type',
+        field('name', $.identifier),
+        optional(seq('<', field('type_parameters', $.type_parameter_list), '>')),
+        optional(seq('=', field('definition', $._type))),
+      ),
+
+    signature_module: ($) =>
+      seq(
+        'module',
+        field('path', $.symbol_path),
+        field('signature', $.signature_ascription),
+      ),
+
+    // One-or-more `::` separators distinguishes an expression/type path from
+    // an ordinary identifier without flavor-dependent semantic lookahead.
+    qualified_path: ($) =>
+      seq($.identifier, repeat1(seq('::', $.identifier))),
+    symbol_path: ($) => sep1('::', $.identifier),
+
+    // ---------- TERMINALS ----------
+    boolean: ($) => choice('true', 'false'),
+    float: ($) => /[0-9]+\.[0-9]+/,
+    integer: ($) => /[0-9]+/,
+    // Implements [STRING-INTERPOLATION]: embedded code uses ordinary expressions.
+    string: ($) => seq(alias($._string_start, '"'), repeat($._string_text), alias($._string_end, '"')),
+    interpolated_string: ($) =>
+      seq(alias($._string_start, '"'), repeat($._string_text), $.interpolation,
+        repeat(choice($._string_text, $.interpolation)), alias($._string_end, '"')),
+    interpolation: ($) =>
+      seq(alias($._interpolation_start, '${'), field('expression', $.expression), alias($._interpolation_end, '}')),
+    _string_text: ($) => choice($.string_content, $.escape_sequence),
+
+    identifier: ($) => /[a-zA-Z_][a-zA-Z0-9_]*/,
+
+    doc_comment: ($) => repeat1($._doc_comment_line),
+    // `///` doc comment must out-prioritise `//` line comment on the shared
+    // prefix; both must out-prioritise `/` (division) by maximal munch.
+    _doc_comment_line: ($) => token(prec(1, seq('///', /[^\r\n]*/))),
+    // `//!` documents the scope that ENCLOSES it — the file, a namespace body
+    // or a module body. It takes the same `prec(1)` trick as `///` so the
+    // shared `//` prefix does not lex it as an ordinary line comment. Because
+    // it is not an extra, a `//!` written anywhere else is a syntax error
+    // rather than silent trivia [DOC-SIGIL-INNER].
+    inner_doc_comment: ($) => repeat1($._inner_doc_comment_line),
+    _inner_doc_comment_line: ($) => token(prec(1, seq('//!', /[^\r\n]*/))),
+    // A line comment may not begin `//!`: that spelling belongs to
+    // `_inner_doc_comment_line`, and leaving it matchable here gave the lexer a
+    // silent fallback — a `//!` written where no scope can hold one lexed as an
+    // ordinary comment and the documentation vanished without a word. Excluding
+    // it makes that position a syntax error, exactly as a stray `///` already
+    // is [DOC-SIGIL-INNER].
+    line_comment: ($) =>
+      token(seq('//', optional(seq(/[^!\r\n]/, /[^\r\n]*/)))),
+  },
+});
+
+function sep1(separator, rule) {
+  return seq(rule, repeat(seq(separator, rule)));
+}

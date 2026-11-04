@@ -2,7 +2,7 @@
 
 Control operations declare how often their continuation may be resumed: `control abort`, `control once` (the default for `control`), or `control many`. `replayable` is a separate promise about repeating an operation. Retrying a payment request inside an arm is different from resuming twice and repeating the email in the remaining computation.
 
-The [effects specification](../../../docs/specs/language/0017-AlgebraicEffects.md) defines multiplicity and replay. [Plan 0016](../../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks delivery; reusable `many` continuations remain unsupported. This directory holds accepted cases; rejection fixtures live in [`examples/failscompilation`](../../../examples/failscompilation).
+The [effects specification](../../../docs/specs/language/0017-AlgebraicEffects.md) defines multiplicity and replay. [Plan 0016](../../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks delivery; reusable `many` continuations remain unsupported. This directory holds accepted cases; rejection fixtures live in [`src/examples/failscompilation`](../../../src/examples/failscompilation).
 
 ## What the paired suite pins
 
@@ -37,7 +37,7 @@ Two further cases cover the rest of the surface:
 | `[MULTI-FALSIFY]` | Required | Measured |
 |---|---|---|
 | 1. Single-op retry | Accepted; one email | **Accepted.** This suite, green in both flavors and byte-exact under the default, `gc` and `arc` backends, with zero live objects at ARC exit |
-| 2. Backtracking over impure code | Rejected, naming the non-replayable operation | **Rejected** at the handle site by `[MULTI-REPLAY-CHECK]`, in both flavors — `examples/failscompilation/multi_many_over_nonreplayable.ospo` |
+| 2. Backtracking over impure code | Rejected, naming the non-replayable operation | **Rejected** at the handle site by `[MULTI-REPLAY-CHECK]`, in both flavors — `src/examples/failscompilation/multi_many_over_nonreplayable.ospo` |
 | 3. Backtracking over pure code | Accepted; every alternative produced | **Unsupported.** The native runtime can resume a captured continuation once and return its answer, but cannot clone or reuse it for another branch. Blocked on [plan 0016](../../../docs/plans/0016-algebraic-effects-and-handlers.md) |
 | 4. Shared `map` under both multiplicities | Compiles with no annotation on the helper | **Partial evidence only.** The shared helper accepts a replayable `once` control operation and a value operation. Its `many` case remains blocked with case 3 |
 
@@ -52,8 +52,8 @@ Cases 3 and the `many` half of case 4 remain unmet acceptance requirements. Reje
 
 ```sh
 target/release/osprey tests/effects/multiplicity/multiplicity.test.osp --run --quiet
-zsh crates/run_test_corpus.sh gc
-OSPREY_ARC_DEBUG=1 zsh crates/run_test_corpus.sh arc
+zsh src/crates/run_test_corpus.sh gc
+OSPREY_ARC_DEBUG=1 zsh src/crates/run_test_corpus.sh arc
 ```
 
 Both need `resume`, which `wasm32` has no representation for, so both are listed

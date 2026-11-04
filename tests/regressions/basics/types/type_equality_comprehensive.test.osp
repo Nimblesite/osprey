@@ -238,7 +238,7 @@ print("fn-payload gate accepted: ${describe(mkGate())}")
 /// parameter sits in both at once. Each value is then USED, so a position that
 /// merely compiled but lowered wrongly is caught as well as one that was
 /// wrongly rejected. Assignment keeps the leaves exact under every marker —
-/// the refusals are in examples/failscompilation/variance_*.ospo.
+/// the refusals are in src/examples/failscompilation/variance_*.ospo.
 /// Implements [TYPE-VARIANCE-POSITIONS], [TYPE-VARIANCE-COERCION]
 type Source<out T> = Source { produce: T, make: (int) -> T, items: List<T> }
 type Sink<in T> = Sink { admit: (T) -> bool, hof: ((int) -> T) -> int }

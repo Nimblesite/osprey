@@ -145,7 +145,7 @@ def c_runtime_gate_cases():
 
 def check_c_runtime(root, percentage, entry, suffix="c"):
     write_json(root / "coverage-thresholds.json", {"projects": {"c_runtime": {"probe": entry}}})
-    summary = root / "compiler/bin/cov/probe/summary.txt"
+    summary = root / "src/compiler/bin/cov/probe/summary.txt"
     summary.parent.mkdir(parents=True)
     summary.write_text("" if percentage is None else f"File '../../../runtime/probe.{suffix}'\nLines executed:{percentage}% of 100\n")
     source = (ROOT / "scripts/make/tests.mk").read_text()
@@ -196,12 +196,12 @@ ENTRY_FOOTER = "# coverage total: 100.0% (2/2 lines)\n# suites: 1 passed, 0 fail
 ENTRY_MANIFEST = '[project]\nname = "workbench"\nentry = "src/lib.py"\n'
 
 
-def entry_report(covered, total=10, key="apps/workbench/src/lib.py"):
+def entry_report(covered, total=10, key="src/workbench/src/lib.py"):
     lines = {str(line): 1 if line <= covered else 0 for line in range(1, total + 1)}
     return {"files": {key: {"lines": lines}}}
 
 
-def masked_report(hits, key="apps/workbench/src/lib.py"):
+def masked_report(hits, key="src/workbench/src/lib.py"):
     return {"files": {key: {"lines": {str(line): hits.get(line, 0) for line in range(1, 11)}}}}
 
 
@@ -237,7 +237,7 @@ class CoverageTestCase(unittest.TestCase):
 
     def workbench(self, primary=None, entry=None, oracle=ENTRY_ORACLE, manifest=ENTRY_MANIFEST,
                   suite_manifest=None):
-        """The one apps/workbench fixture every entry-probe regression starts from."""
+        """The one src/workbench fixture every entry-probe regression starts from."""
         fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(10)}}},
                                apps={"workbench": {"sources": {"src/lib.py": py_source(10)}}})
         project = fixture.root / "apps" / "workbench"
@@ -260,7 +260,7 @@ class CoverageTestCase(unittest.TestCase):
 
     def assert_entry_refused(self, fixture, message, also=()):
         """Collect the Workbench app once and require the refusal `message`."""
-        result = fixture.collect("--project", "apps/workbench")
+        result = fixture.collect("--project", "src/workbench")
         self.assert_exit(result, 1)
         for expected in (message, *also):
             self.assertIn(expected, result.stdout)

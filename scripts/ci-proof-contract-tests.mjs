@@ -12,7 +12,7 @@ export function registerProofContracts(proof) {
 
 function assertProofWorkflow(proof) {
   assert.match(proof, /needs: \[changes, build\]/)
-  // examples/proof/** classifies as code and benchmarks/proof/** as
+  // src/examples/proof/** classifies as code and src/benchmarks/proof/** as
   // benchmarks; both outputs gate the job exactly as the changes job gates
   // its own benchmark steps.
   assert.match(proof, /needs\.changes\.outputs\.code == 'true' \|\| needs\.changes\.outputs\.benchmarks == 'true'/)
@@ -23,7 +23,7 @@ function assertProofWorkflow(proof) {
   // lives in the tools' lean-toolchain, which the job installs and the tools
   // cache key hashes, so the two cannot disagree.
   assert.match(proof, /--default-toolchain "\$\(cat benchmarks\/proof\/tools\/lean-toolchain\)"/)
-  assert.match(readFileSync('benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
+  assert.match(readFileSync('src/benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
   assert.match(proof, /hashFiles\([^)]*benchmarks\/proof\/tools\/lean-toolchain/)
   assert.doesNotMatch(proof, /--default-toolchain stable/)
   assert.doesNotMatch(proof, /continue-on-error/)

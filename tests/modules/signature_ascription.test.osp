@@ -92,7 +92,7 @@ module Trees : TreeApi {
 /// An unascribed module reaches the same surface through plain `export`.
 /// The Default-only `: Signature + extra` ascription cannot appear in a twin
 /// pair — ML ascription is exact — so it is asserted in
-/// `crates/osprey-project/tests/module_diagnostics.rs` instead.
+/// `src/crates/osprey-project/tests/module_diagnostics.rs` instead.
 module Extended {
     type Counter = { count: int }
     export fn empty() = Counter { count: 5 }

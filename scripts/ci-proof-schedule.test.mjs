@@ -7,8 +7,8 @@ test('proof kernel schedules all three backends concurrently and retains every c
   assert.equal(result.status, 0, result.stdout + result.stderr)
   assert.equal(result.calls.length, 8)
   for (const memory of ['gc', 'arc', 'wasm32']) {
-    assert.ok(result.calls.some(call => call.source === 'examples/proof/kernel' && call.memory === memory))
-    assert.ok(result.calls.some(call => call.source === 'examples/proof/kernel/tests' && call.memory === memory))
+    assert.ok(result.calls.some(call => call.source === 'src/examples/proof/kernel' && call.memory === memory))
+    assert.ok(result.calls.some(call => call.source === 'src/examples/proof/kernel/tests' && call.memory === memory))
   }
   assert.equal(result.calls.filter(call => call.source === '.').length, 2)
 })
@@ -31,7 +31,7 @@ test('proof scheduling rejects a successful process with a failed assertion summ
 test('proof CI freshly builds each backend once, checks both corpora and Unicode, then benchmarks', () => {
   const result = runSchedule('_test_proof_ci')
   assert.equal(result.status, 0, result.stdout + result.stderr)
-  const batches = result.calls.filter(call => call.source === 'examples/proof/batch')
+  const batches = result.calls.filter(call => call.source === 'src/examples/proof/batch')
   assert.deepEqual(batches.map(call => call.memory).sort(), ['arc', 'gc', 'wasm32'])
   assert.equal(result.calls.length, 16)
   assert.equal(result.calls.at(-1).source, 'benchmark')

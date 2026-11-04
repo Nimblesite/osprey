@@ -18,7 +18,7 @@ hunt-sample:
 hunt-crashes:
 	$(MAKE) -C $(ROOT) _hunt-crashes
 
-## hunt-corpus: Hunt every program under tests/ and examples/ not listed in
+## hunt-corpus: Hunt every program under tests/ and src/examples/ not listed in
 ##              tests/HUNT_UNPORTABLE.txt, then print the table [SYMEX-CORPUS].
 hunt-corpus:
 	$(MAKE) -C $(ROOT) _hunt-corpus

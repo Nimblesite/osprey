@@ -21,7 +21,7 @@ require a lock/API format bump unless they have an explicit compatible default.
 
 Executable model generation, validation, canonical serialization, and conformance tooling MUST be implemented in Osprey under [the implementation-language contract](0029-PackageManagement.md#implementation-language-package-implementation-language). Generated package-domain source MUST be Osprey; a handwritten or generated implementation in another language is not permitted. Until Osprey model generation is available, Osprey code consumes serialized conformance fixtures directly, without a duplicate handwritten domain model. The typeDiagram schema and serialized fixtures remain declarative data.
 
-The canonical source is [`schemas/package-registry.td`](../../../schemas/package-registry.td). The block below is its byte-identical documentation projection, enforced by the existing schema parity test; do not maintain a separate model. [Model invariants](0031-PackageDomainInvariants.md) and [organization governance](0045-OrganizationPackageGovernance.md) constrain these shapes.
+The canonical source is [`src/schemas/package-registry.td`](../../../src/schemas/package-registry.td). The block below is its byte-identical documentation projection, enforced by the existing schema parity test; do not maintain a separate model. [Model invariants](0031-PackageDomainInvariants.md) and [organization governance](0045-OrganizationPackageGovernance.md) constrain these shapes.
 
 ```typediagram
 typeDiagram

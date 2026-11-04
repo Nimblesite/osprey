@@ -4,7 +4,7 @@
 // build` on a tree that had never run `make setup` reached `tsc -b` and died
 // with "tsc: command not found". The install is now a make prerequisite (the
 // `%/node_modules/.package-lock.json` pattern rule), but a prerequisite is only
-// as good as the next person's memory — the next `cd website && npm run x`
+// as good as the next person's memory — the next `cd src/website && npm run x`
 // added without one reintroduces the same failure, and it reproduces only on a
 // machine that has never installed that project. This check makes the omission
 // fail the build instead.
@@ -35,8 +35,8 @@ const GUARDED = new Map([
   ['vscode-extension', 'EXT_NODE_DEPS'],
   ['website', 'WEBSITE_NODE_DEPS'],
   ['webcompiler', 'WEBCOMPILER_NODE_DEPS'],
-  ['examples/projects/modules/web', 'BANK_WEB_NODE_DEPS'],
-  ['examples/projects/modules/e2e', 'BANK_E2E_NODE_DEPS'],
+  ['src/examples/projects/modules/web', 'BANK_WEB_NODE_DEPS'],
+  ['src/examples/projects/modules/e2e', 'BANK_E2E_NODE_DEPS'],
 ])
 
 // Make variables that resolve to a guarded directory.

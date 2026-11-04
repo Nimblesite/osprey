@@ -1,0 +1,33 @@
+# [CAST-MOBILE-GPUI] No app target lives here: build.sh packages the shared
+# Rust src/hosts/gpui executable with the native Swift cast services into
+# build/ios-sim/Casting.app. This project only builds the standalone UI test
+# runner (Target Application: None); the tests attach to the installed
+# org.ospreylang.casting bundle by identifier.
+name: Casting
+options:
+  bundleIdPrefix: org.ospreylang
+settings:
+  base:
+    IPHONEOS_DEPLOYMENT_TARGET: '18.0'
+    SWIFT_VERSION: '5.0'
+    SWIFT_TREAT_WARNINGS_AS_ERRORS: YES
+  configs:
+    Debug:
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+targets:
+  CastingUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [tests]
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO
+schemes:
+  Casting:
+    build:
+      targets:
+        CastingUITests: all
+    test:
+      targets:
+        - CastingUITests

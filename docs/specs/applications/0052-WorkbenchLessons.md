@@ -28,12 +28,12 @@ A lesson is two files. `lessons/<slug>.lean` is an ordinary Lean file holding ev
 
 | Path | Holds |
 | --- | --- |
-| `apps/workbench/lessons/catalogue.json` | the ordered list of lesson slugs and the stage names |
-| `apps/workbench/lessons/<slug>.lean` | the lesson's declarations |
-| `apps/workbench/lessons/<slug>.json` | the extension |
-| `apps/workbench/lessons/media/<slug>/` | images, videos, posters and captions |
+| `src/workbench/lessons/catalogue.json` | the ordered list of lesson slugs and the stage names |
+| `src/workbench/lessons/<slug>.lean` | the lesson's declarations |
+| `src/workbench/lessons/<slug>.json` | the extension |
+| `src/workbench/lessons/media/<slug>/` | images, videos, posters and captions |
 
-At start the application reads `catalogue.json` with `ReadTexts` into host-held slice `lessons:catalogue`, then every lesson's two files into `lessons:texts`; each read stores `{ files: [{ path, text, error }] }`. A lesson that fails to read is listed with its fault and cannot be opened. Hosts contain no lesson judgement or proof logic. Media paths are relative to `apps/workbench/lessons/`, must start with `media/<slug>/`, and may not contain `..`, a backslash or a leading `/`.
+At start the application reads `catalogue.json` with `ReadTexts` into host-held slice `lessons:catalogue`, then every lesson's two files into `lessons:texts`; each read stores `{ files: [{ path, text, error }] }`. A lesson that fails to read is listed with its fault and cannot be opened. Hosts contain no lesson judgement or proof logic. Media paths are relative to `src/workbench/lessons/`, must start with `media/<slug>/`, and may not contain `..`, a backslash or a leading `/`.
 
 ## The lesson format [LESSONS-FORMAT]
 
@@ -129,7 +129,7 @@ Every `Incorrect` adds one attempt. Hint *n* appears after *n* wrong attempts or
 
 ### Every shipped lesson is checked [LESSONS-INTEGRITY]
 
-The suite refuses the build when any of these fails for any lesson in `apps/workbench/lessons/`:
+The suite refuses the build when any of these fails for any lesson in `src/workbench/lessons/`:
 
 - the `.json` reads with no fault and its slug, `after` list and challenge ids follow [LESSONS-FORMAT]; every referenced `decl` exists in the `.lean`;
 - the `.lean` checks under `osprey prove check` with every `statement` declaration `Unchecked` (its body is `sorry`), every `solution` and `expected` declaration `Checked`, and every judge `proof` `Checked` or `Rejected`, never `Unchecked`;
@@ -142,7 +142,7 @@ The `Tutor` slice holds, per challenge, the answer text, the choice, the attempt
 
 ## Framework additions [LESSONS-FRAMEWORK]
 
-Lessons draw their pictures and films with `@osprey/native`'s `Media` module ([UI-COMPONENTS-MEDIA](../../../packages/native/README.md#media-ui-components-media)) and read `math` blocks back with `Maths::decode` ([UI-COMPONENTS-MATH](../../../packages/native/README.md#typeset-mathematics-ui-components-math)). Neither module knows about lessons.
+Lessons draw their pictures and films with `@osprey/native`'s `Media` module ([UI-COMPONENTS-MEDIA](../../../src/packages/native/README.md#media-ui-components-media)) and read `math` blocks back with `Maths::decode` ([UI-COMPONENTS-MATH](../../../src/packages/native/README.md#typeset-mathematics-ui-components-math)). Neither module knows about lessons.
 
 ## The curriculum [LESSONS-CURRICULUM]
 
@@ -178,10 +178,10 @@ The action union carries `ToLearn`, `ToWork`, `Open slug`, `Answer id`, `Formula
 
 ## Verification [LESSONS-VERIFICATION]
 
-In `apps/workbench/tests/`, each a fixture through the real `start`/`dispatch` where it concerns the application:
+In `src/workbench/tests/`, each a fixture through the real `start`/`dispatch` where it concerns the application:
 
 - the reader accepts every block and challenge kind and refuses each broken form: unknown `kind`, missing field, bad slug, unsafe media path, unknown `decl`, `format` 1;
-- `Maths::decode (Maths::encode t) = t` over a corpus of trees, in `packages/native/tests/`;
+- `Maths::decode (Maths::encode t) = t` over a corpus of trees, in `src/packages/native/tests/`;
 - prove: a `Checked` completion is `Correct`; a `Rejected` completion at line 4 is `Incorrect` at line 4 with its message; a `sorry` is `Unfinished`; a stale completion is dropped;
 - state: an exact answer, an answer equal by definition (`¬p` for `p → False`), a different but equivalent answer (`Incorrect`), a stray name and an unparsable formula;
 - keypad: caret insertion at start, middle, end and clamped; multi-byte offsets; independent attempts; marking invalidation without submission; focus high-water and lesson-qualified identity reset;
@@ -190,7 +190,7 @@ In `apps/workbench/tests/`, each a fixture through the real `start`/`dispatch` w
 - a keystroke in one answer re-sends only that `challenge:<lesson>/<id>` region;
 - progress round-trips through `StoreWrite` and `StoreRead`;
 - every shipped lesson passes [LESSONS-INTEGRITY] with the toolchain present;
-- the `Image` and `Video` encodings, in `packages/native/tests/`;
+- the `Image` and `Video` encodings, in `src/packages/native/tests/`;
 - no lesson file contains the deleted formats (the grep gate of [WORKBENCH-VERIFICATION]).
 
 Each host's smoke test opens `what-is-a-proof`, plays nothing, answers its first challenge and sees the "Right" badge.

@@ -25,4 +25,4 @@ $(eval $(call android_arc_runtime,x64,x86_64-linux-android26))
 ## two targets share one C ABI implementation and therefore one set of holes.
 _test_android_goldens:
 	@echo "==> [$(ANDROID_GOLDEN_TARGET)] golden stdout comparison on the device..."
-	@OSPREY_TARGET=$(ANDROID_GOLDEN_TARGET) zsh crates/run_test_corpus.sh
+	@OSPREY_TARGET=$(ANDROID_GOLDEN_TARGET) zsh src/crates/run_test_corpus.sh

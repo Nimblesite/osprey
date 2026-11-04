@@ -35,7 +35,7 @@ processAnyValue input = input + 10
     Erasure is one-way [TYPE-ANY], so the heap value is forwarded into another
     `any` sink rather than recovered as a `string`: an annotation that
     resurrects a pointer is rejected, and
-    `examples/failscompilation/ml_any_recovery_by_annotation.ospo` pins every
+    `src/examples/failscompilation/ml_any_recovery_by_annotation.ospo` pins every
     form of it in this flavor. *)
 forward (x : any) = x
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regressions for `apps/` gating and `--project` selection in the coverage gate.
+"""Regressions for `src/targets/` gating and `--project` selection in the coverage gate.
 
 Every shipped app is covered by the same 90% floor as a package, `--project`
 collects exactly one project, an ungated app fails the inventory before any
@@ -39,7 +39,7 @@ class ProjectTests(CoverageTestCase):
                 fixture.write_report("workbench", own_report("workbench", covered, 10, kind="apps"), kind="apps")
                 result = fixture.check()
                 self.assert_exit(result, code)
-                workbench = fixture.result("apps/workbench")
+                workbench = fixture.result("src/workbench")
                 self.assertEqual((workbench["covered"], workbench["total"]), (covered, 10))
                 self.assertEqual(workbench["percentage"], covered * 10)
                 self.assertNotIn("threshold", workbench)
@@ -65,17 +65,17 @@ class ProjectTests(CoverageTestCase):
         fixture = self.two_projects()
         fixture.write_report("demo", own_report("demo", 9, 10))
         fixture.write_report("workbench", own_report("workbench", 9, 10, kind="apps"), kind="apps")
-        self.assert_exit(fixture.check("--project", "apps/workbench"), 0)
-        self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, {"apps/workbench"})
+        self.assert_exit(fixture.check("--project", "src/workbench"), 0)
+        self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, {"src/workbench"})
         self.assert_exit(fixture.check("--project", "packages/demo"), 0)
         self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, {"demo"})
         fixture.write_spec({"workbench": {"report": own_report("workbench", 9, 10, kind="apps")}})
         (fixture.reports / "demo.json").unlink()
-        result = fixture.collect("--project", "apps/workbench")
+        result = fixture.collect("--project", "src/workbench")
         self.assert_exit(result, 0)
         self.assertTrue((fixture.reports / "apps-workbench.json").is_file())
         self.assertFalse((fixture.reports / "demo.json").exists(), "a focused project must not collect peers")
-        self.assertEqual(fixture.result("apps/workbench")["percentage"], 90.0)
+        self.assertEqual(fixture.result("src/workbench")["percentage"], 90.0)
         for bad in ("unknown/app", "demo"):
             self.assertIn(f"unknown project {bad!r}", fixture.check("--project", bad).stderr)
 
@@ -94,7 +94,7 @@ class ProjectTests(CoverageTestCase):
         fixture.write_report("workbench", own_report("workbench", 9, 10, kind="apps"), kind="apps")
         result = fixture.check()
         self.assert_exit(result, 0)
-        self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, {"workbench", "apps/workbench"})
+        self.assertEqual({row["name"] for row in fixture.summary()["packages"]}, {"workbench", "src/workbench"})
         self.assertTrue(all((fixture.reports / name).is_file() for name in ("workbench.json", "apps-workbench.json")))
 
 
@@ -112,7 +112,7 @@ class EntryProbeTests(CoverageTestCase):
         primary = masked_report({line: 2 for line in range(1, 8)})
         entry = masked_report({1: 3, **{line: 1 for line in range(8, 11)}})
         fixture = self.app({"report": entry, "stdout": ENTRY_ORACLE + ENTRY_FOOTER}, primary=primary)
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         expected = {1: 5, **{line: 2 for line in range(2, 8)}, **{line: 1 for line in range(8, 11)}}
         merged = fixture.merged_lines()
         self.assertEqual(len(merged), 1, "one logical own file after merging")
@@ -120,22 +120,22 @@ class EntryProbeTests(CoverageTestCase):
                          "entry hits add to the suite's own counts; they never replace, cap or vanish")
         self.assertTrue((fixture.reports / "apps-workbench.entry.json").is_file())
         self.assertTrue((fixture.reports / "apps-workbench.entry.log").is_file())
-        self.assert_exit(fixture.check("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.check("--project", "src/workbench"), 0)
 
     def test_alias_spellings_merge_into_one_logical_entry(self):
-        primary = entry_report(9, 10, "apps/workbench/tests/../src/lib.py")
+        primary = entry_report(9, 10, "src/workbench/tests/../src/lib.py")
         entry = entry_report(10)
         self.assertNotEqual(list(primary["files"]), list(entry["files"]), "the raw keys must differ")
         fixture = self.app({"report": entry, "stdout": ENTRY_ORACLE + ENTRY_FOOTER}, primary=primary)
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         self.assertEqual(len(fixture.collect_files()), 1, "tests/../src and src are the same source")
         self.assertEqual(next(iter(fixture.merged_lines().values()))[10], 1)
 
     def test_missing_entry_oracle_keeps_normal_collection(self):
         fixture = self.app(oracle=None)
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         self.assertFalse((fixture.reports / "apps-workbench.entry.json").exists())
-        self.assertEqual(fixture.result("apps/workbench")["covered"], 9)
+        self.assertEqual(fixture.result("src/workbench")["covered"], 9)
 
     def test_bad_entry_oracle_text_is_refused(self):
         fixture = self.app({"report": entry_report(10), "stdout": "something else\n" + ENTRY_FOOTER})
@@ -156,7 +156,7 @@ class EntryProbeTests(CoverageTestCase):
                                   "missing coverage report")
 
     def test_sources_changing_during_the_entry_probe_are_refused(self):
-        changed = {**self.passed_entry(), "mutate": "apps/workbench/src/extra.py"}
+        changed = {**self.passed_entry(), "mutate": "src/workbench/src/extra.py"}
         self.assert_entry_refused(self.app(changed), "source or suite changed during coverage collection")
 
 
@@ -169,7 +169,7 @@ class PrimaryInvalidEvidenceTests(CoverageTestCase):
 
     def corrupted(self, count):
         report = entry_report(9, 10)
-        report["files"]["apps/workbench/src/lib.py"]["lines"]["10"] = count
+        report["files"]["src/workbench/src/lib.py"]["lines"]["10"] = count
         return {"report": report}
 
     def assert_refused(self, fixture, message):
@@ -185,7 +185,7 @@ class PrimaryInvalidEvidenceTests(CoverageTestCase):
 
     def test_primary_alias_duplicates_are_refused_before_merging(self):
         report = entry_report(9, 10)
-        report["files"]["apps/workbench/tests/../src/lib.py"] = report["files"]["apps/workbench/src/lib.py"]
+        report["files"]["src/workbench/tests/../src/lib.py"] = report["files"]["src/workbench/src/lib.py"]
         self.assert_refused(self.app({"report": report}), "duplicate source path after normalization")
 
     def test_a_failed_primary_run_stops_before_the_entry_probe(self):
@@ -226,9 +226,9 @@ class SingleFileDependencyTests(CoverageTestCase):
     def test_editing_a_single_file_dependency_invalidates_an_existing_report(self):
         fixture, dependency = self.app(with_oracle=False)
         fixture.write_report("workbench", entry_report(10), kind="apps")
-        self.assert_exit(fixture.check("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.check("--project", "src/workbench"), 0)
         dependency.write_text("shared dependency, edited\n")
-        result = fixture.check("--project", "apps/workbench")
+        result = fixture.check("--project", "src/workbench")
         self.assert_exit(result, 1)
         self.assertIn("stale or altered coverage evidence", result.stdout)
 
@@ -236,7 +236,7 @@ class SingleFileDependencyTests(CoverageTestCase):
         fixture, _ = self.app()
         fixture.write_spec({"workbench": {"report": entry_report(9, 10)},
                             "apps": {"report": entry_report(10), "stdout": ENTRY_ORACLE + ENTRY_FOOTER,
-                                     "mutate": "apps/workbench/tests/" + DEPENDENCY}})
+                                     "mutate": "src/workbench/tests/" + DEPENDENCY}})
         result = self.assert_entry_refused(fixture, "source or suite changed during coverage collection")
 
 
@@ -289,12 +289,12 @@ class SuiteReceiptTests(CoverageTestCase):
 
     def receipt_lines(self, fixture):
         report = json.loads((fixture.reports / "apps-workbench.suite.json").read_text())
-        body = report["files"]["apps/workbench/src/lib.py"]["lines"]
+        body = report["files"]["src/workbench/src/lib.py"]["lines"]
         return {int(line): count for line, count in body.items()}
 
     def test_the_suite_receipt_keeps_the_original_raw_counts(self):
         fixture = self.app()
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         self.assertEqual(self.receipt_lines(fixture),
                          {line: 2 if line <= 7 else 0 for line in range(1, 11)},
                          "the receipt is the suite's own raw report, not the merge")
@@ -363,7 +363,7 @@ class StaleReceiptTests(CoverageTestCase):
 
     def test_a_failed_second_collection_leaves_no_receipts(self):
         fixture = self.app()
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         self.assertTrue(all(path.is_file() for path in self.receipts(fixture)), "a pass writes both receipts")
         self.assertTrue((fixture.reports / "apps-workbench.evidence.json").is_file(), "a pass seals evidence")
         fixture.write_spec({"workbench": {"report": entry_report(9, 10), "exit": 3}})
@@ -375,14 +375,14 @@ class StaleReceiptTests(CoverageTestCase):
 
     def assert_symlink_survives(self, leaf):
         fixture = self.app()
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         sentinel = fixture.root / f"external-{leaf.strip('.')}.json"
         sentinel.write_text('{"files": {}}\n')
         link = fixture.reports / f"apps-workbench{leaf}"
         link.unlink()
         os.symlink(sentinel, link)
         fixture.write_spec({"workbench": {"report": entry_report(9, 10), "exit": 3}})
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 1)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 1)
         self.assertEqual(sentinel.read_text(), '{"files": {}}\n', "the external target must survive")
         self.assertFalse(os.path.lexists(link), "the link itself is what gets removed")
 
@@ -393,9 +393,9 @@ class StaleReceiptTests(CoverageTestCase):
 
     def test_removing_the_oracle_clears_its_old_receipts(self):
         fixture = self.app()
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         (fixture.root / "apps" / "workbench" / "tests" / "entry.expectedoutput").unlink()
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
         for path in self.receipts(fixture):
             self.assertFalse(path.exists(), f"{path.name} outlived the removed oracle")
 
@@ -477,8 +477,8 @@ class EmptySourceRootTests(CoverageTestCase):
 
     def test_a_suite_with_an_empty_source_root_collects(self):
         fixture = self.workbench(suite_manifest=suite_manifest(".", ""), oracle=None)
-        self.assert_exit(fixture.collect("--project", "apps/workbench"), 0)
-        self.assertEqual(fixture.result("apps/workbench")["covered"], 9)
+        self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
+        self.assertEqual(fixture.result("src/workbench")["covered"], 9)
 
 
 class SuiteManifestSerializationTests(CoverageTestCase):

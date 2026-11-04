@@ -88,8 +88,8 @@ brew uninstall osprey
    make build
    mkdir -p osprey-darwin-amd64
    cp target/release/osprey osprey-darwin-amd64/
-   cp compiler/lib/libfiber_runtime.a osprey-darwin-amd64/
-   cp compiler/lib/libhttp_runtime.a osprey-darwin-amd64/
+   cp src/compiler/lib/libfiber_runtime.a osprey-darwin-amd64/
+   cp src/compiler/lib/libhttp_runtime.a osprey-darwin-amd64/
    tar -czf osprey-darwin-amd64.tar.gz osprey-darwin-amd64/
    ```
 
@@ -206,8 +206,8 @@ make build  # C runtime archives (security-hardened) + cargo build --release
 ```bash
 mkdir -p osprey-darwin-amd64
 cp target/release/osprey osprey-darwin-amd64/
-cp compiler/lib/libfiber_runtime.a osprey-darwin-amd64/
-cp compiler/lib/libhttp_runtime.a osprey-darwin-amd64/
+cp src/compiler/lib/libfiber_runtime.a osprey-darwin-amd64/
+cp src/compiler/lib/libhttp_runtime.a osprey-darwin-amd64/
 tar -czf osprey-darwin-amd64.tar.gz osprey-darwin-amd64/
 ```
 
@@ -252,6 +252,6 @@ The formula installs to Homebrew's prefix (usually `/opt/homebrew` on Apple Sili
 
 ## Related Projects
 
-- [Osprey Compiler](../../crates/) - Main compiler source code (Rust)
-- [VS Code Extension](../../vscode-extension/) - IDE support
-- [Web Compiler](../../webcompiler/) - Browser-based playground
+- [Osprey Compiler](../../src/crates/) - Main compiler source code (Rust)
+- [VS Code Extension](../../src/vscode-extension/) - IDE support
+- [Web Compiler](../../src/webcompiler/) - Browser-based playground

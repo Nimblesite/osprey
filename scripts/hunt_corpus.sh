@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs `osprey hunt` over every Osprey program under tests/ and examples/ and
+# Runs `osprey hunt` over every Osprey program under tests/ and src/examples/ and
 # collects one JSON report per program [SYMEX-CORPUS]
 # (docs/specs/tooling/SymbolicExecution.md). KLEE is the engine; it runs
 # natively on this host against the mock C library bitcode.
@@ -36,7 +36,7 @@ done
 # Shared inventory keeps standalone files separate from project modules.
 if [ ${#PROGRAMS[@]} -eq 0 ]; then
   while IFS= read -r program; do PROGRAMS+=("$program"); done < <(
-    python3 scripts/hunt_programs.py tests examples | sed '\#^tests/hunt/#d'
+    python3 scripts/hunt_programs.py tests src/examples | sed '\#^tests/hunt/#d'
   )
 fi
 if [ "$ALL" -eq 0 ] && [ -f tests/HUNT_UNPORTABLE.txt ]; then

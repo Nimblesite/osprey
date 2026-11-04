@@ -1,6 +1,6 @@
 {
   "mode": "built-in image_gen",
-  "reference": "website/src/assets/motion/osprey-flight.png",
+  "reference": "src/website/src/assets/motion/osprey-flight.png",
   "variants": [
     {
       "name": "01-overhead-glide",

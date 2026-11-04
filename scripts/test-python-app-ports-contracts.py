@@ -45,7 +45,7 @@ class AppRunnerContracts(unittest.TestCase):
                 self.assertTrue(self.check(PASS, stderr=stderr, memory="arc"))
 
     def test_subprocess_keeps_crlf_bytes_for_exact_comparison(self):
-        compiler = self.root / "compiler"
+        compiler = self.root / "src" / "compiler"
         compiler.write_text("#!/usr/bin/env python3\nimport os\nos.write(1, b'report\\r\\n')\n")
         compiler.chmod(0o755)
         result = RUNNER["run_app"](compiler, self.app, "default")
@@ -53,10 +53,10 @@ class AppRunnerContracts(unittest.TestCase):
 
     def test_examples_ship_their_mit_grant_and_complete_provenance(self):
         repo = Path(__file__).resolve().parents[1]
-        examples = repo / "examples/python/ports"
+        examples = repo / "src/examples/python/ports"
         audit = json.loads((examples / "source-audit.json").read_text())
         self.assertEqual(audit["copyright_holder"], "NIMBLESITE PTY LTD, Australia")
-        self.assertEqual((examples / "LICENSE").read_bytes(), (repo / "packages/testing/LICENSE").read_bytes())
+        self.assertEqual((examples / "LICENSE").read_bytes(), (repo / "src/packages/testing/LICENSE").read_bytes())
         self.assertEqual(set(audit["applications"]), set(RUNNER["APPS"]))
         for entry in audit["applications"].values():
             self.assertIn("/blob/" + entry["commit"] + "/", entry["source"])

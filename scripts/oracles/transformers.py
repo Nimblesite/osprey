@@ -4,7 +4,7 @@ Runs the real transformers 5.20.2 logits processors, warpers and stopping
 criteria (torch 2.14.1, float32) and torch's own softmax/log_softmax/argmax/
 inverse-CDF sampling over hand-built logits rows, then hands every computed
 value to `expected_module.write` to emit
-packages/transformers/tests/expected.py ([PORT-TEST-ORACLE]).
+src/packages/transformers/tests/expected.py ([PORT-TEST-ORACLE]).
 
 The numerical primitives come straight from torch: `torch.softmax(t, dim=-1)`,
 `torch.log_softmax(t, dim=-1)`, `torch.argmax(t)` (first maximal index on ties)

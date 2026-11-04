@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the Python-flavor application ports and check their golden transcripts.
 
-Each application under examples/python/ports is a complete Osprey project with
+Each application under src/examples/python/ports is a complete Osprey project with
 its own manifest and entry. This harness runs it with the compiler under the
 requested memory backend, compares stdout byte-for-byte with the app's
 expected_output.txt, and requires exit status 0. Under ARC it also requires
@@ -13,7 +13,7 @@ exactly one `[osp-arc] exit: 0 live objects` sentinel on stderr.
 
 The expected transcripts are captured from real compiler runs:
 
-    target/release/osprey examples/python/ports/classifier --run > examples/python/ports/classifier/expected_output.txt
+    target/release/osprey src/examples/python/ports/classifier --run > src/examples/python/ports/classifier/expected_output.txt
 
 Use --write-expected only to refresh a transcript after an intentional output
 change; review the diff before committing it.
@@ -48,7 +48,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def app_dir(root: Path, name: str) -> Path:
-    return root / "examples" / "python" / "ports" / name
+    return root / "src" / "examples" / "python" / "ports" / name
 
 
 def run_app(compiler: Path, directory: Path, memory: str) -> subprocess.CompletedProcess[str]:

@@ -12,29 +12,29 @@ Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurre
 
 ## Prerequisites in place
 
-- `compiler/runtime/effects_coro.c` (`__osprey_coro_*`): thread-as-continuation resume; `in_flight` is the per-handler serialization ([EFFECTS-FIBER-PERFORM]) proto-turn; `abandon_body()` already runs handler finalizers inner→outer ([MULTI-COST-ABORT]).
-- Handler `finally` syntax ships in both flavors (`tree-sitter-osprey/grammar.js` `handler_finally`, `tree-sitter-osprey-ml/grammar.js`), tested in `compiler/runtime/effects_finally_tests.h`.
-- `crates/osprey-types/src/effect_rows/`: closed-program fixed point reused for [CANCEL-POINTS] and [SERIAL-REENTRANCY].
-- `compiler/runtime/fiber_runtime.c`: channel wait queues, completed-result roots, and the `select` primitive ([CONCURRENCY-SELECT]) with source-order deterministic tie-break.
+- `src/compiler/runtime/effects_coro.c` (`__osprey_coro_*`): thread-as-continuation resume; `in_flight` is the per-handler serialization ([EFFECTS-FIBER-PERFORM]) proto-turn; `abandon_body()` already runs handler finalizers inner→outer ([MULTI-COST-ABORT]).
+- Handler `finally` syntax ships in both flavors (`src/tree-sitter-osprey/grammar.js` `handler_finally`, `src/tree-sitter-osprey-ml/grammar.js`), tested in `src/compiler/runtime/effects_finally_tests.h`.
+- `src/crates/osprey-types/src/effect_rows/`: closed-program fixed point reused for [CANCEL-POINTS] and [SERIAL-REENTRANCY].
+- `src/compiler/runtime/fiber_runtime.c`: channel wait queues, completed-result roots, and the `select` primitive ([CONCURRENCY-SELECT]) with source-order deterministic tie-break.
 
 ## Phase 1 — Scopes [CANCEL-SCOPE]
 
-- [ ] Add `scope` keyword and `scope_expression` to `tree-sitter-osprey/grammar.js` and `tree-sitter-osprey-ml/grammar.js`; lower both flavors to one `Expr::Scope` in `crates/osprey-syntax/src/default/expr.rs` and `crates/osprey-syntax/src/ml/`; add `Expr::Scope` to `enum Expr` in `crates/osprey-ast/src/lib.rs`. Check: `cargo test -p osprey-syntax` parses `scope { ... }` in both flavors to `Expr::Scope`.
-- [ ] Scope registry in `compiler/runtime/fiber_runtime.c`: `spawn` attaches to the innermost scope, normal exit waits for children, scope exit reclaims its fiber and channel handle memory, and the implicit root scope wraps program entry. Check: `crates/run_test_corpus.sh gc` and `arc` reproduce every existing golden byte-for-byte.
+- [ ] Add `scope` keyword and `scope_expression` to `src/tree-sitter-osprey/grammar.js` and `src/tree-sitter-osprey-ml/grammar.js`; lower both flavors to one `Expr::Scope` in `src/crates/osprey-syntax/src/default/expr.rs` and `src/crates/osprey-syntax/src/ml/`; add `Expr::Scope` to `enum Expr` in `src/crates/osprey-ast/src/lib.rs`. Check: `cargo test -p osprey-syntax` parses `scope { ... }` in both flavors to `Expr::Scope`.
+- [ ] Scope registry in `src/compiler/runtime/fiber_runtime.c`: `spawn` attaches to the innermost scope, normal exit waits for children, scope exit reclaims its fiber and channel handle memory, and the implicit root scope wraps program entry. Check: `src/crates/run_test_corpus.sh gc` and `arc` reproduce every existing golden byte-for-byte.
 
 ## Phase 2 — Cancellation core [CANCEL-REQUEST] [CANCEL-POINTS] [CANCEL-DELIVERY] [CANCEL-JOIN]
 
-- [ ] Add `cancel` and `join` keywords (both grammars), `Expr::Cancel`/`Expr::Join`, and `Outcome<T>` + `join`/`cancel` builtins in `crates/osprey-types/src/builtins.rs`. Runtime in `fiber_runtime.c`/`effects_coro.c`: cancellation is observed only at suspension points (`await`, `send`, `recv`, `sleep`, `yield`, control ops), declines to resume (drop continuation + finalizers), and completes the fiber as cancelled. Check: both-flavor corpus suite in `tests/regressions/fiber/`.
+- [ ] Add `cancel` and `join` keywords (both grammars), `Expr::Cancel`/`Expr::Join`, and `Outcome<T>` + `join`/`cancel` builtins in `src/crates/osprey-types/src/builtins.rs`. Runtime in `fiber_runtime.c`/`effects_coro.c`: cancellation is observed only at suspension points (`await`, `send`, `recv`, `sleep`, `yield`, control ops), declines to resume (drop continuation + finalizers), and completes the fiber as cancelled. Check: both-flavor corpus suite in `tests/regressions/fiber/`.
 - [ ] Await propagation: `await` of a cancelled fiber unwinds the awaiter as cancelled; at program entry it runs entry finalizers and exits nonzero with a one-line diagnostic naming the spawn site. Check: must-reject fixture that no pattern can match cancellation (no "caught" surface); golden pins exit status and diagnostic.
-- [ ] Dropped continuations release captures: zero ARC leak under `--memory=arc` (`[osp-arc] exit: 0 live objects` sentinel via `crates/run_test_corpus.sh arc`).
+- [ ] Dropped continuations release captures: zero ARC leak under `--memory=arc` (`[osp-arc] exit: 0 live objects` sentinel via `src/crates/run_test_corpus.sh arc`).
 
 ## Phase 3 — Finalizers and shielding [CANCEL-FINALLY]
 
-- [ ] Make `cancel` run the existing handler finalizers innermost-first through `abandon_body()` in `compiler/runtime/effects_coro.c`, and add one-shot shielding so a further cancel cannot interrupt cleanup (including at its suspension points). Check: test cancelling a fiber suspended two handler regions deep records finalizer order and shielding.
+- [ ] Make `cancel` run the existing handler finalizers innermost-first through `abandon_body()` in `src/compiler/runtime/effects_coro.c`, and add one-shot shielding so a further cancel cannot interrupt cleanup (including at its suspension points). Check: test cancelling a fiber suspended two handler regions deep records finalizer order and shielding.
 
 ## Phase 4 — Kill-safety [CANCEL-KILLSAFE]
 
-- [ ] Channel wait-queue removal in `compiler/runtime/fiber_runtime.c`: cancelling a blocked sender or receiver removes it without consuming, duplicating, or losing an element. Check: golden proves element count conserved, under both corpus backends.
+- [ ] Channel wait-queue removal in `src/compiler/runtime/fiber_runtime.c`: cancelling a blocked sender or receiver removes it without consuming, duplicating, or losing an element. Check: golden proves element count conserved, under both corpus backends.
 - [ ] Turn completion under performer cancellation: a turn whose arm is already running completes and the answer is discarded; a performer still queued is dequeued without the arm running.
 - [ ] Dropped continuations release captures under GC and ARC ownership paths (`memory_gc.c`, `memory_arc.c`).
 
@@ -45,12 +45,12 @@ Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurre
 ## Phase 6 — Turn isolation [SERIAL-TURN] [SERIAL-CONTENTION]
 
 - [ ] Name the shipped `in_flight` serialization as turns; implement a flat-combining turn queue with a single-CAS fast path.
-- [ ] Before it replaces anything, add a `benchmarks/cases/<name>/` microbenchmark comparing the flat-combining turn queue against the current round-trip serialization.
+- [ ] Before it replaces anything, add a `src/benchmarks/cases/<name>/` microbenchmark comparing the flat-combining turn queue against the current round-trip serialization.
 - [ ] Deterministic mode: total turn order = spawn order of performers.
 
 ## Phase 7 — Static reentrancy [SERIAL-REENTRANCY]
 
-- [ ] Turn graph over effect-row summaries in `crates/osprey-types/src/effect_rows/`; reject waiting cycles between distinct owners with a named-cycle diagnostic (direct cycle and cycle through a helper lambda). Check: must-reject fixtures.
+- [ ] Turn graph over effect-row summaries in `src/crates/osprey-types/src/effect_rows/`; reject waiting cycles between distinct owners with a named-cycle diagnostic (direct cycle and cycle through a helper lambda). Check: must-reject fixtures.
 - [ ] `reentrant` surface: a `reentrant` op must return `Unit`; performing it inside its own active turn enqueues a new turn. Check: must-reject fixture for a non-`Unit` `reentrant`.
 
 ## Phase 8 — atomic / retry [SERIAL-ATOMIC]

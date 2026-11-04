@@ -10,11 +10,9 @@ export const ALLOWED_TRACKED = new Set([
   '.agents', '.cargo', '.claude', '.clinerules', '.clippy.toml', '.config', '.cursor', '.cursorrules',
   '.deslop.toml', '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
   '.rustfmt.toml', '.vscode', '.windsurfrules', 'AGENTS.md', 'Book', 'CLAUDE.md', 'CONTRIBUTING.md',
-  'Cargo.lock', 'Cargo.toml', 'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'apps', 'benchmarks',
-  'compiler', 'coverage-thresholds.json', 'crates', 'docs', 'examples', 'hosts', 'opencode.json',
-  'osprey.code-workspace', 'packages', 'pyproject.toml', 'python', 'schemas', 'scripts', 'shipwright.json',
-  'src', 'tests', 'tree-sitter-osprey', 'tree-sitter-osprey-ml', 'uv.lock', 'vscode-extension',
-  'webcompiler', 'website',
+  'Cargo.lock', 'Cargo.toml', 'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'coverage-thresholds.json',
+  'docs', 'opencode.json', 'osprey.code-workspace', 'pyproject.toml', 'scripts', 'shipwright.json', 'src',
+  'tests', 'uv.lock',
 ])
 
 /** Local, ignored files that tools keep in the root by design. */

@@ -1,10 +1,10 @@
 # GPUI Desktop Host [GPUI-HOST]
 
-**Status:** running on macOS in `hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`examples/gpui/flock` and `examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows have library targets and CI ([GPUI-HOST-TARGETS]). Delivery is tracked by [plan 0037](../../plans/0037-osprey-native.md).
+**Status:** running on macOS in `src/hosts/gpui`: the window, renderer, scene painter, frame clock and recorded-event smoke run work, and two examples run on it (`src/examples/gpui/flock` and `src/examples/gpui/painting`, the latter pixel-identical to GPUI's own painting example). Linux and Windows have library targets and CI ([GPUI-HOST-TARGETS]). Delivery is tracked by [plan 0037](../../plans/0037-osprey-native.md).
 
 GPUI is a UI framework that draws with the GPU. It is not Osprey's GPU compute surface ([0034](../runtime/0034-GPUComputation.md)): an Osprey program here never touches the GPU itself. It describes a scene as data, and the Rust host hands that scene to GPUI, which batches, tessellates and draws it with Metal (Vulkan, DirectX later). [GPU-VS-GPUI](../runtime/0034-GPUComputation.md#gpu-compute-and-gpui-rendering--gpu-vs-gpui) sets out the difference.
 
-A GPUI host renders an [Osprey Native](../../../packages/native/README.md) application with [GPUI](https://gpui.rs), the GPU-accelerated Rust UI framework from Zed. It is a host in the [Osprey Native host family](../applications/0047-OspreyNativeHosts.md), after Vigil's SwiftUI host and the VS Code webview host, and the first that can run on macOS, Linux and Windows from one renderer. The first target is macOS.
+A GPUI host renders an [Osprey Native](../../../src/packages/native/README.md) application with [GPUI](https://gpui.rs), the GPU-accelerated Rust UI framework from Zed. It is a host in the [Osprey Native host family](../applications/0047-OspreyNativeHosts.md), after Vigil's SwiftUI host and the VS Code webview host, and the first that can run on macOS, Linux and Windows from one renderer. The first target is macOS.
 
 ## The seam [GPUI-HOST-SEAM]
 
@@ -29,7 +29,7 @@ const char *dispatch(const char *saved, const char *event);
 
 Calls are synchronous and serialized on GPUI's main thread. Input strings are borrowed for the call; the host copies the returned string immediately. The envelope is the one `@osprey/native` encodes ([NATIVE-HOSTS-TRANSPORT](../applications/0047-OspreyNativeHosts.md)): `version`, `state`, `slices`, `patches`, `removed`, `requests`, `diagnostics` and, at start, `theme`. The host rejects an envelope it cannot decode, an unknown node kind or an unknown capability, and shows the diagnostic. It never draws a fallback.
 
-The start context's `platform` is the operating system as `std::env::consts::OS` spells it (`macos`, `linux`, `windows`), which `Context.platform` retains as a string; `Symbols::platform` converts it to the `Platform` union when needed ([UI-CONTEXT-PLATFORM](../../../packages/native/README.md)).
+The start context's `platform` is the operating system as `std::env::consts::OS` spells it (`macos`, `linux`, `windows`), which `Context.platform` retains as a string; `Symbols::platform` converts it to the `Platform` union when needed ([UI-CONTEXT-PLATFORM](../../../src/packages/native/README.md)).
 
 ## Rendering [GPUI-HOST-RENDER]
 
@@ -39,7 +39,7 @@ Each `Node` kind has exactly one mapping. The mapping table lives beside the ren
 
 Theme tokens from the start envelope resolve to GPUI colours, type scale and spacing. The renderer follows the system appearance for light and dark.
 
-Every framework symbol ([UI-COMPONENTS-SYMBOLS](../../../packages/native/README.md)) maps to one of the Lucide icons that ship with `gpui-kit`; the host's unit tests fail if a symbol has no icon. An unknown symbol name draws a visible placeholder and a diagnostic. A `pair` node draws its label muted beside its value.
+Every framework symbol ([UI-COMPONENTS-SYMBOLS](../../../src/packages/native/README.md)) maps to one of the Lucide icons that ship with `gpui-kit`; the host's unit tests fail if a symbol has no icon. An unknown symbol name draws a visible placeholder and a diagnostic. A `pair` node draws its label muted beside its value.
 
 ## Events [GPUI-HOST-EVENTS]
 
@@ -57,7 +57,7 @@ The host requests the next animation frame from GPUI after each dispatch, so the
 
 ## Scene [GPUI-HOST-SCENE]
 
-A `Scene` node is a surface in the application's own unit space, `width` by `height`, that the host draws from its region's top left at up to its requested `zoom` (window pixels per unit, 1 when absent). This zoom is an upper bound: it remains fixed while the whole artboard fits, and shrinks uniformly when either viewport dimension would clip it. Painting, pointer input and accessibility use the same scale. A `zoom` of 0 instead draws the scene as large as fits the region whole, so it grows and shrinks with the window. It is drawn from `shapes`: one small array per primitive, a type code first, so the painter reads it without a schema ([UI-SCENE](../../../packages/native/README.md)):
+A `Scene` node is a surface in the application's own unit space, `width` by `height`, that the host draws from its region's top left at up to its requested `zoom` (window pixels per unit, 1 when absent). This zoom is an upper bound: it remains fixed while the whole artboard fits, and shrinks uniformly when either viewport dimension would clip it. Painting, pointer input and accessibility use the same scale. A `zoom` of 0 instead draws the scene as large as fits the region whole, so it grows and shrinks with the window. It is drawn from `shapes`: one small array per primitive, a type code first, so the painter reads it without a schema ([UI-SCENE](../../../src/packages/native/README.md)):
 
 | Code | Primitive | Values after the code |
 | --- | --- | --- |
@@ -77,9 +77,9 @@ A colour is one integer packed `0xRRGGBBAA`; `depth` orders layers from the back
 
 The node carries one binding (`event`). The host sends keys as `{"key":<name>,"down":<bool>}`, the pointer as `{"x":…,"y":…,"down":<bool>,"shift":<bool>}` and, when a sized scene first paints and whenever its region changes size, the region as `{"width":…,"height":…}`, all in scene units through that binding, and nothing else; the application decides what a key or a position means. Key names are host-neutral: `left`, `right`, `up`, `down`, `space`, `enter`, `escape`, `tab`, `backspace`, and a single lowercase character for letters and digits; a key outside that vocabulary is not sent. A pointer event is sent on press, release and on movement while pressed, and once per movement when not pressed, at most once per frame.
 
-A resident application ([UI-RESIDENT](../../../packages/native/README.md)) streams a changed scene's rects, discs and sprites through the `native_shape` import instead of the envelope ([UI-SCENE-STREAM](../../../packages/native/README.md)). The host clears the stream before every `start` and `dispatch`, gives each scene node with a nonzero `streamed` the next run of that many shapes in the encoder's walk order (a screen's toolbar before its children, an aside's pane before its column), and paints the node's own shapes then the streamed ones, stably sorted by depth. A run of 64 or more quads that share a depth paints inside one GPUI layer, so it takes one draw order rather than one bounds-tree insertion per quad; shorter runs, paths, strips and glyphs keep their own orders, so a scene of a few shapes paints exactly as a native GPUI program paints it.
+A resident application ([UI-RESIDENT](../../../src/packages/native/README.md)) streams a changed scene's rects, discs and sprites through the `native_shape` import instead of the envelope ([UI-SCENE-STREAM](../../../src/packages/native/README.md)). The host clears the stream before every `start` and `dispatch`, gives each scene node with a nonzero `streamed` the next run of that many shapes in the encoder's walk order (a screen's toolbar before its children, an aside's pane before its column), and paints the node's own shapes then the streamed ones, stably sorted by depth. A run of 64 or more quads that share a depth paints inside one GPUI layer, so it takes one draw order rather than one bounds-tree insertion per quad; shorter runs, paths, strips and glyphs keep their own orders, so a scene of a few shapes paints exactly as a native GPUI program paints it.
 
-A scene is the only node whose patch may be large every frame. The host measures the time from `dispatch` return to the end of paint and reports it in its diagnostics overlay. The acceptance gate in the plan sets the entity count and frame rate the macOS build must hold; the framework's own per-frame cost is measured by `hosts/gpui/bench` and recorded in the plan.
+A scene is the only node whose patch may be large every frame. The host measures the time from `dispatch` return to the end of paint and reports it in its diagnostics overlay. The acceptance gate in the plan sets the entity count and frame rate the macOS build must hold; the framework's own per-frame cost is measured by `src/hosts/gpui/bench` and recorded in the plan.
 
 ### Text accessibility [GPUI-HOST-SCENE-TEXT-A11Y]
 
@@ -99,8 +99,8 @@ A desktop static-library target exists per platform, with the same export select
 | `linux-x64`, `linux-arm64` | Linux of that architecture | the application and the native ARC runtime (`libfiber_runtime_arc.a`) | the archive, `pthread`, `dl`, `m` |
 | `windows-x64` | Windows under MSYS2 UCRT64 | the application and the MinGW-built native ARC runtime | the archive, `ws2_32`, built by MSYS2's UCRT64 Rust (`x86_64-pc-windows-gnu`), so the host, GPUI and the runtime link one UCRT |
 
-A Linux or Windows slice is built on its own system, because it bundles that system's native runtime; asking for one elsewhere is refused with the system to build it on (`--check` still works anywhere). The CLI compiles the IR with `clang -O2 -fPIC` (`OSPREY_CC`) and bundles the runtime with `llvm-ar` (`OSPREY_AR`) (`crates/osprey-cli/src/desktop.rs`). `hosts/gpui/run.sh` picks the target for the system it runs on, and the host's `build.rs` links what the table says. All desktop slices default to ARC.
+A Linux or Windows slice is built on its own system, because it bundles that system's native runtime; asking for one elsewhere is refused with the system to build it on (`--check` still works anywhere). The CLI compiles the IR with `clang -O2 -fPIC` (`OSPREY_CC`) and bundles the runtime with `llvm-ar` (`OSPREY_AR`) (`src/crates/osprey-cli/src/desktop.rs`). `src/hosts/gpui/run.sh` picks the target for the system it runs on, and the host's `build.rs` links what the table says. All desktop slices default to ARC.
 
 ## Verification [GPUI-HOST-VERIFICATION]
 
-Acceptance requires: the Osprey application's own test suite passing against fixture messages; the host rendering the `packages/native/tests` probe application; a deterministic smoke run that drives the example application through recorded events and asserts the envelope; and a measured frame-rate run of the example application at the gated entity count on an Apple silicon Mac. Linux and Windows acceptance requires the same smoke run on those platforms in CI. Every app's `self-test.json` also runs on this host without a window on Mac and Linux, and in the real window on the Mac runner ([UI-MACHINE-SELF-TEST]).
+Acceptance requires: the Osprey application's own test suite passing against fixture messages; the host rendering the `src/packages/native/tests` probe application; a deterministic smoke run that drives the example application through recorded events and asserts the envelope; and a measured frame-rate run of the example application at the gated entity count on an Apple silicon Mac. Linux and Windows acceptance requires the same smoke run on those platforms in CI. Every app's `self-test.json` also runs on this host without a window on Mac and Linux, and in the real window on the Mac runner ([UI-MACHINE-SELF-TEST]).

@@ -1,6 +1,6 @@
 """CPython oracle for @osprey/rouge_score: RougeScorer and Porter-stemmer values.
 
-Writes packages/rouge_score/tests/expected.py. Run with the oracle virtualenv:
+Writes src/packages/rouge_score/tests/expected.py. Run with the oracle virtualenv:
 `python scripts/oracles/rouge_score.py` (no `-I`).
 """
 import sys

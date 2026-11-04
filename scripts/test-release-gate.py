@@ -106,13 +106,13 @@ def package_result(text, platform, archives, empty_archive=""):
         script = script.replace("${{ " + key + " }}", value)
     with tempfile.TemporaryDirectory(prefix="osprey-release-") as directory:
         root = pathlib.Path(directory)
-        for folder in ("target/release", "compiler/lib"):
+        for folder in ("target/release", "src/compiler/lib"):
             (root/folder).mkdir(parents=True)
         for name in ("target/release/osprey", "target/osprey-pkg", "target/osprey-registry"):
             (root/name).write_text("binary")
         (root/"target/local-registry").mkdir()
         for name in (*NATIVE_ARCHIVES, *archives):
-            (root/"compiler/lib"/name).write_text("" if name == empty_archive else "archive")
+            (root/"src/compiler/lib"/name).write_text("" if name == empty_archive else "archive")
         return subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
                               capture_output=True, text=True)
 
@@ -153,8 +153,8 @@ def stage_fixture(root, target, version):
     for name in ("package-workspace", "workbench"):
         (root/"dist"/name).mkdir(parents=True)
         (root/"dist"/name/f"{name}.wasm").write_text("wasm")
-    for name in ("apps/workbench/lessons/catalogue.json", "apps/workbench/assets/workbench.css",
-                 "website/src/assets/images/logo.png", "scripts/workbench-proof-assets.py"):
+    for name in ("src/workbench/lessons/catalogue.json", "src/workbench/assets/workbench.css",
+                 "src/website/src/assets/images/logo.png", "scripts/workbench-proof-assets.py"):
         file = root/name
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text(STAGER_STUB if name.endswith(".py") else "fixture")
@@ -172,7 +172,7 @@ def stage_result(text, target="linux-x64", version="0.0.0-test"):
         result = subprocess.run(["bash", "-euo", "pipefail", "-c", script], cwd=root,
                                 env={"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "VERSION": version},
                                 capture_output=True, text=True)
-        return result, (root/"vscode-extension"/"bin"/target/"workbench"/STAGER_SENTINEL).exists()
+        return result, (root/"src" / "vscode-extension"/"bin"/target/"workbench"/STAGER_SENTINEL).exists()
 
 
 def proof_staging_failures(text):
@@ -181,7 +181,7 @@ def proof_staging_failures(text):
         return [f"release packaging does not stage the bundle\n{result.stdout}{result.stderr}"]
     if staged:
         return []
-    return ["release packaging copies apps/workbench/assets/. without running "
+    return ["release packaging copies src/workbench/assets/. without running "
             "scripts/workbench-proof-assets.py, so the VSIX ships the committed asset bodies "
             "and no approved proof exports"]
 
@@ -238,7 +238,7 @@ def windows_compiler_failures():
 
 
 def main():
-    subprocess.run([sys.executable, "hosts/gpui/dependencies_test.py"], check=True)
+    subprocess.run([sys.executable, "src/hosts/gpui/dependencies_test.py"], check=True)
     text = WORKFLOW.read_text()
     failures = package_failures(text) + windows_compiler_failures() + proof_staging_failures(text)
     with tempfile.NamedTemporaryFile(suffix=".md") as summary:

@@ -1,0 +1,259 @@
+// One training step of the trained GPT-2 model on the downloaded weights:
+// the next-token cross-entropy of the prompt, the gradient of every parameter
+// through the twelve blocks, one SGD step, and the loss again. Two lines of
+// stdin: the prompt, and the interpretation to run under — `gpu` for the GPU
+// surface (its products on the device `OSPREY_GPU` selects) or `lists` for
+// plain host lists.
+// `make -C src/targets gpt2-train PROMPT="..."` runs it, and src/examples/gpt2/reference.py prints
+// the same loss and gradient sums from the same accumulation order. The model
+// lives in ../model; this file is the backward pass, written as the same
+// `Tensor` operations as the forward one, so the handler `main` installs
+// decides where every gradient is computed ([STAGE-BACKEND]).
+import gpt2::Tokenizer
+import gpt2::Model
+import gpt2::Backends
+import gpt2::Model::{Layer, Weights, Acts, at, total, maxF, width, heads, headWidth, qkvWidth, mlpWidth,
+    vocabSize, layerCount, positions, widthF, epsilon, scoreScale, geluScale, geluCubic, qAt, kAt, vAt}
+
+let defaultPrompt = "The capital of France is"
+let learningRate: float32 = 0.0001
+
+/// The gradients of one `linear`: its input, weight and bias.
+type Grad<B> = { dx: B, dw: B, db: B }
+/// The gradients of one `layerNorm`: its input, gain and bias.
+type NormGrad<B> = { dx: B, dg: B, db: B }
+/// The loss and what flows back from it: into the final state and into the tied embedding.
+type Head<B> = { loss: float32, dxf: B, dwte: B }
+type BlockGrad<B> = { dx: B, grad: Layer<B> }
+type Back<B> = { dx: B, grads: List<Layer<B>> }
+type Embed<B> = { dwte: B, dwpe: B }
+type Step<B> = { loss: float32, grads: List<Layer<B>>, dwte: B, dwpe: B, dlnfG: B, dlnfB: B }
+
+fn onehot(hit) = match hit { true => toFloat32(1.0)  false => toFloat32(0.0) }
+
+/// d gelu / dx for the tanh approximation.
+fn geluSlope(x) = {
+    let th = tanh(toFloat32(geluScale) * (x + toFloat32(geluCubic) * x * x * x))
+    toFloat32(0.5) * (toFloat32(1.0) + th) + toFloat32(0.5) * x * (toFloat32(1.0) - th * th) * toFloat32(geluScale) * (toFloat32(1.0) + toFloat32(3.0) * toFloat32(geluCubic) * x * x)
+}
+
+fn columnSums(dy, rows, cols) = Model::orStop(perform Backends::Tensor.build(cols, fn(c) => range(0, rows) |> fold(0.0, fn(a, r) => a + at(dy, r * cols + c))), Model::empty)
+
+/// y = x · w + b, so dx = dy · wᵀ, dw = xᵀ · dy and db sums dy's rows.
+fn linearBack(dy, x, rows, inner, cols, w) = Grad {
+    dx: Model::product(dy, Model::transpose(w, inner, cols), rows, cols, inner),
+    dw: Model::product(Model::transpose(x, rows, inner), dy, inner, rows, cols),
+    db: columnSums(dy, rows, cols)
+}
+
+/// Element i of LayerNorm's input gradient from the normalised rows and their two row means.
+fn normDx(dxhat, xhat, m1, m2, variances, i) = {
+    let r = intDiv(i, width)
+    (at(dxhat, i) - at(m1, r) - at(xhat, i) * at(m2, r)) / sqrt(at(variances, r) + epsilon)
+}
+
+/// LayerNorm backward over x [t, width] with gain g: the normalised rows are
+/// recomputed from x exactly as the forward pass did.
+fn normBack(dy, x, t, g) = {
+    let means = Model::rowMeans(x, t)
+    let variances = Model::rowVariances(x, t, means)
+    let xhat = Model::orStop(perform Backends::Tensor.build(t * width, fn(i) => (at(x, i) - at(means, intDiv(i, width))) / sqrt(at(variances, intDiv(i, width)) + epsilon)), Model::empty)
+    let dxhat = Model::orStop(perform Backends::Tensor.build(t * width, fn(i) => at(dy, i) * at(g, i % width)), Model::empty)
+    let m1 = Model::orStop(perform Backends::Tensor.build(t, fn(r) => Model::sumRange(dxhat, r * width, width) / widthF), Model::empty)
+    let m2 = Model::orStop(perform Backends::Tensor.build(t, fn(r) => (range(0, width) |> fold(0.0, fn(a, c) => a + at(dxhat, r * width + c) * at(xhat, r * width + c))) / widthF), Model::empty)
+    NormGrad {
+        dx: Model::orStop(perform Backends::Tensor.build(t * width, fn(i) => normDx(dxhat, xhat, m1, m2, variances, i)), Model::empty),
+        dg: Model::orStop(perform Backends::Tensor.build(width, fn(c) => range(0, t) |> fold(0.0, fn(a, r) => a + at(dy, r * width + c) * at(xhat, r * width + c))), Model::empty),
+        db: columnSums(dy, t, width)
+    }
+}
+
+fn dProb(dout, qkv, h, r, c) = range(0, headWidth) |> fold(0.0, fn(a, d) => a + at(dout, r * width + h * headWidth + d) * vAt(qkv, c, h, d))
+fn dQuery(dS, qkv, t, r, h, d) = (range(0, r + 1) |> fold(0.0, fn(a, c) => a + at(dS, (h * t + r) * t + c) * kAt(qkv, c, h, d))) * scoreScale
+fn dKey(dS, qkv, t, c, h, d) = (range(c, t) |> fold(0.0, fn(a, r) => a + at(dS, (h * t + r) * t + c) * qAt(qkv, r, h, d))) * scoreScale
+fn dValue(probs, dout, t, c, h, d) = range(c, t) |> fold(0.0, fn(a, r) => a + at(probs, (h * t + r) * t + c) * at(dout, r * width + h * headWidth + d))
+
+/// Element i of the probability gradient [heads, t, t]: zero above the diagonal.
+fn dProbAt(dout, qkv, t, i) = {
+    let h = intDiv(i, t * t)
+    let r = intDiv(i % (t * t), t)
+    let c = i % t
+    match c <= r { true => dProb(dout, qkv, h, r, c)  false => toFloat32(0.0) }
+}
+
+/// Element i of dqkv [t, 2304]: a query, key or value column of one head.
+fn dqkvAt(dS, probs, dout, qkv, t, i) = {
+    let r = intDiv(i, qkvWidth)
+    let col = i % qkvWidth
+    let h = intDiv(col % width, headWidth)
+    let d = col % headWidth
+    match col < width {
+        true => dQuery(dS, qkv, t, r, h, d)
+        false => match col < 2 * width { true => dKey(dS, qkv, t, r, h, d)  false => dValue(probs, dout, t, r, h, d) }
+    }
+}
+
+/// dout [t, width] back through causal attention, as dqkv [t, 2304]: the
+/// softmax Jacobian per row, then the query, key and value columns of each head.
+fn attentionBack(dout, probs, qkv, t) = {
+    let dP = Model::orStop(perform Backends::Tensor.build(heads * t * t, fn(i) => dProbAt(dout, qkv, t, i)), Model::empty)
+    let dots = Model::orStop(perform Backends::Tensor.build(heads * t, fn(row) => range(0, row % t + 1) |> fold(0.0, fn(a, c) => a + at(dP, row * t + c) * at(probs, row * t + c))), Model::empty)
+    let dS = Model::orStop(perform Backends::Tensor.build(heads * t * t, fn(i) => at(probs, i) * (at(dP, i) - at(dots, intDiv(i, t)))), Model::empty)
+    Model::orStop(perform Backends::Tensor.build(t * qkvWidth, fn(i) => dqkvAt(dS, probs, dout, qkv, t, i)), Model::empty)
+}
+
+/// One block backward: dy is the gradient of the block's output y.
+fn blockBack(dy, acts, t, l) = {
+    let out = linearBack(dy, acts.u, t, mlpWidth, width, l.outW)
+    let fc = linearBack(perform Backends::Tensor.zipWith(out.dx, acts.f, fn(g, x) => g * geluSlope(x)), acts.h2, t, width, mlpWidth, l.fcW)
+    let ln2 = normBack(fc.dx, acts.x2, t, l.ln2g)
+    let dx2 = Model::plus(dy, ln2.dx)
+    let proj = linearBack(dx2, acts.a, t, width, width, l.projW)
+    let qkv = linearBack(attentionBack(proj.dx, acts.probs, acts.qkv, t), acts.h1, t, width, qkvWidth, l.qkvW)
+    let ln1 = normBack(qkv.dx, acts.x, t, l.ln1g)
+    BlockGrad {
+        dx: Model::plus(dx2, ln1.dx),
+        grad: Layer {
+            ln1g: ln1.dg, ln1b: ln1.db, qkvW: qkv.dw, qkvB: qkv.db, projW: proj.dw, projB: proj.db,
+            ln2g: ln2.dg, ln2b: ln2.db, fcW: fc.dw, fcB: fc.db, outW: out.dw, outB: out.db
+        }
+    }
+}
+
+fn emptyActs() = {
+    let e = Model::empty()
+    Acts { x: e, h1: e, qkv: e, probs: e, a: e, x2: e, h2: e, f: e, u: e, y: e }
+}
+
+/// Blocks i down to 0, collecting each block's gradients in layer order.
+fn backward(w, trace, dy, i, t, acc) = match i < 0 {
+    true => Back { dx: dy, grads: acc }
+    false => {
+        let b = blockBack(dy, listGet(trace.acts, i) ?: emptyActs(), t, Model::layer(w, i))
+        backward(w, trace, b.dx, i - 1, t, listPrepend(acc, b.grad))
+    }
+}
+
+/// Row-wise softmax of logits [t, vocab].
+fn softmaxRows(logits, t) = {
+    let peaks = Model::orStop(perform Backends::Tensor.build(t, fn(r) => range(1, vocabSize) |> fold(at(logits, r * vocabSize), fn(a, v) => maxF(a, at(logits, r * vocabSize + v)))), Model::empty)
+    let weights = Model::orStop(perform Backends::Tensor.build(t * vocabSize, fn(i) => exp(at(logits, i) - at(peaks, intDiv(i, vocabSize)))), Model::empty)
+    let sums = Model::orStop(perform Backends::Tensor.build(t, fn(r) => Model::sumRange(weights, r * vocabSize, vocabSize)), Model::empty)
+    Model::orStop(perform Backends::Tensor.build(t * vocabSize, fn(i) => at(weights, i) / at(sums, intDiv(i, vocabSize))), Model::empty)
+}
+
+/// The token ids as a tensor, so a kernel reads them where it reads every
+/// other operand; an id below 2^53 is exact as a float.
+fn idTensor(ids) = perform Backends::Tensor.fromList(range(0, listLength(ids)) |> map(fn(i) => toFloat32(listGet(ids, i) ?: 0)) |> toList())
+
+/// Element i of the logit gradient [t, vocab]; the last position predicts nothing.
+fn dlogitAt(probs, idsT, t, count, i) = {
+    let r = intDiv(i, vocabSize)
+    match r == t - 1 { true => toFloat32(0.0)  false => (at(probs, i) - onehot(toFloat32(i % vocabSize) == at(idsT, r + 1))) / count }
+}
+
+/// The probability row r gives its target, picked by the one-hot compare the
+/// logit gradient uses: every other term is an exact 0.0, so the sum is that
+/// probability itself.
+fn targetProb(probs, idsT, r) = range(0, vocabSize) |> fold(0.0, fn(a, v) => a + at(probs, r * vocabSize + v) * onehot(toFloat32(v) == at(idsT, r + 1)))
+
+/// The mean of `0.0 - ln p0 - ln p1 …` over the first t - 1 positions, as a
+/// one-element tensor, so even the final negation and division run where the
+/// handler runs every other operation; its one element, i = 0, sums from
+/// position i. Negating the in-order sum is exact.
+fn meanLoss(probs, idsT, t, count) = Model::orStop(perform Backends::Tensor.build(1, fn(i) => (toFloat32(0.0) - (range(i, t - 1) |> fold(0.0, fn(a, r) => a + ln(targetProb(probs, idsT, r))))) / count), Model::empty)
+
+/// Mean next-token cross-entropy over the first t - 1 positions of xf [t, width],
+/// and its gradient into xf and into the tied output embedding.
+fn lossHead(w, xf, ids, t) = {
+    let probs = softmaxRows(Model::product(xf, w.wteT, t, width, vocabSize), t)
+    let count = toFloat32(t - 1)
+    let idsT = idTensor(ids)
+    let loss = at(meanLoss(probs, idsT, t, count), 0)
+    let dlogits = Model::orStop(perform Backends::Tensor.build(t * vocabSize, fn(i) => dlogitAt(probs, idsT, t, count, i)), Model::empty)
+    Head {
+        loss: loss,
+        dxf: Model::product(dlogits, w.wte, t, vocabSize, width),
+        dwte: Model::product(Model::transpose(dlogits, t, vocabSize), xf, vocabSize, t, width)
+    }
+}
+
+/// Element i of the token embedding gradient: the output projection's share
+/// plus the row of dx0 at every position holding this token.
+fn dwteAt(dx0, dwteOut, idsT, t, i) = range(0, t) |> fold(at(dwteOut, i), fn(a, r) =>
+    match at(idsT, r) == toFloat32(intDiv(i, width)) { true => a + at(dx0, r * width + i % width)  false => a })
+
+/// The embedding gradients, and dx0 [t, width] itself for the positions used.
+fn embedBack(dx0, dwteOut, ids, t) = {
+    let idsT = idTensor(ids)
+    Embed {
+        dwte: Model::orStop(perform Backends::Tensor.build(vocabSize * width, fn(i) => dwteAt(dx0, dwteOut, idsT, t, i)), Model::empty),
+        dwpe: Model::orStop(perform Backends::Tensor.build(positions * width, fn(i) => match intDiv(i, width) < t { true => at(dx0, i)  false => 0.0 }), Model::empty)
+    }
+}
+
+fn finalState(w, ids, t) = Model::layerNorm(Model::forward(w, ids, t).x, t, w.lnfG, w.lnfB)
+
+fn trainStep(w, ids, t) = {
+    let trace = Model::forward(w, ids, t)
+    let head = lossHead(w, Model::layerNorm(trace.x, t, w.lnfG, w.lnfB), ids, t)
+    let lnf = normBack(head.dxf, trace.x, t, w.lnfG)
+    let back = backward(w, trace, lnf.dx, layerCount - 1, t, [])
+    let emb = embedBack(back.dx, head.dwte, ids, t)
+    Step { loss: head.loss, grads: back.grads, dwte: emb.dwte, dwpe: emb.dwpe, dlnfG: lnf.dg, dlnfB: lnf.db }
+}
+
+fn descend(p, g) = perform Backends::Tensor.zipWith(p, g, fn(a, d) => a - toFloat32(learningRate) * d)
+
+fn descendLayer(l, g) = Layer {
+    ln1g: descend(l.ln1g, g.ln1g), ln1b: descend(l.ln1b, g.ln1b), qkvW: descend(l.qkvW, g.qkvW), qkvB: descend(l.qkvB, g.qkvB),
+    projW: descend(l.projW, g.projW), projB: descend(l.projB, g.projB), ln2g: descend(l.ln2g, g.ln2g), ln2b: descend(l.ln2b, g.ln2b),
+    fcW: descend(l.fcW, g.fcW), fcB: descend(l.fcB, g.fcB), outW: descend(l.outW, g.outW), outB: descend(l.outB, g.outB)
+}
+
+/// One SGD step over every parameter.
+fn descendAll(w, s) = {
+    let wte = descend(w.wte, s.dwte)
+    Weights {
+        wte: wte, wteT: Model::transpose(wte, vocabSize, width), wpe: descend(w.wpe, s.dwpe),
+        lnfG: descend(w.lnfG, s.dlnfG), lnfB: descend(w.lnfB, s.dlnfB),
+        blocks: range(0, layerCount) |> fold([], fn(acc, i) => listAppend(acc, descendLayer(Model::layer(w, i), listGet(s.grads, i) ?: Model::emptyLayer())))
+    }
+}
+
+/// The checksum of a matrix gradient: each row summed in order by its own
+/// thread, then the rows summed — the same two-level sum under either handler.
+/// A flat `total` would fold every element on one device thread.
+fn rowTotal(g, cols, r) = range(0, cols) |> fold(0.0, fn(a, c) => a + at(g, r * cols + c))
+fn checksum(g, rows, cols) = total(Model::orStop(perform Backends::Tensor.build(rows, fn(r) => rowTotal(g, cols, r)), Model::empty))
+
+fn layerLine(g) = "${total(g.ln1g)} ${total(g.ln1b)} ${checksum(g.qkvW, width, qkvWidth)} ${total(g.qkvB)} ${checksum(g.projW, width, width)} ${total(g.projB)} ${total(g.ln2g)} ${total(g.ln2b)} ${checksum(g.fcW, width, mlpWidth)} ${total(g.fcB)} ${checksum(g.outW, mlpWidth, width)} ${total(g.outB)}"
+
+fn gradLines(grads, i) = match i == layerCount {
+    true => ""
+    false => "\nh.${i} ${layerLine(listGet(grads, i) ?: Model::emptyLayer())}" + gradLines(grads, i + 1)
+}
+
+/// Load, tokenize, take the step and print, under whichever interpretation
+/// the caller installed.
+fn run(prompt) = {
+    let bpe = Tokenizer::loadBpe(Model::weightsDir + "/merges.txt")
+    let w = Model::loadWeights()
+    let ids = Tokenizer::encode(bpe, prompt)
+    let t = listLength(ids)
+    print("gpt2 (124M) on ${Model::device()} — one training step over ${t} tokens, learning rate ${learningRate}\nprompt: ${prompt}\ntokens:${Tokenizer::idsText(ids)}")
+    let s = trainStep(w, ids, t)
+    print("loss ${s.loss}\ngrad wte ${checksum(s.dwte, vocabSize, width)} wpe ${checksum(s.dwpe, positions, width)} ln_f ${total(s.dlnfG)} ${total(s.dlnfB)}${gradLines(s.grads, 0)}")
+    let stepped = descendAll(w, s)
+    print("loss after one step ${lossHead(stepped, finalState(stepped, ids, t), ids, t).loss}")
+}
+
+fn main() = {
+    let promptLine = input()
+    let prompt = match promptLine == "" { true => defaultPrompt  false => promptLine }
+    let backend = input()
+    match Backends::strictly(fn() => Backends::under(backend, fn() => run(prompt))) {
+        Success { value } => value
+        Error { message } => print("training stopped: ${message}")
+    }
+}

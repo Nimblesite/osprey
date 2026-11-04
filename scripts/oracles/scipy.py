@@ -1,6 +1,6 @@
 """CPython oracle for @osprey/scipy: scipy.special scalar-function values.
 
-Writes packages/scipy/tests/expected.py, which the suite compares the port's
+Writes src/packages/scipy/tests/expected.py, which the suite compares the port's
 `scipy.Special` functions against ([PORT-TEST-ORACLE], spec 0043). Run with the
 oracle virtualenv: `python scripts/oracles/scipy.py`.
 """
@@ -384,4 +384,4 @@ if __name__ == "__main__":
         "",
     ]
     lines += [f"{name} = {literal(value, non_finite(value))}" for name, value in constants.items()]
-    (ROOT / "packages" / "scipy" / "tests" / "expected.py").write_text("\n".join(lines) + "\n")
+    (ROOT / "src" / "packages" / "scipy" / "tests" / "expected.py").write_text("\n".join(lines) + "\n")

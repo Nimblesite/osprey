@@ -1,0 +1,224 @@
+// The GPT-2 byte-level BPE tokenizer, rebuilt from the published merges.txt
+// alone. Shared by src/examples/gpt2/generate and src/examples/gpt2/train, which
+// are each a one-file project naming this directory as a second source root
+// ([MODULES-MODEL]); a standalone script cannot import across files.
+
+namespace gpt2;
+
+module Tokenizer {
+    // --- the byte-level BPE tokenizer ------------------------------------------
+    //
+    // GPT-2 tokenizes bytes, not characters. Each byte is first mapped to a
+    // printable stand-in code point so merges can be written as text; the 256
+    // stand-ins take ids 0..255 in `bytes_to_unicode` order, and merge number i of
+    // merges.txt produces token 256 + i. Decoding never needs vocab.json for that
+    // reason: the merge list IS the vocabulary.
+
+    /// A byte's stand-in code point: printable bytes stand for themselves, the
+    /// others take U+0100 onward in byte order.
+    fn byteToChar(b) = match b < 33 {
+        true => 256 + b
+        false => match b < 127 || (b > 160 && b != 173) {
+            true => b
+            false => match b == 173 { true => 323  false => 162 + b }
+        }
+    }
+
+    /// The inverse of byteToChar.
+    fn charToByte(cp) = match cp < 256 {
+        true => cp
+        false => match cp < 289 { true => cp - 256  false => match cp == 323 { true => 173  false => cp - 162 } }
+    }
+
+    /// The vocabulary id of a single byte, in the order bytes_to_unicode lists them.
+    fn byteToId(b) = match b > 32 && b < 127 {
+        true => b - 33
+        false => match b > 160 && b < 173 {
+            true => 94 + b - 161
+            false => match b > 173 {
+                true => 106 + b - 174
+                false => match b < 33 { true => 188 + b  false => match b == 173 { true => 255  false => 221 + b - 127 } }
+            }
+        }
+    }
+
+    /// The byte a base vocabulary id (below 256) stands for.
+    fn idToByte(id) = match id < 94 {
+        true => id + 33
+        false => match id < 106 {
+            true => 161 + id - 94
+            false => match id < 188 {
+                true => 174 + id - 106
+                false => match id < 221 { true => id - 188  false => match id == 255 { true => 173  false => 127 + id - 221 } }
+            }
+        }
+    }
+
+    export type Bpe = { merges: List<string>, ranks: Map<string, int>, ids: Map<string, int> }
+
+    /// The merge table from merges.txt: line i (after the version line) is the
+    /// pair "a b" with rank i - 1, producing token "ab" with id 255 + i.
+    export fn loadBpe(path) = {
+        let rows = lines(readFile(path) ?: "")
+        let merges = range(1, listLength(rows)) |> fold(Bpe { merges: [], ranks: Map(), ids: Map() }, fn(acc, i) => {
+            let pair = listGet(rows, i) ?: ""
+            let token = replace(pair, " ", "") ?: pair
+            Bpe { merges: listAppend(acc.merges, token), ranks: mapSet(acc.ranks, pair, i - 1), ids: mapSet(acc.ids, token, 255 + i) }
+        })
+        merges
+    }
+
+    /// Whether byte b is a letter: ASCII letters, and every non-ASCII byte, since
+    /// UTF-8 continuation bytes belong to the word they are inside.
+    fn isLetter(b) = (b > 64 && b < 91) || (b > 96 && b < 123) || b > 127
+    fn isDigit(b) = b > 47 && b < 58
+    fn isSpace(b) = b == 32 || b == 10 || b == 13 || b == 9
+
+    /// The character class a byte starts: 1 letters, 2 digits, 3 punctuation.
+    fn classOf(b) = match isLetter(b) { true => 1  false => match isDigit(b) { true => 2  false => 3 } }
+
+    fn byteOf(s, i) = byteAt(s, i) ?: 0
+    fn standIn(b) = fromCodePoint(byteToChar(b)) ?: ""
+
+    /// The length of a contraction suffix starting at i ('s 't 're 've 'm 'll 'd),
+    /// or 0 — these are their own pieces in GPT-2's pre-tokenizer.
+    fn contractionAt(s, i) = {
+        let two = substring(s, i, i + 2) ?: ""
+        let three = substring(s, i, i + 3) ?: ""
+        match two == "'s" || two == "'t" || two == "'m" || two == "'d" {
+            true => 2
+            false => match three == "'re" || three == "'ve" || three == "'ll" { true => 3  false => 0 }
+        }
+    }
+
+    type Scan = { pieces: List<string>, current: string, kind: int, spaces: string }
+
+    fn closePiece(sc) = match sc.current == "" { true => sc.pieces  false => listAppend(sc.pieces, sc.current) }
+
+    /// A whitespace run ends: every space but a trailing single ' ' is its own
+    /// piece, and that trailing space opens the next word (the regex's `\s+(?!\S)`).
+    fn flushSpaces(sc, nextIsWord) = match sc.spaces == "" {
+        true => sc
+        false => spacesEnd(sc, nextIsWord)
+    }
+
+    fn spacesEnd(sc, nextIsWord) = {
+        let carry = match nextIsWord && endsWith(sc.spaces, "Ġ") { true => "Ġ"  false => "" }
+        let standalone = substring(sc.spaces, 0, byteLength(sc.spaces) - byteLength(carry)) ?: ""
+        let pieces = match standalone == "" { true => sc.pieces  false => listAppend(sc.pieces, standalone) }
+        Scan { pieces: pieces, current: carry, kind: 0, spaces: "" }
+    }
+
+    /// Split the prompt into GPT-2's pre-tokenization pieces, as stand-in strings.
+    fn scanPieces(s, i, sc) = match i >= byteLength(s) {
+        true => {
+            let settled = flushSpaces(sc, false)
+            closePiece(settled)
+        }
+        false => {
+            let b = byteOf(s, i)
+            let contraction = match b == 39 { true => contractionAt(s, i)  false => 0 }
+            match isSpace(b) {
+                true => scanPieces(s, i + 1, Scan { pieces: closePiece(sc), current: "", kind: 0, spaces: sc.spaces + standIn(b) })
+                false => match contraction > 0 {
+                    true => scanPieces(s, i + contraction, Scan { pieces: listAppend(closePiece(flushSpaces(sc, false)), substring(s, i, i + contraction) ?: ""), current: "", kind: 0, spaces: "" })
+                    false => scanPieces(s, i + 1, extend(flushSpaces(sc, true), b))
+                }
+            }
+        }
+    }
+
+    /// Append byte b to the open piece, or start a new piece when its class changes.
+    fn extend(sc, b) = {
+        let kind = classOf(b)
+        let continues = sc.kind == kind || (sc.kind == 0 && sc.current != "")
+        match continues {
+            true => Scan { pieces: sc.pieces, current: sc.current + standIn(b), kind: kind, spaces: "" }
+            false => Scan { pieces: closePiece(sc), current: standIn(b), kind: kind, spaces: "" }
+        }
+    }
+
+    /// The stand-in characters of a piece, one string each.
+    fn symbolsOf(piece, i, acc) = match i >= byteLength(piece) {
+        true => acc
+        false => {
+            let cp = codePointAt(piece, i) ?: 63
+            symbolsOf(piece, i + (codePointWidth(cp) ?: 1), listAppend(acc, fromCodePoint(cp) ?: "?"))
+        }
+    }
+
+    fn symbolAt(syms, i) = listGet(syms, i) ?: ""
+
+    type Best = { rank: int, at: int }
+
+    /// The adjacent pair with the lowest merge rank, or at == -1 when none merges.
+    fn bestPair(bpe, syms) = range(0, listLength(syms) - 1) |> fold(Best { rank: 2147483647, at: 0 - 1 }, fn(best, i) => {
+        let rank = mapGet(bpe.ranks, symbolAt(syms, i) + " " + symbolAt(syms, i + 1)) ?: 2147483647
+        match rank < best.rank { true => Best { rank: rank, at: i }  false => best }
+    })
+
+    /// Merge every non-overlapping occurrence of (first, second), left to right.
+    fn mergeAll(syms, first, second, i, acc) = match i >= listLength(syms) {
+        true => acc
+        false => {
+            let s = symbolAt(syms, i)
+            match s == first && i + 1 < listLength(syms) && symbolAt(syms, i + 1) == second {
+                true => mergeAll(syms, first, second, i + 2, listAppend(acc, s + second))
+                false => mergeAll(syms, first, second, i + 1, listAppend(acc, s))
+            }
+        }
+    }
+
+    /// Byte-pair encode one piece: merge the best-ranked pair until none remains.
+    fn bpeEncode(bpe, syms) = {
+        let best = bestPair(bpe, syms)
+        match best.at < 0 {
+            true => syms
+            false => bpeEncode(bpe, mergeAll(syms, symbolAt(syms, best.at), symbolAt(syms, best.at + 1), 0, []))
+        }
+    }
+
+    /// A symbol's vocabulary id: a lone stand-in is a base byte, anything longer a merge.
+    fn idOf(bpe, sym) = match mapGet(bpe.ids, sym) {
+        Success { value } => value
+        Error _ => byteToId(charToByte(codePointAt(sym, 0) ?: 63))
+    }
+
+    fn encodePiece(bpe, piece) = bpeEncode(bpe, symbolsOf(piece, 0, [])) |> fn(syms) => range(0, listLength(syms)) |> fold([], fn(acc, i) => listAppend(acc, idOf(bpe, symbolAt(syms, i))))
+
+    /// The token ids of a prompt.
+    export fn encode(bpe, text) = {
+        let pieces = scanPieces(text, 0, Scan { pieces: [], current: "", kind: 0, spaces: "" })
+        range(0, listLength(pieces)) |> fold([], fn(acc, i) => listConcat(acc, encodePiece(bpe, listGet(pieces, i) ?: "")))
+    }
+
+    /// The bytes a token id stands for, appended to acc.
+    fn bytesOfToken(bpe, id, acc) = match id < 256 {
+        true => listAppend(acc, idToByte(id))
+        false => {
+            let token = listGet(bpe.merges, id - 256) ?: ""
+            let syms = symbolsOf(token, 0, [])
+            range(0, listLength(syms)) |> fold(acc, fn(bytes, i) => listAppend(bytes, charToByte(codePointAt(symbolAt(syms, i), 0) ?: 63)))
+        }
+    }
+
+    /// Decode UTF-8 bytes into text; a malformed sequence prints as '?'.
+    fn textOf(bytes, i, acc) = match i >= listLength(bytes) {
+        true => acc
+        false => {
+            let b = listGet(bytes, i) ?: 63
+            let n = match b < 128 { true => 1  false => match b < 224 { true => 2  false => match b < 240 { true => 3  false => 4 } } }
+            let lead = match n == 1 { true => b  false => match n == 2 { true => b - 192  false => match n == 3 { true => b - 224  false => b - 240 } } }
+            let cp = range(1, n) |> fold(lead, fn(acc, k) => acc * 64 + (listGet(bytes, i + k) ?: 128) - 128)
+            textOf(bytes, i + n, acc + (fromCodePoint(cp) ?: "?"))
+        }
+    }
+
+    /// The ids as the space-led list both programs print after `tokens:`.
+    export fn idsText(ids) = range(0, listLength(ids)) |> fold("", fn(acc, i) => acc + " " + toString(listGet(ids, i) ?: 0))
+
+    export fn decode(bpe, ids) = {
+        let bytes = range(0, listLength(ids)) |> fold([], fn(acc, i) => bytesOfToken(bpe, listGet(ids, i) ?: 0, acc))
+        textOf(bytes, 0, "")
+    }
+}

@@ -30,9 +30,9 @@ The compatible theory remains a versioned package under spec 0050. An implementa
 
 This contract adds; it never alters. The rules below are testable and each has a gate:
 
-1. **Every program that compiles today compiles unchanged, with identical output.** The differential corpus and `examples/` are the oracle: no `.expectedoutput` changes because of this contract, under GC, ARC and wasm32.
+1. **Every program that compiles today compiles unchanged, with identical output.** The differential corpus and `src/examples/` are the oracle: no `.expectedoutput` changes because of this contract, under GC, ARC and wasm32.
 2. **No new keyword, operator, token or marker in `hm` modules.** A file without `// osprey: types=` is lexed, parsed, inferred, effect-checked and lowered exactly as before; `theorem`, `∀`, `by` and the rest remain ordinary identifiers or syntax errors there, as today.
-3. **No change to `Type`, unification, effect rows, redundancy analysis, monomorphisation or any diagnostic text** in `crates/osprey-types`. The only addition is the single dispatch of [TYPES-DISCIPLINE-SEAM](0050-TypeDisciplines.md#seam-types-discipline-seam); a CI test fails if `crates/` mentions a discipline name, a theory or a tactic.
+3. **No change to `Type`, unification, effect rows, redundancy analysis, monomorphisation or any diagnostic text** in `src/crates/osprey-types`. The only addition is the single dispatch of [TYPES-DISCIPLINE-SEAM](0050-TypeDisciplines.md#seam-types-discipline-seam); a CI test fails if `src/crates/` mentions a discipline name, a theory or a tactic.
 4. **No new runtime obligation.** A program that uses no discipline links no kernel, no elaborator and no proof library; binary size, startup and the memory backends are unchanged, measured by the existing benchmarks.
 5. **No inference regression.** Hindley-Milner annotations stay redundant where they are redundant today ([TYPE-ANNOTATION-REDUNDANT](0004-TypeSystem.md#redundant-annotations--type-annotation-redundant)); a discipline cannot demand an annotation in an `hm` module.
 6. **Removal is a deletion.** Deleting the discipline packages and the one seam leaves the compiler as it was; nothing in `hm` depends on them.
@@ -63,7 +63,7 @@ The kernel is the only trusted component. It is a type checker for terms of Lean
 - natural-number and string literals with the accelerated `Nat` operations Lean's kernel special-cases (`add`, `sub`, `mul`, `div`, `mod`, `gcd`, `beq`, `ble`, `land`, `lor`, `xor`, `shiftLeft`, `shiftRight`, `pow`, `log2`), computed on arbitrary-precision integers;
 - declarations: axioms, definitions, theorems, opaque constants, with the environment checks on names, levels and free variables that Lean applies before adding each.
 
-Under [PROOF-KERNEL-THEORY], declaration metadata is compared structurally, never through pretty-printed descriptions, joined names or hashes alone. Name lists preserve their length, order and exact elements, so one identifier containing a comma cannot stand for two identifiers. Family and constructor counts, flags and ownership are compared as fields; recursor rules retain their order, constructor identity and field counts, with their types and right-hand sides checked by the existing derivation rules. The shared `DeclarationBodies` comparison in `examples/proof/kernel/src/env.ospml` serves both import validation and numeric/notation identity guards. Rendered text is diagnostic output only. Genuine identifiers containing commas remain legal; rejecting punctuation is not a substitute for comparing structure. The adversarial cases in `examples/proof/kernel/tests/inductive_adversarial.ospml` must reject forged constructor inventories and recursor-rule lists even when their printed descriptions collide.
+Under [PROOF-KERNEL-THEORY], declaration metadata is compared structurally, never through pretty-printed descriptions, joined names or hashes alone. Name lists preserve their length, order and exact elements, so one identifier containing a comma cannot stand for two identifiers. Family and constructor counts, flags and ownership are compared as fields; recursor rules retain their order, constructor identity and field counts, with their types and right-hand sides checked by the existing derivation rules. The shared `DeclarationBodies` comparison in `src/examples/proof/kernel/src/env.ospml` serves both import validation and numeric/notation identity guards. Rendered text is diagnostic output only. Genuine identifiers containing commas remain legal; rejecting punctuation is not a substitute for comparing structure. The adversarial cases in `src/examples/proof/kernel/tests/inductive_adversarial.ospml` must reject forged constructor inventories and recursor-rule lists even when their printed descriptions collide.
 
 `[PROOF-KERNEL-TOTAL]` The kernel is an Osprey program and so obeys [FAILURE-EXPLICIT](0013-ErrorHandling.md): every rejection is a typed `Result` naming the declaration, the judgement and the two terms that failed to be definitionally equal. It never panics, aborts or exits.
 
@@ -92,7 +92,7 @@ Trust claims name the checker, intended rules, assumptions and independently rep
 Timing is a record, never a gate, and never a claim. There is no "faster than Lean" requirement anywhere in this contract or in CI.
 
 - **File to verdict.** A measurement runs one unmodified `.lean` file from source to verdict on both sides: the pinned Lean toolchain (`lake build` or `lean`), and `osprey prove check` on the same file. Both are cold processes on the same machine in the same run; the report records wall time, CPU time and peak memory for each, with the hashes of the file and both binaries. Nothing else is comparable and nothing else is reported.
-- **Not in CI.** `benchmarks/proof/` runs by hand. Reports under `target/proof/reports/` state the numbers and the inputs and nothing more; public prose reports scope and measurements, not positioning.
+- **Not in CI.** `src/benchmarks/proof/` runs by hand. Reports under `target/proof/reports/` state the numbers and the inputs and nothing more; public prose reports scope and measurements, not positioning.
 - **What is measured later.** Term-store hash-consing, memoised definitional equality, accelerated `Nat` literals and any GPU offload are line items in the same report once they exist. A handler that is not faster than its CPU twin is not used.
 
 ## Lean export bridge [PROOF-EXPORT]
@@ -129,7 +129,7 @@ Elaboration and tactics are Lean's. At stage 1 the toolchain runs them; at stage
 
 `[PROOF-TACTICS-GUIDE]` A learned premise-selection and tactic-suggestion model may propose steps. It is a proposer under [PROOF-TACTICS-CERT]; the trust report never counts a proposal as a proof.
 
-`[PROOF-TACTICS-BENCH]` Automation is measured, not asserted: `benchmarks/proof/` runs miniF2F and PutnamBench under a fixed time budget, by hand, and records the scores with the commit hashes. The website quotes only recorded results.
+`[PROOF-TACTICS-BENCH]` Automation is measured, not asserted: `src/benchmarks/proof/` runs miniF2F and PutnamBench under a fixed time budget, by hand, and records the scores with the commit hashes. The website quotes only recorded results.
 
 ## Mathlib [PROOF-MATHLIB]
 
@@ -171,7 +171,7 @@ These are ordinary library additions, available to every Osprey program, and are
 
 The workbench's full contract is [spec 0051](../applications/0051-ProofWorkbench.md); this section states what the proof system owes it and what it may not have.
 
-The workbench is an Osprey Native application ([`@osprey/native`](../../../packages/native/README.md)) that opens, edits, checks, reads and saves `.lean` files. The document is the `.lean` file and nothing else is saved. Goals, errors and verdicts come from the services of [PROOF-TOOLS]; the kernel verdict comes from Osprey's kernel in-process over the file's export. Lessons ([spec 0052](../applications/0052-WorkbenchLessons.md)) teach Lean itself, with their challenges and solutions as declarations in `.lean` files.
+The workbench is an Osprey Native application ([`@osprey/native`](../../../src/packages/native/README.md)) that opens, edits, checks, reads and saves `.lean` files. The document is the `.lean` file and nothing else is saved. Goals, errors and verdicts come from the services of [PROOF-TOOLS]; the kernel verdict comes from Osprey's kernel in-process over the file's export. Lessons ([spec 0052](../applications/0052-WorkbenchLessons.md)) teach Lean itself, with their challenges and solutions as declarations in `.lean` files.
 
 - **Nothing special for the workbench.** Every service it uses is a capability of [PROOF-TOOLS] or a host capability of `@osprey/native`; a second editor gets the same services.
 - **Reads like a paper.** A rendered view lays the file out as a page: statements and goals typeset from Lean's pretty-printer output, proofs collapsible, the verdict beside each declaration. The rendered view is the export.

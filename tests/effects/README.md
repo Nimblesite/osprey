@@ -1,6 +1,6 @@
 # Algebraic effect tests
 
-These Default (`.osp`) and ML (`.ospml`) suites exercise the current effects implementation. Each pair shares an expected output. Start with the [runnable guide](../../examples/handlers/README.md); the [specification](../../docs/specs/language/0017-AlgebraicEffects.md) defines the contract and [plan 0016](../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks unfinished work.
+These Default (`.osp`) and ML (`.ospml`) suites exercise the current effects implementation. Each pair shares an expected output. Start with the [runnable guide](../../src/examples/handlers/README.md); the [specification](../../docs/specs/language/0017-AlgebraicEffects.md) defines the contract and [plan 0016](../../docs/plans/0016-algebraic-effects-and-handlers.md) tracks unfinished work.
 
 ## Request work and choose its implementation
 
@@ -28,7 +28,7 @@ print("${continueWith(work)} ${stop(work)}")
 
 `control` on the declaration selects continuation behavior. `resume(value)` supplies the operation result and runs the remaining work; its return is the completed handler answer. Returning without resuming abandons that work. Adding or removing an unreachable `resume` never changes an operation's mode.
 
-A `return value => expression` clause transforms normal completion. A control arm's answer bypasses that clause. See the [resume suites](resume/README.md) and [answer-transform examples](../../examples/handlers/README.md#transforming-the-answer). The [scope suites](scope/README.md) pin finalizers, `mask` and named instances, which are specified but not yet implemented.
+A `return value => expression` clause transforms normal completion. A control arm's answer bypasses that clause. See the [resume suites](resume/README.md) and [answer-transform examples](../../src/examples/handlers/README.md#transforming-the-answer). The [scope suites](scope/README.md) pin finalizers, `mask` and named instances, which are specified but not yet implemented.
 
 ## Scope and checking
 
@@ -51,4 +51,4 @@ target/release/osprey test tests/effects/injection
 target/release/osprey test tests/effects/resume
 ```
 
-The differential corpus runner also compares both flavors across memory backends. Rejection fixtures live in [`examples/failscompilation`](../../examples/failscompilation). Compiler integration suites cover handler values, operation modes, answer transformations, and static selection.
+The differential corpus runner also compares both flavors across memory backends. Rejection fixtures live in [`src/examples/failscompilation`](../../src/examples/failscompilation). Compiler integration suites cover handler values, operation modes, answer transformations, and static selection.

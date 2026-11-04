@@ -22,9 +22,9 @@ every claim below is asserted twice and the flavors are proved byte-identical
 
 Rejection paths are not here. A must-reject module program never reaches
 codegen, so it cannot carry a golden; those live as source-driven diagnostics in
-[`crates/osprey-project/tests/module_diagnostics.rs`](../../crates/osprey-project/tests/module_diagnostics.rs),
+[`src/crates/osprey-project/tests/module_diagnostics.rs`](../../src/crates/osprey-project/tests/module_diagnostics.rs),
 which asserts each message on BOTH surfaces. Note that
-`examples/failscompilation/` is the wrong home for them: that corpus is graded by
+`src/examples/failscompilation/` is the wrong home for them: that corpus is graded by
 parse → type-check → codegen and never runs `osprey_project::assemble`, so a
 module-assembly rejection written there would be graded on a path that cannot
 produce it.
@@ -33,6 +33,6 @@ produce it.
 
 The effect suites use the current callable and block-scoped forms. A handler installer can use a block-scoped `handle Feed` followed by `body()`; a reusable policy can return `handler Feed { read => reading }` and be applied as `policy(work)`. ML uses the same operations with layout syntax. File-scope installation and the former `handle ... in/do ...` syntax are rejected.
 
-Module regressions live in [`module_defects.rs`](../../crates/osprey-project/tests/module_defects.rs) and [`effect_installer_defects.rs`](../../crates/osprey-cli/tests/effect_installer_defects.rs). Their assertions cover namespace contributions, entry points, generic handler results, curried callbacks, and state captures. Consult [plan 0016](../../docs/plans/0016-algebraic-effects-and-handlers.md) for current effects limitations.
+Module regressions live in [`module_defects.rs`](../../src/crates/osprey-project/tests/module_defects.rs) and [`effect_installer_defects.rs`](../../src/crates/osprey-cli/tests/effect_installer_defects.rs). Their assertions cover namespace contributions, entry points, generic handler results, curried callbacks, and state captures. Consult [plan 0016](../../docs/plans/0016-algebraic-effects-and-handlers.md) for current effects limitations.
 
 The `file_scope_generic_binding` twins additionally pin declaration scope through direct calls, aliases, higher-order calls, iterator callbacks and typed record fields. They distinguish global storage from shadowing caller values and genuine local closure captures. Curried calls retain their caller arguments, nested calls use independent type instantiations, and an effect transcript proves first argument → body → second argument ordering with no duplicated work. Both flavors share one exact golden under every supported target and memory backend.

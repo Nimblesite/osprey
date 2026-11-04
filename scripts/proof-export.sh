@@ -8,7 +8,7 @@ set -euo pipefail
 export PATH="$HOME/.elan/bin:$PATH"
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-TOOLS_DIR="$ROOT/benchmarks/proof/tools"
+TOOLS_DIR="$ROOT/src/benchmarks/proof/tools"
 EXPORTER_REV="cfefafacc917b2d14c5f9bb092ed337f71317a4a" # lean4export, tag v4.25.0
 CHECKER_REV="aa03950243dc18750c1546602ab054609ea8d57d" # lean4checker, tag v4.25.0
 FORMAT_VERSION="3.1.0"
@@ -40,7 +40,7 @@ select_theorem() {
         Nat.add_comm) BUILD_MODULE=""; EXPORT_ARGS=(Init.Data.Nat.Basic -- Nat.add_comm); FIXTURE="nat_add_comm" ;;
         *) fail "unknown theorem: $THEOREM" ;;
     esac
-    RECORDED="$ROOT/examples/proof/kernel/exports/$FIXTURE.ndjson"
+    RECORDED="$ROOT/src/examples/proof/kernel/exports/$FIXTURE.ndjson"
 }
 
 verify_toolchain() {

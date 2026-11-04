@@ -1,6 +1,6 @@
 # Osprey Native and its hosts [NATIVE-HOSTS]
 
-**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`vscode-extension/client/src/osprey-ui`](../../../vscode-extension/client/src/osprey-ui)). A third, the GPUI desktop host ([0046](../platforms/0046-GpuiDesktopHost.md)), runs on macOS. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
+**Status:** two hosts run today: Vigil's SwiftUI host over the C ABI and the VS Code webview host over WASI frames ([`src/vscode-extension/client/src/osprey-ui`](../../../src/vscode-extension/client/src/osprey-ui)). A third, the GPUI desktop host ([0046](../platforms/0046-GpuiDesktopHost.md)), runs on macOS. The host conformance suite in [NATIVE-HOSTS-CONFORMANCE] does not exist yet; [plan 0037](../../plans/0037-osprey-native.md) delivers it.
 
 ## Aim [NATIVE-HOSTS-AIM]
 
@@ -36,31 +36,31 @@ Both carry the same envelope: `version`, `state`, `slices`, `patches`, `removed`
 | Host | Draws with | Transport | Platforms | Where | Status |
 | --- | --- | --- | --- | --- | --- |
 | SwiftUI | SwiftUI controls | C ABI | macOS, iOS | [Vigil](https://github.com/Nimblesite/vigil) | running |
-| Webview | HTML, CSS, Codicons | WASI frames | VS Code on every desktop | [`osprey-ui`](../../../vscode-extension/client/src/osprey-ui) | running |
+| Webview | HTML, CSS, Codicons | WASI frames | VS Code on every desktop | [`osprey-ui`](../../../src/vscode-extension/client/src/osprey-ui) | running |
 | Browser | HTML, CSS | WASI frames in a worker | any browser | planned, extracted from the webview host | not started |
-| GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running on macOS |
-| WinUI | WinUI controls, Segoe Fluent Icons | C ABI, as a DLL | Windows | `hosts/winui` | [spec 0048](../platforms/0048-WinUiHost.md), tested without a window |
-| SwiftUI (in-repo) | SwiftUI views, SF Symbols, frames and rich text | C ABI | macOS | [`hosts/swift`](../../../hosts/swift/README.md) | running; draws [Osprey Agent](../../../examples/agent/README.md) |
+| GPUI | GPU primitives via GPUI | C ABI | macOS first, then Linux, Windows | `src/hosts/gpui` | [spec 0046](../platforms/0046-GpuiDesktopHost.md), running on macOS |
+| WinUI | WinUI controls, Segoe Fluent Icons | C ABI, as a DLL | Windows | `src/hosts/winui` | [spec 0048](../platforms/0048-WinUiHost.md), tested without a window |
+| SwiftUI (in-repo) | SwiftUI views, SF Symbols, frames and rich text | C ABI | macOS | [`src/hosts/swift`](../../../src/hosts/swift/README.md) | running; draws [Osprey Agent](../../../src/examples/agent/README.md) |
 
-The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
+The webview and browser hosts share one TypeScript renderer; the VS Code one adds editor capabilities through [`@osprey/vscode`](../../../src/packages/vscode/README.md). A new host gets a row here and a column in the coverage matrix before any code merges.
 
 ## Node and capability coverage [NATIVE-HOSTS-COVERAGE]
 
-Every `Node` constructor in [`node.ospml`](../../../packages/native/src/node.ospml) and every `Capability` in [`capability.ospml`](../../../packages/native/src/capability.ospml) appears in a coverage matrix, one column per host, each cell `draws`, `rejects` or `n/a` (a capability with no meaning on that platform). The matrix is generated from the sources, not written by hand, and CI fails when a constructor is missing from it. A host's README links its column.
+Every `Node` constructor in [`node.ospml`](../../../src/packages/native/src/node.ospml) and every `Capability` in [`capability.ospml`](../../../src/packages/native/src/capability.ospml) appears in a coverage matrix, one column per host, each cell `draws`, `rejects` or `n/a` (a capability with no meaning on that platform). The matrix is generated from the sources, not written by hand, and CI fails when a constructor is missing from it. A host's README links its column.
 
 Each host declares its column in code, and its tests read the framework's sources and fail when a kind is missing from the declaration or declared twice:
 
 | Host | Column | Test |
 | --- | --- | --- |
-| GPUI | `DRAWN`, `REFUSED`, `ANSWERED` and `UNANSWERED` in [`coverage.rs`](../../../hosts/gpui/src/coverage.rs) | `cargo test coverage`, which also checks the lists against the host's match arms |
-| Webview | `RENDERED_KINDS` in [`render.ts`](../../../vscode-extension/client/src/osprey-ui/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `vscode-extension/test/suite` |
-| WinUI | [`Coverage.cs`](../../../hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the renderer refusing to start unless it draws exactly the declared kinds |
+| GPUI | `DRAWN`, `REFUSED`, `ANSWERED` and `UNANSWERED` in [`coverage.rs`](../../../src/hosts/gpui/src/coverage.rs) | `cargo test coverage`, which also checks the lists against the host's match arms |
+| Webview | `RENDERED_KINDS` in [`render.ts`](../../../src/vscode-extension/client/src/osprey-ui/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../src/vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `src/vscode-extension/test/suite` |
+| WinUI | [`Coverage.cs`](../../../src/hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the renderer refusing to start unless it draws exactly the declared kinds |
 
-The typed symbol helpers provide a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../packages/native/src/symbol.ospml), converted by `Symbols::name` to each member's lowercase string. Existing control constructors also accept string names and bundled SVG registrations. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
+The typed symbol helpers provide a closed, host-neutral vocabulary: the `Symbol` union in [`symbol.ospml`](../../../src/packages/native/src/symbol.ospml), converted by `Symbols::name` to each member's lowercase string. Existing control constructors also accept string names and bundled SVG registrations. Each host maps every member to its own icon set and tests that it does (the GPUI host's `every_framework_symbol_has_a_kit_icon`, the webview's Codicon test), so no member is drawn as a fallback. The framework holds no host's icon names, capabilities or product vocabulary; work only one host can do is a `HostCall`.
 
 ## Conformance [NATIVE-HOSTS-CONFORMANCE]
 
-One recorded-event fixture set, kept beside the framework in `packages/native/conformance`, drives every host: the probe application's start context and a sequence of events with the expected envelopes. A host passes when it produces the same envelopes, draws without a rejected kind, and returns the same binding ids for the same user actions scripted through its own input layer. Each host's smoke command runs the set; the plan names them. A host not in the conformance run is not listed as running in [NATIVE-HOSTS-FAMILY].
+One recorded-event fixture set, kept beside the framework in `src/packages/native/conformance`, drives every host: the probe application's start context and a sequence of events with the expected envelopes. A host passes when it produces the same envelopes, draws without a rejected kind, and returns the same binding ids for the same user actions scripted through its own input layer. Each host's smoke command runs the set; the plan names them. A host not in the conformance run is not listed as running in [NATIVE-HOSTS-FAMILY].
 
 ## Framework neutrality [NATIVE-HOSTS-NEUTRAL]
 

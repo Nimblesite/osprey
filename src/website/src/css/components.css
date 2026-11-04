@@ -1,0 +1,394 @@
+/* ============================================================================
+   Site shell, homepage components, installation and benchmark tables.
+   Built on the techdoc structural shell (.site-header/.nav/.site-footer) and
+   the existing page markup. Authoritative design: docs/designs/*.
+   ============================================================================ */
+
+/* ============================ Site shell ================================== */
+.site-header {
+  background: rgba(12, 19, 37, 0.82);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border-bottom: 1px solid rgba(62, 72, 76, 0.4);
+}
+.nav { height: var(--header-height); }
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  min-height: 48px;
+  gap: 0.55rem;
+  font-weight: 700;
+  font-size: 1.3rem;
+  letter-spacing: -0.02em;
+  color: var(--primary);
+}
+.logo:hover { color: var(--primary); }
+.logo::before {
+  content: "";
+  width: 30px;
+  height: 30px;
+  background: url("/assets/images/logo.png?v=78c86be1f1f7") center / contain no-repeat;
+  flex-shrink: 0;
+}
+
+.nav-links { gap: clamp(0.75rem, 2vw, 1.5rem); align-items: center; }
+.nav-links li { margin: 0; min-width: 0; }
+.nav-link {
+  color: var(--on-surface-variant);
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding-bottom: 2px;
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition-fast);
+}
+.nav-link:hover { color: var(--primary); }
+.nav-link.active {
+  color: var(--primary);
+  font-weight: 600;
+  border-bottom-color: var(--primary);
+}
+.site-header :is(a, button, summary):focus-visible { outline: 2px solid var(--primary-container); outline-offset: 4px; }
+.nav-group { position: relative; }
+.nav-group > summary { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; list-style: none; }
+.nav-group > summary::-webkit-details-marker { display: none; }
+.nav-group > summary::after { content: ""; width: 5px; height: 5px; border: solid currentColor; border-width: 0 1px 1px 0; transform: rotate(45deg); }
+.nav-group[open] > summary::after { transform: rotate(225deg); }
+.nav-submenu { position: absolute; right: -0.5rem; top: calc(100% + 0.75rem); z-index: 1; min-width: 15rem; list-style: none; margin: 0; padding: 0.4rem; background: var(--surface-container); border: 1px solid var(--outline-variant); border-radius: var(--radius-sm); box-shadow: 0 12px 32px #0004; }
+.nav-submenu .nav-link { display: block; min-height: 44px; padding: 0.6rem 0.75rem; font-size: 0.875rem; white-space: nowrap; border: 0; border-radius: 4px; }
+.nav-submenu .nav-link:hover, .nav-submenu .nav-link.active { background: #77d7f40d; }
+
+/* Dark-only design — the theme toggle has no second theme to switch to. */
+.theme-toggle { display: none; }
+
+.mobile-menu-toggle {
+  color: var(--on-surface);
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-sm);
+  align-items: center;
+  justify-content: center;
+}
+.mobile-menu-toggle span { width: 20px; background: currentColor; }
+.mobile-menu-toggle[aria-expanded="true"] span:first-child { transform: translateY(6px) rotate(45deg); }
+.mobile-menu-toggle[aria-expanded="true"] span:nth-child(2) { opacity: 0; }
+.mobile-menu-toggle[aria-expanded="true"] span:last-child { transform: translateY(-6px) rotate(-45deg); }
+
+/* ---- Footer ---- */
+.site-footer {
+  background: var(--surface-lowest);
+  border-top: 1px solid var(--outline-variant);
+}
+.footer-section h3 {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--on-surface);
+  margin-bottom: var(--space-4);
+}
+.footer-section a {
+  color: var(--on-surface-variant);
+  font-size: 0.9rem;
+}
+.footer-section a:hover { color: var(--primary); }
+.footer-bottom {
+  border-top: 1px solid var(--outline-variant);
+  color: var(--on-surface-variant);
+  font-size: 0.85rem;
+}
+
+/* ============================ Hero ======================================= */
+/* Fill the viewport (minus the in-flow sticky header) before any scroll. */
+.hero {
+  min-height: calc(100dvh - var(--header-height));
+  display: flex;
+  align-items: center;
+  padding-block: clamp(2rem, 5vh, 4rem);
+}
+.hero .container {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+  width: 100%;
+}
+/* Grid/flex children holding non-wrapping code must be allowed to shrink,
+   or `white-space: pre` blows the column past the viewport. */
+.hero .container > *,
+.two-column > *,
+.grid > *,
+.philosophy-grid > *,
+.showcase-grid > *,
+.install-grid > * { min-width: 0; }
+.code-example,
+.code-example pre,
+.install-code pre { max-width: 100%; }
+.hero-content { display: flex; flex-direction: column; gap: var(--space-6); }
+.hero-title {
+  font-size: var(--fs-display);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+.hero-title .accent,
+.hero-title strong { color: var(--primary); font-weight: 700; }
+.hero-subtitle {
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface-variant);
+  max-width: 38ch;
+  margin: 0;
+}
+.hero-actions, .mobile-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.hero-code { min-width: 0; display: flex; flex-direction: column; gap: var(--space-4); }
+.hero-code-caption {
+  font-size: var(--fs-code);
+  color: var(--on-surface-variant);
+  margin: 0;
+}
+.flavor-split { display: grid; gap: var(--space-4); min-width: 0; }
+.flavor-split .code-example { min-width: 0; }
+.flavor-tag {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-5);
+  font-size: var(--fs-label);
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  color: var(--primary);
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+}
+.flavor-tag span { color: var(--on-surface-variant); font-weight: 500; font-family: var(--font-mono); }
+/* These code windows label the flavor themselves, so drop the traffic-light chrome. */
+.flavor-split .code-example::before { display: none; }
+.flavor-split .code-example pre { font-size: 0.82rem; }
+
+/* ---- Code window chrome (home only; prose code is styled separately) ---- */
+.code-example {
+  background: var(--surface-lowest);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+.code-example::before {
+  content: "";
+  display: block;
+  height: 38px;
+  background-color: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+  background-image:
+    radial-gradient(circle 5px at 20px 19px, #ff5f57 96%, transparent),
+    radial-gradient(circle 5px at 40px 19px, #febc2e 96%, transparent),
+    radial-gradient(circle 5px at 60px 19px, #28c840 96%, transparent);
+}
+.code-example pre,
+.code-example pre[class*="language-"] {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: var(--space-5);
+}
+
+/* ============================ Sections =================================== */
+.section { padding-block: clamp(3rem, 7vw, 6rem); }
+.section-alt {
+  background: var(--surface-low);
+  border-block: 1px solid rgba(62, 72, 76, 0.4);
+}
+.section-title {
+  font-size: var(--fs-h2);
+  text-align: center;
+  margin-bottom: var(--space-4);
+}
+.section-subtitle {
+  text-align: center;
+  max-width: 60ch;
+  margin: 0 auto var(--space-12);
+  font-size: var(--fs-body-lg);
+  color: var(--on-surface-variant);
+}
+
+/* Two-column feature rows */
+.two-column {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(2rem, 5vw, 4rem);
+  align-items: center;
+}
+.two-column + .two-column { margin-top: clamp(2.5rem, 6vw, 4.5rem); }
+.two-column .content h2,
+.two-column .content h3 { margin-bottom: var(--space-4); }
+.two-column .content p { color: var(--on-surface-variant); }
+.two-column .content ul { color: var(--on-surface-variant); }
+.two-column .content li::marker { color: var(--primary-container); }
+
+/* ---- Card grids (features / philosophy) ---- */
+.grid,
+.philosophy-grid {
+  display: grid;
+  gap: var(--gutter);
+}
+.grid { grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.philosophy-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+
+/* Code is NEVER squeezed into narrow columns — it clips. Real-world example
+   cards stack full-width; the heading sits beside a generous code column so
+   every line has room. Collapses to a single column on narrow screens. */
+.showcase-grid { display: flex; flex-direction: column; gap: var(--gutter); }
+.showcase-grid .card-code {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.45fr) minmax(0, 2fr);
+  gap: clamp(1rem, 3vw, 2.5rem);
+  align-items: start;
+}
+.showcase-grid .card-code h3 { margin: 0; padding-top: var(--space-1); }
+.showcase-grid .card-code .code-example { margin-top: 0; }
+@media (max-width: 900px) {
+  .showcase-grid .card-code { grid-template-columns: 1fr; }
+  .showcase-grid .card-code .code-example { margin-top: var(--space-4); }
+}
+
+.card,
+.card-code {
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-8);
+  transition: border-color var(--transition), transform var(--transition);
+}
+.card:hover,
+.card-code:hover {
+  border-color: rgba(119, 215, 244, 0.4);
+  transform: translateY(-3px);
+}
+.card h3,
+.card-code h3 { margin-bottom: var(--space-3); }
+.card p { color: var(--on-surface-variant); margin: 0; }
+.card-code .code-example { margin-top: var(--space-4); box-shadow: none; }
+
+/* ============================ Install grid =============================== */
+.blue-box-installation { padding-block: clamp(3rem, 7vw, 5rem); }
+.install-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--gutter);
+}
+.install-card {
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.install-card.primary { border-color: rgba(119, 215, 244, 0.35); }
+.install-card h3 { margin: 0; font-size: 1.1rem; }
+.install-card p { color: var(--on-surface-variant); margin: 0; flex: 1; }
+.install-card .btn { align-self: flex-start; }
+.install-code pre,
+.install-code pre[class*="language-"] {
+  margin: var(--space-2) 0 0;
+  padding: var(--space-4);
+  font-size: 0.82rem;
+}
+/* Shell commands (e.g. the long scoop URL) wrap rather than clip. */
+.install-code pre,
+.install-code pre[class*="language-"],
+.install-code code,
+.install-code code[class*="language-"] {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* ============================ Blue-box CTA bands ========================== */
+.blue-box {
+  padding-block: clamp(3rem, 7vw, 6rem);
+  background: linear-gradient(135deg, var(--surface-low) 0%, var(--surface-container) 100%);
+  border-block: 1px solid rgba(62, 72, 76, 0.4);
+}
+.blue-box-content {
+  max-width: 640px;
+  margin-inline: auto;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+.blue-box-content p { color: var(--on-surface-variant); margin: 0; }
+.blue-box-actions {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+/* ============================ Comparison table =========================== */
+.comparison-table { overflow-x: auto; }
+.comparison-table table {
+  width: 100%;
+  min-width: 40rem;
+  border-collapse: collapse;
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  overflow: hidden;
+  font-size: 0.95rem;
+}
+/* `table` in the selector keeps these ahead of the `.prose td` defaults that
+   would otherwise win on a source-order tie inside an `<article class="prose">`. */
+.comparison-table table th,
+.comparison-table table td {
+  padding: var(--space-2) var(--space-4);
+  text-align: left;
+  border-bottom: 1px solid var(--outline-variant);
+}
+.comparison-table thead th {
+  background: var(--surface-high);
+  color: var(--on-surface);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.comparison-table tbody td { color: var(--on-surface-variant); }
+.comparison-table tbody td:first-child { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody tr:last-child td { border-bottom: 0; }
+.comparison-table tbody tr:hover td { background: rgba(46, 52, 72, 0.4); }
+
+/* ---- Benchmark report (shared by src/benchmarks/report.py + /benchmarks page) ---- */
+.comparison-table th.num,
+.comparison-table td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.comparison-table thead th.col-osprey { background: var(--primary-container); color: var(--on-primary); }
+.comparison-table tbody td.col-osprey { background: rgba(119, 215, 244, 0.08); }
+.comparison-table tbody td.best { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody td.win { color: var(--tertiary-dim); font-weight: 700; }
+.bench-summary { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-6) 0; }
+.bench-card {
+  flex: 1 1 150px;
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+.bench-card .big { font-family: var(--font-mono); font-size: 1.7rem; font-weight: 700; color: var(--on-surface); }
+.bench-card .lbl { color: var(--on-surface-variant); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; }
+.bench-card.is-accent .big { color: var(--tertiary-dim); }
+.bench-card.is-good .big { color: var(--primary-container); }
+.comparison-cta { text-align: center; margin-top: var(--space-6); color: var(--on-surface-variant); }
+.comparison-cta a { font-weight: 600; }

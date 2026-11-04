@@ -18,13 +18,13 @@ The repository README is an orientation document, not the final authority when i
 
 The book teaches Default first. Osprey currently has three syntax flavors: Default, ML and Python. A syntax flavor changes how source is written, while sharing types, effects and compilation.
 
-Default and ML are the book's teaching surfaces. Python syntax is available for real programs, including the GPT-2 port; its supported subset and remaining frontend/tooling limits are documented in the [Python flavor guide](../website/src/docs/python-flavor.md). Distinguish Osprey Python-flavor modules from CPython packages, which require explicit interop. Do not expose compiler-internal vocabulary in the first chapters.
+Default and ML are the book's teaching surfaces. Python syntax is available for real programs, including the GPT-2 port; its supported subset and remaining frontend/tooling limits are documented in the [Python flavor guide](../src/website/src/docs/python-flavor.md). Distinguish Osprey Python-flavor modules from CPython packages, which require explicit interop. Do not expose compiler-internal vocabulary in the first chapters.
 
 ## Example evidence
 
 Every complete example must:
 
-1. live under `examples/`;
+1. live under `src/examples/`;
 2. compile with the edition's pinned compiler;
 3. produce deterministic output where output is claimed;
 4. avoid undocumented behavior; and
@@ -36,7 +36,7 @@ ML twins are verification aids and optional comparisons. They do not replace the
 
 The book states that Osprey is actively evolving and separates implemented features from specifications of future work.
 
-Project modules, multi-file assembly and imports across syntax flavors are implemented. The package client supports folder registries, verified downloads, locked builds, local overrides and folder publication; hosted authenticated publishing, the public package website and trust services remain planned. Use the [module specification](../docs/specs/language/0025-ModulesAndNamespaces.md) and its executable project tests for module claims, and the [package guide](../website/src/docs/package-manager.md) for available commands and limits. A specification alone does not prove a feature is available.
+Project modules, multi-file assembly and imports across syntax flavors are implemented. The package client supports folder registries, verified downloads, locked builds, local overrides and folder publication; hosted authenticated publishing, the public package website and trust services remain planned. Use the [module specification](../docs/specs/language/0025-ModulesAndNamespaces.md) and its executable project tests for module claims, and the [package guide](../src/website/src/docs/package-manager.md) for available commands and limits. A specification alone does not prove a feature is available.
 
 Qualify runtime claims where they are taught:
 

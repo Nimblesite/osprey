@@ -15,7 +15,7 @@ andThen (result, next) = match result
 (** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
 withIndices (n, work) = withBuffer(gpuIota n, work)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
-// port in examples/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
+// port in src/examples/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
 // causal multi-head attention with its softmax, token and position embeddings,
 // one pre-norm block and the tied greedy readout — plus the weight loaders
@@ -372,7 +372,7 @@ attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
 rowOf (x, r, n, grid0) = grid0 |> gpuMap (\c => at (x, r * n + c))
 sameRow (single, rows, r, n) = range (0, n) |> fold true (\(ok, c) => ok && at (single, c) == at (rows, r * n + c))
 (** The KV-cached step: the newest position attends through the earlier rows with the full pass's arithmetic, and LayerNorm and linear are row-wise, so one row's pass
-    equals that row of the two-row pass bit for bit — which is why examples/gpt2's generate can grow a cache instead of recomputing. *)
+    equals that row of the two-row pass bit for bit — which is why src/examples/gpt2's generate can grow a cache instead of recomputing. *)
 cachedStepCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => withIndices (1, \grid7 => cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))))))))
 cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
     match miniTokens ()
@@ -456,7 +456,7 @@ loadCase () =
                 Error message => check ("GPU operation", "success", toString message)
         Error message => check ("GPU operation", "success", toString message)
 (** Only ASCII content can be written from a NUL-terminated string, so the header-length prefix is either missing or absurd; the full header grammar is pinned by the
-    checked-in fixture under crates/osprey-cli/tests. *)
+    checked-in fixture under src/crates/osprey-cli/tests. *)
 tensorHeaderCase () =
     short = scratch + "_short.safetensors"
     ascii = scratch + "_ascii.safetensors"

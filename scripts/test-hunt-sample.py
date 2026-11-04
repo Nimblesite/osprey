@@ -23,7 +23,7 @@ class InventoryTests(unittest.TestCase):
                      'examples/app/helper.osp': 'print(2)', 'examples/shared/lib.osp': 'fn id(x) = x', 'examples/library/osprey.toml': '[project]',
                      'examples/library/lib.osp': 'fn id(x) = x', 'examples/one.osp': 'print(1)',
                      'examples/one.ospml': 'print 1', 'examples/py.py': '# osprey: flavor=python\nprint(1)',
-                     'examples/tool.py': 'print(3)', 'examples/failscompilation/bad.osp': 'bad'}
+                     'examples/tool.py': 'print(3)', 'src/examples/failscompilation/bad.osp': 'bad'}
             for name, text in files.items():
                 path = root/name
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -42,9 +42,9 @@ class QualificationTests(unittest.TestCase):
             with self.subTest(memory=memory), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 fake_sampler_root(root)
-                runtime = root/f'compiler/bin/libosprey_runtime_klee_{memory}.bc'
+                runtime = root/f'src/compiler/bin/libosprey_runtime_klee_{memory}.bc'
                 runtime.write_bytes(memory.encode())
-                (root/'compiler/bin/libosprey_gc_roots.so').write_bytes(b'plugin')
+                (root/'src/compiler/bin/libosprey_gc_roots.so').write_bytes(b'plugin')
                 options = argparse.Namespace(root=root, out=root/'out', osprey=root/'osprey', memory=memory)
                 previous = os.environ.get('OSPREY_KLEE_RUNTIME')
                 try:
@@ -229,9 +229,9 @@ class ReviewReportTests(unittest.TestCase):
 
 
 def fake_sampler_root(root):
-    (root/'compiler/bin').mkdir(parents=True)
-    (root/'compiler/bin/libosprey_runtime_klee_gc.bc').write_bytes(b'fake runtime')
-    (root/'compiler/bin/libosprey_gc_roots.so').write_bytes(b'fake plugin')
+    (root/'src/compiler/bin').mkdir(parents=True)
+    (root/'src/compiler/bin/libosprey_runtime_klee_gc.bc').write_bytes(b'fake runtime')
+    (root/'src/compiler/bin/libosprey_gc_roots.so').write_bytes(b'fake plugin')
     (root/'tests/hunt').mkdir(parents=True)
     (root/'tests/hunt/crash-cases.json').write_text('[]')
     script = root/'osprey'

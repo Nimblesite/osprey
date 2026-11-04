@@ -197,4 +197,4 @@ background, pure black, gray flat background, drop shadow, harsh shadows, bevel,
 
 ### File handoff
 
-Output PNG (or WebP), master ~`1600×840`, sRGB. Name each file exactly `<post-slug>.png` and place in `website/src/assets/images/blog/`. The site references that path; matching the basename means your generation slots in with **zero code changes**.
+Output PNG (or WebP), master ~`1600×840`, sRGB. Name each file exactly `<post-slug>.png` and place in `src/website/src/assets/images/blog/`. The site references that path; matching the basename means your generation slots in with **zero code changes**.

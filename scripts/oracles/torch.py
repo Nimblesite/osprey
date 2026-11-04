@@ -1,7 +1,7 @@
 """CPython oracle for @osprey/torch: optimizers, learning-rate schedulers,
 gradient clipping and the autograd tape, all against real torch in float64.
 
-Writes packages/torch/tests/expected.py, which the suite compares the port
+Writes src/packages/torch/tests/expected.py, which the suite compares the port
 against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python -I scripts/oracles/oracle.py torch`. Every value here is computed by torch (or
 by finite differences of torch's forward), never hand-typed.

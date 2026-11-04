@@ -12,8 +12,8 @@ import ast
 import re
 from pathlib import Path
 
-PACKAGES_DIR = "packages"
-APPS_DIR = "apps"
+PACKAGES_DIR = "src/packages"
+APPS_DIR = "src"
 GATED_KINDS = (PACKAGES_DIR, APPS_DIR)
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
 DEFAULT_DEF_RE = re.compile(r"(?m)^[ \t]*(?:export[ \t]+)?fn[ \t]+\w+")

@@ -1,7 +1,7 @@
 # Lexical Structure
 
 Default source is tokenized by `tree-sitter-osprey`; ML source uses the lexer in
-`crates/osprey-syntax/src/ml/lexer.rs`, which also inserts `INDENT`, `DEDENT`,
+`src/crates/osprey-syntax/src/ml/lexer.rs`, which also inserts `INDENT`, `DEDENT`,
 and `NEWLINE` tokens. Both frontends share string unescaping and interpolation
 scanning.
 
@@ -100,7 +100,7 @@ defined by [PATTERN-RESULT-DEFAULT](0007-PatternMatching.md#result-default---pat
 
 Default has no statement terminator: a statement ends where its line ends. The
 grammar spells that as a zero-width `_statement_break` token, produced by the
-external scanner in `tree-sitter-osprey/src/scanner.c`.
+external scanner in `src/tree-sitter-osprey/src/scanner.c`.
 
 ### The rule [LEX-STATEMENT-BREAK]
 

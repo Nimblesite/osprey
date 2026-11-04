@@ -4,7 +4,7 @@
     payload, lists by length then elements, maps by keys then values — plus a
     recursive tree equal and differing deep inside, and NaN inside a record
     keeping it unequal to itself. The rejected operand types are pinned by
-    examples/failscompilation/ml_structural_equals_*.ospo. *)
+    src/examples/failscompilation/ml_structural_equals_*.ospo. *)
 
 type Route =
     tab : string

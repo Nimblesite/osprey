@@ -1,6 +1,6 @@
 # Python-Flavor Package Ports
 
-**Status: in progress.** The [`packages/`](../../../packages) tree holds Osprey ports of popular CPython packages, written in the [Python flavor](../language/0041-PythonFlavorSyntax.md) and tested against the real CPython packages. `@osprey/testing` ships and is the harness every port reports through. The catalog distinguishes implemented subsets, ongoing ports and planned packages. The registry accepts Python-flavor packages ([PORT-PUBLISH]).
+**Status: in progress.** The [`src/packages/`](../../../src/packages) tree holds Osprey ports of popular CPython packages, written in the [Python flavor](../language/0041-PythonFlavorSyntax.md) and tested against the real CPython packages. `@osprey/testing` ships and is the harness every port reports through. The catalog distinguishes implemented subsets, ongoing ports and planned packages. The registry accepts Python-flavor packages ([PORT-PUBLISH]).
 
 ## What a port is — [PORT-SCOPE]
 
@@ -13,7 +13,7 @@ A port is behaviourally compatible where its suite says so and nowhere else. Pyt
 ## Layout — [PORT-LAYOUT]
 
 ```text
-packages/<name>/
+src/packages/<name>/
   osprey.toml            [project] with python_sources, [package], [dependencies]
   README.md              original package and version, API map, divergences
   src/*.py               the port: `# osprey: namespace=<name>` and one module per file
@@ -40,7 +40,7 @@ Integers, booleans, strings, shapes and token ids compare exactly. Floats compar
 
 ## The suite — [PORT-SUITE]
 
-`crates/osprey-cli/tests/python_packages.rs` discovers every library with both `packages/<name>/osprey.toml` and `packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `packages/manager/` and run through `make -C packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
+`src/crates/osprey-cli/tests/python_packages.rs` discovers every library with both `src/packages/<name>/osprey.toml` and `src/packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `src/packages/manager/` and run through `make -C src/packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
 
 - exit successfully;
 - print exactly `expected_output.txt`: one `ok <case>` line per assertion and a final `N passed, 0 failed`;
@@ -52,7 +52,7 @@ Every name a module's `__all__` exports must be spelled somewhere in the suite's
 
 ## Individual source coverage — `[PKG-COVERAGE-GATE]`
 
-Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make -C packages package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
+Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make -C src/packages package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
 
 `scripts/package_coverage.py` requires a successful suite execution, a positive assertion count, zero failures and byte-for-byte matching `tests/expected_output.txt`. It rejects missing reports, omitted executable source files, malformed counts and results below the package's threshold. Collection binds the report to hashes of its source, suite, manifests and golden, so changed inputs or altered evidence require a new run. A failing suite remains a failure even when its measured coverage exceeds 90%.
 

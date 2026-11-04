@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url'
 const compilerRoots = /^(crates|compiler|tree-sitter-osprey|webcompiler|vscode-extension|tests|examples|packages|scripts|\.github)\//
 const content = (path) => /^(website|Book|benchmarks)\//.test(path)
   || (path.endsWith('.md') && !compilerRoots.test(path))
-const embeddedGrammar = 'website/src/js/osprey-grammar.mjs'
+const embeddedGrammar = 'src/website/src/js/osprey-grammar.mjs'
 
 export const classify = (files) => {
   if (!Array.isArray(files) || files.some((path) => typeof path !== 'string' || !path)) {
@@ -13,9 +13,9 @@ export const classify = (files) => {
   }
   return {
     code: files.some((path) => path === embeddedGrammar || !content(path)),
-    website: files.some((path) => path.startsWith('website/')),
+    website: files.some((path) => path.startsWith('src/website/')),
     book: files.some((path) => path.startsWith('Book/')),
-    benchmarks: files.some((path) => path.startsWith('benchmarks/')),
+    benchmarks: files.some((path) => path.startsWith('src/benchmarks/')),
   }
 }
 
