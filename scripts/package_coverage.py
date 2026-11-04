@@ -9,7 +9,7 @@ threshold. App reports are named apps-<name> so they never collide with a packag
         [--thresholds PATH] [--root PATH] [--package NAME] [--project KIND/NAME]
         [--memory gc|arc]
 
-`--collect` reruns each suite (one compiler per CPU, or OSPREY_PACKAGE_JOBS) and gates
+`--collect` reruns each suite (at most two compilers by default, or OSPREY_PACKAGE_JOBS) and gates
 its report; a nonzero exit, stdout differing from the golden, or an unwritable report
 invalidates the evidence. Without it the existing reports are gated and nothing re-runs.
 """
@@ -426,18 +426,20 @@ def unknown_selection(args: argparse.Namespace) -> str:
 
 
 JOBS_ENV = "OSPREY_PACKAGE_JOBS"
+DEFAULT_MAX_WORKERS = 2
 
 
 def worker_count(names: list[str], cpus: int | None = None) -> int:
-    """Bound collection by CPU count or OSPREY_PACKAGE_JOBS, and by package count.
+    """Bound default collection to two compilers; honor an explicit worker budget.
     Fewer workers keep every suite and threshold while limiting concurrent compilers.
     """
+    cpus = min(DEFAULT_MAX_WORKERS, cpus if cpus is not None else os.cpu_count() or 1)
     configured = os.environ.get(JOBS_ENV)
     if configured is not None:
         if not configured.isdecimal() or int(configured) < 1:
             raise SystemExit(fail(f"{JOBS_ENV} must be a positive integer, got {configured!r}"))
         cpus = int(configured)
-    return max(1, min(len(names), cpus if cpus is not None else os.cpu_count() or 1))
+    return max(1, min(len(names), cpus))
 
 
 def evaluate(root: Path, reports: Path, compiler: Path, entries: dict, projects: list[tuple[str, str]], collect: bool, memory="gc") -> list[dict]:

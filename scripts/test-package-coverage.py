@@ -55,10 +55,10 @@ class PackageThresholdTests(CoverageTestCase):
         # memory and the runner was shut down mid-step (exit 143), twice.
         checker = runpy.run_path(str(ROOT / "scripts/package_coverage.py"))
         names = [f"package-{index}" for index in range(19)]
-        self.assertEqual(checker["worker_count"](names, cpus=4), 4)
+        self.assertEqual(checker["worker_count"](names, cpus=4), 2)
         self.assertEqual(checker["worker_count"](names[:2], cpus=4), 2)
         self.assertEqual(checker["worker_count"]([], cpus=4), 1)
-        self.assertEqual(checker["worker_count"](names, cpus=None), min(19, os.cpu_count() or 1))
+        self.assertEqual(checker["worker_count"](names, cpus=None), min(2, os.cpu_count() or 1))
         with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": "6"}):
             self.assertEqual(checker["worker_count"](names, cpus=4), 6)
         for invalid in ("0", "-1", "two", "\u00b2"):
@@ -441,7 +441,7 @@ class CheckerTests(CoverageTestCase):
 
     def test_all_package_suites_overlap_and_write_isolated_reports(self):
         names = ["demo", *(f"peer{i}" for i in range(17))]
-        # The pool runs one collection per CPU, so the suites that can overlap
+        # The bounded pool retains parallel collection; the suites that can overlap
         # are the first worker_count of them; every later suite still runs.
         checker = runpy.run_path(str(ROOT / "scripts/package_coverage.py"))
         overlapping = names[: checker["worker_count"](names)]

@@ -60,8 +60,7 @@ RTB ?= compiler/bin
 # The release version a build is stamped with (release.yml exports it); the
 # runtime reports it to a live-attach client [PROF-ATTACH-PROTOCOL].
 OSPREY_VERSION ?= 0.0.0-dev
-# cargo's parallel jobs, inherited by every recipe that builds Rust.
-export CARGO_BUILD_JOBS ?= 4
+# Cargo defaults are bounded in .cargo/config.toml, including direct pi builds.
 
 # VSIX (VSCode extension) — macOS only. Bundles the Rust binary as `osprey`.
 # All VSIX targets touch ONLY this extension id, ONLY in the default profile;

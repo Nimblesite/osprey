@@ -1,0 +1,3 @@
+# Bound local builds, including cargo invoked by pi workers.
+[build]
+jobs = 2
