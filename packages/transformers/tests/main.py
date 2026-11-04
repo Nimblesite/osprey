@@ -12,7 +12,7 @@ from transformers import Generation, Lists, LogitsProcess, StoppingCriteria
 from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
-EXP = 1e-6
+EXP = 1e-9
 ATOL = 1e-12
 
 
@@ -37,12 +37,12 @@ def close_list(name, got, want, rtol, atol):
 
 
 
-def applied(processor: LogitsProcess.Processor, ids, scores):
+def applied(processor, ids, scores):
     """One `Processor` record over one row, as generate applies it."""
     return LogitsProcess.apply(processor, ids, scores)
 
 
-def stops(criterion: StoppingCriteria.Criterion, tokens) -> bool:
+def stops(criterion: StoppingCriteria.Criterion, tokens):
     """One `Criterion` record's verdict on a token history."""
     return StoppingCriteria.stopped(criterion, tokens)
 
@@ -63,7 +63,8 @@ def math_cases():
     logsoft = toList(map(range(len(Expected.LOGSOFTMAX_OUT)), lambda i: close_list(f"log_softmax[{i}]", log_softmax(floats_of(unwrap_or(listGet(Expected.LOGSOFTMAX_IN, i), []))), floats_of(unwrap_or(listGet(Expected.LOGSOFTMAX_OUT, i), [])), EXP, ATOL)))
     amax = toList(map(range(len(Expected.ARGMAX_OUT)), lambda i: Check.equal(f"argmax[{i}]", argmax(floats_of(unwrap_or(listGet(Expected.ARGMAX_IN, i), []))), unwrap_or(listGet(Expected.ARGMAX_OUT, i), 0))))
     multi = toList(map(range(len(Expected.MULTI_OUT)), lambda i: Check.equal(f"multinomial[{i}]", multinomial(floats_of(unwrap_or(listGet(Expected.MULTI_PROBS, i), [])), toFloat32(unwrap_or(listGet(Expected.MULTI_U, i), 0.0))), unwrap_or(listGet(Expected.MULTI_OUT, i), 0))))
-    return listConcat(soft, listConcat(logsoft, listConcat(amax, multi)))
+    empty = [close_list("softmax_empty", softmax([]), [], EXP, ATOL), close_list("log_softmax_empty", log_softmax([]), [], EXP, ATOL)]
+    return listConcat(soft, listConcat(logsoft, listConcat(amax, listConcat(multi, empty))))
 
 
 def build_temp(i):

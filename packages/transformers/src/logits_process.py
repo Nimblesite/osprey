@@ -315,7 +315,7 @@ def cmp_entries(values, a, b):
     return ranked(values, a, b, cmp_f(score_at(values, a), score_at(values, b)))
 
 
-def ranked(values, a, b, by_value):
+def ranked(_values, a, b, by_value):
     return by_value if by_value != 0 else cmp_i(a, b)
 
 

@@ -50,10 +50,26 @@ def min_i(a, b):
 
 def softmax(logits):
     """torch.softmax(logits, dim=-1): exp(x - max) / sum(exp(x - max))."""
-    m = list_max(logits)
-    exps = mapList(logits, lambda x: exp(x - m))
-    s = foldList(exps, toFloat32(0.0), lambda a, x: a + x)
-    return mapList(exps, lambda e: e / s)
+    if len(logits) == 0:
+        return logits
+    else:
+        m = list_max(logits)
+        exps = mapList(logits, lambda x: exp(x - m))
+        inverse = toFloat32(1.0) / sum_exps(exps)
+        return mapList(exps, lambda e: e * inverse)
+
+
+def sum_lane(xs, lane):
+    """One binary32 lane of the pinned torch CPU oracle's four-lane reduction."""
+    return fold(range(len(xs)), toFloat32(0.0), lambda total, i: total + unwrap_or(listGet(xs, i), toFloat32(0.0)) if i % 4 == lane else total)
+
+
+def sum_exps(xs):
+    """[PORT-TEST-ORACLE]: preserve the pinned binary32 reduction order."""
+    if len(xs) < 4:
+        return foldList(xs, toFloat32(0.0), lambda a, x: a + x)
+    else:
+        return (sum_lane(xs, 0) + sum_lane(xs, 2)) + (sum_lane(xs, 1) + sum_lane(xs, 3))
 
 
 def log_softmax(logits):
@@ -61,7 +77,7 @@ def log_softmax(logits):
     ln(sum(exp(x - max)))`, so a large max never cancels the log term against x."""
     m = list_max(logits)
     exps = mapList(logits, lambda x: exp(x - m))
-    s = foldList(exps, toFloat32(0.0), lambda a, x: a + x)
+    s = sum_exps(exps)
     lse = ln(s)
     return mapList(logits, lambda x: (x - m) - lse)
 
