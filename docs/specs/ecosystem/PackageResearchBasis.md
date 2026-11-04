@@ -1,12 +1,8 @@
-# Osprey Package Manager — Research Corpus
+# Package manager research basis [PACKAGE-RESEARCH-CORPUS]
 
-**Evidence cutoff:** 24 July 2026  
-**Purpose:** academic and standards basis for Osprey package-management design  
-**Scope:** versioning, resolution, reproducibility, supply-chain security, maintenance evidence, AI-assisted scanning, and fair discovery
+The evidence behind [PACKAGE-RESEARCH]: 66 sources, cut off on 24 July 2026, covering versioning, resolution, reproducibility, supply-chain security, maintenance evidence, AI-assisted scanning and fair discovery. 53 are peer-reviewed, ten are final official standards or guidance, one is an official public-comment draft, and two are marked preprints.
 
-This 66-source record contains 53 peer-reviewed publications, ten final official
-standards, specifications, guidance, or reference documents, one official public-comment
-draft, and two explicitly marked preprints. Quotations are short source excerpts; each **Osprey consequence** is Osprey's inference, not the source's prescription.
+Quotations are short source excerpts. Each **Osprey consequence** is Osprey's inference, not the source's prescription, and the normative rules are in [Package Management](0029-PackageManagement.md), [Trust and Discovery](0030-PackageRegistryTrustAndDiscovery.md) and [Evidence and Fair Discovery](0032-PackageEvidenceAndDiscovery.md).
 
 ## Decisions supported by the corpus
 

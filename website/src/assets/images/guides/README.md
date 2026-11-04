@@ -19,3 +19,9 @@ Captured on 3 November 2026. Screens show running tools or their real saved outp
 The Playground captures use the real site UI and a local adapter that sends the exact editor source to the native Osprey compiler, rather than to the hosted service. Success stdout and compiler errors come from that execution; rejected programs return HTTP 400 to preserve the UI's compilation-failure state. This does not demonstrate browser-side compilation. No output, program result or model response was fabricated.
 
 A stale release compiler initially called the old five-argument matrix ABI against the updated six-argument runtime. That run returned Error and was not captured as success. The current debug compiler and runtime produced the host and Metal results above. The source in the captures handles failures explicitly.
+
+## Rules
+
+- A guide of 500 prose words or more carries at least one illustration per 500 words. This is the project's editorial target, not a search rule; a browser test enforces it. Video-card posters don't count, and short reference entries and generated function pages are outside it.
+- No screenshot is a mockup, and none promises universal host conformance. Keep the security qualifications and feature limits a capture shows.
+- After changing a video asset, run `make -C website video-metadata`: `VideoObject` durations come from the measured file, and upload dates stay as originally published.

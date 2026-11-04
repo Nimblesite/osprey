@@ -16,7 +16,7 @@
 > data plane. It is not needed to build, run, or use a registry, and it never
 > replaces the folder registry.
 
-**Status:** normative target; implementation is in progress under [`packages/manager/`](../../../packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](../../package-manager-research.md).
+**Status:** normative target; implementation is in progress under [`packages/manager/`](../../../packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](PackageResearchBasis.md).
 
 This specification defines a source-derived, content-addressed package system.
 It deliberately rejects uploaded archives, publisher binaries, lifecycle hooks,
@@ -31,7 +31,7 @@ feature is not implemented merely because this document specifies it.
 ## Research basis `[PACKAGE-RESEARCH]`
 
 Every design decision below traces to the annotated corpus in
-[Package-manager research](../../package-manager-research.md) — peer-reviewed
+[Package-manager research](PackageResearchBasis.md) — peer-reviewed
 findings on breaking-change rates, NP-complete resolution, test/coverage
 blind spots, TUF/in-toto supply-chain controls, ranking fairness, and AI
 false-positive base rates. That document, not registry custom, is the

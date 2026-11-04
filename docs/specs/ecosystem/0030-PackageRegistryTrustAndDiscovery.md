@@ -10,7 +10,7 @@
 **Status:** normative target. This specification is the packages/manager/security half
 of [Osprey Package Registry and Manager](0029-PackageManagement.md). Its
 requirements are mandatory for the public registry. The full academic and
-standards basis is [annotated here](../../package-manager-research.md).
+standards basis is [annotated here](PackageResearchBasis.md).
 
 The [deployment and ownership contract](0044-PackageRegistryDeploymentAndOwnership.md) adds mandatory Cloudflare ingress, Supabase GitHub authentication, organization-only package RLS, single-admin permission grants, authority revocation and rollout gates. It does not replace the signed source-derived publication and independent trust requirements here.
 
