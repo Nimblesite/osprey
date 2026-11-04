@@ -407,11 +407,12 @@ int osp_float_spelling(double d, char *buf, size_t cap) {
 
 /* Osprey's `round` is LLVM's roundeven [BUILTIN-MATH]: halfway cases go to the
  * even neighbour. Where the CPU has no such instruction (x86-64 below SSE4.1)
- * LLVM calls the C23 function roundeven instead, and MinGW's C runtime has
- * none, so a Windows program that rounds could not link. nearbyint rounds the
+ * LLVM calls the C23 functions roundeven and roundevenf instead, and MinGW's C
+ * runtime has neither, so a Windows program that rounds could not link. nearbyint rounds the
  * same way in the default rounding mode, which Osprey never changes. */
 #if defined(__MINGW32__)
 #include <math.h>
 
 double roundeven(double value) { return nearbyint(value); }
+float roundevenf(float value) { return nearbyintf(value); }
 #endif
