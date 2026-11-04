@@ -1,3 +1,4 @@
+// Lifecycle regressions implement [BUILTIN-PROCESS-FAILURE] on the shared await path.
 // Assertion-driven tests for system_runtime.c — the process runtime
 // (spawn/await/cleanup with streamed callbacks) and the legacy blocking
 // spawn_process. The read_file/write_file pair moved to

@@ -73,25 +73,6 @@ static pthread_mutex_t process_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 #include "system_process_posix.h"
 
-int64_t await_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return -1;
-  }
-
-  pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
-  pthread_mutex_unlock(&process_mutex);
-
-  if (!proc) {
-    return -1;
-  }
-
-  // Wait for monitor thread to complete
-  pthread_join(proc->monitor_thread, NULL);
-
-  return proc->exit_code;
-}
-
 // Clean up process resources
 void cleanup_process(int64_t process_id) {
   if (process_id < 1 || process_id >= MAX_PROCESSES) {
@@ -366,22 +347,6 @@ int64_t spawn_process_with_handler(const char *command,
   return process_id;
 }
 
-int64_t await_process(int64_t process_id) {
-  if (process_id < 1 || process_id >= MAX_PROCESSES) {
-    return -1;
-  }
-
-  pthread_mutex_lock(&process_mutex);
-  ProcessResult *proc = processes[process_id];
-  pthread_mutex_unlock(&process_mutex);
-  if (!proc) {
-    return -1;
-  }
-
-  pthread_join(proc->monitor_thread, NULL);
-  return proc->exit_code;
-}
-
 void cleanup_process(int64_t process_id) {
   if (process_id < 1 || process_id >= MAX_PROCESSES) {
     return;
@@ -445,6 +410,21 @@ char *spawn_process(char *command) {
 }
 
 #endif // _WIN32
+
+// Both platform records share this lifecycle [BUILTIN-PROCESS-FAILURE].
+int64_t await_process(int64_t process_id) {
+  if (process_id < 1 || process_id >= MAX_PROCESSES) {
+    return -1;
+  }
+  pthread_mutex_lock(&process_mutex);
+  ProcessResult *proc = processes[process_id];
+  pthread_mutex_unlock(&process_mutex);
+  if (!proc) {
+    return -1;
+  }
+  pthread_join(proc->monitor_thread, NULL);
+  return proc->exit_code;
+}
 #endif // !__wasm__ — fork/exec/pthreads are absent on wasm32-wasip1
 
 // read_file / write_file live in file_runtime.c: they are portable, they share

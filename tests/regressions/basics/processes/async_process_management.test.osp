@@ -5,7 +5,7 @@
 print("=== Async Process Management Demo ===")
 
 /// Define the callback function that C runtime will call
-fn processEventHandler(processID: int, eventType: int, data: string) = {
+fn processEventHandler(processID, eventType, data) = {
     match eventType {
         1 => print("[STDOUT] Process ${toString(processID)}: ${data}")
         2 => print("[STDERR] Process ${toString(processID)}: ${data}")
