@@ -11,9 +11,10 @@ Encoding can report offsets into the untouched input, exactly as the real
 `tokenizers` BertNormalizer does. Implements [PORT-SCOPE] normalizer behaviour
 for @osprey/tokenizers.
 """
-from tokenizers.Unicode import is_chinese_char, is_control, is_whitespace, lowercase, strip_base
+from tokenizers import Nfc
+from tokenizers.Unicode import cps_text, is_chinese_char, is_control, is_whitespace, lowercase, strip_base
 
-__all__ = ["Norm", "norm_of", "norm_text", "bert_normalize", "replace_space", "prepend_cp", "empty_norm", "append_norm", "char_at", "start_at", "end_at"]
+__all__ = ["Norm", "norm_of", "norm_text", "bert_normalize", "nfc_normalize", "replace_space", "prepend_cp", "empty_norm", "append_norm", "char_at", "start_at", "end_at"]
 
 
 class Norm:
@@ -60,10 +61,6 @@ def norm_build(s, i, n, chars, starts, ends):
 def norm_text(n):
     """The normalized string, rebuilt from its codepoints."""
     return cps_text(n.chars)
-
-
-def cps_text(cps):
-    return join(toList(map(range(len(cps)), lambda i: unwrap_or(fromCodePoint(unwrap_or(listGet(cps, i), 63)), "?"))), "")
 
 
 def norm_expand(n, f):
@@ -151,3 +148,65 @@ def bert_normalize(text, clean, handle, strip, lower):
     c = strip_accents_norm(b) if strip else b
     d = lowercase_norm(c) if lower else c
     return d
+
+
+def nfc_normalize(n) -> Result[Norm, str]:
+    """The NFC normalizer over a Norm, keeping each character's original bytes.
+
+    The reference recomputes a character's original span by scaling rather than
+    by following which character became which: the output character at byte
+    offset `offset` takes the span of the original character at
+    `trunc(offset * original_bytes / normalized_bytes)`. Reproducing that
+    arithmetic, rather than inheriting spans through the decomposition, is what
+    makes the reported offsets identical.
+    """
+    cps = Nfc.nfc_cps(n.chars)
+    out_bytes = byte_length(cps)
+    if out_bytes == 0:
+        return Success(value=empty_norm())
+    else:
+        return align_from(n, cps, byte_length(n.chars), out_bytes, 0, 0, empty_norm())
+
+
+def byte_length(cps):
+    """How many UTF-8 bytes a code point list takes."""
+    return fold(range(len(cps)), 0, lambda acc, i: acc + char_width(at_cps(cps, i)))
+
+
+def at_cps(cps, i):
+    return unwrap_or(listGet(cps, i), 63)
+
+
+def char_width(cp):
+    return unwrap_or(codePointWidth(cp), 1)
+
+
+def align_from(n, cps, in_bytes, out_bytes, i, offset, acc) -> Result[Norm, str]:
+    if i >= len(cps):
+        return Success(value=acc)
+    else:
+        cp = at_cps(cps, i)
+        match origin_index(n, offset, in_bytes, out_bytes):
+            case Success(value=origin):
+                return align_from(n, cps, in_bytes, out_bytes, i + 1, offset + char_width(cp), append_norm(acc, cp, start_at(n, origin), end_at(n, origin)))
+            case Error(message=message):
+                return Error(message=message)
+
+
+def origin_index(n, offset, in_bytes, out_bytes) -> Result[int, str]:
+    """The original character an output byte offset scales back to."""
+    step = toFloat(in_bytes) / toFloat(out_bytes)
+    match floatToInt(trunc(step * toFloat(offset))):
+        case Success(value=origin):
+            return Success(value=clamp(origin, 0, len(n.chars) - 1))
+        case Error(message=message):
+            return Error(message=message)
+
+
+def clamp(value, low, high):
+    if value < low:
+        return low
+    elif value > high:
+        return high
+    else:
+        return value

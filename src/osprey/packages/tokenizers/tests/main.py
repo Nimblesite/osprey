@@ -20,9 +20,17 @@ from tokenizers.Tokenizer import (
     wordlevel_decode_pipeline, wordlevel_encode_pipeline, wordpiece_decode_pipeline,
     wordpiece_encode, wordpiece_encode_pair,
 )
+from tokenizers.Category import is_letter, is_mark, is_number
+from tokenizers.HfJson import load_qwen_tokenizer
+from tokenizers.Models import BpeModel, build_bpe, bpe_tokenize, Token as ModelToken
+from tokenizers.Nfc import combining_class, nfc_cps, nfc_text, nfd_cps, nfd_text
+from tokenizers.Normalizers import nfc_normalize
+from tokenizers.PreTokenizers import BYTE_CHARS, QWEN_PATTERN, byte_of_char, bytelevel_piece, bytelevel_raw, bytelevel_text, qwen_piece_len, qwen_pretokenize, qwen_split
+from tokenizers.Decoders import bytelevel_decode
+from tokenizers.Tokenizer import AddedToken, QwenTokenizer, qwen_decode, qwen_encode
 from tokenizers.Unicode import (
-    cps_text, is_chinese_char, is_control, is_numeric, is_punctuation,
-    is_whitespace, is_word_char, lowercase, strip_base, text_cps,
+    cps_text, in_ranges, is_chinese_char, is_control, is_numeric, is_punctuation,
+    is_whitespace, is_word_char, lowercase, strip_base, text_cp_starts, text_cps,
 )
 
 
@@ -404,9 +412,121 @@ def is_error(r):
             return True
 
 
+
+# ---------------------------------------------------------------------------
+# [LLM-TOKENIZER]: NFC, the Qwen split, ByteLevel and byte-level BPE
+# ---------------------------------------------------------------------------
+
+def qwen_model():
+    """The byte-level BPE model the oracle's subset vocabulary describes."""
+    return unwrap_or(build_bpe(Expected.QWEN_BYTE_IDS, Expected.QWEN_MERGES_LEFT, Expected.QWEN_MERGES_RIGHT, Expected.QWEN_MERGE_IDS), empty_bpe())
+
+
+def empty_bpe():
+    return BpeModel(ranks={}, entries=[])
+
+
+def qwen_added():
+    return toList(map(range(len(Expected.QWEN_ADDED_CONTENT)), lambda i: AddedToken(
+        content=at_str(Expected.QWEN_ADDED_CONTENT, i),
+        id=at_int(Expected.QWEN_ADDED_IDS, i),
+        special=at_int(Expected.QWEN_ADDED_SPECIAL, i) == 1,
+        lstrip=False,
+        rstrip=False,
+        single_word=False,
+    )))
+
+
+def at_str(row, i):
+    return unwrap_or(listGet(row, i), "")
+
+
+def at_int(row, i):
+    return unwrap_or(listGet(row, i), -1)
+
+
+def qwen_tokenizer():
+    return QwenTokenizer(model=qwen_model(), added=qwen_added())
+
+
+def nfc_cases():
+    """The reference's NFC and NFD for decomposed, precomposed, Hangul, Vietnamese,
+    Devanagari, Thai, Hebrew and Arabic text, plus the combining-class ordering."""
+    return fold(range(len(Expected.NFC_INPUTS)), [], lambda acc, i: listConcat(acc, nfc_row(i)))
+
+
+def nfc_row(i):
+    text = unwrap_or(listGet(Expected.NFC_INPUTS, i), "")
+    return [
+        Check.equal(f"nfc.{i}", nfc_text(text), unwrap_or(listGet(Expected.NFC_EXPECTED, i), "")),
+        Check.equal(f"nfd.{i}", nfd_text(text), unwrap_or(listGet(Expected.NFD_EXPECTED, i), "")),
+        Check.equal(f"nfc.cps.{i}", cps_text(nfc_cps(text_cps(text))), unwrap_or(listGet(Expected.NFC_EXPECTED, i), "")),
+        Check.equal(f"nfd.cps.{i}", cps_text(nfd_cps(text_cps(text))), unwrap_or(listGet(Expected.NFD_EXPECTED, i), "")),
+        Check.truth(f"nfc.stable.{i}", nfc_text(nfc_text(text)) == nfc_text(text), "NFC is not idempotent here"),
+    ]
+
+
+def qwen_cases():
+    """The whole Qwen pipeline, byte-identical to the reference package."""
+    tok = qwen_tokenizer()
+    return concat_all([
+        fold(range(len(Expected.QWEN_INPUTS)), [], lambda acc, i: listConcat(acc, qwen_row(tok, i))),
+        qwen_refusal_cases(),
+    ])
+
+
+def qwen_row(tok, i):
+    text = unwrap_or(listGet(Expected.QWEN_INPUTS, i), "")
+    match qwen_encode(tok, text):
+        case Success(value=enc):
+            return listConcat([
+                Check.ints_equal(f"qwen.{i}.ids", enc.ids, unwrap_or(listGet(Expected.QWEN_IDS, i), [])),
+                strs_equal(f"qwen.{i}.tokens", enc.tokens, unwrap_or(listGet(Expected.QWEN_TOKENS, i), [])),
+            ], [
+                Check.ints_equal(f"qwen.{i}.type_ids", enc.type_ids, unwrap_or(listGet(Expected.QWEN_TYPE_IDS, i), [])),
+                Check.equal(f"qwen.{i}.decode", decoded(tok, enc.ids, False), unwrap_or(listGet(Expected.QWEN_DECODES, i), "")),
+                Check.equal(f"qwen.{i}.skip", decoded(tok, enc.ids, True), unwrap_or(listGet(Expected.QWEN_SKIP_DECODES, i), "")),
+                strs_equal(f"qwen.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), unwrap_or(listGet(Expected.QWEN_PRETOK_PIECES, i), [])),
+            ])
+        case Error(message=message):
+            return [Check.failed(f"qwen.{i}", "Error: " + message)]
+
+
+def decoded(tok, ids, skip):
+    match qwen_decode(tok, ids, skip):
+        case Success(value=text):
+            return text
+        case Error(message=message):
+            return "Error: " + message
+
+
+def qwen_refusal_cases():
+    """A document declaring a pipeline this port does not implement is refused."""
+    return [
+        Check.truth("qwen.json.refused", not accepted(load_qwen_tokenizer("{\"normalizer\":{\"type\":\"NFD\"}}")), "an NFD pipeline was accepted"),
+        Check.truth("qwen.json.notjson", not accepted(load_qwen_tokenizer("not json")), "bad JSON was accepted"),
+        Check.truth("qwen.json.empty", not accepted(load_qwen_tokenizer("{}")), "an empty document was accepted"),
+        Check.truth("qwen.bpe.rejects", not accepted(build_bpe([], [], [], [])), "an empty vocabulary was accepted"),
+        Check.truth("qwen.bpe.rejects.merges", not accepted(build_bpe(empty_byte_ids_test(), ["a"], ["b"], [-1])), "a merge whose id is already past was accepted"),
+    ]
+
+
+def empty_byte_ids_test():
+    return toList(map(range(256), lambda i: 1000 + i))
+
+
+def accepted(r):
+    """Whether a Result holds a value."""
+    match r:
+        case Success(value=_value):
+            return True
+        case Error(message=_message):
+            return False
+
+
 def all_cases():
     """Every suite case, grouped by pipeline layer."""
-    return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases(), utf8_cases()])
+    return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases(), utf8_cases(), nfc_cases(), qwen_cases()])
 
 
 def main():

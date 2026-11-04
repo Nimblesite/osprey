@@ -18,6 +18,7 @@ produce.
 __all__ = [
     "is_whitespace", "is_control", "is_chinese_char", "is_punctuation",
     "is_numeric", "is_word_char", "lowercase", "strip_base",
+    "text_cps", "text_cp_starts", "cps_text", "in_ranges",
 ]
 
 PUNCT_RANGES = [
@@ -268,6 +269,32 @@ CONTROL_RANGES = [
     69837, 69837, 78896, 78911, 113824, 113827, 119155, 119162, 917505, 917505, 917536, 917631,
     983040, 1048573, 1048576, 1114109
 ]
+def text_cps(s):
+    """The code points of a string.
+
+    A fold over the bytes, not a recursion per code point: a long source file or
+    prompt would otherwise exhaust the stack. A byte starts a code point when it
+    is the first byte or not a continuation byte.
+    """
+    return mapList(text_cp_starts(s), lambda k: unwrap_or(codePointAt(s, k), 63))
+
+
+def text_cp_starts(s):
+    """The byte offset of each code point of s, with the same fold as text_cps."""
+    return fold(range(len(s)), [], lambda acc, k: listAppend(acc, k) if starts_cp(s, k) else acc)
+
+
+def starts_cp(s, k):
+    """Whether byte k of s begins a code point."""
+    b = unwrap_or(byteAt(s, k), 0)
+    return k == 0 or b < 128 or b > 191
+
+
+def cps_text(cps):
+    """The string a code point list spells."""
+    return join(toList(map(range(len(cps)), lambda i: unwrap_or(fromCodePoint(unwrap_or(listGet(cps, i), 63)), "?"))), "")
+
+
 def in_ranges(ranges, cp):
     """Whether cp lies inside any [start, end] pair of a flat ranges list."""
     return fold(range(len(ranges) // 2), False, lambda acc, i: acc or in_pair(ranges, 2 * i, cp))

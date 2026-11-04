@@ -11,10 +11,13 @@ dynamic program with strict `>` tie-breaking in increasing start position, then
 a backward pass that fuses consecutive unknown pieces.
 """
 
+from tiktoken import Bpe
+from tokenizers.PreTokenizers import bytelevel_raw, bytelevel_text
+
 __all__ = [
     "Token", "build_wordpiece", "wordpiece_tokenize", "build_unigram",
     "unigram_tokenize", "unigram_encode", "build_wordlevel", "wordlevel_tokenize",
-    "id_to_token", "char_starts",
+    "id_to_token", "char_starts", "BpeModel", "build_bpe", "bpe_tokenize",
 ]
 
 K_UNK_PENALTY = 10.0
@@ -298,3 +301,117 @@ def wordlevel_tokenize(m, text):
             return [Token(id=value, value=text, start=0, end=len(text))]
         case Error():
             return [Token(id=unk_id(m, m.unk_token), value=m.unk_token, start=0, end=len(text))]
+
+
+# ---------------------------------------------------------------------------
+# Byte-level BPE, reusing @osprey/tiktoken's merge core
+# ---------------------------------------------------------------------------
+
+class BpeModel:
+    """A byte-level BPE vocabulary: every mergeable token's canonical byte key
+    mapped to its id, and the same entries sorted by id for decoding.
+
+    The id doubles as the merge priority, exactly as tiktoken's encoder reads it,
+    so a vocabulary whose merge order disagrees with its id order cannot be used
+    and is refused rather than tokenized differently.
+    """
+    ranks: dict[str, int]
+    entries: list[Bpe.Ranked]
+
+
+class Built:
+    """A vocabulary taking shape: the ranks so far, the last merge id accepted and
+    the index of the first merge that could not be added (-1 while none)."""
+    ranks: dict[str, int]
+    last: int
+    bad: int
+
+
+def build_bpe(byte_ids, merge_left, merge_right, merge_ids) -> Result[BpeModel, str]:
+    """The model from supplied data: one id per byte in byte order, then one merge
+    per entry in rank order, each spelled as its byte-level text with its id."""
+    if len(byte_ids) != 256:
+        return Error(message="a byte-level vocabulary needs 256 byte ids, got " + toString(len(byte_ids)))
+    elif len(merge_left) != len(merge_right) or len(merge_left) != len(merge_ids):
+        return Error(message="the merge lists disagree in length")
+    else:
+        return checked_bpe(fold(range(256), {}, lambda acc, b: mapSet(acc, Bpe.key([b]), at(byte_ids, b))), merge_left, merge_right, merge_ids)
+
+
+def checked_bpe(base, merge_left, merge_right, merge_ids) -> Result[BpeModel, str]:
+    built = fold(range(len(merge_left)), Built(ranks=base, last=-1, bad=-1), lambda acc, i: add_merge(acc, merge_left, merge_right, merge_ids, i))
+    if built.bad >= 0:
+        return Error(message="merge " + toString(built.bad) + " is unusable: its halves must be byte-level text and its id must exceed every earlier merge's")
+    else:
+        return Success(value=BpeModel(ranks=built.ranks, entries=Bpe.entries_by_rank(built.ranks)))
+
+
+def add_merge(state, left, right, ids, i):
+    """Add one merge when its halves decode to bytes and its id is the highest yet."""
+    if state.bad >= 0:
+        return state
+    else:
+        return merge_step(state, i, unwrap_or(listGet(left, i), ""), unwrap_or(listGet(right, i), ""), at(ids, i))
+
+
+def merge_step(state, i, left, right, id):
+    match bytelevel_raw(left + right):
+        case Success(value=octets):
+            if id <= state.last:
+                return Built(ranks=state.ranks, last=state.last, bad=i)
+            else:
+                return Built(ranks=mapSet(state.ranks, Bpe.key(octets), id), last=id, bad=-1)
+        case Error(message=_message):
+            return Built(ranks=state.ranks, last=state.last, bad=i)
+
+
+def bpe_tokenize(m, text) -> Result[list[Token], str]:
+    """Byte-pair encode one byte-level piece: tiktoken's merge loop over the piece's
+    bytes, then each id read back as its token's text and byte span."""
+    match bytelevel_raw(text):
+        case Success(value=octets):
+            match Bpe.bpe_encode(m.ranks, octets):
+                case Success(value=ids):
+                    return tokens_by_id(m, ids)
+                case Error(message=message):
+                    return Error(message=message)
+        case Error(message=message):
+            return Error(message=message)
+
+
+class Spans:
+    """The tokens read so far, the byte offset reached and the index of the first
+    id that has no token (-1 while every id does)."""
+    tokens: list[Token]
+    offset: int
+    bad: int
+
+
+def tokens_by_id(m, ids) -> Result[list[Token], str]:
+    """Each id as the token whose bytes it names, with its byte span in the piece."""
+    st = fold(range(len(ids)), Spans(tokens=[], offset=0, bad=-1), lambda acc, i: span_step(m, ids, acc, i))
+    if st.bad >= 0:
+        return Error(message="no token with id " + toString(at(ids, st.bad)))
+    else:
+        return Success(value=st.tokens)
+
+
+def span_step(m, ids, acc, i):
+    if acc.bad >= 0:
+        return acc
+    else:
+        return span_at(m, ids, acc, i)
+
+
+def span_at(m, ids, acc, i):
+    match Bpe.key_of_rank(m.entries, at(ids, i), 0, len(m.entries) - 1):
+        case Success(value=key):
+            octets = Bpe.bytes_of_key(key)
+            return Spans(tokens=listAppend(acc.tokens, Token(id=at(ids, i), value=bytelevel_text(octets), start=acc.offset, end=acc.offset + len(octets))), offset=acc.offset + len(octets), bad=-1)
+        case Error(message=_message):
+            return Spans(tokens=acc.tokens, offset=acc.offset, bad=i)
+
+
+def at(xs, i):
+    """Element i of a list, or 0 past the end: the model's safe read."""
+    return unwrap_or(listGet(xs, i), 0)

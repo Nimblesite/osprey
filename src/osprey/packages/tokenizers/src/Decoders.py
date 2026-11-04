@@ -7,11 +7,12 @@ returns the list of strings a Decoder::decode_chain produces; the Tokenizer
 joins that list with the empty separator, matching Decoder::decode.
 """
 
+from tokenizers.PreTokenizers import bytelevel_raw
 from tokenizers.Unicode import cps_text
 
 __all__ = [
     "wordpiece_decode", "metaspace_decode_chain", "byte_fallback_decode_chain",
-    "utf8_decode",
+    "utf8_decode", "bytelevel_decode",
 ]
 
 
@@ -223,3 +224,86 @@ def utf8_sequence(bytes, st, k):
 def code_point(bytes, i, lead, n):
     """The code point a checked n-byte sequence from byte i spells."""
     return fold(range(1, n), lead_bits(lead, n), lambda code, k: code * 64 + unwrap_or(listGet(bytes, i + k), 128) - 128)
+
+
+# ---------------------------------------------------------------------------
+# ByteLevel: the symbols back to bytes, then one lossy UTF-8 read
+# ---------------------------------------------------------------------------
+
+class Lossy:
+    """A lossy read: where the next sequence starts and the code points so far."""
+    next: int
+    cps: list[int]
+
+
+def bytelevel_decode(tokens) -> Result[str, str]:
+    """The ByteLevel decoder: every token's symbols back to bytes, then one UTF-8
+    read of the whole run, so a character split across two tokens survives.
+
+    Ill-formed input is not an error here: it becomes U+FFFD per maximal subpart,
+    which is what the reference's `from_utf8_lossy` and CPython's `replace` do.
+    """
+    match bytelevel_raw(join(tokens, "")):
+        case Success(value=octets):
+            return Success(value=cps_text(lossy_cps(octets)))
+        case Error(message=message):
+            return Error(message=message)
+
+
+def lossy_cps(octets):
+    """The code points a byte list spells, with U+FFFD for each ill-formed part."""
+    return fold(range(len(octets)), Lossy(next=0, cps=[]), lambda acc, i: lossy_step(octets, acc, i)).cps
+
+
+def lossy_step(octets, acc, i):
+    if i < acc.next:
+        return acc
+    else:
+        return lossy_at(octets, acc, i)
+
+
+def lossy_at(octets, acc, i):
+    lead = unwrap_or(listGet(octets, i), 0)
+    width = seq_len(lead)
+    if width < 1:
+        return Lossy(next=i + 1, cps=listAppend(acc.cps, 65533))
+    else:
+        return lossy_sequence(octets, acc, i, lead, width)
+
+
+def lossy_sequence(octets, acc, i, lead, width):
+    """A complete sequence decodes; a shorter one is its maximal subpart."""
+    taken = valid_prefix(octets, i, lead, width)
+    if taken == width:
+        return Lossy(next=i + width, cps=listAppend(acc.cps, code_point(octets, i, lead, width)))
+    else:
+        return Lossy(next=i + taken, cps=listAppend(acc.cps, 65533))
+
+
+class Prefix:
+    """How much of a sequence is well formed, and whether the read has stopped."""
+    taken: int
+    done: bool
+
+
+def valid_prefix(octets, i, lead, width):
+    """One plus the valid continuation bytes after the lead, stopping at the first
+    that is not allowed there."""
+    return fold(range(1, width), Prefix(taken=1, done=False), lambda acc, k: prefix_step(octets, acc, i, lead, k)).taken
+
+
+def prefix_step(octets, acc, i, lead, k):
+    if acc.done:
+        return acc
+    elif continuation_ok(lead, unwrap_or(listGet(octets, i + k), 0), k):
+        return Prefix(taken=acc.taken + 1, done=False)
+    else:
+        return Prefix(taken=acc.taken, done=True)
+
+
+def continuation_ok(lead, b, k):
+    """Whether a continuation byte may follow the lead at offset k."""
+    if k == 1:
+        return in_cont(b) and second_ok(lead, b)
+    else:
+        return in_cont(b)

@@ -9,10 +9,13 @@ no randomness. Run with the oracle virtualenv, from the repository root:
 
     $ORACLE src/osprey/packages/tokenizers/oracle/tokenizers.cpython
 """
+import json
 import os
+import pathlib
+import platform
 import sys
 
-from expected_module import write
+from expected_module import literal, write
 
 # The oracle script itself is named tokenizers.py; drop its own directory from
 # sys.path so `import tokenizers` reaches the installed package, not this file.
@@ -29,6 +32,563 @@ from tokenizers import (
     pre_tokenizers,
     processors,
 )
+
+# ---------------------------------------------------------------------------
+# Unicode tables derived from the reference package ([LLM-TOKENIZER])
+# ---------------------------------------------------------------------------
+
+ROOT = pathlib.Path(__file__).resolve().parents[5]
+
+QWEN_REPO = "Qwen/Qwen3.8-27B"
+QWEN_REVISION = "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
+QWEN_TOKENIZER = ROOT / "target" / "local-coding-model" / "tokenizer" / "fixtures" / "tokenizer.json"
+QWEN_TOKENIZER_URL = f"https://huggingface.co/{QWEN_REPO}/resolve/{QWEN_REVISION}/tokenizer.json"
+
+HANGUL_SBASE = 0xAC00
+HANGUL_SCOUNT = 11172
+
+NFD_N = tokenizers.normalizers.NFD()
+NFC_N = tokenizers.normalizers.NFC()
+
+
+def range_table(members):
+    """Maximal inclusive runs of a sorted code point list, as Unicode.in_ranges
+    reads them: a flat [lo, hi, lo, hi, ...] table."""
+    out = []
+    for cp in members:
+        if out and out[-1] + 1 == cp:
+            out[-1] = cp
+        else:
+            out += [cp, cp]
+    return out
+
+
+def reference_class(prop):
+    """The code points the reference regex crate's `prop` matches.
+
+    The class comes from `tokenizers.Regex` itself rather than from a Unicode
+    database, so the port splits text exactly where the reference splits it: the
+    regex crate's Unicode version is not the interpreter's.
+    """
+    split = tokenizers.pre_tokenizers.Split(pattern=tokenizers.Regex(prop), behavior="isolated")
+    members = []
+    for cp in range(0x110000):
+        if 0xD800 <= cp <= 0xDFFF:
+            continue
+        char = chr(cp)
+        if any(token == char for token, _ in split.pre_tokenize_str("|" + char)):
+            members.append(cp)
+    return members
+
+
+def decomposition_rows():
+    """Every code point whose full canonical decomposition differs from itself.
+
+    Hangul syllables are excluded: their decomposition is arithmetic and the
+    port computes it, which keeps 11,172 rows out of the table.
+    """
+    rows = []
+    for cp in range(0x110000):
+        if 0xD800 <= cp <= 0xDFFF or HANGUL_SBASE <= cp < HANGUL_SBASE + HANGUL_SCOUNT:
+            continue
+        char = chr(cp)
+        decomposed = NFD_N.normalize_str(char)
+        if decomposed != char:
+            rows.append((cp, [ord(x) for x in decomposed]))
+    return rows
+
+
+def composition_rows(rows):
+    """The primary composites as (first, second, composite).
+
+    A primary composite's canonical decomposition is two characters, but the
+    first may decompose further (U+01D5 is U+00DC + U+0304), so the split of the
+    full decomposition is accepted only when both halves are one code point each
+    and NFC recomposes them. Composition exclusions never recompose, so they are
+    excluded by construction.
+    """
+    out = []
+    seen = set()
+    for cp, chars in rows:
+        for cut in range(1, len(chars)):
+            left, right = chars[:cut], chars[cut:]
+            a = NFC_N.normalize_str("".join(chr(x) for x in left))
+            b = NFC_N.normalize_str("".join(chr(x) for x in right))
+            if len(a) != 1 or len(b) != 1:
+                continue
+            if NFD_N.normalize_str(a) != "".join(chr(x) for x in left):
+                continue
+            if NFD_N.normalize_str(b) != "".join(chr(x) for x in right):
+                continue
+            if NFC_N.normalize_str(a + b) != chr(cp):
+                continue
+            if (a, b) in seen:
+                raise SystemExit(f"ambiguous composite {a!r} {b!r}")
+            seen.add((a, b))
+            out.append((ord(a), ord(b), cp))
+    return sorted(out)
+
+
+CCC_HIGH = "\u0345"
+"""A non-starter the reference sorts after every other combining class."""
+CCC_LOW = "\u0334"
+"""A non-starter the reference sorts before every other combining class."""
+
+
+def reorders(a, b):
+    """Whether the reference sorts `b` before `a`: class(a) > class(b) > 0."""
+    return NFD_N.normalize_str(a + b) == b + a
+
+
+def is_nonstarter(char):
+    """Whether the reference treats `char` as a mark that reorders.
+
+    `NFD(high + char + low)` reorders unless `char` is a starter, which splits
+    the run into two single-character runs that are already in order.
+    """
+    probe = CCC_HIGH + char + CCC_LOW
+    return NFD_N.normalize_str(probe) != probe
+
+
+def combining_rows():
+    """The canonical combining class of every code point, as its rank in the
+    reference's own ordering.
+
+    Canonical ordering only compares classes and asks whether one is zero, so a
+    rank derived from pairwise NFD comparisons is the whole table. Marks of
+    equal class never reorder, which identifies a class exactly.
+    """
+    marks = []
+    for cp in range(0x110000):
+        if 0xD800 <= cp <= 0xDFFF:
+            continue
+        char = chr(cp)
+        if NFD_N.normalize_str(char) != char:
+            # A decomposing code point never survives decomposition, so its own
+            # class is never read; class 0 is all the algorithm needs.
+            continue
+        if is_nonstarter(char):
+            marks.append((cp, char))
+    reps = []
+    for _, char in marks:
+        bucket, new = find_bucket(reps, char)
+        if new:
+            reps.insert(bucket, char)
+    rows = []
+    for cp, char in marks:
+        rows.append((cp, class_rank(reps, char)))
+    return rows, reps
+
+
+def find_bucket(reps, char):
+    """Where `char`'s class sits among the ordered representatives, and whether
+    the class is new. Buckets are ordered by class, and equal classes never
+    reorder, which identifies a bucket exactly."""
+    lo, hi = 0, len(reps)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        rep = reps[mid]
+        if reorders(char, rep):
+            lo = mid + 1
+        elif reorders(rep, char):
+            hi = mid
+        else:
+            return mid, False
+    return lo, True
+
+
+def class_rank(reps, char):
+    """The 1-based rank of `char`'s class among the ordered representatives."""
+    for index, rep in enumerate(reps):
+        if rep == char or not reorders(char, rep):
+            return index + 1
+    raise SystemExit(f"{ord(char):#x} sorts after the highest class")
+
+
+def table_module(name, summary, doc, exports, imports=()):
+    """The header lines of a generated source module in src/osprey/packages/tokenizers/src."""
+    return [
+        "# osprey: flavor=python",
+        "# Derived Unicode data; required attribution and terms: ../NOTICE.md.",
+        "# osprey: namespace=tokenizers",
+        f"# osprey: module={name}",
+        f'"""{summary}',
+        "",
+        f"Generated by src/osprey/packages/tokenizers/oracle/tokenizers.cpython with CPython {platform.python_version()}",
+        f"and tokenizers {tokenizers.__version__}, from the reference package's own",
+        "Unicode data: not from this interpreter's, whose Unicode version differs.",
+        'Do not edit: rerun the oracle.',
+        "",
+        doc,
+        '"""',
+    ] + [f"from tokenizers.Unicode import {name}" for name in imports] + [
+        "",
+        "__all__ = [" + ", ".join(f'"{name}"' for name in exports) + "]",
+        "",
+    ]
+
+
+def write_category():
+    """Write src/Category.py: the reference regex crate's L, M and N classes.
+
+    `\\p{L}`, `\\p{M}` and `\\p{N}` split text in the Qwen pattern, and the regex
+    crate's Unicode version decides which code points belong to them.
+    """
+    letters = range_table(reference_class(r"\p{L}"))
+    marks = range_table(reference_class(r"\p{M}"))
+    numbers = range_table(reference_class(r"\p{N}"))
+    lines = table_module(
+        "Category",
+        "The regex crate's Unicode general-category classes, as range tables.",
+        r"""LETTER_RANGES is \p{L}, MARK_RANGES is \p{M} and NUMBER_RANGES is \p{N},
+each a flat list of inclusive lo, hi pairs, as Unicode.in_ranges reads them. The
+predicates read them for the Qwen pre-tokenizer's pattern.""",
+        ["LETTER_RANGES", "MARK_RANGES", "NUMBER_RANGES", "is_letter", "is_mark", "is_number"],
+        imports=("in_ranges",),
+    )
+    lines += [
+        "LETTER_RANGES = " + literal(letters),
+        r'"""Every code point that regex \p{L} matches."""',
+        "",
+        "MARK_RANGES = " + literal(marks),
+        r'"""Every code point that regex \p{M} matches."""',
+        "",
+        "NUMBER_RANGES = " + literal(numbers),
+        r'"""Every code point that regex \p{N} matches."""',
+        "",
+        "def is_letter(cp):",
+        r'    """Whether a code point is \p{L}."""',
+        "    return in_ranges(LETTER_RANGES, cp)",
+        "",
+        "def is_mark(cp):",
+        r'    """Whether a code point is \p{M}."""',
+        "    return in_ranges(MARK_RANGES, cp)",
+        "",
+        "def is_number(cp):",
+        r'    """Whether a code point is \p{N}."""',
+        "    return in_ranges(NUMBER_RANGES, cp)",
+        "",
+    ]
+    target = ROOT / "src" / "osprey" / "packages" / "tokenizers" / "src" / "Category.py"
+    target.write_text("\n".join(lines))
+    return target
+
+
+def write_nfc_data():
+    """Write src/NfcData.py: canonical decomposition, composition and ordering.
+
+    DECOMP_KEYS holds the decomposing code points in order, DECOMP_OFFSETS the
+    start of each one's characters in DECOMP_CHARS, COMP_KEYS and COMP_VALUES the
+    primary compositions keyed as first * 0x110000 + second, and CCC_KEYS and
+    CCC_VALUES the non-zero combining classes as ranks.
+    """
+    rows = decomposition_rows()
+    offsets = [0]
+    chars = []
+    for _, decomp in rows:
+        chars.extend(decomp)
+        offsets.append(len(chars))
+    composites = composition_rows(rows)
+    combining, reps = combining_rows()
+    lines = table_module(
+        "NfcData",
+        "Canonical decomposition, composition and combining classes.",
+        "DECOMP_KEYS/DECOMP_OFFSETS/DECOMP_CHARS hold the full canonical\n"
+        "decomposition of every code point that has one, Hangul excluded as\n"
+        "algorithmic. COMP_KEYS/COMP_VALUES hold the primary composites, keyed\n"
+        "first * 0x110000 + second. CCC_KEYS/CCC_VALUES hold the canonical\n"
+        "combining classes as their rank in the reference's ordering, class 0\n"
+        "being absent.",
+        ["DECOMP_KEYS", "DECOMP_OFFSETS", "DECOMP_CHARS", "COMP_KEYS", "COMP_VALUES", "CCC_KEYS", "CCC_VALUES"],
+    )
+    docs = {
+        "DECOMP_KEYS": "The code points that decompose, in increasing order.",
+        "DECOMP_OFFSETS": "Where each DECOMP_KEYS entry's characters start in DECOMP_CHARS, plus the end.",
+        "DECOMP_CHARS": "Every decomposition's characters, concatenated in DECOMP_KEYS order.",
+        "COMP_KEYS": "The primary composites' keys, first * 0x110000 + second, in increasing order.",
+        "COMP_VALUES": "The composite each COMP_KEYS entry composes to.",
+        "CCC_KEYS": "The code points with a non-zero combining class, in increasing order.",
+        "CCC_VALUES": "Each CCC_KEYS entry's class, as its rank in the reference's ordering.",
+    }
+    for name, table in [
+        ("DECOMP_KEYS", [cp for cp, _ in rows]),
+        ("DECOMP_OFFSETS", offsets),
+        ("DECOMP_CHARS", chars),
+        ("COMP_KEYS", [a * 0x110000 + b for a, b, _ in composites]),
+        ("COMP_VALUES", [c for _, _, c in composites]),
+        ("CCC_KEYS", [cp for cp, _ in combining]),
+        ("CCC_VALUES", [value for _, value in combining]),
+    ]:
+        lines += [f"{name} = " + literal(table), f'"""{docs[name]}"""', ""]
+    target = ROOT / "src" / "osprey" / "packages" / "tokenizers" / "src" / "NfcData.py"
+    target.write_text("\n".join(lines))
+    return target
+
+# ---------------------------------------------------------------------------
+# Qwen3.8-27B's tokenizer: NFC, the split pattern, ByteLevel, byte-level BPE
+# ([LLM-TOKENIZER]). The vocabulary comes from the model's own tokenizer.json,
+# which is not in the repository: this section needs it locally, and the
+# constants it writes are the subset the suite's corpus exercises.
+# ---------------------------------------------------------------------------
+
+BPE_BYTE_CHARS = bytes(range(256))
+"""Every byte the ByteLevel alphabet can name, in order."""
+
+
+def bytes_to_unicode():
+    """GPT-2's byte alphabet: the printable bytes keep themselves, the rest map
+    to the code points starting at U+0100."""
+    printable = list(range(ord("!"), ord("~") + 1))
+    printable += list(range(ord("\u00a1"), ord("\u00ac") + 1))
+    printable += list(range(ord("\u00ae"), ord("\u00ff") + 1))
+    chars = printable[:]
+    extra = 0
+    for byte in range(256):
+        if byte not in printable:
+            printable.append(byte)
+            chars.append(256 + extra)
+            extra += 1
+    return dict(zip(printable, [chr(c) for c in chars]))
+
+
+B2U = bytes_to_unicode()
+U2B = {c: b for b, c in B2U.items()}
+
+
+def bytelevel_text(raw):
+    """The byte-level spelling of a byte string."""
+    return "".join(B2U[b] for b in raw)
+
+
+def bytelevel_raw(text):
+    """The bytes a byte-level spelling stands for."""
+    return bytes(U2B[c] for c in text)
+
+
+def qwen_tokenizer():
+    """The reference tokenizer, loaded from the pinned model's tokenizer.json."""
+    if not QWEN_TOKENIZER.exists():
+        raise SystemExit(f"missing {QWEN_TOKENIZER.relative_to(ROOT)}: download {QWEN_TOKENIZER_URL}")
+    return tokenizers.Tokenizer.from_file(str(QWEN_TOKENIZER))
+
+
+def qwen_merges():
+    """The model's merges in rank order.
+
+    The Python binding does not expose them, so they come from the same file the
+    reference loaded: they are the model's definition, not a computed value. A
+    merge is written `left right`, and the byte alphabet contains no space.
+    """
+    document = json.loads(QWEN_TOKENIZER.read_text())
+    return [tuple(merge.split(" ")) for merge in document["model"]["merges"]]
+
+
+def select_merges(tok, all_merges, pieces):
+    """The merges the corpus can apply, in rank order.
+
+    BPE only ever merges adjacent symbols of the piece it is given, so a merge
+    whose halves and result are all substrings of a piece is the only kind that
+    piece can apply; every other merge is irrelevant to it. Keeping exactly that
+    closure makes the fixture small without changing any id, and the suite
+    proves the closure sufficient by matching the reference's ids byte for byte.
+    """
+    vocab = tok.get_vocab()
+    substrings = set()
+    for piece in pieces:
+        for start in range(len(piece)):
+            for end in range(start + 1, len(piece) + 1):
+                text = piece[start:end]
+                if text in vocab:
+                    substrings.add(text)
+    return [(left, right) for left, right in all_merges if left in substrings and right in substrings and left + right in substrings]
+
+
+def qwen_corpus():
+    """Texts whose ids, tokens, offsets and decodes the suite asserts."""
+    return [
+        "",
+        " ",
+        "  dumps()  ",
+        "def add(a, b):\n    return a + b\n",
+        "const f = (x) => x.map((y) => y * 2);\n",
+        "fn main() -> Result<Unit, Error> = print(\"hi\")\n",
+        "#include <stdio.h>\nint main(void) { return 0; }\n",
+        "func (s *Svc) Get(ctx context.Context) (int, error) { return 0, nil }\n",
+        "SELECT id, name FROM users WHERE id = 12345 AND active;\n",
+        "<div class=\"row\"><span>hi</span></div>\n",
+        "for i in $(ls); do echo \"$i\"; done\n",
+        "{\"a\": [1, 2.5, true, null], \"b\": \"c\"}\n",
+        "let x: u64 = 0xDEAD_BEEF;\n",
+        "a = b ? c : d;\n",
+        "café au lait, Ångström, naïve",
+        "e\u0301le\u0300ve a\u0300 co\u0302te\u0301",
+        "Tiếng Việt: chào thế giới",
+        "नमस्ते दुनिया, தமிழ் எழுத்து",
+        "สวัสดีชาวโลก ภาษาไทย",
+        "שלום עולם, مرحبا بالعالم",
+        "日本語のテキストと中文文本と한국어",
+        "\u1100\u1161 \u1100\u1161\u11a8 \uac00\uac01",
+        "😀🎉👍🏽🇦🇺👨‍👩‍👧‍👦",
+        "❤️‍🔥 ☺️ ✨",
+        "\u0301\u0301 lone marks \u0301",
+        "tabs\tand\r\nnewlines\n\n\nand  spaces",
+        "   leading and trailing   ",
+        "\u00a0non\u2003breaking\u3000spaces",
+        "0123456789 -1234.5678e-9 0x1F",
+        "base64: aGVsbG8gd29ybGQ=",
+        "https://example.com/path?q=1&r=2#frag",
+        "x" * 80,
+        "def f(*args, **kwargs): pass",
+        "`backtick` and __dunder__ and $dollar",
+        "<|im_start|>user\nhi<|im_end|>\n",
+        "<|endoftext|>",
+        "a<tts_text_bos>b<|im_start|>c",
+        "İstanbul ẞtraße ǅ Ǆ",
+        "\t\x7f control \x85 and mixed",
+    ]
+
+
+def qwen_rows(tok, corpus):
+    """ids, tokens, offsets, type ids and decodes the reference produces."""
+    ids, tokens, offsets, type_ids, decodes, skips, pretok = [], [], [], [], [], [], []
+    for text in corpus:
+        encoding = tok.encode(text)
+        ids.append(encoding.ids)
+        tokens.append(encoding.tokens)
+        offsets.append([list(o) for o in encoding.offsets])
+        type_ids.append(encoding.type_ids)
+        decodes.append(tok.decode(encoding.ids, skip_special_tokens=False))
+        skips.append(tok.decode(encoding.ids, skip_special_tokens=True))
+        pretok.append([[t, list(o)] for t, o in tok.pre_tokenizer.pre_tokenize_str(tok.normalizer.normalize_str(text))])
+    return ids, tokens, offsets, type_ids, decodes, skips, pretok
+
+
+NFC_INPUTS = [
+    "e\u0301le\u0300ve",
+    "A\u030a\u0301",
+    "a\u0327\u0301",
+    "\u1100\u1161\u11a8",
+    "\uac01\uac00",
+    "x\u0301\u0301e",
+    "Tiếng Việt",
+    "\u0915\u094d\u0937\u093f",
+    "\u0e01\u0e49\u0e32",
+    "\u05d0\u05b8\u05bc",
+    "\u0627\u064e\u0651",
+    "e\u0301\u0301\u0301\u0327\u030a",
+    "\u212b\u00c5\u0041\u030a",
+    "s\u0323\u0301 vs \u1e69",
+    "\u1e69 \u0323\u0301",
+    "\u00e9 \u0065\u0301",
+    "plain ascii",
+    "\u0301\u0301 leading marks",
+    "\uff21\uff22 \ufb01 \ufb03",
+    "\u3042\u3099\u304c\u3099",
+    "\u1100\u1161\u1100\u1161",
+    "a\u0345\u0345b",
+    "\u0f71\u0f72\u0f74",
+    "\u0cbf\u0cd5\u0cbf",
+    "\u1b05\u1b35\u1b05",
+    "\u0dd9\u0dcf\u0dd9\u0dcf",
+    "e\u0334\u0301e",
+    "e\u0301\u0334e",
+    "\u0b47\u0b3e\u0b47\u0b3e",
+    "\u1dfa\u0316\u1dfa",
+]
+
+NFC_PAIRS_A = [0x0300, 0x0301, 0x0308, 0x030a, 0x0315, 0x0316, 0x031B, 0x0323, 0x0327, 0x0334, 0x0345, 0x05B0, 0x093C, 0x0E38, 0x0F71, 0x3099, 0x302E, 0x1DCE, 0x0041, 0x0065]
+NFC_PAIRS_B = [0x0300, 0x0301, 0x0302, 0x0304, 0x0308, 0x030A, 0x0323, 0x0327, 0x0334, 0x0345, 0x05B0, 0x093C, 0x0E38, 0x0F71, 0x3099, 0x302E, 0x1DCE, 0x0041, 0x1100, 0x1161]
+
+
+def nfc_expectations():
+    """The reference's NFC and NFD for the corpus, and whether NFD swaps each
+    pair of marks (which is the combining class table, seen from outside)."""
+    nfd_n, nfc_n = tokenizers.normalizers.NFD(), tokenizers.normalizers.NFC()
+    nfc_rows = [nfc_n.normalize_str(s) for s in NFC_INPUTS]
+    nfd_rows = [nfd_n.normalize_str(s) for s in NFC_INPUTS]
+    swaps = []
+    for a in NFC_PAIRS_A:
+        row = []
+        for b in NFC_PAIRS_B:
+            pair = chr(a) + chr(b)
+            row.append(nfd_n.normalize_str(pair) == chr(b) + chr(a))
+        swaps.append(row)
+    return nfc_rows, nfd_rows, swaps
+
+
+def split_expectations():
+    """The reference pre-tokenizer's pieces for texts that exercise every branch
+    of the Qwen pattern: contractions, marks, numbers, symbols, whitespace."""
+    tok = qwen_tokenizer()
+    texts = [
+        "",
+        "a",
+        "Abc 123 !?",
+        "don't DON'T 's 'S 're 'RE 've 'm 'll 'd 'l '",
+        "'\u017f '\u212a",
+        "a  \n\n b",
+        "   x",
+        "x   ",
+        "\n\n\n",
+        "\r\n\r\n",
+        " \t ",
+        "a\u00a0b a\u2003b",
+        "1234 12.5 0x1f",
+        "!?.,;:()[]{}<>@#$%^&*-+=",
+        "!!!\n\n",
+        "\u0301\u0301a",
+        "a\u0301\u0301",
+        "\u0301",
+        "\u4e2d\u6587abc123",
+        "\U0001f600\U0001f389 x",
+        "  \u4e2d \u0301 ",
+    ]
+    norm = tok.normalizer
+    pre = tok.pre_tokenizer
+    return texts, [[t for t, _ in pre.pre_tokenize_str(norm.normalize_str(s))] for s in texts], [
+        [list(o) for _, o in pre.pre_tokenize_str(norm.normalize_str(s))] for s in texts
+    ]
+
+
+def qwen_constants():
+    """Everything the suite needs about the Qwen tokenizer, computed by the
+    reference: the corpus rows and the vocabulary subset that produces them."""
+    tok = qwen_tokenizer()
+    corpus = qwen_corpus()
+    ids, toks, offsets, type_ids, decodes, skips, pretok = qwen_rows(tok, corpus)
+
+    pieces = sorted({piece for row in pretok for piece, _ in row})
+    merges = select_merges(tok, qwen_merges(), pieces)
+    single = [[b, tok.model.token_to_id(bytelevel_text(bytes([b])))] for b in BPE_BYTE_CHARS]
+    added = [[t.content, i, t.special] for i, t in sorted(tok.get_added_tokens_decoder().items())]
+    nfc_rows, nfd_rows, swaps = nfc_expectations()
+    split_texts, split_pieces, split_offsets = split_expectations()
+    return {
+        "QWEN_MERGES_LEFT": [left for left, _ in merges],
+        "QWEN_MERGES_RIGHT": [right for _, right in merges],
+        "QWEN_MERGE_IDS": [tok.get_vocab()[left + right] for left, right in merges],
+        "QWEN_BYTE_IDS": [i for _, i in single],
+        "QWEN_ADDED_CONTENT": [content for content, _i, _special in added],
+        "QWEN_ADDED_IDS": [i for _content, i, _special in added],
+        "QWEN_ADDED_SPECIAL": [1 if special else 0 for _content, _i, special in added],
+        "QWEN_INPUTS": corpus,
+        "QWEN_IDS": ids,
+        "QWEN_TOKENS": toks,
+        "QWEN_OFFSETS": offsets,
+        "QWEN_TYPE_IDS": type_ids,
+        "QWEN_DECODES": decodes,
+        "QWEN_SKIP_DECODES": skips,
+        "QWEN_PRETOK_PIECES": [[piece for piece, _offsets in row] for row in pretok],
+        "NFC_INPUTS": NFC_INPUTS,
+        "NFC_EXPECTED": nfc_rows,
+        "NFD_EXPECTED": nfd_rows,
+        "NFC_PAIRS_A": NFC_PAIRS_A,
+        "NFC_PAIRS_B": NFC_PAIRS_B,
+        "NFC_SWAPS": swaps,
+        "SPLIT_INPUTS": split_texts,
+        "SPLIT_PIECES": split_pieces,
+        "SPLIT_OFFSETS": split_offsets,
+    }
 
 # ---------------------------------------------------------------------------
 # Corpora
@@ -287,7 +847,7 @@ NORM_INPUTS = [
     "Hello World!",
     "Caf\u00e9 au lait",
     "\u4e2d\u6587\u6d4b\u8bd5",
-    "control\x01chars \x07here",
+    "control\x7fchars \x85here",
     "a\u00a0b \u3000c",
     "\u0394delta \u03a9mega",
     "\u00c0\u00e9\u00ee\u00f5\u00fc \u00c5ngstr\u00f6m",
@@ -588,6 +1148,13 @@ def main():
         "PROC_PAIR_OFFSETS": [list(o) for o in proc_pair.offsets],
         "PROC_PAIR_TYPE_IDS": proc_pair.type_ids,
     }
+
+    qwen = qwen_constants()
+    constants.update(qwen)
+
+    category = write_category()
+    nfc_data = write_nfc_data()
+    print(f"wrote {category.relative_to(ROOT)} and {nfc_data.relative_to(ROOT)}")
 
     write(
         "tokenizers",
