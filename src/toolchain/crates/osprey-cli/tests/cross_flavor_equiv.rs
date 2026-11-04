@@ -128,7 +128,9 @@ fn assert_generators_agree(stdin: &str, device: &str) -> std::io::Result<String>
 #[test]
 fn python_gpt2_project_contains_no_osprey_flavor_source() -> std::io::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let python = root.join("src/osprey/examples/llms/gpt2/python").canonicalize()?;
+    let python = root
+        .join("src/osprey/examples/llms/gpt2/python")
+        .canonicalize()?;
     let project = python.join("generate");
     let manifest = std::fs::read_to_string(project.join("osprey.toml"))?;
     let roots = manifest
@@ -314,6 +316,9 @@ def identity(x):
 def constly(value):
     return lambda ignored: value
 held: Callable[[str], int] = constly(9)
+def apply(callback: Callable[[str], int]):
+    return callback("nested")
+nested: Callable[[Callable[[str], int]], int] = apply
 alias = identity
 def parsed(text):
     match parseInt(text):
@@ -323,12 +328,12 @@ def parsed(text):
             return 0
 numbers = [alias(7), held("ignored")]
 words = {"answer": alias("seven")}
-print(f"{numbers[0]}:{numbers[1]}:{words["answer"]}:{identity(True)}:{parsed("42")}:{parsed("bad")}")
+print(f"{numbers[0]}:{numbers[1]}:{words["answer"]}:{identity(True)}:{parsed("42")}:{parsed("bad")}:{nested(held)}")
 "#;
     effect_execution::assert_flavored_output(
         "python_hm",
         "py",
         source,
-        "Success(7):Success(9):Success(seven):true:42:0\n",
+        "Success(7):Success(9):Success(seven):true:42:0:9\n",
     );
 }

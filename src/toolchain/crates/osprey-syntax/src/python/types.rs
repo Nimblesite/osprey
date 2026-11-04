@@ -26,6 +26,9 @@ impl Lowerer<'_> {
 
     fn subscript_type(&self, node: Node<'_>) -> Result<TypeExpr> {
         let mut ty = TypeExpr::named(self.type_name(Self::field(node, "value")?));
+        if ty.name == "fn" {
+            return self.callable_type(node, 1);
+        }
         ty.generic_params = self.type_arguments(node, 1)?;
         Ok(ty)
     }
@@ -35,7 +38,7 @@ impl Lowerer<'_> {
         let args = Self::generic_arguments(node)?;
         let head = self.type_name(name);
         if head == "fn" {
-            return self.callable_type(args);
+            return self.callable_type(args, 0);
         }
         let mut ty = TypeExpr::named(head);
         ty.generic_params = self.type_arguments(args, 0)?;

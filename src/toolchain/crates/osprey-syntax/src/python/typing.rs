@@ -75,8 +75,8 @@ impl Lowerer<'_> {
         Ok(())
     }
 
-    pub(super) fn callable_type(&self, node: Node<'_>) -> Result<TypeExpr> {
-        let parts = children(node);
+    pub(super) fn callable_type(&self, node: Node<'_>, skip: usize) -> Result<TypeExpr> {
+        let parts: Vec<_> = children(node).into_iter().skip(skip).collect();
         let [parameters, result] = parts.as_slice() else {
             return self.unsupported(node);
         };
