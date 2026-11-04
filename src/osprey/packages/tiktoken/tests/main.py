@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/tiktoken's suite: values computed by the real tiktoken in
-scripts/oracles/tiktoken.py, compared against the port through @osprey/testing.
+src/osprey/packages/tiktoken/oracle/tiktoken.cpython, compared against the port through @osprey/testing.
 Covers pre-tokenizer splits, Unicode classes, BPE training and merge order,
 encode/decode round trips (invalid UTF-8, unknown tokens, NUL), special-token
 overlap, truncated real vocabularies, the educational codec and bpe_encode."""

@@ -1,0 +1,49 @@
+"""Runs one CPython oracle: `python -I src/osprey/packages/testing/oracle/oracle.cpython <name>`.
+
+An oracle sits beside the package it checks and is named after it. Its `.cpython` suffix
+keeps it ordinary CPython: a release refuses any `.py` file without the Python-flavor marker
+([PACKAGE-SOURCE-CANONICAL]). Running one directly would also put its directory first on
+`sys.path` and make its own `import numpy` find itself. This runner keeps the directory off the path, registers the
+shared writer under its module name, loads `<package>/oracle/<name>.cpython` from its file and calls `main()`.
+"""
+import importlib.machinery
+import importlib.util
+import ast
+import pathlib
+import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
+
+
+def load(name, path):
+    """Import the module at `path` as `name` without touching `sys.path`."""
+    spec = importlib.util.spec_from_file_location(name, path, loader=importlib.machinery.SourceFileLoader(name, str(path)))
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def checked_writer():
+    """Every reference string must survive the shared writer's source codec."""
+    writer = load("expected_module", HERE / "expected_module.cpython")
+    for text in [chr(code) for code in range(32)] + ['"quoted" \\ é😀']:
+        if ast.literal_eval(writer.literal(text)) != text:
+            raise ValueError("oracle string literal changed its reference value")
+    return writer
+
+
+def main(argv):
+    if len(argv) != 2:
+        raise SystemExit("usage: oracle.py <package>")
+    sys.path = [entry for entry in sys.path if pathlib.Path(entry or ".").resolve() != HERE]
+    checked_writer()
+    load("reference_table", HERE / "reference_table.cpython")
+    found = sorted(HERE.parents[1].glob(f"*/oracle/{argv[1]}.cpython"))
+    if len(found) != 1:
+        raise SystemExit(f"oracle.py: expected one oracle named {argv[1]}, found {found}")
+    load(f"oracle_{argv[1]}", found[0]).main()
+
+
+if __name__ == "__main__":
+    main(sys.argv)

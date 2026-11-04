@@ -4,7 +4,7 @@ An Osprey Python-flavor port of einops: pattern parsing, transformation recipes 
 
 It operates on shapes and recipes; it does not expose the upstream tensor-backend execution API.
 
-The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](../../../../scripts/oracles/einops.py) computes the reference values in `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
+The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](oracle/einops.cpython) computes the reference values in `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 
 ```sh
 target/release/osprey src/osprey/packages/einops/tests --run

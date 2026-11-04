@@ -39,6 +39,6 @@ Real HTTP acceptance: `python3 src/osprey/packages/fastapi/tests/e2e.py`. It com
 
 Current own-source measurement: 364/372 executable lines (97.8%) under both GC and ARC; the gate ratchets to 97.8. This measures the implemented HTTP and validation layer, not the unfinished NAP parity checklist. The loaded native suite drives 128 recorded FastAPI 0.135.3 real HTTP cases and compares status and response bytes; the parallel external suite also checks parsed bodies, headers and concurrent requests.
 
-Regenerate the reference with the NAP environment: `../NimblesiteAgenticPlatform/.venv/bin/python -I scripts/oracles/oracle.py fastapi > src/osprey/packages/fastapi/tests/parameters.expected.json`. The oracle starts a real Uvicorn listener; in-process ASGI calls would miss HTTP header parsing.
+Regenerate the reference with the NAP environment: `../NimblesiteAgenticPlatform/.venv/bin/python -I src/osprey/packages/testing/oracle/oracle.cpython fastapi > src/osprey/packages/fastapi/tests/parameters.expected.json`. The oracle starts a real Uvicorn listener; in-process ASGI calls would miss HTTP header parsing.
 
 Known remaining parameter limits: implicit `Annotated`/decorator binding is not implemented, integers use the native 64-bit domain, and embedded NUL cannot traverse the current native string ABI. NUL path input produces an explicit 400 rather than truncation; this is a recorded runtime limitation, not complete CPython parity.

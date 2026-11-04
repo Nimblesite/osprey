@@ -2,7 +2,7 @@
 
 A port of [scikit-learn](https://scikit-learn.org/) 1.9.1 essentials to the
 Osprey language's Python flavor. Every function is compared against the real
-scikit-learn (numpy 2.5.4) by `scripts/oracles/sklearn.py`, which writes
+scikit-learn (numpy 2.5.4) by `src/osprey/packages/sklearn/oracle/sklearn.cpython`, which writes
 `tests/expected.py`; the suite (`tests/main.py`) checks each exported name and
 reports through `@osprey/testing`.
 

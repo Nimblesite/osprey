@@ -3,8 +3,8 @@
 A port of [faiss](https://github.com/facebookresearch/faiss) (faiss-cpu 1.15.1) vector search to
 the Osprey Python flavor: the exact flat indexes, ID-mapped indexes and selectors, `normalize_L2`,
 k-means with explicit initial centroids, and the product and scalar quantizers. Every value the
-suite checks was computed by the real faiss (`scripts/oracles/faiss.py`, run as
-`python -I scripts/oracles/oracle.py faiss`).
+suite checks was computed by the real faiss (`src/osprey/packages/faiss/oracle/faiss.cpython`, run as
+`python -I src/osprey/packages/testing/oracle/oracle.cpython faiss`).
 
 faiss computes in float32 and Osprey in binary64. The oracle feeds dyadic rationals with few bits
 (multiples of 1/16, small dimensions), so every squared L2 distance and inner product is exact in

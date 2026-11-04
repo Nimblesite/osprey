@@ -35,7 +35,7 @@ micrograd's `Value` is a mutable graph of `grad` fields and `_backward` closures
 | `parameters(m)` | `MLP.parameters()` | Weights then bias, per neuron, per layer — ids 0..`param_count`-1 on a fresh graph |
 | `sgd_step(params, grads, ids, lr)` | `p.data += -lr * p.grad` | Returns the new parameter list instead of mutating |
 
-The oracle in `scripts/oracles/micrograd.py` installs real micrograd into the CPython venv, seeds `random.seed(1337)`, and writes `tests/expected.py` from real micrograd + torch. The suite covers micrograd's own `test_engine.py` cases (`sanity_check`, `more_ops`), an `MLP(3, [4, 4, 1])` forward/backward, 20 README-demo SGD steps, a 12-step tanh network, and a double-backward case.
+The oracle in `src/osprey/packages/micrograd/oracle/micrograd.cpython` installs real micrograd into the CPython venv, seeds `random.seed(1337)`, and writes `tests/expected.py` from real micrograd + torch. The suite covers micrograd's own `test_engine.py` cases (`sanity_check`, `more_ops`), an `MLP(3, [4, 4, 1])` forward/backward, 20 README-demo SGD steps, a 12-step tanh network, and a double-backward case.
 
 ## Divergences
 

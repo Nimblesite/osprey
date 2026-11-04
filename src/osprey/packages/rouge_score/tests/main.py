@@ -1,7 +1,7 @@
 # osprey: flavor=python
 """@osprey/rouge_score's suite: RougeScorer, tokenizer and Porter stemmer against
 values the real rouge_score 0.1.2 + nltk 3.10.4 computed
-(scripts/oracles/rouge_score.py)."""
+(src/osprey/packages/rouge_score/oracle/rouge_score.cpython)."""
 from testing import Check
 from rouge_score_expected import Expected
 from rouge_score import RougeScorer, Stemmer, Tokenize

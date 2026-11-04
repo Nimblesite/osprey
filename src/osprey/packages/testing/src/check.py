@@ -98,7 +98,7 @@ def ints_equal(name, got, want):
 def float_of(text):
     """A float an oracle wrote as text: Python's repr of a number, or "inf", "-inf",
     "nan" for the values the flavor has no literal for
-    (scripts/oracles/expected_module.py). Unparseable text is NaN, so it never
+    (src/osprey/packages/testing/oracle/expected_module.cpython). Unparseable text is NaN, so it never
     compares equal to a real expectation by accident."""
     match text:
         case "inf":

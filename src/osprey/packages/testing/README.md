@@ -11,7 +11,7 @@ Assertions for the Python-flavor package ports ([spec 0043](../../../../docs/spe
 | `Check.lenient(work)` | — | A hunt driver's policy ([PORT-HUNT]): an overflow yields the wrapped value, a zero division or remainder yields zero |
 | `Check.specials()` | — | `+inf`, `-inf`, NaN, `exp(700)` and the subnormal `exp(-745)`, the values a hunt mixes into its symbolic inputs |
 
-The suite in `tests/` compares each verdict with real `numpy.isclose`; `scripts/oracles/testing.py` regenerates `tests/expected.py` from it.
+The suite in `tests/` compares each verdict with real `numpy.isclose`; `src/osprey/packages/testing/oracle/testing.cpython` regenerates `tests/expected.py` from it.
 
 ## Bug hunts
 

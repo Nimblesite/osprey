@@ -4,7 +4,7 @@ A port of the [flash-attention](https://github.com/Dao-AILab/flash-attention) al
 compared against flash-attn 2.1+ semantics. The real flash-attn package needs CUDA, so the
 oracle is `torch.nn.functional.scaled_dot_product_attention` in float64 plus explicit math
 for the window/causal mask, ALiBi bias, GQA head mapping and the log-sum-exp
-(`scripts/oracles/flash_attn.py`); this is documented as a divergence from a CUDA oracle.
+(`src/osprey/packages/flash_attn/oracle/flash_attn.cpython`); this is documented as a divergence from a CUDA oracle.
 
 The port reimplements `flash_attn_func` and `flash_attn_varlen_func` as FlashAttention's
 online-softmax tiled pass: the key range is tiled into 32-key blocks, and each output element

@@ -1,9 +1,9 @@
 # osprey: flavor=python
 """@osprey/transformers's suite: every processor, warper, sampler and stopping
 criterion against values the real transformers 5.20.2 + torch 2.14.1 (float32)
-computed (scripts/oracles/transformers.py).
+computed (src/osprey/packages/transformers/oracle/transformers.cpython).
 
-The shared writer (scripts/oracles/expected_module.py) writes every finite float
+The shared writer (src/osprey/packages/testing/oracle/expected_module.cpython) writes every finite float
 constant as a float literal; a constant holding a `-inf` or NaN is written with
 all its floats as repr strings, decoded here with `Check.float_of`."""
 from testing import Check

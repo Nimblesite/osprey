@@ -4,7 +4,7 @@ The Osprey implementation is provided under the normal [MIT license](LICENSE), C
 
 ## Upstream API and behavior references
 
-The package ports a stdlib-only CPython CAST v2 sender script written for this project. Its framing, parsing, discovery and playback decisions are the test oracle in `scripts/oracles/chromecast.py`. The CAST v2 wire format and the Default Media Receiver application id are Google's protocol; no Google code is bundled or linked.
+The package ports a stdlib-only CPython CAST v2 sender script written for this project. Its framing, parsing, discovery and playback decisions are the test oracle in `src/osprey/packages/chromecast/oracle/chromecast.cpython`. The CAST v2 wire format and the Default Media Receiver application id are Google's protocol; no Google code is bundled or linked.
 
 ## Specifically retained third-party material
 

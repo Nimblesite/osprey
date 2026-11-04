@@ -33,7 +33,7 @@ An Osprey Python-flavor port of the [pydantic-ai](https://github.com/pydantic/py
 
 ## Tests
 
-The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. `tests/main.py` compares the port with values the real pydantic-ai computed over an httpx mock transport in `scripts/oracles/pydantic_ai.py`: request bodies, parsed replies, the wire form, `TestModel` runs, a scripted multi-step tool-calling run and the error texts. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
+The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. `tests/main.py` compares the port with values the real pydantic-ai computed over an httpx mock transport in `src/osprey/packages/pydantic_ai/oracle/pydantic_ai.cpython`: request bodies, parsed replies, the wire form, `TestModel` runs, a scripted multi-step tool-calling run and the error texts. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 
 ```sh
 target/release/osprey src/osprey/packages/pydantic_ai/tests --run

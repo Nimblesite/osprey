@@ -6,7 +6,7 @@
 Strings are UTF-8; the matcher works over code points. `code_points` decodes
 a string once, `text_of` rebuilds a span's text, and the `is_*`/`fold_*`
 functions classify a code point against the range tables in `re.Tables`
-(generated from CPython 3.12 by scripts/oracles/re.py). Implements the
+(generated from CPython 3.12 by src/osprey/packages/re/oracle/re.cpython). Implements the
 Unicode-awareness the brief requires: `\\d` is any Unicode decimal digit,
 `\\w` any alphanumeric plus underscore, `\\s` any Unicode whitespace.
 """

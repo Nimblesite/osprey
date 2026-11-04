@@ -2,7 +2,7 @@
 """Checks the `osprey hunt` corpus tooling without KLEE [SYMEX-CORPUS] [SYMEX-CLI]
 (docs/specs/tooling/SymbolicExecution.md): scripts/hunt_expect.py, scripts/hunt_summary.py,
 scripts/hunt_corpus.sh against a stand-in `osprey`, and that
-src/toolchain/compiler/runtime/klee/hunt_format_cases.inc is what scripts/oracles/hunt_format.py writes.
+src/toolchain/compiler/runtime/klee/hunt_format_cases.inc is what src/toolchain/compiler/runtime/klee/hunt_format.py writes.
 """
 
 import contextlib
@@ -28,7 +28,7 @@ def load(name, path):
 
 hunt_expect = load("hunt_expect", "scripts/hunt_expect.py")
 hunt_summary = load("hunt_summary", "scripts/hunt_summary.py")
-hunt_format = load("hunt_format", "scripts/oracles/hunt_format.py")
+hunt_format = load("hunt_format", "src/toolchain/compiler/runtime/klee/hunt_format.py")
 
 
 def finding(cls="memory", file="dir/main.osp", line=4, frame=None, test="test000001", replay="not-run"):
@@ -381,7 +381,7 @@ class FormatOracleTests(unittest.TestCase):
                 fresh = hunt_format.OUT.read_text().replace("\r\n", "\n")
             finally:
                 hunt_format.OUT = original
-        self.assertEqual(committed, fresh, "run python3 scripts/oracles/hunt_format.py")
+        self.assertEqual(committed, fresh, "run python3 src/toolchain/compiler/runtime/klee/hunt_format.py")
 
     def test_every_value_meets_every_format(self):
         rows = [line for line in (ROOT / "src/toolchain/compiler/runtime/klee/hunt_format_cases.inc").read_text().splitlines() if line.startswith("{")]

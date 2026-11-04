@@ -2,7 +2,7 @@
 """@osprey/re's suite: the port against CPython's verdicts.
 
 Every case in `re_expected.Expected` was computed by CPython 3.12's own `re`
-(scripts/oracles/re.py) and is string-encoded with `\\x1f` between fields and
+(src/osprey/packages/re/oracle/re.cpython) and is string-encoded with `\\x1f` between fields and
 `\\x1e` inside a field. Each check below decodes one case and compares the
 port's answer with the oracle's, through `testing.Check.strictly` so an
 integer fault stops the suite.

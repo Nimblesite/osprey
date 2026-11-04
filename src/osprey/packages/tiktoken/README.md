@@ -2,7 +2,7 @@
 
 A byte-level BPE tokenizer port of [tiktoken](https://github.com/openai/tiktoken) 0.14.0 to Osprey's Python flavor ([spec 0043](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md)). It generalises `src/osprey/examples/llms/gpt2/python/tokenizer.py` into tiktoken's `Encoding` API, with the same pre-tokenizer patterns, special-token policy and `_educational` training loop, all hand-written over code points (no regex engine, no Python interop).
 
-The vocabulary is a string-keyed map: token bytes become one canonical key by shifting each byte to the code point `b + 1` (code point 0 cannot live in an Osprey string), so concatenating keys is the key of the concatenated bytes — which makes a merge a string concatenation. The suite's expected values are computed by the real tiktoken (`scripts/oracles/tiktoken.py`, tiktoken 0.14.0, `regex` 2026.9.29, Unicode 15.0.0).
+The vocabulary is a string-keyed map: token bytes become one canonical key by shifting each byte to the code point `b + 1` (code point 0 cannot live in an Osprey string), so concatenating keys is the key of the concatenated bytes — which makes a merge a string concatenation. The suite's expected values are computed by the real tiktoken (`src/osprey/packages/tiktoken/oracle/tiktoken.cpython`, tiktoken 0.14.0, `regex` 2026.9.29, Unicode 15.0.0).
 
 ## API
 
@@ -34,7 +34,7 @@ The `Unicode` and `Bpe` modules are internal helpers (code point classification,
 
 - **`Result` instead of exceptions.** tiktoken raises `ValueError` (disallowed special), `KeyError` (unknown token) and `UnicodeDecodeError` (`strict`); the port returns `Result[T, str]`. `encode_ordinary` returns `Result[list[int], str]` where the original returns `list[int]` — the broken-vocabulary case that panics in the Rust core is an `Error` here.
 - **NUL.** U+0000 cannot appear in an Osprey string (NUL-terminated), so decoding token byte 0 returns `Error` where tiktoken returns `"\x00"`.
-- **Unicode class tables cover a fixed block set.** Code points outside the blocks in `Tables` classify as punctuation; the corpus and battery stay inside, and the suite pins the divergence for a few outsiders. Regenerate with `scripts/oracles/tiktoken.py`.
+- **Unicode class tables cover a fixed block set.** Code points outside the blocks in `Tables` classify as punctuation; the corpus and battery stay inside, and the suite pins the divergence for a few outsiders. Regenerate with `src/osprey/packages/tiktoken/oracle/tiktoken.cpython`.
 - **No regex engine.** `\p{L}`, `\p{N}`, `\s` and the two patterns are hand-written scanners over code points, pinned against the real `regex` module's `findall` on a multilingual battery.
 - **cl100k contraction case-folding** implements simple case folding for ASCII and U+017F (long s); the suite pins it against the real `(?i:...)`.
 - **`special_tokens_set` returns a sorted list**, not a `set`.

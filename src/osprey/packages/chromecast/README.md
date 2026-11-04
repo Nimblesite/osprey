@@ -1,6 +1,6 @@
 # @osprey/chromecast
 
-Casts a local audio file to a Chromecast or Google TV. This is a port of a stdlib-only CPython CAST v2 sender (`cast.py`, compared on CPython 3.15.0) to Osprey's Python flavor. It covers discovery, protobuf framing, the TLS session with heartbeats, LAUNCH/LOAD, the media-status loop and playback controls. The reference's pure functions are reproduced in `scripts/oracles/chromecast.py`, which writes `tests/expected.py`.
+Casts a local audio file to a Chromecast or Google TV. This is a port of a stdlib-only CPython CAST v2 sender (`cast.py`, compared on CPython 3.15.0) to Osprey's Python flavor. It covers discovery, protobuf framing, the TLS session with heartbeats, LAUNCH/LOAD, the media-status loop and playback controls. The reference's pure functions are reproduced in `src/osprey/packages/chromecast/oracle/chromecast.cpython`, which writes `tests/expected.py`.
 
 The package was checked by hand against two real devices (a Chromecast and a Google TV) with `Dns.discover` and `Cast.status`. Their output matched the reference CLI's `--status`. The suite then drives the whole sender against a scripted device: `openssl s_server` with a self-signed certificate, replaying canned device frames. [live/](live/main.py) is the opt-in check that plays real audio: with a TV's name in `.osprey/live-cast-tv`, it casts a six-second tone and checks playing, paused, resumed, seek, volume and `DONE FINISHED`. It passed on both of those devices.
 
@@ -82,7 +82,7 @@ All I/O is a `Wire` effect. `Wire.Native(work)` answers it with real TLS, routin
 - **No peer verification.** Cast devices present self-signed certificates, so the session accepts any certificate, as the reference did with `CERT_NONE` [FFI-TLS-UNVERIFIED].
 - **Discovery returns host names.** The reference resolved each host to an IP with `gethostbyname`. The port keeps the `.local` name and lets the TLS dial resolve it. `Discovery.browse` consumes a caller-supplied `dns-sd` transcript.
 - **Errors are values.** `sys.exit("ERROR ...")` becomes `Error(message="ERROR ...")`. Connection loss is an `Error` naming the reason.
-- **Media controls extend the reference CLI.** Media-command payloads follow the CAST v2 media namespace; volume uses receiver SET_VOLUME. `scripts/oracles/chromecast.py` checks their payloads with `json.dumps`.
+- **Media controls extend the reference CLI.** Media-command payloads follow the CAST v2 media namespace; volume uses receiver SET_VOLUME. `src/osprey/packages/chromecast/oracle/chromecast.cpython` checks their payloads with `json.dumps`.
 - **No pickers.** The macOS `osascript` file and device pickers are UI. They belong in the application above this package.
 - **audio/mpeg only.** Like the reference, every LOAD and the file server use `audio/mpeg`.
 - **`Dns.discover` spawns a process.** It needs `dns-sd`, which ships with macOS. Targets such as the macOS app archive cannot spawn processes, so a UI asks its host to run `dns-sd` and passes the transcript to `Discovery.browse`.

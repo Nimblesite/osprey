@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/testing's own suite: `Check.near` against numpy.isclose's verdicts
-(scripts/oracles/testing.py), then the reporting helpers."""
+(src/osprey/packages/testing/oracle/testing.cpython), then the reporting helpers."""
 from testing import Check
 from testing_expected import Expected
 

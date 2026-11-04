@@ -1,7 +1,7 @@
 # osprey: flavor=python
 """@osprey/torch's suite: the autograd tape, optimizers, learning-rate
 schedulers and gradient clipping compared against the real torch (float64) via
-scripts/oracles/torch.py, every case run under BOTH the host and the GPU numpy
+src/osprey/packages/torch/oracle/torch.cpython, every case run under BOTH the host and the GPU numpy
 storage handlers.
 
 Floats compare with numpy's isclose rule: rtol 1e-12 for optimizers, schedulers

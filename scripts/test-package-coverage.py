@@ -39,7 +39,7 @@ class PackageThresholdTests(CoverageTestCase):
                 self.assertTrue(set(entry).isdisjoint({"covered", "total", "percentage"}))
 
     def test_oracle_literals_roundtrip_every_control_character_and_unicode(self):
-        runner = runpy.run_path(str(ROOT / "scripts/oracles/oracle.py"))
+        runner = runpy.run_path(str(ROOT / "src/osprey/packages/testing/oracle/oracle.cpython"))
         writer = runner["checked_writer"]()
         self.assertEqual(writer.literal("\r"), '"\\r"')
 

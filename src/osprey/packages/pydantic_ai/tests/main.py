@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/pydantic-ai's suite: values the real pydantic-ai 2.46.0 produced over
-an httpx mock transport (scripts/oracles/pydantic_ai.py), compared against the
+an httpx mock transport (src/osprey/packages/pydantic_ai/oracle/pydantic_ai.cpython), compared against the
 port through @osprey/testing. Covers the Chat Completions request body for
 eight scenarios, response parsing, `ModelResponse.text`, tool-call argument
 helpers, retry prompts, the message wire form both ways, TestModel's

@@ -4,7 +4,7 @@ A port of Google's [rouge-score](https://github.com/google-research/google-resea
 0.1.2 to the Osprey Python flavor: `RougeScorer` for `rouge1`, `rouge2`, `rougeL` and `rougeLsum`,
 its default tokenizer, and the Porter stemmer as nltk 3.10.4's `PorterStemmer` implements it, which
 `use_stemmer=True` applies. Every value the suite checks was computed by the real packages
-(`scripts/oracles/rouge_score.py`, run as `python -I scripts/oracles/oracle.py rouge_score`): 1137
+(`src/osprey/packages/rouge_score/oracle/rouge_score.cpython`, run as `python -I src/osprey/packages/testing/oracle/oracle.cpython rouge_score`): 1137
 oracle assertions over targets and predictions of every length, repeated n-grams, punctuation,
 digits, multi-sentence summaries and several hundred stemmer inputs.
 

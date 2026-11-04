@@ -6,6 +6,6 @@ default_namespace = "jinja2"
 
 [package]
 name = "@osprey/jinja2"
-license = "MIT"
+license = "MIT AND Apache-2.0"
 summary = "The Jinja2 chat-template subset: lexer, parser and renderer over JSON-like values"
 keywords = ["chat-template", "jinja2", "python-flavor", "templates"]

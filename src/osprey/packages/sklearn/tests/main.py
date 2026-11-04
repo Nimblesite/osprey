@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/sklearn's suite: every exported function compared against values the
-real scikit-learn 1.9.1 computed (scripts/oracles/sklearn.py)."""
+real scikit-learn 1.9.1 computed (src/osprey/packages/sklearn/oracle/sklearn.cpython)."""
 from testing import Check
 from sklearn_expected import Expected
 from sklearn import Metrics

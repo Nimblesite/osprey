@@ -1,7 +1,7 @@
 # osprey: flavor=python
 """The @osprey/micrograd suite: micrograd's own test_engine.py cases, the
 README demo and a tiny tanh network, each computed node for node against
-scripts/oracles/micrograd.py's real-micrograd values. Float comparisons use
+src/osprey/packages/micrograd/oracle/micrograd.cpython's real-micrograd values. Float comparisons use
 numpy's isclose rule at rtol 1e-12 (1e-9 for tanh/exp cases), atol 0."""
 
 from micrograd import Engine, Libm, NN

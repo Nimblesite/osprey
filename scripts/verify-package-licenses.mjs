@@ -36,7 +36,7 @@ const verifyUpstream = (dir, upstream, notice) => {
   requireThat(upstream.file.startsWith('LICENSES/') && !upstream.file.includes('..'), 'Invalid upstream license path')
   const text = read(join(dir, upstream.file))
   requireThat(text.length > 20 && digest(text) === upstream.sha256, `${dir}/${upstream.file}: license text changed`)
-  requireThat(upstream.repository.startsWith('https://github.com/') && upstream.source.startsWith('https://'),
+  requireThat(/^https:\/\/(github\.com|huggingface\.co)\//.test(upstream.repository) && upstream.source.startsWith('https://'),
     `${dir}: missing upstream provenance`)
   requireThat(upstream.basis && upstream.applies_to.length > 0, `${dir}: unsupported third-party license assignment`)
   for (const path of upstream.applies_to) requireThat(existsSync(join(dir, path)), `${dir}/${path}: material not found`)

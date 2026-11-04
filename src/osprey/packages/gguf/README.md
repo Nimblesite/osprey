@@ -4,7 +4,7 @@ An Osprey Python-flavor port of the GGUF reader from [`gguf` 0.19.0](https://git
 
 The public interface uses Osprey values and explicit byte buffers rather than a memory map and Python objects. A weights file too large for a list is parsed from its first bytes with `read_header`, and its tensor ranges are mapped with `gpuMapFile`.
 
-The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](../../../../scripts/oracles/gguf.py) writes the fixtures with the real `GGUFWriter` and computes every reference value with the real `GGUFReader`, into `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
+The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](oracle/gguf.cpython) writes the fixtures with the real `GGUFWriter` and computes every reference value with the real `GGUFReader`, into `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 
 ```sh
 target/release/osprey src/osprey/packages/gguf/tests --run

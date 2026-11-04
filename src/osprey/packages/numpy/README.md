@@ -4,7 +4,7 @@ An Osprey Python-flavor port of numpy: row-major float64 arrays, broadcasting, s
 
 Storage is selected by an explicit host or GPU handler. Integer, object and complex dtype arrays are outside this port.
 
-The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](../../../../scripts/oracles/numpy.py) computes the reference values in `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
+The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](oracle/numpy.cpython) computes the reference values in `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 
 ```sh
 target/release/osprey src/osprey/packages/numpy/tests --run

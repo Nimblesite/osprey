@@ -1,5 +1,5 @@
 # osprey: flavor=python
-"""@osprey/numpy's suite: CPython oracle cases from scripts/oracles/numpy.py
+"""@osprey/numpy's suite: CPython oracle cases from src/osprey/packages/numpy/oracle/numpy.cpython
 and exact helper contracts, compared through @osprey/testing and run under
 BOTH the host and the GPU storage handlers.
 

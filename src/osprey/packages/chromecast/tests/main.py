@@ -2,7 +2,7 @@
 """The @osprey/chromecast suite: the port against the reference CAST v2 sender.
 
 Every frame, parse, browse result and loop decision below was computed by
-the reference script's own functions (scripts/oracles/chromecast.py). The
+the reference script's own functions (src/osprey/packages/chromecast/oracle/chromecast.cpython). The
 device cases in `chromecast_tests.Device` then drive the whole sender over
 real TLS against a scripted device. Everything runs through
 `testing.Check.strictly`, so an integer fault stops the suite.

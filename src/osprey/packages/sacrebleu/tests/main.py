@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/sacrebleu's suite: tokenizers, BLEU and chrF against values the real
-sacrebleu 2.6.0 computed (scripts/oracles/sacrebleu.py)."""
+sacrebleu 2.6.0 computed (src/osprey/packages/sacrebleu/oracle/sacrebleu.cpython)."""
 from testing import Check
 from sacrebleu_expected import Expected
 from sacrebleu import Bleu, Chrf, Ngrams, Text, Tokenizer

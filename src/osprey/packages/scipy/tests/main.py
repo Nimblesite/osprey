@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/scipy's suite: every ported `scipy.Special` function against values
-the real scipy 1.18.1 computed (scripts/oracles/scipy.py).
+the real scipy 1.18.1 computed (src/osprey/packages/scipy/oracle/scipy.cpython).
 
 The shared writer writes each constant that holds a NaN/inf with all its floats
 as repr strings; those are decoded here with `Check.float_of`. Tolerances come

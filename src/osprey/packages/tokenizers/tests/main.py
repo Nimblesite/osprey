@@ -1,7 +1,7 @@
 # osprey: flavor=python
 """@osprey/tokenizers' suite: every encode, decode, pre-tokenization and
 normalization compared with the real `tokenizers` package's output
-(scripts/oracles/tokenizers.py generates tests/expected.py)."""
+(src/osprey/packages/tokenizers/oracle/tokenizers.cpython generates tests/expected.py)."""
 from testing import Check
 from tokenizers_expected import Expected
 from tokenizers.Decoders import byte_fallback_decode_chain, metaspace_decode_chain, utf8_decode, wordpiece_decode

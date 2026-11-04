@@ -48,9 +48,9 @@ Early probe, 2026-11-05, on the real 5120×17408 shape over mapped random `float
 Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Phase 0 Ollama rate on the same quant (a 2,000-token turn ≈ 7 min). Kernel fusion (0023-gpu.md) is required work, not a fallback: this gate is not measured, and Phases 3–8 do not start, until [LLM-DISPATCH-BATCH] has landed. Go/no-go: if missed after that, stop and report before porting the model; the next option is a multithreaded NEON path — binding a native engine is not an option.
 
 ## Phase 3 — Model on a tiny checkpoint
-- [x] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `scripts/oracles/gguf.py`.
+- [x] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `src/osprey/packages/gguf/oracle/gguf.cpython`.
 - [ ] `src/osprey/packages/transformers/src/qwen3_5_*.py`: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE].
-- [ ] Tiny random `Qwen3_5TextConfig` (4 layers, a few MB) written by `scripts/oracles/transformers.py`; every layer's activations compared to Transformers in `float32` under [PORT-TEST-ORACLE].
+- [ ] Tiny random `Qwen3_5TextConfig` (4 layers, a few MB) written by `src/osprey/packages/transformers/oracle/transformers.cpython`; every layer's activations compared to Transformers in `float32` under [PORT-TEST-ORACLE].
 - [ ] Permutations: one token at a time vs a batch, cached vs uncached, recurrent vs chunked rule, `float16` KV vs `float32`.
 
 Gate [LLM-MODEL-ORACLE]: all activations within tolerance on host and GPU handlers; CI runs this and never downloads real weights.

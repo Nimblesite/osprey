@@ -2,8 +2,8 @@
 
 A port of [sacrebleu](https://github.com/mjpost/sacrebleu) 2.6.0's BLEU and chrF metrics and
 its `none`, `13a` and `char` tokenizers to the Osprey Python flavor. Every value the suite checks
-was computed by the real sacrebleu (`scripts/oracles/sacrebleu.py`, run as
-`python -I scripts/oracles/oracle.py sacrebleu`): 3084 oracle assertions over sentence and corpus
+was computed by the real sacrebleu (`src/osprey/packages/sacrebleu/oracle/sacrebleu.cpython`, run as
+`python -I src/osprey/packages/testing/oracle/oracle.cpython sacrebleu`): 3084 oracle assertions over sentence and corpus
 BLEU with every smoothing method, effective order, lowercasing and multiple references, chrF2 and
 chrF++, and the tokenizers over ASCII, punctuation, digits, accents, CJK and emoji text.
 

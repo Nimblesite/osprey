@@ -1,6 +1,6 @@
 # osprey: flavor=python
 """@osprey/faiss's suite: every flat, selector, ID-map and normalize case
-against faiss-cpu 1.15.1's values (scripts/oracles/faiss.py). Search distances
+against faiss-cpu 1.15.1's values (src/osprey/packages/faiss/oracle/faiss.cpython). Search distances
 and labels compare exactly (dyadic inputs keep float32 == binary64);
 normalize_L2 compares at rtol 1e-6 because faiss normalizes with a float32
 square root."""
