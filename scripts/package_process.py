@@ -21,7 +21,7 @@ from pathlib import Path
 INTERRUPTED = Event()
 POLL_SECONDS = 0.1
 DEFAULT_TIMEOUT = 300
-DEFAULT_RSS_MB = 1024
+DEFAULT_RSS_MB = 3072  # faiss needs the compiler (437 MB) and clang (632 MB) at once; a runaway reaches this in seconds
 DEFAULT_OUTPUT_MB = 16
 
 
