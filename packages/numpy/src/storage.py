@@ -34,7 +34,7 @@ class Buffer[B]:
     def reduce(buffer: B, seed: float, combine: Callable[[float, float], float]) -> float: ...
     def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> Result[B, str]: ...
     def from_list(values: list[float]) -> B: ...
-    def to_list(buffer: B) -> list[float]: ...
+    def to_list(buffer: B) -> Result[list[float], str]: ...
     def device() -> str: ...
 
 
@@ -69,7 +69,12 @@ def lift(values):
 
 def lower(buffer):
     """Lowers a buffer into a host list of doubles."""
-    return perform(Buffer.to_list(buffer))
+    match perform(Buffer.to_list(buffer)):
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            g = Errors.fail(message)
+            return []
 
 
 def add_f(a, b):

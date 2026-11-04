@@ -1,3 +1,9 @@
+(** [FAILURE-EXPLICIT] A read error fails the predicate with its reason. *)
+readSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU readback", "success", toString message)
+        false
 // Scalar transfer conformance: inferred element types survive runtime lists,
 // GPU buffers and repeated crossings [GPU-BUFFER-ELEM] [GPU-BUFFER-FROM-LIST]
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
@@ -29,45 +35,67 @@ listValueTagsCase () =
     ]
 
 fromGpuScalarCase () =
-    floats = fromGpu (toGpu [1.25, 2.5, 5.0])
-    flags = fromGpu (toGpu [true, false, true])
-    checkAll "fromGpu preserves float and bool list elements" [
-        listLength floats == 3,
-        (listGet (floats, 0) ?: 99.0) == 1.25,
-        (listGet (floats, 1) ?: 99.0) == 2.5,
-        (listGet (floats, 2) ?: 99.0) == 5.0,
-        listLength flags == 3,
-        (listGet (flags, 0) ?: false) == true,
-        (listGet (flags, 1) ?: true) == false,
-        (listGet (flags, 2) ?: false) == true
-    ]
-
+    match fromGpu (toGpu [1.25, 2.5, 5.0])
+        Success value =>
+            read0 = value
+            floats = read0
+            match fromGpu (toGpu [true, false, true])
+                Success value =>
+                    read1 = value
+                    flags = read1
+                    checkAll "fromGpu preserves float and bool list elements" [
+                        listLength floats == 3,
+                        (listGet (floats, 0) ?: 99.0) == 1.25,
+                        (listGet (floats, 1) ?: 99.0) == 2.5,
+                        (listGet (floats, 2) ?: 99.0) == 5.0,
+                        listLength flags == 3,
+                        (listGet (flags, 0) ?: false) == true,
+                        (listGet (flags, 1) ?: true) == false,
+                        (listGet (flags, 2) ?: false) == true
+                    ]
+                Error message => check ("GPU readback", "success", toString message)
+        Error message => check ("GPU readback", "success", toString message)
 repeatedCrossingCase () =
-    floats = toGpu (fromGpu (toGpu (floatListValue ())))
-    flags = toGpu (fromGpu (toGpu (boolListValue ())))
-    floatsBack = fromGpu floats
-    flagsBack = fromGpu flags
-    checkAll "repeated host and GPU crossings retain scalar types" [
-        gpuLength floats == 2,
-        (gpuGet (floats, 0) ?: 99.0) == 1.5,
-        (gpuGet (floats, 1) ?: 99.0) == 2.5,
-        (floats |> gpuFold 0.0 addFloats) == 4.0,
-        (listGet (floatsBack, 0) ?: 99.0) == 1.5,
-        (listGet (floatsBack, 1) ?: 99.0) == 2.5,
-        gpuLength flags == 3,
-        (flags |> gpuFold 0 countTrue) == 1,
-        (listGet (flagsBack, 0) ?: true) == false,
-        (listGet (flagsBack, 2) ?: false) == true
-    ]
-
+    match fromGpu (toGpu (floatListValue ()))
+        Success value =>
+            read0 = value
+            floats = toGpu (read0)
+            match fromGpu (toGpu (boolListValue ()))
+                Success value =>
+                    read1 = value
+                    flags = toGpu (read1)
+                    match fromGpu (floats)
+                        Success value =>
+                            read2 = value
+                            floatsBack = read2
+                            match fromGpu (flags)
+                                Success value =>
+                                    read3 = value
+                                    flagsBack = read3
+                                    checkAll "repeated host and GPU crossings retain scalar types" [
+                                        gpuLength floats == 2,
+                                        (gpuGet (floats, 0) ?: 99.0) == 1.5,
+                                        (gpuGet (floats, 1) ?: 99.0) == 2.5,
+                                        (floats |> gpuFold 0.0 addFloats) == 4.0,
+                                        (listGet (floatsBack, 0) ?: 99.0) == 1.5,
+                                        (listGet (floatsBack, 1) ?: 99.0) == 2.5,
+                                        gpuLength flags == 3,
+                                        (flags |> gpuFold 0 countTrue) == 1,
+                                        (listGet (flagsBack, 0) ?: true) == false,
+                                        (listGet (flagsBack, 2) ?: false) == true
+                                    ]
+                                Error message => check ("GPU readback", "success", toString message)
+                        Error message => check ("GPU readback", "success", toString message)
+                Error message => check ("GPU readback", "success", toString message)
+        Error message => check ("GPU readback", "success", toString message)
 (** With no first element to inspect, lowering must use the inferred result type. *)
-emptyTypedLiteralCase () = checkAll "empty literals retain contextual scalar types" [
-    gpuLength (toGpu []) == 0,
-    (gpuGet (toGpu [], 0) ?: 9.5) == 9.5,
-    (gpuGet (toGpu [], 0) ?: true) == true,
-    listLength (fromGpu (toGpu [])) == 0
-]
-
+emptyTypedLiteralCase () =
+    checkAll "empty literals retain contextual scalar types" [
+        gpuLength (toGpu []) == 0,
+        (gpuGet (toGpu [], 0) ?: 9.5) == 9.5,
+        (gpuGet (toGpu [], 0) ?: true) == true,
+        readSatisfies (fromGpu (toGpu []), \checked0 => listLength (checked0) == 0)
+    ]
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith
@@ -101,15 +129,18 @@ gpuIeeeCase () =
     infinity = gpuGet (infinityBuffer, 0) ?: 0.0
     nanBuffer = infinityBuffer |> gpuMap subtractSelf
     nan = gpuGet (nanBuffer, 0) ?: 0.0
-    roundTrip = toGpu (listReverse (fromGpu (toGpu [infinity, nan, -0.0])))
-    checkAll "host GPU kernels preserve non-finite values and signed zero" [
-        infinity > 10000000000000000.0, nan != nan,
-        (infinityBuffer |> gpuFold 0.0 addFloats) == infinity,
-        (gpuGet (roundTrip, 2) ?: 0.0) == infinity,
-        (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
-        toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
-    ]
-
+    match fromGpu (toGpu [infinity, nan, -0.0])
+        Success value =>
+            read0 = value
+            roundTrip = toGpu (listReverse (read0))
+            checkAll "host GPU kernels preserve non-finite values and signed zero" [
+                infinity > 10000000000000000.0, nan != nan,
+                (infinityBuffer |> gpuFold 0.0 addFloats) == infinity,
+                (gpuGet (roundTrip, 2) ?: 0.0) == infinity,
+                (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
+                toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
+            ]
+        Error message => check ("GPU readback", "success", toString message)
 gpuFloatZeroCase () =
     mut faults = ""
     handle Arith

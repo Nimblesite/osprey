@@ -18,9 +18,9 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "fromGpu",
-        "Materializes a GpuBuffer back into a host list, keeping the element type: a float buffer becomes a `List<float>`.",
+        "Returns a host list in Success, keeping its element type; a failed device download returns Error with its reason. A valid empty buffer succeeds with an empty list.",
         ["buffer" => "The buffer to copy back to a list"],
-        "fromGpu(toGpu([1, 2])) |> forEachList(print)  // Prints: 1, 2",
+        "match fromGpu(toGpu([1, 2])) {\n    Success { value } => forEachList(value, print)\n    Error { message } => print(message)\n}  // Prints: 1, 2",
     ),
     builtin_doc!(
         "gpuLength",
@@ -50,7 +50,7 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "gpuIota",
         "Returns the index buffer [0, n), or Error for a negative count, byte-size overflow or allocation failure. Zero succeeds with an empty buffer.",
         ["n" => "The element count"],
-        "match gpuIota(4) {\n    Success { value } => forEachList(fromGpu(value), print)\n    Error { message } => print(message)\n}  // 0, 1, 2, 3",
+        "match gpuIota(4) {\n    Success { value } => match fromGpu(value) {\n        Success { value } => forEachList(value, print)\n        Error { message } => print(message)\n    }\n    Error { message } => print(message)\n}  // 0, 1, 2, 3",
     ),
     builtin_doc!(
         "gpuGet",
@@ -62,13 +62,13 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "gpuScan",
         "Inclusive prefix scan: element i is combine folded left to right through element i. It has no device form yet: when OSPREY_GPU selects a device, the run stops and names it.",
         ["buffer" => "The buffer to scan", "initial" => "The initial scalar accumulator", "combine" => "The pure (accumulator, element) function"],
-        "// Run with OSPREY_GPU=host; scan has no device form yet.\nlet sums = toGpu([1, 2, 3]) |> gpuScan(0, wrapAdd)\nforEachList(fromGpu(sums), print)  // 1, 3, 6",
+        "// Run with OSPREY_GPU=host; scan has no device form yet.\nlet sums = toGpu([1, 2, 3]) |> gpuScan(0, wrapAdd)\nmatch fromGpu(sums) {\n    Success { value } => forEachList(value, print)\n    Error { message } => print(message)\n}  // 1, 3, 6",
     ),
     builtin_doc!(
         "gpuFilter",
         "Stream compaction: keeps the elements a pure predicate accepts, preserving order. It has no device form yet: when OSPREY_GPU selects a device, the run stops and names it.",
         ["buffer" => "The source buffer", "predicate" => "The pure element predicate"],
-        "// Run with OSPREY_GPU=host; filter has no device form yet.\nlet evens = toGpu([1, 2, 3, 4]) |> gpuFilter(fn(x) => x % 2 == 0)\nforEachList(fromGpu(evens), print)  // 2, 4",
+        "// Run with OSPREY_GPU=host; filter has no device form yet.\nlet evens = toGpu([1, 2, 3, 4]) |> gpuFilter(fn(x) => x % 2 == 0)\nmatch fromGpu(evens) {\n    Success { value } => forEachList(value, print)\n    Error { message } => print(message)\n}  // 2, 4",
     ),
     builtin_doc!(
         "gpuMatMul",

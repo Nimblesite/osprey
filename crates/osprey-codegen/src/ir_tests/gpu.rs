@@ -114,6 +114,18 @@ fn gpu_get_checks_readback_before_loading_a_scalar() {
 }
 
 #[test]
+fn gpu_materialization_checks_readback_before_loading_any_scalar() {
+    // [FAILURE-EXPLICIT] Bulk readback must carry the same reason as gpuGet.
+    let ir = module("fn read() = fromGpu(toGpu([1.5]))\nlet values = read()\nprint(1)\n");
+    let body = function_body(&ir, "@read()");
+    let ready = body.find("call i32 @osprey_gpu_readable(").expect("checked bulk readback");
+    let value = body.find("call i64 @osprey_gpu_get(").expect("scalar copy");
+    assert!(ready < value, "{body}");
+    assert!(body[ready..value].contains("select i1"), "{body}");
+    assert!(ir.contains("fromGpu: buffer unavailable"), "{body}");
+}
+
+#[test]
 fn an_immediately_called_lambda_keeps_its_device_capture() {
     // [GPU-KERNEL-FORM] The ML workload calls nested lambdas over captures.
     let ir = module("let k = toFloat32(3.0)\nlet xs = toGpu([toFloat32(2.0)])\nprint(fromGpu(gpuMap(xs, fn(x) => (fn(z) => k * z)(x))))\n");

@@ -1,3 +1,9 @@
+(** [FAILURE-EXPLICIT] A read error fails the predicate with its reason. *)
+readSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU readback", "success", toString message)
+        false
 (** [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs. *)
 withIndices (n, work) = match gpuIota n
     Success value => work value
@@ -87,7 +93,7 @@ emptyShapeCase () =
         gpuLength (emptyInts () |> gpuScan 99 maxI) == 0,
         gpuLength (gpuZipWith (emptyInts (), toGpu [1, 2, 3], sumI)) == 0,
         gpuLength (gpuZipWith (toGpu [1, 2, 3], emptyInts (), sumI)) == 0,
-        listLength (fromGpu (emptyInts ())) == 0,
+        readSatisfies (fromGpu (emptyInts ()), \checked0 => listLength (checked0) == 0),
         (gpuGet (emptyInts (), 0) ?: 42) == 42,
         gpuLength chained == 0
     ]

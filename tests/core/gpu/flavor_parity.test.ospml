@@ -1,3 +1,9 @@
+(** [FAILURE-EXPLICIT] A read error fails the predicate with its reason. *)
+readSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU readback", "success", toString message)
+        false
 iotaOutcome result = match result
     Success value => "unexpected success ${gpuLength value}"
     Error message => toString message
@@ -11,9 +17,8 @@ minimumIntCase () =
     checkAll "minimum int literal crosses the GPU boundary" [
         gpuLength buf == 1,
         (gpuGet (buf, 0) ?: 0) == minimum,
-        (listGet (fromGpu buf, 0) ?: 0) == minimum
+        readSatisfies (fromGpu (buf), \checked0 => (listGet (checked0, 0) ?: 0) == minimum)
     ]
-
 negativeIotaCase () =
     direct = gpuIota -3
     piped = -7 |> gpuIota
@@ -37,9 +42,8 @@ denseFloatCombinatorsCase () =
     zipped = gpuZipWith (buffer, buffer, \(a, b) => a + b)
     checkAll "dense float32 combinators" [
         gpuFold (buffer, toFloat32 0.0, \(acc, value) => acc + value) == toFloat32 3.0,
-        join (mapList (fromGpu scan, toString), ",") == "0.5,1.5,3.0",
-        join (mapList (fromGpu kept, toString), ",") == "1.0,1.5",
-        join (mapList (fromGpu zipped, toString), ",") == "1.0,2.0,3.0"
+        readSatisfies (fromGpu (scan), \checked0 => join (mapList (checked0, toString), ",") == "0.5,1.5,3.0"),
+        readSatisfies (fromGpu (kept), \checked0 => join (mapList (checked0, toString), ",") == "1.0,1.5"),
+        readSatisfies (fromGpu (zipped), \checked0 => join (mapList (checked0, toString), ",") == "1.0,2.0,3.0")
     ]
-
 test ("float32 reductions scans filters and zip keep their width", denseFloatCombinatorsCase)

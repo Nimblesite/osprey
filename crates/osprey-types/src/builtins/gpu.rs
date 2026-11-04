@@ -10,7 +10,7 @@ pub(super) fn declare(e: &mut TypeEnv) {
     let buf_t = || Type::gpu_buffer(t());
     // [GPU-BUFFER-FROM-LIST] / [GPU-BUFFER-TO-LIST] / [GPU-BUFFER-LENGTH]
     poly(e, "toGpu", vec![0], vec![Type::list(t())], buf_t());
-    poly(e, "fromGpu", vec![0], vec![buf_t()], Type::list(t()));
+    poly(e, "fromGpu", vec![0], vec![buf_t()], res(Type::list(t())));
     poly(e, "gpuLength", vec![0], vec![buf_t()], i());
     // [GPU-MAP] / [GPU-FOLD]
     poly(

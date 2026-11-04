@@ -58,9 +58,9 @@ A `filter` stage leaves the kept count unknown until the loop has run, so the bu
 
 This is fusion in the [Futhark](https://futhark-lang.org)/Accelerate sense, and the reason the surface needs no separate buffer builder: the iterator pipeline is one.
 
-### `fromGpu(buffer: GpuBuffer<T>) -> List<T>` — [GPU-BUFFER-TO-LIST]
+### `fromGpu(buffer: GpuBuffer<T>) -> Result<List<T>, Error>` — [GPU-BUFFER-TO-LIST]
 
-Materializes a buffer back into a host list. The element type crosses with the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read back as floats, not as the machine words the list runtime stores them in, and a `GpuBuffer<uint8>` becomes a `List<uint8>` whose words are the zero-extended bytes. Round-tripping is therefore lossless in both directions for every scalar [GPU-BUFFER-ELEM] admits.
+Materializes a buffer back into a host list in `Success`. A failed device download returns `Error` with the original runtime reason and leaves the resident buffer pending so a later read can retry. No scalar is read on that error path, and a valid empty buffer succeeds with an empty list ([FAILURE-EXPLICIT]). Match the result before consuming the list. The element type crosses with the values: a `GpuBuffer<float>` becomes a `List<float>` whose elements read back as floats, not as the machine words the list runtime stores them in, and a `GpuBuffer<uint8>` becomes a `List<uint8>` whose words are the zero-extended bytes. Round-tripping is therefore lossless in both directions for every scalar [GPU-BUFFER-ELEM] admits.
 
 ### `gpuLength(buffer: GpuBuffer<T>) -> int` — [GPU-BUFFER-LENGTH]
 

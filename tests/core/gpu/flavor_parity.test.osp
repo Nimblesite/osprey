@@ -1,3 +1,8 @@
+/// [FAILURE-EXPLICIT] A read error fails the predicate with its reason.
+fn readSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU readback", "success", toString(message)) false }
+}
 fn iotaOutcome(result) = match result { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
 // Aspirational GPU frontend parity. Flavor-equivalent programs must reach the
 // same typed GPU IR, including the full int domain and negative arguments
@@ -9,10 +14,9 @@ fn minimumIntCase() = {
     checkAll("minimum int literal crosses the GPU boundary", [
         gpuLength(buf) == 1,
         (gpuGet(buf, 0) ?: 0) == minimum,
-        (listGet(fromGpu(buf), 0) ?: 0) == minimum
+        readSatisfies(fromGpu(buf), fn(checked0) => (listGet(checked0, 0) ?: 0) == minimum)
     ])
 }
-
 fn negativeIotaCase() = {
     let direct = gpuIota(-3)
     let piped = -7 |> gpuIota()
@@ -35,10 +39,9 @@ fn denseFloatCombinatorsCase() = {
     let zipped = gpuZipWith(buffer, buffer, fn(a, b) => a + b)
     checkAll("dense float32 combinators", [
         gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value) == toFloat32(3.0),
-        join(mapList(fromGpu(scan), toString), ",") == "0.5,1.5,3.0",
-        join(mapList(fromGpu(kept), toString), ",") == "1.0,1.5",
-        join(mapList(fromGpu(zipped), toString), ",") == "1.0,2.0,3.0"
+        readSatisfies(fromGpu(scan), fn(checked0) => join(mapList(checked0, toString), ",") == "0.5,1.5,3.0"),
+        readSatisfies(fromGpu(kept), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,1.5"),
+        readSatisfies(fromGpu(zipped), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,2.0,3.0")
     ])
 }
-
 test("float32 reductions scans filters and zip keep their width", denseFloatCombinatorsCase)

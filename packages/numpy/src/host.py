@@ -46,7 +46,7 @@ class on_host:
         return xs
 
     def to_list(b):
-        return b
+        return Success(value=b)
 
     def device():
         return "host"

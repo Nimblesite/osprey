@@ -154,22 +154,33 @@ pub(super) fn to_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// `fromGpu(buffer)` — materialize a buffer as a list [GPU-BUFFER-TO-LIST].
 /// Elements are scalars, so the builder's kind is unmanaged.
 pub(super) fn from_gpu(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let b = buffer_arg(cg, args, 0)?;
+    let buffer = buffer_arg(cg, args, 0)?;
+    let (status, reason) = read_status(cg, &buffer, "0");
+    let unreadable = cg.emit_reg(format!("icmp slt i32 {status}, 0"));
+    let missing = cg.emit_reg(format!("icmp eq i8* {}, null", buffer.operand));
+    let failed = cg.emit_reg(format!("or i1 {unreadable}, {missing}"));
+    let count = buffer_len(cg, &buffer);
+    let len = cg.emit_reg(format!("select i1 {failed}, i64 0, i64 {count}"));
+    let values = materialize(cg, &buffer, &len)?;
+    crate::result::make_result_if_err_because(
+        cg, values, LType::Ptr, &failed, Some("fromGpu: buffer unavailable"), Some(&reason),
+    )
+}
+
+/// The checked caller supplies zero iterations on Error; its inactive list
+/// payload is never published as Success. Preserve the scalar element owner.
+fn materialize(cg: &mut Codegen, b: &Value, len: &str) -> Result<Value> {
     let bld = crate::collections::list_builder_new_of(cg, "0");
-    let len = buffer_len(cg, &b);
-    let lp = open_range_loop(cg, "0", &len);
-    let elem = buffer_get(cg, &b, &lp.i);
+    let lp = open_range_loop(cg, "0", len);
+    let elem = buffer_get(cg, b, &lp.i);
     // [GPU-BUFFER-TO-LIST]: signed narrow words regain canonical sign extension.
-    let value = super::elem_value(cg, elem, tagged_elem(&b));
+    let value = super::elem_value(cg, elem, tagged_elem(b));
     let word = scalar_word(cg, value, "a fromGpu element")?;
     crate::collections::list_builder_push(cg, &bld, &word.operand, "0");
     close_range_loop(cg, &lp);
-    // The buffer's element type crosses to the list's owner tag: a float buffer
-    // materializes as a `List<float>` that reads back as floats, not as the
-    // IEEE-754 words the uniform element ABI stores [GPU-BUFFER-TO-LIST].
     let sealed = crate::collections::list_builder_seal(cg, &bld);
     Ok(sealed.with_owner(Some(crate::collections::list_owner(
-        tagged_elem(&b).map(crate::llty::scalar_spelling),
+        tagged_elem(b).map(crate::llty::scalar_spelling),
     ))))
 }
 
@@ -178,7 +189,8 @@ pub(super) fn get(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let buffer = buffer_arg(cg, args, 0)?;
     let index = gen_expr(cg, nth(args, 1)?)?;
     let index = crate::conv::as_i64(cg, index)?;
-    let (failed, reason) = read_status(cg, &buffer, &index.operand);
+    let (status, reason) = read_status(cg, &buffer, &index.operand);
+    let failed = cg.emit_reg(format!("icmp sle i32 {status}, 0"));
     let raw = guarded_get(cg, &buffer, &index.operand, &failed);
     let value = super::elem_value(cg, raw, tagged_elem(&buffer));
     let inner = value.ty;
@@ -201,8 +213,7 @@ fn read_status(cg: &mut Codegen, buffer: &Value, index: &str) -> (String, String
         &[&buffer.operand, index],
     );
     let reason = crate::extern_call::take_io_error(cg);
-    let failed = cg.emit_reg(format!("icmp sle i32 {status}, 0"));
-    (failed, reason)
+    (status, reason)
 }
 
 /// Do not evaluate the raw accessor in either error branch. The zero word
