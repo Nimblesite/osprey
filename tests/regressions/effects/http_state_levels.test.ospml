@@ -99,12 +99,9 @@ _ =
     exactArithmetic (\() =>
         handle Persist
             flush snap =>
-                (** A relative path resolves against the PROCESS's working directory, not
-                    the program's, so this lands wherever the corpus was invoked from —
-                    the repo root, for `make test`. `target/` would be no better: it only
-                    exists when that cwd happens to be the root. What the assertions need
-                    is a name no other case writes; where it lands is the caller's, which
-                    is why .gitignore names it. [BUILTIN-FILE-ERRMSG] *)
+                (** Relative, so it lands in the temporary working directory the test run
+                    gets. What the assertions need is a name no other case writes.
+                    [BUILTIN-FILE-ERRMSG] [TESTING-CLI-RUN-SCRATCH] *)
                 saved = writeFile "osprey_http_state_levels.db" snap
                 diskBytes := match saved
                     Success _value => length snap

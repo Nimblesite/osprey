@@ -12,14 +12,23 @@ mod symbols;
 pub(crate) use options::NativeOptions;
 pub(crate) use symbols::remove_temporary;
 
-/// Build and run; only implicit temporary artifacts are removed afterward.
+/// Build and run; only implicit temporary artifacts are removed afterward. A
+/// standalone test file runs in its own temporary working directory, so relative
+/// output never lands in the caller's. [TESTING-CLI-RUN-SCRATCH]
 pub(crate) fn execute_native(
     input: &CompilationInput,
     options: NativeOptions<'_>,
     output: Option<&Path>,
 ) -> Result<u8, ExitCode> {
     let (exe, temporary) = selected_executable(input, options, output)?;
-    let status = Command::new(&exe).status();
+    let mut command = Command::new(&exe);
+    let scratch = crate::test_discovery::is_test_file(Path::new(input.display_path()))
+        .then(|| crate::toolchain::Scratch::new(input.display_path(), "run"))
+        .transpose()?;
+    if let Some(directory) = &scratch {
+        let _ = command.current_dir(&directory.path);
+    }
+    let status = command.status();
     if temporary {
         remove_temporary(&exe);
     }

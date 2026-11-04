@@ -17,7 +17,7 @@ pub(crate) fn discover(path: &Path) -> Vec<PathBuf> {
     out
 }
 
-fn is_test_file(path: &Path) -> bool {
+pub(crate) fn is_test_file(path: &Path) -> bool {
     matches_file_name(path, |name| {
         name.ends_with(".test.osp") || name.ends_with(".test.ospml")
     })
