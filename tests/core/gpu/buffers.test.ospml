@@ -460,6 +460,62 @@ blockBodiedKernelCase () =
         (gpuGet (widened, 2) ?: 9.5) == 1.0
     ]
 
+(** [GPU-BUFFER-ELEM]: one index read back through gpuGet equals the source. *)
+denseRead (buffer, values, i) = match gpuGet (buffer, i)
+    Success value => value == (listGet (values, i) ?: value)
+    Error _ => false
+
+(** [GPU-BUFFER-ELEM]: an out-of-bounds gpuGet errors, never a sentinel. *)
+denseOutOfBounds (buffer, index) = match gpuGet (buffer, index)
+    Error _ => true
+    Success _ => false
+
+(** [GPU-BUFFER-ELEM]: the ML twin uses the same dense element widths and
+    reads each index back through gpuGet. *)
+denseRoundTrip (label, values) =
+    buffer = toGpu values
+    mapped = gpuMap (buffer, \value => value)
+    checkAll label [
+        gpuLength buffer == length values,
+        structuralEquals (fromGpu buffer, values),
+        structuralEquals (fromGpu mapped, values),
+        range (0, length values) |> fold (true, \(ok, i) => ok && denseRead (buffer, values, i)),
+        denseOutOfBounds (buffer, -1),
+        denseOutOfBounds (buffer, length values)
+    ]
+
+denseIntegerWidthsCase () =
+    i8 : List<int8>
+    i8 = [-128, 0, 127]
+    u8 : List<uint8>
+    u8 = [0, 128, 255]
+    i16 : List<int16>
+    i16 = [-32768, 0, 32767]
+    u16 : List<uint16>
+    u16 = [0, 32768, 65535]
+    i32 : List<int32>
+    i32 = [-2147483648, 0, 2147483647]
+    u32 : List<uint32>
+    u32 = [0, 2147483648, 4294967295]
+    denseRoundTrip ("dense int8", i8)
+    denseRoundTrip ("dense uint8", u8)
+    denseRoundTrip ("dense int16", i16)
+    denseRoundTrip ("dense uint16", u16)
+    denseRoundTrip ("dense int32", i32)
+    denseRoundTrip ("dense uint32", u32)
+
+denseWidthsCase () =
+    denseIntegerWidthsCase ()
+    f16 : List<float16>
+    f16 = [-0.5, 0.0, 1.5]
+    f32 : List<float32>
+    f32 = [-0.5, 0.0, 1.5]
+    denseRoundTrip ("dense float16", f16)
+    denseRoundTrip ("dense float32", f32)
+    denseRoundTrip ("dense bool", [true, false, true])
+    denseRoundTrip ("dense int", [-9223372036854775808, 0, 9223372036854775807])
+    denseRoundTrip ("dense float", [-0.5, 0.0, 1.5])
+
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith
@@ -491,3 +547,4 @@ test ("float kernels keep element bits through map and fold", \() => exactArithm
 test ("kernels may change the element scalar type", \() => exactArithmetic (boolKernelCase))
 test ("the copy path stays exact at a hundred thousand elements", \() => exactArithmetic (bigCase))
 test ("a block-bodied kernel keeps its internal let bindings", \() => exactArithmetic (blockBodiedKernelCase))
+test ("every scalar width survives dense storage and round-trips through gpuGet", \() => exactArithmetic (denseWidthsCase))

@@ -25,54 +25,6 @@ negativeIotaCase () =
 test ("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
 test ("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)
 
-denseOutOfBounds (buffer, index) = match gpuGet (buffer, index)
-    Error _ => true
-    Success _ => false
-
-(** [GPU-BUFFER-ELEM]: the ML twin uses the same dense element widths. *)
-denseRoundTrip (label, values) =
-    buffer = toGpu values
-    mapped = gpuMap (buffer, \value => value)
-    checkAll label [
-        gpuLength buffer == length values,
-        structuralEquals (fromGpu buffer, values),
-        structuralEquals (fromGpu mapped, values),
-        denseOutOfBounds (buffer, -1),
-        denseOutOfBounds (buffer, length values)
-    ]
-
-denseIntegerWidthsCase () =
-    i8 : List<int8>
-    i8 = [-128, 0, 127]
-    u8 : List<uint8>
-    u8 = [0, 128, 255]
-    i16 : List<int16>
-    i16 = [-32768, 0, 32767]
-    u16 : List<uint16>
-    u16 = [0, 32768, 65535]
-    i32 : List<int32>
-    i32 = [-2147483648, 0, 2147483647]
-    u32 : List<uint32>
-    u32 = [0, 2147483648, 4294967295]
-    denseRoundTrip ("dense int8", i8)
-    denseRoundTrip ("dense uint8", u8)
-    denseRoundTrip ("dense int16", i16)
-    denseRoundTrip ("dense uint16", u16)
-    denseRoundTrip ("dense int32", i32)
-    denseRoundTrip ("dense uint32", u32)
-
-denseWidthsCase () =
-    denseIntegerWidthsCase ()
-    f16 : List<float16>
-    f16 = [-0.5, 0.0, 1.5]
-    f32 : List<float32>
-    f32 = [-0.5, 0.0, 1.5]
-    denseRoundTrip ("dense float16", f16)
-    denseRoundTrip ("dense float32", f32)
-    denseRoundTrip ("dense bool", [true, false, true])
-    denseRoundTrip ("dense int", [-9223372036854775808, 0, 9223372036854775807])
-    denseRoundTrip ("dense float", [-0.5, 0.0, 1.5])
-
 denseFloatCombinatorsCase () =
     values : List<float32>
     values = [0.5, 1.0, 1.5]
@@ -87,5 +39,4 @@ denseFloatCombinatorsCase () =
         join (mapList (fromGpu zipped, toString), ",") == "1.0,2.0,3.0"
     ]
 
-test ("every scalar width survives dense storage and a generic identity kernel", denseWidthsCase)
 test ("float32 reductions scans filters and zip keep their width", denseFloatCombinatorsCase)
