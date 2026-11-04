@@ -14,11 +14,13 @@
 // merely looks like a pointer keeps an object alive (sound — a reachable object
 // is never freed) but can never corrupt it (the collector never moves objects).
 //
-// Soundness scope: collection runs ONLY while the initial thread is the sole
-// allocator. The first allocation from another thread permanently disables
-// collection [MEM-FIBER-ISOLATION]. Every allocation and collection holds the
-// heap lock after the runtime announces multithreaded execution, so disabling
-// and the heap table remain race-free.
+// Soundness scope: collection runs only while the allocator set is the initial
+// thread plus effect continuation threads, which pass one baton and never run
+// together, and only while every other baton thread is parked [MEM-EFFECT-BATON].
+// The first allocation from any other thread permanently disables collection
+// [MEM-FIBER-ISOLATION]. Every allocation and collection holds the heap lock
+// after the runtime announces multithreaded execution, so disabling and the heap
+// table remain race-free.
 
 #include "memory_hooks.h"
 #include <pthread.h>
@@ -218,6 +220,63 @@ static void gc_scan_range(uintptr_t lo, uintptr_t hi) {
   }
 }
 
+// --- baton threads and scanned blocks [MEM-EFFECT-BATON] -----------------------
+
+typedef struct OspGcBaton {
+  uintptr_t base;
+  uintptr_t parked_at; // lowest live stack address while parked; 0 while running
+  struct OspGcBaton *next;
+} OspGcBaton;
+
+typedef struct OspGcScanned {
+  struct OspGcScanned *prev, *next;
+  size_t size;
+  uint64_t pad;
+} OspGcScanned;
+
+// The initial thread's record lives here so nothing allocates to park it.
+static OspGcBaton g_main_baton;
+static OspGcBaton *g_batons = NULL;
+static OspGcScanned *g_scanned = NULL;
+static _Thread_local OspGcBaton *g_self_baton = NULL;
+
+static OspGcBaton *gc_my_baton(void) {
+  return g_init && pthread_equal(pthread_self(), g_main) ? &g_main_baton : g_self_baton;
+}
+
+// Whether this thread may trace now: it holds the baton and nobody else can be
+// mutating. A thread that is mid-handoff only delays the collection to the next
+// allocation; it is never scanned while running.
+static int gc_may_collect(void) {
+  const OspGcBaton *self = gc_my_baton();
+  if (g_off || self == NULL) {
+    return 0;
+  }
+  if (self != &g_main_baton && g_main_baton.parked_at == 0) {
+    return 0;
+  }
+  for (const OspGcBaton *b = g_batons; b; b = b->next) {
+    if (b != self && b->parked_at == 0) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+__attribute__((unused)) static void gc_scan_others(const OspGcBaton *self) {
+  if (self != &g_main_baton) {
+    gc_scan_range(g_main_baton.parked_at, g_main_baton.base);
+  }
+  for (const OspGcBaton *b = g_batons; b; b = b->next) {
+    if (b != self) {
+      gc_scan_range(b->parked_at, b->base);
+    }
+  }
+  for (const OspGcScanned *s = g_scanned; s; s = s->next) {
+    gc_scan_range((uintptr_t)(s + 1), (uintptr_t)(s + 1) + s->size);
+  }
+}
+
 #ifdef OSP_SYMBOLIC
 #include "memory_gc_symbolic_roots.h"
 #else
@@ -308,6 +367,7 @@ static void gc_init_main(void) {
 #ifndef OSP_SYMBOLIC
   g_base = gc_stack_base();
 #endif
+  g_main_baton.base = g_base;
   const char *mb = getenv("OSPREY_GC_HEAP_MB");
   if (mb) {
     long v = strtol(mb, NULL, 10);
@@ -333,10 +393,14 @@ static void gc_init_main(void) {
 static void *gc_managed_alloc(size_t size) {
   if (!g_init) {
     gc_init_main();
-  } else if (!pthread_equal(pthread_self(), g_main)) {
-    g_off = 1; // a second thread allocates: disable collection forever
+  } else if (gc_my_baton() == NULL && !g_off) {
+    g_off = 1; // a thread outside the baton allocates: disable collection forever
+    if (g_debug) {
+      fprintf(stderr, "[osp-gc] collection disabled: a non-baton thread allocated after %zu collections\n",
+              g_ncollect);
+    }
   }
-  if (!g_off && g_bytes > g_thresh) {
+  if (g_bytes > g_thresh && gc_may_collect()) {
     gc_collect_locked();
   }
   void *p = malloc(size ? size : 1);
@@ -412,6 +476,110 @@ void osp_mem_immortal(void *p) { (void)p; }
 void osp_mem_notify_multithreaded(void) {
   atomic_store_explicit(&g_gc_mt, 1, memory_order_release);
 }
+void *osp_mem_scanned_alloc(size_t size) {
+  OspGcScanned *s = (OspGcScanned *)malloc(sizeof(OspGcScanned) + size);
+  if (s == NULL) {
+    return NULL;
+  }
+  memset(s, 0, sizeof(OspGcScanned) + size);
+  s->size = size;
+  gc_lock();
+  s->next = g_scanned;
+  if (g_scanned) {
+    g_scanned->prev = s;
+  }
+  g_scanned = s;
+  gc_unlock();
+  return s + 1;
+}
+
+void osp_mem_scanned_free(void *block) {
+  if (block == NULL) {
+    return;
+  }
+  OspGcScanned *s = (OspGcScanned *)block - 1;
+  gc_lock();
+  if (s->prev) {
+    s->prev->next = s->next;
+  } else {
+    g_scanned = s->next;
+  }
+  if (s->next) {
+    s->next->prev = s->prev;
+  }
+  gc_unlock();
+  free(s);
+}
+
+void *osp_mem_scanned_realloc(void *block, size_t size) {
+  void *grown = osp_mem_scanned_alloc(size);
+  if (grown != NULL && block != NULL) {
+    size_t old = ((OspGcScanned *)block - 1)->size;
+    memcpy(grown, block, old < size ? old : size);
+    osp_mem_scanned_free(block);
+  }
+  return grown;
+}
+
+// The host fixes the initial thread before any body thread can allocate first.
+void osp_mem_baton_prepare(void) {
+  gc_lock();
+  if (!g_init) {
+    gc_init_main();
+  }
+  gc_unlock();
+}
+
+void osp_mem_baton_thread_enter(void) {
+  OspGcBaton *self = (OspGcBaton *)calloc(1, sizeof(OspGcBaton));
+  if (self == NULL) {
+    return; // Unregistered: its first allocation disables collection, which is safe.
+  }
+#ifndef OSP_SYMBOLIC
+  self->base = gc_stack_base();
+#endif
+  gc_lock();
+  self->next = g_batons;
+  g_batons = self;
+  g_self_baton = self;
+  gc_unlock();
+}
+
+void osp_mem_baton_thread_exit(void) {
+  OspGcBaton *self = g_self_baton;
+  if (self == NULL) {
+    return;
+  }
+  gc_lock();
+  for (OspGcBaton **link = &g_batons; *link; link = &(*link)->next) {
+    if (*link == self) {
+      *link = self->next;
+      break;
+    }
+  }
+  g_self_baton = NULL;
+  gc_unlock();
+  free(self);
+}
+
+void osp_mem_baton_park(const void *lowest) {
+  gc_lock();
+  OspGcBaton *self = gc_my_baton();
+  if (self != NULL) {
+    self->parked_at = (uintptr_t)lowest;
+  }
+  gc_unlock();
+}
+
+void osp_mem_baton_unpark(void) {
+  gc_lock();
+  OspGcBaton *self = gc_my_baton();
+  if (self != NULL) {
+    self->parked_at = 0;
+  }
+  gc_unlock();
+}
+
 // Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
 void osp_mem_set_layout(void *p, int64_t meta) {
   (void)p;
@@ -420,7 +588,7 @@ void osp_mem_set_layout(void *p, int64_t meta) {
 
 void osp_collect(void) {
   gc_lock();
-  if (g_init && !g_off && pthread_equal(pthread_self(), g_main)) {
+  if (g_init && gc_may_collect()) {
     gc_collect_locked();
   }
   gc_unlock();

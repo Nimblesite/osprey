@@ -87,11 +87,12 @@ static void gc_scan_roots(void) {
 
   volatile uintptr_t probe = 0;
   uintptr_t sp = (uintptr_t)&probe;
-  uintptr_t lo = sp < g_base ? sp : g_base;
-  uintptr_t hi = sp < g_base ? g_base : sp;
+  const OspGcBaton *self = gc_my_baton();
+  uintptr_t lo = sp < self->base ? sp : self->base;
+  uintptr_t hi = sp < self->base ? self->base : sp;
   gc_scan_range(lo, hi);
   gc_scan_range((uintptr_t)&regs, (uintptr_t)&regs + sizeof(regs));
   gc_scan_data();
-
+  gc_scan_others(self);
 }
 #endif

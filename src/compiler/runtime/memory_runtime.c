@@ -23,6 +23,7 @@
 
 #include <stdint.h>
 #include <stdlib.h>
+#include "memory_baton_passthrough.h"
 
 void *osp_alloc(int64_t size) { return malloc((size_t)size); }
 

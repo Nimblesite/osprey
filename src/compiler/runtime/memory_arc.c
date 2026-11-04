@@ -29,6 +29,7 @@
 // [MEM-FIBER-ISOLATION].
 
 #include "memory_hooks.h"
+#include "memory_baton_passthrough.h"
 #include "memory_pool.h"
 
 #ifndef __wasi__

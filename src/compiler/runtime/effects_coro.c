@@ -19,6 +19,29 @@
 #include "effects_runtime.h"
 #include "memory_hooks.h"
 #include "profiler_runtime.h"
+#include "effects_scanned.h"
+
+#include <setjmp.h>
+
+// A deep but finite body recursion must end in its own result, not a bus error
+// at the 512 KiB a default secondary thread gets. Address space, committed only
+// as it is touched; the main thread's own limit is 8 MiB.
+#define OSPREY_CORO_STACK_BYTES ((size_t)256u << 20)
+
+// Hand the baton over and sleep. The spilled registers sit at the bottom of what
+// the collector scans, so a pointer living only in a callee-saved register stays
+// a root while this thread is parked [MEM-EFFECT-BATON].
+static void baton_wait(pthread_cond_t *cond, pthread_mutex_t *lock) {
+    jmp_buf registers;
+#if defined(__APPLE__)
+    (void)_setjmp(registers);
+#else
+    (void)setjmp(registers);
+#endif
+    osp_mem_baton_park(&registers);
+    pthread_cond_wait(cond, lock);
+    osp_mem_baton_unpark();
+}
 
 // The payload of one in-flight `perform`, allocated per suspension and sized by
 // the operation's REAL arity.
@@ -168,6 +191,8 @@ void *__osprey_coro_new(void *env) {
 static void coro_thread_cleanup(void *raw) {
     CoroStartArgs *args = raw;
     __osprey_handler_stack_cleanup();
+    // Before `done` wakes the host: an exiting stack must never block a collection.
+    osp_mem_baton_thread_exit();
     osp_prof_thread_unregister();
     // Implements [EFFECTS-FINALIZATION]: abandonment must wake a nested
     // continuation's waiter so the same unwind reaches every ancestor.
@@ -189,6 +214,7 @@ static void *__osprey_coro_thread(void *raw) {
     // Effect continuations run on their own pthread; register so profiler
     // samples attribute to them distinctly [PROF-COLLECT-REGISTRY].
     osp_prof_thread_register(-1, "effect");
+    osp_mem_baton_thread_enter();
     if (args->snapshot != NULL) {
         __osprey_handler_restore(args->snapshot);
         args->snapshot = NULL;
@@ -222,8 +248,17 @@ void __osprey_coro_start(void *raw, int64_t (*body)(void *), void *body_env,
     // pthread_create is the happens-before barrier. Without this every
     // resumable effect raced ARC's refcounts. [MEM-BACKENDS]
     osp_mem_notify_multithreaded();
+    osp_mem_baton_prepare();
 
-    int rc = pthread_create(&coro->thread, NULL, __osprey_coro_thread, args);
+    pthread_attr_t attributes;
+    int rc = pthread_attr_init(&attributes);
+    if (rc == 0) {
+        rc = pthread_attr_setstacksize(&attributes, OSPREY_CORO_STACK_BYTES);
+        if (rc == 0) {
+            rc = pthread_create(&coro->thread, &attributes, __osprey_coro_thread, args);
+        }
+        pthread_attr_destroy(&attributes);
+    }
     if (rc != 0) {
         free(args);
         fprintf(stderr, "FATAL: Failed to start effect continuation thread\n");
@@ -232,7 +267,7 @@ void __osprey_coro_start(void *raw, int64_t (*body)(void *), void *body_env,
     pthread_mutex_lock(&coro->lock);
     coro->started = true;
     while (!coro->suspended && !coro->done) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
+        baton_wait(&coro->cond, &coro->lock);
     }
     finish_wait(coro);
 }
@@ -264,7 +299,7 @@ int64_t __osprey_coro_suspend(void *raw, int64_t op_id, const int64_t *args, con
     // re-suspension, so a queued perform is dispatched as soon as the current
     // one's resume value is consumed.
     while (coro->in_flight && !coro->abort) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
+        baton_wait(&coro->cond, &coro->lock);
     }
     if (coro->abort) {
         pthread_mutex_unlock(&coro->lock);
@@ -279,7 +314,7 @@ int64_t __osprey_coro_suspend(void *raw, int64_t op_id, const int64_t *args, con
     coro->suspended = true;
     pthread_cond_broadcast(&coro->cond);
     while (coro->suspended && !coro->abort) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
+        baton_wait(&coro->cond, &coro->lock);
     }
     if (coro->abort) {
         pthread_mutex_unlock(&coro->lock);
@@ -363,7 +398,7 @@ int64_t __osprey_coro_resume(void *raw, int64_t value) {
     coro->suspended = false;
     pthread_cond_broadcast(&coro->cond);
     while (!coro->suspended && !coro->done) {
-        pthread_cond_wait(&coro->cond, &coro->lock);
+        baton_wait(&coro->cond, &coro->lock);
     }
     int64_t result = coro->done ? coro->result : 0;
     finish_wait(coro);

@@ -22,6 +22,7 @@
 
 #include "effects_runtime.h"
 #include "memory_hooks.h"
+#include "effects_scanned.h"
 
 // Maximum handler stack depth per fiber
 #define MAX_HANDLER_STACK_DEPTH 1024

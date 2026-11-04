@@ -43,6 +43,12 @@ with LLVM allocator/free attributes, allowing `-O2` to remove a non-escaping
 allocation and release. The unmanaged `none` runtime also frees that unique value when
 the pair survives optimization; tracing GC leaves it for the collector.
 
+## Effect Continuation Threads [MEM-EFFECT-BATON]
+
+A resumable handler runs its body on its own thread and passes one baton with its host: only the holder runs, and the others wait on a condvar. Tracing stays on across that handoff. A collection runs only while every other baton thread is parked, and scans each parked stack from its spilled registers up. Runtime blocks that hold managed pointers no stack names, such as handler stacks and operation mailboxes, are scanned as roots until they're freed. A thread outside the baton that allocates still disables collection for good, as [MEM-FIBER-ISOLATION] requires, and `OSPREY_GC_DEBUG=1` reports when that happens.
+
+A body thread has 256 MiB of address space for its stack, committed as it's touched, so deep recursion inside a handler behaves like deep recursion outside one.
+
 ## Fiber Boundary Ownership [MEM-FIBER-ISOLATION]
 
 `spawn` allocates a capture cell for that spawn and transfers one reference to
