@@ -1,7 +1,15 @@
-(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
-withIndices (n, work) = match gpuIota n
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
     Success value => work value
-    Error message => check "index allocation" "success" (toString message)
+    Error message => check ("GPU allocation", "success", toString message)
+(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
+withIndices (n, work) = withBuffer (gpuIota n, work)
 // Rasterisation on the GPU surface: a fragment-shader-shaped renderer, and
 // the addressing algebra every rasteriser is built out of. Every scene is one
 // pure kernel dispatched over `gpuIota (width * height)` — the flat pixel grid
@@ -99,7 +107,7 @@ edgeFn (ax, ay, bx, by, px, py) =
     (((px - ax) ) * ((by - ay) ) ) - (((py - ay) ) * ((bx - ax) ) )
 insideTri (ax, ay, bx, by, cx, cy, px, py) =
     (edgeFn (ax, ay, bx, by, px, py) <= 0 && edgeFn (bx, by, cx, cy, px, py) <= 0
-     && edgeFn (cx, cy, ax, ay, px, py) <= 0)
+        && edgeFn (cx, cy, ax, ay, px, py) <= 0)
 coverBuf (ax, ay, bx, by, cx, cy, indices64) = (indices64 |> gpuMap (\idx =>
     bit (insideTri (ax, ay, bx, by, cx, cy, colOf (idx, tileEdge ()), rowOf (idx, tileEdge ())))))
 (** spanBit lights a pixel on scanline `sy` between columns x0 and x1 inclusive — a scanline filler's innermost test — spanBuf fills one such span across a tile, and
@@ -176,22 +184,22 @@ tile pixels = frameText (pixels |> gpuMap fullBright, tileEdge (), tileEdge ())
 (** gallery renders all three layers and their buffer statistics as one frame of output — one dispatch per scene, one elementwise pass to composite — then the raster
     primitives at a size every pixel can be read at: both windings of a triangle, spans clipped and unclipped, a magnified texel block, and the quad whose every pixel
     is asserted below. *)
-gallery (indices1536, indices64, indices16) =
+gallery (indices1536, indices64, indices16, texels) =
     mandel = mandelFrame(indices1536)
     sphere = sphereFrame(indices1536)
     composite = gpuZipWith (mandel, sphere, overLayer)
     ("== mandelbrot ${gpuLength mandel}px on ${gpuDevice ()} ==\n${canvas mandel}" +
-     "== lambert sphere ==\n${canvas sphere}" +
-     "== composite ==\n${canvas composite}" +
-     "interior=${gpuLength (mandel |> gpuFilter interiorPixel)} " +
-     "lit=${gpuLength (sphere |> gpuFilter litPixel)} " +
-     "light=${sphere |> gpuFold 0 addLevels}" +
-     "\n== triangle ==\n${tile (triCover(indices64))}" +
-     "== inverted triangle ==\n${tile (coverBuf(1, 6, 6, 1, 1, 1, indices64))}" +
-     "== span y=3 x=2..5 ==\n${tile (spanBuf(3, 2, 5, indices64))}" +
-     "== span clipped from -4..2 ==\n${tile (clampedSpan(5, (0 - 4), 2, indices64))}" +
-     "== upscaled 2x2 ==\n${frameText (upscale2(toGpu [1, 4, 7, 9], 2, 2, indices16), 4, 4)}" +
-     "== quad ==\n${frameText (quadFrame(indices16), quadEdge (), quadEdge ())}")
+        "== lambert sphere ==\n${canvas sphere}" +
+        "== composite ==\n${canvas composite}" +
+        "interior=${gpuLength (mandel |> gpuFilter interiorPixel)} " +
+        "lit=${gpuLength (sphere |> gpuFilter litPixel)} " +
+        "light=${sphere |> gpuFold 0 addLevels}" +
+        "\n== triangle ==\n${tile (triCover(indices64))}" +
+        "== inverted triangle ==\n${tile (coverBuf(1, 6, 6, 1, 1, 1, indices64))}" +
+        "== span y=3 x=2..5 ==\n${tile (spanBuf(3, 2, 5, indices64))}" +
+        "== span clipped from -4..2 ==\n${tile (clampedSpan(5, (0 - 4), 2, indices64))}" +
+        "== upscaled 2x2 ==\n${frameText (upscale2(texels, 2, 2, indices16), 4, 4)}" +
+        "== quad ==\n${frameText (quadFrame(indices16), quadEdge (), quadEdge ())}")
 (** dispatchCase pins the grid one dispatch covers at every raster size here, plus the empty dispatch every combinator survives and three gathers that leave the buffer
     entirely. *)
 dispatchCase () = withIndices (0, \indices0 => withIndices (8, \indices8 => withIndices (16, \indices16 => withIndices (64, \indices64 => withIndices (1536, \indices1536 => dispatchWith (indices0, indices8, indices16, indices64, indices1536))))))
@@ -290,9 +298,8 @@ spanWith (indices64) =
         rowText (spanBuf(3, 2, 5, indices64) |> gpuMap fullBright, tileEdge (), 2) == "        "
     ]
 (** saturateCase pins channel arithmetic at both rails: nothing wraps, nothing leaves [0, 255], and the same clamps hold elementwise over buffers. *)
-saturateCase () =
-    base = toGpu [200, 0, 128, 255, 40]
-    addend = toGpu [100, 0, 200, 1, 10]
+saturateCase () = withBuffer(toGpu ([200, 0, 128, 255, 40]), \base => withBuffer(toGpu ([100, 0, 200, 1, 10]), \addend => saturateCaseUploaded(base, addend)))
+saturateCaseUploaded (base, addend) =
     checkAll "saturation" [
         channelAdd (1, 1) == 2, channelAdd (0, 0) == 0, channelAdd (255, 0) == 255,
         channelAdd (254, 1) == 255, channelAdd (255, 1) == 255, channelAdd (255, 255) == 255,
@@ -308,41 +315,47 @@ saturateCase () =
     degenerate images. *)
 samplingCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => withIndices (16, \indices16 => samplingWith (indices0, indices4, indices16))))
 samplingWith (indices0, indices4, indices16) =
-    tex = toGpu [1, 2, 3, 4]
-    big = upscale2(tex, 2, 2, indices16)
-    checkAll "sampling" [
-        sampleClamped (tex, 2, 2, 0, 0) == 1, sampleClamped (tex, 2, 2, 1, 0) == 2,
-        sampleClamped (tex, 2, 2, 0, 1) == 3, sampleClamped (tex, 2, 2, 1, 1) == 4,
-        sampleClamped (tex, 2, 2, (0 - 5) , (0 - 5) ) == 1,
-        sampleClamped (tex, 2, 2, 9, 9) == 4, sampleClamped (tex, 2, 2, 9, 0) == 2,
-        sampleClamped (tex, 2, 2, 0, 9) == 3, sampleClamped (tex, 2, 2, (0 - 1) , 9) == 3,
-        sampleClamped (toGpu [7], 1, 1, 5, 5) == 7, sampleClamped (toGpu [5, 6, 7], 3, 1, 2, 4) == 7,
-        sampleClamped (toGpu [5, 6, 7], 1, 3, 4, 2) == 7, gpuLength big == 16,
-        texel (big, 0) == 1, texel (big, 1) == 1, texel (big, 2) == 2, texel (big, 3) == 2,
-        texel (big, 4) == 1, texel (big, 5) == 1, texel (big, 6) == 2, texel (big, 7) == 2,
-        texel (big, 8) == 3, texel (big, 9) == 3, texel (big, 10) == 4, texel (big, 11) == 4,
-        texel (big, 12) == 3, texel (big, 13) == 3, texel (big, 14) == 4, texel (big, 15) == 4,
-        total big == 40, gpuLength (upscale2(toGpu [7], 1, 1, indices4)) == 4,
-        total (upscale2(toGpu [7], 1, 1, indices4)) == 28, gpuLength (upscale2(indices0, 0, 0, indices0)) == 0
-    ]
+    match toGpu ([1, 2, 3, 4])
+        Success value =>
+            tex = value
+            big = upscale2(tex, 2, 2, indices16)
+            checkAll "sampling" [
+                sampleClamped (tex, 2, 2, 0, 0) == 1, sampleClamped (tex, 2, 2, 1, 0) == 2,
+                sampleClamped (tex, 2, 2, 0, 1) == 3, sampleClamped (tex, 2, 2, 1, 1) == 4,
+                sampleClamped (tex, 2, 2, (0 - 5) , (0 - 5) ) == 1,
+                sampleClamped (tex, 2, 2, 9, 9) == 4, sampleClamped (tex, 2, 2, 9, 0) == 2,
+                sampleClamped (tex, 2, 2, 0, 9) == 3, sampleClamped (tex, 2, 2, (0 - 1) , 9) == 3,
+                gpuSatisfies (toGpu ([7]), \uploaded7 => sampleClamped (uploaded7, 1, 1, 5, 5) == 7), gpuSatisfies (toGpu ([5, 6, 7]), \uploaded6 => sampleClamped (uploaded6, 3, 1, 2, 4) == 7),
+                gpuSatisfies (toGpu ([5, 6, 7]), \uploaded5 => sampleClamped (uploaded5, 1, 3, 4, 2) == 7), gpuLength big == 16,
+                texel (big, 0) == 1, texel (big, 1) == 1, texel (big, 2) == 2, texel (big, 3) == 2,
+                texel (big, 4) == 1, texel (big, 5) == 1, texel (big, 6) == 2, texel (big, 7) == 2,
+                texel (big, 8) == 3, texel (big, 9) == 3, texel (big, 10) == 4, texel (big, 11) == 4,
+                texel (big, 12) == 3, texel (big, 13) == 3, texel (big, 14) == 4, texel (big, 15) == 4,
+                total big == 40, gpuSatisfies (toGpu ([7]), \uploaded4 => gpuLength (upscale2(uploaded4, 1, 1, indices4)) == 4),
+                gpuSatisfies (toGpu ([7]), \uploaded3 => total (upscale2(uploaded3, 1, 1, indices4)) == 28), gpuLength (upscale2(indices0, 0, 0, indices0)) == 0
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** gatherCase pins row and column addressing over a non-square raster: transpose by gather alone, its involution, the reductions it turns into each other, and a prefix
     scan read at each scanline boundary. *)
 gatherCase () = withIndices (1, \indices1 => withIndices (2, \indices2 => withIndices (3, \indices3 => withIndices (6, \indices6 => withIndices (64, \indices64 => gatherWith (indices1, indices2, indices3, indices6, indices64))))))
 gatherWith (indices1, indices2, indices3, indices6, indices64) =
-    src = toGpu [1, 2, 3, 4, 5, 6]
-    flipped = transposeOf(src, 3, 2, indices6)
-    running = triCover(indices64) |> gpuScan 0 addLevels
-    checkAll "gather" [
-        gpuLength flipped == 6, texel (flipped, 0) == 1, texel (flipped, 1) == 4,
-        texel (flipped, 2) == 2, texel (flipped, 3) == 5, texel (flipped, 4) == 3, texel (flipped, 5) == 6,
-        total (gpuZipWith (transposeOf(flipped, 2, 3, indices6), src, channelSub)) == 0,
-        texel (rowSums(src, 3, indices2), 0) == 6, texel (rowSums(src, 3, indices2), 1) == 15,
-        texel (rowSums(flipped, 2, indices3), 0) == 5, texel (rowSums(flipped, 2, indices3), 1) == 7,
-        texel (rowSums(flipped, 2, indices3), 2) == 9,
-        rowTotal (src, 3, 0, 0) == 6, rowTotal (src, 6, 0, 0) == 21, rowTotal (src, 1, 4, 0) == 5,
-        texel (transposeOf(toGpu [9], 1, 1, indices1), 0) == 9, texel (running, 7) == 0, texel (running, 15) == 6,
-        texel (running, 23) == 11, texel (running, 63) == 21
-    ]
+    match toGpu ([1, 2, 3, 4, 5, 6])
+        Success value =>
+            src = value
+            flipped = transposeOf(src, 3, 2, indices6)
+            running = triCover(indices64) |> gpuScan 0 addLevels
+            checkAll "gather" [
+                gpuLength flipped == 6, texel (flipped, 0) == 1, texel (flipped, 1) == 4,
+                texel (flipped, 2) == 2, texel (flipped, 3) == 5, texel (flipped, 4) == 3, texel (flipped, 5) == 6,
+                total (gpuZipWith (transposeOf(flipped, 2, 3, indices6), src, channelSub)) == 0,
+                texel (rowSums(src, 3, indices2), 0) == 6, texel (rowSums(src, 3, indices2), 1) == 15,
+                texel (rowSums(flipped, 2, indices3), 0) == 5, texel (rowSums(flipped, 2, indices3), 1) == 7,
+                texel (rowSums(flipped, 2, indices3), 2) == 9,
+                rowTotal (src, 3, 0, 0) == 6, rowTotal (src, 6, 0, 0) == 21, rowTotal (src, 1, 4, 0) == 5,
+                gpuSatisfies (toGpu ([9]), \uploaded1 => texel (transposeOf(uploaded1, 1, 1, indices1), 0) == 9), texel (running, 7) == 0, texel (running, 15) == 6,
+                texel (running, 23) == 11, texel (running, 63) == 21
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** quadCase is the whole small pipeline pinned pixel by pixel: two kernels over one index grid, composited, read back at all sixteen positions and rendered as text —
     nothing here is a spot check. *)
 quadCase () = withIndices (0, \indices0 => withIndices (16, \indices16 => quadWith (indices0, indices16)))
@@ -408,7 +421,7 @@ compositeWith (indices0, indices16, indices1536) =
         gpuLength (gpuZipWith (mandel, indices0, overLayer)) == 0,
         gpuLength (gpuZipWith (indices16, sphere, overLayer)) == 16
     ]
-exactArithmetic (\() => withIndices (1536, \indices1536 => withIndices (64, \indices64 => withIndices (16, \indices16 => print (gallery (indices1536, indices64, indices16))))))
+exactArithmetic (\() => withBuffer (toGpu ([1, 4, 7, 9]), \texels => withIndices (1536, \indices1536 => withIndices (64, \indices64 => withIndices (16, \indices16 => print (gallery (indices1536, indices64, indices16, texels)))))))
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith

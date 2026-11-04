@@ -1,68 +1,95 @@
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
+    Success value => work value
+    Error message => check ("GPU allocation", "success", toString message)
 // Kernel-frontier conformance ([GPU-KERNEL-ELEM-TYPING],
 // [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below is
 // intentionally the ML spelling required for parity with Default block bodies.
 
 addFloats (a, x) = a + x
-
 plus (a, x) = a + x
-
 atFloat (xs, i) = gpuGet (xs, i) ?: 0.0
-
 (** Deliberately unannotated: the concrete GpuBuffer<float> specialization and
     recursive self-call must be emitted from the call site. *)
 rowDot (matrix, vector, cols, row, col) = match col == cols
     true => 0.0
     false => (atFloat (matrix, (((row * cols) ) + col) ) * atFloat (vector, col)
         + rowDot (matrix, vector, cols, row, (col + 1) ))
-
 multiplicationOrderCase () =
     t = 2.0
-    xs = toGpu [1.0, 2.0]
-    ys = toGpu [3.0, 4.0]
-    captureFirst = gpuZipWith (xs, ys, \(x, y) => t * x * y)
-    captureLast = gpuZipWith (xs, ys, \(x, y) => x * y * t)
-    checkAll "buffer slots type every multiplication order" [
-        (captureFirst |> gpuFold 0.0 addFloats) == 22.0,
-        (captureLast |> gpuFold 0.0 addFloats) == 22.0,
-        (gpuGet (captureFirst, 0) ?: 0.0) == 6.0,
-        (gpuGet (captureLast, 1) ?: 0.0) == 16.0
-    ]
+    match toGpu ([1.0, 2.0])
+        Success value =>
+            xs = value
+            match toGpu ([3.0, 4.0])
+                Success value =>
+                    ys = value
+                    captureFirst = gpuZipWith (xs, ys, \(x, y) => t * x * y)
+                    captureLast = gpuZipWith (xs, ys, \(x, y) => x * y * t)
+                    checkAll "buffer slots type every multiplication order" [
+                        (captureFirst |> gpuFold 0.0 addFloats) == 22.0,
+                        (captureLast |> gpuFold 0.0 addFloats) == 22.0,
+                        (gpuGet (captureFirst, 0) ?: 0.0) == 6.0,
+                        (gpuGet (captureLast, 1) ?: 0.0) == 16.0
+                    ]
 
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 genericCombineCase () =
-    xs = toGpu [1.0, 2.0, 3.0]
-    checkAll "named generic float combines specialize from buffer slots" [
-        (xs |> gpuFold 0.0 plus) == 6.0,
-        (gpuGet (xs |> gpuScan 0.0 plus, 2) ?: 0.0) == 6.0
-    ]
+    match toGpu ([1.0, 2.0, 3.0])
+        Success value =>
+            xs = value
+            checkAll "named generic float combines specialize from buffer slots" [
+                (xs |> gpuFold 0.0 plus) == 6.0,
+                (gpuGet (xs |> gpuScan 0.0 plus, 2) ?: 0.0) == 6.0
+            ]
 
+        Error message => check ("GPU allocation", "success", toString message)
 recursiveHelperCase () = match gpuIota 2
     Error message => check "index allocation" "success" (toString message)
     Success value =>
         indices = value
-        matrix = toGpu [1.0, 2.0, 3.0, 4.0]
-        vector = toGpu [10.0, 20.0]
-        rows = indices |> gpuMap (\row => rowDot (matrix, vector, 2, row, 0))
-        checkAll "recursive GPU helpers monomorphize from their call site" [
-            gpuLength rows == 2,
-            (gpuGet (rows, 0) ?: 0.0) == 50.0,
-            (gpuGet (rows, 1) ?: 0.0) == 110.0,
-            (rows |> gpuFold 0.0 addFloats) == 160.0
-        ]
+        match toGpu ([1.0, 2.0, 3.0, 4.0])
+            Success value =>
+                uploaded1 = value
+                matrix = uploaded1
+                match toGpu ([10.0, 20.0])
+                    Success value =>
+                        uploaded2 = value
+                        vector = uploaded2
+                        rows = indices |> gpuMap (\row => rowDot (matrix, vector, 2, row, 0))
+                        checkAll "recursive GPU helpers monomorphize from their call site" [
+                            gpuLength rows == 2,
+                            (gpuGet (rows, 0) ?: 0.0) == 50.0,
+                            (gpuGet (rows, 1) ?: 0.0) == 110.0,
+                            (rows |> gpuFold 0.0 addFloats) == 160.0
+                        ]
 
+                    Error message => check ("GPU allocation", "success", toString message)
+
+            Error message => check ("GPU allocation", "success", toString message)
 blockBodyCase () =
     t = 2.0
-    xs = toGpu [1.0, 2.0, 3.0]
-    mapped = xs |> gpuMap (\x =>
-        y = t * x
-        y + t)
-    checkAll "block-bodied kernels preserve local bindings" [
-        gpuLength mapped == 3,
-        (gpuGet (mapped, 0) ?: 0.0) == 4.0,
-        (gpuGet (mapped, 1) ?: 0.0) == 6.0,
-        (gpuGet (mapped, 2) ?: 0.0) == 8.0,
-        (mapped |> gpuFold 0.0 addFloats) == 18.0
-    ]
+    match toGpu ([1.0, 2.0, 3.0])
+        Success value =>
+            xs = value
+            mapped = xs |> gpuMap (\x =>
+                y = t * x
+                y + t)
+            checkAll "block-bodied kernels preserve local bindings" [
+                gpuLength mapped == 3,
+                (gpuGet (mapped, 0) ?: 0.0) == 4.0,
+                (gpuGet (mapped, 1) ?: 0.0) == 6.0,
+                (gpuGet (mapped, 2) ?: 0.0) == 8.0,
+                (mapped |> gpuFold 0.0 addFloats) == 18.0
+            ]
 
+        Error message => check ("GPU allocation", "success", toString message)
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith
@@ -77,29 +104,38 @@ exactArithmetic work =
             0
     work ()
 
-
 test ("float kernel slots type both multiplication orders", \() => exactArithmetic (multiplicationOrderCase))
 test ("named generic float combines specialize from buffer slots", \() => exactArithmetic (genericCombineCase))
 test ("unannotated recursive helpers are valid GPU kernels", \() => exactArithmetic (recursiveHelperCase))
 test ("block-bodied GPU kernels keep local bindings", \() => exactArithmetic (blockBodyCase))
-
 builtinMapCase () =
-    floats = gpuMap (toGpu [9007199254740993, -7]) toFloat
-    positive = gpuMap (toGpu [-1.5, -0.0, 2.25]) abs
-    abs = \x => x * 2.0
-    shadowed = gpuMap (toGpu [3.0]) abs
-    checkAll "builtin maps preserve scalar types and lexical shadowing" [
-        (gpuGet (floats, 0) ?: 0.0) == 9007199254740992.0,
-        (gpuGet (floats, 1) ?: 0.0) == -7.0,
-        (gpuGet (positive, 0) ?: 0.0) == 1.5,
-        toString (gpuGet (positive, 1) ?: 1.0) == "0.0",
-        (gpuGet (positive, 2) ?: 0.0) == 2.25,
-        (gpuGet (shadowed, 0) ?: 0.0) == 6.0
-    ]
+    match toGpu ([9007199254740993, -7])
+        Success value =>
+            uploaded12 = value
+            floats = gpuMap (uploaded12) toFloat
+            match toGpu ([-1.5, -0.0, 2.25])
+                Success value =>
+                    uploaded13 = value
+                    positive = gpuMap (uploaded13) abs
+                    abs = \x => x * 2.0
+                    match toGpu ([3.0])
+                        Success value =>
+                            uploaded14 = value
+                            shadowed = gpuMap (uploaded14) abs
+                            checkAll "builtin maps preserve scalar types and lexical shadowing" [
+                                (gpuGet (floats, 0) ?: 0.0) == 9007199254740992.0,
+                                (gpuGet (floats, 1) ?: 0.0) == -7.0,
+                                (gpuGet (positive, 0) ?: 0.0) == 1.5,
+                                toString (gpuGet (positive, 1) ?: 1.0) == "0.0",
+                                (gpuGet (positive, 2) ?: 0.0) == 2.25,
+                                (gpuGet (shadowed, 0) ?: 0.0) == 6.0
+                            ]
 
-builtinZipCase () =
-    left = toGpu [9223372036854775807, -9223372036854775808, 4000000000]
-    right = toGpu [1, -1, 4000000000]
+                        Error message => check ("GPU allocation", "success", toString message)
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
+builtinZipCase () = withBuffer(toGpu ([9223372036854775807, -9223372036854775808, 4000000000]), \left => withBuffer(toGpu ([1, -1, 4000000000]), \right => builtinZipCaseUploaded(left, right)))
+builtinZipCaseUploaded (left, right) =
     added = gpuZipWith (left, right, wrapAdd)
     subtracted = gpuZipWith (left, right, wrapSub)
     multiplied = gpuZipWith (left, right, wrapMul)
@@ -114,18 +150,20 @@ builtinZipCase () =
         (gpuGet (saturated, 1) ?: 0) == 9223372036854775807,
         (gpuGet (saturated, 2) ?: 0) == 9223372036854775807
     ]
-
 builtinFoldCase () =
-    source = toGpu [1, 1]
-    lower = gpuScan (source, -9223372036854775808, satSub)
-    upper = gpuScan (source, 9223372036854775807, satAdd)
-    checkAll "builtin folds and scans preserve accumulator policy" [
-        gpuFold (source, 9223372036854775807, wrapAdd) == -9223372036854775807,
-        gpuFold (source, 9223372036854775807, satAdd) == 9223372036854775807,
-        (gpuGet (lower, 1) ?: 0) == -9223372036854775808,
-        (gpuGet (upper, 1) ?: 0) == 9223372036854775807
-    ]
+    match toGpu ([1, 1])
+        Success value =>
+            source = value
+            lower = gpuScan (source, -9223372036854775808, satSub)
+            upper = gpuScan (source, 9223372036854775807, satAdd)
+            checkAll "builtin folds and scans preserve accumulator policy" [
+                gpuFold (source, 9223372036854775807, wrapAdd) == -9223372036854775807,
+                gpuFold (source, 9223372036854775807, satAdd) == 9223372036854775807,
+                (gpuGet (lower, 1) ?: 0) == -9223372036854775808,
+                (gpuGet (upper, 1) ?: 0) == 9223372036854775807
+            ]
 
+        Error message => check ("GPU allocation", "success", toString message)
 builtinPolicyCase () =
     mut faults = 0
     handle Arith
@@ -136,17 +174,20 @@ builtinPolicyCase () =
                 right == 0, wrapped == -9223372036854775808
             ]
             77
-    values = gpuMap (toGpu [-9223372036854775808, -4, 5]) abs
-    checkAll "builtin kernel dispatches to the active arithmetic policy" [
-        faults == 1, (gpuGet (values, 0) ?: 0) == 77,
-        (gpuGet (values, 1) ?: 0) == 4, (gpuGet (values, 2) ?: 0) == 5
-    ]
+    match toGpu ([-9223372036854775808, -4, 5])
+        Success value =>
+            uploaded10 = value
+            values = gpuMap (uploaded10) abs
+            checkAll "builtin kernel dispatches to the active arithmetic policy" [
+                faults == 1, (gpuGet (values, 0) ?: 0) == 77,
+                (gpuGet (values, 1) ?: 0) == 4, (gpuGet (values, 2) ?: 0) == 5
+            ]
 
+        Error message => check ("GPU allocation", "success", toString message)
 test "builtin maps specialize and respect shadowing" builtinMapCase
 test "builtin zip pins wrapping and saturation" builtinZipCase
 test "builtin folds and scans preserve accumulator policy" builtinFoldCase
 test "builtin kernels preserve the active overflow policy" builtinPolicyCase
-
 builtinDivisionCase () =
     mut faults = ""
     handle Arith
@@ -158,12 +199,19 @@ builtinDivisionCase () =
             expect left 7
             faults := faults + "zero;"
             42
-    values = gpuZipWith (toGpu [-9223372036854775808, 7, 9], toGpu [-1, 0, 2], intDiv)
-    checkAll "builtin division dispatches once in element order" [faults == "overflow;zero;",
-        (gpuGet (values, 0) ?: 0) == 41, (gpuGet (values, 1) ?: 0) == 42, (gpuGet (values, 2) ?: 0) == 4]
+    match toGpu ([-9223372036854775808, 7, 9])
+        Success value =>
+            uploaded8 = value
+            match toGpu ([-1, 0, 2])
+                Success value =>
+                    uploaded9 = value
+                    values = gpuZipWith (uploaded8, uploaded9, intDiv)
+                    checkAll "builtin division dispatches once in element order" [faults == "overflow;zero;",
+                        (gpuGet (values, 0) ?: 0) == 41, (gpuGet (values, 1) ?: 0) == 42, (gpuGet (values, 2) ?: 0) == 4]
 
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 test "builtin integer division preserves ordered recovery" builtinDivisionCase
-
 lexicalKernelCase () =
     enabled = true
     keep = \_x => enabled
@@ -174,19 +222,25 @@ lexicalKernelCase () =
         true => x
         false => x
     enabled = false
-    source = toGpu [1.0, 2.0]
-    zipped = gpuZipWith (source, toGpu [30.0, 40.0], choose)
-    scanned = gpuScan (source, 42.0, choose)
-    checkAll "closed kernels keep their definition environment" [
-        enabled == false, gpuLength (gpuFilter source keep) == 2,
-        (gpuGet (gpuMap source identity, 1) ?: 0.0) == 2.0,
-        (gpuGet (zipped, 1) ?: 0.0) == 2.0, gpuFold (source, 42.0, choose) == 42.0,
-        (gpuGet (scanned, 0) ?: 0.0) == 42.0, (gpuGet (scanned, 1) ?: 0.0) == 42.0
-    ]
+    match toGpu ([1.0, 2.0])
+        Success value =>
+            source = value
+            match toGpu ([30.0, 40.0])
+                Success value =>
+                    uploaded7 = value
+                    zipped = gpuZipWith (source, uploaded7, choose)
+                    scanned = gpuScan (source, 42.0, choose)
+                    checkAll "closed kernels keep their definition environment" [
+                        enabled == false, gpuLength (gpuFilter source keep) == 2,
+                        (gpuGet (gpuMap source identity, 1) ?: 0.0) == 2.0,
+                        (gpuGet (zipped, 1) ?: 0.0) == 2.0, gpuFold (source, 42.0, choose) == 42.0,
+                        (gpuGet (scanned, 0) ?: 0.0) == 42.0, (gpuGet (scanned, 1) ?: 0.0) == 42.0
+                    ]
 
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 effect KernelSwitch
     disable : Unit => int
-
 liveKernelCellCase () =
     mut enabled = true
     keep = \_x => enabled
@@ -196,20 +250,17 @@ liveKernelCellCase () =
             0
     changed = perform KernelSwitch.disable ()
     checkAll "host-bound kernels retain live cell identity" [
-        changed == 0, gpuLength (gpuFilter (toGpu [1, 2]) keep) == 0
+        changed == 0, gpuSatisfies (toGpu ([1, 2]), \uploaded5 => gpuLength (gpuFilter (uploaded5) keep) == 0)
     ]
-
 test "closed GPU kernels retain lexical uniforms" lexicalKernelCase
 test "host GPU kernels retain live cells" liveKernelCellCase
-
 managedKernelCase () =
     label = "kept"
     keep = \_x => length label > 0
     label = ""
     checkAll "declined extraction retains the captured managed value" [
-        label == "", gpuLength (gpuFilter (toGpu [1, 2]) keep) == 2
+        label == "", gpuSatisfies (toGpu ([1, 2]), \uploaded4 => gpuLength (gpuFilter (uploaded4) keep) == 2)
     ]
-
 capturedArithmeticCase () =
     limit = 9223372036854775807
     add = \x => x + limit
@@ -220,25 +271,32 @@ capturedArithmeticCase () =
             faults := wrapAdd faults 1
             checkAll "captured kernel overflow arguments" [op == "+", left == 1, right == 9223372036854775807, wrapped == -9223372036854775808]
             42
-    values = gpuMap (toGpu [1, 0]) add
-    checkAll "captured kernel dispatches through the active policy" [
-        limit == 0, faults == 1, (gpuGet (values, 0) ?: 0) == 42,
-        (gpuGet (values, 1) ?: 0) == 9223372036854775807
-    ]
+    match toGpu ([1, 0])
+        Success value =>
+            uploaded3 = value
+            values = gpuMap (uploaded3) add
+            checkAll "captured kernel dispatches through the active policy" [
+                limit == 0, faults == 1, (gpuGet (values, 0) ?: 0) == 42,
+                (gpuGet (values, 1) ?: 0) == 9223372036854775807
+            ]
 
+        Error message => check ("GPU allocation", "success", toString message)
 (** The float functions are total over IEEE doubles ([BUILTIN-MATH]): a domain
     error is NaN, an overflow is infinity, nothing performs Arith — and each
     is a kernel by name. *)
 mathTotalityCase () =
     nan = sqrt (-1.0)
-    probabilities = toGpu [0.0, 1.0] |> gpuMap exp
-    checkAll "float math builtins are total over IEEE doubles" [
-        sqrt 4.0 == 2.0, nan != nan, ln 0.0 < -1000.0, ln 0.0 == ln 0.0 * 2.0,
-        exp 1000.0 == exp 2000.0, exp 1000.0 > 1.0, tanh 1000000.0 == 1.0,
-        tanh (-1000000.0) == -1.0, (gpuGet (probabilities, 0) ?: 0.0) == 1.0,
-        (toGpu [1.0, 4.0, 9.0] |> gpuMap sqrt |> gpuFold 0.0 addFloats) == 6.0
-    ]
+    match toGpu ([0.0, 1.0])
+        Success value =>
+            probabilities = value |> gpuMap exp
+            checkAll "float math builtins are total over IEEE doubles" [
+                sqrt 4.0 == 2.0, nan != nan, ln 0.0 < -1000.0, ln 0.0 == ln 0.0 * 2.0,
+                exp 1000.0 == exp 2000.0, exp 1000.0 > 1.0, tanh 1000000.0 == 1.0,
+                tanh (-1000000.0) == -1.0, (gpuGet (probabilities, 0) ?: 0.0) == 1.0,
+                gpuSatisfies (toGpu ([1.0, 4.0, 9.0]), \uploaded1 => (uploaded1 |> gpuMap sqrt |> gpuFold 0.0 addFloats) == 6.0)
+            ]
 
+        Error message => check ("GPU allocation", "success", toString message)
 test "declined GPU extraction preserves managed captures" managedKernelCase
 test "captured GPU kernels preserve arithmetic policy" capturedArithmeticCase
 test "float math builtins are total and name GPU kernels" mathTotalityCase

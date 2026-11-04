@@ -1,7 +1,19 @@
-(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
-withIndices (n, work) = match gpuIota n
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] A failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
     Success value => work value
-    Error message => check ("index allocation", "success", toString message)
+    Error message => check ("GPU operation", "success", toString message)
+(** [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error. *)
+andThen (result, next) = match result
+    Success value => next value
+    Error message => Error(message = message)
+(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
+withIndices (n, work) = withBuffer(gpuIota n, work)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
 // port in examples/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
@@ -32,7 +44,6 @@ geluCubic = toFloat32 0.044715
 tolerance = toFloat32 0.000000001
 (** Scratch files are named per run so the twins never race on one path. *)
 scratch = "osprey_transformer_${random ()}_${random ()}"
-
 at (m, i) = gpuGet (m, i) ?: toFloat32 0.0
 addF (a, x) = a + x
 subF (a, x) = a - x
@@ -43,7 +54,6 @@ floats xs = toGpu (mapList (xs, toFloat32))
 exact (actual, expected) = actual == toFloat32 expected
 near (actual, expected) = abs (actual - toFloat32 expected) < tolerance
 gelu x = toFloat32 0.5 * x * (toFloat32 1.0 + tanh (geluScale * (x + geluCubic * x * x * x)))
-
 (** Deterministic test weights: ((i * step) % modulus - shift) / scale for element i. *)
 weight (step, modulus, shift, scale, grid0) = grid0 |> gpuMap (\i => toFloat32 ((i * step) % modulus - shift) / scale)
 (** The block's parameters, named as GPT-2's checkpoint names them. *)
@@ -61,31 +71,26 @@ outW (grid0) = weight(13, 17, 8, 16.0, grid0)
 outB (grid0) = weight(3, 7, 3, 4.0, grid0)
 tokenTable (grid0) = weight(9, 17, 8, 4.0, grid0)
 positionTable (grid0) = weight(4, 9, 4, 8.0, grid0)
-miniTokens () = toGpu [3, 1]
-noBias () = floats [0.0, 0.0, 0.0, 0.0, 0.0]
-
-(** The product, or the empty buffer when the shapes disagree. *)
-product (l, r, rows, inner, cols) = gpuMatMul (l, r, rows, inner, cols) ?: toGpu []
+miniTokens () = toGpu ([3, 1])
+noBias () = floats ([0.0, 0.0, 0.0, 0.0, 0.0])
+(** The product, preserving allocation and shape failures. *)
+product (l, r, rows, inner, cols) = gpuMatMul (l, r, rows, inner, cols)
 matMulFailure (l, r, rows, inner, cols) = match gpuMatMul (l, r, rows, inner, cols)
     Success _ => "no error"
     Error message => message
-
 (** Sum of a contiguous run of a flat buffer. *)
 sumRange (x, start, n) = range (start, start + n) |> fold 0.0 (\(a, i) => a + at (x, i))
 squaredDeviation (x, start, n, mean) = range (start, start + n) |> fold 0.0 (\(a, i) => a + (at (x, i) - mean) * (at (x, i) - mean))
 rowMeans (x, grid0) = grid0 |> gpuMap (\r => sumRange (x, r * width, width) / widthF)
 rowVariances (x, means, grid0) = grid0 |> gpuMap (\r => squaredDeviation (x, r * width, width, at (means, r)) / widthF)
 normalised (x, means, variances, g, b, i) = (at (x, i) - at (means, intDiv (i, width))) / sqrt (at (variances, intDiv (i, width)) + epsilon) * at (g, i % width) + at (b, i % width)
-
 (** LayerNorm over each of the t rows of x [t, width], with gain g and bias b. *)
 layerNorm (x, g, b, grid0, grid1) =
     means = rowMeans(x, grid0)
     variances = rowVariances(x, means, grid0)
     grid1 |> gpuMap (\i => normalised (x, means, variances, g, b, i))
 (** x [rows, inner] times w [inner, cols], plus the bias on every row. *)
-linear (x, rows, inner, cols, w, bias, grid0) =
-    value = product (x, w, rows, inner, cols)
-    grid0 |> gpuMap (\i => at (value, i) + at (bias, i % cols))
+linear (x, rows, inner, cols, w, bias, grid0) = andThen (product (x, w, rows, inner, cols), \value => Success(value = grid0 |> gpuMap (\i => at (value, i) + at (bias, i % cols))))
 (** qkv is [t, qkvWidth]: the query, key and value of head h occupy headWidth columns each. *)
 qAt (qkv, r, h, d) = at (qkv, r * qkvWidth + h * headWidth + d)
 kAt (qkv, r, h, d) = at (qkv, r * qkvWidth + width + h * headWidth + d)
@@ -100,22 +105,18 @@ causalWeight (scores, peaks, t, n, first, i) = match i % t <= first + intDiv (i,
     true => exp (at (scores, i) - at (peaks, intDiv (i, t)))
     false => 0.0
 weighted (probs, qkv, t, n, first, r, h, d) = range (0, first + r + 1) |> fold 0.0 (\(a, c) => a + at (probs, (h * n + r) * t + c) * vAt (qkv, c, h, d))
-
-(** Causal scores of positions first..t-1, [heads, t - first, t]: row (h, r)
-    attends to columns c <= first + r only. *)
+(** Causal scores of positions first..t-1, [heads, t - first, t]: row (h, r) attends to columns c <= first + r only. *)
 scoresFrom (qkv, t, first, grid0) =
     n = t - first
     grid0 |> gpuMap (\i => causalScore (qkv, intDiv (i, n * t), first + intDiv (i % (n * t), t), i % t))
-(** Softmax of every causal row: fold its peak, spend it in the shift, fold the
-    partition sum, spend that in the divide. *)
+(** Softmax of every causal row: fold its peak, spend it in the shift, fold the partition sum, spend that in the divide. *)
 probsOf (scores, t, n, first, grid0, grid1) =
     peaks = grid0 |> gpuMap (\row => rowMax (scores, row, t, first + row % n))
     weights = grid1 |> gpuMap (\i => causalWeight (scores, peaks, t, n, first, i))
     sums = grid0 |> gpuMap (\row => sumRange (weights, row * t, t))
     grid1 |> gpuMap (\i => at (weights, i) / at (sums, intDiv (i, t)))
-(** Causal multi-head self-attention for positions first..t-1 of qkv [t, qkvWidth],
-    as [t - first, width]: the whole sequence from 0, the newest position alone
-    from t - 1 — the KV-cached step, reading the earlier rows' keys and values. *)
+(** Causal multi-head self-attention for positions first..t-1 of qkv [t, qkvWidth], as [t - first, width]: the whole sequence from 0, the newest position alone from t - 1 —
+    the KV-cached step, reading the earlier rows' keys and values. *)
 attentionFrom (qkv, t, first, grid0, grid1, grid2) =
     n = t - first
     probs = probsOf(scoresFrom(qkv, t, first, grid0), t, n, first, grid1, grid0)
@@ -123,10 +124,11 @@ attentionFrom (qkv, t, first, grid0, grid1, grid2) =
 attention (qkv, t, grid0, grid1, grid2) = attentionFrom(qkv, t, 0, grid0, grid1, grid2)
 (** One pre-norm block: attention and MLP, each with a residual. *)
 block (x, t, grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9, grid10, grid11) =
-    qkv = linear(layerNorm(x, ln1g(grid0), ln1b(grid0), grid1, grid2), t, width, qkvWidth, qkvW(grid3), qkvB(grid4), grid5)
-    x2 = gpuZipWith (x, linear(attention(qkv, t, grid6, grid7, grid2), t, width, width, projW(grid8), projB(grid0), grid2), addF)
-    hidden = linear(layerNorm(x2, ln2g(grid0), ln2b(grid0), grid1, grid2), t, width, mlpWidth, fcW(grid9), fcB(grid10), grid11) |> gpuMap gelu
-    gpuZipWith (x2, linear(hidden, t, mlpWidth, width, outW(grid9), outB(grid0), grid2), addF)
+    andThen (linear (layerNorm (x, ln1g grid0, ln1b grid0, grid1, grid2), t, width, qkvWidth, qkvW grid3, qkvB grid4, grid5), \qkv => andThen (linear (attention (qkv, t, grid6, grid7, grid2), t, width, width, projW grid8, projB grid0, grid2), \attended => blockAfterAttention (x, attended, t, grid0, grid1, grid2, grid9, grid10, grid11)))
+(** Complete the residual and MLP only after both attention products succeeded. *)
+blockAfterAttention (x, attended, t, grid0, grid1, grid2, grid9, grid10, grid11) =
+    x2 = gpuZipWith (x, attended, addF)
+    andThen (linear (layerNorm (x2, ln2g grid0, ln2b grid0, grid1, grid2), t, width, mlpWidth, fcW grid9, fcB grid10, grid11), \projected => andThen (linear (projected |> gpuMap gelu, t, mlpWidth, width, outW grid9, outB grid0, grid2), \output => Success(value = gpuZipWith (x2, output, addF))))
 (** Token plus position embeddings, [t, width]. *)
 embed (tokens, positions, ids, grid0) = grid0 |> gpuMap (\i => at (tokens, (gpuGet (ids, intDiv (i, width)) ?: 0) * width + i % width) + at (positions, i))
 (** The token table transposed to [width, vocab], so the tied readout is one product. *)
@@ -134,7 +136,7 @@ transposed (table, grid0) = grid0 |> gpuMap (\i => at (table, (i % vocab) * widt
 (** The final position's normalised state against every token row. *)
 logitsOf (x, t, table, grid0, grid1, grid2) =
     last = grid0 |> gpuMap (\c => at (x, (t - 1) * width + c))
-    linear(last, 1, width, vocab, transposed(table, grid1), noBias (), grid2)
+    andThen (noBias (), \bias => linear (last, 1, width, vocab, transposed (table, grid1), bias, grid2))
 (** The first index holding the peak: a fold for the peak, a filter for its index. *)
 argmax (logits, grid0) =
     peak = logits |> gpuFold (at (logits, 0)) maxF
@@ -149,38 +151,85 @@ tensorFailure (path, name) = tensorFailure32 (gpuLoadTensor (path, name))
 tensorFailure32 (result : Result<GpuBuffer<float32>, Error>) = match result
     Success _ => "no error"
     Error message => message
-
-matMulExactCase () =
-    left = floats [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]
-    right = floats [7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
-    square = product (left, right, 2, 3, 2)
-    outer = product (floats [2.0, 3.0], floats [5.0, 7.0], 2, 1, 2)
-    hollow = product (floats [], floats [], 2, 0, 2)
-    checkAll "gpuMatMul forms the row-major product of the stated shapes" [
-        gpuLength square == 4, exact (at (square, 0), 58.0), exact (at (square, 1), 64.0), exact (at (square, 2), 139.0), exact (at (square, 3), 154.0),
-        exact (at (outer, 0), 10.0), exact (at (outer, 1), 14.0), exact (at (outer, 2), 15.0), exact (at (outer, 3), 21.0),
-        gpuLength hollow == 4, exact ((hollow |> gpuFold 0.0 addF), 0.0),
-        gpuLength (product (toGpu [], right, 0, 3, 2)) == 0
-    ]
-
-(** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
-    association; the last pin is 3 units in the last place only when the
-    product is rounded before it is added — a fused multiply-add keeps one
-    more bit. *)
+matMulExactCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), \left => withBuffer(floats ([7.0, 8.0, 9.0, 10.0, 11.0, 12.0]), \right => matMulExactCaseUploaded(left, right)))
+matMulExactCaseUploaded (left, right) =
+    match product (left, right, 2, 3, 2)
+        Success value =>
+            square = value
+            match floats ([2.0, 3.0])
+                Success value =>
+                    uploaded27 = value
+                    match floats ([5.0, 7.0])
+                        Success value =>
+                            uploaded28 = value
+                            match product (uploaded27, uploaded28, 2, 1, 2)
+                                Success value =>
+                                    outer = value
+                                    match floats ([])
+                                        Success value =>
+                                            uploaded29 = value
+                                            match floats ([])
+                                                Success value =>
+                                                    uploaded30 = value
+                                                    match product (uploaded29, uploaded30, 2, 0, 2)
+                                                        Success value =>
+                                                            hollow = value
+                                                            checkAll "gpuMatMul forms the row-major product of the stated shapes" [
+                                                                gpuLength square == 4, exact (at (square, 0), 58.0), exact (at (square, 1), 64.0),
+                                                                exact (at (square, 2), 139.0), exact (at (square, 3), 154.0), exact (at (outer, 0), 10.0),
+                                                                exact (at (outer, 1), 14.0), exact (at (outer, 2), 15.0), exact (at (outer, 3), 21.0),
+                                                                gpuLength hollow == 4, exact ((hollow |> gpuFold 0.0 addF), 0.0),
+                                                                gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
+                                                            ]
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+(** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other association; the last pin is 3 units in the last place only when the product is rounded before it is
+    added — a fused multiply-add keeps one more bit. *)
 matMulOrderCase () =
     big = toFloat32 16777216.0
     ulp = toFloat32 1.0 / toFloat32 8388608.0
-    ones = floats [1.0, 1.0, 1.0]
-    forward = product (toGpu [big, toFloat32 1.0, toFloat32 0.0 - big], ones, 1, 3, 1)
-    backward = product (toGpu [toFloat32 0.0 - big, toFloat32 1.0, big], ones, 1, 3, 1)
-    unfused = product (toGpu [toFloat32 (-1.0), toFloat32 1.0 + ulp], toGpu [toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp], 1, 2, 1)
-    checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
-        exact (at (forward, 0), 0.0), exact (at (backward, 0), 1.0), at (unfused, 0) == 3.0 * ulp
-    ]
-
-matMulShapeCase () =
-    four = floats [1.0, 2.0, 3.0, 4.0]
-    three = floats [1.0, 2.0, 3.0]
+    match floats ([1.0, 1.0, 1.0])
+        Success value =>
+            ones = value
+            match toGpu ([big, toFloat32 1.0, toFloat32 0.0 - big])
+                Success value =>
+                    uploaded22 = value
+                    match product (uploaded22, ones, 1, 3, 1)
+                        Success value =>
+                            forward = value
+                            match toGpu ([toFloat32 0.0 - big, toFloat32 1.0, big])
+                                Success value =>
+                                    uploaded23 = value
+                                    match product (uploaded23, ones, 1, 3, 1)
+                                        Success value =>
+                                            backward = value
+                                            match toGpu ([toFloat32 (-1.0), toFloat32 1.0 + ulp])
+                                                Success value =>
+                                                    uploaded24 = value
+                                                    match toGpu ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp])
+                                                        Success value =>
+                                                            uploaded25 = value
+                                                            match product (uploaded24, uploaded25, 1, 2, 1)
+                                                                Success value =>
+                                                                    unfused = value
+                                                                    checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
+                                                                        exact (at (forward, 0), 0.0), exact (at (backward, 0), 1.0), at (unfused, 0) == 3.0 * ulp
+                                                                    ]
+                                                                Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+matMulShapeCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0]), \four => withBuffer(floats ([1.0, 2.0, 3.0]), \three => matMulShapeCaseUploaded(four, three)))
+matMulShapeCaseUploaded (four, three) =
     checkAll "gpuMatMul names the operand whose length disagrees with the stated shape" [
         matMulFailure (three, four, 2, 2, 2) == "gpuMatMul: left operand: has 3 elements, the stated shape needs 4",
         matMulFailure (four, three, 2, 2, 2) == "gpuMatMul: right operand: has 3 elements, the stated shape needs 4",
@@ -190,182 +239,235 @@ matMulShapeCase () =
         matMulFailure (four, four, 4611686018427387904, 1, 4) == "gpuMatMul: result: rows * cols is negative or overflows",
         matMulFailure (four, four, 2, 2, 2) == "no error"
     ]
-
 mathKernelsCase () =
-    roots = floats [0.0, 1.0, 2.25, 0.0625, 10000000000000000.0, -1.0] |> gpuMap sqrt
-    grown = floats [0.0, 1.0, -1000.0, 1000.0] |> gpuMap exp
-    logs = floats [1.0, 0.0, 10.0, -1.0] |> gpuMap ln
-    squashed = floats [0.0, 1000.0, -1000.0, 0.5] |> gpuMap tanh
-    checkAll "sqrt, exp, ln and tanh are total kernels over IEEE binary32 values" [
-        exact (at (roots, 0), 0.0), exact (at (roots, 1), 1.0), exact (at (roots, 2), 1.5), exact (at (roots, 3), 0.25),
-        exact (at (roots, 4), 100000000.0), at (roots, 5) != at (roots, 5),
-        exact (at (grown, 0), 1.0), near (at (grown, 1), 2.718281828459045), exact (at (grown, 2), 0.0), at (grown, 3) > toFloat32 1000000000000000000.0,
-        exact (at (logs, 0), 0.0), at (logs, 1) < toFloat32 (-1000000000000000000.0), near (at (logs, 2), 2.302585092994046), at (logs, 3) != at (logs, 3),
-        exact (at (squashed, 0), 0.0), exact (at (squashed, 1), 1.0), exact (at (squashed, 2), -1.0), near (at (squashed, 3), 0.46211715726000974),
-        near (ln (exp (toFloat32 2.0)), 2.0), exact (sqrt (toFloat32 2.0) * sqrt (toFloat32 2.0), 1.9999998807907104)
-    ]
-
+    match floats ([0.0, 1.0, 2.25, 0.0625, 10000000000000000.0, -1.0])
+        Success value =>
+            roots = value |> gpuMap sqrt
+            match floats ([0.0, 1.0, -1000.0, 1000.0])
+                Success value =>
+                    grown = value |> gpuMap exp
+                    match floats ([1.0, 0.0, 10.0, -1.0])
+                        Success value =>
+                            logs = value |> gpuMap ln
+                            match floats ([0.0, 1000.0, -1000.0, 0.5])
+                                Success value =>
+                                    squashed = value |> gpuMap tanh
+                                    checkAll "sqrt, exp, ln and tanh are total kernels over IEEE binary32 values" [
+                                        exact (at (roots, 0), 0.0), exact (at (roots, 1), 1.0), exact (at (roots, 2), 1.5), exact (at (roots, 3), 0.25),
+                                        exact (at (roots, 4), 100000000.0), at (roots, 5) != at (roots, 5), exact (at (grown, 0), 1.0),
+                                        near (at (grown, 1), 2.718281828459045), exact (at (grown, 2), 0.0), at (grown, 3) > toFloat32 1000000000000000000.0,
+                                        exact (at (logs, 0), 0.0), at (logs, 1) < toFloat32 (-1000000000000000000.0), near (at (logs, 2), 2.302585092994046),
+                                        at (logs, 3) != at (logs, 3), exact (at (squashed, 0), 0.0), exact (at (squashed, 1), 1.0), exact (at (squashed, 2), -1.0),
+                                        near (at (squashed, 3), 0.46211715726000974), near (ln (exp (toFloat32 2.0)), 2.0),
+                                        exact (sqrt (toFloat32 2.0) * sqrt (toFloat32 2.0), 1.9999998807907104)
+                                    ]
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** gelu(x) - gelu(-x) is x: the tanh term cancels. *)
 geluCase () =
-    inputs = floats [0.0, 1.0, -1.0, 2.0, -3.0]
-    outputs = inputs |> gpuMap gelu
-    negated = inputs |> gpuMap (\x => gelu (toFloat32 0.0 - x))
-    odd = gpuZipWith (outputs, negated, subF)
-    checkAll "gelu is the tanh approximation GPT-2 was trained with" [
-        exact (at (outputs, 0), 0.0), near (at (outputs, 1), 0.8411920070648193), near (at (outputs, 2), -0.15880799293518066),
-        near (at (outputs, 3), 1.9545977115631104), near (at (outputs, 4), -0.0036374330520629883),
-        near (at (odd, 1), 1.0), near (at (odd, 3), 2.0), near (at (odd, 4), -3.0)
-    ]
-
+    match floats ([0.0, 1.0, -1.0, 2.0, -3.0])
+        Success value =>
+            inputs = value
+            outputs = inputs |> gpuMap gelu
+            negated = inputs |> gpuMap (\x => gelu (toFloat32 0.0 - x))
+            odd = gpuZipWith (outputs, negated, subF)
+            checkAll "gelu is the tanh approximation GPT-2 was trained with" [
+                exact (at (outputs, 0), 0.0), near (at (outputs, 1), 0.8411920070648193), near (at (outputs, 2), -0.15880799293518066),
+                near (at (outputs, 3), 1.9545977115631104), near (at (outputs, 4), -0.0036374330520629883), near (at (odd, 1), 1.0), near (at (odd, 3), 2.0),
+                near (at (odd, 4), -3.0)
+            ]
+        Error message => check ("GPU operation", "success", toString message)
 (** Only the four operations and sqrt are involved, so every digit is pinned. *)
 layerNormCase () = withIndices (2, \grid0 => withIndices (8, \grid1 => withIndices (1, \grid2 => withIndices (4, \grid3 => layerNormWith (grid0, grid1, grid2, grid3)))))
-layerNormWith (grid0, grid1, grid2, grid3) =
-    gain = floats [2.0, 1.0, 0.5, 1.0]
-    bias = floats [0.5, 0.0, -0.5, 0.0]
-    rows = layerNorm(floats [1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0], gain, bias, grid0, grid1)
-    flat = layerNorm(floats [7.0, 7.0, 7.0, 7.0], gain, bias, grid2, grid3)
-    checkAll "layerNorm normalises each row and applies the column gain and bias" [
-        gpuLength rows == 8,
-        exact (at (rows, 0), -2.1832709312438965), exact (at (rows, 1), -0.4472118318080902),
-        exact (at (rows, 2), -0.2763940691947937), exact (at (rows, 3), 1.3416354656219482),
-        exact (at (rows, 4), -1.499998927116394), exact (at (rows, 5), -0.999999463558197),
-        exact (at (rows, 6), -0.0000002682209014892578), exact (at (rows, 7), 0.999999463558197),
-        exact (at (flat, 0), 0.5), exact (at (flat, 1), 0.0), exact (at (flat, 2), -0.5), exact (at (flat, 3), 0.0)
-    ]
-(** Two heads, three positions: a lone score is certain, equal scores split
-    evenly, [1, 2, 3] and its reverse are the textbook row, masked columns are 0. *)
+layerNormWith (grid0, grid1, grid2, grid3) = withBuffer(floats ([2.0, 1.0, 0.5, 1.0]), \gain => withBuffer(floats ([0.5, 0.0, -0.5, 0.0]), \bias => layerNormWithUploaded(grid0, grid1, grid2, grid3, gain, bias)))
+layerNormWithUploaded (grid0, grid1, grid2, grid3, gain, bias) =
+    match floats ([1.0, 2.0, 3.0, 4.0, 0.0, 0.0, 6.0, 6.0])
+        Success value =>
+            uploaded14 = value
+            rows = layerNorm(uploaded14, gain, bias, grid0, grid1)
+            match floats ([7.0, 7.0, 7.0, 7.0])
+                Success value =>
+                    uploaded15 = value
+                    flat = layerNorm(uploaded15, gain, bias, grid2, grid3)
+                    checkAll "layerNorm normalises each row and applies the column gain and bias" [
+                        gpuLength rows == 8, exact (at (rows, 0), -2.1832709312438965), exact (at (rows, 1), -0.4472118318080902),
+                        exact (at (rows, 2), -0.2763940691947937), exact (at (rows, 3), 1.3416354656219482), exact (at (rows, 4), -1.499998927116394),
+                        exact (at (rows, 5), -0.999999463558197), exact (at (rows, 6), -0.0000002682209014892578), exact (at (rows, 7), 0.999999463558197),
+                        exact (at (flat, 0), 0.5), exact (at (flat, 1), 0.0), exact (at (flat, 2), -0.5), exact (at (flat, 3), 0.0)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+(** Two heads, three positions: a lone score is certain, equal scores split evenly, [1, 2, 3] and its reverse are the textbook row, masked columns are 0. *)
 softmaxCase () = withIndices (6, \grid0 => withIndices (18, \grid1 => softmaxWith (grid0, grid1)))
 softmaxWith (grid0, grid1) =
-    scores = floats [
+    match floats ([
         4.0, 0.0, 0.0, 5.0, 5.0, 0.0, 1.0, 2.0, 3.0,
         -2.0, 0.0, 0.0, 1.0, 1.0, 0.0, 3.0, 2.0, 1.0
-    ]
-    probs = probsOf(scores, 3, 3, 0, grid0, grid1)
-    checkAll "softmax normalises every causal row, shifted by its peak" [
-        gpuLength probs == 18,
-        exact (at (probs, 0), 1.0), exact (at (probs, 1), 0.0), exact (at (probs, 2), 0.0),
-        exact (at (probs, 3), 0.5), exact (at (probs, 4), 0.5), exact (at (probs, 5), 0.0),
-        near (at (probs, 6), 0.09003057317038046), near (at (probs, 7), 0.24472847105479764), near (at (probs, 8), 0.6652409557748218),
-        exact (at (probs, 9), 1.0), exact (at (probs, 12), 0.5), exact (at (probs, 13), 0.5), exact (at (probs, 14), 0.0),
-        near (at (probs, 15), 0.6652409557748218), near (at (probs, 16), 0.24472847105479764), near (at (probs, 17), 0.09003057317038046),
-        near (sumRange (probs, 6, 3), 1.0), near (sumRange (probs, 15, 3), 1.0)
-    ]
+    ])
+        Success value =>
+            scores = value
+            probs = probsOf(scores, 3, 3, 0, grid0, grid1)
+            checkAll "softmax normalises every causal row, shifted by its peak" [
+                gpuLength probs == 18, exact (at (probs, 0), 1.0), exact (at (probs, 1), 0.0), exact (at (probs, 2), 0.0), exact (at (probs, 3), 0.5),
+                exact (at (probs, 4), 0.5), exact (at (probs, 5), 0.0), near (at (probs, 6), 0.09003057317038046), near (at (probs, 7), 0.24472847105479764),
+                near (at (probs, 8), 0.6652409557748218), exact (at (probs, 9), 1.0), exact (at (probs, 12), 0.5), exact (at (probs, 13), 0.5),
+                exact (at (probs, 14), 0.0), near (at (probs, 15), 0.6652409557748218), near (at (probs, 16), 0.24472847105479764),
+                near (at (probs, 17), 0.09003057317038046), near (sumRange (probs, 6, 3), 1.0), near (sumRange (probs, 15, 3), 1.0)
+            ]
+        Error message => check ("GPU operation", "success", toString message)
 (** Two positions whose keys are equal, so the second attends half to each value. *)
-pairQkv () = floats [
+pairQkv () = floats ([
     1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 2.0, 1.0, 2.0, 3.0, 4.0,
     2.0, 3.0, 4.0, 5.0, 1.0, 1.0, 2.0, 2.0, 5.0, 6.0, 7.0, 8.0
-]
-
-(** A lone token attends only to itself, so attention returns its value
-    columns; a second token whose keys equal the first's averages the values. *)
+])
+(** A lone token attends only to itself, so attention returns its value columns; a second token whose keys equal the first's averages the values. *)
 attentionExactCase () = withIndices (2, \grid0 => withIndices (4, \grid1 => withIndices (8, \grid2 => attentionExactWith (grid0, grid1, grid2))))
 attentionExactWith (grid0, grid1, grid2) =
-    single = attention(floats [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0], 1, grid0, grid0, grid1)
-    pair = attention(pairQkv (), 2, grid2, grid1, grid2)
-    checkAll "attention returns a lone token's value and averages equal keys" [
-        gpuLength single == 4, exact (at (single, 0), 8.0), exact (at (single, 1), 9.0), exact (at (single, 2), 10.0), exact (at (single, 3), 11.0),
-        gpuLength pair == 8, exact (at (pair, 0), 1.0), exact (at (pair, 1), 2.0), exact (at (pair, 2), 3.0), exact (at (pair, 3), 4.0),
-        exact (at (pair, 4), 3.0), exact (at (pair, 5), 4.0), exact (at (pair, 6), 5.0), exact (at (pair, 7), 6.0)
-    ]
+    match floats ([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0])
+        Success value =>
+            uploaded11 = value
+            single = attention(uploaded11, 1, grid0, grid0, grid1)
+            match pairQkv ()
+                Success value =>
+                    uploaded12 = value
+                    pair = attention(uploaded12, 2, grid2, grid1, grid2)
+                    checkAll "attention returns a lone token's value and averages equal keys" [
+                        gpuLength single == 4, exact (at (single, 0), 8.0), exact (at (single, 1), 9.0), exact (at (single, 2), 10.0), exact (at (single, 3), 11.0),
+                        gpuLength pair == 8, exact (at (pair, 0), 1.0), exact (at (pair, 1), 2.0), exact (at (pair, 2), 3.0), exact (at (pair, 3), 4.0),
+                        exact (at (pair, 4), 3.0), exact (at (pair, 5), 4.0), exact (at (pair, 6), 5.0), exact (at (pair, 7), 6.0)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 embedCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => embedWith (grid0, grid1, grid2))))
 embedWith (grid0, grid1, grid2) =
-    x = embed(tokenTable(grid0), positionTable(grid1), miniTokens (), grid2)
-    checkAll "embed gathers each token's row and adds its position's row" [
-        gpuLength x == 8, exact (at (x, 0), -1.0), exact (at (x, 1), 1.75), exact (at (x, 2), 0.25), exact (at (x, 3), 1.875),
-        exact (at (x, 4), -1.125), exact (at (x, 5), 0.5), exact (at (x, 6), -1.0), exact (at (x, 7), 0.625)
-    ]
+    match miniTokens ()
+        Success value =>
+            uploaded10 = value
+            x = embed(tokenTable(grid0), positionTable(grid1), uploaded10, grid2)
+            checkAll "embed gathers each token's row and adds its position's row" [
+                gpuLength x == 8, exact (at (x, 0), -1.0), exact (at (x, 1), 1.75), exact (at (x, 2), 0.25), exact (at (x, 3), 1.875), exact (at (x, 4), -1.125),
+                exact (at (x, 5), 0.5), exact (at (x, 6), -1.0), exact (at (x, 7), 0.625)
+            ]
+        Error message => check ("GPU operation", "success", toString message)
 attentionCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6))))))))
 attentionWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6) =
-    x = embed(tokenTable(grid0), positionTable(grid1), miniTokens (), grid2)
-    qkv = linear(layerNorm(x, ln1g(grid3), ln1b(grid3), grid4, grid2), 2, width, qkvWidth, qkvW(grid5), qkvB(grid1), grid6)
-    a = attention(qkv, 2, grid2, grid3, grid2)
-    checkAll "attention over the embedded pair matches the reference pass" [
-        gpuLength a == 8,
-        near (at (a, 0), -0.07964593172073364), near (at (a, 1), 0.43734419345855713),
-        near (at (a, 2), -1.2230308055877686), near (at (a, 3), 1.212903618812561),
-        near (at (a, 4), -0.06741555035114288), near (at (a, 5), 0.41647619009017944),
-        near (at (a, 6), -1.243087649345398), near (at (a, 7), 1.3210810422897339)
-    ]
+    match miniTokens ()
+        Success value =>
+            uploaded9 = value
+            x = embed(tokenTable(grid0), positionTable(grid1), uploaded9, grid2)
+            match linear(layerNorm(x, ln1g(grid3), ln1b(grid3), grid4, grid2), 2, width, qkvWidth, qkvW(grid5), qkvB(grid1), grid6)
+                Success value =>
+                    qkv = value
+                    a = attention(qkv, 2, grid2, grid3, grid2)
+                    checkAll "attention over the embedded pair matches the reference pass" [
+                        gpuLength a == 8, near (at (a, 0), -0.07964593172073364), near (at (a, 1), 0.43734419345855713), near (at (a, 2), -1.2230308055877686),
+                        near (at (a, 3), 1.212903618812561), near (at (a, 4), -0.06741555035114288), near (at (a, 5), 0.41647619009017944),
+                        near (at (a, 6), -1.243087649345398), near (at (a, 7), 1.3210810422897339)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Row r of a [rows, n] buffer, and whether a [1, n] buffer equals that row exactly. *)
 rowOf (x, r, n, grid0) = grid0 |> gpuMap (\c => at (x, r * n + c))
 sameRow (single, rows, r, n) = range (0, n) |> fold true (\(ok, c) => ok && at (single, c) == at (rows, r * n + c))
-
-(** The KV-cached step: the newest position attends through the earlier rows
-    with the full pass's arithmetic, and LayerNorm and linear are row-wise, so
-    one row's pass equals that row of the two-row pass bit for bit — which is
-    why examples/gpt2's generate can grow a cache instead of recomputing. *)
+(** The KV-cached step: the newest position attends through the earlier rows with the full pass's arithmetic, and LayerNorm and linear are row-wise, so one row's pass
+    equals that row of the two-row pass bit for bit — which is why examples/gpt2's generate can grow a cache instead of recomputing. *)
 cachedStepCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => withIndices (1, \grid7 => cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))))))))
 cachedStepWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) =
-    x = embed(tokenTable(grid0), positionTable(grid1), miniTokens (), grid2)
-    normed = layerNorm(x, ln1g(grid3), ln1b(grid3), grid4, grid2)
-    qkv = linear(normed, 2, width, qkvWidth, qkvW(grid5), qkvB(grid1), grid6)
-    newest = attentionFrom(qkv, 2, 1, grid3, grid4, grid3)
-    pairStep = attentionFrom(pairQkv (), 2, 1, grid3, grid4, grid3)
-    checkAll "the newest position attends through the cache exactly as the full pass does" [
-        gpuLength newest == width, sameRow (newest, attention(qkv, 2, grid2, grid3, grid2), 1, width),
-        near (at (newest, 0), -0.06741555035114288), near (at (newest, 3), 1.3210810422897339),
-        gpuLength pairStep == width, exact (at (pairStep, 0), 3.0), exact (at (pairStep, 1), 4.0), exact (at (pairStep, 2), 5.0), exact (at (pairStep, 3), 6.0),
-        sameRow (layerNorm(rowOf(x, 1, width, grid3), ln1g(grid3), ln1b(grid3), grid7, grid3), normed, 1, width),
-        sameRow (linear(rowOf(normed, 1, width, grid3), 1, width, qkvWidth, qkvW(grid5), qkvB(grid1), grid1), qkv, 1, qkvWidth)
-    ]
+    match miniTokens ()
+        Success value =>
+            uploaded7 = value
+            x = embed(tokenTable(grid0), positionTable(grid1), uploaded7, grid2)
+            normed = layerNorm(x, ln1g(grid3), ln1b(grid3), grid4, grid2)
+            match linear(normed, 2, width, qkvWidth, qkvW(grid5), qkvB(grid1), grid6)
+                Success value =>
+                    qkv = value
+                    newest = attentionFrom(qkv, 2, 1, grid3, grid4, grid3)
+                    match pairQkv ()
+                        Success value =>
+                            uploaded8 = value
+                            pairStep = attentionFrom(uploaded8, 2, 1, grid3, grid4, grid3)
+                            checkAll "the newest position attends through the cache exactly as the full pass does" [
+                                gpuLength newest == width, sameRow (newest, attention(qkv, 2, grid2, grid3, grid2), 1, width),
+                                near (at (newest, 0), -0.06741555035114288), near (at (newest, 3), 1.3210810422897339), gpuLength pairStep == width,
+                                exact (at (pairStep, 0), 3.0), exact (at (pairStep, 1), 4.0), exact (at (pairStep, 2), 5.0), exact (at (pairStep, 3), 6.0),
+                                sameRow (layerNorm(rowOf(x, 1, width, grid3), ln1g(grid3), ln1b(grid3), grid7, grid3), normed, 1, width),
+                                gpuSatisfies (linear(rowOf(normed, 1, width, grid3), 1, width, qkvWidth, qkvW(grid5), qkvB(grid1), grid1), \uploaded38 => sameRow (uploaded38, qkv, 1, qkvWidth))
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 blockCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => withIndices (16, \grid7 => withIndices (32, \grid8 => blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8))))))))))
 blockWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8) =
-    y = block(embed(tokenTable(grid0), positionTable(grid1), miniTokens (), grid2), 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7)
-    checkAll "one pre-norm block matches the reference pass" [
-        gpuLength y == 8,
-        near (at (y, 0), -1.6005736589431763), near (at (y, 1), 1.6570606231689453),
-        near (at (y, 2), 0.7819118499755859), near (at (y, 3), 2.600027084350586),
-        near (at (y, 4), -1.487461805343628), near (at (y, 5), 0.04813048243522644),
-        near (at (y, 6), -0.6083625555038452), near (at (y, 7), 1.421419620513916),
-        near (y |> gpuFold 0.0 addF, 2.8121519088745117)
-    ]
+    match miniTokens ()
+        Success value =>
+            uploaded6 = value
+            match block(embed(tokenTable(grid0), positionTable(grid1), uploaded6, grid2), 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7)
+                Success value =>
+                    y = value
+                    checkAll "one pre-norm block matches the reference pass" [
+                        gpuLength y == 8, near (at (y, 0), -1.6005736589431763), near (at (y, 1), 1.6570606231689453), near (at (y, 2), 0.7819118499755859),
+                        near (at (y, 3), 2.600027084350586), near (at (y, 4), -1.487461805343628), near (at (y, 5), 0.04813048243522644),
+                        near (at (y, 6), -0.6083625555038452), near (at (y, 7), 1.421419620513916), near (y |> gpuFold 0.0 addF, 2.8121519088745117)
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 nextTokenCase () = withIndices (20, \grid0 => withIndices (12, \grid1 => withIndices (8, \grid2 => withIndices (4, \grid3 => withIndices (2, \grid4 => withIndices (48, \grid5 => withIndices (24, \grid6 => withIndices (16, \grid7 => withIndices (32, \grid8 => withIndices (5, \grid9 => nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9)))))))))))
 nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, grid9) =
-    y = block(embed(tokenTable(grid0), positionTable(grid1), miniTokens (), grid2), 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7)
-    logits = logitsOf(layerNorm(y, ln1g(grid3), ln1b(grid3), grid4, grid2), 2, tokenTable(grid0), grid3, grid0, grid9)
-    checkAll "the tied readout scores every token row and argmax picks the first peak" [
-        gpuLength logits == vocab,
-        near (at (logits, 0), 1.2843501567840576), near (at (logits, 1), 2.434096336364746),
-        near (at (logits, 2), 3.5838427543640137), near (at (logits, 3), 4.733589172363281),
-        near (at (logits, 4), -4.4127888679504395),
-        argmax(logits, grid9) == 3, argmax(floats [1.0, 9.0, 9.0, 2.0], grid3) == 1
-    ]
-(** "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names
-    the operation, the path and the reason. *)
+    match miniTokens ()
+        Success value =>
+            uploaded5 = value
+            match block(embed(tokenTable(grid0), positionTable(grid1), uploaded5, grid2), 2, grid3, grid4, grid2, grid5, grid1, grid6, grid2, grid3, grid7, grid8, grid2, grid7)
+                Success value =>
+                    y = value
+                    match logitsOf(layerNorm(y, ln1g(grid3), ln1b(grid3), grid4, grid2), 2, tokenTable(grid0), grid3, grid0, grid9)
+                        Success value =>
+                            logits = value
+                            checkAll "the tied readout scores every token row and argmax picks the first peak" [
+                                gpuLength logits == vocab, near (at (logits, 0), 1.2843501567840576), near (at (logits, 1), 2.434096336364746),
+                                near (at (logits, 2), 3.5838427543640137), near (at (logits, 3), 4.733589172363281), near (at (logits, 4), -4.4127888679504395),
+                                argmax(logits, grid9) == 3, gpuSatisfies (floats ([1.0, 9.0, 9.0, 2.0]), \uploaded4 => argmax(uploaded4, grid3) == 1)
+                            ]
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+(** "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names the operation, the path and the reason. *)
 loadCase () =
     raw = scratch + "_raw.bin"
     missing = scratch + "_missing.bin"
     ready = written (raw, "ABCDEFGHIJKL")
-    words = gpuLoad (raw, 0, 3) ?: toGpu []
-    tail = gpuLoad (raw, 4, 2) ?: toGpu []
-    checkAll "gpuLoad keeps little-endian binary32 words and refuses a short read" [
-        ready, gpuLength words == 3, exact (at (words, 0), 781.0352172851562), exact (at (words, 1), 204057.078125), exact (at (words, 2), 53291300.0),
-        gpuLength tail == 2, exact (at (tail, 0), 204057.078125), exact (at (tail, 1), 53291300.0),
-        gpuLength (gpuLoad (raw, 12, 0) ?: floats [1.0]) == 0,
-        loadFailure (raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
-        loadFailure (raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
-        loadFailure (raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
-        loadFailure (raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
-        loadFailure (missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
-    ]
-
-(** Only ASCII content can be written from a NUL-terminated string, so the
-    header-length prefix is either missing or absurd; the full header grammar is
-    pinned by the checked-in fixture under crates/osprey-cli/tests. *)
+    match gpuLoad (raw, 0, 3)
+        Success value =>
+            words = value
+            match gpuLoad (raw, 4, 2)
+                Success value =>
+                    tail = value
+                    checkAll "gpuLoad keeps little-endian binary32 words and refuses a short read" [
+                        ready, gpuLength words == 3, exact (at (words, 0), 781.0352172851562), exact (at (words, 1), 204057.078125), exact (at (words, 2), 53291300.0),
+                        gpuLength tail == 2, exact (at (tail, 0), 204057.078125), exact (at (tail, 1), 53291300.0),
+                        gpuSatisfies (gpuLoad (raw, 12, 0), \uploaded1 => gpuLength (uploaded1) == 0),
+                        loadFailure (raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                        loadFailure (raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                        loadFailure (raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
+                        loadFailure (raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
+                        loadFailure (missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+(** Only ASCII content can be written from a NUL-terminated string, so the header-length prefix is either missing or absurd; the full header grammar is pinned by the
+    checked-in fixture under crates/osprey-cli/tests. *)
 tensorHeaderCase () =
     short = scratch + "_short.safetensors"
     ascii = scratch + "_ascii.safetensors"
     missing = scratch + "_missing.safetensors"
     ready = written (short, "abc") && written (ascii, "AAAAAAAA{}")
     checkAll "gpuLoadTensor names the file and the reason its header cannot be read" [
-        ready,
-        tensorFailure (short, "wte.weight") == "gpuLoadTensor: " + short + ": shorter than a safetensors header prefix",
+        ready, tensorFailure (short, "wte.weight") == "gpuLoadTensor: " + short + ": shorter than a safetensors header prefix",
         tensorFailure (ascii, "wte.weight") == "gpuLoadTensor: " + ascii + ": header length is not plausible for safetensors",
         tensorFailure (missing, "wte.weight") == "gpuLoadTensor: " + missing + ": No such file or directory"
     ]
-
-(** Exact-value tests record any arithmetic fault as a failed assertion; the
-    kernels' `%` and `/` by a non-literal divisor dispatch to this policy. *)
+(** Exact-value tests record any arithmetic fault as a failed assertion; the kernels' `%` and `/` by a non-literal divisor dispatch to this policy. *)
 exactArithmetic work =
     handle Arith
         overflow op _ _ wrapped =>
@@ -378,7 +480,6 @@ exactArithmetic work =
             expectFalse true
             0
     work ()
-
 test ("gpuMatMul forms the row-major product of the stated shapes", \() => exactArithmetic (matMulExactCase))
 test ("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", \() => exactArithmetic (matMulOrderCase))
 test ("gpuMatMul names the operand whose length disagrees with the stated shape", \() => exactArithmetic (matMulShapeCase))
