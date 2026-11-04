@@ -334,7 +334,7 @@ class CompareScriptTests(unittest.TestCase):
                      "FIXTURE_EVENTS": str(self.log), "FIXTURE_HOST_CHILD": str(self.stubs / "host-child"),
                      "FIXTURE_REAL_SLEEP": shutil.which("sleep"), **environment}
         command = [BASH, *(["-x"] if trace else []),
-                   str(self.root / "repo/examples/gpui/painting/reference/compare.sh"),
+                   str(self.root / "repo/src/osprey/examples/gpui/painting/reference/compare.sh"),
                    *arguments, str(self.root / "out")]
         # Files, not pipes: a leaked child must not hold the fixture's own output open.
         with (self.root / "stdout").open("w") as out, (self.root / "stderr").open("w") as err:

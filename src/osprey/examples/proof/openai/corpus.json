@@ -9,7 +9,7 @@
       "module": "OpenAIStacks",
       "upstream": "lean/OAI/Computability/Interspersed/Stacks.lean",
       "upstream_sha256": "189e695b2649cf6b7473b727620298c7b5001eee621854c17fcbf792d383ce36",
-      "port_sha256": "5e8d19236e94d59207b4c7f3f8fa05fc358fd59516546e45a774096186281b4f",
+      "port_sha256": "fdd0eb540a1984df81331fd78805784296c02c4d25af6b8d8ba4458febc1d342",
       "export_sha256": "f2256725919162d349eca2454b26ebc23fe939caec07650db4f1a9ccc83855f3",
       "theorems": [
         "OAI.PrefixFlows.Interspersed.push_zero",
