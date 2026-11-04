@@ -276,6 +276,10 @@
         "language": "osprey",
         "threshold": 100.0
       },
+      "gguf": {
+        "threshold": 94.0,
+        "language": "osprey"
+      },
       "jinja2": {
         "threshold": 97.3,
         "language": "osprey"

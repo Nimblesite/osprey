@@ -1,0 +1,17 @@
+[project]
+name = "gguf"
+source_roots = ["src"]
+python_sources = ["src/chain.py", "src/constants.py", "src/values.py", "src/tensors.py", "src/reader.py"]
+default_namespace = "gguf"
+
+[package]
+name = "@osprey/gguf"
+license = "MIT"
+summary = "Read GGUF weight files: header, metadata kinds, tensor infos, alignment and tensor bytes"
+keywords = ["formats", "gguf", "python-flavor", "weights", "quantization"]
+
+[dependencies]
+"@osprey/safetensors" = { epoch = 1, min_release = 1 }
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }
