@@ -194,6 +194,8 @@ def byte_read_cases():
         Check.ints_equal("bytes.read_bytes", unwrap_or(Bytes.read_bytes([1, 2, 3], 1, 2), []), [2, 3]),
         Check.equal("bytes.read_u64", unwrap_or(Bytes.read_u64([1, 2, 0, 0, 0, 0, 0, 0], 0), -1), 513),
         Check.equal("bytes.bytes_to_string", unwrap_or(Bytes.bytes_to_string([195, 169, 240, 159, 152, 128]), ""), "é😀"),
+        Check.equal("bytes.bytes_to_string.long", byteLength(unwrap_or(Bytes.bytes_to_string(long_text_bytes()), "")), 16384),
+        Check.truth("bytes.bytes_to_string.long_invalid", is_error(Bytes.bytes_to_string(listAppend(long_text_bytes(), 255))), "a bad byte past 16384 valid ones must be an Error"),
         Check.ints_equal("bytes.int_bytes", Bytes.int_bytes(-2, 2), [254, 255]),
     ]
 
@@ -510,6 +512,20 @@ def run_cases():
     """Build every case and report it, under the strict arithmetic policy."""
     cases = concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), header_json_cases(), header_size_cases(), slice_edge_cases(), zero_shape_cases(), slice_notfound_cases(), helper_cases()])
     return Check.report(cases)
+
+
+def long_text_bytes():
+    """16,384 bytes of two-byte text: longer than the real chat template, and far
+    deeper than a per-byte recursion's stack allows."""
+    return fold(range(13), [195, 169], lambda acc, _i: listConcat(acc, acc))
+
+
+def is_error(result):
+    match result:
+        case Success(value=_value):
+            return False
+        case Error(message=_message):
+            return True
 
 
 def main():

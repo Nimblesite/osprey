@@ -153,7 +153,7 @@ def decode_f64(data, off):
 
 def bytes_to_string(data):
     """The UTF-8 text `data` holds, or Error when the bytes are not valid UTF-8."""
-    match utf8_decode(data, 0, []):
+    match utf8_decode(data):
         case Success(value=value):
             return Success(value=join(value, ""))
         case Error(message=message):
@@ -347,21 +347,33 @@ def bf16_bytes(x):
     return narrow_float_bytes(x, 8, 7, 127)
 
 
-def utf8_decode(data, i, pieces) -> Result[list[str], str]:
-    """Decode the UTF-8 bytes of `data` from `i`, collecting codepoints as strings."""
-    if i >= len(data):
-        return Success(value=pieces)
+class Utf8Walk:
+    """A left-to-right UTF-8 decode: the index the next sequence starts at, the
+    text so far, and the index of the first bad sequence (-1 while there is none)."""
+    next: int
+    pieces: list[str]
+    bad: int
+
+
+def utf8_decode(data) -> Result[list[str], str]:
+    """The codepoints of `data` as strings. A fold, so long text can't exhaust the stack."""
+    walk = fold(range(len(data)), Utf8Walk(next=0, pieces=[], bad=-1), lambda acc, i: utf8_step(data, acc, i))
+    if walk.bad >= 0:
+        return Error(message="invalid utf-8 sequence of 1 bytes from index " + toString(walk.bad))
     else:
-        return utf8_step(data, i, pieces)
+        return Success(value=walk.pieces)
 
 
-def utf8_step(data, i, pieces):
-    """Decode the one codepoint at `i` and continue with the rest."""
-    match utf8_one(data, i):
-        case Success(value=value):
-            return utf8_decode(data, value.next, listAppend(pieces, unwrap_or(fromCodePoint(value.cp), "")))
-        case Error(message=message):
-            return Error(message="invalid utf-8 sequence of 1 bytes from index " + toString(i))
+def utf8_step(data, acc, i):
+    """Decode the sequence at byte `i` when one starts there."""
+    if acc.bad >= 0 or i < acc.next:
+        return acc
+    else:
+        match utf8_one(data, i):
+            case Success(value=value):
+                return Utf8Walk(next=value.next, pieces=listAppend(acc.pieces, unwrap_or(fromCodePoint(value.cp), "")), bad=-1)
+            case Error(message=_message):
+                return Utf8Walk(next=acc.next, pieces=acc.pieces, bad=i)
 
 
 class Utf8Step:

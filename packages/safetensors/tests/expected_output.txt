@@ -90,6 +90,8 @@ ok bytes.le64
 ok bytes.read_bytes
 ok bytes.read_u64
 ok bytes.bytes_to_string
+ok bytes.bytes_to_string.long
+ok bytes.bytes_to_string.long_invalid
 ok bytes.int_bytes
 ok bytes.f16_from_bits
 ok bytes.bf16_from_bits
@@ -191,4 +193,4 @@ ok json.reject_14
 ok json.unterminated_escape
 ok json.unterminated_member_escape
 ok tensor_info.byte_extent
-193 passed, 0 failed
+195 passed, 0 failed
