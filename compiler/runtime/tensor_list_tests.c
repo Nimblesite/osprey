@@ -13,6 +13,7 @@
 #include "test_death.h"
 
 OspreyList *osprey_load_tensor(const char *path, const char *name);
+OspreyList *osprey_read_file_bytes(const char *path, int64_t offset, int64_t count);
 void *osprey_tensor_panic(const char *message);
 const char *osp_io_error(void);
 void osp_io_error_clear(void);
@@ -92,8 +93,53 @@ static void t_panic_aborts(void) {
   CHECK(osp_death_signal(panic_unnamed) == SIGABRT);
 }
 
+// [BUILTIN-FILE-BYTES] Bytes come back unsigned and whole through every NUL; a
+// count past the end stops at the end; the caller's bad numbers and a missing
+// file are errors naming the operation and the subject.
+static void t_read_file_bytes(void) {
+  unsigned char image[1024];
+  for (size_t i = 0; i < sizeof image; i++) image[i] = (unsigned char)(i * 7);
+  image[0] = 0;
+  image[1] = 255;
+  const char *path = temp_file(image, sizeof image);
+  static const struct { int64_t offset, count, expected; } spans[] = {
+      {0, 1024, 1024}, {0, 1, 1}, {1, 1, 1}, {1000, 24, 24}, {1000, 100, 24}, {1023, 5, 1}, {1024, 5, 0}, {5000, 5, 0}, {7, 0, 0},
+  };
+  for (size_t s = 0; s < sizeof spans / sizeof spans[0]; s++) {
+    osp_io_error_clear();
+    OspreyList *list = osprey_read_file_bytes(path, spans[s].offset, spans[s].count);
+    CHECK(list != NULL);
+    CHECK(osp_io_error() == NULL);
+    CHECK(osprey_list_length(list) == spans[s].expected);
+    for (int64_t i = 0; i < spans[s].expected; i++) {
+      CHECK(osprey_list_get(list, i) == image[spans[s].offset + i]);
+    }
+    osp_release(list);
+  }
+  static const struct { int64_t offset, count; const char *reason; } refused[] = {
+      {-1, 1, "a negative offset"}, {INT64_MIN, 1, "a negative offset"}, {0, -1, "a negative byte count"}, {0, INT64_MIN, "a negative byte count"},
+  };
+  for (size_t r = 0; r < sizeof refused / sizeof refused[0]; r++) {
+    osp_io_error_clear();
+    CHECK(osprey_read_file_bytes(path, refused[r].offset, refused[r].count) == NULL);
+    CHECK(strstr(osp_io_error(), "readFileBytes") != NULL);
+    CHECK(strstr(osp_io_error(), refused[r].reason) != NULL);
+  }
+  osp_io_error_clear();
+  CHECK(osprey_read_file_bytes("/nonexistent/osprey/weights.bin", 0, 1) == NULL);
+  CHECK(strstr(osp_io_error(), "readFileBytes: /nonexistent/osprey/weights.bin: ") != NULL);
+  osp_io_error_clear();
+  CHECK(osprey_read_file_bytes(NULL, 0, 1) == NULL);
+  CHECK(strstr(osp_io_error(), "readFileBytes") != NULL);
+  osp_io_error_clear();
+  CHECK(osprey_read_file_bytes("/tmp", 0, 1) == NULL);
+  CHECK(strstr(osp_io_error(), "readFileBytes: /tmp: ") != NULL);
+  (void)remove(path);
+}
+
 int main(void) {
   t_tensor_loader(&(TensorLoader){"loadTensor", load, length, at});
+  t_read_file_bytes();
   t_half_tensor_matches_numeric_widening();
   t_panic_aborts();
   printf("[ok] tensor_list: %ld assertions\n", g_checks);

@@ -54,6 +54,12 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
         "match writeFile(\"output.txt\", \"Hello, World!\") {\n    Success { value } => print(\"${value} bytes written\")\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
+        "readFileBytes",
+        "Reads at most `count` bytes from byte `offset` of a binary file as a `List<int>` of 0 to 255; NUL is an ordinary byte. The list is shorter only when the file ends first.",
+        ["path" => "Path to the file", "offset" => "First byte to read", "count" => "Most bytes to read"],
+        "match readFileBytes(\"model.gguf\", 0, 4) {\n    Success { value } => print(\"${listLength(value)} bytes\")\n    Error { message } => print(message)\n}"
+    ),
+    builtin_doc!(
         "loadTensor",
         "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a `List<float>`, every element widened exactly. Nothing touches the GPU surface.",
         ["path" => "Path to the .safetensors file", "name" => "Tensor name in its header, e.g. \"wte.weight\""],

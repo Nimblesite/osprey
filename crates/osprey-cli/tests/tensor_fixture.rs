@@ -374,6 +374,65 @@ fn square_projects(module: &str, handlers: [&str; 2]) -> Vec<(&'static str, Opti
         ),
     ]
 }
+/// [BUILTIN-FILE-BYTES] Both flavors read binary through its NUL bytes: the
+/// fixture's 8-byte header prefix is 116 then seven zeros, the F32 `0.5` at
+/// byte 124 is `00 00 00 3f`, a span past the end stops at the end, and bad
+/// numbers and a missing file are the operation's own errors.
+#[test]
+fn both_flavors_read_binary_bytes_through_every_nul() {
+    let fixture = manifest().join("tests/fixtures/transformer.safetensors");
+    let size = std::fs::metadata(&fixture).map(|m| m.len()).unwrap_or(0);
+    let path = fixture.display().to_string();
+    let osp = format!(
+        "fn render(value: List<int>, i: int) -> string = match i >= listLength(value) {{\n    true => \"\"\n    false => \" ${{listGet(value, i) ?: -1}}${{render(value, satAdd(i, 1))}}\"\n}}\n\
+         fn show(label: string, read: Result<List<int>, Error>) = match read {{\n    Success {{ value }} => print(\"${{label}} ${{listLength(value)}}:${{render(value, 0)}}\")\n    Error {{ message }} => print(\"${{label}} ${{message}}\")\n}}\n\
+         show(\"head\", readFileBytes(\"{path}\", 0, 8))\n\
+         show(\"half\", readFileBytes(\"{path}\", 124, 4))\n\
+         show(\"tail\", readFileBytes(\"{path}\", {tail}, 100))\n\
+         show(\"past\", readFileBytes(\"{path}\", {size}, 100))\n\
+         show(\"negative\", readFileBytes(\"{path}\", -1, 1))\n\
+         show(\"missing\", readFileBytes(\"/nonexistent/osprey.bin\", 0, 1))\n",
+        tail = size - 2,
+    );
+    let python = format!(
+        "# osprey: flavor=python\n\n\ndef render(value: list[int], i: int) -> str:\n    if i >= listLength(value):\n        return \"\"\n    else:\n        return f\" {{unwrap_or(listGet(value, i), -1)}}{{render(value, satAdd(i, 1))}}\"\n\n\ndef show(label: str, read: Result[list[int], Error]):\n    match read:\n        case Success(value=value):\n            print(f\"{{label}} {{listLength(value)}}:{{render(value, 0)}}\")\n        case Error(message=message):\n            print(f\"{{label}} {{message}}\")\n\n\n\
+         show(\"head\", readFileBytes(\"{path}\", 0, 8))\n\
+         show(\"half\", readFileBytes(\"{path}\", 124, 4))\n\
+         show(\"tail\", readFileBytes(\"{path}\", {tail}, 100))\n\
+         show(\"past\", readFileBytes(\"{path}\", {size}, 100))\n\
+         show(\"negative\", readFileBytes(\"{path}\", -1, 1))\n\
+         show(\"missing\", readFileBytes(\"/nonexistent/osprey.bin\", 0, 1))\n",
+        tail = size - 2,
+    );
+    let bytes = std::fs::read(&fixture).unwrap_or_default();
+    let tail = format!("{} {}", bytes[bytes.len() - 2], bytes[bytes.len() - 1]);
+    let expected = format!(
+        "head 8: 116 0 0 0 0 0 0 0\nhalf 4: 0 0 0 63\ntail 2: {tail}\npast 0:\n\
+         negative readFileBytes: {path}: a negative offset\n\
+         missing readFileBytes: /nonexistent/osprey.bin: No such file or directory\n"
+    );
+    for (ext, source) in [("osp", osp), ("py", python)] {
+        let program =
+            std::env::temp_dir().join(format!("osprey_read_bytes_{}.{ext}", std::process::id()));
+        assert!(
+            std::fs::write(&program, source).is_ok(),
+            "{ext}: not written"
+        );
+        let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
+            .arg(&program)
+            .args(["--run"])
+            .output();
+        let _ = std::fs::remove_file(&program);
+        assert!(output.is_ok(), "{ext}: not run");
+        let output = output.unwrap_or_else(|_| unreachable!());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout),
+            expected,
+            "{ext}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
 /// [BUILTIN-FILE-TENSOR] The CPU handler loads and multiplies over host lists
 /// with no GPU surface in the program at all: its IR names no `osprey_gpu_`
 /// symbol, and it runs under an `OSPREY_GPU` that aborts any GPU call.

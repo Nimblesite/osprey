@@ -38,6 +38,8 @@ enum Ret {
     /// `Result<List<float>, _>`: the C `i8*` is a fresh float list; `null` ⇒
     /// Error, with the same fallback rule as `ResultStr`.
     ResultFloats(Option<&'static str>),
+    /// A fresh `List<int>` handle, or NULL with the reason recorded.
+    ResultInts(Option<&'static str>),
 }
 
 /// One builtin's lowering: its C symbol, parameter LLVM types, and return
@@ -74,6 +76,12 @@ fn lookup(name: &str) -> Option<Sig> {
             "osprey_load_tensor",
             &[Str, Str],
             Ret::ResultFloats(Some("loadTensor: could not read the tensor")),
+        ),
+        // [BUILTIN-FILE-BYTES] (tensor_list.c): binary bytes as List<int>.
+        "readFileBytes" => sig(
+            "osprey_read_file_bytes",
+            &[Str, I64, I64],
+            Ret::ResultInts(Some("readFileBytes: could not read the file")),
         ),
         // --- processes [BUILTIN-PROCESS] (system_runtime.c); arg 2 is callback ---
         "spawnProcess" => sig("spawn_process_with_handler", &[Str, Ptr], Ret::ResultInt),
@@ -289,6 +297,10 @@ fn emit(cg: &mut Codegen, sig: &Sig, ops: &[String]) -> Result<Value> {
         }
         Ret::ResultFloats(err) => {
             let owner = crate::collections::list_owner(Some("double"));
+            fallible_handle(cg, sig.cname, &params, &op_refs, &owner, err)
+        }
+        Ret::ResultInts(err) => {
+            let owner = crate::collections::list_owner(None);
             fallible_handle(cg, sig.cname, &params, &op_refs, &owner, err)
         }
     }

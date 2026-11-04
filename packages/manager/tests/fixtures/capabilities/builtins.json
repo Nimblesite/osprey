@@ -19,6 +19,7 @@
     {"builtin": "input", "capability": "io/terminal"},
     {"builtin": "loadTensor", "capability": "io/files"},
     {"builtin": "readFile", "capability": "io/files"},
+    {"builtin": "readFileBytes", "capability": "io/files"},
     {"builtin": "spawnProcess", "capability": "io/process"},
     {"builtin": "termClear", "capability": "io/terminal"},
     {"builtin": "termCols", "capability": "io/terminal"},

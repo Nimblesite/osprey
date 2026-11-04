@@ -73,6 +73,7 @@ pub(crate) const WEBSOCKET_FNS: &[&str] = &[
 ];
 const FS_FNS: &[&str] = &[
     "readFile",
+    "readFileBytes",
     "writeFile",
     "loadTensor",
     "gpuLoadTensor",
@@ -166,17 +167,18 @@ mod tests {
         let mut policy = Policy::allow_all();
         policy.fs = false;
         let v = violations(
-            &prog("let c = readFile(\"a.txt\")\nlet w = writeFile(\"b\", c)\nlet t = loadTensor(\"m\", \"w\")\nlet g = gpuLoadTensor(\"m\", \"w\")\nlet r = gpuLoad(\"m\", 0, 1)\n"),
+            &prog("let b = readFileBytes(\"a\", 0, 1)\nlet c = readFile(\"a.txt\")\nlet w = writeFile(\"b\", c)\nlet t = loadTensor(\"m\", \"w\")\nlet g = gpuLoadTensor(\"m\", \"w\")\nlet r = gpuLoad(\"m\", 0, 1)\n"),
             policy,
         );
         assert_eq!(
             v.len(),
-            5,
+            6,
             "every builtin that reads or writes a file is gated: {v:?}"
         );
         assert!(v.iter().all(|m| m.contains("--no-fs")));
         for f in [
             "readFile",
+            "readFileBytes",
             "writeFile",
             "loadTensor",
             "gpuLoadTensor",

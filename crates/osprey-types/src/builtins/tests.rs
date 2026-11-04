@@ -92,6 +92,11 @@ fn file_builtins_include_the_host_tensor_loader() {
         builtin_signature("loadTensor").as_deref(),
         Some("loadTensor : (string, string) -> Result<List<float>, Error>")
     );
+    // [BUILTIN-FILE-BYTES] Binary stays bytes; a string would stop at a NUL.
+    assert_eq!(
+        builtin_signature("readFileBytes").as_deref(),
+        Some("readFileBytes : (string, int, int) -> Result<List<int>, Error>")
+    );
 }
 
 /// [GPU-BUFFER-TENSOR] Reject unsupported requested storage before codegen.

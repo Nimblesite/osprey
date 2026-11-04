@@ -350,6 +350,13 @@ fn tensors(e: &mut TypeEnv) {
         vec![s(), s()],
         res(Type::list(Type::float())),
     );
+    // [BUILTIN-FILE-BYTES] Binary files as bytes; `readFile` is text.
+    mono(
+        e,
+        "readFileBytes",
+        vec![s(), i(), i()],
+        res(Type::list(i())),
+    );
 }
 
 fn json(e: &mut TypeEnv) {

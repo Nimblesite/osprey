@@ -773,6 +773,17 @@ seeking to the end claimed it would be — a FIFO, socket or character device
 cannot be seeked and reports its size as `-1`, so a seek-derived length reads
 those sources as empty and truncates or overruns their contents.
 
+### `readFileBytes(path: string, offset: int, count: int) -> Result<List<int>, Error>` — [BUILTIN-FILE-BYTES]
+
+Reads at most `count` bytes of the file at `path`, starting at byte `offset`, as a list of integers from 0 to 255. It reads binary, so NUL is an ordinary byte; `readFile` returns text and a string ends at its first NUL. The list is shorter than `count` only because the file ended, and an `offset` at or past the end is an empty list. A negative `offset` or `count`, a file that can't be opened and a failed read are each an `Error` naming the reason; none of them yields a shorter list. `--no-fs` refuses it.
+
+```osprey
+match readFileBytes("model.gguf", 0, 4) {
+    Success { value } => print("${listLength(value)} bytes")
+    Error { message } => print(message)  // readFileBytes: model.gguf: No such file or directory
+}
+```
+
 ### `loadTensor(path: string, name: string) -> Result<List<float>, Error>` — [BUILTIN-FILE-TENSOR]
 
 Reads the tensor `name` out of the safetensors file at `path` as a host list. Every `F64`, `F32`, `F16` or `BF16` element widens exactly to the `float` it holds, in file order. A missing name, an unsupported dtype, malformed `data_offsets`, and a file that ends before the tensor does are each an `Error` naming the reason; none of them yields a shorter list. The reader is the one `gpuLoadTensor` uses ([GPU-BUFFER-TENSOR](0034-GPUComputation.md)), so the two loaders accept and refuse the same files, but `loadTensor` builds no `GpuBuffer` and calls nothing on the GPU surface. A program that loads its weights this way and never names a GPU built-in links no GPU code. Like `gpuLoadTensor`, it may answer an operation of a static handler; `--no-fs` refuses it.
