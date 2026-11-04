@@ -218,7 +218,7 @@ hawk:
 		echo "      Install: make hawk-install"; \
 		exit 1; \
 	fi
-	RUSTC_BOOTSTRAP=1 cargo +$(HAWK_RUSTC) hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
+	cd src/toolchain && RUSTC_BOOTSTRAP=1 cargo +$(HAWK_RUSTC) hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
 
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt: $(EXT_NODE_DEPS)
