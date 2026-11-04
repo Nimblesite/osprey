@@ -1,7 +1,7 @@
 # Plan 0049 — A local coding model on Osprey: Qwen3.8-27B
 
 Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, [LocalCodingModel](../specs/applications/LocalCodingModel.md)
-Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
+Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-to-kernel fusion item in Stage 4, before the Phase 2 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
 
 ## Current execution sequence — 2026-11-03
 
@@ -10,7 +10,7 @@ Work proceeds in this order; an unchecked gate blocks the dependent step. Receip
 1. Finish plan 0050 Phase 4/5: typed loader constraints and byte preservation, binary32 matrix products on host and real Metal, GPT-2/transformer migration, remaining device arithmetic and explicit failure handling. Run each regression red before its fix, then the relevant broader gates; commit each verified step.
 2. In parallel, finish and review Phase 0's evaluation harness and reference corpus. Probe pi availability every ten minutes; use available providers for bounded legwork and independently verify their output.
 3. Recover the disk prerequisite safely, run the real pinned-weight Ollama baseline, publish measurements and choose the quantization/sampling configuration. Fixture harness tests cannot satisfy this gate.
-4. After both prerequisite gates pass, execute Phases 1–8 in order, including the Agent provider integration and final acceptance measurements. Keep failed or unrun checks open.
+4. After both prerequisite gates pass, execute Phases 1–8 in order, with 0023-gpu.md's kernel fusion item landing before the Phase 2 gate, including the Agent provider integration and final acceptance measurements. Keep failed or unrun checks open.
 
 ## Prerequisites in place
 - Model pins: `Qwen/Qwen3.8-27B` revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`, weights from `unsloth/Qwen3.8-27B-GGUF` revision `4ca720788d1e01f1bff70c033e0d0028fd02e502`; fallback `Qwen/Qwen3.6-27B` (same `qwen3_5` architecture, 27,781,427,952 params) is a weights swap if 3.8 fails Phase 0.
@@ -38,13 +38,13 @@ Gate: all three memory backends pass, ARC clean.
 ## Phase 2 — Speed gate
 - [ ] [LLM-MATMUL-QUANT]: a product of a quantized matrix and a `float32` matrix.
 - [ ] Port GPT-2's handlers to `float32` as the first end-to-end proof.
-- [ ] [LLM-DISPATCH-BATCH]: encode a token's dispatches into one Metal command buffer, waiting only where the host reads a result, and reuse output buffers instead of allocating one per dispatch. Measure before and after on the real shapes; bytes must match the host and failures must stay explicit. This is the first slice of 0023-gpu.md's kernel-to-kernel fusion item.
+- [ ] [LLM-DISPATCH-BATCH]: encode a token's dispatches into one Metal command buffer, waiting only where the host reads a result, and reuse output buffers instead of allocating one per dispatch. Measure before and after on the real shapes; bytes must match the host and failures must stay explicit. This is the first slice of 0023-gpu.md's kernel-to-kernel fusion item, which Qwen depends on.
 - [ ] Find the gap between `gpuMatMul` and the same kernel in standalone Metal at 64 rows (36–49 vs 64–97 Gop/s), repeated on a quiet machine.
 - [ ] Synthetic workload with the real tensor shapes and 26G operations per token, on random weights.
 
 Early probe, 2026-11-05, on the real 5120×17408 shape over mapped random `float32` weights, with the machine shared (load about 20); receipts in `target/local-coding-model/speed/metal-matmul.csv`. This is not the gate. 5 tokens/s at 26G operations needs 130 Gop/s. `gpuMatMul` reached 26 Gop/s one row at a time and 36–49 at 64 rows, and the same per-element kernel in a standalone Metal program reached 33 and 64–97. Tiling columns per thread for cache locality was slower at every size (best 48 at 64 rows), so it was rejected. Each one-row dispatch cost about 1.8 ms beyond its arithmetic, and a token needs several hundred, so encoding them into one command buffer comes first. The running Ollama journal's median was 8.0 tokens/s on Q4_K_XL, measured under load.
 
-Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Phase 0 Ollama rate on the same quant (a 2,000-token turn ≈ 7 min). Go/no-go: if missed, stop and report before porting the model; next options are kernel fusion (0023-gpu.md) and a multithreaded NEON path — binding a native engine is not an option.
+Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Phase 0 Ollama rate on the same quant (a 2,000-token turn ≈ 7 min). Kernel fusion (0023-gpu.md) is required work, not a fallback: this gate is not measured, and Phases 3–8 do not start, until [LLM-DISPATCH-BATCH] has landed. Go/no-go: if missed after that, stop and report before porting the model; the next option is a multithreaded NEON path — binding a native engine is not an option.
 
 ## Phase 3 — Model on a tiny checkpoint
 - [x] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `scripts/oracles/gguf.py`.
