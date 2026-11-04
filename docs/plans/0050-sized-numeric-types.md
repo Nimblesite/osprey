@@ -112,7 +112,8 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 Sized division report follow-up (`docs/reviews/sized-float-polymorphic-arithmetic.md`):
 
 - [x] Reproduce the inferred helper rejection; correct the numeric guard and per-call division result relation while preserving integer and mixed binary64 division. All 940 type-checker tests and strict type-checker clippy pass (2026-11-04).
-- [ ] Verify the final bit-exact Default/ML regression under GC, ARC and wasm32, complete all three corpus lanes, and retain 395 transformer assertions under both memory backends before closing this report.
+- [x] Verify the final bit-exact Default/ML regression under GC, ARC and wasm32, including aliases, subnormals, signed zero and local `Result` payloads; nine golden comparisons pass. Retain all 395 transformer package assertions under GC and ARC (zero live ARC objects). Receipts: `target/logs/plan-0050/polymorphic-verified-receipts.json` and `polymorphic-transformers-{gc,arc}.*` (2026-11-04).
+- [ ] Finish the whole-suite gate: `make test` is running; the first wasm corpus run has transformer math failures also reproduced with the older release compiler. Keep this report's broad verification open until those gates pass.
 
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
 

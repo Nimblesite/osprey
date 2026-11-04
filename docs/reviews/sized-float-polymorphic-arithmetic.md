@@ -1,4 +1,4 @@
-# Bug: unannotated helpers can't do arithmetic on `float32` or `float16`
+# Bug: inferred division rejects `float32` and `float16`
 
 Status: fix implemented; full corpus verification in progress. Spec: [TYPE-NUMERIC-ARITH-WIDTH] in `docs/specs/language/0004-TypeSystem.md`. Tracked in plan 0050, Phase 3.
 
@@ -52,7 +52,7 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 - [x] Native Default regression matches independently computed Python `struct` bit goldens for all five operators at both widths. Cancellation distinguishes binary32 and binary16 intermediate rounding from binary64.
 - [x] All 940 type-checker tests and strict package clippy pass.
 - [x] Current primary checkout transformer package retains all 395 GC assertions. It has no `toFloat32(0.0)` workaround anchors; the separate Phase 4/5 migration owner has been notified.
-- [x] Verify Default/ML regression, aliases, signed zero and subnormals under GC, ARC and wasm32. Added a further `Result` wrapper regression after the wide corpus exposed premature value generalization; its final rerun remains part of the full verification below.
+- [x] Verify the final Default/ML regression, aliases, signed zero, subnormals and local `Result` wrappers under GC, ARC and wasm32. All nine exact-golden runs pass, including the unchanged legacy pattern-matching golden; native ARC runs each report zero live objects. Receipt: `polymorphic-verified-receipts.json`.
 - [ ] Finish full GC, ARC and wasm32 corpus lanes and final regression assertions. Transformer package GC and ARC both retain all 395 assertions (ARC: zero live objects).
 
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
