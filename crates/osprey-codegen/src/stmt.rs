@@ -290,14 +290,17 @@ fn lambda_cell(cg: &Codegen, position: Option<Position>) -> Option<(osprey_types
 }
 
 /// The definition `value` is a bare ALIAS for, when binding it materialises no
-/// value of its own — a declared Osprey function or a foreign function.
+/// value of its own — a declared Osprey function, a foreign function or a GPU
+/// loader.
 fn alias_target(cg: &Codegen, value: &Expr) -> Option<String> {
     let Expr::Identifier(n) = value else {
         return None;
     };
     let target = cg.call_aliases.get(n).cloned().unwrap_or_else(|| n.clone());
     (cg.lookup(&target).is_none()
-        && (cg.fn_defs.contains_key(&target) || cg.extern_params.contains_key(&target)))
+        && (cg.fn_defs.contains_key(&target)
+            || cg.extern_params.contains_key(&target)
+            || crate::gpu::is_loader(&target)))
     .then_some(target)
 }
 

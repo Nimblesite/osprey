@@ -234,7 +234,7 @@ fn picker_label(ctx: &Ctx, ordinal: u64, label: &str) -> AnyElement {
         .into_any_element()
 }
 
-/// Draws one picker choice and returns its framework key when clicked.
+/// Draws one picker choice, announcing its selection and returning its framework key when clicked.
 fn choice(ctx: &mut Ctx, choice: &Value, selected: &str, ordinal: u64, index: usize) -> AnyElement {
     let handle = ctx.cx.entity();
     let binding = binding(ctx, ordinal);
@@ -242,6 +242,7 @@ fn choice(ctx: &mut Ctx, choice: &Value, selected: &str, ordinal: u64, index: us
     Button::new(format!("{}:{index}", control_id(ctx, ordinal)))
         .compact()
         .selected(key == selected)
+        .aria_selected(key == selected)
         .min_w_0()
         .max_w_full()
         .label(string(choice, "label"))
