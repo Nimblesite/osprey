@@ -307,11 +307,11 @@ def all_cases(port: int):
     return [record for group in groups for record in group(port)]
 
 
-def start_reference():
+def start_reference(application=app):
     """Use a reserved random port and a live ASGI server, including HTTP header parsing."""
     listener = socket.socket()
     listener.bind(("127.0.0.1", 0))
-    server = uvicorn.Server(uvicorn.Config(app, log_level="error", lifespan="off"))
+    server = uvicorn.Server(uvicorn.Config(application, log_level="error", lifespan="off"))
     worker = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
     worker.start()
     for _ in range(500):

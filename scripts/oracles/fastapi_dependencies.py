@@ -1,0 +1,439 @@
+#!/usr/bin/env python3
+"""CPython oracle for @osprey/fastapi dependency wiring: cache, scope and cleanup.
+
+Builds an app whose dependency graph is the one an Osprey port must reproduce, and
+drives the real FastAPI (0.135.3) over loopback HTTP with the shared helpers in
+`scripts/oracles/fastapi.py`, so every recorded status, `body` and `body_text` is
+FastAPI's own verdict on the call an Osprey port has to answer identically.
+
+    session      yield resource, `scope="function"`, numbered per request
+    identity     depends on session; `Authorization: Bearer <token>` + `X-Role`
+    credit       depends on identity; `X-Credit`, writer-only
+    GET /deps    needs session + identity + credit, which share one cached session
+
+`session` is a generator dependency, so it is declared with `scope="function"`
+everywhere it is injected: its exit code then runs before the response is sent, and
+a trace read afterwards always sees the complete open/close pair.
+
+Trace grammar, appended to one module-level trace:
+
+    open:N    session N opened            close:N   session N closed
+    auth:N    identity accepted for N     credit:N  credit accepted for N
+
+An HTTP middleware clears the trace and the session counter *before* the dependency
+graph is solved, for every path except `/dependency-trace`; that path reports the
+trace the previous request left and never resets it. Sessions therefore always count
+from 1, and no response body depends on an earlier request.
+
+Access rules, checked in this order by the dependency that owns each rule:
+
+    `Authorization` exactly `Bearer <non-empty token>` (any token) else 401
+    `{"detail": "not_authenticated"}` with `WWW-Authenticate: Bearer`
+    `X-Role`, default `member`, must be `writer` else 403 `{"detail": "writer_required"}`
+    `X-Credit`, default 1, must be a positive integer else 402
+    `{"detail": "insufficient_credit"}`; a non-integer is FastAPI's 422
+
+A rejected dependency still closes the session it opened, so the trace of a 401 is
+`open:1, close:1` and of a 403/402 `open:1, auth:1, close:1` — the denial happens
+before that dependency's own trace entry. Every case's trace read is checked to be
+balanced: the closes are exactly the opens in reverse order.
+
+The HTTP parser strips leading whitespace from a header value before the app sees it,
+so `Authorization: " Bearer token"` arrives as `Bearer token` and `X-Credit: " 2 "`
+as `2 `, which integer validation accepts. Calls are recorded without normalization.
+
+JSON shapes, stable for the port's goldens:
+
+    GET /deps, /deps/override -> {"session_ids": [int, int, int],
+                                  "role": str, "credit": int}
+        the session id session, identity and credit each saw, in that order, then the
+        resolved role and the granted credit
+    GET /deps/uncached        -> {"session_ids": [int, int]}
+        `use_cache=False` twice, so two distinct sessions open and close in reverse
+    GET /dependency-trace     -> {"trace": [str, ...]}
+
+`/deps/override` runs with `app.dependency_overrides[identity] = fake_identity`, a
+fake with no dependencies at all, installed for that one request by the middleware
+and removed when it returns. Its `session_ids` is `[1, 0, 0]` — the endpoint's own
+session plus the fake's placeholder `0` — and its trace has `credit:0` and no
+`auth:N`.
+
+The corpus is a single ordered wire sequence: a trace read reports the cases before
+it, so the array has to be replayed in order. It alternates accepted and rejected
+calls, repeats requests, reads the trace between them, and covers the auth, role and
+credit denials, `use_cache=False` and the override/reset permutations, plus an
+unrouted call, which resets the trace too. Repeated identical cases are deliberate:
+byte-equal bodies across repetitions are the evidence that nothing is cached across
+requests.
+
+Run from the repository root with the pinned interpreter:
+
+    /Users/christianfindlay/Documents/Code/NimblesiteAgenticPlatform/.venv/bin/python \\
+        -I scripts/oracles/oracle.py fastapi_dependencies
+"""
+
+from __future__ import annotations
+
+import http.client
+import importlib.metadata
+import importlib.util
+import json
+import pathlib
+import sys
+from typing import Annotated
+
+from fastapi import Depends, FastAPI, Header, HTTPException
+
+PINNED = "0.135.3"
+HERE = pathlib.Path(__file__).resolve().parent
+TRACE_PATH = "/dependency-trace"
+TRACE: list[str] = []
+COUNTER = [0]
+GOOD = {"Authorization": "Bearer writer-token", "X-Role": "writer", "X-Credit": "3"}
+
+
+def load_reference():
+    """The sibling `fastapi.py` oracle, loaded under a name that shadows nothing."""
+    spec = importlib.util.spec_from_file_location("fastapi_reference", HERE / "fastapi.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+SHARED = load_reference()
+
+
+def session():
+    """The one yield resource of a request: numbered afresh, opened then closed."""
+    COUNTER[0] += 1
+    sid = COUNTER[0]
+    TRACE.append(f"open:{sid}")
+    try:
+        yield sid
+    finally:
+        TRACE.append(f"close:{sid}")
+
+
+def bearer_token(authorization):
+    """The token after an exact `Bearer ` scheme, or None when the scheme is wrong."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization[len("Bearer ") :]
+    return token if token.strip() else None
+
+
+def identity(
+    sid: Annotated[int, Depends(session, scope="function")],
+    authorization: Annotated[str | None, Header()] = None,
+    x_role: Annotated[str, Header()] = "member",
+):
+    """Authenticate first, then record an accepted identity for this session."""
+    if bearer_token(authorization) is None:
+        raise HTTPException(401, "not_authenticated", headers={"WWW-Authenticate": "Bearer"})
+    TRACE.append(f"auth:{sid}")
+    return {"role": x_role, "session": sid}
+
+
+def credit(
+    who: Annotated[dict, Depends(identity)],
+    x_credit: Annotated[int, Header()] = 1,
+):
+    """The writer scope is checked before the credit, so a member never spends."""
+    if who["role"] != "writer":
+        raise HTTPException(403, "writer_required")
+    if x_credit <= 0:
+        raise HTTPException(402, "insufficient_credit")
+    TRACE.append(f"credit:{who['session']}")
+    return {"credit": x_credit, "role": who["role"], "session": who["session"]}
+
+
+def snapshot(sid, who, spend):
+    """The documented `/deps` shape: one id per dependency, then role and credit."""
+    return {
+        "session_ids": [sid, who["session"], spend["session"]],
+        "role": who["role"],
+        "credit": spend["credit"],
+    }
+
+
+def fake_identity():
+    """The override stand-in: no dependency at all, so nothing opens or authenticates."""
+    return {"role": "writer", "session": 0}
+
+
+app = FastAPI()
+
+
+@app.middleware("http")
+async def reset_then_override(request, call_next):
+    """Reset trace and counter before solving, and install the override for one path."""
+    path = request.url.path
+    if path != TRACE_PATH:
+        TRACE.clear()
+        COUNTER[0] = 0
+    overriding = path == "/deps/override"
+    if overriding:
+        app.dependency_overrides[identity] = fake_identity
+    try:
+        return await call_next(request)
+    finally:
+        if overriding:
+            app.dependency_overrides.pop(identity, None)
+
+
+@app.get("/deps")
+def deps(
+    sid: Annotated[int, Depends(session, scope="function")],
+    who: Annotated[dict, Depends(identity)],
+    spend: Annotated[dict, Depends(credit)],
+):
+    """Shared cache: session, identity and credit resolve one session between them."""
+    return snapshot(sid, who, spend)
+
+
+@app.get("/deps/uncached")
+def uncached(
+    first: Annotated[int, Depends(session, use_cache=False, scope="function")],
+    second: Annotated[int, Depends(session, use_cache=False, scope="function")],
+):
+    """`use_cache=False` twice: two opens, and the exit stack closes them in reverse."""
+    return {"session_ids": [first, second]}
+
+
+@app.get("/deps/override")
+def overridden(
+    sid: Annotated[int, Depends(session, scope="function")],
+    who: Annotated[dict, Depends(identity)],
+    spend: Annotated[dict, Depends(credit)],
+):
+    """Same graph and shape as `/deps`, but the middleware swapped identity out."""
+    return snapshot(sid, who, spend)
+
+
+@app.get(TRACE_PATH)
+def dependency_trace():
+    """The complete trace of the previous request; the only path the middleware spares."""
+    return {"trace": list(TRACE)}
+
+
+def call(port: int, path: str, headers: dict | None = None):
+    """One recorded good or rejected wire call through the shared helper."""
+    return SHARED.case(port, "GET", path, headers)
+
+
+def trace(port: int):
+    """Read the trace the previous case left."""
+    return call(port, TRACE_PATH)
+
+
+def good_sequence(port: int):
+    """An accepted call, its trace, the same call again and the identical trace."""
+    return [call(port, "/deps", GOOD), trace(port), call(port, "/deps", GOOD), trace(port)]
+
+
+def auth_denials(port: int):
+    """Missing, empty and wrongly schemed Authorization: 401 before any auth entry."""
+    headers = [
+        {"X-Role": "writer"},
+        {"Authorization": "", "X-Role": "writer"},
+        {"Authorization": "Bearer", "X-Role": "writer"},
+        {"Authorization": "Bearer ", "X-Role": "writer"},
+        {"Authorization": "Bearer    ", "X-Role": "writer"},
+        {"Authorization": "bearer token", "X-Role": "writer"},
+        {"Authorization": "Basic d3JpdGVy", "X-Role": "writer"},
+        {"Authorization": "Token abc", "X-Role": "writer"},
+    ]
+    return [record for sent in headers for record in (call(port, "/deps", sent), trace(port))]
+
+
+def auth_accepted(port: int):
+    """Any non-empty token after the exact scheme passes; leading OWS is stripped."""
+    headers = [
+        {"Authorization": " Bearer token", "X-Role": "writer"},
+        {"Authorization": "Bearer t", "X-Role": "writer"},
+        {"Authorization": "Bearer token with spaces", "X-Role": "writer"},
+        {"Authorization": "Bearer  padded-token", "X-Role": "writer"},
+        {"Authorization": "Bearer x", "X-Role": "writer", "X-Credit": "1"},
+    ]
+    return [record for sent in headers for record in (call(port, "/deps", sent), trace(port))]
+
+
+def role_denials(port: int):
+    """`X-Role` other than writer, including the default, is a 403 before the credit."""
+    headers = [
+        {**GOOD, "X-Role": "member"},
+        {**GOOD, "X-Role": "reader"},
+        {**GOOD, "X-Role": "Writer"},
+        {**GOOD, "X-Role": ""},
+        {"Authorization": GOOD["Authorization"], "X-Credit": "3"},
+        {**GOOD, "X-Role": "member", "X-Credit": "0"},
+    ]
+    return [record for sent in headers for record in (call(port, "/deps", sent), trace(port))]
+
+
+def credit_cases(port: int):
+    """Accepted credit values, 402 for zero and negative, FastAPI's 422 for a non-integer."""
+    values = ["0", "-1", "-100", "1", "2.5", "abc", "", " 2 "]
+    return [record for v in values for record in (call(port, "/deps", {**GOOD, "X-Credit": v}), trace(port))]
+
+
+def uncached_sequence(port: int):
+    """Two sessions per call, closed in reverse; the numbering restarts each call."""
+    return [
+        call(port, "/deps/uncached", GOOD),
+        trace(port),
+        call(port, "/deps/uncached"),
+        trace(port),
+        call(port, "/deps", GOOD),
+        trace(port),
+    ]
+
+
+def override_sequence(port: int):
+    """The fake identity opens nothing; the override is gone on the next request."""
+    return [
+        call(port, "/deps/override", GOOD),
+        trace(port),
+        call(port, "/deps/override"),
+        trace(port),
+        call(port, "/deps", GOOD),
+        trace(port),
+        call(port, "/deps", {"Authorization": GOOD["Authorization"]}),
+        trace(port),
+        call(port, "/deps/override", {**GOOD, "X-Credit": "0"}),
+        trace(port),
+    ]
+
+
+def alternating_sequence(port: int):
+    """Accepted and rejected calls alternate, each followed by its own trace."""
+    sent = [
+        GOOD,
+        {"X-Role": "writer"},
+        GOOD,
+        {**GOOD, "X-Role": "member"},
+        GOOD,
+        {**GOOD, "X-Credit": "0"},
+        GOOD,
+    ]
+    return [record for headers in sent for record in (call(port, "/deps", headers), trace(port))]
+
+
+def unrouted_sequence(port: int):
+    """An unrouted call resets the trace too, so the read after it is empty."""
+    return [
+        call(port, "/deps", GOOD),
+        call(port, "/missing"),
+        trace(port),
+        call(port, "/deps/uncached", GOOD),
+        trace(port),
+    ]
+
+
+def trace_repeats(port: int):
+    """Reading the trace is idempotent and never resets it."""
+    return [call(port, "/deps", GOOD), trace(port), trace(port), trace(port)]
+
+
+def all_cases(port: int):
+    """Every recorded case, in wire order: trace reads depend on the cases before them."""
+    groups = [
+        good_sequence,
+        auth_denials,
+        auth_accepted,
+        role_denials,
+        credit_cases,
+        uncached_sequence,
+        override_sequence,
+        alternating_sequence,
+        unrouted_sequence,
+        trace_repeats,
+    ]
+    return [record for group in groups for record in group(port)]
+
+
+def www_authenticate(port: int):
+    """The 401 challenge pair; `shared.case` records only status, body and body_text."""
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request("GET", "/deps")
+        response = connection.getresponse()
+        response.read()
+        return response.status, response.getheader("WWW-Authenticate")
+    finally:
+        connection.close()
+
+
+def entries(trace, prefix):
+    """The session ids a trace records for one entry kind, in order."""
+    return [entry.split(":")[1] for entry in trace if entry.startswith(prefix)]
+
+
+def checked_traces(cases):
+    """Every trace read must close exactly the sessions it opened, in reverse order."""
+    for case in cases:
+        if case["path"] != TRACE_PATH:
+            continue
+        trace = case["body"]["trace"]
+        if entries(trace, "close:") != list(reversed(entries(trace, "open:"))):
+            raise ValueError(f"Leaked or misordered sessions in {trace}")
+
+
+def checked_challenge(port: int):
+    """The unauthenticated call must challenge with `Bearer`, not just say 401."""
+    status, challenge = www_authenticate(port)
+    if (status, challenge) != (401, "Bearer"):
+        raise ValueError(f"Expected a 401 Bearer challenge, found {status} {challenge!r}")
+    return challenge
+
+
+def stop_reference(server, worker, listener):
+    """Ask the reference server to stop and report a worker that outlived it."""
+    server.should_exit = True
+    worker.join(5)
+    listener.close()
+    if worker.is_alive():
+        raise TimeoutError("Reference HTTP server failed to stop")
+
+
+def replay(port, cases):
+    """Prove every state-changing request is recorded: replay must match byte for byte."""
+    for expected in cases:
+        actual = call(port, expected["path"], expected["headers"])
+        if actual != expected:
+            raise ValueError(f"Oracle is not replayable: {expected!r} != {actual!r}")
+
+
+def reference_cases():
+    """Collect the corpus and the 401 challenge from one live server, then stop it."""
+    server, worker, listener, port = SHARED.start_reference(application=app)
+    try:
+        cases = all_cases(port)
+        replay(port, cases)
+        return cases, checked_challenge(port)
+    finally:
+        stop_reference(server, worker, listener)
+
+
+def checked_cases(cases):
+    """A non-empty, answered corpus whose every trace read is balanced."""
+    if not cases or any(case["status"] is None for case in cases):
+        raise ValueError("Empty case list or an unanswered case")
+    checked_traces(cases)
+
+
+def main():
+    """Print the reference dependency cases and report the pinned package version."""
+    version = importlib.metadata.version("fastapi")
+    if version != PINNED:
+        raise ValueError(f"Expected FastAPI {PINNED}, found {version}")
+    cases, challenge = reference_cases()
+    checked_cases(cases)
+    print(json.dumps(cases, ensure_ascii=False, separators=(",", ":")))
+    print(f"{len(cases)} real HTTP dependency cases from fastapi {version}; "
+          f"401 challenge {challenge!r}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()

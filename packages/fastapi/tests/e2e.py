@@ -67,6 +67,11 @@ def failure_cases(port):
     assert_redirect(port, "/bundle?tags=x", "/bundle/?tags=x")
 
 
+def dependency_smoke(port):
+    status, _, body = request(port, "GET", "/deps", headers={"Authorization": "Bearer good", "X-Role": "writer", "X-Credit": "1"})
+    assert status == 200, (status, body)
+
+
 def cases(port):
     for _ in range(3):
         health_cases(port)
@@ -74,6 +79,7 @@ def cases(port):
         body_cases(port)
         parameter_cases(port)
         failure_cases(port)
+        dependency_smoke(port)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         results = pool.map(lambda _: request(port, "GET", "/health"), range(32))
         assert all(result[::2] == (200, b'{"status":"ok"}') for result in results)
