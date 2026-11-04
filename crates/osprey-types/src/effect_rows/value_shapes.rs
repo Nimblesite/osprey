@@ -358,6 +358,8 @@ pub(super) fn builtin_callable_value(name: &str, ty: Option<&crate::ty::Type>) -
                 | "satAdd"
                 | "satSub"
                 | "satMul"
+                | "gpuLoad"
+                | "gpuLoadTensor"
         )
     {
         return None;
