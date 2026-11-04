@@ -330,7 +330,7 @@ class EntryOracleFaultTests(CoverageTestCase):
     def test_a_directory_entry_oracle_is_diagnosed(self):
         fixture, oracle = self.app()
         oracle.mkdir()
-        self.assert_entry_refused(fixture, "entry oracle")
+        result = self.assert_entry_refused(fixture, "entry oracle")
         self.assertIn("not a readable file", result.stdout)
         self.assertNotIn("Traceback", result.stdout + result.stderr)
 
