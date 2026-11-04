@@ -16,7 +16,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 WEBSITE_DIR="$(dirname "$SCRIPT_DIR")"
-REPO_DIR="$(dirname "$WEBSITE_DIR")"
+REPO_DIR="$(cd "$WEBSITE_DIR/../../.." && pwd)"
 OSPREY_BIN="${OSPREY_BIN:-$REPO_DIR/target/release/osprey}"
 DOCS_DIR="$WEBSITE_DIR/src/docs"
 

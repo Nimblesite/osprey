@@ -25,6 +25,8 @@ const executable = process.platform === "win32" ? "osprey.exe" : "osprey";
 const compiler = path.resolve(
   extensionRoot,
   "..",
+  "..",
+  "..",
   "target",
   "release",
   executable,

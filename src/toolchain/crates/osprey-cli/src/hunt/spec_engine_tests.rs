@@ -215,7 +215,7 @@ fn the_module_is_x86_64_linux_with_one_strong_cap_for_every_cap() {
 /// Every program in `src/osprey/tests/hunt/` lowers for the engine at every cap.
 #[test]
 fn the_hunt_corpus_lowers_symbolically_at_every_cap() {
-    let corpus = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/hunt");
+    let corpus = concat!(env!("CARGO_MANIFEST_DIR"), "/../../../osprey/tests/hunt");
     let mut programs: Vec<String> = std::fs::read_dir(corpus)
         .expect("src/osprey/tests/hunt")
         .filter_map(Result::ok)
@@ -336,7 +336,7 @@ fn symlinked_ownership_markers_do_not_authorize_deletion() {
 fn a_fiber_program_lowers_symbolically() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../tests/core/collections/nested_generic_collections_fibers.test.osp"
+        "/../../../osprey/tests/core/collections/nested_generic_collections_fibers.test.osp"
     )
     .to_string();
     let cli = crate::invocation::parse_args(std::slice::from_ref(&path)).expect("args");

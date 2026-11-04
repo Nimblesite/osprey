@@ -296,9 +296,7 @@ fn incremental_nested_layout_edit_preserves_every_node_range(
 
 #[test]
 fn real_ml_programs_parse_without_errors() -> Result<(), Box<dyn std::error::Error>> {
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .ok_or("repository root")?;
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../osprey");
     let files = [
         ml_sources(&root.join("tests"))?,
         ml_sources(&root.join("examples"))?,

@@ -8,7 +8,7 @@ echo "===================================="
 
 # Define paths to the test files
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OSP_FILE="$SCRIPT_DIR/../tests/regressions/basics/osprey_mega_showcase.test.osp"
+OSP_FILE="$SCRIPT_DIR/../../osprey/tests/regressions/basics/osprey_mega_showcase.test.osp"
 
 # Check if files exist
 if [ ! -f "$OSP_FILE" ]; then

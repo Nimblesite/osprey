@@ -12,7 +12,7 @@ const { readdirSync, statSync } = require('node:fs');
 const { join, relative } = require('node:path');
 
 const ROOT = join(__dirname, '..');
-const EXAMPLES = join(ROOT, '..', 'examples');
+const EXAMPLES = join(ROOT, '..', '..', 'osprey', 'examples');
 const TS = join(ROOT, 'node_modules', '.bin', 'tree-sitter');
 
 function ospFiles(dir) {

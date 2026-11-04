@@ -54,7 +54,7 @@ def verify_builtin_types(compiler, root, name):
 
 
 def test_generated_builtin_examples_execute_in_both_flavors():
-    default = _HERE.parents[3] / "target" / "release" / "osprey"
+    default = _HERE.parents[4] / "target" / "release" / "osprey"
     compiler = pathlib.Path(os.environ.get("OSPREY_BIN", default)).resolve()
     with tempfile.TemporaryDirectory(prefix="osprey-builtin-examples-") as directory:
         root = pathlib.Path(directory)
