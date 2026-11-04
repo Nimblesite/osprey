@@ -120,7 +120,7 @@ C_LIBS_gpu_runtime_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_device_tests = runtime/gpu_device_tests.c runtime/gpu_runtime.c runtime/gpu_host.c $(TENSOR_READER_SRC) runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
-C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
+C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c runtime/float_spelling.c
 C_FLAGS_gpu_shader_tests = -ffp-contract=off
 C_LIBS_gpu_shader_tests = -lm
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)

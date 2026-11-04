@@ -16,6 +16,7 @@ use super::loops::uniform_local;
 use super::{DeviceBody, DeviceFailure, Ty, Uniform};
 use crate::builder::Codegen;
 use osprey_ast::{Expr, MatchArm, NamedArgument, Parameter, Stmt};
+use osprey_types::numeric::Numeric;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -53,14 +54,16 @@ pub(super) struct Emitter<'a> {
 pub(super) const MAX_INLINE_DEPTH: usize = 24;
 
 /// Compile `body` with the kernel's parameters bound to `p0`, `p1`, … and
-/// its captures to `u0`, `u1`, ….
+/// its captures to `u0`, `u1`, …. `params` are compute types, `storages` the
+/// buffer element types they read from; `result_storage` types the `out`.
 pub(super) fn body(
     cg: &Codegen,
     parameters: &[Parameter],
     body: &Expr,
     params: &[Ty],
+    storages: &[Ty],
     captures: &[(String, Uniform)],
-    result_ty: Option<Ty>,
+    result_storage: Ty,
 ) -> Result<DeviceBody, DeviceFailure> {
     if parameters.len() != params.len() {
         return Err("the kernel's arity disagrees with the combinator's slots".into());
@@ -72,7 +75,7 @@ pub(super) fn body(
         scopes: vec![HashMap::new()],
         depth: 0,
         foreign_call: None,
-        default_float: if result_ty == Some(Ty::FLOAT32) {
+        default_float: if result_storage.compute() == Ty::FLOAT32 {
             Ty::FLOAT32
         } else {
             Ty::FLOAT
@@ -84,12 +87,13 @@ pub(super) fn body(
     for (i, (name, uniform)) in captures.iter().enumerate() {
         emitter.bind(name, uniform_local(i, uniform));
     }
-    let (result_ty, result) = emitter.checked_expression(body)?;
+    let (_, result) = emitter.checked_expression(body)?;
     Ok(DeviceBody {
         lines: emitter.blocks.pop().unwrap_or_default(),
         result,
-        result_ty,
+        result_storage,
         params: params.to_vec(),
+        param_storage: storages.to_vec(),
         uniforms: captures
             .iter()
             .map(|(_, uniform)| uniform.clone())
@@ -119,7 +123,7 @@ impl Emitter<'_> {
 
     pub(super) fn declare(&mut self, ty: Ty, value: &str) -> String {
         let name = self.temp();
-        self.line(format!("{} {name} = {value};", ty.spelling()));
+        self.line(format!("{} {name} = {value};", ty.compute_spelling()));
         name
     }
 
@@ -163,6 +167,7 @@ impl Emitter<'_> {
             Expr::Float(f) => Ok((
                 self.default_float,
                 super::numeric::convert(self.default_float, Ty::FLOAT, &float_literal(*f))
+                    .map(|(_, text)| text)
                     .ok_or_else(|| "float literal has no device representation".to_string())?,
             )),
             Expr::Bool(b) => Ok((Ty::Bool, if *b { "true" } else { "false" }.into())),
@@ -194,13 +199,14 @@ impl Emitter<'_> {
             None => match self.cg.device.constants.get(name).cloned() {
                 Some((target, literal)) => {
                     let (ty, value) = self
-                        .with_float_context(target.unwrap_or(Ty::FLOAT), |emitter| {
+                        .with_float_context(target.map_or(Ty::FLOAT, Ty::compute), |emitter| {
                             emitter.expression(&literal)
                         })?;
                     match target {
-                        Some(target) if target != ty => super::numeric::convert(target, ty, &value)
-                            .map(|value| (target, value))
-                            .ok_or_else(|| "constant has no device conversion".into()),
+                        Some(storage) if storage.compute() != ty => {
+                            super::numeric::convert(storage, ty, &value)
+                                .ok_or_else(|| "constant has no device conversion".into())
+                        }
                         _ => Ok((ty, value)),
                     }
                 }
@@ -218,13 +224,16 @@ impl Emitter<'_> {
         let (left_ty, l) = super::numeric::fit_literal(left, left_ty, l, right_ty);
         let (right_ty, r) = super::numeric::fit_literal(right, right_ty, r, left_ty);
         match (left_ty, right_ty) {
-            (Ty::INT, Ty::INT) => int_binary(op, &l, &r),
-            (Ty::FLOAT, Ty::FLOAT) => float_binary(op, &l, &r),
-            (Ty::FLOAT32, Ty::FLOAT32) => super::numeric::binary(op, &l, &r),
+            (Ty::Num(a), Ty::Num(b)) if a == b && a.is_integer() => int_binary(op, a, &l, &r),
+            (Ty::Num(a), Ty::Num(b)) if a == b && a.is_float() => float_binary(op, a, &l, &r),
             (Ty::Bool, Ty::Bool) if op == "==" || op == "!=" => {
                 Ok((Ty::Bool, format!("({l} {op} {r})")))
             }
-            _ => Err(format!("`{op}` over {left_ty:?} and {right_ty:?} operands")),
+            _ => Err(format!(
+                "`{op}` over {} and {} operands",
+                left_ty.name(),
+                right_ty.name()
+            )),
         }
     }
 
@@ -233,7 +242,7 @@ impl Emitter<'_> {
     fn short_circuit(&mut self, op: &str, left: &Expr, right: &Expr) -> Emitted {
         let (ty, condition) = self.expression(left)?;
         if ty != Ty::Bool {
-            return Err(format!("`{op}` over a {ty:?} operand"));
+            return Err(format!("`{op}` over a {} operand", ty.name()));
         }
         if op == "&&" {
             self.branch(&condition, right, &Expr::Bool(false))
@@ -245,11 +254,16 @@ impl Emitter<'_> {
     fn unary(&mut self, op: &str, operand: &Expr) -> Emitted {
         let (ty, value) = self.expression(operand)?;
         match (op, ty) {
-            ("-", Ty::INT) => Ok((Ty::INT, format!("osprey_neg({value}, fault)"))),
-            ("-", Ty::FLOAT) => Ok((Ty::FLOAT, format!("neg64({value})"))),
-            ("-", Ty::FLOAT32) => Ok((Ty::FLOAT32, format!("(-({value}))"))),
+            ("-", Ty::Num(n)) if n.is_integer() => Ok((
+                ty,
+                format!("osprey_neg{}({value}, fault)", super::numeric::suffix(n)),
+            )),
+            ("-", Ty::Num(n)) if n.is_float() => match n.float_compute() {
+                Numeric::FLOAT => Ok((Ty::FLOAT, format!("neg64({value})"))),
+                _ => Ok((Ty::Num(n.float_compute()), format!("(-({value}))"))),
+            },
             ("!" | "not", Ty::Bool) => Ok((Ty::Bool, format!("(!{value})"))),
-            _ => Err(format!("unary `{op}` over a {ty:?} operand")),
+            _ => Err(format!("unary `{op}` over a {} operand", ty.name())),
         }
     }
 
@@ -293,7 +307,7 @@ impl Emitter<'_> {
             .cg
             .prog
             .return_type(name)
-            .and_then(osprey_types::numeric::Numeric::of_type)
+            .and_then(Numeric::of_type)
             .filter(|n| n.is_float())
             .map_or(self.default_float, Ty::Num);
         self.with_float_context(target, |emitter| emitter.apply(&body, bindings))
@@ -425,7 +439,7 @@ impl Emitter<'_> {
         };
         let (ty, condition) = self.expression(value)?;
         if ty != Ty::Bool {
-            return Err(format!("a match over a {ty:?} scrutinee with boolean arms"));
+            return Err(format!("a match over a {} scrutinee with boolean arms", ty.name()));
         }
         self.branch(&condition, then, otherwise)
     }
@@ -436,10 +450,10 @@ impl Emitter<'_> {
         let (else_lines, else_ty, else_value) =
             self.nested(|emitter| emitter.expression(otherwise))?;
         if then_ty != else_ty {
-            return Err(format!("arms of a {then_ty:?} and a {else_ty:?}"));
+            return Err(format!("arms of a {} and a {}", then_ty.name(), else_ty.name()));
         }
         let result = self.temp();
-        self.line(format!("{} {result};", then_ty.spelling()));
+        self.line(format!("{} {result};", then_ty.compute_spelling()));
         self.line(format!("if ({condition}) {{"));
         self.indented(then_lines);
         self.line(format!("  {result} = {then_value};"));

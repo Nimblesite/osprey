@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 fn fixed_parameters(body: &DeviceBody, shape: Shape) -> String {
     let offset = usize::from(matches!(shape, Shape::Fold | Shape::Scan));
     let input = |index| {
-        body.params
+        body.param_storage
             .get(index + offset)
             .copied()
             .unwrap_or(Ty::INT)
@@ -20,47 +20,49 @@ GPU_GLOBAL {output} *out GPU_BUFFER(2), GPU_GLOBAL ulong *fault GPU_BUFFER(3), G
 
 fn output_type(body: &DeviceBody, shape: Shape) -> Ty {
     if shape == Shape::Filter {
-        body.params.first().copied().unwrap_or(Ty::INT)
+        body.param_storage.first().copied().unwrap_or(Ty::INT)
     } else {
-        body.result_ty
+        body.result_storage
     }
 }
 
 fn scan_entry(text: &mut String, body: &DeviceBody) {
     let acc = body.params.first().copied().unwrap_or(Ty::INT);
     let elem = body.params.get(1).copied().unwrap_or(Ty::INT);
+    let elem_storage = body.param_storage.get(1).copied().unwrap_or(Ty::INT);
     let _ = writeln!(
         text,
         "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",
         acc.spelling(),
-        numeric::uniform_value(acc, "state[0]")
+        numeric::uniform_value(body.result_storage, "state[0]")
     );
     let _ = writeln!(
         text,
         "    {} p0 = acc;\n    {} p1 = {};",
         acc.spelling(),
         elem.spelling(),
-        elem.value_of("in0[i]")
+        elem_storage.value_of("in0[i]")
     );
     indented(text, &body.lines, "    ");
     let _ = writeln!(
         text,
         "    acc = {};\n    out[i] = {};\n  }}\n  state[0] = {};",
         body.result,
-        acc.word_of("acc"),
-        numeric::state_word(acc, "acc")
+        body.result_storage.word_of("acc"),
+        numeric::state_word(body.result_storage, "acc")
     );
 }
 
 fn filter_entry(text: &mut String, body: &DeviceBody) {
-    let elem = output_type(body, Shape::Filter);
-    let _ = writeln!(text, "  if (GPU_INDEX != 0) return;\n  ulong kept = 0;\n  for (ulong i = 0; i < count; i++) {{\n    {} p0 = {};", elem.spelling(), elem.value_of("in0[i]"));
+    let elem = body.params.first().copied().unwrap_or(Ty::INT);
+    let elem_storage = body.param_storage.first().copied().unwrap_or(Ty::INT);
+    let _ = writeln!(text, "  if (GPU_INDEX != 0) return;\n  ulong kept = 0;\n  for (ulong i = 0; i < count; i++) {{\n    {} p0 = {};", elem.spelling(), elem_storage.value_of("in0[i]"));
     indented(text, &body.lines, "    ");
     let _ = writeln!(
         text,
         "    if ({}) out[kept++] = {};\n  }}\n  state[0] = kept;",
         body.result,
-        elem.word_of("p0")
+        elem_storage.word_of("p0")
     );
 }
 
@@ -116,7 +118,7 @@ fn uniform_bindings(body: &DeviceBody) -> String {
         .filter_map(|(i, uniform)| match uniform {
             Uniform::Scalar(ty) => Some(format!(
                 "  {} u{i}_v = {};\n",
-                ty.spelling(),
+                ty.compute_spelling(),
                 numeric::uniform_value(*ty, &format!("u{i}"))
             )),
             Uniform::Buffer(_) => None,
@@ -127,43 +129,45 @@ fn uniform_bindings(body: &DeviceBody) -> String {
 fn map_entry(text: &mut String, body: &DeviceBody, inputs: usize) {
     text.push_str("  ulong gid = GPU_INDEX;\n  if (gid >= count) return;\n");
     for (i, ty) in body.params.iter().enumerate().take(inputs) {
+        let storage = body.param_storage.get(i).copied().unwrap_or(*ty);
         let _ = writeln!(
             text,
             "  {} p{i} = {};",
             ty.spelling(),
-            ty.value_of(&format!("in{i}[gid]"))
+            storage.value_of(&format!("in{i}[gid]"))
         );
     }
     indented(text, &body.lines, "  ");
     let _ = writeln!(
         text,
         "  out[gid] = {};",
-        body.result_ty.word_of(&body.result)
+        body.result_storage.word_of(&body.result)
     );
 }
 
 fn fold_entry(text: &mut String, body: &DeviceBody) {
     let acc = body.params.first().copied().unwrap_or(Ty::INT);
     let elem = body.params.get(1).copied().unwrap_or(Ty::INT);
+    let elem_storage = body.param_storage.get(1).copied().unwrap_or(Ty::INT);
     let _ = writeln!(
         text,
         "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",
         acc.spelling(),
-        acc.value_of("out[0]")
+        body.result_storage.value_of("out[0]")
     );
     let _ = writeln!(
         text,
         "    {} p0 = acc;\n    {} p1 = {};",
         acc.spelling(),
         elem.spelling(),
-        elem.value_of("in0[i]")
+        elem_storage.value_of("in0[i]")
     );
     indented(text, &body.lines, "    ");
     let _ = writeln!(
         text,
         "    acc = {};\n  }}\n  out[0] = {};",
         body.result,
-        acc.word_of("acc")
+        body.result_storage.word_of("acc")
     );
 }
 
