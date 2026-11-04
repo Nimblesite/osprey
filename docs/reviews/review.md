@@ -17,8 +17,6 @@ Reproductions used the debug compiler on macOS on Apple silicon. Nothing here wa
 
 | From | Finding | Where | Failure | Status |
 |---|---|---|---|---|
-| `98d2fa6e` | Invalid Python dedents accepted; statements escape their block | `crates/osprey-syntax/src/python/mod.rs` | `if False:` / 4-space `print("hidden")` / 2-space `print("leaked")` exits 0 and prints `leaked`. CPython raises `IndentationError`. | Open |
-| `98d2fa6e` | f-string Unicode brace escapes collapse | `crates/osprey-syntax/src/python/strings.rs` | `print(f"\u007b\u007b")` and the `\x7b` form print `{`; CPython prints `{{`. Split brace syntax before decoding escapes. | Open |
 | `78be07ec` | HTTP externs changed from `int` to `Result` with no migration path | `crates/osprey-codegen/src/extern_call.rs` | Programs calling `httpCreateServer`, `httpListen` or `httpGet` stop type-checking after upgrade, guided only by the "undecoded Result" diagnostic. | Open |
 | `2691d8dc` | Windows GC caller-root gate without Windows data/BSS bounds | `compiler/runtime/memory_gc_native_roots.h` | Data roots are scanned on Apple and glibc Linux only: the file has no Windows branch, so Windows globals go unscanned and the test depends on the optimizer. Spec 0018 requires stack, registers and data/BSS. Read, not run. | Open |
 
