@@ -15,8 +15,8 @@
 // is never freed) but can never corrupt it (the collector never moves objects).
 //
 // Soundness scope: collection runs only while the allocator set is the initial
-// thread plus effect continuation threads, which pass one baton and never run
-// together, and only while every other baton thread is parked [MEM-EFFECT-BATON].
+// thread plus registered threads (fibers and effect continuations), and only
+// while every other one is parked [MEM-EFFECT-BATON] [MEM-GC-SAFEPOINT].
 // The first allocation from any other thread permanently disables collection
 // [MEM-FIBER-ISOLATION]. Every allocation and collection holds the heap lock
 // after the runtime announces multithreaded execution, so disabling and the heap
@@ -359,6 +359,20 @@ static void gc_collect_locked(void) {
   gc_sweep();
 }
 
+#ifdef OSP_SYMBOLIC
+// Symbolic runs have one thread, so nothing is ever waited for.
+static const int g_collection_wanted = 0;
+static const size_t g_retry_at = 0;
+static void gc_safepoint(void) {
+  if (gc_may_collect()) {
+    gc_collect_locked();
+  }
+}
+static void gc_wake_safepoint(void) {}
+#else
+#include "memory_gc_safepoint.h"
+#endif
+
 // --- allocation core (g_lock held) -------------------------------------------
 
 // First-allocation setup: latch the sole collecting thread + its stack base and
@@ -381,9 +395,9 @@ static void gc_init_main(void) {
   g_init = 1;
 }
 
-// Maybe collect, then hand back `size` bytes of managed, tracked storage. Once a
-// second thread has ever allocated, g_off is latched on and collection stays
-// disabled for everyone — so `!g_off` alone already guarantees main-only.
+// Maybe collect, then hand back `size` bytes of managed, tracked storage. Once an
+// unregistered thread has allocated, g_off is latched on and collection stays
+// disabled for everyone.
 //
 // Reclamation is left to libc malloc/free (via gc_sweep), NOT an intrusive
 // recycling pool: a tracing collector cannot reclaim a body until the next
@@ -408,8 +422,8 @@ static void *gc_managed_alloc(size_t size) {
             g_bytes >> 20);
     g_off_report_at *= 2;
   }
-  if (g_bytes > g_thresh && gc_may_collect()) {
-    gc_collect_locked();
+  if (g_collection_wanted || (g_bytes > g_thresh && g_bytes >= g_retry_at)) {
+    gc_safepoint();
   }
   void *p = malloc(size ? size : 1);
   if (!p) {
@@ -539,6 +553,7 @@ void osp_mem_baton_prepare(void) {
 }
 
 void osp_mem_baton_thread_enter(void) {
+#if defined(__APPLE__) || defined(_WIN32) || (defined(__linux__) && defined(__GLIBC__))
   OspGcBaton *self = (OspGcBaton *)calloc(1, sizeof(OspGcBaton));
   if (self == NULL) {
     return; // Unregistered: its first allocation disables collection, which is safe.
@@ -551,6 +566,9 @@ void osp_mem_baton_thread_enter(void) {
   g_batons = self;
   g_self_baton = self;
   gc_unlock();
+#endif
+  // Elsewhere its stack bounds can't be read, so it stays unregistered: its first
+  // allocation turns collection off, which is safe.
 }
 
 void osp_mem_baton_thread_exit(void) {
@@ -566,6 +584,7 @@ void osp_mem_baton_thread_exit(void) {
     }
   }
   g_self_baton = NULL;
+  gc_wake_safepoint();
   gc_unlock();
   free(self);
 }
@@ -576,6 +595,7 @@ void osp_mem_baton_park(const void *lowest) {
   if (self != NULL) {
     self->parked_at = (uintptr_t)lowest;
   }
+  gc_wake_safepoint();
   gc_unlock();
 }
 

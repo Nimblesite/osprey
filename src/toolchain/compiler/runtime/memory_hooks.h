@@ -95,15 +95,15 @@ void osp_mem_immortal(void *p);
 void osp_mem_notify_multithreaded(void);
 
 // Runtime-internal blocks that hold managed pointers only the runtime can see
-// (handler stacks, operation mailboxes). The collector scans them as roots until
+// (handler stacks, operation mailboxes, fiber results, channel buffers). The collector scans them as roots until
 // they are freed; every other backend treats them as plain malloc.
 void *osp_mem_scanned_alloc(size_t size);
 void *osp_mem_scanned_realloc(void *block, size_t size);
 void osp_mem_scanned_free(void *block);
 
-// Effect continuations hand one baton between threads [MEM-EFFECT-BATON]: only
-// the holder runs, the rest wait on a condvar. Tracing can stay on while every
-// other baton thread is parked, because a parked stack cannot change.
+// Fibers and effect continuations register their threads [MEM-EFFECT-BATON]
+// [MEM-GC-SAFEPOINT]. Tracing can stay on while every other registered thread is
+// parked, because a parked stack cannot change.
 // `prepare` runs on the host before the first body thread exists; `park` names
 // the lowest stack address holding the waiter's spilled registers.
 void osp_mem_baton_prepare(void);

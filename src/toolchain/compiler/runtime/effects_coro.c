@@ -20,6 +20,7 @@
 #include "memory_hooks.h"
 #include "profiler_runtime.h"
 #include "effects_scanned.h"
+#include "memory_parked_wait.h"
 
 #include <setjmp.h>
 
@@ -28,19 +29,9 @@
 // as it is touched; the main thread's own limit is 8 MiB.
 #define OSPREY_CORO_STACK_BYTES ((size_t)256u << 20)
 
-// Hand the baton over and sleep. The spilled registers sit at the bottom of what
-// the collector scans, so a pointer living only in a callee-saved register stays
-// a root while this thread is parked [MEM-EFFECT-BATON].
+// Hand the baton over and sleep [MEM-EFFECT-BATON].
 static void baton_wait(pthread_cond_t *cond, pthread_mutex_t *lock) {
-    jmp_buf registers;
-#if defined(__APPLE__)
-    (void)_setjmp(registers);
-#else
-    (void)setjmp(registers);
-#endif
-    osp_mem_baton_park(&registers);
-    pthread_cond_wait(cond, lock);
-    osp_mem_baton_unpark();
+    (void)osp_parked_wait(cond, lock, NULL);
 }
 
 // The payload of one in-flight `perform`, allocated per suspension and sized by

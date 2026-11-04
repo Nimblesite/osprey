@@ -11,6 +11,7 @@
 #include <unistd.h>
 
 #include "memory_hooks.h"
+#include "memory_parked_wait.h"
 #include "profiler_runtime.h"
 
 // Forward declarations for effect handler snapshot/restore
@@ -181,6 +182,9 @@ static void execute_fiber_directly(Fiber *fiber) {
 static void *fiber_thread_func(void *arg) {
   Fiber *fiber = (Fiber *)arg;
 
+  // The collector can only run once it knows every thread that can hold a root.
+  osp_mem_baton_thread_enter();
+
   // Fibers are 1:1 pthreads, so registering here gives the CPU profiler exact
   // per-fiber sample attribution [PROF-COLLECT-REGISTRY]. No-op when inactive.
   osp_prof_thread_register(fiber->id, "fiber");
@@ -194,6 +198,7 @@ static void *fiber_thread_func(void *arg) {
   // Execute the fiber function
   fiber->result = run_fiber_fn(fiber);
   osp_prof_thread_unregister();
+  osp_mem_baton_thread_exit();
 
   // Mark as completed and signal
   pthread_mutex_lock(&fiber->mutex);
@@ -218,6 +223,7 @@ static bool start_fiber_thread(Fiber *fiber) {
   // memory backend off its single-threaded fast path BEFORE the thread that
   // needs the lock can exist (pthread_create is the happens-before barrier).
   osp_mem_notify_multithreaded();
+  osp_mem_baton_prepare();
   bool started = pthread_create(&thread, &attributes, fiber_thread_func, fiber) == 0;
   pthread_attr_destroy(&attributes);
   return started;
@@ -228,14 +234,15 @@ static bool start_fiber_thread(Fiber *fiber) {
 static int64_t fiber_spawn_internal(int64_t (*fn)(void),
                                     int64_t (*env_fn)(void *), void *env,
                                     bool result_managed) {
-  Fiber *fiber = malloc(sizeof(Fiber));
+  // Scanned: the capture cell and the result are managed words no stack names.
+  Fiber *fiber = osp_mem_scanned_alloc(sizeof(Fiber));
   if (!fiber) {
     return -2; // Memory allocation failed
   }
   pthread_mutex_lock(&runtime_mutex);
   if (!reserve_handle()) {
     pthread_mutex_unlock(&runtime_mutex);
-    free(fiber);
+    osp_mem_scanned_free(fiber);
     return -2;
   }
   int64_t id = next_id++;
@@ -354,7 +361,7 @@ int64_t fiber_await(int64_t fiber_id) {
   }
   pthread_mutex_lock(&fiber->mutex);
   while (!fiber->completed) {
-    pthread_cond_wait(&fiber->cond, &fiber->mutex);
+    (void)osp_parked_wait(&fiber->cond, &fiber->mutex, NULL);
   }
   int64_t result = fiber->result;
   if (fiber->result_managed) {
@@ -450,7 +457,8 @@ int64_t channel_create(int64_t capacity) {
   if (!channel) {
     return -2;
   }
-  channel->buffer = malloc((size_t)capacity * sizeof(int64_t));
+  // Scanned: a buffered value may be named by nothing else.
+  channel->buffer = osp_mem_scanned_alloc((size_t)capacity * sizeof(int64_t));
   if (!channel->buffer) {
     free(channel);
     return -2;
@@ -459,7 +467,7 @@ int64_t channel_create(int64_t capacity) {
   pthread_mutex_lock(&runtime_mutex);
   if (!reserve_handle()) {
     pthread_mutex_unlock(&runtime_mutex);
-    free(channel->buffer);
+    osp_mem_scanned_free(channel->buffer);
     free(channel);
     return -2;
   }
@@ -526,7 +534,7 @@ static void channel_wait(Channel *channel, pthread_cond_t *changed) {
       return;
     }
   }
-  pthread_cond_wait(changed, &channel->mutex);
+  (void)osp_parked_wait(changed, &channel->mutex, NULL);
 }
 
 // Send value to channel. `managed` says the value is a heap object whose
@@ -636,9 +644,9 @@ static bool select_wait(uint64_t seen, bool bounded, const struct timespec *dead
   pthread_mutex_lock(&select_mutex);
   while (select_generation == seen && in_time) {
     if (bounded) {
-      in_time = pthread_cond_timedwait(&select_changed, &select_mutex, deadline) != ETIMEDOUT;
+      in_time = osp_parked_wait(&select_changed, &select_mutex, deadline) != ETIMEDOUT;
     } else {
-      pthread_cond_wait(&select_changed, &select_mutex);
+      (void)osp_parked_wait(&select_changed, &select_mutex, NULL);
     }
   }
   pthread_mutex_unlock(&select_mutex);
@@ -731,15 +739,12 @@ void channel_cleanup(void) {
 // would cut a plain usleep short (sleeping calls are exempt from SA_RESTART),
 // so sleep to an absolute deadline and re-arm on EINTR — the wait stays exact
 // whether or not sampling is active [PROF-COLLECT-SAMPLER].
-int64_t fiber_sleep(int64_t milliseconds) {
-  if (milliseconds <= 0) {
-    return 0;
-  }
+static void sleep_for(int64_t milliseconds) {
 #if defined(__linux__)
   struct timespec until;
   if (clock_gettime(CLOCK_MONOTONIC, &until) != 0) {
     usleep((unsigned int)(milliseconds * 1000));
-    return 0;
+    return;
   }
   until.tv_sec += (time_t)(milliseconds / 1000);
   until.tv_nsec += (long)(milliseconds % 1000) * 1000000L;
@@ -753,6 +758,18 @@ int64_t fiber_sleep(int64_t milliseconds) {
 #else
   usleep((unsigned int)(milliseconds * 1000)); // ms -> µs
 #endif
+}
+
+// A sleeping fiber holds up no collection.
+int64_t fiber_sleep(int64_t milliseconds) {
+  if (milliseconds <= 0) {
+    return 0;
+  }
+  jmp_buf registers;
+  OSP_SPILL_REGISTERS(registers);
+  osp_mem_baton_park(&registers);
+  sleep_for(milliseconds);
+  osp_mem_baton_unpark();
   return 0;
 }
 

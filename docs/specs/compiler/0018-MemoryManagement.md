@@ -45,9 +45,17 @@ the pair survives optimization; tracing GC leaves it for the collector.
 
 ## Effect Continuation Threads [MEM-EFFECT-BATON]
 
-A resumable handler runs its body on its own thread and passes one baton with its host: only the holder runs, and the others wait on a condvar. Tracing stays on across that handoff. A collection runs only while every other baton thread is parked, and scans each parked stack from its spilled registers up. Runtime blocks that hold managed pointers no stack names, such as handler stacks and operation mailboxes, are scanned as roots until they're freed. A thread outside the baton that allocates still disables collection for good, as [MEM-FIBER-ISOLATION] requires, and `OSPREY_GC_DEBUG=1` reports when that happens.
+A resumable handler runs its body on its own thread and passes one baton with its host: only the holder runs, and the others wait on a condvar. Tracing stays on across that handoff. A collection runs only while every other registered thread is parked, and scans each parked stack from its spilled registers up. Runtime blocks that hold managed pointers no stack names, such as handler stacks and operation mailboxes, are scanned as roots until they're freed. A thread outside the baton that allocates still disables collection for good, as [MEM-FIBER-ISOLATION] requires, and `OSPREY_GC_DEBUG=1` reports when that happens.
 
 A body thread has 256 MiB of address space for its stack, committed as it's touched, so deep recursion inside a handler behaves like deep recursion outside one.
+
+## Collecting While Fibers Run [MEM-GC-SAFEPOINT]
+
+Fibers run at the same time, so tracing needs them all stopped. A thread that wants a collection asks, and the others stop at their next allocation or wherever they block in the runtime: `await`, a channel, `select` or `sleep`. Whichever arrives last collects, and each parked stack is scanned from its spilled registers up. A fiber's capture cell and result, and a channel's buffered values, are scanned blocks.
+
+Asking never blocks for long, because a thread can be in a loop that never allocates, or in a system call waiting on the thread that asked. After 10 ms the collection is put off until more has been allocated, each time further away, up to 256 MiB, so a thread that won't stop costs memory, not progress.
+
+Any other thread that allocates, such as a server's connection thread, still turns collection off for the rest of the process. Such a thread is not registered, so nothing can know its stack is still. On platforms with no exact query for a thread's stack bounds, fiber threads count as such a thread.
 
 ## Fiber Boundary Ownership [MEM-FIBER-ISOLATION]
 
