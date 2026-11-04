@@ -220,7 +220,7 @@ class RecordedTimingTests(unittest.TestCase):
 class HarnessPublicationTests(unittest.TestCase):
     def fixture(self, root: Path) -> Path:
         bench = root / "src" / "toolchain" / "benchmarks"
-        bench.mkdir()
+        bench.mkdir(parents=True)
         source = Path(__file__).resolve().parent
         for name in ("run.sh", "merge_results.py", "report.py"):
             shutil.copy(source / name, bench / name)

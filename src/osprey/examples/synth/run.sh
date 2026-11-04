@@ -6,7 +6,7 @@
 #   run.sh --smoke    replay smoke.jsonl through the host without a window
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 machine="$repo/packages/signal_flow/signal_flow.machine.json"
 if [ "${1:-}" = --smoke ]; then
     OSPREY_GPUI_APP="$here" exec "$repo/hosts/gpui/run.sh" --smoke --machine "$machine"

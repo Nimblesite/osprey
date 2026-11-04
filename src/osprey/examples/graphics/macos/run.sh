@@ -9,7 +9,7 @@ set -euo pipefail
 
 macos_dir=$(cd "$(dirname "$0")" && pwd)
 graphics_dir=$(dirname "$macos_dir")
-repo_dir=$(cd "$graphics_dir/../.." && pwd)
+repo_dir=$(cd "$graphics_dir/../../../.." && pwd)
 build_only=0
 if [[ ${1:-} == --build ]]; then build_only=1; shift; fi
 scene=${1:-kali}

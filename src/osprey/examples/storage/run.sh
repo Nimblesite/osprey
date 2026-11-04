@@ -5,7 +5,7 @@
 #   run.sh --test          run the suite, which needs no disk and no window
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 case "${1:-}" in
     --test) exec "$compiler" test "$here/test" ;;

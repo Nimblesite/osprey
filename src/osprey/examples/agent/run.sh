@@ -5,7 +5,7 @@
 # The dotenv file holds DEEPSEEKKEY=...; without one the composer asks for the key.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 if [ "${1:-}" = --test ]; then
     "$compiler" "$here/test" --run --quiet

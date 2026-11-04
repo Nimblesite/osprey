@@ -2,7 +2,7 @@
 # Implements [MOBILE-NATIVE-HOST]: reuse the iOS build and deployment tools.
 set -euo pipefail
 example_dir=$(cd "$(dirname "$0")" && pwd)
-repo_dir=$(cd "$example_dir/../../.." && pwd)
+repo_dir=$(cd "$example_dir/../../../../.." && pwd)
 export OSPREY_IOS_EXAMPLE_DIR="$example_dir"
 export OSPREY_IOS_SCHEME=IssueInbox
 export OSPREY_IOS_SOURCE="$example_dir/../inbox"

@@ -8,7 +8,7 @@
 # Records go to OSPREY_AGENT_RECORDS, or a new temporary folder.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 name="Osprey Agent"
 mode=double
 env_file=""

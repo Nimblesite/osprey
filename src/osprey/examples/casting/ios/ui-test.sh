@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../../.." && pwd)
+repo=$(cd "$here/../../../../.." && pwd)
 bash "$here/build.sh" ios-sim
 device=$(bash "$repo/scripts/ios-simulator.sh")
 # Each suite owns a fresh test app; it seeds its documents below and exercises

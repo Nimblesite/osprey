@@ -4,7 +4,7 @@
 #   OSPREY_SWIFT_APP=<folder> OSPREY_SWIFT_NAME=<name> OSPREY_SWIFT_BUNDLE_ID=<id> run.sh [--build] [-- app arguments]
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 app=${OSPREY_SWIFT_APP:?OSPREY_SWIFT_APP names the application folder}
 name=${OSPREY_SWIFT_NAME:-$(basename "$app")}

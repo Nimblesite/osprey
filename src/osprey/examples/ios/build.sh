@@ -4,7 +4,7 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "$0")" && pwd)
-repo_dir=$(cd "$script_dir/../.." && pwd)
+repo_dir=$(cd "$script_dir/../../../.." && pwd)
 example_dir=${OSPREY_IOS_EXAMPLE_DIR:-$script_dir}
 scheme=${OSPREY_IOS_SCHEME:-OspreyCounter}
 source=${OSPREY_IOS_SOURCE:-"$example_dir/app.osp"}

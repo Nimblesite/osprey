@@ -6,7 +6,7 @@
 #   compare.sh [--draw] [out-dir]
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../../../.." && pwd)
+repo=$(cd "$here/../../../../../.." && pwd)
 python3 "$repo/hosts/gpui/dependencies.py"
 draw=false
 if [ "${1:-}" = "--draw" ]; then draw=true; shift; fi

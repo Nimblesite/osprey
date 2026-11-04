@@ -9,7 +9,7 @@
 # for the terminal; capturing needs Screen Recording.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../../.." && pwd)
+repo=$(cd "$here/../../../../.." && pwd)
 name="Osprey Agent"
 bundle="$repo/hosts/swift/build/$name.app"
 helper="$repo/hosts/swift/build/window-id"

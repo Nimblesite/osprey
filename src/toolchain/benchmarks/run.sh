@@ -24,7 +24,7 @@
 set -u
 
 BENCHDIR=${0:A:h}
-ROOT=${BENCHDIR}/..
+ROOT=${BENCHDIR}/../../..
 ROOT=${ROOT:A}
 OSP=$ROOT/target/release/osprey
 CASEDIR=$BENCHDIR/cases

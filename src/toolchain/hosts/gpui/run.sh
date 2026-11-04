@@ -9,7 +9,7 @@
 #   run.sh --compile  compile only the application's C ABI archive
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 [ "${1:-}" = --compile ] || python3 "$here/dependencies.py"
 compiler=${OSPREY_BIN:-"$repo/target/release/osprey"}
 app=${OSPREY_GPUI_APP:-"$here/probe"}

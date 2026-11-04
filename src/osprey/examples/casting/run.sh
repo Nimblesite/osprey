@@ -6,7 +6,7 @@
 #   run.sh --bundle   build and bundle only; prints the bundle's path
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 mkdir -p "$here/build"
 rm -f "$here/build/libosprey_cast_net.a"
 ar rcs "$here/build/libosprey_cast_net.a" "$repo/compiler/bin/tls_client_runtime.o" "$repo/compiler/bin/file_server_runtime.o" "$repo/compiler/bin/media_render_runtime.o"

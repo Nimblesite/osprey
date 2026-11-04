@@ -3,7 +3,7 @@
 # the same src/toolchain/hosts/gpui view code, and the same TLS and media runtime as desktop.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../../.." && pwd)
+repo=$(cd "$here/../../../../.." && pwd)
 target=${1:-android-arm64}
 case "$target" in
     android-arm64) rust_target=aarch64-linux-android; abi=arm64-v8a; openssl_target=android-arm64; clang_target=aarch64-linux-android26 ;;

@@ -6,7 +6,7 @@
 # Prints the bundle's path.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 out=$1 name=$2 id=$3 icon=$4 machine=$5 extra=${6:-}
 app="$out/$name.app"
 rm -rf "$app"

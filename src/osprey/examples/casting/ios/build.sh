@@ -2,7 +2,7 @@
 # [CAST-MOBILE-GPUI] Package the shared desktop GPUI host with iOS platform services.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../../.." && pwd)
+repo=$(cd "$here/../../../../.." && pwd)
 target=${1:-ios-sim}
 case "$target" in
     ios-sim) sdk=iphonesimulator; triple=arm64-apple-ios18.0-simulator; rust_target=aarch64-apple-ios-sim ;;

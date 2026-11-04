@@ -104,7 +104,7 @@ public final class Check {
     }
 }
 JAVA
-repo=$(cd "$here/../.." && pwd)
+repo=$(cd "$here/../../../.." && pwd)
 
 # [CAST-MOBILE-DELIVERY] The capability and bounded-read boundaries are probed
 # inside the simulator as standalone executables: nothing is installed, no app

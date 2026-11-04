@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-repo=$(cd "$here/../../.." && pwd)
+repo=$(cd "$here/../../../../.." && pwd)
 source "$repo/scripts/android-env.sh"
 adb="$ANDROID_HOME/platform-tools/adb"
 serial=${OSPREY_ANDROID_SERIAL:?Set OSPREY_ANDROID_SERIAL to the emulator or device to run}
