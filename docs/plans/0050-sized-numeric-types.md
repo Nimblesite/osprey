@@ -107,6 +107,8 @@ Each phase ends with its tests in the corpus, its spec IDs cited in code and tes
 - [x] `cargo clippy -p osprey-types -p osprey-codegen -p osprey-cli --all-targets -- -D warnings` passes (2026-11-03).
 - [x] GC 312/312, ARC 312/312 and wasm 232/232 corpus lanes green with goldens, on the debug compiler (2026-11-03): release builds were on hold for another agent's suite.
 - [ ] Account for the unique `wip/sized-numerics` changes on the feature branch, verify and push. Current repository instructions require the primary checkout only; the inactive historical worktree is retained solely until its unique changes have been accounted for, then removed in Phase 6.
+- [ ] Fix polymorphic `float32` and `float16` arithmetic [TYPE-NUMERIC-ARITH-WIDTH]: `fn div(a, b) = a / b` applied to two `float32` values fails with ``operator `/` requires int or float; got float32``, from the `arithmetic && sized_float` guard in `crates/osprey-types/src/builtin_constraints.rs`. Reproduced 2026-11-04 at c843e895. Write the failing regression first, then remove the `toFloat32(0.0)` anchors `packages/transformers` needs because of it.
+
 **Gate:** twins green on all lanes; `grep -rn 'float32(' tests examples packages` finds no emulation call.
 
 ### Phase 4 — Dense buffers `[GPU-BUFFER-ELEM]` `[GPU-BUFFER-LOAD]` `[GPU-BUFFER-TENSOR]`
