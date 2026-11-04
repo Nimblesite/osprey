@@ -17,7 +17,7 @@ _runtime_ios_sim: _runtime_ios_sim_arc
 
 # The Mac slice also carries the Metal device adapter, so a desktop host such as
 # GPUI can run Osprey kernels on the GPU ([GPU-DEVICE], [GPUI-HOST-TARGETS]).
-MACOS_GPU_FLAGS ?= -DOSPREY_GPU_METAL=1 -Icompiler/bin
+MACOS_GPU_FLAGS ?= -DOSPREY_GPU_METAL=1 -Isrc/toolchain/compiler/bin
 
 _runtime_macos: _runtime_macos_arc src/toolchain/compiler/bin/gpu_shader_source.h
 	@OSPREY_RUNTIME_OBJC=gpu_metal bash scripts/mobile/ios-runtime.sh macosx arm64-apple-macos12.0 \
