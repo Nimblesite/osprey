@@ -3,6 +3,9 @@
 // and no osprey_gpu_* symbol exists on this path, so a program that loads its
 // weights here links nothing of the GPU surface.
 
+// fseeko: file offsets past 2 GiB on 32-bit targets, hidden under strict C11.
+#define _POSIX_C_SOURCE 200809L
+
 #include "collection_runtime.h"
 #include "io_error.h"
 #include "memory_hooks.h"
