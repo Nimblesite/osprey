@@ -29,9 +29,9 @@ def factorial(x: float) -> float:
         return gamma(x + 1.0)
 
 
-def factorial_exact(n: int) -> int:
+def factorial_exact(n):
     """scipy.special.factorial(n, exact=True) as a 64-bit int (n <= 20)."""
-    return fold(range(n), 1, lambda acc, i: acc * (i + 1))
+    return 0 if n < 0 else fold(range(n), 1, lambda acc, i: acc * (i + 1))
 
 
 def comb_exact_step(n: int, k: int, i: int, acc: int) -> int:
@@ -41,14 +41,14 @@ def comb_exact_step(n: int, k: int, i: int, acc: int) -> int:
         return comb_exact_step(n, k, i + 1, acc * (n - i + 1) // i)
 
 
-def comb_exact(n: int, k: int) -> int:
+def comb_exact(n, k):
     """scipy.special.comb(n, k, exact=True) as a 64-bit int."""
-    return comb_exact_step(n, k, 1, 1)
+    return 0 if n < 0 or k < 0 or k > n else comb_exact_step(n, k, 1, 1)
 
 
-def perm_exact(n: int, k: int) -> int:
+def perm_exact(n, k):
     """scipy.special.perm(n, k, exact=True) as a 64-bit int."""
-    return fold(range(k), 1, lambda acc, i: acc * (n - i))
+    return 0 if n < 0 or k < 0 or k > n else fold(range(k), 1, lambda acc, i: acc * (n - i))
 
 
 def binom_prod(n: float, kx: float, i: float, num: float, den: float) -> float:

@@ -6,12 +6,11 @@ oracle virtualenv: `python -I src/osprey/packages/testing/oracle/oracle.cpython 
 """
 import math
 
-from expected_module import ROOT, literal, non_finite
-
-
 import numpy
 import scipy
 import scipy.special as sp
+from expected_module import ROOT, literal, non_finite
+from reference_table import table
 
 
 def grid(lo, hi, n):
@@ -142,7 +141,10 @@ BETALN_A, BETALN_B, BETALN_Y, BETALN_NF_A, BETALN_NF_B, BETALN_NF_Y = split2(bet
 fact_x = [-3.0, -1.5, -1.0, -0.5, 0.0, 0.5, 1.0, 1.5, 3.0, 5.5, 10.0, 20.0, 100.0,
           170.0, 171.0, float("nan")]
 FACT_X, FACT_Y, FACT_NF_X, FACT_NF_Y = split1(fact_x, [float(sp.factorial(x)) for x in fact_x])
-fact_ex_n = list(range(0, 21))
+# Exact combinatorics gets an exhaustive small grid plus the out-of-domain rows
+# scipy answers 0 for (n < 0 or k < 0), so a port that accepts them is caught
+# ([PORT-TEST-ORACLE]).
+fact_ex_n = list(range(21)) + [-6, -5, -4, -3, -2, -1]
 fact_ex_y = [int(sp.factorial(n, exact=True)) for n in fact_ex_n]
 
 comb_n, comb_k, comb_y = [], [], []
@@ -158,6 +160,14 @@ for n, k in [(1100.0, 550.0), (2000.0, 1000.0)]:
 COMB_N, COMB_K, COMB_Y, COMB_NF_N, COMB_NF_K, COMB_NF_Y = split2(comb_n, comb_k, comb_y)
 comb_ex_n = [5, 10, 20, 30, 12, 8, 7, 30, 0, 5, 5]
 comb_ex_k = [2, 3, 10, 15, 12, 8, 0, 0, 0, 0, 5]
+for n in range(11):
+    for k in range(n + 3):
+        comb_ex_n.append(n)
+        comb_ex_k.append(k)
+for n, k in [(-1, 0), (-1, 1), (-1, 2), (-2, 1), (-2, 3), (-3, 2), (-5, 4),
+             (-1, -1), (0, -1), (1, -1), (5, -1), (12, -1), (5, -5), (12, -7)]:
+    comb_ex_n.append(n)
+    comb_ex_k.append(k)
 comb_ex_y = [int(sp.comb(n, k, exact=True)) for n, k in zip(comb_ex_n, comb_ex_k)]
 
 perm_n, perm_k, perm_y = [], [], []
@@ -173,6 +183,14 @@ for n, k in [(1000.0, 500.0), (2000.0, 1000.0)]:
 PERM_N, PERM_K, PERM_Y, PERM_NF_N, PERM_NF_K, PERM_NF_Y = split2(perm_n, perm_k, perm_y)
 perm_ex_n = [5, 10, 20, 12, 8, 7]
 perm_ex_k = [2, 3, 5, 12, 8, 0]
+for n in range(11):
+    for k in range(n + 3):
+        perm_ex_n.append(n)
+        perm_ex_k.append(k)
+for n, k in [(-1, 0), (-1, 1), (-2, 2), (-3, 1), (-5, 3), (-2, -1),
+             (0, -1), (1, -1), (5, -1), (12, -1), (5, -5)]:
+    perm_ex_n.append(n)
+    perm_ex_k.append(k)
 perm_ex_y = [int(sp.perm(n, k, exact=True)) for n, k in zip(perm_ex_n, perm_ex_k)]
 
 binom_n, binom_k, binom_y = [], [], []
@@ -295,70 +313,33 @@ soft_y = [[float(v) for v in sp.softmax(xs)] for xs in soft_in]
 logsoft_in = soft_in
 logsoft_y = [[float(v) for v in sp.log_softmax(xs)] for xs in logsoft_in]
 
-constants = {
-    "GAMMA_X": GAMMA_X, "GAMMA_Y": GAMMA_Y,
-    "GAMMA_NF_X": GAMMA_NF_X, "GAMMA_NF_Y": GAMMA_NF_Y,
-    "GAMMALN_X": GAMMALN_X, "GAMMALN_Y": GAMMALN_Y,
-    "GAMMALN_NF_X": GAMMALN_NF_X, "GAMMALN_NF_Y": GAMMALN_NF_Y,
-    "LOGGAMMA_X": LOGGAMMA_X, "LOGGAMMA_Y": LOGGAMMA_Y,
-    "LOGGAMMA_NF_X": LOGGAMMA_NF_X, "LOGGAMMA_NF_Y": LOGGAMMA_NF_Y,
-    "RGAMMA_X": RGAMMA_X, "RGAMMA_Y": RGAMMA_Y,
-    "RGAMMA_NF_X": RGAMMA_NF_X, "RGAMMA_NF_Y": RGAMMA_NF_Y,
-    "DIGAMMA_X": DIGAMMA_X, "DIGAMMA_Y": DIGAMMA_Y,
-    "DIGAMMA_NF_X": DIGAMMA_NF_X, "DIGAMMA_NF_Y": DIGAMMA_NF_Y,
-    "POLY_N": POLY_N, "POLY_X": POLY_X, "POLY_Y": POLY_Y,
-    "POLY_NF_N": POLY_NF_N, "POLY_NF_X": POLY_NF_X, "POLY_NF_Y": POLY_NF_Y,
-    "ZETA_X": ZETA_X, "ZETA_Y": ZETA_Y,
-    "ZETA_NF_X": ZETA_NF_X, "ZETA_NF_Y": ZETA_NF_Y,
-    "ZETAQ_X": ZETAQ_X, "ZETAQ_Q": ZETAQ_Q, "ZETAQ_Y": ZETAQ_Y,
-    "ZETAQ_NF_X": ZETAQ_NF_X, "ZETAQ_NF_Q": ZETAQ_NF_Q, "ZETAQ_NF_Y": ZETAQ_NF_Y,
-    "BETA_A": BETA_A, "BETA_B": BETA_B, "BETA_Y": BETA_Y,
-    "BETA_NF_A": BETA_NF_A, "BETA_NF_B": BETA_NF_B, "BETA_NF_Y": BETA_NF_Y,
-    "BETALN_A": BETALN_A, "BETALN_B": BETALN_B, "BETALN_Y": BETALN_Y,
-    "BETALN_NF_A": BETALN_NF_A, "BETALN_NF_B": BETALN_NF_B, "BETALN_NF_Y": BETALN_NF_Y,
-    "FACT_X": FACT_X, "FACT_Y": FACT_Y,
-    "FACT_NF_X": FACT_NF_X, "FACT_NF_Y": FACT_NF_Y,
-    "FACT_EX_N": fact_ex_n, "FACT_EX_Y": fact_ex_y,
-    "COMB_N": COMB_N, "COMB_K": COMB_K, "COMB_Y": COMB_Y,
-    "COMB_NF_N": COMB_NF_N, "COMB_NF_K": COMB_NF_K, "COMB_NF_Y": COMB_NF_Y,
-    "COMB_EX_N": comb_ex_n, "COMB_EX_K": comb_ex_k, "COMB_EX_Y": comb_ex_y,
-    "PERM_N": PERM_N, "PERM_K": PERM_K, "PERM_Y": PERM_Y,
-    "PERM_NF_N": PERM_NF_N, "PERM_NF_K": PERM_NF_K, "PERM_NF_Y": PERM_NF_Y,
-    "PERM_EX_N": perm_ex_n, "PERM_EX_K": perm_ex_k, "PERM_EX_Y": perm_ex_y,
-    "BINOM_N": BINOM_N, "BINOM_K": BINOM_K, "BINOM_Y": BINOM_Y,
-    "BINOM_NF_N": BINOM_NF_N, "BINOM_NF_K": BINOM_NF_K, "BINOM_NF_Y": BINOM_NF_Y,
-    "POCH_A": POCH_A, "POCH_M": POCH_M, "POCH_Y": POCH_Y,
-    "POCH_NF_A": POCH_NF_A, "POCH_NF_M": POCH_NF_M, "POCH_NF_Y": POCH_NF_Y,
-    "EXPIT_X": EXPIT_X, "EXPIT_Y": EXPIT_Y,
-    "EXPIT_NF_X": EXPIT_NF_X, "EXPIT_NF_Y": EXPIT_NF_Y,
-    "LOG_EXPIT_X": LOG_EXPIT_X, "LOG_EXPIT_Y": LOG_EXPIT_Y,
-    "LOG_EXPIT_NF_X": LOG_EXPIT_NF_X, "LOG_EXPIT_NF_Y": LOG_EXPIT_NF_Y,
-    "LOGIT_X": LOGIT_X, "LOGIT_Y": LOGIT_Y,
-    "LOGIT_NF_X": LOGIT_NF_X, "LOGIT_NF_Y": LOGIT_NF_Y,
-    "XLOGY_X": XLOGY_X, "XLOGY_Y": XLOGY_Y, "XLOGY_Z": XLOGY_Z,
-    "XLOGY_NF_X": XLOGY_NF_X, "XLOGY_NF_Y": XLOGY_NF_Y, "XLOGY_NF_Z": XLOGY_NF_Z,
-    "XLOG1PY_X": XLOG1PY_X, "XLOG1PY_Y": XLOG1PY_Y, "XLOG1PY_Z": XLOG1PY_Z,
-    "XLOG1PY_NF_X": XLOG1PY_NF_X, "XLOG1PY_NF_Y": XLOG1PY_NF_Y, "XLOG1PY_NF_Z": XLOG1PY_NF_Z,
-    "ENTR_X": ENTR_X, "ENTR_Y": ENTR_Y,
-    "ENTR_NF_X": ENTR_NF_X, "ENTR_NF_Y": ENTR_NF_Y,
-    "REL_ENTR_X": REL_ENTR_X, "REL_ENTR_Y": REL_ENTR_Y, "REL_ENTR_Z": REL_ENTR_Z,
-    "REL_ENTR_NF_X": REL_ENTR_NF_X, "REL_ENTR_NF_Y": REL_ENTR_NF_Y, "REL_ENTR_NF_Z": REL_ENTR_NF_Z,
-    "KL_DIV_X": KL_DIV_X, "KL_DIV_Y": KL_DIV_Y, "KL_DIV_Z": KL_DIV_Z,
-    "KL_DIV_NF_X": KL_DIV_NF_X, "KL_DIV_NF_Y": KL_DIV_NF_Y, "KL_DIV_NF_Z": KL_DIV_NF_Z,
-    "HUBER_D": HUBER_D, "HUBER_R": HUBER_R, "HUBER_Y": HUBER_Y,
-    "HUBER_NF_D": HUBER_NF_D, "HUBER_NF_R": HUBER_NF_R, "HUBER_NF_Y": HUBER_NF_Y,
-    "PHUBER_D": PHUBER_D, "PHUBER_R": PHUBER_R, "PHUBER_Y": PHUBER_Y,
-    "PHUBER_NF_D": PHUBER_NF_D, "PHUBER_NF_R": PHUBER_NF_R, "PHUBER_NF_Y": PHUBER_NF_Y,
-    "BOXCOX_X": BOXCOX_X, "BOXCOX_L": BOXCOX_L, "BOXCOX_Y": BOXCOX_Y,
-    "BOXCOX_NF_X": BOXCOX_NF_X, "BOXCOX_NF_L": BOXCOX_NF_L, "BOXCOX_NF_Y": BOXCOX_NF_Y,
-    "IBOX_X": IBOX_X, "IBOX_L": IBOX_L, "IBOX_Y": IBOX_Y,
-    "IBOX_NF_X": IBOX_NF_X, "IBOX_NF_L": IBOX_NF_L, "IBOX_NF_Y": IBOX_NF_Y,
-    "LSE_IN": lse_in, "LSE_Y": lse_y,
-    "LSE_NF_IN": lse_nf_in, "LSE_NF_Y": lse_nf_y,
-    "LSEB_A": lseb_a, "LSEB_B": lseb_b, "LSEB_Y": lseb_y,
-    "SOFT_IN": soft_in, "SOFT_Y": soft_y,
-    "LOGSOFT_IN": logsoft_in, "LOGSOFT_Y": logsoft_y,
-}
+constants = table([
+    "GAMMA_X", "GAMMA_Y", "GAMMA_NF_X", "GAMMA_NF_Y", "GAMMALN_X", "GAMMALN_Y",
+    "GAMMALN_NF_X", "GAMMALN_NF_Y", "LOGGAMMA_X", "LOGGAMMA_Y", "LOGGAMMA_NF_X",
+    "LOGGAMMA_NF_Y", "RGAMMA_X", "RGAMMA_Y", "RGAMMA_NF_X", "RGAMMA_NF_Y", "DIGAMMA_X",
+    "DIGAMMA_Y", "DIGAMMA_NF_X", "DIGAMMA_NF_Y", "POLY_N", "POLY_X", "POLY_Y", "POLY_NF_N",
+    "POLY_NF_X", "POLY_NF_Y", "ZETA_X", "ZETA_Y", "ZETA_NF_X", "ZETA_NF_Y", "ZETAQ_X",
+    "ZETAQ_Q", "ZETAQ_Y", "ZETAQ_NF_X", "ZETAQ_NF_Q", "ZETAQ_NF_Y", "BETA_A", "BETA_B",
+    "BETA_Y", "BETA_NF_A", "BETA_NF_B", "BETA_NF_Y", "BETALN_A", "BETALN_B", "BETALN_Y",
+    "BETALN_NF_A", "BETALN_NF_B", "BETALN_NF_Y", "FACT_X", "FACT_Y", "FACT_NF_X",
+    "FACT_NF_Y", "fact_ex_n", "fact_ex_y", "COMB_N", "COMB_K", "COMB_Y", "COMB_NF_N",
+    "COMB_NF_K", "COMB_NF_Y", "comb_ex_n", "comb_ex_k", "comb_ex_y", "PERM_N", "PERM_K",
+    "PERM_Y", "PERM_NF_N", "PERM_NF_K", "PERM_NF_Y", "perm_ex_n", "perm_ex_k", "perm_ex_y",
+    "BINOM_N", "BINOM_K", "BINOM_Y", "BINOM_NF_N", "BINOM_NF_K", "BINOM_NF_Y", "POCH_A",
+    "POCH_M", "POCH_Y", "POCH_NF_A", "POCH_NF_M", "POCH_NF_Y", "EXPIT_X", "EXPIT_Y",
+    "EXPIT_NF_X", "EXPIT_NF_Y", "LOG_EXPIT_X", "LOG_EXPIT_Y", "LOG_EXPIT_NF_X",
+    "LOG_EXPIT_NF_Y", "LOGIT_X", "LOGIT_Y", "LOGIT_NF_X", "LOGIT_NF_Y", "XLOGY_X",
+    "XLOGY_Y", "XLOGY_Z", "XLOGY_NF_X", "XLOGY_NF_Y", "XLOGY_NF_Z", "XLOG1PY_X",
+    "XLOG1PY_Y", "XLOG1PY_Z", "XLOG1PY_NF_X", "XLOG1PY_NF_Y", "XLOG1PY_NF_Z", "ENTR_X",
+    "ENTR_Y", "ENTR_NF_X", "ENTR_NF_Y", "REL_ENTR_X", "REL_ENTR_Y", "REL_ENTR_Z",
+    "REL_ENTR_NF_X", "REL_ENTR_NF_Y", "REL_ENTR_NF_Z", "KL_DIV_X", "KL_DIV_Y", "KL_DIV_Z",
+    "KL_DIV_NF_X", "KL_DIV_NF_Y", "KL_DIV_NF_Z", "HUBER_D", "HUBER_R", "HUBER_Y",
+    "HUBER_NF_D", "HUBER_NF_R", "HUBER_NF_Y", "PHUBER_D", "PHUBER_R", "PHUBER_Y",
+    "PHUBER_NF_D", "PHUBER_NF_R", "PHUBER_NF_Y", "BOXCOX_X", "BOXCOX_L", "BOXCOX_Y",
+    "BOXCOX_NF_X", "BOXCOX_NF_L", "BOXCOX_NF_Y", "IBOX_X", "IBOX_L", "IBOX_Y", "IBOX_NF_X",
+    "IBOX_NF_L", "IBOX_NF_Y", "lse_in", "lse_y", "lse_nf_in", "lse_nf_y", "lseb_a",
+    "lseb_b", "lseb_y", "soft_in", "soft_y", "logsoft_in", "logsoft_y",
+], globals())
 
 def main():
     # The shared writer is mid-edit (it now emits per-constant docstrings the
