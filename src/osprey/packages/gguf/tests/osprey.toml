@@ -1,6 +1,6 @@
 [project]
 name = "gguf-tests"
 source_roots = [".", "../src", "../../safetensors/src", "../../testing/src"]
-python_sources = ["../src/chain.py", "../src/constants.py", "../src/values.py", "../src/tensors.py", "../src/reader.py", "../../safetensors/src/bytes.py", "../../testing/src/check.py", "expected.py", "support.py", "units.py", "main.py"]
+python_sources = ["../src/chain.py", "../src/constants.py", "../src/values.py", "../src/tensors.py", "../src/reader.py", "../src/quant.py", "../../safetensors/src/bytes.py", "../../testing/src/check.py", "expected.py", "support.py", "units.py", "main.py"]
 default_namespace = "gguf_tests"
 entry = "main.py"

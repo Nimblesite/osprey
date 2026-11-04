@@ -1,7 +1,7 @@
 [project]
 name = "gguf"
 source_roots = ["src"]
-python_sources = ["src/chain.py", "src/constants.py", "src/values.py", "src/tensors.py", "src/reader.py"]
+python_sources = ["src/chain.py", "src/constants.py", "src/values.py", "src/tensors.py", "src/reader.py", "src/quant.py"]
 default_namespace = "gguf"
 
 [package]

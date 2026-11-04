@@ -11,9 +11,22 @@ each tensor info (name, type, dims, element count, byte size, data offset) and e
 tensor's raw bytes. Every rejected fixture records the message GGUFReader raised,
 or "" when the failure came from numpy's own indexing, whose text is not part of the
 reader's contract.
+
+The block decoders ([LLM-WEIGHTS-QUANT]) are checked against ggml's own
+`dequantize_row_*` at a pinned llama.cpp commit: the oracle downloads only the
+sources `ggml-quants.c` includes into target/local-coding-model/Osprey0049PiQuant/,
+compiles them, and calls them through ctypes on seeded blocks, so every expected
+value is what the C decoder wrote, bit for bit. gguf-py's own `dequantize` decodes
+the same blocks and the oracle asserts the two agree word for word ([LLM-WEIGHTS-QUANT]).
 """
+import ctypes
+import os
+import random
 import struct
+import subprocess
+import sys
 import tempfile
+import urllib.request
 from importlib.metadata import version
 from pathlib import Path
 
@@ -30,8 +43,9 @@ from gguf.constants import (
     Keys,
 )
 from gguf.gguf_reader import READER_SUPPORTED_VERSIONS
+from gguf.quants import dequantize as gguf_dequantize
 
-from expected_module import write
+from expected_module import ROOT, write
 
 INT_KINDS = (
     GGUFValueType.UINT8, GGUFValueType.INT8, GGUFValueType.UINT16, GGUFValueType.INT16,
@@ -377,6 +391,203 @@ def accepted():
     ]
 
 
+PIN = "3de52ac38818978d6da8f386eda43a856e53714a"
+"""The llama.cpp commit the ggml block decoders are compiled from."""
+WORK = Path("target/local-coding-model/Osprey0049PiQuant")
+"""Where the pinned sources and the compiled decoder live; neither is committed."""
+GGML_SOURCES = (
+    "ggml/include/ggml.h",
+    "ggml/include/ggml-alloc.h",
+    "ggml/include/ggml-backend.h",
+    "ggml/include/ggml-cpu.h",
+    "ggml/include/gguf.h",
+    "ggml/src/ggml-common.h",
+    "ggml/src/ggml-impl.h",
+    "ggml/src/ggml-quants.h",
+    "ggml/src/ggml-quants.c",
+    "ggml/src/ggml-cpu/ggml-cpu-impl.h",
+)
+"""Every file `ggml-quants.c` includes, and itself."""
+DECODED = ("F32", "Q8_0", "Q3_K", "Q4_K", "Q5_K", "Q6_K", "IQ4_NL", "IQ4_XS", "IQ3_S")
+"""The tensor types the chosen GGUF uses, so the ones this port decodes."""
+SYMBOLS = {
+    "Q8_0": "dequantize_row_q8_0",
+    "Q3_K": "dequantize_row_q3_K",
+    "Q4_K": "dequantize_row_q4_K",
+    "Q5_K": "dequantize_row_q5_K",
+    "Q6_K": "dequantize_row_q6_K",
+    "IQ4_NL": "dequantize_row_iq4_nl",
+    "IQ4_XS": "dequantize_row_iq4_xs",
+    "IQ3_S": "dequantize_row_iq3_s",
+}
+"""ggml's entry point for each quantized type. F32 stores its values, so it has none."""
+SCALE_AT = {
+    "Q8_0": (0,),
+    "Q3_K": (108,),
+    "Q4_K": (0, 2),
+    "Q5_K": (0, 2),
+    "Q6_K": (208,),
+    "IQ4_NL": (0,),
+    "IQ4_XS": (0,),
+    "IQ3_S": (0,),
+}
+"""Where each block stores its fp16 super-block scale, and its minimum, per ggml-common.h."""
+HALVES = (0x0000, 0x8000, 0x0001, 0x03FF, 0x0400, 0x3C00, 0xBC00, 0x7BFF)
+"""Every binary16 edge a scale can hold: both zeros, both subnormal ends, the smallest
+normal, one, and the largest finite value."""
+FILLS = (0x00, 0xFF, 0x55, 0xAA)
+"""Byte fills that put every nibble, 2-bit field, high bit and sign at an edge."""
+BLOCKS = 64
+"""Blocks recorded per type, the count [LLM-WEIGHTS-QUANT] asks for."""
+SEED = 20261105
+"""The seed the random blocks start from."""
+
+
+def fetched(relative):
+    """The pinned commit's copy of `relative`, downloaded into target/ on first use."""
+    path = ROOT / WORK / "llama.cpp" / relative
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        url = f"https://raw.githubusercontent.com/ggml-org/llama.cpp/{PIN}/{relative}"
+        with urllib.request.urlopen(url) as response:
+            path.write_bytes(response.read())
+    return path
+
+
+def quants_library():
+    """ggml's compiled `ggml-quants.c` at PIN: its `dequantize_row_*` are the oracle."""
+    build = ROOT / WORK / "build"
+    build.mkdir(parents=True, exist_ok=True)
+    suffix = ".dylib" if sys.platform == "darwin" else ".so"
+    library = build / f"libggmlquants{PIN[:12]}{suffix}"
+    if not library.exists():
+        sources = fetched("ggml/src/ggml-quants.c")
+        tree = ROOT / WORK / "llama.cpp" / "ggml"
+        flags = ["-O2", "-ffp-contract=off", "-fno-fast-math", "-ffunction-sections", "-fdata-sections",
+                 f"-I{tree / 'include'}", f"-I{tree / 'src'}", f"-I{tree / 'src/ggml-cpu'}"]
+        for name in GGML_SOURCES:
+            fetched(name)
+        object_file = build / f"ggml-quants{PIN[:12]}.o"
+        subprocess.run([os.environ.get("CC", "cc"), "-c", *flags, "-o", str(object_file), str(sources)], check=True)
+        linked = ["-Wl,-dead_strip", f"-Wl,-exported_symbols_list,{exported_symbols(build)}"] if sys.platform == "darwin" else []
+        subprocess.run([os.environ.get("CC", "cc"), "-shared", *linked, "-o", str(library), str(object_file)], check=True)
+    return ctypes.CDLL(str(library))
+
+
+def exported_symbols(build):
+    """A linker export list holding only the dequantizers, so the quantizers' references
+    to the rest of ggml are dead code instead of missing symbols."""
+    path = build / "dequantize.symbols"
+    path.write_text("".join(f"_{symbol}\n" for symbol in SYMBOLS.values()))
+    return path
+
+
+def quant_sizes(name):
+    """One `name` block's element count and byte size, from gguf's own table."""
+    return GGML_QUANT_SIZES[GGMLQuantizationType[name]]
+
+
+def f32_blocks(rnd):
+    """BLOCKS binary32 words: every edge, then seeded random finite patterns."""
+    words = [0x00000000, 0x80000000, 0x3F800000, 0xBF800000, 0x00000001, 0x80000001,
+             0x007FFFFF, 0x00800000, 0x7F7FFFFF, 0xFF7FFFFF, 0x3F000000, 0x4B000000]
+    while len(words) < BLOCKS:
+        words.append((rnd.getrandbits(1) << 31) | (rnd.randint(0, 254) << 23) | rnd.getrandbits(23))
+    return [struct.pack("<I", word) for word in words]
+
+
+def block_bytes(size, fill, rnd):
+    """`size` bytes: `fill` repeated, or seeded random bytes when `fill` is None."""
+    if fill is None:
+        return bytes(rnd.getrandbits(8) for _ in range(size))
+    return bytes([fill]) * size
+
+
+def with_scales(data, offsets, words):
+    """`data` with the fp16 `words` written at each scale `offset`."""
+    out = bytearray(data)
+    for offset, word in zip(offsets, words):
+        out[offset:offset + 2] = struct.pack("<H", word)
+    return bytes(out)
+
+
+def finite_scale(rnd):
+    """A fp16 word that decodes to a finite number: an edge half the time, else a
+    seeded pattern with a finite exponent, so no fixture holds a NaN or an infinity."""
+    if rnd.random() < 0.5:
+        return HALVES[rnd.randrange(len(HALVES))]
+    return (rnd.getrandbits(1) << 15) | (rnd.randrange(31) << 10) | rnd.getrandbits(10)
+
+
+def quant_blocks(name, rnd):
+    """BLOCKS blocks of `name`: seeded random bytes, every byte fill, every fp16 scale
+    edge alone, and every scale edge crossed with the ones after it, at both bodies."""
+    if name == "F32":
+        return f32_blocks(rnd)
+    _elements, size = quant_sizes(name)
+    offsets = SCALE_AT[name]
+    flat = [(HALVES[i],) * len(offsets) for i in range(len(HALVES))]
+    crossed = [tuple(HALVES[(i + 3 * k) % len(HALVES)] for k in range(len(offsets))) for i in range(len(HALVES))]
+    scaled = [with_scales(block_bytes(size, fill, rnd), offsets, words)
+              for fill in (0x00, 0xFF) for words in flat + crossed]
+    filled = [with_scales(block_bytes(size, fill, rnd), offsets, finite_words(offsets, rnd)) for fill in FILLS]
+    made = scaled + filled
+    while len(made) < BLOCKS:
+        made.append(with_scales(block_bytes(size, None, rnd), offsets, finite_words(offsets, rnd)))
+    return made
+
+
+def finite_words(offsets, rnd):
+    """One finite fp16 scale word per scale `offset`."""
+    return tuple(finite_scale(rnd) for _ in offsets)
+
+
+def quant_values(name, data, elements):
+    """`data` decoded by ggml at PIN, as the exact binary32 values it wrote."""
+    if name == "F32":
+        return numpy.frombuffer(data, dtype="<f4").astype(numpy.float64).tolist()
+    out = (ctypes.c_float * elements)()
+    getattr(quants_library(), SYMBOLS[name])(data, out, ctypes.c_int64(elements))
+    return [float(value) for value in out]
+
+
+def first_disagreement(values, reference):
+    """The first index where ggml's decoder and gguf-py's differ, or -1."""
+    theirs = numpy.asarray(reference, dtype=numpy.float32)
+    ours = numpy.asarray(values, dtype=numpy.float32)
+    different = numpy.flatnonzero(theirs.view(numpy.int32) != ours.view(numpy.int32))
+    return -1 if different.size == 0 else int(different[0])
+
+
+def agreed_with_gguf_py(name, data, values):
+    """Assert gguf-py's own decode of the same blocks is word for word ggml's, which is
+    what [LLM-WEIGHTS-QUANT] asks for; a future gguf release that drifts stops the oracle."""
+    reference = gguf_dequantize(numpy.frombuffer(data, dtype=numpy.uint8), GGMLQuantizationType[name])
+    at = -1 if reference is None else first_disagreement(values, reference)
+    if reference is None or at >= 0:
+        raise AssertionError(f"{name}: gguf {version('gguf')}'s dequantize disagrees with ggml at value {at}")
+
+
+def quant_fixtures():
+    """Every block type's stored bytes and the values ggml decodes them to.
+
+    The values travel as one comma-joined text of Python reprs, whose round trip is exact.
+    Written as float literals they would make the suite's expected module a hundred
+    thousand elements long, which costs the compiler minutes for no gain.
+    """
+    out = {"DEQUANT_TYPES": list(DECODED)}
+    for index, name in enumerate(DECODED):
+        elements, size = quant_sizes(name)
+        data = b"".join(quant_blocks(name, random.Random(SEED + index)))
+        values = quant_values(name, data, len(data) // size * elements)
+        agreed_with_gguf_py(name, data, values)
+        out[f"DEQUANT_{name}_BLOCK"] = elements
+        out[f"DEQUANT_{name}_SIZE"] = size
+        out[f"DEQUANT_{name}_BYTES"] = list(data)
+        out[f"DEQUANT_{name}_VALUES"] = ",".join(repr(value) for value in values)
+    return out
+
+
 def tables():
     """The value-type and quantization tables, the tokenizer key catalogue and the
     header constants, all read from the package instead of retyped."""
@@ -420,11 +631,13 @@ def main():
     qreader = opened(quant, "quant-reader")
     for name, data in rejected_cases(base, reader, quant, qreader):
         constants.update(rejected(name, data))
+    constants.update(quant_fixtures())
     write(
         "gguf",
         "GGUF v3 files written by gguf 0.19.0's GGUFWriter, GGUFReader's view of their header, "
-        "metadata, tensor infos and raw tensor bytes, and the inputs it rejects.",
-        {"gguf": version("gguf"), "numpy": numpy.__version__},
+        "metadata, tensor infos and raw tensor bytes, the inputs it rejects, and ggml's own "
+        "block decoders' binary32 output.",
+        {"gguf": version("gguf"), "numpy": numpy.__version__, "llama.cpp ggml-quants.c": PIN},
         constants,
         docs={
             "VALUE_TYPE_NAMES": "The metadata value-type names in the lower-case spelling the port uses, "

@@ -1,14 +1,15 @@
 # osprey: flavor=python
 """@osprey/gguf's suite: every accepted fixture read through `read`, every metadata
 entry read again through the accessor its declared kind selects, every tensor's info
-and raw bytes, the tables a phase reads, and every input `gguf` 0.19.0's GGUFReader
-rejects, all against values the CPython oracle computed ([PORT-TEST-ORACLE]).
+and raw bytes, the tables a phase reads, every quantized block decoded again against
+ggml's own C decoder, and every input `gguf` 0.19.0's GGUFReader rejects, all against
+values the CPython oracle computed ([PORT-TEST-ORACLE]).
 """
-from gguf import Chain, Constants, Reader
+from gguf import Chain, Constants, Quant, Reader
 from gguf_expected import Expected
 from testing import Check
 
-from gguf_tests.Support import TIGHT, ATOL, Rejected, fixtures, loaded, str_list_equal, int_rows, float_rows, str_rows, bool_rows, ats, ati, atl, cell_case, error_case, entry_offset, entry_kind, entry_item_kind, tensor_dims, tensor_elements, tensor_sizes, tensor_start
+from gguf_tests.Support import TIGHT, ATOL, Rejected, fixtures, loaded, quant_types, str_list_equal, int_rows, float_rows, str_rows, bool_rows, ats, ati, atf, atl, cell_case, error_case, entry_offset, entry_kind, entry_item_kind, tensor_dims, tensor_elements, tensor_sizes, tensor_start
 from gguf_tests import Units
 
 REJECTED = [
@@ -249,11 +250,102 @@ def cell_number(tag, result, want):
             return Check.failed(tag, problem)
 
 
+def quant_cases():
+    """Every block type decoded from its stored bytes against ggml's own output, one
+    block at a time and all 64 at once, plus every input a decoder must refuse."""
+    return listConcat(quant_decodes(), listConcat(quant_rejects(), quant_refusals()))
+
+
+def quant_decodes():
+    """The types the port decodes, which is the list the oracle recorded."""
+    types = quant_types()
+    listed = [str_list_equal("decode.supported", Quant.SUPPORTED, mapList(types, type_name))]
+    return listConcat(listed, foldList(types, [], lambda acc, case: listConcat(acc, quant_case(case))))
+
+
+def quant_case(case):
+    """One type's whole fixture decoded, and its first block decoded on its own."""
+    tag = "decode." + case.name
+    want = expected_values(case.values)
+    match Quant.decode(case.name, case.data):
+        case Success(value=values):
+            count = intDiv(len(case.data), case.size) * case.block
+            return listConcat([Check.equal(tag + ".length", len(values), count),
+                               Check.close_all(tag + ".values", values, want, 0.0, 0.0)],
+                              [block_case(case, want)])
+        case Error(message=problem):
+            return [Check.failed(tag + ".decode", problem)]
+
+
+def block_case(case, want):
+    """The first stored block alone decodes to that block's own values."""
+    tag = "decode." + case.name + ".block"
+    match Quant.decode(case.name, head_ints(case.data, case.size)):
+        case Success(value=values):
+            return Check.close_all(tag, values, head_floats(want, case.block), 0.0, 0.0)
+        case Error(message=problem):
+            return Check.failed(tag, problem)
+
+
+def quant_rejects():
+    """A byte count that is not a whole number of blocks, in both directions, and none."""
+    return foldList(quant_types(), [], lambda acc, case: listConcat(acc, quant_reject(case)))
+
+
+def quant_reject(case):
+    """One type's short, long and empty inputs: the first two are Errors, none is empty."""
+    tag = "decode." + case.name
+    return [error_case(tag + ".short", Quant.decode(case.name, head_ints(case.data, case.size - 1))),
+            error_case(tag + ".long", Quant.decode(case.name, head_ints(case.data, case.size + 1))),
+            empty_case(tag + ".empty", Quant.decode(case.name, []))]
+
+
+def quant_refusals():
+    """Types this port does not decode, and a name no GGUF file can hold."""
+    return [error_case("decode.reject.q4_0", Quant.decode("Q4_0", [])),
+            error_case("decode.reject.f16", Quant.decode("F16", [0, 0])),
+            error_case("decode.reject.unknown", Quant.decode("no-such-type", []))]
+
+
+def empty_case(tag, result):
+    """No bytes at all is zero whole blocks, so zero values."""
+    match result:
+        case Success(value=values):
+            return Check.equal(tag, len(values), 0)
+        case Error(message=problem):
+            return Check.failed(tag, problem)
+
+
+def expected_values(text):
+    """The oracle's values for one type, one per comma, decoded to binary64 exactly.
+
+    `Check.float_of` makes unparseable text NaN, so a broken expectation never compares
+    equal to a real value.
+    """
+    return mapList(unwrap_or(split(text, ","), [""]), Check.float_of)
+
+
+def head_ints(xs, n):
+    """The first `n` integers of `xs`."""
+    return toList(map(range(n), lambda i: ati(xs, i)))
+
+
+def head_floats(xs, n):
+    """The first `n` floats of `xs`."""
+    return toList(map(range(n), lambda i: atf(xs, i)))
+
+
+def type_name(case):
+    """A quant case's tensor type name."""
+    return case.name
+
+
 def cases():
     """Every accepted file, every rejected input, the tables and the low-level reads."""
     files = foldList(fixtures(), [], lambda acc, fixture: listConcat(acc, file_cases(fixture)))
     rejects = foldList(REJECTED, [], lambda acc, entry: listConcat(acc, reject_case(entry)))
-    return listConcat(files, listConcat(rejects, listConcat(table_cases(), listConcat(lookup_cases(), listConcat(chain_cases(), Units.cases())))))
+    suites = listConcat(table_cases(), listConcat(lookup_cases(), listConcat(chain_cases(), listConcat(quant_cases(), Units.cases()))))
+    return listConcat(files, listConcat(rejects, suites))
 
 
 def main():

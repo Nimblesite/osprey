@@ -9,7 +9,7 @@ from gguf import Reader
 from gguf_expected import Expected
 from testing import Check
 
-__all__ = ["TIGHT", "ATOL", "Rejected", "Fixture", "fixtures", "empty_file", "loaded", "str_list_equal", "int_rows", "float_rows", "str_rows", "bool_rows", "ats", "ati", "atf", "atb", "atl", "flag_int",
+__all__ = ["TIGHT", "ATOL", "Rejected", "Fixture", "QuantCase", "fixtures", "quant_types", "empty_file", "loaded", "str_list_equal", "int_rows", "float_rows", "str_rows", "bool_rows", "ats", "ati", "atf", "atb", "atl", "flag_int",
            "cell_case", "error_case", "swapped", "entry_offset", "entry_kind", "entry_item_kind",
            "tensor_dims", "tensor_elements", "tensor_sizes", "tensor_start", "tensor_name"]
 
@@ -130,6 +130,31 @@ def fixtures():
                 elements=Expected.EDGE_TENSOR_ELEMENTS, sizes=Expected.EDGE_TENSOR_SIZES, tensor_offsets=Expected.EDGE_TENSOR_OFFSETS,
                 tensor_data=Expected.EDGE_TENSOR_DATA, distinct=Expected.EDGE_DISTINCT_TYPES, tensor_info_offset=Expected.EDGE_TENSOR_INFO_OFFSET,
                 tokenizer_keys=Expected.EDGE_TOKENIZER_KEYS),
+    ]
+
+
+class QuantCase:
+    """One tensor type's stored blocks, and the values ggml's decoder wrote for them,
+    as the oracle's comma-joined text."""
+    name: str
+    block: int
+    size: int
+    data: list[int]
+    values: str
+
+
+def quant_types():
+    """Every block type the port decodes, in the order the suite reports them."""
+    return [
+        QuantCase(name="F32", block=Expected.DEQUANT_F32_BLOCK, size=Expected.DEQUANT_F32_SIZE, data=Expected.DEQUANT_F32_BYTES, values=Expected.DEQUANT_F32_VALUES),
+        QuantCase(name="Q8_0", block=Expected.DEQUANT_Q8_0_BLOCK, size=Expected.DEQUANT_Q8_0_SIZE, data=Expected.DEQUANT_Q8_0_BYTES, values=Expected.DEQUANT_Q8_0_VALUES),
+        QuantCase(name="Q3_K", block=Expected.DEQUANT_Q3_K_BLOCK, size=Expected.DEQUANT_Q3_K_SIZE, data=Expected.DEQUANT_Q3_K_BYTES, values=Expected.DEQUANT_Q3_K_VALUES),
+        QuantCase(name="Q4_K", block=Expected.DEQUANT_Q4_K_BLOCK, size=Expected.DEQUANT_Q4_K_SIZE, data=Expected.DEQUANT_Q4_K_BYTES, values=Expected.DEQUANT_Q4_K_VALUES),
+        QuantCase(name="Q5_K", block=Expected.DEQUANT_Q5_K_BLOCK, size=Expected.DEQUANT_Q5_K_SIZE, data=Expected.DEQUANT_Q5_K_BYTES, values=Expected.DEQUANT_Q5_K_VALUES),
+        QuantCase(name="Q6_K", block=Expected.DEQUANT_Q6_K_BLOCK, size=Expected.DEQUANT_Q6_K_SIZE, data=Expected.DEQUANT_Q6_K_BYTES, values=Expected.DEQUANT_Q6_K_VALUES),
+        QuantCase(name="IQ4_NL", block=Expected.DEQUANT_IQ4_NL_BLOCK, size=Expected.DEQUANT_IQ4_NL_SIZE, data=Expected.DEQUANT_IQ4_NL_BYTES, values=Expected.DEQUANT_IQ4_NL_VALUES),
+        QuantCase(name="IQ4_XS", block=Expected.DEQUANT_IQ4_XS_BLOCK, size=Expected.DEQUANT_IQ4_XS_SIZE, data=Expected.DEQUANT_IQ4_XS_BYTES, values=Expected.DEQUANT_IQ4_XS_VALUES),
+        QuantCase(name="IQ3_S", block=Expected.DEQUANT_IQ3_S_BLOCK, size=Expected.DEQUANT_IQ3_S_SIZE, data=Expected.DEQUANT_IQ3_S_BYTES, values=Expected.DEQUANT_IQ3_S_VALUES),
     ]
 
 
