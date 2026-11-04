@@ -11,8 +11,12 @@ from transformers_expected import Expected
 from transformers import Generation, Lists, LogitsProcess, StoppingCriteria
 from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
+# Arithmetic (+ - * /) is exact after widening binary32 to binary64, so ARITH
+# stays 1e-12. exp/ln go through libm's f32 entries, which torch's own binary32
+# softmax/log_softmax disagree with by up to ~1.85 ulp (2^-23); EXP is that
+# measured worst case with a small margin.
 ARITH = 1e-12
-EXP = 1e-6
+EXP = 2.2e-7
 ATOL = 1e-12
 
 
