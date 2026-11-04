@@ -2,8 +2,8 @@ import { appendFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const compilerRoots = /^(crates|compiler|tree-sitter-osprey|webcompiler|vscode-extension|tests|examples|packages|scripts|\.github)\//
-const content = (path) => /^(website|Book|benchmarks)\//.test(path)
+const compilerRoots = /^(src\/crates|src\/compiler|src\/tree-sitter-osprey|src\/webcompiler|src\/vscode-extension|tests|src\/examples|src\/packages|scripts|\.github)\//
+const content = (path) => /^(src\/website|Book|src\/benchmarks)\//.test(path)
   || (path.endsWith('.md') && !compilerRoots.test(path))
 const embeddedGrammar = 'src/website/src/js/osprey-grammar.mjs'
 

@@ -432,7 +432,7 @@ test("long authored guides retain a useful image or inline video per 500 prose w
       .reduce((count, token) => count + (token.content.match(/\b[\w]+(?:['’-][\w]+)*\b/g) || []).length, 0);
     if (words < 500) continue;
     const route = source.match(/^permalink:\s*["']?([^\s"']+)/m)?.[1]
-      || `/${file.replace(/^website\/src\//, "").replace(/(?:index)?\.md$/, "")}${file.endsWith("index.md") ? "" : "/"}`;
+      || `/${file.replace(/^src\/website\/src\//, "").replace(/(?:index)?\.md$/, "")}${file.endsWith("index.md") ? "" : "/"}`;
     await page.goto(route);
     const article = page.locator("article");
     const images = article.locator("img:not(.video-card img)");

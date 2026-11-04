@@ -40,7 +40,7 @@ function writeProofAssets(root, platform) {
 
 function restoreStagedBundle(root, restoreJob) {
   cpSync(join(root, 'src/vscode-extension/bin'), join(root, 'extension/bin'), { recursive: true })
-  const zipped = spawnSync('zip', ['-qr', 'vscode-extension/osprey-fixture.vsix', 'extension'], { cwd: root, encoding: 'utf8' })
+  const zipped = spawnSync('zip', ['-qr', 'src/vscode-extension/osprey-fixture.vsix', 'extension'], { cwd: root, encoding: 'utf8' })
   assert.equal(zipped.status, 0, zipped.stderr)
   rmSync(join(root, 'extension'), { recursive: true })
   rmSync(join(root, 'src/vscode-extension/bin'), { recursive: true })
@@ -130,7 +130,7 @@ export function runStagedBundleFixture(restoreJob, change = () => {}) {
     restoreStagedBundle(root, restoreJob)
     change(root, platform)
     return spawnSync('make', ['-f', resolve('scripts/make/extension.mk'), '_vsix_verify',
-      'BIN=target/release/osprey', 'EXT_DIR=vscode-extension', `EXT_PLATFORM=${host}`, 'RTB=src/compiler/bin',
+      'BIN=target/release/osprey', 'EXT_DIR=src/vscode-extension', `EXT_PLATFORM=${host}`, 'RTB=src/compiler/bin',
       `NATIVE_RUNTIME_ARCHIVES=${nativeArchives.map(name => `src/compiler/bin/${name}`).join(' ')}`], { cwd: root, encoding: 'utf8' })
   } finally { rmSync(root, { recursive: true, force: true }) }
 }

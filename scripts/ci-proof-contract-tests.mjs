@@ -22,9 +22,9 @@ function assertProofWorkflow(proof) {
   // release (`stable` floats) and a non-zero exit is never softened. The pin
   // lives in the tools' lean-toolchain, which the job installs and the tools
   // cache key hashes, so the two cannot disagree.
-  assert.match(proof, /--default-toolchain "\$\(cat benchmarks\/proof\/tools\/lean-toolchain\)"/)
+  assert.match(proof, /--default-toolchain "\$\(cat src\/benchmarks\/proof\/tools\/lean-toolchain\)"/)
   assert.match(readFileSync('src/benchmarks/proof/tools/lean-toolchain', 'utf8'), /^leanprover\/lean4:v\d+\.\d+\.\d+\n$/)
-  assert.match(proof, /hashFiles\([^)]*benchmarks\/proof\/tools\/lean-toolchain/)
+  assert.match(proof, /hashFiles\([^)]*src\/benchmarks\/proof\/tools\/lean-toolchain/)
   assert.doesNotMatch(proof, /--default-toolchain stable/)
   assert.doesNotMatch(proof, /continue-on-error/)
   assert.doesNotMatch(proof, /\|\| true/)

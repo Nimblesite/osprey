@@ -35,7 +35,7 @@ _coverage_check_rust:
 	if [ ! -f $(RUST_LCOV) ]; then echo "[rust] FAIL: $(RUST_LCOV) not produced"; exit 1; fi; \
 	fail=0; \
 	for manifest in src/crates/*/Cargo.toml; do \
-	  crate=$${manifest%/Cargo.toml}; crate=$${crate#crates/}; \
+	  crate=$${manifest%/Cargo.toml}; crate=$${crate#src/crates/}; \
 	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
 	    echo "[rust] $$crate FAIL: missing coverage threshold"; fail=1; }; \
 	done; \

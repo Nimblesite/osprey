@@ -50,7 +50,7 @@ test('all workflows use the shared classifier and content checks remain required
   const windows = readFileSync('.github/workflows/ci-windows.yml', 'utf8')
   assert.equal(linux.split('uses: ./.github/actions/detect-ci-scope').length - 1, 2)
   assert.match(windows, /uses: \.\/\.github\/actions\/detect-ci-scope/)
-  assert.match(linux, /python3 benchmarks\/test_merge_results.py --tooling-only/)
+  assert.match(linux, /python3 src\/benchmarks\/test_merge_results.py --tooling-only/)
   assert.match(linux, /make -C Book check-examples/)
   assert.match(linux, /make -C Book check\n/)
 })
@@ -69,7 +69,7 @@ test('extension tests receive and reuse the build job\'s complete bundle', () =>
   assert.ok(commands.indexOf('$(MAKE) _vsix_bundle') < commands.indexOf('$(MAKE) _test_vscode_extension'))
   const extension = job('test-extension', '.github/workflows/ci.yml')
   for (const required of [/name: Restore bundled extension assets/, /chmod \+x[^\n]*target\/osprey-pkg/,
-    /chmod \+x[^\n]*vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
+    /chmod \+x[^\n]*src\/vscode-extension\/bin\/linux-x64\/osprey-pkg/]) assert.match(extension, required)
 })
 
 test('extension source fixtures have the WASI linker and sysroot before coverage', () => {
@@ -118,7 +118,7 @@ test('unfinished mobile casting stays out of every CI path', () => {
   for (const name of readdirSync('.github/workflows')) {
     assert.doesNotMatch(readFileSync(join('.github/workflows', name), 'utf8'), unfinished, name)
   }
-  assert.doesNotMatch(readFileSync('scripts/test-mobile-tools.py', 'utf8'), /examples\/casting|apps\/ios\/tests/)
+  assert.doesNotMatch(readFileSync('scripts/test-mobile-tools.py', 'utf8'), /src\/examples\/casting|src\/targets\/ios\/tests/)
   assert.match(readFileSync('src/hosts/gpui/src/adapters.rs', 'utf8'), /feature = "mobile-bridge-tests"/)
   assert.doesNotMatch(readFileSync('src/hosts/gpui/src/adapters.rs', 'utf8'), /target_os = "android", test\)/)
 })
