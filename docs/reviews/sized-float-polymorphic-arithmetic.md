@@ -53,6 +53,7 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 - [x] All 941 type-checker tests pass, including 20 Default/ML negative controls for fixed-binary64 helpers; strict package clippy and formatting pass.
 - [x] Current primary checkout transformer package retains all 395 GC assertions. It has no `toFloat32(0.0)` workaround anchors; the separate Phase 4/5 migration owner has been notified.
 - [x] Verify the final Default/ML regression, aliases, signed zero, subnormals and local `Result` wrappers under GC, ARC and wasm32. All nine exact-golden runs pass, including the unchanged legacy pattern-matching golden; native ARC runs each report zero live objects. Receipt: `polymorphic-verified-receipts.json`.
+- [x] Full Rust workspace tests and every Rust coverage floor pass on the final code: codegen 96.3% (floor 95%), types 98.3% (floor 98%); all 941 type tests pass under coverage. The declaration-documentation and exact rejection-golden gates also pass.
 - [ ] Finish full GC, ARC and wasm32 corpus lanes and final regression assertions. Transformer package GC and ARC both retain all 395 assertions (ARC: zero live objects).
 
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
@@ -61,6 +62,6 @@ The first wide run exposed a division `Result` regression (`good elvis = 0.0` in
 
 The full test command caught an IR mismatch in the new ML regression, corrected by spelling its parameter and argument tuples like the Default twin. The unchanged cross-flavor IR gate now passes. A separate RED negative-control test caught an overly broad removal of the numeric guard; the guard is retained, and only the deferred division result relation changes. The report's minimal example also needs the existing `Arith.divideByZero` handler to execute; with that policy installed it prints `0.75`.
 
-Final focused verification at `02d1c952`: all nine Default/ML/legacy golden comparisons pass again after restoring the fixed-width controls. Both code fixes and checklist updates are committed; the final `make test` receipt is `polymorphic-make-test-final.log`.
+Final focused verification at `02d1c952`: all nine Default/ML/legacy golden comparisons pass again after restoring the fixed-width controls. Both code fixes and checklist updates are committed; the final `make test` receipt is `polymorphic-make-test-complete.log`.
 
 The next full-suite pass reached the exact must-reject diagnostics gate and exposed ordering drift in the Default/ML `float_operand_constraint` cases. The checker now inserts late division diagnostics at their original obligation site; the complete rejection-golden gate passes with every golden unchanged.
