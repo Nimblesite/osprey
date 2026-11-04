@@ -52,6 +52,30 @@ final class ProcessAdapterTests: XCTestCase {
         return (output, stderr, reads)
     }
 
+    // The main thread is busy when the reply arrives, as on a loaded machine: the listening read has taken
+    // the bytes and is waiting to publish them when a new read with its ticket replaces it. They must survive.
+    @MainActor
+    func testOutputTakenByAReplacedReadReachesTheReadThatReplacedIt() async throws {
+        let adapter = ProcessAdapter(), runner = CapabilityRunner(adapters: [adapter]), handle = name("replaced")
+        _ = try await adapter.perform(start(handle, "/bin/cat"), slices: SliceStore())
+        var outcomes: [Outcome] = []
+        runner.run(read(handle, timeout: 5000)) { outcomes.append($0) }
+        await Task.yield()
+        let request = write(handle, "the reply\n")
+        Task.detached { _ = try await adapter.perform(request, slices: SliceStore()) }
+        Thread.sleep(forTimeInterval: 0.5)
+        let replacing = expectation(description: "the replacing read answers")
+        runner.run(read(handle, timeout: 2000)) {
+            outcomes.append($0)
+            replacing.fulfill()
+        }
+        await fulfillment(of: [replacing], timeout: 5)
+        guard case let .success(.object(members)) = outcomes.last, case let .string(output)? = members["output"] else { return XCTFail("\(outcomes)") }
+        XCTAssertEqual(output, "the reply\n")
+        XCTAssertEqual(outcomes.count, 2)
+        guard case .failure(.cancelled) = outcomes[0] else { return XCTFail("\(outcomes)") }
+    }
+
     func testStartWriteAndReadRoundTripThroughCat() async throws {
         let adapter = ProcessAdapter()
         let handle = name("cat")

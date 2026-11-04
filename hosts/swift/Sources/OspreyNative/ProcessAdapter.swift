@@ -282,6 +282,14 @@ final class ChildProcess: @unchecked Sendable {
         return (output, errors, ended && stdout.isEmpty && stderr.isEmpty, status)
     }
 
+    /// Puts back what a read took but nobody received, ahead of anything that arrived since.
+    func unread(output: Data, stderr errors: Data) {
+        lock.lock()
+        defer { lock.unlock() }
+        stdout = output + stdout
+        stderr = errors + stderr
+    }
+
     /// How many leading bytes, at most `limit`, end on a character boundary. Once the process has ended
     /// nothing can complete a cut character at the very end, so that passes as it is.
     private func wholeCharacters(_ bytes: Data, limit: Int) -> Int {
@@ -357,6 +365,10 @@ final class ProcessPool: @unchecked Sendable {
         return try await child.read(limit: limit, timeout: timeout)
     }
 
+    func unread(name: String, output: Data, stderr: Data) {
+        child(named: name)?.unread(output: output, stderr: stderr)
+    }
+
     /// Stops one process; unknown or already-exited handles are a harmless false.
     func stop(name: String) -> Bool {
         lock.lock()
@@ -409,6 +421,13 @@ public struct ProcessAdapter: CapabilityAdapter {
         default:
             return .object(["stopped": .bool(ProcessPool.shared.stop(name: try request.text("name")))])
         }
+    }
+
+    /// A read replaced just after it took output: those bytes belong to the read that replaced it.
+    public func discarded(_ request: Request, _ value: JSONValue) {
+        guard request.kind == "process-read", let name = try? request.text("name"), case let .object(read) = value,
+              case let .string(output)? = read["output"], case let .string(stderr)? = read["stderr"] else { return }
+        ProcessPool.shared.unread(name: name, output: Data(output.utf8), stderr: Data(stderr.utf8))
     }
 }
 
