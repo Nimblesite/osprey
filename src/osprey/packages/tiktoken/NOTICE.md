@@ -12,6 +12,8 @@ These repositories and releases are acknowledged as API, behavior and test-oracl
 
 ## Specifically retained third-party material
 
+`CLASSIC_GPT2_PAT` and `CLASSIC_CL100K_PAT` in `oracle/tiktoken.cpython` reproduce regular expressions from tiktoken, covered by [`LICENSES/tiktoken.txt`](LICENSES/tiktoken.txt).
+
 The cumulative expression for the identified material is `MIT AND Unicode-3.0`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
 
 ### tiktoken

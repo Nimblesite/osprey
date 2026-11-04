@@ -564,6 +564,22 @@
           "data_version": "15.0.0",
           "data_source": "https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt",
           "data_sha256": "806e9aed65037197f1ec85e12be6e8cd870fc5608b4de0fffd990f689f376a73"
+        },
+        {
+          "component": "gpt-2",
+          "repository": "https://github.com/openai/gpt-2",
+          "reference": "src/encoder.py",
+          "file": "LICENSES/gpt-2-Modified-MIT.txt",
+          "sha256": "0dbeda4bc78823b1d67ec0ee414d8690ee4cad826bc9c147b215adc3af202436",
+          "source": "https://github.com/openai/gpt-2/blob/master/LICENSE",
+          "git_blob_sha1": "f56abfef079f3850e93db8bd6ee32582c3e65956",
+          "applies_to": [
+            "oracle/tokenizers.cpython"
+          ],
+          "basis": "bytes_to_unicode adapted from src/encoder.py in the CPython test oracle",
+          "notice_attribution": [
+            "Copyright (c) 2019 OpenAI"
+          ]
         }
       ],
       "references": [

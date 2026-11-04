@@ -335,6 +335,7 @@ BPE_BYTE_CHARS = bytes(range(256))
 """Every byte the ByteLevel alphabet can name, in order."""
 
 
+# Adapted from src/encoder.py in openai/gpt-2, Copyright (c) 2019 OpenAI. Terms: ../LICENSES/gpt-2-Modified-MIT.txt.
 def bytes_to_unicode():
     """GPT-2's byte alphabet: the printable bytes keep themselves, the rest map
     to the code points starting at U+0100."""

@@ -10,6 +10,8 @@ These repositories and releases are acknowledged as API, behavior and test-oracl
 
 ## Specifically retained third-party material
 
+`bytes_to_unicode` in `oracle/tokenizers.cpython`, the CPython script that computes this package's test values, is adapted from [`src/encoder.py`](https://github.com/openai/gpt-2/blob/master/src/encoder.py) in OpenAI's GPT-2, Software Copyright (c) 2019 OpenAI, under the modified MIT license in [`LICENSES/gpt-2-Modified-MIT.txt`](LICENSES/gpt-2-Modified-MIT.txt). It is used only by that oracle.
+
 The cumulative expression for the identified material is `MIT AND Unicode-DFS-2016`. These additional terms apply to that material; they do not transfer ownership of the Osprey implementation or turn upstream API references into dependencies.
 
 ### unicode15
