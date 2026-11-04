@@ -6,7 +6,7 @@ root=$(cd "$(dirname "$0")/.." && pwd)
 cd "$root"
 compiler=${OSPREY_BIN:-$root/target/release/osprey}
 simulator=$(bash scripts/ios-simulator.sh)
-scratch=$(mktemp -d "$root/compiler/bin/.ios-tests.XXXXXX")
+scratch=$(mktemp -d "$root/src/toolchain/compiler/bin/.ios-tests.XXXXXX")
 trap 'rm -rf "$scratch"' EXIT
 
 cp scripts/mobile-abi.osp "$scratch/abi.osp"

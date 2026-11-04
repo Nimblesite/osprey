@@ -270,7 +270,7 @@ class BuildFragments(unittest.TestCase):
             (root / "tasks.mk").write_text("include website.mk\n")
             for prerequisite, succeeds in [("$(WEBSITE_NODE_DEPS)", True), ("", False)]:
                 with self.subTest(prerequisite=prerequisite):
-                    (root / "website.mk").write_text(f"site: {prerequisite}\n\tcd website && npm run build\n")
+                    (root / "website.mk").write_text(f"site: {prerequisite}\n\tcd src/toolchain/website && npm run build\n")
                     result = subprocess.run(
                         ["node", str(ROOT / "scripts/verify-node-deps-guard.mjs")],
                         cwd=root, capture_output=True, text=True,

@@ -12,11 +12,11 @@ case "${1:-}" in
     --host=winui)
         mkdir -p "$here/build"
         "$compiler" build "$here" --target=windows-x64 -o "$here/build/storage.dll"
-        exec dotnet run --project "$repo/hosts/winui/OspreyHost" -c Release -- "$here/build/storage.dll"
+        exec dotnet run --project "$repo/src/toolchain/hosts/winui/OspreyHost" -c Release -- "$here/build/storage.dll"
         ;;
     "" | --host=gpui)
         export OSPREY_GPUI_APP="$here"
-        exec "$repo/hosts/gpui/run.sh"
+        exec "$repo/src/toolchain/hosts/gpui/run.sh"
         ;;
     *) echo "Usage: $0 [--host=gpui|--host=winui|--test]" >&2; exit 2 ;;
 esac

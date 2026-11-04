@@ -12,7 +12,7 @@ esac
 cd "$repo"
 export IPHONEOS_DEPLOYMENT_TARGET=18.0
 if [[ ${OSPREY_MOBILE_SKIP_LIBRARY:-0} != 1 ]]; then bash src/osprey/examples/casting/mobile-build.sh "$target"; fi
-output="$repo/examples/casting/build/$target"
+output="$repo/src/osprey/examples/casting/build/$target"
 bundle="$output/Casting.app"
 mkdir -p "$bundle"
 sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
@@ -32,7 +32,7 @@ python3 src/toolchain/hosts/gpui/dependencies.py
 OSPREY_GPUI_APP_DIR="$output" OSPREY_GPUI_LINK_SEARCH="$output:$swift_search" \
 OSPREY_GPUI_LINK_LIBS="static=osprey_cast_services,framework=Network,framework=Security,framework=Foundation" \
     cargo build --manifest-path src/toolchain/hosts/gpui/Cargo.toml --target "$rust_target" --locked
-cp "$repo/hosts/gpui/target/$rust_target/debug/osprey-gpui" "$bundle/Casting"
+cp "$repo/src/toolchain/hosts/gpui/target/$rust_target/debug/osprey-gpui" "$bundle/Casting"
 python3 - "$bundle/osprey-arguments.json" <<'ARGS'
 import json,sys
 with open(sys.argv[1], 'w') as file:

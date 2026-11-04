@@ -11,8 +11,8 @@ set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../../.." && pwd)
 name="Osprey Agent"
-bundle="$repo/hosts/swift/build/$name.app"
-helper="$repo/hosts/swift/build/window-id"
+bundle="$repo/src/toolchain/hosts/swift/build/$name.app"
+helper="$repo/src/toolchain/hosts/swift/build/window-id"
 # Input goes to whatever is in front, so nothing is sent unless that is this app.
 activate() {
     osascript -e "tell application \"$name\" to activate" >/dev/null

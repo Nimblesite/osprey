@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../../../../.." && pwd)
-app="$root/examples/projects/modules/mobile/android"
+app="$root/src/osprey/examples/projects/modules/mobile/android"
 cd "$root"
 source scripts/android-env.sh
 if [[ ${OSPREY_ANDROID_SKIP_RUNTIME:-0} != 1 ]]; then make _runtime_android; fi

@@ -7,4 +7,4 @@ repo=$(cd "$here/../../../../.." && pwd)
 export OSPREY_GPUI_APP="$here"
 export OSPREY_GPUI_APP_NAME=signal_flow
 export OSPREY_GPUI_TITLE="Signal flow" OSPREY_GPUI_WINDOW=1152x620
-exec "$repo/hosts/gpui/run.sh" "$@" --machine "$here/../signal_flow.machine.json"
+exec "$repo/src/toolchain/hosts/gpui/run.sh" "$@" --machine "$here/../signal_flow.machine.json"

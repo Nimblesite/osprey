@@ -24,4 +24,4 @@ if [ -n "$env_file" ]; then
     arguments+=("$support/key.env")
 fi
 export OSPREY_SWIFT_APP="$here" OSPREY_SWIFT_NAME="Osprey Agent" OSPREY_SWIFT_BUNDLE_ID="$identifier"
-exec "$repo/hosts/swift/run.sh" -- "${arguments[@]}"
+exec "$repo/src/toolchain/hosts/swift/run.sh" -- "${arguments[@]}"

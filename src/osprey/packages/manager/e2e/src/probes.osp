@@ -365,7 +365,7 @@ module Probes {
         listConcat(listConcat(endpoints, fetches), listConcat(files, projects(cwd, catalog)))
     }
 
-    fn catalogOf(cwd) = match Loader::load("${cwd}/packages/manager/sample-registry") {
+    fn catalogOf(cwd) = match Loader::load("${cwd}/src/osprey/packages/manager/sample-registry") {
         Success { value } => value
         Error { message } => Release::Catalog { served: [], refused: [Release::Refused { dir: cwd, code: message }] }
     }

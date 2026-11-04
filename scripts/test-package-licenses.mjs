@@ -53,7 +53,7 @@ test('package tooling containers do not become published libraries', () => inFix
 }))
 
 test('a new package manifest still requires a reviewed license entry', () => inFixture((root) => {
-  const dir = join(root, 'packages/new-library')
+  const dir = join(root, 'src/osprey/packages/new-library')
   mkdirSync(dir)
   writeFileSync(join(dir, 'osprey.toml'), '[package]\nname = "@osprey/new-library"\n')
   assert.notEqual(verify(root).status, 0)

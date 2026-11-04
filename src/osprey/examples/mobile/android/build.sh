@@ -2,7 +2,7 @@
 # Build the exact same Osprey project as iOS, then package its JNI transport.
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../../.." && pwd)
-app="$root/examples/mobile/android"
+app="$root/src/osprey/examples/mobile/android"
 cd "$root"
 source scripts/android-env.sh
 make _runtime_android

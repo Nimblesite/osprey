@@ -209,7 +209,7 @@ for (const width of [390, 1440]) test(`proof docs fit ${width}px and provide bot
   for (const url of ["/docs/proofs/", proofWatch("proof-workbench"), "/docs/mathlib-port/"]) {
     await page.goto(url);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-    await page.screenshot({ path: `../target/film-review/proof-docs-${width}-${url.split("/").filter(Boolean).at(-1)}.png`, fullPage: true });
+    await page.screenshot({ path: `../../../target/film-review/proof-docs-${width}-${url.split("/").filter(Boolean).at(-1)}.png`, fullPage: true });
   }
 });
 

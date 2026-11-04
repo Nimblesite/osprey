@@ -27,7 +27,7 @@ mkdir -p "$work"
 trap 'rm -rf "$work"' EXIT
 echo "records: $records"
 export OSPREY_SWIFT_APP="$here" OSPREY_SWIFT_NAME="$name" OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent
-bundle=$(bash "$repo/hosts/swift/run.sh" --build | tail -1)
+bundle=$(bash "$repo/src/toolchain/hosts/swift/run.sh" --build | tail -1)
 host="$bundle/Contents/MacOS/$name"
 iconutil -c iconset "$bundle/Contents/Resources/AppIcon.icns" -o "$work/AppIcon.iconset" || { echo "FAILED: the bundle has no icon" >&2; exit 1; }
 [ "$(sips -g pixelWidth "$work/AppIcon.iconset/icon_512x512@2x.png" | awk '/pixelWidth/ {print $2}')" = 1024 ] || { echo "FAILED: the icon has no 1024 pixel size" >&2; exit 1; }

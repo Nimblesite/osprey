@@ -7,14 +7,14 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../.." && pwd)
-machine="$repo/packages/signal_flow/signal_flow.machine.json"
+machine="$repo/src/osprey/packages/signal_flow/signal_flow.machine.json"
 if [ "${1:-}" = --smoke ]; then
-    OSPREY_GPUI_APP="$here" exec "$repo/hosts/gpui/run.sh" --smoke --machine "$machine"
+    OSPREY_GPUI_APP="$here" exec "$repo/src/toolchain/hosts/gpui/run.sh" --smoke --machine "$machine"
 fi
-OSPREY_GPUI_APP="$here" "$repo/hosts/gpui/run.sh" --build
+OSPREY_GPUI_APP="$here" "$repo/src/toolchain/hosts/gpui/run.sh" --build
 export OSPREY_GPUI_APP_NAME=synth OSPREY_GPUI_TITLE="Prism Synth" OSPREY_GPUI_WINDOW=1152x756 OSPREY_GPUI_CHROME=bare OSPREY_GPUI_LIGHTS=16,18
-app=$("$repo/hosts/gpui/bundle.sh" "$here/build" "Prism Synth" dev.ospreylang.synth \
-    "$repo/packages/signal_flow/skins/prism/logo.png" "$machine" | tail -1)
+app=$("$repo/src/toolchain/hosts/gpui/bundle.sh" "$here/build" "Prism Synth" dev.ospreylang.synth \
+    "$repo/src/osprey/packages/signal_flow/skins/prism/logo.png" "$machine" | tail -1)
 if [ "${1:-}" = --bundle ]; then
     echo "$app"
     exit 0

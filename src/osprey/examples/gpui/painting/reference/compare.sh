@@ -7,12 +7,12 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/../../../../../.." && pwd)
-python3 "$repo/hosts/gpui/dependencies.py"
+python3 "$repo/src/toolchain/hosts/gpui/dependencies.py"
 draw=false
 if [ "${1:-}" = "--draw" ]; then draw=true; shift; fi
 out=${1:-"$here/out"}
 mkdir -p "$out"
-target="$repo/hosts/gpui/target"
+target="$repo/src/toolchain/hosts/gpui/target"
 
 # The trap is the only place a window is closed, and a stopped child is forgotten before the trap
 # can run again, so no failure path leaves a window open or signals a PID that has been reused.

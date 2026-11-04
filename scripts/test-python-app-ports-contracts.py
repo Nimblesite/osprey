@@ -45,7 +45,7 @@ class AppRunnerContracts(unittest.TestCase):
                 self.assertTrue(self.check(PASS, stderr=stderr, memory="arc"))
 
     def test_subprocess_keeps_crlf_bytes_for_exact_comparison(self):
-        compiler = self.root / "src" / "toolchain" / "compiler"
+        compiler = self.root / "compiler"
         compiler.write_text("#!/usr/bin/env python3\nimport os\nos.write(1, b'report\\r\\n')\n")
         compiler.chmod(0o755)
         result = RUNNER["run_app"](compiler, self.app, "default")

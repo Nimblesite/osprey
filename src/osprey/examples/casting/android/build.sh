@@ -14,7 +14,7 @@ sdk=${ANDROID_HOME:-$HOME/Library/Android/sdk}
 ndk=$sdk/ndk/27.0.12077973
 tools=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin
 build_tools=$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)
-output="$repo/examples/casting/build/$target"
+output="$repo/src/osprey/examples/casting/build/$target"
 cd "$repo"
 if [[ ${OSPREY_MOBILE_SKIP_LIBRARY:-0} != 1 ]]; then bash src/osprey/examples/casting/mobile-build.sh "$target"; fi
 mkdir -p "$output"

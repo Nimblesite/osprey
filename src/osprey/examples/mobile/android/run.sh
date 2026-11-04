@@ -3,7 +3,7 @@
 set -euo pipefail
 root=$(cd "$(dirname "$0")/../../../../.." && pwd)
 source "$root/scripts/android-env.sh"
-app="$root/examples/mobile/android"
+app="$root/src/osprey/examples/mobile/android"
 if [[ ${OSPREY_ANDROID_SKIP_BUILD:-0} != 1 ]]; then bash "$app/build.sh"; fi
 adb="$android_sdk/platform-tools/adb"
 serial=${OSPREY_ANDROID_SERIAL:-${ANDROID_SERIAL:-}}

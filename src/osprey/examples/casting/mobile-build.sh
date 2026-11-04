@@ -16,7 +16,7 @@ if [[ ! -x "$compiler" ]]; then
     echo 'Build the compiler with cargo build --release -p osprey-cli' >&2
     exit 1
 fi
-output="$repo/examples/casting/build/$target"
+output="$repo/src/osprey/examples/casting/build/$target"
 mkdir -p "$output"
 "$compiler" build src/osprey/examples/casting --target="$target" -o "$output/libOspreyApp.a"
 echo "Shared library: $output/libOspreyApp.a (mobile host and Cast services still required)"

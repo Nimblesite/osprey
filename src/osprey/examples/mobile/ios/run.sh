@@ -15,9 +15,9 @@ if [[ ! -f "$icon" || "$example_dir/make-icon.swift" -nt "$icon" ]]; then
     swift "$example_dir/make-icon.swift" "$example_dir/build/Assets.xcassets"
 fi
 case "${1:-ios-sim}" in
-    ios-sim) exec "$repo_dir/examples/ios/run.sh" ;;
-    ios-device) exec "$repo_dir/examples/ios/run-device.sh" ;;
-    --smoke) exec "$repo_dir/examples/ios/run.sh" --smoke ;;
-    --build) exec "$repo_dir/examples/ios/build.sh" "${2:-ios-sim}" ;;
+    ios-sim) exec "$repo_dir/src/osprey/examples/ios/run.sh" ;;
+    ios-device) exec "$repo_dir/src/osprey/examples/ios/run-device.sh" ;;
+    --smoke) exec "$repo_dir/src/osprey/examples/ios/run.sh" --smoke ;;
+    --build) exec "$repo_dir/src/osprey/examples/ios/build.sh" "${2:-ios-sim}" ;;
     *) echo "Usage: $0 [ios-sim|ios-device|--smoke|--build [ios|ios-sim|ios-device]]" >&2; exit 2 ;;
 esac
