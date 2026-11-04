@@ -6,19 +6,19 @@
     },
     {
       "name": "Osprey Compiler",
-      "path": "compiler"
+      "path": "src/toolchain/compiler"
     },
     {
       "name": "Osprey VS Code Extension",
-      "path": "vscode-extension"
+      "path": "src/toolchain/vscode-extension"
     },
     {
       "name": "webcompiler",
-      "path": "webcompiler"
+      "path": "src/toolchain/webcompiler"
     },
     {
       "name": "website",
-      "path": "website"
+      "path": "src/toolchain/website"
     },
     {
       "name": ".devcontainer",

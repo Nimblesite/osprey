@@ -15,7 +15,8 @@ RUN apt-get update && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the Rust workspace + the C runtime sources (root Makefile builds both)
-COPY Cargo.toml Cargo.lock Makefile .rustfmt.toml .clippy.toml /workspace/
+COPY Cargo.toml Cargo.lock Makefile /workspace/
+COPY src/toolchain/.rustfmt.toml src/toolchain/.clippy.toml /workspace/src/toolchain/
 COPY scripts /workspace/scripts
 COPY src/toolchain/crates /workspace/src/toolchain/crates
 COPY src/toolchain/tree-sitter-osprey /workspace/src/toolchain/tree-sitter-osprey

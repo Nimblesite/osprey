@@ -31,7 +31,7 @@ make test
 
 ## Repository coordination
 
-Git worktrees are banned. There may be only **ONE active feature branch across ALL machines and clones combined**. Coordinate all work on the existing active branch; do not create a branch per machine, contributor, or task. A replacement branch may start only after the previous branch is merged or explicitly retired and all machines are coordinated. See [CLAUDE.md](CLAUDE.md) for the shared instructions.
+Git worktrees are banned. There may be only **ONE active feature branch across ALL machines and clones combined**. Coordinate all work on the existing active branch; do not create a branch per machine, contributor, or task. A replacement branch may start only after the previous branch is merged or explicitly retired and all machines are coordinated. See [AGENTS.md](AGENTS.md) for the shared instructions.
 
 ## What to Work On
 

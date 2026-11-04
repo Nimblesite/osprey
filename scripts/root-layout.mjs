@@ -7,11 +7,11 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 export const ALLOWED_TRACKED = new Set([
-  '.agents', '.cargo', '.claude', '.clinerules', '.clippy.toml', '.config', '.cursor', '.cursorrules',
+  '.agents', '.cargo', '.claude', '.clinerules', '.config', '.cursor', '.opencode',
   '.deslop.toml', '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
-  '.rustfmt.toml', '.vscode', '.windsurfrules', 'AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md',
+  '.vscode', '.windsurf', 'AGENTS.md', 'CONTRIBUTING.md',
   'Cargo.lock', 'Cargo.toml', 'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'coverage-thresholds.json',
-  'docs', 'opencode.json', 'osprey.code-workspace', 'pyproject.toml', 'scripts', 'shipwright.json', 'src',
+  'docs', 'osprey.code-workspace', 'pyproject.toml', 'scripts', 'shipwright.json', 'src',
   'uv.lock',
 ])
 

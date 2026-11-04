@@ -5,7 +5,7 @@ alwaysApply: true
 ---
 # Core Development Principles
 
-Read and follow `CLAUDE.md`, including its specification synchronization rules. **Git worktrees are banned. Only ONE active feature branch is permitted across ALL machines, clones, contributors, and agents combined.** Continue on the existing branch in the existing checkout.
+Read and follow `AGENTS.md`, including its specification synchronization rules. **Git worktrees are banned. Only ONE active feature branch is permitted across ALL machines, clones, contributors, and agents combined.** Continue on the existing branch in the existing checkout.
 
 - **NEVER DUPLICATE CODE** - Edit in place, never create new versions
 - **NO PLACEHOLDERS** - Fix existing placeholders or fail with error

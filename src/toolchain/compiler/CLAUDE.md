@@ -1,7 +1,7 @@
 # CLAUDE.md — src/toolchain/compiler/
 
 The Osprey compiler itself is the Rust workspace in `src/toolchain/crates/` (built with
-`cargo`, binary `target/release/osprey`). See the root [CLAUDE.md](../../../CLAUDE.md)
+`cargo`, binary `target/release/osprey`). See the root [AGENTS.md](../../../AGENTS.md)
 for all build commands, architecture, and development rules.
 
 This directory contains the C runtime that stayed behind after the Go → Rust
