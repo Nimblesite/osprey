@@ -64,7 +64,7 @@ Gate [LLM-MODEL-ORACLE]: all activations within tolerance on host and GPU handle
 Gate [LLM-MEMORY]: peak RSS at or under 24 GB at full context, measured by the test (local gate).
 
 ## Phase 5 — Language layer
-- [ ] [LLM-TOKENIZER]: NFC, the split pattern and ByteLevel in `@osprey/tokenizers`, reusing `@osprey/tiktoken`'s merge code; read vocabulary/merges from GGUF metadata if Phase 0 confirms they're there. Compare with the real package on source code in many languages, emoji, invalid-looking input.
+- [ ] [LLM-TOKENIZER]: NFC, the split pattern and ByteLevel in `@osprey/tokenizers`, reusing `@osprey/tiktoken`'s merge code; read vocabulary/merges from GGUF metadata if Phase 0 confirms they're there. Compare with the real package on source code in many languages, emoji, invalid-looking input. Progress 2026-11-05 (pi, reviewed): NFC with generated tables, the Qwen split pattern, ByteLevel both ways and byte-level BPE landed in 90d11581a and 02789a1ec, 1414 assertions against the CPython oracle under gc, arc and none; still open: token offsets and reading the vocabulary and merges from the GGUF metadata.
 - [ ] Render jinja2 macros, then the unmodified template against the real one across messages, tools, thinking, `reasoning_effort`, `preserve_thinking`.
 - [ ] Sampling defaults from Phase 0 through `@osprey/transformers`, with deterministic seeds.
 
