@@ -125,7 +125,7 @@ class CrashGateTests(unittest.TestCase):
 
     def test_every_planted_input_is_pinned_and_has_a_real_program(self):
         root = Path(__file__).resolve().parent.parent
-        cases = json.loads((root/'tests/hunt/crash-cases.json').read_text())
+        cases = json.loads((root/'src/tests/hunt/crash-cases.json').read_text())
         self.assertEqual(sum(len(case['cases']) for case in cases), 15)
         inputs = {item['stdin'] for case in cases for item in case['cases']}
         self.assertEqual(inputs, set('9PALKCRUBJFGDY'))
@@ -147,9 +147,9 @@ class CrashGateTests(unittest.TestCase):
         self.assertNotIn('make _test_hunt_crashes', workflow)
         self.assertNotIn('brew install klee', workflow)
         self.assertNotIn('make _runtime_klee', workflow)
-        self.assertNotIn('--manifest tests/hunt/safe-runs.json', workflow)
+        self.assertNotIn('--manifest src/tests/hunt/safe-runs.json', workflow)
         self.assertIn('make _test_hunt_mock', workflow)
-        manifest = json.loads((root/'tests/hunt/safe-runs.json').read_text())
+        manifest = json.loads((root/'src/tests/hunt/safe-runs.json').read_text())
         self.assertGreaterEqual(len(manifest['programs']), 215)
         self.assertEqual(len(manifest['programs']), len(set(manifest['programs'])))
         self.assertTrue(all((root/program).is_file() or (root/program/'osprey.toml').is_file() for program in manifest['programs']))
@@ -232,8 +232,8 @@ def fake_sampler_root(root):
     (root/'src/compiler/bin').mkdir(parents=True)
     (root/'src/compiler/bin/libosprey_runtime_klee_gc.bc').write_bytes(b'fake runtime')
     (root/'src/compiler/bin/libosprey_gc_roots.so').write_bytes(b'fake plugin')
-    (root/'tests/hunt').mkdir(parents=True)
-    (root/'tests/hunt/crash-cases.json').write_text('[]')
+    (root/'src/tests/hunt').mkdir(parents=True)
+    (root/'src/tests/hunt/crash-cases.json').write_text('[]')
     script = root/'osprey'
     script.write_text(f'''#!{sys.executable}
 import json, pathlib, sys

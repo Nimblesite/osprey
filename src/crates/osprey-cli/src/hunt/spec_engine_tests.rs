@@ -212,12 +212,12 @@ fn the_module_is_x86_64_linux_with_one_strong_cap_for_every_cap() {
     }
 }
 
-/// Every program in `tests/hunt/` lowers for the engine at every cap.
+/// Every program in `src/tests/hunt/` lowers for the engine at every cap.
 #[test]
 fn the_hunt_corpus_lowers_symbolically_at_every_cap() {
     let corpus = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/hunt");
     let mut programs: Vec<String> = std::fs::read_dir(corpus)
-        .expect("tests/hunt")
+        .expect("src/tests/hunt")
         .filter_map(Result::ok)
         .map(|entry| entry.path().display().to_string())
         .filter(|path| {

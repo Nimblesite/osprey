@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 /*
- * Vanilla-C tests for map_runtime.c + map_runtime_hamt.c. assert()-driven,
+ * Vanilla-C src/tests for map_runtime.c + map_runtime_hamt.c. assert()-driven,
  * non-zero exit on failure. Build (all warnings are errors):
  *   cc -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra \
  *      -ftrapv -std=c11 -D_GNU_SOURCE -o map_tests \

@@ -342,7 +342,7 @@ fn api_docs_reject_incompatible_and_unknown_option_values() {
 fn api_docs_export_every_module_corpus_source_in_both_flavors() {
     let root = temp_dir("docs_module_corpus");
     let mut count = 0;
-    for entry in std::fs::read_dir(super::repo_root().join("tests/modules")).expect("module corpus")
+    for entry in std::fs::read_dir(super::repo_root().join("src/tests/modules")).expect("module corpus")
     {
         let path = entry.expect("module source").path();
         if !path

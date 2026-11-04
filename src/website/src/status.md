@@ -56,7 +56,7 @@ Every published version is listed on the [Releases](/docs/releases/) page.
   offline search and responsive navigation
 
 The runnable programs in
-[`tests/regressions/`](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
+[`src/tests/regressions/`](https://github.com/Nimblesite/osprey/tree/main/tests/regressions)
 are compiled and compared with checked-in expected output.
 
 ## Target support

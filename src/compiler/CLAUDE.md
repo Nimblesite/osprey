@@ -14,7 +14,7 @@ migration:
   `libfiber_runtime.a` / `libhttp_runtime.a`.
 
 Example programs and golden tests live at the top-level
-[`../examples/`](../examples): `tests/` (each program matches its
+[`../examples/`](../examples): `src/tests/` (each program matches its
 `.expectedoutput` in the differential harness `src/crates/run_test_corpus.sh`, run
 by `make test` under every memory backend and by `make -C src/website wasm` on wasm32) and
 `src/examples/failscompilation/` (programs the compiler must reject).

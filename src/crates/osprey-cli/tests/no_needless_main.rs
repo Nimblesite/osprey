@@ -27,7 +27,7 @@ fn repository_root() -> PathBuf {
 /// `tests`, resolved from the crate manifest so the gate runs the same on a
 /// development machine and in CI.
 fn tested_dir() -> PathBuf {
-    repository_root().join("tests")
+    repository_root().join("src/tests")
 }
 
 /// The opt-out marker: a zero-argument `main` kept on purpose (a meaningful
@@ -45,7 +45,7 @@ fn example_files(dir: &Path) -> Vec<PathBuf> {
 
 fn documentation_files(root: &Path) -> Vec<PathBuf> {
     let mut files = [
-        root.join("tests"),
+        root.join("src/tests"),
         root.join("src/examples/projects/modules/test"),
         root.join("src/vscode-extension/test"),
     ]

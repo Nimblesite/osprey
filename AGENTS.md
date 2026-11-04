@@ -17,7 +17,7 @@
 ## Tests
 - ✅ E2E tests driving real use cases. Unit tests (in-crate) only when isolation is needed.
 - **Loaded tests:** many input permutations, many user interactions per test, many assertions per interaction.
-- `tests/` programs run via `src/crates/run_test_corpus.sh` under GC, ARC, wasm32 (`OSPREY_TARGET=wasm32`); output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
+- `src/tests/` programs run via `src/crates/run_test_corpus.sh` under GC, ARC, wasm32 (`OSPREY_TARGET=wasm32`); output matches sibling `.expectedoutput` byte-for-byte; ML twin shares the Default twin's golden.
 - `src/examples/failscompilation/` = programs the compiler must reject.
 - Expand existing tests/examples, ❌ new files; mix many constructs per program.
 - 💯 coverage aim per package/project; `coverage-thresholds.json` only goes ⬆️.
@@ -69,6 +69,6 @@ Three phases, each once — ❌ mixing them:
 ## Architecture
 - `src/crates/` pipeline: tree-sitter parse (`osprey-syntax`, grammar `src/tree-sitter-osprey/`) → AST (`osprey-ast`) → HM inference (`osprey-types`) → LLVM IR (`osprey-codegen`) → CLI (`osprey-cli`, `osprey` binary); `osprey-runtime-sys` links the C runtime.
 - `src/compiler/runtime/`: pure-C runtime (fibers, HTTP/WebSocket, system ops); hardened (`-D_FORTIFY_SOURCE=2`, `-fstack-protector-strong`), warnings = errors. Perf-critical code stays C.
-- Language change → same path, plus a regression in `tests/regressions/` and a rejection in `src/examples/failscompilation/`.
+- Language change → same path, plus a regression in `src/tests/regressions/` and a rejection in `src/examples/failscompilation/`.
 - **Memory:** pluggable; GC and ARC implemented. Compile-time ownership ([plan 0045](docs/plans/0045-compile-time-ownership.md)) will replace `none` — not in active work. ❌ build, test or bench `none`; remove it from tests/benches as you touch them.
 - **Package manager:** backend is Osprey + Supabase, ❌ Rust. Prefer SQL triggers/functions; APIs that must sit beside Supabase go on GCP.

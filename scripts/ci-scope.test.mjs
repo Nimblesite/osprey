@@ -12,7 +12,7 @@ import { registerProofContracts } from './ci-proof-contract-tests.mjs'
 
 
 const cases = [
-  ['book chapter and runnable example', ['Book/manuscript/04.md', 'Book/examples/chapter-04/main.osp'], false, true, false],
+  ['book chapter and runnable example', ['docs/book/manuscript/04.md', 'docs/book/examples/chapter-04/main.osp'], false, true, false],
   ['benchmark tooling and data', ['src/benchmarks/run.sh', 'src/benchmarks/results/results.json'], false, false, true],
   ['specification prose', ['docs/specs/language/0007-PatternMatching.md'], false, false, false],
   ['repository prose', ['README.md', 'CLAUDE.md'], false, false, false],
@@ -27,7 +27,7 @@ const cases = [
   ['ported package documentation the package suite checks', ['src/packages/testing/README.md'], true, false, false],
   ['Python-flavor package regression', ['src/packages/faiss/tests/main.py'], true, false, false],
   ['symbolic execution regression', ['scripts/test-hunt-default-budget.py'], true, false, false],
-  ['GPU regression in both flavors', ['tests/core/gpu/scalar_contracts.test.osp', 'tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
+  ['GPU regression in both flavors', ['src/tests/core/gpu/scalar_contracts.test.osp', 'src/tests/core/gpu/scalar_contracts.test.ospml'], true, false, false],
   ['proof kernel sources are compiler code', ['src/examples/proof/kernel/main.ospml', 'src/examples/proof/kernel/expectedoutput'], true, false, false],
   ['proof speed benchmark harness and cases', ['src/benchmarks/proof/run.sh', 'src/benchmarks/proof/m0_identity/id_imp.lean'], false, false, true],
 ]
@@ -41,7 +41,7 @@ test('website content skips compiler checks but the embedded grammar never does'
 })
 
 test('mixed content and compiler changes retain every applicable check', () => {
-  assert.deepEqual(classify(['Book/book.json', 'src/benchmarks/run.sh', 'src/compiler/runtime/memory.c']),
+  assert.deepEqual(classify(['docs/book/book.json', 'src/benchmarks/run.sh', 'src/compiler/runtime/memory.c']),
     { code: true, website: false, book: true, benchmarks: true })
 })
 
@@ -51,8 +51,8 @@ test('all workflows use the shared classifier and content checks remain required
   assert.equal(linux.split('uses: ./.github/actions/detect-ci-scope').length - 1, 2)
   assert.match(windows, /uses: \.\/\.github\/actions\/detect-ci-scope/)
   assert.match(linux, /python3 src\/benchmarks\/test_merge_results.py --tooling-only/)
-  assert.match(linux, /make -C Book check-examples/)
-  assert.match(linux, /make -C Book check\n/)
+  assert.match(linux, /make -C docs\/book check-examples/)
+  assert.match(linux, /make -C docs\/book check\n/)
 })
 
 test('extension tests receive and reuse the build job\'s complete bundle', () => {
@@ -164,7 +164,7 @@ test('malformed detection input fails the gate instead of skipping required jobs
   try {
     const env = { ...process.env, GITHUB_OUTPUT: join(temporary, 'output'), CHANGED_FILES: '{}' }
     assert.notEqual(spawnSync(process.execPath, ['scripts/ci-scope.mjs'], { env }).status, 0)
-    env.CHANGED_FILES = '["Book/book.json"]'
+    env.CHANGED_FILES = '["docs/book/book.json"]'
     assert.equal(spawnSync(process.execPath, ['scripts/ci-scope.mjs'], { env }).status, 0)
     assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\n$/)
   } finally { rmSync(temporary, { recursive: true }) }
@@ -246,7 +246,7 @@ test('the KLEE engine gates stay out of CI and make ci; the mock oracle and know
   const expectations = readFileSync('scripts/make/tests.mk', 'utf8')
   assert.match(expectations, /HUNT_KNOWN_BUGS \?= clean/)
   assert.match(expectations, /^_test_hunt_clean:/m)
-  for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`tests/hunt/${control}`).length > 0)
+  for (const control of ['clean.osp', 'clean.expected']) assert.ok(readFileSync(`src/tests/hunt/${control}`).length > 0)
   assert.match(readFileSync('scripts/test-hunt-default-budget.py', 'utf8'), /\('gc', 'arc'\), \('crash',\)/)
 })
 

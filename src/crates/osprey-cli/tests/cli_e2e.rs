@@ -557,7 +557,7 @@ fn two_resume_sites_on_different_branches_stay_legal() {
     // once. Osprey has no loop construct ([BUILTIN-ITER]), so branch and
     // sequence are the only two shapes, and this is the positive control that
     // keeps the check from degenerating into `contains_resume`. The corpus
-    // program `tests/regressions/effects/abort_vs_resume.test.osp` is the same
+    // program `src/tests/regressions/effects/abort_vs_resume.test.osp` is the same
     // shape end to end; this pins the CLI verdict beside its negative.
     let prog = temp_osp("branchwise_resume", BRANCHWISE_RESUME);
     let check = run_file(&prog, &["--check"]);
@@ -1174,7 +1174,7 @@ fn test_subcommand_parallel_default_has_serial_escape_hatch() {
 #[test]
 fn conformance_corpus_parallel_default_has_serial_escape_hatch() {
     let root = temp_dir("conformance_parallel");
-    let tests = root.join("tests");
+    let tests = root.join("src/tests");
     let bin = root.join("target/release");
     let (probe, _) = parallel_probe_fixture(&root, &tests, &bin, "osprey");
     assert_parallel_default_has_serial_escape(

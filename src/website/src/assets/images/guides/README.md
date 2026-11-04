@@ -9,9 +9,9 @@ Captured on 3 November 2026. Screens show running tools or their real saved outp
 | python-type-error, python-effect-error | Deliberately rejected programs: integer-plus-string and an unhandled Log.write effect. The compiler exits 1. |
 | product-host, product-metal | Identical 2 × 2 matrix product source on host and Apple M4 Max Metal. Both return first element 7.0. Both the product and element read handle Result. This is an execution check, not a performance benchmark. |
 | first-app-run, first-app-json | Complete tutorial source, assembled from its six Default-flavor blocks; check succeeds without warnings. Two native runs save runs=2.0, ready=true and tags=[cli,adt]. JSON image is the actual file in Chrome's pretty-print viewer. The tutorial's missing-file policy qualification remains beside its code. |
-| hunt-crash, hunt-finding | tests/hunt/crash.osp, one input byte and ten-second budget. The deliberately planted C abort reproduces with input 9; expected exit status 1. |
-| hunt-clean | tests/hunt/clean.osp with the same budget: six completed paths, no findings. Bounded clean control, not a correctness proof. |
-| hunt-limits | tests/hunt/process.osp: unmodelled pipe operation, no native replay. Engine limitation control, not a reproduced crash. |
+| hunt-crash, hunt-finding | src/tests/hunt/crash.osp, one input byte and ten-second budget. The deliberately planted C abort reproduces with input 9; expected exit status 1. |
+| hunt-clean | src/tests/hunt/clean.osp with the same budget: six completed paths, no findings. Bounded clean control, not a correctness proof. |
+| hunt-limits | src/tests/hunt/process.osp: unmodelled pipe operation, no native replay. Engine limitation control, not a reproduced crash. |
 | api-index, api-function | Real compiler HTML export of src/packages/json, midnight theme; library landing page and ui::Doc::string. |
 | storage-macos, storage-ios | Frames at 12 and 174 seconds of the published Swift interop tutorial, showing recorded native app footage. |
 | mathlib-check, mathlib-library | Frames at 80 and 116 seconds of the published Mathlib bridge tutorial. Historical footage; guide qualifications about imported proofs and assumptions apply. |

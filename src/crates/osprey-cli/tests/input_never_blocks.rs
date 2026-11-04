@@ -46,7 +46,7 @@ fn repo_root() -> PathBuf {
 /// assertion — so a launcher that leaves stdin unwritable parks on it.
 fn program_that_reads_stdin() -> PathBuf {
     repo_root()
-        .join("tests")
+        .join("src/tests")
         .join("regressions")
         .join("basics")
         .join("math")

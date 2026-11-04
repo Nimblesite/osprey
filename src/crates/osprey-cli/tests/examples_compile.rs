@@ -92,7 +92,7 @@ print (toString (addPreservingError 9223372036854775807 1))
 
 #[test]
 fn every_language_test_compiles_to_ir() {
-    let dir = repo_root().join("tests");
+    let dir = repo_root().join("src/tests");
     // BOTH flavors. An ML twin is not a translation of its Default twin — it is
     // a second front end producing the same IR ([FLAVOR-IR-EQUIV]) — and it
     // reaches AST forms the Default lowerer never builds (`Expr::MethodCall`

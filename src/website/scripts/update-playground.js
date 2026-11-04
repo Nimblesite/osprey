@@ -5,8 +5,8 @@ const path = require('path');
 
 // Reuse the assertion showcase and the Python guide's runnable effects example.
 const SHOWCASES = {
-    osp: path.join(__dirname, '../../../tests/regressions/basics/osprey_mega_showcase.test.osp'),
-    ospml: path.join(__dirname, '../../../tests/regressions/basics/osprey_mega_showcase.test.ospml'),
+    osp: path.join(__dirname, '../../tests/regressions/basics/osprey_mega_showcase.test.osp'),
+    ospml: path.join(__dirname, '../../tests/regressions/basics/osprey_mega_showcase.test.ospml'),
 };
 const PYTHON_GUIDE = path.join(__dirname, '../src/docs/python-flavor.md');
 const PLAYGROUND_PATH = path.join(__dirname, '../src/playground/index.md');

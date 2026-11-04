@@ -24,7 +24,7 @@ Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurre
 
 ## Phase 2 — Cancellation core [CANCEL-REQUEST] [CANCEL-POINTS] [CANCEL-DELIVERY] [CANCEL-JOIN]
 
-- [ ] Add `cancel` and `join` keywords (both grammars), `Expr::Cancel`/`Expr::Join`, and `Outcome<T>` + `join`/`cancel` builtins in `src/crates/osprey-types/src/builtins.rs`. Runtime in `fiber_runtime.c`/`effects_coro.c`: cancellation is observed only at suspension points (`await`, `send`, `recv`, `sleep`, `yield`, control ops), declines to resume (drop continuation + finalizers), and completes the fiber as cancelled. Check: both-flavor corpus suite in `tests/regressions/fiber/`.
+- [ ] Add `cancel` and `join` keywords (both grammars), `Expr::Cancel`/`Expr::Join`, and `Outcome<T>` + `join`/`cancel` builtins in `src/crates/osprey-types/src/builtins.rs`. Runtime in `fiber_runtime.c`/`effects_coro.c`: cancellation is observed only at suspension points (`await`, `send`, `recv`, `sleep`, `yield`, control ops), declines to resume (drop continuation + finalizers), and completes the fiber as cancelled. Check: both-flavor corpus suite in `src/tests/regressions/fiber/`.
 - [ ] Await propagation: `await` of a cancelled fiber unwinds the awaiter as cancelled; at program entry it runs entry finalizers and exits nonzero with a one-line diagnostic naming the spawn site. Check: must-reject fixture that no pattern can match cancellation (no "caught" surface); golden pins exit status and diagnostic.
 - [ ] Dropped continuations release captures: zero ARC leak under `--memory=arc` (`[osp-arc] exit: 0 live objects` sentinel via `src/crates/run_test_corpus.sh arc`).
 
@@ -40,7 +40,7 @@ Contract: [0036-StructuredConcurrency](../specs/language/0036-StructuredConcurre
 
 ## Phase 5 — Deadlines and races [CANCEL-DEADLINE]
 
-- [ ] `within(ms) { ... } -> Result<T, TimedOut>` and `race(a, b) -> T`: grammar + `Expr` variants; implement over the existing `select` primitive in `fiber_runtime.c`; reuse its source-order deterministic tie-break. Check: golden shared with `tests/regressions/fiber/channel_select.test.osp`.
+- [ ] `within(ms) { ... } -> Result<T, TimedOut>` and `race(a, b) -> T`: grammar + `Expr` variants; implement over the existing `select` primitive in `fiber_runtime.c`; reuse its source-order deterministic tie-break. Check: golden shared with `src/tests/regressions/fiber/channel_select.test.osp`.
 
 ## Phase 6 — Turn isolation [SERIAL-TURN] [SERIAL-CONTENTION]
 

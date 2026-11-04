@@ -24,7 +24,7 @@ import {
 
 // Contextual words: legal identifiers in the corpus today. `stage`, `out` and
 // `extra` are record fields and GPU variables; `abort`, `alias`, `once`,
-// `many` and `replayable` are operation names in tests/effects/multiplicity.
+// `many` and `replayable` are operation names in src/tests/effects/multiplicity.
 // Their keyword positions are covered by the contextual rules asserted in
 // grammar.test.ts.
 const CONTEXTUAL = new Set([

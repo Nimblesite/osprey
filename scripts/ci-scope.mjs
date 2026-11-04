@@ -2,8 +2,8 @@ import { appendFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const compilerRoots = /^(src\/crates|src\/compiler|src\/tree-sitter-osprey|src\/webcompiler|src\/vscode-extension|tests|src\/examples|src\/packages|scripts|\.github)\//
-const content = (path) => /^(src\/website|Book|src\/benchmarks)\//.test(path)
+const compilerRoots = /^(src\/crates|src\/compiler|src\/tree-sitter-osprey|src\/webcompiler|src\/vscode-extension|src\/tests|src\/examples|src\/packages|scripts|\.github)\//
+const content = (path) => /^(src\/website|docs\/book|src\/benchmarks)\//.test(path)
   || (path.endsWith('.md') && !compilerRoots.test(path))
 const embeddedGrammar = 'src/website/src/js/osprey-grammar.mjs'
 
@@ -14,7 +14,7 @@ export const classify = (files) => {
   return {
     code: files.some((path) => path === embeddedGrammar || !content(path)),
     website: files.some((path) => path.startsWith('src/website/')),
-    book: files.some((path) => path.startsWith('Book/')),
+    book: files.some((path) => path.startsWith('docs/book/')),
     benchmarks: files.some((path) => path.startsWith('src/benchmarks/')),
   }
 }

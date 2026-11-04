@@ -2,7 +2,7 @@
 // provenance through `fold` and `listGet`: invoked at program entry with no
 // handler, its operation surfaces as unhandled instead of the recursion's
 // fixed point widening it away as pure (#275). The fail-closed twin of
-// tests/effects/provenance/recursive_union_callable.
+// src/tests/effects/provenance/recursive_union_callable.
 effect Log { write: fn(string) -> string }
 
 type Node<A> = Stack { children: List<Node<A>> } | Field { value: string, edit: (string) -> A }

@@ -143,4 +143,4 @@ extern fn osprey_media_unrender(folder: string) -> int
 ## Databases Are Libraries [FFI-NO-DB-BUILTINS]
 
 Database access is not compiler surface. Database drivers use `extern fn`
-declarations; the SQLite example is tested in `tests/regressions/db/`.
+declarations; the SQLite example is tested in `src/tests/regressions/db/`.

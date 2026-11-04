@@ -26,9 +26,9 @@ fn repo_dir() -> PathBuf {
 fn corpus_roots() -> [PathBuf; 3] {
     let repo = repo_dir();
     [
-        repo.join("examples"),
-        repo.join("benchmarks"),
-        repo.join("tests"),
+        repo.join("src/examples"),
+        repo.join("src/benchmarks"),
+        repo.join("src/tests"),
     ]
 }
 
@@ -106,8 +106,8 @@ fn ml_corpus_formats_idempotently() {
         "src/benchmarks/cases/binarytrees/binarytrees.ospml",
         "src/examples/projects/modules/src/main.ospml",
         "src/examples/wasm/studio.ospml",
-        "tests/core/collections/list_basics.test.ospml",
-        "tests/core/feature_composition/feature_omnibus.test.ospml",
+        "src/tests/core/collections/list_basics.test.ospml",
+        "src/tests/core/feature_composition/feature_omnibus.test.ospml",
     ] {
         assert!(
             paths.iter().any(|path| path.ends_with(required)),

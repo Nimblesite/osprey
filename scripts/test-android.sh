@@ -40,7 +40,7 @@ echo "==> Android scalar imports/exports, bool, Unit and persistent global ABI p
 # The seven hand-picked goldens that used to run here are gone: `make
 # _test_android_goldens` now runs the WHOLE corpus on this device against the
 # same byte-exact goldens, with its rejections pinned in
-# tests/MOBILE_UNPORTABLE.txt. Repeating fourteen of them here would observe a
+# src/tests/MOBILE_UNPORTABLE.txt. Repeating fourteen of them here would observe a
 # strict subset of what that harness already observed.
 
 cat >"$scratch/golden.c" <<'C'

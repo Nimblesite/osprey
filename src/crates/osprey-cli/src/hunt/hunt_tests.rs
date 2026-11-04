@@ -1,4 +1,4 @@
-//! End-to-end tests of `osprey hunt` against a stand-in `klee` executable [SYMEX-CLI] [SYMEX-FINDINGS] [SYMEX-REPLAY]. The stand-in copies a prepared KLEE output directory into `--output-dir`, so the whole pipeline (compile, link, run, scan, replay, report, exit code) runs without the engine, and the real engine is covered by `tests/hunt/` under `make`.
+//! End-to-end tests of `osprey hunt` against a stand-in `klee` executable [SYMEX-CLI] [SYMEX-FINDINGS] [SYMEX-REPLAY]. The stand-in copies a prepared KLEE output directory into `--output-dir`, so the whole pipeline (compile, link, run, scan, replay, report, exit code) runs without the engine, and the real engine is covered by `src/tests/hunt/` under `make`.
 
 #![expect(
     clippy::indexing_slicing,

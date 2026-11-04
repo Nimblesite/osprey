@@ -9,7 +9,7 @@ Task server and terminal client using value effects for storage, metrics, persis
 
 A self-contained, deterministic version (server + scripted client in one
 process, exercised by CI) lives at
-[`../../../tests/regressions/effects/http_state_levels.test.osp`](../../../tests/regressions/effects/http_state_levels.test.osp).
+[`../../tests/regressions/effects/http_state_levels.test.osp`](../../tests/regressions/effects/http_state_levels.test.osp).
 
 ## Run it
 

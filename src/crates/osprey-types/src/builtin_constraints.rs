@@ -296,7 +296,7 @@ fn is_printable(ty: &Type) -> bool {
 }
 
 /// What interpolation can render. That is everything `print` renders, plus a
-/// fiber handle, which interpolates as its id — `tests/regressions/fiber`
+/// fiber handle, which interpolates as its id — `src/tests/regressions/fiber`
 /// prints `ids 1 2 3 4` from four of them. `print` has never taken a fiber on
 /// its own and still does not.
 fn is_interpolatable(ty: &Type) -> bool {
@@ -344,7 +344,7 @@ mod tests {
     }
 
     /// A fiber renders as its id — `print("ids ${f1} ${f2}")` in
-    /// `tests/regressions/fiber/fiber_showcase.test.osp` prints `ids 1 2`. The
+    /// `src/tests/regressions/fiber/fiber_showcase.test.osp` prints `ids 1 2`. The
     /// aggregate guard must not take that away. `print` has never accepted a
     /// fiber handle on its own, and this pins that difference as deliberate.
     #[test]

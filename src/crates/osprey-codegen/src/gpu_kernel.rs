@@ -10,7 +10,7 @@
 //!
 //! Extraction is a lowering choice, never a semantic one: the pre-extraction
 //! inlined lowering is retained behind [`GPU_KERNELS_ENV`], and
-//! `src/crates/run_test_corpus.sh` compiles `tests/core/gpu` both ways and requires
+//! `src/crates/run_test_corpus.sh` compiles `src/tests/core/gpu` both ways and requires
 //! byte-identical output.
 
 mod builtin;

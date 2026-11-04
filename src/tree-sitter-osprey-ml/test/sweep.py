@@ -6,7 +6,7 @@ import sys
 GRAMMAR = Path(__file__).resolve().parents[3]
 REPOSITORY = GRAMMAR.parent
 CLI = REPOSITORY / "src/tree-sitter-osprey/node_modules/.bin/tree-sitter"
-ROOTS = ("tests", "examples")
+ROOTS = ("src/tests", "src/examples")
 EXCLUDED = {"failscompilation", "node_modules", "target"}
 OUTPUT = Path(sys.argv[1]).resolve()
 FILES = sorted(path for root in ROOTS for path in (REPOSITORY / root).rglob("*.ospml")

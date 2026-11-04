@@ -128,7 +128,7 @@ class EntryProbeTests(CoverageTestCase):
         self.assertNotEqual(list(primary["files"]), list(entry["files"]), "the raw keys must differ")
         fixture = self.app({"report": entry, "stdout": ENTRY_ORACLE + ENTRY_FOOTER}, primary=primary)
         self.assert_exit(fixture.collect("--project", "src/workbench"), 0)
-        self.assertEqual(len(fixture.collect_files()), 1, "tests/../src and src are the same source")
+        self.assertEqual(len(fixture.collect_files()), 1, "src/tests/../src and src are the same source")
         self.assertEqual(next(iter(fixture.merged_lines().values()))[10], 1)
 
     def test_missing_entry_oracle_keeps_normal_collection(self):

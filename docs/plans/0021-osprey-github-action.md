@@ -5,7 +5,7 @@ Contract: ../specs/ecosystem/0033-OspreyGitHubAction.md
 ## Prerequisites in place
 
 - Ferry + exit status proven: `a_json_line_on_stdin_becomes_outputs_and_an_exit_status` (src/crates/osprey-cli/tests/cli_e2e.rs) pipes one JSON line into `--run` and asserts `key=value` stdout and exit codes for valid, invalid, non-object, application-error and EOF inputs.
-- `input` ships in the wasm runtime: `WASM_RT_SRC` (scripts/make/config.mk) includes `random_runtime`; `tests/regressions/basics/math/comprehensive_math.test.osp` calls `input()` and is absent from `tests/WASM_UNPORTABLE.txt`.
+- `input` ships in the wasm runtime: `WASM_RT_SRC` (scripts/make/config.mk) includes `random_runtime`; `src/tests/regressions/basics/math/comprehensive_math.test.osp` calls `input()` and is absent from `src/tests/WASM_UNPORTABLE.txt`.
 
 ## Constraints
 

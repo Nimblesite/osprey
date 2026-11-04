@@ -65,12 +65,12 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 | [src/packages/](src/packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
 | [src/compiler/runtime/](src/compiler/runtime) | C runtime and GPU adapters |
 | [src/tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
-| [tests/](tests) | Default and ML language suites with shared golden output |
+| [src/tests/](tests) | Default and ML language suites with shared golden output |
 | [docs/](docs/README.md) | Specifications, delivery plans and contributor architecture |
 | [src/website/](website) | Language guides, reference pages and public website |
 | [src/vscode-extension/](src/vscode-extension/README.md), [src/webcompiler/](webcompiler) | Editor integration and online compiler |
 | [scripts/](scripts/README.md) | Build rules, validation, platform tooling and packaging support |
-| [Book/](Book/README.md), [src/benchmarks/](src/benchmarks/README.md) | The Osprey book and measured comparisons |
+| [docs/book/](docs/book/README.md), [src/benchmarks/](src/benchmarks/README.md) | The Osprey book and measured comparisons |
 
 The [repository map](docs/contributing/repository-map.md) explains the compilation pipeline, build entry points and where a change belongs. The [contributing guide](CONTRIBUTING.md) covers setup and coordination.
 
@@ -85,7 +85,7 @@ make ci
 
 Run these from the repository root. The compiler is written to `target/release/osprey`. The root Makefile defines every public target; their configuration and private steps live in `scripts/make/`.
 
-[Hunt](src/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C tests/hunt hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/packages registry-test` runs its separate suites.
+[Hunt](src/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C src/tests/hunt hunt FILE=src/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/packages registry-test` runs its separate suites.
 
 ## Language and applications
 

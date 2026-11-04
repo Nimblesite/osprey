@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
-const ROOTS: [&str; 2] = ["packages", "examples"];
+const ROOTS: [&str; 2] = ["src/packages", "src/examples"];
 const SOURCE_EXTENSIONS: [&str; 3] = ["osp", "ospml", "py"];
 const SKIPPED_DIRECTORIES: [&str; 6] = [
     ".osprey",

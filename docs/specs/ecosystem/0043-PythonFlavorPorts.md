@@ -48,7 +48,7 @@ Integers, booleans, strings, shapes and token ids compare exactly. Floats compar
 
 A suite runs its assertions under `testing.Check.strictly`, so an integer overflow or zero division stops it and the transcript differs from the golden. The same test requires every package to declare an `@osprey/<name>` `[package]` and a README, every `python_sources` path to lie inside a `source_roots` entry, every `.py` file in the package tree to begin with `# osprey: flavor=python`, and `tests/expected.py` to carry the shared writer's provenance line naming an existing `scripts/oracles/<name>.py`.
 
-Every name a module's `__all__` exports must be spelled somewhere in the suite's own sources (`tests/*.py` other than `expected.py`). An export the suite never exercises fails `cargo test`, so a port cannot ship an untested public function, and a private helper cannot hide in the public API: it is tested or it leaves `__all__`.
+Every name a module's `__all__` exports must be spelled somewhere in the suite's own sources (`src/tests/*.py` other than `expected.py`). An export the suite never exercises fails `cargo test`, so a port cannot ship an untested public function, and a private helper cannot hide in the public API: it is tested or it leaves `__all__`.
 
 ## Individual source coverage — `[PKG-COVERAGE-GATE]`
 

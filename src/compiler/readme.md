@@ -9,7 +9,7 @@ that compiled programs link against:
   `lib/libhttp_runtime.a` by `make _runtime`; `osprey` links these at
   `--compile`/`--run` time.
 
-Runnable applications live in [src/examples/](../examples). Acceptance programs live in [tests/](../../tests) and are compared with `.expectedoutput` files by [src/crates/run_test_corpus.sh](../crates/run_test_corpus.sh). [src/examples/failscompilation/](../examples/failscompilation) holds must-reject cases; [src/examples/tui/](../examples/tui) is the `make _tui` showcase.
+Runnable applications live in [src/examples/](../examples). Acceptance programs live in [src/tests/](../tests) and are compared with `.expectedoutput` files by [src/crates/run_test_corpus.sh](../crates/run_test_corpus.sh). [src/examples/failscompilation/](../examples/failscompilation) holds must-reject cases; [src/examples/tui/](../examples/tui) is the `make _tui` showcase.
 
 ## Related Projects
 

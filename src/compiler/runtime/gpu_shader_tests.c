@@ -183,7 +183,7 @@ static void check_binary32(void) {
     expect("narrow32 tie", edge, 0, widen32(narrow32(edge)), bits(f32_widen(narrow_reference(edge))));
   }
   // Emitted floatBits/floatFromBits kernels are exercised by
-  // tests/core/gpu/scalar_contracts.test.osp and its ML twin.
+  // src/tests/core/gpu/scalar_contracts.test.osp and its ML twin.
 }
 
 static long ref_shl(long a, long n) { return (unsigned long)n < 64 ? (long)((unsigned long)a << n) : 0; }

@@ -15,7 +15,7 @@ import { extensionRoot, resolveBuiltOsprey } from "./osprey-test-env";
 registerCpuCaptureContract(async () => {
   const compiler = resolveBuiltOsprey();
   assert.ok(compiler, "build the real Osprey compiler before running VSIX profiling tests");
-  const source = path.resolve(extensionRoot, "../../tests/regressions/fiber/cpu_profiling_demo.test.osp");
+  const source = path.resolve(extensionRoot, "../tests/regressions/fiber/cpu_profiling_demo.test.osp");
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-capture-contract-"));
   await promisify(execFile)(compiler, [source, "--profile"], {
     cwd, timeout: 100_000, env: { ...process.env, OSPREY_PROFILE_HZ: "8000" },

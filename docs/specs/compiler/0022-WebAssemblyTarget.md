@@ -8,9 +8,9 @@ The portable language core runs under a WASI host. CI compiles and validates the
 hello fixture, runs it through Node's WASI host and the browser shim, then runs
 `OSPREY_TARGET=wasm32 zsh src/crates/run_test_corpus.sh` — the same corpus harness
 the native backend uses, pointed at the other code generator. It compiles every
-program under `tests/` to wasm32, runs it under Node's WASI host, and compares
+program under `src/tests/` to wasm32, runs it under Node's WASI host, and compares
 stdout byte-for-byte to the same `.expectedoutput` golden the native run must
-match. Only an explicit compiler diagnostic that ``target `wasm32` does not support`` a named capability qualifies as `SKIP`; the excluded programs and their diagnostic reasons are pinned in `tests/WASM_UNPORTABLE.txt`. Unexpected linker errors fail, as do other build or runtime errors. CI requires
+match. Only an explicit compiler diagnostic that ``target `wasm32` does not support`` a named capability qualifies as `SKIP`; the excluded programs and their diagnostic reasons are pinned in `src/tests/WASM_UNPORTABLE.txt`. Unexpected linker errors fail, as do other build or runtime errors. CI requires
 `TEST_CORPUS_FAIL=0`, `TEST_CORPUS_GOLDEN_FAIL=0` and
 `TEST_CORPUS_GOLDEN_MISSING=0`, plus a golden floor so coverage cannot quietly
 shrink — currently 213 on wasm32 and 285 natively (`src/crates/run_test_corpus.sh`, with no

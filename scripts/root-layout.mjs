@@ -9,10 +9,10 @@ import { fileURLToPath } from 'node:url'
 export const ALLOWED_TRACKED = new Set([
   '.agents', '.cargo', '.claude', '.clinerules', '.clippy.toml', '.config', '.cursor', '.cursorrules',
   '.deslop.toml', '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
-  '.rustfmt.toml', '.vscode', '.windsurfrules', 'AGENTS.md', 'Book', 'CLAUDE.md', 'CONTRIBUTING.md',
+  '.rustfmt.toml', '.vscode', '.windsurfrules', 'AGENTS.md', 'CLAUDE.md', 'CONTRIBUTING.md',
   'Cargo.lock', 'Cargo.toml', 'LICENSE', 'Makefile', 'README.md', 'SECURITY.md', 'coverage-thresholds.json',
   'docs', 'opencode.json', 'osprey.code-workspace', 'pyproject.toml', 'scripts', 'shipwright.json', 'src',
-  'tests', 'uv.lock',
+  'uv.lock',
 ])
 
 /** Local, ignored files that tools keep in the root by design. */

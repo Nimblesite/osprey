@@ -55,11 +55,11 @@ max_duplication_percent = 2.98
 [defaults]
 exclude = [
   # Book examples are outside the duplication calculation (maintainer instruction).
-  "Book/**",
+  "docs/book/**",
   # Test code, in every layout the repo uses. The gate scopes to hand-written
   # PRODUCT code; test suites intentionally repeat setup/fixture scaffolding
   # (that repetition is what keeps each test independently readable), so
-  # deduping them trades clarity for a metric. Covers Rust `tests/`, the VS Code
+  # deduping them trades clarity for a metric. Covers Rust `src/tests/`, the VS Code
   # extension's `test/suite/` (DAP harness + e2e), and any `*.test.ts`.
   "**/tests/**",
   "**/test/**",

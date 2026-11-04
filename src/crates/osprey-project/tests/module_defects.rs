@@ -2,7 +2,7 @@
 //!
 //! The original failures are fixed. Preserve every assertion: namespace scope,
 //! entrypoint selection and exported constructors remain mandatory contracts.
-//! See `tests/modules/README.md` for current coverage.
+//! See `src/tests/modules/README.md` for current coverage.
 
 mod support;
 

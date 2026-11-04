@@ -148,7 +148,7 @@ def snapshot(options):
 def main():
     options = parse()
     programs = options.programs or discover(options.root)
-    cases = json.loads((options.root/'tests/hunt/crash-cases.json').read_text())
+    cases = json.loads((options.root/'src/tests/hunt/crash-cases.json').read_text())
     options.expected_crashes = {case['program'] for case in cases}
     options.out.mkdir(parents=True, exist_ok=True)
     fingerprints = snapshot(options)

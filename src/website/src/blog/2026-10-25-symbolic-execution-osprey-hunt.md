@@ -22,7 +22,7 @@ findings: 1
              replay   reproduced (SIGABRT)
 ```
 
-This is a deliberately planted failure in [`tests/hunt/crash.osp`](https://github.com/Nimblesite/osprey/blob/main/tests/hunt/crash.osp). The useful part is the workflow: Hunt produces an input you can run again, a source location, and a separate native reproduction verdict. You can turn that evidence into a regression test.
+This is a deliberately planted failure in [`src/tests/hunt/crash.osp`](https://github.com/Nimblesite/osprey/blob/main/tests/hunt/crash.osp). The useful part is the workflow: Hunt produces an input you can run again, a source location, and a separate native reproduction verdict. You can turn that evidence into a regression test.
 
 ## Run the crash demo
 
@@ -31,7 +31,7 @@ From the Osprey repository root, install the engine and build the symbolic runti
 ```sh
 brew install klee
 make build
-./target/release/osprey hunt tests/hunt/crash.osp --input-bytes 1 --max-time 10
+./target/release/osprey hunt src/tests/hunt/crash.osp --input-bytes 1 --max-time 10
 ```
 
 The command is `osprey hunt`. The demo's exit status is **1**, because the failure reproduced. Its source is small enough to inspect completely:
@@ -88,7 +88,7 @@ There is no comparative speed or coverage claim here. Hunt uses KLEE and has spe
 The clean control parses input and safely selects a list element:
 
 ```sh
-./target/release/osprey hunt tests/hunt/clean.osp --input-bytes 2 --max-time 30
+./target/release/osprey hunt src/tests/hunt/clean.osp --input-bytes 2 --max-time 30
 ```
 
 It expects no findings. More symbolic bytes can create more branches, so increase the bound deliberately and check whether paths finish within the budget.

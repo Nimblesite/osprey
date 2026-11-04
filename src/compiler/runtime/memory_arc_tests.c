@@ -1,4 +1,4 @@
-// Vanilla-C tests for runtime/memory_arc.c — the Perceus ARC backend
+// Vanilla-C src/tests for runtime/memory_arc.c — the Perceus ARC backend
 // ([GC-ARC-PERCEUS], [MEM-ACYCLIC], [MEM-OWNERSHIP], [MEM-BACKENDS],
 // [MEM-BACKENDS-CUSTOM], docs/specs/0018). Built by the Makefile's
 // _test_c_runtime; never with osp_arc_shim.h (the foreign-pointer fixtures need

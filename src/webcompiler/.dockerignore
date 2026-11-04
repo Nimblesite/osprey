@@ -24,6 +24,6 @@ README.md
 *.test.js
 *.spec.js
 test/
-tests/
+src/tests/
 .vscode-test/
 *.vsix

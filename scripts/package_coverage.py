@@ -77,7 +77,7 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
 
 
 def suite_problems(tests: Path, verify_golden: bool) -> list[str]:
-    problems = [f"missing tests/{name}" for name in ("osprey.toml", "expected_output.txt")
+    problems = [f"missing src/tests/{name}" for name in ("osprey.toml", "expected_output.txt")
                 if not (tests / name).is_file()]
     if verify_golden and (tests / "expected_output.txt").is_file():
         problems += golden_problems(tests / "expected_output.txt")

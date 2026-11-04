@@ -428,19 +428,19 @@ fn reactive_programs_match_both_flavors_and_release_all_arc_values() {
         (
             "reactive_views",
             [
-                include_str!("../../../../tests/effects/staged/reactive_signals.test.osp"),
-                include_str!("../../../../tests/effects/staged/reactive_signals.test.ospml"),
+                include_str!("../../../tests/effects/staged/reactive_signals.test.osp"),
+                include_str!("../../../tests/effects/staged/reactive_signals.test.ospml"),
             ],
-            include_str!("../../../../tests/effects/staged/reactive_signals.test.osp.expectedoutput"),
+            include_str!("../../../tests/effects/staged/reactive_signals.test.osp.expectedoutput"),
         ),
         (
             "reactive_fibers",
             [
-                include_str!("../../../../tests/regressions/effects/staged_shared.test.osp"),
-                include_str!("../../../../tests/regressions/effects/staged_shared.test.ospml"),
+                include_str!("../../../tests/regressions/effects/staged_shared.test.osp"),
+                include_str!("../../../tests/regressions/effects/staged_shared.test.ospml"),
             ],
             include_str!(
-                "../../../../tests/regressions/effects/staged_shared.test.osp.expectedoutput"
+                "../../../tests/regressions/effects/staged_shared.test.osp.expectedoutput"
             ),
         ),
     ] {

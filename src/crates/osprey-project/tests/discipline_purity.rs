@@ -421,7 +421,7 @@ fn no_code_under_crates_names_a_discipline_or_its_theory() {
     let names = registered_names(&root);
     assert!(names.len() >= 3, "registries found: {names:?}");
     let mut files = Vec::new();
-    source_files(&root.join("crates"), &mut files);
+    source_files(&root.join("src/crates"), &mut files);
     assert!(files.len() > 100, "the walk found {} files", files.len());
     let (hits, (lines, literals)) = scan_tree(&files, &names);
     assert!(

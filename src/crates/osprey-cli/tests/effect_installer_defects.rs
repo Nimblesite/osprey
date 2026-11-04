@@ -2,7 +2,7 @@
 //!
 //! These drive the real binary to verify values, linking and effect handling.
 //! The original failures are fixed; the exact transcripts remain regression gates.
-//! See `tests/modules/README.md` for current coverage.
+//! See `src/tests/modules/README.md` for current coverage.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;

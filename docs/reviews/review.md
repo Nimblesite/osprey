@@ -128,7 +128,7 @@ Dated evidence for proof claims. Add new dated entries here.
 
 ### Duplication
 
-Target `[MAINTENANCE-DEDUPLICATION]`: `.deslop.toml` caps duplication at 2.98% under pinned Deslop 0.38.0 (6,816 of 229,147 lines, 2.9745%), excluding `Book/**` at the maintainer's request. The aim is to lower it without weakening an assertion.
+Target `[MAINTENANCE-DEDUPLICATION]`: `.deslop.toml` caps duplication at 2.98% under pinned Deslop 0.38.0 (6,816 of 229,147 lines, 2.9745%), excluding `docs/book/**` at the maintainer's request. The aim is to lower it without weakening an assertion.
 
 | Finding | Failure | Status |
 |---|---|---|

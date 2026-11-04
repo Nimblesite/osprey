@@ -281,7 +281,7 @@ The goal is not less error handling. It is fewer errors that were never handled.
 
 Osprey is actively evolving, so here is exactly what works today.
 
-The compiler checks the values passed into and returned from effect operations. It runs handlers around a block of code and, in native builds, allows a handler to resume paused work once. For known `Result` values, it checks that matches cover every case and normally prevents code from grabbing the success value directly. The examples above compile and run today, and every linked file under `tests/regressions/effects` now has both a Default and an ML regression test.
+The compiler checks the values passed into and returned from effect operations. It runs handlers around a block of code and, in native builds, allows a handler to resume paused work once. For known `Result` values, it checks that matches cover every case and normally prevents code from grabbing the success value directly. The examples above compile and run today, and every linked file under `src/tests/regressions/effects` now has both a Default and an ML regression test.
 
 Important limits include:
 

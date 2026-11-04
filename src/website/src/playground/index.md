@@ -574,7 +574,7 @@ date: "git Last Modified"
     // Switch the editor contents with the flavor toggle in the header.
     let currentFlavor = 'osp';
     const SAMPLES = {
-        // @generated:osp — filled from tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
+        // @generated:osp — filled from src/tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
         osp: `/// Osprey in one screen — algebraic effects, fibers, unions, HM inference.
 /// The SAME account() runs in two worlds; only the installed handler differs.
 effect Console {
@@ -711,7 +711,7 @@ test("mega showcase preserves effect, fiber, and tier state", fn() => {
     expectFalse(faulted)
 })
 `,
-        // @generated:ospml — filled from tests/regressions/basics/osprey_mega_showcase.test.ospml by scripts/update-playground.js
+        // @generated:ospml — filled from src/tests/regressions/basics/osprey_mega_showcase.test.ospml by scripts/update-playground.js
         ospml: `(* ═══════════════════════════════════════════════════════════════════════
    Osprey feature tour, ML flavor. Comments use the ML-family forms:
      (*  … *)  ordinary block comment (nests)

@@ -34,7 +34,7 @@ SCRIPT=${0:A}
 # Programs run from a private working directory, so the path is made absolute.
 BIN=${OSPREY_BIN:-$ROOT/target/release/osprey}
 BIN=${BIN:A}
-TESTDIR=$ROOT/tests
+TESTDIR=$ROOT/src/tests
 SMOKE=$ROOT/scripts/wasm-smoke.mjs
 
 # Which backend executes each program: `native` runs it through the compiler's
@@ -75,11 +75,11 @@ esac
 #
 # Natively all 219 programs are covered by golden files, most shared by a
 # Default/ML flavor pair. On wasm32 the programs blocked on a capability WASI
-# does not have are skipped — each named in tests/WASM_UNPORTABLE.txt, and a
+# does not have are skipped — each named in src/tests/WASM_UNPORTABLE.txt, and a
 # resumable one named by the OPERATION it cannot suspend [MULTI-WASM] — leaving
 # 153. On the mobile C ABI targets the same accounting leaves 168: the rest are
 # rejected for a missing capability or for a boundary the scalar C ABI cannot
-# express, each pinned in tests/MOBILE_UNPORTABLE.txt.
+# express, each pinned in src/tests/MOBILE_UNPORTABLE.txt.
 # Ratchet UP as goldens are added; never lower it to turn a red build green.
 case $TARGET in
   wasm32)            GOLDEN_MIN=213 ;;
@@ -90,7 +90,7 @@ esac
 # [GPU-KERNEL-EXTRACT] differential. The extracted-kernel lowering and the
 # pre-stage-3 inlined host-loop lowering are two code generators for the same
 # semantics, so the GPU suites must produce byte-identical output under both.
-# This re-runs ONLY tests/core/gpu under the OPPOSITE lowering and compares it
+# This re-runs ONLY src/tests/core/gpu under the OPPOSITE lowering and compares it
 # to the stdout the main pass already captured — a second oracle for the same
 # goldens at the cost of twenty programs, not a second corpus.
 GPU_SUITE_DIR=$TESTDIR/core/gpu
@@ -357,7 +357,7 @@ skips_ok=1
 if [[ -n $MANIFEST ]]; then
   # The skip set is PINNED, not merely counted. A skip is a hole in coverage;
   # the only thing that makes one acceptable is that a human agreed to it in
-  # review. tests/WASM_UNPORTABLE.txt records every program rejected for a WASM
+  # review. src/tests/WASM_UNPORTABLE.txt records every program rejected for a WASM
   # capability AND the diagnostic reason, and compares the actual set to it
   # EXACTLY — in both directions:
   #

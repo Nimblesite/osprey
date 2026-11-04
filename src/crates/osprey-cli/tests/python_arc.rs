@@ -10,7 +10,7 @@ fn a_record_captured_per_loop_iteration_is_released_each_iteration() {
     effect_execution::assert_flavored_output(
         "closure_captures_record",
         "py",
-        include_str!("../../../../tests/regressions/python/closure_captures_record.py"),
+        include_str!("../../../tests/regressions/python/closure_captures_record.py"),
         "13\n",
     );
 }
@@ -22,7 +22,7 @@ fn an_escaped_brace_in_an_f_string_stays_one_brace_per_escape() {
     effect_execution::assert_flavored_output(
         "fstring_brace_escapes",
         "py",
-        include_str!("../../../../tests/regressions/python/fstring_brace_escapes.py"),
-        include_str!("../../../../tests/regressions/python/fstring_brace_escapes.expectedoutput"),
+        include_str!("../../../tests/regressions/python/fstring_brace_escapes.py"),
+        include_str!("../../../tests/regressions/python/fstring_brace_escapes.expectedoutput"),
     );
 }

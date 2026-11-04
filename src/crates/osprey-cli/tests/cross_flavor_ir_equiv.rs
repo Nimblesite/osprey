@@ -87,7 +87,7 @@ fn flavor_roots() -> Vec<PathBuf> {
     // canonicalize() resolves the `../../../`; fall back to the joined path when it
     // is unavailable rather than expect()-panicking outside a `#[test]` (the
     // workspace denies clippy::expect_used in non-test code).
-    ["../../../tests", "../../benchmarks"]
+    ["../../tests", "../../benchmarks"]
         .iter()
         .map(|relative| {
             let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);

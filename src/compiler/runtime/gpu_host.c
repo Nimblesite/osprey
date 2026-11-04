@@ -34,7 +34,7 @@ void *osprey_gpu_data(void *buffer);
 
 // The NULL of a failed operation, with the buffer it had allocated released.
 // The ARC corpus lane found two live objects per failed load before this
-// existed: tests/core/gpu/transformer pins it, memory_golden_tests.c counts it.
+// existed: src/tests/core/gpu/transformer pins it, memory_golden_tests.c counts it.
 static void *abandoned(void *buffer) {
   osp_release(buffer);
   return NULL;

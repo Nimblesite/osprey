@@ -1,7 +1,7 @@
 # Build from the repository root. See docs/contributing/repository-map.md.
 # This file holds the repository-wide targets. Every other public target lives
-# in a folder Makefile, one folder per area, as Book/Makefile does: src/targets/ (every
-# app), src/packages/, tests/hunt/, src/vscode-extension/, src/website/, src/benchmarks/ and
+# in a folder Makefile, one folder per area, as docs/book/Makefile does: src/targets/ (every
+# app), src/packages/, src/tests/hunt/, src/vscode-extension/, src/website/, src/benchmarks/ and
 # src/examples/proof/. Each folder target runs the private `_` target of the same
 # name here; the included fragments hold the configuration and those steps. Keep `NAME := value` lines in the
 # fragments: those panels list them as targets.
@@ -55,7 +55,7 @@ test: build
 # #307 are open. Run them by hand on a machine with KLEE. [SYMEX-CRASH-GATE]
 	$(MAKE) _coverage_check_c_runtime
 # _test_language_corpus is deliberately NOT here. It runs every program in
-# tests/ through the TAP subcommand, and _test_goldens then runs every one of
+# src/tests/ through the TAP subcommand, and _test_goldens then runs every one of
 # them AGAIN — `run_test_corpus.sh` checks the in-language assertions AND the
 # byte-exact golden in a single pass (see its header), so the golden run is
 # strictly the stronger of the two observations. Executing the same assertions
@@ -387,7 +387,7 @@ _vsix-e2e: $(EXT_NODE_DEPS)
 
 .PHONY: _hunt-demo
 _hunt-demo:
-	$(MAKE) _hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
+	$(MAKE) _hunt FILE=src/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
 
 # =============================================================================
 # Applications

@@ -16,7 +16,7 @@ The compiler pipeline follows these directories in order:
 
 The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `src/compiler/runtime/` contains the native and portable runtime units; `src/compiler/bin/` and `src/compiler/lib/` are generated outputs.
 
-A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `tests/` and, when appropriate, a rejection in `src/examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
+A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `src/tests/` and, when appropriate, a rejection in `src/examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
 
 ## Specification subjects
 
@@ -44,7 +44,7 @@ The homepage, effects guide and handler post share their runnable draft-saving e
 
 `src/packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `src/python/` contains the separate CPython interoperability bridge.
 
-`src/vscode-extension/` and `src/webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `src/benchmarks/` contain verification and publishing tools.
+`src/vscode-extension/` and `src/webcompiler/` are separate Node projects with their own dependency locks. `docs/book/` and `src/benchmarks/` contain verification and publishing tools.
 
 ## Generated files and test isolation
 

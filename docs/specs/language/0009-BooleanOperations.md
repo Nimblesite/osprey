@@ -86,7 +86,7 @@ a compile error, for the same reason as [BOOL-EQUALITY]: no order for it is
 decided. That includes payload-free unions, whose declaration order is not an
 ordering.
 
-The Default/ML twins `tests/regressions/basics/operators/equality_domain.test.*`
+The Default/ML twins `src/tests/regressions/basics/operators/equality_domain.test.*`
 pin every accepted row in both flavors. Each rejected kind has a program under
 `src/examples/failscompilation/` (`equality_*.ospo`), which the must-reject ratchet
 keeps rejected.

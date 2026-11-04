@@ -34,7 +34,7 @@ On macOS or Linux x86_64, install KLEE through Homebrew, then build Osprey from 
 ```sh
 brew install klee
 make build
-./target/release/osprey hunt tests/hunt/crash.osp --input-bytes 1 --max-time 10
+./target/release/osprey hunt src/tests/hunt/crash.osp --input-bytes 1 --max-time 10
 ```
 
 This example deliberately calls C `abort()` only when its input is `"9"`. Hunt discovers that input, reports `abort crash.osp:4`, and confirms `reproduced (SIGABRT)` in a normal run. Exit status 1 is expected. This demonstrates detection of a planted failure. `process.osp` separately tests an unsupported engine operation; it is not the crash demo.
@@ -42,10 +42,10 @@ This example deliberately calls C `abort()` only when its input is `"9"`. Hunt d
 For a clean control, run:
 
 ```sh
-./target/release/osprey hunt tests/hunt/clean.osp --input-bytes 2 --max-time 30
+./target/release/osprey hunt src/tests/hunt/clean.osp --input-bytes 2 --max-time 30
 ```
 
-The clean control parses stdin as an integer and safely selects a list element, with fallbacks for invalid input and an out-of-range index. It expects `findings: none`; a run can still exhaust its budget. An `incomplete` section means paths stopped at an engine limit or budget, not that a bug was found. The former crash example, `tests/hunt/record_update_list.osp`, is fixed and also expects no findings.
+The clean control parses stdin as an integer and safely selects a list element, with fallbacks for invalid input and an out-of-range index. It expects `findings: none`; a run can still exhaust its budget. An `incomplete` section means paths stopped at an engine limit or budget, not that a bug was found. The former crash example, `src/tests/hunt/record_update_list.osp`, is fixed and also expects no findings.
 
 For your own project:
 
@@ -113,7 +113,7 @@ osprey hunt ./my-project --out ./hunt-results --input-bytes 4
 
 Exit status is `0` when there is no failing finding, `1` for a native reproduction, any finding with replay disabled, or a compilation failure, and `2` for usage or toolchain errors. Skipped findings and incomplete paths can coexist with status `0`; automation that needs full exploration must inspect the report as well as the exit code.
 
-From the repository, `make -C tests/hunt hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make -C tests/hunt hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
+From the repository, `make -C src/tests/hunt hunt FILE=src/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` builds the prerequisites and wraps a single run. `make -C src/tests/hunt hunt-corpus` sweeps the test and example corpus; it is not currently a required CI check.
 
 {{ capture("/assets/images/guides/hunt-clean.png", "Clean control: no findings within this recorded budget and input size; this is not a proof of correctness.", "Clean control: no findings within this recorded budget and input size; this is not a proof of correctness.", 1440, 1000) }}
 
@@ -137,12 +137,12 @@ To gate the JSON list in CI, use a fresh output directory:
 python3 scripts/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
 ```
 
-This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The required CI job runs the pinned 215-program `tests/hunt/safe-runs.json` corpus at those same limits and uploads its reports.
+This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The required CI job runs the pinned 215-program `src/tests/hunt/safe-runs.json` corpus at those same limits and uploads its reports.
 
 ## Verify deliberate crash detection
 
 ```sh
-make -C tests/hunt hunt-crashes
+make -C src/tests/hunt hunt-crashes
 ```
 
 The gate covers fifteen planted input cases: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free, C double free, ML flavor and Python flavor. Each runs independently within ten seconds. Every expected class, source location, concrete input, file payload and native signal must match. Each case must also have a normal symbolic path, and benign stdin `Z` must finish normally with the exact expected output. Missing findings, unfinished analysis, tool errors, skipped replay and KLEE-only findings fail the gate.

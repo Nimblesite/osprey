@@ -30,7 +30,7 @@ The application lives at [`src/workbench/`](../../../src/workbench/README.md), M
 | `src/library.ospml` | `Library` | Search over the checked environment by name and shape ([WORKBENCH-LIBRARY]) |
 | `src/app.ospml` | `App` | The store, `update`, the regions and the theme ([WORKBENCH-STORE], [WORKBENCH-REGIONS]) |
 | `src/main.ospml` | entry | `Runtime::start` and `Runtime::dispatch` for native hosts; `Webview::respond` for VS Code and the browser |
-| `tests/` | | The fixture-driven suite of [WORKBENCH-VERIFICATION] |
+| `src/tests/` | | The fixture-driven suite of [WORKBENCH-VERIFICATION] |
 
 Every file under 500 lines, every function under 20, a documentation comment on every export.
 

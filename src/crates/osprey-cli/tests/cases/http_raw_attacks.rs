@@ -4,7 +4,7 @@
 //! not code, and the parent file has a size budget of its own. Every
 //! expectation is pinned by the C twins (`http_framing_tests.c`,
 //! `http_read_tests.c`) or the Osprey corpus
-//! (`tests/regressions/http/chunked_hostile_server.test.osp`).
+//! (`src/tests/regressions/http/chunked_hostile_server.test.osp`).
 
 use super::{
     Attack, Body, Expected, BODY_BAD_LENGTH, BODY_TRUNCATED, CHUNK_BAD_SIZE, CHUNK_BAD_TRAILER,

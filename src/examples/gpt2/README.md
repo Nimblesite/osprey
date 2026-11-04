@@ -162,7 +162,7 @@ python3 src/examples/gpt2/reference.py src/examples/gpt2/weights --train "The ca
 
 Tokenizer checks include the default prompt, `Hello, I'm a language model,`, repeated spaces, punctuation and `naïve café — 日本`. Compared continuations match: 20 tokens for the default prompt and `not a` for the second. On the host, both handlers match Python's loss, all 148 gradient sums and the updated loss exactly; device comparisons use the precision limits above.
 
-[`tensor_backends.test.osp`](../../../tests/effects/staged/tensor_backends.test.osp) pins a width-4 model under both handlers against Python values; its ML twin must emit identical LLVM IR. [`transformer.test.osp`](../../../tests/core/gpu/transformer.test.osp) pins the kernels. The differential harness covers memory backends, kernel lowerings and wasm32 on `make test`.
+[`tensor_backends.test.osp`](../../tests/effects/staged/tensor_backends.test.osp) pins a width-4 model under both handlers against Python values; its ML twin must emit identical LLVM IR. [`transformer.test.osp`](../../tests/core/gpu/transformer.test.osp) pins the kernels. The differential harness covers memory backends, kernel lowerings and wasm32 on `make test`.
 
 The [Python-flavor checks](src/python/README.md) additionally compare 24 deterministic tensors against Python at the real embedding width. `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` compares the generators on each tested device; it requires downloaded weights and runs in the ignored-test suite.
 

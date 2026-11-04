@@ -202,7 +202,7 @@ fn no_corpus_program_emits_a_reference_to_an_undefined_symbol() {
     // ([FLAVOR-IR-EQUIV]).
     let root = repo_root();
     let mut broken = Vec::new();
-    for dir in ["tests", "examples", "benchmarks"] {
+    for dir in ["src/tests", "src/examples", "src/benchmarks"] {
         for path in ["osp", "ospml"]
             .iter()
             .flat_map(|ext| sources(&root.join(dir), ext))

@@ -1,0 +1,293 @@
+{
+  "schemaVersion": 1,
+  "editionStatus": "partial-manuscript-chapters-1-4-and-8-10-complete",
+  "releasePinned": false,
+  "compilerVersion": "0.0.0-dev",
+  "chapters": [
+    {
+      "number": 1,
+      "editorial": "complete",
+      "spec": "mapped",
+      "implementation": "compiler-checked",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64"
+    },
+    {
+      "number": 2,
+      "editorial": "complete",
+      "spec": "mapped",
+      "implementation": "compiler-checked",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64"
+    },
+    {
+      "number": 3,
+      "spec": "mapped",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "auditedOn": "2026-10-04",
+      "previousVerification": {
+        "verifiedOn": "2026-09-12",
+        "compilerSha256": "6c3ab5c12924b639327a9f6a2730ed338dacda5420de64c44ed9c1fb5778daaa",
+        "platform": "darwin-arm64",
+        "checks": [
+          "make check-examples: exact output and exact compiler-rejection message",
+          "Manuscript code matches all chapter3 source examples",
+          "String-concatenation rejection versus interpolation acceptance",
+          "Record rejects a string in the integer sessionCount field",
+          "make release: all book examples, HTML and EPUB; EPUBCheck0 errors/warnings",
+          "Rendered chapter checked at1280px and320px; all3 diagrams readable and loaded"
+        ]
+      },
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64"
+    },
+    {
+      "number": 4,
+      "spec": "mapped",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-11",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-11",
+      "compilerSha256": "e213e1e7e8bd0d7c5a6e6baac7e1ba9475e3b49115a979ce6e5a5576364ba29f",
+      "platform": "linux-x86_64",
+      "specifications": [
+        "../specs/language/0003-Syntax.md",
+        "../specs/language/0004-TypeSystem.md",
+        "../specs/language/0007-PatternMatching.md"
+      ],
+      "checks": [
+        "2 runnable programs match exact output; 2 rejection fixtures match exact compiler diagnostics",
+        "Changed label, count and completion-note exercises produce predicted output",
+        "Missing Learning and unreachable-arm repairs compile and run with expected output",
+        "Mixed arm types, missing boolean case and sibling-arm payload access are rejected",
+        "make check-examples passes for all completed chapter examples",
+        "make check passes with pandoc 3.9",
+        "All displayed Osprey snippets and the missing-case diagnostic match stored sources and evidence",
+        "Chapter HTML checked at 1280px and 320px: no document horizontal overflow; both diagrams loaded and inspected"
+      ],
+      "scope": "Boolean and integer literal matches, wildcard ordering, closed union coverage, named payload destructuring; no roadmap or disputed pattern forms taught"
+    },
+    {
+      "number": 5,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    },
+    {
+      "number": 6,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    },
+    {
+      "number": 7,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    },
+    {
+      "number": 8,
+      "spec": "mapped",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-22",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-22",
+      "compilerSha256": "cfbd0e6ccd44e3622f0cc740a12ecef04196c51a7ca4165a2761a2554ab10233",
+      "platform": "darwin-arm64",
+      "checks": [
+        "7 named test cases pass in 2 suites with the recorded local compiler",
+        "Both complete code excerpts and all four printed transcripts match fixtures or executed probes",
+        "False title expectation passes --check and fails at runtime; transition and upper-bound mutations fail the named cases",
+        "Scalar and Result rendering, soft assertion continuation, and both compiler-feedback repairs verified by execution",
+        "Direct list assertion passes --check but is rejected during code generation",
+        "make -C docs/book check and make -C docs/book check-examples pass"
+      ],
+      "reviewNotes": [
+        "Reviewed against testing and test-runner specifications, assertion code generation, runtime TAP implementation, CLI discovery, and docs/book/Makefile.",
+        "Removed the implication that the unfinished preceding chapters already supply this checkpoint; retained a self-contained example.",
+        "Corrected assertion operand support, check-only limits, immediate test evaluation, fixture-check scope, and the CLI specification reference.",
+        "Verification uses the existing local development binary identified above, not a fresh source build or a cross-platform run."
+      ]
+    },
+    {
+      "number": 9,
+      "spec": "mapped",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-22",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-22",
+      "compilerSha256": "cfbd0e6ccd44e3622f0cc740a12ecef04196c51a7ca4165a2761a2554ab10233",
+      "platform": "darwin-arm64",
+      "checks": [
+        "5 runnable programs and 2 rejection fixtures match exact goldens through make -C docs/book check-examples",
+        "2 named test cases pass in 1 suite",
+        "All 6 manuscript code blocks match their source fixtures",
+        "Premature callback invocation is rejected; helper, inner-scope and cancellation exercise probes produce expected output",
+        "make -C docs/book check passes"
+      ],
+      "reviewNotes": [
+        "Reviewed callable handlers, block scope, operation types, control behavior and static selection against the effects specification, plan 0016, handler validation and effect code generation.",
+        "Simplified terminology to effects and handlers, retaining algebraic effects only in its explanation; updated the lesson-title literal and matching golden.",
+        "Removed digressions into unfinished effect-row and continuation features, mobile application architecture, relay helpers and obsolete syntax. Preserved platform limits and the test-handler missing-call caveat.",
+        "Verification uses the existing local development binary identified above, not a fresh build or a cross-platform run.",
+        "Deslop tools were unavailable in this session. Example edits only rename the lesson string; no functions or implementations were added."
+      ]
+    },
+    {
+      "number": 10,
+      "spec": "mapped",
+      "examples": "run-with-recorded-dev-binary",
+      "capture": "concept-diagrams-ready",
+      "auditedOn": "2026-10-04",
+      "editorial": "complete",
+      "implementation": "compiler-checked",
+      "verifiedOn": "2026-10-04",
+      "compilerSha256": "533fdd2b2bfb54c543b555a15cb0c455389391a28dca5ff0517fe139ecb0bd47",
+      "platform": "linux-x86_64",
+      "checks": [
+        "2 offline programs match exact output; native file run isolated",
+        "Saved title bytes verified after native write/read/decode",
+        "Decoder exercise variants and local native HTTP success/status/transport failures executed"
+      ]
+    },
+    {
+      "number": 11,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    },
+    {
+      "number": 12,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    },
+    {
+      "number": 13,
+      "spec": "mapped",
+      "editionDirection": "default-first-ml-optional-future-flavors-open",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    },
+    {
+      "number": 14,
+      "spec": "mapped",
+      "examples": "planned",
+      "capture": "planned",
+      "auditedOn": "2026-10-04",
+      "editorial": "editorial-scaffold",
+      "implementation": "current-contracts-audited; checkpoint-not-written"
+    }
+  ],
+  "editionAuditNotes": [
+    {
+      "chapter": 2,
+      "status": "resolved-2026-10-04",
+      "topic": "Integer arithmetic contract differs between the recorded development binary and current specifications",
+      "specifications": [
+        "../specs/language/0004-TypeSystem.md",
+        "../specs/language/0013-ErrorHandling.md"
+      ],
+      "specified": "Current specifications give plain integer multiplication type int; checkedMul explicitly returns Result.",
+      "chapter3Scope": "Chapter3 displays the integer input fields separately and makes no arithmetic-result claim.",
+      "previousObservation": "The checked chapter2 golden prints Success(75) for 3 * 25.",
+      "resolution": "Changed plannedMinutes and both manuscript excerpts to checkedMul; preserved the existing Success(75) golden and updated the diagram. Plain multiplication uses Arith."
+    },
+    {
+      "chapter": 9,
+      "status": "open-compiler-regression",
+      "topic": "Nested callable handlers lose a shared mutable capture",
+      "observed": "The handler returns the correct string, but assignment to its captured recording cell is not visible after calling it through another callable handler.",
+      "verification": "Reproduced on the rebuilt current compiler in Default and ML with default, GC, and ARC; existing handler_scoping cases 1\u20133 pass and the added case 4 fails.",
+      "regressions": [
+        "../../src/tests/regressions/effects/handler_scoping.test.osp",
+        "../../src/tests/regressions/effects/handler_scoping.test.ospml"
+      ],
+      "expectedOutput": "../../src/tests/regressions/effects/handler_scoping.test.osp.expectedoutput",
+      "bookTreatment": "Do not teach nested mutable recording as working. Chapter 9 uses verified immutable configuration captures and direct assertions in handler arms. No compiler fix is claimed."
+    }
+  ],
+  "currentAudit": {
+    "verifiedOn": "2026-10-22",
+    "compilerVersion": "0.0.0-dev",
+    "compilerSha256": "cfbd0e6ccd44e3622f0cc740a12ecef04196c51a7ca4165a2761a2554ab10233",
+    "platform": "darwin-arm64",
+    "scope": "Light factual and terminology review of all 14 chapters, front matter and appendices; synchronized glossary and editorial guidance. No lesson expansion or executable-source changes.",
+    "completedChapters": [
+      1,
+      2,
+      3,
+      4,
+      8,
+      9,
+      10
+    ],
+    "outlineChapters": [
+      5,
+      6,
+      7,
+      11,
+      12,
+      13,
+      14
+    ],
+    "checks": [
+      "make -C docs/book check: metadata and manuscript parsing pass",
+      "make -C docs/book check-examples: 18 runnable sources match exact stdout; 9 rejection fixtures match stored diagnostics",
+      "All fenced manuscript blocks unchanged from the beginning of this review",
+      "Repository-backed GitHub links in the manuscript resolve to existing local paths",
+      "Reviewed flavor selection and partial Python support against specifications 0023/0041; GPU correction against plan 0023, specification 0034 and device-dispatch implementation; macOS archive target against specification 0038 and CLI target tests",
+      "Reviewed collection, record, match, memory, target-checking and concurrency qualifications against their current local specifications and relevant CLI implementation"
+    ],
+    "corrections": [
+      "Use effects and handlers outside the explanation of algebraic effects",
+      "Remove stale host-only GPU and fixed-flavor claims; qualify Python frontend support",
+      "Clarify check-only limits and checkedMul overflow behavior; simplify concurrency wording",
+      "Include the macOS archive target, restore Chapter 4 in the source map, and correct target-specification paths",
+      "Chapters 3, 5, 6 and 7 needed no changes in this light pass"
+    ],
+    "limits": [
+      "Used the existing local development compiler, not a fresh build or full compiler CI run",
+      "No new hardware GPU, mobile app, optional HTTP adapter or cross-platform execution was performed",
+      "No HTML/EPUB release or visual-layout validation was performed in this prose-only pass",
+      "Development compiler remains unpinned for publication; outline chapters remain outlines",
+      "Book checks do not establish that the complete compiler regression suite passes"
+    ]
+  }
+}

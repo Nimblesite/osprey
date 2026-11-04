@@ -164,7 +164,7 @@ module is an error.
 
 `::` qualifies logical declarations. `.` remains record/member access.
 
-A payload-free variant used as a pattern (`Dry => "dry"`) is the constructor whatever the flavor's parser spelled it as: the Default parser yields a binding named `Dry`, and the resolver links a binding that names a declared constructor to that constructor's renamed declaration, so the match sees the same variant the type declares. `tests/regressions/basics/types/type_equality_comprehensive` pins it through assembly in both flavors.
+A payload-free variant used as a pattern (`Dry => "dry"`) is the constructor whatever the flavor's parser spelled it as: the Default parser yields a binding named `Dry`, and the resolver links a binding that names a declared constructor to that constructor's renamed declaration, so the match sees the same variant the type declares. `src/tests/regressions/basics/types/type_equality_comprehensive` pins it through assembly in both flavors.
 
 ## Exports and Visibility `[MODULES-EXPORTS]`
 
@@ -202,7 +202,7 @@ A function converts only where its signature says so. `export fn make(n: int) ->
 
 An opaque alias costs nothing at run time. The checker enforces the boundary, and code generation lowers a copy of the program in which every opaque alias is expanded.
 
-An alias that is not opaque (`type Score = int`, `type Kernel = fn(int) -> float`) is its representation everywhere it is written — in an annotation, a record field, an effect operation's signature — in a project and in a plain script alike. The resolver expands it, so a script declaring one is assembled exactly as a module-bearing file is (`osprey_project::needs_assembly`); a script that skipped assembly once kept `Score` as a nominal type nothing could unify with. The regression twins in `tests/regressions/basics/types/type_equality_comprehensive` pin the scalar, function and record-field forms.
+An alias that is not opaque (`type Score = int`, `type Kernel = fn(int) -> float`) is its representation everywhere it is written — in an annotation, a record field, an effect operation's signature — in a project and in a plain script alike. The resolver expands it, so a script declaring one is assembled exactly as a module-bearing file is (`osprey_project::needs_assembly`); a script that skipped assembly once kept `Score` as a nominal type nothing could unify with. The regression twins in `src/tests/regressions/basics/types/type_equality_comprehensive` pin the scalar, function and record-field forms.
 
 ## Signatures `[MODULES-SIGNATURE]`
 

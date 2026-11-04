@@ -16,7 +16,7 @@
 //
 // WHAT COUNTS AS DEAD. An item is dead when no PRODUCT line outside its own
 // definition names it. A line is product code unless it sits in a test file
-// (`tests/`, `*_tests.rs`, `test_support`/`testutil`) or inside a
+// (`src/tests/`, `*_tests.rs`, `test_support`/`testutil`) or inside a
 // `#[cfg(test)]` block. Tests alone never keep an item alive: code whose sole
 // purpose is to be tested is exactly the thing this gate removes.
 //

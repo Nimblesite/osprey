@@ -3,7 +3,7 @@
 use std::{fs, path::Path, path::PathBuf};
 
 /// A walk that finds nothing would pass silently, so the corpus has a floor.
-const SOURCE_FLOORS: [(&str, usize); 2] = [("examples", 59), ("tests", 213)];
+const SOURCE_FLOORS: [(&str, usize); 2] = [("src/examples", 59), ("src/tests", 213)];
 
 #[test]
 fn shipped_sources_have_no_unused_bindings() {

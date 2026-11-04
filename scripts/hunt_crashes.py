@@ -54,7 +54,7 @@ def main():
     parser.add_argument('--osprey', type=Path, default=Path('target/release/osprey'))
     parser.add_argument('--memory', choices=('gc', 'arc'), default='gc')
     args = parser.parse_args()
-    cases = json.loads(Path('tests/hunt/crash-cases.json').read_text())
+    cases = json.loads(Path('src/tests/hunt/crash-cases.json').read_text())
     options = argparse.Namespace(root=Path.cwd(), out=args.out.resolve()/f"run-{time.time_ns()}", osprey=args.osprey.resolve(),
                                  wall_time=10, max_time=8, input_bytes=1, memory=args.memory)
     print(f'Crash reports: {options.out}', flush=True)

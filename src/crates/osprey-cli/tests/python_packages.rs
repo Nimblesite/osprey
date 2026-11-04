@@ -19,7 +19,7 @@ fn repo() -> PathBuf {
 
 /// Every published package with a test manifest, sorted; tooling stays separate.
 fn suites() -> Vec<PathBuf> {
-    let mut found: Vec<PathBuf> = std::fs::read_dir(repo().join("packages"))
+    let mut found: Vec<PathBuf> = std::fs::read_dir(repo().join("src/packages"))
         .into_iter()
         .flatten()
         .flatten()
@@ -35,7 +35,7 @@ fn suites() -> Vec<PathBuf> {
 #[test]
 fn every_shipped_package_registers_an_execution_suite() -> std::io::Result<()> {
     let registered = suites();
-    for entry in std::fs::read_dir(repo().join("packages"))? {
+    for entry in std::fs::read_dir(repo().join("src/packages"))? {
         let package = entry?.path();
         if package.join("osprey.toml").is_file() {
             assert!(

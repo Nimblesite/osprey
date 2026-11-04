@@ -149,7 +149,7 @@ class ExpectMainTests(unittest.TestCase):
             code, out = self.check([], "none", raw=raw)
             self.assertEqual(code, 1)
             self.assertIn("case: no report", out)
-        code, out = run_main(hunt_expect, ["hunt_expect.py", "/nonexistent/r.json", str(ROOT / "tests/hunt/clean.expected")])
+        code, out = run_main(hunt_expect, ["hunt_expect.py", "/nonexistent/r.json", str(ROOT / "src/tests/hunt/clean.expected")])
         self.assertEqual((code, "clean: no report" in out), (1, True))
 
 
@@ -237,24 +237,24 @@ class CorpusScriptTests(unittest.TestCase):
         self.assertIn("scripts/hunt_corpus.sh [--all]", done.stdout)
 
     def test_each_program_is_hunted_once_with_json_quiet_and_the_budget(self):
-        done, calls, codes = self.sweep("--max-time", "7", "tests/hunt/clean.osp", "tests/hunt/process.osp")
+        done, calls, codes = self.sweep("--max-time", "7", "src/tests/hunt/clean.osp", "src/tests/hunt/process.osp")
         self.assertEqual(done.returncode, 0, done.stderr)
         self.assertEqual(
             calls,
             [
-                "hunt tests/hunt/clean.osp --json --quiet --max-time 7",
-                "hunt tests/hunt/process.osp --json --quiet --max-time 7",
+                "hunt src/tests/hunt/clean.osp --json --quiet --max-time 7",
+                "hunt src/tests/hunt/process.osp --json --quiet --max-time 7",
             ],
         )
         self.assertEqual(codes, {"tests_hunt_clean.osp": "3", "tests_hunt_process.osp": "3"}, "exit codes are recorded")
 
     def test_the_skip_list_is_honoured_unless_all_is_given(self):
         skipped = "src/examples/db_postgres/pg_smoke.osp"
-        listed = (ROOT / "tests/HUNT_UNPORTABLE.txt").read_text()
+        listed = (ROOT / "src/tests/HUNT_UNPORTABLE.txt").read_text()
         self.assertIn(f"{skipped} ", listed)
-        _, calls, _ = self.sweep(skipped, "tests/hunt/clean.osp")
-        self.assertEqual(calls, ["hunt tests/hunt/clean.osp --json --quiet --max-time 20"])
-        _, calls, _ = self.sweep("--all", skipped, "tests/hunt/clean.osp")
+        _, calls, _ = self.sweep(skipped, "src/tests/hunt/clean.osp")
+        self.assertEqual(calls, ["hunt src/tests/hunt/clean.osp --json --quiet --max-time 20"])
+        _, calls, _ = self.sweep("--all", skipped, "src/tests/hunt/clean.osp")
         self.assertEqual(len(calls), 2)
         self.assertIn(f"hunt {skipped} --json --quiet --max-time 20", calls)
 

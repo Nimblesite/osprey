@@ -217,7 +217,7 @@ Integer arithmetic produces plain numeric values. `MathError` and arithmetic Res
 
 | Contract | Regression evidence |
 | --- | --- |
-| Correct square, fold accumulator and ledger results after overflow (#230); total helpers; outer-policy forwarding | `tests/core/arithmetic/effect_policies.test.osp` and its ML twin |
+| Correct square, fold accumulator and ledger results after overflow (#230); total helpers; outer-policy forwarding | `src/tests/core/arithmetic/effect_policies.test.osp` and its ML twin |
 | Return annotations preserve arithmetic values (#163) | `arithmetic_return_annotations_preserve_values_in_both_flavors` in `src/crates/osprey-cli/tests/redundant_annotations.rs`, executed under default, GC and ARC |
 | Direct handlers preserve complete integer/float `Result` operation payloads (#183) | `direct handler calls preserve Result operation values` in `effect_policies` |
 | Ordered overflow payloads, unary boundaries, integer remainder and float zero divisors | `result_chain_unary_stress` and `boundary_error_stress`, both flavors; each case checks the numeric answer and complete ordered fault trace |

@@ -4,7 +4,7 @@
 //! links against libc and the prebuilt C runtime archives in `src/compiler/bin/`
 //! (`libfiber_runtime.a` / `libhttp_runtime.a`). Two anchors define correct
 //! output: the C runtime ABI (those archives' symbols and conventions) and the
-//! `.expectedoutput` goldens beside every program under `tests/`, compared
+//! `.expectedoutput` goldens beside every program under `src/tests/`, compared
 //! byte-for-byte end-to-end by `src/crates/run_test_corpus.sh` — under each memory
 //! backend, and again on wasm32 with `OSPREY_TARGET=wasm32`.
 //! Constructs the backend does not lower return

@@ -243,7 +243,7 @@ static void t_gpu_churn_flat(void) {
 // A load that fails AFTER allocating its result — a file of three binary32
 // words asked for four — must release that buffer before reporting the reason
 // [GPU-BUFFER-LOAD]: a NULL result owes nothing. The ARC corpus lane found two
-// live objects per failed gpuLoad in tests/core/gpu/transformer before
+// live objects per failed gpuLoad in src/tests/core/gpu/transformer before
 // gpu_host.c released it; this is the counted form of that pin. A load that
 // succeeds costs exactly one buffer, reclaimed by one release.
 static void t_gpu_load_failure_releases(void) {

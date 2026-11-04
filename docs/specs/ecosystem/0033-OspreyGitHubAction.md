@@ -146,7 +146,7 @@ Delivery still requires a packaged WASI invocation or host shim that supplies th
 
 ## Verification
 
-- An `tests/regressions/` program that reads one JSON line via `input()`, parses
+- An `src/tests/regressions/` program that reads one JSON line via `input()`, parses
   it with the JSON builtins, and prints `key=value` lines — the ferry +
   parse + emit round-trip, checked byte-for-byte by the differential harness
   (`src/crates/run_test_corpus.sh`).

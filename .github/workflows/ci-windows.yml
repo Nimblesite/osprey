@@ -140,7 +140,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
+          ./target/release/osprey.exe test src/tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
           cat out.txt
           grep -Fq "=== Fiber Showcase Complete ===" out.txt
           grep -Fq "map-reduce total = 1400" out.txt
@@ -150,7 +150,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
+          ./target/release/osprey.exe test src/tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
           cat omni.txt
 
       # Each invocation recursively exercises both Default and ML programs with

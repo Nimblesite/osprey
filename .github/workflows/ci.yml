@@ -800,9 +800,9 @@ jobs:
 
   # Compiles to wasm32-wasip1, gates on the artifact being well-formed
   # (`wasm-validate`) and producing the expected stdout under a WASI host, then
-  # holds EVERY program in tests/ that links on wasm32 to the byte-exact stdout
+  # holds EVERY program in src/tests/ that links on wasm32 to the byte-exact stdout
   # the native backend produces. The programs that may skip are pinned — name
-  # and symbol — in tests/WASM_UNPORTABLE.txt, and the harness fails on any
+  # and symbol — in src/tests/WASM_UNPORTABLE.txt, and the harness fails on any
   # drift, so the covered count lives in exactly one place. [WASM-TARGET]
   test-wasm:
     name: "Tests: WebAssembly target (wasm32-wasip1)"
@@ -865,7 +865,7 @@ jobs:
             node scripts/wasm-browser-smoke.mjs "src/examples/wasm/build/studio.$flavor.wasm" src/examples/wasm/studio.expectedoutput
           done
 
-      - name: WebAssembly differential — whole tests/ corpus vs the native goldens
+      - name: WebAssembly differential — whole src/tests/ corpus vs the native goldens
         run: make _test_wasm_goldens
 
   # Builds the site and runs the Playwright suite: every page template at three
@@ -935,8 +935,8 @@ jobs:
       - name: Book structure and executable examples
         if: steps.filter.outputs.book == 'true' || steps.filter.outputs.code == 'true'
         run: |
-          make -C Book check
-          make -C Book check-examples
+          make -C docs/book check
+          make -C docs/book check-examples
 
       - name: Benchmark compiler fixture
         if: steps.filter.outputs.benchmarks == 'true' || steps.filter.outputs.code == 'true'

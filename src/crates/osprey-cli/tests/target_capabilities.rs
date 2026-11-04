@@ -62,7 +62,7 @@ fn resumable_effects_reject_for_both_flavors_before_ir() -> std::io::Result<()> 
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
     for extension in ["osp", "ospml"] {
         let path = root.join(format!(
-            "tests/effects/resume/resume_value_rewrite.test.{extension}"
+            "src/tests/effects/resume/resume_value_rewrite.test.{extension}"
         ));
         for target in RESTRICTED_TARGETS {
             let output = Command::new(env!("CARGO_BIN_EXE_osprey"))

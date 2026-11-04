@@ -136,9 +136,9 @@ const PROGRAMS: [&str; 5] = [
     "print(\"hello\")
 ",
     DYNAMIC_EFFECT,
-    include_str!("../../../../../tests/hunt/clean.osp"),
-    include_str!("../../../../../tests/hunt/process.osp"),
-    include_str!("../../../../../tests/hunt/record_update_list.osp"),
+    include_str!("../../../../tests/hunt/clean.osp"),
+    include_str!("../../../../tests/hunt/process.osp"),
+    include_str!("../../../../tests/hunt/record_update_list.osp"),
 ];
 
 /// A module's instructions in order and its declarations as a set: the

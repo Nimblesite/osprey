@@ -183,7 +183,7 @@ suite("TextMate grammars", () => {
   });
 
   // `once`, `many` and `replayable` qualify an operation; the SAME words are
-  // legal operation names, which tests/effects/multiplicity pins deliberately.
+  // legal operation names, which src/tests/effects/multiplicity pins deliberately.
   // The rule requires the qualified operation to follow, so both readings keep
   // their colours — a blanket keyword rule would have mis-coloured real code.
   test("multiplicity modifiers stay distinct from identically named operations", async () => {

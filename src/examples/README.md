@@ -39,10 +39,10 @@ proving both flavors print the same bytes.
 
 ## Directory layout
 
-- **`../../tests/regressions/`** — working programs that compile and run; output is checked
+- **`../tests/regressions/`** — working programs that compile and run; output is checked
   byte-for-byte against `.expectedoutput`. Subfolders: `basics/`, `db/`,
   `effects/`, `fiber/`, and `http/`.
-- **`../../tests/flavors/`** — paired Default/ML executable documentation with
+- **`../tests/flavors/`** — paired Default/ML executable documentation with
   internal state assertions and edge cases.
 - **`failscompilation/`** — programs the compiler must reject, each paired with the
   expected diagnostic.
@@ -59,7 +59,7 @@ proving both flavors print the same bytes.
 
 See the [iOS target](../../docs/specs/platforms/0038-iOSTarget.md), [Android target](../../docs/specs/platforms/0039-AndroidTarget.md), and [shared application boundary](../../docs/specs/applications/0040-ReactiveMobileApplications.md). WebAssembly and mobile C ABI targets reject unsupported capabilities, including resumable effects, during compilation.
 
-## Paired flavor tests (`../../tests/flavors/`)
+## Paired flavor tests (`../tests/flavors/`)
 
 Each exercises a distinct ML-surface feature and runs today:
 
@@ -110,10 +110,10 @@ breaks CI. Never add one without confirming it is actually rejected.
 
 ```bash
 # Default flavor
-osprey test tests/flavors/smoke/smoke.test.osp
+osprey test src/tests/flavors/smoke/smoke.test.osp
 
 # ML flavor
-osprey test tests/flavors/smoke/smoke.test.ospml
+osprey test src/tests/flavors/smoke/smoke.test.ospml
 ```
 
 The flavor is resolved automatically from the extension; add `--flavor ml` only to

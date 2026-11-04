@@ -220,8 +220,8 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # host against its own headers and linked with the runtime units it must
 # intercept (`osp_input`, `readFile`); the driver is compiled against the host
 # headers. Runs without KLEE installed: the mock carries its own klee/klee.h.
-# Deterministic Hunt runs [SYMEX-CLI]: each tests/hunt/<name>.osp must
-# report exactly the findings in <name>.expected (see tests/hunt/README.md).
+# Deterministic Hunt runs [SYMEX-CLI]: each src/tests/hunt/<name>.osp must
+# report exactly the findings in <name>.expected (see src/tests/hunt/README.md).
 # Skipped loudly without KLEE, like the bitcode it needs. Like the two KLEE
 # targets below, it is run by hand: neither `make test` nor CI runs the KLEE
 # engine gates while issues #306 and #307 are open [SYMEX-CRASH-GATE].
@@ -237,18 +237,18 @@ HUNT_KNOWN_BUGS ?= clean
 .PHONY: _test_hunt_clean
 _test_hunt_clean:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
-	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
+	  echo "(KLEE not installed — src/tests/hunt skipped)"; exit 0; fi; \
 	set -e; fail=0; for backend in gc arc; do \
 	  out="target/hunt-tests/$$backend/clean.json"; $(MKDIR) "target/hunt-tests/$$backend"; \
-	  status=0; ./target/release/osprey hunt tests/hunt/clean.osp --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt_expect.py "$$out" tests/hunt/clean.expected "$$status" || fail=1; \
+	  status=0; ./target/release/osprey hunt src/tests/hunt/clean.osp --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
+	  python3 scripts/hunt_expect.py "$$out" src/tests/hunt/clean.expected "$$status" || fail=1; \
 	done; exit $$fail
 
 _test_hunt:
 	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
-	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
-	echo "==> [hunt] tests/hunt expectations..."; \
-	set -e; fail=0; for backend in gc arc; do for p in tests/hunt/*.osp; do \
+	  echo "(KLEE not installed — src/tests/hunt skipped)"; exit 0; fi; \
+	echo "==> [hunt] src/tests/hunt expectations..."; \
+	set -e; fail=0; for backend in gc arc; do for p in src/tests/hunt/*.osp; do \
 	  skip=0; for bug in $(HUNT_KNOWN_BUGS); do [ "$$(basename "$${p%.osp}")" = "$$bug" ] && skip=1; done; \
 	  [ "$$skip" = 1 ] && continue; \
 	  e="$${p%.osp}.expected"; out="target/hunt-tests/$$backend/$$(basename "$${p%.osp}").json"; \
@@ -257,7 +257,7 @@ _test_hunt:
 	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; done; exit $$fail
 
-# No skip path: run by hand (`make -C tests/hunt hunt-crashes`), it must detect and natively
+# No skip path: run by hand (`make -C src/tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
@@ -426,7 +426,7 @@ _tui: build
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
-	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
+	./$(BIN) src/tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
 # The same suite against an ALREADY-BUILT binary. No prerequisites, so the
 # staged pipeline can run it on the downloaded `osprey-build` artifact. Going
