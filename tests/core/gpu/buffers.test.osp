@@ -26,50 +26,37 @@ fn countOdd(acc, flag) = match flag {
     false => acc
 }
 
-/// same is the identity kernel: every scalar word must come back out
-/// unchanged, at the element type its source buffer was tagged with.
+/// same is the identity kernel: every scalar word must come back out unchanged, at the element type its source buffer was tagged with.
 fn same(x) = x
 
-/// The exact payload [GPU-GET] contracts for a read outside the buffer, so a
-/// wrong gather is a visible failure and never a sentinel element.
+/// The exact payload [GPU-GET] contracts for a read outside the buffer, so a wrong gather is a visible failure and never a sentinel element.
 fn oobMessage() = "gpuGet: index out of bounds"
 
-/// readback renders one gpuGet outcome as text — the element for a hit, the
-/// error payload for a miss. Being polymorphic over the element type, it is
-/// itself the assertion that gpuGet recovers int, float and bool alike.
+/// readback renders one gpuGet outcome as text — the element for a hit, the error payload for a miss. Being polymorphic over the element type, it is itself the assertion that gpuGet recovers int, float and bool alike.
 fn readback(b, i) = match gpuGet(b, i) {
     Success { value } => toString(value)
     Error { message } => message
 }
 
-/// lastOf computes the final index from the length: the read that sits
-/// exactly on the in-bounds boundary.
+/// lastOf computes the final index from the length: the read that sits exactly on the in-bounds boundary.
 fn lastOf(b) = gpuGet(b, (gpuLength(b) - 1) )
 
-/// widthOf takes a buffer as a plain parameter — the handle and its element
-/// tag have to survive the call.
+/// widthOf takes a buffer as a plain parameter — the handle and its element tag have to survive the call.
 fn widthOf(b) = gpuLength(b)
 
-/// doubledInts both receives and returns a buffer, so the tag must survive a
-/// parameter and a return in one call.
+/// doubledInts both receives and returns a buffer, so the tag must survive a parameter and a return in one call.
 fn doubledInts(b) = b |> gpuMap(fn(x) => (x * 2) )
 
-/// scaledFloats is doubledInts' float twin: tags are per-buffer, so a float
-/// buffer must come back out of a return still reading as float.
+/// scaledFloats is doubledInts' float twin: tags are per-buffer, so a float buffer must come back out of a return still reading as float.
 fn scaledFloats(b) = b |> gpuMap(scale)
 
-/// chooseBuffer returns a buffer out of a match arm — the fourth binding form
-/// a handle travels through.
+/// chooseBuffer returns a buffer out of a match arm — the fourth binding form a handle travels through.
 fn chooseBuffer(flag, a, b) = match flag {
     true => a
     false => b
 }
 
-/// literalCase pins [GPU-BUFFER-LITERAL]: a literal argument stores its
-/// elements straight into the dense buffer at constant indices, with no list
-/// built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus
-/// the degenerate one- and zero-element literals and the sign and magnitude
-/// extremes an int word must hold.
+/// literalCase pins [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold.
 fn literalCase() = {
     let ints = toGpu([3, 1, 4, 1, 5])
     let floats = toGpu([0.25, 0.5, 0.75, 1.0])
@@ -99,10 +86,7 @@ fn literalCase() = {
     ])
 }
 
-/// listCopyCase pins [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy
-/// loop rather than the literal path and must land on a buffer
-/// indistinguishable from the literal one — same length, same elements, same
-/// reduction — down to the one- and zero-element lists.
+/// listCopyCase pins [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists.
 fn listCopyCase() = {
     let source = [2, 4, 6, 8]
     let copied = toGpu(source)
@@ -124,10 +108,7 @@ fn listCopyCase() = {
         (toGpu(source) |> gpuFold(0, addInts)) == (copied |> gpuFold(0, addInts))
     ])
 }
-
-/// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy in both
-/// directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every
-/// index checked at every hop, with a list index past the end still failing.
+/// roundTripCase pins toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing.
 fn roundTripCase() = {
     let buf = toGpu([3, 1, 4, 1, 5])
     let back = fromGpu(buf)
@@ -149,10 +130,7 @@ fn roundTripCase() = {
         (gpuGet(toGpu(fromGpu(gpuIota(6))), 5) ?: 0) == 5
     ])
 }
-
-/// emptyCase pins the zero-element buffer through every builtin that takes
-/// one: no element is readable at any index, it materializes as an empty
-/// list, maps to another empty buffer, and folds to its seed untouched.
+/// emptyCase pins the zero-element buffer through every builtin that takes one: no element is readable at any index, it materializes as an empty list, maps to another empty buffer, and folds to its seed untouched.
 fn emptyCase() = {
     let none = gpuIota(0)
     let mapped = none |> gpuMap(square)
@@ -173,9 +151,7 @@ fn emptyCase() = {
         readback(flags, 0) == oobMessage(), readback(widened, 0) == oobMessage()
     ])
 }
-
-/// singletonCase pins the one-element buffer: index 0 is the only address in
-/// bounds, so both 1 and -1 fail, and a fold sees exactly one element.
+/// singletonCase pins the one-element buffer: index 0 is the only address in bounds, so both 1 and -1 fail, and a fold sees exactly one element.
 fn singletonCase() = {
     let lone = toGpu([42])
     let loneF = toGpu([2.5])
@@ -199,11 +175,7 @@ fn singletonCase() = {
         gpuLength(toGpu(fromGpu(lone))) == 1
     ])
 }
-
-/// boundsCase pins [GPU-GET] at both ends and far outside them for every
-/// element type: an in-bounds read returns the element at the buffer's own
-/// scalar type, and index == length, index == -1 and indices a million past
-/// either edge all return the identical Error payload.
+/// boundsCase pins [GPU-GET] at both ends and far outside them for every element type: an in-bounds read returns the element at the buffer's own scalar type, and index == length, index == -1 and indices a million past either edge all return the identical Error payload.
 fn boundsCase() = {
     let ints = toGpu([10, 20, 30])
     let floats = toGpu([1.25, 2.5])
@@ -228,11 +200,7 @@ fn boundsCase() = {
         (lastOf(flags) ?: true) == false
     ])
 }
-
-/// iotaCase pins [GPU-IOTA] across its domain: the empty, one- and
-/// two-element index buffers, a large one whose closed-form sum a miscounted
-/// loop cannot match, and a negative count, which has no indices to generate
-/// and so yields an empty buffer rather than a negative allocation.
+/// iotaCase pins [GPU-IOTA] across its domain: the empty, one- and two-element index buffers, a large one whose closed-form sum a miscounted loop cannot match, and a negative count, which has no indices to generate and so yields an empty buffer rather than a negative allocation.
 fn iotaCase() = {
     let one = gpuIota(1)
     let pair = gpuIota(2)
@@ -258,10 +226,7 @@ fn iotaCase() = {
         listLength(fromGpu(seven)) == 7, (listGet(fromGpu(seven), 3) ?: 0) == 3
     ])
 }
-
-/// elementCase pins [GPU-BUFFER-ELEM]: int, float and bool words go through
-/// the identity kernel and come back bit-for-bit at their own type — a float
-/// buffer must never read back as the integer its bits spell.
+/// elementCase pins [GPU-BUFFER-ELEM]: int, float and bool words go through the identity kernel and come back bit-for-bit at their own type — a float buffer must never read back as the integer its bits spell.
 fn elementCase() = {
     let ints = toGpu([-9, 0, 9])
     let floats = toGpu([-0.5, 0.0, 0.125])
@@ -287,11 +252,7 @@ fn elementCase() = {
         (lastOf(floats |> gpuMap(same)) ?: 9.5) == 0.125
     ])
 }
-
-/// flowCase pins the handle and its element tag through all four binding
-/// forms a value takes — a let, a pipe, a function parameter and a function
-/// return — plus a match arm and a lambda parameter. A float buffer that lost
-/// its tag anywhere along the way would read back as raw bits.
+/// flowCase pins the handle and its element tag through all four binding forms a value takes — a let, a pipe, a function parameter and a function return — plus a match arm and a lambda parameter. A float buffer that lost its tag anywhere along the way would read back as raw bits.
 fn flowCase() = {
     let held = toGpu([1.5, 2.5, 3.5])
     let piped = held |> gpuMap(scale)
@@ -318,10 +279,7 @@ fn flowCase() = {
         listLength(fromGpu(held)) == 3
     ])
 }
-
-/// aliasCase pins two bindings onto one buffer. Buffers are immutable values
-/// [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and
-/// leaves every alias of the source reading what it read before.
+/// aliasCase pins two bindings onto one buffer. Buffers are immutable values [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and leaves every alias of the source reading what it read before.
 fn aliasCase() = {
     let source = toGpu([1, 2, 3, 4])
     let alias = source
@@ -344,11 +302,7 @@ fn aliasCase() = {
         listLength(fromGpu(alias)) == 4, (listGet(fromGpu(alsoAlias), 2) ?: 0) == 3
     ])
 }
-
-/// fusionCase pins [GPU-BUFFER-FUSE] from the indexing side: whatever the
-/// pipeline fused into the buffer has to be addressable element by element,
-/// the published length has to bound gpuGet exactly, and a one-element or
-/// empty range has to land on a buffer of that size.
+/// fusionCase pins [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size.
 fn fusionCase() = {
     let straight = range(0, 6) |> toGpu()
     let squares = range(1, 5) |> map(square) |> toGpu()
@@ -371,9 +325,7 @@ fn fusionCase() = {
         (toGpu(fromGpu(squares)) |> gpuFold(0, addInts)) == 30
     ])
 }
-
-/// intKernelCase pipes a buffer through a named kernel and folds it away,
-/// including over negative elements and over no elements at all.
+/// intKernelCase pipes a buffer through a named kernel and folds it away, including over negative elements and over no elements at all.
 fn intKernelCase() = {
     let total = toGpu([1, 2, 3, 4]) |> gpuMap(square) |> gpuFold(0, addInts)
     let squares = toGpu([1, 2, 3]) |> gpuMap(fn(x) => (x * x) ) |> fromGpu()
@@ -388,9 +340,7 @@ fn intKernelCase() = {
         (gpuIota(0) |> gpuMap(square) |> gpuFold(0, addInts)) == 0
     ])
 }
-
-/// floatKernelCase proves float words keep their bits through map and fold,
-/// including the [GPU-CONVERT] seed that widens an index buffer.
+/// floatKernelCase proves float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer.
 fn floatKernelCase() = {
     let sum = toGpu([1.0, 2.0, 3.0]) |> gpuMap(scale) |> gpuFold(0.0, addFloats)
     let halves = toGpu([0.5, 0.25, 0.125])
@@ -405,9 +355,7 @@ fn floatKernelCase() = {
         (gpuIota(0) |> gpuMap(toFloat) |> gpuFold(2.5, addFloats)) == 2.5
     ])
 }
-
-/// boolKernelCase maps int elements to bool elements and counts the odd ones,
-/// covering the all-true and all-false buffers beside the mixed one.
+/// boolKernelCase maps int elements to bool elements and counts the odd ones, covering the all-true and all-false buffers beside the mixed one.
 fn boolKernelCase() = {
     let odds = toGpu([1, 2, 3, 4, 5]) |> gpuMap(isOdd)
     let allTrue = toGpu([1, 3]) |> gpuMap(isOdd)
@@ -423,10 +371,7 @@ fn boolKernelCase() = {
         gpuLength(gpuIota(0) |> gpuMap(isOdd)) == 0
     ])
 }
-
-/// bigCase pushes the copy path itself to scale: a hundred thousand elements
-/// out to a list and back into a buffer, boundary indices and closed-form
-/// sums checked on every hop.
+/// bigCase pushes the copy path itself to scale: a hundred thousand elements out to a list and back into a buffer, boundary indices and closed-form sums checked on every hop.
 fn bigCase() = {
     let wide = gpuIota(100000)
     let doubled = doubledInts(wide)
@@ -446,15 +391,7 @@ fn bigCase() = {
         readback(rebuilt, -1) == oobMessage(), widthOf(rebuilt) == widthOf(wide)
     ])
 }
-
-/// A kernel whose body is a BLOCK with an internal `let`. Plan 0002 recorded
-/// this as failing with `unknown identifier \`base\`` — the inline-callback
-/// path was said to lose the block's local scope, with named kernels as the
-/// workaround. It lowers correctly; nothing pinned it, so the item could not
-/// be closed. Both lambda spellings are exercised because they reach the
-/// lowering by different routes, and the suite runs under BOTH
-/// `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted
-/// and the inlined lowering alike. Implements [GPU-KERNEL-FORM].
+/// A kernel whose body is a BLOCK with an internal `let`. Plan 0002 recorded this as failing with `unknown identifier \`base\`` — the inline-callback path was said to lose the block's local scope, with named kernels as the workaround. It lowers correctly; nothing pinned it, so the item could not be closed. Both lambda spellings are exercised because they reach the lowering by different routes, and the suite runs under BOTH `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted and the inlined lowering alike. Implements [GPU-KERNEL-FORM].
 fn blockBodiedKernelCase() = {
     let fromFn = gpuIota(4) |> gpuMap(fn(r) => { let base = (r * 3) 
                                                  base + 1  })
@@ -476,7 +413,55 @@ fn blockBodiedKernelCase() = {
         (gpuGet(widened, 2) ?: 9.5) == 1.0
     ])
 }
-
+/// [GPU-BUFFER-ELEM]: one index read back through gpuGet must equal the source list's element — the exact gpuGet round-trip for that index.
+fn denseRead(buffer, values, i) = match gpuGet(buffer, i) {
+    Success actual => match listGet(values, i) { Success expected => actual == expected Error _ => false }
+    Error _ => false
+}
+/// [GPU-BUFFER-ELEM]: an out-of-bounds gpuGet errors rather than yielding a sentinel element.
+fn denseOutOfBounds(buffer, index) = match gpuGet(buffer, index) {
+    Error _ => true
+    Success _ => false
+}
+/// [GPU-BUFFER-ELEM]: every scalar width narrows into dense storage and widens back exactly — gpuGet reads each index at the element's own width, the identity kernel and fromGpu both return the source list, and out-of-bounds reads error.
+fn denseRoundTrip(label, values) = {
+    let buffer = toGpu(values)
+    let mapped = gpuMap(buffer, fn(value) => value)
+    let gathered = gpuZipWith(gpuIota(length(values)), buffer, fn(index, value) => gpuGet(buffer, index) ?: value)
+    checkAll(label, [
+        gpuLength(buffer) == length(values),
+        structuralEquals(fromGpu(buffer), values),
+        structuralEquals(fromGpu(mapped), values),
+        structuralEquals(fromGpu(gathered), values),
+        range(0, length(values)) |> fold(true, fn(ok, i) => ok && denseRead(buffer, values, i)),
+        denseOutOfBounds(buffer, -1),
+        denseOutOfBounds(buffer, length(values))
+    ])
+}
+fn denseIntegerWidthsCase() = {
+    let i8: List<int8> = [-128, 0, 127]
+    let u8: List<uint8> = [0, 128, 255]
+    let i16: List<int16> = [-32768, 0, 32767]
+    let u16: List<uint16> = [0, 32768, 65535]
+    let i32: List<int32> = [-2147483648, 0, 2147483647]
+    let u32: List<uint32> = [0, 2147483648, 4294967295]
+    denseRoundTrip("dense int8", i8)
+    denseRoundTrip("dense uint8", u8)
+    denseRoundTrip("dense int16", i16)
+    denseRoundTrip("dense uint16", u16)
+    denseRoundTrip("dense int32", i32)
+    denseRoundTrip("dense uint32", u32)
+}
+fn denseWidthsCase() = {
+    denseIntegerWidthsCase()
+    let f16: List<float16> = [-0.5, 0.0, 1.5]
+    let f32: List<float32> = [-0.5, 0.0, 1.5]
+    denseRoundTrip("dense float16", f16)
+    denseRoundTrip("dense float32", f32)
+    denseRoundTrip("dense bool", [true, false, true])
+    denseRoundTrip("dense int", [-9223372036854775808, 0, 9223372036854775807])
+    denseRoundTrip("dense float", [-0.5, 0.0, 1.5])
+}
 /// Exact-value tests record any arithmetic fault as a failed assertion.
 fn exactArithmetic(work) = {
     handle Arith {
@@ -495,8 +480,6 @@ fn exactArithmetic(work) = {
     }
     work()
 }
-
-
 test("buffer literals store elements densely at constant indices", fn() => exactArithmetic(literalCase))
 test("a list value copies into a buffer element for element", fn() => exactArithmetic(listCopyCase))
 test("gpu buffers round-trip lists densely", fn() => exactArithmetic(roundTripCase))
@@ -513,3 +496,4 @@ test("float kernels keep element bits through map and fold", fn() => exactArithm
 test("kernels may change the element scalar type", fn() => exactArithmetic(boolKernelCase))
 test("the copy path stays exact at a hundred thousand elements", fn() => exactArithmetic(bigCase))
 test("a block-bodied kernel keeps its internal let bindings", fn() => exactArithmetic(blockBodiedKernelCase))
+test("every scalar width survives dense storage and round-trips through gpuGet", fn() => exactArithmetic(denseWidthsCase))

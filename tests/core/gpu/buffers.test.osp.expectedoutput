@@ -14,5 +14,6 @@ ok 13 - float kernels keep element bits through map and fold
 ok 14 - kernels may change the element scalar type
 ok 15 - the copy path stays exact at a hundred thousand elements
 ok 16 - a block-bodied kernel keeps its internal let bindings
-1..16
-# tests=16 passed=16 failed=0 skipped=0
+ok 17 - every scalar width survives dense storage and round-trips through gpuGet
+1..17
+# tests=17 passed=17 failed=0 skipped=0
