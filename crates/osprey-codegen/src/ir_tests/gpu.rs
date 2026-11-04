@@ -114,6 +114,13 @@ fn gpu_get_checks_readback_before_loading_a_scalar() {
 }
 
 #[test]
+fn an_immediately_called_lambda_keeps_its_device_capture() {
+    // [GPU-KERNEL-FORM] The ML workload calls nested lambdas over captures.
+    let ir = module("let k = toFloat32(3.0)\nlet xs = toGpu([toFloat32(2.0)])\nprint(fromGpu(gpuMap(xs, fn(x) => (fn(z) => k * z)(x))))\n");
+    assert!(!ir.contains("a computed callee has no device form"), "{ir}");
+}
+
+#[test]
 fn boolean_device_inputs_and_captured_buffers_use_byte_storage() {
     // [GPU-BUFFER-ELEM]: a word pointer would stride eight byte-sized booleans.
     let ir = module("let values: List<bool> = [true, false]\nlet table = toGpu(values)\nlet mapped = gpuMap(table, fn(value) => value && (gpuGet(table, 0) ?: false))\nprint(fromGpu(mapped))\n");

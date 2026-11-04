@@ -277,7 +277,10 @@ impl Emitter<'_> {
             return Err("named arguments have no device form".into());
         }
         let Expr::Identifier(name) = function else {
-            return Err("a computed callee has no device form".into());
+            return match self.passed(function) {
+                Some(Local::Function(closure)) => self.invoke("lambda", &closure, arguments),
+                _ => Err("a computed callee has no device form".into()),
+            };
         };
         match self.lookup(name) {
             Some(Local::Function(closure)) => self.invoke(name, &closure, arguments),
