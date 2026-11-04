@@ -66,16 +66,16 @@ class PlaceWalk:
     problem: str
 
 
-def of(data, offs, count, swapped, alignment):
-    """The tensor section: every entry checked against the buffer, and where the
-    tensor data starts once `offs` is rounded up to the alignment."""
-    return Chain.then(walk(data, offs, count, swapped), lambda walked: place_all(data, walked, alignment))
+def of(data, offs, count, swapped, alignment, file_size):
+    """The tensor section: every entry checked against a file of `file_size` bytes, and
+    where the tensor data starts once `offs` is rounded up to the alignment."""
+    return Chain.then(walk(data, offs, count, swapped), lambda walked: place_all(file_size, walked, alignment))
 
 
-def place_all(data, walked, alignment):
+def place_all(file_size, walked, alignment):
     """The placed tensors and the tensor-data offset."""
     start = layout_offset(alignment, walked.offs)
-    return Chain.then(place_tensors(data, walked.drafts, start), lambda tensors: Success(value=Placed(alignment=alignment, data_offset=start, tensors=tensors)))
+    return Chain.then(place_tensors(file_size, walked.drafts, start), lambda tensors: Success(value=Placed(alignment=alignment, data_offset=start, tensors=tensors)))
 
 
 def walk(data, offs, count, swapped):
@@ -208,29 +208,29 @@ def layout_offset(alignment, end):
         return end + alignment - pad
 
 
-def place_tensors(data, drafts, start):
+def place_tensors(file_size, drafts, start):
     """Every tensor's info record, or the first tensor the file cannot satisfy."""
-    walked = foldList(drafts, PlaceWalk(items=[], problem=""), lambda acc, draft: place_step(data, acc, draft, start))
+    walked = foldList(drafts, PlaceWalk(items=[], problem=""), lambda acc, draft: place_step(file_size, acc, draft, start))
     if walked.problem != "":
         return Error(message=walked.problem)
     else:
         return Success(value=walked.items)
 
 
-def place_step(data, acc, draft, start):
+def place_step(file_size, acc, draft, start):
     """Place one more tensor into `acc`, or carry its first failure."""
     if acc.problem != "":
         return acc
     else:
-        return place_new(data, acc, draft, start)
+        return place_new(file_size, acc, draft, start)
 
 
-def place_new(data, acc, draft, start):
+def place_new(file_size, acc, draft, start):
     """One tensor appended to `acc`, or `acc` carrying the error."""
     if listContains(mapList(acc.items, tensor_name), draft.name):
         return PlaceWalk(items=acc.items, problem="Found duplicated tensor with name " + draft.name)
     else:
-        return placed_tensor(data, acc, draft, start)
+        return placed_tensor(file_size, acc, draft, start)
 
 
 def tensor_name(info):
@@ -238,9 +238,9 @@ def tensor_name(info):
     return info.name
 
 
-def placed_tensor(data, acc, draft, start):
+def placed_tensor(file_size, acc, draft, start):
     """The tensor placed against the buffer, or `acc` carrying its error."""
-    match tensor_of(draft, start, len(data)):
+    match tensor_of(draft, start, file_size):
         case Success(value=value):
             return PlaceWalk(items=listAppend(acc.items, value), problem="")
         case Error(message=message):

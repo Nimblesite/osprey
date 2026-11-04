@@ -2,7 +2,7 @@
 
 An Osprey Python-flavor port of the GGUF reader from [`gguf` 0.19.0](https://github.com/ggml-org/llama.cpp/tree/master/gguf-py) (the `gguf-py` package llama.cpp ships). It reads a GGUF file from a byte buffer: the fixed header, every metadata entry in file order, every tensor's info entry, the alignment, the tensor-data offset and each tensor's stored bytes. Block dequantization is not part of this port.
 
-The public interface uses Osprey values and explicit byte buffers rather than a memory map and Python objects.
+The public interface uses Osprey values and explicit byte buffers rather than a memory map and Python objects. A weights file too large for a list is parsed from its first bytes with `read_header`, and its tensor ranges are mapped with `gpuMapFile`.
 
 The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The [CPython oracle](../../../../scripts/oracles/gguf.py) writes the fixtures with the real `GGUFWriter` and computes every reference value with the real `GGUFReader`, into `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 
@@ -35,6 +35,8 @@ The Rust integration harness discovers `tests/osprey.toml`, compares stdout with
 | `Reader.tensor_names(file)` | `[t.name for t in reader.tensors]` |
 | `Reader.tensor_types(file)` | `[t.tensor_type.name for t in reader.tensors]` |
 | `Reader.distinct_tensor_types(file)` | `sorted({t.tensor_type.name for t in reader.tensors})` |
+| `Reader.read_header(prefix, file_size)` | `GGUFReader(path)`, leaving the tensor data on disk |
+| `Reader.read_path(path, file_size, count)` | `GGUFReader(path)`, reading `count` bytes and doubling until the header fits |
 | `Reader.tensor_bytes(file, name)` | `reader.tensors[i].data.tobytes()` |
 | `Reader.tokenizer_keys(file)` | `[k for k in reader.fields if k.startswith("tokenizer.")]` |
 | `Reader.field_int` / `field_bool` / `field_float` / `field_string` | `ReaderField.contents()` for that kind, as `Result` |
@@ -66,4 +68,4 @@ The Rust integration harness discovers `tests/osprey.toml`, compares stdout with
 
 ## Tests
 
-The suite reports 647 assertions against `GGUFWriter` fixtures read back by the real `GGUFReader`: every metadata kind in both byte orders, arrays of every element kind, an empty array and an empty string, a 0-dimensional tensor, five quantized tensor types, tokenizer metadata, GGUF v2 and v3, a custom alignment, and sixteen rejected inputs (bad magic, unsupported versions, a duplicate key, a duplicate tensor, three bad alignments, an unknown value type, an unknown tensor type, a misaligned quantized row, three truncations, a short file and an empty one).
+The suite reports 700 assertions against `GGUFWriter` fixtures read back by the real `GGUFReader`: every metadata kind in both byte orders, arrays of every element kind, an empty array and an empty string, a 0-dimensional tensor, five quantized tensor types, tokenizer metadata, GGUF v2 and v3, a custom alignment, and sixteen rejected inputs (bad magic, unsupported versions, a duplicate key, a duplicate tensor, three bad alignments, an unknown value type, an unknown tensor type, a misaligned quantized row, three truncations, a short file and an empty one).

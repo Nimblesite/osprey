@@ -18,7 +18,7 @@ key or tensor, a bad alignment and a tensor whose declared bytes are missing are
 
 from gguf import Chain, Constants, Tensors, Values
 
-__all__ = ["Field", "GGUFFile", "read", "field", "field_names", "tensor", "tensor_names", "tensor_types", "distinct_tensor_types", "tensor_bytes", "tokenizer_keys", "field_int", "field_bool", "field_float", "field_string", "field_ints", "field_bools", "field_floats", "field_strings"]
+__all__ = ["Field", "GGUFFile", "read", "read_header", "read_path", "field", "field_names", "tensor", "tensor_names", "tensor_types", "distinct_tensor_types", "tensor_bytes", "tokenizer_keys", "field_int", "field_bool", "field_float", "field_string", "field_ints", "field_bools", "field_floats", "field_strings"]
 
 INT_KINDS = ["uint8", "int8", "uint16", "int16", "uint32", "int32", "uint64", "int64"]
 FLOAT_KINDS = ["float32", "float64"]
@@ -66,7 +66,38 @@ class FieldWalk:
 
 def read(data):
     """Parse a GGUF file from `data`, or Error naming the first thing wrong with it."""
-    return Chain.then(header_of(data), lambda head: sections_of(data, head))
+    return read_header(data, len(data))
+
+
+def read_header(prefix, file_size):
+    """Parse the metadata and tensor infos from the first bytes of a `file_size`-byte file.
+
+    Every tensor's range is checked against `file_size`, so weights too large to hold
+    in a list stay on disk; `tensor_bytes` refuses a tensor past the prefix."""
+    return Chain.then(header_of(prefix), lambda head: sections_of(prefix, head, file_size))
+
+
+def read_path(path, file_size, count):
+    """Parse the header of the file at `path`, reading `count` bytes and doubling that
+    until the metadata and tensor infos all fit, or until the whole file has been read."""
+    return Chain.then(readFileBytes(path, 0, count), lambda prefix: read_prefix(path, file_size, count, prefix))
+
+
+def read_prefix(path, file_size, count, prefix):
+    """The parsed header, or a longer read when this prefix ends inside it."""
+    match read_header(prefix, file_size):
+        case Success(value=file):
+            return Success(value=file)
+        case Error(message=message):
+            return retry_longer(path, file_size, count, message)
+
+
+def retry_longer(path, file_size, count, message):
+    """Another read at twice the size, or `message` once the whole file has been seen."""
+    if count >= file_size:
+        return Error(message=message)
+    else:
+        return read_path(path, file_size, count * 2)
 
 
 def header_of(data):
@@ -74,9 +105,9 @@ def header_of(data):
     return Values.header_at(data)
 
 
-def sections_of(data, head):
+def sections_of(data, head, file_size):
     """The metadata entries, then the tensors and the tensor-data layout."""
-    return Chain.then(fields_of(data, head), lambda section: assemble(data, head, section))
+    return Chain.then(fields_of(data, head), lambda section: assemble(data, head, section, file_size))
 
 
 def fields_of(data, head):
@@ -160,14 +191,14 @@ def field_sized(off, key, value):
     return FieldSized(field=Field(offset=off, name=key.value.s, value=value.value), size=key.size + 4 + value.size)
 
 
-def tensors_of(data, head, section):
-    """The tensor section placed against the buffer, and where its data starts."""
-    return Chain.then(Tensors.alignment_of(section.fields), lambda alignment: Tensors.of(data, section.offs, head.tensor_count, head.swapped, alignment))
+def tensors_of(data, head, section, file_size):
+    """The tensor section placed against the file, and where its data starts."""
+    return Chain.then(Tensors.alignment_of(section.fields), lambda alignment: Tensors.of(data, section.offs, head.tensor_count, head.swapped, alignment, file_size))
 
 
-def assemble(data, head, section):
+def assemble(data, head, section, file_size):
     """The parsed file, once every tensor's type, size and byte range check out."""
-    return Chain.then(tensors_of(data, head, section), lambda placed: Success(value=make_file(data, head, section, placed)))
+    return Chain.then(tensors_of(data, head, section, file_size), lambda placed: Success(value=make_file(data, head, section, placed)))
 
 
 def make_file(data, head, section, placed):

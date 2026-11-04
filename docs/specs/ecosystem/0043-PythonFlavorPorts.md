@@ -85,7 +85,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/faiss` | `IndexFlatL2`/`IndexFlatIP`, ID maps, selectors, `normalize_L2`, k-means with explicit init, product and scalar quantizers, against faiss-cpu 1.15.1 (482 oracle assertions) | shipped |
 | `@osprey/re` | CPython's `re`: pattern parser, backtracking matcher, `match`/`search`/`findall`/`sub`/`split` | in progress |
 | `@osprey/safetensors` | the safetensors header and tensor layout, every dtype, `save` byte-identical | in progress |
-| `@osprey/gguf` | GGUF v3 reader and writer, ggml dequantization | planned; no package source yet |
+| `@osprey/gguf` | GGUF v3 reader, tensor layout and a header read that leaves weights on disk against gguf 0.19.0 (700 oracle assertions); ggml block decoders are in progress under plan 0049; the writer stays out of scope until a phase needs it | in progress |
 | `@osprey/jinja2` | the template lexer, parser, expressions, filters and tests | in progress |
 | `@osprey/pydantic-ai` | the pydantic-ai 2.46.0 agent engine: messages and their wire form, `OpenAIChatModel` request/response mapping, `TestModel`, direct requests, the tool-calling `Agent` loop, against pydantic-ai over a mock transport (111 oracle assertions) plus a live DeepSeek agent run judged by a model | shipped |
 | `@osprey/scipy` | `scipy.special` functions | in progress |

@@ -167,14 +167,55 @@ def values_at_case(tag, entry):
             return Check.failed(tag, problem)
 
 
+def prefix_of(data, count):
+    """The first `count` bytes of `data`."""
+    return unwrap_or(Values.bytes_at(data, 0, count), [])
+
+
+def header_only_cases(fixture):
+    """A prefix that stops where the tensor data starts reads like the whole file."""
+    size = len(fixture.data)
+    start = ati(fixture.header, 4)
+    match Reader.read_header(prefix_of(fixture.data, start), size):
+        case Success(value=file):
+            return [
+                Check.equal(fixture.name + ".header_only.data_offset", file.data_offset, start),
+                str_list_equal(fixture.name + ".header_only.names", Reader.tensor_names(file), fixture.tensors),
+                str_list_equal(fixture.name + ".header_only.keys", Reader.field_names(file), fixture.fields),
+                Check.ints_equal(fixture.name + ".header_only.sizes", mapList(file.tensors, tensor_sizes), fixture.sizes),
+                Check.ints_equal(fixture.name + ".header_only.starts", mapList(file.tensors, tensor_start), fixture.tensor_offsets),
+            ]
+        case Error(message=problem):
+            return [Check.failed(fixture.name + ".header_only", problem)]
+
+
+def prefix_refusal_cases():
+    """A prefix ending inside the header, a file too short for its tensors, and tensor
+    bytes that lie past the prefix are each an explicit error."""
+    start = ati(Expected.BASE_HEADER, 4)
+    size = len(Expected.BASE_BYTES)
+    return [
+        error_case("header_only.prefix_inside_metadata", Reader.read_header(prefix_of(Expected.BASE_BYTES, 40), size)),
+        error_case("header_only.file_shorter_than_tensors", Reader.read_header(prefix_of(Expected.BASE_BYTES, start), start + 1)),
+        error_case("header_only.bytes_past_prefix", Chain.then(Reader.read_header(prefix_of(Expected.BASE_BYTES, start), size), lambda file: Reader.tensor_bytes(file, ats(Expected.BASE_TENSORS, 0)))),
+        error_case("read_path.absent_file", Reader.read_path("/nonexistent/weights.gguf", size, 16)),
+    ]
+
+
 def section_cases():
-    """The tensor section parsed on its own, and each file's declared alignment."""
+    """The tensor section parsed on its own, each file's declared alignment, and the
+    header read from a prefix of the file."""
+    return listConcat(prefix_refusal_cases(), listConcat(foldList(fixtures(), [], lambda acc, fixture: listConcat(acc, header_only_cases(fixture))), section_with_alignment()))
+
+
+def section_with_alignment():
+    """The tensor section, then each fixture's declared alignment."""
     return listConcat(section_case(), foldList(fixtures(), [], lambda acc, fixture: listAppend(acc, alignment_case(fixture))))
 
 
 def section_case():
     """The tensor infos read straight from where the metadata section ends."""
-    match Tensors.of(Expected.BASE_BYTES, Expected.BASE_TENSOR_INFO_OFFSET, ati(Expected.BASE_HEADER, 1), False, ati(Expected.BASE_HEADER, 3)):
+    match Tensors.of(Expected.BASE_BYTES, Expected.BASE_TENSOR_INFO_OFFSET, ati(Expected.BASE_HEADER, 1), False, ati(Expected.BASE_HEADER, 3), len(Expected.BASE_BYTES)):
         case Success(value=placed):
             return [
                 Check.equal("tensors.of.alignment", placed.alignment, ati(Expected.BASE_HEADER, 3)),
