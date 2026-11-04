@@ -162,8 +162,8 @@ float gpu_f32_narrow16(float value) { return gpu_f16_to_f32(gpu_f32_to_f16(value
 static ulong gpu_round_shift(ulong m, int shift) {
     ulong kept = m >> (uint)shift;
     ulong rest = m & (((ulong)1 << (uint)shift) - 1ul);
-    ulong halfway = (ulong)1 << ((uint)shift - 1);
-    return kept + (ulong)(rest > halfway || (rest == halfway && (kept & 1ul)));
+    ulong half = (ulong)1 << ((uint)shift - 1);
+    return kept + (ulong)(rest > half || (rest == half && (kept & 1ul)));
 }
 
 ushort gpu_f64_to_f16(ulong x) {
