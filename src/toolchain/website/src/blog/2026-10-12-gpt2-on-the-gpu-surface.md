@@ -20,7 +20,7 @@ On an Apple M4 Max, the training step takes **7.6 seconds on Metal versus 25.2 s
 
 ## Written in the Python flavor
 
-Default, ML and Python syntax flavors lower into one shared AST, with the same type inference, effects, modules and code generation. Here is the GPT-2 effect and GPU handler from [the Python-flavor port](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python). The first-line marker tells the compiler to parse these Osprey source files using Python-style syntax:
+Default, ML and Python syntax flavors lower into one shared AST, with the same type inference, effects, modules and code generation. Here is the GPT-2 effect and GPU handler from [the Python-flavor port](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/python). The first-line marker tells the compiler to parse these Osprey source files using Python-style syntax:
 
 ```python
 # osprey: flavor=python
@@ -53,7 +53,7 @@ The [Python flavor guide](/docs/python-flavor/) covers functions, records, `matc
 
 Osprey provides typed GPU buffers and operations that apply ordinary Osprey functions to their contents. The compiler turns supported functions into GPU kernels—the small programs a GPU executes. You write the calculation in Osprey; you do not need a separate CUDA or Metal version of the model.
 
-GPT-2 describes its calculations through a small set of array operations, declared as the algebraic effect `Tensor`. Two handlers answer those operations: one with CPU lists, one with GPU buffers executed through Metal or OpenCL. The model performs the operations and never names a buffer type, so the handler the program installs decides where the arithmetic runs. Choosing the handler is the only change; the model’s calculations stay the same. The effect is static, so the compiler resolves the handler before the program runs and nothing is looked up at run time. [One model, two backends](/docs/one-model-two-backends/) walks through it, and both [Default](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/model) and [Python](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python) sources are available to read.
+GPT-2 describes its calculations through a small set of array operations, declared as the algebraic effect `Tensor`. Two handlers answer those operations: one with CPU lists, one with GPU buffers executed through Metal or OpenCL. The model performs the operations and never names a buffer type, so the handler the program installs decides where the arithmetic runs. Choosing the handler is the only change; the model’s calculations stay the same. The effect is static, so the compiler resolves the handler before the program runs and nothing is looked up at run time. [One model, two backends](/docs/one-model-two-backends/) walks through it, and both [Default](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/model) and [Python](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/python) sources are available to read.
 
 ## What actually runs on the GPU?
 
@@ -63,7 +63,7 @@ Weights upload once. Intermediate results stay on the GPU for the next operation
 
 Generation reuses earlier calculations as it adds tokens. The training example updates the weights once and checks the prediction error again.
 
-An independent reference implementation, [`reference.py`](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/reference.py), is real Python, run by CPython, and checks the calculations of both Osprey versions. Recorded CPU and GPU runs generated the same text, with closely agreeing training results. The [verification details](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/README.md) explain the small numerical differences.
+An independent reference implementation, [`reference.py`](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/reference.py), is real Python, run by CPython, and checks the calculations of both Osprey versions. Recorded CPU and GPU runs generated the same text, with closely agreeing training results. The [verification details](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/README.md) explain the small numerical differences.
 
 ## Metal, OpenCL and CUDA
 
@@ -103,4 +103,4 @@ make gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
 
 The first run downloads the weights and tokenizer data. The program prints its actual backend and reports unsupported GPU work without silently substituting CPU execution.
 
-[Try the complete example](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2), and compare its CPU and GPU runs. The model and its GPU calculations are Osprey code you can read and change.
+[Try the complete example](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2), and compare its CPU and GPU runs. The model and its GPU calculations are Osprey code you can read and change.

@@ -89,7 +89,7 @@ def main():
 - **Types:** inference removes repeated annotations; exhaustive matching and `Result` keep cases and failures visible.
 - **Deployment:** LLVM native programs, WebAssembly, and C ABI libraries for native mobile hosts.
 - **Concurrency and memory:** isolated fibers, tracing GC by default, and reference counting (ARC) where supported.
-- **Python to GPU:** port computation to Python flavor and keep `def`, `lambda` and f-strings. The [GPT-2 port](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) has one `Tensor` effect with CPU and GPU handlers; the handler decides where the arithmetic runs.
+- **Python to GPU:** port computation to Python flavor and keep `def`, `lambda` and f-strings. The [GPT-2 port](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2) has one `Tensor` effect with CPU and GPU handlers; the handler decides where the arithmetic runs.
 
 ## In the editor
 

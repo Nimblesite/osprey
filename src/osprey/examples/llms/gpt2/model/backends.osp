@@ -2,7 +2,7 @@
 // operations and never names a buffer type; `Cpu::onLists` (cpu.osp) answers
 // every operation with host list code and `Gpu::onGpu` (gpu.osp) with the GPU
 // surface. The handler a program installs decides where the arithmetic runs,
-// with host runs checked exactly against src/osprey/examples/gpt2/reference.py in the same
+// with host runs checked exactly against src/osprey/examples/llms/gpt2/reference.py in the same
 // accumulation order. Device transcendental differences use the README's bounds.
 // Implements [STAGE-BACKEND], [GPU-DEVICE].
 

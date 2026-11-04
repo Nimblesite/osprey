@@ -1,6 +1,6 @@
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
-const root = path.resolve(__dirname, "../../../../osprey/examples/gpt2/python");
+const root = path.resolve(__dirname, "../../../../osprey/examples/llms/gpt2/python");
 const read = file => readFileSync(path.join(root, file), "utf8");
 const required = (source, pattern) => {
   const text = source.match(pattern)?.[0];

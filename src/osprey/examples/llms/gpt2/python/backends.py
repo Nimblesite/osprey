@@ -6,7 +6,7 @@
 `gpt2.Model` performs `Tensor` operations and never names a buffer type;
 `Cpu.on_lists` (cpu.py) answers every operation with host list code and
 `Gpu.on_gpu` (gpu.py) with the GPU surface. The handler a program installs decides
-where the arithmetic runs, and both must agree with src/osprey/examples/gpt2/reference.py bit
+where the arithmetic runs, and both must agree with src/osprey/examples/llms/gpt2/reference.py bit
 for bit, because every arm accumulates in the same k order from 0.0.
 Implements [STAGE-BACKEND], [GPU-DEVICE], [FLAVOR-PYTHON-GPU].
 """

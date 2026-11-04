@@ -7,14 +7,14 @@ mod unix {
     /// line makes an unrelated comment fail these tests.
     const CREDIT_PERFORM: &str = "credit id cents note";
     const CREDIT_OPERATION: &str = "credit";
-    /// src/osprey/examples/gpt2/model/backends.osp declares `Tensor`; cpu.osp and gpu.osp
+    /// src/osprey/examples/llms/gpt2/model/backends.osp declares `Tensor`; cpu.osp and gpu.osp
     /// discharge it once each, and model.osp performs it. All four are
     /// siblings through the generate and train manifests' `../model` source
     /// root.
-    const BACKENDS: &str = "gpt2/model/backends.osp";
-    const CPU: &str = "gpt2/model/cpu.osp";
-    const GPU: &str = "gpt2/model/gpu.osp";
-    const MODEL: &str = "gpt2/model/model.osp";
+    const BACKENDS: &str = "llms/gpt2/model/backends.osp";
+    const CPU: &str = "llms/gpt2/model/cpu.osp";
+    const GPU: &str = "llms/gpt2/model/gpu.osp";
+    const MODEL: &str = "llms/gpt2/model/model.osp";
     const TENSOR: &str = "Tensor";
     const TENSOR_HANDLES: [&str; 2] = [
         "handle static Tensor<List<float32>>",
@@ -212,24 +212,24 @@ mod unix {
         performs: &[
             (MODEL, "perform Backends::Tensor.zipWith(a, b, addF)"),
             (
-                "gpt2/train/train.osp",
+                "llms/gpt2/train/train.osp",
                 "perform Backends::Tensor.zipWith(out.dx",
             ),
             (
-                "gpt2/train/train.osp",
+                "llms/gpt2/train/train.osp",
                 "perform Backends::Tensor.zipWith(p, g",
             ),
         ],
     };
     const ZIP_PYTHON: Operation = Operation {
         word: "zip_with",
-        declaration: ("gpt2/python/backends.py", "zip_with(a: B, b: B"),
+        declaration: ("llms/gpt2/python/backends.py", "zip_with(a: B, b: B"),
         arms: [
-            ("gpt2/python/cpu.py", "def zip_with(a, b, f)"),
-            ("gpt2/python/gpu.py", "def zip_with(a, b, f)"),
+            ("llms/gpt2/python/cpu.py", "def zip_with(a, b, f)"),
+            ("llms/gpt2/python/gpu.py", "def zip_with(a, b, f)"),
         ],
         performs: &[(
-            "gpt2/python/model.py",
+            "llms/gpt2/python/model.py",
             "perform(Tensor.zip_with(a, b, add_f))",
         )],
     };

@@ -7,7 +7,7 @@ Depends on: [plan 0023](0023-gpu.md), [spec 0034](../specs/runtime/0034-GPUCompu
 
 - `.py`/`--flavor python`/marker routing and direct CST lowering (records, unions, comprehensions, `for`→`forEach`, typed imports/Callable, HM inference, effects/handlers, fibers) are implemented in `src/toolchain/crates/osprey-syntax/src/python/` and covered by `src/toolchain/crates/osprey-syntax/tests/python.rs`, `src/toolchain/crates/osprey-cli/tests/operation_modes.rs`, `python_arc.rs`.
 - `--target=python` scalar bridge, ABI metadata, exception envelopes and opaque object handles are implemented and Cargo-tested (`src/toolchain/crates/osprey-cli/tests/python_interop.rs`); `@python` declarative binding is not implemented and the frontend still rejects the marker.
-- GPT-2 forward/sampler port (`src/osprey/examples/gpt2/python/`) matches the Default generator byte-for-byte on host/Metal/OpenCL; training is not ported.
+- GPT-2 forward/sampler port (`src/osprey/examples/llms/gpt2/python/`) matches the Default generator byte-for-byte on host/Metal/OpenCL; training is not ported.
 
 Constraints:
 - Parse Python CST in-process; no translation through another flavor, no Python execution of source, no Python dependency in compiled programs.
@@ -15,7 +15,7 @@ Constraints:
 - Reject unsupported constructs with diagnostics at original Python source positions; never fall through to CPython.
 - No flavor checks below the AST boundary; equivalent triples must emit identical LLVM IR.
 - A strict device run must show adapter identity plus dispatch evidence; host fallback never counts as a pass.
-- Keep `src/osprey/examples/gpt2/reference.py` unchanged and excluded from projects unless opted in.
+- Keep `src/osprey/examples/llms/gpt2/reference.py` unchanged and excluded from projects unless opted in.
 - No speedup claim from native compilation or a GPU banner.
 
 ## Phase A — routing/recovery and source-position matrix
@@ -48,11 +48,11 @@ Constraints:
 
 ## Phase F — backward pass and training (deferred)
 
-- [ ] [FLAVOR-PYTHON-GPU] Port `linear_back`, `layer_norm_back`, `gelu_slope`, `attention_back`, `block_back`, loss/backprop, embedding gradients, checksums and one SGD update from `src/osprey/examples/gpt2/reference.py` into a new `train.py` Python-flavor project reusing the forward helpers; mutation becomes immutable buffers/folds. Tiny deterministic gradients plus finite-difference; real 124M step compares losses and all 148 gradient sums. Keep `make -C src/toolchain/targets gpt2-train` rejecting `FLAVOR=python` (`Makefile:403`) until done.
+- [ ] [FLAVOR-PYTHON-GPU] Port `linear_back`, `layer_norm_back`, `gelu_slope`, `attention_back`, `block_back`, loss/backprop, embedding gradients, checksums and one SGD update from `src/osprey/examples/llms/gpt2/reference.py` into a new `train.py` Python-flavor project reusing the forward helpers; mutation becomes immutable buffers/folds. Tiny deterministic gradients plus finite-difference; real 124M step compares losses and all 148 gradient sums. Keep `make -C src/toolchain/targets gpt2-train` rejecting `FLAVOR=python` (`Makefile:403`) until done.
 
 ## Phase G — publication and measurements
 
-- [ ] [FLAVOR-PYTHON-VERIFICATION] Publish the tested `.py` sources with a concise reference-to-Osprey change guide and reproducible commands (`src/osprey/examples/gpt2/python/README.md#port-notes`); demonstrate an effect and both handlers first; state tokenizer/loading/orchestration stay on CPU; describe transfer/dispatch per spec 0034.
+- [ ] [FLAVOR-PYTHON-VERIFICATION] Publish the tested `.py` sources with a concise reference-to-Osprey change guide and reproducible commands (`src/osprey/examples/llms/gpt2/python/README.md#port-notes`); demonstrate an effect and both handlers first; state tokenizer/loading/orchestration stay on CPU; describe transfer/dispatch per spec 0034.
 - [ ] [FLAVOR-PYTHON-VERIFICATION] Measure generation with identical KV-cache mode on both sides (same checkpoint/prompts/options/loading/precision); record cold/warm timings, repeated samples, device/CPU details, failures. No speedup inference.
 
 ## Python interoperability — spec 0042
@@ -61,4 +61,4 @@ Constraints:
 - [ ] [PYTHON-OBJECT] Design and test a buffer/DLPack bridge: dtype/device/shape/strides/contiguity/bounds/read-write ownership/producer lifetime/capsule single consumption/stream sync; reuse Osprey buffer validation. Tiny deterministic arrays first (legal-view identity, producer-deletion survival, double-capsule rejection, unsupported dtype/device/stride, post-sync compare); real selected device plus dispatch evidence required.
 - [ ] [PYTHON-HOST] [PYTHON-TARGET-ENTRY] Add reclaiming memory backends and returned-allocation release; define reentrancy and GIL release before parallel Python calls; pin fiber mutable-Python-handle isolation rules; add optional version-checked CPython embedding for standalone native executables.
 - [ ] [PYTHON-DATASET-AUDIT] Fix `osprey.build` in `src/toolchain/python/osprey/__init__.py` to pass the `--memory` flag it currently omits and reconcile `src/toolchain/python/osprey/dataset_audit/README.md` (which documents the `osprey-dataset-audit` command as blocked) with the actual target default (`arc`, `src/toolchain/crates/osprey-cli/src/invocation.rs::apply_default_memory`). Acceptance: `osprey-dataset-audit` runs end-to-end again; the README note is removed or made accurate.
-- [ ] [PYTHON-HOST] Python-hosted GPT-2 interoperability example: Python owns the checkpoint/model ecosystem, Osprey owns a checked native calculation, both directions use the same bridge; keep `src/osprey/examples/gpt2/reference.py` unchanged. Acceptance: generation runs through Python-hosted orchestration calling native Osprey, and native policy calls back.
+- [ ] [PYTHON-HOST] Python-hosted GPT-2 interoperability example: Python owns the checkpoint/model ecosystem, Osprey owns a checked native calculation, both directions use the same bridge; keep `src/osprey/examples/llms/gpt2/reference.py` unchanged. Acceptance: generation runs through Python-hosted orchestration calling native Osprey, and native policy calls back.

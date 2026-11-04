@@ -97,7 +97,7 @@ Run these from the repository root. The compiler is written to `target/release/o
 
 GC is the native default to avoid ARC's per-ownership-change reference-count work, at the cost of deferred reclamation and collection pauses. Choose ARC for prompt reclamation, Windows or allocating fibers; neither backend is universally faster. See [memory choices and limits](docs/specs/compiler/0018-MemoryManagement.md#backend-selection-mem-backends).
 
-[Talon Bank](src/osprey/examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](src/osprey/examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](src/osprey/examples/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
+[Talon Bank](src/osprey/examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](src/osprey/examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](src/osprey/examples/llms/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
 
 Dynamic control effects require native execution. WebAssembly and mobile support value handlers and static discharge; unsupported capabilities are rejected. Full scoped effect rows and reusable continuations remain unfinished. See [feature status](src/toolchain/website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
 

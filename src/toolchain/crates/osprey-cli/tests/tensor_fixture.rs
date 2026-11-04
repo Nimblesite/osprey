@@ -314,7 +314,7 @@ fn project_at(directory: PathBuf, entry: &str, source: &str, config: &str) -> Op
 /// A project whose `main.osp` is `source`, importing the gpt2 model modules.
 fn gpt2_project(name: &str, source: &str) -> Option<PathBuf> {
     let directory = std::env::temp_dir().join(format!("osprey_gpt2_{name}_{}", std::process::id()));
-    let model = repo().join("src/osprey/examples/gpt2/model");
+    let model = repo().join("src/osprey/examples/llms/gpt2/model");
     let model = serde_json::to_string(&model.to_string_lossy()).ok()?;
     let config = format!("[project]\nname = \"failure\"\nsource_roots = [{model}, \".\"]\ndefault_namespace = \"failure\"\nentry = \"main.osp\"\n");
     project_at(directory, "main.osp", source, &config)
@@ -325,10 +325,10 @@ fn python_gpt2_project(name: &str, source: &str) -> Option<PathBuf> {
     let directory = repo()
         .join("target")
         .join(format!("osprey_pygpt2_{name}_{}", std::process::id()));
-    let port = repo().join("src/osprey/examples/gpt2/python");
+    let port = repo().join("src/osprey/examples/llms/gpt2/python");
     let port = serde_json::to_string(&port.to_string_lossy()).ok()?;
     let modules = ["backends", "cpu", "gpu", "model"]
-        .map(|m| format!("\"../../../osprey/examples/gpt2/python/{m}.py\""))
+        .map(|m| format!("\"../../../osprey/examples/llms/gpt2/python/{m}.py\""))
         .join(", ");
     let config = format!("[project]\nname = \"{name}\"\nsource_roots = [\".\", {port}]\npython_sources = [{modules}]\nentry = \"main.py\"\n");
     project_at(directory, "main.py", source, &config)
@@ -532,7 +532,7 @@ fn the_gpu_handler_never_touches_the_host_tensor_surface_in_either_flavor() {
 #[test]
 fn every_gpt2_kernel_has_a_device_form() {
     for program in ["generate", "train", "python/generate"] {
-        let ir = llvm(&repo().join("src/osprey/examples/gpt2").join(program));
+        let ir = llvm(&repo().join("src/osprey/examples/llms/gpt2").join(program));
         assert!(
             ir.contains("call i32 @osprey_gpu_launch("),
             "{program}: no device launch: {ir}"

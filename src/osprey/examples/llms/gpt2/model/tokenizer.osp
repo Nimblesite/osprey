@@ -1,5 +1,5 @@
 // The GPT-2 byte-level BPE tokenizer, rebuilt from the published merges.txt
-// alone. Shared by src/osprey/examples/gpt2/generate and src/osprey/examples/gpt2/train, which
+// alone. Shared by src/osprey/examples/llms/gpt2/generate and src/osprey/examples/llms/gpt2/train, which
 // are each a one-file project naming this directory as a second source root
 // ([MODULES-MODEL]); a standalone script cannot import across files.
 

@@ -64,7 +64,7 @@ graphics-smoke:
 
 ## gpt2: Run GPT-2 (usage: make gpt2 FLAVOR=default|python PROMPT="..." TOKENS=20 BACKEND=gpu|lists)
 ## BACKEND=gpu runs the model on the GPU surface: every kernel and product on GPU=auto|metal|opencl, or on the CPU with GPU=host; BACKEND=lists runs the same model over host lists.
-## The published weights and merges download once into src/osprey/examples/gpt2/weights (ignored by git).
+## The published weights and merges download once into src/osprey/examples/llms/gpt2/weights (ignored by git).
 gpt2:
 	$(MAKE) -C $(ROOT) _gpt2
 

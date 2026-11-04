@@ -9,7 +9,7 @@ tags: [algebraic-effects, handlers, gpu, static-effects]
 
 Write numeric code against a **static effect**. Install a list handler for host computation or a GPU-buffer handler for Metal/OpenCL. The compiler specialises each region and removes runtime effect dispatch; choosing the handler changes the implementation while keeping the model's operations.
 
-The worked implementation is [124M-parameter GPT-2](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2): forward evaluation, greedy generation and a Default-flavor training step. The Python-flavor port currently covers generation.
+The worked implementation is [124M-parameter GPT-2](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2): forward evaluation, greedy generation and a Default-flavor training step. The Python-flavor port currently covers generation.
 
 ## See the same product on two backends
 
@@ -89,9 +89,9 @@ Inference carries `B` through model helpers. `Kernel` and `Combine` name the cal
 
 ## Install the implementation
 
-The [list handler](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/model/cpu.osp) stores tensors in host lists and loads safetensors with `loadTensor`. Matrix accumulation follows `k` order from `0.0`; shape mismatches and failed loads return Error.
+The [list handler](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/model/cpu.osp) stores tensors in host lists and loads safetensors with `loadTensor`. Matrix accumulation follows `k` order from `0.0`; shape mismatches and failed loads return Error.
 
-The [GPU handler](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/model/gpu.osp) uses `GpuBuffer<float>`, GPU kernels, `gpuMatMul` and `gpuLoadTensor`. Its current product/load arms forward their results through `answered`, which preserves Success or converts the error reason to text:
+The [GPU handler](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/model/gpu.osp) uses `GpuBuffer<float>`, GPU kernels, `gpuMatMul` and `gpuLoadTensor`. Its current product/load arms forward their results through `answered`, which preserves Success or converts the error reason to text:
 
 ```osprey
 {{ gpuExample.nativeGpuProduct | safe }}
@@ -109,7 +109,7 @@ The model handles those Results through `Backends::stop` inside `Backends::stric
 
 ## Measurements and limits
 
-Historical measurements below ran **both GPU-surface and list handlers on the CPU** with `OSPREY_GPU=host`, not on a GPU. [GPT-2's README](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2) supplies device timings and reproduction details.
+Historical measurements below ran **both GPU-surface and list handlers on the CPU** with `OSPREY_GPU=host`, not on a GPU. [GPT-2's README](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2) supplies device timings and reproduction details.
 
 | 13 October 2026 · Ryzen 9 3900X · Linux 6.18 (WSL2) · release · ARC | GPU surface on host | Lists |
 | --- | --- | --- |

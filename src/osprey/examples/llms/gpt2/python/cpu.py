@@ -3,7 +3,7 @@
 # osprey: module=Cpu
 """The CPU interpretation of `gpt2.Backends.Tensor`: every operation answered with
 host list code, accumulating in the same k order from 0.0 as
-src/osprey/examples/gpt2/reference.py. Nothing here names the GPU surface: weights load
+src/osprey/examples/llms/gpt2/reference.py. Nothing here names the GPU surface: weights load
 through the host `loadTensor`, and a failed load or product answers its reason.
 Implements [STAGE-BACKEND], [FLAVOR-PYTHON-GPU], [BUILTIN-FILE-TENSOR].
 """

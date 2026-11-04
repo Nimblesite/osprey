@@ -251,9 +251,9 @@ const APPS = [
     authors: "OpenAI",
     license: "MIT",
     licenseUrl: "https://huggingface.co/openai-community/gpt2",
-    ospreyUrl: `${REPO}/tree/main/examples/gpt2`,
+    ospreyUrl: `${REPO}/tree/main/examples/llms/gpt2`,
     relationship: "port",
-    basis: "src/osprey/examples/gpt2/README.md",
+    basis: "src/osprey/examples/llms/gpt2/README.md",
   },
   {
     name: "Mathlib port and Proof Workbench",

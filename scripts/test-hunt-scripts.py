@@ -246,7 +246,7 @@ class CorpusScriptTests(unittest.TestCase):
                 "hunt src/osprey/tests/hunt/process.osp --json --quiet --max-time 7",
             ],
         )
-        self.assertEqual(codes, {"tests_hunt_clean.osp": "3", "tests_hunt_process.osp": "3"}, "exit codes are recorded")
+        self.assertEqual(codes, {"src_osprey_tests_hunt_clean.osp": "3", "src_osprey_tests_hunt_process.osp": "3"}, "exit codes are recorded")
 
     def test_the_skip_list_is_honoured_unless_all_is_given(self):
         skipped = "src/osprey/examples/db_postgres/pg_smoke.osp"
@@ -259,10 +259,10 @@ class CorpusScriptTests(unittest.TestCase):
         self.assertIn(f"hunt {skipped} --json --quiet --max-time 20", calls)
 
     def test_a_project_directory_is_one_program(self):
-        project = "src/osprey/examples/gpt2/generate"
+        project = "src/osprey/examples/llms/gpt2/generate"
         self.assertTrue((ROOT / project / "osprey.toml").exists() or (ROOT / project).is_dir())
         _, _, codes = self.sweep("--all", project)
-        self.assertEqual(list(codes), ["examples_gpt2_generate.project"])
+        self.assertEqual(list(codes), ["src_osprey_examples_llms_gpt2_generate.project"])
 
 
 class HostCompilerTests(unittest.TestCase):
@@ -316,7 +316,7 @@ class KleeClosureTests(unittest.TestCase):
             root = Path(tmp)
             if " " not in str(root):
                 raise AssertionError("the fixture path must contain a space")
-            (root / "src" / "toolchain" / "compiler").mkdir()
+            (root / "src" / "toolchain" / "compiler").mkdir(parents=True)
             receipt = root / "inspected"
             nm = stub(root, "llvm-nm", f'printf \'%s\\n\' "$*" >> "{receipt}"\n' + nm_script)
             runtime = root / "libosprey_runtime_klee_gc.bc"

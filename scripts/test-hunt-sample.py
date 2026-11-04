@@ -23,7 +23,7 @@ class InventoryTests(unittest.TestCase):
                      'examples/app/helper.osp': 'print(2)', 'examples/shared/lib.osp': 'fn id(x) = x', 'examples/library/osprey.toml': '[project]',
                      'examples/library/lib.osp': 'fn id(x) = x', 'examples/one.osp': 'print(1)',
                      'examples/one.ospml': 'print 1', 'examples/py.py': '# osprey: flavor=python\nprint(1)',
-                     'examples/tool.py': 'print(3)', 'src/osprey/examples/failscompilation/bad.osp': 'bad'}
+                     'examples/tool.py': 'print(3)', 'examples/failscompilation/bad.osp': 'bad'}
             for name, text in files.items():
                 path = root/name
                 path.parent.mkdir(parents=True, exist_ok=True)

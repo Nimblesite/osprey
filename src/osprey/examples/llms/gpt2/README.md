@@ -2,11 +2,11 @@
 
 Run OpenAI's 124M-parameter GPT-2 in Osprey's **Python flavor**: familiar `def`, `lambda` and f-strings, compiled to native code, with one model running on CPU or GPU. Algebraic effects let the caller choose where the arithmetic runs; inferred types and compiler-checked handlers keep that choice out of the transformer.
 
-**Keep Python in your workflow.** Osprey also supports [calling native Osprey functions from Python and Python libraries from Osprey](../../../../docs/specs/platforms/0042-PythonInterop.md). You can retain Python tooling while moving computation into a compiled language with GPU kernels. The Python flavor is Osprey source, marked `# osprey: flavor=python`; ordinary Python packages are reached through the explicit interop bridge. Osprey is actively evolving, and shared tensor storage across that bridge remains planned.
+**Keep Python in your workflow.** Osprey also supports [calling native Osprey functions from Python and Python libraries from Osprey](../../../../../docs/specs/platforms/0042-PythonInterop.md). You can retain Python tooling while moving computation into a compiled language with GPU kernels. The Python flavor is Osprey source, marked `# osprey: flavor=python`; ordinary Python packages are reached through the explicit interop bridge. Osprey is actively evolving, and shared tensor storage across that bridge remains planned.
 
 This example loads [Hugging Face's published weights](https://huggingface.co/openai-community/gpt2) directly from `model.safetensors`, rebuilds the byte-level BPE tokenizer from `merges.txt`, and implements the transformer, KV-cached generation and greedy sampling in Osprey. No retraining or checkpoint conversion is needed.
 
-- **Start with Python flavor:** [`src/toolchain/python/`](src/toolchain/python/README.md) contains the model, tokenizer, sampler and both device handlers as `.py` modules. The [flavor guide](https://www.ospreylang.dev/docs/python-flavor/) covers the supported Python constructs and Osprey additions.
+- **Start with Python flavor:** [`src/toolchain/python/`](../../../../toolchain/python/README.md) contains the model, tokenizer, sampler and both device handlers as `.py` modules. The [flavor guide](https://www.ospreylang.dev/docs/python-flavor/) covers the supported Python constructs and Osprey additions.
 - **Explore Default flavor:** [`model/`](model), [`generate/`](generate) and [`train/`](train) include generation and a training step. Training is currently Default-only.
 - **Compare with Python:** [`reference.py`](reference.py) is an independent implementation run by CPython. The Default and Python-flavor generators print identical bytes for the same prompt on each tested backend.
 
@@ -33,7 +33,7 @@ make -C src/toolchain/targets gpt2-train PROMPT="The capital of France is" BACKE
 make -C src/toolchain/targets gpt2-train PROMPT="The capital of France is" BACKEND=lists
 ```
 
-Run these commands from the repository root. The first run downloads about 550 MB into `src/osprey/examples/gpt2/weights/`, ignored by git. `BACKEND` defaults to `gpu`; `GPU=auto` selects the adapter. Generation prints the device, token IDs and continuation:
+Run these commands from the repository root. The first run downloads about 550 MB into `src/osprey/examples/llms/gpt2/weights/`, ignored by git. `BACKEND` defaults to `gpu`; `GPU=auto` selects the adapter. Generation prints the device, token IDs and continuation:
 
 ```
 gpt2 (124M) on host — 50000 merges, 50257 vocabulary rows, 12 layers
@@ -62,7 +62,7 @@ loss after one step 3.8539085307403895
 
 | Path | What it is |
 | --- | --- |
-| [`src/toolchain/python/`](src/toolchain/python/README.md) | Python-flavor generation: effect, handlers, tokenizer, loader, model and sampler |
+| [`src/toolchain/python/`](../../../../toolchain/python/README.md) | Python-flavor generation: effect, handlers, tokenizer, loader, model and sampler |
 | `model/backends.osp` | `Tensor<B>` effect, arithmetic policy `strictly` and handler selector `under` |
 | `model/cpu.osp`, `model/gpu.osp` | CPU-list and Metal/OpenCL-buffer handlers |
 | `model/tokenizer.osp` | Byte-level BPE tokenizer from `merges.txt` |
@@ -70,7 +70,7 @@ loss after one step 3.8539085307403895
 | `generate/`, `train/` | Default-flavor generation and training entry points |
 | `reference.py` | Independent CPython oracle for forward and backward passes |
 
-Each Default program is a [project](../../../../docs/specs/language/0025-ModulesAndNamespaces.md) with `model/` as a second source root. `osprey src/osprey/examples/gpt2/generate --run` runs the project; Makefile targets add `--memory=arc`.
+Each Default program is a [project](../../../../../docs/specs/language/0025-ModulesAndNamespaces.md) with `model/` as a second source root. `osprey src/osprey/examples/llms/gpt2/generate --run` runs the project; Makefile targets add `--memory=arc`.
 
 ## One model, two handlers
 
@@ -92,7 +92,7 @@ The Default entry point installs the selected handler around the whole run:
 Backends::under(input(), fn() => run(prompt, count))
 ```
 
-Each branch is compiled with its handler specialised into the model. [One model, two backends](../../../toolchain/website/src/docs/one-model-two-backends.md) explains the effect and what the compiler proves.
+Each branch is compiled with its handler specialised into the model. [One model, two backends](../../../../toolchain/website/src/docs/one-model-two-backends.md) explains the effect and what the compiler proves.
 
 ## Working alongside Python
 
@@ -105,7 +105,7 @@ native = osprey.build("src/osprey/examples/python/interop.py")
 print(native.greeting("Python"))  # hi Python
 ```
 
-The [runnable interop example](../python/interop.py) also calls Python from Osprey. The bridge supports scalar calls, explicit exception results and opaque handles to Python objects, including library-owned tensors. This lets Python retain its libraries while Osprey supplies checked native functions. It does not expose GPT-2's generic tensor functions as Python exports or turn Python tensor storage into an Osprey GPU buffer; see the [interop contract](../../../../docs/specs/platforms/0042-PythonInterop.md).
+The [runnable interop example](../../python/interop.py) also calls Python from Osprey. The bridge supports scalar calls, explicit exception results and opaque handles to Python objects, including library-owned tensors. This lets Python retain its libraries while Osprey supplies checked native functions. It does not expose GPT-2's generic tensor functions as Python exports or turn Python tensor storage into an Osprey GPU buffer; see the [interop contract](../../../../../docs/specs/platforms/0042-PythonInterop.md).
 
 ## What runs where
 
@@ -120,12 +120,12 @@ make -C src/toolchain/targets gpt2 BACKEND=lists # host lists, CPU only
 To run the compiler interactively from the repository root:
 
 ```sh
-OSPREY_GPU=auto osprey src/osprey/examples/gpt2/generate --run --memory=arc
+OSPREY_GPU=auto osprey src/osprey/examples/llms/gpt2/generate --run --memory=arc
 ```
 
 Enter the prompt, token count and backend (`gpu` or `lists`) on three lines. Set `OSPREY_GPU_TRACE=1` for completed-dispatch reports.
 
-On a selected device, embeddings, LayerNorm, attention, softmax, GELU, residuals, reductions, token selection, training loss and all matrix products execute there ([device contract](../../../../docs/specs/runtime/0034-GPUComputation.md#device-backends--gpu-backend-device)). Both adapters use software binary64 arithmetic with the host's accumulation order. Tokenization, buffer construction/loading and readbacks stay on the host. Buffers are [device-resident](../../../../docs/specs/runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident) from first launch: weights upload once and layer intermediates stay on device. Unsupported kernels abort rather than falling back to CPU; there is no kernel fusion yet.
+On a selected device, embeddings, LayerNorm, attention, softmax, GELU, residuals, reductions, token selection, training loss and all matrix products execute there ([device contract](../../../../../docs/specs/runtime/0034-GPUComputation.md#device-backends--gpu-backend-device)). Both adapters use software binary64 arithmetic with the host's accumulation order. Tokenization, buffer construction/loading and readbacks stay on the host. Buffers are [device-resident](../../../../../docs/specs/runtime/0034-GPUComputation.md#device-resident-buffers--gpu-buffer-resident) from first launch: weights upload once and layer intermediates stay on device. Unsupported kernels abort rather than falling back to CPU; there is no kernel fusion yet.
 
 Device `exp`, `ln` and `tanh` use a different implementation from host libm and can differ in the last digit. Generated text matches across tested paths; training loss is `4.503189215447316` on host and `4.503189215447317` on Metal. Across the step's 150 numbers, the largest host/device difference is 2.4 × 10⁻¹³. Near-zero gradient sums can differ in every digit. Metal and OpenCL print identical bytes apart from the device name.
 
@@ -156,15 +156,15 @@ Training benefits more from the GPU's parallel work: half its 1,499 dispatches c
 [`reference.py`](reference.py) uses pure Python without NumPy, reading the same checkpoint and matching the forward/backward passes' left-to-right accumulation. It adds sequentially from `0.0` because Python 3.12+ uses compensated float summation in `sum`:
 
 ```
-python3 src/osprey/examples/gpt2/reference.py src/osprey/examples/gpt2/weights "The capital of France is" 20
-python3 src/osprey/examples/gpt2/reference.py src/osprey/examples/gpt2/weights --train "The capital of France is"
+python3 src/osprey/examples/llms/gpt2/reference.py src/osprey/examples/llms/gpt2/weights "The capital of France is" 20
+python3 src/osprey/examples/llms/gpt2/reference.py src/osprey/examples/llms/gpt2/weights --train "The capital of France is"
 ```
 
 Tokenizer checks include the default prompt, `Hello, I'm a language model,`, repeated spaces, punctuation and `naïve café — 日本`. Compared continuations match: 20 tokens for the default prompt and `not a` for the second. On the host, both handlers match Python's loss, all 148 gradient sums and the updated loss exactly; device comparisons use the precision limits above.
 
-[`tensor_backends.test.osp`](../../tests/effects/staged/tensor_backends.test.osp) pins a width-4 model under both handlers against Python values; its ML twin must emit identical LLVM IR. [`transformer.test.osp`](../../tests/core/gpu/transformer.test.osp) pins the kernels. The differential harness covers memory backends, kernel lowerings and wasm32 on `make test`.
+[`tensor_backends.test.osp`](../../../tests/effects/staged/tensor_backends.test.osp) pins a width-4 model under both handlers against Python values; its ML twin must emit identical LLVM IR. [`transformer.test.osp`](../../../tests/core/gpu/transformer.test.osp) pins the kernels. The differential harness covers memory backends, kernel lowerings and wasm32 on `make test`.
 
-The [Python-flavor checks](src/toolchain/python/README.md) additionally compare 24 deterministic tensors against Python at the real embedding width. `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` compares the generators on each tested device; it requires downloaded weights and runs in the ignored-test suite.
+The [Python-flavor checks](../../../../toolchain/python/README.md) additionally compare 24 deterministic tensors against Python at the real embedding width. `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` compares the generators on each tested device; it requires downloaded weights and runs in the ignored-test suite.
 
 ## How it is written
 

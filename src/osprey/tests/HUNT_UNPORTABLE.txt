@@ -7,13 +7,13 @@
 # from the corpus sweeps of 2026-10-24.
 #
 src/osprey/examples/db_postgres/pg_smoke.osp `PQlibVersion` is native code outside the module (not in the portable runtime)
-src/osprey/examples/gpt2/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
-src/osprey/examples/gpt2/model/backends.osp a module of the gpt2 example, not a program of its own
-src/osprey/examples/gpt2/model/cpu.osp a module of the gpt2 example, not a program of its own
-src/osprey/examples/gpt2/model/gpu.osp a module of the gpt2 example, not a program of its own
-src/osprey/examples/gpt2/model/model.osp a module of the gpt2 example, not a program of its own
-src/osprey/examples/gpt2/python/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
-src/osprey/examples/gpt2/train fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+src/osprey/examples/llms/gpt2/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+src/osprey/examples/llms/gpt2/model/backends.osp a module of the gpt2 example, not a program of its own
+src/osprey/examples/llms/gpt2/model/cpu.osp a module of the gpt2 example, not a program of its own
+src/osprey/examples/llms/gpt2/model/gpu.osp a module of the gpt2 example, not a program of its own
+src/osprey/examples/llms/gpt2/model/model.osp a module of the gpt2 example, not a program of its own
+src/osprey/examples/llms/gpt2/python/generate fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
+src/osprey/examples/llms/gpt2/train fibers and continuations: `__osprey_coro_new` is the native fiber runtime, outside the module
 src/osprey/examples/graphics/character `osp_gfx_open` is native code outside the module (not in the portable runtime)
 src/osprey/examples/graphics/kali `osp_gfx_open` is native code outside the module (not in the portable runtime)
 src/osprey/examples/graphics/opal `osp_gfx_open` is native code outside the module (not in the portable runtime)

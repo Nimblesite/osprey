@@ -53,7 +53,7 @@ Only generation is ported. The [training program](../train) is not being ported 
 
 ## Port notes
 
-The authored sources live in [`src/osprey/examples/gpt2/python`](README.md). They are self-contained Python-flavor modules: the `Tensor` static effect and its two static handlers, the arithmetic policy, the tokenizer, the checkpoint loader, the records, the forward pass, the KV-cached step and the sampler. The project imports no `.osp` module and its source root holds none. [Plan 0031](../../../../../docs/plans/0031-python.md) tracks the complete flavor. Training is not being ported at the moment; the Osprey trainer in `src/osprey/examples/gpt2/train` stays Default-only.
+The authored sources live in [`src/osprey/examples/llms/gpt2/python`](README.md). They are self-contained Python-flavor modules: the `Tensor` static effect and its two static handlers, the arithmetic policy, the tokenizer, the checkpoint loader, the records, the forward pass, the KV-cached step and the sampler. The project imports no `.osp` module and its source root holds none. [Plan 0031](../../../../../../docs/plans/0031-python.md) tracks the complete flavor. Training is not being ported at the moment; the Osprey trainer in `src/osprey/examples/llms/gpt2/train` stays Default-only.
 
 | Reference Python | Osprey Python flavor |
 | --- | --- |

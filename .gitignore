@@ -63,7 +63,7 @@ src/toolchain/benchmarks/proof/tools/.lake/
 
 # Generated benchmark exports and downloaded model weights
 src/toolchain/benchmarks/results/hf/
-src/osprey/examples/gpt2/weights/
+src/osprey/examples/llms/gpt2/weights/
 
 # Core dumps from a crashed C test binary (a container run leaves them here)
 /core

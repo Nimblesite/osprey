@@ -4,15 +4,15 @@
 Reads the same `model.safetensors` and `merges.txt` the Osprey program reads,
 runs the same binary32 (float32) forward pass with the same left-to-right
 accumulation order, and prints the greedy continuation — or, with --train, the
-same loss, gradient sums and post-step loss as src/osprey/examples/gpt2/train. Every
+same loss, gradient sums and post-step loss as src/osprey/examples/llms/gpt2/train. Every
 arithmetic result is rounded to binary32 exactly where the compiled port rounds
 it; `exp`/`ln`/`tanh` call the single-precision libm symbols (`expf`/`logf`/
 `tanhf`) the compiler emits for a `float32` argument, and `sqrt` is the
 correctly rounded single-precision root. It exists only to check
-src/osprey/examples/gpt2: run both on one prompt and compare the output.
+src/osprey/examples/llms/gpt2: run both on one prompt and compare the output.
 
-    python3 src/osprey/examples/gpt2/reference.py src/osprey/examples/gpt2/weights "The capital of France is" 20
-    python3 src/osprey/examples/gpt2/reference.py src/osprey/examples/gpt2/weights --train "The capital of France is"
+    python3 src/osprey/examples/llms/gpt2/reference.py src/osprey/examples/llms/gpt2/weights "The capital of France is" 20
+    python3 src/osprey/examples/llms/gpt2/reference.py src/osprey/examples/llms/gpt2/weights --train "The capital of France is"
 """
 import ctypes
 import ctypes.util

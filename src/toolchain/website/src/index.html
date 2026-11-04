@@ -117,13 +117,13 @@ date: "git Last Modified"
     <div class="effect-layout">
       <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python syntax flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs.</p><a class="text-link" href="/docs/python-flavor/">Port with Python flavor <span>↗</span></a></div>
       <div class="flight-code">
-        <div class="code-toolbar"><span>src/osprey/examples/gpt2/python/model.py</span><span>Python flavor</span></div>
+        <div class="code-toolbar"><span>src/osprey/examples/llms/gpt2/python/model.py</span><span>Python flavor</span></div>
         <pre class="language-python"><code class="language-python"># osprey: flavor=python
 {{ gpuExample.product | escape }}</code></pre>
         <div class="code-result"><span aria-hidden="true">↳</span><samp>make -C src/toolchain/targets gpt2 FLAVOR=python BACKEND=gpu</samp><span class="result-label">TRY IT</span></div>
       </div>
     </div>
-    <p class="support-note">Python flavor is Osprey source; porting requires adapting Python’s dynamic behavior. Shared tensor storage across Python interop is planned. GPU kernels are not fused; speed depends on the workload and backend. <a href="https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/README.md">Measurements and source →</a></p>
+    <p class="support-note">Python flavor is Osprey source; porting requires adapting Python’s dynamic behavior. Shared tensor storage across Python interop is planned. GPU kernels are not fused; speed depends on the workload and backend. <a href="https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/README.md">Measurements and source →</a></p>
   </div>
 </section>
 

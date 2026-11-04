@@ -159,7 +159,7 @@ class EvaluationUseCases(unittest.TestCase):
         judge = module("judge")
         for case in corpus:
             with self.subTest(case=case["id"]):
-                self.assertTrue((HERE.parents[3] / case["source"]).is_file())
+                self.assertTrue((HERE.parents[5] / case["source"]).is_file())
                 self.assertGreaterEqual(len(case["cases"]), 4)
                 result = judge.check(case["reference"], case["cases"])
                 self.assertTrue(result["passed"], result)

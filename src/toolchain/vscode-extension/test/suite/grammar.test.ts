@@ -241,7 +241,7 @@ suite("TextMate grammars", () => {
     }
   });
 
-  // src/osprey/examples/gpt2/model/backends.osp verbatim. The `type` declaration rule
+  // src/osprey/examples/llms/gpt2/model/backends.osp verbatim. The `type` declaration rule
   // sat after `keywords`, whose `type` alternative matched at the same column
   // and won, so every alias name rendered uncoloured. The rule that coloured
   // capitalised names was never included anywhere, so `B`, `List` and

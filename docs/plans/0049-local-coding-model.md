@@ -20,7 +20,7 @@ Work proceeds in this order; an unchecked gate blocks the dependent step. Receip
 
 ## Phase 0 — Baseline, before any port code
 - [ ] Free disk: needs 60 GB for two GGUFs. Available space fell from 67 GiB to 21 GiB during concurrent builds on 2026-11-03; the prerequisite is currently unmet. Recheck before each GGUF download and clean inactive caches without deleting live build outputs.
-- [ ] `src/toolchain/llm/eval/`: 30 coding tasks with deterministic pass/fail scripts (this repo's closed bugs and small features) + 200 tool-call cases covering nested objects, multi-line strings, enums and error recovery over 15+ turns.
+- [ ] `src/osprey/examples/llms/qwen/eval/`: 30 coding tasks with deterministic pass/fail scripts (this repo's closed bugs and small features) + 200 tool-call cases covering nested objects, multi-line strings, enums and error recovery over 15+ turns.
 - [ ] Run them on real Ollama with the unmodified GGUFs `UD-Q4_K_XL`, `UD-Q5_K_M`, `UD-IQ3_XXS`, at temperature 1.0 vs 0.6.
 - [ ] Record pass rate, tool-call validity, tokens/s, prompt-processing rate and peak RSS in `docs/reviews/review.md`.
 

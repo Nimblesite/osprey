@@ -13,7 +13,7 @@ Osprey's flavors share type inference, effect checking, modules, memory manageme
 
 The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary.
 
-[GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python) loads published Hugging Face weights and uses effect handlers to choose CPU or GPU execution. Its output matches the Default-flavor generator byte for byte on tested backends.
+[GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/python) loads published Hugging Face weights and uses effect handlers to choose CPU or GPU execution. Its output matches the Default-flavor generator byte for byte on tested backends.
 
 ## Python flavor is not Python
 
@@ -27,7 +27,7 @@ Python-flavor files and Python files both end in `.py`, but they are different l
 | Types | Inferred and checked before the program runs | Checked at run time |
 | Values | Immutable records, `Result` for failure | Mutable objects, exceptions |
 | Imports | Osprey modules, in any flavor | Python packages |
-| GPT-2 in this repository | [`src/osprey/examples/gpt2/python/`](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python), the model | [`src/osprey/examples/gpt2/reference.py`](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/reference.py), the reference it is checked against |
+| GPT-2 in this repository | [`src/osprey/examples/llms/gpt2/python/`](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/python), the model | [`src/osprey/examples/llms/gpt2/reference.py`](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/reference.py), the reference it is checked against |
 
 Every Python-flavor sample here starts with `# osprey: flavor=python` and runs through Osprey. To call CPython libraries, use [Python interop](/spec/0042-pythoninterop/).
 
@@ -184,12 +184,12 @@ The model performs the operations and never names a buffer type:
 
 ```python
 # osprey: flavor=python
-# src/osprey/examples/gpt2/python/model.py, abridged
+# src/osprey/examples/llms/gpt2/python/model.py, abridged
 def product(a, b, rows, inner, cols):
     return perform(Tensor.mat_mul(a, b, rows, inner, cols))
 ```
 
-Two handlers, each in its own file, answer every operation. [`cpu.py`](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/python/cpu.py) uses host lists:
+Two handlers, each in its own file, answer every operation. [`cpu.py`](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/python/cpu.py) uses host lists:
 
 ```python
 # osprey: flavor=python
@@ -197,7 +197,7 @@ Two handlers, each in its own file, answer every operation. [`cpu.py`](https://g
 {{ gpuExample.cpu | safe }}
 ```
 
-[`gpu.py`](https://github.com/Nimblesite/osprey/blob/main/examples/gpt2/python/gpu.py) uses GPU buffers, run on Metal or OpenCL:
+[`gpu.py`](https://github.com/Nimblesite/osprey/blob/main/examples/llms/gpt2/python/gpu.py) uses GPU buffers, run on Metal or OpenCL:
 
 ```python
 # osprey: flavor=python
@@ -270,6 +270,6 @@ make -C src/toolchain/targets gpt2 FLAVOR=python BACKEND=lists PROMPT="The capit
 
 The first command installs `on_gpu` and the second `on_lists`; the model is unchanged. The test `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` checks that the Python generator prints exactly what the Default generator prints on host lists, Metal and OpenCL. Only generation has been ported so far; the training step is still Default-only.
 
-- [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/gpt2/python): the complete source.
+- [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/examples/llms/gpt2/python): the complete source.
 - [Python flavor specification](/spec/0041-pythonflavorsyntax/): the full contract.
 - [Language flavors](/spec/0023-languageflavors/): how every flavor lowers into the shared AST.

@@ -1,6 +1,6 @@
 # @osprey/tiktoken
 
-A byte-level BPE tokenizer port of [tiktoken](https://github.com/openai/tiktoken) 0.14.0 to Osprey's Python flavor ([spec 0043](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md)). It generalises `src/osprey/examples/gpt2/python/tokenizer.py` into tiktoken's `Encoding` API, with the same pre-tokenizer patterns, special-token policy and `_educational` training loop, all hand-written over code points (no regex engine, no Python interop).
+A byte-level BPE tokenizer port of [tiktoken](https://github.com/openai/tiktoken) 0.14.0 to Osprey's Python flavor ([spec 0043](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md)). It generalises `src/osprey/examples/llms/gpt2/python/tokenizer.py` into tiktoken's `Encoding` API, with the same pre-tokenizer patterns, special-token policy and `_educational` training loop, all hand-written over code points (no regex engine, no Python interop).
 
 The vocabulary is a string-keyed map: token bytes become one canonical key by shifting each byte to the code point `b + 1` (code point 0 cannot live in an Osprey string), so concatenating keys is the key of the concatenated bytes — which makes a merge a string concatenation. The suite's expected values are computed by the real tiktoken (`scripts/oracles/tiktoken.py`, tiktoken 0.14.0, `regex` 2026.9.29, Unicode 15.0.0).
 

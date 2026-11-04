@@ -409,7 +409,7 @@ def limitations(rates, sampler):
 
 def build_result(args, client, digest, version, show, from_lines, tools, coding, sampler):
     rates = rate_summary(client)
-    return {"schema": "src/toolchain/llm/eval/baseline/1", "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+    return {"schema": "src/osprey/examples/llms/qwen/eval/baseline/1", "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             **run_identity(args, digest), "max_new_tokens": MAX_NEW_TOKENS, "ollama": ollama_info(version, show, from_lines),
             "tools": tools, "coding": coding, "rates": rates,
             "tests_run": {"tool_goals": tools["goals"], "tool_sessions": tools["sessions"],

@@ -111,7 +111,7 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 endif
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
-GPT2_DIR    := src/osprey/examples/gpt2
+GPT2_DIR    := src/osprey/examples/llms/gpt2
 GPT2_SOURCE := https://huggingface.co/openai-community/gpt2/resolve/main
 PROMPT      ?= The capital of France is
 TOKENS      ?= 20

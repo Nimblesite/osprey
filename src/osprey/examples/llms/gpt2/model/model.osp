@@ -3,8 +3,8 @@
 // never names a buffer type: the handler a program installs — `onLists` or
 // `onGpu` — decides whether a tensor is a host list or a GPU buffer, and both
 // compute the same binary32 values in the same order. The forward pass keeps every
-// block's activations, so src/osprey/examples/gpt2/generate reads the final state and
-// src/osprey/examples/gpt2/train runs the backward pass over the same trace.
+// block's activations, so src/osprey/examples/llms/gpt2/generate reads the final state and
+// src/osprey/examples/llms/gpt2/train runs the backward pass over the same trace.
 //
 // This is plan 0023's reference application (docs/plans/0023-gpu.md)
 // and its stage 5, effect-selected execution: one model, two interpretations,
@@ -15,7 +15,7 @@
 namespace gpt2;
 
 module Model {
-    export let weightsDir = "src/osprey/examples/gpt2/weights"
+    export let weightsDir = "src/osprey/examples/llms/gpt2/weights"
 
     // The GPT-2 small configuration (config.json in the same repository).
     export let vocabSize = 50257

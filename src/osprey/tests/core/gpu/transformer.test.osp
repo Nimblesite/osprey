@@ -17,7 +17,7 @@ fn andThen(result, next) = match result {
 /// [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid.
 fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
-// port in src/osprey/examples/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
+// port in src/osprey/examples/llms/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
 // causal multi-head attention with its softmax, token and position embeddings,
 // one pre-norm block and the tied greedy readout — plus the weight loaders
@@ -346,7 +346,7 @@ fn sameRow(single, rows, r, n) = range(0, n) |> fold(true, fn(ok, c) => ok && at
 /// The KV-cached step: the newest position attends through the earlier rows
 /// with the full pass's arithmetic, and LayerNorm and linear are row-wise, so
 /// one row's pass equals that row of the two-row pass bit for bit — which is
-/// why src/osprey/examples/gpt2's generate can grow a cache instead of recomputing.
+/// why src/osprey/examples/llms/gpt2's generate can grow a cache instead of recomputing.
 fn cachedStepCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => withIndices(4, fn(grid3) => withIndices(2, fn(grid4) => withIndices(48, fn(grid5) => withIndices(24, fn(grid6) => withIndices(1, fn(grid7) => cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7)))))))))
 fn cachedStepWith(grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7) = {
     match miniTokens() { Success { value } => { let uploaded7 = value

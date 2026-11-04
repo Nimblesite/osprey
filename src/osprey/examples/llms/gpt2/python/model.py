@@ -7,7 +7,7 @@ This is Python concrete syntax with Osprey semantics, not a CPython module. The
 model performs `build`, `get`, `mat_mul` and friends and never names a buffer
 type: the handler a program installs, `on_lists` or `on_gpu`, decides whether a
 tensor is a host list or a GPU buffer, and both compute the same binary32 values
-in the same order as src/osprey/examples/gpt2/reference.py. The forward pass keeps every block's
+in the same order as src/osprey/examples/llms/gpt2/reference.py. The forward pass keeps every block's
 activations, and the KV-cached step runs the newest position alone over each
 block's cached qkv rows ([STAGE-BACKEND], [GPU-DEVICE], [FLAVOR-PYTHON-GPU]).
 """
@@ -24,7 +24,7 @@ __all__ = [
     "embed_one", "forward_step", "qkv_caches",
 ]
 
-WEIGHTS_DIR = "src/osprey/examples/gpt2/weights"
+WEIGHTS_DIR = "src/osprey/examples/llms/gpt2/weights"
 
 # The GPT-2 small configuration (config.json in the same repository).
 VOCAB_SIZE = 50257

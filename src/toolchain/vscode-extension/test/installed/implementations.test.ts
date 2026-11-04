@@ -42,9 +42,9 @@ const MAIN = "modules/src/main.ospml";
 
 /** Example directories copied into the workspace; gpt2's weights are not. */
 const COPIES: [string, string][] = [
-  ["gpt2/model", "gpt2/model"],
-  ["gpt2/generate", "gpt2/generate"],
-  ["gpt2/train", "gpt2/train"],
+  ["llms/gpt2/model", "gpt2/model"],
+  ["llms/gpt2/generate", "gpt2/generate"],
+  ["llms/gpt2/train", "gpt2/train"],
   ["projects/modules/osprey.toml", "modules/osprey.toml"],
   ["projects/modules/src", "modules/src"],
 ];
@@ -254,7 +254,7 @@ function copyExamples(workspace: string): void {
   assert.ok(source, "Installed VSIX runner must name the source checkout");
   for (const [from, to] of COPIES) {
     fs.cpSync(
-      path.join(source, "..", "examples", from),
+      path.join(source, "..", "..", "osprey", "examples", from),
       path.join(workspace, to),
       {
         recursive: true,

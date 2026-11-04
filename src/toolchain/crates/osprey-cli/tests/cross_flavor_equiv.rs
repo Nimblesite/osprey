@@ -74,8 +74,8 @@ fn python_gpt2_device_runs_never_pass_on_host_fallback() -> std::io::Result<()> 
         .try_for_each(|device| assert_python_gpt2_matches(device))
 }
 
-const DEFAULT_GENERATOR: &str = "src/osprey/examples/gpt2/generate";
-const PYTHON_GENERATOR: &str = "src/osprey/examples/gpt2/python/generate";
+const DEFAULT_GENERATOR: &str = "src/osprey/examples/llms/gpt2/generate";
+const PYTHON_GENERATOR: &str = "src/osprey/examples/llms/gpt2/python/generate";
 
 /// `osprey <project> --run --memory=arc` from the repository root, as `make
 /// gpt2` runs it, with `stdin` and `OSPREY_GPU=device`.
@@ -128,7 +128,7 @@ fn assert_generators_agree(stdin: &str, device: &str) -> std::io::Result<String>
 #[test]
 fn python_gpt2_project_contains_no_osprey_flavor_source() -> std::io::Result<()> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..");
-    let python = root.join("src/osprey/examples/gpt2/python").canonicalize()?;
+    let python = root.join("src/osprey/examples/llms/gpt2/python").canonicalize()?;
     let project = python.join("generate");
     let manifest = std::fs::read_to_string(project.join("osprey.toml"))?;
     let roots = manifest
@@ -177,7 +177,7 @@ fn python_gpt2_generator_prints_the_default_generator_messages() -> std::io::Res
 /// pass, KV-cached steps and greedy sampling print the Default example's
 /// output byte for byte on the host surface, over host lists and on the GPU
 /// hardware this host has ([GPU-DEVICE], [FLAVOR-PYTHON-GPU]). It needs the
-/// published checkpoint in src/osprey/examples/gpt2/weights, which `make -C src/toolchain/targets gpt2` downloads.
+/// published checkpoint in src/osprey/examples/llms/gpt2/weights, which `make -C src/toolchain/targets gpt2` downloads.
 #[test]
 #[ignore = "needs the GPT-2 checkpoint (`make -C src/toolchain/targets gpt2` downloads it): run with --ignored"]
 fn python_gpt2_generator_output_is_byte_identical_to_the_default_generator() -> std::io::Result<()>

@@ -263,7 +263,7 @@ fn a_forwarded_kernel_whose_callback_performs_a_dynamic_effect_is_rejected() {
 }
 
 /// A helper that selects the interpretation by name and forwards the work to
-/// its installer, as `src/osprey/examples/gpt2` selects `BACKEND`: the selected handler
+/// its installer, as `src/osprey/examples/llms/gpt2` selects `BACKEND`: the selected handler
 /// answers the forwarded requests, from a named function or a lambda
 /// ([STAGE-LOWER-ORDER]). Static lowering once left them unanswered and pruned
 /// `main`, so the program printed nothing and exited 0.
