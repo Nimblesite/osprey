@@ -18,9 +18,10 @@ fn answer(name: &str, source: &str, memory: &str) -> io::Result<Result<String, S
         &["--run", "--quiet", &flag],
         &[],
     )?;
-    Ok(match run.stopped {
-        Some(reason) => Err(reason),
-        None => Ok(run.stdout),
+    Ok(match (run.stopped, run.code) {
+        (Some(reason), _) => Err(reason),
+        (None, Some(0)) => Ok(run.stdout),
+        (None, code) => Err(format!("exit {code:?}: {}", run.stderr)),
     })
 }
 

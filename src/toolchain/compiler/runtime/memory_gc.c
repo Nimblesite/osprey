@@ -381,8 +381,8 @@ static void gc_init_main(void) {
   g_main = pthread_self();
 #ifndef OSP_SYMBOLIC
   g_base = gc_stack_base();
-#endif
   g_main_baton.base = g_base;
+#endif
   const char *mb = getenv("OSPREY_GC_HEAP_MB");
   if (mb) {
     long v = strtol(mb, NULL, 10);
