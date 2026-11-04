@@ -101,6 +101,12 @@ mathBuiltins () =
     print "${round (toFloat32 2.5)} ${round (toFloat32 3.5)} ${round (toFloat32 (-2.5))}"
     print "${round (toFloat16 2.5)} ${round (toFloat16 3.5)} ${round (toFloat16 (-2.5))}"
 
+(** [FLOAT-IEEE-RESULTS] Runtime list inputs prevent folding away libm calls. *)
+portableTanh () =
+    inputs = [toFloat32 0.0, toFloat32 (-0.0), toFloat32 0.5, toFloat32 (-0.5), toFloat32 2.0, toFloat32 (-2.0), toFloat32 1000.0, toFloat32 (-1000.0), float32FromBits 1, float32FromBits (-2147483647)]
+    results = mapList inputs tanh
+    print (join (mapList results (\value => toString (float32Bits value))) " ")
+
 bitViews () =
     print "${float32Bits (toFloat32 0.1)} ${float16Bits (toFloat16 1.0)}"
     print "${float32FromBits 1036831949} ${float16FromBits 15360}"
@@ -189,6 +195,7 @@ wrapping nonfinite
 comparisonTable ()
 arithmetic ()
 mathBuiltins ()
+portableTanh ()
 bitViews ()
 wrapping conversions
 journeys ()

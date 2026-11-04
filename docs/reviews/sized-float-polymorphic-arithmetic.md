@@ -1,6 +1,6 @@
 # Bug: inferred division rejects `float32` and `float16`
 
-Status: fix implemented; full corpus verification in progress. Spec: [TYPE-NUMERIC-ARITH-WIDTH] in `docs/specs/language/0004-TypeSystem.md`. Tracked in plan 0050, Phase 3.
+Status: fixed and verified on the primary checkout. Spec: [TYPE-NUMERIC-ARITH-WIDTH] in `docs/specs/language/0004-TypeSystem.md`. Tracked in plan 0050, Phase 3.
 
 ## Reproduce
 
@@ -60,7 +60,8 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 - [x] Full ARC conformance passes: 318 programs, 318 exact goldens, zero leaky programs, 20 alternate GPU-lowering cases and all six doctests.
 - [x] Source VS Code extension suites pass (880 + 14 tests). Installed VSIX checks also pass (170 tests); all four extension coverage measures meet their 95% floors.
 - [x] Full `make test` exits 0, including all host suites and coverage floors. Transformer package GC and ARC retain all 395 assertions (ARC: zero live objects). Receipt: `polymorphic-make-test-exit.json`.
-- [ ] Resolve the separately identified wasm `tanh(float32(0.5))` one-ulp discrepancy and rerun complete wasm conformance.
+- [x] Fix the separately identified WASI `tanhf` rounding discrepancy in the wasm-only runtime. A loaded ten-input regression is RED at ±0.5 before the fix and GREEN afterward against independent Python bit constants. Both flavors pass GC, ARC and wasm; all 234 supported wasm programs and goldens pass, with zero ARC leaks, 20 alternate GPU cases and six doctests. The 84 pinned unsupported programs are unchanged.
+- [x] Recheck the wasm proof kernel after the runtime change: all 400 cases pass. IR parity and all four documentation/source-style gates pass. Final wasm artifact/source hashes: `wasm-tanh-cohort.json`.
 
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
 
@@ -71,3 +72,5 @@ The full test command caught an IR mismatch in the new ML regression, corrected 
 Final focused verification at `02d1c952`: all nine Default/ML/legacy golden comparisons pass again after restoring the fixed-width controls. Both code fixes and checklist updates are committed; the final `make test` receipt is `polymorphic-make-test-complete.log`.
 
 The next full-suite pass reached the exact must-reject diagnostics gate and exposed ordering drift in the Default/ML `float_operand_constraint` cases. The checker now inserts late division diagnostics at their original obligation site; the complete rejection-golden gate passes with every golden unchanged.
+
+The host `make test` pass precedes the wasm-only runtime follow-up. After that follow-up, the rebuilt wasm runtime passes the complete wasm corpus, the 400-case wasm proof suite and both flavors of the focused regression under all three execution lanes; the native `tanhf` path and compiler lowering are unchanged.
