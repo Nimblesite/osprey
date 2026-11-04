@@ -2,7 +2,12 @@
 //! baton with its host. The collector keeps tracing across that handoff, so a
 //! handled program can't grow without bound, and values only the runtime or a
 //! parked stack can see survive every collection.
-use std::process::Command;
+#![cfg(unix)]
+
+#[path = "common/bounded.rs"]
+mod bounded;
+
+use std::io;
 
 const PROGRAM: &str = r#"effect Box {
     control swap: fn(string) -> string
@@ -51,32 +56,19 @@ fn main() = {
 
 const EXPECTED: &str = "intact 300\ndeep 200000\nbuilt 24000\n";
 
-fn run(memory: &str) -> (String, String, Option<i32>) {
-    let source = std::env::temp_dir().join(format!(
-        "osprey_gc_baton_{}_{memory}.osp",
-        std::process::id()
-    ));
-    assert!(std::fs::write(&source, PROGRAM).is_ok(), "not written");
-    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-        .arg(&source)
-        .arg(format!("--memory={memory}"))
-        .args(["--run", "--quiet", "--no-warnings"])
-        .env("OSPREY_GC_DEBUG", "1")
-        .output();
-    let _ = std::fs::remove_file(&source);
-    assert!(output.is_ok(), "{memory}: not run");
-    let output = output.unwrap_or_else(|_| unreachable!());
-    (
-        String::from_utf8_lossy(&output.stdout).into_owned(),
-        String::from_utf8_lossy(&output.stderr).into_owned(),
-        output.status.code(),
-    )
+fn run(memory: &str) -> io::Result<bounded::Bounded> {
+    let memory_flag = format!("--memory={memory}");
+    let args = ["--run", "--quiet", "--no-warnings", memory_flag.as_str()];
+    let envs = [("OSPREY_GC_DEBUG", "1")];
+    bounded::run_within_budget(&format!("gc_baton_{memory}"), PROGRAM, &args, &envs)
 }
 
 #[test]
-fn the_collector_keeps_tracing_inside_a_resumable_handler() {
-    let (stdout, stderr, code) = run("gc");
-    assert_eq!((code, stdout.as_str()), (Some(0), EXPECTED), "{stderr}");
+fn the_collector_keeps_tracing_inside_a_resumable_handler() -> io::Result<()> {
+    let run = run("gc")?;
+    let stderr = run.stderr.as_str();
+    let outcome = (run.stopped.as_deref(), run.code, run.stdout.as_str());
+    assert_eq!(outcome, (None, Some(0), EXPECTED), "{stderr}");
     let collections = stderr.matches("[osp-gc] collect #").count();
     assert!(collections > 100, "only {collections} collections");
     assert!(!stderr.contains("collection disabled"), "{stderr}");
@@ -89,10 +81,13 @@ fn the_collector_keeps_tracing_inside_a_resumable_handler() {
         .max()
         .unwrap_or(u64::MAX);
     assert!(peak < 64 * 1024, "live set reached {peak} KiB");
+    Ok(())
 }
 
 #[test]
-fn the_same_handled_program_is_exact_under_arc() {
-    let (stdout, stderr, code) = run("arc");
-    assert_eq!((code, stdout.as_str()), (Some(0), EXPECTED), "{stderr}");
+fn the_same_handled_program_is_exact_under_arc() -> io::Result<()> {
+    let run = run("arc")?;
+    let outcome = (run.stopped.as_deref(), run.code, run.stdout.as_str());
+    assert_eq!(outcome, (None, Some(0), EXPECTED), "{}", run.stderr);
+    Ok(())
 }

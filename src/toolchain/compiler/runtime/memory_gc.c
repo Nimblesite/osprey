@@ -98,6 +98,7 @@ static inline void gc_unlock(void) {
 
 static int g_init = 0;     // first allocation has run (main thread + base known)
 static int g_off = 0;      // collection permanently disabled (saw a 2nd thread)
+static size_t g_off_report_at = (size_t)256 << 20; // next uncollected size to log
 static pthread_t g_main;   // the sole-allocator thread that may collect
 #ifndef OSP_SYMBOLIC
 static uintptr_t g_base;   // highest address of the main thread's stack
@@ -399,6 +400,13 @@ static void *gc_managed_alloc(size_t size) {
       fprintf(stderr, "[osp-gc] collection disabled: a non-baton thread allocated after %zu collections\n",
               g_ncollect);
     }
+  }
+  if (g_off && g_bytes >= g_off_report_at) {
+    // Always on, and only once it matters: a runaway must name its own cause in
+    // the log without every short threaded program printing a line.
+    fprintf(stderr, "[osp-gc] collection is off (a non-baton thread allocated): %zu MiB uncollected\n",
+            g_bytes >> 20);
+    g_off_report_at *= 2;
   }
   if (g_bytes > g_thresh && gc_may_collect()) {
     gc_collect_locked();
