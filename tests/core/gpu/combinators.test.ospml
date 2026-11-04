@@ -1,13 +1,15 @@
-(** [FAILURE-EXPLICIT] A read error fails the predicate with its reason. *)
-readSatisfies (result, predicate) = match result
+(** [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
+    Success value => work value
+    Error message => check ("GPU allocation", "success", toString message)
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
     Success value => predicate value
     Error message =>
-        check ("GPU readback", "success", toString message)
+        check ("GPU operation", "success", toString message)
         false
 (** [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs. *)
-withIndices (n, work) = match gpuIota n
-    Success value => work value
-    Error message => check "index allocation" "success" (toString message)
+withIndices (n, work) = withBuffer (gpuIota n, work)
 iotaError n = match gpuIota n
     Success value => "unexpected success ${gpuLength value}"
     Error message => toString message
@@ -21,10 +23,10 @@ iotaError n = match gpuIota n
 // [GPU-CONVERT], [GPU-BACKEND-HOST], [GPU-DEVICE] —
 // docs/specs/runtime/0034-GPUComputation.md).
 (** The zero-length buffers every combinator is pushed through; the annotation supplies the element type an empty literal cannot. *)
-emptyInts : Unit -> GpuBuffer<int>
-emptyInts () = toGpu []
-emptyFloats : Unit -> GpuBuffer<float>
-emptyFloats () = toGpu []
+emptyInts : Unit -> Result<GpuBuffer<int>, Error>
+emptyInts () = toGpu ([])
+emptyFloats : Unit -> Result<GpuBuffer<float>, Error>
+emptyFloats () = toGpu ([])
 (** The associative int combines fold and scan share. *)
 sumI (a, b) = (a + b)
 mulI (a, b) = (a * b)
@@ -79,204 +81,202 @@ oobMessage (buf, i) = match gpuGet (buf, i)
     Success value => "value ${value}"
     Error message => message
 (** Pin that no combinator invents an element from nothing: map, filter and scan over zero elements are all zero elements, whatever the kernel does to the element type. *)
-emptyShapeCase () =
-    chained = emptyInts () |> gpuMap dbl |> gpuFilter isEven |> gpuScan 0 sumI |> gpuMap inc
+emptyShapeCase () = withBuffer (emptyInts (), \intEmpty => withBuffer (emptyFloats (), \floatEmpty => emptyShapeWith (intEmpty, floatEmpty)))
+emptyShapeWith (intEmpty, floatEmpty) =
+    chained = intEmpty |> gpuMap dbl |> gpuFilter isEven |> gpuScan 0 sumI |> gpuMap inc
     checkAll "empty shapes" [
-        gpuLength (emptyInts ()) == 0,
-        gpuLength (emptyInts () |> gpuMap dbl) == 0,
-        gpuLength (emptyInts () |> gpuMap toFloat) == 0,
-        gpuLength (emptyInts () |> gpuMap isEven) == 0,
-        gpuLength (emptyFloats () |> gpuMap half) == 0,
-        gpuLength (emptyInts () |> gpuFilter keepEvery) == 0,
-        gpuLength (emptyInts () |> gpuFilter keepNone) == 0,
-        gpuLength (emptyInts () |> gpuScan 0 sumI) == 0,
-        gpuLength (emptyInts () |> gpuScan 99 maxI) == 0,
-        gpuLength (gpuZipWith (emptyInts (), toGpu [1, 2, 3], sumI)) == 0,
-        gpuLength (gpuZipWith (toGpu [1, 2, 3], emptyInts (), sumI)) == 0,
-        readSatisfies (fromGpu (emptyInts ()), \checked0 => listLength (checked0) == 0),
-        (gpuGet (emptyInts (), 0) ?: 42) == 42,
-        gpuLength chained == 0
+        gpuLength (intEmpty) == 0, gpuLength (intEmpty |> gpuMap dbl) == 0, gpuLength (intEmpty |> gpuMap toFloat) == 0,
+        gpuLength (intEmpty |> gpuMap isEven) == 0, gpuLength (floatEmpty |> gpuMap half) == 0, gpuLength (intEmpty |> gpuFilter keepEvery) == 0,
+        gpuLength (intEmpty |> gpuFilter keepNone) == 0, gpuLength (intEmpty |> gpuScan 0 sumI) == 0, gpuLength (intEmpty |> gpuScan 99 maxI) == 0,
+        gpuSatisfies (toGpu ([1, 2, 3]), \uploaded61 => gpuLength (gpuZipWith (intEmpty, uploaded61, sumI)) == 0),
+        gpuSatisfies (toGpu ([1, 2, 3]), \uploaded60 => gpuLength (gpuZipWith (uploaded60, intEmpty, sumI)) == 0),
+        gpuSatisfies (fromGpu (intEmpty), \checked0 => listLength (checked0) == 0), (gpuGet (intEmpty, 0) ?: 42) == 42, gpuLength chained == 0
     ]
 (** Pin [GPU-FOLD]'s base case: with no element to combine, the result is exactly the initial value — for every combine, and for a buffer emptied by compaction rather
     than born empty. *)
 emptyFoldCase () = withIndices (0, \indices0 => emptyFoldWith (indices0))
-emptyFoldWith (indices0) =
-    drained = toGpu [1, 3, 5] |> gpuFilter keepNone
-    checkAll "empty folds" [
-        (emptyInts () |> gpuFold 0 sumI) == 0,
-        (emptyInts () |> gpuFold 7 sumI) == 7,
-        (emptyInts () |> gpuFold 1 mulI) == 1,
-        (emptyInts () |> gpuFold 100 subI) == 100,
-        (emptyInts () |> gpuFold 9 horner) == 9,
-        (emptyInts () |> gpuFold 3 maxI) == 3,
-        (emptyFloats () |> gpuFold 0.0 addF) == 0.0,
-        (emptyFloats () |> gpuFold 2.5 addF) == 2.5,
-        (emptyInts () |> gpuMap isEven |> gpuFold 4 countTrue) == 4,
-        gpuLength drained == 0,
-        (drained |> gpuFold 11 sumI) == 11,
-        (drained |> gpuScan 0 sumI |> gpuFold 13 sumI) == 13,
-        (indices0 |> gpuFold 5 mulI) == 5,
-        (gpuZipWith (emptyInts (), emptyInts (), sumI) |> gpuFold 6 sumI) == 6
-    ]
+emptyFoldWith (indices0) = withBuffer (emptyInts (), \intEmpty => withBuffer (emptyFloats (), \floatEmpty => emptyFoldOn (indices0, intEmpty, floatEmpty)))
+emptyFoldOn (indices0, intEmpty, floatEmpty) =
+    match toGpu ([1, 3, 5])
+        Success value =>
+            drained = value |> gpuFilter keepNone
+            checkAll "empty folds" [
+                (intEmpty |> gpuFold 0 sumI) == 0, (intEmpty |> gpuFold 7 sumI) == 7, (intEmpty |> gpuFold 1 mulI) == 1,
+                (intEmpty |> gpuFold 100 subI) == 100, (intEmpty |> gpuFold 9 horner) == 9, (intEmpty |> gpuFold 3 maxI) == 3,
+                (floatEmpty |> gpuFold 0.0 addF) == 0.0, (floatEmpty |> gpuFold 2.5 addF) == 2.5, (intEmpty |> gpuMap isEven |> gpuFold 4 countTrue) == 4,
+                gpuLength drained == 0, (drained |> gpuFold 11 sumI) == 11, (drained |> gpuScan 0 sumI |> gpuFold 13 sumI) == 13, (indices0 |> gpuFold 5 mulI) == 5,
+                (gpuZipWith (intEmpty, intEmpty, sumI) |> gpuFold 6 sumI) == 6
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** Walk the one-element buffer through every combinator: the smallest shape where a kernel actually runs, and the one where an off-by-one in a loop bound or a prefix
     seed shows up immediately. *)
 singletonCase () =
-    one = toGpu [5]
-    scanned = one |> gpuScan 3 sumI
-    checkAll "singleton" [
-        gpuLength one == 1,
-        (gpuGet (one |> gpuMap dbl, 0) ?: 0) == 10,
-        gpuLength (one |> gpuFilter isEven) == 0,
-        gpuLength (toGpu [4] |> gpuFilter isEven) == 1,
-        (gpuGet (toGpu [4] |> gpuFilter isEven, 0) ?: 0) == 4,
-        gpuLength scanned == 1,
-        (gpuGet (scanned, 0) ?: 0) == 8,
-        (gpuGet (one |> gpuScan 0 maxI, 0) ?: 0) == 5,
-        (one |> gpuFold 3 sumI) == 8,
-        (one |> gpuFold 10 subI) == 5,
-        (gpuGet (gpuZipWith (one, toGpu [7], sumI), 0) ?: 0) == 12,
-        (gpuGet (gpuZipWith (toGpu [1, 2, 3], one, sumI), 0) ?: 0) == 6,
-        (gpuGet (one, 1) ?: 42) == 42
-    ]
+    match toGpu ([5])
+        Success value =>
+            one = value
+            scanned = one |> gpuScan 3 sumI
+            checkAll "singleton" [
+                gpuLength one == 1, (gpuGet (one |> gpuMap dbl, 0) ?: 0) == 10, gpuLength (one |> gpuFilter isEven) == 0,
+                gpuSatisfies (toGpu ([4]), \uploaded57 => gpuLength (uploaded57 |> gpuFilter isEven) == 1),
+                gpuSatisfies (toGpu ([4]), \uploaded56 => (gpuGet (uploaded56 |> gpuFilter isEven, 0) ?: 0) == 4), gpuLength scanned == 1,
+                (gpuGet (scanned, 0) ?: 0) == 8, (gpuGet (one |> gpuScan 0 maxI, 0) ?: 0) == 5, (one |> gpuFold 3 sumI) == 8, (one |> gpuFold 10 subI) == 5,
+                gpuSatisfies (toGpu ([7]), \uploaded55 => (gpuGet (gpuZipWith (one, uploaded55, sumI), 0) ?: 0) == 12),
+                gpuSatisfies (toGpu ([1, 2, 3]), \uploaded54 => (gpuGet (gpuZipWith (uploaded54, one, sumI), 0) ?: 0) == 6), (gpuGet (one, 1) ?: 42) == 42
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin [GPU-ZIPWITH]'s truncation to the shorter operand in both argument orders, with a non-commutative kernel so a swapped operand pair could not pass by accident. *)
 raggedCase () = withIndices (3, \indices3 => withIndices (7, \indices7 => withIndices (4, \indices4 => raggedWith (indices3, indices7, indices4))))
 raggedWith (indices3, indices7, indices4) =
-    leftFirst = gpuZipWith (toGpu [1, 2, 3, 4, 5], toGpu [10, 20], subI)
-    rightFirst = gpuZipWith (toGpu [10, 20], toGpu [1, 2, 3, 4, 5], subI)
-    checkAll "ragged zip" [
-        gpuLength leftFirst == 2,
-        gpuLength rightFirst == 2,
-        (gpuGet (rightFirst, 0) ?: 0) == 9,
-        (gpuGet (rightFirst, 1) ?: 0) == 18,
-        (leftFirst |> gpuFold 27 sumI) == 0,
-        (rightFirst |> gpuFold 0 sumI) == 27,
-        (gpuGet (leftFirst, 2) ?: 77) == 77,
-        gpuLength (gpuZipWith (toGpu [1, 2, 3], toGpu [9], mulI)) == 1,
-        gpuLength (gpuZipWith (toGpu [9], toGpu [1, 2, 3], mulI)) == 1,
-        gpuLength (gpuZipWith (indices3, indices7, sumI)) == 3,
-        gpuLength (gpuZipWith (indices7, indices3, sumI)) == 3,
-        (gpuZipWith (indices7, indices3, mulI) |> gpuFold 0 sumI) == 5,
-        gpuLength (gpuZipWith (indices4, indices4, sumI)) == 4
-    ]
+    match toGpu ([1, 2, 3, 4, 5])
+        Success value =>
+            uploaded50 = value
+            match toGpu ([10, 20])
+                Success value =>
+                    uploaded51 = value
+                    leftFirst = gpuZipWith (uploaded50, uploaded51, subI)
+                    match toGpu ([10, 20])
+                        Success value =>
+                            uploaded52 = value
+                            match toGpu ([1, 2, 3, 4, 5])
+                                Success value =>
+                                    uploaded53 = value
+                                    rightFirst = gpuZipWith (uploaded52, uploaded53, subI)
+                                    checkAll "ragged zip" [
+                                        gpuLength leftFirst == 2, gpuLength rightFirst == 2, (gpuGet (rightFirst, 0) ?: 0) == 9, (gpuGet (rightFirst, 1) ?: 0) == 18,
+                                        (leftFirst |> gpuFold 27 sumI) == 0, (rightFirst |> gpuFold 0 sumI) == 27, (gpuGet (leftFirst, 2) ?: 77) == 77,
+                                        gpuSatisfies (toGpu ([1, 2, 3]), \uploaded48 => gpuSatisfies (toGpu ([9]), \uploaded49 => gpuLength (gpuZipWith (uploaded48, uploaded49, mulI)) == 1)),
+                                        gpuSatisfies (toGpu ([9]), \uploaded46 => gpuSatisfies (toGpu ([1, 2, 3]), \uploaded47 => gpuLength (gpuZipWith (uploaded46, uploaded47, mulI)) == 1)),
+                                        gpuLength (gpuZipWith (indices3, indices7, sumI)) == 3, gpuLength (gpuZipWith (indices7, indices3, sumI)) == 3,
+                                        (gpuZipWith (indices7, indices3, mulI) |> gpuFold 0 sumI) == 5, gpuLength (gpuZipWith (indices4, indices4, sumI)) == 4
+                                    ]
+                                Error message => check ("GPU allocation", "success", toString message)
+                        Error message => check ("GPU allocation", "success", toString message)
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin that the zip kernel's result type is the buffer's, not either operand's, including a pair whose two operands differ in type. *)
 zipTypeCase () =
-    parity = gpuZipWith (toGpu [1, 2, 3, 4], toGpu [3, 5, 7, 9], sameParity)
-    means = gpuZipWith (toGpu [1, 3], toGpu [3, 5], meanF)
-    mixed = gpuZipWith (toGpu [1, 2], toGpu [0.5, 0.25], mixAdd)
-    checkAll "zip element types" [
-        gpuLength parity == 4,
-        (gpuGet (parity, 0) ?: false) == true,
-        (gpuGet (parity, 1) ?: true) == false,
-        (parity |> gpuFold 0 countTrue) == 2,
-        gpuLength means == 2,
-        (gpuGet (means, 0) ?: 0.0) == 2.0,
-        (gpuGet (means, 1) ?: 0.0) == 4.0,
-        (means |> gpuFold 0.0 addF) == 6.0,
-        (gpuGet (mixed, 0) ?: 0.0) == 1.5,
-        (mixed |> gpuFold 0.0 addF) == 3.75,
-        gpuLength (gpuZipWith (toGpu [1, 2, 3], toGpu [0.5], mixAdd)) == 1,
-        (gpuZipWith (toGpu [1.0, 2.0, 3.0], toGpu [3.0, 2.0, 1.0], lessF) |> gpuFold 0 countTrue) == 1
-    ]
+    match toGpu ([1, 2, 3, 4])
+        Success value =>
+            uploaded40 = value
+            match toGpu ([3, 5, 7, 9])
+                Success value =>
+                    uploaded41 = value
+                    parity = gpuZipWith (uploaded40, uploaded41, sameParity)
+                    match toGpu ([1, 3])
+                        Success value =>
+                            uploaded42 = value
+                            match toGpu ([3, 5])
+                                Success value =>
+                                    uploaded43 = value
+                                    means = gpuZipWith (uploaded42, uploaded43, meanF)
+                                    match toGpu ([1, 2])
+                                        Success value =>
+                                            uploaded44 = value
+                                            match toGpu ([0.5, 0.25])
+                                                Success value =>
+                                                    uploaded45 = value
+                                                    mixed = gpuZipWith (uploaded44, uploaded45, mixAdd)
+                                                    checkAll "zip element types" [
+                                                        gpuLength parity == 4, (gpuGet (parity, 0) ?: false) == true, (gpuGet (parity, 1) ?: true) == false,
+                                                        (parity |> gpuFold 0 countTrue) == 2, gpuLength means == 2, (gpuGet (means, 0) ?: 0.0) == 2.0,
+                                                        (gpuGet (means, 1) ?: 0.0) == 4.0, (means |> gpuFold 0.0 addF) == 6.0, (gpuGet (mixed, 0) ?: 0.0) == 1.5,
+                                                        (mixed |> gpuFold 0.0 addF) == 3.75,
+                                                        gpuSatisfies (toGpu ([1, 2, 3]), \uploaded38 => gpuSatisfies (toGpu ([0.5]), \uploaded39 => gpuLength (gpuZipWith (uploaded38, uploaded39, mixAdd)) == 1)),
+                                                        gpuSatisfies (toGpu ([1.0, 2.0, 3.0]), \uploaded36 => gpuSatisfies (toGpu ([3.0, 2.0, 1.0]), \uploaded37 => (gpuZipWith (uploaded36, uploaded37, lessF) |> gpuFold 0 countTrue) == 1))
+                                                    ]
+                                                Error message => check ("GPU allocation", "success", toString message)
+                                        Error message => check ("GPU allocation", "success", toString message)
+                                Error message => check ("GPU allocation", "success", toString message)
+                        Error message => check ("GPU allocation", "success", toString message)
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin the three shapes of a compaction — every element kept, none kept, alternating — and read the kept run back element by element so [GPU-FILTER]'s source-order
     guarantee is checked, not just its count. *)
 filterKeepCase () =
-    src = toGpu [9, 4, 7, 2, 5, 8]
-    kept = src |> gpuFilter keepEvery
-    alternates = src |> gpuFilter isEven
-    checkAll "filter keep sets" [
-        gpuLength kept == 6,
-        (gpuGet (kept, 0) ?: 0) == 9,
-        (gpuGet (kept, 5) ?: 0) == 8,
-        (kept |> gpuFold 0 sumI) == 35,
-        gpuLength (src |> gpuFilter keepNone) == 0,
-        gpuLength alternates == 3,
-        (gpuGet (alternates, 0) ?: 0) == 4,
-        (gpuGet (alternates, 1) ?: 0) == 2,
-        (gpuGet (alternates, 2) ?: 0) == 8,
-        (gpuGet (alternates, 3) ?: 55) == 55,
-        gpuLength (src |> gpuFilter isOddP) == 3,
-        (src |> gpuFilter isOddP |> gpuFold 0 horner) == 975
-    ]
+    match toGpu ([9, 4, 7, 2, 5, 8])
+        Success value =>
+            src = value
+            kept = src |> gpuFilter keepEvery
+            alternates = src |> gpuFilter isEven
+            checkAll "filter keep sets" [
+                gpuLength kept == 6, (gpuGet (kept, 0) ?: 0) == 9, (gpuGet (kept, 5) ?: 0) == 8, (kept |> gpuFold 0 sumI) == 35,
+                gpuLength (src |> gpuFilter keepNone) == 0, gpuLength alternates == 3, (gpuGet (alternates, 0) ?: 0) == 4, (gpuGet (alternates, 1) ?: 0) == 2,
+                (gpuGet (alternates, 2) ?: 0) == 8, (gpuGet (alternates, 3) ?: 55) == 55, gpuLength (src |> gpuFilter isOddP) == 3,
+                (src |> gpuFilter isOddP |> gpuFold 0 horner) == 975
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** Feed the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the predicate. *)
 filterPredicateCase () = withIndices (10, \indices10 => withIndices (6, \indices6 => filterPredicateWith (indices10, indices6)))
 filterPredicateWith (indices10, indices6) =
     digits = indices10
-    signed = toGpu [0.0 - 1.5, 0.0, 2.5, 4.0]
-    checkAll "filter predicates" [
-        gpuLength (digits |> gpuFilter isBig) == 5,
-        (digits |> gpuFilter isBig |> gpuFold 0 sumI) == 35,
-        gpuLength (digits |> gpuFilter bigEven) == 2,
-        (digits |> gpuFilter bigEven |> gpuFold 0 sumI) == 14,
-        gpuLength (digits |> gpuFilter atEdge) == 4,
-        (digits |> gpuFilter atEdge |> gpuFold 0 horner) == 189,
-        (digits |> gpuFilter isOddP |> gpuFold 0 sumI) == 25,
-        gpuLength (digits |> gpuFilter inBand) == 4,
-        gpuLength (digits |> gpuFilter notBand) == 6,
-        (digits |> gpuFilter notBand |> gpuFold 0 sumI) == 27,
-        gpuLength (signed |> gpuFilter isPositive) == 2,
-        (signed |> gpuFilter isPositive |> gpuFold 0.0 addF) == 6.5,
-        gpuLength (indices6 |> gpuMap isEven |> gpuFilter truthy) == 3
-    ]
+    match toGpu ([0.0 - 1.5, 0.0, 2.5, 4.0])
+        Success value =>
+            signed = value
+            checkAll "filter predicates" [
+                gpuLength (digits |> gpuFilter isBig) == 5, (digits |> gpuFilter isBig |> gpuFold 0 sumI) == 35, gpuLength (digits |> gpuFilter bigEven) == 2,
+                (digits |> gpuFilter bigEven |> gpuFold 0 sumI) == 14, gpuLength (digits |> gpuFilter atEdge) == 4,
+                (digits |> gpuFilter atEdge |> gpuFold 0 horner) == 189, (digits |> gpuFilter isOddP |> gpuFold 0 sumI) == 25,
+                gpuLength (digits |> gpuFilter inBand) == 4, gpuLength (digits |> gpuFilter notBand) == 6, (digits |> gpuFilter notBand |> gpuFold 0 sumI) == 27,
+                gpuLength (signed |> gpuFilter isPositive) == 2, (signed |> gpuFilter isPositive |> gpuFold 0.0 addF) == 6.5,
+                gpuLength (indices6 |> gpuMap isEven |> gpuFilter truthy) == 3
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** Read [GPU-SCAN]'s inclusive prefix out one element at a time: element i is the combine folded through element i, so the last element must equal the whole-buffer
     fold and index n is out of bounds. *)
 scanPrefixCase () = withIndices (5, \indices5 => scanPrefixWith (indices5))
 scanPrefixWith (indices5) =
-    sums = toGpu [1, 2, 3, 4, 5] |> gpuScan 0 sumI
-    twice = sums |> gpuScan 0 sumI
-    products = toGpu [1, 2, 3, 4] |> gpuScan 1 mulI
-    checkAll "inclusive prefix" [
-        gpuLength sums == 5,
-        (gpuGet (sums, 0) ?: 0) == 1,
-        (gpuGet (sums, 1) ?: 0) == 3,
-        (gpuGet (sums, 2) ?: 0) == 6,
-        (gpuGet (sums, 3) ?: 0) == 10,
-        (gpuGet (sums, 4) ?: 0) == 15,
-        (gpuGet (sums, 5) ?: 77) == 77,
-        (gpuGet (sums, 4) ?: 0) == (toGpu [1, 2, 3, 4, 5] |> gpuFold 0 sumI),
-        (gpuGet (twice, 4) ?: 0) == 35,
-        gpuLength products == 4,
-        (gpuGet (products, 3) ?: 0) == 24,
-        (gpuGet (indices5 |> gpuScan 0 sumI, 4) ?: 0) == 10
-    ]
+    match toGpu ([1, 2, 3, 4, 5])
+        Success value =>
+            sums = value |> gpuScan 0 sumI
+            twice = sums |> gpuScan 0 sumI
+            match toGpu ([1, 2, 3, 4])
+                Success value =>
+                    products = value |> gpuScan 1 mulI
+                    checkAll "inclusive prefix" [
+                        gpuLength sums == 5, (gpuGet (sums, 0) ?: 0) == 1, (gpuGet (sums, 1) ?: 0) == 3, (gpuGet (sums, 2) ?: 0) == 6, (gpuGet (sums, 3) ?: 0) == 10,
+                        (gpuGet (sums, 4) ?: 0) == 15, (gpuGet (sums, 5) ?: 77) == 77,
+                        gpuSatisfies (toGpu ([1, 2, 3, 4, 5]), \uploaded31 => (gpuGet (sums, 4) ?: 0) == (uploaded31 |> gpuFold 0 sumI)), (gpuGet (twice, 4) ?: 0) == 35,
+                        gpuLength products == 4, (gpuGet (products, 3) ?: 0) == 24, (gpuGet (indices5 |> gpuScan 0 sumI, 4) ?: 0) == 10
+                    ]
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch. *)
 scanSeedCase () =
-    seeded = toGpu [1, 2, 3] |> gpuScan 10 sumI
-    running = toGpu [3, 1, 4, 1, 5, 9, 2, 6] |> gpuScan 0 maxI
-    latched = toGpu [1, 3, 4, 7] |> gpuMap isEven |> gpuScan false orB
-    checkAll "scan seeds" [
-        (gpuGet (seeded, 0) ?: 0) == 11,
-        (gpuGet (seeded, 1) ?: 0) == 13,
-        (gpuGet (seeded, 2) ?: 0) == 16,
-        (gpuGet (running, 0) ?: 0) == 3,
-        (gpuGet (running, 1) ?: 0) == 3,
-        (gpuGet (running, 3) ?: 0) == 4,
-        (gpuGet (running, 7) ?: 0) == 9,
-        (running |> gpuFold 0 sumI) == 46,
-        (toGpu [3, 1, 4] |> gpuScan 100 maxI |> gpuFold 0 sumI) == 300,
-        gpuLength latched == 4,
-        (gpuGet (latched, 1) ?: true) == false,
-        (latched |> gpuFold 0 countTrue) == 2
-    ]
+    match toGpu ([1, 2, 3])
+        Success value =>
+            seeded = value |> gpuScan 10 sumI
+            match toGpu ([3, 1, 4, 1, 5, 9, 2, 6])
+                Success value =>
+                    running = value |> gpuScan 0 maxI
+                    match toGpu ([1, 3, 4, 7])
+                        Success value =>
+                            latched = value |> gpuMap isEven |> gpuScan false orB
+                            checkAll "scan seeds" [
+                                (gpuGet (seeded, 0) ?: 0) == 11, (gpuGet (seeded, 1) ?: 0) == 13, (gpuGet (seeded, 2) ?: 0) == 16, (gpuGet (running, 0) ?: 0) == 3,
+                                (gpuGet (running, 1) ?: 0) == 3, (gpuGet (running, 3) ?: 0) == 4, (gpuGet (running, 7) ?: 0) == 9, (running |> gpuFold 0 sumI) == 46,
+                                gpuSatisfies (toGpu ([3, 1, 4]), \uploaded27 => (uploaded27 |> gpuScan 100 maxI |> gpuFold 0 sumI) == 300), gpuLength latched == 4,
+                                (gpuGet (latched, 1) ?: true) == false, (latched |> gpuFold 0 countTrue) == 2
+                            ]
+                        Error message => check ("GPU allocation", "success", toString message)
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree with the
     fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers. *)
 orderCase () =
-    digitsUp = toGpu [1, 2, 3, 4]
-    running = digitsUp |> gpuScan 0 horner
-    checkAll "traversal order" [
-        (digitsUp |> gpuFold 0 horner) == 1234,
-        (toGpu [4, 3, 2, 1] |> gpuFold 0 horner) == 4321,
-        (digitsUp |> gpuFold 9 horner) == 91234,
-        (toGpu [1, 2, 3] |> gpuFold 100 subI) == 94,
-        (toGpu [3, 2, 1] |> gpuFold 100 subI) == 94,
-        (gpuGet (running, 0) ?: 0) == 1,
-        (gpuGet (running, 1) ?: 0) == 12,
-        (gpuGet (running, 2) ?: 0) == 123,
-        (gpuGet (running, 3) ?: 0) == 1234,
-        (gpuGet (running, 3) ?: 0) == (digitsUp |> gpuFold 0 horner),
-        (toGpu [1, 2, 3] |> gpuScan 10 subI |> gpuFold 0 sumI) == 20,
-        (toGpu [1, 2, 3] |> gpuScan 0 subI |> gpuFold 10 sumI) == 0,
-        (running |> gpuFold 0 sumI) == 1370
-    ]
+    match toGpu ([1, 2, 3, 4])
+        Success value =>
+            digitsUp = value
+            running = digitsUp |> gpuScan 0 horner
+            checkAll "traversal order" [
+                (digitsUp |> gpuFold 0 horner) == 1234, gpuSatisfies (toGpu ([4, 3, 2, 1]), \uploaded25 => (uploaded25 |> gpuFold 0 horner) == 4321),
+                (digitsUp |> gpuFold 9 horner) == 91234, gpuSatisfies (toGpu ([1, 2, 3]), \uploaded24 => (uploaded24 |> gpuFold 100 subI) == 94),
+                gpuSatisfies (toGpu ([3, 2, 1]), \uploaded23 => (uploaded23 |> gpuFold 100 subI) == 94), (gpuGet (running, 0) ?: 0) == 1,
+                (gpuGet (running, 1) ?: 0) == 12, (gpuGet (running, 2) ?: 0) == 123, (gpuGet (running, 3) ?: 0) == 1234,
+                (gpuGet (running, 3) ?: 0) == (digitsUp |> gpuFold 0 horner),
+                gpuSatisfies (toGpu ([1, 2, 3]), \uploaded22 => (uploaded22 |> gpuScan 10 subI |> gpuFold 0 sumI) == 20),
+                gpuSatisfies (toGpu ([1, 2, 3]), \uploaded21 => (uploaded21 |> gpuScan 0 subI |> gpuFold 10 sumI) == 0), (running |> gpuFold 0 sumI) == 1370
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** Run pipelines of five and more dependent stages: each one allocates a fresh buffer the next stage consumes, so a stage that read a stale length or a stale pointer
     would corrupt every number below. *)
 deepChainCase () = withIndices (12, \indices12 => withIndices (8, \indices8 => withIndices (20, \indices20 => deepChainWith (indices12, indices8, indices20))))
@@ -285,17 +285,9 @@ deepChainWith (indices12, indices8, indices20) =
     stepped = indices8 |> gpuMap inc |> gpuMap dbl |> gpuMap inc |> gpuMap dbl |> gpuMap inc
     compacted = indices20 |> gpuMap dbl |> gpuFilter isBig |> gpuScan 0 sumI
     checkAll "deep chains" [
-        gpuLength compacted == 17,
-        (gpuGet (compacted, 0) ?: 0) == 6,
-        (gpuGet (compacted, 16) ?: 0) == 374,
-        (compacted |> gpuFold 0 sumI) == 2550,
-        (widened |> gpuFold 0.0 addF) == 66.0,
-        (widened |> gpuMap isPositive |> gpuMap toBit |> gpuFold 0 sumI) == 11,
-        gpuLength stepped == 8,
-        (gpuGet (stepped, 0) ?: 0) == 7,
-        (gpuGet (stepped, 7) ?: 0) == 35,
-        (stepped |> gpuFold 0 sumI) == 168,
-        (stepped |> gpuFilter isOddP |> gpuFold 0 sumI) == 168,
+        gpuLength compacted == 17, (gpuGet (compacted, 0) ?: 0) == 6, (gpuGet (compacted, 16) ?: 0) == 374, (compacted |> gpuFold 0 sumI) == 2550,
+        (widened |> gpuFold 0.0 addF) == 66.0, (widened |> gpuMap isPositive |> gpuMap toBit |> gpuFold 0 sumI) == 11, gpuLength stepped == 8,
+        (gpuGet (stepped, 0) ?: 0) == 7, (gpuGet (stepped, 7) ?: 0) == 35, (stepped |> gpuFold 0 sumI) == 168, (stepped |> gpuFilter isOddP |> gpuFold 0 sumI) == 168,
         gpuLength (stepped |> gpuFilter isEven) == 0
     ]
 (** Interleave the shape-changing combinators — a compaction feeding a scan feeding another compaction, a zip feeding a map feeding a filter — where a wrong published
@@ -306,128 +298,108 @@ mixedChainWith (indices30, indices6) =
     tripled = indices6 |> gpuMap (\x => (x * 3) )
     woven = gpuZipWith (indices6, tripled, mulI) |> gpuMap inc |> gpuFilter isOddP
     checkAll "mixed chains" [
-        gpuLength prefixes == 13,
-        (gpuGet (prefixes, 0) ?: 0) == 6,
-        (gpuGet (prefixes, 12) ?: 0) == 210,
-        (prefixes |> gpuFold 0 sumI) == 1118,
-        (tripled |> gpuFold 0 sumI) == 45,
-        (gpuZipWith (tripled, indices6, subI) |> gpuFold 0 sumI) == 30,
-        gpuLength woven == 3,
-        (gpuGet (woven, 0) ?: 0) == 1,
-        (gpuGet (woven, 2) ?: 0) == 49,
-        (woven |> gpuFold 0 sumI) == 63,
-        gpuLength (woven |> gpuFilter isEven) == 0,
-        (woven |> gpuScan 0 sumI |> gpuFold 0 sumI) == 78
+        gpuLength prefixes == 13, (gpuGet (prefixes, 0) ?: 0) == 6, (gpuGet (prefixes, 12) ?: 0) == 210, (prefixes |> gpuFold 0 sumI) == 1118,
+        (tripled |> gpuFold 0 sumI) == 45, (gpuZipWith (tripled, indices6, subI) |> gpuFold 0 sumI) == 30, gpuLength woven == 3, (gpuGet (woven, 0) ?: 0) == 1,
+        (gpuGet (woven, 2) ?: 0) == 49, (woven |> gpuFold 0 sumI) == 63, gpuLength (woven |> gpuFilter isEven) == 0, (woven |> gpuScan 0 sumI |> gpuFold 0 sumI) == 78
     ]
 (** Walk the whole element lattice [GPU-BUFFER-ELEM] allows — int to float through [GPU-CONVERT]'s toFloat, int and float to bool through predicates, bool back to int —
     folding each buffer at its own element type. *)
 typeChangeCase () =
-    widened = toGpu [1, 2, 3] |> gpuMap toFloat
-    flags = toGpu [1, 2, 3, 4] |> gpuMap isEven
-    bits = flags |> gpuMap toBit
-    checkAll "type-changing maps" [
-        (widened |> gpuFold 0.0 addF) == 6.0,
-        (gpuGet (widened, 1) ?: 0.0) == 2.0,
-        (widened |> gpuMap half |> gpuFold 0.0 addF) == 3.0,
-        (widened |> gpuScan 0.0 addF |> gpuFold 0.0 addF) == 10.0,
-        gpuLength flags == 4,
-        (gpuGet (flags, 0) ?: true) == false,
-        (gpuGet (flags, 1) ?: false) == true,
-        (flags |> gpuFold 0 countTrue) == 2,
-        (bits |> gpuFold 0 sumI) == 2,
-        (bits |> gpuMap toFloat |> gpuFold 0.0 addF) == 2.0,
-        (toGpu [0.0 - 1.5, 0.0, 2.5] |> gpuMap isPositive |> gpuFold 0 countTrue) == 1,
-        (toGpu [0, 1, 2] |> gpuMap toFloat |> gpuMap isPositive |> gpuFold 0 countTrue) == 2
-    ]
-(** Pin toGpu as a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]: the pending map/filter stages replay inside the loop that fills the buffer, so no List is
+    match toGpu ([1, 2, 3])
+        Success value =>
+            widened = value |> gpuMap toFloat
+            match toGpu ([1, 2, 3, 4])
+                Success value =>
+                    flags = value |> gpuMap isEven
+                    bits = flags |> gpuMap toBit
+                    checkAll "type-changing maps" [
+                        (widened |> gpuFold 0.0 addF) == 6.0, (gpuGet (widened, 1) ?: 0.0) == 2.0, (widened |> gpuMap half |> gpuFold 0.0 addF) == 3.0,
+                        (widened |> gpuScan 0.0 addF |> gpuFold 0.0 addF) == 10.0, gpuLength flags == 4, (gpuGet (flags, 0) ?: true) == false,
+                        (gpuGet (flags, 1) ?: false) == true, (flags |> gpuFold 0 countTrue) == 2, (bits |> gpuFold 0 sumI) == 2,
+                        (bits |> gpuMap toFloat |> gpuFold 0.0 addF) == 2.0,
+                        gpuSatisfies (toGpu ([0.0 - 1.5, 0.0, 2.5]), \uploaded18 => (uploaded18 |> gpuMap isPositive |> gpuFold 0 countTrue) == 1),
+                        gpuSatisfies (toGpu ([0, 1, 2]), \uploaded17 => (uploaded17 |> gpuMap toFloat |> gpuMap isPositive |> gpuFold 0 countTrue) == 2)
+                    ]
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
+(** Pin toGpu (as) a consuming stage of an iterator pipeline [GPU-BUFFER-FUSE]: the pending map/filter stages replay inside the loop that fills the buffer, so no List is
     built on the way. A filtered chain publishes the kept prefix exactly as gpuFilter does, an inverted or empty range yields an empty buffer, and a fused map may
     change the element type. *)
 fusionSourceCase () =
-    staged = range (0, 10) |> filter isEven |> map (\x => (x * 2) ) |> toGpu ()
-    checkAll "fused sources" [
-        (range (0, 4) |> map toFloat |> map half |> toGpu () |> gpuFold 0.0 addF) == 3.0,
-        (range (0, 4) |> map dbl |> map inc |> toGpu () |> gpuFold 0 sumI) == 16,
-        gpuLength staged == 5,
-        (gpuGet (staged, 4) ?: 0) == 16,
-        (staged |> gpuFold 0 sumI) == 40,
-        (range (0, 10) |> filter isEven |> toGpu () |> gpuFold 0 horner) == 2468,
-        (range (3, 7) |> toGpu () |> gpuFold 0 sumI) == 18,
-        gpuLength (range (0, 1) |> toGpu ()) == 1,
-        gpuLength (range (5, 5) |> toGpu ()) == 0,
-        gpuLength (range (9, 2) |> toGpu ()) == 0,
-        gpuLength (range (0, 10) |> filter keepNone |> toGpu ()) == 0,
-        gpuLength (range (0, 10) |> filter keepEvery |> toGpu ()) == 10,
-        (range (0, 6) |> map toFloat |> toGpu () |> gpuFold 0.0 addF) == 15.0,
-        (range (0, 6) |> map isEven |> toGpu () |> gpuFold 0 countTrue) == 3
-    ]
+    match toGpu(range (0, 10) |> filter isEven |> map (\x => (x * 2) ))
+        Success value =>
+            uploaded16 = value
+            staged =uploaded16
+            checkAll "fused sources" [
+                gpuSatisfies (toGpu(range (0, 4) |> map toFloat |> map half), \uploaded15 => (uploaded15 |> gpuFold 0.0 addF) == 3.0),
+                gpuSatisfies (toGpu(range (0, 4) |> map dbl |> map inc), \uploaded14 => (uploaded14 |> gpuFold 0 sumI) == 16), gpuLength staged == 5,
+                (gpuGet (staged, 4) ?: 0) == 16, (staged |> gpuFold 0 sumI) == 40,
+                gpuSatisfies (toGpu(range (0, 10) |> filter isEven), \uploaded13 => (uploaded13 |> gpuFold 0 horner) == 2468),
+                gpuSatisfies (toGpu(range (3, 7)), \uploaded12 => (uploaded12 |> gpuFold 0 sumI) == 18),
+                gpuSatisfies (toGpu(range (0, 1)), \uploaded11 => gpuLength (uploaded11) == 1),
+                gpuSatisfies (toGpu(range (5, 5)), \uploaded10 => gpuLength (uploaded10) == 0),
+                gpuSatisfies (toGpu(range (9, 2)), \uploaded9 => gpuLength (uploaded9) == 0),
+                gpuSatisfies (toGpu(range (0, 10) |> filter keepNone), \uploaded8 => gpuLength (uploaded8) == 0),
+                gpuSatisfies (toGpu(range (0, 10) |> filter keepEvery), \uploaded7 => gpuLength (uploaded7) == 10),
+                gpuSatisfies (toGpu(range (0, 6) |> map toFloat), \uploaded6 => (uploaded6 |> gpuFold 0.0 addF) == 15.0),
+                gpuSatisfies (toGpu(range (0, 6) |> map isEven), \uploaded5 => (uploaded5 |> gpuFold 0 countTrue) == 3)
+            ]
+        Error message => check ("GPU allocation", "success", toString message)
 (** Feed a fused buffer into every combinator in turn, including both operand slots of a ragged zip, so a buffer built by the fusion path is indistinguishable from one
     copied out of a list. *)
 fusionStageCase () =
-    fused = range (0, 10) |> map (\x => (x * 2) ) |> toGpu ()
-    kept = range (0, 10) |> filter isEven |> toGpu ()
-    checkAll "fused into combinators" [
-        (fused |> gpuMap inc |> gpuFold 0 sumI) == 100,
-        gpuLength (fused |> gpuFilter isBig) == 7,
-        (fused |> gpuFilter isBig |> gpuFold 0 sumI) == 84,
-        (fused |> gpuFilter isEven |> gpuFold 0 sumI) == 90,
-        (gpuGet (fused |> gpuScan 0 sumI, 9) ?: 0) == 90,
-        gpuLength (gpuZipWith (fused, kept, sumI)) == 5,
-        gpuLength (gpuZipWith (kept, fused, sumI)) == 5,
-        (gpuZipWith (fused, kept, sumI) |> gpuFold 0 sumI) == 40,
-        (gpuZipWith (kept, kept, mulI) |> gpuFold 0 sumI) == 120,
-        (fused |> gpuMap toFloat |> gpuFold 0.0 addF) == 90.0,
-        (kept |> gpuScan 0 sumI |> gpuFold 0 sumI) == 40,
-        gpuLength (fused |> gpuMap isEven |> gpuFilter truthy) == 10,
-        (fused |> gpuMap dbl |> gpuScan 0 sumI |> gpuFold 0 sumI) == 660
-    ]
+    match toGpu(range (0, 10) |> map (\x => (x * 2) ))
+        Success value =>
+            uploaded3 = value
+            fused =uploaded3
+            match toGpu(range (0, 10) |> filter isEven)
+                Success value =>
+                    uploaded4 = value
+                    kept =uploaded4
+                    checkAll "fused into combinators" [
+                        (fused |> gpuMap inc |> gpuFold 0 sumI) == 100, gpuLength (fused |> gpuFilter isBig) == 7, (fused |> gpuFilter isBig |> gpuFold 0 sumI) == 84,
+                        (fused |> gpuFilter isEven |> gpuFold 0 sumI) == 90, (gpuGet (fused |> gpuScan 0 sumI, 9) ?: 0) == 90,
+                        gpuLength (gpuZipWith (fused, kept, sumI)) == 5, gpuLength (gpuZipWith (kept, fused, sumI)) == 5,
+                        (gpuZipWith (fused, kept, sumI) |> gpuFold 0 sumI) == 40, (gpuZipWith (kept, kept, mulI) |> gpuFold 0 sumI) == 120,
+                        (fused |> gpuMap toFloat |> gpuFold 0.0 addF) == 90.0, (kept |> gpuScan 0 sumI |> gpuFold 0 sumI) == 40,
+                        gpuLength (fused |> gpuMap isEven |> gpuFilter truthy) == 10, (fused |> gpuMap dbl |> gpuScan 0 sumI |> gpuFold 0 sumI) == 660
+                    ]
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin the index buffer [0, n) that gather and stencil start from, down to n = 1, n = 0, and a negative n — which yields an empty buffer for the same reason an
     inverted range does, never a negative allocation. *)
 iotaCase () = withIndices (5, \indices5 => withIndices (1, \indices1 => withIndices (0, \indices0 => withIndices (3, \indices3 => iotaWith (indices5, indices1, indices0, indices3)))))
 iotaWith (indices5, indices1, indices0, indices3) =
     idx = indices5
     checkAll "iota" [
-        gpuLength idx == 5,
-        (idx |> gpuFold 0 sumI) == 10,
-        (gpuGet (idx, 0) ?: 9) == 0,
-        (gpuGet (idx, 4) ?: 0) == 4,
-        (gpuGet (idx, 5) ?: 77) == 77,
-        (idx |> gpuFold 0 horner) == 1234,
-        gpuLength (indices1) == 1,
-        (gpuGet (indices1, 0) ?: 9) == 0,
-        gpuLength (indices0) == 0,
-        (indices0 |> gpuFold 3 sumI) == 3,
-        iotaError (0 - 4) == "gpu: buffer allocation: a negative element count",
-        (gpuZipWith (idx, idx, mulI) |> gpuFold 0 sumI) == 30,
-        (idx |> gpuMap toFloat |> gpuFold 0.0 addF) == 10.0,
-        (indices3 |> gpuScan 0 horner |> gpuFold 0 sumI) == 13
+        gpuLength idx == 5, (idx |> gpuFold 0 sumI) == 10, (gpuGet (idx, 0) ?: 9) == 0, (gpuGet (idx, 4) ?: 0) == 4, (gpuGet (idx, 5) ?: 77) == 77,
+        (idx |> gpuFold 0 horner) == 1234, gpuLength (indices1) == 1, (gpuGet (indices1, 0) ?: 9) == 0, gpuLength (indices0) == 0, (indices0 |> gpuFold 3 sumI) == 3,
+        iotaError (0 - 4) == "gpu: buffer allocation: a negative element count", (gpuZipWith (idx, idx, mulI) |> gpuFold 0 sumI) == 30,
+        (idx |> gpuMap toFloat |> gpuFold 0.0 addF) == 10.0, (indices3 |> gpuScan 0 horner |> gpuFold 0 sumI) == 13
     ]
 (** Pin typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a
     buffer is pure and therefore legal inside one. *)
 getCase () = withIndices (3, \indices3 => getWith (indices3))
 getWith (indices3) =
-    ints = toGpu [7, 8, 9]
-    floats = toGpu [1.5, 2.5]
-    reversed = indices3 |> gpuMap (\i => gpuGet (ints, (2 - i) ) ?: 0)
-    checkAll "get" [
-        (gpuGet (ints, 0) ?: 0) == 7,
-        (gpuGet (ints, 1) ?: 0) == 8,
-        (gpuGet (ints, 2) ?: 0) == 9,
-        (gpuGet (floats, 0) ?: 0.0) == 1.5,
-        (gpuGet (floats, 1) ?: 0.0) == 2.5,
-        (gpuGet (ints, 3) ?: 999) == 999,
-        (gpuGet (ints, (0 - 1) ) ?: 999) == 999,
-        (gpuGet (floats, 2) ?: 9.5) == 9.5,
-        oobMessage (ints, 0) == "value 7",
-        oobMessage (ints, 3) == "gpuGet: index out of bounds",
-        (gpuGet (reversed, 0) ?: 0) == 9,
-        (reversed |> gpuFold 0 horner) == 987
-    ]
+    match toGpu ([7, 8, 9])
+        Success value =>
+            ints = value
+            match toGpu ([1.5, 2.5])
+                Success value =>
+                    floats = value
+                    reversed = indices3 |> gpuMap (\i => gpuGet (ints, (2 - i) ) ?: 0)
+                    checkAll "get" [
+                        (gpuGet (ints, 0) ?: 0) == 7, (gpuGet (ints, 1) ?: 0) == 8, (gpuGet (ints, 2) ?: 0) == 9, (gpuGet (floats, 0) ?: 0.0) == 1.5,
+                        (gpuGet (floats, 1) ?: 0.0) == 2.5, (gpuGet (ints, 3) ?: 999) == 999, (gpuGet (ints, (0 - 1) ) ?: 999) == 999,
+                        (gpuGet (floats, 2) ?: 9.5) == 9.5, oobMessage (ints, 0) == "value 7", oobMessage (ints, 3) == "gpuGet: index out of bounds",
+                        (gpuGet (reversed, 0) ?: 0) == 9, (reversed |> gpuFold 0 horner) == 987
+                    ]
+                Error message => check ("GPU allocation", "success", toString message)
+        Error message => check ("GPU allocation", "success", toString message)
 (** Pin backend introspection: the host backend names itself, and says so rather than reporting a device it does not have [GPU-DEVICE]. *)
 deviceCase () = checkAll "device" [
-    gpuDevice () == "host",
-    length (gpuDevice ()) == 4,
-    gpuDevice () != "cuda:0"
-]
+    gpuDevice () == "host", length (gpuDevice ()) == 4, gpuDevice () != "cuda:0"
+    ]
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
     handle Arith

@@ -1,8 +1,8 @@
 let emptyRead: List<int> = []
-/// [FAILURE-EXPLICIT] A read error fails the predicate with its reason.
-fn readSatisfies(result, predicate) = match result {
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
-    Error { message } => { check("GPU readback", "success", toString(message))
+    Error { message } => { check("GPU operation", "success", toString(message))
         false }
 }
 // Scalar transfer conformance: inferred element types survive runtime lists,
@@ -10,85 +10,93 @@ fn readSatisfies(result, predicate) = match result {
 // [GPU-BUFFER-TO-LIST]. Host kernels retain [FLOAT-IEEE-RESULTS].
 
 fn addFloats(a, x) = a + x
-
 fn countTrue(a, x) = match x {
-    true => (a + 1) 
+    true => (a + 1)
     false => a
 }
-
 /// listReverse forces the runtime-list copy path; a direct literal would take
 /// [GPU-BUFFER-LITERAL] and would not exercise the runtime element metadata.
 fn floatListValue() = listReverse([2.5, 1.5])
 fn boolListValue() = listReverse([true, false, false])
-
 fn listValueTagsCase() = {
-    let floats = toGpu(floatListValue())
-    let flags = toGpu(boolListValue())
-    checkAll("runtime list values keep GPU scalar tags", [
-        gpuLength(floats) == 2,
-        (gpuGet(floats, 0) ?: 99.0) == 1.5,
-        (gpuGet(floats, 1) ?: 99.0) == 2.5,
-        (floats |> gpuFold(0.0, addFloats)) == 4.0,
-        gpuLength(flags) == 3,
-        (gpuGet(flags, 0) ?: true) == false,
-        (gpuGet(flags, 1) ?: true) == false,
-        (gpuGet(flags, 2) ?: false) == true,
-        (flags |> gpuFold(0, countTrue)) == 1
-    ])
+    match toGpu(floatListValue()) { Success { value } => { let floats = value
+            match toGpu(boolListValue()) { Success { value } => { let flags = value
+                    checkAll("runtime list values keep GPU scalar tags", [
+                            gpuLength(floats) == 2,
+                            (gpuGet(floats, 0) ?: 99.0) == 1.5,
+                            (gpuGet(floats, 1) ?: 99.0) == 2.5,
+                            (floats |> gpuFold(0.0, addFloats)) == 4.0,
+                            gpuLength(flags) == 3,
+                            (gpuGet(flags, 0) ?: true) == false,
+                            (gpuGet(flags, 1) ?: true) == false,
+                            (gpuGet(flags, 2) ?: false) == true,
+                            (flags |> gpuFold(0, countTrue)) == 1
+                    ])
+                } Error { message } => check("GPU allocation", "success", toString(message)) }
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
-
 fn fromGpuScalarCase() = {
-    match fromGpu(toGpu([1.25, 2.5, 5.0])) { Success { value } => { let read0 = value
-        let floats = read0
-        match fromGpu(toGpu([true, false, true])) { Success { value } => { let read1 = value
-            let flags = read1
-            checkAll("fromGpu preserves float and bool list elements", [
-                listLength(floats) == 3,
-                (listGet(floats, 0) ?: 99.0) == 1.25,
-                (listGet(floats, 1) ?: 99.0) == 2.5,
-                (listGet(floats, 2) ?: 99.0) == 5.0,
-                listLength(flags) == 3,
-                (listGet(flags, 0) ?: false) == true,
-                (listGet(flags, 1) ?: true) == false,
-                (listGet(flags, 2) ?: false) == true
-            ])
-        } Error { message } => check("GPU readback", "success", toString(message)) }
-    } Error { message } => check("GPU readback", "success", toString(message)) }
+    match toGpu([1.25, 2.5, 5.0]) { Success { value } => { let uploaded17 = value
+            match fromGpu(uploaded17) { Success { value } => { let read0 = value
+                    let floats = read0
+                    match toGpu([true, false, true]) { Success { value } => { let uploaded16 = value
+                            match fromGpu(uploaded16) { Success { value } => { let read1 = value
+                                    let flags = read1
+                                    checkAll("fromGpu preserves float and bool list elements", [
+                                            listLength(floats) == 3,
+                                            (listGet(floats, 0) ?: 99.0) == 1.25,
+                                            (listGet(floats, 1) ?: 99.0) == 2.5,
+                                            (listGet(floats, 2) ?: 99.0) == 5.0,
+                                            listLength(flags) == 3,
+                                            (listGet(flags, 0) ?: false) == true,
+                                            (listGet(flags, 1) ?: true) == false,
+                                            (listGet(flags, 2) ?: false) == true
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU allocation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
 fn repeatedCrossingCase() = {
-    match fromGpu(toGpu(floatListValue())) { Success { value } => { let read0 = value
-        let floats = toGpu(read0)
-        match fromGpu(toGpu(boolListValue())) { Success { value } => { let read1 = value
-            let flags = toGpu(read1)
-            match fromGpu(floats) { Success { value } => { let read2 = value
-                let floatsBack = read2
-                match fromGpu(flags) { Success { value } => { let read3 = value
-                    let flagsBack = read3
-                    checkAll("repeated host and GPU crossings retain scalar types", [
-                        gpuLength(floats) == 2,
-                        (gpuGet(floats, 0) ?: 99.0) == 1.5,
-                        (gpuGet(floats, 1) ?: 99.0) == 2.5,
-                        (floats |> gpuFold(0.0, addFloats)) == 4.0,
-                        (listGet(floatsBack, 0) ?: 99.0) == 1.5,
-                        (listGet(floatsBack, 1) ?: 99.0) == 2.5,
-                        gpuLength(flags) == 3,
-                        (flags |> gpuFold(0, countTrue)) == 1,
-                        (listGet(flagsBack, 0) ?: true) == false,
-                        (listGet(flagsBack, 2) ?: false) == true
-                    ])
-                } Error { message } => check("GPU readback", "success", toString(message)) }
-            } Error { message } => check("GPU readback", "success", toString(message)) }
-        } Error { message } => check("GPU readback", "success", toString(message)) }
-    } Error { message } => check("GPU readback", "success", toString(message)) }
+    match toGpu(floatListValue()) { Success { value } => { let uploaded15 = value
+            match fromGpu(uploaded15) { Success { value } => { let read0 = value
+                    match toGpu(read0) { Success { value } => { let floats = value
+                            match toGpu(boolListValue()) { Success { value } => { let uploaded14 = value
+                                    match fromGpu(uploaded14) { Success { value } => { let read1 = value
+                                            match toGpu(read1) { Success { value } => { let flags = value
+                                                    match fromGpu(floats) { Success { value } => { let read2 = value
+                                                            let floatsBack = read2
+                                                            match fromGpu(flags) { Success { value } => { let read3 = value
+                                                                    let flagsBack = read3
+                                                                    checkAll("repeated host and GPU crossings retain scalar types", [
+                                                                            gpuLength(floats) == 2,
+                                                                            (gpuGet(floats, 0) ?: 99.0) == 1.5,
+                                                                            (gpuGet(floats, 1) ?: 99.0) == 2.5,
+                                                                            (floats |> gpuFold(0.0, addFloats)) == 4.0,
+                                                                            (listGet(floatsBack, 0) ?: 99.0) == 1.5,
+                                                                            (listGet(floatsBack, 1) ?: 99.0) == 2.5,
+                                                                            gpuLength(flags) == 3,
+                                                                            (flags |> gpuFold(0, countTrue)) == 1,
+                                                                            (listGet(flagsBack, 0) ?: true) == false,
+                                                                            (listGet(flagsBack, 2) ?: false) == true
+                                                                    ])
+                                                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                } Error { message } => check("GPU allocation", "success", toString(message)) }
+                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                } Error { message } => check("GPU allocation", "success", toString(message)) }
+                        } Error { message } => check("GPU allocation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
 /// With no first element to inspect, lowering must use the inferred result type
 /// rather than leave the owner bare and let gpuGet default the word to int.
 fn emptyTypedLiteralCase() = {
     checkAll("empty literals retain contextual scalar types", [
-        gpuLength(toGpu([])) == 0,
-        (gpuGet(toGpu([]), 0) ?: 9.5) == 9.5,
-        (gpuGet(toGpu([]), 0) ?: true) == true,
-        readSatisfies(fromGpu(toGpu(emptyRead)), fn(checked0) => listLength(checked0) == 0)
+            gpuSatisfies(toGpu([]), fn(uploaded11: GpuBuffer<int>) => gpuLength(uploaded11) == 0),
+            gpuSatisfies(toGpu([]), fn(uploaded10) => (gpuGet(uploaded10, 0) ?: 9.5) == 9.5),
+            gpuSatisfies(toGpu([]), fn(uploaded9) => (gpuGet(uploaded9, 0) ?: true) == true),
+            gpuSatisfies(toGpu(emptyRead), fn(uploaded8) => gpuSatisfies(fromGpu(uploaded8), fn(checked0) => listLength(checked0) == 0))
     ])
 }
 /// Exact-value tests record any arithmetic fault as a failed assertion.
@@ -109,86 +117,85 @@ fn exactArithmetic(work) = {
     }
     work()
 }
-
-
 test("runtime list values retain float and bool GPU element tags", fn() => exactArithmetic(listValueTagsCase))
 test("fromGpu reads float and bool elements at their source types", fn() => exactArithmetic(fromGpuScalarCase))
 test("repeated List and GpuBuffer crossings preserve scalar types", fn() => exactArithmetic(repeatedCrossingCase))
 test("empty GPU literals retain contextual scalar types", fn() => exactArithmetic(emptyTypedLiteralCase))
-
 /// [FLOAT-IEEE-RESULTS]: host kernels obey the scalar arithmetic contract.
 fn squareScalar(value) = value * value
 fn subtractSelf(value) = value - value
 fn divideZero(value) = value / 0.0
 fn remainderZero(value) = value % -0.0
-
 fn gpuIeeeCase() = {
-    let seed = toGpu([10000000000000000.0])
-    let fourth = seed |> gpuMap(squareScalar) |> gpuMap(squareScalar)
-    let infinityBuffer = fourth |> gpuMap(squareScalar) |> gpuMap(squareScalar) |> gpuMap(squareScalar)
-    let infinity = gpuGet(infinityBuffer, 0) ?: 0.0
-    let nanBuffer = infinityBuffer |> gpuMap(subtractSelf)
-    let nan = gpuGet(nanBuffer, 0) ?: 0.0
-    match fromGpu(toGpu([infinity, nan, -0.0])) { Success { value } => { let read0 = value
-        let roundTrip = toGpu(listReverse(read0))
-        checkAll("host GPU kernels preserve non-finite values and signed zero", [
-            infinity > 10000000000000000.0, nan != nan,
-            (infinityBuffer |> gpuFold(0.0, addFloats)) == infinity,
-            (gpuGet(roundTrip, 2) ?: 0.0) == infinity,
-            (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
-            toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
-        ])
-    } Error { message } => check("GPU readback", "success", toString(message)) }
+    match toGpu([10000000000000000.0]) { Success { value } => { let seed = value
+            let fourth = seed |> gpuMap(squareScalar) |> gpuMap(squareScalar)
+            let infinityBuffer = fourth |> gpuMap(squareScalar) |> gpuMap(squareScalar) |> gpuMap(squareScalar)
+            let infinity = gpuGet(infinityBuffer, 0) ?: 0.0
+            let nanBuffer = infinityBuffer |> gpuMap(subtractSelf)
+            let nan = gpuGet(nanBuffer, 0) ?: 0.0
+            match toGpu([infinity, nan, -0.0]) { Success { value } => { let uploaded7 = value
+                    match fromGpu(uploaded7) { Success { value } => { let read0 = value
+                            match toGpu(listReverse(read0)) { Success { value } => { let roundTrip = value
+                                    checkAll("host GPU kernels preserve non-finite values and signed zero", [
+                                            infinity > 10000000000000000.0, nan != nan,
+                                            (infinityBuffer |> gpuFold(0.0, addFloats)) == infinity,
+                                            (gpuGet(roundTrip, 2) ?: 0.0) == infinity,
+                                            (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
+                                            toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
+                                    ])
+                                } Error { message } => check("GPU allocation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU allocation", "success", toString(message)) }
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
 fn gpuFloatZeroCase() = {
     mut faults = ""
     handle Arith { divideByZero op _ => { faults = faults + op
-        0.25 } }
-    let input = toGpu([1.0, 0.0, -1.0])
-    let quotients = input |> gpuMap(divideZero)
-    let remainders = input |> gpuMap(remainderZero)
-    checkAll("host GPU zero divisors use the enclosing policy", [
-        (quotients |> gpuFold(0.0, addFloats)) == 0.75,
-        (remainders |> gpuFold(0.0, addFloats)) == 0.75,
-        faults == "///%%%"
-    ])
+            0.25 } }
+    match toGpu([1.0, 0.0, -1.0]) { Success { value } => { let input = value
+            let quotients = input |> gpuMap(divideZero)
+            let remainders = input |> gpuMap(remainderZero)
+            checkAll("host GPU zero divisors use the enclosing policy", [
+                    (quotients |> gpuFold(0.0, addFloats)) == 0.75,
+                    (remainders |> gpuFold(0.0, addFloats)) == 0.75,
+                    faults == "///%%%"
+            ])
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
-
 test("host GPU arithmetic preserves IEEE non-finite values", gpuIeeeCase)
 test("host GPU float zero divisors use explicit recovery", gpuFloatZeroCase)
-
 /// [BUILTIN-ABS]: builtin callbacks use their inferred scalar ABI and policy.
 fn gpuAbsoluteCase() = {
-    let floats = toGpu([-2.5, -0.0, 3.5]) |> gpuMap(abs)
-    mut faults = ""
-    handle Arith { overflow op lhs rhs wrapped => {
-        checkAll("GPU abs overflow payload", [lhs == -9223372036854775808, rhs == 0, wrapped == lhs])
-        faults = faults + op
-        17
-    } }
-    let integers = toGpu([-9223372036854775808, -3, 4]) |> gpuMap(abs)
-    checkAll("GPU abs keeps float and integer callback contracts", [
-        (gpuGet(floats, 0) ?: 0.0) == 2.5,
-        toString(gpuGet(floats, 1) ?: 1.0) == "0.0",
-        (gpuGet(floats, 2) ?: 0.0) == 3.5,
-        (gpuGet(integers, 0) ?: 0) == 17,
-        (gpuGet(integers, 1) ?: 0) == 3,
-        (gpuGet(integers, 2) ?: 0) == 4, faults == "abs"
-    ])
+    match toGpu([-2.5, -0.0, 3.5]) { Success { value } => { let floats = value |> gpuMap(abs)
+            mut faults = ""
+            handle Arith { overflow op lhs rhs wrapped => {
+                    checkAll("GPU abs overflow payload", [lhs == -9223372036854775808, rhs == 0, wrapped == lhs])
+                    faults = faults + op
+                    17
+                } }
+            match toGpu([-9223372036854775808, -3, 4]) { Success { value } => { let integers = value |> gpuMap(abs)
+                    checkAll("GPU abs keeps float and integer callback contracts", [
+                            (gpuGet(floats, 0) ?: 0.0) == 2.5,
+                            toString(gpuGet(floats, 1) ?: 1.0) == "0.0",
+                            (gpuGet(floats, 2) ?: 0.0) == 3.5,
+                            (gpuGet(integers, 0) ?: 0) == 17,
+                            (gpuGet(integers, 1) ?: 0) == 3,
+                            (gpuGet(integers, 2) ?: 0) == 4, faults == "abs"
+                    ])
+                } Error { message } => check("GPU allocation", "success", toString(message)) }
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
-
 test("host GPU abs callbacks retain numeric types and recovery", gpuAbsoluteCase)
-
 /// Emitted bit-conversion kernels must preserve signed zeros and NaN payloads.
 fn gpuBitRoundTripCase() = {
     let words = [0, -9223372036854775808, 4607182418800017408, -4616189618054758400,
         9218868437227405312, -4503599627370496, 9221120237041090851, -2251799813684957,
         9218868437227405603, -4503599627370205, 1, -9223372036854775807]
-    let restored = toGpu(words) |> gpuMap(floatFromBits) |> gpuMap(floatBits)
-    checkAll("GPU bit conversions retain every payload bit", [
-        gpuLength(restored) == listLength(words),
-        fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: 0) == (listGet(words, i) ?: 1))
-    ])
+    match toGpu(words) { Success { value } => { let restored = value |> gpuMap(floatFromBits) |> gpuMap(floatBits)
+            checkAll("GPU bit conversions retain every payload bit", [
+                    gpuLength(restored) == listLength(words),
+                    fold(range(0, listLength(words)), true, fn(ok, i) => ok && (gpuGet(restored, i) ?: 0) == (listGet(words, i) ?: 1))
+            ])
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
-
 test("GPU bit conversion kernels preserve exact words", gpuBitRoundTripCase)

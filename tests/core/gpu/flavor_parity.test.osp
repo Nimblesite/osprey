@@ -1,7 +1,7 @@
-/// [FAILURE-EXPLICIT] A read error fails the predicate with its reason.
-fn readSatisfies(result, predicate) = match result {
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
-    Error { message } => { check("GPU readback", "success", toString(message))
+    Error { message } => { check("GPU operation", "success", toString(message))
         false }
 }
 fn iotaOutcome(result) = match result { Success { value } => "unexpected success ${gpuLength(value)}" Error { message } => toString(message) }
@@ -11,38 +11,38 @@ fn iotaOutcome(result) = match result { Success { value } => "unexpected success
 
 fn minimumIntCase() = {
     let minimum = -9223372036854775808
-    let buf = toGpu([minimum])
-    checkAll("minimum int literal crosses the GPU boundary", [
-        gpuLength(buf) == 1,
-        (gpuGet(buf, 0) ?: 0) == minimum,
-        readSatisfies(fromGpu(buf), fn(checked0) => (listGet(checked0, 0) ?: 0) == minimum)
-    ])
+    match toGpu([minimum]) { Success { value } => { let buf = value
+            checkAll("minimum int literal crosses the GPU boundary", [
+                    gpuLength(buf) == 1,
+                    (gpuGet(buf, 0) ?: 0) == minimum,
+                    gpuSatisfies(fromGpu(buf), fn(checked0) => (listGet(checked0, 0) ?: 0) == minimum)
+            ])
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
 fn negativeIotaCase() = {
     let direct = gpuIota(-3)
     let piped = -7 |> gpuIota()
     checkAll("negative gpuIota arguments report allocation errors", [
-        iotaOutcome(direct) == "gpu: buffer allocation: a negative element count",
-        iotaOutcome(piped) == "gpu: buffer allocation: a negative element count",
-        iotaOutcome(direct) == iotaOutcome(piped),
-        iotaOutcome(gpuIota(-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
+            iotaOutcome(direct) == "gpu: buffer allocation: a negative element count",
+            iotaOutcome(piped) == "gpu: buffer allocation: a negative element count",
+            iotaOutcome(direct) == iotaOutcome(piped),
+            iotaOutcome(gpuIota(-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
     ])
 }
-
 test("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
 test("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)
-
 fn denseFloatCombinatorsCase() = {
     let values: List<float32> = [0.5, 1.0, 1.5]
-    let buffer = toGpu(values)
-    let scan = gpuScan(buffer, toFloat32(0.0), fn(acc, value) => acc + value)
-    let kept = gpuFilter(buffer, fn(value) => value > toFloat32(0.5))
-    let zipped = gpuZipWith(buffer, buffer, fn(a, b) => a + b)
-    checkAll("dense float32 combinators", [
-        gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value) == toFloat32(3.0),
-        readSatisfies(fromGpu(scan), fn(checked0) => join(mapList(checked0, toString), ",") == "0.5,1.5,3.0"),
-        readSatisfies(fromGpu(kept), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,1.5"),
-        readSatisfies(fromGpu(zipped), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,2.0,3.0")
-    ])
+    match toGpu(values) { Success { value } => { let buffer = value
+            let scan = gpuScan(buffer, toFloat32(0.0), fn(acc, value) => acc + value)
+            let kept = gpuFilter(buffer, fn(value) => value > toFloat32(0.5))
+            let zipped = gpuZipWith(buffer, buffer, fn(a, b) => a + b)
+            checkAll("dense float32 combinators", [
+                    gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value) == toFloat32(3.0),
+                    gpuSatisfies(fromGpu(scan), fn(checked0) => join(mapList(checked0, toString), ",") == "0.5,1.5,3.0"),
+                    gpuSatisfies(fromGpu(kept), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,1.5"),
+                    gpuSatisfies(fromGpu(zipped), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,2.0,3.0")
+            ])
+        } Error { message } => check("GPU allocation", "success", toString(message)) }
 }
 test("float32 reductions scans filters and zip keep their width", denseFloatCombinatorsCase)
