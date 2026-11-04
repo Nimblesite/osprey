@@ -57,6 +57,7 @@ The guard names all five operators. Only `/` was reproduced; check each operator
 - [x] All 26 package coverage projects meet their floors. Direct IR inspection of the unannotated reported helper confirms native `fdiv float` for both widths, followed by binary16 rounding for `float16`; receipt: `polymorphic-native-width-receipt.json`.
 - [x] All C runtime tests and per-library C coverage floors pass in the full run, including exhaustive binary16 conversion and binary32 spelling checks.
 - [x] Full GC conformance passes: 318 programs, 318 exact goldens, 20 alternate GPU-lowering cases and all six doctests.
+- [x] Full ARC conformance passes: 318 programs, 318 exact goldens, zero leaky programs, 20 alternate GPU-lowering cases and all six doctests.
 - [ ] Finish full GC, ARC and wasm32 corpus lanes and final regression assertions. Transformer package GC and ARC both retain all 395 assertions (ARC: zero live objects).
 
 Receipts are in `target/logs/plan-0050/polymorphic-*`. No codegen change was needed for the verified native arithmetic: existing specialization emits the sized operations once inference supplies the correct result type. Other arithmetic operators retain the existing one-overload-per-definition rule; the division relation preserves its existing ability to instantiate mixed integer/binary64 operands.
