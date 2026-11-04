@@ -1,27 +1,36 @@
 use super::*;
 
+const DENSE_ROWS: [(&str, &str, i64, &str); 11] = [
+    ("uint8", "255", 1, "uchar"),
+    ("int8", "-128", 1, "char"),
+    ("bool", "true", 1, "bool"),
+    ("int16", "-32768", 2, "short"),
+    ("uint16", "65535", 2, "ushort"),
+    ("float16", "1.5", 2, "half"),
+    ("int32", "-2147483648", 4, "int"),
+    ("uint32", "4294967295", 4, "uint"),
+    ("float32", "1.5", 4, "float"),
+    ("int", "42", 8, "long"),
+    ("float", "1.5", 8, "ulong"),
+];
+
 #[test]
 fn dense_buffer_allocations_follow_the_inferred_element_width() {
     // [GPU-BUFFER-ELEM]: storage width is independent of the boxed list ABI.
-    for (ty, value, width) in [
-        ("uint8", "255", 1),
-        ("int8", "-128", 1),
-        ("bool", "true", 1),
-        ("int16", "-32768", 2),
-        ("uint16", "65535", 2),
-        ("float16", "1.5", 2),
-        ("int32", "-2147483648", 4),
-        ("uint32", "4294967295", 4),
-        ("float32", "1.5", 4),
-        ("int", "42", 8),
-        ("float", "1.5", 8),
-    ] {
-        let ir = module(&format!("let values: List<{ty}> = [{value}]\nlet buffer = toGpu(values)\nprint(fromGpu(buffer))\n"));
+    for (ty, value, width, storage) in DENSE_ROWS {
+        let ir = module(&format!("let values: List<{ty}> = [{value}]\nlet buffer = toGpu(values)\nlet gathered = gpuZipWith(gpuIota(1), buffer, fn(index, value) => gpuGet(buffer, index) ?: value)\nprint(fromGpu(gathered))\n"));
         let call = ir
             .lines()
             .find(|line| line.contains("call i8* @osprey_gpu_alloc("))
             .expect("allocation");
         assert!(call.ends_with(&format!(", i64 {width})")), "{ty}: {call}");
+        for parameter in [
+            format!("GPU_GLOBAL const {storage} *in1"),
+            format!("GPU_GLOBAL {storage} *out"),
+            format!("GPU_GLOBAL const {storage} *u0"),
+        ] {
+            shows(&ir, &[&parameter]);
+        }
     }
 }
 

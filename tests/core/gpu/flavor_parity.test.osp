@@ -32,10 +32,12 @@ fn denseOutOfBounds(buffer, index) = match gpuGet(buffer, index) { Error _ => tr
 fn denseRoundTrip(label, values) = {
     let buffer = toGpu(values)
     let mapped = gpuMap(buffer, fn(value) => value)
+    let gathered = gpuZipWith(gpuIota(length(values)), buffer, fn(index, value) => gpuGet(buffer, index) ?: value)
     checkAll(label, [
         gpuLength(buffer) == length(values),
         structuralEquals(fromGpu(buffer), values),
         structuralEquals(fromGpu(mapped), values),
+        structuralEquals(fromGpu(gathered), values),
         denseOutOfBounds(buffer, -1),
         denseOutOfBounds(buffer, length(values))
     ])

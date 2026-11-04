@@ -33,10 +33,12 @@ denseOutOfBounds (buffer, index) = match gpuGet (buffer, index)
 denseRoundTrip (label, values) =
     buffer = toGpu values
     mapped = gpuMap (buffer, \value => value)
+    gathered = gpuZipWith (gpuIota (length values), buffer, \(index, value) => gpuGet (buffer, index) ?: value)
     checkAll label [
         gpuLength buffer == length values,
         structuralEquals (fromGpu buffer, values),
         structuralEquals (fromGpu mapped, values),
+        structuralEquals (fromGpu gathered, values),
         denseOutOfBounds (buffer, -1),
         denseOutOfBounds (buffer, length values)
     ]
