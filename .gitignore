@@ -1,32 +1,15 @@
 # agent-pmo:74cf183
 
-# OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# Editor swap/temp files only — never ignore the config dirs themselves
-*.swp
-*.swo
-*~
-*.sublime-project
-*.sublime-workspace
-.vscode/code-navigator/
-.vscode-test/
 
 # Portfolio-wide tooling
+.vscode-test/
 .too_many_cooks/
 .commandtree/
-.playwright-mcp/
-coordination/
-nohup.out
 .deslop
 .mcp.json
+
+# Terraform state and inputs hold secrets
 packages/manager/ops/terraform/.terraform/
 packages/manager/ops/terraform/*.tfstate
 packages/manager/ops/terraform/*.tfstate.*
@@ -35,25 +18,17 @@ packages/manager/ops/terraform/*.tfvars
 packages/manager/ops/terraform/*.tfvars.json
 packages/manager/ops/terraform/crash.log
 
-# Coverage artifacts
+# Coverage and test reports
 coverage/
+!crates/osprey-codegen/src/coverage/
 lcov.info
-*.profraw
-*.profdata
-htmlcov/
-.coverage
-coverage.xml
-coverage.out
-coverage.out.raw
 coverage-summary.json
 TestResults/
-mutants.out/
+test-results/
 
 # Secrets / local overrides
 # `!*.pub.key` must stay immediately after `*.key` — gitignore is last-match-wins.
 .env
-.env.local
-.env.*.local
 *.local
 *.secret
 *.pem
@@ -62,115 +37,32 @@ mutants.out/
 
 # Temporary
 tmp/
-temp/
-scratch/
-scratchpad/
 *.log
 
-# Build artifacts (C runtime archives + compiled examples)
-compiler/bin/
-compiler/lib/
-compiler/outputs/
-compiler/internal/codegen/bin/
-examples/wasm/build/
-*.wasm
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-*.test
-*.out
-vendor/
-
-# Rust
+# Build output
 target/
-examples/rust_integration/target/
-examples/rust_integration/librust_utils.a
-
-# Node / TypeScript
 node_modules/
 dist/
 out/
-vscode-extension/out/
-vscode-extension/dist/
-webcompiler/src/outputs/
-website/_site/
-
-# Repo-specific test data
-examples/tested/effects/test_data/
+.build/
+examples/wasm/build/
+*.wasm
+*.exe
+*.dll
+*.so
+*.dylib
 
 # Tool caches
-.ghissues/
-.dart_tool/
-.pytest_cache/
-.mypy_cache/
 .ruff_cache/
 __pycache__/
-
-# Ad-hoc compiler artefacts written into the working tree by manual runs
-compiler/processed_log.txt
-compiler/system_report.txt
-compiler/temp_test.txt
-
-# `make test` log (#56)
-compiler/test.log
-
-# Per-example debug output written beside a compiled example
+.osprey/
 .osprey-debug
+benchmarks/proof/tools/.lake/
 
-# Benchmark suite: generated binaries, hyperfine exports, rendered reports.
-# Per-language *source* files under benchmarks/cases/ ARE tracked; only the
-# build/run output is ignored. Plus stray native-compiler intermediates.
-benchmarks/results/bin/
+# Generated benchmark exports and downloaded model weights
 benchmarks/results/hf/
-benchmarks/cases/**/*.hi
-benchmarks/cases/**/*.cmi
-benchmarks/cases/**/*.cmx
-benchmarks/cases/**/*.o
-
-# Written into the CWD by regression tests, which means they land at the repo
-# root whenever the corpus is run from there. Both of the files below were
-# COMMITTED once, in the same change that added the tests writing them — a
-# corpus run then leaves the tree dirty, and a stale copy is a test input
-# nobody wrote on purpose.
-#   file_io_json_workflow.test.osp -> test_output_<n>.txt, test_stale_reason.txt
-#   http_state_levels.test.osp     -> osprey_http_state_levels.db
-# Leading `/` anchors these to the repo root the corpus actually writes to.
-# Unanchored, `test_output.txt` also matched
-# tests/regressions/basics/files/test_output.txt, reaching into the regression
-# corpus and hiding any future file that happens to share the name.
-/test_output_*.txt
-/test_output.txt
-/test_stale_reason.txt
-/osprey_http_state_levels.db
-# `osprey test <dir>` runs each program from its own directory, so the same two
-# files also land beside the test. Fully anchored for the reason above: these
-# exact paths, never a bare name that could hide a real fixture elsewhere.
-/tests/regressions/basics/files/test_output_*.txt
-/tests/regressions/basics/files/test_output.txt
-/tests/regressions/basics/files/test_stale_reason.txt
-/tests/regressions/effects/osprey_http_state_levels.db
-# The injected disk handler in storage_injection.test.{osp,ospml} writes the
-# notebook and its archive. Each flavor owns its own names so the twins cannot
-# race when the corpus runs them concurrently from the same directory.
-/osprey_storage_injection_*.txt
-/tests/effects/injection/osprey_storage_injection_*.txt
-# transformer.test.{osp,ospml} write the raw and safetensors files their
-# loader cases read back, named per run for the same reason.
-/osprey_transformer_*
-/tests/core/gpu/osprey_transformer_*
-
-# Core dumps from a crashed C test binary (a container run leaves them here).
-/core
-/core.*
 examples/gpt2/weights/
 
-# Package-system development state and scratch output ([PACKAGE-SOURCE-CANONICAL])
-.osprey/
-
-# Playwright run output
-test-results/
-
-# The Lake build tree of the proof-export recording tools (scripts/proof-export.sh)
-benchmarks/proof/tools/.lake/
+# Core dumps from a crashed C test binary (a container run leaves them here)
+/core
+/core.*
