@@ -27,6 +27,7 @@ pub(crate) fn make_result(
     disc: &str,
     errmsg: &str,
 ) -> Result<Value> {
+    let value = settled_payload(cg, value, disc);
     let value = coerce_to(cg, value, inner)?;
     let meta = result_meta(cg, inner);
     let obj = cg.malloc_struct(RESULT_STRUCT, meta);
@@ -36,6 +37,23 @@ pub(crate) fn make_result(
     out.result_payload_type = value.inferred_type;
     own_result(cg, &out, inner, errmsg);
     Ok(out)
+}
+
+/// A Result erases flat-list owner metadata, so settle its live payload before
+/// boxing. An Error's unused payload may be null and must never be read.
+/// Implements [BUILTIN-LIST-GET] and [ERR-PAYLOAD].
+fn settled_payload(cg: &mut Codegen, value: Value, disc: &str) -> Value {
+    if !crate::listlit::is_lit(&value) {
+        return value;
+    }
+    if disc == "0" {
+        return crate::listlit::escaping(cg, value);
+    }
+    let success = cg.emit_reg(format!("icmp eq i8 {disc}, 0"));
+    let (taken, error, end) = cg.diamond(&success);
+    cg.start_block(&taken);
+    let settled = crate::listlit::escaping(cg, value);
+    join_payload(cg, settled, &error, &end)
 }
 
 fn result_meta(cg: &Codegen, inner: LType) -> i64 {

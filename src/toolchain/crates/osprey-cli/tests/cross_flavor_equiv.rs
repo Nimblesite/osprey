@@ -326,14 +326,22 @@ def parsed(text):
             return value
         case Error(message=message):
             return 0
+def split_rows(text, separator):
+    return split(text, separator)
+def kept(text, separator):
+    match split_rows(text, separator):
+        case Success(value=parts):
+            return Success(value=join(filterList(parts, lambda part: part != ""), ":"))
+        case Error(message=message):
+            return Error(message=message)
 numbers = [alias(7), held("ignored")]
 words = {"answer": alias("seven")}
-print(f"{numbers[0]}:{numbers[1]}:{words["answer"]}:{identity(True)}:{parsed("42")}:{parsed("bad")}:{nested(held)}")
+print(f"{numbers[0]}:{numbers[1]}:{words["answer"]}:{identity(True)}:{parsed("42")}:{parsed("bad")}:{nested(held)}:{kept("a,,b", ",")}:{kept("x", "")}")
 "#;
     effect_execution::assert_flavored_output(
         "python_hm",
         "py",
         source,
-        "Success(7):Success(9):Success(seven):true:42:0:9\n",
+        "Success(7):Success(9):Success(seven):true:42:0:9:Success(a:b):Error(split: separator must not be empty)\n",
     );
 }
