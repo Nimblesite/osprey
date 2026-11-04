@@ -89,6 +89,24 @@ pub fn set_reused_check(checked: Option<osprey_types::CheckedProgram>) {
     REUSED_CHECK.with(|slot| slot.set(checked));
 }
 
+/// The gate's solve when it was of exactly `program`, else one fresh solve.
+/// Hand it back with [`set_reused_check`] so codegen spends no other.
+/// [TYPE-EFFECT-PROOF-COUNT]
+///
+/// # Errors
+/// Returns the program's type and effect errors from a fresh solve.
+pub fn retained_check(
+    program: &Program,
+) -> std::result::Result<osprey_types::CheckedProgram, Vec<osprey_types::TypeError>> {
+    match REUSED_CHECK
+        .with(std::cell::Cell::take)
+        .filter(|checked| checked.matches_source(program))
+    {
+        Some(checked) => Ok(checked),
+        None => osprey_types::check_and_publish(program, &[]),
+    }
+}
+
 /// The lowered program and published types for `program`: the gate's retained
 /// solve when one was supplied, otherwise a fresh lower-and-infer.
 fn solve(

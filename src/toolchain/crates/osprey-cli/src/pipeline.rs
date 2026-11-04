@@ -185,17 +185,16 @@ fn report_warnings(input: &CompilationInput, warnings: Warnings) -> usize {
 /// target capabilities, then hand the gate's retained solve to codegen so the
 /// whole-program check runs once per build.
 fn dispatch_codegen(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    let checked = match gate(input, cli.warnings) {
-        Ok(checked) => checked,
-        Err(code) => return code,
-    };
-    if target_error(cli, input).is_some() {
-        return ExitCode::FAILURE;
-    }
-    offer_checked(cli, input, checked);
-    let result = run_codegen(cli, input);
+    let result = gated(cli, input).map_or_else(|code| code, |()| run_codegen(cli, input));
     osprey_codegen::set_reused_check(None);
     result
+}
+
+/// The one whole-program solve of this invocation, retained for every target
+/// boundary and codegen after it. [TYPE-EFFECT-PROOF-COUNT]
+fn gated(cli: &Cli, input: &CompilationInput) -> Result<(), ExitCode> {
+    offer_checked(cli, input, gate(input, cli.warnings)?);
+    target_error(cli, input).map_or(Ok(()), |_| Err(ExitCode::FAILURE))
 }
 
 fn offer_checked(cli: &Cli, input: &CompilationInput, checked: osprey_types::CheckedProgram) {
@@ -219,7 +218,9 @@ fn reuse_eligible(cli: &Cli, input: &CompilationInput) -> bool {
 }
 
 pub(super) fn run_check(cli: &Cli, input: &CompilationInput) -> ExitCode {
-    if report_type_errors(input, cli.warnings) == 0 && target_error(cli, input).is_none() {
+    let verdict = gated(cli, input);
+    osprey_codegen::set_reused_check(None);
+    if verdict.is_ok() {
         if !cli.quiet {
             println!(
                 "{}: ok ({} statements)",

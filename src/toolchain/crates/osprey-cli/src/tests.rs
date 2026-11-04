@@ -8,6 +8,7 @@ use crate::project::CompilationInput;
 use crate::sandbox::Policy;
 use std::path::PathBuf;
 
+mod check_once;
 mod execution;
 mod invocation;
 

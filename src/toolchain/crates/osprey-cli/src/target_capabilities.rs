@@ -197,30 +197,44 @@ fn validate_wasm_abi(program: &Program) -> Result<(), String> {
     if boundaries.is_empty() {
         return Ok(());
     }
-    let types = osprey_types::infer_program(program);
-    for (name, position) in boundaries {
-        validate_wasm_signature(&types, name, position)?;
-    }
-    validate_dispatcher_effects(program)
+    let checked = osprey_codegen::retained_check(program)
+        .map_err(|errors| unresolved_browser_effects(program, &errors))?;
+    let verdict = boundaries
+        .into_iter()
+        .try_for_each(|(name, position)| validate_wasm_signature(checked.types(), name, position))
+        .and_then(|()| validate_dispatcher_effects(program, checked.library_exports()));
+    osprey_codegen::set_reused_check(Some(checked));
+    verdict
 }
 
-fn validate_dispatcher_effects(program: &Program) -> Result<(), String> {
-    let entries = browser_functions(program);
-    let names: Vec<_> = entries.iter().map(|(name, _)| *name).collect();
-    let errors = osprey_types::check_program_exports(program, &names);
+fn validate_dispatcher_effects(
+    program: &Program,
+    proof: &osprey_types::LibraryExports,
+) -> Result<(), String> {
+    let names: Vec<_> = browser_functions(program)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    let errors = proof.errors(&names);
     if errors.is_empty() {
         return Ok(());
     }
+    Err(unresolved_browser_effects(program, &errors))
+}
+
+fn unresolved_browser_effects(program: &Program, errors: &[osprey_types::TypeError]) -> String {
     let messages = errors
         .iter()
         .map(|error| error.message.as_str())
         .collect::<Vec<_>>()
         .join("; ");
-    let position = entries.first().and_then(|(_, position)| *position);
-    Err(format!(
+    let position = browser_functions(program)
+        .first()
+        .and_then(|(_, position)| *position);
+    format!(
         "target `wasm32` does not support browser ABI with unresolved effects{}: {messages}",
         location(position)
-    ))
+    )
 }
 
 fn browser_functions(program: &Program) -> Vec<(&str, Option<Position>)> {

@@ -117,6 +117,7 @@ pub use check::{
     check_and_publish, check_program, check_program_exports, effect_check_count, erased_var,
     infer_program, CheckedProgram,
 };
+pub use effect_rows::LibraryExports;
 pub use error::TypeError;
 pub use info::{
     CtorLayout, EffectRequirements, HandlerSite, OpType, PerformSite, ProgramTypes, SiteTable,

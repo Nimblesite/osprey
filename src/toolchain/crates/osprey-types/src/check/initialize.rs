@@ -10,6 +10,7 @@ impl Checker {
             effects: crate::builtins::builtin_effects(),
             signal_queries: HashMap::new(),
             function_effects: HashMap::new(),
+            library_exports: crate::effect_rows::LibraryExports::default(),
             expression_types: HashMap::new(),
             constants: Vec::new(),
             union_variants: HashMap::new(),

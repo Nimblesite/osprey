@@ -1,5 +1,5 @@
 //! Effect row check.
-use super::reports::CheckedEffects;
+use super::reports::{CheckedEffects, LibraryExports};
 use super::{
     clear_verdicts, converge, entry_errors, file_scope_env, full_application, requirement_name,
     specialize_argument, validate_arithmetic_initializers, validate_handler_arms,
@@ -9,14 +9,14 @@ use super::{
 
 /// Check inferred rows and entry discharge. Implements
 /// [EFFECTS-STATIC-DISCHARGE].
-pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) -> CheckedEffects {
+pub(crate) fn check(program: &Program, instances: &Instances) -> CheckedEffects {
     let renamed = super::capabilities::resolved(program, &instances.capabilities);
     let Some(renamed) = renamed else {
-        return check_resolved(program, instances, exports);
+        return check_resolved(program, instances);
     };
     let sites = super::capabilities::relocated_sites(program, &renamed);
     let relocated = super::capabilities::relocated_instances(instances, &sites);
-    let mut proof = check_resolved(&renamed, &relocated, exports);
+    let mut proof = check_resolved(&renamed, &relocated);
     let _ = instances
         .handler_inference
         .replace(relocated.handler_inference.into_inner());
@@ -29,7 +29,7 @@ pub(crate) fn check(program: &Program, instances: &Instances, exports: &[&str]) 
     clippy::too_many_lines,
     reason = "the fixed point, contract validation, and entry proof form one ordered checker pass"
 )]
-fn check_resolved(program: &Program, instances: &Instances, exports: &[&str]) -> CheckedEffects {
+fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
     let mut index = Index::collect(program);
     for function in &mut index.functions {
         let entries = function.position.and_then(|position| {
@@ -47,19 +47,6 @@ fn check_resolved(program: &Program, instances: &Instances, exports: &[&str]) ->
     }
     let axis = crate::multiplicity::OperationAxis::collect(program);
     let mut errors = Vec::new();
-    let exported: Vec<_> = exports
-        .iter()
-        .filter_map(|name| {
-            if let Some(id) = index.functions.iter().position(|f| f.qualified == *name) {
-                Some((id, *name))
-            } else {
-                errors.push(TypeError::new(format!(
-                    "library export `{name}` is not a defined function"
-                )));
-                None
-            }
-        })
-        .collect();
     for function in &index.functions {
         if function
             .effect_tail
@@ -102,6 +89,12 @@ fn check_resolved(program: &Program, instances: &Instances, exports: &[&str]) ->
     {
         return CheckedEffects {
             errors,
+            library_exports: LibraryExports::proven(
+                index
+                    .functions
+                    .iter()
+                    .map(|function| (function.qualified.clone(), Vec::new())),
+            ),
             ..CheckedEffects::default()
         };
     }
@@ -252,21 +245,22 @@ fn check_resolved(program: &Program, instances: &Instances, exports: &[&str]) ->
         !instances.non_callable_call_error,
         instances,
     ));
-    for (id, name) in exported {
-        if let Some(row) = rows.get(id) {
-            errors.extend(entry_errors(
-                row,
-                &format!("library export `{name}`"),
-                !instances.non_callable_call_error,
-                instances,
-            ));
-        }
-    }
     errors.extend(index.field_row_errors());
     errors.extend(instances.field_row_violations.borrow().values().cloned());
     CheckedEffects {
         errors,
         signal_queries: instances.signal_queries.borrow().clone(),
         functions: super::reports::collect(&index, instances, &rows, &returns),
+        library_exports: LibraryExports::proven(index.functions.iter().zip(&rows).map(
+            |(function, row)| {
+                let name = &function.qualified;
+                let context = format!("library export `{name}`");
+                let dynamic = !instances.non_callable_call_error;
+                (
+                    name.clone(),
+                    entry_errors(row, &context, dynamic, instances),
+                )
+            },
+        )),
     }
 }

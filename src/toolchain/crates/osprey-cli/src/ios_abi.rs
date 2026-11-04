@@ -170,9 +170,9 @@ impl ExportScope {
 mod selection;
 #[path = "windows_dll.rs"]
 pub(crate) mod windows_dll;
-#[cfg(test)]
-use selection::host_abi;
 use selection::host_abi_selected;
+#[cfg(test)]
+use selection::{host_abi, host_abi_scoped};
 
 pub(crate) fn defines(ir: &str, symbol: &str) -> bool {
     let needle = format!(" @{symbol}(");
@@ -428,6 +428,12 @@ pub(crate) fn source_with_abi(
     scope: &ExportScope,
 ) -> Result<(String, HostAbi), String> {
     crate::target_capabilities::validate(program, target)?;
+    let abi_error = |error: String| format!("{path}: target `{target}` C ABI: {error}");
+    let checked = osprey_codegen::retained_check(program)
+        .map_err(|errors| abi_error(selection::joined(&errors)))?;
+    let types = checked.types().clone();
+    let exports = checked.library_exports().clone();
+    osprey_codegen::set_reused_check(Some(checked));
     // Entry-only programs have no later host calls needing globals. [IOS-TARGET-ENTRY]
     let ir = if matches!(scope, ExportScope::EntryOnly) {
         osprey_codegen::compile_host_program(program)
@@ -435,25 +441,13 @@ pub(crate) fn source_with_abi(
         osprey_codegen::compile_library(program)
     }
     .map_err(|e| format!("{path}: {e}"))?;
-    let abi = checked_abi(program, path, target, &ir, scope)?;
+    let abi = host_abi_selected(program, &types, &exports, &ir, scope).map_err(abi_error)?;
     let adapted = if extend_bool {
         with_host_abi(&ir, &abi)?
     } else {
         with_host_abi_for_target(&ir, &abi, false)?
     };
     Ok((adapted, abi))
-}
-
-fn checked_abi(
-    program: &Program,
-    path: &str,
-    target: &str,
-    ir: &str,
-    scope: &ExportScope,
-) -> Result<HostAbi, String> {
-    let abi = host_abi_selected(program, &osprey_types::infer_program(program), ir, scope)
-        .map_err(|error| format!("{path}: target `{target}` C ABI: {error}"))?;
-    Ok(abi)
 }
 
 #[cfg(test)]

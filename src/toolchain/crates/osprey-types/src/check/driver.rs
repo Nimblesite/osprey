@@ -1,4 +1,6 @@
 //! Type checking: driver.
+use crate::effect_rows::LibraryExports;
+
 use super::{
     base_env, effect_instances, publish_program, refine_handler_arguments, Checker, Program,
     TypeError,
@@ -27,16 +29,35 @@ pub struct CheckedProgram {
     source_debug: String,
     lowered: Program,
     types: crate::info::ProgramTypes,
+    library_exports: LibraryExports,
 }
 
 impl CheckedProgram {
-    fn new(source: &Program, lowered: Program, types: crate::info::ProgramTypes) -> Self {
+    fn new(
+        source: &Program,
+        lowered: Program,
+        types: crate::info::ProgramTypes,
+        library_exports: LibraryExports,
+    ) -> Self {
         Self {
             source: osprey_ast::with_stack(|| source.clone()),
             source_debug: osprey_ast::with_stack(|| format!("{source:?}")),
             lowered,
             types,
+            library_exports,
         }
+    }
+
+    /// The published types, for a host boundary that reads export signatures.
+    #[must_use]
+    pub fn types(&self) -> &crate::info::ProgramTypes {
+        &self.types
+    }
+
+    /// What each function needs discharged were a host to call it directly.
+    #[must_use]
+    pub fn library_exports(&self) -> &LibraryExports {
+        &self.library_exports
     }
 
     /// Whether these checked artifacts belong to exactly this source program.
@@ -82,15 +103,21 @@ pub fn check_and_publish(
     exports: &[&str],
 ) -> Result<CheckedProgram, Vec<TypeError>> {
     let lowered = crate::staging::lower_static_checked(program)?;
-    let checker = checked_program_with_exports(
+    let mut checker = checked_program_with_exports(
         &lowered,
         exports,
         crate::staging::has_staging(program),
         false,
     );
     if checker.errors.is_empty() {
+        let library_exports = std::mem::take(&mut checker.library_exports);
         let types = publish_program(&lowered, checker, true);
-        Ok(CheckedProgram::new(program, lowered, types))
+        Ok(CheckedProgram::new(
+            program,
+            lowered,
+            types,
+            library_exports,
+        ))
     } else {
         Err(distinct(checker.errors))
     }
@@ -162,24 +189,27 @@ pub(super) fn checked_program_with_exports(
         if reject_invalid && !checker.errors.is_empty() {
             return checker;
         }
-        if settle_effect_contracts(&mut checker, program, exports) {
+        if settle_effect_contracts(&mut checker, program) {
             break;
         }
     }
+    let required = checker.library_exports.errors(exports);
+    checker.errors.extend(required);
     finish_data_contracts(&mut checker, program);
     checker
 }
 
-fn settle_effect_contracts(checker: &mut Checker, program: &Program, exports: &[&str]) -> bool {
+fn settle_effect_contracts(checker: &mut Checker, program: &Program) -> bool {
     let instances = effect_instances(checker);
     EFFECT_CHECKS.with(|calls| calls.set(calls.get() + 1));
-    let effect_proof = crate::effect_rows::check(program, &instances, exports);
+    let effect_proof = crate::effect_rows::check(program, &instances);
     if refine_handler_arguments(checker, &instances) {
         return false;
     }
     checker.errors.extend(effect_proof.errors);
     checker.signal_queries = effect_proof.signal_queries;
     checker.function_effects = effect_proof.functions;
+    checker.library_exports = effect_proof.library_exports;
     true
 }
 pub(super) fn inferred_data_contracts(program: &Program, source_validated: bool) -> Checker {

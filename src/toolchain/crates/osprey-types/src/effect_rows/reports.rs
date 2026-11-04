@@ -57,5 +57,32 @@ pub(super) fn operation_name(instances: &Instances, requirement: &Requirement) -
 pub(crate) struct CheckedEffects {
     pub(crate) errors: Vec<crate::TypeError>,
     pub(crate) signal_queries: HashMap<usize, EffectRequirements>,
+    pub(crate) library_exports: LibraryExports,
     pub(crate) functions: HashMap<String, EffectRequirements>,
+}
+
+/// Each function's verdict as a library export, so one solve answers any later
+/// choice of export names. [IOS-HOST-ABI]
+#[derive(Debug, Clone, Default)]
+pub struct LibraryExports(std::collections::BTreeMap<String, Vec<crate::TypeError>>);
+
+impl LibraryExports {
+    pub(super) fn proven(verdicts: impl Iterator<Item = (String, Vec<crate::TypeError>)>) -> Self {
+        Self(verdicts.collect())
+    }
+
+    /// Everything stopping `names` from being called directly by a host.
+    #[must_use]
+    pub fn errors(&self, names: &[&str]) -> Vec<crate::TypeError> {
+        names
+            .iter()
+            .flat_map(|name| {
+                self.0.get(*name).cloned().unwrap_or_else(|| {
+                    vec![crate::TypeError::new(format!(
+                        "library export `{name}` is not a defined function"
+                    ))]
+                })
+            })
+            .collect()
+    }
 }

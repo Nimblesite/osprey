@@ -57,6 +57,7 @@ use specialize::{specialize_argument, specialize_summary, specialize_value};
 mod check;
 pub(crate) use check::check;
 mod reports;
+pub use reports::LibraryExports;
 mod validate;
 use validate::{entry_errors, validate_arithmetic_initializers, validate_statement_handlers};
 mod gpu;

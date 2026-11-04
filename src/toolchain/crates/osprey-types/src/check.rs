@@ -168,6 +168,7 @@ pub(crate) struct Checker {
     pub(crate) ctx: InferCtx,
     pub(crate) errors: Vec<TypeError>,
     signal_queries: HashMap<usize, crate::info::EffectRequirements>,
+    library_exports: crate::effect_rows::LibraryExports,
     function_effects: HashMap<String, crate::info::EffectRequirements>,
     pub(crate) ctors: HashMap<String, CtorInfo>,
     /// Effect name -> its generic declaration (type params + raw op sigs).

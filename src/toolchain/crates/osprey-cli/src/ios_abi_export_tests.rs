@@ -1,6 +1,6 @@
 //! Every scalar-signature function reaches the library boundary, or the
 //! build fails and names it (#281).
-use super::selection::{host_abi, host_abi_selected};
+use super::selection::{host_abi, host_abi_scoped};
 use super::tests::{abi_of, checked};
 use super::ExportScope;
 use std::fmt::Write as _;
@@ -220,7 +220,7 @@ fn only_the_entry_sources_functions_cross_the_boundary() {
     );
     let inlined = ir.replace(" @helper(", " @helper_inlined(");
     let entry = ExportScope::EntrySource(Some(1..=2));
-    let abi = host_abi_selected(&program, &types, &inlined, &entry).expect("entry exports");
+    let abi = host_abi_scoped(&program, &types, &inlined, &entry).expect("entry exports");
     let names: Vec<&str> = abi.exports.iter().map(|e| e.c_name.as_str()).collect();
     assert_eq!(names, ["osprey_start", "osprey_dispatch"]);
 }

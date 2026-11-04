@@ -22,12 +22,25 @@ pub(super) fn host_abi(
     types: &ProgramTypes,
     ir: &str,
 ) -> Result<HostAbi, String> {
-    host_abi_selected(program, types, ir, &ExportScope::EntrySource(None))
+    host_abi_scoped(program, types, ir, &ExportScope::EntrySource(None))
+}
+
+/// The boundary of `program` from a solve of its own, for callers with no gate.
+#[cfg(test)]
+pub(super) fn host_abi_scoped(
+    program: &Program,
+    types: &ProgramTypes,
+    ir: &str,
+    scope: &ExportScope,
+) -> Result<HostAbi, String> {
+    let checked = osprey_types::check_and_publish(program, &[]).map_err(|e| joined(&e))?;
+    host_abi_selected(program, types, checked.library_exports(), ir, scope)
 }
 
 pub(super) fn host_abi_selected(
     program: &Program,
     types: &ProgramTypes,
+    proof: &osprey_types::LibraryExports,
     ir: &str,
     scope: &ExportScope,
 ) -> Result<HostAbi, String> {
@@ -36,7 +49,7 @@ pub(super) fn host_abi_selected(
         .iter()
         .filter_map(|statement| function_export(statement, types, scope))
         .partition(|export| defines(ir, &export.symbol));
-    reject_undefined(program, &undefined)?;
+    reject_undefined(proof, &undefined)?;
     let imports = program
         .statements
         .iter()
@@ -48,23 +61,30 @@ pub(super) fn host_abi_selected(
     let abi = HostAbi { exports, imports };
     reject_clashes(&abi, program, ir)?;
     let symbols: Vec<_> = abi.exports.iter().map(|e| e.symbol.as_str()).collect();
-    let errors = export_effect_errors(program, &symbols);
+    let errors = proof.errors(&symbols);
     if errors.is_empty() {
         Ok(abi)
     } else {
-        Err(errors.join("\n"))
+        Err(joined(&errors))
     }
 }
 
 /// A scalar function codegen emitted no definition for would be missing from
 /// the archive and header with no diagnostic, so the build fails and names it
 /// -- with the effect check's reason when there is one (#281).
-fn reject_undefined(program: &Program, undefined: &[Export]) -> Result<(), String> {
+fn reject_undefined(
+    proof: &osprey_types::LibraryExports,
+    undefined: &[Export],
+) -> Result<(), String> {
     if undefined.is_empty() {
         return Ok(());
     }
     let symbols: Vec<_> = undefined.iter().map(|e| e.symbol.as_str()).collect();
-    let mut reasons = export_effect_errors(program, &symbols);
+    let mut reasons: Vec<String> = proof
+        .errors(&symbols)
+        .into_iter()
+        .map(|error| error.message)
+        .collect();
     for symbol in symbols {
         let named = format!("library export `{symbol}`");
         if !reasons.iter().any(|reason| reason.contains(&named)) {
@@ -76,11 +96,12 @@ fn reject_undefined(program: &Program, undefined: &[Export]) -> Result<(), Strin
     Err(reasons.join("\n"))
 }
 
-fn export_effect_errors(program: &Program, symbols: &[&str]) -> Vec<String> {
-    osprey_types::check_program_exports(program, symbols)
-        .into_iter()
-        .map(|error| error.message)
-        .collect()
+pub(super) fn joined(errors: &[osprey_types::TypeError]) -> String {
+    errors
+        .iter()
+        .map(|error| error.message.as_str())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn function_export(statement: &Stmt, types: &ProgramTypes, scope: &ExportScope) -> Option<Export> {
