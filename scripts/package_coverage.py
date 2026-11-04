@@ -26,6 +26,7 @@ from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from package_coverage_entry import collect_entry, receipt_paths
+from package_process import interrupts, run as run_bounded
 from package_coverage_evidence import (
     evidence_path, evidence_problems, golden_problems,
     definition_problems, record_measurements, seal_evidence, sealed_inputs, unique_object,
@@ -64,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--thresholds", help="coverage-thresholds.json path")
     parser.add_argument("--root", help="checkout root (default: repo root)")
     selection.add_argument("--package", help="gate one package (inventory still checked)")
-    selection.add_argument("--project", help="gate one project as <kind>/<name>, e.g. src/workbench")
+    selection.add_argument("--project", help="gate one project as <kind>/<name>, e.g. src/osprey/workbench")
     return parser
 
 
@@ -77,7 +78,7 @@ def resolve_paths(args: argparse.Namespace) -> tuple[Path, Path, Path, Path]:
 
 
 def suite_problems(tests: Path, verify_golden: bool) -> list[str]:
-    problems = [f"missing src/tests/{name}" for name in ("osprey.toml", "expected_output.txt")
+    problems = [f"missing src/osprey/tests/{name}" for name in ("osprey.toml", "expected_output.txt")
                 if not (tests / name).is_file()]
     if verify_golden and (tests / "expected_output.txt").is_file():
         problems += golden_problems(tests / "expected_output.txt")
@@ -304,15 +305,17 @@ def collection_failure(name: str, configured: dict, problems: list[str]) -> dict
 def run_collector(root: Path, compiler: Path, report: Path, suite: Path, memory="gc"):
     command = [str(compiler), "test", str(suite), "--coverage-json", str(report), "--quiet", f"--memory={memory}"]
     try:
-        completed = subprocess.run(command, capture_output=True, cwd=root, check=False)
-    except OSError as error:
+        completed, failure = run_bounded(command, root, report)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
         return command, None, error
     try:
-        completed.stdout = completed.stdout.decode("utf-8")
-        completed.stderr = completed.stderr.decode("utf-8")
+        stdout, stderr = completed.stdout.decode("utf-8"), completed.stderr.decode("utf-8")
     except UnicodeDecodeError as error:
+        completed.stdout = completed.stdout.decode("utf-8", errors="replace")
+        completed.stderr = completed.stderr.decode("utf-8", errors="replace")
         return command, completed, ValueError(f"collector output is not valid UTF-8: {error}")
-    return command, completed, None
+    completed.stdout, completed.stderr = stdout, stderr
+    return command, completed, failure
 
 
 def artifact(directory: Path, leaf: str) -> Path:
@@ -340,7 +343,7 @@ def suite_run_problems(completed, suite: Path, report: Path, log: Path) -> list[
 def run_suite(root: Path, compiler: Path, report: Path, log: Path, suite: Path, memory: str) -> list[str]:
     command, completed, error = run_collector(root, compiler, report, suite, memory)
     if error is not None:
-        write_log(log, command, None, f"cannot run collector: {error}")
+        write_log(log, command, completed, f"cannot run collector: {error}")
         return [f"cannot run collector: {error}"]
     if not write_log(log, command, completed, None):
         return [f"cannot write log {log}"]
@@ -453,7 +456,7 @@ def evaluate(root: Path, reports: Path, compiler: Path, entries: dict, projects:
             return collect_package(root, compiler, reports, kind, name, entries[kind][name], memory)
         return gate_package(root, reports, kind, name, entries[kind][name])
 
-    with ThreadPoolExecutor(max_workers=worker_count(projects)) as pool:
+    with interrupts(), ThreadPoolExecutor(max_workers=worker_count(projects)) as pool:
         return list(pool.map(gate, projects))
 
 

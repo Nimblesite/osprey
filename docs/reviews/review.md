@@ -11,14 +11,26 @@ Reproductions used the debug compiler on macOS on Apple silicon. Nothing here wa
 
 **Fix these first:** [GPU helpers take the kernel's parameters on Metal](#gpu-and-staged-effects), [`Channel` construction aborts](#runtime-and-security).
 
+## Folder migration audit [REPO-ROOT-LAYOUT-AUDIT]
+
+On 2026-11-05, independently compared all 5,228 tracked files in `31a3aa71a^` with their expected destinations in `31a3aa71a`: none are missing, 4,631 have identical content and modes, and 597 have modified content. Line-by-line comparison of those 597 found no deletion-only blocks or replacements shortening a block by more than two lines. This inventory establishes tracked-file retention, not functional correctness or preservation of unknown, untracked edits. FastAPI's previously dirty dependency test and oracle remain present at their current paths.
+
+- [x] Compare every pre-move tracked path and blob against the destination tree.
+- [x] Review changed-file deletion blocks; inspect apparent deleted manifests at their new paths.
+- [ ] Repair and independently verify coverage migration: JSON keys remain `packages`/`apps`, while `gate_entries` now looks up `src/osprey/packages`/`src`; `own_source_relative` also treats a slash-containing directory as one component. The collector currently refuses inventory before collecting any evidence. FolderCleanup owns the correction.
+
+The subsequent staged split into `src/osprey/` and `src/toolchain/` was checked independently against HEAD `3b38ffc35`: all 5,232 tracked paths have staged and live destinations, 4,576 with identical blobs/modes and 656 changed. Evidence: `target/logs/resource-audit/folder-second-move-inventory.json`. This is a second retention check; functional coverage-path errors remain open.
+
+Detailed local evidence: `target/logs/resource-audit/folder-move-inventory.json` and `folder-move-content-review.json`. The sole missing worktree document found during the first check, `docs/RELEASING.md`, is present again; no restoration of code was needed from this inventory.
+
 ---
 
 ## 1. Open regressions by commit
 
 | From | Finding | Where | Failure | Status |
 |---|---|---|---|---|
-| `78be07ec` | HTTP externs changed from `int` to `Result` with no migration path | `src/crates/osprey-codegen/src/extern_call.rs` | Programs calling `httpCreateServer`, `httpListen` or `httpGet` stop type-checking after upgrade, guided only by the "undecoded Result" diagnostic. | Open |
-| `2691d8dc` | Windows GC caller-root gate without Windows data/BSS bounds | `src/compiler/runtime/memory_gc_native_roots.h` | Data roots are scanned on Apple and glibc Linux only: the file has no Windows branch, so Windows globals go unscanned and the test depends on the optimizer. Spec 0018 requires stack, registers and data/BSS. Read, not run. | Open |
+| `78be07ec` | HTTP externs changed from `int` to `Result` with no migration path | `src/toolchain/crates/osprey-codegen/src/extern_call.rs` | Programs calling `httpCreateServer`, `httpListen` or `httpGet` stop type-checking after upgrade, guided only by the "undecoded Result" diagnostic. | Open |
+| `2691d8dc` | Windows GC caller-root gate without Windows data/BSS bounds | `src/toolchain/compiler/runtime/memory_gc_native_roots.h` | Data roots are scanned on Apple and glibc Linux only: the file has no Windows branch, so Windows globals go unscanned and the test depends on the optimizer. Spec 0018 requires stack, registers and data/BSS. Read, not run. | Open |
 
 ---
 
@@ -30,47 +42,47 @@ Compared by title against the open GitHub issues on 2026-11-03. [Findings an iss
 
 | Severity | Finding | Where | Failure | Status |
 |---|---|---|---|---|
-| High | `Channel` construction aborts the process | `src/compiler/runtime/fiber_runtime.c`; `src/crates/osprey-codegen/src/fiber.rs`; test `fiber_runtime_tests.c` | `Channel(0)` exits 134 with `FATAL: Channel(0) has no channel to give`, against [FAILURE-EXPLICIT]. The test asserts the abort, so it must change too. | Open |
-| Medium | `spawn` running out of memory answers a negative handle | `src/compiler/runtime/fiber_runtime.c` | Fiber tables grow rather than recycle, so each fiber costs memory until exit, and exhaustion isn't a `Result` or an effect. | Open |
-| Medium | WebSocket frame parser unfinished | `src/compiler/runtime/http_shared.c` | Rejects 64-bit lengths and ignores FIN and opcode, so close and ping are handled as text. | Open |
-| Medium | HTTP client's TLS handshake and request send have no total time limit | `src/compiler/runtime/http_client_runtime.c` (`transport_secure`, `send_request`) | Only reading the response has a whole-read limit. Each read and write of the handshake and the request gets the timeout on its own, so a dripped handshake holds the client far past it. Read, not run. | Open |
-| Medium | HTTP provider turns body and cleanup failures into success | `src/packages/pydantic_ai/src/providers_http.py` | `result if closed == 0 else result` has identical branches, and a failed body read returns `Success` with an empty body. | Open |
-| Medium | Native store escapes through intermediate symlinks | `src/hosts/swift/Sources/OspreyNative/StoreAdapter.swift`; `src/hosts/winui/OspreyHost.Core/Store.cs` | With `store/link` pointing outside, a write to `link/secret` lands outside the store. Neither file handles symlinks or reparse points. | Open |
-| Medium | WinUI output limit applies only after unbounded buffering | `src/hosts/winui/OspreyHost.Core/Processes.cs` | `ReadToEndAsync` buffers everything before the limit is checked, so a chatty child exhausts host memory. stderr is never limited. | Open |
+| High | `Channel` construction aborts the process | `src/toolchain/compiler/runtime/fiber_runtime.c`; `src/toolchain/crates/osprey-codegen/src/fiber.rs`; test `fiber_runtime_tests.c` | `Channel(0)` exits 134 with `FATAL: Channel(0) has no channel to give`, against [FAILURE-EXPLICIT]. The test asserts the abort, so it must change too. | Open |
+| Medium | `spawn` running out of memory answers a negative handle | `src/toolchain/compiler/runtime/fiber_runtime.c` | Fiber tables grow rather than recycle, so each fiber costs memory until exit, and exhaustion isn't a `Result` or an effect. | Open |
+| Medium | WebSocket frame parser unfinished | `src/toolchain/compiler/runtime/http_shared.c` | Rejects 64-bit lengths and ignores FIN and opcode, so close and ping are handled as text. | Open |
+| Medium | HTTP client's TLS handshake and request send have no total time limit | `src/toolchain/compiler/runtime/http_client_runtime.c` (`transport_secure`, `send_request`) | Only reading the response has a whole-read limit. Each read and write of the handshake and the request gets the timeout on its own, so a dripped handshake holds the client far past it. Read, not run. | Open |
+| Medium | HTTP provider turns body and cleanup failures into success | `src/osprey/packages/pydantic_ai/src/providers_http.py` | `result if closed == 0 else result` has identical branches, and a failed body read returns `Success` with an empty body. | Open |
+| Medium | Native store escapes through intermediate symlinks | `src/toolchain/hosts/swift/Sources/OspreyNative/StoreAdapter.swift`; `src/toolchain/hosts/winui/OspreyHost.Core/Store.cs` | With `store/link` pointing outside, a write to `link/secret` lands outside the store. Neither file handles symlinks or reparse points. | Open |
+| Medium | WinUI output limit applies only after unbounded buffering | `src/toolchain/hosts/winui/OspreyHost.Core/Processes.cs` | `ReadToEndAsync` buffers everything before the limit is checked, so a chatty child exhausts host memory. stderr is never limited. | Open |
 | Medium | Compiler stack overflow on extreme nesting | `osprey --check` | 50,000 nested parentheses, 50,000 chained `+`, or 5,000 nested `[` in ML exit 134. Requires generated source. The language server was not tested. | Open |
 | Medium | Deep recursion segfaults without a diagnostic | Compiled programs | Non-tail recursion to depth 1,000,000 exits 139. | Open |
-| Low | `Dns.discover` interpolates `seconds` into a shell command | `src/packages/chromecast/src/dns.py` | Current callers pass constants. | Open |
-| Low | Stale comment says a test pins a `join` segfault | `src/crates/osprey-cli/tests/cli_e2e.rs` (`join_accepts_every_string_list_representation`) | The assertions below it prove the opposite. | Open |
-| Unproven | TLS writes to a closed peer may raise SIGPIPE on Linux | `src/compiler/runtime/http_client_runtime.c`; `socket_safety.h` | `osp_socket_configure_no_sigpipe` does nothing on Linux, where only `MSG_NOSIGNAL` on each send protects, and OpenSSL's socket writes don't pass it. Read, not run. | Unchecked |
-| Unproven | Chromecast parser recursion | `src/packages/chromecast/src/protocol.py`; `hex.py` | Reported as a crash, but overstated: a self tail call of the same shape reached depth 20,000,000. `parse_fields` and `points_from` were not checked. | Unchecked |
+| Low | `Dns.discover` interpolates `seconds` into a shell command | `src/osprey/packages/chromecast/src/dns.py` | Current callers pass constants. | Open |
+| Low | Stale comment says a test pins a `join` segfault | `src/toolchain/crates/osprey-cli/tests/cli_e2e.rs` (`join_accepts_every_string_list_representation`) | The assertions below it prove the opposite. | Open |
+| Unproven | TLS writes to a closed peer may raise SIGPIPE on Linux | `src/toolchain/compiler/runtime/http_client_runtime.c`; `socket_safety.h` | `osp_socket_configure_no_sigpipe` does nothing on Linux, where only `MSG_NOSIGNAL` on each send protects, and OpenSSL's socket writes don't pass it. Read, not run. | Unchecked |
+| Unproven | Chromecast parser recursion | `src/osprey/packages/chromecast/src/protocol.py`; `hex.py` | Reported as a crash, but overstated: a self tail call of the same shape reached depth 20,000,000. `parse_fields` and `points_from` were not checked. | Unchecked |
 
-**Review coverage gaps.** Nothing from the v0.28.2 reviews ran on Linux, Windows, Android or wasm. Not reviewed: GC and ARC internals, effects coroutines, JSON, GPU and media runtime, `src/hosts/gpui`, most of `src/hosts/winui`, the packages `signal_flow`, `uitest`, `graphics` and `json`, and most of `src/packages/pydantic_ai`. Random mutation (1,500 mutants of 79 programs) covered `--check` only. `panic!`, `unwrap` and `expect` sites in production Rust were not audited one by one.
+**Review coverage gaps.** Nothing from the v0.28.2 reviews ran on Linux, Windows, Android or wasm. Not reviewed: GC and ARC internals, effects coroutines, JSON, GPU and media runtime, `src/toolchain/hosts/gpui`, most of `src/toolchain/hosts/winui`, the packages `signal_flow`, `uitest`, `graphics` and `json`, and most of `src/osprey/packages/pydantic_ai`. Random mutation (1,500 mutants of 79 programs) covered `--check` only. `panic!`, `unwrap` and `expect` sites in production Rust were not audited one by one.
 
 ### Language, types and effects
 
 | Finding | Where | Failure | Status |
 |---|---|---|---|
 | Operation-returned function fails through a handler value | Effect analysis | `read: fn() -> fn(int) -> int` called through a handler value is refused: `program entry invokes a dynamic callable whose effect provenance cannot be proven`. Closest issue is #275. | Open |
-| Nested constructor patterns unimplemented | `src/examples/proof/kernel/src/reduce.ospml` | `P(X(n))` is refused, so two-sided comparison splits into several functions. | Open |
-| LSP test shadow detection is too narrow | `src/crates/osprey-lsp/src/testing.rs` (`shadows_test_builtin`) | It looks only at functions and externs, so a value or parameter named `test` produces phantom editor tests. Needs scope-aware resolution. | Open |
-| Abandoned handlers leak owned values | `src/compiler/runtime/effects_coro.c` | A control arm that returns without resuming skipped generated cleanup: one live ARC object, 13 bytes. Code now has an abandon path; the audit is open in plan 0016. | Unchecked |
-| `any` needs an ownership-carrying ABI | `src/crates/osprey-codegen/src/lower.rs` | An erased word lowers like `int`, so no cast-site rule can be sound. Needs a tag or an explicit borrow, forward and consume model. | Recommendation |
+| Nested constructor patterns unimplemented | `src/osprey/examples/proof/kernel/src/reduce.ospml` | `P(X(n))` is refused, so two-sided comparison splits into several functions. | Open |
+| LSP test shadow detection is too narrow | `src/toolchain/crates/osprey-lsp/src/testing.rs` (`shadows_test_builtin`) | It looks only at functions and externs, so a value or parameter named `test` produces phantom editor tests. Needs scope-aware resolution. | Open |
+| Abandoned handlers leak owned values | `src/toolchain/compiler/runtime/effects_coro.c` | A control arm that returns without resuming skipped generated cleanup: one live ARC object, 13 bytes. Code now has an abandon path; the audit is open in plan 0016. | Unchecked |
+| `any` needs an ownership-carrying ABI | `src/toolchain/crates/osprey-codegen/src/lower.rs` | An erased word lowers like `int`, so no cast-site rule can be sound. Needs a tag or an explicit borrow, forward and consume model. | Recommendation |
 | `Result` values in lists, maps and channels | Language | Reported unimplemented. | Unchecked |
-| About 6 s per project analysis | `src/examples/projects/modules` | Predates the memo, which removed only the repeats per open file. | Unchecked |
+| About 6 s per project analysis | `src/osprey/examples/projects/modules` | Predates the memo, which removed only the repeats per open file. | Unchecked |
 
 ### GPU and staged effects
 
 | Severity | Finding | Where | Status |
 |---|---|---|---|
-| P1 | Named GPU helpers take caller bindings on Metal: with `let bias = 10`, `fn add(x) = wrapAdd(x, bias)` and `gpuMap(value, fn(bias) => add(bias))`, element 1 gives 11 on the host and **2** on Apple M4 Max. A silently wrong answer. OpenCL not run | `src/crates/osprey-codegen/src/gpu_device/emit.rs` | Open |
-| P0 | Static-handler monotonicity is not transitive; invalid unused arms are erased before checking | `src/crates/osprey-ast/src/stage.rs`; `lower_static.rs` | Unchecked |
-| P1 | `[GPU-KERNEL-ELEM-TYPING]` depends on expression order: `t * x * y` differs from `x * y * t` | `src/crates/osprey-types/src/expr.rs` | Unchecked |
+| P1 | Named GPU helpers take caller bindings on Metal: with `let bias = 10`, `fn add(x) = wrapAdd(x, bias)` and `gpuMap(value, fn(bias) => add(bias))`, element 1 gives 11 on the host and **2** on Apple M4 Max. A silently wrong answer. OpenCL not run | `src/toolchain/crates/osprey-codegen/src/gpu_device/emit.rs` | Open |
+| P0 | Static-handler monotonicity is not transitive; invalid unused arms are erased before checking | `src/toolchain/crates/osprey-ast/src/stage.rs`; `lower_static.rs` | Unchecked |
+| P1 | `[GPU-KERNEL-ELEM-TYPING]` depends on expression order: `t * x * y` differs from `x * y * t` | `src/toolchain/crates/osprey-types/src/expr.rs` | Unchecked |
 | P1 | Spec overstates: "each kernel" extraction, "fused" host loops, reductions that vary by backend versus byte-identical backends | Spec 0034 | Unchecked |
 | P1 | Staged effects: tail `resume` allowed by spec but always rejected; discharge is per file; handler-owned static state unimplemented; only one of three falsifiers exists | Spec 0035 | Unchecked |
-| P1 | `--deps` is approximate (parse errors are now reported) | `src/crates/osprey-ast/src/stage.rs` | Unchecked |
-| P1 | D3D12 bridge draws in software only, and Windows CI runs no bridge check | `src/examples/graphics/ospgfx_d3d12.c`; `ci-windows.yml` | Open |
+| P1 | `--deps` is approximate (parse errors are now reported) | `src/toolchain/crates/osprey-ast/src/stage.rs` | Unchecked |
+| P1 | D3D12 bridge draws in software only, and Windows CI runs no bridge check | `src/osprey/examples/graphics/ospgfx_d3d12.c`; `ci-windows.yml` | Open |
 | P1 | Wasm GPU differential non-required and absent from `make ci`; failed allocation becomes an empty buffer while loops keep the requested length; staged wasm rejection is an undefined-symbol skip | `ci.yml`; `gpu_runtime.c`; spec 0035 | Unchecked |
-| P2 | Fusion claims not gated by IR goldens; purity tests miss filter, zip, scan and helper chains; `gpuFilter` loads each element twice; docs parity checks name and arity only | `src/crates/osprey-codegen/src/gpu.rs`; `builtin_docs_lang.rs` | Unchecked |
+| P2 | Fusion claims not gated by IR goldens; purity tests miss filter, zip, scan and helper chains; `gpuFilter` loads each element twice; docs parity checks name and arity only | `src/toolchain/crates/osprey-codegen/src/gpu.rs`; `builtin_docs_lang.rs` | Unchecked |
 | P2 | `[GPU-IOTA]` omits `n <= 0`; `[GPU-SCAN]` omits how `initial` participates; `[GPU-KERNEL-ELEM-TYPING]`, `[GPU-KERNEL-FORM]`, `[GPU-ROADMAP]` and `[GPU-RESEARCH]` lack references | Spec 0034 | Unchecked |
 | P2 | No benchmark artifact for the July numbers; proved-unique free has no direct test; graphics drift guard checks fragments, Metal-to-HLSL only | `graphics_scenes.rs` | Unchecked |
 | | Spec 0034 calls any handled effect illegal; spec 0035 accepts effects erased by static handlers. Coherent rule: no runtime effect reaches a kernel | Specs 0034, 0035 | Unchecked |
@@ -87,13 +99,13 @@ CI skips `clean.osp` by name (`HUNT_KNOWN_BUGS`, `scripts/make/tests.mk`), the o
 
 | Finding | Where | Status |
 |---|---|---|
-| Kernel reader ignores `hints`, `safety` and `all` on `def` and `thm` lines | `src/examples/proof/kernel/src/export.ospml` | Open |
+| Kernel reader ignores `hints`, `safety` and `all` on `def` and `thm` lines | `src/osprey/examples/proof/kernel/src/export.ospml` | Open |
 | Export corpus has no `letE`, `quot`, `opaque` or `axiom` lines to measure against | `exports/and_swap.ndjson` | Open |
-| Three original core-library certificates refused at nested `Lean.Syntax`; only constructive alternatives check | `src/examples/proof/lean-core/compatible.json`, `frontier.json` | Open by record |
+| Three original core-library certificates refused at nested `Lean.Syntax`; only constructive alternatives check | `src/osprey/examples/proof/lean-core/compatible.json`, `frontier.json` | Open by record |
 | No performance result for `Nat.add_comm` or Mathlib; Mathlib imports, full discipline frontend, exact-export speed gate and Workbench screenshot acceptance undelivered | Plan 0041 | Open by record |
 | Twelve OpenAI lemmas are the checked-export layer, not ports of the headline results; no readable proof frontend exists | [PROOF-RUNNABLE-LIBRARY] | Open by record |
-| OpenAI closures keep `propext` (stack closure also `Quot.sound`); arithmetic and injectivity proof bodies differ from upstream, statements unchanged | `src/examples/proof/openai/` | Tracked by harness |
-| Workbench `imported.ospml` coverage 90.8% (2,053/2,261 lines); host interactions and installed-VSIX visual acceptance are separate gates | `src/workbench/src/imported.ospml` | Unchecked |
+| OpenAI closures keep `propext` (stack closure also `Quot.sound`); arithmetic and injectivity proof bodies differ from upstream, statements unchanged | `src/osprey/examples/proof/openai/` | Tracked by harness |
+| Workbench `imported.ospml` coverage 90.8% (2,053/2,261 lines); host interactions and installed-VSIX visual acceptance are separate gates | `src/osprey/workbench/src/imported.ospml` | Unchecked |
 | Lean pin is bumped by hand; review of normalization rules is not a soundness proof | [PROOF-SPEED]; kernel | Standing |
 
 #### Recorded proof evidence
@@ -118,11 +130,11 @@ Dated evidence for proof claims. Add new dated entries here.
 | Android emulator dies after bank instrumentation tests, cause unknown; skips bank e2e, documentation acceptance and web compiler, and turns the run red | PR #337: 9 runs, 3 deaths. Ruled out host memory and disk, OOM kill, step limit. Next: capture the guest log | Unchecked |
 | One green run is not stability: longest job varies (Proof kernel 11.2 to 15.9 min) | Run 41382962612, 21.6 min, 227 runner-min | Unchecked |
 | `cancel-in-progress: true` with rapid pushes prevented convergence on #325: 25 of 62 intervals under 15 min, main CI 49 cancellations, 13 failures, 1 success. Cancelled runs hid real failures. Push one verified candidate | `.github/workflows/ci.yml` | Open |
-| GPT-2 full-checkpoint parity test is ignored by default; differential corpus finds only `*.test.osp` and `*.test.ospml`, so Python flavor has no equivalent coverage | `src/crates/osprey-cli/tests/cross_flavor_equiv.rs` | Open |
+| GPT-2 full-checkpoint parity test is ignored by default; differential corpus finds only `*.test.osp` and `*.test.ospml`, so Python flavor has no equivalent coverage | `src/toolchain/crates/osprey-cli/tests/cross_flavor_equiv.rs` | Open |
 | Two Talon Bank UI tests each wait out a 60 s XCUITest idle timeout | One test takes 4.2 min | Unchecked |
 | Slow tests were sharded, not sped up: `every_ported_package_matches_its_cpython_oracle_under_every_memory_backend` (18.6+ min), `workbench_retains_record_identity_through_shared_proof_helpers` (6.7), `workbench_apple_host_includes_shared_proof_dependencies` (3.4) | Run 41362564685 | Unchecked |
 | Workbench compile 615 s on CI at `6119a002` against 125 s on a Mac at `d7360f5d`; re-measure after the compiler fixes | No re-measurement recorded | Unchecked |
-| Assertion refactors in `src/crates/testkit.rs` verified by sample only | Across the `c6a12df3` diff | Unchecked |
+| Assertion refactors in `src/toolchain/crates/testkit.rs` verified by sample only | Across the `c6a12df3` diff | Unchecked |
 
 **Standard for closing a finding.** A higher percentage closes nothing. A test must come from a named spec obligation and prove the observable contract: exact values, every rejection including boundary cases, side effects and their absence, ownership across cleanup, exit status, and parity across CLI, runtime, LSP, native, ML and wasm.
 
@@ -133,13 +145,13 @@ Target `[MAINTENANCE-DEDUPLICATION]`: `.deslop.toml` caps duplication at 2.98% u
 | Finding | Failure | Status |
 |---|---|---|
 | The newer Deslop measures far above the cap | 0.40.1 measured 12,101 of 263,034 lines, 4.60%, against a 3% target, before later changes. The two versions' numbers aren't comparable, and the pin hasn't moved. Remaining: reach and verify 3% on 0.40.1 | Open |
-| Deslop can't see the C runtime | Scanning `src/compiler/runtime` finds zero supported files, so an empty result there isn't evidence. 187 C, header, Objective-C and Metal files rely on a manual review | Open |
+| Deslop can't see the C runtime | Scanning `src/toolchain/compiler/runtime` finds zero supported files, so an empty result there isn't evidence. 187 C, header, Objective-C and Metal files rely on a manual review | Open |
 | Twelve ML files don't parse under 0.40.1 | Native runtime and stream, three workbench modules and the bounded-discipline modules. The percentage says nothing about them; don't hide them with exclusions | Unchecked |
 | Governance doesn't compile, with or without the deduplication | `cannot access field 'packages' on non-struct type Result<...>`, and unproven dynamic callable effect provenance. Reproduced on the original source | Unchecked |
 
 **Kept deliberately.** These look like duplication and aren't worth merging:
 
-- Generated coordinates from `src/examples/gpui/painting/reference/logo.py`, the highest-mass findings: preserve the values.
+- Generated coordinates from `src/osprey/examples/gpui/painting/reference/logo.py`, the highest-mass findings: preserve the values.
 - `http_chunked_tests.c` and `http_framing_tests.c` refusal rows: input permutations to shared helpers.
 - `gpu_metal_tests.m` and `gpu_opencl_tests.c`: each pins its own SDK's calls.
 - `http_origin.c` and `http_tls_tests.c`, and `http_origin_tests.c` and `websocket_runtime_tests.c`: different transports and refusal protocols.

@@ -3,9 +3,14 @@ from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
+import runpy
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
+import time
+from unittest.mock import patch
+from package_coverage_test_support import CoverageTestCase, own_report
 from threading import Event, Thread
 import unittest
 
@@ -98,6 +103,73 @@ class PackageInterruptionTests(unittest.TestCase):
             self.assertFalse((directory / "osprey.lock").exists())
             self.assertFalse((directory / "osprey.local.toml").exists())
             self.assertFalse((directory / "osprey.local.lock").exists())
+
+
+
+
+class CollectorInterruptionTests(CoverageTestCase):
+    def collector(self, prefix):
+        fixture = self.simple_fixture()
+        fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
+        code = fixture.compiler.read_text()
+        fixture.compiler.write_text(code.replace('args = sys.argv[1:]', prefix + '\nargs = sys.argv[1:]'))
+        fixture.reports.mkdir(parents=True)
+        return fixture
+
+    def run_collector(self, fixture, **limits):
+        checker = runpy.run_path(str(ROOT / "scripts/package_coverage.py"))
+        suite = fixture.root / "src/osprey/packages/demo/tests"
+        env = {"OSPREY_PACKAGE_TIMEOUT_SECONDS": "5", "FAKE_PACKAGE_SPEC": str(fixture.root / "spec.json"), **limits}
+        with patch.dict(os.environ, env):
+            return checker["run_suite"](fixture.root, fixture.compiler, fixture.reports / "demo.json", fixture.reports / "demo.log", suite, "gc")
+
+    def test_collector_deadline_preserves_output_and_stops_descendants(self):
+        fixture = self.collector("print('started before hang', flush=True)\nprint('error before hang', file=sys.stderr, flush=True)\ntime.sleep(4)")
+        marker = fixture.root / "orphan-wrote.txt"
+        child = f"import time; from pathlib import Path; time.sleep(2.5); Path({str(marker)!r}).touch()"
+        fixture.compiler.write_text(fixture.compiler.read_text().replace("print('started", f"import subprocess\nsubprocess.Popen([sys.executable, '-c', {child!r}])\nprint('started"))
+        problems = self.run_collector(fixture, OSPREY_PACKAGE_TIMEOUT_SECONDS="1")
+        self.assertTrue(problems, "a stuck collector must fail rather than validate coverage")
+        log = (fixture.reports / "demo.log").read_text()
+        for text in ("timeout", "started before hang", "error before hang"):
+            self.assertIn(text, log)
+        samples = [json.loads(line) for line in (fixture.reports / "demo.process.jsonl").read_text().splitlines()]
+        self.assertTrue(any(len(row.get("processes", [])) == 2 for row in samples))
+        self.assertEqual(samples[-1]["event"], "cleanup")
+        time.sleep(3)
+        self.assertFalse(marker.exists(), "a killed collector must not orphan its runtime")
+
+    def test_collector_refuses_memory_and_output_growth_and_preserves_clean_control(self):
+        cases = [("memory", "hold = bytearray(32 * 1024**2)\ntime.sleep(1.5)", {"OSPREY_PACKAGE_MAX_RSS_MB": "24"}),
+                 ("output", "print('x' * 4096, flush=True)", {"OSPREY_PACKAGE_MAX_OUTPUT_MB": "0.001"})]
+        for reason, program, limits in cases:
+            with self.subTest(reason=reason):
+                fixture = self.collector(program)
+                self.assertTrue(self.run_collector(fixture, **limits))
+                log = (fixture.reports / "demo.log").read_text()
+                self.assertIn(f"{reason} limit exceeded", log)
+        fixture = self.collector("")
+        self.assertEqual(self.run_collector(fixture), [])
+        self.assertIn("ok demo", (fixture.reports / "demo.stdout.log").read_text())
+        self.assertTrue((fixture.reports / "demo.process.jsonl").is_file())
+
+    def test_termination_interrupts_the_collector_and_keeps_diagnostics(self):
+        fixture = self.collector("print('started before hang', flush=True)\ntime.sleep(4)")
+        command = f"import sys; sys.path.insert(0, {str(ROOT / 'scripts')!r}); from package_process import interrupts; import runpy; from pathlib import Path; c=runpy.run_path({str(ROOT / 'scripts/package_coverage.py')!r})\nwith interrupts():\n p=c['run_suite'](Path({str(fixture.root)!r}),Path({str(fixture.compiler)!r}),Path({str(fixture.reports / 'demo.json')!r}),Path({str(fixture.reports / 'demo.log')!r}),Path({str(fixture.root / 'src/osprey/packages/demo/tests')!r}),'gc')\n raise SystemExit(1 if p else 0)"
+        env = {**os.environ, "FAKE_PACKAGE_SPEC": str(fixture.root / "spec.json")}
+        with subprocess.Popen([sys.executable, "-c", command], env=env) as process:
+            try:
+                deadline = time.monotonic() + 5
+                output = fixture.reports / "demo.stdout.log"
+                while not (output.exists() and "started" in output.read_text()) and time.monotonic() < deadline:
+                    time.sleep(0.02)
+                self.assertTrue(output.exists() and "started" in output.read_text())
+                process.terminate()
+                self.assertEqual(process.wait(timeout=3), 1)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+        self.assertIn("collector interrupted", (fixture.reports / "demo.log").read_text())
 
 
 

@@ -67,7 +67,7 @@ def probe(module, root, compiler, reports, kind, name, memory, oracle):
     suite = suite_receipt(module, reports, kind, name)
     command, done, error = module.run_collector(root, compiler, entry, root / kind / name, memory)
     if error is not None:
-        module.write_log(log, command, None, f"cannot run entry collector: {error}")
+        module.write_log(log, command, done, f"cannot run entry collector: {error}")
         return [f"cannot run entry collector: {error}; log {log}"]
     if not module.write_log(log, command, done, None):
         return [f"cannot write entry log {log}"]
