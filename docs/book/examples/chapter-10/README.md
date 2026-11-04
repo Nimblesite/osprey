@@ -8,12 +8,12 @@ Run commands from the repository root. The examples use Default flavor and the c
 
 ```sh
 book_root="$PWD"
-"$book_root/target/release/osprey" "$book_root/Book/examples/chapter-10/flight-log.osp" --check
+"$book_root/target/release/osprey" "$book_root/docs/book/examples/chapter-10/flight-log.osp" --check
 (
     book_tmp=$(mktemp -d)
     trap 'rm -r "$book_tmp"' EXIT
     cd "$book_tmp"
-    "$book_root/target/release/osprey" "$book_root/Book/examples/chapter-10/flight-log.osp" --run
+    "$book_root/target/release/osprey" "$book_root/docs/book/examples/chapter-10/flight-log.osp" --run
 )
 ```
 

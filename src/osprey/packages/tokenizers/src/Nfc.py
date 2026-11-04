@@ -4,7 +4,7 @@
 """Unicode canonical normalization: NFD and NFC over code point lists.
 
 The tables in `NfcData` are the reference `tokenizers` package's own Unicode
-data, recovered from its NFD/NFC output (see scripts/oracles/tokenizers.py).
+data, recovered from its NFD/NFC output (see src/osprey/packages/tokenizers/oracle/tokenizers.cpython).
 Combining classes are stored as ranks in that ordering, which is the whole
 truth canonical ordering needs: it only ever compares two classes and asks
 whether one is zero.
