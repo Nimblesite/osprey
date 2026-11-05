@@ -24,6 +24,8 @@ static NSMutableArray *encoded;
 @implementation OspreyMockMetal
 - (NSString *)name { return @"mock Metal"; }
 - (NSUInteger)maxBufferLength { return failure == 10 ? 1 : 1 << 20; }
+// The pool keys reuse on a buffer's exact byte length.
+- (NSUInteger)length { return self.data.length; }
 - (NSUInteger)maxTotalThreadsPerThreadgroup { return 256; }
 - (void *)contents { return self.mapped ? self.mapped : self.data.mutableBytes; }
 - (void)dealloc { if (self.data) deallocs++; }
@@ -243,6 +245,61 @@ static void dense_transfers(void) {
   dense_bytes = 0;
 }
 
+// A resident result for a synthetic kernel: the pool keys reuse on the byte
+// length this shape produces, and the mock commit overwrites every word.
+static OspreyGpuDispatch recycled_product(const int64_t *in, int64_t *out, uint64_t count, void **slot) {
+  OspreyGpuDispatch d = {"recycled_output", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, 1};
+  osprey_gpu_arg(&d, OSPREY_GPU_INPUT, in, NULL, count, 8);
+  osprey_gpu_arg_at(&d, OSPREY_GPU_OUTPUT, out, NULL, count, 8, slot);
+  expected_threads = 1;
+  return d;
+}
+
+// [LLM-DISPATCH-BATCH] A recycled result's object is pooled under its exact
+// byte length and stays alive there: a later result of that length reuses the
+// same object without allocating or uploading zeros, a result of another
+// length allocates afresh and leaves the pooled object alone, and the reused
+// words are the kernel's, not the words the freed result left behind.
+static void recycled_case(void) {
+  int64_t in[3] = {5, 6, 7}, out[3] = {99, 99, 99};
+  void *slot = NULL;
+  unsigned start_fresh = fresh_outputs, start_creations = creations;
+  unsigned start_deallocs = deallocs, start_commits = commits;
+  // A three-word result fills the pool when it is recycled.
+  OspreyGpuDispatch first = recycled_product(in, out, 3, &slot);
+  assert(osprey_gpu_metal_dispatch(&first) == 1 && slot);
+  assert(fresh_outputs == start_fresh + 1 && creations == start_creations + 2);
+  assert(osprey_gpu_metal_download(slot, out, sizeof out) == 1 && commits == start_commits + 1);
+  assert(out[0] == MOCK_MARK && out[1] == 99 && out[2] == 99);
+  void *recycled = slot;
+  slot = NULL;
+  osprey_gpu_metal_recycle(recycled);
+  assert(deallocs == start_deallocs + 1); // transient input released at commit
+  // A two-word result cannot use the pooled three-word object.
+  void *small_slot = NULL;
+  int64_t small[2] = {99, 99};
+  OspreyGpuDispatch mismatch = recycled_product(in, small, 2, &small_slot);
+  assert(osprey_gpu_metal_dispatch(&mismatch) == 1 && small_slot && small_slot != recycled);
+  assert(fresh_outputs == start_fresh + 2 && creations == start_creations + 4);
+  assert(osprey_gpu_metal_download(small_slot, small, sizeof small) == 1 && commits == start_commits + 2);
+  assert(small[0] == MOCK_MARK && small[1] == 99);
+  // A three-word result reuses the pooled object itself, and the commit's
+  // words replace stale ones written into it while it sat in the pool.
+  memset(((__bridge OspreyMockMetal *)recycled).contents, 0x5a, 3 * sizeof(int64_t));
+  void *reuse_slot = NULL;
+  OspreyGpuDispatch reuse = recycled_product(in, out, 3, &reuse_slot);
+  assert(osprey_gpu_metal_dispatch(&reuse) == 1 && reuse_slot == recycled);
+  assert(fresh_outputs == start_fresh + 2 && creations == start_creations + 5);
+  assert(osprey_gpu_metal_download(reuse_slot, out, sizeof out) == 1 && commits == start_commits + 3);
+  assert(out[0] == MOCK_MARK && out[1] == 99 && out[2] == 99);
+  assert(deallocs == start_deallocs + 3); // one transient input per commit
+  osprey_gpu_metal_release(small_slot);
+  assert(deallocs == start_deallocs + 4);
+  // Recycling the reused object again keeps it alive for the pool, not freed.
+  osprey_gpu_metal_recycle(reuse_slot);
+  assert(deallocs == start_deallocs + 4);
+}
+
 // The success path: the product, then a program's kernels, which recompile
 // the library once and reuse their pipeline afterwards.
 static void success_case(void) {
@@ -258,6 +315,7 @@ static void success_case(void) {
   mapped_case();
   dense_transfers();
   batched_case();
+  recycled_case();
 }
 
 static void test_case(unsigned mode) {
