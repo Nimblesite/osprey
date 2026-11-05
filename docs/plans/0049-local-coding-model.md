@@ -52,7 +52,7 @@ Gate [LLM-SPEED]: at least 5 tokens/s on this M4 Max, and at least 25% of the Ph
 ## Phase 3 — Model on a tiny checkpoint
 - [x] `@osprey/gguf`: reader from `gguf` 0.19.0, oracle in `src/osprey/packages/gguf/oracle/gguf.cpython`.
 - [ ] `src/osprey/packages/transformers/src/qwen3_5_*.py`: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE].
-- [ ] Tiny random `Qwen3_5TextConfig` (4 layers, a few MB) written by `src/osprey/packages/transformers/oracle/transformers.cpython`; every layer's activations compared to Transformers in `float32` under [PORT-TEST-ORACLE].
+- [ ] Tiny random `Qwen3_5TextConfig` (4 layers, a few MB) written by `src/osprey/packages/transformers/oracle/transformers.cpython`; every layer's activations compared to Transformers in `float32` under [PORT-TEST-ORACLE]. Fixture done 2026-11-05 (pi, reviewed, 1aff0f216): `oracle/qwen3_5_fixture.cpython` records a 4-layer (3 linear + 1 full attention) hidden-64 model from torch 2.14.1 with every tensor, three inputs' hidden states and the cache after a one-token-at-a-time run (2.26 MB, 2422 assertions green under gc and arc); the comparison waits for the port. Run the oracle with `~/.cache/osprey-llm/torch-venv/bin/python -I src/osprey/packages/testing/oracle/oracle.cpython transformers`.
 - [ ] Permutations: one token at a time vs a batch, cached vs uncached, recurrent vs chunked rule, `float16` KV vs `float32`.
 
 Gate [LLM-MODEL-ORACLE]: all activations within tolerance on host and GPU handlers; CI runs this and never downloads real weights.
