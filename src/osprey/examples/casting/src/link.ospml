@@ -172,7 +172,7 @@ module Link
                 true => skinned (store, drop phase 5)
                 false => Runtime::step store
 
-    skinned (store, key) = match length (filterList (Machines::choicesOf (machineOf store, "skins"), \choice => choice.choiceKey == key)) > 0
+    export skinned (store, key) = match length (filterList (Machines::choicesOf (machineOf store, "skins"), \choice => choice.choiceKey == key)) > 0
         true => settled (fed (store, [fact ("skin", Values::text key)]))
         false => Runtime::step store
 

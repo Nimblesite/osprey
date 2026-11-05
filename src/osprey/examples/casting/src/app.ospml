@@ -22,6 +22,9 @@ module App
     export loaded source = match MachineDocs::load source
         Success machine => Link::store machine
         Error problem => Link::store (MachineDocs::faulty problem)
+    fromPath path = match readFile path
+        Success source => loaded source
+        Error problem => Link::store (MachineDocs::faulty ("Cannot read the player interface: ${problem}"))
     selected store = (Templates::skin store.screen.screenMachine).skinName
     returned store = Link::fed (store, [ui::Fact(factName = "skinReturned", factValue = Values::flag true)])
     pending store = Machines::flag (store.screen.screenMachine, "skinReturned") == false
@@ -42,7 +45,7 @@ module App
     // Never write the fallback over a preference that has not been read yet.
     export initial context =
         path = documentPath context.arguments
-        launched = Link::launched (loaded (readFile path ?: ""), MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
+        launched = Link::launched (fromPath path, MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
         first = Link::settled (launched(finder = Link::browse (after (context.arguments, "--browse", ""))))
         clocked = first(requests = listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
         match specified context.arguments
