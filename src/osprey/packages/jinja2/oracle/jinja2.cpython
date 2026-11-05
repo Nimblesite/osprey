@@ -1,7 +1,22 @@
-"""CPython Jinja2 render and value oracles for the supported chat subset."""
+"""CPython Jinja2 render and value oracles for the supported chat subset.
+
+Two reference paths share this file. `TEMPLATES` renders through a plain
+`jinja2.Environment(trim_blocks=True, lstrip_blocks=True)`. The Qwen3.8 chat
+template renders through transformers' own chat-template environment —
+`transformers.utils.chat_template_utils.render_jinja_template`, the exact render
+step `apply_chat_template` calls — so its `tojson` override, `raise_exception`
+and sandbox match what a model's tokenizer does. The template fixture is byte
+identical to Qwen/Qwen3.8-27B at revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+(`chat_template.jinja`).
+"""
 import jinja2
 import json
+import pathlib
 from expected_module import write
+
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parents[4]
+TEMPLATE_FIXTURE = ROOT / "src" / "osprey" / "packages" / "jinja2" / "tests" / "fixtures" / "qwen3.8-27b.chat_template.jinja"
 
 TEMPLATES = [
     ("mixed dict keys", "{{ {1: 'number', '1': 'text'}[1] }}:{{ {1: 'number', '1': 'text'}['1'] }}"),
@@ -121,6 +136,21 @@ TEMPLATES = [
     ("repr backslash", "{{ ['a\\\\b'] }}"),
     ("tojson pretty list", "{{ [1, 'a']|tojson(indent=2) }}"),
     ("default no arg", "{{ missing|default }}:{{ name|default }}"),
+    ("safe filter", "{{ '<b>'|safe }}:{{ '<b>' }}"),
+    ("tuple membership", "{{ 'b' in ('a', 'b') }}:{{ 3 in (1, 2) }}:{{ 'c' not in ('a', 'b') }}"),
+    ("loop neighbours", "{% for n in nums %}[{{ loop.previtem }}:{{ n }}:{{ loop.nextitem }}]{% endfor %}"),
+    ("loop neighbours of string", "{% for c in 'ab' %}[{{ loop.previtem }}{{ c }}]{% endfor %}"),
+    ("macro basic", "{% macro hi(x) %}Hi {{ x }}{% endmacro %}{{ hi('a') }}"),
+    ("macro default", "{% macro m(a, b=7) %}{{ a }}{{ b }}{% endmacro %}{{ m(1) }}:{{ m(1, 2) }}"),
+    ("macro keyword", "{% macro m(a, b) %}{{ a }}-{{ b }}{% endmacro %}{{ m(b=2, a=1) }}"),
+    ("macro missing arg", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m() }}"),
+    ("macro recursion", "{% macro count(n) %}{{ n }}{% if n > 1 %}{{ count(n - 1) }}{% endif %}{% endmacro %}{{ count(3) }}"),
+    ("macro defined in loop", "{% for n in nums %}{% macro m() %}{{ n }}{% endmacro %}{{ m() }}{% endfor %}"),
+    ("macro sees later global", "{% macro m() %}{{ g }}{% endmacro %}{% set g = 5 %}{{ m() }}"),
+    ("macro default sees later global", "{% macro m(a=g) %}{{ a }}{% endmacro %}{% set g = 5 %}{{ m() }}"),
+    ("macro called from loop", "{% macro m() %}[{{ n }}]{% endmacro %}{% for n in nums %}{{ m() }}{% endfor %}"),
+    ("macro filters output", "{% macro m(x) %}  {{ x }}  {% endmacro %}{{ m('a')|trim }}!"),
+    ("macro loop inside", "{% macro items(xs) %}{% for x in xs %}{{ loop.index }}{{ x }}{% endfor %}{% endmacro %}{{ items(nums) }}"),
 ]
 
 
@@ -155,6 +185,7 @@ ERROR_TEMPLATES = [
     ("range zero step", "{{ range(1, 5, 0) }}"),
     ("subscript undefined", "{{ missing[0] }}"),
     ("add undefined attr right", "{{ 1 + missing.x }}"),
+    ("macro extra arg", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(1, 2) }}"),
 ]
 
 
@@ -165,8 +196,14 @@ def main():
     errors = [[name, template, error_message(env, template, context)] for name, template in ERROR_TEMPLATES]
     macro_source = "{% macro hi(x) %}Hi {{ x }}{% endmacro %}"
     macro = env.parse(macro_source).body[0]
-    write("jinja2", "Jinja2 chat-environment renders and failure messages over a fixed JSON-like context.",
-          {"jinja2": jinja2.__version__}, {
+    template = TEMPLATE_FIXTURE.read_text(encoding="utf-8")
+    renders = [[name, chat_context(messages, tools, kwargs), chat_render(template, messages, tools, kwargs)]
+               for name, messages, tools, kwargs in chat_cases()]
+    rejected = [[name, chat_context(messages, tools, kwargs), chat_error(template, messages, tools, kwargs)]
+                for name, messages, tools, kwargs in chat_error_cases()]
+    write("jinja2", "Jinja2 chat-environment renders and failure messages over a fixed JSON-like context, plus the "
+          "unmodified Qwen3.8 chat template rendered through transformers' own chat-template environment.",
+          {"jinja2": jinja2.__version__, "transformers": transformers_version()}, {
               "RENDERS": cases, "CHARS": list("aé🙂"), "REVERSED": "aé🙂"[::-1],
               "SPLIT": " a\t b\n c ".split(), "SEP_SPLIT": "a,,b,".split(","),
               "CAPITALIZED": "hELLO".capitalize(), "REPR": repr("a\nb"), "BOOL_TEXT": str(True),
@@ -174,7 +211,7 @@ def main():
               "PRETTY_LIST_JSON": json.dumps([1, 2], indent=2),
               "FLOORDIV": -7 // 3, "MODULO": -7 % 3,
               "MACRO_SOURCE": macro_source, "MACRO_NAME": macro.name, "MACRO_PARAMS": [arg.name for arg in macro.args],
-              "ERRORS": errors,
+              "ERRORS": errors, "CHAT_TEMPLATE": template, "CHAT_RENDERS": renders, "CHAT_ERRORS": rejected,
           })
 
 
@@ -185,6 +222,232 @@ def error_message(env, template, context):
     except Exception as error:
         return str(error)
     raise AssertionError(f"oracle template unexpectedly rendered: {template}")
+
+
+# The Qwen3.8 chat template, through transformers' chat-template environment.
+
+def transformers_version():
+    """transformers' version, imported here so `main` states it in the module header."""
+    import transformers
+
+    return transformers.__version__
+
+
+def chat_context(messages, tools, kwargs):
+    """The template's context as one JSON object: messages, tools when given, and each template keyword."""
+    context = {"messages": messages}
+    if tools is not None:
+        context["tools"] = tools
+    context.update(kwargs)
+    return json.dumps(context, ensure_ascii=False)
+
+
+def chat_render(template, messages, tools, kwargs):
+    """`apply_chat_template`'s render step for one conversation."""
+    from transformers.utils.chat_template_utils import render_jinja_template
+
+    rendered, _ = render_jinja_template(conversations=[messages], tools=tools, chat_template=template, **kwargs)
+    return rendered[0]
+
+
+def chat_error(template, messages, tools, kwargs):
+    """transformers' exception text for a conversation this template rejects."""
+    try:
+        chat_render(template, messages, tools, kwargs)
+    except Exception as error:
+        return str(error)
+    raise AssertionError(f"oracle conversation unexpectedly rendered: {messages}")
+
+
+WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Current weather for one city.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name, e.g. Zürich"},
+                "units": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+                "days": {"type": "integer", "minimum": 1, "maximum": 7},
+            },
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search",
+        "description": "Search a corpus. Multi-line description:\nsecond line\twith a tab, a \"quote\", "
+                       "a backslash \\, a control char \u0001 and 🔍.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "filters": {
+                    "type": "object",
+                    "properties": {"lang": {"type": "string"}, "pinned": {"type": "boolean"}},
+                },
+                "limit": {"type": "number", "default": 10.5},
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+TOOLS = [WEATHER_TOOL, SEARCH_TOOL]
+
+
+def user(text):
+    """A plain user message."""
+    return {"role": "user", "content": text}
+
+
+def assistant(text, reasoning=None, calls=None):
+    """An assistant message, optionally carrying reasoning content and tool calls."""
+    message = {"role": "assistant", "content": text}
+    if reasoning is not None:
+        message["reasoning_content"] = reasoning
+    if calls is not None:
+        message["tool_calls"] = calls
+    return message
+
+
+def tool(text):
+    """A tool result message."""
+    return {"role": "tool", "content": text}
+
+
+CALL = {
+    "id": "call_1",
+    "type": "function",
+    "function": {"name": "get_weather", "arguments": {"city": "Zürich", "units": "celsius", "days": 2}},
+}
+
+CALL_ALL_TYPES = {
+    "id": "call_2",
+    "type": "function",
+    "function": {
+        "name": "search",
+        "arguments": {
+            "query": "日本語 and 🙂 and é",
+            "filters": {"lang": "ja", "pinned": True},
+            "limit": 10.5,
+            "ratio": 0.1,
+            "exact": [1, 2.5, "x", True, None, [3]],
+            "empty": {},
+            "blank": "",
+            "escaped": "quote \" backslash \\ tab\tnl\ncr\rff\f bs\b",
+        },
+    },
+}
+
+NESTED_CALL = {"function": {"name": "search", "arguments": {"query": "nested"}}}
+
+
+CHAT = [
+    ("chat single user", [user("Hello")], None, {}),
+    ("chat single user with prompt", [user("Hello")], None, {"add_generation_prompt": True}),
+    ("chat system and user", [{"role": "system", "content": "You are terse."}, user("Hi")], None, {}),
+    ("chat system and user with prompt", [{"role": "system", "content": "You are terse."}, user("Hi")], None,
+     {"add_generation_prompt": True}),
+    ("chat multi turn", [{"role": "system", "content": "sys"}, user("one"), assistant("two"), user("three")],
+     None, {}),
+    ("chat multi turn with prompt", [user("one"), assistant("two"), user("three")], None,
+     {"add_generation_prompt": True}),
+    ("chat text content blocks", [{"role": "system", "content": [{"type": "text", "text": "sys  "}]},
+                                  {"role": "user", "content": [{"type": "text", "text": "  hi"}]}], None,
+     {"add_generation_prompt": True}),
+    ("chat plain text in content block", [user([{"text": "plain"}])], None, {}),
+    ("chat empty content list", [user([])], None, {}),
+    ("chat empty system", [{"role": "system", "content": ""}, user("x")], None, {}),
+    ("chat whitespace content trimmed", [user("  \n padded \t ")], None, {}),
+    ("chat thinking on", [user("q")], None, {"enable_thinking": True, "add_generation_prompt": True}),
+    ("chat thinking off", [user("q")], None, {"enable_thinking": False, "add_generation_prompt": True}),
+    ("chat thinking off no prompt", [user("q")], None, {"enable_thinking": False}),
+    ("chat effort default", [user("q")], None, {"add_generation_prompt": True}),
+    ("chat effort xhigh", [user("q")], None, {"reasoning_effort": "xhigh", "add_generation_prompt": True}),
+    ("chat effort medium", [user("q")], None, {"reasoning_effort": "medium", "add_generation_prompt": True}),
+    ("chat effort low", [user("q")], None, {"reasoning_effort": "low", "add_generation_prompt": True}),
+    ("chat effort with system", [{"role": "system", "content": "be brief"}, user("q")], None,
+     {"reasoning_effort": "low", "add_generation_prompt": True}),
+    ("chat effort with empty system", [{"role": "system", "content": "  "}, user("q")], None,
+     {"reasoning_effort": "medium"}),
+    ("chat effort ignored when thinking off", [user("q")], None,
+     {"enable_thinking": False, "reasoning_effort": "low", "add_generation_prompt": True}),
+    ("chat reasoning content default", [user("q"), assistant("a", reasoning="  why  "), user("q2")], None, {}),
+    ("chat reasoning preserved", [user("q"), assistant("a", reasoning="why"), user("q2")], None,
+     {"preserve_thinking": True}),
+    ("chat reasoning dropped", [user("q"), assistant("a", reasoning="why"), user("q2")], None,
+     {"preserve_thinking": False}),
+    ("chat reasoning last answer kept", [user("q"), assistant("a", reasoning="why")], None,
+     {"preserve_thinking": False, "add_generation_prompt": True}),
+    ("chat reasoning without user after", [user("q"), assistant("a", reasoning="why")], None,
+     {"preserve_thinking": False}),
+    ("chat reasoning empty", [user("q"), assistant("a", reasoning="  "), user("q2")], None, {}),
+    ("chat reasoning non string", [user("q"), {"role": "assistant", "content": "a", "reasoning_content": 5},
+                                   user("q2")], None, {}),
+    ("chat tools", [user("weather in Zürich?")], TOOLS, {}),
+    ("chat tools with prompt", [user("weather?")], TOOLS, {"add_generation_prompt": True}),
+    ("chat tools with system", [{"role": "system", "content": "You are a weather bot."}, user("weather?")], TOOLS,
+     {"add_generation_prompt": True}),
+    ("chat tools with empty system", [{"role": "system", "content": ""}, user("weather?")], TOOLS, {}),
+    ("chat tools empty list", [user("hi")], [], {}),
+    ("chat tool call", [user("weather?"), assistant("", calls=[CALL])], TOOLS, {}),
+    ("chat tool call with text", [user("weather?"), assistant("Let me check.", calls=[CALL])], TOOLS, {}),
+    ("chat tool call all types", [user("search"), assistant("", calls=[CALL_ALL_TYPES])], TOOLS,
+     {"add_generation_prompt": True}),
+    ("chat tool call nested function", [user("search"), assistant("", calls=[NESTED_CALL])], TOOLS, {}),
+    ("chat tool call empty arguments", [user("search"), assistant("", calls=[{"function": {"name": "search", "arguments": ""}}])],
+     TOOLS, {}),
+    ("chat tool call no arguments", [user("search"), assistant("", calls=[{"function": {"name": "search"}}])], TOOLS, {}),
+    ("chat tool result", [user("weather?"), assistant("", calls=[CALL]), tool("sunny, 21C")], TOOLS,
+     {"add_generation_prompt": True}),
+    ("chat tool results twice", [user("weather?"), assistant("", calls=[CALL, CALL]),
+                                 tool("sunny"), tool("rainy")], TOOLS, {"add_generation_prompt": True}),
+    ("chat tool multi step", [user("weather?"), assistant("", calls=[CALL]), tool("sunny"),
+                              assistant("", calls=[CALL]), tool("rainy"), assistant("done"), user("again")],
+     TOOLS, {"add_generation_prompt": True}),
+    ("chat two tool turns", [user("q1"), assistant("", calls=[CALL]), tool("r1"), user("q2"),
+                             assistant("", calls=[CALL]), tool("r2")], TOOLS, {"add_generation_prompt": True}),
+    ("chat tool response tagged user", [user("q"), assistant("", calls=[CALL]), tool("r"), user("next")], TOOLS, {}),
+    ("chat unicode", [{"role": "system", "content": "Règles: 日本語 🙂"},
+                      user("émoji 🙂 中文 \u0001 combining e\u0301 rtl \u05d0\u05d1")], None,
+     {"add_generation_prompt": True}),
+    ("chat unicode assistant", [user("q"), assistant("回答 🙃", reasoning="思考…"), user("q2")], None, {}),
+    ("chat multi turn deep", [{"role": "system", "content": "sys"}, user("u1"), assistant("a1"), user("u2"),
+                               assistant("a2"), user("u3"), assistant("a3"), user("u4")], None,
+     {"add_generation_prompt": True}),
+    ("chat add vision id unused", [user("hi")], None, {"add_vision_id": False, "add_generation_prompt": True}),
+]
+
+CHAT_ERROR = [
+    ("chat no messages", [], None, {}),
+    ("chat system not first", [user("q"), {"role": "system", "content": "late"}], None, {}),
+    ("chat unexpected role", [user("q"), {"role": "wizard", "content": "x"}], None, {}),
+    ("chat assistant only", [assistant("x")], None, {}),
+    ("chat tool response only", [user("<tool_response>\nr\n</tool_response>")], None, {}),
+    ("chat unexpected content type", [{"role": "user", "content": 42}], None, {}),
+    ("chat unexpected item type", [user([{"type": "audio"}])], None, {}),
+    ("chat image in system", [{"role": "system", "content": [{"type": "image", "image": "x"}]}, user("q")],
+     None, {}),
+    ("chat video in system", [{"role": "system", "content": [{"type": "video", "video": "x"}]}, user("q")],
+     None, {}),
+    ("chat bad effort", [user("q")], None, {"reasoning_effort": "extreme"}),
+]
+
+
+def chat_cases():
+    """The conversations the template renders, as (name, messages, tools, kwargs)."""
+    return CHAT
+
+
+def chat_error_cases():
+    """The conversations the template rejects, as (name, messages, tools, kwargs)."""
+    return CHAT_ERROR
 
 
 if __name__ == "__main__":

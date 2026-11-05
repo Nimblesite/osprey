@@ -1,10 +1,10 @@
 # @osprey/jinja2
 
-An Osprey Python-flavor port of jinja2: lexing, parsing and rendering of the Jinja2 chat-template subset.
+An Osprey Python-flavor port of [jinja2](https://github.com/pallets/jinja) 3.1.6: lexing, parsing and rendering of the Jinja2 chat-template subset a model's `chat_template` uses.
 
 Values use the port's typed representation. This is a template subset, not the complete Python object model or extension ecosystem.
 
-The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. The assertions in `tests/main.py` compare rendering with the generated CPython Jinja2 oracle in `tests/expected.py`. Macro declarations can be parsed, but rendering a macro returns an explicit error; the suite checks that limit. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
+The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE], [PORT-TEST-ORACLE] and [PORT-SCOPE]. The assertions in `tests/main.py` compare rendering with the values the real CPython package computed in `oracle/jinja2.cpython`, which writes `tests/expected.py`. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
 
 ```sh
 target/release/osprey src/osprey/packages/jinja2/tests --run
@@ -13,3 +13,34 @@ OSPREY_ARC_DEBUG=1 target/release/osprey src/osprey/packages/jinja2/tests --run 
 ```
 
 The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. Presence of a suite does not establish that it passes; compiler diagnostics, assertion failures and missing golden files remain failures.
+
+## What the port covers
+
+| Osprey module | Jinja2 surface it reimplements |
+| --- | --- |
+| `Lexer` | `jinja2.lexer`: `{{ }}`, `{% %}`, `{# #}`, the `-`/`+` whitespace-control signs, `trim_blocks`, `lstrip_blocks`, closing-character search that skips string literals and nested brackets |
+| `Parser` | `jinja2.parser`: `if`/`elif`/`else`, `for … in …` with an `if` filter, `k, v` unpacking and `else`, `set` and namespace-attribute `set`, `macro` with defaults, `endmacro` |
+| `Expr` | `jinja2.nodes` evaluation: literals, parenthesised tuples, list and dict literals, comparisons and `in`, boolean operators, `+ - * / // % ~`, unary signs, conditional expressions, subscripts and slices, attribute and method access, filters, tests, calls |
+| `Value` | `jinja2.runtime.Undefined` semantics, Python truthiness, equality and ordering, `len`, repr, slices, `tojson`, scope frames, the macro table |
+| `Filters` | `trim`, `upper`, `lower`, `capitalize`, `length`/`count`, `tojson`, `join`, `replace`, `default`/`d`, `first`, `last`, `list`, `string`, `safe`, `items`, `map`, `select`/`reject`/`selectattr`/`rejectattr`; tests `defined`, `undefined`, `none`, `string`, `number`, `integer`, `float`, `boolean`, `true`, `false`, `equalto`/`eq`/`==`, `ne`/`!=`, `in`, `mapping`, `iterable`, `sequence`, `sameas`; string and dict methods; globals `raise_exception`, `namespace`, `dict`, `range` |
+| `Render` | `jinja2.environment.Template.render`: the node walk, scope threading, loop objects, macro expansion, whitespace assembly |
+
+`Render.chat_environment()` is `Environment(trim_blocks=True, lstrip_blocks=True)`, the whitespace configuration transformers' chat templates are compiled with.
+
+## The Qwen3.8 chat template
+
+`tests/fixtures/qwen3.8-27b.chat_template.jinja` is the unmodified template of [Qwen/Qwen3.8-27B](https://huggingface.co/Qwen/Qwen3.8-27B/tree/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0) (revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`); see [NOTICE.md](NOTICE.md) and [`LICENSES/`](LICENSES). The oracle renders it through `transformers.utils.chat_template_utils.render_jinja_template` — the render step `apply_chat_template` calls, with transformers' own `tojson`, `raise_exception` and sandboxed environment — and the suite requires the port to reproduce every rendering byte for byte, and every rejection with the same message. Cases cover messages, tools, thinking (`enable_thinking`), `reasoning_effort`, `preserve_thinking`, multi-turn tool results, `add_generation_prompt` on and off, and unicode.
+
+## Divergences
+
+Each divergence is pinned by an assertion in `tests/main.py`, so the suite states the port's own behavior where it cannot match CPython.
+
+- **A namespace write inside a macro does not escape the call.** Values are immutable, so `{% set ns.attr = … %}` inside a macro body rebinds the argument's own frame instead of the caller's namespace object. CPython mutates the shared namespace. The Qwen3.8 template reads such a counter only for `add_vision_id`, so picture numbering restarts in each message where CPython continues the count.
+- **A parenthesised tuple is a list.** Membership and iteration match; the printed form and equality against a list do not (`('a', 'b')` prints `['a', 'b']`).
+- **`|safe` is the identity.** The port has no autoescaping, which is also Jinja2's default for a plain `Environment`, so marking a value safe changes nothing.
+- **`strftime_now` is unavailable.** It depends on the host clock, which the port does not read; calling it is an error.
+- **`{% break %}`, `{% continue %}`, `{% include %}`, `{% import %}`, `{% extends %}`, `{% block %}` and filter/test registration are out of scope.** An unknown statement, filter or test is an error, never a silently empty rendering.
+
+## Resource bounds
+
+No operation recurses once per character, byte or list element: character scans, splits, slices, membership and `dict` updates fold over `range`, so a megabyte-sized message costs stack in proportion to the template's nesting, not to its length.

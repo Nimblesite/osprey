@@ -11,6 +11,7 @@ Filters, tests and methods live in `Filters`; this module parses and dispatches.
 from jinja2.Value import halt
 from jinja2 import Value as V
 from jinja2 import Filters as F
+from jinja2 import Render as R
 
 __all__ = ["eval_expr"]
 
@@ -467,12 +468,28 @@ def is_global(name):
 
 
 def eval_paren(toks, i, env):
-    """A parenthesised expression."""
+    """A parenthesised expression, or a parenthesised tuple of them."""
     p = eval_condexpr(toks, i + 1, env)
-    if is_op(tok(toks, p.next), ")"):
+    if is_op(tok(toks, p.next), ","):
+        return paren_tail(toks, p.next, env, [p.value])
+    elif is_op(tok(toks, p.next), ")"):
         return P(value=p.value, next=p.next + 1)
     else:
         return P(value=halt("expected ')' in expression"), next=p.next)
+
+
+def paren_tail(toks, i, env, acc):
+    """Collect the elements of a parenthesised tuple after the first."""
+    if is_op(tok(toks, i), ","):
+        if is_op(tok(toks, i + 1), ")"):
+            return P(value=V.list_(acc), next=i + 2)
+        else:
+            p = eval_condexpr(toks, i + 1, env)
+            return paren_tail(toks, p.next, env, listAppend(acc, p.value))
+    elif is_op(tok(toks, i), ")"):
+        return P(value=V.list_(acc), next=i + 1)
+    else:
+        return P(value=halt("expected ')' in expression"), next=i)
 
 
 
@@ -557,7 +574,7 @@ def eval_postfix(toks, i, env, obj):
         if p.error != "":
             return P(value=halt(p.error), next=p.next)
         else:
-            return eval_postfix(toks, p.next, env, call_value(obj, p.args, p.kwargs))
+            return eval_postfix(toks, p.next, env, call_value(env, obj, p.args, p.kwargs))
     else:
         return P(value=obj, next=i)
 
@@ -573,7 +590,7 @@ def eval_subscript(toks, i, env, obj):
             sl = V.Slice(start=int_of(p.value), stop=0, step=1, has_start=True, has_stop=False, has_step=False)
             return slice_rest(toks, p.next + 1, env, obj, sl)
         elif is_op(tok(toks, p.next), "]"):
-            return P(value=V.dict_get(obj, p.value), next=p.next + 1)
+            return eval_postfix(toks, p.next + 1, env, V.dict_get(obj, p.value))
         else:
             return P(value=halt("expected ']' or ':' after subscript"), next=p.next)
 
@@ -585,14 +602,14 @@ def slice_rest(toks, i, env, obj, sl):
     if is_op(t, ":"):
         return slice_step(toks, i + 1, env, obj, sl)
     elif is_op(t, "]"):
-        return P(value=apply_slice(obj, sl), next=i + 1)
+        return eval_postfix(toks, i + 1, env, apply_slice(obj, sl))
     else:
         p = eval_condexpr(toks, i, env)
         sl2 = V.Slice(start=sl.start, stop=int_of(p.value), step=sl.step, has_start=sl.has_start, has_stop=True, has_step=sl.has_step)
         if is_op(tok(toks, p.next), ":"):
             return slice_step(toks, p.next + 1, env, obj, sl2)
         elif is_op(tok(toks, p.next), "]"):
-            return P(value=apply_slice(obj, sl2), next=p.next + 1)
+            return eval_postfix(toks, p.next + 1, env, apply_slice(obj, sl2))
         else:
             return P(value=halt("expected ':' or ']' in slice"), next=p.next)
 
@@ -601,12 +618,12 @@ def slice_rest(toks, i, env, obj, sl):
 def slice_step(toks, i, env, obj, sl):
     """After the second `:` of a slice."""
     if is_op(tok(toks, i), "]"):
-        return P(value=apply_slice(obj, sl), next=i + 1)
+        return eval_postfix(toks, i + 1, env, apply_slice(obj, sl))
     else:
         p = eval_condexpr(toks, i, env)
         sl2 = V.Slice(start=sl.start, stop=sl.stop, step=int_of(p.value), has_start=sl.has_start, has_stop=sl.has_stop, has_step=True)
         if is_op(tok(toks, p.next), "]"):
-            return P(value=apply_slice(obj, sl2), next=p.next + 1)
+            return eval_postfix(toks, p.next + 1, env, apply_slice(obj, sl2))
         else:
             return P(value=halt("expected ']' after slice step"), next=p.next)
 
@@ -678,7 +695,7 @@ def eval_filter(toks, i, env, obj):
         if p.error != "":
             return P(value=halt(p.error), next=p.next)
         else:
-            return eval_filter(toks, p.next, env, call_value(obj, p.args, p.kwargs))
+            return eval_filter(toks, p.next, env, call_value(env, obj, p.args, p.kwargs))
     else:
         return P(value=obj, next=i)
 
@@ -717,16 +734,23 @@ def eval_test_at(toks, j, env, obj, negated):
 
 
 def parse_test_args(toks, j, env):
-    """Test arguments: `(...)` or a single bare primary."""
+    """Test arguments: `(...)` or a single bare primary (a keyword is never one)."""
     t = tok(toks, j)
     if is_op(t, "("):
         return parse_call_args(toks, j + 1, env)
+    elif t.kind == "name" and is_keyword(t.sval):
+        return Args(args=[], kwargs=[], next=j, error="")
     elif t.kind == "name" or t.kind == "string" or t.kind == "int" or t.kind == "float" or is_op(t, "(") or is_op(t, "[") or is_op(t, "{"):
         p = eval_primary(toks, j, env)
         p2 = eval_postfix(toks, p.next, env, p.value)
         return Args(args=[p2.value], kwargs=[], next=p2.next, error="")
     else:
         return Args(args=[], kwargs=[], next=j, error="")
+
+
+def is_keyword(word):
+    """Whether a bare name is a template keyword, which cannot be a test argument."""
+    return word == "and" or word == "or" or word == "not" or word == "if" or word == "else" or word == "in" or word == "is"
 
 
 class Name:
@@ -878,10 +902,12 @@ def neg(v):
 
 
 
-def call_value(callee, args, kwargs):
-    """Call a global function reference."""
+def call_value(env, callee, args, kwargs):
+    """Call a global function, or expand the macro `callee` names."""
     if callee.kind == V.K_FUNC:
         return call_global(callee.sval, args, kwargs)
+    elif callee.kind == V.K_MACRO:
+        return R.expand_macro(env, callee.sval, args, kwargs)
     else:
         return halt("'" + V.concat_text(callee) + "' is not callable")
 

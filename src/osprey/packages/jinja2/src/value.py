@@ -5,21 +5,26 @@
 chat-template subset needs.
 
 A value is one of `none`, `bool`, `int`, `float`, `string`, `list`, `dict`
-(insertion-ordered keys), `pair` (one `items()` element) or `undefined` (Jinja's
-default `Undefined`: it renders empty, fails only when an operation needs its
-value, and compares unequal to everything except another undefined). All
-operations are pure; expected failure propagates as an error Value.
+(insertion-ordered keys), `pair` (one `items()` element), `macro` (a name the
+renderer's closure expands) or `undefined` (Jinja's default `Undefined`: it
+renders empty, fails only when an operation needs its value, and compares
+unequal to everything except another undefined). All operations are pure;
+expected failure propagates as an error Value.
 Implements [PORT-SCOPE] value semantics for @osprey/jinja2.
 """
 
+from jinja2 import Parser as P
+
 __all__ = [
-    "Value", "Slice", "Env", "KwVal",
+    "Value", "Slice", "Env", "KwVal", "Macro",
     "none", "bool_", "int_", "float_", "text", "list_", "dict_", "typed_dict", "undefined", "pair", "typed_pair",
     "K_NONE", "K_BOOL", "K_INT", "K_FLOAT", "K_STRING", "K_LIST", "K_DICT", "K_UNDEFINED", "K_PAIR", "K_FUNC",
+    "K_MACRO",
     "truthy", "equal", "less", "concat_text", "repr_text", "contains", "dict_get", "attr_get", "key_of", "chars",
     "str_len", "str_get", "slice_list", "slice_str", "json_text", "str_split", "str_split_sep",
     "py_mod", "py_floordiv", "capitalize", "lookup", "bind", "bind_found", "bind_at", "dict_of", "dict_set",
     "is_undefined", "is_none", "is_string", "is_number", "func", "num_of", "char_values", "halt", "is_error",
+    "env_with", "bind_macro", "macro_ref", "find_macro",
 ]
 
 
@@ -33,6 +38,7 @@ K_DICT = "dict"
 K_UNDEFINED = "undefined"
 K_PAIR = "pair"
 K_FUNC = "func"
+K_MACRO = "macro"
 K_ERROR = "error"
 
 
@@ -59,14 +65,51 @@ class Slice:
 
 
 class Env:
-    """The renderer's scope chain; `frames[0]` is the outermost frame."""
+    """The renderer's scope chain; `frames[0]` is the outermost frame. `macros`
+    holds the `{% macro %}` declarations the template has made so far."""
     frames: list[dict[str, Value]]
+    macros: list[Macro]
 
 
 class KwVal:
     """One keyword argument: its name and evaluated value."""
     name: str
     value: Value
+
+
+class Macro:
+    """A declared macro: its node, and the scope chain it was declared in, which
+    its body resolves template globals through."""
+    node: P.Node
+    frames: list[dict[str, Value]]
+
+
+class CharScan:
+    """A codepoint scan: the characters decoded so far and how many continuation
+    bytes the last one still covers."""
+    acc: list[str]
+    skip: int
+
+
+class Bounds:
+    """A slice's resolved Python window `[start, stop)` and its step."""
+    start: int
+    stop: int
+    step: int
+
+
+class Cut:
+    """A separator scan: the parts so far, the byte offset the next part starts at,
+    and whether the text is finished."""
+    parts: list[str]
+    start: int
+    done: bool
+
+
+class Words:
+    """A whitespace split: the words so far and the word being read."""
+    words: list[str]
+    current: str
 
 
 def make_value(kind, bval, ival, fval, sval, elems, keys, vals):
@@ -209,7 +252,7 @@ def list_equal(xs, ys):
     if len(xs) != len(ys):
         return False
     else:
-        return all_from(len(xs), 0, lambda i: equal(unwrap_or(listGet(xs, i), none()), unwrap_or(listGet(ys, i), none())))
+        return all_from(len(xs), lambda i: equal(unwrap_or(listGet(xs, i), none()), unwrap_or(listGet(ys, i), none())))
 
 
 def dict_equal(a, b):
@@ -217,27 +260,17 @@ def dict_equal(a, b):
     if len(a.keys) != len(b.keys):
         return False
     else:
-        return all_from(len(a.keys), 0, lambda i: equal(dict_get(a, unwrap_or(listGet(a.keys, i), none())), dict_get(b, unwrap_or(listGet(a.keys, i), none()))))
+        return all_from(len(a.keys), lambda i: equal(dict_get(a, unwrap_or(listGet(a.keys, i), none())), dict_get(b, unwrap_or(listGet(a.keys, i), none()))))
 
 
-def all_from(n, i, pred):
-    """Whether `pred` holds for every index from `i` to `n - 1`."""
-    if i >= n:
-        return True
-    elif pred(i):
-        return all_from(n, i + 1, pred)
-    else:
-        return False
+def all_from(n, pred):
+    """Whether `pred` holds for every index below `n` (never recursion on length)."""
+    return fold(range(n), True, lambda held, i: held and pred(i))
 
 
-def any_from(n, i, pred):
-    """Whether `pred` holds for some index from `i` to `n - 1`."""
-    if i >= n:
-        return False
-    elif pred(i):
-        return True
-    else:
-        return any_from(n, i + 1, pred)
+def any_from(n, pred):
+    """Whether `pred` holds for some index below `n`."""
+    return fold(range(n), False, lambda found, i: found or pred(i))
 
 
 def less(a, b):
@@ -338,9 +371,9 @@ def contains(container, item):
     """Jinja `in`: list/dict membership, or substring test for strings."""
     match container.kind:
         case "list":
-            return any_from(len(container.elems), 0, lambda i: equal(unwrap_or(listGet(container.elems, i), none()), item))
+            return any_from(len(container.elems), lambda i: equal(unwrap_or(listGet(container.elems, i), none()), item))
         case "dict":
-            return any_from(len(container.keys), 0, lambda i: equal(unwrap_or(listGet(container.keys, i), none()), item))
+            return any_from(len(container.keys), lambda i: equal(unwrap_or(listGet(container.keys, i), none()), item))
         case "string":
             return item.kind == K_STRING and contains_text(container.sval, item.sval)
         case _:
@@ -400,8 +433,9 @@ def attr_get(v, name):
 
 
 def chars(s):
-    """A string's codepoints as single-character strings."""
-    return chars_from(s, 0, [])
+    """A string's codepoints as single-character strings, one per UTF-8 sequence.
+    One fold over the byte offsets, so a megabyte string costs no stack."""
+    return fold(range(length(s)), CharScan(acc=[], skip=0), lambda st, i: char_step(s, st, i)).acc
 
 
 def char_values(s):
@@ -410,13 +444,13 @@ def char_values(s):
     return toList(map(range(len(cs)), lambda i: text(unwrap_or(listGet(cs, i), ""))))
 
 
-def chars_from(s, i, acc):
-    """Scan codepoints of `s` from byte index `i`."""
-    if i >= length(s):
-        return acc
+def char_step(s, st, i):
+    """Decode the codepoint starting at byte `i`, or step over a continuation byte."""
+    if st.skip > 0:
+        return CharScan(acc=st.acc, skip=st.skip - 1)
     else:
         cp = unwrap_or(codePointAt(s, i), 63)
-        return chars_from(s, i + unwrap_or(codePointWidth(cp), 1), listAppend(acc, unwrap_or(fromCodePoint(cp), "?")))
+        return CharScan(acc=listAppend(st.acc, unwrap_or(fromCodePoint(cp), "?")), skip=unwrap_or(codePointWidth(cp), 1) - 1)
 
 
 def str_len(s):
@@ -447,51 +481,55 @@ def str_get(s, key):
 
 
 def slice_indices(n, sl):
-    """The concrete index list of `x[start:stop:step]` (Python slice rules)."""
+    """The concrete index list of `x[start:stop:step]` (Python slice rules), built
+    by one fold over the window rather than one frame per index."""
     step = sl.step if sl.has_step else 1
     if step == 0:
         return []
     else:
-        start = start_of(n, sl, step)
-        stop = sl.stop if sl.has_stop else ((-1) if step < 0 else n)
-        return walk(n, start, stop, step, [])
+        b = slice_bounds(n, sl, step)
+        return toList(map(range(slice_count(b)), lambda k: b.start + k * step))
 
 
-def start_of(n, sl, step):
-    """A slice's start bound with Python's negative-index clamping."""
-    raw = sl.start if sl.has_start else (0 if step > 0 else n - 1)
-    if raw < 0:
-        return n + raw
-    else:
-        return raw
-
-
-def walk(n, i, stop, step, acc):
-    """Collect indices from `i` by `step` while inside `[0, n)` and before `stop`."""
+def slice_bounds(n, sl, step):
+    """Python's `slice.indices(n)` window for a non-zero `step`."""
     if step > 0:
-        return walk_up(n, i, stop, step, acc)
+        return Bounds(start=high_bound(sl.start if sl.has_start else 0, sl.has_start, n), stop=high_bound(sl.stop if sl.has_stop else n, sl.has_stop, n), step=step)
     else:
-        return walk_down(n, i, stop, step, acc)
+        return Bounds(start=low_bound(sl.start if sl.has_start else n - 1, sl.has_start, n), stop=low_bound(sl.stop if sl.has_stop else -1, sl.has_stop, n), step=step)
 
 
-def walk_up(n, i, stop, step, acc):
-    """Indices ascending from `i` while inside `[0, n)` and `< stop`."""
-    if i >= n or i >= stop:
-        return acc
-    elif i < 0:
-        return walk_up(n, i + step, stop, step, acc)
+def high_bound(raw, given, n):
+    """A positive-step bound: a written negative index counts from the end, then
+    clamps to `0..n`. An absent bound is its default and is not shifted."""
+    return clamp_index(raw + n if given and raw < 0 else raw, 0, n)
+
+
+def low_bound(raw, given, n):
+    """A negative-step bound: a written negative index counts from the end, then
+    clamps to `-1..n-1`. An absent bound is its default and is not shifted."""
+    return clamp_index(raw + n if given and raw < 0 else raw, -1, n - 1)
+
+
+def clamp_index(value, lo, hi):
+    """`value` held inside `[lo, hi]`."""
+    if value < lo:
+        return lo
+    elif value > hi:
+        return hi
     else:
-        return walk_up(n, i + step, stop, step, listAppend(acc, i))
+        return value
 
 
-def walk_down(n, i, stop, step, acc):
-    """Indices descending from `i` while inside `[0, n)` and `> stop`."""
-    if i < 0 or i <= stop:
-        return acc
-    elif i >= n:
-        return walk_down(n, i + step, stop, step, acc)
+def slice_count(b):
+    """How many indices `range(b.start, b.stop, b.step)` holds."""
+    if b.step > 0:
+        return 0 if b.stop <= b.start else (b.stop - b.start + b.step - 1) // b.step
+    elif b.stop >= b.start:
+        return 0
     else:
-        return walk_down(n, i + step, stop, step, listAppend(acc, i))
+        span = 0 - b.step
+        return (b.start - b.stop + span - 1) // span
 
 
 def slice_list(elems, sl):
@@ -572,52 +610,25 @@ def pad(indent, level):
 
 
 def json_quote(s):
-    """A string as JSON prints it (double quotes, backslash escapes, raw unicode)."""
-    return "\"" + json_escape(s) + "\""
-
-
-def json_escape(s):
-    """JSON's string escapes."""
-    cs = chars(s)
-    return fold(range(len(cs)), "", lambda acc, i: acc + json_esc_char(unwrap_or(listGet(cs, i), "")))
-
-
-def json_esc_char(c):
-    """The JSON escape for one character."""
-    match c:
-        case "\"":
-            return "\\\""
-        case "\\":
-            return "\\\\"
-        case "\n":
-            return "\\n"
-        case "\r":
-            return "\\r"
-        case "\t":
-            return "\\t"
-        case "\b":
-            return "\\b"
-        case "\f":
-            return "\\f"
-        case _:
-            return c
+    """A string as JSON prints it: the runtime's `jsonQuote`, which escapes quotes,
+    backslashes and U+0001–U+001F with their shortest escape and leaves every other
+    character as UTF-8 (`json.dumps(..., ensure_ascii=False)`)."""
+    return unwrap_or(jsonQuote(s), "null")
 
 
 def str_split(s):
     """Python `str.split()`: split on runs of whitespace, dropping empties."""
-    return ws_split(chars(s), 0, [], "")
+    cs = chars(s)
+    st = fold(range(len(cs)), Words(words=[], current=""), lambda state, i: word_step(unwrap_or(listGet(cs, i), " "), state))
+    return st.words if st.current == "" else listAppend(st.words, st.current)
 
 
-def ws_split(cs, i, acc, word):
-    """Group codepoints of `cs` into whitespace-separated words."""
-    if i >= len(cs):
-        return acc if word == "" else listAppend(acc, word)
+def word_step(c, st):
+    """Extend the current word, or close it at a whitespace character."""
+    if is_ws_char(c):
+        return Words(words=st.words, current="") if st.current == "" else Words(words=listAppend(st.words, st.current), current="")
     else:
-        c = unwrap_or(listGet(cs, i), " ")
-        if is_ws_char(c):
-            return ws_split(cs, i + 1, acc if word == "" else listAppend(acc, word), "")
-        else:
-            return ws_split(cs, i + 1, acc, word + c)
+        return Words(words=st.words, current=st.current + c)
 
 
 def is_ws_char(c):
@@ -630,20 +641,20 @@ def str_split_sep(s, sep):
     if sep == "":
         return [s]
     else:
-        return split_sep_from(s, sep, 0, [])
+        return fold(range(length(s) + 1), Cut(parts=[], start=0, done=False), lambda st, _k: cut_step(s, sep, st)).parts
 
 
-def split_sep_from(s, sep, i, acc):
-    """Cut `s` on each occurrence of `sep` from byte offset `i`."""
-    if i > length(s):
-        return acc
+def cut_step(s, sep, st):
+    """Cut one occurrence of `sep` from the scan's offset, or finish the text."""
+    if st.done:
+        return st
     else:
-        rest = unwrap_or(substring(s, i, length(s)), "")
+        rest = unwrap_or(substring(s, st.start, length(s)), "")
         idx = unwrap_or(indexOf(rest, sep), -1)
         if idx < 0:
-            return listAppend(acc, unwrap_or(substring(s, i, length(s)), ""))
+            return Cut(parts=listAppend(st.parts, rest), start=st.start, done=True)
         else:
-            return split_sep_from(s, sep, i + idx + length(sep), listAppend(acc, unwrap_or(substring(s, i, i + idx), "")))
+            return Cut(parts=listAppend(st.parts, unwrap_or(substring(s, st.start, st.start + idx), "")), start=st.start + idx + length(sep), done=False)
 
 
 def capitalize(s):
@@ -657,8 +668,43 @@ def capitalize(s):
 
 
 def lookup(env, name):
-    """The value of `name` in the innermost frame that binds it, or undefined."""
-    return lookup_from(env, len(env.frames) - 1, name)
+    """The value of `name`: the innermost frame that binds it, else a macro, else undefined."""
+    v = lookup_from(env, len(env.frames) - 1, name)
+    if v.kind == K_UNDEFINED and binds_macro(env.macros, name):
+        return macro_ref(name)
+    else:
+        return v
+
+
+def binds_macro(macros, name):
+    """Whether `macros` holds a macro named `name`."""
+    return fold(range(len(macros)), False, lambda found, i: found or unwrap_or(listGet(macros, i), no_macro()).node.name == name)
+
+
+def no_macro():
+    """The placeholder a missing macro reads as; its name never matches a call."""
+    return Macro(node=P.blank(""), frames=[])
+
+
+def macro_ref(name):
+    """A value naming a macro, which the evaluator expands through the environment."""
+    return make_value(K_MACRO, False, 0, 0.0, name, [], [], [])
+
+
+def bind_macro(env, node):
+    """`env` with macro `node` declared in the current scope; a later declaration
+    of the same name wins."""
+    return Env(frames=env.frames, macros=listAppend(env.macros, Macro(node=node, frames=env.frames)))
+
+
+def find_macro(env, i, name):
+    """The macro declared as `name`, searching from the end so a redefinition
+    wins; a missing name reads as a nameless placeholder."""
+    if i < 0:
+        return no_macro()
+    else:
+        m = unwrap_or(listGet(env.macros, i), no_macro())
+        return m if m.node.name == name else find_macro(env, i - 1, name)
 
 
 def lookup_from(env, i, name):
@@ -699,7 +745,12 @@ def bind_from(env, i, name, value):
 def bind_at(env, i, name, value):
     """Bind `name` in frame `i` (which must exist)."""
     frame = unwrap_or(listGet(env.frames, i), {})
-    return Env(frames=replace_at(env.frames, i, mapSet(frame, name, value)))
+    return env_with(env, replace_at(env.frames, i, mapSet(frame, name, value)))
+
+
+def env_with(env, frames):
+    """`env` over `frames`, keeping its macros."""
+    return Env(frames=frames, macros=env.macros)
 
 
 def replace_at(xs, i, x):
@@ -719,17 +770,16 @@ def dict_add(v, p):
 
 def dict_set(v, key, value):
     """`v` with `key` bound to `value`, replacing an existing key or appending a new one."""
-    return dict_set_at(v, key, value, 0)
-
-
-def dict_set_at(v, key, value, i):
-    """Walk `v`'s keys: replace `key` at its position, else append at the end."""
-    if i >= len(v.keys):
+    at = key_index(v, text(key))
+    if at < 0:
         return make_value(K_DICT, False, 0, 0.0, "", [], listAppend(v.keys, text(key)), listAppend(v.vals, value))
-    elif equal(unwrap_or(listGet(v.keys, i), none()), text(key)):
-        return make_value(K_DICT, False, 0, 0.0, "", [], replace_at(v.keys, i, text(key)), replace_at(v.vals, i, value))
     else:
-        return dict_set_at(v, key, value, i + 1)
+        return make_value(K_DICT, False, 0, 0.0, "", [], replace_at(v.keys, at, text(key)), replace_at(v.vals, at, value))
+
+
+def key_index(v, key):
+    """The index of `key` in `v`'s keys, or -1 (one fold, never recursion on length)."""
+    return fold(range(len(v.keys)), -1, lambda found, i: found if found >= 0 else (i if equal(unwrap_or(listGet(v.keys, i), none()), key) else -1))
 
 
 def func(name):

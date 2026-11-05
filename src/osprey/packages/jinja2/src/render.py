@@ -15,7 +15,7 @@ from jinja2 import Lexer as L
 from jinja2 import Parser as P
 from jinja2 import Expr as E
 
-__all__ = ["Environment", "chat_environment", "render"]
+__all__ = ["Environment", "chat_environment", "render", "expand_macro"]
 
 
 class Environment:
@@ -54,7 +54,7 @@ def parse_and_render(chunks, env, context) -> Result[str, str]:
     """Parse chunks and render the resulting tree."""
     match P.parse(chunks):
         case Success(value=value):
-            return render_result(value, V.Env(frames=[context]))
+            return render_result(value, V.Env(frames=[context], macros=[]))
         case Error(message=message):
             return Error(message=message)
 
@@ -98,8 +98,10 @@ def render_node(node, env) -> Result[Out, str]:
             return render_branches(node.branches, 0, env)
         case "for":
             return render_for(node, env)
+        case "macro":
+            return Success(value=Out(text="", env=V.bind_macro(env, node)))
         case _:
-            return Error(message="{% macro %} is not supported by @osprey/jinja2")
+            return Error(message="unknown node kind `" + node.kind + "`")
 
 
 def eval_ok(s, env) -> Result[V.Value, str]:
@@ -197,8 +199,7 @@ def for_loop(node, elems, i, env, acc) -> Result[Out, str]:
     if i >= len(elems):
         return Success(value=Out(text=acc, env=env))
     else:
-        item = unwrap_or(listGet(elems, i), V.none())
-        loop_env = push_loop(env, node, item, i, len(elems))
+        loop_env = push_loop(env, node, elems, i)
         if node.cond != "":
             return for_loop_cond(node, elems, i, env, acc, loop_env)
         else:
@@ -230,11 +231,11 @@ def for_loop_body(node, elems, i, env, acc, loop_env) -> Result[Out, str]:
             return Error(message=message)
 
 
-def push_loop(env, node, item, i, n):
+def push_loop(env, node, elems, i):
     """Bind the loop variable(s) and the `loop` object in a new child frame."""
     frame0: dict[str, V.Value] = {}
-    frame = bind_var(frame0, node, item)
-    return V.Env(frames=listAppend(env.frames, mapSet(frame, "loop", loop_value(i, n))))
+    frame = bind_var(frame0, node, unwrap_or(listGet(elems, i), V.none()))
+    return V.env_with(env, listAppend(env.frames, mapSet(frame, "loop", loop_value(elems, i))))
 
 
 def bind_var(frame, node, item):
@@ -246,16 +247,127 @@ def bind_var(frame, node, item):
         return mapSet(f, node.var2, unwrap_or(listGet(item.vals, 0), V.none()))
 
 
-def loop_value(i, n):
-    """The `loop` object: index, index0, first, last, length."""
-    return V.dict_(["index", "index0", "first", "last", "length"], [V.int_(i + 1), V.int_(i), V.bool_(i == 0), V.bool_(i == n - 1), V.int_(n)])
+def loop_value(elems, i):
+    """The `loop` object: index, length and the neighbouring items."""
+    n = len(elems)
+    return V.dict_(["index", "index0", "first", "last", "length", "previtem", "nextitem"],
+                   [V.int_(i + 1), V.int_(i), V.bool_(i == 0), V.bool_(i == n - 1), V.int_(n),
+                    neighbour(elems, i - 1, "previtem"), neighbour(elems, i + 1, "nextitem")])
+
+
+def neighbour(elems, i, name):
+    """The loop item at `i`, or undefined past either end."""
+    if i < 0 or i >= len(elems):
+        return V.undefined(name)
+    else:
+        return unwrap_or(listGet(elems, i), V.undefined(name))
 
 
 def pop_frame(env):
     """The environment without its innermost frame."""
-    return V.Env(frames=drop_last(env.frames))
+    return V.env_with(env, drop_last(env.frames))
 
 
 def drop_last(frames):
     """`frames` without its last element."""
     return toList(map(range(len(frames) - 1), lambda k: unwrap_or(listGet(frames, k), {})))
+
+
+def expand_macro(caller, name, args, kwargs):
+    """Expand the macro declared as `name` for one call in `caller`'s scope. The
+    value is text, or an error value carrying the fault ([PORT-SCOPE])."""
+    m = V.find_macro(caller, len(caller.macros) - 1, name)
+    if m.node.name != name:
+        return V.halt("no macro named '" + name + "'")
+    else:
+        return macro_value(m, caller, args, kwargs)
+
+
+def macro_value(m, caller, args, kwargs):
+    """Render one call of macro `m`; a fault is an error value."""
+    match bind_args(m.node, caller, args, kwargs, 0, {}):
+        case Success(value=frame):
+            return macro_text(m, caller, frame)
+        case Error(message=message):
+            return V.halt(message)
+
+
+def macro_text(m, caller, frame):
+    """The rendered body of a macro call whose arguments are bound in `frame`."""
+    match render_nodes(m.node.body, macro_env(m, caller, frame)):
+        case Success(value=value):
+            return V.text(value.text)
+        case Error(message=message):
+            return V.halt(message)
+
+
+def macro_env(m, caller, frame):
+    """The scope a macro body runs in: the call's root frame, the frames the macro
+    was declared in, then its parameters. Jinja resolves a template global late and
+    a loop variable of the call site never, which this frame order reproduces."""
+    return V.Env(frames=listConcat([unwrap_or(listGet(caller.frames, 0), {})], listAppend(drop_first(m.frames), frame)), macros=caller.macros)
+
+
+def drop_first(xs):
+    """`xs` without its first element."""
+    return toList(map(range(len(xs) - 1), lambda k: unwrap_or(listGet(xs, k + 1), {})))
+
+
+def bind_args(node, caller, args, kwargs, i, frame):
+    """Bind positional argument `i`, then the keywords, then the defaults."""
+    if i >= len(args):
+        return bind_keywords(node, caller, kwargs, 0, frame)
+    elif i >= len(node.params):
+        return Error(message="macro '" + node.name + "' takes not more than " + toString(len(node.params)) + " argument(s)")
+    else:
+        name = unwrap_or(listGet(node.params, i), "")
+        return bind_args(node, caller, args, kwargs, i + 1, mapSet(frame, name, unwrap_or(listGet(args, i), V.none())))
+
+
+def bind_keywords(node, caller, kwargs, i, frame):
+    """Bind keyword argument `i`, rejecting one the macro does not declare or binds twice."""
+    if i >= len(kwargs):
+        return bind_defaults(node, caller, 0, frame)
+    else:
+        kw = unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none()))
+        return bind_keyword(node, caller, kwargs, i, frame, kw)
+
+
+def bind_keyword(node, caller, kwargs, i, frame, kw):
+    """One keyword argument against the declared parameters."""
+    if not is_param(node, kw.name):
+        return Error(message="macro '" + node.name + "' takes no keyword argument '" + kw.name + "'")
+    elif mapContains(frame, kw.name):
+        return Error(message="macro '" + node.name + "' got multiple values for argument '" + kw.name + "'")
+    else:
+        return bind_keywords(node, caller, kwargs, i + 1, mapSet(frame, kw.name, kw.value))
+
+
+def is_param(node, name):
+    """Whether `name` is one of the macro's parameters."""
+    return fold(range(len(node.params)), False, lambda acc, i: acc or unwrap_or(listGet(node.params, i), "") == name)
+
+
+def bind_defaults(node, caller, i, frame):
+    """Give every unbound parameter its default, or leave it undefined as Jinja does."""
+    if i >= len(node.params):
+        return Success(value=frame)
+    else:
+        name = unwrap_or(listGet(node.params, i), "")
+        if mapContains(frame, name):
+            return bind_defaults(node, caller, i + 1, frame)
+        else:
+            match default_of(node, caller, i):
+                case Success(value=value):
+                    return bind_defaults(node, caller, i + 1, mapSet(frame, name, value))
+                case Error(message=message):
+                    return Error(message=message)
+
+
+def default_of(node, caller, i):
+    """Parameter `i`'s default evaluated in the call's scope, or undefined when it has none."""
+    expr = unwrap_or(listGet(node.defaults, i), "")
+    if expr == "":
+        return Success(value=V.undefined(unwrap_or(listGet(node.params, i), "")))
+    else:
+        return eval_ok(expr, caller)

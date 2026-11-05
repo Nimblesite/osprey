@@ -288,6 +288,8 @@ def dispatch_filter(name, value, args, kwargs):
             return f_list(value)
         case "string":
             return f_string(value)
+        case "safe":
+            return value
         case "items":
             return f_items(value)
         case "selectattr":
@@ -348,6 +350,10 @@ def dispatch_test(name, value, args):
             return V.bool_(value.kind == V.K_LIST or value.kind == V.K_STRING)
         case "sameas":
             return V.bool_(V.equal(value, arg(args, 0)))
+        case "true":
+            return V.bool_(value.kind == V.K_BOOL and value.bval)
+        case "false":
+            return V.bool_(value.kind == V.K_BOOL and not value.bval)
         case _:
             return halt("No test named '" + name + "'")
 

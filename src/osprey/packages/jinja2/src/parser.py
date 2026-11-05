@@ -12,7 +12,7 @@ strings are kept verbatim for `Expr` to evaluate.
 
 from jinja2.Lexer import Chunk
 
-__all__ = ["Node", "Branch", "Step", "parse", "blank"]
+__all__ = ["Node", "Branch", "Step", "Kw", "Param", "Split", "parse", "blank"]
 
 
 class Node:
@@ -29,6 +29,7 @@ class Node:
     body: list[Node]
     else_body: list[Node]
     params: list[str]
+    defaults: list[str]
 
 
 class Branch:
@@ -49,6 +50,19 @@ class Kw:
     rest: str
 
 
+class Param:
+    """A macro's parameter names and, in step, each one's default expression text
+    (`""` for a parameter that has none)."""
+    names: list[str]
+    defaults: list[str]
+
+
+class Split:
+    """One `name=default` parameter split at its first `=`."""
+    name: str
+    value: str
+
+
 def blank(kind):
     """A node with no fields set."""
     return leaf(kind, "")
@@ -56,7 +70,7 @@ def blank(kind):
 
 def leaf(kind, text):
     """A literal-text, expression-output or empty node."""
-    return Node(kind=kind, text=text, name="", attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
+    return Node(kind=kind, text=text, name="", attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[], defaults=[])
 
 
 def step_node(s):
@@ -156,7 +170,7 @@ def parse_if_tail(chunks, j, n, branches) -> Result[Step, str]:
 
 def if_node(branches):
     """An `if` node from its branches."""
-    return Node(kind="if", text="", name="", attr="", var="", var2="", cond="", iterable="", branches=branches, body=[], else_body=[], params=[])
+    return Node(kind="if", text="", name="", attr="", var="", var2="", cond="", iterable="", branches=branches, body=[], else_body=[], params=[], defaults=[])
 
 
 def parse_for(chunks, i, n, rest) -> Result[Step, str]:
@@ -191,12 +205,12 @@ def for_header(rest):
     iterable = unwrap_or(substring(right, 0, if_pos), right)
     cond = unwrap_or(substring(right, if_pos + 4, length(right)), "")
     comma = index_or(left, ",")
-    return Node(kind="for", text="", name="", attr="", var=for_var(left, comma), var2=for_var2(left, comma), cond=trim(cond), iterable=trim(iterable), branches=[], body=[], else_body=[], params=[])
+    return Node(kind="for", text="", name="", attr="", var=for_var(left, comma), var2=for_var2(left, comma), cond=trim(cond), iterable=trim(iterable), branches=[], body=[], else_body=[], params=[], defaults=[])
 
 
 def for_node(head, body, else_body, next):
     """A `for` node from a header, its bodies, and the next chunk index."""
-    return Step(nodes=[Node(kind="for", text="", name="", attr="", var=head.var, var2=head.var2, cond=head.cond, iterable=head.iterable, branches=[], body=body, else_body=else_body, params=[])], next=next)
+    return Step(nodes=[Node(kind="for", text="", name="", attr="", var=head.var, var2=head.var2, cond=head.cond, iterable=head.iterable, branches=[], body=body, else_body=else_body, params=[], defaults=[])], next=next)
 
 
 def for_var(left, comma):
@@ -222,28 +236,45 @@ def set_node(rest):
     value = trim(unwrap_or(substring(rest, eq + 1, length(rest)), ""))
     dot = index_or(target, ".")
     if dot == length(target):
-        return Node(kind="set", text=value, name=target, attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
+        return Node(kind="set", text=value, name=target, attr="", var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[], defaults=[])
     else:
-        return Node(kind="set", text=value, name=unwrap_or(substring(target, 0, dot), target), attr=unwrap_or(substring(target, dot + 1, length(target)), ""), var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[])
+        return Node(kind="set", text=value, name=unwrap_or(substring(target, 0, dot), target), attr=unwrap_or(substring(target, dot + 1, length(target)), ""), var="", var2="", cond="", iterable="", branches=[], body=[], else_body=[], params=[], defaults=[])
 
 
 def parse_macro(chunks, i, n, rest) -> Result[Step, str]:
-    """Parse a `{% macro name(a, b) %} ... {% endmacro %}`."""
+    """Parse a `{% macro name(a, b=expr) %} ... {% endmacro %}`."""
     lparen = index_or(rest, "(")
     name = trim(unwrap_or(substring(rest, 0, lparen), rest))
     rparen = index_or(rest, ")")
     params = split_params(unwrap_or(substring(rest, lparen + 1, rparen), ""))
     match parse_nodes(chunks, i + 1, n, ["endmacro"], []):
         case Success(value=value):
-            return Success(value=Step(nodes=[Node(kind="macro", text="", name=name, attr="", var="", var2="", cond="", iterable="", branches=[], body=value.nodes, else_body=[], params=params)], next=value.next + 1))
+            return Success(value=Step(nodes=[Node(kind="macro", text="", name=name, attr="", var="", var2="", cond="", iterable="", branches=[], body=value.nodes, else_body=[], params=params.names, defaults=params.defaults)], next=value.next + 1))
         case Error(message=message):
             return Error(message=message)
 
 
 def split_params(text):
-    """A macro's parameter list into names."""
+    """A macro's parameter list into names and default expressions."""
     if trim(text) == "":
-        return []
+        return Param(names=[], defaults=[])
     else:
-        parts = unwrap_or(split(text, ","), [])
-        return toList(map(range(len(parts)), lambda k: trim(unwrap_or(listGet(parts, k), ""))))
+        return params_from(unwrap_or(split(text, ","), []), 0, [], [])
+
+
+def params_from(parts, i, names, defaults):
+    """Collect parameter `i` and the rest of the list."""
+    if i >= len(parts):
+        return Param(names=names, defaults=defaults)
+    else:
+        p = param_of(trim(unwrap_or(listGet(parts, i), "")))
+        return params_from(parts, i + 1, listAppend(names, p.name), listAppend(defaults, p.value))
+
+
+def param_of(text):
+    """A parameter's name and the default expression after its first `=` (`""` when absent)."""
+    eq = index_or(text, "=")
+    if eq == length(text):
+        return Split(name=text, value="")
+    else:
+        return Split(name=trim(unwrap_or(substring(text, 0, eq), text)), value=trim(unwrap_or(substring(text, eq + 1, length(text)), "")))

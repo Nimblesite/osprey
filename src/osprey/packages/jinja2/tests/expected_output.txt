@@ -115,6 +115,21 @@ ok float equality
 ok repr backslash
 ok tojson pretty list
 ok default no arg
+ok safe filter
+ok tuple membership
+ok loop neighbours
+ok loop neighbours of string
+ok macro basic
+ok macro default
+ok macro keyword
+ok macro missing arg
+ok macro recursion
+ok macro defined in loop
+ok macro sees later global
+ok macro default sees later global
+ok macro called from loop
+ok macro filters output
+ok macro loop inside
 ok filter preserves error
 ok predicate preserves error
 ok value kinds
@@ -161,12 +176,24 @@ ok parser
 ok blank node
 ok branch
 ok parser step
+ok statement keyword
+ok parameter record
+ok parameter split
 ok tag head
 ok tag end
 ok consumed newline
 ok macro name
 ok macro parameters
-ok unsupported macro rendering
+ok macro defaults
+ok defaulted macro parameters
+ok defaulted macro defaults
+ok macro declaration
+ok macro table bind
+ok macro table lookup
+ok macro table miss
+ok macro reference kind
+ok environment copy keeps macros
+ok undefined macro expansion
 ok unexpected token
 ok attribute name
 ok test name
@@ -221,6 +248,7 @@ ok neg string
 ok range zero step
 ok subscript undefined
 ok add undefined attr right
+ok macro extra arg
 ok int plus string
 ok string times string
 ok list plus int
@@ -252,4 +280,65 @@ ok dict replace key
 ok dict replace persistence
 ok empty macro name
 ok empty macro params
-254 passed, 0 failed
+ok chat single user
+ok chat single user with prompt
+ok chat system and user
+ok chat system and user with prompt
+ok chat multi turn
+ok chat multi turn with prompt
+ok chat text content blocks
+ok chat plain text in content block
+ok chat empty content list
+ok chat empty system
+ok chat whitespace content trimmed
+ok chat thinking on
+ok chat thinking off
+ok chat thinking off no prompt
+ok chat effort default
+ok chat effort xhigh
+ok chat effort medium
+ok chat effort low
+ok chat effort with system
+ok chat effort with empty system
+ok chat effort ignored when thinking off
+ok chat reasoning content default
+ok chat reasoning preserved
+ok chat reasoning dropped
+ok chat reasoning last answer kept
+ok chat reasoning without user after
+ok chat reasoning empty
+ok chat reasoning non string
+ok chat tools
+ok chat tools with prompt
+ok chat tools with system
+ok chat tools with empty system
+ok chat tools empty list
+ok chat tool call
+ok chat tool call with text
+ok chat tool call all types
+ok chat tool call nested function
+ok chat tool call empty arguments
+ok chat tool call no arguments
+ok chat tool result
+ok chat tool results twice
+ok chat tool multi step
+ok chat two tool turns
+ok chat tool response tagged user
+ok chat unicode
+ok chat unicode assistant
+ok chat multi turn deep
+ok chat add vision id unused
+ok chat no messages
+ok chat system not first
+ok chat unexpected role
+ok chat assistant only
+ok chat tool response only
+ok chat unexpected content type
+ok chat unexpected item type
+ok chat image in system
+ok chat video in system
+ok chat bad effort
+ok vision picture numbering is call scoped (known divergence)
+ok namespace write inside a macro (known divergence)
+ok tuple literal prints as a list (known divergence)
+343 passed, 0 failed
