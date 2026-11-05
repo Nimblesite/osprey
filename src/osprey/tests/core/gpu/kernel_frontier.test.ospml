@@ -8,9 +8,9 @@ gpuSatisfies (result, predicate) = match result
 withBuffer (result, work) = match result
     Success value => work value
     Error message => check ("GPU operation", "success", toString message)
-// Kernel-frontier conformance ([GPU-KERNEL-ELEM-TYPING],
-// [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below is
-// intentionally the ML spelling required for parity with Default block bodies.
+(** Kernel-frontier conformance ([GPU-KERNEL-ELEM-TYPING],
+    [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]). The layout-bodied lambda below
+    exercises the ML spelling of Default block bodies. *)
 addFloats (a, x) = a + x
 plus (a, x) = a + x
 atFloat (xs, i) = gpuGet (xs, i) ?: 0.0
