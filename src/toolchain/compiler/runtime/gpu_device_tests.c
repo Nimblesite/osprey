@@ -161,21 +161,14 @@ static void native_float32_products(void) {
   compare32(factors, other, zero, rounding);
 }
 
-// [LLM-MATMUL-QUANT]: the product of one block format on host and device over
-// seeded blocks whose bytes reach every value, binary16 scales at ordinary
-// magnitudes, bit for bit.
-static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
-                         unsigned scales) {
-  const int64_t rows = 3, inner = 512, cols = 5, blocks = inner / block_elements;
-  void *x = osprey_gpu_alloc(rows * inner, 4), *w = osprey_gpu_alloc(cols * blocks * block_bytes, 1);
-  float *xs = osprey_gpu_data(x);
+// `cols` weight rows of `block_bytes` blocks each: a byte sweep whose period is 256
+// bytes, so every nibble, 2-bit field, high-bit mask and sign reaches every value and
+// consecutive blocks start at different points of it, with ordinary binary16 scales
+// written where the format stores them.
+static void *quant_weights(int64_t cols, int64_t blocks, int64_t block_bytes, const int64_t *scale_at, unsigned scales) {
+  void *w = osprey_gpu_alloc(cols * blocks * block_bytes, 1);
   unsigned char *bytes = osprey_gpu_data(w);
-  for (int64_t i = 0; i < rows * inner; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
-  // A sweep whose period is 256 bytes, so every nibble, 2-bit field, high-bit mask
-  // and sign reaches every value, and consecutive blocks start at different points
-  // of it because no block is 256 bytes long.
-  for (int64_t i = 0; i < cols * blocks * block_bytes; i++)
-    bytes[i] = (unsigned char)((i * 167 + 13) & 255);
+  for (int64_t i = 0; i < cols * blocks * block_bytes; i++) bytes[i] = (unsigned char)((i * 167 + 13) & 255);
   for (int64_t b = 0; b < cols * blocks; b++)
     for (unsigned f = 0; f < scales; f++) {
       // d in [2^-14, 2^-6), then dmin in [2^-16, 2^-10): ordinary binary16 words.
@@ -184,27 +177,47 @@ static void quant_parity(const char *type, int64_t block_bytes, int64_t block_el
     }
   assert(all_byte_values(bytes, cols * blocks * block_bytes));
   checks++;
+  return w;
+}
+
+// [LLM-MATMUL-QUANT]: the host oracle's words and the device's, bit for bit.
+static void quant_words(const char *type, void *x, void *w, const int64_t shape[3]) {
   float *host = NULL;
   for (int mode = 0; mode < 2; mode++) {
     assert(setenv("OSPREY_GPU", mode ? selected : "host", 1) == 0);
     osp_io_error_clear();
-    void *result = osprey_gpu_matmul_quant(x, w, type, rows, inner, cols);
+    void *result = osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1], shape[2]);
     if (!result) fprintf(stderr, "%s: %s\n", type, osp_io_error());
-    assert(result && !osp_io_error() && osprey_gpu_len(result) == rows * cols && osprey_gpu_elem_bytes(result) == 4);
+    assert(result && !osp_io_error() && osprey_gpu_len(result) == shape[0] * shape[2]);
+    assert(osprey_gpu_elem_bytes(result) == 4 && isfinite(*(float *)osprey_gpu_data(result)));
     float *values = osprey_gpu_data(result);
     if (!mode) host = values;
-    else for (int64_t i = 0; i < rows * cols; i++) {
-      if (memcmp(&host[i], &values[i], 4) != 0) fprintf(stderr, "%s parity at %lld: host %a device %a\n", type, (long long)i, host[i], values[i]);
+    else for (int64_t i = 0; i < shape[0] * shape[2]; i++) {
+      if (memcmp(&host[i], &values[i], 4) != 0)
+        fprintf(stderr, "%s parity at %lld: host %a device %a\n", type, (long long)i, host[i], values[i]);
       assert(memcmp(&host[i], &values[i], 4) == 0);
       checks++;
     }
-    assert(isfinite(values[0]));
   }
+}
+
+// One block format's parity: seeded operands, the words compared, and the three
+// errors a wrong format, a short row and a short weight buffer are.
+static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
+                         unsigned scales) {
+  const int64_t shape[3] = {3, 512, 5}, blocks = shape[1] / block_elements;
+  void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
+  float *xs = osprey_gpu_data(x);
+  for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  void *w = quant_weights(shape[2], blocks, block_bytes, scale_at, scales);
+  quant_words(type, x, w, shape);
   assert(setenv("OSPREY_GPU", selected, 1) == 0);
   osp_io_error_clear();
-  assert(osprey_gpu_matmul_quant(x, w, "Q2_K", rows, inner, cols) == NULL && strstr(osp_io_error(), "unsupported tensor type"));
-  assert(osprey_gpu_matmul_quant(x, w, type, rows, inner - block_elements / 2, cols) == NULL && strstr(osp_io_error(), "multiple of"));
-  assert(osprey_gpu_matmul_quant(x, w, type, rows, inner, cols + 1) == NULL && strstr(osp_io_error(), "weights"));
+  assert(osprey_gpu_matmul_quant(x, w, "Q2_K", shape[0], shape[1], shape[2]) == NULL &&
+         strstr(osp_io_error(), "unsupported tensor type"));
+  assert(osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1] - block_elements / 2, shape[2]) == NULL &&
+         strstr(osp_io_error(), "multiple of"));
+  assert(osprey_gpu_matmul_quant(x, w, type, shape[0], shape[1], shape[2] + 1) == NULL && strstr(osp_io_error(), "weights"));
   checks += 3;
 }
 
