@@ -12,6 +12,7 @@ use crate::envelope::{self, Envelope, Request};
 use crate::events;
 use crate::ffi::Library;
 use crate::regions::Regions;
+use crate::store;
 
 /// Drives the selected smoke and returns the process exit status.
 pub fn run() -> i32 {
@@ -193,7 +194,7 @@ fn completion(now: i64, request: &Request) -> Result<String, String> {
         "store-read" => Ok(events::completed_err(
             now,
             &request.ticket,
-            "no such store entry",
+            &store::missing_read(request)?,
         )),
         // Nothing is started: the program printed nothing and succeeded.
         "run" => Ok(events::completed_ok(
