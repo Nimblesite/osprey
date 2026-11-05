@@ -12,7 +12,7 @@ static partial class Framework
     public static string Root { get; } = Find(AppContext.BaseDirectory);
 
     /// <summary>The WinUI host's folder.</summary>
-    public static string Host => Path.Combine(Root, "hosts", "winui");
+    public static string Host => Path.Combine(Root, "src", "toolchain", "hosts", "winui");
 
     /// <summary>Every node kind the framework encodes, as it travels on the wire.</summary>
     public static IReadOnlyList<string> NodeKinds => [.. Variants(Source("node.ospml"), "type Node A =").Select(Wire)];
@@ -30,13 +30,13 @@ static partial class Framework
     ];
 
     /// <summary>The text of one framework source file.</summary>
-    public static string Source(string file) => File.ReadAllText(Path.Combine(Root, "packages", "native", "src", file));
+    public static string Source(string file) => File.ReadAllText(Path.Combine(Root, "src", "osprey", "packages", "native", "src", file));
 
     static string Find(string from)
     {
         for (var folder = new DirectoryInfo(from); folder is not null; folder = folder.Parent)
         {
-            if (File.Exists(Path.Combine(folder.FullName, "packages", "native", "src", "node.ospml")))
+            if (File.Exists(Path.Combine(folder.FullName, "src", "osprey", "packages", "native", "src", "node.ospml")))
             {
                 return folder.FullName;
             }

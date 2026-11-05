@@ -13,9 +13,9 @@ public sealed class BoundaryTests
 {
     const int Rounds = 8;
 
-    static string Built => Path.Combine(Framework.Root, "examples", "storage", "build", "storage.dll");
+    static string Built => Path.Combine(Framework.Root, "src", "osprey", "examples", "storage", "build", "storage.dll");
 
-    static string Example(string name) => Path.Combine(Framework.Root, "examples", "gpui", name, "build", $"{name}.dll");
+    static string Example(string name) => Path.Combine(Framework.Root, "src", "osprey", "examples", "gpui", name, "build", $"{name}.dll");
 
     [Fact]
     public void FlockStreamsItsFlockIntoItsSceneFrameAfterFrame()

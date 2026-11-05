@@ -8,7 +8,7 @@ param(
     [string] $Msys = $(if ($env:MSYS2_ROOT) { $env:MSYS2_ROOT } else { 'C:\msys64' })
 )
 $ErrorActionPreference = 'Stop'
-$root = Resolve-Path (Join-Path $PSScriptRoot '..\..')
+$root = Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')
 # A scene needs the bridge beside this script and the MinGW runtime it links, which PowerShell's PATH lacks.
 $env:PATH = "$PSScriptRoot;$(Join-Path $Msys 'ucrt64\bin');$env:PATH"
 foreach ($scene in 'kali', 'opal', 'character') {
