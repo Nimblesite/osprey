@@ -100,7 +100,7 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   profiler_runtime_tests profiler_stream_tests coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
-C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
+C_SRC_memory_arc_tests = runtime/memory_arc_tests.c
 C_LIBS_memory_arc_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc.c
 C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c

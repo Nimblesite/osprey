@@ -8,31 +8,34 @@
 // *witness* leaves whose refcount can only move if their owner was really
 // dropped and its layout word really walked — never by reading freed memory.
 #include "memory_hooks.h"
+#include "test_gcov.h"
 
 #include <assert.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdatomic.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
-// Not declared in memory_hooks.h: the raw allocator, the collect hook, and the
-// osp_arc_shim.h redirect targets. (osp_alloc_tagged_noinit comes from the
-// header, so declaring it here too trips -Wredundant-decls under gcc.)
-void *osp_alloc(int64_t size);
-void osp_collect(void);
-void *osp_arc_malloc(size_t size);
-void *osp_arc_calloc(size_t n, size_t size);
-void *osp_arc_realloc(void *old, size_t size);
-void osp_arc_free(void *p);
-char *osp_arc_strdup(const char *s);
-// Diagnostics snapshots: read-only, not on any hot path, so they live outside
-// memory_hooks.h and are declared where they are exercised.
-size_t osp_arc_live_objects(void);
-size_t osp_arc_live_bytes(void);
-size_t osp_arc_peak_bytes(void);
-void osp_arc_peak_reset(void);
+// Each allocator can be told to refuse, because the paths that handle a refusal
+// are shipped code. Those paths live in memory_arc.c's own translation unit, so
+// the suite includes it after redirecting the allocators there.
+static int g_refuse_malloc, g_refuse_calloc, g_refuse_realloc;
+static void *refusable_malloc(size_t size) { return g_refuse_malloc ? NULL : malloc(size); }
+static void *refusable_calloc(size_t n, size_t size) { return g_refuse_calloc ? NULL : calloc(n, size); }
+static void *refusable_realloc(void *old, size_t size) { return g_refuse_realloc ? NULL : realloc(old, size); }
+#define malloc(size) refusable_malloc(size)
+#define calloc(n, size) refusable_calloc((n), (size))
+#define realloc(old, size) refusable_realloc((old), (size))
+#include "memory_arc.c"
+#undef malloc
+#undef calloc
+#undef realloc
+
 static _Atomic long g_checks = 0; // atomic: the mt_churn threads CHECK too
 #define CHECK(c) do { g_checks++; assert(c); } while (0)
 #define W ((size_t)8)             // managed word size
@@ -392,7 +395,7 @@ static void t_alloc_noinit(void) {
 // and 1) over a witness proves the cascade still reaches leaves, and a NULL
 // child slot (a never-stored union field) stays a no-op.
 static void t_mask_direct(void) {
-  int64_t direct = ((int64_t)(uint64_t)(OSP_MEM_WORD(0) | OSP_MEM_WORD(1)) << 8) |
+  int64_t direct = ((int64_t)(uint64_t)(OSP_MEM_WORD(0) | OSP_MEM_WORD(W)) << 8) |
                    OSP_MEM_MASK_DIRECT;
   CHECK((direct & 0xFF) == OSP_MEM_MASK_DIRECT);
   void *w = witness();
@@ -652,6 +655,65 @@ static void t_owned_text_lifetime(void) {
   CHECK(osp_alloc_tagged_noinit(0, OSP_MEM_STRING) == NULL);
   CHECK(osp_alloc_tagged(-1, OSP_MEM_STRING) == NULL);
 }
+// --- allocator refusal ---------------------------------------------------------
+#define ABORTED_STATUS 42
+#define REFUSED_BYTES ((size_t)1u << 20) // larger than any pooled size class
+static void flush_coverage_and_exit(int signal_number) {
+  (void)signal_number;
+  OSP_GCOV_DUMP();
+  _exit(ABORTED_STATUS);
+}
+// A fatal guard runs in a forked child, which must abort naming what ran out.
+static void aborts_naming(void (*scenario)(void), const char *message) {
+  int err[2];
+  char seen[128];
+  int status;
+  CHECK(pipe(err) == 0);
+  (void)fflush(NULL);
+  pid_t child = fork();
+  CHECK(child >= 0);
+  if (child == 0) {
+    (void)dup2(err[1], STDERR_FILENO);
+    (void)signal(SIGABRT, flush_coverage_and_exit);
+    scenario();
+    _exit(0); // no abort: the status check below fails
+  }
+  close(err[1]);
+  ssize_t n = read(err[0], seen, sizeof seen - 1);
+  close(err[0]);
+  CHECK(n > 0);
+  seen[n] = '\0';
+  CHECK(strstr(seen, message) != NULL);
+  CHECK(waitpid(child, &status, 0) == child);
+  CHECK(WIFEXITED(status) && WEXITSTATUS(status) == ABORTED_STATUS);
+}
+static void exhaust_worklist(void) {
+  g_refuse_realloc = 1;
+  g_wl_top = g_wl_cap; // the next push has to grow
+  arc_wl_push((uintptr_t)1);
+}
+static void exhaust_registry(void) {
+  g_refuse_calloc = 1;
+  g_used = g_cap; // the next insert has to grow
+  (void)osp_alloc_tagged((int64_t)REFUSED_BYTES, OSP_MEM_RAW);
+}
+static void t_allocator_refusal(void) {
+  size_t live = osp_arc_live_objects();
+  g_refuse_malloc = 1;
+  CHECK(osp_alloc((int64_t)REFUSED_BYTES) == NULL);
+  CHECK(osp_alloc_tagged((int64_t)REFUSED_BYTES, OSP_MEM_RAW) == NULL);
+  CHECK(osp_alloc_tagged_noinit((int64_t)REFUSED_BYTES, OSP_MEM_RAW) == NULL);
+  CHECK(osp_arc_malloc(REFUSED_BYTES) == NULL);
+  g_refuse_malloc = 0;
+  CHECK(osp_arc_live_objects() == live); // a refusal registers nothing
+  void *after = mk(REFUSED_BYTES, OSP_MEM_RAW); // and the allocator still works
+  CHECK(osp_arc_live_objects() == live + 1);
+  osp_release(after);
+  CHECK(osp_arc_live_objects() == live);
+  aborts_naming(exhaust_worklist, "ARC release worklist exhausted");
+  aborts_naming(exhaust_registry, "ARC allocation registry exhausted");
+  CHECK(g_wl_top <= g_wl_cap && g_used < g_cap); // the children changed only themselves
+}
 int main(void) {
   // Precedes the first allocation: arc_arm_debug() latches once, forever.
   (void)setenv("OSPREY_ARC_DEBUG", "2", 1);
@@ -664,6 +726,7 @@ int main(void) {
   t_list_hdr_kinds(); t_list_hdr_edges(); t_list_hdr_extern();
   t_deep_chain(); t_alloc_noinit(); t_mask_direct(); t_wide_fanout();
   t_registry_churn(); t_slot_reuse(); t_diagnostic_counters();
+  t_allocator_refusal();
   // Everything below runs LOCKED (notify is monotonic): the shim suite
   // re-exercises the whole ABI down the arc_lock mutex branch.
   t_multithreaded(); t_owned_text_lifetime(); t_shim_malloc_calloc_free();

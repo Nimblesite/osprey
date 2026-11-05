@@ -83,15 +83,15 @@
         "language": "c"
       },
       "memory_arc_alloc": {
-        "threshold": 95,
+        "threshold": 99,
         "language": "c"
       },
       "memory_arc_drop": {
-        "threshold": 95,
+        "threshold": 99,
         "language": "c"
       },
       "memory_arc_registry": {
-        "threshold": 95,
+        "threshold": 99,
         "language": "c"
       },
       "memory_gc": {
