@@ -1,12 +1,17 @@
-# The website and the WebAssembly builds it publishes. Each target runs its recipe in the root Makefile, where it is the
-# private `_` target of the same name; `make help` at the root lists these too.
+# The website and the WebAssembly builds it publishes. Recipes run from the repo root through scripts/make/forward.mk, with the root's
+# configuration and private steps; `make help` at the root lists these too.
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ../../..
+ifeq ($(wildcard scripts/make/forward.mk),)
+include $(ROOT)/scripts/make/forward.mk
+else
+override ROOT := .
+include Makefile
 
 ## video-metadata: Measure delivered MP4 durations for VideoObject and video sitemap metadata (requires ffprobe).
 .PHONY: video-metadata
 video-metadata:
-	node scripts/measure-video-metadata.mjs
+	cd src/toolchain/website && node scripts/measure-video-metadata.mjs
 
 .PHONY: wasm wasm-site wasm-serve docs docs-html-test
 
@@ -14,7 +19,7 @@ video-metadata:
 ##       Removed builtins are pruned; generated pages remain untracked.
 docs:
 	cd $(ROOT) && cargo build --manifest-path src/toolchain/Cargo.toml -p osprey-cli
-	OSPREY_BIN="$(abspath $(ROOT))/target/debug/osprey" npm run generate-docs
+	cd src/toolchain/website && OSPREY_BIN="$(abspath $(ROOT))/target/debug/osprey" npm run generate-docs
 
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (src/toolchain/compiler/bin/libosprey_runtime_wasm.a), the hello example,
@@ -39,8 +44,14 @@ wasm-site:
 ##      $(WASM_SERVE_DIR) at http://localhost:$(WASM_SERVE_PORT)/ and open it in
 ##      your browser. Long-running dev server — Ctrl-C to stop. Override the port
 ##      with WASM_SERVE_PORT=<n>. (`make wasm` itself stays headless for CI.)
-wasm-serve:
-	$(MAKE) -C $(ROOT) _wasm-serve
+wasm-serve: _wasm
+	@URL="http://localhost:$(WASM_SERVE_PORT)/"; \
+	  command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 not found (needed for the dev server)"; exit 1; }; \
+	  echo "==> serving $(WASM_SERVE_DIR)/ at $$URL — opening browser (Ctrl-C to stop)"; \
+	  OPENER=$$(command -v open || command -v xdg-open || true); \
+	  if [ -n "$$OPENER" ]; then ( sleep 1; "$$OPENER" "$$URL" >/dev/null 2>&1 || true ) & \
+	  else echo "  (no 'open'/'xdg-open' found — browse to $$URL manually)"; fi; \
+	  cd $(WASM_SERVE_DIR) && exec python3 -m http.server $(WASM_SERVE_PORT)
 
 ## docs-html-test: Browser acceptance for the HTML documentation export. Real
 ##                 Chromium over file:// — the strictest case, and the one a
@@ -50,3 +61,4 @@ wasm-serve:
 ##                 e2e project's Playwright install rather than adding another.
 docs-html-test:
 	$(MAKE) -C $(ROOT) _docs-html-test
+endif

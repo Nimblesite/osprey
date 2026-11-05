@@ -71,7 +71,7 @@ test: build
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
 
-.PHONY: _package-coverage _test_packages _coverage_check_packages
+.PHONY: _test_packages _coverage_check_packages
 # [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
 # editor see it. A package's tests list sibling source roots by hand, so they
 # stay green when the package's own manifest cannot resolve its dependencies.
@@ -80,10 +80,6 @@ _check_packages:
 	for manifest in src/osprey/packages/*/osprey.toml; do \
 		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
 	done
-
-_package-coverage: build
-	$(MAKE) _test_packages
-	$(MAKE) _coverage_check_packages
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
 # reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
@@ -97,19 +93,13 @@ _test_packages:
 _coverage_check_packages:
 	python3 scripts/packages/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
 
-.PHONY: _test_agent _agent-suites
+.PHONY: _test_agent 
 # Osprey Agent's turn logic and real update path: no network and no window.
 _test_agent:
 	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
 
-_agent-suites: _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	$(MAKE) _test_agent
-
-.PHONY: _python-app-ports _test_python_app_ports
-_python-app-ports: build
-	$(MAKE) _test_python_app_ports
+.PHONY: _test_python_app_ports
 
 _test_python_app_ports:
 	python3 scripts/packages/test-python-app-ports.py --compiler $(BIN)
@@ -118,44 +108,7 @@ _test_python_app_ports:
 _hunt: build
 	./target/release/osprey hunt $(FILE) $(HUNT_ARGS)
 
-.PHONY: _hunt-sample _hunt-crashes
-_hunt-sample: build
-	python3 scripts/hunt/hunt_sample.py $(HUNT_ARGS)
-
-_hunt-crashes: build
-	$(MAKE) _test_hunt_crashes
-
-_hunt-corpus: build
-	scripts/hunt/hunt_corpus.sh $(HUNT_ARGS)
-	python3 scripts/hunt/hunt_summary.py target/hunt-corpus --findings-only
-
-_registry-test: build
-	$(MAKE) _test_registry
-
-_registry-serve: target/osprey-registry target/local-registry.stamp
-	@$(MKDIR) target/local-registry-server
-	@printf '{ "root": "%s", "address": "127.0.0.1", "port": 8787 }\n' "$(abspath target/local-registry)" \
-	  > target/local-registry-server/registry-server.json
-	cd target/local-registry-server && $(abspath target/osprey-registry)
-
-_registry-serve-sample: build
-	cd src/osprey/packages/manager/api && $(abspath $(BIN)) . --run
-
-_registry-blockers: build
-	$(MAKE) _test_registry_blockers
-
-_bank: _bank-web
-	@echo "==> Talon Bank live on http://127.0.0.1:18790  (Ctrl-C to stop)"
-	@touch /tmp/talon_bank.hold
-	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
-	  (if command -v open >/dev/null && command -v curl >/dev/null; then \
-	    attempts=0; \
-	    until accounts="$$(curl -fsS http://127.0.0.1:18790/api/accounts 2>/dev/null)" && [[ "$$accounts" == *'"Priya Sharma"'* ]]; do \
-	      attempts=$$((attempts + 1)); [ "$$attempts" -ge 200 ] && exit 0; sleep 0.1; \
-	    done; \
-	    open http://127.0.0.1:18790; \
-	  fi) & \
-	  ./$(BIN) src/osprey/examples/projects/modules --run
+.PHONY: 
 
 _bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
 	@echo "==> Building Talon Bank browser application..."
@@ -272,15 +225,6 @@ _wasm-site: _runtime_wasm
 	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
 	@echo "==> website wasm demo ready"
 
-_wasm-serve: _wasm
-	@URL="http://localhost:$(WASM_SERVE_PORT)/"; \
-	  command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 not found (needed for the dev server)"; exit 1; }; \
-	  echo "==> serving $(WASM_SERVE_DIR)/ at $$URL — opening browser (Ctrl-C to stop)"; \
-	  OPENER=$$(command -v open || command -v xdg-open || true); \
-	  if [ -n "$$OPENER" ]; then ( sleep 1; "$$OPENER" "$$URL" >/dev/null 2>&1 || true ) & \
-	  else echo "  (no 'open'/'xdg-open' found — browse to $$URL manually)"; fi; \
-	  cd $(WASM_SERVE_DIR) && exec python3 -m http.server $(WASM_SERVE_PORT)
-
 ## setup: Post-create dev environment setup (used by devcontainer)
 setup: $(EXT_NODE_DEPS) $(WEBCOMPILER_NODE_DEPS) $(WEBSITE_NODE_DEPS)
 	@echo "==> Setting up development environment..."
@@ -300,18 +244,6 @@ help:
 # Feature checks — each comment states the command's expected result
 # =============================================================================
 
-.PHONY: _proof
-_proof: build
-	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof/proof-export.sh --check --theorem $$theorem || exit 1; done
-	node --test scripts/proof/test-proof-export.mjs
-	python3 scripts/proof/test-proof-openai.py
-	$(MAKE) -j3 _test_proof_ci
-
-.PHONY: _workbench-proof-assets
-_workbench-proof-assets:
-	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
-	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
-
 .PHONY: _workbench-test
 _workbench-test: build
 	for memory in gc arc; do \
@@ -319,27 +251,14 @@ _workbench-test: build
 	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
 	done
 
-.PHONY: _agent-self-test _agent-live-test
+.PHONY: _agent-self-test 
 # [UI-MACHINE-SELF-TEST] Osprey Agent's whole UI on the SwiftUI host, the model a test double, against its goldens.
 _agent-self-test: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	swift test --package-path src/toolchain/hosts/swift/Tests
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh
 
-# The same script and harder tasks in a real window with real DeepSeek calls. Spends tokens.
-_agent-live-test: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
-
-.PHONY: _workbench-native-test
-_workbench-native-test: build
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/workbench/hosts/apple/run.sh --build
-	swift test --package-path src/osprey/workbench/hosts/apple
-
 WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
-.PHONY: _workbench-render-review
-_workbench-render-review:
-	OSPREY_RENDER_REVIEW_FULL_PAGE=1 bash src/osprey/workbench/hosts/apple/render-review.sh $(WORKBENCH_TREE) 1488 1058 target/native-slate.png
 
 ## cli-contracts: Compiler CLI contracts: --quiet and --no-warnings (2 each),
 ##                closed-stdin launcher (3, OSPREY_TEST_COMPILER/OSPREY_TEST_MEMORY
@@ -352,56 +271,11 @@ cli-contracts:
 	cargo test --manifest-path src/toolchain/Cargo.toml --profile ci -p osprey-cli checked_source_graph
 	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli windows_dll
 
-.PHONY: _package-checks
-_package-checks: build
-	node scripts/packages/verify-package-licenses.mjs
-	node --test scripts/packages/test-package-licenses.mjs
-	python3 scripts/packages/test-package-sha256.py
-	$(BIN) src/osprey/packages/manager/fixture-check --run
-	for filter in "schema-check: model declarations" "schema-check: accepted values" "schema-check: rejected values" \
-	  "schema: spec block equals canonical file" "fixtures: names"; do \
-	  $(BIN) test src/osprey/packages/manager/tests --filter "$$filter" || exit 1; \
-	done
-	for filter in "publish: licenses survive publication" "fetch: licenses and attribution are preserved"; do \
-	  $(BIN) test src/osprey/packages/manager/cli/tests --filter "$$filter" || exit 1; \
-	done
-	for memory in gc arc; do \
-	  $(BIN) test src/osprey/packages/manager/tests --memory=$$memory --filter "sha256: raw digest" || exit 1; \
-	  $(BIN) test src/osprey/packages/manager/cli/tests --memory=$$memory --filter "add: partial" || exit 1; \
-	  $(BIN) test src/osprey/packages/manager/cli/tests --memory=$$memory --filter "tree graph: diamond and identical leaf across orgs" || exit 1; \
-	  $(BIN) test src/osprey/packages/manager/cli/tests --memory=$$memory --filter "reports: success output is not a finding" || exit 1; \
-	  $(BIN) test src/osprey/packages/manager/editor/tests --memory=$$memory || exit 1; \
-	  $(BIN) test src/osprey/packages/manager/editor/wire-tests --memory=$$memory || exit 1; \
-	done
-	$(BIN) src/osprey/packages/vscode/tests --run --quiet
-	$(MAKE) target/package-workspace.wasm
-	node $(EXT_DIR)/scripts/verify-package-workspace.mjs target/package-workspace.wasm
-
-.PHONY: _package-coverage-record
-_package-coverage-record:
-	python3 scripts/packages/package_coverage.py --record-measurements
-
-.PHONY: _vsix-e2e
-_vsix-e2e: $(EXT_NODE_DEPS)
-	OSPREY_TEST_GREP='package |direct dependency reports|serialized per-project mutation|command registration|sidebar Manage Packages button|package workspace|compiled SDK renderer E2E|workbench document host wiring$(if $(WORKBENCH_VISUAL),|workbench VSIX browser|workbench VSIX visual comparison,)' npm test --prefix $(EXT_DIR)
-
-.PHONY: _hunt-demo
-_hunt-demo:
-	$(MAKE) _hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
-
 # =============================================================================
 # Applications
 # =============================================================================
 
 
-
-_gpt2: build $(GPT2_DIR)/weights/model.safetensors $(GPT2_DIR)/weights/merges.txt
-	@case "$(FLAVOR)" in default|python) ;; *) echo "gpt2 FLAVOR must be default or python" >&2; exit 1 ;; esac
-	@printf '%s\n%s\n%s\n' "$(PROMPT)" "$(TOKENS)" "$(BACKEND)" | OSPREY_GPU=$(GPU) ./$(BIN) $(GPT2_GENERATOR) --run --memory=arc
-
-_gpt2-train: build $(GPT2_DIR)/weights/model.safetensors $(GPT2_DIR)/weights/merges.txt
-	@test "$(FLAVOR)" = default || { echo "gpt2-train FLAVOR must be default" >&2; exit 1; }
-	@printf '%s\n%s\n' "$(PROMPT)" "$(BACKEND)" | OSPREY_GPU=$(GPU) ./$(BIN) $(GPT2_DIR)/train --run --memory=arc
 
 ## run: Compile and run an Osprey file (usage: make run FILE=<path>)
 run: build
@@ -415,19 +289,6 @@ install: build
 	sudo cp $(RTB)/libfiber_runtime*.a $(RTB)/libhttp_runtime*.a /usr/local/lib/
 	@echo "==> installed osprey and runtime archives."
 
-_bench: build
-	@zsh src/toolchain/benchmarks/run.sh $(BENCH_FILTER)
-
-_bench-osprey: build
-	@BENCH_PARTIAL=1 zsh src/toolchain/benchmarks/run.sh $(BENCH_FILTER)
-
-_vsix-rebuild-reinstall:
-	$(MAKE) _vsix_clean
-	$(MAKE) build
-	$(MAKE) _vsix_bundle
-	$(MAKE) _vsix_package
-	$(MAKE) _vsix_install
-
 # =============================================================================
 # Apple and Android targets
 # =============================================================================
@@ -437,9 +298,6 @@ _ios: _runtime_ios _runtime_ios_sim
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios-sim
 
-_ios-test: _ios
-	$(MAKE) _test_ios
-
 _macos: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --build
@@ -447,44 +305,7 @@ _macos: _runtime_macos
 		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/graphics/macos/run.sh --build $$scene || exit 1; \
 	done
 
-.PHONY: _run-mac-hd
-_run-mac-hd: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh
-
-.PHONY: _gpui-flock _gpui-painting _gpui-probe _gpui-bench _gpui-compare _gpui-test _gpui-smoke _gpui-signal-flow _gpui-synth _casting
-_gpui-flock: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh
-
-_gpui-painting: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/run.sh
-
-_gpui-signal-flow: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/packages/signal_flow/app/run.sh
-
-_gpui-synth: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh
-
-_casting: _runtime_macos _runtime
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/casting/run.sh
-
-_gpui-probe: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
-
-_gpui-bench: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh --bench 20
-
-_gpui-compare: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh --draw
+.PHONY: _gpui-test _gpui-smoke 
 
 _gpui-test: _runtime_macos _runtime
 	python3 src/toolchain/hosts/gpui/dependencies.py
@@ -516,9 +337,6 @@ _gpui-apps:
 # real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
 _gpui-smoke: _gpui-apps
 	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
-
-_macos-test: _macos _runtime
-	$(MAKE) _test_macos
 
 .PHONY: _mobile-ios _mobile-ios-test _mobile-domain-test _mobile-test
 _mobile-ios: _runtime_ios _runtime_ios_sim

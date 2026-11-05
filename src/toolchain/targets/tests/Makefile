@@ -1,12 +1,18 @@
 # Each app's headless tests: no host, no window and no network, so they run the same on every
 # platform. One target runs one app. Tests on a real host: src/toolchain/targets/macos/tests and src/toolchain/targets/windows/tests.
 ROOT ?= ../../../..
+ifeq ($(wildcard scripts/make/forward.mk),)
+include $(ROOT)/scripts/make/forward.mk
+else
+override ROOT := .
+include Makefile
 
 .PHONY: agent bank bank-mobile casting flock inbox painting signal-flow storage synth workbench
 
 ## agent: Osprey Agent's turn logic and its real update path, with scripted completions.
-agent:
-	$(MAKE) -C $(ROOT) _agent-suites
+agent: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) _test_agent
 
 ## bank: Talon Bank's pure domain layer.
 bank:
@@ -63,3 +69,4 @@ synth:
 ## workbench: The Proof Workbench's imported-mathematics cases under GC and ARC.
 workbench:
 	$(MAKE) -C $(ROOT) _workbench-test
+endif

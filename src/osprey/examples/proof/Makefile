@@ -1,7 +1,12 @@
-# Proof CI. Each target runs its recipe in the root Makefile, where it is the
-# private `_` target of the same name; `make help` at the root lists these too.
+# Proof CI. Recipes run from the repo root through scripts/make/forward.mk, with the root's
+# configuration and private steps; `make help` at the root lists these too.
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ../../../..
+ifeq ($(wildcard scripts/make/forward.mk),)
+include $(ROOT)/scripts/make/forward.mk
+else
+override ROOT := .
+include Makefile
 
 .PHONY: proof
 
@@ -11,5 +16,9 @@ ROOT ?= ../../../..
 ##        openai 51 PASS, lean-core 525 PASS + 1,050 rejected mutations, Unicode
 ##        6 checks + 12 rejections. Every PASS row is followed by its rejected
 ##        corruption. Checked exports, not Mathlib or headline-theorem ports.
-proof:
-	$(MAKE) -C $(ROOT) _proof
+proof: build
+	for theorem in id_imp and_swap Nat.add_comm; do bash scripts/proof/proof-export.sh --check --theorem $$theorem || exit 1; done
+	node --test scripts/proof/test-proof-export.mjs
+	python3 scripts/proof/test-proof-openai.py
+	$(MAKE) -j3 _test_proof_ci
+endif

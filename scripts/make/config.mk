@@ -7,8 +7,8 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install _bench _bench-osprey _wasm _wasm-site _wasm-serve _bank _bank-web _bank-test _bank-e2e hawk hawk-install _gpt2 _gpt2-train \
-	_registry-test _registry-serve _registry-serve-sample _registry-blockers _vsix-rebuild-reinstall \
+.PHONY: build test lint fmt clean ci setup run install _wasm _wasm-site _bank-web _bank-test _bank-e2e hawk hawk-install \
+	\
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
 	_runtime_klee _test_hunt_mock \

@@ -2,6 +2,11 @@
 # real window, <app>-headless with the same script and no window to see. Records go to target/.
 # Tests with no host at all, the same on every platform: src/toolchain/targets/tests.
 ROOT ?= ../../../../..
+ifeq ($(wildcard scripts/make/forward.mk),)
+include $(ROOT)/scripts/make/forward.mk
+else
+override ROOT := .
+include Makefile
 GPUI_APPS := casting flock painting probe signal-flow
 
 app_casting := src/osprey/examples/casting
@@ -40,5 +45,8 @@ agent-headless:
 
 ## agent-live: Osprey Agent in a real window with real DeepSeek calls, checked by acceptance tests the
 ##             agent never sees and an LLM judge. Spends tokens; the key is DEEPSEEKKEY in .env.
-agent-live:
-	$(MAKE) -C $(ROOT) _agent-live-test
+# The same script and harder tasks in a real window with real DeepSeek calls. Spends tokens.
+agent-live: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
+endif
