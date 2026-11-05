@@ -741,7 +741,7 @@ def scanner_cases():
     policy = decoded("{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"check\",\"apply\"]},\"n\":{\"type\":\"integer\"}},\"required\":[\"mode\",\"n\"],\"additionalProperties\":false}")
     suites = decoded("{\"type\":\"array\",\"items\":{\"type\":\"string\"}}")
     nested = decoded("{\"type\":\"object\",\"properties\":{\"files\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"}},\"required\":[\"path\"],\"additionalProperties\":false}}},\"required\":[\"files\"],\"additionalProperties\":false}")
-    return [
+    return listConcat([
         Check.equal("scan_valid", scanned(policy, "{\"mode\": \"apply\", \"n\": 1}"), "complete"),
         Check.equal("scan_enum", scanned(policy, "{\"mode\": \"delete\""), "rejected"),
         Check.equal("scan_key", scanned(policy, "{\"nosuch\": 1}"), "rejected"),
@@ -750,7 +750,40 @@ def scanner_cases():
         Check.equal("scan_nested", scanned(nested, "{\"files\": [{\"path\": \"a\", \"path\": \"b\"}]}"), "rejected"),
         Check.equal("scan_bad_literal", scanned(suites, "[true]"), "rejected"),
         Check.equal("scan_prefix", scanned(policy, "{\"mode\": \"ap"), "incomplete"),
+    ], scanner_boundary_cases())
+
+
+def scanner_boundary_cases():
+    """JSON scalar, escape and object boundaries under the same byte scanner."""
+    closed_object = decoded("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}")
+    null_schema = decoded("{\"type\":\"null\"}")
+    return [
+        Check.equal("scan_null_schema", scanned(null_schema, "null"), "complete"),
+        Check.equal("scan_true_at_end", scanned(JsonNull, "true"), "complete"),
+        Check.equal("scan_literal_prefix_at_end", scanned(JsonNull, "nul"), "incomplete"),
+        Check.equal("scan_nested_number_at_end", scanned(JsonNull, "[1"), "incomplete"),
+        Check.equal("scan_nested_literal_at_end", scanned(JsonNull, "[null"), "incomplete"),
+        Check.equal("scan_any_nested", scanned(JsonNull, "[\"text\",true,false,null,{},[],[-12.50E+23,1e-12,2e2]]"), "complete"),
+        Check.equal("scan_escape_valid", scanned(JsonNull, "\"\\u0041\""), "complete"),
+        Check.equal("scan_escape_invalid", scanned(JsonNull, "\"\\u00x1\""), "rejected"),
+        Check.equal("scan_control_key", scanned(JsonNull, "{\"\n\":1}"), "rejected"),
+        Check.equal("scan_repeated_key", scanned(JsonNull, "{\"a\":1,\"a\":2}"), "rejected"),
+        Check.equal("scan_undeclared_key", scanned(closed_object, "{\"x\":1}"), "rejected"),
+        Check.equal("scan_fraction_missing", scanned(JsonNull, "[1.e2]"), "rejected"),
+        Check.equal("scan_exponent_missing", scanned(JsonNull, "[1e]"), "rejected"),
+        Check.equal("scan_exponent_sign_missing", scanned(JsonNull, "[1e-]"), "rejected"),
+        Check.equal("scan_exponent_open", scanned(JsonNull, "[1e+"), "incomplete"),
+        Check.equal("scan_empty_stack_finished", finished([]), True),
+        Check.equal("scan_empty_stack_no_consumption", empty_scan_unused(), True),
     ]
+
+
+def empty_scan_unused():
+    match ToolJsonScan.feed([], 65):
+        case Success(value=step):
+            return len(step.stack) == 0 and not step.consumed
+        case Error():
+            return False
 
 
 def scanned(schema, text):

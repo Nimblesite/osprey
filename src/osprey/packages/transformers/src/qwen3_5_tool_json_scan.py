@@ -93,15 +93,17 @@ def finished(stack):
     if len(stack) == 0:
         return Success(value=None)
     else:
-        return ending(last(stack))
+        return ending(last(stack), len(stack) == 1)
 
 
-def ending(frame):
+def ending(frame, outermost):
     """Whether the text ended at a stage where the value is complete.
 
-    Only a number can end without a byte of its own: every other value ends with a byte
-    that closes it, so an open object or array is incomplete, never complete."""
-    if len(filterList(["numZero", "numInt", "numFrac", "numExpDigit"], lambda stage: stage == frame.stage)) > 0:
+    A top-level number or matched literal can end at EOF. A nested value still
+    needs every enclosing container's closing byte."""
+    number = listContains(["numZero", "numInt", "numFrac", "numExpDigit"], frame.stage)
+    literal = (frame.stage == "lit" or frame.stage == "enum") and listContains(frame.candidates, frame.text)
+    if outermost and (number or literal):
         return Success(value=None)
     else:
         return Error(message=ToolSchema.violation("json", frame.stage, "the value is incomplete"))

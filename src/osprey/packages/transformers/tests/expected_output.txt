@@ -422,6 +422,23 @@ ok scan_array
 ok scan_nested
 ok scan_bad_literal
 ok scan_prefix
+ok scan_null_schema
+ok scan_true_at_end
+ok scan_literal_prefix_at_end
+ok scan_nested_number_at_end
+ok scan_nested_literal_at_end
+ok scan_any_nested
+ok scan_escape_valid
+ok scan_escape_invalid
+ok scan_control_key
+ok scan_repeated_key
+ok scan_undeclared_key
+ok scan_fraction_missing
+ok scan_exponent_missing
+ok scan_exponent_sign_missing
+ok scan_exponent_open
+ok scan_empty_stack_finished
+ok scan_empty_stack_no_consumption
 ok validate_count
 ok validate[0]
 ok validate[1]
@@ -2486,4 +2503,4 @@ ok model_tiled_layer2
 ok model_tiled_final_norm
 ok model_load_missing
 ok model_load_sized
-2488 passed, 0 failed
+2505 passed, 0 failed
