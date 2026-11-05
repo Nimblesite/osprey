@@ -36,7 +36,7 @@ The local registry serves the packages in this repository's `src/osprey/packages
 
 ```sh
 make build
-make -C src/osprey/packages/manager registry-serve
+make -C src/osprey/packages registry-serve
 ```
 
 The target builds client/server, publishes `src/osprey/packages/` into `target/local-registry`, applies source/capability/digest checks and serves the result. Add and fetch a dependency with the client:
@@ -48,12 +48,12 @@ echo "fetch --project $PWD/my-app --registry http://127.0.0.1:8787" | ./target/o
 
 ### Try the sample registry
 
-`make -C src/osprey/packages/manager registry-serve-sample` serves `src/osprey/packages/manager/sample-registry`, the small `@demo` packages the end-to-end consumer depends on:
+`make -C src/osprey/packages registry-serve-sample` serves `src/osprey/packages/manager/sample-registry`, the small `@demo` packages the end-to-end consumer depends on:
 
 ```sh
 make build
 ./target/release/osprey build src/osprey/packages/manager/cli -o target/osprey-pkg
-make -C src/osprey/packages/manager registry-serve-sample
+make -C src/osprey/packages registry-serve-sample
 ```
 
 Leave the server running. In another terminal at the repository root, resolve and build the sample consumer, which already declares its dependency on `@demo/report`:
@@ -112,7 +112,7 @@ Epochs and release ordinals both start at 1.
 The Osprey server walks that root, validates every release against the canonical source rules, computes each release's `SourceDigest`, and serves the catalog over HTTP:
 
 ```sh
-make -C src/osprey/packages/manager registry-serve-sample   # serves src/osprey/packages/manager/sample-registry on http://127.0.0.1:8787
+make -C src/osprey/packages registry-serve-sample   # serves src/osprey/packages/manager/sample-registry on http://127.0.0.1:8787
 curl http://127.0.0.1:8787/v1/packages
 curl http://127.0.0.1:8787/v1/packages/demo/maths
 ```
@@ -323,4 +323,4 @@ Spec 0029 `[PACKAGE-HARDENING]` defines validation gates with stable diagnostic 
 | `src/osprey/packages/manager/e2e/` | the end-to-end demo: server, fetch, lock, verify, build |
 | `src/toolchain/schemas/package-registry.td` | the canonical typeDiagram model shared with spec 0031 |
 
-Run everything with `make -C src/osprey/packages/manager registry-test`. The registry README in the repository records the measured host-capability blockers and the compiler limits the code works around. Plan 0020 tracks delivery phase by phase.
+Run everything with `make -C src/osprey/packages registry-test`. The registry README in the repository records the measured host-capability blockers and the compiler limits the code works around. Plan 0020 tracks delivery phase by phase.

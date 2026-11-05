@@ -85,7 +85,7 @@ make ci
 
 Run these from the repository root. The compiler is written to `target/release/osprey`. The root Makefile defines every public target; their configuration and private steps live in `scripts/make/`.
 
-[Hunt](src/toolchain/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/toolchain/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/osprey/packages/manager registry-test` runs its separate suites.
+[Hunt](src/toolchain/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/toolchain/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/osprey/packages registry-test` runs its separate suites.
 
 ## Language and applications
 

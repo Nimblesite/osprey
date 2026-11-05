@@ -81,7 +81,7 @@ From the repository root:
 ```sh
 make build
 ./target/release/osprey build src/osprey/packages/manager/cli -o target/osprey-pkg
-make -C src/osprey/packages/manager registry-serve
+make -C src/osprey/packages registry-serve
 ```
 
 Leave the server running. In another terminal, use the checked-in consumer to exercise resolution, installation and a locked build:
