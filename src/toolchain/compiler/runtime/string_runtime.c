@@ -58,6 +58,26 @@ int64_t osp_strlen(const char *s) {
     return owned >= 0 ? owned : (int64_t)strlen(s);
 }
 
+// [PORT-STRING-NUL-CODEGEN] Compare and concatenate complete byte spans.
+int32_t osp_string_compare(const char *left, const char *right) {
+    if (left == right) return 0;
+    if (!left || !right) return left ? 1 : -1;
+    size_t n = (size_t)osp_strlen(left), m = (size_t)osp_strlen(right);
+    int prefix = memcmp(left, right, n < m ? n : m);
+    return prefix != 0 ? prefix : (n > m) - (n < m);
+}
+
+char *osp_string_concat(const char *left, const char *right) {
+    if (!left || !right) return NULL;
+    size_t n = (size_t)osp_strlen(left), m = (size_t)osp_strlen(right);
+    char *out = n < UINT32_MAX && m <= UINT32_MAX - 1 - n
+        ? osp_string_alloc_internal(n + m) : NULL;
+    if (!out) return NULL;
+    memcpy(out, left, n);
+    memcpy(out + n, right, m);
+    return out;
+}
+
 int64_t osp_string_is_empty(const char *s) {
     if (!s) return 1;
     return osp_strlen(s) == 0;

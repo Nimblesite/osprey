@@ -31,6 +31,8 @@ int osp_is_ws_internal(unsigned char c);
  * text follows the C terminator contract. [PORT-STRING-NUL-OWNERSHIP]
  * `int64_t` keeps emitted IR stable across native and wasm32 targets. */
 int64_t osp_strlen(const char *s);
+int32_t osp_string_compare(const char *left, const char *right);
+char *osp_string_concat(const char *left, const char *right);
 int64_t osp_string_is_empty(const char *s);
 int64_t osp_string_starts_with(const char *s, const char *prefix);
 int64_t osp_string_ends_with(const char *s, const char *suffix);

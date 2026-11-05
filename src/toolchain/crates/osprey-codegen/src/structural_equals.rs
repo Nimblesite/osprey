@@ -171,7 +171,12 @@ fn floats_equal(cg: &mut Codegen, a: &str, b: &str, n: Numeric) -> String {
 fn strings_equal(cg: &mut Codegen, a: &str, b: &str) -> String {
     let pa = crate::conv::unbox_from_i64(cg, a, LType::Str);
     let pb = crate::conv::unbox_from_i64(cg, b, LType::Str);
-    let c = cg.call("i32", "strcmp", "i8*, i8*", &[&pa.operand, &pb.operand]);
+    let c = cg.call(
+        "i32",
+        "osp_string_compare",
+        "i8*, i8*",
+        &[&pa.operand, &pb.operand],
+    );
     cg.emit_reg(format!("icmp eq i32 {c}, 0"))
 }
 

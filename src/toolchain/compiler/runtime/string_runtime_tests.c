@@ -1204,6 +1204,33 @@ static void test_internal_helpers(void) {
     assert(osp_is_ws_internal(0xC3) == 0); /* UTF-8 lead byte is not ws */
 }
 
+/* [PORT-STRING-NUL-CODEGEN] Exercise the native comparison and join ABI. */
+static void test_compare_and_concat(void) {
+    const char *const bytes[] = {"", "\0", "a", "a\0", "a\0b", "a\0c", "b", "\xc3\xa9"};
+    const size_t lengths[] = {0, 1, 1, 2, 3, 3, 1, 2};
+    char *strings[sizeof lengths / sizeof lengths[0]];
+    for (size_t i = 0; i < sizeof strings / sizeof strings[0]; ++i) {
+        strings[i] = osp_string_dup_internal(bytes[i], lengths[i]);
+        assert(strings[i] != NULL && osp_string_compare(strings[i], strings[i]) == 0);
+    }
+    for (size_t i = 0; i < sizeof strings / sizeof strings[0]; ++i) {
+        for (size_t j = 0; j < sizeof strings / sizeof strings[0]; ++j) {
+            int order = osp_string_compare(strings[i], strings[j]);
+            assert(((order > 0) - (order < 0)) == ((i > j) - (i < j)));
+            char *joined = osp_string_concat(strings[i], strings[j]);
+            assert(joined != NULL && osp_strlen(joined) == (int64_t)(lengths[i] + lengths[j]));
+            assert(memcmp(joined, bytes[i], lengths[i]) == 0);
+            assert(memcmp(joined + lengths[i], bytes[j], lengths[j]) == 0);
+            assert(joined[lengths[i] + lengths[j]] == '\0');
+            release_test_buffer(joined);
+        }
+    }
+    assert(osp_string_compare(NULL, NULL) == 0);
+    assert(osp_string_compare(NULL, strings[0]) < 0 && osp_string_compare(strings[0], NULL) > 0);
+    assert(osp_string_concat(NULL, strings[0]) == NULL && osp_string_concat(strings[0], NULL) == NULL);
+    for (size_t i = 0; i < sizeof strings / sizeof strings[0]; ++i) release_test_buffer(strings[i]);
+}
+
 /* ---------- entry point ---------- */
 
 int main(void) {
@@ -1254,6 +1281,7 @@ int main(void) {
     test_float_to_string_matches_reference();
     test_format_measure_write();
     test_internal_helpers();
+    test_compare_and_concat();
     printf("✅ all string_runtime tests passed\n");
     return 0;
 }

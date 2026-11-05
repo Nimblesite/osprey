@@ -34,7 +34,9 @@ fn structural_narrowing_compares_descriptors() {
         "narrowing must be a descriptor pointer compare:\n{body}"
     );
     assert!(
-        !body.contains("@strcmp") && !body.contains("@osp_string_equals"),
+        !body.contains("@strcmp")
+            && !body.contains("@osp_string_equals")
+            && !body.contains("@osp_string_compare"),
         "no name may be compared at run time:\n{body}"
     );
     // The erasure deep-boxes through the per-layout boxer, whose slots

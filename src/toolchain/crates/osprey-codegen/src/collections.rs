@@ -433,7 +433,12 @@ fn element_equals(cg: &mut Codegen, elem: &str, needle: &Value, boxed: &str) -> 
     match needle.ty {
         LType::Str => {
             let ep = cg.emit_reg(format!("inttoptr i64 {elem} to i8*"));
-            let c = cg.call("i32", "strcmp", "i8*, i8*", &[&ep, &needle.operand]);
+            let c = cg.call(
+                "i32",
+                "osp_string_compare",
+                "i8*, i8*",
+                &[&ep, &needle.operand],
+            );
             cg.emit(format!("{eq} = icmp eq i32 {c}, 0"));
         }
         LType::F64 => {

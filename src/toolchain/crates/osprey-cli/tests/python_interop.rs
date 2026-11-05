@@ -408,17 +408,41 @@ fn nul_read_source(directory: &std::path::Path) -> std::io::Result<String> {
     Ok(source)
 }
 
-fn assert_nul_file_read(source: &str, memory: &str) -> std::io::Result<()> {
-    let output = effect_execution::execute("nul_file_read", "py", source, memory)?;
+fn assert_python_bytes(
+    name: &str,
+    source: &str,
+    memory: &str,
+    expected: &str,
+) -> std::io::Result<()> {
+    let output = effect_execution::execute(name, "py", source, memory)?;
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(output.status.success(), "{memory}: {stderr}");
     assert_eq!(
         String::from_utf8_lossy(&output.stdout),
-        "NUL|NUL|NUL|NUL|value:héllo ☕|value:\n",
+        expected,
         "{memory}: {stderr}"
     );
     if memory == "arc" {
         effect_execution::assert_arc_clean(&stderr);
+    }
+    Ok(())
+}
+
+fn assert_parallel_python_bytes(name: &str, source: &str, expected: &str) -> std::io::Result<()> {
+    let results = std::thread::scope(|scope| {
+        ["gc", "arc"]
+            .map(|memory| scope.spawn(move || assert_python_bytes(name, source, memory, expected)))
+            .map(std::thread::ScopedJoinHandle::join)
+    });
+    for result in results {
+        result.map_err(|failure| {
+            let message = failure
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| failure.downcast_ref::<&str>().copied())
+                .unwrap_or("non-string panic payload");
+            std::io::Error::other(format!("{name} assertion failed: {message}"))
+        })??;
     }
     Ok(())
 }
@@ -428,22 +452,36 @@ fn binary_nul_reads_fail_explicitly_instead_of_truncating() -> std::io::Result<(
     let directory = std::env::temp_dir().join(format!("osprey_nul_read_{}", std::process::id()));
     std::fs::create_dir_all(&directory)?;
     let source = nul_read_source(&directory)?;
-    let results = std::thread::scope(|scope| {
-        let source = &source;
-        ["gc", "arc"]
-            .map(|memory| scope.spawn(move || assert_nul_file_read(source, memory)))
-            .map(std::thread::ScopedJoinHandle::join)
-    });
+    let result = assert_parallel_python_bytes(
+        "nul_file_read",
+        &source,
+        "NUL|NUL|NUL|NUL|value:héllo ☕|value:\n",
+    );
     std::fs::remove_dir_all(directory)?;
-    for result in results {
-        result.map_err(|failure| {
-            let message = failure
-                .downcast_ref::<String>()
-                .map(String::as_str)
-                .or_else(|| failure.downcast_ref::<&str>().copied())
-                .unwrap_or("non-string panic payload");
-            std::io::Error::other(format!("NUL read assertion failed: {message}"))
-        })??;
-    }
-    Ok(())
+    result
+}
+
+// [PORT-STRING-NUL-CODEGEN] Use the private byte-counted runtime copy to
+// test compiler consumers while public JSON/file NUL admission is guarded.
+#[test]
+#[cfg(target_pointer_width = "64")]
+fn owned_nul_text_comparison_and_concat_preserve_all_bytes() -> std::io::Result<()> {
+    let source = r#"# osprey: flavor=python
+@extern
+def osp_string_dup_internal(value: str, count: int) -> str:
+    ...
+
+def main():
+    value = osp_string_dup_internal("head\0tail", 9)
+    same = osp_string_dup_internal("head\0tail", 9)
+    other = osp_string_dup_internal("head\0fail", 9)
+    joined = value + "!"
+    expected = osp_string_dup_internal("head\0tail!", 10)
+    return print(f"{byteLength(value)}|{unwrap_or(byteAt(value, 4), -1)}|{value == 'head'}|{value == same}|{value == other}|{value > 'head'}|{value > other}|{listContains([value], 'head')}|{listContains([value], other)}|{listContains([value], same)}|{byteLength(joined)}|{unwrap_or(byteAt(joined, 4), -1)}|{unwrap_or(byteAt(joined, 9), -1)}|{joined == expected}")
+"#;
+    assert_parallel_python_bytes(
+        "owned_nul_text",
+        source,
+        "9|0|false|true|false|true|true|false|false|true|10|0|33|true\n",
+    )
 }

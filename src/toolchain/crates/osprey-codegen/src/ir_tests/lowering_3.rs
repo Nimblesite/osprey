@@ -124,7 +124,7 @@ fn union_match_with_named_catch_all_binds_the_scrutinee() {
 #[test]
 fn string_literal_match_chain() {
     // A string-literal compare/branch chain ending in a catch-all
-    // (pattern.rs gen_literal_match + gen_eq's strcmp path).
+    // (pattern.rs gen_literal_match + gen_eq's osp_string_compare path).
     let ir = module(
         "fn route(p: string) -> string = match p {\n\
                \"/a\" => \"A\"\n\
@@ -133,7 +133,7 @@ fn string_literal_match_chain() {
              }\n\
              fn main() -> Unit = print(route(\"/a\"))\n",
     );
-    shows(&ir, &["@strcmp"]);
+    shows(&ir, &["@osp_string_compare"]);
 }
 
 // ---- strings ----
@@ -393,7 +393,7 @@ fn list_get_and_contains_runtime_calls() {
                match listGet(xs, 0) { Success { value } => print(\"v=${value}\") Error { message } => print(\"no\") }\n\
              }\n",
         );
-    shows(&ir, &["osprey_list_in_bounds", "@strcmp"]);
+    shows(&ir, &["osprey_list_in_bounds", "@osp_string_compare"]);
 }
 
 // ---- algebraic effects: handler-owned state (effects.rs) ----

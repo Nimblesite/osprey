@@ -96,8 +96,7 @@ fn gen_arith(cg: &mut Codegen, op: &str, l: Value, r: Value) -> Result<Value> {
             return Ok(crate::collections::merge_handles(cg, &l, &r));
         }
     }
-    // `+` with a string operand is concatenation: osp_strlen/strcpy/strcat
-    // into a fresh malloc'd buffer. [BUILTIN-STRING-CONCAT]
+    // A String operand selects byte-preserving concatenation. [BUILTIN-STRING-CONCAT]
     if op == "+" && (l.ty == LType::Str || r.ty == LType::Str) {
         return gen_str_concat(cg, l, r);
     }
@@ -279,21 +278,16 @@ fn finish_result_guard(
     Ok(out)
 }
 
-/// String concatenation: `malloc(osp_strlen a + osp_strlen b + 1)` then
-/// `strcpy`+`strcat`, promoting a non-string operand through `toString` first.
-/// Length comes from the runtime's `osp_strlen` (returns `i64` on every target)
-/// rather than libc `strlen` (returns `size_t`, which is 32-bit on wasm32) so
-/// the emitted IR is pointer-width-stable. [BUILTIN-STRING-LENGTH]
+/// Concatenate complete String extents after promoting the other operand.
 fn gen_str_concat(cg: &mut Codegen, l: Value, r: Value) -> Result<Value> {
     let ls = to_string_value(cg, l)?;
     let rs = to_string_value(cg, r)?;
-    let ll = cg.call("i64", "osp_strlen", "i8*", &[&ls.operand]);
-    let rl = cg.call("i64", "osp_strlen", "i8*", &[&rs.operand]);
-    let sum = cg.emit_reg(format!("add i64 {ll}, {rl}"));
-    let total = cg.emit_reg(format!("add i64 {sum}, 1"));
-    let buf = cg.heap_alloc(&total);
-    let _ = cg.call("i8*", "strcpy", "i8*, i8*", &[&buf, &ls.operand]);
-    let _ = cg.call("i8*", "strcat", "i8*, i8*", &[&buf, &rs.operand]);
+    let buf = cg.call(
+        "i8*",
+        "osp_string_concat",
+        "i8*, i8*",
+        &[&ls.operand, &rs.operand],
+    );
     let v = Value::new(buf, LType::Str);
     crate::arc::own(cg, &v);
     Ok(v)
@@ -334,7 +328,12 @@ pub(crate) fn gen_comparison(cg: &mut Codegen, op: &str, l: Value, r: Value) -> 
     }
     let is_str = |t: LType| t == LType::Str;
     if is_str(l.ty) && is_str(r.ty) {
-        let c = cg.call("i32", "strcmp", "i8*, i8*", &[&l.operand, &r.operand]);
+        let c = cg.call(
+            "i32",
+            "osp_string_compare",
+            "i8*, i8*",
+            &[&l.operand, &r.operand],
+        );
         cg.emit(format!("{reg} = icmp {} i32 {c}, 0", cmp_code(op, false)));
         return Ok(Value::new(reg, LType::I1));
     }

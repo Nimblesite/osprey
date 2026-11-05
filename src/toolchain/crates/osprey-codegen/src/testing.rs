@@ -353,7 +353,7 @@ fn emit_assert(cg: &mut Codegen, label_op: &str, expected: &Value, actual: &Valu
     cg.lowered.testing = true;
     let c = cg.call(
         "i32",
-        "strcmp",
+        "osp_string_compare",
         "i8*, i8*",
         &[&actual.operand, &expected.operand],
     );

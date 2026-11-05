@@ -92,7 +92,7 @@ fn testing_builtins_lower_to_tap_runtime_calls() {
             "call void @osp_test_end(i8*",
             "call void @osp_test_assert(i8* null, i32",
             "call i32 @osp_test_finalize()",
-            "call i32 @strcmp(i8*",
+            "call i32 @osp_string_compare(i8*",
         ],
     );
 }

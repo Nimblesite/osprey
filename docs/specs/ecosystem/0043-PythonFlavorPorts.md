@@ -60,6 +60,8 @@ Escaped NUL must not be admitted into native strings until their full byte lengt
 
 [PORT-STRING-NUL-OPERATIONS] Native String search, slicing, transformations, splitting and joining use the full managed byte extent, including embedded NUL. Derived text retains that extent and its trailing C terminator. Numeric parsers reject embedded NUL rather than accepting a prefix. This requirement does not change the public JSON, file or code-point construction guards.
 
+[PORT-STRING-NUL-CODEGEN] Native concatenation, scalar and structural comparison, list membership, literal matching and test assertions use the complete byte length of managed text. Ordering compares unsigned bytes, with a shorter equal prefix sorting first. Concatenation allocates managed text with the complete combined extent.
+
 Text reads must return a typed error for file bytes the current native string representation cannot preserve. In particular, `readFile` must never return successful text containing only the prefix before NUL; plain UTF-8 and empty-file controls must remain successful. The CLI Python-flavor E2E regression exercises leading, middle, trailing and post-buffer-growth NUL under both GC and ARC and requires clean ARC ownership. Full NUL parity requires a length-aware owned representation and audited foreign-C adapters, with bounded storage and explicit errors at C-string-only boundaries; no sentinel substitution or unbounded pointer registry qualifies.
 
 ## Browser access policy — [FASTAPI-NAP-MIDDLEWARE]

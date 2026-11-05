@@ -377,7 +377,7 @@ card doc index selected =
         false => ""
 "#,
     );
-    shows(&ir, &["call i32 @strcmp(i8*"]);
+    shows(&ir, &["call i32 @osp_string_compare(i8*"]);
 }
 
 // ---- fibers (fiber.rs) ----
