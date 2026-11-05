@@ -1,0 +1,284 @@
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: 
+x-api-key: s3cret
+X-API-KEY: s3cret
+X-Api-Key: s3cret
+X-API-Key:   s3cret  
+X-API-Key: s3cret
+x-api-key: other
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+X-API-Key: s3cret
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+X-Role: writer
+Authorization: 
+X-Role: writer
+Authorization: Bearer
+X-Role: writer
+Authorization: Bearer 
+X-Role: writer
+Authorization: Bearer    
+X-Role: writer
+Authorization: bearer token
+X-Role: writer
+Authorization: Basic d3JpdGVy
+X-Role: writer
+Authorization: Token abc
+X-Role: writer
+Authorization:  Bearer token
+X-Role: writer
+Authorization: Bearer t
+X-Role: writer
+Authorization: Bearer token with spaces
+X-Role: writer
+Authorization: Bearer  padded-token
+X-Role: writer
+Authorization: Bearer x
+X-Role: writer
+X-Credit: 1
+Authorization: Bearer writer-token
+X-Role: member
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: reader
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: Writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: 
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: member
+X-Credit: 0
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 0
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: -1
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: -100
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 1
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 2.5
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: abc
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit:  2 
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 0
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+X-Role: writer
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: member
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 0
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+Authorization: 
+X-Role: writer
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: member
+X-Credit: 3
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 0
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: abc
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+x-left: 2
+x-right: 3
+x-left: 10
+x-left: abc
+x-right: 3
+x-left: 2
+x-right: 2.5
+x-left: abc
+x-right: def
+x-left: -4
+x-right: 4
+Authorization: Bearer writer-token
+X-Role: writer
+X-Credit: 3
+x-left: abc
+x-right: def
+x-left: bad
+x-right: worse
+x-left: worse
+x-right: bad
+x-left: +7
+x-right: -7
+x-left: +
+x-right: 1
+x-left: -
+x-right: 1
+x-left: +-3
+x-right: 3
+x-left:  2 
+x-right: 3
+x-left: 	3
+x-right: 3
+x-left: 2 3
+x-right: 1
+x-left:  
+x-right: 1
+x-left: 
+x-right: 1
+x-left: 0
+x-right: 0
+x-left: 0007
+x-right: 1
+x-left: -0
+x-right: +0
+x-left: 2.0
+x-right: 3
+x-left: 2.5
+x-right: 3
+x-left: -1.5
+x-right: 0.5
+x-left: 2.
+x-right: 3
+x-left: .0
+x-right: 3
+x-left: 1e3
+x-right: 1
+x-left: 1e-3
+x-right: 1
+x-left: 1e
+x-right: 1
+x-left: 1_000
+x-right: 1
+x-left: 1__0
+x-right: 1
+x-left: _1
+x-right: 1
+x-left: 1_
+x-right: 1
+x-left: ²
+x-right: 3
+x-left: ³
+x-right: ¹
+x-left: ¼
+x-right: ½
+

@@ -1,9 +1,9 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Models
-"""Generated from models.td; run generate_models.py."""
+"""Generated from models.td; run generate_models.cpython."""
 
-__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Validation', 'ValidationContext']
+__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'Validation', 'ValidationContext', 'DependencyResult']
 
 
 class Request:
@@ -65,6 +65,44 @@ class Pair[A, B]:
     second: B
 
 
+class Need:
+    """One dependency injection edge and its cache policy."""
+    name: str
+    use_cache: bool
+
+
+class Dependency[P, C]:
+    """A named provider, ordered children and explicit resource cleanup."""
+    name: str
+    inputs: list[Need]
+    provide: P
+    close: C
+
+
+class Acquired[T]:
+    """One successfully acquired value and its immutable provider key."""
+    name: str
+    value: T
+
+
+class DependencyState[T]:
+    """Request-local cache and reverse-acquisition cleanup stack."""
+    cache: dict[str, T]
+    acquired: list[Acquired[T]]
+
+
+class DependencyStep[T, S]:
+    """A dependency outcome and the resulting request-local state."""
+    outcome: DependencyResult[T]
+    state: S
+
+
+class Application[R, W]:
+    """Ordered routes and request middleware."""
+    routes: R
+    middleware: W
+
+
 @union
 class Validation[T]:
     """A validated value or accumulated request validation issues."""
@@ -85,3 +123,14 @@ class ValidationContext:
     class NumberContext:
         name: str
         value: int
+
+
+@union
+class DependencyResult[T]:
+    """Provided value, HTTP rejection or accumulated validation errors."""
+    class Provided:
+        value: T
+    class Rejected:
+        error: HTTPException
+    class DependencyInvalid:
+        issues: list[ValidationIssue]

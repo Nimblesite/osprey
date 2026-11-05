@@ -39,21 +39,23 @@ def dispatch(routes, request):
 
 
 def select(routes, request, path):
-    exact = filterList(routes, lambda candidate: Paths.matches(candidate.path, path))
-    selected = filterList(exact, lambda candidate: candidate.method == request.method)
+    exact = foldList(routes, [], lambda matches, candidate: append_match(matches, candidate, path))
+    selected = filterList(exact, lambda candidate: candidate.first.method == request.method)
     match listGet(selected, 0):
-        case Success(value=selected_route):
-            return invoke(selected_route, request, path)
+        case Success(value=matched):
+            return matched.first.handler(M.Request(method=request.method, url=request.url, headers=request.headers, body=request.body, path_params=matched.second))
         case Error():
-            return unmatched(routes, exact, path, request)
+            return unmatched(routes, mapList(exact, lambda matched: matched.first), path, request)
 
 
-def invoke(selected, request, path):
-    match Paths.bind(selected.path, path):
+def append_match(matches, candidate, path):
+    """Keep captures from the successful match; dispatch never parses the path twice."""
+    match Paths.bind(candidate.path, path):
         case Success(value=params):
-            return selected.handler(M.Request(method=request.method, url=request.url, headers=request.headers, body=request.body, path_params=params))
-        case Error(message=message):
-            return E.http_exception(E.exception(500, message, ""))
+            return listConcat(matches, [M.Pair(first=candidate, second=params)])
+        case Error():
+            return matches
+
 
 
 def unmatched(routes, exact, path, request):

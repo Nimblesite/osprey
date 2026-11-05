@@ -67,13 +67,31 @@ def choice(location, result, allowed):
                 return invalid(location, "literal_error", f"Input should be {expected}", text, M.TextContext(name="expected", value=expected))
 
 
+def digit(text):
+    return text != "" and contains("0123456789", text)
+
+
+def separators(text, previous_digit):
+    if text == "":
+        return True
+    else:
+        head = take(text, 1)
+        tail = drop(text, 1)
+        return previous_digit and digit(take(tail, 1)) and separators(tail, False) if head == "_" else separators(tail, digit(head))
+
+
 def whole_number(text):
+    spelling = trim(text)
+    return B.bind(replace(spelling, "_", ""), decimal_number) if separators(spelling, False) else Error(message="Not an integer")
+
+
+def decimal_number(text):
     match indexOf(text, "."):
         case Error():
-            return parseInt(trim(text))
+            return parseInt(text)
         case Success(value=index):
             fraction = drop(drop(text, index), 1)
-            return B.bind(replace(fraction, "0", ""), lambda rest: parseInt(trim(take(text, index))) if rest == "" else Error(message="Not an integer"))
+            return B.bind(replace(fraction, "0", ""), lambda rest: parseInt(take(text, index)) if fraction != "" and rest == "" else Error(message="Not an integer"))
 
 
 def bound(location, text, number, minimum, maximum):

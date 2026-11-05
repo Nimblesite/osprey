@@ -1,10 +1,11 @@
 """Drive both managed backends in parallel over real HTTP, never a mocked transport."""
 import concurrent.futures
-from contextlib import closing
 import http.client
 import json
+import os
 import subprocess
 import time
+from contextlib import closing
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[5]
@@ -54,11 +55,40 @@ def body_cases(port):
 
 def parameter_cases(port):
     path = Path(__file__).with_name("parameters.expected.json")
-    for case in json.loads(path.read_text()):
+    cases = json.loads(path.read_text())
+    wire = b"\x1e".join("".join(f"{name}: {value}\r\n" for name, value in case["headers"].items()).encode("latin-1") for case in cases)
+    assert path.with_name("parameters.headers.bin").read_bytes() == wire, "native header fixture must preserve the reference's exact Latin-1 wire bytes"
+    for case in cases:
         status, headers, body = request(port, case["method"], case["path"], headers=case["headers"])
+        if case["status"] == 307:
+            assert headers["Location"].startswith(f"http://127.0.0.1:{port}/"), (case, headers)
+        else:
+            expected_type = "text/plain; charset=utf-8" if isinstance(case["body"], str) else "application/json"
+            assert headers.get("Content-Type") == expected_type, (case, headers)
+        assert int(headers["Content-Length"]) == len(body), (case, headers, body)
+        if case["status"] == 401:
+            assert headers.get("WWW-Authenticate") == "Bearer", (case, headers)
         actual = json.loads(body) if body and headers.get("Content-Type", "").startswith("application/json") else body.decode() if body else None
         assert body.decode() == case["body_text"], (case, status, body)
         assert (status, actual) == (case["status"], case["body"]), (case, status, actual)
+
+
+
+def configuration_cases(port):
+    """Graph failures must close previously acquired resources and leave the next request clean."""
+    for name, detail, trace in (
+        ("cycle", "Dependency cycle: cycle", ["open:1", "close:1"]),
+        ("missing", "Expected exactly one dependency provider: missing", ["open:1", "close:1"]),
+        ("duplicate", "Expected exactly one dependency provider: session", []),
+    ):
+        status, headers, body = request(port, "GET", f"/deps/{name}")
+        assert (status, json.loads(body)) == (500, {"detail": detail}), (name, status, body)
+        assert headers["Content-Type"] == "application/json"
+        status, _, body = request(port, "GET", "/dependency-trace")
+        assert (status, json.loads(body)) == (200, {"trace": trace}), (name, status, body)
+        status, _, body = request(port, "GET", "/deps/validation", headers={"x-left": "7", "x-right": "-2"})
+        assert (status, json.loads(body)) == (200, {"sum": 5}), (name, status, body)
+        assert json.loads(request(port, "GET", "/dependency-trace")[2]) == {"trace": ["open:1", "left:1", "right:1", "close:1"]}
 
 
 def failure_cases(port):
@@ -80,6 +110,7 @@ def cases(port):
         parameter_cases(port)
         failure_cases(port)
         dependency_smoke(port)
+        configuration_cases(port)
     with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
         results = pool.map(lambda _: request(port, "GET", "/health"), range(32))
         assert all(result[::2] == (200, b'{"status":"ok"}') for result in results)
@@ -88,7 +119,7 @@ def cases(port):
 def build(memory):
     binary = ROOT / "target" / "fastapi" / f"e2e-{memory}"
     binary.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([str(ROOT / "target/release/osprey"), str(Path(__file__).parent / "service"),
+    subprocess.run([os.environ.get("OSPREY_COMPILER", str(ROOT / "target/release/osprey")), str(Path(__file__).parent / "service"),
                     "--compile", f"--memory={memory}", "--no-warnings", "-o", str(binary)], check=True, timeout=60)
     return binary
 
@@ -116,9 +147,15 @@ def run(built):
             wait_ready(process, port)
             cases(port)
             print(f"FastAPI real HTTP E2E ({memory}): PASS", flush=True)
+        except Exception as error:
+            trace = ROOT / "target" / f"fastapi-dependency-{port}.trace"
+            if trace.exists():
+                log.write("\nDependency trace before failure:\n" + trace.read_text())
+            raise RuntimeError(f"{memory} HTTP failure; server exit {process.poll()}; log {binary.with_suffix('.log')}") from error
         finally:
             process.terminate()
             process.wait(timeout=10)
+            (ROOT / "target" / f"fastapi-dependency-{port}.trace").unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

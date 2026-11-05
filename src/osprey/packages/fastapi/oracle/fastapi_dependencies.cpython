@@ -1,73 +1,24 @@
-#!/usr/bin/env python3
 """CPython oracle for @osprey/fastapi dependency wiring: cache, scope and cleanup.
 
-Builds an app whose dependency graph is the one an Osprey port must reproduce, and
-drives the real FastAPI (0.135.3) over loopback HTTP with the shared helpers in
-`src/osprey/packages/fastapi/oracle/fastapi.cpython`, so every recorded status, `body` and `body_text` is
-FastAPI's own verdict on the call an Osprey port has to answer identically.
+Drives real FastAPI (0.135.3) over loopback HTTP via the shared `fastapi.cpython` helpers,
+so every recorded status, `body` and `body_text` is FastAPI's own verdict.
 
-    session      yield resource, `scope="function"`, numbered per request
-    identity     depends on session; `Authorization: Bearer <token>` + `X-Role`
-    credit       depends on identity; `X-Credit`, writer-only
-    GET /deps    needs session + identity + credit, which share one cached session
+    session   yield resource, `scope="function"`, numbered per request
+    identity  depends on session; `Authorization: Bearer <token>` + `X-Role`
+    credit    depends on identity; `X-Credit`, writer-only
+    /deps     session + identity + credit share one cached session
 
-`session` is a generator dependency, so it is declared with `scope="function"`
-everywhere it is injected: its exit code then runs before the response is sent, and
-a trace read afterwards always sees the complete open/close pair.
+Trace (reset per request except `/dependency-trace`): open/close, auth, credit,
+left/right. Rules in order: `Bearer <non-empty>` else 401 with
+`WWW-Authenticate: Bearer`; writer role else 403; positive `X-Credit` else 402;
+non-integer credit is FastAPI's 422. Failing function-scope cleanups close resource
+2 then session 1 before raising 409 or a raw `RequestValidationError`.
 
-Trace grammar, appended to one module-level trace:
-
-    open:N    session N opened            close:N   session N closed
-    auth:N    identity accepted for N     credit:N  credit accepted for N
-
-An HTTP middleware clears the trace and the session counter *before* the dependency
-graph is solved, for every path except `/dependency-trace`; that path reports the
-trace the previous request left and never resets it. Sessions therefore always count
-from 1, and no response body depends on an earlier request.
-
-Access rules, checked in this order by the dependency that owns each rule:
-
-    `Authorization` exactly `Bearer <non-empty token>` (any token) else 401
-    `{"detail": "not_authenticated"}` with `WWW-Authenticate: Bearer`
-    `X-Role`, default `member`, must be `writer` else 403 `{"detail": "writer_required"}`
-    `X-Credit`, default 1, must be a positive integer else 402
-    `{"detail": "insufficient_credit"}`; a non-integer is FastAPI's 422
-
-A rejected dependency still closes the session it opened, so the trace of a 401 is
-`open:1, close:1` and of a 403/402 `open:1, auth:1, close:1` — the denial happens
-before that dependency's own trace entry. Every case's trace read is checked to be
-balanced: the closes are exactly the opens in reverse order.
-
-The HTTP parser strips leading whitespace from a header value before the app sees it,
-so `Authorization: " Bearer token"` arrives as `Bearer token` and `X-Credit: " 2 "`
-as `2 `, which integer validation accepts. Calls are recorded without normalization.
-
-JSON shapes, stable for the port's goldens:
-
-    GET /deps, /deps/override -> {"session_ids": [int, int, int],
-                                  "role": str, "credit": int}
-        the session id session, identity and credit each saw, in that order, then the
-        resolved role and the granted credit
-    GET /deps/uncached        -> {"session_ids": [int, int]}
-        `use_cache=False` twice, so two distinct sessions open and close in reverse
-    GET /dependency-trace     -> {"trace": [str, ...]}
-
-`/deps/override` runs with `app.dependency_overrides[identity] = fake_identity`, a
-fake with no dependencies at all, installed for that one request by the middleware
-and removed when it returns. Its `session_ids` is `[1, 0, 0]` — the endpoint's own
-session plus the fake's placeholder `0` — and its trace has `credit:0` and no
-`auth:N`.
-
-The corpus is a single ordered wire sequence: a trace read reports the cases before
-it, so the array has to be replayed in order. It alternates accepted and rejected
-calls, repeats requests, reads the trace between them, and covers the auth, role and
-credit denials, `use_cache=False` and the override/reset permutations, plus an
-unrouted call, which resets the trace too. Repeated identical cases are deliberate:
-byte-equal bodies across repetitions are the evidence that nothing is cached across
-requests.
-
-Run from the repository root with the pinned interpreter:
-
+The corpus is one ordered wire sequence: a trace read reports earlier cases, so
+replay it in order; repeated cases prove nothing is cached across requests.
+Integer spelling edges follow the cleanup cases: signs, whitespace, zeros, `.0`,
+fractions, exponents, underscores, Latin-1 numeric characters and percent-decoded
+Unicode query digits. Run from the repository root with the pinned interpreter:
     /Users/christianfindlay/Documents/Code/NimblesiteAgenticPlatform/.venv/bin/python \\
         -I src/osprey/packages/testing/oracle/oracle.cpython fastapi_dependencies
 """
@@ -75,15 +26,16 @@ Run from the repository root with the pinned interpreter:
 from __future__ import annotations
 
 import http.client
-import importlib.metadata
 import importlib.machinery
+import importlib.metadata
 import importlib.util
 import json
 import pathlib
 import sys
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.exceptions import RequestValidationError
 
 PINNED = "0.135.3"
 HERE = pathlib.Path(__file__).resolve().parent
@@ -149,6 +101,46 @@ def credit(
     return {"credit": x_credit, "role": who["role"], "session": who["session"]}
 
 
+def wrapper(spend: Annotated[dict, Depends(credit)]):
+    """A pass-through layer, so the graph is wrapper -> credit -> identity -> session."""
+    return spend
+
+
+def left(sid: Annotated[int, Depends(session, scope="function")], x_left: Annotated[int, Header()]):
+    """The left integer header, resolved on the shared cached session."""
+    TRACE.append(f"left:{sid}")
+    return x_left
+
+
+def right(sid: Annotated[int, Depends(session, scope="function")], x_right: Annotated[int, Header()]):
+    """The right integer header, resolved on the same cached session."""
+    TRACE.append(f"right:{sid}")
+    return x_right
+
+
+def closing_http():
+    """A second resource that fails with 409 while it is being closed."""
+    TRACE.append("open:2")
+    try:
+        yield 2
+    finally:
+        TRACE.append("close:2")
+        raise HTTPException(409, "cleanup_failed")
+
+
+CLEANUP_ERROR = {"type": "value_error", "loc": ["dependency", "cleanup"], "msg": "cleanup_invalid", "input": "bad"}
+
+
+def closing_validation():
+    """A second resource whose close raises the raw validation error above."""
+    TRACE.append("open:2")
+    try:
+        yield 2
+    finally:
+        TRACE.append("close:2")
+        raise RequestValidationError([CLEANUP_ERROR])
+
+
 def snapshot(sid, who, spend):
     """The documented `/deps` shape: one id per dependency, then role and credit."""
     return {
@@ -193,6 +185,12 @@ def deps(
     return snapshot(sid, who, spend)
 
 
+@app.get("/deps/nested")
+def nested(spend: Annotated[dict, Depends(wrapper)]):
+    """One deep chain ending in session, reported as the credit id repeated three times."""
+    return snapshot(spend["session"], spend, spend)
+
+
 @app.get("/deps/uncached")
 def uncached(
     first: Annotated[int, Depends(session, use_cache=False, scope="function")],
@@ -210,6 +208,42 @@ def overridden(
 ):
     """Same graph and shape as `/deps`, but the middleware swapped identity out."""
     return snapshot(sid, who, spend)
+
+
+@app.get("/deps/validation")
+def validated(
+    first: Annotated[int, Depends(left)],
+    second: Annotated[int, Depends(right)],
+):
+    """Two integer headers, each resolved through the same cached session."""
+    return {"sum": first + second}
+
+
+@app.get("/deps/validation-query")
+def validated_query(
+    first: Annotated[int, Query()],
+    second: Annotated[int, Query()],
+):
+    """Percent-decoded Unicode digits reach Pydantic as two query integers."""
+    return {"sum": first + second}
+
+
+@app.get("/deps/cleanup-http")
+def cleanup_http(
+    sid: Annotated[int, Depends(session, scope="function")],
+    resource: Annotated[int, Depends(closing_http, scope="function")],
+):
+    """The second resource raises 409 on close; the first session still closes after it."""
+    return {"session_ids": [sid, resource]}
+
+
+@app.get("/deps/cleanup-validation")
+def cleanup_validation(
+    sid: Annotated[int, Depends(session, scope="function")],
+    resource: Annotated[int, Depends(closing_validation, scope="function")],
+):
+    """The second resource raises a validation error on close; session 1 still closes."""
+    return {"session_ids": [sid, resource]}
 
 
 @app.get(TRACE_PATH)
@@ -281,43 +315,21 @@ def credit_cases(port: int):
 
 def uncached_sequence(port: int):
     """Two sessions per call, closed in reverse; the numbering restarts each call."""
-    return [
-        call(port, "/deps/uncached", GOOD),
-        trace(port),
-        call(port, "/deps/uncached"),
-        trace(port),
-        call(port, "/deps", GOOD),
-        trace(port),
-    ]
+    return [call(port, "/deps/uncached", GOOD), trace(port), call(port, "/deps/uncached"), trace(port),
+            call(port, "/deps", GOOD), trace(port)]
 
 
 def override_sequence(port: int):
     """The fake identity opens nothing; the override is gone on the next request."""
-    return [
-        call(port, "/deps/override", GOOD),
-        trace(port),
-        call(port, "/deps/override"),
-        trace(port),
-        call(port, "/deps", GOOD),
-        trace(port),
-        call(port, "/deps", {"Authorization": GOOD["Authorization"]}),
-        trace(port),
-        call(port, "/deps/override", {**GOOD, "X-Credit": "0"}),
-        trace(port),
-    ]
+    sent = [("/deps/override", GOOD), ("/deps/override", None), ("/deps", GOOD),
+            ("/deps", {"Authorization": GOOD["Authorization"]}), ("/deps/override", {**GOOD, "X-Credit": "0"})]
+    return [record for path, sent_headers in sent for record in (call(port, path, sent_headers), trace(port))]
 
 
 def alternating_sequence(port: int):
     """Accepted and rejected calls alternate, each followed by its own trace."""
-    sent = [
-        GOOD,
-        {"X-Role": "writer"},
-        GOOD,
-        {**GOOD, "X-Role": "member"},
-        GOOD,
-        {**GOOD, "X-Credit": "0"},
-        GOOD,
-    ]
+    sent = [GOOD, {"X-Role": "writer"}, GOOD, {**GOOD, "X-Role": "member"}, GOOD,
+            {**GOOD, "X-Credit": "0"}, GOOD]
     return [record for headers in sent for record in (call(port, "/deps", headers), trace(port))]
 
 
@@ -337,20 +349,53 @@ def trace_repeats(port: int):
     return [call(port, "/deps", GOOD), trace(port), trace(port), trace(port)]
 
 
+def nested_sequence(port: int):
+    """The nested chain accepts, then denies at auth, role and credit, then accepts again."""
+    sent = [GOOD, {**GOOD, "Authorization": ""}, {**GOOD, "X-Role": "member"},
+            {**GOOD, "X-Credit": "0"}, {**GOOD, "X-Credit": "abc"}, GOOD]
+    return [record for h in sent for record in (call(port, "/deps/nested", h), trace(port))]
+
+
+def validation_sequence(port: int):
+    """Valid sums, then missing, single-invalid and both-invalid headers, with traces."""
+    headers = [{"x-left": "2", "x-right": "3"}, {"x-left": "10"},
+               {"x-left": "abc", "x-right": "3"}, {"x-left": "2", "x-right": "2.5"},
+               {"x-left": "abc", "x-right": "def"}, {"x-left": "-4", "x-right": "4"}]
+    return [record for h in headers for record in (call(port, "/deps/validation", h), trace(port))]
+
+
+def validation_spellings(port: int):
+    """Both missing, missing+invalid, distinct invalids, then each integer spelling edge."""
+    edges = [("+7", "-7"), ("+", "1"), ("-", "1"), ("+-3", "3"), (" 2 ", "3"), ("\t3", "3"),
+             ("2 3", "1"), (" ", "1"), ("", "1"), ("0", "0"), ("0007", "1"), ("-0", "+0"),
+             ("2.0", "3"), ("2.5", "3"), ("-1.5", "0.5"), ("2.", "3"), (".0", "3"),
+             ("1e3", "1"), ("1e-3", "1"), ("1e", "1"), ("1_000", "1"), ("1__0", "1"),
+             ("_1", "1"), ("1_", "1"), ("²", "3"), ("³", "¹"), ("¼", "½")]
+    headers = [{}, {"x-left": "abc"}, {"x-right": "def"}, {"x-left": "bad", "x-right": "worse"},
+               {"x-left": "worse", "x-right": "bad"}] + [{"x-left": a, "x-right": b} for a, b in edges]
+    unicode = ["٣", "４", "१", "๐"]
+    calls = [record for h in headers for record in (call(port, "/deps/validation", h), trace(port))]
+    return calls + [record for v in unicode for record in
+                    (call(port, f"/deps/validation-query?first={SHARED.encoded(v)}&second=1"), trace(port))]
+
+
+def cleanup_sequence(port: int):
+    """Both failing cleanups twice, then a good call proving the next session starts at 1."""
+    return [
+        *(record for path in ["/deps/cleanup-http", "/deps/cleanup-http",
+                              "/deps/cleanup-validation", "/deps/cleanup-validation"]
+          for record in (call(port, path), trace(port))),
+        call(port, "/deps", GOOD),
+        trace(port),
+    ]
+
+
 def all_cases(port: int):
     """Every recorded case, in wire order: trace reads depend on the cases before them."""
-    groups = [
-        good_sequence,
-        auth_denials,
-        auth_accepted,
-        role_denials,
-        credit_cases,
-        uncached_sequence,
-        override_sequence,
-        alternating_sequence,
-        unrouted_sequence,
-        trace_repeats,
-    ]
+    groups = [good_sequence, auth_denials, auth_accepted, role_denials, credit_cases,
+              uncached_sequence, override_sequence, alternating_sequence,
+              unrouted_sequence, trace_repeats, nested_sequence, validation_sequence,
+              cleanup_sequence, validation_spellings]
     return [record for group in groups for record in group(port)]
 
 
@@ -372,8 +417,15 @@ def entries(trace, prefix):
 
 
 def checked_traces(cases):
-    """Every trace read must close exactly the sessions it opened, in reverse order."""
-    for case in cases:
+    """Trace reads must balance in reverse; failing cleanups close 2 then 1."""
+    expected = ["open:1", "open:2", "close:2", "close:1"]
+    for index, case in enumerate(cases):
+        if case["path"].startswith("/deps/cleanup-"):
+            if cases[index + 1]["body"]["trace"] != expected:
+                raise ValueError(f"Bad cleanup trace for {case['path']}")
+            if case["path"] == "/deps/cleanup-http" and case["status"] != 409:
+                raise ValueError(f"Expected 409 from cleanup-http, found {case['status']}")
+            continue
         if case["path"] != TRACE_PATH:
             continue
         trace = case["body"]["trace"]

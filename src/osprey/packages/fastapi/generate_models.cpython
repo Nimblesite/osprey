@@ -6,6 +6,14 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 
 TYPE_DOCS = {
+    "Need": "One dependency injection edge and its cache policy.",
+    "Dependency": "A named provider, ordered children and explicit resource cleanup.",
+    "Acquired": "One successfully acquired value and its immutable provider key.",
+    "DependencyState": "Request-local cache and reverse-acquisition cleanup stack.",
+    "DependencyResult": "Provided value, HTTP rejection or accumulated validation errors.",
+    "DependencyStep": "A dependency outcome and the resulting request-local state.",
+    "Application": "Ordered routes and request middleware.",
+    "FixtureValue": "Generated application-specific dependency values for HTTP acceptance.",
     "Request": "Incoming HTTP request with raw URL/body and decoded path captures.",
     "Response": "Outgoing HTTP status, content, media type and headers.",
     "Route": "An ordered method/path pattern and its typed handler.",
@@ -48,7 +56,7 @@ def fields(node, indent):
         if isinstance(field, ast.Pass):
             continue
         if not isinstance(field, ast.AnnAssign) or not isinstance(field.target, ast.Name):
-            raise ValueError(f"Unexpected typeDiagram field: {ast.dump(field)}")
+            raise TypeError(f"Unexpected typeDiagram field: {ast.dump(field)}")
         output.append(f"{indent}{field.target.id}: {ast.unparse(field.annotation)}")
     return output
 
@@ -58,7 +66,7 @@ def parameters(node):
         return ""
     generic = node.bases[0]
     if not isinstance(generic, ast.Subscript):
-        raise ValueError(f"Unexpected base: {ast.dump(generic)}")
+        raise TypeError(f"Unexpected base: {ast.dump(generic)}")
     parts = generic.slice.elts if isinstance(generic.slice, ast.Tuple) else [generic.slice]
     return "[" + ", ".join(ast.unparse(part) for part in parts) + "]"
 
@@ -89,10 +97,16 @@ def generate():
     )
     classes, unions, nodes = declarations(source)
     output = ['# osprey: flavor=python', '# osprey: namespace=fastapi',
-              '# osprey: module=Models', '"""Generated from models.td; run generate_models.py."""']
-    output.extend(["", "__all__ = " + repr([node.name for node in nodes] + list(unions))])
-    output.extend(records(nodes) + union_records(classes, unions))
+              '# osprey: module=Models', '"""Generated from models.td; run generate_models.cpython."""']
+    public = [node for node in nodes if not node.name.startswith("Fixture")]
+    production = {name: members for name, members in unions.items() if not name.startswith("Fixture")}
+    output.extend(["", "__all__ = " + repr([node.name for node in public] + list(production))])
+    output.extend(records(public) + union_records(classes, production))
     (ROOT / "src" / "models.py").write_text("\n".join(output) + "\n")
+    fixture = ROOT / "tests" / "fixture.py"
+    source = fixture.read_text().split("# Generated fixture models from models.td")[0].rstrip()
+    test_unions = {name: members for name, members in unions.items() if name.startswith("Fixture")}
+    fixture.write_text(source + "\n\n# Generated fixture models from models.td\n" + "\n".join(union_records(classes, test_unions)) + "\n")
 
 
 if __name__ == "__main__":

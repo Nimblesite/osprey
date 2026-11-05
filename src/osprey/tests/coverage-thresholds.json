@@ -261,7 +261,7 @@
     },
     "packages": {
       "fastapi": {
-        "threshold": 97.8,
+        "threshold": 98.0,
         "language": "osprey"
       },
       "einops": {

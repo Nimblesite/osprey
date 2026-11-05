@@ -5,6 +5,7 @@ from fastapi import Routing
 from fastapi import Results as B
 from fastapi import Models as M
 from fastapi_tests import Fixture
+from fastapi_expected import Expected
 
 
 def assert_reply(result, status, body):
@@ -28,6 +29,7 @@ def requests(client):
     assert_reply(httpPostResponse(client, "/echo", "héllo ☕", ""), 201, "héllo ☕")
     assert_reply(httpGetResponse(client, "/bundle/%00", ""), 400, "{\"detail\":\"NUL is not representable in the native HTTP string boundary\"}")
     parameter_cases(client)
+    configuration_cases(client)
     return expect(httpCloseClient(client), Success(value=0))
 
 
@@ -41,10 +43,11 @@ def use_server(server):
 
 
 def lifecycle():
-    routes = Routing.include_router(Fixture.routes(), "/api", Fixture.routes())
-    match A.serve(18787, "127.0.0.1", routes):
+    base = Fixture.application(18787)
+    routes = Routing.include_router(base.routes, "/api", base.routes)
+    match A.serve(18787, "127.0.0.1", A.application(routes, base.middleware)):
         case Success(value=server):
-            match A.serve(18787, "127.0.0.1", routes):
+            match A.serve(18787, "127.0.0.1", A.application(routes, base.middleware)):
                 case Success(value=unexpected):
                     check("occupied listener", "error", "success")
                     expect(httpStopServer(unexpected), Success(value=0))
@@ -53,7 +56,7 @@ def lifecycle():
             use_server(server)
         case Error(message=message):
             check("server creation", "success", message)
-    match A.serve(0, "127.0.0.1", routes):
+    match A.serve(0, "127.0.0.1", A.application(routes, base.middleware)):
         case Success(value=server):
             return expect(httpStopServer(server), Error(message="invalid port must fail"))
         case Error():
@@ -64,40 +67,22 @@ def main():
     return test("FastAPI native HTTP lifecycle and NAP health/readiness", lifecycle)
 
 
-def header_members(members):
-    match members:
-        case []:
-            return Success(value=[])
-        case [head, *tail]:
-            return B.bind(header_member(head), lambda first: B.mapped(header_members(tail), lambda rest: listConcat([first], rest)))
-
-
-def header_member(member):
-    match member:
-        case JsonMember(name, item):
-            return B.mapped(jsonText(item), lambda text: f"{name}: {text}\r\n")
-
-
-def request_headers(document):
-    match document:
-        case JsonObject(members):
-            return B.mapped(header_members(members), lambda parts: join(parts, ""))
-        case _:
-            return Error(message="Oracle headers must be an object")
-
-
 def scenario(document):
     path = B.bind(jsonField(document, "path"), lambda item: jsonText(item))
     status = B.bind(jsonField(document, "status"), lambda item: jsonInt(item))
-    headers = B.bind(jsonField(document, "headers"), request_headers)
     body = B.bind(jsonField(document, "body_text"), lambda item: jsonText(item))
-    return B.bind(path, lambda url: B.bind(headers, lambda wire: B.bind(status, lambda code: B.mapped(body, lambda expected: M.Pair(first=url, second=M.Pair(first=wire, second=M.Pair(first=code, second=expected)))))))
+    return B.bind(path, lambda url: B.bind(status, lambda code: B.mapped(body, lambda expected: M.Pair(first=url, second=M.Pair(first=code, second=expected)))))
 
 
 def oracle_response(response, expected):
     match response:
         case Success(value=handle):
             expect(httpResponseStatus(handle), expected.first)
+            if expected.first != 307:
+                expected_type = "text/plain; charset=utf-8" if expected.second == "Internal Server Error" else "application/json"
+                expect(httpResponseHeader(handle, "Content-Type"), Success(value=expected_type))
+            if expected.first == 401:
+                expect(httpResponseHeader(handle, "WWW-Authenticate"), Success(value="Bearer"))
             match httpResponseBody(handle):
                 case Success(value=text):
                     expect(text, expected.second)
@@ -108,26 +93,47 @@ def oracle_response(response, expected):
             return check("oracle request", "success", message)
 
 
-def wire_case(client, document):
+def wire_case(client, document, headers):
     match scenario(document):
         case Success(value=parsed):
-            return oracle_response(httpGetResponse(client, parsed.first, parsed.second.first), parsed.second.second)
+            return oracle_response(httpGetResponse(client, parsed.first, headers), parsed.second)
         case Error(message=message):
             return check("oracle case", "valid scenario", message)
 
 
-def oracle_document(client, document):
+def oracle_document(client, document, headers):
     match document:
         case JsonArray(cases):
-            return forEachList(cases, lambda item: wire_case(client, item))
+            expect(len(headers), len(cases))
+            return forEach(range(len(cases)), lambda index: wire_record(client, listGet(cases, index), listGet(headers, index)))
         case _:
             return check("oracle corpus", "JSON array", "other JSON value")
 
 
-def parameter_cases(client):
-    source = B.bind(readFile("src/osprey/packages/fastapi/tests/parameters.expected.json"), lambda text: jsonDecode(text))
-    match source:
-        case Success(value=document):
-            return oracle_document(client, document)
+def wire_record(client, document, headers):
+    match B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire))):
+        case Success(value=pair):
+            return wire_case(client, pair.first, pair.second)
         case Error(message=message):
-            return check("oracle corpus", "readable JSON", message)
+            return check("oracle wire record", "present JSON case and Latin-1 headers", message)
+
+
+def parameter_cases(client):
+    document = jsonDecode(Expected.CASES_JSON)
+    headers = B.bind(readFile("src/osprey/packages/fastapi/tests/parameters.headers.bin"), lambda text: split(text, "\x1e"))
+    source = B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire)))
+    match source:
+        case Success(value=pair):
+            return oracle_document(client, pair.first, pair.second)
+        case Error(message=message):
+            return check("oracle corpus", "readable JSON and Latin-1 wire fixtures", message)
+
+
+
+def configuration_cases(client):
+    assert_reply(httpGetResponse(client, "/deps/cycle", ""), 500, '{"detail":"Dependency cycle: cycle"}')
+    assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":["open:1","close:1"]}')
+    assert_reply(httpGetResponse(client, "/deps/missing", ""), 500, '{"detail":"Expected exactly one dependency provider: missing"}')
+    assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":["open:1","close:1"]}')
+    assert_reply(httpGetResponse(client, "/deps/duplicate", ""), 500, '{"detail":"Expected exactly one dependency provider: session"}')
+    return assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":[]}')

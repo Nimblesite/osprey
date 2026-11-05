@@ -1,7 +1,8 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi_tests
 # osprey: module=Fixture
-"""Real HTTP service driven by e2e.py. Implements [FASTAPI-HTTP-ROUTING]."""
+"""Real HTTP service driven by e2e.cpython. Implements [FASTAPI-HTTP-ROUTING]."""
+from typing import Callable
 from fastapi import Responses as R
 from fastapi import Routing
 from fastapi import Params as P
@@ -9,6 +10,9 @@ from fastapi import Validation as V
 from fastapi import Uuids
 from fastapi import Models as M
 from fastapi import Errors as E
+from fastapi import Dependencies as D
+from fastapi import Applications as A
+from fastapi import Results as B
 
 
 def health(_request):
@@ -29,7 +33,7 @@ def routes():
 
 
 
-__all__ = ["routes"]
+__all__ = ["routes", "application"]
 
 
 def config(request):
@@ -82,3 +86,301 @@ def ordered(request):
 
 def metrics(_request):
     return E.json_response(200, JsonObject([JsonMember("latency", JsonFloat(exp(1000.0)))]), "")
+
+def trace_path(port):
+    return f"target/fastapi-dependency-{port}.trace"
+
+
+def application(port):
+    """Build the real HTTP acceptance app with request-local trace capture."""
+    path = trace_path(port)
+    return A.application(listConcat(listConcat(routes(), dependency_routes(path)), extra_routes(path, providers(path))), [lambda request, next: reset_trace(path, request, next)])
+
+
+def reset_trace(path, request, next: Callable[[M.Request], M.Response]):
+    if Routing.path_of(request.url) == "/dependency-trace":
+        return next(request)
+    else:
+        match writeFile(path, ""):
+            case Success():
+                return next(request)
+            case Error(message=message):
+                return E.http_exception(E.exception(500, message, ""))
+
+
+def logged(path, message, result):
+    match readFile(path):
+        case Success(value=previous):
+            match writeFile(path, previous + message + "\n"):
+                case Success():
+                    return M.Provided(value=result)
+                case Error(message=error):
+                    return M.Rejected(error=E.exception(500, error, ""))
+        case Error(message=error):
+            return M.Rejected(error=E.exception(500, error, ""))
+
+
+def trace_lines(path):
+    return B.bind(readFile(path), lambda text: split(text, "\n"))
+
+
+def open_session(path, _request, _children):
+    match trace_lines(path):
+        case Success(value=previous):
+            identity = satAdd(len(filterList(previous, lambda line: startsWith(line, "open:"))), 1)
+            return logged(path, f"open:{identity}", SessionValue(id=identity))
+        case Error(message=error):
+            return M.Rejected(error=E.exception(500, error, ""))
+
+
+def close_session(path, resource):
+    match resource:
+        case SessionValue(id=identity):
+            return logged(path, f"close:{identity}", None)
+        case _:
+            return M.Rejected(error=E.exception(500, "Expected session resource", ""))
+
+
+def identity_provider(path, request, children):
+    match listGet(children, 0):
+        case Success(value=resource):
+            match resource:
+                case SessionValue(id=identity):
+                    return authenticate(path, request, identity)
+                case _:
+                    return M.Rejected(error=E.exception(500, "Expected session dependency", ""))
+        case Error(message=error):
+            return M.Rejected(error=E.exception(500, error, ""))
+
+
+def authenticate(path, request, identity):
+    match P.header(request, "Authorization"):
+        case Success(value=authorization):
+            if startsWith(authorization, "Bearer ") and trim(drop(authorization, 7)) != "":
+                match V.defaulted(P.header(request, "X-Role"), "member"):
+                    case Success(value=role):
+                        return logged(path, f"auth:{identity}", IdentityValue(id=identity, role=role))
+                    case Error(message=error):
+                        return M.Rejected(error=E.exception(500, error, ""))
+            else:
+                return M.Rejected(error=E.exception(401, "not_authenticated", "WWW-Authenticate: Bearer"))
+        case Error():
+            return M.Rejected(error=E.exception(401, "not_authenticated", "WWW-Authenticate: Bearer"))
+
+
+def credit_provider(path, request, children):
+    parsed = V.integer(["header", "x-credit"], V.defaulted(P.header(request, "X-Credit"), "1"), -9223372036854775807, 9223372036854775807)
+    match parsed:
+        case M.Invalid(issues=issues):
+            return M.DependencyInvalid(issues=issues)
+        case M.Valid(value=credit):
+            match listGet(children, 0):
+                case Success(value=person):
+                    return authorize_credit(path, person, credit)
+                case Error(message=error):
+                    return M.Rejected(error=E.exception(500, error, ""))
+
+
+def authorize_credit(path, person, credit):
+    match person:
+        case IdentityValue(id=identity, role=role):
+            if role != "writer":
+                return M.Rejected(error=E.exception(403, "writer_required", ""))
+            elif credit <= 0:
+                return M.Rejected(error=E.exception(402, "insufficient_credit", ""))
+            else:
+                return logged(path, f"credit:{identity}", CreditValue(id=identity, role=role, credit=credit))
+        case _:
+            return M.Rejected(error=E.exception(500, "Expected identity dependency", ""))
+
+
+def fake_identity(_request, _children):
+    return M.Provided(value=IdentityValue(id=0, role="writer"))
+
+
+def providers(path):
+    return [D.provider("session", [], lambda request, children: open_session(path, request, children), lambda resource: close_session(path, resource)), D.provider("identity", [D.need("session", True)], lambda request, children: identity_provider(path, request, children), D.pure_close), D.provider("credit", [D.need("identity", True)], lambda request, children: credit_provider(path, request, children), D.pure_close)]
+
+
+def dependency_routes(path):
+    graph = providers(path)
+    changed = D.override(graph, "identity", D.provider("fake", [], fake_identity, D.pure_close))
+    shared = [D.need("session", True), D.need("identity", True), D.need("credit", True)]
+    fresh = [D.need("session", False), D.need("session", False)]
+    return [Routing.route("GET", "/deps", lambda request: D.execute(graph, shared, request, dependency_response)), Routing.route("GET", "/deps/uncached", lambda request: D.execute(graph, fresh, request, sessions_response)), Routing.route("GET", "/deps/override", lambda request: D.execute(changed, shared, request, dependency_response)), Routing.route("GET", "/dependency-trace", lambda request: trace_response(path, request))]
+
+
+def dependency_response(_request, values):
+    match values:
+        case [first, second, third]:
+            match first:
+                case SessionValue(id=identity):
+                    return identity_response(identity, second, third)
+                case _:
+                    return E.http_exception(E.exception(500, "Expected session value", ""))
+        case _:
+            return E.http_exception(E.exception(500, "Expected three resolved dependencies", ""))
+
+
+def identity_response(first, person, spend):
+    match person:
+        case IdentityValue(id=identity, role=role):
+            return credit_response(first, identity, role, spend)
+        case _:
+            return E.http_exception(E.exception(500, "Expected identity value", ""))
+
+
+def credit_response(first, second, role, spend):
+    match spend:
+        case CreditValue(id=identity, credit=credit):
+            return E.json_response(200, JsonObject([JsonMember("session_ids", JsonArray([JsonInt(first), JsonInt(second), JsonInt(identity)])), JsonMember("role", JsonString(role)), JsonMember("credit", JsonInt(credit))]), "")
+        case _:
+            return E.http_exception(E.exception(500, "Expected credit value", ""))
+
+
+def sessions_response(_request, values):
+    match values:
+        case [first, second]:
+            match first:
+                case SessionValue(id=identity):
+                    return second_session_response(identity, second)
+                case _:
+                    return E.http_exception(E.exception(500, "Expected first session value", ""))
+        case _:
+            return E.http_exception(E.exception(500, "Expected two session dependencies", ""))
+
+
+def second_session_response(first, second):
+    match second:
+        case SessionValue(id=identity):
+            return E.json_response(200, JsonObject([JsonMember("session_ids", JsonArray([JsonInt(first), JsonInt(identity)]))]), "")
+        case _:
+            return E.http_exception(E.exception(500, "Expected second session value", ""))
+
+
+def trace_response(path, _request):
+    match trace_lines(path):
+        case Success(value=trace):
+            lines = filterList(trace, lambda line: line != "")
+            return E.json_response(200, JsonObject([JsonMember("trace", JsonArray(mapList(lines, lambda line: JsonString(line))))]), "")
+        case Error(message=error):
+            return E.http_exception(E.exception(500, error, ""))
+
+def passthrough(_request, children):
+    match listGet(children, 0):
+        case Success(value=child):
+            return M.Provided(value=child)
+        case Error(message=error):
+            return M.Rejected(error=E.exception(500, error, ""))
+
+
+def credit_single_response(_request, values):
+    match values:
+        case [credit]:
+            return credit_single_value(credit)
+        case _:
+            return E.http_exception(E.exception(500, "Expected credit dependency", ""))
+
+
+def credit_single_value(credit_value):
+    match credit_value:
+        case CreditValue(id=identity, role=role):
+            return credit_response(identity, identity, role, credit_value)
+        case _:
+            return E.http_exception(E.exception(500, "Expected credit value", ""))
+
+
+def number_provider(path, request, children, header, label):
+    parsed = V.integer(["header", toLowerCase(header)], P.header(request, header), -9223372036854775807, 9223372036854775807)
+    match parsed:
+        case M.Valid(value=number):
+            return number_session(path, children, number, label)
+        case M.Invalid(issues=issues):
+            return M.DependencyInvalid(issues=issues)
+
+
+def number_session(path, children, number, label):
+    match children:
+        case [SessionValue(id=identity)]:
+            return logged(path, f"{label}:{identity}", NumberValue(number=number))
+        case _:
+            return M.Rejected(error=E.exception(500, "Expected number session", ""))
+
+
+def sum_response(_request, values):
+    match values:
+        case [first, second]:
+            match first:
+                case NumberValue(number=number):
+                    return sum_second(number, second)
+                case _:
+                    return E.http_exception(E.exception(500, "Expected first number", ""))
+        case _:
+            return E.http_exception(E.exception(500, "Expected two numbers", ""))
+
+
+def sum_second(first, second):
+    match second:
+        case NumberValue(number=number):
+            match checkedAdd(first, number):
+                case Success(value=total):
+                    return E.json_response(200, JsonObject([JsonMember("sum", JsonInt(total))]), "")
+                case Error(message=error):
+                    return E.http_exception(E.exception(500, error, ""))
+        case _:
+            return E.http_exception(E.exception(500, "Expected second number", ""))
+
+
+def failing_close(path, resource, validation):
+    closed = close_session(path, resource)
+    match closed:
+        case M.Provided():
+            return M.DependencyInvalid(issues=[E.issue(["dependency", "cleanup"], "value_error", "cleanup_invalid", "bad", False, M.NoContext())]) if validation else M.Rejected(error=E.exception(409, "cleanup_failed", ""))
+        case _:
+            return closed
+
+
+def extra_routes(path, graph):
+    nested = listConcat(graph, [D.provider("relay", [D.need("credit", True)], passthrough, D.pure_close)])
+    numbers = listConcat(graph, [D.provider("left", [D.need("session", True)], lambda request, children: number_provider(path, request, children, "X-Left", "left"), D.pure_close), D.provider("right", [D.need("session", True)], lambda request, children: number_provider(path, request, children, "X-Right", "right"), D.pure_close)])
+    failures = [Routing.route("GET", "/deps/cleanup-http", lambda request: cleanup_failure(path, graph, request, False)), Routing.route("GET", "/deps/cleanup-validation", lambda request: cleanup_failure(path, graph, request, True))]
+    return listConcat([Routing.route("GET", "/deps/validation-query", query_numbers), Routing.route("GET", "/deps/nested", lambda request: D.execute(nested, [D.need("relay", True)], request, credit_single_response)), Routing.route("GET", "/deps/validation", lambda request: D.execute(numbers, [D.need("left", True), D.need("right", True)], request, sum_response))], listConcat(failures, configuration_routes(graph)))
+
+
+def cleanup_failure(path, graph, request, validation):
+    added = D.provider("second", [], lambda current, children: open_session(path, current, children), lambda resource: failing_close(path, resource, validation))
+    return D.execute(listConcat(graph, [added]), [D.need("session", True), D.need("second", True)], request, sessions_response)
+
+
+def configuration_routes(graph):
+    cyclic = listConcat(graph, [D.provider("cycle", [D.need("cycle", True)], passthrough, D.pure_close)])
+    duplicate = listConcat(graph, graph)
+    return [Routing.route("GET", "/deps/cycle", lambda request: D.execute(cyclic, [D.need("session", True), D.need("cycle", True)], request, sessions_response)), Routing.route("GET", "/deps/missing", lambda request: D.execute(graph, [D.need("session", True), D.need("missing", True)], request, sessions_response)), Routing.route("GET", "/deps/duplicate", lambda request: D.execute(duplicate, [D.need("session", True)], request, sessions_response))]
+
+
+def query_numbers(request):
+    first = V.integer(["query", "first"], P.query(request, "first"), bitNot(9223372036854775807), 9223372036854775807)
+    second = V.integer(["query", "second"], P.query(request, "second"), bitNot(9223372036854775807), 9223372036854775807)
+    match V.combine(first, second):
+        case M.Valid(value=pair):
+            return sum_second(pair.first, NumberValue(number=pair.second))
+        case M.Invalid(issues=issues):
+            return E.validation(issues)
+
+# Generated fixture models from models.td
+
+
+@union
+class FixtureValue:
+    """Generated application-specific dependency values for HTTP acceptance."""
+    class SessionValue:
+        id: int
+    class IdentityValue:
+        id: int
+        role: str
+    class CreditValue:
+        id: int
+        role: str
+        credit: int
+    class NumberValue:
+        number: int

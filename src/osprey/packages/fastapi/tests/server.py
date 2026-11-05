@@ -4,7 +4,7 @@ from fastapi_tests import Fixture
 
 
 def serve_on(port):
-    match A.serve(port, "127.0.0.1", Fixture.routes()):
+    match A.serve(port, "127.0.0.1", Fixture.application(port)):
         case Success(value=server):
             sleep(60000)
             match httpStopServer(server):

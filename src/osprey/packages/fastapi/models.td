@@ -9,3 +9,11 @@ type ValidationIssue { location: List<String> kind: String message: String input
 union Validation<T> { Valid { value: T } Invalid { issues: List<ValidationIssue> } }
 type Pair<A, B> { first: A second: B }
 union ValidationContext { NoContext {} TextContext { name: String value: String } NumberContext { name: String value: Int } }
+type Need { name: String use_cache: Bool }
+type Dependency<P, C> { name: String inputs: List<Need> provide: P close: C }
+type Acquired<T> { name: String value: T }
+type DependencyState<T> { cache: Map<String, T> acquired: List<Acquired<T>> }
+union DependencyResult<T> { Provided { value: T } Rejected { error: HTTPException } DependencyInvalid { issues: List<ValidationIssue> } }
+type DependencyStep<T, S> { outcome: DependencyResult<T> state: S }
+type Application<R, W> { routes: R middleware: W }
+union FixtureValue { SessionValue { id: Int } IdentityValue { id: Int role: String } CreditValue { id: Int role: String credit: Int } NumberValue { number: Int } }
