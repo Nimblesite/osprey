@@ -4,11 +4,11 @@ The request, verbatim: "the fucking ios and android apps must use the same GPUI 
 
 **Status: unfinished.** Casting's iOS and Android apps draw through the shared GPUI host and their old renderers are gone, but neither is a finished app. They are not part of CI, and `scripts/ci/ci-scope.test.mjs` fails if a workflow, `scripts/mobile/test-mobile-tools.py` or the host's default tests reach them. Their tool and bridge regressions run by hand with `make -C src/toolchain/targets/tests casting-mobile-tools`. [Remaining](#remaining) lists what is left. CI covers only desktop casting.
 
-Today the three apps share `player.machine.json` and the compiled Osprey core, and each draws it differently: macOS through `src/toolchain/hosts/gpui`, iOS through SwiftUI (`src/toolchain/hosts/swift`), Android through its own Java views (`src/osprey/examples/casting/android`). Their widgets and layout differ, so the same skin looks different.
+Before this migration the three apps shared `player.machine.json` and the compiled Osprey core, but each drew it differently: macOS through `src/toolchain/hosts/gpui`, iOS through SwiftUI (`src/toolchain/hosts/swift`), Android through its own Java views (`src/osprey/examples/casting/android`). Their widgets and layouts differed, so the same skin looked different.
 
-iOS: GPUI supports it. `src/toolchain/hosts/gpui/Cargo.lock` already holds `gpui-pre-ios` 0.3.10, a snapshot of Zed's `gpui_ios` crate over UIKit, CoreText and Metal, with lifecycle, windowing, native text input, safe-area and keyboard insets and touch, and `gpui-pre-platform` selects it on `target_os = "ios"`. It has never been built here.
+iOS: GPUI supports it. `src/toolchain/hosts/gpui/Cargo.lock` already holds `gpui-pre-ios` 0.3.10, a snapshot of Zed's `gpui_ios` crate over UIKit, CoreText and Metal, with lifecycle, windowing, native text input, safe-area and keyboard insets and touch, and `gpui-pre-platform` selects it on `target_os = "ios"`. The spike below built this backend and verified the shared player in the simulator.
 
-Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Android branch, though `gpui-pre-wgpu` already handles Android surface loss. A backend has to come from the community crate `gpui-mobile` 0.1.0 (early development, Android on Vulkan) or be written here over `gpui-pre-wgpu`.
+Android: `gpui-pre` 0.3.10 has no backend, and `gpui-pre-platform` has no Android branch, though `gpui-pre-wgpu` already handles Android surface loss. The implemented backend lives in `src/toolchain/hosts/gpui/android`, over `gpui-pre-wgpu`; the spike below verified its emulator rendering.
 
 ## Spike
 
@@ -39,7 +39,7 @@ iOS:
 
 - [ ] Run `src/osprey/examples/casting/ios/ui-test.sh` in full against the GPUI app and fix what it finds: media, gestures, lifecycle, appearance.
 - [ ] Recapture `src/osprey/examples/casting/goldens/ios` from the GPUI app, and check each by eye.
-- [ ] Retire the old skin-menu and persistence tests in this plan or port them: mobile has no skin menu because desktop has none. The old assertions must not be faked.
+- [ ] Finish porting the old appearance tests to the shared controls and app-scoped store. The shared Sherbet Appearance menu, selection semantics and all-three-skin process-restart test now pass on the fresh GPUI iOS app; invalid-preference recovery notices remain unfinished. The old assertions must not be faked.
 - [ ] Wire the Rust coverage export into the iOS coverage gate, which stays red until then.
 - [ ] Bring up the CoreDevice tunnel, install the signed build on the physical iPhone, launch it and cast to a real receiver.
 
