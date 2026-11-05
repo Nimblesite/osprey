@@ -10,7 +10,7 @@ from fastapi import Params as P
 from fastapi import Responses as R
 from fastapi import Uuids
 
-__all__ = ["bind", "object_body", "object_at", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "array_at", "string"]
+__all__ = ["bind", "bind_binary", "object_body", "object_at", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "array_at", "string"]
 
 
 def invalid(location, kind, message, input):
@@ -146,16 +146,29 @@ def optional_json(value):
             return JsonNull()
 
 
-def is_json(request):
+def media_type(request):
     match P.header(request, "Content-Type"):
         case Error():
-            return False
+            return ""
         case Success(value=header):
             match indexOf(header, ";"):
                 case Success(value=end):
-                    return json_media(trim(toLowerCase(take(header, end))))
+                    return take(header, end)
                 case Error():
-                    return json_media(trim(toLowerCase(header)))
+                    return header
+
+
+def bind_binary(request, media_types, max_bytes, endpoint):
+    """Pass a bounded nonempty raw body to the endpoint. [FASTAPI-HTTP-FILES]"""
+    size = byteLength(request.body)
+    if not listContains(media_types, media_type(request)):
+        return E.exception_response(E.exception(415, "Unsupported Media Type", ""))
+    elif size == 0:
+        return E.exception_response(E.exception(400, "Empty request body", ""))
+    elif size > max_bytes:
+        return E.exception_response(E.exception(413, "Request body too large", ""))
+    else:
+        return endpoint(request.body)
 
 
 def json_media(media):
@@ -165,7 +178,7 @@ def json_media(media):
 def bind(request, decoder, endpoint):
     if request.body == "":
         return rendered(invalid(["body"], "missing", "Field required", JsonNull()), endpoint)
-    elif is_json(request):
+    elif json_media(trim(toLowerCase(media_type(request)))):
         source = drop(request.body, len("\ufeff")) if startsWith(request.body, "\ufeff") else request.body
         match jsonDecodePython(source):
             case Success(value=document):

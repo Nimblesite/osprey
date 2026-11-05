@@ -1,6 +1,7 @@
 """Drive both managed backends in parallel over real HTTP, never a mocked transport."""
 import ast
 import concurrent.futures
+import gzip
 import http.client
 import importlib.machinery
 import importlib.util
@@ -59,6 +60,33 @@ def body_cases(port):
         assert headers["Content-Type"] == "application/octet-stream"
         assert headers["X-Echo"] == "yes"
         assert int(headers["Content-Length"]) == len(payload), (headers, payload)
+
+
+def binary_upload_cases(port):
+    """[FASTAPI-HTTP-FILES] Preserve body bytes and enforce the archive policy in order."""
+    media_types = [(None, False), ("", False), ("text/plain", False), ("application/octet-stream", False),
+                   ("APPLICATION/GZIP", False), ("application/gzip ; x=y", False),
+                   ("application/gzip", True), ("application/gzip; charset=binary", True),
+                   ("application/x-tar+gzip", True)]
+    payloads = (b"", b"\0", b"prefix\0suffix", bytes(range(256)), gzip.compress(bytes(range(256)), mtime=0),
+                b"\xff" * 8191, bytes(range(256)) * 32, b"\0" + b"z" * 8192)
+    for media_type, allowed in media_types:
+        for payload in payloads:
+            headers = {} if media_type is None else {"Content-Type": media_type}
+            status, received, body = request(port, "POST", "/upload/archive", payload, headers)
+            if not allowed:
+                expected = 415, b'{"detail":"Unsupported Media Type"}'
+            elif not payload:
+                expected = 400, b'{"detail":"Empty request body"}'
+            elif len(payload) > 8192:
+                expected = 413, b'{"detail":"Request body too large"}'
+            else:
+                expected = 201, payload
+            assert (status, body) == expected, (media_type, len(payload), status, body[:128])
+            received = {name.lower(): value for name, value in received.items()}
+            assert received["content-type"] == ("application/octet-stream" if status == 201 else "application/json")
+            assert int(received["content-length"]) == len(expected[1]), received
+    assert request(port, "GET", "/health")[::2] == (200, b'{"status":"ok"}')
 
 
 def hostless_redirect_cases(port):
@@ -246,6 +274,7 @@ def cases(port):
     cors_browser_cases(port)
     body_model_smoke(port)
     body_reference_cases(port)
+    binary_upload_cases(port)
     for _ in range(3):
         health_cases(port)
         method_cases(port)
@@ -347,7 +376,9 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["--worker"]:
         execute()
     elif len(sys.argv) == 3 and sys.argv[1] == "--body-port":
-        body_reference_cases(int(sys.argv[2]))
+        port = int(sys.argv[2])
+        body_reference_cases(port)
+        binary_upload_cases(port)
     elif len(sys.argv) == 4 and sys.argv[1] == "--cors-port":
         cors_reference_cases(int(sys.argv[2]), sys.argv[3])
     elif sys.argv[1:]:

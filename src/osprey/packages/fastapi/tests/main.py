@@ -64,6 +64,21 @@ def binary_requests(client, payloads):
             return binary_requests(client, rest)
 
 
+def binary_upload_cases(client):
+    path = "/upload/archive"
+    gzip = "Content-Type: application/gzip"
+    archive = "Content-Type: application/x-tar+gzip; profile=archive"
+    exact = unwrap_or(repeat("é", 4096), "")
+    expect(byteLength(exact), 8192)
+    binary_reply(httpPostResponse(client, path, "x", gzip), "x")
+    binary_reply(httpPostResponse(client, path, exact, archive), exact)
+    assert_reply(httpPostResponse(client, path, "", gzip), 400, '{"detail":"Empty request body"}')
+    assert_reply(httpPostResponse(client, path, exact + "x", gzip), 413, '{"detail":"Request body too large"}')
+    assert_reply(httpPostResponse(client, path, "", ""), 415, '{"detail":"Unsupported Media Type"}')
+    assert_reply(httpPostResponse(client, path, exact + "x", "Content-Type: text/plain"), 415, '{"detail":"Unsupported Media Type"}')
+    return binary_reply(httpPostResponse(client, path, "after", gzip), "after")
+
+
 def request_metadata_cases(client):
     headers = "X-Probe: one\r\nx-probe: two,three\r\nX-PROBE: "
     path = "/contract/request/%C3%A9/a%2Fb"
@@ -179,6 +194,7 @@ def requests(client):
     assert_reply(httpPostResponse(client, "/echo", "héllo ☕", ""), 201, "héllo ☕")
     assert_reply(httpGetResponse(client, "/bundle/%00", ""), 400, "{\"detail\":\"NUL is not representable in the native HTTP string boundary\"}")
     binary_requests(client, ['"\\u0000"', '"\\u0000tail"', '"head\\u0000tail"', '"head\\u0000"', '"é\\u0000😀\\u0000tail"'])
+    binary_upload_cases(client)
     parameter_cases(client)
     request_metadata_cases(client)
     manual_contract_cases(client)

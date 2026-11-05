@@ -25,11 +25,17 @@ def ready(_request):
     return R.json_response(503, "{\"detail\":\"database unavailable\"}", "Cache-Control: no-store")
 
 def echo(request):
-    return R.response(201, request.body, "application/octet-stream", "X-Echo: yes")
+    return echo_bytes(request.body)
+
+def echo_bytes(payload):
+    return R.response(201, payload, "application/octet-stream", "X-Echo: yes")
+
+def archive_upload(request):
+    return Body.bind_binary(request, ["application/gzip", "application/x-tar+gzip"], 8192, echo_bytes)
 
 def routes():
     """The ordered real HTTP routes used by both managed-backend suites."""
-    return listConcat(body_routes(), [Routing.route("GET", "/health", health), Routing.route("GET", "/vary", varied), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)])
+    return listConcat(body_routes(), [Routing.route("GET", "/health", health), Routing.route("GET", "/vary", varied), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("POST", "/upload/archive", archive_upload), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)])
 
 
 __all__ = ["routes", "application", "cors_application", "fake_identity"]

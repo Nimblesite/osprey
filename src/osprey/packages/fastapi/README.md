@@ -25,7 +25,8 @@ Checked items have real HTTP test coverage.
 - [ ] Request cancellation and cleanup on disconnect. [FASTAPI-HTTP-LIFESPAN]
 - [ ] Incremental SSE delivery, event framing, terminal events/errors, heartbeat comments, deadlines, cancellation and cleanup. Buffered concatenation does not qualify. [FASTAPI-HTTP-STREAMING]
 - [ ] ACP Streamable HTTP GET/POST/DELETE and WebSocket upgrade, auth rejection, session lifecycle, tool results and cancellation. [FASTAPI-HTTP-ACP]
-- [ ] Multipart upload, binary file responses, size limits, content types, raw webhook bytes and signature header preservation. [FASTAPI-HTTP-FILES]
+- [x] Raw binary uploads and responses with media type checks and byte limits. [FASTAPI-HTTP-FILES]
+- [ ] Multipart uploads and webhook signature verification. [FASTAPI-HTTP-FILES]
 - [ ] OpenAPI generation/customization, request/response schemas and documented security/error responses. [FASTAPI-HTTP-OPENAPI]
 - [ ] Run the complete compatibility suite over real sockets under GC and ARC, including authorization denials, tool-result validation and streaming failures, with per-package coverage above the enforced floor. [FASTAPI-HTTP-ACCEPTANCE]
 
@@ -35,7 +36,7 @@ Generate records: `python3 src/osprey/packages/fastapi/generate_models.cpython`.
 
 Real HTTP acceptance: `python3 src/osprey/packages/fastapi/tests/e2e.cpython`. It compiles the actual Osprey sources and makes HTTP requests against the native listener, including parallel requests. Logs are in `target/fastapi/`.
 
-The native GC and ARC suites pass the 98.5% package coverage gate with 815 of 827 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 808 body records over real HTTP.
+The native GC and ARC suites pass the 98.5% package coverage gate with 824 of 836 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records, 808 JSON body records and 72 raw upload permutations over real HTTP.
 
 The native HTTP suite directly exercises application and router dispatch, raw and decoded query handling, repeated headers, path matching, explicit response helpers and validation issue rendering. The model generator keeps URL decoding state and dependency acquisition state private to the modules that own them.
 
@@ -59,4 +60,6 @@ Body binding provides typed readers and typeDiagram-generated fixture records fo
 
 The explicit `jsonDecodePython` boundary decoder preserves first-key insertion order with final values, including nested objects and escaped key spellings, and accepts Python's NaN/infinity forms before model validation. Tests include 2,000 repeated keys, malformed duplicate input, non-finite values in ignored fields and non-finite values overwritten by later keys; they assert FastAPI's exact success or failure response. Ordinary `jsonDecode` retains its strict duplicate-key and finite-number rules, verified by the exact Default/ML JSON goldens under GC and ARC. The compatibility decoder preserves escaped NUL in keys and values. Native int64 and nesting limits still apply.
 
-The body oracle records 808 cases from seven generated fixture models, with contract and schema hashes in `BODY_JSON`. GC and ARC match all responses, including the 68 escaped NUL cases. The HTTP server preserves literal NUL in binary bodies and rejects invalid JSON with the recorded status and offset, even after a complete JSON prefix. The native HTTP client preserves binary request and response bytes across Content-Length, chunked and close-delimited response framing. General UTF-16/UTF-32 body decoding and multipart uploads and webhook verification remain incomplete.
+The body oracle records 808 cases from seven generated fixture models, with contract and schema hashes in `BODY_JSON`. GC and ARC match all responses, including the 68 escaped NUL cases. The HTTP server preserves literal NUL in binary bodies and rejects invalid JSON with the recorded status and offset, even after a complete JSON prefix. The native HTTP client preserves binary request and response bytes across Content-Length, chunked and close-delimited response framing. General UTF-16/UTF-32 body decoding remains open.
+
+`Body.bind_binary(request, media_types, max_bytes, endpoint)` checks the first Content-Type against the configured exact tokens, ignoring parameters. It returns 415 for an unsupported type, 400 for an empty body, or 413 for a body over the byte limit. The endpoint receives the original bytes. The native listener's request limit also applies. [FASTAPI-HTTP-FILES]
