@@ -161,33 +161,20 @@ def scan_line(acc, i, lines):
     line = unwrap_or(listGet(lines, i), "")
     last = i == len(lines) - 1
     if acc.scanMode == "str":
-        return str_line(acc, line, last)
+        return span_line(acc, line, last, acc.scanMark, lambda text: update(acc, scanTokens=emit(acc, text, "string"), scanBuf="", scanMark="", scanMode=acc.scanBack, scanBack=""))
     elif acc.scanMode == "block":
-        return block_line(acc, line, last)
+        return span_line(acc, line, last, acc.scanLang.langClose, lambda text: update(acc, scanTokens=emit(acc, text, "comment"), scanBuf="", scanMode=""))
     else:
         return single_line(acc, line, last, True)
 
 
-def str_line(acc, line, last):
-    """A line inside an open multi-line string, up to its closing delimiter."""
-    mark = acc.scanMark
+def span_line(acc, line, last, mark, close):
+    """Consume an open multiline span and resume scanning after its closing delimiter."""
     match indexOf(line, mark):
         case Success(value=at):
-            text = acc.scanBuf + take(line, at + byteLength(mark))
-            base = update(acc, scanTokens=emit(acc, text, "string"), scanBuf="", scanMark="", scanMode=acc.scanBack, scanBack="")
-            return single_line(base, drop(line, at + byteLength(mark)), last, False)
-        case Error(message=_m):
-            return update(acc, scanBuf=acc.scanBuf + line + ("" if last else "\n"))
-
-
-def block_line(acc, line, last):
-    """A line inside an open block comment, up to its closing mark."""
-    close = acc.scanLang.langClose
-    match indexOf(line, close):
-        case Success(value=at):
-            text = acc.scanBuf + take(line, at + byteLength(close))
-            base = update(acc, scanTokens=emit(acc, text, "comment"), scanBuf="", scanMode="")
-            return single_line(base, drop(line, at + byteLength(close)), last, False)
+            end = at + byteLength(mark)
+            base = close(acc.scanBuf + take(line, end))
+            return single_line(base, drop(line, end), last, False)
         case Error(message=_m):
             return update(acc, scanBuf=acc.scanBuf + line + ("" if last else "\n"))
 

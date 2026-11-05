@@ -42,22 +42,28 @@ pub fn declaration_position(statement: &Stmt) -> Option<Position> {
     }
 }
 
+macro_rules! match_position {
+    ($statement:expr, $slot:ident => $value:expr, $import:pat => $import_value:expr) => {
+        match $statement {
+            Stmt::Import($import) => $import_value,
+            Stmt::Namespace { $slot, .. }
+            | Stmt::Let { $slot, .. }
+            | Stmt::Assignment { $slot, .. }
+            | Stmt::Function { $slot, .. }
+            | Stmt::Extern { $slot, .. }
+            | Stmt::Type { $slot, .. }
+            | Stmt::Effect { $slot, .. }
+            | Stmt::Module { $slot, .. }
+            | Stmt::Signature { $slot, .. }
+            | Stmt::Expr { $slot, .. } => $value,
+        }
+    };
+}
+
 /// The recorded position of every statement form, imports included.
 #[must_use]
 pub fn statement_position(statement: &Stmt) -> Option<Position> {
-    match statement {
-        Stmt::Import(import) => import.position,
-        Stmt::Namespace { position, .. }
-        | Stmt::Let { position, .. }
-        | Stmt::Assignment { position, .. }
-        | Stmt::Function { position, .. }
-        | Stmt::Extern { position, .. }
-        | Stmt::Type { position, .. }
-        | Stmt::Effect { position, .. }
-        | Stmt::Module { position, .. }
-        | Stmt::Signature { position, .. }
-        | Stmt::Expr { position, .. } => *position,
-    }
+    match_position!(statement, position => *position, import => import.position)
 }
 
 /// The mutable position slot of every statement form except imports: the
@@ -65,19 +71,7 @@ pub fn statement_position(statement: &Stmt) -> Option<Position> {
 /// import slots untouched.
 #[must_use]
 pub fn position_mut(statement: &mut Stmt) -> Option<&mut Option<Position>> {
-    match statement {
-        Stmt::Namespace { position, .. }
-        | Stmt::Let { position, .. }
-        | Stmt::Assignment { position, .. }
-        | Stmt::Function { position, .. }
-        | Stmt::Extern { position, .. }
-        | Stmt::Type { position, .. }
-        | Stmt::Effect { position, .. }
-        | Stmt::Module { position, .. }
-        | Stmt::Signature { position, .. }
-        | Stmt::Expr { position, .. } => Some(position),
-        Stmt::Import(_) => None,
-    }
+    match_position!(statement, position => Some(position), _ => None)
 }
 
 /// The mutable outer doc slot of the seven declaration forms that carry one
