@@ -264,6 +264,7 @@ _test_hunt_crashes:
 	@test -x "$(KLEE_PREFIX)/bin/klee" || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
 	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc
 	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_arc.bc
+	python3 scripts/hunt/test-hunt-default-budget.py
 	python3 scripts/hunt/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
 	@set -e; for backend in gc arc; do python3 scripts/hunt/hunt_crashes.py --memory $$backend; done
 
@@ -280,7 +281,6 @@ _test_hunt_mock:
 	@echo "==> [hunt] corpus scripts and the format oracle..."
 	@python3 scripts/hunt/test-hunt-scripts.py
 	@python3 scripts/hunt/test-hunt-sample.py
-	@python3 scripts/hunt/test-hunt-default-budget.py
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
 # instrumentation into src/toolchain/compiler/bin/cov/<suite>/, reruns it there (a failing
