@@ -63,7 +63,9 @@ pub(crate) enum MetaField {
     PtrOpaque,
     /// 1-byte field (`i1` / `i8`).
     Byte,
-    /// 4-byte field (`i32`).
+    /// 2-byte field (`i16`, including binary16 bits).
+    Short,
+    /// 4-byte field (`i32` / `float`).
     Half,
 }
 
@@ -75,6 +77,7 @@ impl MetaField {
             MetaField::Word | MetaField::ManagedWord => 8,
             MetaField::PtrManaged | MetaField::PtrDirect | MetaField::PtrOpaque => pointer_bytes,
             MetaField::Byte => 1,
+            MetaField::Short => 2,
             MetaField::Half => 4,
         }
     }
@@ -91,19 +94,7 @@ impl MetaField {
     /// (`Str`/`Ptr` values are heap handles; rodata/foreign pointers are
     /// covered by the runtime's registry probe-miss).
     pub(crate) fn of_lty(lty: LType) -> MetaField {
-        match lty {
-            // An erased-`any` box is an ordinary tagged allocation, so a slot
-            // holding one is managed like any other heap handle
-            // ([`LType::is_managed_ptr`] is the same classification for
-            // callers that only need the boolean).
-            LType::Str | LType::Ptr | LType::Any => MetaField::PtrManaged,
-            LType::I1 => MetaField::Byte,
-            LType::Num(n) if n.bits == 8 => MetaField::Byte,
-            // A 16-bit field is laid out in a 4-byte slot until a 2-byte
-            // field exists (plan 0050 phase 2).
-            LType::Num(n) if n.bits <= 32 => MetaField::Half,
-            LType::Num(_) => MetaField::Word,
-        }
+        Self::of_slot_ty(lty.as_str())
     }
 
     /// The layout field for a textual LLVM slot type (closure / effect-env
@@ -111,7 +102,8 @@ impl MetaField {
     pub(crate) fn of_slot_ty(slot_ty: &str) -> MetaField {
         match slot_ty {
             "i1" | "i8" => MetaField::Byte,
-            "i32" => MetaField::Half,
+            "i16" => MetaField::Short,
+            "i32" | "float" => MetaField::Half,
             "i64" | "double" => MetaField::Word,
             s if s.ends_with('*') => MetaField::PtrManaged,
             _ => MetaField::Word,
