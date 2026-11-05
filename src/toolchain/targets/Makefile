@@ -2,6 +2,7 @@
 # configuration and private steps; `make help` at the root lists these too.
 # Assignments use `?=`: editor task panels list `NAME :=` lines as targets.
 ROOT ?= ../../..
+WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
 else

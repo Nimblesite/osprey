@@ -73,39 +73,6 @@ test: build _build_c_runtime_tests
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
 
-.PHONY: _test_packages _coverage_check_packages
-# [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
-# editor see it. A package's tests list sibling source roots by hand, so they
-# stay green when the package's own manifest cannot resolve its dependencies.
-.PHONY: _check_packages
-_check_packages:
-	for manifest in src/osprey/packages/*/osprey.toml; do \
-		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
-	done
-
-# [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
-# reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
-# into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
-# reports alone — no suite is re-run to check what it already measured — and
-# fails on a package below its projects.packages threshold or on missing,
-# empty, malformed or incomplete evidence.
-_test_packages:
-	python3 scripts/packages/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
-
-_coverage_check_packages:
-	python3 scripts/packages/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
-
-.PHONY: _test_agent 
-# Osprey Agent's turn logic and real update path: no network and no window.
-_test_agent:
-	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
-	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
-
-.PHONY: _test_python_app_ports
-
-_test_python_app_ports:
-	python3 scripts/packages/test-python-app-ports.py --compiler $(BIN)
-
 
 ## lint: Run all linters/analyzers (read-only). Checks formatting but does
 ## NOT rewrite it — `make fmt` does that. The fmt check lives HERE because
@@ -113,51 +80,17 @@ _test_python_app_ports:
 ## job cannot block a merge.
 lint: _deslop _lint
 
-## hawk: Dead-code gate (astral-sh/hawk). Fails the build when any `pub`
-## declaration is unreachable from the osprey binary (hawk::dead_public).
-##
-## hawk counts the workspace's TEST binaries as reachability roots, so an item
-## whose only callers are its own `#[cfg(test)]` module passes this gate — that
-## is how `osprey_debug::DebugBuild` and `osprey_syntax::dependency_sets` lived
-## in the tree. `scripts/ci/verify-no-dead-code.mjs` (run by `_lint`) answers the
-## narrower question "does PRODUCT code name this?" and catches that class.
-## Neither gate subsumes the other; both run. Scoped
-## to dead_public ONLY — unnecessary_public / restricted-visibility findings are
-## over-exposure, not dead code, and several are irreducibly public for the
-## integration tests under this workspace's `dead_code = "deny"` policy, so they
-## must NOT fail the gate. hawk needs rustc_private (RUSTC_BOOTSTRAP=1) and its
-## prebuilt driver is built against one exact rustc and refuses any other, so
-## the gate runs hawk under that toolchain, not under whatever stable is today:
-## CI installing the latest hawk over the latest stable failed the day stable
-## moved to 1.99.1 while hawk 0.1.15 was built for 1.99.0. HAWK_VERSION and
-## HAWK_RUSTC move together; `make hawk-install` installs both. An absent
-## cargo-hawk FAILS this
-## target: a gate that cannot run must not report success.
-## Install: make hawk-install (https://github.com/astral-sh/hawk)
-HAWK_VERSION ?= 0.1.15
-HAWK_RUSTC   ?= 1.99.0
-hawk-install:
-	rustup toolchain install $(HAWK_RUSTC) --profile minimal
-	curl --proto '=https' --tlsv1.2 -LsSf https://github.com/astral-sh/hawk/releases/download/$(HAWK_VERSION)/cargo-hawk-installer.sh | sh
-
-hawk:
-	@echo "==> Dead-code gate (hawk)..."
-	@if ! command -v cargo-hawk >/dev/null 2>&1; then \
-		echo "FAIL: cargo-hawk is not installed, so the dead-code gate cannot run."; \
-		echo "      A gate that cannot run must not report success — this used to"; \
-		echo "      print a warning and exit 0, so 'make hawk' was green on every"; \
-		echo "      machine without the binary, the CI runner included if its"; \
-		echo "      install step ever stopped landing cargo-hawk on PATH."; \
-		echo "      Install: make hawk-install"; \
-		exit 1; \
-	fi
-	cd src/toolchain && RUSTC_BOOTSTRAP=1 cargo +$(HAWK_RUSTC) hawk check --only dead-public -D hawk::dead_public --target-dir $(CURDIR)/target/hawk
-
 ## fmt: Format all code in-place. Pass CHECK=1 for read-only check (CI use).
 fmt: $(EXT_NODE_DEPS)
 	@echo "==> Formatting$(if $(CHECK), (check mode),)..."
 	cargo fmt --manifest-path src/toolchain/Cargo.toml --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
+
+## website: Clean, build and serve the website at http://localhost:8080 (WEBSITE_PORT=<n> to change; Ctrl-C stops it).
+WEBSITE_PORT ?= 8080
+.PHONY: website
+website: $(WEBSITE_NODE_DEPS)
+	cd src/toolchain/website && npm run clean && npm run build && node tests/serve.cjs $(WEBSITE_PORT)
 
 ## clean: Remove all build artifacts
 clean:
@@ -166,8 +99,9 @@ clean:
 	$(RM) $(RTB) src/toolchain/compiler/lib
 	cd $(EXT_DIR) && $(RM) out dist coverage test.log
 
-## ci: lint + hawk + test + build + the bank, docs and inbox suites (full CI simulation)
-ci: lint hawk test build
+## ci: lint + test + build + hawk + the bank, docs and inbox suites (full CI simulation)
+ci: lint test build
+	$(MAKE) -C src/toolchain hawk
 	$(MAKE) -C src/toolchain/targets/tests bank
 	$(MAKE) -C src/toolchain/targets bank-e2e
 	$(MAKE) -C src/toolchain/website docs-html-test
@@ -191,29 +125,6 @@ help:
 	@grep -hE '^##' $(MAKEFILE_LIST) | sed 's/^## \{0,1\}//'
 	@for folder in $(MAKE_FOLDERS); do echo; echo "make -C $$folder <target>:"; grep -hE '^##' $$folder/Makefile | sed 's/^## \{0,1\}/  /'; done
 
-# =============================================================================
-# Feature checks — each comment states the command's expected result
-# =============================================================================
-
-WORKBENCH_TREE ?= target/workbench-vsix/slate-board.native.json
-
-## cli-contracts: Compiler CLI contracts: --quiet and --no-warnings (2 each),
-##                closed-stdin launcher (3, OSPREY_TEST_COMPILER/OSPREY_TEST_MEMORY
-##                forwarded), checked source graph (3), Windows DLL boundary (6).
-.PHONY: cli-contracts
-cli-contracts:
-	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cli_e2e quiet
-	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test cli_e2e no_warnings
-	cargo test --manifest-path src/toolchain/Cargo.toml --profile ci -p osprey-cli --test input_never_blocks
-	cargo test --manifest-path src/toolchain/Cargo.toml --profile ci -p osprey-cli checked_source_graph
-	cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli windows_dll
-
-# =============================================================================
-# Applications
-# =============================================================================
-
-
-
 ## run: Compile and run an Osprey file (usage: make run FILE=<path>)
 run: build
 	@if [ -z "$(FILE)" ]; then echo "Usage: make run FILE=<path>"; exit 1; fi
@@ -225,42 +136,3 @@ install: build
 	sudo $(MKDIR) /usr/local/lib
 	sudo cp $(RTB)/libfiber_runtime*.a $(RTB)/libhttp_runtime*.a /usr/local/lib/
 	@echo "==> installed osprey and runtime archives."
-
-# =============================================================================
-# Apple and Android targets
-# =============================================================================
-
-.PHONY: _gpui-test _gpui-smoke 
-
-_gpui-test: _runtime_macos _runtime
-	python3 src/toolchain/hosts/gpui/dependencies.py
-	python3 src/toolchain/hosts/gpui/dependencies_test.py
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
-		$(BIN) test $$suite || exit 1; \
-	done
-	$(MAKE) _gpui-smoke _gpui-self-test
-	cd src/toolchain/hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
-
-# Compile every app's archive once for the smoke and self-test targets. The synth wrapper bundles
-# and opens the app after its inner run.sh returns, so compile its archive directly instead.
-.PHONY: _gpui-apps
-_gpui-apps:
-	pids=; \
-	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/casting; do \
-		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
-		pids="$$pids $$!"; \
-	done; \
-	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
-	pids="$$pids $$!"; \
-	status=0; \
-	for pid in $$pids; do wait $$pid || status=1; done; \
-	exit $$status
-
-# [UI-MACHINE-SELF-TEST] the scripts run in `_gpui-self-test`.
-# Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
-# real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
-_gpui-smoke: _gpui-apps
-	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done
-
-# Native Talon clients share the browser's Osprey application and live API.

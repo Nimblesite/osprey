@@ -174,10 +174,13 @@ test('malformed detection input fails the gate instead of skipping required jobs
 const workflowJobs = (file) => readFileSync(file, 'utf8').split(/(?=^  [\w-]+:\s*$)/m)
 const job = (name, file = '.github/workflows/release.yml') => workflowJobs(file).find((block) => block.startsWith(`  ${name}:`)) ?? ''
 
-const makeRecipe = (name, file = 'Makefile') => {
+// The root Makefile and the fragments it includes, where private steps live.
+const ROOT_MAKEFILES = ['Makefile', ...readdirSync('scripts/make').filter((f) => f.endsWith('.mk')).map((f) => `scripts/make/${f}`)]
+
+const makeRecipe = (name, files = ROOT_MAKEFILES) => {
   const commands = []
   let active = false
-  for (const line of readFileSync(file, 'utf8').split('\n')) {
+  for (const line of [files].flat().flatMap((file) => [...readFileSync(file, 'utf8').split('\n'), '.end-of-file:'])) {
     if (line.startsWith(`${name}:`)) { active = true; continue }
     if (active && /^[^\s#][^:]*:/.test(line)) break
     if (active && line.startsWith('\t')) commands.push(line.trim())

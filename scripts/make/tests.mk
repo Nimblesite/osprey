@@ -520,3 +520,37 @@ _deslop:
 	@echo "==> Duplication gate (deslop)..."
 	bash scripts/ci/install-deslop.sh
 	deslop . --config .config/deslop.toml --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+
+# Package, agent and Python-port steps behind `make test`.
+.PHONY: _test_packages _coverage_check_packages
+# [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
+# editor see it. A package's tests list sibling source roots by hand, so they
+# stay green when the package's own manifest cannot resolve its dependencies.
+.PHONY: _check_packages
+_check_packages:
+	for manifest in src/osprey/packages/*/osprey.toml; do \
+		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
+	done
+
+# [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
+# reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
+# into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
+# reports alone — no suite is re-run to check what it already measured — and
+# fails on a package below its projects.packages threshold or on missing,
+# empty, malformed or incomplete evidence.
+_test_packages:
+	python3 scripts/packages/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+_coverage_check_packages:
+	python3 scripts/packages/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+.PHONY: _test_agent 
+# Osprey Agent's turn logic and real update path: no network and no window.
+_test_agent:
+	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
+	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
+
+.PHONY: _test_python_app_ports
+
+_test_python_app_ports:
+	python3 scripts/packages/test-python-app-ports.py --compiler $(BIN)

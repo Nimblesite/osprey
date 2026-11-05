@@ -180,3 +180,36 @@ UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test s
 _ui-test: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done
+
+.PHONY: _gpui-test _gpui-smoke 
+
+_gpui-test: _runtime_macos _runtime
+	python3 src/toolchain/hosts/gpui/dependencies.py
+	python3 src/toolchain/hosts/gpui/dependencies_test.py
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
+		$(BIN) test $$suite || exit 1; \
+	done
+	$(MAKE) _gpui-smoke _gpui-self-test
+	cd src/toolchain/hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
+
+# Compile every app's archive once for the smoke and self-test targets. The synth wrapper bundles
+# and opens the app after its inner run.sh returns, so compile its archive directly instead.
+.PHONY: _gpui-apps
+_gpui-apps:
+	pids=; \
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/casting; do \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
+		pids="$$pids $$!"; \
+	done; \
+	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
+	pids="$$pids $$!"; \
+	status=0; \
+	for pid in $$pids; do wait $$pid || status=1; done; \
+	exit $$status
+
+# [UI-MACHINE-SELF-TEST] the scripts run in `_gpui-self-test`.
+# Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
+# real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
+_gpui-smoke: _gpui-apps
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done

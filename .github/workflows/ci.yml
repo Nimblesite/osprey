@@ -312,9 +312,9 @@ jobs:
       # hawk release and that toolchain together and runs hawk under it; a
       # stable release no longer breaks the gate.
       - name: Install cargo-hawk (dead-code gate)
-        run: make hawk-install
+        run: make -C src/toolchain hawk-install
       - name: Dead-code gate (hawk)
-        run: make hawk
+        run: make -C src/toolchain hawk
 
   # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
   # Every suite, in parallel, each instrumented. None of these rebuilds the

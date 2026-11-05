@@ -7,7 +7,7 @@
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install hawk hawk-install \
+.PHONY: build test lint fmt clean ci setup run install \
 	\
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
@@ -49,7 +49,7 @@ endif
 COVERAGE_THRESHOLDS_FILE ?= src/osprey/tests/coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
-MAKE_FOLDERS ?= src/toolchain/targets src/toolchain/targets/tests src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
+MAKE_FOLDERS ?= src/toolchain src/toolchain/targets src/toolchain/targets/tests src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
 # (osprey searches src/toolchain/compiler/bin at --run time).

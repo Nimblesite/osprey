@@ -29,7 +29,7 @@
 // `path`) is held alive by its namesake, and macro-generated items are not seen
 // at all. Both are FALSE NEGATIVES: the gate under-reports and never invents a
 // finding, which is what lets it run with no allowlist. It is a floor on top of
-// `make hawk`, not a replacement for reading the code.
+// `make -C src/toolchain hawk`, not a replacement for reading the code.
 //
 // NO ALLOWLIST, deliberately. A gate you can turn off is not a gate. When this
 // fails, the fix is to call the item or delete it, never to exempt it.
