@@ -243,7 +243,7 @@ fn a_static_effect_inside_a_kernel_body_is_stage_legal() {
     // "empty *dynamic* row". A kernel that answers its requests before it runs
     // is legal, and it is legal through the existing purity gate rather than a
     // second one: discharge follows data typing but precedes residual purity.
-    let program = r#"
+    let program = r"
 static effect Tile { size: fn() -> int }
 fn shade(px) = satMul(px, perform Tile.size())
 fn main() = {
@@ -263,7 +263,7 @@ fn main() = {
         Error { message } => print(toString(message))
     }
 }
-"#;
+";
     let handler = "handle static Tile { size => 3 }";
     let source = program
         .replace("@inside@", handler)
