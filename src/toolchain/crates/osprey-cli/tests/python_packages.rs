@@ -1,23 +1,20 @@
-//! The ported Python packages ([PORT-SUITE] in
-//! docs/specs/ecosystem/0043-PythonFlavorPorts.md). Every `src/osprey/packages/<name>/tests`
-//! Python-flavor project has assertions comparing the port with
-//! values the real `CPython` package computed. It must print exactly its
-//! committed `expected_output.txt` — one `ok` line per assertion and a
-//! `N passed, 0 failed` total — under the GC and ARC memory backends,
-//! and an ARC run must exit with no live objects. The native ML framework also
-//! stays in this execution matrix; `CPython` provenance applies to Python ports.
+//! Execute every package's independent oracle under GC and ARC. [PORT-SUITE]
+//! Exact golden stdout, positive assertions, zero failures and a clean ARC exit
+//! are mandatory; native TAP and port totals prove the same acceptance contract.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[path = "common/oracle_transcript.rs"]
+mod oracle_transcript;
 #[path = "common/package_matrix.rs"]
 mod package_matrix;
+use oracle_transcript::successful_oracle;
 use package_matrix::{schedule, MATRIX_WORKERS};
 
 fn repo() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
 
-/// Every published package with a test manifest, sorted; tooling stays separate.
 fn suites() -> Vec<PathBuf> {
     let mut found: Vec<PathBuf> = std::fs::read_dir(repo().join("src/osprey/packages"))
         .into_iter()
@@ -57,7 +54,6 @@ fn package_tooling_containers_do_not_enter_the_library_matrix() {
         .is_some_and(|package| package.join("osprey.toml").is_file())));
 }
 
-/// All existing Torch groups must discharge before the native oracle run.
 #[test]
 fn the_complete_torch_suite_discharges_its_storage_handlers() {
     let assembled =
@@ -71,7 +67,6 @@ fn the_complete_torch_suite_discharges_its_storage_handlers() {
     assert!(errors.is_empty(), "residual diagnostics: {errors:#?}");
 }
 
-/// `(succeeded, stdout, stderr)` of the suite run under `memory`.
 fn run(suite: &Path, memory: &str, cache: &Path) -> (bool, String, String) {
     let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
         .current_dir(repo())
@@ -106,43 +101,6 @@ fn arc_live(stderr: &str) -> Option<String> {
     }
 }
 
-fn successful_oracle(output: &str) -> bool {
-    let lines: Vec<_> = output.lines().collect();
-    let Some((summary, outcomes)) = lines.split_last() else {
-        return false;
-    };
-    summary
-        .strip_suffix(" passed, 0 failed")
-        .and_then(|value| value.parse::<usize>().ok())
-        .is_some_and(|count| {
-            count > 0
-                && outcomes
-                    .iter()
-                    .filter(|line| line.starts_with("ok ") && line.len() > 3)
-                    .count()
-                    == count
-                && !outcomes.iter().any(|line| line.starts_with("FAIL "))
-        })
-}
-
-#[test]
-fn oracle_success_requires_real_passing_assertions() {
-    assert!(successful_oracle("ok one\nok two\n2 passed, 0 failed\n"));
-    assert!(successful_oracle(
-        "ok multiline\npattern\n1 passed, 0 failed\n"
-    ));
-    for bad in [
-        "",
-        "0 passed, 0 failed\n",
-        "FAIL one\n1 passed, 0 failed\n",
-        "ok one\n1 passed, 1 failed\n",
-        "ok one\n2 passed, 0 failed\n",
-        "ok \n1 passed, 0 failed\n",
-    ] {
-        assert!(!successful_oracle(bad), "accepted invalid oracle: {bad}");
-    }
-}
-
 #[test]
 fn every_python_oracle_golden_records_nonzero_successful_assertions() -> std::io::Result<()> {
     for suite in suites() {
@@ -159,7 +117,6 @@ fn every_python_oracle_golden_records_nonzero_successful_assertions() -> std::io
     Ok(())
 }
 
-/// The failures of one suite under one backend, as readable lines.
 fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
     let name = suite.display();
     let golden = std::fs::read_to_string(suite.join("expected_output.txt")).unwrap_or_default();
@@ -181,7 +138,6 @@ fn failures(suite: &Path, memory: &str, cache: &Path) -> Vec<String> {
     problems
 }
 
-/// One job per (suite, backend); problems return in deterministic submission order.
 fn matrix_problems(suites: &[PathBuf], cache: &Path) -> Vec<String> {
     schedule(&matrix_jobs(suites), MATRIX_WORKERS, |(suite, memory)| {
         failures(suite, memory, cache)
@@ -240,7 +196,6 @@ fn package_cache() -> std::io::Result<PathBuf> {
     Ok(directory)
 }
 
-/// The quoted strings of a comma-separated list body.
 fn quoted_items(items: &str) -> Vec<String> {
     items
         .split(',')
@@ -249,7 +204,6 @@ fn quoted_items(items: &str) -> Vec<String> {
         .collect()
 }
 
-/// The string items of the one-line manifest array `key = [...]`.
 fn manifest_list(manifest: &str, key: &str) -> Vec<String> {
     manifest
         .lines()
@@ -259,7 +213,6 @@ fn manifest_list(manifest: &str, key: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The names a module's `__all__ = [...]` exports, however many lines it spans.
 fn exports(source: &str) -> Vec<String> {
     let Some(start) = source.find("__all__") else {
         return Vec::new();
@@ -278,7 +231,6 @@ fn is_word_char(c: char) -> bool {
     c.is_alphanumeric() || c == '_'
 }
 
-/// Whether `name` occurs in `text` as a whole word.
 fn names_word(text: &str, name: &str) -> bool {
     text.match_indices(name).any(|(at, _)| {
         let before = text[..at].chars().next_back();
@@ -287,7 +239,6 @@ fn names_word(text: &str, name: &str) -> bool {
     })
 }
 
-/// The suite's own sources: every `tests/*.py` except the generated `expected.py`.
 fn suite_text(suite: &Path) -> String {
     python_files(suite)
         .iter()
@@ -297,8 +248,7 @@ fn suite_text(suite: &Path) -> String {
         .join("\n")
 }
 
-/// [PORT-SUITE]: the `__all__` names of every module under `src/` that the
-/// suite never spells, so no public function ships untested.
+/// [PORT-SUITE]: reject public functions absent from the suite.
 fn unexercised_exports(package: &Path) -> Vec<String> {
     let text = suite_text(&package.join("tests"));
     let mut found = Vec::new();
@@ -354,8 +304,7 @@ fn oracle_provenance_accepts_wrapping_but_keeps_the_generator_identity() {
     ));
 }
 
-/// [PORT-TEST-ORACLE]: `expected.py` was written by the package's oracle
-/// through the shared writer, and that oracle exists.
+/// [PORT-TEST-ORACLE]: generated reference provenance and an existing oracle.
 fn assert_expected_is_oracle_generated(package: &Path) {
     let name = package
         .file_name()
@@ -371,7 +320,6 @@ fn assert_expected_is_oracle_generated(package: &Path) {
     assert!(repo().join(&oracle).is_file(), "{oracle} is missing");
 }
 
-/// Every `.py` file beneath `directory`.
 fn python_files(directory: &Path) -> Vec<PathBuf> {
     let mut found = Vec::new();
     let mut pending = vec![directory.to_path_buf()];
@@ -392,8 +340,7 @@ fn python_files(directory: &Path) -> Vec<PathBuf> {
     found
 }
 
-/// [PACKAGE-MANIFEST]: with `[package]` present, every `python_sources` path
-/// lies inside one of the manifest's `source_roots`.
+/// [PACKAGE-MANIFEST]: every Python source is rooted in the manifest.
 fn assert_sources_rooted(package: &Path, manifest: &str) {
     let roots = manifest_list(manifest, "source_roots");
     for source in manifest_list(manifest, "python_sources") {
@@ -407,9 +354,7 @@ fn assert_sources_rooted(package: &Path, manifest: &str) {
     }
 }
 
-/// [PACKAGE-SOURCE-CANONICAL]: the registry refuses a release holding any
-/// `.py` file whose first line is not the Python-flavor marker, so `CPython`
-/// code (an oracle, a tool) can never ship inside a port.
+/// [PACKAGE-SOURCE-CANONICAL]: distinguish Osprey sources from CPython helpers.
 fn assert_python_files_marked(package: &Path) {
     for file in python_files(package) {
         let text = std::fs::read_to_string(&file).unwrap_or_default();
