@@ -15,6 +15,7 @@ type RecordTemplate = (Vec<String>, Vec<(String, String)>);
 #[derive(Debug, Default)]
 pub(crate) struct InferCtx {
     subst: Vec<Option<Type>>,
+    bound: usize,
     /// Type-constructor name → declared per-parameter variance, consulted by
     /// assignability so `Source<out T>` matches covariantly. Implements
     /// [TYPE-VARIANCE-ASSIGN].
@@ -253,11 +254,9 @@ impl InferCtx {
 
     /// Default an outer literal without exposing aliases or walking its fields.
     pub(crate) fn settle_head(&mut self, t: &Type) {
-        if !matches!(t, Type::Var(_)) {
-            return;
-        }
-        if let Type::Var(id) = self.prune(t) {
-            self.settle_literal(id);
+        if let Type::Var(id) = t {
+            let root = self.compress(*id);
+            self.settle_literal(root);
         }
     }
 
@@ -281,7 +280,7 @@ impl InferCtx {
 
     fn settle_literal(&mut self, id: VarId) {
         if let Some(default) = self.literals.get(&id).copied() {
-            if matches!(self.prune(&Type::Var(id)), Type::Var(root) if root == id) {
+            if self.binding(id).is_none() {
                 self.bind(id, Type::prim(default.name()));
             }
         }
@@ -301,15 +300,28 @@ impl InferCtx {
         let Type::Var(id) = t else {
             return t.clone();
         };
-        let Some(bound) = self.binding(*id) else {
-            return t.clone();
-        };
-        let Type::Var(next) = bound else {
-            return bound.clone();
-        };
-        let pruned = self.prune(&Type::Var(*next));
-        self.bind(*id, pruned.clone());
-        pruned
+        let root = self.compress(*id);
+        self.binding(root).cloned().unwrap_or(Type::Var(root))
+    }
+
+    /// Point aliases at one representative so only that slot owns the payload.
+    fn compress(&mut self, id: VarId) -> VarId {
+        let mut root = id;
+        while let Some(&Type::Var(next)) = self.binding(root) {
+            root = next;
+        }
+        let mut alias = id;
+        while alias != root {
+            let Some(&Type::Var(next)) = self.binding(alias) else {
+                break;
+            };
+            if next == root {
+                break;
+            }
+            self.bind(alias, Type::Var(root));
+            alias = next;
+        }
+        root
     }
 
     /// How many variables are currently BOUND. A fixpoint loop compares this
@@ -318,13 +330,14 @@ impl InferCtx {
     /// ([`crate::check::Checker::resolve_deferred_arithmetic`]).
     #[must_use]
     pub(crate) fn bound_count(&self) -> usize {
-        self.subst.iter().filter(|slot| slot.is_some()).count()
+        self.bound
     }
 
     /// Bind a variable to a type. The caller guarantees the occurs-check passed.
     pub(crate) fn bind(&mut self, id: VarId, t: Type) {
         let idx = usize::try_from(id).unwrap_or(usize::MAX);
         if let Some(slot) = self.subst.get_mut(idx) {
+            self.bound += usize::from(slot.is_none());
             *slot = Some(t);
         }
     }
@@ -406,15 +419,24 @@ mod tests {
     }
 
     #[test]
-    fn prune_follows_and_compresses_chains() {
+    fn prune_follows_and_compresses_chains() -> Result<(), &'static str> {
         let mut c = InferCtx::new();
-        let (a, b) = (c.fresh(), c.fresh());
-        if let (Type::Var(ia), Type::Var(_ib)) = (&a, &b) {
-            c.bind(*ia, b.clone());
-            let bb = if let Type::Var(ib) = &b { *ib } else { 0 };
-            c.bind(bb, Type::int());
-        }
-        assert_eq!(c.prune(&a), Type::int());
+        let (Type::Var(a), Type::Var(b), Type::Var(root)) = (c.fresh(), c.fresh(), c.fresh())
+        else {
+            return Err("fresh did not return inference variables");
+        };
+        let payload = rec(uni(Type::list(Type::int())));
+        c.bind(a, Type::Var(b));
+        c.bind(b, Type::Var(root));
+        assert_eq!(c.prune(&Type::Var(a)), Type::Var(root));
+        assert_eq!(c.bound_count(), 2);
+        c.bind(root, payload.clone());
+        assert_eq!(c.prune(&Type::Var(a)), payload);
+        assert_eq!(c.prune(&Type::Var(b)), payload);
+        assert_eq!(c.binding(a), Some(&Type::Var(root)));
+        assert_eq!(c.binding(b), Some(&Type::Var(root)));
+        assert_eq!(c.bound_count(), 3);
+        Ok(())
     }
 
     #[test]
