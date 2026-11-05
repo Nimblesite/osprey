@@ -400,6 +400,21 @@ float q3_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
     return acc;
 }
 
+// ggml's `kvalues_iq4nl`: the sixteen non-linear levels IQ4_NL and IQ4_XS use
+// (ggml-common.h at the commit the gguf port pins).
+constant int IQ4_NL_LEVELS[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
+
+// IQ4_NL: 32 weights per 18-byte block, one of the sixteen non-linear levels per
+// weight and a binary16 scale.
+float iq4_nl_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+    float d = quant_half(b, 0);
+    for (uint j = 0; j < 32; j++) {
+        uint level = j < 16 ? (uint)(b[2 + j] & 15) : (uint)(b[2 + j - 16] >> 4);
+        acc = quant_add(acc, x[j], d * (float)IQ4_NL_LEVELS[level]);
+    }
+    return acc;
+}
+
 // Thread t computes part p = t % parts of output i = t / parts: the blocks
 // from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
 // from 0.0f, into partial[i * parts + p]. One template for every block format,
@@ -429,6 +444,7 @@ QUANT_KERNEL(q8_0, q8_0_step, 32, 34)
 QUANT_KERNEL(q6_k, q6_k_step, 256, 210)
 QUANT_KERNEL(q5_k, q5_k_step, 256, 176)
 QUANT_KERNEL(q3_k, q3_k_step, 256, 110)
+QUANT_KERNEL(iq4_nl, iq4_nl_step, 32, 18)
 #undef QUANT_KERNEL
 
 // out[i] = the `parts` partial sums of output i added in order from 0.0f.

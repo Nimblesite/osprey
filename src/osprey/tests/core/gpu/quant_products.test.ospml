@@ -69,7 +69,17 @@ q3_kCase () =
     expected : List<float32>
     expected = [-176674.0, 70724.0]
     productCase ("the Q3_K product matches ggml's decode in the kernels' part order", "Q3_K", bytes, 256, expected)
+
+(** [LLM-MATMUL-QUANT] IQ4_NL: 32 weights per 18-byte block, one of ggml's sixteen non-linear levels per
+    weight, a binary16 scale. *)
+iq4_nlCase () =
+    bytes : List<uint8>
+    bytes = [0, 60, 91, 2, 169, 80, 247, 158, 69, 236, 147, 58, 225, 136, 47, 214, 125, 36, 0, 60, 182, 93, 4, 171, 82, 249, 160, 71, 238, 149, 60, 227, 138, 49, 216, 127]
+    expected : List<float32>
+    expected = [-1495.0, 2230.0]
+    productCase ("the IQ4_NL product matches ggml's decode in the kernels' part order", "IQ4_NL", bytes, 32, expected)
 test ("the Q8_0 product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q8_0Case))
 test ("the Q6_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q6_kCase))
 test ("the Q5_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q5_kCase))
 test ("the Q3_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q3_kCase))
+test ("the IQ4_NL product matches ggml's decode in the kernels' part order", \() => exactArithmetic (iq4_nlCase))

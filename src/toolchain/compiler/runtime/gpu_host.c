@@ -252,6 +252,18 @@ static float q3_k_step(float acc, const float *x, const unsigned char *b) {
   return acc;
 }
 
+// ggml's `kvalues_iq4nl`, the sixteen non-linear levels IQ4_NL and IQ4_XS use.
+static const int IQ4_NL_LEVELS[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
+
+static float iq4_nl_step(float acc, const float *x, const unsigned char *b) {
+  float d = quant_half(b, 0);
+  for (unsigned j = 0; j < 32; j++) {
+    unsigned level = j < 16 ? (unsigned)(b[2 + j] & 15) : (unsigned)(b[2 + j - 16] >> 4);
+    acc = quant_add(acc, x[j], d * (float)IQ4_NL_LEVELS[level]);
+  }
+  return acc;
+}
+
 // One block format the product decodes: its size, and the step that turns one
 // block into products in the running sum.
 typedef struct {
@@ -268,6 +280,7 @@ static const QuantFormat QUANT_FORMATS[] = {
     {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_step},
     {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_step},
     {"Q3_K", "osprey_matmul_q3_k", 256, 110, q3_k_step},
+    {"IQ4_NL", "osprey_matmul_iq4_nl", 32, 18, iq4_nl_step},
 };
 #define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
 
