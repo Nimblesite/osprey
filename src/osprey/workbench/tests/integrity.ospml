@@ -49,8 +49,11 @@ module IntegrityCases
         workbench::Clip film => [film.filmSource, film.filmPoster, film.filmCaptions]
         _ => []
 
-    missing (slug, path) = match FixtureFiles::read path
-        Success _ => ""
+    // Media is binary, so `readFile` refuses it; a size proves it is there and not empty.
+    missing (slug, path) = match FixtureFiles::size path
+        Success bytes => match bytes > 0
+            true => ""
+            false => slug + ": " + path + " is empty"
         Error problem => slug + ": " + path + " cannot be read: " + problem
 
     afterProblem (slugs, slug, other) = match listContains (slugs, other)

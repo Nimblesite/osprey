@@ -40,11 +40,28 @@ module ImportedCases
 
     export unused () = expect (described (ImportedProofs::check (withUnused (), "id_imp")), "id_imp | (∀ (p : Prop), (p → p)) | none")
 
-    export catalogue () = match ImportedProofs::catalogue (withUnused ())
-        Success entries =>
-            expect (length entries, 1)
-            expect (join (mapList (entries, \entry => entry.importedName), ","), "id_imp")
-        Error message => expect (message, "a checked theorem catalogue")
+    export catalogue () =
+        sameSyntax ()
+        match ImportedProofs::catalogue (withUnused ())
+            Success entries =>
+                expect (length entries, 1)
+                expect (join (mapList (entries, \entry => entry.importedName), ","), "id_imp")
+            Error message => expect (message, "a checked theorem catalogue")
+
+    // The theorem `SameSyntax.lean` proves, opened as a user's own export, then with another theorem's proof.
+    sameSyntax () = match FixtureFiles::read "../../examples/proof/kernel/exports/same_syntax.ndjson"
+        Error problem => expect (problem, "the same_syntax export")
+        Success source =>
+            expect (axiomsOf (ImportedProofs::check (source, "SameSyntax.same_syntax")), "Classical.choice,Quot.sound")
+            expect (axiomsOf (ImportedProofs::check (source, "SameSyntax.lump_eq_of_tree_eq")), "Quot.sound")
+            expect (startsWith (described (ImportedProofs::check (swappedProof source, "SameSyntax.same_syntax")), "error: type mismatch:"), true)
+
+    axiomsOf outcome = match outcome
+        Success entry => join (entry.importedAxioms, ",")
+        Error message => message
+
+    // Expression 608 is the proof of lump_eq_of_tree_eq; 1221 is the proof of same_syntax.
+    swappedProof source = replace (source, "\"type\":814,\"value\":1221", "\"type\":814,\"value\":608") ?: ""
 
     export empty () = expect (catalogueError (ImportedProofs::catalogue ""), "the export declares no theorems")
 

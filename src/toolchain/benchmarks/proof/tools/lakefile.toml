@@ -60,3 +60,6 @@ name = "NestedTree"
 
 [[lean_lib]]
 name = "RecursorCases"
+
+[[lean_lib]]
+name = "SameSyntax"

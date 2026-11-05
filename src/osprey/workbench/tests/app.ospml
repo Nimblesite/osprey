@@ -21,6 +21,8 @@ module FixtureFiles
 
     export read path = bind (root (), \directory => readAt (directory, path))
 
+    export size path = bind (root (), \directory => fileSize (directory + path))
+
     readAt (directory, path) = match readFile (directory + path)
         Success text => Success(value = text)
         Error problem => Error(message = "Workbench fixture ${directory}${path}: ${problem}")
