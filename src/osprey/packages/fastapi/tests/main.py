@@ -33,8 +33,8 @@ def requests(client):
     return expect(httpCloseClient(client), Success(value=0))
 
 
-def use_server(server):
-    match httpCreateClient("http://127.0.0.1:18787", 5000):
+def use_server(server, port):
+    match httpCreateClient(f"http://127.0.0.1:{port}", 5000):
         case Success(value=client):
             requests(client)
         case Error(message=message):
@@ -42,25 +42,69 @@ def use_server(server):
     return expect(httpStopServer(server), Success(value=0))
 
 
+def native_application(port):
+    base = Fixture.application(port)
+    return A.application(Routing.include_router(base.routes, "/api", base.routes), base.middleware)
+
+
+def open_native(ports):
+    match ports:
+        case []:
+            return Error(message="No loopback test listener is available")
+        case [port, *tail]:
+            match A.serve(port, "127.0.0.1", native_application(port)):
+                case Success(value=server):
+                    return Success(value=M.Pair(first=server, second=port))
+                case Error(message=message):
+                    return next_listener(tail, port, message)
+
+
+def next_listener(ports, previous, message):
+    match open_native(ports):
+        case Success(value=opened):
+            return Success(value=opened)
+        case Error(message=error):
+            return Error(message=f"{previous}: {message}; {error}")
+
+
+def occupied_listener(port):
+    match A.serve(port, "127.0.0.1", native_application(port)):
+        case Success(value=unexpected):
+            check("occupied listener", "error", "success")
+            return expect(httpStopServer(unexpected), Success(value=0))
+        case Error():
+            return expect(True, True)
+
+
+def fallback_listener(port):
+    """Force the first bind to fail, then prove the fallback serves real HTTP."""
+    match open_native([port, 18795, 18797, 18799]):
+        case Success(value=opened):
+            match httpCreateClient(f"http://127.0.0.1:{opened.second}", 5000):
+                case Success(value=client):
+                    assert_reply(httpGetResponse(client, "/health", ""), 200, '{"status":"ok"}')
+                    expect(httpCloseClient(client), Success(value=0))
+                case Error(message=message):
+                    check("fallback client", "success", message)
+            return expect(httpStopServer(opened.first), Success(value=0))
+        case Error(message=message):
+            return check("fallback listener", "success", message)
+
+
 def lifecycle():
-    base = Fixture.application(18787)
-    routes = Routing.include_router(base.routes, "/api", base.routes)
-    match A.serve(18787, "127.0.0.1", A.application(routes, base.middleware)):
-        case Success(value=server):
-            match A.serve(18787, "127.0.0.1", A.application(routes, base.middleware)):
-                case Success(value=unexpected):
-                    check("occupied listener", "error", "success")
-                    expect(httpStopServer(unexpected), Success(value=0))
-                case Error():
-                    expect(True, True)
-            use_server(server)
+    match open_native([18787, 18789, 18791, 18793]):
+        case Success(value=opened):
+            occupied_listener(opened.second)
+            fallback_listener(opened.second)
+            use_server(opened.first, opened.second)
         case Error(message=message):
             check("server creation", "success", message)
-    match A.serve(0, "127.0.0.1", A.application(routes, base.middleware)):
+    match A.serve(0, "127.0.0.1", native_application(0)):
         case Success(value=server):
             return expect(httpStopServer(server), Error(message="invalid port must fail"))
         case Error():
             return expect(True, True)
+
 
 
 def main():

@@ -59,4 +59,12 @@ registry-blockers:
 ##              parallel; verify real HTTP routing, errors, bodies and headers.
 .PHONY: fastapi-e2e
 fastapi-e2e:
-	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/e2e.py
+	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/e2e.cpython
+
+
+## fastapi-benchmark: Compare the asserted explicit-response HTTP subset against
+##                    pinned CPython FastAPI. GC/ARC, fresh connections, five trials;
+##                    results in target/fastapi/benchmark/results.json. Informational.
+.PHONY: fastapi-benchmark
+fastapi-benchmark:
+	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/benchmark.cpython

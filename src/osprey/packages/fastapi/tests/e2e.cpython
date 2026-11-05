@@ -1,12 +1,18 @@
 """Drive both managed backends in parallel over real HTTP, never a mocked transport."""
 import concurrent.futures
 import http.client
+import importlib.machinery
+import importlib.util
 import json
 import os
 import subprocess
+import sys
 import time
 from contextlib import closing
 from pathlib import Path
+
+if not __debug__:
+    raise RuntimeError("HTTP acceptance requires enabled assertions; do not use -O")
 
 ROOT = Path(__file__).resolve().parents[5]
 
@@ -37,20 +43,20 @@ def health_cases(port):
 
 
 def method_cases(port):
-    for method in ("POST", "PUT", "DELETE", "HEAD", "OPTIONS"):
+    for method in ("POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE", "CONNECT"):
         status, headers, body = request(port, method, "/health")
         assert status == 405, (method, status)
         assert headers["Allow"] == "GET", headers
-        if method != "HEAD":
-            assert body == b'{"detail":"Method Not Allowed"}'
+        assert body == (b"" if method == "HEAD" else b'{"detail":"Method Not Allowed"}'), (method, body)
 
 
 def body_cases(port):
-    for payload in (b"", b"hello", "héllo ☕".encode(), b'{"x":[1,true,null]}'):
+    for payload in (b"", b"hello", "héllo ☕".encode(), b'{"x":[1,true,null]}', b"line1\r\nline2\n", b"\xff\xfe\x80", bytes(range(1, 256)), b"a" * 4096, "☕".encode() * 1000):
         status, headers, body = request(port, "POST", "/echo", payload)
         assert (status, body) == (201, payload), (status, body, payload)
         assert headers["Content-Type"] == "application/octet-stream"
         assert headers["X-Echo"] == "yes"
+        assert int(headers["Content-Length"]) == len(payload), (headers, payload)
 
 
 def parameter_cases(port):
@@ -116,8 +122,8 @@ def cases(port):
         assert all(result[::2] == (200, b'{"status":"ok"}') for result in results)
 
 
-def build(memory):
-    binary = ROOT / "target" / "fastapi" / f"e2e-{memory}"
+def build(memory, directory=None):
+    binary = (directory if directory is not None else ROOT / "target" / "fastapi") / f"e2e-{memory}"
     binary.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([os.environ.get("OSPREY_COMPILER", str(ROOT / "target/release/osprey")), str(Path(__file__).parent / "service"),
                     "--compile", f"--memory={memory}", "--no-warnings", "-o", str(binary)], check=True, timeout=60)
@@ -136,28 +142,69 @@ def wait_ready(process, port):
     raise TimeoutError("server did not listen within 5 seconds")
 
 
-def run(built):
+def run(built, benchmark=False):
     memory, binary = built
-    port = {"gc": 18786, "arc": 18788}[memory]
-    with binary.with_suffix(".log").open("w") as log:
+    port = {"gc": 18790, "arc": 18792}[memory] if benchmark else {"gc": 18786, "arc": 18788}[memory]
+    log_path = binary.with_suffix(".benchmark.log" if benchmark else ".log")
+    with log_path.open("w") as log:
         process = subprocess.Popen([str(binary)], stdin=subprocess.PIPE, stdout=log, stderr=log)
         try:
-            process.stdin.write(f"{port}\n".encode())
+            process.stdin.write(f"{port}\n{'benchmark' if benchmark else 'normal'}\n".encode())
             process.stdin.close()
             wait_ready(process, port)
-            cases(port)
-            print(f"FastAPI real HTTP E2E ({memory}): PASS", flush=True)
+            if benchmark:
+                benchmark_cases(port)
+            else:
+                cases(port)
+            print(f"FastAPI real HTTP E2E ({memory}, benchmark={benchmark}): PASS", flush=True)
         except Exception as error:
             trace = ROOT / "target" / f"fastapi-dependency-{port}.trace"
             if trace.exists():
                 log.write("\nDependency trace before failure:\n" + trace.read_text())
-            raise RuntimeError(f"{memory} HTTP failure; server exit {process.poll()}; log {binary.with_suffix('.log')}") from error
+            raise RuntimeError(f"{memory} HTTP failure; server exit {process.poll()}; log {log_path}") from error
         finally:
             process.terminate()
             process.wait(timeout=10)
             (ROOT / "target" / f"fastapi-dependency-{port}.trace").unlink(missing_ok=True)
 
 
-if __name__ == "__main__":
+def benchmark_cases(port):
+    """A comparable routing benchmark must perform no fixture trace-file IO."""
+    health_cases(port)
+    status, headers, body = request(port, "GET", "/bundle/hello%20world?tags=one&tags=two")
+    assert (status, json.loads(body)) == (200, {"path": "hello world", "tags": ["one", "two"]})
+    assert headers["Content-Type"] == "application/json"
+    assert not (ROOT / "target" / f"fastapi-dependency-{port}.trace").exists(), "benchmark mode must disable trace-file middleware"
+
+
+def run_guarded(command, name):
+    """Bound all owned descendants, retain live logs and clean up on interruption."""
+    path = ROOT / "scripts/packages/package_process.py"
+    loader = importlib.machinery.SourceFileLoader("fastapi_process_guard", str(path))
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    os.environ.setdefault("OSPREY_PACKAGE_TIMEOUT_SECONDS", "150")
+    with guard.interrupts():
+        result, error = guard.run(command, ROOT, ROOT / "target/logs/fastapi" / name)
+    sys.stdout.buffer.write(result.stdout)
+    sys.stderr.buffer.write(result.stderr)
+    if error:
+        print(error, file=sys.stderr)
+    return 1 if error else result.returncode
+
+
+def execute():
+    built = [(memory, build(memory)) for memory in ("gc", "arc")]
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
-        list(workers.map(run, [(memory, build(memory)) for memory in ("gc", "arc")]))
+        list(workers.map(run, built))
+        list(workers.map(lambda item: run(item, benchmark=True), built))
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--worker"]:
+        execute()
+    elif sys.argv[1:]:
+        raise SystemExit("usage: python3 e2e.cpython")
+    else:
+        raise SystemExit(run_guarded([sys.executable, str(Path(__file__).resolve()), "--worker"], "http-acceptance"))

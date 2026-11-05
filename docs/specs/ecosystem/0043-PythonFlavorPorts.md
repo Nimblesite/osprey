@@ -38,6 +38,14 @@ Every assertion compares the port with a value that the real CPython package com
 
 Integers, booleans, strings, shapes and token ids compare exactly. Floats compare with numpy's `isclose` rule, `abs(got - want) <= atol + rtol * abs(want)`, with equal infinities equal, opposite infinities unequal and NaN equal to NaN. A case states its own `rtol` and `atol`. A value computed only from `+ - * /` and `sqrt` is correctly rounded on every host, so the original's float64 result is compared at `rtol = 1e-12` or tighter. Values downstream of `exp`, `ln` or `tanh` differ in the last digits between libm implementations ([BUILTIN-MATH]) and use `rtol = 1e-9`. A looser tolerance names its reason beside the case. A port never weakens a tolerance to pass, and never copies the port's own output into `expected.py`.
 
+## Upstream test parity — [PORT-UPSTREAM-TEST-PARITY]
+
+A passing golden or high line coverage does not establish upstream behavioral parity. For each supported public API, record the pinned upstream test source/version and map its input families to assertions in the existing end-to-end suite. Include invalid inputs, interacting options, asymmetric values, empty/singleton cases, Unicode and numerical boundaries where relevant. Preserve old assertions when expanding a corpus. Counts describe the measured corpus, never an unmeasured whole upstream suite; missing families and unsupported APIs remain explicit unfinished work. Reference expectations come from the real pinned upstream implementation under [PORT-TEST-ORACLE].
+
+## HTTP benchmark subset — [FASTAPI-BENCHMARK-SUBSET]
+
+`make -C src/osprey/packages fastapi-benchmark` measures the implemented health and path/repeated-query routing subset against pinned CPython FastAPI. Every real HTTP reply must satisfy exact status, content type, byte length and body assertions before contributing a timing. GC, ARC and CPython servers run sequentially with matched requests, explicit response encoding and access logging; test-only trace middleware is disabled and that mode has acceptance assertions. Record compiler/reference versions, binary hashes, workers, warmups and trials. Report median trial throughput, median of trial median latencies, nearest-rank p95 per trial and sampled RSS with its sampling limitation. Model binding, dependency injection, database, streaming and lifespan performance remain unmeasured. Both HTTP drivers refuse disabled Python assertions and bound their owned processes with the shared package process guard.
+
 ## The suite — [PORT-SUITE]
 
 `src/toolchain/crates/osprey-cli/tests/python_packages.rs` discovers every library with both `src/osprey/packages/<name>/osprey.toml` and `src/osprey/packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `src/osprey/packages/manager/` and run through `make -C src/osprey/packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:

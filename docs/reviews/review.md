@@ -173,3 +173,41 @@ Left out of this section because an issue covers them.
 | Lambda in interpolation lexed as an escape | #323 |
 | Coverage gates that overstate what they enforce | #232 |
 | Effects ABI and dispatcher soundness | #200 |
+
+
+## Python flavor and package acceptance — 2026-11-05
+
+- [x] Reproduced Python named-pattern shadowing natively (`left:left` instead of `left:right`); fixed lexical binders across syntax, module resolution, type/effect analysis, closures and code generation. Nested/sibling aliases, reordered/partial fields, ignored fields and Result aliases execute under GC and ARC; invalid/duplicate fields are rejected.
+- [x] Independently replayed 331 pinned FastAPI 0.135.3 HTTP reference records under GC and ARC, plus graph-configuration failures and cleanup/recovery sequences. Exact response bytes/status, validation locations and input values, applicable headers, request-local caching and LIFO cleanup are asserted. Latin-1 header fixtures preserve the recorded bytes for the native client.
+- [x] FastAPI own source: 498/508 lines, 98.0%, separately collected and gated under GC and ARC; ARC exits with zero live objects. The enforced threshold increased from 97.8 to 98.0. Reports: `target/coverage/fastapi-verified-{gc,arc}/`; counts stay outside threshold configuration.
+- [x] Added loaded Python-flavor closures, results and cross-module execution scenarios. All five Python interop tests pass, including the existing CPython bridge; relevant Clippy checks pass with warnings denied.
+- [x] Expanded SciPy to 2,334 independently derived assertions, preserving existing cases. The new negative/exact-combinatorics inputs exposed 31 mismatches; fixed factorial/combination/permutation domain guards, verified exact GC/ARC goldens and zero live ARC objects. Rejected pi's draft golden containing modeled FAIL rows; the committed golden requires every assertion to pass.
+- [x] Made the package transcript gate accept strictly verified native TAP and reject hidden failed rows, inconsistent totals, absent/duplicate plans, skipped/TODO cases and duplicate test numbers. Its refusal cases fail on the previous implementation and pass after the fix; package provenance/source-format checks pass.
+- [x] Micrograd: 1,670 upstream-derived assertions (+1,122), all 548 originals preserved; exact GC/ARC goldens, zero live ARC objects, measured/gated 156/160 own-source lines (97.5%).
+- [x] Einops: 258 upstream-derived assertions (+155), all original values/labels retained; exact GC/ARC goldens and 432/448 own-source lines (96.4%), threshold raised from 95.3. Independently regenerated from einops 0.8.2; rejected pi's incorrect claim that left-only ellipsis needs a new dedicated rejection. Unicode axis identifiers, tensor execution and complete upstream-suite parity remain open.
+- [x] Strengthened HTTP driver reliability: occupied-port fallback passes under concurrent GC/ARC; all eight non-GET methods, empty HEAD responses, non-NUL binary/CRLF/larger echo payloads pass. Both CPython entrypoints refuse `-O`; process guards bound owned descendants and retain diagnostics. Corrected benchmark p95 indexing after a real HTTP red run demonstrated the rank error.
+- [x] Fixed the package export scanner's single-quoted Python names after a red integration regression. The broader lexical export gate still reports missing direct names in FastAPI/numpy/tokenizers; indirect execution and 98% FastAPI coverage are not substitutes for resolving that gate. No full-CI pass is claimed.
+- [ ] Finish blanket upstream/spec parity for every Python-flavor package. Pi's read-only inventory covers 21 Python-flavor ports; its remaining behavioral candidates need individual real-reference reproduction. Golden assertion counts do not establish equivalence to the upstream suites.
+- [ ] Finish full NimblesiteAgenticPlatform/FastAPI parity: body models, registered exception handlers, CORS, lifespan, cancellation, streaming, ACP/WebSockets, binary/multipart/files, OpenAPI and all endpoint families remain on the package README checklist.
+- [x] Benchmark the supported explicit-response HTTP subset fairly against pinned CPython FastAPI; disable fixture file logging, assert every response and report method/resource limits. These measurements do not establish parity or performance for unfinished framework features.
+
+One pre-existing/shared type-checker performance test still failed during the compiler consumer run: `spaced_necessary_annotations_keep_independent_proofs_batched` observed 134 full solves against a limit of 96. The active compiler-performance owner was notified. Two accidentally broad local test filters launched full package matrices; the 180-second process watchdog reaped both groups, and their 178 MB of owned temporary caches were removed. Exact-name reruns of the intended gate tests pass; those interrupted matrices are not passing evidence.
+
+### FastAPI routing subset benchmark — [FASTAPI-BENCHMARK-SUBSET]
+
+Measured 2026-11-05T00:46:18.753756+00:00 on macOS-26.7.1-arm64-arm-64bit-Mach-O; CPython 3.12.13, FastAPI 0.135.3, Uvicorn 0.43.0. Native output uses -O2; compiler SHA-256 `660f8aea6cca50c5eaf261207a535a28587afaf635e9959c8f5e3f60669d4dd1`.
+
+Four client workers; five trials of 300 requests per workload and 50 warmup requests. Every status, byte length, content type, exact body and parsed body is asserted: 9,303 actual HTTP responses across the three runtimes, including readiness. Servers run sequentially with fresh TCP connections and access logging; fixture trace-file middleware is disabled and tested.
+
+| Runtime | Workload | Median requests/s | Median trial latency (ms) | Max sampled RSS (MiB) |
+|---|---|---:|---:|---:|
+| osprey-gc | health | 7,172 | 0.402 | 23.9 |
+| osprey-gc | bundle | 6,981 | 0.406 | 32.5 |
+| osprey-arc | health | 9,827 | 0.376 | 2.3 |
+| osprey-arc | bundle | 9,891 | 0.376 | 2.3 |
+| cpython | health | 8,757 | 0.426 | 73.9 |
+| cpython | bundle | 8,597 | 0.417 | 74.0 |
+
+This measures only the supported explicit-response health and path/repeated-query routing subset. It excludes model binding, dependencies, database access, streaming and lifespan. Latency is the median of trial medians. Throughput includes client-side validation; RSS is sampled after each trial and is not a measured peak. Shared-machine measurements are informational, not a whole-framework performance claim. The independent GC diagnostic run completed five collections with 1–2 KiB live and no disabled-GC message; sampled RSS alone is not evidence of a leak.
+
+Reproduce with `make -C src/osprey/packages fastapi-benchmark`; complete per-trial metrics and binary hashes are in `target/fastapi/benchmark/results.json`, with owned-process resource logs in `target/logs/fastapi/http-benchmark.process.jsonl`.

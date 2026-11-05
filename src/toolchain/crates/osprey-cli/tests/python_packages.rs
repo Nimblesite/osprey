@@ -199,7 +199,7 @@ fn package_cache() -> std::io::Result<PathBuf> {
 fn quoted_items(items: &str) -> Vec<String> {
     items
         .split(',')
-        .map(|item| item.trim().trim_matches('"').to_string())
+        .map(|item| item.trim().trim_matches(['"', '\'']).to_string())
         .filter(|item| !item.is_empty())
         .collect()
 }
@@ -416,4 +416,44 @@ fn the_native_framework_remains_in_the_full_backend_execution_matrix() {
         String::new(),
         "the native framework needs an asserted output golden"
     );
+}
+
+#[test]
+fn fastapi_http_entrypoints_refuse_disabled_python_assertions() -> std::io::Result<()> {
+    let python = if cfg!(windows) { "python" } else { "python3" };
+    for script in ["e2e.cpython", "benchmark.cpython"] {
+        let output = Command::new(python)
+            .args(["-O", "-c", "import runpy,sys;runpy.run_path(sys.argv[1])"])
+            .arg(
+                repo()
+                    .join("src/osprey/packages/fastapi/tests")
+                    .join(script),
+            )
+            .output()?;
+        assert!(
+            !output.status.success(),
+            "{script}: disabled assertions were accepted"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "{script}: tests ran without assertions"
+        );
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("enabled assertions"),
+            "{script}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn python_export_gate_reads_both_string_delimiters() {
+    for source in [
+        "__all__ = ['header', 'query']",
+        "__all__ = [\"header\", \"query\"]",
+        "__all__ = ['header', \"query\"]",
+    ] {
+        assert_eq!(exports(source), vec!["header", "query"], "{source}");
+    }
 }
