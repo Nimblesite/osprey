@@ -384,7 +384,10 @@ fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), 
         SPACED_CALLS.store(0, Ordering::Relaxed);
         assert_default_sites(&program, &written, &expected);
         let calls = SPACED_CALLS.load(Ordering::Relaxed);
-        assert!(calls <= 96, "position {position}: {calls} full solves for 128 sites exceeds 96");
+        assert!(
+            calls <= 96,
+            "position {position}: {calls} full solves for 128 sites exceeds 96"
+        );
     }
     Ok(())
 }

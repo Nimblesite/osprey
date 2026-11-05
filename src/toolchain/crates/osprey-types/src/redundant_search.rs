@@ -16,6 +16,8 @@ use crate::redundant_sites::Site;
 // Each proof owns a complete AST and inference state. Bound their simultaneous
 // working sets independently of the source-order search window.
 const MAX_PROOF_WORKERS: usize = 4;
+// Below this size, prefix-inclusive singles are cheaper than isolated filtering.
+const DIRECT_PROOF_WINDOW: usize = 4;
 
 struct Search<'a> {
     proofs: &'a Proofs<'a>,
@@ -169,6 +171,21 @@ fn accept_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize
 }
 
 fn accept_failed_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+    if candidates.len() <= 2 {
+        accept_failed_pair(search, kept, candidates);
+    } else if candidates.len() <= DIRECT_PROOF_WINDOW {
+        accept_greedy(search, kept, candidates);
+    } else {
+        // Prove source-ordered halves against the accepted prefix. A necessary
+        // annotation inside a window must not force all independent sites
+        // through individual full-program inference.
+        let (left, right) = candidates.split_at(candidates.len() / 2);
+        let _ = accept_window(search, kept, left);
+        let _ = accept_window(search, kept, right);
+    }
+}
+
+fn accept_failed_pair(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
     let Some((first, rest)) = candidates.split_first() else {
         return;
     };
