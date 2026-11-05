@@ -65,9 +65,13 @@ static void check_dead_connections_leave_the_list(int64_t server) {
   for (int round = 0; round < 10; round++) {
     int stays = upgraded_client();
     int leaves = upgraded_client();
-    int frames = 0;
-    assert(broadcast_until(server, 2, &frames) == 2 && frames == 1);
+    // Both clients received their welcome frames. The first broadcast reaches both.
+    assert(websocket_server_broadcast(server, PING) == 2);
+    char *departing_ping = ws_read_text_frame(leaves);
+    assert(strcmp(departing_ping, "ping") == 0);
+    free(departing_ping);
     close(leaves);
+    int frames = 1;
     assert(broadcast_until(server, 1, &frames) == 1);
     int stranger = ws_raw_connect(WS_LIFE_PORT);
     usleep(WS_POLL_US * 5);

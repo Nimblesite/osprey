@@ -48,8 +48,18 @@ static int recv_until_stopped(const WebSocketServer *server, int fd, char *buffe
   }
 }
 
-// Lists an upgraded connection, for broadcasts and for stop to find. NULL when the
-// server is full or out of memory, or has begun stopping and won't see it.
+static bool send_welcome(int fd) {
+  char welcome[512];
+  snprintf(welcome, sizeof(welcome),
+           "{\"type\":\"welcome\",\"message\":\"Connected to "
+           "Osprey WebSocket Server!\",\"timestamp\":\"%lld\"}",
+           (long long)time(NULL));
+  int sent = send_websocket_frame(fd, welcome);
+  return sent > 0;
+}
+
+// The welcome and publication share the broadcast lock. A peer that receives
+// its welcome can immediately receive a broadcast, with welcome first.
 static WebSocket *register_connection(WebSocketServer *server, int fd) {
   WebSocket *ws = calloc(1, sizeof(WebSocket));
   if (!ws) {
@@ -58,13 +68,13 @@ static WebSocket *register_connection(WebSocketServer *server, int fd) {
   ws->socket_fd = fd;
   ws->is_connected = true;
   pthread_mutex_lock(&server->mutex);
-  bool room = server->connection_count < MAX_CONNECTIONS_PER_SERVER &&
-              atomic_load(&server->is_listening);
-  if (room) {
+  bool ready = server->connection_count < MAX_CONNECTIONS_PER_SERVER &&
+               atomic_load(&server->is_listening) && send_welcome(fd);
+  if (ready) {
     server->connections[server->connection_count++] = ws;
   }
   pthread_mutex_unlock(&server->mutex);
-  if (!room) {
+  if (!ready) {
     free(ws);
     return NULL;
   }
@@ -84,15 +94,6 @@ static void unregister_connection(WebSocketServer *server, WebSocket *ws) {
   }
   pthread_mutex_unlock(&server->mutex);
   free(ws);
-}
-
-static void send_welcome(int fd) {
-  char welcome[512];
-  snprintf(welcome, sizeof(welcome),
-           "{\"type\":\"welcome\",\"message\":\"Connected to "
-           "Osprey WebSocket Server!\",\"timestamp\":\"%lld\"}",
-           (long long)time(NULL));
-  send_websocket_frame(fd, welcome);
 }
 
 // Echoes each message back with server info until the peer goes or the server stops.
@@ -131,7 +132,6 @@ static void serve_upgrade(WebSocketServer *server, int fd, char *request) {
   *key_end = '\0';
   char *response = create_websocket_handshake_response(key_line + strlen("Sec-WebSocket-Key: "));
   if (response && osp_socket_send(fd, response, strlen(response)) > 0) {
-    send_welcome(fd); // first, so no broadcast can reach the peer ahead of it
     WebSocket *ws = register_connection(server, fd);
     if (ws) {
       serve_messages(server, fd);

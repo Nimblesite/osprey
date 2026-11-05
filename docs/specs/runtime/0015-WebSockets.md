@@ -52,8 +52,9 @@ generates its own key as base64 of 16 random bytes.
 `websocketKeepAlive` blocks until `SIGINT` or `SIGTERM`, then stops every
 server the process created and returns.
 
-A server's connection list holds its live connections and nothing else. A
-connection leaves it before its descriptor closes, so `websocketServerBroadcast`
+A server's connection list holds its live connections and nothing else. The
+welcome frame comes first, and a client that receives it is ready for broadcasts.
+A connection leaves the list before its descriptor closes, so `websocketServerBroadcast`
 counts and writes to live connections only, and no number of connections over a
 server's life uses up the 1,000 it can hold at once. A broadcast to a peer whose
 socket has stayed full for a second doesn't count that peer, and ends its
