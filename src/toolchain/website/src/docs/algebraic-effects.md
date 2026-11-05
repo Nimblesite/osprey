@@ -98,7 +98,27 @@ The code under test is the same code that runs in production. If someone breaks 
 not ok 1 - a full disk rolls the manifest back
 ```
 
-The package manager's own tests work this way. [`dispatch_tests.osp`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/manager/cli/tests/src/dispatch_tests.osp) runs the CLI under `healthyFiles()` and `brokenFiles()` handlers, so no test touches a real process, file or terminal. In the modules example, [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/test/accounts.test.ospml) uses a spy handler to prove that an invalid payment never reaches storage.
+## A real test from the package manager
+
+The package manager's CLI tests never touch a real disk, process or terminal. This excerpt is copied verbatim, at build time, from [`dispatch_tests.osp`](https://github.com/Nimblesite/osprey/blob/main/{{ effectsTestExample.file }}). `healthyFiles` and `brokenFiles` are two stubs for the same `Host::Files` effect shown above. `doctorBroken` runs the real `osprey-pkg doctor` command against a host where every file write and process fails, then checks that the report names each failure:
+
+```osprey
+{{ effectsTestExample.excerpt | safe }}
+```
+
+`osprey-pkg doctor` performs `Host::Files.write` and `Host::Process.run` just as it does in production. The nested calls install one test handler per effect (`Files`, `Process`, `Tree`, `Web`) around it. Run the suite with:
+
+```sh
+osprey test src/osprey/packages/manager/cli/tests --memory=gc
+```
+
+```text
+ok 4 - dispatch: doctor on a broken host
+...
+# tests=98 passed=98 failed=0 skipped=0
+```
+
+For an ML-flavor spy, see [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/test/accounts.test.ospml). Its `guardCase` handler sets `touched` if storage is called, and the test asserts it stays `false` for an invalid payment.
 
 ## Python flavor
 

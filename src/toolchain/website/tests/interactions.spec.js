@@ -96,12 +96,13 @@ test.describe("homepage flight and source examples", () => {
     const blocks = page.locator("pre > code.language-osprey, pre > code.language-python, pre > code.language-osprey-ml");
     const tap = (names) => `${names.map((name, i) => `ok ${i + 1} - ${name}\n`).join("")}1..${names.length}\n# tests=${names.length} passed=${names.length} failed=0 skipped=0\n`;
     const [pair, trio] = [tap(["a full disk rolls the manifest back", "a healthy disk writes manifest then lock"]), tap(["a healthy disk installs", "a full disk rolls the manifest back", "a read-only disk changes nothing"])];
-    const outputs = [pair, trio, pair, "version = 3\n", "Submitted / Cancelled\n", "30\n"];
+    const outputs = [pair, null, trio, pair, "version = 3\n", "Submitted / Cancelled\n", "30\n"];
     await expect(blocks).toHaveCount(outputs.length);
     for (let i = 0; i < outputs.length; i++) {
       const [lang, source] = [await blocks.nth(i).getAttribute("class"), await blocks.nth(i).textContent()];
       const extension = lang.includes("osprey-ml") ? "ospml" : lang.includes("python") ? "py" : "osp";
-      expect(await executeExample(source, testInfo.outputPath(`effects-${i}.${extension}`))).toBe(outputs[i]);
+      if (outputs[i] === null) expect(source).toBe(require("../src/_data/effectsTestExample.js").excerpt);
+      else expect(await executeExample(source, testInfo.outputPath(`effects-${i}.${extension}`))).toBe(outputs[i]);
       if (i === 0) expect(await exampleResult(source.replace("memory(true)(upgrade)", "upgrade()"), testInfo.outputPath("effects-unhandled.osp"))).toContain("unhandled effect operations at program entry: Files.read, Files.write");
     }
   });
