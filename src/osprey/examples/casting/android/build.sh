@@ -10,9 +10,10 @@ case "$target" in
     android-x64) rust_target=x86_64-linux-android; abi=x86_64; openssl_target=android-x86_64; clang_target=x86_64-linux-android26 ;;
     *) echo 'Usage: build.sh [android-arm64|android-x64]' >&2; exit 2 ;;
 esac
-sdk=${ANDROID_HOME:-$HOME/Library/Android/sdk}
-ndk=$sdk/ndk/27.0.12077973
-tools=$ndk/toolchains/llvm/prebuilt/darwin-x86_64/bin
+source "$repo/scripts/mobile/android-env.sh"
+sdk=$ANDROID_HOME
+ndk=$ANDROID_NDK_HOME
+tools=$android_tools
 build_tools=$(ls -d "$sdk"/build-tools/* | sort -V | tail -1)
 output="$repo/src/osprey/examples/casting/build/$target"
 cd "$repo"
@@ -34,7 +35,7 @@ fi
 
 for unit in tls_client file_server media_render; do
     "$tools/clang" --target="$clang_target" -fPIC -O2 -std=c11 -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Wall -Wextra -Werror \
-        -Icompiler/runtime -I"$openssl/include" -c "src/toolchain/compiler/runtime/${unit}_runtime.c" -o "$output/${unit}_runtime.o"
+        -Isrc/toolchain/compiler/runtime -I"$openssl/include" -c "src/toolchain/compiler/runtime/${unit}_runtime.c" -o "$output/${unit}_runtime.o"
 done
 rm -f "$output/libosprey_cast_net.a"
 "$tools/llvm-ar" rcs "$output/libosprey_cast_net.a" "$output/tls_client_runtime.o" "$output/file_server_runtime.o" "$output/media_render_runtime.o"

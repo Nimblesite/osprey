@@ -7,6 +7,7 @@ Mobile casting is not finished, so CI does not run these: `make -C src/toolchain
 import importlib.util
 import io
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -41,6 +42,37 @@ class CastingGoldenVerdict(unittest.TestCase):
                 result = subprocess.run(["/usr/bin/make", "-f", str(ROOT / "src/toolchain/targets/ios/tests/Makefile"), target],
                                         cwd=root, env=env, capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_android_packager_uses_shared_ndk_selection(self):
+        # [CAST-MOBILE-GPUI] Exercise the real packaging entry point up to C compilation.
+        with tempfile.TemporaryDirectory(prefix="casting sdk ") as directory:
+            root = Path(directory)
+            script = root / "src/osprey/examples/casting/android/build.sh"
+            script.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / script.relative_to(root), script)
+            common = root / "scripts/mobile/android-env.sh"
+            common.parent.mkdir(parents=True)
+            shutil.copyfile(ROOT / common.relative_to(root), common)
+            sdk, ndk = root / "sdk", root / "custom ndk"
+            (sdk / "build-tools/37.0.0").mkdir(parents=True)
+            host = "darwin-x86_64" if sys.platform == "darwin" else "linux-x86_64"
+            tools = ndk / "toolchains/llvm/prebuilt" / host / "bin"
+            tools.mkdir(parents=True)
+            clang = tools / "clang"
+            clang.write_text('#!/bin/sh\nprintf "%s\\n" "$@" > "$CAPTURE"\nexit 47\n')
+            clang.chmod(0o755)
+            output = root / "src/osprey/examples/casting/build/android-arm64"
+            (output / "openssl/lib").mkdir(parents=True)
+            (output / "openssl/lib/libssl.a").touch()
+            capture = root / "clang-arguments"
+            env = dict(os.environ, ANDROID_HOME=str(sdk), ANDROID_NDK_HOME=str(ndk),
+                       OSPREY_MOBILE_SKIP_LIBRARY="1", CAPTURE=str(capture))
+            result = subprocess.run(["bash", str(script)], cwd=root, env=env, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 47, result.stdout + result.stderr)
+            arguments = capture.read_text().splitlines()
+            self.assertIn("--target=aarch64-linux-android26", arguments)
+            self.assertIn("-Isrc/toolchain/compiler/runtime", arguments)
+            self.assertIn("src/toolchain/compiler/runtime/tls_client_runtime.c", arguments)
 
     def test_receiver_rejects_malformed_payloads(self):
         module = casting_tool("mobile_receiver")
