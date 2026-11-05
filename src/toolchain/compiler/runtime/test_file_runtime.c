@@ -128,6 +128,15 @@ static void test_write_file_reports_a_failed_flush(void) {
   assert(strstr(reason, strerror(EPIPE)) != NULL);
   (void)signal(SIGPIPE, previous);
   assert(remove(FIFO_PATH) == 0);
+#ifdef __linux__
+  // A single byte fits in stdio's buffer. /dev/full refuses it at fclose.
+  char full[] = "/dev/full";
+  char byte[] = "x";
+  assert(write_file(full, byte) == -4);
+  reason = osp_io_error();
+  assert(reason != NULL && strstr(reason, "writeFile: /dev/full: ") == reason);
+  assert(strstr(reason, strerror(ENOSPC)) != NULL);
+#endif
 }
 
 // Every failure carries WHY it failed, and every success retires the previous

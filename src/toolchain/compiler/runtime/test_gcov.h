@@ -9,11 +9,8 @@
 // covered, and the honest response to a threshold is to make the measurement
 // true rather than to exempt the lines.
 //
-// The symbol is named only in the coverage build. These suites are also built
-// WITHOUT `--coverage` by `make _test_c_runtime`, where it does not exist, and
-// a hard reference would fail to link there and take the functional suite down
-// with it -- so the Makefile's coverage recipe defines OSP_COVERAGE_DUMP and
-// the functional build does not.
+// The instrumented test build defines OSP_COVERAGE_DUMP. A non-instrumented
+// build leaves it unset because the coverage runtime is not linked there.
 #ifndef OSPREY_TEST_GCOV_H
 #define OSPREY_TEST_GCOV_H
 
