@@ -1108,7 +1108,7 @@ jobs:
         run: |
           set -euo pipefail
           cd src/toolchain/webcompiler
-          docker build -t osprey-web-compiler-ci -f Dockerfile ..
+          docker build -t osprey-web-compiler-ci -f Dockerfile ../../..
           docker run -d --name osprey-web-compiler-ci -p 3001:3001 \
             -e NODE_ENV=production -e PORT=3001 \
             --memory=256m --memory-reservation=256m \
