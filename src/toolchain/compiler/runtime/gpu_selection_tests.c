@@ -8,6 +8,7 @@
 #include "gpu_opencl_api.h"
 #include "io_error.h"
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,6 +16,7 @@
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 void *osprey_gpu_data(void *buffer);
 int64_t osprey_gpu_len(void *buffer);
+int64_t osprey_gpu_elem_bytes(void *buffer);
 int64_t osprey_gpu_get(void *buffer, int64_t index);
 void osprey_gpu_set(void *buffer, int64_t index, int64_t word);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
@@ -120,6 +122,89 @@ static void *unit(void) {
   void *b = osprey_gpu_alloc(1, 8);
   osprey_gpu_set(b, 0, one_word());
   return b;
+}
+
+static void exact(void *buffer, int64_t count, const float *want) {
+  assert(buffer && osprey_gpu_len(buffer) == count && osprey_gpu_elem_bytes(buffer) == 4);
+  const float *got = osprey_gpu_data(buffer);
+  assert(got);
+  for (int64_t i = 0; i < count; i++) assert(got[i] == want[i]);
+}
+static void refused(void *result) {
+  assert(!result && osp_io_error() && *osp_io_error());
+  osp_io_error_clear();
+}
+static void *floats_of(const float *values, int64_t count) {
+  void *buffer = osprey_gpu_alloc(count, 4);
+  assert(buffer && osprey_gpu_len(buffer) == count && osprey_gpu_elem_bytes(buffer) == 4);
+  memcpy(osprey_gpu_data(buffer), values, (size_t)count * sizeof *values);
+  return buffer;
+}
+// [LLM-MATMUL-QUANT] Fixed host projection, gating and recurrent results.
+static void host_quant_zero_case(void *x) {
+  static const struct { const char *name; int elements, bytes; } formats[] = {
+      {"Q4_K", 256, 144}, {"Q8_0", 32, 34}, {"Q6_K", 256, 210}, {"Q5_K", 256, 176},
+      {"Q3_K", 256, 110}, {"IQ4_NL", 32, 18}, {"IQ4_XS", 256, 136}, {"IQ3_S", 256, 110}};
+  float zeroed[2] = {0, 0};
+  for (size_t i = 0; i < sizeof formats / sizeof formats[0]; i++) {
+    int64_t blocks = 2 * (512 / formats[i].elements);
+    void *w = osprey_gpu_alloc(blocks * formats[i].bytes, 1);
+    assert(w && osprey_gpu_elem_bytes(w) == 1);
+    memset(osprey_gpu_data(w), 0, (size_t)blocks * formats[i].bytes);
+    void *out = osprey_gpu_matmul_quant(x, w, formats[i].name, 1, 512, 2);
+    exact(out, 2, zeroed);
+    osprey_gpu_finalize(w); osprey_gpu_finalize(out);
+  }
+}
+static void host_quant_nonzero_case(void *x) {
+  int64_t q8blocks = 2 * (512 / 32);
+  void *w = osprey_gpu_alloc(q8blocks * 34, 1);
+  unsigned char *weights = osprey_gpu_data(w);
+  for (int64_t b = 0; b < q8blocks; b++) {
+    weights[b * 34] = 0x00; weights[b * 34 + 1] = 0x3c;
+    memset(weights + b * 34 + 2, 1, 32);
+  }
+  float want512[2] = {512.0f, 512.0f}; void *out = osprey_gpu_matmul_quant(x, w, "Q8_0", 1, 512, 2);
+  exact(out, 2, want512);
+  assert(((float *)osprey_gpu_data(x))[0] == 1.0f && ((float *)osprey_gpu_data(x))[511] == 1.0f);
+  assert(weights[0] == 0 && weights[1] == 0x3c && weights[2] == 1 && weights[q8blocks * 34 - 1] == 1);
+  refused(osprey_gpu_matmul_quant(x, w, "Q9_0", 1, 512, 2));
+  refused(osprey_gpu_matmul_quant(x, w, "Q8_0", 2, 512, 2));
+  osprey_gpu_finalize(w); osprey_gpu_finalize(out);
+}
+static void host_sigmoid_case(void) {
+  void *wide = osprey_gpu_alloc(1, 8); refused(osprey_gpu_sigmoid(wide));
+  osprey_gpu_finalize(wide);
+  float sig_in[3] = {-INFINITY, 0.0f, INFINITY}, sig_want[3] = {0.0f, 0.5f, 1.0f};
+  void *sx = floats_of(sig_in, 3), *sy = osprey_gpu_sigmoid(sx);
+  exact(sy, 3, sig_want); exact(sx, 3, sig_in);
+  osprey_gpu_finalize(sx); osprey_gpu_finalize(sy);
+}
+static void host_delta_case(void) {
+  float zero6[6] = {0}, query[2] = {0.5f, 0.25f}, key[2] = {1.0f, 2.0f}, value[2] = {3.0f, 4.0f};
+  float beta[1] = {1.0f}, decay[1] = {1.0f};
+  float first[6] = {3, 4, 6, 8, 3, 4}, second[6] = {-9, -12, -18, -24, -9, -12};
+  void *state = floats_of(zero6, 6), *q = floats_of(query, 2), *k = floats_of(key, 2);
+  void *v = floats_of(value, 2), *b = floats_of(beta, 1), *d = floats_of(decay, 1);
+  void *r1 = osprey_gpu_delta_rule(state, q, k, v, b, d, 1, 2);
+  exact(r1, 6, first);
+  void *r2 = osprey_gpu_delta_rule(r1, q, k, v, b, d, 1, 2);
+  exact(r2, 6, second); exact(r1, 6, first);
+  exact(state, 6, zero6); exact(q, 2, query); exact(k, 2, key); exact(v, 2, value);
+  exact(b, 1, beta); exact(d, 1, decay);
+  osprey_gpu_finalize(state); osprey_gpu_finalize(q); osprey_gpu_finalize(k);
+  osprey_gpu_finalize(v); osprey_gpu_finalize(b); osprey_gpu_finalize(d);
+  osprey_gpu_finalize(r1); osprey_gpu_finalize(r2);
+}
+static void host_api_workflow(void) {
+  select_mode("host"); osp_io_error_clear();
+  float ones[512];
+  for (int i = 0; i < 512; i++) ones[i] = 1.0f;
+  void *x = floats_of(ones, 512);
+  host_quant_zero_case(x); host_quant_nonzero_case(x);
+  assert(memcmp(osprey_gpu_data(x), ones, sizeof ones) == 0);
+  host_sigmoid_case(); host_delta_case();
+  osprey_gpu_finalize(x);
 }
 
 // A kernel text that hands its fault word to a checked helper, so the launch
@@ -380,6 +465,7 @@ static void handled_readback_failure(int64_t mark) {
 #endif
 
 int main(void) {
+  host_api_workflow();
   host_case(NULL); host_case(""); host_case("host");
   assert(osprey_gpu_buffer_tests(0, NULL) == 0);
 #if defined(OSPREY_GPU_METAL)
