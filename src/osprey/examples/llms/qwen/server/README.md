@@ -110,5 +110,10 @@ objects, so a wire shape is only accepted when the client accepts it.
     src/osprey/examples/llms/qwen/server/tests/clients.cpython
 ```
 
+`tests/harness.cpython` compiles the server, waits for its listener, runs every
+registered case and reports one `ok <backend>/<case>` line each;
+`tests/model_reference.cpython` is the independent CPython model the answers are
+compared with.
+
 Pass `gc` or `arc` as arguments to narrow the run; it builds and drives both
 managed backends by default.
