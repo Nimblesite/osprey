@@ -22,6 +22,7 @@ from tokenizers.Tokenizer import (
 )
 from tokenizers.Category import is_letter, is_mark, is_number
 from tokenizers.HfJson import load_qwen_tokenizer
+from tokenizers import GgufVocab
 from tokenizers.Models import BpeModel, build_bpe, bpe_tokenize, Token as ModelToken
 from tokenizers.Nfc import combining_class, nfc_cps, nfc_text, nfd_cps, nfd_text
 from tokenizers.Normalizers import nfc_normalize
@@ -467,30 +468,92 @@ def nfc_row(i):
 
 
 def qwen_cases():
-    """The whole Qwen pipeline, byte-identical to the reference package."""
+    """The whole Qwen pipeline, byte-identical to the reference package, from the
+    `tokenizer.json` tables and again from the same vocabulary in GGUF form."""
     tok = qwen_tokenizer()
     return concat_all([
-        fold(range(len(Expected.QWEN_INPUTS)), [], lambda acc, i: listConcat(acc, qwen_row(tok, i))),
+        fold(range(len(Expected.QWEN_INPUTS)), [], lambda acc, i: listConcat(acc, qwen_row(tok, i, "qwen"))),
         qwen_refusal_cases(),
+        gguf_cases(),
     ])
 
 
-def qwen_row(tok, i):
+def gguf_cases():
+    """[LLM-TOKENIZER] The same encodings and decodes from `tokenizer.ggml.tokens`,
+    `token_type` and `merges`, plus the refusals: a merge whose spelling is not a
+    token, and a vocabulary missing a byte."""
+    tables = gguf_tables()
+    match GgufVocab.qwen_from_vocabulary(tables.tokens, tables.types, tables.merges):
+        case Success(value=tok):
+            return concat_all([
+                fold(range(len(Expected.QWEN_INPUTS)), [], lambda acc, i: listConcat(acc, qwen_row(tok, i, "gguf"))),
+                [Check.equal("gguf.added.count", len(tok.added), len(Expected.QWEN_ADDED_IDS))],
+                gguf_refusals(tables),
+            ])
+        case Error(message=message):
+            return [Check.failed("gguf.build", message)]
+
+
+class GgufTables:
+    """The three GGUF vocabulary tables, rebuilt from the oracle's subset."""
+    tokens: list[str]
+    types: list[int]
+    merges: list[str]
+
+
+def gguf_tables():
+    """`tokens[id]` for every byte, merge and added id the oracle recorded, `""` and
+    type 0 elsewhere, and each merge as `left right`."""
+    n = Lists_max(Expected.QWEN_ADDED_IDS) + 1
+    spelled = fold(range(len(Expected.QWEN_MERGE_IDS)), fold(range(256), {}, lambda acc, b: mapSet(acc, toString(at_int(Expected.QWEN_BYTE_IDS, b)), bytelevel_text([b]))), lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_MERGE_IDS, i)), at_str(Expected.QWEN_MERGES_LEFT, i) + at_str(Expected.QWEN_MERGES_RIGHT, i)))
+    named = fold(range(len(Expected.QWEN_ADDED_IDS)), spelled, lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_ADDED_IDS, i)), at_str(Expected.QWEN_ADDED_CONTENT, i)))
+    kinds = fold(range(len(Expected.QWEN_ADDED_IDS)), {}, lambda acc, i: mapSet(acc, toString(at_int(Expected.QWEN_ADDED_IDS, i)), GgufVocab.CONTROL if at_int(Expected.QWEN_ADDED_SPECIAL, i) == 1 else GgufVocab.USER_DEFINED))
+    return GgufTables(
+        tokens=toList(map(range(n), lambda i: unwrap_or(mapGet(named, toString(i)), ""))),
+        types=toList(map(range(n), lambda i: unwrap_or(mapGet(kinds, toString(i)), 1))),
+        merges=toList(map(range(len(Expected.QWEN_MERGE_IDS)), lambda i: at_str(Expected.QWEN_MERGES_LEFT, i) + " " + at_str(Expected.QWEN_MERGES_RIGHT, i))),
+    )
+
+
+def Lists_max(xs):
+    return fold(range(len(xs)), 0, lambda m, i: at_int(xs, i) if at_int(xs, i) > m else m)
+
+
+def gguf_refusals(tables):
+    return [
+        refused("gguf.rejects.merge", GgufVocab.qwen_from_vocabulary(tables.tokens, tables.types, listAppend(tables.merges, "zz qq")), "merge " + toString(len(tables.merges)) + " names a spelling the vocabulary lacks"),
+        refused("gguf.rejects.byte", GgufVocab.qwen_from_vocabulary(replace_at(tables.tokens, at_int(Expected.QWEN_BYTE_IDS, 65), ""), tables.types, tables.merges), "the vocabulary has no token for byte 65"),
+    ]
+
+
+def refused(name, result, want):
+    match result:
+        case Success(value=_tok):
+            return Check.failed(name, "built a tokenizer from a broken table")
+        case Error(message=message):
+            return Check.equal(name, message, want)
+
+
+def replace_at(xs, position, value):
+    return toList(map(range(len(xs)), lambda i: value if i == position else unwrap_or(listGet(xs, i), "")))
+
+
+def qwen_row(tok, i, label):
     text = unwrap_or(listGet(Expected.QWEN_INPUTS, i), "")
     match qwen_encode(tok, text):
         case Success(value=enc):
             return listConcat([
-                Check.ints_equal(f"qwen.{i}.ids", enc.ids, unwrap_or(listGet(Expected.QWEN_IDS, i), [])),
-                strs_equal(f"qwen.{i}.tokens", enc.tokens, unwrap_or(listGet(Expected.QWEN_TOKENS, i), [])),
+                Check.ints_equal(f"{label}.{i}.ids", enc.ids, unwrap_or(listGet(Expected.QWEN_IDS, i), [])),
+                strs_equal(f"{label}.{i}.tokens", enc.tokens, unwrap_or(listGet(Expected.QWEN_TOKENS, i), [])),
             ], [
-                Check.ints_equal(f"qwen.{i}.type_ids", enc.type_ids, unwrap_or(listGet(Expected.QWEN_TYPE_IDS, i), [])),
-                offs_equal(f"qwen.{i}.offsets", offs_list(enc), unwrap_or(listGet(Expected.QWEN_OFFSETS, i), [])),
-                Check.equal(f"qwen.{i}.decode", decoded(tok, enc.ids, False), unwrap_or(listGet(Expected.QWEN_DECODES, i), "")),
-                Check.equal(f"qwen.{i}.skip", decoded(tok, enc.ids, True), unwrap_or(listGet(Expected.QWEN_SKIP_DECODES, i), "")),
-                strs_equal(f"qwen.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), unwrap_or(listGet(Expected.QWEN_PRETOK_PIECES, i), [])),
+                Check.ints_equal(f"{label}.{i}.type_ids", enc.type_ids, unwrap_or(listGet(Expected.QWEN_TYPE_IDS, i), [])),
+                offs_equal(f"{label}.{i}.offsets", offs_list(enc), unwrap_or(listGet(Expected.QWEN_OFFSETS, i), [])),
+                Check.equal(f"{label}.{i}.decode", decoded(tok, enc.ids, False), unwrap_or(listGet(Expected.QWEN_DECODES, i), "")),
+                Check.equal(f"{label}.{i}.skip", decoded(tok, enc.ids, True), unwrap_or(listGet(Expected.QWEN_SKIP_DECODES, i), "")),
+                strs_equal(f"{label}.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), unwrap_or(listGet(Expected.QWEN_PRETOK_PIECES, i), [])),
             ])
         case Error(message=message):
-            return [Check.failed(f"qwen.{i}", "Error: " + message)]
+            return [Check.failed(f"{label}.{i}", "Error: " + message)]
 
 
 def decoded(tok, ids, skip):
