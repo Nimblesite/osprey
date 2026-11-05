@@ -864,6 +864,7 @@ dependencies = [
 name = "osprey-codegen"
 version = "0.0.0-dev"
 dependencies = [
+ "num-traits",
  "osprey-ast",
  "osprey-debug",
  "osprey-syntax",

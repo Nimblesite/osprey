@@ -14,12 +14,10 @@ fn narrowed(value: &str) -> String {
     let word = value
         .strip_prefix("0x")
         .and_then(|hex| hex.strip_suffix("ul"))
-        .and_then(|hex| u64::from_str_radix(hex, 16).ok());
+        .and_then(|hex| u64::from_str_radix(hex, 16).ok())
+        .and_then(|bits| num_traits::ToPrimitive::to_f32(&f64::from_bits(bits)));
     match word {
-        Some(bits) => format!(
-            "gpu_float32_from_bits(0x{:08x}u)",
-            (f64::from_bits(bits) as f32).to_bits()
-        ),
+        Some(value) => format!("gpu_float32_from_bits(0x{:08x}u)", value.to_bits()),
         None => format!("gpu_float32_from_bits(narrow32({value}))"),
     }
 }

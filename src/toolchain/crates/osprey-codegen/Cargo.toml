@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+num-traits.workspace = true
 osprey-ast.workspace = true
 osprey-debug.workspace = true
 osprey-types.workspace = true

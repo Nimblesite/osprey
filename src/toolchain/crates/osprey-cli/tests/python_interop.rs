@@ -432,11 +432,18 @@ fn binary_nul_reads_fail_explicitly_instead_of_truncating() -> std::io::Result<(
         let source = &source;
         ["gc", "arc"]
             .map(|memory| scope.spawn(move || assert_nul_file_read(source, memory)))
-            .map(|job| job.join())
+            .map(std::thread::ScopedJoinHandle::join)
     });
     std::fs::remove_dir_all(directory)?;
     for result in results {
-        result.map_err(|_| std::io::Error::other("NUL read assertion failed"))??;
+        result.map_err(|failure| {
+            let message = failure
+                .downcast_ref::<String>()
+                .map(String::as_str)
+                .or_else(|| failure.downcast_ref::<&str>().copied())
+                .unwrap_or("non-string panic payload");
+            std::io::Error::other(format!("NUL read assertion failed: {message}"))
+        })??;
     }
     Ok(())
 }
