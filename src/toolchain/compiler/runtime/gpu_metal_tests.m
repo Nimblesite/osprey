@@ -8,7 +8,7 @@
 #include <unistd.h>
 
 #define MOCK_MARK 0x2a
-static unsigned failure, libraries, functions, bound, creations, deallocs, commits;
+static unsigned failure, libraries, functions, bound, creations, deallocs, commits, fresh_outputs;
 static NSUInteger expected_threads = 1;
 static NSUInteger dense_bytes;
 static void *mapped_base;
@@ -73,6 +73,10 @@ static NSMutableArray *encoded;
   buffer.mapped = bytes;
   return buffer;
 }
+- (id)newBufferWithLength:(NSUInteger)length options:(MTLResourceOptions)options {
+  fresh_outputs++;
+  return [self newBufferWithBytes:[NSMutableData dataWithLength:length].bytes length:length options:options];
+}
 - (id)commandBuffer { return failure == 7 ? nil : [OspreyMockMetal new]; }
 - (id)computeCommandEncoder { return failure == 8 ? nil : [OspreyMockMetal new]; }
 - (void)setComputePipelineState:(id)pipeline { assert(pipeline); }
@@ -90,12 +94,15 @@ static NSMutableArray *encoded;
   assert(size.width == expected_threads && size.height == 1 && size.depth == 1 && group.width == 256);
 }
 - (void)endEncoding {}
-// The mock "runs" every kernel by stamping word 0 of each buffer bound to it.
+// Synthetic kernels write every output word, including fresh outputs with no upload.
 - (void)commit {
   commits++;
   for (OspreyMockMetal *buffer in encoded) {
     if (dense_bytes) memset(buffer.data.mutableBytes, MOCK_MARK, buffer.data.length);
-    else ((int64_t *)buffer.data.mutableBytes)[0] = MOCK_MARK;
+    else {
+      int64_t *words = buffer.data.mutableBytes;
+      for (NSUInteger i = 0; i < buffer.data.length / sizeof(*words); i++) words[i] = i ? 99 : MOCK_MARK;
+    }
   }
   [encoded removeAllObjects];
 }
@@ -172,12 +179,14 @@ static void mapped_case(void) {
 static void resident_case(void) {
   int64_t in[2] = {5, 6}, out[2] = {99, 99};
   void *in_slot = NULL, *out_slot = NULL;
+  unsigned initial_fresh_outputs = fresh_outputs;
   for (unsigned round = 0; round < 2; round++) {
     OspreyGpuDispatch d = product_of(in, out, &in_slot, &out_slot);
     unsigned before = creations;
     assert(osprey_gpu_metal_dispatch(&d) == 1 && in_slot && out_slot);
     assert(creations == before + (round ? 0 : 2) && out[0] == 99);
   }
+  assert(fresh_outputs == initial_fresh_outputs + 1);
   assert(osprey_gpu_metal_download(out_slot, out, sizeof out) == 1 && out[0] == MOCK_MARK && out[1] == 99);
   unsigned before = deallocs;
   osprey_gpu_metal_release(in_slot);
