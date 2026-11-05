@@ -68,7 +68,7 @@ const TENSOR_PERFORMS: Record<string, string[]> = {
   length: [MODEL],
   zipWith: [MODEL, TRAIN],
   reduce: [MODEL, GENERATE],
-  indexOf: [GENERATE],
+  indexOf: [MODEL],
   matMul: [MODEL],
   fromList: [MODEL, TRAIN],
   load: [MODEL],
