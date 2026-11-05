@@ -20,7 +20,7 @@ impl Checker {
         // A computed numeric value has one representation. Only a callable
         // may instantiate its division relation at different operand widths.
         if !matches!(scheme.ty, Type::Fun { .. }) {
-            let pinned = self.arith_operand_vars(&self.builtin_uses.clone());
+            let pinned = self.arith_operand_vars(&self.builtin_uses);
             scheme.vars.retain(|var| !pinned.contains(var));
         }
         let (deferred, kept) = self.split_obligations(&scheme.vars);
@@ -63,7 +63,7 @@ impl Checker {
     }
 
     /// Every type variable a pending arithmetic overload rests on.
-    pub(super) fn arith_operand_vars(&mut self, obligations: &[(String, Type)]) -> BTreeSet<VarId> {
+    pub(super) fn arith_operand_vars(&self, obligations: &[(String, Type)]) -> BTreeSet<VarId> {
         let mut vars = BTreeSet::new();
         for (name, ty) in obligations {
             if crate::expr::is_deferred_arith(name) {
@@ -77,16 +77,10 @@ impl Checker {
     /// to each instantiation) and those that stay for [`Self::validate_builtin_uses`].
     pub(super) fn split_obligations(&mut self, vars: &[VarId]) -> SplitObligations {
         let uses = self.take_builtin_uses();
-        let resolved: Vec<(String, Type)> = uses
-            .into_iter()
-            .map(|(name, ty)| {
-                let ty = self.ctx.apply(&ty);
-                (name, ty)
-            })
-            .collect();
         let mut deferred = Vec::new();
         let mut kept = Vec::new();
-        for (name, ty) in resolved {
+        for (name, ty) in uses {
+            let ty = self.ctx.apply(&ty);
             // A monomorphic arithmetic overload never travels into a scheme: it is
             // settled once for the whole program
             // ([`Checker::deferred_arith`]), and the variables it rests on stay

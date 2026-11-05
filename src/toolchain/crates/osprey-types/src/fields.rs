@@ -115,8 +115,7 @@ impl Checker {
     /// The first field use still waiting on an unbound receiver, with the
     /// sole record that declares its field.
     fn untracked_receiver(&mut self) -> Option<(Type, Type)> {
-        let uses = self.builtin_uses.clone();
-        uses.iter().find_map(|(name, relation)| {
+        self.builtin_uses.iter().find_map(|(name, relation)| {
             let (_, _, field) = parse_obligation(name)?;
             let Type::Fun { params, .. } = relation else {
                 return None;

@@ -188,7 +188,7 @@ pub(crate) fn infer_annotation_trial(
     if !checker.errors.is_empty() {
         return Err(distinct(checker.errors));
     }
-    let open = has_open_handlers(&mut checker);
+    let open = has_open_handlers(&checker);
     Ok((publish_program(&program, checker, false), open))
 }
 
