@@ -403,6 +403,21 @@ fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), 
 #[test]
 fn proof_work_follows_the_annotations_at_fault_not_the_annotations_written(
 ) -> Result<(), std::fmt::Error> {
+    let all_safe = format!(
+        "fn {BLAME_SENTINEL}() = 0\n{}",
+        definitions(32, "safe", "() -> string = \"hi\"")?
+    );
+    let all_safe = program(&all_safe);
+    let written = crate::redundant_sites::sites(&all_safe);
+    assert_eq!(written.len(), 32);
+    let expected: Vec<_> = (0..written.len()).collect();
+    BLAME_CALLS.store(0, Ordering::Relaxed);
+    assert_default_sites(&all_safe, &written, &expected);
+    assert_eq!(
+        BLAME_CALLS.load(Ordering::Relaxed),
+        4,
+        "joint success needs one trial, followed by the unchanged final oracle"
+    );
     for required in [1, 2, 4, 8, 16, 32] {
         let source =
             (0..required).try_fold(format!("fn {BLAME_SENTINEL}() = 0\n"), |mut text, group| {

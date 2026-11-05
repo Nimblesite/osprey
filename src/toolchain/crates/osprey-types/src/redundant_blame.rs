@@ -67,7 +67,12 @@ pub(super) fn directed(proofs: &Proofs<'_>, written: &[Site]) -> Option<Vec<usiz
     let all: Vec<usize> = (0..written.len()).collect();
     let (accepted, suspects) = trials.separate(&all);
     let decided = trials.decide(&accepted, &suspects);
-    let chosen = trials.reconcile(&decided);
+    // An unchanged set has already passed the joint trial.
+    let chosen = if decided.len() == accepted.len() {
+        accepted
+    } else {
+        trials.reconcile(&decided)
+    };
     (chosen.is_empty() || proofs.keeps(written, &chosen)).then_some(chosen)
 }
 
