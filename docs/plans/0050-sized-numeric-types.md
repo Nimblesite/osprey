@@ -217,6 +217,10 @@ Verified binary32 progress, 2026-11-03: the compiled transformer suite passes al
 - **Device parity for transcendental functions** keeps today's tolerance rule; only `+ - * /`, `sqrt`, comparisons, conversions and the integer family are bit-exact contracts.
 - **Goldens change** for GPT-2 and the transformer tests when they move to `float32`. Each new golden is produced on the host and confirmed on Metal before commit.
 
+### Verification notes (2026-11-05)
+
+Consumers now run on the binary32 path that this plan built: 0049's real Qwen3.8-27B token runs entirely in `float32` buffers over `gpuMatMulQuant` and generated kernels (99 ms of device time, 8.92 tokens/s wall, receipt `target/local-coding-model/runs/2026-11-05_142230-pipelined-segments.txt`), and the kernel-side `exp`/`tanh` are a shared binary32 algorithm (`gpu32_exp`, 52907d9db) instead of a rounding of the binary64 routine. Nothing here closes an open item: the Metal ML workload gate is still red on the division fault, the `toGpu` caller migration and the panic-path removal are unchanged, the `gpu_shader_tests.c` forced-Metal record is not written, and the final `cargo test -p osprey-cli` and `make ci` runs have not been repeated. New since the last note: `fileSize : (string) -> Result<int, Error>` (56638019b) adds a builtin that the registry test `registry_classifies_the_compilers_ambient_builtin_inventory` and the sandbox test now fail on until it is classified; both must be fixed before the next full gate run.
+
 ### Verification notes (2026-11-03)
 
 Phase 6 spec review has checked numeric sections of 0004, 0012, 0019, 0041 and 0043 against the shared numeric descriptor, inference, arithmetic lowering, C thunks and regressions. Corrected stale binary64-only math signatures and the 32-bit C extension rule. Eight Default/ML GC/ARC math runs match their existing goldens; all four ARC runs report zero live objects. Spec 0034 and the final whole-plan audit await the Phase 4/5 implementation and hardware receipts.
