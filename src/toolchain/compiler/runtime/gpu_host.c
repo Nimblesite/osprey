@@ -21,6 +21,7 @@
 #include "memory_hooks.h"
 #include "gpu_device.h"
 #include "tensor_file.h"
+#include "float_spelling.h"
 
 #include <errno.h>
 #include <stdint.h>
@@ -41,6 +42,7 @@ static void *abandoned(void *buffer) {
 }
 
 static const char OP_MATMUL[] = "gpuMatMul";
+static const char OP_MATMUL_QUANT[] = "gpuMatMulQuant";
 static const char OP_LOAD[] = "gpuLoad";
 static const char OP_TENSOR[] = "gpuLoadTensor";
 
@@ -55,14 +57,14 @@ static int64_t area(int64_t rows, int64_t cols, int64_t elem) {
 }
 
 // Reject an operand whose length is not the stated shape, naming which one.
-static int shaped(void *buffer, int64_t count, const char *operand) {
+static int shaped(const char *op, void *buffer, int64_t count, const char *operand) {
   if (count >= 0 && osprey_gpu_len(buffer) == count) {
     return 1;
   }
   char reason[96];
   (void)snprintf(reason, sizeof reason, "has %lld elements, the stated shape needs %lld",
                  (long long)osprey_gpu_len(buffer), (long long)count);
-  osp_io_error_text(OP_MATMUL, operand, reason);
+  osp_io_error_text(op, operand, reason);
   return 0;
 }
 
@@ -79,8 +81,8 @@ static void *matrix_result(void *left, void *right, int64_t rows, int64_t inner,
     osp_io_error_text(OP_MATMUL, "result", "rows * cols is negative or overflows");
     return NULL;
   }
-  if (!shaped(left, area(rows, inner, elem), "left operand") ||
-      !shaped(right, area(inner, cols, elem), "right operand")) {
+  if (!shaped(OP_MATMUL, left, area(rows, inner, elem), "left operand") ||
+      !shaped(OP_MATMUL, right, area(inner, cols, elem), "right operand")) {
     return NULL;
   }
   if ((left && osprey_gpu_elem_bytes(left) != elem) || (right && osprey_gpu_elem_bytes(right) != elem)) {
@@ -129,6 +131,95 @@ void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, in
     product32(osprey_gpu_data(out), osprey_gpu_data(left), osprey_gpu_data(right), rows, inner, cols);
   else
     product64(osprey_gpu_data(out), osprey_gpu_data(left), osprey_gpu_data(right), rows, inner, cols);
+  return out;
+}
+
+// --- the quantized product [LLM-MATMUL-QUANT] -----------------------------------------
+
+// The library kernel for a GGUF tensor type, or NULL for one the product does not decode.
+static const char *quant_kernel(const char *type) {
+  return type && strcmp(type, "Q4_K") == 0 ? "osprey_matmul_q4_k" : NULL;
+}
+
+// The 6-bit scale and minimum of sub-block j of a Q4_K block, as ggml packs them.
+static unsigned q4k_scale(const unsigned char *scales, unsigned j) {
+  return j < 4 ? (unsigned)(scales[j] & 63) : (unsigned)((scales[j + 4] & 15) | ((scales[j - 4] >> 6) << 4));
+}
+static unsigned q4k_min(const unsigned char *scales, unsigned j) {
+  return j < 4 ? (unsigned)(scales[j + 4] & 63) : (unsigned)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
+}
+
+// The oracle of osprey_matmul_q4_k in gpu_device_lib.metal, step for step:
+// each weight dequantized with two roundings, multiplied, then added, in
+// ggml's block order from 0.0f; separate statements keep every rounding.
+static void product_q4k(float *out, const float *x, const unsigned char *w, int64_t rows, int64_t inner, int64_t cols) {
+  int64_t blocks = inner / 256;
+  for (int64_t r = 0; r < rows; r++) for (int64_t c = 0; c < cols; c++) {
+    const float *xr = x + r * inner;
+    const unsigned char *row = w + c * blocks * 144;
+    float acc = 0.0f;
+    for (int64_t blk = 0; blk < blocks; blk++) {
+      const unsigned char *b = row + blk * 144;
+      float d = osp_f16_to_f32((uint16_t)(b[0] | (b[1] << 8)));
+      float dmin = osp_f16_to_f32((uint16_t)(b[2] | (b[3] << 8)));
+      const float *xb = xr + blk * 256;
+      for (unsigned j = 0; j < 8; j++) {
+        unsigned sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+        float d1 = d * (float)sc;
+        float m1 = dmin * (float)mn;
+        unsigned g = j >> 1, high = j & 1;
+        const unsigned char *q = b + 16 + g * 32;
+        const float *xe = xb + g * 64 + high * 32;
+        for (unsigned l = 0; l < 32; l++) {
+          unsigned nib = high ? (unsigned)(q[l] >> 4) : (unsigned)(q[l] & 15);
+          float weight = d1 * (float)nib;
+          weight = weight - m1;
+          float product = xe[l] * weight;
+          acc = acc + product;
+        }
+      }
+    }
+    out[r * cols + c] = acc;
+  }
+}
+
+// out[r*cols + c] = sum over k of x[r*inner + k] * w_c[k], where `w` holds
+// `cols` rows of `inner / 256` Q4_K blocks each, as a GGUF stores a [cols,
+// inner] tensor, and `x` is a [rows, inner] float32 matrix. On the selected
+// device the operands and result stay resident; the host runs the oracle.
+void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, int64_t inner, int64_t cols) {
+  const char *kernel = quant_kernel(type);
+  if (!kernel) {
+    osp_io_error_text(OP_MATMUL_QUANT, "weights", "unsupported tensor type; expected Q4_K");
+    return NULL;
+  }
+  if (inner <= 0 || inner % 256 != 0) {
+    osp_io_error_text(OP_MATMUL_QUANT, "inner", "must be a positive multiple of 256");
+    return NULL;
+  }
+  int64_t n = area(rows, cols, 4);
+  int64_t blocks = area(cols, inner / 256, 144);
+  if (n < 0 || blocks < 0) {
+    osp_io_error_text(OP_MATMUL_QUANT, "result", "rows * cols is negative or overflows");
+    return NULL;
+  }
+  if (!shaped(OP_MATMUL_QUANT, x, area(rows, inner, 4), "x operand") ||
+      !shaped(OP_MATMUL_QUANT, w, blocks * 144, "weights")) {
+    return NULL;
+  }
+  if ((x && osprey_gpu_elem_bytes(x) != 4) || (w && osprey_gpu_elem_bytes(w) != 1)) {
+    osp_io_error_text(OP_MATMUL_QUANT, "operands", "x must hold float32 and the weights uint8");
+    return NULL;
+  }
+  void *out = osprey_gpu_alloc(n, 4);
+  if (!out || osprey_gpu_len(out) != n) {
+    osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
+    return abandoned(out);
+  }
+  int device = osprey_gpu_device_matmul_quant(kernel, x, w, out, rows, inner, cols);
+  if (device != 0) return device > 0 ? out : abandoned(out);
+  if (n && (osprey_gpu_readable(x, 0) != 1 || osprey_gpu_readable(w, 0) != 1)) return abandoned(out);
+  product_q4k(osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);
   return out;
 }
 

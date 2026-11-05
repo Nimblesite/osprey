@@ -63,6 +63,26 @@ pub(super) fn mat_mul(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     )
 }
 
+/// `gpuMatMulQuant(x, weights, type, rows, inner, cols)` [LLM-MATMUL-QUANT]:
+/// a `float32` result; the runtime checks the operands' element types and
+/// lengths against the shape and the named block format.
+pub(super) fn mat_mul_quant(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let x = buffer_arg(cg, args, 0)?;
+    let weights = buffer_arg(cg, args, 1)?;
+    let kind = arg_as(cg, args, 2, LType::Str)?;
+    let rows = arg_as(cg, args, 3, LType::I64)?;
+    let inner = arg_as(cg, args, 4, LType::I64)?;
+    let cols = arg_as(cg, args, 5, LType::I64)?;
+    fallible_buffer(
+        cg,
+        "osprey_gpu_matmul_quant",
+        "i8*, i8*, i8*, i64, i64, i64",
+        &[&x.operand, &weights.operand, &kind, &rows, &inner, &cols],
+        LType::Num(Numeric::FLOAT32),
+        "gpuMatMulQuant: operands disagree with the stated shape",
+    )
+}
+
 /// The float element a buffer holds, when it is `float` or `float32` — the two
 /// types `gpuMatMul` is open over [GPU-MATMUL]. Inference has already refused
 /// every other operand; this fails closed on a tag codegen cannot read rather

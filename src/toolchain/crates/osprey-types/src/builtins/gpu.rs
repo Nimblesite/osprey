@@ -73,6 +73,17 @@ pub(super) fn declare(e: &mut TypeEnv) {
     );
     matrix.obligations = vec![("matrix gpuMatMul".into(), product())];
     e.insert("gpuMatMul", matrix);
+    // [LLM-MATMUL-QUANT] A [rows, inner] float32 matrix against `cols` rows of
+    // quantized weights in a GGUF block format named by `type` ("Q4_K"), as the
+    // [rows, cols] float32 product; a length or type the shape disagrees with
+    // is an Error.
+    let f32 = || Type::gpu_buffer(Type::prim("float32"));
+    mono(
+        e,
+        "gpuMatMulQuant",
+        vec![f32(), Type::gpu_buffer(Type::prim("uint8")), s(), i(), i(), i()],
+        res(f32()),
+    );
     // [GPU-BUFFER-LOAD] Raw little-endian binary32 words at a byte offset,
     // byte for byte with no widening, as a `float32` buffer.
     mono(

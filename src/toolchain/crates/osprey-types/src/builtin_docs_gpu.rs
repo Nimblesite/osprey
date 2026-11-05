@@ -77,6 +77,12 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "match toGpu([1.0, 2.0, 3.0, 4.0]) {\n    Success { value } => { let left = value\n    match toGpu([5.0, 6.0, 7.0, 8.0]) {\n        Success { value } => { let right = value\n        match gpuMatMul(left, right, 2, 2, 2) {\n            Success { value } => match gpuGet(value, 0) {\n                Success { value } => print(value)\n                Error { message } => print(message)\n            }\n            Error { message } => print(message)\n        }\n        }\n        Error { message } => print(message)\n    }\n    }\n    Error { message } => print(message)\n}",
     ),
     builtin_doc!(
+        "gpuMatMulQuant",
+        "The product of a rows x inner float32 matrix and cols rows of quantized weights in the named GGUF block format (Q4_K: 256 weights per 144-byte block), as a rows x cols float32 buffer. Each weight is dequantized, multiplied and added in ggml's block order with every step rounded, identically on the host and every device. A length, element type or inner dimension the shape disagrees with returns Error.",
+        ["x" => "The rows x inner float32 buffer", "weights" => "The uint8 buffer holding cols rows of blocks, as the GGUF tensor stores them", "type" => "The GGUF tensor type name, Q4_K", "rows" => "The row count of x", "inner" => "The shared dimension, a multiple of 256", "cols" => "The weight row count"],
+        "match gpuMapFile(\"model.gguf\", 10996640, 14745600) {\n    Success { value } => { let weights = value\n    match toGpu(xs) {\n        Success { value } => match gpuMatMulQuant(value, weights, \"Q4_K\", 1, 5120, 5120) {\n            Success { value } => print(gpuLength(value))\n            Error { message } => print(message)\n        }\n        Error { message } => print(message)\n    }\n    }\n    Error { message } => print(message)\n}"
+    ),
+    builtin_doc!(
         "gpuLoad",
         "Reads count little-endian IEEE-754 binary32 values starting at a byte offset of a file into a `GpuBuffer<float32>`, preserving the binary32 words. A missing file or a short read is an Error carrying the operating system's reason.",
         ["path" => "The file to read", "offset" => "The byte offset the first value starts at", "count" => "How many values to read"],

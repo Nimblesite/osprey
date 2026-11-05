@@ -123,6 +123,7 @@ fn operation(name: &str) -> Option<Lowering> {
         "gpuScan" => gpu_scan,
         "gpuFilter" => gpu_filter,
         "gpuMatMul" => io::mat_mul,
+        "gpuMatMulQuant" => io::mat_mul_quant,
         "gpuLoad" => io::load,
         "gpuLoadTensor" => io::load_tensor,
         "gpuMapFile" => io::map_file,

@@ -55,6 +55,11 @@ int osprey_gpu_device_dispatch(OspreyGpuDispatch *dispatch);
 // The builtin product over three buffer handles [GPU-MATMUL]; `out` is left
 // on the device.
 int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, int64_t inner, int64_t cols);
+// [LLM-MATMUL-QUANT] The quantized product over three buffer handles, by the
+// library kernel's name; `out` is left on the device.
+int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner, int64_t cols);
+// The host entry behind `gpuMatMulQuant` (gpu_host.c): the result buffer, or NULL with the reason recorded.
+void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, int64_t inner, int64_t cols);
 // Copy a device object's first `count` bytes to `out`: 1, or -1 with the
 // reason on the io_error channel.
 int osprey_gpu_device_download(void *object, void *out, uint64_t count);

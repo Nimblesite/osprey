@@ -266,3 +266,59 @@ kernel void NAME(GPU_GLOBAL const WORD *left GPU_BUFFER(0), \
 MATRIX_KERNEL(osprey_matmul64, ulong, multiply64, add64)
 MATRIX_KERNEL(osprey_matmul32, float, multiply32, add32)
 #undef MATRIX_KERNEL
+
+// [LLM-MATMUL-QUANT] The product of a float32 matrix and Q4_K weights, the
+// block format of the Qwen GGUF: 256 weights per 144-byte block, a binary16
+// scale and minimum, eight 6-bit sub-block scales and minimums, 4-bit
+// weights. Row c of the weights is `inner / 256` consecutive blocks.
+#if !defined(__METAL_VERSION__) && !defined(__OPENCL_VERSION__) && !defined(__OPENCL_C_VERSION__)
+typedef unsigned char uchar;
+#endif
+
+// The 6-bit scale and minimum of sub-block j, packed as ggml packs them.
+uint q4k_scale(GPU_GLOBAL const uchar *scales, uint j) {
+    return j < 4 ? (uint)(scales[j] & 63) : (uint)((scales[j + 4] & 15) | ((scales[j - 4] >> 6) << 4));
+}
+uint q4k_min(GPU_GLOBAL const uchar *scales, uint j) {
+    return j < 4 ? (uint)(scales[j + 4] & 63) : (uint)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
+}
+
+// out[r * cols + c] = sum over k of x[r * inner + k] * w_c[k], one thread per
+// output, in ggml's block order from 0.0f: each weight is d * scale * q minus
+// dmin * min (two roundings), multiplied by x, then added, every step rounded
+// and nothing contracted, so the host oracle in gpu_host.c writes the same bytes.
+kernel void osprey_matmul_q4_k(GPU_GLOBAL const float *x GPU_BUFFER(0),
+                               GPU_GLOBAL const uchar *w GPU_BUFFER(1),
+                               GPU_GLOBAL float *out GPU_BUFFER(2),
+                               GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4),
+                               GPU_PARAM cols GPU_BUFFER(5) GPU_THREAD) {
+    ulong i = GPU_INDEX;
+    if (i >= rows * cols) return;
+    ulong r = i / cols, c = i % cols;
+    uint blocks = (uint)(inner / 256);
+    GPU_GLOBAL const float *xr = x + r * inner;
+    GPU_GLOBAL const uchar *row = w + c * (ulong)blocks * 144ul;
+    float acc = 0.0f;
+    for (uint blk = 0; blk < blocks; blk++) {
+        GPU_GLOBAL const uchar *b = row + blk * 144u;
+        float d = gpu_f16_to_f32((ushort)(b[0] | (b[1] << 8)));
+        float dmin = gpu_f16_to_f32((ushort)(b[2] | (b[3] << 8)));
+        GPU_GLOBAL const float *xb = xr + blk * 256u;
+        for (uint j = 0; j < 8; j++) {
+            uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+            float d1 = d * (float)sc;
+            float m1 = dmin * (float)mn;
+            uint g = j >> 1, high = j & 1;
+            GPU_GLOBAL const uchar *q = b + 16 + g * 32;
+            GPU_GLOBAL const float *xe = xb + g * 64 + high * 32;
+            for (uint l = 0; l < 32; l++) {
+                uint nib = high ? (uint)(q[l] >> 4) : (uint)(q[l] & 15);
+                float weight = d1 * (float)nib;
+                weight = weight - m1;
+                float product = xe[l] * weight;
+                acc = acc + product;
+            }
+        }
+    }
+    out[i] = acc;
+}

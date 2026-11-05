@@ -173,6 +173,20 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
   return settled(osprey_gpu_device_dispatch(&dispatch), out);
 }
 
+// [LLM-MATMUL-QUANT] The quantized product as a library-kernel dispatch: `x`
+// is [rows, inner] float32, `w` the quantized weight rows, `out` [rows, cols]
+// float32 left on the device.
+int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner, int64_t cols) {
+  OspreyGpuDispatch dispatch = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols)};
+  buffer_argument(&dispatch, OSPREY_GPU_INPUT, x);
+  buffer_argument(&dispatch, OSPREY_GPU_INPUT, w);
+  buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
+  scalar_argument(&dispatch, rows);
+  scalar_argument(&dispatch, inner);
+  scalar_argument(&dispatch, cols);
+  return settled(osprey_gpu_device_dispatch(&dispatch), out);
+}
+
 // One uniform of a compiled kernel: `s` a scalar word, `b` a buffer handle
 // bound as its words followed by its length ([GPU-KERNEL-EXTRACT] uniforms).
 static void uniform_argument(OspreyGpuDispatch *dispatch, char kind, int64_t word) {

@@ -468,6 +468,25 @@ denseWidthsCase () =
     denseRoundTrip ("dense int", [-9223372036854775808, 0, 9223372036854775807])
     denseRoundTrip ("dense float", [-0.5, 0.0, 1.5])
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
+(** [LLM-MATMUL-QUANT]: two Q4_K weight rows (scale 1.0, minimum 0, sub-block 0 at
+    scale 1 then 2, weights 1 in the low nibbles of its first 32 bytes) against
+    x = 0..255 give 496 and 992 on every backend; a wrong type name, an inner
+    dimension off the block size and a short weight buffer are each an Error. *)
+quantWeights () =
+    bytes : List<uint8>
+    bytes = [0, 60, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 60, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 33, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    toGpu(bytes)
+quantMessage (result) = match result
+    Success value => "unexpected success ${gpuLength(value)}"
+    Error message => toString(message)
+quantCase () = withBuffer(toGpu(range(0, 256)), \ints => withBuffer(gpuMap(ints, \i => toFloat32(i)), \x => withBuffer(quantWeights(), \w => quantWith(x, w))))
+quantWith (x, w) = withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2), \out => checkAll("quantized product", [
+    gpuLength(out) == 2, (gpuGet(out, 0) ?: toFloat32(0.0)) == toFloat32(496.0), (gpuGet(out, 1) ?: toFloat32(0.0)) == toFloat32(992.0),
+    quantMessage(gpuMatMulQuant(x, w, "Q8_0", 1, 256, 2)) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K",
+    quantMessage(gpuMatMulQuant(x, w, "Q4_K", 1, 200, 2)) == "gpuMatMulQuant: inner: must be a positive multiple of 256",
+    quantMessage(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 3)) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432",
+    quantMessage(gpuMatMulQuant(x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"
+]))
 exactArithmetic work =
     handle Arith
         overflow op _ _ wrapped =>
@@ -497,3 +516,4 @@ test ("kernels may change the element scalar type", \() => exactArithmetic (bool
 test ("the copy path stays exact at a hundred thousand elements", \() => exactArithmetic (bigCase))
 test ("a block-bodied kernel keeps its internal let bindings", \() => exactArithmetic (blockBodiedKernelCase))
 test ("every scalar width survives dense storage and round-trips through gpuGet", \() => exactArithmetic (denseWidthsCase))
+test ("the quantized product decodes Q4_K blocks in place on every backend", \() => exactArithmetic (quantCase))
