@@ -19,5 +19,6 @@
     "deslop.topOffenders.groupBy": "language",
     "deslop.embedding.provider": "ollama",
     "deslop.embedding.model": "nomic-embed-text",
-    "deslop.embedding.mode": "auto"
+    "deslop.embedding.mode": "auto",
+    "deslop.configPath": ".config/deslop.toml"
 }

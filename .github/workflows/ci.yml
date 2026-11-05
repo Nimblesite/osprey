@@ -287,7 +287,7 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
 
       - name: Deslop duplication gate
-        run: deslop . --nohtml --nojson --output "$RUNNER_TEMP/deslop-report" --log-to-console --log-level error --no-color
+        run: deslop . --config .config/deslop.toml --nohtml --nojson --output "$RUNNER_TEMP/deslop-report" --log-to-console --log-level error --no-color
 
       # Dead-code gate: fail if any `pub` declaration is unreachable from the
       # osprey binary (hawk::dead_public). cargo-hawk's prebuilt driver runs

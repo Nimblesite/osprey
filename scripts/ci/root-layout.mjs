@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url'
 
 export const ALLOWED_TRACKED = new Set([
   '.agents', '.cargo', '.claude', '.clinerules', '.config', '.cursor', '.opencode',
-  '.deslop.toml', '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
+  '.devcontainer', '.dockerignore', '.gitattributes', '.github', '.gitignore',
   '.vscode', '.windsurf', 'AGENTS.md', 'CONTRIBUTING.md',
   'LICENSE', 'Makefile', 'README.md', 'SECURITY.md',   'docs', 'scripts', 'src',
   ])

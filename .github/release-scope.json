@@ -28,7 +28,7 @@
     ".clinerules/**",
     ".windsurf/**",
     ".opencode/**",
-    ".deslop.toml",
+    ".config/deslop.toml",
     ".gitignore",
     ".dockerignore",
     "src/toolchain/.clippy.toml",
