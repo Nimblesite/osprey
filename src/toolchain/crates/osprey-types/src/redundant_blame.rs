@@ -8,8 +8,7 @@
 //! source-order search.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use osprey_ast::stmt_meta::statement_position;
 use osprey_ast::{Position, Program, Stmt};
@@ -149,29 +148,15 @@ impl Trials<'_> {
             .collect()
     }
 
-    /// Greedy in source order within a declaration. Declarations are independent
-    /// unless the closing joint proof says otherwise, so they judge in parallel.
+    /// Greedy in source order within a declaration, then checked jointly.
+    /// When checking a single Agent project, concurrent full inference trials
+    /// consumed more CPU and took longer than running them in order.
     fn decide(&self, accepted: &[usize], suspects: &[usize]) -> Vec<usize> {
-        let groups = self.grouped(suspects);
-        let next = AtomicUsize::new(0);
-        let chosen = Mutex::new(accepted.to_vec());
-        let workers = super::judges()
-            .min(super::search::MAX_PROOF_WORKERS)
-            .min(groups.len())
-            .max(1);
-        std::thread::scope(|scope| {
-            for _ in 0..workers {
-                let _ = scope.spawn(|| {
-                    while let Some(group) = groups.get(next.fetch_add(1, Ordering::Relaxed)) {
-                        let kept = self.decide_group(accepted, group);
-                        if let Ok(mut chosen) = chosen.lock() {
-                            chosen.extend(kept);
-                        }
-                    }
-                });
-            }
-        });
-        chosen.into_inner().unwrap_or_default()
+        let mut chosen = accepted.to_vec();
+        for group in self.grouped(suspects) {
+            chosen.extend(self.decide_group(accepted, &group));
+        }
+        chosen
     }
 
     fn grouped(&self, suspects: &[usize]) -> Vec<Vec<usize>> {

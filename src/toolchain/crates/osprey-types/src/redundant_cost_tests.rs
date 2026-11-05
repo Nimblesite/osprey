@@ -348,6 +348,17 @@ fn full_program_proofs_have_bounded_parallelism() -> Result<(), std::fmt::Error>
         peak <= 4,
         "{peak} simultaneous full-program proofs exceeds the resource ceiling of 4"
     );
+    PEAK.store(0, Ordering::SeqCst);
+    let warnings = super::redundant_annotation_sites_for(&program, |_| true, &|_| false);
+    assert!(
+        !warnings.is_empty(),
+        "directed search must still report warnings"
+    );
+    assert_eq!(
+        PEAK.load(Ordering::SeqCst),
+        1,
+        "a directed search must complete one inference trial at a time"
+    );
     Ok(())
 }
 
