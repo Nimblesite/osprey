@@ -1130,7 +1130,7 @@ def model_layer_cases(parameters):
         case Error(message=message):
             return [Check.failed("model_load", message)]
         case Success(value=model):
-            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), single_cases(model), cached_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
+            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), checked_device_cases(model.config), single_cases(model), cached_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
 
 
 def model_geometry_cases(model):
@@ -1155,6 +1155,51 @@ def checkpoint_conversion_cases():
         close_list("model.checkpoint.transpose", Qwen3_5Hf.transposed(row, 2, 3), to_floats([1.0, 4.0, 2.0, 5.0, 3.0, 6.0]), 0.0, 0.0),
         close_list("model.checkpoint.centered", Qwen3_5Hf.plus_one(to_floats([-1.0, 0.0, 0.5])), to_floats([0.0, 1.0, 1.5]), 0.0, 0.0),
         close_list("model.checkpoint.decay", Qwen3_5Hf.neg_exp(to_floats([-1.0, 0.0, 1.0])), to_floats([-0.36787944, -1.0, -2.71828183]), MODEL_RTOL, MODEL_ATOL),
+    ]
+
+
+def checked_device_cases(cfg):
+    match run_device_cases(cfg):
+        case Success(value=checks):
+            return checks
+        case Error(message=message):
+            return [Check.failed("model.device", message)]
+
+
+def run_device_cases(cfg):
+    with Qwen3_5Device.strictly:
+        return Success(value=flatten([divider_cases(), buffer_cases(), shape_grid_cases(Qwen3_5Shapes.shapes_of(cfg))]))
+
+
+def divider_cases():
+    divisor = Qwen3_5Device.divider(3)
+    expected = Qwen3_5Device.Div(mul=5726623062, shift=34)
+    return [
+        Check.ints_equal("model.device.divider", [divisor.mul, divisor.shift], [expected.mul, expected.shift]),
+        Check.ints_equal("model.device.quot", mapList([0, 2, 3, 4, 17, 65535], lambda i: Qwen3_5Device.quot(i, divisor.mul, divisor.shift)), [0, 0, 1, 1, 5, 21845]),
+        Check.ints_equal("model.device.rem", mapList([0, 2, 3, 4, 17, 65535], lambda i: Qwen3_5Device.rem(i, divisor.mul, divisor.shift, 3)), [0, 2, 0, 1, 2, 0]),
+        Check.close("model.device.inverse", toFloat(Qwen3_5Device.inverse(8)), 0.125, 0.0, 0.0),
+        Check.close("model.device.rsqrt", toFloat(Qwen3_5Device.rsqrt(toFloat32(4.0))), 0.5, MODEL_RTOL, MODEL_ATOL),
+        Check.close("model.device.softplus", toFloat(Qwen3_5Device.softplus(toFloat32(0.0))), 0.69314718, MODEL_RTOL, MODEL_ATOL),
+    ]
+
+
+def buffer_cases():
+    indices = Qwen3_5Device.must_ints(gpuIota(2))
+    a = Qwen3_5Device.constant(to_floats([1.0, -2.0, 3.0]))
+    b = Qwen3_5Device.constant(to_floats([4.0, 2.0]))
+    return [
+        compare("model.device.zeros", Qwen3_5Device.zeros(indices), to_floats([0.0, 0.0])),
+        compare("model.device.added", Qwen3_5Device.added(a, b, indices), to_floats([5.0, 0.0])),
+        compare("model.device.slice", Qwen3_5Device.slice_of(a, 1, indices), to_floats([-2.0, 3.0])),
+        Check.close("model.device.squares", toFloat(Qwen3_5Device.squares(a, 1, 2)), 13.0, 0.0, 0.0),
+        compare("model.device.sigmoid", Qwen3_5Device.sigmoid(Qwen3_5Device.constant(to_floats([-1.0, 0.0, 1.0]))), to_floats([0.26894142, 0.5, 0.73105858])),
+    ]
+
+
+def shape_grid_cases(shapes):
+    return [
+        Check.ints_equal("model.device.Shapes.grids", [gpuLength(shapes.hidden), gpuLength(shapes.conv), gpuLength(shapes.value), gpuLength(shapes.state)], [64, 64, 32, 288]),
     ]
 
 

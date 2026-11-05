@@ -2469,6 +2469,18 @@ ok model.shapes.chunk_of
 ok model.checkpoint.transpose
 ok model.checkpoint.centered
 ok model.checkpoint.decay
+ok model.device.divider
+ok model.device.quot
+ok model.device.rem
+ok model.device.inverse
+ok model.device.rsqrt
+ok model.device.softplus
+ok model.device.zeros
+ok model.device.added
+ok model.device.slice
+ok model.device.squares
+ok model.device.sigmoid
+ok model.device.Shapes.grids
 ok model_single_embed
 ok model_single_layer0
 ok model_single_layer1
@@ -2543,4 +2555,4 @@ ok model_full_wrong_slot
 ok model_decode_missing_layer
 ok model_mapped_missing_file
 ok model_quantized_head_fault
-2545 passed, 0 failed
+2557 passed, 0 failed
