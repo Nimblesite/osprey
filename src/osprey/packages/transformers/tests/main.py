@@ -10,6 +10,7 @@ from testing import Check
 from transformers_expected import Expected
 from transformers_tools_expected import ExpectedTools
 from transformers import Generation, Lists, LogitsProcess, Qwen3_5Cache, Qwen3_5Config, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Model, Qwen3_5Shapes, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
+from transformers import Qwen3_5Attention, Qwen3_5DeltaNet, Qwen3_5Mlp, Qwen3_5Norm, Qwen3_5Rope
 from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
@@ -1130,7 +1131,7 @@ def model_layer_cases(parameters):
         case Error(message=message):
             return [Check.failed("model_load", message)]
         case Success(value=model):
-            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), checked_device_cases(model.config), single_cases(model), cached_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
+            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), checked_device_cases(model.config), single_cases(model), model_interface_cases(model), cached_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
 
 
 def model_geometry_cases(model):
@@ -1168,7 +1169,8 @@ def checked_device_cases(cfg):
 
 def run_device_cases(cfg):
     with Qwen3_5Device.strictly:
-        return Success(value=flatten([divider_cases(), buffer_cases(), shape_grid_cases(Qwen3_5Shapes.shapes_of(cfg))]))
+        shapes = Qwen3_5Shapes.shapes_of(cfg)
+        return Success(value=flatten([divider_cases(), buffer_cases(), shape_grid_cases(shapes), rope_cases(cfg, shapes), head_norm_cases()]))
 
 
 def divider_cases():
@@ -1194,12 +1196,36 @@ def buffer_cases():
         compare("model.device.slice", Qwen3_5Device.slice_of(a, 1, indices), to_floats([-2.0, 3.0])),
         Check.close("model.device.squares", toFloat(Qwen3_5Device.squares(a, 1, 2)), 13.0, 0.0, 0.0),
         compare("model.device.sigmoid", Qwen3_5Device.sigmoid(Qwen3_5Device.constant(to_floats([-1.0, 0.0, 1.0]))), to_floats([0.26894142, 0.5, 0.73105858])),
+        compare("model.device.Weight.dense", Qwen3_5Device.linear(b, Qwen3_5Device.Dense(values=b), 1, 2, 1), to_floats([20.0])),
     ]
 
 
 def shape_grid_cases(shapes):
     return [
         Check.ints_equal("model.device.Shapes.grids", [gpuLength(shapes.hidden), gpuLength(shapes.conv), gpuLength(shapes.value), gpuLength(shapes.state)], [64, 64, 32, 288]),
+    ]
+
+
+def rope_cases(cfg, shapes):
+    angles = Qwen3_5Rope.tables(1, cfg)
+    head = Qwen3_5Device.constant(toList(map(range(1, 17), lambda i: toFloat32(i))))
+    return [
+        compare("model.rope.Tables.cos", angles.cos, to_floats([0.54030231, 0.99995, 0.54030231, 0.99995])),
+        compare("model.rope.Tables.sin", angles.sin, to_floats([0.84147098, 0.00999983, 0.84147098, 0.00999983])),
+        compare_rows("model.rope.rotated", Qwen3_5Rope.rotated(head, angles, Qwen3_5Device.grid(16), shapes, cfg), 0, 6, to_floats([-1.98411065, 1.95990067, 2.46237790, 4.01979967, 5.0, 6.0])),
+    ]
+
+
+def head_norm_cases():
+    x = Qwen3_5Device.constant(to_floats([1.0, 1.0, 2.0, 2.0]))
+    z = Qwen3_5Device.constant(to_floats([1.0, 1.0, 1.0, 1.0]))
+    w = Qwen3_5Device.constant(to_floats([2.0, 3.0]))
+    heads = Qwen3_5Device.grid(2)
+    cells = Qwen3_5Device.grid(4)
+    div = Qwen3_5Device.divider(2)
+    return [
+        compare("model.norm.rms_heads", Qwen3_5Norm.rms_heads(x, w, heads, cells, div, 2, toFloat32(0.0)), to_floats([2.0, 3.0, 2.0, 3.0])),
+        compare("model.norm.gated", Qwen3_5Norm.gated(x, z, w, heads, cells, div, 2, toFloat32(0.0)), to_floats([1.46211716, 2.19317574, 1.46211716, 2.19317574])),
     ]
 
 
@@ -1230,7 +1256,101 @@ def single_run(model, cache):
         case Error(message=message):
             return [Check.failed("model_single", message)]
         case Success(value=next):
-            return listConcat(stage_cases("model_single", next, SINGLE, 0), [greedy_case("model_single", next)])
+            return listConcat(stage_cases("model_single", next, SINGLE, 0), [greedy_case("model_single", next), public_greedy_case(model, next)])
+
+
+def public_greedy_case(model, next):
+    match public_greedy(model, next.logits):
+        case Success(value=best):
+            return Check.equal("model.Next.greedy", best, next.best)
+        case Error(message=message):
+            return Check.failed("model.Next.greedy", message)
+
+
+def public_greedy(model, logits):
+    with Qwen3_5Device.strictly:
+        with Qwen3_5Device.wrapping:
+            return Success(value=Qwen3_5Model.greedy(model, logits))
+
+
+def model_interface_cases(model):
+    match run_model_interfaces(model):
+        case Success(value=checks):
+            return checks
+        case Error(message=message):
+            return [Check.failed("model.interfaces", message)]
+
+
+def run_model_interfaces(model):
+    with Qwen3_5Device.strictly:
+        with Qwen3_5Device.wrapping:
+            return Success(value=started(model, "model_interfaces", lambda cache: model_interface_run(model, cache)))
+
+
+def model_interface_run(model, cache):
+    row = Qwen3_5Model.embed(model, token_in(input_tokens(2), 0))
+    match Qwen3_5Model.forward(model, cache, row):
+        case Error(message=message):
+            return [Check.failed("model.Walk.forward", message)]
+        case Success(value=walk):
+            return flatten([[compare("model.Embedding.row", row, hidden_row(CACHED, 0)), compare("model.Walk.forward", walk.hidden, hook_row("layers.3", 0))], layer_interface_cases(model, cache, row, 0), layer_interface_cases(model, cache, Qwen3_5Device.constant(hook_row("layers.2", 0)), 3)])
+
+
+def layer_interface_cases(model, cache, row, index):
+    match listGet(model.layers, index):
+        case Error(message=message):
+            return [Check.failed(f"model.Layer.{index}", toString(message))]
+        case Success(value=layer):
+            match Qwen3_5Cache.slot_at(cache, index):
+                case Error(message=message):
+                    return [Check.failed(f"model.Slot.{index}", toString(message))]
+                case Success(value=slot):
+                    return layer_hook_cases(model, row, index, layer, slot)
+
+
+def layer_hook_cases(model, row, index, layer, slot):
+    cfg = model.config
+    shapes = model.shapes
+    normed = Qwen3_5Norm.rms_row(row, layer.input_norm, cfg, shapes)
+    return flatten([
+        [compare(f"model.Layer.input_norm.{index}", normed, hook_row(f"layers.{index}.input_layernorm", 0))],
+        mixer_cases(model, layer.mixer, slot, normed),
+        [compare(f"model.Mlp.swiglu.{index}", Qwen3_5Mlp.swiglu(Qwen3_5Device.constant(hook_row(f"layers.{index}.post_attention_layernorm", 0)), layer.mlp, cfg, shapes), hook_row(f"layers.{index}.mlp", 0))],
+    ])
+
+
+def mixer_cases(model, mixer, slot, row):
+    match mixer:
+        case Qwen3_5Model.Linear(layer=layer):
+            match slot:
+                case Qwen3_5Cache.Delta(held=held):
+                    return delta_mixer_cases(model, layer, row, held)
+                case Qwen3_5Cache.Attention():
+                    return [Check.failed("model.Mixer.linear", "expected the delta slot")]
+        case Qwen3_5Model.Full(layer=layer):
+            match slot:
+                case Qwen3_5Cache.Attention(held=held):
+                    return attention_mixer_cases(model, layer, row, held)
+                case Qwen3_5Cache.Delta():
+                    return [Check.failed("model.Mixer.attention", "expected the attention slot")]
+
+
+def delta_mixer_cases(model, layer, row, held):
+    mixed = Qwen3_5DeltaNet.mix(row, layer, held, model.tiled, model.config, model.shapes)
+    slot = Qwen3_5Cache.Delta(held=Qwen3_5Cache.DeltaSlot(conv=mixed.slot.conv, state=mixed.slot.state))
+    grown = Qwen3_5Cache.grown(Qwen3_5Cache.Cache(slots=[]), slot)
+    return [
+        compare("model.Mixer.linear.Mixed", mixed.hidden, hook_row("layers.0.linear_attn", 0)),
+        Check.equal("model.DeltaSlot.grown", len(grown.slots), 1),
+    ]
+
+
+def attention_mixer_cases(model, layer, row, held):
+    mixed = Qwen3_5Attention.mix(row, layer, held, model.config, model.shapes)
+    return [
+        compare("model.Mixer.attention.Mixed", mixed.hidden, hook_row("layers.3.self_attn", 0)),
+        Check.equal("model.AttentionSlot.positions", mixed.slot.positions, 1),
+    ]
 
 
 def stage_cases(label, next, base, t):
@@ -1427,6 +1547,7 @@ def model_fault_cases(model):
         refusal("model_step_missing_slot", step_missing_slot(model), "layer 0: no cache slot: index out of bounds"),
         refusal("model_fault_negative_grid", negative_grid(), "gpu: buffer allocation: a negative element count"),
         refusal("model_fault_missing_values", missing_values(), "index out of bounds"),
+        refusal("model.Fault.halt_ints", explicit_device_fault(), "test device fault"),
     ], started(model, "model_wrong_slots", lambda cache: wrong_slot_cases(model, cache)))
 
 
@@ -1494,3 +1615,8 @@ def negative_grid():
 def missing_values():
     with Qwen3_5Device.strictly:
         return Success(value=Qwen3_5Device.must_values(listGet([[toFloat32(1.0)]], 4)))
+
+
+def explicit_device_fault():
+    with Qwen3_5Device.strictly:
+        return Success(value=perform(Qwen3_5Device.Fault.halt_ints("test device fault")))

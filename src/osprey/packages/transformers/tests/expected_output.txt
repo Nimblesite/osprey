@@ -2480,13 +2480,30 @@ ok model.device.added
 ok model.device.slice
 ok model.device.squares
 ok model.device.sigmoid
+ok model.device.Weight.dense
 ok model.device.Shapes.grids
+ok model.rope.Tables.cos
+ok model.rope.Tables.sin
+ok model.rope.rotated
+ok model.norm.rms_heads
+ok model.norm.gated
 ok model_single_embed
 ok model_single_layer0
 ok model_single_layer1
 ok model_single_layer2
 ok model_single_final_norm
 ok model_single_greedy
+ok model.Next.greedy
+ok model.Embedding.row
+ok model.Walk.forward
+ok model.Layer.input_norm.0
+ok model.Mixer.linear.Mixed
+ok model.DeltaSlot.grown
+ok model.Mlp.swiglu.0
+ok model.Layer.input_norm.3
+ok model.Mixer.attention.Mixed
+ok model.AttentionSlot.positions
+ok model.Mlp.swiglu.3
 ok model_cached0_embed
 ok model_cached0_layer0
 ok model_cached0_layer1
@@ -2550,9 +2567,10 @@ ok model_decode_missing_slot
 ok model_step_missing_slot
 ok model_fault_negative_grid
 ok model_fault_missing_values
+ok model.Fault.halt_ints
 ok model_linear_wrong_slot
 ok model_full_wrong_slot
 ok model_decode_missing_layer
 ok model_mapped_missing_file
 ok model_quantized_head_fault
-2557 passed, 0 failed
+2575 passed, 0 failed
