@@ -2456,6 +2456,19 @@ ok model_cache[layers.2.recurrent_states.0]
 ok model_cache[layers.3.keys.0]
 ok model_cache[layers.3.values.0]
 ok model_load
+ok model.config.linear
+ok model.config.full
+ok model.config.layer_type
+ok model.config.is_full
+ok model.config.value_dim
+ok model.config.kv_groups
+ok model.config.rotary_dim
+ok model.shapes.norm_chunk
+ok model.shapes.vocab_chunk
+ok model.shapes.chunk_of
+ok model.checkpoint.transpose
+ok model.checkpoint.centered
+ok model.checkpoint.decay
 ok model_single_embed
 ok model_single_layer0
 ok model_single_layer1
@@ -2530,4 +2543,4 @@ ok model_full_wrong_slot
 ok model_decode_missing_layer
 ok model_mapped_missing_file
 ok model_quantized_head_fault
-2532 passed, 0 failed
+2545 passed, 0 failed

@@ -9,7 +9,7 @@ all its floats as repr strings, decoded here with `Check.float_of`."""
 from testing import Check
 from transformers_expected import Expected
 from transformers_tools_expected import ExpectedTools
-from transformers import Generation, Lists, LogitsProcess, Qwen3_5Cache, Qwen3_5Config, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Model, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
+from transformers import Generation, Lists, LogitsProcess, Qwen3_5Cache, Qwen3_5Config, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Model, Qwen3_5Shapes, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
 from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
@@ -1130,7 +1130,32 @@ def model_layer_cases(parameters):
         case Error(message=message):
             return [Check.failed("model_load", message)]
         case Success(value=model):
-            return listConcat([Check.passed("model_load")], listConcat(single_cases(model), listConcat(cached_cases(model), listConcat(tiled_cases(model, parameters), listConcat(refusal_cases(), model_fault_cases(model))))))
+            return flatten([[Check.passed("model_load")], model_geometry_cases(model), checkpoint_conversion_cases(), single_cases(model), cached_cases(model), tiled_cases(model, parameters), refusal_cases(), model_fault_cases(model)])
+
+
+def model_geometry_cases(model):
+    cfg = model.config
+    return [
+        Check.equal("model.config.linear", Qwen3_5Config.LINEAR, "linear_attention"),
+        Check.equal("model.config.full", Qwen3_5Config.FULL, "full_attention"),
+        Check.truth("model.config.layer_type", structuralEquals(toList(map(range(5), lambda i: Qwen3_5Config.layer_type(cfg, i))), listAppend(Expected.MODEL_LAYER_TYPES, "")), "layer kinds must match the fixture and end at index 4"),
+        Check.truth("model.config.is_full", structuralEquals(toList(map(range(5), lambda i: Qwen3_5Config.is_full(cfg, i))), [False, False, False, True, False]), "only layer 3 is full attention"),
+        Check.equal("model.config.value_dim", Qwen3_5Config.value_dim(cfg), 32),
+        Check.equal("model.config.kv_groups", Qwen3_5Config.kv_groups(cfg), 1),
+        Check.equal("model.config.rotary_dim", Qwen3_5Config.rotary_dim(cfg), 4),
+        Check.equal("model.shapes.norm_chunk", model.shapes.norm_chunk, 64),
+        Check.equal("model.shapes.vocab_chunk", model.shapes.vocab_chunk, 128),
+        Check.ints_equal("model.shapes.chunk_of", [Qwen3_5Shapes.chunk_of(1024, Qwen3_5Shapes.NORM_CHUNK), Qwen3_5Shapes.chunk_of(1024, Qwen3_5Shapes.VOCAB_CHUNK), Qwen3_5Shapes.chunk_of(511, Qwen3_5Shapes.VOCAB_CHUNK)], [256, 512, 511]),
+    ]
+
+
+def checkpoint_conversion_cases():
+    row = to_floats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    return [
+        close_list("model.checkpoint.transpose", Qwen3_5Hf.transposed(row, 2, 3), to_floats([1.0, 4.0, 2.0, 5.0, 3.0, 6.0]), 0.0, 0.0),
+        close_list("model.checkpoint.centered", Qwen3_5Hf.plus_one(to_floats([-1.0, 0.0, 0.5])), to_floats([0.0, 1.0, 1.5]), 0.0, 0.0),
+        close_list("model.checkpoint.decay", Qwen3_5Hf.neg_exp(to_floats([-1.0, 0.0, 1.0])), to_floats([-0.36787944, -1.0, -2.71828183]), MODEL_RTOL, MODEL_ATOL),
+    ]
 
 
 def token_in(tokens, t):
