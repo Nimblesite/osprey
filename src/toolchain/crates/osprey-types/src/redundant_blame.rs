@@ -9,17 +9,18 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 use osprey_ast::stmt_meta::statement_position;
 use osprey_ast::{Position, Program, Stmt};
 
-use super::proofs::member_key;
+use super::proofs::{member_key, ErasureMemo};
 use super::{equivalent, same_types, tried, Proofs, Published, Renaming, Tried};
 use crate::redundant_sites::{erase, Site};
 
 /// Sites with no recorded position share one group, judged in source order.
 const UNPLACED: usize = usize::MAX;
+const TRIAL_MEMO_LIMIT: usize = 256;
 
 /// What a rejected trial points at.
 #[derive(Default)]
@@ -49,6 +50,7 @@ struct Trials<'a> {
     baseline: Tried,
     leaves: Vec<Leaf>,
     owners: Vec<Vec<usize>>,
+    verdicts: ErasureMemo<Result<(), Arc<Blame>>>,
 }
 
 /// Select the jointly removable set, or `None` when the failure-directed search
@@ -63,6 +65,7 @@ pub(super) fn directed(proofs: &Proofs<'_>, written: &[Site]) -> Option<Vec<usiz
         baseline,
         leaves,
         owners,
+        verdicts: ErasureMemo::new(TRIAL_MEMO_LIMIT),
     };
     let all: Vec<usize> = (0..written.len()).collect();
     let (accepted, suspects) = trials.separate(&all);
@@ -206,9 +209,15 @@ impl Trials<'_> {
     /// `Ok` is provisional until the full oracle solves the final set. `Err` is
     /// final: without an open handler the skipped effect proof cannot move a
     /// type, and with one the full oracle answers instead.
-    fn judge(&self, chosen: &[usize]) -> Result<(), Blame> {
+    fn judge(&self, chosen: &[usize]) -> Result<(), Arc<Blame>> {
         let members = member_key(self.written, chosen);
-        let erasing: BTreeSet<usize> = members.into_iter().collect();
+        self.verdicts.compute(&members, || {
+            self.judge_new(chosen, &members).map_err(Arc::new)
+        })
+    }
+
+    fn judge_new(&self, chosen: &[usize], members: &[usize]) -> Result<(), Blame> {
+        let erasing: BTreeSet<usize> = members.iter().copied().collect();
         let candidate = erase(self.proofs.program(), &mut |slot| !erasing.contains(&slot));
         let trial = tried(&candidate).map_err(|errors| Blame {
             positions: errors.iter().filter_map(|error| error.position).collect(),

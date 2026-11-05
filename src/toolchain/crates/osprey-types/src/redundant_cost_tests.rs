@@ -78,6 +78,13 @@ fn mutually_pinning_annotations_solve_each_candidate_once() -> Result<(), String
     assert_eq!(removable.len(), 1, "joint removal changes the type");
     let calls = MEMO_CALLS.load(Ordering::Relaxed);
     assert_eq!(calls, 4, "distinct programs need one full proof each");
+    MEMO_CALLS.store(0, Ordering::Relaxed);
+    assert_default_sites(&program, &written, &[0]);
+    assert_eq!(
+        MEMO_CALLS.load(Ordering::Relaxed),
+        5,
+        "the directed search judges each erasure once, then runs its final proof"
+    );
     Ok(())
 }
 
