@@ -51,7 +51,7 @@ stacker = "0.1.25"
 # CommonMark -> HTML for the `--docs-format html` exporter. Default features are
 # off: only the `html` renderer is used, and the exporter never accepts the
 # crate's getopts/serde extras.
-pulldown-cmark = { version = "0.13.5", default-features = false, features = ["html"] }
+pulldown-cmark = { version = "0.13.6", default-features = false, features = ["html"] }
 
 # Language-server building blocks from the published lspkit crates.
 # [LSP-REUSE-LSPKIT] The LSP is wired in-process, so only the transport, VFS and
