@@ -13,7 +13,8 @@ Its scope is the shared editor contract [EDITOR-ZED] and the checklist in
   Rust formatting passes and Clippy denies warnings. The SDK registration macro
   stays behind a private host boundary; no lint suppression was added.
 - The real stdio process passes Default, ML and Python-flavor hover, completion,
-  definition, formatting, error introduction/removal, shutdown and UTF-16
+  definition, references, document symbols, callee signature help, formatting,
+  error introduction/removal, shutdown and UTF-16
   navigation after an astral character. Manifest checks compare the version,
   language registration, marker controls and pinned canonical grammar sources.
 - Zed 1.27.0 installs the dev extension, builds its WASM component and pinned
@@ -39,9 +40,13 @@ An added mixed-flavor test found that an unsaved unknown identifier in an ML
 helper was reported against the entry file while the helper received no error.
 The checker dropped its available expression position. The minimal position fix
 passes the retained real-process assertion and the current-source regression
-across Default, ML and Python helpers. All four manifest/stdio tests pass against
+across Default, ML and Python helpers. All five manifest/stdio tests pass against
 the freshly built debug compiler, all 250 LSP tests pass, and scoped strict
-Clippy passes for the extension, LSP and types crates.
+Clippy passes for the extension, LSP and types crates. A real annotation quick fix
+is applied from its versioned `TextDocumentEdit`; the document version is checked,
+the edit changes the live buffer, the warning count falls and no type error is
+introduced. Callee signature help is checked for all three syntax flavors; bare
+ML argument-position signature help is outside the current parentheses/callee contract.
 
 Dependency audit found existing high-severity RUSTSEC-2026-0433 in
 `pulldown-cmark` 0.13.5. The version floor and lock now select patched 0.13.6;

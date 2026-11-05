@@ -70,7 +70,8 @@ class ZedStdio(unittest.TestCase):
         self.next_id = 0
         capabilities = self.request("initialize", {
             "processId": None, "rootUri": self.root.as_uri(),
-            "capabilities": {"general": {"positionEncodings": ["utf-16"]}},
+            "capabilities": {"general": {"positionEncodings": ["utf-16"]},
+                             "workspace": {"workspaceEdit": {"documentChanges": True}}},
             "initializationOptions": {"diagnostics": {"scope": "openFiles"}},
         })["capabilities"]
         self.assertTrue(capabilities["hoverProvider"])
@@ -133,6 +134,18 @@ class ZedStdio(unittest.TestCase):
                 definition = self.request("textDocument/definition", self.at(uri, line, column))
                 self.assertTrue(definition, "definition must resolve")
                 self.assertIn(uri, str(definition))
+                self.assertEqual(definition[0]["range"]["start"]["line"], 1 if language == "osprey-python" else 0)
+                references = self.request("textDocument/references", {
+                    **self.at(uri, line, column), "context": {"includeDeclaration": True}})
+                self.assertEqual(len(references), 2, references)
+                self.assertEqual({item["uri"] for item in references}, {uri})
+                symbols = self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+                self.assertIn("double", str(symbols))
+                # [LSP-WORKSPACE] explicitly supports invocation on the callee,
+                # including ML calls without parentheses.
+                signature = self.request("textDocument/signatureHelp", self.at(uri, line, column))
+                self.assertIn("double", str(signature))
+                self.assertEqual(signature["activeParameter"], 0)
                 completion = self.request("textDocument/completion", self.at(uri, line, column))
                 self.assertIn("double", str(completion))
                 formatting = self.request("textDocument/formatting", {
@@ -188,6 +201,36 @@ class ZedStdio(unittest.TestCase):
         self.assertFalse([d for d in self.reports[helper_uri] if d.get("severity") == 1])
         self.assertIn(helper_path.as_uri(), str(self.request(
             "textDocument/definition", self.at(uri, 0, 15))))
+
+    def test_quick_fix_edits_the_live_document_and_removes_its_warning(self):
+        source = "fn add(a: int, b: int) -> int = satAdd(a, b)\nlet total = add(1, 2)\n"
+        uri = self.document("fix.osp", "osprey", source)
+        warnings = [item for item in self.reports[uri] if item.get("code") == "redundant-annotation"]
+        self.assertEqual(len(warnings), 2, self.reports[uri])
+        actions = self.request("textDocument/codeAction", {
+            "textDocument": {"uri": uri}, "range": warnings[0]["range"],
+            "context": {"diagnostics": warnings}})
+        self.assertTrue(actions, "the annotation warning must offer an actual edit")
+        # [LSP-WARNING-ACTIONS] returns versioned TextDocumentEdit, which Zed
+        # supports; plain WorkspaceEdit.changes would discard that safeguard.
+        document = actions[0]["edit"]["documentChanges"][0]
+        self.assertEqual(document["textDocument"], {"uri": uri, "version": 1})
+        edits = document["edits"]
+        lines = source.splitlines(keepends=True)
+        for edit in sorted(edits, key=lambda item: (item["range"]["start"]["line"],
+                                                    item["range"]["start"]["character"]), reverse=True):
+            start, end = edit["range"]["start"], edit["range"]["end"]
+            self.assertEqual(start["line"], end["line"], "this fixture has only single-line annotations")
+            line = lines[start["line"]]
+            lines[start["line"]] = line[:start["character"]] + edit["newText"] + line[end["character"]:]
+        fixed = "".join(lines)
+        self.assertNotEqual(fixed, source)
+        self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
+                    "contentChanges": [{"text": fixed}]})
+        self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+        remaining = [item for item in self.reports[uri] if item.get("code") == "redundant-annotation"]
+        self.assertLess(len(remaining), len(warnings), self.reports[uri])
+        self.assertFalse([item for item in self.reports[uri] if item.get("severity") == 1])
 
 
 if __name__ == "__main__":
