@@ -14,8 +14,8 @@ Elapsed execution time and peak resident memory for arithmetic, collections and 
 
 - **CPU time** is elapsed wall-clock time, including process startup, excluding compilation. Cells show the mean in milliseconds or seconds; lower is better.
 - **Peak memory** is the maximum resident set size (RSS) across three runs, in KiB or MiB. WebAssembly shows `—` because Wasmtime's host RSS does not measure the module's memory alone.
-- **Osprey**, **ARC** and **GC** compile the same source with different memory backends. The historical **Osprey** column uses the then-default unmanaged allocator, which retains general allocations; ARC and GC reclaim them. Current native builds default to GC. These stored figures have not been remeasured for that default change.
-- **Highlighting** identifies Osprey columns and the lowest recorded cells. A star marks a strictly lowest value for the historical unmanaged Osprey column. Summary ratios are geometric means of Osprey time divided by the comparison language's time: `1.59×` means 1.59 times as long; below `1×` means less time.
+- **ARC** and **GC** compile the same source with different memory backends, and both reclaim allocations. Native builds default to GC.
+- **Highlighting** identifies Osprey columns and the lowest recorded cells. A star marks a strictly lowest value in any Osprey column. Summary ratios are geometric means of Osprey (GC) time divided by the comparison language's time: `1.59×` means 1.59 times as long; below `1×` means less time.
 
 **The tables combine runs from different dates and machines.** Some historical records have no machine metadata. Ratios, wins and highlighted minima describe those stored records; they do not establish a controlled cross-language speedup.
 
@@ -49,11 +49,11 @@ Other toolchain commands and optional columns are defined in [`src/toolchain/ben
 
 The following **3 October sample** reports mean ± standard deviation in milliseconds. It is a dated comparison, not a copy of the full table's latest values:
 
-| Case | Osprey | Osprey ARC | Osprey GC | Rust | C |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| fib | 64.0 ± 2.4 | 64.1 ± 1.9 | 68.5 ± 7.3 | 29.2 ± 2.5 | 28.1 ± 2.5 |
-| binarytrees | 612.6 ± 14.0 | 479.0 ± 18.8 | 2362.7 ± 352.0 | 1967.2 ± 685.5 | 891.5 ± 175.1 |
-| wordfreq | 112.6 ± 48.4 | 62.3 ± 4.2 | 172.9 ± 28.9 | 9.1 ± 3.1 | 1.9 ± 2.8 |
+| Case | Osprey ARC | Osprey GC | Rust | C |
+| --- | ---: | ---: | ---: | ---: |
+| fib | 64.1 ± 1.9 | 68.5 ± 7.3 | 29.2 ± 2.5 | 28.1 ± 2.5 |
+| binarytrees | 479.0 ± 18.8 | 2362.7 ± 352.0 | 1967.2 ± 685.5 | 891.5 ± 175.1 |
+| wordfreq | 62.3 ± 4.2 | 172.9 ± 28.9 | 9.1 ± 3.1 | 1.9 ± 2.8 |
 
 `wordfreq` shows the cost of Osprey's persistent map compared with mutable hash tables. The tree result favors ARC in this sample, but the baseline variance limits speedup claims.
 

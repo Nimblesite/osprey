@@ -22,7 +22,7 @@ BENCH_LANGS=codon zsh src/toolchain/benchmarks/run.sh  # only the named columns;
 ```
 
 `make -C src/toolchain/benchmarks bench-osprey` is the fast loop for a compiler or runtime change: it
-compiles and times only `osprey`, `osprey-arc`, `osprey-gc` and `osprey-wasm`,
+compiles and times only `osprey-arc`, `osprey-gc` and `osprey-wasm`,
 never Rust/C/C#/Dart/Codon/OCaml/Haskell. It stages into a temp directory and merges
 only the `(case, language)` cells it actually measured, so every other
 language's tracked record survives byte-for-byte — and if any case fails to
@@ -31,13 +31,11 @@ build, mismatches its oracle or fails timing, nothing is published at all. It ne
 
 All WebAssembly columns run under Wasmtime with an explicit 4 MiB call-stack budget (`-W max-wasm-stack=4194304`). The `ackermann` workload exhausts Wasmtime's default budget; with the shared budget it prints the required `8189`. This changes host capacity, not the workload or correctness oracle.
 
-> **Heads-up on RAM.** Allocating cases use substantially more memory under the *default* backend, which never reclaims (see *Findings*).
-> The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile the same source
-> with `--memory=arc` / `--memory=gc` and reclaim unused values. Run the default
-> column on a machine with a few GB free, or select a smaller workload such as `BENCH_FILTER=fib`. This filter selects cases, not memory backends.
+> **Memory backends.** The **`Osprey (ARC)`** and **`Osprey (GC)`** columns compile the same source
+> with `--memory=arc` / `--memory=gc`, and both reclaim unused values. `BENCH_FILTER` selects cases, not backends.
 >
 > <!-- binarytrees-results:start -->
-> Current measured peaks: default **18.7 MB**, `--memory=arc` **3.08 MB**, and `--memory=gc` **18.7 MB**.
+> Current measured peaks: `--memory=arc` **3.08 MB** and `--memory=gc` **18.7 MB**.
 > <!-- binarytrees-results:end -->
 
 Results are written to `src/toolchain/benchmarks/results/`. The measured outputs below are
@@ -115,7 +113,7 @@ seeded token generator and runs in constant *or* randomized mode (below).
 | `mergesort` | persistent `List<int>`            | list splitting and merging in a top-down merge sort | sort 2k-element lists ×8, rank-weighted checksum |
 | `exprtree`  | recursive union + records         | constructor allocation + pattern-match dispatch + modular eval | build+evaluate depth-14 trees ×10 |
 
-`listops`, `quicksort`, `mergesort` and `wordfreq` exercise persistent list and map allocation. Compare the default, ARC and GC columns for the same source; the current measurements are in `results/results.json`.
+`listops`, `quicksort`, `mergesort` and `wordfreq` exercise persistent list and map allocation. Compare the ARC and GC columns for the same source; the current measurements are in `results/results.json`.
 
 The two sorts build every partition and merged run as a new persistent list, so each allocates heavily. The other languages run the same out-of-place algorithm on their own sequence type: arrays or vectors in C, Rust, C# and Dart, linked lists in Codon, OCaml and Haskell. Their checksum weights each sorted element by its rank, so a wrong order changes the answer, and both sorts share one oracle.
 
@@ -139,8 +137,7 @@ Compile commands (source of truth: [`run.sh`](run.sh)):
 
 | Lang | Command |
 |------|---------|
-| Osprey  | `osprey <f>.osp --compile` (emits LLVM IR, compiled by clang at `-O2`; override with `OSPREY_OPT`) |
-| Osprey (ARC) | `osprey <f>.osp --memory=arc --compile` (compiler-inserted ownership operations and the reference-counting runtime archive — [MEM-BACKENDS]) |
+| Osprey (ARC) | `osprey <f>.osp --memory=arc --compile` (emits LLVM IR, compiled by clang at `-O2`, override with `OSPREY_OPT`; compiler-inserted ownership operations and the reference-counting runtime archive — [MEM-BACKENDS]) |
 | Osprey (GC) | `osprey <f>.osp --memory=gc --compile` (same source; links the tracing-GC runtime archive — [MEM-BACKENDS]) |
 | Rust    | `rustc -C opt-level=3 -C overflow-checks=off -o <bin> <f>.rs` |
 | Rust (checked) | `rustc -C opt-level=3 -C overflow-checks=on -o <bin> <f>.rs` — the same source with Rust's integer overflow checks on. Osprey checks every integer operation ([spec 0037](../../../docs/specs/language/0037-ArithmeticEffects.md)), so this column is the like-for-like baseline; `Rust` and `C` run unchecked arithmetic |
@@ -217,7 +214,7 @@ The Osprey cases fall back to seed `1` if `randomBelow` returns an error, so a s
 
 The current compiler uses plain integer values and explicit arithmetic effects. Historical timings from the Result-arithmetic compiler do not describe this implementation. The [benchmark page](../website/src/benchmarks.md) reports fresh Osprey measurements and separates them from retained language baselines.
 
-The historical unmanaged allocator retains general heap allocations for the process lifetime. Current native builds default to GC; the stored baseline figures still describe the allocator selected when they were recorded. ARC and GC reclaim them without changing the Osprey program or its expected output. The generated `binarytrees` figures above show the memory difference; the timing tables show its runtime cost. Persistent-map operations in `wordfreq` are also structurally different from the mutable hash tables used by several other language implementations, so that comparison measures the collection choice as well as the compiler.
+ARC and GC reclaim heap allocations without changing the Osprey program or its expected output. The generated `binarytrees` figures above show the memory difference; the timing tables show its runtime cost. Persistent-map operations in `wordfreq` are also structurally different from the mutable hash tables used by several other language implementations, so that comparison measures the collection choice as well as the compiler.
 
 These results do not establish general performance parity with Rust or C. Use the per-case measurements and reproduce the relevant workload before drawing a comparison.
 

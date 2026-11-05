@@ -55,18 +55,17 @@ WASM_STACK_BYTES=4194304
 # Rust) first after Osprey so the gap to Osprey reads left-to-right. `osprey-gc`
 # and `osprey-arc` are the SAME .osp compiled with the tracing-GC (--memory=gc)
 # and Perceus ARC (--memory=arc) backends. ARC leads because it reclaims memory
-# at Rust's footprint; the default backend never frees, so the allocation cases
-# (binarytrees) show its peak memory next to both reclamation strategies.
+# at Rust's footprint. Every native Osprey column names its backend.
 # `rust-checked` is the SAME .rs built with `-C overflow-checks=on`: Osprey
 # checks every integer operation (spec 0037), so this is the like-for-like
 # baseline; plain `rust` and `c` run unchecked arithmetic.
-LANGS=(osprey-arc osprey-gc osprey rust rust-checked c csharp dart codon ocaml haskell osprey-wasm rust-wasm c-wasm)
+LANGS=(osprey-arc osprey-gc rust rust-checked c csharp dart codon ocaml haskell osprey-wasm rust-wasm c-wasm)
 if [[ "$PARTIAL" == 1 ]]; then
-  LANGS=(osprey-arc osprey-gc osprey osprey-wasm)
+  LANGS=(osprey-arc osprey-gc osprey-wasm)
 fi
 [[ -n "${BENCH_LANGS:-}" ]] && LANGS=(${=BENCH_LANGS})
 typeset -A EXT
-EXT=(osprey osp  osprey-arc osp  osprey-gc osp  rust rs  rust-checked rs  c c  csharp cs  dart dart  codon codon
+EXT=(osprey-arc osp  osprey-gc osp  rust rs  rust-checked rs  c c  csharp cs  dart dart  codon codon
      ocaml ml  haskell hs  osprey-wasm osp  rust-wasm rs  c-wasm c)
 
 have() { command -v "$1" >/dev/null 2>&1 }
@@ -95,7 +94,7 @@ wasm_wrap() { printf '#!/bin/sh\nexec wasmtime run -W max-wasm-stack=%s "%s.wasm
 # probed once into CWASM_OK because stock clang+wasi-libc often lacks it.)
 toolchain_ok() {
   case "$1" in
-    osprey|osprey-gc|osprey-arc) [[ -x "$OSP" ]] ;;
+    osprey-gc|osprey-arc) [[ -x "$OSP" ]] ;;
     rust|rust-checked) have rustc ;;
     c)       have cc ;;
     csharp)  have dotnet ;;
@@ -113,7 +112,6 @@ toolchain_ok() {
 build() {
   local lang=$1 dir=$2 name=$3 out=$4
   case "$lang" in
-    osprey)    ( cd "$dir" && "$OSP" "$name.osp" --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     osprey-gc)  ( cd "$dir" && "$OSP" "$name.osp" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     osprey-arc) ( cd "$dir" && "$OSP" "$name.osp" --memory=arc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     rust)    rustc -C opt-level=3 -C overflow-checks=off -o "$out" "$dir/$name.rs" 2>/dev/null ;;

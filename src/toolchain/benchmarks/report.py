@@ -26,15 +26,16 @@ from typing import Callable, Optional
 
 from merge_results import TIMING, atomic_write, valid_timing
 
-ORDER: list[str] = ["osprey-arc", "osprey-gc", "osprey", "rust", "rust-checked", "c", "csharp",
+ORDER: list[str] = ["osprey-arc", "osprey-gc", "rust", "rust-checked", "c", "csharp",
                     "dart", "codon", "ocaml", "haskell", "osprey-wasm", "rust-wasm", "c-wasm"]
-LABEL: dict[str, str] = {"osprey": "Osprey", "osprey-arc": "Osprey (ARC)",
+LABEL: dict[str, str] = {"osprey-arc": "Osprey (ARC)",
                          "osprey-gc": "Osprey (GC)",
                          "rust": "Rust", "rust-checked": "Rust (checked)", "c": "C",
                          "csharp": "C# (AOT)", "dart": "Dart (AOT)", "codon": "Codon",
                          "ocaml": "OCaml", "haskell": "Haskell",
                          "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
                          "c-wasm": "C (wasm)"}
+DEFAULT_BACKEND = "osprey-gc"
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 
 Cell = dict[str, object]
@@ -63,7 +64,7 @@ def load(out: Path) -> Data:
             cell = data.get(hf.stem, {}).get(res.get("command"))
             if cell is not None and cell.get("status") == "ok" and valid_timing(res):
                 cell.update({k: res[k] for k in TIMING})
-    return data
+    return {name: {l: c for l, c in case.items() if l in ORDER} for name, case in data.items()}
 
 
 def present_langs(data: Data) -> list[str]:
@@ -98,17 +99,19 @@ def vals(case: dict[str, Cell], key: str) -> dict[str, float]:
 def ratios(data: Data, cases: list[str], lang: str, key: str) -> list[float]:
     rs: list[float] = []
     for n in cases:
-        o, x = data[n].get("osprey", {}), data[n].get(lang, {})
+        o, x = data[n].get(DEFAULT_BACKEND, {}), data[n].get(lang, {})
         if o.get("status") == "ok" and x.get("status") == "ok" and o.get(key) and x.get(key):
             rs.append(float(o[key]) / float(x[key]))
     return rs
 
 
 def wins(data: Data, cases: list[str], key: str) -> list[str]:
-    """Cases where Osprey is STRICTLY the fastest / lightest of all languages."""
-    return [n for n in cases
-            if (v := vals(data[n], key)) and "osprey" in v
-            and all(v["osprey"] < x for l, x in v.items() if l != "osprey")]
+    """Cases where one Osprey column is STRICTLY the fastest / lightest of all."""
+    return [n for n in cases if osprey_wins(vals(data[n], key))]
+
+
+def osprey_wins(v: dict[str, float]) -> bool:
+    return any(l.startswith("osprey") and all(x < o for k, o in v.items() if k != l) for l, x in v.items())
 
 
 def cell_missing(c: Cell) -> str:
@@ -138,7 +141,7 @@ def _td(c: Cell, lang: str, key: str, fmt: Callable[[float], str],
     classes = ["num"] + (["col-osprey"] if lang.startswith("osprey") else [])
     if ok and best is not None and float(c[key]) == best:
         strict = all(float(c[key]) < o for l, o in v.items() if l != lang)
-        if lang == "osprey" and strict:
+        if lang.startswith("osprey") and strict:
             classes.append("win")
             txt += " ★"
         else:
@@ -147,14 +150,14 @@ def _td(c: Cell, lang: str, key: str, fmt: Callable[[float], str],
 
 
 def summary(data: Data, langs: list[str], cases: list[str]) -> str:
-    """Headline cards: outright CPU wins + Osprey's CPU geomean vs each language."""
+    """Headline cards: outright CPU wins + the default backend's CPU geomean vs each language."""
     cw = wins(data, cases, "mean")
     cards = [_card(str(len(cw)), "CPU wins (fastest of all)", "is-accent")]
     for lang in langs:
         if not lang.startswith("osprey") and (rs := ratios(data, cases, lang, "mean")):
             g = geomean(rs)
-            cards.append(_card(f"{g:.2f}×", f"CPU vs {LABEL[lang]}", "is-good" if g <= 1.05 else ""))
-    note = (f'<p>Osprey is the fastest of all five languages on <strong>'
+            cards.append(_card(f"{g:.2f}×", f"{LABEL[DEFAULT_BACKEND]} CPU vs {LABEL[lang]}", "is-good" if g <= 1.05 else ""))
+    note = (f'<p>An Osprey column is the fastest of all on <strong>'
             f'{html.escape(", ".join(cw)) or "—"}</strong>. Lower is better; ★ marks an Osprey win.</p>')
     return '<div class="bench-summary">' + "".join(cards) + "</div>" + note
 
@@ -219,13 +222,12 @@ def update_readme(data: Data, path: Path = README) -> Optional[Path]:
     if not marked or not found:
         raise ValueError("benchmarks README is missing binarytrees result markers")
     cells = data.get("binarytrees", {})
-    if not {"osprey", "osprey-arc", "osprey-gc"} <= cells.keys():
+    if not {"osprey-arc", "osprey-gc"} <= cells.keys():
         return None  # filtered run: nothing measured for the prose figures
-    default, arc, gc = (measured_peak(cells[lang]) for lang in ("osprey", "osprey-arc", "osprey-gc"))
+    arc, gc = (measured_peak(cells[lang]) for lang in ("osprey-arc", "osprey-gc"))
     generated = (
         f"{start}\n"
-        f"> Current measured peaks: default **{default}**, "
-        f"`--memory=arc` **{arc}**, and `--memory=gc` **{gc}**.\n"
+        f"> Current measured peaks: `--memory=arc` **{arc}** and `--memory=gc` **{gc}**.\n"
         f"{end}"
     )
     atomic_write(path, before + generated + after)
