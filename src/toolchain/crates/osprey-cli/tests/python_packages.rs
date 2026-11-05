@@ -354,7 +354,7 @@ fn assert_sources_rooted(package: &Path, manifest: &str) {
     }
 }
 
-/// [PACKAGE-SOURCE-CANONICAL]: distinguish Osprey sources from CPython helpers.
+/// [PACKAGE-SOURCE-CANONICAL]: distinguish Osprey sources from `CPython` helpers.
 fn assert_python_files_marked(package: &Path) {
     for file in python_files(package) {
         let text = std::fs::read_to_string(&file).unwrap_or_default();
