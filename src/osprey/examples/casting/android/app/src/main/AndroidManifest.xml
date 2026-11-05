@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- The shared GPUI host as a NativeActivity: src/toolchain/hosts/gpui draws everything ([CAST-MOBILE-GPUI]). -->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ospreylang.casting">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="org.ospreylang.casting" android:versionCode="2" android:versionName="1.0">
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
   <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK"/>

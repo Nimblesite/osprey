@@ -14,6 +14,7 @@ import sys
 import tempfile
 import unittest
 from unittest import mock
+from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent
 # What every runner has: no Homebrew, no cargo bin, no developer extras.
@@ -73,6 +74,16 @@ class CastingGoldenVerdict(unittest.TestCase):
             self.assertIn("--target=aarch64-linux-android26", arguments)
             self.assertIn("-Isrc/toolchain/compiler/runtime", arguments)
             self.assertIn("src/toolchain/compiler/runtime/tls_client_runtime.c", arguments)
+
+    def test_android_package_upgrades_the_archived_renderer(self):
+        manifest = ElementTree.parse(ROOT / "src/osprey/examples/casting/android/app/src/main/AndroidManifest.xml").getroot()
+        android = "{http://schemas.android.com/apk/res/android}"
+        self.assertGreaterEqual(int(manifest.get(android + "versionCode", "0")), 1,
+                                "The archived native renderer shipped versionCode=1; GPUI must install over it")
+        self.assertTrue(manifest.get(android + "versionName"), "Android must publish its version")
+        activity = manifest.find("application/activity")
+        self.assertEqual(activity.get(android + "name"), ".CastingActivity")
+        self.assertEqual(activity.find("meta-data").get(android + "value"), "osprey_gpui")
 
     def test_transport_cleanup_preserves_failure_and_reports_teardown_errors(self):
         source = (ROOT / "src/osprey/examples/casting/mobile-transport-test.sh").read_text()
