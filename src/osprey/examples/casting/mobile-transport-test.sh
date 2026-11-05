@@ -155,15 +155,7 @@ write_capability_probe() {
     cat > "$work/capability/main.swift" <<'SWIFT'
 import Foundation
 import UIKit
-
-// Focused validation of the shipped PlatformServices.swift boundary, driven
-// through the real `osprey_gpui_capability` C entry point. Runs in the iOS
-// simulator as a standalone executable: nothing is installed, launched or
-// replaced, and no UI is presented (every case below is answered before any
-// picker is created).
-
 var failures = 0
-
 func expect(_ name: String, _ condition: Bool, _ detail: String) {
     if condition {
         print("ok   \(name)")
@@ -172,9 +164,6 @@ func expect(_ name: String, _ condition: Bool, _ detail: String) {
         print("FAIL \(name): \(detail)")
     }
 }
-
-/// Asks the boundary from a background thread, as the Rust host does, while the
-/// main thread keeps draining the main queue.
 func ask(_ request: String) -> (answer: String, seconds: TimeInterval) {
     var answer = "<none>"
     let done = DispatchSemaphore(value: 0)
@@ -191,11 +180,9 @@ func ask(_ request: String) -> (answer: String, seconds: TimeInterval) {
     }
     return (answer, Date().timeIntervalSince(started))
 }
-
 func members(_ answer: String) -> [String: Any] {
     ((try? JSONSerialization.jsonObject(with: Data(answer.utf8))) as? [String: Any]) ?? [:]
 }
-
 func refused(_ name: String, _ request: String, _ wanted: String, within: TimeInterval) {
     let (answer, seconds) = ask(request)
     let empty = members(answer).isEmpty
@@ -204,7 +191,6 @@ func refused(_ name: String, _ request: String, _ wanted: String, within: TimeIn
     expect("\(name) names the problem", problem.contains(wanted), "error \(problem)")
     expect("\(name) answers before any service starts", seconds < within, "took \(seconds)s")
 }
-
 func accepted(_ name: String, _ request: String, slice key: String, within: TimeInterval) {
     let (answer, seconds) = ask(request)
     expect(name, members(answer)["ok"] as? Bool == true, "answer \(answer)")
@@ -213,16 +199,12 @@ func accepted(_ name: String, _ request: String, slice key: String, within: Time
            "slices \(slices)")
     expect("\(name) finishes inside the wait", seconds < within, "took \(seconds)s")
 }
-
-// A supplied limit that is not a whole number is refused, never read as zero.
 for (name, limit) in [("boolean", "true"), ("negative", "-1"), ("fractional", "1.5"),
                       ("null", "null"), ("text", "\"2\""), ("beyond 9e15", "10000000000000000")] {
     refused("choose-file limit \(name)",
             "{\"kind\":\"choose-file\",\"types\":[\"mp3\"],\"limit\":\(limit),\"slice\":\"\"}",
             "The request's limit is not a whole number", within: 1)
 }
-
-// Other supplied members are validated by shape instead of defaulted.
 refused("choose-file types shape",
         "{\"kind\":\"choose-file\",\"types\":5,\"limit\":0}",
         "The request's types is not a list of extensions", within: 1)
@@ -235,13 +217,9 @@ refused("choose-file slice shape",
 refused("choose-file without any type",
         "{\"kind\":\"choose-file\",\"types\":[],\"limit\":0}",
         "No supported file types", within: 1)
-// `UTType` mints a dynamic type for an unknown extension, so this request reaches
-// the picker; with no window in this process it must still be a typed refusal.
 refused("choose-file with an unknown type",
         "{\"kind\":\"choose-file\",\"types\":[\"not-a-real-extension\"],\"limit\":0}",
         "No foreground window for the file picker", within: 1)
-
-// A supplied browse timeout is validated, never defaulted or clamped.
 refused("run timeout boolean",
         "{\"kind\":\"run\",\"ticket\":\"discover\",\"slice\":\"cast-browse\",\"timeout\":true}",
         "The request's timeout is not a whole number of milliseconds", within: 1)
@@ -271,27 +249,54 @@ refused("unknown capability kind", "{\"kind\":\"reveal\",\"path\":\"/tmp\"}",
 refused("request that is not an object", "[]", "The capability request is not a JSON object", within: 1)
 refused("request that is not JSON", "nope", "The capability request is not a JSON object", within: 1)
 refused("request without a kind", "{}", "The capability request names no kind", within: 1)
-
-// An absent timeout keeps its documented default (5000 ms), and discovery's own
-// 3 s deadline answers well inside it.
 accepted("discover with no timeout",
          "{\"kind\":\"run\",\"ticket\":\"discover\",\"slice\":\"cast-browse\"}",
          slice: "cast-browse", within: 5)
-// The app's real request shape: 5000 ms.
 accepted("discover with the app's 5000 ms timeout",
          "{\"kind\":\"run\",\"ticket\":\"discover\",\"slice\":\"cast-browse\",\"timeout\":5000}",
          slice: "cast-browse", within: 5)
-// The ceiling itself is accepted.
 accepted("discover at the 60000 ms ceiling",
          "{\"kind\":\"run\",\"ticket\":\"discover\",\"slice\":\"cast-browse\",\"timeout\":60000}",
          slice: "cast-browse", within: 5)
-// A wait shorter than discovery's own deadline is a typed timeout, not a silent
-// empty transcript.
 refused("discover shorter than discovery's deadline",
         "{\"kind\":\"run\",\"ticket\":\"discover\",\"slice\":\"cast-browse\",\"timeout\":1000}",
         "Timed out after 1000 ms", within: 3)
-
-// The main thread is still refused, and nil requests stay nil.
+func noticeRequest(_ change: [String: Any]) -> String {
+    var base: [String: Any] = ["kind": "host-call", "namespace": "ui", "operation": "notice", "arguments": ["title": "Notice", "message": "Test"], "timeout": 1, "limit": 64, "slice": ""]
+    base.merge(change) { _, new in new }
+    return String(decoding: (try? JSONSerialization.data(withJSONObject: base, options: [.sortedKeys])) ?? Data(), as: UTF8.self)
+}
+let noticeCases: [(String, [String: Any], String)] = [
+    ("namespace unknown", ["namespace": "cast"], "unsupported host-call namespace cast"),
+    ("namespace nontext", ["namespace": 5], "The request's namespace is not text"),
+    ("operation unknown", ["operation": "alert"], "unsupported host-call operation alert"),
+    ("operation nontext", ["operation": 5], "The request's operation is not text"),
+    ("arguments non-object", ["arguments": 5], "The request's arguments is not an object"),
+    ("title empty", ["arguments": ["title": "", "message": "Test"]], "The notice title must be 1...200 characters"),
+    ("title nontext", ["arguments": ["title": 5, "message": "Test"] as [String: Any]], "The request's title is not text"),
+    ("title over the scalar limit", ["arguments": ["title": String(repeating: "🎬", count: 201), "message": "Test"]], "The notice title must be 1...200 characters"),
+    ("message empty", ["arguments": ["title": "Notice", "message": ""]], "The notice message must be 1...2000 characters"),
+    ("message nontext", ["arguments": ["title": "Notice", "message": 5] as [String: Any]], "The request's message is not text"),
+    ("message over the scalar limit", ["arguments": ["title": "Notice", "message": String(repeating: "🎬", count: 2001)]], "The notice message must be 1...2000 characters"),
+    ("title combining scalars", ["arguments": ["title": String(repeating: "e\u{301}", count: 101), "message": "Test"]], "The notice title must be 1...200 characters"),
+    ("message combining scalars", ["arguments": ["title": "Notice", "message": String(repeating: "e\u{301}", count: 1001)]], "The notice message must be 1...2000 characters"),
+    ("timeout zero", ["timeout": 0], "The requested 0 ms wait is outside 1...600000 ms"),
+    ("timeout negative", ["timeout": -1], "The request's timeout is not a whole number"),
+    ("timeout fractional", ["timeout": 1.5], "The request's timeout is not a whole number"),
+    ("timeout boolean", ["timeout": true], "The request's timeout is not a whole number"),
+    ("timeout text", ["timeout": "1"], "The request's timeout is not a whole number"),
+    ("timeout null", ["timeout": NSNull()], "The request's timeout is not a whole number"),
+    ("timeout above the ceiling", ["timeout": 600001], "The requested 600001 ms wait is outside 1...600000 ms"),
+    ("limit zero", ["limit": 0], "The notice limit must be at least 2"),
+    ("limit one", ["limit": 1], "The notice limit must be at least 2"),
+    ("limit boolean", ["limit": true], "The request's limit is not a whole number"),
+    ("limit text", ["limit": "64"], "The request's limit is not a whole number"),
+    ("slice nonempty", ["slice": "cast"], "The notice writes no slice"),
+    ("slice nontext", ["slice": 0], "The request's slice is not text"),
+]
+for (name, change, wanted) in noticeCases {
+    refused("host-call notice \(name)", noticeRequest(change), wanted, within: 1)
+}
 expect("a nil request answers nil", osprey_gpui_capability(nil) == nil, "expected nil")
 let onMain = osprey_gpui_capability("{\"kind\":\"run\"}")
 let mainAnswer = onMain.map { String(cString: $0) } ?? "<none>"
@@ -308,10 +313,7 @@ SWIFT
 write_read_probe() {
     mkdir -p "$work/read"
     cat > "$work/read/harness.swift" <<'SWIFT'
-
 import Foundation
-
-/// One case's outcome, reported by name.
 var failures = 0
 
 func expect(_ name: String, _ condition: Bool, _ detail: String) {
@@ -445,7 +447,6 @@ ios_boundary_probes() {
     build_ios_probe "$work/read"
     run_ios_probe bounded-read "$work/read/probe"
 }
-
 case "$platform" in
     ios) xcrun swiftc -swift-version 5 -warnings-as-errors "$here/ios/CastTLS.swift" "$work/main.swift" -o "$work/check" ;;
     android)

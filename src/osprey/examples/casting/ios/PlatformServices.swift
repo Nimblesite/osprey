@@ -17,6 +17,11 @@ private let browseMs = 5_000
 private let browseCeilingMs = 60_000
 /// A person may take their time in the picker; the wait is still finite.
 private let pickerMs = 600_000
+/// A notice waits for the person, but never forever.
+private let noticeCeilingMs = 600_000
+/// The longest notice text the host accepts, in characters.
+private let noticeTitleChars = 200
+private let noticeMessageChars = 2_000
 
 @_cdecl("osprey_gpui_capability")
 public func osprey_gpui_capability(_ request: UnsafePointer<CChar>?) -> UnsafeMutablePointer<CChar>? {
@@ -56,6 +61,7 @@ private func answered(_ text: String) -> Boundary {
     switch members["kind"] as? String {
     case "run": return browsed(members)
     case "choose-file": return choseFile(members)
+    case "host-call": return hostCalled(members)
     case let .some(kind): return failed("unsupported capability \(kind)")
     case nil: return failed("The capability request names no kind")
     }
@@ -103,6 +109,70 @@ private func choseFile(_ members: [String: Any]) -> Boundary {
     } catch {
         return failed(error.localizedDescription)
     }
+}
+
+/// The one host-call this bridge answers: a native notice in the `ui`
+/// namespace ([CAST-MOBILE-APPEARANCE-RECOVERY]). Every other namespace,
+/// operation or malformed member is a typed refusal.
+private func hostCalled(_ members: Boundary) -> Boundary {
+    do {
+        let space = try text(members, "namespace")
+        guard space == "ui" else { return failed("unsupported host-call namespace \(space)") }
+        let operation = try text(members, "operation")
+        guard operation == "notice" else { return failed("unsupported host-call operation \(operation)") }
+        let (title, message) = try noticeArguments(members)
+        let timeoutMs = try noticeTimeout(members)
+        return awaited(NoticeService(title: title, message: message), timeoutMs: timeoutMs)
+    } catch {
+        return failed(error.localizedDescription)
+    }
+}
+
+private func noticeArguments(_ members: Boundary) throws -> (String, String) {
+    let arguments = try object(members, "arguments")
+    let title = try text(arguments, "title")
+    let message = try text(arguments, "message")
+    guard !title.isEmpty, title.unicodeScalars.count <= noticeTitleChars else {
+        throw PlatformFailure.detail("The notice title must be 1...\(noticeTitleChars) characters")
+    }
+    guard !message.isEmpty, message.unicodeScalars.count <= noticeMessageChars else {
+        throw PlatformFailure.detail("The notice message must be 1...\(noticeMessageChars) characters")
+    }
+    guard try whole(members, "limit") >= 2 else { throw PlatformFailure.detail("The notice limit must be at least 2") }
+    guard try text(members, "slice").isEmpty else { throw PlatformFailure.detail("The notice writes no slice") }
+    return (title, message)
+}
+
+private func noticeTimeout(_ members: Boundary) throws -> Int {
+    let timeout = try whole(members, "timeout")
+    guard timeout >= 1, timeout <= noticeCeilingMs else {
+        throw PlatformFailure.detail("The requested \(timeout) ms wait is outside 1...\(noticeCeilingMs) ms")
+    }
+    return timeout
+}
+
+/// A required request string; absence is a typed refusal rather than a default.
+private func text(_ members: Boundary, _ name: String) throws -> String {
+    guard let value = try member(members, name, as: "text", { $0 as? String }) else {
+        throw PlatformFailure.detail("The request has no \(name)")
+    }
+    return value
+}
+
+/// A required request object; absence is a typed refusal rather than a default.
+private func object(_ members: Boundary, _ name: String) throws -> Boundary {
+    guard let value = try member(members, name, as: "an object", { $0 as? [String: Any] }) else {
+        throw PlatformFailure.detail("The request has no \(name)")
+    }
+    return value
+}
+
+/// A required whole request number; absence is a typed refusal rather than a default.
+private func whole(_ members: Boundary, _ name: String) throws -> Int {
+    guard let value = try member(members, name, as: "a whole number", wholeNumber) else {
+        throw PlatformFailure.detail("The request has no \(name)")
+    }
+    return value
 }
 
 /// A whole non-negative JSON number below 9e15, as the Swift host accepts. A
@@ -231,13 +301,10 @@ private final class FilePickService: NSObject, MainService, @MainActor UIDocumen
     func stop() { finish(failed("Cancelled")) }
 
     private func present(_ picker: UIDocumentPickerViewController) {
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            .first { $0.activationState == .foregroundActive }
-        guard var root = scene?.windows.first(where: \.isKeyWindow)?.rootViewController else {
+        guard let root = foregroundController() else {
             finish(failed("No foreground window for the file picker"))
             return
         }
-        while let presented = root.presentedViewController { root = presented }
         root.present(picker, animated: true)
     }
 
@@ -296,6 +363,80 @@ private final class FilePickService: NSObject, MainService, @MainActor UIDocumen
             }
         }
         return succeeded(result: ["cancelled": false, "path": target.path], slices: entries)
+    }
+}
+
+/// The frontmost controller, past every presentation already on screen. Both
+/// native presentations find their host window through this one lookup.
+@MainActor
+private func foregroundController() -> UIViewController? {
+    let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        .first { $0.activationState == .foregroundActive }
+    guard var root = scene?.windows.first(where: \.isKeyWindow)?.rootViewController else { return nil }
+    while let presented = root.presentedViewController { root = presented }
+    return root
+}
+
+/// The native notice ([CAST-MOBILE-APPEARANCE-RECOVERY]): one alert with an OK
+/// action, retained until it is answered, cancelled or times out.
+@MainActor
+private final class NoticeService: MainService {
+    private static var active: NoticeService?
+    private let title: String
+    private let message: String
+    private var alert: UIAlertController?
+    private var observers: [NSObjectProtocol] = []
+    private var completion: ((Boundary) -> Void)?
+
+    nonisolated init(title: String, message: String) {
+        self.title = title
+        self.message = message
+    }
+
+    func start(completion: @escaping (Boundary) -> Void) {
+        guard Self.active == nil else { return completion(failed("A notice is already open")) }
+        Self.active = self
+        self.completion = completion
+        let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.finish(succeeded(result: [:]))
+            }
+        })
+        self.alert = alert
+        present(alert)
+    }
+
+    private func present(_ alert: UIAlertController) {
+        observers = [UIApplication.didBecomeActiveNotification, UIWindow.didBecomeKeyNotification].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.presentReady() }
+            }
+        }
+        presentReady()
+    }
+    private func presentReady() {
+        guard completion != nil, let alert, let controller = foregroundController() else { return }
+        stopObserving()
+        controller.present(alert, animated: true)
+    }
+    private func stopObserving() {
+        observers.forEach { NotificationCenter.default.removeObserver($0) }
+        observers = []
+    }
+
+    func stop() { finish(failed("Cancelled")) }
+
+    private func finish(_ boundary: Boundary) {
+        guard let waiting = completion else { return }
+        completion = nil
+        stopObserving()
+        if Self.active === self { Self.active = nil }
+        let presented = alert
+        alert = nil
+        presented?.dismiss(animated: true)
+        waiting(boundary)
     }
 }
 

@@ -21,6 +21,9 @@ mkdir -p "$container/Documents"
 cp "$CAST_TEST_AUDIO_SOURCE" "$container/Documents/Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_AUDIO="Casting mobile test.mp3"
 export TEST_RUNNER_CAST_TEST_AUDIO_PATH="$container/Documents/Casting mobile test.mp3"
+# The shared GPUI host stores preferences under the app's HOME, using the Linux
+# convention on iOS: $HOME/.local/share/osprey/<app>.
+export TEST_RUNNER_CAST_TEST_APPEARANCE_PATH="$container/.local/share/osprey/osprey/casting-appearance.txt"
 export TEST_RUNNER_CAST_TEST_RECEIVER="$CAST_TEST_RECEIVER"
 export TEST_RUNNER_CAST_TEST_NATIVE_HOST="$CAST_TEST_NATIVE_HOST"
 export TEST_RUNNER_CAST_TEST_NATIVE_PORT="$CAST_TEST_NATIVE_PORT"

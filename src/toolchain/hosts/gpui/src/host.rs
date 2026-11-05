@@ -74,7 +74,6 @@ impl HostView {
             pending,
         }
     }
-
     /// Sends one event, applies its envelope and answers each requested capability.
     pub fn dispatch(&mut self, event: String, window: &mut Window, cx: &mut Context<Self>) {
         let next = Library::dispatch(self.regions.state(), &event);
@@ -105,7 +104,9 @@ impl HostView {
                 }
                 // [CAST-MOBILE-DELIVERY] iOS has no GPUI path prompt: its document
                 // picker is answered across the OS bridge like any blocking adapter.
-                "choose-file" if cfg!(any(target_os = "ios", target_os = "android")) => {
+                "choose-file" | "host-call"
+                    if cfg!(any(target_os = "ios", target_os = "android")) =>
+                {
                     self.answer_in_background(request, window, cx);
                 }
                 "choose-file" | "choose-folder" | "save-file" | "reveal" => {

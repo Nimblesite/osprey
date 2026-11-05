@@ -76,7 +76,7 @@ final class CastingUITests: XCTestCase {
     private func assertSelected(_ app: XCUIApplication, _ label: String, _ message: String,
                                 file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(labeled(app, label).waitForExistence(timeout: 5), message, file: file, line: line)
-        XCTAssertTrue(labeled(app, label).isSelected, message, file: file, line: line)
+        XCTAssertTrue(labeled(app, label).isSelected, "\(message): \(app.debugDescription)", file: file, line: line)
     }
 
     // [CAST-MOBILE-RECEIVER-IDENTITY] Equal display names are chosen by endpoint.
@@ -138,13 +138,25 @@ final class CastingUITests: XCTestCase {
         }
     }
 
+    // [CAST-MOBILE-APPEARANCE-RECOVERY] The shared host reads the appearance entry from
+    // its app-scoped store (`$HOME/.local/share/osprey/osprey/casting-appearance.txt` on
+    // iOS), so the fixture writes that real file instead of a renderer test hook.
+    private func writeAppearance(_ text: String) throws {
+        let path = try XCTUnwrap(ProcessInfo.processInfo.environment["CAST_TEST_APPEARANCE_PATH"],
+                                 "Use the native test entry point to publish the app appearance path")
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                withIntermediateDirectories: true)
+        try Data(text.utf8).write(to: url, options: .atomic)
+    }
+
     @MainActor
-    func testNativeInvalidAppearanceRecovery() {
-        // [CAST-MOBILE-APPEARANCE-RECOVERY] The fixture writes real app-scoped defaults.
+    func testNativeInvalidAppearanceRecovery() throws {
+        // [CAST-MOBILE-APPEARANCE-RECOVERY] The fixture writes the real app-scoped entry.
         let app = castingApp()
         defer { app.terminate() }
         for saved in ["removed-skin", "", "poolside & <v2>' ☄"] {
-            app.launchEnvironment["CAST_TEST_SAVED_SKIN"] = saved
+            try writeAppearance(saved)
             app.launch()
             let notice = app.alerts["Appearance restored"]
             XCTAssertTrue(notice.waitForExistence(timeout: 15), app.debugDescription)
@@ -153,14 +165,13 @@ final class CastingUITests: XCTestCase {
             XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 5))
             XCTAssertFalse(app.buttons["Skin"].exists)
             app.terminate()
-            app.launchEnvironment.removeValue(forKey: "CAST_TEST_SAVED_SKIN")
             app.launch()
             XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15), app.debugDescription)
             XCTAssertFalse(notice.exists, "The repaired choice must not warn on the next launch")
             XCTAssertFalse(app.buttons["Skin"].exists)
             appearancePopup(app).tap()
-            app.buttons["Midnight Mint"].tap()
-            XCTAssertEqual(app.buttons["Skin"].value as? String, "Midnight Mint")
+            labeled(app, "Midnight Mint").tap()
+            assertSelected(app, "Midnight Mint", "Choosing a skin must announce the new selection")
             app.terminate()
         }
     }

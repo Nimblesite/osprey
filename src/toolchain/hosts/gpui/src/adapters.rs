@@ -30,7 +30,7 @@ pub fn answer(request: &Request) -> Result<Value, String> {
         // prompt: its OS services answer run (discovery) and choose-file across
         // the bridge, on the caller's background executor.
         #[cfg(any(target_os = "ios", target_os = "android"))]
-        "run" | "choose-file" => mobile::answer(request),
+        "run" | "choose-file" | "host-call" => mobile::answer(request),
         #[cfg(not(any(target_os = "ios", target_os = "android")))]
         "run" => process::run(request),
         "list-directories" => files::list_directories(request),
