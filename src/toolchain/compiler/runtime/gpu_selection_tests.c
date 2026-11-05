@@ -121,9 +121,14 @@ static void *unit(void) {
   return b;
 }
 
+// A kernel text that hands its fault word to a checked helper, so the launch
+// reads the word back at once [GPU-DEVICE-FAULT] instead of joining the batch.
+static const char FAULTING_KERNEL[] =
+    "kernel void osprey_kernel_1(GPU_GLOBAL ulong *fault GPU_BUFFER(3)) { osprey_add(1, 2, fault); }";
+
 static int32_t launch(void *out, const char *kinds, const int64_t *uniforms) {
   void *in = osprey_gpu_alloc(3, 8);
-  return osprey_gpu_launch("osprey_kernel_1", "kernel void osprey_kernel_1() {}", kinds, uniforms, in, NULL, out, NULL, 3);
+  return osprey_gpu_launch("osprey_kernel_1", FAULTING_KERNEL, kinds, uniforms, in, NULL, out, NULL, 3);
 }
 
 static void host_case(const char *mode) {
@@ -162,7 +167,7 @@ static void resident_launch(int64_t mark) {
   assert(launch(out, "sb", uniforms) == 1 && downloads == down);
   assert(last_args == 5 + 1 + 2 && last_threads == 3);
   assert(osprey_gpu_get(out, 0) == mark && downloads == down + 1);
-  assert(osprey_gpu_launch("osprey_kernel_1", "kernel void osprey_kernel_1() {}", "", NULL, in, NULL, NULL, &acc, 3) == 1);
+  assert(osprey_gpu_launch("osprey_kernel_1", FAULTING_KERNEL, "", NULL, in, NULL, NULL, &acc, 3) == 1);
   assert(acc == mark && last_threads == 1 && downloads == down + 1);
   unsigned freed = releases;
   osprey_gpu_set(out, 0, 5);

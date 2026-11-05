@@ -266,6 +266,22 @@ static int32_t failed_launch(const char *kernel, const char *reason) {
   return -1;
 }
 
+// Whether a compiled kernel can record a fault: its text names `fault` once in
+// the signature, and only a checked integer helper mentions it again. A kernel
+// that cannot fault leaves its fault word on the device, so the launch joins
+// the open batch instead of submitting and waiting for one word
+// [LLM-DISPATCH-BATCH]; an unknown kernel is treated as able to fault.
+static int may_fault(const char *kernel, const char *source) {
+  char head[128];
+  if (!source || snprintf(head, sizeof head, "kernel void %s(", kernel) >= (int)sizeof head) return 1;
+  const char *at = strstr(source, head);
+  if (!at) return 1;
+  const char *end = strstr(at + 1, "\nkernel void ");
+  int mentions = 0;
+  for (const char *p = strstr(at, "fault"); p && (!end || p < end); p = strstr(p + 5, "fault")) mentions++;
+  return mentions > 1;
+}
+
 // A compiled kernel's launch site [GPU-BACKEND-DEVICE]: 1 when the device ran
 // the kernel, 0 when the host loop must run, -1 with a recorded failure. A map runs one thread per
 // element into `out`, a buffer left on the device [GPU-BUFFER-RESIDENT]; a
@@ -279,7 +295,7 @@ int32_t osprey_gpu_launch(const char *kernel, const char *source, const char *ki
   buffer_argument(&dispatch, OSPREY_GPU_INPUT, in1);
   if (acc && !out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   else buffer_argument(&dispatch, OSPREY_GPU_OUTPUT, out);
-  osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, &fault, &fault, 1, 8);
+  osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, &fault, may_fault(kernel, source) ? &fault : NULL, 1, 8);
   scalar_argument(&dispatch, count);
   if (acc && out) osprey_gpu_arg(&dispatch, OSPREY_GPU_OUTPUT, acc, acc, 1, 8);
   for (size_t i = 0; kinds[i]; i++) uniform_argument(&dispatch, kinds[i], uniforms[i]);
