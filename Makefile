@@ -37,7 +37,7 @@ audit:
 
 ## test: Fail-fast tests + coverage + per-project threshold enforcement.
 ##       Projects listed in coverage-thresholds.json are each tested + checked.
-test: build
+test: build _build_c_runtime_tests
 	@echo "==> Testing (fail-fast + coverage + per-project thresholds)..."
 	$(MAKE) _test_runtime_incremental
 	$(MAKE) _test_rust

@@ -127,7 +127,7 @@ test('the coverage gate only compares collected reports and never builds or test
   const coverage = job('coverage', '.github/workflows/ci.yml')
   const runs = [...coverage.matchAll(/^ {8}run: (.+)$/gm)].map((m) => m[1]).filter((r) => r !== '|')
   assert.deepEqual(runs.filter((r) => r.startsWith('make ')),
-    ['make _coverage_check_rust', 'make _coverage_check_vscode_extension', 'make _coverage_check_packages'])
+    ['make _coverage_check_rust', 'make _coverage_check_vscode_extension', 'make _coverage_check_packages', 'make _coverage_check_c_runtime'])
   assert.doesNotMatch(coverage, /cargo |swift |xcodebuild|rust-toolchain|typediagram|ios-test|run\.sh/)
   assert.match(coverage, /^    runs-on: ubuntu-latest$/m)
 })
@@ -278,6 +278,21 @@ test('package source coverage runs independently and blocks the required coverag
   assert.match(packages, /name: coverage-packages/)
   assert.match(packages, /if-no-files-found: error/)
   assert.match(job('coverage', '.github/workflows/ci.yml'), /needs:.*\btest-packages\b/)
+})
+
+test('C runtime coverage consumes reports from a single instrumented test run', () => {
+  const build = job('build', '.github/workflows/ci.yml')
+  const runtime = job('test-c-runtime', '.github/workflows/ci.yml')
+  const coverage = job('coverage', '.github/workflows/ci.yml')
+  assert.match(build, /make -j2 _build_c_runtime_tests/)
+  assert.match(build, /name: c-runtime-tests/)
+  assert.match(runtime, /name: c-runtime-tests/)
+  assert.match(runtime, /make -j2 _test_c_runtime/)
+  assert.doesNotMatch(runtime, /_build_c_runtime_tests|_coverage_check_c_runtime/)
+  assert.match(runtime, /name: coverage-c-runtime/)
+  assert.match(coverage, /needs:.*\btest-c-runtime\b/)
+  assert.match(coverage, /name: coverage-c-runtime/)
+  assert.match(coverage, /run: make _coverage_check_c_runtime/)
 })
 
 test('application ports have an independent complete backend gate', () => {

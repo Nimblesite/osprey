@@ -150,8 +150,7 @@ def check_c_runtime(root, percentage, entry, suffix="c"):
     summary.write_text("" if percentage is None else f"File '../../../runtime/probe.{suffix}'\nLines executed:{percentage}% of 100\n")
     source = (ROOT / "scripts/make/tests.mk").read_text()
     recipe = source.split("_coverage_check_c_runtime:\n", 1)[1].split("\n\n", 1)[0]
-    gate = recipe[recipe.index("\t@command -v jq"):]
-    makefile = f"COVERAGE_THRESHOLDS_FILE := coverage-thresholds.json\ncheck:\n{gate}\n"
+    makefile = f"COVERAGE_THRESHOLDS_FILE := coverage-thresholds.json\nC_COV_DIR := {summary.parent.parent.relative_to(root)}\ncheck:\n{recipe}\n"
     return subprocess.run(["make", "-s", "-f", "-", "check"], input=makefile, cwd=root, capture_output=True, text=True)
 
 

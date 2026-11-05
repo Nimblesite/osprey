@@ -169,13 +169,24 @@ jobs:
       - name: Package the VSIX
         run: make _vsix_package
 
+      - name: Build instrumented C runtime suites
+        run: |
+          make -j2 _build_c_runtime_tests
+          tar -cf target/c-runtime-tests.tar -C src/toolchain/compiler/bin cov
+
+      - name: Upload instrumented C runtime suites
+        uses: actions/upload-artifact@v7
+        with:
+          name: c-runtime-tests
+          path: target/c-runtime-tests.tar
+          retention-days: 7
+          if-no-files-found: error
+
       - name: Upload compiler artifacts
         uses: actions/upload-artifact@v7
         with:
           name: osprey-build
-          # The archives only — src/toolchain/compiler/bin also holds ~12M of object files
-          # and C test binaries, and the C suite rebuilds those instrumented
-          # anyway. `_vsix_bundle` reads them from src/toolchain/compiler/bin ($(RTB)); the
+          # `_vsix_bundle` reads the archives from src/toolchain/compiler/bin ($(RTB)); the
           # compiler itself resolves them via src/toolchain/compiler/lib.
           path: |
             target/release/osprey
@@ -689,23 +700,32 @@ jobs:
         with:
           build: "false"
 
-      - name: Install jq
-        run: sudo apt-get install -y jq
-
       - uses: actions/download-artifact@v8
         with:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: c-runtime-tests
+          path: target/
+      - name: Unpack instrumented C runtime suites
+        run: tar -xf target/c-runtime-tests.tar -C src/toolchain/compiler/bin
+
       - name: C runtime suites with coverage
-        run: make _test_c_runtime
+        run: make -j2 _test_c_runtime
 
       - name: Hunt mock runtime and corpus tooling assertions
         run: make _test_hunt_mock
 
-      - name: C runtime coverage thresholds
-        run: make _coverage_check_c_runtime
+      - name: Upload C runtime coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage-c-runtime
+          path: src/toolchain/compiler/bin/cov/*/summary.txt
+          retention-days: 7
+          if-no-files-found: error
 
   # The COMPLETE extension suite — unit, integration and the debugger E2E
   # workflows that drive a real VS Code under xvfb and spawn lldb-dap per case.
@@ -1206,11 +1226,9 @@ jobs:
   # ═══ STAGE 4 ════════════════════════════════════════════════════════════════
   # Thresholds are enforced HERE, against reports the test jobs produced. This
   # job builds nothing and runs nothing: it reads reports and compares numbers.
-  # The C runtime gate lives in its own job because gcov data never leaves
-  # that container.
   coverage:
     name: Coverage thresholds
-    needs: [changes, test-rust, test-extension, test-packages, test-registry-gc, test-registry-arc]
+    needs: [changes, test-rust, test-extension, test-packages, test-c-runtime, test-registry-gc, test-registry-arc]
     if: ${{ always() && needs.changes.outputs.code == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -1235,6 +1253,10 @@ jobs:
         with:
           name: coverage-packages
           path: target/coverage/packages/
+      - uses: actions/download-artifact@v8
+        with:
+          name: coverage-c-runtime
+          path: src/toolchain/compiler/bin/cov/
 
       - name: Rust per-crate thresholds
         run: make _coverage_check_rust
@@ -1245,6 +1267,9 @@ jobs:
       - name: Package thresholds
         run: make _coverage_check_packages
 
+      - name: C runtime thresholds
+        run: make _coverage_check_c_runtime
+
       - name: Upload combined coverage
         uses: actions/upload-artifact@v7
         if: always()
@@ -1254,6 +1279,7 @@ jobs:
             target/coverage/lcov.info
             target/coverage/packages/
             src/toolchain/vscode-extension/coverage/
+            src/toolchain/compiler/bin/cov/*/summary.txt
           retention-days: 7
 
   # Osprey Agent's whole UI against its goldens, which exist per macOS release: only macos-26 for now.

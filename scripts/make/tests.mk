@@ -84,10 +84,7 @@ PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-st
 # --- C runtime suite TABLE ---------------------------------------------------
 # One row per test binary. C_SRC_<name> lists sources relative to src/toolchain/compiler/,
 # C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
-# C_PROFILE_<name> optionally replaces the default $(T) flag core. BOTH the
-# hardened run (_test_c_runtime) and the per-library coverage gate
-# (_coverage_check_c_runtime) iterate this same table, so adding one row wires
-# a suite into testing AND coverage measurement.
+# C_PROFILE_<name> optionally replaces the default $(T) flag core.
 C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   host_import_gc_tests host_import_arc_tests \
   memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_float_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
@@ -122,10 +119,8 @@ C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
 C_FLAGS_gpu_shader_tests = -ffp-contract=off
-C_LIBS_gpu_shader_tests = -lm
 C_SRC_gpu_float_tests = runtime/gpu_float_tests.c runtime/float_spelling.c
 C_FLAGS_gpu_float_tests = -ffp-contract=off
-C_LIBS_gpu_float_tests = -lm
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
@@ -202,16 +197,28 @@ C_SUITE_GC = $(if $(filter-out memory_gc_tests memory_gc_stack_root_tests,$(1)),
 C_SUITE_FLAGS = $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(4)
 C_SUITE_OBJECT = $(3)-$(basename $(notdir $(2))).o
 C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_sort_tests.c runtime/map_tests.c
-C_SUITE_BUILD = $(foreach src,$(C_SRC_$(1)),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(C_SRC_$(1)),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) $(4) -o $(3)
+C_SUITE_BUILD = $(foreach src,$(C_SRC_$(1)),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(C_SRC_$(1)),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 
 _test_gc_stack_root:
 	@echo "==> [c-runtime] GC caller-stack root regression..."
 	@cd src/toolchain/compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
 
-_test_c_runtime: $(GPU_DEVICE_NATIVE)
-	@echo "==> [c-runtime] memory/gpu/effects/json/builtins/system/string/HTTP/fiber suites..."
-	@cd src/toolchain/compiler && set -e; $(foreach s,$(C_TEST_SUITES),$(call C_SUITE_CMD,$(s)) && ) true
+C_COV_DIR ?= src/toolchain/compiler/bin/cov
+C_BUILD_TARGETS = $(addprefix _build_c_suite_,$(C_TEST_SUITES))
+C_TEST_TARGETS = $(addprefix _test_c_suite_,$(C_TEST_SUITES))
+.PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS)
+_build_c_runtime_tests: $(C_BUILD_TARGETS)
+
+$(C_BUILD_TARGETS): _build_c_suite_%: $(GPU_DEVICE_NATIVE)
+	@mkdir -p "$(C_COV_DIR)/$*"
+	@cd "$(C_COV_DIR)/$*" && $(call C_SUITE_BUILD,$*,../../../,$*,--coverage -DOSP_COVERAGE_DUMP) && rm -f -- *.o
+
+_test_c_runtime: $(C_TEST_TARGETS)
+
+$(C_TEST_TARGETS): _test_c_suite_%:
+	@echo "--- $*"
+	@cd "$(C_COV_DIR)/$*" && rm -f -- *.gcda summary.txt && ./$* && $(GCOV_TOOL) *.gcda > summary.txt
 
 _test_gpu_device: $(GPU_DEVICE_NATIVE)
 	@cd src/toolchain/compiler && $(call C_SUITE_CMD,gpu_device_tests)
@@ -319,9 +326,6 @@ GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
 
 _coverage_check_c_runtime:
 	@echo "==> [c-runtime] per-library line coverage (gcov)..."
-	@rm -rf src/toolchain/compiler/bin/cov
-	@set -e; cd src/toolchain/compiler/bin && mkdir -p cov && cd cov; \
-	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(call C_SUITE_BUILD,$(s),../../../,$(s),--coverage -DOSP_COVERAGE_DUMP) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
 	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
 	@libs=$$(jq -r --arg platform "$(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,windows))" '.projects.c_runtime | to_entries[] | select((.value.platform // $$platform)==$$platform) | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
@@ -332,7 +336,7 @@ _coverage_check_c_runtime:
 	done; \
 	for lib in $$libs; do \
 	  thr=$$(jq -er --arg l "$$lib" '.projects.c_runtime[$$l] | (if has("threshold") then .threshold else 90 end) | if type == "number" and . >= 90 and . <= 100 and floor == . then . else error("coverage threshold must be an integer in 90..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
-	  best=$$(for f in src/toolchain/compiler/bin/cov/*/summary.txt; do \
+	  best=$$(for f in "$(C_COV_DIR)"/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
       sed -n "\#File '.*/runtime/$$lib\.[cmh]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
 	  done | sort -rn | head -1); \
