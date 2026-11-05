@@ -85,7 +85,9 @@ suite("Profile Current File — real compiler, Osprey UI", function () {
     assert.deepStrictEqual(flamePanel.describe(), { viewType: "ospreyProfiler", title: "Profile: profdemo.osp" });
     const html = flamePanel.html() ?? "";
     assert.ok(html.startsWith("<!DOCTYPE html>"), "the panel renders a document");
-    assert.match(html, /\d+ samples · \d+Hz · [\d.]+s wall · [\d.]+s CPU · \d+ fibers?/, "the header summarises the run");
+    // The shared renderer displays subsecond runs in milliseconds.
+    const header = /class="stats">([^<]*)/.exec(html)?.[1];
+    assert.match(header ?? "", /\d+ samples · \d+Hz · [\d.]+m?s wall · [\d.]+m?s CPU · \d+ fibers?/, "the header summarises the run");
     assert.ok(html.includes(`--prof-critical: ${OSPREY_PALETTE.critical}`), "Osprey's palette themes the panel");
     assert.ok(html.includes('<canvas id="flame"></canvas>'), "the flame graph canvas is present");
     assert.ok(html.includes('data-fiber="0">'), "the main fiber has a chip");
