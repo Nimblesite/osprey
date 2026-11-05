@@ -65,8 +65,8 @@ fastapi-e2e:
 	cd $(ROOT) && python3 src/osprey/packages/fastapi/tests/e2e.cpython
 
 
-## fastapi-benchmark: Compare the asserted explicit-response HTTP subset against
-##                    pinned CPython FastAPI. GC/ARC, fresh connections, five trials;
+## fastapi-benchmark: Compare routing and IDP body binding against pinned CPython
+##                    FastAPI. GC/ARC, fresh connections, five trials;
 ##                    results in target/fastapi/benchmark/results.json. Informational.
 .PHONY: fastapi-benchmark
 fastapi-benchmark:

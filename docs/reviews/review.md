@@ -239,3 +239,15 @@ Reproduce with `make -C src/osprey/packages fastapi-benchmark`; complete per-tri
 - [x] [PORT-STRING-NUL-JSON] The native codec regression failed before the fix and passes under GC and ARC. Fresh real HTTP runs pass all 562 body cases, all 117 IDP cases, and all routing, dependency and CORS modes. The C JSON suites pass 170,580 GC and 170,581 ARC assertions. The codegen suite passes 229 checks. FastAPI own-source coverage is 756/779 (97.05%) on each manager, below the enforced 98% gate. Full NAP acceptance and raw NUL handling at C boundaries remain open. Receipts are in `target/logs/fastapi/python-json-nul-*.log` and `target/fastapi/nul-parity-{gc,arc}.json`.
 
 - [x] [FASTAPI-NAP-ACCEPTANCE] Expanded the real HTTP suite with malformed JSON separator offsets for ASCII and Unicode keys, typed application contract errors, and HTTP/1.0 redirects with no Host header. The CI collector and gate pass under GC and ARC at 765/779 own source lines (98.2%). Raised the FastAPI threshold from 98% to 98.2%. C JSON line coverage is 98.66% for the codec, 95.79% for the parser, and 99.50% for the text implementation. Full NAP acceptance remains open. Receipts are in `target/logs/fastapi/ci-evidence-{gc,arc}`.
+
+### FastAPI benchmark with NAP model binding — [FASTAPI-BENCHMARK-SUBSET]
+
+The November 5 run compared GC, ARC and pinned CPython FastAPI over 18,603 verified HTTP responses, including readiness. It measures both routing workloads and all 31 successful and 86 invalid IDP inputs. Four clients ran five trials of 300 responses per workload, after 50 warmups. The reference uses the generated NAP model and FastAPI response filtering. Shared machine throughput includes client validation.
+
+| Runtime | Health req/s | Bundle req/s | Valid IDP req/s | Invalid IDP req/s |
+|---|---:|---:|---:|---:|
+| osprey-gc | 3,302 | 3,185 | 2,479 | 2,662 |
+| osprey-arc | 6,075 | 5,791 | 4,272 | 4,408 |
+| cpython | 5,585 | 4,509 | 4,905 | 3,594 |
+
+The raw results, binary hashes, latency and RSS samples are in `target/fastapi/benchmark/results.json`. The FastAPI package gate still passes on both backends at 765/779 lines (98.2%).

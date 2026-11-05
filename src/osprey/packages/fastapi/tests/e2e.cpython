@@ -97,14 +97,20 @@ def body_contract_cases(port):
         assert int(headers["Content-Length"]) == len(body)
 
 
-def body_reference_cases(port):
-    """[FASTAPI-NAP-VALIDATION] Exact real HTTP replies from actual generated NAP models."""
+def body_records():
+    """Read the pinned HTTP oracle without executing Osprey Python source."""
     nodes = ast.parse(Path(__file__).with_name("expected.py").read_text()).body
     raw = next(ast.literal_eval(node.value) for node in nodes if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "BODY_JSON" for target in node.targets))
-    corpus = json.loads(raw)
-    assert len(corpus["cases"]) >= 180
+    records = json.loads(raw)["cases"]
+    assert len(records) >= 180
+    return records
+
+
+def body_reference_cases(port):
+    """[FASTAPI-NAP-VALIDATION] Exact real HTTP replies from actual generated NAP models."""
+    records = body_records()
     failures = []
-    for case in corpus["cases"]:
+    for case in records:
         status, headers, body = request(port, case["method"], case["path"], case["body_text"].encode(), case["headers"])
         returned = {name.lower(): value for name, value in headers.items()}
         correct = (status, body) == (case["status"], case["response_text"].encode())
@@ -112,7 +118,7 @@ def body_reference_cases(port):
         if not correct or fields != case["response_headers"] or int(returned["content-length"]) != len(body):
             failures.append({"case": case, "actual": {"status": status, "body": body.decode(errors="replace"), "headers": fields}})
     (ROOT / "target/fastapi" / f"body-failures-{port}.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2))
-    assert not failures, f"{len(failures)} of {len(corpus['cases'])} body cases differ; target/fastapi/body-failures-{port}.json"
+    assert not failures, f"{len(failures)} of {len(records)} body cases differ; target/fastapi/body-failures-{port}.json"
     body_contract_cases(port)
     hostless_redirect_cases(port)
 

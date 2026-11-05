@@ -1,8 +1,7 @@
-"""Assert every real HTTP reply while timing the supported routing subset.
+"""Assert every real HTTP reply while timing routing and NAP IDP body binding.
 
-Implements [FASTAPI-BENCHMARK-SUBSET]. No model binding, dependencies, database,
-streaming or lifespan work is measured. Each request opens a fresh connection;
-reported throughput includes client scheduling and response validation.
+Implements [FASTAPI-BENCHMARK-SUBSET]. Each request opens a fresh connection.
+Reported throughput includes client scheduling and response validation.
 """
 import argparse
 import concurrent.futures
@@ -20,7 +19,7 @@ import time
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, NamedTuple
 
 if not __debug__:
     raise RuntimeError("HTTP benchmarks require enabled assertions; do not use -O")
@@ -29,18 +28,18 @@ ROOT = Path(__file__).resolve().parents[5]
 OUTPUT = ROOT / "target/fastapi/benchmark"
 REFERENCE = ROOT.parent / "NimblesiteAgenticPlatform/.venv/bin/python"
 PINNED = "0.135.3"
+BODY_ORACLE = Path(__file__).resolve().parents[1] / "oracle" / "fastapi_body.cpython"
 
 
-def load_http():
-    path = Path(__file__).with_name("e2e.cpython")
-    loader = importlib.machinery.SourceFileLoader("fastapi_http_acceptance", str(path))
+def load_source(name, path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
     spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-HTTP = load_http()
+HTTP = load_source("fastapi_http_acceptance", Path(__file__).with_name("e2e.cpython"))
 
 
 def json_bytes(value):
@@ -61,16 +60,48 @@ BUNDLE = [
 ]
 
 
+class Scenario(NamedTuple):
+    method: str
+    path: str
+    request_body: bytes | None
+    request_headers: dict[str, str]
+    status: int
+    response_body: bytes
+    response_json: object
+
+
+def get_scenario(path, value):
+    return Scenario("GET", path, None, {}, 200, json_bytes(value), value)
+
+
+def body_scenario(record):
+    assert not any(name.lower() == "connection" for name in record["headers"])
+    assert record["response_headers"]["content-type"] == "application/json"
+    reply = record["response_text"]
+    return Scenario(record["method"], record["path"], record["body_text"].encode(), record["headers"],
+                    record["status"], reply.encode(), json.loads(reply))
+
+
+def workloads():
+    records = [case for case in HTTP.body_records() if case["path"] == "/body/idp"]
+    valid = [body_scenario(case) for case in records if case["status"] == 200]
+    invalid = [body_scenario(case) for case in records if case["status"] == 422]
+    assert valid and invalid and len(valid) + len(invalid) == len(records)
+    return [("health", [get_scenario(*item) for item in HEALTH]),
+            ("bundle", [get_scenario(*item) for item in BUNDLE]),
+            ("idp-valid", valid), ("idp-invalid", invalid)]
+
+
 def checked_request(port, scenario):
-    path, expected = scenario
     start = time.perf_counter_ns()
-    status, headers, body = HTTP.request(port, "GET", path, headers={"Connection": "close"})
+    status, headers, body = HTTP.request(port, scenario.method, scenario.path, scenario.request_body,
+                                         scenario.request_headers | {"Connection": "close"})
     headers = {name.lower(): value for name, value in headers.items()}
-    assert status == 200, (path, status, body)
-    assert headers.get("content-type") == "application/json", (path, headers)
-    assert int(headers["content-length"]) == len(body), (path, headers, body)
-    assert body == json_bytes(expected), (path, body, expected)
-    assert json.loads(body) == expected, (path, body, expected)
+    assert status == scenario.status, (scenario.path, status, body, scenario.status)
+    assert headers.get("content-type") == "application/json", (scenario.path, headers)
+    assert int(headers["content-length"]) == len(body), (scenario.path, headers, body)
+    assert body == scenario.response_body, (scenario.path, body, scenario.response_body)
+    assert json.loads(body) == scenario.response_json, (scenario.path, body)
     return time.perf_counter_ns() - start
 
 
@@ -86,7 +117,7 @@ def wait_ready(process, port):
         if process.poll() is not None:
             raise RuntimeError(f"server exited during startup: {process.returncode}")
         try:
-            checked_request(port, HEALTH[0])
+            checked_request(port, get_scenario(*HEALTH[0]))
             return
         except OSError:
             time.sleep(0.02)
@@ -171,7 +202,7 @@ def measure(label, command, native, args):
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.workers)
         try:
             rows = [workload(pool, process, port, name, scenarios, args)
-                    for name, scenarios in [("health", HEALTH), ("bundle", BUNDLE)]]
+                    for name, scenarios in args.workloads]
         finally:
             pool.shutdown(wait=True, cancel_futures=True)
     text = log.read_text()
@@ -184,7 +215,15 @@ def reference_app():
     from fastapi import FastAPI, Query
     from fastapi.responses import JSONResponse, Response
 
+    oracle = load_source("fastapi_nap_body_oracle", BODY_ORACLE)
+    model = oracle.EndUserIdpUpsertRequest
+    assert "_secret" not in model.model_fields
+    assert all(field.serialization_alias != "_secret" for field in model.model_fields.values())
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.post("/body/idp", response_model=model)
+    async def idp(body: model):
+        return body.model_dump(by_alias=True) | {"_secret": oracle.SECRET}
 
     @app.get("/health")
     async def health():
@@ -222,7 +261,12 @@ def arguments():
     args = parser.parse_args()
     if not (1 <= args.samples <= 10000 and 3 <= args.trials <= 15 and 1 <= args.warmup <= 1000 and 1 <= args.workers <= 8):
         parser.error("samples 1..10000, trials 3..15, warmup 1..1000, workers 1..8 required")
-    if 2 * (args.samples * args.trials + args.warmup) > 20000:
+    if args.reference_server is not None:
+        return args
+    args.workloads = workloads()
+    if args.samples < max(len(cases) for _, cases in args.workloads):
+        parser.error("each trial must cover every input permutation")
+    if len(args.workloads) * (args.samples * args.trials + args.warmup) > 20000:
         parser.error("at most 20000 requests per server are allowed")
     return args
 
@@ -239,7 +283,9 @@ def metadata(args):
         "gc_debug": "OSPREY_GC_DEBUG" in os.environ, "arc_debug": "OSPREY_ARC_DEBUG" in os.environ,
         "client_python": platform.python_version(), "platform": platform.platform(),
         "workers": args.workers, "samples": args.samples, "trials": args.trials, "warmup": args.warmup,
-        "scope": "Explicit-response routing only; no model binding, dependency, database, streaming or lifespan benchmark.",
+        "scope": "Health and bundle routing plus NAP IDP body binding, response filtering and validation failures.",
+        "body_oracle_sha256": hashlib.sha256(BODY_ORACLE.read_bytes()).hexdigest(),
+        "body_corpus_sha256": hashlib.sha256(Path(__file__).with_name("expected.py").read_bytes()).hexdigest(),
         "method": "Sequential servers; fresh TCP connections; every reply asserted; throughput includes client validation. Shared-machine results.",
         "memory": "RSS sampled after each trial; maximum sample is not a measured peak. CPU use is not measured separately.",
     }
