@@ -150,7 +150,7 @@ fn host_imports_cannot_replace_incompatible_runtime_declarations() {
     // produce an invalid adapter instead of rejecting the runtime collision.
     for (source, symbol) in [
         (
-            "extern fn osp_alloc(size: int) -> int\nfn allocate(size: int) = osp_alloc(size)\nfn greeting() = \"hello\" + \" world\"\n",
+            "extern fn osp_alloc(size: int) -> int\nfn allocate(size: int) = osp_alloc(size)\nfn pair(size: int) = listLength([size, size])\n",
             "osp_alloc",
         ),
         ("extern fn osp_mem_boot() -> Unit\n", "osp_mem_boot"),
