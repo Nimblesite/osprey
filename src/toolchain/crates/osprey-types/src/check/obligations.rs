@@ -1,6 +1,11 @@
 //! Type checking: obligations.
 use super::{generalize, BTreeSet, Checker, Scheme, SplitObligations, Type, TypeEnv, VarId};
 
+#[cfg(test)]
+std::thread_local! {
+    pub(super) static CONNECTION_SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl Checker {
     /// Generalize `ty`, carrying every built-in obligation recorded on a
     /// variable this scheme quantifies ([`Scheme::obligations`]).
@@ -45,12 +50,22 @@ impl Checker {
         external: &BTreeSet<VarId>,
         vars: &mut Vec<VarId>,
     ) {
+        // No bindings change while finding the connected component.
+        let free_vars: Vec<_> = self
+            .builtin_uses
+            .iter()
+            .map(|(_, ty)| {
+                #[cfg(test)]
+                CONNECTION_SCANS.with(|scans| scans.set(scans.get() + 1));
+                let mut free = BTreeSet::new();
+                self.ctx.free_vars(ty, &mut free);
+                free
+            })
+            .collect();
         let mut connected: BTreeSet<_> = vars.iter().copied().collect();
         loop {
             let before = connected.len();
-            for (_, ty) in &self.builtin_uses {
-                let mut free = BTreeSet::new();
-                self.ctx.free_vars(ty, &mut free);
+            for free in &free_vars {
                 if !free.is_disjoint(&connected) {
                     connected.extend(free.difference(external));
                 }

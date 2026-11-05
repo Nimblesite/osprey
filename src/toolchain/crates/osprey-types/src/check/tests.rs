@@ -409,6 +409,27 @@ fn connected_obligations_share_one_environment_scan() {
 }
 
 #[test]
+fn connected_obligations_read_each_relation_once() -> Result<(), &'static str> {
+    use super::{obligations::CONNECTION_SCANS, BTreeSet, Checker, Type};
+
+    let mut checker = Checker::new();
+    let [Type::Var(a), Type::Var(b), Type::Var(c)] = std::array::from_fn(|_| checker.ctx.fresh())
+    else {
+        return Err("expected three fresh type variables");
+    };
+    checker.builtin_uses.extend([
+        ("second".into(), Type::fun(vec![Type::Var(b)], Type::Var(c))),
+        ("first".into(), Type::fun(vec![Type::Var(a)], Type::Var(b))),
+    ]);
+    let mut vars = vec![a];
+    CONNECTION_SCANS.with(|scans| scans.set(0));
+    checker.generalize_connected_obligations(&BTreeSet::new(), &mut vars);
+    assert_eq!(vars, [a, b, c]);
+    assert_eq!(CONNECTION_SCANS.with(std::cell::Cell::get), 2);
+    Ok(())
+}
+
+#[test]
 fn field_resolution_retries_only_after_new_work() {
     use super::{Checker, Type};
     use crate::fields::{obligation_name, FIELD_VISITS};
