@@ -23,7 +23,7 @@ pub(crate) struct AppliedSignature {
 /// outer scope's binding.
 #[derive(Debug, Clone, Default)]
 struct Frame {
-    vars: HashMap<String, Option<Scheme>>,
+    vars: HashMap<String, Option<Arc<Scheme>>>,
     /// Ordered declaration binders, cleared whenever a value shadows a name.
     type_params: HashMap<String, Option<Vec<Type>>>,
     /// Names declared `mut` — the only bindings handler-arm assignment may target.
@@ -84,7 +84,7 @@ impl TypeEnv {
 
     pub(crate) fn get(&self, name: &str) -> Option<&Scheme> {
         self.lookup(|frame| frame.vars.get(name))
-            .and_then(Option::as_ref)
+            .and_then(Option::as_deref)
     }
 
     fn type_params(&self, name: &str) -> Option<&Vec<Type>> {
@@ -99,7 +99,7 @@ impl TypeEnv {
             let _ = self.frame().mutables.insert(name.clone(), false);
         }
         self.shadow_declaration(&name);
-        let _ = self.frame().vars.insert(name, Some(scheme));
+        let _ = self.frame().vars.insert(name, Some(Arc::new(scheme)));
     }
 
     /// Bind a `mut` declaration — the one binding form handler arms may assign.
@@ -107,7 +107,7 @@ impl TypeEnv {
         let name = name.into();
         self.shadow_declaration(&name);
         let frame = self.frame();
-        let _ = frame.vars.insert(name.clone(), Some(scheme));
+        let _ = frame.vars.insert(name.clone(), Some(Arc::new(scheme)));
         let _ = frame.mutables.insert(name, true);
     }
 
