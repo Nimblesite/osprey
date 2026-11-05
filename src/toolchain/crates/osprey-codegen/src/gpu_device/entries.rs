@@ -27,30 +27,13 @@ fn output_type(body: &DeviceBody, shape: Shape) -> Ty {
 }
 
 fn scan_entry(text: &mut String, body: &DeviceBody) {
-    let acc = body.params.first().copied().unwrap_or(Ty::INT);
-    let elem = body.params.get(1).copied().unwrap_or(Ty::INT);
-    let elem_storage = body.param_storage.get(1).copied().unwrap_or(Ty::INT);
-    let _ = writeln!(
-        text,
-        "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",
-        acc.spelling(),
-        numeric::uniform_value(body.result_storage, "state[0]")
-    );
-    let _ = writeln!(
-        text,
-        "    {} p0 = acc;\n    {} p1 = {};",
-        acc.spelling(),
-        elem.spelling(),
-        elem_storage.value_of("in0[i]")
-    );
-    indented(text, &body.lines, "    ");
-    let _ = writeln!(
-        text,
-        "    acc = {};\n    out[i] = {};\n  }}\n  state[0] = {};",
-        body.result,
+    let close = format!(
+        "    out[i] = {};\n  }}\n  state[0] = {};",
         body.result_storage.word_of("acc"),
         numeric::state_word(body.result_storage, "acc")
     );
+    let start = numeric::uniform_value(body.result_storage, "state[0]");
+    accumulating_entry(text, body, &start, &close);
 }
 
 fn filter_entry(text: &mut String, body: &DeviceBody) {
@@ -146,14 +129,20 @@ fn map_entry(text: &mut String, body: &DeviceBody, inputs: usize) {
 }
 
 fn fold_entry(text: &mut String, body: &DeviceBody) {
+    let close = format!("  }}\n  out[0] = {};", body.result_storage.word_of("acc"));
+    let start = body.result_storage.value_of("out[0]");
+    accumulating_entry(text, body, &start, &close);
+}
+
+// The single-device loop scan and fold share; only the start and the close differ.
+fn accumulating_entry(text: &mut String, body: &DeviceBody, start: &str, close: &str) {
     let acc = body.params.first().copied().unwrap_or(Ty::INT);
     let elem = body.params.get(1).copied().unwrap_or(Ty::INT);
     let elem_storage = body.param_storage.get(1).copied().unwrap_or(Ty::INT);
     let _ = writeln!(
         text,
-        "  if (GPU_INDEX != 0) return;\n  {} acc = {};\n  for (ulong i = 0; i < count; i++) {{",
-        acc.spelling(),
-        body.result_storage.value_of("out[0]")
+        "  if (GPU_INDEX != 0) return;\n  {} acc = {start};\n  for (ulong i = 0; i < count; i++) {{",
+        acc.spelling()
     );
     let _ = writeln!(
         text,
@@ -163,12 +152,7 @@ fn fold_entry(text: &mut String, body: &DeviceBody) {
         elem_storage.value_of("in0[i]")
     );
     indented(text, &body.lines, "    ");
-    let _ = writeln!(
-        text,
-        "    acc = {};\n  }}\n  out[0] = {};",
-        body.result,
-        body.result_storage.word_of("acc")
-    );
+    let _ = writeln!(text, "    acc = {};\n{close}", body.result);
 }
 
 fn indented(text: &mut String, lines: &[String], indent: &str) {
