@@ -37,6 +37,15 @@ module Update
         Error message => failure (Model::set (ready model, "value", "bad"), message)
         Success value => unchanged (Model::set (value, "value", "good"))
 
+module Payload
+    answer ok = match ok
+        true => Success(value = toFloat32(1.25))
+        false => Error(message = "missing value")
+    label result = match result
+        Success value => "value: ${value}"
+        Error message => "error: ${message}"
+    export render ok = label (answer ok)
+
 ok = Update::restore (InboxModel(value = "cached"), "valid")
 bad = Update::restore (InboxModel(value = "cached"), "invalid")
 curried = Update::restoreCurried (InboxModel(value = "cached"))
@@ -44,4 +53,6 @@ closureOk = curried "valid"
 closureBad = curried "invalid"
 inferredOk = Update::restoreInferred (InboxModel(value = "cached"), "valid")
 inferredBad = Update::restoreInferred (InboxModel(value = "cached"), "invalid")
-print "${ok.model.value} ${bad.model.value}\n${closureOk.model.value} ${closureBad.model.value}\n${inferredOk.model.value} ${inferredBad.model.value}"
+payloadValue = Payload::render (true)
+payloadError = Payload::render (false)
+print "${ok.model.value} ${bad.model.value}\n${closureOk.model.value} ${closureBad.model.value}\n${inferredOk.model.value} ${inferredBad.model.value}\n${payloadValue}\n${payloadError}"

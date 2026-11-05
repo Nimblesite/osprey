@@ -19,7 +19,7 @@ module Storage {
     }
     export fn restore(model: InboxModel, source: string) -> Result<InboxModel, string> = restoreInferred(model, source)
     export fn restoreCurried(model: InboxModel) -> (string) -> Result<InboxModel, string> =
-        fn(source: string) -> Result<InboxModel, string> => restore(model, source)
+    fn(source: string) -> Result<InboxModel, string> => restore(model, source)
 }
 
 module Update {
@@ -40,6 +40,18 @@ module Update {
     }
 }
 
+module Payload {
+    fn answer(ok) = match ok {
+        true => Success { value: toFloat32(1.25) }
+        false => Error { message: "missing value" }
+    }
+    fn label(result) = match result {
+        Success { value } => "value: ${value}"
+        Error { message } => "error: ${message}"
+    }
+    export fn render(ok) = label(answer(ok))
+}
+
 let ok = Update::restore(InboxModel { value: "cached" }, "valid")
 let bad = Update::restore(InboxModel { value: "cached" }, "invalid")
 let curried = Update::restoreCurried(InboxModel { value: "cached" })
@@ -47,4 +59,6 @@ let closureOk = curried("valid")
 let closureBad = curried("invalid")
 let inferredOk = Update::restoreInferred(InboxModel { value: "cached" }, "valid")
 let inferredBad = Update::restoreInferred(InboxModel { value: "cached" }, "invalid")
-print("${ok.model.value} ${bad.model.value}\n${closureOk.model.value} ${closureBad.model.value}\n${inferredOk.model.value} ${inferredBad.model.value}")
+let payloadValue = Payload::render(true)
+let payloadError = Payload::render(false)
+print("${ok.model.value} ${bad.model.value}\n${closureOk.model.value} ${closureBad.model.value}\n${inferredOk.model.value} ${inferredBad.model.value}\n${payloadValue}\n${payloadError}")

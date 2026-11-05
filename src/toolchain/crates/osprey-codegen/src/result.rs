@@ -285,7 +285,7 @@ pub(crate) fn repack_to_inner(cg: &mut Codegen, value: Value, inner: LType) -> R
     }
     let owner = value.payload_owner.clone();
     map_payload(cg, &value, inner, |cg, loaded| {
-        Ok(convert_payload(cg, loaded, inner)?.with_owner(owner))
+        Ok(coerce_to(cg, loaded, inner)?.with_owner(owner))
     })
 }
 
@@ -296,25 +296,18 @@ pub(crate) fn map_payload(
     inner: LType,
     convert: impl FnOnce(&mut Codegen, Value) -> Result<Value>,
 ) -> Result<Value> {
-    let disc = load_disc(cg, value);
     let errmsg = load_errmsg(cg, value);
+    if value.result_inner_is_placeholder {
+        // Only Error constructors contribute this placeholder layout.
+        let zero = Value::new(crate::llty::zero_literal(inner), inner);
+        return make_result(cg, zero, inner, "1", &errmsg.operand);
+    }
+    let disc = load_disc(cg, value);
     let (_, error, end) = open_result_branch(cg, value);
     let loaded = load_value(cg, value);
     let converted = convert(cg, loaded)?;
     let payload = join_payload(cg, converted, &error, &end);
     make_result(cg, payload, inner, &disc, &errmsg.operand)
-}
-
-/// Error constructors have an unreachable string-shaped success placeholder.
-/// Bit conversion keeps that unused branch well typed for float/bool contexts.
-fn convert_payload(cg: &mut Codegen, value: Value, inner: LType) -> Result<Value> {
-    match (value.ty, inner) {
-        (LType::Str | LType::Ptr, LType::F64 | LType::I1) => {
-            let bits = crate::conv::box_to_i64(cg, value);
-            Ok(crate::conv::unbox_from_i64(cg, &bits.operand, inner))
-        }
-        _ => coerce_to(cg, value, inner),
-    }
 }
 
 fn join_payload(cg: &mut Codegen, value: Value, error: &str, end: &str) -> Value {
