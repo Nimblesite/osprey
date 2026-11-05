@@ -75,6 +75,36 @@ fn generic_owner_projection_keeps_every_instantiated_argument() {
     assert_eq!(instances.owner_substitutions.get(), 2);
 }
 
+#[test]
+fn row_free_updates_do_not_visit_unrelated_instantiations() {
+    for value in ["1", "perform Alarm.ring()"] {
+        let source = format!(
+            "effect Alarm {{ring:fn()->int}}\ntype Control<T>={{payload:T,press:fn()->int ![]}}\nfn change(control)=control {{payload:{value}}}"
+        );
+        let _ = fixture_function_values(&source, |index, body| {
+            let instances = update_instances(body);
+            let summary = analyzer(index, &instances).expression(body, &[], &CallableEnv::default());
+            assert_eq!(summary.required.is_empty(), value == "1", "{summary:?}");
+            assert!(instances.field_row_violations.borrow().is_empty());
+            assert_eq!(instances.owner_substitutions.get(), 0, "{value}");
+        });
+    }
+}
+
+fn update_instances(body: &Expr) -> Instances {
+    let instances = Instances {
+        instantiation_types: (0..128_usize)
+            .map(|site| (site, [(7, crate::ty::Type::int())].into_iter().collect()))
+            .collect(),
+        ..Instances::default()
+    };
+    let _ = instances.expression_types.borrow_mut().insert(
+        expression_site(body),
+        crate::ty::Type::con("Control", vec![crate::ty::Type::Var(7)]),
+    );
+    instances
+}
+
 fn receiver() -> (Expr, Index<'static>) {
     let mut index = Index::default();
     index.field_rows.register_parameters("Control", &[]);
