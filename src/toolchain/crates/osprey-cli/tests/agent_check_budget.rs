@@ -25,9 +25,12 @@ fn start_check(project: &Path) -> std::io::Result<Child> {
 
 /// What became of one check when the shared deadline arrived: `None` when it passed.
 fn finish(child: &mut Child, deadline: Instant) -> std::io::Result<Option<String>> {
-    while Instant::now() < deadline {
+    loop {
         if let Some(status) = child.try_wait()? {
             return Ok((!status.success()).then(|| format!("exited with {status}")));
+        }
+        if Instant::now() >= deadline {
+            break;
         }
         std::thread::sleep(POLL_INTERVAL);
     }
