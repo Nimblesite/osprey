@@ -2,7 +2,7 @@
 layout: page.njk
 wide: true
 title: Benchmarks
-description: How Osprey's elapsed time and peak memory compare to Rust, C, C#, Dart, OCaml, and Haskell on classic compute benchmarks.
+description: How Osprey's elapsed time and peak memory compare to Rust, C, C#, Dart, Codon, OCaml, and Haskell on classic compute benchmarks.
 date: "git Last Modified"
 tags: ["benchmarks", "performance"]
 author: "Christian Findlay"
@@ -28,7 +28,7 @@ Elapsed execution time and peak resident memory for arithmetic, collections and 
 3. Run `hyperfine -N --warmup 3 --min-runs 10` to collect the mean and standard deviation. Seeded workloads receive `0` on stdin for repeatable input.
 4. Measure native peak RSS with `/usr/bin/time`, taking the maximum of three runs. Every Wasmtime wrapper uses the same 4 MiB call-stack budget (`-W max-wasm-stack=4194304`).
 
-These are microbenchmarks. Collection representations and iteration styles differ across implementations: Osprey's persistent maps and lists allocate differently from mutable hash tables and arrays. Osprey has no tail-call optimization. Integer faults require an explicit [arithmetic policy](/spec/0037-arithmeticeffects/); the plain Rust and C columns use unchecked arithmetic.
+These are microbenchmarks. Collection representations and iteration styles differ across implementations: Osprey's persistent maps and lists allocate differently from mutable hash tables and arrays. Osprey has no tail-call optimization. Integer faults require an explicit [arithmetic policy](/spec/0037-arithmeticeffects/); the plain Rust, C and Codon columns use unchecked arithmetic.
 
 | Language | Release command |
 | --- | --- |

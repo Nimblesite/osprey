@@ -11,10 +11,11 @@ include Makefile
 .PHONY: bench bench-osprey instruction-gate flock-bench painting-compare
 
 ## bench: Build, then run the cross-language performance benchmark suite
-##        (Osprey vs Rust/C/OCaml/Haskell — CPU via hyperfine, peak memory via
+##        (Osprey vs Rust/C/C#/Dart/Codon/OCaml/Haskell — CPU via hyperfine, peak memory via
 ##        /usr/bin/time). Absent toolchains are skipped. Informational only:
 ##        NOT part of `make ci`/`make test` (perf is noisy on shared runners).
-##        Pass a name filter via BENCH_FILTER=<substr>; results in
+##        Pass a name filter via BENCH_FILTER=<substr>, or time only some columns with
+##        BENCH_LANGS="codon dart" (the rest keep their records); results in
 ##        src/toolchain/benchmarks/results/results.html. Every run preserves unmeasured
 ##        values and publishes only validated replacements. See src/toolchain/benchmarks/README.md.
 bench: build

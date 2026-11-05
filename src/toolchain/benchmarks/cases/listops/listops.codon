@@ -1,0 +1,90 @@
+# listops — build a persistent cons list of pseudo-random values, then traverse
+# it twice (sum + count-below-threshold), repeated K times with rolling seeds.
+#
+# Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
+# oracle-checked); "1" -> cryptographically-secure random seed (/dev/urandom).
+class List:
+    pass
+
+
+class Nil(List):
+    pass
+
+
+class Cons(List):
+    head: int
+    tail: List
+
+
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mul(a, b):
+    return a * b
+
+
+def modp(a, b):
+    return a % b
+
+
+def r1(x):
+    return modp(mul(x, 16807), 2147483647)
+
+
+def hash_at(seed, i):
+    return r1(r1(add(seed, i)))
+
+
+def add_m(a, b):
+    return modp(add(a, b), 1000000007)
+
+
+def rand_seed():
+    with open("/dev/urandom", "rb") as source:
+        return add(modp(fold(source.read(4), 0, lambda acc, c: add(mul(acc, 256), int(c))), 2147483646), 1)
+
+
+def seed_of(s):
+    match s.strip():
+        case "0" | "":
+            return 1
+        case _:
+            return rand_seed()
+
+
+def build_list(s) -> List:
+    empty: List = Nil()
+    return fold(range(3999, -1, -1), empty, lambda acc, i: Cons(modp(hash_at(s, i), 1000), acc))
+
+
+def sum_l(xs: List) -> int:
+    match xs:
+        case Cons(head=head, tail=tail):
+            return add(head, sum_l(tail))
+        case _:
+            return 0
+
+
+def below_l(xs: List) -> int:
+    match xs:
+        case Cons(head=head, tail=tail):
+            return add(1 if head < 500 else 0, below_l(tail))
+        case _:
+            return 0
+
+
+def run_one(s):
+    xs = build_list(s)
+    return add(sum_l(xs), below_l(xs))
+
+
+seed = seed_of(input())
+print(f"{fold(range(0, 8), 0, lambda acc, t: add_m(acc, run_one(add(seed, mul(t, 131)))))}")

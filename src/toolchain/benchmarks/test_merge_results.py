@@ -295,6 +295,42 @@ class HarnessPublicationTests(unittest.TestCase):
             self.assertEqual(cells["rust"], {"status": "ok", "rss": 10, **RecordedTimingTests.TIMING})
             self.assertEqual(cells["osprey"]["mean"], 1.0)
 
+    def test_selected_column_is_timed_and_every_other_column_keeps_its_record(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bench = self.fixture(root)
+            self.compiler(root)
+            (bench / "cases/fib/fib.codon").write_text("print(42)\n")
+            tools = self.timing_tools(root)
+            self.executable(root / "tools/codon", '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\n'
+                            'printf "#!/bin/sh\\nprintf 42" > "$2"\nchmod +x "$2"\n')
+            before = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]["rust"]
+            result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("codon", result.stdout)
+            self.assertNotIn("osprey-arc", result.stdout)
+            cells = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]
+            self.assertEqual(cells["rust"], before)
+            self.assertEqual(cells["codon"]["mean"], RecordedTimingTests.TIMING["mean"])
+            self.assertEqual(cells["codon"]["status"], "ok")
+            self.assertEqual(set(cells), {"rust", "codon"})
+            self.assertIn("Codon", (bench / "results/results.html").read_text())
+
+    def test_wrong_codon_output_publishes_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bench = self.fixture(root)
+            self.compiler(root)
+            (bench / "cases/fib/fib.codon").write_text("print(41)\n")
+            tools = self.timing_tools(root)
+            self.executable(root / "tools/codon", '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\n'
+                            'printf "#!/bin/sh\\nprintf 41" > "$2"\nchmod +x "$2"\n')
+            before = MergeResultsTests().snapshot(bench / "results")
+            result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("WRONG OUTPUT", result.stdout)
+            self.assertEqual(MergeResultsTests().snapshot(bench / "results"), before)
+
     def test_osprey_only_run_never_republishes_an_older_runs_export(self) -> None:
         # `results/hf/` is untracked, so it outlives the results.json it was
         # merged into. A newer results.json (another machine, a merged branch)

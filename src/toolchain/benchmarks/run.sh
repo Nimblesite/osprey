@@ -18,6 +18,8 @@
 #                                the Osprey backends in a temp dir and merges
 #                                them into src/toolchain/benchmarks/results/, leaving every
 #                                other language's recorded numbers untouched.
+#   BENCH_LANGS    (default all) space-separated columns to time; the rest keep
+#                                their recorded numbers, as with BENCH_PARTIAL.
 #   BENCH_WARMUP   (default 3)   warmup runs per command
 #   BENCH_MINRUNS  (default 10)  minimum timed runs per command
 #   BENCH_MEMRUNS  (default 3)   memory-sampling runs per command
@@ -58,15 +60,18 @@ WASM_STACK_BYTES=4194304
 # `rust-checked` is the SAME .rs built with `-C overflow-checks=on`: Osprey
 # checks every integer operation (spec 0037), so this is the like-for-like
 # baseline; plain `rust` and `c` run unchecked arithmetic.
-LANGS=(osprey-arc osprey-gc osprey rust rust-checked c csharp dart ocaml haskell osprey-wasm rust-wasm c-wasm)
+LANGS=(osprey-arc osprey-gc osprey rust rust-checked c csharp dart codon ocaml haskell osprey-wasm rust-wasm c-wasm)
 if [[ "$PARTIAL" == 1 ]]; then
   LANGS=(osprey-arc osprey-gc osprey osprey-wasm)
 fi
+[[ -n "${BENCH_LANGS:-}" ]] && LANGS=(${=BENCH_LANGS})
 typeset -A EXT
-EXT=(osprey osp  osprey-arc osp  osprey-gc osp  rust rs  rust-checked rs  c c  csharp cs  dart dart
+EXT=(osprey osp  osprey-arc osp  osprey-gc osp  rust rs  rust-checked rs  c c  csharp cs  dart dart  codon codon
      ocaml ml  haskell hs  osprey-wasm osp  rust-wasm rs  c-wasm c)
 
 have() { command -v "$1" >/dev/null 2>&1 }
+# Codon's installer puts the compiler in ~/.codon/bin without touching PATH.
+have codon || path+=("$HOME/.codon/bin")
 
 # WebAssembly: the *-wasm langs cross-compile the SAME sources to wasm32-wasip1
 # and run them under wasmtime, so the wasm column is the cost of the identical
@@ -95,6 +100,7 @@ toolchain_ok() {
     c)       have cc ;;
     csharp)  have dotnet ;;
     dart)    have dart ;;
+    codon)   have codon ;;
     ocaml)   have ocamlopt ;;
     haskell) have ghc ;;
     osprey-wasm) [[ -x "$OSP" ]] && have wasmtime && [[ -f "$ROOT/src/toolchain/compiler/lib/libosprey_runtime_wasm.a" ]] ;;
@@ -122,6 +128,7 @@ build() {
              ( cd "$csd" && dotnet publish -c Release -o out --nologo -v q >/dev/null 2>&1 ) && \
              mv -f "$csd/out/bench" "$out" ;;
     dart)    dart compile exe "$dir/$name.dart" -o "$out" >/dev/null 2>&1 ;;
+    codon)   codon build -release -exe -o "$out" "$dir/$name.codon" >/dev/null 2>&1 ;;
     ocaml)   cp "$dir/$name.ml" "$TMP/$name.ml" && \
              ( cd "$TMP" && ocamlopt -O3 -unsafe -o "$out" "$name.ml" >/dev/null 2>&1 ) ;;  # compile a copy: ocamlopt litters .cmi/.cmx/.o beside the source
     haskell) ghc -O2 -outputdir "$TMP/hs_$name" -o "$out" "$dir/$name.hs" >/dev/null 2>&1 ;;

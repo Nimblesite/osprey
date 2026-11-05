@@ -1,7 +1,7 @@
 # Osprey benchmarks
 
 A cross-language performance harness that measures where Osprey sits relative to
-**Rust, C, C#, Dart, OCaml, and Haskell** on classic compute benchmarks — both **elapsed time**
+**Rust, C, C#, Dart, Codon, OCaml, and Haskell** on classic compute benchmarks — both **elapsed time**
 and **peak memory**.
 
 Every benchmark uses the same workload and expected result across languages. Programs are compiled, checked for correct output, then timed; collection implementations and iteration mechanisms differ. **All source is in this
@@ -9,7 +9,7 @@ folder** under `cases/<name>/` so you can read and compare every line:
 
 ```
 src/toolchain/benchmarks/cases/<name>/
-  <name>.osp   <name>.rs   <name>.c   <name>.ml   <name>.hs   expected.txt   bench.json
+  <name>.osp   <name>.rs   <name>.c   <name>.codon   <name>.ml   <name>.hs   expected.txt   bench.json
 ```
 
 ```bash
@@ -18,11 +18,12 @@ make -C src/toolchain/benchmarks bench-osprey                # ONLY the Osprey c
 BENCH_FILTER=fib make -C src/toolchain/benchmarks bench      # only cases whose name contains "fib"
 zsh src/toolchain/benchmarks/run.sh            # run directly (assumes `make build` already ran)
 zsh src/toolchain/benchmarks/run.sh primes     # direct, single case
+BENCH_LANGS=codon zsh src/toolchain/benchmarks/run.sh  # only the named columns; the others keep their records
 ```
 
 `make -C src/toolchain/benchmarks bench-osprey` is the fast loop for a compiler or runtime change: it
 compiles and times only `osprey`, `osprey-arc`, `osprey-gc` and `osprey-wasm`,
-never Rust/C/C#/Dart/OCaml/Haskell. It stages into a temp directory and merges
+never Rust/C/C#/Dart/Codon/OCaml/Haskell. It stages into a temp directory and merges
 only the `(case, language)` cells it actually measured, so every other
 language's tracked record survives byte-for-byte — and if any case fails to
 build, mismatches its oracle or fails timing, nothing is published at all. It needs one prior
@@ -116,7 +117,7 @@ seeded token generator and runs in constant *or* randomized mode (below).
 
 `listops`, `quicksort`, `mergesort` and `wordfreq` exercise persistent list and map allocation. Compare the default, ARC and GC columns for the same source; the current measurements are in `results/results.json`.
 
-The two sorts build every partition and merged run as a new persistent list, so each allocates heavily. The other languages run the same out-of-place algorithm on their own sequence type: arrays or vectors in C, Rust, C# and Dart, linked lists in OCaml and Haskell. Their checksum weights each sorted element by its rank, so a wrong order changes the answer, and both sorts share one oracle.
+The two sorts build every partition and merged run as a new persistent list, so each allocates heavily. The other languages run the same out-of-place algorithm on their own sequence type: arrays or vectors in C, Rust, C# and Dart, linked lists in Codon, OCaml and Haskell. Their checksum weights each sorted element by its rank, so a wrong order changes the answer, and both sorts share one oracle.
 
 ## Methodology
 
@@ -144,6 +145,7 @@ Compile commands (source of truth: [`run.sh`](run.sh)):
 | Rust    | `rustc -C opt-level=3 -C overflow-checks=off -o <bin> <f>.rs` |
 | Rust (checked) | `rustc -C opt-level=3 -C overflow-checks=on -o <bin> <f>.rs` — the same source with Rust's integer overflow checks on. Osprey checks every integer operation ([spec 0037](../../../docs/specs/language/0037-ArithmeticEffects.md)), so this column is the like-for-like baseline; `Rust` and `C` run unchecked arithmetic |
 | C       | `cc -O2 -o <bin> <f>.c` |
+| Codon   | `codon build -release -exe -o <bin> <f>.codon` — the program written as Python-flavor Osprey would write it. `int` is 64-bit and wraps, unchecked, as in `Rust` and `C` |
 | OCaml   | `ocamlopt -O3 -unsafe -o <bin> <f>.ml` |
 | Haskell | `ghc -O2 -o <bin> <f>.hs` |
 | Osprey (wasm) | `osprey <f>.osp --target=wasm32 --compile -o <f>.wasm` → `wasmtime run` |
@@ -198,7 +200,8 @@ The Osprey cases fall back to seed `1` if `randomBelow` returns an error, so a s
 
 - **Arithmetic semantics differ.** Osprey's integer `+ - *` and `%` return
   plain `int`; overflow or a zero divisor requires an explicit `Arith` policy.
-  Rust is compiled with `-C overflow-checks=off` for its release profile.
+  Rust is compiled with `-C overflow-checks=off` for its release profile, and
+  Codon's `int` wraps unchecked.
 - **Same algorithm everywhere.** Identical *naive* algorithm and parameters in
   every language — no memoization, closed forms, SIMD, or parallelism. We measure
   the language/compiler/runtime, not who is cleverest. Ranges match Osprey's
@@ -242,7 +245,7 @@ and the new cryptographically-secure `random`/`randomBelow` builtins
 1. `mkdir src/toolchain/benchmarks/cases/<name>/`.
 2. Write `<name>.osp`, verify: `osprey <name>.osp --run`.
 3. Add `expected.txt` (exact stdout) and `bench.json` (`{"name","description"}`).
-4. Add `<name>.rs`, `<name>.c`, `<name>.ml`, `<name>.hs` — identical algorithm
+4. Add `<name>.rs`, `<name>.c`, `<name>.codon`, `<name>.ml`, `<name>.hs` — identical algorithm
    and parameters, each printing only the integer result.
 5. `BENCH_FILTER=<name> make -C src/toolchain/benchmarks bench` and confirm every language reports `ok`.
 

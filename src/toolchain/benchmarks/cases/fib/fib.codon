@@ -1,0 +1,20 @@
+# Naive recursive Fibonacci — exercises raw function-call + recursion overhead.
+def add(a, b):
+    return a + b
+
+
+def sub(a, b):
+    return a - b
+
+
+def fib(n):
+    match n:
+        case 0:
+            return 0
+        case 1:
+            return 1
+        case _:
+            return add(fib(sub(n, 1)), fib(sub(n, 2)))
+
+
+print(f"{fib(35)}")
