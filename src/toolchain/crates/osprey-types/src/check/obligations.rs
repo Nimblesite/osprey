@@ -19,7 +19,7 @@ impl Checker {
         self.generalize_connected_obligations(&external, &mut scheme.vars);
         // A computed numeric value has one representation. Only a callable
         // may instantiate its division relation at different operand widths.
-        if !matches!(self.ctx.apply(ty), Type::Fun { .. }) {
+        if !matches!(scheme.ty, Type::Fun { .. }) {
             let pinned = self.arith_operand_vars(&self.builtin_uses.clone());
             scheme.vars.retain(|var| !pinned.contains(var));
         }
@@ -100,7 +100,7 @@ impl Checker {
                 || (crate::expr::is_deferred_arith(&name)
                     && free.iter().any(|var| !vars.contains(var)))
                 || crate::builtin_constraints::fixed_numeric_operand(&name, &ty)
-                || !self.mentions_any(&ty, vars)
+                || !vars.iter().any(|var| free.contains(var))
             {
                 kept.push((name, ty));
             } else {
@@ -108,12 +108,5 @@ impl Checker {
             }
         }
         (deferred, kept)
-    }
-
-    /// Whether `ty` still rests on one of the quantified variables.
-    pub(super) fn mentions_any(&mut self, ty: &Type, vars: &[VarId]) -> bool {
-        let mut free = BTreeSet::new();
-        self.ctx.free_vars(ty, &mut free);
-        vars.iter().any(|v| free.contains(v))
     }
 }
