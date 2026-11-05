@@ -1244,30 +1244,40 @@ jobs:
           pattern: coverage-rust-*
           path: target/coverage/rust/
       - name: Merge the Rust shards' coverage
-        run: python3 scripts/ci/merge_lcov.py target/coverage/rust/*/lcov.info > target/coverage/lcov.info
+        id: merge-rust
+        run: |
+          python3 scripts/ci/merge_lcov.py target/coverage/rust/{coverage-rust-packages,coverage-rust-workbench,coverage-rust-rest}/lcov.info > target/coverage/lcov.info.tmp
+          mv target/coverage/lcov.info.tmp target/coverage/lcov.info
       - uses: actions/download-artifact@v8
+        if: ${{ !cancelled() }}
         with:
           name: coverage-extension
           path: src/toolchain/vscode-extension/coverage/
       - uses: actions/download-artifact@v8
+        if: ${{ !cancelled() }}
         with:
           name: coverage-packages
           path: target/coverage/packages/
       - uses: actions/download-artifact@v8
+        if: ${{ !cancelled() }}
         with:
           name: coverage-c-runtime
           path: src/toolchain/compiler/bin/cov/
 
       - name: Rust per-crate thresholds
+        if: ${{ !cancelled() && steps.merge-rust.outcome == 'success' }}
         run: make _coverage_check_rust
 
       - name: VS Code extension thresholds
+        if: ${{ !cancelled() }}
         run: make _coverage_check_vscode_extension
 
       - name: Package thresholds
+        if: ${{ !cancelled() }}
         run: make _coverage_check_packages
 
       - name: C runtime thresholds
+        if: ${{ !cancelled() }}
         run: make _coverage_check_c_runtime
 
       - name: Upload combined coverage

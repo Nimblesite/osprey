@@ -264,8 +264,12 @@ test('the Rust shards run every test: each name the rest skips, another shard se
 
 test('the coverage gate reads the merge of every Rust shard', () => {
   const coverage = job('coverage', '.github/workflows/ci.yml')
+  const matrix = job('test-rust', '.github/workflows/ci.yml')
+  const shards = matrix.match(/shard: \[([^\]]+)\]/)[1].split(', ')
   assert.match(coverage, /pattern: coverage-rust-\*/)
-  assert.match(coverage, /python3 scripts\/ci\/merge_lcov\.py target\/coverage\/rust\/\*\/lcov\.info > target\/coverage\/lcov\.info/)
+  const merge = coverage.match(/python3 scripts\/ci\/merge_lcov\.py target\/coverage\/rust\/\{([^}]+)\}\/lcov\.info > target\/coverage\/lcov\.info/)
+  assert.ok(merge, 'the merge must name every shard explicitly')
+  assert.deepEqual(merge[1].split(','), shards.map(shard => `coverage-rust-${shard}`))
 })
 
 registerLintContracts(job('analyse', '.github/workflows/ci.yml'))
