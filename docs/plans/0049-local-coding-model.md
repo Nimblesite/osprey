@@ -66,7 +66,7 @@ Gate [LLM-MEMORY]: peak RSS at or under 24 GB at full context, measured by the t
 
 ## Phase 5 — Language layer
 - [ ] [LLM-TOKENIZER]: NFC, the split pattern and ByteLevel in `@osprey/tokenizers`, reusing `@osprey/tiktoken`'s merge code; read vocabulary/merges from GGUF metadata if Phase 0 confirms they're there. Compare with the real package on source code in many languages, emoji, invalid-looking input. Progress 2026-11-05 (pi, reviewed): NFC with generated tables, the Qwen split pattern, ByteLevel both ways and byte-level BPE landed in 90d11581a and 02789a1ec, 1414 assertions against the CPython oracle under gc, arc and none; still open: token offsets and reading the vocabulary and merges from the GGUF metadata.
-- [ ] Render jinja2 macros, then the unmodified template against the real one across messages, tools, thinking, `reasoning_effort`, `preserve_thinking`.
+- [ ] Render jinja2 macros, then the unmodified template against the real one across messages, tools, thinking, `reasoning_effort`, `preserve_thinking`. Progress 2026-11-05 (pi, reviewed): b13f1665d renders macros and the unmodified `qwen3.8-27b.chat_template.jinja` byte-identically against `transformers`' `render_jinja_template` over the oracle's conversations, 343 assertions under gc and arc; confirm the `reasoning_effort` and `preserve_thinking` permutations are among them before ticking.
 - [ ] Sampling defaults from Phase 0 through `@osprey/transformers`, with deterministic seeds.
 
 Gate: byte-identical prompts and token IDs against the oracle.
