@@ -177,6 +177,20 @@ Confirmed next producer gap: `toGpu(range(0, 9223372036854775807))` requests a b
 
 The full Metal ML workload gate remains RED in both flavors: after seven passing cases, the degenerate-capture case reaches a device division-by-zero fault and the runtime aborts rather than returning a handled failure. The unchanged assertion is retained. Receipts: `mlkernels-f32-metal-fixed.{out,err}` and `mlkernels-f32-ml-metal.{out,err}`. This is part of the open failure migration above; host and wasm passes do not prove device completion.
 
+Re-measured 2026-11-05 17:14 with `OSPREY_GPU=metal` under gc; the gate is still RED, and the failure list above is out of date. The division fault is now a handled `Error`, not an abort. Both flavors pass all 17 cases on the host. Receipts: `target/local-coding-model/runs/2026-11-05_171410-mlkernels-metal-mlkernels.test.{osp,ospml}.txt`.
+
+| Flavor | Passed on Metal | Failing cases |
+| --- | --- | --- |
+| Default | 12 of 17 | 8, 11, 12 (division by zero on the device), 15, 16 (`rowDot` kernel decline) |
+| ML | 11 of 17 | 8, 12 (division by zero), 10, 11 (`degenerate` kernel decline), 15, 16 (`rowDot` kernel decline) |
+
+Checks this adds:
+
+- [ ] Device division by zero in cases 8, 11 and 12: make the device match the host's total result or change the case's documented contract with the reason, under [ARITH-DEVICE-RECOVERY] in plan 0023.
+- [ ] `rowDot` declines in cases 15 and 16: give the kernel a device form. Its decline message repeats `rowDot:` many times; fix that with a test that pins the message.
+- [ ] Twin parity on the device: the ML twin declines `degenerate` in cases 10 and 11 where the Default twin compiles it. Twins must emit identical IR, so find out why they diverge, and add a regression.
+- [ ] After those, run the gate in both flavors under gc and arc on Metal, and record the GPT-2 token time the gate requires. Neither is recorded yet.
+
 Native-width integration, 2026-11-04: reviewed and integrated `db8d33d7`, `d66b08da` and the reserved-Metal-name fix `b0ea0e0f` on the primary checkout. All 221 codegen tests pass. The original float oracle compared several expressions with themselves: an addition-to-subtraction mutation incorrectly passed 933,185 checks. The strengthened oracle calls shared device arithmetic helpers against separately computed host results and derives comparisons from IEEE words; that mutation now fails, while the unchanged implementation passes 1,433,697 checks. Real Metal shader compilation first reproduced the reserved `half` identifier error, then all 6,770 device checks pass after the reviewed rename. Receipts: `target/logs/plan-0050/native-width-{primary-c-tests,primary-codegen,metal-before,metal-after}.log` and `native-width-mutation/`. This does not close the full emitted-kernel, conversion, failure-handling or timing gates.
 
 The strengthened eleven-width gather twins also pass the unchanged cross-flavor IR parity gate. Final codegen tests (221), strict clippy and workspace format checks pass; compiler, runtime and regression hashes are recorded in `native-width-cohort.json`. The separately preserved forced-Metal/inline refusal is expected for the documented host-only inline oracle; the passing differential runs use both host lowerings and the actual device runs use extraction.
@@ -198,7 +212,7 @@ Verified binary32 progress, 2026-11-03: the compiled transformer suite passes al
 - [ ] `/spec-check` over GPU 0034 against the completed Phase 4/5 implementation and hardware receipts, then cross-check the complete numeric contract across all six specs.
 - [x] Plan 0049 phase 1 delegates sized buffers and native arithmetic to this plan and waits for its Phase 5 gate; mapped weights, block quantization and mutable state remain with 0049. Verified against the current plan (2026-11-03).
 - [x] Merge `wip/sized-numerics` into the feature branch, push, delete that branch and its worktree `.claude/worktrees/sized-numerics`. Verified the branch tip is an ancestor of the actual remote feature branch, clean source and zero open files. Archived all 1,498 ignored evidence files before removing the exact inactive worktree and deleting the merged branch; archive and per-file hashes are in `target/logs/plan-0050/sized-worktree-archive.json` (2026-11-04). Other workers' worktrees and unrelated files are untouched.
-- [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started).
+- [ ] Clean caches and build files left by this plan, and check free disk (98% full when Phase 3 started; 99% with 11 GiB free on 2026-11-05).
 
 ### Final verification
 
@@ -219,7 +233,7 @@ Verified binary32 progress, 2026-11-03: the compiled transformer suite passes al
 
 ### Verification notes (2026-11-05)
 
-Consumers now run on the binary32 path that this plan built: 0049's real Qwen3.8-27B token runs entirely in `float32` buffers over `gpuMatMulQuant` and generated kernels (99 ms of device time, 8.92 tokens/s wall, receipt `target/local-coding-model/runs/2026-11-05_142230-pipelined-segments.txt`), and the kernel-side `exp`/`tanh` are a shared binary32 algorithm (`gpu32_exp`, 52907d9db) instead of a rounding of the binary64 routine. Nothing here closes an open item: the Metal ML workload gate is still red on the division fault, the `toGpu` caller migration and the panic-path removal are unchanged, the `gpu_shader_tests.c` forced-Metal record is not written, and the final `cargo test -p osprey-cli` and `make ci` runs have not been repeated. New since the last note: `fileSize : (string) -> Result<int, Error>` (56638019b) adds a builtin that the registry test `registry_classifies_the_compilers_ambient_builtin_inventory` and the sandbox test now fail on until it is classified; both must be fixed before the next full gate run.
+Consumers now run on the binary32 path that this plan built: `qwen.py`, 0049's one-file program, runs a real Qwen3.8-27B token entirely in `float32` buffers over `gpuMatMulQuant` and generated kernels (99 ms of device time, 8.92 tokens/s wall, receipt `target/local-coding-model/runs/2026-11-05_142230-pipelined-segments.txt`), and the kernel-side `exp`/`tanh` are a shared binary32 algorithm (`gpu32_exp`, 52907d9db) instead of a rounding of the binary64 routine. The package model also computes in `float32` on the host and on Metal, on the tiny fixture only (2532 of 2532, `target/local-coding-model/runs/2026-11-05_171210-transformers-*.txt`). Its test loader `qwen3_5_hf.py` holds weights as `list[float32]`, one 8-byte word per element as this plan's decisions state, so the real loader in 0049 must map buffers and never build value lists. Nothing here closes an open item: the Metal ML workload gate is still red (table in Phase 5), the `toGpu` caller migration and the panic-path removal have not been re-audited, the `gpu_shader_tests.c` forced-Metal record is not written, and the final `cargo test -p osprey-cli` and `make ci` runs have not been repeated. `fileSize : (string) -> Result<int, Error>` (56638019b) broke the registry test `registry_classifies_the_compilers_ambient_builtin_inventory` and the sandbox test; 7c6e3df7c classified it and both passed when rerun then, without a full gate run.
 
 ### Verification notes (2026-11-03)
 
