@@ -431,7 +431,7 @@ _gpu-demo: build
 
 # The same suite against an ALREADY-BUILT binary. No prerequisites, so the
 # staged pipeline can run it on the downloaded `osprey-build` artifact. Going
-# through `bank-test` there rebuilt the whole workspace and then ran `tsc -b`
+# through the `bank` suite there rebuilt the whole workspace and then ran `tsc -b`
 # in vscode-extension, whose node_modules that job never installs — three
 # TS2688 errors and a dead stage, for work the build job had already done.
 _bank_test:

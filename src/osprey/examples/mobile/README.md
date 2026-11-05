@@ -111,7 +111,7 @@ The API requests one page of open issues from `swiftlang/swift` initially; enter
 
 ## Assertions and diagnostics
 
-From the repository root, `make -C src/toolchain/targets mobile-domain-test` runs the shared Osprey assertions, `make -C src/toolchain/targets mobile-ios-test` builds and checks the iOS application, and `make -C src/toolchain/targets mobile-test` runs shared, iOS, and Android verification together. The combined target requires both platform toolchains and running test devices.
+From the repository root, `make -C src/toolchain/targets/tests inbox` runs the shared Osprey assertions, `make -C src/toolchain/targets mobile-ios-test` builds and checks the iOS application, and `make -C src/toolchain/targets mobile-test` runs shared, iOS, and Android verification together. The combined target requires both platform toolchains and running test devices.
 
 Native smoke tests use a separate SQLite database and exercise the real Osprey archive. iOS uses deterministic HTTP completions to check bound SQL, cache persistence, search, saved filters, bookmarks, detail/annotation events, and visible HTTP failures. It writes `OSPREY_INBOX_SMOKE_OK` to `Documents/inbox-smoke-result.txt`; the launcher requires a fresh result. Android's deterministic smoke exercises the shared app, terminates the process, and verifies its saved cache after restart. Its additional `--live-smoke` mode requires network access and available GitHub rate limits.
 

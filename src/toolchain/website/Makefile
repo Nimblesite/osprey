@@ -13,6 +13,8 @@ include Makefile
 video-metadata:
 	cd src/toolchain/website && node scripts/measure-video-metadata.mjs
 
+wasm wasm-site: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+
 .PHONY: wasm wasm-site wasm-serve docs docs-html-test
 
 ## docs: Rebuild the compiler and regenerate built-in reference pages and ML twins.
@@ -31,20 +33,48 @@ docs:
 ## wasm-ld and a WASI sysroot —
 ## `brew install lld wasi-libc` (macOS) or the wasi-sdk. See
 ## docs/specs/compiler/0022-WebAssemblyTarget.md.
-wasm:
-	$(MAKE) -C $(ROOT) _wasm
+wasm: build _runtime_wasm
+	@echo "==> compiling the wasm example -> src/osprey/examples/wasm/build/"
+	@$(MKDIR) src/osprey/examples/wasm/build
+	$(BIN) src/osprey/examples/wasm/hello.osp --target=wasm32 --compile -o src/osprey/examples/wasm/build/hello.wasm
+	@echo "==> validating + smoke-running src/osprey/examples/wasm/build/hello.wasm"
+	$(call wasm_validate,src/osprey/examples/wasm/build/hello.wasm)
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
+	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> src/osprey/examples/wasm/build/"
+	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
+	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
+	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
+	@echo "==> both Studio flavors must emit the SAME manifest (byte-identical golden)"
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	$(MAKE) _test_wasm_goldens
+	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
 ## wasm-site: Build only the WebAssembly artifacts published by the website.
 ##      Used by GitHub Pages before `npm run build`; does not rely on checked-in
 ##      wasm binaries. Requires clang, wasm-ld, a WASI sysroot, and node.
-wasm-site:
-	$(MAKE) -C $(ROOT) _wasm-site
+wasm-site: _runtime_wasm
+	@echo "==> building osprey compiler for the website wasm demo"
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	@echo "==> compiling Osprey Data Studio website assets -> src/osprey/examples/wasm/build/"
+	@$(MKDIR) src/osprey/examples/wasm/build
+	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
+	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
+	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	@echo "==> website wasm demo ready"
 
 ## wasm-serve: Build the wasm target (full `make wasm`), then static-host
 ##      $(WASM_SERVE_DIR) at http://localhost:$(WASM_SERVE_PORT)/ and open it in
 ##      your browser. Long-running dev server — Ctrl-C to stop. Override the port
 ##      with WASM_SERVE_PORT=<n>. (`make wasm` itself stays headless for CI.)
-wasm-serve: _wasm
+wasm-serve: wasm
 	@URL="http://localhost:$(WASM_SERVE_PORT)/"; \
 	  command -v python3 >/dev/null 2>&1 || { echo "FAIL: python3 not found (needed for the dev server)"; exit 1; }; \
 	  echo "==> serving $(WASM_SERVE_DIR)/ at $$URL — opening browser (Ctrl-C to stop)"; \
@@ -59,6 +89,8 @@ wasm-serve: _wasm
 ##                 ordering, user guides, search with no server behind it, the
 ##                 mobile disclosure and keyboard navigation. Reuses the bank
 ##                 e2e project's Playwright install rather than adding another.
-docs-html-test:
-	$(MAKE) -C $(ROOT) _docs-html-test
+docs-html-test: build $(BANK_E2E_NODE_DEPS)
+	@echo "==> Documentation HTML browser acceptance..."
+	cd src/osprey/examples/projects/modules/e2e && npx playwright install chromium
+	node scripts/ci/verify-docs-html.mjs $(BIN)
 endif

@@ -1285,7 +1285,7 @@ jobs:
       - name: Host tests and the self-test against goldens
         run: |
           make _runtime
-          OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make _agent-self-test
+          OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make -C src/toolchain/targets/macos/tests agent-headless
 
       - name: Osprey Agent self-test pictures
         if: always()

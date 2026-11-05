@@ -19,7 +19,9 @@ casting-ios:
 casting-android:
 	$(MAKE) -C src/toolchain/targets/android casting
 
-.PHONY: python-app-ports bank bank-web bank-test bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-domain-test mobile-test android android-test bank-mobile-domain-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-test workbench-native-test workbench-render-review
+bank-web: export PATH := $(WASM_PATH_PREFIX)$(PATH)
+
+.PHONY: python-app-ports bank bank-web bank-e2e graphics graphics-smoke gpt2 gpt2-train ios ios-test macos macos-test mobile-ios mobile-ios-test mobile-test android android-test bank-android bank-android-test bank-ios bank-ios-test bank-mobile-test workbench-proof-assets workbench-native-test workbench-render-review
 
 ## python-app-ports: Verify the classifier, vector search and text evaluation ports.
 python-app-ports: build
@@ -28,7 +30,7 @@ python-app-ports: build
 ## bank: Rebuild and run the Talon Bank showcase for manual testing.
 ##       Opens http://127.0.0.1:18790 (dashboard) / /api/accounts (JSON API).
 ##       The hold marker keeps the server up; Ctrl-C removes it and exits.
-bank: _bank-web
+bank: bank-web
 	@echo "==> Talon Bank live on http://127.0.0.1:18790  (Ctrl-C to stop)"
 	@touch /tmp/talon_bank.hold
 	@trap 'rm -f /tmp/talon_bank.hold' EXIT INT TERM; \
@@ -44,21 +46,19 @@ bank: _bank-web
 ## bank-web: Regenerate the embedded React host + Osprey WebAssembly client.
 ##           Requires Node and a WASI sysroot; the generated Osprey Bundle is
 ##           committed so ordinary native/CI builds do not need either tool.
-bank-web:
-	$(MAKE) -C $(ROOT) _bank-web
-
-## bank-test: Native Osprey unit tests for the Talon Bank pure domain layer,
-##            run through the built-in `osprey test` harness (TAP output).
-bank-test:
-	$(MAKE) -C $(ROOT) _bank-test
+bank-web: build _runtime_wasm $(BANK_WEB_NODE_DEPS)
+	@echo "==> Building Talon Bank browser application..."
+	cd src/osprey/examples/projects/modules/web && npm run build
 
 ## bank-e2e: Browser end-to-end tests for the Talon Bank modules showcase
 ##           (src/osprey/examples/projects/modules) — real Chromium via Playwright drives
 ##           the compiled osprey binary serving its HTTP API and web UI.
 ##           The server's hold marker must not outlive the run: a leaked one
 ##           makes every later bank-*-test refuse to start.
-bank-e2e:
-	$(MAKE) -C $(ROOT) _bank-e2e
+bank-e2e: bank-web $(BANK_E2E_NODE_DEPS)
+	@echo "==> Bank e2e (Playwright)..."
+	cd src/osprey/examples/projects/modules/e2e && npx playwright install chromium && npx playwright test
+	@test ! -e /tmp/talon_bank.hold || { echo "FAIL: bank e2e left /tmp/talon_bank.hold behind; its webServer was stopped without running its trap"; exit 1; }
 
 ## graphics: Build the platform graphics host and run the animated GPU demo
 #            Osprey drives the scene; the GPU shades every pixel. macOS renders
@@ -91,85 +91,90 @@ gpt2-train: build $(GPT2_DIR)/weights/model.safetensors $(GPT2_DIR)/weights/merg
 
 ## ios: Build the iPhone and simulator libraries and SwiftUI example apps.
 ##      Requires macOS, Xcode and both iOS SDKs. Device output is unsigned.
-ios:
-	$(MAKE) -C $(ROOT) _ios
+ios: _runtime_ios _runtime_ios_sim
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/ios/build.sh ios-sim
 
 ## ios-test: Validate C ABI calls, language goldens and the SwiftUI simulator app.
-ios-test: _ios
+ios-test: ios
 	$(MAKE) _test_ios
 
 ## macos: Build the Mac runtime, the compiler and every macOS example: the
 ##        storage app and the three graphics scenes, each a Swift host
 ##        linked to the Mac slice. Requires an Apple silicon Mac with Xcode.
 ##        [IOS-TARGET-MACOS]
-macos:
-	$(MAKE) -C $(ROOT) _macos
+macos: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --build
+	for scene in kali opal character; do \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/graphics/macos/run.sh --build $$scene || exit 1; \
+	done
 
 ## macos-test: The iPhone C ABI fixture, the whole corpus against the same
 ##             goldens and skip manifest, and the storage example, on this Mac.
 ##             The storage domain suite runs natively, so it needs `_runtime`.
-macos-test: _macos _runtime
+macos-test: macos _runtime
 	$(MAKE) _test_macos
 
-## mobile-ios: see the root Makefile's `_mobile-ios`.
-mobile-ios:
-	$(MAKE) -C $(ROOT) _mobile-ios
+## mobile-ios: Build the inbox app for iOS devices and the simulator.
+mobile-ios: _runtime_ios _runtime_ios_sim
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	bash src/osprey/examples/mobile/ios/run.sh --build ios
+	bash src/osprey/examples/mobile/ios/run.sh --build ios-sim
 
-## mobile-ios-test: see the root Makefile's `_mobile-ios-test`.
-mobile-ios-test:
-	$(MAKE) -C $(ROOT) _mobile-ios-test
+## mobile-ios-test: Smoke-test the built inbox app on iOS.
+mobile-ios-test: mobile-ios
+	OSPREY_IOS_SKIP_BUILD=1 bash src/osprey/examples/mobile/ios/run.sh --smoke
 
-## mobile-domain-test: see the root Makefile's `_mobile-domain-test`.
-mobile-domain-test:
-	$(MAKE) -C $(ROOT) _mobile-domain-test
+## mobile-test: The inbox app's domain, iOS and Android tests.
+mobile-test: mobile-ios-test android-test
+	$(MAKE) -C src/toolchain/targets/tests inbox
 
-## mobile-test: see the root Makefile's `_mobile-test`.
-mobile-test:
-	$(MAKE) -C $(ROOT) _mobile-test
+## android: Build the inbox app for Android.
+android: _runtime_android
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/mobile/android/build.sh
 
-## android: see the root Makefile's `_android`.
-android:
-	$(MAKE) -C $(ROOT) _android
+## android-test: The Android goldens, tools and smoke run for the inbox app.
+# The goldens need the runtime archives `android` builds, so they are ordered by
+# a recipe line rather than listed as a sibling prerequisite: under `make -j`
+# siblings may run at once, and the corpus would race the archive it links.
+android-test: android
+	$(MAKE) _test_android_goldens
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash scripts/mobile/test-android.sh
+	OSPREY_ANDROID_SKIP_BUILD=1 bash src/osprey/examples/mobile/android/run.sh --smoke
 
-## android-test: see the root Makefile's `_android-test`.
-android-test:
-	$(MAKE) -C $(ROOT) _android-test
+## bank-android: Build Talon Bank for Android.
+bank-android: _runtime_android
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_ANDROID_SKIP_RUNTIME=1 bash src/osprey/examples/projects/modules/mobile/android/build.sh
 
-## bank-mobile-domain-test: see the root Makefile's `_bank-mobile-domain-test`.
-bank-mobile-domain-test:
-	$(MAKE) -C $(ROOT) _bank-mobile-domain-test
+## bank-android-test: Talon Bank against its live API on Android.
+bank-android-test: bank-android _runtime
+	OSPREY_ANDROID_SKIP_BUILD=1 python3 scripts/mobile/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/android/test.sh
 
-## bank-android: see the root Makefile's `_bank-android`.
-bank-android:
-	$(MAKE) -C $(ROOT) _bank-android
+## bank-ios: Build Talon Bank for iOS devices and the simulator.
+bank-ios: _runtime_ios _runtime_ios_sim
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/projects/modules/mobile/ios/run.sh --build ios-sim
 
-## bank-android-test: see the root Makefile's `_bank-android-test`.
-bank-android-test:
-	$(MAKE) -C $(ROOT) _bank-android-test
+## bank-ios-test: Talon Bank against its live API on iOS.
+bank-ios-test: bank-ios _runtime
+	OSPREY_IOS_SKIP_BUILD=1 python3 scripts/mobile/bank-mobile-test.py -- bash src/osprey/examples/projects/modules/mobile/ios/test.sh
 
-## bank-ios: see the root Makefile's `_bank-ios`.
-bank-ios:
-	$(MAKE) -C $(ROOT) _bank-ios
-
-## bank-ios-test: see the root Makefile's `_bank-ios-test`.
-bank-ios-test:
-	$(MAKE) -C $(ROOT) _bank-ios-test
-
-## bank-mobile-test: see the root Makefile's `_bank-mobile-test`.
+## bank-mobile-test: Talon Bank's shared, Android and iOS tests.
 bank-mobile-test:
-	$(MAKE) -C $(ROOT) _bank-mobile-test
+	$(MAKE) -C src/toolchain/targets/tests bank-mobile
+	$(MAKE) -C src/toolchain/targets bank-android-test
+	$(MAKE) -C src/toolchain/targets bank-ios-test
 
 ## workbench-proof-assets: Stage and byte-check the 13 bundled proof exports and
 ##                         2 upstream licences; any extra, missing or changed file fails.
 workbench-proof-assets:
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets
 	python3 scripts/proof/workbench-proof-assets.py target/workbench-proof-assets --check
-
-## workbench-test: Imported-mathematics cases (Nat.add_comm tree, id_imp assumption
-##                 boundary) under GC and ARC; one passing case each. The full app
-##                 suite passes 108 cases. Pixel acceptance: docs/designs/proof-workbench/design-qa.md.
-workbench-test:
-	$(MAKE) -C $(ROOT) _workbench-test
 
 ## workbench-native-test: Build the Mac Workbench host, then `0 failures` from its
 ##                        Swift suite. Fetch Git LFS lesson assets first.

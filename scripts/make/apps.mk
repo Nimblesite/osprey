@@ -167,18 +167,6 @@ _gpui-app-self-test: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash $(APP_DIR)/run.sh --self-test "$(CURDIR)/$(SCRIPT_DIR)/self-test.json" "$(CURDIR)/target/gpui-self-test/$(notdir $(SCRIPT_DIR))" $(GPUI_WINDOW)
 
-## _gpui-synth-smoke: The synth's recorded events through the GPUI host, with no window.
-.PHONY: _gpui-synth-smoke
-_gpui-synth-smoke: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/synth/run.sh --smoke
-
-## _storage-smoke: The Mac storage app through its Swift host.
-.PHONY: _storage-smoke
-_storage-smoke: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/macos/run.sh --smoke
-
 ## _app-suite: One app's host-free suites, named by SUITES.
 .PHONY: _app-suite
 _app-suite: _runtime

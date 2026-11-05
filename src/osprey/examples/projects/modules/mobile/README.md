@@ -66,7 +66,7 @@ Stop the manually running bank server before native acceptance tests. These targ
 
 | Command | Coverage |
 | --- | --- |
-| `make -C src/toolchain/targets bank-mobile-domain-test` | Shared Osprey routes, screen data, validation, request payloads, success/refusal/error states, filter/search, handler behavior, and duplicate-submission protection |
+| `make -C src/toolchain/targets/tests bank-mobile` | Shared Osprey routes, screen data, validation, request payloads, success/refusal/error states, filter/search, handler behavior, and duplicate-submission protection |
 | `make -C src/toolchain/targets bank-android-test` | Android build and instrumentation: native controls, banking journeys, exact API balances, validation, lifecycle restoration, and network failure |
 | `make -C src/toolchain/targets bank-ios-test` | Device/simulator builds, XCTest protocol checks, and simulator UI journeys against the real API |
 | `make -C src/toolchain/targets bank-e2e` | Existing browser tests, verifying changes to shared application modules preserve the web client |

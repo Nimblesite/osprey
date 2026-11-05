@@ -12,8 +12,8 @@ include Makefile
 
 ## hunt: Symbolic bug hunting with KLEE on one program [SYMEX-CLI]:
 ##       make hunt FILE=path/to/program.osp [HUNT_ARGS="--max-time 120"]
-hunt:
-	$(MAKE) -C $(ROOT) _hunt
+hunt: build
+	./target/release/osprey hunt $(FILE) $(HUNT_ARGS)
 
 ## hunt-sample: Qualify all runnable apps for a fast corpus; hard 10-second cutoff.
 hunt-sample: build
@@ -35,5 +35,5 @@ hunt-corpus: build
 ##   src/osprey/tests/hunt/clean.osp and record_update_list.osp find nothing;
 ##   src/osprey/tests/hunt/process.osp is an engine limitation, never a bug demo.
 hunt-demo:
-	$(MAKE) _hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
+	$(MAKE) -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10 --out target/hunt-demo"
 endif

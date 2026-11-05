@@ -46,7 +46,7 @@ Open <http://127.0.0.1:18790>. The demo supports accounts, deposits, withdrawals
 ```sh
 make -C src/toolchain/targets bank-android       # ARM64/x86-64 APK
 make -C src/toolchain/targets bank-ios           # device and simulator apps; requires Xcode
-make -C src/toolchain/targets bank-mobile-domain-test
+make -C src/toolchain/targets/tests bank-mobile
 make -C src/toolchain/targets bank-android-test  # live API + native UI tests on a connected device/emulator
 make -C src/toolchain/targets bank-ios-test      # live API + iOS simulator tests
 ```
@@ -82,7 +82,7 @@ Osprey sends one `{model, view, commands}` envelope per render. The host returns
 
 | Command | Coverage |
 | --- | --- |
-| `make -C src/toolchain/targets bank-test` | Native domain assertions, handler state, return clauses and storage guards |
+| `make -C src/toolchain/targets/tests bank` | Native domain assertions, handler state, return clauses and storage guards |
 | `cd src/osprey/examples/projects/modules/web && npm test` | Browser host, protocol, WASI and embedding tests |
 | `make -C src/toolchain/targets bank-e2e` | Real browser, compiled Wasm and native API: accounts, movements, refusals, navigation and rendering |
 

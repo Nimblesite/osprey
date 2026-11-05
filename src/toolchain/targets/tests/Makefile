@@ -15,12 +15,13 @@ agent: _runtime
 	$(MAKE) _test_agent
 
 ## bank: Talon Bank's pure domain layer.
-bank:
-	$(MAKE) -C $(ROOT) _bank-test
+bank: build
+	$(MAKE) _bank_test
 
 ## bank-mobile: The Talon Bank mobile app's shared domain.
-bank-mobile:
-	$(MAKE) -C $(ROOT) _bank-mobile-domain-test
+bank-mobile: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(BIN) src/osprey/examples/projects/modules/mobile/app/test --run
 
 ## casting: The casting player, driven by accessible label. [UI-MACHINE-TEST]
 casting:
@@ -47,8 +48,10 @@ flock:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/gpui/flock/test
 
 ## inbox: The shared mobile inbox domain and its build tools.
-inbox:
-	$(MAKE) -C $(ROOT) _mobile-domain-test
+inbox: _runtime
+	python3 scripts/mobile/test-mobile-tools.py
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(BIN) src/osprey/examples/mobile/inbox/test --run
 
 ## painting: The painting port's stroke logic.
 painting:
@@ -67,6 +70,9 @@ synth:
 	$(MAKE) -C $(ROOT) _app-suite SUITES=src/osprey/examples/synth/test
 
 ## workbench: The Proof Workbench's imported-mathematics cases under GC and ARC.
-workbench:
-	$(MAKE) -C $(ROOT) _workbench-test
+workbench: build
+	for memory in gc arc; do \
+	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "proof library file import displays its actual checked statement" || exit 1; \
+	  $(BIN) test src/osprey/workbench/tests --memory=$$memory --filter "imported id_imp exposes its actual statement and no assumptions" || exit 1; \
+	done
 endif
