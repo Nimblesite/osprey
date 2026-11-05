@@ -74,8 +74,61 @@ fn assert_closed_abi(definitions: &[&str]) {
 }
 
 const CLOSED_KERNELS: [(&str, Flavor); 2] = [
-    ("fn main() = {\n let enabled = true\n let keep = fn(x) => enabled\n let choose = fn(a, x) => match enabled { true => a false => x }\n let identity = fn(x) => match enabled { true => x false => x }\n let enabled = false\n let xs = toGpu([1.0, 2.0])\n let mapped = gpuMap(xs, identity)\n let filtered = gpuFilter(xs, keep)\n let zipped = gpuZipWith(xs, xs, choose)\n let folded = gpuFold(xs, 0.0, choose)\n let scanned = gpuScan(xs, 0.0, choose)\n print(folded)\n}\n", Flavor::Default),
-    ("main () =\n    enabled = true\n    keep = \\x => enabled\n    choose = \\(a, x) => match enabled\n        true => a\n        false => x\n    identity = \\x => match enabled\n        true => x\n        false => x\n    enabled = false\n    xs = toGpu [1.0, 2.0]\n    mapped = gpuMap xs identity\n    filtered = gpuFilter xs keep\n    zipped = gpuZipWith (xs, xs, choose)\n    folded = gpuFold (xs, 0.0, choose)\n    scanned = gpuScan (xs, 0.0, choose)\n    print folded\n", Flavor::Ml),
+    (
+        r"fn main() = {
+    let enabled = true
+    let keep = fn(x) => enabled
+    let choose = fn(a, x) => match enabled { true => a false => x }
+    let identity = fn(x) => match enabled { true => x false => x }
+    let enabled = false
+    match toGpu([1.0, 2.0]) {
+        Success { value } => {
+            let xs = value
+            match gpuMap(xs, identity) {
+                Success(_) => match gpuFilter(xs, keep) {
+                    Success(_) => match gpuZipWith(xs, xs, choose) {
+                        Success(_) => match gpuScan(xs, 0.0, choose) {
+                            Success(_) => gpuFold(xs, 0.0, choose)
+                            Error { message } => Error { message: message }
+                        }
+                        Error { message } => Error { message: message }
+                    }
+                    Error { message } => Error { message: message }
+                }
+                Error { message } => Error { message: message }
+            }
+        }
+        Error { message } => Error { message: message }
+    }
+}
+",
+        Flavor::Default,
+    ),
+    (
+        r"main () =
+    enabled = true
+    keep = \x => enabled
+    choose = \(a, x) => match enabled
+        true => a
+        false => x
+    identity = \x => match enabled
+        true => x
+        false => x
+    enabled = false
+    match toGpu [1.0, 2.0]
+        Success xs => match gpuMap xs identity
+            Success _ => match gpuFilter xs keep
+                Success _ => match gpuZipWith (xs, xs, choose)
+                    Success _ => match gpuScan (xs, 0.0, choose)
+                        Success _ => gpuFold (xs, 0.0, choose)
+                        Error message => Error(message = message)
+                    Error message => Error(message = message)
+                Error message => Error(message = message)
+            Error message => Error(message = message)
+        Error message => Error(message = message)
+",
+        Flavor::Ml,
+    ),
 ];
 
 #[test]
@@ -102,8 +155,31 @@ fn extraction_floors_require_definitions_and_both_fixture_flavors() {
 #[test]
 fn extracted_kernel_debug_scopes_keep_uniforms_and_source_parameters() -> Result<(), String> {
     for (source, flavor) in [
-        ("fn main() = {\n    let n = 2\n    let result = gpuMap(toGpu([40]), fn(x) => {\n        let sum = wrapAdd(x, n)\n        sum\n    })\n    print(gpuGet(result, 0) ?: -1)\n}\n", Flavor::Default),
-        ("main () =\n    n = 2\n    result = gpuMap (toGpu [40]) (\\x =>\n        sum = wrapAdd x n\n        sum)\n    print (gpuGet (result, 0) ?: -1)\n", Flavor::Ml),
+        (
+            r"fn main() = {
+    let n = 2
+    match toGpu([40]) {
+        Success { value } => gpuMap(value, fn(x) => {
+            let sum = wrapAdd(x, n)
+            sum
+        })
+        Error { message } => Error { message: message }
+    }
+}
+",
+            Flavor::Default,
+        ),
+        (
+            r"main () =
+    n = 2
+    match toGpu [40]
+        Success xs => gpuMap xs (\x =>
+            sum = wrapAdd x n
+            sum)
+        Error message => Error(message = message)
+",
+            Flavor::Ml,
+        ),
     ] {
         let ir = lambda_debug_ir(source, flavor)?;
         assert_lambda_variables(&ir, "__gpu_kernel_", &["x", "n", "sum"])?;
@@ -116,9 +192,9 @@ fn extracted_kernel_debug_scopes_keep_uniforms_and_source_parameters() -> Result
 /// [DEBUGGER-LAMBDA-SCOPES] Kernel combinators share the parameter/location contract.
 #[test]
 fn every_extracting_combinator_preserves_its_source_arguments() -> Result<(), String> {
-    for (default, ml, variables) in KERNEL_COMBINATORS {
+    for (default, ml, inputs, variables) in KERNEL_COMBINATORS {
         for (source, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
-            let ir = kernel_debug_ir(source, flavor)?;
+            let ir = kernel_debug_ir(source, flavor, inputs, false)?;
             assert_lambda_variables(&ir, "__gpu_kernel_", variables)?;
             for (index, name) in variables.iter().enumerate() {
                 let arg = index + 1;
@@ -129,39 +205,87 @@ fn every_extracting_combinator_preserves_its_source_arguments() -> Result<(), St
     Ok(())
 }
 
-fn kernel_debug_ir(source: &str, flavor: Flavor) -> Result<String, String> {
+fn kernel_debug_ir(
+    source: &str,
+    flavor: Flavor,
+    inputs: &[(&str, &str)],
+    uniforms: bool,
+) -> Result<String, String> {
+    let body = with_uploads(source, flavor, inputs);
+    let setup = match (flavor, uniforms) {
+        (Flavor::Default, true) => "let zebra = 1.5\nlet alpha = 2\n",
+        (Flavor::Ml, true) => "zebra = 1.5\nalpha = 2\n",
+        _ => "",
+    };
     let wrapped = match flavor {
-        Flavor::Default => format!("fn main() = {{\n let result = {source}\n print(0)\n}}"),
-        Flavor::Ml => format!("main () =\n    result = {source}\n    print 0"),
-        Flavor::Python => format!("def main():\n    result = {source}\n    print(0)\n"),
+        Flavor::Default => format!("fn main() = {{\n{setup}{body}\n}}"),
+        Flavor::Ml => format!("main () =\n{}", indent(&format!("{setup}{body}"), 4)),
+        Flavor::Python => return Err("GPU debug fixture requires Default or ML".to_owned()),
     };
     lambda_debug_ir(&wrapped, flavor)
 }
 
-const KERNEL_COMBINATORS: [(&str, &str, &[&str]); 5] = [
+fn indent(source: &str, spaces: usize) -> String {
+    let indent = " ".repeat(spaces);
+    source
+        .lines()
+        .map(|line| format!("{indent}{line}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn with_uploads(source: &str, flavor: Flavor, inputs: &[(&str, &str)]) -> String {
+    inputs.iter().rev().fold(source.to_owned(), |body, (name, values)| {
+        match flavor {
+            Flavor::Default => format!(
+                "match toGpu([{values}]) {{\n    Success {{ value }} => {{\n        let {name} = value\n{}\n    }}\n    Error {{ message }} => Error {{ message: message }}\n}}",
+                indent(&body, 8)
+            ),
+            Flavor::Ml => format!(
+                "match toGpu [{values}]\n    Success {name} =>\n{}\n    Error message => Error(message = message)",
+                indent(&body, 8)
+            ),
+            Flavor::Python => body,
+        }
+    })
+}
+
+type FixtureInputs = &'static [(&'static str, &'static str)];
+
+const INT_INPUT: FixtureInputs = &[("left", "1")];
+const FLOAT_INPUT: FixtureInputs = &[("left", "1.0")];
+const INT_INPUTS: FixtureInputs = &[("left", "1"), ("right", "2")];
+const MIXED_INPUTS: FixtureInputs = &[("left", "1"), ("right", "2.0")];
+
+const KERNEL_COMBINATORS: [(&str, &str, FixtureInputs, &[&str]); 5] = [
     (
-        "gpuMap(toGpu([1]), fn(x) => wrapAdd(x, 2))",
-        "gpuMap (toGpu [1]) (\\x => wrapAdd x 2)",
+        "gpuMap(left, fn(x) => wrapAdd(x, 2))",
+        "gpuMap left (\\x => wrapAdd x 2)",
+        INT_INPUT,
         &["x"],
     ),
     (
-        "gpuFilter(toGpu([1]), fn(x) => x > 0)",
-        "gpuFilter (toGpu [1]) (\\x => x > 0)",
+        "gpuFilter(left, fn(x) => x > 0)",
+        "gpuFilter left (\\x => x > 0)",
+        INT_INPUT,
         &["x"],
     ),
     (
-        "gpuZipWith(toGpu([1]), toGpu([2]), fn(x, y) => wrapAdd(x, y))",
-        "gpuZipWith (toGpu [1], toGpu [2], \\(x, y) => wrapAdd x y)",
+        "gpuZipWith(left, right, fn(x, y) => wrapAdd(x, y))",
+        "gpuZipWith (left, right, \\(x, y) => wrapAdd x y)",
+        INT_INPUTS,
         &["x", "y"],
     ),
     (
-        "gpuFold(toGpu([1]), 0, fn(x, y) => wrapAdd(x, y))",
-        "gpuFold (toGpu [1], 0, \\(x, y) => wrapAdd x y)",
+        "gpuFold(left, 0, fn(x, y) => wrapAdd(x, y))",
+        "gpuFold (left, 0, \\(x, y) => wrapAdd x y)",
+        INT_INPUT,
         &["x", "y"],
     ),
     (
-        "gpuScan(toGpu([1]), 0, fn(x, y) => wrapAdd(x, y))",
-        "gpuScan (toGpu [1], 0, \\(x, y) => wrapAdd x y)",
+        "gpuScan(left, 0, fn(x, y) => wrapAdd(x, y))",
+        "gpuScan (left, 0, \\(x, y) => wrapAdd x y)",
+        INT_INPUT,
         &["x", "y"],
     ),
 ];
@@ -169,14 +293,9 @@ const KERNEL_COMBINATORS: [(&str, &str, &[&str]); 5] = [
 /// [GPU-KERNEL-EXTRACT] Uniforms are sorted, then element/accumulator slots.
 #[test]
 fn zip_scan_and_filter_have_exact_scalar_abis() -> Result<(), String> {
-    for (default, ml, signature, variables) in SCALAR_ABIS {
+    for (default, ml, inputs, signature, variables) in SCALAR_ABIS {
         for (expression, flavor) in [(default, Flavor::Default), (ml, Flavor::Ml)] {
-            let source = match flavor {
-                Flavor::Default => format!("fn main() = {{\n let zebra = 1.5\n let alpha = 2\n let result = {expression}\n print(0)\n}}"),
-                Flavor::Ml => format!("main () =\n    zebra = 1.5\n    alpha = 2\n    result = {expression}\n    print 0"),
-                Flavor::Python => format!("def main():\n    zebra = 1.5\n    alpha = 2\n    result = {expression}\n    print(0)\n"),
-            };
-            let ir = lambda_debug_ir(&source, flavor)?;
+            let ir = kernel_debug_ir(expression, flavor, inputs, true)?;
             assert!(ir.contains(signature), "{flavor}: missing ABI {signature}");
             assert_lambda_variables(&ir, "__gpu_kernel_", variables)?;
             assert!(ir.contains("@__gpu_kernel_0(i64 2, double 0x3FF8000000000000,"));
@@ -185,35 +304,41 @@ fn zip_scan_and_filter_have_exact_scalar_abis() -> Result<(), String> {
     Ok(())
 }
 
-const SCALAR_ABIS: [(&str, &str, &str, &[&str]); 3] = [
+const SCALAR_ABIS: [(&str, &str, FixtureInputs, &str, &[&str]); 3] = [
     (
-        "gpuZipWith(toGpu([1]), toGpu([2.0]), fn(x, y) => toFloat(wrapAdd(x, alpha)) * y * zebra)",
-        "gpuZipWith (toGpu [1], toGpu [2.0], \\(x, y) => toFloat (wrapAdd x alpha) * y * zebra)",
+        "gpuZipWith(left, right, fn(x, y) => toFloat(wrapAdd(x, alpha)) * y * zebra)",
+        "gpuZipWith (left, right, \\(x, y) => toFloat (wrapAdd x alpha) * y * zebra)",
+        MIXED_INPUTS,
         "define internal double @__gpu_kernel_0(i64 %$p0, double %$p1, i64 %$p2, double %$p3)",
         &["alpha", "zebra", "x", "y"],
     ),
     (
-        "gpuScan(toGpu([1.0]), 0.0, fn(x, y) => x * zebra + y * toFloat(alpha))",
-        "gpuScan (toGpu [1.0], 0.0, \\(x, y) => x * zebra + y * toFloat alpha)",
+        "gpuScan(left, 0.0, fn(x, y) => x * zebra + y * toFloat(alpha))",
+        "gpuScan (left, 0.0, \\(x, y) => x * zebra + y * toFloat alpha)",
+        FLOAT_INPUT,
         "define internal double @__gpu_kernel_0(i64 %$p0, double %$p1, double %$p2, double %$p3)",
         &["alpha", "zebra", "x", "y"],
     ),
     (
-        "gpuFilter(toGpu([1.0]), fn(x) => x * zebra > 0.0 && alpha > 0)",
-        "gpuFilter (toGpu [1.0]) (\\x => x * zebra > 0.0 && alpha > 0)",
+        "gpuFilter(left, fn(x) => x * zebra > 0.0 && alpha > 0)",
+        "gpuFilter left (\\x => x * zebra > 0.0 && alpha > 0)",
+        FLOAT_INPUT,
         "define internal i1 @__gpu_kernel_0(i64 %$p0, double %$p1, double %$p2)",
         &["alpha", "zebra", "x"],
     ),
 ];
 
-fn buffer_ir(default: &str, ml: &str) -> Result<Vec<String>, String> {
+fn buffer_ir(default: &str, ml: &str, inputs: &[(&str, &str)]) -> Result<Vec<String>, String> {
     [(default, Flavor::Default), (ml, Flavor::Ml)]
         .into_iter()
         .map(|(expression, flavor)| {
+            let body = with_uploads(expression, flavor, inputs);
             let source = match flavor {
-                Flavor::Default => format!("fn main() = gpuLength({expression})"),
-                Flavor::Ml => format!("main () = gpuLength ({expression})"),
-                Flavor::Python => format!("def main():\n    return gpuLength({expression})\n"),
+                Flavor::Default => format!("fn main() = {{\n{body}\n}}"),
+                Flavor::Ml => format!("main () =\n{}", indent(&body, 4)),
+                Flavor::Python => {
+                    return Err("GPU buffer fixture requires Default or ML".to_owned())
+                }
             };
             super::ir_for(&source, flavor, "buffer.osp")
         })
@@ -229,13 +354,14 @@ fn calls(ir: &str, name: &str) -> usize {
 /// [GPU-BUFFER-LITERAL] Dense construction has no intermediate list or copy loop.
 #[test]
 fn gpu_literals_make_one_buffer_with_constant_stores() -> Result<(), String> {
-    for ir in buffer_ir("toGpu([10, 20, 30, 40])", "toGpu [10, 20, 30, 40]")? {
+    for ir in buffer_ir("toGpu([10, 20, 30, 40])", "toGpu [10, 20, 30, 40]", &[])? {
         assert_eq!(calls(&ir, "@osprey_gpu_alloc("), 1);
         assert_eq!(calls(&ir, "@osprey_gpu_set("), 4);
         assert_eq!(calls(&ir, "@osprey_list_"), 0);
         assert_eq!(calls(&ir, "@osp_alloc("), 0, "no flat list allocation");
         assert_eq!(calls(&ir, "@osprey_gpu_from_list("), 0);
-        assert!(!ir.contains("br label"), "a literal needs no copy loop");
+        // The allocation Result can branch forward, but the literal cannot loop.
+        assert_eq!(backward_branches(&ir), 0, "a literal needs no copy loop");
         for (index, value) in [10, 20, 30, 40].into_iter().enumerate() {
             assert!(ir.contains(&format!(", i64 {index}, i64 {value})")));
         }
@@ -249,6 +375,7 @@ fn gpu_iterator_pipelines_do_not_materialize_intermediate_collections() -> Resul
     for ir in buffer_ir(
         "range(0, 10) |> filter(fn(x) => x % 2 == 0) |> map(fn(x) => wrapMul(x, x)) |> toGpu()",
         "range (0, 10) |> filter (\\x => x % 2 == 0) |> map (\\x => wrapMul x x) |> toGpu ()",
+        &[],
     )? {
         assert_eq!(calls(&ir, "@osprey_gpu_alloc("), 1);
         assert_eq!(calls(&ir, "@osprey_gpu_set("), 1);
@@ -286,8 +413,8 @@ fn backward_branches(ir: &str) -> usize {
 /// [GPU-KERNEL-EXTRACT] Intrinsics passed as kernels need real scalar definitions.
 #[test]
 fn builtin_kernels_are_extracted_with_specialized_scalar_abis() -> Result<(), String> {
-    for (default, ml, signature, instruction) in BUILTIN_KERNELS {
-        for ir in buffer_ir(default, ml)? {
+    for (default, ml, inputs, signature, instruction) in BUILTIN_KERNELS {
+        for ir in buffer_ir(default, ml, inputs)? {
             assert!(
                 ir.contains(signature),
                 "missing builtin kernel {signature}: {ir}"
@@ -306,28 +433,32 @@ fn builtin_kernels_are_extracted_with_specialized_scalar_abis() -> Result<(), St
     Ok(())
 }
 
-const BUILTIN_KERNELS: [(&str, &str, &str, &str); 4] = [
+const BUILTIN_KERNELS: [(&str, &str, FixtureInputs, &str, &str); 4] = [
     (
-        "gpuMap(toGpu([1]), toFloat)",
-        "gpuMap (toGpu [1]) toFloat",
+        "gpuMap(left, toFloat)",
+        "gpuMap left toFloat",
+        INT_INPUT,
         "define internal double @__gpu_kernel_0(i64 %$p0)",
         "sitofp i64",
     ),
     (
-        "gpuMap(toGpu([-1.5]), abs)",
-        "gpuMap (toGpu [-1.5]) abs",
+        "gpuMap(left, abs)",
+        "gpuMap left abs",
+        &[("left", "-1.5")],
         "define internal double @__gpu_kernel_0(double %$p0)",
         "@llvm.fabs.f64(",
     ),
     (
-        "gpuZipWith(toGpu([1]), toGpu([2]), wrapAdd)",
-        "gpuZipWith (toGpu [1], toGpu [2], wrapAdd)",
+        "gpuZipWith(left, right, wrapAdd)",
+        "gpuZipWith (left, right, wrapAdd)",
+        INT_INPUTS,
         "define internal i64 @__gpu_kernel_0(i64 %$p0, i64 %$p1)",
         "add i64",
     ),
     (
-        "gpuScan(toGpu([1]), 0, satMul)",
-        "gpuScan (toGpu [1], 0, satMul)",
+        "gpuScan(left, 0, satMul)",
+        "gpuScan (left, 0, satMul)",
+        INT_INPUT,
         "define internal i64 @__gpu_kernel_0(i64 %$p0, i64 %$p1)",
         "mul i128",
     ),
