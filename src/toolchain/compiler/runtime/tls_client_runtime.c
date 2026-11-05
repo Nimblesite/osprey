@@ -22,7 +22,7 @@
 #include <openssl/err.h>
 #include <openssl/ssl.h>
 
-enum { TLS_SESSIONS = 64, TLS_MAX_READ = 1 << 24 };
+enum { TLS_SESSIONS = 64, TLS_MAX_READ = 1 << 24, TLS_MAX_TIMEOUT_MS = 60000 };
 enum { TLS_OK = 0, TLS_TIMEOUT = 1, TLS_CLOSED = 2, TLS_FAILED = 3 };
 
 typedef struct {
@@ -54,7 +54,8 @@ static void close_fd(int fd) {
 
 // A connected TCP socket to host:port, or a negative reason.
 static int tcp_dial(const char *host, int64_t port, int64_t timeout_ms) {
-  if (!host || port < 1 || port > 65535) {
+  if (!host || !host[0] || port < 1 || port > 65535 || timeout_ms < 1 ||
+      timeout_ms > TLS_MAX_TIMEOUT_MS) {
     return -1;
   }
   osprey_wsa_init();
@@ -67,7 +68,7 @@ static int tcp_dial(const char *host, int64_t port, int64_t timeout_ms) {
   if (fd < 0) {
     return -3;
   }
-  osp_socket_deadline(fd, timeout_ms > 0 ? timeout_ms : 10000);
+  osp_socket_deadline(fd, timeout_ms);
   osp_socket_configure_no_sigpipe(fd);
   addr.sin_family = AF_INET;
   addr.sin_port = htons((uint16_t)port);

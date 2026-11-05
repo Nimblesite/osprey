@@ -222,6 +222,11 @@ static void test_tls_argument_rejections(void) {
   assert(strcmp(osprey_tls_recv_hex(h, 1 << 30, 100), "") == 0);
   assert(osprey_tls_close(h) == 0);
   assert(osprey_tls_connect(NULL, ECHO_PORT, 100) == -1);
+  assert(osprey_tls_connect("", ECHO_PORT, 100) == -1);
+  assert(osprey_tls_connect(LOOPBACK, 65536, 100) == -1);
+  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 0) == -1);
+  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, -1) == -1);
+  assert(osprey_tls_connect(LOOPBACK, ECHO_PORT, 60001) == -1);
   assert(osprey_tls_connect(LOOPBACK, 0, 100) == -1);
   char nowhere[] = "no-such-host.invalid";
   assert(osprey_tls_connect(nowhere, ECHO_PORT, 100) == -2);

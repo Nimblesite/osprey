@@ -74,6 +74,24 @@ class CastingGoldenVerdict(unittest.TestCase):
             self.assertIn("-Isrc/toolchain/compiler/runtime", arguments)
             self.assertIn("src/toolchain/compiler/runtime/tls_client_runtime.c", arguments)
 
+    def test_transport_cleanup_preserves_failure_and_reports_teardown_errors(self):
+        source = (ROOT / "src/osprey/examples/casting/mobile-transport-test.sh").read_text()
+        cleanup = source[source.index("cleanup() {"):source.index("trap cleanup EXIT")]
+        for initial, android, expected in [(0, False, 0), (47, False, 47), (0, True, 1), (47, True, 47)]:
+            with self.subTest(initial=initial, android=android), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                work = root / "work"; work.mkdir()
+                adb = root / "adb"
+                adb.write_text('#!/bin/sh\nexit 9\n'); adb.chmod(0o755)
+                setup = 'set -euo pipefail\nserver_pid=; remote=; mapped_ports=()\n'
+                if android:
+                    setup += 'adb="$FAKE_ADB"; serial=test; remote=/probe; mapped_ports=(1234)\n'
+                script = setup + cleanup + 'trap cleanup EXIT\nexit "$INITIAL_STATUS"\n'
+                env = dict(os.environ, work=str(work), FAKE_ADB=str(adb), INITIAL_STATUS=str(initial))
+                result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, expected, result.stderr)
+                self.assertFalse(work.exists(), "Local probe files must be removed on every path")
+
     def test_receiver_rejects_malformed_payloads(self):
         module = casting_tool("mobile_receiver")
         for payload in ("", "[]", "true", "null", '\"bad\"'):

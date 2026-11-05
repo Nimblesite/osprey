@@ -5,12 +5,18 @@ here=$(cd "$(dirname "$0")" && pwd)
 platform=${1:-ios}
 work=$(mktemp -d)
 server_pid=
+remote=
+mapped_ports=()
 cleanup() {
-    if [[ -n "$server_pid" ]]; then kill "$server_pid" 2>/dev/null || true; fi
+    local status=$?
+    for at in ${mapped_ports[@]+"${mapped_ports[@]}"}; do "$adb" -s "$serial" reverse --remove "tcp:$at" || { [[ $status -ne 0 ]] || status=1; }; done
+    if [[ -n "$remote" ]]; then "$adb" -s "$serial" shell rm "$remote" || { [[ $status -ne 0 ]] || status=1; }; fi
+    if [[ -n "$server_pid" ]]; then kill "$server_pid" 2>/dev/null || true; wait "$server_pid" 2>/dev/null || true; fi
     python3 - "$work" <<'CLEAN'
 import shutil,sys
 shutil.rmtree(sys.argv[1])
 CLEAN
+    exit "$status"
 }
 trap cleanup EXIT
 openssl req -x509 -newkey rsa:2048 -nodes -keyout "$work/key.pem" -out "$work/cert.pem" -subj /CN=localhost -days 1 >/dev/null 2>&1
@@ -41,6 +47,9 @@ with socket.socket() as server:
    assert part
    received+=part
   assert received==bytes([5,6])
+  client.settimeout(5)
+  try: client.unwrap().close()  # Send TLS close_notify so EOF is distinct from truncation.
+  except (ssl.SSLError, TimeoutError): pass  # Some clients cancel rather than reciprocate.
 PYTHON
 cat > "$work/main.swift" <<'SWIFT'
 import Foundation
@@ -77,33 +86,63 @@ do {
     print("PASS: connection refusal, TLS rejection, handshake, partial-read timeout, retained bytes, write, EOF, cleanup and route")
 } catch { fputs("FAIL: \(error)\n", stderr); exit(1) }
 SWIFT
-cat > "$work/Check.java" <<'JAVA'
-import org.ospreylang.casting.CastTLS;
-public final class Check {
-    private static void require(boolean condition, String message) {
-        if (!condition) throw new AssertionError(message);
-    }
-    public static void main(String[] args) {
-        long port = Long.parseLong(args[0]);
-        require(CastTLS.connect("", port, 100) == -1 && CastTLS.connect(null, port, 100) == -1, "empty or null host");
-        for (long[] input : new long[][]{{0, 100}, {65536, 100}, {port, 0}, {port, 60001}})
-            require(CastTLS.connect("127.0.0.1", input[0], input[1]) == -1, "invalid port or timeout");
-        require(CastTLS.connect("127.0.0.1", Long.parseLong(args[1]), 1000) == -4, "refused TCP connection is not a TLS handshake failure");
-        require(CastTLS.connect("127.0.0.1", Long.parseLong(args[2]), 1000) == -7, "unencrypted peer is a TLS handshake failure");
-        long handle = CastTLS.connect("127.0.0.1", Long.parseLong(args[0]), 3000);
-        require(handle == 1, "TLS handshake after rejected connections without leaked slots");
-        require(CastTLS.status(999) == -1, "unknown handle");
-        require(CastTLS.read(handle, 4, 10).isEmpty() && CastTLS.status(handle) == 1, "partial timeout");
-        require(CastTLS.read(handle, 4, 3000).equals("01020304"), "retained bytes");
-        require(CastTLS.write(handle, "0506") == 0, "write");
-        require(CastTLS.read(handle, 1, 3000).isEmpty() && CastTLS.status(handle) == 2, "peer EOF");
-        require(CastTLS.close(handle) == 0 && CastTLS.close(handle) == -1, "cleanup");
-        require(CastTLS.connect("", 0, 0) == -1, "invalid connection");
-        require(!CastTLS.route("127.0.0.1", 8009).isEmpty(), "local route");
-        System.out.println("PASS: Android connection refusal, TLS rejection, handshake, timeout recovery, bytes, write, EOF, cleanup and route");
-    }
+# Probe the production C TLS runtime on the device, never the retired Java transport.
+cat > "$work/check.c" <<'C'
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include "memory_hooks.h"
+int64_t osprey_tls_connect(char *, int64_t, int64_t);
+int64_t osprey_tls_send_hex(int64_t, char *);
+char *osprey_tls_recv_hex(int64_t, int64_t, int64_t);
+int64_t osprey_tls_status(int64_t);
+int64_t osprey_tls_close(int64_t);
+char *osprey_net_local_address(char *, int64_t);
+#define REQUIRE(test, message) do { if (!(test)) { fprintf(stderr, "FAIL: %s\n", message); return 1; } } while (0)
+int main(int argc, char **argv) {
+    REQUIRE(argc == 3, "TLS and plaintext fixture ports required");
+    osp_mem_boot();
+    int64_t port = strtoll(argv[1], NULL, 10);
+    REQUIRE(osprey_tls_connect("", port, 100) == -1 && osprey_tls_connect(NULL, port, 100) == -1, "empty or null host");
+    REQUIRE(osprey_tls_connect("127.0.0.1", 0, 100) == -1, "zero port");
+    REQUIRE(osprey_tls_connect("127.0.0.1", 65536, 100) == -1, "oversize port");
+    REQUIRE(osprey_tls_connect("127.0.0.1", port, 0) == -1, "zero timeout");
+    REQUIRE(osprey_tls_connect("127.0.0.1", port, 60001) == -1, "oversize timeout");
+    // Reserve a device port without listening: adb reverse would accept TCP itself.
+    int refused = socket(AF_INET, SOCK_STREAM, 0);
+    struct sockaddr_in address = {.sin_family = AF_INET, .sin_addr.s_addr = htonl(INADDR_LOOPBACK)};
+    REQUIRE(refused >= 0 && bind(refused, (struct sockaddr *)&address, sizeof address) == 0, "reserve refused device port");
+    socklen_t length = sizeof address;
+    REQUIRE(getsockname(refused, (struct sockaddr *)&address, &length) == 0, "read refused device port");
+    REQUIRE(osprey_tls_connect("127.0.0.1", ntohs(address.sin_port), 1000) == -4, "refused TCP is distinct from TLS failure");
+    close(refused);
+    REQUIRE(osprey_tls_connect("127.0.0.1", strtoll(argv[2], NULL, 10), 1000) == -7, "unencrypted peer rejected");
+    int64_t handle = osprey_tls_connect("127.0.0.1", port, 3000);
+    REQUIRE(handle == 1, "handshake after rejected connections without leaked slots");
+    REQUIRE(osprey_tls_status(999) == -1, "unknown handle");
+    char *partial = osprey_tls_recv_hex(handle, 4, 10);
+    REQUIRE(partial && !strcmp(partial, "") && osprey_tls_status(handle) == 1, "partial read timeout");
+    osp_release(partial);
+    char *whole = osprey_tls_recv_hex(handle, 4, 3000);
+    REQUIRE(whole && !strcmp(whole, "01020304"), "partial bytes retained across timeout");
+    osp_release(whole);
+    REQUIRE(osprey_tls_send_hex(handle, "0506") == 0, "write");
+    char *closed = osprey_tls_recv_hex(handle, 1, 3000);
+    REQUIRE(closed && !strcmp(closed, "") && osprey_tls_status(handle) == 2, "peer EOF");
+    osp_release(closed);
+    REQUIRE(osprey_tls_close(handle) == 0 && osprey_tls_close(handle) == -1, "close and duplicate close");
+    REQUIRE(osprey_tls_connect("", 0, 0) == -1, "invalid connection");
+    char *route = osprey_net_local_address("127.0.0.1", 8009);
+    REQUIRE(route && !strcmp(route, "127.0.0.1"), "IPv4 loopback route");
+    osp_release(route);
+    puts("PASS: Android production C TLS handshake, failures, retained reads, write, EOF, cleanup and route");
+    return 0;
 }
-JAVA
+C
 repo=$(cd "$here/../../../.." && pwd)
 
 # [CAST-MOBILE-DELIVERY] The capability and bounded-read boundaries are probed
@@ -410,14 +449,23 @@ ios_boundary_probes() {
 case "$platform" in
     ios) xcrun swiftc -swift-version 5 -warnings-as-errors "$here/ios/CastTLS.swift" "$work/main.swift" -o "$work/check" ;;
     android)
-        platform_jar=$(python3 - "${ANDROID_HOME:-$HOME/Library/Android/sdk}/platforms" <<'JAR'
-import pathlib,sys
-paths=list(pathlib.Path(sys.argv[1]).glob('*/android.jar'))
-if not paths: sys.exit('An Android SDK platform is required')
-print(paths[0])
-JAR
-)
-        javac -Xlint:all -Werror -classpath "$platform_jar" -d "$work" "$here/android/src/main/java/org/ospreylang/casting/CastTLS.java" "$work/Check.java" ;;
+        source "$repo/scripts/mobile/android-env.sh"
+        adb="$ANDROID_HOME/platform-tools/adb"
+        serial=${OSPREY_ANDROID_SERIAL:?Set OSPREY_ANDROID_SERIAL to the device under test}
+        abi=$("$adb" -s "$serial" shell getprop ro.product.cpu.abi | tr -d '\r')
+        case "$abi" in
+            arm64-v8a) target=android-arm64; triple=aarch64-linux-android26 ;;
+            x86_64) target=android-x64; triple=x86_64-linux-android26 ;;
+            *) echo "Unsupported Android ABI: $abi" >&2; exit 2 ;;
+        esac
+        openssl="$here/build/$target/openssl"
+        runtime="$repo/src/toolchain/compiler/bin/libosprey_runtime_${target//-/_}_arc.a"
+        "$android_tools/clang" --target="$triple" -std=c11 -Wall -Wextra -Werror \
+            -fstack-protector-strong -D_FORTIFY_SOURCE=2 -O2 \
+            -I"$repo/src/toolchain/compiler/runtime" -I"$openssl/include" \
+            "$work/check.c" "$repo/src/toolchain/compiler/runtime/tls_client_runtime.c" \
+            "$openssl/lib/libssl.a" "$openssl/lib/libcrypto.a" "$runtime" \
+            -lm -ldl -llog -o "$work/check" ;;
     *) echo 'Usage: mobile-transport-test.sh [ios|android]' >&2; exit 2 ;;
 esac
 python3 "$work/server.py" "$work" &
@@ -428,7 +476,19 @@ for ((attempt=0; attempt<100; attempt++)); do
 done
 [[ -f "$work/port" ]] || { echo 'TLS fixture did not start' >&2; exit 1; }
 if [[ "$platform" == ios ]]; then "$work/check" "$(cat "$work/port")" "$(cat "$work/refused-port")" "$(cat "$work/plain-port")"
-else java -cp "$work" Check "$(cat "$work/port")" "$(cat "$work/refused-port")" "$(cat "$work/plain-port")"; fi
+else
+    remote="/data/local/tmp/osprey-casting-transport-$$"
+    "$adb" -s "$serial" push "$work/check" "$remote" >/dev/null
+    "$adb" -s "$serial" shell chmod 700 "$remote"
+    status=0
+    for name in port plain-port; do
+        at=$(cat "$work/$name")
+        "$adb" -s "$serial" reverse "tcp:$at" "tcp:$at"
+        mapped_ports+=("$at")
+    done
+    "$adb" -s "$serial" shell "$remote" "$(cat "$work/port")" "$(cat "$work/plain-port")" || status=$?
+    [[ $status -eq 0 ]] || exit "$status"
+fi
 wait "$server_pid"
 server_pid=
 if [[ "$platform" == ios ]]; then
