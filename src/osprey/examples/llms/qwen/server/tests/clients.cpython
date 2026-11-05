@@ -13,8 +13,10 @@ Implements [LLM-API-OLLAMA], [LLM-API-OPENAI], [LLM-API-QUEUE] and
 [LLM-API-LIMIT] of docs/specs/applications/LocalCodingModel.md.
 """
 import importlib.machinery
+import http.client
 import json
 import os
+import socket
 import subprocess
 import sys
 import types
@@ -371,6 +373,63 @@ def openai_rejects_a_path_it_does_not_serve(port):
     reply = httpx.get(base(port) + "/v1/absent", timeout=30.0)
     assert reply.status_code == 404, reply.status_code
     assert reply.json()["error"]["message"], reply.text
+
+
+# --- step 4: one generation at a time -------------------------------------
+#
+# The runtime's listener serves one accepted connection at a time, on the fiber
+# that started `httpListen`, so a second request waits in the accept backlog
+# until the first turn is written. That is what makes generation serial and
+# arrival-ordered; what a client can observe, and what these cases assert, is
+# that concurrent turns answer their own prompts whole and that an abandoned
+# connection does not wedge the listener.
+
+
+def in_flight(port, prompts):
+    """Send every prompt on its own connection first, then read the replies."""
+    connections = []
+    for prompt in prompts:
+        connection = http.client.HTTPConnection("127.0.0.1", port, timeout=120)
+        payload = json.dumps({"model": MODEL, "messages": [{"role": "user", "content": prompt}], "tools": [READ_FILE, RUN_TESTS]})
+        connection.request("POST", "/api/chat", body=payload, headers={"Content-Type": "application/json"})
+        connections.append(connection)
+    replies = []
+    for connection in connections:
+        answer = connection.getresponse()
+        replies.append((answer.status, answer.read()))
+        connection.close()
+    return replies
+
+
+@case
+def concurrent_turns_each_answer_their_own_prompt(port):
+    module = reference()
+    model = module.Model()
+    prompts = ["open the readme", "run the unit tests", "open the readme", "run the unit tests"]
+    for index, (status, body) in enumerate(in_flight(port, prompts)):
+        assert status == 200, body
+        answer = json.loads(body)
+        assert answer["done"] is True, answer
+        rendered = module.rendered(prompts[index])
+        name, arguments = module.call_of(model.continuation(rendered))
+        call = answer["message"]["tool_calls"][0]
+        assert (call["function"]["name"], call["function"]["arguments"]) == (name, arguments), (index, call, name, arguments)
+        assert answer["prompt_eval_count"] == len(model.tokenize(rendered)), (index, answer)
+
+
+@case
+def a_client_that_disconnects_does_not_wedge_the_server(port):
+    payload = json.dumps({"model": MODEL, "messages": [{"role": "user", "content": READ_PROMPT}]}).encode()
+    with socket.create_connection(("127.0.0.1", port), timeout=30) as abandoned:
+        abandoned.sendall(
+            b"POST /api/chat HTTP/1.1\r\nHost: 127.0.0.1\r\nContent-Type: application/json\r\n"
+            + f"Content-Length: {len(payload)}\r\n\r\n".encode()
+            + payload
+        )
+    reply = client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE])
+    assert reply.done is True, reply
+    assert reply.message.tool_calls, reply
+    assert reply.prompt_eval_count > 0, reply
 
 
 # --- the harness ----------------------------------------------------------

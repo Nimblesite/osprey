@@ -66,6 +66,22 @@ failure in OpenAI's `{"error": {"message": …}}` shape.
 0049 — `Qwen3.8-27B` `UD-Q4_K_XL` at 64K context — and report no `digest`,
 because no weights file has been read.
 
+## One generation at a time
+
+The runtime's listener serves one accepted connection at a time, on the fiber
+that started `httpListen`, so a second request waits in the accept backlog until
+the first turn has been written: generation is serial and arrival-ordered
+([LLM-API-QUEUE]). Each turn is bounded by `num_predict` and by the room left in
+`num_ctx`, so a serving turn always ends and hands the listener on.
+
+A client that disconnects mid-turn is *not* cancelled. The handler receives the
+method, URL, headers and body and never the peer socket, so it cannot observe a
+disconnect, and the runtime writes the finished response to a socket nobody
+reads. The work is bounded rather than abandoned, and the listener stays
+healthy: `tests/clients.cpython` abandons a connection mid-request and then has
+the next turn answered normally. Detecting the peer is a missing HTTP ability
+([HTTP-SERVER] has no per-request socket), reported to the plan's lead.
+
 ## Limits of the served model
 
 The fixture tokenizer's vocabulary is the characters of `CORPUS`, so a prompt
