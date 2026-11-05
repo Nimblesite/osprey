@@ -109,7 +109,7 @@ module McpModel
     notShadowed : (List<McpClient::ServerView>, McpServer) -> bool
     notShadowed (projects, item) = Lists::any (projects, \view => view.viewName == item.serverName) == false
 
-    globalsKept : (List<McpClient::ServerView>, List<McpServer>) -> List<McpServer>
+
     globalsKept (projects, globals) = filterList (globals, \item => notShadowed (projects, item))
 
     export reconcile mcp =

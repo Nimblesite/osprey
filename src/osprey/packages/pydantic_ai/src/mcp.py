@@ -66,12 +66,12 @@ class ServerCapabilities:
     completions: bool
 
 
-def present(value, name) -> bool:
+def present(value, name):
     """Whether a capability was sent at all: upstream reads each as `is not None`."""
     return not J.is_null(J.object_at(value, name))
 
 
-def list_changed(value, name) -> bool:
+def list_changed(value, name):
     """A capability object's `listChanged` flag, `False` when the capability or flag is absent."""
     return J.bool_at(J.object_at(value, name), "listChanged", False)
 
@@ -131,7 +131,7 @@ def implementation_of(value) -> Implementation:
     return Implementation(name=J.text_at(value, "name", ""), title=J.text_at(value, "title", ""), version=J.text_at(value, "version", ""))
 
 
-def request(id, method, params) -> Json:
+def request(id, method, params):
     """One JSON-RPC request or notification: version, id, method and params."""
     return J.obj([J.member("jsonrpc", JsonString("2.0")), J.member("id", id), J.member("method", JsonString(method)), J.member("params", params)])
 
@@ -210,7 +210,7 @@ def read_message(text) -> Incoming:
             return Malformed(reason=f"not JSON: {message}")
 
 
-def read_value(value) -> Incoming:
+def read_value(value):
     match value:
         case JsonObject():
             return read_object(value)
@@ -218,7 +218,7 @@ def read_value(value) -> Incoming:
             return Malformed(reason="a message must be a JSON object")
 
 
-def read_object(value) -> Incoming:
+def read_object(value):
     match J.object_at(value, "method"):
         case JsonString(method):
             return read_call(value, method)
@@ -228,7 +228,7 @@ def read_object(value) -> Incoming:
             return Malformed(reason="method must be a string")
 
 
-def read_call(value, method) -> Incoming:
+def read_call(value, method):
     """A call from the server: a request when it carries an id, else a notification."""
     params = J.object_at(value, "params")
     match id_of(value):
@@ -238,7 +238,7 @@ def read_call(value, method) -> Incoming:
             return ServerNotification(method=method, params=params)
 
 
-def read_response(value) -> Incoming:
+def read_response(value):
     if J.has(value, "error"):
         return read_error(value, J.object_at(value, "error"))
     elif J.has(value, "result"):
@@ -247,7 +247,7 @@ def read_response(value) -> Incoming:
         return Malformed(reason="a message needs a method, a result or an error")
 
 
-def respond(value, result) -> Incoming:
+def respond(value, result):
     match id_of(value):
         case Success(value=id):
             return ResponseOk(id=id, result=result)
@@ -255,7 +255,7 @@ def respond(value, result) -> Incoming:
             return Malformed(reason=reason)
 
 
-def read_error(value, error) -> Incoming:
+def read_error(value, error):
     match id_of(value):
         case Success(value=id):
             return error_response(id, error)
@@ -263,7 +263,7 @@ def read_error(value, error) -> Incoming:
             return Malformed(reason=reason)
 
 
-def error_response(id, error) -> Incoming:
+def error_response(id, error):
     match J.object_at(error, "code"):
         case JsonInt(code):
             return ResponseError(id=id, error=MCPError(message=J.text_at(error, "message", ""), code=code, data=J.object_at(error, "data")))
@@ -308,7 +308,7 @@ def first_items(items, n) -> list:
     return foldList(items, [], lambda acc, item: acc if len(acc) >= n else listAppend(acc, item))
 
 
-def without_cr(line) -> str:
+def without_cr(line):
     """A line's text with a trailing CR, as CRLF framing ends lines, dropped."""
     return take(line, length(line) - 1) if endsWith(line, "\r") else line
 
@@ -337,12 +337,12 @@ class SseFold:
     messages: list[Incoming]
 
 
-def sse_messages(body) -> list[Incoming]:
+def sse_messages(body):
     folded = foldList(line_pieces(body), SseFold(data=[], messages=[]), sse_step)
     return close_sse(folded).messages
 
 
-def sse_step(acc, line) -> SseFold:
+def sse_step(acc, line):
     """One SSE line: a blank line dispatches, a comment or field but `data` is kept, `data` joins."""
     if line == "":
         return close_sse(acc)
@@ -362,12 +362,12 @@ def close_sse(acc) -> SseFold:
         return SseFold(data=[], messages=listAppend(acc.messages, read_message(join(acc.data, "\n"))))
 
 
-def drop_after_colon(text) -> str:
+def drop_after_colon(text):
     """A `data:` payload: one leading space after the colon is not part of it (SSE)."""
     return drop(text, 1) if startsWith(text, " ") else text
 
 
-def line_pieces(text) -> list[str]:
+def line_pieces(text):
     """The lines of a text, CRLF endings dropped, a trailing line without newline included."""
     match split(text, "\n"):
         case Success(value=pieces):
@@ -431,7 +431,7 @@ def call_result(name, json) -> Result[str, str]:
         return Error(message=mapped_result(structured, parts, failed))
 
 
-def mapped_result(structured, parts, failed) -> str:
+def mapped_result(structured, parts, failed):
     """`_map_mcp_call_tool_result`: structured content wins when every part is text or the call
     failed, a lone `result` key unwrapped; otherwise the content parts map and join."""
     if not J.is_null(structured) and (failed or all_text(parts)):
@@ -440,7 +440,7 @@ def mapped_result(structured, parts, failed) -> str:
         return join(mapList(parts, call_part_text), "\n")
 
 
-def unwrap_result_key(structured) -> Json:
+def unwrap_result_key(structured):
     """The SDK wraps a primitive in a lone `result` key; the raw value is what the tool returned."""
     members = J.members_of(structured)
     first = unwrap_or(listGet(members, 0), JsonMember("", JsonNull()))
@@ -450,12 +450,12 @@ def unwrap_result_key(structured) -> Json:
         return structured
 
 
-def all_text(parts) -> bool:
+def all_text(parts):
     """Whether every content block is a text block (an empty list is all text, as `all` is)."""
     return foldList(parts, True, lambda acc, part: acc and J.text_at(part, "type", "") == "text")
 
 
-def call_part_text(part) -> str:
+def call_part_text(part):
     """One content block as text (`_map_mcp_tool_result`; bytes stay a description, never sent)."""
     kind = J.text_at(part, "type", "")
     if kind == "text":
@@ -472,7 +472,7 @@ def call_part_text(part) -> str:
         return f"[unsupported content type: {kind}]"
 
 
-def text_block(text) -> str:
+def text_block(text):
     """A text block: re-encoded when it spells a JSON value, as upstream parses `[`/`{` text back."""
     if startsWith(text, "[") or startsWith(text, "{"):
         match J.decode(text):
@@ -484,12 +484,12 @@ def text_block(text) -> str:
         return text
 
 
-def described(kind, mime_type, base64) -> str:
+def described(kind, mime_type, base64):
     """An image, audio or blob block as a description: a tool returns text, not bytes, here."""
     return f"[{kind}: {mime_type}, {byte_size(base64)} bytes]"
 
 
-def byte_size(base64) -> int:
+def byte_size(base64):
     """The byte count base64 text carries: three per four characters, less its padding."""
     if endsWith(base64, "=="):
         return 3 * (length(base64) // 4) - 2
@@ -499,7 +499,7 @@ def byte_size(base64) -> int:
         return 3 * (length(base64) // 4)
 
 
-def resource_text(resource) -> str:
+def resource_text(resource):
     """An embedded resource (`EmbeddedResource`): its text, or a description of its blob."""
     match J.object_at(resource, "text"):
         case JsonString(text):
@@ -508,7 +508,7 @@ def resource_text(resource) -> str:
             return described("resource", or_default(J.text_at(resource, "mimeType", ""), "application/octet-stream"), J.text_at(resource, "blob", ""))
 
 
-def or_default(text, fallback) -> str:
+def or_default(text, fallback):
     return fallback if text == "" else text
 
 
@@ -564,7 +564,7 @@ def servers_of(value, environment) -> ConfigLoad:
             return ConfigLoad(servers=[], problems=["the configuration must have an mcpServers object"])
 
 
-def entry_step(acc, environment, member) -> ConfigLoad:
+def entry_step(acc, environment, member):
     name = J.member_name(member)
     match J.member_value(member):
         case JsonObject():
@@ -573,7 +573,7 @@ def entry_step(acc, environment, member) -> ConfigLoad:
             return problem(acc, f"MCP server config '{name}' must be an object")
 
 
-def expand_entry(acc, environment, name, value) -> ConfigLoad:
+def expand_entry(acc, environment, name, value):
     match expand_value(value, environment):
         case Success(value=expanded):
             return server_of(acc, name, expanded)
@@ -594,7 +594,7 @@ def server_of(acc, name, value) -> ConfigLoad:
         return problem(acc, f"MCP server config '{name}' must have either 'command' or 'url'")
 
 
-def is_string(value, name) -> bool:
+def is_string(value, name):
     """Whether a member is present as a string; an absent or null member is omission, not a string."""
     match jsonField(value, name):
         case Success(value=field):
@@ -611,12 +611,12 @@ def problem(acc, text) -> ConfigLoad:
     return ConfigLoad(servers=acc.servers, problems=listAppend(acc.problems, text))
 
 
-def text_list_at(value, name) -> list[str]:
+def text_list_at(value, name):
     """`value[name]` as the string elements of an array; a null or absent field is no elements."""
     return foldList(J.list_at(value, name), [], text_list_step)
 
 
-def text_list_step(acc, item) -> list[str]:
+def text_list_step(acc, item):
     match item:
         case JsonString(text):
             return listAppend(acc, text)
@@ -624,12 +624,12 @@ def text_list_step(acc, item) -> list[str]:
             return acc
 
 
-def text_map_at(value, name) -> dict[str, str]:
+def text_map_at(value, name):
     """`value[name]` as a string map; a null or absent field is an empty map."""
     return foldList(J.members_of(J.object_at(value, name)), {}, text_map_step)
 
 
-def text_map_step(acc, member) -> dict[str, str]:
+def text_map_step(acc, member):
     match J.member_value(member):
         case JsonString(text):
             return mapSet(acc, J.member_name(member), text)
@@ -666,7 +666,7 @@ class Reference:
         default: str
 
 
-def expand_value(value, environment) -> Result[Json, str]:
+def expand_value(value, environment):
     """`${VAR}` and `${VAR:-default}` expanded over every string, recursively (upstream
     `_expand_env_vars`); `Error` names the first undefined variable with no default."""
     match value:
@@ -688,7 +688,7 @@ def expand_string(text, environment) -> Result[Json, str]:
             return Error(message=message)
 
 
-def expand_members(members, environment) -> Result[Json, str]:
+def expand_members(members, environment):
     match M.collect(members, lambda member: expand_member(member, environment)):
         case Success(value=expanded):
             return Success(value=JsonObject(expanded))
@@ -704,7 +704,7 @@ def expand_member(member, environment) -> Result[JsonMember, str]:
             return Error(message=message)
 
 
-def expand_items(items, environment) -> Result[Json, str]:
+def expand_items(items, environment):
     match M.collect(items, lambda item: expand_value(item, environment)):
         case Success(value=expanded):
             return Success(value=JsonArray(expanded))
@@ -712,7 +712,7 @@ def expand_items(items, environment) -> Result[Json, str]:
             return Error(message=message)
 
 
-def expand_text(text, environment) -> Result[str, str]:
+def expand_text(text, environment):
     match indexOf(text, "${"):
         case Error():
             return Success(value=text)
@@ -720,7 +720,7 @@ def expand_text(text, environment) -> Result[str, str]:
             return expand_at(text, start, environment)
 
 
-def expand_at(text, start, environment) -> Result[str, str]:
+def expand_at(text, start, environment):
     rest = drop(text, start + 2)
     match indexOf(rest, "}"):
         case Error():
@@ -741,7 +741,7 @@ def expand_rest(text, start, inner, tail, environment) -> Result[str, str]:
             return Error(message=message)
 
 
-def expand_reference(inner, environment) -> Result[str, str]:
+def expand_reference(inner, environment):
     match reference_of(inner):
         case Kept(inner=kept):
             return Success(value="${" + kept + "}")
@@ -751,7 +751,7 @@ def expand_reference(inner, environment) -> Result[str, str]:
             return Success(value=unwrap_or(mapGet(environment, name), default))
 
 
-def reference_of(inner) -> Reference:
+def reference_of(inner):
     match indexOf(inner, ":"):
         case Error():
             return Variable(name=inner) if inner != "" else Kept(inner=inner)
@@ -759,7 +759,7 @@ def reference_of(inner) -> Reference:
             return defaulted(inner, at)
 
 
-def defaulted(inner, at) -> Reference:
+def defaulted(inner, at):
     if at == 0 or not startsWith(drop(inner, at), ":-"):
         return Kept(inner=inner)
     else:
