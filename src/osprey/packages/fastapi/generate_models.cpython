@@ -5,6 +5,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent
 
+PRIVATE_MODELS = {
+    "urls.py": {"Decoded"},
+    "dependencies.py": {"Acquired", "DependencyState", "DependencyStep"},
+}
+
 TYPE_DOCS = {
     "LocationPart": "A field name or numeric array index in a validation location.",
     "FixtureModelOption": "Typed NAP provider model entry.",
@@ -103,6 +108,18 @@ def union_records(classes, unions):
     return output
 
 
+def write_tail(path, marker, declarations):
+    source = path.read_text().split(marker)[0].rstrip()
+    path.write_text(source + "\n\n" + marker + "\n" + declarations + "\n")
+
+
+def write_private_models(nodes):
+    for filename, names in PRIVATE_MODELS.items():
+        declarations = "\n".join(records([node for node in nodes if node.name in names]))
+        declarations = declarations.replace(": DependencyResult[", ": M.DependencyResult[")
+        write_tail(ROOT / "src" / filename, "# Generated private models from models.td", declarations)
+
+
 def generate():
     source = subprocess.check_output(
         ["typediagram", "--to", "python", str(ROOT / "models.td")], text=True
@@ -110,15 +127,17 @@ def generate():
     classes, unions, nodes = declarations(source)
     output = ['# osprey: flavor=python', '# osprey: namespace=fastapi',
               '# osprey: module=Models', '"""Generated from models.td; run generate_models.cpython."""']
-    public = [node for node in nodes if not node.name.startswith("Fixture")]
+    private = set().union(*PRIVATE_MODELS.values())
+    public = [node for node in nodes if not node.name.startswith("Fixture") and node.name not in private]
     production = {name: members for name, members in unions.items() if not name.startswith("Fixture")}
     output.extend(["", "__all__ = " + repr([node.name for node in public] + list(production))])
     output.extend(records(public) + union_records(classes, production))
     (ROOT / "src" / "models.py").write_text("\n".join(output) + "\n")
-    fixture = ROOT / "tests" / "fixture.py"
-    source = fixture.read_text().split("# Generated fixture models from models.td")[0].rstrip()
+    write_private_models(nodes)
     test_unions = {name: members for name, members in unions.items() if name.startswith("Fixture")}
-    fixture.write_text(source + "\n\n# Generated fixture models from models.td\n" + "\n".join(records([node for node in nodes if node.name.startswith("Fixture")]) + union_records(classes, test_unions)).replace(": Optional[", ": M.Optional[") + "\n")
+    fixtures = "\n".join(records([node for node in nodes if node.name.startswith("Fixture")]) + union_records(classes, test_unions))
+    write_tail(ROOT / "tests" / "fixture.py", "# Generated fixture models from models.td",
+               fixtures.replace(": Optional[", ": M.Optional["))
 
 
 if __name__ == "__main__":

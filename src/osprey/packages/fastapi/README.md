@@ -39,6 +39,8 @@ Real HTTP acceptance: `python3 src/osprey/packages/fastapi/tests/e2e.cpython`. I
 
 The native GC and ARC suites pass. FastAPI passes the 98.2% package coverage gate on both backends with 793 of 807 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 808 body records over real HTTP.
 
+The native HTTP suite directly exercises application and router dispatch, raw and decoded query handling, repeated headers, path matching, explicit response helpers and validation issue rendering. The model generator keeps URL decoding state and dependency acquisition state private to the modules that own them.
+
 Dependency cases cover shared and uncached acquisitions, overrides, nested denials, multiple validation errors with distinct locations/inputs, missing and malformed integer headers, and HTTP/validation failures during cleanup. The expanded corpus caught and now guards the compiler's nested pattern-alias shadowing bug, acceptance of `2.`, rejection of valid `1_000`, and incorrect handling of Latin-1 HTTP header bytes.
 
 Regenerate all reference records with `../NimblesiteAgenticPlatform/.venv/bin/python -I src/osprey/packages/testing/oracle/oracle.cpython fastapi > src/osprey/packages/fastapi/tests/parameters.expected.json`. The oracle starts real Uvicorn listeners and writes `tests/expected.py` through the shared provenance writer. It also derives `tests/parameters.headers.bin`: record-separated Latin-1 header bytes so the native client sends exactly the same bytes as CPython's client. The external suite verifies that fixture against every recorded header; it is data, not a second set of expectations. CPython development helpers use `.cpython` to distinguish them from the port's Osprey `.py` sources.

@@ -70,6 +70,8 @@ The explicit `jsonDecodePython` decoder implements first-key insertion order wit
 
 Text reads must return a typed error for file bytes the current native string representation cannot preserve. In particular, `readFile` must never return successful text containing only the prefix before NUL; plain UTF-8 and empty-file controls must remain successful. The CLI Python-flavor E2E regression exercises leading, middle, trailing and post-buffer-growth NUL under both GC and ARC and requires clean ARC ownership. Full NUL parity requires a length-aware owned representation and audited foreign-C adapters, with bounded storage and explicit errors at C-string-only boundaries; no sentinel substitution or unbounded pointer registry qualifies.
 
+[FASTAPI-NAP-PARAMETERS-METADATA] Query pairs preserve order, repetitions and empty values. The raw query retains its encoded spelling, and decoded separators inside a value do not create new pairs. Header lookup is case-insensitive and preserves repeated field values. Real loopback tests verify both app and router composition with these values, and pinned FastAPI verifies the shared wire cases.
+
 ## HTTP exception handlers — [FASTAPI-NAP-ERRORS]
 
 A registered status handler receives the original request and typed HTTP exception. The most recent registration wins, including after router mounting. Route and dependency failures enter the status handler before outer middleware renders its headers. An ordinary response with the same status is served directly. Unregistered exceptions use their default detail and headers. The HTTP fixture compares these cases with pinned FastAPI, including CORS, trace headers, method rejection and dependency cleanup.

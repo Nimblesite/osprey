@@ -30,10 +30,10 @@ def override(graph, name, replacement):
 
 
 def rejected(message, state):
-    return M.DependencyStep(outcome=M.Rejected(error=E.exception(500, message, "")), state=state)
+    return DependencyStep(outcome=M.Rejected(error=E.exception(500, message, "")), state=state)
 
 
-def resolve_one[T](injection, graph, request, state, visiting) -> M.DependencyStep[T, M.DependencyState[T]]:
+def resolve_one[T](injection, graph, request, state, visiting) -> DependencyStep[T, DependencyState[T]]:
     if listContains(visiting, injection.name):
         return rejected(f"Dependency cycle: {injection.name}", state)
     else:
@@ -52,13 +52,13 @@ def resolve_children(injection, selected, request, children):
         case M.Provided(value=values):
             match mapGet(children.state.cache, injection.name):
                 case Success(value=cached):
-                    return M.DependencyStep(outcome=M.Provided(value=cached), state=children.state) if injection.use_cache else acquire(selected, request, values, children.state)
+                    return DependencyStep(outcome=M.Provided(value=cached), state=children.state) if injection.use_cache else acquire(selected, request, values, children.state)
                 case Error():
                     return acquire(selected, request, values, children.state)
         case M.Rejected(error=error):
-            return M.DependencyStep(outcome=M.Rejected(error=error), state=children.state)
+            return DependencyStep(outcome=M.Rejected(error=error), state=children.state)
         case M.DependencyInvalid(issues=issues):
-            return M.DependencyStep(outcome=M.DependencyInvalid(issues=issues), state=children.state)
+            return DependencyStep(outcome=M.DependencyInvalid(issues=issues), state=children.state)
 
 
 def first_cached(cache, name, item):
@@ -74,21 +74,21 @@ def acquire(selected, request, values, state):
     match outcome:
         case M.Provided(value=item):
             cache = first_cached(state.cache, selected.name, item)
-            acquired = listConcat([M.Acquired(name=selected.name, value=item)], state.acquired)
-            return M.DependencyStep(outcome=outcome, state=M.DependencyState(cache=cache, acquired=acquired))
+            acquired = listConcat([Acquired(name=selected.name, value=item)], state.acquired)
+            return DependencyStep(outcome=outcome, state=DependencyState(cache=cache, acquired=acquired))
         case _:
-            return M.DependencyStep(outcome=outcome, state=state)
+            return DependencyStep(outcome=outcome, state=state)
 
 
-def resolve_many[T](injections, graph, request, state, visiting) -> M.DependencyStep[list[T], M.DependencyState[T]]:
+def resolve_many[T](injections, graph, request, state, visiting) -> DependencyStep[list[T], DependencyState[T]]:
     match injections:
         case []:
-            return M.DependencyStep(outcome=M.Provided(value=[]), state=state)
+            return DependencyStep(outcome=M.Provided(value=[]), state=state)
         case [head, *tail]:
             first = resolve_one(head, graph, request, state, visiting)
             match first.outcome:
                 case M.Rejected(error=error):
-                    return M.DependencyStep(outcome=M.Rejected(error=error), state=first.state)
+                    return DependencyStep(outcome=M.Rejected(error=error), state=first.state)
                 case M.Provided(value=item):
                     return resolve_tail(M.Valid(value=item), tail, graph, request, first.state, visiting)
                 case M.DependencyInvalid(issues=issues):
@@ -97,7 +97,7 @@ def resolve_many[T](injections, graph, request, state, visiting) -> M.Dependency
 
 def resolve_tail(first, tail, graph, request, state, visiting):
     rest = resolve_many(tail, graph, request, state, visiting)
-    return M.DependencyStep(outcome=combine(first, rest.outcome), state=rest.state)
+    return DependencyStep(outcome=combine(first, rest.outcome), state=rest.state)
 
 
 def combine(first, rest):
@@ -153,5 +153,25 @@ def cleanup(graph, acquired, response):
 
 def execute[T](graph, injections, request, endpoint: Callable[[M.Request, list[T]], M.Response]):
     """Resolve one request, invoke its endpoint and always unwind acquired resources."""
-    solved = resolve_many(injections, graph, request, M.DependencyState(cache={}, acquired=[]), [])
+    solved = resolve_many(injections, graph, request, DependencyState(cache={}, acquired=[]), [])
     return cleanup(graph, solved.state.acquired, rendered(solved.outcome, request, endpoint))
+
+# Generated private models from models.td
+
+
+class Acquired[T]:
+    """One successfully acquired value and its immutable provider key."""
+    name: str
+    value: T
+
+
+class DependencyState[T]:
+    """Request-local cache and reverse-acquisition cleanup stack."""
+    cache: dict[str, T]
+    acquired: list[Acquired[T]]
+
+
+class DependencyStep[T, S]:
+    """A dependency outcome and the resulting request-local state."""
+    outcome: M.DependencyResult[T]
+    state: S

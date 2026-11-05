@@ -2,7 +2,6 @@
 # osprey: namespace=fastapi
 # osprey: module=Urls
 """URL percent decoding, including UTF-8 and form-style plus. [FASTAPI-NAP-PARAMETERS]"""
-from fastapi import Models as M
 from fastapi import Results as B
 __all__ = ['decode', 'path_of', 'query_of']
 
@@ -28,7 +27,7 @@ def complete_hex(text):
     return B.bind(indexOf('0123456789abcdef', toLowerCase(take(text, 1))), lambda high: B.bind(indexOf('0123456789abcdef', toLowerCase(take(drop(text, 1), 1))), lambda low: Success(value=bitOr(shiftLeft(high, 4), low))))
 
 def piece(value, rest):
-    return M.Decoded(value=value, rest=rest)
+    return Decoded(value=value, rest=rest)
 
 def replacement(rest):
     return Success(value=piece('�', rest))
@@ -99,3 +98,11 @@ def decode(text, plus):
 
 def nonempty(text, plus):
     return B.bind(next_piece(text, plus), lambda part: B.bind(decode(part.rest, plus), lambda rest: Success(value=part.value + rest)))
+
+# Generated private models from models.td
+
+
+class Decoded:
+    """One decoded URL fragment and the unconsumed input."""
+    value: str
+    rest: str

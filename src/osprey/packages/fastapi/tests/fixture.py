@@ -206,7 +206,7 @@ def providers(path):
 def dependency_routes(path):
     graph = providers(path)
     changed = D.override(graph, "identity", D.provider("fake", [], fake_identity, D.pure_close))
-    shared = [D.need("session", True), D.need("identity", True), D.need("credit", True)]
+    shared = [M.Need(name="session", use_cache=True), D.need("identity", True), D.need("credit", True)]
     fresh = [D.need("session", False), D.need("session", False)]
     return [Routing.route("GET", "/deps", lambda request: D.execute(graph, shared, request, dependency_response)), Routing.route("GET", "/deps/uncached", lambda request: D.execute(graph, fresh, request, sessions_response)), Routing.route("GET", "/deps/override", lambda request: D.execute(changed, shared, request, dependency_response)), Routing.route("GET", "/dependency-trace", lambda request: trace_response(path, request))]
 

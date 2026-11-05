@@ -3,6 +3,13 @@
 from fastapi import Applications as A
 from fastapi import Results as B
 from fastapi import Models as M
+from fastapi import Errors as E
+from fastapi import Params as P
+from fastapi import Paths
+from fastapi import Routing
+from fastapi import Responses as R
+from fastapi import Validation as V
+from fastapi import Urls
 from fastapi_tests import Fixture
 from fastapi_expected import Expected
 
@@ -56,6 +63,88 @@ def binary_requests(client, payloads):
             return binary_requests(client, rest)
 
 
+def request_metadata_cases(client):
+    headers = "X-Probe: one\r\nx-probe: two,three\r\nX-PROBE: "
+    path = "/contract/request/%C3%A9/a%2Fb"
+    query = "b=2&a=x%26y%3Dz&b=3&empty=&flag"
+    assert_reply(httpGetResponse(client, path + "?" + query, headers), 200,
+                 '{"path":"/contract/request/é/a/b","query":"b=2&a=x%26y%3Dz&b=3&empty=&flag","pairs":[["b","2"],["a","x&y=z"],["b","3"],["empty",""],["flag",""]],"headers":["one","two,three",""],"literal":false}')
+    assert_reply(httpGetResponse(client, "/contract/request/only", ""), 200,
+                 '{"path":"/contract/request/only","query":"","pairs":[],"headers":[],"literal":true}')
+    assert_reply(httpGetResponse(client, "/contract/router/%3F%23%25%2520?k=a+b&k=%2B%3D&k=%ZZ", ""), 200,
+                 '{"path":"/contract/router/?#%%20","query":"k=a+b&k=%2B%3D&k=%ZZ","pairs":[["k","a b"],["k","+="],["k","%ZZ"]],"headers":[],"literal":false}')
+    assert_reply(httpGetResponse(client, "/contract/request/no?q=%00", ""), 400,
+                 '{"detail":"NUL is not representable in the native HTTP string boundary"}')
+
+
+def metadata_pair(pair):
+    match pair:
+        case M.Parameter(name=name, value=value):
+            return JsonArray([JsonString(name), JsonString(value)])
+
+
+def metadata_document(request, path, pairs):
+    return JsonObject([JsonMember("path", JsonString(path)), JsonMember("query", JsonString(Urls.query_of(request.url))),
+                       JsonMember("pairs", JsonArray(mapList(pairs, lambda pair: metadata_pair(pair)))),
+                       JsonMember("headers", JsonArray(mapList(P.header_all(request, "X-Probe"), lambda value: JsonString(value)))),
+                       JsonMember("literal", JsonBool(Paths.matches("/contract/request/only", path)))])
+
+
+def request_metadata(request):
+    decoded = B.bind(Urls.decode(Routing.path_of(request.url), False), lambda path: B.mapped(P.query_pairs(request), lambda pairs: metadata_document(request, path, pairs)))
+    match decoded:
+        case Success(value=document):
+            return E.json_response(200, document, "")
+        case Error(message=message):
+            return E.exception_response(M.HTTPException(status_code=400, detail=message, headers=""))
+
+
+def metadata_application(request):
+    child = M.Route(method="GET", path="/contract/request/{item:path}", handler=lambda current: request_metadata(current))
+    return A.dispatch(A.application([child], []), request)
+
+
+def metadata_router(request):
+    child = Routing.route("GET", "/contract/router/{item:path}", request_metadata)
+    return Routing.dispatch([child], request)
+
+
+def manual_response(request):
+    mode = unwrap_or(P.query(request, "mode"), "")
+    if mode == "redirect":
+        return R.redirect("/health?probe=manual")
+    elif mode == "method":
+        return R.method_not_allowed("POST")
+    else:
+        return R.not_found()
+
+
+def manual_validation(request):
+    result = V.integer(["query", "limit"], P.query(request, "limit"), 1, 3)
+    match result:
+        case M.Valid(value=limit):
+            return E.json_response(200, JsonObject([JsonMember("limit", JsonInt(limit))]), "")
+        case M.Invalid():
+            return E.validation(V.issues_of(result))
+
+
+def manual_contract_cases(client):
+    redirected = httpGetResponse(client, "/contract/response?mode=redirect", "")
+    match redirected:
+        case Error(message=message):
+            check("Manual redirect", "success", message)
+        case Success(value=handle):
+            expect(httpResponseStatus(handle), 307)
+            expect(httpResponseHeader(handle, "Location"), Success(value="/health?probe=manual"))
+            expect(httpResponseBody(handle), Success(value=""))
+            expect(httpResponseFree(handle), Success(value=0))
+    assert_reply(httpGetResponse(client, "/contract/response?mode=method", ""), 405, '{"detail":"Method Not Allowed"}')
+    assert_reply(httpGetResponse(client, "/contract/response?mode=unknown", ""), 404, '{"detail":"Not Found"}')
+    assert_reply(httpGetResponse(client, "/contract/limit?limit=2", ""), 200, '{"limit":2}')
+    assert_reply(httpGetResponse(client, "/contract/limit?limit=4", ""), 422,
+                 '{"detail":[{"type":"less_than_equal","loc":["query","limit"],"msg":"Input should be less than or equal to 3","input":"4","ctx":{"le":3}}]}')
+
+
 def requests(client):
     assert_reply(httpGetResponse(client, "/health", ""), 200, "{\"status\":\"ok\"}")
     assert_reply(httpGetResponse(client, "/health?probe=1", ""), 200, "{\"status\":\"ok\"}")
@@ -69,6 +158,8 @@ def requests(client):
     assert_reply(httpGetResponse(client, "/bundle/%00", ""), 400, "{\"detail\":\"NUL is not representable in the native HTTP string boundary\"}")
     binary_requests(client, ['"\\u0000"', '"\\u0000tail"', '"head\\u0000tail"', '"head\\u0000"', '"é\\u0000😀\\u0000tail"'])
     parameter_cases(client)
+    request_metadata_cases(client)
+    manual_contract_cases(client)
     configuration_cases(client)
     return expect(httpCloseClient(client), Success(value=0))
 
@@ -84,7 +175,11 @@ def use_server(server, port):
 
 def native_application(port):
     base = Fixture.application(port)
-    return A.include_router(base, "/api", base.routes)
+    mounted = A.include_router(base, "/api", base.routes)
+    return A.include_router(mounted, "", [Routing.route("GET", "/contract/request/{item:path}", metadata_application),
+                                         Routing.route("GET", "/contract/router/{item:path}", metadata_router),
+                                         Routing.route("GET", "/contract/response", manual_response),
+                                         Routing.route("GET", "/contract/limit", manual_validation)])
 
 
 def open_native(ports):
