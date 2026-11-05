@@ -63,11 +63,11 @@ const occurrences = (count: number): number[] =>
 
 /** Which project files perform each `Tensor` operation. */
 const TENSOR_PERFORMS: Record<string, string[]> = {
-  build: [MODEL, GENERATE],
+  build: [MODEL, GENERATE, TRAIN],
   get: [MODEL],
   length: [MODEL],
   zipWith: [MODEL, TRAIN],
-  reduce: [MODEL, GENERATE],
+  reduce: [MODEL],
   indexOf: [MODEL],
   matMul: [MODEL],
   fromList: [MODEL, TRAIN],
