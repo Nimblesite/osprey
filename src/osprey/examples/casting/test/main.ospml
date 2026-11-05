@@ -3,9 +3,7 @@
 // framework's resident start/dispatch boundary with host-shaped events, against an in-memory Cast
 // device: a handler for the port's `Wire` effect that reads every frame the sender writes and
 // answers as a Default Media Receiver does; receiver keys follow [CAST-MOBILE-RECEIVER-IDENTITY].
-
 import ui::Doc
-import ui::Requests
 import ui::Runtime
 import ui::Canvases
 import uitest::Drive
@@ -13,9 +11,6 @@ import uitest::Semantics
 import uitest::Views
 import casting::App
 import chromecast::Protocol
-
-// ---- the device ----
-
 (** The in-memory device: bytes queued for the sender, the message types it heard, its last read's status, its player, whether it can be reached, the folder a render makes ("" when the sender cannot render) and the content type the last LOAD named. *)
 type Fake =
     fakeInbox : string
@@ -33,40 +28,26 @@ type Fake =
     fakeClosed : int
     fakeCloseCode : int
     fakeStopped : int
-(** Changes the bench: the device, the driven session, the browse text the host returns, the last envelope, the appearance entry the host keeps and what the session asked for and wrote through; only these arms write the cells. *)
+(** Changes the bench: the device, the driven session, the browse text the host returns and the last envelope; only these arms write the cells. *)
 effect Bench
     rig : Fake => Unit
     drive : uitest::Driven<casting::Store> => Unit
     list : string => Unit
     envelope : string => Unit
-    saved : string => Unit
-    askedThese : List<ui::Request> => Unit
-    wroteThese : List<ui::SliceWrite> => Unit
 fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true, fakeRender = "", fakeLoaded = "", fakeClosed = 0, fakeCloseCode = 0, fakeStopped = 0)
 browse = "Living\\032Room\\032TV._googlecast._tcp SRV 0 0 8009 living-room.local. ;\nLiving\\032Room\\032TV._googlecast._tcp TXT \"id=1\" \"fn=Living Room TV\"\nKitchen._googlecast._tcp SRV 0 0 8009 kitchen.local. ;\nKitchen._googlecast._tcp TXT \"fn=Kitchen\"\n"
 mut fake = fresh ()
 mut envelope = ""
 mut browsed = browse
-// The host's appearance entry as the completion left it, and every request or slice the session asked for.
-mut saved = ""
-mut askedFor = []
-mut wroteThrough = []
 mut driven = Drive::idle (Runtime::idle (casting::Link::store (ui::MachineDocs::faulty "")))
 framed (ns, json) = Protocol::frame ("receiver-0", ns, json)
 queued (f, hex) = f(fakeInbox = "${f.fakeInbox}${hex}")
-
 mediaStatus f = "{\"type\":\"MEDIA_STATUS\",\"requestId\":0,\"status\":[{\"mediaSessionId\":1,\"playerState\":\"${f.fakePlaying}\"${ui::Pick::either (f.fakeReason == "", "", ",\"idleReason\":\"${f.fakeReason}\"")},\"currentTime\":${toString f.fakePosition},\"playbackRate\":${toString f.fakeRate},\"supportedMediaCommands\":15,\"media\":{\"duration\":200.0}}]}"
-
 receiverStatus f = "{\"type\":\"RECEIVER_STATUS\",\"requestId\":1,\"status\":{\"applications\":[{\"appId\":\"CC1AD845\",\"sessionId\":\"S-1\",\"transportId\":\"web-7\"}],\"volume\":{\"level\":${toString f.fakeVolume},\"muted\":false}}}"
-
-// The device moves to `next` and reports its media status.
 becomes (f, next) =
     moved = f(fakePlaying = next)
     queued (moved, framed ("media", mediaStatus moved))
-
-// One message the sender wrote, decoded once at the device's wire.
 said hex = Doc::parse (Protocol::parse (drop hex 8)).payload
-
 answer (f, message) = match Doc::text (message, "type")
     "LAUNCH" => queued (f, framed ("receiver", receiverStatus f))
     "LOAD" => becomes (becomes (f(fakeLoaded = Doc::text (Doc::field (message, "media"), "contentType")), "BUFFERING"), "PLAYING")
@@ -80,13 +61,9 @@ answer (f, message) = match Doc::text (message, "type")
     "STOP" => becomes (f(fakeReason = "CANCELLED"), "IDLE")
     "PING" => queued (f, framed ("tp.heartbeat", "{\"type\":\"PONG\"}"))
     _ => f
-
-// The device hears one frame the sender wrote and queues its answer.
 heard (f, hex) =
     message = said hex
     answer (f(fakeSaid = "${f.fakeSaid}${Doc::text (message, "type")} "), message)
-
-// Every `Wire` operation is answered by the device in the `fake` cell.
 onDevice work =
     handle chromecast::Wire::Wire
         dial _ _ _ => ui::Pick::either (fake.fakeReachable, 7, 0 - 4)
@@ -110,41 +87,28 @@ onDevice work =
         render _ => fake.fakeRender
         unrender _ => 0
     work ()
-
 (** The message types the sender wrote, space-separated, in order. *)
 heardTypes () = fake.fakeSaid
-
 reset () =
     perform Bench.rig (fresh ())
     perform Bench.list browse
-    perform Bench.saved ""
-    perform Bench.askedThese []
-    perform Bench.wroteThese []
     perform Bench.drive (Drive::idle driven.drivenSession)
-
 unplug () = perform Bench.rig (fake(fakeReachable = false))
-
 rendering folder = perform Bench.rig (fake(fakeRender = folder))
-
 finishTrack () = perform Bench.rig (becomes (fake(fakeReason = "FINISHED", fakePosition = 200.0), "IDLE"))
-
 browsing text = perform Bench.list text
-
-// ---- the session ----
-
 kept (resident : ui::Resident<casting::Store>) =
-    performed = perform Bench.drive (Drive::moved (driven, resident))
+    perform Bench.drive (Drive::moved (driven, resident))
     perform Bench.envelope resident.residentEnvelope
-    performed
-
-// Every host-side effect a session needs: the Cast device, host-held slices and the scene stream.
-hosted work =
+hostedIn saved work =
     handle ui::Slices
-        fetch _ => browsed
+        fetch key => match key == "casting.saved-skin"
+            true => saved
+            false => browsed
     handle ui::SceneStream
         shape _ => 0
     onDevice work
-
+hosted work = hostedIn "" work
 (** Runs one test body on the bench, whose arms are the only writers of the cells. *)
 bench work =
     handle Bench
@@ -152,137 +116,70 @@ bench work =
         drive d => driven := d
         list text => browsed := text
         envelope text => envelope := text
-        saved text => saved := text
-        askedThese requests => askedFor := listConcat askedFor requests
-        wroteThese writes => wroteThrough := listConcat wroteThrough writes
     Runtime::guarded work
-
-// The first envelope of a launch from `document`: the step and the theme are prepared once, from the same store.
-began document =
+beganIn saved document =
     reset ()
-    hosted (\() => keptAsking (App::begun document))
-
-// Saves the machine's unanswered requests and the slices the envelope wrote, after the envelope is produced.
-keptAsking (resident : ui::Resident<casting::Store>) =
-    stayed = kept resident
-    perform Bench.askedThese ((stayed.residentSession.sessionStore.screen.screenMachine).asks)
-    perform Bench.wroteThese (mapList (Doc::items (Doc::field (Doc::parse stayed.residentEnvelope, "slices")), \slice => Requests::write (Doc::text (slice, "key"), Doc::text (slice, "text"))))
-    stayed
+    hostedIn saved (\() => kept (App::begun document))
+began document = beganIn "" document
 started () = began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}"
-
 // The canvas session: the Sherbet artboard, driven only by pointer events ([UI-MACHINE-CANVAS]).
 drawn () = began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"sherbet\"]}"
-
-// The light token from the latest themed root patch or startup theme, or "missing".
 themeOf doc = match listGet (Doc::items (Doc::field (doc, "patches"))) 0
     Success patch => match Doc::text (Doc::field (patch, "node"), "kind") == "themed"
         true => Doc::field (Doc::field (patch, "node"), "theme")
         false => Doc::field (doc, "theme")
     Error _ => Doc::field (doc, "theme")
-
 token name = match listGet (filterList (Doc::items (Doc::field (themeOf (Doc::parse envelope), "tokens")), \t => Doc::text (t, "name") == name)) 0
     Success found => Doc::text (found, "light")
     Error _ => "missing"
-
-post event = hosted (\() => keptAsking (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
-
+post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
+completedIn (saved, ticket, ok, problem) =
+    hostedIn saved (\() => kept (Runtime::proceed (driven.drivenSession, "{\"kind\":\"completed\",\"ticket\":\"${ticket}\",\"ok\":${toString ok},\"error\":\"${problem}\",\"now\":3}", App::update, App::regions)))
 // ---- the appearance the host keeps between runs [CAST-MOBILE-SKIN-PERSISTENCE] ----
-
-// What the next session's read finds in the host's entry; "" is a first run, with no entry at all.
-remembered text = perform Bench.saved text
-
-// A completion tagged `ticket`, failing with `problem` when `ok` is false.
-completedWith (ticket, ok, problem) = post "{\"kind\":\"completed\",\"ticket\":\"${ticket}\",\"ok\":${toString ok},\"error\":\"${problem}\",\"now\":3}"
-
-// The ticket of the request the machine is still waiting on, "" once every request is answered.
-waitingTicket () = match listGet driven.drivenSession.sessionStore.screen.screenMachine.asks 0
-    Success ask => ask.askName
-    Error _ => ""
-
-// The request made under `ticket`, encoded, or the empty document when it is already answered.
-requestOf ticket = listGet (filterList (mapList (driven.drivenSession.sessionStore.screen.screenMachine.asks, \ask => Requests::encode ask), \doc => Doc::text (doc, "ticket") == ticket)) 0 ?: JsonNull
-
-askedKind ticket = Doc::text (requestOf ticket, "kind")
-
-askedSlice ticket = Doc::text (requestOf ticket, "slice")
-
-askedName ticket = Doc::text (requestOf ticket, "name")
-
-askedLimit ticket = Doc::number (requestOf ticket, "limit")
-
-// The text the host holds under `key` from the latest envelope's slice writes.
-written key = length (filterList wroteThrough (\write => write.sliceKey == key)) > 0
-wroteLast key = (listGet (filterList wroteThrough (\write => write.sliceKey == key)) 0 ?: Requests::write (key, "")).sliceText
-
-// Whether the session told the host of a problem the interface cannot show yet: the entry it publishes is not the skin it kept.
-reported () = written "casting.appearance-warning"
-
+slicesHere () = Doc::items (Doc::field (Doc::parse envelope, "slices"))
+requestsHere () = Doc::items (Doc::field (Doc::parse envelope, "requests"))
+ask ticket = listGet (filterList (requestsHere (), \r => Doc::text (r, "ticket") == ticket)) 0 ?: JsonNull
+askedKind ticket = Doc::text (ask ticket, "kind")
+askedName ticket = Doc::text (ask ticket, "name")
+askedLimit ticket = Doc::number (ask ticket, "limit")
+askedSlice ticket = Doc::text (ask ticket, "slice")
+staged key = Doc::text ((listGet (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) 0 ?: JsonNull), "text")
+hasSlice key = length (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) > 0
+skinNow () = ui::Machines::text (driven.drivenSession.sessionStore.screen.screenMachine, "skin")
 // A Windows launch, whose host names its own browse helper with `--browse` ([CAST-DESIGN-NATIVE]).
 helped () = began "{\"now\":1,\"offset\":0,\"platform\":\"windows\",\"arguments\":[\"--skin\",\"midnight\",\"--browse\",\"C:/Apps/casting/cast-browse.exe\"]}"
-
-// ---- reading the rendered view ----
-
 seen () = driven.drivenSeen
-
 shows label = Drive::shows (driven, label)
-
 control label = Views::control (seen (), label)
-
 enabledOf label = (control label).controlEnabled
-
 selected label = (control label).controlSelected
-
 requested kind = Views::requested (seen (), kind)
-
-// The executable and arguments the device browse runs, space-separated.
 browser () = match driven.drivenSession.sessionStore.finder
     ui::Run executable arguments _ _ _ _ => join (listConcat [executable] arguments) " "
     _ => ""
-
 // ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
-
 (** Every accessible element's label, in hit order, `|`-separated. *)
 elements () = (seen ()).renderedAccess
-
 labels () = Semantics::labels (elements ())
-
 element label = Semantics::element (elements (), label)
-
 valueOf label = Semantics::value (elements (), label)
-
 offers label = Drive::offers (elements (), label)
-
 letters text = Drive::letters (driven, text)
-
-// ---- host events ----
-
 press label = post (Drive::press (driven, label))
-
 choose (label, key) = post (Drive::choose (driven, label, key))
-
 pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
-
-// A click at `fraction` across the element labelled `label`, as a pointer or a screen reader would.
 tapAt (label, fraction) =
     p = Semantics::point (element label, fraction)
     pointer (p.pointX, p.pointY, true)
     pointer (p.pointX, p.pointY, false)
-
 tap label = tapAt (label, 0.5)
-
-// The pointer passing over the element labelled `label` with no button down, as a hover.
 hover label =
     p = Semantics::point (element label, 0.5)
     pointer (p.pointX, p.pointY, false)
-
 opened path = post (Drive::opened (driven, path))
-
 frame seconds = post (Drive::frame (driven, seconds))
-
 discovered () = post (Drive::ran (driven, "discover", 0, ""))
-
 picked path = post (Drive::chosen (driven, "choose", path))
-
 test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay", \() => bench (\() =>
     started ()
     expect (shows "Looking for TVs…", true)
@@ -391,73 +288,59 @@ test ("skins change the palette, never the controls", \() => bench (\() =>
     tap "Appearance: Sherbet Signal"
     expect (labels (), "Sherbet Signal|Midnight Mint|Poolside Pop|Receiver: none|Play|Open file…")
     tap "Midnight Mint"
-    expect (token "background", "#10192B")
-    // A launch with no skin reads the saved one; an entry the host cannot find is a first run and says nothing.
-    remembered ""
-    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    expect (token "background", "#FFF8EF")
-    expect (waitingTicket (), "appearance:read")
+    expect (token "background", "#10192B")))
+test ("the appearance the host keeps is read, restored, repaired and never overwritten by a stale read", \() => bench (\() =>
+    beganIn "" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
     expect (askedKind "appearance:read", "store-read")
-    expect (askedSlice "appearance:read", "casting.saved-skin")
     expect (askedName "appearance:read", "casting-appearance.txt")
     expect (askedLimit "appearance:read", 128)
-    completedWith ("appearance:read", false, "no such store entry casting-appearance.txt")
-    expect (token "background", "#FFF8EF")
-    expect (reported (), false)
-    expect (waitingTicket (), "")
-    // A saved skin comes back, and is written through once, as the skin already being the saved one.
-    remembered "poolside"
-    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    completedWith ("appearance:read", true, "")
-    expect (token "background", "#D9EEFF")
-    expect (waitingTicket (), "appearance:write")
+    expect (askedSlice "appearance:read", "casting.saved-skin")
+    completedIn ("", "appearance:read", false, "no such store entry casting-appearance.txt")
+    expect (staged "casting.selected-skin", "sherbet")
+    expect (hasSlice "casting.appearance-warning", false)
+    beganIn "poolside" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("poolside", "appearance:read", true, "")
+    expect (skinNow (), "poolside")
     expect (askedKind "appearance:write", "store-write")
     expect (askedName "appearance:write", "casting-appearance.txt")
     expect (askedSlice "appearance:write", "casting.selected-skin")
-    expect (wroteLast "casting.selected-skin", "poolside")
-    expect (reported (), false)
-    completedWith ("appearance:write", true, "")
-    expect (token "background", "#D9EEFF")
-    // `--skin` wins over the entry, and is what gets saved.
-    remembered "poolside"
-    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}"
-    completedWith ("appearance:read", true, "")
-    expect (token "background", "#10192B")
-    expect (wroteLast "casting.selected-skin", "midnight")
-    // A choice made before the entry arrives is never overwritten by it.
-    remembered "poolside"
+    expect (staged "casting.selected-skin", "poolside")
+    expect (hasSlice "casting.appearance-warning", false)
+    completedIn ("poolside", "appearance:write", false, "permission denied")
+    expect (skinNow (), "poolside")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (staged "casting.appearance-error", "permission denied")
+    expect (askedKind "appearance:write", "")
+    beganIn "neon" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("neon", "appearance:read", true, "")
+    expect (skinNow (), "sherbet")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (staged "casting.selected-skin", "sherbet")
     began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    choose ("Skin", "sherbet")
-    expect (token "background", "#FFF8EF")
-    completedWith ("appearance:read", true, "")
-    expect (token "background", "#FFF8EF")
-    expect (wroteLast "casting.selected-skin", "sherbet")
-    // An unknown or empty entry keeps the default look, and is not a failure of the host's store.
-    remembered "neon"
+    completedIn ("", "appearance:read", true, "")
+    expect (skinNow (), "sherbet")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (staged "casting.selected-skin", "sherbet")
+    beganIn "poolside" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("poolside", "appearance:read", false, "store entry casting-appearance.txt exceeds limit 128")
+    expect (skinNow (), "sherbet")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (hasSlice "casting.appearance-error", true)
+    expect (hasSlice "casting.selected-skin", false)
+    expect (askedKind "appearance:write", "")
+    beganIn "poolside" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}"
+    expect (askedKind "appearance:read", "")
+    expect (staged "casting.selected-skin", "midnight")
+    completedIn ("poolside", "appearance:read", true, "")
+    expect (skinNow (), "midnight")
+    expect (hasSlice "casting.appearance-warning", false)
     began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    completedWith ("appearance:read", true, "")
-    expect (token "background", "#FFF8EF")
-    expect (reported (), false)
-    remembered ""
-    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    completedWith ("appearance:read", true, "")
-    expect (token "background", "#FFF8EF")
-    expect (wroteLast "casting.selected-skin", "sherbet")
-    // A refused read is reported to the host, who may not yet show it, rather than passing as a first run.
-    remembered "poolside"
-    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    completedWith ("appearance:read", false, "store entry casting-appearance.txt exceeds limit 128")
-    expect (token "background", "#FFF8EF")
-    expect (reported (), true)
-    expect (wroteLast "casting.selected-skin", "sherbet")
-    // A refused write is reported too, and the skin the entry already held still shows.
-    remembered "poolside"
-    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
-    completedWith ("appearance:read", true, "")
-    completedWith ("appearance:write", false, "store operation failed: permission denied")
-    expect (token "background", "#D9EEFF")
-    expect (reported (), true)
-    expect (waitingTicket (), "")))
+    tap "Appearance: Sherbet Signal"
+    tap "Sherbet Signal"
+    expect (staged "casting.selected-skin", "sherbet")
+    completedIn ("poolside", "appearance:read", true, "")
+    expect (skinNow (), "sherbet")
+    expect (askedKind "appearance:write", "")))
 test ("no TVs found offers another search, and an unreachable TV shows why", \() => bench (\() =>
     started ()
     browsing ""
@@ -585,7 +468,6 @@ test ("the player's accessibility tree reads clearly to an agent while it search
     expect (letters "No TVs found", false)
     expect (offers "Receiver: Living Room TV", true)
     expect (Semantics::unclear (elements ()), "")))
-
 // [CAST-MOBILE-DELIVERY] A native shell can be closed during launch or playback.
 test ("closing the native shell releases its connection and media server exactly once", \() => bench (\() =>
     started ()

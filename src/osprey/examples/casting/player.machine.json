@@ -7,7 +7,7 @@
    "value": "sherbet"
   },
   "skinReturned": {
-   "type": "text"
+   "type": "bool"
   },
   "skins": {
    "type": "list",
