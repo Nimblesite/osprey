@@ -33,7 +33,8 @@ def archive(name="fixture-1.0/Cargo.toml", content=b'license = "MIT"\nold\n'):
 
 
 def make_commands(target):
-    makefile = (source.HERE.parents[3] / "Makefile").read_text()
+    root = source.HERE.parents[3]
+    makefile = "\n".join(path.read_text() for path in [root / "Makefile", *sorted(root.glob("scripts/make/*.mk"))])
     recipe = makefile.split("\n" + target + ":", 1)[1].split("\n\n", 1)[0]
     return [line.strip() for line in recipe.splitlines()[1:] if line.startswith("\t")]
 
