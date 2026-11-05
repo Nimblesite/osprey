@@ -1310,6 +1310,9 @@ jobs:
 
       - name: Host tests and the self-test against goldens
         id: agent-check
+        env:
+          # The hosted macOS renderer and local Retina captures rasterize text differently.
+          OSPREY_AGENT_GOLDENS: ${{ github.workspace }}/src/osprey/examples/agent/goldens/macos-26-ci
         run: |
           make _runtime
           OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make -C src/toolchain/targets/macos/tests agent-headless
