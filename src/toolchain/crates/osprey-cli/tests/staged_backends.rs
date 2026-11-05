@@ -156,39 +156,13 @@ print("${done}")
 /// A static arm may forward the model's callback into a kernel, so the callback
 /// is judged where it lands: one that performs a dynamic effect is rejected by
 /// the row it would need, exactly as an inline kernel is ([GPU-KERNEL-PURE]).
-const FORWARDED_DYNAMIC_KERNEL: &str = r#"
-static effect Build { build: fn(int, fn(int) -> float) -> GpuBuffer<float> }
-effect Log { write: fn(string) -> Unit }
-fn loud(i) = {
-    perform Log.write("saw ${i}")
-    toFloat(i)
-}
-fn twice(n) = perform Build.build(n, loud)
-let out = {
-    handle Log { write m => print(m) }
-    handle static Build { build n f => toGpu(range(0, n)) |> gpuMap(f) }
-    twice(3)
-}
-print("${gpuGet(out, 2) ?: 0.0}")
-"#;
+const FORWARDED_DYNAMIC_KERNEL: &str = include_str!(
+    "../../../../osprey/examples/failscompilation/staged_forwarded_kernel_dynamic.ospo"
+);
 
-const FORWARDED_DYNAMIC_KERNEL_ML: &str = r#"
-static effect Build
-    build : (int, (int) -> float) => GpuBuffer<float>
-effect Log
-    write : string => Unit
-loud i =
-    perform Log.write "saw ${i}"
-    toFloat i
-twice n = perform Build.build n loud
-out =
-    handle Log
-        write m => print m
-    handle static Build
-        build n f => toGpu (range (0, n)) |> gpuMap f
-    twice 3
-print "${gpuGet out 2 ?: 0.0}"
-"#;
+const FORWARDED_DYNAMIC_KERNEL_ML: &str = include_str!(
+    "../../../../osprey/examples/failscompilation/ml_staged_forwarded_kernel_dynamic.ospo"
+);
 
 const KERNEL_REJECTION: &str =
     "kernel body is not stage-legal; it requires dynamic effects: Log.write";
