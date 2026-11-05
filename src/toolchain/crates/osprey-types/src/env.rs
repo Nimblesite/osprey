@@ -437,6 +437,7 @@ pub(crate) mod tests {
     fn deep_nesting_flattens_without_changing_what_a_scope_sees() {
         let mut env = TypeEnv::new();
         env.insert("base", Scheme::mono(Type::int()));
+        let snapshot = env.clone();
         for depth in 0..(MAX_DEPTH * 2) {
             env = env.child();
             env.insert(format!("v{depth}"), Scheme::mono(Type::bool()));
@@ -444,6 +445,11 @@ pub(crate) mod tests {
         assert!(env.depth <= MAX_DEPTH + 1);
         assert!(env.get("base").is_some() && env.get("v0").is_some());
         assert_eq!(env.bound_names().len(), MAX_DEPTH * 2 + 1);
+        assert!(
+            matches!((snapshot.get("base"), env.get("base")), (Some(before), Some(after))
+                if std::ptr::eq(before, after)),
+            "flattening must share immutable schemes instead of cloning their full type trees"
+        );
     }
 
     #[test]
