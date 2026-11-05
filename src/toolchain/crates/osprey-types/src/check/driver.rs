@@ -2,8 +2,8 @@
 use crate::effect_rows::LibraryExports;
 
 use super::{
-    base_env, effect_instances, publish_program, refine_handler_arguments, Checker, Program,
-    TypeError,
+    base_env, effect_instances, has_open_handlers, publish_program, refine_handler_arguments,
+    Checker, Program, TypeError,
 };
 
 // Whole-program effect proofs run, counted so the build path can assert it
@@ -157,6 +157,25 @@ pub(crate) fn infer_annotation_candidate(
     program: &Program,
 ) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
     infer_checked_with_rejection(program, true)
+}
+
+/// One annotation-search trial: inference alone, and whether any handler's
+/// arguments are left for the skipped effect proof to refine. The search proves
+/// what it selects with [`infer_annotation_candidate`].
+pub(crate) fn infer_annotation_trial(
+    program: &Program,
+) -> Result<(crate::info::ProgramTypes, bool), Vec<TypeError>> {
+    let program = crate::prelude::with_prelude(program);
+    let mut checker = inferred_data_contracts(&program, false);
+    checker.resolve_field_uses();
+    if checker.errors.is_empty() {
+        finish_data_contracts(&mut checker, &program);
+    }
+    if !checker.errors.is_empty() {
+        return Err(distinct(checker.errors));
+    }
+    let open = has_open_handlers(&mut checker);
+    Ok((publish_program(&program, checker, false), open))
 }
 
 fn infer_checked_with_rejection(

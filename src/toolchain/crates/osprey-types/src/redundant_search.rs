@@ -15,7 +15,7 @@ use crate::redundant_sites::Site;
 
 // Each proof owns a complete AST and inference state. Bound their simultaneous
 // working sets independently of the source-order search window.
-const MAX_PROOF_WORKERS: usize = 4;
+pub(super) const MAX_PROOF_WORKERS: usize = 4;
 // Below this size, prefix-inclusive singles are cheaper than isolated filtering.
 const DIRECT_PROOF_WINDOW: usize = 4;
 // Alternating required/redundant sites must not repeatedly trigger recovery.

@@ -72,6 +72,18 @@ pub(crate) struct Site {
     pub(crate) position: Option<Position>,
 }
 
+impl Slot {
+    /// The function this annotation is written on, when it is on a signature.
+    pub(crate) fn owner(&self) -> Option<&str> {
+        match self {
+            Self::Signature { owner } | Self::Param { owner, .. } | Self::Return { owner } => {
+                Some(owner)
+            }
+            Self::Binding { .. } => None,
+        }
+    }
+}
+
 /// The callback every traversal function here threads through the tree: it
 /// receives each annotation slot and the annotation itself, by unique
 /// reference so a driver can clear it in place.

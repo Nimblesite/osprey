@@ -26,6 +26,10 @@ impl<'a> Proofs<'a> {
         }
     }
 
+    pub(super) fn program(&self) -> &'a Program {
+        self.program
+    }
+
     pub(super) fn keeps(&self, written: &[Site], chosen: &[usize]) -> bool {
         let members = member_key(written, chosen);
         let compute = || super::preserves(self.program, self.baseline, &members);
@@ -47,7 +51,7 @@ impl<'a> Proofs<'a> {
 
 // Site subsets are reindexed during prefiltering; only original member IDs
 // identify the erased program. Exact vector equality also guards hash collisions.
-fn member_key(written: &[Site], chosen: &[usize]) -> Vec<usize> {
+pub(super) fn member_key(written: &[Site], chosen: &[usize]) -> Vec<usize> {
     let mut members: Vec<_> = chosen
         .iter()
         .filter_map(|index| written.get(*index))

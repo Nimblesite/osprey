@@ -5,6 +5,15 @@ use super::{type_is_resolved, Checker};
 /// operations its body requires, including requirements behind function calls.
 /// Only one candidate may refine it; incompatible instantiations stay
 /// distinct and the ordinary discharge proof rejects the remaining operation.
+/// Whether any handler still has arguments [`refine_handler_arguments`] could bind.
+pub(super) fn has_open_handlers(checker: &mut Checker) -> bool {
+    checker.handler_tys.clone().iter().any(|(_, arguments, _)| {
+        arguments
+            .iter()
+            .any(|ty| !type_is_resolved(&checker.ctx.apply(ty)))
+    })
+}
+
 pub(super) fn refine_handler_arguments(
     checker: &mut Checker,
     instances: &crate::effect_rows::Instances,

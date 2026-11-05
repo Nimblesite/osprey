@@ -11,10 +11,12 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use osprey_ast::{Position, Program};
 
-use crate::check::infer_annotation_candidate;
+use crate::check::{infer_annotation_candidate, infer_annotation_trial};
 use crate::redundant_sites::{erase, sites, Site, Slot};
 use crate::ty::{Type, VarId};
 
+#[path = "redundant_blame.rs"]
+mod blame;
 #[cfg(test)]
 #[path = "redundant_cost_tests.rs"]
 mod cost_tests;
@@ -94,6 +96,13 @@ pub(crate) struct Snapshot {
     methods: crate::methods::Targets,
 }
 
+/// One search trial: the solved types, before any effect proof.
+struct Tried {
+    snapshot: Snapshot,
+    /// Handler arguments only the effect proof could still refine.
+    open_handlers: bool,
+}
+
 /// Every redundant annotation in `program`, in source order.
 ///
 /// An ill-typed program yields none: its inferred types are the checker's
@@ -153,13 +162,11 @@ pub fn redundant_annotation_sites_for(
     let Some(baseline) = published(program) else {
         return Vec::new();
     };
-    let all: Vec<usize> = (0..written.len()).collect();
     let proofs = Proofs::new(program, &baseline);
-    let removable = if proofs.keeps(&written, &all) {
-        all
-    } else {
+    let removable = blame::directed(&proofs, &written).unwrap_or_else(|| {
+        let all: Vec<usize> = (0..written.len()).collect();
         search::accumulate_with(&proofs, &written, &all, ANNOTATION_SEARCH_WINDOW)
-    };
+    });
     removable
         .iter()
         .filter_map(|index| written.get(*index))
@@ -210,7 +217,21 @@ fn judges() -> usize {
 pub(crate) fn published(program: &Program) -> Option<Snapshot> {
     #[cfg(test)]
     let _proof = cost_tests::record(program);
-    let types = infer_annotation_candidate(program).ok()?;
+    infer_annotation_candidate(program).ok().map(snapshot)
+}
+
+/// The solved types without the effect proof, or the errors that stopped them.
+fn tried(program: &Program) -> Result<Tried, Vec<crate::TypeError>> {
+    #[cfg(test)]
+    let _proof = cost_tests::record(program);
+    let (types, open_handlers) = infer_annotation_trial(program)?;
+    Ok(Tried {
+        snapshot: snapshot(types),
+        open_handlers,
+    })
+}
+
+fn snapshot(types: crate::info::ProgramTypes) -> Snapshot {
     let functions = types.functions.iter().map(|(name, (params, ret))| {
         let signature = Type::Fun {
             params: params.clone(),
@@ -246,7 +267,7 @@ pub(crate) fn published(program: &Program) -> Option<Snapshot> {
     for (position, site) in &types.performs {
         publish_operation(
             &mut published,
-            &format!("perform {position:?}"),
+            &format!("perform {}:{}", position.0, position.1),
             &site.op,
             &site.effect_args,
         );
@@ -255,16 +276,16 @@ pub(crate) fn published(program: &Program) -> Option<Snapshot> {
         for (operation, op) in &site.ops {
             publish_operation(
                 &mut published,
-                &format!("handler {position:?} {operation}"),
+                &format!("handler {}:{} {operation}", position.0, position.1),
                 op,
                 &site.effect_args,
             );
         }
     }
-    Some(Snapshot {
+    Snapshot {
         types: published,
         methods: types.methods,
-    })
+    }
 }
 
 /// A callback rewrite deletes only its wrapper lambdas. Other inferred sites,

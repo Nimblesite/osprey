@@ -18,6 +18,8 @@ static FLIGHT_CALLS: AtomicUsize = AtomicUsize::new(0);
 static DENSE_CALLS: AtomicUsize = AtomicUsize::new(0);
 const SPACED_SENTINEL: &str = "annotation_spaced_cost_sentinel";
 static SPACED_CALLS: AtomicUsize = AtomicUsize::new(0);
+const BLAME_SENTINEL: &str = "annotation_blame_sentinel";
+static BLAME_CALLS: AtomicUsize = AtomicUsize::new(0);
 static ACTIVE: AtomicUsize = AtomicUsize::new(0);
 static PEAK: AtomicUsize = AtomicUsize::new(0);
 type CostExample = (String, usize, Vec<usize>);
@@ -39,6 +41,7 @@ fn count_calls(program: &Program) {
         (FLIGHT_SENTINEL, &FLIGHT_CALLS),
         (DENSE_SENTINEL, &DENSE_CALLS),
         (SPACED_SENTINEL, &SPACED_CALLS),
+        (BLAME_SENTINEL, &BLAME_CALLS),
     ] {
         if contains_marker(program, marker) {
             let _previous = calls.fetch_add(1, Ordering::Relaxed);
@@ -391,6 +394,37 @@ fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), 
     }
     for required in [8, 16] {
         assert_dense_prefix_cost(required)?;
+    }
+    Ok(())
+}
+
+/// [TYPE-ANNOTATION-REDUNDANT] A failed solve names what changed, so proof work
+/// follows the annotations at fault and not the number of annotations written.
+#[test]
+fn proof_work_follows_the_annotations_at_fault_not_the_annotations_written(
+) -> Result<(), std::fmt::Error> {
+    for required in [1, 2, 4, 8, 16, 32] {
+        let source =
+            (0..required).try_fold(format!("fn {BLAME_SENTINEL}() = 0\n"), |mut text, group| {
+                writeln!(text, "fn required{group}(x: int) = 0")?;
+                for item in 0..3 {
+                    writeln!(text, "fn kept{group}_{item}() -> string = \"hi\"")?;
+                }
+                Ok(text)
+            })?;
+        let program = program(&source);
+        let written = crate::redundant_sites::sites(&program);
+        assert_eq!(written.len(), required * 4);
+        let expected: Vec<_> = (0..written.len()).filter(|i| i % 4 != 0).collect();
+        BLAME_CALLS.store(0, Ordering::Relaxed);
+        assert_default_sites(&program, &written, &expected);
+        let calls = BLAME_CALLS.load(Ordering::Relaxed);
+        assert!(
+            calls <= required + 6,
+            "{required} necessary of {} sites: {calls} solves exceeds {}",
+            written.len(),
+            required + 6
+        );
     }
     Ok(())
 }
