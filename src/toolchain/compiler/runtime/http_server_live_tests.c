@@ -16,13 +16,15 @@
 
 static int64_t g_self_stop_server = -1;
 
-// Connects to the live listener, writes `request` verbatim, and returns the
-// whole reply. The server sets Connection: close, so read-to-EOF is the reply.
-static void server_exchange(const char *request, char *reply, size_t capacity) {
+// Raw-client helpers shared with http_server_closure_tests.c, which drives its
+// own listeners on other ports. This one connects to a live listener on `port`,
+// retrying while the listener fiber binds; every reply sets Connection: close,
+// so read-to-EOF is the whole reply.
+int server_test_connect(int port) {
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(SERVER_TEST_PORT);
+  addr.sin_port = htons(port);
   addr.sin_addr.s_addr = inet_addr("127.0.0.1");
   int fd = -1;
   for (int i = 0; i < 100 && fd < 0; i++) {
@@ -35,6 +37,26 @@ static void server_exchange(const char *request, char *reply, size_t capacity) {
     }
   }
   assert(fd >= 0);
+  return fd;
+}
+
+// Reads `fd` to EOF, or until the reply buffer is full.
+void server_test_read_to_eof(int fd, char *out, size_t capacity) {
+  size_t len = 0;
+  while (len + 1 < capacity) {
+    ssize_t n = recv(fd, out + len, capacity - 1 - len, 0);
+    if (n <= 0) {
+      break;
+    }
+    len += (size_t)n;
+  }
+  out[len] = '\0';
+}
+
+// Writes `request` verbatim to the listener on `port` and captures the reply.
+void server_test_exchange(int port, const char *request, char *reply,
+                          size_t capacity) {
+  int fd = server_test_connect(port);
   struct timeval tv = {10, 0};
   assert(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
   size_t total = strlen(request);
@@ -44,16 +66,14 @@ static void server_exchange(const char *request, char *reply, size_t capacity) {
     assert(n > 0);
     sent += (size_t)n;
   }
-  size_t len = 0;
-  while (len + 1 < capacity) {
-    ssize_t n = recv(fd, reply + len, capacity - 1 - len, 0);
-    if (n <= 0) {
-      break;
-    }
-    len += (size_t)n;
-  }
-  reply[len] = '\0';
+  server_test_read_to_eof(fd, reply, capacity);
   close(fd);
+}
+
+// One exchange with the shared live test server.
+static void server_exchange(const char *request, char *reply,
+                            size_t capacity) {
+  server_test_exchange(SERVER_TEST_PORT, request, reply, capacity);
 }
 
 static HttpResponse g_server_test_response;

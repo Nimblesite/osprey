@@ -1,3 +1,8 @@
+/// [FAILURE-EXPLICIT] A checked stage preserves the first failure unchanged.
+fn andThen(result, next) = match result {
+    Success { value } => next(value)
+    Error { message } => Error { message: message }
+}
 /// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
 fn gpuSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
@@ -80,20 +85,29 @@ fn stir(x) = (x * 1.0001 + 0.5) * 0.9999
 fn headBig(x) = match x == 0.0 { true => hugeFloat() false => 1.0 }
 fn tailBig(x) = match x == 1000.0 { true => hugeFloat() false => 1.0 }
 /// simulate and mix rerun a kernel over the whole buffer n times — the allocation churn a profiler should see — while rebuild sends the buffer back to the host and in
-/// again every pass, so each round trip is a fresh dense copy of its own output. The annotations are load-bearing: recursion needs a real emitted definition.
+/// again every pass, so each round trip is a fresh dense copy of its own output. Every recursive pass retains the original allocation or readback Error.
 fn simulate(buf, n) = match n {
-    0 => buf
-    _ => simulate(buf |> gpuMap(bump), (n - 1) )
+    0 => Success { value: buf }
+    _ => match gpuMap(buf, bump) {
+        Success { value } => simulate(value, n - 1)
+        Error { message } => Error { message: message }
+    }
 }
 fn mix(buf, n) = match n {
-    0 => buf
-    _ => mix(buf |> gpuMap(stir), (n - 1) )
+    0 => Success { value: buf }
+    _ => match gpuMap(buf, stir) {
+        Success { value } => mix(value, n - 1)
+        Error { message } => Error { message: message }
+    }
 }
 fn rebuild(buf, n) = match n {
     0 => Success { value: buf }
-    _ => match fromGpu(buf |> gpuMap(bump)) {
-        Success { value } => match toGpu(value) {
-            Success { value } => rebuild(value, n - 1)
+    _ => match gpuMap(buf, bump) {
+        Success { value } => match fromGpu(value) {
+            Success { value } => match toGpu(value) {
+                Success { value } => rebuild(value, n - 1)
+                Error { message } => Error { message: message }
+            }
             Error { message } => Error { message: message }
         }
         Error { message } => Error { message: message }
@@ -102,204 +116,235 @@ fn rebuild(buf, n) = match n {
 /// megaPipelineCase runs a million elements through map, fold, filter and scan.
 fn megaPipelineCase() = withIndices(1000000, fn(idx) => megaPipelineWith(idx))
 fn megaPipelineWith(idx) = {
-    let squares = idx |> gpuMap(square)
-    let evens = idx |> gpuFilter(isEven)
-    let running = idx |> gpuScan(0, tally)
-    checkAll("million-element pipeline", [
-            (squares |> gpuFold(0, tally)) == 333332833333500000, (idx |> gpuFold(0, tally)) == 499999500000, gpuLength(idx) == 1000000, gpuLength(squares) == 1000000,
-            (gpuGet(idx, 0) ?: -1) == 0, (gpuGet(idx, 999999) ?: -1) == 999999, (gpuGet(idx, 1000000) ?: -1) == -1, (gpuGet(squares, 999999) ?: -1) == 999998000001,
-            gpuLength(evens) == 500000, (evens |> gpuFold(0, tally)) == 249999500000, (gpuGet(evens, 499999) ?: -1) == 999998, gpuLength(running) == 1000000,
-            (gpuGet(running, 0) ?: -1) == 0, (gpuGet(running, 1) ?: -1) == 1, (gpuGet(running, 999999) ?: -1) == 499999500000
-    ])
+    match gpuMap(idx, square) { Success { squares } => {
+            match gpuFilter(idx, isEven) { Success { evens } => {
+                    match gpuScan(idx, 0, tally) { Success { running } => {
+                            checkAll("million-element pipeline", [
+                                    gpuSatisfies(gpuFold(squares, 0, tally), fn(uploaded120) => (uploaded120) == 333332833333500000), gpuSatisfies(gpuFold(idx, 0, tally), fn(uploaded119) => (uploaded119) == 499999500000), gpuLength(idx) == 1000000, gpuLength(squares) == 1000000, (gpuGet(idx, 0) ?: -1) == 0,
+                                    (gpuGet(idx, 999999) ?: -1) == 999999, (gpuGet(idx, 1000000) ?: -1) == -1, (gpuGet(squares, 999999) ?: -1) == 999998000001, gpuLength(evens) == 500000, gpuSatisfies(gpuFold(evens, 0, tally), fn(uploaded118) => (uploaded118) == 249999500000), (gpuGet(evens, 499999) ?: -1) == 999998,
+                                    gpuLength(running) == 1000000, (gpuGet(running, 0) ?: -1) == 0, (gpuGet(running, 1) ?: -1) == 1, (gpuGet(running, 999999) ?: -1) == 499999500000
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// scanScaleCase reads a 100k prefix sum, a seeded scan and a scan of a scan.
 fn scanScaleCase() = withIndices(100000, fn(indices100000) => scanScaleWith(indices100000))
 fn scanScaleWith(indices100000) = {
-    let running = indices100000 |> gpuScan(0, tally)
-    let seeded = indices100000 |> gpuScan(1000, tally)
-    let twice = running |> gpuScan(0, tally)
-    checkAll("100k prefix scan", [
-            (gpuGet(running, 0) ?: -1) == 0, (gpuGet(running, 1) ?: -1) == 1, (gpuGet(running, 2) ?: -1) == 3, (gpuGet(running, 99999) ?: -1) == 4999950000,
-            gpuLength(running) == 100000, (gpuGet(seeded, 0) ?: -1) == 1000, (gpuGet(seeded, 99999) ?: -1) == 4999951000, gpuLength(seeded) == 100000,
-            (gpuGet(twice, 0) ?: -1) == 0, (gpuGet(twice, 2) ?: -1) == 4, (gpuGet(twice, 99999) ?: -1) == 166666666650000, (running |> gpuFold(0, minI)) == 0
-    ])
+    match gpuScan(indices100000, 0, tally) { Success { running } => {
+            match gpuScan(indices100000, 1000, tally) { Success { seeded } => {
+                    match gpuScan(running, 0, tally) { Success { twice } => {
+                            checkAll("100k prefix scan", [
+                                    (gpuGet(running, 0) ?: -1) == 0, (gpuGet(running, 1) ?: -1) == 1, (gpuGet(running, 2) ?: -1) == 3, (gpuGet(running, 99999) ?: -1) == 4999950000, gpuLength(running) == 100000, (gpuGet(seeded, 0) ?: -1) == 1000, (gpuGet(seeded, 99999) ?: -1) == 4999951000, gpuLength(seeded) == 100000,
+                                    (gpuGet(twice, 0) ?: -1) == 0, (gpuGet(twice, 2) ?: -1) == 4, (gpuGet(twice, 99999) ?: -1) == 166666666650000, gpuSatisfies(gpuFold(running, 0, minI), fn(uploaded114) => (uploaded114) == 0)
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// longChainCase runs sixteen climbs then sixteen descents, back to back.
 fn longChainCase() = withIndices(100000, fn(indices100000) => longChainWith(indices100000))
 fn longChainWith(indices100000) = {
-    let climbed = indices100000
-    |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
-    |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
-    |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
-    |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump) |> gpuMap(bump)
-    |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
-    |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
-    let cancelled = climbed
-    |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
-    |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower) |> gpuMap(lower)
-    checkAll("twenty-four chained passes", [
-            gpuLength(climbed) == 100000, (gpuGet(climbed, 0) ?: -1) == 8, (gpuGet(climbed, 99999) ?: -1) == 100007, (climbed |> gpuFold(0, tally)) == 5000750000,
-            gpuLength(cancelled) == 100000, (gpuGet(cancelled, 0) ?: -1) == 0, (gpuGet(cancelled, 99999) ?: -1) == 99999, (cancelled |> gpuFold(0, tally)) == 4999950000,
-            (cancelled |> gpuFilter(isEven) |> gpuFold(0, tally)) == 2499950000
-    ])
+    let climbResult = gpuMap(indices100000, bump) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump))
+    |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump))
+    |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump))
+    |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump))
+    |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
+    |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
+    match climbResult { Success { climbed } => {
+            let cancelResult = gpuMap(climbed, lower) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
+            |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
+            match cancelResult { Success { cancelled } => {
+                    checkAll("twenty-four chained passes", [
+                            gpuLength(climbed) == 100000, (gpuGet(climbed, 0) ?: -1) == 8, (gpuGet(climbed, 99999) ?: -1) == 100007, gpuSatisfies(gpuFold(climbed, 0, tally), fn(uploaded111) => (uploaded111) == 5000750000), gpuLength(cancelled) == 100000, (gpuGet(cancelled, 0) ?: -1) == 0, (gpuGet(cancelled, 99999) ?: -1) == 99999,
+                            gpuSatisfies(gpuFold(cancelled, 0, tally), fn(uploaded110) => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), fn(uploaded109) => gpuSatisfies(gpuFold(uploaded109, 0, tally), fn(uploaded144) => (uploaded144) == 2499950000))
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// rebuildCase rebuilds a buffer from its own materialized output six times.
 fn rebuildCase() = withIndices(20000, fn(indices20000) => withIndices(0, fn(indices0) => withIndices(1, fn(indices1) => rebuildWith(indices20000, indices0, indices1))))
 fn rebuildWith(indices20000, indices0, indices1) = {
-    match rebuild(indices20000, 6) { Success { value } => { let read0 = value
+    match rebuild(indices20000, 6) { Success { read0 } => {
             let settled = read0
-            match fromGpu(settled) { Success { value } => { let back = value
-                    match toGpu(back) { Success { value } => { let again = value
+            match fromGpu(settled) { Success { back } => {
+                    match toGpu(back) { Success { again } => {
                             checkAll("six host round trips", [
-                                    gpuLength(settled) == 20000, (gpuGet(settled, 0) ?: -1) == 6, (gpuGet(settled, 19999) ?: -1) == 20005, (settled |> gpuFold(0, tally)) == 200110000,
-                                    listLength(back) == 20000, (listGet(back, 0) ?: -1) == 6, (listGet(back, 19999) ?: -1) == 20005, gpuLength(again) == 20000,
-                                    (again |> gpuFold(0, tally)) == 200110000, (again |> gpuFilter(isEven) |> gpuFold(0, tally)) == 100050000,
-                                    gpuSatisfies(rebuild(indices0, 4), fn(checked0) => gpuLength(checked0) == 0),
-                                    gpuSatisfies(rebuild(indices1, 3), fn(checked0) => (checked0 |> gpuFold(0, tally)) == 3)
+                                    gpuLength(settled) == 20000, (gpuGet(settled, 0) ?: -1) == 6, (gpuGet(settled, 19999) ?: -1) == 20005, gpuSatisfies(gpuFold(settled, 0, tally), fn(uploaded108) => (uploaded108) == 200110000), listLength(back) == 20000, (listGet(back, 0) ?: -1) == 6, (listGet(back, 19999) ?: -1) == 20005,
+                                    gpuLength(again) == 20000, gpuSatisfies(gpuFold(again, 0, tally), fn(uploaded107) => (uploaded107) == 200110000), gpuSatisfies(gpuFilter(again, isEven), fn(uploaded106) => gpuSatisfies(gpuFold(uploaded106, 0, tally), fn(uploaded143) => (uploaded143) == 100050000)),
+                                    gpuSatisfies(rebuild(indices0, 4), fn(checked0) => gpuLength(checked0) == 0), gpuSatisfies(rebuild(indices1, 3), fn(checked0) => gpuSatisfies(gpuFold(checked0, 0, tally), fn(uploaded105) => (uploaded105) == 3))
                             ])
-                        } Error { message } => check("GPU allocation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
                 } Error { message } => check("GPU operation", "success", toString(message)) }
         } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// compactionScaleCase compacts 500k elements and then compacts that result.
 fn compactionScaleCase() = withIndices(500000, fn(src) => compactionScaleWith(src))
 fn compactionScaleWith(src) = {
-    let evens = src |> gpuFilter(isEven)
-    let quads = evens |> gpuFilter(isQuad)
-    checkAll("500k compaction", [
-            gpuLength(evens) == 250000, (evens |> gpuFold(0, tally)) == 62499750000, (gpuGet(evens, 0) ?: -1) == 0, (gpuGet(evens, 249999) ?: -1) == 499998,
-            (gpuGet(evens, 250000) ?: -1) == -1, gpuLength(quads) == 125000, (gpuGet(quads, 124999) ?: -1) == 499996, (quads |> gpuFold(0, tally)) == 31249750000,
-            gpuLength(src |> gpuFilter(isNeg)) == 0, gpuLength(src |> gpuFilter(isPos)) == 499999, (src |> gpuFilter(isPos) |> gpuFold(0, tally)) == 124999750000,
-            gpuLength(src |> gpuFilter(isPos) |> gpuFilter(isNeg)) == 0
-    ])
+    match gpuFilter(src, isEven) { Success { evens } => {
+            match gpuFilter(evens, isQuad) { Success { quads } => {
+                    checkAll("500k compaction", [
+                            gpuLength(evens) == 250000, gpuSatisfies(gpuFold(evens, 0, tally), fn(uploaded102) => (uploaded102) == 62499750000), (gpuGet(evens, 0) ?: -1) == 0, (gpuGet(evens, 249999) ?: -1) == 499998, (gpuGet(evens, 250000) ?: -1) == -1, gpuLength(quads) == 125000, (gpuGet(quads, 124999) ?: -1) == 499996,
+                            gpuSatisfies(gpuFold(quads, 0, tally), fn(uploaded101) => (uploaded101) == 31249750000), gpuSatisfies(gpuFilter(src, isNeg), fn(uploaded100) => gpuLength(uploaded100) == 0), gpuSatisfies(gpuFilter(src, isPos), fn(uploaded99) => gpuLength(uploaded99) == 499999),
+                            gpuSatisfies(gpuFilter(src, isPos), fn(uploaded98) => gpuSatisfies(gpuFold(uploaded98, 0, tally), fn(uploaded142) => (uploaded142) == 124999750000)), gpuSatisfies(gpuFilter(src, isPos), fn(uploaded97) => gpuSatisfies(gpuFilter(uploaded97, isNeg), fn(uploaded141) => gpuLength(uploaded141) == 0))
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// zipScaleCase multiplies 250k buffers, truncates ragged pairs and cancels.
 fn zipScaleCase() = withIndices(250000, fn(idx) => withIndices(1000000, fn(indices1000000) => withIndices(3, fn(indices3) => withIndices(0, fn(indices0) => zipScaleWith(idx, indices1000000, indices3, indices0)))))
 fn zipScaleWith(idx, indices1000000, indices3, indices0) = {
-    let squares = gpuZipWith(idx, idx, product)
-    let ragged = gpuZipWith(indices1000000, indices3, tally)
-    let cancel = gpuZipWith(idx, idx |> gpuMap(negate), tally)
-    checkAll("250k zip", [
-            (squares |> gpuFold(0, tally)) == 5208302083375000, gpuLength(squares) == 250000, (gpuGet(squares, 249999) ?: -1) == 62499500001, gpuLength(ragged) == 3,
-            (ragged |> gpuFold(0, tally)) == 6, gpuLength(gpuZipWith(indices3, indices1000000, tally)) == 3, gpuLength(gpuZipWith(idx, indices0, tally)) == 0,
-            gpuLength(cancel) == 250000, (cancel |> gpuFold(0, tally)) == 0, (gpuGet(cancel, 249999) ?: -1) == 0
-    ])
+    match gpuZipWith(idx, idx, product) { Success { squares } => {
+            match gpuZipWith(indices1000000, indices3, tally) { Success { ragged } => {
+                    match gpuMap(idx, negate) { Success { uploaded96 } => {
+                            match gpuZipWith(idx,uploaded96, tally) { Success { cancel } => {
+                                    checkAll("250k zip", [
+                                            gpuSatisfies(gpuFold(squares, 0, tally), fn(uploaded93) => (uploaded93) == 5208302083375000), gpuLength(squares) == 250000, (gpuGet(squares, 249999) ?: -1) == 62499500001, gpuLength(ragged) == 3, gpuSatisfies(gpuFold(ragged, 0, tally), fn(uploaded92) => (uploaded92) == 6),
+                                            gpuSatisfies(gpuZipWith(indices3, indices1000000, tally), fn(uploaded91) => gpuLength(uploaded91) == 3), gpuSatisfies(gpuZipWith(idx, indices0, tally), fn(uploaded90) => gpuLength(uploaded90) == 0), gpuLength(cancel) == 250000,
+                                            gpuSatisfies(gpuFold(cancel, 0, tally), fn(uploaded89) => (uploaded89) == 0), (gpuGet(cancel, 249999) ?: -1) == 0
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// simulationCase runs 500 whole-buffer passes over 10k elements, then splits the pass count in half without changing the answer.
 fn simulationCase() = withIndices(10000, fn(indices10000) => withIndices(0, fn(indices0) => withIndices(1, fn(indices1) => simulationWith(indices10000, indices0, indices1))))
 fn simulationWith(indices10000, indices0, indices1) = {
-    let settled = simulate(indices10000, 500)
-    let staged = simulate(simulate(indices10000, 250), 250)
-    checkAll("500-pass simulation", [
-            (settled |> gpuFold(0, tally)) == 54995000, gpuLength(settled) == 10000, (gpuGet(settled, 0) ?: -1) == 500, (gpuGet(settled, 9999) ?: -1) == 10499,
-            (staged |> gpuFold(0, tally)) == 54995000, (gpuGet(staged, 9999) ?: -1) == 10499, gpuLength(simulate(indices0, 100)) == 0,
-            (simulate(indices1, 7) |> gpuFold(0, tally)) == 7
-    ])
+    match simulate(indices10000, 500) { Success { settled } => {
+            match simulate(indices10000, 250) { Success { uploaded7 } => {
+                    match simulate(uploaded7, 250) { Success { staged } => {
+                            checkAll("500-pass simulation", [
+                                    gpuSatisfies(gpuFold(settled, 0, tally), fn(uploaded88) => (uploaded88) == 54995000), gpuLength(settled) == 10000, (gpuGet(settled, 0) ?: -1) == 500, (gpuGet(settled, 9999) ?: -1) == 10499, gpuSatisfies(gpuFold(staged, 0, tally), fn(uploaded87) => (uploaded87) == 54995000),
+                                    (gpuGet(staged, 9999) ?: -1) == 10499, gpuSatisfies(simulate(indices0, 100), fn(uploaded5) => gpuLength(uploaded5) == 0), gpuSatisfies(simulate(indices1, 7), fn(uploaded4) => gpuSatisfies(gpuFold(uploaded4, 0, tally), fn(uploaded86) => (uploaded86) == 7))
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// overflowBoundaryCase walks each checked operator to the int edge and one step past: 20! fits and 21! does not, 2^62 fits and 2^63 does not, 3037000499 squares and its
 /// successor does not, and minInt cannot negate.
 fn overflowBoundaryCase() = withIndices(20, fn(indices20) => withIndices(21, fn(indices21) => withIndices(62, fn(indices62) => withIndices(63, fn(indices63) => overflowBoundaryWith(indices20, indices21, indices62, indices63)))))
 fn overflowBoundaryWith(indices20, indices21, indices62, indices63) = {
-    let fits = indices20 |> gpuMap(bump) |> gpuFold(1, prodSat)
-    let spills = indices21 |> gpuMap(bump) |> gpuFold(1, prodSat)
-    match toGpu([3037000499, 3037000500]) { Success { value } => { let roots = value |> gpuMap(sqSat)
-            match toGpu([minInt(), -1, 0, 1, maxInt()]) { Success { value } => { let edges = value |> gpuMap(negSat)
-                    checkAll("checked overflow boundaries", [
-                            fits == 2432902008176640000, spills == overflowMark(), (indices62 |> gpuFold(1, doubleUp)) == 4611686018427387904,
-                            (indices63 |> gpuFold(1, doubleUp)) == overflowMark(), (gpuGet(roots, 0) ?: 0) == 9223372030926249001, (gpuGet(roots, 1) ?: 0) == overflowMark(),
-                            (gpuGet(edges, 0) ?: 0) == overflowMark(), (gpuGet(edges, 1) ?: 0) == 1, (gpuGet(edges, 2) ?: 0) == 0, (gpuGet(edges, 3) ?: 0) == -1,
-                            (gpuGet(edges, 4) ?: 0) == -9223372036854775807, gpuSatisfies(toGpu([maxInt()]), fn(uploaded10) => (uploaded10 |> gpuFold(0, addOr)) == maxInt()),
-                            gpuSatisfies(toGpu([maxInt(), 1]), fn(uploaded9) => (uploaded9 |> gpuFold(0, addOr)) == overflowMark()), gpuSatisfies(toGpu([maxInt(), 1]), fn(uploaded8) => (uploaded8 |> gpuFold(0, tally)) == maxInt()),
-                            gpuSatisfies(toGpu([minInt()]), fn(uploaded7) => (uploaded7 |> gpuMap(lowerSat) |> gpuFold(0, addOr)) == overflowMark()), gpuSatisfies(toGpu([maxInt(), 1]), fn(uploaded6) => gpuLength(uploaded6 |> gpuFilter(isMax)) == 1)
-                    ])
-                } Error { message } => check("GPU allocation", "success", toString(message)) }
-        } Error { message } => check("GPU allocation", "success", toString(message)) }
+    match gpuMap(indices20, bump) { Success { uploaded84 } => {
+            match gpuFold(uploaded84, 1, prodSat) { Success { fits } => {
+                    match gpuMap(indices21, bump) { Success { uploaded85 } => {
+                            match gpuFold(uploaded85, 1, prodSat) { Success { spills } => {
+                                    match toGpu([3037000499, 3037000500]) { Success { value } => {match gpuMap(value, sqSat) { Success { roots } => {
+                                                    match toGpu([minInt(), -1, 0, 1, maxInt()]) { Success { value } => {match gpuMap(value, negSat) { Success { edges } => {
+                                                                    checkAll("checked overflow boundaries", [
+                                                                            fits == 2432902008176640000, spills == overflowMark(), gpuSatisfies(gpuFold(indices62, 1, doubleUp), fn(uploaded81) => (uploaded81) == 4611686018427387904), gpuSatisfies(gpuFold(indices63, 1, doubleUp), fn(uploaded80) => (uploaded80) == overflowMark()),
+                                                                            (gpuGet(roots, 0) ?: 0) == 9223372030926249001, (gpuGet(roots, 1) ?: 0) == overflowMark(), (gpuGet(edges, 0) ?: 0) == overflowMark(), (gpuGet(edges, 1) ?: 0) == 1, (gpuGet(edges, 2) ?: 0) == 0, (gpuGet(edges, 3) ?: 0) == -1,
+                                                                            (gpuGet(edges, 4) ?: 0) == -9223372036854775807, gpuSatisfies(toGpu([maxInt()]), fn(uploaded10) => gpuSatisfies(gpuFold(uploaded10, 0, addOr), fn(uploaded79) => (uploaded79) == maxInt())),
+                                                                            gpuSatisfies(toGpu([maxInt(), 1]), fn(uploaded9) => gpuSatisfies(gpuFold(uploaded9, 0, addOr), fn(uploaded78) => (uploaded78) == overflowMark())),
+                                                                            gpuSatisfies(toGpu([maxInt(), 1]), fn(uploaded8) => gpuSatisfies(gpuFold(uploaded8, 0, tally), fn(uploaded77) => (uploaded77) == maxInt())),
+                                                                            gpuSatisfies(toGpu([minInt()]), fn(uploaded7) => gpuSatisfies(gpuMap(uploaded7, lowerSat), fn(uploaded76) => gpuSatisfies(gpuFold(uploaded76, 0, addOr), fn(uploaded137) => (uploaded137) == overflowMark()))),
+                                                                            gpuSatisfies(toGpu([maxInt(), 1]), fn(uploaded6) => gpuSatisfies(gpuFilter(uploaded6, isMax), fn(uploaded75) => gpuLength(uploaded75) == 1))
+                                                                    ])
+                                                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// saturationCase crosses the int edge part way through two thousand elements.
 fn saturationCase() = withIndices(2000, fn(indices2000) => saturationWith(indices2000))
 fn saturationWith(indices2000) = {
-    let bigs = indices2000 |> gpuMap(hugeScale)
-    let saturated = bigs |> gpuFilter(isMax)
-    checkAll("saturating accumulation", [
-            gpuLength(bigs) == 2000, (gpuGet(bigs, 0) ?: -1) == 0, (gpuGet(bigs, 92) ?: -1) == 9200000000000000000, (gpuGet(bigs, 93) ?: -1) == maxInt(),
-            (gpuGet(bigs, 1999) ?: -1) == maxInt(), gpuLength(saturated) == 1907, (gpuGet(saturated, 0) ?: -1) == maxInt(), (bigs |> gpuFold(0, clampAdd)) == maxInt(),
-            (bigs |> gpuFold(0, tally)) == 9100000000000000000, gpuLength(bigs |> gpuFilter(isNeg)) == 0, gpuLength(bigs |> gpuMap(isMax)) == 2000
-    ])
+    match gpuMap(indices2000, hugeScale) { Success { bigs } => {
+            match gpuFilter(bigs, isMax) { Success { saturated } => {
+                    checkAll("saturating accumulation", [
+                            gpuLength(bigs) == 2000, (gpuGet(bigs, 0) ?: -1) == 0, (gpuGet(bigs, 92) ?: -1) == 9200000000000000000, (gpuGet(bigs, 93) ?: -1) == maxInt(), (gpuGet(bigs, 1999) ?: -1) == maxInt(), gpuLength(saturated) == 1907, (gpuGet(saturated, 0) ?: -1) == maxInt(),
+                            gpuSatisfies(gpuFold(bigs, 0, clampAdd), fn(uploaded72) => (uploaded72) == maxInt()), gpuSatisfies(gpuFold(bigs, 0, tally), fn(uploaded71) => (uploaded71) == 9100000000000000000), gpuSatisfies(gpuFilter(bigs, isNeg), fn(uploaded70) => gpuLength(uploaded70) == 0),
+                            gpuSatisfies(gpuMap(bigs, isMax), fn(uploaded69) => gpuLength(uploaded69) == 2000)
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// negativeCase carries a wholly negative buffer through every combinator.
 fn negativeCase() = withIndices(100000, fn(indices100000) => negativeWith(indices100000))
 fn negativeWith(indices100000) = {
-    let negs = indices100000 |> gpuMap(negate)
-    let restored = negs |> gpuMap(negate)
-    let running = negs |> gpuScan(0, tally)
-    let lows = negs |> gpuScan(0, minI)
-    checkAll("negative values at scale", [
-            (negs |> gpuFold(0, tally)) == -4999950000, gpuLength(negs) == 100000, (gpuGet(negs, 0) ?: 1) == 0, (gpuGet(negs, 99999) ?: 1) == -99999,
-            gpuLength(negs |> gpuFilter(isNeg)) == 99999, gpuLength(negs |> gpuFilter(isPos)) == 0, gpuLength(negs |> gpuFilter(isEven)) == 50000,
-            (negs |> gpuFilter(isEven) |> gpuFold(0, tally)) == -2499950000, (restored |> gpuFold(0, tally)) == 4999950000, (gpuGet(restored, 99999) ?: -1) == 99999,
-            (gpuGet(running, 1) ?: 1) == -1, (gpuGet(running, 99999) ?: 1) == -4999950000, (gpuGet(lows, 0) ?: 1) == 0, (gpuGet(lows, 99999) ?: 1) == -99999,
-            (gpuZipWith(negs, indices100000, tally) |> gpuFold(0, tally)) == 0, (negs |> gpuMap(absI) |> gpuFold(0, tally)) == 4999950000
-    ])
+    match gpuMap(indices100000, negate) { Success { negs } => {
+            match gpuMap(negs, negate) { Success { restored } => {
+                    match gpuScan(negs, 0, tally) { Success { running } => {
+                            match gpuScan(negs, 0, minI) { Success { lows } => {
+                                    checkAll("negative values at scale", [
+                                            gpuSatisfies(gpuFold(negs, 0, tally), fn(uploaded64) => (uploaded64) == -4999950000), gpuLength(negs) == 100000, (gpuGet(negs, 0) ?: 1) == 0, (gpuGet(negs, 99999) ?: 1) == -99999, gpuSatisfies(gpuFilter(negs, isNeg), fn(uploaded63) => gpuLength(uploaded63) == 99999),
+                                            gpuSatisfies(gpuFilter(negs, isPos), fn(uploaded62) => gpuLength(uploaded62) == 0), gpuSatisfies(gpuFilter(negs, isEven), fn(uploaded61) => gpuLength(uploaded61) == 50000),
+                                            gpuSatisfies(gpuFilter(negs, isEven), fn(uploaded60) => gpuSatisfies(gpuFold(uploaded60, 0, tally), fn(uploaded136) => (uploaded136) == -2499950000)), gpuSatisfies(gpuFold(restored, 0, tally), fn(uploaded59) => (uploaded59) == 4999950000), (gpuGet(restored, 99999) ?: -1) == 99999,
+                                            (gpuGet(running, 1) ?: 1) == -1, (gpuGet(running, 99999) ?: 1) == -4999950000, (gpuGet(lows, 0) ?: 1) == 0, (gpuGet(lows, 99999) ?: 1) == -99999, gpuSatisfies(gpuZipWith(negs, indices100000, tally), fn(uploaded58) => gpuSatisfies(gpuFold(uploaded58, 0, tally), fn(uploaded135) => (uploaded135) == 0)),
+                                            gpuSatisfies(gpuMap(negs, absI), fn(uploaded57) => gpuSatisfies(gpuFold(uploaded57, 0, tally), fn(uploaded134) => (uploaded134) == 4999950000))
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// alternatingCase flips sign on every other element of a 200k buffer: the fold telescopes, the scan oscillates, squaring erases the signs.
 fn alternatingCase() = withIndices(200000, fn(indices200000) => alternatingWith(indices200000))
 fn alternatingWith(indices200000) = {
-    let alt = indices200000 |> gpuMap(altSign)
-    let running = alt |> gpuScan(0, tally)
-    checkAll("alternating signs", [
-            (alt |> gpuFold(0, tally)) == -100000, gpuLength(alt) == 200000, (gpuGet(alt, 0) ?: 1) == 0, (gpuGet(alt, 1) ?: 0) == -1, (gpuGet(alt, 2) ?: 0) == 2,
-            (gpuGet(alt, 199999) ?: 0) == -199999, (gpuGet(running, 0) ?: 1) == 0, (gpuGet(running, 1) ?: 0) == -1, (gpuGet(running, 2) ?: 0) == 1,
-            (gpuGet(running, 3) ?: 0) == -2, (gpuGet(running, 199999) ?: 0) == -100000, gpuLength(alt |> gpuFilter(isNeg)) == 100000,
-            (alt |> gpuFilter(isNeg) |> gpuFold(0, tally)) == -10000000000, gpuLength(alt |> gpuFilter(isPos)) == 99999,
-            (alt |> gpuFilter(isPos) |> gpuFold(0, tally)) == 9999900000, (alt |> gpuMap(absI) |> gpuFold(0, tally)) == 19999900000,
-            (alt |> gpuMap(square) |> gpuFold(0, tally)) == 2666646666700000, (gpuZipWith(alt, alt, product) |> gpuFold(0, tally)) == 2666646666700000
-    ])
+    match gpuMap(indices200000, altSign) { Success { alt } => {
+            match gpuScan(alt, 0, tally) { Success { running } => {
+                    checkAll("alternating signs", [
+                            gpuSatisfies(gpuFold(alt, 0, tally), fn(uploaded54) => (uploaded54) == -100000), gpuLength(alt) == 200000, (gpuGet(alt, 0) ?: 1) == 0, (gpuGet(alt, 1) ?: 0) == -1, (gpuGet(alt, 2) ?: 0) == 2, (gpuGet(alt, 199999) ?: 0) == -199999, (gpuGet(running, 0) ?: 1) == 0, (gpuGet(running, 1) ?: 0) == -1,
+                            (gpuGet(running, 2) ?: 0) == 1, (gpuGet(running, 3) ?: 0) == -2, (gpuGet(running, 199999) ?: 0) == -100000, gpuSatisfies(gpuFilter(alt, isNeg), fn(uploaded53) => gpuLength(uploaded53) == 100000),
+                            gpuSatisfies(gpuFilter(alt, isNeg), fn(uploaded52) => gpuSatisfies(gpuFold(uploaded52, 0, tally), fn(uploaded133) => (uploaded133) == -10000000000)), gpuSatisfies(gpuFilter(alt, isPos), fn(uploaded51) => gpuLength(uploaded51) == 99999),
+                            gpuSatisfies(gpuFilter(alt, isPos), fn(uploaded50) => gpuSatisfies(gpuFold(uploaded50, 0, tally), fn(uploaded132) => (uploaded132) == 9999900000)), gpuSatisfies(gpuMap(alt, absI), fn(uploaded49) => gpuSatisfies(gpuFold(uploaded49, 0, tally), fn(uploaded131) => (uploaded131) == 19999900000)),
+                            gpuSatisfies(gpuMap(alt, square), fn(uploaded48) => gpuSatisfies(gpuFold(uploaded48, 0, tally), fn(uploaded130) => (uploaded130) == 2666646666700000)), gpuSatisfies(gpuZipWith(alt, alt, product), fn(uploaded47) => gpuSatisfies(gpuFold(uploaded47, 0, tally), fn(uploaded129) => (uploaded129) == 2666646666700000))
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// zeroDegenerateCase pins the empty buffer, the inverted extent and all-zeros.
 fn zeroDegenerateCase() = withIndices(0, fn(empty) => withIndices(50000, fn(indices50000) => withIndices(1000000, fn(indices1000000) => zeroDegenerateWith(empty, indices50000, indices1000000))))
 fn zeroDegenerateWith(empty, indices50000, indices1000000) = {
     let inverted = iotaError(-1000000)
-    let zeros = indices50000 |> gpuMap(fn(_x) => 0)
-    checkAll("zero and empty at every combinator", [
-            gpuLength(empty) == 0, inverted == "gpu: buffer allocation: a negative element count", gpuSatisfies(toGpu([]), fn(uploaded5: GpuBuffer<int>) => gpuLength(uploaded5) == 0), (empty |> gpuFold(42, tally)) == 42,
-            iotaError(-7) == "gpu: buffer allocation: a negative element count", gpuLength(empty |> gpuMap(bump)) == 0, gpuLength(empty |> gpuFilter(isEven)) == 0,
-            gpuLength(empty |> gpuScan(0, tally)) == 0, gpuLength(gpuZipWith(empty, indices1000000, tally)) == 0, gpuLength(gpuZipWith(indices1000000, empty, tally)) == 0,
-            (gpuGet(empty, 0) ?: -1) == -1, gpuSatisfies(fromGpu(empty), fn(checked0) => listLength(checked0) == 0),
-            gpuSatisfies(fromGpu(empty), fn(checked0) => gpuSatisfies(toGpu(checked0), fn(uploaded4) => gpuLength(uploaded4) == 0)), gpuLength(zeros) == 50000, (zeros |> gpuFold(0, tally)) == 0,
-            (gpuGet(zeros, 49999) ?: -1) == 0, gpuLength(zeros |> gpuFilter(isEven)) == 50000, gpuLength(zeros |> gpuFilter(isPos)) == 0,
-            (gpuGet(zeros |> gpuScan(0, tally), 49999) ?: -1) == 0, (gpuZipWith(zeros, indices50000, product) |> gpuFold(0, tally)) == 0,
-            (zeros |> gpuMap(square) |> gpuFold(0, tally)) == 0
-    ])
+    match gpuMap(indices50000, fn(_x) => 0) { Success { zeros } => {
+            checkAll("zero and empty at every combinator", [
+                    gpuLength(empty) == 0, inverted == "gpu: buffer allocation: a negative element count", gpuSatisfies(toGpu([]), fn(uploaded5: GpuBuffer<int>) => gpuLength(uploaded5) == 0), gpuSatisfies(gpuFold(empty, 42, tally), fn(uploaded45) => (uploaded45) == 42), iotaError(-7) == "gpu: buffer allocation: a negative element count",
+                    gpuSatisfies(gpuMap(empty, bump), fn(uploaded44) => gpuLength(uploaded44) == 0), gpuSatisfies(gpuFilter(empty, isEven), fn(uploaded43) => gpuLength(uploaded43) == 0), gpuSatisfies(gpuScan(empty, 0, tally), fn(uploaded42) => gpuLength(uploaded42) == 0),
+                    gpuSatisfies(gpuZipWith(empty, indices1000000, tally), fn(uploaded41) => gpuLength(uploaded41) == 0), gpuSatisfies(gpuZipWith(indices1000000, empty, tally), fn(uploaded40) => gpuLength(uploaded40) == 0), (gpuGet(empty, 0) ?: -1) == -1, gpuSatisfies(fromGpu(empty), fn(checked0) => listLength(checked0) == 0),
+                    gpuSatisfies(fromGpu(empty), fn(checked0) => gpuSatisfies(toGpu(checked0), fn(uploaded4) => gpuLength(uploaded4) == 0)), gpuLength(zeros) == 50000, gpuSatisfies(gpuFold(zeros, 0, tally), fn(uploaded39) => (uploaded39) == 0), (gpuGet(zeros, 49999) ?: -1) == 0,
+                    gpuSatisfies(gpuFilter(zeros, isEven), fn(uploaded38) => gpuLength(uploaded38) == 50000), gpuSatisfies(gpuFilter(zeros, isPos), fn(uploaded37) => gpuLength(uploaded37) == 0), gpuSatisfies(gpuScan(zeros, 0, tally), fn(uploaded36) => (gpuGet(uploaded36, 49999) ?: -1) == 0),
+                    gpuSatisfies(gpuZipWith(zeros, indices50000, product), fn(uploaded35) => gpuSatisfies(gpuFold(uploaded35, 0, tally), fn(uploaded128) => (uploaded128) == 0)), gpuSatisfies(gpuMap(zeros, square), fn(uploaded34) => gpuSatisfies(gpuFold(uploaded34, 0, tally), fn(uploaded127) => (uploaded127) == 0))
+            ])
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// gatherBoundaryCase reads one ahead, one behind and straight across a 100k buffer from inside kernels: each shift falls off exactly one end, and an out-of-range index is a visible Error rather than a silent zero.
 fn gatherBoundaryCase() = withIndices(100000, fn(src) => gatherBoundaryWith(src))
 fn gatherBoundaryWith(src) = {
-    let ahead = src |> gpuMap(fn(i) => gpuGet(src, (i + 1) ) ?: -7)
-    let behind = src |> gpuMap(fn(i) => gpuGet(src, (i - 1) ) ?: -7)
-    let mirror = src |> gpuMap(fn(i) => gpuGet(src, (99999 - i) ) ?: -7)
-    checkAll("gathers at the buffer edges", [
-            (gpuGet(ahead, 0) ?: 0) == 1, (gpuGet(ahead, 99998) ?: 0) == 99999, (gpuGet(ahead, 99999) ?: 0) == -7, (ahead |> gpuFold(0, tally)) == 4999949993,
-            (gpuGet(behind, 0) ?: 0) == -7, (gpuGet(behind, 1) ?: 0) == 0, (gpuGet(behind, 99999) ?: 0) == 99998, (behind |> gpuFold(0, tally)) == 4999849994,
-            (gpuGet(mirror, 0) ?: 0) == 99999, (gpuGet(mirror, 99999) ?: 0) == 0, (mirror |> gpuFold(0, tally)) == 4999950000, gpuLength(ahead |> gpuFilter(isNeg)) == 1,
-            gpuLength(behind |> gpuFilter(isNeg)) == 1, (gpuGet(src, 99999) ?: -1) == 99999, (gpuGet(src, 100000) ?: -1) == -1, (gpuGet(src, 1000000) ?: -1) == -1,
-            (gpuGet(src, -1) ?: -1) == -1, (gpuGet(src, minInt()) ?: -1) == -1, (gpuGet(src, maxInt()) ?: -1) == -1
-    ])
+    match gpuMap(src, fn(i) => gpuGet(src, (i + 1) ) ?: -7) { Success { ahead } => {
+            match gpuMap(src, fn(i) => gpuGet(src, (i - 1) ) ?: -7) { Success { behind } => {
+                    match gpuMap(src, fn(i) => gpuGet(src, (99999 - i) ) ?: -7) { Success { mirror } => {
+                            checkAll("gathers at the buffer edges", [
+                                    (gpuGet(ahead, 0) ?: 0) == 1, (gpuGet(ahead, 99998) ?: 0) == 99999, (gpuGet(ahead, 99999) ?: 0) == -7, gpuSatisfies(gpuFold(ahead, 0, tally), fn(uploaded30) => (uploaded30) == 4999949993), (gpuGet(behind, 0) ?: 0) == -7, (gpuGet(behind, 1) ?: 0) == 0, (gpuGet(behind, 99999) ?: 0) == 99998,
+                                    gpuSatisfies(gpuFold(behind, 0, tally), fn(uploaded29) => (uploaded29) == 4999849994), (gpuGet(mirror, 0) ?: 0) == 99999, (gpuGet(mirror, 99999) ?: 0) == 0, gpuSatisfies(gpuFold(mirror, 0, tally), fn(uploaded28) => (uploaded28) == 4999950000),
+                                    gpuSatisfies(gpuFilter(ahead, isNeg), fn(uploaded27) => gpuLength(uploaded27) == 1), gpuSatisfies(gpuFilter(behind, isNeg), fn(uploaded26) => gpuLength(uploaded26) == 1), (gpuGet(src, 99999) ?: -1) == 99999, (gpuGet(src, 100000) ?: -1) == -1, (gpuGet(src, 1000000) ?: -1) == -1, (gpuGet(src, -1) ?: -1) == -1,
+                                    (gpuGet(src, minInt()) ?: -1) == -1, (gpuGet(src, maxInt()) ?: -1) == -1
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// floatScaleCase widens a 100k index buffer through the float combinators.
 fn floatScaleCase() = withIndices(100000, fn(indices100000) => floatScaleWith(indices100000))
 fn floatScaleWith(indices100000) = {
-    let xs = indices100000 |> gpuMap(toFloat)
-    let halves = xs |> gpuMap(half)
-    let flipped = xs |> gpuMap(negF)
-    let recips = xs |> gpuMap(recip)
-    checkAll("float buffers at scale", [
-            (xs |> gpuFold(0.0, addF)) == 4999950000.0, gpuLength(xs) == 100000, (gpuGet(xs, 0) ?: -1.0) == 0.0, (gpuGet(xs, 99999) ?: -1.0) == 99999.0,
-            (halves |> gpuFold(0.0, addF)) == 2499975000.0, (gpuGet(halves, 3) ?: -1.0) == 1.5, (flipped |> gpuFold(0.0, addF)) == -4999950000.0,
-            (gpuGet(flipped, 99999) ?: 0.0) == -99999.0, (gpuGet(recips, 0) ?: -1.0) == 0.0, (gpuGet(recips, 1) ?: -1.0) == 1.0, (gpuGet(recips, 4) ?: -1.0) == 0.25,
-            (gpuGet(xs |> gpuScan(0.0, addF), 99999) ?: -1.0) == 4999950000.0, (gpuZipWith(xs, flipped, addF) |> gpuFold(0.0, addF)) == 0.0,
-            gpuLength(xs |> gpuFilter(isPositiveF)) == 99999, toFloat(9007199254740992) == 9007199254740992.0, toFloat(9007199254740993) == toFloat(9007199254740992),
-            toFloat(9007199254740991) < toFloat(9007199254740992), toFloat(-9007199254740992) == -9007199254740992.0
-    ])
+    match gpuMap(indices100000, toFloat) { Success { xs } => {
+            match gpuMap(xs, half) { Success { halves } => {
+                    match gpuMap(xs, negF) { Success { flipped } => {
+                            match gpuMap(xs, recip) { Success { recips } => {
+                                    checkAll("float buffers at scale", [
+                                            gpuSatisfies(gpuFold(xs, 0.0, addF), fn(uploaded21) => (uploaded21) == 4999950000.0), gpuLength(xs) == 100000, (gpuGet(xs, 0) ?: -1.0) == 0.0, (gpuGet(xs, 99999) ?: -1.0) == 99999.0, gpuSatisfies(gpuFold(halves, 0.0, addF), fn(uploaded20) => (uploaded20) == 2499975000.0),
+                                            (gpuGet(halves, 3) ?: -1.0) == 1.5, gpuSatisfies(gpuFold(flipped, 0.0, addF), fn(uploaded19) => (uploaded19) == -4999950000.0), (gpuGet(flipped, 99999) ?: 0.0) == -99999.0, (gpuGet(recips, 0) ?: -1.0) == 0.0, (gpuGet(recips, 1) ?: -1.0) == 1.0, (gpuGet(recips, 4) ?: -1.0) == 0.25,
+                                            gpuSatisfies(gpuScan(xs, 0.0, addF), fn(uploaded18) => (gpuGet(uploaded18, 99999) ?: -1.0) == 4999950000.0), gpuSatisfies(gpuZipWith(xs, flipped, addF), fn(uploaded17) => gpuSatisfies(gpuFold(uploaded17, 0.0, addF), fn(uploaded126) => (uploaded126) == 0.0)),
+                                            gpuSatisfies(gpuFilter(xs, isPositiveF), fn(uploaded16) => gpuLength(uploaded16) == 99999), toFloat(9007199254740992) == 9007199254740992.0, toFloat(9007199254740993) == toFloat(9007199254740992), toFloat(9007199254740991) < toFloat(9007199254740992), toFloat(-9007199254740992) == -9007199254740992.0
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// floatOrderCase makes accumulation order observable: [GPU-FOLD] contracts the host backend to combine left-to-right, so a huge leading term absorbs every small one after
 /// it while the same terms reversed all survive — why the spec calls a non-associative combine backend-dependent.
@@ -311,30 +356,41 @@ fn floatOrderWith(indices1001, indices100000) = {
             ])
             -1.0
         } }
-    let xs = indices1001 |> gpuMap(toFloat)
-    let leading = xs |> gpuMap(headBig)
-    let trailing = xs |> gpuMap(tailBig)
-    let absorbed = leading |> gpuFold(0.0, addF)
-    let survived = trailing |> gpuFold(0.0, addF)
-    let tenths = indices100000 |> gpuMap(tenthOf) |> gpuFold(0.0, addF)
-    checkAll("float accumulation order is observable", [
-            absorbed == hugeFloat(), survived == hugeFloat() + 1000.0, survived > absorbed, survived - absorbed == 1000.0,
-            gpuSatisfies(toGpu([hugeFloat(), 1.0, 1.0, 1.0]), fn(uploaded3) => (uploaded3 |> gpuFold(0.0, addF)) == hugeFloat()), gpuSatisfies(toGpu([1.0, 1.0, 1.0, hugeFloat()]), fn(uploaded2) => (uploaded2 |> gpuFold(0.0, addF)) > hugeFloat()),
-            gpuSatisfies(toGpu([1.0, 1.0, 1.0, hugeFloat()]), fn(uploaded1) => (uploaded1 |> gpuFold(0.0, addF)) - hugeFloat() == 4.0), (gpuGet(leading, 0) ?: 0.0) == hugeFloat(),
-            (gpuGet(leading, 1000) ?: 0.0) == 1.0, (gpuGet(trailing, 1000) ?: 0.0) == hugeFloat(), (gpuGet(leading |> gpuScan(0.0, addF), 1000) ?: 0.0) == hugeFloat(),
-            tenths > 10000.0, tenths < 10000.001, ((1.0 / 0.0) ) == -1.0
-    ])
+    match gpuMap(indices1001, toFloat) { Success { xs } => {
+            match gpuMap(xs, headBig) { Success { leading } => {
+                    match gpuMap(xs, tailBig) { Success { trailing } => {
+                            match gpuFold(leading, 0.0, addF) { Success { absorbed } => {
+                                    match gpuFold(trailing, 0.0, addF) { Success { survived } => {
+                                            match gpuMap(indices100000, tenthOf) { Success { uploaded15 } => {
+                                                    match gpuFold(uploaded15, 0.0, addF) { Success { tenths } => {
+                                                            checkAll("float accumulation order is observable", [
+                                                                    absorbed == hugeFloat(), survived == hugeFloat() + 1000.0, survived > absorbed, survived - absorbed == 1000.0, gpuSatisfies(toGpu([hugeFloat(), 1.0, 1.0, 1.0]), fn(uploaded3) => gpuSatisfies(gpuFold(uploaded3, 0.0, addF), fn(uploaded9) => (uploaded9) == hugeFloat())),
+                                                                    gpuSatisfies(toGpu([1.0, 1.0, 1.0, hugeFloat()]), fn(uploaded2) => gpuSatisfies(gpuFold(uploaded2, 0.0, addF), fn(uploaded8) => (uploaded8) > hugeFloat())),
+                                                                    gpuSatisfies(toGpu([1.0, 1.0, 1.0, hugeFloat()]), fn(uploaded1) => gpuSatisfies(gpuFold(uploaded1, 0.0, addF), fn(uploaded7) => (uploaded7) - hugeFloat() == 4.0)), (gpuGet(leading, 0) ?: 0.0) == hugeFloat(), (gpuGet(leading, 1000) ?: 0.0) == 1.0,
+                                                                    (gpuGet(trailing, 1000) ?: 0.0) == hugeFloat(), gpuSatisfies(gpuScan(leading, 0.0, addF), fn(uploaded6) => (gpuGet(uploaded6, 1000) ?: 0.0) == hugeFloat()), tenths > 10000.0, tenths < 10000.001, ((1.0 / 0.0) ) == -1.0
+                                                            ])
+                                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// floatChurnCase runs 400 float passes over the canonical [GPU-CONVERT] seed.
 fn floatChurnCase() = withIndices(8, fn(indices8) => withIndices(0, fn(indices0) => floatChurnWith(indices8, indices0)))
 fn floatChurnWith(indices8, indices0) = {
-    let mixed = mix(indices8 |> gpuMap(toFloat), 400)
-    let total = mixed |> gpuFold(0.0, addF)
-    checkAll("400-pass float churn", [
-            total > 1627.8, total < 1627.9, gpuLength(mixed) == 8, (gpuGet(mixed, 0) ?: 0.0) > 0.0, (gpuGet(mixed, 7) ?: 0.0) > (gpuGet(mixed, 0) ?: 0.0),
-            gpuLength(mixed |> gpuFilter(isPositiveF)) == 8, gpuLength(mix(indices0 |> gpuMap(toFloat), 50)) == 0,
-            (mix(indices8 |> gpuMap(toFloat), 0) |> gpuFold(0.0, addF)) == 28.0
-    ])
+    match gpuMap(indices8, toFloat) { Success { uploaded4 } => {
+            match mix(uploaded4, 400) { Success { mixed } => {
+                    match gpuFold(mixed, 0.0, addF) { Success { total } => {
+                            checkAll("400-pass float churn", [
+                                    total > 1627.8, total < 1627.9, gpuLength(mixed) == 8, (gpuGet(mixed, 0) ?: 0.0) > 0.0, (gpuGet(mixed, 7) ?: 0.0) > (gpuGet(mixed, 0) ?: 0.0), gpuSatisfies(gpuFilter(mixed, isPositiveF), fn(uploaded3) => gpuLength(uploaded3) == 8),
+                                    gpuSatisfies(gpuMap(indices0, toFloat), fn(uploaded2) => gpuSatisfies(mix(uploaded2, 50), fn(uploaded2) => gpuLength(uploaded2) == 0)),
+                                    gpuSatisfies(gpuMap(indices8, toFloat), fn(uploaded1) => gpuSatisfies(mix(uploaded1, 0), fn(uploaded1) => gpuSatisfies(gpuFold(uploaded1, 0.0, addF), fn(uploaded124) => (uploaded124) == 28.0)))
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
 }
 /// Exact-value tests record any arithmetic fault as a failed assertion.
 fn exactArithmetic(work) = {
