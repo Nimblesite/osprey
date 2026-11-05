@@ -81,7 +81,14 @@ pub(super) fn declare(e: &mut TypeEnv) {
     mono(
         e,
         "gpuMatMulQuant",
-        vec![f32(), Type::gpu_buffer(Type::prim("uint8")), s(), i(), i(), i()],
+        vec![
+            f32(),
+            Type::gpu_buffer(Type::prim("uint8")),
+            s(),
+            i(),
+            i(),
+            i(),
+        ],
         res(f32()),
     );
     // [GPU-BUFFER-LOAD] Raw little-endian binary32 words at a byte offset,
