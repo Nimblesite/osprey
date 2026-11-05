@@ -124,6 +124,7 @@ uint gpu_float32_bits(float value) {
 // computes in binary32 and narrows once: the exact widening of a half into a
 // float, and the correctly rounded (ties to even) narrowing back, the same
 // rounding the host's `osp_float_to_f16` applies from binary64.
+#define GPU_F16_SUBNORMAL_UNIT 5.9604644775390625e-08f
 float gpu_f16_to_f32(ushort bits) {
     uint sign = (uint)(bits & 0x8000u) << 16;
     uint exponent = (bits >> 10) & 0x1fu;
@@ -134,11 +135,12 @@ float gpu_f16_to_f32(ushort bits) {
     } else if (exponent) {
         word = sign | ((exponent + 112u) << 23) | (fraction << 13);
     } else {
-        if (!fraction) return gpu_float32_from_bits(sign);
-        uint significand = fraction;
-        uint e = 113u;
-        while (!(significand & 0x0400u)) { significand <<= 1; e--; }
-        word = sign | (e << 23) | ((significand & 0x03ffu) << 13);
+        // A subnormal half is fraction * 2^-24 exactly, and the product is a
+        // normal float, so one multiply widens it: no normalising loop, which
+        // the real GGUF tensors hit on nine blocks in ten and which tripled a
+        // quantized matmul's time.
+        float small = (float)fraction * GPU_F16_SUBNORMAL_UNIT;
+        return sign ? -small : small;
     }
     return gpu_float32_from_bits(word);
 }
@@ -233,15 +235,63 @@ NATIVE_UNARY(ln, log, logf)
 NATIVE_UNARY(abs, fabs, fabsf)
 #undef NATIVE_UNARY
 
-// Precise Metal exp/tanh still differ by one binary32 ulp from the host.
-// Use the shared wider approximation, then round once at the result boundary;
-// surrounding tensor arithmetic and storage remain native binary32.
-#define ROUNDED_UNARY(NAME) float gpu32_##NAME(float x) { \
-    return gpu_float32_from_bits(narrow32(NAME##64(widen32(gpu_float32_bits(x))))); \
+// [GPU-DEVICE-NATIVE] Binary32 exp and tanh are one shared sequence of
+// binary32 operations, so the host loop and both devices produce the same
+// bytes (contraction is off everywhere this compiles). Rounding from the
+// 128-bit binary64 exp cost about 70 microseconds of latency per call on
+// Apple M4 Max, a third of a 27B model's token; this takes a few dozen cycles.
+// Cody-Waite reduction x = k ln 2 + r with |r| <= ln 2 / 2, a degree-9 Taylor
+// polynomial (its truncation is far under a binary32 ulp) and an exact scale by
+// 2^k, in two steps when the result is subnormal.
+#define GPU_LOG2E 1.44269504088896341f
+#define GPU_LN2_HI 0.693145751953125f
+#define GPU_LN2_LO 1.428606765330187e-06f
+
+float gpu32_poly_expm1(float r) {
+    float p = r * (1.0f / 362880.0f) + (1.0f / 40320.0f);
+    p = p * r + (1.0f / 5040.0f);
+    p = p * r + (1.0f / 720.0f);
+    p = p * r + (1.0f / 120.0f);
+    p = p * r + (1.0f / 24.0f);
+    p = p * r + (1.0f / 6.0f);
+    p = p * r + 0.5f;
+    return r + r * r * p;
 }
-ROUNDED_UNARY(exp)
-ROUNDED_UNARY(tanh)
-#undef ROUNDED_UNARY
+
+float gpu32_scale_pow2(float value, int k) {
+    if (k > 127) return value * gpu_float32_from_bits(0x7f000000u) * gpu_float32_from_bits((uint)(k - 127 + 127) << 23);
+    if (k < -126) {
+        int head = k < -252 ? -126 : k + 126;
+        float partial = value * gpu_float32_from_bits((uint)(head + 127) << 23);
+        return partial * gpu_float32_from_bits((uint)(k - head + 127) << 23);
+    }
+    return value * gpu_float32_from_bits((uint)(k + 127) << 23);
+}
+
+float gpu32_exp(float x) {
+    if (x != x) return x;
+    if (x > 88.7228394f) return gpu_float32_from_bits(0x7f800000u);
+    if (x < -103.972084f) return 0.0f;
+    float y = x * GPU_LOG2E + 0.5f;
+    int k = (int)y - (int)((float)(int)y > y);
+    float kf = (float)k;
+    float r = (x - kf * GPU_LN2_HI) - kf * GPU_LN2_LO;
+    return gpu32_scale_pow2(1.0f + gpu32_poly_expm1(r), k);
+}
+
+// tanh x = expm1(2|x|) / (expm1(2|x|) + 2) with x's sign restored; below 0.25
+// the polynomial gives expm1 directly, which keeps a small argument's relative
+// precision, and past 9 the result is 1 to the last bit.
+float gpu32_tanh(float x) {
+    if (x != x) return x;
+    uint sign = gpu_float32_bits(x) & 0x80000000u;
+    float a = gpu_float32_from_bits(gpu_float32_bits(x) ^ sign);
+    if (a > 9.0f) return gpu_float32_from_bits(0x3f800000u | sign);
+    float r = 2.0f * a;
+    float em1 = a < 0.25f ? gpu32_poly_expm1(r) : gpu32_exp(r) - 1.0f;
+    float t = em1 / (em1 + 2.0f);
+    return gpu_float32_from_bits(gpu_float32_bits(t) | sign);
+}
 
 // [GPU-MATMUL]: one ordered kernel template at each supported float width.
 float multiply32(float a, float b) { return a * b; }

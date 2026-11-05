@@ -234,48 +234,136 @@ void osprey_gpu_metal_recycle(void *object) {
   }
 }
 
-// [LLM-DISPATCH-BATCH] Dispatches are encoded, in order, into one open command
-// buffer and submitted together the first time the host needs a result: a
-// write-back, a download, or the batch reaching its cap. A serial compute
-// encoder orders them, so a kernel reads what the one before it wrote, and
-// the command buffer retains every object it binds, so a transient or
-// released buffer outlives the dispatch that reads it. The kernel names are
-// kept for the completion report and for naming a failed batch.
+// [LLM-DISPATCH-BATCH] Dispatches are encoded, in order, into an open command
+// buffer. Every GPU_SEGMENT dispatches the buffer is committed without
+// waiting and a new one opened, so the device runs one segment while the host
+// encodes the next; the host waits only when it needs a result (a write-back
+// or a download) or when the ring of queued dispatches is full, and then only
+// for the oldest segment. One queue runs committed buffers in order and each
+// segment's serial compute encoder orders its dispatches, so a kernel reads
+// what the one before it wrote. The command buffer retains every object it
+// binds, so a transient or released buffer outlives the dispatch that reads
+// it. The kernel names are kept, in a ring, for the completion report and for
+// naming a failed segment.
 #define GPU_BATCH_CAP 1024
+#define GPU_SEGMENT 64
+#define GPU_SEGMENTS (GPU_BATCH_CAP / GPU_SEGMENT)
 typedef struct { char kernel[48]; uint64_t threads; } OspreyGpuQueued;
+typedef struct { id<MTLCommandBuffer> command; unsigned first, count; } OspreyGpuSegment;
 static id<MTLCommandBuffer> gpu_batch;
 static id<MTLComputeCommandEncoder> gpu_encoder;
 static OspreyGpuQueued gpu_queued[GPU_BATCH_CAP];
-static unsigned gpu_queued_count;
+static unsigned gpu_head, gpu_count, gpu_open_first, gpu_open_count;
+static OspreyGpuSegment gpu_segments[GPU_SEGMENTS];
+static unsigned gpu_segment_head, gpu_segment_count;
 
-static int flush_locked(void) {
-  if (gpu_batch == nil) return 1;
-  id<MTLCommandBuffer> command = gpu_batch;
+static unsigned ring(unsigned index) { return index % GPU_BATCH_CAP; }
+
+// `OSPREY_GPU_TIMING`: 1 reports each batch's device time; 2 reports every
+// dispatch's device time inside its batch ([LLM-SPEED] receipts). Apple GPUs
+// sample timestamp counters at stage boundaries only, so mode 2 gives each
+// dispatch its own encoder in the same command buffer and reads the pair of
+// timestamps around it. Encoder boundaries cost a few microseconds each, so
+// a profiled batch runs a little longer than a plain one.
+static id<MTLCounterSampleBuffer> gpu_samples;
+
+static int timing_mode(void) {
+  static int mode = -1;
+  if (mode < 0) {
+    const char *text = getenv("OSPREY_GPU_TIMING");
+    mode = text == NULL ? 0 : atoi(text);
+  }
+  return mode;
+}
+
+static id<MTLCounterSampleBuffer> sample_buffer(void) {
+  if (gpu_samples != nil || ![gpu_device supportsCounterSampling:MTLCounterSamplingPointAtStageBoundary]) return gpu_samples;
+  for (id<MTLCounterSet> set in gpu_device.counterSets) {
+    if (![set.name isEqualToString:MTLCommonCounterSetTimestamp]) continue;
+    MTLCounterSampleBufferDescriptor *samples = [MTLCounterSampleBufferDescriptor new];
+    samples.counterSet = set;
+    samples.storageMode = MTLStorageModeShared;
+    samples.sampleCount = 2 * GPU_BATCH_CAP;
+    gpu_samples = [gpu_device newCounterSampleBufferWithDescriptor:samples error:nil];
+  }
+  return gpu_samples;
+}
+
+// A fresh encoder whose start and end timestamps land at 2 * index and 2 * index + 1.
+static id<MTLComputeCommandEncoder> timed_encoder(unsigned index) {
+  id<MTLCounterSampleBuffer> samples = sample_buffer();
+  if (samples == nil) return [gpu_batch computeCommandEncoder];
+  MTLComputePassDescriptor *pass = [MTLComputePassDescriptor computePassDescriptor];
+  MTLComputePassSampleBufferAttachmentDescriptor *attachment = pass.sampleBufferAttachments[0];
+  attachment.sampleBuffer = samples;
+  attachment.startOfEncoderSampleIndex = 2 * index;
+  attachment.endOfEncoderSampleIndex = 2 * index + 1;
+  return [gpu_batch computeCommandEncoderWithDescriptor:pass];
+}
+
+// Each dispatch's share of its segment's device time, from its timestamp
+// pair, scaled so the pairs span the segment's own GPUStartTime..GPUEndTime.
+static void report_dispatch_times(unsigned first, unsigned count, double batch_ms) {
+  if (gpu_samples == nil || count == 0) return;
+  NSData *data = [gpu_samples resolveCounterRange:NSMakeRange(0, 2 * (NSUInteger)GPU_BATCH_CAP)];
+  if (data == nil || data.length < 2 * GPU_BATCH_CAP * sizeof(MTLCounterResultTimestamp)) return;
+  const MTLCounterResultTimestamp *stamps = data.bytes;
+  uint64_t span = stamps[2 * ring(first + count - 1) + 1].timestamp - stamps[2 * ring(first)].timestamp;
+  double per_tick = span == 0 ? 0.0 : batch_ms / (double)span;
+  for (unsigned i = first; i < first + count; i++)
+    (void)fprintf(stderr, "[gpu] %s over %llu threads ran %.4f ms on the device\n", gpu_queued[ring(i)].kernel,
+                  (unsigned long long)gpu_queued[ring(i)].threads,
+                  (double)(stamps[2 * ring(i) + 1].timestamp - stamps[2 * ring(i)].timestamp) * per_tick);
+}
+
+// The open command buffer goes to the device now; the host does not wait.
+static void commit_open(void) {
+  if (gpu_batch == nil) return;
   [gpu_encoder endEncoding];
+  [gpu_batch commit];
+  gpu_segments[(gpu_segment_head + gpu_segment_count) % GPU_SEGMENTS] = (OspreyGpuSegment){gpu_batch, gpu_open_first, gpu_open_count};
+  gpu_segment_count++;
   gpu_batch = nil;
   gpu_encoder = nil;
-  [command commit];
-  [command waitUntilCompleted];
-  unsigned queued = gpu_queued_count;
-  gpu_queued_count = 0;
-  if (command.status != MTLCommandBufferStatusCompleted) {
-    osp_io_error_text(gpu_queued[0].kernel, "Metal", command.error.localizedDescription.UTF8String);
-    return -1;
-  }
-  for (unsigned i = 0; i < queued; i++) {
-    OspreyGpuDispatch done = {gpu_queued[i].kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, gpu_queued[i].threads};
+}
+
+static void report_segment(const OspreyGpuSegment *segment) {
+  for (unsigned i = segment->first; i < segment->first + segment->count; i++) {
+    OspreyGpuQueued *q = &gpu_queued[ring(i)];
+    OspreyGpuDispatch done = {q->kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, q->threads};
     osprey_gpu_report(gpu_name, atomic_fetch_add(&gpu_completed, 1) + 1, &done);
   }
-  // `OSPREY_GPU_TIMING=1` reports each batch's device time, so a program can
-  // tell GPU-bound from host-bound ([LLM-SPEED] receipts).
-  const char *timing = getenv("OSPREY_GPU_TIMING");
-  if (timing != NULL && strcmp(timing, "1") == 0)
-    (void)fprintf(stderr, "[gpu] batch of %u dispatches ran %.3f ms on the device\n", queued,
-                  (command.GPUEndTime - command.GPUStartTime) * 1000.0);
-  if (timing != NULL && strcmp(timing, "2") == 0)
-    (void)fprintf(stderr, "[gpu] %s over %llu threads ran %.3f ms on the device\n", gpu_queued[0].kernel,
-                  (unsigned long long)gpu_queued[0].threads, (command.GPUEndTime - command.GPUStartTime) * 1000.0);
-  return 1;
+  if (timing_mode() < 1) return;
+  double batch_ms = (segment->command.GPUEndTime - segment->command.GPUStartTime) * 1000.0;
+  if (timing_mode() == 2) report_dispatch_times(segment->first, segment->count, batch_ms);
+  (void)fprintf(stderr, "[gpu] batch of %u dispatches ran %.3f ms on the device\n", segment->count, batch_ms);
+}
+
+// Waits for the oldest committed segment, reports it and frees its ring slots.
+static int complete_oldest(void) {
+  OspreyGpuSegment *segment = &gpu_segments[gpu_segment_head % GPU_SEGMENTS];
+  [segment->command waitUntilCompleted];
+  gpu_segment_head++;
+  gpu_segment_count--;
+  gpu_head += segment->count;
+  gpu_count -= segment->count;
+  int status = 1;
+  if (segment->command.status != MTLCommandBufferStatusCompleted) {
+    osp_io_error_text(gpu_queued[ring(segment->first)].kernel, "Metal", segment->command.error.localizedDescription.UTF8String);
+    status = -1;
+  } else {
+    report_segment(segment);
+  }
+  segment->command = nil;
+  return status;
+}
+
+static int flush_locked(void) {
+  commit_open();
+  int status = 1;
+  while (gpu_segment_count > 0)
+    if (complete_oldest() < 0) status = -1;
+  return status;
 }
 
 // Whether the host asked for any of this dispatch's outputs.
@@ -287,18 +375,33 @@ static bool writes_back(const OspreyGpuDispatch *d) {
 
 static bool open_batch(void) {
   if (gpu_batch != nil) return true;
+  gpu_open_first = gpu_head + gpu_count;
+  gpu_open_count = 0;
   gpu_batch = [gpu_queue commandBuffer];
-  gpu_encoder = [gpu_batch computeCommandEncoder];
+  gpu_encoder = timing_mode() == 2 ? timed_encoder(ring(gpu_open_first)) : [gpu_batch computeCommandEncoder];
   if (gpu_batch != nil && gpu_encoder != nil) return true;
   gpu_batch = nil;
   gpu_encoder = nil;
   return false;
 }
 
+// Room in the ring and the segment list for one more dispatch: the oldest
+// segment is completed when either is full.
+static int make_room(void) {
+  if (gpu_count < GPU_BATCH_CAP && gpu_segment_count < GPU_SEGMENTS) return 1;
+  if (gpu_segment_count == 0) commit_open();
+  return complete_oldest();
+}
+
 static int encode(const OspreyGpuDispatch *d, id<MTLComputePipelineState> state) {
+  if (make_room() < 0) return -1;
   if (!open_batch()) {
     osp_io_error_text(d->kernel, "Metal", "command allocation failed");
     return -1;
+  }
+  if (timing_mode() == 2 && gpu_open_count > 0) {
+    [gpu_encoder endEncoding];
+    gpu_encoder = timed_encoder(ring(gpu_open_first + gpu_open_count));
   }
   id<MTLBuffer> buffers[OSPREY_GPU_MAX_ARGS] = {nil};
   [gpu_encoder setComputePipelineState:state];
@@ -310,15 +413,17 @@ static int encode(const OspreyGpuDispatch *d, id<MTLComputePipelineState> state)
     return -1;
   }
   [gpu_encoder dispatchThreads:MTLSizeMake((NSUInteger)d->threads, 1, 1) threadsPerThreadgroup:MTLSizeMake(group, 1, 1)];
-  OspreyGpuQueued *queued = &gpu_queued[gpu_queued_count++];
+  OspreyGpuQueued *queued = &gpu_queued[ring(gpu_open_first + gpu_open_count++)];
+  gpu_count++;
   (void)snprintf(queued->kernel, sizeof queued->kernel, "%s", d->kernel);
   queued->threads = d->threads;
-  const char *timing = getenv("OSPREY_GPU_TIMING");
-  bool one_by_one = timing != NULL && strcmp(timing, "2") == 0; // Per-kernel receipts, at a batch per dispatch.
-  if (!one_by_one && !writes_back(d) && gpu_queued_count < GPU_BATCH_CAP) return 1;
-  int status = flush_locked();
-  if (status == 1) write_back(d, buffers);
-  return status;
+  if (writes_back(d)) {
+    int status = flush_locked();
+    if (status == 1) write_back(d, buffers);
+    return status;
+  }
+  if (gpu_open_count >= GPU_SEGMENT) commit_open();
+  return 1;
 }
 
 static int dispatch_locked(const OspreyGpuDispatch *d) {

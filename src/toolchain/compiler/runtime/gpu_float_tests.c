@@ -180,7 +180,52 @@ static void check_float16_conversions(void) {
   }
 }
 
+// binary32 ulps between a value and the host's binary64 reference rounded once.
+static unsigned ulps_from(float value, double reference) {
+  float rounded = (float)reference;
+  if (isnan(value) || isnan(rounded)) return isnan(value) == isnan(rounded) ? 0 : 1000;
+  if (isinf(value) || isinf(rounded)) return value == rounded ? 0 : 1000;
+  int32_t a, b;
+  memcpy(&a, &value, sizeof a);
+  memcpy(&b, &rounded, sizeof b);
+  if (a < 0) a = INT32_MIN - a;
+  if (b < 0) b = INT32_MIN - b;
+  return (unsigned)llabs((long long)a - (long long)b);
+}
+
+// [GPU-DEVICE-NATIVE] The shared binary32 exp and tanh: within 2 ulps of the
+// host's binary64 libm rounded once, exact at the special points, and never a
+// different byte from the host build of the same source — which is this one.
+static void check_float32_transcendentals(void) {
+  static const float points[] = {0.0f, -0.0f, 1.0f, -1.0f, 88.7f, -87.3f, -103.9f, -104.0f, 89.0f, 1e-20f, -1e-20f, 0.5f, 9.5f, -9.5f,
+                                 0.6931471805599453f, 2.0f, -2.0f, 1e-45f, 3.4028235e38f, -3.4028235e38f, 0.25f, 0.3f, -0.3f};
+  for (unsigned i = 0; i < sizeof points / sizeof points[0]; i++) {
+    assert(ulps_from(gpu32_exp(points[i]), exp((double)points[i])) <= 2);
+    assert(ulps_from(gpu32_tanh(points[i]), tanh((double)points[i])) <= 2);
+    checks += 2;
+  }
+  assert(isnan(gpu32_exp(NAN)) && isnan(gpu32_tanh(NAN)));
+  assert(gpu32_exp(INFINITY) == INFINITY && gpu32_exp(-INFINITY) == 0.0f);
+  assert(gpu32_tanh(INFINITY) == 1.0f && gpu32_tanh(-INFINITY) == -1.0f);
+  checks += 6;
+  unsigned worst_exp = 0, worst_tanh = 0;
+  for (unsigned i = 0; i < 2000000; i++) {
+    uint32_t w = (uint32_t)random_word();
+    float x;
+    memcpy(&x, &w, sizeof x);
+    if (isnan(x) || isinf(x)) continue;
+    float scaled = x > 150.0f || x < -150.0f ? fmodf(x, 150.0f) : x;
+    unsigned e = ulps_from(gpu32_exp(scaled), exp((double)scaled)), t = ulps_from(gpu32_tanh(scaled), tanh((double)scaled));
+    if (e > worst_exp) worst_exp = e;
+    if (t > worst_tanh) worst_tanh = t;
+    checks += 2;
+  }
+  printf("[ok] binary32 exp worst %u ulps, tanh worst %u ulps\n", worst_exp, worst_tanh);
+  assert(worst_exp <= 2 && worst_tanh <= 2);
+}
+
 int main(void) {
+  check_float32_transcendentals();
   check_float32_operations();
   check_float16_conversions();
   printf("[ok] device native-width arithmetic: %lu host parity checks\n", checks);

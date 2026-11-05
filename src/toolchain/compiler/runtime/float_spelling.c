@@ -65,12 +65,8 @@ uint16_t osp_float_to_f16(double value) {
     return (uint16_t)(sign + rounded_shift(m, shift));
 }
 
-static uint32_t f32_subnormal(uint32_t sign, uint32_t fraction) {
-    if (!fraction) return sign;
-    int exponent = 113;
-    while (!(fraction & 0x0400)) { fraction <<= 1; exponent--; }
-    return sign | ((uint32_t)exponent << 23) | ((fraction & 0x03FF) << 13);
-}
+/* A subnormal half is fraction * 2^-24 exactly, a normal float: one multiply. */
+static const float F16_SUBNORMAL_UNIT = 5.9604644775390625e-08f;
 
 /* Exact widening, including normalising binary16 subnormals. */
 float osp_f16_to_f32(uint16_t bits) {
@@ -83,7 +79,8 @@ float osp_f16_to_f32(uint16_t bits) {
     } else if (exponent) {
         word = sign | ((exponent + 112) << 23) | (fraction << 13);
     } else {
-        word = f32_subnormal(sign, fraction);
+        float small = (float)fraction * F16_SUBNORMAL_UNIT;
+        return sign ? -small : small;
     }
     float value;
     memcpy(&value, &word, sizeof(value));
