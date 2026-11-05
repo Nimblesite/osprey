@@ -878,14 +878,14 @@ def shape_total(shapes):
     return foldList(shapes, 0, lambda total, shape: total + shape_size(shape))
 
 
-def manifest_cases():
+def manifest_cases(parameter_values):
     """The fixture's own counts: the declared parameter count is the sum of the recorded
     shapes, and every tensor has one manifest row per value list (so the fixture cannot
     describe a shape it does not carry)."""
     return [
         Check.equal("model_param_count", shape_total(Expected.MODEL_PARAM_SHAPES), Expected.MODEL_PARAM_COUNT),
         Check.equal("model_param_tensors", len(Expected.MODEL_PARAM_NAMES), len(Expected.MODEL_PARAM_SHAPES)),
-        Check.equal("model_param_dtypes", len(Expected.MODEL_PARAM_DTYPES), len(Expected.MODEL_PARAM_VALUES)),
+        Check.equal("model_param_dtypes", len(Expected.MODEL_PARAM_DTYPES), len(parameter_values)),
         Check.equal("model_cache_tensors", len(Expected.MODEL_CACHE_NAMES), len(Expected.MODEL_CACHE_VALUES)),
         Check.equal("model_cache_dtypes", len(Expected.MODEL_CACHE_DTYPES), len(Expected.MODEL_CACHE_SHAPES)),
         Check.equal("model_hidden_stages", len(Expected.MODEL_HIDDEN_STAGES), Expected.MODEL_LAYERS + 1),
@@ -899,11 +899,11 @@ def manifest_cases():
     ]
 
 
-def param_cases():
+def param_cases(parameter_values):
     """One assertion per recorded parameter tensor: its values fill its shape."""
-    return toList(map(range(len(Expected.MODEL_PARAM_VALUES)), lambda k: Check.equal(
+    return toList(map(range(len(parameter_values)), lambda k: Check.equal(
         "model_param[" + name_at(Expected.MODEL_PARAM_NAMES, k) + "]",
-        len(unwrap_or(listGet(Expected.MODEL_PARAM_VALUES, k), [])),
+        len(unwrap_or(listGet(parameter_values, k), [])),
         shape_size(unwrap_or(listGet(Expected.MODEL_PARAM_SHAPES, k), [])),
     )))
 
@@ -934,7 +934,8 @@ def model_fixture_cases():
     """[LLM-MODEL-ORACLE] The tiny `Qwen3_5TextConfig` fixture transformers wrote is
     self-consistent (its counts and shapes), and the device model built from its
     parameters reproduces its activations and cache."""
-    return listConcat(manifest_cases(), listConcat(param_cases(), listConcat(hidden_cases(), listConcat(cache_cases(), model_layer_cases()))))
+    parameter_values = Expected.MODEL_PARAM_VALUES
+    return listConcat(manifest_cases(parameter_values), listConcat(param_cases(parameter_values), listConcat(hidden_cases(), listConcat(cache_cases(), model_layer_cases(fixture_params(parameter_values))))))
 
 
 # --- the qwen3_5 model on device buffers: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE] ---
@@ -998,8 +999,8 @@ def to_floats(xs):
     return mapList(xs, toFloat32)
 
 
-def fixture_params():
-    return Qwen3_5Hf.Params(names=Expected.MODEL_PARAM_NAMES, values=mapList(Expected.MODEL_PARAM_VALUES, to_floats))
+def fixture_params(parameter_values):
+    return Qwen3_5Hf.Params(names=Expected.MODEL_PARAM_NAMES, values=mapList(parameter_values, to_floats))
 
 
 def hidden_row(k, t):
@@ -1039,16 +1040,16 @@ def compare_rows(name, buffer, start, count, want):
             return Check.failed(name, toString(message))
 
 
-def model_layer_cases():
+def model_layer_cases(parameters):
     """The device model from the fixture's parameters: the one-token input and the
     eight tokens fed one at a time through the cache reproduce every recorded hidden
     stage, the first cached token every layer hook, the final cache every state tensor,
     and the loader refuses a missing or mis-sized parameter."""
-    match Qwen3_5Hf.load(fixture_params(), model_config()):
+    match Qwen3_5Hf.load(parameters, model_config()):
         case Error(message=message):
             return [Check.failed("model_load", message)]
         case Success(value=model):
-            return listConcat([Check.passed("model_load")], listConcat(single_cases(model), listConcat(cached_cases(model), listConcat(tiled_cases(model), refusal_cases()))))
+            return listConcat([Check.passed("model_load")], listConcat(single_cases(model), listConcat(cached_cases(model), listConcat(tiled_cases(model, parameters), refusal_cases()))))
 
 
 def token_in(tokens, t):
@@ -1182,11 +1183,11 @@ def head_major(flat, positions, heads, width):
     return toList(map(range(heads * positions * width), lambda j: unwrap_or(listGet(flat, ((j // width) % positions) * heads * width + (j // (positions * width)) * width + j % width), toFloat32(0.0))))
 
 
-def tiled_cases(model):
+def tiled_cases(model, parameters):
     """The GGUF value-head order: the same checkpoint with every per-value-head
     parameter permuted into llama.cpp's tiled order, loaded as `tiled`, yields the same
     one-token activations as Transformers' grouped order."""
-    match Qwen3_5Hf.load(tiled_params(model.config), model.config):
+    match Qwen3_5Hf.load(tiled_params(model.config, parameters), model.config):
         case Error(message=message):
             return [Check.failed("model_tiled_load", message)]
         case Success(value=grouped):
@@ -1205,10 +1206,11 @@ def tiled_decode(model, cache):
             return stage_cases("model_tiled", next, SINGLE, 0)
 
 
-def tiled_params(cfg):
+def tiled_params(cfg, parameters):
     """`fixture_params` with the linear-attention value heads in tiled order, as
     `convert_hf_to_gguf.py`'s `_reorder_v_heads` writes them."""
-    return Qwen3_5Hf.Params(names=Expected.MODEL_PARAM_NAMES, values=toList(map(range(len(Expected.MODEL_PARAM_NAMES)), lambda k: tiled_param(cfg, name_at(Expected.MODEL_PARAM_NAMES, k), to_floats(unwrap_or(listGet(Expected.MODEL_PARAM_VALUES, k), []))))))
+    values = toList(map(range(len(parameters.names)), lambda k: tiled_param(cfg, name_at(parameters.names, k), unwrap_or(listGet(parameters.values, k), []))))
+    return Qwen3_5Hf.Params(names=parameters.names, values=values)
 
 
 def tiled_param(cfg, name, values):
