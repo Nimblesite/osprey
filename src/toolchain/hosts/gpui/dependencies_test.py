@@ -231,7 +231,11 @@ STUBS = {
     "_stub.sh": 'record() { printf \'%s\\n\' "$*" >>"$FIXTURE_EVENTS"; }\n',
     "python3": 'record python3 "$*"\n',
     "pkill": 'record pkill "$*"\nexit 1\n',
-    "sleep": 'record sleep "$*"\n',
+    # Keep the absent-window cases fast, but give a real child time to publish
+    # its launch event when the comparison expects a window.
+    "sleep": ('record sleep "$*"\n'
+              'if [ "$1" = 1 ] && [ "${FIXTURE_NO_REFERENCE:-0}" != 1 ] && '
+              '[ "${FIXTURE_NO_PORT_WINDOW:-0}" != 1 ]; then "$FIXTURE_REAL_SLEEP" 0.1; fi\n'),
     "cargo": ('record cargo "$*"\nmkdir -p "$CARGO_TARGET_DIR/release"\n'
               'cp "$FIXTURE_BIN/reference-child" "$CARGO_TARGET_DIR/release/painting-reference"\n'
               'chmod +x "$CARGO_TARGET_DIR/release/painting-reference"\n'),
