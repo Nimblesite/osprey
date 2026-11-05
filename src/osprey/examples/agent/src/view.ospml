@@ -370,14 +370,15 @@ module View
     modelChoices (chat, settings) =
         current = chat.chatModel
         keyed = filterList (Engine::provider_ids (), \provider => Model::hasKey (settings, provider))
-        offered = foldList (keyed, [], \(acc, provider) => listConcat acc (mapList (Engine::model_ids provider, \model => Ui::choice (Engine::full_model (provider, model), modelLine (Engine::full_model (provider, model))))))
+        offered = foldList (keyed, [], \(acc, provider) => listConcat acc (mapList (Model::modelsOf (settings, provider), \model => Ui::choice (Engine::full_model (provider, model), modelLine (Engine::full_model (provider, model))))))
         Pick::either (Lists::any (offered, \choice => choice.choiceKey == current), offered, listPrepend offered (Ui::choice (current, modelLine current)))
 
-    effortPicker (model, effort) =
+    (** The picker for `model`'s effort, when it has any: each choice names itself, and the empty level leaves the choice to the provider. *)
+    effortPicker (model, effort, pick) =
         levels = Engine::model_levels model
         match length levels == 0
             true => []
-            false => [Ui::picker ("Effort", mapList (levels, \level => Ui::choice (level, effortLabel level)), effort, PickEffort)]
+            false => [Ui::picker ("Effort", listPrepend (mapList (levels, \level => Ui::choice (level, "Effort: ${effortLabel level}"))) (Ui::choice ("", "Effort: Default")), Model::effortFor (model, effort), pick)]
 
     missingKey (chat, settings) = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
 
@@ -410,8 +411,8 @@ module View
         field = Ui::framed (base17(frameTextSize = 14, frameLineHeight = 21.0, frameQuietControls = true), ui::Field(label = "Message", value = words, prompt = "Ask Osprey to change something…", secure = false, multiline = true, commit = ui::OnEdit, bind = Typed))
         base18 = Frames::plain
         model = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::picker ("Model", modelChoices (chat, settings), chat.chatModel, PickModel))
-        effort = mapList (effortPicker (chat.chatModel, chat.chatEffort), \picker => Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), picker))
-        place = Ui::framed (base18(frameQuietControls = true, frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::action (folderName chat.chatFolder, Symbols::name ui::Folder, ui::Plain, Model::busy chat == false, ChangeFolder))
+        effort = mapList (effortPicker (chat.chatModel, chat.chatEffort, PickEffort), \picker => Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), picker))
+        place = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::action (folderName chat.chatFolder, Symbols::name ui::Folder, ui::Plain, Model::busy chat == false, ChangeFolder))
         base19 = Frames::plain
         sending = Ui::framed (base19(frameIconOnly = Model::busy chat || missingKey (chat, settings) == false, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words, settings))
         controls = Ui::row (listConcat [place, model] (listConcat effort [ui::Spacer, sending]))
@@ -439,10 +440,9 @@ module View
         heading = Ui::framed (base22(frameHug = true), Ui::styled ("Default model", ui::Eyebrow, ui::Secondary))
         providers = mapList (Engine::provider_ids (), \provider => Ui::choice (provider, Engine::provider_label provider))
         providerPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Provider", providers, settings.providerOpen, PickProvider))
-        models = mapList (Engine::model_ids settings.providerOpen, \model => Ui::choice (Engine::full_model (settings.providerOpen, model), Engine::model_label (Engine::full_model (settings.providerOpen, model))))
+        models = mapList (Model::modelsOf (settings, settings.providerOpen), \model => Ui::choice (Engine::full_model (settings.providerOpen, model), Engine::model_label (Engine::full_model (settings.providerOpen, model))))
         modelPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Model", models, settings.defaultModel, PickDefaultModel))
-        levels = Engine::model_levels settings.defaultModel
-        effort = Pick::either (length levels == 0, [], [Ui::framed (base22(frameGrow = true), Ui::picker ("Effort", mapList (levels, \level => Ui::choice (level, effortLabel level)), settings.defaultEffort, PickDefaultEffort))])
+        effort = mapList (effortPicker (settings.defaultModel, settings.defaultEffort, PickDefaultEffort), \picker => Ui::framed (base22(frameGrow = true), picker))
         Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [heading, Ui::framed (Look::gapped 12, Ui::row (listConcat [providerPicker, modelPicker] effort))])
 
     providersPane settings =

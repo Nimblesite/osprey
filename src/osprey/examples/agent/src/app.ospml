@@ -14,6 +14,7 @@ import ui::Runtime
 import agent::Engine
 import agent::McpClient
 import agent::Transcript
+import agent::Images
 import agentapp::McpModel
 import agentapp::McpRun
 import agentapp::Model
@@ -31,9 +32,27 @@ module Turn
 
     (** The model request for `chat`'s next step, under a new ticket, with the key of its provider. *)
     export asking (store, chat) =
+        names = Images::names_in (bodyOf (store, chat))
+        match length names == 0
+            true => sending (store, chat, bodyOf (store, chat))
+            false =>
+                ticket = "images:${chat.chatId}:${store.ticketCount}"
+                Runtime::asking (Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "thinking", chatTicket = ticket, chatProblem = "")), [Model::imagesRead (store.settings, ticket, names)])
+
+    bodyOf (store, chat) = Engine::request_body_with_mcp (chat.chatHistory, chat.chatModel, chat.chatEffort, McpModel::toolsDocument store.mcp)
+
+    (** The images are read, or could not be: the request goes and says what is missing. *)
+    export imagesRead (store, chat, ticket, outcome) =
+        body = bodyOf (store, chat)
+        output = match outcome
+            Error _ => ""
+            Success _ => perform ui::Slices.fetch ticket
+        sending (store, chat, Images::with_images (body, Images::names_in body, output))
+
+    sending (store, chat, body) =
         ticket = "model:${chat.chatId}:${store.ticketCount}"
         key = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel)
-        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = Engine::request_body_with_mcp (chat.chatHistory, chat.chatModel, chat.chatEffort, McpModel::toolsDocument store.mcp), responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
+        request = Requests::ask (ticket, ui::Http(method = "POST", url = Engine::url chat.chatModel, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${key}"), ui::Header(headerName = "Content-Type", headerValue = "application/json")], body = body, responseLimit = responseLimit (), deadline = deadline (), httpSlice = ticket))
         moved = Model::putChat (store(ticketCount = satAdd store.ticketCount 1), chat(chatStage = "thinking", chatTicket = ticket, chatProblem = ""))
         Runtime::asking (moved, [request])
 
@@ -120,7 +139,7 @@ module Turn
         words = trim text
         chat = Model::active store
         missing = Model::keyOf (store.settings, Engine::provider_id_of chat.chatModel) == ""
-        problem = Engine::provider_problem chat.chatModel
+        problem = Model::modelProblem (store.settings, chat.chatModel)
         match words == "" || Model::busy chat || missing || problem != ""
             true => Runtime::step (store(draft = Draft(draftText = words)))
             false =>
@@ -165,10 +184,13 @@ module Answers
             value = Model::draftOf (settings, provider)
             match value == ""
                 true => Runtime::step store
-                false => Model::persisting (store(settings = Model::withKey (Model::withDraft (settings, provider, ""), provider, value)), "providers.json")
+                false =>
+                    keyed = Model::withKey (Model::withDraft (settings, provider, ""), provider, value)
+                    saving = Model::persisting (store(settings = keyed), "providers.json")
+                    saving(requests = listAppend saving.requests (Model::listingOf (keyed, provider)))
         RemoveKey provider =>
             settings = store.settings
-            Model::persisting (store(settings = Model::withKey (settings, provider, "")), "providers.json")
+            Model::persisting (store(settings = Model::unlisted (Model::withKey (settings, provider, ""), provider)), "providers.json")
         ShowSettingsTab key =>
             settings = store.settings
             Runtime::step (store(settings = settings(settingsTab = key)))
@@ -202,19 +224,17 @@ module Answers
             Runtime::step (store(panel = panel(panelActive = text)))
         PickModel =>
             chat = Model::active store
-            effort = Pick::either (Lists::any (Engine::model_levels text, \level => level == chat.chatEffort), chat.chatEffort, "")
-            Runtime::step (Model::putChat (store, chat(chatModel = text, chatEffort = effort)))
+            Runtime::step (Model::putChat (store, chat(chatModel = text, chatEffort = Model::effortFor (text, chat.chatEffort))))
         PickEffort =>
             chat = Model::active store
             Runtime::step (Model::putChat (store, chat(chatEffort = text)))
         PickProvider =>
             settings = store.settings
-            first = listGet (Engine::model_ids text) 0 ?: "deepseek-chat"
+            first = listGet (Model::modelsOf (settings, text)) 0 ?: "deepseek-chat"
             Model::persisting (store(settings = settings(providerOpen = text, defaultModel = Engine::full_model (text, first), defaultEffort = "")), "providers.json")
         PickDefaultModel =>
             settings = store.settings
-            effort = Pick::either (Lists::any (Engine::model_levels text, \level => level == settings.defaultEffort), settings.defaultEffort, "")
-            Model::persisting (store(settings = settings(defaultModel = text, defaultEffort = effort)), "providers.json")
+            Model::persisting (store(settings = settings(defaultModel = text, defaultEffort = Model::effortFor (text, settings.defaultEffort))), "providers.json")
         PickDefaultEffort =>
             settings = store.settings
             Model::persisting (store(settings = settings(defaultEffort = text)), "providers.json")
@@ -299,7 +319,7 @@ module Answers
             // A key pasted while the file was being read is the newer word; the dotenv fills only empty slots.
             seeded = Model::keysIn (perform ui::Slices.fetch "env")
             filled = foldList (seeded, settings, \(acc, key) => Pick::either (Model::keyOf (acc, key.keyProvider) == "" && key.keyValue != "", Model::withKey (acc, key.keyProvider, key.keyValue), acc))
-            Runtime::step (store(settings = filled))
+            Runtime::asking (store(settings = filled), Model::newlyKeyed (settings, filled))
 
     providersLoaded (store, outcome) = match outcome
         Error _ => Runtime::step store
@@ -308,7 +328,7 @@ module Answers
             true =>
                 settings = Model::providersOf (store.settings, Doc::parse (perform ui::Slices.fetch "providers-file"))
                 // A conversation with nothing said yet was opened before the saved default was known.
-                Runtime::step (store(settings = settings, chats = mapList (store.chats, \chat => Model::withDefaultModel (chat, settings))))
+                Runtime::asking (store(settings = settings, chats = mapList (store.chats, \chat => Model::withDefaultModel (chat, settings))), Model::newlyKeyed (store.settings, settings))
 
     chatsLoaded (store, outcome) = match outcome
         Error _ => Runtime::step store
@@ -395,13 +415,19 @@ module Answers
         "mcp-global" => mcpGlobalLoaded (store, outcome)
         "mcp-state" => mcpStateLoaded (store, outcome)
         "mcp-project" => mcpProjectLoaded (store, outcome)
-        _ => match startsWith ticket "mcp"
-            true => mcpAnswerOf (store, ticket, outcome)
-            false => match startsWith ticket "save:"
-                true => saved (store, outcome)
-                false => match chatOf (store, ticket)
-                    Error _ => Runtime::step store
-                    Success chat => match startsWith ticket "model:"
+        _ => match startsWith ticket "models:"
+            true => Runtime::step (Model::modelsAnswered (store, ticket, outcome))
+            false => answerTo (store, ticket, outcome)
+
+    answerTo (store, ticket, outcome) = match startsWith ticket "mcp"
+        true => mcpAnswerOf (store, ticket, outcome)
+        false => match startsWith ticket "save:"
+            true => saved (store, outcome)
+            false => match chatOf (store, ticket)
+                Error _ => Runtime::step store
+                Success chat => match startsWith ticket "images:"
+                    true => Turn::imagesRead (store, chat, ticket, outcome)
+                    false => match startsWith ticket "model:"
                         true => Turn::modelAnswered (store, chat, ticket, outcome)
                         false => Turn::toolAnswered (store, chat, ticket, outcome)
 

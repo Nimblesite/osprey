@@ -35,6 +35,7 @@ struct ButtonView: View {
             .disabled(!node.flag("enabled"))
             .help(node.text("label"))
             .accessibilityLabel(node.text("label"))
+            .background { if ButtonFrames.recording { ButtonFrames.Recorder(name: node.text("label")) } }
     }
 
     @ViewBuilder private var face: some View {
@@ -46,6 +47,24 @@ struct ButtonView: View {
                 if !symbol.isEmpty && !inherited.trailingSymbols { glyph }
                 if !node.text("label").isEmpty { Text(node.text("label")).font(Type.font("body", inherited)).lineLimit(1) }
                 if !symbol.isEmpty && inherited.trailingSymbols { glyph }
+            }
+        }
+    }
+}
+
+/// Where each button is drawn, kept only during a self-test so its `press` step can click there.
+@MainActor enum ButtonFrames {
+    static var recording = false
+    static var frames: [String: CGRect] = [:]
+
+    struct Recorder: View {
+        let name: String
+
+        var body: some View {
+            GeometryReader { geometry in
+                Color.clear
+                    .onAppear { frames[name] = geometry.frame(in: .global) }
+                    .onChange(of: geometry.frame(in: .global)) { _, next in frames[name] = next }
             }
         }
     }
@@ -126,6 +145,7 @@ struct FieldView: View {
     let send: (String) -> Void
     @State private var draft: String
     @FocusState private var focused: Bool
+    @State private var pasteMonitor: Any?
     @Environment(\.ospreyInherited) private var inherited
     private static let singleLineHeight: CGFloat = 25
 
@@ -149,6 +169,10 @@ struct FieldView: View {
                 .accessibilityLabel(node.text("label"))
         }
         .onAppear { if node.flag("multiline") { DispatchQueue.main.async { focused = true } } }
+        #if os(macOS)
+        .onAppear { if node.flag("multiline") && pasteMonitor == nil { pasteMonitor = monitorPaste() } }
+        .onDisappear { if let pasteMonitor { NSEvent.removeMonitor(pasteMonitor) }; pasteMonitor = nil }
+        #endif
         .onChange(of: draft) { _, next in if edits && next != value { send(next) } }
         .onChange(of: value) { _, next in if next != draft { draft = next } }
         .onChange(of: revision) { _, _ in if !edits && value != draft { draft = value } }
@@ -167,6 +191,19 @@ struct FieldView: View {
     }
 
     private func submit() { if !edits { send(draft) } }
+
+    #if os(macOS)
+    /// Cmd-V with a picture on the clipboard: a text field takes only text, so the picture is
+    /// saved and its marker joins the words. Anything else is left to the field.
+    private func monitorPaste() -> Any? {
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            guard focused, event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  event.charactersIgnoringModifiers == "v", let marker = PastedImage.take() else { return event }
+            draft = draft.isEmpty ? marker : "\(draft) \(marker)"
+            return nil
+        }
+    }
+    #endif
 
     private func returned() {
         if edits { draft += "\n" } else { send(draft) }

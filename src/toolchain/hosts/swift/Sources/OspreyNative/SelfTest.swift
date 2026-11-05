@@ -94,6 +94,8 @@ public enum SelfTestAttempt: Equatable {
     case checkingSelected(String, contains: Bool)
     case copying(String)
     case clicking(String)
+    case pressing(String)
+    case pastingImage
     case keyPress(String)
 }
 
@@ -212,6 +214,8 @@ public struct SelfTestRegions {
             return .checkingSelected(try word(0), contains: step.verb == "selected-contains")
         case "copy": return .copying(try word(0))
         case "click": return .clicking(try word(0))
+        case "press": return .pressing(try word(0))
+        case "paste-image": return .pastingImage
         case "select-all": return .keyPress("a")
         case "sleep":
             guard let seconds = Double(try word(0)) else { throw SelfTestProblem("sleep needs a number of seconds") }
@@ -241,6 +245,7 @@ public struct SelfTestRegions {
 public struct HttpDoubleAdapter: CapabilityAdapter {
     public let kinds = ["http"]
     private let replies: [JSONValue]
+    private let models: JSONValue?
     private let requests: URL
     private let position = Position()
 
@@ -255,20 +260,28 @@ public struct HttpDoubleAdapter: CapabilityAdapter {
         }
     }
 
-    /// `{"replies": [{"status": 200, "body": "...", "delayMs": 0}]}`.
+    /// `{"models": {"deepseek-chat": ...}, "replies": [{"status": 200, "body": "...", "delayMs": 0}]}`.
+    /// A provider's model list is a GET that takes no reply: `models` answers it for any
+    /// provider, and with no `models` it answers what a provider with no such list would.
     public init(file: String, requests: URL) throws {
         let value = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: URL(fileURLWithPath: file)))
         guard let replies = value["replies"]?.array else { throw SelfTestProblem("A double holds a list of replies") }
         self.replies = replies
+        self.models = value["models"]
         self.requests = requests
     }
 
     public func perform(_ request: Request, slices: SliceStore) async throws -> JSONValue {
         // A server on this machine is real in a doubled run: only the model is the double.
         if let url = URL(string: try request.text("url")), HttpAdapter.isLoopback(url) { return try await HttpAdapter().perform(request, slices: slices) }
+        let outgoing = try HttpAdapter.outgoing(request, timeout: max(try request.number("timeout"), 1))
+        if outgoing.httpMethod == "GET", outgoing.url?.path.hasSuffix("/models") == true, outgoing.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true {
+            guard let models else { return .object(["status": .number(404), "headers": .array([])]) }
+            slices.write(try request.text("slice"), models.text)
+            return .object(["status": .number(200), "headers": .array([])])
+        }
         let index = position.take()
         guard index < replies.count else { throw CapabilityError.platform("The double has no reply for request \(index + 1)") }
-        let outgoing = try HttpAdapter.outgoing(request, timeout: max(try request.number("timeout"), 1))
         guard outgoing.httpMethod == "POST", outgoing.value(forHTTPHeaderField: "Authorization")?.hasPrefix("Bearer ") == true else {
             throw CapabilityError.notAllowed("The double takes only an authorized POST")
         }
@@ -433,6 +446,34 @@ public final class SelfTestRun {
         return nil
     }
 
+    /// Cmd-V through the event queue with a small picture on this run's own pasteboard, which is
+    /// the route a person's paste takes; their clipboard stays theirs.
+    private func pasteImage() throws {
+        let board = NSPasteboard(name: NSPasteboard.Name("Osprey self-test paste"))
+        board.clearContents()
+        let image = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { rect in
+            NSColor.systemTeal.setFill()
+            rect.fill()
+            return true
+        }
+        guard let tiff = image.tiffRepresentation, board.setData(tiff, forType: .tiff),
+              let event = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: .command, timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: window.windowNumber, context: nil, characters: "v", charactersIgnoringModifiers: "v", isARepeat: false, keyCode: 9) else {
+            throw SelfTestProblem("the self-test could not put a picture on its pasteboard")
+        }
+        PastedImage.pasteboard = board
+        NSApp.postEvent(event, atStart: false)
+    }
+
+    /// A real click where the button named `name` is drawn, so a control that only looks like a
+    /// button, or sits under something else, fails here where `invoke` would not.
+    private func pressOn(_ name: String) -> String? {
+        guard let frame = ButtonFrames.frames[name], let height = window.contentView?.bounds.height else { return "no button on screen is named \"\(name)\"" }
+        let at = NSPoint(x: frame.midX, y: height - frame.midY)
+        send(.leftMouseDown, at: at)
+        send(.leftMouseUp, at: at)
+        return nil
+    }
+
     /// Cmd-A: the key event goes to the window, and to the responder holding the selection,
     /// because a window that is not key drops key events before the responder chain runs.
     private func pressCommand(_ letter: String) -> String? {
@@ -556,6 +597,12 @@ public final class SelfTestRun {
             case let .clicking(words):
                 guard let problem = clickOn(words) else { return }
                 try await hold(problem, until: deadline)
+            case let .pressing(name):
+                guard let problem = pressOn(name) else { return }
+                try await hold(problem, until: deadline)
+            case .pastingImage:
+                try pasteImage()
+                return
             case let .keyPress(letter):
                 guard let problem = pressCommand(letter) else { return }
                 try await hold(problem, until: deadline)
@@ -571,6 +618,7 @@ public final class SelfTestRun {
         do {
             let steps = try SelfTestStep.parse(String(contentsOfFile: options.script, encoding: .utf8))
             try FileManager.default.createDirectory(atPath: options.shots, withIntermediateDirectories: true)
+            ButtonFrames.recording = true
             // The person's clipboard stays theirs: copy checks read a pasteboard this run names.
             SelectionGroup.pasteboard = NSPasteboard(name: NSPasteboard.Name("Osprey self-test"))
             defer { SelectionGroup.pasteboard = nil }

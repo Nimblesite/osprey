@@ -1,0 +1,18 @@
+{
+  "models": {
+    "data": [
+      {
+        "id": "deepseek-chat"
+      },
+      {
+        "id": "deepseek-v9"
+      }
+    ]
+  },
+  "replies": [
+    {
+      "status": 200,
+      "body": "{\"id\": \"r1\", \"model\": \"deepseek-chat\", \"choices\": [{\"index\": 0, \"message\": {\"role\": \"assistant\", \"content\": \"I can see the picture.\"}, \"finish_reason\": \"stop\"}], \"usage\": {\"prompt_tokens\": 1, \"completion_tokens\": 1}}"
+    }
+  ]
+}

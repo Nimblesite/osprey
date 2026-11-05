@@ -28,7 +28,7 @@ __all__ = [
     "accept", "tool_command", "tool_summary", "tool_result_text", "url", "profile_of", "usage_of", "Totals",
     "files_changed", "pending", "last_calls", "OUTPUT_LIMIT", "cut_text", "has_turns",
     "Provider", "ModelEntry", "Wire", "PROVIDERS", "provider_id_of", "model_id_of", "provider_label", "provider_base",
-    "provider_key_names", "provider_ids", "model_ids", "model_label", "model_levels", "full_model", "provider_problem",
+    "provider_key_names", "provider_ids", "model_ids", "model_label", "model_levels", "full_model", "provider_problem", "models_url",
 ]
 
 OUTPUT_LIMIT = 40000
@@ -129,11 +129,16 @@ def model_id_of(model):
     return model if len(parts) < 2 else unwrap_or(listGet(parts, 1), model)
 
 
+def provider_wire(provider):
+    """How a model only `provider`'s API knows is spoken to: as the provider's newest catalogue model is."""
+    return unwrap_or(listGet(mapList(provider.models, lambda m: m.wire), 0), Wire(kind="openai", strict=True, reasoning=False, sendBack=False, maxTokens="max_tokens"))
+
+
 def entry_of(model):
     """The catalogue entry for `model`; an unknown one reads as an empty entry of that name."""
     provider = provider_by_id(provider_id_of(model))
     mid = model_id_of(model)
-    return unwrap_or(find_entry(provider, mid), ModelEntry(id=mid, label=mid, levels=[], wire=Wire(kind="openai", strict=True, reasoning=False, sendBack=False, maxTokens="max_tokens")))
+    return unwrap_or(find_entry(provider, mid), ModelEntry(id=mid, label=mid, levels=[], wire=provider_wire(provider)))
 
 
 def provider_problem(model):
@@ -184,6 +189,11 @@ def model_label(model):
 def model_levels(model):
     """The effort levels of `model`, in order; empty when it has none."""
     return entry_of(model).levels
+
+
+def models_url(provider_id):
+    """Where `provider_id`'s API lists its models."""
+    return f"{provider_base(provider_id)}/models"
 
 
 def full_model(provider_id, model_id):

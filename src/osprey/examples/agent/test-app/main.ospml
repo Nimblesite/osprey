@@ -249,11 +249,112 @@ testing ("the settings pane opens in place of the conversation and closes", \() 
     closed = (Drive::deliver (opened, ui::Act(act = agentapp::CloseSettings), "")).stepStore
     expect (closed.settings.settingsOpen, false))
 
+testing ("the provider's own API names the models, the pickers cascade and every picker says what it is", \() =>
+    launched = Drive::deliver ((App::initial (context 100)).stepStore, ui::Completed(ticket = "env", outcome = ok 0), "DEEPSEEKKEY=sk-test\n")
+    expect (Drive::kinds launched, "http")
+    asked = listGet (Drive::asked launched) 0 ?: JsonNull
+    expect (Doc::text (asked, "method"), "GET")
+    expect (Doc::text (asked, "url"), "https://api.deepseek.com/models")
+    expectTrue (contains (Doc::write asked) "Bearer sk-test")
+    before = Drive::showing (launched.stepStore, View::composer)
+    expectTrue (contains before "DeepSeek Reasoner")
+    expectFalse (contains before "DeepSeek V9")
+    answer = "{\"data\":[{\"id\":\"deepseek-v9\"},{\"id\":\"deepseek-v4-pro\"},{\"id\":\"deepseek-flash\"}]}"
+    listed = (Drive::deliver (launched.stepStore, ui::Completed(ticket = "models:deepseek", outcome = ok 200), answer)).stepStore
+    // The default model is gone from the provider, so the empty chat and the default both move to one it names.
+    expect ((Model::active listed).chatModel, "deepseek/deepseek-flash")
+    expect (listed.settings.defaultModel, "deepseek/deepseek-flash")
+    shown = Drive::showing (listed, View::composer)
+    expectTrue (contains shown "deepseek-v9")
+    expectTrue (contains (Drive::showing (App::restore (App::save listed), View::composer)) "deepseek-v9")
+    expectFalse (contains shown "DeepSeek Reasoner")
+    expectFalse (contains shown "DeepSeek Chat")
+    // Effort always names itself, from the first moment, and offers only what this model has.
+    expectTrue (contains shown "Effort: Default")
+    expectTrue (contains shown "Effort: High")
+    expectTrue (contains shown "Effort: Max")
+    expectTrue (contains shown "Effort: Low")
+    low = (Drive::deliver (listed, ui::Chose(chooser = agentapp::PickEffort, chosen = "low"), "")).stepStore
+    expect ((Model::active low).chatEffort, "low")
+    pro = (Drive::deliver (low, ui::Chose(chooser = agentapp::PickModel, chosen = "deepseek/deepseek-v4-pro"), "")).stepStore
+    expect ((Model::active pro).chatEffort, "")
+    expectFalse (contains (Drive::showing (pro, View::composer)) "Effort: Low")
+    // A model only the provider knows has no effort picker, and can be sent to with the provider's wire.
+    live = (Drive::deliver (pro, ui::Chose(chooser = agentapp::PickModel, chosen = "deepseek/deepseek-v9"), "")).stepStore
+    expectFalse (contains (Drive::showing (live, View::composer)) "Effort:")
+    sent = Drive::typing (live, "Hello\n")
+    expect (Drive::kinds sent, "http")
+    body = Doc::text (listGet (Drive::asked sent) 0 ?: JsonNull, "body")
+    expectTrue (contains body "\"model\":\"deepseek-v9\"")
+    expect (Doc::text (listGet (Drive::asked sent) 0 ?: JsonNull, "url"), "https://api.deepseek.com/chat/completions")
+    // A chat with words in it keeps its model when the provider drops it; a refused list changes nothing.
+    relisted = (Drive::deliver (sent.stepStore, ui::Completed(ticket = "models:deepseek", outcome = ok 200), "{\"data\":[{\"id\":\"deepseek-flash\"}]}")).stepStore
+    expect ((Model::active relisted).chatModel, "deepseek/deepseek-v9")
+    expect (relisted.settings.defaultModel, "deepseek/deepseek-flash")
+    refused = (Drive::deliver (listed, ui::Completed(ticket = "models:deepseek", outcome = ok 401), "{\"error\":\"no\"}")).stepStore
+    expectTrue (contains (Drive::showing (refused, View::composer)) "deepseek-v9")
+    failed = (Drive::deliver (listed, ui::Completed(ticket = "models:deepseek", outcome = Error(message = "offline")), "")).stepStore
+    expectTrue (contains (Drive::showing (failed, View::composer)) "deepseek-v9")
+    // Saving a key asks that provider; its list then offers its models, and removing the key forgets them.
+    typedKey = (Drive::deliver (listed, ui::Entered(entry = agentapp::TypedKey(keyProvider = "zai"), entered = "sk-zai"), "")).stepStore
+    savedKey = Drive::deliver (typedKey, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")
+    expect (Drive::kinds savedKey, "store-write,http")
+    expect (Doc::text (listGet (Drive::asked savedKey) 1 ?: JsonNull, "url"), "https://api.z.ai/api/paas/v4/models")
+    zai = (Drive::deliver (savedKey.stepStore, ui::Completed(ticket = "models:zai", outcome = ok 200), "{\"data\":[{\"id\":\"glm-9\"}]}")).stepStore
+    expectTrue (contains (Drive::showing (zai, View::composer)) "zai/glm-9")
+    // Settings cascades from the same answer: provider, then its live models, then that model's effort.
+    settingsOpen = (Drive::deliver (zai, ui::Act(act = agentapp::OpenSettings), "")).stepStore
+    picked = (Drive::deliver (settingsOpen, ui::Chose(chooser = agentapp::PickProvider, chosen = "zai"), "")).stepStore
+    expect (picked.settings.defaultModel, "zai/glm-9")
+    expect (picked.settings.defaultEffort, "")
+    removed = (Drive::deliver (zai, ui::Act(act = agentapp::RemoveKey(keyProvider = "zai")), "")).stepStore
+    expectFalse (contains (Drive::showing (removed, View::composer)) "glm-9"))
+
+travelsAsWords words =
+    step = Drive::typing (Drive::started (), "${words}\n")
+    expect (Drive::kinds step, "http")
+    expectTrue (contains (Doc::text (listGet (Drive::asked step) 0 ?: JsonNull, "body")) words)
+
+testing ("a pasted image reaches the model as image data, a typed path never leaves the machine, and a lost image says so", \() =>
+    name = "0c1d2e3f.png"
+    asked = Drive::typing (Drive::started (), "What is in [image: ${name}] please\n")
+    expect (Drive::kinds asked, "run")
+    reading = listGet (Drive::asked asked) 0 ?: JsonNull
+    expect (Doc::text (reading, "executable"), "/bin/sh")
+    expectTrue (contains (Doc::write reading) "/home/ada/Library/Application Support/Osprey/pasted")
+    expectTrue (contains (Doc::write reading) name)
+    expect ((Model::active asked.stepStore).chatStage, "thinking")
+    sent = Drive::answering (asked.stepStore, ok 0, "QUJD\n")
+    expect (Drive::kinds sent, "http")
+    body = Doc::text (listGet (Drive::asked sent) 0 ?: JsonNull, "body")
+    expectTrue (contains body "\"type\":\"image_url\"")
+    expectTrue (contains body "data:image/png;base64,QUJD")
+    expectTrue (contains body "What is in")
+    expectFalse (contains body "[image:")
+    // The next request of the turn sends the same picture again, and the saved conversation holds only its name.
+    next = Drive::answering (sent.stepStore, ok 200, textReply)
+    expectFalse (contains (Doc::write (App::save next.stepStore)) "QUJD")
+    expectTrue (contains (Doc::write (App::save next.stepStore)) name)
+    again = Drive::typing (next.stepStore, "And now?\n")
+    expect (Drive::kinds again, "run")
+    lost = Drive::answering (again.stepStore, ok 0, "\n")
+    expect (Drive::kinds lost, "http")
+    lostBody = Doc::text (listGet (Drive::asked lost) 0 ?: JsonNull, "body")
+    expectTrue (contains lostBody "no longer available")
+    expectFalse (contains lostBody "image_url")
+    // Words pasted from a log that look like a marker read nothing and travel as the words they are.
+    hostile = ["[image: ../../.ssh/id_rsa.png]", "[image: /etc/passwd]", "[image: secret.txt]", "[image: ]", "[image: unclosed.png"]
+    forEachList (hostile, travelsAsWords)
+    // A failed read is no failed turn: the words still go.
+    failedRead = Drive::answering ((Drive::typing (Drive::started (), "See [image: ${name}]\n")).stepStore, Error(message = "denied"), "")
+    expect (Drive::kinds failedRead, "http")
+    expectTrue (contains (Doc::text (listGet (Drive::asked failedRead) 0 ?: JsonNull, "body")) "no longer available"))
+
 testing ("a saved key is written to providers.json, never to the conversations file", \() =>
     opened = (Drive::deliver (Drive::started (), ui::Act(act = agentapp::OpenSettings), "")).stepStore
     typed = (Drive::deliver (opened, ui::Entered(entry = agentapp::TypedKey(keyProvider = "zai"), entered = "sk-zai"), "")).stepStore
     saved = Drive::deliver (typed, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")
-    expect (Drive::kinds saved, "store-write")
+    expect (Drive::kinds saved, "store-write,http")
     request = listGet (Drive::asked saved) 0 ?: JsonNull
     expect (Doc::text (request, "name"), "providers.json")
     content = (listGet saved.writes 0 ?: Requests::write ("", "")).sliceText
@@ -279,7 +380,7 @@ testing ("a key saved during a conversation write still reaches providers.json, 
     expect (Doc::text (listGet (Drive::asked writing) 0 ?: JsonNull, "name"), "chats.json")
     ticket = Doc::text (listGet (Drive::asked writing) 0 ?: JsonNull, "ticket")
     queued = Drive::deliver (writing.stepStore, ui::Act(act = agentapp::SaveKey(keyProvider = "zai")), "")
-    expect (Drive::kinds queued, "")
+    expect (Drive::kinds queued, "http")
     next = Drive::deliver (queued.stepStore, ui::Completed(ticket = ticket, outcome = ok 0), "")
     expect (Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "name"), "providers.json")
     nextTicket = Doc::text (listGet (Drive::asked next) 0 ?: JsonNull, "ticket")

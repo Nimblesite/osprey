@@ -1,0 +1,18 @@
+{
+  "steps": [
+    {"wait": "Add an API key"},
+    {"invoke": "Add an API key"},
+    {"wait": "Save DeepSeek key"},
+    {"type": ["DeepSeek key", "sk-double"]},
+    {"invoke": "Save DeepSeek key"},
+    {"wait": "Key saved"},
+    {"invoke": "Close"},
+    {"wait": "Send"},
+    {"choose": "deepseek-v9"},
+    {"paste-image": ""},
+    {"wait": "[image:"},
+    {"invoke": "Send"},
+    {"wait": "I can see the picture"},
+    {"gone": "Stop"}
+  ]
+}

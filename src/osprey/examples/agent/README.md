@@ -28,6 +28,8 @@ Open `Settings` at the foot of the sidebar. Under `Providers`, paste a key and p
 
 ## MCP servers
 
+Each provider with a key is asked for its models at launch and when a key is saved, and the model pickers offer what it answers; until then, or if it refuses, they offer the built-in catalogue. Providers do not report effort levels, so those come from the catalogue, and a model it does not know has no effort picker. On macOS, Cmd-V pastes a picture into the message box: it is saved in `~/Library/Application Support/Osprey/pasted`, the words hold `[image: name.png]`, and the picture goes with each request.
+
 How do I configure MCPs in this app? Open `Settings`, then `MCP servers`. `Add server` takes a name, a command with one argument per line or a URL with `Name=value` headers, and environment lines. `Paste JSON` takes the standard block:
 
 ```json
@@ -91,6 +93,7 @@ src/osprey/examples/agent/self-test.sh --update-goldens  # writes this macOS ver
 | `self-test/mcp.json` | Real MCP servers over stdio, HTTP and SSE with the model doubled: add through the form and Paste JSON, tool calls, a tool error, a dead server and Reconnect, a project server off then on, remove. `verify_mcp.py` checks what the model was sent, and `self-test.sh` keeps planted secrets out of the records |
 | `self-test/mcp-restart.json` | The servers and switches come back after a restart |
 | `self-test/settings.json` | Each provider's key, model and effort against a strict double, a 402 and removing a key |
+| `self-test/paste.json` | Cmd-V with a picture through the real event queue, on a model only the provider's list names; the request carries the image |
 | `self-test/tasks/` | `--live` only: harder tasks, each checked by a hidden `verify.py` the agent never sees |
 
 A script acts through the events the views send, not with a mouse. `drive/app.sh` opens the app for a person's real keystrokes and clicks and captures only the app's window, which needs Accessibility and Screen Recording permission for the terminal.
