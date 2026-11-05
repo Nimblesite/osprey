@@ -60,6 +60,16 @@ q5_kCase () =
     expected : List<float32>
     expected = [19745614.0, 16930616.0]
     productCase ("the Q5_K product matches ggml's decode in the kernels' part order", "Q5_K", bytes, 256, expected)
+
+(** [LLM-MATMUL-QUANT] Q3_K: 256 weights per 110-byte block, two low bits per weight plus a mask bit, a
+    binary16 scale and sixteen 6-bit sub-block scales. *)
+q3_kCase () =
+    bytes : List<uint8>
+    bytes = [13, 180, 91, 2, 169, 80, 247, 158, 69, 236, 147, 58, 225, 136, 47, 214, 125, 36, 203, 114, 25, 192, 103, 14, 181, 92, 3, 170, 81, 248, 159, 70, 237, 148, 59, 226, 137, 48, 215, 126, 37, 204, 115, 26, 193, 104, 15, 182, 93, 4, 171, 82, 249, 160, 71, 238, 149, 60, 227, 138, 49, 216, 127, 38, 205, 116, 27, 194, 105, 16, 183, 94, 5, 172, 83, 250, 161, 72, 239, 150, 61, 228, 139, 50, 217, 128, 39, 206, 117, 28, 195, 106, 17, 184, 95, 6, 173, 84, 251, 162, 73, 240, 151, 62, 229, 140, 51, 218, 0, 60, 104, 15, 182, 93, 4, 171, 82, 249, 160, 71, 238, 149, 60, 227, 138, 49, 216, 127, 38, 205, 116, 27, 194, 105, 16, 183, 94, 5, 172, 83, 250, 161, 72, 239, 150, 61, 228, 139, 50, 217, 128, 39, 206, 117, 28, 195, 106, 17, 184, 95, 6, 173, 84, 251, 162, 73, 240, 151, 62, 229, 140, 51, 218, 129, 40, 207, 118, 29, 196, 107, 18, 185, 96, 7, 174, 85, 252, 163, 74, 241, 152, 63, 230, 141, 52, 219, 130, 41, 208, 119, 30, 197, 108, 19, 186, 97, 8, 175, 86, 253, 164, 75, 242, 153, 64, 231, 142, 53, 0, 60]
+    expected : List<float32>
+    expected = [-176674.0, 70724.0]
+    productCase ("the Q3_K product matches ggml's decode in the kernels' part order", "Q3_K", bytes, 256, expected)
 test ("the Q8_0 product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q8_0Case))
 test ("the Q6_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q6_kCase))
 test ("the Q5_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q5_kCase))
+test ("the Q3_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q3_kCase))

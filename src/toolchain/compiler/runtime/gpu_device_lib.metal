@@ -364,6 +364,42 @@ float q5_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
     return acc;
 }
 
+// Q3_K's descrambled 6-bit scale `index` of a block: ggml's `dequantize_row_q3_K`
+// builds four words from the twelve packed bytes, keeping the low four bits of a
+// byte and taking two more from the third.
+uint q3k_scale(GPU_GLOBAL const uchar *b, uint index) {
+    GPU_GLOBAL const uchar *s = b + 96;
+    uint low = (uint)s[0] | ((uint)s[1] << 8) | ((uint)s[2] << 16) | ((uint)s[3] << 24);
+    uint high = (uint)s[4] | ((uint)s[5] << 8) | ((uint)s[6] << 16) | ((uint)s[7] << 24);
+    uint packed = (uint)s[8] | ((uint)s[9] << 8) | ((uint)s[10] << 16) | ((uint)s[11] << 24);
+    uint word = index >> 2, part = index & 3;
+    uint bytes = word < 2 ? (word ? high : low) : ((word == 2 ? low : high) >> 4);
+    uint more = ((packed >> (2 * word)) & 0x03030303u) << 4;
+    return (((bytes & 0x0f0f0f0fu) | more) >> (8 * part)) & 255u;
+}
+
+// Q3_K: 256 weights per 110-byte block, two low bits per weight plus a high-bit
+// mask, a binary16 scale and sixteen 6-bit sub-block scales.
+float q3_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+    float d = quant_half(b, 108);
+    for (uint g = 0; g < 2; g++) {
+        for (uint j = 0; j < 4; j++) {
+            for (uint side = 0; side < 2; side++) {
+                uint sc = q3k_scale(b, 8 * g + 2 * j + side);
+                float dl = d * (float)((int)sc - 32);
+                GPU_GLOBAL const uchar *q = b + 32 + 32 * g + 16 * side;
+                GPU_GLOBAL const uchar *hm = b + 16 * side;
+                for (uint l = 0; l < 16; l++) {
+                    int low = (int)((q[l] >> (2 * j)) & 3);
+                    int high = (int)((hm[l] >> (4 * g + j)) & 1);
+                    acc = quant_add(acc, x[g * 128 + j * 32 + side * 16 + l], dl * (float)(low - (high ? 0 : 4)));
+                }
+            }
+        }
+    }
+    return acc;
+}
+
 // Thread t computes part p = t % parts of output i = t / parts: the blocks
 // from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
 // from 0.0f, into partial[i * parts + p]. One template for every block format,
@@ -392,6 +428,7 @@ QUANT_KERNEL(q4_k, q4_k_step, 256, 144)
 QUANT_KERNEL(q8_0, q8_0_step, 32, 34)
 QUANT_KERNEL(q6_k, q6_k_step, 256, 210)
 QUANT_KERNEL(q5_k, q5_k_step, 256, 176)
+QUANT_KERNEL(q3_k, q3_k_step, 256, 110)
 #undef QUANT_KERNEL
 
 // out[i] = the `parts` partial sums of output i added in order from 0.0f.

@@ -219,6 +219,39 @@ static float q5_k_step(float acc, const float *x, const unsigned char *b) {
   return acc;
 }
 
+static uint32_t q3k_word(const unsigned char *s, unsigned at) {
+  return (uint32_t)s[at] | ((uint32_t)s[at + 1] << 8) | ((uint32_t)s[at + 2] << 16) | ((uint32_t)s[at + 3] << 24);
+}
+
+static unsigned q3k_scale(const unsigned char *b, unsigned index) {
+  const unsigned char *s = b + 96;
+  uint32_t low = q3k_word(s, 0), high = q3k_word(s, 4), packed = q3k_word(s, 8);
+  unsigned word = index >> 2, part = index & 3;
+  uint32_t bytes = word < 2 ? (word ? high : low) : ((word == 2 ? low : high) >> 4);
+  uint32_t more = ((packed >> (2 * word)) & 0x03030303u) << 4;
+  return (((bytes & 0x0f0f0f0fu) | more) >> (8 * part)) & 255u;
+}
+
+static float q3_k_step(float acc, const float *x, const unsigned char *b) {
+  float d = quant_half(b, 108);
+  for (unsigned g = 0; g < 2; g++) {
+    for (unsigned j = 0; j < 4; j++) {
+      for (unsigned side = 0; side < 2; side++) {
+        unsigned sc = q3k_scale(b, 8 * g + 2 * j + side);
+        float dl = d * (float)((int)sc - 32);
+        const unsigned char *q = b + 32 + 32 * g + 16 * side;
+        const unsigned char *hm = b + 16 * side;
+        for (unsigned l = 0; l < 16; l++) {
+          int low = (int)((q[l] >> (2 * j)) & 3);
+          int high = (int)((hm[l] >> (4 * g + j)) & 1);
+          acc = quant_add(acc, x[g * 128 + j * 32 + side * 16 + l], dl * (float)(low - (high ? 0 : 4)));
+        }
+      }
+    }
+  }
+  return acc;
+}
+
 // One block format the product decodes: its size, and the step that turns one
 // block into products in the running sum.
 typedef struct {
@@ -234,6 +267,7 @@ static const QuantFormat QUANT_FORMATS[] = {
     {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_step},
     {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_step},
     {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_step},
+    {"Q3_K", "osprey_matmul_q3_k", 256, 110, q3_k_step},
 };
 #define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
 
