@@ -27,6 +27,13 @@
 #include "collection_runtime.h"
 #include "float_spelling.h"
 #include "string_runtime.h"
+#include "memory_hooks.h"
+
+// Runtime-produced text belongs to the selected manager; fixture buffers remain libc-owned.
+static void release_test_buffer(void *p) {
+    if (osp_mem_string_length(p) >= 0) osp_release(p);
+    else free(p);
+}
 
 /* ---------- scalar predicates ---------- */
 
@@ -79,33 +86,33 @@ static void test_index_of(void) {
 
 static void test_take(void) {
     char *out;
-    out = osp_string_take("hello", 3);  assert(strcmp(out, "hel") == 0);   free(out);
-    out = osp_string_take("hello", 0);  assert(strcmp(out, "")    == 0);   free(out);
-    out = osp_string_take("hello", -5); assert(strcmp(out, "")    == 0);   free(out);
-    out = osp_string_take("hello", 5);  assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_take("hello", 99); assert(strcmp(out, "hello") == 0); free(out); /* clamp */
-    out = osp_string_take("", 3);       assert(strcmp(out, "")    == 0);   free(out);
-    out = osp_string_take(NULL, 3);     assert(strcmp(out, "")    == 0);   free(out);
+    out = osp_string_take("hello", 3);  assert(strcmp(out, "hel") == 0);   release_test_buffer(out);
+    out = osp_string_take("hello", 0);  assert(strcmp(out, "")    == 0);   release_test_buffer(out);
+    out = osp_string_take("hello", -5); assert(strcmp(out, "")    == 0);   release_test_buffer(out);
+    out = osp_string_take("hello", 5);  assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_take("hello", 99); assert(strcmp(out, "hello") == 0); release_test_buffer(out); /* clamp */
+    out = osp_string_take("", 3);       assert(strcmp(out, "")    == 0);   release_test_buffer(out);
+    out = osp_string_take(NULL, 3);     assert(strcmp(out, "")    == 0);   release_test_buffer(out);
     /* [BUILTIN-STRING-TAKE]: a cut inside a character moves past it. */
     const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D"; /* 8 bytes */
     for (int64_t n = 1; n <= 3; n++) {
-        out = osp_string_take(quote, n); assert(strcmp(out, "\xE2\x80\x9C") == 0); free(out);
+        out = osp_string_take(quote, n); assert(strcmp(out, "\xE2\x80\x9C") == 0); release_test_buffer(out);
     }
-    out = osp_string_take(quote, 4); assert(strcmp(out, "\xE2\x80\x9Co") == 0); free(out);
-    out = osp_string_take(quote, 6); assert(strcmp(out, quote) == 0); free(out);
-    out = osp_string_take("\xF0\x9F\xA6\x85x", 2); assert(strcmp(out, "\xF0\x9F\xA6\x85") == 0); free(out);
+    out = osp_string_take(quote, 4); assert(strcmp(out, "\xE2\x80\x9Co") == 0); release_test_buffer(out);
+    out = osp_string_take(quote, 6); assert(strcmp(out, quote) == 0); release_test_buffer(out);
+    out = osp_string_take("\xF0\x9F\xA6\x85x", 2); assert(strcmp(out, "\xF0\x9F\xA6\x85") == 0); release_test_buffer(out);
     printf("  ok  take\n");
 }
 
 static void test_drop(void) {
     char *out;
-    out = osp_string_drop("hello", 3);  assert(strcmp(out, "lo")   == 0); free(out);
-    out = osp_string_drop("hello", 0);  assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_drop("hello", -5); assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_drop("hello", 5);  assert(strcmp(out, "")    == 0);  free(out); /* exact */
-    out = osp_string_drop("hello", 99); assert(strcmp(out, "")    == 0);  free(out); /* clamp */
-    out = osp_string_drop("", 3);       assert(strcmp(out, "")    == 0);  free(out);
-    out = osp_string_drop(NULL, 3);     assert(strcmp(out, "")    == 0);  free(out);
+    out = osp_string_drop("hello", 3);  assert(strcmp(out, "lo")   == 0); release_test_buffer(out);
+    out = osp_string_drop("hello", 0);  assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_drop("hello", -5); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_drop("hello", 5);  assert(strcmp(out, "")    == 0);  release_test_buffer(out); /* exact */
+    out = osp_string_drop("hello", 99); assert(strcmp(out, "")    == 0);  release_test_buffer(out); /* clamp */
+    out = osp_string_drop("", 3);       assert(strcmp(out, "")    == 0);  release_test_buffer(out);
+    out = osp_string_drop(NULL, 3);     assert(strcmp(out, "")    == 0);  release_test_buffer(out);
     printf("  ok  drop\n");
     /* [BUILTIN-STRING-DROP]: the complement of take at every byte count. */
     const char *quote = "\xE2\x80\x9Cok\xE2\x80\x9D";
@@ -115,17 +122,17 @@ static void test_drop(void) {
         assert(strlen(head) + strlen(tail) == strlen(quote));
         assert(strncmp(quote, head, strlen(head)) == 0);
         assert(strcmp(quote + strlen(head), tail) == 0);
-        free(head);
-        free(tail);
+        release_test_buffer(head);
+        release_test_buffer(tail);
     }
 }
 
 static void test_substring(void) {
     char *out;
-    out = osp_string_substring("hello", 1, 4); assert(strcmp(out, "ell") == 0); free(out);
-    out = osp_string_substring("hello", 0, 5); assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_substring("hello", 0, 0); assert(strcmp(out, "") == 0); free(out);
-    out = osp_string_substring("hello", 5, 5); assert(strcmp(out, "") == 0); free(out);
+    out = osp_string_substring("hello", 1, 4); assert(strcmp(out, "ell") == 0); release_test_buffer(out);
+    out = osp_string_substring("hello", 0, 5); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_substring("hello", 0, 0); assert(strcmp(out, "") == 0); release_test_buffer(out);
+    out = osp_string_substring("hello", 5, 5); assert(strcmp(out, "") == 0); release_test_buffer(out);
     /* error cases: must return NULL */
     assert(osp_string_substring("hello", -1, 3) == NULL); /* start < 0 */
     assert(osp_string_substring("hello", 0, 99) == NULL); /* end > len */
@@ -138,54 +145,54 @@ static void test_substring(void) {
 
 static void test_to_upper_lower(void) {
     char *out;
-    out = osp_string_to_upper("hello"); assert(strcmp(out, "HELLO") == 0); free(out);
-    out = osp_string_to_upper("");      assert(strcmp(out, "")      == 0); free(out);
-    out = osp_string_to_upper("AbC");   assert(strcmp(out, "ABC")   == 0); free(out);
-    out = osp_string_to_upper("1!@a");  assert(strcmp(out, "1!@A")  == 0); free(out);
-    out = osp_string_to_upper(NULL);    assert(strcmp(out, "")      == 0); free(out);
+    out = osp_string_to_upper("hello"); assert(strcmp(out, "HELLO") == 0); release_test_buffer(out);
+    out = osp_string_to_upper("");      assert(strcmp(out, "")      == 0); release_test_buffer(out);
+    out = osp_string_to_upper("AbC");   assert(strcmp(out, "ABC")   == 0); release_test_buffer(out);
+    out = osp_string_to_upper("1!@a");  assert(strcmp(out, "1!@A")  == 0); release_test_buffer(out);
+    out = osp_string_to_upper(NULL);    assert(strcmp(out, "")      == 0); release_test_buffer(out);
 
-    out = osp_string_to_lower("HELLO"); assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_to_lower("");      assert(strcmp(out, "")      == 0); free(out);
-    out = osp_string_to_lower("AbC");   assert(strcmp(out, "abc")   == 0); free(out);
+    out = osp_string_to_lower("HELLO"); assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_to_lower("");      assert(strcmp(out, "")      == 0); release_test_buffer(out);
+    out = osp_string_to_lower("AbC");   assert(strcmp(out, "abc")   == 0); release_test_buffer(out);
     printf("  ok  to_upper/to_lower\n");
 }
 
 static void test_trim(void) {
     char *out;
-    out = osp_string_trim("  hello  ");      assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_trim("\t\n hi \r\n");   assert(strcmp(out, "hi")    == 0); free(out);
-    out = osp_string_trim("hello");          assert(strcmp(out, "hello") == 0); free(out);
-    out = osp_string_trim("");               assert(strcmp(out, "")      == 0); free(out);
-    out = osp_string_trim("   ");            assert(strcmp(out, "")      == 0); free(out); /* all ws */
-    out = osp_string_trim(NULL);             assert(strcmp(out, "")      == 0); free(out);
+    out = osp_string_trim("  hello  ");      assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_trim("\t\n hi \r\n");   assert(strcmp(out, "hi")    == 0); release_test_buffer(out);
+    out = osp_string_trim("hello");          assert(strcmp(out, "hello") == 0); release_test_buffer(out);
+    out = osp_string_trim("");               assert(strcmp(out, "")      == 0); release_test_buffer(out);
+    out = osp_string_trim("   ");            assert(strcmp(out, "")      == 0); release_test_buffer(out); /* all ws */
+    out = osp_string_trim(NULL);             assert(strcmp(out, "")      == 0); release_test_buffer(out);
 
-    out = osp_string_trim_start("  hello  "); assert(strcmp(out, "hello  ") == 0); free(out);
-    out = osp_string_trim_start("hello");     assert(strcmp(out, "hello")   == 0); free(out);
-    out = osp_string_trim_start("   ");       assert(strcmp(out, "")        == 0); free(out);
+    out = osp_string_trim_start("  hello  "); assert(strcmp(out, "hello  ") == 0); release_test_buffer(out);
+    out = osp_string_trim_start("hello");     assert(strcmp(out, "hello")   == 0); release_test_buffer(out);
+    out = osp_string_trim_start("   ");       assert(strcmp(out, "")        == 0); release_test_buffer(out);
 
-    out = osp_string_trim_end("  hello  ");   assert(strcmp(out, "  hello") == 0); free(out);
-    out = osp_string_trim_end("hello");       assert(strcmp(out, "hello")   == 0); free(out);
-    out = osp_string_trim_end("   ");         assert(strcmp(out, "")        == 0); free(out);
+    out = osp_string_trim_end("  hello  ");   assert(strcmp(out, "  hello") == 0); release_test_buffer(out);
+    out = osp_string_trim_end("hello");       assert(strcmp(out, "hello")   == 0); release_test_buffer(out);
+    out = osp_string_trim_end("   ");         assert(strcmp(out, "")        == 0); release_test_buffer(out);
     printf("  ok  trim/trim_start/trim_end\n");
 }
 
 static void test_reverse(void) {
     char *out;
-    out = osp_string_reverse("abc");   assert(strcmp(out, "cba")    == 0); free(out);
-    out = osp_string_reverse("a");     assert(strcmp(out, "a")      == 0); free(out);
-    out = osp_string_reverse("");      assert(strcmp(out, "")       == 0); free(out);
-    out = osp_string_reverse("12345"); assert(strcmp(out, "54321")  == 0); free(out);
-    out = osp_string_reverse(NULL);    assert(strcmp(out, "")       == 0); free(out);
+    out = osp_string_reverse("abc");   assert(strcmp(out, "cba")    == 0); release_test_buffer(out);
+    out = osp_string_reverse("a");     assert(strcmp(out, "a")      == 0); release_test_buffer(out);
+    out = osp_string_reverse("");      assert(strcmp(out, "")       == 0); release_test_buffer(out);
+    out = osp_string_reverse("12345"); assert(strcmp(out, "54321")  == 0); release_test_buffer(out);
+    out = osp_string_reverse(NULL);    assert(strcmp(out, "")       == 0); release_test_buffer(out);
     printf("  ok  reverse\n");
 }
 
 static void test_replace(void) {
     char *out;
-    out = osp_string_replace("a-b-c", "-", "_");        assert(strcmp(out, "a_b_c") == 0); free(out);
-    out = osp_string_replace("aaa", "a", "bb");         assert(strcmp(out, "bbbbbb") == 0); free(out);
-    out = osp_string_replace("hello", "xyz", "Q");      assert(strcmp(out, "hello") == 0); free(out); /* no match */
-    out = osp_string_replace("hello", "l", "");         assert(strcmp(out, "heo") == 0); free(out); /* shrink */
-    out = osp_string_replace("", "x", "y");             assert(strcmp(out, "") == 0); free(out);
+    out = osp_string_replace("a-b-c", "-", "_");        assert(strcmp(out, "a_b_c") == 0); release_test_buffer(out);
+    out = osp_string_replace("aaa", "a", "bb");         assert(strcmp(out, "bbbbbb") == 0); release_test_buffer(out);
+    out = osp_string_replace("hello", "xyz", "Q");      assert(strcmp(out, "hello") == 0); release_test_buffer(out); /* no match */
+    out = osp_string_replace("hello", "l", "");         assert(strcmp(out, "heo") == 0); release_test_buffer(out); /* shrink */
+    out = osp_string_replace("", "x", "y");             assert(strcmp(out, "") == 0); release_test_buffer(out);
     /* error cases */
     assert(osp_string_replace("hello", "", "x")    == NULL); /* empty needle */
     assert(osp_string_replace(NULL,    "x", "y")   == NULL);
@@ -196,11 +203,11 @@ static void test_replace(void) {
 
 static void test_repeat(void) {
     char *out;
-    out = osp_string_repeat("ab", 3);   assert(strcmp(out, "ababab") == 0); free(out);
-    out = osp_string_repeat("x", 5);    assert(strcmp(out, "xxxxx") == 0); free(out);
-    out = osp_string_repeat("ab", 0);   assert(strcmp(out, "") == 0); free(out); /* n=0 -> empty */
-    out = osp_string_repeat("ab", 1);   assert(strcmp(out, "ab") == 0); free(out);
-    out = osp_string_repeat("", 99);    assert(strcmp(out, "") == 0); free(out); /* empty source */
+    out = osp_string_repeat("ab", 3);   assert(strcmp(out, "ababab") == 0); release_test_buffer(out);
+    out = osp_string_repeat("x", 5);    assert(strcmp(out, "xxxxx") == 0); release_test_buffer(out);
+    out = osp_string_repeat("ab", 0);   assert(strcmp(out, "") == 0); release_test_buffer(out); /* n=0 -> empty */
+    out = osp_string_repeat("ab", 1);   assert(strcmp(out, "ab") == 0); release_test_buffer(out);
+    out = osp_string_repeat("", 99);    assert(strcmp(out, "") == 0); release_test_buffer(out); /* empty source */
     /* error cases */
     assert(osp_string_repeat("ab", -1) == NULL);
     assert(osp_string_repeat(NULL,  3) == NULL);
@@ -209,15 +216,15 @@ static void test_repeat(void) {
 
 static void test_pad(void) {
     char *out;
-    out = osp_string_pad_start("7",   3, "0");  assert(strcmp(out, "007") == 0); free(out);
-    out = osp_string_pad_start("42",  5, "ab"); assert(strcmp(out, "aba42") == 0); free(out);
-    out = osp_string_pad_start("hi",  2, "x");  assert(strcmp(out, "hi") == 0); free(out); /* no pad needed */
-    out = osp_string_pad_start("hi",  1, "x");  assert(strcmp(out, "hi") == 0); free(out); /* target < len */
-    out = osp_string_pad_start("",    3, "0");  assert(strcmp(out, "000") == 0); free(out);
+    out = osp_string_pad_start("7",   3, "0");  assert(strcmp(out, "007") == 0); release_test_buffer(out);
+    out = osp_string_pad_start("42",  5, "ab"); assert(strcmp(out, "aba42") == 0); release_test_buffer(out);
+    out = osp_string_pad_start("hi",  2, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out); /* no pad needed */
+    out = osp_string_pad_start("hi",  1, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out); /* target < len */
+    out = osp_string_pad_start("",    3, "0");  assert(strcmp(out, "000") == 0); release_test_buffer(out);
 
-    out = osp_string_pad_end  ("7",   3, ".");  assert(strcmp(out, "7..") == 0); free(out);
-    out = osp_string_pad_end  ("42",  5, "ab"); assert(strcmp(out, "42aba") == 0); free(out);
-    out = osp_string_pad_end  ("hi",  2, "x");  assert(strcmp(out, "hi") == 0); free(out);
+    out = osp_string_pad_end  ("7",   3, ".");  assert(strcmp(out, "7..") == 0); release_test_buffer(out);
+    out = osp_string_pad_end  ("42",  5, "ab"); assert(strcmp(out, "42aba") == 0); release_test_buffer(out);
+    out = osp_string_pad_end  ("hi",  2, "x");  assert(strcmp(out, "hi") == 0); release_test_buffer(out);
 
     /* error: empty fill */
     assert(osp_string_pad_start("hi", 5, "") == NULL);
@@ -391,21 +398,21 @@ static void test_join(void) {
     osp_string_list *list = osp_string_split("a,b,c", ",");
     char *out = osp_string_join(list, "-");
     assert(strcmp(out, "a-b-c") == 0);
-    free(out);
+    release_test_buffer(out);
     osp_string_list_free(list);
 
     /* join round-trips split */
     list = osp_string_split("foo::bar::baz", "::");
     out = osp_string_join(list, "::");
     assert(strcmp(out, "foo::bar::baz") == 0);
-    free(out);
+    release_test_buffer(out);
     osp_string_list_free(list);
 
     /* empty list → "" */
     list = osp_string_split("", ",");
     out = osp_string_join(list, "x");
     assert(strcmp(out, "") == 0);
-    free(out);
+    release_test_buffer(out);
     osp_string_list_free(list);
 
     printf("  ok  join\n");
@@ -422,19 +429,19 @@ static void test_join_runtime_list(void) {
     /* NULL list → "" */
     char *out = osp_string_join_list(NULL, ", ");
     assert(out != NULL && strcmp(out, "") == 0);
-    free(out);
+    release_test_buffer(out);
 
     /* empty runtime list → "" */
     OspreyList *list = osprey_list_empty();
     out = osp_string_join_list(list, ", ");
     assert(out != NULL && strcmp(out, "") == 0);
-    free(out);
+    release_test_buffer(out);
 
     /* one word: the separator is never applied */
     list = push_word(list, "solo");
     out = osp_string_join_list(list, "-");
     assert(strcmp(out, "solo") == 0);
-    free(out);
+    release_test_buffer(out);
 
     /* two words with a separator */
     const char second[] = "duo";
@@ -445,7 +452,7 @@ static void test_join_runtime_list(void) {
     assert(out != second && out != (char *)(intptr_t)osprey_list_get(list, 0));
     out[0] = 'S';
     assert(strcmp(second, "duo") == 0);
-    free(out);
+    release_test_buffer(out);
 
     printf("  ok  join_runtime_list\n");
 }
@@ -470,29 +477,29 @@ static void test_long_strings(void) {
     assert(out != NULL);
     for (size_t i = 0; i < big; i++) assert(out[i] == 'A');
     assert(out[big] == '\0');
-    free(out);
+    release_test_buffer(out);
 
     out = osp_string_reverse(s);
     assert(out != NULL);
     for (size_t i = 0; i < big; i++) assert(out[i] == 'a');
-    free(out);
+    release_test_buffer(out);
 
     out = osp_string_take(s, 1000);
     assert(out != NULL);
     assert(strlen(out) == 1000);
-    free(out);
+    release_test_buffer(out);
 
     out = osp_string_drop(s, 9999);
     assert(strlen(out) == 1);
     assert(out[0] == 'a');
-    free(out);
+    release_test_buffer(out);
 
     /* trim no-op on a long non-whitespace string */
     out = osp_string_trim(s);
     assert(strlen(out) == big);
-    free(out);
+    release_test_buffer(out);
 
-    free(s);
+    release_test_buffer(s);
     printf("  ok  long_strings (10000 chars)\n");
 }
 
@@ -510,9 +517,9 @@ static void test_round_trips(void) {
         memcpy(rebuilt + strlen(left), right, strlen(right));
         rebuilt[n] = '\0';
         assert(strcmp(rebuilt, base) == 0);
-        free(rebuilt);
-        free(left);
-        free(right);
+        release_test_buffer(rebuilt);
+        release_test_buffer(left);
+        release_test_buffer(right);
     }
 
     /* reverse(reverse(s)) == s for every length up to 64 */
@@ -523,8 +530,8 @@ static void test_round_trips(void) {
         char *r1 = osp_string_reverse(buf);
         char *r2 = osp_string_reverse(r1);
         assert(strcmp(r2, buf) == 0);
-        free(r1);
-        free(r2);
+        release_test_buffer(r1);
+        release_test_buffer(r2);
     }
 
     /* split + join round-trips */
@@ -540,7 +547,7 @@ static void test_round_trips(void) {
             char *back = osp_string_join(list, seps[i]);
             assert(back != NULL);
             assert(strcmp(back, texts[j]) == 0);
-            free(back);
+            release_test_buffer(back);
             osp_string_list_free(list);
         }
     }
@@ -571,22 +578,22 @@ static void test_repeated_replace(void) {
     char *out;
     out = osp_string_replace("xxxxxxxxxx", "x", "ab");
     assert(strcmp(out, "abababababababababab") == 0);
-    free(out);
+    release_test_buffer(out);
     out = osp_string_replace("xxxxxxxxxx", "x", "");
     assert(strcmp(out, "") == 0);
-    free(out);
+    release_test_buffer(out);
     /* needle longer than replacement, exactly N matches */
     out = osp_string_replace("xyxyxyxy", "xy", "z");
     assert(strcmp(out, "zzzz") == 0);
-    free(out);
+    release_test_buffer(out);
     /* overlapping-ish needles */
     out = osp_string_replace("aaaa", "aa", "b");
     assert(strcmp(out, "bb") == 0);  /* non-overlapping leftmost */
-    free(out);
+    release_test_buffer(out);
     /* multi-char replacement that contains the needle (no infinite recursion) */
     out = osp_string_replace("aaa", "a", "aa");
     assert(strcmp(out, "aaaaaa") == 0);
-    free(out);
+    release_test_buffer(out);
     printf("  ok  repeated_replace\n");
 }
 
@@ -642,7 +649,7 @@ static void test_pad_overflow_guards(void) {
     assert(out[0] == 'a');
     assert(out[1] == 'b');
     assert(out[2] == 'a');
-    free(out);
+    release_test_buffer(out);
 
     out = osp_string_pad_end("x", 100, "abc");
     assert(out != NULL);
@@ -652,12 +659,12 @@ static void test_pad_overflow_guards(void) {
     assert(out[2] == 'b');
     assert(out[3] == 'c');
     assert(out[4] == 'a');
-    free(out);
+    release_test_buffer(out);
 
     /* exact-match target_length == strlen(s) returns dup of s */
     out = osp_string_pad_start("abc", 3, "x");
     assert(strcmp(out, "abc") == 0);
-    free(out);
+    release_test_buffer(out);
     printf("  ok  pad_overflow_guards\n");
 }
 
@@ -853,17 +860,17 @@ static void test_cursor_from_codepoint(void) {
     /* exact byte encodings for each width */
     char *e;
     e = osp_string_from_codepoint(0x41);                 /* 'A' */
-    assert(e && strcmp(e, "A") == 0 && osp_string_byte_length(e) == 1); free(e);
+    assert(e && strcmp(e, "A") == 0 && osp_string_byte_length(e) == 1); release_test_buffer(e);
     e = osp_string_from_codepoint(0xE9);                 /* é */
     assert(e && (unsigned char)e[0] == 0xC3 && (unsigned char)e[1] == 0xA9 &&
-           osp_string_byte_length(e) == 2); free(e);
+           osp_string_byte_length(e) == 2); release_test_buffer(e);
     e = osp_string_from_codepoint(0x4E16);               /* 世 */
     assert(e && (unsigned char)e[0] == 0xE4 && (unsigned char)e[1] == 0xB8 &&
-           (unsigned char)e[2] == 0x96 && osp_string_byte_length(e) == 3); free(e);
+           (unsigned char)e[2] == 0x96 && osp_string_byte_length(e) == 3); release_test_buffer(e);
     e = osp_string_from_codepoint(0x1F600);              /* 😀 */
     assert(e && (unsigned char)e[0] == 0xF0 && (unsigned char)e[1] == 0x9F &&
            (unsigned char)e[2] == 0x98 && (unsigned char)e[3] == 0x80 &&
-           osp_string_byte_length(e) == 4); free(e);
+           osp_string_byte_length(e) == 4); release_test_buffer(e);
     /* invalid scalars rejected */
     assert(osp_string_from_codepoint(0) == NULL); /* C-string ABI cannot represent U+0000 */
     assert(osp_string_from_codepoint(0x110000) == NULL);
@@ -912,7 +919,7 @@ static void test_cursor_roundtrip_exhaustive(void) {
         int64_t w;
         assert(osp_string_codepoint_width(cp, &w) == NULL);
         assert(osp_string_byte_length(e) == w);
-        free(e);
+        release_test_buffer(e);
         checked++;
     }
     /* cp ∈ [1, 0x10FFFF] is 0x10FFFF values; minus the 2048 surrogates. */
@@ -942,18 +949,18 @@ static void test_float_to_string(void) {
         char *s = osp_float_to_string(cases[i].in);
         assert(s != NULL);
         assert(strcmp(s, cases[i].want) == 0);
-        free(s);
+        release_test_buffer(s);
     }
     volatile double zero = 0.0;   /* volatile: no constant-fold warnings */
     char *nan_s = osp_float_to_string(zero / zero);
     /* NaN spelling is libc-defined ("nan"); the contract is no ".0" suffix */
     assert(nan_s != NULL && strstr(nan_s, "nan") != NULL);
     assert(strstr(nan_s, ".0") == NULL);
-    free(nan_s);
+    release_test_buffer(nan_s);
     volatile double huge_val = 1e308;
     char *inf_s = osp_float_to_string(huge_val * 10.0);
     assert(inf_s != NULL && strstr(inf_s, "inf") != NULL);
-    free(inf_s);
+    release_test_buffer(inf_s);
 }
 
 /* [TYPE-NUMERIC-SIZED] Exact binary64 -> binary16 rounding boundaries. */
@@ -1040,13 +1047,13 @@ static void test_float32_spelling_roundtrip(void) {
 static void expect_float32_string(float value, const char *want) {
     char *s = osp_float32_to_string(value);
     assert(s != NULL && strcmp(s, want) == 0);
-    free(s);
+    release_test_buffer(s);
 }
 
 static void expect_float16_string(uint16_t bits, const char *want) {
     char *s = osp_float16_to_string(bits);
     assert(s != NULL && strcmp(s, want) == 0);
-    free(s);
+    release_test_buffer(s);
 }
 
 static void test_sized_float_strings(void) {
@@ -1063,7 +1070,7 @@ static void test_sized_float_strings(void) {
     expect_float16_string(0x7C00, "inf");
     char *s = osp_float32_to_string(NAN);
     assert(s != NULL && strcmp(s, "nan") == 0);
-    free(s);
+    release_test_buffer(s);
     printf("  ok  sized_float_strings\n");
 }
 
@@ -1090,7 +1097,7 @@ static void expect_reference_spelling(double d) {
         fprintf(stderr, "%a: got %s want %s\n", d, got ? got : "(null)", want);
     }
     assert(got != NULL && strcmp(got, want) == 0);
-    free(got);
+    release_test_buffer(got);
 }
 
 static uint64_t next_bits(uint64_t *state) {
@@ -1179,15 +1186,15 @@ static void test_format_measure_write(void) {
 static void test_internal_helpers(void) {
     char *d = osp_string_dup_internal("hello", 3);
     assert(d != NULL && strcmp(d, "hel") == 0);
-    free(d);
+    release_test_buffer(d);
     char *z = osp_string_dup_internal("", 0);
     assert(z != NULL && z[0] == '\0');
-    free(z);
+    release_test_buffer(z);
     char *e1 = osp_string_empty_internal();
     char *e2 = osp_string_empty_internal();
     assert(e1 != NULL && e2 != NULL && e1[0] == '\0' && e2[0] == '\0');
-    free(e1);
-    free(e2);
+    release_test_buffer(e1);
+    release_test_buffer(e2);
     assert(osp_is_ws_internal(' ') != 0);
     assert(osp_is_ws_internal('\t') != 0);
     assert(osp_is_ws_internal('\n') != 0);

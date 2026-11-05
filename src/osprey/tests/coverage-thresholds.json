@@ -158,9 +158,15 @@
         "threshold": 92
       },
       "string_runtime": {
+        "threshold": 99,
         "language": "c"
       },
       "string_runtime_list": {
+        "threshold": 100,
+        "language": "c"
+      },
+      "string_search": {
+        "threshold": 95,
         "language": "c"
       },
       "list_runtime": {

@@ -17,6 +17,9 @@ typedef struct {
 } osp_string_list;
 
 /* internal helpers shared between TUs */
+char *osp_string_alloc_internal(size_t n);
+size_t osp_string_count_internal(const char *text, size_t length, const char *pattern, size_t width);
+const char *osp_string_find_internal(const char *text, size_t length, const char *pattern, size_t width);
 char *osp_string_dup_internal(const char *s, size_t n);
 char *osp_host_string_copy(const char *s);
 char *osp_string_empty_internal(void);
@@ -47,6 +50,7 @@ char *osp_string_pad_start(const char *s, int64_t target_length, const char *fil
 char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill);
 int64_t osp_parse_int_strict(const char *s, int64_t *out);
 int64_t osp_parse_float_strict(const char *s, double *out);
+int osp_float_marker_internal(char *buf, int n, size_t cap);
 char *osp_float_to_string(double d);
 char *osp_float32_to_string(float value);
 char *osp_float16_to_string(uint16_t bits);

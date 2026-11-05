@@ -5,8 +5,8 @@
  * Scalar (string -> string / bool / int) helpers exposed to Osprey IR.
  * List-returning helpers live in string_runtime_list.c.
  *
- * Conventions: NUL-terminated UTF-8 byte sequences; outputs are malloc'd
- * and owned by the caller. All functions defend against NULL.
+ * Conventions: owned text retains its byte length in GC/ARC metadata; borrowed
+ * C text is terminated. Produced text is managed, and callers release its owner.
  */
 
 #include <ctype.h>
@@ -22,23 +22,25 @@
 #include "float_spelling.h"
 #include "string_runtime.h"
 #include "memory_hooks.h"
+#include "string_search.h"
 
-static char *string_copy_into(char *out, const char *s, size_t n) {
-    if (!out) return NULL;
-    if (n > 0) memcpy(out, s, n);
-    out[n] = '\0';
+// [PORT-STRING-NUL-OPERATIONS] Every produced text value owns its exact byte length.
+char *osp_string_alloc_internal(size_t n) {
+    if (n >= UINT32_MAX) return NULL;
+    char *out = osp_alloc_tagged((int64_t)(n + 1), OSP_MEM_STRING);
+    if (out) out[n] = '\0';
     return out;
 }
 
 char *osp_string_dup_internal(const char *s, size_t n) {
-    return string_copy_into((char *)malloc(n + 1), s, n);
+    char *out = osp_string_alloc_internal(n);
+    if (out && n) memcpy(out, s, n);
+    return out;
 }
 
-/* [IOS-HOST-IMPORTS] The host retains its buffer; the selected managed backend owns this copy. */
+/* [IOS-HOST-IMPORTS] Copy borrowed host text into the selected managed backend. */
 char *osp_host_string_copy(const char *s) {
-    if (!s) return NULL;
-    size_t n = strlen(s);
-    return string_copy_into(osp_alloc_tagged((int64_t)(n + 1), OSP_MEM_RAW), s, n);
+    return s ? osp_string_dup_internal(s, (size_t)osp_strlen(s)) : NULL;
 }
 
 char *osp_string_empty_internal(void) { return osp_string_dup_internal("", 0); }
@@ -63,28 +65,21 @@ int64_t osp_string_is_empty(const char *s) {
 
 int64_t osp_string_starts_with(const char *s, const char *prefix) {
     if (!s || !prefix) return 0;
-    size_t plen = strlen(prefix);
-    if (plen == 0) return 1;
-    if (strlen(s) < plen) return 0;
-    return strncmp(s, prefix, plen) == 0 ? 1 : 0;
+    size_t n = (size_t)osp_strlen(prefix);
+    return (size_t)osp_strlen(s) >= n && memcmp(s, prefix, n) == 0;
 }
 
 int64_t osp_string_ends_with(const char *s, const char *suffix) {
     if (!s || !suffix) return 0;
-    size_t slen = strlen(s);
-    size_t suflen = strlen(suffix);
-    if (suflen == 0) return 1;
-    if (slen < suflen) return 0;
-    return memcmp(s + slen - suflen, suffix, suflen) == 0 ? 1 : 0;
+    size_t n = (size_t)osp_strlen(s), tail = (size_t)osp_strlen(suffix);
+    return n >= tail && memcmp(s + n - tail, suffix, tail) == 0;
 }
 
 /* Returns first byte-index of needle in s, or -1 if absent. Empty needle = 0. */
 int64_t osp_string_index_of(const char *s, const char *needle) {
     if (!s || !needle) return -1;
-    if (needle[0] == '\0') return 0;
-    const char *hit = strstr(s, needle);
-    if (!hit) return -1;
-    return (int64_t)(hit - s);
+    const char *hit = osp_string_find_internal(s, (size_t)osp_strlen(s), needle, (size_t)osp_strlen(needle));
+    return hit ? (int64_t)(hit - s) : -1;
 }
 
 /* ---------- substrings (total) ---------- */
@@ -98,7 +93,7 @@ static size_t osp_string_cut(const char *s, size_t cut) {
 
 char *osp_string_take(const char *s, int64_t n) {
     if (!s) return osp_string_empty_internal();
-    size_t len = strlen(s);
+    size_t len = (size_t)osp_strlen(s);
     if (n <= 0) return osp_string_empty_internal();
     if ((size_t)n >= len) return osp_string_dup_internal(s, len);
     return osp_string_dup_internal(s, osp_string_cut(s, (size_t)n));
@@ -106,7 +101,7 @@ char *osp_string_take(const char *s, int64_t n) {
 
 char *osp_string_drop(const char *s, int64_t n) {
     if (!s) return osp_string_empty_internal();
-    size_t len = strlen(s);
+    size_t len = (size_t)osp_strlen(s);
     if (n <= 0) return osp_string_dup_internal(s, len);
     if ((size_t)n >= len) return osp_string_empty_internal();
     size_t cut = osp_string_cut(s, (size_t)n);
@@ -117,7 +112,7 @@ char *osp_string_drop(const char *s, int64_t n) {
  * Caller emits IndexOutOfRange when NULL. */
 char *osp_string_substring(const char *s, int64_t start, int64_t end) {
     if (!s) return NULL;
-    size_t len = strlen(s);
+    size_t len = (size_t)osp_strlen(s);
     if (start < 0 || end < start || (size_t)end > len) return NULL;
     return osp_string_dup_internal(s + start, (size_t)(end - start));
 }
@@ -125,53 +120,45 @@ char *osp_string_substring(const char *s, int64_t start, int64_t end) {
 /* ---------- transformation (total) ---------- */
 
 /* ASCII case conversion [BUILTIN-STRING-TOUPPERCASE]. */
-char *osp_string_to_upper(const char *s) {
+static char *string_case(const char *s, int (*convert)(int)) {
     if (!s) return osp_string_empty_internal();
-    size_t len = strlen(s);
-    char *out = osp_string_dup_internal(s, len);
-    if (!out) return NULL;
-    for (size_t i = 0; i < len; i++)
-        out[i] = (char)toupper((unsigned char)out[i]);
+    size_t n = (size_t)osp_strlen(s);
+    char *out = osp_string_dup_internal(s, n);
+    if (out) for (size_t i = 0; i < n; i++) out[i] = (char)convert((unsigned char)out[i]);
     return out;
 }
 
-char *osp_string_to_lower(const char *s) {
-    if (!s) return osp_string_empty_internal();
-    size_t len = strlen(s);
-    char *out = osp_string_dup_internal(s, len);
-    if (!out) return NULL;
-    for (size_t i = 0; i < len; i++)
-        out[i] = (char)tolower((unsigned char)out[i]);
-    return out;
-}
+char *osp_string_to_upper(const char *s) { return string_case(s, toupper); }
+char *osp_string_to_lower(const char *s) { return string_case(s, tolower); }
 
 /* One-sided ASCII trimming [BUILTIN-STRING-TRIMSTART]. */
 char *osp_string_trim_start(const char *s) {
     if (!s) return osp_string_empty_internal();
-    while (*s && osp_is_ws_internal((unsigned char)*s)) s++;
-    return osp_string_dup_internal(s, strlen(s));
+    size_t n = (size_t)osp_strlen(s), start = 0;
+    while (start < n && osp_is_ws_internal((unsigned char)s[start])) start++;
+    return osp_string_dup_internal(s + start, n - start);
 }
 
 /* One-sided ASCII trimming [BUILTIN-STRING-TRIMEND]. */
 char *osp_string_trim_end(const char *s) {
     if (!s) return osp_string_empty_internal();
-    size_t len = strlen(s);
+    size_t len = (size_t)osp_strlen(s);
     while (len > 0 && osp_is_ws_internal((unsigned char)s[len - 1])) len--;
     return osp_string_dup_internal(s, len);
 }
 
 char *osp_string_trim(const char *s) {
     if (!s) return osp_string_empty_internal();
-    while (*s && osp_is_ws_internal((unsigned char)*s)) s++;
-    size_t len = strlen(s);
-    while (len > 0 && osp_is_ws_internal((unsigned char)s[len - 1])) len--;
-    return osp_string_dup_internal(s, len);
+    size_t end = (size_t)osp_strlen(s), start = 0;
+    while (start < end && osp_is_ws_internal((unsigned char)s[start])) start++;
+    while (end > start && osp_is_ws_internal((unsigned char)s[end - 1])) end--;
+    return osp_string_dup_internal(s + start, end - start);
 }
 
 char *osp_string_reverse(const char *s) {
     if (!s) return osp_string_empty_internal();
-    size_t len = strlen(s);
-    char *out = (char *)malloc(len + 1);
+    size_t len = (size_t)osp_strlen(s);
+    char *out = osp_string_alloc_internal(len);
     if (!out) return NULL;
     for (size_t i = 0; i < len; i++) out[i] = s[len - 1 - i];
     out[len] = '\0';
@@ -182,82 +169,59 @@ char *osp_string_reverse(const char *s) {
  * NULL return = caller should emit InvalidArgument. */
 
 char *osp_string_replace(const char *s, const char *needle, const char *replacement) {
-    if (!s || !needle || !replacement || needle[0] == '\0') return NULL;
-    size_t slen = strlen(s);
-    size_t nlen = strlen(needle);
-    size_t rlen = strlen(replacement);
-
-    size_t count = 0;
-    for (const char *p = s; (p = strstr(p, needle)) != NULL; p += nlen) count++;
-    if (count == 0) return osp_string_dup_internal(s, slen);
-
-    size_t out_len = slen + count * rlen - count * nlen;
-    char *out = (char *)malloc(out_len + 1);
+    if (!s || !needle || !replacement) return NULL;
+    size_t slen = (size_t)osp_strlen(s), nlen = (size_t)osp_strlen(needle), rlen = (size_t)osp_strlen(replacement);
+    if (nlen == 0) return NULL;
+    size_t count = osp_string_count_internal(s, slen, needle, nlen);
+    size_t kept = slen - count * nlen;
+    if (kept >= UINT32_MAX || (rlen && count > (UINT32_MAX - 1 - kept) / rlen)) return NULL;
+    size_t out_len = kept + count * rlen;
+    char *out = osp_string_alloc_internal(out_len), *w = out;
     if (!out) return NULL;
-
-    char *w = out;
-    const char *r = s;
-    while (1) {
-        const char *hit = strstr(r, needle);
-        if (!hit) {
-            size_t tail = strlen(r);
-            memcpy(w, r, tail);
-            w += tail;
-            break;
-        }
-        size_t pre = (size_t)(hit - r);
-        memcpy(w, r, pre);
-        w += pre;
-        memcpy(w, replacement, rlen);
-        w += rlen;
-        r = hit + nlen;
+    size_t offset = 0;
+    const char *hit;
+    while ((hit = osp_string_find_internal(s + offset, slen - offset, needle, nlen)) != NULL) {
+        size_t before = (size_t)(hit - s) - offset;
+        memcpy(w, s + offset, before); w += before;
+        memcpy(w, replacement, rlen); w += rlen; offset = (size_t)(hit - s) + nlen;
     }
-    *w = '\0';
+    memcpy(w, s + offset, slen - offset);
     return out;
 }
 
 char *osp_string_repeat(const char *s, int64_t n) {
     if (!s || n < 0) return NULL;
     if (n == 0) return osp_string_empty_internal();
-    size_t len = strlen(s);
+    size_t len = (size_t)osp_strlen(s);
     if (len == 0) return osp_string_empty_internal();
-    if ((size_t)n > (SIZE_MAX - 1) / len) return NULL;
+    if ((uint64_t)n > (UINT32_MAX - 1) / len) return NULL;
     size_t out_len = len * (size_t)n;
-    char *out = (char *)malloc(out_len + 1);
+    char *out = osp_string_alloc_internal(out_len);
     if (!out) return NULL;
     for (int64_t i = 0; i < n; i++) memcpy(out + (size_t)i * len, s, len);
     out[out_len] = '\0';
     return out;
 }
 
-char *osp_string_pad_start(const char *s, int64_t target_length, const char *fill) {
-    if (!s || !fill || fill[0] == '\0') return NULL;
-    size_t slen = strlen(s);
-    if (target_length <= 0 || (size_t)target_length <= slen)
-        return osp_string_dup_internal(s, slen);
-    size_t pad_needed = (size_t)target_length - slen;
-    size_t flen = strlen(fill);
-    char *out = (char *)malloc((size_t)target_length + 1);
+static char *string_pad(const char *s, int64_t target, const char *fill, int at_start) {
+    if (!s || !fill || osp_strlen(fill) == 0) return NULL;
+    if (target > 0 && (uint64_t)target >= UINT32_MAX) return NULL;
+    size_t n = (size_t)osp_strlen(s), width = (size_t)osp_strlen(fill);
+    if (target <= 0 || (size_t)target <= n) return osp_string_dup_internal(s, n);
+    size_t padding = (size_t)target - n;
+    char *out = osp_string_alloc_internal((size_t)target);
     if (!out) return NULL;
-    for (size_t i = 0; i < pad_needed; i++) out[i] = fill[i % flen];
-    memcpy(out + pad_needed, s, slen);
-    out[(size_t)target_length] = '\0';
+    memcpy(out + (at_start ? padding : 0), s, n);
+    for (size_t i = 0; i < padding; i++) out[(at_start ? 0 : n) + i] = fill[i % width];
     return out;
 }
 
-char *osp_string_pad_end(const char *s, int64_t target_length, const char *fill) {
-    if (!s || !fill || fill[0] == '\0') return NULL;
-    size_t slen = strlen(s);
-    if (target_length <= 0 || (size_t)target_length <= slen)
-        return osp_string_dup_internal(s, slen);
-    size_t pad_needed = (size_t)target_length - slen;
-    size_t flen = strlen(fill);
-    char *out = (char *)malloc((size_t)target_length + 1);
-    if (!out) return NULL;
-    memcpy(out, s, slen);
-    for (size_t i = 0; i < pad_needed; i++) out[slen + i] = fill[i % flen];
-    out[(size_t)target_length] = '\0';
-    return out;
+char *osp_string_pad_start(const char *s, int64_t target, const char *fill) {
+    return string_pad(s, target, fill, 1);
+}
+
+char *osp_string_pad_end(const char *s, int64_t target, const char *fill) {
+    return string_pad(s, target, fill, 0);
 }
 /* ---------- parsing ---------- */
 
@@ -301,7 +265,7 @@ static int osp_is_decimal_float(const char *s) {
 }
 
 int64_t osp_parse_float_strict(const char *s, double *out) {
-    if (!s || s[0] == '\0' || !out || !osp_is_decimal_float(s)) return 1;
+    if (!s || !out || memchr(s, '\0', (size_t)osp_strlen(s)) || !osp_is_decimal_float(s)) return 1;
     char *endp = NULL;
     double v = strtod(s, &endp);
     if (!endp || *endp != '\0' || endp == s) return 1;
@@ -314,8 +278,8 @@ int64_t osp_parse_float_strict(const char *s, double *out) {
  * without this, 3.0 yields "3", indistinguishable from int 3 in user output
  * [TYPE-NUMERIC-PRINT]. The copy is malloc'd and owned by the caller. NaN /
  * +inf / -inf pass through unchanged. */
-static char *float_string(char *buf, int n, size_t cap) {
-    if (n < 0 || (size_t)n >= cap) return osp_string_empty_internal();
+int osp_float_marker_internal(char *buf, int n, size_t cap) {
+    if (n < 0 || (size_t)n >= cap) return -1;
     int has_marker = 0;
     for (const char *p = buf; *p; p++) {
         if (*p == '.' || *p == 'e' || *p == 'E' || *p == 'n' || *p == 'i') {
@@ -323,11 +287,17 @@ static char *float_string(char *buf, int n, size_t cap) {
             break;
         }
     }
-    if (!has_marker && (size_t)n + 2 < cap) {
+    if (!has_marker && (size_t)n + 2 >= cap) return -1;
+    if (!has_marker) {
         memcpy(buf + n, ".0", 3);
         n += 2;
     }
-    return osp_string_dup_internal(buf, (size_t)n);
+    return n;
+}
+
+static char *float_string(char *buf, int n, size_t cap) {
+    n = osp_float_marker_internal(buf, n, cap);
+    return n < 0 ? NULL : osp_string_dup_internal(buf, (size_t)n);
 }
 
 char *osp_float_to_string(double d) {

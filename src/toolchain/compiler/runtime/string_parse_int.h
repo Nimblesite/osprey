@@ -89,7 +89,7 @@ static OSP_PARSE_STEP int osp_decimal_parse(const char *s, const char *p, unsign
 }
 
 OSP_PARSE_STEP int64_t osp_parse_int_strict(const char *s, int64_t *out) {
-    if (!s || s[0] == '\0' || !out) return 1;
+    if (!s || s[0] == '\0' || !out || memchr(s, '\0', (size_t)osp_strlen(s))) return 1;
     int neg = 0;
     const char *p = s;
     if (*s == '-' || *s == '+') { neg = *s == '-'; p++; }

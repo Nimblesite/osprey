@@ -12,6 +12,8 @@
 #endif
 #include "io_error.h"
 #include "json_internal.h"
+#include "string_runtime.h"
+#include "float_spelling.h"
 
 #include <math.h>
 #include <stdint.h>
@@ -19,7 +21,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *osp_float_to_string(double d);
 
 #define MAX_JSON_HANDLES 1024
 
@@ -436,10 +437,10 @@ int64_t json_write_float(int64_t handle, double f) {
   if (!isfinite(f)) {
     return writer_status(w, false, "float is not finite");
   }
-  char *text = w ? osp_float_to_string(f) : NULL;
-  bool ok = text && begin_value(w, true) &&
-            json_buf_append(&w->buf, text, strlen(text));
-  free(text);
+  char text[64];
+  int n = osp_float_marker_internal(text, osp_float_spelling(f, text, sizeof(text)), sizeof(text));
+  bool ok = w && n >= 0 && begin_value(w, true) &&
+            json_buf_append(&w->buf, text, (size_t)n);
   return writer_status(w, ok, "out of memory");
 }
 
