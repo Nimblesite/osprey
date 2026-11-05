@@ -78,33 +78,31 @@ impl Checker {
     pub(super) fn split_obligations(&mut self, vars: &[VarId]) -> SplitObligations {
         let bindings = self.ctx.bound_count();
         let checked = self.checked_field_prefix(bindings);
-        let uses = self.take_builtin_uses();
-        let mut deferred = Vec::new();
-        let mut kept = Vec::with_capacity(uses.len());
+        let mut kept = self.take_builtin_uses();
+        let mut index = 0;
         let mut checked_kept = 0;
-        for (index, (name, mut ty)) in uses.into_iter().enumerate() {
-            self.ctx.apply_in_place(&mut ty);
-            // A monomorphic arithmetic overload never travels into a scheme: it is
-            // settled once for the whole program
-            // ([`Checker::deferred_arith`]), and the variables it rests on stay
-            // monomorphic so every use of the definition constrains the SAME
-            // choice.
-            // A local result depends on its enclosing function's operands.
-            // Generalize the relation only when every variable travels with it.
-            let mut free = BTreeSet::new();
-            self.ctx.free_vars(&ty, &mut free);
-            if !vars.iter().any(|var| free.contains(var))
-                || crate::expr::is_monomorphic_arith(&name)
-                || (crate::expr::is_deferred_arith(&name)
-                    && free.iter().any(|var| !vars.contains(var)))
-                || crate::builtin_constraints::fixed_numeric_operand(&name, &ty)
-            {
-                checked_kept += usize::from(index < checked);
-                kept.push((name, ty));
-            } else {
-                deferred.push((name, ty));
-            }
-        }
+        let deferred = kept
+            .extract_if(.., |(name, ty)| {
+                self.ctx.apply_in_place(ty);
+                // A monomorphic arithmetic overload never travels into a scheme: it is
+                // settled once for the whole program
+                // ([`Checker::deferred_arith`]), and the variables it rests on stay
+                // monomorphic so every use of the definition constrains the SAME
+                // choice.
+                // A local result depends on its enclosing function's operands.
+                // Generalize the relation only when every variable travels with it.
+                let mut free = BTreeSet::new();
+                self.ctx.free_vars(ty, &mut free);
+                let defer = vars.iter().any(|var| free.contains(var))
+                    && !crate::expr::is_monomorphic_arith(name)
+                    && (!crate::expr::is_deferred_arith(name)
+                        || free.iter().all(|var| vars.contains(var)))
+                    && !crate::builtin_constraints::fixed_numeric_operand(name, ty);
+                checked_kept += usize::from(!defer && index < checked);
+                index += 1;
+                defer
+            })
+            .collect();
         // Retained field relations were already checked at these bindings.
         // Applying the substitution cannot decide an unresolved receiver.
         self.field_uses_prefix = Some((bindings, checked_kept));

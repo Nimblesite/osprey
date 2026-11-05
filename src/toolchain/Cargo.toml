@@ -141,3 +141,7 @@ codegen-units = 16
 lto = false
 debug = 2
 incremental = false
+
+# Keep the coverage-instrumented checker within the Agent's normal check budget.
+[profile.ci.package.osprey-types]
+opt-level = 2

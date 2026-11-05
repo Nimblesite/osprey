@@ -56,7 +56,7 @@ pub(crate) fn is_numeric_scalar(ty: &Type) -> bool {
 /// A known outer constructor cannot become numeric by resolving its arguments.
 /// Keep its obligation at the definition even when a Result error stays open.
 pub(crate) fn fixed_numeric_operand(name: &str, ty: &Type) -> bool {
-    operation_name(name).starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
+    name.starts_with(NUMERIC_OPERAND_PREFIX) && !matches!(ty, Type::Var(_))
 }
 
 /// [TYPE-NUMERIC-SIZED] The integer-only form of [`NUMERIC_OPERAND_PREFIX`],

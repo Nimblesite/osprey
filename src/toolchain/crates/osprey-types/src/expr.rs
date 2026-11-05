@@ -1531,7 +1531,7 @@ fn parse_deferred_arith(name: &str) -> Option<&str> {
 /// Whether an obligation marks a pending arithmetic overload rather than a
 /// built-in's representation constraint.
 pub(crate) fn is_deferred_arith(name: &str) -> bool {
-    parse_deferred_arith(name).is_some()
+    name.starts_with(DEFERRED_ARITH)
 }
 
 /// Division has a result relation, not one shared overload: integer operands
