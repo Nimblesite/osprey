@@ -217,6 +217,22 @@ mod tests {
     }
 
     #[test]
+    fn capture_masks_follow_packed_scalar_offsets() {
+        for (slot, native, wasm) in [("float", 3, 4), ("i16", 2, 3)] {
+            let scalar = MetaField::of_slot_ty(slot);
+            let fields = [
+                MetaField::PtrOpaque,
+                scalar,
+                scalar,
+                scalar,
+                MetaField::PtrManaged,
+            ];
+            assert_eq!(mask_words(struct_meta_for(&fields, 8)), [native], "{slot}");
+            assert_eq!(mask_words(struct_meta_for(&fields, 4)), [wasm], "{slot}");
+        }
+    }
+
+    #[test]
     fn result_block_masks_depend_on_payload() {
         // { i64, i8, i8* }: payload word 0 unmarked, errmsg at offset 16.
         let m = struct_meta(&[MetaField::Word, MetaField::Byte, MetaField::PtrManaged]);
