@@ -325,15 +325,38 @@ MATRIX_KERNEL(osprey_matmul32, float, multiply32, add32)
 // consecutive blocks.
 #if !defined(__METAL_VERSION__) && !defined(__OPENCL_VERSION__) && !defined(__OPENCL_C_VERSION__)
 typedef unsigned char uchar;
+typedef struct { uint x, y, z, w; } uint4;
 #endif
 
-// The 6-bit scale and minimum of sub-block j, packed as ggml's
-// `get_scale_min_k4` packs them, shared by Q4_K and Q5_K.
-uint q4k_scale(GPU_GLOBAL const uchar *scales, uint j) {
-    return j < 4 ? (uint)(scales[j] & 63) : (uint)((scales[j + 4] & 15) | ((scales[j - 4] >> 6) << 4));
+// Sixteen bytes at a 16-byte-aligned address as four words: one load on the
+// devices, where a quantized block's header (scales and sub-block scales) is
+// read by every lane of a simdgroup and byte loads cost a load each.
+uint4 gpu_word4(GPU_GLOBAL const uchar *p) {
+#if defined(__METAL_VERSION__)
+    return *(GPU_GLOBAL const uint4 *)(GPU_GLOBAL const void *)p;
+#elif defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+    return vload4(0, (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)p);
+#else
+    uint4 h;
+    __builtin_memcpy(&h, p, sizeof h);
+    return h;
+#endif
 }
-uint q4k_min(GPU_GLOBAL const uchar *scales, uint j) {
-    return j < 4 ? (uint)(scales[j + 4] & 63) : (uint)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
+
+// Byte n (0..11) of the twelve that follow the first word of a 16-byte header.
+uint gpu_word4_byte(uint4 h, uint n) {
+    uint w = n < 4 ? h.y : (n < 8 ? h.z : h.w);
+    return (w >> (8 * (n & 3))) & 255u;
+}
+
+// The 6-bit scale and minimum of sub-block j, packed as ggml's
+// `get_scale_min_k4` packs them in the twelve bytes after d and dmin, shared
+// by Q4_K and Q5_K; `h` is the block's 16-byte header.
+uint q4k_scale(uint4 h, uint j) {
+    return j < 4 ? (gpu_word4_byte(h, j) & 63) : ((gpu_word4_byte(h, j + 4) & 15) | ((gpu_word4_byte(h, j - 4) >> 6) << 4));
+}
+uint q4k_min(uint4 h, uint j) {
+    return j < 4 ? (gpu_word4_byte(h, j + 4) & 63) : ((gpu_word4_byte(h, j + 4) >> 4) | ((gpu_word4_byte(h, j) >> 6) << 4));
 }
 
 // One weight's contribution: the product is a separate value, then added, so
@@ -372,10 +395,11 @@ float quant_lanes(float acc, GPU_GLOBAL const float *x, uint word, float d1, flo
 // Q4_K: 256 weights per 144-byte block, a binary16 scale and minimum, eight
 // 6-bit sub-block scales and minimums, 4-bit weights.
 float q4_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
-    float d = quant_half(b, 0), dmin = quant_half(b, 2);
+    uint4 h = gpu_word4(b);
+    float d = gpu_f16_to_f32((ushort)(h.x & 0xffffu)), dmin = gpu_f16_to_f32((ushort)(h.x >> 16));
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
     uint j = lane >> 2, g = j >> 1, high = j & 1;
-    uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+    uint sc = q4k_scale(h, j), mn = q4k_min(h, j);
     float d1 = d * (float)sc;
     float m1 = dmin * (float)mn;
     for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++)
@@ -415,15 +439,16 @@ float q8_0_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b,
 // Q5_K: 256 weights per 176-byte block, Q4_K's four low bits plus a high-bit mask,
 // a binary16 scale and minimum and eight 6-bit sub-block scales and minimums.
 float q5_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
-    float d = quant_half(b, 0), dmin = quant_half(b, 2);
+    uint4 h = gpu_word4(b);
+    float d = gpu_f16_to_f32((ushort)(h.x & 0xffffu)), dmin = gpu_f16_to_f32((ushort)(h.x >> 16));
     GPU_GLOBAL const uint *mask = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 48);
-    uint sub = lane >> 2, g = sub >> 1, h = sub & 1;
-    uint sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
+    uint sub = lane >> 2, g = sub >> 1, hi = sub & 1;
+    uint sc = q4k_scale(h, sub), mn = q4k_min(h, sub);
     float d1 = d * (float)sc;
     float m1 = dmin * (float)mn;
     for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++) {
-        uint low = (qs[g * 8 + l] >> (h * 4)) & 0x0f0f0f0fu;
+        uint low = (qs[g * 8 + l] >> (hi * 4)) & 0x0f0f0f0fu;
         acc = quant_lanes(acc, x + sub * 32 + l * 4, low | (((mask[l] >> sub) & 0x01010101u) << 4), d1, m1);
     }
     return acc;
