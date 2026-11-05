@@ -51,9 +51,9 @@ impl Checker {
             }
             let ty = self.infer_expr_raw(e, env);
             self.record_constant(e, &ty);
-            let _ = self
-                .expression_types
-                .insert(std::ptr::from_ref(e).addr(), ty.clone());
+            if let Some(types) = &mut self.expression_types {
+                let _ = types.insert(std::ptr::from_ref(e).addr(), ty.clone());
+            }
             ty
         });
         self.expr_position = outer;
@@ -1194,13 +1194,16 @@ impl Checker {
                 named_arguments: named_arguments.clone(),
             };
             let ty = self.infer_expr(&call, env);
-            if let Expr::Call {
-                arguments: cloned, ..
-            } = &call
+            if let (
+                Some(types),
+                Expr::Call {
+                    arguments: cloned, ..
+                },
+            ) = (&mut self.expression_types, &call)
             {
                 for (source, original) in cloned.iter().zip(std::iter::once(left).chain(arguments))
                 {
-                    crate::arithmetic::transfer(source, original, &mut self.expression_types);
+                    crate::arithmetic::transfer(source, original, types);
                 }
             }
             ty

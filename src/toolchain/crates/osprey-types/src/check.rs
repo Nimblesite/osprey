@@ -174,7 +174,8 @@ pub(crate) struct Checker {
     pub(crate) ctors: HashMap<String, CtorInfo>,
     /// Effect name -> its generic declaration (type params + raw op sigs).
     pub(crate) effects: HashMap<String, EffectInfo>,
-    pub(crate) expression_types: HashMap<usize, Type>,
+    /// Expression metadata for the effect proof, omitted in provisional trials.
+    pub(crate) expression_types: Option<HashMap<usize, Type>>,
     /// Literals and folded operators awaiting their resolved width
     /// ([`Checker::validate_constants`]).
     pub(crate) constants: Vec<crate::arithmetic::ConstantSite>,

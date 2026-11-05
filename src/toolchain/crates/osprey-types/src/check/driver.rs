@@ -180,7 +180,9 @@ pub(crate) fn infer_annotation_trial(
     program: &Program,
 ) -> Result<(crate::info::ProgramTypes, bool), Vec<TypeError>> {
     let program = crate::prelude::with_prelude(program);
-    let mut checker = inferred_data_contracts(&program, false);
+    let mut trial = Checker::new();
+    trial.expression_types = None;
+    let mut checker = inferred_data_contracts(&program, false, trial);
     checker.resolve_field_uses();
     if checker.errors.is_empty() {
         finish_data_contracts(&mut checker, &program);
@@ -230,7 +232,7 @@ fn elaborated(
     exports: &[&str],
     source_validated: bool,
 ) -> Checker {
-    let mut checker = inferred_data_contracts(residual, source_validated);
+    let mut checker = inferred_data_contracts(residual, source_validated, Checker::new());
     checker.resolve_field_uses();
     checker.errors.extend(proof.errors(exports));
     checker.library_exports = proof;
@@ -247,7 +249,7 @@ pub(super) fn checked_program_with_exports(
     source_validated: bool,
     reject_invalid: bool,
 ) -> Checker {
-    let mut checker = inferred_data_contracts(program, source_validated);
+    let mut checker = inferred_data_contracts(program, source_validated, Checker::new());
     loop {
         checker.resolve_field_uses();
         if reject_invalid && !checker.errors.is_empty() {
@@ -277,8 +279,11 @@ fn settle_effect_contracts(checker: &mut Checker, program: &Program) -> bool {
     checker.deferred_gpu_kernel = effect_proof.deferred_gpu_kernel;
     true
 }
-pub(super) fn inferred_data_contracts(program: &Program, source_validated: bool) -> Checker {
-    let mut checker = Checker::new();
+fn inferred_data_contracts(
+    program: &Program,
+    source_validated: bool,
+    mut checker: Checker,
+) -> Checker {
     checker.source_contracts_validated = source_validated;
     let mut env = base_env();
     checker.collect(program, &mut env);

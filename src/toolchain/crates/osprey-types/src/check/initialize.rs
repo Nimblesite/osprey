@@ -12,7 +12,7 @@ impl Checker {
             function_effects: HashMap::new(),
             library_exports: crate::effect_rows::LibraryExports::default(),
             deferred_gpu_kernel: false,
-            expression_types: HashMap::new(),
+            expression_types: Some(HashMap::new()),
             constants: Vec::new(),
             union_variants: HashMap::new(),
             fn_params: crate::staging::signal_parameter_names(),

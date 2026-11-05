@@ -163,6 +163,7 @@ pub(super) fn resolved_expression_types(checker: &mut Checker) -> HashMap<usize,
     checker
         .expression_types
         .iter()
+        .flatten()
         .map(|(site, ty)| (*site, checker.ctx.apply(ty)))
         .collect()
 }
