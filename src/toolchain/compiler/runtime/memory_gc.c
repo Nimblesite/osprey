@@ -73,6 +73,7 @@ typedef struct {
 #define GC_STRING 4u
 #define GC_PERSISTENT (GC_FINAL | GC_STRING)
 
+static _Thread_local int g_lock_owned;
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
 // Adaptive locking, identical in spirit to the ARC backend: the heap starts
@@ -89,11 +90,13 @@ static atomic_int g_gc_mt = 0;
 static inline void gc_lock(void) {
   if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
     pthread_mutex_lock(&g_lock);
+    g_lock_owned = 1;
   }
 }
 
 static inline void gc_unlock(void) {
   if (atomic_load_explicit(&g_gc_mt, memory_order_acquire)) {
+    g_lock_owned = 0;
     pthread_mutex_unlock(&g_lock);
   }
 }
@@ -461,10 +464,11 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
 }
 
 int64_t osp_mem_string_length(const void *p) {
-  gc_lock();
+  int held = g_lock_owned;
+  if (!held) gc_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
   int64_t length = e && (e->mark & GC_STRING) && e->size ? (int64_t)e->size - 1 : -1;
-  gc_unlock();
+  if (!held) gc_unlock();
   return length;
 }
 
@@ -605,9 +609,8 @@ void osp_mem_baton_unpark(void) {
 void osp_mem_set_layout(void *p, int64_t meta) {
   gc_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
-  uint32_t flags = (meta & 0xFF) == OSP_MEM_STRING ? GC_STRING :
-                   ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
-  if (e) e->mark = (e->mark & GC_MARKED) | flags;
+  uint32_t flags = (meta & 0xFF) == OSP_MEM_STRING ? GC_STRING : 0;
+  if (e) e->mark = (e->mark & ~GC_STRING) | flags; // Existing finalizer ownership is unchanged.
   gc_unlock();
 }
 

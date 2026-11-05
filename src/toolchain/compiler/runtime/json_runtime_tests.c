@@ -289,6 +289,8 @@ static void t_nul_arena_keys_keep_identity(void) {
 
 // [PORT-STRING-NUL-OWNERSHIP] The existing allocation owns the full text length.
 static void t_owned_text_preserves_nul_cursor_bounds(void) {
+  CHECK(osp_alloc_tagged(0, 7) == NULL && osp_alloc_tagged_noinit(-1, 7) == NULL);
+  CHECK(osp_alloc_tagged(INT64_MAX, 7) == NULL);
   const char *samples[] = {"head\0tail", "\0lead", "tail\0", "é\0😀", "first\0middle\0last", ""};
   const size_t lengths[] = {9, 5, 5, 7, 17, 0};
   for (size_t i = 0; i < sizeof(lengths) / sizeof(*lengths); i++) {
@@ -307,12 +309,62 @@ static void t_owned_text_preserves_nul_cursor_bounds(void) {
   }
 }
 
+// GC must retain length through table growth and a sweep; ARC must release all roots.
+void osp_collect(void);
+static void t_owned_text_survives_collection_and_growth(void) {
+  void *volatile roots[14000];
+  for (size_t i = 0; i < sizeof(roots) / sizeof(*roots); i++) {
+    char *text = osp_alloc_tagged(10, 7);
+    CHECK(text != NULL);
+    memcpy(text, "head\0tail", 10);
+    roots[i] = text;
+  }
+  osp_collect();
+  for (size_t i = 0; i < sizeof(roots) / sizeof(*roots); i++) {
+    CHECK(osp_strlen(roots[i]) == 9);
+    CHECK(memcmp(roots[i], "head\0tail", 10) == 0);
+    osp_release(roots[i]);
+  }
+}
+
+// Read-only string inspection must be safe while the owner invokes a finalizer.
+static void *g_finalizer_text;
+static size_t g_text_finalized;
+static void inspect_finalizer_text(void *body) {
+  (void)body;
+  CHECK(osp_mem_string_length(g_finalizer_text) == 9);
+  g_text_finalized++;
+}
+static void t_owned_text_finalizer_reads_do_not_deadlock(void) {
+  osp_mem_notify_multithreaded();
+  g_finalizer_text = osp_alloc_tagged(10, 7);
+  CHECK(g_finalizer_text != NULL);
+  memcpy(g_finalizer_text, "head\0tail", 10);
+  osp_mem_set_finalizer(inspect_finalizer_text);
+  for (size_t i = 0; i < 4096; i++) {
+    void *owner = osp_alloc_tagged(16, OSP_MEM_LIST_HDR_EXTERN);
+    CHECK(owner != NULL);
+    memset(owner, 0, 16);
+    osp_release(owner);
+  }
+  osp_collect();
+  CHECK(g_text_finalized > 4000);
+  osp_mem_set_finalizer(NULL);
+  osp_release(g_finalizer_text);
+  g_finalizer_text = NULL;
+}
+
 // A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
 // "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
 // truncates the string the caller reads back, with no error anywhere.
 int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--owned-finalizer") == 0) {
+    t_owned_text_finalizer_reads_do_not_deadlock();
+    return 0;
+  }
   if (argc == 2 && strcmp(argv[1], "--owned-text") == 0) {
     t_owned_text_preserves_nul_cursor_bounds();
+    t_owned_text_survives_collection_and_growth();
     return 0;
   }
   if (argc == 2 && strcmp(argv[1], "--nul-arena") == 0) {
@@ -321,6 +373,8 @@ int main(int argc, char **argv) {
   }
   CHECK(argc == 1);
   t_owned_text_preserves_nul_cursor_bounds();
+  t_owned_text_survives_collection_and_growth();
+  t_owned_text_finalizer_reads_do_not_deadlock();
   t_nul_arena_keys_keep_identity();
   t_scalars();
   t_string_escapes();

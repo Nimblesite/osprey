@@ -27,6 +27,8 @@
 #define OSP_MEM_MASK_DIRECT 5     // MASK whose children codegen PROVED are ARC bodies or NULL: drop reads their headers, no registry probe
 #define OSP_MEM_LIST_HDR_EXTERN 6 // { i64 len, ptr data, ... }: run the finalizer over the intact body, then release data only
 // Immutable text: an exact allocation of byte length + one C terminator.
+// Requires 1..UINT32_MAX bytes and tracked ownership; allocation fails rather
+// than returning an untracked value whose full length could not be recovered.
 #define OSP_MEM_STRING 7
 // -1 means no live STRING allocation owns this address (never an empty value).
 int64_t osp_mem_string_length(const void *p);

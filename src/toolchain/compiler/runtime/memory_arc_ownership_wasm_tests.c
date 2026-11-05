@@ -183,6 +183,22 @@ static int bookkeeping_fault(void) {
   return -1;
 }
 
+// [PORT-STRING-NUL-OWNERSHIP] Length is independent of both NUL and pointer width.
+static int owned_text_length(void) {
+  char *text = osp_alloc_tagged(10, OSP_MEM_STRING);
+  if (!text) return 2;
+  memcpy(text, "head\0tail", 10);
+  int valid = osp_mem_string_length(text) == 9;
+  osp_retain(text);
+  osp_release(text);
+  valid = valid && osp_mem_string_length(text) == 9;
+  osp_release(text);
+  valid = valid && osp_mem_string_length(text) == -1 &&
+          osp_alloc_tagged(0, OSP_MEM_STRING) == NULL;
+  printf("owned text length survives NUL/retain/drop: %s\n", valid ? "PASS" : "FAIL");
+  return valid ? 0 : 1;
+}
+
 int main(void) {
   int fault = bookkeeping_fault();
   if (fault >= 0)
@@ -194,5 +210,5 @@ int main(void) {
   int retired = retired_ownership();
   int growth = growth_ownership();
   return scalar != 0 || pointers != 0 || foreign != 0 || resized != 0 ||
-         retired != 0 || growth != 0 || allocation_failure_checked() != 0;
+         retired != 0 || growth != 0 || allocation_failure_checked() != 0 || owned_text_length() != 0;
 }

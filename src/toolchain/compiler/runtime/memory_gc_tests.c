@@ -106,7 +106,7 @@ static void t_alloc_distinct_writable(void) {
   CHECK(((unsigned char *)c)[0] == 0xEF && ((unsigned char *)c)[63] == 0xEF);
 }
 
-// The layout word is ARC-only; the tracing GC ignores it and both tagged forms
+// Pointer layout masks are ARC-only; both tagged forms
 // still hand back usable, writable storage.
 static void t_tagged_and_noinit(void) {
   void *p = osp_alloc_tagged(24, 0x12345678);
@@ -115,6 +115,24 @@ static void t_tagged_and_noinit(void) {
   memset(p, 1, 24);
   memset(q, 2, 24);
   CHECK(((unsigned char *)p)[23] == 1 && ((unsigned char *)q)[0] == 2);
+}
+
+// [PORT-STRING-NUL-OWNERSHIP] Retain the allocation's length across collection and re-stamping.
+static void t_owned_text_length(void) {
+  char *text = osp_alloc_tagged_noinit(10, OSP_MEM_STRING);
+  CHECK(text != NULL);
+  memcpy(text, "head\0tail", 10);
+  CHECK(osp_mem_string_length(text) == 9);
+  CHECK(osp_mem_string_length(NULL) == -1 && osp_mem_string_length("borrowed") == -1);
+  osp_collect();
+  CHECK(osp_mem_string_length(text) == 9 && memcmp(text, "head\0tail", 10) == 0);
+  osp_mem_set_layout(text, OSP_MEM_RAW);
+  CHECK(osp_mem_string_length(text) == -1);
+  osp_mem_set_layout(text, OSP_MEM_STRING);
+  CHECK(osp_mem_string_length(text) == 9);
+  CHECK(osp_alloc_tagged(0, OSP_MEM_STRING) == NULL && osp_alloc_tagged(INT64_MAX, OSP_MEM_STRING) == NULL);
+  osp_release(text);
+  CHECK(osp_mem_string_length(text) == 9); // GC retains a still-reachable value.
 }
 
 // Reference-count hooks are no-ops under tracing and never disturb the object.
@@ -201,6 +219,7 @@ static void *extern_churn(int rounds) {
   for (int i = 0; i < rounds; i++) {
     sink = osp_alloc_tagged(24, OSP_MEM_LIST_HDR_EXTERN);
     put(sink, 1, sink);
+    osp_mem_set_layout(sink, OSP_MEM_RAW); // GC layout stamps must preserve its existing finalizer.
   }
   return sink;
 }
@@ -437,7 +456,12 @@ static void t_multithread_disables_collection(void) {
   CHECK(osp_gc_collections() == frozen); // but collection never fires again
 }
 
-int main(void) {
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--finalizer-stamp") == 0) {
+    t_finalizer_at_sweep();
+    return 0;
+  }
+  CHECK(argc == 1);
   // Floor the collection budget at 1 MiB BEFORE the first allocation so the
   // spike guard exercises the budget with a deterministic knob. gc_init_main
   // reads the env exactly once, on the first allocation.
@@ -445,6 +469,7 @@ int main(void) {
   t_budget_spike_guard(); // FIRST: needs the pristine pre-allocation state
   t_alloc_distinct_writable();
   t_tagged_and_noinit();
+  t_owned_text_length();
   t_refcount_hooks_noop();
   t_calloc();
   t_realloc();

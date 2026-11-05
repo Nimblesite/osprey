@@ -71,6 +71,7 @@ static OspArcHdr *arc_hdr(void *body) {
 #endif
 #define OSP_ARC_TOMB ((uintptr_t)1)
 
+static _Thread_local int g_lock_owned;
 #ifndef __wasi__
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -89,11 +90,13 @@ static atomic_int g_arc_mt = 0;
 static inline void arc_lock(void) {
   if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
     pthread_mutex_lock(&g_lock);
+    g_lock_owned = 1;
   }
 }
 
 static inline void arc_unlock(void) {
   if (atomic_load_explicit(&g_arc_mt, memory_order_acquire)) {
+    g_lock_owned = 0;
     pthread_mutex_unlock(&g_lock);
   }
 }
@@ -151,8 +154,8 @@ static OspPool g_arc_pool; // cap_bytes 0 → OSP_POOL_DEFAULT_CAP_BYTES
 // --- leak accounting (OSPREY_ARC_DEBUG=1)
 // --------------------------------------
 
-// Kinds RAW..MASK_DIRECT (memory_hooks.h) — one histogram bucket per kind.
-#define OSP_ARC_NKINDS 6
+// One histogram bucket per layout kind, including owned text.
+#define OSP_ARC_NKINDS (OSP_MEM_STRING + 1)
 
 // OSPREY_ARC_DEBUG=2 additionally dumps every survivor — kind, size, rc, and a
 // printable preview of its first bytes. That triple is what actually identifies
@@ -250,6 +253,7 @@ void osp_mem_boot(void) {
 
 // [FAILURE-EXPLICIT] Validate the ABI's i64 size before a 32-bit size_t cast.
 static void *arc_request(int64_t size, int64_t meta, int zero) {
+  if (OSP_ARC_KIND(meta) == OSP_MEM_STRING && size < 1) return NULL;
   arc_lock();
   void *p = size > 0 && (uint64_t)size > OSP_ARC_MAX_BODY
       ? NULL : arc_alloc_locked(size > 0 ? (size_t)size : 0, meta, zero);
@@ -260,14 +264,14 @@ static void *arc_request(int64_t size, int64_t meta, int zero) {
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
   return arc_request(size, meta, 1);
 }
-
 // [PORT-STRING-NUL-OWNERSHIP] The live allocation header owns the exact length.
 int64_t osp_mem_string_length(const void *p) {
-  arc_lock();
+  int held = g_lock_owned;
+  if (!held) arc_lock();
   OspArcHdr *h = arc_lookup_body((uintptr_t)p);
   int64_t length = h && h->rc != 0 && OSP_ARC_KIND(h->meta) == OSP_MEM_STRING && h->size
                        ? (int64_t)h->size - 1 : -1;
-  arc_unlock();
+  if (!held) arc_unlock();
   return length;
 }
 

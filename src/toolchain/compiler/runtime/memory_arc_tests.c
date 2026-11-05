@@ -631,6 +631,27 @@ static void t_immortal_child(void) {
   osp_release(p); // parent dies, walks word 0 (p is freed: do not read it)
   CHECK(rc_of(forever) == -1); // untouched, live for its other holders
 }
+// [PORT-STRING-NUL-OWNERSHIP] Inspect a live String while its owner is finalized under the lock.
+static void note_text_finalized(void *body) {
+  CHECK(osp_mem_string_length(load(body, 1)) == 9);
+  g_finalized = body;
+}
+static void t_owned_text_lifetime(void) {
+  void *text = mk(10, OSP_MEM_STRING), *owner = mk(2 * W, OSP_MEM_LIST_HDR_EXTERN);
+  memcpy(text, "head\0tail", 10);
+  CHECK(osp_mem_string_length(text) == 9 && osp_mem_string_length(NULL) == -1);
+  CHECK(osp_mem_string_length("borrowed") == -1);
+  osp_retain(text);
+  put_i64(owner, 0, 0); put(owner, 1, text);
+  osp_mem_set_finalizer(note_text_finalized);
+  osp_release(owner);
+  CHECK(g_finalized == owner && osp_mem_string_length(text) == 9);
+  osp_mem_set_finalizer(NULL);
+  osp_release(text);
+  CHECK(osp_mem_string_length(text) == -1); // Recycled storage is not a live String.
+  CHECK(osp_alloc_tagged_noinit(0, OSP_MEM_STRING) == NULL);
+  CHECK(osp_alloc_tagged(-1, OSP_MEM_STRING) == NULL);
+}
 int main(void) {
   // Precedes the first allocation: arc_arm_debug() latches once, forever.
   (void)setenv("OSPREY_ARC_DEBUG", "2", 1);
@@ -645,7 +666,7 @@ int main(void) {
   t_registry_churn(); t_slot_reuse(); t_diagnostic_counters();
   // Everything below runs LOCKED (notify is monotonic): the shim suite
   // re-exercises the whole ABI down the arc_lock mutex branch.
-  t_multithreaded(); t_shim_malloc_calloc_free();
+  t_multithreaded(); t_owned_text_lifetime(); t_shim_malloc_calloc_free();
   t_shim_realloc_grow(); t_shim_realloc_edges();
   t_shim_strdup(); t_leak_report_fixtures();
   printf("[ok] memory_arc: %ld assertions\n", g_checks);

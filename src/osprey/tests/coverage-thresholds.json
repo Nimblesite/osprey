@@ -79,7 +79,7 @@
     },
     "c_runtime": {
       "memory_arc": {
-        "threshold": 95,
+        "threshold": 99,
         "language": "c"
       },
       "memory_arc_alloc": {
@@ -95,7 +95,8 @@
         "language": "c"
       },
       "memory_gc": {
-        "language": "c"
+        "language": "c",
+        "threshold": 93
       },
       "gpu_runtime": {
         "language": "c"
