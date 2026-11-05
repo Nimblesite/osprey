@@ -203,7 +203,7 @@ pub(crate) static JSON: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "__jsonDecodePythonOpen",
-        "Internal primitive of jsonDecodePython: Python last-wins keys and non-finite numbers; native integer/string limits remain.",
+        "Internal primitive of jsonDecodePython: Python last-wins keys, non-finite numbers, and escaped NUL. Native integer and nesting limits apply.",
         ["text" => "The JSON text to decode"],
         JSON_DECODE_EXAMPLE,
     ),

@@ -115,12 +115,8 @@ static bool decode_unicode_escape(Cursor *c, char *buf, size_t *n) {
   if (!parse_hex4(c, &cp)) {
     return false;
   }
-  if (cp == 0) {
-    // Every scalar leaves this unit as a NUL-terminated C string, so a decoded
-    // U+0000 does not embed a NUL -- it TRUNCATES the value, and the document
-    // {"k":"a\\u0000b"} reads back as "a" with no error reported anywhere
-    // [BUILTIN-JSON-STRING].
-    return false;
+  if (cp == 0 && !c->python) {
+    return false; // Strict JSON keeps its existing NUL policy.
   }
   if (is_low_surrogate(cp)) {
     return false; // a low half with no high half in front of it
@@ -173,13 +169,13 @@ static size_t utf8_sequence_length(unsigned char lead) {
 static const unsigned long UTF8_MIN_FOR_LENGTH[] = {0, 0, 0x80UL, 0x800UL,
                                                     0x10000UL};
 
-size_t json_utf8_scalar_length(const char *p) {
+static size_t utf8_scalar_length(const char *p, size_t remaining) {
   unsigned char lead = (unsigned char)*p;
   if (lead < UTF8_CONTINUATION_MARK) {
-    return lead == '\0' ? 0 : 1;
+    return 1;
   }
   size_t len = utf8_sequence_length(lead);
-  if (len == 0) {
+  if (len == 0 || len > remaining) {
     return 0;
   }
   unsigned long cp = lead & (0xFFu >> (len + 1));
@@ -221,7 +217,7 @@ static bool copy_run(Cursor *c, JsonBuf *out) {
     unsigned char byte = (unsigned char)*c->p;
     size_t width = plain_ascii(byte) ? 1
                    : byte >= UTF8_CONTINUATION_MARK
-                       ? json_utf8_scalar_length(c->p)
+                       ? utf8_scalar_length(c->p, SIZE_MAX)
                        : 0;
     if (width == 0) {
       break;
@@ -289,8 +285,7 @@ bool json_buf_append(JsonBuf *out, const char *bytes, size_t n) {
 }
 
 // The shortest escape RFC 8259 allows for each byte that cannot appear raw:
-// the quote, the backslash and U+0001..U+001F (U+0000 cannot occur in a
-// NUL-terminated string). `/` and DEL need none.
+// the quote, the backslash and U+0000..U+001F. `/` and DEL need none.
 static size_t escape_ascii(unsigned char byte, char *out) {
   static const char HEX[] = "0123456789abcdef";
   const char *named = byte == '"'    ? "\\\""
@@ -316,14 +311,15 @@ static size_t escape_ascii(unsigned char byte, char *out) {
 
 // Runs of bytes that need no escape are appended whole, so a typical string
 // costs one append for its text plus one per escaped byte.
-bool json_quote_into(JsonBuf *out, const char *s) {
+bool json_quote_into(JsonBuf *out, const char *s, size_t length) {
   if (!json_buf_append(out, "\"", 1)) {
     return false;
   }
   const char *run = s;
-  while (*s) {
+  const char *end = s + length;
+  while (s < end) {
     char escaped[6];
-    size_t width = json_utf8_scalar_length(s);
+    size_t width = utf8_scalar_length(s, (size_t)(end - s));
     size_t n = width == 1 ? escape_ascii((unsigned char)*s, escaped) : 0;
     if (width == 0 || (n > 0 && (!json_buf_append(out, run, (size_t)(s - run)) ||
                                  !json_buf_append(out, escaped, n)))) {

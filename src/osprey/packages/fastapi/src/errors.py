@@ -48,7 +48,7 @@ def context_member(name, encoded):
 
 
 def issue_json(error):
-    source = jsonDecode(error.input) if error.json_input else Success(value=JsonNull() if error.missing else JsonString(error.input))
+    source = jsonDecodePython(error.input) if error.json_input else Success(value=JsonNull() if error.missing else JsonString(error.input))
     return B.mapped(source, lambda input: issue_fields(error, input))
 
 

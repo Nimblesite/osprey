@@ -30,7 +30,7 @@ fn jsonDecode(text) = match __jsonDecodeOpen(text) {
 }
 
 /// Decode Python JSON: last-wins keys, first insertion order, NaN and infinities.
-/// Native int64, nesting and NUL-free string limits still apply.
+/// Escaped NUL survives in keys and values. Native int64 and nesting limits apply.
 fn jsonDecodePython(text) = match __jsonDecodePythonOpen(text) {
     Success { value } => __jsonRelease(value, __jsonNode(value, 0))
     Error { message } => Error { message: message }

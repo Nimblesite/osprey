@@ -16,7 +16,7 @@ def unwrapped(text):
         return Success(value=text)
 
 def bad_character(text, original):
-    return B.bind(checkedSub(len(original), len(text)), lambda offset: B.bind(checkedAdd(offset, 1), lambda index: Error(message=f"invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `{take(text, 1)}` at {index}")))
+    return B.bind(checkedSub(len(original), len(text)), lambda offset: B.bind(checkedAdd(offset, 1), lambda index: Error(message="invalid character: expected an optional prefix of `urn:uuid:` followed by [0-9a-fA-F-], found `" + take(text, 1) + f"` at {index}")))
 
 
 def characters(text, original):
@@ -55,7 +55,7 @@ def parsed(text):
 
 
 def invalid_uuid(location, text, message):
-    return V.invalid(location, 'uuid_parsing', f'Input should be a valid UUID, {message}', text, M.TextContext(name="error", value=message))
+    return V.invalid(location, 'uuid_parsing', 'Input should be a valid UUID, ' + message, text, M.TextContext(name="error", value=message))
 
 
 def uuid(location, result):

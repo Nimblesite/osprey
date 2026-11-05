@@ -242,10 +242,10 @@ fn call_two_strings(cg: &mut Codegen, args: &[Expr], result: &str, name: &str) -
     Ok(cg.call(result, name, "i8*, i8*", &[&first.operand, &second.operand]))
 }
 
-/// `contains(s, needle) -> bool` via libc `strstr` (non-NULL ⇒ found).
+/// `contains(s, needle) -> bool` uses the same complete byte spans as `indexOf`.
 fn contains(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Result<Value> {
-    let hit = call_two_strings(cg, args, "i8*", "strstr")?;
-    let r = cg.emit_reg(format!("icmp ne i8* {hit}, null"));
+    let index = call_two_strings(cg, args, "i64", "osp_string_index_of")?;
+    let r = cg.emit_reg(format!("icmp sge i64 {index}, 0"));
     Ok(Value::new(r, LType::I1))
 }
 

@@ -362,6 +362,42 @@ static void check_text(char *text, const char *want, size_t n) {
   CHECK(text != NULL); CHECK(osp_strlen(text) == (int64_t)n);
   CHECK(memcmp(text, want, n + 1) == 0); osp_release(text);
 }
+// [PORT-STRING-NUL-JSON] The Python codec must carry complete decoded spans.
+static void t_python_json_nul_round_trip(void) {
+  char wire[] = "{\"a\\u0000b\":\"first\",\"a\":\"head\",\"a\\u0000c\":\"\\u0000tail\","
+                "\"a\\u0000b\":\"head\\u0000\\u0000é😀\"}";
+  CHECK(json_decode_open(wire) == ERR_MALFORMED && json_parse(wire) == ERR_MALFORMED);
+  int64_t h = json_decode_python_open(wire);
+  CHECK(h > 0);
+  CHECK(json_node_first(h, 0) == 1 && json_node_end(h, 0) == 4);
+  check_text(json_node_key(h, 1), "a\0b", 3);
+  check_text(json_node_key(h, 2), "a", 1);
+  check_text(json_node_key(h, 3), "a\0c", 3);
+  char *text = json_node_text(h, 1);
+  check_text(json_node_text(h, 2), "head", 4);
+  check_text(json_node_text(h, 3), "\0tail", 5);
+  CHECK(json_decode_close(h) == 0);
+  int64_t w = json_writer_open();
+  CHECK(w > 0 && json_write_string(w, text) == 0);
+  char *encoded = json_writer_close(w);
+  CHECK(encoded && strcmp(encoded, "\"head\\u0000\\u0000é😀\"") == 0);
+  h = json_decode_python_open(encoded);
+  CHECK(h > 0 && json_decode_close(h) == 0);
+  free(encoded);
+  check_text(text, "head\0\0é😀", 12);
+}
+
+static void t_json_rejects_raw_nul(void) {
+  char *suffix = owned_bytes("{}\0true", 7);
+  char *inside = owned_bytes("\"a\0b\"", 5);
+  CHECK(json_decode_python_open(suffix) == ERR_MALFORMED);
+  CHECK(json_decode_open(suffix) == ERR_MALFORMED);
+  CHECK(json_parse(suffix) == ERR_MALFORMED);
+  CHECK(json_decode_python_open(inside) == ERR_MALFORMED);
+  osp_release(inside);
+  osp_release(suffix);
+}
+
 // [PORT-STRING-NUL-OPERATIONS] Same prefix before NUL must not alias the full value.
 static void t_owned_text_search_and_slices(void) {
   char *text = owned_bytes("head\0tail", 9), *wrong = owned_bytes("head\0X", 6);
@@ -444,6 +480,11 @@ static void t_bounded_search_exhaustive(void) {
 // "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
 // truncates the string the caller reads back, with no error anywhere.
 int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--python-json-nul") == 0) {
+    t_python_json_nul_round_trip();
+    t_json_rejects_raw_nul();
+    return 0;
+  }
   if (argc == 2 && strcmp(argv[1], "--owned-operations") == 0) {
     t_owned_text_search_and_slices();
     t_owned_text_trim_and_lists();
@@ -466,6 +507,8 @@ int main(int argc, char **argv) {
     return 0;
   }
   CHECK(argc == 1);
+  t_python_json_nul_round_trip();
+  t_json_rejects_raw_nul();
   t_owned_text_preserves_nul_cursor_bounds();
   t_owned_text_survives_collection_and_growth();
   t_owned_text_finalizer_reads_do_not_deadlock();

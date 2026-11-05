@@ -11,6 +11,7 @@
 
 #include "io_error.h"
 #include "json_internal.h"
+#include "memory_hooks.h"
 
 #include <errno.h>
 #include <math.h>
@@ -28,7 +29,6 @@ typedef struct {
   JsonKeyAt *names; // scratch for checking a large object's names
   size_t names_cap;
   bool typed;
-  bool python;
 } Parser;
 
 #define JSON_NO_NODE SIZE_MAX
@@ -99,6 +99,7 @@ static size_t parse_string(Parser *ps) {
   size_t id = new_node(ps, J_STR);
   if (id != JSON_NO_NODE) {
     ps->doc->nodes[id].at = at;
+    ps->doc->nodes[id].count = ps->doc->text.len - at - 1;
   }
   return id;
 }
@@ -185,7 +186,7 @@ static size_t number_node(Parser *ps, const char *start, bool integer) {
   JNode *n = &ps->doc->nodes[id];
   n->at = at;
   n->flag = integer;
-  const char *bad = ps->typed ? read_number(n, ps->doc->text.data + at, len, ps->python)
+  const char *bad = ps->typed ? read_number(n, ps->doc->text.data + at, len, ps->c.python)
                               : NULL;
   if (bad) {
     ps->c.p = start; // name the number, not the byte after it
@@ -335,7 +336,7 @@ static bool repeats_a_name(Parser *ps, size_t base, bool *failed) {
 // name is rejected whole, at the object's opening brace [BUILTIN-JSON-LIMITS].
 static size_t close_object(Parser *ps, size_t id, size_t base,
                            const char *open) {
-  if (ps->python) {
+  if (ps->c.python) {
     return json_last_wins(ps->doc, ps->pending, &ps->npending, base)
                ? close_container(ps, id, base) : out_of_memory(ps);
   }
@@ -430,7 +431,7 @@ static size_t parse_value(Parser *ps) {
   case 'n': return parse_literal(ps, "null", J_NULL, false);
   default: break;
   }
-  if (ps->python && (lead == 'N' || lead == 'I' ||
+  if (ps->c.python && (lead == 'N' || lead == 'I' ||
                      (lead == '-' && ps->c.p[1] == 'I'))) return parse_python_number(ps);
   if (lead == '-' || (lead >= '0' && lead <= '9')) {
     return parse_number(ps);
@@ -469,8 +470,17 @@ JDoc *json_parse_doc_policy(const char *text, const char *op, bool typed,
     osp_io_error_text(op, "document", "no text");
     return NULL;
   }
-  Parser ps = {.c = {.p = text, .base = text, .ok = true},
-               .typed = typed, .python = python};
+  Parser ps = {.c = {.p = text, .base = text, .ok = true, .python = python},
+               .typed = typed};
+  int64_t length = osp_mem_string_length(text);
+  const char *nul = length > 0 ? memchr(text, '\0', (size_t)length) : NULL;
+  if (nul) {
+    ps.c.p = nul;
+    json_reject(&ps.c, "unescaped NUL byte");
+    record_rejection(&ps.c, op);
+    *status = JSON_ERR_MALFORMED;
+    return NULL;
+  }
   ps.doc = calloc(1, sizeof(JDoc));
   bool parsed = ps.doc ? parse_root(&ps) : (out_of_memory(&ps), false);
   bool trailing = parsed && *ps.c.p != '\0';

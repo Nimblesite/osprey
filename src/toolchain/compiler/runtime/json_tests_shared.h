@@ -17,6 +17,7 @@ char *json_get(int64_t handle, char *path);
 int64_t json_length(int64_t handle, char *path);
 int64_t json_free(int64_t handle);
 int64_t json_decode_open(char *text);
+int64_t json_decode_python_open(char *text);
 int64_t json_node_kind(int64_t handle, int64_t node);
 int64_t json_decode_close(int64_t handle);
 int64_t json_node_first(int64_t handle, int64_t node);

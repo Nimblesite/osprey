@@ -314,21 +314,22 @@ int64_t json_node_end(int64_t handle, int64_t slot) {
   return is_container(n) ? (int64_t)(n->at + n->count) : 0;
 }
 
-// A fresh copy the caller owns; "" when the question has no answer.
-static char *owned(const char *text) { return strdup(text ? text : ""); }
-
 // The member name of an object's child; "" for any other slot.
 char *json_node_key(int64_t handle, int64_t slot) {
   const JDoc *doc = NULL;
   const JNode *n = decoded(handle, slot, &doc);
-  return owned(n && n->key != JSON_NO_KEY ? text_at(doc, n->key) : NULL);
+  return n && n->key != JSON_NO_KEY
+      ? osp_string_dup_internal(text_at(doc, n->key), n->key_len)
+      : osp_string_empty_internal();
 }
 
 // A string's value; "" for any other slot.
 char *json_node_text(int64_t handle, int64_t slot) {
   const JDoc *doc = NULL;
   const JNode *n = decoded(handle, slot, &doc);
-  return owned(n && n->type == J_STR ? text_at(doc, n->at) : NULL);
+  return n && n->type == J_STR
+      ? osp_string_dup_internal(text_at(doc, n->at), n->count)
+      : osp_string_empty_internal();
 }
 
 // An integer's value; 0 for any other slot.
@@ -417,7 +418,8 @@ int64_t json_write_raw(int64_t handle, char *token) {
 
 int64_t json_write_string(int64_t handle, char *s) {
   JWriter *w = writer_at(handle);
-  bool ok = w && s && begin_value(w, true) && json_quote_into(&w->buf, s);
+  bool ok = w && s && begin_value(w, true) &&
+            json_quote_into(&w->buf, s, (size_t)osp_strlen(s));
   return writer_status(w, ok, "string is not valid UTF-8");
 }
 

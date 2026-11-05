@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "json_tests_shared.h"
+#include "memory_hooks.h"
 
 enum { K_NULL, K_FALSE, K_TRUE, K_INT, K_FLOAT, K_STRING, K_ARRAY, K_OBJECT };
 
@@ -19,7 +20,8 @@ static void expect_reason(const char *needle) {
 
 static void expect_text(char *got, const char *want) {
   CHECK(got != NULL && strcmp(got, want) == 0);
-  free(got);
+  if (osp_mem_string_length(got) >= 0) osp_release(got);
+  else free(got);
 }
 
 // `depth` nested arrays around a zero.

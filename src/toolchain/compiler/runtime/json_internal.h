@@ -26,7 +26,7 @@ typedef struct {
 } JsonBuf;
 
 bool json_buf_append(JsonBuf *out, const char *bytes, size_t n);
-bool json_quote_into(JsonBuf *out, const char *s);
+bool json_quote_into(JsonBuf *out, const char *s, size_t length);
 
 #define JSON_NO_KEY SIZE_MAX
 
@@ -41,7 +41,7 @@ typedef struct {
   size_t key;   // arena offset of the member name, or JSON_NO_KEY
   size_t key_len; // full member-name byte length [PORT-STRING-NUL-KEYS]
   size_t at;    // J_STR/J_NUM: arena offset of the text. J_ARR/J_OBJ: first slot
-  size_t count; // J_ARR/J_OBJ: children
+  size_t count; // J_STR: text bytes. J_ARR/J_OBJ: children
   union {
     int64_t i;
     double f;
@@ -77,6 +77,7 @@ typedef struct {
   const char *at;
   size_t depth;
   bool ok;
+  bool python;
 } Cursor;
 
 void json_reject(Cursor *c, const char *why);
@@ -106,10 +107,5 @@ void json_doc_free(JDoc *doc);
 
 // The node a slot names, or NULL for a slot outside the document.
 const JNode *json_slot(const JDoc *doc, size_t slot);
-
-// Bytes in the well-formed UTF-8 scalar starting at `p`, or 0 when `p` does
-// not start one (overlong, surrogate, past U+10FFFF, truncated, stray
-// continuation, or the terminating NUL). [BUILTIN-JSON-STRING]
-size_t json_utf8_scalar_length(const char *p);
 
 #endif // OSPREY_JSON_INTERNAL_H
