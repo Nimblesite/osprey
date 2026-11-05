@@ -43,11 +43,11 @@ module Cpu {
             }
             get b i => listGet(b, i) ?: toFloat32(0.0)
             length b => listLength(b)
-            zipWith a b f => range(0, listLength(a)) |> map(fn(i) => f(listGet(a, i) ?: toFloat32(0.0), listGet(b, i) ?: toFloat32(0.0))) |> toList()
-            reduce b seed f => range(0, listLength(b)) |> fold(seed, fn(a, i) => f(a, listGet(b, i) ?: toFloat32(0.0)))
+            zipWith a b f => Success { value: range(0, listLength(a)) |> map(fn(i) => f(listGet(a, i) ?: toFloat32(0.0), listGet(b, i) ?: toFloat32(0.0))) |> toList() }
+            reduce b seed f => Success { value: range(0, listLength(b)) |> fold(seed, fn(a, i) => f(a, listGet(b, i) ?: toFloat32(0.0))) }
             indexOf b x => Success { value: range(0, listLength(b)) |> map(fn(i) => hit(listGet(b, i) ?: toFloat32(0.0), x, i, listLength(b))) |> fold(listLength(b), minI) }
             matMul a b rows inner cols => product(a, b, rows, inner, cols)
-            fromList xs => xs
+            fromList xs => Success { value: xs }
             load path name => loaded(loadTensor(path, name))
             device => "lists"
         }

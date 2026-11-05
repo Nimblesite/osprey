@@ -17,7 +17,7 @@ __all__ = [
     "WEIGHTS_DIR", "VOCAB_SIZE", "WIDTH", "HEADS", "HEAD_WIDTH", "QKV_WIDTH", "MLP_WIDTH",
     "LAYER_COUNT", "POSITIONS", "END_OF_TEXT", "EPSILON", "WIDTH_F", "SCORE_SCALE",
     "GELU_SCALE", "GELU_CUBIC", "Layer", "Weights", "Acts", "Attn", "Trace", "BlockStep",
-    "Stepped", "at", "size", "empty", "device", "total", "plus", "add_f", "max_f", "gelu",
+    "Stepped", "at", "size", "empty", "device", "total", "plus", "add_f", "max_f", "peak", "gelu",
     "gelus", "or_stop", "index_of", "loaded", "load_weights", "empty_layer", "layer", "transpose", "product", "sum_range",
     "squared_deviation", "row_means", "row_variances", "layer_norm", "linear", "q_at", "k_at",
     "v_at", "attention_from", "attention", "block", "embed", "forward", "block_step",
@@ -123,7 +123,7 @@ def size(m):
 
 
 def empty():
-    return perform(Tensor.from_list([]))
+    return or_stop(perform(Tensor.from_list([])), empty)
 
 
 def device():
@@ -131,11 +131,11 @@ def device():
 
 
 def total(b):
-    return perform(Tensor.reduce(b, 0.0, add_f))
+    return or_stop(perform(Tensor.reduce(b, 0.0, add_f)), lambda: at(b, 0))
 
 
 def plus(a, b):
-    return perform(Tensor.zip_with(a, b, add_f))
+    return or_stop(perform(Tensor.zip_with(a, b, add_f)), lambda: a)
 
 
 def add_f(a, x):
@@ -144,6 +144,11 @@ def add_f(a, x):
 
 def max_f(a, x):
     return x if x > a else a
+
+
+def peak(b):
+    """The largest element of a nonempty tensor, or a fault from the backend."""
+    return or_stop(perform(Tensor.reduce(b, at(b, 0), max_f)), lambda: at(b, 0))
 
 
 def gelu(x):
@@ -155,9 +160,9 @@ def gelus(f):
 
 
 def or_stop(result, abandoned):
-    """A tensor operation's buffer, or a fault that stops the run with the reason
+    """A tensor operation's value, or a fault that stops the run with the reason
     ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is never
-    called; it only gives the stopped arm the buffer type."""
+    called; it only gives the stopped arm the result type."""
     match result:
         case Success(value=value):
             return value

@@ -7,7 +7,7 @@ namespace gpt2;
 import gpt2::Backends::{Tensor, hit, minI}
 
 module Gpu {
-    /// A GPU product or load, or the runtime's reason as text.
+    /// A GPU result with the runtime's failure reason as text.
     fn answered(result) = match result {
         Success { value } => Success { value: value }
         Error { message } => Error { message: toString(message) }
@@ -22,19 +22,22 @@ module Gpu {
     export fn onGpu(work) = {
         handle static Tensor<GpuBuffer<float32>> {
             build n f => match gpuIota(n) {
-                Success { value } => Success { value: gpuMap(value, f) }
+                Success { value } => answered(gpuMap(value, f))
                 Error { message } => Error { message: toString(message) }
             }
             get b i => gpuGet(b, i) ?: toFloat32(0.0)
             length b => gpuLength(b)
-            zipWith a b f => gpuZipWith(a, b, f)
-            reduce b seed f => b |> gpuFold(seed, f)
+            zipWith a b f => answered(gpuZipWith(a, b, f))
+            reduce b seed f => answered(gpuFold(b, seed, f))
             indexOf b x => match gpuIota(gpuLength(b)) {
-                Success { value } => Success { value: gpuMap(value, fn(i) => hit(gpuGet(b, i) ?: toFloat32(0.0), x, i, gpuLength(b))) |> gpuFold(gpuLength(b), minI) }
+                Success { value } => match gpuMap(value, fn(i) => hit(gpuGet(b, i) ?: toFloat32(0.0), x, i, gpuLength(b))) {
+                    Success { value } => answered(gpuFold(value, gpuLength(b), minI))
+                    Error { message } => Error { message: toString(message) }
+                }
                 Error { message } => Error { message: toString(message) }
             }
             matMul a b rows inner cols => answered(gpuMatMul(a, b, rows, inner, cols))
-            fromList xs => toGpu(xs)
+            fromList xs => answered(toGpu(xs))
             load path name => answered(gpuLoadTensor(path, name))
             device => gpuDevice()
         }

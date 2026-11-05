@@ -11,7 +11,7 @@ __all__ = ["on_gpu"]
 
 
 def answered(result):
-    """A GPU product or load, or the runtime's reason as text."""
+    """A GPU product, upload, kernel or load, or the runtime's reason as text."""
     match result:
         case Success(value=value):
             return Success(value=value)
@@ -26,7 +26,7 @@ class on_gpu:
     def build(n, f):
         match gpuIota(n):
             case Success(value=value):
-                return Success(value=gpuMap(value, f))
+                return answered(gpuMap(value, f))
             case Error(message=message):
                 return Error(message=toString(message))
 
@@ -37,15 +37,19 @@ class on_gpu:
         return gpuLength(b)
 
     def zip_with(a, b, f):
-        return gpuZipWith(a, b, f)
+        return answered(gpuZipWith(a, b, f))
 
     def reduce(b, seed, f):
-        return gpuFold(b, seed, f)
+        return answered(gpuFold(b, seed, f))
 
     def index_of(b, x):
         match gpuIota(gpuLength(b)):
             case Success(value=value):
-                return Success(value=gpuFold(gpuMap(value, lambda i: hit(unwrap_or(gpuGet(b, i), toFloat32(0.0)), x, i, gpuLength(b))), gpuLength(b), min_i))
+                match gpuMap(value, lambda i: hit(unwrap_or(gpuGet(b, i), toFloat32(0.0)), x, i, gpuLength(b))):
+                    case Success(value=mapped):
+                        return answered(gpuFold(mapped, gpuLength(b), min_i))
+                    case Error(message=message):
+                        return Error(message=toString(message))
             case Error(message=message):
                 return Error(message=toString(message))
 
@@ -53,7 +57,7 @@ class on_gpu:
         return answered(gpuMatMul(a, b, rows, inner, cols))
 
     def from_list(xs):
-        return toGpu(xs)
+        return answered(toGpu(xs))
 
     def load(path, name):
         return answered(gpuLoadTensor(path, name))

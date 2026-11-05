@@ -13,7 +13,7 @@ qkv rows, so a token costs one position rather than the whole sequence.
 """
 from gpt2 import Backends, Model, Tokenizer
 from gpt2.Backends import Tensor
-from gpt2.Model import at, max_f, WIDTH, VOCAB_SIZE, LAYER_COUNT, END_OF_TEXT
+from gpt2.Model import at, WIDTH, VOCAB_SIZE, LAYER_COUNT, END_OF_TEXT
 
 DEFAULT_PROMPT = "The capital of France is"
 DEFAULT_TOKENS = 20
@@ -24,7 +24,7 @@ def next_token(w, last):
     the tied output projection of its normalised state, then the first index
     holding its peak; END_OF_TEXT when none does."""
     logits = Model.product(Model.layer_norm(last, 1, w.lnf_g, w.lnf_b), w.wte_t, 1, WIDTH, VOCAB_SIZE)
-    found = Model.index_of(logits, perform(Tensor.reduce(logits, at(logits, 0), max_f)))
+    found = Model.index_of(logits, Model.peak(logits))
     return found if found < VOCAB_SIZE else END_OF_TEXT
 
 

@@ -251,7 +251,7 @@ fn main() = match toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777
 /// [GPU-FOLD] Erased host metadata must retain the device body's numeric width.
 #[test]
 fn effect_handled_float32_maximum_keeps_its_device_result_width() {
-    let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)])\nlet maximum = perform Backends::Tensor.reduce(values, Model::at(values, 0), Model::maxF)\nlet found = Model::indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
+    let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = Model::orStop(perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)]), Model::empty)\nlet maximum = Model::peak(values)\nlet found = Model::indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
     let path = gpt2_project("maximum32", source).expect("write float32 maximum fixture");
     let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
     let (code, stdout, stderr) = run_with_gpu(&path, &backend);
@@ -376,7 +376,7 @@ fn python_gpt2_project(name: &str, source: &str) -> Option<PathBuf> {
     let port = repo().join("src/osprey/examples/llms/gpt2/python");
     let port = serde_json::to_string(&port.to_string_lossy()).ok()?;
     let modules = ["backends", "cpu", "gpu", "model"]
-        .map(|m| format!("\"../../../osprey/examples/llms/gpt2/python/{m}.py\""))
+        .map(|m| format!("\"../../src/osprey/examples/llms/gpt2/python/{m}.py\""))
         .join(", ");
     let config = format!("[project]\nname = \"{name}\"\nsource_roots = [\".\", {port}]\npython_sources = [{modules}]\nentry = \"main.py\"\n");
     project_at(directory, "main.py", source, &config)
@@ -599,7 +599,18 @@ fn every_gpt2_kernel_has_a_device_form() {
 }
 #[test]
 fn gpt2_rejects_a_failed_gpu_dispatch_instead_of_generating_with_empty_matrices() {
-    let source = "import gpt2::Backends\nimport gpt2::Model\nimport gpt2::Gpu\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(fn() => print(gpuLength(Model::product(toGpu([toFloat32(1.0)]), toGpu([toFloat32(1.0)]), 1, 1, 1))))) {\n    Success { value } => value\n    Error { message } => print(message)\n}\n";
+    let source = r#"import gpt2::Backends
+import gpt2::Model
+import gpt2::Gpu
+fn runProduct() = match toGpu([toFloat32(1.0)]) {
+    Success { value } => print(gpuLength(Model::product(value, value, 1, 1, 1)))
+    Error { message } => print("fixture upload failed: ${message}")
+}
+fn main() = match Backends::strictly(fn() => Gpu::onGpu(runProduct)) {
+    Success { value } => value
+    Error { message } => print(message)
+}
+"#;
     let path = gpt2_project("failure", source);
     assert!(path.is_some(), "GPU failure project could not be written");
     let (code, stdout, stderr) = path

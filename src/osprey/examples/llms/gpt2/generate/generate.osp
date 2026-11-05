@@ -11,7 +11,7 @@
 import gpt2::Tokenizer
 import gpt2::Model
 import gpt2::Backends
-import gpt2::Model::{at, maxF, width, vocabSize, layerCount, endOfText}
+import gpt2::Model::{at, width, vocabSize, layerCount, endOfText}
 
 let defaultPrompt = "The capital of France is"
 let defaultTokens = 20
@@ -21,7 +21,7 @@ let defaultTokens = 20
 /// holding its peak; endOfText when none does.
 fn nextToken(w, last) = {
     let logits = Model::product(Model::layerNorm(last, 1, w.lnfG, w.lnfB), w.wteT, 1, width, vocabSize)
-    let found = Model::indexOf(logits, perform Backends::Tensor.reduce(logits, at(logits, 0), maxF))
+    let found = Model::indexOf(logits, Model::peak(logits))
     match found < vocabSize { true => found  false => endOfText }
 }
 

@@ -105,7 +105,8 @@ fn attentionBack(dout, probs, qkv, t) = {
 /// One block backward: dy is the gradient of the block's output y.
 fn blockBack(dy, acts, t, l) = {
     let out = linearBack(dy, acts.u, t, mlpWidth, width, l.outW)
-    let fc = linearBack(perform Backends::Tensor.zipWith(out.dx, acts.f, fn(g, x) => g * geluSlope(x)), acts.h2, t, width, mlpWidth, l.fcW)
+    let gate = Model::orStop(perform Backends::Tensor.zipWith(out.dx, acts.f, fn(g, x) => g * geluSlope(x)), Model::empty)
+    let fc = linearBack(gate, acts.h2, t, width, mlpWidth, l.fcW)
     let ln2 = normBack(fc.dx, acts.x2, t, l.ln2g)
     let dx2 = Model::plus(dy, ln2.dx)
     let proj = linearBack(dx2, acts.a, t, width, width, l.projW)
@@ -144,7 +145,7 @@ fn softmaxRows(logits, t) = {
 
 /// The token ids as a tensor, so a kernel reads them where it reads every
 /// other operand; an id below 2^53 is exact as a float.
-fn idTensor(ids) = perform Backends::Tensor.fromList(range(0, listLength(ids)) |> map(fn(i) => toFloat32(listGet(ids, i) ?: 0)) |> toList())
+fn idTensor(ids) = Model::orStop(perform Backends::Tensor.fromList(range(0, listLength(ids)) |> map(fn(i) => toFloat32(listGet(ids, i) ?: 0)) |> toList()), Model::empty)
 
 /// Element i of the logit gradient [t, vocab]; the last position predicts nothing.
 fn dlogitAt(probs, idsT, t, count, i) = {
@@ -203,7 +204,7 @@ fn trainStep(w, ids, t) = {
     Step { loss: head.loss, grads: back.grads, dwte: emb.dwte, dwpe: emb.dwpe, dlnfG: lnf.dg, dlnfB: lnf.db }
 }
 
-fn descend(p, g) = perform Backends::Tensor.zipWith(p, g, fn(a, d) => a - toFloat32(learningRate) * d)
+fn descend(p, g) = Model::orStop(perform Backends::Tensor.zipWith(p, g, fn(a, d) => a - toFloat32(learningRate) * d), Model::empty)
 
 fn descendLayer(l, g) = Layer {
     ln1g: descend(l.ln1g, g.ln1g), ln1b: descend(l.ln1b, g.ln1b), qkvW: descend(l.qkvW, g.qkvW), qkvB: descend(l.qkvB, g.qkvB),

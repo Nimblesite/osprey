@@ -44,10 +44,10 @@ class on_lists:
         return len(b)
 
     def zip_with(a, b, f):
-        return toList(map(range(len(a)), lambda i: f(unwrap_or(listGet(a, i), toFloat32(0.0)), unwrap_or(listGet(b, i), toFloat32(0.0)))))
+        return Success(value=toList(map(range(len(a)), lambda i: f(unwrap_or(listGet(a, i), toFloat32(0.0)), unwrap_or(listGet(b, i), toFloat32(0.0))))))
 
     def reduce(b, seed, f):
-        return fold(range(len(b)), seed, lambda a, i: f(a, unwrap_or(listGet(b, i), toFloat32(0.0))))
+        return Success(value=fold(range(len(b)), seed, lambda a, i: f(a, unwrap_or(listGet(b, i), toFloat32(0.0)))))
 
     def index_of(b, x):
         return Success(value=fold(map(range(len(b)), lambda i: hit(unwrap_or(listGet(b, i), toFloat32(0.0)), x, i, len(b))), len(b), min_i))
@@ -56,7 +56,7 @@ class on_lists:
         return product_of(a, b, rows, inner, cols) if len(a) == rows * inner and len(b) == inner * cols else misfit(a, b, rows, inner, cols)
 
     def from_list(xs):
-        return xs
+        return Success(value=xs)
 
     def load(path, name):
         return loaded(loadTensor(path, name))

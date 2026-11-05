@@ -66,18 +66,20 @@ module Model {
 
     export fn at(m, i) = perform Backends::Tensor.get(m, i)
     export fn size(m) = perform Backends::Tensor.length(m)
-    export fn empty() = perform Backends::Tensor.fromList([])
+    export fn empty() = orStop(perform Backends::Tensor.fromList([]), empty)
     export fn device() = perform Backends::Tensor.device()
-    export fn total(b) = perform Backends::Tensor.reduce(b, 0.0, addF)
-    export fn plus(a, b) = perform Backends::Tensor.zipWith(a, b, addF)
+    export fn total(b) = orStop(perform Backends::Tensor.reduce(b, 0.0, addF), fn() => at(b, 0))
+    export fn plus(a, b) = orStop(perform Backends::Tensor.zipWith(a, b, addF), fn() => a)
     export fn addF(a, x) = a + x
     export fn maxF(a, x) = match x > a { true => x  false => a }
+    /// The largest element of a nonempty tensor, or a fault from the backend.
+    export fn peak(b) = orStop(perform Backends::Tensor.reduce(b, at(b, 0), maxF), fn() => at(b, 0))
     export fn gelu(x) = toFloat32(0.5) * x * (toFloat32(1.0) + tanh(geluScale * (x + geluCubic * x * x * x)))
     export fn gelus(f) = orStop(perform Backends::Tensor.build(size(f), fn(i) => gelu(at(f, i))), empty)
 
-    /// A tensor operation's buffer, or a fault that stops the run with the
+    /// A tensor operation's value, or a fault that stops the run with the
     /// reason ([FAILURE-EXPLICIT]). The fault never resumes, so `abandoned` is
-    /// never called; it only gives the stopped arm the buffer type.
+    /// never called; it only gives the stopped arm the result type.
     export fn orStop(result, abandoned) = match result {
         Success { value } => value
         Error { message } => stopped(message, abandoned)
