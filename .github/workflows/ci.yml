@@ -1309,9 +1309,19 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
       - name: Host tests and the self-test against goldens
+        id: agent-check
         run: |
           make _runtime
           OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test" make -C src/toolchain/targets/macos/tests agent-headless
+
+      - name: Collect the remaining Agent screenshots after a failed comparison
+        if: failure() && steps.agent-check.outcome == 'failure'
+        run: |
+          if test -f target/agent-self-test/coding/01-ready.png; then
+            OSPREY_AGENT_RECORDS="$PWD/target/agent-self-test/diagnostics" \
+              OSPREY_AGENT_GOLDENS="$RUNNER_TEMP/agent-golden-diagnostics" \
+              bash src/osprey/examples/agent/self-test.sh --update-goldens
+          fi
 
       - name: Osprey Agent self-test pictures
         if: always()

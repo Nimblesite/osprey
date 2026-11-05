@@ -33,7 +33,7 @@ iconutil -c iconset "$bundle/Contents/Resources/AppIcon.icns" -o "$work/AppIcon.
 [ "$(sips -g pixelWidth "$work/AppIcon.iconset/icon_512x512@2x.png" | awk '/pixelWidth/ {print $2}')" = 1024 ] || { echo "FAILED: the icon has no 1024 pixel size" >&2; exit 1; }
 project="$work/calc-project"
 bash "$here/drive/demo-project.sh" "$project" >/dev/null
-os_goldens="$here/goldens/macos-$(sw_vers -productVersion | cut -d. -f1)"
+os_goldens=${OSPREY_AGENT_GOLDENS:-"$here/goldens/macos-$(sw_vers -productVersion | cut -d. -f1)"}
 
 if [ "$mode" = live ]; then
     # The key leaves ~/Documents first: the app reading a file there would raise a privacy prompt.
