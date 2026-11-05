@@ -445,7 +445,7 @@ def decode_id(tok, ids, acc, i, skip_special):
     if added >= 0:
         return added_text(unwrap_or(listGet(tok.added, added), empty_added()), acc, skip_special)
     else:
-        return entry_text(tok.model, id, acc)
+        return entry_text(tok.model, id, acc, i)
 
 
 def find_added(added, id):
@@ -460,9 +460,9 @@ def added_text(token, acc, skip_special):
         return Decoded(texts=listAppend(acc.texts, token.content), bad=-1)
 
 
-def entry_text(m, id, acc):
+def entry_text(m, id, acc, i):
     match Bpe.key_of_rank(m.entries, id, 0, len(m.entries) - 1):
         case Success(value=key):
             return Decoded(texts=listAppend(acc.texts, bytelevel_text(Bpe.bytes_of_key(key))), bad=-1)
         case Error(message=_message):
-            return Decoded(texts=acc.texts, bad=0)
+            return Decoded(texts=acc.texts, bad=i)

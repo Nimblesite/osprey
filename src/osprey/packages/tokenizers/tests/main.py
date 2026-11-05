@@ -588,9 +588,89 @@ def accepted(r):
             return False
 
 
+def split_oracle_case(i):
+    text = nfc_text(at_str(Expected.SPLIT_INPUTS, i))
+    pieces = qwen_pretokenize(norm_of(text))
+    return [
+        strs_equal(f"split.{i}.pieces", mapList(pieces, norm_text), unwrap_or(listGet(Expected.SPLIT_PIECES, i), [])),
+        offs_equal(f"split.{i}.offsets", pretok_offsets(text, pieces), unwrap_or(listGet(Expected.SPLIT_OFFSETS, i), [])),
+    ]
+
+
+def byte_boundaries():
+    return [
+        refused("utf8.e0.overlong", utf8_decode([224, 159, 128], 0, ""), "bad utf8 at byte 0"),
+        refused("utf8.f0.overlong", utf8_decode([240, 143, 128, 128], 0, ""), "bad utf8 at byte 0"),
+        refused("utf8.f4.too_high", utf8_decode([65, 244, 144, 128, 128], 0, ""), "bad utf8 at byte 1"),
+        Check.equal("utf8.offset", unwrap_or(utf8_decode([65, 195, 169], 1, "x"), ""), "xé"),
+        refused("bytelevel.rejects", bytelevel_decode(["中", "a"]), "character 20013 is not a byte-level symbol"),
+        Check.equal("bytelevel.split.char", unwrap_or(bytelevel_decode([bytelevel_text([195]), bytelevel_text([169])]), ""), "é"),
+        Check.equal("bytelevel.lossy", unwrap_or(bytelevel_decode([bytelevel_text([255, 226, 150, 65])]), ""), "��A"),
+        strs_equal("meta.first", mapList(metaspace_pretokenize(norm_of("a b"), META_CP, 1, True), norm_text), ["▁a", "▁b"]),
+        strs_equal("meta.first.nonzero", mapList(metaspace_pretokenize(append_norm(empty_norm(), 97, 5, 6), META_CP, 1, True), norm_text), ["a"]),
+        strs_equal("meta.never.unsplit", mapList(metaspace_pretokenize(norm_of("a b"), META_CP, 2, False), norm_text), ["a▁b"]),
+    ]
+
+
+def qwen_error_boundaries():
+    known = at_int(Expected.QWEN_BYTE_IDS, 65)
+    missing = 999999999
+    tok = qwen_tokenizer()
+    return [
+        refused("bpe.merge.lengths", build_bpe(Expected.QWEN_BYTE_IDS, ["a"], [], []), "the merge lists disagree in length"),
+        refused("bpe.merge.invalid", build_bpe(Expected.QWEN_BYTE_IDS, ["中", "b"], ["a", "c"], [999, 1000]), "merge 0 is unusable: its halves must be byte-level text and its id must exceed every earlier merge's"),
+        refused("qwen.decode.missing.first", qwen_decode(tok, [missing, known], False), "no token with id 999999999"),
+        refused("qwen.decode.missing.middle", qwen_decode(tok, [known, missing, known], False), "no token with id 999999999"),
+    ]
+
+
+def qwen_pipeline_document():
+    pattern = unwrap_or(jsonQuote(QWEN_PATTERN), "")
+    return ("{\"normalizer\":{\"type\":\"NFC\"},\"pre_tokenizer\":{\"type\":\"Sequence\",\"pretokenizers\":["
+        + "{\"type\":\"Split\",\"behavior\":\"Isolated\",\"invert\":false,\"pattern\":{\"Regex\":" + pattern + "}},"
+        + "{\"type\":\"ByteLevel\",\"add_prefix_space\":false,\"use_regex\":false}]},"
+        + "\"decoder\":{\"type\":\"ByteLevel\",\"add_prefix_space\":false,\"use_regex\":false},"
+        + "\"post_processor\":{\"type\":\"ByteLevel\",\"add_prefix_space\":false,\"trim_offsets\":false},"
+        + "\"model\":{\"type\":\"BPE\",\"ignore_merges\":false,\"byte_fallback\":false,\"fuse_unk\":false,"
+        + "\"unk_token\":null,\"continuing_subword_prefix\":\"\",\"end_of_word_suffix\":\"\"}}")
+
+
+def qwen_added_boundaries():
+    token = AddedToken(content="middle", id=999999998, special=False, lstrip=True, rstrip=True, single_word=True)
+    broken = QwenTokenizer(model=empty_bpe(), added=[token])
+    tok = QwenTokenizer(model=qwen_model(), added=[token])
+    text = " \tmiddle\n "
+    match qwen_encode(tok, text):
+        case Error(message=message):
+            return [Check.failed("qwen.added.strip", message)]
+        case Success(value=enc):
+            return listConcat(core_cases("qwen.added.strip", enc, [token.id], ["middle"], [[0, len(text)]]), [
+                refused("qwen.encode.missing.byte", qwen_encode(broken, "a middle b"), "segment 0 could not be tokenized"),
+                qwen_added_requires_boundaries(tok, token.id),
+            ])
+
+
+def qwen_added_requires_boundaries(tok, id):
+    match qwen_encode(tok, "amiddle middleb"):
+        case Success(value=enc):
+            return Check.truth("qwen.added.single_word", not listContains(enc.ids, id), "matched inside a word")
+        case Error(message=message):
+            return Check.failed("qwen.added.single_word", message)
+
+
+def qwen_public_boundaries():
+    return [
+        Check.equal("qwen.contraction.re", qwen_piece_len(norm_of("'RE"), 0), 3),
+        Check.equal("qwen.contraction.ve", qwen_piece_len(norm_of("'ve"), 0), 3),
+        Check.equal("qwen.contraction.ll", qwen_piece_len(norm_of("'Ll"), 0), 3),
+        refused("qwen.json.external.tables", load_qwen_tokenizer(qwen_pipeline_document()), "tokenizer.json: this port reads the vocabulary and merges from supplied data, not from the document (see this module's docstring)"),
+    ]
+
+
 def all_cases():
     """Every suite case, grouped by pipeline layer."""
-    return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases(), utf8_cases(), nfc_cases(), qwen_cases()])
+    splits = fold(range(len(Expected.SPLIT_INPUTS)), [], lambda acc, i: listConcat(acc, split_oracle_case(i)))
+    return concat_all([encode_cases(), pretokenizer_cases(), normalizer_cases(), direct_cases(), utf8_cases(), nfc_cases(), qwen_cases(), splits, byte_boundaries(), qwen_error_boundaries(), qwen_added_boundaries(), qwen_public_boundaries()])
 
 
 def main():
