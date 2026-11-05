@@ -132,7 +132,7 @@ Search for the authoritative URL and add a link to the URL. If it is not availab
 
 ## Step 10 — Audit Design Compliance
 
-Read the design system docs and view the design screens in the designsystem folder.
+Read the design system docs in `src/toolchain/website/design_system.md`.
 
 ## Step 11 — Test with Playwright
 

@@ -76,7 +76,7 @@ Depends on: [plan 0041](0041-dependent-types-and-mathlib.md) phase 0 (delete the
 
 Checked on the day work begins; recorded as gate evidence before Phase 9 opens:
 - [ ] `src/osprey/workbench/tests` passes under GC, ARC and wasm32, with no skips and no retained red test hidden by an exclusion.
-- [ ] The `src/osprey/workbench` coverage gate in `../../coverage-thresholds.json` passes at the 90% floor, not below the 90.8% baseline recorded in [plan 0041](0041-dependent-types-and-mathlib.md).
+- [ ] The `src/osprey/workbench` coverage gate in `src/osprey/tests/coverage-thresholds.json` passes at the 90% floor, not below the 90.8% baseline recorded in [plan 0041](0041-dependent-types-and-mathlib.md).
 - [ ] `make ci` green on `main`; no gate in `../../AGENTS.md` red, waived or narrowed.
 - [ ] The application owner records that `src/osprey/workbench` accepts new modules; the open VSIX, screenshot and imported-proof acceptance items of Phases 1–7 are closed or explicitly unaffected by a second document kind.
 - [ ] The `src/osprey/packages/native` contracts this feature uses — `Run`, `SaveFile`, slices, tickets, `Math` — are the shipped ones; no host adapter needs a new framework component.

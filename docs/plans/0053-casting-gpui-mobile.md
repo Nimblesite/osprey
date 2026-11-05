@@ -4,7 +4,7 @@ The request, verbatim: "the fucking ios and android apps must use the same GPUI 
 
 **Status: unfinished.** Casting's iOS and Android apps draw through the shared GPUI host and their old renderers are gone, but neither is a finished app. They are not part of CI, and `scripts/ci/ci-scope.test.mjs` fails if a workflow, `scripts/mobile/test-mobile-tools.py` or the host's default tests reach them. Their tool and bridge regressions run by hand with `make -C src/toolchain/targets/tests casting-mobile-tools`. [Remaining](#remaining) lists what is left. CI covers only desktop casting.
 
-Today the three apps share `player.machine.json` and the compiled Osprey core, and each draws it differently: macOS through `src/toolchain/hosts/gpui`, iOS through SwiftUI (`src/toolchain/hosts/swift`, `src/osprey/examples/casting/ios/CastingApp.swift`), Android through its own Java views (`src/osprey/examples/casting/android`). Their widgets and layout differ, so the same skin looks different.
+Today the three apps share `player.machine.json` and the compiled Osprey core, and each draws it differently: macOS through `src/toolchain/hosts/gpui`, iOS through SwiftUI (`src/toolchain/hosts/swift`), Android through its own Java views (`src/osprey/examples/casting/android`). Their widgets and layout differ, so the same skin looks different.
 
 iOS: GPUI supports it. `src/toolchain/hosts/gpui/Cargo.lock` already holds `gpui-pre-ios` 0.3.10, a snapshot of Zed's `gpui_ios` crate over UIKit, CoreText and Metal, with lifecycle, windowing, native text input, safe-area and keyboard insets and touch, and `gpui-pre-platform` selects it on `target_os = "ios"`. It has never been built here.
 

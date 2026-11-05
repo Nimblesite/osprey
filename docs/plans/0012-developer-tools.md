@@ -2,7 +2,7 @@
 
 Contract: [0021 - Debugger](../specs/tooling/0021-Debugger.md) · [Compiler debug artifacts](../specs/compiler/DebugArtifacts.md) · [0028 - Profiler](../specs/tooling/0028-Profiler.md) · [0018 - Memory Management](../specs/compiler/0018-MemoryManagement.md) · [Editor Integration (module explorer)](../specs/tooling/EditorIntegration.md#module-explorer-editor-module-explorer)
 
-Depends on: lspkit shared profiler + memory contracts (`../../lspkit/docs/specs/LSP-PROFILER-SPEC.md`); lspkit #27 is already merged into lspkit `main` (commit `5590a52`) and published in v0.4.0.
+Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](https://github.com/Nimblesite/lspkit/blob/main/docs/specs/LSP-PROFILER-SPEC.md)); lspkit #27 is already merged into lspkit `main` (commit `5590a52`) and published in v0.4.0.
 
 ## Prerequisites in place
 

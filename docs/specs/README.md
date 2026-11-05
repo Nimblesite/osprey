@@ -5,7 +5,7 @@ The **language** and **compiler** contracts are separate from runtime libraries,
 ## Core language and compiler
 
 - [Language](language/README.md): Syntax, types, expressions, effects and module semantics.
-- [Compiler](../../src/toolchain/compiler/README.md): Target lowering, generated ABIs and debug artifacts.
+- [Compiler](../../src/toolchain/compiler/readme.md): Target lowering, generated ABIs and debug artifacts.
 
 ## Supporting systems
 

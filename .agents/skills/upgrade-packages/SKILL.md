@@ -21,7 +21,7 @@ This repo has multiple manifests:
 
 | Location | Manifest file | Language | Package manager |
 |---|---|---|---|
-| repo root (workspace: `src/toolchain/crates/*`, `src/toolchain/tree-sitter-osprey/`) | `Cargo.toml` | Rust | cargo |
+| `src/toolchain/` (workspace: `crates/*`, `tree-sitter-osprey/`) | `Cargo.toml` | Rust | cargo |
 | `src/toolchain/vscode-extension/` | `package.json` | TypeScript | npm |
 | `src/toolchain/webcompiler/` | `package.json` | Node.js | npm |
 | `src/toolchain/website/` | `package.json` | Node.js | npm |
@@ -32,7 +32,7 @@ Process each one in order.
 
 Run the appropriate command to list what's outdated BEFORE upgrading anything.
 
-### Rust (repo root workspace)
+### Rust (`src/toolchain` workspace)
 ```bash
 cargo update --dry-run --verbose
 ```
@@ -54,7 +54,7 @@ If `--check-only` was passed, **stop here** and report the outdated list.
 
 ## Step 4 — Upgrade packages
 
-### Rust (repo root workspace)
+### Rust (`src/toolchain` workspace)
 ```bash
 cargo update          # semver-compatible (within Cargo.toml ranges)
 ```
