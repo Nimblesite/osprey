@@ -153,7 +153,7 @@ export function corpusFiles(): string[] {
     }
   };
   for (const top of ["tests", "examples"]) {
-    walk(path.join(repoRoot, top));
+    walk(path.join(repoRoot, "src", "osprey", top));
   }
   return out.sort();
 }

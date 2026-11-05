@@ -1636,10 +1636,13 @@ suite("Osprey Language Features Tests", () => {
     this.timeout(60000);
     // Open the very file the user reported ("Hover doesnt work!") straight from
     // the repository and prove the language features answer over it. extensionRoot
-    // is <repo>/vscode-extension; the assertion corpus lives under tests.
+    // is <repo>/src/toolchain/vscode-extension; the assertion corpus lives under
+    // src/osprey/tests.
     const reported = path.resolve(
       extensionRoot,
       "..",
+      "..",
+      "osprey",
       "tests",
       "core",
       "collections",

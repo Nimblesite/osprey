@@ -66,6 +66,8 @@ suite("Osprey Test-Env Resolver Unit Tests", () => {
     const built = path.resolve(
       extensionRoot,
       "..",
+      "..",
+      "..",
       "target",
       "release",
       OSPREY_EXE,
