@@ -340,8 +340,17 @@ def cors_policy(mode):
 def cors_application(mode):
     return A.application(routes(), [A.cors(cors_policy(mode))])
 
+def extras_contract(request):
+    return Body.bind(request, lambda doc: Body.extras(doc, [], M.Valid(value=None)), lambda _value: health(request))
+
+def response_contract(request):
+    return Body.bind(request, lambda doc: Success(value=M.Valid(value=doc)), lambda doc: Body.filtered_response(200, doc, ["content"]))
+
+def validation_contract(request):
+    return E.validation([M.ValidationIssue(location=[M.Field(name="body")], kind="fixture", message="Invalid", input=request.body, missing=False, json_input=True, context=M.NoContext())])
+
 def body_routes():
-    return [Routing.route("POST", "/body/idp", lambda request: Body.bind(request, decode_idp, idp_response)), Routing.route("POST", "/body/bundle", lambda request: Body.bind(request, decode_bundle, bundle_response)), Routing.route("POST", "/body/key", lambda request: Body.bind(request, decode_key, key_response)), Routing.route("POST", "/body/context", lambda request: Body.bind(request, decode_context, context_response)), Routing.route("POST", "/body/resource", lambda request: Body.bind(request, decode_resource, resource_response))]
+    return [Routing.route("POST", "/contract/extras", extras_contract), Routing.route("POST", "/contract/response", response_contract), Routing.route("POST", "/contract/validation", validation_contract), Routing.route("POST", "/body/idp", lambda request: Body.bind(request, decode_idp, idp_response)), Routing.route("POST", "/body/bundle", lambda request: Body.bind(request, decode_bundle, bundle_response)), Routing.route("POST", "/body/key", lambda request: Body.bind(request, decode_key, key_response)), Routing.route("POST", "/body/context", lambda request: Body.bind(request, decode_context, context_response)), Routing.route("POST", "/body/resource", lambda request: Body.bind(request, decode_resource, resource_response))]
 
 def decode_bundle(document):
     return Body.object_body(document, lambda doc: B.mapped(Body.text(doc, "content"), lambda value: V.mapped(value, lambda content: FixtureBundle(content=content))))

@@ -37,7 +37,7 @@ Generate records: `python3 src/osprey/packages/fastapi/generate_models.cpython`.
 
 Real HTTP acceptance: `python3 src/osprey/packages/fastapi/tests/e2e.cpython`. It compiles the actual Osprey sources and makes HTTP requests against the native listener, including parallel requests. Logs are in `target/fastapi/`.
 
-The native GC and ARC suites pass. FastAPI source coverage is 756 of 779 executable lines (97.05%) on each backend, below the enforced 98% gate. The suites assert 331 routing/dependency records, 300 CORS records and 562 body records over real HTTP.
+The native GC and ARC suites pass. FastAPI passes the 98.2% package coverage gate on both backends with 765 of 779 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 562 body records over real HTTP.
 
 Dependency cases cover shared and uncached acquisitions, overrides, nested denials, multiple validation errors with distinct locations/inputs, missing and malformed integer headers, and HTTP/validation failures during cleanup. The expanded corpus caught and now guards the compiler's nested pattern-alias shadowing bug, acceptance of `2.`, rejection of valid `1_000`, and incorrect handling of Latin-1 HTTP header bytes.
 

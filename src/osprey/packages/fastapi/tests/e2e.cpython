@@ -6,6 +6,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -60,6 +61,42 @@ def body_cases(port):
         assert int(headers["Content-Length"]) == len(payload), (headers, payload)
 
 
+def hostless_redirect_cases(port):
+    for query in ("", "?probe=one%20two&probe=three"):
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+            connection.sendall(f"GET /health/{query} HTTP/1.0\r\n\r\n".encode("ascii"))
+            with closing(http.client.HTTPResponse(connection)) as response:
+                response.begin()
+                assert response.status == 307
+                assert response.getheader("Location") == f"/health{query}"
+                assert response.getheader("Content-Length") == "0"
+                assert response.read() == b""
+
+
+def body_contract_cases(port):
+    """Drive application contract errors through the real HTTP response path."""
+    for payload in (b"[]", b"false", b'"text"', b"42"):
+        for path in ("/contract/extras", "/contract/response"):
+            status, headers, body = request(port, "POST", path, payload, {"Content-Type": "application/json"})
+            assert (status, headers["Content-Type"], body) == (500, "text/plain; charset=utf-8", b"Internal Server Error")
+            assert int(headers["Content-Length"]) == len(body)
+    for payload, position in ((b"{", 1), (b"[1,", 3)):
+        status, headers, body = request(port, "POST", "/contract/validation", payload)
+        error = "expected a string" if payload == b"{" else "unexpected end of text"
+        assert (status, headers["Content-Type"], body) == (
+            500, "text/plain; charset=utf-8",
+            f"Invalid validation issue input: jsonDecode: byte {position}: {error}".encode(),
+        )
+    for key in ("content", "é", "😀"):
+        payload = f'{{"{key}" "value"}}'.encode()
+        status, headers, body = request(port, "POST", "/body/bundle", payload, {"Content-Type": "application/json"})
+        expected = {"detail": [{"type": "json_invalid", "loc": ["body", len(key) + 4],
+                                "msg": "JSON decode error", "input": {},
+                                "ctx": {"error": "Expecting ':' delimiter"}}]}
+        assert (status, headers["Content-Type"], json.loads(body)) == (422, "application/json", expected)
+        assert int(headers["Content-Length"]) == len(body)
+
+
 def body_reference_cases(port):
     """[FASTAPI-NAP-VALIDATION] Exact real HTTP replies from actual generated NAP models."""
     nodes = ast.parse(Path(__file__).with_name("expected.py").read_text()).body
@@ -76,6 +113,8 @@ def body_reference_cases(port):
             failures.append({"case": case, "actual": {"status": status, "body": body.decode(errors="replace"), "headers": fields}})
     (ROOT / "target/fastapi" / f"body-failures-{port}.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2))
     assert not failures, f"{len(failures)} of {len(corpus['cases'])} body cases differ; target/fastapi/body-failures-{port}.json"
+    body_contract_cases(port)
+    hostless_redirect_cases(port)
 
 
 def body_model_smoke(port):
