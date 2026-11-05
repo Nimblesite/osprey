@@ -83,7 +83,8 @@ fn row_free_updates_do_not_visit_unrelated_instantiations() {
         );
         let _ = fixture_function_values(&source, |index, body| {
             let instances = update_instances(body);
-            let summary = analyzer(index, &instances).expression(body, &[], &CallableEnv::default());
+            let summary =
+                analyzer(index, &instances).expression(body, &[], &CallableEnv::default());
             assert_eq!(summary.required.is_empty(), value == "1", "{summary:?}");
             assert!(instances.field_row_violations.borrow().is_empty());
             assert_eq!(instances.owner_substitutions.get(), 0, "{value}");

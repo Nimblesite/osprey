@@ -38,6 +38,12 @@ pub(super) enum FieldOwner {
 }
 
 impl<'a> FieldRows<'a> {
+    pub(super) fn has_written_fields(&self, fields: &[FieldAssignment]) -> bool {
+        fields
+            .iter()
+            .any(|field| self.written.contains_key(&field.name))
+    }
+
     pub(super) fn register_parameters(&mut self, name: &str, parameters: &[TypeParam]) {
         let _ = self.parameters.insert(
             name.to_owned(),

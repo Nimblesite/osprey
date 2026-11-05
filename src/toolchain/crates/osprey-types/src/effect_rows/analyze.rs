@@ -224,7 +224,9 @@ impl Analyzer<'_> {
             // spelled as a binding. An anonymous record names no declaration
             // and so owns no written row.
             Expr::Update { fields, .. } => {
-                for constructor in self.updated_records(expression) {
+                let owners = self.index.field_rows.has_written_fields(fields)
+                    .then(|| self.updated_records(expression));
+                for constructor in owners.into_iter().flatten() {
                     self.check_field_rows(
                         super::expression_site(expression),
                         &constructor,
