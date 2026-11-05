@@ -30,7 +30,7 @@ def http_exception(error):
 
 def issue(location, kind, message, input, missing, context):
     """Construct one typed validation issue with its location, input and context."""
-    return M.ValidationIssue(location=location, kind=kind, message=message, input=input, missing=missing, json_input=False, context=context)
+    return M.ValidationIssue(location=mapList(location, lambda name: M.Field(name=name)), kind=kind, message=message, input=input, missing=missing, json_input=False, context=context)
 
 
 def context_fields(context):
@@ -53,7 +53,7 @@ def issue_json(error):
 
 
 def issue_fields(error, input):
-    fields = [JsonMember("type", JsonString(error.kind)), JsonMember("loc", JsonArray(mapList(error.location, lambda part: JsonString(part)))), JsonMember("msg", JsonString(error.message)), JsonMember("input", input)]
+    fields = [JsonMember("type", JsonString(error.kind)), JsonMember("loc", JsonArray(mapList(error.location, location_json))), JsonMember("msg", JsonString(error.message)), JsonMember("input", input)]
     return JsonObject(listConcat(fields, context_fields(error.context)))
 
 
@@ -65,3 +65,11 @@ def validation(issues):
             return json_response(422, JsonObject([JsonMember("detail", JsonArray(encoded))]), "")
         case Error(message=message):
             return R.response(500, f"Invalid validation issue input: {message}", "text/plain; charset=utf-8", "")
+
+
+def location_json(part):
+    match part:
+        case M.Field(name=name):
+            return JsonString(name)
+        case M.Index(value=index):
+            return JsonInt(index)

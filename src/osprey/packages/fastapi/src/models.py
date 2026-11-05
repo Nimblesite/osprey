@@ -3,7 +3,7 @@
 # osprey: module=Models
 """Generated from models.td; run generate_models.cpython."""
 
-__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'CorsPolicy', 'Validation', 'ValidationContext', 'DependencyResult', 'Optional']
+__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'CorsPolicy', 'Validation', 'ValidationContext', 'DependencyResult', 'Optional', 'LocationPart']
 
 
 class Request:
@@ -51,7 +51,7 @@ class HTTPException:
 
 class ValidationIssue:
     """A validation failure with location, original input and typed context."""
-    location: list[str]
+    location: list[LocationPart]
     kind: str
     message: str
     input: str
@@ -154,3 +154,12 @@ class Optional[T]:
         value: T
     class Absent:
         pass
+
+
+@union
+class LocationPart:
+    """A field name or numeric array index in a validation location."""
+    class Field:
+        name: str
+    class Index:
+        value: int

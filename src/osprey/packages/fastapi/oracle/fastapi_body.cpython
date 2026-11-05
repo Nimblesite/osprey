@@ -1,27 +1,16 @@
 """CPython oracle for @osprey/fastapi request bodies generated from NAP's typeDiagram contracts.
 
-Imports the real generated models from ``nap.api.schemas_generated`` and mounts
-four real FastAPI (0.135.3) routes over a live Uvicorn listener:
-
-* ``POST /body/bundle`` -> ``BundleFileWriteRequest``;
-* ``POST /body/key`` -> ``ApiKeyCreateRequest``;
-* ``POST /body/context`` -> ``EndUserExecutionContext`` (strict ``extra="forbid"``);
-* ``POST /body/resource`` -> ``EmbeddedResource`` (``mimeType`` alias, extras ignored).
-
-Every route uses the same model as ``response_model`` and returns
-``body.model_dump(by_alias=True)`` after adding an extra ``_secret`` response key on extra-ignore models
-and stamping a private attribute on the strict model; each recorded reply is checked to prove that attribute never reaches
-the wire. Cases are sent as raw HTTP request bodies so malformed JSON, duplicate
-keys, empty bodies and hostile content types reach FastAPI unchanged. Nothing is
-hand-authored: statuses, exact UTF-8 response bytes and content headers are
-whatever the pinned reference returns.
-
-Run from the repository root with the pinned NAP interpreter:
-
-    ../NimblesiteAgenticPlatform/.venv/bin/python -I \\
-        src/osprey/packages/fastapi/oracle/fastapi_body.cpython
-
-Writes ``target/logs/fastapi/body-reference.json`` and prints the same JSON.
+Mounts five real FastAPI (0.135.3) routes over a live Uvicorn listener on the real generated models
+from ``nap.api.schemas_generated``: ``POST /body/{bundle,key,context,resource,idp}`` for
+``BundleFileWriteRequest``, ``ApiKeyCreateRequest``, ``EndUserExecutionContext`` (strict
+``extra="forbid"``), ``EmbeddedResource`` (``mimeType`` alias, extras ignored) and
+``EndUserIdpUpsertRequest`` (required ``allowed_algs: list[str]``; extras ignored). Each route is
+also its ``response_model`` and returns ``model_dump(by_alias=True)``: extra-ignore replies gain a
+``_secret`` key, the strict model gets a private attribute, and every recorded reply proves neither
+reaches the wire. Cases are raw HTTP bodies, so malformed JSON, duplicate keys, empty bodies and
+hostile content types reach FastAPI unchanged. Run from the repository root with
+``../NimblesiteAgenticPlatform/.venv/bin/python -I src/osprey/packages/fastapi/oracle/fastapi_body.cpython``;
+writes ``target/logs/fastapi/body-reference.json`` and prints the same JSON.
 """
 
 from __future__ import annotations
@@ -50,6 +39,7 @@ from nap.api.schemas_generated import (  # noqa: E402
     ApiKeyCreateRequest,
     BundleFileWriteRequest,
     EmbeddedResource,
+    EndUserIdpUpsertRequest,
     EndUserExecutionContext,
 )
 
@@ -62,47 +52,15 @@ MODELS = {
     "/body/key": ApiKeyCreateRequest,
     "/body/context": EndUserExecutionContext,
     "/body/resource": EmbeddedResource,
+    "/body/idp": EndUserIdpUpsertRequest,
 }
-UUID_TEXT = [
-    str(UID), str(UID).upper(), UID.hex, UID.hex.upper(), "{" + str(UID) + "}",
-    "urn:uuid:" + str(UID), "{" + UID.hex + "}", "urn:uuid:" + UID.hex,
-    " " + str(UID) + " ", str(uuid.UUID(int=0)), str(uuid.UUID(int=(1 << 128) - 1)),
-]
-MALFORMED_UUID = [
-    UID.hex[:-1], UID.hex + "0", "0x" + UID.hex, "{" + UID.hex, str(UID).replace("0", "g"),
-    "not-a-uuid", "", "3f2504e-4f89-11d3-9a0c-0305e82c3301", "3f2504e0-4f8-11d3-9a0c-0305e82c3301",
-    "3f2504e0-4f89-11d-9a0c-0305e82c3301", "3f2504e0-4f89-11d3-9a0-0305e82c3301",
-    "3f2504e0-4f89-11d3-9a0c-0305e82c330", "{}", "urn:uuid:",
-]
+UUID_TEXT = [str(UID), str(UID).upper(), UID.hex, UID.hex.upper(), "{" + str(UID) + "}", "urn:uuid:" + str(UID), "{" + UID.hex + "}", "urn:uuid:" + UID.hex, " " + str(UID) + " ", str(uuid.UUID(int=0)), str(uuid.UUID(int=(1 << 128) - 1))]
+MALFORMED_UUID = [UID.hex[:-1], UID.hex + "0", "0x" + UID.hex, "{" + UID.hex, str(UID).replace("0", "g"), "not-a-uuid", "", "3f2504e-4f89-11d3-9a0c-0305e82c3301", "3f2504e0-4f8-11d3-9a0c-0305e82c3301", "3f2504e0-4f89-11d-9a0c-0305e82c3301", "3f2504e0-4f89-11d3-9a0-0305e82c3301", "3f2504e0-4f89-11d3-9a0c-0305e82c330", "{}", "urn:uuid:"]
 SCALARS = [None, "", "text", 0, 1, -1, 1.5, True, False, [], ["x"], {}, {"k": "v"}]
-CONTENT_TYPES = [
-    None, "", "application/json", "application/json; charset=utf-8",
-    "application/json; charset=UTF-8", 'application/json; charset="utf-8"',
-    "application/json;charset=utf-8", "application/json ; charset=utf-8", "application/json;",
-    "Application/JSON", "APPLICATION/JSON; CHARSET=UTF-8", "application/vnd.api+json",
-    "application/problem+json", "application/ld+json", "application/json-patch+json",
-    "application/jsonx", "text/json", "text/plain", "text/plain; charset=utf-8",
-    "application/x-www-form-urlencoded", "application/octet-stream",
-    "application/json; charset=iso-8859-1",
-]
-INVALID_CONTENT_TYPES = [None, "", "text/plain", "application/x-www-form-urlencoded",
-                         "application/jsonx", "application/octet-stream"]
-MALFORMED_JSON = [
-    "", " ", "\n", "{", "}", "[", "]", "[]", "[1,2]", "null", "true", "123", "-1.5", '"str"',
-    "{}trailing", '{"content":"a"} trailing', "{'content':'a'}", '{"content":"a",}',
-    '{"content":NaN}', '{"content":Infinity}', '{"content":-Infinity}', '// c\n{"content":"a"}',
-    '{"content":"a"}{"content":"b"}', '\ufeff{"content":"a"}', '{"content":"a"', '{"content":"a"}}',
-]
-BUNDLE_RAW = [
-    '{"content":"\\u0000\\u001f\\u007f"}',
-    '{"content":"\\u00e9\\u65e5\\uD83D\\uDE00"}',
-    '{"content":"line\\nbreak\\ttab\\r\\b\\f"}',
-    '{"content":"q\\"uote \\\\ backslash \\/ slash"}',
-    '{"content":"abc","extra":1}',
-    '{"content":"abc","_secret":"leak"}',
-    '{"content":"abc","Content":"ignored"}',
-    '{"content":"abc","content_hash":"x"}',
-]
+CONTENT_TYPES = [None, "", "application/json", "application/json; charset=utf-8", "application/json; charset=UTF-8", 'application/json; charset="utf-8"', "application/json;charset=utf-8", "application/json ; charset=utf-8", "application/json;", "Application/JSON", "APPLICATION/JSON; CHARSET=UTF-8", "application/vnd.api+json", "application/problem+json", "application/ld+json", "application/json-patch+json", "application/jsonx", "text/json", "text/plain", "text/plain; charset=utf-8", "application/x-www-form-urlencoded", "application/octet-stream", "application/json; charset=iso-8859-1"]
+INVALID_CONTENT_TYPES = [None, "", "text/plain", "application/x-www-form-urlencoded", "application/jsonx", "application/octet-stream"]
+MALFORMED_JSON = ["", " ", "\n", "{", "}", "[", "]", "[]", "[1,2]", "null", "true", "123", "-1.5", '"str"', "{}trailing", '{"content":"a"} trailing', "{'content':'a'}", '{"content":"a",}', '{"content":NaN}', '{"content":Infinity}', '{"content":-Infinity}', '// c\n{"content":"a"}', '{"content":"a"}{"content":"b"}', '\ufeff{"content":"a"}', '{"content":"a"', '{"content":"a"}}']
+BUNDLE_RAW = ['{"content":"\\u0000\\u001f\\u007f"}', '{"content":"\\u00e9\\u65e5\\uD83D\\uDE00"}', '{"content":"line\\nbreak\\ttab\\r\\b\\f"}', '{"content":"q\\"uote \\\\ backslash \\/ slash"}', '{"content":"abc","extra":1}', '{"content":"abc","_secret":"leak"}', '{"content":"abc","Content":"ignored"}', '{"content":"abc","content_hash":"x"}']
 
 app = FastAPI()
 
@@ -132,11 +90,16 @@ def resource_handler(body: EmbeddedResource):
     return respond(body)
 
 
+def idp_handler(body: EndUserIdpUpsertRequest):
+    return respond(body)
+
+
 for route, (handler, model) in {
     "/body/bundle": (bundle_handler, BundleFileWriteRequest),
     "/body/key": (key_handler, ApiKeyCreateRequest),
     "/body/context": (context_handler, EndUserExecutionContext),
     "/body/resource": (resource_handler, EmbeddedResource),
+    "/body/idp": (idp_handler, EndUserIdpUpsertRequest),
 }.items():
     app.add_api_route(route, handler, methods=["POST"], response_model=model)
 
@@ -362,10 +325,70 @@ def nonfinite_cases():
     return cases + [("/body/bundle", token, JSON) for token in ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"]]
 
 
+def nul_cases():
+    """NUL must survive full typed fields, ignored values and validation error echoes."""
+    uid = str(UID)
+    texts = ["\x00", "a\x00b", "\x00tail", "head\x00", "é\x00😀", "first\x00middle\x00last"]
+    bodies = [("/body/bundle", "content", {}), ("/body/key", "label", {"user_id": uid}), ("/body/context", "provider_user_id", {"tenant_id": uid}), ("/body/resource", "uri", {}), ("/body/resource", "mimeType", {"uri": "u"}), ("/body/resource", "text", {"uri": "u"}), ("/body/resource", "blob", {"uri": "u"})]
+    cases = [(path, js(base | {field: value}), JSON) for path, field, base in bodies for value in texts]
+    cases += [("/body/key", js({"user_id": value}), JSON) for value in texts]
+    cases += [("/body/context", js({"tenant_id": value, "provider_user_id": "u"}), JSON) for value in texts]
+    cases += [("/body/bundle", js({"content": "safe", "extra": value}), JSON) for value in texts]
+    cases += [("/body/bundle", js(value), JSON) for value in texts]
+    return cases
+
+
+IDP_BASE = {"allowed_algs": ["RS256"], "audience": "aud", "issuer": "https://issuer", "jwks_uri": "https://issuer/jwks"}
+
+
+def idp_cases():
+    """EndUserIdpUpsertRequest: required list shapes, bad item at every index, bad containers, missing and invalid fields,
+    ignored extras with private redaction, duplicate keys, Unicode/NUL values and broken raw bodies."""
+    uid = str(UID)
+    cases = [("/body/idp", body, JSON) for body in ("", "{}", "null", "[]", "{", '{"allowed_algs":')]
+    cases.append(("/body/idp", js(IDP_BASE), JSON))
+    algs = [[], ["PS256"], ["RS256", "ES256"], ["RS256", "ES256", "EdDSA", "HS256"], ["RS256", "RS256"],
+            ["RS256", "ES256", "RS256"], ["rs256", " RS256 ", "RS256"], ["", "RS256"], ["日本語", "😀", "é"],
+            ["RS256" * 8], [f"ALG{i:02d}" for i in range(64)], [1], ["RS256", 1], [1, "RS256"], [None],
+            ["RS256", None], [None, "RS256"], [True], [False], [1.5], [-1], [0], [[]], [["x"]], ["RS256", ["x"]],
+            [{"k": "v"}], [{"k": 1}, "RS256"], [[], "RS256"], [{"RS256": True}],
+            ["RS256", "ES256", 1], ["RS256", 1, "ES256"], [1, "RS256", "ES256"]]
+    algs += [["ok", 2, None, True], [2, None, True], [False, {}, [], 1.5], [None, "ok", False, "", 2], [0, 0, 0], [value for _ in range(16) for value in ("valid", 2, None, False)]]
+    cases += [("/body/idp", js(IDP_BASE | {"allowed_algs": value}), JSON) for value in algs]
+    bad = ["RS256", "", None, 0, 1, True, 1.5, {}, {"0": "RS256"}, {"RS256": True}]
+    cases += [("/body/idp", js(IDP_BASE | {"allowed_algs": value}), JSON) for value in bad]
+    for field, values in {"audience": [None, 0, 1, -1, 1.5, True, False, [], ["x"], {}, {"k": "v"}, ["a"]],
+                          "issuer": [None, 0, 1, 1.5, True, [], {}, ["i"]],
+                          "jwks_uri": [None, 0, True, 1.5, [], {}, ["u"], 12345]}.items():
+        cases += [("/body/idp", js(IDP_BASE | {field: value}), JSON) for value in values]
+    cases += [("/body/idp", js({key: value for key, value in IDP_BASE.items() if key != field}), JSON) for field in IDP_BASE]
+    cases += [("/body/idp", js({field: value for field in IDP_BASE}), JSON) for value in (0, None, [], True, {}, 1.5)]
+    cases.append(("/body/idp", js({"allowed_algs": 1, "audience": None, "issuer": [], "jwks_uri": {}}), JSON))
+    extras = [{"extra": 1}, {"_secret": "leak"}, {"allowedAlgs": ["RS256"]}, {"jwksUri": "x"}, {"AUDIENCE": "x"},
+              {"ISSUER": "x"}, {"Jwks_Uri": "x"}, {"allowed_alg": ["X"]}, {"tenant_id": "x"}, {"provider_user_id": "u"}]
+    cases += [("/body/idp", js(IDP_BASE | extra), JSON) for extra in extras]
+    head = '{"allowed_algs":["RS256"],"audience":"a","issuer":"i","jwks_uri":"j"}'
+    raw = [head.replace('["RS256"]', '["RS256"],"allowed_algs":["ES256"]'),
+           '{"allowed_algs":["RS256"],"allowed_algs":"RS256","audience":"a","issuer":"i","jwks_uri":"j"}',
+           '{"allowed_algs":"RS256","allowed_algs":["RS256"],"audience":"a","issuer":"i","jwks_uri":"j"}',
+           head.replace('"audience":"a"', '"audience":"a","audience":"b"'),
+           head.replace('"issuer":"i"', '"issuer":"i","issuer":""'),
+           head.replace('"jwks_uri":"j"', '"jwks_uri":"j","jwks_uri":null'),
+           '{"allowed_algs":[],"allowed_algs":1,"audience":1,"audience":"a","issuer":null,"issuer":"i","jwks_uri":{},"jwks_uri":"j"}',
+           '{"\\u0061llowed_algs":["RS256"],"allowed_algs":["ES256"],"audience":"a","issuer":"i","jwks_uri":"j"}',
+           '{"allowed_algs":["RS256"],"audience":"' + uid + '","issuer":"' + uid + '","jwks_uri":"' + uid + '"}',
+           '{"allowed_algs":["RS256"],"allowed_algs":null}']
+    cases += [("/body/idp", body, JSON) for body in raw]
+    bodies = [{"audience": "日本語 😀", "issuer": "https://例え.jp/😀", "jwks_uri": "https://k/é?x=1"},
+              {"audience": "a\x00b", "issuer": "https://i\x00", "jwks_uri": "https://j/\x00"},
+              {"issuer": "https://i/ключ", "jwks_uri": "urn:jwk:😀"}]
+    return cases + [("/body/idp", js(IDP_BASE | body), JSON) for body in bodies]
+
+
 def request_specs():
     """Every raw request the corpus sends, grouped by concern."""
-    groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases,
-              key_cases, context_cases, resource_cases, duplicate_key_cases, nonfinite_cases]
+    groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases, key_cases,
+              context_cases, resource_cases, duplicate_key_cases, nonfinite_cases, nul_cases, idp_cases]
     return [spec for group in groups for spec in group()]
 
 

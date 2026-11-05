@@ -5,7 +5,7 @@ type Route<T> { method: String path: String handler: T }
 type Decoded { value: String rest: String }
 type Parameter { name: String value: String }
 type HTTPException { status_code: Int detail: String headers: String }
-type ValidationIssue { location: List<String> kind: String message: String input: String missing: Bool json_input: Bool context: ValidationContext }
+type ValidationIssue { location: List<LocationPart> kind: String message: String input: String missing: Bool json_input: Bool context: ValidationContext }
 union Validation<T> { Valid { value: T } Invalid { issues: List<ValidationIssue> } }
 type Pair<A, B> { first: A second: B }
 union ValidationContext { NoContext {} TextContext { name: String value: String } NumberContext { name: String value: Int } }
@@ -23,3 +23,5 @@ type FixtureBundle { content: String }
 type FixtureKey { label: Optional<String> user_id: String }
 type FixtureContext { tenant_id: String provider_user_id: String }
 type FixtureResource { uri: String mime_type: Optional<String> text: Optional<String> blob: Optional<String> }
+union LocationPart { Field { name: String } Index { value: Int } }
+type FixtureIdp { allowed_algs: List<String> audience: String issuer: String jwks_uri: String }

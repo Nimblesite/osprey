@@ -6,6 +6,8 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 
 TYPE_DOCS = {
+    "LocationPart": "A field name or numeric array index in a validation location.",
+    "FixtureIdp": "NAP identity-provider request with validated algorithm strings.",
     "Optional": "A present typed body value or an explicitly absent nullable value.",
     "FixtureBundle": "NAP bundle file body generated from its typeDiagram contract.",
     "FixtureKey": "NAP API-key request with nullable label and normalized UUID.",

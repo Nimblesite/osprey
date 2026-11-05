@@ -10,10 +10,14 @@ from fastapi import Params as P
 from fastapi import Responses as R
 from fastapi import Uuids
 
-__all__ = ["bind", "object_body", "text", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json"]
+__all__ = ["bind", "object_body", "text", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "string"]
 
 
 def invalid(location, kind, message, input):
+    return invalid_at(mapList(location, lambda name: M.Field(name=name)), kind, message, input)
+
+
+def invalid_at(location, kind, message, input):
     match jsonEncode(input):
         case Success(value=encoded):
             return Success(value=M.Invalid(issues=[M.ValidationIssue(location=location, kind=kind, message=message, input=encoded, missing=False, json_input=True, context=M.NoContext())]))
@@ -103,7 +107,7 @@ def member_name(member):
 def extra_issue(member):
     match member:
         case JsonMember(name, value):
-            return B.mapped(jsonEncode(value), lambda encoded: M.ValidationIssue(location=["body", name], kind="extra_forbidden", message="Extra inputs are not permitted", input=encoded, missing=False, json_input=True, context=M.NoContext()))
+            return B.mapped(jsonEncode(value), lambda encoded: M.ValidationIssue(location=[M.Field(name="body"), M.Field(name=name)], kind="extra_forbidden", message="Extra inputs are not permitted", input=encoded, missing=False, json_input=True, context=M.NoContext()))
 
 
 def filtered_response(status, document, allowed):
@@ -208,3 +212,40 @@ def json_error_location(position, reason):
         case Success(value=offset):
             error = JsonObject([JsonMember("type", JsonString("json_invalid")), JsonMember("loc", JsonArray([JsonString("body"), JsonInt(offset)])), JsonMember("msg", JsonString("JSON decode error")), JsonMember("input", JsonObject([])), JsonMember("ctx", JsonObject([JsonMember("error", JsonString(reason))]))])
             return E.json_response(422, JsonObject([JsonMember("detail", JsonArray([error]))]), "")
+
+
+def array(document, name, decoder):
+    """Validate every array item, retaining ordered numeric error locations."""
+    match jsonField(document, name):
+        case Error():
+            return invalid(["body", name], "missing", "Field required", document)
+        case Success(value=field):
+            match field:
+                case JsonArray(items):
+                    return array_items(items, name, decoder, 0)
+                case _:
+                    return invalid(["body", name], "list_type", "Input should be a valid list", field)
+
+
+def array_items(items, name, decoder, index):
+    match items:
+        case []:
+            return Success(value=M.Valid(value=[]))
+        case [item, *tail]:
+            return B.bind(decoder(item), lambda first: B.mapped(array_items(tail, name, decoder, satAdd(index, 1)), lambda rest: V.mapped(V.combine(indexed(first, name, index), rest), lambda pair: listConcat([pair.first], pair.second))))
+
+
+def indexed(validation, name, index):
+    match validation:
+        case M.Valid(value=value):
+            return M.Valid(value=value)
+        case M.Invalid(issues=issues):
+            return M.Invalid(issues=mapList(issues, lambda issue: M.ValidationIssue(location=listConcat([M.Field(name="body"), M.Field(name=name), M.Index(value=index)], issue.location), kind=issue.kind, message=issue.message, input=issue.input, missing=issue.missing, json_input=issue.json_input, context=issue.context)))
+
+
+def string(value):
+    match value:
+        case JsonString(text):
+            return Success(value=M.Valid(value=text))
+        case _:
+            return invalid_at([], "string_type", "Input should be a valid string", value)
