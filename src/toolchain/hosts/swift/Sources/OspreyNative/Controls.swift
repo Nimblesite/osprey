@@ -1,3 +1,4 @@
+import Observation
 import SwiftUI
 
 // Implements [UI-COMPONENTS] and [UI-EVENTS]: controls. Only text being composed
@@ -54,7 +55,15 @@ struct ButtonView: View {
 
 /// Where each button is drawn, kept only during a self-test so its `press` step can click there.
 @MainActor enum ButtonFrames {
-    static var recording = false
+    @Observable fileprivate final class Recording {
+        var enabled = false
+    }
+
+    private static let state = Recording()
+    static var recording: Bool {
+        get { state.enabled }
+        set { state.enabled = newValue }
+    }
     static var frames: [String: CGRect] = [:]
 
     struct Recorder: View {

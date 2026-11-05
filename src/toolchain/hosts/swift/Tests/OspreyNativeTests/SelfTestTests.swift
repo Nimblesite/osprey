@@ -1,11 +1,39 @@
 import AppKit
 import Foundation
+import SwiftUI
 import XCTest
 @testable import OspreyNative
 
-// The self-test host is exercised without a window: scripts, region trees,
-// picture comparisons, and scripted HTTP all stay deterministic and local.
+// Scripts, region trees, picture comparisons and scripted HTTP stay local.
+// Button geometry also exercises a real AppKit window's layout.
 final class SelfTestTests: XCTestCase {
+    @MainActor
+    func testButtonFrameIsRecordedWhenRecordingStartsAfterWindowLayout() async throws {
+        _ = NSApplication.shared
+        defer {
+            ButtonFrames.recording = false
+            ButtonFrames.frames.removeAll()
+        }
+        let node = control("button", "Project folder", 1, ["label": "Project folder", "enabled": .bool(true)])
+        let size = NSRect(x: 0, y: 0, width: 320, height: 180)
+        let window = NSWindow(contentRect: size, styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let view = NSHostingView(rootView: ButtonView(node: node) {})
+        view.frame = size
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        XCTAssertNil(ButtonFrames.frames["Project folder"])
+        ButtonFrames.recording = true
+        for _ in 0..<10 where ButtonFrames.frames["Project folder"] == nil {
+            try await Task.sleep(for: .milliseconds(20))
+            view.layoutSubtreeIfNeeded()
+        }
+        let frame = try XCTUnwrap(ButtonFrames.frames["Project folder"])
+        XCTAssertGreaterThan(frame.width, 0)
+        XCTAssertGreaterThan(frame.height, 0)
+    }
+
     @MainActor
     func testControlsSurviveFramesButRejectChangedBindings() {
         let picker = control("picker", "Speed", 4, ["selected": "1", "choices": .array([.object(["key": "1.5", "label": "1.5×"])])])

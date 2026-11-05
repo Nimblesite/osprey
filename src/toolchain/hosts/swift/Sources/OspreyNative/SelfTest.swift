@@ -467,7 +467,9 @@ public final class SelfTestRun {
     /// A real click where the button named `name` is drawn, so a control that only looks like a
     /// button, or sits under something else, fails here where `invoke` would not.
     private func pressOn(_ name: String) -> String? {
-        guard let frame = ButtonFrames.frames[name], let height = window.contentView?.bounds.height else { return "no button on screen is named \"\(name)\"" }
+        let content = window.contentView
+        content?.layoutSubtreeIfNeeded()
+        guard let frame = ButtonFrames.frames[name], let height = content?.bounds.height else { return "no button on screen is named \"\(name)\"" }
         let at = NSPoint(x: frame.midX, y: height - frame.midY)
         send(.leftMouseDown, at: at)
         send(.leftMouseUp, at: at)
