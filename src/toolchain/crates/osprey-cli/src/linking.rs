@@ -1,6 +1,6 @@
 //! Linking support for the compiler driver.
 
-use std::path::Path;
+use std::{collections::BTreeSet, path::Path};
 
 /// Assemble the link arguments — everything a compiled binary needs beyond
 /// libc: the prebuilt C runtime static library (the HTTP superset when the
@@ -180,14 +180,14 @@ pub(crate) fn find_runtime_lib(lib: &str) -> Option<String> {
 }
 
 /// `archive`, unless it was built in a checkout whose runtime sources have
-/// changed since: such an archive lacks the objects those sources added, and
-/// the host linker would report their symbols undefined. A shipped archive has
+/// changed since. Mobile build receipts identify the sources in that slice;
+/// other checkout archives retain the conservative source check. A shipped archive has
 /// no sources beside it and is taken as built.
 pub(crate) fn fresh_runtime(archive: &str) -> Result<String, String> {
     let path = Path::new(archive);
     let built = modified(path);
     let newer = checkout_runtime(path)
-        .and_then(|sources| newest_source(&sources))
+        .and_then(|sources| newest_source(&sources, path))
         .filter(|(_, changed)| built.is_some_and(|built| *changed > built));
     match newer {
         Some((source, _)) => Err(format!(
@@ -208,14 +208,47 @@ fn checkout_runtime(archive: &Path) -> Option<std::path::PathBuf> {
     in_checkout.then(|| compiler.join("runtime"))
 }
 
-fn newest_source(directory: &Path) -> Option<(std::path::PathBuf, std::time::SystemTime)> {
+fn newest_source(
+    directory: &Path,
+    archive: &Path,
+) -> Option<(std::path::PathBuf, std::time::SystemTime)> {
+    let selected = runtime_inputs(archive);
     std::fs::read_dir(directory)
         .ok()?
         .flatten()
         .map(|entry| entry.path())
-        .filter(|path| matches!(path.extension().and_then(|e| e.to_str()), Some("c" | "h")))
+        .filter(|path| runtime_source_selected(path, selected.as_ref()))
         .filter_map(|path| modified(&path).map(|changed| (path, changed)))
         .max_by_key(|(_, changed)| *changed)
+}
+
+fn runtime_source_selected(path: &Path, selected: Option<&BTreeSet<String>>) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("c" | "h" | "m" | "metal")
+    ) && selected.is_none_or(|names| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| names.contains(name))
+    })
+}
+
+/// Mobile builders record the selected units and headers beside each archive.
+/// Missing or unusable receipts retain the conservative checkout-wide check.
+fn runtime_inputs(archive: &Path) -> Option<BTreeSet<String>> {
+    let receipt = std::fs::read_to_string(archive.with_extension("a.inputs")).ok()?;
+    let names: BTreeSet<_> = receipt.lines().filter_map(runtime_input_name).collect();
+    (!names.is_empty()).then_some(names)
+}
+
+fn runtime_input_name(line: &str) -> Option<String> {
+    let mut fields = line.split_whitespace();
+    let _checksum = fields.next()?.parse::<u64>().ok()?;
+    let _size = fields.next()?.parse::<u64>().ok()?;
+    let path = Path::new(fields.next()?);
+    path.parent()?
+        .ends_with("compiler/runtime")
+        .then(|| path.file_name()?.to_str().map(str::to_owned))?
 }
 
 fn modified(path: &Path) -> Option<std::time::SystemTime> {
@@ -331,6 +364,25 @@ mod tests {
         let stale = fresh_runtime(&archive.display().to_string());
         stamp(&source, 1200);
         let fresh = fresh_runtime(&archive.display().to_string());
+        let inputs = archive.with_extension("a.inputs");
+        std::fs::write(
+            &inputs,
+            b"1 1 src/toolchain/compiler/runtime/json_codec.c\n",
+        )
+        .expect("selected runtime source receipt");
+        let ignored = runtime.join("gpu_device_tests.c");
+        std::fs::write(&ignored, b"int test_only;\n").expect("unlinked test source");
+        let unrelated = fresh_runtime(&archive.display().to_string());
+        stamp(&source, 60);
+        let selected_stale = fresh_runtime(&archive.display().to_string());
+        stamp(&source, 1200);
+        for unusable in ["", "corrupt source receipt"] {
+            std::fs::write(&inputs, unusable).expect("unusable receipt");
+            assert!(
+                fresh_runtime(&archive.display().to_string()).is_err(),
+                "unusable receipts retain conservative freshness checking"
+            );
+        }
         let shipped = fresh_runtime("/usr/local/lib/libosprey_runtime_macos.a");
         std::fs::remove_dir_all(&root).expect("cleanup");
         let message = stale.expect_err("stale archive");
@@ -339,6 +391,14 @@ mod tests {
             "{message}"
         );
         assert!(fresh.is_ok() && shipped.is_ok());
+        assert!(
+            unrelated.is_ok(),
+            "unlinked source must not invalidate archive: {unrelated:?}"
+        );
+        assert!(
+            selected_stale.is_err(),
+            "selected source must retain freshness gate"
+        );
     }
 
     #[test]
