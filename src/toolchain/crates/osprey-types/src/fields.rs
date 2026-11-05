@@ -15,14 +15,6 @@ const FIELD_OBLIGATION: &str = "$field:";
 /// same deferral as a read, resolved as an assignment INTO the field.
 const FIELD_WRITE: &str = "$write:";
 
-/// Non-field uses stay inert even after new type bindings are learned.
-#[derive(Clone, Copy, Default)]
-pub(crate) struct FieldPrefix {
-    bindings: usize,
-    checked: usize,
-    inert: usize,
-}
-
 #[cfg(test)]
 std::thread_local! {
     pub(crate) static FIELD_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
@@ -60,48 +52,22 @@ impl Checker {
     pub(crate) fn resolve_field_uses(&mut self) {
         loop {
             let before = self.ctx.bound_count();
-            let (start, inert) = self.field_scan_start(before);
-            let progressed = start < self.builtin_uses.len() && self.resolve_field_suffix(start);
-            let stable = !progressed && self.ctx.bound_count() == before;
-            self.field_uses_prefix = Some(FieldPrefix {
-                bindings: before,
-                checked: if stable {
-                    self.builtin_uses.len()
-                } else {
-                    inert
-                },
-                inert,
-            });
-            if stable {
+            let checked = self.checked_field_prefix(before);
+            if checked == self.builtin_uses.len() {
+                return;
+            }
+            let progressed = self.resolve_field_suffix(checked);
+            if !progressed && self.ctx.bound_count() == before {
+                self.field_uses_prefix = Some((before, self.builtin_uses.len()));
                 return;
             }
         }
     }
 
-    fn field_scan_start(&self, bindings: usize) -> (usize, usize) {
-        let len = self.builtin_uses.len();
-        let prefix = self
-            .field_uses_prefix
-            .filter(|prefix| prefix.checked <= len)
-            .unwrap_or_default();
-        let checked = if prefix.bindings == bindings {
-            prefix.checked
-        } else {
-            prefix.inert
-        };
-        let start = self
-            .builtin_uses
-            .iter()
-            .enumerate()
-            .skip(checked)
-            .find(|(_, (name, _))| is_field_use(name))
-            .map_or(len, |(index, _)| index);
-        let inert = if prefix.inert < checked {
-            prefix.inert
-        } else {
-            start
-        };
-        (start, inert)
+    fn checked_field_prefix(&self, bindings: usize) -> usize {
+        self.field_uses_prefix
+            .filter(|(bound, count)| *bound == bindings && *count <= self.builtin_uses.len())
+            .map_or(0, |(_, count)| count)
     }
 
     fn resolve_field_suffix(&mut self, checked: usize) -> bool {
@@ -246,10 +212,4 @@ impl Checker {
             ))
         })
     }
-}
-
-fn is_field_use(name: &str) -> bool {
-    name.starts_with(FIELD_OBLIGATION)
-        || name.starts_with(FIELD_WRITE)
-        || name.starts_with(crate::methods::OBLIGATION)
 }
