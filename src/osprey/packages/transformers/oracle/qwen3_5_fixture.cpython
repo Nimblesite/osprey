@@ -178,9 +178,12 @@ def run_cases(C, model, cfg):
     C["MODEL_CACHE_VALUES"] = cache_values
     C["MODEL_DTYPE_PATH"] = dtype_path(model, EIGHT, list(zip(cache_names, cache_dtypes)))
     fired = activations(model, EIGHT)
-    C["MODEL_HOOK_NAMES"] = [name for name, _, _ in fired]
-    C["MODEL_HOOK_SHAPES"] = [shape for _, shape, _ in fired]
-    C["MODEL_HOOK_DTYPES"] = [dtype for _, _, dtype in fired]
+    C["MODEL_HOOK_NAMES"] = [name for name, _, _, _ in fired]
+    C["MODEL_HOOK_SHAPES"] = [shape for _, shape, _, _ in fired]
+    C["MODEL_HOOK_DTYPES"] = [dtype for _, _, dtype, _ in fired]
+    # The activation each hook saw for the eight-token batched input, row-major
+    # float32, so a port can test one module at a time.
+    C["MODEL_HOOK_VALUES"] = [values for _, _, _, values in fired]
 
 
 def dtype_path(model, ids, cache):
@@ -218,13 +221,13 @@ def hook_names(model):
 
 def activations(model, ids):
     """A forward hook on every module a port mirrors, in fire order: the activation
-    each one makes available, with its shape and dtype."""
+    each one makes available, with its shape, dtype and values."""
     fired = []
 
     def record(name):
         def hook(_module, _inputs, output):
             tensor = output if isinstance(output, torch.Tensor) else output[0]
-            fired.append((name, list(tensor.shape), str(tensor.dtype)))
+            fired.append((name, list(tensor.shape), str(tensor.dtype), flat(tensor)))
         return hook
 
     handles = [model.get_submodule(name).register_forward_hook(record(name)) for name in hook_names(model)]
