@@ -108,6 +108,17 @@ def windows_device(tls, posix, file, frames, accepts):
         return posix
 
 
+def wait_for_listener(l, k):
+    """Waits for the receiver to bind without consuming a Cast connection."""
+    pid = f"{l.dir}/{k}-listener.pid"
+    port = l.port + k
+    linux = f"hex=$(printf '%04X' {port}); inode=$(awk -v port=\"$hex\" '$4 == \"0A\" && substr($2, length($2)-3) == port {{ print $10; exit }}' /proc/net/tcp /proc/net/tcp6); test -n \"$inode\" && readlink /proc/\"$device\"/fd/* 2>/dev/null | grep -Fxq \"socket:[$inode]\""
+    probe = f"case \"$system\" in Linux) {linux} ;; *) lsof -nP -a -p \"$device\" -iTCP:{port} -sTCP:LISTEN >/dev/null 2>&1 ;; esac"
+    poll = f"for attempt in $(seq 1 100); do if test -s {pid}; then device=$(cat {pid}); if ({probe}); then touch {l.dir}/{k}-listening; sleep 1; exit 0; fi; fi; sleep 0.05; done"
+    stop = f"if test -s {pid}; then kill \"$(cat {pid})\" 2>/dev/null; fi; exit 1"
+    return sh(f"{l.dir}/{k}-ready.sh", f"system=$(uname -s); case \"$system\" in MINGW*|MSYS*) sleep 1 ;; *) {poll}; {stop} ;; esac")
+
+
 def serve(l, k, frames, delay, accepts):
     """Starts scenario `k`'s device: after `delay` seconds it writes `frames`
     to each of `accepts` connections in turn. Returns its process handle."""
@@ -116,10 +127,12 @@ def serve(l, k, frames, delay, accepts):
     _written = sh(f"{l.dir}/{k}-bytes.sh", f"printf '{octal(hex)}' > {file}")
     script = f"(sleep {delay}; cat {file}; sleep 3)"
     tls = f"-naccept {accepts} -accept {l.port + k} -cert {l.dir}/c.pem -key {l.dir}/k.pem"
-    posix = f"{script} | openssl s_server -quiet {tls} >/dev/null 2>&1"
-    windows = windows_device(tls, posix, file, frames, accepts)
+    quiet = f"{script} | openssl s_server -quiet {tls} >/dev/null 2>&1"
+    source = f"(for attempt in $(seq 1 120); do if test -f {l.dir}/{k}-listening; then {script}; exit; fi; sleep 0.05; done)"
+    posix = f"{source} | openssl s_server -quiet {tls} >/dev/null 2>&1 & device=$!; printf '%s' \"$device\" >{l.dir}/{k}-listener.pid; wait \"$device\""
+    windows = windows_device(tls, quiet, file, frames, accepts)
     pid = unwrap_or(spawn_sh(f"{l.dir}/{k}-device.sh", f"case \"$(uname -s)\" in MINGW*|MSYS*) {windows} ;; *) {posix} ;; esac"), -1)
-    _ready = sh(f"{l.dir}/{k}-ready.sh", "sleep 1")
+    _ready = wait_for_listener(l, k)
     return pid
 
 
