@@ -26,21 +26,47 @@ and exits cleanly when its lifetime ends.
 | `/api/tags` | GET | [LLM-API-OLLAMA] |
 | `/api/show` | POST | [LLM-API-OLLAMA] — capabilities and context length |
 | `/api/ps` | GET | [LLM-API-OLLAMA] |
+| `/api/chat` | POST | [LLM-API-OLLAMA] — NDJSON streaming, `tool_calls` with JSON-object arguments |
+| `/api/generate` | POST | [LLM-API-OLLAMA] — NDJSON streaming, the raw completion text |
 
 A model the server does not serve is a 404 naming it, a route under the wrong
 method is a 405, and a body without a model name is a 400; every failure is the
 `{"error": message}` shape both clients raise a typed exception for.
 
-## What it does not serve yet
+## The model behind it
 
-`/api/chat`, `/api/generate`, `/v1/models` and `/v1/chat/completions` are not
-routed yet, so the server answers no generation request and installs no
-inference handler. They arrive next, behind the `Generator` effect, with a real
-fixture model sampled through `@osprey/transformers`' `generate`.
+The inference seam is the `Generator` effect (`src/Inference.py`): a tokenizer
+step each way, the model's end-of-turn token, and one sampling step. A route
+never names a weight file, a device or a vocabulary, so plan 0049 Phase 3
+replaces the handler and no route changes.
+
+The handler installed today is `src/TableModel.py`, a real model that is tiny: a
+twelve-token context whose successor counts come from `CORPUS`, a transcript in
+the served chat framing, sampled through `@osprey/transformers`' `generate`. Its
+turns are the model's own continuation of the prompt — `tests/model_reference.cpython`
+recomputes them independently from the same corpus, and the suite compares the
+two — never a string the server was handed.
+
+A `/api/chat` turn runs its text through plan 0049 Phase 6's streaming tool
+parser (`@osprey/transformers`' `qwen3_5_tool_parser`): free text becomes
+`content`, reasoning becomes `thinking`, and a call becomes `tool_calls` with
+its arguments coerced by the advertised tool's JSON Schema. A call whose
+arguments fail that schema is a 400 naming the violation, never a harness
+fabrication ([LLM-TOOL-REPAIR]). `/api/generate` has no tools, so it returns its
+text verbatim, as Ollama does.
 
 `/api/tags`, `/api/show` and `/api/ps` declare the pinned target model from plan
 0049 — `Qwen3.8-27B` `UD-Q4_K_XL` at 64K context — and report no `digest`,
 because no weights file has been read.
+
+## Limits of the served model
+
+The fixture tokenizer's vocabulary is the characters of `CORPUS`, so a prompt
+with any other byte is a 400 naming that byte's offset; the real Qwen tokenizer
+arrives with [LLM-TOKENIZER]. Two protocols' timestamps are one fixed instant
+because Osprey has no clock builtin. Nothing here streams over the socket as it
+is produced: the runtime writes one response body, so streaming means one NDJSON
+line per token in that body, which both clients parse identically.
 
 ## Tests
 

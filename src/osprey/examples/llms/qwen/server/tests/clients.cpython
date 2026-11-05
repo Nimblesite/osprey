@@ -12,14 +12,18 @@ and pass memory backends as arguments (`gc`, `arc`) to narrow the run.
 Implements [LLM-API-OLLAMA], [LLM-API-OPENAI], [LLM-API-QUEUE] and
 [LLM-API-LIMIT] of docs/specs/applications/LocalCodingModel.md.
 """
+import importlib.machinery
+import json
 import os
 import subprocess
 import sys
+import types
 import time
 import traceback
 from pathlib import Path
 
 import httpx
+import jsonschema
 import ollama
 import openai
 
@@ -30,7 +34,33 @@ COMPILER = Path(os.environ.get("OSPREY_COMPILER", ROOT / "target/debug/osprey"))
 MODEL = "qwen3.8:27b"
 CONTEXT = 65536
 PORTS = {"gc": 11535, "arc": 11536}
+READ_FILE = {
+    "type": "function",
+    "function": {
+        "name": "read_file",
+        "description": "Read one file from the workspace",
+        "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]},
+    },
+}
+RUN_TESTS = {
+    "type": "function",
+    "function": {
+        "name": "run_tests",
+        "description": "Run one test suite",
+        "parameters": {"type": "object", "properties": {"suite": {"type": "string"}}, "required": ["suite"]},
+    },
+}
+READ_PROMPT = "read the readme"
 CASES = []
+
+
+def reference():
+    """The independent CPython implementation of the fixture model the server installs."""
+    loader = importlib.machinery.SourceFileLoader("model_reference", str(HERE / "model_reference.cpython"))
+    module = types.ModuleType("model_reference")
+    module.__file__ = str(HERE / "model_reference.cpython")
+    loader.exec_module(module)
+    return module
 
 
 def case(fn):
@@ -126,6 +156,149 @@ def ps_lists_the_running_model_with_its_context(port):
         assert running.size > 0, running
         assert running.context_length == CONTEXT, running
         assert running.details.family == "qwen3_5", running.details
+
+
+# --- step 2: /api/chat and /api/generate over NDJSON ----------------------
+
+
+def json_lines(body):
+    """The newline-delimited JSON objects of a streamed body, in wire order."""
+    return [json.loads(line) for line in body.split("\n") if line]
+
+
+def streamed(port, path, payload):
+    with httpx.stream("POST", base(port) + path, json=payload, timeout=120.0) as reply:
+        assert reply.status_code == 200, reply.read()
+        assert reply.headers["content-type"] == "application/x-ndjson", reply.headers
+        body = reply.read()
+    return json_lines(body.decode("utf-8"))
+
+
+@case
+def chat_streams_one_ndjson_line_per_chunk(port):
+    payload = {"model": MODEL, "messages": [{"role": "user", "content": READ_PROMPT}], "stream": True, "tools": [READ_FILE]}
+    chunks = streamed(port, "/api/chat", payload)
+    assert len(chunks) > 3, chunks
+    assert [chunk["done"] for chunk in chunks] == [False] * (len(chunks) - 1) + [True], chunks
+    assert all(chunk["message"]["role"] == "assistant" for chunk in chunks), chunks
+    assert all(chunk["model"] == MODEL for chunk in chunks), chunks
+    last = chunks[-1]
+    assert last["done_reason"] == "stop", last
+    assert last["eval_count"] > 0 and last["prompt_eval_count"] > 0, last
+    assert all("created_at" in chunk for chunk in chunks), chunks
+
+
+@case
+def chat_stream_equals_the_non_streamed_turn(port):
+    whole = client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE])
+    pieces = list(client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE], stream=True))
+    streamed_content = "".join(part.message.content or "" for part in pieces)
+    streamed_calls = [call for part in pieces for call in (part.message.tool_calls or [])]
+    assert streamed_content == whole.message.content, (streamed_content, whole.message.content)
+    assert [call.function.name for call in streamed_calls] == [call.function.name for call in whole.message.tool_calls], streamed_calls
+    assert [dict(call.function.arguments) for call in streamed_calls] == [dict(call.function.arguments) for call in whole.message.tool_calls], streamed_calls
+    assert whole.done is True and whole.eval_count > 0 and whole.prompt_eval_count > 0, whole
+
+
+@case
+def chat_tool_call_arguments_are_schema_valid_json_objects(port):
+    for _ in range(3):
+        reply = client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE, RUN_TESTS])
+        assert reply.message.tool_calls, reply
+        call = reply.message.tool_calls[0]
+        assert isinstance(call.function.arguments, dict), call.function
+        declared = {tool["function"]["name"]: tool for tool in (READ_FILE, RUN_TESTS)}[call.function.name]
+        jsonschema.validate(call.function.arguments, declared["function"]["parameters"])
+
+
+@case
+def chat_rejects_a_call_the_advertised_tools_do_not_declare(port):
+    try:
+        client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[RUN_TESTS])
+    except ollama.ResponseError as error:
+        assert error.status_code == 400, error.status_code
+        assert "tool call" in str(error), str(error)
+    else:
+        raise AssertionError("a call to an undeclared tool reached the harness")
+
+
+@case
+def chat_answers_a_second_turn_of_the_same_conversation(port):
+    asked = {"role": "user", "content": READ_PROMPT}
+    answer = "".join(part.message.content or "" for part in client(port).chat(model=MODEL, messages=[asked], tools=[READ_FILE], stream=True))
+    history = [asked, {"role": "assistant", "content": answer}, {"role": "user", "content": READ_PROMPT}]
+    second = client(port).chat(model=MODEL, messages=history, tools=[READ_FILE])
+    assert second.done is True and second.eval_count > 0, second
+    assert second.prompt_eval_count > second.eval_count, second
+
+
+@case
+def generate_streams_and_agrees_with_the_chat_turn(port):
+    whole = client(port).generate(model=MODEL, prompt=READ_PROMPT)
+    assert whole.done is True, whole
+    assert isinstance(whole.response, str) and whole.response, whole
+    pieces = list(client(port).generate(model=MODEL, prompt=READ_PROMPT, stream=True))
+    assert "".join(part.response for part in pieces) == whole.response, (pieces, whole)
+    assert [part.done for part in pieces] == [False] * (len(pieces) - 1) + [True], pieces
+    assert pieces[-1].eval_count > 0 and pieces[-1].prompt_eval_count > 0, pieces[-1]
+
+
+@case
+def generate_streams_ndjson_one_line_per_token(port):
+    chunks = streamed(port, "/api/generate", {"model": MODEL, "prompt": READ_PROMPT, "stream": True})
+    assert len(chunks) > 3, chunks
+    assert all("response" in chunk for chunk in chunks), chunks
+    assert [chunk["done"] for chunk in chunks] == [False] * (len(chunks) - 1) + [True], chunks
+    assert "".join(chunk["response"] for chunk in chunks if not chunk["done"]), chunks
+
+
+@case
+def chat_and_generate_template_the_same_turn(port):
+    chat = [part for part in client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE], stream=True)]
+    generated = [part for part in client(port).generate(model=MODEL, prompt=READ_PROMPT, stream=True)]
+    assert [part.prompt_eval_count for part in generated if part.done] == [part.prompt_eval_count for part in chat if part.done]
+    assert [part.eval_count for part in generated if part.done] == [part.eval_count for part in chat if part.done]
+    text = "".join(part.message.content or "" for part in chat)
+    response = "".join(part.response for part in generated)
+    assert "<tool_call>" in response and "<tool_call>" not in text, (response, text)
+    assert [call.function.name for part in chat for call in (part.message.tool_calls or [])] == ["read_file"]
+
+
+@case
+def generate_matches_the_model_reference(port):
+    module = reference()
+    model = module.Model()
+    rendered = module.rendered(READ_PROMPT)
+    want = model.continuation(rendered)
+    got = client(port).generate(model=MODEL, prompt=READ_PROMPT)
+    assert got.response == want, (got.response, want)
+    assert got.prompt_eval_count == len(model.tokenize(rendered)), got
+    assert got.eval_count == len(model.tokenize(want)), got
+
+
+@case
+def chat_matches_the_model_reference(port):
+    module = reference()
+    model = module.Model()
+    rendered = module.rendered(READ_PROMPT)
+    name, arguments = module.call_of(model.continuation(rendered))
+    reply = client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE, RUN_TESTS])
+    assert reply.prompt_eval_count == len(model.tokenize(rendered)), reply
+    call = reply.message.tool_calls[0]
+    assert (call.function.name, dict(call.function.arguments)) == (name, arguments), (call, name, arguments)
+    assert "<tool_call>" not in (reply.message.content or ""), reply
+    assert reply.done_reason == "stop", reply
+
+
+@case
+def a_repeated_request_answers_identically(port):
+    module = reference()
+    asked = {"role": "user", "content": READ_PROMPT}
+    first = client(port).chat(model=MODEL, messages=[asked], tools=[READ_FILE])
+    for _ in range(3):
+        again = client(port).chat(model=MODEL, messages=[asked], tools=[READ_FILE])
+        assert (again.message.content, again.eval_count, again.prompt_eval_count) == (first.message.content, first.eval_count, first.prompt_eval_count), again
+        assert [dict(call.function.arguments) for call in again.message.tool_calls] == [dict(call.function.arguments) for call in first.message.tool_calls], again
 
 
 # --- the harness ----------------------------------------------------------

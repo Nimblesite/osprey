@@ -1,0 +1,149 @@
+"""An independent CPython implementation of the fixture model `src/TableModel.py` serves.
+
+The suite compares the server's text with this, so the served text is a
+property of the corpus-derived model and not of any string the server could
+have been handed. It reads `CORPUS` and `WINDOW` out of the Osprey source with
+`ast` (the Python flavor is valid Python), so the corpus has one home.
+
+The two implementations agree exactly because every integer step here mirrors
+the Osprey one: wrapping `int64` hashes, `abs(v) % limit` residues, counts as
+integers, and the first index holding the largest score on a tie, which is
+`Math.argmax`'s rule.
+
+Run it directly to print a continuation:
+
+    ~/.cache/osprey-llm/oracle-venv/bin/python -I model_reference.cpython "open the readme"
+"""
+import ast
+import sys
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+SOURCE = HERE.parent / "src" / "TableModel.py"
+EOS_CHAR = "~"
+MASK = (1 << 64) - 1
+SEEDED_ROW = 1024
+LOW = -(1 << 63)
+HIGH = (1 << 63) - 1
+
+
+def source_constants():
+    """`CORPUS` and `WINDOW` as the served source declares them."""
+    module = ast.parse(SOURCE.read_text())
+    values = {}
+    for node in module.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+            if node.targets[0].id in {"CORPUS", "WINDOW"}:
+                values[node.targets[0].id] = ast.literal_eval(node.value)
+    return values["CORPUS"], values["WINDOW"]
+
+
+def wrap(value):
+    """`value` as a signed 64-bit two's-complement integer."""
+    value &= MASK
+    return value - (1 << 64) if value > HIGH else value
+
+
+def sat(value):
+    """`value` clamped to the signed 64-bit range."""
+    return max(LOW, min(HIGH, value))
+
+
+def vocabulary(corpus):
+    """Every byte the corpus uses except the end-of-turn marker, ascending."""
+    return sorted({byte for byte in corpus.encode() if byte != ord(EOS_CHAR)})
+
+
+def token_ids(vocab):
+    """A token id per byte value: -1 outside the vocabulary, `len(vocab)` for the marker."""
+    index = [-1] * 256
+    for position, byte in enumerate(vocab):
+        index[byte] = position
+    index[ord(EOS_CHAR)] = len(vocab)
+    return index
+
+
+class Model:
+    """The fixture model: its vocabulary, its token lookup and its tokenized corpus."""
+
+    def __init__(self, corpus=None):
+        text, self.window = source_constants()
+        self.corpus = text if corpus is None else corpus
+        self.vocab = vocabulary(self.corpus)
+        self.ids = token_ids(self.vocab)
+        self.eos = len(self.vocab)
+        self.tokens = self.tokenize(self.corpus)
+
+    def tokenize(self, text):
+        """The token ids of `text`; a byte outside the vocabulary is a failure."""
+        tokens = []
+        for offset, byte in enumerate(text.encode()):
+            if byte >= 256 or self.ids[byte] < 0:
+                raise ValueError(f"tokenizer: byte {byte} at offset {offset} is not in the fixture model's vocabulary")
+            tokens.append(self.ids[byte])
+        return tokens
+
+    def detokenize(self, token):
+        """The one-character text of `token`, and nothing for the end-of-turn token."""
+        return "" if token == self.eos else bytes([self.vocab[token]]).decode()
+
+    def newest(self, history):
+        """The newest `WINDOW` tokens of `history`, nearest first."""
+        return [history[len(history) - 1 - back] if len(history) > back else -1 for back in range(self.window)]
+
+    def row(self, window):
+        """How often each token followed `window` in the corpus."""
+        counts = [0] * (self.eos + 1)
+        for at in range(len(self.tokens)):
+            if at >= self.window and all(self.tokens[at - 1 - back] == window[back] for back in range(self.window)):
+                counts[self.tokens[at]] += 1
+        return counts
+
+    def seeded(self, history, seed):
+        """The deterministic row for a context the corpus never showed."""
+        anchor = seed
+        if len(history) >= self.window:
+            for token in self.newest(history):
+                anchor = sat(wrap(anchor * 131) + token)
+        return [abs(sat(wrap((sat(anchor + token)) * 1103515245) + 12345)) % SEEDED_ROW for token in range(self.eos + 1)]
+
+    def logits(self, history, seed):
+        """One row of integer scores for the next token after `history`."""
+        if len(history) < self.window:
+            return self.seeded(history, seed)
+        counts = self.row(self.newest(history))
+        return self.seeded(history, seed) if sum(counts) == 0 else counts
+
+    def continuation(self, prompt, seed=0, limit=256):
+        """The greedy continuation of `prompt`, ending before the end-of-turn token."""
+        history = self.tokenize(prompt)
+        generated = []
+        for _ in range(limit):
+            scores = self.logits(history, seed)
+            token = max(range(len(scores)), key=lambda index: (scores[index], -index))
+            if token == self.eos:
+                return "".join(self.detokenize(one) for one in generated)
+            generated.append(token)
+            history.append(token)
+        return "".join(self.detokenize(one) for one in generated)
+
+
+def rendered(prompt, system=""):
+    """The chat framing `src/Prompts.py` writes for one user turn."""
+    head = "" if system == "" else f"<|im_start|>system\n{system}\n<|im_end|>\n"
+    return head + f"<|im_start|>user\n{prompt}\n<|im_end|>\n<|im_start|>assistant\n"
+
+
+def call_of(text):
+    """The name and arguments a `<tool_call>` block in `text` declares."""
+    name = text.split("<function=", 1)[1].split(">", 1)[0]
+    arguments = {}
+    for piece in text.split("<parameter=")[1:]:
+        key, rest = piece.split(">", 1)
+        arguments[key] = rest.split("</parameter>", 1)[0].lstrip("\n").removesuffix("\n")
+    return name, arguments
+
+
+if __name__ == "__main__":
+    model = Model()
+    print(model.continuation(rendered(sys.argv[1]), limit=256))

@@ -16,12 +16,15 @@ No clock builtin exists in Osprey ([BUILTIN-TERM] has none), so the timestamps
 the protocols require are one fixed instant rather than a measured one.
 """
 
+from qwen_server import Prompts
 from qwen_server import Wire
 
 __all__ = [
     "MODEL", "FAMILY", "QUANTIZATION", "CONTEXT", "BLOCKS", "EMBEDDING",
     "PARAMETERS", "WEIGHTS_BYTES", "WEIGHT_FILE", "REVISION", "INSTANT",
-    "VERSION", "TEMPERATURE", "show_request",
+    "VERSION", "TEMPERATURE",
+    "Sampling", "Chat", "Generate",
+    "show_request", "chat_request", "generate_request",
 ]
 
 MODEL = "qwen3.8:27b"
@@ -37,6 +40,7 @@ REVISION = "4ca720788d1e01f1bff70c033e0d0028fd02e502"
 INSTANT = "2026-11-05T00:00:00Z"
 VERSION = "0.1.0"
 TEMPERATURE = 0.0
+NUM_PREDICT = 256
 
 
 def show_request(body):
@@ -51,3 +55,106 @@ def show_request(body):
 def required(name):
     """A required model name, or the rejection both protocols use."""
     return Success(value=name) if name != "" else Error(message="model is required")
+
+
+class Sampling:
+    """Ollama's generation options, reduced to the ones the server honours."""
+    num_ctx: int
+    num_predict: int
+    temperature: float
+    seed: int
+
+
+class Chat:
+    """A chat turn: the messages rendered, the tools advertised, and how to run it."""
+    model: str
+    prompt: str
+    tools: Json
+    stream: bool
+    sampling: Sampling
+
+
+class Generate:
+    """A completion request: its prompt as served, and how to run it."""
+    model: str
+    prompt: str
+    stream: bool
+    sampling: Sampling
+
+
+def default_sampling():
+    """The served defaults: the model's context, a bounded reply, greedy sampling."""
+    return Sampling(num_ctx=CONTEXT, num_predict=NUM_PREDICT, temperature=TEMPERATURE, seed=0)
+
+
+def sampling_of(options):
+    """The request's `options` object over the served defaults."""
+    return Sampling(
+        num_ctx=positive(Wire.number(options, "num_ctx"), CONTEXT),
+        num_predict=positive(Wire.number(options, "num_predict"), NUM_PREDICT),
+        temperature=decimal(options, "temperature", TEMPERATURE),
+        seed=Wire.number(options, "seed"),
+    )
+
+
+def positive(value, fallback):
+    """`value` when it is positive, and the served default otherwise."""
+    return value if value > 0 else fallback
+
+
+def decimal(options, name, fallback):
+    """A numeric member written as a JSON float or as an integer."""
+    match jsonFloat(Wire.field(options, name)):
+        case Success(value=value):
+            return value
+        case Error():
+            return fallback
+
+
+def chat_request(body):
+    """An `/api/chat` or `/v1/chat/completions` body as a `Chat` ([LLM-API-OLLAMA])."""
+    match Wire.decode(body):
+        case Success(value=document):
+            return named(Wire.text(document, "model"), document)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def named(model, document):
+    """Build a `Chat` once its body decoded and its model name is present."""
+    match required(model):
+        case Success(value=name):
+            return Success(value=Chat(
+                model=name,
+                prompt=Prompts.render(Wire.items(Wire.field(document, "messages"))),
+                tools=Wire.field(document, "tools"),
+                stream=Wire.flag(document, "stream"),
+                sampling=sampling_of(Wire.field(document, "options")),
+            ))
+        case Error(message=message):
+            return Error(message=message)
+
+
+def generate_request(body):
+    """An `/api/generate` body as a `Generate` ([LLM-API-OLLAMA])."""
+    match Wire.decode(body):
+        case Success(value=document):
+            return named_generate(Wire.text(document, "model"), document)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def named_generate(model, document):
+    """Build a `Generate` once its body decoded and its model name is present."""
+    match required(model):
+        case Success(value=name):
+            prompt = Wire.text(document, "prompt")
+            system = Wire.text(document, "system")
+            return Success(value=Generate(
+                model=name,
+                prompt=prompt if Wire.flag(document, "raw") else Prompts.render_single(prompt, system),
+                stream=Wire.flag(document, "stream"),
+                sampling=sampling_of(Wire.field(document, "options")),
+            ))
+        case Error(message=message):
+            return Error(message=message)

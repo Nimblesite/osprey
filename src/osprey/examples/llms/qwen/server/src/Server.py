@@ -12,7 +12,9 @@ the `Generator` effect; the handler installed here is the fixture model in
 `TableModel.py`, and plan 0049 Phase 3 replaces it with the real weights without
 touching a route.
 """
+from qwen_server import Numeric
 from qwen_server import Routes
+from qwen_server import TableModel
 
 DEFAULT_PORT = 11435
 LOOPBACK = "127.0.0.1"
@@ -25,9 +27,10 @@ def main():
     print(f"qwen server on {LOOPBACK}:{port}")
     match httpCreateServer(port, LOOPBACK):
         case Success(value=server):
-            return listen(server)
+            return serve(server)
         case Error(message=message):
-            return print(f"create error: {message}")
+            print(f"create error: {message}")
+            return 1
 
 
 def chosen_port():
@@ -39,6 +42,14 @@ def chosen_port():
             return DEFAULT_PORT
 
 
+def serve(server):
+    """Serve with the model handler and the numeric policy installed around the loop."""
+    with Numeric.halting:
+        with Numeric.arithmetic:
+            with TableModel.Table:
+                return listen(server)
+
+
 def listen(server):
     """Start the listener and hold the fiber the runtime's loop runs on."""
     match httpListen(server, handler):
@@ -46,11 +57,12 @@ def listen(server):
             sleep(LIFETIME)
             return stopped(server)
         case Error(message=message):
-            return print(f"listen error: {message}")
+            print(f"listen error: {message}")
+            return 1
 
 
 def handler(method, url, headers, body):
-    """Answer one request by routing it to its protocol handler."""
+    """Answer one request by routing it under the installed model handler."""
     return Routes.dispatch(method, url, body)
 
 
@@ -58,6 +70,8 @@ def stopped(server):
     """Stop the listener and report how it ended."""
     match httpStopServer(server):
         case Success():
-            return print("stopped")
+            print("stopped")
+            return 0
         case Error(message=message):
-            return print(f"stop error: {message}")
+            print(f"stop error: {message}")
+            return 1

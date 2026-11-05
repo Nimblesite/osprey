@@ -1,7 +1,7 @@
 [project]
 name = "qwen-server"
-source_roots = ["src"]
-python_sources = ["src/Wire.py", "src/Requests.py", "src/Ollama.py", "src/Routes.py", "src/Server.py"]
+source_roots = ["src", "../../../../packages/transformers/src"]
+python_sources = ["src/Wire.py", "src/Prompts.py", "src/Requests.py", "src/Inference.py", "src/Lists.py", "src/Numeric.py", "src/Completions.py", "src/TableModel.py", "src/Ollama.py", "src/Routes.py", "src/Server.py", "../../../../packages/transformers/src/math.py", "../../../../packages/transformers/src/lists.py", "../../../../packages/transformers/src/logits_process.py", "../../../../packages/transformers/src/stopping_criteria.py", "../../../../packages/transformers/src/generation.py", "../../../../packages/transformers/src/qwen3_5_tool_schema.py", "../../../../packages/transformers/src/qwen3_5_tool_json_scan.py", "../../../../packages/transformers/src/qwen3_5_tool_parser.py"]
 default_namespace = "qwen_server"
 entry = "src/Server.py"
 

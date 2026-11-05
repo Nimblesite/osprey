@@ -13,10 +13,11 @@ required members are absent is rejected by `decode` before a record exists.
 __all__ = [
     "member", "text_member", "number_member", "flag_member",
     "encode", "reply", "ok", "failed", "text_reply",
-    "path_of", "decode", "field", "text", "number", "flag", "items",
+    "path_of", "decode", "field", "text", "number", "flag", "items", "ndjson", "NDJSON",
 ]
 
 JSON = "application/json"
+NDJSON = "application/x-ndjson"
 
 
 def member(name, value):
@@ -142,3 +143,17 @@ def quoted(message):
             return literal
         case Error():
             return "\"error message is not encodable\""
+
+
+def ndjson(documents):
+    """NDJSON: one encoded document per line, each newline-terminated ([LLM-API-OLLAMA])."""
+    return join(foldList(documents, [], lambda lines, document: listAppend(lines, f"{encoded(document)}\n")), "")
+
+
+def encoded(document):
+    """One encoded document, or an error document naming the encoder's failure."""
+    match encode(document):
+        case Success(value=body):
+            return body
+        case Error(message=message):
+            return f"{{\"error\":{quoted(message)}}}"

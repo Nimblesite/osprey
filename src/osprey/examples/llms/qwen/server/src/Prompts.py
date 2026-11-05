@@ -38,7 +38,7 @@ def user_turn(prompt):
 
 def system_turn(system):
     """The system turn, or nothing when the request named no system prompt."""
-    return "" if system == "" else f"{OPEN}system\n{system}{CLOSE}\n"
+    return "" if system == "" else turn(JsonObject([Wire.text_member("role", "system"), Wire.text_member("content", system)]))
 
 
 def turn(message):

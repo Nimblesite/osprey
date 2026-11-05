@@ -32,6 +32,10 @@ def ollama(method, path, body):
         return read_only(method, Ollama.ps())
     elif path == "/api/show":
         return posted(method, body, Ollama.show, Q.show_request)
+    elif path == "/api/chat":
+        return posted(method, body, Ollama.chat, Q.chat_request)
+    elif path == "/api/generate":
+        return posted(method, body, Ollama.generate, Q.generate_request)
     else:
         return absent(path)
 
