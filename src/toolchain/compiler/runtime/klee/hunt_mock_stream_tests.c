@@ -4,6 +4,7 @@
 // every origin, fresh streams per open, the open-failure branch, the slot
 // limit, modes, the standard descriptors, and the entropy and clock names.
 #include "hunt_mock_tests.h"
+#include "../io_error.h"
 
 #include <string.h>
 #include <stdlib.h>
@@ -326,7 +327,7 @@ static void file_names_cannot_alias_metadata(void) {
   if (file != NULL) (void)fclose(file);
 }
 
-// Runtime integration: the symbolic-sized buffer retains every byte and NUL.
+// [PORT-STRING-NUL] Raw streams carry every byte. The text boundary refuses embedded NUL.
 static void runtime_file_at_bound(long cap, long length) {
   hunt_reset();
   osp_hunt_input_bytes = cap;
@@ -337,9 +338,20 @@ static void runtime_file_at_bound(long cap, long length) {
   hunt_queue_range((int)length);
   char path[] = "boundary.txt";
   char *text = read_file(path);
-  int copied = text != NULL && matches_pattern((const unsigned char *)text, expected, 0) && text[expected] == '\0';
-  hunt_check(copied, about("readFile preserves all bounded bytes and terminates", cap, length));
+  int binary = 0;
+  for (long i = 0; i < expected; i++) binary |= pattern_at(i) == 0;
+  if (binary) {
+    const char *reason = osp_io_error();
+    hunt_check(text == NULL && reason != NULL &&
+                   strcmp(reason, "readFile: boundary.txt: text contains NUL; use a binary reader") == 0,
+               about("readFile refuses the full binary input with a typed reason", cap, length));
+  } else {
+    int copied = text != NULL && matches_pattern((const unsigned char *)text, expected, 0) && text[expected] == '\0';
+    hunt_check(copied && osp_io_error() == NULL,
+               about("readFile preserves all bounded text bytes and terminates", cap, length));
+  }
   hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FREAD] == 1, "readFile needs one bounded read");
+  hunt_check(osp_hunt_calls[OSP_HUNT_CALL_FCLOSE] == 1, "readFile closes accepted and refused inputs");
   free(text);
 }
 

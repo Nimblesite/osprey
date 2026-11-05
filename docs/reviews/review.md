@@ -251,3 +251,5 @@ The November 5 run compared GC, ARC and pinned CPython FastAPI over 18,603 verif
 | cpython | 5,585 | 4,509 | 4,905 | 3,594 |
 
 The raw results, binary hashes, latency and RSS samples are in `target/fastapi/benchmark/results.json`. The FastAPI package gate still passes on both backends at 765/779 lines (98.2%).
+
+- [x] [PORT-STRING-NUL] Restored the required Hunt mock check after the String changes. The mock uses the same decimal grammar as the runtime, and the runtime applies the managed String extent check before parsing. The bounded file cases still assert exact text reads and now assert the typed error for binary input, while raw stream cases continue to assert the bytes. `make _test_hunt_mock` passes 948,810 C assertions, 29 script checks and 16 format-oracle checks. The changed String and JSON units compile with symbolic GC and ARC flags. The optional full symbolic build still stops in GPU math declarations. Receipts are in `target/logs/fastapi/hunt-wrap-{red,green}.log` and `hunt-runtime-gc-arc.log`.

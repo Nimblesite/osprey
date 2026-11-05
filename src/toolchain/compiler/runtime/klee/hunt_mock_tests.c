@@ -23,6 +23,10 @@
 #include "../string_parse_int.h"
 #undef OSP_SYMBOLIC
 
+int64_t hunt_parse_int(const char *text, int64_t *out) {
+  return osp_parse_int_cstr(text, out);
+}
+
 
 // ---- host-side reporting -------------------------------------------------
 
@@ -335,8 +339,8 @@ static void check_initial_int(const char *bytes, size_t length) {
   char *ordinary = malloc(length + 1);
   memcpy(ordinary, line, length + 1);
   int64_t want = 0, got = 0;
-  int expected = osp_parse_int_strict(ordinary, &want);
-  int actual = (int)osp_parse_int_strict(line, &got);
+  int expected = osp_parse_int_cstr(ordinary, &want);
+  int actual = (int)osp_parse_int_cstr(line, &got);
   hunt_check(actual == expected && (expected != 0 || want == got), "initial input parse matches generic strict parsing");
   free(ordinary);
   free(line);

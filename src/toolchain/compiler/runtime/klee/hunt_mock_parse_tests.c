@@ -4,7 +4,6 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-int64_t osp_parse_int_strict(const char *text, int64_t *out);
 
 static char *queued_line(const char *bytes, size_t length) {
   hunt_reset();
@@ -21,7 +20,7 @@ static void check_parse(const char *bytes, size_t length) {
   hunt_check(line != NULL, "parser input allocation succeeds");
   if (!line) return;
   int64_t value = 173;
-  int status = (int)osp_parse_int_strict(line, &value);
+  int status = (int)hunt_parse_int(line, &value);
   char *end = NULL;
   errno = 0;
   long long expected = strtoll(line, &end, 10);

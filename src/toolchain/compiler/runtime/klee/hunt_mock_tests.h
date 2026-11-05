@@ -72,6 +72,7 @@ extern int osp_hunt_errno;
 
 // Runtime integration exercised by both suites.
 char *read_file(char *path);
+int64_t hunt_parse_int(const char *text, int64_t *out);
 
 // ---- captured output -------------------------------------------------------
 

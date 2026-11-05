@@ -247,6 +247,12 @@ char *osp_string_pad_end(const char *s, int64_t target, const char *fill) {
 
 #include "string_parse_int.h"
 
+int64_t osp_parse_int_strict(const char *s, int64_t *out) {
+    int64_t length = osp_mem_string_length(s);
+    if (length > 0 && memchr(s, '\0', (size_t)length)) return 1;
+    return osp_parse_int_cstr(s, out);
+}
+
 /* [BUILTIN-STRING-PARSEFLOAT] decimal grammar:
  *   sign? (digits ('.' digits?)? | '.' digits) exponent?
  * where exponent is [eE] sign? digits. Validate before strtod so its
