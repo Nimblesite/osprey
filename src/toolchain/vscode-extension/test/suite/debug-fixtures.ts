@@ -104,12 +104,11 @@ export const sourceFixtures: SourceFixture[] = [
   {
     label: "extracted GPU kernel breakpoints expose uniforms and locals",
     locals: { x: 40, n: 2, sum: 42 },
-    line: 5,
+    line: 6,
     prefix: "__gpu_kernel_",
     sources: {
-      osp: "fn main() = {\n    let n = 2\n    let result = gpuMap(toGpu([40]), fn(x) => {\n        let sum = wrapAdd(x, n)\n        sum\n    })\n    print(gpuGet(result, 0) ?: -1)\n}\n",
-      ospml:
-        "main () =\n    n = 2\n    result = gpuMap (toGpu [40]) (\\x =>\n        sum = wrapAdd x n\n        sum)\n    print (gpuGet (result, 0) ?: -1)\n",
+      osp: "fn main() = {\n    let n = 2\n    let result = match toGpu([40]) {\n        Success { value } => gpuMap(value, fn(x) => {\n            let sum = wrapAdd(x, n)\n            sum\n        })\n        Error { message } => Error { message: message }\n    }\n    match result {\n        Success { value } => match gpuGet(value, 0) {\n            Success { value } => print(value)\n            Error { message } => print(message)\n        }\n        Error { message } => print(message)\n    }\n}\n",
+      ospml: "main () =\n    n = 2\n    result = match toGpu [40]\n        Success value => gpuMap value (\\x =>\n            sum = wrapAdd x n\n            sum)\n        Error message => Error(message = message)\n    match result\n        Success value => match gpuGet value 0\n            Success value => print value\n            Error message => print message\n        Error message => print message\n",
     },
   },
   {
