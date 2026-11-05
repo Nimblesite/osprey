@@ -71,6 +71,9 @@ mod api_docs;
 #[path = "cases/api_docs_extra.rs"]
 mod api_docs_extra;
 
+#[path = "cases/api_docs_packages.rs"]
+mod api_docs_packages;
+
 /// The captured result of one invocation.
 struct Out {
     code: Option<i32>,
