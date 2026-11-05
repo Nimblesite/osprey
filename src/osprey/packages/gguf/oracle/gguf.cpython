@@ -590,8 +590,10 @@ def quant_fixtures():
 
 PRODUCT_TYPES = ("Q8_0", "Q6_K", "Q5_K", "Q3_K", "IQ4_NL", "IQ4_XS", "IQ3_S")
 """The block types the product fixture covers, in the order [LLM-MATMUL-QUANT] adds them."""
-PRODUCT_SCALES = (0x3C00, 0x3400)
-"""Ordinary binary16 super-block scale and minimum words: 1.0 and 0.25."""
+PRODUCT_SCALES = (0x3C01, 0x3401)
+"""Ordinary binary16 super-block scale and minimum words: 1.0009765625 and
+0.250244140625. Eleven significant bits, so a weight's two roundings move the result:
+the products are not all integral."""
 PARTS = 16
 """The parts one output splits its blocks into at the fixture's size, gpu_host.c's quant_parts."""
 
