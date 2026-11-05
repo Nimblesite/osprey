@@ -6,8 +6,16 @@ outcome r = match r
     Success value => four value
     Error message => message
 main () =
-    w = gpuLoadTensor ("@FIXTURE@", "w") ?: toGpu [toFloat32 0.0]
-    bias = gpuLoadTensor ("@FIXTURE@", "h.1.b") ?: toGpu [toFloat16 0.0]
-    raw = gpuLoad ("@FIXTURE@", 124, 4) ?: toGpu [toFloat32 0.0]
-    square = gpuMatMul (w, w, 2, 2, 2) ?: toGpu [toFloat32 0.0]
-    print "w ${four w}\nbias ${gpuGet (bias, 0) ?: toFloat16 0.0} ${gpuGet (bias, 1) ?: toFloat16 0.0}\nmissing ${outcome (gpuLoadTensor ("@FIXTURE@", "h.11.b"))}\nraw ${four raw}\nsquare ${four square}"
+    match gpuLoadTensor ("@FIXTURE@", "w")
+        Success w =>
+            match gpuLoadTensor ("@FIXTURE@", "h.1.b")
+                Success bias =>
+                    match gpuLoad ("@FIXTURE@", 124, 4)
+                        Success raw =>
+                            match gpuMatMul (w, w, 2, 2, 2)
+                                Success square =>
+                                    print "w ${four w}\nbias ${gpuGet (bias, 0) ?: toFloat16 0.0} ${gpuGet (bias, 1) ?: toFloat16 0.0}\nmissing ${outcome (gpuLoadTensor ("@FIXTURE@", "h.11.b"))}\nraw ${four raw}\nsquare ${four square}"
+                                Error message => print message
+                        Error message => print message
+                Error message => print message
+        Error message => print message

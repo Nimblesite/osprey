@@ -6,10 +6,25 @@ fn outcome(r) = match r {
     Success { value } => four(value)
     Error { message } => message
 }
-fn main() = {
-    let w = gpuLoadTensor("@FIXTURE@", "w") ?: toGpu([toFloat32(0.0)])
-    let bias = gpuLoadTensor("@FIXTURE@", "h.1.b") ?: toGpu([toFloat16(0.0)])
-    let raw = gpuLoad("@FIXTURE@", 124, 4) ?: toGpu([toFloat32(0.0)])
-    let square = gpuMatMul(w, w, 2, 2, 2) ?: toGpu([toFloat32(0.0)])
-    print("w ${four(w)}\nbias ${gpuGet(bias, 0) ?: toFloat16(0.0)} ${gpuGet(bias, 1) ?: toFloat16(0.0)}\nmissing ${outcome(gpuLoadTensor("@FIXTURE@", "h.11.b"))}\nraw ${four(raw)}\nsquare ${four(square)}")
+fn main() = match gpuLoadTensor("@FIXTURE@", "w") {
+    Success { value } => {
+        let w = value
+        match gpuLoadTensor("@FIXTURE@", "h.1.b") {
+            Success { value } => {
+                let bias = value
+                match gpuLoad("@FIXTURE@", 124, 4) {
+                    Success { value } => {
+                        let raw = value
+                        match gpuMatMul(w, w, 2, 2, 2) {
+                            Success { value } => print("w ${four(w)}\nbias ${gpuGet(bias, 0) ?: toFloat16(0.0)} ${gpuGet(bias, 1) ?: toFloat16(0.0)}\nmissing ${outcome(gpuLoadTensor("@FIXTURE@", "h.11.b"))}\nraw ${four(raw)}\nsquare ${four(value)}")
+                            Error { message } => print(message)
+                        }
+                    }
+                    Error { message } => print(message)
+                }
+            }
+            Error { message } => print(message)
+        }
+    }
+    Error { message } => print(message)
 }
