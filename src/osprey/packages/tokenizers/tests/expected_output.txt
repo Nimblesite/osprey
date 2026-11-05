@@ -1023,6 +1023,20 @@ ok utf8.bad lead
 ok utf8.overlong lead
 ok utf8.surrogate
 ok utf8.bad continuation
+ok unicode.letter.range
+ok unicode.mark.range
+ok unicode.number.range
+ok unicode.ccc.aligned
+ok unicode.comp.aligned
+ok unicode.decomp.offsets
+ok unicode.decomp.extent
+ok unicode.hangul.first
+ok unicode.hangul.last
+ok unicode.decompose
+ok unicode.canonical_order
+ok unicode.composite
+ok unicode.compose
+ok gguf.kind.unused
 ok nfc.0
 ok nfd.0
 ok nfc.cps.0
@@ -1792,4 +1806,4 @@ ok qwen.contraction.re
 ok qwen.contraction.ve
 ok qwen.contraction.ll
 ok qwen.json.external.tables
-1794 passed, 0 failed
+1808 passed, 0 failed

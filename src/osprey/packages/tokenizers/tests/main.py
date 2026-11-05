@@ -20,11 +20,11 @@ from tokenizers.Tokenizer import (
     wordlevel_decode_pipeline, wordlevel_encode_pipeline, wordpiece_decode_pipeline,
     wordpiece_encode, wordpiece_encode_pair,
 )
-from tokenizers.Category import is_letter, is_mark, is_number
+from tokenizers.Category import LETTER_RANGES, MARK_RANGES, NUMBER_RANGES, is_letter, is_mark, is_number
 from tokenizers.HfJson import load_qwen_tokenizer
-from tokenizers import GgufVocab
+from tokenizers import GgufVocab, NfcData
 from tokenizers.Models import BpeModel, build_bpe, bpe_tokenize, Token as ModelToken
-from tokenizers.Nfc import combining_class, nfc_cps, nfc_text, nfd_cps, nfd_text
+from tokenizers.Nfc import HANGUL_SBASE, HANGUL_SCOUNT, canonical_order, combining_class, compose, composite, decompose, decompose_cp, nfc_cps, nfc_text, nfd_cps, nfd_text
 from tokenizers.Normalizers import nfc_normalize
 from tokenizers.PreTokenizers import BYTE_CHARS, QWEN_PATTERN, byte_of_char, bytelevel_piece, bytelevel_raw, bytelevel_text, qwen_piece_len, qwen_pretokenize, qwen_split
 from tokenizers.Decoders import bytelevel_decode
@@ -453,7 +453,26 @@ def qwen_tokenizer():
 def nfc_cases():
     """The reference's NFC and NFD for decomposed, precomposed, Hangul, Vietnamese,
     Devanagari, Thai, Hebrew and Arabic text, plus the combining-class ordering."""
-    return fold(range(len(Expected.NFC_INPUTS)), [], lambda acc, i: listConcat(acc, nfc_row(i)))
+    return fold(range(len(Expected.NFC_INPUTS)), unicode_table_cases(), lambda acc, i: listConcat(acc, nfc_row(i)))
+
+
+def unicode_table_cases():
+    return [
+        Check.ints_equal("unicode.letter.range", [at_int(LETTER_RANGES, 0), at_int(LETTER_RANGES, 1)], [65, 90]),
+        Check.ints_equal("unicode.mark.range", [at_int(MARK_RANGES, 0), at_int(MARK_RANGES, 1)], [768, 879]),
+        Check.ints_equal("unicode.number.range", [at_int(NUMBER_RANGES, 0), at_int(NUMBER_RANGES, 1)], [48, 57]),
+        Check.equal("unicode.ccc.aligned", len(NfcData.CCC_KEYS), len(NfcData.CCC_VALUES)),
+        Check.equal("unicode.comp.aligned", len(NfcData.COMP_KEYS), len(NfcData.COMP_VALUES)),
+        Check.equal("unicode.decomp.offsets", len(NfcData.DECOMP_OFFSETS), len(NfcData.DECOMP_KEYS) + 1),
+        Check.equal("unicode.decomp.extent", at_int(NfcData.DECOMP_OFFSETS, len(NfcData.DECOMP_KEYS)), len(NfcData.DECOMP_CHARS)),
+        Check.ints_equal("unicode.hangul.first", decompose_cp(HANGUL_SBASE), [4352, 4449]),
+        Check.ints_equal("unicode.hangul.last", decompose_cp(HANGUL_SBASE + HANGUL_SCOUNT - 1), [4370, 4469, 4546]),
+        Check.ints_equal("unicode.decompose", decompose([192, 98]), [65, 768, 98]),
+        Check.ints_equal("unicode.canonical_order", canonical_order([65, 768, 807]), [65, 807, 768]),
+        Check.equal("unicode.composite", composite(65, 768), 192),
+        Check.ints_equal("unicode.compose", compose([65, 768, 98]), [192, 98]),
+        Check.equal("gguf.kind.unused", GgufVocab.UNUSED, 5),
+    ]
 
 
 def nfc_row(i):
