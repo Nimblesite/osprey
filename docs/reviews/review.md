@@ -140,7 +140,7 @@ Dated evidence for proof claims. Add new dated entries here.
 
 ### Duplication
 
-Target `[MAINTENANCE-DEDUPLICATION]`: `.deslop.toml` caps duplication at 2.98% under pinned Deslop 0.38.0 (6,816 of 229,147 lines, 2.9745%), excluding `docs/book/**` at the maintainer's request. The aim is to lower it without weakening an assertion.
+Target `[MAINTENANCE-DEDUPLICATION]`: `.config/deslop.toml` caps duplication at 2.98% under pinned Deslop 0.38.0 (6,816 of 229,147 lines, 2.9745%), excluding `docs/book/**` at the maintainer's request. The aim is to lower it without weakening an assertion.
 
 | Finding | Failure | Status |
 |---|---|---|
@@ -188,18 +188,20 @@ Left out of this section because an issue covers them.
 - [x] Strengthened HTTP driver reliability: occupied-port fallback passes under concurrent GC/ARC; all eight non-GET methods, empty HEAD responses, non-NUL binary/CRLF/larger echo payloads pass. Both CPython entrypoints refuse `-O`; process guards bound owned descendants and retain diagnostics. Corrected benchmark p95 indexing after a real HTTP red run demonstrated the rank error.
 - [x] Fixed the package export scanner's single-quoted Python names after a red integration regression. The broader lexical export gate still reports missing direct names in FastAPI/numpy/tokenizers; indirect execution and 98% FastAPI coverage are not substitutes for resolving that gate. No full-CI pass is claimed.
 - [ ] Finish blanket upstream/spec parity for every Python-flavor package. Pi's read-only inventory covers 21 Python-flavor ports; its remaining behavioral candidates need individual real-reference reproduction. Golden assertion counts do not establish equivalence to the upstream suites.
-- [ ] Finish full NimblesiteAgenticPlatform/FastAPI parity: body models, registered exception handlers, CORS, lifespan, cancellation, streaming, ACP/WebSockets, binary/multipart/files, OpenAPI and all endpoint families remain on the package README checklist.
+- [x] Added CORS via a generated policy record: 300 pinned FastAPI 0.135.3 / Starlette 1.3.1 real-HTTP reference cases pass under both GC and ARC, externally and from the native coverage suite; original 331 records remain byte-identical. Reviewed pi's fixture and corrected its changed readiness/echo semantics before regenerating. Scoped Starlette BSD notice retained for adapted CORS decision logic; NIMBLESITE MIT license unchanged.
+- [ ] CORS-era coverage is 565/577 (97.9%) under both GC/ARC, below the unchanged 98.0% ratchet: gate fails. Reports: `target/coverage/fastapi-cors-{gc,arc}/`. The earlier 498/508 receipt above describes the pre-CORS source only. A process-closure callback helper exposed SIGBUS: preserved crash report `suite-cab2770a963aa3ac.out-2026-11-05-121853.ips`, handed to compiler/runtime owners; the HTTP coverage driver uses the existing named-callback ABI and still asserts child exit status.
+- [ ] Finish full NimblesiteAgenticPlatform/FastAPI parity: body models, registered exception handlers, lifespan, cancellation, streaming, ACP/WebSockets, binary/multipart/files, OpenAPI and all endpoint families remain on the package README checklist.
 - [x] Benchmark the supported explicit-response HTTP subset fairly against pinned CPython FastAPI; disable fixture file logging, assert every response and report method/resource limits. These measurements do not establish parity or performance for unfinished framework features.
 
 One pre-existing/shared type-checker performance test still failed during the compiler consumer run: `spaced_necessary_annotations_keep_independent_proofs_batched` observed 134 full solves against a limit of 96. The active compiler-performance owner was notified. Two accidentally broad local test filters launched full package matrices; the 180-second process watchdog reaped both groups, and their 178 MB of owned temporary caches were removed. Exact-name reruns of the intended gate tests pass; those interrupted matrices are not passing evidence.
 
 ### FastAPI routing subset benchmark — [FASTAPI-BENCHMARK-SUBSET]
 
-Measured 2026-11-05T00:46:18.753756+00:00 on macOS-26.7.1-arm64-arm-64bit-Mach-O; CPython 3.12.13, FastAPI 0.135.3, Uvicorn 0.43.0. Native output uses -O2; compiler SHA-256 `660f8aea6cca50c5eaf261207a535a28587afaf635e9959c8f5e3f60669d4dd1`.
+Measured 2026-11-05T01:05:50.558964+00:00 on macOS-26.7.1-arm64-arm-64bit-Mach-O; CPython 3.12.13, FastAPI 0.135.3, Uvicorn 0.43.0. Native output uses -O2; compiler SHA-256 `660f8aea6cca50c5eaf261207a535a28587afaf635e9959c8f5e3f60669d4dd1`.
 
 Four client workers; five trials of 300 requests per workload and 50 warmup requests. Every status, byte length, content type, exact body and parsed body is asserted: 9,303 actual HTTP responses across the three runtimes, including readiness. Servers run sequentially with fresh TCP connections and access logging; fixture trace-file middleware is disabled and tested.
 
-| Runtime | Workload | Median requests/s | Median trial latency (ms) | Max sampled RSS (MiB) |
+| Runtime | Workload | Median requests/s | Median latency (ms) | Maximum sampled RSS (MiB) |
 |---|---|---:|---:|---:|
 | osprey-gc | health | 7,172 | 0.402 | 23.9 |
 | osprey-gc | bundle | 6,981 | 0.406 | 32.5 |

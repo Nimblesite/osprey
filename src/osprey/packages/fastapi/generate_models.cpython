@@ -6,6 +6,7 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 
 TYPE_DOCS = {
+    "CorsPolicy": "Explicit browser origin, method, header and credential policy.",
     "Need": "One dependency injection edge and its cache policy.",
     "Dependency": "A named provider, ordered children and explicit resource cleanup.",
     "Acquired": "One successfully acquired value and its immutable provider key.",

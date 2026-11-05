@@ -7,6 +7,8 @@ from fastapi_tests import Fixture
 def server_application(port, mode):
     if mode == "benchmark":
         return Success(value=A.application(Fixture.routes(), []))
+    elif listContains(["cors-nap", "cors-restricted", "cors-all"], mode):
+        return Success(value=Fixture.cors_application(mode))
     elif mode == "normal":
         return Success(value=Fixture.application(port))
     else:

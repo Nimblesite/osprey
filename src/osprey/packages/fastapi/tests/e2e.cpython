@@ -1,4 +1,5 @@
 """Drive both managed backends in parallel over real HTTP, never a mocked transport."""
+import ast
 import concurrent.futures
 import http.client
 import importlib.machinery
@@ -108,7 +109,33 @@ def dependency_smoke(port):
     assert status == 200, (status, body)
 
 
+def cors_reference_cases(port, mode):
+    """Replay independently generated reference bytes and every security-relevant header."""
+    nodes = ast.parse(Path(__file__).with_name("expected.py").read_text()).body
+    corpus = next(ast.literal_eval(node.value) for node in nodes if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "CORS_JSON" for target in node.targets))
+    cases = [case for case in json.loads(corpus)["cases"] if case["mode"] == mode]
+    assert len(cases) >= 90, (mode, len(cases))
+    for case in cases:
+        status, headers, body = request(port, case["method"], case["path"], headers=case["headers"])
+        normalized = {name.lower(): value for name, value in headers.items()}
+        relevant = {name: value for name, value in normalized.items() if name.startswith("access-control-") or name in {"vary", "content-type", "content-length", "allow", "cache-control", "x-echo"}}
+        assert (status, body) == (case["status"], case["body_text"].encode()), (case, status, body)
+        assert relevant == case["response_headers"], (case, relevant)
+        assert int(normalized["content-length"]) == len(body), (case, normalized, body)
+
+
+def cors_browser_cases(port):
+    """[FASTAPI-NAP-MIDDLEWARE] Browser reads must work on success and errors."""
+    for path, expected in (("/health", 200), ("/readyz", 503), ("/missing", 404)):
+        status, headers, body = request(port, "GET", path, headers={"Origin": "https://app.example"})
+        assert status == expected, (path, status, body)
+        assert headers.get("Access-Control-Allow-Origin") == "*", (path, headers, body)
+        assert headers.get("Access-Control-Expose-Headers") == "ETag, X-Trace-Id", headers
+        assert "Access-Control-Allow-Credentials" not in headers, headers
+
+
 def cases(port):
+    cors_browser_cases(port)
     for _ in range(3):
         health_cases(port)
         method_cases(port)
@@ -142,21 +169,24 @@ def wait_ready(process, port):
     raise TimeoutError("server did not listen within 5 seconds")
 
 
-def run(built, benchmark=False):
+def run(built, benchmark=False, mode=None):
     memory, binary = built
     port = {"gc": 18790, "arc": 18792}[memory] if benchmark else {"gc": 18786, "arc": 18788}[memory]
+    mode = mode or ("benchmark" if benchmark else "normal")
     log_path = binary.with_suffix(".benchmark.log" if benchmark else ".log")
     with log_path.open("w") as log:
         process = subprocess.Popen([str(binary)], stdin=subprocess.PIPE, stdout=log, stderr=log)
         try:
-            process.stdin.write(f"{port}\n{'benchmark' if benchmark else 'normal'}\n".encode())
+            process.stdin.write(f"{port}\n{mode}\n".encode())
             process.stdin.close()
             wait_ready(process, port)
-            if benchmark:
+            if mode.startswith("cors-"):
+                cors_reference_cases(port, mode)
+            elif benchmark:
                 benchmark_cases(port)
             else:
                 cases(port)
-            print(f"FastAPI real HTTP E2E ({memory}, benchmark={benchmark}): PASS", flush=True)
+            print(f"FastAPI real HTTP E2E ({memory}, mode={mode}): PASS", flush=True)
         except Exception as error:
             trace = ROOT / "target" / f"fastapi-dependency-{port}.trace"
             if trace.exists():
@@ -199,11 +229,15 @@ def execute():
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
         list(workers.map(run, built))
         list(workers.map(lambda item: run(item, benchmark=True), built))
+        for mode in ("cors-nap", "cors-restricted", "cors-all"):
+            list(workers.map(lambda item: run(item, mode=mode), built))
 
 
 if __name__ == "__main__":
     if sys.argv[1:] == ["--worker"]:
         execute()
+    elif len(sys.argv) == 4 and sys.argv[1] == "--cors-port":
+        cors_reference_cases(int(sys.argv[2]), sys.argv[3])
     elif sys.argv[1:]:
         raise SystemExit("usage: python3 e2e.cpython")
     else:

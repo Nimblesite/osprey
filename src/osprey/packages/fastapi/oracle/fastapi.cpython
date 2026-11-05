@@ -35,6 +35,7 @@ import importlib.machinery
 import importlib.metadata
 import importlib.util
 import json
+import platform
 import socket
 import sys
 import threading
@@ -46,7 +47,9 @@ from urllib.parse import quote
 
 import uvicorn
 from expected_module import write
-from fastapi import FastAPI, Header, Query
+from fastapi import FastAPI, Header, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 
 CONFIG_ID = uuid.UUID("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
 CONFIG = f"/configs/{CONFIG_ID}"
@@ -348,6 +351,119 @@ def write_header_fixture(cases):
         raise ValueError("header fixture cannot contain record separators or NUL")
     (Path(__file__).resolve().parents[1] / "tests/parameters.headers.bin").write_bytes(b"\x1e".join(wires))
 
+CORS_ORIGINS = [None, "", "null", "https://app.example", "https://denied.example", "https://APP.example"]
+CORS_SIMPLE = [("GET", "/vary"), ("GET", "/health"), ("GET", "/missing"), ("DELETE", "/health"), ("GET", "/readyz"),
+               ("GET", "/echo"), ("POST", "/echo")]
+CORS_PREFLIGHT_METHODS = ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "TRACE", "get"]
+CORS_REQUEST_HEADERS = ["Content-Type", "X-Token", "x-token", "X-Trace-Id", "X-Unknown", "", "X-Token, X-Unknown", " Authorization , x-TrAcE-Id ", "accept, ACCEPT-language, content-LANGUAGE"]
+CORS_RESPONSE_HEADERS = {"vary", "content-type", "content-length", "allow", "cache-control", "x-echo"}
+CORS_MODES = {
+    "cors-nap": {
+        "allow_origins": ["*"],
+        "allow_methods": ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"],
+        "allow_headers": ["Authorization", "Content-Type", "If-None-Match", "X-API-Key", "X-Tenant-Id", "X-Trace-Id"],
+        "expose_headers": ["ETag", "X-Trace-Id"],
+        "allow_credentials": False,
+    },
+    "cors-restricted": {
+        "allow_origins": ["https://app.example"],
+        "allow_methods": ["GET", "POST"],
+        "allow_headers": ["X-Token"],
+        "allow_credentials": True,
+        "expose_headers": ["ETag"],
+        "max_age": 60,
+    },
+    "cors-all": {"allow_origins": ["*"], "allow_methods": ["*"], "allow_headers": ["*"],
+                 "allow_credentials": True, "max_age": 600},
+}
+
+def cors_application(**options):
+    """The three reference endpoints, wrapped in CORSMiddleware."""
+    application = FastAPI()
+    application.add_api_route("/health", lambda: {"status": "ok"})
+    application.add_api_route("/vary", lambda: JSONResponse({"status": "ok"}, headers={"Vary": "Accept-Encoding"}))
+    application.add_api_route("/readyz", lambda: JSONResponse(
+        {"detail": "database unavailable"}, status_code=503, headers={"Cache-Control": "no-store"}))
+    async def echo_body(request: Request):
+        return Response(await request.body(), status_code=201, media_type="application/octet-stream", headers={"X-Echo": "yes"})
+    application.add_api_route("/echo", echo_body, methods=["POST"])
+    application.add_middleware(CORSMiddleware, **options)
+    return application
+
+def cors_case(port, mode, method, path, headers=None):
+    """One CORS wire call, recording every access-control header the reference returns."""
+    sent = dict(headers or {})
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request(method, path, headers=sent)
+        response = connection.getresponse()
+        body = response.read()
+        names = {name.lower() for name in dict(response.getheaders())}
+        kept = sorted(n for n in names if n.startswith("access-control-") or n in CORS_RESPONSE_HEADERS)
+        returned = {name: response.getheader(name) for name in kept}
+        return {"mode": mode, "method": method, "path": path, "headers": sent,
+                "status": response.status, "body_text": body.decode(), "response_headers": returned}
+    finally:
+        connection.close()
+
+
+def origin_headers(origin):
+    """Absent origin sends no header; an empty origin sends an empty value."""
+    return {} if origin is None else {"Origin": origin}
+
+
+def preflight_case(port, mode, origin, method, requested=None, private=False):
+    """One OPTIONS preflight with optional requested headers and private-network flag."""
+    headers = origin_headers(origin) | {"Access-Control-Request-Method": method}
+    if requested is not None:
+        headers["Access-Control-Request-Headers"] = requested
+    if private:
+        headers["Access-Control-Request-Private-Network"] = "true"
+    return cors_case(port, mode, "OPTIONS", "/health", headers)
+
+def cors_cases(port, mode):
+    """Simple and preflight requests for one middleware configuration."""
+    cases = [cors_case(port, mode, method, path, origin_headers(origin))
+             for origin in CORS_ORIGINS for method, path in CORS_SIMPLE]
+    cases += [preflight_case(port, mode, origin, method)
+              for origin in CORS_ORIGINS[1:] for method in CORS_PREFLIGHT_METHODS]
+    cases += [preflight_case(port, mode, "https://app.example", "GET", value) for value in CORS_REQUEST_HEADERS]
+    cases += [preflight_case(port, mode, "https://app.example", "GET", private=True), preflight_case(port, mode, "https://denied.example", "TRACE", "X-Unknown", True)]
+    cookie = origin_headers("https://app.example") | {"Cookie": "session=abc; theme=dark"}
+    cases += [cors_case(port, mode, method, path, cookie) for method, path in CORS_SIMPLE[:2]]
+    return cases
+
+def cors_main():
+    """Record the CORS corpus against each middleware mode and write the reference JSON."""
+    version = importlib.metadata.version("fastapi")
+    if version != "0.135.3":
+        raise ValueError(f"Expected FastAPI 0.135.3, found {version}")
+    cases = []
+    for mode, options in CORS_MODES.items():
+        server, worker, listener, port = start_reference(cors_application(**options))
+        try:
+            cases += cors_cases(port, mode)
+        finally:
+            server.should_exit = True
+            worker.join(5)
+            listener.close()
+        if worker.is_alive():
+            raise TimeoutError("Reference HTTP server failed to stop")
+    if len({json.dumps(c, sort_keys=True) for c in cases}) != len(cases):
+        raise ValueError("Duplicate CORS case: fix the corpus instead of dropping one")
+    record = {"fastapi": version, "starlette": importlib.metadata.version("starlette"),
+              "python": platform.python_version(), "cases": cases}
+    target = Path(__file__).resolve().parents[5] / "target/logs/fastapi/cors-reference.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
+    return record
+
+
+def print_cors():
+    record = cors_main()
+    print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+    print(f"{len(record['cases'])} CORS cases from fastapi {record['fastapi']} and starlette {record['starlette']}", file=sys.stderr)
+
 
 def main():
     """Print the reference wire cases and report pinned package versions."""
@@ -367,10 +483,10 @@ def main():
         raise ValueError("Duplicate case: fix the corpus instead of dropping one")
     cases += dependency_cases()
     write_header_fixture(cases)
-    write("fastapi", "Real HTTP reference cases for routing, validation and dependency lifecycles.", {"fastapi": version}, {"CASES_JSON": json.dumps(cases, ensure_ascii=False, separators=(",", ":"))})
+    write("fastapi", "Real HTTP reference cases for routing, validation and dependency lifecycles.", {"fastapi": version}, {"CASES_JSON": json.dumps(cases, ensure_ascii=False, separators=(",", ":")), "CORS_JSON": json.dumps(cors_main(), ensure_ascii=False, separators=(",", ":"))})
     print(json.dumps(cases, ensure_ascii=False, separators=(",", ":")))
     print(f"{len(cases)} real HTTP cases from fastapi {version}", file=sys.stderr)
 
 
 if __name__ == "__main__":
-    main()
+    print_cors() if "--cors" in sys.argv[1:] else main()

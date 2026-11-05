@@ -48,19 +48,23 @@ def native_application(port):
 
 
 def open_native(ports):
+    return open_application(ports, "normal")
+
+
+def open_application(ports, mode):
     match ports:
         case []:
             return Error(message="No loopback test listener is available")
         case [port, *tail]:
-            match A.serve(port, "127.0.0.1", native_application(port)):
+            match A.serve(port, "127.0.0.1", native_application(port) if mode == "normal" else Fixture.cors_application(mode)):
                 case Success(value=server):
                     return Success(value=M.Pair(first=server, second=port))
                 case Error(message=message):
-                    return next_listener(tail, port, message)
+                    return next_listener(tail, port, message, mode)
 
 
-def next_listener(ports, previous, message):
-    match open_native(ports):
+def next_listener(ports, previous, message, mode):
+    match open_application(ports, mode):
         case Success(value=opened):
             return Success(value=opened)
         case Error(message=error):
@@ -108,7 +112,8 @@ def lifecycle():
 
 
 def main():
-    return test("FastAPI native HTTP lifecycle and NAP health/readiness", lifecycle)
+    test("FastAPI native HTTP lifecycle and NAP health/readiness", lifecycle)
+    return test("FastAPI browser CORS reference over real HTTP", cors_lifecycle)
 
 
 def scenario(document):
@@ -181,3 +186,33 @@ def configuration_cases(client):
     assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":["open:1","close:1"]}')
     assert_reply(httpGetResponse(client, "/deps/duplicate", ""), 500, '{"detail":"Expected exactly one dependency provider: session"}')
     return assert_reply(httpGetResponse(client, "/dependency-trace", ""), 200, '{"trace":[]}')
+
+
+
+def cors_lifecycle():
+    return foldList(["cors-nap", "cors-restricted", "cors-all"], None, lambda _state, mode: cors_mode(mode))
+
+
+def cors_mode(mode):
+    match open_application([18781, 18783, 18785], mode):
+        case Error(message=message):
+            return check("CORS listener", "success", message)
+        case Success(value=opened):
+            cors_client(opened.second, mode)
+            return expect(httpStopServer(opened.first), Success(value=0))
+
+
+def cors_client(port, mode):
+    # The real socket client checks all reference bytes/headers, including OPTIONS.
+    command = f"python3 src/osprey/packages/fastapi/tests/e2e.cpython --cors-port {port} {mode}"
+    match spawnProcess(command, cors_diagnostic):
+        case Error(message=message):
+            return check("CORS HTTP client", "success", message)
+        case Success(value=pid):
+            status = awaitProcess(pid)
+            cleanupProcess(pid)
+            return expect(status, 0)
+
+
+def cors_diagnostic(_pid, _kind, text):
+    return print(text) if (_kind == 1 or _kind == 2) and text != "" else None

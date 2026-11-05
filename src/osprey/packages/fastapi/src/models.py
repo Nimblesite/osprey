@@ -3,7 +3,7 @@
 # osprey: module=Models
 """Generated from models.td; run generate_models.cpython."""
 
-__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'Validation', 'ValidationContext', 'DependencyResult']
+__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'CorsPolicy', 'Validation', 'ValidationContext', 'DependencyResult']
 
 
 class Request:
@@ -101,6 +101,16 @@ class Application[R, W]:
     """Ordered routes and request middleware."""
     routes: R
     middleware: W
+
+
+class CorsPolicy:
+    """Explicit browser origin, method, header and credential policy."""
+    origins: list[str]
+    methods: list[str]
+    headers: list[str]
+    expose: list[str]
+    credentials: bool
+    max_age: int
 
 
 @union

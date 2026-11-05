@@ -17,3 +17,4 @@ union DependencyResult<T> { Provided { value: T } Rejected { error: HTTPExceptio
 type DependencyStep<T, S> { outcome: DependencyResult<T> state: S }
 type Application<R, W> { routes: R middleware: W }
 union FixtureValue { SessionValue { id: Int } IdentityValue { id: Int role: String } CreditValue { id: Int role: String credit: Int } NumberValue { number: Int } }
+type CorsPolicy { origins: List<String> methods: List<String> headers: List<String> expose: List<String> credentials: Bool max_age: Int }

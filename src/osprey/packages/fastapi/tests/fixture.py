@@ -19,6 +19,10 @@ def health(_request):
     return R.json_response(200, "{\"status\":\"ok\"}", "")
 
 
+def varied(_request):
+    return R.json_response(200, '{"status":"ok"}', "Vary: Accept-Encoding")
+
+
 def ready(_request):
     return R.json_response(503, "{\"detail\":\"database unavailable\"}", "Cache-Control: no-store")
 
@@ -29,11 +33,11 @@ def echo(request):
 
 def routes():
     """The ordered real HTTP routes used by both managed-backend suites."""
-    return [Routing.route("GET", "/health", health), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)]
+    return [Routing.route("GET", "/health", health), Routing.route("GET", "/vary", varied), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)]
 
 
 
-__all__ = ["routes", "application"]
+__all__ = ["routes", "application", "cors_application"]
 
 
 def config(request):
@@ -94,7 +98,7 @@ def trace_path(port):
 def application(port):
     """Build the real HTTP acceptance app with request-local trace capture."""
     path = trace_path(port)
-    return A.application(listConcat(listConcat(routes(), dependency_routes(path)), extra_routes(path, providers(path))), [lambda request, next: reset_trace(path, request, next)])
+    return A.application(listConcat(listConcat(routes(), dependency_routes(path)), extra_routes(path, providers(path))), [A.cors(cors_policy("cors-nap")), lambda request, next: reset_trace(path, request, next)])
 
 
 def reset_trace(path, request, next: Callable[[M.Request], M.Response]):
@@ -366,6 +370,19 @@ def query_numbers(request):
             return sum_second(pair.first, NumberValue(number=pair.second))
         case M.Invalid(issues=issues):
             return E.validation(issues)
+
+def cors_policy(mode):
+    if mode == "cors-restricted":
+        return M.CorsPolicy(origins=["https://app.example"], methods=["GET", "POST"], headers=["X-Token"], expose=["ETag"], credentials=True, max_age=60)
+    elif mode == "cors-all":
+        return M.CorsPolicy(origins=["*"], methods=["*"], headers=["*"], expose=[], credentials=True, max_age=600)
+    else:
+        return M.CorsPolicy(origins=["*"], methods=["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"], headers=["Authorization", "Content-Type", "If-None-Match", "X-API-Key", "X-Tenant-Id", "X-Trace-Id"], expose=["ETag", "X-Trace-Id"], credentials=False, max_age=600)
+
+
+def cors_application(mode):
+    return A.application(routes(), [A.cors(cors_policy(mode))])
+
 
 # Generated fixture models from models.td
 

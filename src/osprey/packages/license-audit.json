@@ -67,10 +67,26 @@
           "notice_attribution": [
             "Sebastián Ramírez"
           ]
+        },
+        {
+          "component": "starlette CORS policy",
+          "repository": "https://github.com/Kludex/starlette",
+          "reference": "1.3.1",
+          "file": "LICENSES/Starlette-BSD-3-Clause.txt",
+          "sha256": "dcb95677a02240243187e964f941847d19b17821cf99e5afae684fab328c19bf",
+          "source": "https://github.com/Kludex/starlette/blob/1.3.1/LICENSE.md",
+          "git_blob_sha1": "d16a60ec5b9963ef86b35a52ac92227014618e6c",
+          "applies_to": [
+            "src/applications.py"
+          ],
+          "basis": "CORS decision structure adapted from Starlette CORSMiddleware; retain BSD source and binary redistribution notice for this implementation only.",
+          "notice_attribution": [
+            "Encode OSS Ltd"
+          ]
         }
       ],
       "references": [],
-      "review": "Port of FastAPI; upstream MIT notice retained. Development oracle uses separately installed FastAPI.",
+      "review": "FastAPI MIT notice retained; adapted Starlette CORS decision structure has a scoped BSD-3-Clause notice. Development oracles use separately installed upstream distributions.",
       "source_notices": {}
     },
     "flash_attn": {

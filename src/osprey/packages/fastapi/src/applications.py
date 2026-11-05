@@ -8,8 +8,9 @@ from fastapi import Responses as R
 from fastapi import Routing
 from fastapi import Results as B
 from fastapi import Errors as E
+from fastapi import Params
 
-__all__ = ["application", "serve", "dispatch"]
+__all__ = ["application", "serve", "dispatch", "cors"]
 
 
 def application(routes, middleware):
@@ -58,3 +59,98 @@ def native_request(app, method, url, headers, body):
             return R.native(dispatch(app, M.Request(method=method, url=url, headers=decoded, body=body, path_params={})))
         case Error(message=message):
             return R.native(E.http_exception(E.exception(500, message, "")))
+
+
+# Implements [FASTAPI-NAP-MIDDLEWARE]. Adapted Starlette policy: see NOTICE.md.
+def cors(policy):
+    """Build immutable browser-access middleware with an explicit typed policy."""
+    return lambda request, next: cors_request(policy, request, next)
+
+
+def cors_request(policy, request, next: Callable[[M.Request], M.Response]):
+    match Params.header(request, "Origin"):
+        case Error():
+            return next(request)
+        case Success(value=origin):
+            match Params.header(request, "Access-Control-Request-Method"):
+                case Success(value=method):
+                    return cors_preflight(policy, request, origin, method) if request.method == "OPTIONS" else cors_simple(policy, origin, next(request))
+                case Error():
+                    return cors_simple(policy, origin, next(request))
+
+
+def with_header(reply, name, value):
+    retained = filterList(lines(reply.headers), lambda line: line != "" and not startsWith(toLowerCase(line), toLowerCase(name) + ":"))
+    return R.response(reply.status_code, reply.content, reply.media_type, join(listConcat(mapList(retained, lambda line: trimEnd(line)), [f"{name}: {value}"]), "\r\n"))
+
+
+def cors_origin(reply, origin):
+    match Params.header(M.Request(method="", url="", headers=reply.headers, body="", path_params={}), "Vary"):
+        case Success(value=previous):
+            return with_header(with_header(reply, "Vary", previous + ", Origin"), "Access-Control-Allow-Origin", origin)
+        case Error():
+            return with_header(with_header(reply, "Vary", "Origin"), "Access-Control-Allow-Origin", origin)
+
+
+def cors_credentials(policy, reply):
+    return with_header(reply, "Access-Control-Allow-Credentials", "true") if policy.credentials else reply
+
+
+def cors_simple(policy, origin, reply):
+    exposed = with_header(reply, "Access-Control-Expose-Headers", join(policy.expose, ", ")) if len(policy.expose) > 0 else reply
+    wildcard = listContains(policy.origins, "*")
+    base = cors_credentials(policy, with_header(exposed, "Access-Control-Allow-Origin", "*") if wildcard else exposed)
+    return cors_origin(base, origin) if (wildcard and policy.credentials) or (not wildcard and listContains(policy.origins, origin)) else base
+
+
+def cors_methods(policy):
+    return ["DELETE", "GET", "HEAD", "OPTIONS", "PATCH", "POST", "PUT"] if listContains(policy.methods, "*") else policy.methods
+
+
+def cors_headers(policy):
+    names = listConcat(["Accept", "Accept-Language", "Content-Language", "Content-Type"], policy.headers)
+    unique = foldList(names, [], lambda previous, name: previous if listContains(previous, name) else listConcat(previous, [name]))
+    return listSortBy(unique, lambda left, right: -1 if left < right else (1 if left > right else 0))
+
+
+def cors_preflight_base(policy, origin):
+    explicit = not listContains(policy.origins, "*") or policy.credentials
+    base = R.response(200, "OK", "text/plain; charset=utf-8", "")
+    varied = with_header(base, "Vary", "Origin") if explicit else with_header(base, "Access-Control-Allow-Origin", "*")
+    allowed = listContains(policy.origins, "*") or listContains(policy.origins, origin)
+    reflected = with_header(varied, "Access-Control-Allow-Origin", origin) if explicit and allowed else varied
+    methods = with_header(reflected, "Access-Control-Allow-Methods", join(cors_methods(policy), ", "))
+    timed = with_header(methods, "Access-Control-Max-Age", toString(policy.max_age))
+    named = timed if listContains(policy.headers, "*") else with_header(timed, "Access-Control-Allow-Headers", join(cors_headers(policy), ", "))
+    return cors_credentials(policy, named)
+
+
+def cors_requested_headers(policy, request, reply):
+    match Params.header(request, "Access-Control-Request-Headers"):
+        case Success(value=headers):
+            return with_header(reply, "Access-Control-Allow-Headers", headers) if listContains(policy.headers, "*") else reply
+        case Error():
+            return reply
+
+
+def cors_header_failures(policy, request):
+    match Params.header(request, "Access-Control-Request-Headers"):
+        case Error():
+            return []
+        case Success(value=headers):
+            match split(headers, ","):
+                case Success(value=names):
+                    allowed = mapList(cors_headers(policy), lambda name: toLowerCase(name))
+                    invalid = filterList(names, lambda name: not listContains(allowed, toLowerCase(trim(name))))
+                    return ["headers"] if not listContains(policy.headers, "*") and len(invalid) > 0 else []
+                case Error():
+                    return ["headers"]
+
+
+def cors_preflight(policy, request, origin, method):
+    origins = [] if listContains(policy.origins, "*") or listContains(policy.origins, origin) else ["origin"]
+    methods = [] if listContains(cors_methods(policy), method) else ["method"]
+    network = [] if len(Params.header_all(request, "Access-Control-Request-Private-Network")) == 0 else ["private-network"]
+    failures = listConcat(listConcat(origins, methods), listConcat(cors_header_failures(policy, request), network))
+    reply = cors_requested_headers(policy, request, cors_preflight_base(policy, origin))
+    return R.response(400, "Disallowed CORS " + join(failures, ", "), reply.media_type, reply.headers) if len(failures) > 0 else reply
