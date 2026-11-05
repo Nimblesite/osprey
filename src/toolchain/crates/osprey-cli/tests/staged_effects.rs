@@ -265,7 +265,9 @@ fn main() = {
 }
 "#;
     let handler = "handle static Tile { size => 3 }";
-    let source = program.replace("@inside@", handler).replace("@outside@", "");
+    let source = program
+        .replace("@inside@", handler)
+        .replace("@outside@", "");
     let errors = diagnostics(&source, Flavor::Default);
     assert!(
         errors.is_empty(),
@@ -274,7 +276,9 @@ fn main() = {
     // The region must ENCLOSE the kernel: a static handler installed after
     // the offload answers nothing the device code asked for, so the request
     // is residual and the kernel is rejected by name.
-    let outside = program.replace("@inside@", "").replace("@outside@", handler);
+    let outside = program
+        .replace("@inside@", "")
+        .replace("@outside@", handler);
     let errors = diagnostics(&outside, Flavor::Default);
     assert!(
         errors.contains("kernel body is not stage-legal; it requires dynamic effects: Tile.size"),
