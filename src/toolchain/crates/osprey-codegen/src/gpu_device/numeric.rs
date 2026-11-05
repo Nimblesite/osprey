@@ -7,10 +7,27 @@ use super::Ty;
 use osprey_ast::Expr;
 use osprey_types::numeric::Numeric;
 
+/// A `float` narrowed to binary32: a literal's rounding happens here, once, so
+/// a kernel does not repeat the software narrowing per thread; any other value
+/// narrows on the device.
+fn narrowed(value: &str) -> String {
+    let word = value
+        .strip_prefix("0x")
+        .and_then(|hex| hex.strip_suffix("ul"))
+        .and_then(|hex| u64::from_str_radix(hex, 16).ok());
+    match word {
+        Some(bits) => format!(
+            "gpu_float32_from_bits(0x{:08x}u)",
+            (f64::from_bits(bits) as f32).to_bits()
+        ),
+        None => format!("gpu_float32_from_bits(narrow32({value}))"),
+    }
+}
+
 /// A float literal travels at the target's compute width.
 pub(super) fn fit_literal(expr: &Expr, ty: Ty, value: String, target: Ty) -> (Ty, String) {
     if ty == Ty::FLOAT && target == Ty::FLOAT32 && super::dialect::is_literal(expr) {
-        (target, format!("gpu_float32_from_bits(narrow32({value}))"))
+        (target, narrowed(&value))
     } else {
         (ty, value)
     }
@@ -62,9 +79,7 @@ pub(super) fn convert(target: Ty, source: Ty, value: &str) -> Option<(Ty, String
         value.to_owned()
     } else {
         match (t, s) {
-            (Numeric::FLOAT32, Numeric::FLOAT) => {
-                format!("gpu_float32_from_bits(narrow32({value}))")
-            }
+            (Numeric::FLOAT32, Numeric::FLOAT) => narrowed(value),
             (Numeric::FLOAT, Numeric::FLOAT32) => format!("widen32(gpu_float32_bits({value}))"),
             (Numeric::FLOAT16, Numeric::FLOAT32) => format!("gpu_f32_narrow16({value})"),
             (Numeric::FLOAT16, Numeric::FLOAT) => {

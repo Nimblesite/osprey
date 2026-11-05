@@ -299,6 +299,39 @@ static void dropped_buffers(const QuantCase *c) {
   free(device);
 }
 
+// A file past the sharing threshold: regions of it share one mapped object, a
+// dropped region leaves the others readable, and the words stay the host's.
+static float *shared_regions(const char *mode, const char *path, int64_t at, int64_t bytes, void *x) {
+  const int64_t inner = 512, cols = 512;
+  assert(setenv("OSPREY_GPU", mode, 1) == 0);
+  void *dropped = osprey_gpu_map_file(path, at, bytes, 1), *kept = osprey_gpu_map_file(path, at, bytes, 1);
+  void *first = osprey_gpu_matmul_quant(x, dropped, "Q4_K", 1, inner, cols);
+  osprey_gpu_finalize(dropped);
+  void *second = osprey_gpu_matmul_quant(first, kept, "Q4_K", 1, inner, cols);
+  assert(second);
+  float *words = malloc((size_t)cols * sizeof(float));
+  assert(words);
+  memcpy(words, osprey_gpu_data(second), (size_t)cols * sizeof(float));
+  return words;
+}
+
+static void shared_file(const QuantCase *c) {
+  const int64_t cols = 512, inner = 512, blocks = 2, bytes = cols * blocks * c->bytes, at = (int64_t)1 << 30;
+  void *w = quant_weights(cols, blocks, c->bytes, c->scale_at, c->scales);
+  void *x = osprey_gpu_alloc(inner, 4);
+  float *xs = osprey_gpu_data(x);
+  for (int64_t i = 0; i < inner; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  char path[] = "/tmp/osprey_quant_XXXXXX";
+  int fd = mkstemp(path);
+  assert(fd >= 0 && pwrite(fd, osprey_gpu_data(w), (size_t)bytes, at) == bytes && close(fd) == 0);
+  float *host = shared_regions("host", path, at, bytes, x), *device = shared_regions(selected, path, at, bytes, x);
+  assert(unlink(path) == 0);
+  assert(memcmp(host, device, (size_t)cols * sizeof(float)) == 0);
+  checks++;
+  free(host);
+  free(device);
+}
+
 static void quantized_products(void) {
   for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
     const QuantCase *c = &QUANT_CASES[i];
@@ -312,6 +345,7 @@ static void quantized_products(void) {
   checks++;
   misaligned_weights(x, rows, inner, cols);
   dropped_buffers(&QUANT_CASES[0]);
+  shared_file(&QUANT_CASES[0]);
 }
 
 // The host's fold of `words` in element order, as the sequential kernel computes it.
@@ -422,19 +456,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 34);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 38);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 35);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 39);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 36);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 40);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 39);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 43);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;
