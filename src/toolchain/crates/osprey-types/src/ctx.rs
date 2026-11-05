@@ -248,10 +248,18 @@ impl InferCtx {
     /// [`Self::expose`] for a rule that must act on the shape now: a literal
     /// has nothing further to wait for, so it takes its default here.
     pub(crate) fn expose_settled(&mut self, t: &Type) -> Type {
+        self.settle_head(t);
+        self.expose(t)
+    }
+
+    /// Default an outer literal without exposing aliases or walking its fields.
+    pub(crate) fn settle_head(&mut self, t: &Type) {
+        if !matches!(t, Type::Var(_)) {
+            return;
+        }
         if let Type::Var(id) = self.prune(t) {
             self.settle_literal(id);
         }
-        self.expose(t)
     }
 
     /// `t` as a diagnostic names it: an open literal reads as its default, the
@@ -291,17 +299,19 @@ impl InferCtx {
     /// outermost variable is resolved — nested types are left intact (use
     /// [`InferCtx::apply`] for a deep walk).
     pub(crate) fn prune(&mut self, t: &Type) -> Type {
-        if let Type::Var(id) = t {
-            let idx = usize::try_from(*id).unwrap_or(usize::MAX);
-            if let Some(bound) = self.subst.get(idx).and_then(Option::clone) {
-                let pruned = self.prune(&bound);
-                if let Some(slot) = self.subst.get_mut(idx) {
-                    *slot = Some(pruned.clone());
-                }
-                return pruned;
-            }
-        }
-        t.clone()
+        let Type::Var(id) = t else {
+            return t.clone();
+        };
+        let idx = usize::try_from(*id).unwrap_or(usize::MAX);
+        let Some(bound) = self.subst.get(idx).and_then(Option::as_ref) else {
+            return t.clone();
+        };
+        let Type::Var(next) = bound else {
+            return bound.clone();
+        };
+        let pruned = self.prune(&Type::Var(*next));
+        self.bind(*id, pruned.clone());
+        pruned
     }
 
     /// How many variables are currently BOUND. A fixpoint loop compares this

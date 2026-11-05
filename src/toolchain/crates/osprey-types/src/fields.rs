@@ -108,12 +108,12 @@ impl Checker {
         let [receiver] = params.as_slice() else {
             return false;
         };
-        let _ = self.ctx.expose_settled(receiver);
+        self.ctx.settle_head(receiver);
         let receiver = self.ctx.apply(receiver);
         if matches!(receiver, Type::Var(_)) {
             return false;
         }
-        match self.resolved_record_field(&receiver, field, site) {
+        match self.resolved_record_field(receiver, field, site) {
             Ok(actual) if write => self.push_assign(&actual, ret),
             Ok(actual) => self.push_unify(ret, &actual),
             Err(error) => self.errors.push(error),
@@ -124,21 +124,24 @@ impl Checker {
     /// The type of `field` on `receiver` as read from `site`.
     pub(crate) fn resolved_record_field(
         &self,
-        receiver: &Type,
+        receiver: Type,
         field: &str,
         site: &str,
     ) -> Result<Type, TypeError> {
         // The access was written at `site`: inside the module that owns an
         // opaque alias, the receiver is the record the alias stands for.
-        let receiver = &self.ctx.exposed_at(receiver.clone(), site);
+        let receiver = &self.ctx.exposed_at(receiver, site);
         // Opacity is decided first: an opaque alias `site` cannot read through
         // has no fields to offer, and saying it is "not a struct" would hide why.
         if let Some(hidden) = self.hidden_field(receiver, field, site) {
             return Err(hidden);
         }
-        let fields = match receiver {
-            Type::Record { fields, .. } => Some(fields.clone()),
-            Type::Con { name, args } => self.ctx.record_fields(name, args),
+        let actual = match receiver {
+            Type::Record { fields, .. } => Some(fields.get(field).cloned()),
+            Type::Con { name, args } => self
+                .ctx
+                .record_fields(name, args)
+                .map(|mut fields| fields.remove(field)),
             _ => None,
         }
         .ok_or_else(|| {
@@ -146,7 +149,7 @@ impl Checker {
                 "cannot access field '{field}' on non-struct type {receiver}"
             ))
         })?;
-        fields.get(field).cloned().ok_or_else(|| {
+        actual.ok_or_else(|| {
             // A declared record is named by its declaration, not by the row it
             // happens to carry, so the message reads as the author wrote it.
             let shown = match receiver {
