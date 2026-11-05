@@ -416,11 +416,11 @@ def player_pixels(path):
         return r >= 200 and g >= 180 and b >= 160 and r - b >= 6
     rows = [y for y in range(height) if all(cream((y * width + int(width * x)) * 3) for x in (0.05, 0.95))]
     assert rows, f"No player artboard in {path}"
-    # [CAST-MOBILE-GPUI] the player fills the screen, so only the system bars, whose clock and
-    # icons change between runs, stay out of the comparison.
+    # [CAST-MOBILE-GPUI] Exclude the upper system-icon strip from translucent bars.
+    # Keep the last cream row: controls and file-drop hints reach the player bottom.
     first, last = rows[0], rows[-1] + 1
     assert last - first >= height * 0.9, (path, width, first, last)
-    first, last = first + height // 20, last - height // 20
+    first = first + height // 20
     return width, last - first, raw[first * width * 3:last * width * 3]
 
 

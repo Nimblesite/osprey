@@ -75,6 +75,18 @@ class CastingGoldenVerdict(unittest.TestCase):
             self.assertIn("-Isrc/toolchain/compiler/runtime", arguments)
             self.assertIn("src/toolchain/compiler/runtime/tls_client_runtime.c", arguments)
 
+    def test_artboard_crop_keeps_bottom_controls(self):
+        import mobile_test
+        width, height = 100, 200
+        raw = bytearray(bytes((255, 248, 239)) * width * 190 + bytes(3 * width * 10))
+        marker = (189 * width + 50) * 3
+        raw[marker:marker + 3] = bytes((30, 30, 30))
+        with mock.patch.object(mobile_test, "png_pixels", return_value=(width, height, bytes(raw))):
+            w, h, pixels = mobile_test.player_pixels(Path("fixture.png"))
+        self.assertEqual((w, h), (100, 180), "Only the upper system-icon strip is excluded")
+        bottom = len(pixels) - width * 3 + 50 * 3
+        self.assertEqual(pixels[bottom:bottom + 3], bytes((30, 30, 30)), "The lowest player control must be compared")
+
     def test_android_package_upgrades_the_archived_renderer(self):
         manifest = ElementTree.parse(ROOT / "src/osprey/examples/casting/android/app/src/main/AndroidManifest.xml").getroot()
         android = "{http://schemas.android.com/apk/res/android}"

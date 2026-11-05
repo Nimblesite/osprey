@@ -1,6 +1,17 @@
 #!/usr/bin/env python3
 """[CAST-MOBILE-DELIVERY] Real Android picker, file import, accessibility and restart."""
-import base64, io, json, os, re, shlex, subprocess, sys, tempfile, time, unittest, zipfile
+import base64
+import io
+import json
+import os
+import re
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+import zipfile
 from pathlib import Path
 from unittest import mock
 from xml.etree import ElementTree
@@ -145,52 +156,35 @@ def import_track():
 
 APP = ROOT / "src/osprey/examples/casting"
 OUTPUT = APP / "build/android-test"
-LISTENERS = json.loads((APP / "player.machine.json").read_text())["skins"]["sherbet"]["canvas"]
-RATES = ["0.75", "1", "1.25", "1.5", "2"]
-SCENE_WIDTH, SCENE_HEIGHT, SCENE_ZOOM = LISTENERS["width"], LISTENERS["height"], LISTENERS["zoom"]
+BOUNDS = re.compile(r"(?:^|\s)bounds=([+-]?\d+)\s+([+-]?\d+)\s+([+-]?\d+)\s+([+-]?\d+)(?=\s|$)")
 
 
-def listener(label):
-    return next(item for item in LISTENERS["listeners"] if item["label"].startswith(label))
+def parse_bounds(answer, label="control"):
+    """The live screen rectangle from the bounded instrumentation result."""
+    assert "pressed=true" in answer, f"Accessibility bounds unavailable for {label}: {answer}"
+    match = BOUNDS.search(answer)
+    assert match, f"Accessibility bounds missing or malformed for {label}: {answer}"
+    left, top, right, bottom = map(int, match.groups())
+    assert right > left and bottom > top, f"Accessibility bounds are not a positive area for {label}: {match.group(0)}"
+    return left, top, right, bottom
 
 
-def screen():
-    width, height = map(int, re.search(r"(\d+)x(\d+)", adb("shell", "wm", "size")).groups())
-    return (height, width) if re.search(r"mRotation=(\d)", adb("shell", "dumpsys", "window", "displays")).group(1) in ("1", "3") else (width, height)
+def scene_bounds(label, prefix=False):
+    print("BOUNDS:", label, flush=True)
+    answer = adb("shell", "am", "instrument", "-w", "-e", "label", label, "-e", "bounds", "1", "-e", "match", "prefix" if prefix else "exact", "org.ospreylang.casting.press/.Press")
+    return parse_bounds(answer, label)
 
 
-def safe_area():
-    """The last safe area the GPUI backend reported, top and bottom, in device pixels."""
-    lines = re.findall(r"safe area top (\d+) bottom (\d+) px", adb("logcat", "-d"))
-    return tuple(map(int, lines[-1])) if lines else (0, 0)
-
-
-def fit():
-    """The scale and spare scene units src/toolchain/hosts/gpui/src/scene.rs draws with, and the safe top."""
-    width, height = screen(); top, bottom = safe_area()
-    density = int(re.search(r"(\d+)", adb("shell", "wm", "density")).group(1)) / 160; usable = height - top - bottom
-    scale = min(SCENE_ZOOM * density, width / SCENE_WIDTH, usable / SCENE_HEIGHT)
-    return scale, {"spareWidth": width / scale - SCENE_WIDTH, "spareHeight": usable / scale - SCENE_HEIGHT}, top
-
-
-def measure(value, spare):
-    """A listener bound: a number, or a number and `{{spareHeight|scale:0.7}}` terms to add."""
-    if isinstance(value, (int, float)): return value
-    terms = re.findall(r"\{\{(\w+)\|scale:([\d.]+)\}\}", value); plain = re.sub(r"\{\{.*?\}\}", "", value).strip()
-    return (float(plain) if plain else 0) + sum(spare[name] * float(factor) for name, factor in terms)
-
-
-def scene_tap(label, item=None, step=0):
-    item = item or listener(label); scale, spare, top = fit()
-    x = measure(item["x"], spare) + item["w"] / 2; y = measure(item["y"], spare) + step + item["h"] / 2
-    print("TAP:", label, flush=True)
-    adb("shell", "input", "tap", str(round(x * scale)), str(round(top + y * scale)))
+def scene_tap(label, prefix=False):
+    left, top, right, bottom = scene_bounds(label, prefix=prefix)
+    print("TAP:", label, "bounds", (left, top, right, bottom), flush=True)
+    adb("shell", "input", "tap", str((left + right) // 2), str((top + bottom) // 2))
 
 
 def scene_slide(label, fraction):
-    item = listener(label); scale, spare, top = fit()
-    x = round((measure(item["x"], spare) + item["w"] * fraction) * scale); y = round(top + (measure(item["y"], spare) + item["h"] / 2) * scale)
-    print("SLIDE:", label, fraction, flush=True)
+    left, top, right, bottom = scene_bounds(label)
+    x = round(left + (right - left) * fraction); y = (top + bottom) // 2
+    print("SLIDE:", label, fraction, "bounds", (left, top, right, bottom), flush=True)
     adb("shell", "input", "swipe", str(x), str(y), str(x + 1), str(y), "150")
 
 
@@ -226,10 +220,8 @@ def launch():
     # Always the fixture receiver: a journey must never reach a real TV on this network.
     adb("shell", "am", "force-stop", PACKAGE); adb("logcat", "-c")
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.CastingActivity", "--es", "testReceiver", os.environ["CAST_TEST_RECEIVER"])
-    wait_focus(); deadline = time.monotonic() + 30
-    while safe_area()[0] == 0 and time.monotonic() < deadline: time.sleep(0.3)
-    assert safe_area()[0] > 0, "The GPUI backend never reported the safe area"
-    time.sleep(5)
+    wait_focus(); wait_accessible("Open file", "Button")
+    scene_bounds("Open file…")
 
 
 def install_press():
@@ -290,9 +282,8 @@ def main():
     assert abs(level - 0.5) < 0.05, level
     seeks = len(sent("SEEK")); scene_slide("Position", 0.25)
     position = wait_sent("SEEK", seeks + 1)["currentTime"]; assert abs(position - 50) < 10, position
-    scene_tap("Speed"); time.sleep(1)
-    rate = next(item for item in LISTENERS["listeners"] if item.get("each", {}).get("in") == "rates")
-    scene_tap("1.5\u00d7", rate, rate["each"]["dy"] * RATES.index("1.5")); assert wait_sent("SET_PLAYBACK_RATE", 1)["playbackRate"] == 1.5
+    scene_tap("Speed", prefix=True); time.sleep(1)
+    scene_tap("1.5\u00d7"); assert wait_sent("SET_PLAYBACK_RATE", 1)["playbackRate"] == 1.5
     shot("playing.png"); previous = adb("shell", "wm", "user-rotation").strip().split()
     try:
         adb("shell", "wm", "user-rotation", "lock", "1"); time.sleep(4); shot("landscape-playing.png")
@@ -312,6 +303,13 @@ def main():
 
 
 class NativeReadContracts(unittest.TestCase):
+    def test_launch_waits_for_control_bounds_inside_the_real_window(self):
+        with mock.patch.dict(os.environ, {"CAST_TEST_RECEIVER": "fixture"}), mock.patch(__name__ + ".adb", return_value="Status: ok"), mock.patch(__name__ + ".wait_focus"), mock.patch(__name__ + ".wait_accessible") as visible, mock.patch(__name__ + ".scene_bounds", side_effect=AssertionError("control outside active window")) as bounds:
+            with self.assertRaisesRegex(AssertionError, "outside active window"):
+                launch()
+            visible.assert_called_once_with("Open file", "Button")
+            bounds.assert_called_once_with("Open file…")
+
     def test_native_http_preserves_binary_response_and_quotes_shell_arguments(self):
         import mobile_receiver as receiver
         data = b"HTTP/1.1 206 Partial Content\r\nContent-Length: 4\r\nContent-Type: audio/mpeg\r\n\r\n\x00\xff\r\n"
@@ -323,6 +321,29 @@ class NativeReadContracts(unittest.TestCase):
             self.assertEqual(shlex.split(run.call_args.args[0][-1]), expected)
             result.stdout = b"invalid HTTP"
             with self.assertRaises(receiver.http.client.HTTPException): receiver.native_http("stub", request, 3)
+    def test_accessibility_bounds_require_a_pressed_positive_live_rectangle(self):
+        answer = "INSTRUMENTATION_RESULT: pressed=true\nINSTRUMENTATION_RESULT: bounds=136 -20 240 200\n"
+        self.assertEqual(parse_bounds(answer, "Pause"), (136, -20, 240, 200))
+        malformed = {
+            "missing": "INSTRUMENTATION_RESULT: pressed=true\n",
+            "not pressed": "INSTRUMENTATION_RESULT: pressed=not found in\nINSTRUMENTATION_RESULT: bounds=10 20 30 40\n",
+            "short": "INSTRUMENTATION_RESULT: pressed=true\nINSTRUMENTATION_RESULT: bounds=10 20 30\n",
+            "zero width": "INSTRUMENTATION_RESULT: pressed=true\nINSTRUMENTATION_RESULT: bounds=10 20 10 40\n",
+            "zero height": "INSTRUMENTATION_RESULT: pressed=true\nINSTRUMENTATION_RESULT: bounds=10 20 30 20\n",
+            "text": "INSTRUMENTATION_RESULT: pressed=true\nINSTRUMENTATION_RESULT: bounds=left top right bottom\n",
+        }
+        for name, text in malformed.items():
+            with self.subTest(name), self.assertRaisesRegex(AssertionError, "bounds|positive area"):
+                parse_bounds(text, "Pause")
+    def test_scene_bounds_queries_the_bounded_instrumentation(self):
+        answer = "INSTRUMENTATION_RESULT: pressed=true\nINSTRUMENTATION_RESULT: bounds=-5 20 105 60\n"
+        with mock.patch(__name__ + ".adb", return_value=answer) as query, mock.patch("sys.stdout", new_callable=io.StringIO):
+            self.assertEqual(scene_bounds("Pause"), (-5, 20, 105, 60))
+        query.assert_called_once_with("shell", "am", "instrument", "-w", "-e", "label", "Pause", "-e", "bounds", "1", "-e", "match", "exact", "org.ospreylang.casting.press/.Press")
+    def test_scene_pointer_uses_live_bounds_not_duplicated_geometry(self):
+        with mock.patch(__name__ + ".scene_bounds", side_effect=[(100, 200, 300, 400), (0, 10, 100, 30)]), mock.patch(__name__ + ".adb") as commands, mock.patch("sys.stdout", new_callable=io.StringIO):
+            scene_tap("Pause"); scene_slide("Volume", 0.25)
+        self.assertEqual(commands.call_args_list, [mock.call("shell", "input", "tap", "200", "300"), mock.call("shell", "input", "swipe", "25", "20", "26", "20", "150")])
     def test_transient_automation_failure_requests_a_new_snapshot(self):
         failure = subprocess.CalledProcessError(137, "uiautomator", output="interrupted before dump"); good = ElementTree.fromstring('<hierarchy><node text="Play"/></hierarchy>')
         with mock.patch(__name__ + ".window", side_effect=[failure, good]) as query:
