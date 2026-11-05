@@ -67,7 +67,7 @@ Two details make this stricter than it looks:
 
 ## No window, no browser, no flakiness
 
-The tests call the app's real exported `start` and `dispatch` functions, the same two the GPUI desktop host calls each frame. No window opens. The outside world sits behind an [algebraic effect](/docs/algebraic-effects/): the Chromecast package does all its I/O through `Wire`, and the test installs a handler that plays the TV, reading every frame the player sends and answering like a real receiver. Nothing waits on a network, a render or a timer, so every run is the same:
+The tests call the app's real exported `start` and `dispatch` functions, the same two the GPUI desktop host calls each frame. No window opens. The outside world sits behind an [algebraic effect](/docs/effects/): the Chromecast package does all its I/O through `Wire`, and the test installs a handler that plays the TV, reading every frame the player sends and answering like a real receiver. Nothing waits on a network, a render or a timer, so every run is the same:
 
 ```text
 ok 1 - a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay

@@ -57,7 +57,7 @@ The last arm matters. A request the adapter does not know becomes an error on sc
 
 ## Tested without a TV
 
-Every byte the sender reads or writes goes through one [algebraic effect](/docs/algebraic-effects/), `Wire`. In the app, `Wire.Native` answers it with real sockets. In the tests, a handler plays the TV instead: it reads every frame the player writes and answers the way a real receiver does. Four end-to-end journeys drive the real player through the same two functions the window calls, with no window and no network:
+Every byte the sender reads or writes goes through one [algebraic effect](/docs/effects/), `Wire`. In the app, `Wire.Native` answers it with real sockets. In the tests, a handler plays the TV instead: it reads every frame the player writes and answers the way a real receiver does. Four end-to-end journeys drive the real player through the same two functions the window calls, with no window and no network:
 
 ```text
 ok 1 - a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay
