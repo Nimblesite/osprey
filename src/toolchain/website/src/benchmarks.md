@@ -44,7 +44,7 @@ Other toolchain commands and optional columns are defined in [`src/toolchain/ben
 
 - **3 October 2026:** 22 cases across Osprey's four backends passed their output checks. Only `fib`, `binarytrees` and `wordfreq` were also remeasured in C and Rust. Host: AMD Ryzen 9 3900X, Linux under WSL2, pinned to logical CPU 20; Clang 21.1.8, Rust 1.98.1, GCC 15.2.0, Wasmtime 49.0.2. Shared-machine outliers affected short cases.
 - **5 October 2026:** `quicksort` and `mergesort` were measured across languages on an Apple M4 Max, macOS 26.6; Clang 22.1.8, Rust 1.99.0, .NET 10.0.303, Dart 3.13.3, OCaml 5.4.1, GHC 9.14.1, Wasmtime 46.0.1. Compare these rows within that run.
-- **5 November 2026:** the Codon column was measured alone on an Apple M4 Max, macOS 26.6, with Codon 0.20.6 and `-release`. Other work was running throughout (load average 15 to 22), so these timings are noisy, and they are not from the same run as any other column.
+- **5 November 2026:** the Codon column was measured alone on an Apple M4 Max, macOS 26.7.1, with Codon 0.20.6 and `-release`. Other work was running throughout (load average 15 to 22), so these timings are noisy, and they are not from the same run as any other column.
 - **Historical records:** 148 missing cells were recovered from [20 August results](https://github.com/Nimblesite/osprey/blob/713366f9e9e6ff9b7dec26691a1257f969df2d53/benchmarks/results/results.json) on 11 October, preserving newer values. Their machines are unidentified; recovered Rust WebAssembly timings predate the explicit stack budget.
 
 The following **3 October sample** reports mean ± standard deviation in milliseconds. It is a dated comparison, not a copy of the full table's latest values:
