@@ -142,7 +142,9 @@ void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, in
 #include "gpu_f64.metal"
 #include "gpu_math64.metal"
 #include "gpu_math_ext.metal"
+#define GPU_HOST_QUANT_ORACLE
 #include "gpu_device_lib.metal"
+#undef GPU_HOST_QUANT_ORACLE
 #undef constant
 #undef kernel
 

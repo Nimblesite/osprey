@@ -235,6 +235,8 @@ NATIVE_UNARY(ln, log, logf)
 NATIVE_UNARY(abs, fabs, fabsf)
 #undef NATIVE_UNARY
 
+// The host quantization oracle does not call these shader operations.
+#ifndef GPU_HOST_QUANT_ORACLE
 // [GPU-DEVICE-NATIVE] Shared binary32 exp and tanh use Cody-Waite reduction,
 // a degree-9 Taylor polynomial, and exact power-of-two scaling. Keep a
 // binary32 residual through the polynomial and quotient to avoid rounding
@@ -329,6 +331,7 @@ float gpu32_tanh(float x) {
 }
 
 #undef GPU32_FMA
+#endif
 
 // [GPU-MATMUL]: one ordered kernel template at each supported float width.
 float multiply32(float a, float b) { return a * b; }
