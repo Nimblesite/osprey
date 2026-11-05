@@ -18,6 +18,8 @@ use crate::redundant_sites::Site;
 const MAX_PROOF_WORKERS: usize = 4;
 // Below this size, prefix-inclusive singles are cheaper than isolated filtering.
 const DIRECT_PROOF_WINDOW: usize = 4;
+// Alternating required/redundant sites must not repeatedly trigger recovery.
+const RECOVERY_SUCCESS_WINDOWS: usize = 4;
 
 struct Search<'a> {
     proofs: &'a Proofs<'a>,
@@ -116,8 +118,10 @@ pub(super) fn accumulate_with(
 }
 
 fn accumulate_search(search: &Search<'_>, candidates: &[usize], window: usize) -> Vec<usize> {
-    let mut width = window.max(1);
-    let mut previous_failed = false;
+    let limit = window.max(1);
+    let mut width = limit;
+    let mut failed = false;
+    let mut successes = 0;
     let mut kept = Vec::new();
     let mut remaining = candidates;
     while !remaining.is_empty() {
@@ -125,13 +129,31 @@ fn accumulate_search(search: &Search<'_>, candidates: &[usize], window: usize) -
         let before = kept.len();
         let failure = accept_window(search, &mut kept, slice);
         let mostly_kept = kept.len() - before > slice.len() * 3 / 4;
-        if failure.is_some_and(|dense| dense || (previous_failed && !mostly_kept)) {
-            width = 1;
-        }
-        previous_failed = failure.is_some();
+        (width, successes) = next_window(width, limit, failure, failed && !mostly_kept, successes);
+        failed = failure.is_some();
         remaining = rest;
     }
     kept
+}
+
+// Width changes only choose the next candidate group; every group still uses
+// the unchanged prefix-inclusive proof oracle before anything is accepted.
+fn next_window(
+    width: usize,
+    limit: usize,
+    failure: Option<bool>,
+    repeated_loss: bool,
+    successes: usize,
+) -> (usize, usize) {
+    if failure.is_some_and(|dense| dense || repeated_loss) {
+        (1, 0)
+    } else if failure.is_some() {
+        (width, 0)
+    } else if successes + 1 >= RECOVERY_SUCCESS_WINDOWS {
+        (width.saturating_mul(2).min(limit), 0)
+    } else {
+        (width, successes + 1)
+    }
 }
 
 fn search_input<'a>(proofs: &'a Proofs<'a>, written: &'a [Site]) -> Search<'a> {
