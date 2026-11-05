@@ -11,7 +11,8 @@ import tomllib
 from urllib.request import urlopen
 
 HERE = Path(__file__).resolve().parent
-DESTINATION = HERE.parents[3] / "target/gpui-dependencies"
+ROOT = HERE.parents[3]
+DESTINATION = ROOT / "target/gpui-dependencies"
 
 
 def digest(data):
@@ -131,7 +132,7 @@ def stage(package, destination, patches):
 
 def main():
     packages = json.loads((HERE / "dependencies.json").read_text())["packages"]
-    manifests = [HERE / "Cargo.toml", HERE.parents[3] / "src/osprey/examples/gpui/painting/reference/Cargo.toml"]
+    manifests = [HERE / "Cargo.toml", ROOT / "src/osprey/examples/gpui/painting/reference/Cargo.toml"]
     verify_inventory(packages, DESTINATION, manifests)
     for package in packages:
         stage(package, DESTINATION, HERE)
