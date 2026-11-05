@@ -437,7 +437,7 @@ def model_selection_cases():
 
 def ext_prf_specs():
     """Extended grid: asymmetric multiclass, tie and prediction-skew rows, both zero_division values."""
-    return listConcat(
+    return flatten([
         listConcat(prf_dataset("asym3.micro", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2], "micro", Expected.XPRF_asym3_micro_0, Expected.XPRF_asym3_micro_1),
                    prf_dataset("asym3.macro", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2], "macro", Expected.XPRF_asym3_macro_0, Expected.XPRF_asym3_macro_1)),
         listConcat(prf_dataset("asym3.weighted", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2], "weighted", Expected.XPRF_asym3_weighted_0, Expected.XPRF_asym3_weighted_1),
@@ -459,7 +459,7 @@ def ext_prf_specs():
         listConcat(prf_dataset("bin.rare", [0, 0, 0, 0, 0, 0, 1, 1], [0, 0, 0, 1, 1, 1, 1, 0], "binary", Expected.XPRF_bin_rare_binary_0, Expected.XPRF_bin_rare_binary_1),
                    prf_dataset("bin.constpred", [0, 1, 0, 1, 0, 1], [0, 0, 0, 0, 0, 0], "binary", Expected.XPRF_bin_constpred_binary_0, Expected.XPRF_bin_constpred_binary_1)),
         prf_dataset("bin.ties", [0, 1, 0, 1, 0, 1], [1, 0, 1, 0, 1, 0], "binary", Expected.XPRF_bin_ties_binary_0, Expected.XPRF_bin_ties_binary_1),
-    )
+    ])
 
 def ext_prf_cases():
     """precision, recall and f1 across the extended asymmetric grid."""
@@ -467,7 +467,7 @@ def ext_prf_cases():
 
 def ext_reg_cases():
     """Regression scores over ties, shifted/scaled, zero/negative and imbalanced targets."""
-    return listConcat(
+    return flatten([
         listConcat(reg_pair("tie", [2.0, 2.0, 3.0, 3.0], [2.0, 3.0, 2.0, 3.0], Expected.XREG_MSE_tie, Expected.XREG_MAE_tie, Expected.XREG_R2_tie, Expected.XREG_EVS_tie),
                    reg_pair("shift", [11.0, 12.0, 13.0, 14.0], [10.5, 12.0, 13.5, 14.0], Expected.XREG_MSE_shift, Expected.XREG_MAE_shift, Expected.XREG_R2_shift, Expected.XREG_EVS_shift)),
         listConcat(reg_pair("scale", [10.0, -5.0, 20.0], [11.0, -4.5, 19.0], Expected.XREG_MSE_scale, Expected.XREG_MAE_scale, Expected.XREG_R2_scale, Expected.XREG_EVS_scale),
@@ -480,7 +480,7 @@ def ext_reg_cases():
                    reg_pair("ties3", [1.0, 1.0, 1.0, 2.0, 2.0], [1.0, 2.0, 1.0, 2.0, 1.0], Expected.XREG_MSE_ties3, Expected.XREG_MAE_ties3, Expected.XREG_R2_ties3, Expected.XREG_EVS_ties3)),
         listConcat(reg_pair("shiftneg", [-10.0, -20.0, -30.0], [-9.0, -22.0, -31.0], Expected.XREG_MSE_shiftneg, Expected.XREG_MAE_shiftneg, Expected.XREG_R2_shiftneg, Expected.XREG_EVS_shiftneg),
                    reg_pair("scaleup", [0.5, 1.0, 1.5], [0.4, 1.1, 1.6], Expected.XREG_MSE_scaleup, Expected.XREG_MAE_scaleup, Expected.XREG_R2_scaleup, Expected.XREG_EVS_scaleup)),
-    )
+    ])
 
 def ext_cases():
     """The extended asymmetric multiclass and regression input matrix."""
