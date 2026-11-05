@@ -1,7 +1,6 @@
 # osprey: flavor=python
 """Loaded real HTTP use cases. Implements [FASTAPI-HTTP-ROUTING]."""
 from fastapi import Applications as A
-from fastapi import Routing
 from fastapi import Results as B
 from fastapi import Models as M
 from fastapi_tests import Fixture
@@ -61,6 +60,7 @@ def requests(client):
     assert_reply(httpGetResponse(client, "/health", ""), 200, "{\"status\":\"ok\"}")
     assert_reply(httpGetResponse(client, "/health?probe=1", ""), 200, "{\"status\":\"ok\"}")
     assert_reply(httpGetResponse(client, "/api/health", ""), 200, "{\"status\":\"ok\"}")
+    assert_reply(httpGetResponse(client, "/api/contract/exception", "X-Trace-Id: mounted"), 429, '{"error":"limit reached","trace_id":"mounted"}')
     assert_reply(httpGetResponse(client, "/readyz", ""), 503, "{\"detail\":\"database unavailable\"}")
     assert_reply(httpGetResponse(client, "/health/", ""), 307, "")
     assert_reply(httpGetResponse(client, "/absent", ""), 404, "{\"detail\":\"Not Found\"}")
@@ -84,7 +84,7 @@ def use_server(server, port):
 
 def native_application(port):
     base = Fixture.application(port)
-    return A.application(Routing.include_router(base.routes, "/api", base.routes), base.middleware)
+    return A.include_router(base, "/api", base.routes)
 
 
 def open_native(ports):

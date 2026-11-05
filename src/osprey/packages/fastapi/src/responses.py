@@ -4,12 +4,21 @@
 """HTTP response construction at the transport boundary. [FASTAPI-HTTP-RESPONSES]"""
 from fastapi import Models as M
 
-__all__ = ["response", "json_response", "not_found", "method_not_allowed", "redirect", "native"]
+__all__ = ["response", "exception_reply", "json_response", "not_found", "method_not_allowed", "redirect", "native"]
 
 
 def response(status_code, content, media_type, headers):
     """Construct a response with explicit status, body, media type and raw headers."""
-    return M.Response(status_code=status_code, content=content, media_type=media_type, headers=headers)
+    return build_reply(status_code, content, media_type, headers, M.Absent())
+
+
+def build_reply(status_code, content, media_type, headers, failure):
+    return M.Response(status_code=status_code, content=content, media_type=media_type, headers=headers, failure=failure)
+
+
+def exception_reply(error, content):
+    """Carry a typed failure alongside its default wire response."""
+    return build_reply(error.status_code, content, "application/json", error.headers, M.Present(value=error))
 
 
 def json_response(status_code, content, headers):
@@ -19,12 +28,12 @@ def json_response(status_code, content, headers):
 
 def not_found():
     """The standard JSON 404 response."""
-    return json_response(404, "{\"detail\":\"Not Found\"}", "")
+    return exception_reply(M.HTTPException(status_code=404, detail="Not Found", headers=""), '{"detail":"Not Found"}')
 
 
 def method_not_allowed(methods):
     """The standard JSON 405 response with the allowed method header."""
-    return json_response(405, "{\"detail\":\"Method Not Allowed\"}", f"Allow: {methods}")
+    return exception_reply(M.HTTPException(status_code=405, detail="Method Not Allowed", headers=f"Allow: {methods}"), '{"detail":"Method Not Allowed"}')
 
 
 def redirect(path):

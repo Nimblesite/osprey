@@ -10,17 +10,39 @@ from fastapi import Results as B
 from fastapi import Errors as E
 from fastapi import Params
 
-__all__ = ["application", "serve", "dispatch", "cors"]
+__all__ = ["application", "include_router", "with_exception_handler", "serve", "dispatch", "cors"]
 
 
 def application(routes, middleware):
     """Create an immutable app; middleware is ordered outermost first."""
-    return M.Application(routes=routes, middleware=middleware)
+    return M.Application(routes=routes, middleware=middleware, exception_handlers={})
+
+
+def include_router(app, prefix, routes):
+    """Mount routes while retaining the app's middleware and exception handlers."""
+    return M.Application(routes=Routing.include_router(app.routes, prefix, routes), middleware=app.middleware, exception_handlers=app.exception_handlers)
+
+
+def with_exception_handler(app, status, handler: Callable[[M.Request, M.HTTPException], M.Response]):
+    """Register a handler for typed HTTP exceptions with this status."""
+    return M.Application(routes=app.routes, middleware=app.middleware, exception_handlers=mapSet(app.exception_handlers, toString(status), handler))
+
+
+def resolve_exception(app, request, reply):
+    match reply.failure:
+        case M.Absent():
+            return reply
+        case M.Present(value=error):
+            match mapGet(app.exception_handlers, toString(error.status_code)):
+                case Success(value=handler):
+                    return handler(request, error)
+                case Error():
+                    return reply
 
 
 def dispatch(app, request):
     """Wrap routing from the innermost middleware outward, including error paths."""
-    terminal = lambda current: Routing.dispatch(app.routes, current)
+    terminal = lambda current: resolve_exception(app, current, Routing.dispatch(app.routes, current))
     handler = foldList(listReverse(app.middleware), terminal, wrap)
     return handler(request)
 

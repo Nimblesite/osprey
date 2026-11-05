@@ -1,6 +1,6 @@
 typeDiagram
 type Request { method: String url: String headers: String body: String path_params: Map<String, String> }
-type Response { status_code: Int content: String media_type: String headers: String }
+type Response { status_code: Int content: String media_type: String headers: String failure: Optional<HTTPException> }
 type Route<T> { method: String path: String handler: T }
 type Decoded { value: String rest: String }
 type Parameter { name: String value: String }
@@ -15,7 +15,7 @@ type Acquired<T> { name: String value: T }
 type DependencyState<T> { cache: Map<String, T> acquired: List<Acquired<T>> }
 union DependencyResult<T> { Provided { value: T } Rejected { error: HTTPException } DependencyInvalid { issues: List<ValidationIssue> } }
 type DependencyStep<T, S> { outcome: DependencyResult<T> state: S }
-type Application<R, W> { routes: R middleware: W }
+type Application<R, W, H> { routes: R middleware: W exception_handlers: Map<String, H> }
 union FixtureValue { SessionValue { id: Int } IdentityValue { id: Int role: String } CreditValue { id: Int role: String credit: Int } NumberValue { number: Int } }
 type CorsPolicy { origins: List<String> methods: List<String> headers: List<String> expose: List<String> credentials: Bool max_age: Int }
 union Optional<T> { Present { value: T } Absent {} }

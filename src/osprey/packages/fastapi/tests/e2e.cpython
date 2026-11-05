@@ -73,6 +73,41 @@ def hostless_redirect_cases(port):
                 assert response.read() == b""
 
 
+def exception_contract_cases(port):
+    """[FASTAPI-NAP-ERRORS] Distinguish handled failures from ordinary status replies."""
+    def send(method, path, headers=None):
+        status, returned, body = request(port, method, path, headers=headers)
+        return status, {name.lower(): value for name, value in returned.items()}, body
+
+    for trace in ("case-1", "case-2", "tenant-a:42"):
+        for origin in ({}, {"Origin": "https://app.example"}):
+            supplied = {"x-trace-id": trace} | origin
+            status, headers, body = send("GET", "/contract/exception", headers=supplied)
+            expected = json.dumps({"error": "limit reached", "trace_id": trace}, separators=(",", ":")).encode()
+            assert (status, headers.get("content-type"), body) == (429, "application/json", expected), (status, headers, body)
+            assert headers["retry-after"] == "2" and headers["x-trace-id"] == trace
+            assert int(headers["content-length"]) == len(body)
+            assert headers.get("access-control-allow-origin") == ("*" if origin else None)
+    status, headers, body = send("GET", "/contract/exception/plain")
+    assert (status, body) == (429, b'{"detail":"explicit reply"}')
+    assert "x-trace-id" not in headers and "retry-after" not in headers
+    status, headers, body = send("GET", "/contract/exception/fallback")
+    assert (status, body) == (418, b'{"detail":"default detail"}')
+    assert headers["x-default"] == "yes"
+    status, headers, body = send("GET", "/contract/exception")
+    assert (status, body) == (429, b'{"detail":"limit reached"}')
+    assert headers["retry-after"] == "2"
+    assert "x-trace-id" not in headers and "x-error-handler" not in headers
+    status, headers, body = send("POST", "/contract/exception")
+    assert (status, body) == (405, b'{"detail":"Method Not Allowed"}')
+    assert headers["allow"] == "GET" and headers["x-error-handler"] == "typed"
+    status, headers, body = send("GET", "/deps", headers={"Authorization": "Bearer good", "X-Role": "reader"})
+    assert (status, body) == (403, b'{"detail":"writer_required"}')
+    assert headers["x-error-handler"] == "typed"
+    status, _, body = send("GET", "/dependency-trace")
+    assert (status, json.loads(body)) == (200, {"trace": ["open:1", "auth:1", "close:1"]})
+
+
 def body_contract_cases(port):
     """Drive application contract errors through the real HTTP response path."""
     for payload in (b"[]", b"false", b'"text"', b"42"):
@@ -121,6 +156,7 @@ def body_reference_cases(port):
     assert not failures, f"{len(failures)} of {len(records)} body cases differ; target/fastapi/body-failures-{port}.json"
     body_contract_cases(port)
     hostless_redirect_cases(port)
+    exception_contract_cases(port)
 
 
 def body_model_smoke(port):

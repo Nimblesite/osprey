@@ -82,10 +82,32 @@ def metrics(_request):
 def trace_path(port):
     return f"target/fastapi-dependency-{port}.trace"
 
+def exception_routes():
+    return [Routing.route("GET", "/contract/exception", lambda _request: E.exception_response(E.exception(429, "limit reached", "Retry-After: 2"))),
+            Routing.route("GET", "/contract/exception/plain", lambda _request: R.json_response(429, '{"detail":"explicit reply"}', "")),
+            Routing.route("GET", "/contract/exception/fallback", lambda _request: R.exception_reply(E.exception(418, "default detail", "X-Default: yes"), '{"detail":"default detail"}'))]
+
+
+def rate_limit_handler(request, error):
+    match P.header(request, "X-Trace-Id"):
+        case Success(value=trace):
+            body = JsonObject([JsonMember("error", JsonString(error.detail)), JsonMember("trace_id", JsonString(trace))])
+            return E.json_response(error.status_code, body, error.headers + "\r\nX-Trace-Id: " + trace)
+        case Error():
+            return E.exception_response(error)
+
+def tagged_error_handler(_request, error):
+    tag = "X-Error-Handler: typed"
+    headers = tag if error.headers == "" else error.headers + "\r\n" + tag
+    return E.json_response(error.status_code, JsonObject([JsonMember("detail", JsonString(error.detail))]), headers)
+
 def application(port):
     """Build the real HTTP acceptance app with request-local trace capture."""
     path = trace_path(port)
-    return A.application(listConcat(listConcat(routes(), dependency_routes(path)), extra_routes(path, providers(path))), [A.cors(cors_policy("cors-nap")), lambda request, next: reset_trace(path, request, next)])
+    app = A.application(listConcat(listConcat(listConcat(routes(), exception_routes()), dependency_routes(path)), extra_routes(path, providers(path))), [A.cors(cors_policy("cors-nap")), lambda request, next: reset_trace(path, request, next)])
+    first = A.with_exception_handler(app, 429, tagged_error_handler)
+    tagged = A.with_exception_handler(A.with_exception_handler(first, 405, tagged_error_handler), 403, tagged_error_handler)
+    return A.with_exception_handler(tagged, 429, rate_limit_handler)
 
 def reset_trace(path, request, next: Callable[[M.Request], M.Response]):
     if Routing.path_of(request.url) == "/dependency-trace":

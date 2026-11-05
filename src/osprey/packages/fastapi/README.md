@@ -37,7 +37,7 @@ Generate records: `python3 src/osprey/packages/fastapi/generate_models.cpython`.
 
 Real HTTP acceptance: `python3 src/osprey/packages/fastapi/tests/e2e.cpython`. It compiles the actual Osprey sources and makes HTTP requests against the native listener, including parallel requests. Logs are in `target/fastapi/`.
 
-The native GC and ARC suites pass. FastAPI passes the 98.2% package coverage gate on both backends with 773 of 787 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 808 body records over real HTTP.
+The native GC and ARC suites pass. FastAPI passes the 98.2% package coverage gate on both backends with 793 of 807 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 808 body records over real HTTP.
 
 Dependency cases cover shared and uncached acquisitions, overrides, nested denials, multiple validation errors with distinct locations/inputs, missing and malformed integer headers, and HTTP/validation failures during cleanup. The expanded corpus caught and now guards the compiler's nested pattern-alias shadowing bug, acceptance of `2.`, rejection of valid `1_000`, and incorrect handling of Latin-1 HTTP header bytes.
 
@@ -48,6 +48,8 @@ Known remaining parameter limits: implicit `Annotated`/decorator binding is not 
 The HTTP drivers refuse `python -O`, retain diagnostic logs, and bound owned processes by runtime, memory and output limits. Native suites retry occupied loopback ports and verify listener recovery; GC/ARC acceptance runs concurrently. The external corpus also checks all eight non-GET methods, empty HEAD bodies, raw non-NUL binary payloads, CRLF content and larger echo bodies.
 
 Run `make -C src/osprey/packages fastapi-benchmark` to compare health and bundle routing, valid NAP identity-provider bodies and indexed 422 responses on GC, ARC and pinned CPython FastAPI. Every timed response is asserted. The benchmark writes per-trial results to `target/fastapi/benchmark/results.json`. See [FASTAPI-BENCHMARK-SUBSET](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) and the [measured results](../../../../docs/reviews/review.md).
+
+`Applications.with_exception_handler(app, status, handler)` registers an immutable handler for typed HTTP failures from routing, dependencies or endpoints. The latest registration for a status wins. Handlers receive the request and typed exception, and their response passes through the app middleware. Ordinary responses keep their original body and headers. `Applications.include_router` preserves registrations. NAP's class-based uncaught exception and database error handling remain open.
 
 CORS middleware: `Applications.cors(Models.CorsPolicy(...))` supports exact/wildcard origins, method and header policies, credentials, exposed headers and max-age. The NAP policy is exercised alongside restricted-origin and credentialed wildcard policies by 300 independently generated FastAPI/Starlette real HTTP records under GC and ARC, including Vary merging, denied preflights, case-insensitive request headers, empty/null origins, combined failures and 503/404/405 responses. The native coverage suite starts the actual listener and runs the same external HTTP assertions. Regex origins and allowed private-network preflights remain unsupported; requests for private-network access are explicitly rejected. Regenerating the existing FastAPI oracle also regenerates `CORS_JSON` in `tests/expected.py`; original 331 records are unchanged.
 

@@ -21,6 +21,7 @@ class Response:
     content: str
     media_type: str
     headers: str
+    failure: Optional[HTTPException]
 
 
 class Route[T]:
@@ -98,10 +99,11 @@ class DependencyStep[T, S]:
     state: S
 
 
-class Application[R, W]:
+class Application[R, W, H]:
     """Ordered routes and request middleware."""
     routes: R
     middleware: W
+    exception_handlers: dict[str, H]
 
 
 class CorsPolicy:

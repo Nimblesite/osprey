@@ -14,18 +14,22 @@ def exception(status_code, detail, headers):
     return M.HTTPException(status_code=status_code, detail=detail, headers=headers)
 
 
-def json_response(status, document, headers):
-    """Serialize a boundary JSON value; serialization failure becomes an explicit HTTP 500."""
+def json_reply(document, render):
     match jsonEncode(document):
         case Success(value=text):
-            return R.json_response(status, text, headers)
+            return render(text)
         case Error():
             return R.response(500, "Internal Server Error", "text/plain; charset=utf-8", "")
 
 
+def json_response(status, document, headers):
+    """Serialize a boundary JSON value; serialization failure becomes an explicit HTTP 500."""
+    return json_reply(document, lambda text: R.json_response(status, text, headers))
+
+
 def exception_response(error):
-    """Render a typed HTTP exception as a JSON detail response."""
-    return json_response(error.status_code, JsonObject([JsonMember("detail", JsonString(error.detail))]), error.headers)
+    """Carry the typed exception and its default JSON detail response."""
+    return json_reply(JsonObject([JsonMember("detail", JsonString(error.detail))]), lambda text: R.exception_reply(error, text))
 
 
 def issue(location, kind, message, input, missing, context):
