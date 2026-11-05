@@ -83,6 +83,8 @@ fn lookup(name: &str) -> Option<Sig> {
             &[Str, I64, I64],
             Ret::ResultInts(Some("readFileBytes: could not read the file")),
         ),
+        // [BUILTIN-FILE-SIZE] (tensor_list.c): a regular file's byte length.
+        "fileSize" => sig("osprey_file_size", &[Str], Ret::ResultInt),
         // --- processes [BUILTIN-PROCESS] (system_runtime.c); arg 2 is callback ---
         "spawnProcess" => sig("spawn_process_with_handler", &[Str, Ptr], Ret::ResultInt),
         "awaitProcess" => sig("fiber_await_process", &[I64], Ret::Int),

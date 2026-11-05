@@ -132,7 +132,7 @@ Confinement requires every published package's file, process, network and termin
 **Publication boundary:** the source scanner records named ambient builtins and declared system capabilities. Raw native declarations (`extern fn`, ML `extern`, and Python `@extern`) are unclassified and source-bundle assembly rejects them with `source.unclassified-builtin` before local publication writes registry files. Comments, literal text and ordinary identifiers named `extern` do not count as native declarations. Installed-dependency execution remains unverified; this publication rule does not establish the complete runtime confinement requirement below.
 
 - Each ambient builtin belongs to exactly one **ambient capability**, named in
-  the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`, `readFileBytes`,
+  the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`, `readFileBytes`, `fileSize`,
   `writeFile`, `gpuLoad`, `loadTensor`), `io/process` (`spawnProcess`,
   `awaitProcess`, `cleanupProcess`), `io/network` (every `http*` and
   `websocket*` builtin) and `io/terminal` (`input`, `termRawMode`). The map is a

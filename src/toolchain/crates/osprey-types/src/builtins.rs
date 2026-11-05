@@ -357,6 +357,8 @@ fn tensors(e: &mut TypeEnv) {
         vec![s(), i(), i()],
         res(Type::list(i())),
     );
+    // [BUILTIN-FILE-SIZE] The length a reader of bytes needs before it starts.
+    mono(e, "fileSize", vec![s()], res(i()));
 }
 
 fn json(e: &mut TypeEnv) {

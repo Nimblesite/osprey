@@ -102,6 +102,11 @@ fn file_builtins_include_the_host_tensor_loader() {
         builtin_signature("readFileBytes").as_deref(),
         Some("readFileBytes : (string, int, int) -> Result<List<int>, Error>")
     );
+    // [BUILTIN-FILE-SIZE] A reader asks the length before the first read.
+    assert_eq!(
+        builtin_signature("fileSize").as_deref(),
+        Some("fileSize : (string) -> Result<int, Error>")
+    );
 }
 
 /// [GPU-BUFFER-TENSOR] Reject unsupported requested storage before codegen.

@@ -14,6 +14,7 @@
 
 OspreyList *osprey_load_tensor(const char *path, const char *name);
 OspreyList *osprey_read_file_bytes(const char *path, int64_t offset, int64_t count);
+int64_t osprey_file_size(const char *path);
 void *osprey_tensor_panic(const char *message);
 const char *osp_io_error(void);
 void osp_io_error_clear(void);
@@ -134,6 +135,20 @@ static void t_read_file_bytes(void) {
   osp_io_error_clear();
   CHECK(osprey_read_file_bytes("/tmp", 0, 1) == NULL);
   CHECK(strstr(osp_io_error(), "readFileBytes: /tmp: ") != NULL);
+  // [BUILTIN-FILE-SIZE] The length `stat` reports, and -1 with the reason for
+  // a missing path, no path, and a directory.
+  osp_io_error_clear();
+  CHECK(osprey_file_size(path) == (int64_t)sizeof image);
+  CHECK(osp_io_error() == NULL);
+  osp_io_error_clear();
+  CHECK(osprey_file_size("/nonexistent/osprey/weights.bin") == -1);
+  CHECK(strstr(osp_io_error(), "fileSize: /nonexistent/osprey/weights.bin: ") != NULL);
+  osp_io_error_clear();
+  CHECK(osprey_file_size(NULL) == -1);
+  CHECK(strstr(osp_io_error(), "fileSize") != NULL);
+  osp_io_error_clear();
+  CHECK(osprey_file_size("/tmp") == -1);
+  CHECK(strstr(osp_io_error(), "not a regular file") != NULL);
   (void)remove(path);
 }
 

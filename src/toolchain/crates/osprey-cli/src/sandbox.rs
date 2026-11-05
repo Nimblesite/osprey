@@ -74,6 +74,7 @@ pub(crate) const WEBSOCKET_FNS: &[&str] = &[
 const FS_FNS: &[&str] = &[
     "readFile",
     "readFileBytes",
+    "fileSize",
     "writeFile",
     "loadTensor",
     "gpuLoadTensor",
@@ -180,6 +181,7 @@ mod tests {
         for f in [
             "readFile",
             "readFileBytes",
+            "fileSize",
             "writeFile",
             "loadTensor",
             "gpuLoadTensor",

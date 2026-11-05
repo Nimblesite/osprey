@@ -13,11 +13,13 @@
 
 #include <errno.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <stdlib.h>
 #include <string.h>
 
 static const char OP_LOAD_TENSOR[] = "loadTensor";
 static const char OP_READ_BYTES[] = "readFileBytes";
+static const char OP_FILE_SIZE[] = "fileSize";
 
 // The reader's sink context: the span names the stored format.
 typedef struct {
@@ -100,4 +102,25 @@ OspreyList *osprey_read_file_bytes(const char *path, int64_t offset, int64_t cou
 void *osprey_tensor_panic(const char *message) {
   (void)fprintf(stderr, "tensor load cannot continue: %s\n", message ? message : "unknown failure");
   abort();
+}
+
+// [BUILTIN-FILE-SIZE] The byte length of the regular file at `path`, from
+// `stat`, as a non-negative count. A path that cannot be stated or that is
+// not a regular file (a directory, FIFO or device has no length a reader can
+// trust) is -1 with the reason recorded, never a guessed size.
+int64_t osprey_file_size(const char *path) {
+  if (path == NULL) {
+    osp_io_error_text(OP_FILE_SIZE, path, "no path");
+    return -1;
+  }
+  struct stat info;
+  if (stat(path, &info) != 0) {
+    osp_io_error_set(OP_FILE_SIZE, path, errno);
+    return -1;
+  }
+  if (!S_ISREG(info.st_mode)) {
+    osp_io_error_text(OP_FILE_SIZE, path, "not a regular file");
+    return -1;
+  }
+  return (int64_t)info.st_size;
 }

@@ -60,6 +60,12 @@ pub(crate) static FILES: &[BuiltinDoc] = &[
         "match readFileBytes(\"model.gguf\", 0, 4) {\n    Success { value } => print(\"${listLength(value)} bytes\")\n    Error { message } => print(message)\n}"
     ),
     builtin_doc!(
+        "fileSize",
+        "The byte length of a regular file, as `stat` reports it. A missing path or a path that is not a regular file is an `Error` naming the reason.",
+        ["path" => "Path to the file"],
+        "match fileSize(\"model.gguf\") {\n    Success { value } => print(\"${value} bytes\")\n    Error { message } => print(message)\n}"
+    ),
+    builtin_doc!(
         "loadTensor",
         "Reads one named F64, F32, F16 or BF16 tensor out of a safetensors file as a `List<float>`, every element widened exactly. Nothing touches the GPU surface.",
         ["path" => "Path to the .safetensors file", "name" => "Tensor name in its header, e.g. \"wte.weight\""],

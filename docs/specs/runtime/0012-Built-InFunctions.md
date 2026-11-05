@@ -784,6 +784,17 @@ match readFileBytes("model.gguf", 0, 4) {
 }
 ```
 
+### `fileSize(path: string) -> Result<int, Error>` — [BUILTIN-FILE-SIZE]
+
+The byte length of the regular file at `path`, as `stat` reports it, so a reader of a large binary file (a GGUF header, a tensor table) knows where the file ends before its first `readFileBytes`. A path that cannot be stated is an `Error` naming the system's reason; a path that is not a regular file (a directory, FIFO, socket or device, whose length `stat` cannot vouch for) is `fileSize: <path>: not a regular file`. It never returns a guessed or negative length. `--no-fs` refuses it.
+
+```osprey
+match fileSize("model.gguf") {
+    Success { value } => print("${value} bytes")
+    Error { message } => print(message)  // fileSize: model.gguf: No such file or directory
+}
+```
+
 ### `loadTensor(path: string, name: string) -> Result<List<float>, Error>` — [BUILTIN-FILE-TENSOR]
 
 Reads the tensor `name` out of the safetensors file at `path` as a host list. Every `F64`, `F32`, `F16` or `BF16` element widens exactly to the `float` it holds, in file order. A missing name, an unsupported dtype, malformed `data_offsets`, and a file that ends before the tensor does are each an `Error` naming the reason; none of them yields a shorter list. The reader is the one `gpuLoadTensor` uses ([GPU-BUFFER-TENSOR](0034-GPUComputation.md)), so the two loaders accept and refuse the same files, but `loadTensor` builds no `GpuBuffer` and calls nothing on the GPU surface. A program that loads its weights this way and never names a GPU built-in links no GPU code. Like `gpuLoadTensor`, it may answer an operation of a static handler; `--no-fs` refuses it.
