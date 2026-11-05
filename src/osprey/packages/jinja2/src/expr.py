@@ -13,7 +13,7 @@ from jinja2 import Value as V
 from jinja2 import Filters as F
 from jinja2 import Render as R
 
-__all__ = ["eval_expr"]
+__all__ = ["eval_expr", "type_name"]
 
 
 class Tok:

@@ -172,26 +172,34 @@ def render_for(node, env) -> Result[Out, str]:
     namespace writes back to the outer frames."""
     match eval_ok(node.iterable, env):
         case Success(value=value):
-            elems = for_elements(value)
-            if len(elems) == 0:
-                return render_nodes(node.else_body, env)
-            else:
-                return for_loop(node, elems, 0, env, "")
+            match for_elements(value):
+                case Success(value=elems):
+                    if len(elems) == 0:
+                        return render_nodes(node.else_body, env)
+                    else:
+                        return for_loop(node, elems, 0, env, "")
+                case Error(message=message):
+                    return Error(message=message)
         case Error(message=message):
             return Error(message=message)
 
 
 def for_elements(v):
-    """The values a `for` iterates: list elements, dict keys, string characters."""
+    """The values a `for` iterates: list elements, dict keys, string characters.
+    Anything else is the TypeError CPython's `for` raises, never an empty loop."""
     match v.kind:
         case "list":
-            return v.elems
+            return Success(value=v.elems)
         case "dict":
-            return v.keys
+            return Success(value=v.keys)
         case "string":
-            return V.char_values(v.sval)
+            return Success(value=V.char_values(v.sval))
+        case "undefined":
+            return Success(value=[])
+        case "error":
+            return Error(message=v.sval)
         case _:
-            return []
+            return Error(message="'" + E.type_name(v) + "' object is not iterable")
 
 
 def for_loop(node, elems, i, env, acc) -> Result[Out, str]:
@@ -334,11 +342,10 @@ def bind_keywords(node, caller, kwargs, i, frame):
 
 
 def bind_keyword(node, caller, kwargs, i, frame, kw):
-    """One keyword argument against the declared parameters."""
-    if not is_param(node, kw.name):
+    """One keyword argument against the declared parameters. Jinja's `Macro` only
+    accepts a keyword for a parameter no positional argument has taken."""
+    if not is_param(node, kw.name) or mapContains(frame, kw.name):
         return Error(message="macro '" + node.name + "' takes no keyword argument '" + kw.name + "'")
-    elif mapContains(frame, kw.name):
-        return Error(message="macro '" + node.name + "' got multiple values for argument '" + kw.name + "'")
     else:
         return bind_keywords(node, caller, kwargs, i + 1, mapSet(frame, kw.name, kw.value))
 

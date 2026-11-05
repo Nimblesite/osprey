@@ -146,13 +146,14 @@ def f_string(v):
 
 
 def f_items(v):
-    """`|items`: a dict's (key, value) pairs; undefined yields an empty list."""
-    if v.kind == V.K_STRING:
-        return halt("Can only get item pairs from a mapping.")
+    """`|items`: a dict's (key, value) pairs. Undefined yields none, as Jinja's
+    `do_items` does; anything that is not a mapping is the same TypeError."""
+    if v.kind == V.K_UNDEFINED:
+        return V.list_([])
     elif v.kind == "dict":
         return V.list_(pairs_of(v))
     else:
-        return V.list_([])
+        return halt("Can only get item pairs from a mapping.")
 
 
 def iterable_elements(v):

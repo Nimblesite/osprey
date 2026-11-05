@@ -136,6 +136,8 @@ TEMPLATES = [
     ("repr backslash", "{{ ['a\\\\b'] }}"),
     ("tojson pretty list", "{{ [1, 'a']|tojson(indent=2) }}"),
     ("default no arg", "{{ missing|default }}:{{ name|default }}"),
+    ("items of undefined", "{{ missing|items|list }}"),
+    ("loop over undefined is empty", "{% for x in missing %}{{ x }}{% else %}none{% endfor %}"),
     ("safe filter", "{{ '<b>'|safe }}:{{ '<b>' }}"),
     ("tuple membership", "{{ 'b' in ('a', 'b') }}:{{ 3 in (1, 2) }}:{{ 'c' not in ('a', 'b') }}"),
     ("loop neighbours", "{% for n in nums %}[{{ loop.previtem }}:{{ n }}:{{ loop.nextitem }}]{% endfor %}"),
@@ -186,6 +188,9 @@ ERROR_TEMPLATES = [
     ("subscript undefined", "{{ missing[0] }}"),
     ("add undefined attr right", "{{ 1 + missing.x }}"),
     ("macro extra arg", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(1, 2) }}"),
+    ("macro unknown keyword", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(b=1) }}"),
+    ("macro duplicate argument", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(1, a=2) }}"),
+    ("iterate a number", "{% for x in 1 %}{{ x }}{% endfor %}"),
 ]
 
 

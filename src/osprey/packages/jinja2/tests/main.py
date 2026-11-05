@@ -192,9 +192,19 @@ def macro_table_from(chunks):
                 same("macro reference kind", V.macro_ref("m").kind, V.K_MACRO),
                 same("environment copy keeps macros", len(V.env_with(env, [{}]).macros), 1),
                 same("undefined macro expansion", V.is_error(R.expand_macro(empty, "absent", [], [])), True),
+                same("unknown node kind", unknown_node(), "unknown node kind `bogus`"),
+                same("value type name", E.type_name(V.text("a")), "str"),
             ]
         case Error(message=message):
             return [Check.failed("macro table parse", message)]
+
+
+def unknown_node():
+    """The renderer's wording for a node kind it does not implement."""
+    body = [P.blank("bogus")]
+    declared = P.Node(kind="macro", text="", name="m", attr="", var="", var2="", cond="", iterable="", branches=[], body=body, else_body=[], params=[], defaults=[])
+    env = V.bind_macro(V.Env(frames=[{}], macros=[]), declared)
+    return R.expand_macro(env, "m", [], []).sval
 
 
 def macro_cases():
@@ -278,6 +288,7 @@ DIVERGENT_ERRORS = [
     ["string floordiv", "{{ 'a' // 2 }}"],
     ["string modulo", "{{ 'a' % 2 }}"],
     ["pair concatenated", "{{ 'a' + (obj|items|first) }}"],
+    ["faulting macro default", "{% macro m(a=1 +) %}{{ a }}{% endmacro %}{{ m() }}"],
 ]
 
 

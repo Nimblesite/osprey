@@ -115,6 +115,8 @@ ok float equality
 ok repr backslash
 ok tojson pretty list
 ok default no arg
+ok items of undefined
+ok loop over undefined is empty
 ok safe filter
 ok tuple membership
 ok loop neighbours
@@ -194,6 +196,8 @@ ok macro table miss
 ok macro reference kind
 ok environment copy keeps macros
 ok undefined macro expansion
+ok unknown node kind
+ok value type name
 ok unexpected token
 ok attribute name
 ok test name
@@ -249,6 +253,9 @@ ok range zero step
 ok subscript undefined
 ok add undefined attr right
 ok macro extra arg
+ok macro unknown keyword
+ok macro duplicate argument
+ok iterate a number
 ok int plus string
 ok string times string
 ok list plus int
@@ -257,6 +264,7 @@ ok string divided
 ok string floordiv
 ok string modulo
 ok pair concatenated
+ok faulting macro default
 ok unclosed paren
 ok unclosed list
 ok dict missing colon
@@ -341,4 +349,4 @@ ok chat bad effort
 ok vision picture numbering is call scoped (known divergence)
 ok namespace write inside a macro (known divergence)
 ok tuple literal prints as a list (known divergence)
-343 passed, 0 failed
+351 passed, 0 failed
