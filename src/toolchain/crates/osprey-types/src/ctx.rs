@@ -12,11 +12,6 @@ use std::collections::{BTreeSet, HashMap};
 
 type RecordTemplate = (Vec<String>, Vec<(String, String)>);
 
-#[cfg(test)]
-std::thread_local! {
-    pub(crate) static APPLY_VAR_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
-}
-
 /// Holds every type variable's binding. Variable ids are indices into `subst`.
 #[derive(Debug, Default)]
 pub(crate) struct InferCtx {
@@ -315,17 +310,6 @@ impl InferCtx {
         self.prune_type(t).into_owned()
     }
 
-    /// Read the outermost resolved shape without copying the bound type.
-    pub(crate) fn head<'a>(&'a self, mut ty: &'a Type) -> &'a Type {
-        while let Type::Var(id) = ty {
-            let Some(bound) = self.binding(*id) else {
-                break;
-            };
-            ty = bound;
-        }
-        ty
-    }
-
     fn prune_type<'a>(&mut self, t: &'a Type) -> Cow<'a, Type> {
         let Type::Var(id) = t else {
             return Cow::Borrowed(t);
@@ -396,8 +380,6 @@ impl InferCtx {
     /// keeps the substitution acyclic, so this terminates.
     pub(crate) fn apply(&self, t: &Type) -> Type {
         crate::ty::map_type_vars(t, &mut |v| {
-            #[cfg(test)]
-            APPLY_VAR_VISITS.with(|visits| visits.set(visits.get() + 1));
             self.binding(v)
                 .map_or_else(|| Type::Var(v), |bound| self.apply(bound))
         })
