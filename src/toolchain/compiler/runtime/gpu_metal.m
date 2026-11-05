@@ -210,6 +210,12 @@ static int flush_locked(void) {
     OspreyGpuDispatch done = {gpu_queued[i].kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, gpu_queued[i].threads};
     osprey_gpu_report(gpu_name, atomic_fetch_add(&gpu_completed, 1) + 1, &done);
   }
+  // `OSPREY_GPU_TIMING=1` reports each batch's device time, so a program can
+  // tell GPU-bound from host-bound ([LLM-SPEED] receipts).
+  const char *timing = getenv("OSPREY_GPU_TIMING");
+  if (timing != NULL && strcmp(timing, "1") == 0)
+    (void)fprintf(stderr, "[gpu] batch of %u dispatches ran %.3f ms on the device\n", queued,
+                  (command.GPUEndTime - command.GPUStartTime) * 1000.0);
   return 1;
 }
 
