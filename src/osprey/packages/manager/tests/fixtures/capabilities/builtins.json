@@ -5,6 +5,7 @@
   "builtins": [
     {"builtin": "awaitProcess", "capability": "io/process"},
     {"builtin": "cleanupProcess", "capability": "io/process"},
+    {"builtin": "fileSize", "capability": "io/files"},
     {"builtin": "gpuLoad", "capability": "io/files"},
     {"builtin": "gpuLoadTensor", "capability": "io/files"},
     {"builtin": "gpuMapFile", "capability": "io/files"},
