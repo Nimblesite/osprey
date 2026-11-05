@@ -14,7 +14,11 @@ only stable for short tensors, so TopP/Typical rows keep vocab size <= 16 and
 cumulative boundaries away from tie groups; MinP rows keep distinct scores
 because torch.topk's tie order is unspecified.
 """
+import importlib.machinery
+import importlib.util
+import pathlib
 import struct
+import sys
 
 from expected_module import write
 
@@ -53,6 +57,21 @@ def f32(value):
     return struct.unpack("<f", struct.pack("<f", value))[0]
 
 NEG_INF = float("-inf")
+HERE = pathlib.Path(__file__).resolve().parent
+SUMMARY = "transformers generation layer: logits warpers/processors, torch softmax/log_softmax/argmax/inverse-CDF multinomial, and stopping criteria (float32)."
+
+
+def model_fixture():
+    """Load the `Qwen3_5TextConfig` fixture beside this file, off `sys.path` the way
+    the runner loads an oracle, and return its module."""
+    path = HERE / "qwen3_5_fixture.cpython"
+    spec = importlib.util.spec_from_file_location(
+        "qwen3_5_fixture", path, loader=importlib.machinery.SourceFileLoader("qwen3_5_fixture", str(path))
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["qwen3_5_fixture"] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 # ---------------------------------------------------------------------------
@@ -465,14 +484,15 @@ def main():
     add_helpers(C)
     add_stop_string(C)
     add_generate(C)
+    summary = SUMMARY + "\n\n" + model_fixture().add(C)
 
     target = write(
         "transformers",
-        "transformers generation layer: logits warpers/processors, torch softmax/log_softmax/argmax/inverse-CDF multinomial, and stopping criteria (float32).",
+        summary,
         {"transformers": transformers.__version__, "torch": torch.__version__},
         C,
     )
-    print(f"wrote {target} with {len(C)} exports")
+    print(f"wrote {target} ({target.stat().st_size} bytes) with {len(C)} exports")
 
 
 if __name__ == "__main__":

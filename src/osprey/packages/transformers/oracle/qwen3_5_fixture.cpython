@@ -1,0 +1,257 @@
+"""The tiny `Qwen3_5TextConfig` checkpoint the port's model code is checked against
+([LLM-MODEL-ORACLE], docs/plans/0049-local-coding-model.md Phase 3).
+
+transformers 5.20.2 builds the model and computes every value here; `add` hands them to
+the shared writer as the `MODEL_*` constants of
+src/osprey/packages/transformers/tests/expected.py, so the port's layer-by-layer
+comparison reads numbers the real package produced. The three inputs are one token,
+eight tokens in one pass, and the same eight tokens fed one at a time through the cache;
+every layer's output hidden state and the final norm output are written for each, with
+the conv/recurrent/KV state the cached run leaves behind. CI never downloads weights.
+"""
+import math
+import struct
+
+import torch
+from transformers import Qwen3_5TextConfig, Qwen3_5TextModel
+from transformers.cache_utils import DynamicCache
+
+SEED = 20261105
+ONE = [42]
+EIGHT = [11, 5, 97, 0, 127, 42, 7, 63]
+STAGES = ("layer0", "layer1", "layer2", "layer3", "final_norm")
+PARTS = ("input_layernorm", "linear_attn", "self_attn", "post_attention_layernorm", "mlp")
+CACHE_STATES = ("conv_states", "recurrent_states", "keys", "values")
+CONFIG_FIELDS = (
+    "num_hidden_layers", "hidden_size", "intermediate_size", "num_attention_heads",
+    "num_key_value_heads", "head_dim", "vocab_size", "linear_conv_kernel_dim",
+    "linear_key_head_dim", "linear_value_head_dim", "linear_num_key_heads",
+    "linear_num_value_heads", "hidden_act", "rms_norm_eps", "tie_word_embeddings",
+    "max_position_embeddings", "initializer_range", "attention_bias", "layer_types",
+    "rope_parameters",
+)
+
+
+def config():
+    """The real `Qwen3_5TextConfig`, at a size whose parameters fit a 3 MB fixture: 4
+    layers keep the class's own `layer_types` pattern (three `linear_attention` layers
+    then one `full_attention`), and only the linear-attention widths and head counts
+    drop, in the real 16:32 key:value ratio (2:4), because the class defaults of 128
+    and 16/32 write about 37 MB of parameters."""
+    return Qwen3_5TextConfig(
+        num_hidden_layers=4,
+        hidden_size=64,
+        intermediate_size=128,
+        num_attention_heads=4,
+        head_dim=16,
+        vocab_size=128,
+        linear_key_head_dim=8,
+        linear_value_head_dim=8,
+        linear_num_key_heads=2,
+        linear_num_value_heads=4,
+    )
+
+
+def config_text(cfg):
+    """The config the fixture was built from, one field per line: it is the module
+    docstring of the generated fixture, so a reader can rebuild the checkpoint."""
+    pairs = [f"{name}={getattr(cfg, name)!r}" for name in CONFIG_FIELDS]
+    return (
+        f"Tiny {type(cfg).__name__} checkpoint, torch.manual_seed({SEED}):\n"
+        f"{type(cfg).__name__}(\n    " + ",\n    ".join(pairs) + ",\n)"
+    )
+
+
+def build(cfg):
+    """The seeded, float32, CPU model."""
+    torch.manual_seed(SEED)
+    return Qwen3_5TextModel(cfg).float().eval()
+
+
+def forward(model, ids, cache=None):
+    """One no-grad pass over `ids`: every layer's output hidden state, the final norm
+    output, and the cache it reads or updates."""
+    with torch.no_grad():
+        return model(
+            input_ids=torch.tensor([ids], dtype=torch.int64),
+            past_key_values=cache,
+            use_cache=cache is not None,
+            output_hidden_states=True,
+        )
+
+
+def shortest(value):
+    """The shortest decimal that reads back as the same IEEE binary32 value, so every
+    constant stays exact at float32 and the fixture fits a few megabytes."""
+    bits = struct.pack("<f", value)
+    for digits in range(1, 10):
+        text = f"{value:.{digits}g}"
+        if struct.pack("<f", float(text)) == bits:
+            return float(text)
+    return value
+
+
+def flat(tensor):
+    """A tensor's row-major float32 values as Python floats, each the shortest decimal
+    that round-trips to its binary32 bits. A non-finite value is a fixture bug, since the
+    shared writer would switch the whole constant to text."""
+    assert tensor.dtype == torch.float32, tensor.dtype
+    values = tensor.reshape(-1).tolist()
+    assert all(math.isfinite(value) for value in values), "non-finite model value"
+    return [shortest(value) for value in values]
+
+
+def one(dtypes):
+    """The single dtype a group of tensors carries; mixed widths are a fixture bug."""
+    kinds = sorted(set(dtypes))
+    assert len(kinds) == 1, kinds
+    return kinds[0]
+
+
+def parameters(model):
+    """(names, shapes, dtypes, values) of every parameter tensor, in module order."""
+    tensors = list(model.named_parameters())
+    return (
+        [name for name, _ in tensors],
+        [list(tensor.shape) for _, tensor in tensors],
+        [str(tensor.dtype) for _, tensor in tensors],
+        [flat(tensor) for _, tensor in tensors],
+    )
+
+
+def cached_stages(model, cfg, ids):
+    """The layer and final-norm outputs when each token is fed on its own through the
+    cache, concatenated over tokens so each stage is one token-per-row table."""
+    cache = DynamicCache(config=cfg)
+    stages = None
+    for token in ids:
+        output = forward(model, [token], cache)
+        stages = list(output.hidden_states) if stages is None else [
+            torch.cat([seen, step], dim=1) for seen, step in zip(stages, output.hidden_states)
+        ]
+    return stages, cache
+
+
+def cache_entries(cache):
+    """(names, shapes, dtypes, values) of every state tensor the cache holds."""
+    names, shapes, dtypes, values = [], [], [], []
+    for index, layer in enumerate(cache.layers):
+        for state_name, tensors in states(layer):
+            for slot, tensor in enumerate(tensors):
+                names.append(f"layers.{index}.{state_name}.{slot}")
+                shapes.append(list(tensor.shape))
+                dtypes.append(str(tensor.dtype))
+                values.append(flat(tensor))
+    return names, shapes, dtypes, values
+
+
+def states(layer):
+    """The state tensors one cache layer holds: the conv and recurrent dicts of a
+    linear-attention layer, or the key and value tensors of a full-attention one."""
+    found = []
+    for state_name in CACHE_STATES:
+        held = getattr(layer, state_name, None)
+        if isinstance(held, dict) and held:
+            found.append((state_name, [held[slot] for slot in sorted(held)]))
+        elif isinstance(held, torch.Tensor):
+            found.append((state_name, list(held)))
+    return found
+
+
+def run_cases(C, model, cfg):
+    """The three inputs, their hidden states, and the state the cached run leaves."""
+    outputs = [forward(model, ONE), forward(model, EIGHT)]
+    stages, cache = cached_stages(model, cfg, EIGHT)
+    inputs = [ONE, EIGHT, EIGHT]
+    tokens = [len(ids) for ids in inputs]
+    per_case = [output.hidden_states for output in outputs] + [stages]
+    C["MODEL_INPUTS"] = inputs
+    C["MODEL_INPUT_TOKENS"] = tokens
+    C["MODEL_HIDDEN_STAGES"] = list(STAGES)
+    C["MODEL_HIDDEN_TOKENS"] = [count for count in tokens for _ in STAGES]
+    C["MODEL_HIDDEN_SHAPES"] = [[count, cfg.hidden_size] for count in tokens for _ in STAGES]
+    C["MODEL_HIDDEN_VALUES"] = [flat(stage) for case in per_case for stage in case]
+    cache_names, cache_shapes, cache_dtypes, cache_values = cache_entries(cache)
+    C["MODEL_CACHE_NAMES"] = cache_names
+    C["MODEL_CACHE_SHAPES"] = cache_shapes
+    C["MODEL_CACHE_DTYPES"] = cache_dtypes
+    C["MODEL_CACHE_VALUES"] = cache_values
+    C["MODEL_DTYPE_PATH"] = dtype_path(model, EIGHT, list(zip(cache_names, cache_dtypes)))
+    fired = activations(model, EIGHT)
+    C["MODEL_HOOK_NAMES"] = [name for name, _, _ in fired]
+    C["MODEL_HOOK_SHAPES"] = [shape for _, shape, _ in fired]
+    C["MODEL_HOOK_DTYPES"] = [dtype for _, _, dtype in fired]
+
+
+def dtype_path(model, ids, cache):
+    """The dtype each value carries from token ids to cache state, as observed."""
+    stepped = forward(model, ids)
+    observed = {
+        "input_ids": str(torch.tensor([ids]).dtype),
+        "token_embeddings": str(stepped.hidden_states[0].dtype),
+        "parameters": one(str(parameter.dtype) for parameter in model.parameters()),
+        "layer_and_norm_outputs": one(str(stage.dtype) for stage in stepped.hidden_states),
+        "conv_states": one_taken(cache, "conv_states"),
+        "recurrent_states": one_taken(cache, "recurrent_states"),
+        "key_cache": one_taken(cache, "keys"),
+        "value_cache": one_taken(cache, "values"),
+    }
+    return [f"{name}: {dtype}" for name, dtype in observed.items()]
+
+
+def one_taken(cache, state_name):
+    """The dtype of one cache state kind, named by its `cache_entries` path."""
+    picked = [dtype for name, dtype in cache if f".{state_name}." in name]
+    assert picked, state_name
+    return one(picked)
+
+
+def hook_names(model):
+    """Every module that hands back an activation: the embedding, the rotary embedding,
+    each layer and each of its submodules that exists, and the final norm."""
+    names = ["embed_tokens", "rotary_emb"]
+    for index, layer in enumerate(model.layers):
+        names.append(f"layers.{index}")
+        names += [f"layers.{index}.{part}" for part in PARTS if hasattr(layer, part)]
+    return names + ["norm"]
+
+
+def activations(model, ids):
+    """A forward hook on every module a port mirrors, in fire order: the activation
+    each one makes available, with its shape and dtype."""
+    fired = []
+
+    def record(name):
+        def hook(_module, _inputs, output):
+            tensor = output if isinstance(output, torch.Tensor) else output[0]
+            fired.append((name, list(tensor.shape), str(tensor.dtype)))
+        return hook
+
+    handles = [model.get_submodule(name).register_forward_hook(record(name)) for name in hook_names(model)]
+    try:
+        forward(model, ids)
+    finally:
+        for handle in handles:
+            handle.remove()
+    return fired
+
+
+def add(C):
+    """Fill `C` with the checkpoint's config, parameters, inputs, hidden states, cache
+    state, dtype path and activations; return the config text for the docstring."""
+    cfg = config()
+    model = build(cfg)
+    names, shapes, dtypes, values = parameters(model)
+    C["MODEL_CONFIG_CLASS"] = type(cfg).__name__
+    C["MODEL_LAYERS"] = cfg.num_hidden_layers
+    C["MODEL_HIDDEN"] = cfg.hidden_size
+    C["MODEL_VOCAB"] = cfg.vocab_size
+    C["MODEL_LAYER_TYPES"] = list(cfg.layer_types)
+    C["MODEL_SEED"] = SEED
+    C["MODEL_PARAM_NAMES"] = names
+    C["MODEL_PARAM_SHAPES"] = shapes
+    C["MODEL_PARAM_DTYPES"] = dtypes
+    C["MODEL_PARAM_VALUES"] = values
+    C["MODEL_PARAM_COUNT"] = sum(len(tensor) for tensor in values)
+    run_cases(C, model, cfg)
+    return config_text(cfg)

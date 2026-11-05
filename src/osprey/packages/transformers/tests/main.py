@@ -224,7 +224,7 @@ def nonfinite_case():
 
 
 def all_cases():
-    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), listConcat([generate_case(), nonfinite_case()], tool_cases()))))))
+    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), listConcat([generate_case(), nonfinite_case()], listConcat(tool_cases(), model_fixture_cases())))))))
 
 
 def main():
@@ -864,3 +864,76 @@ def call_fingerprint_of(record):
 
 def tool_cases():
     return listConcat(corner_cases(), listConcat(reader_cases(), listConcat(scanner_cases(), listConcat(validation_cases(), listConcat(coercion_cases(), listConcat(parse_cases(), listConcat(chunked_cases(), listConcat(repair_cases(), listConcat(constrain_cases(), listConcat(control_cases(), logits_processor_cases()))))))))))
+
+
+# --- the tiny Qwen3_5TextConfig checkpoint: [LLM-MODEL-ORACLE] ---
+
+def shape_size(shape):
+    """The element count of one row-major shape."""
+    return foldList(shape, 1, lambda total, extent: total * extent)
+
+
+def shape_total(shapes):
+    """The element count of every shape in a manifest."""
+    return foldList(shapes, 0, lambda total, shape: total + shape_size(shape))
+
+
+def manifest_cases():
+    """The fixture's own counts: the declared parameter count is the sum of the recorded
+    shapes, and every tensor has one manifest row per value list (so the fixture cannot
+    describe a shape it does not carry)."""
+    return [
+        Check.equal("model_param_count", shape_total(Expected.MODEL_PARAM_SHAPES), Expected.MODEL_PARAM_COUNT),
+        Check.equal("model_param_tensors", len(Expected.MODEL_PARAM_NAMES), len(Expected.MODEL_PARAM_SHAPES)),
+        Check.equal("model_param_dtypes", len(Expected.MODEL_PARAM_DTYPES), len(Expected.MODEL_PARAM_VALUES)),
+        Check.equal("model_cache_tensors", len(Expected.MODEL_CACHE_NAMES), len(Expected.MODEL_CACHE_VALUES)),
+        Check.equal("model_cache_dtypes", len(Expected.MODEL_CACHE_DTYPES), len(Expected.MODEL_CACHE_SHAPES)),
+        Check.equal("model_hidden_stages", len(Expected.MODEL_HIDDEN_STAGES), Expected.MODEL_LAYERS + 1),
+        Check.equal("model_hidden_states", len(Expected.MODEL_HIDDEN_VALUES), len(Expected.MODEL_INPUT_TOKENS) * len(Expected.MODEL_HIDDEN_STAGES)),
+        Check.equal("model_inputs", len(Expected.MODEL_INPUTS), len(Expected.MODEL_INPUT_TOKENS)),
+        Check.equal("model_layer_types", len(Expected.MODEL_LAYER_TYPES), Expected.MODEL_LAYERS),
+        Check.equal("model_layer_pattern", join(Expected.MODEL_LAYER_TYPES, ","), "linear_attention,linear_attention,linear_attention,full_attention"),
+        Check.equal("model_hook_names", len(Expected.MODEL_HOOK_NAMES), len(Expected.MODEL_HOOK_SHAPES)),
+        Check.equal("model_hook_dtypes", len(Expected.MODEL_HOOK_DTYPES), len(Expected.MODEL_HOOK_SHAPES)),
+        Check.equal("model_dtype_path", len(Expected.MODEL_DTYPE_PATH), 8),
+    ]
+
+
+def param_cases():
+    """One assertion per recorded parameter tensor: its values fill its shape."""
+    return toList(map(range(len(Expected.MODEL_PARAM_VALUES)), lambda k: Check.equal(
+        "model_param[" + name_at(Expected.MODEL_PARAM_NAMES, k) + "]",
+        len(unwrap_or(listGet(Expected.MODEL_PARAM_VALUES, k), [])),
+        shape_size(unwrap_or(listGet(Expected.MODEL_PARAM_SHAPES, k), [])),
+    )))
+
+
+def hidden_cases():
+    """One assertion per recorded hidden state: one value per token per hidden channel."""
+    return toList(map(range(len(Expected.MODEL_HIDDEN_VALUES)), lambda k: Check.equal(
+        "model_hidden[" + name_at(Expected.MODEL_HIDDEN_STAGES, k % len(Expected.MODEL_HIDDEN_STAGES)) + "]",
+        len(unwrap_or(listGet(Expected.MODEL_HIDDEN_VALUES, k), [])),
+        unwrap_or(listGet(Expected.MODEL_HIDDEN_TOKENS, k), 0) * Expected.MODEL_HIDDEN,
+    )))
+
+
+def cache_cases():
+    """One assertion per cache state tensor: its values fill its shape."""
+    return toList(map(range(len(Expected.MODEL_CACHE_VALUES)), lambda k: Check.equal(
+        "model_cache[" + name_at(Expected.MODEL_CACHE_NAMES, k) + "]",
+        len(unwrap_or(listGet(Expected.MODEL_CACHE_VALUES, k), [])),
+        shape_size(unwrap_or(listGet(Expected.MODEL_CACHE_SHAPES, k), [])),
+    )))
+
+
+def name_at(names, k):
+    return unwrap_or(listGet(names, k), "")
+
+
+def model_fixture_cases():
+    """[LLM-MODEL-ORACLE] The tiny `Qwen3_5TextConfig` fixture transformers wrote is
+    self-consistent: the declared parameter count is the sum of the recorded tensor
+    shapes, every parameter, hidden state and cache tensor holds exactly one value per
+    element of its shape, and both attention kinds appear as in the real model. The
+    values themselves are compared when the port's model code lands."""
+    return listConcat(manifest_cases(), listConcat(param_cases(), listConcat(hidden_cases(), cache_cases())))
