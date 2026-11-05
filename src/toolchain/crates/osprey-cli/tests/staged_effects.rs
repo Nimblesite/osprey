@@ -243,20 +243,30 @@ fn a_static_effect_inside_a_kernel_body_is_stage_legal() {
     // "empty *dynamic* row". A kernel that answers its requests before it runs
     // is legal, and it is legal through the existing purity gate rather than a
     // second one: discharge follows data typing but precedes residual purity.
-    let source = r#"
+    let program = r#"
 static effect Tile { size: fn() -> int }
 fn shade(px) = satMul(px, perform Tile.size())
 fn main() = {
     let out = {
-        handle static Tile {
-            size => 3
+        @inside@
+        match toGpu([1, 2, 3]) {
+            Success { value } => match gpuMap(value, shade) {
+                Success { value } => fromGpu(value)
+                Error { message } => Error { message: message }
+            }
+            Error { message } => Error { message: message }
         }
-        fromGpu(toGpu([1, 2, 3]) |> gpuMap(shade))
     }
-    print("${listGet(out, 0) ?: 0}")
+    @outside@
+    match out {
+        Success { value } => print(listLength(value))
+        Error { message } => print(toString(message))
+    }
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
+    let handler = "handle static Tile { size => 3 }";
+    let source = program.replace("@inside@", handler).replace("@outside@", "");
+    let errors = diagnostics(&source, Flavor::Default);
     assert!(
         errors.is_empty(),
         "a kernel whose only requests are static must be accepted: {errors}"
@@ -264,18 +274,8 @@ fn main() = {
     // The region must ENCLOSE the kernel: a static handler installed after
     // the offload answers nothing the device code asked for, so the request
     // is residual and the kernel is rejected by name.
-    let outside = r#"
-static effect Tile { size: fn() -> int }
-fn shade(px) = satMul(px, perform Tile.size())
-fn main() = {
-    let out = fromGpu(toGpu([1, 2, 3]) |> gpuMap(shade))
-    handle static Tile {
-        size => 3
-    }
-    print("${listGet(out, 0) ?: 0}")
-}
-"#;
-    let errors = diagnostics(outside, Flavor::Default);
+    let outside = program.replace("@inside@", "").replace("@outside@", handler);
+    let errors = diagnostics(&outside, Flavor::Default);
     assert!(
         errors.contains("kernel body is not stage-legal; it requires dynamic effects: Tile.size"),
         "a kernel outside the static region keeps its residual request: {errors}"
