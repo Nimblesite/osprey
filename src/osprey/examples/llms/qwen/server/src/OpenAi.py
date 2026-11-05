@@ -17,7 +17,6 @@ from qwen_server import Wire
 
 __all__ = ["models", "completions", "failed"]
 
-SSE = "text/event-stream"
 DONE = "[DONE]"
 
 
@@ -49,7 +48,7 @@ def turn(model, request):
     """The reply for a decoded request, once the served model is known."""
     match Completions.complete(model, request.prompt, request.sampling, request.tools):
         case Success(value=finished):
-            return Wire.reply(200, SSE, stream(events(request, finished))) if request.stream else Wire.ok(completion(request, finished))
+            return Wire.reply(200, Wire.SSE, stream(events(request, finished))) if request.stream else Wire.ok(completion(request, finished))
         case Error(message=message):
             return failed(400, message)
 
