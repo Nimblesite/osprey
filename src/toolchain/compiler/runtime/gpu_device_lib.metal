@@ -283,23 +283,27 @@ uint q4k_min(GPU_GLOBAL const uchar *scales, uint j) {
     return j < 4 ? (uint)(scales[j + 4] & 63) : (uint)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
 }
 
-// out[r * cols + c] = sum over k of x[r * inner + k] * w_c[k], one thread per
-// output, in ggml's block order from 0.0f: each weight is d * scale * q minus
+// Thread t computes part p = t % parts of output i = t / parts: the blocks
+// from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
+// from 0.0f, into partial[i * parts + p]. Each weight is d * scale * q minus
 // dmin * min (two roundings), multiplied by x, then added, every step rounded
-// and nothing contracted, so the host oracle in gpu_host.c writes the same bytes.
+// and nothing contracted, so the host oracle in gpu_host.c writes the same
+// bytes. osprey_sum_parts then adds the parts of each output in order.
 kernel void osprey_matmul_q4_k(GPU_GLOBAL const float *x GPU_BUFFER(0),
                                GPU_GLOBAL const uchar *w GPU_BUFFER(1),
-                               GPU_GLOBAL float *out GPU_BUFFER(2),
+                               GPU_GLOBAL float *partial GPU_BUFFER(2),
                                GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4),
-                               GPU_PARAM cols GPU_BUFFER(5) GPU_THREAD) {
-    ulong i = GPU_INDEX;
-    if (i >= rows * cols) return;
+                               GPU_PARAM cols GPU_BUFFER(5), GPU_PARAM parts GPU_BUFFER(6) GPU_THREAD) {
+    ulong t = GPU_INDEX;
+    if (t >= rows * cols * parts) return;
+    ulong i = t / parts, p = t % parts;
     ulong r = i / cols, c = i % cols;
     uint blocks = (uint)(inner / 256);
+    uint first = (uint)(p * blocks / parts), last = (uint)((p + 1) * blocks / parts);
     GPU_GLOBAL const float *xr = x + r * inner;
     GPU_GLOBAL const uchar *row = w + c * (ulong)blocks * 144ul;
     float acc = 0.0f;
-    for (uint blk = 0; blk < blocks; blk++) {
+    for (uint blk = first; blk < last; blk++) {
         GPU_GLOBAL const uchar *b = row + blk * 144u;
         float d = gpu_f16_to_f32((ushort)(b[0] | (b[1] << 8)));
         float dmin = gpu_f16_to_f32((ushort)(b[2] | (b[3] << 8)));
@@ -320,5 +324,16 @@ kernel void osprey_matmul_q4_k(GPU_GLOBAL const float *x GPU_BUFFER(0),
             }
         }
     }
+    partial[t] = acc;
+}
+
+// out[i] = the `parts` partial sums of output i added in order from 0.0f.
+kernel void osprey_sum_parts(GPU_GLOBAL const float *partial GPU_BUFFER(0),
+                             GPU_GLOBAL float *out GPU_BUFFER(1),
+                             GPU_PARAM count GPU_BUFFER(2), GPU_PARAM parts GPU_BUFFER(3) GPU_THREAD) {
+    ulong i = GPU_INDEX;
+    if (i >= count) return;
+    float acc = 0.0f;
+    for (ulong p = 0; p < parts; p++) acc = acc + partial[i * parts + p];
     out[i] = acc;
 }

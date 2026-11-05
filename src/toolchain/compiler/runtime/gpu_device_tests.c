@@ -300,19 +300,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 11);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 12);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 12);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 13);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 13);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 14);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 16);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 17);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the Q4_K product\n", checks);
   return 0;

@@ -149,35 +149,52 @@ static unsigned q4k_min(const unsigned char *scales, unsigned j) {
   return j < 4 ? (unsigned)(scales[j + 4] & 63) : (unsigned)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
 }
 
-// The oracle of osprey_matmul_q4_k in gpu_device_lib.metal, step for step:
-// each weight dequantized with two roundings, multiplied, then added, in
-// ggml's block order from 0.0f; separate statements keep every rounding.
-static void product_q4k(float *out, const float *x, const unsigned char *w, int64_t rows, int64_t inner, int64_t cols) {
-  int64_t blocks = inner / 256;
-  for (int64_t r = 0; r < rows; r++) for (int64_t c = 0; c < cols; c++) {
-    const float *xr = x + r * inner;
-    const unsigned char *row = w + c * blocks * 144;
-    float acc = 0.0f;
-    for (int64_t blk = 0; blk < blocks; blk++) {
-      const unsigned char *b = row + blk * 144;
-      float d = osp_f16_to_f32((uint16_t)(b[0] | (b[1] << 8)));
-      float dmin = osp_f16_to_f32((uint16_t)(b[2] | (b[3] << 8)));
-      const float *xb = xr + blk * 256;
-      for (unsigned j = 0; j < 8; j++) {
-        unsigned sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
-        float d1 = d * (float)sc;
-        float m1 = dmin * (float)mn;
-        unsigned g = j >> 1, high = j & 1;
-        const unsigned char *q = b + 16 + g * 32;
-        const float *xe = xb + g * 64 + high * 32;
-        for (unsigned l = 0; l < 32; l++) {
-          unsigned nib = high ? (unsigned)(q[l] >> 4) : (unsigned)(q[l] & 15);
-          float weight = d1 * (float)nib;
-          weight = weight - m1;
-          float product = xe[l] * weight;
-          acc = acc + product;
-        }
+// How many threads share one output: four when the product is small enough
+// that one thread per output would leave the device idle, else one. A pure
+// function of the shape, so the host and every device add in the same order.
+static int64_t quant_parts(int64_t rows, int64_t cols) {
+  return rows * cols <= ((int64_t)1 << 20) ? 4 : 1;
+}
+
+// The oracle of osprey_matmul_q4_k and osprey_sum_parts in
+// gpu_device_lib.metal, step for step: part p of an output covers the blocks
+// from p * blocks / parts up to (p + 1) * blocks / parts; each weight is
+// dequantized with two roundings, multiplied, then added, in ggml's block
+// order from 0.0f, and the parts are added in order. Separate statements keep
+// every rounding.
+static float part_q4k(const float *xr, const unsigned char *row, int64_t first, int64_t last) {
+  float acc = 0.0f;
+  for (int64_t blk = first; blk < last; blk++) {
+    const unsigned char *b = row + blk * 144;
+    float d = osp_f16_to_f32((uint16_t)(b[0] | (b[1] << 8)));
+    float dmin = osp_f16_to_f32((uint16_t)(b[2] | (b[3] << 8)));
+    const float *xb = xr + blk * 256;
+    for (unsigned j = 0; j < 8; j++) {
+      unsigned sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+      float d1 = d * (float)sc;
+      float m1 = dmin * (float)mn;
+      unsigned g = j >> 1, high = j & 1;
+      const unsigned char *q = b + 16 + g * 32;
+      const float *xe = xb + g * 64 + high * 32;
+      for (unsigned l = 0; l < 32; l++) {
+        unsigned nib = high ? (unsigned)(q[l] >> 4) : (unsigned)(q[l] & 15);
+        float weight = d1 * (float)nib;
+        weight = weight - m1;
+        float product = xe[l] * weight;
+        acc = acc + product;
       }
+    }
+  }
+  return acc;
+}
+
+static void product_q4k(float *out, const float *x, const unsigned char *w, int64_t rows, int64_t inner, int64_t cols) {
+  int64_t blocks = inner / 256, parts = quant_parts(rows, cols);
+  for (int64_t r = 0; r < rows; r++) for (int64_t c = 0; c < cols; c++) {
+    float acc = 0.0f;
+    for (int64_t p = 0; p < parts; p++) {
+      float part = part_q4k(x + r * inner, w + c * blocks * 144, p * blocks / parts, (p + 1) * blocks / parts);
+      acc = acc + part;
     }
     out[r * cols + c] = acc;
   }
@@ -216,7 +233,15 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
     return abandoned(out);
   }
-  int device = osprey_gpu_device_matmul_quant(kernel, x, w, out, rows, inner, cols);
+  int64_t parts = quant_parts(rows, cols);
+  void *partial = osprey_gpu_alloc(n * parts, 4);
+  if (!partial || osprey_gpu_len(partial) != n * parts) {
+    osp_io_error_set(OP_MATMUL_QUANT, "partial sums", ENOMEM);
+    (void)abandoned(partial);
+    return abandoned(out);
+  }
+  int device = osprey_gpu_device_matmul_quant(kernel, x, w, partial, out, rows, inner, cols, parts);
+  osp_release(partial);
   if (device != 0) return device > 0 ? out : abandoned(out);
   if (n && (osprey_gpu_readable(x, 0) != 1 || osprey_gpu_readable(w, 0) != 1)) return abandoned(out);
   product_q4k(osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);
