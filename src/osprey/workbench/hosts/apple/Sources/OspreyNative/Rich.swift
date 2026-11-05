@@ -145,9 +145,9 @@ struct CodeText: NSViewRepresentable {
     }
 
     private func focus(_ text: NSTextView, in scroll: NSScrollView, coordinator: Coordinator) {
-        guard let window = scroll.window, window.isKeyWindow, ModalFocusBoundary.permits(modalFocusBoundary, in: window) else { return }
+        guard let window = scroll.window else { return }
         let epoch = focusEpoch
-        // Apply authored focus after the current SwiftUI view-update transaction returns.
+        // AppKit settles key-window and modal ownership after this SwiftUI update.
         DispatchQueue.main.async { [weak text, weak scroll, weak window, weak coordinator] in
             guard let text, let scroll, let window, let coordinator, coordinator.parent.focusEpoch == epoch,
                 coordinator.observedFocusEpoch == epoch, scroll.documentView === text,

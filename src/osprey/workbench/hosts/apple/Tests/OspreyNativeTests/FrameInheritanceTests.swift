@@ -219,7 +219,12 @@ final class FrameInheritanceTests: XCTestCase {
     @MainActor
     private func assertModalEditorEpochAdvances(_ host: NSHostingView<ModalFocusFixture>, _ window: NSWindow, _ modal: NSTextView) throws {
         XCTAssertTrue(window.makeFirstResponder(nil))
-        update(host, ModalFocusFixture(focusEpoch: 1, modalEpoch: 1))
+        let focusWindow = try XCTUnwrap(window as? FocusTestWindow)
+        focusWindow.keyState = false
+        host.rootView = ModalFocusFixture(focusEpoch: 1, modalEpoch: 1)
+        host.layoutSubtreeIfNeeded()
+        focusWindow.keyState = true
+        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
         XCTAssertTrue(window.firstResponder === modal, "An authored epoch must still focus an editor inside the active dialog; actual: \(String(describing: window.firstResponder))")
         XCTAssertTrue(TestResources.scrollViews(host).contains { $0.documentView === modal }, "The focused modal editor must retain its native identity")
         update(host, ModalFocusFixture(focusEpoch: 1, modalEpoch: 1))
