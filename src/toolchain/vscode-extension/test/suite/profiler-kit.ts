@@ -32,10 +32,22 @@ export async function connectEditorBrowser(): Promise<Browser> {
 
 const FRAME_PROBE_MS = 100;
 
+async function frameOwnersVisible(frame: Frame): Promise<boolean> {
+  const parent = frame.parentFrame();
+  if (!parent) return true;
+  const owner = await frame.frameElement();
+  try {
+    return await owner.isVisible() && await frameOwnersVisible(parent);
+  } finally {
+    await owner.dispose();
+  }
+}
+
 async function frameMatches(frame: Frame, selector: string): Promise<boolean> {
   if (frame.isDetached()) return false;
   try {
-    await frame.locator(selector).waitFor({ state: "attached", timeout: FRAME_PROBE_MS });
+    if (!await frameOwnersVisible(frame)) return false;
+    await frame.locator(selector).waitFor({ state: "visible", timeout: FRAME_PROBE_MS });
     return true;
   } catch (error) {
     if (error instanceof errors.TimeoutError || frame.isDetached()) return false;
