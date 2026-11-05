@@ -52,7 +52,9 @@ The explicit `jsonDecodePython` decoder implements first-key insertion order wit
 
 ## Native text integrity — [PORT-STRING-NUL]
 
-[PORT-STRING-NUL-JSON] The explicit Python decoder preserves the full byte extent of escaped NUL in JSON keys and values. The encoder emits an escaped NUL, including in validation messages and reflected inputs. The strict decoder retains its existing NUL policy. Complete native String support still requires length-aware HTTP framing, container lookup, file I/O and audited C adapters.
+[PORT-STRING-NUL-JSON] The explicit Python decoder preserves the full byte extent of escaped NUL in JSON keys and values. The encoder emits an escaped NUL, including in validation messages and reflected inputs. The strict decoder retains its existing NUL policy. Complete native String support still requires length-aware HTTP client framing, container lookup, file I/O and audited C adapters.
+
+[PORT-STRING-NUL-HTTP] The HTTP server passes every request byte to its handler and sends every response byte with the corresponding Content-Length. A literal NUL in a JSON request may not hide a suffix after a complete value. The FastAPI body oracle checks raw NUL at the root, inside a member name or value, and after a complete document. Binary echo checks cover exact byte counts and values, including an input containing all 256 bytes.
 
 [PORT-STRING-NUL-KEYS] JSON member identity uses the complete decoded byte length. Member lookup, strict duplicate detection and Python last-wins ordering must share a bounded byte comparison, so `a\0b`, `a\0c` and `a` remain distinct while repeated identical full keys retain the final value at their first insertion position. Arena key lengths are captured before parsing their values can append more text. This internal guarantee does not authorize removing the native string guard.
 

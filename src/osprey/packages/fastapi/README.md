@@ -37,7 +37,7 @@ Generate records: `python3 src/osprey/packages/fastapi/generate_models.cpython`.
 
 Real HTTP acceptance: `python3 src/osprey/packages/fastapi/tests/e2e.cpython`. It compiles the actual Osprey sources and makes HTTP requests against the native listener, including parallel requests. Logs are in `target/fastapi/`.
 
-The native GC and ARC suites pass. FastAPI passes the 98.2% package coverage gate on both backends with 765 of 779 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 562 body records over real HTTP.
+The native GC and ARC suites pass. FastAPI passes the 98.2% package coverage gate on both backends with 771 of 785 executable source lines covered. The suites assert 331 routing/dependency records, 300 CORS records and 572 body records over real HTTP.
 
 Dependency cases cover shared and uncached acquisitions, overrides, nested denials, multiple validation errors with distinct locations/inputs, missing and malformed integer headers, and HTTP/validation failures during cleanup. The expanded corpus caught and now guards the compiler's nested pattern-alias shadowing bug, acceptance of `2.`, rejection of valid `1_000`, and incorrect handling of Latin-1 HTTP header bytes.
 
@@ -55,4 +55,4 @@ Body binding provides typed readers and typeDiagram-generated fixture records fo
 
 The explicit `jsonDecodePython` boundary decoder preserves first-key insertion order with final values, including nested objects and escaped key spellings, and accepts Python's NaN/infinity forms before model validation. Tests include 2,000 repeated keys, malformed duplicate input, non-finite values in ignored fields and non-finite values overwritten by later keys; they assert FastAPI's exact success or failure response. Ordinary `jsonDecode` retains its strict duplicate-key and finite-number rules, verified by the exact Default/ML JSON goldens under GC and ARC. The compatibility decoder preserves escaped NUL in keys and values. Native int64 and nesting limits still apply.
 
-The body oracle records 562 cases from five generated NAP models, with contract and schema hashes in `BODY_JSON`. GC and ARC match all responses, including the 68 escaped NUL cases. Raw NUL handling at HTTP and other C-string boundaries remains incomplete.
+The body oracle records 572 cases from five generated NAP models, with contract and schema hashes in `BODY_JSON`. GC and ARC match all responses, including the 68 escaped NUL cases. The HTTP server preserves literal NUL in binary bodies and rejects invalid JSON with the recorded status and offset, even after a complete JSON prefix. General UTF-16/UTF-32 body decoding and the native HTTP client’s binary handling remain incomplete.

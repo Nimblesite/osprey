@@ -335,6 +335,12 @@ def nul_cases():
     cases += [("/body/context", js({"tenant_id": value, "provider_user_id": "u"}), JSON) for value in texts]
     cases += [("/body/bundle", js({"content": "safe", "extra": value}), JSON) for value in texts]
     cases += [("/body/bundle", js(value), JSON) for value in texts]
+    # Literal NUL bytes must reach the parser, including after an otherwise valid document.
+    raw = ['\x00', '\x00{"content":"safe"}', '{"content":"safe"}\x00',
+           '{"content":"safe"}\x00{"content":"hidden"}', '{"content":"safe"} \x00',
+           '{"content":"\x00"}', '{"content":"before\x00after"}', '{"content":"é\x00😀"}',
+           '{"con\x00tent":"safe"}', '{"content":\x00null}']
+    cases += [("/body/bundle", body, JSON) for body in raw]
     return cases
 
 

@@ -473,17 +473,19 @@ JDoc *json_parse_doc_policy(const char *text, const char *op, bool typed,
   Parser ps = {.c = {.p = text, .base = text, .ok = true, .python = python},
                .typed = typed};
   int64_t length = osp_mem_string_length(text);
-  const char *nul = length > 0 ? memchr(text, '\0', (size_t)length) : NULL;
-  if (nul) {
-    ps.c.p = nul;
-    json_reject(&ps.c, "unescaped NUL byte");
+  ps.c.end = length >= 0 ? text + length : NULL;
+  // CPython's byte decoder infers a wide Unicode encoding from either initial
+  // NUL. A partial 16-bit unit is an encoding failure before JSON parsing.
+  if (python && length > 1 && (length & 1) && (text[0] == '\0' || text[1] == '\0')) {
+    json_reject(&ps.c, "truncated wide JSON encoding");
     record_rejection(&ps.c, op);
     *status = JSON_ERR_MALFORMED;
     return NULL;
   }
   ps.doc = calloc(1, sizeof(JDoc));
   bool parsed = ps.doc ? parse_root(&ps) : (out_of_memory(&ps), false);
-  bool trailing = parsed && *ps.c.p != '\0';
+  bool hidden = parsed && *ps.c.p == '\0' && ps.c.end && ps.c.p < ps.c.end;
+  bool trailing = parsed && (*ps.c.p != '\0' || hidden);
   if (trailing) {
     json_reject(&ps.c, "trailing text after the value");
   }
@@ -493,7 +495,7 @@ JDoc *json_parse_doc_policy(const char *text, const char *op, bool typed,
     return ps.doc;
   }
   json_doc_free(ps.doc);
-  *status = trailing ? JSON_ERR_TRAILING : JSON_ERR_MALFORMED;
+  *status = trailing && !hidden ? JSON_ERR_TRAILING : JSON_ERR_MALFORMED;
   record_rejection(&ps.c, op);
   return NULL;
 }

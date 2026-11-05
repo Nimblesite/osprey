@@ -1,5 +1,6 @@
 #include "http_server_internal.h"
 #include "memory_hooks.h"
+#include "string_runtime.h"
 
 // Native listener and callback bridge [HTTP-SERVER].
 
@@ -40,9 +41,10 @@ static void reject_request(int client_fd, HttpRequestBuffer *request,
   label_partial_request(request);
   const char *body = http_rejection_body(read_status);
   int64_t status = http_rejection_status(read_status);
+  size_t bytes = strlen(body);
   bool sent = http_send_response(client_fd, status,
-                                 "Content-Type: application/json\r\n", body);
-  http_log_exchange(request, read_status, status, strlen(body), sent);
+                                 "Content-Type: application/json\r\n", body, bytes);
+  http_log_exchange(request, read_status, status, bytes, sent);
 }
 
 static struct HttpResponse *call_handler(HttpServer *server,
@@ -61,6 +63,18 @@ static struct HttpResponse *call_handler(HttpServer *server,
 
 static void serve_request(int client_fd, HttpServer *server,
                           HttpRequestBuffer *request) {
+  // The borrowed body normally already has a terminator at its exact length.
+  // Own an explicit byte span when a C terminator would hide part of it.
+  char *managed_body = NULL;
+  size_t request_bytes = request->expected_body_bytes;
+  if (memchr(request->body, '\0', request_bytes)) {
+    managed_body = osp_string_dup_internal(request->body, request_bytes);
+    if (!managed_body) {
+      reject_request(client_fd, request, REQUEST_READ_FAILED);
+      return;
+    }
+    request->body = managed_body;
+  }
   struct HttpResponse *response = call_handler(server, request);
   bool has_response = response && response->partialBody;
   int64_t status = has_response ? response->status : 200;
@@ -69,13 +83,15 @@ static void serve_request(int client_fd, HttpServer *server,
                             : "Content-Type: text/plain\r\n";
   const char *body =
       has_response ? response->partialBody : simple_response_body;
-  bool sent = http_send_response(client_fd, status, headers, body);
-  http_log_exchange(request, REQUEST_COMPLETE, status, strlen(body), sent);
+  size_t bytes = (size_t)osp_strlen(body);
+  bool sent = http_send_response(client_fd, status, headers, body, bytes);
+  http_log_exchange(request, REQUEST_COMPLETE, status, bytes, sent);
   /* The Osprey handler transferred +1 on its HttpResponse across the C
    * callback boundary; the response (and the header/body strings its layout
    * word marks) dies here, once the bytes are on the wire and logged.
    * [GC-ARC-PERCEUS]. No-op off ARC. */
   osp_release(response);
+  osp_release(managed_body);
 }
 
 static void process_client(int client_fd, HttpServer *server) {

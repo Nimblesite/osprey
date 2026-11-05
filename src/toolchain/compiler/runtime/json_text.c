@@ -258,7 +258,8 @@ bool json_decode_string(Cursor *c, JsonBuf *out) {
              string_rejected(c, "out of memory");
     }
     if (*c->p == '\0') {
-      return string_rejected(c, "unterminated string");
+      bool embedded = c->end && c->p < c->end;
+      return string_rejected(c, embedded ? "unescaped NUL in string" : "unterminated string");
     }
     if (!decode_escape(c, out)) {
       return string_rejected(c, "invalid character or escape in string");

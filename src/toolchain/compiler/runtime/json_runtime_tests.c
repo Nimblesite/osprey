@@ -394,6 +394,11 @@ static void t_json_rejects_raw_nul(void) {
   CHECK(json_decode_open(suffix) == ERR_MALFORMED);
   CHECK(json_parse(suffix) == ERR_MALFORMED);
   CHECK(json_decode_python_open(inside) == ERR_MALFORMED);
+  CHECK(strcmp(osp_io_error(), "jsonDecode: byte 2: unescaped NUL in string") == 0);
+  char *wide = owned_bytes("\0{}", 3);
+  CHECK(json_decode_python_open(wide) == ERR_MALFORMED);
+  CHECK(strcmp(osp_io_error(), "jsonDecode: byte 0: truncated wide JSON encoding") == 0);
+  osp_release(wide);
   osp_release(inside);
   osp_release(suffix);
 }

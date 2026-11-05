@@ -53,7 +53,7 @@ def method_cases(port):
 
 
 def body_cases(port):
-    for payload in (b"", b"hello", "héllo ☕".encode(), b'{"x":[1,true,null]}', b"line1\r\nline2\n", b"\xff\xfe\x80", bytes(range(1, 256)), b"a" * 4096, "☕".encode() * 1000):
+    for payload in (b"", b"hello", "héllo ☕".encode(), b'{"x":[1,true,null]}', b"line1\r\nline2\n", b"\xff\xfe\x80", bytes(range(1, 256)), b"\x00", b"head\x00tail", b"tail\x00", bytes(range(256)), b"a" * 4096, "☕".encode() * 1000):
         status, headers, body = request(port, "POST", "/echo", payload)
         assert (status, body) == (201, payload), (status, body, payload)
         assert headers["Content-Type"] == "application/octet-stream"

@@ -184,6 +184,8 @@ def json_reason(reason):
         return "Expecting ',' delimiter"
     elif startsWith(reason, "expected ':'"):
         return "Expecting ':' delimiter"
+    elif reason == "unescaped NUL in string":
+        return "Invalid control character at"
     elif reason == "trailing text after the value":
         return "Extra data"
     else:
@@ -200,9 +202,16 @@ def json_error(source, message):
         case Success(value=end):
             number = parseInt(take(drop(message, len(prefix)), end))
             reason = drop(drop(message, len(prefix)), satAdd(end, 2))
-            return json_error_location(B.bind(number, lambda offset: json_location(source, offset)), json_reason(reason))
+            return json_error_response(source, number, reason)
         case Error():
             return E.exception_response(E.exception(500, message, ""))
+
+
+def json_error_response(source, number, reason):
+    if reason == "truncated wide JSON encoding":
+        return E.exception_response(E.exception(400, "There was an error parsing the body", ""))
+    else:
+        return json_error_location(B.bind(number, lambda offset: json_location(source, offset)), json_reason(reason))
 
 
 def json_error_location(position, reason):

@@ -51,7 +51,7 @@ void sanitize_log_token(const char *input, char *output, size_t capacity);
 int http_send_all(int socket_fd, const char *data, size_t length);
 bool http_configure_client_socket(int socket_fd);
 bool http_send_response(int client_fd, int64_t status, const char *headers,
-                        const char *body);
+                        const char *body, size_t body_bytes);
 void http_log_exchange(const HttpRequestBuffer *request,
                        RequestReadStatus read_status, int64_t status,
                        size_t response_bytes, bool sent);

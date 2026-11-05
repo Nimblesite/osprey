@@ -73,6 +73,7 @@ typedef struct {
 typedef struct {
   const char *p;
   const char *base;
+  const char *end; // terminator of a managed input span, or NULL for borrowed text
   const char *why;
   const char *at;
   size_t depth;

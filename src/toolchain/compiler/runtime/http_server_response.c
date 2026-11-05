@@ -65,9 +65,8 @@ static const char *status_reason(int64_t status) {
 }
 
 bool http_send_response(int client_fd, int64_t status, const char *headers,
-                        const char *body) {
+                        const char *body, size_t body_bytes) {
   char wire_headers[MAX_HTTP_BUFFER];
-  size_t body_bytes = strlen(body);
   int header_bytes =
       snprintf(wire_headers, sizeof(wire_headers),
                "HTTP/1.1 %" PRId64 " %s\r\n%sContent-Length: "
