@@ -1058,6 +1058,14 @@ ok parse[196]
 ok parse[197]
 ok parse[198]
 ok parse[199]
+ok parse_wrong_function_tag
+ok parse_long_function_name
+ok parse_wrong_parameter_tag
+ok parse_long_parameter_name
+ok parse_wrong_close
+ok parse_bad_error_document
+ok parse_missing_error_field
+ok parse_duplicate_parameter
 ok chunked[1][0]
 ok chunked[1][1]
 ok chunked[1][2]
@@ -2336,6 +2344,10 @@ ok target[198]
 ok adversarial[198]
 ok target[199]
 ok adversarial[199]
+ok constrain_enum_run
+ok constrain_enum_review
+ok constrain_enum_prefix
+ok constrain_enum_undeclared
 ok control_unmasked[0]
 ok control_unmasked[1]
 ok control_unmasked[2]
@@ -2518,4 +2530,4 @@ ok model_full_wrong_slot
 ok model_decode_missing_layer
 ok model_mapped_missing_file
 ok model_quantized_head_fault
-2520 passed, 0 failed
+2532 passed, 0 failed

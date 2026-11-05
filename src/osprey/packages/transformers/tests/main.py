@@ -367,7 +367,29 @@ def parse_cases():
     """Every Phase 0 turn, parsed whole."""
     tools = tool_list()
     records = records_of(ExpectedTools.CASES)
-    return listConcat([Check.equal("case_count", len(records), 200)], mapList(indices_of(records), lambda i: parse_case(tools, record_at(records, i), i)))
+    oracle = mapList(indices_of(records), lambda i: parse_case(tools, record_at(records, i), i))
+    return listConcat([Check.equal("case_count", len(records), 200)], listConcat(oracle, parser_boundary_cases(tools)))
+
+
+def parser_boundary_cases(tools):
+    name = join(toList(map(range(201), lambda _i: "x")), "")
+    call = "<tool_call><function=write_file>"
+    return [
+        refusal("parse_wrong_function_tag", ToolParser.parse(tools, "<tool_call><fn=write_file>"), "format@call: expected <function="),
+        refusal("parse_long_function_name", ToolParser.parse(tools, "<tool_call><function=" + name), "format@call: the function name is unterminated"),
+        refusal("parse_wrong_parameter_tag", ToolParser.parse(tools, call + "<param=path>"), "format@call: expected <parameter= or </function>"),
+        refusal("parse_long_parameter_name", ToolParser.parse(tools, call + "<parameter=" + name), "format@call: a parameter name is unterminated"),
+        refusal("parse_wrong_close", ToolParser.parse(tools, call + "</function></wrong>"), "format@call: expected </tool_call>"),
+        refusal("parse_bad_error_document", ToolParser.error_field("not json", "keyword"), "tool_error@: not a tool error"),
+        Check.equal("parse_missing_error_field", unwrap_or(ToolParser.error_field("{}", "keyword"), "unexpected error"), ""),
+        duplicate_parameter_case(tools, call),
+    ]
+
+
+def duplicate_parameter_case(tools, prefix):
+    step = parsed_turn(tools, prefix + "<parameter=path>a</parameter><parameter=path>b</parameter></function></tool_call>")
+    call = first_call(step)
+    return Check.equal("parse_duplicate_parameter", encoded(call.arguments) + "|" + error_field(call, "keyword") + "|" + error_field(call, "parameter"), "null|duplicate|path")
 
 
 def parse_case(tools, record, i):
@@ -474,7 +496,27 @@ def constrain_cases():
     """Every Phase 0 case, sampled twice: towards its own tokens, and adversarially."""
     tools = tool_list()
     records = records_of(ExpectedTools.CASES)
-    return flatten(mapList(indices_of(records), lambda i: constrain_case(tools, record_at(records, i), i)))
+    return listConcat(flatten(mapList(indices_of(records), lambda i: constrain_case(tools, record_at(records, i), i))), constrain_enum_cases())
+
+
+def constrain_enum_cases():
+    tools = decoded("[{\"type\":\"function\",\"function\":{\"name\":\"set_mode\",\"parameters\":{\"type\":\"object\",\"properties\":{\"mode\":{\"type\":\"string\",\"enum\":[\"run\",\"review\"]}},\"required\":[\"mode\"],\"additionalProperties\":false}}}]")
+    prefix = "<tool_call>\n<function=set_mode>\n<parameter=mode>\n"
+    suffix = "\n</parameter>\n</function>\n</tool_call>"
+    return [
+        Check.equal("constrain_enum_run", completed_enum_call(tools, prefix + "run" + suffix), True),
+        Check.equal("constrain_enum_review", completed_enum_call(tools, prefix + "review" + suffix), True),
+        Check.equal("constrain_enum_prefix", completed_enum_call(tools, prefix + "r"), False),
+        refusal("constrain_enum_undeclared", ToolConstrain.advance(ToolConstrain.start(tools), tools, prefix + "reject"), "constrain@value: not a declared member"),
+    ]
+
+
+def completed_enum_call(tools, text):
+    match ToolConstrain.advance(ToolConstrain.start(tools), tools, text):
+        case Success(value=machine):
+            return ToolConstrain.complete(machine)
+        case Error():
+            return False
 
 
 def constrain_case(tools, record, i):
