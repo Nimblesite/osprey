@@ -204,10 +204,10 @@ mod unix {
     /// GPT-2. The Python flavor spells the operation `zip_with`.
     const ZIP_DEFAULT: Operation = Operation {
         word: "zipWith",
-        declaration: (BACKENDS, "zipWith: fn(B, B, Combine) -> B"),
+        declaration: (BACKENDS, "zipWith: fn(B, B, Combine) -> Result<B, string>"),
         arms: [
-            (CPU, "zipWith a b f => range"),
-            (GPU, "zipWith a b f => gpuZipWith"),
+            (CPU, "zipWith a b f => Success { value: range"),
+            (GPU, "zipWith a b f => answered(gpuZipWith"),
         ],
         performs: &[
             (MODEL, "perform Backends::Tensor.zipWith(a, b, addF)"),
