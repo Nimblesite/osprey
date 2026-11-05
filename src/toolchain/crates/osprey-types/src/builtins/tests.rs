@@ -182,7 +182,7 @@ fn matrix_operand_rejection_keeps_its_source_position() {
     assert!(
         errors.iter().any(|error| error
             .position
-            .is_some_and(|at| at.line == 5 && at.column == 4)),
+            .is_some_and(|at| at.line == 4 && at.column == 4)),
         "{errors:?}"
     );
 }
