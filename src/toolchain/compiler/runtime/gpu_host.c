@@ -444,7 +444,8 @@ static void quant_names(char *text, size_t size) {
 void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, int64_t inner, int64_t cols) {
   const QuantFormat *format = quant_format(type);
   if (!format) {
-    char reason[128], names[96];
+    char names[96];
+    char reason[sizeof names + sizeof "unsupported tensor type; expected "];
     quant_names(names, sizeof names);
     (void)snprintf(reason, sizeof reason, "unsupported tensor type; expected %s", names);
     osp_io_error_text(OP_MATMUL_QUANT, "weights", reason);
