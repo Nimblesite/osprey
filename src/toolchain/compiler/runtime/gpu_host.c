@@ -198,6 +198,27 @@ static float q8_0_step(float acc, const float *x, const unsigned char *b) {
   return acc;
 }
 
+static float q5_k_step(float acc, const float *x, const unsigned char *b) {
+  float d = quant_half(b, 0), dmin = quant_half(b, 2);
+  for (unsigned g = 0; g < 4; g++) {
+    for (unsigned h = 0; h < 2; h++) {
+      unsigned sub = 2 * g + h;
+      unsigned sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
+      float d1 = d * (float)sc;
+      float m1 = dmin * (float)mn;
+      const unsigned char *ql = b + 48 + 32 * g;
+      for (unsigned l = 0; l < 32; l++) {
+        unsigned nib = h ? (unsigned)(ql[l] >> 4) : (unsigned)(ql[l] & 15);
+        unsigned high = (unsigned)((b[16 + l] >> sub) & 1);
+        float weight = d1 * (float)(nib + 16 * high);
+        weight = weight - m1;
+        acc = quant_add(acc, x[g * 64 + h * 32 + l], weight);
+      }
+    }
+  }
+  return acc;
+}
+
 // One block format the product decodes: its size, and the step that turns one
 // block into products in the running sum.
 typedef struct {
@@ -212,6 +233,7 @@ static const QuantFormat QUANT_FORMATS[] = {
     {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4k_step},
     {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_step},
     {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_step},
+    {"Q5_K", "osprey_matmul_q5_k", 256, 176, q5_k_step},
 };
 #define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
 

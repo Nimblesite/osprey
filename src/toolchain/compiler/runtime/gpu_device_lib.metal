@@ -341,6 +341,29 @@ float q8_0_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
     return acc;
 }
 
+// Q5_K: 256 weights per 176-byte block, Q4_K's four low bits plus a high-bit mask,
+// a binary16 scale and minimum and eight 6-bit sub-block scales and minimums.
+float q5_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+    float d = quant_half(b, 0), dmin = quant_half(b, 2);
+    for (uint g = 0; g < 4; g++) {
+        for (uint h = 0; h < 2; h++) {
+            uint sub = 2 * g + h;
+            uint sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
+            float d1 = d * (float)sc;
+            float m1 = dmin * (float)mn;
+            GPU_GLOBAL const uchar *ql = b + 48 + 32 * g;
+            for (uint l = 0; l < 32; l++) {
+                uint nib = h ? (uint)(ql[l] >> 4) : (uint)(ql[l] & 15);
+                uint high = (uint)((b[16 + l] >> sub) & 1);
+                float weight = d1 * (float)(nib + 16 * high);
+                weight = weight - m1;
+                acc = quant_add(acc, x[g * 64 + h * 32 + l], weight);
+            }
+        }
+    }
+    return acc;
+}
+
 // Thread t computes part p = t % parts of output i = t / parts: the blocks
 // from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
 // from 0.0f, into partial[i * parts + p]. One template for every block format,
@@ -368,6 +391,7 @@ kernel void osprey_matmul_##TYPE(GPU_GLOBAL const float *x GPU_BUFFER(0), \
 QUANT_KERNEL(q4_k, q4_k_step, 256, 144)
 QUANT_KERNEL(q8_0, q8_0_step, 32, 34)
 QUANT_KERNEL(q6_k, q6_k_step, 256, 210)
+QUANT_KERNEL(q5_k, q5_k_step, 256, 176)
 #undef QUANT_KERNEL
 
 // out[i] = the `parts` partial sums of output i added in order from 0.0f.
