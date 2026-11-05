@@ -50,7 +50,9 @@
 # 2026-11-04: Deslop 0.38.0 measures 6816/229147 LOC (2.9745%).
 # C is unsupported by this metric; the separate manual runtime review removes
 # duplicated lifecycle code without merging independent numeric oracles.
-max_duplication_percent = 2.98
+# 2026-11-05: shared span scanning and statement-position dispatch.
+# Deslop 0.38.0 measures 6988/235951 LOC (2.9616%).
+max_duplication_percent = 2.962
 
 [defaults]
 exclude = [
