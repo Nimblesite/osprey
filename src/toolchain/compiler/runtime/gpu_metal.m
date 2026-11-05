@@ -4,6 +4,7 @@
 // product and every compiled kernel alike.
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include <os/lock.h>
 #include "gpu_device.h"
 #include "io_error.h"
 #include "../bin/gpu_shader_source.h"
@@ -109,16 +110,52 @@ static bool within_limits(const OspreyGpuDispatch *d) {
   return d->threads <= UINT32_MAX;
 }
 
+// A dead buffer's device object waits here for the next result of its exact
+// size, so a token's hundreds of results skip the device allocation and the copy
+// of zeros [LLM-DISPATCH-BATCH]. Reuse is ordered: the encoder is serial, so a
+// queued kernel that reads the old words runs before the kernel that overwrites
+// them. A result needs no upload because every kernel writes each element of
+// its output, or faults, and a faulted run hands back no buffer. A trylock keeps
+// a finalizer on a stopped thread's collection from ever waiting on this pool;
+// on contention the object is simply released.
+#define GPU_POOL_CAP 64
+#define GPU_POOL_BYTES ((NSUInteger)1 << 28)
+static id<MTLBuffer> gpu_pool[GPU_POOL_CAP];
+static unsigned gpu_pool_count;
+static NSUInteger gpu_pool_bytes;
+static os_unfair_lock gpu_pool_lock = OS_UNFAIR_LOCK_INIT;
+
+static id<MTLBuffer> pooled(NSUInteger bytes) {
+  id<MTLBuffer> found = nil;
+  if (!os_unfair_lock_trylock(&gpu_pool_lock)) return nil;
+  for (unsigned i = gpu_pool_count; i-- > 0 && found == nil;) {
+    if (gpu_pool[i].length != bytes) continue;
+    found = gpu_pool[i];
+    gpu_pool[i] = gpu_pool[--gpu_pool_count];
+    gpu_pool[gpu_pool_count] = nil;
+    gpu_pool_bytes -= bytes;
+  }
+  os_unfair_lock_unlock(&gpu_pool_lock);
+  return found;
+}
+
+// The new object behind an argument: a mapped region shared without a copy, a
+// fresh result from the pool, else a copy of the host words.
+static id<MTLBuffer> created(const OspreyGpuArg *arg) {
+  NSUInteger bytes = (NSUInteger)osprey_gpu_arg_bytes(arg);
+  if (arg->map_base)
+    return [gpu_device newBufferWithBytesNoCopy:(void *)(uintptr_t)arg->map_base length:(NSUInteger)arg->map_bytes
+                                        options:MTLResourceStorageModeShared deallocator:nil];
+  id<MTLBuffer> reused = arg->kind == OSPREY_GPU_OUTPUT && arg->slot ? pooled(bytes) : nil;
+  return reused != nil ? reused : [gpu_device newBufferWithBytes:arg->words length:bytes options:MTLResourceStorageModeShared];
+}
+
 // The device object a buffer argument is bound to [GPU-BUFFER-RESIDENT]: the
-// one its slot holds, else a new one created from its words, kept in the slot
-// of a resident argument and alive only for this dispatch otherwise.
+// one its slot holds, else a new one, kept in the slot of a resident argument
+// and alive only for this dispatch otherwise.
 static id<MTLBuffer> object_of(const OspreyGpuArg *arg) {
   if (arg->slot && *arg->slot) return (__bridge id<MTLBuffer>)*arg->slot;
-  id<MTLBuffer> buffer =
-      arg->map_base ? [gpu_device newBufferWithBytesNoCopy:(void *)(uintptr_t)arg->map_base length:(NSUInteger)arg->map_bytes
-                                                   options:MTLResourceStorageModeShared deallocator:nil]
-                    : [gpu_device newBufferWithBytes:arg->words length:(NSUInteger)osprey_gpu_arg_bytes(arg)
-                                             options:MTLResourceStorageModeShared];
+  id<MTLBuffer> buffer = created(arg);
   if (buffer != nil && arg->slot) {
     CFTypeRef retained = CFBridgingRetain(buffer);
     *arg->slot = (void *)(uintptr_t)retained;
@@ -175,6 +212,22 @@ int osprey_gpu_metal_download(void *object, void *out, uint64_t count) {
 void osprey_gpu_metal_release(void *object) {
   @autoreleasepool {
     (void)CFBridgingRelease(object);
+  }
+}
+
+// A dead buffer's object goes to the pool when there is room; a mapped region's
+// object takes osprey_gpu_metal_release instead, since it wraps memory the
+// runtime unmaps or frees.
+void osprey_gpu_metal_recycle(void *object) {
+  @autoreleasepool {
+    id<MTLBuffer> buffer = (__bridge_transfer id<MTLBuffer>)object;
+    if (os_unfair_lock_trylock(&gpu_pool_lock)) {
+      if (gpu_pool_count < GPU_POOL_CAP && gpu_pool_bytes + buffer.length <= GPU_POOL_BYTES) {
+        gpu_pool_bytes += buffer.length;
+        gpu_pool[gpu_pool_count++] = buffer;
+      }
+      os_unfair_lock_unlock(&gpu_pool_lock);
+    }
   }
 }
 

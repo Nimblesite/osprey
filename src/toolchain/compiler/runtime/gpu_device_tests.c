@@ -245,6 +245,7 @@ static const QuantCase QUANT_CASES[] = {
 // The decoders read whole words, so weights mapped off a 4-byte boundary are an
 // error naming the boundary, and the same region one byte later succeeds.
 void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes);
+void osprey_gpu_finalize(void *buffer);
 static void misaligned_weights(void *x, int64_t rows, int64_t inner, int64_t cols) {
   char path[] = "/tmp/osprey_quant_XXXXXX";
   int fd = mkstemp(path);
@@ -258,6 +259,46 @@ static void misaligned_weights(void *x, int64_t rows, int64_t inner, int64_t col
   assert(osprey_gpu_matmul_quant(x, even, "Q4_K", rows, inner, cols) != NULL);
   checks += 2;
 }
+// One chain of products over mapped weights: the first result feeds the second and
+// dies, so the third reuses its device object while the second may still be queued,
+// and the mapping goes away before anything is read. Words stay the host's.
+static float *dropped_chain(const char *mode, const char *path, void *x, void *other) {
+  const int64_t inner = 512, cols = 512, words = cols * 2 * 144;
+  assert(setenv("OSPREY_GPU", mode, 1) == 0);
+  void *mapped = osprey_gpu_map_file(path, 0, words, 1);
+  void *first = osprey_gpu_matmul_quant(x, mapped, "Q4_K", 1, inner, cols);
+  void *second = osprey_gpu_matmul_quant(first, mapped, "Q4_K", 1, inner, cols);
+  osprey_gpu_finalize(first);
+  void *third = osprey_gpu_matmul_quant(other, mapped, "Q4_K", 1, inner, cols);
+  osprey_gpu_finalize(mapped);
+  assert(second && third);
+  float *both = malloc((size_t)cols * 2 * sizeof(float));
+  assert(both);
+  memcpy(both, osprey_gpu_data(second), (size_t)cols * sizeof(float));
+  memcpy(both + cols, osprey_gpu_data(third), (size_t)cols * sizeof(float));
+  return both;
+}
+
+static void dropped_buffers(const QuantCase *c) {
+  const int64_t cols = 512, inner = 512, blocks = 2;
+  void *w = quant_weights(cols, blocks, c->bytes, c->scale_at, c->scales);
+  void *x = osprey_gpu_alloc(inner, 4), *other = osprey_gpu_alloc(inner, 4);
+  float *xs = osprey_gpu_data(x), *os = osprey_gpu_data(other);
+  for (int64_t i = 0; i < inner; i++) {
+    xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+    os[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  }
+  char path[] = "/tmp/osprey_quant_XXXXXX";
+  int fd = mkstemp(path);
+  assert(fd >= 0 && write(fd, osprey_gpu_data(w), (size_t)(cols * blocks * c->bytes)) == cols * blocks * c->bytes && close(fd) == 0);
+  float *host = dropped_chain("host", path, x, other), *device = dropped_chain(selected, path, x, other);
+  assert(unlink(path) == 0);
+  assert(memcmp(host, device, (size_t)cols * 2 * sizeof(float)) == 0);
+  checks++;
+  free(host);
+  free(device);
+}
+
 static void quantized_products(void) {
   for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
     const QuantCase *c = &QUANT_CASES[i];
@@ -270,6 +311,7 @@ static void quantized_products(void) {
          strstr(osp_io_error(), "expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S"));
   checks++;
   misaligned_weights(x, rows, inner, cols);
+  dropped_buffers(&QUANT_CASES[0]);
 }
 
 // The host's fold of `words` in element order, as the sequential kernel computes it.
@@ -380,19 +422,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 34);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 29);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 35);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 30);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 36);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 33);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 39);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;

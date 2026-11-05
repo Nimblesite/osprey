@@ -183,6 +183,20 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
 static void *quant_scratch_slot;
 static void *quant_scratch_base;
 static size_t quant_scratch_bytes;
+
+// The scratch's object wraps memory about to be freed, so queued kernels finish
+// first and the object never joins the Metal pool of reusable results.
+static void release_scratch(void) {
+#if defined(OSPREY_GPU_METAL)
+  if (device_selection() == 2) {
+    (void)osprey_gpu_metal_download(quant_scratch_slot, quant_scratch_base, 0);
+    osprey_gpu_metal_release(quant_scratch_slot);
+  }
+#endif
+#if defined(OSPREY_GPU_OPENCL)
+  if (device_selection() == 3) osprey_gpu_opencl_release(quant_scratch_slot);
+#endif
+}
 #endif
 
 static int quant_scratch(OspreyGpuDispatch *dispatch, uint64_t floats) {
@@ -193,7 +207,7 @@ static int quant_scratch(OspreyGpuDispatch *dispatch, uint64_t floats) {
     size_t bytes = ((needed * 2 + page - 1) / page) * page;
     void *base = NULL;
     if (posix_memalign(&base, page, bytes) != 0) return 0;
-    if (quant_scratch_slot) osprey_gpu_finalize(&(OspreyGpuBuffer){.device = quant_scratch_slot, .adapter = (uint8_t)device_selection()});
+    if (quant_scratch_slot) release_scratch();
     free(quant_scratch_base);
     quant_scratch_slot = NULL;
     quant_scratch_base = base;
@@ -346,7 +360,16 @@ static void release_mapping(OspreyGpuBuffer *b) {
 void osprey_gpu_finalize(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
 #if defined(OSPREY_GPU_METAL)
-  if (b->device && b->adapter == 2) osprey_gpu_metal_release(b->device);
+  if (b->device && b->adapter == 2) {
+    // A queued kernel may still read a mapping the unmap below takes away, so
+    // the batch finishes first; a plain object is kept alive by the batch itself.
+    if (b->map_base) {
+      (void)osprey_gpu_metal_download(b->device, b->data, 0);
+      osprey_gpu_metal_release(b->device);
+    } else {
+      osprey_gpu_metal_recycle(b->device);
+    }
+  }
 #endif
 #if defined(OSPREY_GPU_OPENCL)
   if (b->device && b->adapter == 3) osprey_gpu_opencl_release(b->device);

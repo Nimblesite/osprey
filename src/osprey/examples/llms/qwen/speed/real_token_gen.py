@@ -23,23 +23,26 @@ def lines(path, tokens, layers):
     yield "    print(message)"
     yield "    x"
     yield "}"
-    yield "fn product(x, offset, bytes, kind, inner, cols) = match mapped(offset, bytes) {"
+    yield "fn product(x, weights, kind, inner, cols) = match weights {"
     yield "    Success { value } => match gpuMatMulQuant(x, value, kind, 1, inner, cols) {"
     yield "        Success { value } => value"
     yield "        Error { message } => failed(message, x)"
     yield "    }"
     yield "    Error { message } => failed(message, x)"
     yield "}"
-    yield "fn step(a, b, c) = {"
     count = 0
+    body = []
     for t in reader.tensors:
         parts = t.name.split(".")
         wanted = t.name == "output.weight" or (parts[0] == "blk" and int(parts[1]) in layers and parts[2] in PRODUCTS)
         if wanted:
             inner, cols = int(t.shape[0]), int(t.shape[1])
             x = {5120: "a", 6144: "b", 17408: "c"}[inner]
-            yield f'    let p{count} = product({x}, {t.data_offset}, {t.n_bytes}, "{t.tensor_type.name}", {inner}, {cols})'
+            yield f"let w{count} = mapped({t.data_offset}, {t.n_bytes})"
+            body.append(f'    let p{count} = product({x}, w{count}, "{t.tensor_type.name}", {inner}, {cols})')
             count += 1
+    yield "fn step(a, b, c) = {"
+    yield from body
     yield f"    toFloat(gpuGet(p{count - 1}, 0) ?: toFloat32(0.0))"
     yield "}"
     yield "fn with17408(a, b, c) = print(\"products: ${fold(range(0, %d), 0.0, fn(acc, _t) => acc + step(a, b, c))}\")" % tokens

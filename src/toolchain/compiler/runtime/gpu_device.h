@@ -116,6 +116,7 @@ static inline uint64_t osprey_gpu_arg_bytes(const OspreyGpuArg *arg) {
 int osprey_gpu_metal_dispatch(const OspreyGpuDispatch *dispatch);
 int osprey_gpu_metal_download(void *object, void *out, uint64_t count);
 void osprey_gpu_metal_release(void *object);
+void osprey_gpu_metal_recycle(void *object);
 const char *osprey_gpu_metal_name(void);
 uint64_t osprey_gpu_metal_completed(void);
 #endif

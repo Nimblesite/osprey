@@ -94,6 +94,7 @@ const char *osprey_gpu_metal_name(void) { return "metal:mock"; }
 int osprey_gpu_metal_dispatch(const OspreyGpuDispatch *d) { return mock_dispatch(d, 42); }
 int osprey_gpu_metal_download(void *object, void *out, uint64_t count) { return mock_download(object, out, count); }
 void osprey_gpu_metal_release(void *object) { mock_release(object, 2); }
+void osprey_gpu_metal_recycle(void *object) { mock_release(object, 2); }
 #endif
 #if defined(OSPREY_GPU_OPENCL)
 const char *osprey_gpu_opencl_name(void) { return "opencl:mock"; }
