@@ -74,7 +74,10 @@ static int OSP_CL_CALL arg(void *k, unsigned i, size_t bytes, const void *value)
 }
 static int OSP_CL_CALL launch(void *q, void *k, unsigned rank, const size_t *offset, const size_t *global,
                             const size_t *local, unsigned count, const void *events, void *event) {
-  assert(q && k && rank == 1 && !offset && *global == expected_threads && !local && !count && !events && !event);
+  // [LLM-MATMUL-QUANT]: 32-lane reductions require complete 256-thread groups.
+  assert(q && k && rank == 1 && !offset && global && local && !count && !events && !event);
+  assert(*local == 256 && *global == (expected_threads + 255) / 256 * 256);
+  assert(*global >= expected_threads && *global - expected_threads < 256);
   return status();
 }
 static int OSP_CL_CALL read_buffer(void *q, void *b, unsigned blocking, size_t offset, size_t size,
@@ -143,6 +146,11 @@ static void compiled_case(void) {
   assert(compiled("osprey_kernel_1", source, out, 3) == 1 && programs == 2 && kernels == 2 && out[1] == MOCK_MARK);
   assert(compiled("osprey_kernel_1", source, out, 5) == 1 && programs == 2 && kernels == 2);
   assert(product(out) == 1 && programs == 2 && kernels == 3 && osprey_gpu_opencl_completed() == 4);
+  const size_t boundaries[] = {31, 32, 33, 255, 256, 257, 511, 512, 513};
+  for (unsigned i = 0; i < sizeof boundaries / sizeof *boundaries; i++) {
+    assert(compiled("osprey_kernel_1", source, out, boundaries[i]) == 1);
+    assert(programs == 2 && kernels == 3 && out[0] == MOCK_MARK && out[1] == MOCK_MARK);
+  }
   for (unsigned i = 0; i < CL_MAX_NAMES; i++) {
     (void)snprintf(names[i], sizeof names[i], "k%u", i);
     int result = compiled(names[i], source, out, 1);
