@@ -14,10 +14,15 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    Cause unknown: sizing is in `src/toolchain/hosts/winui/OspreyHost/HostWindow.cs:86-94`. Find what changed
    (runner display area or host `Width`/`Height`); do not refresh goldens blindly. Shots are in the run's
    `winui-self-test` artifact.
-4. **Agent type-check budget [OspreyCodex]**: `agent_check_budget.rs:57`, `examples/agent/` and
-   `examples/agent/test-app` still checking after 120s on CI Linux.
-5. **Deslop gate [OspreyCodex]**: `Format & Analyse` exits 3, so duplication is over the
-   `.config/deslop.toml` ceiling. Run `make _deslop`, remove real duplication, and never raise the ceiling.
-6. **Transient 504s [OspreyCodex: bounded retry]**: wasm32, Rust packages, VS Code extension and proof-kernel jobs all failed on a curl
-   504 during setup; rerunning should clear them. Coverage thresholds failed only because those jobs left
-   no reports.
+4. **Agent type-check budget [OspreyCodex]**
+   - [x] Confirm `examples/agent/` and `examples/agent/test-app` exceeded 120 seconds in the failed Linux run.
+   - [x] Pass the unchanged coverage-instrumented test locally in 69.80 seconds.
+   - [ ] Verify the unchanged test in the hosted Rust workspace rest shard.
+5. **Deslop gate [OspreyCodex]**
+   - [x] Reproduce the gate and remove duplication. The Agent shares its Moonshot wire profiles and MCP request builder.
+   - [x] Pass the unchanged local 2.962% ceiling (6,983 duplicated lines out of 236,042).
+   - [ ] Verify hosted Format & Analyse on the updated PR head.
+6. **WASI sysroot downloads [OspreyCodex]**
+   - [x] Confirm wasm32, Rust packages, VS Code extension and proof-kernel jobs received HTTP 504 during setup.
+   - [x] Retry the pinned download with bounded backoff. The local HTTP probe recovers from one 504 and fails after four attempts on persistent 504s.
+   - [ ] Verify the four hosted jobs and the downstream coverage reports on the updated PR head.
