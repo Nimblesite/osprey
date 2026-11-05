@@ -9,15 +9,18 @@ use std::{collections::BTreeSet, path::Path};
 /// Implements [FFI-LINK-DIRECTIVES].
 pub(super) fn link_args(ir: &str, source: &str, memory: &str) -> Vec<String> {
     let uses_http = uses_http(ir);
+    let uses_gpu = ir.contains("@osprey_gpu_");
+    let linux_gpu = cfg!(target_os = "linux") && uses_gpu;
     let mut args: Vec<_> = runtime_archive(uses_http, memory).into_iter().collect();
     if uses_http {
         args.extend(openssl_flags());
     }
-    args.extend(platform_flags(uses_http, needs_libm(ir)));
-    if cfg!(target_os = "macos") && ir.contains("@osprey_gpu_") {
+    // The Linux GPU archive itself uses libm, even when the IR does not.
+    args.extend(platform_flags(uses_http, linux_gpu || needs_libm(ir)));
+    if cfg!(target_os = "macos") && uses_gpu {
         args.extend(["-framework", "Foundation", "-framework", "Metal"].map(str::to_owned));
     }
-    if cfg!(target_os = "linux") && ir.contains("@osprey_gpu_") {
+    if linux_gpu {
         args.extend(["-ldl", "-pthread"].map(str::to_owned));
     }
     args.extend(source.lines().filter_map(ffi_flag));
