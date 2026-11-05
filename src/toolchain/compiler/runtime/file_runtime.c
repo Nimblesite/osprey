@@ -160,6 +160,12 @@ static char *read_stream(FILE *file, const char *filename) {
     osp_io_error_set("readFile", filename, err);
     return NULL;
   }
+  // [PORT-STRING-NUL] Text cannot represent embedded NUL; never return its prefix.
+  if (memchr(content, '\0', len) != NULL) {
+    free(content);
+    osp_io_error_text("readFile", filename, "text contains NUL; use a binary reader");
+    return NULL;
+  }
   content[len] = '\0';
   return content;
 }

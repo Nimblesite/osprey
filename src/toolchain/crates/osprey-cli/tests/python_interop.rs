@@ -372,3 +372,71 @@ fn python_modules_share_closures_results_and_lookups_across_the_project() {
     )
     .expect("python project runs under GC and ARC");
 }
+
+// Implements [PORT-STRING-NUL]: a text read must never claim a truncated success.
+const NUL_FILE_READER: &str = r#"# osprey: flavor=python
+def describe(path):
+    match readFile(path):
+        case Error(message=message):
+            return "NUL" if contains(message, "NUL") else f"wrong-error:{message}"
+        case Success(value=text):
+            return f"value:{text}"
+
+def main():
+    return print(f"{describe(FILE_LEADING)}|{describe(FILE_MIDDLE)}|{describe(FILE_TRAILING)}|{describe(FILE_GROWN)}|{describe(FILE_PLAIN)}|{describe(FILE_EMPTY)}")
+"#;
+
+fn nul_read_source(directory: &std::path::Path) -> std::io::Result<String> {
+    let grown = format!("{}\0suffix", "x".repeat(16_384));
+    let files = [
+        ("LEADING", "\0tail"),
+        ("MIDDLE", "head\0tail"),
+        ("TRAILING", "head\0"),
+        ("GROWN", grown.as_str()),
+        ("PLAIN", "héllo ☕"),
+        ("EMPTY", ""),
+    ];
+    let mut source = NUL_FILE_READER.to_owned();
+    for (name, bytes) in files {
+        let path = directory.join(name);
+        std::fs::write(&path, bytes)?;
+        source = source.replace(
+            &format!("FILE_{name}"),
+            &format!("{:?}", path.to_string_lossy()),
+        );
+    }
+    Ok(source)
+}
+
+fn assert_nul_file_read(source: &str, memory: &str) -> std::io::Result<()> {
+    let output = effect_execution::execute("nul_file_read", "py", source, memory)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{memory}: {stderr}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "NUL|NUL|NUL|NUL|value:héllo ☕|value:\n",
+        "{memory}: {stderr}"
+    );
+    if memory == "arc" {
+        effect_execution::assert_arc_clean(&stderr);
+    }
+    Ok(())
+}
+
+#[test]
+fn binary_nul_reads_fail_explicitly_instead_of_truncating() -> std::io::Result<()> {
+    let directory = std::env::temp_dir().join(format!("osprey_nul_read_{}", std::process::id()));
+    std::fs::create_dir_all(&directory)?;
+    let source = nul_read_source(&directory)?;
+    let results = std::thread::scope(|scope| {
+        let source = &source;
+        ["gc", "arc"]
+            .map(|memory| scope.spawn(move || assert_nul_file_read(source, memory)))
+            .map(|job| job.join())
+    });
+    std::fs::remove_dir_all(directory)?;
+    for result in results {
+        result.map_err(|_| std::io::Error::other("NUL read assertion failed"))??;
+    }
+    Ok(())
+}

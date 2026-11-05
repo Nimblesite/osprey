@@ -50,6 +50,12 @@ The independently recorded corpus must run over real HTTP under both GC and ARC,
 
 The explicit `jsonDecodePython` decoder implements first-key insertion order with the final value at every object depth, including equivalent escaped key spellings. It must handle large duplicate sets in O(n log n), preserve malformed-input rejection and keep the existing strict `jsonDecode` duplicate-key behavior. It additionally accepts Python's NaN/infinity literals and float overflow before model validation, so ignored or overwritten non-finite inputs may succeed while unencodable validation errors produce FastAPI's plain 500. Strict `jsonDecode` retains finite-only numbers. Native int64, nesting and NUL-free string limits remain explicit; this decoder alone does not establish complete CPython JSON compatibility.
 
+## Native text integrity — [PORT-STRING-NUL]
+
+Escaped NUL must not be admitted into native strings until their full byte length survives copying, concatenation, scalar and structural equality, container lookup, JSON keys/values and serialization, file I/O and HTTP framing. Removing only the parser rejection would silently truncate values and collapse distinct identities such as `a\0b` and `a`. The NAP body corpus therefore retains NUL at the start, middle and end of required, nullable and ignored fields, repeated NUL, Unicode neighbors and NUL-bearing UUID/error inputs as failing parity cases until the representation is fixed.
+
+Text reads must return a typed error for file bytes the current native string representation cannot preserve. In particular, `readFile` must never return successful text containing only the prefix before NUL; plain UTF-8 and empty-file controls must remain successful. The CLI Python-flavor E2E regression exercises leading, middle, trailing and post-buffer-growth NUL under both GC and ARC and requires clean ARC ownership. Full NUL parity requires a length-aware owned representation and audited foreign-C adapters, with bounded storage and explicit errors at C-string-only boundaries; no sentinel substitution or unbounded pointer registry qualifies.
+
 ## Browser access policy — [FASTAPI-NAP-MIDDLEWARE]
 
 The Python-flavor FastAPI port must wrap routing and its error replies in the NAP CORS policy: wildcard origins without credentials; GET, HEAD, POST, PUT, PATCH and DELETE; Authorization, Content-Type, If-None-Match, X-API-Key, X-Tenant-Id and X-Trace-Id request headers; ETag and X-Trace-Id exposed response headers. Policies are generated typed records from `fastapi/models.td`.
