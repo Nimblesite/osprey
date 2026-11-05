@@ -25,3 +25,5 @@ type FixtureContext { tenant_id: String provider_user_id: String }
 type FixtureResource { uri: String mime_type: Optional<String> text: Optional<String> blob: Optional<String> }
 union LocationPart { Field { name: String } Index { value: Int } }
 type FixtureIdp { allowed_algs: List<String> audience: String issuer: String jwks_uri: String }
+type FixtureProviderDetail { code: String message: String }
+type FixtureProviderError { detail: FixtureProviderDetail }

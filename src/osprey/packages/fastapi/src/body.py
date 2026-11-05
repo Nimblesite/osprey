@@ -10,7 +10,7 @@ from fastapi import Params as P
 from fastapi import Responses as R
 from fastapi import Uuids
 
-__all__ = ["bind", "object_body", "text", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "string"]
+__all__ = ["bind", "object_body", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "string"]
 
 
 def invalid(location, kind, message, input):
@@ -25,24 +25,43 @@ def invalid_at(location, kind, message, input):
             return Error(message=message)
 
 
-def object_body(document, decoder):
+def body_path():
+    return [M.Field(name="body")]
+
+
+def object_at(document, path, decoder):
     match document:
         case JsonObject():
-            return decoder(document)
+            return decoder(document, path)
         case _:
-            return invalid(["body"], "model_attributes_type", "Input should be a valid dictionary or object to extract fields from", document)
+            return invalid_at(path, "model_attributes_type", "Input should be a valid dictionary or object to extract fields from", document)
+
+
+def object_body(document, decoder):
+    return object_at(document, body_path(), lambda value, _path: decoder(value))
+
+
+def required_member(document, name, parent, decoder):
+    path = listConcat(parent, [M.Field(name=name)])
+    match jsonField(document, name):
+        case Error():
+            return invalid_at(path, "missing", "Field required", document)
+        case Success(value=field):
+            return decoder(field, path)
+
+
+def nested(document, name, parent, decoder):
+    """Validate a required child object and pass its full location to the decoder."""
+    return required_member(document, name, parent, lambda field, path: object_at(field, path, decoder))
+
+
+def text_at(document, name, parent):
+    """Validate a required string at a nested model location."""
+    return required_member(document, name, parent, string_at)
 
 
 def text(document, name):
-    match jsonField(document, name):
-        case Error():
-            return invalid(["body", name], "missing", "Field required", document)
-        case Success(value=field):
-            match field:
-                case JsonString(value):
-                    return Success(value=M.Valid(value=value))
-                case _:
-                    return invalid(["body", name], "string_type", "Input should be a valid string", field)
+    return text_at(document, name, body_path())
 
 
 def optional_text(document, name):
@@ -252,9 +271,13 @@ def indexed(validation, name, index):
             return M.Invalid(issues=mapList(issues, lambda issue: M.ValidationIssue(location=listConcat([M.Field(name="body"), M.Field(name=name), M.Index(value=index)], issue.location), kind=issue.kind, message=issue.message, input=issue.input, missing=issue.missing, json_input=issue.json_input, context=issue.context)))
 
 
-def string(value):
+def string_at(value, path):
     match value:
         case JsonString(text):
             return Success(value=M.Valid(value=text))
         case _:
-            return invalid_at([], "string_type", "Input should be a valid string", value)
+            return invalid_at(path, "string_type", "Input should be a valid string", value)
+
+
+def string(value):
+    return string_at(value, [])

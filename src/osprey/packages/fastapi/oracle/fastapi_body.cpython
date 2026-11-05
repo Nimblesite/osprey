@@ -41,6 +41,7 @@ from nap.api.schemas_generated import (  # noqa: E402
     EmbeddedResource,
     EndUserIdpUpsertRequest,
     EndUserExecutionContext,
+    ProviderErrorResponse,
 )
 
 PINNED = "0.135.3"
@@ -53,6 +54,7 @@ MODELS = {
     "/body/context": EndUserExecutionContext,
     "/body/resource": EmbeddedResource,
     "/body/idp": EndUserIdpUpsertRequest,
+    "/body/provider-error": ProviderErrorResponse,
 }
 UUID_TEXT = [str(UID), str(UID).upper(), UID.hex, UID.hex.upper(), "{" + str(UID) + "}", "urn:uuid:" + str(UID), "{" + UID.hex + "}", "urn:uuid:" + UID.hex, " " + str(UID) + " ", str(uuid.UUID(int=0)), str(uuid.UUID(int=(1 << 128) - 1))]
 MALFORMED_UUID = [UID.hex[:-1], UID.hex + "0", "0x" + UID.hex, "{" + UID.hex, str(UID).replace("0", "g"), "not-a-uuid", "", "3f2504e-4f89-11d3-9a0c-0305e82c3301", "3f2504e0-4f8-11d3-9a0c-0305e82c3301", "3f2504e0-4f89-11d-9a0c-0305e82c3301", "3f2504e0-4f89-11d3-9a0-0305e82c3301", "3f2504e0-4f89-11d3-9a0c-0305e82c330", "{}", "urn:uuid:"]
@@ -94,14 +96,20 @@ def idp_handler(body: EndUserIdpUpsertRequest):
     return respond(body)
 
 
+def provider_error_handler(body: ProviderErrorResponse):
+    return respond(body)
+
+
 for route, (handler, model) in {
     "/body/bundle": (bundle_handler, BundleFileWriteRequest),
     "/body/key": (key_handler, ApiKeyCreateRequest),
     "/body/context": (context_handler, EndUserExecutionContext),
     "/body/resource": (resource_handler, EmbeddedResource),
     "/body/idp": (idp_handler, EndUserIdpUpsertRequest),
+    "/body/provider-error": (provider_error_handler, ProviderErrorResponse),
 }.items():
-    app.add_api_route(route, handler, methods=["POST"], response_model=model)
+    app.add_api_route(route, handler, methods=["POST"], response_model=model,
+                      status_code=502 if model is ProviderErrorResponse else 200)
 
 
 def js(value):
@@ -391,10 +399,33 @@ def idp_cases():
     return cases + [("/body/idp", js(IDP_BASE | body), JSON) for body in bodies]
 
 
+def provider_error_cases():
+    """NAP provider failure envelope, including nested validation and filtering."""
+    values = ["", "défaut ☕", "before\x00after", 1, 1.0, False, True, None, [], ["x"], {"x": 1}]
+    bodies = [js({"detail": {"code": code, "message": message}})
+              for code in values for message in values]
+    roots = [None, "", True, 3, [], {}, {"detail": {}}, {"detail": None},
+             {"detail": []}, {"detail": False}, {"detail": "bad"},
+             {"detail": {"code": "only"}}, {"detail": {"message": "only"}},
+             {"detail": {"code": 4}}, {"detail": {"message": []}}]
+    bodies += [js(root) for root in roots]
+    bodies += ['{"detail":{"message":"unavailable","code":"upstream","_secret":"discard"},"extra":true}',
+               '{"detail":{"code":"first","code":"last","message":"offline"}}',
+               '{"detail":null,"detail":{"code":"ok","message":"final"}}',
+               '{"detail":{"code":"ok","message":"first","message":null}}',
+               '{"detail":{"code":"first","\\u0063ode":"escaped-last","message":"offline"}}',
+               '{"detail":{"code":"ok","message":"first","message":"last"},"_secret":{"deep":[null]}}',
+               '{"detail":{"message":"offline","code":"first","code":1}}',
+               js({"detail": {"code": "\ud7ff\ue000\U0010ffff", "message": "\u2028\u2029\u200d\u0301"}}),
+               js({"detail": {"code": "\x00", "message": "\x00", "_private": 1}}),
+               js({"detail": {"code": "a", "message": "b", "_private": {"deep": [1, None]}}})]
+    return [("/body/provider-error", body, JSON) for body in bodies]
+
+
 def request_specs():
     """Every raw request the corpus sends, grouped by concern."""
     groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases, key_cases,
-              context_cases, resource_cases, duplicate_key_cases, nonfinite_cases, nul_cases, idp_cases]
+              context_cases, resource_cases, duplicate_key_cases, nonfinite_cases, nul_cases, idp_cases, provider_error_cases]
     return [spec for group in groups for spec in group()]
 
 
