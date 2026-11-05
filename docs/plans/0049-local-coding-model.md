@@ -31,7 +31,7 @@ Gate [LLM-BASELINE]: the model passes enough tasks to be worth porting, and the 
 - [x] [LLM-WEIGHTS-MAPPED]: a read-only buffer over a memory-mapped file region, shared with the GPU without a copy on unified memory. `gpuMapFile` on host and Metal; `@osprey/gguf` `read_path` parsed the real 17.6 GB Q4 header (866 tensors, data at byte 10,996,640, 667 MB peak).
 - [x] [LLM-WEIGHTS-QUANT]: block decoders for each tensor type the chosen GGUF uses (listed from the file in Phase 0); compare against `gguf-py` on every block of a generated fixture. Done in 407e884d3 (pi, reviewed): `Quant.decode` for the nine types the Q4_K_XL file holds, checked bit for bit against ggml's compiled `dequantize_row_*` and gguf-py on 64 seeded blocks per type, 758 assertions green under gc, arc and none.
 - [ ] [LLM-STATE-OWNED]: one mutable, single-owner state buffer for KV and recurrent state, relaxing [GPU-BUFFER] immutability for this type only; checks: no aliasing, compile error on capture by an escaping closure.
-- [ ] [LLM-ARITH-IEEE]: an `Arith` policy with IEEE semantics in kernels and a finite check on each token's logits that faults the request instead of emitting garbage.
+- [ ] [LLM-ARITH-IEEE]: an `Arith` policy with IEEE semantics in kernels and a finite check on each token's logits that faults the request instead of emitting garbage. The finite check is in: `Generation.generate` returns `Result` and a NaN or infinite logits row is `generate: step N: logits are not finite` (oracle records torch picking the NaN index and `multinomial` raising); the kernel-side `Arith` policy is still open.
 
 Gate: all three memory backends pass, ARC clean.
 

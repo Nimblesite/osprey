@@ -200,12 +200,31 @@ def generate_case():
         StoppingCriteria.MaxLengthCriteria(7),
         StoppingCriteria.EosTokenCriteria(Expected.GEN_EOS),
     ]
-    got = Generation.generate(model_logits, Expected.GEN_PROMPT, processors, stoppers, argmax, 5)
-    return Check.ints_equal("generate", got, Expected.GEN_EXPECTED)
+    match Generation.generate(model_logits, Expected.GEN_PROMPT, processors, stoppers, argmax, 5):
+        case Success(value=got):
+            return Check.ints_equal("generate", got, Expected.GEN_EXPECTED)
+        case Error(message=message):
+            return Check.failed("generate", message)
+
+
+def broken_logits(tokens):
+    """A model whose second row carries an infinity and a NaN."""
+    return [toFloat32(0.5), toFloat32(1.0), toFloat32(2.5)] if len(tokens) == len(Expected.GEN_PROMPT) else [toFloat32(0.5), float32FromBits(toInt32(2139095040)), toFloat32(2.5), float32FromBits(toInt32(2143289344)), toFloat32(3.0)]
+
+
+def nonfinite_case():
+    """[LLM-ARITH-IEEE] A non-finite logits row ends the request with an Error naming
+    its step; torch's own argmax would have picked the infinity and its multinomial
+    raised, which the oracle recorded."""
+    match Generation.generate(broken_logits, Expected.GEN_PROMPT, [], [StoppingCriteria.MaxLengthCriteria(7)], argmax, 5):
+        case Success(value=got):
+            return Check.failed("non-finite logits", Check.ints_text(got))
+        case Error(message=message):
+            return Check.truth("non-finite logits", message == "generate: step 2: logits are not finite" and Expected.GEN_NONFINITE_MULTINOMIAL == "RuntimeError", message + " (torch argmax picked index " + toString(Expected.GEN_NONFINITE_ARGMAX) + ")")
 
 
 def all_cases():
-    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), listConcat([generate_case()], tool_cases()))))))
+    return listConcat(math_cases(), listConcat(processor_cases(), listConcat(composition_cases(), listConcat(stopping_cases(), listConcat(helper_cases(), listConcat([generate_case(), nonfinite_case()], tool_cases()))))))
 
 
 def main():

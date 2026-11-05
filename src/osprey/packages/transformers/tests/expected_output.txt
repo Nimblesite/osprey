@@ -395,6 +395,7 @@ ok max_i
 ok min_f
 ok max_f
 ok generate
+ok non-finite logits
 ok corner_number
 ok corner_number_bad
 ok corner_escapes
@@ -2328,4 +2329,4 @@ ok processor_accepts[2]
 ok processor_pick[7]
 ok processor_mask[7]
 ok processor_accepts[7]
-2330 passed, 0 failed
+2331 passed, 0 failed

@@ -409,6 +409,17 @@ def add_generate(C):
     C["GEN_PROMPT"] = prompt
     C["GEN_EOS"] = eos
     C["GEN_EXPECTED"] = ref_generate(prompt)
+    # [LLM-ARITH-IEEE] What torch does with a non-finite logits row: argmax
+    # happily returns the infinite index, multinomial over its softmax raises.
+    # The port rejects the row instead; this records the reference behaviour
+    # the test cites.
+    broken = torch.tensor([0.5, float("inf"), 2.5, float("nan"), 3.0])
+    C["GEN_NONFINITE_ARGMAX"] = int(torch.argmax(broken).item())
+    try:
+        torch.multinomial(torch.softmax(broken, dim=-1), 1)
+        C["GEN_NONFINITE_MULTINOMIAL"] = "no error"
+    except RuntimeError as error:
+        C["GEN_NONFINITE_MULTINOMIAL"] = type(error).__name__
 
 
 def add_stop_string(C):
