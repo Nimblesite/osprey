@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""CPython oracle for the `@osprey/transformers` tool-call layer ([LLM-TOOL-PARSE]).
+"""CPython oracle for the Qwen3.5 tool-call layer ([LLM-TOOL-PARSE]).
 
-Writes packages/transformers/tests/expected_tools.py through the shared
+Writes src/osprey/examples/llms/qwen/model/tests/expected_tools.py through the shared
 `src/osprey/packages/testing/oracle/expected_module.cpython` writer. Everything here comes from the real
 Qwen artifacts and the real `jsonschema` package:
 
 * the wire text of every tool call is rendered by the *unmodified* chat template
-  `src/osprey/packages/transformers/oracle/qwen3_5_chat_template.jinja`, the file published at
+  `src/osprey/examples/llms/qwen/model/oracle/chat_template.jinja`, the file published at
   Qwen/Qwen3.8-27B revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0 (its
   sha256 is pinned below). The `tokenizer.chat_template` metadata inside the
   pinned weights file unsloth/Qwen3.8-27B-GGUF revision
@@ -38,8 +38,8 @@ from jinja2 import Environment
 
 from expected_module import write
 
-REPO = Path(__file__).resolve().parents[5]
-TEMPLATE = Path(__file__).resolve().parent / "qwen3_5_chat_template.jinja"
+REPO = Path(__file__).resolve().parents[7]
+TEMPLATE = Path(__file__).resolve().parent / "chat_template.jinja"
 TEMPLATE_SHA256 = "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041"
 TEMPLATE_REVISION = "Qwen/Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0"
 
@@ -640,13 +640,14 @@ def main():
     }
     versions = {"jsonschema": jsonschema_version(), "jinja2": jinja_version()}
     path = write(
-        "transformers",
-        f"Tool-call parsing values for @osprey/transformers, rendered by the chat template of {TEMPLATE_REVISION}",
+        "tool_calls",
+        f"Qwen3.5 tool-call parsing values, rendered by the chat template of {TEMPLATE_REVISION}",
         versions,
         constants,
         docs,
         module="ExpectedTools",
-        namespace="transformers_tools_expected",
+        namespace="qwen_tools_expected",
+        home="src/osprey/examples/llms/qwen/model",
         file="expected_tools.py",
     )
     print(f"wrote {path}: {len(records)} cases, {len(coercions)} coercions, "

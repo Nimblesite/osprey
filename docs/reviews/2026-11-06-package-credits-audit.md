@@ -33,7 +33,7 @@ The packages that contain derived material already work this way:
 | --- | --- |
 | fastapi | `MIT AND BSD-3-Clause` |
 | scipy | `MIT AND BSD-3-Clause AND BSL-1.0` |
-| transformers | `MIT AND Apache-2.0` |
+| Qwen3.5 example model (`src/osprey/examples/llms/qwen/model`) | `MIT AND Apache-2.0` |
 | tokenizers and tiktoken | MIT plus Unicode terms |
 | gguf | carries the ggml tables under llama.cpp MIT |
 | jinja2 | carries the Apache-2.0 Qwen template |
@@ -47,6 +47,8 @@ The result:
 - FlashAttention's upstream is CUDA/C++ and was not compared line by line. Its port is written from the algorithm.
 
 The `verify-package-licenses` gate passes for all 27 packages.
+
+Update, 6 November: the Qwen3.5 model and tool-call modules moved out of `@osprey/transformers` into `src/osprey/examples/llms/qwen/model`, next to the GPT-2 example, with their Apache-2.0 notices and licence files. `@osprey/transformers` is now the generation layer only and is MIT.
 
 Residual risk:
 

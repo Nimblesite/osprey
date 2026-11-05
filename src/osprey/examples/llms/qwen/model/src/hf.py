@@ -1,6 +1,6 @@
 # osprey: flavor=python
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Hf
 """A `Qwen3_5TextModel` from parameters named as Transformers' `state_dict` names them.
 
@@ -14,14 +14,14 @@ norm. Value heads keep Transformers' grouped order (`tiled = 0`). A missing or
 mis-sized parameter ends the load as the `Error`. Implements [LLM-MODEL-ORACLE].
 """
 
-from transformers import Qwen3_5Attention as Attn
-from transformers import Qwen3_5Config as C
-from transformers import Qwen3_5DeltaNet as DeltaNet
-from transformers import Qwen3_5Mlp as Mlp
-from transformers import Qwen3_5Model as Model
-from transformers import Qwen3_5Shapes as Shapes
-from transformers import Qwen3_5Device as Device
-from transformers.Qwen3_5Device import Fault, constant, strictly
+from qwen import Qwen3_5Attention as Attn
+from qwen import Qwen3_5Config as C
+from qwen import Qwen3_5DeltaNet as DeltaNet
+from qwen import Qwen3_5Mlp as Mlp
+from qwen import Qwen3_5Model as Model
+from qwen import Qwen3_5Shapes as Shapes
+from qwen import Qwen3_5Device as Device
+from qwen.Qwen3_5Device import Fault, constant, strictly
 
 __all__ = ["Params", "load", "transposed", "plus_one", "neg_exp"]
 

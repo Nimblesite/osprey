@@ -1,6 +1,6 @@
 # osprey: flavor=python
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Norm
 """`Qwen3_5RMSNorm` and `Qwen3_5RMSNormGated` on device buffers, one token at a time.
 
@@ -13,7 +13,7 @@ each, then one thread sums the pieces; a head reduces in one thread. Implements
 [LLM-MODEL-ATTENTION], [LLM-MODEL-DELTANET].
 """
 
-from transformers.Qwen3_5Device import at, inverse, must, quot, rem, rsqrt, sigmoid, squares
+from qwen.Qwen3_5Device import at, inverse, must, quot, rem, rsqrt, sigmoid, squares
 
 __all__ = ["rms_row", "rms_heads", "gated"]
 

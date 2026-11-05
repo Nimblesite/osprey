@@ -50,7 +50,7 @@ recomputes them independently from the same corpus, and the suite compares the
 two — never a string the server was handed.
 
 A `/api/chat` turn runs its text through plan 0049 Phase 6's streaming tool
-parser (`@osprey/transformers`' `qwen3_5_tool_parser`): free text becomes
+parser (`qwen.ToolParser` in `../model`): free text becomes
 `content`, reasoning becomes `thinking`, and a call becomes `tool_calls` with
 its arguments coerced by the advertised tool's JSON Schema. A call whose
 arguments fail that schema is a 400 naming the violation, never a harness

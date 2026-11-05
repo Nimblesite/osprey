@@ -1,6 +1,6 @@
 # osprey: flavor=python
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Rope
 """`Qwen3_5TextRotaryEmbedding` and `apply_rotary_pos_emb` for one text position.
 
@@ -12,8 +12,8 @@ first `rotary_dim` values of each head and passes the rest through. Implements
 [LLM-MODEL-ROPE].
 """
 
-from transformers import Qwen3_5Config as C
-from transformers.Qwen3_5Device import at, constant, must, quot, rem
+from qwen import Qwen3_5Config as C
+from qwen.Qwen3_5Device import at, constant, must, quot, rem
 
 __all__ = ["Tables", "tables", "rotated"]
 

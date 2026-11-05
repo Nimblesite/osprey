@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Shapes
 """The index grids and reciprocals one `Qwen3_5TextConfig` needs, built once per model.
 
@@ -10,8 +10,8 @@ device, and every width a kernel divides by is a `Div` ([`Qwen3_5Device`]). Noth
 here depends on the weights. Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION].
 """
 
-from transformers import Qwen3_5Config as C
-from transformers.Qwen3_5Device import Div, divider, grid
+from qwen import Qwen3_5Config as C
+from qwen.Qwen3_5Device import Div, divider, grid
 
 __all__ = ["Shapes", "shapes_of", "NORM_CHUNK", "VOCAB_CHUNK", "chunk_of"]
 

@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=ToolSchema
 """JSON Schema validation and parameter coercion for the Qwen3.5 tool-call format.
 

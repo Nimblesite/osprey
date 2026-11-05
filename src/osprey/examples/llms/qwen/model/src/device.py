@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Device
 """What every `qwen3_5` module shares on the device: weights, faults, grids, index arithmetic.
 

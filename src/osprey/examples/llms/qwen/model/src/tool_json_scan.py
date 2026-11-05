@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=ToolJsonScan
 """An incremental JSON scanner that accepts only values a schema allows.
 
@@ -21,7 +21,7 @@ An empty stack means the value is complete. A rejected byte is a `Result` error,
 never a substituted value.
 """
 
-from transformers import ToolSchema
+from qwen import ToolSchema
 
 __all__ = ["Frame", "ScanStep", "begin", "feed", "finished"]
 

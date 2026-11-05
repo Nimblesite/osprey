@@ -1,6 +1,6 @@
 # osprey: flavor=python
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Model
 """`Qwen3_5TextModel` and the causal head, one token per step, on device buffers.
 
@@ -16,14 +16,14 @@ expanded. Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROP
 [LLM-MODEL-CACHE].
 """
 
-from transformers import Qwen3_5Attention as Attn
-from transformers import Qwen3_5Cache as Cache
-from transformers import Qwen3_5Config as C
-from transformers import Qwen3_5DeltaNet as DeltaNet
-from transformers import Qwen3_5Mlp as Mlp
-from transformers import Qwen3_5Norm as Norm
-from transformers import Qwen3_5Shapes as Shapes
-from transformers.Qwen3_5Device import Fault, Weight, added, at, grid, linear, must, slice_of, strictly, wrapping
+from qwen import Qwen3_5Attention as Attn
+from qwen import Qwen3_5Cache as Cache
+from qwen import Qwen3_5Config as C
+from qwen import Qwen3_5DeltaNet as DeltaNet
+from qwen import Qwen3_5Mlp as Mlp
+from qwen import Qwen3_5Norm as Norm
+from qwen import Qwen3_5Shapes as Shapes
+from qwen.Qwen3_5Device import Fault, Weight, added, at, grid, linear, must, slice_of, strictly, wrapping
 
 __all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "greedy", "step", "decode"]
 

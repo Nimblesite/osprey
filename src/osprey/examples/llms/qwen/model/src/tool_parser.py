@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=ToolParser
 """A streaming parser for the Qwen3.5 tool-call format, coercing by JSON Schema.
 
@@ -38,7 +38,7 @@ arguments, so the harness hands the model a `<tool_response>` it can recover
 from and never sees invented arguments.
 """
 
-from transformers import ToolSchema
+from qwen import ToolSchema
 
 __all__ = ["Call", "Step", "start", "feed", "finish", "parse", "error_field"]
 

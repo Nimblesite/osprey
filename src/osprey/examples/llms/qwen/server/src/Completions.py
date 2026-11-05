@@ -19,7 +19,7 @@ already emitted are dropped from each replay by length.
 
 from qwen_server import Inference
 from qwen_server import Lists
-from transformers import ToolParser
+from qwen import ToolParser
 
 __all__ = ["TEXT", "THINKING", "complete"]
 

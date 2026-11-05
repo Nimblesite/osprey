@@ -1,6 +1,6 @@
 # osprey: flavor=python
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5Cache
 """`Qwen3_5DynamicCache`: the per-layer state one token leaves for the next.
 
@@ -14,8 +14,8 @@ caller threads it, until [LLM-STATE-OWNED] gives it a single owner. Implements
 [LLM-MODEL-CACHE].
 """
 
-from transformers import Qwen3_5Config as C
-from transformers.Qwen3_5Device import strictly, zeros
+from qwen import Qwen3_5Config as C
+from qwen.Qwen3_5Device import strictly, zeros
 
 __all__ = ["DeltaSlot", "AttentionSlot", "Slot", "Cache", "empty", "slot_at", "grown"]
 

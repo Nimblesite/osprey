@@ -660,74 +660,18 @@
       "source_notices": {}
     },
     "transformers": {
-      "license": "MIT AND Apache-2.0",
+      "license": "MIT",
       "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
-      "upstreams": [
-        {
-          "component": "Qwen3.8-27B chat template",
-          "repository": "https://huggingface.co/Qwen/Qwen3.8-27B/tree/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
-          "reference": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
-          "file": "LICENSES/Qwen3.8-27B-Apache-2.0.txt",
-          "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a",
-          "source": "https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/LICENSE",
-          "applies_to": [
-            "oracle/qwen3_5_chat_template.jinja"
-          ],
-          "basis": "Unmodified chat template used as the tool-call test oracle",
-          "notice_attribution": [
-            "Qwen3.8-27B",
-            "Apache-2.0"
-          ]
-        },
-        {
-          "component": "transformers-qwen3_5",
-          "repository": "https://github.com/huggingface/transformers",
-          "reference": "5.20.2 src/transformers/models/qwen3_5/modeling_qwen3_5.py (generated from modular_qwen3_5.py)",
-          "file": "LICENSES/transformers-Apache-2.0.txt",
-          "sha256": "77fd4710def9ec3c0f6225800e0235f15a425abd4a8b03559127fcd782612049",
-          "source": "https://github.com/huggingface/transformers/blob/v5.20.2/LICENSE",
-          "source_selection": "LICENSE shipped in the transformers-5.20.2 wheel's dist-info",
-          "applies_to": [
-            "src/qwen3_5_config.py",
-            "src/qwen3_5_norm.py",
-            "src/qwen3_5_rope.py",
-            "src/qwen3_5_mlp.py",
-            "src/qwen3_5_attention.py",
-            "src/qwen3_5_deltanet.py",
-            "src/qwen3_5_cache.py",
-            "src/qwen3_5_model.py",
-            "src/qwen3_5_hf.py"
-          ],
-          "basis": "Qwen3.5 text model translated from Transformers' PyTorch modules into Osprey GPU code: decoder layer, Gated DeltaNet, gated attention, RMS norms, rotary embedding, MLP, cache layout, config fields and state_dict names",
-          "notice_attribution": [
-            "Copyright 2025 The Qwen Team and The HuggingFace Inc. team"
-          ]
-        }
-      ],
+      "upstreams": [],
       "references": [
         {
           "component": "transformers",
           "repository": "https://github.com/huggingface/transformers",
           "reference": "5.20.2"
-        },
-        {
-          "component": "vLLM Qwen3CoderToolParser",
-          "repository": "https://github.com/vllm-project/vllm",
-          "reference": "tool-call framing rules for src/qwen3_5_tool_parser.py"
         }
       ],
-      "review": "The Qwen3.5 model modules are translations of Transformers' Apache-2.0 modeling code and carry its terms; the generation layer and tool-call modules are API/behavior references.",
-      "source_notices": {
-        "src/qwen3_5_config.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_norm.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_rope.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_mlp.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_attention.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_deltanet.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_cache.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_model.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.",
-        "src/qwen3_5_hf.py": "# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md."
-      }
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
     },
     "graphics": {
       "license": "MIT",

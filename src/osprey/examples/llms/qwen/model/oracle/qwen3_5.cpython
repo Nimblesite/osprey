@@ -1,9 +1,9 @@
 """The tiny `Qwen3_5TextConfig` checkpoint the port's model code is checked against
 ([LLM-MODEL-ORACLE], docs/plans/0049-local-coding-model.md Phase 3).
 
-transformers 5.20.2 builds the model and computes every value here; `add` hands them to
+transformers 5.20.2 builds the model and computes every value here; `main` hands them to
 the shared writer as the `MODEL_*` constants of
-src/osprey/packages/transformers/tests/expected.py, so the port's layer-by-layer
+src/osprey/examples/llms/qwen/model/tests/expected.py, so the port's layer-by-layer
 comparison reads numbers the real package produced. The three inputs are one token,
 eight tokens in one pass, and the same eight tokens fed one at a time through the cache;
 every layer's output hidden state and the final norm output are written for each, with
@@ -13,9 +13,12 @@ import math
 import struct
 
 import torch
+import transformers
+from expected_module import write
 from transformers import Qwen3_5TextConfig, Qwen3_5TextModel
 from transformers.cache_utils import DynamicCache
 
+HOME = "src/osprey/examples/llms/qwen/model"
 SEED = 20261105
 ONE = [42]
 EIGHT = [11, 5, 97, 0, 127, 42, 7, 63]
@@ -258,3 +261,11 @@ def add(C):
     C["MODEL_PARAM_COUNT"] = sum(len(tensor) for tensor in values)
     run_cases(C, model, cfg)
     return config_text(cfg)
+
+
+def main():
+    C = {}
+    summary = "Qwen3.5 text model on a tiny checkpoint, layer by layer (float32).\n\n" + add(C)
+    versions = {"transformers": transformers.__version__, "torch": torch.__version__}
+    target = write("qwen3_5", summary, versions, C, namespace="qwen_expected", home=HOME)
+    print(f"wrote {target} ({target.stat().st_size} bytes) with {len(C)} exports")

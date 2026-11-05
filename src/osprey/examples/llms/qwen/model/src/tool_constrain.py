@@ -1,5 +1,5 @@
 # osprey: flavor=python
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=ToolConstrain
 """A logits processor that makes a schema-invalid tool call unsamplable.
 
@@ -27,8 +27,8 @@ enums, and values of their declared types.
 Implements [LLM-TOOL-CONSTRAIN] of docs/specs/applications/LocalCodingModel.md.
 """
 
-from transformers import ToolJsonScan
-from transformers import ToolSchema
+from qwen import ToolJsonScan
+from qwen import ToolSchema
 
 __all__ = ["start", "advance", "complete", "Constrain", "apply", "mask", "accepts", "decode"]
 

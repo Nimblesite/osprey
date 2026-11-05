@@ -4,7 +4,8 @@ An oracle sits beside the package it checks and is named after it. Its `.cpython
 keeps it ordinary CPython: a release refuses any `.py` file without the Python-flavor marker
 ([PACKAGE-SOURCE-CANONICAL]). Running one directly would also put its directory first on
 `sys.path` and make its own `import numpy` find itself. This runner keeps the directory off the path, registers the
-shared writer under its module name, loads `<package>/oracle/<name>.cpython` from its file and calls `main()`.
+shared writer under its module name, loads `<package>/oracle/<name>.cpython` (or an example model's
+`examples/llms/<model>/model/oracle/<name>.cpython`) from its file and calls `main()`.
 """
 import importlib.machinery
 import importlib.util
@@ -39,7 +40,8 @@ def main(argv):
     sys.path = [entry for entry in sys.path if pathlib.Path(entry or ".").resolve() != HERE]
     checked_writer()
     load("reference_table", HERE / "reference_table.cpython")
-    found = sorted(HERE.parents[1].glob(f"*/oracle/{argv[1]}.cpython"))
+    found = sorted(HERE.parents[1].glob(f"*/oracle/{argv[1]}.cpython")) + sorted(
+        (HERE.parents[2] / "examples" / "llms").glob(f"*/model/oracle/{argv[1]}.cpython"))
     if len(found) != 1:
         raise SystemExit(f"oracle.py: expected one oracle named {argv[1]}, found {found}")
     load(f"oracle_{argv[1]}", found[0]).main()

@@ -1,6 +1,6 @@
 # osprey: flavor=python
 # Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
-# osprey: namespace=transformers
+# osprey: namespace=qwen
 # osprey: module=Qwen3_5DeltaNet
 """`Qwen3_5GatedDeltaNet` for one cached token: the recurrent gated delta rule.
 
@@ -20,10 +20,10 @@ with key head `t % num_k_heads`; a checkpoint in Transformers' order pairs `t` w
 [LLM-MODEL-DELTANET], [LLM-MODEL-CACHE].
 """
 
-from transformers import Qwen3_5Cache as Cache
-from transformers import Qwen3_5Config as C
-from transformers import Qwen3_5Norm as Norm
-from transformers.Qwen3_5Device import Weight, at, linear, must, quot, rem, rsqrt, sigmoid, slice_of, softplus, squares
+from qwen import Qwen3_5Cache as Cache
+from qwen import Qwen3_5Config as C
+from qwen import Qwen3_5Norm as Norm
+from qwen.Qwen3_5Device import Weight, at, linear, must, quot, rem, rsqrt, sigmoid, slice_of, softplus, squares
 
 __all__ = ["Layer", "Mixed", "mix"]
 
