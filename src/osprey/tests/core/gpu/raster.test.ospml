@@ -106,8 +106,7 @@ spherePixel idx =
 edgeFn (ax, ay, bx, by, px, py) =
     (((px - ax) ) * ((by - ay) ) ) - (((py - ay) ) * ((bx - ax) ) )
 insideTri (ax, ay, bx, by, cx, cy, px, py) =
-    (edgeFn (ax, ay, bx, by, px, py) <= 0 && edgeFn (bx, by, cx, cy, px, py) <= 0
-        && edgeFn (cx, cy, ax, ay, px, py) <= 0)
+    (edgeFn(ax, ay, bx, by, px, py) <= 0 && edgeFn(bx, by, cx, cy, px, py) <= 0 && edgeFn(cx, cy, ax, ay, px, py) <= 0)
 coverBuf (ax, ay, bx, by, cx, cy, indices64) = gpuMap (indices64, \idx => bit (insideTri (ax, ay, bx, by, cx, cy, colOf (idx, tileEdge ()), rowOf (idx, tileEdge ()))))
 (** spanBit lights a pixel on scanline `sy` between columns x0 and x1 inclusive — a scanline filler's innermost test — spanBuf fills one such span across a tile, and
     clampedSpan clips the endpoints first so an off-image span draws its visible part rather than nothing. An inverted range fills nothing either way. spanStart is the
@@ -130,7 +129,7 @@ rowSums (src, w, indicesRows) = gpuMap (indicesRows, \y => rowTotal (src, w, y, 
     neighbour magnification — each source texel becomes a 2x2 block — and transposeOf swaps rows and columns; both address purely by decomposing the destination index
     and recomposing it against the source. The sat* trio is 8-bit channel arithmetic: results saturate into [0, 255] instead of wrapping. *)
 sampleClamped (tex, w, h, x, y) =
-    gpuGet (tex, flatIndex (clampRange (x, 0, (w - 1) ), clampRange (y, 0, (h - 1) ), w)) ?: 0
+    gpuGet(tex, flatIndex(clampRange(x, 0, (w - 1) ), clampRange(y, 0, (h - 1) ), w)) ?: 0
 upscale2 (src, w, h, indicesOut) = gpuMap (indicesOut, \idx => sampleClamped (src, w, h, intDiv (colOf (idx, (2 * w) ), 2) , intDiv (rowOf (idx, (2 * w) ), 2) ))
 transposeOf (src, w, h, indicesOut) = gpuMap (indicesOut, \idx => sampleClamped (src, w, h, rowOf (idx, h), colOf (idx, h)))
 channelAdd (a, b) = clampRange ((a + b) , 0, channelMax ())
@@ -153,8 +152,8 @@ lastColumn v = v == ((frameWidth () - 1) )
     are that decomposition itself, as kernels. tilePixels and quadPixels are the small rasters' dispatch sizes, pixelGrid the index buffer the full-size kernels
     dispatch over, and the two frames the rendered layers; triCover is the reference triangle — a right wedge inset one pixel from the tile corner, covering x, y >= 1
     with x + y <= 7. *)
-residual idx =
-    absOf ((flatIndex (colOf (idx, frameWidth ()), rowOf (idx, frameWidth ()), frameWidth ()) - idx) )
+residual (idx) =
+    absOf((flatIndex(colOf(idx, frameWidth()), rowOf(idx, frameWidth()), frameWidth()) - idx) )
 columnOfPixel idx = colOf (idx, frameWidth ())
 rowOfPixel idx = rowOf (idx, frameWidth ())
 tilePixels () = (tileEdge () * tileEdge ())
@@ -166,113 +165,51 @@ triCover (indices64) = coverBuf(1, 1, 6, 1, 1, 6, indices64)
     small pipeline: two dispatches over one index grid composited by one elementwise pass, every pixel of it pinned below. rowText renders one scanline of any raster at
     any width, frameText all of them, and row/canvas/tile are those two at this file's fixed sizes. *)
 gradientPixel idx = clampLevel ((colOf (idx, quadEdge ()) * 2) , 0)
-wedgePixel idx =
-    (bit (insideTri (0, 0, 3, 0, 0, 3, colOf (idx, quadEdge ()), rowOf (idx, quadEdge ()))) * maxLevel ())
+wedgePixel (idx) =
+    (bit(insideTri(0, 0, 3, 0, 0, 3, colOf(idx, quadEdge()), rowOf(idx, quadEdge()))) * maxLevel())
 (** [FAILURE-EXPLICIT] A failed layer render stops the composite before its consumer. *)
 quadEach (indices16, work) =
-    match gpuMap (indices16, gradientPixel)
-        Success gradient =>
-            match gpuMap (indices16, wedgePixel)
-                Success wedge => withBuffer(gpuZipWith (gradient, wedge, overLayer), work)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(gpuMap(indices16, gradientPixel), \gradient => withBuffer(gpuMap(indices16, wedgePixel), \wedge => withBuffer(gpuZipWith(gradient, wedge, overLayer), work)))
 rowText (pixels, w, y) =
-    (range (0, w) |> fold "" (\(acc, x) => acc + glyph (gpuGet (pixels, flatIndex (x, y, w)) ?: 0)))
+    range(0, w) |> fold("", \(acc, x) => acc + glyph(gpuGet(pixels, flatIndex(x, y, w)) ?: 0))
 frameText (pixels, w, h) =
-    (range (0, h) |> fold "" (\(acc, y) => acc + rowText (pixels, w, y) + "\n"))
+    range(0, h) |> fold("", \(acc, y) => acc + rowText(pixels, w, y) + "\n")
 row (pixels, y) = rowText (pixels, frameWidth (), y)
 canvas pixels = frameText (pixels, frameWidth (), frameHeight ())
 (** [FAILURE-EXPLICIT] A failed full-brightness pass fails the case rather than printing raw levels. *)
-brightText (result, work) =
+withBrightText (result, work) =
     match result
-        Success pixels =>
-            match gpuMap (pixels, fullBright)
-                Success bright => work (frameText (bright, tileEdge (), tileEdge ()))
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
-(** primitiveText renders each raster primitive section, primitives dispatch and print them. *)
-primitiveText (triangle, inverted, span, clipped, upscaled, quad) =
-    ("== triangle ==\n" + triangle +
-        "== inverted triangle ==\n" + inverted +
-        "== span y=3 x=2..5 ==\n" + span +
-        "== span clipped from -4..2 ==\n" + clipped +
-        "== upscaled 2x2 ==\n" + upscaled +
-        "== quad ==\n" + quad)
-primitives (indices64, indices16, texels) =
-    match triCover(indices64)
-        Success triangle =>
-            match gpuMap (triangle, fullBright)
-                Success triangleBright =>
-                    match coverBuf(1, 6, 6, 1, 1, 1, indices64)
-                        Success inverted =>
-                            match gpuMap (inverted, fullBright)
-                                Success invertedBright =>
-                                    match spanBuf(3, 2, 5, indices64)
-                                        Success span =>
-                                            match gpuMap (span, fullBright)
-                                                Success spanBright =>
-                                                    match clampedSpan(5, (0 - 4), 2, indices64)
-                                                        Success clipped =>
-                                                            match gpuMap (clipped, fullBright)
-                                                                Success clippedBright =>
-                                                                    match upscale2(texels, 2, 2, indices16)
-                                                                        Success upscaled =>
-                                                                            match gpuMap (indices16, gradientPixel)
-                                                                                Success gradient =>
-                                                                                    match gpuMap (indices16, wedgePixel)
-                                                                                        Success wedge =>
-                                                                                            match gpuZipWith (gradient, wedge, overLayer)
-                                                                                                Success quad =>
-                                                                                                    print (primitiveText (frameText (triangleBright, tileEdge (), tileEdge ()),
-                                                                                                            frameText (invertedBright, tileEdge (), tileEdge ()),
-                                                                                                            frameText (spanBright, tileEdge (), tileEdge ()),
-                                                                                                            frameText (clippedBright, tileEdge (), tileEdge ()),
-                                                                                                            frameText (upscaled, 4, 4),
-                                                                                                            frameText (quad, quadEdge (), quadEdge ())))
-                                                                                                Error message => check ("GPU operation", "success", toString message)
-                                                                                        Error message => check ("GPU operation", "success", toString message)
-                                                                                Error message => check ("GPU operation", "success", toString message)
-                                                                        Error message => check ("GPU operation", "success", toString message)
-                                                                Error message => check ("GPU operation", "success", toString message)
-                                                        Error message => check ("GPU operation", "success", toString message)
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
-(** sceneText is the frame header: the three layers and their reductions. *)
-sceneText (mandel, sphere, composite, inside, sphereLit, light) =
-    ("== mandelbrot ${gpuLength mandel}px on ${gpuDevice ()} ==\n${canvas mandel}" +
-        "== lambert sphere ==\n${canvas sphere}" +
-        "== composite ==\n${canvas composite}" +
-        "interior=${gpuLength inside} " +
-        "lit=${gpuLength sphereLit} " +
-        "light=${light}")
+        Success pixels => withBuffer(gpuMap(pixels, fullBright), \bright => work(frameText(bright, tileEdge(), tileEdge())))
+        Error message => check("GPU operation", "success", toString(message))
+
 (** gallery renders all three layers and their buffer statistics as one frame of output — one dispatch per scene, one elementwise pass to composite — then the raster
     primitives at a size every pixel can be read at: both windings of a triangle, spans clipped and unclipped, a magnified texel block, and the quad whose every pixel
     is asserted below. *)
 gallery (indices1536, indices64, indices16, texels) =
-    match mandelFrame(indices1536)
-        Success mandel =>
-            match sphereFrame(indices1536)
-                Success sphere =>
-                    match gpuZipWith (mandel, sphere, overLayer)
-                        Success composite =>
-                            match gpuFilter (mandel, interiorPixel)
-                                Success inside =>
-                                    match gpuFilter (sphere, litPixel)
-                                        Success sphereLit =>
-                                            match gpuFold (sphere, 0, addLevels)
-                                                Success light =>
-                                                    print (sceneText (mandel, sphere, composite, inside, sphereLit, light))
-                                                    primitives (indices64, indices16, texels)
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(mandelFrame(indices1536),
+        \mandel => withBuffer(sphereFrame(indices1536),
+        \sphere => withBuffer(gpuZipWith(mandel, sphere, overLayer),
+        \composite => withBuffer(gpuFilter(mandel, interiorPixel),
+        \inside => withBuffer(gpuFilter(sphere, litPixel),
+        \sphereLit => withBuffer(gpuFold(sphere, 0, addLevels),
+        \light => withBrightText(triCover(indices64),
+        \triangleText => withBrightText(coverBuf(1, 6, 6, 1, 1, 1, indices64),
+        \invertedText => withBrightText(spanBuf(3, 2, 5, indices64),
+        \spanText => withBrightText(clampedSpan(5, (0 - 4), 2, indices64),
+        \clippedText => withBuffer(upscale2(texels, 2, 2, indices16),
+        \upscaled => quadEach(indices16,
+        \quad => print("== mandelbrot ${gpuLength(mandel)}px on ${gpuDevice()} ==\n${canvas(mandel)}" +
+            "== lambert sphere ==\n${canvas(sphere)}" +
+            "== composite ==\n${canvas(composite)}" +
+            "interior=${gpuLength(inside)} " +
+            "lit=${gpuLength(sphereLit)} " +
+            "light=${light}" +
+            "\n== triangle ==\n${triangleText}" +
+            "== inverted triangle ==\n${invertedText}" +
+            "== span y=3 x=2..5 ==\n${spanText}" +
+            "== span clipped from -4..2 ==\n${clippedText}" +
+            "== upscaled 2x2 ==\n${frameText(upscaled, 4, 4)}" +
+            "== quad ==\n${frameText(quad, quadEdge(), quadEdge())}") ))))))))))))
 (** dispatchCase pins the grid one dispatch covers at every raster size here, plus the empty dispatch every combinator survives and three gathers that leave the buffer
     entirely. *)
 dispatchCase () = withIndices (0, \indices0 => withIndices (8, \indices8 => withIndices (16, \indices16 => withIndices (64, \indices64 => withIndices (1536, \indices1536 => dispatchWith (indices0, indices8, indices16, indices64, indices1536))))))
@@ -303,27 +240,18 @@ paletteCase () = checkAll "palette" [
     sum to their closed forms. *)
 decomposeCase () = withIndices (1536, \indices1536 => decomposeWith (indices1536))
 decomposeWith (indices1536) =
-    match gpuMap (indices1536, columnOfPixel)
-        Success cols =>
-            match gpuMap (indices1536, rowOfPixel)
-                Success rows =>
-                    match gpuMap (indices1536, residual)
-                        Success residues =>
-                            checkAll "decompose" [
-                                gpuSatisfies (total residues, \grand => grand == 0), litCountOf (residues, \lit => lit == 0),
-                                gpuSatisfies (total cols, \grand => grand == 48384), gpuSatisfies (total rows, \grand => grand == 17664),
-                                gpuSatisfies (total indices1536, \grand => grand == 1178880),
-                                gpuSatisfies (gpuFilter (cols, lastColumn), \last => gpuLength last == 24), litCountOf (cols, \lit => lit == 1512), litCountOf (rows, \lit => lit == 1472),
-                                texel (cols, 0) == 0, texel (rows, 0) == 0, texel (cols, 63) == 63, texel (rows, 63) == 0,
-                                texel (cols, 64) == 0, texel (rows, 64) == 1, texel (cols, 1535) == 63, texel (rows, 1535) == 23,
-                                flatIndex (0, 0, frameWidth ()) == 0, flatIndex (63, 23, frameWidth ()) == 1535,
-                                flatIndex (0, 1, frameWidth ()) == 64, flatIndex (3, 2, tileEdge ()) == 19,
-                                colOf (19, tileEdge ()) == 3, rowOf (19, tileEdge ()) == 2,
-                                flatIndex (0, 0, 1) == 0, colOf (7, 1) == 0, rowOf (7, 1) == 7
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(gpuMap(indices1536, columnOfPixel), \cols => withBuffer(gpuMap(indices1536, rowOfPixel), \rows => checkAll("decompose", [
+        gpuSatisfies(gpuMap(indices1536, residual), \residues => gpuSatisfies(total(residues), \grand => grand == 0)),
+        gpuSatisfies(gpuMap(indices1536, residual), \residues => litCountOf(residues, \lit => lit == 0)),
+        gpuSatisfies(total(cols), \grand => grand == 48384), gpuSatisfies(total(rows), \grand => grand == 17664), gpuSatisfies(total(indices1536), \grand => grand == 1178880),
+        gpuSatisfies(gpuFilter(cols, lastColumn), \last => gpuLength(last) == 24), litCountOf(cols, \lit => lit == 1512), litCountOf(rows, \lit => lit == 1472),
+        texel(cols, 0) == 0, texel(rows, 0) == 0, texel(cols, 63) == 63, texel(rows, 63) == 0,
+        texel(cols, 64) == 0, texel(rows, 64) == 1, texel(cols, 1535) == 63, texel(rows, 1535) == 23,
+        flatIndex(0, 0, frameWidth()) == 0, flatIndex(63, 23, frameWidth()) == 1535,
+        flatIndex(0, 1, frameWidth()) == 64, flatIndex(3, 2, tileEdge()) == 19,
+        colOf(19, tileEdge()) == 3, rowOf(19, tileEdge()) == 2,
+        flatIndex(0, 0, 1) == 0, colOf(7, 1) == 0, rowOf(7, 1) == 7
+    ])))
 (** edgeCase pins the edge function itself: zero along its own edge, twice the signed area at the opposite vertex, and a sign that flips with winding. *)
 edgeCase () = checkAll "edge function" [
     edgeFn (1, 1, 6, 1, 1, 1) == 0, edgeFn (1, 1, 6, 1, 6, 1) == 0,
@@ -342,55 +270,46 @@ edgeCase () = checkAll "edge function" [
     with a fill rule. *)
 triangleCase () = withIndices (8, \indices8 => withIndices (64, \indices64 => triangleWith (indices8, indices64)))
 triangleWith (indices8, indices64) =
-    match triCover(indices64)
-        Success cover =>
-            match rowSums(cover, tileEdge (), indices8)
-                Success sums =>
-                    checkAll "triangle" [
-                        gpuSatisfies (total cover, \grand => grand == 21), litCountOf (cover, \lit => lit == 21), texel (sums, 0) == 0, texel (sums, 1) == 6,
-                        texel (sums, 2) == 5, texel (sums, 3) == 4, texel (sums, 4) == 3, texel (sums, 5) == 2,
-                        texel (sums, 6) == 1, texel (sums, 7) == 0,
-                        gpuSatisfies (total sums, \grand => grand == 21), spanStart (cover, tileEdge (), 0, 0) == 8,
-                        spanStart (cover, tileEdge (), 1, 0) == 1, spanStart (cover, tileEdge (), 6, 0) == 1,
-                        texel (cover, flatIndex (6, 1, tileEdge ())) == 1, texel (cover, flatIndex (7, 1, tileEdge ())) == 0,
-                        texel (cover, flatIndex (1, 6, tileEdge ())) == 1, texel (cover, flatIndex (0, 1, tileEdge ())) == 0,
-                        texel (cover, flatIndex (4, 4, tileEdge ())) == 0, texel (cover, flatIndex (3, 3, tileEdge ())) == 1,
-                        gpuSatisfies (coverBuf(1, 6, 6, 1, 1, 1, indices64), \inverted => gpuSatisfies (total inverted, \grand => grand == 0)),
-                        gpuSatisfies (coverBuf(2, 2, 2, 2, 2, 2, indices64), \point => gpuSatisfies (total point, \grand => grand == 64)),
-                        gpuSatisfies (coverBuf(0, 0, 3, 0, 6, 0, indices64), \line => gpuSatisfies (total line, \grand => grand == 8)),
-                        gpuSatisfies (coverBuf(20, 20, 26, 20, 20, 26, indices64), \offTile => gpuSatisfies (total offTile, \grand => grand == 0)),
-                        gpuSatisfies (coverBuf(0, 0, 7, 0, 0, 7, indices64), \wide => gpuSatisfies (total wide, \grand => grand == 36)),
-                        gpuSatisfies (coverBuf((0 - 9), (0 - 9), 40, (0 - 9), (0 - 9), 40, indices64), \oversized => gpuSatisfies (total oversized, \grand => grand == 64))
-                    ]
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(triCover(indices64), \cover => withBuffer(rowSums(cover, tileEdge(), indices8), \sums => checkAll("triangle", [
+        gpuSatisfies(total(cover), \grand => grand == 21), litCountOf(cover, \lit => lit == 21), texel(sums, 0) == 0, texel(sums, 1) == 6,
+        texel(sums, 2) == 5, texel(sums, 3) == 4, texel(sums, 4) == 3, texel(sums, 5) == 2,
+        texel(sums, 6) == 1, texel(sums, 7) == 0,
+        gpuSatisfies(total(sums), \grand => grand == 21), spanStart(cover, tileEdge(), 0, 0) == 8,
+        spanStart(cover, tileEdge(), 1, 0) == 1, spanStart(cover, tileEdge(), 6, 0) == 1,
+        texel(cover, flatIndex(6, 1, tileEdge())) == 1, texel(cover, flatIndex(7, 1, tileEdge())) == 0,
+        texel(cover, flatIndex(1, 6, tileEdge())) == 1, texel(cover, flatIndex(0, 1, tileEdge())) == 0,
+        texel(cover, flatIndex(4, 4, tileEdge())) == 0, texel(cover, flatIndex(3, 3, tileEdge())) == 1,
+        gpuSatisfies(coverBuf(1, 6, 6, 1, 1, 1, indices64), \inverted => gpuSatisfies(total(inverted), \grand => grand == 0)),
+        gpuSatisfies(coverBuf(2, 2, 2, 2, 2, 2, indices64), \point => gpuSatisfies(total(point), \grand => grand == 64)),
+        gpuSatisfies(coverBuf(0, 0, 3, 0, 6, 0, indices64), \line => gpuSatisfies(total(line), \grand => grand == 8)),
+        gpuSatisfies(coverBuf(20, 20, 26, 20, 20, 26, indices64), \offTile => gpuSatisfies(total(offTile), \grand => grand == 0)),
+        gpuSatisfies(coverBuf(0, 0, 7, 0, 0, 7, indices64), \wide => gpuSatisfies(total(wide), \grand => grand == 36)),
+        gpuSatisfies(coverBuf((0 - 9), (0 - 9), 40, (0 - 9), (0 - 9), 40, indices64), \oversized => gpuSatisfies(total(oversized), \grand => grand == 64))
+    ])))
 (** spanCase pins scanline filling and every degenerate span: a normal run, a single pixel, a whole row, an inverted range, a row off the tile, and one off-image span
     that draws nothing until clipped. *)
 spanCase () = withIndices (64, \indices64 => spanWith (indices64))
 spanWith (indices64) =
-    match spanBuf(3, 2, 5, indices64)
-        Success mid =>
-            checkAll "span fill" [
-                gpuSatisfies (total mid, \grand => grand == 4), spanStart (mid, tileEdge (), 3, 0) == 2,
-                texel (mid, flatIndex (2, 3, tileEdge ())) == 1, texel (mid, flatIndex (5, 3, tileEdge ())) == 1,
-                texel (mid, flatIndex (1, 3, tileEdge ())) == 0, texel (mid, flatIndex (6, 3, tileEdge ())) == 0,
-                texel (mid, flatIndex (2, 2, tileEdge ())) == 0, texel (mid, flatIndex (2, 4, tileEdge ())) == 0,
-                gpuSatisfies (spanBuf(0, 0, 0, indices64), \single => gpuSatisfies (total single, \grand => grand == 1)),
-                gpuSatisfies (spanBuf(7, 7, 7, indices64), \corner => gpuSatisfies (total corner, \grand => grand == 1)),
-                gpuSatisfies (spanBuf(0, 0, 7, indices64), \rowBuf => gpuSatisfies (total rowBuf, \grand => grand == 8)),
-                gpuSatisfies (spanBuf(4, 5, 2, indices64), \reversed => gpuSatisfies (total reversed, \grand => grand == 0)),
-                gpuSatisfies (spanBuf(8, 0, 7, indices64), \offTile => gpuSatisfies (total offTile, \grand => grand == 0)),
-                gpuSatisfies (spanBuf((0 - 1), 0, 7, indices64), \negativeRow => gpuSatisfies (total negativeRow, \grand => grand == 0)),
-                gpuSatisfies (spanBuf(2, (0 - 4), (0 - 1), indices64), \offLeft => gpuSatisfies (total offLeft, \grand => grand == 0)),
-                gpuSatisfies (clampedSpan(2, (0 - 4), (0 - 1), indices64), \clipped => gpuSatisfies (total clipped, \grand => grand == 1)),
-                gpuSatisfies (clampedSpan(5, (0 - 4), 2, indices64), \leftClipped => gpuSatisfies (total leftClipped, \grand => grand == 3)),
-                gpuSatisfies (clampedSpan(5, 6, 99, indices64), \rightClipped => gpuSatisfies (total rightClipped, \grand => grand == 2)),
-                gpuSatisfies (spanBuf(1, (0 - 9), 99, indices64), \whole => gpuSatisfies (total whole, \grand => grand == 8)),
-                gpuSatisfies (clampedSpan(2, (0 - 4), (0 - 1), indices64), \clipped => texel (clipped, flatIndex (0, 2, tileEdge ())) == 1),
-                gpuSatisfies (spanBuf(3, 2, 5, indices64), \midSpan => gpuSatisfies (gpuMap (midSpan, fullBright), \bright => rowText (bright, tileEdge (), 3) == "  @@@@  ")),
-                gpuSatisfies (spanBuf(3, 2, 5, indices64), \midSpan => gpuSatisfies (gpuMap (midSpan, fullBright), \bright => rowText (bright, tileEdge (), 2) == "        "))
-            ]
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(spanBuf(3, 2, 5, indices64), \mid => checkAll("span fill", [
+        gpuSatisfies(total(mid), \grand => grand == 4), spanStart(mid, tileEdge(), 3, 0) == 2,
+        texel(mid, flatIndex(2, 3, tileEdge())) == 1, texel(mid, flatIndex(5, 3, tileEdge())) == 1,
+        texel(mid, flatIndex(1, 3, tileEdge())) == 0, texel(mid, flatIndex(6, 3, tileEdge())) == 0,
+        texel(mid, flatIndex(2, 2, tileEdge())) == 0, texel(mid, flatIndex(2, 4, tileEdge())) == 0,
+        gpuSatisfies(spanBuf(0, 0, 0, indices64), \single => gpuSatisfies(total(single), \grand => grand == 1)),
+        gpuSatisfies(spanBuf(7, 7, 7, indices64), \corner => gpuSatisfies(total(corner), \grand => grand == 1)),
+        gpuSatisfies(spanBuf(0, 0, 7, indices64), \row => gpuSatisfies(total(row), \grand => grand == 8)),
+        gpuSatisfies(spanBuf(4, 5, 2, indices64), \reversed => gpuSatisfies(total(reversed), \grand => grand == 0)),
+        gpuSatisfies(spanBuf(8, 0, 7, indices64), \offTile => gpuSatisfies(total(offTile), \grand => grand == 0)),
+        gpuSatisfies(spanBuf((0 - 1), 0, 7, indices64), \negativeRow => gpuSatisfies(total(negativeRow), \grand => grand == 0)),
+        gpuSatisfies(spanBuf(2, (0 - 4), (0 - 1), indices64), \offLeft => gpuSatisfies(total(offLeft), \grand => grand == 0)),
+        gpuSatisfies(clampedSpan(2, (0 - 4), (0 - 1), indices64), \clipped => gpuSatisfies(total(clipped), \grand => grand == 1)),
+        gpuSatisfies(clampedSpan(5, (0 - 4), 2, indices64), \leftClipped => gpuSatisfies(total(leftClipped), \grand => grand == 3)),
+        gpuSatisfies(clampedSpan(5, 6, 99, indices64), \rightClipped => gpuSatisfies(total(rightClipped), \grand => grand == 2)),
+        gpuSatisfies(spanBuf(1, (0 - 9), 99, indices64), \whole => gpuSatisfies(total(whole), \grand => grand == 8)),
+        gpuSatisfies(clampedSpan(2, (0 - 4), (0 - 1), indices64), \clipped => texel(clipped, flatIndex(0, 2, tileEdge())) == 1),
+        gpuSatisfies(spanBuf(3, 2, 5, indices64), \midSpan => gpuSatisfies(gpuMap(midSpan, fullBright), \bright => rowText(bright, tileEdge(), 3) == "  @@@@  ")),
+        gpuSatisfies(spanBuf(3, 2, 5, indices64), \midSpan => gpuSatisfies(gpuMap(midSpan, fullBright), \bright => rowText(bright, tileEdge(), 2) == "        "))
+    ]))
 (** saturateCase pins channel arithmetic at both rails: nothing wraps, nothing leaves [0, 255], and the same clamps hold elementwise over buffers. *)
 saturateCase () = withBuffer(toGpu ([200, 0, 128, 255, 40]), \base => withBuffer(toGpu ([100, 0, 200, 1, 10]), \addend => saturateCaseUploaded(base, addend)))
 saturateCaseUploaded (base, addend) =
@@ -412,57 +331,39 @@ saturateCaseUploaded (base, addend) =
     degenerate images. *)
 samplingCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => withIndices (16, \indices16 => samplingWith (indices0, indices4, indices16))))
 samplingWith (indices0, indices4, indices16) =
-    match toGpu ([1, 2, 3, 4])
-        Success tex =>
-            match upscale2(tex, 2, 2, indices16)
-                Success big =>
-                    checkAll "sampling" [
-                        sampleClamped (tex, 2, 2, 0, 0) == 1, sampleClamped (tex, 2, 2, 1, 0) == 2,
-                        sampleClamped (tex, 2, 2, 0, 1) == 3, sampleClamped (tex, 2, 2, 1, 1) == 4,
-                        sampleClamped (tex, 2, 2, (0 - 5) , (0 - 5) ) == 1,
-                        sampleClamped (tex, 2, 2, 9, 9) == 4, sampleClamped (tex, 2, 2, 9, 0) == 2,
-                        sampleClamped (tex, 2, 2, 0, 9) == 3, sampleClamped (tex, 2, 2, (0 - 1) , 9) == 3,
-                        gpuSatisfies (toGpu ([7]), \uploaded7 => sampleClamped (uploaded7, 1, 1, 5, 5) == 7),
-                        gpuSatisfies (toGpu ([5, 6, 7]), \uploaded6 => sampleClamped (uploaded6, 3, 1, 2, 4) == 7),
-                        gpuSatisfies (toGpu ([5, 6, 7]), \uploaded5 => sampleClamped (uploaded5, 1, 3, 4, 2) == 7), gpuLength big == 16,
-                        texel (big, 0) == 1, texel (big, 1) == 1, texel (big, 2) == 2, texel (big, 3) == 2,
-                        texel (big, 4) == 1, texel (big, 5) == 1, texel (big, 6) == 2, texel (big, 7) == 2,
-                        texel (big, 8) == 3, texel (big, 9) == 3, texel (big, 10) == 4, texel (big, 11) == 4,
-                        texel (big, 12) == 3, texel (big, 13) == 3, texel (big, 14) == 4, texel (big, 15) == 4,
-                        gpuSatisfies (total big, \grand => grand == 40),
-                        gpuSatisfies (toGpu ([7]), \uploaded4 => gpuSatisfies (upscale2(uploaded4, 1, 1, indices4), \single => gpuLength single == 4)),
-                        gpuSatisfies (toGpu ([7]), \uploaded3 => gpuSatisfies (upscale2(uploaded3, 1, 1, indices4), \single => gpuSatisfies (total single, \grand => grand == 28))),
-                        gpuSatisfies (upscale2(indices0, 0, 0, indices0), \empty => gpuLength empty == 0)
-                    ]
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(toGpu([1, 2, 3, 4]), \tex => withBuffer(upscale2(tex, 2, 2, indices16), \big => checkAll("sampling", [
+        sampleClamped(tex, 2, 2, 0, 0) == 1, sampleClamped(tex, 2, 2, 1, 0) == 2,
+        sampleClamped(tex, 2, 2, 0, 1) == 3, sampleClamped(tex, 2, 2, 1, 1) == 4,
+        sampleClamped(tex, 2, 2, (0 - 5) , (0 - 5) ) == 1,
+        sampleClamped(tex, 2, 2, 9, 9) == 4, sampleClamped(tex, 2, 2, 9, 0) == 2,
+        sampleClamped(tex, 2, 2, 0, 9) == 3, sampleClamped(tex, 2, 2, (0 - 1) , 9) == 3,
+        gpuSatisfies(toGpu([7]), \uploaded7 => sampleClamped(uploaded7, 1, 1, 5, 5) == 7),
+        gpuSatisfies(toGpu([5, 6, 7]), \uploaded6 => sampleClamped(uploaded6, 3, 1, 2, 4) == 7),
+        gpuSatisfies(toGpu([5, 6, 7]), \uploaded5 => sampleClamped(uploaded5, 1, 3, 4, 2) == 7), gpuLength(big) == 16,
+        texel(big, 0) == 1, texel(big, 1) == 1, texel(big, 2) == 2, texel(big, 3) == 2,
+        texel(big, 4) == 1, texel(big, 5) == 1, texel(big, 6) == 2, texel(big, 7) == 2,
+        texel(big, 8) == 3, texel(big, 9) == 3, texel(big, 10) == 4, texel(big, 11) == 4,
+        texel(big, 12) == 3, texel(big, 13) == 3, texel(big, 14) == 4, texel(big, 15) == 4,
+        gpuSatisfies(total(big), \grand => grand == 40),
+        gpuSatisfies(toGpu([7]), \uploaded4 => gpuSatisfies(upscale2(uploaded4, 1, 1, indices4), \single => gpuLength(single) == 4)),
+        gpuSatisfies(toGpu([7]), \uploaded3 => gpuSatisfies(upscale2(uploaded3, 1, 1, indices4), \single => gpuSatisfies(total(single), \grand => grand == 28))),
+        gpuSatisfies(upscale2(indices0, 0, 0, indices0), \empty => gpuLength(empty) == 0)
+    ])))
 (** gatherCase pins row and column addressing over a non-square raster: transpose by gather alone, its involution, the reductions it turns into each other, and a prefix
     scan read at each scanline boundary. *)
 gatherCase () = withIndices (1, \indices1 => withIndices (2, \indices2 => withIndices (3, \indices3 => withIndices (6, \indices6 => withIndices (64, \indices64 => gatherWith (indices1, indices2, indices3, indices6, indices64))))))
 gatherWith (indices1, indices2, indices3, indices6, indices64) =
-    match toGpu ([1, 2, 3, 4, 5, 6])
-        Success src =>
-            match transposeOf(src, 3, 2, indices6)
-                Success flipped =>
-                    match triCover(indices64)
-                        Success cover =>
-                            match gpuScan (cover, 0, addLevels)
-                                Success running =>
-                                    checkAll "gather" [
-                                        gpuLength flipped == 6, texel (flipped, 0) == 1, texel (flipped, 1) == 4,
-                                        texel (flipped, 2) == 2, texel (flipped, 3) == 5, texel (flipped, 4) == 3, texel (flipped, 5) == 6,
-                                        gpuSatisfies (transposeOf(flipped, 2, 3, indices6), \restored => gpuSatisfies (gpuZipWith (restored, src, channelSub), \difference => gpuSatisfies (total difference, \grand => grand == 0))),
-                                        gpuSatisfies (rowSums(src, 3, indices2), \sums => texel (sums, 0) == 6), gpuSatisfies (rowSums(src, 3, indices2), \sums => texel (sums, 1) == 15),
-                                        gpuSatisfies (rowSums(flipped, 2, indices3), \sums => texel (sums, 0) == 5), gpuSatisfies (rowSums(flipped, 2, indices3), \sums => texel (sums, 1) == 7),
-                                        gpuSatisfies (rowSums(flipped, 2, indices3), \sums => texel (sums, 2) == 9),
-                                        rowTotal (src, 3, 0, 0) == 6, rowTotal (src, 6, 0, 0) == 21, rowTotal (src, 1, 4, 0) == 5,
-                                        gpuSatisfies (toGpu ([9]), \uploaded1 => gpuSatisfies (transposeOf(uploaded1, 1, 1, indices1), \single => texel (single, 0) == 9)),
-                                        texel (running, 7) == 0, texel (running, 15) == 6, texel (running, 23) == 11, texel (running, 63) == 21
-                                    ]
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(toGpu([1, 2, 3, 4, 5, 6]), \src => withBuffer(transposeOf(src, 3, 2, indices6), \flipped => withBuffer(triCover(indices64), \cover => withBuffer(gpuScan(cover, 0, addLevels), \running => checkAll("gather", [
+        gpuLength(flipped) == 6, texel(flipped, 0) == 1, texel(flipped, 1) == 4,
+        texel(flipped, 2) == 2, texel(flipped, 3) == 5, texel(flipped, 4) == 3, texel(flipped, 5) == 6,
+        gpuSatisfies(transposeOf(flipped, 2, 3, indices6), \restored => gpuSatisfies(gpuZipWith(restored, src, channelSub), \difference => gpuSatisfies(total(difference), \grand => grand == 0))),
+        gpuSatisfies(rowSums(src, 3, indices2), \sums => texel(sums, 0) == 6), gpuSatisfies(rowSums(src, 3, indices2), \sums => texel(sums, 1) == 15),
+        gpuSatisfies(rowSums(flipped, 2, indices3), \sums => texel(sums, 0) == 5), gpuSatisfies(rowSums(flipped, 2, indices3), \sums => texel(sums, 1) == 7),
+        gpuSatisfies(rowSums(flipped, 2, indices3), \sums => texel(sums, 2) == 9),
+        rowTotal(src, 3, 0, 0) == 6, rowTotal(src, 6, 0, 0) == 21, rowTotal(src, 1, 4, 0) == 5,
+        gpuSatisfies(toGpu([9]), \uploaded1 => gpuSatisfies(transposeOf(uploaded1, 1, 1, indices1), \single => texel(single, 0) == 9)),
+        texel(running, 7) == 0, texel(running, 15) == 6, texel(running, 23) == 11, texel(running, 63) == 21
+    ])))))
 (** quadCase is the whole small pipeline pinned pixel by pixel: two kernels over one index grid, composited, read back at all sixteen positions and rendered as text —
     nothing here is a spot check. *)
 quadCase () = withIndices (0, \indices0 => withIndices (16, \indices16 => quadWith (indices0, indices16)))
@@ -487,66 +388,39 @@ mirrorRow (pixels, acc, y) = match row (pixels, y) == row (pixels, ((frameHeight
     false => acc
 symmetryCase () = withIndices (24, \indices24 => withIndices (1536, \indices1536 => symmetryWith (indices24, indices1536)))
 symmetryWith (indices24, indices1536) =
-    match mandelFrame(indices1536)
-        Success mandel =>
-            match rowSums(mandel, frameWidth (), indices24)
-                Success sums =>
-                    match gpuFilter (mandel, interiorPixel)
-                        Success interior =>
-                            checkAll "symmetry" [
-                                (range (0, frameHeight ()) |> fold 0 (\(acc, y) => mirrorRow (mandel, acc, y))) == 24, gpuLength interior == 344,
-                                litCountOf (mandel, \lit => lit == 1212), gpuSatisfies (total mandel, \grand => grand == 4624),
-                                row (mandel, 0) == row (mandel, 23), row (mandel, 11) == row (mandel, 12),
-                                texel (sums, 11) == texel (sums, 12),
-                                spanStart (mandel, frameWidth (), 0, 0) == 24, texel (mandel, 0) == 0, texel (mandel, 1535) == 0
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(mandelFrame(indices1536), \mandel => withBuffer(rowSums(mandel, frameWidth(), indices24), \sums => withBuffer(gpuFilter(mandel, interiorPixel), \interior => checkAll("symmetry", [
+        range(0, frameHeight()) |> fold(0, \(acc, y) => mirrorRow(mandel, acc, y)) == 24, gpuLength(interior) == 344,
+        litCountOf(mandel, \lit => lit == 1212), gpuSatisfies(total(mandel), \grand => grand == 4624),
+        row(mandel, 0) == row(mandel, 23), row(mandel, 11) == row(mandel, 12),
+        texel(sums, 11) == texel(sums, 12),
+        spanStart(mandel, frameWidth(), 0, 0) == 24, texel(mandel, 0) == 0, texel(mandel, 1535) == 0
+    ]))))
 (** shadingCase pins the sphere: a lit silhouette, a dark background, a brightest cell on the lit side, and the integer square root that recovers the normal. *)
 shadingCase () = withIndices (24, \indices24 => withIndices (1536, \indices1536 => shadingWith (indices24, indices1536)))
 shadingWith (indices24, indices1536) =
-    match sphereFrame(indices1536)
-        Success sphere =>
-            match rowSums(sphere, frameWidth (), indices24)
-                Success sums =>
-                    match gpuFilter (sphere, interiorPixel)
-                        Success interior =>
-                            checkAll "shading" [
-                                texel (sphere, 0) == 0, texel (sphere, 1535) == 0, texel (sphere, flatIndex (19, 5, frameWidth ())) == 9,
-                                texel (sphere, flatIndex (31, 0, frameWidth ())) == 0,
-                                texel (sphere, flatIndex (63, 12, frameWidth ())) == 0, litCountOf (sphere, \lit => lit == 764),
-                                gpuLength interior == 1, gpuSatisfies (total sphere, \grand => grand == 2928),
-                                texel (sums, 0) == 0, texel (sums, 23) == 0,
-                                spanStart (sphere, frameWidth (), 0, 0) == 64, spanStart (sphere, frameWidth (), 12, 0) == 10,
-                                isqrt 0 == 0, isqrt 1 == 1, isqrt 16 == 4, isqrt 17 == 4,
-                                isqrt 4096 == 64, isqrt (0 - 9) == 0
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(sphereFrame(indices1536), \sphere => withBuffer(rowSums(sphere, frameWidth(), indices24), \sums => withBuffer(gpuFilter(sphere, interiorPixel), \interior => checkAll("shading", [
+        texel(sphere, 0) == 0, texel(sphere, 1535) == 0, texel(sphere, flatIndex(19, 5, frameWidth())) == 9,
+        texel(sphere, flatIndex(31, 0, frameWidth())) == 0,
+        texel(sphere, flatIndex(63, 12, frameWidth())) == 0, litCountOf(sphere, \lit => lit == 764),
+        gpuLength(interior) == 1, gpuSatisfies(total(sphere), \grand => grand == 2928),
+        texel(sums, 0) == 0, texel(sums, 23) == 0,
+        spanStart(sphere, frameWidth(), 0, 0) == 64, spanStart(sphere, frameWidth(), 12, 0) == 10,
+        isqrt(0) == 0, isqrt(1) == 1, isqrt(16) == 4, isqrt(17) == 4,
+        isqrt(4096) == 64, isqrt((0 - 9) ) == 0
+    ]))))
 (** compositeCase pins that one elementwise pass layers sphere over fractal. The silhouette falls entirely inside what the fractal drew, so the composite lights exactly
     the fractal's cells while its brightness total drops — the foreground is darker than what it hides. *)
 compositeCase () = withIndices (0, \indices0 => withIndices (16, \indices16 => withIndices (1536, \indices1536 => compositeWith (indices0, indices16, indices1536))))
 compositeWith (indices0, indices16, indices1536) =
-    match mandelFrame(indices1536)
-        Success mandel =>
-            match sphereFrame(indices1536)
-                Success sphere =>
-                    match gpuZipWith (mandel, sphere, overLayer)
-                        Success composite =>
-                            checkAll "composite" [
-                                gpuLength composite == 1536, texel (composite, 0) == texel (mandel, 0),
-                                texel (composite, flatIndex (19, 5, frameWidth ())) == 9, litCountOf (composite, \lit => lit == 1212),
-                                gpuSatisfies (gpuFilter (composite, litPixel), \compositeLit => litCountOf (mandel, \mandelLit => gpuLength compositeLit == mandelLit)),
-                                gpuSatisfies (total composite, \grand => grand == 3860),
-                                overLayer (3, 0) == 3, overLayer (0, 7) == 7, overLayer (0, 0) == 0, overLayer (4, 4) == 4,
-                                gpuSatisfies (gpuZipWith (mandel, indices0, overLayer), \empty => gpuLength empty == 0),
-                                gpuSatisfies (gpuZipWith (indices16, sphere, overLayer), \sized => gpuLength sized == 16)
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer(mandelFrame(indices1536), \mandel => withBuffer(sphereFrame(indices1536), \sphere => withBuffer(gpuZipWith(mandel, sphere, overLayer), \composite => checkAll("composite", [
+        gpuLength(composite) == 1536, texel(composite, 0) == texel(mandel, 0),
+        texel(composite, flatIndex(19, 5, frameWidth())) == 9, litCountOf(composite, \lit => lit == 1212),
+        gpuSatisfies(gpuFilter(composite, litPixel), \compositeLit => litCountOf(mandel, \mandelLit => gpuLength(compositeLit) == mandelLit)),
+        gpuSatisfies(total(composite), \grand => grand == 3860),
+        overLayer(3, 0) == 3, overLayer(0, 7) == 7, overLayer(0, 0) == 0, overLayer(4, 4) == 4,
+        gpuSatisfies(gpuZipWith(mandel, indices0, overLayer), \empty => gpuLength(empty) == 0),
+        gpuSatisfies(gpuZipWith(indices16, sphere, overLayer), \sized => gpuLength(sized) == 16)
+    ]))))
 exactArithmetic (\() => withBuffer (toGpu ([1, 4, 7, 9]), \texels => withIndices (1536, \indices1536 => withIndices (64, \indices64 => withIndices (16, \indices16 => gallery (indices1536, indices64, indices16, texels))))))
 (** Exact-value tests record any arithmetic fault as a failed assertion. *)
 exactArithmetic work =
