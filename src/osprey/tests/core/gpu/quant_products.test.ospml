@@ -78,8 +78,18 @@ iq4_nlCase () =
     expected : List<float32>
     expected = [-1495.0, 2230.0]
     productCase ("the IQ4_NL product matches ggml's decode in the kernels' part order", "IQ4_NL", bytes, 32, expected)
+
+(** [LLM-MATMUL-QUANT] IQ4_XS: 256 weights per 136-byte block, IQ4_NL's levels with a six-bit sub-block
+    scale and a binary16 scale. *)
+iq4_xsCase () =
+    bytes : List<uint8>
+    bytes = [0, 60, 91, 2, 169, 80, 247, 158, 69, 236, 147, 58, 225, 136, 47, 214, 125, 36, 203, 114, 25, 192, 103, 14, 181, 92, 3, 170, 81, 248, 159, 70, 237, 148, 59, 226, 137, 48, 215, 126, 37, 204, 115, 26, 193, 104, 15, 182, 93, 4, 171, 82, 249, 160, 71, 238, 149, 60, 227, 138, 49, 216, 127, 38, 205, 116, 27, 194, 105, 16, 183, 94, 5, 172, 83, 250, 161, 72, 239, 150, 61, 228, 139, 50, 217, 128, 39, 206, 117, 28, 195, 106, 17, 184, 95, 6, 173, 84, 251, 162, 73, 240, 151, 62, 229, 140, 51, 218, 129, 40, 207, 118, 29, 196, 107, 18, 185, 96, 7, 174, 85, 252, 163, 74, 241, 152, 63, 230, 141, 52, 219, 130, 41, 208, 119, 30, 0, 60, 182, 93, 4, 171, 82, 249, 160, 71, 238, 149, 60, 227, 138, 49, 216, 127, 38, 205, 116, 27, 194, 105, 16, 183, 94, 5, 172, 83, 250, 161, 72, 239, 150, 61, 228, 139, 50, 217, 128, 39, 206, 117, 28, 195, 106, 17, 184, 95, 6, 173, 84, 251, 162, 73, 240, 151, 62, 229, 140, 51, 218, 129, 40, 207, 118, 29, 196, 107, 18, 185, 96, 7, 174, 85, 252, 163, 74, 241, 152, 63, 230, 141, 52, 219, 130, 41, 208, 119, 30, 197, 108, 19, 186, 97, 8, 175, 86, 253, 164, 75, 242, 153, 64, 231, 142, 53, 220, 131, 42, 209, 120, 31, 198, 109, 20, 187, 98, 9, 176, 87, 254, 165, 76, 243, 154, 65, 232, 143, 54, 221, 132, 43, 210, 121]
+    expected : List<float32>
+    expected = [2537802.0, -588355.0]
+    productCase ("the IQ4_XS product matches ggml's decode in the kernels' part order", "IQ4_XS", bytes, 256, expected)
 test ("the Q8_0 product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q8_0Case))
 test ("the Q6_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q6_kCase))
 test ("the Q5_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q5_kCase))
 test ("the Q3_K product matches ggml's decode in the kernels' part order", \() => exactArithmetic (q3_kCase))
 test ("the IQ4_NL product matches ggml's decode in the kernels' part order", \() => exactArithmetic (iq4_nlCase))
+test ("the IQ4_XS product matches ggml's decode in the kernels' part order", \() => exactArithmetic (iq4_xsCase))

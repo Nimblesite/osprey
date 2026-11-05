@@ -3,5 +3,6 @@ ok 2 - the Q6_K product matches ggml's decode in the kernels' part order
 ok 3 - the Q5_K product matches ggml's decode in the kernels' part order
 ok 4 - the Q3_K product matches ggml's decode in the kernels' part order
 ok 5 - the IQ4_NL product matches ggml's decode in the kernels' part order
-1..5
-# tests=5 passed=5 failed=0 skipped=0
+ok 6 - the IQ4_XS product matches ggml's decode in the kernels' part order
+1..6
+# tests=6 passed=6 failed=0 skipped=0
