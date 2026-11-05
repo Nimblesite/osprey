@@ -395,7 +395,7 @@ A static arm may read or mutate captured state under the same source-level handl
 2. Assemble modules and resolve declarations and lexical identities.
 3. Validate all operation contracts, arms, argument/result types, generic instances and transitive effect obligations, including unused arms.
 4. Specialize and discharge static regions.
-5. Validate transformed types, then check target and kernel capabilities before code generation. Step 3's proof answers for the residual's effects, so it is not proved again unless discharge leaves a static operation behind: one reached only through a value, such as a record field. Only such a residual gets its own effect proof.
+5. Validate transformed types, then check target and kernel capabilities before code generation. Reuse step 3's effect proof when it covers the residual. A residual needs its own effect proof if discharge leaves a static operation reached through a value or if the source checker deferred a GPU callback until discharge supplied its concrete function.
 
 Source validation evidence, mutation authority and replay-relevant operation and capture identities survive discharge. Transformed code neither gains authority nor loses valid authority merely because handler syntax was erased. Errors retain original source locations. Editor services inspect the original contracts. An empty row produced by unchecked erasure is not evidence of correctness.
 

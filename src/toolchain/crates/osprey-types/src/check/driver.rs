@@ -141,12 +141,26 @@ pub(crate) fn infer_checked(
 /// outlive its residual. [TYPE-EFFECT-PROOF-COUNT]
 pub(crate) fn infer_proved(
     program: &Program,
-) -> Result<(crate::info::ProgramTypes, LibraryExports), Vec<TypeError>> {
+) -> Result<(crate::info::ProgramTypes, LibraryExports, bool), Vec<TypeError>> {
     let program = crate::prelude::with_prelude(program);
     let mut checker = checked_program_with_exports(&program, &[], false, false);
     if checker.errors.is_empty() {
         let exports = std::mem::take(&mut checker.library_exports);
-        Ok((publish_program(&program, checker, false), exports))
+        let deferred_gpu_kernel = checker.deferred_gpu_kernel;
+        Ok((
+            publish_program(&program, checker, false),
+            exports,
+            deferred_gpu_kernel,
+        ))
+    } else {
+        Err(distinct(checker.errors))
+    }
+}
+
+pub(crate) fn prove_residual(program: &Program) -> Result<LibraryExports, Vec<TypeError>> {
+    let checker = checked_program_with_exports(program, &[], true, false);
+    if checker.errors.is_empty() {
+        Ok(checker.library_exports)
     } else {
         Err(distinct(checker.errors))
     }
@@ -260,6 +274,7 @@ fn settle_effect_contracts(checker: &mut Checker, program: &Program) -> bool {
     checker.signal_queries = effect_proof.signal_queries;
     checker.function_effects = effect_proof.functions;
     checker.library_exports = effect_proof.library_exports;
+    checker.deferred_gpu_kernel = effect_proof.deferred_gpu_kernel;
     true
 }
 pub(super) fn inferred_data_contracts(program: &Program, source_validated: bool) -> Checker {

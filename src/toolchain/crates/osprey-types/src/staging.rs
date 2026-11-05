@@ -57,6 +57,12 @@ pub(crate) fn lower_proved(
     }
     forwarders::drop_witnesses(&mut resolved);
     let lowered = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
+    // A source proof that deferred a static arm's GPU callback cannot certify
+    // the concrete callback substituted by discharge. [STAGE-GPU-LEGAL]
+    if solved.deferred_gpu_kernel {
+        let proof = crate::check::prove_residual(&lowered)?;
+        return Ok((lowered, Some(proof)));
+    }
     let discharged = !retains_static_operation(checked, &lowered);
     Ok((lowered, discharged.then_some(solved.exports)))
 }
@@ -94,26 +100,29 @@ struct SolvedSource {
     copy: Option<Program>,
     types: crate::ProgramTypes,
     exports: LibraryExports,
+    deferred_gpu_kernel: bool,
 }
 
 fn solved_source(program: &Program) -> Result<SolvedSource, Vec<TypeError>> {
     let copied = forwarders::specialized(program).and_then(|copy| {
-        let (types, exports) = crate::check::infer_proved(&copy).ok()?;
+        let (types, exports, deferred_gpu_kernel) = crate::check::infer_proved(&copy).ok()?;
         Some(SolvedSource {
             copy: Some(copy),
             types,
             exports,
+            deferred_gpu_kernel,
         })
     });
     // A copy the checker cannot type keeps the original, conservative program,
     // and leaves the source to name any real defect.
     copied.map_or_else(
         || {
-            let (types, exports) = crate::check::infer_proved(program)?;
+            let (types, exports, deferred_gpu_kernel) = crate::check::infer_proved(program)?;
             Ok(SolvedSource {
                 copy: None,
                 types,
                 exports,
+                deferred_gpu_kernel,
             })
         },
         Ok,

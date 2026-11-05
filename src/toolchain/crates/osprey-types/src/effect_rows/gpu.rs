@@ -45,6 +45,7 @@ pub(super) fn validate_gpu_kernel(
         return;
     };
     if deferred_arm_kernel(analyzer, kernel, scope, env) {
+        analyzer.index.deferred_gpu_kernel.set(true);
         return;
     }
     if let Some(message) = gpu_kernel_verdict(analyzer, kernel, scope, env) {

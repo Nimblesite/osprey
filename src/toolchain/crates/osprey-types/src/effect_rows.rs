@@ -277,6 +277,7 @@ struct Index<'a> {
     effect_operations: HashMap<String, Vec<String>>,
     constructors: HashMap<String, Vec<String>>,
     field_rows: field_rows::FieldRows<'a>,
+    deferred_gpu_kernel: std::cell::Cell<bool>,
 }
 
 #[derive(Clone)]

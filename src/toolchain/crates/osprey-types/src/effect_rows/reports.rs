@@ -59,6 +59,7 @@ pub(crate) struct CheckedEffects {
     pub(crate) signal_queries: HashMap<usize, EffectRequirements>,
     pub(crate) library_exports: LibraryExports,
     pub(crate) functions: HashMap<String, EffectRequirements>,
+    pub(crate) deferred_gpu_kernel: bool,
 }
 
 /// Each function's verdict as a library export, so one solve answers any later

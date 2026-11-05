@@ -11,6 +11,7 @@ impl Checker {
             signal_queries: HashMap::new(),
             function_effects: HashMap::new(),
             library_exports: crate::effect_rows::LibraryExports::default(),
+            deferred_gpu_kernel: false,
             expression_types: HashMap::new(),
             constants: Vec::new(),
             union_variants: HashMap::new(),

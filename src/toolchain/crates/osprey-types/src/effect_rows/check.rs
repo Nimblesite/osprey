@@ -249,6 +249,7 @@ fn check_resolved(program: &Program, instances: &Instances) -> CheckedEffects {
     errors.extend(instances.field_row_violations.borrow().values().cloned());
     CheckedEffects {
         errors,
+        deferred_gpu_kernel: index.deferred_gpu_kernel.get(),
         signal_queries: instances.signal_queries.borrow().clone(),
         functions: super::reports::collect(&index, instances, &rows, &returns),
         library_exports: LibraryExports::proven(index.functions.iter().zip(&rows).map(

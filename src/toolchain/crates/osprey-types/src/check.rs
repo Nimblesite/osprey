@@ -24,7 +24,7 @@ pub use driver::effect_check_count;
 pub use driver::infer_program;
 pub use driver::CheckedProgram;
 pub(crate) use driver::{infer_annotation_candidate, infer_annotation_trial};
-pub(crate) use driver::{infer_checked, infer_proved};
+pub(crate) use driver::{infer_checked, infer_proved, prove_residual};
 mod publish;
 use publish::publish_program;
 mod instances;
@@ -169,6 +169,7 @@ pub(crate) struct Checker {
     pub(crate) errors: Vec<TypeError>,
     signal_queries: HashMap<usize, crate::info::EffectRequirements>,
     library_exports: crate::effect_rows::LibraryExports,
+    deferred_gpu_kernel: bool,
     function_effects: HashMap<String, crate::info::EffectRequirements>,
     pub(crate) ctors: HashMap<String, CtorInfo>,
     /// Effect name -> its generic declaration (type params + raw op sigs).

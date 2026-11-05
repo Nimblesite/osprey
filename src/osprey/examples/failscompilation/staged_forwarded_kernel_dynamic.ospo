@@ -4,7 +4,7 @@
 // need, exactly as an inline kernel is — the handler around the region makes
 // `Log` dischargeable on the host, but a kernel body cannot leave the device.
 static effect Build {
-    build: fn(int, fn(int) -> float) -> GpuBuffer<float>
+    build: fn(int, fn(int) -> float) -> Result<GpuBuffer<float>, Error>
 }
 effect Log {
     write: fn(string) -> Unit
@@ -22,8 +22,17 @@ let out = {
         write m => print(m)
     }
     handle static Build {
-        build n f => gpuIota(n) |> gpuMap(f)
+        build n f => match gpuIota(n) {
+            Success { value } => gpuMap(value, f)
+            Error { message } => Error { message: message }
+        }
     }
     twice(3)
 }
-print("${gpuGet(out, 2) ?: 0.0}")
+match out {
+    Success { value } => match gpuGet(value, 2) {
+        Success { value } => print(value)
+        Error { message } => print(message)
+    }
+    Error { message } => print(message)
+}
