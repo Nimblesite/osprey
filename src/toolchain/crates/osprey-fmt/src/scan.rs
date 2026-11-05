@@ -11,8 +11,6 @@
 /// One physical source line, scanned into the facts a reindenter needs.
 #[derive(Debug, Clone)]
 pub(crate) struct Line {
-    /// Width of the original leading whitespace (spaces and tabs each count 1).
-    pub leading_ws: usize,
     /// The line's content with the leading indent removed, interior whitespace
     /// collapsed to single spaces, and trailing whitespace trimmed.
     pub content: String,
@@ -32,11 +30,6 @@ impl Line {
     pub(crate) fn is_blank(&self) -> bool {
         self.content.is_empty()
     }
-
-    /// Whether the line is nothing but a `//` comment.
-    pub(crate) fn is_comment_only(&self) -> bool {
-        self.content.starts_with("//")
-    }
 }
 
 /// Scan one raw line (a trailing `\r` is treated as part of the line ending).
@@ -52,7 +45,6 @@ pub(crate) fn scan_line(raw: &str) -> Line {
         .take_while(|c| matches!(c, '}' | ')' | ']'))
         .count();
     Line {
-        leading_ws,
         content,
         open_delta,
         leading_closers: i32::try_from(leading_closers).unwrap_or(0),
@@ -225,7 +217,6 @@ mod tests {
     #[test]
     fn collapses_interior_whitespace_and_trims_ends() {
         let line = scan_line("    let   x =    1   ");
-        assert_eq!(line.leading_ws, 4);
         assert_eq!(line.content, "let x = 1");
         assert_eq!(line.open_delta, 0);
     }
@@ -300,7 +291,7 @@ mod tests {
     #[test]
     fn blank_and_comment_classification() {
         assert!(scan_line("    ").is_blank());
-        assert!(scan_line("   // hi").is_comment_only());
-        assert!(!scan_line("x // hi").is_comment_only());
+        assert_eq!(scan_line("   // hi").content, "// hi");
+        assert_eq!(scan_line("x // hi").content, "x // hi");
     }
 }

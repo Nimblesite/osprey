@@ -131,8 +131,26 @@ fn ml_clause_and_match_surface_forms_are_preserved() {
         "explicit x = match x\n",
         "  Some n => n\n",
         "  None => 0\n",
+        "multi () =\n",
+        "  match ([\n",
+        "1, 2\n",
+        "])\n",
+        "      [] => 0\n",
+        "      _ => 1\n",
+        "applyBody () = apply (\\n =>\n",
+        "      doubled = n + n\n",
+        "      doubled)\n",
+        "(** A fenced example preserves its indentation.\n",
+        "```osprey\n",
+        "handler Arith\n",
+        "    overflow _ _ _ wrapped => wrapped\n",
+        "```\n",
+        "*)\n",
+        "documented () = 0\n",
     );
-    let out = format_for_path("forms.ospml", src).unwrap_or_default();
+    let out = format_for_path("forms.ospml", src);
+    assert!(out.is_ok(), "forms.ospml did not format: {out:?}");
+    let out = out.unwrap_or_default();
     assert!(!out.is_empty(), "forms.ospml did not format");
     assert_ne!(out, src, "the irregular layout must be reformatted");
     assert!(
@@ -153,6 +171,18 @@ fn ml_clause_and_match_surface_forms_are_preserved() {
     assert!(
         out.contains("\n    Some n => n\n"),
         "match layout changed: {out}"
+    );
+    assert!(
+        out.contains("\n    match ([\n    1, 2\n    ])\n        [] => 0\n        _ => 1\n"),
+        "the bracket continuation changed match indentation: {out}"
+    );
+    assert!(
+        out.contains("\napplyBody () = apply (\\n =>\n    doubled = n + n\n    doubled)\n"),
+        "the bracketed lambda lost its body layout: {out}"
+    );
+    assert!(
+        out.contains("\nhandler Arith\n    overflow _ _ _ wrapped => wrapped\n"),
+        "the doc example changed: {out}"
     );
     let twice = format_for_path("forms.ospml", &out).unwrap_or_default();
     assert_eq!(out, twice, "Plan 0019 forms are not idempotent");

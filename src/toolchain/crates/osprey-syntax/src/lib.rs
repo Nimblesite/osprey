@@ -48,6 +48,7 @@ pub use annotation_edits::{annotation_edits, AnnotationEdit, AnnotationTarget, S
 pub use binding_ranges::{binding_ranges, binding_scope, BindingKind, BindingRange};
 pub use default::parse_tree;
 pub use docparse::doc_links;
+pub use ml::ml_line_layout;
 pub use python::parse_python_tree;
 
 /// A syntax error located in the source (an ERROR/MISSING node from tree-sitter).

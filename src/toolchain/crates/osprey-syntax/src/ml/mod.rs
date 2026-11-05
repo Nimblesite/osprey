@@ -37,6 +37,45 @@ mod modules;
 mod parser;
 mod token;
 
+/// The indentation depth at each physical line's first ML token and whether
+/// the line continues a block doc comment. Implements [FLAVOR-ML-LAYOUT].
+#[must_use]
+pub fn ml_line_layout(source: &str) -> Vec<(Option<i32>, bool)> {
+    use token::TokKind;
+    let mut lines = vec![(None, false); source.lines().count()];
+    let mut depth = 0;
+    for tok in lexer::lex(source).0 {
+        match tok.kind {
+            TokKind::Indent => depth += 1,
+            TokKind::Dedent => depth -= 1,
+            TokKind::Newline | TokKind::Eof => {}
+            _ => record_line_layout(source, &mut lines, tok, depth),
+        }
+    }
+    lines
+}
+
+fn record_line_layout(
+    source: &str,
+    lines: &mut [(Option<i32>, bool)],
+    tok: token::Token,
+    depth: i32,
+) {
+    let Ok(index) = usize::try_from(tok.pos.line.saturating_sub(1)) else {
+        return;
+    };
+    if let Some(line) = lines.get_mut(index) {
+        let _ = line.0.get_or_insert(depth);
+    }
+    if matches!(tok.kind, token::TokKind::Doc(_)) {
+        let text = source.get(tok.range).unwrap_or_default();
+        let continuation = text.bytes().filter(|&byte| byte == b'\n').count();
+        for line in lines.iter_mut().skip(index + 1).take(continuation) {
+            line.1 = true;
+        }
+    }
+}
+
 /// Parse ML-flavor source into the canonical [`Program`](osprey_ast::Program):
 /// lex → parse to CST → lower to AST. Best-effort, carrying any syntax errors.
 pub(crate) fn parse_ml(source: &str) -> Parsed {

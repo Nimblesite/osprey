@@ -2,11 +2,9 @@
 //!
 //! Unlike the Default flavor, ML indentation *is* the block structure — the
 //! lexer turns column changes into Indent/Dedent tokens — so the formatter must
-//! not invent or flatten nesting. Instead it re-grids the existing indentation
-//! onto a clean four-space step: a stack of the source's own indent columns maps
-//! each line to a depth, preserving exactly which lines are deeper, shallower, or
-//! siblings. Blank and comment lines are layout-transparent; a standalone
-//! comment takes the depth of the code it precedes.
+//! not invent or flatten nesting. It renders the lexer's actual layout depths
+//! with four spaces per level. A standalone comment takes the depth of the
+//! code it precedes.
 
 use crate::scan::{scan_source, Line};
 use crate::{finalize, indent_to};
@@ -14,8 +12,8 @@ use crate::{finalize, indent_to};
 /// Reformat ML-flavor `src`, re-gridding its layout to a four-space step.
 pub(crate) fn format(src: &str) -> String {
     let lines: Vec<Line> = scan_source(src);
-    let depths = code_depths(&lines);
-    let out = render(&lines, &depths);
+    let layout = code_layout(src, &lines);
+    let out = render(&lines, &layout);
     finalize(&out)
 }
 
@@ -55,37 +53,28 @@ pub(crate) fn repair_dedented_suffix(
     None
 }
 
-/// Map every code line to its nesting depth by walking a stack of the indent
-/// columns seen so far; blank and comment lines get `None` (resolved later).
-fn code_depths(lines: &[Line]) -> Vec<Option<i32>> {
-    let mut stack: Vec<usize> = vec![0];
+/// Match the physical layout to scanned lines, which can span a string literal.
+fn code_layout<'a>(src: &'a str, lines: &[Line]) -> Vec<(Option<i32>, Option<&'a str>)> {
+    let layout = osprey_syntax::ml_line_layout(src).into_iter();
+    let mut physical = src
+        .split('\n')
+        .zip(layout.chain(std::iter::repeat((None, false))));
     lines
         .iter()
         .map(|line| {
-            if line.is_blank() || line.is_comment_only() {
-                return None;
+            let (raw, (depth, in_doc)) = physical.next().unwrap_or_default();
+            let count = line.content.split('\n').count();
+            for _ in 1..count {
+                let _ = physical.next();
             }
-            push_column(&mut stack, line.leading_ws);
-            i32::try_from(stack.len().saturating_sub(1)).ok()
+            (depth, (in_doc && count == 1).then_some(raw))
         })
         .collect()
 }
 
-/// Adjust the indent stack for a code line at column `col`: pop levels deeper
-/// than it, then push it as a new level when it is deeper than the current top.
-/// The base level (column 0) is never popped, so depth never goes negative.
-fn push_column(stack: &mut Vec<usize>, col: usize) {
-    while stack.len() > 1 && stack.last().is_some_and(|top| col < *top) {
-        let _ = stack.pop();
-    }
-    if stack.last().is_some_and(|top| col > *top) {
-        stack.push(col);
-    }
-}
-
 /// Emit each line at its depth: code lines use their computed depth; comments
 /// borrow the depth of the next code line (or the previous one at end of file).
-fn render(lines: &[Line], depths: &[Option<i32>]) -> Vec<String> {
+fn render(lines: &[Line], layout: &[(Option<i32>, Option<&str>)]) -> Vec<String> {
     lines
         .iter()
         .enumerate()
@@ -93,21 +82,21 @@ fn render(lines: &[Line], depths: &[Option<i32>]) -> Vec<String> {
             if line.is_blank() {
                 return String::new();
             }
-            let depth = depths
-                .get(idx)
-                .copied()
-                .flatten()
-                .unwrap_or_else(|| comment_depth(depths, idx));
-            indent_to(depth) + &line.content
+            let (depth, original) = layout.get(idx).copied().unwrap_or_default();
+            // A block doc comment can include a fenced example with meaningful whitespace.
+            original.map_or_else(
+                || indent_to(depth.unwrap_or_else(|| comment_depth(layout, idx))) + &line.content,
+                str::to_owned,
+            )
         })
         .collect()
 }
 
 /// The depth a standalone comment should adopt: the next code line's depth, or
 /// the previous code line's depth when the comment trails the file.
-fn comment_depth(depths: &[Option<i32>], idx: usize) -> i32 {
-    let after = depths.iter().skip(idx + 1).find_map(|d| *d);
-    let before = || depths.iter().take(idx).rev().find_map(|d| *d);
+fn comment_depth(layout: &[(Option<i32>, Option<&str>)], idx: usize) -> i32 {
+    let after = layout.iter().skip(idx + 1).find_map(|(d, _)| *d);
+    let before = || layout.iter().take(idx).rev().find_map(|(d, _)| *d);
     after.or_else(before).unwrap_or(0)
 }
 
