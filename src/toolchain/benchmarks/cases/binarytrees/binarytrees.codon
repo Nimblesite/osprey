@@ -1,0 +1,42 @@
+# Allocate + traverse many short-lived binary trees — allocation/memory stress.
+class Tree:
+    pass
+
+
+class Leaf(Tree):
+    pass
+
+
+class Node(Tree):
+    left: Tree
+    right: Tree
+
+
+LEAF: Tree = Leaf()
+
+
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def make(d) -> Tree:
+    match d:
+        case 0:
+            return Node(LEAF, LEAF)
+        case _:
+            return Node(make(d - 1), make(d - 1))
+
+
+def check(t: Tree) -> int:
+    match t:
+        case Node(left=left, right=right):
+            return 1 + check(left) + check(right)
+        case _:
+            return 0
+
+
+answer = fold(range(0, 1200), 0, lambda acc, _: acc + check(make(13)))
+print(f"{answer}")

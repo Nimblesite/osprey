@@ -1,0 +1,73 @@
+# textstats — draw a pseudo-random token stream and fold per-token string
+# metrics (length + substring search + prefix test) into a checksum.
+# Non-integer data type: String, exercising the immutable string builtins
+# (length / contains / startsWith) in a hot loop.
+#
+# Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
+# oracle-checked); "1" -> cryptographically-secure random seed (/dev/urandom).
+import sys
+
+
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mul(a, b):
+    return a * b
+
+
+def modp(a, b):
+    return a % b
+
+
+def r1(x):
+    return modp(mul(x, 16807), 2147483647)
+
+
+def hash_at(seed, i):
+    return r1(r1(add(seed, i)))
+
+
+def rand_seed():
+    with open("/dev/urandom", "rb") as source:
+        return add(modp(fold(source.read(4), 0, lambda acc, c: add(mul(acc, 256), int(c))), 2147483646), 1)
+
+
+def seed_of(s):
+    token = s.strip()
+    return rand_seed() if token.lstrip("-").isdigit() and int(token) != 0 else 1
+
+
+def word(k):
+    match k:
+        case 0:
+            return "the"
+        case 1:
+            return "quick"
+        case 2:
+            return "brown"
+        case 3:
+            return "fox"
+        case 4:
+            return "jumps"
+        case 5:
+            return "over"
+        case 6:
+            return "lazy"
+        case _:
+            return "dog"
+
+
+def score(w):
+    return add(add(len(w), 7 if "o" in w else 0), 3 if w.startswith("t") else 0)
+
+
+seed = seed_of(sys.stdin.readline())
+print(f"{fold(range(0, 200000), 0, lambda acc, i: add(acc, score(word(modp(hash_at(seed, i), 8)))))}")

@@ -1,0 +1,42 @@
+# Triple-nested counting loop accumulating (i*j*k) mod P — nested iteration.
+def add(a, b):
+    return a + b
+
+
+def sub(a, b):
+    return a - b
+
+
+def mul(a, b):
+    return a * b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def loop_k(i, j, k, acc):
+    match k:
+        case 0:
+            return acc
+        case _:
+            return loop_k(i, j, sub(k, 1), mod_(add(acc, mul(mul(i, j), k)), 1000000007))
+
+
+def loop_j(i, j, n, acc):
+    match j:
+        case 0:
+            return acc
+        case _:
+            return loop_j(i, sub(j, 1), n, loop_k(i, j, n, acc))
+
+
+def loop_i(i, n, acc):
+    match i:
+        case 0:
+            return acc
+        case _:
+            return loop_i(sub(i, 1), n, loop_j(i, n, n, acc))
+
+
+print(f"{loop_i(250, 250, 0)}")

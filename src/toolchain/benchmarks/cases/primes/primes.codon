@@ -1,0 +1,53 @@
+# Count primes below a limit by trial division — integer % in a tight loop.
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mul(a, b):
+    return a * b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def has_factor(n, d):
+    match mul(d, d) > n:
+        case True:
+            return False
+        case _:
+            match mod_(n, d):
+                case 0:
+                    return True
+                case _:
+                    return has_factor(n, add(d, 1))
+
+
+def is_prime(n):
+    match n < 2:
+        case True:
+            return False
+        case _:
+            match has_factor(n, 2):
+                case True:
+                    return False
+                case _:
+                    return True
+
+
+def tally(acc, n):
+    match is_prime(n):
+        case True:
+            return add(acc, 1)
+        case _:
+            return acc
+
+
+print(f"{fold(range(2, 200000), 0, tally)}")

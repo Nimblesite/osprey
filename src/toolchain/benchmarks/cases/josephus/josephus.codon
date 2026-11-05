@@ -1,0 +1,21 @@
+# Josephus problem — survivor index for n people, step k=7, via the modular recurrence.
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def step(acc, i):
+    return mod_(add(acc, 7), i)
+
+
+print(f"{fold(range(2, 10000001), 0, step)}")

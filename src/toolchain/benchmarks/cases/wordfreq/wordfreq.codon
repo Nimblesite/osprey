@@ -3,6 +3,9 @@
 #
 # Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 # oracle-checked); "1" -> cryptographically-secure random seed (/dev/urandom).
+import sys
+
+
 def fold(items, start, step):
     acc = start
     for item in items:
@@ -36,11 +39,8 @@ def rand_seed():
 
 
 def seed_of(s):
-    match s.strip():
-        case "0" | "":
-            return 1
-        case _:
-            return rand_seed()
+    token = s.strip()
+    return rand_seed() if token.lstrip("-").isdigit() and int(token) != 0 else 1
 
 
 def word(k):
@@ -68,6 +68,6 @@ def bump(m, w):
     return m
 
 
-seed = seed_of(input())
+seed = seed_of(sys.stdin.readline())
 counts = fold(range(0, 200000), {"the": 0}, lambda m, i: bump(m, word(modp(hash_at(seed, i), 8))))
 print(f"{fold(range(0, 8), 0, lambda acc, k: add(acc, mul(add(k, 1), counts.get(word(k), 0))))}")

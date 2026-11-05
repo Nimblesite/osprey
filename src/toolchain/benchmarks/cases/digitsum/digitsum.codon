@@ -1,0 +1,33 @@
+# Sum of decimal digit-sums over 1..N — integer division (n/10) and modulo in recursion.
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def div10(n):
+    return n // 10
+
+
+def digsum(n):
+    match n < 10:
+        case True:
+            return n
+        case _:
+            return add(mod_(n, 10), digsum(div10(n)))
+
+
+def step(acc, i):
+    return add(acc, digsum(i))
+
+
+print(f"{fold(range(1, 2000001), 0, step)}")

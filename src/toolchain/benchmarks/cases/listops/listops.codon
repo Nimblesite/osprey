@@ -3,6 +3,9 @@
 #
 # Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 # oracle-checked); "1" -> cryptographically-secure random seed (/dev/urandom).
+import sys
+
+
 class List:
     pass
 
@@ -14,6 +17,9 @@ class Nil(List):
 class Cons(List):
     head: int
     tail: List
+
+
+NIL: List = Nil()
 
 
 def fold(items, start, step):
@@ -53,16 +59,12 @@ def rand_seed():
 
 
 def seed_of(s):
-    match s.strip():
-        case "0" | "":
-            return 1
-        case _:
-            return rand_seed()
+    token = s.strip()
+    return rand_seed() if token.lstrip("-").isdigit() and int(token) != 0 else 1
 
 
 def build_list(s) -> List:
-    empty: List = Nil()
-    return fold(range(3999, -1, -1), empty, lambda acc, i: Cons(modp(hash_at(s, i), 1000), acc))
+    return fold(range(3999, -1, -1), NIL, lambda acc, i: Cons(modp(hash_at(s, i), 1000), acc))
 
 
 def sum_l(xs: List) -> int:
@@ -86,5 +88,5 @@ def run_one(s):
     return add(sum_l(xs), below_l(xs))
 
 
-seed = seed_of(input())
+seed = seed_of(sys.stdin.readline())
 print(f"{fold(range(0, 8), 0, lambda acc, t: add_m(acc, run_one(add(seed, mul(t, 131)))))}")

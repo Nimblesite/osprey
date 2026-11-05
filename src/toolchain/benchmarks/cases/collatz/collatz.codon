@@ -1,0 +1,45 @@
+# Collatz (3n+1) stopping time summed over 1..N — integer division (n/2) in deep recursion.
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mul(a, b):
+    return a * b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def half(n):
+    return n // 2
+
+
+def next3(n):
+    return add(mul(3, n), 1)
+
+
+def collatz(n):
+    match n:
+        case 1:
+            return 0
+        case _:
+            match mod_(n, 2):
+                case 0:
+                    return add(1, collatz(half(n)))
+                case _:
+                    return add(1, collatz(next3(n)))
+
+
+def step(acc, i):
+    return add(acc, collatz(i))
+
+
+print(f"{fold(range(1, 100001), 0, step)}")

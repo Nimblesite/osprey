@@ -1,0 +1,22 @@
+# Ackermann–Péter function — deep, non-tail mutual self-recursion.
+def add(a, b):
+    return a + b
+
+
+def sub(a, b):
+    return a - b
+
+
+def ack(m, n):
+    match m:
+        case 0:
+            return add(n, 1)
+        case _:
+            match n:
+                case 0:
+                    return ack(sub(m, 1), 1)
+                case _:
+                    return ack(sub(m, 1), ack(m, sub(n, 1)))
+
+
+print(f"{ack(3, 10)}")

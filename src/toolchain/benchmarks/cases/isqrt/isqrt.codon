@@ -1,0 +1,38 @@
+# Sum of integer square roots over 1..N — Newton's method, integer division heavy.
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def divv(a, b):
+    return a // b
+
+
+def isqrt_iter(n, x):
+    y = divv(add(x, divv(n, x)), 2)
+    match y < x:
+        case True:
+            return isqrt_iter(n, y)
+        case _:
+            return x
+
+
+def isqrt(n):
+    match n < 2:
+        case True:
+            return n
+        case _:
+            return isqrt_iter(n, n)
+
+
+def step(acc, i):
+    return add(acc, isqrt(i))
+
+
+print(f"{fold(range(1, 1000001), 0, step)}")

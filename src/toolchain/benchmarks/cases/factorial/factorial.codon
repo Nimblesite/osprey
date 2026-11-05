@@ -1,0 +1,21 @@
+# Factorial-style product 1*2*...*N taken mod 1000000007 (real N! overflows i64).
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def mul(a, b):
+    return a * b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def step(acc, i):
+    return mod_(mul(acc, i), 1000000007)
+
+
+print(f"{fold(range(1, 10000001), 1, step)}")
