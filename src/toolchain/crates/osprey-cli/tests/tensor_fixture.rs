@@ -295,7 +295,25 @@ fn main() = match toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)]) {
 /// [GPU-BUFFER-ELEM]: actual compiled uint8 storage, not a reported width.
 #[test]
 fn a_million_uint8_elements_allocate_one_megabyte_and_drop_cleanly() {
-    let source = "extern fn osp_arc_live_bytes() -> int\nfn main() = {\nlet byte: uint8 = 127\nlet before = osp_arc_live_bytes()\nlet buffer = range(0, 1000000) |> map(fn(_index) => byte) |> toGpu()\nlet used = wrapSub(osp_arc_live_bytes(), before)\nprint(\"${used} ${gpuLength(buffer)} ${gpuGet(buffer, 999999) ?: byte}\")\n}\n";
+    let source = r#"
+extern fn osp_arc_live_bytes() -> int
+effect UploadFailure { control stop: fn(string) -> GpuBuffer<uint8> }
+fn upload(byte) = match range(0, 1000000) |> map(fn(_index) => byte) |> toGpu() {
+    Success { value } => value
+    Error { message } => perform UploadFailure.stop(toString(message))
+}
+fn main() = {
+    handle UploadFailure { stop reason => print(reason) }
+    let byte: uint8 = 127
+    let before = osp_arc_live_bytes()
+    let buffer = upload(byte)
+    let used = wrapSub(osp_arc_live_bytes(), before)
+    match gpuGet(buffer, 999999) {
+        Success { value } => print("${used} ${gpuLength(buffer)} ${value}")
+        Error { message } => print(toString(message))
+    }
+}
+"#;
     for mode in ["extract", "inline"] {
         let path = std::env::temp_dir().join(format!(
             "osprey_dense_uint8_{}_{mode}.osp",
