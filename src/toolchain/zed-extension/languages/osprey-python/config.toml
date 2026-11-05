@@ -1,0 +1,8 @@
+name = "Osprey Python"
+path_suffixes = []
+first_line_pattern = '^[ \t]*# ?osprey: flavor=python[ \t]*$'
+line_comments = ["# "]
+tab_size = 4
+code_fence_block_name = "osprey-python"
+# Ordinary .py files retain Zed's Python integration (suffix wins over marker).
+# Select Osprey Python explicitly or use project-specific file_types settings.

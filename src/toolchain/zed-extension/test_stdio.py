@@ -1,0 +1,168 @@
+"""Real compiler transport acceptance for [EDITOR-ZED], without a Zed GUI.
+
+OSPREY_TEST_COMPILER selects the already-built compiler; no build is started.
+Framing is shared with the existing LSP benchmark rather than copied.
+"""
+
+import importlib.util
+import os
+from pathlib import Path
+import queue
+import re
+import subprocess
+import tempfile
+import threading
+import time
+import tomllib
+import unittest
+
+
+ROOT = Path(__file__).resolve().parents[3]
+SPEC = importlib.util.spec_from_file_location(
+    "lsp_transport", ROOT / "scripts/tests/benchmark-lsp.py")
+TRANSPORT = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(TRANSPORT)
+COMPILER = Path(os.environ.get("OSPREY_TEST_COMPILER", ROOT / "target/release/osprey")).resolve()
+EXTENSION = Path(__file__).resolve().parent
+
+
+class ZedManifest(unittest.TestCase):
+    def test_registration_marker_isolation_and_canonical_grammar(self):
+        manifest = tomllib.loads((EXTENSION / "extension.toml").read_text())
+        workspace = tomllib.loads((ROOT / "src/toolchain/Cargo.toml").read_text())
+        self.assertEqual(manifest["version"], workspace["workspace"]["package"]["version"])
+        server = manifest["language_servers"]["osprey"]
+        self.assertEqual(set(server["languages"]), set(server["language_ids"]))
+        configs = [tomllib.loads(path.read_text())
+                   for path in (EXTENSION / "languages").glob("*/config.toml")]
+        self.assertEqual({config["name"] for config in configs}, set(server["languages"]))
+        for config in configs:
+            self.assertNotIn("py", config["path_suffixes"], "must not take over CPython")
+        python = next(config for config in configs if config["name"] == "Osprey Python")
+        marker = re.compile(python["first_line_pattern"])
+        for line in ["# osprey: flavor=python", "#osprey: flavor=python", "  # osprey: flavor=python  "]:
+            self.assertIsNotNone(marker.fullmatch(line), line)
+        for line in ["import sys", "#!/usr/bin/python3", "# osprey: flavor=ml", "# osprey:flavor=python"]:
+            self.assertIsNone(marker.fullmatch(line), line)
+        grammar = manifest["grammars"]["osprey"]
+        for name in ["grammar.js", "src/scanner.c", "src/parser.c"]:
+            pinned = subprocess.check_output(
+                ["git", "show", f'{grammar["rev"]}:{grammar["path"]}/{name}'], cwd=ROOT)
+            self.assertEqual(pinned, (ROOT / grammar["path"] / name).read_bytes(),
+                             "update the pinned grammar revision when canonical syntax changes")
+        self.assertEqual((EXTENSION / "languages/osprey/highlights.scm").read_bytes(),
+                         (ROOT / grammar["path"] / "queries/highlights.scm").read_bytes())
+
+
+class ZedStdio(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix="osprey zed ")
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.process = subprocess.Popen(
+            [str(COMPILER), "lsp"], cwd=self.root,
+            stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.addCleanup(self.stop)
+        self.incoming = queue.Queue()
+        self.reports = {}
+        threading.Thread(target=TRANSPORT.receive,
+                         args=(self.process.stdout, self.incoming), daemon=True).start()
+        self.next_id = 0
+        capabilities = self.request("initialize", {
+            "processId": None, "rootUri": self.root.as_uri(),
+            "capabilities": {"general": {"positionEncodings": ["utf-16"]}},
+            "initializationOptions": {"diagnostics": {"scope": "openFiles"}},
+        })["capabilities"]
+        self.assertTrue(capabilities["hoverProvider"])
+        self.assertTrue(capabilities["definitionProvider"])
+        self.assertTrue(capabilities["documentFormattingProvider"])
+        self.notify("initialized", {})
+
+    def stop(self):
+        if self.process.poll() is None:
+            self.process.kill()
+        self.process.wait(timeout=10)
+        for stream in [self.process.stdin, self.process.stdout, self.process.stderr]:
+            stream.close()
+
+    def notify(self, method, params):
+        TRANSPORT.send(self.process, method, params)
+
+    def request(self, method, params):
+        self.next_id += 1
+        TRANSPORT.send(self.process, method, params, self.next_id)
+        deadline = time.monotonic() + 20
+        while True:
+            message = self.incoming.get(timeout=max(0, deadline - time.monotonic()))
+            if isinstance(message, Exception):
+                raise message
+            if message.get("method") == "textDocument/publishDiagnostics":
+                report = message["params"]
+                self.reports[report["uri"]] = report["diagnostics"]
+            if message.get("id") == self.next_id:
+                self.assertNotIn("error", message, message)
+                return message.get("result")
+
+    def document(self, name, language, source):
+        path = self.root / name
+        path.write_text(source)
+        uri = path.as_uri()
+        self.notify("textDocument/didOpen", {"textDocument": {
+            "uri": uri, "languageId": language, "version": 1, "text": source}})
+        self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+        self.assertIn(uri, self.reports, "opening must publish diagnostics")
+        return uri
+
+    @staticmethod
+    def at(uri, line, character):
+        return {"textDocument": {"uri": uri},
+                "position": {"line": line, "character": character}}
+
+    def test_flavors_requests_edits_and_shutdown(self):
+        cases = [
+            ("a.osp", "osprey", "fn double(x) = wrapMul(x, 2)\nlet total = double(3)\n", 1, 13),
+            ("b.ospml", "osprey-ml", "double x = wrapMul x 2\nlet total = double 3\n", 1, 13),
+            ("c.py", "osprey-python", "# osprey: flavor=python\ndef double(x):\n    return wrapMul(x, 2)\ntotal = double(3)\n", 3, 9),
+        ]
+        for name, language, source, line, column in cases:
+            with self.subTest(language=language):
+                uri = self.document(name, language, source)
+                self.assertFalse([d for d in self.reports[uri] if d.get("severity") == 1])
+                hover = self.request("textDocument/hover", self.at(uri, line, column))
+                self.assertIn("double", str(hover))
+                definition = self.request("textDocument/definition", self.at(uri, line, column))
+                self.assertTrue(definition, "definition must resolve")
+                self.assertIn(uri, str(definition))
+                completion = self.request("textDocument/completion", self.at(uri, line, column))
+                self.assertIn("double", str(completion))
+                formatting = self.request("textDocument/formatting", {
+                    "textDocument": {"uri": uri},
+                    "options": {"tabSize": 4, "insertSpaces": True}})
+                self.assertIsInstance(formatting, list)
+                self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
+                            "contentChanges": [{"text": source.replace("double(3)", "missing(3)").replace("double 3", "missing 3")}]})
+                self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+                self.assertTrue([d for d in self.reports[uri] if d.get("severity") == 1])
+                self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 3},
+                            "contentChanges": [{"text": source}]})
+                self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+                self.assertFalse([d for d in self.reports[uri] if d.get("severity") == 1])
+                self.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
+        self.assertIsNone(self.request("shutdown", None))
+        self.notify("exit", None)
+        self.assertEqual(self.process.wait(timeout=10), 0)
+
+    def test_utf16_navigation_after_astral_text(self):
+        source = 'fn double(x) = wrapMul(x, 2)\nlet total = { let face = "😀"; double(3) }\n'
+        uri = self.document("unicode.osp", "osprey", source)
+        line = source.splitlines()[1]
+        column = len(line[:line.index("double") + 1].encode("utf-16-le")) // 2
+        hover = self.request("textDocument/hover", self.at(uri, 1, column))
+        self.assertIn("double", str(hover))
+        definition = self.request("textDocument/definition", self.at(uri, 1, column))
+        self.assertTrue(definition)
+        self.assertIn(uri, str(definition))
+
+
+if __name__ == "__main__":
+    unittest.main()

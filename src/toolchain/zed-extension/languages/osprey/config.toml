@@ -1,0 +1,12 @@
+name = "Osprey"
+grammar = "osprey"
+path_suffixes = ["osp"]
+line_comments = ["// "]
+tab_size = 4
+code_fence_block_name = "osprey"
+brackets = [
+    { start = "(", end = ")", close = true, newline = false },
+    { start = "[", end = "]", close = true, newline = false },
+    { start = "{", end = "}", close = true, newline = true },
+    { start = "\"", end = "\"", close = true, newline = false },
+]

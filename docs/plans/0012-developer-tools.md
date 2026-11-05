@@ -93,3 +93,14 @@ Depends on: lspkit shared profiler + memory contracts ([`LSP-PROFILER-SPEC.md`](
 ## Module explorer
 
 - [ ] Add an automated keyboard test for the module explorer; the view is VS Code's native tree, whose keyboard operation is not separately exercised today [EDITOR-MODULE-EXPLORER]. Check: `src/toolchain/vscode-extension/test/suite/module-explorer.test.ts` exercises keyboard navigation and passes.
+
+## Zed integration [EDITOR-ZED]
+
+The Zed client uses the existing `osprey lsp` server; semantic features and project/flavor selection remain in the compiler. The earlier referenced Zed-specific plan was not present in the checkout or searched history; this checklist records the explicit plugin/testing objective against the shared editor contract, without claiming that missing plan was recovered.
+
+- [x] Implement and test configured binary, arguments and environment, PATH discovery and explicit missing-server errors [EDITOR-ZED-LAUNCH]. Check: `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-zed` passes loaded launch-policy cases; the unimplemented-policy failure was reproduced first.
+- [x] Register Osprey syntax flavors without taking over ordinary Python files; reuse canonical grammar/query assets where applicable and verify actual parsing/highlighting. Check: manifest/canonical grammar checks pass; real Zed shows Default highlighting and all three flavors' live hover. Ordinary Python remains Python; `.py` requires explicit Osprey Python selection. ML/Python have no supplied structural grammar, documented explicitly.
+- [x] Build the extension for Zed's WASM target and run strict static analysis. Check: `make -C src/toolchain/zed-extension build lint` passes (`wasm32-wasip2`, warnings denied).
+- [ ] Exercise the actual stdio server with Zed language IDs: diagnostics after edits, hover, completion, navigation, formatting and UTF-16 positions.
+- [ ] Install the dev extension in Zed and verify real editor startup and behavior; document reproducible commands and remaining limits.
+- [ ] Wire build, analysis and tests into the existing three CI phases without duplicate test execution.

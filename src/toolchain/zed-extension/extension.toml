@@ -1,0 +1,21 @@
+id = "osprey"
+name = "Osprey"
+version = "0.0.0-dev"
+schema_version = 1
+authors = ["Nimblesite"]
+description = "Osprey language support through the compiler's language server."
+repository = "https://github.com/Nimblesite/osprey"
+
+[language_servers.osprey]
+name = "Osprey"
+languages = ["Osprey", "Osprey ML", "Osprey Python"]
+
+[language_servers.osprey.language_ids]
+"Osprey" = "osprey"
+"Osprey ML" = "osprey-ml"
+"Osprey Python" = "osprey-python"
+
+[grammars.osprey]
+repository = "https://github.com/Nimblesite/osprey"
+rev = "e85f851bd617687e8776a1864493396702b6f4d4"
+path = "src/toolchain/tree-sitter-osprey"

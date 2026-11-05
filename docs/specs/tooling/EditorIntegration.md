@@ -25,6 +25,14 @@ The VS Code integration is a thin client over `[LSP-TRANSPORT]`.
   publication uses the same VSIX artifacts and an independent optional-token
   job, so either registry can succeed alone.
 
+### Zed `[EDITOR-ZED]`
+
+The client in `src/toolchain/zed-extension` launches the same `osprey lsp` stdio server. It registers distinct Osprey, Osprey ML and Osprey Python language IDs; ordinary Python files must retain their existing editor integration. Project membership and syntax-flavor precedence remain server responsibilities [LSP-TRANSPORT]. Default highlighting reuses the canonical Tree-sitter grammar and queries; ML/Python grammar support must be verified independently rather than claimed through the Default grammar.
+
+#### Launch settings `[EDITOR-ZED-LAUNCH]`
+
+Resolve `lsp.osprey.binary.path` before worktree PATH discovery. A blank explicit path is an error, never an implicit fallback. Default arguments are `["lsp"]`; explicit arguments replace them, including an empty list. Preserve configured environment variables, initialization options and workspace settings. Pass command and arguments directly without shell interpolation. Report missing binaries and settings failures explicitly. The local compiler is user-supplied; no automatic executable downloads or bundled-version claims apply to this client.
+
 ## Versioning & supply chain `[EDITOR-VERSIONING]`
 
 The VS Code distributions obey the

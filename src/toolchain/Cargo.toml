@@ -4,6 +4,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "zed-extension",
     "tree-sitter-osprey",
     "crates/osprey-ast",
     "crates/osprey-syntax",
