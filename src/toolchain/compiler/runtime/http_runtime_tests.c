@@ -358,6 +358,9 @@ void run_all_http_tests(void) {
   test_post_response_loopback();    // POST body retained behind a handle
   test_client_tls_peer_verification(); // untrusted/wrong-host certs rejected
   test_server_labels_an_unparseable_request();
+  test_closure_listener_serves_requests(); // closure bridge, real clients
+  test_closure_listen_rejections();        // and its documented refusals
+  test_stop_server_with_client_connected(); // foreign stop tears the client down
   // The three below burn finite id spaces and are permanent for the process.
   test_listener_spawn_failure_is_reported(); // burns the FIBER id space
   test_client_handle_exhaustion();           // burns the shared HTTP id space

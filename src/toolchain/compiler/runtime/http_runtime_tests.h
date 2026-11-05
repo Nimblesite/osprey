@@ -34,6 +34,13 @@ extern int64_t http_response_free(int64_t handle);
 HttpResponse *http_test_server_handler(char *method, char *path,
                                        char *headers, char *body);
 
+// Raw loopback client helpers, used by both live-server TUs: connect to a
+// listener on `port`, read one reply to EOF, and one full exchange.
+int server_test_connect(int port);
+void server_test_read_to_eof(int fd, char *out, size_t capacity);
+void server_test_exchange(int port, const char *request, char *reply,
+                          size_t capacity);
+
 // A raw TCP origin answering with exact bytes, NULs included, defined in
 // http_origin_tests.c.
 #define ORIGIN_PORT 18088
@@ -108,6 +115,9 @@ void test_server_rejects_bad_requests(void);
 void test_server_self_stop_from_handler(void);
 void test_server_handle_bounds(void);
 void test_server_labels_an_unparseable_request(void);
+void test_closure_listener_serves_requests(void);
+void test_closure_listen_rejections(void);
+void test_stop_server_with_client_connected(void);
 void test_listener_spawn_failure_is_reported(void);
 void test_server_handle_exhaustion(void);
 
