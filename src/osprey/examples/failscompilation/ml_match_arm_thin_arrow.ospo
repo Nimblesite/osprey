@@ -1,5 +1,5 @@
 // osprey: flavor=ml
-// ML-flavor must-reject. Pins [FLAVOR-ML-MATCH] (docs/specs/0024).
+// ML-flavor must-reject. Pins [FLAVOR-ML-MATCH] (docs/specs/language/0024-MLFlavorSyntax.md).
 //
 // ML keeps the two arrows disjoint: `->` is the TYPE arrow (`int -> int`) and
 // `=>` separates a clause's pattern from its body. A match arm written with the

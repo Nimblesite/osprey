@@ -3,7 +3,7 @@
 // ([GPU-BUFFER], [GPU-BUFFER-ELEM], [GPU-BUFFER-LENGTH], [GPU-GET],
 // [GPU-FILTER]) and the host operations a trained model needs: the dense
 // product [GPU-MATMUL] and the two weight loaders [GPU-BUFFER-LOAD],
-// [GPU-BUFFER-TENSOR] (docs/specs/0034). Linked with gpu_host.c,
+// [GPU-BUFFER-TENSOR] (docs/specs/runtime/0034-GPUComputation.md). Linked with gpu_host.c,
 // file_runtime.c (the io_error channel) and memory_runtime.c (the default
 // backend) by the Makefile's _test_c_runtime.
 //

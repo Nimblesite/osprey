@@ -1,5 +1,5 @@
 // Assertion-driven tests for json_runtime.c — the recursive-descent parser and
-// path accessors behind [BUILTIN-JSON] (docs/specs/0012). Standalone link (the
+// path accessors behind [BUILTIN-JSON] (docs/specs/runtime/0012-Built-InFunctions.md). Standalone link (the
 // unit is self-contained C11 + pthread).
 //
 // The contract under test: json_parse returns a 1-based handle or an EXACT

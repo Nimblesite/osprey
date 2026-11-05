@@ -1,6 +1,6 @@
 // Default Osprey memory backend — the swappable allocation boundary.
 //
-// Implements [MEM-BACKENDS] / [MEM-BACKENDS-CUSTOM] (docs/specs/0018). Compiler
+// Implements [MEM-BACKENDS] / [MEM-BACKENDS-CUSTOM] (docs/specs/compiler/0018-MemoryManagement.md). Compiler
 // codegen emits calls to `osp_alloc` / `osp_alloc_tagged` and never names
 // `malloc`, so the memory manager is chosen at link time, never baked into the
 // IR. This default backend is a `malloc` passthrough without general retain /

@@ -435,7 +435,7 @@ static void *gc_managed_alloc(size_t size) {
 }
 
 // --- public ABI --------------------------------------------------------------
-// Implements the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
+// Implements the [MEM-BACKENDS] C interface (docs/specs/compiler/0018-MemoryManagement.md §Custom Managers).
 
 void *osp_alloc(int64_t size) {
   // [FAILURE-EXPLICIT] A wide ABI request must not truncate on wasm32.

@@ -191,7 +191,7 @@ NATIVE_RUNTIME_ARCHIVES ?= src/toolchain/compiler/bin/libfiber_runtime.a src/too
 
 # WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C src/toolchain/website wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
-# to a wasm archive osprey links with `--target=wasm32`. See docs/specs/0022.
+# to a wasm archive osprey links with `--target=wasm32`. See docs/specs/compiler/0022-WebAssemblyTarget.md.
 WASM_LLVM_BIN ?= $(shell for d in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin; do [ -x "$$d/clang" ] && { echo "$$d"; break; }; done)
 WASM_LLD_BIN  ?= $(shell for d in /opt/homebrew/opt/lld/bin /usr/local/opt/lld/bin "$(WASM_LLVM_BIN)"; do [ -n "$$d" ] && [ -x "$$d/wasm-ld" ] && { echo "$$d"; break; }; done)
 WASM_PATH_PREFIX ?= $(shell for d in "$(WASM_LLVM_BIN)" "$(WASM_LLD_BIN)"; do [ -n "$$d" ] && printf "%s:" "$$d"; done)

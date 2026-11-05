@@ -1,5 +1,5 @@
 // osprey: flavor=ml
-// Must-reject. Pins [FLAVOR-ML-FN]/[FLAVOR-ML-CURRY] (docs/specs/0024): a
+// Must-reject. Pins [FLAVOR-ML-FN]/[FLAVOR-ML-CURRY] (docs/specs/language/0024-MLFlavorSyntax.md): a
 // parenthesised signature domain describes the FLAT binding form, so pairing
 // it with a curried binding is a form mismatch the lowering must reject.
 //

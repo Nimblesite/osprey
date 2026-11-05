@@ -1,7 +1,7 @@
 //! CI source-style gates for the complete Default and ML language-test corpus.
 //!
 //! Both flavors synthesize `main` from bare top-level statements and lower them
-//! to byte-identical IR ([FLAVOR-IR-EQUIV], docs/specs/0023, 0024), so a
+//! to byte-identical IR ([FLAVOR-IR-EQUIV], docs/specs/language/0023-LanguageFlavors.md, 0024), so a
 //! zero-argument `fn main()` (Default) or `main ()` / `main :` (ML) is pure
 //! boilerplate: the program reads exactly the same written as bare top-level
 //! statements. This gate fails if any language test carries that boilerplate,

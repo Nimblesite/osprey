@@ -39,7 +39,7 @@ fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
 /// The flavor must come from the path, not a hardwired `Flavor::Default`:
 /// `failscompilation/ml_*.ospo` are ML-flavor negatives selected by a leading
 /// marker, and grading them with the brace grammar would pin the wrong
-/// rejection path. Implements [FLAVOR-SELECT] (docs/specs/0023).
+/// rejection path. Implements [FLAVOR-SELECT] (docs/specs/language/0023-LanguageFlavors.md).
 pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
     let parsed = osprey_syntax::parse_program_for_path(&path.to_string_lossy(), source);
     if !parsed.errors.is_empty() {

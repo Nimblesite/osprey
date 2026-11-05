@@ -1,6 +1,6 @@
 // osprey: flavor=ml
-// ML-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/0026) and the
-// cross-flavor half of [FLAVOR-LOWER-CONTRACT] (docs/specs/0023).
+// ML-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/language/0026-DocumentationComments.md) and the
+// cross-flavor half of [FLAVOR-LOWER-CONTRACT] (docs/specs/language/0023-LanguageFlavors.md).
 //
 // The inner sigil is spelled `//!` in BOTH flavors — only the outer sigil
 // differs (`///` versus `(** … *)`). The ML frontend therefore rejects a `//!`

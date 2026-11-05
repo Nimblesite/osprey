@@ -1,5 +1,5 @@
 // Assertion-driven tests for memory_runtime.c — the DEFAULT backend of the
-// [MEM-BACKENDS] / [MEM-BACKENDS-CUSTOM] ABI (docs/specs/0018). Its contract
+// [MEM-BACKENDS] / [MEM-BACKENDS-CUSTOM] ABI (docs/specs/compiler/0018-MemoryManagement.md). Its contract
 // is precise no-op-ness: every hook exists and is safe, general dup/drop and
 // the collector hook move NOTHING, and the one reclaiming entry point —
 // osp_release_unique on a codegen-proved-unique value — really frees.

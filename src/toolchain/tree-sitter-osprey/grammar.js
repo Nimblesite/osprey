@@ -3,7 +3,7 @@
  *
  * This grammar replaced three earlier copies — the original parser grammar,
  * the VSCode TextMate grammar, and the website Monaco/Monarch grammar —
- * collapsed to one (docs/plans/go-to-rust-migration.md). It is the compiler
+ * collapsed to one. It is the compiler
  * front-end's parser: src/toolchain/crates/osprey-syntax lowers this CST to the AST.
  *
  * Precedence climbs or < and < cmp < add < mul < pipe < unary < call via

@@ -6,7 +6,7 @@
 // and the connection/statement pointers are threaded through op arguments (so no
 // handler closes over outer state). Fallible ops return `Result<_, Error>`.
 //
-// Plan: docs/plans/ffi-sqlite.md · Spec: docs/specs/0019-Database.md
+// Plan: docs/plans/ffi-sqlite.md · Spec: docs/specs/compiler/0019-ForeignFunctionInterface.md
 //
 // @link: sqlite3
 

@@ -1,7 +1,7 @@
 // Assertion-driven tests for effects_runtime.c and effects_coro.c — the dynamic
 // handler stack and the thread-based effect continuations behind
 // `handle ... in` and `resume` ([EFFECTS-FIBER-PERFORM], [EFFECTS-RESUME],
-// [EFFECTS-OPERATION-MAILBOX], docs/specs/0009). Linked with
+// [EFFECTS-OPERATION-MAILBOX], docs/specs/language/0009-BooleanOperations.md). Linked with
 // profiler_runtime.c/profiler_sampler.c (the coro thread registers itself) and
 // with memory_arc.c — the one backend whose retain/release are real, so the
 // mailbox's ownership of managed operands is observable — by the Makefile's

@@ -439,7 +439,7 @@ def settings_cases():
 # Providers, profiles and the unified `thinking` setting: expected values read from
 # upstream's providers/moonshotai.py, providers/zai.py, profiles/moonshotai.py,
 # profiles/zai.py, models/zai.py, providers/deepseek.py and the thinking handling in
-# models/openai.py and models/__init__.py (2.46.0), per docs/plans/0052-agent-providers-settings.md.
+# models/openai.py and models/__init__.py (2.46.0), per docs/plans/0052-agent.md.
 
 THINKING_VALUES = ["absent", "true", "false", "minimal", "low", "medium", "high", "xhigh"]
 """The unified `thinking` permutations, in THINKING_TABLE column order."""

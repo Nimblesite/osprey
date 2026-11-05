@@ -11,7 +11,7 @@
 //! ESCAPE HATCH: if this hand-written layout frontend becomes onerous or
 //! accrues parsing bugs we cannot tame, we fall back to a `tree-sitter-osprey-ml`
 //! grammar with an external INDENT/DEDENT/NEWLINE scanner.c — the boundary law
-//! makes the parser mechanism a flavor-internal swap (docs/specs/0023).
+//! makes the parser mechanism a flavor-internal swap (docs/specs/language/0023-LanguageFlavors.md).
 
 use super::doc_text::strip_doc_lines;
 use super::token::{keyword_or_ident, TokKind, Token};

@@ -1,4 +1,4 @@
-// Default-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/0026).
+// Default-flavor must-reject. Pins [DOC-SIGIL-INNER] (docs/specs/language/0026-DocumentationComments.md).
 //
 // A `//!` where no scope can hold it used to lex as an empty `//` comment, a
 // `!` operator, and the rest of the line as CODE. At the end of a block that

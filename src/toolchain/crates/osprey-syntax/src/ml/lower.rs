@@ -2,7 +2,7 @@
 //! This is the *only* place ML surface syntax is normalised into the shared
 //! core, and it is where the boundary law is enforced — the output is canonical
 //! AST that no later phase can distinguish from Default-flavor output
-//! ([FLAVOR-BOUNDARY], [FLAVOR-LAYER], [FLAVOR-LOWER-CONTRACT], docs/specs/0023).
+//! ([FLAVOR-BOUNDARY], [FLAVOR-LAYER], [FLAVOR-LOWER-CONTRACT], docs/specs/language/0023-LanguageFlavors.md).
 //!
 //! What this module canonicalises (and the parser deliberately does not):
 //! - **Curry-by-default** ([FLAVOR-ML-CURRY], [FLAVOR-CURRY]): ML curries by

@@ -1,5 +1,5 @@
 // Memory GOLDEN tests — exact live-set checkpoints and hard peak ceilings for
-// the ARC backend ([GC-ARC-PERCEUS], [MEM-BACKENDS], docs/specs/0018). Linked
+// the ARC backend ([GC-ARC-PERCEUS], [MEM-BACKENDS], docs/specs/compiler/0018-MemoryManagement.md). Linked
 // against memory_arc.c + gpu_runtime.c + gpu_host.c + file_runtime.c by the
 // Makefile's _test_c_runtime.
 //

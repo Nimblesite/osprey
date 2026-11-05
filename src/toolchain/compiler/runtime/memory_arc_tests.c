@@ -1,6 +1,6 @@
 // Vanilla-C src/osprey/tests for runtime/memory_arc.c — the Perceus ARC backend
 // ([GC-ARC-PERCEUS], [MEM-ACYCLIC], [MEM-OWNERSHIP], [MEM-BACKENDS],
-// [MEM-BACKENDS-CUSTOM], docs/specs/0018). Built by the Makefile's
+// [MEM-BACKENDS-CUSTOM], docs/specs/compiler/0018-MemoryManagement.md). Built by the Makefile's
 // _test_c_runtime; never with osp_arc_shim.h (the foreign-pointer fixtures need
 // real libc malloc/free). memory_arc.c exports no live-count symbol, so
 // liveness is asserted structurally: the {int64 meta; int32 rc; uint32 size}

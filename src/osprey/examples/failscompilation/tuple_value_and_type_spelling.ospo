@@ -1,4 +1,4 @@
-// Must-reject. Pins [TYPE-TUPLE] (docs/specs/0004): a tuple PATTERN is the
+// Must-reject. Pins [TYPE-TUPLE] (docs/specs/language/0004-TypeSystem.md): a tuple PATTERN is the
 // positional row spelling and is implemented, but the standalone tuple VALUE
 // and its `(int, string)` type spelling are not. A tuple pattern therefore
 // only ever selects a positionally-declared union payload, plain or erased.

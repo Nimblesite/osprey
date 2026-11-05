@@ -231,7 +231,7 @@ static void arc_arm_debug(void) {
 
 // --- public ABI
 // ------------------------------------------------------------------ Implements
-// the [MEM-BACKENDS] C interface (docs/specs/0018 §Custom Managers).
+// the [MEM-BACKENDS] C interface (docs/specs/compiler/0018-MemoryManagement.md §Custom Managers).
 
 // Finalizer registration (memory_hooks.h).
 void osp_mem_set_finalizer(void (*finalize)(void *body)) {

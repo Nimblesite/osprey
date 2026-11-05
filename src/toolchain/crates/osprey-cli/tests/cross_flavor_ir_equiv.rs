@@ -18,7 +18,7 @@
 //!
 //! Exception: a handful of examples are an *intentionally ML-only surface* with
 //! no Default-flavor equivalent — the pure three-state `Verdict` testing model
-//! ([TESTING-VERDICT], docs/specs/0027) is the case in point: the Default flavor
+//! ([TESTING-VERDICT], docs/specs/language/0027-TestingFramework.md) is the case in point: the Default flavor
 //! stays imperative (`fn() -> Unit` firing soft assertions), so a Verdict case
 //! has no twin to be IR-identical to. Those stems are listed in
 //! [`ML_ONLY_STEMS`] and skipped by both tests below.

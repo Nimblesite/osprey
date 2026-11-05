@@ -1,6 +1,6 @@
 // osprey: flavor=ml
-// ML-flavor must-reject. Pins [FLAVOR-ML-COMMENTS] (docs/specs/0024) and
-// [DOC-SIGIL-ML] (docs/specs/0026).
+// ML-flavor must-reject. Pins [FLAVOR-ML-COMMENTS] (docs/specs/language/0024-MLFlavorSyntax.md) and
+// [DOC-SIGIL-ML] (docs/specs/language/0026-DocumentationComments.md).
 //
 // `(** … *)` is the ML documentation comment. Like the ordinary `(* … *)` block
 // form it nests and must be closed; an unterminated one is a lexical error, not

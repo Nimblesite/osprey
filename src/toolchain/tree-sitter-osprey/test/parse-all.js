@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Phase 0 verification harness (docs/plans/go-to-rust-migration.md, task 0.3):
+ * Phase 0 verification harness:
  * parse every VALID Osprey example with tree-sitter and assert ZERO ERROR/MISSING
  * nodes. Exits non-zero on any error node so it can gate CI.
  *

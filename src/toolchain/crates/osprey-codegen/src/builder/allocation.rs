@@ -7,7 +7,7 @@ impl Codegen {
     /// codegen site funnels through, so the memory backend is chosen at link time
     /// (default `osp_alloc` = `malloc`; ARC / tracing-GC / arena swap in behind
     /// the same symbol) — never baked into the IR. Implements [MEM-BACKENDS],
-    /// docs/specs/0018. The allocator attributes are load-bearing: they let LLVM
+    /// docs/specs/compiler/0018-MemoryManagement.md. The allocator attributes are load-bearing: they let LLVM
     /// recognise `@osp_alloc` as an allocation function, so `-O2` proves
     /// non-escaping allocations dead and removes them entirely (the
     /// [MEM-OWNERSHIP] static free-at-last-use, achieved by the optimizer).
