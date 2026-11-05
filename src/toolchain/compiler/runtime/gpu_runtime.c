@@ -41,11 +41,16 @@ typedef struct OspreyGpuBuffer {
   uint8_t stale;
   uint8_t adapter; // Owning SDK; fits the existing header padding.
   uint8_t shared_mapping; // Discriminates the exclusive slots without growing the header.
+  uint8_t mapped;
   int64_t elem_bytes;
-  // [LLM-WEIGHTS-MAPPED] The page-aligned file mapping `data` points into, or NULL.
+} OspreyGpuBuffer;
+
+// [LLM-WEIGHTS-MAPPED] Only mapped allocations carry the page extent.
+typedef struct OspreyMappedGpuBuffer {
+  OspreyGpuBuffer buffer;
   void *map_base;
   size_t map_bytes;
-} OspreyGpuBuffer;
+} OspreyMappedGpuBuffer;
 
 int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_elem_bytes(void *buffer);
@@ -146,11 +151,12 @@ static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, 
     b->adapter = selected > 0 ? (uint8_t)selected : 0;
   }
   osprey_gpu_arg_at(dispatch, kind, words, NULL, (uint64_t)osprey_gpu_len(handle), b ? (uint64_t)b->elem_bytes : 8, slot);
-  if (b && b->map_base && dispatch->count > 0) {
+  if (b && b->mapped && dispatch->count > 0) {
+    const OspreyMappedGpuBuffer *mapped = (const OspreyMappedGpuBuffer *)b;
     OspreyGpuArg *bound = &dispatch->args[dispatch->count - 1];
-    bound->map_base = b->map_base;
-    bound->map_bytes = b->map_bytes;
-    bound->map_skip = (uint64_t)(b->data - (uint8_t *)b->map_base);
+    bound->map_base = mapped->map_base;
+    bound->map_bytes = mapped->map_bytes;
+    bound->map_skip = (uint64_t)(b->data - (uint8_t *)mapped->map_base);
   }
 }
 
@@ -321,18 +327,16 @@ int32_t osprey_gpu_declined(const char *what) {
 // keeps the memory backend from releasing a pointer it never allocated.
 static void release_mapping(OspreyGpuBuffer *b) {
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
+  if (!b->mapped) return;
+  OspreyMappedGpuBuffer *mapped = (OspreyMappedGpuBuffer *)b;
   if (b->shared_mapping) {
     b->shared_mapping = 0;
     b->map_slot = NULL;
-    b->map_base = NULL;
-    b->map_bytes = 0;
-    b->data = NULL;
-  } else if (b->map_base) {
-    (void)munmap(b->map_base, b->map_bytes);
-    b->map_base = NULL;
-    b->map_bytes = 0;
-    b->data = NULL;
+  } else {
+    (void)munmap(mapped->map_base, mapped->map_bytes);
   }
+  b->mapped = 0;
+  b->data = NULL;
 #else
   (void)b;
 #endif
@@ -346,7 +350,7 @@ void osprey_gpu_finalize(void *buffer) {
   if (!b->shared_mapping && b->device && b->adapter == 2) {
     // A queued kernel may still read a mapping the unmap below takes away, so
     // the batch finishes first; a plain object is kept alive by the batch itself.
-    if (b->map_base) {
+    if (b->mapped) {
       (void)osprey_gpu_metal_download(b->device, b->data, 0);
       osprey_gpu_metal_release(b->device);
     } else {
@@ -384,7 +388,7 @@ static uint8_t *zeroed_words(int64_t length, int64_t elem_bytes) {
 // byte-overflowing length and a failed allocation are NULL with the reason on
 // the io_error channel, never a fabricated empty buffer ([FAILURE-EXPLICIT]);
 // a zero length is the one valid empty buffer.
-void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
+static void *alloc_buffer(int64_t length, int64_t elem_bytes, size_t header_bytes) {
   if (elem_bytes != 1 && elem_bytes != 2 && elem_bytes != 4 && elem_bytes != 8) {
     osp_io_error_text("gpu", "buffer allocation", "element width must be 1, 2, 4 or 8 bytes");
     return NULL;
@@ -398,7 +402,7 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
     return NULL;
   }
   register_finalizer();
-  OspreyGpuBuffer *b = (OspreyGpuBuffer *)osp_alloc_tagged((int64_t)sizeof(OspreyGpuBuffer), GPU_HDR_LAYOUT);
+  OspreyGpuBuffer *b = (OspreyGpuBuffer *)osp_alloc_tagged((int64_t)header_bytes, GPU_HDR_LAYOUT);
   if (!b) {
     osp_io_error_text("gpu", "buffer allocation", "out of memory");
     return NULL;
@@ -409,9 +413,8 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   b->stale = 0;
   b->adapter = 0;
   b->shared_mapping = 0;
+  b->mapped = 0;
   b->elem_bytes = elem_bytes;
-  b->map_base = NULL;
-  b->map_bytes = 0;
   b->data = zeroed_words(length, elem_bytes);
   if (!b->data) {
     osp_release(b);
@@ -420,6 +423,10 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   }
   b->length = length;
   return b;
+}
+
+void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
+  return alloc_buffer(length, elem_bytes, sizeof(OspreyGpuBuffer));
 }
 
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
@@ -498,21 +505,23 @@ void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64
     (void)close(fd);
     return NULL;
   }
-  void *b = osprey_gpu_alloc(0, elem_bytes);
+  void *b = alloc_buffer(0, elem_bytes, count == 0 ? sizeof(OspreyGpuBuffer) : sizeof(OspreyMappedGpuBuffer));
   if (b == NULL || count == 0) {
     (void)close(fd);
     return b;
   }
-  OspreyGpuBuffer *buffer = (OspreyGpuBuffer *)b;
+  OspreyMappedGpuBuffer *mapping = (OspreyMappedGpuBuffer *)b;
+  OspreyGpuBuffer *buffer = &mapping->buffer;
   const MappedFile *shared = mapped_whole(fd, &status);
   if (shared) {
     (void)close(fd);
     osp_release(buffer->data);
     buffer->data = (uint8_t *)shared->base + offset;
-    buffer->map_base = shared->base;
-    buffer->map_bytes = shared->bytes;
+    mapping->map_base = shared->base;
+    mapping->map_bytes = shared->bytes;
     buffer->map_slot = &((MappedFile *)(uintptr_t)shared)->slot;
     buffer->shared_mapping = 1;
+    buffer->mapped = 1;
     buffer->length = count;
     return b;
   }
@@ -529,8 +538,9 @@ void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64
   }
   osp_release(buffer->data);
   buffer->data = (uint8_t *)base + skip;
-  buffer->map_base = base;
-  buffer->map_bytes = mapped;
+  mapping->map_base = base;
+  mapping->map_bytes = mapped;
+  buffer->mapped = 1;
   buffer->length = count;
   return b;
 }
