@@ -70,6 +70,8 @@ typedef struct {
 
 #define GC_MARKED 1u
 #define GC_FINAL 2u
+#define GC_STRING 4u
+#define GC_PERSISTENT (GC_FINAL | GC_STRING)
 
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -170,7 +172,7 @@ static int gc_grow(void) {
   }
   for (size_t i = 0; i < g_cap; i++) {
     if (g_tab[i].base != 0) {
-      gc_place(tab, cap, g_tab[i].base, g_tab[i].size, g_tab[i].mark & GC_FINAL);
+      gc_place(tab, cap, g_tab[i].base, g_tab[i].size, g_tab[i].mark & GC_PERSISTENT);
     }
   }
   free(g_tab);
@@ -315,7 +317,7 @@ static void gc_sweep(void) {
   if (!tab) {
     // Can't rebuild: keep everything (just clear marks). Sound, no reclamation.
     for (size_t i = 0; i < g_cap; i++) {
-      g_tab[i].mark &= GC_FINAL;
+      g_tab[i].mark &= GC_PERSISTENT;
     }
     return;
   }
@@ -324,7 +326,7 @@ static void gc_sweep(void) {
       continue;
     }
     if (g_tab[i].mark & GC_MARKED) {
-      gc_place(tab, cap, g_tab[i].base, g_tab[i].size, g_tab[i].mark & GC_FINAL);
+      gc_place(tab, cap, g_tab[i].base, g_tab[i].size, g_tab[i].mark & GC_PERSISTENT);
     } else {
       gc_finalize(&g_tab[i]);
       free((void *)g_tab[i].base);
@@ -437,41 +439,33 @@ static void *gc_managed_alloc(size_t size) {
 // --- public ABI --------------------------------------------------------------
 // Implements the [MEM-BACKENDS] C interface (docs/specs/compiler/0018-MemoryManagement.md §Custom Managers).
 
-void *osp_alloc(int64_t size) {
-  // [FAILURE-EXPLICIT] A wide ABI request must not truncate on wasm32.
-  if (size > 0 && (uint64_t)size > SIZE_MAX) return NULL;
-  gc_lock();
-  void *p = gc_managed_alloc(size > 0 ? (size_t)size : 0);
-  gc_unlock();
-  return p;
-}
+void *osp_alloc(int64_t size) { return osp_alloc_tagged(size, OSP_MEM_RAW); }
 
 // Link anchor (memory_hooks.h): main calls this so an allocation-free program
 // still extracts this object. The collector arms lazily; nothing to do here.
 void osp_mem_boot(void) {}
 
-static void gc_set_final(void *p);
-
-// Layout-carrying allocation: the conservative collector scans words, so the
-// meta word's pointer mask is not needed; its kind matters only to flag an
-// OSP_MEM_LIST_HDR_EXTERN block for finalization at the sweep that frees it.
+// [PORT-STRING-NUL-OWNERSHIP] Length lives in the existing bounded allocation entry.
 void *osp_alloc_tagged(int64_t size, int64_t meta) {
-  void *p = osp_alloc(size);
-  if (p && (meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN) {
-    gc_set_final(p);
-  }
+  bool text = (meta & 0xFF) == OSP_MEM_STRING;
+  if ((size > 0 && (uint64_t)size > SIZE_MAX) ||
+      (text && (size < 1 || (uint64_t)size > UINT32_MAX))) return NULL;
+  gc_lock();
+  size_t bytes = size > 0 ? (size_t)size : 0;
+  void *p = gc_managed_alloc(bytes);
+  OspGcEnt *e = p ? gc_lookup((uintptr_t)p) : NULL;
+  if (text && p && !e) { free(p); g_bytes -= bytes; p = NULL; }
+  if (e) e->mark |= text ? GC_STRING : ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
+  gc_unlock();
   return p;
 }
 
-// Flag a block whose sweep runs the finalizer; one left untracked by a full
-// table is never freed, so never finalized either.
-static void gc_set_final(void *p) {
+int64_t osp_mem_string_length(const void *p) {
   gc_lock();
   OspGcEnt *e = gc_lookup((uintptr_t)p);
-  if (e) {
-    e->mark |= GC_FINAL;
-  }
+  int64_t length = e && (e->mark & GC_STRING) && e->size ? (int64_t)e->size - 1 : -1;
   gc_unlock();
+  return length;
 }
 
 // Finalizer registration (memory_hooks.h).
@@ -480,8 +474,7 @@ void osp_mem_set_finalizer(void (*finalize)(void *body)) { g_finalizer = finaliz
 // Fully-initialized-by-caller twin (memory_hooks.h). The conservative collector
 // never relies on pre-zeroed bodies, so it is identical to osp_alloc_tagged.
 void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
-  (void)meta;
-  return osp_alloc(size);
+  return osp_alloc_tagged(size, meta);
 }
 
 // Reference-count hooks are no-ops under tracing (Bacon/Cheng/Rajan duality):
@@ -608,10 +601,14 @@ void osp_mem_baton_unpark(void) {
   gc_unlock();
 }
 
-// Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
+// Lifetime flags mirror the layout kinds without enlarging the GC entry.
 void osp_mem_set_layout(void *p, int64_t meta) {
-  (void)p;
-  (void)meta;
+  gc_lock();
+  OspGcEnt *e = gc_lookup((uintptr_t)p);
+  uint32_t flags = (meta & 0xFF) == OSP_MEM_STRING ? GC_STRING :
+                   ((meta & 0xFF) == OSP_MEM_LIST_HDR_EXTERN ? GC_FINAL : 0);
+  if (e) e->mark = (e->mark & GC_MARKED) | flags;
+  gc_unlock();
 }
 
 void osp_collect(void) {

@@ -236,6 +236,12 @@ module Machines
 
     fired (machine, name) = Pick::either (name == "", machine, put (machine, name, Values::flag true))
 
+    (** Whether a control explicitly assigns the named input, even when its value stays equal. *)
+    export sets (lever, name) = match lever
+        Assign target _ => target == name
+        Put target _ _ => target == name
+        _ => false
+
     pulled (machine, lever, given) = match lever
         Fire name => put (machine, name, Values::flag true)
         Assign name trigger => fired (put (machine, name, given), trigger)

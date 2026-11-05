@@ -70,7 +70,7 @@ Real HTTP acceptance must compare exact status, body and security-relevant heade
 
 ## The suite — [PORT-SUITE]
 
-`src/toolchain/crates/osprey-cli/tests/python_packages.rs` discovers every library with both `src/osprey/packages/<name>/osprey.toml` and `src/osprey/packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `src/osprey/packages/manager/` and run through `make -C src/osprey/packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
+`src/toolchain/crates/osprey-cli/tests/python_packages.rs` discovers every library with both `src/osprey/packages/<name>/osprey.toml` and `src/osprey/packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `src/osprey/packages/manager/` and run through `make -C src/osprey/packages/manager registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
 
 - exit successfully;
 - print exactly `expected_output.txt`: one `ok <case>` line per assertion and a final `N passed, 0 failed`;

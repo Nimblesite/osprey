@@ -93,7 +93,7 @@ From a checkout of the repository, on an Apple silicon Mac with Rust installed:
 ```bash
 make -C src/toolchain/targets/macos flock      # the herding game
 make -C src/toolchain/targets/macos painting   # the painting port
-make -C src/toolchain/targets/macos compare    # captures the port and the Rust original and diffs them
+make -C src/toolchain/benchmarks painting-compare    # captures the port and the Rust original and diffs them
 make _gpui-test                                # the Osprey suites, the host's tests and clippy, and both smoke runs
 ```
 

@@ -8,7 +8,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: bench bench-osprey instruction-gate
+.PHONY: bench bench-osprey instruction-gate flock-bench painting-compare
 
 ## bench: Build, then run the cross-language performance benchmark suite
 ##        (Osprey vs Rust/C/OCaml/Haskell — CPU via hyperfine, peak memory via
@@ -37,4 +37,18 @@ bench-osprey: build
 ##        CI job runs this; its ratios only go down, through instruction_gate.py --record.
 instruction-gate:
 	cd src/toolchain/benchmarks && python3 instruction_gate.py
+
+## flock-bench: macOS. Run Flock for 20 seconds and print fps, dispatch, paint and
+##              envelope size. Keep the window in front.
+flock-bench: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh --bench 20
+
+## painting-compare: macOS. Pixel-diff the painting port against GPUI's original, with and
+##                   without synthetic strokes. Needs Screen Recording and Accessibility
+##                   permission for the terminal.
+painting-compare: _runtime_macos
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh
+	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh --draw
 endif

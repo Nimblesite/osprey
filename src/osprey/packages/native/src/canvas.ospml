@@ -254,6 +254,19 @@ module Canvases
         Moving g => dragged (machine, g, x, y)
         Sliding a => slidTo (machine, a, x)
 
+    (** Whether this release activates a control that explicitly assigns an input. *)
+    export chooses (given, name, x, y, down) =
+        machine = roomy given
+        clickable = match machine.machineGrip
+            Holding => true
+            Moving g => g.travelled == false
+            _ => false
+        match down == false && clickable
+            false => false
+            true => match Lists::find (areas machine, \a => inside (machine, a, x, y))
+                Success a => Machines::sets (a.areaLever, name)
+                Error _ => false
+
     (** A pointer at `x`, `y` on the canvas, pressed or not: a press grips what is under it, moves drag or slide it, and the release acts once. A move with nothing pressed is a hover and changes nothing. *)
     export pointer (machine, x, y, down) = match down
         true => held (roomy machine, x, y)
@@ -287,7 +300,7 @@ module Canvases
 
     // Whether a listener whose lever puts a choice into an input is marked: the input already holds that choice.
     chosen (machine, lever) = match lever
-        Put name literal _ => Machines::holds (machine, Compared(comparedInput = name, comparedBy = Equal, comparedWith = literal))
+        Put name literal _ => literal != Unset && Machines::holds (machine, Compared(comparedInput = name, comparedBy = Equal, comparedWith = literal))
         _ => false
 
     bare (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = a.areaRole == MenuItem && chosen (machine, a.areaLever), accessMovable = movable a)

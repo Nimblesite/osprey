@@ -23,6 +23,17 @@ docs:
 	cd $(ROOT) && cargo build --manifest-path src/toolchain/Cargo.toml -p osprey-cli
 	cd src/toolchain/website && OSPREY_BIN="$(abspath $(ROOT))/target/debug/osprey" npm run generate-docs
 
+# Osprey Data Studio in both flavors: compile, validate, and require the same manifest under WASI and the browser shim.
+define wasm_studio
+$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
+$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
+$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
+node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
+node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+endef
+
 ## wasm: Build everything for the WebAssembly target, ready to go — the wasm
 ## runtime archive (src/toolchain/compiler/bin/libosprey_runtime_wasm.a), the hello example,
 ## and Osprey Data Studio in BOTH flavors (studio.{osp,ospml} -> one byte-
@@ -42,14 +53,7 @@ wasm: build _runtime_wasm
 	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
 	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/hello.wasm src/osprey/examples/wasm/hello.expectedoutput
 	@echo "==> compiling Osprey Data Studio (BOTH flavors) -> src/osprey/examples/wasm/build/"
-	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
-	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
-	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
-	@echo "==> both Studio flavors must emit the SAME manifest (byte-identical golden)"
-	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	$(wasm_studio)
 	$(MAKE) _test_wasm_goldens
 	@echo "==> wasm ready: built + validated + WASI/browser smoke green"
 
@@ -61,13 +65,7 @@ wasm-site: _runtime_wasm
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	@echo "==> compiling Osprey Data Studio website assets -> src/osprey/examples/wasm/build/"
 	@$(MKDIR) src/osprey/examples/wasm/build
-	$(BIN) src/osprey/examples/wasm/studio.osp   --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.osp.wasm
-	$(BIN) src/osprey/examples/wasm/studio.ospml --target=wasm32 --compile -o src/osprey/examples/wasm/build/studio.ospml.wasm
-	$(call wasm_validate,src/osprey/examples/wasm/build/studio.osp.wasm src/osprey/examples/wasm/build/studio.ospml.wasm)
-	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.osp.wasm   src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm/wasm-smoke.mjs         src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
-	node scripts/wasm/wasm-browser-smoke.mjs src/osprey/examples/wasm/build/studio.ospml.wasm src/osprey/examples/wasm/studio.expectedoutput
+	$(wasm_studio)
 	@echo "==> website wasm demo ready"
 
 ## wasm-serve: Build the wasm target (full `make wasm`), then static-host

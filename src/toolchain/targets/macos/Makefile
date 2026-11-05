@@ -1,6 +1,7 @@
-# The desktop apps on macOS, each in the GPUI host. Each target runs its recipe in the root Makefile,
-# where it is a private `_` target; `make help` at the root lists these too. Windows: src/toolchain/targets/windows.
+# The desktop apps on macOS, each in the GPUI host. Recipes run from the repo root through scripts/make/forward.mk;
+# `make help` at the root lists these too. Windows: src/toolchain/targets/windows.
 # Each app's tests: src/toolchain/targets/macos/tests, and with no host at all, src/toolchain/targets/tests.
+# The Flock and painting measurements: src/toolchain/benchmarks.
 ROOT ?= ../../../..
 ifeq ($(wildcard scripts/make/forward.mk),)
 include $(ROOT)/scripts/make/forward.mk
@@ -8,7 +9,7 @@ else
 override ROOT := .
 include Makefile
 
-.PHONY: agent casting flock painting signal-flow synth storage probe bench compare
+.PHONY: agent casting flock painting signal-flow synth storage probe
 
 ## agent: Open Osprey Agent, the coding agent on @osprey/native, on the SwiftUI host. PROJECT names the
 ##        folder it works in; the key comes from DEEPSEEKKEY in the repository's .env.
@@ -55,18 +56,4 @@ storage: _runtime_macos
 probe: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh
-
-## bench: Run Flock for 20 seconds and print fps, dispatch, paint and envelope
-##        size. Keep the window in front.
-bench: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/flock/run.sh --bench 20
-
-## compare: Pixel-diff the painting port against GPUI's original, with and
-##          without synthetic strokes. Needs Screen Recording and Accessibility
-##          permission for the terminal.
-compare: _runtime_macos
-	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/gpui/painting/reference/compare.sh --draw
 endif

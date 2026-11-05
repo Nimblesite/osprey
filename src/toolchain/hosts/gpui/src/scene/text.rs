@@ -101,6 +101,7 @@ fn measured(
         value: 0.,
         min: 0.,
         max: 0.,
+        selected: false,
     })
 }
 

@@ -261,6 +261,16 @@ void *osp_alloc_tagged(int64_t size, int64_t meta) {
   return arc_request(size, meta, 1);
 }
 
+// [PORT-STRING-NUL-OWNERSHIP] The live allocation header owns the exact length.
+int64_t osp_mem_string_length(const void *p) {
+  arc_lock();
+  OspArcHdr *h = arc_lookup_body((uintptr_t)p);
+  int64_t length = h && h->rc != 0 && OSP_ARC_KIND(h->meta) == OSP_MEM_STRING && h->size
+                       ? (int64_t)h->size - 1 : -1;
+  arc_unlock();
+  return length;
+}
+
 // Fully-initialized-by-caller twin: skip the drop-safety pre-zero (see
 // arc_init_body). Every masked word MUST be stored before the block can drop.
 void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {

@@ -26,6 +26,10 @@
 #define OSP_MEM_PTR_ARRAY 4       // every 8-byte word in [0, size) is a child
 #define OSP_MEM_MASK_DIRECT 5     // MASK whose children codegen PROVED are ARC bodies or NULL: drop reads their headers, no registry probe
 #define OSP_MEM_LIST_HDR_EXTERN 6 // { i64 len, ptr data, ... }: run the finalizer over the intact body, then release data only
+// Immutable text: an exact allocation of byte length + one C terminator.
+#define OSP_MEM_STRING 7
+// -1 means no live STRING allocation owns this address (never an empty value).
+int64_t osp_mem_string_length(const void *p);
 
 // The bit marking the pointer-sized slot at byte offset `off` (use with offsetof so
 // the layout can never drift from the struct).
