@@ -285,6 +285,11 @@ static int close_to(double a, double b) { return a - b < 1e-9 && b - a < 1e-9; }
 static void math_doubles_are_accurate(void) {
   hunt_check(close_to(sqrt(2.0), 1.4142135623730951), "sqrt");
   hunt_check(close_to(exp(1.0), 2.718281828459045), "exp");
+  hunt_check(expf(0.0f) == 1.0f && expf(-0.0f) == 1.0f, "expf signed zero");
+  hunt_check(expf(1.0f) == 2.7182817f && expf(-1.0f) == 0.36787945f, "expf rounds to binary32");
+  hunt_check(expf(-103.0f) == 0x1p-149f && expf(-104.0f) == 0.0f, "expf subnormal and underflow");
+  hunt_check(expf(89.0f) == INFINITY && expf(INFINITY) == INFINITY, "expf overflow and positive infinity");
+  hunt_check(expf(-INFINITY) == 0.0f && isnan(expf(NAN)), "expf negative infinity and nan");
   hunt_check(close_to(log(10.0), 2.302585092994046), "log");
   hunt_check(close_to(tanh(0.5), 0.46211715726000974), "tanh");
   hunt_check(close_to(pow(2.0, 10.0), 1024.0) && close_to(pow(2.0, 0.5), 1.4142135623730951), "pow");

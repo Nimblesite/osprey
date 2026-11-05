@@ -18,6 +18,7 @@ static inline int signbit(double x) {
 double fabs(double x);
 double sqrt(double x);
 double exp(double x);
+float expf(float x);
 double log(double x);
 double log10(double x);
 double log2(double x);

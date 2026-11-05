@@ -271,7 +271,9 @@ class HostCompilerTests(unittest.TestCase):
         flags = subprocess.check_output([
             "make", "--no-print-directory", "-s", "-f", "Makefile", "-f", "-", "hunt-host-flags",
         ], cwd=ROOT, input=target + "\n", text=True)
-        source = '#include <stdint.h>\n#include <stdarg.h>\n#include <stdio.h>\n#include "hunt_mock.h"\nint64_t mock_header_probe(FILE *f) { return f->readable; }\n'
+        source = ('#include <stdint.h>\n#include <stdarg.h>\n#include <stdio.h>\n#include <math.h>\n'
+                  '#include "hunt_mock.h"\nint64_t mock_header_probe(FILE *f) { return f->readable; }\n'
+                  'float mock_exp_probe(float value) { return expf(value); }\n')
         compiler = shlex.split(os.environ.get("CC", "cc"))
         process = subprocess.run(compiler + shlex.split(flags) + ["-I", "runtime/klee", "-fsyntax-only", "-x", "c", "-"],
                                  cwd=ROOT / "src" / "toolchain" / "compiler", input=source, text=True, capture_output=True)

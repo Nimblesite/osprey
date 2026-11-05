@@ -136,6 +136,9 @@ double exp(double x) {
   return ldexp(exp_reduced(r), (int)k);
 }
 
+// The binary32 GPU host helper shares this mock's concrete exponential model.
+float expf(float x) { return (float)exp((double)x); }
+
 // ln m for m in [0.5, 1) through 2 atanh((m - 1) / (m + 1)).
 static double log_reduced(double m) {
   double z = (m - 1.0) / (m + 1.0);
