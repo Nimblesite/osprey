@@ -9,7 +9,7 @@ all its floats as repr strings, decoded here with `Check.float_of`."""
 from testing import Check
 from transformers_expected import Expected
 from transformers_tools_expected import ExpectedTools
-from transformers import Generation, Lists, LogitsProcess, Qwen3_5Attention, Qwen3_5Mlp, Qwen3_5Model, Qwen3_5Norm, Qwen3_5Rope, Qwen3_5Tensor, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
+from transformers import Generation, Lists, LogitsProcess, Qwen3_5Cache, Qwen3_5Config, Qwen3_5Hf, Qwen3_5Model, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
 from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
@@ -932,24 +932,23 @@ def name_at(names, k):
 
 def model_fixture_cases():
     """[LLM-MODEL-ORACLE] The tiny `Qwen3_5TextConfig` fixture transformers wrote is
-    self-consistent: the declared parameter count is the sum of the recorded tensor
-    shapes, every parameter, hidden state and cache tensor holds exactly one value per
-    element of its shape, and both attention kinds appear as in the real model. The
-    values themselves are compared when the port's model code lands."""
-    return listConcat(manifest_cases(), listConcat(param_cases(), listConcat(hidden_cases(), cache_cases())))
+    self-consistent (its counts and shapes), and the device model built from its
+    parameters reproduces its activations and cache."""
+    return listConcat(manifest_cases(), listConcat(param_cases(), listConcat(hidden_cases(), listConcat(cache_cases(), model_layer_cases()))))
 
 
-# --- the qwen3_5 full-attention layer: [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE] ---
+# --- the qwen3_5 model on device buffers: [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE], [LLM-MODEL-CACHE] ---
 
-MODEL_LAYER = 3
-"""The fixture's one full-attention layer: `layer_types` is three `linear_attention`
-layers then `full_attention`."""
 MODEL_RTOL = 1e-5
 MODEL_ATOL = 1e-6
 """The port's tolerance against the fixture: the path runs binary32 arithmetic whose
-dot products reduce in a different order from torch's CPU GEMM and whose `exp`/`sqrt`
-come from a different libm, so [PORT-TEST-ORACLE]'s exact-arithmetic tolerances do not
-apply. The measured worst distance is in the README."""
+dot products reduce in a different order from torch's CPU GEMM and whose `exp`/`ln`
+come from the device library, so [PORT-TEST-ORACLE]'s exact-arithmetic tolerances do
+not apply."""
+SINGLE = 0
+"""`MODEL_HIDDEN_VALUES` index of the one-token input's embedding; its stages follow."""
+CACHED = 10
+"""`MODEL_HIDDEN_VALUES` index of the cached run's embeddings; its stages follow."""
 
 
 def index_in(names, name):
@@ -962,22 +961,33 @@ def param_shape(name):
     return unwrap_or(listGet(Expected.MODEL_PARAM_SHAPES, index_in(Expected.MODEL_PARAM_NAMES, name)), [])
 
 
+def extent(shape, axis):
+    return unwrap_or(listGet(shape, axis), 0)
+
+
 def model_config():
-    """The fixture's `Qwen3_5TextConfig`: head and layer widths come from the recorded
-    parameter shapes, the remaining fields from the config its docstring records."""
-    q = param_shape("layers.3.self_attn.q_proj.weight")
-    k = param_shape("layers.3.self_attn.k_proj.weight")
-    head_dim = unwrap_or(listGet(param_shape("layers.3.self_attn.q_norm.weight"), 0), 0)
-    return Qwen3_5Tensor.Config(
+    """The fixture's `Qwen3_5TextConfig`: the attention and MLP widths come from the
+    recorded parameter shapes; the linear-attention head split (two key heads of eight,
+    four value heads of eight) and the rope settings from the config the oracle's
+    docstring records, since `[64, 64]` alone does not say how `key_dim` splits."""
+    head_dim = extent(param_shape("layers.3.self_attn.q_norm.weight"), 0)
+    conv = param_shape("layers.0.linear_attn.conv1d.weight")
+    return Qwen3_5Config.Config(
         hidden_size=Expected.MODEL_HIDDEN,
-        num_attention_heads=unwrap_or(listGet(q, 0), 0) // (2 * head_dim),
-        num_key_value_heads=unwrap_or(listGet(k, 0), 0) // head_dim,
-        head_dim=head_dim,
-        intermediate_size=unwrap_or(listGet(param_shape("layers.3.mlp.gate_proj.weight"), 0), 0),
+        intermediate_size=extent(param_shape("layers.3.mlp.gate_proj.weight"), 0),
         vocab_size=Expected.MODEL_VOCAB,
-        rms_norm_eps=toFloat32(0.000001),
-        rope_theta=toFloat32(10000.0),
-        partial_rotary_factor=toFloat32(0.25),
+        num_hidden_layers=Expected.MODEL_LAYERS,
+        num_attention_heads=extent(param_shape("layers.3.self_attn.q_proj.weight"), 0) // (2 * head_dim),
+        num_key_value_heads=extent(param_shape("layers.3.self_attn.k_proj.weight"), 0) // head_dim,
+        head_dim=head_dim,
+        partial_rotary_factor=0.25,
+        rope_theta=10000.0,
+        rms_norm_eps=0.000001,
+        linear_num_key_heads=2,
+        linear_num_value_heads=extent(param_shape("layers.0.linear_attn.A_log"), 0),
+        linear_key_head_dim=8,
+        linear_value_head_dim=extent(param_shape("layers.0.linear_attn.norm.weight"), 0),
+        linear_conv_kernel_dim=extent(conv, 2),
         layer_types=Expected.MODEL_LAYER_TYPES,
     )
 
@@ -988,9 +998,18 @@ def to_floats(xs):
     return mapList(xs, toFloat32)
 
 
-def hook_value(name):
-    """One `MODEL_HOOK_*` activation, flattened, or `[]` when the fixture has no such hook."""
-    return to_floats(unwrap_or(listGet(Expected.MODEL_HOOK_VALUES, index_in(Expected.MODEL_HOOK_NAMES, name)), []))
+def fixture_params():
+    return Qwen3_5Hf.Params(names=Expected.MODEL_PARAM_NAMES, values=mapList(Expected.MODEL_PARAM_VALUES, to_floats))
+
+
+def hidden_row(k, t):
+    """Row `t` of `MODEL_HIDDEN_VALUES[k]`."""
+    return take_row(to_floats(unwrap_or(listGet(Expected.MODEL_HIDDEN_VALUES, k), [])), t * Expected.MODEL_HIDDEN, Expected.MODEL_HIDDEN)
+
+
+def hook_row(name, t):
+    """Row `t` of one `MODEL_HOOK_*` activation, or `[]` when the fixture has no such hook."""
+    return take_row(to_floats(unwrap_or(listGet(Expected.MODEL_HOOK_VALUES, index_in(Expected.MODEL_HOOK_NAMES, name)), [])), t * Expected.MODEL_HIDDEN, Expected.MODEL_HIDDEN)
 
 
 def cache_value(name):
@@ -998,130 +1017,252 @@ def cache_value(name):
     return to_floats(unwrap_or(listGet(Expected.MODEL_CACHE_VALUES, index_in(Expected.MODEL_CACHE_NAMES, name)), []))
 
 
-def rows_of(flat, width):
-    """A flat row-major table as `len(flat) / width` rows of `width` values."""
-    return toList(map(range(len(flat) // width), lambda r: take_row(flat, r * width, width)))
-
-
 def take_row(xs, start, width):
     return toList(map(range(width), lambda i: unwrap_or(listGet(xs, start + i), toFloat32(0.0))))
 
 
-def flat_cache(per_head):
-    """A KV cache flattened head-major, then position-major, head dimension last: the
-    fixture's `[heads, positions, head_dim]` tensor order."""
-    return foldList(per_head, [], lambda acc, positions: listConcat(acc, Qwen3_5Tensor.flatten_rows(positions)))
-
-
-def reported(name, result, check):
-    """The assertion `check` over a `Success` value, or the `Error` as one failure."""
-    match result:
-        case Success(value=value):
-            return check(value)
+def compare(name, buffer, want):
+    """A device buffer read back and compared with a fixture row."""
+    match fromGpu(buffer):
+        case Success(value=got):
+            return close_list(name, got, want, MODEL_RTOL, MODEL_ATOL)
         case Error(message=message):
-            return [Check.failed(name, message)]
+            return Check.failed(name, toString(message))
+
+
+def compare_rows(name, buffer, start, count, want):
+    """`count` values of a buffer from `start` against a fixture tensor."""
+    match fromGpu(buffer):
+        case Success(value=got):
+            return close_list(name, take_row(got, start, count), want, MODEL_RTOL, MODEL_ATOL)
+        case Error(message=message):
+            return Check.failed(name, toString(message))
 
 
 def model_layer_cases():
-    """[LLM-MODEL-ORACLE] The fixture's layer 3 on the real module split: the batched
-    eight-token pass fed the fixture's layer-2 output (`MODEL_HIDDEN_VALUES[8]`, which
-    the fixture labels `layer3` because transformers' `hidden_states` holds each layer's
-    input plus the final norm) with every `layers.3.*` hook, the final norm against the
-    recorded norm output, and the same eight tokens one at a time through the cache
-    against the cached norm output and the `layers.3.keys/values` tensors. The embedding
-    and the rotary tables are compared with their hooks. The four layers that are
-    `linear_attention` are another slice: layer 0 must say so instead of decoding."""
-    return reported("model_params", Qwen3_5Tensor.params_of(Expected.MODEL_PARAM_NAMES, Expected.MODEL_PARAM_SHAPES, Expected.MODEL_PARAM_VALUES), lambda params: layer_cases(params, model_config()))
+    """The device model from the fixture's parameters: the one-token input and the
+    eight tokens fed one at a time through the cache reproduce every recorded hidden
+    stage, the first cached token every layer hook, the final cache every state tensor,
+    and the loader refuses a missing or mis-sized parameter."""
+    match Qwen3_5Hf.load(fixture_params(), model_config()):
+        case Error(message=message):
+            return [Check.failed("model_load", message)]
+        case Success(value=model):
+            return listConcat([Check.passed("model_load")], listConcat(single_cases(model), listConcat(cached_cases(model), listConcat(tiled_cases(model), refusal_cases()))))
 
 
-def layer_cases(params, cfg):
-    batched = rows_of(to_floats(unwrap_or(listGet(Expected.MODEL_HIDDEN_VALUES, 8), [])), cfg.hidden_size)
+def token_in(tokens, t):
+    return unwrap_or(listGet(tokens, t), 0)
+
+
+def input_tokens(i):
+    return unwrap_or(listGet(Expected.MODEL_INPUTS, i), [])
+
+
+def started(model, label, run):
+    """`run` over a fresh cache, or the failure to allocate one."""
+    match Qwen3_5Cache.empty(model.config, model.shapes):
+        case Success(value=cache):
+            return run(cache)
+        case Error(message=message):
+            return [Check.failed(f"{label}_cache", message)]
+
+
+def single_cases(model):
+    """`MODEL_INPUTS[0]`, one token at position 0, from a fresh cache."""
+    return started(model, "model_single", lambda cache: single_run(model, cache))
+
+
+def single_run(model, cache):
+    match Qwen3_5Model.decode(model, cache, token_in(input_tokens(0), 0)):
+        case Error(message=message):
+            return [Check.failed("model_single", message)]
+        case Success(value=next):
+            return listConcat(stage_cases("model_single", next, SINGLE, 0), [greedy_case("model_single", next)])
+
+
+def stage_cases(label, next, base, t):
+    """The embedding, the three recorded layer outputs and the final norm of row `t`."""
     return listConcat(
-        embed_case(params, cfg),
+        [compare(f"{label}_embed", next.row, hidden_row(base, t))],
         listConcat(
-            rope_case(cfg),
-            listConcat(
-                module_cases(params, cfg, batched),
-                listConcat(
-                    layer_case(params, cfg, batched),
-                    listConcat(cached_cases(params, cfg), [linear_layer_case(params, cfg, batched)]),
-                ),
-            ),
+            toList(map(range(len(Expected.MODEL_HIDDEN_STAGES) - 2), lambda i: stage_case(label, next, base, t, i))),
+            [compare(f"{label}_final_norm", next.normed, hidden_row(base + len(Expected.MODEL_HIDDEN_STAGES) - 1, t))],
         ),
     )
 
 
-def embed_case(params, cfg):
-    return reported("model_embed_tokens", Qwen3_5Model.embed(params, cfg, unwrap_or(listGet(Expected.MODEL_INPUTS, 1), [])), lambda rows: [close_list("model_embed_tokens", Qwen3_5Tensor.flatten_rows(rows), hook_value("embed_tokens"), MODEL_RTOL, MODEL_ATOL)])
-
-
-def rope_case(cfg):
-    return reported("model_rope", Qwen3_5Rope.tables(0, unwrap_or(listGet(Expected.MODEL_INPUT_TOKENS, 1), 0), cfg), lambda table: [close_list("model_rope_cos", Qwen3_5Tensor.flatten_rows(table.cos), hook_value("rotary_emb"), MODEL_RTOL, MODEL_ATOL)])
-
-
-def module_cases(params, cfg, rows):
-    match Qwen3_5Tensor.vector(params, "layers.3.input_layernorm.weight", cfg.hidden_size):
+def stage_case(label, next, base, t, i):
+    match listGet(next.walk.stages, i):
+        case Success(value=stage):
+            return compare(f"{label}_layer{i}", stage, hidden_row(base + 1 + i, t))
         case Error(message=message):
-            return [Check.failed("model_input_layernorm", message)]
-        case Success(value=weight):
-            normed = Qwen3_5Norm.rms_rows(rows, weight, cfg.rms_norm_eps)
-            return listConcat([close_list("model_input_layernorm", Qwen3_5Tensor.flatten_rows(normed), hook_value("layers.3.input_layernorm"), MODEL_RTOL, MODEL_ATOL)], attention_case(params, cfg, rows, normed))
+            return Check.failed(f"{label}_layer{i}", toString(message))
 
 
-def attention_case(params, cfg, rows, normed):
-    return reported("model_self_attn", Qwen3_5Attention.self_attention(normed, params, cfg, MODEL_LAYER, 0, Qwen3_5Tensor.empty_cache(cfg)), lambda step: listConcat([close_list("model_self_attn", Qwen3_5Tensor.flatten_rows(step.hidden), hook_value("layers.3.self_attn"), MODEL_RTOL, MODEL_ATOL)], post_norm_cases(params, cfg, Qwen3_5Tensor.add_rows(rows, step.hidden))))
-
-
-def post_norm_cases(params, cfg, mixed):
-    match Qwen3_5Tensor.vector(params, "layers.3.post_attention_layernorm.weight", cfg.hidden_size):
+def greedy_case(label, next):
+    """The device argmax agrees with the host's over the same logits."""
+    match fromGpu(next.logits):
+        case Success(value=values):
+            return Check.equal(f"{label}_greedy", next.best, argmax(values))
         case Error(message=message):
-            return [Check.failed("model_post_attention_layernorm", message)]
-        case Success(value=weight):
-            post = Qwen3_5Norm.rms_rows(mixed, weight, cfg.rms_norm_eps)
-            return listConcat([close_list("model_post_attention_layernorm", Qwen3_5Tensor.flatten_rows(post), hook_value("layers.3.post_attention_layernorm"), MODEL_RTOL, MODEL_ATOL)], mlp_case(params, cfg, post))
+            return Check.failed(f"{label}_greedy", toString(message))
 
 
-def mlp_case(params, cfg, post):
-    return reported("model_mlp", Qwen3_5Mlp.swiglu(post, params, cfg, MODEL_LAYER), lambda out: [close_list("model_mlp", Qwen3_5Tensor.flatten_rows(out), hook_value("layers.3.mlp"), MODEL_RTOL, MODEL_ATOL)])
+def cached_cases(model):
+    """`MODEL_INPUTS[2]` fed one token at a time, each through the cache the earlier tokens left."""
+    return started(model, "model_cached", lambda cache: walk_tokens(model, input_tokens(2), 0, cache, []))
 
 
-def layer_case(params, cfg, rows):
-    return reported("model_layer3", Qwen3_5Model.layer(rows, params, cfg, MODEL_LAYER, 0, Qwen3_5Tensor.empty_cache(cfg)), lambda step: listConcat([close_list("model_layer3", Qwen3_5Tensor.flatten_rows(step.hidden), hook_value("layers.3"), MODEL_RTOL, MODEL_ATOL)], norm_case(params, cfg, step.hidden)))
-
-
-def norm_case(params, cfg, rows):
-    return reported("model_final_norm", Qwen3_5Model.final_norm(rows, params, cfg), lambda out: [close_list("model_final_norm", Qwen3_5Tensor.flatten_rows(out), to_floats(unwrap_or(listGet(Expected.MODEL_HIDDEN_VALUES, 9), [])), MODEL_RTOL, MODEL_ATOL)])
-
-
-def cached_cases(params, cfg):
-    rows = rows_of(to_floats(unwrap_or(listGet(Expected.MODEL_HIDDEN_VALUES, 13), [])), cfg.hidden_size)
-    return reported("model_cached_layer3", stepping(params, cfg, rows, 0, Qwen3_5Tensor.Step(hidden=[], cache=Qwen3_5Tensor.empty_cache(cfg))), lambda state: listConcat(
-        reported("model_cached_norm", Qwen3_5Model.final_norm(state.hidden, params, cfg), lambda out: [close_list("model_cached_norm", Qwen3_5Tensor.flatten_rows(out), to_floats(unwrap_or(listGet(Expected.MODEL_HIDDEN_VALUES, 14), [])), MODEL_RTOL, MODEL_ATOL)]),
-        [
-            close_list("model_cache_keys", flat_cache(state.cache.keys), cache_value("layers.3.keys.0"), MODEL_RTOL, MODEL_ATOL),
-            close_list("model_cache_values", flat_cache(state.cache.values), cache_value("layers.3.values.0"), MODEL_RTOL, MODEL_ATOL),
-        ],
-    ))
-
-
-def stepping(params, cfg, rows, t, acc) -> Result[Qwen3_5Tensor.Step, str]:
-    """The fixture's cached run for layer 3: token `t` alone at position `t`, with the
-    cache the earlier tokens left, and the token's output row appended."""
-    if t == len(rows):
-        return Success(value=acc)
+def walk_tokens(model, tokens, t, cache, acc):
+    if t == len(tokens):
+        return listConcat(acc, cache_tensor_cases(model, cache))
     else:
-        match Qwen3_5Model.layer([unwrap_or(listGet(rows, t), [])], params, cfg, MODEL_LAYER, t, acc.cache):
-            case Success(value=step):
-                return stepping(params, cfg, rows, t + 1, Qwen3_5Tensor.Step(hidden=listAppend(acc.hidden, unwrap_or(listGet(step.hidden, 0), [])), cache=step.cache))
+        match Qwen3_5Model.decode(model, cache, token_in(tokens, t)):
             case Error(message=message):
-                return Error(message=message)
+                return listAppend(acc, Check.failed(f"model_cached{t}", message))
+            case Success(value=next):
+                return walk_tokens(model, tokens, t + 1, next.walk.cache, listConcat(acc, listConcat(stage_cases(f"model_cached{t}", next, CACHED, t), hook_cases(next, t))))
 
 
-def linear_layer_case(params, cfg, rows):
-    """A `linear_attention` layer is another worker's slice: the model reports that it is
-    not ported instead of returning an activation that would only be wrong."""
-    match Qwen3_5Model.layer(rows, params, cfg, 0, 0, Qwen3_5Tensor.empty_cache(cfg)):
-        case Success(value=step):
-            return Check.failed("model_linear_attention", toString(len(step.hidden)) + " rows from a layer that is not ported")
+def hook_cases(next, t):
+    """At position 0 the batched run and the cached run agree, so the first token also
+    checks every layer's output hook, including layer 3's, which no hidden stage records."""
+    if t == 0:
+        return toList(map(range(Expected.MODEL_LAYERS), lambda i: hook_case(next, i)))
+    else:
+        return []
+
+
+def hook_case(next, i):
+    match listGet(next.walk.stages, i):
+        case Success(value=stage):
+            return compare(f"model_hook_layer{i}", stage, hook_row(f"layers.{i}", 0))
         case Error(message=message):
-            return Check.truth("model_linear_attention", contains(message, "not ported"), message)
+            return Check.failed(f"model_hook_layer{i}", toString(message))
+
+
+def cache_tensor_cases(model, cache):
+    """Every slot of the final cache against the fixture's `layers.N.*` state tensors."""
+    return flatten(toList(map(range(model.config.num_hidden_layers), lambda i: slot_cases(model, cache, i))))
+
+
+def slot_cases(model, cache, i):
+    match Qwen3_5Cache.slot_at(cache, i):
+        case Error(message=message):
+            return [Check.failed(f"model_cache_slot{i}", toString(message))]
+        case Success(value=slot):
+            return held_cases(model, slot, i)
+
+
+def held_cases(model, slot, i):
+    match slot:
+        case Qwen3_5Cache.Delta(held=held):
+            return [
+                compare(f"model_cache{i}_conv_states", held.conv, cache_value(f"layers.{i}.conv_states.0")),
+                compare_rows(f"model_cache{i}_recurrent_states", held.state, 0, Qwen3_5Config.state_cells(model.config), cache_value(f"layers.{i}.recurrent_states.0")),
+            ]
+        case Qwen3_5Cache.Attention(held=held):
+            return [
+                compare_heads(f"model_cache{i}_keys", held.keys, held.positions, model.config, cache_value(f"layers.{i}.keys.0")),
+                compare_heads(f"model_cache{i}_values", held.values, held.positions, model.config, cache_value(f"layers.{i}.values.0")),
+            ]
+
+
+def compare_heads(name, buffer, positions, cfg, want):
+    """A position-major KV buffer against the fixture's `[heads, positions, head_dim]` tensor."""
+    match fromGpu(buffer):
+        case Success(value=got):
+            return close_list(name, head_major(got, positions, cfg.num_key_value_heads, cfg.head_dim), want, MODEL_RTOL, MODEL_ATOL)
+        case Error(message=message):
+            return Check.failed(name, toString(message))
+
+
+def head_major(flat, positions, heads, width):
+    return toList(map(range(heads * positions * width), lambda j: unwrap_or(listGet(flat, ((j // width) % positions) * heads * width + (j // (positions * width)) * width + j % width), toFloat32(0.0))))
+
+
+def tiled_cases(model):
+    """The GGUF value-head order: the same checkpoint with every per-value-head
+    parameter permuted into llama.cpp's tiled order, loaded as `tiled`, yields the same
+    one-token activations as Transformers' grouped order."""
+    match Qwen3_5Hf.load(tiled_params(model.config), model.config):
+        case Error(message=message):
+            return [Check.failed("model_tiled_load", message)]
+        case Success(value=grouped):
+            return tiled_run(Qwen3_5Model.Model(config=grouped.config, shapes=grouped.shapes, embedding=grouped.embedding, layers=grouped.layers, final_norm=grouped.final_norm, head=grouped.head, tiled=1))
+
+
+def tiled_run(model):
+    return started(model, "model_tiled", lambda cache: tiled_decode(model, cache))
+
+
+def tiled_decode(model, cache):
+    match Qwen3_5Model.decode(model, cache, token_in(input_tokens(0), 0)):
+        case Error(message=message):
+            return [Check.failed("model_tiled", message)]
+        case Success(value=next):
+            return stage_cases("model_tiled", next, SINGLE, 0)
+
+
+def tiled_params(cfg):
+    """`fixture_params` with the linear-attention value heads in tiled order, as
+    `convert_hf_to_gguf.py`'s `_reorder_v_heads` writes them."""
+    return Qwen3_5Hf.Params(names=Expected.MODEL_PARAM_NAMES, values=toList(map(range(len(Expected.MODEL_PARAM_NAMES)), lambda k: tiled_param(cfg, name_at(Expected.MODEL_PARAM_NAMES, k), to_floats(unwrap_or(listGet(Expected.MODEL_PARAM_VALUES, k), []))))))
+
+
+def tiled_param(cfg, name, values):
+    hk = cfg.linear_num_key_heads
+    r = cfg.linear_num_value_heads // hk
+    dv = cfg.linear_value_head_dim
+    hidden = cfg.hidden_size
+    if contains(name, "in_proj_qkv") or contains(name, "conv1d"):
+        return reordered_rows(values, 2 * Qwen3_5Config.key_dim(cfg), hk, r, dv, len(values) // Qwen3_5Config.conv_dim(cfg))
+    elif contains(name, "in_proj_z"):
+        return reordered_rows(values, 0, hk, r, dv, hidden)
+    elif contains(name, "in_proj_b") or contains(name, "in_proj_a"):
+        return reordered_rows(values, 0, hk, r, 1, hidden)
+    elif contains(name, "A_log") or contains(name, "dt_bias"):
+        return reordered_rows(values, 0, hk, r, 1, 1)
+    elif contains(name, "out_proj"):
+        return reordered_columns(values, hk, r, dv, hidden)
+    else:
+        return values
+
+
+def grouped_of(tiled, hk, r):
+    """The grouped value head that sits at tiled position `tiled`: `(t % hk) * r + t // hk`."""
+    return (tiled % hk) * r + tiled // hk
+
+
+def reordered_rows(values, skip, hk, r, dim, width):
+    """Rows of `width` from `skip` on, grouped by value head of `dim` rows, in tiled order."""
+    return toList(map(range(len(values)), lambda j: unwrap_or(listGet(values, j if j < skip * width else source_row(j - skip * width, hk, r, dim, width) + skip * width), toFloat32(0.0))))
+
+
+def source_row(j, hk, r, dim, width):
+    row = j // width
+    return (grouped_of(row // dim, hk, r) * dim + row % dim) * width + j % width
+
+
+def reordered_columns(values, hk, r, dim, rows):
+    """`[rows, hk * r * dim]` with its columns in tiled value-head order."""
+    cols = hk * r * dim
+    return toList(map(range(len(values)), lambda j: unwrap_or(listGet(values, (j // cols) * cols + grouped_of((j % cols) // dim, hk, r) * dim + j % dim), toFloat32(0.0))))
+
+
+def refusal_cases():
+    """A checkpoint missing a parameter, or holding one of the wrong size, is refused by name."""
+    cfg = model_config()
+    return [
+        refusal("model_load_missing", Qwen3_5Hf.load(Qwen3_5Hf.Params(names=["norm.weight"], values=[[toFloat32(1.0)]]), cfg), "parameter embed_tokens.weight is not in the checkpoint"),
+        refusal("model_load_sized", Qwen3_5Hf.load(Qwen3_5Hf.Params(names=["embed_tokens.weight"], values=[[toFloat32(1.0)]]), cfg), "parameter embed_tokens.weight holds 1 values, not 8192"),
+    ]
+
+
+def refusal(name, result, want):
+    match result:
+        case Success(value=_):
+            return Check.failed(name, "loaded a checkpoint that should have been refused")
+        case Error(message=message):
+            return Check.equal(name, message, want)

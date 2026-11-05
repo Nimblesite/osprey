@@ -1,38 +1,55 @@
 # osprey: flavor=python
 # osprey: namespace=transformers
 # osprey: module=Qwen3_5Norm
-"""`Qwen3_5RMSNorm`: the zero-centered RMS norm every `qwen3_5` block normalizes with.
+"""`Qwen3_5RMSNorm` and `Qwen3_5RMSNormGated` on device buffers, one token at a time.
 
-`Qwen3_5RMSNorm.forward` divides each row by the root mean square of its own entries
-plus `eps`, then scales by `1 + weight`: the weight is initialized to zeros, so a fresh
-checkpoint multiplies by one and a trained one moves it away from zero. Both the mean of
-squares and the scaling are binary32 and the sum runs left to right, matching the
-port's other reductions. `rms_rows` applies one weight to every row of a batch.
-Implements [LLM-MODEL-ATTENTION]'s norm support, [PORT-TEST-ORACLE].
+`Qwen3_5RMSNorm` is zero-centred: `x * rsqrt(mean(x²) + eps) * (1 + weight)`. The
+weights a model holds are already `1 + weight` (a GGUF stores them that way, and
+`Qwen3_5Hf` adds the one), so every kernel multiplies by the stored value. The gated
+norm of the DeltaNet is `x * rsqrt(mean(x²) + eps) * weight * silu(gate)`, per value
+head, with the raw weight. A hidden row reduces in `norm_chunk` pieces, one thread
+each, then one thread sums the pieces; a head reduces in one thread. Implements
+[LLM-MODEL-ATTENTION], [LLM-MODEL-DELTANET].
 """
 
-__all__ = ["rms_norm", "rms_rows", "rms_denominator", "mean_square"]
+from transformers.Qwen3_5Device import at, inverse, must, quot, rem, rsqrt, sigmoid, squares
 
-from transformers.Qwen3_5Tensor import at
-
-
-def rms_norm(x, weight, eps):
-    """`(x / sqrt(mean(x²) + eps)) * (1 + weight)` for one row."""
-    denominator = rms_denominator(x, eps)
-    return toList(map(range(len(x)), lambda i: (at(x, i) / denominator) * (toFloat32(1.0) + at(weight, i))))
+__all__ = ["rms_row", "rms_heads", "gated"]
 
 
-def rms_rows(rows, weight, eps):
-    """`rms_norm` over every row of a batch, with one shared weight."""
-    return mapList(rows, lambda row: rms_norm(row, weight, eps))
+def rms_row(x, w, config, shapes) -> GpuBuffer[float32]:
+    """`Qwen3_5RMSNorm` over the one hidden row `x`."""
+    eps = toFloat32(config.rms_norm_eps)
+    chunk = shapes.norm_chunk
+    count = config.hidden_size // chunk
+    mean = inverse(config.hidden_size)
+    pieces = must(gpuMap(shapes.hidden_chunks, lambda c: squares(x, wrapMul(c, chunk), chunk)))
+    scale = must(gpuMap(shapes.one, lambda _: rsqrt(total(pieces, count) * mean + eps)))
+    return must(gpuMap(shapes.hidden, lambda i: at(x, i) * at(scale, 0) * at(w, i)))
 
 
-def rms_denominator(x, eps) -> float32:
-    """`sqrt(mean(x²) + eps)`, the divisor `_norm` applies to every entry."""
-    return sqrt(mean_square(x) + eps)
+def total(pieces, count) -> float32:
+    return fold(range(0, count), toFloat32(0.0), lambda a, c: a + at(pieces, c))
 
 
-def mean_square(x) -> float32:
-    """The left-to-right binary32 mean of a row's squares (`x.pow(2).mean(-1)`)."""
-    total = fold(range(len(x)), toFloat32(0.0), lambda acc, i: acc + at(x, i) * at(x, i))
-    return total / toFloat32(len(x))
+def head_scales(x, heads, width, eps: float32) -> GpuBuffer[float32]:
+    """`rsqrt(mean(x²) + eps)` of every `width`-wide head of `x`, one thread per head."""
+    mean = inverse(width)
+    return must(gpuMap(heads, lambda h: rsqrt(squares(x, wrapMul(h, width), width) * mean + eps)))
+
+
+def rms_heads(x, w, heads, cells, div, width, eps: float32) -> GpuBuffer[float32]:
+    """`Qwen3_5RMSNorm` over each head of `x`: `w` is `1 + weight`, `width` long."""
+    mul = div.mul
+    shift = div.shift
+    scales = head_scales(x, heads, width, eps)
+    return must(gpuMap(cells, lambda i: at(x, i) * at(scales, quot(i, mul, shift)) * at(w, rem(i, mul, shift, width))))
+
+
+def gated(x, z, w, heads, cells, div, width, eps: float32) -> GpuBuffer[float32]:
+    """`Qwen3_5RMSNormGated`: each head of `x` normed, times `w`, times `silu(z)`."""
+    mul = div.mul
+    shift = div.shift
+    scales = head_scales(x, heads, width, eps)
+    gate = sigmoid(z)
+    return must(gpuMap(cells, lambda i: at(x, i) * at(scales, quot(i, mul, shift)) * at(w, rem(i, mul, shift, width)) * (at(z, i) * at(gate, i))))

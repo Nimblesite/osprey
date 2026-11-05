@@ -1,6 +1,6 @@
 [project]
 name = "transformers-tests"
 source_roots = [".", "../src", "../../testing/src"]
-python_sources = ["../src/math.py", "../src/lists.py", "../src/logits_process.py", "../src/stopping_criteria.py", "../src/generation.py", "../../testing/src/check.py", "expected.py", "expected_tools.py", "main.py", "../src/qwen3_5_tensor.py", "../src/qwen3_5_norm.py", "../src/qwen3_5_rope.py", "../src/qwen3_5_mlp.py", "../src/qwen3_5_attention.py", "../src/qwen3_5_model.py", "../src/qwen3_5_tool_schema.py", "../src/qwen3_5_tool_json_scan.py", "../src/qwen3_5_tool_constrain.py", "../src/qwen3_5_tool_parser.py"]
+python_sources = ["../src/math.py", "../src/lists.py", "../src/logits_process.py", "../src/stopping_criteria.py", "../src/generation.py", "../../testing/src/check.py", "expected.py", "expected_tools.py", "main.py", "../src/qwen3_5_config.py", "../src/qwen3_5_device.py", "../src/qwen3_5_shapes.py", "../src/qwen3_5_cache.py", "../src/qwen3_5_norm.py", "../src/qwen3_5_rope.py", "../src/qwen3_5_mlp.py", "../src/qwen3_5_attention.py", "../src/qwen3_5_deltanet.py", "../src/qwen3_5_model.py", "../src/qwen3_5_hf.py", "../src/qwen3_5_tool_schema.py", "../src/qwen3_5_tool_json_scan.py", "../src/qwen3_5_tool_constrain.py", "../src/qwen3_5_tool_parser.py"]
 default_namespace = "transformers_tests"
 entry = "main.py"
