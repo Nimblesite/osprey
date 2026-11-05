@@ -110,10 +110,10 @@ fn damp(vel, drag, n, work) = match n {
 }
 /// A tick is 0.1s; lerpQuarter eases a quarter of the way toward the target.
 fn integrate(p: float, v: float) = p + v * 0.1
-fn lerpQuarter(a: float, b: float) = a + (b - a) * 0.25
+fn lerpQuarter(a, b) = a + (b - a) * 0.25
 /// The draw distance, the float reduction, and the survivor predicate.
 fn visible(d) = d < 100.0
-fn sumF(a: float, x: float) = a + x
+fn sumF(a, x) = a + x
 fn alive(h) = h > 0
 /// clamp01 keeps a normalized channel inside [0, 1].
 fn clamp01(x) = match x < 0.0 {
