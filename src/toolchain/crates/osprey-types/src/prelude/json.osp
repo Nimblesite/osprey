@@ -29,6 +29,13 @@ fn jsonDecode(text) = match __jsonDecodeOpen(text) {
     Error { message } => Error { message: message }
 }
 
+/// Decode with explicit last-wins object keys, preserving first insertion order.
+/// Other JSON limits, including finite numbers and NUL-free strings, still apply.
+fn jsonDecodeLastWins(text) = match __jsonDecodeLastWinsOpen(text) {
+    Success { value } => __jsonRelease(value, __jsonNode(value, 0))
+    Error { message } => Error { message: message }
+}
+
 /// One string as a quoted, escaped JSON literal.
 fn jsonQuote(text) = __jsonEncode(JsonString(text))
 

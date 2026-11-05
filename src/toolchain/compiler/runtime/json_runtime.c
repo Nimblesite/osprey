@@ -29,6 +29,7 @@ typedef struct {
   const char **names; // scratch for checking a large object's names
   size_t names_cap;
   bool typed;
+  bool last_wins;
 } Parser;
 
 #define JSON_NO_NODE SIZE_MAX
@@ -45,7 +46,6 @@ void json_doc_free(JDoc *doc) {
 const JNode *json_slot(const JDoc *doc, size_t slot) {
   return slot < doc->nslots ? &doc->nodes[doc->slots[slot]] : NULL;
 }
-
 // Room for one more element in a doubling array; false when it cannot grow.
 static bool reserve(void **items, size_t *cap, size_t used, size_t size) {
   if (used < *cap) {
@@ -73,7 +73,6 @@ static size_t out_of_memory(Parser *ps) {
   json_reject(&ps->c, "out of memory");
   return JSON_NO_NODE;
 }
-
 // A fresh node of `type`; the caller fills the rest. Nodes are addressed by
 // id, never by pointer, because the array moves as it grows.
 static size_t new_node(Parser *ps, JType type) {
@@ -104,7 +103,6 @@ static size_t parse_string(Parser *ps) {
   }
   return id;
 }
-
 // One or more digits; false when there were none.
 static bool scan_digits(Cursor *c) {
   const char *start = c->p;
@@ -113,7 +111,6 @@ static bool scan_digits(Cursor *c) {
   }
   return c->p != start;
 }
-
 // RFC 8259's number grammar exactly: an optional minus, an integer part whose
 // leading zero stands alone, an optional fraction of at least one digit, and
 // an optional exponent of at least one digit. `*integer` says whether the
@@ -148,7 +145,6 @@ static bool scan_number(Cursor *c, bool *integer) {
   }
   return scan_digits(c);
 }
-
 // Up to 18 digits cannot overflow int64, so the common integer is read in
 // one pass; a longer one goes through strtoll for its exact range check.
 static const char *read_integer(const char *lexeme, size_t len, int64_t *out) {
@@ -166,7 +162,6 @@ static const char *read_integer(const char *lexeme, size_t len, int64_t *out) {
   *out = negative ? -value : value;
   return NULL;
 }
-
 // A typed document holds every number as the value the Json type gives it:
 // an integer lexeme must fit int64 and any other must be a finite double, so
 // nothing is rounded or clamped behind the program's back.
@@ -222,7 +217,6 @@ static bool push_pending(Parser *ps, size_t id) {
   ps->pending[ps->npending++] = id;
   return true;
 }
-
 // Move the children pushed since `base` into the document's slots as the
 // container's one contiguous run.
 static size_t close_container(Parser *ps, size_t id, size_t base) {
@@ -246,7 +240,6 @@ static size_t close_container(Parser *ps, size_t id, size_t base) {
   ps->npending = base;
   return id;
 }
-
 // After an element: true to read another, false once the closing bracket is
 // consumed or the container is malformed (then `c->ok` is false).
 static bool another(Cursor *c, char close, const char *why) {
@@ -287,7 +280,6 @@ static int compare_keys(const void *left, const void *right) {
 static const char *member_name(const Parser *ps, size_t member) {
   return ps->doc->text.data + ps->doc->nodes[ps->pending[member]].key;
 }
-
 // Objects this small compare every pair: cheaper than sorting, and no
 // allocation at all.
 #define JSON_PAIRWISE_MEMBERS 8
@@ -302,7 +294,6 @@ static bool repeats_pairwise(const Parser *ps, size_t base) {
   }
   return false;
 }
-
 // Whether two of the members pushed since `base` share a name. A large
 // object sorts its names in a scratch array the parse reuses, so a huge
 // object cannot turn the check into a denial of service.
@@ -329,13 +320,16 @@ static bool repeats_a_name(Parser *ps, size_t base, bool *failed) {
   }
   return false;
 }
-
 // Two members with one name make every lookup a guess about which one the
 // author meant -- first-wins here, last-wins in most other readers -- and
 // hostile input exploits exactly that disagreement. A document that repeats a
 // name is rejected whole, at the object's opening brace [BUILTIN-JSON-LIMITS].
 static size_t close_object(Parser *ps, size_t id, size_t base,
                            const char *open) {
+  if (ps->last_wins) {
+    return json_last_wins(ps->doc, ps->pending, &ps->npending, base)
+               ? close_container(ps, id, base) : out_of_memory(ps);
+  }
   bool oom = false;
   if (ps->npending - base > 1 && repeats_a_name(ps, base, &oom)) {
     ps->c.p = open;
@@ -344,7 +338,6 @@ static size_t close_object(Parser *ps, size_t id, size_t base,
   }
   return oom ? out_of_memory(ps) : close_container(ps, id, base);
 }
-
 // One `"name": value` member, its name recorded on the value's node.
 static size_t parse_member(Parser *ps) {
   skip_ws(&ps->c);
@@ -386,7 +379,6 @@ static size_t parse_object(Parser *ps) {
 
 #define JSON_STRINGIFY(x) #x
 #define JSON_DEPTH_TEXT(x) "nesting deeper than " JSON_STRINGIFY(x) " levels"
-
 // Every container costs one parser frame, and the typed decoder another, so
 // depth is bounded before the frame is pushed [BUILTIN-JSON-LIMITS].
 static size_t parse_nested(Parser *ps, size_t (*container)(Parser *)) {
@@ -399,7 +391,6 @@ static size_t parse_nested(Parser *ps, size_t (*container)(Parser *)) {
   ps->c.depth--;
   return id;
 }
-
 // `true`, `false` or `null` at the cursor.
 static size_t parse_literal(Parser *ps, const char *word, JType type,
                             bool flag) {
@@ -434,7 +425,6 @@ static size_t parse_value(Parser *ps) {
   json_reject(&ps->c, lead ? "unexpected character" : "unexpected end of text");
   return JSON_NO_NODE;
 }
-
 // Slot 0 names the root, so it is reserved before any container claims one.
 static bool parse_root(Parser *ps) {
   JDoc *doc = ps->doc;
@@ -455,19 +445,19 @@ static void record_rejection(const Cursor *c, const char *op) {
   snprintf(where, sizeof(where), "byte %zu", (size_t)(c->at - c->base));
   osp_io_error_text(op, where, c->why);
 }
-
 // One complete value and nothing after it but whitespace. The reason names
 // the byte where the text stopped being JSON, so `Error { message }` says why
 // -- "jsonParse: byte 7: expected ',' or ']' in array" -- instead of the
 // placeholder word "Error" [BUILTIN-JSON-STRING].
-JDoc *json_parse_doc(const char *text, const char *op, bool typed,
-                     int64_t *status) {
+JDoc *json_parse_doc_policy(const char *text, const char *op, bool typed,
+                            bool last_wins, int64_t *status) {
   if (!text) {
     *status = JSON_ERR_NULL;
     osp_io_error_text(op, "document", "no text");
     return NULL;
   }
-  Parser ps = {.c = {.p = text, .base = text, .ok = true}, .typed = typed};
+  Parser ps = {.c = {.p = text, .base = text, .ok = true},
+               .typed = typed, .last_wins = last_wins};
   ps.doc = calloc(1, sizeof(JDoc));
   bool parsed = ps.doc ? parse_root(&ps) : (out_of_memory(&ps), false);
   bool trailing = parsed && *ps.c.p != '\0';
@@ -483,4 +473,9 @@ JDoc *json_parse_doc(const char *text, const char *op, bool typed,
   *status = trailing ? JSON_ERR_TRAILING : JSON_ERR_MALFORMED;
   record_rejection(&ps.c, op);
   return NULL;
+}
+
+JDoc *json_parse_doc(const char *text, const char *op, bool typed,
+                     int64_t *status) {
+  return json_parse_doc_policy(text, op, typed, false, status);
 }

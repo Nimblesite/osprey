@@ -94,6 +94,9 @@ bool json_decode_string(Cursor *c, JsonBuf *out);
 // outside the finite range [BUILTIN-JSON-NUMBER].
 JDoc *json_parse_doc(const char *text, const char *op, bool typed,
                      int64_t *status);
+JDoc *json_parse_doc_policy(const char *text, const char *op, bool typed,
+                            bool last_wins, int64_t *status);
+bool json_last_wins(JDoc *doc, size_t *pending, size_t *used, size_t base);
 void json_doc_free(JDoc *doc);
 
 // The node a slot names, or NULL for a slot outside the document.

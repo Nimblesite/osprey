@@ -143,7 +143,7 @@ def bind(request, decoder, endpoint):
         return rendered(invalid(["body"], "missing", "Field required", JsonNull()), endpoint)
     elif is_json(request):
         source = drop(request.body, len("\ufeff")) if startsWith(request.body, "\ufeff") else request.body
-        match jsonDecode(source):
+        match jsonDecodeLastWins(source):
             case Success(value=document):
                 return bound_document(document, decoder, endpoint)
             case Error(message=message):

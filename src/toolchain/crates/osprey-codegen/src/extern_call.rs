@@ -121,6 +121,7 @@ fn lookup(name: &str) -> Option<Sig> {
         "jsonFree" => sig("json_free", &[I64], Ret::ResultInt),
         // --- Json prelude primitives (json_codec.c) [BUILTIN-JSON-TYPED] ---
         "__jsonDecodeOpen" => sig("json_decode_open", &[Str], Ret::ResultInt),
+        "__jsonDecodeLastWinsOpen" => sig("json_decode_last_wins_open", &[Str], Ret::ResultInt),
         "__jsonDecodeClose" => sig("json_decode_close", &[I64], Ret::ResultInt),
         "__jsonNodeKind" => sig("json_node_kind", &[I64, I64], Ret::Int),
         "__jsonNodeFirst" => sig("json_node_first", &[I64, I64], Ret::Int),

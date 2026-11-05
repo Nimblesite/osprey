@@ -187,13 +187,53 @@ int64_t json_free(int64_t handle) {
 // asks one or two questions per value, and a mutex on each would cost more
 // than the answer [BUILTIN-JSON-TYPED].
 
+// [FASTAPI-NAP-VALIDATION] Explicit last-wins mode keeps the first insertion
+// position and the final value, as Python dictionaries do; strict mode is unchanged.
+typedef struct { const char *name; size_t index; size_t node; } JsonKeyAt;
+
+static int compare_key_at(const void *left, const void *right) {
+  const JsonKeyAt *a = left, *b = right;
+  int order = strcmp(a->name, b->name);
+  return order ? order : (a->index > b->index) - (a->index < b->index);
+}
+
+static void select_last_keys(size_t *pending, const JsonKeyAt *keys, size_t count) {
+  for (size_t first = 0; first < count;) {
+    size_t end = first + 1;
+    while (end < count && strcmp(keys[first].name, keys[end].name) == 0) end++;
+    pending[keys[first].index] = keys[end - 1].node;
+    for (size_t i = first + 1; i < end; i++) pending[keys[i].index] = SIZE_MAX;
+    first = end;
+  }
+}
+
+bool json_last_wins(JDoc *doc, size_t *pending, size_t *used, size_t base) {
+  size_t count = *used - base;
+  if (count < 2) return true;
+  if (count > SIZE_MAX / sizeof(JsonKeyAt)) return false;
+  JsonKeyAt *keys = malloc(count * sizeof(*keys));
+  if (!keys) return false;
+  for (size_t i = 0; i < count; i++) {
+    size_t node = pending[base + i];
+    keys[i] = (JsonKeyAt){doc->text.data + doc->nodes[node].key, base + i, node};
+  }
+  qsort(keys, count, sizeof(*keys), compare_key_at);
+  select_last_keys(pending, keys, count);
+  free(keys);
+  size_t write = base;
+  for (size_t read = base; read < *used; read++)
+    if (pending[read] != SIZE_MAX) pending[write++] = pending[read];
+  *used = write;
+  return true;
+}
+
 #define MAX_DECODE_HANDLES 64
 
 static _Thread_local JDoc *t_decodes[MAX_DECODE_HANDLES];
 
-int64_t json_decode_open(char *text) {
+static int64_t decode_open(char *text, bool last_wins) {
   int64_t status = JSON_ERR_MALFORMED;
-  JDoc *doc = json_parse_doc(text, "jsonDecode", true, &status);
+  JDoc *doc = json_parse_doc_policy(text, "jsonDecode", true, last_wins, &status);
   if (!doc) {
     return status;
   }
@@ -205,6 +245,9 @@ int64_t json_decode_open(char *text) {
   }
   return handle;
 }
+
+int64_t json_decode_open(char *text) { return decode_open(text, false); }
+int64_t json_decode_last_wins_open(char *text) { return decode_open(text, true); }
 
 int64_t json_decode_close(int64_t handle) {
   JDoc *doc = valid_handle(handle, MAX_DECODE_HANDLES) ? t_decodes[handle]

@@ -48,6 +48,8 @@ Body binding must decode at the HTTP boundary into typeDiagram-generated records
 
 The independently recorded corpus must run over real HTTP under both GC and ARC, including during native coverage collection. Duplicate keys, non-finite values, malformed JSON and escaped NUL remain tested even while they expose differences from the shared strict JSON codec; weakening that codec's default policy or dropping cases is not an acceptable compatibility fix. A failing parity suite cannot produce passing package coverage evidence.
 
+The explicit `jsonDecodeLastWins` decoder implements first-key insertion order with the final value at every object depth, including equivalent escaped key spellings. It must handle large duplicate sets in O(n log n), preserve malformed-input rejection and keep the existing strict `jsonDecode` duplicate-key behavior. Other typed-codec limits remain explicit; this decoder alone does not establish complete CPython JSON compatibility.
+
 ## Browser access policy — [FASTAPI-NAP-MIDDLEWARE]
 
 The Python-flavor FastAPI port must wrap routing and its error replies in the NAP CORS policy: wildcard origins without credentials; GET, HEAD, POST, PUT, PATCH and DELETE; Authorization, Content-Type, If-None-Match, X-API-Key, X-Tenant-Id and X-Trace-Id request headers; ETag and X-Trace-Id exposed response headers. Policies are generated typed records from `fastapi/models.td`.

@@ -286,10 +286,70 @@ def resource_cases():
     return cases + [("/body/resource", js(body), JSON) for body in bodies]
 
 
+def duplicate_key_cases():
+    """Last-wins duplicate keys: escaped spellings, Unicode names, nesting, casing, bulk repeats, broken tails."""
+    uid = str(UID)
+    escaped = "\\u0063ontent"
+    cases = [
+        ("/body/bundle", '{"content":"a","\\u0063ontent":"b"}', JSON),
+        ("/body/bundle", '{"\\u0063ontent":"a","content":"b"}', JSON),
+        ("/body/bundle", '{"content":"a","\\u0043ontent":"b"}', JSON),
+        ("/body/bundle", '{"content":"a","\\u0043ontent":"b","CONTENT":"c"}', JSON),
+        ("/body/key", '{"label":"l","user_id":"' + uid + '","\\u0075ser_id":"bad"}', JSON),
+        ("/body/key", '{"\\u0075ser_id":"bad","user_id":"' + uid + '","label":"l"}', JSON),
+        ("/body/context", '{"tenant_id":"' + uid + '","provider_user_id":"u","\\u0074enant_id":"bad"}', JSON),
+        ("/body/resource", '{"uri":"u","mimeType":"text/plain","mime\\u0054ype":"application/json"}', JSON),
+        ("/body/bundle", '{"content":"a","\u540d\u524d":1,"\u540d\u524d":2}', JSON),
+        ("/body/bundle", '{"content":"a","na\u00efve":"x","na\u00efve":"y"}', JSON),
+        ("/body/context", '{"tenant_id":"' + uid + '","provider_user_id":"u","\u540d\u524d":1,"\u540d\u524d":2}', JSON),
+        ("/body/context", '{"tenant_id":"' + uid + '","provider_user_id":"u","\\u00e9":1,"\u00e9":2}', JSON),
+        ("/body/resource", '{"uri":"u","emoji\U0001f600":"x","emoji\U0001f600":null}', JSON),
+        ("/body/key", '{"user_id":"' + uid + '","\u043a\u043b\u044e\u0447":true,"\u043a\u043b\u044e\u0447":false}', JSON),
+        ("/body/bundle", '{"content":{"k":1,"k":2}}', JSON),
+        ("/body/bundle", '{"content":"z","content":{"k":1,"k":2}}', JSON),
+        ("/body/bundle", '{"content":[{"k":1,"k":2}],"content":"z"}', JSON),
+        ("/body/bundle", '{"nested":{"a":1,"a":2},"nested":{"b":3}}', JSON),
+        ("/body/context", '{"nested":{"a":1,"a":2},"nested":{"b":[1,1]}}', JSON),
+        ("/body/context", '{"tenant_id":{"a":1,"a":2},"tenant_id":"' + uid + '","provider_user_id":"u"}', JSON),
+        ("/body/key", '{"label":"l","user_id":{"a":1,"a":2},"user_id":"' + uid + '"}', JSON),
+        ("/body/key", '{"label":"l","tags":[{"a":1,"a":2},{"b":[1,1]},{"b":2}]}', JSON),
+        ("/body/resource", '{"uri":"u","text":"t","text":["x",["y","y"]]}', JSON),
+        ("/body/resource", '{"uri":"u","text":{"a":1,"a":2},"text":"t"}', JSON),
+        ("/body/bundle", '{"content":"a","content":{"x":{"y":{"z":1,"z":2}}}}', JSON),
+        ("/body/bundle", '{"content":"z","content":[{"k":1,"k":2},[3,3]]}', JSON),
+        ("/body/context", '{"tenant_id":["x","x"],"tenant_id":"' + uid + '","provider_user_id":"u"}', JSON),
+        ("/body/bundle", '{"content":"a","CONTENT":"b","Content":"c"}', JSON),
+        ("/body/key", '{"User_id":"bad","USER_ID":"bad","user_id":"' + uid + '"}', JSON),
+        ("/body/context", '{"tenant_id":"' + uid + '","provider_user_id":"u","Tenant_Id":1}', JSON),
+        ("/body/context", '{"TENANT_ID":"bad","tenant_id":"' + uid + '","provider_user_id":"u"}', JSON),
+        ("/body/resource", '{"uri":"u","mimeType":"text/plain","MIMETYPE":"x","MimeType":"y"}', JSON),
+        ("/body/bundle", '{"content":"a\\\":,[]{}","content":"b"}', JSON),
+        ("/body/bundle", '{"content":"pre","content":"a\\"b,c:d[e]f{g}"}', JSON),
+        ("/body/resource", '{"uri":"a{b:c}[d,e]","uri":"f\\":,[]}"}', JSON),
+        ("/body/key", '{"label":"x[,:{}]","label":"y\\",:[]","user_id":"' + uid + '"}', JSON),
+        ("/body/bundle", "{" + ",".join(f'"content":"v{i}"' for i in range(200)) + "}", JSON),
+        ("/body/bundle", "{" + ",".join(f'"content":"w{i}"' for i in range(2000)) + "}", JSON),
+        ("/body/key", '{"user_id":"bad"' + ',"user_id":"bad"' * 198 + ',"user_id":"' + uid + '","label":"bulk"}', JSON),
+        ("/body/bundle", "{" + ",".join(f'"{escaped if i % 2 else "content"}":"v{i}"' for i in range(200)) + "}", JSON),
+        ("/body/bundle", '{"content":"first",' + ",".join(f'"extra{i}":{i}' for i in range(100))
+         + ',"content":"last"}', JSON),
+        ("/body/key", '{"user_id":"bad",' + ",".join(f'"x{i}":{i}' for i in range(60))
+         + ',"user_id":"' + uid + '"}', JSON),
+        ('/body/bundle', '{"content":"a","content":"b"', JSON),
+        ('/body/bundle', '{"content":"a","content":"b",}', JSON),
+        ('/body/bundle', '{"content":"a","content":"b"} trailing', JSON),
+        ('/body/bundle', '{"content":"a","content":"b"}\n{"content":"c","content":"d"}', JSON),
+        ('/body/bundle', '{"content":"a","content":}', JSON),
+        ('/body/bundle', '{"content":"a","content":"b","content":NaN}', JSON),
+        ('/body/bundle', '{"content":"a","\\u0063ontent":"b"', JSON),
+    ]
+    return cases
+
+
 def request_specs():
     """Every raw request the corpus sends, grouped by concern."""
     groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases,
-              key_cases, context_cases, resource_cases]
+              key_cases, context_cases, resource_cases, duplicate_key_cases]
     return [spec for group in groups for spec in group()]
 
 
