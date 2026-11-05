@@ -43,6 +43,27 @@ class Consumed:
     ended_nl: bool
 
 
+class Find:
+    """A tag search: the byte to read next and the opener's offset (-1 until found)."""
+    pos: int
+    at: int
+
+
+class Skip:
+    """A quoted-string skip: the byte to read next and whether the closing quote was passed."""
+    pos: int
+    done: bool
+
+
+class TagScan:
+    """A tag scan: the byte to read next, the bracket balance, the closer's offset and
+    whether the tag has ended."""
+    pos: int
+    balance: int
+    end: int
+    done: bool
+
+
 def byte(source, i):
     """The byte at `i`, or 0 past the end."""
     return unwrap_or(byteAt(source, i), 0)
@@ -70,67 +91,62 @@ def is_ws_byte(b):
 
 def rstrip(s):
     """`s` without trailing ASCII whitespace."""
-    return rstrip_from(s, length(s))
-
-
-def rstrip_from(s, i):
-    """Drop whitespace bytes from `s` before index `i`."""
-    if i <= 0:
-        return ""
-    elif is_ws_byte(byte(s, i - 1)):
-        return rstrip_from(s, i - 1)
-    else:
-        return unwrap_or(substring(s, 0, i), "")
+    return trimEnd(s)
 
 
 def last_newline(s):
     """The byte index of the last `\n` in `s`, or -1."""
-    return last_newline_from(s, length(s) - 1)
+    return byte_offset(length(s), last_part(s))
 
 
-def last_newline_from(s, i):
-    """Scan `s` backwards from `i` for a `\n`."""
-    if i < 0:
-        return -1
-    elif byte(s, i) == 10:
-        return i
-    else:
-        return last_newline_from(s, i - 1)
+def last_part(s):
+    """The text after `s`'s last `\n` (all of `s` when it has none)."""
+    match split(s, "\n"):
+        case Success(value=parts):
+            return unwrap_or(listGet(parts, len(parts) - 1), s)
+        case Error(_message):
+            return s
+
+
+def byte_offset(n, tail):
+    """The index of the `\n` that precedes a `tail` of byte length `n`."""
+    return n - length(tail) - 1
 
 
 def all_ws_from(s, start):
     """Whether `s[start:]` is all ASCII whitespace."""
-    return all_ws_scan(s, start, length(s))
-
-
-def all_ws_scan(s, i, n):
-    """Whether bytes `i..n-1` are all whitespace."""
-    if i >= n:
-        return True
-    elif is_ws_byte(byte(s, i)):
-        return all_ws_scan(s, i + 1, n)
-    else:
-        return False
+    return trimStart(drop(s, start)) == ""
 
 
 def find_tag(source, pos):
     """The next tag opener at or after `pos`, or a `none` head at the end."""
-    return find_tag_from(source, pos, length(source))
+    st = fold(range(length(source) - pos), Find(pos=pos, at=-1), lambda state, _k: find_step(source, state))
+    return head_of(source, st.at)
 
 
-def find_tag_from(source, i, n):
-    """Scan bytes for `{{`, `{%` or `{#` from index `i`."""
-    if i >= n - 1:
-        return TagHead(pos=n, kind="none", sign="", content_start=n)
+def find_step(source, st):
+    """Record the opener at the scan's byte, or advance one byte."""
+    if st.at >= 0 or st.pos >= length(source) - 1:
+        return st
     else:
-        c = byte(source, i)
-        nxt = byte(source, i + 1)
-        if c == 123 and (nxt == 123 or nxt == 37 or nxt == 35):
-            sign = opener_sign(source, i, n)
-            kind = "variable" if nxt == 123 else "block" if nxt == 37 else "comment"
-            return TagHead(pos=i, kind=kind, sign=sign, content_start=i + 2 + (1 if sign != "" else 0))
-        else:
-            return find_tag_from(source, i + 1, n)
+        return Find(pos=st.pos + 1, at=st.pos if opens_tag(source, st.pos) else -1)
+
+
+def opens_tag(source, i):
+    """Whether byte `i` starts `{{`, `{%` or `{#`."""
+    nxt = byte(source, i + 1)
+    return byte(source, i) == 123 and (nxt == 123 or nxt == 37 or nxt == 35)
+
+
+def head_of(source, at):
+    """The opener head at `at`, or the `none` head at the end of the text."""
+    if at < 0:
+        return TagHead(pos=length(source), kind="none", sign="", content_start=length(source))
+    else:
+        nxt = byte(source, at + 1)
+        sign = opener_sign(source, at, length(source))
+        kind = "variable" if nxt == 123 else "block" if nxt == 37 else "comment"
+        return TagHead(pos=at, kind=kind, sign=sign, content_start=at + 2 + (1 if sign != "" else 0))
 
 
 def opener_sign(source, i, n):
@@ -142,40 +158,58 @@ def opener_sign(source, i, n):
 
 
 def skip_string(source, i, quote):
-    """Skip the string literal opening with `quote` at `i`; returns the byte after it."""
-    return skip_string_from(source, i + 1, quote)
+    """Skip the string literal opening with `quote` at `i`; returns the byte after it.
+    One fold over the body's bytes, so a long literal costs no stack."""
+    first = i + 1
+    st = fold(range(length(source) - first), Skip(pos=first, done=False), lambda state, _k: skip_step(source, state, quote))
+    return length(source) if st.pos > length(source) else st.pos
 
 
-def skip_string_from(source, j, quote):
-    """Scan a string body, honouring backslash escapes."""
-    if j >= length(source):
-        return length(source)
+def skip_step(source, st, quote):
+    """Read one byte of a quoted string, honouring backslash escapes."""
+    if st.done:
+        return st
     else:
-        c = byte(source, j)
+        c = byte(source, st.pos)
         if c == 92:
-            return skip_string_from(source, j + 2, quote)
+            return Skip(pos=st.pos + 2, done=False)
         elif c == quote:
-            return j + 1
+            return Skip(pos=st.pos + 1, done=True)
         else:
-            return skip_string_from(source, j + 1, quote)
+            return Skip(pos=st.pos + 1, done=False)
 
 
 def parse_tag(source, content_start, i, closer, balance) -> Result[TagEnd, str]:
-    """Find a tag's closer, tracking brace balance and skipping strings."""
-    if i >= length(source):
-        return Error(message="unexpected end of template, expected 'end of print statement'")
+    """Find a tag's closer, tracking brace balance and skipping strings. One fold
+    over the bytes, so a long literal inside a tag costs no stack."""
+    st = fold(range(length(source) - i), TagScan(pos=i, balance=balance, end=-1, done=False), lambda state, _k: tag_step(source, state, closer))
+    if st.done:
+        return Success(value=tag_end(source, content_start, st.end))
     else:
-        c = byte(source, i)
-        if c == 34 or c == 39:
-            return parse_tag(source, content_start, skip_string(source, i, c), closer, balance)
-        elif at(source, i, closer) and balance == 0:
-            return Success(value=tag_end(source, content_start, i))
-        elif c == 123 or c == 40 or c == 91:
-            return parse_tag(source, content_start, i + 1, closer, balance + 1)
-        elif c == 125 or c == 41 or c == 93:
-            return parse_tag(source, content_start, i + 1, closer, decr(balance))
-        else:
-            return parse_tag(source, content_start, i + 1, closer, balance)
+        return Error(message="unexpected end of template, expected 'end of print statement'")
+
+
+def tag_step(source, st, closer):
+    """Read one byte of a tag: skip a string, count a bracket, or stop at the closer."""
+    if st.done:
+        return st
+    else:
+        return tag_byte(source, st, closer)
+
+
+def tag_byte(source, st, closer):
+    """Apply one byte's meaning to the tag scan."""
+    c = byte(source, st.pos)
+    if c == 34 or c == 39:
+        return TagScan(pos=skip_string(source, st.pos, c), balance=st.balance, end=-1, done=False)
+    elif at(source, st.pos, closer) and st.balance == 0:
+        return TagScan(pos=st.pos, balance=st.balance, end=st.pos, done=True)
+    elif c == 123 or c == 40 or c == 91:
+        return TagScan(pos=st.pos + 1, balance=st.balance + 1, end=-1, done=False)
+    elif c == 125 or c == 41 or c == 93:
+        return TagScan(pos=st.pos + 1, balance=decr(st.balance), end=-1, done=False)
+    else:
+        return TagScan(pos=st.pos + 1, balance=st.balance, end=-1, done=False)
 
 
 def decr(balance):

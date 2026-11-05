@@ -188,62 +188,49 @@ def ident_end(s, j):
 
 
 def scan_string(s, i, quote):
-    """A string literal at `i` (the opening quote), decoded."""
-    return T(tok=Tok(kind="string", sval=string_body(s, i + 1, quote, ""), ival=0, fval=0.0), next=string_end(s, i + 1, quote))
+    """A string literal at `i` (the opening quote), decoded, and the byte after it.
+    One fold over the body's bytes, so a long literal costs no stack."""
+    st = fold(range(length(s) - i - 1), Text(pos=i + 1, acc="", done=False), lambda state, _k: string_step(s, state, quote))
+    return T(tok=Tok(kind="string", sval=st.acc, ival=0, fval=0.0), next=st.pos)
 
 
-def string_body(s, j, quote, acc):
-    """Decode a string body from `j`, honouring escapes."""
-    if j >= length(s):
-        return acc
+def string_step(s, st, quote):
+    """Decode one byte of a string body: a codepoint, an escape, or the closing quote."""
+    if st.done:
+        return st
     else:
-        c = byte(s, j)
-        if c == 92:
-            return escape_body(s, j + 1, quote, acc)
-        elif c == quote:
-            return acc
+        c = byte(s, st.pos)
+        if c == quote:
+            return Text(pos=st.pos + 1, acc=st.acc, done=True)
+        elif c == 92:
+            return Text(pos=st.pos + 2, acc=st.acc + escaped(byte(s, st.pos + 1), s, st.pos + 1), done=False)
         else:
-            cp = unwrap_or(codePointAt(s, j), c)
-            return string_body(s, j + unwrap_or(codePointWidth(cp), 1), quote, acc + unwrap_or(fromCodePoint(cp), ""))
+            cp = unwrap_or(codePointAt(s, st.pos), c)
+            return Text(pos=st.pos + unwrap_or(codePointWidth(cp), 1), acc=st.acc + unwrap_or(fromCodePoint(cp), ""), done=False)
 
 
-def string_end(s, j, quote):
-    """The byte after a string body's closing quote."""
-    if j >= length(s):
-        return length(s)
-    else:
-        c = byte(s, j)
-        if c == 92:
-            return string_end(s, j + 2, quote)
-        elif c == quote:
-            return j + 1
-        else:
-            return string_end(s, j + 1, quote)
-
-
-def escape_body(s, j, quote, acc):
-    """Decode one backslash escape at `j`."""
-    e = byte(s, j)
+def escaped(e, s, at_byte):
+    """The character one backslash escape spells."""
     if e == 110:
-        return string_body(s, j + 1, quote, acc + "\n")
+        return "\n"
     elif e == 114:
-        return string_body(s, j + 1, quote, acc + "\r")
+        return "\r"
     elif e == 116:
-        return string_body(s, j + 1, quote, acc + "\t")
+        return "\t"
     elif e == 98:
-        return string_body(s, j + 1, quote, acc + "\b")
+        return "\b"
     elif e == 102:
-        return string_body(s, j + 1, quote, acc + "\f")
+        return "\f"
     elif e == 118:
-        return string_body(s, j + 1, quote, acc + "\x0b")
+        return "\x0b"
     elif e == 92:
-        return string_body(s, j + 1, quote, acc + "\\")
+        return "\\"
     elif e == 39:
-        return string_body(s, j + 1, quote, acc + "'")
+        return "'"
     elif e == 34:
-        return string_body(s, j + 1, quote, acc + "\"")
+        return "\""
     else:
-        return string_body(s, j + 1, quote, acc + unwrap_or(substring(s, j, j + 1), ""))
+        return unwrap_or(substring(s, at_byte, at_byte + 1), "")
 
 
 def scan_op(s, i):
@@ -751,6 +738,14 @@ def parse_test_args(toks, j, env):
 def is_keyword(word):
     """Whether a bare name is a template keyword, which cannot be a test argument."""
     return word == "and" or word == "or" or word == "not" or word == "if" or word == "else" or word == "in" or word == "is"
+
+
+class Text:
+    """A string literal scan: the byte to read next, the decoded text, and whether
+    the closing quote was passed."""
+    pos: int
+    acc: str
+    done: bool
 
 
 class Name:

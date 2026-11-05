@@ -43,4 +43,4 @@ Each divergence is pinned by an assertion in `tests/main.py`, so the suite state
 
 ## Resource bounds
 
-No operation recurses once per character, byte or list element: character scans, splits, slices, membership and `dict` updates fold over `range`, so a megabyte-sized message costs stack in proportion to the template's nesting, not to its length.
+Nothing in the port recurses once per character, byte or list element: character scans, splits, slices, membership, equality, `dict` updates, the lexer's tag scans and the expression tokenizer's string-literal scan all fold over `range`. Stack use therefore follows the template's structure, never the length of the template text or of a message. Measured locally: a 600 KB string literal, a 40 KB template with 2,000 tags, a 900 KB multibyte literal and a 320 KB text body all render.
