@@ -5,5 +5,6 @@ spin i = spin (i - 1)
 main () =
     handle Arith
         overflow _ _ _ wrapped => wrapped
-    out = gpuIota 3 |> gpuMap (\i => spin i)
-    print (gpuLength out)
+    match gpuIota 3
+        Success value => gpuMap (value, \i => spin i)
+        Error message => Error(message = message)

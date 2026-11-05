@@ -8,8 +8,8 @@ loud x =
     x
 
 main () =
-    n =
-        handle Log
-            write m => print m
-        toGpu [1, 2] |> gpuMap loud |> gpuLength ()
-    print n
+    handle Log
+        write m => print m
+    match toGpu [1, 2]
+        Success value => gpuMap (value, loud)
+        Error message => Error(message = message)

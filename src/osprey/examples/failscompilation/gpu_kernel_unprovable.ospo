@@ -5,6 +5,9 @@ effect Noise {
     blip: fn() -> Unit
 }
 
-fn runIt(f) = toGpu([1]) |> gpuMap(f) |> gpuLength()
+fn runIt(f) = match toGpu([1]) {
+    Success { value } => gpuMap(value, f)
+    Error { message } => Error { message: message }
+}
 
-fn main() = print(runIt(|x| => x))
+fn main() = runIt(|x| => x)

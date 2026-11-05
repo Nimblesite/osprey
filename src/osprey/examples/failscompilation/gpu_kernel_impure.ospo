@@ -13,11 +13,11 @@ fn loud(x) = {
 }
 
 fn main() = {
-    let n = {
-        handle Log {
-            write m => print(m)
-        }
-        toGpu([1, 2]) |> gpuMap(loud) |> gpuLength()
+    handle Log {
+        write m => print(m)
     }
-    print(n)
+    match toGpu([1, 2]) {
+        Success { value } => gpuMap(value, loud)
+        Error { message } => Error { message: message }
+    }
 }

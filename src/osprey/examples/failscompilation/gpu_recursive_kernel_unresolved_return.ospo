@@ -5,6 +5,8 @@ fn spin(i) = spin(i - 1)
 
 fn main() = {
     handle Arith { overflow _ _ _ wrapped => wrapped }
-    let out = gpuIota(3) |> gpuMap(fn(i) => spin(i))
-    print(gpuLength(out))
+    match gpuIota(3) {
+        Success { value } => gpuMap(value, fn(i) => spin(i))
+        Error { message } => Error { message: message }
+    }
 }

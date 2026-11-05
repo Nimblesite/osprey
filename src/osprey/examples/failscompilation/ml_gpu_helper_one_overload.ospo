@@ -5,6 +5,10 @@ plus (a, b) = a + b
 main () =
     handle Arith
         overflow _ _ _ wrapped => wrapped
-    ints = toGpu [1, 2, 3] |> gpuFold 0 plus
-    floats = toGpu [1.5, 2.5] |> gpuFold 0.0 plus
+    ints = match toGpu [1, 2, 3]
+        Success value => gpuFold (value, 0, plus)
+        Error message => Error(message = message)
+    floats = match toGpu [1.5, 2.5]
+        Success value => gpuFold (value, 0.0, plus)
+        Error message => Error(message = message)
     print "${ints} ${floats}"

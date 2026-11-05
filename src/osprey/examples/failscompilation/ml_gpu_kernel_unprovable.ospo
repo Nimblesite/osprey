@@ -4,6 +4,8 @@
 effect Noise
     blip : Unit => Unit
 
-runIt f = toGpu [1] |> gpuMap f |> gpuLength ()
+runIt f = match toGpu [1]
+    Success value => gpuMap (value, f)
+    Error message => Error(message = message)
 
-main () = print (runIt (\x => x))
+main () = runIt (\x => x)
