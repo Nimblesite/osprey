@@ -143,7 +143,7 @@ def bind(request, decoder, endpoint):
         return rendered(invalid(["body"], "missing", "Field required", JsonNull()), endpoint)
     elif is_json(request):
         source = drop(request.body, len("\ufeff")) if startsWith(request.body, "\ufeff") else request.body
-        match jsonDecodeLastWins(source):
+        match jsonDecodePython(source):
             case Success(value=document):
                 return bound_document(document, decoder, endpoint)
             case Error(message=message):
@@ -154,8 +154,8 @@ def bind(request, decoder, endpoint):
 
 def rendered(result, endpoint):
     match result:
-        case Error(message=message):
-            return E.http_exception(E.exception(500, message, ""))
+        case Error():
+            return R.response(500, "Internal Server Error", "text/plain; charset=utf-8", "")
         case Success(value=outcome):
             match outcome:
                 case M.Valid(value=value):

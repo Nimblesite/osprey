@@ -196,8 +196,8 @@ pub(crate) static JSON: &[BuiltinDoc] = &[
         JSON_DECODE_EXAMPLE,
     ),
     builtin_doc!(
-        "__jsonDecodeLastWinsOpen",
-        "Internal primitive of jsonDecodeLastWins: explicit last-wins keys with the remaining typed JSON limits unchanged.",
+        "__jsonDecodePythonOpen",
+        "Internal primitive of jsonDecodePython: Python last-wins keys and non-finite numbers; native integer/string limits remain.",
         ["text" => "The JSON text to decode"],
         JSON_DECODE_EXAMPLE,
     ),

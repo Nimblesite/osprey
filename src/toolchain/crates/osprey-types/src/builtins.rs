@@ -368,7 +368,7 @@ fn json(e: &mut TypeEnv) {
     // The primitives the built-in Json prelude decodes and encodes through
     // ([BUILTIN-JSON-TYPED]); `__` keeps them out of everyday names.
     mono(e, "__jsonDecodeOpen", vec![s()], res(i()));
-    mono(e, "__jsonDecodeLastWinsOpen", vec![s()], res(i()));
+    mono(e, "__jsonDecodePythonOpen", vec![s()], res(i()));
     mono(e, "__jsonDecodeClose", vec![i()], res(i()));
     mono(e, "__jsonNodeKind", vec![i(), i()], i());
     mono(e, "__jsonNodeFirst", vec![i(), i()], i());

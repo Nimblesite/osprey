@@ -231,9 +231,9 @@ bool json_last_wins(JDoc *doc, size_t *pending, size_t *used, size_t base) {
 
 static _Thread_local JDoc *t_decodes[MAX_DECODE_HANDLES];
 
-static int64_t decode_open(char *text, bool last_wins) {
+static int64_t decode_open(char *text, bool python) {
   int64_t status = JSON_ERR_MALFORMED;
-  JDoc *doc = json_parse_doc_policy(text, "jsonDecode", true, last_wins, &status);
+  JDoc *doc = json_parse_doc_policy(text, "jsonDecode", true, python, &status);
   if (!doc) {
     return status;
   }
@@ -247,7 +247,7 @@ static int64_t decode_open(char *text, bool last_wins) {
 }
 
 int64_t json_decode_open(char *text) { return decode_open(text, false); }
-int64_t json_decode_last_wins_open(char *text) { return decode_open(text, true); }
+int64_t json_decode_python_open(char *text) { return decode_open(text, true); }
 
 int64_t json_decode_close(int64_t handle) {
   JDoc *doc = valid_handle(handle, MAX_DECODE_HANDLES) ? t_decodes[handle]

@@ -48,7 +48,7 @@ Body binding must decode at the HTTP boundary into typeDiagram-generated records
 
 The independently recorded corpus must run over real HTTP under both GC and ARC, including during native coverage collection. Duplicate keys, non-finite values, malformed JSON and escaped NUL remain tested even while they expose differences from the shared strict JSON codec; weakening that codec's default policy or dropping cases is not an acceptable compatibility fix. A failing parity suite cannot produce passing package coverage evidence.
 
-The explicit `jsonDecodeLastWins` decoder implements first-key insertion order with the final value at every object depth, including equivalent escaped key spellings. It must handle large duplicate sets in O(n log n), preserve malformed-input rejection and keep the existing strict `jsonDecode` duplicate-key behavior. Other typed-codec limits remain explicit; this decoder alone does not establish complete CPython JSON compatibility.
+The explicit `jsonDecodePython` decoder implements first-key insertion order with the final value at every object depth, including equivalent escaped key spellings. It must handle large duplicate sets in O(n log n), preserve malformed-input rejection and keep the existing strict `jsonDecode` duplicate-key behavior. It additionally accepts Python's NaN/infinity literals and float overflow before model validation, so ignored or overwritten non-finite inputs may succeed while unencodable validation errors produce FastAPI's plain 500. Strict `jsonDecode` retains finite-only numbers. Native int64, nesting and NUL-free string limits remain explicit; this decoder alone does not establish complete CPython JSON compatibility.
 
 ## Browser access policy — [FASTAPI-NAP-MIDDLEWARE]
 

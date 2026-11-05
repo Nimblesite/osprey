@@ -346,10 +346,26 @@ def duplicate_key_cases():
     return cases
 
 
+def nonfinite_cases():
+    """Non-finite values must be parsed before model validation or ignored-extra filtering."""
+    uid = str(UID)
+    patterns = [
+        ("/body/bundle", '{{"content":"safe","extra":{token}}}'),
+        ("/body/bundle", '{{"content":{token},"content":"safe"}}'),
+        ("/body/bundle", '{{"content":"safe","extra":{{"nested":{token}}}}}'),
+        ("/body/key", '{{"user_id":"' + uid + '","extra":{token}}}'),
+        ("/body/context", '{{"tenant_id":"' + uid + '","provider_user_id":"u","extra":{token}}}'),
+        ("/body/resource", '{{"uri":"u","extra":{token}}}'),
+        ("/body/resource", '{{"uri":"u","text":{token}}}'),
+    ]
+    cases = [(path, source.format(token=token), JSON) for token in ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"] for path, source in patterns]
+    return cases + [("/body/bundle", token, JSON) for token in ["NaN", "Infinity", "-Infinity", "1e400", "-1e400"]]
+
+
 def request_specs():
     """Every raw request the corpus sends, grouped by concern."""
     groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases,
-              key_cases, context_cases, resource_cases, duplicate_key_cases]
+              key_cases, context_cases, resource_cases, duplicate_key_cases, nonfinite_cases]
     return [spec for group in groups for spec in group()]
 
 

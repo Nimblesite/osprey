@@ -1,7 +1,6 @@
-// JSON runtime - the strict RFC 8259 recursive-descent parser every JSON
-// entry point shares: the handle API (jsonParse) and the typed Json decoder
-// both read documents through json_parse_doc, so they accept and reject
-// exactly the same texts. String literals decode in json_text.c; handles,
+// JSON runtime: strict RFC 8259 defaults shared by jsonParse/jsonDecode;
+// the explicit Python decoder additionally accepts last-wins keys and
+// non-finite numbers. Both policies use the same bounded recursive parser. String literals decode in json_text.c; handles,
 // the decode accessors and the writer live in json_codec.c. Implements
 // [BUILTIN-JSON], [BUILTIN-JSON-LIMITS].
 //
@@ -29,7 +28,7 @@ typedef struct {
   const char **names; // scratch for checking a large object's names
   size_t names_cap;
   bool typed;
-  bool last_wins;
+  bool python;
 } Parser;
 
 #define JSON_NO_NODE SIZE_MAX
@@ -162,15 +161,14 @@ static const char *read_integer(const char *lexeme, size_t len, int64_t *out) {
   *out = negative ? -value : value;
   return NULL;
 }
-// A typed document holds every number as the value the Json type gives it:
-// an integer lexeme must fit int64 and any other must be a finite double, so
-// nothing is rounded or clamped behind the program's back.
-static const char *read_number(JNode *n, const char *lexeme, size_t len) {
+// Typed numbers fit int64 or double; the default policy rejects non-finite
+// doubles, while the explicit Python policy retains NaN and infinities.
+static const char *read_number(JNode *n, const char *lexeme, size_t len, bool python) {
   if (n->flag) {
     return read_integer(lexeme, len, &n->number.i);
   }
   n->number.f = strtod(lexeme, NULL);
-  return isfinite(n->number.f) ? NULL : "number outside the float range";
+  return python || isfinite(n->number.f) ? NULL : "number outside the float range";
 }
 
 static size_t number_node(Parser *ps, const char *start, bool integer) {
@@ -187,7 +185,7 @@ static size_t number_node(Parser *ps, const char *start, bool integer) {
   JNode *n = &ps->doc->nodes[id];
   n->at = at;
   n->flag = integer;
-  const char *bad = ps->typed ? read_number(n, ps->doc->text.data + at, len)
+  const char *bad = ps->typed ? read_number(n, ps->doc->text.data + at, len, ps->python)
                               : NULL;
   if (bad) {
     ps->c.p = start; // name the number, not the byte after it
@@ -206,6 +204,18 @@ static size_t parse_number(Parser *ps) {
     return JSON_NO_NODE;
   }
   return number_node(ps, start, integer);
+}
+
+static size_t parse_python_number(Parser *ps) {
+  const char *start = ps->c.p;
+  const char *word = *start == 'N' ? "NaN" : (*start == 'I' ? "Infinity" : "-Infinity");
+  size_t length = strlen(word);
+  if (strncmp(start, word, length) != 0) {
+    json_reject(&ps->c, "unexpected character");
+    return JSON_NO_NODE;
+  }
+  ps->c.p += length;
+  return number_node(ps, start, false);
 }
 
 static bool push_pending(Parser *ps, size_t id) {
@@ -326,7 +336,7 @@ static bool repeats_a_name(Parser *ps, size_t base, bool *failed) {
 // name is rejected whole, at the object's opening brace [BUILTIN-JSON-LIMITS].
 static size_t close_object(Parser *ps, size_t id, size_t base,
                            const char *open) {
-  if (ps->last_wins) {
+  if (ps->python) {
     return json_last_wins(ps->doc, ps->pending, &ps->npending, base)
                ? close_container(ps, id, base) : out_of_memory(ps);
   }
@@ -419,6 +429,8 @@ static size_t parse_value(Parser *ps) {
   case 'n': return parse_literal(ps, "null", J_NULL, false);
   default: break;
   }
+  if (ps->python && (lead == 'N' || lead == 'I' ||
+                     (lead == '-' && ps->c.p[1] == 'I'))) return parse_python_number(ps);
   if (lead == '-' || (lead >= '0' && lead <= '9')) {
     return parse_number(ps);
   }
@@ -450,14 +462,14 @@ static void record_rejection(const Cursor *c, const char *op) {
 // -- "jsonParse: byte 7: expected ',' or ']' in array" -- instead of the
 // placeholder word "Error" [BUILTIN-JSON-STRING].
 JDoc *json_parse_doc_policy(const char *text, const char *op, bool typed,
-                            bool last_wins, int64_t *status) {
+                            bool python, int64_t *status) {
   if (!text) {
     *status = JSON_ERR_NULL;
     osp_io_error_text(op, "document", "no text");
     return NULL;
   }
   Parser ps = {.c = {.p = text, .base = text, .ok = true},
-               .typed = typed, .last_wins = last_wins};
+               .typed = typed, .python = python};
   ps.doc = calloc(1, sizeof(JDoc));
   bool parsed = ps.doc ? parse_root(&ps) : (out_of_memory(&ps), false);
   bool trailing = parsed && *ps.c.p != '\0';

@@ -29,9 +29,9 @@ fn jsonDecode(text) = match __jsonDecodeOpen(text) {
     Error { message } => Error { message: message }
 }
 
-/// Decode with explicit last-wins object keys, preserving first insertion order.
-/// Other JSON limits, including finite numbers and NUL-free strings, still apply.
-fn jsonDecodeLastWins(text) = match __jsonDecodeLastWinsOpen(text) {
+/// Decode Python JSON: last-wins keys, first insertion order, NaN and infinities.
+/// Native int64, nesting and NUL-free string limits still apply.
+fn jsonDecodePython(text) = match __jsonDecodePythonOpen(text) {
     Success { value } => __jsonRelease(value, __jsonNode(value, 0))
     Error { message } => Error { message: message }
 }
