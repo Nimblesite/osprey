@@ -10,6 +10,7 @@ truncating it.
 """
 
 from qwen_server import Ollama
+from qwen_server import OpenAi
 from qwen_server import Requests as Q
 from qwen_server import Wire
 
@@ -19,7 +20,22 @@ __all__ = ["dispatch"]
 def dispatch(method, url, body):
     """The reply for one request; the 404 for a path neither protocol serves."""
     path = Wire.path_of(url)
-    return ollama(method, path, body) if startsWith(path, "/api/") else absent(path)
+    if startsWith(path, "/api/"):
+        return ollama(method, path, body)
+    elif startsWith(path, "/v1/"):
+        return openai(method, path, body)
+    else:
+        return absent(path)
+
+
+def openai(method, path, body):
+    """The OpenAI protocol's routes."""
+    if path == "/v1/models":
+        return read_only(method, OpenAi.models())
+    elif path == "/v1/chat/completions":
+        return posted(method, body, OpenAi.completions, Q.chat_request)
+    else:
+        return OpenAi.failed(404, f"no route for {path}")
 
 
 def ollama(method, path, body):

@@ -12,12 +12,14 @@ required members are absent is rejected by `decode` before a record exists.
 
 __all__ = [
     "member", "text_member", "number_member", "flag_member",
-    "encode", "reply", "ok", "failed", "text_reply",
-    "path_of", "decode", "field", "text", "number", "flag", "items", "ndjson", "NDJSON",
+    "encode", "reply", "ok", "json_reply", "failed", "text_reply",
+    "path_of", "decode", "field", "text", "number", "flag", "items",
+    "ndjson", "sse", "NDJSON", "SSE",
 ]
 
 JSON = "application/json"
 NDJSON = "application/x-ndjson"
+SSE = "text/event-stream"
 
 
 def member(name, value):
@@ -52,9 +54,14 @@ def reply(status, media_type, body):
 
 def ok(document):
     """A 200 reply carrying `document`, or a 500 naming the encoder's failure."""
+    return json_reply(200, document)
+
+
+def json_reply(status, document):
+    """A reply carrying `document` at `status`, or a 500 naming the encoder's failure."""
     match encode(document):
         case Success(value=body):
-            return reply(200, JSON, body)
+            return reply(status, JSON, body)
         case Error(message=message):
             return failed(500, message)
 
@@ -147,7 +154,17 @@ def quoted(message):
 
 def ndjson(documents):
     """NDJSON: one encoded document per line, each newline-terminated ([LLM-API-OLLAMA])."""
-    return join(foldList(documents, [], lambda lines, document: listAppend(lines, f"{encoded(document)}\n")), "")
+    return framed(documents, "", "\n")
+
+
+def sse(documents):
+    """Server-sent events: each document as one `data:` line and a blank line ([LLM-API-OPENAI])."""
+    return framed(documents, "data: ", "\n\n")
+
+
+def framed(documents, before, after):
+    """Every document on its own `before`…`after` line, concatenated."""
+    return join(foldList(documents, [], lambda lines, document: listAppend(lines, f"{before}{encoded(document)}{after}")), "")
 
 
 def encoded(document):

@@ -28,6 +28,8 @@ and exits cleanly when its lifetime ends.
 | `/api/ps` | GET | [LLM-API-OLLAMA] |
 | `/api/chat` | POST | [LLM-API-OLLAMA] — NDJSON streaming, `tool_calls` with JSON-object arguments |
 | `/api/generate` | POST | [LLM-API-OLLAMA] — NDJSON streaming, the raw completion text |
+| `/v1/models` | GET | [LLM-API-OPENAI] |
+| `/v1/chat/completions` | POST | [LLM-API-OPENAI] — SSE streaming, `tool_calls` with JSON-string arguments |
 
 A model the server does not serve is a 404 naming it, a route under the wrong
 method is a 405, and a body without a model name is a 400; every failure is the
@@ -54,6 +56,11 @@ its arguments coerced by the advertised tool's JSON Schema. A call whose
 arguments fail that schema is a 400 naming the violation, never a harness
 fabrication ([LLM-TOOL-REPAIR]). `/api/generate` has no tools, so it returns its
 text verbatim, as Ollama does.
+
+The OpenAI surface answers the same turn: `/v1/models` lists the served model and
+`/v1/chat/completions` answers whole or as `data:` events ending in `[DONE]`,
+with `tool_calls` arguments as the JSON *string* OpenAI clients parse, and a
+failure in OpenAI's `{"error": {"message": …}}` shape.
 
 `/api/tags`, `/api/show` and `/api/ps` declare the pinned target model from plan
 0049 — `Qwen3.8-27B` `UD-Q4_K_XL` at 64K context — and report no `digest`,

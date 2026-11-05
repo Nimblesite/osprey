@@ -301,6 +301,78 @@ def a_repeated_request_answers_identically(port):
         assert [dict(call.function.arguments) for call in again.message.tool_calls] == [dict(call.function.arguments) for call in first.message.tool_calls], again
 
 
+# --- step 3: the OpenAI protocol ------------------------------------------
+
+
+@case
+def openai_lists_the_served_model(port):
+    listed = openai_client(port).models.list()
+    assert [model.id for model in listed.data] == [MODEL], listed
+    assert listed.data[0].object == "model", listed.data[0]
+    assert listed.data[0].created > 0, listed.data[0]
+
+
+@case
+def openai_chat_completes_one_turn(port):
+    reply = openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE, RUN_TESTS])
+    choice = reply.choices[0]
+    assert choice.finish_reason == "stop", choice
+    assert choice.message.role == "assistant", choice.message
+    call = choice.message.tool_calls[0]
+    assert call.type == "function", call
+    assert isinstance(call.function.arguments, str), call.function
+    jsonschema.validate(json.loads(call.function.arguments), READ_FILE["function"]["parameters"])
+    assert reply.usage.total_tokens == reply.usage.prompt_tokens + reply.usage.completion_tokens, reply.usage
+
+
+@case
+def openai_chat_answer_matches_the_model_reference(port):
+    module = reference()
+    model = module.Model()
+    rendered = module.rendered(READ_PROMPT)
+    name, arguments = module.call_of(model.continuation(rendered))
+    reply = openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE, RUN_TESTS])
+    assert reply.usage.prompt_tokens == len(model.tokenize(rendered)), reply.usage
+    call = reply.choices[0].message.tool_calls[0]
+    assert (call.function.name, json.loads(call.function.arguments)) == (name, arguments), call
+
+
+@case
+def openai_chat_streams_events_that_match_the_whole_turn(port):
+    asked = [{"role": "user", "content": READ_PROMPT}]
+    whole = openai_client(port).chat.completions.create(model=MODEL, messages=asked, tools=[READ_FILE])
+    events = list(openai_client(port).chat.completions.create(model=MODEL, messages=asked, tools=[READ_FILE], stream=True))
+    assert events, "no events"
+    assert all(event.object == "chat.completion.chunk" for event in events), events[0]
+    content = "".join(event.choices[0].delta.content or "" for event in events)
+    assert content == (whole.choices[0].message.content or ""), (content, whole.choices[0].message.content)
+    calls = [call for event in events for call in (event.choices[0].delta.tool_calls or [])]
+    assert [call.function.name for call in calls] == [call.function.name for call in whole.choices[0].message.tool_calls], calls
+    assert [json.loads(call.function.arguments) for call in calls] == [json.loads(call.function.arguments) for call in whole.choices[0].message.tool_calls], calls
+    assert [event.choices[0].finish_reason for event in events][-1] == "stop", events[-1]
+
+
+@case
+def openai_chat_stream_body_is_server_sent_events(port):
+    payload = {"model": MODEL, "messages": [{"role": "user", "content": READ_PROMPT}], "tools": [READ_FILE], "stream": True}
+    with httpx.stream("POST", base(port) + "/v1/chat/completions", json=payload, timeout=120.0, headers={"Authorization": "Bearer osprey-local"}) as reply:
+        assert reply.status_code == 200, reply.read()
+        assert reply.headers["content-type"].startswith("text/event-stream"), reply.headers
+        body = reply.read().decode("utf-8")
+    lines = [line for line in body.split("\n") if line]
+    assert all(line.startswith("data: ") for line in lines), lines[:3]
+    assert lines[-1] == "data: [DONE]", lines[-1]
+    assert len(lines) >= 4, lines
+    assert '"object":"chat.completion.chunk"' in lines[0], lines[0]
+
+
+@case
+def openai_rejects_a_path_it_does_not_serve(port):
+    reply = httpx.get(base(port) + "/v1/absent", timeout=30.0)
+    assert reply.status_code == 404, reply.status_code
+    assert reply.json()["error"]["message"], reply.text
+
+
 # --- the harness ----------------------------------------------------------
 
 

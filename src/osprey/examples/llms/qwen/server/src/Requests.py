@@ -21,7 +21,7 @@ from qwen_server import Wire
 
 __all__ = [
     "MODEL", "FAMILY", "QUANTIZATION", "CONTEXT", "BLOCKS", "EMBEDDING",
-    "PARAMETERS", "WEIGHTS_BYTES", "WEIGHT_FILE", "REVISION", "INSTANT",
+    "PARAMETERS", "WEIGHTS_BYTES", "WEIGHT_FILE", "REVISION", "INSTANT", "EPOCH",
     "VERSION", "TEMPERATURE",
     "Sampling", "Chat", "Generate",
     "show_request", "chat_request", "generate_request",
@@ -38,6 +38,7 @@ WEIGHTS_BYTES = 18897914266
 WEIGHT_FILE = "Qwen3.8-27B-UD-Q4_K_XL.gguf"
 REVISION = "4ca720788d1e01f1bff70c033e0d0028fd02e502"
 INSTANT = "2026-11-05T00:00:00Z"
+EPOCH = 1762300800
 VERSION = "0.1.0"
 TEMPERATURE = 0.0
 NUM_PREDICT = 256
