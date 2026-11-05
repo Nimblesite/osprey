@@ -29,7 +29,7 @@ void test_client_chunked_response(void) {
   assert(http_response_status(handle) == 200);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "hello world") == 0);
-  free(body);
+  osp_release(body);
   char *header = http_response_header(handle, (char *)(uintptr_t) "x-mixed-case");
   assert(header != NULL && strcmp(header, "Yes") == 0);
   free(header);
@@ -255,7 +255,7 @@ void test_client_large_response(void) {
   char *body = http_response_body(handle);
   assert(body != NULL && strlen(body) == BIG_BODY);
   assert(body[0] == 'Z' && body[BIG_BODY - 1] == 'Z');
-  free(body);
+  osp_release(body);
   // A response with no Transfer-Encoding header is returned unchanged.
   char *length_header =
       http_response_header(handle, (char *)(uintptr_t) "Content-Length");
@@ -287,7 +287,7 @@ static void expect_chunked_body(const char *chunks, const char *expected) {
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, expected) == 0);
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
   http_close_client(client_id);
 }
@@ -356,7 +356,7 @@ static void check_chunked_allocation_failure(void) {
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strlen(body) == 0x11f && body[0] == 'x');
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
   http_close_client(client_id);
 }

@@ -1,6 +1,8 @@
 #ifndef HTTP_RUNTIME_TESTS_H
 #define HTTP_RUNTIME_TESTS_H
 
+#include "memory_hooks.h"
+#include "string_runtime.h"
 #include "http_shared.h"
 
 // Shared declarations for the HTTP runtime suite TUs (http_runtime_tests.c,
@@ -72,13 +74,13 @@ void expect_response_n(const char *reply, size_t len, int64_t status, const char
 void expect_failure_n(const char *reply, size_t len, int64_t code, const char *message);
 void expect_refused_n(const char *reply, size_t len, const char *message);
 
-#define NUL_REFUSED "http response: NUL byte: a string cannot hold it"
-#define EXPECT_REFUSED(reply, message)                                         \
+void expect_response_bytes_n(const char *reply, size_t len, int64_t status,
+                             const char *body, size_t body_len);
+
+#define EXPECT_REFUSED(reply, message) \
   expect_refused_n(reply, sizeof(reply) - 1, message)
-#define EXPECT_RESPONSE(reply, status, body)                                   \
-  expect_response_n(reply, sizeof(reply) - 1, status, body)
-#define EXPECT_NUL_REFUSED(reply)                                              \
-  expect_refused_n(reply, sizeof(reply) - 1, NUL_REFUSED)
+#define EXPECT_RESPONSE(reply, status, body) \
+  expect_response_bytes_n(reply, sizeof(reply) - 1, status, body, sizeof(body) - 1)
 
 // Test entry points, invoked in order by run_all_http_tests (main TU).
 // The first two drive the allocation injector that lives in the main TU.

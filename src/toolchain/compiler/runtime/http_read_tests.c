@@ -152,7 +152,7 @@ static void check_size_limit(void) {
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strlen(body) == HTTP_MAX_RESPONSE_BYTES - head_len);
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
   free(at_limit);
 
@@ -308,9 +308,9 @@ void expect_scan_agrees(const char *bytes, size_t len) {
   if (head) {
     char *headers = NULL;
     assert(http_copy_response_headers(head, sep, &headers));
-    char *body = NULL;
+    HttpBody body;
     rc = http_response_body_of(status, headers, sep + 4, byte_end - (size_t)(sep + 4 - raw), false, &body);
-    free(body);
+    free(body.data);
     free(headers);
   }
   assert(osp_io_error() == NULL || strstr(osp_io_error(), "truncated") == NULL);

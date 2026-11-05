@@ -125,8 +125,8 @@ int64_t origin_exchange(const char *reply, size_t len) {
   return handle;
 }
 
-void expect_response_n(const char *reply, size_t len, int64_t status,
-                              const char *body) {
+void expect_response_bytes_n(const char *reply, size_t len, int64_t status,
+                             const char *body, size_t body_len) {
   long live = test_alloc_live();
   osp_io_error_clear();
   int64_t handle = origin_exchange(reply, len);
@@ -137,11 +137,21 @@ void expect_response_n(const char *reply, size_t len, int64_t status,
   assert(handle >= 1);
   assert(osp_io_error() == NULL);
   assert(http_response_status(handle) == status);
+  long before_copy = test_alloc_live();
   char *got = http_response_body(handle);
-  assert(got != NULL && strcmp(got, body) == 0);
-  free(got);
+  long copy_delta = test_alloc_live() - before_copy;
   assert(http_response_free(handle) == 0);
-  assert(test_alloc_live() == live);
+  assert(got != NULL && osp_strlen(got) == (int64_t)body_len);
+  assert(memcmp(got, body, body_len) == 0 && got[body_len] == '\0');
+  osp_release(got);
+  // Exclude the managed copy and any collection it triggered. The raw
+  // transport and handle allocations must still balance exactly.
+  assert(test_alloc_live() == live + copy_delta);
+}
+
+void expect_response_n(const char *reply, size_t len, int64_t status,
+                       const char *body) {
+  expect_response_bytes_n(reply, len, status, body, strlen(body));
 }
 
 // Answered with this code and message, nothing leaked, the client still usable.

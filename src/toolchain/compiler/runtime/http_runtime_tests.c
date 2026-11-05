@@ -213,7 +213,7 @@ void test_live_loopback_exchange(void) {
   assert(http_response_status(handle) == 200);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "pong") == 0);
-  free(body);
+  osp_release(body);
   char *header = http_response_header(handle, (char *)(uintptr_t) "X-Test");
   assert(header != NULL && strcmp(header, "yes") == 0);
   free(header);
@@ -275,7 +275,7 @@ void test_post_response_loopback(void) {
   assert(http_response_status(handle) == 201);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "created") == 0);
-  free(body);
+  osp_release(body);
   char *header = http_response_header(handle, (char *)(uintptr_t) "X-Echo");
   assert(header != NULL && strcmp(header, "posted") == 0);
   free(header);

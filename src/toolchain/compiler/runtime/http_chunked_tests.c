@@ -16,12 +16,12 @@ static const char NO_CRLF[] = "chunk data not followed by CRLF";
 static const char CUT_SHORT[] = "truncated";
 static const char BAD_TRAILER[] = "invalid trailer";
 
-static char *decode(const char *bytes, size_t len, const char **reason) {
+static char *decode(const char *bytes, size_t len, size_t *decoded_len, const char **reason) {
   char *exact = malloc(len ? len : 1);
   assert(exact != NULL);
   memcpy(exact, bytes, len);
   *reason = NULL;
-  char *out = http_decode_chunked(exact, len, reason);
+  char *out = http_decode_chunked(exact, len, decoded_len, reason);
   free(exact);
   return out;
 }
@@ -29,15 +29,17 @@ static char *decode(const char *bytes, size_t len, const char **reason) {
 static void expect_body_n(const char *bytes, size_t len, const char *body,
                           size_t body_len) {
   const char *reason = NULL;
-  char *out = decode(bytes, len, &reason);
-  assert(out != NULL && reason == NULL);
+  size_t decoded_len = SIZE_MAX;
+  char *out = decode(bytes, len, &decoded_len, &reason);
+  assert(out != NULL && reason == NULL && decoded_len == body_len);
   assert(memcmp(out, body, body_len) == 0 && out[body_len] == '\0');
   free(out);
 }
 
 static void expect_decode_refused_n(const char *bytes, size_t len, const char *why) {
   const char *reason = NULL;
-  char *out = decode(bytes, len, &reason);
+  size_t decoded_len = SIZE_MAX;
+  char *out = decode(bytes, len, &decoded_len, &reason);
   assert(out == NULL);
   assert(reason != NULL && strcmp(reason, why) == 0);
 }
@@ -141,12 +143,14 @@ static void check_every_prefix(void) {
   for (size_t f = 0; f < sizeof(framings) / sizeof(framings[0]); f++) {
     size_t total = strlen(framings[f]);
     const char *reason = NULL;
-    char *whole = decode(framings[f], total, &reason);
-    assert(whole != NULL && reason == NULL);
+    size_t decoded_len = SIZE_MAX;
+    char *whole = decode(framings[f], total, &decoded_len, &reason);
+    assert(whole != NULL && reason == NULL && decoded_len <= total && whole[decoded_len] == '\0');
     free(whole);
     for (size_t cut = 0; cut < total; cut++) {
-      assert(decode(framings[f], cut, &reason) == NULL);
-      assert(reason != NULL);
+      decoded_len = SIZE_MAX;
+      assert(decode(framings[f], cut, &decoded_len, &reason) == NULL);
+      assert(reason != NULL && decoded_len == SIZE_MAX);
     }
   }
 }
@@ -161,10 +165,11 @@ static void check_every_declared_size(void) {
     int n = snprintf(framing, sizeof(framing), "%zx\r\n%s", size, rest);
     assert(n > 0);
     const char *reason = NULL;
-    char *out = decode(framing, (size_t)n, &reason);
+    size_t decoded_len = SIZE_MAX;
+    char *out = decode(framing, (size_t)n, &decoded_len, &reason);
     if (size == 0 || size == 5) {
       assert(out != NULL && reason == NULL);
-      assert(strcmp(out, size == 5 ? "hello" : "") == 0);
+      assert(decoded_len == size && strcmp(out, size == 5 ? "hello" : "") == 0);
       free(out);
     } else {
       assert(out == NULL && reason != NULL);
@@ -255,7 +260,8 @@ static void check_round_trips(void) {
 
 static void expect_either_outcome(const char *bytes, size_t len) {
   const char *reason = NULL;
-  char *out = decode(bytes, len, &reason);
+  size_t decoded_len = SIZE_MAX;
+  char *out = decode(bytes, len, &decoded_len, &reason);
   if (out) {
     assert(reason == NULL);
     assert(strlen(out) <= len);
@@ -322,7 +328,8 @@ static void check_allocation_failure(void) {
   size_t len = sizeof(framing) - 1;
   const char *reason = "untouched";
   test_alloc_fail_size(len + 1);
-  assert(http_decode_chunked(framing, len, &reason) == NULL);
+  size_t decoded_len = SIZE_MAX;
+  assert(http_decode_chunked(framing, len, &decoded_len, &reason) == NULL);
   test_alloc_fail_off();
   assert(reason == NULL);
 }

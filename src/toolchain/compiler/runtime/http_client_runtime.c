@@ -2,6 +2,7 @@
 #include "http_shared.h"
 #include "io_error.h"
 #include "socket_safety.h"
+#include "string_runtime.h"
 
 #include <errno.h>
 #include <limits.h>
@@ -361,7 +362,7 @@ static int64_t send_request(const HttpClient *client, const Transport *t, int64_
                             const char *path, const char *headers, const char *body) {
   char head[MAX_HTTP_BUFFER];
   const char *method_str = http_method_to_string((HttpMethod)method);
-  size_t body_len = body ? strlen(body) : 0;
+  size_t body_len = (size_t)osp_strlen(body);
   const char *extra = headers ? headers : "";
   size_t extra_len = strlen(extra);
   bool ended = extra_len == 0 || (extra_len >= 2 && strcmp(extra + extra_len - 2, "\r\n") == 0);

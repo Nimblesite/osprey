@@ -220,9 +220,11 @@
         "language": "c"
       },
       "http_client_runtime": {
+        "threshold": 96,
         "language": "c"
       },
       "http_client_response": {
+        "threshold": 96,
         "language": "c"
       },
       "http_client_framing": {

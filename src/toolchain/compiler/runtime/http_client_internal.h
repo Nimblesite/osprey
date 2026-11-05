@@ -53,8 +53,10 @@ const char *http_final_response(const char *raw);
 const char *http_checked_head(const char *raw, size_t len, const char **sep,
                               int64_t *status, int64_t *rc);
 bool http_copy_response_headers(const char *head, const char *sep, char **out);
+typedef struct { char *data; size_t length; } HttpBody;
+
 int64_t http_response_body_of(int64_t status, const char *headers, const char *body,
-                              size_t body_len, bool closed, char **out);
+                              size_t body_len, bool closed, HttpBody *out);
 
 // Reports whether the response header block declares
 // Transfer-Encoding: chunked (case-insensitive header name).
@@ -63,6 +65,7 @@ bool http_header_is_chunked(const char *headers);
 // Decodes the len bytes of an HTTP/1.1 chunked body: returns a freshly allocated,
 // NUL-terminated decoded body (caller frees), or NULL with *malformed saying what
 // is wrong with the framing, or NULL with *malformed NULL when out of memory.
-char *http_decode_chunked(const char *body, size_t len, const char **malformed);
+char *http_decode_chunked(const char *body, size_t len, size_t *decoded_len,
+                          const char **malformed);
 
 #endif // HTTP_CLIENT_INTERNAL_H

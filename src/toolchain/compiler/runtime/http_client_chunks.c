@@ -82,7 +82,7 @@ static const char *parse_chunk_size(const char **cursor, const char *end,
 // Decodes every chunk of [p, end) into out, which holds end - p + 1 bytes: the
 // decoded bytes can't outnumber the framed ones. The body ends at the blank line
 // after the zero chunk's trailers. Returns NULL, or why the framing is malformed.
-static const char *decode_chunks(const char *p, const char *end, char *out) {
+static const char *decode_chunks(const char *p, const char *end, char *out, size_t *decoded_len) {
   size_t out_len = 0;
   for (;;) {
     size_t size = 0;
@@ -114,6 +114,7 @@ static const char *decode_chunks(const char *p, const char *end, char *out) {
       return CHUNK_CUT_SHORT;
     }
     if (line_end == p) {
+      *decoded_len = out_len;
       return NULL;
     }
     if (http_has_control_byte(p, line_end)) {
@@ -127,13 +128,14 @@ static const char *decode_chunks(const char *p, const char *end, char *out) {
 // a freshly allocated, NUL-terminated body (caller frees), or NULL with *malformed
 // saying what is wrong with the framing, or NULL with *malformed NULL when out of
 // memory. Nothing partial comes back. Implements [HTTP-CHUNKED-DECODE].
-char *http_decode_chunked(const char *body, size_t len, const char **malformed) {
+char *http_decode_chunked(const char *body, size_t len, size_t *decoded_len,
+                          const char **malformed) {
   *malformed = NULL;
   char *out = malloc(len + 1);
   if (!out) {
     return NULL;
   }
-  *malformed = decode_chunks(body, body + len, out);
+  *malformed = decode_chunks(body, body + len, out, decoded_len);
   if (*malformed) {
     free(out);
     return NULL;

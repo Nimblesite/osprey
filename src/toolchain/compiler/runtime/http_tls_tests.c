@@ -249,7 +249,7 @@ static void tls_expect_served(EVP_PKEY *ca_key, X509 *ca, const char *cn,
   assert(http_response_status(handle) == 200);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, expect_body) == 0);
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
   tls_origin_stop(&origin);
   assert(strncmp(origin.request, "GET /x HTTP/1.1", 15) == 0);
@@ -278,7 +278,7 @@ static void tls_expect_body(EVP_PKEY *key, X509 *leaf, const char *reply, bool a
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, expected) == 0);
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
 }
 
@@ -356,7 +356,7 @@ static void tls_expect_framing_enforced(EVP_PKEY *ca_key, X509 *ca) {
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "hello world") == 0);
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
   assert(tls_exchange(key, leaf,
       "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", false) == -14);

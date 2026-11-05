@@ -188,7 +188,7 @@ static bool declared_length(const char *lines, const char *stop, bool *declared,
 // have seen it: a read that failed proves nothing but where the bytes stopped.
 // Returns NULL when out of memory or, with *malformed set, when the framing is wrong.
 static char *plain_body(const char *headers, const char *body, size_t body_len,
-                        bool closed, const char **malformed) {
+                        bool closed, size_t *decoded_len, const char **malformed) {
   bool declared = false;
   size_t length = body_len;
   const char *stop = block_end(headers);
@@ -205,6 +205,7 @@ static char *plain_body(const char *headers, const char *body, size_t body_len,
   if (out) {
     memcpy(out, body, length);
     out[length] = '\0';
+    *decoded_len = length;
   }
   return out;
 }
@@ -217,22 +218,32 @@ static bool status_has_no_body(int64_t status) {
 
 // Produces the retained body, or a negative code with the reason on the channel.
 int64_t http_response_body_of(int64_t status, const char *headers, const char *body,
-                              size_t body_len, bool closed, char **out) {
+                              size_t body_len, bool closed, HttpBody *out) {
   const char *malformed = NULL;
   const char *subject = "body";
+  *out = (HttpBody){0};
   if (status_has_no_body(status)) {
-    *out = strdup("");
+    out->data = strdup("");
   } else if (http_header_is_chunked(headers)) {
     subject = "chunked body";
-    *out = http_decode_chunked(body, body_len, &malformed);
+    out->data = http_decode_chunked(body, body_len, &out->length, &malformed);
   } else {
-    *out = plain_body(headers, body, body_len, closed, &malformed);
+    out->data = plain_body(headers, body, body_len, closed, &out->length, &malformed);
   }
   if (malformed) {
     osp_io_error_text("http response", subject, malformed);
     return -14; // broken framing is never shown to the caller as a body
   }
-  return *out ? 0 : -9;
+  return out->data ? 0 : -9;
+}
+
+static const char *find_blank_line(const char *p, const char *end) {
+  for (p = http_find_crlf(p, end); p; p = http_find_crlf(p + 2, end)) {
+    if (end - p >= 4 && p[2] == '\r' && p[3] == '\n') {
+      return p;
+    }
+  }
+  return NULL;
 }
 
 // Refuses a response whose bytes can't be trusted as far as its body, and returns
@@ -244,10 +255,10 @@ const char *http_checked_head(const char *raw, size_t len, const char **sep,
   const char *head = http_final_response(raw);
   *rc = -14;
   *status = http_parse_status_line(head);
-  *sep = strstr(head, "\r\n\r\n");
-  if (strlen(raw) != len) {
-    subject = "NUL byte";
-    reason = "a string cannot hold it";
+  *sep = find_blank_line(head, raw + len);
+  const char *head_end = *sep ? *sep : raw + len;
+  if (memchr(head, '\0', (size_t)(head_end - head))) {
+    reason = "contains NUL";
   } else if (*status < 0) {
     *rc = -8;
     subject = "status line";
@@ -271,14 +282,6 @@ static bool head_is_sound(const char *head, const char *sep) {
   return !memchr(head, '\0', (size_t)(sep - head)) && head_is_well_formed(head, sep);
 }
 
-static const char *find_blank_line(const char *p, const char *end) {
-  for (p = http_find_crlf(p, end); p; p = http_find_crlf(p + 2, end)) {
-    if (end - p >= 4 && p[2] == '\r' && p[3] == '\n') {
-      return p;
-    }
-  }
-  return NULL;
-}
 
 // How the final head at [head, sep) frames what follows it. Whatever the client is
 // going to refuse ends the read where it stands, at len.

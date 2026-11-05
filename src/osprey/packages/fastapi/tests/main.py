@@ -18,6 +18,45 @@ def assert_reply(result, status, body):
             return expect(httpResponseFree(reply), Success(value=0))
 
 
+def binary_reply(result, payload):
+    match result:
+        case Error(message=message):
+            return check("Binary echo transport", "success", message)
+        case Success(value=reply):
+            expect(httpResponseStatus(reply), 201)
+            expect(httpResponseHeader(reply, "Content-Type"), Success(value="application/octet-stream"))
+            expect(httpResponseHeader(reply, "Content-Length"), Success(value=toString(byteLength(payload))))
+            received = httpResponseBody(reply)
+            expect(httpResponseFree(reply), Success(value=0))
+            match received:
+                case Success(value=text):
+                    expect(byteLength(text), byteLength(payload))
+                    return expect(text == payload, True)
+                case Error(message=message):
+                    return check("Binary echo response", "success", message)
+
+
+def binary_request(client, encoded):
+    match jsonDecodePython(encoded):
+        case Success(value=document):
+            match document:
+                case JsonString(payload):
+                    return binary_reply(httpPostResponse(client, "/echo", payload, ""), payload)
+                case _:
+                    return check("Binary echo fixture", "string", "non-string")
+        case Error(message=message):
+            return check("Binary echo fixture", "string", message)
+
+
+def binary_requests(client, payloads):
+    match payloads:
+        case []:
+            return None
+        case [payload, *rest]:
+            binary_request(client, payload)
+            return binary_requests(client, rest)
+
+
 def requests(client):
     assert_reply(httpGetResponse(client, "/health", ""), 200, "{\"status\":\"ok\"}")
     assert_reply(httpGetResponse(client, "/health?probe=1", ""), 200, "{\"status\":\"ok\"}")
@@ -28,6 +67,7 @@ def requests(client):
     assert_reply(httpPostResponse(client, "/health", "", ""), 405, "{\"detail\":\"Method Not Allowed\"}")
     assert_reply(httpPostResponse(client, "/echo", "héllo ☕", ""), 201, "héllo ☕")
     assert_reply(httpGetResponse(client, "/bundle/%00", ""), 400, "{\"detail\":\"NUL is not representable in the native HTTP string boundary\"}")
+    binary_requests(client, ['"\\u0000"', '"\\u0000tail"', '"head\\u0000tail"', '"head\\u0000"', '"é\\u0000😀\\u0000tail"'])
     parameter_cases(client)
     configuration_cases(client)
     return expect(httpCloseClient(client), Success(value=0))

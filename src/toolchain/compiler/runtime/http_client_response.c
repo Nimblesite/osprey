@@ -1,5 +1,6 @@
 #include "http_client_internal.h"
 #include "http_shared.h"
+#include "string_runtime.h"
 
 #include <pthread.h>
 
@@ -16,7 +17,7 @@
 typedef struct {
   bool in_use;
   int64_t status;
-  char *body;        // response body (NUL-terminated, heap)
+  HttpBody body;    // framed bytes in libc storage until the handle closes
   char *raw_headers; // header block between status line and blank line (heap)
 } HttpClientResponse;
 
@@ -54,7 +55,7 @@ static int64_t http_request_capture(int64_t client_id, int64_t method,
 
   // Decode a chunked body so callers see the real payload, not chunk framing.
   const char *body_start = sep + 4;
-  char *resp_body = NULL;
+  HttpBody resp_body;
   rc = http_response_body_of(status, resp_headers, body_start,
                              len - (size_t)(body_start - raw), closed, &resp_body);
   free(raw);
@@ -78,7 +79,7 @@ static int64_t http_request_capture(int64_t client_id, int64_t method,
   pthread_mutex_unlock(&g_http_resp_mutex);
 
   if (handle < 0) {
-    free(resp_body);
+    free(resp_body.data);
     free(resp_headers);
     return -10; // response table full
   }
@@ -115,8 +116,9 @@ char *http_response_body(int64_t handle) {
   }
   pthread_mutex_lock(&g_http_resp_mutex);
   char *copy = NULL;
-  if (g_http_responses[handle].in_use && g_http_responses[handle].body) {
-    copy = strdup(g_http_responses[handle].body);
+  if (g_http_responses[handle].in_use) {
+    HttpBody body = g_http_responses[handle].body;
+    copy = osp_string_dup_internal(body.data, body.length);
   }
   pthread_mutex_unlock(&g_http_resp_mutex);
   return copy;
@@ -187,9 +189,9 @@ int64_t http_response_free(int64_t handle) {
   pthread_mutex_lock(&g_http_resp_mutex);
   int64_t rc = -1;
   if (g_http_responses[handle].in_use) {
-    free(g_http_responses[handle].body);
+    free(g_http_responses[handle].body.data);
     free(g_http_responses[handle].raw_headers);
-    g_http_responses[handle].body = NULL;
+    g_http_responses[handle].body = (HttpBody){0};
     g_http_responses[handle].raw_headers = NULL;
     g_http_responses[handle].in_use = false;
     rc = 0;

@@ -40,20 +40,24 @@ static void check_statuses_without_a_body(void) {
   EXPECT_RESPONSE("HTTP/1.1 500 Oops\r\nTransfer-Encoding: chunked\r\n\r\n2\r\nno\r\n0\r\n\r\n", 500, "no");
 }
 
-// A body a C string can't hold is refused wherever the NUL sits, never cut short
-// at it, and a NUL can't hide the rest of the head from the framing checks.
+// [PORT-STRING-NUL-HTTP] Payload bytes survive every framing mode; NUL in
+// metadata is still a typed error, including interim headers.
 static void check_nul_bytes(void) {
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhe\0lo\r\n0\r\n\r\n");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\n\0\r\n0\r\n\r\n");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\nX\0: 1\r\n\r\n");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\0\r\nhello\r\n0\r\n\r\n");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhe\0lo");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\r\n\0");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\r\nhello\0");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\nX-A: \0\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n");
-  EXPECT_NUL_REFUSED("HTTP/1.1 200 OK\r\n\0\r\n\r\nhello");
-  EXPECT_NUL_REFUSED("HTTP/1.1 2\0 OK\r\n\r\nhello");
-  EXPECT_NUL_REFUSED("\0HTTP/1.1 200 OK\r\n\r\nhello");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhe\0lo\r\n0\r\n\r\n", 200, "he\0lo");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\n\0\r\n0\r\n\r\n", 200, "\0");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\na\0\r\n3\r\nb\0c\r\n0\r\n\r\n", 200, "a\0b\0c");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhe\0lo", 200, "he\0lo");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\n\r\n\0", 200, "\0");
+  EXPECT_RESPONSE("HTTP/1.1 200 OK\r\n\r\nhello\0", 200, "hello\0");
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n0\r\nX\0: 1\r\n\r\n",
+                 "http response: chunked body: invalid trailer");
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\0\r\nhello\r\n0\r\n\r\n",
+                 "http response: chunked body: invalid chunk size");
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\nX-A: \0\r\nTransfer-Encoding: chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", "http response: head: contains NUL");
+  EXPECT_REFUSED("HTTP/1.1 200 OK\r\n\0\r\n\r\nhello", "http response: head: contains NUL");
+  EXPECT_REFUSED("HTTP/1.1 2\0 OK\r\n\r\nhello", "http response: head: contains NUL");
+  EXPECT_REFUSED("\0HTTP/1.1 200 OK\r\n\r\nhello", "http response: head: contains NUL");
+  EXPECT_REFUSED("HTTP/1.1 100 Continue\r\nX-A: \0\r\n\r\nHTTP/1.1 200 OK\r\n\r\nok", "http response: head: contains NUL");
   // Past the end of the framing, it isn't part of the response.
   EXPECT_RESPONSE("HTTP/1.1 304 Not Modified\r\n\r\n\0", 304, "");
   EXPECT_RESPONSE("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok\0", 200, "ok");
@@ -173,7 +177,7 @@ static void check_interrupted_read(void) {
   assert(handle >= 1);
   char *got = http_response_body(handle);
   assert(got != NULL && strcmp(got, "ok") == 0);
-  free(got);
+  osp_release(got);
   assert(http_response_free(handle) == 0);
 }
 
@@ -197,7 +201,7 @@ static void check_header_allocation_failure(void) {
   assert(handle >= 1);
   char *body = http_response_body(handle);
   assert(body != NULL && strcmp(body, "hi") == 0);
-  free(body);
+  osp_release(body);
   assert(http_response_free(handle) == 0);
 }
 
@@ -363,17 +367,17 @@ static void parse_damaged(const char *bytes, size_t len) {
     free(raw);
     return;
   }
-  assert(status >= 100 && status <= 999 && memchr(raw, '\0', len) == NULL);
+  assert(status >= 100 && status <= 999 && memchr(raw, '\0', (size_t)(sep - raw)) == NULL);
   char *headers = NULL;
   assert(http_copy_response_headers(head, sep, &headers));
-  char *body = NULL;
+  HttpBody body;
   const char *start = sep + 4;
   rc = http_response_body_of(status, headers, start, len - (size_t)(start - raw), true, &body);
   if (rc == 0) {
-    assert(body != NULL && strlen(body) <= len);
-    free(body);
+    assert(body.data != NULL && body.length <= len && body.data[body.length] == '\0');
+    free(body.data);
   } else {
-    assert(rc == -14 && body == NULL);
+    assert(rc == -14 && body.data == NULL);
     osp_io_error_clear();
   }
   free(headers);
