@@ -179,9 +179,11 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
 // runs each product's two kernels before the next product's, so reuse is
 // safe, and nothing is uploaded per product. The host side is a page-aligned
 // mapping the adapter shares without a copy; it grows and is never freed.
+#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
 static void *quant_scratch_slot;
 static void *quant_scratch_base;
 static size_t quant_scratch_bytes;
+#endif
 
 static int quant_scratch(OspreyGpuDispatch *dispatch, uint64_t floats) {
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
