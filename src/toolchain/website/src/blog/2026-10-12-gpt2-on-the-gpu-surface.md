@@ -14,7 +14,7 @@ imageAlt: "A cyan wireframe osprey above a GPU chip and layered grids of glowing
 
 Osprey can run **GPT-2, the 124-million-parameter language model, on a GPU**. It loads the weights [exactly as Hugging Face publishes them](https://huggingface.co/openai-community/gpt2), generates text and runs a training step. The model itself is Osprey code: attention, matrix multiplication, predictions and weight updates.
 
-**The model is also written in Osprey’s [Python syntax flavor](/docs/python-flavor/).** A syntax flavor is a way to write Osprey: this one uses `def`, indentation, f-strings and decorated effect declarations. The Osprey compiler builds it as a native program. The Python-flavor GPT-2 imports no Default-flavor code and matches the Default version’s generated text on host lists, Metal and OpenCL in the recorded runs.
+**The model is also written in Osprey’s [Python syntax flavor](/docs/python/flavor/).** A syntax flavor is a way to write Osprey: this one uses `def`, indentation, f-strings and decorated effect declarations. The Osprey compiler builds it as a native program. The Python-flavor GPT-2 imports no Default-flavor code and matches the Default version’s generated text on host lists, Metal and OpenCL in the recorded runs.
 
 On an Apple M4 Max, the training step takes **7.6 seconds on Metal versus 25.2 seconds on the CPU**: about **3.3× faster**. Metal and OpenCL run the same model source.
 
@@ -47,7 +47,7 @@ def product(a, b, rows, inner, cols):
     return perform(Tensor.mat_mul(a, b, rows, inner, cols))
 ```
 
-The [Python flavor guide](/docs/python-flavor/) covers functions, records, `match`, effects, handlers and mixed-flavor projects. Calls to CPython libraries use an explicit [Python-hosted bridge](/spec/0042-pythoninterop/); this GPT-2 port runs natively without CPython. Generation is available in both syntax flavors; the training example is currently Default-only.
+The [Python flavor guide](/docs/python/flavor/) covers functions, records, `match`, effects, handlers and mixed-flavor projects. Calls to CPython libraries use an explicit [Python-hosted bridge](/spec/0042-pythoninterop/); this GPT-2 port runs natively without CPython. Generation is available in both syntax flavors; the training example is currently Default-only.
 
 ## Write the model once
 

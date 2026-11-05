@@ -26,7 +26,7 @@ The repository contains ports under names such as `@osprey/numpy` and `@osprey/t
 # osprey: flavor=python
 ```
 
-That marker identifies Osprey source written in the [Python flavor](/docs/python-flavor/). It does not convert an arbitrary Python module into Osprey or make a PyPI distribution compile unchanged. The source uses familiar Python constructs alongside Osprey's types, effects and handlers.
+That marker identifies Osprey source written in the [Python flavor](/docs/python/flavor/). It does not convert an arbitrary Python module into Osprey or make a PyPI distribution compile unchanged. The source uses familiar Python constructs alongside Osprey's types, effects and handlers.
 
 The ports have defined scopes:
 

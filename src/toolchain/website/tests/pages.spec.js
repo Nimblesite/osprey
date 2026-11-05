@@ -320,7 +320,7 @@ test("reactive signals is in the Language section and its ML example is highligh
   expect(await paintedColours(code.locator(".token"))).toBeGreaterThan(1);
 });
 
-const DOC_SECTIONS = ["Start here", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
+const DOC_SECTIONS = ["Start here", "Python", "Tutorials", "Proofs", "Build applications", "Packages", "Language", "Reference"];
 
 test.describe("documentation sub-page navigation", () => {
   test("groups subpages and identifies the current desktop page", async ({ page }) => {

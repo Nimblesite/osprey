@@ -33,10 +33,6 @@
           "url": "/docs/"
         },
         {
-          "text": "Python flavor for AI agents",
-          "url": "/docs/python-flavor-for-ai/"
-        },
-        {
           "text": "Algebraic effects",
           "url": "/docs/effects/"
         },
@@ -45,16 +41,29 @@
           "url": "/docs/one-model-two-backends/"
         },
         {
-          "text": "Python flavor",
-          "url": "/docs/python-flavor/"
-        },
-        {
           "text": "Installation",
           "url": "/docs/installation/"
         },
         {
           "text": "My First App",
           "url": "/docs/my-first-app/"
+        }
+      ]
+    },
+    {
+      "title": "Python",
+      "items": [
+        {
+          "text": "Python flavor",
+          "url": "/docs/python/flavor/"
+        },
+        {
+          "text": "Python interop",
+          "url": "/docs/python/interop/"
+        },
+        {
+          "text": "Python flavor for AI agents",
+          "url": "/docs/python/for-ai/"
         }
       ]
     },
@@ -244,7 +253,7 @@
         },
         {
           "text": "Python Flavor",
-          "url": "/docs/python-flavor/"
+          "url": "/docs/python/flavor/"
         },
         {
           "text": "Package Manager",

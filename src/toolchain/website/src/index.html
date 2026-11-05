@@ -115,7 +115,7 @@ date: "git Last Modified"
   <div class="container">
     <div class="section-heading"><p class="home-eyebrow">06 / Python flavor and tensor handlers</p><h2 id="model-title">Port your Python.<br><span class="muted-heading">Choose CPU or GPU handlers.</span></h2></div>
     <div class="effect-layout">
-      <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python syntax flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs.</p><a class="text-link" href="/docs/python-flavor/">Port with Python flavor <span>↗</span></a></div>
+      <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python syntax flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs.</p><a class="text-link" href="/docs/python/flavor/">Port with Python flavor <span>↗</span></a></div>
       <div class="flight-code">
         <div class="code-toolbar"><span>src/osprey/examples/llms/gpt2/python/model.py</span><span>Python flavor</span></div>
         <pre class="language-python"><code class="language-python"># osprey: flavor=python

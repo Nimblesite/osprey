@@ -3,7 +3,7 @@ mlTwins: manual
 layout: page
 title: Python flavor
 description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. GPT-2 is the worked example.
-permalink: /docs/python-flavor/
+permalink: /docs/python/flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---
 
@@ -30,6 +30,12 @@ Python-flavor files and Python files both end in `.py`, but they are different l
 | GPT-2 in this repository | [`src/osprey/examples/llms/gpt2/python/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python), the model | [`src/osprey/examples/llms/gpt2/reference.py`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/reference.py), the reference it is checked against |
 
 Every Python-flavor sample here starts with `# osprey: flavor=python` and runs through Osprey. To call CPython libraries, use [Python interop](/spec/0042-pythoninterop/).
+
+To run real CPython code, or call Osprey from a Python application, see [Python interop](/docs/python/interop/).
+
+## Converting between flavors (coming)
+
+A flavor converter is planned ([plan 0057](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0057-flavor-conversion.md)). It will turn a file or a whole package from Python flavor into Default or ML, or the other way, from VS Code or the command line. Every flavor parses to the same AST, so the converter prints that AST in the target flavor and writes nothing unless the result parses back to the same program. Until it ships, moving a file between flavors is a manual rewrite.
 
 ## Select the flavor
 

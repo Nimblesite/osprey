@@ -260,7 +260,7 @@ The Osprey resolver selects Osprey releases. Programs using [Python interop](/sp
 - `osprey-pkg fetch` runs `uv sync --frozen` to create the environment. `verify` and `build` (including `build --run`) regenerate the project, compare digests and run `uv lock --check --offline`; they never sync and never go online. Their codes are `python.pyproject-missing`, `python.uv-lock-missing`, `python.workspace-digest`, `python.uv-lock-stale` and `python.environment-missing`; a uv command that fails is `python.uv-lock-failed` or `python.uv-sync-failed` with its exit status. A failed uv operation prevents writing the new Osprey lock; generated Python workspace files may already exist.
 - A graph with no member declaring the capability has no `root.python` in its lock, gets no generated project and never runs uv.
 
-Osprey never installs uv or CPython; `osprey-pkg doctor` reports where uv is, or that it is missing and needed only by packages declaring `python/interop`. The [Python flavor](/docs/python-flavor/) needs none of this: it is Osprey source with no Python dependency.
+Osprey never installs uv or CPython; `osprey-pkg doctor` reports where uv is, or that it is missing and needed only by packages declaring `python/interop`. The [Python flavor](/docs/python/flavor/) needs none of this: it is Osprey source with no Python dependency.
 
 {{ capture("/assets/images/packages/workspace-after-remove.jpg", "After removal, the installed list is empty; the registry audit remains unverified.", "After removal, the installed list is empty; the registry audit remains unverified.", 2400, 1600) }}
 

@@ -103,10 +103,10 @@ All of the sender's I/O goes through one algebraic effect, `Wire`, so the tests 
 
 ## What it is not
 
-Python flavor is Osprey, not CPython. An arbitrary Python program or package does not run unchanged: classes are records with no methods or inheritance, `try`/`except`, `while` and `yield` are rejected, and imports name Osprey modules, not Python packages. Porting `cast.py` meant rewriting it in that style. To call real CPython libraries, Osprey has [Python interop](/spec/0042-pythoninterop/). The [Python flavor guide](/docs/python-flavor/) lists what the flavor leaves out.
+Python flavor is Osprey, not CPython. An arbitrary Python program or package does not run unchanged: classes are records with no methods or inheritance, `try`/`except`, `while` and `yield` are rejected, and imports name Osprey modules, not Python packages. Porting `cast.py` meant rewriting it in that style. To call real CPython libraries, Osprey has [Python interop](/spec/0042-pythoninterop/). The [Python flavor guide](/docs/python/flavor/) lists what the flavor leaves out.
 
 ## Try it
 
-[Install Osprey](/docs/installation/), save the sample above as `label.py`, and run `osprey label.py --run`. Then change the argument to a number and run it again. The [Python flavor guide](/docs/python-flavor/) covers records, `Result`, `match` and effects.
+[Install Osprey](/docs/installation/), save the sample above as `label.py`, and run `osprey label.py --run`. Then change the argument to a number and run it again. The [Python flavor guide](/docs/python/flavor/) covers records, `Result`, `match` and effects.
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production.

@@ -8,7 +8,7 @@ const SHOWCASES = {
     osp: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.osp'),
     ospml: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml'),
 };
-const PYTHON_GUIDE = path.join(__dirname, '../src/docs/python-flavor.md');
+const PYTHON_GUIDE = path.join(__dirname, '../src/docs/python/flavor.md');
 const PLAYGROUND_PATH = path.join(__dirname, '../src/playground/index.md');
 
 // Each showcase is embedded inside a JS template literal (`key: \`...\``). Any

@@ -4,7 +4,7 @@ Captured on 3 November 2026. Screens show running tools or their real saved outp
 
 | Assets | Evidence and reproduction |
 | --- | --- |
-| python-functions, python-records, python-effects | The first three complete Python-flavor examples in docs/python-flavor.md, compiled natively; output checked before capture. |
+| python-functions, python-records, python-effects | The first three complete Python-flavor examples in docs/python/flavor.md, compiled natively; output checked before capture. |
 | python-hello, python-strings, python-lists | Osprey Python-flavor greeting, interpolation/byte length and iterator-comprehension programs; native output is respectively a greeting, Osprey: 6 bytes, and 0,1,2. |
 | python-type-error, python-effect-error | Deliberately rejected programs: integer-plus-string and an unhandled Log.write effect. The compiler exits 1. |
 | product-host, product-metal | Identical 2 × 2 matrix product source on host and Apple M4 Max Metal. Both return first element 7.0. Both the product and element read handle Result. This is an execution check, not a performance benchmark. |

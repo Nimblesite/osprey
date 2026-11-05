@@ -6,7 +6,7 @@ Run OpenAI's 124M-parameter GPT-2 in Osprey's **Python flavor**: familiar `def`,
 
 This example loads [Hugging Face's published weights](https://huggingface.co/openai-community/gpt2) directly from `model.safetensors`, rebuilds the byte-level BPE tokenizer from `merges.txt`, and implements the transformer, KV-cached generation and greedy sampling in Osprey. No retraining or checkpoint conversion is needed.
 
-- **Start with Python flavor:** [`src/toolchain/python/`](../../../../toolchain/python/README.md) contains the model, tokenizer, sampler and both device handlers as `.py` modules. The [flavor guide](https://www.ospreylang.dev/docs/python-flavor/) covers the supported Python constructs and Osprey additions.
+- **Start with Python flavor:** [`src/toolchain/python/`](../../../../toolchain/python/README.md) contains the model, tokenizer, sampler and both device handlers as `.py` modules. The [flavor guide](https://www.ospreylang.dev/docs/python/flavor/) covers the supported Python constructs and Osprey additions.
 - **Explore Default flavor:** [`model/`](model), [`generate/`](generate) and [`train/`](train) include generation and a training step. Training is currently Default-only.
 - **Compare with Python:** [`reference.py`](reference.py) is an independent implementation run by CPython. The Default and Python-flavor generators print identical bytes for the same prompt on each tested backend.
 

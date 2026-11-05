@@ -195,7 +195,7 @@ ok 3 - a read-only disk changes nothing
 # tests=3 passed=3 failed=0 skipped=0
 ```
 
-Each test double is a small class with one method per operation. `install` is ordinary Python-shaped code that has no idea which disk it is using. See [Python flavor](/docs/python-flavor/#effects-and-handlers) for the full syntax.
+Each test double is a small class with one method per operation. `install` is ordinary Python-shaped code that has no idea which disk it is using. See [Python flavor](/docs/python/flavor/#effects-and-handlers) for the full syntax.
 
 ## ML flavor
 
@@ -290,7 +290,7 @@ print("${proceed(submit)} / ${stop(submit)}")
 // Submitted / Cancelled
 ```
 
-`handle static` resolves a value handler at compile time, so no handler lookup happens at run time. GPT-2 uses this to choose its [CPU or GPU tensor backend](/docs/python-flavor/#cpu-or-gpu-is-a-handler).
+`handle static` resolves a value handler at compile time, so no handler lookup happens at run time. GPT-2 uses this to choose its [CPU or GPU tensor backend](/docs/python/flavor/#cpu-or-gpu-is-a-handler).
 
 ```osprey
 effect DraftConfig { autosaveSeconds: fn() -> int }

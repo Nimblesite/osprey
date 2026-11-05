@@ -14,8 +14,9 @@ Osprey is built for **safety, elegance and performance**: typed effects and `Res
 
 - **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.
 - **[One model, two backends](/docs/one-model-two-backends/)** — run GPT-2 on host lists or the GPU by changing its `Tensor` handler.
-- **[Write Osprey in the Python flavor](/docs/python-flavor/)** — compile Python-style Osprey code, declare effects and call CPython through interop.
-- **[Python flavor for AI agents](/docs/python-flavor-for-ai/)** — commands, effect decorators, supported syntax and bug-reporting instructions for coding agents.
+- **[Write Osprey in the Python flavor](/docs/python/flavor/)** — compile Python-style Osprey code, declare effects and call CPython through interop.
+- **[Call Python from Osprey, and Osprey from Python](/docs/python/interop/)** — the `Python` effect, `import osprey`, and test doubles for Python calls.
+- **[Python flavor for AI agents](/docs/python/for-ai/)** — commands, effect decorators, supported syntax and bug-reporting instructions for coding agents.
 - **[Install Osprey](/docs/installation/)** — set up the compiler and LLVM/clang toolchain on macOS, Linux, or Windows.
 - **[Build My First App](/docs/my-first-app/)** — build a native CLI that reads, validates and updates a JSON file.
 - **[Try the Playground](/playground/)** — run small programs in the browser before setting up a local toolchain.
@@ -62,7 +63,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 - **[Check feature status](/status/)** — see what works today, its current limits, and what is planned.
 - **[Browse keywords](/docs/keywords/)** — declarations, bindings, matching, imports, and literals.
 
-A **syntax flavor** is a way to write Osprey; all three share its compiler, types and effects. Default uses `.osp` and braces; ML uses `.ospml` and indentation; [Python flavor](/docs/python-flavor/) uses `.py` with `# osprey: flavor=python`. Python-flavor files compile as Osprey, not CPython.
+A **syntax flavor** is a way to write Osprey; all three share its compiler, types and effects. Default uses `.osp` and braces; ML uses `.ospml` and indentation; [Python flavor](/docs/python/flavor/) uses `.py` with `# osprey: flavor=python`. Python-flavor files compile as Osprey, not CPython.
 
 ## Reference
 

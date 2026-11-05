@@ -18,7 +18,7 @@ The repository README is an orientation document, not the final authority when i
 
 The book teaches Default first. Osprey currently has three syntax flavors: Default, ML and Python. A syntax flavor changes how source is written, while sharing types, effects and compilation.
 
-Default and ML are the book's teaching surfaces. Python syntax is available for real programs, including the GPT-2 port; its supported subset and remaining frontend/tooling limits are documented in the [Python flavor guide](../../src/toolchain/website/src/docs/python-flavor.md). Distinguish Osprey Python-flavor modules from CPython packages, which require explicit interop. Do not expose compiler-internal vocabulary in the first chapters.
+Default and ML are the book's teaching surfaces. Python syntax is available for real programs, including the GPT-2 port; its supported subset and remaining frontend/tooling limits are documented in the [Python flavor guide](../../src/toolchain/website/src/docs/python/flavor.md). Distinguish Osprey Python-flavor modules from CPython packages, which require explicit interop. Do not expose compiler-internal vocabulary in the first chapters.
 
 ## Example evidence
 

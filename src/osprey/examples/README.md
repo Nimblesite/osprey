@@ -14,7 +14,7 @@ Start with algebraic effects: declare an operation, request it with `perform`, a
 | [GPT-2](llms/gpt2/README.md) | The published GPT-2 weights, generation and a training step written once against a static `Tensor` effect and run by two handlers — host lists or the GPU surface, on the CPU or on Metal or OpenCL — with identical output on the CPU, checked against a pure-Python reference |
 | [Python application ports](python/ports/README.md) | Train a micrograd classifier, rank vectors with a FAISS-style index, and evaluate text with ROUGE using Osprey's Python syntax flavor |
 
-`handler E { ... }` creates a callable implementation; `h(work)` installs it while the callback runs. `handle E { ... }` handles the rest of its block. Default (`.osp`) and ML (`.ospml`) support these forms; the [Python syntax flavor](../../toolchain/website/src/docs/python-flavor.md) uses decorators for effects and handlers. See the [effects contract](../../../docs/specs/language/0017-AlgebraicEffects.md) and [current limits](../../../docs/plans/0016-algebraic-effects-and-handlers.md).
+`handler E { ... }` creates a callable implementation; `h(work)` installs it while the callback runs. `handle E { ... }` handles the rest of its block. Default (`.osp`) and ML (`.ospml`) support these forms; the [Python syntax flavor](../../toolchain/website/src/docs/python/flavor.md) uses decorators for effects and handlers. See the [effects contract](../../../docs/specs/language/0017-AlgebraicEffects.md) and [current limits](../../../docs/plans/0016-algebraic-effects-and-handlers.md).
 
 ## Syntax flavors
 
@@ -30,7 +30,7 @@ A syntax flavor is a way to write Osprey: Default uses braces, ML uses indentati
 | `# osprey: flavor=python` marker | Python flavor |
 | `--flavor python` CLI flag | Python flavor |
 
-Precedence: **flag > marker > extension > Default**. Without a flag, a marker that conflicts with the extension is an error. Choose one syntax flavor per file and import across flavors in a project. Projects select Python-flavor files explicitly through `python_sources` or a `.py` entry in `osprey.toml`; other `.py` files are ignored. See the [Python-flavor project example](../../toolchain/website/src/docs/python-flavor.md). The [mobile application](mobile/README.md) combines a Default C ABI entry file with shared ML modules.
+Precedence: **flag > marker > extension > Default**. Without a flag, a marker that conflicts with the extension is an error. Choose one syntax flavor per file and import across flavors in a project. Projects select Python-flavor files explicitly through `python_sources` or a `.py` entry in `osprey.toml`; other `.py` files are ignored. See the [Python-flavor project example](../../toolchain/website/src/docs/python/flavor.md). The [mobile application](mobile/README.md) combines a Default C ABI entry file with shared ML modules.
 
 The differential harness ([`../../toolchain/crates/run_test_corpus.sh`](../../toolchain/crates/run_test_corpus.sh))
 discovers programs additively across both flavors. A `.osp`/`.ospml` twin that

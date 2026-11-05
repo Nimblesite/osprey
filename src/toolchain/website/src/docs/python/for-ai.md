@@ -3,13 +3,13 @@ mlTwins: manual
 layout: page
 title: Python flavor for AI agents
 description: Operating manual for AI coding agents. Every loose .py script an agent writes is Osprey source in the Python flavor, compiled to a native binary by the osprey compiler. Covers the toolchain, the CLI, PEP annotation syntax, algebraic effects and handlers, the rejected Python constructs, and the mandatory Bug-issue procedure when a script fails.
-permalink: /docs/python-flavor-for-ai/
+permalink: /docs/python/for-ai/
 tags: [flavors, python, algebraic-effects, ai-agents]
 ---
 
 {% from "native-capture.njk" import capture %}
 
-**For AI coding agents:** operating rules, supported constructs and runnable examples. Human introduction: [Python flavor guide](/docs/python-flavor/).
+**For AI coding agents:** operating rules, supported constructs and runnable examples. Human introduction: [Python flavor guide](/docs/python/flavor/).
 
 {% videoPlayer "static-typing-python", true %}
 
@@ -177,7 +177,7 @@ Everywhere else, remove the annotation. The `redundant type annotation` warning 
 
 ## Bindings and functions
 
-The [functions example](/docs/python-flavor/#functions-and-inference) shows inferred parameters, named calls and an arithmetic handler.
+The [functions example](/docs/python/flavor/#functions-and-inference) shows inferred parameters, named calls and an arithmetic handler.
 
 - `name = value` starts a lexical binding. Prefer immutable bindings; reassignment is checked under the existing handler-owned state rules. Ordinary function-body assignment is rejected. `Final[T]` forbids reassignment. Augmented, field/index assignment and tuple unpacking are rejected.
 - `def` declares a flat function; a nested `def` is rejected. Bind a lambda instead. There are no default arguments, `*args`, `**kwargs`, argument unpacking, currying or implicit `self`.
@@ -203,7 +203,7 @@ The [functions example](/docs/python-flavor/#functions-and-inference) shows infe
 
 ## Records, Result and match
 
-The [record example](/docs/python-flavor/#records-result-and-match) shows construction, immutable updates and exhaustive Result handling.
+The [record example](/docs/python/flavor/#records-result-and-match) shows construction, immutable updates and exhaustive Result handling.
 
 - A plain `class` with annotated fields declares a closed immutable record. There is no inheritance, `__init__`, `self`, method dispatch, field default or class variable.
 - Construct every field by keyword: `Account(owner="Alice", balance=100)`. Missing, extra or wrongly typed fields fail checking.
@@ -262,7 +262,7 @@ An effect declares typed operations. `perform(E.op(...))` requests one; the call
 
 ### Complete example
 
-The [Python effects example](/docs/python-flavor/#effects-and-handlers) includes the declaration, request, console/audit handlers, both installation forms and output. Use that complete program rather than combining partial declarations.
+The [Python effects example](/docs/python/flavor/#effects-and-handlers) includes the declaration, request, console/audit handlers, both installation forms and output. Use that complete program rather than combining partial declarations.
 
 ### Control operations and resume
 
@@ -488,7 +488,7 @@ Anything else that blocks a program this page says is valid: [file a Bug](#repor
 
 ## Reference
 
-- [Python flavor guide](/docs/python-flavor/), the human-oriented introduction.
+- [Python flavor guide](/docs/python/flavor/), the human-oriented introduction.
 - [Python flavor specification](/spec/0041-pythonflavorsyntax/), the full contract.
 - [Algebraic effects guide](/docs/effects/) and [effects specification](/spec/0017-algebraiceffects/).
 - [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python), the largest working program.

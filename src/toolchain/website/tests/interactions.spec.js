@@ -1,6 +1,7 @@
 const { test, expect } = require("@playwright/test");
 const { paintedColours, VIEWPORTS, executeExample, exampleResult } = require("./helpers");
 const { readFile } = require("node:fs/promises");
+const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 
 async function verifyDraftExample(source, file) {
@@ -103,6 +104,16 @@ test.describe("homepage flight and source examples", () => {
       expect(await executeExample(source, testInfo.outputPath(`effects-${i}.${extension}`))).toBe(outputs[i]);
       if (i === 0) expect(await exampleResult(source.replace("memory(true)(upgrade)", "upgrade()"), testInfo.outputPath("effects-unhandled.osp"))).toContain("unhandled effect operations at program entry: Files.read, Files.write");
     }
+  });
+
+  test("the Python interop guide's shared snippet runs the same under CPython and Osprey", async ({ page }, testInfo) => {
+    await page.goto("/docs/python/interop/");
+    const file = testInfo.outputPath("shared.py");
+    const output = await executeExample(await page.locator("pre > code.language-python").first().textContent(), file);
+    expect(output).toBe("alice: 0 is none\nbob: 12 is low\ncarol: 80 is high\n");
+    expect(execFileSync("python3", [file], { encoding: "utf8" })).toBe(output);
+    const example = await readFile(path.resolve("../../osprey/examples/python/interop.osp"), "utf8");
+    expect(`${await page.locator("pre > code.language-osprey").textContent()}\n`).toBe(example);
   });
 
   test("the effect handlers post shows what every example prints or the error that rejects it", async ({ page }, testInfo) => {
