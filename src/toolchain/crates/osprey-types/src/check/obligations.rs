@@ -12,11 +12,11 @@ impl Checker {
     /// MOVES into the scheme.
     pub(super) fn generalize_with_obligations(&mut self, env: &TypeEnv, ty: &Type) -> Scheme {
         self.resolve_field_uses();
-        let mut scheme = generalize(&mut self.ctx, env, ty);
+        let (mut scheme, external) = generalize(&mut self.ctx, env, ty);
         if scheme.vars.is_empty() {
             return scheme;
         }
-        self.generalize_connected_obligations(env, &mut scheme.vars);
+        self.generalize_connected_obligations(&external, &mut scheme.vars);
         // A computed numeric value has one representation. Only a callable
         // may instantiate its division relation at different operand widths.
         if !matches!(self.ctx.apply(ty), Type::Fun { .. }) {
@@ -42,10 +42,9 @@ impl Checker {
     /// function signature. Quantify their entire connected component together.
     pub(super) fn generalize_connected_obligations(
         &mut self,
-        env: &TypeEnv,
+        external: &BTreeSet<VarId>,
         vars: &mut Vec<VarId>,
     ) {
-        let external = env.free_vars(&mut self.ctx);
         let mut connected: BTreeSet<_> = vars.iter().copied().collect();
         loop {
             let before = connected.len();
@@ -53,7 +52,7 @@ impl Checker {
                 let mut free = BTreeSet::new();
                 self.ctx.free_vars(ty, &mut free);
                 if !free.is_disjoint(&connected) {
-                    connected.extend(free.difference(&external));
+                    connected.extend(free.difference(external));
                 }
             }
             if connected.len() == before {

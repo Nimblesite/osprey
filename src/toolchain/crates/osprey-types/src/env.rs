@@ -423,23 +423,28 @@ pub(crate) fn instantiated(ctx: &mut InferCtx, scheme: &Scheme) -> (Type, Vec<(S
     (subst_vars(&scheme.ty, &map), obligations)
 }
 
-/// Generalize a type over the variables free in it but not in the environment.
-pub(crate) fn generalize(ctx: &mut InferCtx, env: &TypeEnv, ty: &Type) -> Scheme {
+/// Generalize a type and retain the visible environment variables for its obligations.
+pub(crate) fn generalize(
+    ctx: &mut InferCtx,
+    env: &TypeEnv,
+    ty: &Type,
+) -> (Scheme, BTreeSet<VarId>) {
     ctx.settle_literals_in(ty);
     let ty = ctx.apply(ty);
     let mut ty_fv = BTreeSet::new();
     ctx.free_vars(&ty, &mut ty_fv);
-    let vars = if ty_fv.is_empty() {
-        Vec::new()
+    let external = if ty_fv.is_empty() {
+        BTreeSet::new()
     } else {
-        let env_fv = env.free_vars(ctx);
-        ty_fv.difference(&env_fv).copied().collect()
+        env.free_vars(ctx)
     };
-    Scheme {
+    let vars = ty_fv.difference(&external).copied().collect();
+    let scheme = Scheme {
         vars,
         ty,
         obligations: Vec::new(),
-    }
+    };
+    (scheme, external)
 }
 
 pub(crate) fn subst_vars(t: &Type, map: &HashMap<VarId, Type>) -> Type {

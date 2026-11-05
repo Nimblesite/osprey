@@ -376,3 +376,34 @@ fn a_statement_that_discards_nothing_stays_accepted() {
 }
 
 mod more;
+
+#[test]
+fn connected_obligations_share_one_environment_scan() {
+    use super::{Checker, Scheme, Type, TypeEnv};
+    use crate::env::tests::{ENVIRONMENT_MARKER, MARKER_VISITS};
+
+    let mut checker = Checker::new();
+    let mut env = TypeEnv::new();
+    let outer = checker.ctx.fresh();
+    let generic = checker.ctx.fresh();
+    let connected = checker.ctx.fresh();
+    env.insert(
+        "outer",
+        Scheme::mono(Type::con(ENVIRONMENT_MARKER, vec![outer.clone()])),
+    );
+    let relation = Type::fun(vec![generic.clone(), outer.clone()], connected);
+    checker
+        .builtin_uses
+        .push(("connected".into(), relation.clone()));
+    let ty = Type::fun(vec![outer], generic);
+    MARKER_VISITS.with(|visits| visits.set(0));
+    let scheme = checker.generalize_with_obligations(&env, &ty);
+    assert_eq!(scheme.ty, ty);
+    assert_eq!(
+        scheme.vars.len(),
+        2,
+        "only the two local variables generalize"
+    );
+    assert_eq!(scheme.obligations, vec![("connected".into(), relation)]);
+    assert_eq!(MARKER_VISITS.with(std::cell::Cell::get), 1);
+}

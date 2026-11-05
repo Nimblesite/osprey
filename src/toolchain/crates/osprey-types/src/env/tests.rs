@@ -27,10 +27,11 @@ fn closed_types_generalize_without_scanning_unrelated_bindings() {
     }
     let ty = Type::fun(vec![Type::int()], Type::string());
     ENVIRONMENT_VISITS.with(|visits| visits.set(0));
-    let scheme = generalize(&mut ctx, &env, &ty);
+    let (scheme, external) = generalize(&mut ctx, &env, &ty);
     assert_eq!(scheme.ty, ty);
     assert_eq!(scheme.vars, Vec::new());
     assert_eq!(scheme.obligations, Vec::new());
+    assert!(external.is_empty());
     let visits = ENVIRONMENT_VISITS.with(std::cell::Cell::get);
     assert_eq!(
         visits, 0,
@@ -164,8 +165,10 @@ fn generalize_skips_env_bound_vars() {
     let mut env = TypeEnv::new();
     // An outer binding pins t0, so a let over (t0 -> t1) may only quantify t1.
     env.insert("outer", Scheme::mono(Type::Var(0)));
-    let scheme = generalize(&mut ctx, &env, &Type::fun(vec![Type::Var(0)], Type::Var(1)));
+    let (scheme, external) =
+        generalize(&mut ctx, &env, &Type::fun(vec![Type::Var(0)], Type::Var(1)));
     assert_eq!(scheme.vars, vec![1]);
+    assert_eq!(external, BTreeSet::from([0]));
 }
 
 /// A scheme whose body has no variable free outside its own quantifiers — it
