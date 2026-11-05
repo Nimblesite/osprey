@@ -484,6 +484,7 @@ def qwen_row(tok, i):
                 strs_equal(f"qwen.{i}.tokens", enc.tokens, unwrap_or(listGet(Expected.QWEN_TOKENS, i), [])),
             ], [
                 Check.ints_equal(f"qwen.{i}.type_ids", enc.type_ids, unwrap_or(listGet(Expected.QWEN_TYPE_IDS, i), [])),
+                offs_equal(f"qwen.{i}.offsets", offs_list(enc), unwrap_or(listGet(Expected.QWEN_OFFSETS, i), [])),
                 Check.equal(f"qwen.{i}.decode", decoded(tok, enc.ids, False), unwrap_or(listGet(Expected.QWEN_DECODES, i), "")),
                 Check.equal(f"qwen.{i}.skip", decoded(tok, enc.ids, True), unwrap_or(listGet(Expected.QWEN_SKIP_DECODES, i), "")),
                 strs_equal(f"qwen.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), unwrap_or(listGet(Expected.QWEN_PRETOK_PIECES, i), [])),

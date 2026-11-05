@@ -106,8 +106,25 @@ type Stamp =
     markWhen : Condition
     markEach : Repeat
 
-(** What a canvas listener is to assistive technology ([UI-MACHINE-A11Y]); `Unannounced` is a hit area only. *)
+// The accessibility model's declarations are generated from `accessibility.td`
+// by `generate_accessibility.cpython`; edit the model, never this block.
+// BEGIN GENERATED [UI-MACHINE-A11Y]
+// Generated from accessibility.td [UI-MACHINE-A11Y].
 type AccessRole = Pressable | Slidable | Popup | MenuItem | Unannounced
+
+type Accessible =
+    accessRole : AccessRole
+    accessLabel : string
+    accessLeft : float
+    accessTop : float
+    accessWidth : float
+    accessHeight : float
+    accessValue : float
+    accessMin : float
+    accessMax : float
+    accessMovable : bool
+    accessSelected : bool
+// END GENERATED [UI-MACHINE-A11Y]
 
 (** A slider's range and the input it sets, shows (`of`) and fires. *)
 type Slide =
@@ -194,16 +211,3 @@ type Template =
     tplGrow : bool
     tplShadow : string
     tplMarks : List<Stamp>
-
-(** One element of a canvas's accessibility tree ([UI-MACHINE-A11Y]): role, filled label, bounds in scene units, for a slider its value and range, and whether a drag moves it. *)
-type Accessible =
-    accessRole : AccessRole
-    accessLabel : string
-    accessLeft : float
-    accessTop : float
-    accessWidth : float
-    accessHeight : float
-    accessValue : float
-    accessMin : float
-    accessMax : float
-    accessMovable : bool

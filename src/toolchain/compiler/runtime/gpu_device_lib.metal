@@ -29,7 +29,7 @@ long signed_word(ulong magnitude_word, bool negative) {
 // Work in unsigned words, mask to the storage width, and fault before any
 // invalid signed result is exposed. The default `int` keeps its public names.
 #define CHECKED_INTEGER(SUFFIX, T, U, BITS, SIGNED) \
-constant ulong INTEGER_SIGN##SUFFIX = 1ul << (BITS - 1); \
+constant ulong INTEGER_SIGN##SUFFIX = ((ulong)1) << (BITS - 1); \
 constant ulong INTEGER_MASK##SUFFIX = (ulong)(U)~(U)0; \
 T osprey_convert##SUFFIX(long value, GPU_GLOBAL ulong *fault) { \
     long low = SIGNED ? (long)(0ul - INTEGER_SIGN##SUFFIX) : 0; \
@@ -192,7 +192,7 @@ ushort gpu_f64_to_f16(ulong x) {
         return (ushort)(sign | 0x7c00u | 0x0200u | (ushort)(fraction >> 42));
     }
     if (!(x & 0x7ffffffffffffffful)) return sign;
-    ulong significand = fraction | (exponent ? (1ul << 52) : 0ul);
+    ulong significand = fraction | (exponent ? (((ulong)1) << 52) : 0ul);
     int e2 = (int)exponent - 1023;
     if (exponent && e2 >= -14) {
         if (e2 > 15) return (ushort)(sign | 0x7c00u);
@@ -321,66 +321,60 @@ float quant_lanes(float acc, GPU_GLOBAL const float *x, uint word, float d1, flo
 
 // Q4_K: 256 weights per 144-byte block, a binary16 scale and minimum, eight
 // 6-bit sub-block scales and minimums, 4-bit weights.
-float q4_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float q4_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 0), dmin = quant_half(b, 2);
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
-    for (uint j = 0; j < 8; j++) {
-        uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
-        float d1 = d * (float)sc;
-        float m1 = dmin * (float)mn;
-        uint g = j >> 1, high = j & 1;
-        for (uint l = 0; l < 8; l++)
-            acc = quant_lanes(acc, x + g * 64 + high * 32 + l * 4, (qs[g * 8 + l] >> (high * 4)) & 0x0f0f0f0fu, d1, m1);
-    }
+    uint j = lane >> 2, g = j >> 1, high = j & 1;
+    uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+    float d1 = d * (float)sc;
+    float m1 = dmin * (float)mn;
+    for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++)
+        acc = quant_lanes(acc, x + j * 32 + l * 4, (qs[g * 8 + l] >> (high * 4)) & 0x0f0f0f0fu, d1, m1);
     return acc;
 }
 
 // Q6_K: 256 weights per 210-byte block, six bits per weight from a low nibble and
 // two mask bits, a binary16 scale and sixteen 8-bit sub-block scales.
-float q6_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float q6_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 208);
     GPU_GLOBAL const ushort *low = (GPU_GLOBAL const ushort *)(GPU_GLOBAL const void *)b;
     GPU_GLOBAL const ushort *high = (GPU_GLOBAL const ushort *)(GPU_GLOBAL const void *)(b + 128);
-    for (uint j = 0; j < 8; j++) {
-        uint group = j >> 2, quarter = j & 3;
-        GPU_GLOBAL const ushort *nibbles = low + 32 * group + 16 * (quarter & 1);
-        GPU_GLOBAL const ushort *tops = high + 16 * group;
-        GPU_GLOBAL const float *xq = x + group * 128 + quarter * 32;
-        for (uint i = 0; i < 16; i++) {
-            float scale = d * (float)(signed char)b[192 + 8 * group + (i >> 3) + 2 * quarter];
-            uint word = ((((uint)nibbles[i]) >> (4 * (quarter >> 1))) & 0x0f0fu) | ((((((uint)tops[i]) >> (2 * quarter)) & 0x0303u)) << 4);
-            float w0 = scale * (float)((int)(word & 255) - 32), w1 = scale * (float)((int)(word >> 8) - 32);
-            float p0 = xq[2 * i] * w0, p1 = xq[2 * i + 1] * w1;
-            acc = acc + p0;
-            acc = acc + p1;
-        }
+    uint j = lane >> 2, group = j >> 2, quarter = j & 3;
+    GPU_GLOBAL const ushort *nibbles = low + 32 * group + 16 * (quarter & 1);
+    GPU_GLOBAL const ushort *tops = high + 16 * group;
+    GPU_GLOBAL const float *xq = x + j * 32;
+    for (uint i = (lane & 3) * 4; i < (lane & 3) * 4 + 4; i++) {
+        float scale = d * (float)(signed char)b[192 + 8 * group + (i >> 3) + 2 * quarter];
+        uint word = ((((uint)nibbles[i]) >> (4 * (quarter >> 1))) & 0x0f0fu) | ((((((uint)tops[i]) >> (2 * quarter)) & 0x0303u)) << 4);
+        float w0 = scale * (float)((int)(word & 255) - 32), w1 = scale * (float)((int)(word >> 8) - 32);
+        float p0 = xq[2 * i] * w0, p1 = xq[2 * i + 1] * w1;
+        acc = acc + p0;
+        acc = acc + p1;
     }
     return acc;
 }
 
 // Q8_0: 32 weights per 34-byte block, one binary16 scale and one signed byte per weight.
-float q8_0_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float q8_0_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 0);
-    for (uint j = 0; j < 32; j++)
+    for (uint j = lane * 8; j < lane * 8 + 8; j++)
         acc = quant_add(acc, x[j], d * (float)(signed char)b[2 + j]);
     return acc;
 }
 
 // Q5_K: 256 weights per 176-byte block, Q4_K's four low bits plus a high-bit mask,
 // a binary16 scale and minimum and eight 6-bit sub-block scales and minimums.
-float q5_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float q5_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 0), dmin = quant_half(b, 2);
     GPU_GLOBAL const uint *mask = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 48);
-    for (uint sub = 0; sub < 8; sub++) {
-        uint sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
-        float d1 = d * (float)sc;
-        float m1 = dmin * (float)mn;
-        uint g = sub >> 1, h = sub & 1;
-        for (uint l = 0; l < 8; l++) {
-            uint low = (qs[g * 8 + l] >> (h * 4)) & 0x0f0f0f0fu;
-            acc = quant_lanes(acc, x + sub * 32 + l * 4, low | (((mask[l] >> sub) & 0x01010101u) << 4), d1, m1);
-        }
+    uint sub = lane >> 2, g = sub >> 1, h = sub & 1;
+    uint sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
+    float d1 = d * (float)sc;
+    float m1 = dmin * (float)mn;
+    for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++) {
+        uint low = (qs[g * 8 + l] >> (h * 4)) & 0x0f0f0f0fu;
+        acc = quant_lanes(acc, x + sub * 32 + l * 4, low | (((mask[l] >> sub) & 0x01010101u) << 4), d1, m1);
     }
     return acc;
 }
@@ -401,22 +395,17 @@ uint q3k_scale(GPU_GLOBAL const uchar *b, uint index) {
 
 // Q3_K: 256 weights per 110-byte block, two low bits per weight plus a high-bit
 // mask, a binary16 scale and sixteen 6-bit sub-block scales.
-float q3_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float q3_k_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 108);
-    for (uint g = 0; g < 2; g++) {
-        for (uint j = 0; j < 4; j++) {
-            for (uint side = 0; side < 2; side++) {
-                uint sc = q3k_scale(b, 8 * g + 2 * j + side);
-                float dl = d * (float)((int)sc - 32);
-                GPU_GLOBAL const uchar *q = b + 32 + 32 * g + 16 * side;
-                GPU_GLOBAL const uchar *hm = b + 16 * side;
-                for (uint l = 0; l < 16; l++) {
-                    int low = (int)((q[l] >> (2 * j)) & 3);
-                    int high = (int)((hm[l] >> (4 * g + j)) & 1);
-                    acc = quant_add(acc, x[g * 128 + j * 32 + side * 16 + l], dl * (float)(low - (high ? 0 : 4)));
-                }
-            }
-        }
+    uint g = lane >> 4, j = (lane >> 2) & 3, side = (lane >> 1) & 1;
+    uint sc = q3k_scale(b, 8 * g + 2 * j + side);
+    float dl = d * (float)((int)sc - 32);
+    GPU_GLOBAL const uchar *q = b + 32 + 32 * g + 16 * side;
+    GPU_GLOBAL const uchar *hm = b + 16 * side;
+    for (uint l = (lane & 1) * 8; l < (lane & 1) * 8 + 8; l++) {
+        int low = (int)((q[l] >> (2 * j)) & 3);
+        int high = (int)((hm[l] >> (4 * g + j)) & 1);
+        acc = quant_add(acc, x[g * 128 + j * 32 + side * 16 + l], dl * (float)(low - (high ? 0 : 4)));
     }
     return acc;
 }
@@ -427,9 +416,9 @@ constant float IQ4_NL_LEVELS[16] = {-127.0f, -104.0f, -83.0f, -65.0f, -49.0f, -3
 
 // IQ4_NL: 32 weights per 18-byte block, one of the sixteen non-linear levels per
 // weight and a binary16 scale.
-float iq4_nl_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float iq4_nl_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 0);
-    for (uint j = 0; j < 32; j++) {
+    for (uint j = lane * 8; j < lane * 8 + 8; j++) {
         uint level = j < 16 ? (uint)(b[2 + j] & 15) : (uint)(b[2 + j - 16] >> 4);
         acc = quant_add(acc, x[j], d * IQ4_NL_LEVELS[level]);
     }
@@ -438,23 +427,22 @@ float iq4_nl_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *
 
 // IQ4_XS: 256 weights per 136-byte block, IQ4_NL's levels with a six-bit
 // sub-block scale and a binary16 block scale.
-float iq4_xs_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float iq4_xs_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 0);
     uint scales_h = (uint)(b[2] | (b[3] << 8));
     GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 8);
-    for (uint ib = 0; ib < 8; ib++) {
-        uint ls = (uint)((b[4 + (ib >> 1)] >> (4 * (ib & 1))) & 15) | (((scales_h >> (2 * ib)) & 3) << 4);
-        float dl = d * (float)((int)ls - 32);
-        for (uint l = 0; l < 8; l++) {
-            uint word = qs[ib * 4 + (l & 3)] >> (4 * (l >> 2));
-            GPU_GLOBAL const float *xe = x + 32 * ib + 4 * l;
-            float p0 = xe[0] * (dl * IQ4_NL_LEVELS[word & 15]), p1 = xe[1] * (dl * IQ4_NL_LEVELS[(word >> 8) & 15]);
-            float p2 = xe[2] * (dl * IQ4_NL_LEVELS[(word >> 16) & 15]), p3 = xe[3] * (dl * IQ4_NL_LEVELS[(word >> 24) & 15]);
-            acc = acc + p0;
-            acc = acc + p1;
-            acc = acc + p2;
-            acc = acc + p3;
-        }
+    uint ib = lane >> 2;
+    uint ls = (uint)((b[4 + (ib >> 1)] >> (4 * (ib & 1))) & 15) | (((scales_h >> (2 * ib)) & 3) << 4);
+    float dl = d * (float)((int)ls - 32);
+    for (uint l = (lane & 3) * 2; l < (lane & 3) * 2 + 2; l++) {
+        uint word = qs[ib * 4 + (l & 3)] >> (4 * (l >> 2));
+        GPU_GLOBAL const float *xe = x + 32 * ib + 4 * l;
+        float p0 = xe[0] * (dl * IQ4_NL_LEVELS[word & 15]), p1 = xe[1] * (dl * IQ4_NL_LEVELS[(word >> 8) & 15]);
+        float p2 = xe[2] * (dl * IQ4_NL_LEVELS[(word >> 16) & 15]), p3 = xe[3] * (dl * IQ4_NL_LEVELS[(word >> 24) & 15]);
+        acc = acc + p0;
+        acc = acc + p1;
+        acc = acc + p2;
+        acc = acc + p3;
     }
     return acc;
 }
@@ -530,69 +518,122 @@ constant uint IQ3S_GRID[512] = {
 
 // IQ3_S: 256 weights per 110-byte block, a nine-bit grid index and a sign bit per
 // weight, a binary16 scale and eight 2-bit sub-block scales.
-float iq3_s_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+float iq3_s_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b, uint lane) {
     float d = quant_half(b, 0);
-    for (uint group = 0; group < 4; group++) {
-        for (uint side = 0; side < 2; side++) {
-            uint sc = (uint)b[106 + group];
-            float db = d * (float)(1 + 2 * (int)(side ? (sc >> 4) : (sc & 15)));
-            for (uint l = 0; l < 4; l++) {
-                uint mask = (uint)b[66 + 2 * group + side];
-                uint signs = (uint)b[74 + 8 * group + 4 * side + l];
-                for (uint w = 0; w < 8; w++) {
-                    uint qs = (uint)b[2 + 16 * group + 8 * side + 2 * l + (w >> 2)];
-                    uint index = qs | ((mask << (8 - 2 * l - (w >> 2))) & 256);
-                    float weight = db * (float)((IQ3S_GRID[index] >> (8 * (w & 3))) & 255);
-                    if ((signs >> w) & 1) weight = -weight;
-                    acc = quant_add(acc, x[group * 64 + side * 32 + l * 8 + w], weight);
-                }
-            }
-        }
+    uint group = lane >> 3, side = (lane >> 2) & 1, l = lane & 3;
+    uint sc = (uint)b[106 + group];
+    float db = d * (float)(1 + 2 * (int)(side ? (sc >> 4) : (sc & 15)));
+    uint mask = (uint)b[66 + 2 * group + side];
+    uint signs = (uint)b[74 + 8 * group + 4 * side + l];
+    for (uint w = 0; w < 8; w++) {
+        uint qs = (uint)b[2 + 16 * group + 8 * side + 2 * l + (w >> 2)];
+        uint index = qs | ((mask << (8 - 2 * l - (w >> 2))) & 256);
+        float weight = db * (float)((IQ3S_GRID[index] >> (8 * (w & 3))) & 255);
+        if ((signs >> w) & 1) weight = -weight;
+        acc = quant_add(acc, x[group * 64 + side * 32 + l * 8 + w], weight);
     }
     return acc;
 }
 
-// Thread t computes part p = t % parts of output i = t / parts: the blocks
-// from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
-// from 0.0f, into partial[i * parts + p]. One template for every block format,
-// so the host oracle in gpu_host.c runs the same loop shape over the same
-// per-block steps. osprey_sum_parts then adds the parts of each output in order.
-#define QUANT_KERNEL(TYPE, STEP, ELEMENTS, BYTES) \
+// [LLM-MATMUL-QUANT] One output per 32 consecutive threads: lane l owns weights
+// [8l, 8l + 8) of every block it visits (a 256-weight block has 32 lanes; eight
+// 32-weight blocks share them), summing its products in block order from 0.0f,
+// and quant_reduce combines the lanes. The host oracle in gpu_host.c compiles
+// these same lane functions and runs the same rounds, so every backend writes
+// the same words. Threadgroups are a multiple of 32 threads (gpu_metal.m,
+// gpu_opencl.c), at most QUANT_GROUP, so a lane's group never straddles two.
+#define QUANT_LANES 32
+#define QUANT_GROUP 256
+
+// The 32 lane sums of one output in a fixed butterfly: each round adds to every
+// lane the lane `off` away, so lane 0 ends with the total. The order never
+// depends on which lane reads first: a + b and b + a are the same word.
+float quant_reduce(GPU_LOCAL float *sums, uint local, float acc) {
+    sums[local] = acc;
+    GPU_BARRIER();
+    for (uint off = QUANT_LANES / 2; off > 0; off >>= 1) {
+        float other = sums[local ^ off];
+        GPU_BARRIER();
+        sums[local] = sums[local] + other;
+        GPU_BARRIER();
+    }
+    return sums[local];
+}
+
+#define QUANT_KERNEL(TYPE, LANE, ELEMENTS, BYTES) \
 kernel void osprey_matmul_##TYPE(GPU_GLOBAL const float *x GPU_BUFFER(0), \
                                  GPU_GLOBAL const uchar *w GPU_BUFFER(1), \
-                                 GPU_GLOBAL float *partial GPU_BUFFER(2), \
+                                 GPU_GLOBAL float *out GPU_BUFFER(2), \
                                  GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4), \
-                                 GPU_PARAM cols GPU_BUFFER(5), GPU_PARAM parts GPU_BUFFER(6) GPU_THREAD) { \
-    ulong t = GPU_INDEX; \
-    if (t >= rows * cols * parts) return; \
-    ulong i = t / parts, p = t % parts; \
-    ulong r = i / cols, c = i % cols; \
-    uint blocks = (uint)(inner / (ELEMENTS)); \
-    uint first = (uint)(p * blocks / parts), last = (uint)((p + 1) * blocks / parts); \
+                                 GPU_PARAM cols GPU_BUFFER(5) GPU_LANE_THREAD) { \
+    GPU_LOCAL float sums[QUANT_GROUP]; \
+    ulong i = GPU_INDEX / QUANT_LANES; \
+    uint lane = (uint)(GPU_INDEX % QUANT_LANES), per_block = (ELEMENTS) / 8, per_span = QUANT_LANES / per_block; \
+    bool live = i < rows * cols; \
+    ulong r = live ? i / cols : 0, c = live ? i % cols : 0; \
+    uint blocks = live ? (uint)(inner / (ELEMENTS)) : 0; \
     GPU_GLOBAL const float *xr = x + r * inner; \
-    GPU_GLOBAL const uchar *row = w + c * (ulong)blocks * (BYTES); \
+    GPU_GLOBAL const uchar *row = w + c * (ulong)(inner / (ELEMENTS)) * (BYTES); \
     float acc = 0.0f; \
-    for (uint blk = first; blk < last; blk++) \
-        acc = STEP(acc, xr + (ulong)blk * (ELEMENTS), row + (ulong)blk * (BYTES)); \
-    partial[t] = acc; \
+    for (uint blk = lane / per_block; blk < blocks; blk += per_span) \
+        acc = LANE(acc, xr + (ulong)blk * (ELEMENTS), row + (ulong)blk * (BYTES), lane % per_block); \
+    acc = quant_reduce(sums, GPU_LOCAL_INDEX, acc); \
+    if (live && lane == 0) out[i] = acc; \
 }
-QUANT_KERNEL(q4_k, q4_k_step, 256, 144)
-QUANT_KERNEL(q8_0, q8_0_step, 32, 34)
-QUANT_KERNEL(q6_k, q6_k_step, 256, 210)
-QUANT_KERNEL(q5_k, q5_k_step, 256, 176)
-QUANT_KERNEL(q3_k, q3_k_step, 256, 110)
-QUANT_KERNEL(iq4_nl, iq4_nl_step, 32, 18)
-QUANT_KERNEL(iq4_xs, iq4_xs_step, 256, 136)
-QUANT_KERNEL(iq3_s, iq3_s_step, 256, 110)
+QUANT_KERNEL(q4_k, q4_k_lane, 256, 144)
+QUANT_KERNEL(q8_0, q8_0_lane, 32, 34)
+QUANT_KERNEL(q6_k, q6_k_lane, 256, 210)
+QUANT_KERNEL(q5_k, q5_k_lane, 256, 176)
+QUANT_KERNEL(q3_k, q3_k_lane, 256, 110)
+QUANT_KERNEL(iq4_nl, iq4_nl_lane, 32, 18)
+QUANT_KERNEL(iq4_xs, iq4_xs_lane, 256, 136)
+QUANT_KERNEL(iq3_s, iq3_s_lane, 256, 110)
 #undef QUANT_KERNEL
 
-// out[i] = the `parts` partial sums of output i added in order from 0.0f.
-kernel void osprey_sum_parts(GPU_GLOBAL const float *partial GPU_BUFFER(0),
-                             GPU_GLOBAL float *out GPU_BUFFER(1),
-                             GPU_PARAM count GPU_BUFFER(2), GPU_PARAM parts GPU_BUFFER(3) GPU_THREAD) {
+// [LLM-DELTA-RULE] One token of the recurrent gated delta rule, fused into one
+// kernel: thread t is value element v = t % dim of head h = t / dim. It decays
+// its column of the [heads, dim, dim] state, recalls through the keys, writes the
+// updated column and reads it out through the queries. `out` holds the new state
+// then the heads * dim outputs, and every product is rounded before its add, as
+// the host oracle in gpu_host.c does.
+kernel void osprey_delta_rule(GPU_GLOBAL const float *state GPU_BUFFER(0), GPU_GLOBAL const float *queries GPU_BUFFER(1),
+                              GPU_GLOBAL const float *keys GPU_BUFFER(2), GPU_GLOBAL const float *values GPU_BUFFER(3),
+                              GPU_GLOBAL const float *beta GPU_BUFFER(4), GPU_GLOBAL const float *decay GPU_BUFFER(5),
+                              GPU_GLOBAL float *out GPU_BUFFER(6), GPU_PARAM heads GPU_BUFFER(7),
+                              GPU_PARAM dim GPU_BUFFER(8) GPU_THREAD) {
+    uint t = (uint)GPU_INDEX, d = (uint)dim;
+    if ((ulong)t >= heads * dim) return;
+    uint h = t / d, v = t % d, plane = h * d * d;
+    float fade = decay[h], recalled = 0.0f;
+    for (uint k = 0; k < d; k++) {
+        float kept = state[plane + k * d + v] * fade;
+        float product = kept * keys[h * d + k];
+        recalled = recalled + product;
+    }
+    float delta = (values[t] - recalled) * beta[h], read = 0.0f;
+    for (uint k = 0; k < d; k++) {
+        float kept = state[plane + k * d + v] * fade;
+        float update = keys[h * d + k] * delta;
+        float next = kept + update;
+        out[plane + k * d + v] = next;
+        float product = next * queries[h * d + k];
+        read = read + product;
+    }
+    out[(uint)(heads * dim * dim) + t] = read;
+}
+
+// [LLM-SIGMOID] The logistic function of every element, on the target's native
+// binary32 exp and division: an activation runs thousands of them per token, far
+// too many for the shared wider exp that `gpu32_exp` rounds from. The host runs
+// the same formula on its own exp, so results agree within exp's ulps, not bit
+// for bit.
+kernel void osprey_sigmoid(GPU_GLOBAL const float *x GPU_BUFFER(0), GPU_GLOBAL float *out GPU_BUFFER(1),
+                           GPU_PARAM count GPU_BUFFER(2) GPU_THREAD) {
     ulong i = GPU_INDEX;
     if (i >= count) return;
-    float acc = 0.0f;
-    for (ulong p = 0; p < parts; p++) acc = acc + partial[i * parts + p];
-    out[i] = acc;
+#if defined(__METAL_VERSION__) || defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+    out[i] = 1.0f / (1.0f + exp(-x[i]));
+#else
+    out[i] = 1.0f / (1.0f + expf(-x[i]));
+#endif
 }

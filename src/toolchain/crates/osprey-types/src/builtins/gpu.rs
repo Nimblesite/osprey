@@ -78,6 +78,13 @@ pub(super) fn declare(e: &mut TypeEnv) {
     // [rows, cols] float32 product; a length or type the shape disagrees with
     // is an Error.
     let f32 = || Type::gpu_buffer(Type::prim("float32"));
+    mono(e, "gpuSigmoid", vec![f32()], res(f32()));
+    mono(
+        e,
+        "gpuDeltaRule",
+        vec![f32(), f32(), f32(), f32(), f32(), f32(), i(), i()],
+        res(f32()),
+    );
     mono(
         e,
         "gpuMatMulQuant",

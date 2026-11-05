@@ -19,6 +19,7 @@
 #endif
 
 #include <errno.h>
+#include <stdatomic.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -178,84 +179,39 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
   return settled(osprey_gpu_device_dispatch(&dispatch), out);
 }
 
-// [LLM-MATMUL-QUANT] The partial sums of the quantized product live in one
-// device-resident scratch object shared by every product: the serial queue
-// runs each product's two kernels before the next product's, so reuse is
-// safe, and nothing is uploaded per product. The host side is a page-aligned
-// mapping the adapter shares without a copy; it grows and is never freed.
-#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
-static void *quant_scratch_slot;
-static void *quant_scratch_base;
-static size_t quant_scratch_bytes;
-
-// The scratch's object wraps memory about to be freed, so queued kernels finish
-// first and the object never joins the Metal pool of reusable results.
-static void release_scratch(void) {
-#if defined(OSPREY_GPU_METAL)
-  if (device_selection() == 2) {
-    (void)osprey_gpu_metal_download(quant_scratch_slot, quant_scratch_base, 0);
-    osprey_gpu_metal_release(quant_scratch_slot);
-  }
-#endif
-#if defined(OSPREY_GPU_OPENCL)
-  if (device_selection() == 3) osprey_gpu_opencl_release(quant_scratch_slot);
-#endif
-}
-#endif
-
-static int quant_scratch(OspreyGpuDispatch *dispatch, uint64_t floats) {
-#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
-  size_t needed = (size_t)floats * 4;
-  if (needed > quant_scratch_bytes) {
-    size_t page = (size_t)sysconf(_SC_PAGESIZE);
-    size_t bytes = ((needed * 2 + page - 1) / page) * page;
-    void *base = NULL;
-    if (posix_memalign(&base, page, bytes) != 0) return 0;
-    if (quant_scratch_slot) release_scratch();
-    free(quant_scratch_base);
-    quant_scratch_slot = NULL;
-    quant_scratch_base = base;
-    quant_scratch_bytes = bytes;
-  }
-  if (dispatch->count >= OSPREY_GPU_MAX_ARGS) return 0;
-  dispatch->args[dispatch->count++] = (OspreyGpuArg){OSPREY_GPU_OUTPUT, quant_scratch_base, NULL, floats, &quant_scratch_slot, 4,
-                                                     quant_scratch_base, quant_scratch_bytes, 0};
-  return 1;
-#else
-  (void)dispatch;
-  (void)floats;
-  return 0;
-#endif
+// [LLM-SIGMOID] The elementwise logistic function as one library-kernel dispatch.
+int osprey_gpu_device_sigmoid(void *x, void *out, int64_t count) {
+  OspreyGpuDispatch sigmoid = {"osprey_sigmoid", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)count};
+  buffer_argument(&sigmoid, OSPREY_GPU_INPUT, x);
+  buffer_argument(&sigmoid, OSPREY_GPU_OUTPUT, out);
+  scalar_argument(&sigmoid, count);
+  return settled(osprey_gpu_device_dispatch(&sigmoid), out);
 }
 
-// The quantized product as two library-kernel dispatches: `x` is [rows,
-// inner] float32, `w` the quantized weight rows, and `out` [rows, cols]
-// float32 is left on the device; the `parts` partial sums per output go
-// through the shared scratch.
-int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner, int64_t cols,
-                                   int64_t parts) {
+// [LLM-DELTA-RULE] One token of the delta rule as one library-kernel dispatch.
+int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim) {
+  OspreyGpuDispatch rule = {"osprey_delta_rule", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(heads * dim)};
+  for (unsigned i = 0; i < 6; i++) buffer_argument(&rule, OSPREY_GPU_INPUT, operands[i]);
+  buffer_argument(&rule, OSPREY_GPU_OUTPUT, out);
+  scalar_argument(&rule, heads);
+  scalar_argument(&rule, dim);
+  return settled(osprey_gpu_device_dispatch(&rule), out);
+}
+
+// The quantized product as one library-kernel dispatch of 32 threads per
+// output ([LLM-MATMUL-QUANT]): `x` is [rows, inner] float32, `w` the quantized
+// weight rows, and `out` [rows, cols] float32 is left on the device.
+int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner,
+                                   int64_t cols) {
   if (device_selection() <= 0) return device_selection();
-  uint64_t outputs = (uint64_t)(rows * cols);
-  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, outputs * (uint64_t)parts};
+  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols) * 32};
   buffer_argument(&product, OSPREY_GPU_INPUT, x);
   buffer_argument(&product, OSPREY_GPU_INPUT, w);
-  if (!quant_scratch(&product, outputs * (uint64_t)parts)) {
-    osp_io_error_text(kernel, "partial sums", "out of memory");
-    return -1;
-  }
+  buffer_argument(&product, OSPREY_GPU_OUTPUT, out);
   scalar_argument(&product, rows);
   scalar_argument(&product, inner);
   scalar_argument(&product, cols);
-  scalar_argument(&product, parts);
-  int status = osprey_gpu_device_dispatch(&product);
-  if (status <= 0) return status;
-  OspreyGpuDispatch sum = {"osprey_sum_parts", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, outputs};
-  (void)quant_scratch(&sum, outputs * (uint64_t)parts);
-  sum.args[sum.count - 1].kind = OSPREY_GPU_INPUT;
-  buffer_argument(&sum, OSPREY_GPU_OUTPUT, out);
-  scalar_argument(&sum, (int64_t)outputs);
-  scalar_argument(&sum, parts);
-  return settled(osprey_gpu_device_dispatch(&sum), out);
+  return settled(osprey_gpu_device_dispatch(&product), out);
 }
 
 // One uniform of a compiled kernel: `s` a scalar word, `b` a buffer handle
@@ -291,7 +247,7 @@ static int32_t failed_launch(const char *kernel, const char *reason) {
 // that cannot fault leaves its fault word on the device, so the launch joins
 // the open batch instead of submitting and waiting for one word
 // [LLM-DISPATCH-BATCH]; an unknown kernel is treated as able to fault.
-static int may_fault(const char *kernel, const char *source) {
+static int scanned_may_fault(const char *kernel, const char *source) {
   char head[128];
   if (!source || snprintf(head, sizeof head, "kernel void %s(", kernel) >= (int)sizeof head) return 1;
   const char *at = strstr(source, head);
@@ -300,6 +256,23 @@ static int may_fault(const char *kernel, const char *source) {
   int mentions = 0;
   for (const char *p = strstr(at, "fault"); p && (!end || p < end); p = strstr(p + 5, "fault")) mentions++;
   return mentions > 1;
+}
+
+// The scan's answer per kernel, since a token launches each kernel hundreds of
+// times over a megabyte of source. A kernel's name is one constant of its
+// program, so its address keys the entry; one atomic word holds the address and
+// the answer together, so a racing launch reads a whole entry or none.
+#define GPU_FAULT_CACHE 512
+static _Atomic uint64_t fault_answers[GPU_FAULT_CACHE];
+
+static int may_fault(const char *kernel, const char *source) {
+  uint64_t key = (uint64_t)(uintptr_t)kernel << 1;
+  _Atomic uint64_t *entry = &fault_answers[(key >> 4) % GPU_FAULT_CACHE];
+  uint64_t known = atomic_load_explicit(entry, memory_order_relaxed);
+  if ((known & ~(uint64_t)1) == key) return (int)(known & 1);
+  int answer = scanned_may_fault(kernel, source);
+  atomic_store_explicit(entry, key | (uint64_t)answer, memory_order_relaxed);
+  return answer;
 }
 
 // A compiled kernel's launch site [GPU-BACKEND-DEVICE]: 1 when the device ran

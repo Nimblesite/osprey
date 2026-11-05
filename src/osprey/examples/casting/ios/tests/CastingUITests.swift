@@ -10,6 +10,11 @@ final class CastingUITests: XCTestCase {
     }
 
     @MainActor
+    private func appearancePopup(_ app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Appearance: ")).firstMatch
+    }
+
+    @MainActor
     func testSharedSceneExposesAccessibleControlsAndOpensTheNativePicker() {
         // [UI-MACHINE-A11Y] Shared scene semantics must reach the real OS tree.
         let app = castingApp()
@@ -26,6 +31,36 @@ final class CastingUITests: XCTestCase {
         open.tap()
         XCTAssertTrue(app.navigationBars.firstMatch.waitForExistence(timeout: 10), app.debugDescription)
         XCTAssertFalse(open.isHittable, "The native document picker must cover the player")
+    }
+
+    @MainActor
+    func testSharedAppearanceMenuExposesSelectionAndSwitchesSkins() {
+        // [CAST-MOBILE-SKINS] The same machine scene and choices as desktop.
+        let app = castingApp()
+        defer { app.terminate() }
+        app.launchArguments = ["--skin", "sherbet"]
+        app.launch()
+        let appearance = appearancePopup(app)
+        XCTAssertTrue(appearance.waitForExistence(timeout: 15), app.debugDescription)
+        appearance.tap()
+        attach(app, "casting-ios-appearance-menu")
+        for label in ["Sherbet Signal", "Midnight Mint", "Poolside Pop"] {
+            let choice = labeled(app, label)
+            XCTAssertTrue(choice.waitForExistence(timeout: 5), app.debugDescription)
+            XCTAssertTrue(choice.isHittable, app.debugDescription)
+            XCTAssertGreaterThanOrEqual(choice.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(choice.frame.height, 44)
+            XCTAssertEqual(choice.isSelected, label == "Sherbet Signal", app.debugDescription)
+        }
+        assertSelected(app, "Sherbet Signal", "The appearance menu must announce its current selection")
+        for label in ["Midnight Mint", "Poolside Pop", "Sherbet Signal"] {
+            labeled(app, label).tap()
+            if label != "Sherbet Signal" {
+                assertSelected(app, label, "Changing appearance must update the shared selected binding")
+            }
+        }
+        XCTAssertTrue(appearance.waitForExistence(timeout: 5), app.debugDescription)
+        attach(app, "casting-ios-appearance-closed")
     }
 
     // The shared scene names a picker's choice on the control itself. A canvas announces its
@@ -79,17 +114,27 @@ final class CastingUITests: XCTestCase {
         defer { app.terminate() }
         app.launchArguments = ["--skin", "midnight"]
         app.launch()
-        for (trigger, label) in [("Skin", "Poolside Pop"), ("Skin", "Sherbet Signal"), ("Appearance", "Midnight Mint")] {
-            XCTAssertTrue(app.buttons[trigger].waitForExistence(timeout: 15), app.debugDescription)
-            app.buttons[trigger].tap()
-            app.buttons[label].tap()
-            if label != "Sherbet Signal" { XCTAssertEqual(app.buttons["Skin"].value as? String, label) }
+        for label in ["Poolside Pop", "Sherbet Signal", "Midnight Mint"] {
+            if appearancePopup(app).exists { appearancePopup(app).tap() }
+            let choice = labeled(app, label)
+            XCTAssertTrue(choice.waitForExistence(timeout: 15), app.debugDescription)
+            choice.tap()
+            if label != "Sherbet Signal" {
+                assertSelected(app, label, "The shared GPUI picker must announce its selected skin")
+            }
             app.terminate()
             app.launchArguments = []
             app.launch()
-            XCTAssertTrue(app.buttons["Appearance"].waitForExistence(timeout: 15), app.debugDescription)
-            if label == "Sherbet Signal" { XCTAssertFalse(app.buttons["Skin"].exists, app.debugDescription) }
-            else { XCTAssertEqual(app.buttons["Skin"].value as? String, label) }
+            if label == "Sherbet Signal" {
+                XCTAssertTrue(appearancePopup(app).waitForExistence(timeout: 15), app.debugDescription)
+                XCTAssertFalse(app.staticTexts["Skin"].exists, app.debugDescription)
+                appearancePopup(app).tap()
+                assertSelected(app, label, "The canvas appearance menu must restore its selected skin")
+                labeled(app, label).tap()
+            } else {
+                XCTAssertTrue(labeled(app, label).waitForExistence(timeout: 15), app.debugDescription)
+                assertSelected(app, label, "A new process must restore the selected skin")
+            }
         }
     }
 
@@ -113,7 +158,7 @@ final class CastingUITests: XCTestCase {
             XCTAssertTrue(app.buttons["Open file…"].waitForExistence(timeout: 15), app.debugDescription)
             XCTAssertFalse(notice.exists, "The repaired choice must not warn on the next launch")
             XCTAssertFalse(app.buttons["Skin"].exists)
-            app.buttons["Appearance"].tap()
+            appearancePopup(app).tap()
             app.buttons["Midnight Mint"].tap()
             XCTAssertEqual(app.buttons["Skin"].value as? String, "Midnight Mint")
             app.terminate()
@@ -188,7 +233,7 @@ final class CastingUITests: XCTestCase {
         selectReceiver(app, receivers.available)
         // Preserve the original appearance target contract; the shared Sherbet scene
         // does not currently offer it, so this journey must remain red rather than omit it.
-        touchRegions([app.buttons["Play"], open, app.buttons["Receiver: \(receivers.available)"], app.buttons["Appearance"]])
+        touchRegions([app.buttons["Play"], open, app.buttons["Receiver: \(receivers.available)"], appearancePopup(app)])
         attach(app, "casting-ios-ready")
         open.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap()
         let cancel = app.buttons["Cancel"]

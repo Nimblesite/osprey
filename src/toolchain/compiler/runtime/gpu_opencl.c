@@ -274,7 +274,10 @@ static int dispatch(void *kernel, const OspreyGpuDispatch *d) {
   size_t count = (size_t)d->threads;
   int status = bind_arguments(kernel, d, buffers);
   if (!status) {
-    status = cl.launch(cl_queue, kernel, 1, NULL, &count, NULL, 0, NULL, NULL);
+    // Work-groups of QUANT_GROUP threads (gpu_device_lib.metal): whole lanes, and
+    // a global size rounded up to them; every kernel guards its index.
+    size_t local = 256, global = (count + local - 1) / local * local;
+    status = cl.launch(cl_queue, kernel, 1, NULL, &global, &local, 0, NULL, NULL);
     if (status) status = failed("GPU dispatch", status);
   }
   if (!status) status = read_back(d, buffers);

@@ -47,7 +47,9 @@ pub(crate) fn unpack(
             .components()
             .all(|part| matches!(part, std::path::Component::Normal(_)))
         {
-            return Err(format!("Packaged file {name} leaves the application folder"));
+            return Err(format!(
+                "Packaged file {name} leaves the application folder"
+            ));
         }
         let target = folder.join(relative);
         if let Some(parent) = target.parent() {
@@ -84,7 +86,8 @@ mod unpack_tests {
     use super::unpack;
 
     fn folder(name: &str) -> std::path::PathBuf {
-        let folder = std::env::temp_dir().join(format!("osprey-unpack-{name}-{}", std::process::id()));
+        let folder =
+            std::env::temp_dir().join(format!("osprey-unpack-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         folder
     }
@@ -94,8 +97,14 @@ mod unpack_tests {
         let folder = folder("files");
         let read = |name: &str| Ok(format!("bytes of {name}").into_bytes());
         unpack("player.machine.json\nskins/a/b.png\n\n", read, &folder).unwrap();
-        assert_eq!(std::fs::read_to_string(folder.join("skins/a/b.png")).unwrap(), "bytes of skins/a/b.png");
-        assert_eq!(std::fs::read_to_string(folder.join("player.machine.json")).unwrap(), "bytes of player.machine.json");
+        assert_eq!(
+            std::fs::read_to_string(folder.join("skins/a/b.png")).unwrap(),
+            "bytes of skins/a/b.png"
+        );
+        assert_eq!(
+            std::fs::read_to_string(folder.join("player.machine.json")).unwrap(),
+            "bytes of player.machine.json"
+        );
         std::fs::remove_dir_all(folder).unwrap();
     }
 
@@ -105,7 +114,10 @@ mod unpack_tests {
         let read = |_: &str| Ok(Vec::new());
         for bad in ["../outside", "/etc/outside", "skins/../../outside"] {
             let problem = unpack(bad, read, &folder).unwrap_err();
-            assert!(problem.contains("leaves the application folder"), "{problem}");
+            assert!(
+                problem.contains("leaves the application folder"),
+                "{problem}"
+            );
         }
         let missing = |name: &str| Err(format!("no {name}"));
         assert_eq!(unpack("gone", missing, &folder).unwrap_err(), "no gone");

@@ -128,7 +128,7 @@ Fixed exp_core(ulong x) {
     Parts p = parts(x);
     bool negative = (x & SIGN) != 0;
     ulong scaled = p.exponent >= 0 ? p.mantissa << (uint)p.exponent : p.mantissa >> (uint)(-p.exponent);
-    ulong k = (wide_product(scaled, INV_LN2_Q62).high + (1ul << 49)) >> 50;
+    ulong k = (wide_product(scaled, INV_LN2_Q62).high + (((ulong)1) << 49)) >> 50;
     U128 r = u128_sub(u128_shl((U128){0, p.mantissa}, (uint)(p.exponent + 68)), k_ln2(k));
     bool below = (r.hi >> 63) != 0;
     if (below) r = u128_sub((U128){0, 0}, r);
@@ -179,9 +179,9 @@ ulong ln_finite(ulong x) {
     Parts p = parts(x);
     uint fbits = p.mantissa > SQRT2_MANTISSA ? 53 : 52;
     int e = p.exponent + (int)(fbits - 52);
-    bool d_negative = p.mantissa < (1ul << fbits);
-    ulong d = d_negative ? (1ul << fbits) - p.mantissa : p.mantissa - (1ul << fbits);
-    ulong denominator = d_negative ? (1ul << (fbits + 1)) - d : (1ul << (fbits + 1)) + d;
+    bool d_negative = p.mantissa < (((ulong)1) << fbits);
+    ulong d = d_negative ? (((ulong)1) << fbits) - p.mantissa : p.mantissa - (((ulong)1) << fbits);
+    ulong denominator = d_negative ? (((ulong)1) << (fbits + 1)) - d : (((ulong)1) << (fbits + 1)) + d;
     uint scale = e ? 116 : Q120 + fbits - (63 - (uint)clz(d));
     U128 u = u128_div_shift((U128){0, d}, (U128){0, denominator}, scale);
     U128 twice = u128_shl(atanh_series(u, scale), 1);

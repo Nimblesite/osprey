@@ -1,0 +1,64 @@
+"""Generate [UI-MACHINE-A11Y] models: python3 src/osprey/packages/native/generate_accessibility.cpython [--check]."""
+import ast
+from pathlib import Path
+import subprocess
+import sys
+
+ROOT = Path(__file__).resolve().parent
+BEGIN, END = "// BEGIN GENERATED [UI-MACHINE-A11Y]", "// END GENERATED [UI-MACHINE-A11Y]"
+HOST = ROOT.parents[2] / "toolchain/hosts/gpui/src/scene/access.rs"
+OSPREY_TYPES = {"str": "string", "float": "float", "bool": "bool", "AccessRole": "AccessRole"}
+RUST_TYPES = {"str": "String", "float": "f64", "bool": "bool", "AccessRole": "Role"}
+RUST_NAMES = dict(zip(
+    ["accessRole", "accessLabel", "accessLeft", "accessTop", "accessWidth", "accessHeight", "accessValue", "accessMin", "accessMax", "accessSelected"],
+    ["role", "label", "x", "y", "w", "h", "value", "min", "max", "selected"],
+))
+
+
+def model():
+    source = subprocess.check_output(["typediagram", "--to", "python", str(ROOT / "accessibility.td")], text=True)
+    classes = {node.name: node for node in ast.parse(source).body if isinstance(node, ast.ClassDef)}
+    roles = [node.targets[0].id for node in classes["AccessRole"].body if isinstance(node, ast.Assign)]
+    fields = [(node.target.id, ast.unparse(node.annotation)) for node in classes["Accessible"].body if isinstance(node, ast.AnnAssign)]
+    if not roles or set(name for name, _ in fields) != set(RUST_NAMES) | {"accessMovable"}:
+        raise ValueError("Unexpected accessibility model fields or roles")
+    return roles, fields
+
+
+def osprey(roles, fields):
+    return ["// Generated from accessibility.td [UI-MACHINE-A11Y].",
+            "type AccessRole = " + " | ".join(roles), "", "type Accessible ="] + [
+        f"    {name} : {OSPREY_TYPES[kind]}" for name, kind in fields]
+
+
+def rust(fields):
+    return ["#[derive(Debug, Clone, PartialEq)]", "pub struct Access {"] + [
+        f"    pub {RUST_NAMES[name]}: {RUST_TYPES[kind]}," for name, kind in fields if name in RUST_NAMES
+    ] + ["}"]
+
+
+def updated(path, lines):
+    text = path.read_text()
+    if text.count(BEGIN) != 1 or text.count(END) != 1:
+        raise ValueError(f"{path}: expected one generated block")
+    prefix, tail = text.split(BEGIN, 1)
+    _, suffix = tail.split(END, 1)
+    return prefix + "\n".join([BEGIN, *lines, END]) + suffix
+
+
+def generate():
+    roles, fields = model()
+    outputs = {ROOT / "src/document.ospml": osprey(roles, fields), HOST: rust(fields)}
+    changes = {path: updated(path, lines) for path, lines in outputs.items()}
+    if sys.argv[1:] == ["--check"]:
+        if any(path.read_text() != text for path, text in changes.items()):
+            raise SystemExit("Accessibility models are stale; run generate_accessibility.cpython")
+    elif sys.argv[1:]:
+        raise SystemExit("Usage: generate_accessibility.cpython [--check]")
+    else:
+        for path, text in changes.items():
+            path.write_text(text)
+
+
+if __name__ == "__main__":
+    generate()

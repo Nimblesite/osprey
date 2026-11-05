@@ -150,63 +150,53 @@ def bert_normalize(text, clean, handle, strip, lower):
     return d
 
 
-def nfc_normalize(n) -> Result[Norm, str]:
+def nfc_normalize(n) -> Norm:
     """The NFC normalizer over a Norm, keeping each character's original bytes.
 
-    The reference recomputes a character's original span by scaling rather than
-    by following which character became which: the output character at byte
-    offset `offset` takes the span of the original character at
-    `trunc(offset * original_bytes / normalized_bytes)`. Reproducing that
-    arithmetic, rather than inheriting spans through the decomposition, is what
-    makes the reported offsets identical.
+    An output character takes the span of the original character its canonical
+    decomposition starts in and consumes that decomposition's length, which is
+    the alignment the reference reports: a composed character covers the base
+    character it absorbed its marks from, and the marks themselves are skipped.
     """
-    cps = Nfc.nfc_cps(n.chars)
-    out_bytes = byte_length(cps)
-    if out_bytes == 0:
-        return Success(value=empty_norm())
-    else:
-        return align_from(n, cps, byte_length(n.chars), out_bytes, 0, 0, empty_norm())
-
-
-def byte_length(cps):
-    """How many UTF-8 bytes a code point list takes."""
-    return fold(range(len(cps)), 0, lambda acc, i: acc + char_width(at_cps(cps, i)))
+    return align_by_decomposition(n, Nfc.nfc_cps(n.chars))
 
 
 def at_cps(cps, i):
     return unwrap_or(listGet(cps, i), 63)
 
 
-def char_width(cp):
-    return unwrap_or(codePointWidth(cp), 1)
+class Aligned:
+    """The aligned Norm so far and how much of the original decomposition it has
+    consumed."""
+    norm: Norm
+    pos: int
 
 
-def align_from(n, cps, in_bytes, out_bytes, i, offset, acc) -> Result[Norm, str]:
-    if i >= len(cps):
-        return Success(value=acc)
+def align_by_decomposition(n, cps) -> Norm:
+    owners = decomposition_owners(n.chars)
+    return fold(range(len(cps)), Aligned(norm=empty_norm(), pos=0), lambda acc, j: align_char(n, owners, cps, acc, j)).norm
+
+
+def align_char(n, owners, cps, st, j):
+    cp = at_cps(cps, j)
+    owner = owner_at(owners, st.pos)
+    return Aligned(norm=append_norm(st.norm, cp, start_at(n, owner), end_at(n, owner)), pos=st.pos + len(Nfc.decompose_cp(cp)))
+
+
+def decomposition_owners(chars):
+    """For every character of the canonical decomposition, the index of the
+    character it came from."""
+    return fold(range(len(chars)), [], lambda acc, i: owners_of_char(acc, i, len(Nfc.decompose_cp(at_cps(chars, i)))))
+
+
+def owners_of_char(acc, i, count):
+    return fold(range(count), acc, lambda a, _k: listAppend(a, i))
+
+
+def owner_at(owners, pos):
+    """The original character a decomposition position belongs to: the last one
+    when the output ran past the decomposition."""
+    if pos < len(owners):
+        return unwrap_or(listGet(owners, pos), 0)
     else:
-        cp = at_cps(cps, i)
-        match origin_index(n, offset, in_bytes, out_bytes):
-            case Success(value=origin):
-                return align_from(n, cps, in_bytes, out_bytes, i + 1, offset + char_width(cp), append_norm(acc, cp, start_at(n, origin), end_at(n, origin)))
-            case Error(message=message):
-                return Error(message=message)
-
-
-def origin_index(n, offset, in_bytes, out_bytes) -> Result[int, str]:
-    """The original character an output byte offset scales back to."""
-    step = toFloat(in_bytes) / toFloat(out_bytes)
-    match floatToInt(trunc(step * toFloat(offset))):
-        case Success(value=origin):
-            return Success(value=clamp(origin, 0, len(n.chars) - 1))
-        case Error(message=message):
-            return Error(message=message)
-
-
-def clamp(value, low, high):
-    if value < low:
-        return low
-    elif value > high:
-        return high
-    else:
-        return value
+        return unwrap_or(listGet(owners, len(owners) - 1), 0)

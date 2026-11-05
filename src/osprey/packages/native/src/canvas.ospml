@@ -285,7 +285,12 @@ module Canvases
         Undragged => false
         _ => true
 
-    bare (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = movable a)
+    // Whether a listener whose lever puts a choice into an input is marked: the input already holds that choice.
+    chosen (machine, lever) = match lever
+        Put name literal _ => Machines::holds (machine, Compared(comparedInput = name, comparedBy = Equal, comparedWith = literal))
+        _ => false
+
+    bare (machine, a) = Accessible(accessRole = a.areaRole, accessLabel = Templates::fill (machine, a.areaLabel), accessLeft = at (machine, a.areaX), accessTop = at (machine, a.areaY), accessWidth = at (machine, a.areaW), accessHeight = at (machine, a.areaH), accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = a.areaRole == MenuItem && chosen (machine, a.areaLever), accessMovable = movable a)
 
     // A slider also carries the input it shows and its range.
     element (machine, a) = match a.areaSlide
@@ -294,7 +299,7 @@ module Canvases
             e(accessValue = Machines::number (machine, shown), accessMin = at (machine, low), accessMax = at (machine, high))
         Unslid => bare (machine, a)
 
-    (** The canvas's accessibility tree: each live listener's role, filled label, bounds and, for a slider, its value, in hit order. Hosts map it to the platform's accessibility API; agents and tests read it. *)
+    (** The canvas's accessibility tree: each live listener's role, filled label, bounds, whether it is the machine's current choice and, for a slider, its value, in hit order. Hosts map it to the platform's accessibility API; agents and tests read it. *)
     export semantics given =
         machine = roomy given
         mapList (described machine, \a => element (machine, a))

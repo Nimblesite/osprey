@@ -50,11 +50,15 @@ int osp_is_ws_internal(unsigned char c) {
 /* ---------- inspection / search (total) ---------- */
 
 /* Byte length as a fixed-width int64 (see header). NULL is length 0. */
-int64_t osp_strlen(const char *s) { return s ? (int64_t)strlen(s) : 0; }
+int64_t osp_strlen(const char *s) {
+    if (!s) return 0;
+    int64_t owned = osp_mem_string_length(s);
+    return owned >= 0 ? owned : (int64_t)strlen(s);
+}
 
 int64_t osp_string_is_empty(const char *s) {
     if (!s) return 1;
-    return s[0] == '\0' ? 1 : 0;
+    return osp_strlen(s) == 0;
 }
 
 int64_t osp_string_starts_with(const char *s, const char *prefix) {
@@ -351,12 +355,12 @@ char *osp_float16_to_string(uint16_t bits) {
 
 int64_t osp_string_byte_length(const char *s) {
     if (!s) return 0;
-    return (int64_t)strlen(s);
+    return osp_strlen(s);
 }
 
 const char *osp_string_byte_at(const char *s, int64_t i, int64_t *out) {
     if (!s || !out) return "byteAt: null string";
-    int64_t len = (int64_t)strlen(s);
+    int64_t len = osp_strlen(s);
     if (i < 0 || i >= len) return "byteAt: index out of range";
     *out = (int64_t)(unsigned char)s[i];
     return NULL;
@@ -373,7 +377,7 @@ static int osp_utf8_lead_width(unsigned char b) {
 
 const char *osp_string_codepoint_at(const char *s, int64_t byte_index, int64_t *out) {
     if (!s || !out) return "codePointAt: null string";
-    int64_t len = (int64_t)strlen(s);
+    int64_t len = osp_strlen(s);
     if (byte_index < 0 || byte_index >= len) return "codePointAt: index out of range";
     const unsigned char *p = (const unsigned char *)s + byte_index;
     int width = osp_utf8_lead_width(p[0]);

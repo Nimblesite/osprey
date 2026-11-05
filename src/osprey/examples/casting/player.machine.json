@@ -6,6 +6,9 @@
    "type": "text",
    "value": "sherbet"
   },
+  "skinReturned": {
+   "type": "text"
+  },
   "skins": {
    "type": "list",
    "value": [
@@ -196,6 +199,12 @@
   },
   "spareHeight": {
    "type": "number"
+  },
+  "toggleSkins": {
+   "type": "trigger"
+  },
+  "chooseSkin": {
+   "type": "trigger"
   }
  },
  "layers": [
@@ -508,9 +517,27 @@
    "states": {
     "closed": {},
     "receivers": {},
-    "rates": {}
+    "rates": {},
+    "skins": {}
    },
    "transitions": [
+    {
+     "from": "skins",
+     "to": "closed",
+     "when": {
+      "any": [
+       {
+        "fired": "toggleSkins"
+       },
+       {
+        "fired": "chooseSkin"
+       },
+       {
+        "fired": "dismiss"
+       }
+      ]
+     }
+    },
     {
      "from": "receivers",
      "to": "closed",
@@ -557,6 +584,13 @@
      "to": "rates",
      "when": {
       "fired": "toggleRates"
+     }
+    },
+    {
+     "from": "*",
+     "to": "skins",
+     "when": {
+      "fired": "toggleSkins"
      }
     }
    ]
@@ -1916,9 +1950,134 @@
         }
        ]
       }
+     },
+     {
+      "shape": "rounded",
+      "x": "610 {{spareWidth|scale:1}}",
+      "y": 22,
+      "w": 232,
+      "h": 86,
+      "radius": 24,
+      "colour": "#FFFDFB",
+      "depth": 10,
+      "when": {
+       "not": {
+        "state": "menu",
+        "in": [
+         "skins"
+        ]
+       }
+      }
+     },
+     {
+      "shape": "text",
+      "text": "Appearance",
+      "x": "726 {{spareWidth|scale:1}}",
+      "y": 49,
+      "size": 27,
+      "colour": "@text",
+      "anchor": 1,
+      "weight": 500,
+      "depth": 11,
+      "when": {
+       "not": {
+        "state": "menu",
+        "in": [
+         "skins"
+        ]
+       }
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": "510 {{spareWidth|scale:1}}",
+      "y": 22,
+      "w": 332,
+      "h": 420,
+      "radius": 22,
+      "colour": "#FFFDFB",
+      "depth": 12,
+      "when": {
+       "state": "menu",
+       "in": [
+        "skins"
+       ]
+      }
+     },
+     {
+      "shape": "rounded",
+      "x": "522 {{spareWidth|scale:1}}",
+      "y": 34,
+      "w": 308,
+      "h": 132,
+      "radius": 14,
+      "colour": "#FDE3D8",
+      "depth": 13,
+      "each": {
+       "in": "skins",
+       "dy": 132
+      },
+      "when": {
+       "all": [
+        {
+         "state": "menu",
+         "in": [
+          "skins"
+         ]
+        },
+        {
+         "input": "skin",
+         "eq": "{{item.key}}"
+        }
+       ]
+      }
+     },
+     {
+      "shape": "text",
+      "text": "{{item.label}}",
+      "x": "542 {{spareWidth|scale:1}}",
+      "y": 85,
+      "size": 26,
+      "colour": "@text",
+      "anchor": 0,
+      "weight": 500,
+      "depth": 14,
+      "each": {
+       "in": "skins",
+       "dy": 132
+      },
+      "when": {
+       "state": "menu",
+       "in": [
+        "skins"
+       ]
+      }
      }
     ],
     "listeners": [
+     {
+      "x": "522 {{spareWidth|scale:1}}",
+      "y": 34,
+      "w": 308,
+      "h": 132,
+      "each": {
+       "in": "skins",
+       "dy": 132
+      },
+      "role": "menuitem",
+      "label": "{{item.label}}",
+      "on": {
+       "set": "skin",
+       "value": "{{item.key}}",
+       "fire": "chooseSkin"
+      },
+      "when": {
+       "state": "menu",
+       "in": [
+        "skins"
+       ]
+      }
+     },
      {
       "x": "263 {{spareWidth|scale:0.5}}",
       "y": "790 {{spareHeight|scale:0.70}}",
@@ -1963,6 +2122,25 @@
        "in": [
         "rates"
        ]
+      }
+     },
+     {
+      "x": "600 {{spareWidth|scale:1}}",
+      "y": 10,
+      "w": 252,
+      "h": 132,
+      "role": "popup",
+      "label": "Appearance: Sherbet Signal",
+      "on": {
+       "fire": "toggleSkins"
+      },
+      "when": {
+       "not": {
+        "state": "menu",
+        "in": [
+         "skins"
+        ]
+       }
       }
      },
      {

@@ -78,17 +78,26 @@ pub fn run() -> i32 {
 
 /// Writes out the files `assets/osprey-files.txt` names, so the host reads them as on desktop.
 #[cfg(target_os = "android")]
-fn unpack_assets(app: &android_activity::AndroidApp, folder: &std::path::Path) -> Result<(), String> {
+fn unpack_assets(
+    app: &android_activity::AndroidApp,
+    folder: &std::path::Path,
+) -> Result<(), String> {
     use std::io::Read;
     let assets = app.asset_manager();
     let read = |name: &str| -> Result<Vec<u8>, String> {
-        let path = std::ffi::CString::new(name).map_err(|error| format!("Bad asset name {name}: {error}"))?;
-        let mut asset = assets.open(&path).ok_or_else(|| format!("The APK has no asset {name}"))?;
+        let path = std::ffi::CString::new(name)
+            .map_err(|error| format!("Bad asset name {name}: {error}"))?;
+        let mut asset = assets
+            .open(&path)
+            .ok_or_else(|| format!("The APK has no asset {name}"))?;
         let mut bytes = Vec::new();
-        asset.read_to_end(&mut bytes).map_err(|error| format!("Cannot read asset {name}: {error}"))?;
+        asset
+            .read_to_end(&mut bytes)
+            .map_err(|error| format!("Cannot read asset {name}: {error}"))?;
         Ok(bytes)
     };
-    let manifest = String::from_utf8(read("osprey-files.txt")?).map_err(|error| error.to_string())?;
+    let manifest =
+        String::from_utf8(read("osprey-files.txt")?).map_err(|error| error.to_string())?;
     launch::unpack(&manifest, read, folder)
 }
 
@@ -99,7 +108,9 @@ fn unpack_assets(app: &android_activity::AndroidApp, folder: &std::path::Path) -
 #[no_mangle]
 pub fn android_main(app: android_activity::AndroidApp) {
     log_panics();
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info));
+    android_logger::init_once(
+        android_logger::Config::default().with_max_level(log::LevelFilter::Info),
+    );
     // The sandbox starts the process with no HOME, and an APK's files have no path until
     // they are written out.
     if let Some(home) = app.internal_data_path() {

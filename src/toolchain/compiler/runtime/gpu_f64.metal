@@ -11,6 +11,10 @@ using namespace metal;
 #define GPU_PARAM constant ulong &
 #define GPU_THREAD , uint index [[thread_position_in_grid]]
 #define GPU_INDEX (ulong)(index)
+#define GPU_LANE_THREAD , uint index [[thread_position_in_grid]], uint local_index [[thread_position_in_threadgroup]]
+#define GPU_LOCAL threadgroup
+#define GPU_LOCAL_INDEX local_index
+#define GPU_BARRIER() threadgroup_barrier(mem_flags::mem_threadgroup)
 #elif defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
 #pragma OPENCL FP_CONTRACT OFF
 #define GPU_GLOBAL global
@@ -18,6 +22,10 @@ using namespace metal;
 #define GPU_PARAM ulong
 #define GPU_THREAD
 #define GPU_INDEX get_global_id(0)
+#define GPU_LANE_THREAD
+#define GPU_LOCAL __local
+#define GPU_LOCAL_INDEX ((uint)get_local_id(0))
+#define GPU_BARRIER() barrier(CLK_LOCAL_MEM_FENCE)
 #else
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,6 +37,10 @@ typedef uint16_t ushort;
 #define GPU_PARAM ulong
 #define GPU_THREAD , ulong thread_index
 #define GPU_INDEX thread_index
+#define GPU_LANE_THREAD , ulong thread_index, uint local_index
+#define GPU_LOCAL
+#define GPU_LOCAL_INDEX local_index
+#define GPU_BARRIER()
 #define constant static const
 #define kernel
 static uint clz(ulong x) { return x ? (uint)__builtin_clzll(x) : 64u; }
@@ -264,7 +276,7 @@ ulong round64(ulong x) {
     }
     uint drop = (uint)(52 - p.exponent);
     ulong low = p.mantissa & ((ONE >> p.exponent) - 1ul);
-    ulong halfway = 1ul << (drop - 1);
+    ulong halfway = ((ulong)1) << (drop - 1);
     long n = to_long(x);
     bool away = low > halfway || (low == halfway && (n & 1));
     if (away) n += (x & SIGN) ? -1 : 1;
@@ -314,14 +326,14 @@ uint narrow32(ulong x) {
         ulong rem = shift >= 64 ? 0ul : p.mantissa & (((ulong)1 << shift) - 1ul);
         ulong halfway = shift >= 64 ? 1ul : (ulong)1 << (shift - 1);
         if (rem > halfway || (rem == halfway && (r & 1))) r += 1;
-        return (uint)sign | (r < (1ul << 23) ? (uint)r
-                : 0x00800000u | (uint)(r - (1ul << 23)));
+        return (uint)sign | (r < (((ulong)1) << 23) ? (uint)r
+                : 0x00800000u | (uint)(r - (((ulong)1) << 23)));
     }
-    ulong low = p.mantissa & 0x1ffffffful, halfway = 1ul << 28;
+    ulong low = p.mantissa & 0x1ffffffful, halfway = ((ulong)1) << 28;
     ulong r = (p.mantissa >> 29) + (ulong)(low > halfway || (low == halfway && ((p.mantissa >> 29) & 1)));
-    if (r == (1ul << 24)) { r = 1ul << 23; p.exponent += 1; }
+    if (r == (((ulong)1) << 24)) { r = ((ulong)1) << 23; p.exponent += 1; }
     if (p.exponent > 127) return (uint)sign | 0x7f800000u;
-    return (uint)sign | ((uint)(p.exponent + 127) << 23) | (uint)(r - (1ul << 23));
+    return (uint)sign | ((uint)(p.exponent + 127) << 23) | (uint)(r - (((ulong)1) << 23));
 }
 
 ulong widen32(uint w) {

@@ -21,6 +21,7 @@ COPY src/toolchain/.rustfmt.toml src/toolchain/.clippy.toml /workspace/src/toolc
 COPY scripts /workspace/scripts
 COPY src/toolchain/crates /workspace/src/toolchain/crates
 COPY src/toolchain/tree-sitter-osprey /workspace/src/toolchain/tree-sitter-osprey
+COPY src/toolchain/zed-extension /workspace/src/toolchain/zed-extension
 COPY src/toolchain/compiler/runtime /workspace/src/toolchain/compiler/runtime
 # The compiler embeds this shared grammar in generated HTML documentation.
 COPY src/toolchain/website/src/js/osprey-grammar.mjs /workspace/src/toolchain/website/src/js/osprey-grammar.mjs

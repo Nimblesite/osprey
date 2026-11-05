@@ -124,6 +124,8 @@ fn operation(name: &str) -> Option<Lowering> {
         "gpuFilter" => gpu_filter,
         "gpuMatMul" => io::mat_mul,
         "gpuMatMulQuant" => io::mat_mul_quant,
+        "gpuDeltaRule" => io::delta_rule,
+        "gpuSigmoid" => io::sigmoid,
         "gpuLoad" => io::load,
         "gpuLoadTensor" => io::load_tensor,
         "gpuMapFile" => io::map_file,

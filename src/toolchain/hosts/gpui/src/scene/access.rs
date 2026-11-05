@@ -13,6 +13,7 @@ use crate::host::{now, HostView};
 use crate::render::{self, Binding};
 
 /// One element of the session's accessibility tree, bounds in scene units.
+// BEGIN GENERATED [UI-MACHINE-A11Y]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Access {
     pub role: Role,
@@ -24,7 +25,9 @@ pub struct Access {
     pub value: f64,
     pub min: f64,
     pub max: f64,
+    pub selected: bool,
 }
+// END GENERATED [UI-MACHINE-A11Y]
 
 /// A slider steps a twentieth of its range per increment, as a scroll wheel notch would.
 const STEPS: f64 = 20.;
@@ -49,8 +52,9 @@ pub(super) fn decode(node: &Value) -> Vec<Access> {
 
 fn element(item: &Value) -> Option<Access> {
     let number = |key: &str| item.get(key).and_then(Value::as_f64).unwrap_or(0.);
+    let role = role(item.get("role")?.as_str()?)?;
     Some(Access {
-        role: role(item.get("role")?.as_str()?)?,
+        role,
         label: item.get("label")?.as_str()?.to_owned(),
         x: number("x"),
         y: number("y"),
@@ -59,6 +63,11 @@ fn element(item: &Value) -> Option<Access> {
         value: number("value"),
         min: number("min"),
         max: number("max"),
+        selected: role == Role::MenuItem
+            && item
+                .get("selected")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
     })
 }
 
@@ -135,6 +144,7 @@ fn node(
         .role(item.role)
         .aria_label(item.label.clone());
     let ranged = match item.role {
+        Role::MenuItem => base.aria_selected(item.selected),
         Role::Slider => base
             .aria_numeric_value(item.value)
             .aria_min_numeric_value(item.min)
@@ -189,7 +199,8 @@ mod tests {
             {"role":"button","label":"Play","x":10,"y":20,"w":100,"h":40,"value":0,"min":0,"max":0},
             {"role":"slider","label":"Volume","x":99,"y":1025,"w":302,"h":40,"value":0.5,"min":0,"max":1},
             {"role":"popup","label":"Speed: 1×","x":0,"y":0,"w":10,"h":10},
-            {"role":"menuitem","label":"Kitchen","x":0,"y":50,"w":10,"h":10},
+            {"role":"menuitem","label":"Kitchen","x":0,"y":50,"w":10,"h":10,"selected":true},
+            {"role":"menuitem","label":"Hallway","x":0,"y":60,"w":10,"h":10,"selected":false},
             {"role":"none","label":"Dismiss","x":0,"y":0,"w":400,"h":400},
             {"role":"button"}
         ]}"#).unwrap();
@@ -207,7 +218,8 @@ mod tests {
                 (Role::Button, "Play"),
                 (Role::Slider, "Volume"),
                 (Role::Button, "Speed: 1×"),
-                (Role::MenuItem, "Kitchen")
+                (Role::MenuItem, "Kitchen"),
+                (Role::MenuItem, "Hallway")
             ]
         );
         assert_eq!(
@@ -215,6 +227,14 @@ mod tests {
             (99., 302., 0.5, 1.)
         );
         assert_eq!((tree[2].min, tree[2].max), (0., 0.));
+    }
+
+    #[test]
+    fn menu_items_carry_current_selection_independently_of_visuals() {
+        let items = tree();
+        assert!(items[3].selected);
+        assert!(!items[4].selected);
+        assert!(items[..3].iter().all(|item| !item.selected));
     }
 
     /// A click lands at the centre; a slider's set, increment and decrement land along it, clamped.

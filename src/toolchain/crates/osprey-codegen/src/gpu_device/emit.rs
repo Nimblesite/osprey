@@ -318,7 +318,14 @@ impl Emitter<'_> {
             .and_then(Numeric::of_type)
             .filter(|n| n.is_float())
             .map_or(self.default_float, Ty::Num);
-        self.with_float_context(target, |emitter| emitter.apply(&body, bindings))
+        // Arguments belong to the caller; a named helper body belongs to its
+        // module, just like a named helper passed as a function value.
+        let closure = Closure {
+            parameters,
+            body,
+            scopes: Vec::new(),
+        };
+        self.with_float_context(target, |emitter| emitter.closed(&closure, bindings))
             .map_err(|reason| format!("{name}: {reason}"))
     }
 

@@ -363,11 +363,8 @@ def slice_list(xs, start, stop):
 def text_encoding(tok, seg, stop, acc, cps, starts, byte_char):
     """NFC, Split, ByteLevel and BPE over one run of plain text."""
     segment = cps_text(slice_list(cps, seg.chars, stop))
-    match nfc_normalize(norm_shifted(segment, unwrap_or(listGet(starts, seg.chars), 0))):
-        case Success(value=norm):
-            return pieces_encoding(tok.model, qwen_pretokenize(norm), acc, byte_char)
-        case Error(message=_message):
-            return Encodings(enc=acc.enc, bad=seg.chars)
+    norm = nfc_normalize(norm_shifted(segment, unwrap_or(listGet(starts, seg.chars), 0)))
+    return pieces_encoding(tok.model, qwen_pretokenize(norm), acc, byte_char, len(starts))
 
 
 def norm_shifted(text, base):
@@ -376,34 +373,36 @@ def norm_shifted(text, base):
     return fold(range(len(n.chars)), empty_norm(), lambda acc, i: append_norm(acc, char_at(n, i), start_at(n, i) + base, end_at(n, i) + base))
 
 
-def pieces_encoding(m, pieces, acc, byte_char) -> Encodings:
-    return fold(range(len(pieces)), acc, lambda a, i: piece_encoding(m, unwrap_or(listGet(pieces, i), empty_split()), a, byte_char))
+def pieces_encoding(m, pieces, acc, byte_char, nchars) -> Encodings:
+    return fold(range(len(pieces)), acc, lambda a, i: piece_encoding(m, unwrap_or(listGet(pieces, i), empty_split()), a, byte_char, nchars))
 
 
-def piece_encoding(m, piece, acc, byte_char) -> Encodings:
+def piece_encoding(m, piece, acc, byte_char, nchars) -> Encodings:
     if acc.bad >= 0:
         return acc
     else:
-        return piece_tokens(m, piece, cps_text(piece.chars), acc, byte_char)
+        return piece_tokens(m, piece, cps_text(piece.chars), acc, byte_char, nchars)
 
 
-def piece_tokens(m, piece, text, acc, byte_char) -> Encodings:
+def piece_tokens(m, piece, text, acc, byte_char, nchars) -> Encodings:
     match bpe_tokenize(m, text):
         case Success(value=tokens):
-            return Encodings(enc=fold(range(len(tokens)), acc.enc, lambda e, k: append_piece_token(e, piece, unwrap_or(listGet(tokens, k), Token(id=0, value="", start=0, end=0)), byte_char, len(byte_char))), bad=-1)
+            return Encodings(enc=fold(range(len(tokens)), acc.enc, lambda e, k: append_piece_token(e, piece, unwrap_or(listGet(tokens, k), Token(id=0, value="", start=0, end=0)), byte_char, nchars)), bad=-1)
         case Error(message=_message):
             return Encodings(enc=acc.enc, bad=0)
 
 
 def append_piece_token(enc, piece, token, byte_char, nchars) -> Encoding:
-    """Append a model token: its byte span inside the piece is a span of the
-    original text, which the byte-to-character map turns into char offsets."""
-    start = start_at(piece, token.start)
-    stop = end_at(piece, token.end - 1)
+    """Append a model token, whose byte span inside the piece is a span of the
+    original text that the byte-to-character map turns into char offsets. A token
+    that stops inside a character still covers the whole of it, as the reference
+    reports."""
+    start = char_of(byte_char, nchars, start_at(piece, token.start))
+    stop = char_of(byte_char, nchars, start_at(piece, token.end - 1)) + 1
     return Encoding(
         ids=listAppend(enc.ids, token.id),
         tokens=listAppend(enc.tokens, token.value),
-        offsets=listAppend(enc.offsets, offset_chars(byte_char, nchars, start, stop)),
+        offsets=listAppend(enc.offsets, Offset(start=start, end=stop)),
         type_ids=listAppend(enc.type_ids, 0),
     )
 

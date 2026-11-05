@@ -140,14 +140,17 @@ static id<MTLBuffer> pooled(NSUInteger bytes) {
 }
 
 // The new object behind an argument: a mapped region shared without a copy, a
-// fresh result from the pool, else a copy of the host words.
+// fresh result from the pool or a new object (every kernel writes each element of
+// its output, so a result needs no upload), else a copy of the host words.
 static id<MTLBuffer> created(const OspreyGpuArg *arg) {
   NSUInteger bytes = (NSUInteger)osprey_gpu_arg_bytes(arg);
   if (arg->map_base)
     return [gpu_device newBufferWithBytesNoCopy:(void *)(uintptr_t)arg->map_base length:(NSUInteger)arg->map_bytes
                                         options:MTLResourceStorageModeShared deallocator:nil];
-  id<MTLBuffer> reused = arg->kind == OSPREY_GPU_OUTPUT && arg->slot ? pooled(bytes) : nil;
-  return reused != nil ? reused : [gpu_device newBufferWithBytes:arg->words length:bytes options:MTLResourceStorageModeShared];
+  if (arg->kind != OSPREY_GPU_OUTPUT || !arg->slot)
+    return [gpu_device newBufferWithBytes:arg->words length:bytes options:MTLResourceStorageModeShared];
+  id<MTLBuffer> reused = pooled(bytes);
+  return reused != nil ? reused : [gpu_device newBufferWithLength:bytes options:MTLResourceStorageModeShared];
 }
 
 // The device object a buffer argument is bound to [GPU-BUFFER-RESIDENT]: the
@@ -269,6 +272,9 @@ static int flush_locked(void) {
   if (timing != NULL && strcmp(timing, "1") == 0)
     (void)fprintf(stderr, "[gpu] batch of %u dispatches ran %.3f ms on the device\n", queued,
                   (command.GPUEndTime - command.GPUStartTime) * 1000.0);
+  if (timing != NULL && strcmp(timing, "2") == 0)
+    (void)fprintf(stderr, "[gpu] %s over %llu threads ran %.3f ms on the device\n", gpu_queued[0].kernel,
+                  (unsigned long long)gpu_queued[0].threads, (command.GPUEndTime - command.GPUStartTime) * 1000.0);
   return 1;
 }
 
@@ -297,12 +303,19 @@ static int encode(const OspreyGpuDispatch *d, id<MTLComputePipelineState> state)
   id<MTLBuffer> buffers[OSPREY_GPU_MAX_ARGS] = {nil};
   [gpu_encoder setComputePipelineState:state];
   if (!bind_arguments(gpu_encoder, d, buffers)) return -1;
-  NSUInteger group = MIN(state.maxTotalThreadsPerThreadgroup, (NSUInteger)256);
+  // Whole 32-thread lanes per group, at most QUANT_GROUP (gpu_device_lib.metal).
+  NSUInteger group = MIN(state.maxTotalThreadsPerThreadgroup, (NSUInteger)256) / 32 * 32;
+  if (group == 0) {
+    osp_io_error_text(d->kernel, "Metal", "threadgroups narrower than 32 threads");
+    return -1;
+  }
   [gpu_encoder dispatchThreads:MTLSizeMake((NSUInteger)d->threads, 1, 1) threadsPerThreadgroup:MTLSizeMake(group, 1, 1)];
   OspreyGpuQueued *queued = &gpu_queued[gpu_queued_count++];
   (void)snprintf(queued->kernel, sizeof queued->kernel, "%s", d->kernel);
   queued->threads = d->threads;
-  if (!writes_back(d) && gpu_queued_count < GPU_BATCH_CAP) return 1;
+  const char *timing = getenv("OSPREY_GPU_TIMING");
+  bool one_by_one = timing != NULL && strcmp(timing, "2") == 0; // Per-kernel receipts, at a batch per dispatch.
+  if (!one_by_one && !writes_back(d) && gpu_queued_count < GPU_BATCH_CAP) return 1;
   int status = flush_locked();
   if (status == 1) write_back(d, buffers);
   return status;

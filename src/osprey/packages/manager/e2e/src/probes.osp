@@ -28,6 +28,9 @@ module Probes {
     let port = 18797
     let base = "http://127.0.0.1:18797"
     let work = ".osprey/e2e"
+    /// The package system's folder, relative to the repository root: the one
+    /// path every fixture, sample registry and server build below is found by.
+    let managerDir = "src/osprey/packages/manager"
     let consumerLine = "Hello, Ada! 3 squared is 9, cubed is 27."
 
     fn sh(command) = perform Host::Process.run(command)
@@ -59,14 +62,14 @@ module Probes {
 
     fn runBuild(cwd, args) = buildProcess(cwd)(fn() => Build::run(args))
 
-    fn configText(cwd) = "{\"address\":\"127.0.0.1\",\"port\":${port},\"root\":\"${cwd}/packages/manager/sample-registry\"}"
+    fn configText(cwd) = "{\"address\":\"127.0.0.1\",\"port\":${port},\"root\":\"${cwd}/${managerDir}/sample-registry\"}"
 
     /// Build the server binary and start it in the work directory, where it
     /// reads `registry-server.json`; `exec` keeps the recorded PID the server's.
     fn start(cwd) = {
         let _made = perform Host::Tree.ensure(work)
         let _written = perform Host::Files.write("${work}/registry-server.json", configText(cwd))
-        let built = sh("${Host::shellWord(compiler(cwd))} build ${Host::shellWord(cwd + "/packages/manager/api")} --no-warnings -o ${Host::shellWord(work + "/registry-server")} --memory=${Host::shellWord(memory())}")
+        let built = sh("${Host::shellWord(compiler(cwd))} build ${Host::shellWord(cwd + "/" + managerDir + "/api")} --no-warnings -o ${Host::shellWord(work + "/registry-server")} --memory=${Host::shellWord(memory())}")
         let _started = sh("(cd ${work} && exec ./registry-server > server.log 2>&1) & echo $! > ${work}/server.pid")
         built.status
     }
@@ -226,8 +229,8 @@ module Probes {
         let dir = consumerDir(cwd)
         let _reset = sh("rm -rf ${Host::shellWord(dir)}")
         let _made = perform Host::Tree.ensure("${dir}/src")
-        let _manifest = perform Host::Files.write("${dir}/osprey.toml", readFile("src/osprey/packages/manager/e2e/consumer/osprey.toml") ?: "")
-        let _main = perform Host::Files.write("${dir}/src/main.osp", readFile("src/osprey/packages/manager/e2e/consumer/src/main.osp") ?: "")
+        let _manifest = perform Host::Files.write("${dir}/osprey.toml", readFile("${managerDir}/e2e/consumer/osprey.toml") ?: "")
+        let _main = perform Host::Files.write("${dir}/src/main.osp", readFile("${managerDir}/e2e/consumer/src/main.osp") ?: "")
         let locked = Dispatch::run(["lock", "--registry", base, "--project", dir])
         let _fetched = Dispatch::run(["fetch", "--registry", base, "--project", dir])
         let verified = Dispatch::run(["verify", "--offline", "--project", dir])
@@ -240,7 +243,7 @@ module Probes {
         ]
     }
 
-    fn fixtureLockText() = JsonRead::text(JsonRead::field(Json::parse(readFile("src/osprey/packages/manager/tests/fixtures/lock/consumer.json") ?: "") ?: Json::Null, "text"))
+    fn fixtureLockText() = JsonRead::text(JsonRead::field(Json::parse(readFile("${managerDir}/tests/fixtures/lock/consumer.json") ?: "") ?: Json::Null, "text"))
 
     fn plusLines(report) = filterList(report.lines, fn(l) => startsWith(l, "+ "))
     fn joinedPlus(report) = join(plusLines(report), "\n")
@@ -365,7 +368,7 @@ module Probes {
         listConcat(listConcat(endpoints, fetches), listConcat(files, projects(cwd, catalog)))
     }
 
-    fn catalogOf(cwd) = match Loader::load("${cwd}/src/osprey/packages/manager/sample-registry") {
+    fn catalogOf(cwd) = match Loader::load("${cwd}/${managerDir}/sample-registry") {
         Success { value } => value
         Error { message } => Release::Catalog { served: [], refused: [Release::Refused { dir: cwd, code: message }] }
     }

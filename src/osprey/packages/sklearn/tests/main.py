@@ -104,38 +104,30 @@ def prf_dataset(name, yt, yp, avg, w0, w1):
 
 def prf_specs_a():
     """Grid cells for the multiclass `a` configuration."""
-    return listConcat(
-        listConcat(prf_dataset("a.micro", YT_A, YP_A, "micro", Expected.PRF_a_micro_0, Expected.PRF_a_micro_1),
-                   prf_dataset("a.macro", YT_A, YP_A, "macro", Expected.PRF_a_macro_0, Expected.PRF_a_macro_1)),
-        prf_dataset("a.weighted", YT_A, YP_A, "weighted", Expected.PRF_a_weighted_0, Expected.PRF_a_weighted_1),
-    )
+    return listConcat(listConcat(prf_dataset("a.micro", YT_A, YP_A, "micro", Expected.PRF_a_micro_0, Expected.PRF_a_micro_1),
+                                prf_dataset("a.macro", YT_A, YP_A, "macro", Expected.PRF_a_macro_0, Expected.PRF_a_macro_1)),
+                      prf_dataset("a.weighted", YT_A, YP_A, "weighted", Expected.PRF_a_weighted_0, Expected.PRF_a_weighted_1))
 
 def prf_specs_b():
     """Grid cells for the binary `b` configuration."""
-    return listConcat(
-        listConcat(prf_dataset("b.binary", YT_B, YP_B, "binary", Expected.PRF_b_binary_0, Expected.PRF_b_binary_1),
-                   prf_dataset("b.micro", YT_B, YP_B, "micro", Expected.PRF_b_micro_0, Expected.PRF_b_micro_1)),
-        listConcat(prf_dataset("b.macro", YT_B, YP_B, "macro", Expected.PRF_b_macro_0, Expected.PRF_b_macro_1),
-                   prf_dataset("b.weighted", YT_B, YP_B, "weighted", Expected.PRF_b_weighted_0, Expected.PRF_b_weighted_1)),
-    )
+    return listConcat(listConcat(prf_dataset("b.binary", YT_B, YP_B, "binary", Expected.PRF_b_binary_0, Expected.PRF_b_binary_1),
+                                prf_dataset("b.micro", YT_B, YP_B, "micro", Expected.PRF_b_micro_0, Expected.PRF_b_micro_1)),
+                      listConcat(prf_dataset("b.macro", YT_B, YP_B, "macro", Expected.PRF_b_macro_0, Expected.PRF_b_macro_1),
+                                prf_dataset("b.weighted", YT_B, YP_B, "weighted", Expected.PRF_b_weighted_0, Expected.PRF_b_weighted_1)))
 
 def prf_specs_zero():
     """Grid cells for the all-negative-prediction `zero` configuration."""
-    return listConcat(
-        listConcat(prf_dataset("zero.binary", YT_ZERO, YP_ZERO, "binary", Expected.PRF_zero_binary_0, Expected.PRF_zero_binary_1),
-                   prf_dataset("zero.micro", YT_ZERO, YP_ZERO, "micro", Expected.PRF_zero_micro_0, Expected.PRF_zero_micro_1)),
-        listConcat(prf_dataset("zero.macro", YT_ZERO, YP_ZERO, "macro", Expected.PRF_zero_macro_0, Expected.PRF_zero_macro_1),
-                   prf_dataset("zero.weighted", YT_ZERO, YP_ZERO, "weighted", Expected.PRF_zero_weighted_0, Expected.PRF_zero_weighted_1)),
-    )
+    return listConcat(listConcat(prf_dataset("zero.binary", YT_ZERO, YP_ZERO, "binary", Expected.PRF_zero_binary_0, Expected.PRF_zero_binary_1),
+                                prf_dataset("zero.micro", YT_ZERO, YP_ZERO, "micro", Expected.PRF_zero_micro_0, Expected.PRF_zero_micro_1)),
+                      listConcat(prf_dataset("zero.macro", YT_ZERO, YP_ZERO, "macro", Expected.PRF_zero_macro_0, Expected.PRF_zero_macro_1),
+                                prf_dataset("zero.weighted", YT_ZERO, YP_ZERO, "weighted", Expected.PRF_zero_weighted_0, Expected.PRF_zero_weighted_1)))
 
 def prf_specs_imb():
     """Grid cells for the imbalanced `imb` configuration."""
-    return listConcat(
-        listConcat(prf_dataset("imb.binary", YT_IMB, YP_IMB, "binary", Expected.PRF_imb_binary_0, Expected.PRF_imb_binary_1),
-                   prf_dataset("imb.micro", YT_IMB, YP_IMB, "micro", Expected.PRF_imb_micro_0, Expected.PRF_imb_micro_1)),
-        listConcat(prf_dataset("imb.macro", YT_IMB, YP_IMB, "macro", Expected.PRF_imb_macro_0, Expected.PRF_imb_macro_1),
-                   prf_dataset("imb.weighted", YT_IMB, YP_IMB, "weighted", Expected.PRF_imb_weighted_0, Expected.PRF_imb_weighted_1)),
-    )
+    return listConcat(listConcat(prf_dataset("imb.binary", YT_IMB, YP_IMB, "binary", Expected.PRF_imb_binary_0, Expected.PRF_imb_binary_1),
+                                prf_dataset("imb.micro", YT_IMB, YP_IMB, "micro", Expected.PRF_imb_micro_0, Expected.PRF_imb_micro_1)),
+                      listConcat(prf_dataset("imb.macro", YT_IMB, YP_IMB, "macro", Expected.PRF_imb_macro_0, Expected.PRF_imb_macro_1),
+                                prf_dataset("imb.weighted", YT_IMB, YP_IMB, "weighted", Expected.PRF_imb_weighted_0, Expected.PRF_imb_weighted_1)))
 
 def prf_specs_const():
     """Grid cells for the single-class `const` configuration."""
@@ -443,9 +435,60 @@ def model_selection_cases():
     """Splitter cases."""
     return listConcat(tts_cases(), listConcat(kfold_cases(), skf_cases()))
 
+def ext_prf_specs():
+    """Extended grid: asymmetric multiclass, tie and prediction-skew rows, both zero_division values."""
+    return listConcat(
+        listConcat(prf_dataset("asym3.micro", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2], "micro", Expected.XPRF_asym3_micro_0, Expected.XPRF_asym3_micro_1),
+                   prf_dataset("asym3.macro", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2], "macro", Expected.XPRF_asym3_macro_0, Expected.XPRF_asym3_macro_1)),
+        listConcat(prf_dataset("asym3.weighted", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2], "weighted", Expected.XPRF_asym3_weighted_0, Expected.XPRF_asym3_weighted_1),
+                   prf_dataset("rare.micro", [0, 0, 0, 0, 0, 1, 2], [0, 0, 1, 1, 2, 2, 2], "micro", Expected.XPRF_rare_micro_0, Expected.XPRF_rare_micro_1)),
+        listConcat(prf_dataset("rare.macro", [0, 0, 0, 0, 0, 1, 2], [0, 0, 1, 1, 2, 2, 2], "macro", Expected.XPRF_rare_macro_0, Expected.XPRF_rare_macro_1),
+                   prf_dataset("rare.weighted", [0, 0, 0, 0, 0, 1, 2], [0, 0, 1, 1, 2, 2, 2], "weighted", Expected.XPRF_rare_weighted_0, Expected.XPRF_rare_weighted_1)),
+        listConcat(prf_dataset("swap3.micro", [2, 2, 0, 0, 1, 1], [2, 0, 0, 2, 1, 0], "micro", Expected.XPRF_swap3_micro_0, Expected.XPRF_swap3_micro_1),
+                   prf_dataset("swap3.macro", [2, 2, 0, 0, 1, 1], [2, 0, 0, 2, 1, 0], "macro", Expected.XPRF_swap3_macro_0, Expected.XPRF_swap3_macro_1)),
+        listConcat(prf_dataset("swap3.weighted", [2, 2, 0, 0, 1, 1], [2, 0, 0, 2, 1, 0], "weighted", Expected.XPRF_swap3_weighted_0, Expected.XPRF_swap3_weighted_1),
+                   prf_dataset("wrong4.micro", [0, 1, 2, 3], [3, 2, 1, 0], "micro", Expected.XPRF_wrong4_micro_0, Expected.XPRF_wrong4_micro_1)),
+        listConcat(prf_dataset("wrong4.macro", [0, 1, 2, 3], [3, 2, 1, 0], "macro", Expected.XPRF_wrong4_macro_0, Expected.XPRF_wrong4_macro_1),
+                   prf_dataset("wrong4.weighted", [0, 1, 2, 3], [3, 2, 1, 0], "weighted", Expected.XPRF_wrong4_weighted_0, Expected.XPRF_wrong4_weighted_1)),
+        listConcat(prf_dataset("absent.micro", [0, 0, 1, 1, 1], [0, 0, 0, 1, 1], "micro", Expected.XPRF_absent_micro_0, Expected.XPRF_absent_micro_1),
+                   prf_dataset("absent.macro", [0, 0, 1, 1, 1], [0, 0, 0, 1, 1], "macro", Expected.XPRF_absent_macro_0, Expected.XPRF_absent_macro_1)),
+        listConcat(prf_dataset("absent.weighted", [0, 0, 1, 1, 1], [0, 0, 0, 1, 1], "weighted", Expected.XPRF_absent_weighted_0, Expected.XPRF_absent_weighted_1),
+                   prf_dataset("single.micro", [1, 1, 1, 1], [1, 1, 2, 2], "micro", Expected.XPRF_single_micro_0, Expected.XPRF_single_micro_1)),
+        listConcat(prf_dataset("single.macro", [1, 1, 1, 1], [1, 1, 2, 2], "macro", Expected.XPRF_single_macro_0, Expected.XPRF_single_macro_1),
+                   prf_dataset("single.weighted", [1, 1, 1, 1], [1, 1, 2, 2], "weighted", Expected.XPRF_single_weighted_0, Expected.XPRF_single_weighted_1)),
+        listConcat(prf_dataset("bin.rare", [0, 0, 0, 0, 0, 0, 1, 1], [0, 0, 0, 1, 1, 1, 1, 0], "binary", Expected.XPRF_bin_rare_binary_0, Expected.XPRF_bin_rare_binary_1),
+                   prf_dataset("bin.constpred", [0, 1, 0, 1, 0, 1], [0, 0, 0, 0, 0, 0], "binary", Expected.XPRF_bin_constpred_binary_0, Expected.XPRF_bin_constpred_binary_1)),
+        prf_dataset("bin.ties", [0, 1, 0, 1, 0, 1], [1, 0, 1, 0, 1, 0], "binary", Expected.XPRF_bin_ties_binary_0, Expected.XPRF_bin_ties_binary_1),
+    )
+
+def ext_prf_cases():
+    """precision, recall and f1 across the extended asymmetric grid."""
+    return foldList(ext_prf_specs(), [], lambda acc, spec: listConcat(acc, prf_one(spec)))
+
+def ext_reg_cases():
+    """Regression scores over ties, shifted/scaled, zero/negative and imbalanced targets."""
+    return listConcat(
+        listConcat(reg_pair("tie", [2.0, 2.0, 3.0, 3.0], [2.0, 3.0, 2.0, 3.0], Expected.XREG_MSE_tie, Expected.XREG_MAE_tie, Expected.XREG_R2_tie, Expected.XREG_EVS_tie),
+                   reg_pair("shift", [11.0, 12.0, 13.0, 14.0], [10.5, 12.0, 13.5, 14.0], Expected.XREG_MSE_shift, Expected.XREG_MAE_shift, Expected.XREG_R2_shift, Expected.XREG_EVS_shift)),
+        listConcat(reg_pair("scale", [10.0, -5.0, 20.0], [11.0, -4.5, 19.0], Expected.XREG_MSE_scale, Expected.XREG_MAE_scale, Expected.XREG_R2_scale, Expected.XREG_EVS_scale),
+                   reg_pair("cross0", [-2.0, -1.0, 1.0, 2.0], [-1.5, -1.5, 1.5, 1.5], Expected.XREG_MSE_cross0, Expected.XREG_MAE_cross0, Expected.XREG_R2_cross0, Expected.XREG_EVS_cross0)),
+        listConcat(reg_pair("negsmall", [-3.0, -2.0, -1.0], [-3.0, -2.0, -2.0], Expected.XREG_MSE_negsmall, Expected.XREG_MAE_negsmall, Expected.XREG_R2_negsmall, Expected.XREG_EVS_negsmall),
+                   reg_pair("zeropred", [1.0, 2.0, 3.0], [0.0, 0.0, 0.0], Expected.XREG_MSE_zeropred, Expected.XREG_MAE_zeropred, Expected.XREG_R2_zeropred, Expected.XREG_EVS_zeropred)),
+        listConcat(reg_pair("constpred", [5.0, 7.0, 9.0], [7.0, 7.0, 7.0], Expected.XREG_MSE_constpred, Expected.XREG_MAE_constpred, Expected.XREG_R2_constpred, Expected.XREG_EVS_constpred),
+                   reg_pair("flat", [4.0, 4.0, 4.0], [4.0, 4.0, 4.0], Expected.XREG_MSE_flat, Expected.XREG_MAE_flat, Expected.XREG_R2_flat, Expected.XREG_EVS_flat)),
+        listConcat(reg_pair("imbal", [0.0, 0.0, 0.0, 0.0, 100.0], [1.0, 0.0, 0.0, 0.0, 99.0], Expected.XREG_MSE_imbal, Expected.XREG_MAE_imbal, Expected.XREG_R2_imbal, Expected.XREG_EVS_imbal),
+                   reg_pair("ties3", [1.0, 1.0, 1.0, 2.0, 2.0], [1.0, 2.0, 1.0, 2.0, 1.0], Expected.XREG_MSE_ties3, Expected.XREG_MAE_ties3, Expected.XREG_R2_ties3, Expected.XREG_EVS_ties3)),
+        listConcat(reg_pair("shiftneg", [-10.0, -20.0, -30.0], [-9.0, -22.0, -31.0], Expected.XREG_MSE_shiftneg, Expected.XREG_MAE_shiftneg, Expected.XREG_R2_shiftneg, Expected.XREG_EVS_shiftneg),
+                   reg_pair("scaleup", [0.5, 1.0, 1.5], [0.4, 1.1, 1.6], Expected.XREG_MSE_scaleup, Expected.XREG_MAE_scaleup, Expected.XREG_R2_scaleup, Expected.XREG_EVS_scaleup)),
+    )
+
+def ext_cases():
+    """The extended asymmetric multiclass and regression input matrix."""
+    return listConcat(ext_prf_cases(), ext_reg_cases())
+
 def all_cases():
     """The full outcome list."""
-    return listConcat(listConcat(metric_cases(), regression_cases()), listConcat(preprocessing_cases(), listConcat(model_selection_cases(), listConcat(stats_cases(), record_cases()))))
+    return listConcat(listConcat(metric_cases(), regression_cases()), listConcat(preprocessing_cases(), listConcat(model_selection_cases(), listConcat(stats_cases(), listConcat(record_cases(), ext_cases())))))
 
 def main():
     match Check.strictly(lambda: Check.report(all_cases())):

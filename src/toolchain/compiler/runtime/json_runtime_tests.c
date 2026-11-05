@@ -16,6 +16,8 @@
 
 #include "json_tests_shared.h"
 #include "json_internal.h"
+#include "memory_hooks.h"
+#include "string_runtime.h"
 #include "test_alloc.h"
 
 long g_checks = 0;
@@ -285,15 +287,40 @@ static void t_nul_arena_keys_keep_identity(void) {
   json_doc_free(doc);
 }
 
+// [PORT-STRING-NUL-OWNERSHIP] The existing allocation owns the full text length.
+static void t_owned_text_preserves_nul_cursor_bounds(void) {
+  const char *samples[] = {"head\0tail", "\0lead", "tail\0", "é\0😀", "first\0middle\0last", ""};
+  const size_t lengths[] = {9, 5, 5, 7, 17, 0};
+  for (size_t i = 0; i < sizeof(lengths) / sizeof(*lengths); i++) {
+    char *text = osp_alloc_tagged((int64_t)(lengths[i] + 1), 7); // STRING layout ABI, independent of its implementation.
+    CHECK(text != NULL);
+    memcpy(text, samples[i], lengths[i] + 1);
+    CHECK(osp_strlen(text) == (int64_t)lengths[i]);
+    CHECK(osp_string_byte_length(text) == (int64_t)lengths[i]);
+    CHECK(osp_string_is_empty(text) == (lengths[i] == 0));
+    for (size_t at = 0; at < lengths[i]; at++) {
+      int64_t byte = -1;
+      CHECK(osp_string_byte_at(text, (int64_t)at, &byte) == NULL && byte == (unsigned char)samples[i][at]);
+      if (samples[i][at] == '\0') CHECK(osp_string_codepoint_at(text, (int64_t)at, &byte) == NULL && byte == 0);
+    }
+    osp_release(text);
+  }
+}
+
 // A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
 // "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
 // truncates the string the caller reads back, with no error anywhere.
 int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--owned-text") == 0) {
+    t_owned_text_preserves_nul_cursor_bounds();
+    return 0;
+  }
   if (argc == 2 && strcmp(argv[1], "--nul-arena") == 0) {
     t_nul_arena_keys_keep_identity();
     return 0;
   }
   CHECK(argc == 1);
+  t_owned_text_preserves_nul_cursor_bounds();
   t_nul_arena_keys_keep_identity();
   t_scalars();
   t_string_escapes();

@@ -78,7 +78,8 @@ module Link
         l = store.link
         store(link = Connection(linked = l.linked, player = l.player, devices = l.devices, clock = now, polled = l.polled))
 
-    fed (store, facts) = store(screen = Screen(screenMachine = Machines::feed (machineOf store, facts)))
+    (** The store with `facts` fed to its machine, then settled. *)
+    export fed store facts = store(screen = Screen(screenMachine = Machines::feed (machineOf store, facts)))
 
     fact (name, value) = Machines::fact (name, value)
 

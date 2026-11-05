@@ -225,3 +225,71 @@ fn kernels_bound_through_handler_arms_keep_their_device_form() -> Result<(), Str
     }
     Ok(())
 }
+
+/// A program mapping `[1, 2]` with `kernel`, where `add` reads the global `bias`.
+fn shadowing_program(flavor: Flavor, kernel: &str, helpers: &str) -> String {
+    match flavor {
+        Flavor::Ml => format!(
+            "bias = 10\nadd x = wrapAdd x bias\n{helpers}\nrun () = match toGpu [1, 2]\n    Success value => match gpuMap value ({kernel})\n        Success mapped => print \"${{gpuLength mapped}}\"\n        Error message => print message\n    Error message => print message\nrun ()\n"
+        ),
+        _ => format!(
+            "let bias = 10\nfn add(x) = wrapAdd(x, bias)\n{helpers}\nmatch toGpu([1, 2]) {{\n    Success {{ value }} => match gpuMap(value, {kernel}) {{\n        Success {{ value }} => print(\"${{gpuLength(value)}}\")\n        Error {{ message }} => print(message)\n    }}\n    Error {{ message }} => print(message)\n}}\n"
+        ),
+    }
+}
+
+/// [GPU-KERNEL-EXTRACT] A named helper is defined at module scope, so the names in
+/// its body mean what they mean there. Inlined into a kernel, `add`'s `bias` stayed
+/// the global when the caller also bound a `bias`: as the kernel's parameter, a local
+/// or a helper's parameter. Metal answered 2 for element 1 where the host answers 11.
+#[test]
+fn a_callers_binding_never_shadows_a_name_in_a_helper_it_inlines() -> Result<(), String> {
+    let rebound = [
+        (Flavor::Default, "fn(x) => add(x)", ""),
+        (Flavor::Ml, "\\x => add x", ""),
+        (Flavor::Default, "fn(bias) => add(bias)", ""),
+        (Flavor::Ml, "\\bias => add bias", ""),
+        (Flavor::Default, "fn(x) => { let bias = x\n add(bias) }", ""),
+        (
+            Flavor::Ml,
+            "\\x =>\n            bias = x\n            add bias",
+            "",
+        ),
+        (
+            Flavor::Default,
+            "fn(x) => outer(x)",
+            "fn outer(bias) = add(bias)",
+        ),
+        (Flavor::Ml, "\\x => outer x", "outer bias = add bias"),
+        (
+            Flavor::Default,
+            "fn(bias) => outer(bias)",
+            "fn outer(y) = add(y)",
+        ),
+        (Flavor::Ml, "\\bias => outer bias", "outer y = add y"),
+    ];
+    let mut wrong = Vec::new();
+    for (flavor, kernel, helpers) in rebound {
+        let ir = lambda_debug_ir(&shadowing_program(flavor, kernel, helpers), flavor)?;
+        assert_eq!(
+            count(&ir, "call i32 @osprey_gpu_declined("),
+            0,
+            "{kernel}: {:?}",
+            declined_reasons(&ir)
+        );
+        let kernels = kernel_source(&ir);
+        let answer = kernels
+            .lines()
+            .find(|line| line.contains("out[gid] = "))
+            .unwrap_or_default();
+        if !answer.contains("+ (ulong)(((long)10))") {
+            wrong.push(format!("{flavor:?} {kernel}: {answer}"));
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "`add` must add the global 10:\n{}",
+        wrong.join("\n")
+    );
+    Ok(())
+}

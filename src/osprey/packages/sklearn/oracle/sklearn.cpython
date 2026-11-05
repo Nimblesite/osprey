@@ -6,13 +6,44 @@ against ([PORT-TEST-ORACLE], spec 0043). Run with the oracle virtualenv:
 `python -I src/osprey/packages/testing/oracle/oracle.cpython sklearn`.
 """
 import os
+import pickle
 import sys
+import types
 
 from expected_module import write
 
-import numpy as np
-import sklearn
-from sklearn import metrics, model_selection, preprocessing
+
+def stub_missing_transitive_deps():
+    """Stub the imports this venv lacks but list metrics never reach.
+
+    joblib 1.6.0 imports cloudpickle through its loky backend and scikit-learn 1.9.1
+    imports narwhals for dataframe interchange; neither is installed here. Both are
+    import-time only for list/array inputs, so an explicit stub keeps the reference
+    values coming from the real package instead of a modeled port.
+    """
+    if "cloudpickle" not in sys.modules:
+        cloudpickle = types.ModuleType("cloudpickle")
+        cloudpickle.dumps, cloudpickle.loads = pickle.dumps, pickle.loads
+        cloudpickle.CloudPickler = pickle.Pickler
+        cloudpickle.register_pickle_by_value = lambda *a, **k: None
+        sys.modules["cloudpickle"] = cloudpickle
+    if "narwhals" not in sys.modules:
+        narwhals = types.ModuleType("narwhals")
+        stable = types.ModuleType("narwhals.stable")
+        v2 = types.ModuleType("narwhals.stable.v2")
+        v2.from_native = lambda *a, **k: (_ for _ in ()).throw(NotImplementedError("narwhals stubbed"))
+        v2.dependencies = types.SimpleNamespace(is_into_dataframe=lambda x: False,
+                                                is_into_series=lambda x: False)
+        narwhals.stable, stable.v2 = stable, v2
+        sys.modules.update({"narwhals": narwhals, "narwhals.stable": stable,
+                            "narwhals.stable.v2": v2})
+
+
+stub_missing_transitive_deps()
+
+import numpy as np  # noqa: E402
+import sklearn  # noqa: E402
+from sklearn import metrics, model_selection, preprocessing  # noqa: E402
 
 VERSION = {"sklearn": sklearn.__version__, "numpy": np.__version__}
 
@@ -240,6 +271,66 @@ def model_selection_cases():
     return out
 
 
+# ---------------------------------------------------------------------------
+# Extended input matrix: asymmetric multiclass and regression
+# ---------------------------------------------------------------------------
+PRF_EXT = [
+    # asymmetric three-class confusion (labels 0/1/2 unbalanced in y_pred)
+    ("asym3", [0, 0, 1, 1, 2, 2, 2], [0, 1, 1, 1, 2, 0, 2]),
+    # imbalanced labels: the rare class is never predicted
+    ("rare", [0, 0, 0, 0, 0, 1, 2], [0, 0, 1, 1, 2, 2, 2]),
+    # equal class support but every prediction of class 1 is a tie swapped
+    ("swap3", [2, 2, 0, 0, 1, 1], [2, 0, 0, 2, 1, 0]),
+    # four classes, every single prediction wrong
+    ("wrong4", [0, 1, 2, 3], [3, 2, 1, 0]),
+    # a class present in y_pred only (zero-division precision)
+    ("absent", [0, 0, 1, 1, 1], [0, 0, 0, 1, 1]),
+    # single-class y_true with asymmetric over-prediction
+    ("single", [1, 1, 1, 1], [1, 1, 2, 2]),
+]
+
+# binary average only: y_true holds both classes, predictions are asymmetric
+PRF_BIN_EXT = [
+    ("bin_rare", [0, 0, 0, 0, 0, 0, 1, 1], [0, 0, 0, 1, 1, 1, 1, 0]),
+    ("bin_constpred", [0, 1, 0, 1, 0, 1], [0, 0, 0, 0, 0, 0]),
+    ("bin_ties", [0, 1, 0, 1, 0, 1], [1, 0, 1, 0, 1, 0]),
+]
+
+# regression pairs: ties, shifted, scaled, zero/negative and imbalanced targets
+REG_EXT = [
+    ("tie", [2.0, 2.0, 3.0, 3.0], [2.0, 3.0, 2.0, 3.0]),
+    ("shift", [11.0, 12.0, 13.0, 14.0], [10.5, 12.0, 13.5, 14.0]),
+    ("scale", [10.0, -5.0, 20.0], [11.0, -4.5, 19.0]),
+    ("cross0", [-2.0, -1.0, 1.0, 2.0], [-1.5, -1.5, 1.5, 1.5]),
+    ("negsmall", [-3.0, -2.0, -1.0], [-3.0, -2.0, -2.0]),
+    ("zeropred", [1.0, 2.0, 3.0], [0.0, 0.0, 0.0]),
+    ("constpred", [5.0, 7.0, 9.0], [7.0, 7.0, 7.0]),
+    ("flat", [4.0, 4.0, 4.0], [4.0, 4.0, 4.0]),
+    ("imbal", [0.0, 0.0, 0.0, 0.0, 100.0], [1.0, 0.0, 0.0, 0.0, 99.0]),
+    ("ties3", [1.0, 1.0, 1.0, 2.0, 2.0], [1.0, 2.0, 1.0, 2.0, 1.0]),
+    ("shiftneg", [-10.0, -20.0, -30.0], [-9.0, -22.0, -31.0]),
+    ("scaleup", [0.5, 1.0, 1.5], [0.4, 1.1, 1.6]),
+]
+
+
+def extended_cases():
+    """Asymmetric multiclass prf and regression scores over the wider matrix."""
+    out = {}
+    for name, yt, yp in PRF_EXT:
+        for avg in ["micro", "macro", "weighted"]:
+            for zd in [0, 1]:
+                out[f"XPRF_{name}_{avg}_{zd}"] = prf(yt, yp, avg, zd)
+    for name, yt, yp in PRF_BIN_EXT:
+        for zd in [0, 1]:
+            out[f"XPRF_{name}_binary_{zd}"] = prf(yt, yp, "binary", zd)
+    for name, yt, yp in REG_EXT:
+        out[f"XREG_MSE_{name}"] = float(metrics.mean_squared_error(yt, yp))
+        out[f"XREG_MAE_{name}"] = float(metrics.mean_absolute_error(yt, yp))
+        out[f"XREG_R2_{name}"] = float(metrics.r2_score(yt, yp))
+        out[f"XREG_EVS_{name}"] = float(metrics.explained_variance_score(yt, yp))
+    return out
+
+
 def main():
     """Compute every case with the real package and write tests/expected.py."""
     cases = {}
@@ -248,6 +339,7 @@ def main():
     cases.update(regression_cases())
     cases.update(preprocessing_cases())
     cases.update(model_selection_cases())
+    cases.update(extended_cases())
     write(
         "sklearn",
         "scikit-learn metrics, preprocessing and model_selection reference values.",

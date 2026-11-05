@@ -409,15 +409,17 @@ def qwen_pretokenize(n):
 
 def bytelevel_piece(n):
     """ByteLevel without its regex: every byte of the piece becomes one symbol,
-    and each symbol keeps that byte's original offset."""
+    each keeping the original character span it came from, so a token that covers
+    part of a character still reports that whole character."""
     return fold(range(len(n.chars)), empty_norm(), lambda acc, i: append_char_bytes(acc, n, i))
 
 
 def append_char_bytes(acc, n, i):
     cp = char_at(n, i)
     start = start_at(n, i)
+    stop = end_at(n, i)
     octets = utf8_of_cp(cp, [])
-    return fold(range(len(octets)), acc, lambda a, k: append_norm(a, byte_char(unwrap_or(listGet(octets, k), 0)), start + k, start + k + 1))
+    return fold(range(len(octets)), acc, lambda a, k: append_norm(a, byte_char(unwrap_or(listGet(octets, k), 0)), start, stop))
 
 
 def byte_char(byte):

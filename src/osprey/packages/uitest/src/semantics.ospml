@@ -21,7 +21,7 @@ module Semantics
     (** The first element labelled `label`, or `Unannounced` with no bounds when none is offered. *)
     export element (elements, label) = match Lists::find (elements, \e => e.accessLabel == label)
         Success e => e
-        Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessMovable = false)
+        Error _ => ui::Accessible(accessRole = ui::Unannounced, accessLabel = "", accessLeft = 0.0, accessTop = 0.0, accessWidth = 0.0, accessHeight = 0.0, accessValue = 0.0, accessMin = 0.0, accessMax = 0.0, accessSelected = false, accessMovable = false)
 
     (** The role of the element labelled `label`, as hosts name it (`button`, `slider`, `popup`, `menuitem`, `none`). *)
     export role (elements, label) = Canvases::roleName (element (elements, label)).accessRole
@@ -29,19 +29,25 @@ module Semantics
     (** The value of the slider labelled `label`; 0 for anything else. *)
     export value (elements, label) = (element (elements, label)).accessValue
 
+    (** Whether the element labelled `label` is announced as the machine's current choice; false for anything else. *)
+    export selected (elements, label) = (element (elements, label)).accessSelected
+
     (** The point `fraction` across an element's bounds and halfway down it. *)
     export point (e, fraction) = Point(pointX = e.accessLeft + e.accessWidth * fraction, pointY = e.accessTop + e.accessHeight / 2.0)
 
-    (** One element as an agent reads it: its role and label, a slider's value and range, and `movable` when a drag moves it. *)
+    (** One element as an agent reads it: its role and label, a slider's value and range, `selected` when it is the current choice, and `movable` when a drag moves it. *)
     export announced e =
         called = Canvases::roleName e.accessRole
         ranged = match e.accessRole
             ui::Slidable => " value ${toString e.accessValue} of ${toString e.accessMin} to ${toString e.accessMax}"
             _ => ""
+        chosen = match e.accessSelected
+            true => " selected"
+            false => ""
         moved = match e.accessMovable
             true => " movable"
             false => ""
-        "${called} \"${e.accessLabel}\"${ranged}${moved}"
+        "${called} \"${e.accessLabel}\"${ranged}${chosen}${moved}"
 
     (** The whole tree as an agent reads it, one element a line, in hit order. *)
     export outline elements = join (mapList (elements, announced)) "\n"

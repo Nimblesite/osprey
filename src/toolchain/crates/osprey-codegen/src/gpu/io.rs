@@ -63,6 +63,50 @@ pub(super) fn mat_mul(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     )
 }
 
+/// `gpuSigmoid(x)`: the library kernel's logistic function [LLM-SIGMOID].
+pub(super) fn sigmoid(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let x = buffer_arg(cg, args, 0)?;
+    fallible_buffer(
+        cg,
+        "osprey_gpu_sigmoid",
+        "i8*",
+        &[&x.operand],
+        LType::Num(Numeric::FLOAT32),
+        "gpuSigmoid: the operand must hold float32",
+    )
+}
+
+/// `gpuDeltaRule(state, queries, keys, values, beta, decay, heads, dim)`: one token
+/// of the recurrent rule through the runtime, which checks every length
+/// [LLM-DELTA-RULE].
+pub(super) fn delta_rule(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
+    let state = buffer_arg(cg, args, 0)?;
+    let queries = buffer_arg(cg, args, 1)?;
+    let keys = buffer_arg(cg, args, 2)?;
+    let values = buffer_arg(cg, args, 3)?;
+    let beta = buffer_arg(cg, args, 4)?;
+    let decay = buffer_arg(cg, args, 5)?;
+    let heads = arg_as(cg, args, 6, LType::I64)?;
+    let dim = arg_as(cg, args, 7, LType::I64)?;
+    fallible_buffer(
+        cg,
+        "osprey_gpu_delta_rule",
+        "i8*, i8*, i8*, i8*, i8*, i8*, i64, i64",
+        &[
+            &state.operand,
+            &queries.operand,
+            &keys.operand,
+            &values.operand,
+            &beta.operand,
+            &decay.operand,
+            &heads,
+            &dim,
+        ],
+        LType::Num(Numeric::FLOAT32),
+        "gpuDeltaRule: operands disagree with the stated shape",
+    )
+}
+
 /// `gpuMatMulQuant(x, weights, type, rows, inner, cols)` [LLM-MATMUL-QUANT]:
 /// a `float32` result; the runtime checks the operands' element types and
 /// lengths against the shape and the named block format.

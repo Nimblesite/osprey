@@ -318,7 +318,8 @@ fn new_view(
 /// The NativeActivity handle `android_main` installed before the host starts
 /// ([CAST-MOBILE-GPUI]).
 #[cfg(target_os = "android")]
-pub(crate) static ANDROID_APP: std::sync::OnceLock<android_activity::AndroidApp> = std::sync::OnceLock::new();
+pub(crate) static ANDROID_APP: std::sync::OnceLock<android_activity::AndroidApp> =
+    std::sync::OnceLock::new();
 
 /// Installs the activity the Android platform backend draws through.
 #[cfg(target_os = "android")]
@@ -330,9 +331,9 @@ pub fn set_android_app(app: android_activity::AndroidApp) {
 #[cfg(target_os = "android")]
 fn android_application() -> Option<gpui_kit::Application> {
     let app = ANDROID_APP.get()?.clone();
-    Some(gpui_kit::Application::with_platform(gpui_android::current_platform(
-        &app,
-    )))
+    Some(gpui_kit::Application::with_platform(
+        gpui_android::current_platform(&app),
+    ))
 }
 
 /// Files Finder asked the application to open and no frame has delivered yet ([GPUI-HOST-OPEN]).

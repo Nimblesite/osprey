@@ -180,8 +180,8 @@ def math_cases():
 def storage_cases():
     buffer = Storage.lift([1.0, 2.0])
     built = Storage.built(perform(Storage.Buffer.build(2, lambda i: toFloat(i + 1))))
-    zipped = perform(Storage.Buffer.zip_with(buffer, built, Storage.add_f))
-    ragged = perform(Storage.Buffer.zip_with(buffer, Storage.lift([10.0]), Storage.add_f))
+    zipped = Storage.built(perform(Storage.Buffer.zip_with(buffer, built, Storage.add_f)))
+    ragged = Storage.built(perform(Storage.Buffer.zip_with(buffer, Storage.lift([10.0]), Storage.add_f)))
     return [
         Check.close_all("storage.lower", Storage.lower(buffer), [1.0, 2.0], S.TIGHT, S.ATOL),
         Check.close_all("storage.Buffer.build", Storage.lower(built), [1.0, 2.0], S.TIGHT, S.ATOL),

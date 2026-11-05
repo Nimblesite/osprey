@@ -75,10 +75,12 @@ class Grids:
     ffn: GpuBuffer[int]
     kv: GpuBuffer[int]
     kv_heads: GpuBuffer[int]
+    chunks: GpuBuffer[int]
+    vocab_chunks: GpuBuffer[int]
 
 
 def grids():
-    return Grids(one=fresh_grid(1), heads16=fresh_grid(16), q_heads=fresh_grid(24), v_heads=fresh_grid(48), hidden=fresh_grid(5120), v_width=fresh_grid(6144), channels=fresh_grid(10240), history=fresh_grid(30720), state=fresh_grid(786432), ffn=fresh_grid(17408), kv=fresh_grid(1024), kv_heads=fresh_grid(4))
+    return Grids(one=fresh_grid(1), heads16=fresh_grid(16), q_heads=fresh_grid(24), v_heads=fresh_grid(48), hidden=fresh_grid(5120), v_width=fresh_grid(6144), channels=fresh_grid(10240), history=fresh_grid(30720), state=fresh_grid(792576), ffn=fresh_grid(17408), kv=fresh_grid(1024), kv_heads=fresh_grid(4), chunks=fresh_grid(20), vocab_chunks=fresh_grid(485))
 
 
 def at(b: GpuBuffer[float32], i) -> float32:
@@ -102,14 +104,6 @@ def third(i):
 
 def sixth(i):
     return shiftRightLogical(third(i), 1)
-
-
-def sigmoid(x: float32) -> float32:
-    return exp(toFloat32(0.0) - ln(toFloat32(1.0) + exp(toFloat32(0.0) - x)))
-
-
-def silu(x: float32) -> float32:
-    return x * sigmoid(x)
 
 
 def softplus(x: float32) -> float32:
@@ -139,7 +133,8 @@ def added(a, b, g):
 
 def rms_hidden(x, w, g):
     """`Qwen3_5RMSNorm` over the one hidden vector of 5120."""
-    s: GpuBuffer[float32] = must(gpuMap(g.one, lambda _: rsqrt(squares(x, 0, 5120) * toFloat32(0.0001953125) + toFloat32(0.000001))))
+    chunks: GpuBuffer[float32] = must(gpuMap(g.chunks, lambda c: squares(x, shiftLeft(c, 8), 256)))
+    s: GpuBuffer[float32] = must(gpuMap(g.one, lambda _: rsqrt(fold(range(0, 20), toFloat32(0.0), lambda a, c: a + at(chunks, c)) * toFloat32(0.0001953125) + toFloat32(0.000001))))
     return must(gpuMap(g.hidden, lambda i: at(x, i) * at(s, 0) * at(w, i)))
 
 
@@ -158,7 +153,8 @@ class Mlp:
 def mlp(x, l, grids):
     g = linear(l.gate, x, 5120, 17408)
     u = linear(l.up, x, 5120, 17408)
-    h: GpuBuffer[float32] = must(gpuMap(grids.ffn, lambda i: silu(at(g, i)) * at(u, i)))
+    gate = must(gpuSigmoid(g))
+    h: GpuBuffer[float32] = must(gpuMap(grids.ffn, lambda i: at(g, i) * at(gate, i) * at(u, i)))
     return linear(l.down, h, 17408, 5120)
 
 
@@ -209,7 +205,9 @@ def tap(w, old, qkv, c) -> float32:
 
 
 def convolved(qkv, old, w, g):
-    return must(gpuMap(g.channels, lambda c: silu(tap(w, old, qkv, c))))
+    tapped: GpuBuffer[float32] = must(gpuMap(g.channels, lambda c: tap(w, old, qkv, c)))
+    gate = must(gpuSigmoid(tapped))
+    return must(gpuMap(g.channels, lambda c: at(tapped, c) * at(gate, c)))
 
 
 def conv_history(qkv, old, g):
@@ -220,26 +218,20 @@ def unit_scale(mixed, first, g):
     return must(gpuMap(g.heads16, lambda h: rsqrt(squares(mixed, plus(first, shiftLeft(h, 7)), 128) + toFloat32(0.000001))))
 
 
-def key_of(mixed, ks, h, k) -> float32:
-    return at(mixed, plus(2048, plus(shiftLeft(bitAnd(h, 15), 7), k))) * at(ks, bitAnd(h, 15))
-
-
-def recalled(state, decay, mixed, ks, h, v) -> float32:
-    return fold(range(0, 128), toFloat32(0.0), lambda s, k: s + at(state, plus(shiftLeft(h, 14), plus(shiftLeft(k, 7), v))) * at(decay, h) * key_of(mixed, ks, h, k))
-
-
-def read_out(state, mixed, qs, h, v) -> float32:
-    return fold(range(0, 128), toFloat32(0.0), lambda s, k: s + at(state, plus(shiftLeft(h, 14), plus(shiftLeft(k, 7), v))) * (at(mixed, plus(shiftLeft(bitAnd(h, 15), 7), k)) * at(qs, bitAnd(h, 15)) * toFloat32(0.08838834764831845)))
+def scaled_heads(mixed, first, scales, g):
+    """A key or query head per value head, `dim` values each, scaled to unit length."""
+    return must(gpuMap(g.v_width, lambda i: at(mixed, plus(first, plus(shiftLeft(bitAnd(shiftRightLogical(i, 7), 15), 7), bitAnd(i, 127)))) * at(scales, bitAnd(shiftRightLogical(i, 7), 15))))
 
 
 def delta_rule(mixed, old, b, a, a_log, dt, g):
     qs = unit_scale(mixed, 0, g)
     ks = unit_scale(mixed, 2048, g)
     decay: GpuBuffer[float32] = must(gpuMap(g.v_heads, lambda h: exp(at(a_log, h) * softplus(at(a, h) + at(dt, h)))))
-    delta: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: (at(mixed, plus(4096, i)) - recalled(old, decay, mixed, ks, shiftRightLogical(i, 7), bitAnd(i, 127))) * sigmoid(at(b, shiftRightLogical(i, 7)))))
-    state: GpuBuffer[float32] = must(gpuMap(g.state, lambda i: at(old, i) * at(decay, shiftRightLogical(i, 14)) + key_of(mixed, ks, shiftRightLogical(i, 14), bitAnd(shiftRightLogical(i, 7), 127)) * at(delta, plus(shiftLeft(shiftRightLogical(i, 14), 7), bitAnd(i, 127)))))
-    out: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: read_out(state, mixed, qs, shiftRightLogical(i, 7), bitAnd(i, 127))))
-    return DeltaSlot(conv=out, state=state)
+    beta = must(gpuSigmoid(b))
+    values: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(mixed, plus(4096, i))))
+    unit_q = scaled_heads(mixed, 0, qs, g)
+    queries: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(unit_q, i) * toFloat32(0.08838834764831845)))
+    return must(gpuDeltaRule(old, queries, scaled_heads(mixed, 2048, ks, g), values, beta, decay, 48, 128))
 
 
 def delta_mix(x, slot, p, g):
@@ -248,12 +240,13 @@ def delta_mix(x, slot, p, g):
     b = linear(p.b, x, 5120, 48)
     a = linear(p.a, x, 5120, 48)
     mixed = convolved(qkv, slot.conv, p.conv, g)
-    rule = delta_rule(mixed, slot.state, b, a, p.a_log, p.dt, g)
-    out = rule.conv
+    state = delta_rule(mixed, slot.state, b, a, p.a_log, p.dt, g)
+    out: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(state, plus(786432, i))))
     w = p.ssm_norm
     s: GpuBuffer[float32] = must(gpuMap(g.v_heads, lambda h: rsqrt(squares(out, shiftLeft(h, 7), 128) * toFloat32(0.0078125) + toFloat32(0.000001))))
-    gated: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(out, i) * at(s, shiftRightLogical(i, 7)) * at(w, bitAnd(i, 127)) * silu(at(z, i))))
-    return DeltaMixed(x=linear(p.out, gated, 6144, 5120), slot=DeltaSlot(conv=conv_history(qkv, slot.conv, g), state=rule.state))
+    gate = must(gpuSigmoid(z))
+    gated: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(out, i) * at(s, shiftRightLogical(i, 7)) * at(w, bitAnd(i, 127)) * (at(z, i) * at(gate, i))))
+    return DeltaMixed(x=linear(p.out, gated, 6144, 5120), slot=DeltaSlot(conv=conv_history(qkv, slot.conv, g), state=state))
 
 
 # Gated attention, one token at position `pos`, `pos` entries cached: 24 query heads over 4
@@ -319,7 +312,9 @@ def attn_mix(x, slot, p, pos, g):
     keys = grown(slot.keys, pos, fresh_k)
     values = grown(slot.values, pos, linear(p.v, x, 5120, 1024))
     out = attend(queries, keys, values, pos + 1, g)
-    gated: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(out, i) * sigmoid(at(both, plus(shiftLeft(shiftRightLogical(i, 8), 9), plus(256, bitAnd(i, 255)))))))
+    gates: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(both, plus(shiftLeft(shiftRightLogical(i, 8), 9), plus(256, bitAnd(i, 255))))))
+    gate = must(gpuSigmoid(gates))
+    gated: GpuBuffer[float32] = must(gpuMap(g.v_width, lambda i: at(out, i) * at(gate, i)))
     return AttnMixed(x=linear(p.o, gated, 6144, 5120), slot=AttnSlot(keys=keys, values=values))
 
 
@@ -383,10 +378,18 @@ def forward(model, old, token, pos):
     return fold(range(0, 64), start, lambda w, i: attn_at(w, model, old, pos, i) if i % 4 == 3 else delta_at(w, model, old, i))
 
 
-def best_token(logits, one):
-    peak: GpuBuffer[float32] = must(gpuMap(one, lambda _: fold(range(0, 248320), at(logits, 0), lambda a, i: a if a > at(logits, i) else at(logits, i))))
-    found: GpuBuffer[float32] = must(gpuMap(one, lambda _: fold(range(0, 248320), toFloat32(0.0), lambda a, i: toFloat32(i) if at(logits, i) == at(peak, 0) and a == toFloat32(0.0) else a)))
-    return unwrap_or(floatToInt(at(found, 0)), -1)
+def chunk_best(logits, c) -> float32:
+    """The first index holding chunk c's peak, of 512 logits, as a float32: exact below 2^24."""
+    first = shiftLeft(c, 9)
+    peak = fold(range(0, 512), at(logits, first), lambda a, i: a if a > at(logits, plus(first, i)) else at(logits, plus(first, i)))
+    return fold(range(0, 512), toFloat32(0.0) - toFloat32(1.0), lambda a, i: toFloat32(plus(first, i)) if at(logits, plus(first, i)) == peak and a < toFloat32(0.0) else a)
+
+
+def best_token(logits, g):
+    """Argmax over 248320 logits, in 485 chunks of 512, a thread each, then over their winners on the host."""
+    winners: GpuBuffer[float32] = must(gpuMap(g.vocab_chunks, lambda c: chunk_best(logits, c)))
+    indices = fold(range(0, 485), [], lambda acc, c: listAppend(acc, unwrap_or(floatToInt(at(winners, c)), 0)))
+    return fold(range(0, 485), 0, lambda best, c: unwrap_or(listGet(indices, c), 0) if at(logits, unwrap_or(listGet(indices, c), 0)) > at(logits, best) else best)
 
 
 # ---- Loading from the tensor table.
@@ -448,7 +451,7 @@ def step(model, state, pos):
     token = unwrap_or(listGet(PROMPT, pos), state.best)
     walk = forward(model, state.cache, token, pos)
     logits = linear(model.head, rms_hidden(walk.x, model.final, model.grids), 5120, VOCAB)
-    best = best_token(logits, model.grids.one)
+    best = best_token(logits, model.grids)
     print(f"{pos} {token} -> {best}")
     return Run(cache=walk, best=best)
 

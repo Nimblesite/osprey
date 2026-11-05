@@ -13,10 +13,15 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "gpu_f64.metal"
-#include "gpu_math64.metal"
-#include "gpu_math_ext.metal"
-#include "gpu_device_lib.metal"
+// The shared shader source's binary64 oracle, compiled as C inside gpu_host.c.
+typedef uint64_t ulong;
+static const ulong SIGN = 0x8000000000000000ul;
+ulong add64(ulong a, ulong b);
+ulong sub64(ulong a, ulong b);
+ulong multiply64(ulong a, ulong b);
+ulong exp64(ulong x);
+ulong ln64(ulong x);
+ulong tanh64(ulong x);
 
 void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes);
 void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, int64_t cols, int64_t elem_bytes);
@@ -456,19 +461,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 38);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 24);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 39);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 25);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 40);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 43);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 29);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;

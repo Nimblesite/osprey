@@ -63,7 +63,9 @@ mod bridge {
                 JObject::from_raw(app.activity_as_ptr().cast()),
             )
         };
-        let mut env = vm.attach_current_thread().map_err(|error| error.to_string())?;
+        let mut env = vm
+            .attach_current_thread()
+            .map_err(|error| error.to_string())?;
         let input = env.new_string(request).map_err(|error| error.to_string())?;
         let called = env.call_method(
             &activity,
