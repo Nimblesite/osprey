@@ -93,12 +93,9 @@ pub(super) fn publish_program(
     let ctors = publish_ctors(&checker);
     let unions = checker.union_variants.clone();
     let effects = publish_effects(&checker);
-    let lambda_tys = checker.lambda_tys.clone();
-    let let_tys = checker.let_tys.clone();
-    let list_tys = checker.list_tys.clone();
-    let mut lambdas = resolve_positioned(&mut checker.ctx, &lambda_tys);
-    let mut lets = resolve_positioned(&mut checker.ctx, &let_tys);
-    let mut lists = resolve_positioned(&mut checker.ctx, &list_tys);
+    let mut lambdas = resolve_positioned(&mut checker.ctx, &checker.lambda_tys);
+    let mut lets = resolve_positioned(&mut checker.ctx, &checker.let_tys);
+    let mut lists = resolve_positioned(&mut checker.ctx, &checker.list_tys);
     let handler_sites: HashSet<_> = checker
         .handler_tys
         .iter()
@@ -117,16 +114,14 @@ pub(super) fn publish_program(
             *ty = runtime_site_type(&checker.ctx, ty);
         }
     }
-    let perform_tys = checker.perform_tys.clone();
-    let performs = dedupe_sites(perform_tys.iter().map(|(pos, op, args)| {
+    let performs = dedupe_sites(checker.perform_tys.iter().map(|(pos, op, args)| {
         let site = crate::info::PerformSite {
             op: resolve_op(&mut checker.ctx, op),
             effect_args: args.iter().map(|t| checker.ctx.apply(t)).collect(),
         };
         ((pos.line, pos.column), site)
     }));
-    let handler_tys = checker.handler_tys.clone();
-    let handler_ops = dedupe_sites(handler_tys.iter().map(|(pos, args, ops)| {
+    let handler_ops = dedupe_sites(checker.handler_tys.iter().map(|(pos, args, ops)| {
         let site = crate::info::HandlerSite {
             effect_args: args.iter().map(|t| checker.ctx.apply(t)).collect(),
             ops: ops

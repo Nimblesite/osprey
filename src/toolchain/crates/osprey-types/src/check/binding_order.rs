@@ -3,15 +3,14 @@
 //! group keeps its source order. Implements [TYPE-BINDING-ORDER].
 use super::{BTreeSet, HashMap, Stmt};
 
-/// One statement list's functions, the names each reads, and the recursive
+/// One statement list's functions, the dependencies of each, and the recursive
 /// group each belongs to.
 pub(super) struct BindingOrder<'a> {
     statements: Vec<&'a Stmt>,
-    functions: HashMap<&'a str, usize>,
-    /// Each top-level `let` name and the last position that binds it.
-    lets: HashMap<&'a str, usize>,
-    /// Each statement's free reads; empty for anything but a function.
-    reads: Vec<BTreeSet<String>>,
+    /// Each statement's function dependencies, ordered by name.
+    edges: Vec<Vec<usize>>,
+    /// Latest binding read by each statement, if it reads a local binding.
+    latest_binding: Vec<Option<usize>>,
     /// Each statement's strongly connected component in the call graph.
     groups: Vec<usize>,
     started: Vec<bool>,
@@ -32,26 +31,27 @@ impl<'a> BindingOrder<'a> {
                 _ => {}
             }
         }
-        let reads: Vec<BTreeSet<String>> = statements
+        let (edges, latest_binding): (Vec<Vec<usize>>, Vec<Option<usize>>) = statements
             .iter()
             .map(|statement| reads(statement))
-            .collect();
-        let edges: Vec<Vec<usize>> = reads
-            .iter()
             .map(|names| {
-                names
+                let callees = names
                     .iter()
                     .filter_map(|name| functions.get(name.as_str()).copied())
-                    .collect()
+                    .collect();
+                let latest = names
+                    .iter()
+                    .filter_map(|name| lets.get(name.as_str()).copied())
+                    .max();
+                (callees, latest)
             })
-            .collect();
+            .unzip();
         Self {
             groups: Groups::of(&edges),
-            reads,
+            edges,
+            latest_binding,
             started: vec![false; statements.len()],
             statements,
-            functions,
-            lets,
         }
     }
 
@@ -69,11 +69,11 @@ impl<'a> BindingOrder<'a> {
     /// which has not run.
     pub(super) fn callees(&self, index: usize, cursor: usize) -> Vec<usize> {
         let group = self.groups.get(index);
-        self.reads
+        self.edges
             .get(index)
             .into_iter()
             .flatten()
-            .filter_map(|name| self.functions.get(name.as_str()).copied())
+            .copied()
             .filter(|&callee| self.groups.get(callee) != group && self.ready(callee, cursor))
             .collect()
     }
@@ -81,13 +81,10 @@ impl<'a> BindingOrder<'a> {
     fn ready(&self, callee: usize, cursor: usize) -> bool {
         let unstarted = self.started.get(callee) == Some(&false);
         unstarted
-            && self.reads.get(callee).is_some_and(|reads| {
-                reads.iter().all(|name| {
-                    self.lets
-                        .get(name.as_str())
-                        .is_none_or(|&bound| bound < cursor)
-                })
-            })
+            && self
+                .latest_binding
+                .get(callee)
+                .is_some_and(|bound| bound.is_none_or(|at| at < cursor))
     }
 }
 

@@ -51,7 +51,7 @@ impl Checker {
     /// equality is not decided; `None` for any other obligation, or a decided
     /// one. An unresolved variable is left alone: nothing says what it is.
     pub(crate) fn undecided_structural_equals(&self, name: &str, ty: &Type) -> Option<String> {
-        if crate::builtin_constraints::operation_name(name) != KEY {
+        if name != KEY {
             return None;
         }
         let mut parts = Vec::new();

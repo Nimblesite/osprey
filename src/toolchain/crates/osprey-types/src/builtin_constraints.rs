@@ -114,7 +114,7 @@ pub(crate) fn display_param_type(name: &str, index: usize) -> Option<String> {
 pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
     // [FLOAT-OPERANDS] Schemes carry this obligation into each instantiation,
     // preserving numeric polymorphism while refusing concrete nonnumeric uses.
-    if let Some(op) = operation_name(name).strip_prefix(NUMERIC_OPERAND_PREFIX) {
+    if let Some(op) = name.strip_prefix(NUMERIC_OPERAND_PREFIX) {
         let sized_float =
             crate::numeric::Numeric::of_type(ty).is_some_and(|n| n.is_sized() && n.is_float());
         let arithmetic = matches!(op, "+" | "-" | "*" | "/" | "%");
@@ -122,19 +122,18 @@ pub(crate) fn invalid_use(name: &str, ty: &Type) -> Option<String> {
         return (!valid && !matches!(ty, Type::Var(_)))
             .then(|| format!("operator `{op}` requires int or float; got {ty}"));
     }
-    if let Some(op) = operation_name(name).strip_prefix(FLOAT_OPERAND_PREFIX) {
+    if let Some(op) = name.strip_prefix(FLOAT_OPERAND_PREFIX) {
         let float =
             crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_float);
         return (!float && !matches!(ty, Type::Var(_)))
             .then(|| format!("`{op}` requires a float; got {ty}"));
     }
-    if let Some(op) = operation_name(name).strip_prefix(INTEGER_OPERAND_PREFIX) {
+    if let Some(op) = name.strip_prefix(INTEGER_OPERAND_PREFIX) {
         let integer =
             crate::numeric::Numeric::of_type(ty).is_some_and(crate::numeric::Numeric::is_integer);
         return (!integer && !matches!(ty, Type::Var(_)))
             .then(|| format!("`{op}` requires an integer; got {ty}"));
     }
-    let name = operation_name(name);
     let name = name.strip_prefix(MATRIX_OPERAND_PREFIX).unwrap_or(name);
     match name {
         "interpolation" if matches!(ty, Type::Fun { .. }) && crate::ty::has_type_var(ty) => Some(

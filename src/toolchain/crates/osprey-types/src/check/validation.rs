@@ -14,10 +14,11 @@ impl Checker {
                 Some(site) => self.ctx.exposed_at(resolved, site),
                 None => resolved,
             };
+            let operation = crate::builtin_constraints::operation_name(&name);
             let message = self
-                .undecided_comparison(&name, &resolved)
-                .or_else(|| self.undecided_structural_equals(&name, &resolved))
-                .or_else(|| crate::builtin_constraints::invalid_use(&name, &resolved));
+                .undecided_comparison(operation, &resolved)
+                .or_else(|| self.undecided_structural_equals(operation, &resolved))
+                .or_else(|| crate::builtin_constraints::invalid_use(operation, &resolved));
             if let Some(message) = message {
                 self.errors.push(
                     TypeError::new(message)

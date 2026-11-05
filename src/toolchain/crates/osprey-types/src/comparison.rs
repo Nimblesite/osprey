@@ -48,8 +48,7 @@ impl Checker {
     /// meaning; `None` for any other obligation, or a decided comparison. An
     /// unresolved variable is left alone: nothing says what it is.
     pub(crate) fn undecided_comparison(&self, name: &str, ty: &Type) -> Option<String> {
-        let op = crate::builtin_constraints::operation_name(name)
-            .strip_prefix(COMPARED_OPERAND_PREFIX)?;
+        let op = name.strip_prefix(COMPARED_OPERAND_PREFIX)?;
         let decided = matches!(ty, Type::Var(_))
             || is_scalar(ty)
             || (is_equality(op) && self.is_payload_free_union(ty));
