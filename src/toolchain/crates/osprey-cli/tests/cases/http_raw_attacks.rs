@@ -8,8 +8,8 @@
 
 use super::{
     Attack, Body, Expected, BODY_BAD_LENGTH, BODY_TRUNCATED, CHUNK_BAD_SIZE, CHUNK_BAD_TRAILER,
-    CHUNK_NO_CRLF, CHUNK_TOO_BIG, CHUNK_TRUNCATED, DEFAULT_TIMEOUT_MS, HEAD_MALFORMED, HEAD_TE_10,
-    HEAD_TRUNCATED, HOLD_OPEN_TIMEOUT_MS, MIB64, NOT_HTTP_1, NUL_BYTE, READ_OVER_TIME,
+    CHUNK_NO_CRLF, CHUNK_TOO_BIG, CHUNK_TRUNCATED, DEFAULT_TIMEOUT_MS, HEAD_MALFORMED, HEAD_NUL,
+    HEAD_TE_10, HEAD_TRUNCATED, HOLD_OPEN_TIMEOUT_MS, MIB64, NOT_HTTP_1, READ_OVER_TIME,
     SIZE_OVER_LIMIT,
 };
 
@@ -123,6 +123,9 @@ pub(super) const ATTACKS: &[Attack] = &[
     refused("chunked: data not followed by CRLF", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhelloXX0\r\n\r\n", CHUNK_NO_CRLF),
     refused("chunked: bare LF inside an extension", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5;a\nb\r\nhello\r\n0\r\n\r\n", CHUNK_BAD_SIZE),
     refused("chunked: control byte in a trailer", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX\x01: 1\r\n\r\n", CHUNK_BAD_TRAILER),
+    refused("chunked: NUL in a size line", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\x00\r\nabc\r\n0\r\n\r\n", CHUNK_BAD_SIZE),
+    refused("chunked: NUL in a trailer", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n0\r\nX-A: \x00\r\n\r\n", CHUNK_BAD_TRAILER),
+    ok("chunked: binary body", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\n\x00a\x00\r\n2\r\nb\x00\r\n0\r\n\r\n", 200, "\0a\0b\0"),
     refused("chunked: cut off before the terminator", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n5\r\nhello\r\n", CHUNK_TRUNCATED),
     // The head [HTTP-RESPONSE-FRAMING]
     held("head: interim 100 then 200", b"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok", 200, "ok"),
@@ -134,13 +137,14 @@ pub(super) const ATTACKS: &[Attack] = &[
     refused("head: folded line", b"HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip,\r\n chunked\r\n\r\n2\r\nhi\r\n0\r\n\r\n", HEAD_MALFORMED),
     refused("head: line with no colon", b"HTTP/1.1 200 OK\r\nno colon\r\n\r\nb", HEAD_MALFORMED),
     refused("head: space before the colon", b"HTTP/1.1 200 OK\r\nTransfer-Encoding : chunked\r\n\r\n7FFFFFFF\r\nhi\r\n", HEAD_MALFORMED),
-    refused("head: NUL in a header value", b"HTTP/1.1 200 OK\r\nX-A: \x00\r\n\r\nhello", NUL_BYTE),
-    refused("head: NUL inside the body", b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhe\x00lo", NUL_BYTE),
+    refused("head: NUL in a header value", b"HTTP/1.1 200 OK\r\nX-A: \x00\r\n\r\nhello", HEAD_NUL),
+    ok("close: binary body", b"HTTP/1.1 200 OK\r\n\r\n\x00he\x00lo\x00", 200, "\0he\0lo\0"),
     refused("status: HTTP/2", b"HTTP/2 200\r\n\r\nb", NOT_HTTP_1),
     refused("status: two digits", b"HTTP/1.1 20 OK\r\n\r\nb", NOT_HTTP_1),
     refused("status: four digits", b"HTTP/1.1 2000 OK\r\n\r\nb", NOT_HTTP_1),
     // Content-Length framing [HTTP-RESPONSE-FRAMING]
     ok("length: exact", b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello", 200, "hello"),
+    ok("length: binary body", b"HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhe\x00lo", 200, "he\0lo"),
     ok("length: extra bytes dropped", b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhello", 200, "he"),
     refused("length: short and closed", b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nshort", BODY_TRUNCATED),
     refused("length: junk", b"HTTP/1.1 200 OK\r\nContent-Length: x\r\n\r\nhello", BODY_BAD_LENGTH),

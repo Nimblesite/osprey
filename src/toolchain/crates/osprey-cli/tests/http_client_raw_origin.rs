@@ -50,7 +50,7 @@ const HEAD_TE_10: &str = "http response: head: Transfer-Encoding on HTTP/1.0";
 const BODY_TRUNCATED: &str = "http response: body: truncated";
 const BODY_BAD_LENGTH: &str = "http response: body: invalid Content-Length";
 const NOT_HTTP_1: &str = "http response: status line: not HTTP/1.x";
-const NUL_BYTE: &str = "http response: NUL byte: a string cannot hold it";
+const HEAD_NUL: &str = "http response: head: contains NUL";
 const SIZE_OVER_LIMIT: &str = "http response: size: over the limit";
 const READ_OVER_TIME: &str = "http response: read: over the time limit";
 
@@ -88,7 +88,10 @@ fn shown(index, status, body) = {
     let huge = length(body) > 1024
     match huge {
         true => "${index} ${status} len=${length(body)}"
-        false => "${index} ${status} ${body}"
+        false => match jsonEncode(JsonString(body)) {
+            Success { value } => "${index} ${status} ${value}"
+            Error { message } => "${index} Error ${message}"
+        }
     }
 }
 
@@ -141,7 +144,9 @@ shown (index, status, body) =
     huge = length(body) > 1024
     match huge
         true => "${index} ${status} len=${length(body)}"
-        false => "${index} ${status} ${body}"
+        false => match jsonEncode (JsonString body)
+            Success value => "${index} ${status} ${value}"
+            Error message => "${index} Error ${message}"
 
 answered (index, responseId) = match httpResponseBody responseId
     Success value =>
@@ -199,10 +204,12 @@ fn timeout_arms(table: &[Attack]) -> String {
     arms
 }
 
-/// The exact line the client must print for one attack: the framed answer as `<index> <status> <body>` (a huge body as its length), or `<index> Error <message>` for a refusal.
+/// Check small bodies as JSON text so NUL survives the console boundary.
 fn expected_line(index: usize, expect: &Expected) -> String {
     match expect {
-        Expected::Response(status, Body::Text(body)) => format!("{index} {status} {body}"),
+        Expected::Response(status, Body::Text(body)) => {
+            format!("{index} {status} \"{}\"", body.replace('\0', r"\u0000"))
+        }
         Expected::Response(status, Body::Len(len)) => format!("{index} {status} len={len}"),
         Expected::Refused(message) => format!("{index} Error {message}"),
     }
