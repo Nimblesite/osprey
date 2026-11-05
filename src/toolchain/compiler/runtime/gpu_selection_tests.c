@@ -197,7 +197,7 @@ static void host_delta_case(void) {
   osprey_gpu_finalize(r1); osprey_gpu_finalize(r2);
 }
 static void host_api_workflow(void) {
-  select_mode("host"); osp_io_error_clear();
+  select_mode("host"); osp_io_error_clear(); refused(osprey_gpu_alloc(1, 3));
   float ones[512];
   for (int i = 0; i < 512; i++) ones[i] = 1.0f;
   void *x = floats_of(ones, 512);
