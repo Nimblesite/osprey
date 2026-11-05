@@ -18,3 +18,7 @@ Every reader is total: it reads a missing or mistyped member as its empty value.
 ```toml
 source_roots = ["src", "../../packages/native/src", "../../packages/graphics/src", "../../packages/json/src"]
 ```
+
+## Origin and license
+
+Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

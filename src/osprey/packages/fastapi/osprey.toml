@@ -6,6 +6,6 @@ default_namespace = "fastapi"
 
 [package]
 name = "@osprey/fastapi"
-license = "MIT"
+license = "MIT AND BSD-3-Clause"
 summary = "FastAPI behavior port in Python flavor Osprey"
 keywords = ["api", "fastapi", "http", "python-flavor"]

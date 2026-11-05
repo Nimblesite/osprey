@@ -16,3 +16,13 @@ The Rust integration harness discovers `tests/osprey.toml`, compares stdout with
 The suite checks 258 assertions, including 155 additional upstream-derived parser, recipe and shape reconstruction cases: empty/unit groups, ellipsis placement, axis permutations, every reduction operation, repeat sizes, zero shapes and invalid inputs. Both backends match the golden exactly; measured own-source coverage is 432/448 lines (96.4%). Reference values and rejection messages come from einops 0.8.2, not the port.
 
 This remains a shape/recipe subset. Unicode axis identifiers accepted by Python are not supported by the current ASCII identifier scanner; upstream tensor execution and full upstream-suite parity are unfinished. Internal recipe ordering for multiple added repeat axes varies with upstream hash randomization, so the fixed reference corpus does not yet cover that ordering family.
+
+## Origin, license and thanks
+
+**Original project:** [einops](https://github.com/arogozhnikov/einops).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps einops's module, function and argument names wherever it can, and its tests compare results with einops 0.8.2 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and einops is not bundled, linked or needed at run time.
+
+**License.** einops is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of einops's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to Alex Rogozhnikov and the einops contributors for [einops](https://github.com/arogozhnikov/einops). Naming einops credits it; it does not imply that its maintainers endorse this port.

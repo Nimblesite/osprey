@@ -12,6 +12,16 @@ immutable records of their hyperparameters; `*_fit` returns a fitted record and
 `*_transform` applies it, so `StandardScaler().fit(X).transform(X)` becomes
 `standard_scaler_transform(standard_scaler_fit(scaler, X), X)`.
 
+## Origin, license and thanks
+
+**Original project:** [scikit-learn](https://github.com/scikit-learn/scikit-learn).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps scikit-learn's module, function and argument names wherever it can, and its tests compare results with scikit-learn 1.9.1 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and scikit-learn is not bundled, linked or needed at run time.
+
+**License.** scikit-learn is BSD-3-Clause licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of scikit-learn's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to the scikit-learn developers for [scikit-learn](https://github.com/scikit-learn/scikit-learn). Naming scikit-learn credits it; it does not imply that its maintainers endorse this port.
+
 ## Modules
 
 | Module | Contents |

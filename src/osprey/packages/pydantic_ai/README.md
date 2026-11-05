@@ -20,6 +20,16 @@ An Osprey Python-flavor port of the [pydantic-ai](https://github.com/pydantic/py
 | `Mcp` | `pydantic_ai.mcp` | the MCP wire protocol as a sans-IO client: JSON-RPC messages and results, stdio line framing, streamable HTTP and SSE, `tools/list`/`tools/call` mapping, `MCPServerConfig` parsing with `${VAR}` expansion and merging |
 | `Exceptions` | `pydantic_ai.exceptions` | `ModelHTTPError`, `ModelAPIError`, `UserError`, `UnexpectedModelBehavior`, `UsageLimitExceeded` as the `ModelError` union, carried by `Outcome[T]` |
 
+## Origin, license and thanks
+
+**Original project:** [pydantic-ai](https://github.com/pydantic/pydantic-ai).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps pydantic-ai's module, function and argument names wherever it can, and its tests compare results with pydantic-ai 2.46.0 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and pydantic-ai is not bundled, linked or needed at run time.
+
+**License.** pydantic-ai is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of pydantic-ai's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to Pydantic Services Inc. and the pydantic-ai contributors for [pydantic-ai](https://github.com/pydantic/pydantic-ai), and to OpenAI's [openai-python](https://github.com/openai/openai-python) (Apache-2.0), whose Chat Completions wire format the tests record. Naming pydantic-ai credits it; it does not imply that its maintainers endorse this port.
+
 ## What differs from CPython
 
 - Osprey has no exceptions, optional fields or runtime introspection. A model request or agent run answers `Outcome[T]`: `Ok(value=)` or `Failed(error=)` with a `ModelError` variant. Optional strings are empty (`instructions`, `finish_reason`, `tool_name` of a plain retry, `model_name`), and `ModelMessage` wraps the two records as `Request(request=)` / `Response(response=)`.

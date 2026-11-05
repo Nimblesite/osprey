@@ -16,3 +16,7 @@ source_roots = ["src", "../../packages/native/src", "../../packages/graphics/src
 ```
 
 The types live in the `ui` namespace, so `ui::Scenes::rect` and `ui::Primitive` read the same as before the package was split out of `@osprey/native`.
+
+## Origin and license
+
+Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

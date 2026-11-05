@@ -16,3 +16,7 @@ python3 scripts/packages/package_coverage.py --collect --package vscode
 ```
 
 Expect six passing cases and 100% own-source line coverage. [Tests](tests/main.ospml) cover resource scopes, subprocess input and bounds, invalid requests, and start/dispatch routing. [The package-manager application](../manager/editor/) is the first consumer. `OSPREY_TEST_GREP='package workspace|compiled SDK renderer E2E' npm test --prefix vscode-extension` exercises its actual VS Code/WASM host, including normalization, pending edits, removed bindings and security warnings.
+
+## Origin and license
+
+Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

@@ -27,6 +27,10 @@ flowchart LR
     H -->|events with framework IDs| D
 ```
 
+## Origin and license
+
+Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+
 ## Layout
 
 | Path | Contents |

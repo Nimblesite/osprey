@@ -4,6 +4,16 @@ A port of Hugging Face [`tokenizers`](https://github.com/huggingface/tokenizers)
 
 The suite compares ids, tokens, char offsets, type ids and decodes with the real package on empty, whitespace, punctuation, accented Latin, CJK, emoji, very-long-word and unknown inputs.
 
+## Origin, license and thanks
+
+**Original project:** [tokenizers](https://github.com/huggingface/tokenizers).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps tokenizers's module, function and argument names wherever it can, and its tests compare results with tokenizers 0.23.3 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and tokenizers is not bundled, linked or needed at run time.
+
+**License.** tokenizers is Apache-2.0 licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of tokenizers's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it (copies in [LICENSES/](LICENSES/)).
+
+**Thanks** to Hugging Face and the tokenizers contributors for [tokenizers](https://github.com/huggingface/tokenizers), to OpenAI for GPT-2's byte-to-unicode mapping, and to the Unicode Consortium, whose character data the tables in NOTICE.md derive from. Naming tokenizers credits it; it does not imply that its maintainers endorse this port.
+
 ## API map
 
 | Osprey module | Function | Original |

@@ -4,6 +4,16 @@ Casts a local audio file to a Chromecast or Google TV. This is a port of a stdli
 
 The package was checked by hand against two real devices (a Chromecast and a Google TV) with `Dns.discover` and `Cast.status`. Their output matched the reference CLI's `--status`. The suite then drives the whole sender against a scripted device: `openssl s_server` with a self-signed certificate, replaying canned device frames. [live/](live/main.py) is the opt-in check that plays real audio: with a TV's name in `.osprey/live-cast-tv`, it casts a six-second tone and checks playing, paused, resumed, seek, volume and `DONE FINISHED`. It passed on both of those devices.
 
+## Origin, license and thanks
+
+**Original project:** none. This is a port of `cast.py`, a short stdlib-only CPython CAST v2 sender that Claude (Anthropic's model) wrote for the maintainer on 31 October 2026, working from its own knowledge of the protocol. It was not copied from another project and was never published on its own; its pure functions are kept in [oracle/chromecast.cpython](oracle/chromecast.cpython), which the tests compare against.
+
+**How it was ported.** Osprey's Python flavor reads like Python, so the port keeps the script's function names and decisions, and splits its I/O out into the `Wire` effect and two C runtime units.
+
+**License.** MIT, Copyright NIMBLESITE PTY LTD, Australia. No third-party code is included. The CAST v2 protocol and the Default Media Receiver id belong to Google; Chromecast and Google TV are Google trademarks, named only to say what the package talks to. See [NOTICE.md](NOTICE.md).
+
+**Thanks** to the open-source Cast senders that documented the protocol in public, including [pychromecast](https://github.com/home-assistant-libs/pychromecast) and [catt](https://github.com/skorokithakis/catt). No code from them is included, and naming them does not imply that they endorse this package.
+
 ## Using it
 
 ```python

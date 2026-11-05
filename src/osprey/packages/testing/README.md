@@ -13,6 +13,14 @@ Assertions for the Python-flavor package ports ([spec 0043](../../../../docs/spe
 
 The suite in `tests/` compares each verdict with real `numpy.isclose`; `src/osprey/packages/testing/oracle/testing.cpython` regenerates `tests/expected.py` from it.
 
+## Origin, license and thanks
+
+**Original project:** none; these are Osprey's own assertions. `Check.close` and `Check.close_all` follow the closeness formula of [NumPy](https://github.com/numpy/numpy)'s `isclose` (BSD-3-Clause), reimplemented for Osprey.
+
+**License.** MIT, Copyright NIMBLESITE PTY LTD, Australia. See [NOTICE.md](NOTICE.md).
+
+**Thanks** to the NumPy developers. Naming NumPy credits it; it does not imply that its maintainers endorse this package.
+
 ## Bug hunts
 
 `hunt/` holds `osprey hunt` drivers ([PORT-HUNT]), each its own project: `float_of` (one symbolic line through `Check.float_of` and `Check.near`), `near` (two symbolic lines through `Check.near`) and `arith` (`Check.strictly` over `//`, `%`, `/`, `+` on two symbolic ints). `float_of` explored 13,932 paths and `near` 947, all clean. `arith` stops at an `unmodelled __osprey_coro_new` finding by design: `Check.strictly` is a `@control` region, which runs on its own thread, and symbolic execution follows one thread ([SYMEX-MOCK-UNSUPPORTED](../../../../docs/specs/tooling/SymbolicExecution.md)). The policy's four fault classes are verified natively and by the suite instead.

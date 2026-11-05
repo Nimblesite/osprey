@@ -4,6 +4,16 @@ A port of [karpathy/micrograd](https://github.com/karpathy/micrograd) (PyPI 0.1.
 
 micrograd's `Value` is a mutable graph of `grad` fields and `_backward` closures. Osprey values are immutable, so the port keeps the same semantics in one immutable graph **arena**: a `Graph` record holds every node ever built, in creation order, and a node's id is its index. Every operation appends its nodes exactly as micrograd's operators construct `Value`s — including the leaf a bare Python number is wrapped into — and returns the extended graph. `backward` computes the gradient of every node using micrograd's own depth-first topological order and chain-rule accumulation, so float64 gradients are checked against micrograd at rtol 1e-12, or 1e-9 for `tanh`/`exp` and mixed transcendental cases.
 
+## Origin, license and thanks
+
+**Original project:** [micrograd](https://github.com/karpathy/micrograd).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps micrograd's module, function and argument names wherever it can, and its tests compare results with micrograd 0.1.0 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and micrograd is not bundled, linked or needed at run time.
+
+**License.** micrograd is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of micrograd's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it (copies in [LICENSES/](LICENSES/)).
+
+**Thanks** to Andrej Karpathy for [micrograd](https://github.com/karpathy/micrograd) and the [nn-zero-to-hero](https://github.com/karpathy/nn-zero-to-hero) lectures. Naming micrograd credits it; it does not imply that its maintainers endorse this port.
+
 ## Engine (`micrograd.Engine`)
 
 | Function | Original | Notes |

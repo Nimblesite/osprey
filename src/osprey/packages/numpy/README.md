@@ -13,3 +13,13 @@ OSPREY_ARC_DEBUG=1 target/release/osprey src/osprey/packages/numpy/tests --run -
 ```
 
 The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. Presence of a suite does not establish that it passes; compiler diagnostics, assertion failures and missing golden files remain failures.
+
+## Origin, license and thanks
+
+**Original project:** [NumPy](https://github.com/numpy/numpy).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps NumPy's module, function and argument names wherever it can, and its tests compare results with NumPy 2.5.4 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and NumPy is not bundled, linked or needed at run time.
+
+**License.** NumPy is BSD-3-Clause licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of NumPy's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to the NumPy developers for [NumPy](https://github.com/numpy/numpy). Naming NumPy credits it; it does not imply that its maintainers endorse this port.

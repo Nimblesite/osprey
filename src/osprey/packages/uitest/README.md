@@ -24,3 +24,7 @@ tapAt (label, fraction) =
 ```
 
 `make _ui-test` runs the suites built on it: `src/osprey/packages/uitest/tests`, `src/osprey/examples/casting/test` and `src/osprey/packages/signal_flow/tests`. To drive the same app through a real host, with or without a window, write its `self-test.json` ([UI-MACHINE-SELF-TEST]).
+
+## Origin and license
+
+Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).

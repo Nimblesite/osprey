@@ -1,4 +1,5 @@
 # osprey: flavor=python
+# Adapted from Hugging Face Transformers' Qwen3.5 model, Copyright 2025 The Qwen Team and The HuggingFace Inc. team, Apache-2.0; translated and changed for Osprey. Terms: ../NOTICE.md.
 # osprey: namespace=transformers
 # osprey: module=Qwen3_5Norm
 """`Qwen3_5RMSNorm` and `Qwen3_5RMSNormGated` on device buffers, one token at a time.

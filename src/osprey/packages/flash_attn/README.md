@@ -17,6 +17,16 @@ A naive reference attention (`Naive.naive_attention`) ships in the same package 
 proves the flash path against an independent implementation of the same conventions; the
 original package ships no Python reference, so this is a port addition for testing.
 
+## Origin, license and thanks
+
+**Original project:** [FlashAttention](https://github.com/Dao-AILab/flash-attention).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps FlashAttention's module, function and argument names wherever it can, and its tests compare results with FlashAttention running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and FlashAttention is not bundled, linked or needed at run time.
+
+**License.** FlashAttention is BSD-3-Clause licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of FlashAttention's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to Tri Dao and the flash-attention contributors for [FlashAttention](https://github.com/Dao-AILab/flash-attention). Naming FlashAttention credits it; it does not imply that its maintainers endorse this port.
+
 ## API map
 
 | Ported function | Original | Notes |

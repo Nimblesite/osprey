@@ -11,6 +11,10 @@ A signal-flow graph editor whose whole interface is data ([UI-MACHINE-FLOW](../.
 
 On the canvas you can switch any node off (bypass it), drag the control and process parameters on the node or in the inspector, select a node to inspect its connections, health and parameter, undo and redo, and change skin from the title menu. Health and readouts such as throughput come from the adapter's evaluation: level = source × process × control, where a bypassed process passes its input through.
 
+## Origin and license
+
+Original Osprey code, not a port of another project. MIT, Copyright NIMBLESITE PTY LTD, Australia; see [LICENSE](LICENSE) and [NOTICE.md](NOTICE.md).
+
 ## Run
 
 ```sh

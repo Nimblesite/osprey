@@ -14,6 +14,16 @@ OSPREY_ARC_DEBUG=1 target/release/osprey src/osprey/packages/jinja2/tests --run 
 
 The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. Presence of a suite does not establish that it passes; compiler diagnostics, assertion failures and missing golden files remain failures.
 
+## Origin, license and thanks
+
+**Original project:** [Jinja](https://github.com/pallets/jinja).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps Jinja's module, function and argument names wherever it can, and its tests compare results with Jinja 3.1.6 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and Jinja is not bundled, linked or needed at run time.
+
+**License.** Jinja is BSD-3-Clause licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of Jinja's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it (copies in [LICENSES/](LICENSES/)).
+
+**Thanks** to the Pallets team and the Jinja contributors for [Jinja](https://github.com/pallets/jinja), and to the Qwen team at Alibaba Cloud, whose Apache-2.0 chat template is a test fixture here. Naming Jinja credits it; it does not imply that its maintainers endorse this port.
+
 ## What the port covers
 
 | Osprey module | Jinja2 surface it reimplements |

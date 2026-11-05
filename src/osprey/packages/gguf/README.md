@@ -14,6 +14,16 @@ OSPREY_ARC_DEBUG=1 target/release/osprey src/osprey/packages/gguf/tests --run --
 
 The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. Presence of a suite does not establish that it passes; compiler diagnostics, assertion failures and missing golden files remain failures.
 
+## Origin, license and thanks
+
+**Original project:** [gguf-py](https://github.com/ggml-org/llama.cpp/tree/master/gguf-py).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps gguf-py's module, function and argument names wherever it can, and its tests compare results with gguf-py 0.19.0 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: apart from ggml's quantization layouts and tables, which NOTICE.md lists, the code is written for Osprey's types, effects and runtime, and gguf-py is not bundled, linked or needed at run time.
+
+**License.** gguf-py is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of gguf-py's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it (copies in [LICENSES/](LICENSES/)).
+
+**Thanks** to Georgi Gerganov and the ggml and llama.cpp contributors for [gguf-py](https://github.com/ggml-org/llama.cpp/tree/master/gguf-py), part of [llama.cpp](https://github.com/ggml-org/llama.cpp). Naming gguf-py credits it; it does not imply that its maintainers endorse this port.
+
 ## Layout
 
 | Module | Contents |

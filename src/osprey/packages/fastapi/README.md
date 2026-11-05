@@ -4,6 +4,16 @@ A port of FastAPI's public behavior for Osprey's Python flavor.
 
 The pinned reference is FastAPI 0.135.3. This port is MIT licensed by NIMBLESITE PTY LTD, Australia, and retains FastAPI's MIT notice, Copyright (c) 2018 Sebastián Ramírez; see [NOTICE.md](NOTICE.md). Compiled applications do not embed the CPython framework.
 
+## Origin, license and thanks
+
+**Original project:** [FastAPI](https://github.com/fastapi/fastapi).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps FastAPI's module, function and argument names wherever it can, and its tests compare results with FastAPI 0.135.3 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: apart from what NOTICE.md lists, the code is written for Osprey's types, effects and runtime, and FastAPI is not bundled, linked or needed at run time.
+
+**License.** FastAPI is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of FastAPI's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it (copies in [LICENSES/](LICENSES/)).
+
+**Thanks** to Sebastián Ramírez and the FastAPI contributors for [FastAPI](https://github.com/fastapi/fastapi), and to Encode OSS Ltd and the [Starlette](https://github.com/Kludex/starlette) contributors (BSD-3-Clause), whose CORS middleware `src/applications.py` adapts. Naming FastAPI credits it; it does not imply that its maintainers endorse this port.
+
 ## HTTP boundary [FASTAPI-HTTP]
 
 `Applications.serve(port, host, app)` returns a fallible server handle. `Routing.route(method, path, handler)` stores a typed request handler; `include_router` composes immutable router lists with a prefix. `Applications.application(routes, middleware)` wraps routing in ordered request middleware. `Responses` constructs responses and translates them to the runtime ABI. Errors from listener creation propagate to the application.

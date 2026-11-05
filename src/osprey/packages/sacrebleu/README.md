@@ -7,6 +7,16 @@ was computed by the real sacrebleu (`src/osprey/packages/sacrebleu/oracle/sacreb
 BLEU with every smoothing method, effective order, lowercasing and multiple references, chrF2 and
 chrF++, and the tokenizers over ASCII, punctuation, digits, accents, CJK and emoji text.
 
+## Origin, license and thanks
+
+**Original project:** [SacreBLEU](https://github.com/mjpost/sacrebleu).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps SacreBLEU's module, function and argument names wherever it can, and its tests compare results with SacreBLEU 2.6.0 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and SacreBLEU is not bundled, linked or needed at run time.
+
+**License.** SacreBLEU is Apache-2.0 licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of SacreBLEU's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to Matt Post and the SacreBLEU contributors for [SacreBLEU](https://github.com/mjpost/sacrebleu). Naming SacreBLEU credits it; it does not imply that its maintainers endorse this port.
+
 ## API
 
 | Osprey | sacrebleu | Notes |

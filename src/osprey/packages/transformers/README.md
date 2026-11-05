@@ -4,6 +4,16 @@ A port of Hugging Face Transformers' model-independent generation layer to the O
 
 The port owns the generation layer only — logits processors/warpers, the sampling primitives, and stopping criteria — operating on a batch of logits rows given as `list[list[float32]]` and token histories as `list[list[int]]`. Model architectures arrive later on top of `@osprey/torch`.
 
+## Origin, license and thanks
+
+**Original project:** [Transformers](https://github.com/huggingface/transformers) 5.20.2, by Hugging Face. The Qwen3.5 model follows `modeling_qwen3_5.py`, by the Qwen team and Hugging Face.
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps Transformers' class, function and argument names wherever it can, and its tests compare results with Transformers and PyTorch running under CPython. The generation layer and the tool-call modules are reimplementations written for Osprey. The Qwen3.5 model modules go further: they are translations of Transformers' PyTorch code into Osprey GPU code, keeping its structure, names and arithmetic. They are treated as derived from that code, and each says so in its header.
+
+**License.** Transformers is Apache-2.0 licensed. The Qwen3.5 model modules stay under Apache-2.0 (copy in [LICENSES/](LICENSES/)), and so does the Qwen chat template carried as a test fixture. The rest of the package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant does not relicense any Apache-2.0 code. [NOTICE.md](NOTICE.md) names every derived file and what was changed.
+
+**Thanks** to Hugging Face and the Transformers contributors, to the Qwen team at Alibaba Cloud for Qwen3.5 and its chat template, and to the [vLLM](https://github.com/vllm-project/vllm) project, whose `Qwen3CoderToolParser` set the tool-call framing rules. Naming them credits their work; it does not imply that they endorse this port.
+
 ## Layout
 
 | Module | Contents |

@@ -11,6 +11,16 @@ faiss computes in float32 and Osprey in binary64. The oracle feeds dyadic ration
 both and search distances and labels compare exactly; `normalize_L2` compares at `rtol 1e-6`
 because faiss normalizes with a float32 reciprocal square root.
 
+## Origin, license and thanks
+
+**Original project:** [Faiss](https://github.com/facebookresearch/faiss).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps Faiss's module, function and argument names wherever it can, and its tests compare results with Faiss (faiss-cpu 1.15.1) running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and Faiss is not bundled, linked or needed at run time.
+
+**License.** Faiss is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of Faiss's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to Meta Platforms, Inc. and the Faiss contributors for [Faiss](https://github.com/facebookresearch/faiss). Naming Faiss credits it; it does not imply that its maintainers endorse this port.
+
 ## API
 
 | Osprey | faiss | Notes |

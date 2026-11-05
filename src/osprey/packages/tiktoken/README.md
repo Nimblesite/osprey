@@ -4,6 +4,16 @@ A byte-level BPE tokenizer port of [tiktoken](https://github.com/openai/tiktoken
 
 The vocabulary is a string-keyed map: token bytes become one canonical key by shifting each byte to the code point `b + 1` (code point 0 cannot live in an Osprey string), so concatenating keys is the key of the concatenated bytes — which makes a merge a string concatenation. The suite's expected values are computed by the real tiktoken (`src/osprey/packages/tiktoken/oracle/tiktoken.cpython`, tiktoken 0.14.0, `regex` 2026.9.29, Unicode 15.0.0).
 
+## Origin, license and thanks
+
+**Original project:** [tiktoken](https://github.com/openai/tiktoken).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps tiktoken's module, function and argument names wherever it can, and its tests compare results with tiktoken 0.14.0 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and tiktoken is not bundled, linked or needed at run time.
+
+**License.** tiktoken is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of tiktoken's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it (copies in [LICENSES/](LICENSES/)).
+
+**Thanks** to OpenAI and the tiktoken contributors for [tiktoken](https://github.com/openai/tiktoken), and to the Unicode Consortium, whose character data the tables in NOTICE.md derive from. Naming tiktoken credits it; it does not imply that its maintainers endorse this port.
+
 ## API
 
 | Function | Original | Notes |

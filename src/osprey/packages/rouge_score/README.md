@@ -8,6 +8,16 @@ its default tokenizer, and the Porter stemmer as nltk 3.10.4's `PorterStemmer` i
 oracle assertions over targets and predictions of every length, repeated n-grams, punctuation,
 digits, multi-sentence summaries and several hundred stemmer inputs.
 
+## Origin, license and thanks
+
+**Original project:** [rouge-score](https://github.com/google-research/google-research/tree/master/rouge).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps rouge-score's module, function and argument names wherever it can, and its tests compare results with rouge-score 0.1.2 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and rouge-score is not bundled, linked or needed at run time.
+
+**License.** rouge-score is Apache-2.0 licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of rouge-score's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to the Google Research authors for [rouge-score](https://github.com/google-research/google-research/tree/master/rouge), and to the [NLTK](https://github.com/nltk/nltk) project (Apache-2.0), whose Porter stemmer behavior the port follows. Naming rouge-score credits it; it does not imply that its maintainers endorse this port.
+
 ## API
 
 | Osprey | rouge_score | Notes |
