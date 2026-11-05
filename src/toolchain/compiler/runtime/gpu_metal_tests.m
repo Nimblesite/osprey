@@ -16,6 +16,33 @@ static NSUInteger mapped_bytes, mapped_skip;
 static unsigned no_copies;
 // The buffers bound to the encoder since the last commit.
 static NSMutableArray *encoded;
+// Timing contracts: the common timestamp set yields one deterministic pair per
+// dispatch, and the command buffer exposes the segment's GPU start/end.
+#define TIMESTAMP_SAMPLES (2 * 1024) // 2 * GPU_BATCH_CAP in gpu_metal.m
+static BOOL counter_supported;
+static unsigned clock_reads, counter_set_queries, sample_creations, sample_resolves;
+static unsigned timestamp_encoders, plain_encoders;
+
+@interface OspreyMockCounterSet : NSObject
+@end
+@implementation OspreyMockCounterSet
+- (NSString *)name { return MTLCommonCounterSetTimestamp; }
+@end
+
+// Sample 2*i starts at i ms and sample 2*i+1 ends 0.5 ms later, so every
+// dispatch's pair is exactly 500 ticks however the batch is split.
+@interface OspreyMockSampleBuffer : NSObject
+@end
+@implementation OspreyMockSampleBuffer
+- (NSData *)resolveCounterRange:(NSRange)range {
+  assert(range.location == 0 && range.length == TIMESTAMP_SAMPLES);
+  MTLCounterResultTimestamp stamps[TIMESTAMP_SAMPLES];
+  for (NSUInteger i = 0; i < TIMESTAMP_SAMPLES; i++)
+    stamps[i].timestamp = (i / 2) * 1000 + (i % 2 ? 500 : 0);
+  sample_resolves++;
+  return [NSData dataWithBytes:stamps length:sizeof stamps];
+}
+@end
 
 @interface OspreyMockMetal : NSObject
 @property(nonatomic, strong) NSMutableData *data;
@@ -27,6 +54,23 @@ static NSMutableArray *encoded;
 // The pool keys reuse on a buffer's exact byte length.
 - (NSUInteger)length { return self.data.length; }
 - (NSUInteger)maxTotalThreadsPerThreadgroup { return 256; }
+- (BOOL)supportsCounterSampling:(MTLCounterSamplingPoint)point {
+  assert(point == MTLCounterSamplingPointAtStageBoundary);
+  return counter_supported;
+}
+- (NSArray *)counterSets {
+  counter_set_queries++;
+  return @[[OspreyMockCounterSet new]];
+}
+- (id)newCounterSampleBufferWithDescriptor:(MTLCounterSampleBufferDescriptor *)descriptor error:(NSError **)error {
+  assert(descriptor.counterSet != nil && [descriptor.counterSet.name isEqualToString:MTLCommonCounterSetTimestamp]);
+  assert(descriptor.storageMode == MTLStorageModeShared && descriptor.sampleCount == TIMESTAMP_SAMPLES);
+  (void)error;
+  sample_creations++;
+  return [OspreyMockSampleBuffer new];
+}
+- (CFTimeInterval)GPUStartTime { clock_reads++; return 1.0; }
+- (CFTimeInterval)GPUEndTime { clock_reads++; return 1.0025; }
 - (void *)contents { return self.mapped ? self.mapped : self.data.mutableBytes; }
 - (void)dealloc { if (self.data) deallocs++; }
 - (id)newCommandQueue { return failure == 2 ? nil : [OspreyMockMetal new]; }
@@ -80,7 +124,21 @@ static NSMutableArray *encoded;
   return [self newBufferWithBytes:[NSMutableData dataWithLength:length].bytes length:length options:options];
 }
 - (id)commandBuffer { return failure == 7 ? nil : [OspreyMockMetal new]; }
-- (id)computeCommandEncoder { return failure == 8 ? nil : [OspreyMockMetal new]; }
+- (id)computeCommandEncoder {
+  if (failure == 8) return nil;
+  plain_encoders++;
+  return [OspreyMockMetal new];
+}
+- (id)computeCommandEncoderWithDescriptor:(MTLComputePassDescriptor *)descriptor {
+  assert(failure != 8);
+  MTLComputePassSampleBufferAttachmentDescriptor *attachment = descriptor.sampleBufferAttachments[0];
+  assert(attachment != nil && [attachment.sampleBuffer isKindOfClass:[OspreyMockSampleBuffer class]]);
+  // Each dispatch in the batch gets the next even/odd timestamp pair.
+  assert(attachment.startOfEncoderSampleIndex == 2 * timestamp_encoders);
+  assert(attachment.endOfEncoderSampleIndex == 2 * timestamp_encoders + 1);
+  timestamp_encoders++;
+  return [OspreyMockMetal new];
+}
 - (void)setComputePipelineState:(id)pipeline { assert(pipeline); }
 - (void)setBuffer:(id)buffer offset:(NSUInteger)offset atIndex:(NSUInteger)index {
   OspreyMockMetal *object = buffer;
@@ -318,6 +376,90 @@ static void success_case(void) {
   recycled_case();
 }
 
+static FILE *captured;
+static int saved_stderr = -1;
+
+// Capture this child's receipts without touching the parent's stderr.
+static void capture_begin(void) {
+  captured = tmpfile();
+  assert(captured != NULL);
+  fflush(stderr);
+  saved_stderr = dup(STDERR_FILENO);
+  assert(saved_stderr >= 0 && dup2(fileno(captured), STDERR_FILENO) >= 0);
+}
+
+static size_t capture_end(char *text, size_t size) {
+  fflush(stderr);
+  assert(saved_stderr >= 0 && dup2(saved_stderr, STDERR_FILENO) >= 0);
+  close(saved_stderr);
+  saved_stderr = -1;
+  rewind(captured);
+  size_t length = fread(text, 1, size - 1, captured);
+  text[length] = '\0';
+  fclose(captured);
+  captured = NULL;
+  return length;
+}
+
+static unsigned occurrences(const char *text, const char *needle) {
+  unsigned count = 0;
+  for (const char *at = strstr(text, needle); at != NULL; at = strstr(at + 1, needle)) count++;
+  return count;
+}
+
+// [LLM-SPEED] Mode 1 reports segment time; mode 2 uses timestamp pairs when
+// supported and otherwise falls back to normal encoders without fake samples.
+static void timing_receipts(int mode, int supported, unsigned start_resolves, const char *report) {
+  if (mode == 2 && supported) {
+    assert(counter_set_queries == 1 && sample_creations == 1 && timestamp_encoders == 3);
+    assert(plain_encoders == 0 && sample_resolves == start_resolves + 1);
+    assert(occurrences(report, "over 1 threads ran 0.5000 ms on the device") == 3);
+  } else {
+    assert(counter_set_queries == 0 && sample_creations == 0 && timestamp_encoders == 0);
+    assert(sample_resolves == start_resolves && plain_encoders == (mode == 1 ? 1 : 3));
+    assert(occurrences(report, "over 1 threads ran ") == 0);
+  }
+  assert(strstr(report, "[gpu] batch of 3 dispatches ran 2.500 ms on the device") != NULL);
+}
+
+static void timing_success(int mode, int supported) {
+  static char report[4096];
+  int64_t in[2] = {5, 6}, out[2] = {99, 99};
+  void *in_slot = NULL, *out_slot = NULL;
+  unsigned start_commits = commits, start_resolves = sample_resolves;
+  capture_begin();
+  for (unsigned round = 0; round < 3; round++) {
+    OspreyGpuDispatch d = product_of(in, out, &in_slot, &out_slot);
+    assert(osprey_gpu_metal_dispatch(&d) == 1 && in_slot && out_slot);
+    assert(commits == start_commits && osprey_gpu_metal_completed() == 0);
+  }
+  assert(osprey_gpu_metal_download(out_slot, out, sizeof out) == 1 && out[0] == MOCK_MARK && out[1] == 99);
+  assert(commits == start_commits + 1 && osprey_gpu_metal_completed() == 3);
+  assert(clock_reads == 2); // GPUStartTime and GPUEndTime on the one segment
+  assert(capture_end(report, sizeof report) > 0);
+  timing_receipts(mode, supported, start_resolves, report);
+  osprey_gpu_metal_release(in_slot);
+  osprey_gpu_metal_release(out_slot);
+}
+
+static void timing_case(int mode, int supported) {
+  pid_t child = fork();
+  assert(child >= 0);
+  if (!child) {
+    char text[2] = {(char)('0' + mode), '\0'};
+    // Set before any dispatch: timing_mode reads the environment once per process.
+    assert(setenv("OSPREY_GPU_TIMING", text, 1) == 0);
+    failure = 0;
+    counter_supported = supported != 0;
+    encoded = [NSMutableArray new];
+    timing_success(mode, supported);
+    exit(0);
+  }
+  int status = 0;
+  assert(waitpid(child, &status, 0) == child);
+  assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+}
+
 static void test_case(unsigned mode) {
   pid_t child = fork();
   assert(child >= 0);
@@ -339,6 +481,9 @@ static void test_case(unsigned mode) {
 
 int main(void) {
   for (unsigned i = 0; i <= 10; i++) test_case(i);
-  puts("[ok] Metal driver: product and compiled-kernel dispatch, library recompilation, pipeline reuse, resident buffers created once and read back on demand, batched submission, every initialization/allocation/launch/readback error");
+  timing_case(1, 0);
+  timing_case(2, 0);
+  timing_case(2, 1);
+  puts("[ok] Metal driver: product and compiled-kernel dispatch, library recompilation, pipeline reuse, resident buffers created once and read back on demand, batched submission, batch and per-dispatch timing with counter fallback, every initialization/allocation/launch/readback error");
   return 0;
 }
