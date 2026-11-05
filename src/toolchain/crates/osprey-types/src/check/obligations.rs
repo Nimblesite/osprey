@@ -76,7 +76,7 @@ impl Checker {
     /// Split the recorded built-in uses into those resting on `vars` (deferred
     /// to each instantiation) and those that stay for [`Self::validate_builtin_uses`].
     pub(super) fn split_obligations(&mut self, vars: &[VarId]) -> SplitObligations {
-        let uses = std::mem::take(&mut self.builtin_uses);
+        let uses = self.take_builtin_uses();
         let resolved: Vec<(String, Type)> = uses
             .into_iter()
             .map(|(name, ty)| {

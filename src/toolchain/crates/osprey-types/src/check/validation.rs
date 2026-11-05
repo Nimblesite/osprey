@@ -7,7 +7,7 @@ impl Checker {
     /// limitation: Osprey has no type-class constraint to preserve the
     /// obligation in a polymorphic scheme.
     pub(super) fn validate_builtin_uses(&mut self) {
-        let uses = std::mem::take(&mut self.builtin_uses);
+        let uses = self.take_builtin_uses();
         for (name, ty) in uses {
             let resolved = self.ctx.apply(&ty);
             let resolved = match self.use_sites.get(&name) {

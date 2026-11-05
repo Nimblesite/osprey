@@ -407,3 +407,46 @@ fn connected_obligations_share_one_environment_scan() {
     assert_eq!(scheme.obligations, vec![("connected".into(), relation)]);
     assert_eq!(MARKER_VISITS.with(std::cell::Cell::get), 1);
 }
+
+#[test]
+fn field_resolution_retries_only_after_new_work() {
+    use super::{Checker, Type};
+    use crate::fields::{obligation_name, FIELD_VISITS};
+
+    let mut checker = Checker::new();
+    let left = checker.ctx.fresh();
+    let right = checker.ctx.fresh();
+    let left_value = checker.ctx.fresh();
+    let right_value = checker.ctx.fresh();
+    let name = obligation_name("", "value");
+    checker.builtin_uses.push((
+        name.clone(),
+        Type::fun(vec![left.clone()], left_value.clone()),
+    ));
+    FIELD_VISITS.with(|visits| visits.set(0));
+    checker.resolve_field_uses();
+    checker.resolve_field_uses();
+    checker
+        .builtin_uses
+        .push((name, Type::fun(vec![right.clone()], right_value.clone())));
+    checker.resolve_field_uses();
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 2);
+    let pending = checker.take_builtin_uses();
+    checker.builtin_uses.extend(pending);
+    checker.resolve_field_uses();
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 4);
+    for (receiver, value, kind) in [
+        (left, left_value, Type::int()),
+        (right, right_value, Type::string()),
+    ] {
+        let record = Type::Record {
+            name: String::new(),
+            fields: [("value".into(), kind.clone())].into(),
+        };
+        checker.push_unify(&receiver, &record);
+        checker.resolve_field_uses();
+        assert_eq!(checker.ctx.apply(&value), kind);
+    }
+    assert_eq!(checker.errors, []);
+    assert_eq!(checker.builtin_uses, []);
+}

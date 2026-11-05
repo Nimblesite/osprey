@@ -25,6 +25,7 @@ impl Checker {
             methods: HashMap::new(),
             application_tys: Vec::new(),
             builtin_uses: Vec::new(),
+            field_uses_prefix: None,
             opaque_types: HashSet::new(),
             site: String::new(),
             use_sites: HashMap::new(),

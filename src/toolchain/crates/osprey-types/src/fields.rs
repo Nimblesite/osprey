@@ -15,6 +15,11 @@ const FIELD_OBLIGATION: &str = "$field:";
 /// same deferral as a read, resolved as an assignment INTO the field.
 const FIELD_WRITE: &str = "$write:";
 
+#[cfg(test)]
+std::thread_local! {
+    pub(crate) static FIELD_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// `$field:{site}:{field}` — `site` is the linkage name of the top-level
 /// declaration that wrote the access ([`Checker::site`]).
 pub(crate) fn obligation_name(site: &str, field: &str) -> String {
@@ -37,27 +42,55 @@ fn parse_obligation(name: &str) -> Option<(bool, &str, &str)> {
 }
 
 impl Checker {
+    pub(crate) fn take_builtin_uses(&mut self) -> Vec<(String, Type)> {
+        self.field_uses_prefix = None;
+        std::mem::take(&mut self.builtin_uses)
+    }
+
     /// Resolve instantiated relations until no type or pending work changes.
     /// Unresolved receivers remain in the scheme-obligation pipeline.
     pub(crate) fn resolve_field_uses(&mut self) {
         loop {
             let before = self.ctx.bound_count();
-            let uses = std::mem::take(&mut self.builtin_uses);
-            let mut progressed = false;
-            for (name, ty) in uses {
-                let solved = self.resolve_method_use(&name, &ty)
-                    || parse_obligation(&name).is_some_and(|(write, site, field)| {
-                        self.resolve_field_use(write, site, field, &ty)
-                    });
-                progressed |= solved;
-                if !solved {
-                    self.builtin_uses.push((name, ty));
-                }
+            let checked = self.checked_field_prefix(before);
+            if checked == self.builtin_uses.len() {
+                return;
             }
+            let progressed = self.resolve_field_suffix(checked);
             if !progressed && self.ctx.bound_count() == before {
+                self.field_uses_prefix = Some((before, self.builtin_uses.len()));
                 return;
             }
         }
+    }
+
+    fn checked_field_prefix(&self, bindings: usize) -> usize {
+        self.field_uses_prefix
+            .filter(|(bound, count)| *bound == bindings && *count <= self.builtin_uses.len())
+            .map_or(0, |(_, count)| count)
+    }
+
+    fn resolve_field_suffix(&mut self, checked: usize) -> bool {
+        self.field_uses_prefix = None;
+        let uses = if checked == 0 {
+            std::mem::take(&mut self.builtin_uses)
+        } else {
+            self.builtin_uses.split_off(checked)
+        };
+        let mut progressed = false;
+        for (name, ty) in uses {
+            #[cfg(test)]
+            FIELD_VISITS.with(|visits| visits.set(visits.get() + 1));
+            let solved = self.resolve_method_use(&name, &ty)
+                || parse_obligation(&name).is_some_and(|(write, site, field)| {
+                    self.resolve_field_use(write, site, field, &ty)
+                });
+            progressed |= solved;
+            if !solved {
+                self.builtin_uses.push((name, ty));
+            }
+        }
+        progressed
     }
 
     /// The fallback [TYPE-FIELD-ACCESS-NON-RECORD] allows for an untracked

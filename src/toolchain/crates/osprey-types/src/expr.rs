@@ -1877,6 +1877,7 @@ impl Checker {
     /// Instantiation may decide division late; its diagnostics retain the
     /// obligation's original position in the validation sequence.
     fn place_arithmetic_uses(&mut self, name: &str, site: &Type, start: usize) {
+        self.field_uses_prefix = None;
         let introduced = self.builtin_uses.split_off(start);
         let at = self
             .builtin_uses
