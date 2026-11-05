@@ -431,6 +431,11 @@ fn field_resolution_retries_only_after_new_work() {
         .push((name, Type::fun(vec![right.clone()], right_value.clone())));
     checker.resolve_field_uses();
     assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 2);
+    let unrelated = checker.ctx.fresh();
+    let scheme = checker.generalize_with_obligations(&super::TypeEnv::new(), &unrelated);
+    assert_eq!(scheme.obligations, []);
+    checker.resolve_field_uses();
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 2);
     let pending = checker.take_builtin_uses();
     checker.builtin_uses.extend(pending);
     checker.resolve_field_uses();

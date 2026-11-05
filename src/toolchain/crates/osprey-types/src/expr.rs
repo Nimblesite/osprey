@@ -1522,6 +1522,9 @@ fn deferred_arith_name(op: &str) -> String {
 /// The operator a deferred-arithmetic obligation name carries; `None` for a
 /// built-in's obligation.
 fn parse_deferred_arith(name: &str) -> Option<&str> {
+    if !name.starts_with(DEFERRED_ARITH) {
+        return None;
+    }
     crate::builtin_constraints::operation_name(name).strip_prefix(DEFERRED_ARITH)
 }
 

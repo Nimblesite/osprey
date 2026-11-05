@@ -76,11 +76,14 @@ impl Checker {
     /// Split the recorded built-in uses into those resting on `vars` (deferred
     /// to each instantiation) and those that stay for [`Self::validate_builtin_uses`].
     pub(super) fn split_obligations(&mut self, vars: &[VarId]) -> SplitObligations {
+        let bindings = self.ctx.bound_count();
+        let checked = self.checked_field_prefix(bindings);
         let uses = self.take_builtin_uses();
         let mut deferred = Vec::new();
-        let mut kept = Vec::new();
-        for (name, ty) in uses {
-            let ty = self.ctx.apply(&ty);
+        let mut kept = Vec::with_capacity(uses.len());
+        let mut checked_kept = 0;
+        for (index, (name, mut ty)) in uses.into_iter().enumerate() {
+            self.ctx.apply_in_place(&mut ty);
             // A monomorphic arithmetic overload never travels into a scheme: it is
             // settled once for the whole program
             // ([`Checker::deferred_arith`]), and the variables it rests on stay
@@ -90,17 +93,21 @@ impl Checker {
             // Generalize the relation only when every variable travels with it.
             let mut free = BTreeSet::new();
             self.ctx.free_vars(&ty, &mut free);
-            if crate::expr::is_monomorphic_arith(&name)
+            if !vars.iter().any(|var| free.contains(var))
+                || crate::expr::is_monomorphic_arith(&name)
                 || (crate::expr::is_deferred_arith(&name)
                     && free.iter().any(|var| !vars.contains(var)))
                 || crate::builtin_constraints::fixed_numeric_operand(&name, &ty)
-                || !vars.iter().any(|var| free.contains(var))
             {
+                checked_kept += usize::from(index < checked);
                 kept.push((name, ty));
             } else {
                 deferred.push((name, ty));
             }
         }
+        // Retained field relations were already checked at these bindings.
+        // Applying the substitution cannot decide an unresolved receiver.
+        self.field_uses_prefix = Some((bindings, checked_kept));
         (deferred, kept)
     }
 }

@@ -64,7 +64,7 @@ impl Checker {
         }
     }
 
-    fn checked_field_prefix(&self, bindings: usize) -> usize {
+    pub(crate) fn checked_field_prefix(&self, bindings: usize) -> usize {
         self.field_uses_prefix
             .filter(|(bound, count)| *bound == bindings && *count <= self.builtin_uses.len())
             .map_or(0, |(_, count)| count)

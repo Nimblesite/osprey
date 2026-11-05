@@ -379,10 +379,41 @@ impl InferCtx {
     /// Fully resolve `t` against the current substitution. The occurs-check
     /// keeps the substitution acyclic, so this terminates.
     pub(crate) fn apply(&self, t: &Type) -> Type {
-        crate::ty::map_type_vars(t, &mut |v| {
-            self.binding(v)
-                .map_or_else(|| Type::Var(v), |bound| self.apply(bound))
-        })
+        let mut ty = t.clone();
+        self.apply_in_place(&mut ty);
+        ty
+    }
+
+    /// Resolve an owned type without rebuilding its existing storage.
+    pub(crate) fn apply_in_place(&self, ty: &mut Type) {
+        match ty {
+            Type::Var(id) => {
+                let mut bound = self.binding(*id);
+                while let Some(Type::Var(next)) = bound {
+                    *id = *next;
+                    bound = self.binding(*next);
+                }
+                if let Some(resolved) = bound {
+                    *ty = self.apply(resolved);
+                }
+            }
+            Type::Fun { params, ret } => {
+                for ty in params {
+                    self.apply_in_place(ty);
+                }
+                self.apply_in_place(ret);
+            }
+            Type::Con { args, .. } | Type::Union { variants: args, .. } => {
+                for ty in args {
+                    self.apply_in_place(ty);
+                }
+            }
+            Type::Record { fields, .. } => {
+                for ty in fields.values_mut() {
+                    self.apply_in_place(ty);
+                }
+            }
+        }
     }
 
     /// Collect the free (unbound) variables of `t` into `out`.
