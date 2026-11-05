@@ -319,6 +319,20 @@ float q4_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
     return acc;
 }
 
+// Q6_K: 256 weights per 210-byte block, six bits per weight from a low nibble and
+// two mask bits, a binary16 scale and sixteen 8-bit sub-block scales.
+float q6_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+    float d = quant_half(b, 208);
+    for (uint j = 0; j < 256; j++) {
+        uint group = j >> 7, quarter = (j & 127) >> 5, l = j & 31;
+        uint low = (uint)(b[64 * group + l + 32 * (quarter & 1)] >> (4 * (quarter >> 1))) & 15;
+        uint q = low | (((uint)(b[128 + 32 * group + l] >> (2 * quarter)) & 3) << 4);
+        float scale = (float)(signed char)b[192 + 8 * group + (l >> 4) + 2 * quarter];
+        acc = quant_add(acc, x[j], d * scale * (float)((int)q - 32));
+    }
+    return acc;
+}
+
 // Q8_0: 32 weights per 34-byte block, one binary16 scale and one signed byte per weight.
 float q8_0_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
     float d = quant_half(b, 0);
@@ -353,6 +367,7 @@ kernel void osprey_matmul_##TYPE(GPU_GLOBAL const float *x GPU_BUFFER(0), \
 }
 QUANT_KERNEL(q4_k, q4_k_step, 256, 144)
 QUANT_KERNEL(q8_0, q8_0_step, 32, 34)
+QUANT_KERNEL(q6_k, q6_k_step, 256, 210)
 #undef QUANT_KERNEL
 
 // out[i] = the `parts` partial sums of output i added in order from 0.0f.

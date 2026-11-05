@@ -588,7 +588,7 @@ def quant_fixtures():
     return out
 
 
-PRODUCT_TYPES = ("Q8_0",)
+PRODUCT_TYPES = ("Q8_0", "Q6_K")
 """The block types the product fixture covers, in the order [LLM-MATMUL-QUANT] adds them."""
 PRODUCT_SCALES = (0x3C00, 0x3400)
 """Ordinary binary16 super-block scale and minimum words: 1.0 and 0.25."""

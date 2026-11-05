@@ -179,6 +179,18 @@ static float q4k_step(float acc, const float *x, const unsigned char *b) {
   return acc;
 }
 
+static float q6_k_step(float acc, const float *x, const unsigned char *b) {
+  float d = quant_half(b, 208);
+  for (unsigned j = 0; j < 256; j++) {
+    unsigned group = j >> 7, quarter = (j & 127) >> 5, l = j & 31;
+    unsigned low = (unsigned)(b[64 * group + l + 32 * (quarter & 1)] >> (4 * (quarter >> 1))) & 15;
+    unsigned q = low | (((unsigned)(b[128 + 32 * group + l] >> (2 * quarter)) & 3) << 4);
+    float scale = (float)(signed char)b[192 + 8 * group + (l >> 4) + 2 * quarter];
+    acc = quant_add(acc, x[j], d * scale * (float)((int)q - 32));
+  }
+  return acc;
+}
+
 static float q8_0_step(float acc, const float *x, const unsigned char *b) {
   float d = quant_half(b, 0);
   for (unsigned j = 0; j < 32; j++)
@@ -199,6 +211,7 @@ typedef struct {
 static const QuantFormat QUANT_FORMATS[] = {
     {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4k_step},
     {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_step},
+    {"Q6_K", "osprey_matmul_q6_k", 256, 210, q6_k_step},
 };
 #define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
 

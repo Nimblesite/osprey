@@ -1,3 +1,4 @@
 ok 1 - the Q8_0 product matches ggml's decode in the kernels' part order
-1..1
-# tests=1 passed=1 failed=0 skipped=0
+ok 2 - the Q6_K product matches ggml's decode in the kernels' part order
+1..2
+# tests=2 passed=2 failed=0 skipped=0
