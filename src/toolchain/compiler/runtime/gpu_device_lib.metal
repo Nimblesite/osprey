@@ -235,28 +235,14 @@ NATIVE_UNARY(ln, log, logf)
 NATIVE_UNARY(abs, fabs, fabsf)
 #undef NATIVE_UNARY
 
-// [GPU-DEVICE-NATIVE] Binary32 exp and tanh are one shared sequence of
-// binary32 operations, so the host loop and both devices produce the same
-// bytes (contraction is off everywhere this compiles). Rounding from the
-// 128-bit binary64 exp cost about 70 microseconds of latency per call on
-// Apple M4 Max, a third of a 27B model's token; this takes a few dozen cycles.
-// Cody-Waite reduction x = k ln 2 + r with |r| <= ln 2 / 2, a degree-9 Taylor
-// polynomial (its truncation is far under a binary32 ulp) and an exact scale by
-// 2^k, in two steps when the result is subnormal.
+// [GPU-DEVICE-NATIVE] Shared binary32 exp and tanh use Cody-Waite reduction,
+// a degree-9 Taylor polynomial, and exact power-of-two scaling. Keep a
+// binary32 residual through the polynomial and quotient to avoid rounding
+// away the low bits before the final result. Explicit FMA recovers product
+// errors while implicit contraction stays off.
 #define GPU_LOG2E 1.44269504088896341f
 #define GPU_LN2_HI 0.693145751953125f
 #define GPU_LN2_LO 1.428606765330187e-06f
-
-float gpu32_poly_expm1(float r) {
-    float p = r * (1.0f / 362880.0f) + (1.0f / 40320.0f);
-    p = p * r + (1.0f / 5040.0f);
-    p = p * r + (1.0f / 720.0f);
-    p = p * r + (1.0f / 120.0f);
-    p = p * r + (1.0f / 24.0f);
-    p = p * r + (1.0f / 6.0f);
-    p = p * r + 0.5f;
-    return r + r * r * p;
-}
 
 float gpu32_scale_pow2(float value, int k) {
     if (k > 127) return value * gpu_float32_from_bits(0x7f000000u) * gpu_float32_from_bits((uint)(k - 127 + 127) << 23);
@@ -268,30 +254,81 @@ float gpu32_scale_pow2(float value, int k) {
     return value * gpu_float32_from_bits((uint)(k + 127) << 23);
 }
 
+#if defined(__METAL_VERSION__) || defined(__OPENCL_VERSION__) || defined(__OPENCL_C_VERSION__)
+#define GPU32_FMA fma
+#else
+#define GPU32_FMA fmaf
+#endif
+
+typedef struct { float value, error; } Gpu32Pair;
+Gpu32Pair gpu32_add_pair(Gpu32Pair a, float b) {
+    float sum = a.value + b;
+    float tail = sum - a.value;
+    float error = (a.value - (sum - tail)) + (b - tail) + a.error;
+    float value = sum + error;
+    return (Gpu32Pair){value, error - (value - sum)};
+}
+
+Gpu32Pair gpu32_mul_pair(Gpu32Pair a, float b) {
+    float value = a.value * b;
+    return (Gpu32Pair){value, GPU32_FMA(a.value, b, -value) + a.error * b};
+}
+
+Gpu32Pair gpu32_expm1_poly(float r) {
+    Gpu32Pair p = {1.0f / 362880.0f, 0.0f};
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 1.0f / 40320.0f);
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 1.0f / 5040.0f);
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 1.0f / 720.0f);
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 1.0f / 120.0f);
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 1.0f / 24.0f);
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 1.0f / 6.0f);
+    p = gpu32_add_pair(gpu32_mul_pair(p, r), 0.5f);
+    return gpu32_add_pair(gpu32_mul_pair(gpu32_mul_pair(p, r), r), r);
+}
+
+typedef struct { Gpu32Pair mantissa; int exponent; } Gpu32Exp;
+
+Gpu32Exp gpu32_exp_parts(float x) {
+    float y = GPU32_FMA(x, GPU_LOG2E, 0.5f);
+    int k = (int)y - (int)((float)(int)y > y);
+    float kf = (float)k;
+    float high = GPU32_FMA(-kf, GPU_LN2_HI, x);
+    float r = GPU32_FMA(-kf, GPU_LN2_LO, high);
+    float dr = GPU32_FMA(-kf, GPU_LN2_LO, high - r);
+    Gpu32Pair p = gpu32_add_pair(gpu32_expm1_poly(r), 1.0f);
+    return (Gpu32Exp){gpu32_add_pair(p, p.value * dr), k};
+}
+
 float gpu32_exp(float x) {
     if (x != x) return x;
     if (x > 88.7228394f) return gpu_float32_from_bits(0x7f800000u);
     if (x < -103.972084f) return 0.0f;
-    float y = x * GPU_LOG2E + 0.5f;
-    int k = (int)y - (int)((float)(int)y > y);
-    float kf = (float)k;
-    float r = (x - kf * GPU_LN2_HI) - kf * GPU_LN2_LO;
-    return gpu32_scale_pow2(1.0f + gpu32_poly_expm1(r), k);
+    Gpu32Exp parts = gpu32_exp_parts(x);
+    return gpu32_scale_pow2(parts.mantissa.value, parts.exponent);
 }
 
-// tanh x = expm1(2|x|) / (expm1(2|x|) + 2) with x's sign restored; below 0.25
-// the polynomial gives expm1 directly, which keeps a small argument's relative
-// precision, and past 9 the result is 1 to the last bit.
 float gpu32_tanh(float x) {
     if (x != x) return x;
     uint sign = gpu_float32_bits(x) & 0x80000000u;
     float a = gpu_float32_from_bits(gpu_float32_bits(x) ^ sign);
     if (a > 9.0f) return gpu_float32_from_bits(0x3f800000u | sign);
-    float r = 2.0f * a;
-    float em1 = a < 0.25f ? gpu32_poly_expm1(r) : gpu32_exp(r) - 1.0f;
-    float t = em1 / (em1 + 2.0f);
-    return gpu_float32_from_bits(gpu_float32_bits(t) | sign);
+    // At this magnitude the cubic correction rounds away.
+    if (a < 0x1p-13f) return x;
+    Gpu32Pair n;
+    // Evaluate expm1 directly while 2a fits in the reduced interval.
+    if (a < 0.17f) n = gpu32_expm1_poly(2.0f * a);
+    else {
+        Gpu32Exp parts = gpu32_exp_parts(2.0f * a);
+        float scale = gpu32_scale_pow2(1.0f, parts.exponent);
+        n = gpu32_add_pair(gpu32_mul_pair(parts.mantissa, scale), -1.0f);
+    }
+    Gpu32Pair d = gpu32_add_pair(n, 2.0f);
+    float q = n.value / d.value;
+    float r = GPU32_FMA(-q, d.value, n.value) + n.error - q * d.error;
+    return gpu_float32_from_bits(gpu_float32_bits(q + r / d.value) | sign);
 }
+
+#undef GPU32_FMA
 
 // [GPU-MATMUL]: one ordered kernel template at each supported float width.
 float multiply32(float a, float b) { return a * b; }
@@ -623,16 +660,16 @@ float iq3_s_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b
 // The 32 lane sums of one output in a fixed butterfly: each round adds to every
 // lane the lane `off` away, so lane 0 ends with the total. The order never
 // depends on which lane reads first: a + b and b + a are the same word.
-float quant_reduce(GPU_LOCAL float *sums, uint local, float acc) {
-    sums[local] = acc;
+float quant_reduce(GPU_LOCAL float *sums, uint lane, float acc) {
+    sums[lane] = acc;
     GPU_BARRIER();
     for (uint off = QUANT_LANES / 2; off > 0; off >>= 1) {
-        float other = sums[local ^ off];
+        float other = sums[lane ^ off];
         GPU_BARRIER();
-        sums[local] = sums[local] + other;
+        sums[lane] = sums[lane] + other;
         GPU_BARRIER();
     }
-    return sums[local];
+    return sums[lane];
 }
 
 #define QUANT_KERNEL(TYPE, LANE, ELEMENTS, BYTES) \
