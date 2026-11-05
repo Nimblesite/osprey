@@ -51,13 +51,13 @@ Supply every changed signal identity together in one refresh to batch an update.
 
 Dependencies are conservative **may-read** sets. Both arms of a runtime choice contribute possible reads, including an arm not taken on this execution. A resolved callback keeps its actual requirements. An unresolved callback, generic instance or open remainder contributes `<unknown>`, which forces refresh rather than risk retaining a stale value. Builtin I/O is still checked as an effect obligation; metadata queries do not make their argument expressions pure.
 
-{{ capture("/assets/images/native/macos-synth.png", "Prism Synth is an Osprey Native application: its controls and patch editor show the application built around the framework.", "Prism Synth is an Osprey Native application: its controls and patch editor show the application built around the framework.", 2304, 1512) }}
+{{ capture("/assets/images/native/macos-synth.png", "Prism Synth patch editor and keyboard on macOS", "Prism Synth · patch editor and keyboard on macOS.", 2304, 1512) }}
 
 ## The built-in signals layer
 
-Every reactive app used to declare the same reader effect and hand-roll the same frame cache. Both are standard now: the `Signal<T>` reader effect, `SignalFrame`, `KeyedSnapshot<T>`, and the keyed refresh functions are prelude source attached on demand, so a program that names them stops declaring its own. A program that declares its own `Signal` keeps it and gets none of the standard layer.
+Use the prelude's `Signal<T>`, `SignalFrame`, `KeyedSnapshot<T>` and keyed refresh functions for cached regions. The compiler includes this layer on demand. Declaring your own `Signal` disables the standard layer.
 
-A render keeps one frame per keyed region, refreshes each region through `signalRefreshKeyed`, and derives the changed identities from the slice encodings with `signalChanges`. The revision each region kept survives a JSON round trip of the frames.
+Keep one frame per keyed region. `signalRefreshKeyed` refreshes it; `signalChanges` compares slice encodings to derive changed identities. Frame revisions survive a JSON round trip.
 
 ```osprey
 type Route = { tab: string }

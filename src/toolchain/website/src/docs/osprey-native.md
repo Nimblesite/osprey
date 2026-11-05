@@ -1,8 +1,8 @@
 ---
 mlTwins: manual
 layout: page
-title: "Osprey Native: native power, every platform"
-description: Build beautiful multiplatform apps with AOT native compilation, real platform controls, typed effects and shared Osprey logic. See macOS, Windows, iOS, Android and web applications in action.
+title: "Osprey Native: shared logic, native apps"
+description: Share Osprey logic across macOS, Windows, iOS, Android and web apps. See native controls, AOT compilation and typed effects in running applications.
 permalink: /docs/osprey-native/
 tags: [native, applications, ui, gpui, vscode]
 ---
@@ -10,7 +10,7 @@ tags: [native, applications, ui, gpui, vscode]
 {% from "mobile-gallery.njk" import gallery %}
 {% from "native-capture.njk" import capture %}
 
-**Safe, elegant, fast.** Build ambitious apps around one Osprey application model: typed effects for platform services, inferred types for concise code, and ahead-of-time LLVM compilation for native execution.
+**Safety, elegance and performance:** typed effects for platform services, inferred types for concise code, and ahead-of-time LLVM compilation for native execution.
 
 **macOS · Windows · iOS · Android · Web**
 
@@ -82,16 +82,16 @@ Independent Mathlib operation remains delivery work; [inspect the current eviden
 
 {% videoPlayer "proof-workbench", true %}
 
-## Why this model goes further
+## Compare the application models
 
-| What you want | Osprey Native's advantage |
+| Requirement | How Osprey Native handles it |
 | --- | --- |
 | Native execution and native controls | For native builds: AOT Osprey code plus SwiftUI, WinUI or Android widgets, with coverage depending on the host and app. React Native also uses native components, but runs JavaScript through an engine such as [Hermes](https://reactnative.dev/docs/hermes). |
 | Platform identity and custom graphics | Native widget hosts preserve platform controls; GPUI handles custom scenes. Compose Multiplatform's shared UI uses [Skia](https://kotlinlang.org/docs/multiplatform/kotlin-multiplatform-react-native.html); it also supports native UI integration. |
 | Test the rules you share | Pure updates describe state changes. Typed effects request files, networking and storage; test handlers supply controlled responses through each application's own boundary. |
 | Less code to maintain | Inferred types, exhaustive matching and shared transitions keep rules in Osprey instead of repeating them per host. |
 
-**Share the decisions. Let each platform do what it does best.** Host coverage varies: mobile and bank examples use their own bridges; common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
+Host coverage varies: mobile and bank examples use their own bridges; common host conformance remains delivery work. Osprey is actively evolving; validate it against your workload.
 
 ## Build your first app
 

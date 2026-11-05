@@ -85,10 +85,8 @@ Choose a built-in theme:
 osprey --docs ./my-project --docs-dir ./site --docs-format html --docs-theme midnight
 ```
 
-Each template has its own typography and layout. The landing page starts with
-your modules and guides. Expand navigation groups to browse the reference, or
-press `/` to search. Article outlines link to sections, and code examples retain
-their exact text when copied.
+Expand navigation groups to browse your modules and guides, or press `/` to
+search. Code examples retain their exact text when copied.
 
 Omit the source to export the built-in reference alone. Omit `--docs-format html`
 to generate Markdown with front matter for use in an existing documentation site.
@@ -126,7 +124,7 @@ Pass multiple `--docs-css` options to layer styles in order. The generated
 ```sh
 osprey ./my-project --doctests
 osprey ./my-project --doctests --memory=arc
-osprey ./my-project --doctests --target=wasm32 --memory=none
+osprey ./my-project --doctests --target=wasm32 --memory=arc
 ```
 
 Every example is type-checked. An immediately following `output` fence makes

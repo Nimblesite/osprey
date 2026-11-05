@@ -1,14 +1,12 @@
 ---
 layout: page
 title: "Hunt for bugs: automated bug finding with symbolic execution"
-description: "osprey hunt is a built-in automated bug finder. It uses KLEE symbolic execution, a smarter alternative to fuzz testing, to find the exact input that crashes your program, then reproduces the crash natively."
+description: "Use KLEE symbolic execution to search for failing inputs, replay crashes natively and inspect analysis limits."
 permalink: /docs/hunt/
 tags: [testing, hunt, symbolic-execution, fuzzing, klee]
 ---
 
 {% from "native-capture.njk" import capture %}
-
-## What is Osprey Hunt?
 
 `osprey hunt` searches for failing inputs using [KLEE symbolic execution](https://klee-se.org/). It solves path constraints within a time budget; fuzzers explore concrete inputs. Both approaches complement tests and static analysis.
 
@@ -16,16 +14,7 @@ Inspect each finding's verdict: a **reproduced crash** failed in a native replay
 
 {{ capture("/assets/images/guides/hunt-crash.png", "Verified finding first: a deliberately planted C abort is reproduced with input 9; this fixture demonstrates detection.", "Verified finding first: a deliberately planted C abort is reproduced with input 9; this fixture demonstrates detection.", 1440, 1000) }}
 
-## Why use it?
-
-- **Find crashes your unit tests miss.** Tests check the inputs you thought of. Hunt searches for the ones you didn't.
-- **Get a reproducible crash, not a guess.** Every finding comes with the source line, the concrete input bytes and a native replay verdict. Paste the input into a regression test and fix it.
-- **Harden input handling.** Parsers, CLI tools, file readers and anything reading stdin or untrusted data are where crashes and security bugs hide.
-- **Zero setup beyond the engine.** No harness, no fuzzing corpus, no annotations. One command and an HTML report.
-
-Hunt complements testing and static analysis; it does not replace them. A reproduced finding is a real crash, but an empty report is not a proof of correctness.
-
-The command is `osprey hunt`, with no leading dash. It accepts a Default, ML or Python-flavor source file, a project directory or an `osprey.toml` manifest. Python-flavor files carry `# osprey: flavor=python`.
+`osprey hunt` accepts a Default, ML or Python-flavor source file, a project directory or an `osprey.toml` manifest. Python-flavor files carry `# osprey: flavor=python`.
 
 ## Run your first hunt
 
@@ -37,7 +26,7 @@ make build
 ./target/release/osprey hunt src/osprey/tests/hunt/crash.osp --input-bytes 1 --max-time 10
 ```
 
-This example deliberately calls C `abort()` only when its input is `"9"`. Hunt discovers that input, reports `abort crash.osp:4`, and confirms `reproduced (SIGABRT)` in a normal run. Exit status 1 is expected. This demonstrates detection of a planted failure. `process.osp` separately tests an unsupported engine operation; it is not the crash demo.
+This example deliberately calls C `abort()` only when its input is `"9"`. Hunt discovers that input, reports `abort crash.osp:4`, and confirms `reproduced (SIGABRT)` in a normal run. Exit status 1 is expected. `process.osp` separately tests an unsupported engine operation; it is not the crash demo.
 
 For a clean control, run:
 
@@ -53,11 +42,11 @@ For your own project:
 osprey hunt ./my-project --max-time 60 --input-bytes 4
 ```
 
-Start with a small input bound for parsers. Each extra symbolic byte can introduce more branches; increase it when you need to reach longer inputs. Hunting complements tests with expected results: it does not prove that your program implements its intended behavior, and an empty findings list is not a proof of correctness.
+Each extra symbolic byte can introduce more branches, so start with a small bound and increase it to reach longer inputs. Keep tests that check expected results: Hunt searches for failures, not whether the program does what you intended.
 
 ## Open the report
 
-Hunt saves **HTML and JSON automatically** and prints their paths. Open `report.html` in your browser for a plain-English result, source excerpts, inputs and next steps. The report distinguishes a reproduced crash from an unsupported operation or unfinished analysis. No findings is not proof that the program is correct.
+Hunt saves **HTML and JSON** and prints their paths. Open `report.html` to inspect source excerpts, inputs, replay verdicts and unfinished paths.
 
 Expand **For AI** to copy the full investigation context: findings, replay details, exact engine arguments, raw diagnostics, source text and analysis limits. The report works offline without JavaScript. It contains local paths and source contents; review it before sharing.
 
@@ -65,7 +54,7 @@ Reports normally live under `target/hunt/<program-and-run-id>/`. Use `--out ./hu
 
 ## Understand the path counts
 
-Paths are different possible executions, not repeated test attempts. The crash demo explores four paths: three finish normally and one reaches the abort that Hunt detects and reproduces. Zero are unfinished. **That is a successful crash detection, not a crash missed one time in four.**
+Paths are different possible executions. The crash demo explores four: three finish normally and one reaches the reproduced abort. None are unfinished; the three normal exits are not missed detections.
 
 | Count | Meaning |
 | --- | --- |
@@ -163,4 +152,4 @@ KLEE runs natively on macOS and Linux x86_64. Linux arm64 and Windows are not su
 
 Hunt starts at the program entry point; typed function harnesses and automatic regression-test generation are planned. Fibers and resumable control effects use threads that this symbolic model cannot follow. A dynamic `control` handler can stop exploration at the region entry (`__osprey_coro_new`), before the input-processing code runs. Use static handlers in a hunt driver where applicable; an unmodelled region has not been checked. Native replay has a 30-second timeout and skips runs that do not exit. Floating-point execution is concretized by KLEE, so numerical code still needs explicit edge cases and oracle comparisons.
 
-See the [symbolic execution contract](/spec/symbolicexecution/) for the runtime models, replay details and delivery status. Next, run a short hunt against a small input-processing project and turn any reproduced finding into a test.
+See the [symbolic execution contract](/spec/symbolicexecution/) for runtime models, replay details and delivery status.

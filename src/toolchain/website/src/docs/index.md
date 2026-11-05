@@ -6,24 +6,24 @@ description: Start with algebraic effects and reusable handlers, then build nati
 
 {% from "native-capture.njk" import capture %}
 
-Osprey is built for **safety, elegance and performance**: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation. Typed algebraic effects separate application requests from their implementations. Start with a handler, then see the same approach in the banking and mobile applications.
+Osprey is built for **safety, elegance and performance**: typed effects and `Result` for handling failures, inferred types for concise code, and LLVM native compilation. Start with a storage handler, then use the same pattern in web and mobile apps.
 
 {% videoPlayer "agent-native", true %}
 
 ## Start here
 
 - **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.
-- **[One model, two backends](/docs/one-model-two-backends/)** — write GPT-2 once against a static `Tensor` effect, then run it over host lists or on the GPU surface by choosing a handler.
-- **[Write Osprey in the Python flavor](/docs/python-flavor/)** — use Python-style syntax and decorated effects, compiled by Osprey. Includes the GPT-2 port and explains the boundary with CPython.
+- **[One model, two backends](/docs/one-model-two-backends/)** — run GPT-2 on host lists or the GPU by changing its `Tensor` handler.
+- **[Write Osprey in the Python flavor](/docs/python-flavor/)** — compile Python-style Osprey code, declare effects and call CPython through interop.
 - **[Python flavor for AI agents](/docs/python-flavor-for-ai/)** — commands, effect decorators, supported syntax and bug-reporting instructions for coding agents.
 - **[Install Osprey](/docs/installation/)** — set up the compiler and LLVM/clang toolchain on macOS, Linux, or Windows.
-- **[Build My First App](/docs/my-first-app/)** — create a native CLI that models JSON as a recursive algebraic data type, reads a JSON file, and safely writes the next state.
+- **[Build My First App](/docs/my-first-app/)** — build a native CLI that reads, validates and updates a JSON file.
 - **[Try the Playground](/playground/)** — run small programs in the browser before setting up a local toolchain.
 
 ## Tutorials
 
-- **[Video tutorials](/docs/tutorials/)** — narrated videos of real Osprey apps being built, with chapters, the commands to run each app, and a transcript.
-- **[Osprey and Swift interop on the Mac and iPhone](/docs/tutorials/swift-interop/)** — a three-minute video: Osprey exports in a generated C header, Swift `@_cdecl` imports, an effect handler at the boundary, and one Xcode target for every Apple SDK.
+- **[Video tutorials](/docs/tutorials/)** — watch real apps, then run them with the accompanying commands.
+- **[Osprey and Swift interop on the Mac and iPhone](/docs/tutorials/swift-interop/)** — watch Storage call Swift through a generated C interface.
 
 ## Proofs and mathematics
 
@@ -38,7 +38,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 ## Build applications
 
 - **[Osprey Native](/docs/osprey-native/)** — the application framework: one store, signals, typed screens and capabilities; SwiftUI, VS Code and GPU hosts draw them.
-- **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — follow Osprey Storage across the boundary: Osprey exports in a generated C header, Swift `@_cdecl` imports, and an effect handler at the edge. Also a [video tutorial](/docs/tutorials/swift-interop/).
+- **[Build a Mac and iPhone app](/docs/mac-and-iphone-apps/)** — build Storage and connect its logic to SwiftUI and platform services.
 - **[Build an iOS and Android app](/docs/mobile-apps/)** — handle application requests as native commands for SQLite, GitHub and reactive controls.
 - **[Build a web app](/docs/web-apps/)** — follow Talon Bank from storage and audit handlers to shared web, Android and iOS clients.
 - **[Explore the WebAssembly studio](/wasm/)** — compare the Default and ML flavors in a browser-hosted example.
@@ -51,7 +51,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 
 ## Packages
 
-- **[Package manager](/docs/package-manager/)** — folder registry, verified downloads, epoch-based resolution and offline locked builds. Includes a quick start and the planned package website workflow. The client and server are written in Osprey.
+- **[Package manager](/docs/package-manager/)** — publish to a folder registry, resolve dependencies and build from verified, locked source. Hosted publishing remains planned.
 - **[Packages in VS Code](/docs/packages-in-vscode/)** — add and remove direct dependencies, review unverified-release warnings, then fetch and build locked source. Includes real editor screenshots.
 - **[Package specification](/spec/0029-packagemanagement/)** — the normative contract: folder registry, manifests, identity, resolution, locks, the REST API and the command surface.
 
@@ -62,7 +62,7 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 - **[Check feature status](/status/)** — see what works today, its current limits, and what is planned.
 - **[Browse keywords](/docs/keywords/)** — declarations, bindings, matching, imports, and literals.
 
-A flavor is a surface syntax: its concrete syntax tree lowers into one canonical AST, and everything after that is shared. Default files use `.osp`, braces, `fn`, and parenthesized calls. ML files use `.ospml`, indentation, currying by default, and whitespace application. Python-flavor files use `.py` with the `# osprey: flavor=python` marker, Python-style indentation and annotations, and decorators for effects; they are Osprey, not Python. See the [Python flavor guide](/docs/python-flavor/).
+A **syntax flavor** is a way to write Osprey; all three share its compiler, types and effects. Default uses `.osp` and braces; ML uses `.ospml` and indentation; [Python flavor](/docs/python-flavor/) uses `.py` with `# osprey: flavor=python`. Python-flavor files compile as Osprey, not CPython.
 
 ## Reference
 

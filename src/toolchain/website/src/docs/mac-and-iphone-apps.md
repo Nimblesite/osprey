@@ -178,8 +178,8 @@ SWIFT_OBJC_BRIDGING_HEADER = OspreyStorage/Bridge.h
 
 `src/osprey/examples/ios/build.sh` compiles the Osprey project for the target it is given (`macos`, `ios` or `ios-sim`) before it runs `xcodebuild`, so the same Osprey code runs on the Mac and on iPhone, drawn with each platform's own controls.
 
-## What happens underneath
+## Library lifecycle
 
-The compiler lowers the Osprey project through LLVM into native code for the target, then archives it into `libOspreyApp.a` with a generated `libOspreyApp.h`. Swift links that archive like any C library. All calls into the library come from one host thread, and `osprey_main` runs first. The [iOS target specification](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/0038-iOSTarget.md) states the boundary contract and how it is verified.
+Call `osprey_main` before any export and serialize calls on one host thread. The [iOS target specification](https://github.com/Nimblesite/osprey/blob/main/docs/specs/platforms/0038-iOSTarget.md) defines the boundary and its verification.
 
 Osprey is actively evolving. See [iOS and Android apps](/docs/mobile-apps/) for an app that also handles SQLite and HTTP through effects.

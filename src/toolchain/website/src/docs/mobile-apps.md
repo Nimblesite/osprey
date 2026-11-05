@@ -9,9 +9,9 @@ tags: [mobile, ios, android, applications]
 
 {% from "mobile-gallery.njk" import gallery %}
 
-Issue Inbox is a native iPhone and Android application built around the same Osprey project. Typed effects request SQL and HTTP work; a reusable handler turns those requests into native host commands. Its model, update functions, UI layout, GitHub decoding and local triage live in Osprey modules. SwiftUI and Android widgets render the UI description and send events back to Osprey.
+Issue Inbox shares its state, updates, layout and GitHub decoding in Osprey. Typed effects request SQL and HTTP work; a handler turns those requests into host commands. SwiftUI and Android widgets render the screens and send events back.
 
-These are actual captures of the running application. The iOS screenshot comes from an iPhone 17 Pro simulator; the Android screenshot comes from a Pixel 7 emulator. The iOS build has also been installed and verified on a physical iPhone 16.
+Captures: iPhone 17 Pro simulator and Pixel 7 emulator. The iOS build has also been installed and verified on a physical iPhone 16.
 
 {{ gallery(mobile.screenshots) }}
 
@@ -23,7 +23,7 @@ For a banking example, [Talon Bank's native clients](https://github.com/Nimblesi
 
 Open issues for a public GitHub repository, search titles and authors, save issues for later, and open their descriptions and labels. Osprey parses description Markdown into headings, lists, quotes, code, emphasis, and links that the native hosts render. Add a local note or set a priority on the detail screen. Successful refreshes and local edits are saved to SQLite; a populated cache opens without requiring a network request.
 
-The UI reacts to each event. Typing a search, choosing a filter, opening an issue, or receiving an HTTP response runs an Osprey update function and produces the next UI description. The platform renderer updates its native controls, preserving the active input while typing.
+Search, filters, navigation and HTTP responses each trigger an Osprey update. The host applies the resulting UI description while preserving the active input.
 
 Notes and priorities remain local. The example reads public GitHub data and does not post changes to GitHub. It requests one page of open issues, excludes pull requests, and starts with `swiftlang/swift`. Authentication, pagination, and background refresh are not implemented.
 
@@ -54,7 +54,7 @@ These are value operations: the handler returns a command description immediatel
 
 ## How the native boundary works
 
-The compiler turns Osprey into native app-logic code through LLVM and emits a static archive plus a C header. The phone runs that compiled code. The Swift or Android project supplies the app executable, native rendering, platform services, and lifecycle.
+LLVM compiles the Osprey project into a native static archive with a C header. The Swift or Android host links it and supplies rendering, platform services and lifecycle.
 
 | Layer | Responsibility |
 | --- | --- |
@@ -130,7 +130,7 @@ The compiler also rejects dynamic control handlers, unavailable process operatio
 
 C-callable functions use `int`, `float`, `bool`, `string`, and return-only `Unit`. Records, collections, closures, and unresolved generic helpers stay inside Osprey. Unsupported `extern fn` signatures, invalid or colliding C names, and exported functions with unhandled effects are compile errors.
 
-The host copies returned strings before the next call and must not free Osprey-owned pointers. General allocations in the initial mobile default runtime live for the process lifetime; a public release or teardown API is not implemented. The C boundary remains outside Osprey's memory-safety guarantee.
+The host must release each returned string exactly once with `osprey_release_string`, copying the text first if it needs its own storage. Never pass an Osprey-owned pointer to libc `free`. ARC reclaims values when their last owner is released; application globals remain owned by the library, with no public teardown API. The C boundary remains outside Osprey's memory-safety guarantee.
 
 Native smoke tests exercise the real compiled archive with isolated SQLite storage and deterministic HTTP responses. They cover reactive search and filtering, issue details, local annotations, persisted cache, and visible HTTP errors. Android also checks cache restoration after terminating and reopening the app process. Recorded device/emulator execution is distinct from merely building an architecture's artifact.
 
