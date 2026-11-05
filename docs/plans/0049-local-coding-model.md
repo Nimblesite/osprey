@@ -1,5 +1,7 @@
 # Plan 0049 — A local coding model on Osprey: Qwen3.8-27B
 
+> 🛑 **STATUS, 2026-11-05: NOT WORKING. Qwen does not run through the package on real weights, and the server still answers from the toy table (`TableModel.py`).** The package has only passed a tiny fixture. The only real Qwen text comes from the one-file program `src/osprey/examples/llms/qwen/run/qwen.py`. Remove this notice only when a dated receipt shows the server answering from the real GGUF through the package.
+
 Contract: ../specs/runtime/0034-GPUComputation.md, ../specs/ecosystem/0043-PythonFlavorPorts.md, ../specs/runtime/0014-HTTP.md, [LocalCodingModel](../specs/applications/LocalCodingModel.md)
 Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-to-kernel fusion item in Stage 4, before the Phase 2 gate), 0048-runtime-memory-safety.md (its items land before Phase 7)
 
