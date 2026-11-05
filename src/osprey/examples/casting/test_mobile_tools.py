@@ -158,6 +158,33 @@ class CastingGoldenVerdict(unittest.TestCase):
                  mock.patch.dict(os.environ, {"OSPREY_UPDATE_GOLDENS": "0"}):
                 with self.assertRaises(AssertionError): module.verify_pictures("android", root)
 
+    def test_appearance_seed_writes_exact_utf8_to_shared_gpui_file(self):
+        import base64
+        import shlex
+        module = casting_tool("mobile_test")
+        path = "files/.local/share/osprey/osprey/casting-appearance.txt"
+        for skin in ("removed-skin", "", "poolside & <v2>' e\u0301"):
+            expected, calls = skin.encode("utf-8"), []
+            def adb(*args, binary=False):
+                calls.append(args)
+                if args == ("exec-out", "run-as", "PACKAGE", "cat", path):
+                    self.assertTrue(binary)
+                    return expected
+                return ""
+            self.assertIsNone(module.seed_appearance(adb, "PACKAGE", skin))
+            self.assertEqual(calls[0], ("shell", "am", "force-stop", "PACKAGE"))
+            self.assertTrue(all("shared_prefs" not in arg and "casting.selected-skin" not in arg
+                                for call in calls for arg in call), calls)
+            writes = [call for call in calls if call[:3] == ("shell", "run-as", "PACKAGE") and call[3:5] == ("sh", "-c")]
+            self.assertEqual(len(writes), 1, calls)
+            self.assertEqual(writes[0][3:5], ("sh", "-c"))
+            command = writes[0][5]
+            self.assertIn(path, command)
+            encoded = base64.b64encode(expected).decode()
+            self.assertIn(encoded, shlex.split(command))
+            self.assertEqual(base64.b64decode(encoded), expected)
+            self.assertEqual(calls[-1], ("exec-out", "run-as", "PACKAGE", "cat", path))
+
     def test_pixel_threshold_rejects_changed_controls_and_wrong_dimensions(self):
         # [CAST-MOBILE-DELIVERY] Isolate the pixel oracle from simulator/ffmpeg availability.
         module = casting_tool("mobile_test")

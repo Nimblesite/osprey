@@ -61,6 +61,7 @@ public final class Press extends Instrumentation {
                 AccessibilityWindowInfo owner = button.getWindow();
                 if (owner != null) owner.getBoundsInScreen(window);
                 if (!area.isEmpty() && window.contains(area.centerX(), area.centerY())) {
+                    result.putString("selected", Boolean.toString(button.isSelected()));
                     result.putString("bounds", area.left + " " + area.top + " " + area.right + " " + area.bottom);
                     return "true";
                 }

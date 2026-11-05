@@ -16,7 +16,7 @@ from pathlib import Path
 from unittest import mock
 from xml.etree import ElementTree
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_java, invalid_appearance, native_picker, stale_volume_popup, verify_android_package, wait_native_skin
+from mobile_test import BINDING_CHECK, CastingArtifactContracts, android_appearance, android_java
 ROOT = Path(__file__).resolve().parents[5]
 SDK = Path(os.environ.get("ANDROID_HOME", Path.home() / "Library/Android/sdk"))
 SERIAL = os.environ.get("OSPREY_ANDROID_SERIAL", "")
@@ -216,11 +216,13 @@ def shot(name):
     (OUTPUT / name).write_bytes(adb("exec-out", "screencap", "-p", binary=True))
 
 
-def launch():
+def launch(notice=False):
     # Always the fixture receiver: a journey must never reach a real TV on this network.
     adb("shell", "am", "force-stop", PACKAGE); adb("logcat", "-c")
     adb("shell", "am", "start", "-W", "-n", PACKAGE + "/.CastingActivity", "--es", "testReceiver", os.environ["CAST_TEST_RECEIVER"])
-    wait_focus(); wait_accessible("Open file", "Button")
+    wait_focus()
+    if notice: return
+    wait_accessible("Open file", "Button")
     scene_bounds("Open file…")
 
 
@@ -299,6 +301,7 @@ def main():
     assert "Status: ok" in launch_after_back, launch_after_back
     wait_focus(); wait_accessible("Play", "Button")
     launch(); shot("restarted.png")
+    android_appearance(adb, launch, scene_tap, scene_bounds, press, wait_accessible, PACKAGE)
     print("PASS: Android GPUI player: two picker cancellations, MP3 import, Cast playback, rotation, restart")
 
 

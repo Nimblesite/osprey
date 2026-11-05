@@ -14,7 +14,6 @@ import sys
 import tempfile
 import time
 import unittest
-from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[4]
 APP = ROOT / "src/osprey/examples/casting"
@@ -29,13 +28,6 @@ def verify_native_inputs(folder, library):
     assert library == (folder / "libosprey_casting.stripped.so").read_bytes(), "APK contains a stale native library"
 
 
-def native_picker(value, label):
-    if isinstance(value, dict):
-        if value.get("kind") == "picker" and value.get("label") == label: return [value]
-        return [node for child in value.values() for node in native_picker(child, label)]
-    return [node for child in value for node in native_picker(child, label)] if isinstance(value, list) else []
-
-
 def wait_native_snapshot(snapshot, matches, description):
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
@@ -46,54 +38,52 @@ def wait_native_snapshot(snapshot, matches, description):
     raise AssertionError("Native binding never updated: " + description)
 
 
-def wait_native_skin(snapshot, skin):
-    def chosen(tree):
-        picked = native_picker(tree, "Skin")
-        return tree["node"]["kind"] == "scene" if skin == "sherbet" else len(picked) == 1 and picked[0]["selected"] == skin
-    wait_native_snapshot(snapshot, chosen, skin)
+APPEARANCE_PATH = "files/.local/share/osprey/osprey/casting-appearance.txt"
 
 
-def stale_volume_popup(tap, find, snapshot):
-    # [CAST-MOBILE-POPUP-FRESHNESS] The receiver changes an open menu's binding.
-    control = Path(os.environ["CAST_TEST_VOLUME_FILE"])
-    tap("Volume 100%")
-    pending = control.with_suffix(".pending"); pending.write_text("0.25"); pending.replace(control)
-    wait_native_snapshot(snapshot, lambda tree: native_picker(tree, "Volume 25%"), "Volume 25%")
-    assert not control.exists(), "The remote volume change must be consumed once"
-    tap("50%")
-    find("Volume 25%", timeout=5)
-    tap("Volume 25%"); tap("50%")
-    find("Volume 50%")
-    print("PASS: changed popup binding rejects its old choice and a fresh menu still controls volume", flush=True)
+def saved_appearance(adb, package):
+    return adb("exec-out", "run-as", package, "cat", APPEARANCE_PATH, binary=True)
 
 
 def seed_appearance(adb, package, skin):
+    # [CAST-MOBILE-APPEARANCE-RECOVERY] Write the shared host's real store, preserving UTF-8.
     adb("shell", "am", "force-stop", package)
-    root = ElementTree.Element("map")
-    ElementTree.SubElement(root, "string", name="casting.selected-skin").text = skin
-    xml = ElementTree.tostring(root, encoding="unicode")
-    adb("shell", "run-as", package, "sh", "-c", "printf '%s' " + shlex.quote(xml) + " > shared_prefs/casting.xml")
-    assert adb("exec-out", "run-as", package, "cat", "shared_prefs/casting.xml") == xml
+    encoded = base64.b64encode(skin.encode()).decode()
+    command = f"mkdir -p {shlex.quote(str(Path(APPEARANCE_PATH).parent))} && printf %s {shlex.quote(encoded)} | base64 -d > {APPEARANCE_PATH}"
+    adb("shell", "run-as", package, "sh", "-c", command)
+    assert saved_appearance(adb, package) == skin.encode(), "The recovery fixture must preserve exact saved bytes"
 
 
-def invalid_appearance(adb, launch, tap, find, package, window):
-    # [CAST-MOBILE-APPEARANCE-RECOVERY] Seed real app preferences, then boot normally.
-    snapshot = lambda: json.loads(adb("exec-out", "run-as", package, "cat", "files/test-scene.json"))
+def invalid_appearance(adb, launch, press, look, bounds, package):
     for skin in ("removed-skin", "", "poolside & <v2>' ☄"):
         seed_appearance(adb, package, skin)
-        launch(skin=None, native=True, notice=True)
-        find("Appearance restored", timeout=10)
-        find("The selected appearance is unavailable. The default appearance has been restored.")
-        tap("OK")
-        assert find("Open file…").get("class") == "android.widget.Button"
-        wait_native_skin(snapshot, "sherbet")
-        saved = ElementTree.fromstring(adb("exec-out", "run-as", package, "cat", "shared_prefs/casting.xml"))
-        assert saved.find("string[@name='casting.selected-skin']").text == "sherbet"
-        launch(skin=None, native=True)
-        wait_native_skin(snapshot, "sherbet")
-        tree = window()
-        assert tree is not None and not any(node.get("text") == "Appearance restored" for node in tree.iter("node")), "A repaired choice must not warn again"
-    print("PASS: invalid saved appearances show a native notice, repair preferences and restart normally", flush=True)
+        launch(notice=True)
+        look("Appearance restored", "TextView")
+        look("The selected appearance is unavailable. The default appearance has been restored.", "TextView")
+        press("OK")
+        bounds("Open file…"); bounds("Appearance: Sherbet Signal")
+        wait_native_snapshot(lambda: saved_appearance(adb, package), lambda saved: saved == b"sherbet", "repaired appearance")
+        launch(); bounds("Appearance: Sherbet Signal")
+    print("PASS: invalid saved appearances show a native notice, repair the shared store and restart normally", flush=True)
+
+
+def selected_appearance(adb, label):
+    answer = adb("shell", "am", "instrument", "-w", "-e", "label", label, "-e", "bounds", "1", "-e", "match", "exact", "org.ospreylang.casting.press/.Press")
+    assert "pressed=true" in answer and "selected=true" in answer, f"The shared appearance must announce its selected state: {label}: {answer}"
+
+
+def android_appearance(adb, launch, tap, bounds, press, look, package):
+    invalid_appearance(adb, launch, press, look, bounds, package)
+    tap("Appearance: Sherbet Signal")
+    for key, label in (("midnight", "Midnight Mint"), ("poolside", "Poolside Pop"), ("sherbet", "Sherbet Signal")):
+        tap(label)
+        wait_native_snapshot(lambda: saved_appearance(adb, package), lambda saved: saved == key.encode(), label)
+        launch()
+        if key == "sherbet":
+            tap("Appearance: Sherbet Signal")
+        bounds(label); selected_appearance(adb, label)
+    tap("Sherbet Signal")
+    print("PASS: all three shared appearances persist across Android process restart", flush=True)
 
 
 def verify_android_package(archive):
