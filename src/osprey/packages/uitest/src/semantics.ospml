@@ -29,8 +29,8 @@ module Semantics
     (** The value of the slider labelled `label`; 0 for anything else. *)
     export value (elements, label) = (element (elements, label)).accessValue
 
-    (** Whether the element labelled `label` is announced as the machine's current choice; false for anything else. *)
-    export selected (elements, label) = (element (elements, label)).accessSelected
+    (** Whether an element labelled `label` is announced as the machine's current choice. *)
+    export selected (elements, label) = Lists::any (elements, \e => e.accessLabel == label && e.accessSelected)
 
     (** The point `fraction` across an element's bounds and halfway down it. *)
     export point (e, fraction) = Point(pointX = e.accessLeft + e.accessWidth * fraction, pointY = e.accessTop + e.accessHeight / 2.0)
