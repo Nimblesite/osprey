@@ -144,4 +144,5 @@ incremental = false
 
 # Keep the coverage-instrumented checker within the Agent's normal check budget.
 [profile.ci.package.osprey-types]
-opt-level = 2
+opt-level = 3
+codegen-units = 1

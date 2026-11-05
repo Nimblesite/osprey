@@ -170,10 +170,7 @@ impl Checker {
         }
         let actual = match receiver {
             Type::Record { fields, .. } => Some(fields.get(field).cloned()),
-            Type::Con { name, args } => self
-                .ctx
-                .record_fields(name, args)
-                .map(|mut fields| fields.remove(field)),
+            Type::Con { name, args } => self.ctx.record_field(name, args, field).ok(),
             _ => None,
         }
         .ok_or_else(|| {

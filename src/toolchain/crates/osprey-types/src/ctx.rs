@@ -66,10 +66,7 @@ impl InferCtx {
         name: &str,
         args: &[Type],
     ) -> Option<std::collections::BTreeMap<String, Type>> {
-        let (params, fields) = self.records.get(name)?;
-        if params.len() != args.len() {
-            return None;
-        }
+        let (params, fields) = self.record_template(name, args.len())?;
         let binder = params.iter().cloned().zip(args.iter().cloned()).collect();
         Some(
             fields
@@ -82,6 +79,30 @@ impl InferCtx {
                 })
                 .collect(),
         )
+    }
+
+    fn record_template(&self, name: &str, arity: usize) -> Option<&RecordTemplate> {
+        self.records
+            .get(name)
+            .filter(|(params, _)| params.len() == arity)
+    }
+
+    /// A missing field is distinct from an unknown record or incorrect arity.
+    pub(crate) fn record_field(
+        &self,
+        name: &str,
+        args: &[Type],
+        field: &str,
+    ) -> Result<Option<Type>, ()> {
+        let (params, fields) = self.record_template(name, args.len()).ok_or(())?;
+        Ok(fields
+            .iter()
+            .rev()
+            .find(|(name, _)| name == field)
+            .map(|(_, ty)| {
+                let binder = params.iter().cloned().zip(args.iter().cloned()).collect();
+                crate::convert::type_name_to_type(ty, &binder)
+            }))
     }
 
     pub(crate) fn record_preserves_parameters(&self, name: &str) -> bool {

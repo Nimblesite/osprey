@@ -806,8 +806,8 @@ impl Checker {
             Type::Record { fields, .. } => fields.contains_key(&field),
             Type::Con { name, args } => self
                 .ctx
-                .record_fields(&name, &args)
-                .is_some_and(|fields| fields.contains_key(&field)),
+                .record_field(&name, &args, &field)
+                .is_ok_and(|ty| ty.is_some()),
             Type::Var(_) => env.get(parts.method).is_none(),
             _ => false,
         };
