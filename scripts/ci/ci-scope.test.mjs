@@ -162,10 +162,11 @@ test('staged bundle verification fails closed without recompiling a payload', ()
 test('malformed detection input fails the gate instead of skipping required jobs', () => {
   const temporary = mkdtempSync(join(tmpdir(), 'osprey-ci-scope-'))
   try {
-    const env = { ...process.env, GITHUB_OUTPUT: join(temporary, 'output'), CHANGED_FILES: '{}' }
-    assert.notEqual(spawnSync(process.execPath, ['scripts/ci/ci-scope.mjs'], { env }).status, 0)
-    env.CHANGED_FILES = '["docs/book/book.json"]'
-    assert.equal(spawnSync(process.execPath, ['scripts/ci/ci-scope.mjs'], { env }).status, 0)
+    const env = { ...process.env, GITHUB_OUTPUT: join(temporary, 'output') }
+    const run = (input) => spawnSync(process.execPath, ['scripts/ci/ci-scope.mjs'], { env, input })
+    assert.notEqual(run('docs/book/book.json').status, 0)
+    const paths = Array.from({ length: 8000 }, (_, index) => `docs/book/manuscript/chapter ${index}.md`)
+    assert.equal(run(`${paths.join('\0')}\0`).status, 0)
     assert.match(readFileSync(env.GITHUB_OUTPUT, 'utf8'), /^code=false\nwebsite=false\nbook=true\nbenchmarks=false\n$/)
   } finally { rmSync(temporary, { recursive: true }) }
 })

@@ -1,4 +1,4 @@
-import { appendFileSync } from 'node:fs'
+import { appendFileSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -20,8 +20,11 @@ export const classify = (files) => {
 }
 
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
-  const scope = classify(JSON.parse(process.env.CHANGED_FILES))
-  const output = Object.entries(scope).map(([key, value]) => `${key}=${value}\n`).join('')
+  const all = process.argv[2] === '--all'
+  const input = all ? '' : readFileSync(0, 'utf8')
+  if (input && !input.endsWith('\0')) throw new Error('Changed paths must be NUL-terminated')
+  const scope = classify(input.split('\0').slice(0, -1))
+  const output = Object.entries(scope).map(([key, value]) => `${key}=${all || value}\n`).join('')
   appendFileSync(process.env.GITHUB_OUTPUT, output)
   process.stdout.write(output)
 }

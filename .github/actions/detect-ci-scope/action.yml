@@ -16,16 +16,15 @@ outputs:
 runs:
   using: composite
   steps:
-    - uses: dorny/paths-filter@v3
-      id: files
-      with:
-        list-files: json
-        filters: |
-          all:
-            - '**'
     - name: Classify changed files
       id: scope
       shell: bash
       env:
-        CHANGED_FILES: ${{ steps.files.outputs.all_files }}
-      run: node scripts/ci/ci-scope.mjs
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      run: |
+        if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
+          git fetch --no-tags --depth=1 origin "${PR_BASE_SHA:?Missing pull request base SHA}"
+          git diff --no-renames --name-only -z "$PR_BASE_SHA" HEAD -- | node scripts/ci/ci-scope.mjs
+        else
+          node scripts/ci/ci-scope.mjs --all
+        fi
