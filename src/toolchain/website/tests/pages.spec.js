@@ -168,10 +168,22 @@ for (const width of [1280, 1440, 1920]) {
     const centers = await prose.evaluateAll(proseOffsets);
     expect(Math.max(...centers), "benchmark prose must be centered in the viewport").toBeLessThanOrEqual(2);
     const tables = page.locator(".comparison-table table");
-    await expect(tables).toHaveCount(2);
+    await expect(tables).toHaveCount(4);
+    await expect(page.locator(".bench-card")).toHaveCount(0);
+    const relative = tables.first();
+    await expect(relative.locator("thead")).toContainText("Osprey (ARC)");
+    await expect(relative.locator("thead")).toContainText("Osprey (GC)");
+    await expect(relative.locator("tbody tr", { hasText: "Fastest of all" })).toHaveCount(1);
+    const cpu = tables.nth(1);
+    await expect(cpu.locator("td.col-osprey .sd").first()).toHaveText(/^±\d/);
+    await expect(cpu.locator("td.col-osprey").first()).toHaveAttribute("title", /mean .*median .*standard deviation .*measured \d{4}-\d{2}-\d{2}/);
+    const runs = tables.nth(3);
+    await expect(runs.locator("thead")).toContainText("Toolchains");
+    await expect(runs.locator("tbody tr")).toHaveCount(5);
+    await expect(runs).toContainText("Apple M4 Max");
     expect(await tables.first().evaluate((table) => table.clientWidth / table.closest("article").clientWidth)).toBeGreaterThan(0.95);
     const overflow = await tables.evaluateAll((elements) => elements.map((element) => element.scrollWidth - element.clientWidth));
-    expect(overflow, "every benchmark column must fit without horizontal scrolling").toEqual([0, 0]);
+    expect(overflow, "every benchmark column must fit without horizontal scrolling").toEqual([0, 0, 0, 0]);
     for (const table of await tables.all()) {
       const bounds = await table.locator("th:last-child").boundingBox();
       expect(bounds.x).toBeGreaterThanOrEqual(0);

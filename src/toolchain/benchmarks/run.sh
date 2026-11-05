@@ -278,5 +278,5 @@ python3 "$BENCHDIR/merge_results.py" "$OUT" "$RUNOUT" $LANGS \
 mkdir -p "$OUT"
 python3 "$BENCHDIR/report.py" "$OUT" || { echo "report failed" >&2; exit 1; }
 rm -rf "$TMP"
-echo "==> done. Open $OUT/results.html"
+echo "==> done. The report is the website /benchmarks page; data in $OUT/results.json"
 exit $fail

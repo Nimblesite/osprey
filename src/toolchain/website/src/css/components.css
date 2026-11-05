@@ -359,7 +359,7 @@
   text-transform: uppercase;
 }
 .comparison-table tbody td { color: var(--on-surface-variant); }
-.comparison-table tbody td:first-child { color: var(--on-surface); font-weight: 600; }
+.comparison-table tbody td:first-child { color: var(--on-surface); font-weight: 600; white-space: nowrap; }
 .comparison-table tbody tr:last-child td { border-bottom: 0; }
 .comparison-table tbody tr:hover td { background: rgba(46, 52, 72, 0.4); }
 
@@ -375,20 +375,6 @@
 .comparison-table tbody td.col-osprey { background: rgba(119, 215, 244, 0.08); }
 .comparison-table tbody td.best { color: var(--on-surface); font-weight: 600; }
 .comparison-table tbody td.win { color: var(--tertiary-dim); font-weight: 700; }
-.bench-summary { display: flex; flex-wrap: wrap; gap: var(--space-3); margin: var(--space-6) 0; }
-.bench-card {
-  flex: 1 1 150px;
-  background: var(--surface-low);
-  border: 1px solid var(--outline-variant);
-  border-radius: var(--radius);
-  padding: var(--space-4) var(--space-5);
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-}
-.bench-card .big { font-family: var(--font-mono); font-size: 1.7rem; font-weight: 700; color: var(--on-surface); }
-.bench-card .lbl { color: var(--on-surface-variant); font-size: var(--fs-label); text-transform: uppercase; letter-spacing: 0.04em; }
-.bench-card.is-accent .big { color: var(--tertiary-dim); }
-.bench-card.is-good .big { color: var(--primary-container); }
+.comparison-table .sd { display: block; font-size: 0.75em; color: var(--on-surface-variant); font-weight: 400; }
 .comparison-cta { text-align: center; margin-top: var(--space-6); color: var(--on-surface-variant); }
 .comparison-cta a { font-weight: 600; }

@@ -15,8 +15,8 @@ include Makefile
 ##        /usr/bin/time). Absent toolchains are skipped. Informational only:
 ##        NOT part of `make ci`/`make test` (perf is noisy on shared runners).
 ##        Pass a name filter via BENCH_FILTER=<substr>, or time only some columns with
-##        BENCH_LANGS="codon dart" (the rest keep their records); results in
-##        src/toolchain/benchmarks/results/results.html. Every run preserves unmeasured
+##        BENCH_LANGS="codon dart" (the rest keep their records); the report is the website
+##        /benchmarks page, data in src/toolchain/benchmarks/results/results.json. Every run preserves unmeasured
 ##        values and publishes only validated replacements. See src/toolchain/benchmarks/README.md.
 bench: build
 	@zsh src/toolchain/benchmarks/run.sh $(BENCH_FILTER)

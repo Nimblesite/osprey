@@ -44,14 +44,13 @@ raw hyperfine exports (`hf/`) are gitignored, and binaries are built in a tempor
 
 | file | contents |
 |------|----------|
-| `results.html` | self-contained HTML report — CPU + memory tables styled with the Osprey website CSS (open in a browser) |
-| `results.json` | the same data, structured, for tracking over time |
+| `results.json` | every published figure, the run that measured it, and each run's CPU, OS and toolchain versions |
 | `hf/*.json`    | raw [hyperfine](https://github.com/sharkdp/hyperfine) exports per case |
 
-`make -C src/toolchain/benchmarks bench` also **bakes** the tables into the website
-(`src/toolchain/website/src/_includes/benchmarks-tables.html`, committed) so the
-[`/benchmarks`](../website/src/benchmarks.md) page renders them at site-build
-time. The standalone report and website tables are generated mechanically by [`report.py`](report.py). The website prose must be updated to describe those measurements and their provenance.
+The report is the website's [`/benchmarks`](../website/src/benchmarks.md) page; there is
+no second copy. [`report.py`](report.py) generates its tables mechanically into
+`src/toolchain/website/src/_includes/benchmarks-tables.html` (committed), including
+the table of runs, machines and toolchain versions behind every figure.
 
 ## The benchmarks (24)
 

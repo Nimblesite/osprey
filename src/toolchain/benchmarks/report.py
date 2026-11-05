@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
-"""Aggregate harness output into an HTML report — generated MECHANICALLY, never
-hand-edited.
+"""Aggregate harness output into the website's benchmark report — generated
+MECHANICALLY, never hand-edited.
 
 Reads <out>/raw.jsonl (per case/lang: status + peak RSS), the hyperfine
 exports in <out>/hf/<case>.json (per case/lang: timing) and, for a case with no
 export on this machine, the timing already published in <out>/results.json,
-then renders:
+then writes:
 
-  <out>/results.html  — self-contained report (Osprey website CSS inlined)
-  <out>/results.json  — same data, structured, for tracking over time
-  src/toolchain/website/src/_includes/benchmarks-tables.html — the same tables as a fragment,
-      "baked" into the website so the /benchmarks page renders without the
-      per-case hyperfine exports present.
+  <out>/results.json — every published cell, the run that measured it, and each
+      run's machine and toolchain versions.
+  src/toolchain/website/src/_includes/benchmarks-tables.html — the report itself,
+      rendered by the /benchmarks page. There is no second, standalone copy.
   src/toolchain/benchmarks/README.md — measured binarytrees figures between generated markers.
-
-The tables (CPU time, peak memory) use the website's own `.comparison-table`
-classes; the fastest cell per row is badged and Osprey's outright wins starred.
 """
 import html
 import json
 import math
+import os
+import platform
+import re
+import subprocess
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -35,7 +36,7 @@ LABEL: dict[str, str] = {"osprey-arc": "Osprey (ARC)",
                          "ocaml": "OCaml", "haskell": "Haskell",
                          "osprey-wasm": "Osprey (wasm)", "rust-wasm": "Rust (wasm)",
                          "c-wasm": "C (wasm)"}
-DEFAULT_BACKEND = "osprey-gc"
+OSPREY_COLUMNS = ("osprey-arc", "osprey-gc", "osprey-wasm")
 REPO = Path(__file__).resolve().parent.parent.parent.parent
 
 Cell = dict[str, object]
@@ -46,12 +47,13 @@ def recorded_results(path: Path) -> Data:
     return json.loads(path.read_text()).get("cases", {}) if path.exists() else {}
 
 
-def load(out: Path) -> Data:
+def load(out: Path, run: Optional[str] = None) -> Data:
     """Merge raw status/RSS records with timings, keyed by case/lang.
 
     Start from complete published cells, then overwrite only measured values.
     Missing rows, failed runs and zero RSS samples retain their previous values.
-    Hyperfine exports replace timings only when all four fields are valid.
+    Hyperfine exports replace timings only when all four fields are valid; a
+    replaced cell takes this export's median (or none) and is stamped with `run`.
     """
     data = recorded_results(out / "results.json")
     for line in (out / "raw.jsonl").read_text().splitlines():
@@ -63,8 +65,17 @@ def load(out: Path) -> Data:
         for res in json.loads(hf.read_text())["results"]:
             cell = data.get(hf.stem, {}).get(res.get("command"))
             if cell is not None and cell.get("status") == "ok" and valid_timing(res):
-                cell.update({k: res[k] for k in TIMING})
+                retime(cell, res, run)
     return {name: {l: c for l, c in case.items() if l in ORDER} for name, case in data.items()}
+
+
+def retime(cell: Cell, res: dict, run: Optional[str]) -> None:
+    cell.update({k: res[k] for k in TIMING})
+    cell.pop("median", None)
+    if valid_timing({**res, "mean": res.get("median")}):
+        cell["median"] = res["median"]
+    if run:
+        cell["run"] = run
 
 
 def present_langs(data: Data) -> list[str]:
@@ -77,9 +88,18 @@ def fmt_time(sec: float) -> str:
     return f"{ms:.1f}&nbsp;ms" if ms < 1000 else f"{sec:.3f}&nbsp;s"
 
 
+def fmt_sd(mean: float, sd: float) -> str:
+    """The deviation in the mean's own unit, without repeating the unit."""
+    return f"{sd * 1000:.1f}" if mean < 1 else f"{sd:.3f}"
+
+
 def fmt_mem(b: float) -> str:
     mib = b / (1024 * 1024)
     return f"{b / 1024:.0f}&nbsp;KiB" if mib < 1 else f"{mib:.1f}&nbsp;MiB"
+
+
+def plain(text: str) -> str:
+    return text.replace("&nbsp;", " ")
 
 
 def geomean(xs: list[float]) -> float:
@@ -96,10 +116,11 @@ def vals(case: dict[str, Cell], key: str) -> dict[str, float]:
             if c.get("status") == "ok" and c.get(key)}
 
 
-def ratios(data: Data, cases: list[str], lang: str, key: str) -> list[float]:
+def ratios(data: Data, cases: list[str], osprey: str, lang: str, key: str) -> list[float]:
+    """`osprey`'s value divided by `lang`'s, for every case both measured."""
     rs: list[float] = []
     for n in cases:
-        o, x = data[n].get(DEFAULT_BACKEND, {}), data[n].get(lang, {})
+        o, x = data[n].get(osprey, {}), data[n].get(lang, {})
         if o.get("status") == "ok" and x.get("status") == "ok" and o.get(key) and x.get(key):
             rs.append(float(o[key]) / float(x[key]))
     return rs
@@ -116,6 +137,13 @@ def osprey_wins(v: dict[str, float]) -> bool:
 
 def cell_missing(c: Cell) -> str:
     return {"build_failed": "build✗", "wrong_output": "wrong✗"}.get(str(c.get("status")), "—")
+
+
+def table(head: list[str], rows: str, numeric: set[int] = frozenset()) -> str:
+    """A `.comparison-table` with `head` columns; `numeric` column indexes align right."""
+    cells = "".join(f'<th{" class=\"num\"" if i in numeric else ""}>{h}</th>' for i, h in enumerate(head))
+    return (f'<div class="comparison-table"><table><thead><tr>{cells}</tr></thead>'
+            f"<tbody>{rows}</tbody></table></div>")
 
 
 def value_table(data: Data, langs: list[str], cases: list[str], key: str, fmt: Callable[[float], str]) -> str:
@@ -141,55 +169,97 @@ def _td(c: Cell, lang: str, key: str, fmt: Callable[[float], str],
     classes = ["num"] + (["col-osprey"] if lang.startswith("osprey") else [])
     if ok and best is not None and float(c[key]) == best:
         strict = all(float(c[key]) < o for l, o in v.items() if l != lang)
-        if lang.startswith("osprey") and strict:
-            classes.append("win")
-            txt += " ★"
-        else:
-            classes.append("best")
-    return f'<td class="{" ".join(classes)}">{txt}</td>'
+        classes.append("win" if lang.startswith("osprey") and strict else "best")
+        txt += " ★" if classes[-1] == "win" else ""
+    if ok and key == "mean" and c.get("stddev") is not None:
+        txt += f'<span class="sd">±{fmt_sd(float(c["mean"]), float(c["stddev"]))}</span>'
+    tip = f' title="{html.escape(tooltip(c, key))}"' if ok else ""
+    return f'<td class="{" ".join(classes)}"{tip}>{txt}</td>'
+
+
+def tooltip(c: Cell, key: str) -> str:
+    """Every recorded statistic for one cell, and where it was measured."""
+    if key == "mean":
+        stats = [f"mean {plain(fmt_time(float(c['mean'])))}"] + [
+            f"{label} {plain(fmt_time(float(c[k])))}" for k, label in
+            (("median", "median"), ("stddev", "standard deviation"), ("min", "min"), ("max", "max"))
+            if c.get(k) is not None]
+    else:
+        stats = [f"peak RSS {plain(fmt_mem(float(c['rss'])))}, highest of three runs"]
+    return ", ".join(stats) + f" — measured {c.get('run', 'in an unrecorded run')}"
 
 
 def summary(data: Data, langs: list[str], cases: list[str]) -> str:
-    """Headline cards: outright CPU wins + the default backend's CPU geomean vs each language."""
-    cw = wins(data, cases, "mean")
-    cards = [_card(str(len(cw)), "CPU wins (fastest of all)", "is-accent")]
+    """Osprey time ÷ each language's time: the geometric mean over shared cases.
+    Native languages compare with the native Osprey columns, wasm with wasm."""
+    columns = [o for o in OSPREY_COLUMNS if o in langs]
+    head = "<tr><th>Compared with</th>" + "".join(
+        f'<th class="num col-osprey">{LABEL[o]}</th>' for o in columns) + '<th class="num">Cases</th></tr>'
+    rows = "".join(_summary_row(data, cases, columns, lang) for lang in langs if not lang.startswith("osprey"))
+    fastest = "".join(f'<td class="num col-osprey">{sum(_fastest(data[n], o) for n in cases)}</td>' for o in columns)
+    rows += f'<tr><td>Fastest of all</td>{fastest}<td class="num">{len(cases)}</td></tr>'
+    return ('<div class="comparison-table"><table><thead>' + head
+            + "</thead><tbody>" + rows + "</tbody></table></div>")
+
+
+def _fastest(case: dict[str, Cell], osprey: str) -> bool:
+    v = vals(case, "mean")
+    return osprey in v and all(v[osprey] < x for l, x in v.items() if l != osprey)
+
+
+def _summary_row(data: Data, cases: list[str], columns: list[str], lang: str) -> str:
+    cells, counts = "", set()
+    for o in columns:
+        rs = ratios(data, cases, o, lang, "mean") if o.endswith("wasm") == lang.endswith("wasm") else []
+        counts |= {len(rs)} if rs else set()
+        cells += f'<td class="num col-osprey">{f"{geomean(rs):.2f}×" if rs else "—"}</td>'
+    count = " / ".join(str(n) for n in sorted(counts))
+    return f'<tr><td>{LABEL[lang]}</td>{cells}<td class="num">{count}</td></tr>' if counts else ""
+
+
+def runs_table(runs: dict[str, dict], data: Data, langs: list[str], cases: list[str]) -> str:
+    """One row per run: when, on what, with which toolchains, and which cells it measured."""
+    rows = ""
+    for rid in sorted(runs, key=lambda r: runs[r].get("date", ""), reverse=True):
+        run = runs[rid]
+        figures = _run_figures(data, cases, langs, rid)
+        tools = ", ".join(f"{name} {version}" for name, version in run.get("tools", {}).items())
+        note = f'<span class="sd">{html.escape(run["note"])}</span>' if run.get("note") else ""
+        rows += "<tr>" + "".join(f"<td>{html.escape(v)}</td>" for v in (
+            run.get("date", "—"), run.get("cpu", "—"), run.get("os", "—"))) + (
+            f"<td>{html.escape(tools) or '—'}{note}</td><td>{html.escape(figures)}</td></tr>")
+    return table(["Measured", "CPU", "OS", "Toolchains", "Figures"], rows)
+
+
+def _run_figures(data: Data, cases: list[str], langs: list[str], rid: str) -> str:
+    """Languages grouped by the cases this run measured for them, e.g.
+    `Rust, C: every case except fib, tak` or `Codon: every case`."""
+    groups: dict[tuple[str, ...], list[str]] = {}
     for lang in langs:
-        if not lang.startswith("osprey") and (rs := ratios(data, cases, lang, "mean")):
-            g = geomean(rs)
-            cards.append(_card(f"{g:.2f}×", f"{LABEL[DEFAULT_BACKEND]} CPU vs {LABEL[lang]}", "is-good" if g <= 1.05 else ""))
-    note = (f'<p>An Osprey column is the fastest of all on <strong>'
-            f'{html.escape(", ".join(cw)) or "—"}</strong>. Lower is better; ★ marks an Osprey win.</p>')
-    return '<div class="bench-summary">' + "".join(cards) + "</div>" + note
+        hit = tuple(n for n in cases if data[n].get(lang, {}).get("run") == rid)
+        if hit:
+            groups.setdefault(hit, []).append(LABEL[lang])
+    return "; ".join(f"{', '.join(names)}: {_case_list(hit, cases)}" for hit, names in groups.items())
 
 
-def _card(big: str, label: str, kind: str) -> str:
-    return (f'<div class="bench-card {kind}"><span class="big">{big}</span>'
-            f'<span class="lbl">{html.escape(label)}</span></div>')
+def _case_list(hit: tuple[str, ...], cases: list[str]) -> str:
+    rest = [n for n in cases if n not in hit]
+    if not rest:
+        return "every case"
+    return f"every case except {', '.join(rest)}" if len(rest) < len(hit) else ", ".join(hit)
 
 
-def tables_fragment(data: Data, langs: list[str], cases: list[str]) -> str:
-    """The shared report body — summary + both tables — with no page shell or CSS.
-    Reused verbatim by the standalone file and the website /benchmarks page."""
-    return (summary(data, langs, cases)
+def tables_fragment(data: Data, langs: list[str], cases: list[str], runs: dict[str, dict]) -> str:
+    """The whole report body, rendered by the website /benchmarks page."""
+    return ("<h2>Osprey time relative to each language</h2>\n" + summary(data, langs, cases)
             + "\n<h2>CPU time</h2>\n" + value_table(data, langs, cases, "mean", fmt_time)
-            + "\n<h2>Peak memory</h2>\n" + value_table(data, langs, cases, "rss", fmt_mem))
-
-
-def website_css() -> str:
-    """The actual Osprey website CSS (tokens + base + components), concatenated so
-    the standalone report renders identically to the site with no network."""
-    css_dir = REPO / "src" / "toolchain" / "website" / "src" / "css"
-    return "\n".join((css_dir / f).read_text() for f in ("variables.css", "base.css", "components.css")
-                     if (css_dir / f).exists())
-
-
-def render_standalone(fragment: str, langs: list[str]) -> str:
-    return STANDALONE.format(css=website_css(), langs=html.escape(", ".join(LABEL[l] for l in langs)), body=fragment)
+            + "\n<h2>Peak memory</h2>\n" + value_table(data, langs, cases, "rss", fmt_mem)
+            + "\n<h2>Where each figure was measured</h2>\n" + runs_table(runs, data, langs, cases))
 
 
 def bake_website_fragment(fragment: str) -> Optional[Path]:
-    """Write the tables fragment into the website includes so /benchmarks renders
-    it at site-build time without the (gitignored) results present."""
+    """Write the report into the website includes so /benchmarks renders it at
+    site-build time without the (gitignored) hyperfine exports present."""
     inc = REPO / "src" / "toolchain" / "website" / "src" / "_includes"
     if not inc.exists():
         return None
@@ -234,32 +304,72 @@ def update_readme(data: Data, path: Path = README) -> Optional[Path]:
     return path
 
 
+TOOL_COMMANDS: dict[str, list[tuple[str, list[str]]]] = {
+    "osprey": [("Osprey", ["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"]),
+               ("Clang", [os.environ.get("OSPREY_CC", "clang"), "--version"])],
+    "rust": [("Rust", ["rustc", "--version"])],
+    "c": [("C compiler", ["cc", "--version"])],
+    "csharp": [(".NET", ["dotnet", "--version"])],
+    "dart": [("Dart", ["dart", "--version"])],
+    "codon": [("Codon", ["codon", "--version"])],
+    "ocaml": [("OCaml", ["ocamlopt", "-version"])],
+    "haskell": [("GHC", ["ghc", "--numeric-version"])],
+    "wasm": [("Wasmtime", ["wasmtime", "--version"])],
+}
+
+
+def first_line(command: list[str]) -> str:
+    try:
+        done = subprocess.run(command, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired):
+        return "unknown"
+    lines = (done.stdout or done.stderr).strip().splitlines()
+    if done.returncode != 0 or not lines:
+        return "unknown"
+    version = re.search(r"\d+(?:\.\d+)+", lines[0])
+    return version.group(0) if version else lines[0].strip()
+
+
+def host() -> tuple[str, str]:
+    """This machine's CPU model and operating system, as the OS reports them."""
+    if sys.platform == "darwin":
+        return (first_line(["sysctl", "-n", "machdep.cpu.brand_string"]),
+                f"macOS {first_line(['sw_vers', '-productVersion'])}")
+    info = Path("/proc/cpuinfo")
+    lines = info.read_text().splitlines() if info.exists() else []
+    cpu = next((l.split(":", 1)[1].strip() for l in lines if l.startswith("model name")), "unknown")
+    return cpu, f"{platform.system()} {platform.release()}"
+
+
+def tool_versions(langs: set[str]) -> dict[str, str]:
+    families = {l.split("-")[0] for l in langs} | ({"wasm"} if any(l.endswith("wasm") for l in langs) else set())
+    tools = {name: first_line(cmd) for f in TOOL_COMMANDS if f in families for name, cmd in TOOL_COMMANDS[f]}
+    return {**tools, "hyperfine": first_line(["hyperfine", "--version"])}
+
+
+def record_runs(out: Path, data: Data, run: str, cpu: str, os_name: str) -> dict[str, dict]:
+    """The published runs still referenced by a cell, plus this one if it measured anything."""
+    path = out / "results.json"
+    runs = json.loads(path.read_text()).get("runs", {}) if path.exists() else {}
+    measured = {l for case in data.values() for l, c in case.items() if c.get("run") == run}
+    if measured:
+        runs[run] = {"date": run.split(" · ")[0], "cpu": cpu, "os": os_name, "tools": tool_versions(measured)}
+    used = {c.get("run") for case in data.values() for c in case.values()}
+    return {rid: r for rid, r in runs.items() if rid in used}
+
+
 def render(out: Path) -> None:
-    data = load(out)
+    cpu, os_name = host()
+    run = f"{date.today().isoformat()} · {cpu}"
+    data = load(out, run)
     langs, cases = present_langs(data), sorted(data)
-    fragment = tables_fragment(data, langs, cases)
-    atomic_write(out / "results.html", render_standalone(fragment, langs))
-    atomic_write(out / "results.json", json.dumps({"languages": langs, "cases": data}, indent=2, allow_nan=False))
-    baked = bake_website_fragment(fragment)
+    runs = record_runs(out, data, run, cpu, os_name)
+    atomic_write(out / "results.json", json.dumps({"languages": langs, "runs": runs, "cases": data},
+                                                  indent=2, allow_nan=False, ensure_ascii=False))
+    baked = bake_website_fragment(tables_fragment(data, langs, cases, runs))
     readme = update_readme(data)
-    print(f"wrote {out / 'results.html'}" + (f" and baked {baked}" if baked else "")
+    print(f"wrote {out / 'results.json'}" + (f" and the website report {baked}" if baked else "")
           + (f" and refreshed {readme}" if readme else " (README figures unchanged)"))
-
-
-STANDALONE = """<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Osprey benchmarks</title>
-<style>{css}</style></head>
-<body><main class="container" style="padding-top:3rem;padding-bottom:4rem">
-<h1>Osprey cross-language benchmarks</h1>
-<p>{langs} — same naive algorithm and parameters in every language, native
-release builds, output checked against an integer oracle. CPU = hyperfine
-mean&nbsp;±&nbsp;stddev; memory = peak resident set size. Generated mechanically
-by <code>src/toolchain/benchmarks/report.py</code>; re-run with <code>make -C src/toolchain/benchmarks bench</code>.</p>
-{body}
-</main></body></html>
-"""
 
 
 if __name__ == "__main__":

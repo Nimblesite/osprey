@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import runpy
 import shutil
@@ -12,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_results import atomic_write, merge, valid_timing
-from report import fmt_time, load, present_langs, ratios, summary, update_readme, value_table, wins
+from report import fmt_time, load, present_langs, ratios, render, runs_table, summary, update_readme, value_table, wins
 
 
 class LspFixtureTests(unittest.TestCase):
@@ -229,12 +230,17 @@ class HarnessPublicationTests(unittest.TestCase):
         (bench / "cases/fib/fib.osp").write_text("print(42)\n")
         (bench / "cases/fib/expected.txt").write_text("42\n")
         (root / "target/release").mkdir(parents=True)
+        (root / "src/toolchain/website/src/_includes").mkdir(parents=True)
         (bench / "results").mkdir()
         (bench / "results/raw.jsonl").write_text('{"case":"fib","lang":"rust","status":"ok","rss":10}\n')
         (bench / "results/results.json").write_text(json.dumps({"cases": {
             "fib": {"rust": {"status": "ok", "rss": 10, **RecordedTimingTests.TIMING}},
         }}))
         return bench
+
+    @staticmethod
+    def page(root: Path) -> str:
+        return (root / "src/toolchain/website/src/_includes/benchmarks-tables.html").read_text()
 
     def executable(self, path: Path, text: str) -> None:
         path.write_text(text)
@@ -311,7 +317,8 @@ class HarnessPublicationTests(unittest.TestCase):
             published = json.loads((bench / "results/results.json").read_text())
             self.assertEqual(set(published["cases"]["fib"]), {"rust", "osprey-arc", "osprey-gc"})
             self.assertEqual(published["languages"], ["osprey-arc", "osprey-gc", "rust"])
-            page = (bench / "results/results.html").read_text()
+            page = self.page(root)
+            self.assertFalse((bench / "results/results.html").exists(), "the website page is the only report")
             self.assertNotIn(">Osprey</th>", page)
             self.assertIn(">Osprey (ARC)</th>", page)
             self.assertIn(">Osprey (GC)</th>", page)
@@ -341,12 +348,15 @@ class HarnessPublicationTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn("codon", result.stdout)
             self.assertNotIn("osprey-arc", result.stdout)
-            cells = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]
+            published = json.loads((bench / "results/results.json").read_text())
+            cells = published["cases"]["fib"]
             self.assertEqual(cells["rust"], before)
             self.assertEqual(cells["codon"]["mean"], RecordedTimingTests.TIMING["mean"])
             self.assertEqual(cells["codon"]["status"], "ok")
             self.assertEqual(set(cells), {"rust", "codon"})
-            self.assertIn("Codon", (bench / "results/results.html").read_text())
+            self.assertIn("Codon", self.page(root))
+            self.assertIn(cells["codon"]["run"], published["runs"])
+            self.assertNotIn("run", cells["rust"])
 
     def test_wrong_codon_output_publishes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -409,9 +419,10 @@ class HeadlineTests(unittest.TestCase):
         data = self.data()
         self.assertEqual(wins(data, sorted(data), "mean"), ["arc_wins", "gc_wins", "wasm_only"])
 
-    def test_ratios_divide_the_gc_column_by_the_language(self) -> None:
+    def test_ratios_divide_each_osprey_column_by_the_language(self) -> None:
         data = self.data()
-        self.assertEqual(ratios(data, sorted(data), "rust", "mean"), [2.0, 0.5, 2.0, 1.0])
+        self.assertEqual(ratios(data, sorted(data), "osprey-gc", "rust", "mean"), [2.0, 0.5, 2.0, 1.0])
+        self.assertEqual(ratios(data, sorted(data), "osprey-arc", "rust", "mean"), [0.5, 4.5, 1.5])
 
     def test_star_marks_each_osprey_win_and_the_summary_names_them(self) -> None:
         data = self.data()
@@ -420,9 +431,74 @@ class HeadlineTests(unittest.TestCase):
         self.assertEqual(table.count("★"), 3)
         self.assertEqual(table.count('class="num best"'), 2)
         text = summary(data, langs, cases)
-        self.assertIn("arc_wins, gc_wins, wasm_only", text)
-        self.assertIn("Osprey (GC)", text)
-        self.assertNotIn("five languages", text)
+        self.assertNotIn("bench-card", text)
+        self.assertIn(">Osprey (ARC)</th>", text)
+        self.assertIn(">Osprey (GC)</th>", text)
+        self.assertIn(">Osprey (wasm)</th>", text)
+        self.assertIn("<td>Rust</td>", text)
+        arc = 2 ** ((math.log2(0.5) + math.log2(4.5) + math.log2(1.5)) / 3)
+        self.assertIn(f"{arc:.2f}×", text)
+        self.assertIn('<tr><td>Fastest of all</td><td class="num col-osprey">1</td>'
+                      '<td class="num col-osprey">1</td><td class="num col-osprey">1</td>', text)
+
+    def test_time_cells_show_the_mean_its_deviation_and_a_tooltip_of_every_statistic(self) -> None:
+        cell = {"status": "ok", "rss": 10, "mean": 0.1223, "stddev": 0.0012, "min": 0.12,
+                "max": 0.13, "median": 0.1219, "run": "2026-11-06 · Apple M4 Max"}
+        table = value_table({"fib": {"osprey-arc": cell}}, ["osprey-arc"], ["fib"], "mean", fmt_time)
+        self.assertIn('122.3&nbsp;ms ★<span class="sd">±1.2</span>', table, "the star stays beside its time")
+        for fact in ("mean 122.3 ms", "median 121.9 ms", "standard deviation 1.2 ms",
+                     "min 120.0 ms", "max 130.0 ms", "2026-11-06 · Apple M4 Max"):
+            self.assertIn(fact, table)
+
+
+class RunProvenanceTests(unittest.TestCase):
+    """Every published figure names the machine and toolchains that measured it."""
+
+    def test_a_fresh_export_records_its_run_and_retained_cells_keep_theirs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            old = {"status": "ok", "rss": 10, **RecordedTimingTests.TIMING, "run": "2026-10-05 · Old CPU"}
+            (out / "hf").mkdir()
+            (out / "raw.jsonl").write_text('{"case":"fib","lang":"osprey-gc","status":"ok","rss":12}\n')
+            (out / "results.json").write_text(json.dumps({
+                "runs": {"2026-10-05 · Old CPU": {"date": "2026-10-05", "cpu": "Old CPU", "os": "Linux", "tools": {}},
+                         "2026-01-01 · Gone": {"date": "2026-01-01", "cpu": "Gone", "os": "Linux", "tools": {}}},
+                "cases": {"fib": {"rust": old, "osprey-gc": dict(old)}}}))
+            export = {"command": "osprey-gc", "mean": 2.0, "stddev": 0.1, "min": 1.9, "max": 2.2, "median": 1.95}
+            (out / "hf/fib.json").write_text(json.dumps({"results": [export]}))
+            with patch("report.bake_website_fragment", return_value=None), \
+                    patch("report.update_readme", return_value=None):
+                render(out)
+            published = json.loads((out / "results.json").read_text())
+            fresh = published["cases"]["fib"]["osprey-gc"]
+            self.assertEqual(published["cases"]["fib"]["rust"], old)
+            self.assertEqual(fresh["median"], 1.95)
+            self.assertNotEqual(fresh["run"], old["run"])
+            run = published["runs"][fresh["run"]]
+            self.assertTrue(run["cpu"] and run["os"] and run["date"])
+            self.assertIn("hyperfine", run["tools"])
+            self.assertEqual(set(published["runs"]), {old["run"], fresh["run"]}, "unreferenced runs are pruned")
+            self.assertFalse((out / "results.html").exists())
+
+    def test_a_retimed_cell_drops_a_median_its_new_export_lacks(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            out = Path(directory)
+            (out / "hf").mkdir()
+            (out / "raw.jsonl").write_text('{"case":"fib","lang":"rust","status":"ok","rss":10}\n')
+            cell = {"status": "ok", "rss": 10, **RecordedTimingTests.TIMING, "median": 9.0}
+            (out / "results.json").write_text(json.dumps({"cases": {"fib": {"rust": cell}}}))
+            (out / "hf/fib.json").write_text(json.dumps({"results": [{"command": "rust", **RecordedTimingTests.TIMING}]}))
+            self.assertNotIn("median", load(out, "now")["fib"]["rust"])
+
+    def test_the_runs_table_lists_each_run_with_its_columns_and_cases(self) -> None:
+        runs = {"r1": {"date": "2026-10-03", "cpu": "AMD Ryzen 9 3900X", "os": "Linux (WSL2)",
+                       "tools": {"Rust": "1.98.1", "GCC": "15.2.0"}, "note": "Pinned to logical CPU 20"}}
+        ok = {"status": "ok", "rss": 1, "mean": 1.0, "run": "r1"}
+        data = {"fib": {"rust": ok, "c": ok}, "tak": {"rust": ok, "c": {**ok, "run": "r2"}}}
+        table = runs_table(runs, data, ["c", "rust"], ["fib", "tak"])
+        for fact in ("2026-10-03", "AMD Ryzen 9 3900X", "Linux (WSL2)", "Rust 1.98.1", "GCC 15.2.0",
+                     "Pinned to logical CPU 20", "Rust: every case", "C: fib"):
+            self.assertIn(fact, table)
 
 
 class UpdateReadmeTests(unittest.TestCase):
