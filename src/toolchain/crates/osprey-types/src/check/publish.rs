@@ -89,7 +89,7 @@ pub(super) fn publish_program(
         HashMap::new()
     };
 
-    let functions = resolved_signatures(&mut checker, crate::ctx::InferCtx::apply);
+    let functions = resolved_signatures(&mut checker, |ctx, ty| ctx.apply(ty));
     let ctors = publish_ctors(&checker);
     let unions = checker.union_variants.clone();
     let effects = publish_effects(&checker);

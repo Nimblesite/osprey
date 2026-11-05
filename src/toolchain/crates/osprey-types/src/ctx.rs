@@ -238,8 +238,7 @@ impl InferCtx {
             return;
         }
         let mut free = BTreeSet::new();
-        let applied = self.apply(t);
-        self.free_vars(&applied, &mut free);
+        self.free_vars(t, &mut free);
         for id in free {
             self.settle_literal(id);
         }
@@ -302,8 +301,7 @@ impl InferCtx {
         let Type::Var(id) = t else {
             return t.clone();
         };
-        let idx = usize::try_from(*id).unwrap_or(usize::MAX);
-        let Some(bound) = self.subst.get(idx).and_then(Option::as_ref) else {
+        let Some(bound) = self.binding(*id) else {
             return t.clone();
         };
         let Type::Var(next) = bound else {
@@ -333,16 +331,11 @@ impl InferCtx {
 
     /// The occurs check: does variable `id` appear anywhere in `t`? Prevents
     /// the construction of infinite types like `t0 ~ List<t0>`.
-    pub(crate) fn occurs(&mut self, id: VarId, t: &Type) -> bool {
+    pub(crate) fn occurs(&self, id: VarId, t: &Type) -> bool {
         match t {
-            Type::Var(v) => match self.lend(*v) {
-                Some((slot, bound)) => {
-                    let found = self.occurs(id, &bound);
-                    self.restore(slot, bound);
-                    found
-                }
-                None => *v == id,
-            },
+            Type::Var(v) => self
+                .binding(*v)
+                .map_or(*v == id, |bound| self.occurs(id, bound)),
             Type::Fun { params, ret } => {
                 params.iter().any(|p| self.occurs(id, p)) || self.occurs(id, ret)
             }
@@ -354,25 +347,18 @@ impl InferCtx {
 
     /// Fully resolve `t` against the current substitution. The occurs-check
     /// keeps the substitution acyclic, so this terminates.
-    pub(crate) fn apply(&mut self, t: &Type) -> Type {
-        crate::ty::map_type_vars(t, &mut |v| match self.lend(v) {
-            Some((slot, bound)) => {
-                let resolved = self.apply(&bound);
-                self.restore(slot, bound);
-                resolved
-            }
-            None => Type::Var(v),
+    pub(crate) fn apply(&self, t: &Type) -> Type {
+        crate::ty::map_type_vars(t, &mut |v| {
+            self.binding(v)
+                .map_or_else(|| Type::Var(v), |bound| self.apply(bound))
         })
     }
 
     /// Collect the free (unbound) variables of `t` into `out`.
-    pub(crate) fn free_vars(&mut self, t: &Type, out: &mut BTreeSet<VarId>) {
+    pub(crate) fn free_vars(&self, t: &Type, out: &mut BTreeSet<VarId>) {
         match t {
-            Type::Var(v) => match self.lend(*v) {
-                Some((slot, bound)) => {
-                    self.free_vars(&bound, out);
-                    self.restore(slot, bound);
-                }
+            Type::Var(v) => match self.binding(*v) {
+                Some(bound) => self.free_vars(bound, out),
                 None => {
                     let _ = out.insert(*v);
                 }
@@ -401,20 +387,8 @@ impl InferCtx {
         }
     }
 
-    /// Take variable `id`'s binding out of the substitution so a deep walk can
-    /// read it in place instead of copying it at every node, as [`Self::prune`]
-    /// does; [`Self::restore`] puts it back. The occurs-check keeps the
-    /// substitution acyclic, so a walk never reaches the slot it borrowed.
-    fn lend(&mut self, id: VarId) -> Option<(usize, Type)> {
-        let slot = usize::try_from(id).ok()?;
-        let bound = self.subst.get_mut(slot)?.take()?;
-        Some((slot, bound))
-    }
-
-    fn restore(&mut self, slot: usize, bound: Type) {
-        if let Some(entry) = self.subst.get_mut(slot) {
-            *entry = Some(bound);
-        }
+    fn binding(&self, id: VarId) -> Option<&Type> {
+        self.subst.get(usize::try_from(id).ok()?)?.as_ref()
     }
 }
 
@@ -482,15 +456,18 @@ mod tests {
         let mut c = InferCtx::new();
         let v = c.fresh();
         let id = if let Type::Var(id) = v { id } else { 0 };
-        c.bind(id, Type::int());
-        // `apply` rebuilds records/unions with the binding resolved.
-        assert_eq!(c.apply(&rec(v.clone())), rec(Type::int()));
-        assert_eq!(c.apply(&uni(v.clone())), uni(Type::int()));
-        // `free_vars` reaches into record fields and union variants.
+        let literal = c.fresh_literal(Numeric::INT);
+        c.bind(id, literal);
+        c.settle_literals_in(&rec(uni(v.clone())));
         let w = c.fresh();
+        let ctx = &c;
+        // `apply` rebuilds records/unions with the binding resolved.
+        assert_eq!(ctx.apply(&rec(v.clone())), rec(Type::int()));
+        assert_eq!(ctx.apply(&uni(v.clone())), uni(Type::int()));
+        // `free_vars` reaches into record fields and union variants.
         let mut fv = BTreeSet::new();
-        c.free_vars(&rec(w.clone()), &mut fv);
-        c.free_vars(&uni(w.clone()), &mut fv);
+        ctx.free_vars(&rec(w.clone()), &mut fv);
+        ctx.free_vars(&uni(w.clone()), &mut fv);
         let wid = if let Type::Var(wid) = w { wid } else { 0 };
         assert!(fv.contains(&wid));
     }
