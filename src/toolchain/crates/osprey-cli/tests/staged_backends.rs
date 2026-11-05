@@ -26,25 +26,29 @@ use staging::{compile_for_target, compile_staged, diagnostics};
 /// 50 + 4 under either interpretation.
 const TWO_BACKENDS: &str = r#"
 static effect Tensor<B> {
-    build: fn(int, fn(int) -> float) -> B
+    build: fn(int, fn(int) -> float) -> Result<B, Error>
     get: fn(B, int) -> float
-    matMul: fn(B, B, int, int, int) -> B
-    fromList: fn(List<float>) -> B
+    matMul: fn(B, B, int, int, int) -> Result<B, Error>
+    fromList: fn(List<float>) -> Result<B, Error>
+}
+fn andThen(result, next) = match result {
+    Success { value } => next(value)
+    Error { message } => Error { message: message }
 }
 fn onLists(work) = {
     handle static Tensor<List<float>> {
-        build n f => range(0, n) |> map(f) |> toList()
+        build n f => Success { value: range(0, n) |> map(f) |> toList() }
         get b i => listGet(b, i) ?: 0.0
-        matMul a b rows inner cols => range(0, rows * cols) |> map(fn(i) => range(0, inner) |> fold(0.0, fn(acc, k) => acc + (listGet(a, intDiv(i, cols) * inner + k) ?: 0.0) * (listGet(b, k * cols + i % cols) ?: 0.0))) |> toList()
-        fromList xs => xs
+        matMul a b rows inner cols => Success { value: range(0, rows * cols) |> map(fn(i) => range(0, inner) |> fold(0.0, fn(acc, k) => acc + (listGet(a, intDiv(i, cols) * inner + k) ?: 0.0) * (listGet(b, k * cols + i % cols) ?: 0.0))) |> toList() }
+        fromList xs => Success { value: xs }
     }
     work()
 }
 fn onGpu(work) = {
     handle static Tensor<GpuBuffer<float>> {
-        build n f => toGpu(range(0, n)) |> gpuMap(f)
+        build n f => andThen(toGpu(range(0, n)), fn(xs) => gpuMap(xs, f))
         get b i => gpuGet(b, i) ?: 0.0
-        matMul a b rows inner cols => gpuMatMul(a, b, rows, inner, cols) ?: toGpu([])
+        matMul a b rows inner cols => gpuMatMul(a, b, rows, inner, cols)
         fromList xs => toGpu(xs)
     }
     work()
@@ -52,47 +56,74 @@ fn onGpu(work) = {
 fn at(m, i) = perform Tensor.get(m, i)
 fn vector(xs) = perform Tensor.fromList(xs)
 fn doubled(n) = perform Tensor.build(n, fn(i) => toFloat(i) * 2.0)
-fn corner() = at(perform Tensor.matMul(vector([1.0, 2.0, 3.0, 4.0]), vector([5.0, 6.0, 7.0, 8.0]), 2, 2, 2), 3) + at(doubled(3), 2)
+fn corner() = andThen(vector([1.0, 2.0, 3.0, 4.0]), fn(left) =>
+    andThen(vector([5.0, 6.0, 7.0, 8.0]), fn(right) =>
+        andThen(perform Tensor.matMul(left, right, 2, 2, 2), fn(product) =>
+            andThen(doubled(3), fn(second) =>
+                Success { value: at(product, 3) + at(second, 2) }))))
+fn answerText(result) = match result {
+    Success { value } => toString(value)
+    Error { message } => message
+}
 fn main() = {
     handle Arith {
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
     }
-    print("${onLists(corner)} ${onGpu(corner)}")
+    print("${answerText(onLists(corner))} ${answerText(onGpu(corner))}")
 }
 "#;
 
 const TWO_BACKENDS_ML: &str = r#"
 static effect Tensor B
-    build : (int, (int) -> float) => B
+    build : (int, (int) -> float) => Result<B, Error>
     get : (B, int) => float
-    matMul : (B, B, int, int, int) => B
-    fromList : List<float> => B
+    matMul : (B, B, int, int, int) => Result<B, Error>
+    fromList : List<float> => Result<B, Error>
 onLists work =
     handle static Tensor<List<float>>
-        build n f => range 0 n |> map f |> toList
+        build n f => Success(value = range 0 n |> map f |> toList)
         get b i => listGet b i ?: 0.0
-        matMul a b rows inner cols => range 0 (rows * cols) |> map (\i => range 0 inner |> fold 0.0 (\(acc, k) => acc + (listGet a (intDiv i cols * inner + k) ?: 0.0) * (listGet b (k * cols + i % cols) ?: 0.0))) |> toList
-        fromList xs => xs
+        matMul a b rows inner cols => Success(value = range 0 (rows * cols) |> map (\i => range 0 inner |> fold 0.0 (\(acc, k) => acc + (listGet a (intDiv i cols * inner + k) ?: 0.0) * (listGet b (k * cols + i % cols) ?: 0.0))) |> toList)
+        fromList xs => Success(value = xs)
     work ()
 onGpu work =
     handle static Tensor<GpuBuffer<float>>
-        build n f => toGpu (range (0, n)) |> gpuMap f
+        build n f =>
+            match toGpu (range (0, n))
+                Success xs => gpuMap xs f
+                Error message => Error(message = message)
         get b i => gpuGet b i ?: 0.0
-        matMul a b rows inner cols => gpuMatMul a b rows inner cols ?: toGpu []
+        matMul a b rows inner cols => gpuMatMul a b rows inner cols
         fromList xs => toGpu xs
     work ()
 at (m, i) = perform Tensor.get m i
 vector xs = perform Tensor.fromList xs
 doubled n = perform Tensor.build n (\i => toFloat i * 2.0)
-corner () = at (perform Tensor.matMul (vector [1.0, 2.0, 3.0, 4.0]) (vector [5.0, 6.0, 7.0, 8.0]) 2 2 2, 3) + at (doubled 3, 2)
+corner () =
+    match vector [1.0, 2.0, 3.0, 4.0]
+        Success left =>
+            match vector [5.0, 6.0, 7.0, 8.0]
+                Success right =>
+                    match perform Tensor.matMul left right 2 2 2
+                        Success product =>
+                            match doubled 3
+                                Success second => Success(value = at (product, 3) + at (second, 2))
+                                Error message => Error(message = message)
+                        Error message => Error(message = message)
+                Error message => Error(message = message)
+        Error message => Error(message = message)
+answerText result =
+    match result
+        Success value => toString value
+        Error message => message
 main () =
     handle Arith
         overflow _ _ _ wrapped => wrapped
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
-    print "${onLists corner} ${onGpu corner}"
+    print "${answerText (onLists corner)} ${answerText (onGpu corner)}"
 "#;
 
 const BOTH_ANSWERS: &str = "54.0 54.0\n";
@@ -102,13 +133,17 @@ const BOTH_ANSWERS: &str = "54.0 54.0\n";
 /// touches it — including the `?:` fallback that builds an empty one.
 const RECORDS_OVER_B: &str = r#"
 static effect Tensor<B> {
-    fromList: fn(List<float>) -> B
+    fromList: fn(List<float>) -> Result<B, Error>
     get: fn(B, int) -> float
 }
 type Pair<B> = { left: B, right: B }
+fn andThen(result, next) = match result {
+    Success { value } => next(value)
+    Error { message } => Error { message: message }
+}
 fn onLists(work) = {
     handle static Tensor<List<float>> {
-        fromList xs => xs
+        fromList xs => Success { value: xs }
         get b i => listGet(b, i) ?: 0.0
     }
     work()
@@ -120,15 +155,29 @@ fn onGpu(work) = {
     }
     work()
 }
-fn pair(k) = Pair { left: perform Tensor.fromList([1.0, 2.0]), right: perform Tensor.fromList([k]) }
-fn emptyPair() = {
-    let e = perform Tensor.fromList([])
-    Pair { left: e, right: e }
+fn pair(k) = andThen(perform Tensor.fromList([1.0, 2.0]), fn(left) =>
+    andThen(perform Tensor.fromList([k]), fn(right) =>
+        Success { value: Pair { left: left, right: right } }))
+fn emptyPair() = andThen(perform Tensor.fromList([]), fn(e) =>
+    Success { value: Pair { left: e, right: e } })
+fn pairOrEmpty(pairs, i) = match listGet(pairs, i) {
+    Success { value } => Success { value: value }
+    Error => emptyPair()
 }
 fn sum(p) = perform Tensor.get(p.left, 1) + perform Tensor.get(p.right, 0)
 fn run() = {
-    let pairs = range(0, 3) |> fold([], fn(acc, i) => listAppend(acc, pair(toFloat(i))))
-    sum(listGet(pairs, 2) ?: emptyPair()) + sum(listGet(pairs, 7) ?: emptyPair())
+    let pairs = range(0, 3) |> fold(Success { value: [] }, fn(acc, i) =>
+        andThen(acc, fn(xs) =>
+            andThen(pair(toFloat(i)), fn(p) =>
+                Success { value: listAppend(xs, p) })))
+    andThen(pairs, fn(ps) =>
+        andThen(pairOrEmpty(ps, 2), fn(found) =>
+            andThen(pairOrEmpty(ps, 7), fn(missing) =>
+                Success { value: sum(found) + sum(missing) })))
+}
+fn answerText(result) = match result {
+    Success { value } => toString(value)
+    Error { message } => message
 }
 fn main() = {
     handle Arith {
@@ -136,7 +185,7 @@ fn main() = {
         divideByZero _ _ => 0.0
         remainderByZero _ => 0
     }
-    print("${onLists(run)} ${onGpu(run)}")
+    print("${answerText(onLists(run))} ${answerText(onGpu(run))}")
 }
 "#;
 
@@ -244,8 +293,8 @@ fn a_forwarded_kernel_whose_callback_performs_a_dynamic_effect_is_rejected() {
 #[test]
 fn a_handler_selected_through_a_helper_answers_the_forwarded_work() {
     let source = TWO_BACKENDS.replace(
-        r#"print("${onLists(corner)} ${onGpu(corner)}")"#,
-        r#"print("${under("lists", corner)} ${under("gpu", fn() => corner())}")"#,
+        r#"print("${answerText(onLists(corner))} ${answerText(onGpu(corner))}")"#,
+        r#"print("${answerText(under("lists", corner))} ${answerText(under("gpu", fn() => corner()))}")"#,
     ) + "fn under(name, work) = match name {\n    \"lists\" => onLists(work)\n    _ => onGpu(work)\n}\n";
     assert_flavored_output("selected_backend", "osp", &source, BOTH_ANSWERS);
 }
