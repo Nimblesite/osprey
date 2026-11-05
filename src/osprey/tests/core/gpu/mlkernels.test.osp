@@ -9,7 +9,6 @@ fn gpuSatisfies(result, predicate) = match result {
     Error { message } => { check("GPU operation", "success", toString(message))
         false }
 }
-/// Match allocation errors at the case boundary; no continuation or fallback buffer.
 fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 // AI/ML workloads and their closure captures: dot products, SAXPY, weighted sums, mean and variance, normalisation,
 // activations, a softmax-shaped pipeline, dense layers, matrix-vector products
@@ -365,8 +364,7 @@ fn normalizeCaseUploaded(input0, input1) = {
         Error { message } => check("GPU operation", "success", toString(message))
     }
 }
-/// reluCase pins clamping, active-unit counting, and a leaky variant whose
-/// slope is captured — spelled as a match and as arithmetic, which must agree.
+/// Compare clamping and active-unit counts with captured slopes and reflected inputs.
 fn reluCase() = withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.5), toFloat32(2.5), toFloat32(0.0) - toFloat32(0.5), toFloat32(1.0)]), fn(input0) => withBuffer(toGpu([toFloat32(0.0) - toFloat32(1.0), toFloat32(0.0) - toFloat32(2.0)]), fn(input1) => withBuffer(toGpu([toFloat32(1.0), toFloat32(2.0)]), fn(input2) => reluCaseUploaded(input0, input1, input2))))
 fn reluCaseUploaded(input0, input1, input2) = {
     let slope = toFloat32(0.5)
@@ -384,7 +382,8 @@ fn reluCaseUploaded(input0, input1, input2) = {
                     gpuSatisfies(gpuMap(acts, fn(x) => cap - relu(cap - relu(x))), fn(ceiling) => sumOf(ceiling, fn(total) => total == toFloat32(3.0))),
                     gpuSatisfies(gpuMap(input1, relu), fn(negative) => sumOf(negative, fn(total) => total == toFloat32(0.0))),
                     gpuSatisfies(gpuMap(input2, relu), fn(positive) => sumOf(positive, fn(total) => total == toFloat32(3.0))),
-                    gpuSatisfies(gpuMap(acts, fn(x) => slope * relu(x)), fn(damped) => sumOf(damped, fn(total) => total == toFloat32(1.75)))
+                    gpuSatisfies(gpuMap(acts, fn(x) => slope * relu(x)), fn(damped) => sumOf(damped, fn(total) => total == toFloat32(1.75))),
+                    gpuSatisfies(gpuMap(acts, fn(x) => relu(toFloat32(0.0) - x)), fn(reflected) => gpuSatisfies(fromGpu(reflected), fn(values) => structuralEquals(values, [toFloat32(1.5), toFloat32(0.0), toFloat32(0.5), toFloat32(0.0)])))
             ])))
 }
 /// softmaxCase pins the pipeline by its properties, not its digits: a
