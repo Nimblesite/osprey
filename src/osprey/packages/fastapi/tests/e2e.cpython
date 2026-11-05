@@ -180,7 +180,9 @@ def body_reference_cases(port):
         fields = {name: returned.get(name) for name in ("content-type", "content-length")}
         if not correct or fields != case["response_headers"] or int(returned["content-length"]) != len(body):
             failures.append({"case": case, "actual": {"status": status, "body": body.decode(errors="replace"), "headers": fields}})
-    (ROOT / "target/fastapi" / f"body-failures-{port}.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2))
+    report = ROOT / "target/fastapi" / f"body-failures-{port}.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps(failures, ensure_ascii=False, indent=2))
     assert not failures, f"{len(failures)} of {len(records)} body cases differ; target/fastapi/body-failures-{port}.json"
     body_contract_cases(port)
     hostless_redirect_cases(port)
