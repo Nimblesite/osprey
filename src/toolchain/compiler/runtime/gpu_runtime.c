@@ -45,6 +45,7 @@ typedef struct OspreyGpuBuffer {
 
 int64_t osprey_gpu_len(void *buffer);
 int64_t osprey_gpu_elem_bytes(void *buffer);
+void osprey_gpu_finalize(void *buffer);
 
 #if defined(OSPREY_GPU_METAL)
 #define GPU_AUTO_ADAPTER 2
@@ -173,26 +174,66 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
   return settled(osprey_gpu_device_dispatch(&dispatch), out);
 }
 
-// [LLM-MATMUL-QUANT] The quantized product as two library-kernel dispatches:
-// `x` is [rows, inner] float32, `w` the quantized weight rows, `partial` holds
-// `parts` partial sums per output, and `out` [rows, cols] float32 is left on
-// the device. The partial buffer stays referenced by the batch until it runs.
-int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *partial, void *out, int64_t rows,
-                                   int64_t inner, int64_t cols, int64_t parts) {
-  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols * parts)};
+// [LLM-MATMUL-QUANT] The partial sums of the quantized product live in one
+// device-resident scratch object shared by every product: the serial queue
+// runs each product's two kernels before the next product's, so reuse is
+// safe, and nothing is uploaded per product. The host side is a page-aligned
+// mapping the adapter shares without a copy; it grows and is never freed.
+static void *quant_scratch_slot;
+static void *quant_scratch_base;
+static size_t quant_scratch_bytes;
+
+static int quant_scratch(OspreyGpuDispatch *dispatch, uint64_t floats) {
+#if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
+  size_t needed = (size_t)floats * 4;
+  if (needed > quant_scratch_bytes) {
+    size_t page = (size_t)sysconf(_SC_PAGESIZE);
+    size_t bytes = ((needed * 2 + page - 1) / page) * page;
+    void *base = NULL;
+    if (posix_memalign(&base, page, bytes) != 0) return 0;
+    if (quant_scratch_slot) osprey_gpu_finalize(&(OspreyGpuBuffer){.device = quant_scratch_slot, .adapter = (uint8_t)device_selection()});
+    free(quant_scratch_base);
+    quant_scratch_slot = NULL;
+    quant_scratch_base = base;
+    quant_scratch_bytes = bytes;
+  }
+  if (dispatch->count >= OSPREY_GPU_MAX_ARGS) return 0;
+  dispatch->args[dispatch->count++] = (OspreyGpuArg){OSPREY_GPU_OUTPUT, quant_scratch_base, NULL, floats, &quant_scratch_slot, 4,
+                                                     quant_scratch_base, quant_scratch_bytes, 0};
+  return 1;
+#else
+  (void)dispatch;
+  (void)floats;
+  return 0;
+#endif
+}
+
+// The quantized product as two library-kernel dispatches: `x` is [rows,
+// inner] float32, `w` the quantized weight rows, and `out` [rows, cols]
+// float32 is left on the device; the `parts` partial sums per output go
+// through the shared scratch.
+int osprey_gpu_device_matmul_quant(const char *kernel, void *x, void *w, void *out, int64_t rows, int64_t inner, int64_t cols,
+                                   int64_t parts) {
+  if (device_selection() <= 0) return device_selection();
+  uint64_t outputs = (uint64_t)(rows * cols);
+  OspreyGpuDispatch product = {kernel, NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, outputs * (uint64_t)parts};
   buffer_argument(&product, OSPREY_GPU_INPUT, x);
   buffer_argument(&product, OSPREY_GPU_INPUT, w);
-  buffer_argument(&product, OSPREY_GPU_OUTPUT, partial);
+  if (!quant_scratch(&product, outputs * (uint64_t)parts)) {
+    osp_io_error_text(kernel, "partial sums", "out of memory");
+    return -1;
+  }
   scalar_argument(&product, rows);
   scalar_argument(&product, inner);
   scalar_argument(&product, cols);
   scalar_argument(&product, parts);
-  int status = settled(osprey_gpu_device_dispatch(&product), partial);
+  int status = osprey_gpu_device_dispatch(&product);
   if (status <= 0) return status;
-  OspreyGpuDispatch sum = {"osprey_sum_parts", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(rows * cols)};
-  buffer_argument(&sum, OSPREY_GPU_INPUT, partial);
+  OspreyGpuDispatch sum = {"osprey_sum_parts", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, outputs};
+  (void)quant_scratch(&sum, outputs * (uint64_t)parts);
+  sum.args[sum.count - 1].kind = OSPREY_GPU_INPUT;
   buffer_argument(&sum, OSPREY_GPU_OUTPUT, out);
-  scalar_argument(&sum, rows * cols);
+  scalar_argument(&sum, (int64_t)outputs);
   scalar_argument(&sum, parts);
   return settled(osprey_gpu_device_dispatch(&sum), out);
 }

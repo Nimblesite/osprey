@@ -149,11 +149,12 @@ static unsigned q4k_min(const unsigned char *scales, unsigned j) {
   return j < 4 ? (unsigned)(scales[j + 4] & 63) : (unsigned)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
 }
 
-// How many threads share one output: four when the product is small enough
-// that one thread per output would leave the device idle, else one. A pure
+// How many threads share one output: more as the product gets smaller, so a
+// few rows of x against a weight matrix still fill the device. A pure
 // function of the shape, so the host and every device add in the same order.
 static int64_t quant_parts(int64_t rows, int64_t cols) {
-  return rows * cols <= ((int64_t)1 << 20) ? 4 : 1;
+  int64_t outputs = rows * cols;
+  return outputs > ((int64_t)1 << 20) ? 1 : outputs > ((int64_t)1 << 16) ? 4 : 16;
 }
 
 // The oracle of osprey_matmul_q4_k and osprey_sum_parts in
@@ -233,15 +234,7 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
     return abandoned(out);
   }
-  int64_t parts = quant_parts(rows, cols);
-  void *partial = osprey_gpu_alloc(n * parts, 4);
-  if (!partial || osprey_gpu_len(partial) != n * parts) {
-    osp_io_error_set(OP_MATMUL_QUANT, "partial sums", ENOMEM);
-    (void)abandoned(partial);
-    return abandoned(out);
-  }
-  int device = osprey_gpu_device_matmul_quant(kernel, x, w, partial, out, rows, inner, cols, parts);
-  osp_release(partial);
+  int device = osprey_gpu_device_matmul_quant(kernel, x, w, out, rows, inner, cols, quant_parts(rows, cols));
   if (device != 0) return device > 0 ? out : abandoned(out);
   if (n && (osprey_gpu_readable(x, 0) != 1 || osprey_gpu_readable(w, 0) != 1)) return abandoned(out);
   product_q4k(osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);
