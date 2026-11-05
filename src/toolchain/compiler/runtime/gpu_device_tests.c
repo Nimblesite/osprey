@@ -126,6 +126,14 @@ static void *float_buffer(const float *values, int64_t count) {
   return buffer;
 }
 
+// Whether every one of the 256 byte values occurs in `bytes`, which the quantized
+// parity cases assert of their seeded blocks.
+static int all_byte_values(const unsigned char *bytes, int64_t count) {
+  unsigned seen[256] = {0}, distinct = 0;
+  for (int64_t i = 0; i < count; i++) distinct += !seen[bytes[i]]++;
+  return distinct == 256;
+}
+
 // [GPU-MATMUL]: compare raw binary32 output independently on host and device.
 static void compare32(const float *a, const float *b, const float *expected, const int64_t shape[3]) {
   void *left = float_buffer(a, shape[0] * shape[1]);
@@ -153,32 +161,39 @@ static void native_float32_products(void) {
   compare32(factors, other, zero, rounding);
 }
 
-// [LLM-MATMUL-QUANT]: the Q4_K product on host and device over seeded blocks
-// with every byte value reached, binary16 scales at ordinary magnitudes, bit for bit.
-static void quantized_products(void) {
-  const int64_t rows = 3, inner = 512, cols = 5, blocks = inner / 256;
-  void *x = osprey_gpu_alloc(rows * inner, 4), *w = osprey_gpu_alloc(cols * blocks * 144, 1);
+// [LLM-MATMUL-QUANT]: the product of one block format on host and device over
+// seeded blocks whose bytes reach every value, binary16 scales at ordinary
+// magnitudes, bit for bit.
+static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
+                         unsigned scales) {
+  const int64_t rows = 3, inner = 512, cols = 5, blocks = inner / block_elements;
+  void *x = osprey_gpu_alloc(rows * inner, 4), *w = osprey_gpu_alloc(cols * blocks * block_bytes, 1);
   float *xs = osprey_gpu_data(x);
   unsigned char *bytes = osprey_gpu_data(w);
   for (int64_t i = 0; i < rows * inner; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
-  for (int64_t i = 0; i < cols * blocks * 144; i++) bytes[i] = (unsigned char)(random_word() >> 56);
-  for (int64_t b = 0; b < cols * blocks; b++) {
-    // d in [2^-14, 2^-6), dmin in [2^-16, 2^-10): ordinary binary16 words.
-    uint16_t d = (uint16_t)(0x0400 + (random_word() % 0x2000)), dmin = (uint16_t)(0x0100 + (random_word() % 0x1800));
-    memcpy(bytes + b * 144, &d, 2);
-    memcpy(bytes + b * 144 + 2, &dmin, 2);
-  }
+  // A sweep of every byte value, shifted per block, so every nibble, 2-bit field,
+  // high-bit mask and sign reaches its ends in some block.
+  for (int64_t i = 0; i < cols * blocks * block_bytes; i++)
+    bytes[i] = (unsigned char)((i * 167 + 13 + (i / block_bytes) * 91) & 255);
+  for (int64_t b = 0; b < cols * blocks; b++)
+    for (unsigned f = 0; f < scales; f++) {
+      // d in [2^-14, 2^-6), then dmin in [2^-16, 2^-10): ordinary binary16 words.
+      uint16_t word = (uint16_t)((f ? 0x0100 : 0x0400) + (random_word() % (f ? 0x1800 : 0x2000)));
+      memcpy(bytes + b * block_bytes + scale_at[f], &word, 2);
+    }
+  assert(all_byte_values(bytes, cols * blocks * block_bytes));
+  checks++;
   float *host = NULL;
   for (int mode = 0; mode < 2; mode++) {
     assert(setenv("OSPREY_GPU", mode ? selected : "host", 1) == 0);
     osp_io_error_clear();
-    void *result = osprey_gpu_matmul_quant(x, w, "Q4_K", rows, inner, cols);
-    if (!result) fprintf(stderr, "%s\n", osp_io_error());
+    void *result = osprey_gpu_matmul_quant(x, w, type, rows, inner, cols);
+    if (!result) fprintf(stderr, "%s: %s\n", type, osp_io_error());
     assert(result && !osp_io_error() && osprey_gpu_len(result) == rows * cols && osprey_gpu_elem_bytes(result) == 4);
     float *values = osprey_gpu_data(result);
     if (!mode) host = values;
     else for (int64_t i = 0; i < rows * cols; i++) {
-      if (memcmp(&host[i], &values[i], 4) != 0) fprintf(stderr, "quant parity at %lld: host %a device %a\n", (long long)i, host[i], values[i]);
+      if (memcmp(&host[i], &values[i], 4) != 0) fprintf(stderr, "%s parity at %lld: host %a device %a\n", type, (long long)i, host[i], values[i]);
       assert(memcmp(&host[i], &values[i], 4) == 0);
       checks++;
     }
@@ -186,10 +201,37 @@ static void quantized_products(void) {
   }
   assert(setenv("OSPREY_GPU", selected, 1) == 0);
   osp_io_error_clear();
-  assert(osprey_gpu_matmul_quant(x, w, "Q8_0", rows, inner, cols) == NULL && strstr(osp_io_error(), "expected Q4_K"));
-  assert(osprey_gpu_matmul_quant(x, w, "Q4_K", rows, 500, cols) == NULL && strstr(osp_io_error(), "multiple of 256"));
-  assert(osprey_gpu_matmul_quant(x, w, "Q4_K", rows, inner, cols + 1) == NULL && strstr(osp_io_error(), "weights"));
+  assert(osprey_gpu_matmul_quant(x, w, "Q2_K", rows, inner, cols) == NULL && strstr(osp_io_error(), "unsupported tensor type"));
+  assert(osprey_gpu_matmul_quant(x, w, type, rows, inner - block_elements / 2, cols) == NULL && strstr(osp_io_error(), "multiple of"));
+  assert(osprey_gpu_matmul_quant(x, w, type, rows, inner, cols + 1) == NULL && strstr(osp_io_error(), "weights"));
   checks += 3;
+}
+
+// The block formats the parity gate covers, each with where its binary16 scales sit.
+typedef struct {
+  const char *type;
+  int64_t bytes;
+  int64_t elements;
+  int64_t scale_at[2];
+  unsigned scales;
+} QuantCase;
+
+static const QuantCase QUANT_CASES[] = {
+    {"Q4_K", 144, 256, {0, 2}, 2},
+    {"Q8_0", 34, 32, {0, 0}, 1},
+};
+
+static void quantized_products(void) {
+  for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
+    const QuantCase *c = &QUANT_CASES[i];
+    quant_parity(c->type, c->bytes, c->elements, c->scale_at, c->scales);
+  }
+  const int64_t rows = 3, inner = 512, cols = 5;
+  void *x = osprey_gpu_alloc(rows * inner, 4), *w = osprey_gpu_alloc(cols * 2 * 144, 1);
+  osp_io_error_clear();
+  assert(osprey_gpu_matmul_quant(x, w, "Q2_K", rows, inner, cols) == NULL &&
+         strstr(osp_io_error(), "expected Q4_K, Q8_0"));
+  checks++;
 }
 
 // The host's fold of `words` in element order, as the sequential kernel computes it.
@@ -300,20 +342,20 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 12);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 14);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 13);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 15);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 14);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 16);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 17);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 19);
 #endif
-  printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the Q4_K product\n", checks);
+  printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;
 }

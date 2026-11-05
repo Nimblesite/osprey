@@ -407,7 +407,7 @@ fn quantMessage(result) = match result { Success { value } => "unexpected succes
 fn quantCase() = withBuffer(toGpu(range(0, 256)), fn(ints) => withBuffer(gpuMap(ints, fn(i) => toFloat32(i)), fn(x) => withBuffer(quantWeights(), fn(w) => quantWith(x, w))))
 fn quantWith(x, w) = withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2), fn(out) => checkAll("quantized product", [
     gpuLength(out) == 2, (gpuGet(out, 0) ?: toFloat32(0.0)) == toFloat32(496.0), (gpuGet(out, 1) ?: toFloat32(0.0)) == toFloat32(992.0),
-    quantMessage(gpuMatMulQuant(x, w, "Q8_0", 1, 256, 2)) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K",
+    quantMessage(gpuMatMulQuant(x, w, "Q2_K", 1, 256, 2)) == "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K, Q8_0",
     quantMessage(gpuMatMulQuant(x, w, "Q4_K", 1, 200, 2)) == "gpuMatMulQuant: inner: must be a positive multiple of 256",
     quantMessage(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 3)) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432",
     quantMessage(gpuMatMulQuant(x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"

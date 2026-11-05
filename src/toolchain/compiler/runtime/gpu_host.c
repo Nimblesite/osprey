@@ -136,17 +136,77 @@ void *osprey_gpu_matmul(void *left, void *right, int64_t rows, int64_t inner, in
 
 // --- the quantized product [LLM-MATMUL-QUANT] -----------------------------------------
 
-// The library kernel for a GGUF tensor type, or NULL for one the product does not decode.
-static const char *quant_kernel(const char *type) {
-  return type && strcmp(type, "Q4_K") == 0 ? "osprey_matmul_q4_k" : NULL;
-}
-
-// The 6-bit scale and minimum of sub-block j of a Q4_K block, as ggml packs them.
+// The 6-bit scale and minimum of sub-block j of a Q4_K or Q5_K block, as ggml's
+// `get_scale_min_k4` packs them.
 static unsigned q4k_scale(const unsigned char *scales, unsigned j) {
   return j < 4 ? (unsigned)(scales[j] & 63) : (unsigned)((scales[j + 4] & 15) | ((scales[j - 4] >> 6) << 4));
 }
 static unsigned q4k_min(const unsigned char *scales, unsigned j) {
   return j < 4 ? (unsigned)(scales[j + 4] & 63) : (unsigned)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
+}
+
+// One weight's contribution: the product is a separate full expression, then
+// added, so no step contracts ([GPU-MATMUL]'s order contract).
+static float quant_add(float acc, float x, float weight) {
+  float product = x * weight;
+  return acc + product;
+}
+
+// The binary16 scale a GGUF block stores at byte `at`.
+static float quant_half(const unsigned char *block, int64_t at) {
+  return osp_f16_to_f32((uint16_t)(block[at] | (block[at + 1] << 8)));
+}
+
+// The host side of the library kernel's per-block step: decode one block's
+// weights exactly as ggml's `dequantize_row_<type>` does, and add each of their
+// products into `acc`.
+static float q4k_step(float acc, const float *x, const unsigned char *b) {
+  float d = quant_half(b, 0), dmin = quant_half(b, 2);
+  for (unsigned j = 0; j < 8; j++) {
+    unsigned sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+    float d1 = d * (float)sc;
+    float m1 = dmin * (float)mn;
+    unsigned g = j >> 1, high = j & 1;
+    const unsigned char *q = b + 16 + g * 32;
+    const float *xe = x + g * 64 + high * 32;
+    for (unsigned l = 0; l < 32; l++) {
+      unsigned nib = high ? (unsigned)(q[l] >> 4) : (unsigned)(q[l] & 15);
+      float weight = d1 * (float)nib;
+      weight = weight - m1;
+      acc = quant_add(acc, xe[l], weight);
+    }
+  }
+  return acc;
+}
+
+static float q8_0_step(float acc, const float *x, const unsigned char *b) {
+  float d = quant_half(b, 0);
+  for (unsigned j = 0; j < 32; j++)
+    acc = quant_add(acc, x[j], d * (float)(signed char)b[2 + j]);
+  return acc;
+}
+
+// One block format the product decodes: its size, and the step that turns one
+// block into products in the running sum.
+typedef struct {
+  const char *name;
+  const char *kernel;
+  int64_t elements;
+  int64_t bytes;
+  float (*step)(float acc, const float *x, const unsigned char *block);
+} QuantFormat;
+
+static const QuantFormat QUANT_FORMATS[] = {
+    {"Q4_K", "osprey_matmul_q4_k", 256, 144, q4k_step},
+    {"Q8_0", "osprey_matmul_q8_0", 32, 34, q8_0_step},
+};
+#define QUANT_FORMAT_COUNT (sizeof QUANT_FORMATS / sizeof QUANT_FORMATS[0])
+
+// The block format `type` names, or NULL for one the product does not decode.
+static const QuantFormat *quant_format(const char *type) {
+  for (size_t i = 0; type && i < QUANT_FORMAT_COUNT; i++)
+    if (strcmp(type, QUANT_FORMATS[i].name) == 0) return &QUANT_FORMATS[i];
+  return NULL;
 }
 
 // How many threads share one output: more as the product gets smaller, so a
@@ -157,72 +217,65 @@ static int64_t quant_parts(int64_t rows, int64_t cols) {
   return outputs > ((int64_t)1 << 20) ? 1 : outputs > ((int64_t)1 << 16) ? 4 : 16;
 }
 
-// The oracle of osprey_matmul_q4_k and osprey_sum_parts in
-// gpu_device_lib.metal, step for step: part p of an output covers the blocks
-// from p * blocks / parts up to (p + 1) * blocks / parts; each weight is
-// dequantized with two roundings, multiplied, then added, in ggml's block
-// order from 0.0f, and the parts are added in order. Separate statements keep
-// every rounding.
-static float part_q4k(const float *xr, const unsigned char *row, int64_t first, int64_t last) {
+// The blocks part `p` of an output covers, summed from 0.0f by the format's step.
+static float part_blocks(const QuantFormat *format, const float *xr, const unsigned char *row, int64_t first,
+                         int64_t last) {
   float acc = 0.0f;
-  for (int64_t blk = first; blk < last; blk++) {
-    const unsigned char *b = row + blk * 144;
-    float d = osp_f16_to_f32((uint16_t)(b[0] | (b[1] << 8)));
-    float dmin = osp_f16_to_f32((uint16_t)(b[2] | (b[3] << 8)));
-    const float *xb = xr + blk * 256;
-    for (unsigned j = 0; j < 8; j++) {
-      unsigned sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
-      float d1 = d * (float)sc;
-      float m1 = dmin * (float)mn;
-      unsigned g = j >> 1, high = j & 1;
-      const unsigned char *q = b + 16 + g * 32;
-      const float *xe = xb + g * 64 + high * 32;
-      for (unsigned l = 0; l < 32; l++) {
-        unsigned nib = high ? (unsigned)(q[l] >> 4) : (unsigned)(q[l] & 15);
-        float weight = d1 * (float)nib;
-        weight = weight - m1;
-        float product = xe[l] * weight;
-        acc = acc + product;
-      }
-    }
-  }
+  for (int64_t blk = first; blk < last; blk++)
+    acc = format->step(acc, xr + blk * format->elements, row + blk * format->bytes);
   return acc;
 }
 
-static void product_q4k(float *out, const float *x, const unsigned char *w, int64_t rows, int64_t inner, int64_t cols) {
-  int64_t blocks = inner / 256, parts = quant_parts(rows, cols);
+// The oracle of the library kernels in gpu_device_lib.metal, step for step:
+// part p of an output covers the blocks from p * blocks / parts up to
+// (p + 1) * blocks / parts, and the parts are added in order from 0.0f.
+static void product_quant(const QuantFormat *format, float *out, const float *x, const unsigned char *w, int64_t rows,
+                          int64_t inner, int64_t cols) {
+  int64_t blocks = inner / format->elements, parts = quant_parts(rows, cols);
   for (int64_t r = 0; r < rows; r++) for (int64_t c = 0; c < cols; c++) {
     float acc = 0.0f;
-    for (int64_t p = 0; p < parts; p++) {
-      float part = part_q4k(x + r * inner, w + c * blocks * 144, p * blocks / parts, (p + 1) * blocks / parts);
-      acc = acc + part;
-    }
+    for (int64_t p = 0; p < parts; p++)
+      acc = acc + part_blocks(format, x + r * inner, w + c * blocks * format->bytes, p * blocks / parts,
+                              (p + 1) * blocks / parts);
     out[r * cols + c] = acc;
   }
 }
 
+// The names the product decodes, for the error that rejects any other.
+static void quant_names(char *text, size_t size) {
+  size_t at = 0;
+  for (size_t i = 0; i < QUANT_FORMAT_COUNT && at < size; i++)
+    at += (size_t)snprintf(text + at, size - at, "%s%s", i ? ", " : "", QUANT_FORMATS[i].name);
+}
+
 // out[r*cols + c] = sum over k of x[r*inner + k] * w_c[k], where `w` holds
-// `cols` rows of `inner / 256` Q4_K blocks each, as a GGUF stores a [cols,
-// inner] tensor, and `x` is a [rows, inner] float32 matrix. On the selected
-// device the operands and result stay resident; the host runs the oracle.
+// `cols` rows of `inner / <weights per block>` blocks of `type` each, as a GGUF
+// stores a [cols, inner] tensor, and `x` is a [rows, inner] float32 matrix. On
+// the selected device the operands and result stay resident; the host runs the
+// oracle.
 void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, int64_t inner, int64_t cols) {
-  const char *kernel = quant_kernel(type);
-  if (!kernel) {
-    osp_io_error_text(OP_MATMUL_QUANT, "weights", "unsupported tensor type; expected Q4_K");
+  const QuantFormat *format = quant_format(type);
+  if (!format) {
+    char reason[128], names[96];
+    quant_names(names, sizeof names);
+    (void)snprintf(reason, sizeof reason, "unsupported tensor type; expected %s", names);
+    osp_io_error_text(OP_MATMUL_QUANT, "weights", reason);
     return NULL;
   }
-  if (inner <= 0 || inner % 256 != 0) {
-    osp_io_error_text(OP_MATMUL_QUANT, "inner", "must be a positive multiple of 256");
+  if (inner <= 0 || inner % format->elements != 0) {
+    char reason[96];
+    (void)snprintf(reason, sizeof reason, "must be a positive multiple of %lld", (long long)format->elements);
+    osp_io_error_text(OP_MATMUL_QUANT, "inner", reason);
     return NULL;
   }
   int64_t n = area(rows, cols, 4);
-  int64_t blocks = area(cols, inner / 256, 144);
+  int64_t blocks = area(cols, inner / format->elements, format->bytes);
   if (n < 0 || blocks < 0) {
     osp_io_error_text(OP_MATMUL_QUANT, "result", "rows * cols is negative or overflows");
     return NULL;
   }
   if (!shaped(OP_MATMUL_QUANT, x, area(rows, inner, 4), "x operand") ||
-      !shaped(OP_MATMUL_QUANT, w, blocks * 144, "weights")) {
+      !shaped(OP_MATMUL_QUANT, w, blocks * format->bytes, "weights")) {
     return NULL;
   }
   if ((x && osprey_gpu_elem_bytes(x) != 4) || (w && osprey_gpu_elem_bytes(w) != 1)) {
@@ -234,10 +287,10 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);
     return abandoned(out);
   }
-  int device = osprey_gpu_device_matmul_quant(kernel, x, w, out, rows, inner, cols, quant_parts(rows, cols));
+  int device = osprey_gpu_device_matmul_quant(format->kernel, x, w, out, rows, inner, cols, quant_parts(rows, cols));
   if (device != 0) return device > 0 ? out : abandoned(out);
   if (n && (osprey_gpu_readable(x, 0) != 1 || osprey_gpu_readable(w, 0) != 1)) return abandoned(out);
-  product_q4k(osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);
+  product_quant(format, osprey_gpu_data(out), osprey_gpu_data(x), osprey_gpu_data(w), rows, inner, cols);
   return out;
 }
 

@@ -588,6 +588,56 @@ def quant_fixtures():
     return out
 
 
+PRODUCT_TYPES = ("Q8_0",)
+"""The block types the product fixture covers, in the order [LLM-MATMUL-QUANT] adds them."""
+PRODUCT_SCALES = (0x3C00, 0x3400)
+"""Ordinary binary16 super-block scale and minimum words: 1.0 and 0.25."""
+PARTS = 16
+"""The parts one output splits its blocks into at the fixture's size, gpu_host.c's quant_parts."""
+
+
+def sweep(size, row):
+    """`size` bytes holding every byte value, aligned differently per row."""
+    return bytes((i * 167 + 13 + 91 * row) & 0xFF for i in range(size))
+
+
+def product_rows(name):
+    """Two weight rows of `name`, one block each: every byte value, ordinary scales."""
+    _elements, size = quant_sizes(name)
+    offsets = SCALE_AT[name]
+    return [with_scales(sweep(size, row), offsets, PRODUCT_SCALES[:len(offsets)]) for row in range(2)]
+
+
+def product_of(x, weights, elements):
+    """One output's product in the kernels' order: PARTS block ranges from part 0, each a
+    product then an add at binary32, and the parts added in order from 0.0."""
+    blocks = len(weights) // elements
+    total = numpy.float32(0.0)
+    for part_index in range(PARTS):
+        first, last = part_index * blocks // PARTS, (part_index + 1) * blocks // PARTS
+        part = numpy.float32(0.0)
+        for k in range(first * elements, last * elements):
+            part = part + numpy.float32(x[k]) * numpy.float32(weights[k])
+        total = total + part
+    return float(total)
+
+
+def product_fixtures():
+    """Every covered type's two weight rows of one block each, the x its product feeds, and
+    ggml's own decode folded in the kernels' order."""
+    out = {"QUANT_PRODUCT_TYPES": list(PRODUCT_TYPES)}
+    for name in PRODUCT_TYPES:
+        elements, _size = quant_sizes(name)
+        rows = product_rows(name)
+        values = quant_values(name, b"".join(rows), 2 * elements)
+        x = numpy.arange(elements, dtype=numpy.float32)
+        products = [product_of(x, values[row * elements:(row + 1) * elements], elements) for row in range(2)]
+        out[f"QUANT_PRODUCT_{name}_INNER"] = elements
+        out[f"QUANT_PRODUCT_{name}_BYTES"] = [byte for row in rows for byte in row]
+        out[f"QUANT_PRODUCT_{name}_VALUES"] = products
+    return out
+
+
 def tables():
     """The value-type and quantization tables, the tokenizer key catalogue and the
     header constants, all read from the package instead of retyped."""
@@ -632,6 +682,7 @@ def main():
     for name, data in rejected_cases(base, reader, quant, qreader):
         constants.update(rejected(name, data))
     constants.update(quant_fixtures())
+    constants.update(product_fixtures())
     write(
         "gguf",
         "GGUF v3 files written by gguf 0.19.0's GGUFWriter, GGUFReader's view of their header, "

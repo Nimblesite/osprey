@@ -1,0 +1,50 @@
+// [LLM-MATMUL-QUANT]: the quantized product held to ggml's own block decoders.
+// Every case's two weight rows are one GGUF block each, taken from the oracle at
+// src/osprey/packages/gguf/oracle/gguf.cpython, which compiles ggml's
+// `dequantize_row_*` at the commit the port pins and folds the products at
+// binary32 in the kernels' order: part p covers the blocks from
+// p * blocks / 16 to (p + 1) * blocks / 16, each weight is multiplied then
+// added, and the parts are added in order from 0.0. x is 0..inner-1.
+/// [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer.
+fn withBuffer(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => check("GPU operation", "success", toString(message))
+}
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU operation", "success", toString(message))
+        false }
+}
+/// productWith compares the product's two words with ggml's own decode element for element.
+fn productWith(label, kind, x, w, inner, expected) = withBuffer(gpuMatMulQuant(x, w, kind, 1, inner, 2), fn(out) => checkAll(label, [
+            gpuLength(out) == 2,
+            gpuSatisfies(fromGpu(out), fn(values) => structuralEquals(values, expected))
+]))
+fn productCase(label, kind, bytes, inner, expected) = withBuffer(toGpu(range(0, inner)), fn(indices) => withBuffer(gpuMap(indices, fn(i) => toFloat32(i)), fn(x) => withBuffer(toGpu(bytes), fn(w) => productWith(label, kind, x, w, inner, expected))))
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+
+/// [LLM-MATMUL-QUANT] Q8_0: 32 weights per 34-byte block, a binary16 scale and one signed byte per weight.
+fn q8_0Case() = {
+    let bytes: List<uint8> = [0, 60, 91, 2, 169, 80, 247, 158, 69, 236, 147, 58, 225, 136, 47, 214, 125, 36, 203, 114, 25, 192, 103, 14, 181, 92, 3, 170, 81, 248, 159, 70, 237, 148, 0, 60, 182, 93, 4, 171, 82, 249, 160, 71, 238, 149, 60, 227, 138, 49, 216, 127, 38, 205, 116, 27, 194, 105, 16, 183, 94, 5, 172, 83, 250, 161, 72, 239]
+    let expected: List<float32> = [-1504.0, 2928.0]
+    productCase("the Q8_0 product matches ggml's decode in the kernels' part order", "Q8_0", bytes, 32, expected)
+}
+test("the Q8_0 product matches ggml's decode in the kernels' part order", fn() => exactArithmetic(q8_0Case))

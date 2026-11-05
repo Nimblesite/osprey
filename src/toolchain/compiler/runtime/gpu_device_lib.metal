@@ -267,15 +267,18 @@ MATRIX_KERNEL(osprey_matmul64, ulong, multiply64, add64)
 MATRIX_KERNEL(osprey_matmul32, float, multiply32, add32)
 #undef MATRIX_KERNEL
 
-// [LLM-MATMUL-QUANT] The product of a float32 matrix and Q4_K weights, the
-// block format of the Qwen GGUF: 256 weights per 144-byte block, a binary16
-// scale and minimum, eight 6-bit sub-block scales and minimums, 4-bit
-// weights. Row c of the weights is `inner / 256` consecutive blocks.
+// [LLM-MATMUL-QUANT] The product of a float32 matrix and quantized GGUF
+// weights. Every block format the product decodes shares one contract: a
+// weight is decoded from its block exactly as ggml's `dequantize_row_<type>`
+// decodes it, multiplied by x, then added, every step rounded at binary32 with
+// nothing contracted. Row c of the weights is `inner / <weights per block>`
+// consecutive blocks.
 #if !defined(__METAL_VERSION__) && !defined(__OPENCL_VERSION__) && !defined(__OPENCL_C_VERSION__)
 typedef unsigned char uchar;
 #endif
 
-// The 6-bit scale and minimum of sub-block j, packed as ggml packs them.
+// The 6-bit scale and minimum of sub-block j, packed as ggml's
+// `get_scale_min_k4` packs them, shared by Q4_K and Q5_K.
 uint q4k_scale(GPU_GLOBAL const uchar *scales, uint j) {
     return j < 4 ? (uint)(scales[j] & 63) : (uint)((scales[j + 4] & 15) | ((scales[j - 4] >> 6) << 4));
 }
@@ -283,49 +286,74 @@ uint q4k_min(GPU_GLOBAL const uchar *scales, uint j) {
     return j < 4 ? (uint)(scales[j + 4] & 63) : (uint)((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4));
 }
 
-// Thread t computes part p = t % parts of output i = t / parts: the blocks
-// from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
-// from 0.0f, into partial[i * parts + p]. Each weight is d * scale * q minus
-// dmin * min (two roundings), multiplied by x, then added, every step rounded
-// and nothing contracted, so the host oracle in gpu_host.c writes the same
-// bytes. osprey_sum_parts then adds the parts of each output in order.
-kernel void osprey_matmul_q4_k(GPU_GLOBAL const float *x GPU_BUFFER(0),
-                               GPU_GLOBAL const uchar *w GPU_BUFFER(1),
-                               GPU_GLOBAL float *partial GPU_BUFFER(2),
-                               GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4),
-                               GPU_PARAM cols GPU_BUFFER(5), GPU_PARAM parts GPU_BUFFER(6) GPU_THREAD) {
-    ulong t = GPU_INDEX;
-    if (t >= rows * cols * parts) return;
-    ulong i = t / parts, p = t % parts;
-    ulong r = i / cols, c = i % cols;
-    uint blocks = (uint)(inner / 256);
-    uint first = (uint)(p * blocks / parts), last = (uint)((p + 1) * blocks / parts);
-    GPU_GLOBAL const float *xr = x + r * inner;
-    GPU_GLOBAL const uchar *row = w + c * (ulong)blocks * 144ul;
-    float acc = 0.0f;
-    for (uint blk = first; blk < last; blk++) {
-        GPU_GLOBAL const uchar *b = row + blk * 144u;
-        float d = gpu_f16_to_f32((ushort)(b[0] | (b[1] << 8)));
-        float dmin = gpu_f16_to_f32((ushort)(b[2] | (b[3] << 8)));
-        GPU_GLOBAL const float *xb = xr + blk * 256u;
-        for (uint j = 0; j < 8; j++) {
-            uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
-            float d1 = d * (float)sc;
-            float m1 = dmin * (float)mn;
-            uint g = j >> 1, high = j & 1;
-            GPU_GLOBAL const uchar *q = b + 16 + g * 32;
-            GPU_GLOBAL const float *xe = xb + g * 64 + high * 32;
-            for (uint l = 0; l < 32; l++) {
-                uint nib = high ? (uint)(q[l] >> 4) : (uint)(q[l] & 15);
-                float weight = d1 * (float)nib;
-                weight = weight - m1;
-                float product = xe[l] * weight;
-                acc = acc + product;
-            }
+// One weight's contribution: the product is a separate value, then added, so
+// no step contracts ([GPU-MATMUL]'s order contract).
+float quant_add(float acc, float x, float weight) {
+    float product = x * weight;
+    return acc + product;
+}
+
+// The binary16 scale a GGUF block stores at byte `at`.
+float quant_half(GPU_GLOBAL const uchar *b, uint at) {
+    return gpu_f16_to_f32((ushort)(b[at] | (b[at + 1] << 8)));
+}
+
+// Q4_K: 256 weights per 144-byte block, a binary16 scale and minimum, eight
+// 6-bit sub-block scales and minimums, 4-bit weights.
+float q4_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+    float d = quant_half(b, 0), dmin = quant_half(b, 2);
+    for (uint j = 0; j < 8; j++) {
+        uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
+        float d1 = d * (float)sc;
+        float m1 = dmin * (float)mn;
+        uint g = j >> 1, high = j & 1;
+        GPU_GLOBAL const uchar *q = b + 16 + g * 32;
+        GPU_GLOBAL const float *xe = x + g * 64 + high * 32;
+        for (uint l = 0; l < 32; l++) {
+            uint nib = high ? (uint)(q[l] >> 4) : (uint)(q[l] & 15);
+            float weight = d1 * (float)nib;
+            weight = weight - m1;
+            acc = quant_add(acc, xe[l], weight);
         }
     }
-    partial[t] = acc;
+    return acc;
 }
+
+// Q8_0: 32 weights per 34-byte block, one binary16 scale and one signed byte per weight.
+float q8_0_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
+    float d = quant_half(b, 0);
+    for (uint j = 0; j < 32; j++)
+        acc = quant_add(acc, x[j], d * (float)(signed char)b[2 + j]);
+    return acc;
+}
+
+// Thread t computes part p = t % parts of output i = t / parts: the blocks
+// from p * blocks / parts up to (p + 1) * blocks / parts, in ggml's block order
+// from 0.0f, into partial[i * parts + p]. One template for every block format,
+// so the host oracle in gpu_host.c runs the same loop shape over the same
+// per-block steps. osprey_sum_parts then adds the parts of each output in order.
+#define QUANT_KERNEL(TYPE, STEP, ELEMENTS, BYTES) \
+kernel void osprey_matmul_##TYPE(GPU_GLOBAL const float *x GPU_BUFFER(0), \
+                                 GPU_GLOBAL const uchar *w GPU_BUFFER(1), \
+                                 GPU_GLOBAL float *partial GPU_BUFFER(2), \
+                                 GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4), \
+                                 GPU_PARAM cols GPU_BUFFER(5), GPU_PARAM parts GPU_BUFFER(6) GPU_THREAD) { \
+    ulong t = GPU_INDEX; \
+    if (t >= rows * cols * parts) return; \
+    ulong i = t / parts, p = t % parts; \
+    ulong r = i / cols, c = i % cols; \
+    uint blocks = (uint)(inner / (ELEMENTS)); \
+    uint first = (uint)(p * blocks / parts), last = (uint)((p + 1) * blocks / parts); \
+    GPU_GLOBAL const float *xr = x + r * inner; \
+    GPU_GLOBAL const uchar *row = w + c * (ulong)blocks * (BYTES); \
+    float acc = 0.0f; \
+    for (uint blk = first; blk < last; blk++) \
+        acc = STEP(acc, xr + (ulong)blk * (ELEMENTS), row + (ulong)blk * (BYTES)); \
+    partial[t] = acc; \
+}
+QUANT_KERNEL(q4_k, q4_k_step, 256, 144)
+QUANT_KERNEL(q8_0, q8_0_step, 32, 34)
+#undef QUANT_KERNEL
 
 // out[i] = the `parts` partial sums of output i added in order from 0.0f.
 kernel void osprey_sum_parts(GPU_GLOBAL const float *partial GPU_BUFFER(0),
