@@ -557,7 +557,7 @@ impl Checker {
             // element type was never resolved at all [PATTERN-RESULT-DEFAULT].
             //
             // `Success`/`Error` bind by ROLE, not by spelling
-            // ([FLAVOR-ML-MATCH]): `Success section` binds the success payload
+            // ([FLAVOR-ML-MATCH], [PATTERN-RESULT-BINDERS]): `Success section` binds the success payload
             // under `section` exactly as `Success value` binds it under `value`,
             // and `Error message` binds the error string. Binding a renamed
             // positional binder to a fresh variable detached it from the
@@ -565,10 +565,10 @@ impl Checker {
             // nested match) kept an unconstrained element type and codegen
             // refused the closure as still generic.
             let ft = match fname.as_str() {
-                "value" | osprey_ast::RESULT_DEFAULT_PAYLOAD => ok.clone(),
-                "message" => Type::string(),
                 _ if index == 0 && variant == names::SUCCESS => ok.clone(),
                 _ if index == 0 => Type::string(),
+                "value" | osprey_ast::RESULT_DEFAULT_PAYLOAD => ok.clone(),
+                "message" => Type::string(),
                 _ => self.ctx.fresh(),
             };
             local.insert(fname.clone(), Scheme::mono(ft));

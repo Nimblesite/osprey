@@ -23,6 +23,10 @@ Every pattern binding belongs to its own arm. It shadows an enclosing binding on
 
 This applies equally to literal catch-all bindings, Result and union payloads, list elements and tails, structural fields and erased structural matches. The paired `src/osprey/tests/flavors/matching/matching.test` suites assert isolation between arms, restoration after nested matches, escaping captures, shadowing of mutable cells and callable payloads (including float-returning functions through Result joins) in both flavors.
 
+### Result binder roles — [PATTERN-RESULT-BINDERS]
+
+A Result binder's spelling never changes the constructor's payload role. A `Success` binder named `message` retains the successful value's type, including records and callable values; an `Error` binder named `value` retains the error message. Python keyword labels select payload slots and create only their written binders, so `Success(value=message)` never creates a hidden `value` binding.
+
 ## Union patterns
 
 A bare variant name matches that variant and binds nothing, whether or not the variant carries a payload. A payload has two destructuring forms, and the **form written** — not how the payload was declared — decides how binders map onto slots:

@@ -346,10 +346,7 @@ print(f"{numbers[0]}:{numbers[1]}:{words["answer"]}:{identity(True)}:{parsed("42
     );
 }
 
-/// [FLAVOR-PYTHON-CLASS] A field label never introduces a hidden source binding.
-#[test]
-fn python_named_pattern_aliases_preserve_nested_and_sibling_values() {
-    let source = r#"class Issue:
+const NAMED_PATTERN_ALIAS_PROGRAM: &str = r#"class Issue:
     issues: list[str]
 def combine(first, rest):
     match rest:
@@ -389,18 +386,65 @@ def ignored(item):
     match item:
         case Issue(issues=_):
             return "ignored"
+def callable_packet(result):
+    match result:
+        case Success(value=message):
+            return message("call")
+        case Error(message=value):
+            return len(value)
+class Packet:
+    payload: str
+def packet(result):
+    match result:
+        case Success(value=message):
+            return message.payload
+        case Error(message=value):
+            return value
 def main():
     left = Issue(issues=["left"])
     right = Issue(issues=["right"])
     pair = Pair(first="first", second="second")
-    print(f"{combine(left, right)}:{combine(right, left)}|{siblings([left, right])}|{siblings([right, left])}|{siblings([])}|{retained(["outer"], right)}|{reordered(pair)}|{partial(pair)}|{result_alias("outer", Success(value="inner"))}|{result_alias("outer", Error(message="bad"))}|{ignored(left)}")
+    print(f"{combine(left, right)}:{combine(right, left)}|{siblings([left, right])}|{siblings([right, left])}|{siblings([])}|{retained(["outer"], right)}|{reordered(pair)}|{partial(pair)}|{result_alias("outer", Success(value="inner"))}|{result_alias("outer", Error(message="bad"))}|{ignored(left)}|{packet(Success(value=Packet(payload="packet")))}:{packet(Error(message="refused"))}|{callable_packet(Success(value=lambda word: len(word)))}:{callable_packet(Error(message="denied"))}")
 "#;
+
+/// [FLAVOR-PYTHON-CLASS], [PATTERN-RESULT-BINDERS]: labels never bind hidden names.
+#[test]
+fn python_named_pattern_aliases_preserve_nested_and_sibling_values() {
     effect_execution::assert_flavored_output(
         "python_pattern_alias",
         "py",
-        source,
-        "left:right:right:left|left:right|right:left|different|outer:right:tail|first:second|second|outer:inner|outer:error:bad|ignored\n",
+        NAMED_PATTERN_ALIAS_PROGRAM,
+        "left:right:right:left|left:right|right:left|different|outer:right:tail|first:second|second|outer:inner|outer:error:bad|ignored|packet:refused|4:6\n",
     );
+    for (extension, source) in [
+        (
+            "osp",
+            r#"type Packet = { payload: string }
+fn packet(result) = match result {
+    Success { message } => message.payload
+    Error { value } => value
+}
+print(packet(Success { value: Packet { payload: "packet" } }) + ":" + packet(Error { message: "refused" }))
+"#,
+        ),
+        (
+            "ospml",
+            r#"type Packet =
+    payload : string
+packet result = match result
+    Success message => message.payload
+    Error value => value
+print (packet (Success(value = Packet(payload = "packet"))) + ":" + packet (Error(message = "refused")))
+"#,
+        ),
+    ] {
+        effect_execution::assert_flavored_output(
+            "result_role",
+            extension,
+            source,
+            "packet:refused\n",
+        );
+    }
     for (name, source, diagnostic) in [
         ("unknown_field", "class Item:\n    value: int\ndef read(item):\n    match item:\n        case Item(missing=other):\n            return other\nprint(read(Item(value=1)))\n", "unknown pattern field `missing`"),
         ("duplicate_field", "class Item:\n    value: int\ndef read(item):\n    match item:\n        case Item(value=left, value=right):\n            return left + right\nprint(read(Item(value=1)))\n", "duplicate pattern field `value`"),
