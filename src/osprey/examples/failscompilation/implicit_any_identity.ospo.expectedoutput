@@ -1,1 +1,1 @@
-unknown identifier `someUndefinedVariable`
+2:3: unknown identifier `someUndefinedVariable`

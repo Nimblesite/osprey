@@ -1,1 +1,1 @@
-unknown identifier `someUndefinedFunction`
+5:4: unknown identifier `someUndefinedFunction`
