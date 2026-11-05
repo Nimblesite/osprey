@@ -470,6 +470,11 @@ void *osprey_gpu_matmul_quant(void *x, void *w, const char *type, int64_t rows, 
     osp_io_error_text(OP_MATMUL_QUANT, "operands", "x must hold float32 and the weights uint8");
     return NULL;
   }
+  const void *words = blocks ? osprey_gpu_data(w) : NULL;
+  if ((uintptr_t)words % 4 != 0) {
+    osp_io_error_text(OP_MATMUL_QUANT, "weights", "must start on a 4-byte boundary");
+    return NULL;
+  }
   void *out = osprey_gpu_alloc(n, 4);
   if (!out || osprey_gpu_len(out) != n) {
     osp_io_error_set(OP_MATMUL_QUANT, "result", ENOMEM);

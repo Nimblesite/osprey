@@ -298,23 +298,39 @@ float quant_half(GPU_GLOBAL const uchar *b, uint at) {
     return gpu_f16_to_f32((ushort)(b[at] | (b[at + 1] << 8)));
 }
 
+// Four weights of a linear block from one little-endian word of 8-bit levels:
+// each weight rounds its scale product and its minimum, each contribution rounds
+// its product, and the additions run in element order, exactly as one at a time.
+// Reading the word once is what makes the kernel fast: a byte load per weight
+// costs up to four times as much on the real tensors. `gpuMatMulQuant` checks
+// that the weights start on a 4-byte boundary, and every block format below
+// keeps its word fields on one.
+float quant_lanes(float acc, GPU_GLOBAL const float *x, uint word, float d1, float m1) {
+    float w0 = d1 * (float)(word & 255), w1 = d1 * (float)((word >> 8) & 255);
+    float w2 = d1 * (float)((word >> 16) & 255), w3 = d1 * (float)(word >> 24);
+    w0 = w0 - m1;
+    w1 = w1 - m1;
+    w2 = w2 - m1;
+    w3 = w3 - m1;
+    float p0 = x[0] * w0, p1 = x[1] * w1, p2 = x[2] * w2, p3 = x[3] * w3;
+    acc = acc + p0;
+    acc = acc + p1;
+    acc = acc + p2;
+    return acc + p3;
+}
+
 // Q4_K: 256 weights per 144-byte block, a binary16 scale and minimum, eight
 // 6-bit sub-block scales and minimums, 4-bit weights.
 float q4_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
     float d = quant_half(b, 0), dmin = quant_half(b, 2);
+    GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
     for (uint j = 0; j < 8; j++) {
         uint sc = q4k_scale(b + 4, j), mn = q4k_min(b + 4, j);
         float d1 = d * (float)sc;
         float m1 = dmin * (float)mn;
         uint g = j >> 1, high = j & 1;
-        GPU_GLOBAL const uchar *q = b + 16 + g * 32;
-        GPU_GLOBAL const float *xe = x + g * 64 + high * 32;
-        for (uint l = 0; l < 32; l++) {
-            uint nib = high ? (uint)(q[l] >> 4) : (uint)(q[l] & 15);
-            float weight = d1 * (float)nib;
-            weight = weight - m1;
-            acc = quant_add(acc, xe[l], weight);
-        }
+        for (uint l = 0; l < 8; l++)
+            acc = quant_lanes(acc, x + g * 64 + high * 32 + l * 4, (qs[g * 8 + l] >> (high * 4)) & 0x0f0f0f0fu, d1, m1);
     }
     return acc;
 }
@@ -323,12 +339,21 @@ float q4_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
 // two mask bits, a binary16 scale and sixteen 8-bit sub-block scales.
 float q6_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
     float d = quant_half(b, 208);
-    for (uint j = 0; j < 256; j++) {
-        uint group = j >> 7, quarter = (j & 127) >> 5, l = j & 31;
-        uint low = (uint)(b[64 * group + l + 32 * (quarter & 1)] >> (4 * (quarter >> 1))) & 15;
-        uint q = low | (((uint)(b[128 + 32 * group + l] >> (2 * quarter)) & 3) << 4);
-        float scale = (float)(signed char)b[192 + 8 * group + (l >> 4) + 2 * quarter];
-        acc = quant_add(acc, x[j], d * scale * (float)((int)q - 32));
+    GPU_GLOBAL const ushort *low = (GPU_GLOBAL const ushort *)(GPU_GLOBAL const void *)b;
+    GPU_GLOBAL const ushort *high = (GPU_GLOBAL const ushort *)(GPU_GLOBAL const void *)(b + 128);
+    for (uint j = 0; j < 8; j++) {
+        uint group = j >> 2, quarter = j & 3;
+        GPU_GLOBAL const ushort *nibbles = low + 32 * group + 16 * (quarter & 1);
+        GPU_GLOBAL const ushort *tops = high + 16 * group;
+        GPU_GLOBAL const float *xq = x + group * 128 + quarter * 32;
+        for (uint i = 0; i < 16; i++) {
+            float scale = d * (float)(signed char)b[192 + 8 * group + (i >> 3) + 2 * quarter];
+            uint word = ((((uint)nibbles[i]) >> (4 * (quarter >> 1))) & 0x0f0fu) | ((((((uint)tops[i]) >> (2 * quarter)) & 0x0303u)) << 4);
+            float w0 = scale * (float)((int)(word & 255) - 32), w1 = scale * (float)((int)(word >> 8) - 32);
+            float p0 = xq[2 * i] * w0, p1 = xq[2 * i + 1] * w1;
+            acc = acc + p0;
+            acc = acc + p1;
+        }
     }
     return acc;
 }
@@ -345,20 +370,16 @@ float q8_0_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
 // a binary16 scale and minimum and eight 6-bit sub-block scales and minimums.
 float q5_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
     float d = quant_half(b, 0), dmin = quant_half(b, 2);
-    for (uint g = 0; g < 4; g++) {
-        for (uint h = 0; h < 2; h++) {
-            uint sub = 2 * g + h;
-            uint sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
-            float d1 = d * (float)sc;
-            float m1 = dmin * (float)mn;
-            GPU_GLOBAL const uchar *ql = b + 48 + 32 * g;
-            for (uint l = 0; l < 32; l++) {
-                uint nib = h ? (uint)(ql[l] >> 4) : (uint)(ql[l] & 15);
-                uint high = (uint)((b[16 + l] >> sub) & 1);
-                float weight = d1 * (float)(nib + 16 * high);
-                weight = weight - m1;
-                acc = quant_add(acc, x[g * 64 + h * 32 + l], weight);
-            }
+    GPU_GLOBAL const uint *mask = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 16);
+    GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 48);
+    for (uint sub = 0; sub < 8; sub++) {
+        uint sc = q4k_scale(b + 4, sub), mn = q4k_min(b + 4, sub);
+        float d1 = d * (float)sc;
+        float m1 = dmin * (float)mn;
+        uint g = sub >> 1, h = sub & 1;
+        for (uint l = 0; l < 8; l++) {
+            uint low = (qs[g * 8 + l] >> (h * 4)) & 0x0f0f0f0fu;
+            acc = quant_lanes(acc, x + sub * 32 + l * 4, low | (((mask[l] >> sub) & 0x01010101u) << 4), d1, m1);
         }
     }
     return acc;
@@ -402,7 +423,7 @@ float q3_k_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b)
 
 // ggml's `kvalues_iq4nl`: the sixteen non-linear levels IQ4_NL and IQ4_XS use
 // (ggml-common.h at the commit the gguf port pins).
-constant int IQ4_NL_LEVELS[16] = {-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113};
+constant float IQ4_NL_LEVELS[16] = {-127.0f, -104.0f, -83.0f, -65.0f, -49.0f, -35.0f, -22.0f, -10.0f, 1.0f, 13.0f, 25.0f, 38.0f, 53.0f, 69.0f, 89.0f, 113.0f};
 
 // IQ4_NL: 32 weights per 18-byte block, one of the sixteen non-linear levels per
 // weight and a binary16 scale.
@@ -410,7 +431,7 @@ float iq4_nl_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *
     float d = quant_half(b, 0);
     for (uint j = 0; j < 32; j++) {
         uint level = j < 16 ? (uint)(b[2 + j] & 15) : (uint)(b[2 + j - 16] >> 4);
-        acc = quant_add(acc, x[j], d * (float)IQ4_NL_LEVELS[level]);
+        acc = quant_add(acc, x[j], d * IQ4_NL_LEVELS[level]);
     }
     return acc;
 }
@@ -420,12 +441,19 @@ float iq4_nl_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *
 float iq4_xs_step(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b) {
     float d = quant_half(b, 0);
     uint scales_h = (uint)(b[2] | (b[3] << 8));
+    GPU_GLOBAL const uint *qs = (GPU_GLOBAL const uint *)(GPU_GLOBAL const void *)(b + 8);
     for (uint ib = 0; ib < 8; ib++) {
         uint ls = (uint)((b[4 + (ib >> 1)] >> (4 * (ib & 1))) & 15) | (((scales_h >> (2 * ib)) & 3) << 4);
         float dl = d * (float)((int)ls - 32);
-        for (uint j = 0; j < 32; j++) {
-            uint level = j < 16 ? (uint)(b[8 + 16 * ib + j] & 15) : (uint)(b[8 + 16 * ib + j - 16] >> 4);
-            acc = quant_add(acc, x[32 * ib + j], dl * (float)IQ4_NL_LEVELS[level]);
+        for (uint l = 0; l < 8; l++) {
+            uint word = qs[ib * 4 + (l & 3)] >> (4 * (l >> 2));
+            GPU_GLOBAL const float *xe = x + 32 * ib + 4 * l;
+            float p0 = xe[0] * (dl * IQ4_NL_LEVELS[word & 15]), p1 = xe[1] * (dl * IQ4_NL_LEVELS[(word >> 8) & 15]);
+            float p2 = xe[2] * (dl * IQ4_NL_LEVELS[(word >> 16) & 15]), p3 = xe[3] * (dl * IQ4_NL_LEVELS[(word >> 24) & 15]);
+            acc = acc + p0;
+            acc = acc + p1;
+            acc = acc + p2;
+            acc = acc + p3;
         }
     }
     return acc;

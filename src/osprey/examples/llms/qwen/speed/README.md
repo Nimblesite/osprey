@@ -28,3 +28,6 @@ Receipts: `src/toolchain/benchmarks/gpu-metal-dispatch.csv`.
 - `q4k_standalone.m`: the same product in plain Metal with 32-bit indices (0.37 ms), the
   target for the library kernel [LLM-MATMUL-QUANT]. Build with
   `clang -fobjc-arc -framework Metal -framework Foundation -O2 q4k_standalone.m -o q4k_standalone`.
+- `real_token_gen.py`: writes a probe over the real GGUF's own tensors, in their real types and
+  shapes, for chosen layers plus the head (`real_token_gen.py <gguf> <tokens> <layer>... > real_token.osp`).
+  Sample a few layers and scale up: every layer pages in about 240 MB of the mapped file.

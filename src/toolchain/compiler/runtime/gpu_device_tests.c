@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "gpu_f64.metal"
 #include "gpu_math64.metal"
@@ -241,6 +242,22 @@ static const QuantCase QUANT_CASES[] = {
     {"IQ3_S", 110, 256, {0, 0}, 1},
 };
 
+// The decoders read whole words, so weights mapped off a 4-byte boundary are an
+// error naming the boundary, and the same region one byte later succeeds.
+void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64_t elem_bytes);
+static void misaligned_weights(void *x, int64_t rows, int64_t inner, int64_t cols) {
+  char path[] = "/tmp/osprey_quant_XXXXXX";
+  int fd = mkstemp(path);
+  const int64_t bytes = cols * 2 * 144;
+  assert(fd >= 0 && ftruncate(fd, bytes + 4) == 0 && close(fd) == 0);
+  void *odd = osprey_gpu_map_file(path, 1, bytes, 1), *even = osprey_gpu_map_file(path, 4, bytes, 1);
+  assert(odd && even && unlink(path) == 0);
+  osp_io_error_clear();
+  assert(osprey_gpu_matmul_quant(x, odd, "Q4_K", rows, inner, cols) == NULL &&
+         strstr(osp_io_error(), "must start on a 4-byte boundary"));
+  assert(osprey_gpu_matmul_quant(x, even, "Q4_K", rows, inner, cols) != NULL);
+  checks += 2;
+}
 static void quantized_products(void) {
   for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
     const QuantCase *c = &QUANT_CASES[i];
@@ -252,6 +269,7 @@ static void quantized_products(void) {
   assert(osprey_gpu_matmul_quant(x, w, "Q2_K", rows, inner, cols) == NULL &&
          strstr(osp_io_error(), "expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S"));
   checks++;
+  misaligned_weights(x, rows, inner, cols);
 }
 
 // The host's fold of `words` in element order, as the sequential kernel computes it.
@@ -366,15 +384,15 @@ int main(void) {
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 27);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 29);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 28);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 30);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 31);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 33);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;
