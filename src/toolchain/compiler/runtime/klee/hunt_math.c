@@ -19,6 +19,7 @@ typedef union {
 enum { EXPONENT_BIAS = 1023, EXPONENT_SHIFT = 52 };
 
 double fabs(double x) { return __builtin_fabs(x); }
+float fabsf(float x) { return (float)fabs((double)x); }
 
 double trunc(double x) {
   if (!isfinite(x) || fabs(x) >= 4503599627370496.0) {
@@ -44,6 +45,20 @@ double fmod(double x, double y) {
     return NAN;
   }
   return x - trunc(x / y) * y;
+}
+
+float fmodf(float x, float y) {
+  if (!isfinite(x) || y == 0.0f || isnan(y)) return NAN;
+  double remainder = fabs((double)x), modulus = fabs((double)y);
+  if (remainder < modulus) return x;
+  // Binary32 operands widen exactly. Reduce by powers of two to avoid
+  // rounding a large quotient before subtracting it from the dividend.
+  double divisor = modulus;
+  while (divisor <= remainder * 0.5) divisor *= 2.0;
+  for (; divisor >= modulus; divisor *= 0.5) {
+    if (remainder >= divisor) remainder -= divisor;
+  }
+  return signbit(x) ? -(float)remainder : (float)remainder;
 }
 
 double frexp(double x, int *exponent) {
@@ -109,6 +124,8 @@ double sqrt(double x) {
   return ldexp(guess, exponent / 2);
 }
 
+float sqrtf(float x) { return (float)sqrt((double)x); }
+
 // e^r for |r| <= ln2 / 2 by the Taylor series.
 static double exp_reduced(double r) {
   double term = 1.0;
@@ -171,6 +188,8 @@ double log(double x) {
   }
   return log_reduced(mantissa) + exponent * LN2;
 }
+
+float logf(float x) { return (float)log((double)x); }
 
 double log10(double x) { return log(x) / 2.30258509299404568402; }
 

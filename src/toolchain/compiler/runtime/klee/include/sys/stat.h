@@ -3,6 +3,7 @@
 #ifndef OSP_HUNT_SYS_STAT_H
 #define OSP_HUNT_SYS_STAT_H
 #include <sys/types.h>
+#define S_ISREG(mode) (((mode) & 0170000) == 0100000)
 struct stat {
   off_t st_size;
   mode_t st_mode;

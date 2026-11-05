@@ -286,6 +286,16 @@ static void entropy_is_a_named_symbolic_object(void) {
 
 static int close_to(double a, double b) { return a - b < 1e-9 && b - a < 1e-9; }
 
+static void float_math_matches_gpu_operands(void) {
+  hunt_check(fabsf(-0.0f) == 0.0f && !signbit(fabsf(-0.0f)) && fabsf(-INFINITY) == INFINITY, "fabsf signed zero and infinity");
+  hunt_check(sqrtf(2.0f) == 0x1.6a09e6p0f && sqrtf(0x1p-148f) == 0x1p-74f, "sqrtf binary32 and subnormal");
+  hunt_check(signbit(sqrtf(-0.0f)) && isnan(sqrtf(-1.0f)), "sqrtf signed zero and domain");
+  hunt_check(logf(2.0f) == 0x1.62e43p-1f && logf(0.0f) == -INFINITY && isnan(logf(-1.0f)), "logf value and domain");
+  hunt_check(fmodf(-7.5f, 2.0f) == -1.5f && fmodf(0x1p120f, 3.0f) == 1.0f, "fmodf sign and large quotient");
+  hunt_check(fmodf(-4.0f, 2.0f) == 0.0f && signbit(fmodf(-4.0f, 2.0f)), "fmodf signed exact zero");
+  hunt_check(fmodf(2.0f, INFINITY) == 2.0f && isnan(fmodf(INFINITY, 2.0f)) && isnan(fmodf(2.0f, 0.0f)), "fmodf infinities and zero divisor");
+}
+
 static void math_doubles_are_accurate(void) {
   hunt_check(close_to(sqrt(2.0), 1.4142135623730951), "sqrt");
   hunt_check(close_to(exp(1.0), 2.718281828459045), "exp");
@@ -365,6 +375,7 @@ int main(void) {
   qsort_sorts();
   entropy_is_a_named_symbolic_object();
   math_doubles_are_accurate();
+  float_math_matches_gpu_operands();
   power_special_cases_match_libm();
   unsupported_calls_stop_the_path();
   hunt_mock_format_tests();

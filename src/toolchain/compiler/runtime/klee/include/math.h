@@ -16,10 +16,13 @@ static inline int signbit(double x) {
   return (int)(b.bits >> 63);
 }
 double fabs(double x);
+float fabsf(float x);
 double sqrt(double x);
+float sqrtf(float x);
 double exp(double x);
 float expf(float x);
 double log(double x);
+float logf(float x);
 double log10(double x);
 double log2(double x);
 double pow(double base, double exponent);
@@ -28,6 +31,7 @@ double ceil(double x);
 double trunc(double x);
 double round(double x);
 double fmod(double x, double y);
+float fmodf(float x, float y);
 double sin(double x);
 double cos(double x);
 double tan(double x);
