@@ -445,7 +445,8 @@ def process(path, hand_ml=None):
 
 
 def main():
-    files = sorted(DOCS.rglob("*.md"))
+    # Package API pages already show each declaration in its authored flavor.
+    files = sorted(f for f in DOCS.rglob("*.md") if f.relative_to(DOCS).parts[0] != "packages")
     n = 0
     for f in files:
         source = f.read_text()

@@ -141,6 +141,10 @@
           "url": "/docs/packages-in-vscode/"
         },
         {
+          "text": "@osprey/json API",
+          "url": "/docs/packages/json/"
+        },
+        {
           "text": "Package specification",
           "url": "/spec/0029-packagemanagement/"
         }

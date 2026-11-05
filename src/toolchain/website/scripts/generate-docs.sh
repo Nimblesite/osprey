@@ -40,6 +40,24 @@ fi
 echo "Generating API reference from compiler..."
 "$OSPREY_BIN" --docs --docs-dir "$DOCS_DIR"
 
+# Package API reference: each published package's own pages, exported by the
+# same compiler. Eleventy serves `x.md` at `x/`, so sibling links are rewritten
+# (`../x/` from a page, `x/` from the package index).
+PACKAGES=(json)
+for package in "${PACKAGES[@]}"; do
+    export_dir="$(mktemp -d)"
+    "$OSPREY_BIN" --docs "$REPO_DIR/src/osprey/packages/$package" --docs-dir "$export_dir"
+    target="$DOCS_DIR/packages/$package"
+    rm -rf "$target"
+    mkdir -p "$target"
+    cp "$export_dir"/api/*.md "$target/"
+    rm -rf "$export_dir"
+    sed -i.bak -E 's/\]\(([a-z0-9-]+)\.md\)/](..\/\1\/)/g' "$target"/*.md
+    sed -i.bak -E -e 's/\]\(\.\.\/([a-z0-9-]+)\/\)/](\1\/)/g' \
+        -e "s/API Reference/@osprey\/$package API Reference/" "$target/index.md"
+    rm -f "$target"/*.bak
+done
+
 if [ ! -f "$DOCS_DIR/index.md" ]; then
     echo "Error: Documentation generation failed - no docs generated to $DOCS_DIR"
     exit 1

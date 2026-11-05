@@ -126,6 +126,7 @@ src/assets/vendor/
 # so they populate. Never commit or hand-edit them. types/, operators/ and
 # keywords/ are NOT emitted by the current compiler, so those stay tracked.
 src/docs/functions/
+src/docs/packages/
 src/docs/stdlib.md
 
 # Playwright
