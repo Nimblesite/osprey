@@ -7,6 +7,6 @@ type Pair =
 
 widen (p, v) = Pair(lo = p.lo, hi = v)
 
-main () =
-    p = toGpu [1, 2, 3] |> gpuFold (Pair(lo = 0, hi = 0)) widen
-    print p.hi
+main () = match toGpu [1, 2, 3]
+    Success value => gpuFold (value, Pair(lo = 0, hi = 0), widen)
+    Error message => Error(message = message)

@@ -1,6 +1,5 @@
 // osprey: flavor=ml
 // [GPU-KERNEL-EXTRACT]: gpuZipWith rejects an unhandled Result element.
-main () =
-    a = toGpu [1, 2]
-    out = gpuZipWith (a, a, \(x, y) => checkedMul (x, y))
-    print (listLength [out])
+main () = match toGpu [1, 2]
+    Success value => gpuZipWith (value, value, \(x, y) => checkedMul (x, y))
+    Error message => Error(message = message)

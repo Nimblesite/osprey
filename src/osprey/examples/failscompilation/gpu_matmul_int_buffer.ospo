@@ -1,7 +1,6 @@
 // [GPU-MATMUL]: the product is defined over float buffers only; an int
 // buffer operand is a type error at the call, never a silent widening.
-fn main() = {
-    let a = toGpu([1, 2])
-    let m = gpuMatMul(a, a, 1, 2, 1) ?: a
-    print(gpuLength(m))
+fn main() = match toGpu([1, 2]) {
+    Success { value } => gpuMatMul(value, value, 1, 2, 1)
+    Error { message } => Error { message: message }
 }
