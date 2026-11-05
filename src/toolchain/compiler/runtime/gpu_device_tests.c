@@ -225,6 +225,7 @@ static const QuantCase QUANT_CASES[] = {
     {"Q3_K", 110, 256, {108, 0}, 1},
     {"IQ4_NL", 18, 32, {0, 0}, 1},
     {"IQ4_XS", 136, 256, {0, 0}, 1},
+    {"IQ3_S", 110, 256, {0, 0}, 1},
 };
 
 static void quantized_products(void) {
@@ -236,7 +237,7 @@ static void quantized_products(void) {
   void *x = osprey_gpu_alloc(rows * inner, 4), *w = osprey_gpu_alloc(cols * 2 * 144, 1);
   osp_io_error_clear();
   assert(osprey_gpu_matmul_quant(x, w, "Q2_K", rows, inner, cols) == NULL &&
-         strstr(osp_io_error(), "expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS"));
+         strstr(osp_io_error(), "expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S"));
   checks++;
 }
 
@@ -348,19 +349,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 24);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 25);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 27);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 28);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 29);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 31);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;
