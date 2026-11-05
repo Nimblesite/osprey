@@ -142,16 +142,38 @@ impl Checker {
             return false;
         };
         self.ctx.settle_head(receiver);
-        let receiver = self.ctx.apply(receiver);
-        if matches!(receiver, Type::Var(_)) {
+        let Some(actual) = self.projected_field(receiver, field, site) else {
             return false;
-        }
-        match self.resolved_record_field(receiver, field, site) {
+        };
+        match actual {
             Ok(actual) if write => self.push_assign(&actual, ret),
             Ok(actual) => self.push_unify(ret, &actual),
             Err(error) => self.errors.push(error),
         }
         true
+    }
+
+    /// A shaped record needs only the selected field. Alias expansion and
+    /// diagnostics still use the fully resolved receiver.
+    fn projected_field(
+        &self,
+        receiver: &Type,
+        field: &str,
+        site: &str,
+    ) -> Option<Result<Type, TypeError>> {
+        let receiver = self.ctx.head(receiver);
+        if matches!(receiver, Type::Var(_)) {
+            return None;
+        }
+        if let Type::Record { fields, .. } = receiver {
+            if let Some(hidden) = self.hidden_field(receiver, field, site) {
+                return Some(Err(hidden));
+            }
+            if let Some(actual) = fields.get(field) {
+                return Some(Ok(self.ctx.apply(actual)));
+            }
+        }
+        Some(self.resolved_record_field(self.ctx.apply(receiver), field, site))
     }
 
     /// The type of `field` on `receiver` as read from `site`.

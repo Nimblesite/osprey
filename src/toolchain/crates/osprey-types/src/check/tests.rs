@@ -450,3 +450,28 @@ fn field_resolution_retries_only_after_new_work() {
     assert_eq!(checker.errors, []);
     assert_eq!(checker.builtin_uses, []);
 }
+
+#[test]
+fn field_projection_leaves_unselected_sibling_types_unvisited() {
+    use super::{Checker, Type};
+    use crate::{ctx::APPLY_VAR_VISITS, fields::obligation_name};
+
+    let mut checker = Checker::new();
+    let receiver = checker.ctx.fresh();
+    let value = checker.ctx.fresh();
+    let sibling = Type::fun(vec![checker.ctx.fresh(); 64], Type::bool());
+    let record = Type::Record {
+        name: String::new(),
+        fields: [("value".into(), Type::int()), ("sibling".into(), sibling)].into(),
+    };
+    checker.builtin_uses.push((
+        obligation_name("", "value"),
+        Type::fun(vec![receiver.clone()], value.clone()),
+    ));
+    checker.push_unify(&receiver, &record);
+    APPLY_VAR_VISITS.with(|visits| visits.set(0));
+    checker.resolve_field_uses();
+    assert_eq!(APPLY_VAR_VISITS.with(std::cell::Cell::get), 0);
+    assert_eq!(checker.ctx.apply(&value), Type::int());
+    assert_eq!(checker.errors, []);
+}
