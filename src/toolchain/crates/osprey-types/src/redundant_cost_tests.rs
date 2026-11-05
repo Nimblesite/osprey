@@ -389,5 +389,27 @@ fn spaced_necessary_annotations_keep_independent_proofs_batched() -> Result<(), 
             "position {position}: {calls} full solves for 128 sites exceeds 96"
         );
     }
+    for required in [8, 16] {
+        assert_dense_prefix_cost(required)?;
+    }
+    Ok(())
+}
+
+fn assert_dense_prefix_cost(required: usize) -> Result<(), std::fmt::Error> {
+    let necessary = definitions(required, "required", "(x: int) = 0")?;
+    let independent = definitions(128, "independent", "() -> string = \"hi\"")?;
+    let program = program(&format!(
+        "fn {SPACED_SENTINEL}() = 0\n{necessary}{independent}"
+    ));
+    let written = crate::redundant_sites::sites(&program);
+    assert_eq!(written.len(), required + 128);
+    let expected: Vec<_> = (required..required + 128).collect();
+    SPACED_CALLS.store(0, Ordering::Relaxed);
+    assert_default_sites(&program, &written, &expected);
+    let calls = SPACED_CALLS.load(Ordering::Relaxed);
+    assert!(
+        calls <= 64,
+        "dense prefix {required}: {calls} full solves exceeds 64"
+    );
     Ok(())
 }
