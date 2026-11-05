@@ -159,13 +159,6 @@ pub(crate) fn infer_annotation_candidate(
     infer_checked_with_rejection(program, true)
 }
 
-/// Annotation trials need a verdict, not further diagnostics after rejection.
-pub(crate) fn infer_annotation_candidate(
-    program: &Program,
-) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
-    infer_checked_with_rejection(program, true)
-}
-
 fn infer_checked_with_rejection(
     program: &Program,
     reject_invalid: bool,
