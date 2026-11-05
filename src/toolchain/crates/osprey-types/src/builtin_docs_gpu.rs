@@ -80,19 +80,19 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
         "gpuSigmoid",
         "The logistic function 1 / (1 + exp(-x)) of every element [LLM-SIGMOID], as a library kernel on the target's native binary32 exp. Device results agree with the host's within exp's ulps, not bit for bit.",
         ["x" => "The float32 buffer"],
-        "match gpuSigmoid(gates) {\n    Success { value } => gpuLength(value)\n    Error { message } => 0\n}"
+        "fn showSigmoid(gates) = match gpuSigmoid(gates) {\n    Success { value } => print(gpuLength(value))\n    Error { message } => print(message)\n}"
     ),
     builtin_doc!(
         "gpuDeltaRule",
         "One token of the recurrent gated delta rule [LLM-DELTA-RULE], fused into one library kernel: each value element decays its state column, recalls through the keys, writes the updated column and reads it out through the queries, in one fixed order on every backend. The result holds heads x dim x dim state cells, then heads x dim outputs, and feeds the next step as its state.",
         ["state" => "A previous result, or zeros of its length", "queries" => "dim values per head", "keys" => "dim values per head", "values" => "dim values per head", "beta" => "One value per head", "decay" => "One value per head", "heads" => "The head count", "dim" => "The width of a head"],
-        "match gpuDeltaRule(state, queries, keys, values, beta, decay, 48, 128) {\n    Success { value } => gpuLength(value)\n    Error { message } => 0\n}"
+        "fn showStep(previous, queries, keys, values, beta, decay) = match gpuDeltaRule(previous, queries, keys, values, beta, decay, 48, 128) {\n    Success { value } => print(gpuLength(value))\n    Error { message } => print(message)\n}"
     ),
     builtin_doc!(
         "gpuMatMulQuant",
         "The product of a rows x inner float32 matrix and cols rows of quantized weights in the named GGUF block format (Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS or IQ3_S), as a rows x cols float32 buffer. Each weight is dequantized, multiplied and added in ggml's block order with every step rounded, in block-range parts added in order (one part above 2^20 outputs, four above 2^16, sixteen otherwise), identically on the host and every device. A length, element type or inner dimension the shape disagrees with returns Error.",
         ["x" => "The rows x inner float32 buffer", "weights" => "The uint8 buffer holding cols rows of blocks, as the GGUF tensor stores them", "type" => "The GGUF tensor type name", "rows" => "The row count of x", "inner" => "The shared dimension, a multiple of the block's weight count", "cols" => "The weight row count"],
-        "match gpuMapFile(\"model.gguf\", 10996640, 14745600) {\n    Success { value } => { let weights = value\n    match toGpu(xs) {\n        Success { value } => match gpuMatMulQuant(value, weights, \"Q4_K\", 1, 5120, 5120) {\n            Success { value } => print(gpuLength(value))\n            Error { message } => print(message)\n        }\n        Error { message } => print(message)\n    }\n    }\n    Error { message } => print(message)\n}"
+        "fn project(xs) = match gpuMapFile(\"model.gguf\", 10996640, 14745600) {\n    Success { value } => { let weights = value\n    match toGpu(xs) {\n        Success { value } => match gpuMatMulQuant(value, weights, \"Q4_K\", 1, 5120, 5120) {\n            Success { value } => print(gpuLength(value))\n            Error { message } => print(message)\n        }\n        Error { message } => print(message)\n    }\n    }\n    Error { message } => print(message)\n}"
     ),
     builtin_doc!(
         "gpuLoad",
