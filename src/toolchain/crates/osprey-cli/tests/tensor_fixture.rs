@@ -225,7 +225,19 @@ fn repo() -> PathBuf {
 /// [GPU-DEVICE-NATIVE] An open literal seed uses the inferred binary32 slot.
 #[test]
 fn float32_reductions_round_at_the_inferred_accumulator_width() {
-    let source = "fn add(a, b) = a + b\nfn main() = {\nlet xs = toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777216.0)])\nprint(\"${gpuFold(xs, 0.0, add)} ${gpuGet(xs, 0) ?: toFloat32(99.0)}\")\n}\n";
+    let source = r#"
+fn add(a, b) = a + b
+fn main() = match toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777216.0)]) {
+    Success { value } => {
+        let xs = value
+        match gpuFold(xs, 0.0, add) {
+            Success { value } => print("${value} ${gpuGet(xs, 0) ?: toFloat32(99.0)}")
+            Error { message } => print(message)
+        }
+    }
+    Error { message } => print(message)
+}
+"#;
     let path = program("reduction32.osp", source).expect("write reduction fixture");
     assert!(
         !llvm(&path).contains("@osprey_gpu_declined"),
@@ -250,7 +262,25 @@ fn effect_handled_float32_maximum_keeps_its_device_result_width() {
 /// [GPU-SCAN] [GPU-FILTER] Both sequential shapes preserve binary32 elements.
 #[test]
 fn typed_scan_and_filter_keep_their_device_form_and_order() {
-    let source = "fn add(a, b) = a + b\nfn main() = {\nlet xs = toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)])\nlet positives = gpuFilter(xs, fn(x) => x > 0.0)\nlet scanned = gpuScan(xs, 0.0, add)\nprint(\"${gpuLength(positives)} ${gpuGet(positives, 0) ?: toFloat32(99.0)} ${gpuGet(positives, 1) ?: toFloat32(99.0)} ${gpuGet(scanned, 2) ?: toFloat32(99.0)}\")\n}\n";
+    let source = r#"
+fn add(a, b) = a + b
+fn main() = match toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)]) {
+    Success { value } => {
+        let xs = value
+        match gpuFilter(xs, fn(x) => x > 0.0) {
+            Success { value } => {
+                let positives = value
+                match gpuScan(xs, 0.0, add) {
+                    Success { value } => print("${gpuLength(positives)} ${gpuGet(positives, 0) ?: toFloat32(99.0)} ${gpuGet(positives, 1) ?: toFloat32(99.0)} ${gpuGet(value, 2) ?: toFloat32(99.0)}")
+                    Error { message } => print(message)
+                }
+            }
+            Error { message } => print(message)
+        }
+    }
+    Error { message } => print(message)
+}
+"#;
     let path = program("sequence32.osp", source).expect("write sequence fixture");
     assert!(
         !llvm(&path).contains("@osprey_gpu_declined"),

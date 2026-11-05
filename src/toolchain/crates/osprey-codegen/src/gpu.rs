@@ -16,7 +16,7 @@ use crate::error::{CodegenError, Result};
 use crate::expr::gen_expr;
 use crate::gpu_device::{launch_fold, launch_map, launch_sequence, Shape};
 use crate::gpu_kernel::{extract, kernel_elem, kernel_of, slot};
-use crate::iter::{acc_init, acc_result, acc_step, invoke, nth, Callback};
+use crate::iter::{acc_init, acc_result, acc_step, invoke, nth, seed_numeric, Callback};
 use crate::llty::{LType, Value};
 use crate::loops::{close_range_loop, open_range_loop};
 use allocation::{host_fallback, rejoin, Operation};
@@ -346,7 +346,18 @@ struct Reduction {
 /// extracted with the accumulator slot first [GPU-KERNEL-EXTRACT].
 fn reduction(cg: &mut Codegen, args: &[Expr], what: &str) -> Result<Reduction> {
     let src = buffer_arg(cg, args, 0)?;
-    let (acc, tmpl) = acc_init(cg, args)?;
+    // The call returns a Result; its success type still fixes an open seed's width.
+    let numeric = cg
+        .expression_type
+        .as_ref()
+        .and_then(|ty| match ty {
+            osprey_types::Type::Con { name, args } if name == osprey_types::names::RESULT => {
+                args.first()
+            }
+            _ => Some(ty),
+        })
+        .and_then(seed_numeric);
+    let (acc, tmpl) = acc_init(cg, args, numeric)?;
     if !is_scalar_value(&tmpl) {
         return Err(CodegenError::unsupported(format!(
             "a {what} accumulator must be a scalar (int, float, or bool)"

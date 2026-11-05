@@ -178,8 +178,12 @@ fn for_each(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// TYPE TEMPLATE — the seed value, whose `ty`/`osp_ty`/… tags are reused by
 /// [`rebuild_acc`] to recover the accumulator from the uniform `i64` slot. The
 /// operand of the template is stale; only its type tags are read [MEM-BACKENDS].
-pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value)> {
-    let initial = initial_value(cg, args)?;
+pub(crate) fn acc_init(
+    cg: &mut Codegen,
+    args: &[Expr],
+    numeric: Option<osprey_types::numeric::Numeric>,
+) -> Result<(String, Value)> {
+    let initial = initial_value(cg, args, numeric)?;
     // The slot escapes: materialize flat literals once before retaining it.
     let initial = crate::listlit::escaping(cg, initial);
     // Retain pointer accumulators across iteration scopes [GC-ARC-PERCEUS].
@@ -191,7 +195,7 @@ pub(crate) fn acc_init(cg: &mut Codegen, args: &[Expr]) -> Result<(String, Value
     Ok((acc, tmpl))
 }
 
-fn seed_numeric(ty: &osprey_types::Type) -> Option<osprey_types::numeric::Numeric> {
+pub(crate) fn seed_numeric(ty: &osprey_types::Type) -> Option<osprey_types::numeric::Numeric> {
     match ty {
         osprey_types::Type::Con { name, args } if name == osprey_types::names::GPU_BUFFER => args
             .first()
@@ -200,8 +204,11 @@ fn seed_numeric(ty: &osprey_types::Type) -> Option<osprey_types::numeric::Numeri
     }
 }
 
-fn initial_value(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
-    let numeric = cg.expression_type.as_ref().and_then(seed_numeric);
+fn initial_value(
+    cg: &mut Codegen,
+    args: &[Expr],
+    numeric: Option<osprey_types::numeric::Numeric>,
+) -> Result<Value> {
     let initial = gen_expr(cg, nth(args, 1)?)?;
     match numeric {
         Some(n) if matches!(initial.ty, LType::Num(_)) => {
@@ -299,7 +306,8 @@ pub(crate) fn acc_result(cg: &mut Codegen, acc: &str, tmpl: &Value) -> Value {
 /// `fold(iterator, initial, fn)` — counted loop accumulating `fn(acc, elem)`.
 fn fold(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let range = gen_expr(cg, nth(args, 0)?)?;
-    let (acc, seed) = acc_init(cg, args)?;
+    let numeric = cg.expression_type.as_ref().and_then(seed_numeric);
+    let (acc, seed) = acc_init(cg, args, numeric)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
     let tmpl = typed_seed(cg, seed, &combine);
     each_range_elem(cg, &range, |cg, elem| {
@@ -424,7 +432,8 @@ fn to_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
 /// `foldList(list, initial, fn)` — reduce a list with `fn(acc, elem)`.
 fn fold_list(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let l = list_arg(cg, args, 0)?;
-    let (acc, seed) = acc_init(cg, args)?;
+    let numeric = cg.expression_type.as_ref().and_then(seed_numeric);
+    let (acc, seed) = acc_init(cg, args, numeric)?;
     let combine = callback_of(cg, nth(args, 2)?)?;
     let tmpl = typed_seed(cg, seed, &combine);
     each_list_elem(cg, &l, |cg, _, elem| {
