@@ -70,6 +70,14 @@ def failed_index_allocation():
             return "missing allocation error"
 
 
+def failed_reduction():
+    match Errors.checked_float(lambda: Storage.reduced(Error(message="reduction failed"))):
+        case Error(message=message):
+            return message
+        case Success():
+            return "missing reduction error"
+
+
 @static_handler(Storage.Buffer[list[float]])
 class unavailable_readback:
     """A boundary that refuses the read; no caller may receive fabricated data."""
@@ -189,6 +197,8 @@ def storage_cases():
         Check.close_all("storage.Buffer.zip_with.ragged", Storage.lower(ragged), [11.0], S.TIGHT, S.ATOL),
         Check.equal("storage.length_of", Storage.length_of(buffer), 2),
         Check.equal("storage.at", Storage.at(buffer, 1), 2.0),
+        Check.equal("storage.reduced.value", Storage.reduced(perform(Storage.Buffer.reduce(buffer, 5.0, Storage.add_f))), 8.0),
+        Check.equal("storage.reduced.error", failed_reduction(), "reduction failed"),
         Check.equal("storage.add_f", Storage.add_f(2.0, 3.0), 5.0),
         Check.equal("storage.mul_f", Storage.mul_f(2.0, 3.0), 6.0),
         Check.equal("storage.max_f", Storage.max_f(-2.0, -3.0), -2.0),

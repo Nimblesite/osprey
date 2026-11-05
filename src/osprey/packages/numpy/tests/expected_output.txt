@@ -452,6 +452,8 @@ ok storage.Buffer.zip_with
 ok storage.Buffer.zip_with.ragged
 ok storage.length_of
 ok storage.at
+ok storage.reduced.value
+ok storage.reduced.error
 ok storage.add_f
 ok storage.mul_f
 ok storage.max_f
@@ -927,6 +929,8 @@ ok storage.Buffer.zip_with
 ok storage.Buffer.zip_with.ragged
 ok storage.length_of
 ok storage.at
+ok storage.reduced.value
+ok storage.reduced.error
 ok storage.add_f
 ok storage.mul_f
 ok storage.max_f
@@ -948,4 +952,4 @@ ok array.ones_like
 ok array.full_like
 ok array.identity
 ok array.eye_m
-950 passed, 0 failed
+954 passed, 0 failed
