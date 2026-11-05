@@ -391,7 +391,8 @@ def gelu_forward(x):
 
 def normal_cdf(x):
     """Standard normal probabilities through the scalar erf builtin."""
-    return Array.NDArray(shape=x.shape, data=perform(Storage.Buffer.build(Tensor.flat(x.shape), lambda i: 0.5 * (1.0 + erf(Storage.at(x.data, i) * INV_SQRT_TWO)))))
+    buffer = perform(Storage.Buffer.build(Tensor.flat(x.shape), lambda i: 0.5 * (1.0 + erf(Storage.at(x.data, i) * INV_SQRT_TWO))))
+    return Array.NDArray(shape=x.shape, data=Storage.built(buffer))
 
 
 def gelu_deriv(x):
