@@ -129,89 +129,13 @@ fn local_symbols(symbols: &[Value], source: &Path) -> io::Result<Vec<Value>> {
 }
 
 fn add_members(pages: &mut [Page]) {
-    let indexes: Vec<_> = pages.iter().map(|page| member_table(page, pages)).collect();
+    let indexes: Vec<_> = pages
+        .iter()
+        .map(|page| super::members::table(page, pages))
+        .collect();
     for (page, members) in pages.iter_mut().zip(indexes) {
         page.markdown.push_str(&members);
     }
-}
-
-fn member_table(owner: &Page, pages: &[Page]) -> String {
-    if !matches!(owner.group.as_str(), "Module" | "Namespace" | "Effect") {
-        return String::new();
-    }
-    let prefix = format!("{}::", owner.title);
-    let rows = pages
-        .iter()
-        .filter_map(|page| {
-            let name = page.title.strip_prefix(&prefix)?;
-            if name.contains("::") {
-                return None;
-            }
-            let slug = page.slug.strip_prefix("api/")?;
-            Some(format!(
-                "| [{name}]({slug}.md) | {} | {} |",
-                page.group,
-                cell(page, name)
-            ))
-        })
-        .collect::<Vec<_>>();
-    if rows.is_empty() {
-        return String::new();
-    }
-    format!(
-        "\n## Members\n\n| Name | Kind | Description |\n| --- | --- | --- |\n{}\n",
-        rows.join("\n")
-    )
-}
-
-/// What a member listing says about one member: its summary where the author
-/// wrote one, and otherwise its signature. A column of blank cells tells a
-/// reader nothing, while the signature is the fact they came for.
-fn cell(page: &Page, name: &str) -> String {
-    let description = if page.summary.is_empty() {
-        format!("`{}`", unqualified(&page.signature, name))
-    } else {
-        page.summary.clone()
-    };
-    description.replace('|', "\\|").replace('\n', " ")
-}
-
-/// A member's signature with the qualification taken off its head.
-///
-/// The Name column already carries it, and a table repeating it in every row
-/// pushes the part a reader came for off the edge of a phone screen. The
-/// qualification a signature carries is the compiler's finalized one — an
-/// assembled project prefixes a namespace nobody wrote — so the head is found
-/// by the member's own name rather than by the name of the page. An effect
-/// operation is qualified with dots rather than `::`, so both are tried.
-fn unqualified(signature: &str, name: &str) -> String {
-    ["::", "."]
-        .into_iter()
-        .find_map(|separator| strip_head(signature, &format!("{separator}{name}"), name))
-        .unwrap_or_else(|| signature.to_owned())
-}
-
-/// `signature` with the qualified name ending in `tail` reduced to `name`, or
-/// `None` where it does not carry one.
-fn strip_head(signature: &str, tail: &str, name: &str) -> Option<String> {
-    let at = signature.find(tail)?;
-    let head = signature.get(..at)?;
-    let start = head
-        .char_indices()
-        .rev()
-        .find(|(_, character)| !qualifier(*character))
-        .map_or(0, |(at, character)| at.saturating_add(character.len_utf8()));
-    Some(format!(
-        "{}{name}{}",
-        head.get(..start)?,
-        signature.get(at.saturating_add(tail.len())..)?
-    ))
-}
-
-/// A character that can appear inside a qualified name, and so belongs to the
-/// head being removed rather than to the keyword or spacing in front of it.
-fn qualifier(character: char) -> bool {
-    character.is_alphanumeric() || matches!(character, '_' | ':' | '.')
 }
 
 fn visibility(
@@ -301,7 +225,7 @@ fn page(
         slug: format!("api/{slug}"),
         title: entry.qualified_name.clone(),
         group: entry.kind.into(),
-        summary: entry.doc.summary.clone(),
+        summary: entry.summary().to_owned(),
         signature,
         markdown,
     })

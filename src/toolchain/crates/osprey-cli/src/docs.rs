@@ -9,6 +9,7 @@ mod boundaries;
 mod declarations;
 mod facts;
 mod html;
+mod members;
 mod model;
 mod options;
 mod output;
@@ -54,7 +55,7 @@ fn export(options: &Options) -> std::io::Result<usize> {
     let mut pages = user::pages(options)?;
     pages.extend(assets::pages(&options.pages)?);
     let styles = assets::stylesheets(&options.css)?;
-    add_api_index(&mut pages);
+    pages.extend(members::index(&pages));
     pages.extend(builtin_pages());
     match options.format {
         Format::Markdown => {
@@ -66,35 +67,6 @@ fn export(options: &Options) -> std::io::Result<usize> {
             Ok(pages.len())
         }
     }
-}
-
-fn add_api_index(pages: &mut Vec<Page>) {
-    let api: Vec<_> = pages
-        .iter()
-        .filter(|page| page.slug.starts_with("api/"))
-        .collect();
-    if api.is_empty() {
-        return;
-    }
-    let links = api
-        .iter()
-        .map(|page| {
-            format!(
-                "- [{}]({}.md)",
-                page.title,
-                page.slug.strip_prefix("api/").unwrap_or(&page.slug)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n");
-    pages.push(Page {
-        slug: "api/index".into(),
-        title: "API Reference".into(),
-        group: "Overview".into(),
-        summary: "Modules and declarations in this project.".into(),
-        signature: String::new(),
-        markdown: format!("# API Reference\n\n{links}\n"),
-    });
 }
 
 fn builtin_pages() -> Vec<Page> {

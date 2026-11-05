@@ -407,6 +407,11 @@ test.describe("documentation sub-page navigation", () => {
     await expect(page).toHaveURL(/\/docs\/packages\/json\/$/);
     await expect(page.locator("h1")).toHaveText("@osprey/json API Reference");
     await expect(sidebar.getByRole("link", { name: "@osprey/json API", exact: true })).toHaveAttribute("aria-current", /.+/);
+    await expect(page.locator(".prose h2")).toContainText(["ui", "ui::Doc"]);
+    const parseRow = page.locator(".prose tr", { has: page.getByRole("link", { name: "parse", exact: true }) });
+    await expect(parseRow).toContainText("Function");
+    await expect(parseRow).toContainText("as JSON, or JsonNull when it is not JSON.");
+    await expect(page.locator(".prose")).toContainText("Total readers and member builders");
     const links = page.locator(".prose a[href]");
     expect(await links.count()).toBeGreaterThan(20);
     for (const href of await links.evaluateAll((all) => all.map((a) => a.getAttribute("href")))) {
@@ -414,10 +419,10 @@ test.describe("documentation sub-page navigation", () => {
       const response = await page.request.get(new URL(href, page.url()).href);
       expect(response.status(), href).toBe(200);
     }
-    await page.locator(".prose").getByRole("link", { name: "ui::Doc", exact: true }).click();
+    await page.locator(".prose h2").getByRole("link", { name: "ui::Doc", exact: true }).click();
     await expect(page).toHaveURL(/\/docs\/packages\/json\/ui-doc\/$/);
     await expect(page.locator("h1")).toHaveText("ui::Doc");
-    await page.locator(".prose").getByRole("link", { name: "parse", exact: true }).click();
+    await page.locator(".prose").getByRole("link", { name: "parse", exact: true }).first().click();
     await expect(page).toHaveURL(/\/docs\/packages\/json\/ui-doc-parse\/$/);
     await expect(page.locator(".prose pre").first()).toContainText("ui::Doc::parse : string -> Json");
     await expect(page.locator(".prose")).toContainText("Defined in");
@@ -442,7 +447,7 @@ for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }
 }
 
 test("Python GPU documentation preserves the current fallible tensor contract", async ({ page }) => {
-  await page.goto("/docs/python-flavor/");
+  await page.goto("/docs/python/flavor/");
   const snippets = await page.locator('code.language-python').allTextContents();
   const source = snippets.join("\n");
   expect(source).toContain("-> Result[B, str]");

@@ -135,6 +135,9 @@ fn package_docs_resolve_workspace_dependency_imports_in_every_flavor_and_format(
             for module in ["shop::Cart", "ui::Runtime", "ui::Values", "ui::Lists"] {
                 assert!(index.contains(module), "{label} index lacks {module}");
             }
+            for (_, summary) in PAGES {
+                assert!(index.contains(summary), "{label} index lacks {summary}");
+            }
         }
     }
 }

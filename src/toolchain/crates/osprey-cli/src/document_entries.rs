@@ -38,6 +38,16 @@ impl DocEntry {
             .chain(self.inner_doc.iter().flat_map(field))
     }
 
+    /// The first summary either doc gives: a scope documented only from inside
+    /// (a Python module docstring, `//!` in a module) still has one.
+    pub(crate) fn summary(&self) -> &str {
+        std::iter::once(&self.doc)
+            .chain(self.inner_doc.iter())
+            .map(|doc| doc.summary.as_str())
+            .find(|summary| !summary.is_empty())
+            .unwrap_or_default()
+    }
+
     pub(crate) fn markdown(&self) -> String {
         std::iter::once(&self.doc)
             .chain(self.inner_doc.iter())
