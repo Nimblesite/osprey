@@ -168,6 +168,7 @@ jobs:
       # Each app is its own MSIX package in an AppContainer [WINUI-HOST-SANDBOX], registered as a loose
       # layout, which Developer Mode allows without signing.
       - name: Developer Mode for loose packages
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: |
           $key = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\AppModelUnlock'
@@ -177,6 +178,7 @@ jobs:
       # The runner's desktop is 1024 by 768, smaller than Signal Flow's window, and a golden on screen
       # holds what the screen shows of the whole window.
       - name: A desktop that holds every app's window
+        if: ${{ !cancelled() }}
         shell: pwsh
         run: scripts/mobile/display-size.ps1 -Width 1920 -Height 1080
 
