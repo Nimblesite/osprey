@@ -1,9 +1,5 @@
-// Device selection and the compiled-kernel launch contract against mock
-// adapters [GPU-DEVICE] [GPU-BACKEND-DEVICE] [GPU-DEVICE-FAULT]
-// [GPU-BUFFER-RESIDENT]: the host oracle runs when the host is selected, a
-// selected device never falls back to it, a buffer is uploaded once and its
-// result downloaded once, when first read, and a fault or a kernel without a
-// device form returns a failure with its reason.
+// Host results and device selection, residency and faults against mock adapters.
+// [GPU-DEVICE] [GPU-BACKEND-DEVICE] [GPU-DEVICE-FAULT] [GPU-BUFFER-RESIDENT]
 #include "gpu_device.h"
 #include "gpu_opencl_api.h"
 #include "io_error.h"
@@ -48,8 +44,6 @@ static MockObject *mock_object(const OspreyGpuArg *arg) {
   return o;
 }
 
-// The object an argument is bound to: its slot's, created on first use; a
-// transient argument's lives for the dispatch.
 static MockObject *bind(const OspreyGpuArg *arg) {
   if (!arg->slot) return mock_object(arg);
   if (!*arg->slot) *arg->slot = mock_object(arg);
@@ -117,7 +111,6 @@ static int64_t one_word(void) {
   return word;
 }
 
-// A one-element float buffer holding 1.0.
 static void *unit(void) {
   void *b = osprey_gpu_alloc(1, 8);
   osprey_gpu_set(b, 0, one_word());
@@ -170,6 +163,12 @@ static void host_quant_nonzero_case(void *x) {
   assert(weights[0] == 0 && weights[1] == 0x3c && weights[2] == 1 && weights[q8blocks * 34 - 1] == 1);
   refused(osprey_gpu_matmul_quant(x, w, "Q9_0", 1, 512, 2));
   refused(osprey_gpu_matmul_quant(x, w, "Q8_0", 2, 512, 2));
+  static const int64_t invalid_inner[] = {-32, 0, 31, 33, 511, 513};
+  for (size_t i = 0; i < sizeof invalid_inner / sizeof invalid_inner[0]; i++) {
+    assert(osprey_gpu_matmul_quant(x, w, "Q8_0", 1, invalid_inner[i], 2) == NULL);
+    assert(osp_io_error() && strcmp(osp_io_error(), "gpuMatMulQuant: inner: must be a positive multiple of 32") == 0);
+    osp_io_error_clear();
+  }
   osprey_gpu_finalize(w); osprey_gpu_finalize(out);
 }
 static void host_sigmoid_case(void) {
