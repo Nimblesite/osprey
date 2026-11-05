@@ -403,6 +403,20 @@ static void t_map_file(void) {
   osp_io_error_clear();
   CHECK(osprey_gpu_map_file("/tmp", 0, 1, 4) == NULL);
   CHECK(strstr(osp_io_error(), "not a regular file") != NULL);
+  // A sparse large file selects the shared mapping without allocating its size.
+  FILE *large = fopen(path, "r+b");
+  CHECK(large != NULL);
+  CHECK(ftruncate(fileno(large), (off_t)1 << 30) == 0);
+  CHECK(fclose(large) == 0);
+  for (int round = 0; round < 2; round++) {
+    void *first = osprey_gpu_map_file(path, 0, 8, 1);
+    void *second = osprey_gpu_map_file(path, 8, 8, 1);
+    CHECK(first != NULL && second != NULL);
+    CHECK(memcmp(osprey_gpu_data(first), bytes, 8) == 0);
+    osp_release(first);
+    CHECK(memcmp(osprey_gpu_data(second), bytes + 8, 8) == 0);
+    osp_release(second);
+  }
   (void)unlink(path);
 }
 

@@ -35,15 +35,15 @@
 typedef struct OspreyGpuBuffer {
   int64_t length;
   uint8_t *data;
-  void *device;
+  // A shared mapping borrows its file's slot; an ordinary buffer owns its slot.
+  union { void *device; void **map_slot; };
   uint8_t stale;
   uint8_t adapter; // Owning SDK; fits the existing header padding.
+  uint8_t shared_mapping; // Discriminates the exclusive slots without growing the header.
   int64_t elem_bytes;
   // [LLM-WEIGHTS-MAPPED] The page-aligned file mapping `data` points into, or NULL.
   void *map_base;
   size_t map_bytes;
-  // The file's one device object, when the mapping is shared; never owned here.
-  void **map_slot;
 } OspreyGpuBuffer;
 
 int64_t osprey_gpu_len(void *buffer);
@@ -139,11 +139,11 @@ static void scalar_argument(OspreyGpuDispatch *dispatch, int64_t word) {
 static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, void *handle) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)handle;
   uint8_t *words = stored(b);
-  if (words && !b->device) {
+  void **slot = words ? (b->shared_mapping ? b->map_slot : &b->device) : NULL;
+  if (slot && !*slot) {
     int selected = device_selection();
     b->adapter = selected > 0 ? (uint8_t)selected : 0;
   }
-  void **slot = b && b->map_slot ? b->map_slot : (words ? &b->device : NULL);
   osprey_gpu_arg_at(dispatch, kind, words, NULL, (uint64_t)osprey_gpu_len(handle), b ? (uint64_t)b->elem_bytes : 8, slot);
   if (b && b->map_base && dispatch->count > 0) {
     OspreyGpuArg *bound = &dispatch->args[dispatch->count - 1];
@@ -156,7 +156,7 @@ static void buffer_argument(OspreyGpuDispatch *dispatch, OspreyGpuArgKind kind, 
 // A completed dispatch leaves its result on the device; the host reads it on demand.
 static int settled(int status, void *out) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)out;
-  if (status > 0 && b && b->device) b->stale = 1;
+  if (status > 0 && b && !b->shared_mapping && b->device) b->stale = 1;
   return status;
 }
 
@@ -348,7 +348,8 @@ int32_t osprey_gpu_declined(const char *what) {
 // keeps the memory backend from releasing a pointer it never allocated.
 static void release_mapping(OspreyGpuBuffer *b) {
 #if !defined(__wasm__) && !defined(_WIN32) && !defined(OSP_SYMBOLIC)
-  if (b->map_slot) {
+  if (b->shared_mapping) {
+    b->shared_mapping = 0;
     b->map_slot = NULL;
     b->map_base = NULL;
     b->map_bytes = 0;
@@ -369,7 +370,7 @@ static void release_mapping(OspreyGpuBuffer *b) {
 void osprey_gpu_finalize(void *buffer) {
   OspreyGpuBuffer *b = (OspreyGpuBuffer *)buffer;
 #if defined(OSPREY_GPU_METAL)
-  if (b->device && b->adapter == 2) {
+  if (!b->shared_mapping && b->device && b->adapter == 2) {
     // A queued kernel may still read a mapping the unmap below takes away, so
     // the batch finishes first; a plain object is kept alive by the batch itself.
     if (b->map_base) {
@@ -381,7 +382,7 @@ void osprey_gpu_finalize(void *buffer) {
   }
 #endif
 #if defined(OSPREY_GPU_OPENCL)
-  if (b->device && b->adapter == 3) osprey_gpu_opencl_release(b->device);
+  if (!b->shared_mapping && b->device && b->adapter == 3) osprey_gpu_opencl_release(b->device);
 #endif
   b->device = NULL;
   b->stale = 0;
@@ -434,10 +435,10 @@ void *osprey_gpu_alloc(int64_t length, int64_t elem_bytes) {
   b->device = NULL;
   b->stale = 0;
   b->adapter = 0;
+  b->shared_mapping = 0;
   b->elem_bytes = elem_bytes;
   b->map_base = NULL;
   b->map_bytes = 0;
-  b->map_slot = NULL;
   b->data = zeroed_words(length, elem_bytes);
   if (!b->data) {
     osp_release(b);
@@ -538,6 +539,7 @@ void *osprey_gpu_map_file(const char *path, int64_t offset, int64_t count, int64
     buffer->map_base = shared->base;
     buffer->map_bytes = shared->bytes;
     buffer->map_slot = &((MappedFile *)(uintptr_t)shared)->slot;
+    buffer->shared_mapping = 1;
     buffer->length = count;
     return b;
   }
@@ -587,7 +589,7 @@ int64_t osprey_gpu_elem_bytes(void *buffer) {
 // gpuGet checks this status before loading; other raw callers still quarantine
 // failures until their Result migration is complete [FAILURE-EXPLICIT].
 static int synchronize(OspreyGpuBuffer *b) {
-  if (b && b->stale && b->device) {
+  if (b && !b->shared_mapping && b->stale && b->device) {
     if (osprey_gpu_device_download(b->device, b->data, (uint64_t)(b->length * b->elem_bytes)) < 0) return -1;
     b->stale = 0;
   }
