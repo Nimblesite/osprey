@@ -295,7 +295,8 @@
         "language": "osprey"
       },
       "pydantic_ai": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 95.4
       },
       "micrograd": {
         "language": "osprey",
