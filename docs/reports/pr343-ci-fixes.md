@@ -16,13 +16,16 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    `winui-self-test` artifact.
 4. **Agent type-check budget [OspreyCodex]**
    - [x] Confirm `examples/agent/` and `examples/agent/test-app` exceeded 120 seconds in the failed Linux run.
-   - [x] Pass the unchanged coverage-instrumented test locally in 69.80 seconds.
+   - [x] Pass the unchanged coverage-instrumented test locally in 69.80 seconds. Run 42125986216 still exceeded 120 seconds on Linux.
+   - [x] Reuse free-variable sets across obligation-closure passes. The regression records two relation scans instead of six, and the unchanged local budget test passed in 61.27 seconds.
    - [ ] Verify the unchanged test in the hosted Rust workspace rest shard.
 5. **Deslop gate [OspreyCodex]**
    - [x] Reproduce the gate and remove duplication. The Agent shares its Moonshot wire profiles and MCP request builder.
    - [x] Pass the unchanged local 2.962% ceiling (6,983 duplicated lines out of 236,042).
-   - [ ] Verify hosted Format & Analyse on the updated PR head.
+   - [x] Verify hosted Format & Analyse on run 42125986216, job 127592574122.
 6. **WASI sysroot downloads [OspreyCodex]**
    - [x] Confirm wasm32, Rust packages, VS Code extension and proof-kernel jobs received HTTP 504 during setup.
    - [x] Retry the pinned download with bounded backoff. The local HTTP probe recovers from one 504 and fails after four attempts on persistent 504s.
-   - [ ] Verify the four hosted jobs and the downstream coverage reports on the updated PR head.
+   - [x] Verify hosted Rust packages, proof kernel and VS Code extension passed on run 42125986216.
+   - [ ] Verify WebAssembly goldens. The pinned download and runtime build passed on run 42125986216, but Ubuntu package setup left too little of the unchanged six-minute deadline.
+   - [ ] Verify the aggregate coverage gate after the Rust rest shard produces its report.
