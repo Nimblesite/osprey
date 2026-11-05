@@ -163,6 +163,32 @@ class ZedStdio(unittest.TestCase):
         self.assertTrue(definition)
         self.assertIn(uri, str(definition))
 
+    def test_mixed_flavor_project_navigation_and_live_helper_edits(self):
+        (self.root / "src").mkdir()
+        (self.root / "osprey.toml").write_text(
+            '[project]\nname = "zed-mixed"\nsource_roots = ["src"]\n'
+            'default_namespace = "zed"\nentry = "src/main.osp"\n')
+        helper = "increment value = wrapAdd value 1\n"
+        helper_path = self.root / "src/helper.ospml"
+        helper_path.write_text(helper)
+        uri = self.document("src/main.osp", "osprey", "let total = increment(3)\n")
+        self.assertFalse([d for d in self.reports[uri] if d.get("severity") == 1])
+        definition = self.request("textDocument/definition", self.at(uri, 0, 15))
+        self.assertIn(helper_path.as_uri(), str(definition))
+        hover = self.request("textDocument/hover", self.at(uri, 0, 15))
+        self.assertIn("increment", str(hover))
+        helper_uri = self.document("src/helper.ospml", "osprey-ml", helper)
+        self.notify("textDocument/didChange", {"textDocument": {"uri": helper_uri, "version": 2},
+                    "contentChanges": [{"text": "increment value = missingName\n"}]})
+        self.request("textDocument/documentSymbol", {"textDocument": {"uri": helper_uri}})
+        self.assertTrue([d for d in self.reports[helper_uri] if d.get("severity") == 1], self.reports)
+        self.notify("textDocument/didChange", {"textDocument": {"uri": helper_uri, "version": 3},
+                    "contentChanges": [{"text": helper}]})
+        self.request("textDocument/documentSymbol", {"textDocument": {"uri": helper_uri}})
+        self.assertFalse([d for d in self.reports[helper_uri] if d.get("severity") == 1])
+        self.assertIn(helper_path.as_uri(), str(self.request(
+            "textDocument/definition", self.at(uri, 0, 15))))
+
 
 if __name__ == "__main__":
     unittest.main()

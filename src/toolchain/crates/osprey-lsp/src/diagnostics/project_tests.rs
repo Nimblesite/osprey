@@ -224,3 +224,41 @@ fn graphics_examples_discharge_arithmetic_effects() -> Result<(), Box<dyn std::e
     }
     Ok(())
 }
+
+// Implements [LSP-DIAGNOSTICS]: an unknown name belongs to its physical source,
+// including helpers written in a different syntax flavor from the entry file.
+#[test]
+fn unknown_names_in_cross_flavor_helpers_keep_their_physical_owner(
+) -> Result<(), Box<dyn std::error::Error>> {
+    for (extension, source) in [
+        ("osp", "fn increment(value) = missingName\n"),
+        ("ospml", "increment value = missingName\n"),
+        (
+            "py",
+            "# osprey: flavor=python\ndef increment(value):\n    return missingName\n",
+        ),
+    ] {
+        let fixture = crate::test_support::ProjectFixture::new("osp")?;
+        let entry = "let total = increment(3)\n";
+        let entry_uri = fixture.write("main", entry)?;
+        let helper = fixture.root.join(format!("src/helper.{extension}"));
+        std::fs::write(&helper, source)?;
+        let helper_uri = lspkit_server::uri::path_to_uri(&helper)?;
+        let helper_errors = compute(source, &helper_uri, U16);
+        assert!(
+            helper_errors
+                .iter()
+                .any(|error| error.severity == Severity::Error
+                    && error.message.contains("unknown identifier `missingName`")),
+            "{extension} helper lost its own error: {helper_errors:?}"
+        );
+        let entry_errors = compute(entry, &entry_uri, U16);
+        assert!(
+            !entry_errors
+                .iter()
+                .any(|error| error.message.contains("missingName")),
+            "{extension} helper's error was falsely attributed to entry: {entry_errors:?}"
+        );
+    }
+    Ok(())
+}

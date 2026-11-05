@@ -601,8 +601,10 @@ impl Checker {
             }
             return applied.ty;
         }
-        self.errors
-            .push(TypeError::new(format!("unknown identifier `{name}`")));
+        // Preserve the physical helper's owner after assembly [LSP-DIAGNOSTICS].
+        self.errors.push(
+            TypeError::new(format!("unknown identifier `{name}`")).with_pos(self.expr_position),
+        );
         self.ctx.fresh()
     }
 
