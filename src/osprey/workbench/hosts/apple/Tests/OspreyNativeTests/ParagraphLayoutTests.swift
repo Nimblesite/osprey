@@ -76,7 +76,25 @@ final class ParagraphLayoutTests: XCTestCase {
     @MainActor
     private func showEpoch(_ host: NSHostingView<EditorFocusFixture>, _ epoch: Int, value: String = "p→q") throws {
         host.rootView = EditorFocusFixture(node: try focusNode(epoch, value: value))
-        RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.1))
+        let deadline = Date(timeIntervalSinceNow: 2)
+        repeat {
+            host.layoutSubtreeIfNeeded()
+            host.displayIfNeeded()
+            let applied = TestResources.scrollViews(host).contains { scroll in
+                guard let text = scroll.documentView as? NSTextView,
+                      let coordinator = text.delegate as? CodeText.Coordinator else { return false }
+                return coordinator.parent.focusEpoch == epoch && text.string == value
+            }
+            if applied {
+                // The editor queues focus after applying the update to its native view.
+                let settled = expectation(description: "Native focus queue drained")
+                DispatchQueue.main.async { settled.fulfill() }
+                wait(for: [settled], timeout: 2)
+                return
+            }
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.01))
+        } while Date() < deadline
+        XCTFail("Native editor did not apply focus epoch \(epoch) and text \(value)")
     }
 
     @MainActor
