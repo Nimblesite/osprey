@@ -8,7 +8,7 @@ default_namespace = "gguf"
 name = "@osprey/gguf"
 license = "MIT"
 summary = "Read GGUF weight files: header, metadata kinds, tensor infos, alignment and tensor bytes"
-keywords = ["formats", "gguf", "python-flavor", "weights", "quantization"]
+keywords = ["formats", "gguf", "python-flavor", "quantization", "weights"]
 
 [dependencies]
 "@osprey/safetensors" = { epoch = 1, min_release = 1 }

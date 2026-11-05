@@ -33,6 +33,16 @@ const PACKAGES = {
     authors: "Meta Platforms, Inc. and the Faiss contributors",
     relationship: "port",
   },
+  fastapi: {
+    project: "FastAPI",
+    authors: "Sebastián Ramírez and the FastAPI contributors",
+    relationship: "port",
+  },
+  gguf: {
+    project: "GGUF",
+    authors: "Georgi Gerganov and the ggml contributors",
+    relationship: "port",
+  },
   flash_attn: {
     project: "FlashAttention",
     authors: "contributors of flash-attention (Dao-AILab)",
