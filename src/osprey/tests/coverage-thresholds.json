@@ -287,11 +287,11 @@
         "threshold": 100.0
       },
       "gguf": {
-        "threshold": 94.0,
+        "threshold": 94.3,
         "language": "osprey"
       },
       "jinja2": {
-        "threshold": 97.3,
+        "threshold": 97.4,
         "language": "osprey"
       },
       "pydantic_ai": {
@@ -303,15 +303,16 @@
         "threshold": 97.5
       },
       "chromecast": {
-        "language": "osprey"
+        "language": "osprey",
+        "threshold": 90.8
       },
       "native": {
-        "threshold": 97.5,
+        "threshold": 98.0,
         "language": "osprey"
       },
       "numpy": {
         "language": "osprey",
-        "threshold": 98.0
+        "threshold": 98.3
       },
       "re": {
         "threshold": 90.4,
@@ -327,7 +328,7 @@
       },
       "safetensors": {
         "language": "osprey",
-        "threshold": 98.2
+        "threshold": 98.5
       },
       "scipy": {
         "language": "osprey",
@@ -347,15 +348,15 @@
       },
       "tokenizers": {
         "language": "osprey",
-        "threshold": 97.9
+        "threshold": 98.0
       },
       "torch": {
-        "threshold": 98.8,
+        "threshold": 98.9,
         "language": "osprey"
       },
       "transformers": {
         "language": "osprey",
-        "threshold": 97.5
+        "threshold": 97.6
       },
       "vscode": {
         "language": "osprey",
@@ -363,7 +364,7 @@
       },
       "graphics": {
         "language": "osprey",
-        "threshold": 92.0
+        "threshold": 92.3
       },
       "json": {
         "language": "osprey",
@@ -371,7 +372,7 @@
       },
       "signal_flow": {
         "language": "osprey",
-        "threshold": 91.0
+        "threshold": 91.3
       },
       "uitest": {
         "language": "osprey",
