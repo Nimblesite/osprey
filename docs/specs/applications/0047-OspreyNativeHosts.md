@@ -52,7 +52,7 @@ Each host declares its column in code, and its tests read the framework's source
 
 | Host | Column | Test |
 | --- | --- | --- |
-| GPUI | `DRAWN`, `REFUSED`, `ANSWERED` and `UNANSWERED` in [`coverage.rs`](../../../src/toolchain/hosts/gpui/src/coverage.rs) | `cargo test coverage`, which also checks the lists against the host's match arms |
+| GPUI | `DRAWN`, `REFUSED`, `ANSWERED`, `UNANSWERED` and `MOBILE_ONLY` in [`coverage.rs`](../../../src/toolchain/hosts/gpui/src/coverage.rs) | `cargo test coverage`, which also checks the lists against the host's match arms and verifies that mobile-only capabilities are restricted to iOS and Android |
 | Webview | `RENDERED_KINDS` in [`render.ts`](../../../src/toolchain/vscode-extension/client/src/osprey-ui/render.ts), `ANSWERED_CAPABILITIES` in [`capabilities.ts`](../../../src/toolchain/vscode-extension/client/src/osprey-ui/capabilities.ts) | the renderer and capability suites in `src/toolchain/vscode-extension/test/suite` |
 | WinUI | [`Coverage.cs`](../../../src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs) | `CoverageTests`, with the renderer refusing to start unless it draws exactly the declared kinds |
 

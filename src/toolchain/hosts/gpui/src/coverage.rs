@@ -55,7 +55,6 @@ const ANSWERED: &[&str] = &[
 /// Capability kinds completed with an "unsupported capability" error until this host answers them.
 const UNANSWERED: &[&str] = &[
     "http",
-    "host-call",
     "measure-folders",
     "read-plists",
     "fingerprint",
@@ -67,6 +66,9 @@ const UNANSWERED: &[&str] = &[
     "process-read",
     "process-stop",
 ];
+
+/// Capability kinds answered only through the mobile OS bridge.
+const MOBILE_ONLY: &[&str] = &["host-call"];
 
 const NODES: &str = include_str!("../../../../osprey/packages/native/src/node.ospml");
 const CAPABILITIES: &str = include_str!("../../../../osprey/packages/native/src/capability.ospml");
@@ -133,7 +135,7 @@ fn every_node_kind_is_drawn_or_refused_exactly_once() {
 fn every_capability_kind_is_answered_or_refused_exactly_once() {
     let framework = kinds(CAPABILITIES, "type Capability =");
     assert!(framework.iter().any(|kind| kind == "measure-folders"));
-    assert_eq!(framework, declared(&[ANSWERED, UNANSWERED]));
+    assert_eq!(framework, declared(&[ANSWERED, UNANSWERED, MOBILE_ONLY]));
 }
 
 #[test]
@@ -172,6 +174,29 @@ fn the_declaration_matches_what_the_host_dispatches() {
         assert!(
             !HOST.contains(&format!("\"{kind}\"")),
             "host.rs answers {kind}: move it to ANSWERED"
+        );
+    }
+    assert_mobile_dispatch();
+}
+
+fn assert_mobile_dispatch() {
+    let mobile_patterns = HOST
+        .lines()
+        .zip(HOST.lines().skip(1))
+        .filter(|(_, guard)| {
+            guard.trim() == "if cfg!(any(target_os = \"ios\", target_os = \"android\")) =>"
+        })
+        .flat_map(|(arm, _)| arm.split('|').map(str::trim));
+    for kind in MOBILE_ONLY {
+        let literal = format!("\"{kind}\"");
+        assert_eq!(
+            HOST.matches(&literal).count(),
+            1,
+            "host.rs must route {kind} exactly once"
+        );
+        assert!(
+            mobile_patterns.clone().any(|pattern| pattern == literal),
+            "host.rs must restrict {kind} to mobile"
         );
     }
 }
