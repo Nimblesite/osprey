@@ -33,6 +33,15 @@ Zed builds the Rust extension and pinned Default grammar. Development builds can
 also be checked with `make -C src/toolchain/zed-extension build lint test` after
 installing the `wasm32-wasip2` Rust target.
 
+Run the real compiler acceptance suite with
+`make -C src/toolchain/zed-extension stdio-test`. It uses the existing
+`target/release/osprey`; select another built compiler with
+`OSPREY_TEST_COMPILER=/absolute/path/to/osprey`. The suite starts isolated stdio
+servers and tests diagnostics after edits, hover, completion, definitions,
+references, signatures, formatting, versioned quick fixes, mixed-flavor projects,
+UTF-16 positions and shutdown. It also checks manifest and canonical grammar
+consistency; it does not rebuild the compiler or launch the editor.
+
 `.osp` selects Osprey and `.ospml` selects Osprey ML. For Python-flavor sources,
 select **Osprey Python** from Zed's language menu. Zed's built-in `.py` association
 takes precedence over the first-line marker matcher, so a marker alone does not
@@ -56,5 +65,6 @@ Zed sends workspace settings after initialization; setting only
 Default highlighting uses the canonical Tree-sitter queries, synchronized by
 `prepare`. ML and Python-flavor buffers currently have LSP features but no
 Tree-sitter highlighting or structural indentation; the Default grammar is not
-applied to syntax it cannot parse. This limitation remains on the
-[developer tools checklist](../../../docs/plans/0012-developer-tools.md#zed-integration-editor-zed).
+applied to syntax it cannot parse. The
+[developer tools checklist](../../../docs/plans/0012-developer-tools.md#zed-integration-editor-zed)
+records the verified scope and limits.
