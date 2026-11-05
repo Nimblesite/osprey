@@ -117,6 +117,12 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     dismissed = Canvases::released (opened, 5.0, 5.0)
     expect (nativeLabels dismissed, "Menu|Press|Level")
     reopened = Canvases::act (dismissed, "Menu", 0.5)
+    option = nativePoint (nativeElement (reopened, "Two"), 0.5)
+    held = Canvases::pointer (reopened, option.nativeX, option.nativeY, true)
+    expect (Canvases::chooses (held, "selected", option.nativeX, option.nativeY, false), true)
+    expect (Canvases::chooses (held, "level", option.nativeX, option.nativeY, false), false)
+    expect (Canvases::chooses (held, "selected", option.nativeX, option.nativeY, true), false)
+    expect (Canvases::chooses (held, "selected", 5.0, 5.0, false), false)
     chosen = Canvases::act (reopened, "Two", 0.5)
     expect (nativeLabels chosen, "Menu|Press|Level")
     expect (nativeLetters (chosen, "Choice two"), true)
@@ -126,7 +132,9 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     expect (nativeSelected (againOpened, "Three"), false)
     expect (nativeSelected (againOpened, "Menu"), false)
     expect (nativeSelected (chosen, "Menu"), false)
-    expect (Encode::accessible (nativeElement (againOpened, "Two")), JsonObject [Doc::str ("role", "menuitem"), Doc::str ("label", "Two"), JsonMember "x" (JsonFloat 20.0), JsonMember "y" (JsonFloat 190.0), JsonMember "w" (JsonFloat 200.0), JsonMember "h" (JsonFloat 40.0), JsonMember "value" (JsonFloat 0.0), JsonMember "min" (JsonFloat 0.0), JsonMember "max" (JsonFloat 0.0), JsonMember "selected" (JsonBool true), JsonMember "movable" (JsonBool false)])
+    scene = Lists::find (nativeWalk ([], nativeTree againOpened), \node => Doc::text (node, "kind") == "scene") ?: JsonNull
+    access = Lists::find (Doc::items (Doc::field (scene, "access")), \node => Doc::text (node, "label") == "Two") ?: JsonNull
+    expect (Doc::write access, "{\"role\":\"menuitem\",\"label\":\"Two\",\"x\":20.0,\"y\":190.0,\"w\":200.0,\"h\":40.0,\"value\":0.0,\"min\":0.0,\"max\":0.0,\"selected\":true,\"movable\":false}")
     updated = nativeFeed (chosen, "caption", "Updated")
     expect (nativeLetters (updated, "Updated"), true)
     expect (nativeLetters (updated, "Pressed"), false)

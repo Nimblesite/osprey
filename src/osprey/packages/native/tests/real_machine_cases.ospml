@@ -112,7 +112,7 @@ realCanvasRoomAndSliders () =
 
 realPlayerJourney () =
     player = playerMachine ()
-    expect (nativeLabels player, "Receiver: none|Play|Open file…")
+    expect (nativeLabels player, "Appearance: Sherbet Signal|Receiver: none|Play|Open file…")
     expect (nativeLetters (player, "Looking for TVs…"), true)
     forEachList (["sherbet", "midnight", "poolside"], \skin =>
         machine = realSkinned (player, skin)
@@ -150,7 +150,7 @@ realPlayerJourney () =
     expect (nativeLetters (canvas, "00:50"), true)
     expect (nativeLetters (canvas, "03:20"), true)
     rates = realTap (canvas, "Speed: 1.5×")
-    expect (nativeLabels rates, "0.75×|1×|1.25×|1.5×|2×|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (nativeLabels rates, "0.75×|1×|1.25×|1.5×|2×|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
     receivers = realTap (canvas, "Receiver: Living Room TV")
     expect (Machines::current (receivers, "menu"), "receivers")
 
