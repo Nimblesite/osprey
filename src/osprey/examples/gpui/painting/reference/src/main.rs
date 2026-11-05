@@ -22,134 +22,43 @@ impl PaintingViewer {
         let mut lines = vec![];
 
         // Black squares beneath transparent paths.
-        let background_quads = vec![
-            (
-                Bounds {
-                    origin: point(px(70.), px(70.)),
-                    size: size(px(40.), px(40.)),
-                },
-                gpui_kit::black().into(),
-            ),
-            (
-                Bounds {
-                    origin: point(px(170.), px(70.)),
-                    size: size(px(40.), px(40.)),
-                },
-                gpui_kit::black().into(),
-            ),
-            (
-                Bounds {
-                    origin: point(px(270.), px(70.)),
-                    size: size(px(40.), px(40.)),
-                },
-                gpui_kit::black().into(),
-            ),
-            (
-                Bounds {
-                    origin: point(px(370.), px(70.)),
-                    size: size(px(40.), px(40.)),
-                },
-                gpui_kit::black().into(),
-            ),
-            (
-                Bounds {
-                    origin: point(px(450.), px(50.)),
-                    size: size(px(80.), px(80.)),
-                },
-                gpui_kit::black().into(),
-            ),
+        let squares_bounds = [
+            (point(px(70.), px(70.)), 40.),
+            (point(px(170.), px(70.)), 40.),
+            (point(px(270.), px(70.)), 40.),
+            (point(px(370.), px(70.)), 40.),
+            (point(px(450.), px(50.)), 80.),
         ];
+        let background_quads = squares_bounds
+            .into_iter()
+            .map(|(origin, side)| {
+                (
+                    Bounds {
+                        origin,
+                        size: size(px(side), px(side)),
+                    },
+                    gpui_kit::black().into(),
+                )
+            })
+            .collect();
 
-        // 50% opaque red path that extends across black quad.
-        let mut builder = PathBuilder::fill();
-        builder.move_to(point(px(50.), px(50.)));
-        builder.line_to(point(px(130.), px(50.)));
-        builder.line_to(point(px(130.), px(130.)));
-        builder.line_to(point(px(50.), px(130.)));
-        builder.close();
-        let path = builder.build().unwrap();
-        let red = rgb(0xFF0000).alpha(0.5);
-        lines.push((path, red.into()));
-
-        // 50% opaque blue path that extends across black quad.
-        let mut builder = PathBuilder::fill();
-        builder.move_to(point(px(150.), px(50.)));
-        builder.line_to(point(px(230.), px(50.)));
-        builder.line_to(point(px(230.), px(130.)));
-        builder.line_to(point(px(150.), px(130.)));
-        builder.close();
-        let path = builder.build().unwrap();
-        let blue = rgb(0x0000FF).alpha(0.5);
-        lines.push((path, blue.into()));
-
-        // 50% opaque green path that extends across black quad.
-        let mut builder = PathBuilder::fill();
-        builder.move_to(point(px(250.), px(50.)));
-        builder.line_to(point(px(330.), px(50.)));
-        builder.line_to(point(px(330.), px(130.)));
-        builder.line_to(point(px(250.), px(130.)));
-        builder.close();
-        let path = builder.build().unwrap();
-        let green = rgb(0x00FF00).alpha(0.5);
-        lines.push((path, green.into()));
-
-        // 50% opaque black path that extends across black quad.
-        let mut builder = PathBuilder::fill();
-        builder.move_to(point(px(350.), px(50.)));
-        builder.line_to(point(px(430.), px(50.)));
-        builder.line_to(point(px(430.), px(130.)));
-        builder.line_to(point(px(350.), px(130.)));
-        builder.close();
-        let path = builder.build().unwrap();
-        let black = rgb(0x000000).alpha(0.5);
-        lines.push((path, black.into()));
+        // 50% opaque square paths, each extending across its black quad.
+        let squares = [
+            (50., rgb(0xFF0000)),
+            (150., rgb(0x0000FF)),
+            (250., rgb(0x00FF00)),
+            (350., rgb(0x000000)),
+        ];
+        for (left, color) in squares {
+            let path = translucent_square(left);
+            lines.push((path, color.alpha(0.5).into()));
+        }
 
         // Two 50% opaque red circles overlapping - center should be darker red
-        let mut builder = PathBuilder::fill();
-        let center = point(px(530.), px(85.));
-        let radius = px(30.);
-        builder.move_to(point(center.x + radius, center.y));
-        builder.arc_to(
-            point(radius, radius),
-            px(0.),
-            false,
-            false,
-            point(center.x - radius, center.y),
-        );
-        builder.arc_to(
-            point(radius, radius),
-            px(0.),
-            false,
-            false,
-            point(center.x + radius, center.y),
-        );
-        builder.close();
-        let path = builder.build().unwrap();
-        let red1 = rgb(0xFF0000).alpha(0.5);
-        lines.push((path, red1.into()));
-
-        let mut builder = PathBuilder::fill();
-        let center = point(px(570.), px(85.));
-        let radius = px(30.);
-        builder.move_to(point(center.x + radius, center.y));
-        builder.arc_to(
-            point(radius, radius),
-            px(0.),
-            false,
-            false,
-            point(center.x - radius, center.y),
-        );
-        builder.arc_to(
-            point(radius, radius),
-            px(0.),
-            false,
-            false,
-            point(center.x + radius, center.y),
-        );
-        builder.close();
-        let path = builder.build().unwrap();
-        let red2 = rgb(0xFF0000).alpha(0.5);
-        lines.push((path, red2.into()));
+        for left in [px(530.), px(570.)] {
+            let path = circle(point(left, px(85.)), px(30.));
+            lines.push((path, rgb(0xFF0000).alpha(0.5).into()));
+        }
 
         // draw a Rust logo
         let mut builder = lyon::path::Path::svg_builder();
@@ -299,6 +208,37 @@ impl PaintingViewer {
         self.lines.clear();
         cx.notify();
     }
+}
+
+fn circle(center: Point<Pixels>, radius: Pixels) -> Path<Pixels> {
+    let mut builder = PathBuilder::fill();
+    builder.move_to(point(center.x + radius, center.y));
+    builder.arc_to(
+        point(radius, radius),
+        px(0.),
+        false,
+        false,
+        point(center.x - radius, center.y),
+    );
+    builder.arc_to(
+        point(radius, radius),
+        px(0.),
+        false,
+        false,
+        point(center.x + radius, center.y),
+    );
+    builder.close();
+    builder.build().unwrap()
+}
+
+fn translucent_square(left: f32) -> Path<Pixels> {
+    let mut builder = PathBuilder::fill();
+    builder.move_to(point(px(left), px(50.)));
+    builder.line_to(point(px(left + 80.), px(50.)));
+    builder.line_to(point(px(left + 80.), px(130.)));
+    builder.line_to(point(px(left), px(130.)));
+    builder.close();
+    builder.build().unwrap()
 }
 
 fn button(
