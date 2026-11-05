@@ -350,7 +350,7 @@ def validation_contract(request):
     return E.validation([M.ValidationIssue(location=[M.Field(name="body")], kind="fixture", message="Invalid", input=request.body, missing=False, json_input=True, context=M.NoContext())])
 
 def body_routes():
-    return [Routing.route("POST", "/contract/extras", extras_contract), Routing.route("POST", "/contract/response", response_contract), Routing.route("POST", "/contract/validation", validation_contract), Routing.route("POST", "/body/provider-error", lambda request: Body.bind(request, decode_provider_error, provider_error_response)), Routing.route("POST", "/body/idp", lambda request: Body.bind(request, decode_idp, idp_response)), Routing.route("POST", "/body/bundle", lambda request: Body.bind(request, decode_bundle, bundle_response)), Routing.route("POST", "/body/key", lambda request: Body.bind(request, decode_key, key_response)), Routing.route("POST", "/body/context", lambda request: Body.bind(request, decode_context, context_response)), Routing.route("POST", "/body/resource", lambda request: Body.bind(request, decode_resource, resource_response))]
+    return [Routing.route("POST", "/contract/extras", extras_contract), Routing.route("POST", "/contract/response", response_contract), Routing.route("POST", "/contract/validation", validation_contract), Routing.route("POST", "/body/model-list", lambda request: Body.bind(request, decode_model_list, model_list_response)), Routing.route("POST", "/body/provider-error", lambda request: Body.bind(request, decode_provider_error, provider_error_response)), Routing.route("POST", "/body/idp", lambda request: Body.bind(request, decode_idp, idp_response)), Routing.route("POST", "/body/bundle", lambda request: Body.bind(request, decode_bundle, bundle_response)), Routing.route("POST", "/body/key", lambda request: Body.bind(request, decode_key, key_response)), Routing.route("POST", "/body/context", lambda request: Body.bind(request, decode_context, context_response)), Routing.route("POST", "/body/resource", lambda request: Body.bind(request, decode_resource, resource_response))]
 
 def decode_bundle(document):
     return Body.object_body(document, lambda doc: B.mapped(Body.text(doc, "content"), lambda value: V.mapped(value, lambda content: FixtureBundle(content=content))))
@@ -396,17 +396,32 @@ def idp_fields(doc):
 def idp_response(value):
     return body_response([JsonMember("allowed_algs", JsonArray(mapList(value.allowed_algs, lambda algorithm: JsonString(algorithm)))), JsonMember("audience", JsonString(value.audience)), JsonMember("issuer", JsonString(value.issuer)), JsonMember("jwks_uri", JsonString(value.jwks_uri))], ["allowed_algs", "audience", "issuer", "jwks_uri"])
 
-def provider_detail(document, path):
-    return B.bind(Body.text_at(document, "code", path), lambda code: B.mapped(Body.text_at(document, "message", path), lambda message: V.mapped(V.combine(code, message), lambda pair: FixtureProviderDetail(code=pair.first, message=pair.second))))
+def string_pair(document, path, left, right, make):
+    return B.bind(Body.text_at(document, left, path), lambda first: B.mapped(Body.text_at(document, right, path), lambda second: V.mapped(V.combine(first, second), lambda pair: make(pair.first, pair.second))))
 
+def provider_detail(document, path):
+    return string_pair(document, path, "code", "message", lambda code, message: FixtureProviderDetail(code=code, message=message))
 
 def decode_provider_error(document):
     return Body.object_body(document, lambda doc: B.mapped(Body.nested(doc, "detail", [M.Field(name="body")], provider_detail), lambda detail: V.mapped(detail, lambda value: FixtureProviderError(detail=value))))
 
-
 def provider_error_response(value):
     detail = JsonObject([JsonMember("code", JsonString(value.detail.code)), JsonMember("message", JsonString(value.detail.message))])
     return E.json_response(502, JsonObject([JsonMember("detail", detail)]), "")
+
+def model_option(document, path):
+    return Body.object_at(document, path, lambda item, item_path: string_pair(item, item_path, "id", "label", lambda id, label: FixtureModelOption(id=id, label=label)))
+
+def model_list_fields(doc):
+    models = Body.array_at(doc, "models", [M.Field(name="body")], model_option)
+    return B.bind(models, lambda left: B.mapped(Body.text(doc, "provider"), lambda right: V.mapped(V.combine(left, right), lambda pair: FixtureModelList(models=pair.first, provider=pair.second))))
+
+def decode_model_list(document):
+    return Body.object_body(document, model_list_fields)
+
+def model_list_response(value):
+    items = mapList(value.models, lambda model: JsonObject([JsonMember("id", JsonString(model.id)), JsonMember("label", JsonString(model.label))]))
+    return body_response([JsonMember("models", JsonArray(items)), JsonMember("provider", JsonString(value.provider))], ["models", "provider"])
 
 # Generated fixture models from models.td
 
@@ -453,6 +468,18 @@ class FixtureProviderDetail:
 class FixtureProviderError:
     """NAP provider failure response envelope."""
     detail: FixtureProviderDetail
+
+
+class FixtureModelOption:
+    """Typed NAP provider model entry."""
+    id: str
+    label: str
+
+
+class FixtureModelList:
+    """NAP provider model list response envelope."""
+    models: list[FixtureModelOption]
+    provider: str
 
 
 @union

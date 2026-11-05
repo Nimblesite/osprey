@@ -10,7 +10,7 @@ from fastapi import Params as P
 from fastapi import Responses as R
 from fastapi import Uuids
 
-__all__ = ["bind", "object_body", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "string"]
+__all__ = ["bind", "object_body", "object_at", "nested", "text", "text_at", "optional_text", "optional_alias", "uuid", "extras", "filtered_response", "optional_json", "array", "array_at", "string"]
 
 
 def invalid(location, kind, message, input):
@@ -30,6 +30,7 @@ def body_path():
 
 
 def object_at(document, path, decoder):
+    """Check an object at an explicit validation location."""
     match document:
         case JsonObject():
             return decoder(document, path)
@@ -57,7 +58,7 @@ def nested(document, name, parent, decoder):
 
 def text_at(document, name, parent):
     """Validate a required string at a nested model location."""
-    return required_member(document, name, parent, string_at)
+    return required_member(document, name, parent, string)
 
 
 def text(document, name):
@@ -243,41 +244,36 @@ def json_error_location(position, reason):
 
 
 def array(document, name, decoder):
-    """Validate every array item, retaining ordered numeric error locations."""
-    match jsonField(document, name):
-        case Error():
-            return invalid(["body", name], "missing", "Field required", document)
-        case Success(value=field):
-            match field:
-                case JsonArray(items):
-                    return array_items(items, name, decoder, 0)
-                case _:
-                    return invalid(["body", name], "list_type", "Input should be a valid list", field)
+    """Validate a body array, supplying each item with its full location."""
+    return array_at(document, name, body_path(), decoder)
 
 
-def array_items(items, name, decoder, index):
+def array_at(document, name, parent, decoder):
+    """Validate an array member at any path, with ordered numeric item locations."""
+    return required_member(document, name, parent, lambda field, path: array_field(field, path, decoder))
+
+
+def array_field(field, path, decoder):
+    match field:
+        case JsonArray(items):
+            return array_items(items, path, decoder, 0)
+        case _:
+            return invalid_at(path, "list_type", "Input should be a valid list", field)
+
+
+def array_items(items, path, decoder, index):
     match items:
         case []:
             return Success(value=M.Valid(value=[]))
         case [item, *tail]:
-            return B.bind(decoder(item), lambda first: B.mapped(array_items(tail, name, decoder, satAdd(index, 1)), lambda rest: V.mapped(V.combine(indexed(first, name, index), rest), lambda pair: listConcat([pair.first], pair.second))))
+            first = decoder(item, listConcat(path, [M.Index(value=index)]))
+            return B.bind(first, lambda value: B.mapped(array_items(tail, path, decoder, satAdd(index, 1)), lambda rest: V.mapped(V.combine(value, rest), lambda pair: listConcat([pair.first], pair.second))))
 
 
-def indexed(validation, name, index):
-    match validation:
-        case M.Valid(value=value):
-            return M.Valid(value=value)
-        case M.Invalid(issues=issues):
-            return M.Invalid(issues=mapList(issues, lambda issue: M.ValidationIssue(location=listConcat([M.Field(name="body"), M.Field(name=name), M.Index(value=index)], issue.location), kind=issue.kind, message=issue.message, input=issue.input, missing=issue.missing, json_input=issue.json_input, context=issue.context)))
-
-
-def string_at(value, path):
+def string(value, path):
+    """Validate a string without coercion at its full field or item location."""
     match value:
         case JsonString(text):
             return Success(value=M.Valid(value=text))
         case _:
             return invalid_at(path, "string_type", "Input should be a valid string", value)
-
-
-def string(value):
-    return string_at(value, [])

@@ -42,6 +42,7 @@ from nap.api.schemas_generated import (  # noqa: E402
     EndUserIdpUpsertRequest,
     EndUserExecutionContext,
     ProviderErrorResponse,
+    ModelListResponse,
 )
 
 PINNED = "0.135.3"
@@ -55,6 +56,7 @@ MODELS = {
     "/body/resource": EmbeddedResource,
     "/body/idp": EndUserIdpUpsertRequest,
     "/body/provider-error": ProviderErrorResponse,
+    "/body/model-list": ModelListResponse,
 }
 UUID_TEXT = [str(UID), str(UID).upper(), UID.hex, UID.hex.upper(), "{" + str(UID) + "}", "urn:uuid:" + str(UID), "{" + UID.hex + "}", "urn:uuid:" + UID.hex, " " + str(UID) + " ", str(uuid.UUID(int=0)), str(uuid.UUID(int=(1 << 128) - 1))]
 MALFORMED_UUID = [UID.hex[:-1], UID.hex + "0", "0x" + UID.hex, "{" + UID.hex, str(UID).replace("0", "g"), "not-a-uuid", "", "3f2504e-4f89-11d3-9a0c-0305e82c3301", "3f2504e0-4f8-11d3-9a0c-0305e82c3301", "3f2504e0-4f89-11d-9a0c-0305e82c3301", "3f2504e0-4f89-11d3-9a0-0305e82c3301", "3f2504e0-4f89-11d3-9a0c-0305e82c330", "{}", "urn:uuid:"]
@@ -76,40 +78,17 @@ def respond(body):
     return payload if body.model_config.get("extra") == "forbid" else payload | {"_secret": SECRET}
 
 
-def bundle_handler(body: BundleFileWriteRequest):
-    return respond(body)
+def register_model(route, model):
+    def handler(body):
+        return respond(body)
+
+    handler.__annotations__ = {"body": model}
+    app.add_api_route(route, handler, name=model.__name__, methods=["POST"],
+                      response_model=model, status_code=502 if model is ProviderErrorResponse else 200)
 
 
-def key_handler(body: ApiKeyCreateRequest):
-    return respond(body)
-
-
-def context_handler(body: EndUserExecutionContext):
-    return respond(body)
-
-
-def resource_handler(body: EmbeddedResource):
-    return respond(body)
-
-
-def idp_handler(body: EndUserIdpUpsertRequest):
-    return respond(body)
-
-
-def provider_error_handler(body: ProviderErrorResponse):
-    return respond(body)
-
-
-for route, (handler, model) in {
-    "/body/bundle": (bundle_handler, BundleFileWriteRequest),
-    "/body/key": (key_handler, ApiKeyCreateRequest),
-    "/body/context": (context_handler, EndUserExecutionContext),
-    "/body/resource": (resource_handler, EmbeddedResource),
-    "/body/idp": (idp_handler, EndUserIdpUpsertRequest),
-    "/body/provider-error": (provider_error_handler, ProviderErrorResponse),
-}.items():
-    app.add_api_route(route, handler, methods=["POST"], response_model=model,
-                      status_code=502 if model is ProviderErrorResponse else 200)
+for route, model in MODELS.items():
+    register_model(route, model)
 
 
 def js(value):
@@ -422,10 +401,37 @@ def provider_error_cases():
     return [("/body/provider-error", body, JSON) for body in bodies]
 
 
+def model_list_cases():
+    """NAP provider model list with ordered, indexed model validation."""
+    base = {"id": "small", "label": "Small"}
+    values = ["", "é\x00😀", 1, 1.0, False, None, [], {"nested": [1]}]
+    bodies = [{"models": [{"id": id_, "label": label}], "provider": "local"}
+              for id_ in values for label in values]
+    bodies += [{"models": value, "provider": "local"} for value in (None, False, 3, {}, "list", [])]
+    bodies += [None, [], "", {}, {"provider": "local"}, {"models": []},
+               {"models": [base, {}, None, [], {"label": "one"}, {"id": False}], "provider": 3},
+               {"models": [{"label": "L", "id": "i", "_secret": "discard"}], "provider": "local", "extra": True},
+               {"models": [base, base, {"id": "third", "label": "Third"}], "provider": ""}]
+    many = [{"id": str(i), "label": f"Model {i}"} for i in range(128)]
+    bodies += [{"models": many, "provider": "bulk"},
+               {"models": many[:63] + [False] + many[64:127] + [{"id": 9}], "provider": []},
+               {"models": [{}, {"label": "only"}, {"id": "only"}], "provider": None},
+               {"models": [[], [], []], "provider": "openai\n"},
+               {"models": [base], "provider": None},
+               {"models": [base], "provider": " OpenAI \x00"},
+               {"models": [{"id": "x" * 10000, "label": "\x00"}], "provider": "local"},
+               {"models": [{"id": str(i), "label": False} for i in range(128)], "provider": "bulk"}]
+    wire = [js(body) for body in bodies]
+    wire += ['{"models":null,"models":[{"id":"first","id":"last","label":"L"}],"provider":"local"}',
+             '{"models":[{"id":"a","label":"first","\\u006cabel":null}],"provider":"local"}',
+             '{"provider":"first","models":[],"provider":"last"}']
+    return [("/body/model-list", body, JSON) for body in wire]
+
+
 def request_specs():
     """Every raw request the corpus sends, grouped by concern."""
     groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases, key_cases,
-              context_cases, resource_cases, duplicate_key_cases, nonfinite_cases, nul_cases, idp_cases, provider_error_cases]
+              context_cases, resource_cases, duplicate_key_cases, nonfinite_cases, nul_cases, idp_cases, provider_error_cases, model_list_cases]
     return [spec for group in groups for spec in group()]
 
 

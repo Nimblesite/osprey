@@ -7,6 +7,8 @@ ROOT = Path(__file__).parent
 
 TYPE_DOCS = {
     "LocationPart": "A field name or numeric array index in a validation location.",
+    "FixtureModelOption": "Typed NAP provider model entry.",
+    "FixtureModelList": "NAP provider model list response envelope.",
     "FixtureProviderDetail": "Typed NAP provider error detail.",
     "FixtureProviderError": "NAP provider failure response envelope.",
     "FixtureIdp": "NAP identity-provider request with validated algorithm strings.",

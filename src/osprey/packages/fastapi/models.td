@@ -27,3 +27,5 @@ union LocationPart { Field { name: String } Index { value: Int } }
 type FixtureIdp { allowed_algs: List<String> audience: String issuer: String jwks_uri: String }
 type FixtureProviderDetail { code: String message: String }
 type FixtureProviderError { detail: FixtureProviderDetail }
+type FixtureModelOption { id: String label: String }
+type FixtureModelList { models: List<FixtureModelOption> provider: String }
