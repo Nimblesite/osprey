@@ -21,10 +21,11 @@ include scripts/make/android.mk
 # Standard Targets
 # =============================================================================
 
-## build: C runtime archives + Rust workspace (release) + VSCode extension
+## build: C runtime archives + Rust workspace (release) + VSCode and Zed extensions
 build: _runtime _runtime_klee $(EXT_NODE_DEPS)
 	@echo "==> Building..."
 	cargo build --manifest-path src/toolchain/Cargo.toml --release --workspace
+	$(MAKE) _zed_build
 	cd $(EXT_DIR) && npm run compile
 
 ## audit: Full dependency vulnerability scan; scanner errors and advisories fail.
@@ -68,6 +69,7 @@ test: build
 	$(MAKE) _test_profiler
 	$(MAKE) _vsix_bundle
 	$(MAKE) _test_vscode_extension
+	$(MAKE) _test_zed_stdio
 	$(MAKE) _coverage_check_vscode_extension
 	$(MAKE) _test_bench_tools
 

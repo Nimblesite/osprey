@@ -161,6 +161,11 @@ jobs:
       - name: Build the extension bundle
         run: make _vsix_bundle
 
+      - name: Build the Zed WASM extension
+        run: |
+          rustup target add wasm32-wasip2
+          make -C src/toolchain/zed-extension build
+
       - name: Package the VSIX
         run: make _vsix_package
 
@@ -180,6 +185,7 @@ jobs:
             target/workbench.wasm
             src/toolchain/compiler/lib/
             src/toolchain/compiler/bin/*.a
+            target/wasm32-wasip2/debug/osprey_zed.wasm
             src/osprey/examples/projects/modules/src/web/bundle.ospml
           retention-days: 7
           if-no-files-found: error
@@ -778,6 +784,19 @@ jobs:
 
       - name: Extension suite with V8 coverage
         run: xvfb-run -a make _test_vscode_extension
+
+      # The launch-policy tests run once in the Rust coverage shard. These
+      # exercise the cached compiler's actual stdio process, without rebuilding.
+      - name: Zed manifest and stdio acceptance
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, subprocess, tomllib
+          manifest = pathlib.Path('src/toolchain/zed-extension/extension.toml')
+          revision = tomllib.loads(manifest.read_text())['grammars']['osprey']['rev']
+          assert re.fullmatch(r'[0-9a-f]{40}', revision), revision
+          subprocess.run(['git', 'fetch', '--depth=1', 'origin', revision], check=True)
+          PY
+          make -C src/toolchain/zed-extension stdio-test
 
       - name: Upload extension coverage
         uses: actions/upload-artifact@v7

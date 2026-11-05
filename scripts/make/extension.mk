@@ -1,4 +1,14 @@
 # --- vsix sub-steps ---------------------------------------------------------
+# Zed's artifact is built once, in the build phase; launch-policy tests are
+# covered by the Rust workspace and stdio acceptance reuses the compiler.
+.PHONY: _zed_build _test_zed_stdio
+_zed_build:
+	rustup target add wasm32-wasip2
+	$(MAKE) -C src/toolchain/zed-extension build
+
+_test_zed_stdio:
+	$(MAKE) -C src/toolchain/zed-extension stdio-test
+
 # Extension artefacts only. This used to run `$(MAKE) clean`, i.e. `cargo
 # clean` plus the C runtime archives, which bought a from-scratch release
 # build on every single reinstall and no correctness at all: cargo tracks its

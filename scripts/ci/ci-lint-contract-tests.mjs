@@ -14,6 +14,20 @@ import { spawnSync } from 'node:child_process'
 const LINT_COMMANDS = ['node scripts/ci/verify-no-dead-code.mjs',
   'node scripts/packages/verify-package-licenses.mjs', 'node --test scripts/packages/test-package-licenses.mjs']
 
+test('Zed builds in phase one and tests the cached compiler once in phase two', () => {
+  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+  const build = workflow.split('\n  build:')[1].split('\n  analyse:')[0]
+  const extension = workflow.split('\n  test-extension:')[1].split('\n  test-wasm:')[0]
+  assert.match(build, /rustup target add wasm32-wasip2/)
+  assert.match(build, /make -C src\/toolchain\/zed-extension build/)
+  assert.match(build, /target\/wasm32-wasip2\/debug\/osprey_zed\.wasm/)
+  assert.doesNotMatch(build, /zed-extension (?:test|stdio-test)/)
+  assert.equal(workflow.match(/make -C src\/toolchain\/zed-extension stdio-test/g)?.length, 1)
+  assert.match(extension, /name: osprey-build/)
+  assert.match(extension, /make -C src\/toolchain\/zed-extension stdio-test/)
+  assert.doesNotMatch(extension, /zed-extension (?:build|test)\b/)
+})
+
 // A job-shaped block with the contract's own name and detector gate, so an
 // evasion fails on the guard and not on an incidental mismatch.
 const JOB_HEADER = '  build:\n    name: Build, Format & Analyse\n    needs: changes\n' +
