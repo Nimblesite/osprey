@@ -414,6 +414,12 @@ ok reader_tools
 ok reader_violation
 ok reader_violation_path
 ok reader_members_of
+ok reader_nonarray_enum
+ok reader_nonobject_members
+ok reader_nonstr_kind
+ok reader_unknown_kind
+ok reader_violation_without_keyword
+ok reader_violation_without_path
 ok scan_valid
 ok scan_enum
 ok scan_key
@@ -2503,4 +2509,13 @@ ok model_tiled_layer2
 ok model_tiled_final_norm
 ok model_load_missing
 ok model_load_sized
-2505 passed, 0 failed
+ok model_decode_missing_slot
+ok model_step_missing_slot
+ok model_fault_negative_grid
+ok model_fault_missing_values
+ok model_linear_wrong_slot
+ok model_full_wrong_slot
+ok model_decode_missing_layer
+ok model_mapped_missing_file
+ok model_quantized_head_fault
+2520 passed, 0 failed

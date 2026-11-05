@@ -9,7 +9,7 @@ all its floats as repr strings, decoded here with `Check.float_of`."""
 from testing import Check
 from transformers_expected import Expected
 from transformers_tools_expected import ExpectedTools
-from transformers import Generation, Lists, LogitsProcess, Qwen3_5Cache, Qwen3_5Config, Qwen3_5Hf, Qwen3_5Model, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
+from transformers import Generation, Lists, LogitsProcess, Qwen3_5Cache, Qwen3_5Config, Qwen3_5Device, Qwen3_5Hf, Qwen3_5Model, StoppingCriteria, ToolConstrain, ToolJsonScan, ToolParser, ToolSchema
 from transformers.Math import argmax, log_softmax, max_f, max_i, min_f, min_i, multinomial, neg_inf, softmax
 
 ARITH = 1e-12
@@ -731,6 +731,12 @@ def reader_cases():
         Check.equal("reader_violation", ToolSchema.violation_keyword(ToolSchema.violation("enum", "mode", "not a member")), "enum"),
         Check.equal("reader_violation_path", ToolSchema.violation_path(ToolSchema.violation("enum", "mode", "not a member")), "mode"),
         Check.equal("reader_members_of", toString(len(ToolSchema.members(policy))), "2"),
+        Check.equal("reader_nonarray_enum", len(ToolSchema.enum_values(JsonNull)), 0),
+        Check.equal("reader_nonobject_members", len(ToolSchema.members(JsonInt(2))), 0),
+        Check.equal("reader_nonstr_kind", ToolSchema.kind(decoded("{\"type\":7}")), ""),
+        Check.equal("reader_unknown_kind", ToolSchema.kind_matches("unrecognised", JsonNull), False),
+        Check.equal("reader_violation_without_keyword", ToolSchema.violation_keyword("plain error"), ""),
+        Check.equal("reader_violation_without_path", ToolSchema.violation_path("enum@mode"), ""),
     ]
 
 
@@ -1082,7 +1088,7 @@ def model_layer_cases(parameters):
         case Error(message=message):
             return [Check.failed("model_load", message)]
         case Success(value=model):
-            return listConcat([Check.passed("model_load")], listConcat(single_cases(model), listConcat(cached_cases(model), listConcat(tiled_cases(model, parameters), refusal_cases()))))
+            return listConcat([Check.passed("model_load")], listConcat(single_cases(model), listConcat(cached_cases(model), listConcat(tiled_cases(model, parameters), listConcat(refusal_cases(), model_fault_cases(model))))))
 
 
 def token_in(tokens, t):
@@ -1301,3 +1307,78 @@ def refusal(name, result, want):
             return Check.failed(name, "loaded a checkpoint that should have been refused")
         case Error(message=message):
             return Check.equal(name, message, want)
+
+
+def model_fault_cases(model):
+    return listConcat([
+        refusal("model_decode_missing_slot", Qwen3_5Model.decode(model, Qwen3_5Cache.Cache(slots=[]), 0), "layer 0: no cache slot: index out of bounds"),
+        refusal("model_step_missing_slot", step_missing_slot(model), "layer 0: no cache slot: index out of bounds"),
+        refusal("model_fault_negative_grid", negative_grid(), "gpu: buffer allocation: a negative element count"),
+        refusal("model_fault_missing_values", missing_values(), "index out of bounds"),
+    ], started(model, "model_wrong_slots", lambda cache: wrong_slot_cases(model, cache)))
+
+
+def step_missing_slot(model):
+    with Qwen3_5Device.strictly:
+        return Qwen3_5Model.step(model, Qwen3_5Cache.Cache(slots=[]), Qwen3_5Model.embed(model, 0))
+
+
+def wrong_slot_cases(model, cache):
+    match Qwen3_5Cache.slot_at(cache, 0):
+        case Error(message=message):
+            return [Check.failed("model_wrong_slots", toString(message))]
+        case Success(value=delta):
+            match Qwen3_5Cache.slot_at(cache, 3):
+                case Error(message=message):
+                    return [Check.failed("model_wrong_slots", toString(message))]
+                case Success(value=attention):
+                    return mismatch_cases(model, cache, delta, attention)
+
+
+def mismatch_cases(model, cache, delta, attention):
+    return [
+        refusal("model_linear_wrong_slot", Qwen3_5Model.decode(model, Qwen3_5Cache.Cache(slots=[attention]), 0), "layer 0: a linear_attention layer was given an attention cache slot"),
+        refusal("model_full_wrong_slot", Qwen3_5Model.decode(model, Qwen3_5Cache.Cache(slots=[delta, delta, delta, delta]), 0), "layer 3: a full_attention layer was given a linear cache slot"),
+        refusal("model_decode_missing_layer", Qwen3_5Model.decode(model_with(model, [], model.embedding, model.head), cache, 0), "layer 0: index out of bounds"),
+        mapped_missing_file(model, cache),
+        quantized_head_fault(model, cache),
+    ]
+
+
+def model_with(model, layers, embedding, head):
+    return Qwen3_5Model.Model(config=model.config, shapes=model.shapes, embedding=embedding, layers=layers, final_norm=model.final_norm, head=head, tiled=model.tiled)
+
+
+def mapped_missing_file(model, cache):
+    path = "/nonexistent_osprey_dir/missing-embedding.gguf"
+    match mapped_decode(model, cache, path):
+        case Error(message=message):
+            return Check.truth("model_mapped_missing_file", startsWith(message, "gpuMapFile: " + path + ":"), message)
+        case Success():
+            return Check.failed("model_mapped_missing_file", "decoded a missing embedding file")
+
+
+def mapped_decode(model, cache, path):
+    with Qwen3_5Device.strictly:
+        with Qwen3_5Device.wrapping:
+            mapped = Qwen3_5Model.Mapped(path=path, offset=0, row_bytes=144, type="Q4_K", basis=Qwen3_5Model.identity(model.config.hidden_size))
+            return Qwen3_5Model.decode(model_with(model, model.layers, mapped, model.head), cache, 0)
+
+
+def quantized_head_fault(model, cache):
+    match toGpu(toList(map(range(144), lambda _i: toUint8(0)))):
+        case Error(message=message):
+            return Check.failed("model_quantized_head_fault", toString(message))
+        case Success(value=bytes):
+            head = Qwen3_5Device.Quant(blocks=bytes, type="Q2_K")
+            return refusal("model_quantized_head_fault", Qwen3_5Model.decode(model_with(model, model.layers, model.embedding, head), cache, 0), "gpuMatMulQuant: weights: unsupported tensor type; expected Q4_K, Q8_0, Q6_K, Q5_K, Q3_K, IQ4_NL, IQ4_XS, IQ3_S")
+
+
+def negative_grid():
+    with Qwen3_5Device.strictly:
+        return Success(value=Qwen3_5Device.grid(-1))
+
+
+def missing_values():
+    with Qwen3_5Device.strictly:
+        return Success(value=Qwen3_5Device.must_values(listGet([[toFloat32(1.0)]], 4)))
