@@ -10,7 +10,7 @@ from fastapi import Results as B
 from fastapi import Errors as E
 from fastapi import Params
 
-__all__ = ["application", "include_router", "with_exception_handler", "serve", "dispatch", "cors"]
+__all__ = ["application", "include_router", "with_exception_handler", "serve", "with_lifespan", "dispatch", "cors"]
 
 
 def application(routes, middleware):
@@ -62,11 +62,38 @@ def serve(port, host, app):
                 case Success():
                     return Success(value=server)
                 case Error(message=message):
-                    match httpStopServer(server):
-                        case Success():
-                            return Error(message=message)
-                        case Error(message=cleanup):
-                            return Error(message=f"{message}; listener cleanup failed: {cleanup}")
+                    return after_cleanup(Error(message=message), httpStopServer(server), "listener cleanup")
+
+
+def with_lifespan(port, host, startup, build, run, shutdown):
+    """Run an application with startup state and release it after the listener stops. [FASTAPI-HTTP-LIFESPAN]"""
+    match startup():
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=state):
+            result = run_listener(port, host, build(state), run)
+            return after_cleanup(result, shutdown(state), "lifespan shutdown")
+
+
+def run_listener(port, host, app, run):
+    match serve(port, host, app):
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=server):
+            result = run(server)
+            return after_cleanup(result, httpStopServer(server), "listener cleanup")
+
+
+def after_cleanup(result, cleanup, phase):
+    match cleanup:
+        case Success():
+            return result
+        case Error(message=error):
+            match result:
+                case Success():
+                    return Error(message=error)
+                case Error(message=message):
+                    return Error(message=f"{message}; {phase} failed: {error}")
 
 
 def latin1(text):
@@ -83,7 +110,7 @@ def native_request(app, method, url, headers, body):
             return R.native(E.exception_response(E.exception(500, message, "")))
 
 
-# Implements [FASTAPI-NAP-MIDDLEWARE]. Adapted Starlette policy: see NOTICE.md.
+# Implements [FASTAPI-HTTP-MIDDLEWARE]. Adapted Starlette policy: see NOTICE.md.
 def cors(policy):
     """Build immutable browser-access middleware with an explicit typed policy."""
     return lambda request, next: cors_request(policy, request, next)

@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Paths
-"""Ordered path matching and greedy captures. [FASTAPI-NAP-PARAMETERS]"""
+"""Ordered path matching and greedy captures. [FASTAPI-HTTP-PARAMETERS]"""
 from fastapi import Results as B
 __all__ = ['bind', 'matches']
 

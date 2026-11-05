@@ -188,7 +188,7 @@ int64_t json_free(int64_t handle) {
 // asks one or two questions per value, and a mutex on each would cost more
 // than the answer [BUILTIN-JSON-TYPED].
 
-// [FASTAPI-NAP-VALIDATION] Explicit last-wins mode keeps the first insertion
+// [FASTAPI-HTTP-VALIDATION] Explicit last-wins mode keeps the first insertion
 // position and the final value, as Python dictionaries do; strict mode is unchanged.
 // [PORT-STRING-NUL-KEYS] Key identity includes every byte, including embedded NUL.
 int json_compare_key_names(const void *left, const void *right) {

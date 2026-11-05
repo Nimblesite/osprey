@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Dependencies
-"""Typed request-local dependency graphs and function-scope cleanup. [FASTAPI-NAP-DEPENDENCIES]"""
+"""Typed request-local dependency graphs and function-scope cleanup. [FASTAPI-HTTP-DEPENDENCIES]"""
 from typing import Callable
 from fastapi import Models as M
 from fastapi import Errors as E

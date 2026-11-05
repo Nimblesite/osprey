@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Errors
-"""HTTP exception and validation wire boundary. [FASTAPI-NAP-ERRORS]"""
+"""HTTP exception and validation wire boundary. [FASTAPI-HTTP-ERRORS]"""
 from fastapi import Models as M
 from fastapi import Responses as R
 from fastapi import Results as B

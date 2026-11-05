@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Urls
-"""URL percent decoding, including UTF-8 and form-style plus. [FASTAPI-NAP-PARAMETERS]"""
+"""URL percent decoding, including UTF-8 and form-style plus. [FASTAPI-HTTP-PARAMETERS]"""
 from fastapi import Results as B
 __all__ = ['decode', 'path_of', 'query_of']
 

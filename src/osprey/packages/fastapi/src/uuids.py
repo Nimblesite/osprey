@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Uuids
-"""UUID request conversion with reference-compatible issues. [FASTAPI-NAP-PARAMETERS]"""
+"""UUID request conversion with reference-compatible issues. [FASTAPI-HTTP-PARAMETERS]"""
 from fastapi import Models as M
 from fastapi import Results as B
 from fastapi import Validation as V

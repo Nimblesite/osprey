@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Body
-"""JSON stays at the HTTP boundary; handlers receive validated typed records. [FASTAPI-NAP-VALIDATION]"""
+"""JSON stays at the HTTP boundary; handlers receive validated typed records. [FASTAPI-HTTP-VALIDATION]"""
 from fastapi import Models as M
 from fastapi import Errors as E
 from fastapi import Results as B

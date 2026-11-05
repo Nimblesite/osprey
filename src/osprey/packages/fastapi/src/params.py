@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Params
-"""Request query/header/path boundaries. [FASTAPI-NAP-PARAMETERS]"""
+"""Request query/header/path boundaries. [FASTAPI-HTTP-PARAMETERS]"""
 from fastapi import Models as M
 from fastapi import Results as B
 from fastapi import Urls

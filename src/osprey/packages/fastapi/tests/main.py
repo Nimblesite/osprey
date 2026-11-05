@@ -253,12 +253,75 @@ def fallback_listener(port):
             return check("fallback listener", "success", message)
 
 
+def lifespan_status(port):
+    match httpCreateClient(f"http://127.0.0.1:{port}", 1000):
+        case Error(message=message):
+            check("lifespan client", "created", message)
+            return 0
+        case Success(value=client):
+            status = unwrap_or(httpGet(client, "/health", ""), 0)
+            expect(httpCloseClient(client), Success(value=0))
+            return status
+
+
+def lifespan_step(path, step, result):
+    written = B.bind(readFile(path), lambda previous: writeFile(path, previous + step + "\n"))
+    return B.bind(written, lambda _written: result)
+
+
+def lifespan_start(path, port, mode):
+    expect(lifespan_status(port), 200 if mode == "bind" else 0)
+    return lifespan_step(path, "start", Error(message="startup refused") if mode == "startup" else Success(value="ready"))
+
+
+def lifespan_app(state):
+    return A.application([Routing.route("GET", "/health", lambda _request: E.json_response(200, JsonString(state), ""))], [])
+
+
+def lifespan_work(path, port, mode, _server):
+    match httpCreateClient(f"http://127.0.0.1:{port}", 1000):
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=client):
+            assert_reply(httpGetResponse(client, "/health", ""), 200, '"ready"')
+            expect(httpCloseClient(client), Success(value=0))
+            return lifespan_step(path, "work", Error(message="work failed") if mode == "combined" or mode == "work" else Success(value=42))
+
+
+def lifespan_stop(path, port, mode, state):
+    expect(state, "ready")
+    expect(lifespan_status(port), 200 if mode == "bind" else 0)
+    return lifespan_step(path, "stop", Error(message="shutdown refused") if mode == "combined" or mode == "shutdown" else Success(value=None))
+
+
+def lifespan_case(path, port, mode, trace):
+    expect(writeFile(path, ""), Success(value=0))
+    outcome = A.with_lifespan(port, "127.0.0.1", lambda: lifespan_start(path, port, mode), lifespan_app, lambda server: lifespan_work(path, port, mode, server), lambda state: lifespan_stop(path, port, mode, state))
+    expect(readFile(path), Success(value=trace))
+    return outcome
+
+
+def lifespan_cases(port):
+    path = f"target/fastapi-lifespan-{port}.trace"
+    expect(lifespan_case(path, port, "startup", "start\n"), Error(message="startup refused"))
+    expect(lifespan_case(path, port, "normal", "start\nwork\nstop\n"), Success(value=42))
+    expect(lifespan_case(path, port, "work", "start\nwork\nstop\n"), Error(message="work failed"))
+    expect(lifespan_case(path, port, "shutdown", "start\nwork\nstop\n"), Error(message="shutdown refused"))
+    return expect(lifespan_case(path, port, "combined", "start\nwork\nstop\n"), Error(message="work failed; lifespan shutdown failed: shutdown refused"))
+
+
 def lifecycle():
     match open_native([18787, 18789, 18791, 18793]):
         case Success(value=opened):
             occupied_listener(opened.second)
             fallback_listener(opened.second)
+            match lifespan_case(f"target/fastapi-lifespan-{opened.second}.trace", opened.second, "bind", "start\nstop\n"):
+                case Error(message=message):
+                    expect(message != "", True)
+                case Success():
+                    check("lifespan bind", "error", "success")
             use_server(opened.first, opened.second)
+            lifespan_cases(opened.second)
         case Error(message=message):
             check("server creation", "success", message)
     match A.serve(0, "127.0.0.1", native_application(0)):

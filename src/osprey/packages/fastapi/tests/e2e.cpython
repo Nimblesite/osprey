@@ -74,7 +74,7 @@ def hostless_redirect_cases(port):
 
 
 def exception_contract_cases(port):
-    """[FASTAPI-NAP-ERRORS] Distinguish handled failures from ordinary status replies."""
+    """[FASTAPI-HTTP-ERRORS] Distinguish handled failures from ordinary status replies."""
     def send(method, path, headers=None):
         status, returned, body = request(port, method, path, headers=headers)
         return status, {name.lower(): value for name, value in returned.items()}, body
@@ -142,7 +142,7 @@ def body_records():
 
 
 def body_reference_cases(port):
-    """[FASTAPI-NAP-VALIDATION] Exact real HTTP replies from actual generated NAP models."""
+    """[FASTAPI-HTTP-VALIDATION] Exact real HTTP replies from generated reference models."""
     records = body_records()
     failures = []
     for case in records:
@@ -160,7 +160,7 @@ def body_reference_cases(port):
 
 
 def body_model_smoke(port):
-    """[FASTAPI-NAP-VALIDATION] Typed request bodies must bind before handlers run."""
+    """[FASTAPI-HTTP-VALIDATION] Typed request bodies must bind before handlers run."""
     payload = rb'{"content":"hello \u2615","_secret":"drop this"}'
     status, headers, body = request(port, "POST", "/body/bundle", payload, {"Content-Type": "application/json"})
     assert (status, json.loads(body)) == (200, {"content": "hello ☕"}), (status, headers, body)
@@ -233,7 +233,7 @@ def cors_reference_cases(port, mode):
 
 
 def cors_browser_cases(port):
-    """[FASTAPI-NAP-MIDDLEWARE] Browser reads must work on success and errors."""
+    """[FASTAPI-HTTP-MIDDLEWARE] Browser reads must work on success and errors."""
     for path, expected in (("/health", 200), ("/readyz", 503), ("/missing", 404)):
         status, headers, body = request(port, "GET", path, headers={"Origin": "https://app.example"})
         assert status == expected, (path, status, body)

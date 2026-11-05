@@ -1,7 +1,7 @@
 # osprey: flavor=python
 # osprey: namespace=fastapi
 # osprey: module=Validation
-"""Typed request binding with accumulated 422 issues. [FASTAPI-NAP-VALIDATION]"""
+"""Typed request binding with accumulated 422 issues. [FASTAPI-HTTP-VALIDATION]"""
 from fastapi import Models as M
 from fastapi import Errors as E
 from fastapi import Results as B
