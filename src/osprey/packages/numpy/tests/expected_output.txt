@@ -23,6 +23,7 @@ ok tri.1.host
 ok tri.2.host
 ok tri.3.host
 ok tri.4.host
+ok tri.square.host
 ok diag.0.host
 ok diag.1.host
 ok diag.2.host
@@ -497,6 +498,7 @@ ok tri.1.gpu
 ok tri.2.gpu
 ok tri.3.gpu
 ok tri.4.gpu
+ok tri.square.gpu
 ok diag.0.gpu
 ok diag.1.gpu
 ok diag.2.gpu
@@ -946,4 +948,4 @@ ok array.ones_like
 ok array.full_like
 ok array.identity
 ok array.eye_m
-948 passed, 0 failed
+950 passed, 0 failed

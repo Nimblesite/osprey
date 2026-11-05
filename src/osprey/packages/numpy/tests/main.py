@@ -21,11 +21,12 @@ def creation_cases(b):
     lp = fold(range(len(Expected.LINSPACE_NUM)), [], lambda acc, i: listAppend(acc, finish_list(f"linspace.{i}.{b}", lambda: Array.tolist(Array.linspace(f(Expected.LINSPACE_F, i, 0), f(Expected.LINSPACE_F, i, 1), ati(Expected.LINSPACE_NUM, i))), atl(Expected.LINSPACE_OUT, i), TIGHT)))
     eye = fold(range(len(Expected.EYE)), [], lambda acc, i: listAppend(acc, finish_list(f"eye.{i}.{b}", lambda: Array.tolist(Array.eye(ati(Expected.EYE, i))), atl(Expected.EYE_OUT, i), TIGHT)))
     tri = fold(range(len(Expected.TRI)), [], lambda acc, i: listAppend(acc, finish_list(f"tri.{i}.{b}", lambda: Array.tolist(Array.tri_k(it(Expected.TRI, i, 0), it(Expected.TRI, i, 1), it(Expected.TRI, i, 2))), atl(Expected.TRI_OUT, i), TIGHT)))
+    tri_square = finish_list(f"tri.square.{b}", lambda: Array.tolist(Array.tri(it(Expected.TRI, 0, 0))), atl(Expected.TRI_OUT, 0), TIGHT)
     diag = fold(range(len(Expected.DIAG_OUT)), [], lambda acc, i: listAppend(acc, finish_list(f"diag.{i}.{b}", lambda: Array.tolist(Array.diag(arr(atl(Expected.DIAG_VALS, i), atl(Expected.DIAG_SHAPES, i)))), atl(Expected.DIAG_OUT, i), TIGHT)))
     zeros = fold(range(len(Expected.ZEROS)), [], lambda acc, i: listAppend(acc, finish_list(f"zeros.{i}.{b}", lambda: Array.tolist(Array.zeros(atl(Expected.ZEROS, i))), atl(Expected.ZEROS_OUT, i), TIGHT)))
     ones = fold(range(len(Expected.ZEROS)), [], lambda acc, i: listAppend(acc, finish_list(f"ones.{i}.{b}", lambda: Array.tolist(Array.ones(atl(Expected.ZEROS, i))), atl(Expected.ONES_OUT, i), TIGHT)))
     full = fold(range(len(Expected.FULL_VALUES)), [], lambda acc, i: listAppend(acc, finish_list(f"full.{i}.{b}", lambda: Array.tolist(Array.full([2, 3], atf(Expected.FULL_VALUES, i))), atl(Expected.FULL_OUT, i), TIGHT)))
-    return listConcat(listConcat(listConcat(ar, lp), listConcat(eye, tri)), listConcat(listConcat(diag, zeros), listConcat(ones, full)))
+    return listConcat(listConcat(listConcat(ar, lp), listConcat(eye, listAppend(tri, tri_square))), listConcat(listConcat(diag, zeros), listConcat(ones, full)))
 
 
 def reshape_cases(b):
