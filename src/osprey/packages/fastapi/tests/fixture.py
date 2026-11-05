@@ -32,7 +32,7 @@ def routes():
     return listConcat(body_routes(), [Routing.route("GET", "/health", health), Routing.route("GET", "/vary", varied), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)])
 
 
-__all__ = ["routes", "application", "cors_application"]
+__all__ = ["routes", "application", "cors_application", "fake_identity"]
 
 def config(request):
     identity = Uuids.uuid(["path", "config_id"], P.path(request, "config_id"))

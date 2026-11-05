@@ -9,6 +9,7 @@ from fastapi import Paths
 from fastapi import Routing
 from fastapi import Responses as R
 from fastapi import Validation as V
+from fastapi import Dependencies as D
 from fastapi import Urls
 from fastapi_tests import Fixture
 from fastapi_expected import Expected
@@ -101,7 +102,7 @@ def request_metadata(request):
 
 def metadata_application(request):
     child = M.Route(method="GET", path="/contract/request/{item:path}", handler=lambda current: request_metadata(current))
-    return A.dispatch(A.application([child], []), request)
+    return A.dispatch(M.Application(routes=[child], middleware=[], exception_handlers={}), request)
 
 
 def metadata_router(request):
@@ -128,6 +129,23 @@ def manual_validation(request):
             return E.validation(V.issues_of(result))
 
 
+def contract_provider(request, _children):
+    """Exercise each DependencyResult and mixed LocationPart and ValidationContext values on the wire."""
+    mode = unwrap_or(P.query(request, "mode"), "")
+    if mode == "allow":
+        return Fixture.fake_identity(request, _children)
+    elif mode == "deny":
+        return M.Rejected(error=E.exception(403, "provider denied", ""))
+    else:
+        issue = M.ValidationIssue(location=[M.Field(name="body"), M.Index(value=2), M.Field(name="role")], kind="literal_error", message="Expected writer", input=mode, missing=False, json_input=False, context=M.TextContext(name="expected", value="'writer'"))
+        return M.DependencyInvalid(issues=[issue])
+
+
+def contract_dependency(request):
+    graph = [D.provider("role", [], contract_provider, D.pure_close)]
+    return D.execute(graph, [D.need("role", True)], request, lambda _request, values: E.json_response(200, JsonInt(length(values)), ""))
+
+
 def manual_contract_cases(client):
     redirected = httpGetResponse(client, "/contract/response?mode=redirect", "")
     match redirected:
@@ -143,6 +161,10 @@ def manual_contract_cases(client):
     assert_reply(httpGetResponse(client, "/contract/limit?limit=2", ""), 200, '{"limit":2}')
     assert_reply(httpGetResponse(client, "/contract/limit?limit=4", ""), 422,
                  '{"detail":[{"type":"less_than_equal","loc":["query","limit"],"msg":"Input should be less than or equal to 3","input":"4","ctx":{"le":3}}]}')
+    assert_reply(httpGetResponse(client, "/contract/dependency?mode=allow", ""), 200, "1")
+    assert_reply(httpGetResponse(client, "/contract/dependency?mode=deny", ""), 403, '{"detail":"provider denied"}')
+    assert_reply(httpGetResponse(client, "/contract/dependency?mode=reader", ""), 422,
+                 "{\"detail\":[{\"type\":\"literal_error\",\"loc\":[\"body\",2,\"role\"],\"msg\":\"Expected writer\",\"input\":\"reader\",\"ctx\":{\"expected\":\"'writer'\"}}]}")
 
 
 def requests(client):
@@ -179,6 +201,7 @@ def native_application(port):
     return A.include_router(mounted, "", [Routing.route("GET", "/contract/request/{item:path}", metadata_application),
                                          Routing.route("GET", "/contract/router/{item:path}", metadata_router),
                                          Routing.route("GET", "/contract/response", manual_response),
+                                         Routing.route("GET", "/contract/dependency", contract_dependency),
                                          Routing.route("GET", "/contract/limit", manual_validation)])
 
 
