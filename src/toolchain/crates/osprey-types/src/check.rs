@@ -211,8 +211,8 @@ pub(crate) struct Checker {
     /// same body is checked at its final type.
     /// Reordering or removing entries clears `field_uses_prefix`.
     pub(crate) builtin_uses: Vec<(String, Type)>,
-    /// Bound slot count and number of pending uses already checked for fields.
-    pub(crate) field_uses_prefix: Option<(usize, usize)>,
+    /// Pending uses already checked for field or method resolution.
+    pub(crate) field_uses_prefix: Option<crate::fields::FieldPrefix>,
     /// Declared types whose fields only their own module may read; keyed by
     /// linkage name, so [`osprey_ast::symbol::encloses`] decides membership.
     /// Implements [MODULES-OPAQUE-TYPES].

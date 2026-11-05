@@ -450,3 +450,25 @@ fn field_resolution_retries_only_after_new_work() {
     assert_eq!(checker.errors, []);
     assert_eq!(checker.builtin_uses, []);
 }
+
+#[test]
+fn field_resolution_skips_non_field_obligations_across_bindings() {
+    use super::{Checker, Type};
+    use crate::fields::FIELD_VISITS;
+
+    let mut checker = Checker::new();
+    for _ in 0..64 {
+        checker
+            .builtin_uses
+            .push(("interpolation".into(), Type::int()));
+    }
+    FIELD_VISITS.with(|visits| visits.set(0));
+    for kind in [Type::int(), Type::string(), Type::bool()] {
+        let var = checker.ctx.fresh();
+        checker.push_unify(&var, &kind);
+        checker.resolve_field_uses();
+        assert_eq!(checker.ctx.apply(&var), kind);
+    }
+    assert_eq!(checker.builtin_uses.len(), 64);
+    assert_eq!(FIELD_VISITS.with(std::cell::Cell::get), 0);
+}
