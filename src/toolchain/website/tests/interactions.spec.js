@@ -1,14 +1,7 @@
 const { test, expect } = require("@playwright/test");
-const { paintedColours, VIEWPORTS } = require("./helpers");
-const { mkdir, readFile, writeFile } = require("node:fs/promises");
-const { execFileSync } = require("node:child_process");
+const { paintedColours, VIEWPORTS, executeExample, exampleResult } = require("./helpers");
+const { readFile } = require("node:fs/promises");
 const path = require("node:path");
-
-async function executeExample(source, file) {
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, source);
-  return execFileSync(path.resolve("../../../target/release/osprey"), [file, "--run", "--quiet"], { cwd: path.dirname(file), encoding: "utf8", timeout: 20_000 });
-}
 
 async function verifyDraftExample(source, file) {
   expect(await executeExample(source, file)).toBe("Saved\n");
@@ -23,15 +16,6 @@ async function verifyDraftExample(source, file) {
   expect(unhandled).not.toBe(source);
   expect(await exampleResult(unhandled, path.join(path.dirname(file), "unhandled", path.basename(file))))
     .toContain("unhandled effect operations at program entry: Drafts.save");
-}
-
-// stdout of a program that runs, or the compiler's diagnostic for one it rejects.
-async function exampleResult(source, file) {
-  try {
-    return await executeExample(source, file);
-  } catch (error) {
-    return error.stderr.replace(`${file}: `, "");
-  }
 }
 
 async function heroBounds(page) {
@@ -106,16 +90,18 @@ test.describe("homepage flight and source examples", () => {
     }
   });
 
-  test("the effects guide preserves runnable authored examples in both flavors", async ({ page }, testInfo) => {
+  test("the effects guide runs its package-manager test doubles in all three flavors", async ({ page }, testInfo) => {
     await page.goto("/docs/effects/");
-    const blocks = page.locator('pre > code.language-osprey, pre > code.language-osprey-ml');
-    const outputs = ["Saved\n", "Saved\n", "Retry: offline\n", "Saved: Ship it.\n", "30\n", "Submitted / Cancelled\n", "Report: Saved\n"];
+    const blocks = page.locator("pre > code.language-osprey, pre > code.language-python, pre > code.language-osprey-ml");
+    const tap = (names) => `${names.map((name, i) => `ok ${i + 1} - ${name}\n`).join("")}1..${names.length}\n# tests=${names.length} passed=${names.length} failed=0 skipped=0\n`;
+    const [pair, trio] = [tap(["a full disk rolls the manifest back", "a healthy disk writes manifest then lock"]), tap(["a healthy disk installs", "a full disk rolls the manifest back", "a read-only disk changes nothing"])];
+    const outputs = [pair, trio, pair, "version = 3\n", "Submitted / Cancelled\n", "30\n"];
     await expect(blocks).toHaveCount(outputs.length);
     for (let i = 0; i < outputs.length; i++) {
-      const block = blocks.nth(i);
-      const extension = (await block.getAttribute('class')).includes('osprey-ml') ? 'ospml' : 'osp';
-      const output = await executeExample(await block.textContent(), testInfo.outputPath(`effects-${i}.${extension}`));
-      expect(output).toBe(outputs[i]);
+      const [lang, source] = [await blocks.nth(i).getAttribute("class"), await blocks.nth(i).textContent()];
+      const extension = lang.includes("osprey-ml") ? "ospml" : lang.includes("python") ? "py" : "osp";
+      expect(await executeExample(source, testInfo.outputPath(`effects-${i}.${extension}`))).toBe(outputs[i]);
+      if (i === 0) expect(await exampleResult(source.replace("memory(true)(upgrade)", "upgrade()"), testInfo.outputPath("effects-unhandled.osp"))).toContain("unhandled effect operations at program entry: Files.read, Files.write");
     }
   });
 

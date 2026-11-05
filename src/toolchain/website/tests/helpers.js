@@ -1,4 +1,7 @@
 // Shared fixtures/data for the Osprey website e2e tests.
+const { mkdir, writeFile } = require("node:fs/promises");
+const { execFileSync } = require("node:child_process");
+const path = require("node:path");
 
 // Every distinct page template the site renders.
 const PAGES = [
@@ -86,4 +89,19 @@ function isKnown(pageName, text) {
   return KNOWN_ERRORS.some((k) => k.page === pageName && k.pattern.test(text));
 }
 
-module.exports = { PAGES, VIEWPORTS, collectProblems, paintedColours };
+async function executeExample(source, file) {
+  await mkdir(path.dirname(file), { recursive: true });
+  await writeFile(file, source);
+  return execFileSync(path.resolve("../../../target/release/osprey"), [file, "--run", "--quiet"], { cwd: path.dirname(file), encoding: "utf8", timeout: 20_000 });
+}
+
+// stdout of a program that runs, or the compiler's diagnostic for one it rejects.
+async function exampleResult(source, file) {
+  try {
+    return await executeExample(source, file);
+  } catch (error) {
+    return error.stderr.replace(`${file}: `, "");
+  }
+}
+
+module.exports = { PAGES, VIEWPORTS, collectProblems, paintedColours, executeExample, exampleResult };

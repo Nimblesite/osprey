@@ -2,110 +2,279 @@
 mlTwins: manual
 layout: page
 title: Algebraic effects
-description: Declare typed operations, choose reusable handlers, and keep application code unchanged across production, tests, web and mobile hosts.
+description: Effects abstract side effects. Functions say what they need; the caller picks the handler that does it, so tests swap the disk, network or database for a test double.
 permalink: /docs/effects/
-tags: [algebraic-effects, handlers, applications]
+tags: [algebraic-effects, handlers, applications, testing]
 ---
 
-{% from "native-capture.njk" import capture %}
+**Algebraic effects are abstractions for side effects.** A function says *what* it needs (read this file, write that one) with `perform`. The caller decides *how* by installing a handler. Production installs the real disk, network or database. A test installs a test double. A program that performs an effect with no handler does not compile.
 
-An algebraic effect is a typed request for work: read configuration, save an account, write a log. A handler supplies the implementation while a function runs. Application code can make those requests without passing service objects through every intermediate function.
+## A real example: the package manager's file system
 
-{{ capture("/assets/images/guides/python-effects.png", "A smaller handler example in the Python flavor: the same load function produces console or audit output.", "A smaller handler example in the Python flavor: the same load function produces console or audit output.", 1440, 920) }}
-
-## Choose storage at the application boundary
-
-A save callback calls application logic, which requests storage. Supply the implementation once around the callback:
+The Osprey package manager does all its file work through the `Files` effect in [`packages/manager/host/src/host.osp`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/manager/host/src/host.osp). The program below trims that effect to two operations and uses it for one job from the manager's install transaction: update the manifest, write the lock file, and put the old manifest back if the lock write fails.
 
 ```osprey
-{{ draftExample.default | safe }}
-```
-
-This prints `{{ draftExample.output }}` and writes `Ship it.` to `draft.txt` once. The call chain is `onSave` → `saveDraft` → `Drafts.save`. Neither intermediate function accepts or passes a storage object. A handler supplies the capability wherever it is requested during the call.
-
-`Drafts.save` declares the operation's arguments and result. `perform` requests it. `disk(onSave)` installs the disk implementation before calling `onSave`. Calling `onSave()` without a matching handler is a compile error, even though the request happens inside a helper.
-
-To test a storage failure, replace the handler's `writeFile(path, text)` with `Error { message: "offline" }`. The same callback then returns `Retry: offline` without writing a file. Choose the handler at the boundary; application code keeps the same calls and failure handling.
-
-Pass the function, not its result: `onSave()` would run before `disk` could answer. A real editor can install its storage handler once around an event loop.
-
-The same example in ML flavor:
-
-```osprey-ml
-{{ draftExample.ml | safe }}
-```
-
-This native example writes synchronously. In a mobile app, a value handler can describe a save command for the native host; completion arrives as another event.
-
-## Handle the rest of a block
-
-Use `handle` when a handler is local to one block:
-
-```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
-fn saveDraft() = match perform Drafts.save("draft.txt", "Ship it.") {
-    Success _ => "Saved"
-    Error { message } => "Retry: ${message}"
+// The file-system effect from the package manager's host boundary
+// (src/osprey/packages/manager/host/src/host.osp), trimmed to two operations.
+effect Files {
+    read: fn(string) -> Result<string, Error>
+    write: fn(string, string) -> Result<int, Error>
 }
 
-let message = {
-    handle Drafts { save _ _ => Error { message: "offline" } }
-    saveDraft()
-}
-print(message)
-```
-
-The handler covers the rest of the block, including requests made inside helpers. Nested handlers take precedence for the operations they implement. The old `handle … in …` and ML `handle … do …` forms are rejected.
-
-Handler arms run outside their own handler, so an arm can forward the same operation to an enclosing handler.
-
-{{ capture("/assets/images/guides/python-effect-error.png", "An operation without an installed handler is rejected before execution.", "An operation without an installed handler is rejected before execution.", 1440, 920) }}
-
-## Record work in a test
-
-```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
-fn saveDraft() = match perform Drafts.save("draft.txt", "Ship it.") {
-    Success _ => "Saved"
-    Error { message } => "Retry: ${message}"
-}
-
-mut captured = ""
-let recording = handler Drafts {
-    save _ text => {
-        captured = text
-        Success { value: byteLength(text) }
+// Application logic: change the manifest, then write the lock file. If the
+// lock write fails, put the old manifest back. It never touches a disk.
+fn commitLock(previous, lock) = match perform Files.write("osprey.lock", lock) {
+    Success _ => "installed"
+    Error { message } => match perform Files.write("osprey.toml", previous) {
+        Success _ => "rolled back: ${message}"
+        Error _ => "manifest left changed: ${message}"
     }
 }
-let saved = recording(saveDraft)
-print("${saved}: ${captured}")
+
+fn install(manifest, lock) = match perform Files.read("osprey.toml") {
+    Error { message } => "no manifest: ${message}"
+    Success { value } => match perform Files.write("osprey.toml", manifest) {
+        Error { message } => "manifest not written: ${message}"
+        Success _ => commitLock(value, lock)
+    }
+}
+
+// Production: the real disk.
+let disk = handler Files {
+    read path => readFile(path)
+    write path text => writeFile(path, text)
+}
+
+// Test double: an in-memory disk holding one manifest. It records every
+// write, and `full` makes the lock write fail.
+fn memory(full) = {
+    mut manifest = "version = 1"
+    mut written = ""
+    handler Files {
+        read _ => Success { value: manifest }
+        write path text => {
+            let denied = full && path == "osprey.lock"
+            manifest = if path == "osprey.toml" { text } else { manifest }
+            written = if denied { written } else { "${written}${path} " }
+            if denied { Error { message: "disk full" } } else { Success { value: byteLength(text) } }
+        }
+        return outcome => "${outcome} | ${written}| ${manifest}"
+    }
+}
+
+fn upgrade() = install("version = 2", "locked")
+
+test("a full disk rolls the manifest back", fn() =>
+    expect(memory(true)(upgrade), "rolled back: disk full | osprey.toml osprey.toml | version = 1"))
+test("a healthy disk writes manifest then lock", fn() =>
+    expect(memory(false)(upgrade), "installed | osprey.toml osprey.lock | version = 2"))
 ```
 
-The test records exactly what the editor asked storage to save and returns a successful byte count. No file is written. A function can return a handler that captures configuration or state. Every arm is type-checked, even arms the work never calls.
+```text
+ok 1 - a full disk rolls the manifest back
+ok 2 - a healthy disk writes manifest then lock
+1..2
+# tests=2 passed=2 failed=0 skipped=0
+```
 
-## Select static interpretation
+- `effect Files` lists the operations and their types. It's the interface to the outside world.
+- `install` and `commitLock` call `perform Files.read(...)` and `perform Files.write(...)`. They don't take a file-system parameter, and they never name the disk.
+- `disk` is the production handler. `disk(upgrade)` runs `upgrade` against real files.
+- `memory(full)` is a test double. It builds a fresh in-memory disk, records every write, and can be told to fail the lock write. Its `return` clause adds what it saw to the result.
 
-A value handler can be selected for compilation with `static`:
+## Test doubles are just handlers
+
+You don't need a mocking library, dependency injection or an interface threaded through every call. To control a side effect in a test, run the code under a different handler:
+
+- **Stub:** return canned answers, for example a fixed manifest from `read`.
+- **Fake:** keep working state in the handler, like the in-memory `manifest` above.
+- **Spy:** record what the code asked for, like `written` above. The test can then check the order of the writes.
+- **Failure injection:** return `Error` from the operation you want to break. That's how the first test checks the rollback.
+
+The code under test is the same code that runs in production. If someone breaks the rollback (for example, by restoring the manifest to the wrong path), the test reports it:
+
+```text
+# expect failed: expected rolled back: disk full | osprey.toml osprey.toml | version = 1, got rolled back: disk full | osprey.toml x | version = 2
+not ok 1 - a full disk rolls the manifest back
+```
+
+The package manager's own tests work this way. [`dispatch_tests.osp`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/packages/manager/cli/tests/src/dispatch_tests.osp) runs the CLI under `healthyFiles()` and `brokenFiles()` handlers, so no test touches a real process, file or terminal. In the modules example, [`accounts.test.ospml`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/projects/modules/test/accounts.test.ospml) uses a spy handler to prove that an invalid payment never reaches storage.
+
+## Python flavor
+
+In Python flavor, `@effect` declares the effect, `perform(...)` asks for an operation, and `@handler(Files)` turns a class into a handler. Run work under a handler by calling it, `full_disk(upgrade)`, or with a `with` block:
+
+```python
+# osprey: flavor=python
+
+# The package manager's file-system effect, in Python flavor.
+@effect
+class Files:
+    def read(path: str) -> Result[str, Error]: ...
+    def write(path: str, text: str) -> Result[int, Error]: ...
+
+
+def commit_lock(previous, lock):
+    match perform(Files.write("osprey.lock", lock)):
+        case Success():
+            return "installed"
+        case Error(message=message):
+            match perform(Files.write("osprey.toml", previous)):
+                case Success():
+                    return f"rolled back: {message}"
+                case Error():
+                    return f"manifest left changed: {message}"
+
+
+def install(manifest, lock):
+    match perform(Files.read("osprey.toml")):
+        case Error(message=message):
+            return f"no manifest: {message}"
+        case Success(value=previous):
+            match perform(Files.write("osprey.toml", manifest)):
+                case Error(message=message):
+                    return f"manifest not written: {message}"
+                case Success():
+                    return commit_lock(previous, lock)
+
+
+# Production: the real disk.
+@handler(Files)
+class disk:
+    def read(path):
+        return readFile(path)
+
+    def write(path, text):
+        return writeFile(path, text)
+
+
+# Test doubles: canned disks, no files touched.
+@handler(Files)
+class healthy_disk:
+    def read(_path):
+        return Success(value="version = 1")
+
+    def write(_path, text):
+        return Success(value=byteLength(text))
+
+
+@handler(Files)
+class full_disk:
+    def read(_path):
+        return Success(value="version = 1")
+
+    def write(path, text):
+        return Error(message="disk full") if path == "osprey.lock" else Success(value=byteLength(text))
+
+
+@handler(Files)
+class read_only_disk:
+    def read(_path):
+        return Success(value="version = 1")
+
+    def write(_path, _text):
+        return Error(message="read-only")
+
+
+def upgrade():
+    return install("version = 2", "locked")
+
+
+def main():
+    test("a healthy disk installs", lambda: expect(healthy_disk(upgrade), "installed"))
+    test("a full disk rolls the manifest back", lambda: expect(full_disk(upgrade), "rolled back: disk full"))
+    with read_only_disk:
+        test("a read-only disk changes nothing", lambda: expect(upgrade(), "manifest not written: read-only"))
+```
+
+```text
+ok 1 - a healthy disk installs
+ok 2 - a full disk rolls the manifest back
+ok 3 - a read-only disk changes nothing
+1..3
+# tests=3 passed=3 failed=0 skipped=0
+```
+
+Each test double is a small class with one method per operation. `install` is ordinary Python-shaped code that has no idea which disk it is using. See [Python flavor](/docs/python-flavor/#effects-and-handlers) for the full syntax.
+
+## ML flavor
+
+```osprey-ml
+// The file-system effect from the package manager's host boundary
+// (src/osprey/packages/manager/host/src/host.osp), trimmed to two operations.
+effect Files
+    read : string => Result<string, Error>
+    write : (string, string) => Result<int, Error>
+
+// Application logic: change the manifest, then write the lock file. If the
+// lock write fails, put the old manifest back. It never touches a disk.
+commitLock previous lock = match perform Files.write "osprey.lock" lock
+    Success _ => "installed"
+    Error message => match perform Files.write "osprey.toml" previous
+        Success _ => "rolled back: ${message}"
+        Error _ => "manifest left changed: ${message}"
+
+install manifest lock = match perform Files.read "osprey.toml"
+    Error message => "no manifest: ${message}"
+    Success value => match perform Files.write "osprey.toml" manifest
+        Error message => "manifest not written: ${message}"
+        Success _ => commitLock value lock
+
+// Production: the real disk.
+disk = handler Files
+    read path => readFile path
+    write path text => writeFile path text
+
+// Test double: an in-memory disk holding one manifest. It records every
+// write, and `full` makes the lock write fail.
+memory full =
+    mut manifest = "version = 1"
+    mut written = ""
+    handler Files
+        read _ => Success(value = manifest)
+        write path text =>
+            manifest := match path == "osprey.toml"
+                true => text
+                false => manifest
+            match full && path == "osprey.lock"
+                true => Error(message = "disk full")
+                false =>
+                    written := "${written}${path} "
+                    Success(value = byteLength text)
+        return outcome => "${outcome} | ${written}| ${manifest}"
+
+upgrade () = install "version = 2" "locked"
+
+test "a full disk rolls the manifest back" (\() => expect (memory true upgrade) "rolled back: disk full | osprey.toml osprey.toml | version = 1")
+test "a healthy disk writes manifest then lock" (\() => expect (memory false upgrade) "installed | osprey.toml osprey.lock | version = 2")
+```
+
+## A missing handler is a compile error
+
+Remove `disk(...)` around a call that performs `Files`, and the compiler stops before anything runs:
+
+```text
+unhandled effect operations at program entry: Files.read; add a matching `handle`
+```
+
+This is checked through helpers, lambdas and fibers, so production code can't accidentally run without its real implementation, and a test can't accidentally touch the real one.
+
+## Other handler forms
+
+`handle` installs a handler for the rest of a block:
 
 ```osprey
-effect DraftConfig { autosaveSeconds: fn() -> int }
-fn relay(callback) -> int !e = callback()
-fn work() !DraftConfig = perform DraftConfig.autosaveSeconds()
+effect Files { read: fn(string) -> Result<string, Error> }
+fn manifest() = perform Files.read("osprey.toml") ?: "missing"
 
-let answer = {
-    handle static DraftConfig { autosaveSeconds => 30 }
-    relay(work)
+let shown = {
+    handle Files { read _ => Success { value: "version = 3" } }
+    manifest()
 }
-print(answer)
+print(shown)
 ```
 
-This prints `30`. `handle static` removes the handled effect's dispatch during compilation; ordinary calls and computation remain. Static handlers accept value operations only, and their arms cannot call runtime builtins such as `print`.
-
-`!DraftConfig` declares an allowed effect and `!e` passes the callback's requirements through `relay`. Most code leaves both inferred. Open rows like `!e` are a closed-program prototype; effect rows are not yet part of function types.
-
-## Choose value or control operations explicitly
-
-An ordinary operation returns its arm's value to `perform`, and the calling function continues. A declared `control` operation suspends the remainder of the computation. Its handler can resume it once or return an answer without continuing it:
+A `control` operation can suspend the caller. Its handler either calls `resume(value)` to continue it or returns its own answer. Dynamic control handlers need the native target.
 
 ```osprey
 effect Confirm { control ask: fn() -> bool }
@@ -121,32 +290,26 @@ print("${proceed(submit)} / ${stop(submit)}")
 // Submitted / Cancelled
 ```
 
-The declaration chooses the mode, never the presence of `resume` in an arm. Dynamic control handlers require the native target; WebAssembly and mobile apps use value handlers or static interpretation.
-
-A handler can also transform normal completion with a `return` clause:
+`handle static` resolves a value handler at compile time, so no handler lookup happens at run time. GPT-2 uses this to choose its [CPU or GPU tensor backend](/docs/python-flavor/#cpu-or-gpu-is-a-handler).
 
 ```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
-fn saveDraft() = match perform Drafts.save("draft.txt", "Ship it.") {
-    Success _ => "Saved"
-    Error { message } => "Retry: ${message}"
-}
+effect DraftConfig { autosaveSeconds: fn() -> int }
+fn relay(callback) -> int !e = callback()
+fn work() !DraftConfig = perform DraftConfig.autosaveSeconds()
 
-let report = handler Drafts {
-    save _ text => Success { value: byteLength(text) }
-    return message => "Report: ${message}"
+let answer = {
+    handle static DraftConfig { autosaveSeconds => 30 }
+    relay(work)
 }
-print(report(saveDraft))
+print(answer)
 ```
 
-## Arithmetic needs a policy
+Integer arithmetic performs the built-in `Arith` effect on overflow and division by zero, so you choose the policy. For example, `handler Arith { overflow _ _ _ wrapped => wrapped }` wraps. See [arithmetic effects](/spec/0037-arithmeticeffects/).
 
-Integer `+`, `-` and `*` request the built-in `Arith` effect on overflow, and `/` and `%` request it on a zero divisor, so `fn double(n) = n * 2` needs an `Arith` handler around its callers: `handler Arith { overflow _ _ _ wrapped => wrapped }` wraps. Constant expressions and division by non-zero literals need none. See [arithmetic effects](/spec/0037-arithmeticeffects/).
+## Where effects are used
 
-## Application examples
+- [Talon Bank](/docs/web-apps/#algebraic-effects-what-runs-where) uses handlers for server storage and auditing, and for its browser boundary.
+- [Issue Inbox](/docs/mobile-apps/#application-effects) turns application requests into commands for its Swift and Android hosts.
+- [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers) cover factories, control flow, return clauses and static selection.
 
-- [Talon Bank](/docs/web-apps/#algebraic-effects-what-runs-where) uses handlers for server storage and audit work, and for its browser application boundary. Browser commands carry asynchronous work to JavaScript.
-- [Issue Inbox](/docs/mobile-apps/#application-effects) uses handlers to turn application requests into commands for the Swift and Android hosts. Platform completion arrives as another event.
-- [Runnable handler examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/handlers) cover factories, control flow, return clauses and static selection, alongside executable Koka and OCaml comparisons.
-
-Everything above works in Default and ML; the [Python flavor](/docs/python-flavor/#effects-and-handlers) spells the same effects with `@effect` classes, `perform(...)`, handler classes and `with`. [Feature status](/status/#algebraic-effects) lists what remains unfinished; the [effects specification](/spec/0017-algebraiceffects/) defines the full contract.
+[Feature status](/status/#algebraic-effects) lists what remains unfinished. The [effects specification](/spec/0017-algebraiceffects/) defines the full contract.
