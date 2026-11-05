@@ -265,7 +265,7 @@
         "language": "osprey"
       },
       "einops": {
-        "threshold": 95.3,
+        "threshold": 96.4,
         "language": "osprey"
       },
       "faiss": {
