@@ -35,7 +35,7 @@ def dispatch(routes, request):
         case Success(value=path):
             return select(routes, request, path)
         case Error(message=message):
-            return E.http_exception(E.exception(400, message, ""))
+            return E.exception_response(E.exception(400, message, ""))
 
 
 def select(routes, request, path):
@@ -89,4 +89,4 @@ def redirect_request(request):
                 case Error():
                     return R.redirect(path)
         case Error(message=message):
-            return E.http_exception(E.exception(400, message, ""))
+            return E.exception_response(E.exception(400, message, ""))

@@ -202,13 +202,13 @@ def json_error(source, message):
             reason = drop(drop(message, len(prefix)), satAdd(end, 2))
             return json_error_location(B.bind(number, lambda offset: json_location(source, offset)), json_reason(reason))
         case Error():
-            return E.http_exception(E.exception(500, message, ""))
+            return E.exception_response(E.exception(500, message, ""))
 
 
 def json_error_location(position, reason):
     match position:
         case Error(message=message):
-            return E.http_exception(E.exception(500, message, ""))
+            return E.exception_response(E.exception(500, message, ""))
         case Success(value=offset):
             error = JsonObject([JsonMember("type", JsonString("json_invalid")), JsonMember("loc", JsonArray([JsonString("body"), JsonInt(offset)])), JsonMember("msg", JsonString("JSON decode error")), JsonMember("input", JsonObject([])), JsonMember("ctx", JsonObject([JsonMember("error", JsonString(reason))]))])
             return E.json_response(422, JsonObject([JsonMember("detail", JsonArray([error]))]), "")

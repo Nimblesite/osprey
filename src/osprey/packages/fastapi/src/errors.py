@@ -6,7 +6,7 @@ from fastapi import Models as M
 from fastapi import Responses as R
 from fastapi import Results as B
 
-__all__ = ["exception", "http_exception", "validation", "issue", "json_response"]
+__all__ = ["exception", "exception_response", "validation", "issue", "json_response"]
 
 
 def exception(status_code, detail, headers):
@@ -23,7 +23,7 @@ def json_response(status, document, headers):
             return R.response(500, "Internal Server Error", "text/plain; charset=utf-8", "")
 
 
-def http_exception(error):
+def exception_response(error):
     """Render a typed HTTP exception as a JSON detail response."""
     return json_response(error.status_code, JsonObject([JsonMember("detail", JsonString(error.detail))]), error.headers)
 

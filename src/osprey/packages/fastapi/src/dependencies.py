@@ -123,7 +123,7 @@ def rendered(outcome, request, endpoint):
         case M.Provided(value=values):
             return endpoint(request, values)
         case M.Rejected(error=error):
-            return E.http_exception(error)
+            return E.exception_response(error)
         case M.DependencyInvalid(issues=issues):
             return E.validation(issues)
 
@@ -146,7 +146,7 @@ def cleanup(graph, acquired, response):
                 case M.Provided():
                     return cleanup(graph, tail, response)
                 case M.Rejected(error=error):
-                    return cleanup(graph, tail, E.http_exception(error))
+                    return cleanup(graph, tail, E.exception_response(error))
                 case M.DependencyInvalid(issues=issues):
                     return cleanup(graph, tail, E.validation(issues))
 

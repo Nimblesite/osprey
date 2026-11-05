@@ -62,9 +62,9 @@ def bundle(request):
                 case Success(value=tags):
                     return E.json_response(200, JsonObject([JsonMember("path", JsonString(path)), JsonMember("tags", JsonArray(mapList(tags, lambda tag: JsonString(tag))))]), "")
                 case Error(message=message):
-                    return E.http_exception(E.exception(400, message, ""))
+                    return E.exception_response(E.exception(400, message, ""))
         case Error(message=message):
-            return E.http_exception(E.exception(400, message, ""))
+            return E.exception_response(E.exception(400, message, ""))
 
 def me(_request):
     return E.json_response(200, JsonObject([JsonMember("value", JsonString("me"))]), "")
@@ -74,7 +74,7 @@ def ordered(request):
         case Success(value=text):
             return E.json_response(200, JsonObject([JsonMember("value", JsonString(text))]), "")
         case Error(message=message):
-            return E.http_exception(E.exception(400, message, ""))
+            return E.exception_response(E.exception(400, message, ""))
 
 def metrics(_request):
     return E.json_response(200, JsonObject([JsonMember("latency", JsonFloat(exp(1000.0)))]), "")
@@ -95,7 +95,7 @@ def reset_trace(path, request, next: Callable[[M.Request], M.Response]):
             case Success():
                 return next(request)
             case Error(message=message):
-                return E.http_exception(E.exception(500, message, ""))
+                return E.exception_response(E.exception(500, message, ""))
 
 def logged(path, message, result):
     match readFile(path):
@@ -195,23 +195,23 @@ def dependency_response(_request, values):
                 case SessionValue(id=identity):
                     return identity_response(identity, second, third)
                 case _:
-                    return E.http_exception(E.exception(500, "Expected session value", ""))
+                    return E.exception_response(E.exception(500, "Expected session value", ""))
         case _:
-            return E.http_exception(E.exception(500, "Expected three resolved dependencies", ""))
+            return E.exception_response(E.exception(500, "Expected three resolved dependencies", ""))
 
 def identity_response(first, person, spend):
     match person:
         case IdentityValue(id=identity, role=role):
             return credit_response(first, identity, role, spend)
         case _:
-            return E.http_exception(E.exception(500, "Expected identity value", ""))
+            return E.exception_response(E.exception(500, "Expected identity value", ""))
 
 def credit_response(first, second, role, spend):
     match spend:
         case CreditValue(id=identity, credit=credit):
             return E.json_response(200, JsonObject([JsonMember("session_ids", JsonArray([JsonInt(first), JsonInt(second), JsonInt(identity)])), JsonMember("role", JsonString(role)), JsonMember("credit", JsonInt(credit))]), "")
         case _:
-            return E.http_exception(E.exception(500, "Expected credit value", ""))
+            return E.exception_response(E.exception(500, "Expected credit value", ""))
 
 def sessions_response(_request, values):
     match values:
@@ -220,16 +220,16 @@ def sessions_response(_request, values):
                 case SessionValue(id=identity):
                     return second_session_response(identity, second)
                 case _:
-                    return E.http_exception(E.exception(500, "Expected first session value", ""))
+                    return E.exception_response(E.exception(500, "Expected first session value", ""))
         case _:
-            return E.http_exception(E.exception(500, "Expected two session dependencies", ""))
+            return E.exception_response(E.exception(500, "Expected two session dependencies", ""))
 
 def second_session_response(first, second):
     match second:
         case SessionValue(id=identity):
             return E.json_response(200, JsonObject([JsonMember("session_ids", JsonArray([JsonInt(first), JsonInt(identity)]))]), "")
         case _:
-            return E.http_exception(E.exception(500, "Expected second session value", ""))
+            return E.exception_response(E.exception(500, "Expected second session value", ""))
 
 def trace_response(path, _request):
     match trace_lines(path):
@@ -237,7 +237,7 @@ def trace_response(path, _request):
             lines = filterList(trace, lambda line: line != "")
             return E.json_response(200, JsonObject([JsonMember("trace", JsonArray(mapList(lines, lambda line: JsonString(line))))]), "")
         case Error(message=error):
-            return E.http_exception(E.exception(500, error, ""))
+            return E.exception_response(E.exception(500, error, ""))
 
 def passthrough(_request, children):
     match listGet(children, 0):
@@ -251,14 +251,14 @@ def credit_single_response(_request, values):
         case [credit]:
             return credit_single_value(credit)
         case _:
-            return E.http_exception(E.exception(500, "Expected credit dependency", ""))
+            return E.exception_response(E.exception(500, "Expected credit dependency", ""))
 
 def credit_single_value(credit_value):
     match credit_value:
         case CreditValue(id=identity, role=role):
             return credit_response(identity, identity, role, credit_value)
         case _:
-            return E.http_exception(E.exception(500, "Expected credit value", ""))
+            return E.exception_response(E.exception(500, "Expected credit value", ""))
 
 def number_provider(path, request, children, header, label):
     parsed = V.integer(["header", toLowerCase(header)], P.header(request, header), -9223372036854775807, 9223372036854775807)
@@ -282,9 +282,9 @@ def sum_response(_request, values):
                 case NumberValue(number=number):
                     return sum_second(number, second)
                 case _:
-                    return E.http_exception(E.exception(500, "Expected first number", ""))
+                    return E.exception_response(E.exception(500, "Expected first number", ""))
         case _:
-            return E.http_exception(E.exception(500, "Expected two numbers", ""))
+            return E.exception_response(E.exception(500, "Expected two numbers", ""))
 
 def sum_second(first, second):
     match second:
@@ -293,9 +293,9 @@ def sum_second(first, second):
                 case Success(value=total):
                     return E.json_response(200, JsonObject([JsonMember("sum", JsonInt(total))]), "")
                 case Error(message=error):
-                    return E.http_exception(E.exception(500, error, ""))
+                    return E.exception_response(E.exception(500, error, ""))
         case _:
-            return E.http_exception(E.exception(500, "Expected second number", ""))
+            return E.exception_response(E.exception(500, "Expected second number", ""))
 
 def failing_close(path, resource, validation):
     closed = close_session(path, resource)

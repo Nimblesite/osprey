@@ -58,7 +58,7 @@ def native_request(app, method, url, headers, body):
         case Success(value=decoded):
             return R.native(dispatch(app, M.Request(method=method, url=url, headers=decoded, body=body, path_params={})))
         case Error(message=message):
-            return R.native(E.http_exception(E.exception(500, message, "")))
+            return R.native(E.exception_response(E.exception(500, message, "")))
 
 
 # Implements [FASTAPI-NAP-MIDDLEWARE]. Adapted Starlette policy: see NOTICE.md.
