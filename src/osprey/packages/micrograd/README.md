@@ -2,7 +2,7 @@
 
 A port of [karpathy/micrograd](https://github.com/karpathy/micrograd) (PyPI 0.1.0, MIT), plus the `tanh`/`exp` ops Karpathy adds in the nn-zero-to-hero micrograd lecture, to Osprey's Python flavor.
 
-micrograd's `Value` is a mutable graph of `grad` fields and `_backward` closures. Osprey values are immutable, so the port keeps the same semantics in one immutable graph **arena**: a `Graph` record holds every node ever built, in creation order, and a node's id is its index. Every operation appends its nodes exactly as micrograd's operators construct `Value`s — including the leaf a bare Python number is wrapped into — and returns the extended graph. `backward` computes the gradient of every node using micrograd's own depth-first topological order and chain-rule accumulation, so float64 gradients match micrograd bit for bit (compared at rtol 1e-12, 1e-9 for `tanh`/`exp` cases).
+micrograd's `Value` is a mutable graph of `grad` fields and `_backward` closures. Osprey values are immutable, so the port keeps the same semantics in one immutable graph **arena**: a `Graph` record holds every node ever built, in creation order, and a node's id is its index. Every operation appends its nodes exactly as micrograd's operators construct `Value`s — including the leaf a bare Python number is wrapped into — and returns the extended graph. `backward` computes the gradient of every node using micrograd's own depth-first topological order and chain-rule accumulation, so float64 gradients are checked against micrograd at rtol 1e-12, or 1e-9 for `tanh`/`exp` and mixed transcendental cases.
 
 ## Engine (`micrograd.Engine`)
 
@@ -35,7 +35,7 @@ micrograd's `Value` is a mutable graph of `grad` fields and `_backward` closures
 | `parameters(m)` | `MLP.parameters()` | Weights then bias, per neuron, per layer — ids 0..`param_count`-1 on a fresh graph |
 | `sgd_step(params, grads, ids, lr)` | `p.data += -lr * p.grad` | Returns the new parameter list instead of mutating |
 
-The oracle in `src/osprey/packages/micrograd/oracle/micrograd.cpython` installs real micrograd into the CPython venv, seeds `random.seed(1337)`, and writes `tests/expected.py` from real micrograd + torch. The suite covers micrograd's own `test_engine.py` cases (`sanity_check`, `more_ops`), an `MLP(3, [4, 4, 1])` forward/backward, 20 README-demo SGD steps, a 12-step tanh network, and a double-backward case.
+The oracle in `src/osprey/packages/micrograd/oracle/micrograd.cpython` installs real micrograd into the CPython venv, seeds `random.seed(1337)`, and writes `tests/expected.py` from real micrograd + torch. The suite has 1,670 assertions: micrograd's own `test_engine.py` cases (`sanity_check`, `more_ops`), 147 scalar-graph permutations, two MLP shapes, every parameter gradient across 20 README-demo SGD steps, a 12-step tanh network, and six repeated-backward scenarios. The original 548 assertions remain; the added 1,122 use independently generated reference values. Both GC and ARC match the complete golden, and ARC exits with zero live objects.
 
 ## Divergences
 

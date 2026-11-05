@@ -23,15 +23,11 @@ tests/expected.py through the shared writer in src/osprey/packages/testing/oracl
 """
 
 import math
-import os
 import random
-import sys
 from importlib.metadata import version
 
-from expected_module import write
-
-import micrograd
 import torch
+from expected_module import write
 from micrograd.engine import Value
 from micrograd.nn import MLP
 
@@ -162,9 +158,52 @@ OP_CASES = [
     ("op.tanh_mul", [-4.0, 2.0], lambda a, b: a.tanh() * b),
     ("op.exp_add", [-4.0, 2.0], lambda a, b: b.exp() + a),
 ]
+# --- Extra op permutations: reused nodes, branching, ReLU signs, powers,
+# signs and long mixed graphs (11 shapes x 10 input variants). ---
+
+EXTRA_VARIANTS = [[3.0, 2.0], [-3.0, 2.0], [3.0, -2.0], [-3.0, -2.0], [0.0, 2.0],
+                  [-0.0, 2.0], [1.0, -1.0], [-1.0, 0.5], [2.5, 0.5], [-2.5, -0.5]]
+EXTRA_SHAPES = ["relu", "relu_mix", "branch", "powers", "powmix", "reuse_mul", "reuse_add", "reuse_tanh", "exp_mix", "long_mixed", "signs"]
+
+
+def extra_ref(shape, a, b):
+    """One extra case's micrograd expression, by shape index."""
+    if shape == 0:
+        return a.relu() + b.relu()
+    elif shape == 1:
+        return a.relu() * b.relu() + a - b
+    elif shape == 2:
+        return (a + b).relu() * (a - b).relu()
+    elif shape == 3:
+        return a**3 + a**2 * b - a * b**2 + b**3
+    elif shape == 4:
+        return (a + b) ** 2 * (a - b) + (a * b) ** 2
+    elif shape == 5:
+        z = a * b
+        return z * z + z * a + z * b
+    elif shape == 6:
+        z = a + b
+        return z * z + z * a + z * b
+    elif shape == 7:
+        t = a.tanh()
+        return t * t + t * b
+    elif shape == 8:
+        e = b.exp()
+        return e * b + e * a
+    elif shape == 9:
+        return (((a * b + a) * (a - b) + (a + b).relu()) * (a**2 + b) - a.tanh()) / (b**2 + 2.0)
+    else:
+        return -((a - b) * (a + b)) + a * b - a / b
+
+
+EXTRA_OP_CASES = [(f"op.{shape}.{variant}", inputs, lambda a, b, s=index: extra_ref(s, a, b))
+                  for index, shape in enumerate(EXTRA_SHAPES) for variant, inputs in enumerate(EXTRA_VARIANTS)]
+OP_CASES = OP_CASES + EXTRA_OP_CASES
+
+
 # Everything the tanh/exp ops touch compares at 1e-9; the rest is exact
 # arithmetic and compares at 1e-12 ([PORT-TEST-ORACLE]).
-OP_RTOL = [1e-9 if "tanh" in name or "exp" in name else 1e-12 for name, _, _ in OP_CASES]
+OP_RTOL = [1e-9 if "tanh" in name or "exp" in name or "long" in name else 1e-12 for name, _, _ in OP_CASES]
 
 
 # --- Case: test_engine.py's test_sanity_check and test_more_ops ---
@@ -255,20 +294,38 @@ def demo_loss(n, xs, ys):
 
 def readme_training_case():
     """20 README demo SGD steps: the loss before every update and once after,
-    then the final parameters and predictions."""
+    the parameter gradients each step, then the final parameters and predictions."""
     random.seed(1337)
     n = MLP(3, [4, 4, 1])
     losses = []
+    step_grads = []
     for _ in range(20):
         loss, _ = demo_loss(n, DATASET_X, DATASET_Y)
         losses.append(float(loss.data))
         n.zero_grad()
         loss.backward()
+        step_grads.append([float(p.grad) for p in n.parameters()])
         for p in n.parameters():
             p.data += -0.05 * p.grad
     loss, ypred = demo_loss(n, DATASET_X, DATASET_Y)
     losses.append(float(loss.data))
-    return losses, [float(p.data) for p in n.parameters()], [float(y.data) for y in ypred]
+    return losses, [float(p.data) for p in n.parameters()], [float(y.data) for y in ypred], step_grads
+
+
+# --- Case: a second MLP architecture, forward and backward ---
+
+MLP2_NIN = 2
+MLP2_NOUTS = [3, 2, 1]
+
+def mlp2_forward_case():
+    """MLP(2, [3, 2, 1]) seeded with random.seed(2024), forward and backward
+    over (0.5, -1.5); every created Value's data and grad."""
+    random.seed(2024)
+    n = MLP(MLP2_NIN, MLP2_NOUTS)
+    weights = [float(p.data) for p in n.parameters()]
+    ypred = n([0.5, -1.5])
+    ypred.backward()
+    return weights, [float(v.data) for v in CREATED], [float(v.grad) for v in CREATED]
 
 
 # --- Case: a tiny tanh network, trained ---
@@ -333,6 +390,62 @@ def twice_case():
     return once, [float(a.grad), float(b.grad)]
 
 
+# --- Case: repeated backward over reused, branching and mixed graphs ---
+
+REPEAT_INPUTS = [[-4.0, 2.0], [-3.0, 2.0], [-2.0, 3.0], [0.5, -1.5], [-1.5, 2.5], [1.5, -0.5]]
+
+
+def repeat_chain(a, b):
+    """y = a*b + a: one root."""
+    return [a * b + a]
+
+
+def repeat_branch(a, b):
+    """z = a + b; z*z: a reused subexpression."""
+    z = a + b
+    return [z * z]
+
+
+def repeat_relu(a, b):
+    """relu(a + b) * (a - b): a branch with a ReLU."""
+    return [(a + b).relu() * (a - b)]
+
+
+def repeat_tanh(a, b):
+    """tanh(a)*b + tanh(a): a reused tanh node."""
+    t = a.tanh()
+    return [t * b + t]
+
+
+def repeat_shared(a, b):
+    """u = a*b; u + a and u*b: two roots over one shared node."""
+    u = a * b
+    return [u + a, u * b]
+
+
+def repeat_mixed(a, b):
+    """A long reused graph with an intermediate root."""
+    z = a * b + a
+    return [z.relu() * z + z.tanh() * a, z]
+
+
+REPEAT_SPECS = [(inputs, build, calls) for inputs, (build, calls) in zip(REPEAT_INPUTS,
+    [(repeat_chain, [0, 0, 0]), (repeat_branch, [0, 0]), (repeat_relu, [0, 0]), (repeat_tanh, [0, 0]), (repeat_shared, [0, 1, 0]), (repeat_mixed, [0, 0, 1])])]
+
+
+def repeat_case(inputs, build, calls):
+    """Build one graph, then backward through each root in turn without
+    zero_grad, recording both input gradients after every call."""
+    a = Value(inputs[0])
+    b = Value(inputs[1])
+    roots = build(a, b)
+    rows = []
+    for index in calls:
+        roots[index].backward()
+        rows.append([float(a.grad), float(b.grad)])
+    return rows
+
+
 # --- Emit expected.py ---
 
 def main():
@@ -345,28 +458,36 @@ def main():
     CREATED.clear()
     mlp_weights, mlp_data, mlp_grads = mlp_forward_case()
     CREATED.clear()
-    train_losses, train_params, train_preds = readme_training_case()
+    mlp2_weights, mlp2_data, mlp2_grads = mlp2_forward_case()
+    CREATED.clear()
+    train_losses, train_params, train_preds, train_step_grads = readme_training_case()
     CREATED.clear()
     tanh_init_loss, tanh_init_grads, tanh_losses, tanh_w = tanh_training_case()
     CREATED.clear()
     twice_once, twice_twice = twice_case()
+    repeat_want = [repeat_case(inputs, build, calls) for inputs, build, calls in REPEAT_SPECS]
 
     summary = (
         "Values the real micrograd computed: every op's data and gradients, "
-        "micrograd's own test_engine.py cases, an MLP(3,[4,4,1]) forward/backward, "
-        "20 README-demo SGD steps, a 12-step tanh network and a double backward."
+        "110 extra op permutations (ReLU signs, powers, reused nodes, branching, "
+        "long mixed graphs), micrograd's own test_engine.py cases, two MLP "
+        "forward/backwards, 20 README-demo SGD steps with per-step gradients, a "
+        "12-step tanh network, a double backward and six repeated-backward cases."
     )
     write("micrograd", summary, {"micrograd": version("micrograd"), "torch": torch.__version__}, {
         "OP_WANT": op_want, "OP_RTOL": OP_RTOL,
         "SANITY_DATA": sanity_data, "SANITY_GRADS": sanity_grads, "SANITY_TORCH": sanity_torch,
         "MORE_DATA": more_data, "MORE_GRADS": more_grads, "MORE_TORCH": more_torch,
         "MLP_WEIGHTS": mlp_weights, "MLP_FORWARD_DATA": mlp_data, "MLP_FORWARD_GRADS": mlp_grads,
+        "MLP2_WEIGHTS": mlp2_weights, "MLP2_FORWARD_DATA": mlp2_data, "MLP2_FORWARD_GRADS": mlp2_grads,
         "DATASET_X": DATASET_X, "DATASET_Y": DATASET_Y,
         "TRAIN_LOSSES": train_losses, "TRAIN_PARAMS": train_params, "TRAIN_PREDS": train_preds,
+        "TRAIN_STEP_GRADS": train_step_grads,
         "TANH_W0": TANH_W0, "TANH_X": TANH_X, "TANH_Y": TANH_Y,
         "TANH_INIT_LOSS": tanh_init_loss, "TANH_INIT_GRADS": tanh_init_grads,
         "TANH_LOSSES": tanh_losses, "TANH_W": tanh_w,
         "TWICE_ONCE": twice_once, "TWICE_TWICE": twice_twice,
+        "REPEAT_INPUTS": REPEAT_INPUTS, "REPEAT_WANT": repeat_want,
     })
     print("wrote src/osprey/packages/micrograd/tests/expected.py")
 

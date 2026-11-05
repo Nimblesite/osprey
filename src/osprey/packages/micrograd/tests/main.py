@@ -1,8 +1,12 @@
 # osprey: flavor=python
-"""The @osprey/micrograd suite: micrograd's own test_engine.py cases, the
-README demo and a tiny tanh network, each computed node for node against
-src/osprey/packages/micrograd/oracle/micrograd.cpython's real-micrograd values. Float comparisons use
-numpy's isclose rule at rtol 1e-12 (1e-9 for tanh/exp cases), atol 0."""
+"""The @osprey/micrograd suite: 147 op cases (the original 37 plus 110
+permutations over ReLU signs, powers, reused nodes, branching and long mixed
+graphs), micrograd's own test_engine.py cases, two MLP forward/backwards, the
+README demo's 20 SGD steps with per-step gradients, a tiny tanh network, a
+double backward and six repeated-backward cases, each computed node for node
+against src/osprey/packages/micrograd/oracle/micrograd.cpython's real-micrograd values.
+Float comparisons use numpy's isclose rule at rtol 1e-12 (1e-9 for tanh/exp
+cases), atol 0."""
 
 from micrograd import Engine, Libm, NN
 from micrograd_expected import Expected
@@ -17,9 +21,10 @@ class ForwardAll:
 
 
 class TrainState:
-    """The README demo's loop state: parameters and the losses seen so far."""
+    """The README demo's loop state: parameters, losses and per-step gradients."""
     params: list[float]
     losses: list[float]
+    grads: list[list[float]]
 
 
 class TanhState:
@@ -41,12 +46,6 @@ class MoreState:
     bid: int
     cid: int
     did: int
-
-
-def list_cases(name, got, want, rtol):
-    """One `close` per element plus a length check, so a wrong node is named."""
-    elems = fold(range(len(want)), [], lambda acc, i: listAppend(acc, Check.close(name + "." + toString(i), unwrap_or(listGet(got, i), 0.0), unwrap_or(listGet(want, i), 0.0), rtol, 0.0)))
-    return listAppend(elems, Check.truth(name + ".length", len(got) == len(want), "length mismatch"))
 
 
 def arena_cases():
@@ -177,7 +176,7 @@ def sanity_cases():
     yid = unwrap_or(listGet(done.outs, 1), 0)
     grads = Engine.backward(y, yid)
     datas = toList(map(range(Engine.size(y)), lambda i: Engine.data(y, i)))
-    return listConcat(listConcat(list_cases("sanity.data", datas, Expected.SANITY_DATA, 1e-12), list_cases("sanity.grads", grads, Expected.SANITY_GRADS, 1e-12)), [
+    return listConcat(listConcat(Ops.list_cases("sanity.data", datas, Expected.SANITY_DATA, 1e-12), Ops.list_cases("sanity.grads", grads, Expected.SANITY_GRADS, 1e-12)), [
         Check.close("sanity.torch.data", Engine.data(y, yid), unwrap_or(listGet(Expected.SANITY_TORCH, 0), 0.0), 1e-12, 0.0),
         Check.close("sanity.torch.grad", unwrap_or(listGet(grads, xid), 0.0), unwrap_or(listGet(Expected.SANITY_TORCH, 1), 0.0), 1e-12, 0.0),
     ])
@@ -248,7 +247,7 @@ def more_cases():
     bid = unwrap_or(listGet(done.outs, 1), 0)
     grads = Engine.backward(g, gid2)
     datas = toList(map(range(Engine.size(g)), lambda i: Engine.data(g, i)))
-    return listConcat(listConcat(list_cases("more.data", datas, Expected.MORE_DATA, 1e-12), list_cases("more.grads", grads, Expected.MORE_GRADS, 1e-12)), [
+    return listConcat(listConcat(Ops.list_cases("more.data", datas, Expected.MORE_DATA, 1e-12), Ops.list_cases("more.grads", grads, Expected.MORE_GRADS, 1e-12)), [
         Check.close("more.torch.data", Engine.data(g, gid2), unwrap_or(listGet(Expected.MORE_TORCH, 0), 0.0), 1e-6, 0.0),
         Check.close("more.torch.a", unwrap_or(listGet(grads, aid), 0.0), unwrap_or(listGet(Expected.MORE_TORCH, 1), 0.0), 1e-6, 0.0),
         Check.close("more.torch.b", unwrap_or(listGet(grads, bid), 0.0), unwrap_or(listGet(Expected.MORE_TORCH, 2), 0.0), 1e-6, 0.0),
@@ -263,7 +262,18 @@ def mlp_cases():
     root = Engine.top(g2)
     grads = Engine.backward(g2, root)
     datas = toList(map(range(Engine.size(g2)), lambda i: Engine.data(g2, i)))
-    return listConcat(list_cases("mlp.data", datas, Expected.MLP_FORWARD_DATA, 1e-12), list_cases("mlp.grads", grads, Expected.MLP_FORWARD_GRADS, 1e-12))
+    return listConcat(Ops.list_cases("mlp.data", datas, Expected.MLP_FORWARD_DATA, 1e-12), Ops.list_cases("mlp.grads", grads, Expected.MLP_FORWARD_GRADS, 1e-12))
+
+
+def mlp2_cases():
+    """MLP(2, [3, 2, 1]) with the oracle's second seeded weights."""
+    g = NN.init_mlp(Engine.empty(), 2, [3, 2, 1], Expected.MLP2_WEIGHTS)
+    m = NN.mlp_of(2, [3, 2, 1])
+    g2 = NN.call_mlp(g, m, [0.5, -1.5])
+    root = Engine.top(g2)
+    grads = Engine.backward(g2, root)
+    datas = toList(map(range(Engine.size(g2)), lambda i: Engine.data(g2, i)))
+    return listConcat(Ops.list_cases("mlp2.data", datas, Expected.MLP2_FORWARD_DATA, 1e-12), Ops.list_cases("mlp2.grads", grads, Expected.MLP2_FORWARD_GRADS, 1e-12))
 
 
 def forward_all(g, m, xs):
@@ -305,20 +315,23 @@ def train_step(st, _):
     root = Engine.top(lg)
     loss_val = Engine.data(lg, root)
     grads = Engine.backward(lg, root)
-    new_params = NN.sgd_step(st.params, grads, NN.parameters(m), 0.05)
-    return TrainState(params=new_params, losses=listAppend(st.losses, loss_val))
+    ids = NN.parameters(m)
+    param_grads = toList(map(range(len(ids)), lambda i: unwrap_or(listGet(grads, unwrap_or(listGet(ids, i), 0)), 0.0)))
+    new_params = NN.sgd_step(st.params, grads, ids, 0.05)
+    return TrainState(params=new_params, losses=listAppend(st.losses, loss_val), grads=listAppend(st.grads, param_grads))
 
 
 def readme_cases():
-    """20 README demo SGD steps: the per-step losses, final params and preds."""
-    st = fold(range(20), TrainState(params=Expected.MLP_WEIGHTS, losses=[]), train_step)
+    """20 README demo SGD steps: the per-step losses and gradients, final params and preds."""
+    st = fold(range(20), TrainState(params=Expected.MLP_WEIGHTS, losses=[], grads=[]), train_step)
     g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], st.params)
     m = NN.mlp_of(3, [4, 4, 1])
     f = forward_all(g, m, Expected.DATASET_X)
     lg = sum_squares(f.graph, f.outs, Expected.DATASET_Y, 4)
     losses = listAppend(st.losses, Engine.data(lg, Engine.top(lg)))
     preds = toList(map(range(4), lambda i: Engine.data(f.graph, unwrap_or(listGet(f.outs, i), 0))))
-    return listConcat(listConcat(list_cases("train.losses", losses, Expected.TRAIN_LOSSES, 1e-12), list_cases("train.params", st.params, Expected.TRAIN_PARAMS, 1e-12)), list_cases("train.preds", preds, Expected.TRAIN_PREDS, 1e-12))
+    loss_cases = listConcat(listConcat(Ops.list_cases("train.losses", losses, Expected.TRAIN_LOSSES, 1e-12), Ops.list_cases("train.params", st.params, Expected.TRAIN_PARAMS, 1e-12)), Ops.list_cases("train.preds", preds, Expected.TRAIN_PREDS, 1e-12))
+    return listConcat(loss_cases, Ops.nested_cases("train.step_grads", st.grads, Expected.TRAIN_STEP_GRADS, 1e-12))
 
 
 def xi(xs, i):
@@ -407,7 +420,7 @@ def tanh_cases():
     f2 = tanh_forward(g2, W, Expected.TANH_X)
     lg2 = sum_squares(f2.graph, f2.outs, Expected.TANH_Y, 3)
     losses = listAppend(st.losses, Engine.data(lg2, Engine.top(lg2)))
-    return listConcat(listConcat([Check.close("tanh.init_loss", init.loss, Expected.TANH_INIT_LOSS, 1e-9, 0.0)], list_cases("tanh.init_grads", init.grads, Expected.TANH_INIT_GRADS, 1e-9)), listConcat(list_cases("tanh.losses", losses, Expected.TANH_LOSSES, 1e-9), list_cases("tanh.w", st.params, Expected.TANH_W, 1e-9)))
+    return listConcat(listConcat([Check.close("tanh.init_loss", init.loss, Expected.TANH_INIT_LOSS, 1e-9, 0.0)], Ops.list_cases("tanh.init_grads", init.grads, Expected.TANH_INIT_GRADS, 1e-9)), listConcat(Ops.list_cases("tanh.losses", losses, Expected.TANH_LOSSES, 1e-9), Ops.list_cases("tanh.w", st.params, Expected.TANH_W, 1e-9)))
 
 
 def twice_cases():
@@ -422,15 +435,16 @@ def twice_cases():
     yid = Engine.top(y)
     once = Engine.backward(y, yid)
     twice = Engine.backward_into(y, yid, once)
-    return listConcat(list_cases("twice.once", [unwrap_or(listGet(once, aid), 0.0), unwrap_or(listGet(once, bid), 0.0)], Expected.TWICE_ONCE, 1e-12), list_cases("twice.twice", [unwrap_or(listGet(twice, aid), 0.0), unwrap_or(listGet(twice, bid), 0.0)], Expected.TWICE_TWICE, 1e-12))
+    return listConcat(Ops.list_cases("twice.once", [unwrap_or(listGet(once, aid), 0.0), unwrap_or(listGet(once, bid), 0.0)], Expected.TWICE_ONCE, 1e-12), Ops.list_cases("twice.twice", [unwrap_or(listGet(twice, aid), 0.0), unwrap_or(listGet(twice, bid), 0.0)], Expected.TWICE_TWICE, 1e-12))
 
 
 def all_cases():
     """Every suite case, in a fixed order for the golden."""
-    ops = toList(map(range(len(Ops.OP_NAMES)), Ops.op_case))
+    ops = toList(map(range(Ops.OP_COUNT), Ops.op_case))
     core = listConcat(listConcat(listConcat(listConcat(listConcat(ops, arena_cases()), nn_records_cases()), nn_record_cases()), nn_neuron_cases()), nn_layer_cases())
     net = listConcat(listConcat(listConcat(listConcat(listConcat(libm_cases(), sanity_cases()), more_cases()), mlp_cases()), readme_cases()), tanh_cases())
-    return listConcat(listConcat(core, net), twice_cases())
+    extra = listConcat(mlp2_cases(), Ops.repeat_cases())
+    return listConcat(listConcat(core, net), listConcat(twice_cases(), extra))
 
 
 def main():

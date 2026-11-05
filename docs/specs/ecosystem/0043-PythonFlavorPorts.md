@@ -75,7 +75,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/testing` | numpy `isclose`/`allclose` assertions, the strict `Arith` policy | shipped |
 | `@osprey/numpy` | `ndarray` creation, shape, broadcasting, elementwise, reductions, `matmul`, `linalg`, host and GPU handlers | in progress |
 | `@osprey/torch` | `Tensor`, `nn.functional`, reverse-mode autograd, `nn` modules, `optim` | in progress |
-| `@osprey/micrograd` | Karpathy's micrograd `Value` engine (add, mul, pow, relu, tanh, exp, backward) and `nn` (Neuron, Layer, MLP) against micrograd 0.1.0 and torch (548 oracle assertions) | shipped |
+| `@osprey/micrograd` | Karpathy's micrograd `Value` engine (add, mul, pow, relu, tanh, exp, backward) and `nn` (Neuron, Layer, MLP) against micrograd 0.1.0 and torch (1,670 oracle assertions) | shipped |
 | `@osprey/tiktoken` | byte-level BPE encoding, decoding and training | in progress |
 | `@osprey/tokenizers` | Hugging Face WordPiece, Unigram and WordLevel models, BERT normalizer, pre-tokenizers, decoders and the BERT template post-processor against tokenizers 0.23.3 (1006 oracle assertions) | shipped |
 | `@osprey/chromecast` | a CAST v2 sender: dns-sd discovery, protobuf framing, a heartbeat-answering TLS session, LAUNCH/LOAD and the media-status loop, against the reference stdlib sender script (201 oracle and scripted-device assertions) | shipped |
