@@ -75,7 +75,8 @@ fn judge_chunks(search: &Search<'_>, preserved: &mut [bool]) {
 /// Each window of `window` undecided candidates is a slice. One solve of the
 /// whole slice against the set kept so far either proves every candidate in it
 /// or proves its individually eligible sites together before trying them in
-/// source order. Dense rejection or consecutive failed windows stop batching.
+/// source order. A rejected leading site is dropped before retrying the rest;
+/// dense rejection or repeated windows losing a quarter of their sites stop batching.
 #[cfg(test)]
 pub(crate) fn accumulate(
     program: &Program,
@@ -119,8 +120,10 @@ fn accumulate_search(search: &Search<'_>, candidates: &[usize], window: usize) -
     let mut remaining = candidates;
     while !remaining.is_empty() {
         let (slice, rest) = remaining.split_at(width.min(remaining.len()));
+        let before = kept.len();
         let failure = accept_window(search, &mut kept, slice);
-        if failure.is_some_and(|dense| dense || previous_failed) {
+        let mostly_kept = kept.len() - before > slice.len() * 3 / 4;
+        if failure.is_some_and(|dense| dense || (previous_failed && !mostly_kept)) {
             width = 1;
         }
         previous_failed = failure.is_some();
@@ -160,10 +163,23 @@ fn accept_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize
         return None;
     }
     if candidates.len() > 1 {
-        let removable = eligible(search, candidates);
-        accept_eligible(search, kept, &removable);
+        accept_failed_window(search, kept, candidates);
     }
     Some(kept.len() - before <= candidates.len() / 2)
+}
+
+fn accept_failed_window(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
+    let Some((first, rest)) = candidates.split_first() else {
+        return;
+    };
+    if keeps(search, &joined(kept, &[*first])) {
+        let removable = eligible(search, candidates);
+        accept_eligible(search, kept, &removable);
+    } else {
+        // This site already fails with the accepted prefix. Prove the tail as
+        // a batch instead of paying for every independent site in that tail.
+        let _ = accept_window(search, kept, rest);
+    }
 }
 
 fn accept_eligible(search: &Search<'_>, kept: &mut Vec<usize>, candidates: &[usize]) {
