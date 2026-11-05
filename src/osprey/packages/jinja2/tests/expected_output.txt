@@ -336,6 +336,12 @@ ok chat unicode
 ok chat unicode assistant
 ok chat multi turn deep
 ok chat add vision id unused
+ok chat image in user
+ok chat image url in user
+ok chat text and image
+ok chat two images
+ok chat video in user
+ok chat long message
 ok chat no messages
 ok chat system not first
 ok chat unexpected role
@@ -349,4 +355,4 @@ ok chat bad effort
 ok vision picture numbering is call scoped (known divergence)
 ok namespace write inside a macro (known divergence)
 ok tuple literal prints as a list (known divergence)
-351 passed, 0 failed
+357 passed, 0 failed

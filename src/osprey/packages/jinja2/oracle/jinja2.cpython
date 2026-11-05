@@ -352,6 +352,10 @@ CALL_ALL_TYPES = {
 
 NESTED_CALL = {"function": {"name": "search", "arguments": {"query": "nested"}}}
 
+# A message far longer than the template, so the suite exercises a prompt whose
+# length dwarfs the template's own.
+LONG_MESSAGE = "".join(f"line {index} of a long message\n" for index in range(300)) + "émoji 🙂 中文"
+
 
 CHAT = [
     ("chat single user", [user("Hello")], None, {}),
@@ -427,6 +431,12 @@ CHAT = [
                                assistant("a2"), user("u3"), assistant("a3"), user("u4")], None,
      {"add_generation_prompt": True}),
     ("chat add vision id unused", [user("hi")], None, {"add_vision_id": False, "add_generation_prompt": True}),
+    ("chat image in user", [user([{"type": "image", "image": "x"}])], None, {"add_generation_prompt": True}),
+    ("chat image url in user", [user([{"image_url": "http://example/x.png"}])], None, {}),
+    ("chat text and image", [user([{"type": "text", "text": "look"}, {"type": "image"}])], None, {}),
+    ("chat two images", [user([{"type": "image"}, {"type": "image"}])], None, {"add_generation_prompt": True}),
+    ("chat video in user", [user([{"type": "video", "video": "v"}])], None, {}),
+    ("chat long message", [user(LONG_MESSAGE)], None, {"add_generation_prompt": True}),
 ]
 
 CHAT_ERROR = [
