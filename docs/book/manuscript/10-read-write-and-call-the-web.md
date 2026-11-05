@@ -128,11 +128,11 @@ fn nativeExample() = {
 
 The workflow calls `preview` only after a successful write. That leads through `load`, the selected read arm, the decoder, and the pure summary. The implementation changes at the handler; those helpers keep their existing definitions.
 
-`writeFile` writes or replaces its target. Do not run this example in a directory containing a file you care about with that name. From the `Book` directory, these commands use a fresh temporary directory and remove it afterwards:
+`writeFile` writes or replaces its target. Do not run this example in a directory containing a file you care about with that name. From the `docs/book` directory, these commands use a fresh temporary directory and remove it afterwards:
 
 ```sh
-book_compiler="$(cd .. && pwd)/target/release/osprey"
-book_source="$PWD/src/osprey/examples/chapter-10/flight-log.osp"
+book_compiler="$(cd ../.. && pwd)/target/release/osprey"
+book_source="$PWD/examples/chapter-10/flight-log.osp"
 (
     book_tmp=$(mktemp -d)
     trap 'rm -r "$book_tmp"' EXIT
@@ -215,7 +215,7 @@ fn heading(title) = "Flight Log: " + title
 fn main() = heading(readFile("flight-log.txt")) |> print
 ```
 
-From `Book`, check it with `../../target/release/osprey examples/chapter-10/failscompilation/undecoded-result.osp --check`. The diagnostic ends with the exact message `type mismatch: cannot unify string with Result<string, Error>`.
+From `docs/book`, check it with `../../target/release/osprey examples/chapter-10/failscompilation/undecoded-result.osp --check`. The diagnostic ends with the exact message `type mismatch: cannot unify string with Result<string, Error>`.
 
 The requirement comes from string concatenation in `heading`. The supplied argument is a result containing either text or an error. Changing an annotation cannot make those possibilities disappear, and the compiler rejects this without reading the file.
 

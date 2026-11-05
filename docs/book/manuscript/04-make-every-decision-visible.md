@@ -41,7 +41,7 @@ That is a policy you chose. The wildcard also accepts negative numbers. This fun
 
 Put the wildcard last. If it came first, it would cover every value and leave the later arms unreachable. The compiler rejects arms after a catch-all.
 
-The complete [decisions example](https://github.com/Nimblesite/osprey/blob/main/docs/book/examples/chapter-04/decisions.osp) calls both functions. From `Book`, run:
+The complete [decisions example](https://github.com/Nimblesite/osprey/blob/main/docs/book/examples/chapter-04/decisions.osp) calls both functions. From `docs/book`, run:
 
 ```sh
 ../../target/release/osprey examples/chapter-04/decisions.osp --run
@@ -137,7 +137,7 @@ Change the completed note and predict the second line. Then add `Learning` and i
 
 ## Agent handoff
 
-> Extend `docs/book/examples/chapter-04/flight-log.osp` with a `Learning` status. Give it an explicit `"learning"` arm and include a learning lesson in the printed transcript. Keep the planned and completed lines intact. From `Book`, run `../../target/release/osprey examples/chapter-04/flight-log.osp --check` and `../../target/release/osprey examples/chapter-04/flight-log.osp --run`. Compare the output with your prediction, then update the expected-output file. Show the diff and command results.
+> Extend `docs/book/examples/chapter-04/flight-log.osp` with a `Learning` status. Give it an explicit `"learning"` arm and include a learning lesson in the printed transcript. Keep the planned and completed lines intact. From `docs/book`, run `../../target/release/osprey examples/chapter-04/flight-log.osp --check` and `../../target/release/osprey examples/chapter-04/flight-log.osp --run`. Compare the output with your prediction, then update the expected-output file. Show the diff and command results.
 
 ## Landing check
 

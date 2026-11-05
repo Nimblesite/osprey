@@ -24,7 +24,7 @@ Default and ML are the book's teaching surfaces. Python syntax is available for 
 
 Every complete example must:
 
-1. live under `src/osprey/examples/`;
+1. live under `examples/`;
 2. compile with the edition's pinned compiler;
 3. produce deterministic output where output is claimed;
 4. avoid undocumented behavior; and

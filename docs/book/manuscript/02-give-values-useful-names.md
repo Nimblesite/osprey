@@ -182,7 +182,7 @@ fn main() = {
 
 Run `osprey flight-log.osp --check`. The check fails at the attempted assignment because `sessionCount` was bound with `let` and cannot be reassigned.
 
-The book stores this rejected program in `examples/chapter-02/failscompilation/immutable-assignment.osp`. Checked from `Book`, its current diagnostic is:
+The book stores this rejected program in `examples/chapter-02/failscompilation/immutable-assignment.osp`. Checked from `docs/book`, its current diagnostic is:
 
 ```text
 examples/chapter-02/failscompilation/immutable-assignment.osp:3:4: cannot assign to immutable variable `sessionCount`

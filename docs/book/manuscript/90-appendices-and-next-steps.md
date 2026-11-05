@@ -74,7 +74,7 @@ The current checked source lives under `docs/book/examples/`:
 | 9 | `chapter-09/` | Handler choice, scope, static selection, control behavior, and required-handler/type errors. |
 | 10 | `chapter-10/` | Scripted failures, actual file persistence, and an optional local HTTP adapter. |
 
-Run `make check-examples` from `Book` to check the completed examples against their outputs and stored rejection diagnostics. The Chapter 10 file program runs in a temporary directory. Its optional native HTTP source has separate fixture-server instructions in `examples/chapter-10/README.md`. The remaining chapters are outlines; they do not yet have completed Flight Log checkpoints.
+Run `make check-examples` from `docs/book` to check the completed examples against their outputs and stored rejection diagnostics. The Chapter 10 file program runs in a temporary directory. Its optional native HTTP source has separate fixture-server instructions in `examples/chapter-10/README.md`. The remaining chapters are outlines; they do not yet have completed Flight Log checkpoints.
 
 ## Continue learning
 

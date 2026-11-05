@@ -226,7 +226,7 @@ Now run:
 osprey first-flight.osp --check
 ```
 
-The check fails because `mission` has no binding. The book keeps this mistake in `examples/chapter-01/failscompilation/unknown-name.osp`. Checking that file from `Book` with the verified compiler produces:
+The check fails because `mission` has no binding. The book keeps this mistake in `examples/chapter-01/failscompilation/unknown-name.osp`. Checking that file from `docs/book` with the verified compiler produces:
 
 ```text
 examples/chapter-01/failscompilation/unknown-name.osp: unknown identifier `mission`

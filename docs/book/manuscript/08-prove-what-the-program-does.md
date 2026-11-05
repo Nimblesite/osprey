@@ -18,7 +18,7 @@ This is the complete source of `examples/chapter-08/title.test.osp`. The suffix 
 
 ## Make one behavior claim executable
 
-From the `Book` directory, check and run it:
+From the `docs/book` directory, check and run it:
 
 ```sh
 ../../target/release/osprey examples/chapter-08/title.test.osp --check
@@ -242,7 +242,7 @@ print(fitsSession(parseInt("25")))
 
 The comparison requires an integer. `parseInt` returns a `Result`, because text might not describe an integer. Even though this particular literal is valid, the call still has that result type.
 
-From `Book`, check `examples/chapter-08/failscompilation/unhandled-result.osp` with `../../target/release/osprey` and `--check`. The verified diagnostic is:
+From `docs/book`, check `examples/chapter-08/failscompilation/unhandled-result.osp` with `../../target/release/osprey` and `--check`. The verified diagnostic is:
 
 ```text
 examples/chapter-08/failscompilation/unhandled-result.osp: type mismatch: cannot unify int with Result<int, Error>
@@ -260,7 +260,7 @@ The distinction matters when maintaining a suite. A failed assertion is evidence
 
 ## Run the checkpoint and hand off a precise task
 
-Run `../../target/release/osprey test examples/chapter-08` from `Book`. The runner discovers both `.test.osp` files, prints their results under file headings, and finishes with `# suites: 2 passed, 0 failed`. Together, they contain seven named cases. The rejection fixture is intentionally not named `.test.osp`, so discovery does not treat it as a passing test suite.
+Run `../../target/release/osprey test examples/chapter-08` from `docs/book`. The runner discovers both `.test.osp` files, prints their results under file headings, and finishes with `# suites: 2 passed, 0 failed`. Together, they contain seven named cases. The rejection fixture is intentionally not named `.test.osp`, so discovery does not treat it as a passing test suite.
 
 Use `make check-examples` to run the book's wider checks, including exact output and expected compiler rejection. It compares runnable example output with saved `.expectedoutput` files and rejection diagnostics with `.expectederror` files. It does not extract or verify the manuscript's code blocks or transcripts; those must also be compared with the fixtures when editing the chapter.
 

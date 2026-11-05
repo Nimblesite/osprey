@@ -21,7 +21,7 @@ The exact output is in `flight-log.expectedoutput`. The saved file is exactly th
 
 `web-title.osp` makes no network requests. Its handlers deterministically supply a title, an HTTP-status error, and a transport error. Run it with `target/release/osprey docs/book/examples/chapter-10/web-title.osp --run`; compare with `web-title.expectedoutput`.
 
-The compiler rejection in `failscompilation/undecoded-result.osp` passes a file-reading `Result` to a function requiring a string. Its golden diagnostic uses paths relative to the `Book` directory, matching the book harness.
+The compiler rejection in `failscompilation/undecoded-result.osp` passes a file-reading `Result` to a function requiring a string. Its golden diagnostic uses paths relative to the `docs/book` directory, matching the book harness.
 
 ## Optional real native HTTP adapter
 

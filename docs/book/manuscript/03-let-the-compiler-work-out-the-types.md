@@ -148,7 +148,7 @@ fn heading(name) = "Flight Log: " + name
 fn main() = heading(true) |> print
 ```
 
-From the `Book` directory, check the stored rejection example:
+From the `docs/book` directory, check the stored rejection example:
 
 ```sh
 ../../target/release/osprey examples/chapter-03/failscompilation/type-mismatch.osp --check
@@ -220,7 +220,7 @@ The result of `makeLearner` is a `Learner`. Its parameters are inferred from the
 
 Notice what moved. `main` supplies the five values at construction, then passes one record to `summary`. A named group now travels between the functions. The field declaration keeps checking the group's contents even though the functions have no written parameter or return annotations.
 
-Check and run the checkpoint from `Book` with `../../target/release/osprey examples/chapter-03/flight-log.osp --check` and the same command ending in `--run`. The complete output is:
+Check and run the checkpoint from `docs/book` with `../../target/release/osprey examples/chapter-03/flight-log.osp --check` and the same command ending in `--run`. The complete output is:
 
 ```text
 Flight Log: Mika | goal: Build a small Osprey CLI | active: true | sessions: 3 | minutes each: 25
