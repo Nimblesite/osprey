@@ -7,6 +7,7 @@ use crate::error::TypeError;
 use crate::numeric::Numeric;
 use crate::ty::{Type, VarId};
 use osprey_ast::{TypeExpr, Variance};
+use std::borrow::Cow;
 use std::collections::{BTreeSet, HashMap};
 
 type RecordTemplate = (Vec<String>, Vec<(String, String)>);
@@ -154,8 +155,12 @@ impl InferCtx {
     /// first, by its representation.
     #[must_use]
     pub(crate) fn exposed_at(&self, t: Type, site: &str) -> Type {
+        self.expose_type(Cow::Owned(t), site).into_owned()
+    }
+
+    fn expose_type<'a>(&self, t: Cow<'a, Type>, site: &str) -> Cow<'a, Type> {
         match self.representation(&t, site) {
-            Some(representation) => self.exposed_at(representation, site),
+            Some(representation) => self.expose_type(Cow::Owned(representation), site),
             None => t,
         }
     }
@@ -193,16 +198,21 @@ impl InferCtx {
     /// current declaration may see through, unless the other side is that same
     /// alias. A variable is left to bind the alias itself, so a value keeps the
     /// abstract type its annotation gave it.
-    pub(crate) fn seen_through(&mut self, a: &Type, b: &Type) -> (Type, Type) {
-        let (a, b) = (self.prune(a), self.prune(b));
-        let settled = matches!((&a, &b), (Type::Var(_), _) | (_, Type::Var(_)))
-            || matches!((&a, &b), (Type::Con { name: left, .. }, Type::Con { name: right, .. }) if left == right);
+    pub(crate) fn seen_through<'a>(
+        &mut self,
+        a: &'a Type,
+        b: &'a Type,
+    ) -> (Cow<'a, Type>, Cow<'a, Type>) {
+        let (a, b) = (self.prune_type(a), self.prune_type(b));
+        let pair = (a.as_ref(), b.as_ref());
+        let settled = matches!(pair, (Type::Var(_), _) | (_, Type::Var(_)))
+            || matches!(pair, (Type::Con { name: left, .. }, Type::Con { name: right, .. }) if left == right);
         if settled || self.equations.is_empty() {
             return (a, b);
         }
         (
-            self.exposed_at(a, &self.site),
-            self.exposed_at(b, &self.site),
+            self.expose_type(a, &self.site),
+            self.expose_type(b, &self.site),
         )
     }
 
@@ -297,11 +307,19 @@ impl InferCtx {
     /// outermost variable is resolved — nested types are left intact (use
     /// [`InferCtx::apply`] for a deep walk).
     pub(crate) fn prune(&mut self, t: &Type) -> Type {
+        self.prune_type(t).into_owned()
+    }
+
+    fn prune_type<'a>(&mut self, t: &'a Type) -> Cow<'a, Type> {
         let Type::Var(id) = t else {
-            return t.clone();
+            return Cow::Borrowed(t);
         };
         let root = self.compress(*id);
-        self.binding(root).cloned().unwrap_or(Type::Var(root))
+        match self.binding(root) {
+            Some(bound) => Cow::Owned(bound.clone()),
+            None if root == *id => Cow::Borrowed(t),
+            None => Cow::Owned(Type::Var(root)),
+        }
     }
 
     /// Point aliases at one representative so only that slot owns the payload.
@@ -408,6 +426,17 @@ impl InferCtx {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unification_keeps_unchanged_type_storage() {
+        let mut ctx = InferCtx::new();
+        let left = Type::list(Type::int());
+        let right = Type::list(Type::string());
+        let (seen_left, seen_right) = ctx.seen_through(&left, &right);
+        for (original, seen) in [(&left, seen_left), (&right, seen_right)] {
+            assert!(std::ptr::eq(original, std::borrow::Borrow::borrow(&seen)));
+        }
+    }
 
     #[test]
     fn fresh_vars_are_distinct_and_unbound() {

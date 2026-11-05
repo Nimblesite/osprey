@@ -21,39 +21,40 @@ mod erasure;
 /// failing call may have applied partial bindings, so callers that want to
 /// "try" a unification should pre-check shapes rather than relying on rollback.
 pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeError> {
-    let (a, b) = ctx.seen_through(a, b);
-    match (&a, &b) {
+    let (seen_left, seen_right) = ctx.seen_through(a, b);
+    let (a, b) = (seen_left.as_ref(), seen_right.as_ref());
+    match (a, b) {
         (Type::Var(x), Type::Var(y)) if x == y => Ok(()),
         // An open literal stays the root, so what is bound to it stays open
         // with it; anything else decides it ([TYPE-NUMERIC-LITERAL]).
         (Type::Var(x), Type::Var(y)) if literal_family_clash(ctx, *x, *y) => {
-            match settle_literal_to(ctx, *x, &b) {
-                Some(settled) => unify(ctx, &settled, &b),
+            match settle_literal_to(ctx, *x, b) {
+                Some(settled) => unify(ctx, &settled, b),
                 None => Ok(()),
             }
         }
-        (Type::Var(x), Type::Var(y)) if ctx.literal_default(*x).is_some() => bind_var(ctx, *y, &a),
+        (Type::Var(x), Type::Var(y)) if ctx.literal_default(*x).is_some() => bind_var(ctx, *y, a),
         (Type::Var(x), _) if ctx.literal_default(*x).is_some() => {
-            match settle_literal_to(ctx, *x, &b) {
-                Some(settled) => unify(ctx, &settled, &b),
+            match settle_literal_to(ctx, *x, b) {
+                Some(settled) => unify(ctx, &settled, b),
                 None => Ok(()),
             }
         }
         (_, Type::Var(y)) if ctx.literal_default(*y).is_some() && !matches!(a, Type::Var(_)) => {
-            match settle_literal_to(ctx, *y, &a) {
-                Some(settled) => unify(ctx, &a, &settled),
+            match settle_literal_to(ctx, *y, a) {
+                Some(settled) => unify(ctx, a, &settled),
                 None => Ok(()),
             }
         }
-        (Type::Var(x), _) => bind_var(ctx, *x, &b),
-        (_, Type::Var(y)) => bind_var(ctx, *y, &a),
+        (Type::Var(x), _) => bind_var(ctx, *x, b),
+        (_, Type::Var(y)) => bind_var(ctx, *y, a),
 
         // `any` is the universal wildcard.
         // `any` is the erased compatibility wildcard [TYPE-ANY].
         _ if a.is_named(names::ANY) || b.is_named(names::ANY) => Ok(()),
 
         (Type::Con { name: n1, args: a1 }, Type::Con { name: n2, args: a2 }) => {
-            unify_con(ctx, n1, a1, n2, a2, &a, &b)
+            unify_con(ctx, n1, a1, n2, a2, a, b)
         }
 
         (
@@ -68,7 +69,7 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
         ) => unify_fun(ctx, p1, r1, p2, r2),
 
         (Type::Record { fields: f1, .. }, Type::Record { fields: f2, .. }) => {
-            unify_record(ctx, f1, f2, &a, &b)
+            unify_record(ctx, f1, f2, a, b)
         }
 
         // A nominal nullary constructor and a record of the same name describe
@@ -95,8 +96,8 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
             },
             Type::Con { name, args },
         ) if name == actual => match ctx.record_fields(name, args) {
-            Some(declared) => unify_record(ctx, &declared, fields, &a, &b),
-            None => Err(ctx.mismatch(&a, &b)),
+            Some(declared) => unify_record(ctx, &declared, fields, a, b),
+            None => Err(ctx.mismatch(a, b)),
         },
 
         (
@@ -110,12 +111,12 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
             },
         ) => {
             if n1 != n2 || v1.len() != v2.len() {
-                return Err(ctx.mismatch(&a, &b));
+                return Err(ctx.mismatch(a, b));
             }
-            unify_seq(ctx, v1, v2, &a, &b)
+            unify_seq(ctx, v1, v2, a, b)
         }
 
-        _ => Err(ctx.mismatch(&a, &b)),
+        _ => Err(ctx.mismatch(a, b)),
     }
 }
 
@@ -127,23 +128,24 @@ pub(crate) fn unify_assignable(
     expected: &Type,
     actual: &Type,
 ) -> Result<(), TypeError> {
-    let (expected, actual) = ctx.seen_through(expected, actual);
+    let (seen_left, seen_right) = ctx.seen_through(expected, actual);
+    let (expected, actual) = (seen_left.as_ref(), seen_right.as_ref());
     // Erasure is ONE-WAY [TYPE-ANY]. Every value assigns into an `any` slot;
     // no annotation recovers one back out. Recovery by declared type was an
     // unchecked cast — it printed a heap address as a decimal integer (#209)
     // and segfaulted on a word that never was a pointer — so it is rejected
     // here rather than repaired in the backend.
-    erasure::check(ctx, &expected, &actual)?;
+    erasure::check(ctx, expected, actual)?;
     // A bare `T` value satisfies a `Result<T, E>` slot (implicit
     // `Success`), e.g. `fn f() -> Result<bool, E> = x > 0`.
-    if let Type::Con { name, args } = &expected {
+    if let Type::Con { name, args } = expected {
         if name == names::RESULT
-            && (!matches!(actual, Type::Var(_)) || ctx.is_open_literal(&actual))
+            && (!matches!(actual, Type::Var(_)) || ctx.is_open_literal(actual))
             && !actual.is_named(names::RESULT)
         {
             if let Some(inner) = args.first() {
-                erasure::check(ctx, inner, &actual)?;
-                return unify(ctx, inner, &actual);
+                erasure::check(ctx, inner, actual)?;
+                return unify(ctx, inner, actual);
             }
         }
     }
@@ -160,7 +162,7 @@ pub(crate) fn unify_assignable(
             params: ap,
             ret: ar,
         },
-    ) = (&expected, &actual)
+    ) = (expected, actual)
     {
         if ep.len() == ap.len() {
             for (e, a) in ep.iter().zip(ap) {
@@ -174,10 +176,10 @@ pub(crate) fn unify_assignable(
     // contravariant (`in`) argument matches assignably with the roles flipped,
     // and an invariant argument must unify exactly — plain `unify` (and with
     // it HM principal types) is untouched. Implements [TYPE-VARIANCE-ASSIGN].
-    if let Some(result) = unify_declared_variance_args(ctx, &expected, &actual) {
+    if let Some(result) = unify_declared_variance_args(ctx, expected, actual) {
         return result;
     }
-    unify(ctx, &expected, &actual)
+    unify(ctx, expected, actual)
 }
 
 /// Match a constructor's expected/actual argument lists under the declared
