@@ -6,7 +6,7 @@ from fastapi import Models as M
 from fastapi import Errors as E
 from fastapi import Results as B
 
-__all__ = ["required", "defaulted", "integer", "choice", "combine", "invalid", "issues_of"]
+__all__ = ["required", "defaulted", "integer", "choice", "combine", "invalid", "issues_of", "mapped"]
 
 
 def invalid(location, kind, message, input, context):
@@ -114,3 +114,13 @@ def integer(location, result, minimum, maximum):
                     return bound(location, text, number, minimum, maximum)
                 case Error():
                     return invalid(location, "int_parsing", "Input should be a valid integer, unable to parse string as an integer", text, M.NoContext())
+
+
+
+def mapped(result, convert):
+    """Transform a validated value without dropping accumulated failures."""
+    match result:
+        case M.Valid(value=value):
+            return M.Valid(value=convert(value))
+        case M.Invalid(issues=issues):
+            return M.Invalid(issues=issues)

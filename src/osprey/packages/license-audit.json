@@ -61,7 +61,8 @@
             "src/routing.py",
             "src/urls.py",
             "src/uuids.py",
-            "src/validation.py"
+            "src/validation.py",
+            "src/body.py"
           ],
           "basis": "The whole package is a port of FastAPI, so its notice is retained even though the aim is not to copy Python code verbatim",
           "notice_attribution": [

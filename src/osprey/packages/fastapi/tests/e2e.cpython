@@ -60,6 +60,33 @@ def body_cases(port):
         assert int(headers["Content-Length"]) == len(payload), (headers, payload)
 
 
+def body_reference_cases(port):
+    """[FASTAPI-NAP-VALIDATION] Exact real HTTP replies from actual generated NAP models."""
+    nodes = ast.parse(Path(__file__).with_name("expected.py").read_text()).body
+    raw = next(ast.literal_eval(node.value) for node in nodes if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "BODY_JSON" for target in node.targets))
+    corpus = json.loads(raw)
+    assert len(corpus["cases"]) >= 180
+    failures = []
+    for case in corpus["cases"]:
+        status, headers, body = request(port, case["method"], case["path"], case["body_text"].encode(), case["headers"])
+        returned = {name.lower(): value for name, value in headers.items()}
+        correct = (status, body) == (case["status"], case["response_text"].encode())
+        fields = {name: returned.get(name) for name in ("content-type", "content-length")}
+        if not correct or fields != case["response_headers"] or int(returned["content-length"]) != len(body):
+            failures.append({"case": case, "actual": {"status": status, "body": body.decode(errors="replace"), "headers": fields}})
+    (ROOT / "target/fastapi" / f"body-failures-{port}.json").write_text(json.dumps(failures, ensure_ascii=False, indent=2))
+    assert not failures, f"{len(failures)} of {len(corpus['cases'])} body cases differ; target/fastapi/body-failures-{port}.json"
+
+
+def body_model_smoke(port):
+    """[FASTAPI-NAP-VALIDATION] Typed request bodies must bind before handlers run."""
+    payload = rb'{"content":"hello \u2615","_secret":"drop this"}'
+    status, headers, body = request(port, "POST", "/body/bundle", payload, {"Content-Type": "application/json"})
+    assert (status, json.loads(body)) == (200, {"content": "hello ☕"}), (status, headers, body)
+    assert headers["Content-Type"] == "application/json"
+    assert b"_secret" not in body
+
+
 def parameter_cases(port):
     path = Path(__file__).with_name("parameters.expected.json")
     cases = json.loads(path.read_text())
@@ -136,6 +163,8 @@ def cors_browser_cases(port):
 
 def cases(port):
     cors_browser_cases(port)
+    body_model_smoke(port)
+    body_reference_cases(port)
     for _ in range(3):
         health_cases(port)
         method_cases(port)
@@ -236,6 +265,8 @@ def execute():
 if __name__ == "__main__":
     if sys.argv[1:] == ["--worker"]:
         execute()
+    elif len(sys.argv) == 3 and sys.argv[1] == "--body-port":
+        body_reference_cases(int(sys.argv[2]))
     elif len(sys.argv) == 4 and sys.argv[1] == "--cors-port":
         cors_reference_cases(int(sys.argv[2]), sys.argv[3])
     elif sys.argv[1:]:

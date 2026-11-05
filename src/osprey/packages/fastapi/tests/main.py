@@ -113,7 +113,8 @@ def lifecycle():
 
 def main():
     test("FastAPI native HTTP lifecycle and NAP health/readiness", lifecycle)
-    return test("FastAPI browser CORS reference over real HTTP", cors_lifecycle)
+    test("FastAPI browser CORS reference over real HTTP", cors_lifecycle)
+    return test("FastAPI NAP generated request bodies over real HTTP", body_lifecycle)
 
 
 def scenario(document):
@@ -205,6 +206,10 @@ def cors_mode(mode):
 def cors_client(port, mode):
     # The real socket client checks all reference bytes/headers, including OPTIONS.
     command = f"python3 src/osprey/packages/fastapi/tests/e2e.cpython --cors-port {port} {mode}"
+    return acceptance_client(command)
+
+
+def acceptance_client(command):
     match spawnProcess(command, cors_diagnostic):
         case Error(message=message):
             return check("CORS HTTP client", "success", message)
@@ -216,3 +221,13 @@ def cors_client(port, mode):
 
 def cors_diagnostic(_pid, _kind, text):
     return print(text) if (_kind == 1 or _kind == 2) and text != "" else None
+
+
+
+def body_lifecycle():
+    match open_application([18781, 18783, 18785], "normal"):
+        case Error(message=message):
+            return check("body listener", "success", message)
+        case Success(value=opened):
+            acceptance_client(f"python3 src/osprey/packages/fastapi/tests/e2e.cpython --body-port {opened.second}")
+            return expect(httpStopServer(opened.first), Success(value=0))

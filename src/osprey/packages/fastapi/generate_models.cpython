@@ -6,6 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).parent
 
 TYPE_DOCS = {
+    "Optional": "A present typed body value or an explicitly absent nullable value.",
+    "FixtureBundle": "NAP bundle file body generated from its typeDiagram contract.",
+    "FixtureKey": "NAP API-key request with nullable label and normalized UUID.",
+    "FixtureContext": "Strict NAP tenant and provider identity body.",
+    "FixtureResource": "NAP embedded resource with wire aliases and nullable fields.",
     "CorsPolicy": "Explicit browser origin, method, header and credential policy.",
     "Need": "One dependency injection edge and its cache policy.",
     "Dependency": "A named provider, ordered children and explicit resource cleanup.",
@@ -107,7 +112,7 @@ def generate():
     fixture = ROOT / "tests" / "fixture.py"
     source = fixture.read_text().split("# Generated fixture models from models.td")[0].rstrip()
     test_unions = {name: members for name, members in unions.items() if name.startswith("Fixture")}
-    fixture.write_text(source + "\n\n# Generated fixture models from models.td\n" + "\n".join(union_records(classes, test_unions)) + "\n")
+    fixture.write_text(source + "\n\n# Generated fixture models from models.td\n" + "\n".join(records([node for node in nodes if node.name.startswith("Fixture")]) + union_records(classes, test_unions)).replace(": Optional[", ": M.Optional[") + "\n")
 
 
 if __name__ == "__main__":

@@ -127,7 +127,6 @@ def ordered_value(value: str):
     """Catch-all route ordered after the static one."""
     return {"value": value}
 
-
 def case(port: int, method: str, path: str, headers: dict | None = None):
     """One real wire call and FastAPI's status with its parsed JSON body."""
     sent = dict(headers or {})
@@ -141,7 +140,6 @@ def case(port: int, method: str, path: str, headers: dict | None = None):
     finally:
         connection.close()
 
-
 def response_body(response, body):
     if not body:
         return None
@@ -149,16 +147,13 @@ def response_body(response, body):
         return json.loads(body)
     return body.decode()
 
-
 def encoded(value: str) -> str:
     """`value` percent-encoded for one path segment or query value."""
     return quote(value, safe="")
 
-
 def config_uuid_cases(port: int):
     """Every UUID spelling FastAPI accepts and the malformed shapes it rejects."""
     return [case(port, "GET", f"/configs/{encoded(v)}", KEY) for v in UUID_SHAPES]
-
 
 def config_limit_cases(port: int):
     """Accepted integers and each integer rejection reason."""
@@ -168,12 +163,10 @@ def config_limit_cases(port: int):
     ]
     return [case(port, "GET", f"{CONFIG}?limit={encoded(v)}", KEY) for v in values]
 
-
 def config_period_cases(port: int):
     """Both literals, the default, and values the literal rejects."""
     values = ["day", "hour", "Day", "week", "", " day", "hours"]
     return [case(port, "GET", f"{CONFIG}?period={encoded(v)}", KEY) for v in values]
-
 
 def config_header_cases(port: int):
     """The required key header: absent, empty, mixed case, duplicated."""
@@ -188,7 +181,6 @@ def config_header_cases(port: int):
     ]
     return [case(port, "GET", path, headers) for path, headers in paths]
 
-
 def config_duplicate_cases(port: int):
     """Repeated query keys: which value a scalar parameter keeps."""
     paths = [
@@ -200,7 +192,6 @@ def config_duplicate_cases(port: int):
         f"{CONFIG}?limit=10&limit=20&period=hour&period=day",
     ]
     return [case(port, "GET", path, KEY) for path in paths]
-
 
 def config_combined_cases(port: int):
     """UUID shapes, bounds and the key header together, plus unknown keys."""
@@ -215,7 +206,6 @@ def config_combined_cases(port: int):
         f"/configs/{CONFIG_ID}/extra",
     ]
     return [case(port, "GET", path, KEY) for path in paths]
-
 
 def bundle_cases(port: int):
     """Greedy path decoding for Unicode, slash, question, hash, plus and space."""
@@ -236,7 +226,6 @@ def bundle_cases(port: int):
     ]
     return [case(port, "GET", path) for path in paths]
 
-
 def bundle_tag_cases(port: int):
     """Repeated, comma-joined, empty and encoded `tags` query values."""
     paths = [
@@ -252,7 +241,6 @@ def bundle_tag_cases(port: int):
         "/bundle/files/a.txt?tags=one&tags=two",
     ]
     return [case(port, "GET", path) for path in paths]
-
 
 def ordered_cases(port: int):
     """Route order: `/ordered/me` shadows `/ordered/{value}`; extra segments miss."""
@@ -270,7 +258,6 @@ def ordered_cases(port: int):
     ]
     return [case(port, "GET", path) for path in paths]
 
-
 def malformed_cases(port: int):
     paths = ["/bundle", "/bundle/%", "/bundle/%A", "/bundle/%GG", "/bundle/%80",
              "/bundle/%C0%AF", "/bundle/%E2", "/bundle/%E2%82", "/bundle/%E2x",
@@ -283,7 +270,6 @@ def malformed_cases(port: int):
                   case(port, "GET", "/configs/not-uuid?limit=x&period=week", KEY)])
     return calls
 
-
 def usage_cases(port: int):
     paths = ["/metrics", "/usage", "/usage?limit=1", "/usage?period=day",
              f"/usage?agent_config_id={CONFIG_ID}",
@@ -292,7 +278,6 @@ def usage_cases(port: int):
              f"/usage?agent_config_id={CONFIG_ID}&limit=1&period=day",
              "/usage?agent_config_id=bad&limit=x&period=bad"]
     return [case(port, "GET", path, KEY) for path in paths]
-
 
 def all_cases(port: int):
     """Every recorded case, in route order."""
@@ -310,7 +295,6 @@ def all_cases(port: int):
         usage_cases,
     ]
     return [record for group in groups for record in group(port)]
-
 
 def start_reference(application=app):
     """Use a reserved random port and a live ASGI server, including HTTP header parsing."""
@@ -330,7 +314,6 @@ def start_reference(application=app):
     listener.close()
     raise TimeoutError("Reference server failed to start")
 
-
 def dependency_cases():
     """Collect the sibling dependency corpus over its own real reference listener."""
     path = Path(__file__).with_name("fastapi_dependencies.cpython")
@@ -343,6 +326,14 @@ def dependency_cases():
     module.checked_cases(cases)
     return cases
 
+def body_cases():
+    path = Path(__file__).with_name("fastapi_body.cpython")
+    loader = importlib.machinery.SourceFileLoader("fastapi_body_reference", str(path))
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module.reference_cases()
 
 def write_header_fixture(cases):
     """Native and CPython clients replay the identical Latin-1 header wire bytes."""
@@ -406,11 +397,9 @@ def cors_case(port, mode, method, path, headers=None):
     finally:
         connection.close()
 
-
 def origin_headers(origin):
     """Absent origin sends no header; an empty origin sends an empty value."""
     return {} if origin is None else {"Origin": origin}
-
 
 def preflight_case(port, mode, origin, method, requested=None, private=False):
     """One OPTIONS preflight with optional requested headers and private-network flag."""
@@ -458,12 +447,10 @@ def cors_main():
     target.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n")
     return record
 
-
 def print_cors():
     record = cors_main()
     print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
     print(f"{len(record['cases'])} CORS cases from fastapi {record['fastapi']} and starlette {record['starlette']}", file=sys.stderr)
-
 
 def main():
     """Print the reference wire cases and report pinned package versions."""
@@ -483,7 +470,7 @@ def main():
         raise ValueError("Duplicate case: fix the corpus instead of dropping one")
     cases += dependency_cases()
     write_header_fixture(cases)
-    write("fastapi", "Real HTTP reference cases for routing, validation and dependency lifecycles.", {"fastapi": version}, {"CASES_JSON": json.dumps(cases, ensure_ascii=False, separators=(",", ":")), "CORS_JSON": json.dumps(cors_main(), ensure_ascii=False, separators=(",", ":"))})
+    write("fastapi", "Real HTTP reference cases for routing, validation and dependency lifecycles.", {"fastapi": version}, {"CASES_JSON": json.dumps(cases, ensure_ascii=False, separators=(",", ":")), "CORS_JSON": json.dumps(cors_main(), ensure_ascii=False, separators=(",", ":")), "BODY_JSON": json.dumps(body_cases(), ensure_ascii=False, separators=(",", ":"))})
     print(json.dumps(cases, ensure_ascii=False, separators=(",", ":")))
     print(f"{len(cases)} real HTTP cases from fastapi {version}", file=sys.stderr)
 

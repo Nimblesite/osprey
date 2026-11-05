@@ -13,6 +13,7 @@ from fastapi import Errors as E
 from fastapi import Dependencies as D
 from fastapi import Applications as A
 from fastapi import Results as B
+from fastapi import Body
 
 
 def health(_request):
@@ -33,7 +34,7 @@ def echo(request):
 
 def routes():
     """The ordered real HTTP routes used by both managed-backend suites."""
-    return [Routing.route("GET", "/health", health), Routing.route("GET", "/vary", varied), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)]
+    return listConcat(body_routes(), [Routing.route("GET", "/health", health), Routing.route("GET", "/vary", varied), Routing.route("GET", "/readyz", ready), Routing.route("POST", "/echo", echo), Routing.route("GET", "/configs/{config_id}", config), Routing.route("GET", "/bundle/{path:path}", bundle), Routing.route("GET", "/ordered/me", me), Routing.route("GET", "/ordered/{value}", ordered), Routing.route("GET", "/usage", usage), Routing.route("GET", "/metrics", metrics)])
 
 
 
@@ -383,8 +384,79 @@ def cors_policy(mode):
 def cors_application(mode):
     return A.application(routes(), [A.cors(cors_policy(mode))])
 
+def body_routes():
+    return [Routing.route("POST", "/body/bundle", lambda request: Body.bind(request, decode_bundle, bundle_response)), Routing.route("POST", "/body/key", lambda request: Body.bind(request, decode_key, key_response)), Routing.route("POST", "/body/context", lambda request: Body.bind(request, decode_context, context_response)), Routing.route("POST", "/body/resource", lambda request: Body.bind(request, decode_resource, resource_response))]
+
+
+def decode_bundle(document):
+    return Body.object_body(document, lambda doc: B.mapped(Body.text(doc, "content"), lambda value: V.mapped(value, lambda content: FixtureBundle(content=content))))
+
+
+def decode_key(document):
+    return Body.object_body(document, lambda doc: B.bind(Body.optional_text(doc, "label"), lambda label: B.mapped(Body.uuid(doc, "user_id"), lambda identity: V.mapped(V.combine(label, identity), lambda pair: FixtureKey(label=pair.first, user_id=pair.second)))))
+
+
+def decode_context(document):
+    return Body.object_body(document, lambda doc: B.bind(Body.uuid(doc, "tenant_id"), lambda tenant: B.bind(Body.text(doc, "provider_user_id"), lambda user: Body.extras(doc, ["tenant_id", "provider_user_id"], V.mapped(V.combine(tenant, user), lambda pair: FixtureContext(tenant_id=pair.first, provider_user_id=pair.second))))))
+
+
+def resource_first(doc):
+    return B.bind(Body.text(doc, "uri"), lambda uri: B.mapped(Body.optional_alias(doc, "mimeType", "mime_type"), lambda mime: V.combine(uri, mime)))
+
+
+def resource_second(doc):
+    return B.bind(Body.optional_text(doc, "text"), lambda text: B.mapped(Body.optional_text(doc, "blob"), lambda blob: V.combine(text, blob)))
+
+
+def decode_resource(document):
+    return Body.object_body(document, lambda doc: B.bind(resource_first(doc), lambda first: B.mapped(resource_second(doc), lambda second: V.mapped(V.combine(first, second), lambda pair: FixtureResource(uri=pair.first.first, mime_type=pair.first.second, text=pair.second.first, blob=pair.second.second)))))
+
+
+def body_response(fields, allowed):
+    return Body.filtered_response(200, JsonObject(listConcat(fields, [JsonMember("_secret", JsonString("never expose"))])), allowed)
+
+
+def bundle_response(value):
+    return body_response([JsonMember("content", JsonString(value.content))], ["content"])
+
+
+def key_response(value):
+    return body_response([JsonMember("label", Body.optional_json(value.label)), JsonMember("user_id", JsonString(value.user_id))], ["label", "user_id"])
+
+
+def context_response(value):
+    return E.json_response(200, JsonObject([JsonMember("tenant_id", JsonString(value.tenant_id)), JsonMember("provider_user_id", JsonString(value.provider_user_id))]), "")
+
+
+def resource_response(value):
+    return body_response([JsonMember("uri", JsonString(value.uri)), JsonMember("mimeType", Body.optional_json(value.mime_type)), JsonMember("text", Body.optional_json(value.text)), JsonMember("blob", Body.optional_json(value.blob))], ["uri", "mimeType", "text", "blob"])
 
 # Generated fixture models from models.td
+
+
+class FixtureBundle:
+    """NAP bundle file body generated from its typeDiagram contract."""
+    content: str
+
+
+class FixtureKey:
+    """NAP API-key request with nullable label and normalized UUID."""
+    label: M.Optional[str]
+    user_id: str
+
+
+class FixtureContext:
+    """Strict NAP tenant and provider identity body."""
+    tenant_id: str
+    provider_user_id: str
+
+
+class FixtureResource:
+    """NAP embedded resource with wire aliases and nullable fields."""
+    uri: str
+    mime_type: M.Optional[str]
+    text: M.Optional[str]
+    blob: M.Optional[str]
 
 
 @union

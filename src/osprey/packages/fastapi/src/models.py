@@ -3,7 +3,7 @@
 # osprey: module=Models
 """Generated from models.td; run generate_models.cpython."""
 
-__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'CorsPolicy', 'Validation', 'ValidationContext', 'DependencyResult']
+__all__ = ['Request', 'Response', 'Route', 'Decoded', 'Parameter', 'HTTPException', 'ValidationIssue', 'Pair', 'Need', 'Dependency', 'Acquired', 'DependencyState', 'DependencyStep', 'Application', 'CorsPolicy', 'Validation', 'ValidationContext', 'DependencyResult', 'Optional']
 
 
 class Request:
@@ -56,6 +56,7 @@ class ValidationIssue:
     message: str
     input: str
     missing: bool
+    json_input: bool
     context: ValidationContext
 
 
@@ -144,3 +145,12 @@ class DependencyResult[T]:
         error: HTTPException
     class DependencyInvalid:
         issues: list[ValidationIssue]
+
+
+@union
+class Optional[T]:
+    """A present typed body value or an explicitly absent nullable value."""
+    class Present:
+        value: T
+    class Absent:
+        pass

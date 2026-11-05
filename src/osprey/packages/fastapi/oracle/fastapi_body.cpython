@@ -1,0 +1,399 @@
+"""CPython oracle for @osprey/fastapi request bodies generated from NAP's typeDiagram contracts.
+
+Imports the real generated models from ``nap.api.schemas_generated`` and mounts
+four real FastAPI (0.135.3) routes over a live Uvicorn listener:
+
+* ``POST /body/bundle`` -> ``BundleFileWriteRequest``;
+* ``POST /body/key`` -> ``ApiKeyCreateRequest``;
+* ``POST /body/context`` -> ``EndUserExecutionContext`` (strict ``extra="forbid"``);
+* ``POST /body/resource`` -> ``EmbeddedResource`` (``mimeType`` alias, extras ignored).
+
+Every route uses the same model as ``response_model`` and returns
+``body.model_dump(by_alias=True)`` after adding an extra ``_secret`` response key on extra-ignore models
+and stamping a private attribute on the strict model; each recorded reply is checked to prove that attribute never reaches
+the wire. Cases are sent as raw HTTP request bodies so malformed JSON, duplicate
+keys, empty bodies and hostile content types reach FastAPI unchanged. Nothing is
+hand-authored: statuses, exact UTF-8 response bytes and content headers are
+whatever the pinned reference returns.
+
+Run from the repository root with the pinned NAP interpreter:
+
+    ../NimblesiteAgenticPlatform/.venv/bin/python -I \\
+        src/osprey/packages/fastapi/oracle/fastapi_body.cpython
+
+Writes ``target/logs/fastapi/body-reference.json`` and prints the same JSON.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import http.client
+import importlib.metadata
+import json
+import os
+import platform
+import socket
+import sys
+import threading
+import time
+import uuid
+from pathlib import Path
+
+import uvicorn
+from fastapi import FastAPI
+
+REPO = Path(__file__).resolve().parents[5]
+NAP = Path(os.environ.get("NAP_ROOT", str(REPO.parent / "NimblesiteAgenticPlatform"))).resolve()
+if str(NAP / "src") not in sys.path:
+    sys.path.insert(0, str(NAP / "src"))
+from nap.api.schemas_generated import (  # noqa: E402
+    ApiKeyCreateRequest,
+    BundleFileWriteRequest,
+    EmbeddedResource,
+    EndUserExecutionContext,
+)
+
+PINNED = "0.135.3"
+JSON = "application/json"
+SECRET = "oracle-only-private-attribute-never-serialized"
+UID = uuid.UUID("3f2504e0-4f89-11d3-9a0c-0305e82c3301")
+MODELS = {
+    "/body/bundle": BundleFileWriteRequest,
+    "/body/key": ApiKeyCreateRequest,
+    "/body/context": EndUserExecutionContext,
+    "/body/resource": EmbeddedResource,
+}
+UUID_TEXT = [
+    str(UID), str(UID).upper(), UID.hex, UID.hex.upper(), "{" + str(UID) + "}",
+    "urn:uuid:" + str(UID), "{" + UID.hex + "}", "urn:uuid:" + UID.hex,
+    " " + str(UID) + " ", str(uuid.UUID(int=0)), str(uuid.UUID(int=(1 << 128) - 1)),
+]
+MALFORMED_UUID = [
+    UID.hex[:-1], UID.hex + "0", "0x" + UID.hex, "{" + UID.hex, str(UID).replace("0", "g"),
+    "not-a-uuid", "", "3f2504e-4f89-11d3-9a0c-0305e82c3301", "3f2504e0-4f8-11d3-9a0c-0305e82c3301",
+    "3f2504e0-4f89-11d-9a0c-0305e82c3301", "3f2504e0-4f89-11d3-9a0-0305e82c3301",
+    "3f2504e0-4f89-11d3-9a0c-0305e82c330", "{}", "urn:uuid:",
+]
+SCALARS = [None, "", "text", 0, 1, -1, 1.5, True, False, [], ["x"], {}, {"k": "v"}]
+CONTENT_TYPES = [
+    None, "", "application/json", "application/json; charset=utf-8",
+    "application/json; charset=UTF-8", 'application/json; charset="utf-8"',
+    "application/json;charset=utf-8", "application/json ; charset=utf-8", "application/json;",
+    "Application/JSON", "APPLICATION/JSON; CHARSET=UTF-8", "application/vnd.api+json",
+    "application/problem+json", "application/ld+json", "application/json-patch+json",
+    "application/jsonx", "text/json", "text/plain", "text/plain; charset=utf-8",
+    "application/x-www-form-urlencoded", "application/octet-stream",
+    "application/json; charset=iso-8859-1",
+]
+INVALID_CONTENT_TYPES = [None, "", "text/plain", "application/x-www-form-urlencoded",
+                         "application/jsonx", "application/octet-stream"]
+MALFORMED_JSON = [
+    "", " ", "\n", "{", "}", "[", "]", "[]", "[1,2]", "null", "true", "123", "-1.5", '"str"',
+    "{}trailing", '{"content":"a"} trailing', "{'content':'a'}", '{"content":"a",}',
+    '{"content":NaN}', '{"content":Infinity}', '{"content":-Infinity}', '// c\n{"content":"a"}',
+    '{"content":"a"}{"content":"b"}', '\ufeff{"content":"a"}', '{"content":"a"', '{"content":"a"}}',
+]
+BUNDLE_RAW = [
+    '{"content":"\\u0000\\u001f\\u007f"}',
+    '{"content":"\\u00e9\\u65e5\\uD83D\\uDE00"}',
+    '{"content":"line\\nbreak\\ttab\\r\\b\\f"}',
+    '{"content":"q\\"uote \\\\ backslash \\/ slash"}',
+    '{"content":"abc","extra":1}',
+    '{"content":"abc","_secret":"leak"}',
+    '{"content":"abc","Content":"ignored"}',
+    '{"content":"abc","content_hash":"x"}',
+]
+
+app = FastAPI()
+
+
+def respond(body):
+    """Serialize by alias after stamping a private attribute that must not escape."""
+    object.__setattr__(body, "_secret", SECRET)
+    payload = body.model_dump(by_alias=True)
+    if "_secret" in payload or SECRET in json.dumps(payload, default=str):
+        raise RuntimeError("private request attribute would reach the response")
+    return payload if body.model_config.get("extra") == "forbid" else payload | {"_secret": SECRET}
+
+
+def bundle_handler(body: BundleFileWriteRequest):
+    return respond(body)
+
+
+def key_handler(body: ApiKeyCreateRequest):
+    return respond(body)
+
+
+def context_handler(body: EndUserExecutionContext):
+    return respond(body)
+
+
+def resource_handler(body: EmbeddedResource):
+    return respond(body)
+
+
+for route, (handler, model) in {
+    "/body/bundle": (bundle_handler, BundleFileWriteRequest),
+    "/body/key": (key_handler, ApiKeyCreateRequest),
+    "/body/context": (context_handler, EndUserExecutionContext),
+    "/body/resource": (resource_handler, EmbeddedResource),
+}.items():
+    app.add_api_route(route, handler, methods=["POST"], response_model=model)
+
+
+def js(value):
+    """Compact JSON so raw request bodies stay byte-comparable."""
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+
+
+def wire(port, path, body, content_type):
+    """One real HTTP POST; record FastAPI's status, exact text and content headers."""
+    encoded = body.encode("utf-8")
+    headers = {}
+    if content_type is not None:
+        headers["Content-Type"] = content_type
+    headers["Content-Length"] = str(len(encoded))
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+    try:
+        connection.request("POST", path, body=encoded, headers=headers)
+        response = connection.getresponse()
+        raw = response.read()
+        text = raw.decode("utf-8")
+        if SECRET in text:
+            raise ValueError(f"private attribute leaked on {path}: {text!r}")
+        return {
+            "method": "POST", "path": path, "headers": headers, "body_text": body,
+            "status": response.status, "response_text": text,
+            "response_headers": {
+                "content-type": response.getheader("content-type"),
+                "content-length": response.getheader("content-length"),
+            },
+        }
+    finally:
+        connection.close()
+
+
+def content_type_cases():
+    """Valid JSON under every content-type spelling, then invalid types per route."""
+    bundle = js({"content": "abc"})
+    cases = [("/body/bundle", bundle, ct) for ct in CONTENT_TYPES]
+    valid = {
+        "/body/key": js({"label": "l", "user_id": str(UID)}),
+        "/body/context": js({"tenant_id": str(UID), "provider_user_id": "u"}),
+        "/body/resource": js({"uri": "u", "mimeType": "text/plain"}),
+    }
+    cases += [(path, body, ct) for path, body in valid.items() for ct in INVALID_CONTENT_TYPES]
+    return cases
+
+
+def malformed_cases():
+    """Broken JSON on the bundle route, plus empty/short bodies on every route."""
+    cases = [("/body/bundle", body, JSON) for body in MALFORMED_JSON]
+    broken = [
+        ("/body/key", '{"user_id":'), ("/body/context", '{"tenant_id":'),
+        ("/body/resource", '{"uri":'),
+    ]
+    for path, prefix in broken:
+        cases += [(path, body, JSON) for body in ["", "{", "null", prefix + "}"]]
+    return cases
+
+
+def duplicate_cases():
+    """Duplicate JSON keys, including distinct left/right field values."""
+    uid = str(UID)
+    bodies = [
+        ("/body/bundle", '{"content":"a","content":"b"}'),
+        ("/body/bundle", '{"content":"a","content":null}'),
+        ("/body/key", '{"label":"x","label":"y","user_id":"' + uid + '"}'),
+        ("/body/key", '{"user_id":"' + uid + '","user_id":""}'),
+        ("/body/context", '{"tenant_id":"' + uid + '","tenant_id":"bad","provider_user_id":"u"}'),
+        ("/body/context", '{"tenant_id":"' + uid + '","provider_user_id":"u","provider_user_id":null}'),
+        ("/body/resource", '{"uri":"a","uri":"b","mimeType":"text/plain"}'),
+        ("/body/resource", '{"uri":"u","mimeType":"a","mimeType":"b"}'),
+        ("/body/resource", '{"uri":"u","mimeType":"a","mime_type":"b"}'),
+        ("/body/resource", '{"uri":"u","mime_type":"b","mimeType":"a"}'),
+        ("/body/resource", '{"uri":"u","text":"t","text":null}'),
+    ]
+    return [(path, body, JSON) for path, body in bodies]
+
+
+def bundle_cases():
+    """Every JSON value shape for the required `content` field plus extras and escapes."""
+    cases = [("/body/bundle", js({"content": value}), JSON)
+             for value in SCALARS + ["日本語 😀", "x" * 2048]]
+    cases += [("/body/bundle", "{}", JSON), ("/body/bundle", js({"Content": "abc"}), JSON)]
+    cases += [("/body/bundle", body, JSON) for body in BUNDLE_RAW]
+    return cases
+
+
+def key_cases():
+    """UUID spellings, scalar label/user_id rejections, missing fields and extras."""
+    uid = str(UID)
+    cases = [("/body/key", js({"label": "uuid", "user_id": text}), JSON) for text in UUID_TEXT]
+    cases += [("/body/key", js({"label": "malformed", "user_id": text}), JSON)
+              for text in MALFORMED_UUID]
+    cases += [("/body/key", js({"label": "scalar", "user_id": value}), JSON) for value in SCALARS]
+    cases += [("/body/key", js({"user_id": uid, "label": value}), JSON) for value in SCALARS]
+    bodies = [
+        {"label": "k"}, {}, {"label": 1, "user_id": "bad"},
+        {"user_id": uid, "extra": 1}, {"user_id": uid, "_secret": "leak"},
+        {"user_id": uid, "Label": "ignored"}, {"user_id": uid, "api_key": "nope"},
+    ]
+    return cases + [("/body/key", js(body), JSON) for body in bodies]
+
+
+def context_cases():
+    """UUID spellings and scalar rejections on both sides of the strict context model."""
+    uid = str(UID)
+    cases = [("/body/context", js({"tenant_id": text, "provider_user_id": "u"}), JSON)
+             for text in UUID_TEXT]
+    cases += [("/body/context", js({"tenant_id": text, "provider_user_id": "u"}), JSON)
+              for text in MALFORMED_UUID]
+    cases += [("/body/context", js({"tenant_id": uid, "provider_user_id": value}), JSON)
+              for value in SCALARS]
+    bodies = [
+        {"provider_user_id": "u"}, {"tenant_id": uid}, {},
+        {"tenant_id": "bad", "provider_user_id": 1},
+        {"tenant_id": uid, "provider_user_id": "u", "extra": 1},
+        {"tenant_id": uid, "provider_user_id": "u", "_secret": "leak"},
+        {"tenant_id": uid, "provider_user_id": "u", "providerUserId": "u"},
+        {"tenantId": uid, "provider_user_id": "u"},
+    ]
+    return cases + [("/body/context", js(body), JSON) for body in bodies]
+
+
+def resource_cases():
+    """EmbeddedResource fields: alias/name spellings, text/blob, extras, casing and Unicode."""
+    cases = [("/body/resource", js({"uri": value}), JSON) for value in SCALARS]
+    cases += [("/body/resource", "{}", JSON)]
+    cases += [("/body/resource", js({"uri": "u", "mimeType": value}), JSON) for value in SCALARS]
+    for name in ["mime_type", "MIMEType", "mimetype", "MimeType", "mime-type", "MIMETYPE"]:
+        cases.append(("/body/resource", js({"uri": "u", name: "text/plain"}), JSON))
+    for value in ["text/plain", "TEXT/PLAIN", "Application/JSON", "application/json; charset=utf-8"]:
+        cases.append(("/body/resource", js({"uri": "u", "mimeType": value}), JSON))
+    for field in ("text", "blob"):
+        cases += [("/body/resource", js({"uri": "u", field: value}), JSON) for value in SCALARS]
+    bodies = [
+        {"uri": "u", "blob": "aGVsbG8="},
+        {"uri": "u", "text": "t", "blob": "aGVsbG8="},
+        {"uri": "u", "text": "", "blob": ""},
+        {"uri": "u", "text": None, "blob": None},
+        {"uri": "u", "mimeType": "text/plain", "text": "t", "blob": None},
+        {"uri": "u", "extra": 1}, {"uri": "u", "_secret": "leak"},
+        {"uri": "u", "MIMEType": "application/json"},
+        {"uri": "file:///日本語/😀", "mimeType": "text/plain"},
+    ]
+    return cases + [("/body/resource", js(body), JSON) for body in bodies]
+
+
+def request_specs():
+    """Every raw request the corpus sends, grouped by concern."""
+    groups = [content_type_cases, malformed_cases, duplicate_cases, bundle_cases,
+              key_cases, context_cases, resource_cases]
+    return [spec for group in groups for spec in group()]
+
+
+def start_reference(application=app):
+    """Bind a random loopback port and start a real Uvicorn server with a 5s startup bound."""
+    listener = socket.socket()
+    listener.bind(("127.0.0.1", 0))
+    server = uvicorn.Server(uvicorn.Config(application, log_level="error", lifespan="off"))
+    worker = threading.Thread(target=server.run, kwargs={"sockets": [listener]}, daemon=True)
+    worker.start()
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if server.started:
+            return server, worker, listener, listener.getsockname()[1]
+        if not worker.is_alive():
+            listener.close()
+            raise RuntimeError("Reference HTTP server exited before startup")
+        time.sleep(0.01)
+    server.should_exit = True
+    worker.join(5)
+    listener.close()
+    raise TimeoutError("Reference server failed to start within 5s")
+
+
+def stop_reference(server, worker, listener):
+    """Ask the reference server to stop and fail loudly if it outlives the join."""
+    server.should_exit = True
+    worker.join(5)
+    listener.close()
+    if worker.is_alive():
+        raise TimeoutError("Reference HTTP server failed to stop")
+
+
+def digest(path):
+    """Content hash of one provenance file."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def model_provenance(model):
+    """Imported class identity, fields, extra policy and contract-schema hash."""
+    schema = json.dumps(model.model_json_schema(), sort_keys=True, separators=(",", ":"))
+    return {
+        "class": f"{model.__module__}.{model.__qualname__}",
+        "fields": list(model.model_fields),
+        "extra": model.model_config.get("extra"),
+        "schema_sha256": hashlib.sha256(schema.encode("utf-8")).hexdigest(),
+    }
+
+
+def metadata():
+    """Actual versions and NAP contract hashes read at run time, never hard-coded."""
+    contracts = NAP / "contracts/chat-protocol.td"
+    generated = NAP / "src/nap/api/schemas_generated.py"
+    wire = NAP / "contracts/acp-wire.sha256"
+    for path in (contracts, generated, wire):
+        if not path.is_file():
+            raise FileNotFoundError(f"NAP provenance file missing: {path}")
+    return {
+        "fastapi": importlib.metadata.version("fastapi"),
+        "pydantic": importlib.metadata.version("pydantic"),
+        "starlette": importlib.metadata.version("starlette"),
+        "uvicorn": importlib.metadata.version("uvicorn"),
+        "python": platform.python_version(),
+        "nap_root": str(NAP),
+        "contract": str(contracts.relative_to(NAP)),
+        "contractsha256": digest(contracts),
+        "acp_wire_declared_sha256": wire.read_text().strip(),
+        "schemas_generated": str(generated.relative_to(NAP)),
+        "schemas_generated_sha256": digest(generated),
+        "models": {route: model_provenance(model) for route, model in MODELS.items()},
+        "secret_redaction": ("extra-ignore handlers return an extra _secret key; strict uses a private attribute; "
+                             "every recorded response is checked for it"),
+    }
+
+
+def reference_cases():
+    """Collect the corpus from one live server, then stop it; return metadata and cases."""
+    version = importlib.metadata.version("fastapi")
+    if version != PINNED:
+        raise ValueError(f"Expected FastAPI {PINNED}, found {version}")
+    specs = request_specs()
+    if len(specs) != len({(path, ct, body) for path, body, ct in specs}):
+        raise ValueError("Duplicate request specification: fix the corpus instead of dropping one")
+    server, worker, listener, port = start_reference()
+    try:
+        cases = [wire(port, path, body, ct) for path, body, ct in specs]
+    finally:
+        stop_reference(server, worker, listener)
+    if len(cases) < 180:
+        raise ValueError(f"Expected at least 180 real HTTP cases, recorded {len(cases)}")
+    return {"metadata": metadata(), "cases": cases}
+
+
+def main():
+    """Write the reference JSON artifact and print the same record."""
+    record = reference_cases()
+    target = REPO / "target/logs/fastapi/body-reference.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    print(json.dumps(record, ensure_ascii=False, separators=(",", ":")))
+    print(f"{len(record['cases'])} real HTTP body cases from fastapi "
+          f"{record['metadata']['fastapi']} with {record['metadata']['contractsha256']}; "
+          f"wrote {target}", file=sys.stderr)
+
+
+if __name__ == "__main__":
+    main()
