@@ -189,7 +189,9 @@ impl Checker {
             return false;
         };
         let position = (line != 0).then_some(Position { line, column });
-        let selected = self.resolved_record_field(receiver.clone(), field, site).ok();
+        let selected = self
+            .resolved_record_field(receiver.clone(), field, site)
+            .ok();
         let mut arguments = ordered_arguments(
             arguments,
             named,
