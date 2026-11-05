@@ -6,7 +6,6 @@ description: Effects abstract side effects. Functions say what they need; the ca
 permalink: /docs/effects/
 tags: [algebraic-effects, handlers, applications, testing]
 ---
-{% from "native-capture.njk" import capture %}
 
 **Algebraic effects are abstractions for side effects.** A function says *what* it needs (read this file, write that one) with `perform`. The caller decides *how* by installing a handler. Production installs the real disk, network or database. A test installs a test double. A program that performs an effect with no handler does not compile.
 
@@ -218,8 +217,6 @@ ok 3 - a read-only disk changes nothing
 
 Each test double is a small class with one method per operation. `install` is ordinary Python-shaped code that has no idea which disk it is using. See [Python flavor](/docs/python/flavor/#effects-and-handlers) for the full syntax.
 
-{{ capture("/assets/images/guides/python-effects.png", "A smaller handler example in the Python flavor: the same load function produces console or audit output.", "A smaller handler example in the Python flavor: the same load function produces console or audit output.", 1440, 920) }}
-
 ## ML flavor
 
 ```osprey-ml
@@ -281,8 +278,6 @@ unhandled effect operations at program entry: Files.read; add a matching `handle
 ```
 
 This is checked through helpers, lambdas and fibers, so production code can't accidentally run without its real implementation, and a test can't accidentally touch the real one.
-
-{{ capture("/assets/images/guides/python-effect-error.png", "An operation without an installed handler is rejected before execution.", "An operation without an installed handler is rejected before execution.", 1440, 920) }}
 
 ## Other handler forms
 
