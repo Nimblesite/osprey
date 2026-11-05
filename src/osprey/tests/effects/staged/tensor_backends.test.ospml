@@ -10,6 +10,10 @@ namespace backends
 
 (** The statically selected tensor dialect used by both interpretations. *)
 module Backends
+    (** [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error. *)
+    export andThen (result, next) = match result
+        Success value => next value
+        Error message => Error(message = message)
     (** The dense-tensor dialect a model is written in. `B` is the buffer
         representation an interpretation chooses; the model leaves it to
         inference everywhere. *)
@@ -42,10 +46,7 @@ module Backends
     (** Every operation as a GPU kernel or product; the arms forward the model's callbacks. *)
     export onGpu work =
         handle static Tensor<GpuBuffer<float>>
-            build n f =>
-                match toGpu (range (0, n))
-                    Success xs => gpuMap xs f
-                    Error message => Error(message = message)
+            build n f => andThen(toGpu(range(0, n)), \xs => gpuMap(xs, f))
             get b i => gpuGet b i ?: 0.0
             length b => gpuLength b
             zipWith a b f => gpuZipWith a b f
@@ -119,42 +120,19 @@ positionTable () = weight (3 * width, 4, 9, 4, 8.0)
 
 (** Every block parameter in one bundle, so the model unwraps each once. *)
 blockParams () =
-    match ln1g ()
-        Success g1 =>
-            match ln1b ()
-                Success b1 =>
-                    match qkvW ()
-                        Success qw =>
-                            match qkvB ()
-                                Success qb =>
-                                    match projW ()
-                                        Success pw =>
-                                            match projB ()
-                                                Success pb =>
-                                                    match ln2g ()
-                                                        Success g2 =>
-                                                            match ln2b ()
-                                                                Success b2 =>
-                                                                    match fcW ()
-                                                                        Success fw =>
-                                                                            match fcB ()
-                                                                                Success fb =>
-                                                                                    match outW ()
-                                                                                        Success ow =>
-                                                                                            match outB ()
-                                                                                                Success ob => Success(value = { ln1gain = g1, ln1bias = b1, qkvWeight = qw, qkvBias = qb, projWeight = pw, projBias = pb, ln2gain = g2, ln2bias = b2, fcWeight = fw, fcBias = fb, outWeight = ow, outBias = ob })
-                                                                                                Error message => Error(message = message)
-                                                                                        Error message => Error(message = message)
-                                                                                Error message => Error(message = message)
-                                                                        Error message => Error(message = message)
-                                                                Error message => Error(message = message)
-                                                        Error message => Error(message = message)
-                                                Error message => Error(message = message)
-                                        Error message => Error(message = message)
-                                Error message => Error(message = message)
-                        Error message => Error(message = message)
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(ln1g(),
+        \g1 => Backends::andThen(ln1b(),
+            \b1 => Backends::andThen(qkvW(),
+                \qw => Backends::andThen(qkvB(),
+                    \qb => Backends::andThen(projW(),
+                        \pw => Backends::andThen(projB(),
+                            \pb => Backends::andThen(ln2g(),
+                                \g2 => Backends::andThen(ln2b(),
+                                    \b2 => Backends::andThen(fcW(),
+                                        \fw => Backends::andThen(fcB(),
+                                            \fb => Backends::andThen(outW(),
+                                                \ow => Backends::andThen(outB(),
+                                                    \ob => Success(value = { ln1gain = g1, ln1bias = b1, qkvWeight = qw, qkvBias = qb, projWeight = pw, projBias = pb, ln2gain = g2, ln2bias = b2, fcWeight = fw, fcBias = fb, outWeight = ow, outBias = ob })))))))))))))
 
 sumRange (x, start, n) = range start (start + n) |> fold 0.0 (\(a, i) => a + at (x, i))
 squaredDeviation (x, start, n, mean) = range start (start + n) |> fold 0.0 (\(a, i) => a + (at (x, i) - mean) * (at (x, i) - mean))
@@ -164,18 +142,14 @@ normalised (x, means, variances, g, b, i) = (at (x, i) - at (means, intDiv i wid
 
 (** LayerNorm over each of the t rows of x [t, width]. *)
 layerNorm (x, t, g, b) =
-    match rowMeans (x, t)
-        Success means =>
-            match rowVariances (x, t, means)
-                Success variances => perform Backends::Tensor.build (t * width) (\i => normalised (x, means, variances, g, b, i))
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(rowMeans(x, t),
+        \means => Backends::andThen(rowVariances(x, t, means),
+            \variances => perform Backends::Tensor.build (t * width) (\i => normalised(x, means, variances, g, b, i))))
 
 (** x [rows, inner] times w [inner, cols], plus the bias on every row. *)
 linear (x, rows, inner, cols, w, bias) =
-    match product (x, w, rows, inner, cols)
-        Success value => perform Backends::Tensor.build (rows * cols) (\i => at (value, i) + at (bias, i % cols))
-        Error message => Error(message = message)
+    Backends::andThen(product(x, w, rows, inner, cols),
+        \value => perform Backends::Tensor.build (rows * cols) (\i => at(value, i) + at(bias, i % cols)))
 
 qAt (qkv, r, h, d) = at (qkv, r * qkvWidth + h * headWidth + d)
 kAt (qkv, r, h, d) = at (qkv, r * qkvWidth + width + h * headWidth + d)
@@ -192,88 +166,46 @@ weighted (probs, qkv, t, r, h, d) = range 0 (r + 1) |> fold 0.0 (\(a, c) => a + 
 
 (** Softmax of every causal row of the [heads, t, t] scores. *)
 probsOf (scores, t) =
-    match perform Backends::Tensor.build (heads * t) (\row => rowMax (scores, row, t))
-        Success peaks =>
-            match perform Backends::Tensor.build (heads * t * t) (\i => causalWeight (scores, peaks, t, i))
-                Success weights =>
-                    match perform Backends::Tensor.build (heads * t) (\row => sumRange (weights, row * t, t))
-                        Success sums => perform Backends::Tensor.build (heads * t * t) (\i => at (weights, i) / at (sums, intDiv i t))
-                        Error message => Error(message = message)
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(perform Backends::Tensor.build (heads * t) (\row => rowMax(scores, row, t)),
+        \peaks => Backends::andThen(perform Backends::Tensor.build (heads * t * t) (\i => causalWeight(scores, peaks, t, i)),
+            \weights => Backends::andThen(perform Backends::Tensor.build (heads * t) (\row => sumRange(weights, row * t, t)),
+                \sums => perform Backends::Tensor.build (heads * t * t) (\i => at(weights, i) / at(sums, intDiv(i, t))))))
 
 (** Causal multi-head self-attention over qkv [t, qkvWidth], as [t, width]. *)
 attention (qkv, t) =
-    match perform Backends::Tensor.build (heads * t * t) (\i => causalScore (qkv, intDiv i (t * t), intDiv (i % (t * t)) t, i % t))
-        Success scores =>
-            match probsOf (scores, t)
-                Success probs => perform Backends::Tensor.build (t * width) (\i => weighted (probs, qkv, t, intDiv i width, intDiv (i % width) headWidth, i % headWidth))
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(perform Backends::Tensor.build (heads * t * t) (\i => causalScore(qkv, intDiv(i, t * t), intDiv(i % (t * t), t), i % t)),
+        \scores => Backends::andThen(probsOf(scores, t),
+            \probs => perform Backends::Tensor.build (t * width) (\i => weighted(probs, qkv, t, intDiv(i, width), intDiv(i % width, headWidth), i % headWidth))))
 
 (** One pre-norm block: attention and MLP, each with a residual. *)
 block (x, t) =
-    match blockParams ()
-        Success w =>
-            match layerNorm (x, t, w.ln1gain, w.ln1bias)
-                Success normed =>
-                    match linear (normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias)
-                        Success qkv =>
-                            match attention (qkv, t)
-                                Success attended =>
-                                    match linear (attended, t, width, width, w.projWeight, w.projBias)
-                                        Success projected =>
-                                            match perform Backends::Tensor.zipWith x projected addF
-                                                Success x2 =>
-                                                    match layerNorm (x2, t, w.ln2gain, w.ln2bias)
-                                                        Success normed2 =>
-                                                            match linear (normed2, t, width, mlpWidth, w.fcWeight, w.fcBias)
-                                                                Success f =>
-                                                                    match perform Backends::Tensor.build (size f) (\i => gelu (at (f, i)))
-                                                                        Success hidden =>
-                                                                            match linear (hidden, t, mlpWidth, width, w.outWeight, w.outBias)
-                                                                                Success out => perform Backends::Tensor.zipWith x2 out addF
-                                                                                Error message => Error(message = message)
-                                                                        Error message => Error(message = message)
-                                                                Error message => Error(message = message)
-                                                        Error message => Error(message = message)
-                                                Error message => Error(message = message)
-                                        Error message => Error(message = message)
-                                Error message => Error(message = message)
-                        Error message => Error(message = message)
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(blockParams(),
+        \w => Backends::andThen(layerNorm(x, t, w.ln1gain, w.ln1bias),
+            \normed => Backends::andThen(linear(normed, t, width, qkvWidth, w.qkvWeight, w.qkvBias),
+                \qkv => Backends::andThen(attention(qkv, t),
+                    \attended => Backends::andThen(linear(attended, t, width, width, w.projWeight, w.projBias),
+                        \projected => Backends::andThen(perform Backends::Tensor.zipWith (x) (projected) (addF),
+                            \x2 => Backends::andThen(layerNorm(x2, t, w.ln2gain, w.ln2bias),
+                                \normed2 => Backends::andThen(linear(normed2, t, width, mlpWidth, w.fcWeight, w.fcBias),
+                                    \f => Backends::andThen(perform Backends::Tensor.build (size(f)) (\i => gelu(at(f, i))),
+                                        \hidden => Backends::andThen(linear(hidden, t, mlpWidth, width, w.outWeight, w.outBias),
+                                            \out => perform Backends::Tensor.zipWith (x2) (out) (addF)))))))))))
 
 (** Token plus position embeddings of the host-side ids, [t, width]. *)
 embed (tokens, positions, ids, t) = perform Backends::Tensor.build (t * width) (\i => at (tokens, (listGet ids (intDiv i width) ?: 0) * width + i % width) + at (positions, i))
 blockOutput () =
-    match tokenTable ()
-        Success tokens =>
-            match positionTable ()
-                Success positions =>
-                    match embed (tokens, positions, [3, 1], 2)
-                        Success x => block (x, 2)
-                        Error message => Error(message = message)
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(tokenTable(),
+        \tokens => Backends::andThen(positionTable(),
+            \positions => Backends::andThen(embed(tokens, positions, [3, 1], 2),
+                \x => block(x, 2))))
 rendered y = range 0 (size y) |> fold "" (\(acc, i) => acc + " " + toString (at (y, i)))
 
 (** The oracle values of the block, plus which interpretation answered. *)
 blockChecks (name, expectedDevice) =
-    match blockOutput ()
-        Success y =>
-            checkAll name [
-                size y == 8, device () == expectedDevice,
-                near (at (y, 0), -1.6005739040598597), near (at (y, 1), 1.6570609567125532),
-                near (at (y, 2), 0.7819120177177687), near (at (y, 3), 2.600026966458822),
-                near (at (y, 4), -1.4874618953251921), near (at (y, 5), 0.04813056859620782),
-                near (at (y, 6), -0.6083624491502386), near (at (y, 7), 1.4214195552139615),
-                tensorSatisfies (total y, \grand => near (grand, 2.8121518161640227))
-            ]
-            0
-        Error message =>
-            check ("tensor operation", "success", toString message)
-            0
+    Backends::andThen(blockOutput(),
+        \y =>
+            checkAll(name, [ size(y) == 8, device() == expectedDevice, near(at(y, 0), -1.6005739040598597), near(at(y, 1), 1.6570609567125532), near(at(y, 2), 0.7819120177177687), near(at(y, 3), 2.600026966458822), near(at(y, 4), -1.4874618953251921), near(at(y, 5), 0.04813056859620782), near(at(y, 6), -0.6083624491502386), near(at(y, 7), 1.4214195552139615), tensorSatisfies(total(y), \grand => near(grand, 2.8121518161640227)) ])
+            Success(value = 0) )
 
 listsCase () = settled (Backends::onLists (\() => blockChecks ("the block over lists matches the reference pass", "lists")))
 gpuCase () = settled (Backends::onGpu (\() => blockChecks ("the same block over GPU buffers matches the reference pass", "host")))
@@ -281,24 +213,17 @@ gpuCase () = settled (Backends::onGpu (\() => blockChecks ("the same block over 
 (** Both interpretations print every element identically: the products
     accumulate in the same order, so the answers are the same doubles. *)
 listsText () =
-    match blockOutput ()
-        Success y => Success(value = rendered y)
-        Error message => Error(message = message)
+    Backends::andThen(blockOutput(),
+        \y => Success(value = rendered(y)))
 agreementCase () =
-    match Backends::onLists (\() => listsText ())
-        Success lists =>
-            match Backends::onGpu (\() => listsText ())
-                Success gpu =>
-                    checkAll "both interpretations compute the same doubles" [
-                        lists == gpu, lists != "", length lists > 8 * 4
-                    ]
-                    0
-                Error message =>
-                    check ("tensor operation", "success", toString message)
-                    0
-        Error message =>
-            check ("tensor operation", "success", toString message)
-            0
+    Backends::andThen(Backends::onLists(\() => listsText()),
+        \lists => Backends::andThen(Backends::onGpu(\() => listsText()),
+            \gpu =>
+                checkAll("both interpretations compute the same doubles", [ lists == gpu, lists != "", length(lists) > 8 * 4 ])
+                Success(value = 0) ))
+
+agreementSettled () =
+    settled(agreementCase())
 
 (** A request that leaves its instantiation to inference is answered by the
     innermost region, through helpers that never name a buffer type. *)
@@ -333,24 +258,13 @@ forwardedKernelCase () =
 firstOf (a, b) = perform Backends::Tensor.zipWith a b (\(g, _x) => g)
 secondDoubled (a, b) = perform Backends::Tensor.zipWith a b (\(_g, x) => x * 2.0)
 declaredTypes () =
-    match doubled 3
-        Success first =>
-            match scaled (3, 3.0)
-                Success second =>
-                    match firstOf (first, second)
-                        Success heads =>
-                            match total heads
-                                Success headTotal =>
-                                    match secondDoubled (first, second)
-                                        Success doubles =>
-                                            match total doubles
-                                                Success doubleTotal => Success(value = "${headTotal} ${doubleTotal}")
-                                                Error message => Error(message = message)
-                                        Error message => Error(message = message)
-                                Error message => Error(message = message)
-                        Error message => Error(message = message)
-                Error message => Error(message = message)
-        Error message => Error(message = message)
+    Backends::andThen(doubled(3),
+        \first => Backends::andThen(scaled(3, 3.0),
+            \second => Backends::andThen(firstOf(first, second),
+                \heads => Backends::andThen(total(heads),
+                    \headTotal => Backends::andThen(secondDoubled(first, second),
+                        \doubles => Backends::andThen(total(doubles),
+                            \doubleTotal => Success(value = "${headTotal} ${doubleTotal}")))))))
 declaredTypesCase () = checkAll "a kernel keeps the operation's declared element types inside a generic function" [
     Backends::onGpu (\() => settledText (declaredTypes ())) == "6.0 18.0",
     Backends::onLists (\() => settledText (declaredTypes ())) == "6.0 18.0"
@@ -372,7 +286,7 @@ exactArithmetic work =
 
 test "the block over lists matches the reference pass" (\() => exactArithmetic listsCase)
 test "the same block over GPU buffers matches the reference pass" (\() => exactArithmetic gpuCase)
-test "both interpretations compute the same doubles" (\() => exactArithmetic agreementCase)
+test "both interpretations compute the same doubles" (\() => exactArithmetic agreementSettled)
 test "an inferred instantiation selects the innermost region" (\() => exactArithmetic inferenceCase)
 test "a static arm forwards the model's callback to its kernel" (\() => exactArithmetic forwardedKernelCase)
 test "a kernel keeps the operation's declared element types inside a generic function" (\() => exactArithmetic declaredTypesCase)
