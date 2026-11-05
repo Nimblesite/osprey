@@ -61,6 +61,9 @@ class Provider:
     models: list[ModelEntry]
 
 
+MOONSHOT_WIRE = Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=True, maxTokens="max_tokens")
+MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY = Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=False, maxTokens="max_tokens")
+
 DEEPSEEK_MODELS = [
     ModelEntry(id="deepseek-flash", label="DeepSeek V4.1 Flash", levels=["low", "high", "max"], wire=Wire(kind="deepseek", strict=True, reasoning=True, sendBack=True, maxTokens="max_tokens")),
     ModelEntry(id="deepseek-v4-pro", label="DeepSeek V4 Pro", levels=["high", "max"], wire=Wire(kind="deepseek", strict=True, reasoning=True, sendBack=True, maxTokens="max_tokens")),
@@ -69,17 +72,17 @@ DEEPSEEK_MODELS = [
 ]
 
 MOONSHOT_MODELS = [
-    ModelEntry(id="kimi-k3", label="Kimi K3", levels=["low", "high", "max"], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="kimi-k2.7-code-highspeed", label="Kimi K2.7 Code HighSpeed", levels=[], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="kimi-k2.7-code", label="Kimi K2.7 Code", levels=[], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="kimi-k2.6", label="Kimi K2.6", levels=[], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=False, maxTokens="max_tokens")),
+    ModelEntry(id="kimi-k3", label="Kimi K3", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
+    ModelEntry(id="kimi-k2.7-code-highspeed", label="Kimi K2.7 Code HighSpeed", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
+    ModelEntry(id="kimi-k2.7-code", label="Kimi K2.7 Code", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
+    ModelEntry(id="kimi-k2.6", label="Kimi K2.6", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
 ]
 
 KIMI_CODING_MODELS = [
-    ModelEntry(id="k3", label="Kimi K3", levels=["low", "high", "max"], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="k3-256k", label="Kimi K3-256K", levels=["low", "high", "max"], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="kimi-for-coding", label="Kimi For Coding", levels=["low", "high", "max"], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="kimi-for-coding-highspeed", label="Kimi For Coding HighSpeed", levels=[], wire=Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=False, maxTokens="max_tokens")),
+    ModelEntry(id="k3", label="Kimi K3", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
+    ModelEntry(id="k3-256k", label="Kimi K3-256K", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
+    ModelEntry(id="kimi-for-coding", label="Kimi For Coding", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
+    ModelEntry(id="kimi-for-coding-highspeed", label="Kimi For Coding HighSpeed", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
 ]
 
 GLM_MODELS = [
@@ -372,8 +375,7 @@ def request_body_with_tools(history, model, effort, extra_tools):
 
 def request_body_with_mcp(history, model, effort, servers_json):
     """The Chat Completions request with the built-in tools and every connected MCP server's."""
-    settings = Settings.model_settings() if effort == "" else mapSet(Settings.model_settings(), "thinking", effort_setting(effort))
-    return completions(entry_of(model), profile_of(model), history, settings, definitions(definitions_of(servers_json)))
+    return request_body_with_tools(history, model, effort, definitions_of(servers_json))
 
 
 def request_body(history, model, effort):
