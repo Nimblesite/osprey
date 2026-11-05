@@ -39,7 +39,7 @@ test("specification links resolve across subject folders and duplicate URLs are 
   const compiler = path.join(root, "compiler/iOSCodegen.md");
   const pages = new Map([[compiler, { permalink: "/spec/ioscodegen/" }]]);
   expect(resolveLink("../compiler/iOSCodegen.md#ios-host-abi", file, pages)).toBe("/spec/ioscodegen/#ios-host-abi");
-  expect(resolveLink("../../../README.md", file, pages)).toBe("/spec/");
+  expect(resolveLink("../README.md", file, pages)).toBe("/spec/");
   expect(resolveLink("../../../src/toolchain/crates/osprey-cli/src/ios.rs", file, pages)).toBe("https://github.com/Nimblesite/osprey/blob/main/src/toolchain/crates/osprey-cli/src/ios.rs");
   expect(resolveLink("https://example.com/#host", file, pages)).toBe("https://example.com/#host");
   expect(() => resolveLink("../../../../outside", file, pages)).toThrow("Link escapes repository");
