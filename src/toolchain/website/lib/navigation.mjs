@@ -9,38 +9,35 @@ function navigationLink(item, current, pageUrl) {
   return `<li>${marked}</li>`;
 }
 
-function navigationGroup(items, current, pageUrl) {
-  const links = items.map(item => navigationLink(item, current, pageUrl)).join("");
-  const label = items[0].group;
-  if (!label) return links;
-  const active = current?.group === label ? " active" : "";
-  return `<li><details class="nav-group" name="site-menu"><summary class="nav-link${active}">${label}</summary><ul class="nav-submenu">${links}</ul></details></li>`;
-}
-
 const longestPrefix = (entries, pageUrl) =>
   entries.filter(entry => pageUrl.startsWith(entry.url)).sort((a, b) => b.url.length - a.url.length)[0];
 
-// A docs page marks the menu entry of the sidebar section that lists it.
+// A page marks its own top-level link (Playground, Blog); a page only the docs sidebar lists marks Docs.
 function currentItem(items, docs, pageUrl) {
-  const listed = docs.flatMap(section => section.items.map(item => ({ url: item.url, landing: section.items[0].url })));
-  const landing = longestPrefix(listed, pageUrl)?.landing;
-  const owner = items.find(item => item.group && item.url === landing);
-  return owner || longestPrefix(items.filter(item => !item.external), pageUrl);
+  const docsItem = items.find(item => item.url === "/docs/");
+  const own = items.filter(item => !item.external && item !== docsItem);
+  const listed = docs.flatMap(section => section.items.map(item => ({ url: item.url, owner: docsItem })));
+  const best = longestPrefix([...own.map(item => ({ url: item.url, owner: item })), ...listed], pageUrl);
+  return best?.owner;
 }
 
-function groupedNavigation(markup, pageUrl) {
+// The menu's links, and the call-to-action link the header shows beside its buttons.
+function siteNavigation(markup, pageUrl) {
   const { main: data, docs } = JSON.parse(readFileSync(source, "utf8"));
   const links = [...markup.matchAll(/<li>\s*(<a\b[\s\S]*?<\/a>)\s*<\/li>/g)];
   if (links.length !== data.length) throw new Error("Theme navigation does not match navigation.json");
   const items = data.map((item, index) => ({ ...item, link: links[index][1] }));
   const current = currentItem(items, docs, pageUrl);
-  const groups = [...new Set(items.map(item => item.group || item.text))];
-  return groups.map(group => navigationGroup(items.filter(item => (item.group || item.text) === group), current, pageUrl)).join("");
+  const menu = items.filter(item => !item.cta).map(item => navigationLink(item, current, pageUrl)).join("");
+  const cta = items.filter(item => item.cta).map(item => item.link.replace(/class="nav-link[^"]*"/, 'class="nav-cta"')).join("");
+  return { menu, cta };
 }
 
 export function renderNavigation(content, pageUrl) {
   if (!content.includes('<header class="site-header">')) return content;
   const pattern = /<ul class="nav-links">([\s\S]*?)<\/ul>/;
   if (!pattern.test(content)) throw new Error("Theme header navigation was not found");
-  return content.replace(pattern, (_, markup) => `<ul class="nav-links" id="site-navigation">${groupedNavigation(markup, pageUrl)}</ul>`);
+  const { menu, cta } = siteNavigation(content.match(pattern)[1], pageUrl);
+  return content.replace(pattern, () => `<ul class="nav-links" id="site-navigation">${menu}</ul>`)
+    .replace('<div class="nav-actions">', () => `<div class="nav-actions">${cta}`);
 }

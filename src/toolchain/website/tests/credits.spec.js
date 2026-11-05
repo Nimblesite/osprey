@@ -1,5 +1,5 @@
-// The credits page (/credits/): it must build, be linked from the main
-// navigation and footer, list every license-audit entry with its authors,
+// The credits page (/credits/): it must build, be linked from the docs
+// Reference section and the footer, list every license-audit entry with its authors,
 // carry only well-formed upstream links, and never expose an email address.
 const fs = require("node:fs");
 const path = require("node:path");
@@ -18,7 +18,10 @@ test("the credits page builds and the navigation links to it", async ({ page }) 
 
   await page.goto("/credits/");
   await expect(page.locator("h1")).toHaveText("Announcements and credits");
-  await expect(page.locator('header .nav-link[href="/credits/"]')).toBeVisible();
+  await expect(page.locator('header .nav-link[href="/credits/"]')).toHaveCount(0);
+  await page.goto("/docs/");
+  await expect(page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Reference" }).locator('a[href="/credits/"]')).toHaveCount(1);
+  await page.goto("/credits/");
   await expect(page.locator('footer a[href="/credits/"]')).toBeVisible();
 });
 

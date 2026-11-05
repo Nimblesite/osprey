@@ -53,3 +53,15 @@ test('all syntax flavor controls fit the mobile playground', async ({ page }) =>
     expect(box.x + box.width).toBeLessThanOrEqual(390);
   }
 });
+
+test('playground explains the outage and links the CVE, and a failed request repeats it', async ({ page }) => {
+  await page.route('**/api/run', (route) => route.abort('connectionrefused'));
+  await page.goto('/playground/');
+  const notice = page.locator('#playground-outage');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText('back soon');
+  await expect(notice.getByRole('link', { name: 'CVE-2026-98432' })).toHaveAttribute('href', 'https://ubuntu.com/security/CVE-2026-98432');
+  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await expect(page.locator('#output')).toContainText('CVE-2026-98432');
+  await expect(page.locator('#status-text')).toHaveText('Offline');
+});

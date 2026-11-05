@@ -188,15 +188,16 @@ for (const width of [1440, 390]) {
     if (width < 900) await page.locator("#mobile-menu-toggle").click();
     const nav = page.locator("#site-navigation");
     await expect(nav.locator("summary", { hasText: "Tools" })).toHaveCount(0);
-    for (const [label, url] of [["Playground", "/playground/"], ["Blog", "/blog/"], ["Discord", "https://discord.gg/faH4xjd5zh"]]) {
+    for (const [label, url] of [["Playground", "/playground/"], ["Blog", "/blog/"], ["GitHub", "https://github.com/Nimblesite/osprey"]]) {
       const link = nav.locator(":scope > li > a", { hasText: label });
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute("href", url);
     }
     await expect(nav.locator(":scope > li > a", { hasText: "Benchmarks" })).toHaveCount(0);
-    await nav.locator("summary", { hasText: "Docs" }).click();
-    await nav.getByRole("link", { name: "Packages", exact: true }).click();
-    await expect(page).toHaveURL(/\/docs\/package-manager\/$/);
+    await expect(nav.locator(":scope > li > a", { hasText: "Credits" })).toHaveCount(0);
+    await expect(nav.locator("details, summary")).toHaveCount(0);
+    await nav.getByRole("link", { name: "Docs", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/$/);
   });
 }
 
@@ -205,42 +206,42 @@ test.describe("desktop interactions", () => {
 
   test("nav links navigate to the right pages", async ({ page }) => {
     await page.goto("/");
-    // Docs group + Playground, Blog, Credits, Discord, GitHub.
-    await expect(page.locator("#site-navigation > li")).toHaveCount(6);
-    await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
-    await page.locator(".nav-submenu").getByRole("link", { name: "Language", exact: true }).click();
-    await expect(page).toHaveURL(/\/spec\/language\/$/);
-    await page.locator(".nav-group > summary", { hasText: "Docs" }).click();
-    await page.locator(".nav-submenu").getByRole("link", { name: "Start here", exact: true }).click();
+    // Docs, Playground, Blog, GitHub; Discord is the button beside them.
+    await expect(page.locator("#site-navigation > li")).toHaveCount(4);
+    await page.locator("#site-navigation").getByRole("link", { name: "Docs", exact: true }).click();
     await expect(page).toHaveURL(/\/docs\/$/);
+    await page.locator("#site-navigation").getByRole("link", { name: "Blog", exact: true }).click();
+    await expect(page).toHaveURL(/\/blog\/$/);
   });
 
-  test("Docs submenu supports keyboard and outside-click dismissal", async ({ page }) => {
-    await page.goto("/");
-    const docs = page.locator(".nav-group");
-    const summary = docs.locator("summary");
-    await expect(docs).toHaveCount(1);
-    await summary.focus();
-    await page.keyboard.press("Enter");
-    await expect(docs.getByRole("link").first()).toBeVisible();
-    // The open menu overlays the title's centre; click its corner, outside the menu.
-    await page.locator(".hero-title").click({ position: { x: 8, y: 8 } });
-    await expect(docs).not.toHaveAttribute("open", "");
-    await summary.click();
-    await page.keyboard.press("Escape");
-    await expect(docs).not.toHaveAttribute("open", "");
-    await expect(summary).toBeFocused();
+  test("Docs is one link, active on every documentation page, and Discord is the header's button", async ({ page }) => {
+    for (const url of ["/docs/", "/spec/language/", "/docs/releases/", "/credits/", "/benchmarks/"]) {
+      await page.goto(url);
+      await expect(page.locator(".nav-group, #site-navigation summary")).toHaveCount(0);
+      const docs = page.locator("#site-navigation").getByRole("link", { name: "Docs", exact: true });
+      await expect(docs).toHaveAttribute("href", "/docs/");
+      await expect(docs, url).toHaveClass(/active/);
+    }
+    for (const [url, label] of [["/playground/", "Playground"], ["/blog/", "Blog"], ["/", null]]) {
+      await page.goto(url);
+      const active = page.locator("#site-navigation a.active");
+      if (label) await expect(active, url).toHaveText(label);
+      else await expect(active, url).toHaveCount(0);
+    }
+    const discord = page.locator(".nav-actions .nav-cta");
+    await expect(discord).toHaveText("Discord");
+    await expect(discord).toHaveAttribute("href", "https://discord.gg/faH4xjd5zh");
+    const [cta, links] = await Promise.all([discord.boundingBox(), page.locator("#site-navigation").boundingBox()]);
+    expect(cta.x, "Discord sits right of the menu").toBeGreaterThan(links.x + links.width);
   });
 
-  test("header submenus remain usable without JavaScript", async ({ browser }) => {
+  test("header links work without JavaScript", async ({ browser }) => {
     for (const width of [1440, 390]) {
       const context = await browser.newContext({ javaScriptEnabled: false, viewport: { width, height: 900 } });
       const page = await context.newPage();
       await page.goto("/");
-      const nav = page.locator("#site-navigation");
-      await nav.locator("summary", { hasText: "Docs" }).click();
-      await nav.getByRole("link", { name: "Tutorials", exact: true }).click();
-      await expect(page).toHaveURL(/\/docs\/tutorials\/$/);
+      await page.locator("#site-navigation").getByRole("link", { name: "Docs", exact: true }).click();
+      await expect(page).toHaveURL(/\/docs\/$/);
       await context.close();
     }
   });

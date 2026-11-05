@@ -1,39 +1,8 @@
 {
   "main": [
     {
-      "text": "Start here",
-      "url": "/docs/",
-      "group": "Docs"
-    },
-    {
-      "text": "Tutorials",
-      "url": "/docs/tutorials/",
-      "group": "Docs"
-    },
-    {
-      "text": "Proofs",
-      "url": "/docs/proofs/",
-      "group": "Docs"
-    },
-    {
-      "text": "Build applications",
-      "url": "/docs/osprey-native/",
-      "group": "Docs"
-    },
-    {
-      "text": "Packages",
-      "url": "/docs/package-manager/",
-      "group": "Docs"
-    },
-    {
-      "text": "Language",
-      "url": "/spec/language/",
-      "group": "Docs"
-    },
-    {
-      "text": "Reference",
-      "url": "/docs/stdlib/",
-      "group": "Docs"
+      "text": "Docs",
+      "url": "/docs/"
     },
     {
       "text": "Playground",
@@ -44,18 +13,15 @@
       "url": "/blog/"
     },
     {
-      "text": "Credits",
-      "url": "/credits/"
+      "text": "GitHub",
+      "url": "https://github.com/Nimblesite/osprey",
+      "external": true
     },
     {
       "text": "Discord",
       "url": "https://discord.gg/faH4xjd5zh",
-      "external": true
-    },
-    {
-      "text": "GitHub",
-      "url": "https://github.com/Nimblesite/osprey",
-      "external": true
+      "external": true,
+      "cta": true
     }
   ],
   "docs": [
@@ -227,6 +193,10 @@
         {
           "text": "Releases",
           "url": "/docs/releases/"
+        },
+        {
+          "text": "Credits",
+          "url": "/credits/"
         }
       ]
     }

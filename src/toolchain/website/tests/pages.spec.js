@@ -171,18 +171,30 @@ for (const width of [1280, 1440, 1920]) {
     await expect(tables).toHaveCount(4);
     await expect(page.locator(".bench-card")).toHaveCount(0);
     const relative = tables.first();
-    await expect(relative.locator("thead")).toContainText("Osprey (ARC)");
-    await expect(relative.locator("thead")).toContainText("Osprey (GC)");
-    await expect(relative.locator("tbody tr", { hasText: "Fastest of all" })).toHaveCount(1);
+    for (const header of ["Osprey backend", "Geometric mean", "Median", "Geometric SD", "Cases"]) {
+      await expect(relative.locator("thead")).toContainText(header);
+    }
+    await expect(relative).toContainText("Osprey (ARC)");
+    await expect(relative).toContainText("Osprey (GC)");
+    expect(await relative.evaluate((table) => table.clientWidth / table.closest("article").clientWidth),
+      "the relative table sizes to its content").toBeLessThan(0.7);
+    await expect(page.getByText("Lowest time of all languages")).toHaveCount(0);
+    for (const compact of [relative]) {
+      const [left, right] = await compact.evaluate((table) => {
+        const box = table.getBoundingClientRect(), page = table.closest("article").getBoundingClientRect();
+        return [box.left - page.left, page.right - box.right];
+      });
+      expect(Math.abs(left - right), "compact tables are centred").toBeLessThanOrEqual(2);
+    }
     const cpu = tables.nth(1);
+    expect(await cpu.evaluate((table) => table.clientWidth / table.closest("article").clientWidth)).toBeGreaterThan(0.95);
     await expect(cpu.locator("td.col-osprey .sd").first()).toHaveText(/^±\d/);
     await expect(cpu.locator("td.col-osprey").first()).toHaveAttribute("title", /mean .*median .*standard deviation .*measured \d{4}-\d{2}-\d{2}/);
     const runs = tables.nth(3);
     await expect(runs.locator("thead")).toContainText("Toolchains");
     await expect(runs.locator("tbody tr")).toHaveCount(5);
     await expect(runs).toContainText("Apple M4 Max");
-    expect(await tables.first().evaluate((table) => table.clientWidth / table.closest("article").clientWidth)).toBeGreaterThan(0.95);
-    const overflow = await tables.evaluateAll((elements) => elements.map((element) => element.scrollWidth - element.clientWidth));
+    const overflow = await tables.evaluateAll((elements) => elements.map((element) => Math.max(0, element.scrollWidth - element.clientWidth)));
     expect(overflow, "every benchmark column must fit without horizontal scrolling").toEqual([0, 0, 0, 0]);
     for (const table of await tables.all()) {
       const bounds = await table.locator("th:last-child").boundingBox();
@@ -203,7 +215,7 @@ test.describe("mobile interactions", () => {
     await expect(links).toBeHidden();
     await toggle.click();
     await expect(links).toBeVisible();
-    await expect(links.locator("summary", { hasText: "Docs" })).toBeVisible();
+    await expect(links.getByRole("link", { name: "Docs", exact: true })).toBeVisible();
     await toggle.click();
     await expect(links).toBeHidden();
   });
@@ -221,15 +233,11 @@ test.describe("mobile interactions", () => {
       await page.goto("/docs/");
       if (viewport.font) await page.addStyleTag({ content: `:root { --font-sans: ${viewport.font}; }` });
       await page.locator("#mobile-menu-toggle").click();
-      const controls = page.locator("#site-navigation > li > a, #site-navigation > li > details > summary");
-      // Docs group + Playground, Blog, Credits, Discord, GitHub.
-      await expect(controls).toHaveCount(6);
+      const controls = page.locator("#site-navigation > li > a");
+      // Docs, Playground, Blog, GitHub.
+      await expect(controls).toHaveCount(4);
       await expectNavigationFits(controls);
-      for (const group of await page.locator(".nav-group").all()) {
-        await group.locator("summary").click();
-        await expectNavigationFits(group.getByRole("link"));
-        await expectNavigationFits(controls);
-      }
+      await expectNavigationFits(page.locator(".nav-cta"));
     });
   }
 
@@ -256,7 +264,7 @@ test.describe("mobile interactions", () => {
     await expect(toggle).toHaveAttribute("aria-controls", await links.getAttribute("id"));
     await toggle.click();
     await expect(toggle).toHaveAttribute("aria-expanded", "true");
-    await expect(links.locator("summary").first()).toBeFocused();
+    await expect(links.locator("a").first()).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(links).toBeHidden();
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -325,25 +333,24 @@ test.describe("documentation sub-page navigation", () => {
     await expect(navigation.getByRole("link", { name: "Web apps", exact: true })).toHaveClass(/active/);
   });
 
-  test("the site Docs menu mirrors the documentation sections", async ({ page }) => {
+  test("the site Docs link opens the documentation index, whose sidebar holds every section", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/docs/");
-    const sections = page.locator(".docs-nav-desktop .docs-nav-section");
-    const landings = await sections.evaluateAll((all) => all.map((section) => section.querySelector("a").getAttribute("href")));
-    const menu = page.locator(".nav-group .nav-submenu a");
-    await expect(menu).toHaveText(DOC_SECTIONS);
-    expect(await menu.evaluateAll((links) => links.map((link) => link.getAttribute("href")))).toEqual(landings);
+    await page.goto("/");
+    await page.locator("#site-navigation").getByRole("link", { name: "Docs", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/$/);
+    await expect(page.locator(".docs-nav-desktop .docs-nav-section-title")).toHaveText(DOC_SECTIONS);
   });
 
-  test("Reference lists benchmarks and releases", async ({ page }) => {
+  test("Reference lists benchmarks, releases and credits", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/docs/releases/");
     const reference = page.locator(".docs-nav-desktop .docs-nav-section", { hasText: "Reference" });
     await expect(reference.getByRole("link", { name: "Benchmarks", exact: true })).toHaveAttribute("href", "/benchmarks/");
     await expect(reference.getByRole("link", { name: "Releases", exact: true })).toHaveAttribute("aria-current", "page");
+    await expect(reference.getByRole("link", { name: "Credits", exact: true })).toHaveAttribute("href", "/credits/");
     await expect(page.locator("h1")).toHaveText("Releases");
     await expect(page.locator(".prose a[href='https://github.com/Nimblesite/osprey/releases']")).toHaveCount(1);
-    await expect(page.locator(".nav-submenu a.active")).toHaveText("Reference");
+    await expect(page.locator("#site-navigation a.active")).toHaveText("Docs");
   });
 
   for (const height of [600, 900]) {
@@ -402,14 +409,12 @@ test.describe("documentation sub-page navigation", () => {
 
 
 for (const viewport of [{ width: 320, height: 568 }, { width: 768, height: 320 }]) {
-  test(`seven-section proof menu keeps every link inside ${viewport.width}x${viewport.height}`, async ({ page }) => {
+  test(`site menu keeps every link inside ${viewport.width}x${viewport.height}`, async ({ page }) => {
     await page.setViewportSize(viewport);
     await page.goto("/docs/proofs/");
     await page.locator("#mobile-menu-toggle").click();
-    await page.locator(".nav-group > summary").click();
-    await expect(page.locator(".nav-submenu a")).toHaveCount(7);
-    await expectNavigationFits(page.locator(".nav-submenu a"));
-    await expectNavigationFits(page.locator("#site-navigation > li > a, #site-navigation > li > details > summary"));
+    await expectNavigationFits(page.locator("#site-navigation > li > a"));
+    await expectNavigationFits(page.locator(".nav-cta"));
   });
 }
 

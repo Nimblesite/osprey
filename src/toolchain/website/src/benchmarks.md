@@ -14,7 +14,6 @@ Elapsed time and peak resident memory for 24 small programs, each written with t
 | --- | --- |
 | CPU time | Mean wall-clock time over at least 10 runs after 3 warm-up runs (`hyperfine -N`), including process start-up and excluding compilation. The small figure below it is the standard deviation. Hover a cell for the median, minimum, maximum and run. |
 | Peak memory | Highest resident set size over three runs. `—` means not measured: a WebAssembly run's RSS is the Wasmtime host's. |
-| Relative time | Geometric mean of Osprey's time divided by the other language's time, over the cases both measured. Native languages are compared with native Osprey, WebAssembly with WebAssembly. |
 | ★ and bold | ★ marks the lowest time in a row when it is an Osprey column; bold marks the lowest otherwise. |
 
 Figures come from the runs listed in the last table, on different dates and machines.

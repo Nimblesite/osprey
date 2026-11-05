@@ -19,6 +19,7 @@ import math
 import os
 import platform
 import re
+import statistics
 import subprocess
 import sys
 from datetime import date
@@ -139,10 +140,11 @@ def cell_missing(c: Cell) -> str:
     return {"build_failed": "build✗", "wrong_output": "wrong✗"}.get(str(c.get("status")), "—")
 
 
-def table(head: list[str], rows: str, numeric: set[int] = frozenset()) -> str:
-    """A `.comparison-table` with `head` columns; `numeric` column indexes align right."""
+def table(head: list[str], rows: str, numeric: set[int] = frozenset(), compact: bool = False) -> str:
+    """A `.comparison-table` with `head` columns; `numeric` column indexes align right.
+    A compact table sizes to its content instead of the page width."""
     cells = "".join(f'<th{" class=\"num\"" if i in numeric else ""}>{h}</th>' for i, h in enumerate(head))
-    return (f'<div class="comparison-table"><table><thead><tr>{cells}</tr></thead>'
+    return (f'<div class="comparison-table{" is-compact" if compact else ""}"><table><thead><tr>{cells}</tr></thead>'
             f"<tbody>{rows}</tbody></table></div>")
 
 
@@ -190,31 +192,29 @@ def tooltip(c: Cell, key: str) -> str:
 
 
 def summary(data: Data, langs: list[str], cases: list[str]) -> str:
-    """Osprey time ÷ each language's time: the geometric mean over shared cases.
-    Native languages compare with the native Osprey columns, wasm with wasm."""
+    """Osprey time ÷ each language's time, per case: geometric mean, median and
+    geometric standard deviation of those ratios. Native languages compare with
+    the native Osprey columns, WebAssembly with WebAssembly."""
     columns = [o for o in OSPREY_COLUMNS if o in langs]
-    head = "<tr><th>Compared with</th>" + "".join(
-        f'<th class="num col-osprey">{LABEL[o]}</th>' for o in columns) + '<th class="num">Cases</th></tr>'
-    rows = "".join(_summary_row(data, cases, columns, lang) for lang in langs if not lang.startswith("osprey"))
-    fastest = "".join(f'<td class="num col-osprey">{sum(_fastest(data[n], o) for n in cases)}</td>' for o in columns)
-    rows += f'<tr><td>Fastest of all</td>{fastest}<td class="num">{len(cases)}</td></tr>'
-    return ('<div class="comparison-table"><table><thead>' + head
-            + "</thead><tbody>" + rows + "</tbody></table></div>")
+    rows = "".join(_summary_rows(data, cases, columns, lang) for lang in langs if not lang.startswith("osprey"))
+    return table(["Compared with", "Osprey backend", "Geometric mean", "Median", "Geometric SD", "Cases"], rows,
+                  {2, 3, 4, 5}, compact=True)
 
 
-def _fastest(case: dict[str, Cell], osprey: str) -> bool:
-    v = vals(case, "mean")
-    return osprey in v and all(v[osprey] < x for l, x in v.items() if l != osprey)
+def _summary_rows(data: Data, cases: list[str], columns: list[str], lang: str) -> str:
+    stats = [(o, rs) for o in columns if o.endswith("wasm") == lang.endswith("wasm")
+             and (rs := ratios(data, cases, o, lang, "mean"))]
+    rows = [f'<td class="sub">{LABEL[o]}</td><td class="num">{geomean(rs):.2f}×</td>'
+            f'<td class="num">{statistics.median(rs):.2f}×</td><td class="num">×{geosd(rs):.2f}</td>'
+            f'<td class="num">{len(rs)}</td></tr>' for o, rs in stats]
+    head = f'<tr><td rowspan="{len(rows)}">{LABEL[lang]}</td>'
+    return head + "<tr>".join(rows) if rows else ""
 
 
-def _summary_row(data: Data, cases: list[str], columns: list[str], lang: str) -> str:
-    cells, counts = "", set()
-    for o in columns:
-        rs = ratios(data, cases, o, lang, "mean") if o.endswith("wasm") == lang.endswith("wasm") else []
-        counts |= {len(rs)} if rs else set()
-        cells += f'<td class="num col-osprey">{f"{geomean(rs):.2f}×" if rs else "—"}</td>'
-    count = " / ".join(str(n) for n in sorted(counts))
-    return f'<tr><td>{LABEL[lang]}</td>{cells}<td class="num">{count}</td></tr>' if counts else ""
+def geosd(xs: list[float]) -> float:
+    """The geometric standard deviation: the typical factor a ratio lies from the geometric mean."""
+    g = math.log(geomean(xs))
+    return math.exp(math.sqrt(sum((math.log(x) - g) ** 2 for x in xs) / len(xs)))
 
 
 def runs_table(runs: dict[str, dict], data: Data, langs: list[str], cases: list[str]) -> str:
@@ -249,9 +249,16 @@ def _case_list(hit: tuple[str, ...], cases: list[str]) -> str:
     return f"every case except {', '.join(rest)}" if len(rest) < len(hit) else ", ".join(hit)
 
 
+RELATIVE_NOTE = ("<p>For each program, Osprey's mean time is divided by the other language's mean time. "
+                 "Each row summarises those per-program ratios: their geometric mean, their median, and the "
+                 "geometric standard deviation, the factor by which a typical program differs from the "
+                 "geometric mean. <code>1.50×</code> means Osprey took one and a half times as long; "
+                 "below <code>1×</code> means it took less time.</p>\n")
+
+
 def tables_fragment(data: Data, langs: list[str], cases: list[str], runs: dict[str, dict]) -> str:
     """The whole report body, rendered by the website /benchmarks page."""
-    return ("<h2>Osprey time relative to each language</h2>\n" + summary(data, langs, cases)
+    return ("<h2>Osprey time relative to each language</h2>\n" + RELATIVE_NOTE + summary(data, langs, cases)
             + "\n<h2>CPU time</h2>\n" + value_table(data, langs, cases, "mean", fmt_time)
             + "\n<h2>Peak memory</h2>\n" + value_table(data, langs, cases, "rss", fmt_mem)
             + "\n<h2>Where each figure was measured</h2>\n" + runs_table(runs, data, langs, cases))

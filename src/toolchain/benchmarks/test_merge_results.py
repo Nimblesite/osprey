@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from merge_results import atomic_write, merge, valid_timing
-from report import fmt_time, load, present_langs, ratios, render, runs_table, summary, update_readme, value_table, wins
+from report import fmt_time, load, tables_fragment, present_langs, ratios, render, runs_table, summary, update_readme, value_table, wins
 
 
 class LspFixtureTests(unittest.TestCase):
@@ -432,14 +432,25 @@ class HeadlineTests(unittest.TestCase):
         self.assertEqual(table.count('class="num best"'), 2)
         text = summary(data, langs, cases)
         self.assertNotIn("bench-card", text)
-        self.assertIn(">Osprey (ARC)</th>", text)
-        self.assertIn(">Osprey (GC)</th>", text)
-        self.assertIn(">Osprey (wasm)</th>", text)
-        self.assertIn("<td>Rust</td>", text)
-        arc = 2 ** ((math.log2(0.5) + math.log2(4.5) + math.log2(1.5)) / 3)
-        self.assertIn(f"{arc:.2f}×", text)
-        self.assertIn('<tr><td>Fastest of all</td><td class="num col-osprey">1</td>'
-                      '<td class="num col-osprey">1</td><td class="num col-osprey">1</td>', text)
+        self.assertIn("is-compact", text, "the relative table sizes to its content")
+        for header in ("Compared with", "Osprey backend", "Geometric mean", "Median", "Geometric SD", "Cases"):
+            self.assertIn(f">{header}</th>", text)
+        arc = [0.5, 4.5, 1.5]
+        mean = math.exp(sum(map(math.log, arc)) / 3)
+        sd = math.exp(math.sqrt(sum((math.log(x) - math.log(mean)) ** 2 for x in arc) / 3))
+        self.assertIn(f'<td class="sub">Osprey (ARC)</td><td class="num">{mean:.2f}×</td><td class="num">1.50×</td>'
+                      f'<td class="num">×{sd:.2f}</td><td class="num">3</td>', text)
+        self.assertIn('<td rowspan="2">Rust</td>', text)
+        self.assertNotIn("Osprey (wasm)</td>", text.split("Rust</td>")[1].split("</tr>")[0])
+        self.assertNotIn("Lowest time", text)
+
+    def test_the_relative_table_explains_its_ratios_under_the_heading(self) -> None:
+        data = self.data()
+        page = tables_fragment(data, present_langs(data), sorted(data), {})
+        heading, rest = page.split("<h2>Osprey time relative to each language</h2>\n", 1)
+        self.assertTrue(rest.startswith("<p>For each program, Osprey's mean time is divided by"))
+        for fact in ("geometric mean", "median", "geometric standard deviation", "1.50×"):
+            self.assertIn(fact, rest.split("</p>")[0])
 
     def test_time_cells_show_the_mean_its_deviation_and_a_tooltip_of_every_statistic(self) -> None:
         cell = {"status": "ok", "rss": 10, "mean": 0.1223, "stddev": 0.0012, "min": 0.12,
