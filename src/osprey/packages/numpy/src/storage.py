@@ -14,7 +14,7 @@ from typing import Callable
 from numpy import Errors
 
 __all__ = [
-    "Buffer", "built", "at", "length_of", "lift", "lower", "add_f", "mul_f",
+    "Buffer", "built", "reduced", "at", "length_of", "lift", "lower", "add_f", "mul_f",
     "max_f", "min_f", "infinity", "not_a_number",
 ]
 
@@ -23,17 +23,18 @@ __all__ = [
 class Buffer[B]:
     """The buffer operations the port needs: build a buffer of `size` elements
     from an index function, read and measure one, combine two elementwise,
-    reduce one to a scalar, multiply two row-major matrices (an `Error` when an operand's length
-    disagrees with the stated shape), lift and lower
-    host lists, and say which interpretation is answering. `B` is the
-    representation the installed handler picks."""
+    reduce one to a scalar, multiply two row-major matrices (each an `Error`
+    when the runtime cannot run the kernel or an operand's length disagrees
+    with the stated shape), lift and lower host lists, and say which
+    interpretation is answering. `B` is the representation the installed
+    handler picks."""
     def build(size: int, kernel: Callable[[int], float]) -> Result[B, str]: ...
     def get(buffer: B, index: int) -> float: ...
     def length(buffer: B) -> int: ...
-    def zip_with(a: B, b: B, combine: Callable[[float, float], float]) -> B: ...
-    def reduce(buffer: B, seed: float, combine: Callable[[float, float], float]) -> float: ...
+    def zip_with(a: B, b: B, combine: Callable[[float, float], float]) -> Result[B, str]: ...
+    def reduce(buffer: B, seed: float, combine: Callable[[float, float], float]) -> Result[float, str]: ...
     def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> Result[B, str]: ...
-    def from_list(values: list[float]) -> B: ...
+    def from_list(values: list[float]) -> Result[B, str]: ...
     def to_list(buffer: B) -> Result[list[float], str]: ...
     def device() -> str: ...
 
@@ -42,14 +43,29 @@ def built(result):
     """Use a successful build or leave the checked region with its reason.
 
     The raising policy never resumes: the final expression only supplies the
-    abandoned branch's buffer type, as in Linalg.product_data.
+    abandoned branch's buffer type — an empty upload, itself collapsed here —
+    as in Linalg.product_data.
     """
     match result:
         case Success(value=value):
             return value
         case Error(message=message):
             g = Errors.fail(message)
-            return perform(Buffer.from_list([]))
+            return lift([])
+
+
+def reduced(result):
+    """Use a successful reduction or leave the checked region with its reason.
+
+    The raising policy never resumes: the final expression only supplies the
+    abandoned branch's float type, as in Linalg.product_data.
+    """
+    match result:
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            g = Errors.fail(message)
+            return 0.0
 
 
 def at(buffer, index):
@@ -63,8 +79,9 @@ def length_of(buffer):
 
 
 def lift(values):
-    """Lifts a host list of doubles into a buffer."""
-    return perform(Buffer.from_list(values))
+    """Lifts a host list of doubles into a buffer, or leaves the checked region
+    with the runtime's reason."""
+    return built(perform(Buffer.from_list(values)))
 
 
 def lower(buffer):

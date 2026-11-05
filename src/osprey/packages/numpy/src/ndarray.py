@@ -625,20 +625,21 @@ def combine_op(acc, x, op):
 
 
 def reduce_all(a, seed, op):
-    """Reduce every element in row-major order under the combine `op`."""
+    """Reduce every element in row-major order under the combine `op`, or leave
+    the checked region with the runtime's reason."""
     match op:
         case 0:
-            return perform(Storage.Buffer.reduce(a.data, seed, Storage.add_f))
+            return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, Storage.add_f)))
         case 1:
-            return perform(Storage.Buffer.reduce(a.data, seed, Storage.mul_f))
+            return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, Storage.mul_f)))
         case 2:
-            return perform(Storage.Buffer.reduce(a.data, seed, Storage.max_f))
+            return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, Storage.max_f)))
         case 3:
-            return perform(Storage.Buffer.reduce(a.data, seed, Storage.min_f))
+            return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, Storage.min_f)))
         case 4:
-            return perform(Storage.Buffer.reduce(a.data, seed, and_kernel))
+            return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, and_kernel)))
         case _:
-            return perform(Storage.Buffer.reduce(a.data, seed, or_kernel))
+            return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, or_kernel)))
 
 
 def reduced_coords(out_coords, ax, k, keepdims):
@@ -652,7 +653,8 @@ def reduce_axis(a, axis, keepdims, seed, op):
     shape = a.shape
     nd = len(shape)
     if nd == 0:
-        return NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: reduce_all(a, seed, op)))))
+        total = reduce_all(a, seed, op)
+        return NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: total))))
     else:
         ax = Layout.normalize_axis(axis, nd, "")
         n = unwrap_or(listGet(shape, ax), 1)

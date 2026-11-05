@@ -34,16 +34,16 @@ class on_host:
         return len(b)
 
     def zip_with(a, b, f):
-        return toList(map(range(len(a) if len(a) < len(b) else len(b)), lambda i: f(unwrap_or(listGet(a, i), 0.0), unwrap_or(listGet(b, i), 0.0))))
+        return Success(value=toList(map(range(len(a) if len(a) < len(b) else len(b)), lambda i: f(unwrap_or(listGet(a, i), 0.0), unwrap_or(listGet(b, i), 0.0)))))
 
     def reduce(b, seed, f):
-        return fold(range(len(b)), seed, lambda acc, i: f(acc, unwrap_or(listGet(b, i), 0.0)))
+        return Success(value=fold(range(len(b)), seed, lambda acc, i: f(acc, unwrap_or(listGet(b, i), 0.0))))
 
     def mat_mul(a, b, rows, inner, cols):
         return product_of(a, b, rows, inner, cols) if len(a) == rows * inner and len(b) == inner * cols else misfit(a, b, rows, inner, cols)
 
     def from_list(xs):
-        return xs
+        return Success(value=xs)
 
     def to_list(b):
         return Success(value=b)

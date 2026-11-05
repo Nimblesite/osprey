@@ -28,7 +28,7 @@ class on_gpu:
     def build(n, f):
         match gpuIota(n):
             case Success(value=value):
-                return Success(value=gpuMap(value, f))
+                return answered(gpuMap(value, f))
             case Error(message=message):
                 return Error(message=toString(message))
 
@@ -39,16 +39,16 @@ class on_gpu:
         return gpuLength(b)
 
     def zip_with(a, b, f):
-        return gpuZipWith(a, b, f)
+        return answered(gpuZipWith(a, b, f))
 
     def reduce(b, seed, f):
-        return gpuFold(b, seed, f)
+        return answered(gpuFold(b, seed, f))
 
     def mat_mul(a, b, rows, inner, cols):
         return answered(gpuMatMul(a, b, rows, inner, cols))
 
     def from_list(xs):
-        return toGpu(xs)
+        return answered(toGpu(xs))
 
     def to_list(b):
         return answered(fromGpu(b))
