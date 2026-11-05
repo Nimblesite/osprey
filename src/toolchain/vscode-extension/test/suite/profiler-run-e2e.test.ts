@@ -11,7 +11,7 @@ import { OSPREY_PALETTE } from "../../client/src/profiler/palette";
 import { flamePanel } from "../../client/src/profiler/profiler-panel";
 import { profileActiveFile, PROFILER_COMMANDS, type ProfileArtifacts, type ProgressRunner } from "../../client/src/profiler/profile-run";
 import { resolveBuiltOsprey } from "./osprey-test-env";
-import { BUILD_MS, EXTENSION_ID } from "./profiler-kit";
+import { BUILD_MS, EXTENSION_ID, connectEditorBrowser, editorWebviewFrame, waitFor } from "./profiler-kit";
 
 // The same workload scripts/tests/test_profiler.sh profiles: a spawned worker fiber
 // beside the main fiber, both burning CPU in `fib`.
@@ -76,6 +76,33 @@ suite("Profile Current File — real compiler, Osprey UI", function () {
     flamePanel.dispose();
     await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     await fs.promises.rm(dir, { recursive: true, force: true });
+  });
+
+  test("webview discovery follows the visible panel instead of a retained hidden panel", async () => {
+    const browser = await connectEditorBrowser();
+    const options = { retainContextWhenHidden: true };
+    const old = vscode.window.createWebviewPanel("frameProbeOld", "Old frame", vscode.ViewColumn.One, options);
+    const content = (value: string): string => `<html><body><div data-frame-probe>${value}</div><input aria-label="Frame input" value="${value}"></body></html>`;
+    let next: vscode.WebviewPanel | undefined;
+    try {
+      old.webview.html = content("old");
+      const oldFrame = await editorWebviewFrame(browser, "[data-frame-probe]");
+      assert.strictEqual(await oldFrame.locator("[data-frame-probe]").textContent(), "old");
+      next = vscode.window.createWebviewPanel("frameProbeNew", "New frame", vscode.ViewColumn.One, options);
+      next.webview.html = content("new");
+      await waitFor(() => next?.visible === true && !old.visible, Boolean, 1000, "new panel is active");
+      const active = await editorWebviewFrame(browser, "[data-frame-probe]");
+      assert.strictEqual(await active.locator("[data-frame-probe]").textContent(), "new");
+      await active.getByRole("textbox", { name: "Frame input" }).fill("fresh");
+      assert.strictEqual(await oldFrame.getByRole("textbox", { name: "Frame input" }).inputValue(), "old");
+      old.reveal();
+      await waitFor(() => old.visible && next?.visible === false, Boolean, 1000, "old panel is active again");
+      const restored = await editorWebviewFrame(browser, "[data-frame-probe]");
+      assert.strictEqual(await restored.locator("[data-frame-probe]").textContent(), "old");
+      assert.strictEqual(await active.getByRole("textbox", { name: "Frame input" }).inputValue(), "fresh");
+    } finally {
+      next?.dispose(); old.dispose(); await browser.close();
+    }
   });
 
   test("the command profiles the open file into one flame panel that Open Last restores", async () => {
