@@ -411,17 +411,30 @@ static int32_t device_failure_on_launch(void) {
 // decline and a dispatch failure are failures the caller handles: -1 with the
 // reason on the io_error channel, never an abort. The same launch works again
 // once the device recovers, so a failure leaves nothing to retry behind.
+static void handled_device_faults(void) {
+  static const struct { int64_t code; const char *reason; } faults[] = {
+    {OSPREY_GPU_FAULT_DIVIDE_BY_ZERO, "division by zero"},
+    {OSPREY_GPU_FAULT_REMAINDER_BY_ZERO, "remainder by zero"},
+    {OSPREY_GPU_FAULT_OVERFLOW, "integer overflow"},
+    {INT64_MAX, "unknown fault"},
+  };
+  void *out = osprey_gpu_alloc(1, 8);
+  assert(out && osprey_gpu_len(out) == 1);
+  for (size_t i = 0; i < sizeof faults / sizeof faults[0]; i++) {
+    injected_fault = faults[i].code;
+    osp_io_error_clear();
+    assert(launch(out, "", NULL) == -1);
+    const char *error = osp_io_error();
+    assert(error && strstr(error, "kernel: osprey_kernel_1") && strstr(error, faults[i].reason));
+    injected_fault = 0;
+    osp_io_error_clear();
+    assert(launch(out, "", NULL) == 1 && !osp_io_error());
+  }
+}
+
 static void handled_launch_failure(void) {
   select_mode("auto");
-  void *out = osprey_gpu_alloc(1, 8);
-  injected_fault = OSPREY_GPU_FAULT_DIVIDE_BY_ZERO;
-  osp_io_error_clear();
-  assert(launch(out, "", NULL) == -1);
-  assert(strstr(osp_io_error(), "kernel: osprey_kernel_1") != NULL);
-  assert(strstr(osp_io_error(), "division by zero") != NULL);
-  injected_fault = 0;
-  osp_io_error_clear();
-  assert(launch(out, "", NULL) == 1 && !osp_io_error());
+  handled_device_faults();
   int64_t uniforms[OSPREY_GPU_MAX_ARGS] = {0};
   char kinds[OSPREY_GPU_MAX_ARGS + 1];
   memset(kinds, 's', OSPREY_GPU_MAX_ARGS);
