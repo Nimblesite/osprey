@@ -82,6 +82,14 @@ healthy: `tests/clients.cpython` abandons a connection mid-request and then has
 the next turn answered normally. Detecting the peer is a missing HTTP ability
 ([HTTP-SERVER] has no per-request socket), reported to the plan's lead.
 
+## A prompt the context cannot hold
+
+A prompt whose token count exceeds the request's `num_ctx` is a 400 whose
+message names both numbers — the prompt's token count and the context — and a
+prompt that exactly fills `num_ctx` is the same error, because there is no room
+to answer it ([LLM-API-LIMIT]). The server never truncates a prompt: a harness
+that lost its instructions would answer wrongly with nothing to warn it.
+
 ## Limits of the served model
 
 The fixture tokenizer's vocabulary is the characters of `CORPUS`, so a prompt

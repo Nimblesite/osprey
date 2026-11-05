@@ -68,9 +68,9 @@ def bounded(model, tokens, sampling, tools):
     """A turn for a prompt that fits the context, and an error for one that does not."""
     room = satSub(sampling.num_ctx, Lists.count(tokens))
     if Lists.count(tokens) > sampling.num_ctx:
-        return Error(message="prompt does not fit the model's context")
+        return Error(message=f"prompt is {Lists.count(tokens)} tokens, over num_ctx {sampling.num_ctx}; a prompt is never truncated")
     elif room == 0:
-        return Error(message="the prompt leaves no room to generate")
+        return Error(message=f"prompt is {Lists.count(tokens)} tokens and fills num_ctx {sampling.num_ctx}; no room to generate")
     else:
         start = Draft(prompt_tokens=Lists.count(tokens), tools=tools, raw="", history=tokens, pieces=[], calls=[], text_length=0, think_length=0, done=False)
         return run(model, start, sampling, budget(sampling, room))

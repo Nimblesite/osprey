@@ -432,6 +432,58 @@ def a_client_that_disconnects_does_not_wedge_the_server(port):
     assert reply.prompt_eval_count > 0, reply
 
 
+# --- step 5: a prompt over num_ctx names both counts ----------------------
+
+
+@case
+def a_prompt_over_num_ctx_is_rejected_naming_both_counts(port):
+    module = reference()
+    model = module.Model()
+    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
+    for over in (1, 7):
+        boundary = tokens - over
+        for call in (
+            lambda: client(port).generate(model=MODEL, prompt=READ_PROMPT, options={"num_ctx": boundary}),
+            lambda: client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], options={"num_ctx": boundary}),
+        ):
+            try:
+                call()
+            except ollama.ResponseError as error:
+                assert error.status_code == 400, error.status_code
+                message = str(error)
+                assert str(tokens) in message, message
+                assert str(boundary) in message, message
+                assert "num_ctx" in message, message
+            else:
+                raise AssertionError(f"a prompt of {tokens} tokens was accepted under num_ctx {boundary}")
+
+
+@case
+def a_prompt_that_exactly_fills_num_ctx_is_rejected_naming_both_counts(port):
+    module = reference()
+    model = module.Model()
+    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
+    try:
+        openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], extra_body={"options": {"num_ctx": tokens}})
+    except openai.BadRequestError as error:
+        message = str(error.message)
+        assert str(tokens) in message, message
+        assert "num_ctx" in message, message
+    else:
+        raise AssertionError(f"a prompt filling num_ctx {tokens} was accepted")
+
+
+@case
+def a_prompt_that_fits_is_served_whole(port):
+    module = reference()
+    model = module.Model()
+    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
+    reply = client(port).generate(model=MODEL, prompt=READ_PROMPT, options={"num_ctx": tokens + 256, "num_predict": 256})
+    assert reply.done is True, reply
+    assert reply.prompt_eval_count == tokens, reply
+    assert reply.response == model.continuation(module.rendered(READ_PROMPT)), reply
+
+
 # --- the harness ----------------------------------------------------------
 
 
