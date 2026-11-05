@@ -14,6 +14,9 @@ use std::collections::{BTreeMap, BTreeSet};
 /// A bound on the copies one program gets, not an expected size.
 const MAX_COPIES: usize = 4096;
 
+/// Names the original call kept beside each redirected one.
+const WITNESS: &str = "$signalForwardedCall";
+
 /// Which argument of each query is its callback.
 fn work_index(query: &str) -> usize {
     if query == "signalRefresh" {
@@ -24,7 +27,10 @@ fn work_index(query: &str) -> usize {
 }
 
 /// `program` with every signal-forwarding call redirected to its copy, or
-/// `None` when no helper forwards a callback.
+/// `None` when no helper forwards a callback. Each redirected call keeps the
+/// original beside it in a closure nothing invokes, so one solve of this program
+/// also decides the source's call: the copy erases the helper's generic binders
+/// and drops the callback, which would lose their constraints between arguments.
 pub(super) fn specialized(program: &Program) -> Option<Program> {
     let resolved = osprey_ast::stage::resolve_bindings(program);
     let definitions = osprey_ast::stage::function_definitions(&resolved);
@@ -47,6 +53,28 @@ pub(super) fn specialized(program: &Program) -> Option<Program> {
     }
     result.statements.extend(copies.produced);
     Some(result)
+}
+
+/// Remove every kept original once the solve has read it, so only the
+/// redirected calls reach the backend.
+pub(super) fn drop_witnesses(program: &mut Program) {
+    for statement in &mut program.statements {
+        mutate::statement_children_mut(statement, &mut drop_witness);
+    }
+}
+
+fn drop_witness(expression: &mut Expr) {
+    mutate::children_mut(expression, &mut drop_witness);
+    if let Expr::Block {
+        statements, value, ..
+    } = expression
+    {
+        if matches!(statements.as_slice(), [Stmt::Let { name, .. }] if name == WITNESS) {
+            if let Some(call) = value.take() {
+                *expression = *call;
+            }
+        }
+    }
 }
 
 /// Each helper's parameters that reach a query's callback, directly or
@@ -158,10 +186,27 @@ impl Copies {
             .filter(|(index, _)| !bound.contains_key(index))
             .map(|(_, argument)| argument.clone())
             .collect();
-        Some(Expr::Call {
-            function: Box::new(Expr::Identifier(copy)),
-            arguments: rest,
-            named_arguments: Vec::new(),
+        let witness = Expr::Lambda {
+            parameters: Vec::new(),
+            return_type: None,
+            body: Box::new(expression.clone()),
+            position: None,
+        };
+        Some(Expr::Block {
+            statements: vec![Stmt::Let {
+                name: WITNESS.to_owned(),
+                mutable: false,
+                ty: None,
+                value: witness,
+                doc: None,
+                position: None,
+            }],
+            value: Some(Box::new(Expr::Call {
+                function: Box::new(Expr::Identifier(copy)),
+                arguments: rest,
+                named_arguments: Vec::new(),
+            })),
+            position: None,
         })
     }
 

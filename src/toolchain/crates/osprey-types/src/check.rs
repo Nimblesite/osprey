@@ -22,7 +22,7 @@ pub use driver::check_program;
 pub use driver::check_program_exports;
 pub use driver::effect_check_count;
 pub(crate) use driver::infer_annotation_candidate;
-pub(crate) use driver::infer_checked;
+pub(crate) use driver::{infer_checked, infer_proved};
 pub use driver::infer_program;
 pub use driver::CheckedProgram;
 mod publish;

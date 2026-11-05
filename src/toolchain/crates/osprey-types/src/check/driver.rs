@@ -102,13 +102,12 @@ pub fn check_and_publish(
     program: &Program,
     exports: &[&str],
 ) -> Result<CheckedProgram, Vec<TypeError>> {
-    let lowered = crate::staging::lower_static_checked(program)?;
-    let mut checker = checked_program_with_exports(
-        &lowered,
-        exports,
-        crate::staging::has_staging(program),
-        false,
-    );
+    let (lowered, proof) = crate::staging::lower_proved(program)?;
+    let source_validated = crate::staging::has_staging(program);
+    let mut checker = match proof {
+        Some(proof) => elaborated(&lowered, proof, exports, source_validated),
+        None => checked_program_with_exports(&lowered, exports, source_validated, false),
+    };
     if checker.errors.is_empty() {
         let library_exports = std::mem::take(&mut checker.library_exports);
         let types = publish_program(&lowered, checker, true);
@@ -136,6 +135,28 @@ pub(crate) fn infer_checked(
     program: &Program,
 ) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
     infer_checked_with_rejection(program, false)
+}
+
+/// A staged source's solve: what lowering reads, and the export verdicts that
+/// outlive its residual. [TYPE-EFFECT-PROOF-COUNT]
+pub(crate) fn infer_proved(
+    program: &Program,
+) -> Result<(crate::info::ProgramTypes, LibraryExports), Vec<TypeError>> {
+    let program = crate::prelude::with_prelude(program);
+    let mut checker = checked_program_with_exports(&program, &[], false, false);
+    if checker.errors.is_empty() {
+        let exports = std::mem::take(&mut checker.library_exports);
+        Ok((publish_program(&program, checker, false), exports))
+    } else {
+        Err(distinct(checker.errors))
+    }
+}
+
+/// Annotation trials need a verdict, not further diagnostics after rejection.
+pub(crate) fn infer_annotation_candidate(
+    program: &Program,
+) -> Result<crate::info::ProgramTypes, Vec<TypeError>> {
+    infer_checked_with_rejection(program, true)
 }
 
 /// Annotation trials need a verdict, not further diagnostics after rejection.
@@ -172,6 +193,23 @@ fn distinct(errors: Vec<TypeError>) -> Vec<TypeError> {
         }
         kept
     })
+}
+
+/// Type a discharged program for the backend under the proof its source already
+/// passed: discharge rewrites the program, and proves nothing new about its
+/// effects. [TYPE-EFFECT-PROOF-COUNT]
+fn elaborated(
+    residual: &Program,
+    proof: LibraryExports,
+    exports: &[&str],
+    source_validated: bool,
+) -> Checker {
+    let mut checker = inferred_data_contracts(residual, source_validated);
+    checker.resolve_field_uses();
+    checker.errors.extend(proof.errors(exports));
+    checker.library_exports = proof;
+    finish_data_contracts(&mut checker, residual);
+    checker
 }
 
 pub(super) fn checked_program(program: &Program) -> Checker {

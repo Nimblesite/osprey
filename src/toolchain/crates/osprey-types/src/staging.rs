@@ -7,17 +7,26 @@ mod signals;
 use signals::materialize_signal_queries;
 pub(crate) use signals::parameter_names as signal_parameter_names;
 
+use crate::effect_rows::LibraryExports;
 use crate::TypeError;
 use osprey_ast::{mutate, walk_program, AstVisitor, Expr, Program, Stmt};
 
-/// Type-check the original staged program, then discharge its static handlers.
-/// Call after module assembly so imported declarations and bindings are known.
-/// The residual program still requires the ordinary type/effect check.
+/// Check the staged program, then discharge its static handlers. Call after
+/// module assembly so imported declarations and bindings are known.
 /// Implements [STAGE-LOWER-ORDER-PHASE].
 ///
 /// # Errors
 /// Returns source type errors or violations of the staging rules.
 pub fn lower_static_checked(program: &Program) -> Result<Program, Vec<TypeError>> {
+    lower_proved(program).map(|(lowered, _)| lowered)
+}
+
+/// The backend program, with the source's effect verdicts when they also answer
+/// for the residual: that solve is then the program's one proof, and only
+/// elaboration of the residual remains. [TYPE-EFFECT-PROOF-COUNT]
+pub(crate) fn lower_proved(
+    program: &Program,
+) -> Result<(Program, Option<LibraryExports>), Vec<TypeError>> {
     // The backend lowers what this returns, so the prelude a program uses is
     // attached here, once, ahead of every later phase ([BUILTIN-JSON-TYPED]).
     let attached = crate::prelude::with_prelude(program);
@@ -30,33 +39,85 @@ pub fn lower_static_checked(program: &Program) -> Result<Program, Vec<TypeError>
         return Err(stage_errors(structural));
     }
     if !has_staging(program) {
-        return osprey_ast::stage::lower(program).map_err(stage_errors);
+        let lowered = osprey_ast::stage::lower(program).map_err(stage_errors)?;
+        return Ok((lowered, None));
     }
-    let checked = crate::check::infer_checked(program)?;
-    // A query reached through a helper reads its callback's signals only in a
-    // copy made for that callback ([STAGE-SIGNALS-EXACT]). A copy the checker
-    // cannot type keeps the original, conservative program.
-    let forwarded = forwarders::specialized(program).and_then(|copy| {
-        crate::check::infer_checked(&copy)
-            .ok()
-            .map(|types| (copy, types))
-    });
-    let (program, source_types) = match &forwarded {
-        Some((copy, types)) => (copy, types),
-        None => (program, &checked),
-    };
+    let solved = solved_source(program)?;
+    let checked = solved.copy.as_ref().unwrap_or(program);
     // Static lowering compares source effect spellings. An inferred
     // `perform Echo.echo(42)` is nevertheless the same operation as the
     // enclosing `handle static Echo<int>`. Use the already checked site
     // instantiations for this backend copy before matching regions; otherwise
     // the rewrite silently leaves a request that the checker proved handled.
-    let mut resolved = materialize_signal_queries(program, source_types);
+    let mut resolved = materialize_signal_queries(checked, &solved.types);
     for statement in &mut resolved.statements {
         mutate::statement_children_mut(statement, &mut |expression| {
-            resolve_effect_mentions(expression, source_types);
+            resolve_effect_mentions(expression, &solved.types);
         });
     }
-    osprey_ast::stage::lower(&resolved).map_err(stage_errors)
+    forwarders::drop_witnesses(&mut resolved);
+    let lowered = osprey_ast::stage::lower(&resolved).map_err(stage_errors)?;
+    let discharged = !retains_static_operation(checked, &lowered);
+    Ok((lowered, discharged.then_some(solved.exports)))
+}
+
+/// Whether discharge left a static operation behind: one reached only through
+/// a value (a record field, a stored closure) that the source proof accepted
+/// and no handler survives to answer. Only then does the residual need its own
+/// proof, to reject it where it can reach the entry. [STAGE-LOWER-ORDER-PHASE]
+fn retains_static_operation(source: &Program, residual: &Program) -> bool {
+    struct Retained {
+        effects: std::collections::BTreeSet<String>,
+        found: bool,
+    }
+    impl AstVisitor for Retained {
+        fn expression(&mut self, expression: &Expr) {
+            if let Expr::Perform { effect, .. } = expression {
+                self.found |= self.effects.contains(osprey_ast::effect_name::base(effect));
+            }
+        }
+    }
+    let mut declared = StaticEffects::default();
+    walk_program(source, &mut declared);
+    let mut retained = Retained {
+        effects: declared.0,
+        found: false,
+    };
+    walk_program(residual, &mut retained);
+    retained.found
+}
+
+/// The one solve of a staged program, on its copy when helpers forward signal
+/// callbacks, since a query there reads only its own callback's signals
+/// ([STAGE-SIGNALS-EXACT]).
+struct SolvedSource {
+    copy: Option<Program>,
+    types: crate::ProgramTypes,
+    exports: LibraryExports,
+}
+
+fn solved_source(program: &Program) -> Result<SolvedSource, Vec<TypeError>> {
+    let copied = forwarders::specialized(program).and_then(|copy| {
+        let (types, exports) = crate::check::infer_proved(&copy).ok()?;
+        Some(SolvedSource {
+            copy: Some(copy),
+            types,
+            exports,
+        })
+    });
+    // A copy the checker cannot type keeps the original, conservative program,
+    // and leaves the source to name any real defect.
+    copied.map_or_else(
+        || {
+            let (types, exports) = crate::check::infer_proved(program)?;
+            Ok(SolvedSource {
+                copy: None,
+                types,
+                exports,
+            })
+        },
+        Ok,
+    )
 }
 
 /// Resolved, validated signal may-read sets before static discharge.

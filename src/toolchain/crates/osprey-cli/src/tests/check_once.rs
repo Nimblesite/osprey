@@ -7,6 +7,20 @@ const PLAIN: &str = "fn pick(a: int, b: int) = a\nfn main() = print(pick(1, 2))\
 const STAGED: &str = "static effect Size { width: fn() -> int }\n\
     fn pick(a: int, b: int) = a\n\
     fn main() = {\n    handle static Size {\n        width => 21\n    }\n    print(perform Size.width())\n}\n";
+/// A helper handing its callback to a signal query gets a specialized copy.
+const FORWARDING: &str = "static effect Count { read: fn() -> int }\n\
+    fn work() = perform Count.read()\n\
+    fn watch(callback, label: string) = signalRefresh({ dependencies: [\"<unknown>\"], revision: 0, value: 0 }, [\"<unknown>\"], callback).value\n\
+    fn main() = {\n    handle static Count {\n        read => 7\n    }\n    print(watch(work, \"a\"))\n    print(work())\n}\n";
+/// The same through generic binders, which the copy has to erase.
+const GENERIC_FORWARDING: &str = "static effect Count { read: fn() -> int }\n\
+    fn work() = perform Count.read()\n\
+    fn watch<T>(callback: fn() -> T, seed: T) = signalRefresh({ dependencies: [\"<unknown>\"], revision: 0, value: seed }, [\"<unknown>\"], callback).value\n\
+    fn main() = {\n    handle static Count {\n        read => 7\n    }\n    print(watch(work, 1))\n}\n";
+/// A runtime handler beside a static one, its arguments left to inference.
+const INFERRED: &str = "static effect Size { width: fn() -> int }\n\
+    effect Box<T> { take: fn() -> T }\n\
+    fn main() = {\n    handle static Size {\n        width => 21\n    }\n    handle Box {\n        take => perform Size.width()\n    }\n    print(perform Box<int>.take())\n}\n";
 const BROWSER: &str = "fn osprey_web_dispatch(event: string) -> int = 0\nfn main() = print(1)\n";
 
 fn script(source: &str) -> CompilationInput {
@@ -79,6 +93,70 @@ fn a_plain_program_is_checked_exactly_once_on_the_host_boundary() {
             1,
             "{mode}"
         );
+    }
+}
+
+/// A staged program is one program: discharging its handlers rewrites it for
+/// the backend, and must not prove it again. [TYPE-EFFECT-PROOF-COUNT]
+#[test]
+fn a_staged_program_is_checked_exactly_once_on_every_boundary() {
+    let host = if cfg!(target_os = "macos") {
+        "macos"
+    } else {
+        "linux-x64"
+    };
+    let mut extra = Vec::new();
+    for (name, source) in [
+        ("static", STAGED),
+        ("forwarding", FORWARDING),
+        ("generic forwarding", GENERIC_FORWARDING),
+        ("inferred", INFERRED),
+    ] {
+        let input = script(source);
+        for target in [host, "ios-sim", "android-arm64"] {
+            for mode in ["--check", "--llvm"] {
+                let (solves, code) = invocation_solves(&target_cli(mode, target), &input);
+                assert_eq!(code, ExitCode::SUCCESS, "{name} {target} {mode}");
+                if solves != 1 {
+                    extra.push(format!("{name} {target} {mode}: {solves} solves"));
+                }
+            }
+        }
+    }
+    assert!(extra.is_empty(), "\n{}", extra.join("\n"));
+}
+
+/// One solve must still reject what the source's own call breaks, though the
+/// copy it redirects to has lost the annotations and the callback argument.
+#[test]
+fn a_forwarded_call_the_source_rejects_stays_rejected() {
+    let wrong_seed = GENERIC_FORWARDING.replace("watch(work, 1)", "watch(work, \"no\")");
+    let wrong_callback = FORWARDING.replace(
+        "callback, label: string",
+        "callback: fn() -> string, label: string",
+    );
+    for (name, source) in [("seed", wrong_seed), ("callback", wrong_callback)] {
+        let input = script(&source);
+        for mode in ["--check", "--llvm"] {
+            let code = invocation_solves(&target_cli(mode, "macos"), &input).1;
+            assert_eq!(code, ExitCode::FAILURE, "{name} {mode}");
+        }
+    }
+}
+
+/// Discharge cannot reach an operation behind a record field. The source proof
+/// sees a handler around the call; only the residual shows nothing answers it.
+#[test]
+fn a_static_operation_discharge_cannot_reach_is_still_rejected() {
+    let source = "static effect A { read: fn() -> int }\n\
+        type Box = { call: fn() -> int }\n\
+        fn read() = perform A.read()\n\
+        fn boxed() = Box { call: read }\n\
+        fn main() = {\n    let box = boxed()\n    handle static A {\n        read => 2\n    }\n    print(box.call())\n}\n";
+    let input = script(source);
+    for mode in ["--check", "--llvm"] {
+        let code = invocation_solves(&target_cli(mode, "macos"), &input).1;
+        assert_eq!(code, ExitCode::FAILURE, "{mode}");
     }
 }
 
