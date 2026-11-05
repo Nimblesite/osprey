@@ -2,7 +2,7 @@
 // pair and the failure channel in io_error.h. Split out of
 // test_system_runtime.c when file_runtime.c was split out of system_runtime.c:
 // a suite covers one translation unit, and both files were over the size
-// budget together. Linked with memory_runtime.c by the Makefile's
+// budget together. Linked with the selected GC/ARC backend by the Makefile's
 // _test_c_runtime; POSIX-only harness.
 #include <assert.h>
 #include <errno.h>
@@ -253,7 +253,201 @@ static void test_error_channel_shapes(void) {
   assert(osp_io_error_take() == NULL);
 }
 
-int main(void) {
+// --- [PORT-STRING-NUL] embedded-NUL guard, on real files ---------------------
+//
+// read_stream refuses a stream whose bytes hold a NUL, because a char* cannot
+// carry one. These cases drive that guard through the filesystem: a real file
+// of a real size, holding a real NUL, at a position that matters. Each one
+// proves three things that a hand-built in-memory fixture cannot: the fixture
+// really was `len` bytes on disk, the guard really fired with the operation and
+// path that failed, and the same file still reads back whole once the NUL is
+// gone. The guard itself is unchanged; these are its witnesses.
+#define NUL_TEMPLATE "/tmp/osprey_nul_XXXXXX"
+#define NUL_OLD_OP "writeFile"
+#define NUL_OLD_PATH "/tmp/osprey_nul_seeded_reason"
+#define NUL_SENTENCE "text contains NUL; use a binary reader"
+
+// mkstemp a unique path and hand back an open binary stream on it, so no two
+// cases can collide on a name and no case can read another's leftovers.
+static FILE *nul_open_unique(char *path, size_t cap) {
+  assert(strlen(NUL_TEMPLATE) < cap);
+  (void)snprintf(path, cap, "%s", NUL_TEMPLATE);
+  int fd = mkstemp(path);
+  assert(fd >= 0);
+  FILE *out = fdopen(fd, "wb");
+  assert(out != NULL);
+  return out;
+}
+
+// Write `len` raw bytes — NULs included — and close. A short write is a failure.
+static void nul_write_raw(FILE *out, const char *bytes, size_t len) {
+  assert(fwrite(bytes, 1, len, out) == len);
+  assert(fflush(out) == 0);
+  assert(fclose(out) == 0);
+}
+
+// The length the FILESYSTEM reports, which is the only claim that matters here.
+static size_t nul_disk_length(const char *path) {
+  struct stat info;
+  assert(stat(path, &info) == 0);
+  assert(info.st_size >= 0);
+  return (size_t)info.st_size;
+}
+
+// A fixture: `len` bytes of 'a', with the byte at `nul_at` replaced by a NUL.
+// SIZE_MAX means "no NUL" — the safe rewrite of the same length.
+static char *nul_payload(size_t len, size_t nul_at) {
+  char *bytes = malloc(len + 1);
+  assert(bytes != NULL);
+  memset(bytes, 'a', len);
+  bytes[len] = '\0';
+  if (nul_at < len) {
+    bytes[nul_at] = '\0';
+  }
+  return bytes;
+}
+
+// Read the file back with raw bytes and prove it holds exactly `len` of them,
+// byte for byte — a NUL that did not reach the disk would make the guard look
+// loaded when it was testing nothing.
+static void nul_assert_bytes(const char *path, const char *want, size_t len) {
+  FILE *in = fopen(path, "rb");
+  assert(in != NULL);
+  char *got = malloc(len + 1);
+  assert(got != NULL);
+  size_t n = fread(got, 1, len + 1, in);
+  assert(ferror(in) == 0);
+  assert(n == len && "the fixture holds exactly the bytes written");
+  assert(memcmp(got, want, len) == 0 && "every byte survived the write");
+  free(got);
+  assert(fclose(in) == 0);
+}
+
+// The reason must name the operation AND the exact path that failed, not just
+// carry the right sentence for some other file.
+static int nul_reason_names(const char *path, const char *reason) {
+  char prefix[256];
+  (void)snprintf(prefix, sizeof prefix, "readFile: %s: ", path);
+  return strncmp(reason, prefix, strlen(prefix)) == 0;
+}
+
+// A same-length ASCII rewrite must read back COMPLETE — the guard refuses a NUL
+// stream, but the file it refused is not poisoned, and the buffer handed back
+// is the whole text, never a prefix cut at some earlier boundary.
+static void nul_assert_safe_rewrite(const char *path, size_t len) {
+  char *safe = nul_payload(len, SIZE_MAX);
+  assert(write_file((char *)(uintptr_t)path, safe) == (int64_t)len);
+  assert(nul_disk_length(path) == len);
+  nul_assert_bytes(path, safe, len);
+  char *back = read_file((char *)(uintptr_t)path);
+  assert(back != NULL && "a NUL-free file still reads");
+  assert(strlen(back) == len && "nothing was clipped off the text");
+  assert(memcmp(back, safe, len) == 0 && "the full text came back");
+  free(back);
+  free(safe);
+}
+
+// One fixture already on disk at `path`: refused with a truthful reason, its
+// reason owned by the caller after a `take` that must NOT clear the channel,
+// then rewritten safe and read whole with the channel retired.
+static void nul_assert_fixture(const char *path, const char *bytes, size_t len) {
+  char expected_old[256], expected_nul[256];
+  (void)snprintf(expected_nul, sizeof expected_nul, "readFile: %s: %s", path, NUL_SENTENCE);
+  (void)snprintf(expected_old, sizeof expected_old, "%s: %s: %s", NUL_OLD_OP,
+                 NUL_OLD_PATH, strerror(EACCES));
+  assert(nul_disk_length(path) == len && "the fixture is the size it claims");
+  nul_assert_bytes(path, bytes, len);
+  osp_io_error_set(NUL_OLD_OP, NUL_OLD_PATH, EACCES);
+  char *old = osp_io_error_take();
+  assert(old != NULL && strcmp(old, expected_old) == 0);
+  assert(read_file((char *)(uintptr_t)path) == NULL &&
+         "text containing a NUL is refused, not returned as its prefix");
+  const char *reason = osp_io_error();
+  assert(reason != NULL && nul_reason_names(path, reason) &&
+         "the reason names the operation and the exact path");
+  assert(strstr(reason, NUL_SENTENCE) != NULL &&
+         "and says the text holds a NUL");
+  char *owned = osp_io_error_take();
+  assert(owned != NULL && strcmp(owned, reason) == 0);
+  assert(strcmp(owned, expected_nul) == 0);
+  assert(osp_io_error() != NULL &&
+         "take hands back a copy; it does not retire the reason");
+  nul_assert_safe_rewrite(path, len);
+  assert(osp_io_error() == NULL && "a successful read retires the reason");
+  assert(strcmp(owned, expected_nul) == 0 && "the saved NUL reason survives a successful rewrite");
+  assert(strcmp(old, expected_old) == 0 &&
+         "the saved reason is unchanged by later calls");
+  free(owned);
+  free(old);
+  assert(unlink(path) == 0);
+}
+
+// An empty file holds no NUL, so it is the control: it must read back as empty
+// text with NO reason, proving the guard is scanning bytes it actually read and
+// not reporting an empty stream as a NUL one.
+static void nul_case_empty(void) {
+  char path[64];
+  FILE *out = nul_open_unique(path, sizeof path);
+  nul_write_raw(out, "", 0);
+  printf("    [nul] len=0 nul_at=none (empty, control)\n");
+  assert(nul_disk_length(path) == 0 && "the fixture is the size it claims");
+  assert(write_file((char *)(uintptr_t)path, (char *)(uintptr_t) "") == 0);
+  char *back = read_file((char *)(uintptr_t)path);
+  assert(back != NULL && back[0] == '\0' && "empty text, not a refusal");
+  assert(osp_io_error() == NULL && "an empty read owes no reason");
+  free(back);
+  assert(unlink(path) == 0);
+}
+
+// One case: build `len` bytes with a NUL at `nul_at`, put them on disk, verify.
+static void nul_case(size_t len, size_t nul_at) {
+  char path[64];
+  FILE *out = nul_open_unique(path, sizeof path);
+  char *bytes = nul_payload(len, nul_at);
+  nul_write_raw(out, bytes, len);
+  printf("    [nul] len=%zu nul_at=embedded offset=%zu\n", len, nul_at);
+  nul_assert_fixture(path, bytes, len);
+  free(bytes);
+}
+
+// The 9-byte variant deliberately puts the NUL BETWEEN valid UTF-8 sequences:
+// 'a', U+00E9, NUL, U+00E9, U+2192. The guard must fire on the byte, not on
+// some ASCII-only or byte-width assumption, and each neighbour is a whole
+// code point so nothing here is invalid UTF-8.
+static void nul_case_unicode9(void) {
+  char path[64];
+  FILE *out = nul_open_unique(path, sizeof path);
+  const char unicode9[9] = {'a',           (char)0xC3, (char)0xA9, '\0',
+                            (char)0xC3, (char)0xA9, (char)0xE2, (char)0x86,
+                            (char)0x92};
+  nul_write_raw(out, unicode9, sizeof unicode9);
+  printf("    [nul] len=9 nul_at=embedded between UTF-8 neighbours\n");
+  nul_assert_fixture(path, unicode9, sizeof unicode9);
+}
+
+// Sizes bracket the 64 KiB read chunk: one under it, the exact boundary, one
+// over it (the first realloc), and a second-chunk file. Each non-empty size is
+// tried at the start, the middle and the end, because a guard that only scans
+// the first chunk, or skips the last byte of a chunk, passes one and fails the
+// others.
+static void run_nul_filesystem_tests(void) {
+  static const size_t spans[] = {9, 65534, 65535, 65536, 65537, 131073};
+  nul_case_empty();      // control: no NUL, so no refusal
+  nul_case(1, 0);        // a lone NUL: start and end are the same byte
+  nul_case_unicode9();   // NUL between UTF-8 code points
+  for (size_t i = 0; i < sizeof spans / sizeof spans[0]; i++) {
+    nul_case(spans[i], 0);
+    nul_case(spans[i], spans[i] / 2);
+    nul_case(spans[i], spans[i] - 1);
+  }
+}
+
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--nul-files") == 0) {
+    run_nul_filesystem_tests();
+    return 0;
+  }
+  assert(argc == 1);
   printf("Running File Runtime Tests...\n\n");
 
   test_file_roundtrip();
@@ -262,6 +456,7 @@ int main(void) {
   test_io_failures_report_a_truthful_reason();
   test_read_file_reports_a_stream_error();
   test_error_channel_shapes();
+  run_nul_filesystem_tests();
 
   printf("=== ALL FILE RUNTIME TESTS PASSED ===\n");
   return 0;

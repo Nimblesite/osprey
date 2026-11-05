@@ -154,7 +154,8 @@
         "language": "c"
       },
       "file_runtime": {
-        "language": "c"
+        "language": "c",
+        "threshold": 92
       },
       "string_runtime": {
         "language": "c"
