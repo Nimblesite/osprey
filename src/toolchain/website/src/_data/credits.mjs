@@ -159,7 +159,7 @@ const PACKAGES = {
   },
 };
 
-const packageLink = (id) => `${REPO}/tree/main/packages/${id}`;
+const packageLink = (id) => `${REPO}/tree/main/src/osprey/packages/${id}`;
 
 function buildPackages(audit) {
   return Object.entries(audit.packages).map(([id, entry]) => {
@@ -195,7 +195,7 @@ const APPS = [
     authors: "Andrej Karpathy",
     license: "MIT",
     licenseUrl: "https://github.com/karpathy/micrograd",
-    ospreyUrl: `${REPO}/tree/main/examples/python/ports/classifier`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/python/ports/classifier`,
     relationship: "port",
     basis: "src/osprey/examples/python/ports/NOTICE.md",
   },
@@ -206,7 +206,7 @@ const APPS = [
     authors: "Meta Platforms, Inc. and affiliates",
     license: "MIT",
     licenseUrl: "https://github.com/facebookresearch/faiss",
-    ospreyUrl: `${REPO}/tree/main/examples/python/ports/vector-search`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/python/ports/vector-search`,
     relationship: "port",
     basis: "src/osprey/examples/python/ports/NOTICE.md",
   },
@@ -217,7 +217,7 @@ const APPS = [
     authors: "The Google Research Authors",
     license: "Apache-2.0",
     licenseUrl: "https://github.com/google-research/google-research/tree/master/rouge",
-    ospreyUrl: `${REPO}/tree/main/examples/python/ports/text-evaluation`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/python/ports/text-evaluation`,
     relationship: "port",
     basis: "src/osprey/examples/python/ports/NOTICE.md",
   },
@@ -228,7 +228,7 @@ const APPS = [
     authors: "contributors of GPUI (Zed Industries)",
     license: "Apache-2.0",
     licenseUrl: "https://github.com/zed-industries/zed/tree/main/crates/gpui",
-    ospreyUrl: `${REPO}/tree/main/examples/gpui/painting`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/gpui/painting`,
     relationship: "port",
     basis: "src/osprey/examples/gpui/painting/README.md",
   },
@@ -239,7 +239,7 @@ const APPS = [
     authors: "contributors of GPUI (Zed Industries)",
     license: "Apache-2.0",
     licenseUrl: "https://github.com/zed-industries/zed/tree/main/crates/gpui",
-    ospreyUrl: `${REPO}/tree/main/hosts/gpui`,
+    ospreyUrl: `${REPO}/tree/main/src/toolchain/hosts/gpui`,
     relationship: "binding",
     basis: "src/toolchain/hosts/gpui/README.md",
   },
@@ -250,7 +250,7 @@ const APPS = [
     authors: "Pydantic Services Inc. and the pydantic-ai contributors",
     license: "MIT",
     licenseUrl: "https://github.com/pydantic/pydantic-ai/blob/v2.46.0/LICENSE",
-    ospreyUrl: `${REPO}/tree/main/examples/agent`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/agent`,
     relationship: "port",
     basis: "src/osprey/examples/agent/README.md",
   },
@@ -261,7 +261,7 @@ const APPS = [
     authors: "OpenAI",
     license: "MIT",
     licenseUrl: "https://huggingface.co/openai-community/gpt2",
-    ospreyUrl: `${REPO}/tree/main/examples/llms/gpt2`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/llms/gpt2`,
     relationship: "port",
     basis: "src/osprey/examples/llms/gpt2/README.md",
   },
@@ -272,7 +272,7 @@ const APPS = [
     authors: "the Lean and Mathlib developers",
     license: "Apache-2.0",
     licenseUrl: "https://github.com/leanprover/lean4",
-    ospreyUrl: `${REPO}/tree/main/examples/proof`,
+    ospreyUrl: `${REPO}/tree/main/src/osprey/examples/proof`,
     relationship: "port",
     basis: "src/toolchain/website/src/docs/mathlib-port.md",
   },
