@@ -39,7 +39,7 @@ iOS:
 
 - [ ] Run `src/osprey/examples/casting/ios/ui-test.sh` in full against the GPUI app and fix what it finds: media, gestures, lifecycle, appearance.
 - [ ] Recapture `src/osprey/examples/casting/goldens/ios` from the GPUI app, and check each by eye.
-- [ ] Finish porting the old appearance tests to the shared controls and app-scoped store. The shared Sherbet Appearance menu, selection semantics and all-three-skin process-restart test now pass on the fresh GPUI iOS app; invalid-preference recovery notices remain unfinished. The old assertions must not be faked.
+- [x] Port the old iOS appearance tests to the shared controls and app-scoped store. Fresh GPUI runs pass the Sherbet Appearance menu and selected semantics, all-three-skin process restart, and native recovery notices for unknown, empty and malformed saved values; repaired values restart without another notice. All assertions remain intact. The full journey and coverage boxes above remain open.
 - [ ] Wire the Rust coverage export into the iOS coverage gate, which stays red until then.
 - [ ] Bring up the CoreDevice tunnel, install the signed build on the physical iPhone, launch it and cast to a real receiver.
 
