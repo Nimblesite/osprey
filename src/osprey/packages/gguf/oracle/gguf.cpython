@@ -594,8 +594,8 @@ PRODUCT_SCALES = (0x3C01, 0x3401)
 """Ordinary binary16 super-block scale and minimum words: 1.0009765625 and
 0.250244140625. Eleven significant bits, so a weight's two roundings move the result:
 the products are not all integral."""
-PARTS = 16
-"""The parts one output splits its blocks into at the fixture's size, gpu_host.c's quant_parts."""
+PRODUCT_LANES = 32
+PRODUCT_LANE_WIDTH = 8
 
 
 def sweep(size, row):
@@ -610,18 +610,26 @@ def product_rows(name):
     return [with_scales(sweep(size, row), offsets, PRODUCT_SCALES[:len(offsets)]) for row in range(2)]
 
 
-def product_of(x, weights, elements):
-    """One output's product in the kernels' order: PARTS block ranges from part 0, each a
-    product then an add at binary32, and the parts added in order from 0.0."""
-    blocks = len(weights) // elements
+def product_lane(x, weights, elements, lane):
+    """Sum the lane's eight decoded weights in each block it visits."""
+    lanes_per_block = elements // PRODUCT_LANE_WIDTH
+    first_block = lane // lanes_per_block
+    block_stride = PRODUCT_LANES // lanes_per_block
+    offset = lane % lanes_per_block * PRODUCT_LANE_WIDTH
     total = numpy.float32(0.0)
-    for part_index in range(PARTS):
-        first, last = part_index * blocks // PARTS, (part_index + 1) * blocks // PARTS
-        part = numpy.float32(0.0)
-        for k in range(first * elements, last * elements):
-            part = part + numpy.float32(x[k]) * numpy.float32(weights[k])
-        total = total + part
-    return float(total)
+    for block in range(first_block, len(weights) // elements, block_stride):
+        start = block * elements + offset
+        for k in range(start, start + PRODUCT_LANE_WIDTH):
+            total = total + numpy.float32(x[k]) * numpy.float32(weights[k])
+    return total
+
+
+def product_of(x, weights, elements):
+    """[LLM-MATMUL-QUANT]: combine the ggml-decoded lane sums in binary32."""
+    sums = [product_lane(x, weights, elements, lane) for lane in range(PRODUCT_LANES)]
+    for offset in (16, 8, 4, 2, 1):
+        sums = [value + sums[lane ^ offset] for lane, value in enumerate(sums)]
+    return float(sums[0])
 
 
 def product_fixtures():
