@@ -25,7 +25,7 @@ typedef struct {
   size_t *pending; // children of the containers still open, innermost last
   size_t npending;
   size_t pending_cap;
-  const char **names; // scratch for checking a large object's names
+  JsonKeyAt *names; // scratch for checking a large object's names
   size_t names_cap;
   bool typed;
   bool python;
@@ -283,12 +283,10 @@ static size_t parse_array(Parser *ps) {
   return ps->c.ok ? close_container(ps, id, base) : JSON_NO_NODE;
 }
 
-static int compare_keys(const void *left, const void *right) {
-  return strcmp(*(char *const *)left, *(char *const *)right);
-}
-
-static const char *member_name(const Parser *ps, size_t member) {
-  return ps->doc->text.data + ps->doc->nodes[ps->pending[member]].key;
+static JsonKeyAt member_key(const Parser *ps, size_t member) {
+  size_t node = ps->pending[member];
+  const JNode *n = &ps->doc->nodes[node];
+  return (JsonKeyAt){ps->doc->text.data + n->key, n->key_len, member, node};
 }
 // Objects this small compare every pair: cheaper than sorting, and no
 // allocation at all.
@@ -297,7 +295,8 @@ static const char *member_name(const Parser *ps, size_t member) {
 static bool repeats_pairwise(const Parser *ps, size_t base) {
   for (size_t i = base; i < ps->npending; i++) {
     for (size_t j = i + 1; j < ps->npending; j++) {
-      if (strcmp(member_name(ps, i), member_name(ps, j)) == 0) {
+      JsonKeyAt a = member_key(ps, i), b = member_key(ps, j);
+      if (json_compare_key_names(&a, &b) == 0) {
         return true;
       }
     }
@@ -314,17 +313,17 @@ static bool repeats_a_name(Parser *ps, size_t base, bool *failed) {
   }
   while (ps->names_cap < n) {
     if (!reserve((void **)&ps->names, &ps->names_cap, ps->names_cap,
-                 sizeof(char *))) {
+                 sizeof(*ps->names))) {
       *failed = true;
       return false;
     }
   }
   for (size_t i = 0; i < n; i++) {
-    ps->names[i] = member_name(ps, base + i);
+    ps->names[i] = member_key(ps, base + i);
   }
-  qsort(ps->names, n, sizeof(char *), compare_keys);
+  qsort(ps->names, n, sizeof(*ps->names), json_compare_key_names);
   for (size_t i = 1; i < n; i++) {
-    if (strcmp(ps->names[i - 1], ps->names[i]) == 0) {
+    if (json_compare_key_names(&ps->names[i - 1], &ps->names[i]) == 0) {
       return true;
     }
   }
@@ -356,6 +355,7 @@ static size_t parse_member(Parser *ps) {
     json_reject(&ps->c, "expected a member name");
     return JSON_NO_NODE;
   }
+  size_t key_len = ps->doc->text.len - key - 1;
   skip_ws(&ps->c);
   if (*ps->c.p != ':') {
     json_reject(&ps->c, "expected ':' after a member name");
@@ -365,6 +365,7 @@ static size_t parse_member(Parser *ps) {
   size_t value = parse_value(ps);
   if (value != JSON_NO_NODE) {
     ps->doc->nodes[value].key = key;
+    ps->doc->nodes[value].key_len = key_len;
   }
   return value;
 }

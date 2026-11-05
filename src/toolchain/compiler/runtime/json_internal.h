@@ -39,6 +39,7 @@ typedef struct {
   uint8_t type; // JType
   bool flag;    // J_BOOL: the value. J_NUM: the lexeme is an integer
   size_t key;   // arena offset of the member name, or JSON_NO_KEY
+  size_t key_len; // full member-name byte length [PORT-STRING-NUL-KEYS]
   size_t at;    // J_STR/J_NUM: arena offset of the text. J_ARR/J_OBJ: first slot
   size_t count; // J_ARR/J_OBJ: children
   union {
@@ -46,6 +47,10 @@ typedef struct {
     double f;
   } number; // J_NUM read while parsing a typed document
 } JNode;
+
+// Scratch key view: bounded bytes, insertion position and final-value node.
+typedef struct { const char *name; size_t length; size_t index; size_t node; } JsonKeyAt;
+int json_compare_key_names(const void *left, const void *right);
 
 // Slot 0 names the root; every container's children follow as one run.
 typedef struct {

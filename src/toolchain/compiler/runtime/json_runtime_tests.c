@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "json_tests_shared.h"
+#include "json_internal.h"
 #include "test_alloc.h"
 
 long g_checks = 0;
@@ -269,10 +270,31 @@ static void t_accessors_survive_every_allocation_failure(void) {
   CHECK(osp_alloc_live() < live_before); // ...and the document really is gone
 }
 
+// [PORT-STRING-NUL-KEYS] Isolate arena identity before the native String ABI admits NUL.
+// Parsing establishes lengths, then mutation supplies NUL without removing its guard.
+static void t_nul_arena_keys_keep_identity(void) {
+  int64_t status = 0;
+  JDoc *doc = json_parse_doc("{\"aXb\":1,\"aYc\":2,\"aZb\":3,\"a\":4}", "test", true, &status);
+  CHECK(doc != NULL);
+  for (size_t i = 1; i <= 3; i++) doc->text.data[doc->nodes[i].key + 1] = '\0';
+  size_t pending[] = {1, 2, 3, 4};
+  size_t used = 4;
+  CHECK(json_last_wins(doc, pending, &used, 0));
+  CHECK(used == 3); // a\0b, a\0c and a are distinct; repeated a\0b keeps its last value.
+  CHECK(pending[0] == 3 && pending[1] == 2 && pending[2] == 4);
+  json_doc_free(doc);
+}
+
 // A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
 // "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
 // truncates the string the caller reads back, with no error anywhere.
-int main(void) {
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--nul-arena") == 0) {
+    t_nul_arena_keys_keep_identity();
+    return 0;
+  }
+  CHECK(argc == 1);
+  t_nul_arena_keys_keep_identity();
   t_scalars();
   t_string_escapes();
   t_paths_and_lengths();

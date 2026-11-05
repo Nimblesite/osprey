@@ -70,7 +70,7 @@ static const JNode *member(const JDoc *doc, const JNode *n, const char *name,
   for (size_t i = 0; n->type == J_OBJ && i < n->count; i++) {
     const JNode *m = child_at(doc, n, i);
     const char *key = text_at(doc, m->key);
-    if (strncmp(key, name, len) == 0 && key[len] == '\0') {
+    if (m->key_len == len && memcmp(key, name, len) == 0) {
       return m;
     }
   }
@@ -189,18 +189,24 @@ int64_t json_free(int64_t handle) {
 
 // [FASTAPI-NAP-VALIDATION] Explicit last-wins mode keeps the first insertion
 // position and the final value, as Python dictionaries do; strict mode is unchanged.
-typedef struct { const char *name; size_t index; size_t node; } JsonKeyAt;
+// [PORT-STRING-NUL-KEYS] Key identity includes every byte, including embedded NUL.
+int json_compare_key_names(const void *left, const void *right) {
+  const JsonKeyAt *a = left, *b = right;
+  size_t common = a->length < b->length ? a->length : b->length;
+  int order = memcmp(a->name, b->name, common);
+  return order ? order : (a->length > b->length) - (a->length < b->length);
+}
 
 static int compare_key_at(const void *left, const void *right) {
   const JsonKeyAt *a = left, *b = right;
-  int order = strcmp(a->name, b->name);
+  int order = json_compare_key_names(a, b);
   return order ? order : (a->index > b->index) - (a->index < b->index);
 }
 
 static void select_last_keys(size_t *pending, const JsonKeyAt *keys, size_t count) {
   for (size_t first = 0; first < count;) {
     size_t end = first + 1;
-    while (end < count && strcmp(keys[first].name, keys[end].name) == 0) end++;
+    while (end < count && json_compare_key_names(&keys[first], &keys[end]) == 0) end++;
     pending[keys[first].index] = keys[end - 1].node;
     for (size_t i = first + 1; i < end; i++) pending[keys[i].index] = SIZE_MAX;
     first = end;
@@ -215,7 +221,7 @@ bool json_last_wins(JDoc *doc, size_t *pending, size_t *used, size_t base) {
   if (!keys) return false;
   for (size_t i = 0; i < count; i++) {
     size_t node = pending[base + i];
-    keys[i] = (JsonKeyAt){doc->text.data + doc->nodes[node].key, base + i, node};
+    keys[i] = (JsonKeyAt){doc->text.data + doc->nodes[node].key, doc->nodes[node].key_len, base + i, node};
   }
   qsort(keys, count, sizeof(*keys), compare_key_at);
   select_last_keys(pending, keys, count);
