@@ -7,7 +7,7 @@
 // wasi-shim.mjs — so a regression in the browser loader is caught in CI without
 // launching a browser. Exits non-zero on trap or stdout mismatch.
 
-import { runModule } from "../src/osprey/examples/wasm/wasi-shim.mjs";
+import { runModule } from "../../src/osprey/examples/wasm/wasi-shim.mjs";
 import { loadModuleFromArgv, assertMatchesGolden } from "./wasm-smoke-support.mjs";
 
 const { wasmPath, expectedPath, bytes } = await loadModuleFromArgv(

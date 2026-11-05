@@ -3,4 +3,4 @@
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 export OSPREY_GPUI_APP="$here" OSPREY_GPUI_APP_NAME=painting OSPREY_GPUI_WINDOW=${OSPREY_GPUI_WINDOW:-default}
-exec "$here/../../../hosts/gpui/run.sh" "$@"
+exec "$here/../../../../toolchain/hosts/gpui/run.sh" "$@"

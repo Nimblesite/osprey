@@ -392,7 +392,7 @@ fn build_browser_globals_fixture() {
 
 fn assert_wasm_stdout(script: &str, wasm: &Path, expected: &str) {
     let runner = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../../scripts")
+        .join("../../../../scripts/wasm")
         .join(script);
     // Plain `node`: `scripts/wasm/wasm-smoke.mjs` relaunches itself under a
     // WASI-sound interpreter when this one is too old, so the version
