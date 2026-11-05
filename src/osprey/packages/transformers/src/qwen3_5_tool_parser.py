@@ -289,8 +289,7 @@ def start_value(state, text, think, calls):
     """Drop the single newline the template writes after `<parameter=X>`, then read the
     value. It arrives in its own chunk when a chunk boundary falls on it, so the step
     has to be part of the state and not of one chunk's bytes."""
-    if startsWith(state.buffer, "
-"):
+    if startsWith(state.buffer, "\n"):
         return consume(update(state, stage="value", buffer=drop(state.buffer, 1)), text, think, calls)
     elif len(state.buffer) == 0:
         return waiting(state, text, think, calls)
