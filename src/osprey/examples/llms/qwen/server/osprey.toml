@@ -1,0 +1,9 @@
+[project]
+name = "qwen-server"
+source_roots = ["src"]
+python_sources = ["src/Wire.py", "src/Requests.py", "src/Ollama.py", "src/Routes.py", "src/Server.py"]
+default_namespace = "qwen_server"
+entry = "src/Server.py"
+
+[modules]
+allow_wildcard_imports = false

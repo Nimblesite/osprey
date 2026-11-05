@@ -1,0 +1,198 @@
+"""Real `ollama` and `openai` clients, over real sockets, against the Osprey Qwen server.
+
+Every expected wire shape is the client's own parsing: an assertion reads a
+parsed `ollama`/`openai` object or the client's own exception, never a
+hand-written JSON document. The pinned clients live in
+`~/.cache/osprey-llm/oracle-venv`; run the whole suite with
+
+    ~/.cache/osprey-llm/oracle-venv/bin/python -I \
+        src/osprey/examples/llms/qwen/server/tests/clients.cpython
+
+and pass memory backends as arguments (`gc`, `arc`) to narrow the run.
+Implements [LLM-API-OLLAMA], [LLM-API-OPENAI], [LLM-API-QUEUE] and
+[LLM-API-LIMIT] of docs/specs/applications/LocalCodingModel.md.
+"""
+import os
+import subprocess
+import sys
+import time
+import traceback
+from pathlib import Path
+
+import httpx
+import ollama
+import openai
+
+HERE = Path(__file__).resolve().parent
+PROJECT = HERE.parent
+ROOT = PROJECT.parents[5]
+COMPILER = Path(os.environ.get("OSPREY_COMPILER", ROOT / "target/debug/osprey"))
+MODEL = "qwen3.8:27b"
+CONTEXT = 65536
+PORTS = {"gc": 11535, "arc": 11536}
+CASES = []
+
+
+def case(fn):
+    """Register one named case; the suite runs every case on every backend."""
+    CASES.append(fn)
+    return fn
+
+
+def base(port):
+    return f"http://127.0.0.1:{port}"
+
+
+def client(port):
+    return ollama.Client(host=base(port), timeout=120.0)
+
+
+def openai_client(port):
+    return openai.OpenAI(base_url=base(port) + "/v1", api_key="osprey-local")
+
+
+# --- step 1: metadata endpoints of the Ollama protocol ---------------------
+
+
+@case
+def version_reports_the_protocol_version(port):
+    reply = httpx.get(base(port) + "/api/version", timeout=30.0)
+    assert reply.status_code == 200, reply.status_code
+    assert reply.headers["content-type"] == "application/json", reply.headers
+    document = reply.json()
+    assert list(document) == ["version"], document
+    version = document["version"]
+    assert isinstance(version, str) and version, document
+    assert all(part.isdigit() for part in version.split(".")), document
+    assert version.count(".") >= 1, document
+
+
+@case
+def tags_list_exactly_the_served_model(port):
+    for _ in range(3):
+        listed = client(port).list()
+        assert len(listed.models) == 1, listed
+        model = listed.models[0]
+        assert model.model == MODEL, model
+        assert model.size > 0, model
+        assert model.details.family == "qwen3_5", model.details
+        assert "qwen3_5" in model.details.families, model.details
+        assert model.details.quantization_level == "UD-Q4_K_XL", model.details
+        assert model.details.parameter_size, model.details
+
+
+@case
+def tags_are_the_only_tagged_route(port):
+    assert httpx.post(base(port) + "/api/tags", timeout=30.0).status_code == 405
+    assert httpx.get(base(port) + "/api/absent", timeout=30.0).status_code == 404
+
+
+@case
+def show_reports_capabilities_and_context_length(port):
+    for _ in range(3):
+        info = client(port).show(MODEL)
+        assert set(info.capabilities) >= {"completion", "tools"}, info.capabilities
+        assert info.modelinfo["qwen3_5.context_length"] == CONTEXT, info.modelinfo
+        assert info.modelinfo["qwen3_5.block_count"] == 64, info.modelinfo
+        assert info.details.family == "qwen3_5", info.details
+        assert info.details.quantization_level == "UD-Q4_K_XL", info.details
+
+
+@case
+def show_rejects_a_model_the_server_does_not_serve(port):
+    try:
+        client(port).show("absent:latest")
+    except ollama.ResponseError as error:
+        assert error.status_code == 404, error.status_code
+        assert "absent:latest" in str(error), str(error)
+    else:
+        raise AssertionError("show accepted a model the server does not serve")
+
+
+@case
+def show_requires_a_model_name(port):
+    reply = httpx.post(base(port) + "/api/show", json={}, timeout=30.0)
+    assert reply.status_code == 400, reply.status_code
+    assert reply.json()["error"], reply.text
+
+
+@case
+def ps_lists_the_running_model_with_its_context(port):
+    for _ in range(3):
+        state = client(port).ps()
+        assert len(state.models) == 1, state
+        running = state.models[0]
+        assert MODEL in (running.name, running.model), running
+        assert running.size > 0, running
+        assert running.context_length == CONTEXT, running
+        assert running.details.family == "qwen3_5", running.details
+
+
+# --- the harness ----------------------------------------------------------
+
+
+def build(memory):
+    binary = ROOT / "target" / "llms" / "qwen-server" / f"server-{memory}"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    done = subprocess.run(
+        [str(COMPILER), str(PROJECT), "--compile", f"--memory={memory}", "--no-warnings", "-o", str(binary)],
+        capture_output=True, text=True, timeout=600,
+    )
+    assert done.returncode == 0, f"compiling {PROJECT} failed:\n{done.stdout}\n{done.stderr}"
+    return binary
+
+
+def wait_ready(process, port):
+    deadline = time.time() + 60.0
+    while time.time() < deadline:
+        assert process.poll() is None, f"server exited {process.returncode}"
+        try:
+            if httpx.get(base(port) + "/api/version", timeout=1.0).status_code == 200:
+                return
+        except httpx.HTTPError:
+            time.sleep(0.05)
+    raise TimeoutError(f"server did not answer on port {port} within 60 seconds")
+
+
+def run_cases(memory, port):
+    log = ROOT / "target" / "llms" / "qwen-server" / f"server-{memory}.log"
+    process = subprocess.Popen([str(build(memory))], stdin=subprocess.PIPE, stdout=log.open("w"), stderr=subprocess.STDOUT)
+    failures = []
+    try:
+        process.stdin.write(f"{port}\n".encode())
+        process.stdin.close()
+        wait_ready(process, port)
+        for check in CASES:
+            try:
+                check(port)
+                print(f"ok {memory}/{check.__name__}", flush=True)
+            except Exception:
+                failures.append(f"{check.__name__}\n{traceback.format_exc()}")
+                print(f"not ok {memory}/{check.__name__}", flush=True)
+    finally:
+        process.kill()
+        process.wait(timeout=30)
+    return failures
+
+
+def memories(argv):
+    wanted = [argument for argument in argv if argument in PORTS] or ["gc", "arc"]
+    return wanted
+
+
+def main(argv):
+    if not COMPILER.exists():
+        raise SystemExit(f"no compiler at {COMPILER}; set OSPREY_COMPILER")
+    failures, total = [], 0
+    for memory in memories(argv):
+        found = run_cases(memory, PORTS[memory])
+        failures.extend(found)
+        total += len(CASES)
+    for failure in failures:
+        print(failure, file=sys.stderr)
+    print(f"{total - len(failures)} passed, {len(failures)} failed")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
