@@ -166,9 +166,14 @@ for (const width of [390, 1440]) {
   });
 }
 
-test("homepage Python GPU excerpt includes the actual tensor operation", async ({ page }) => {
+test("homepage build panel shows a real Proof Workbench frame with a kernel-checked theorem", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator('#build code.language-python')).toContainText('return or_stop(perform(Tensor.mat_mul(a, b, rows, inner, cols)), lambda: a)');
+  const shot = page.locator('#build img[src="/assets/images/guides/proof-workbench-commutativity.png"]');
+  await shot.scrollIntoViewIfNeeded();
+  await expect(shot).toBeVisible();
+  await expect(shot).toHaveAttribute("alt", /Proof Workbench.*p ∧ q → q ∧ p.*Osprey kernel/);
+  expect(await shot.evaluate(async (img) => { await img.decode(); return img.naturalWidth; })).toBe(1356);
+  await expect(page.locator("#build code.language-python")).toHaveCount(0);
 });
 
 

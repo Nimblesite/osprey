@@ -67,7 +67,9 @@ html:has(.home) { scroll-behavior: auto; }
 .build-items h3 { font-size: 1.2rem; font-weight: 500; letter-spacing: -0.03em; }
 .build-items p { color: var(--on-surface-variant); font-size: 0.95rem; margin: 0.4rem 0 0; }
 .build-items a { white-space: nowrap; }
-#build .flight-code { align-self: center; }
+.build-shot { margin: 0; align-self: center; }
+.build-shot img { display: block; width: 100%; height: auto; border-radius: 12px; border: 1px solid #77d7f430; box-shadow: 0 25px 75px #0006; }
+.build-shot figcaption { margin-top: 0.75rem; color: var(--on-surface-variant); font-size: 0.8rem; }
 .home .mobile-actions { align-items: center; }
 .native-platforms { font: 0.8rem var(--font-mono); letter-spacing: 0.04em; color: var(--primary); }
 .community-section { border-top: 1px solid #77d7f425; background: radial-gradient(ellipse at 85% 100%, #77d7f414, transparent 60%); }

@@ -107,16 +107,10 @@ date: "git Last Modified"
     <div class="effect-layout">
       <div class="build-items">
         <article><h3>LLMs</h3><p>GPT-2 runs on Metal and OpenCL, and a Qwen3.8-27B model on our Transformers port is in progress. <a href="/docs/python/flavor/#local-llms-in-python-flavor">Local LLMs ↗</a></p></article>
-        <article><h3>Mathematics</h3><p>Machine-checked proofs, with Lean's proof checking being brought to Osprey. <a href="/docs/mathlib-port/">Mathlib port ↗</a></p></article>
+        <article><h3>Mathematics</h3><p>Machine-checked proofs, with Lean's proof checking being brought to Osprey. <a href="/docs/proofs/">Proofs ↗</a> <a href="/docs/mathlib-port/">Mathlib port ↗</a></p></article>
         <article><h3>Python</h3><p>Much Python already compiles as Osprey, NumPy and PyTorch are ported, and interop calls CPython both ways. <a href="/docs/python/interop/">Python interop ↗</a></p></article>
       </div>
-      <div class="flight-code">
-        <div class="code-toolbar"><span>src/osprey/examples/llms/gpt2/python/model.py</span><span>Python flavor</span></div>
-        <pre class="language-python"><code class="language-python"># osprey: flavor=python
-{{ gpuExample.product | escape }}</code></pre>
-        <div class="code-result"><span aria-hidden="true">↳</span><samp>make -C src/toolchain/targets gpt2 FLAVOR=python</samp><span class="result-label">TRY IT</span></div>
-      </div>
-    </div>
+      <figure class="build-shot"><img src="/assets/images/guides/proof-workbench-commutativity.png" alt="The Osprey Proof Workbench showing the theorem p ∧ q → q ∧ p, its five-step proof, the hypotheses hp : p and hq : q, and the badge Checked by the Osprey kernel." width="1356" height="820" loading="lazy" decoding="async"><figcaption>The Proof Workbench: a five-step proof of p ∧ q → q ∧ p, checked by the Osprey kernel.</figcaption></figure>
     </div>
   </div>
 </section>

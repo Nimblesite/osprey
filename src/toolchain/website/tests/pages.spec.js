@@ -512,7 +512,7 @@ test("the homepage's effects panel is short and the build panel covers LLMs, mat
   await expect(page.locator("#gpt2")).toHaveCount(0);
   const build = page.locator("section#build");
   await expect(build.locator("h2")).toContainText("LLMs");
-  for (const [name, href] of [["LLMs", "/docs/python/flavor/#local-llms-in-python-flavor"], ["Mathematics", "/docs/mathlib-port/"], ["Python", "/docs/python/interop/"]]) {
+  for (const [name, href] of [["LLMs", "/docs/python/flavor/#local-llms-in-python-flavor"], ["Mathematics", "/docs/proofs/"], ["Mathematics", "/docs/mathlib-port/"], ["Python", "/docs/python/interop/"]]) {
     const item = build.locator("article", { has: page.locator("h3", { hasText: name }) });
     await expect(item, name).toHaveCount(1);
     await expect(item.locator(`a[href="${href}"]`), name).toHaveCount(1);

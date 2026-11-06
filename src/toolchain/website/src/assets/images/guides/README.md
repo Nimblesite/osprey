@@ -27,3 +27,4 @@ A stale release compiler initially called the old five-argument matrix ABI again
 - A guide of 500 prose words or more carries at least one illustration per 500 words. This is the project's editorial target, not a search rule; a browser test enforces it. Video-card posters don't count, and short reference entries and generated function pages are outside it.
 - No screenshot is a mockup, and none promises universal host conformance. Keep the security qualifications and feature limits a capture shows.
 - After changing a video asset, run `make -C src/toolchain/website video-metadata`: `VideoObject` durations come from the measured file, and upload dates stay as originally published.
+| proof-workbench-commutativity | A frame at 0:33 of the real recording osprey-proof-workbench-math.mp4, cropped to the Proof Workbench window: Commutativity of conjunction, checked by the Osprey kernel. |
