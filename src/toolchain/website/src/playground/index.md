@@ -639,20 +639,20 @@ test("a full disk rolls the manifest back", fn() => expect(fullDisk(upgrade), "r
 test("a read-only disk changes nothing", fn() => expect(readOnlyDisk(upgrade), "manifest not written: read-only"))
 `,
         // @generated:ospml — filled from src/osprey/tests/effects/install/install.test.ospml by scripts/update-playground.js
-        ospml: `// The package manager's file-system effect: one install, a real disk and
-// three test doubles. The Playground opens on this program in every flavor.
+        ospml: `(** The package manager's file-system effect: one install, a real disk and
+    three test doubles. The Playground opens on this program in every flavor. *)
 effect Files
     read : string => Result<string, Error>
     write : (string, string) => Result<int, Error>
 
-// Write the lock file; if that fails, put the old manifest back.
+(** Write the lock file; if that fails, put the old manifest back. *)
 commitLock (previous, lock) = match perform Files.write "osprey.lock" lock
     Success _ => "installed"
     Error message => match perform Files.write "osprey.toml" previous
         Success _ => "rolled back: \${message}"
         Error _ => "manifest left changed: \${message}"
 
-// Update the manifest, then commit the lock. It never names a disk.
+(** Update the manifest, then commit the lock. It never names a disk. *)
 install (manifest, lock) = match perform Files.read "osprey.toml"
     Error message => "no manifest: \${message}"
     Success value => match perform Files.write "osprey.toml" manifest
@@ -662,7 +662,7 @@ install (manifest, lock) = match perform Files.read "osprey.toml"
 // Production passes the real disk (the Playground sandbox has none):
 // handler Files { read path => readFile path  write path text => writeFile path text }
 
-// Test doubles: canned disks, no files touched.
+(** Test doubles: canned disks, no files touched. *)
 healthyDisk = handler Files
     read _ => Success(value = "version = 1")
     write _ text => Success(value = byteLength text)
