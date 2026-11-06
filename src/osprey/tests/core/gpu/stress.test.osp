@@ -3,11 +3,6 @@ fn andThen(result, next) = match result {
     Success { value } => next(value)
     Error { message } => Error { message: message }
 }
-/// [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs.
-fn withIndices(n, work) = match gpuIota(n) {
-    Success { value } => work(value)
-    Error { message } => check("index allocation", "success", toString(message))
-}
 // GPU stress, scale and numeric-edge workloads: million-element pipelines, two-dozen-pass chains, buffers rebuilt from their own output, and the checked-arithmetic
 // boundaries where a `?:` fallback is all that stands between a kernel and an overflow. Every expected value is closed-form, and every accumulation that can overflow
 // asserts both sides of its boundary — the last value that fits and the first that does not ([GPU-BACKEND-HOST], [GPU-FOLD], [GPU-SCAN], [GPU-FILTER], [GPU-ZIPWITH],
