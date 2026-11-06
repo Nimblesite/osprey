@@ -28,9 +28,9 @@ pub(crate) struct InferCtx {
     /// The declaration being checked. An opaque alias is its representation
     /// exactly where this sits inside the alias's owning module.
     site: String,
-    /// Open numeric literals: a variable a literal's type rests on, with the
-    /// type it defaults to. Implements [TYPE-NUMERIC-LITERAL].
-    literals: HashMap<VarId, Numeric>,
+    /// Numeric literal defaults indexed by variable ID, through the last literal.
+    /// Implements [TYPE-NUMERIC-LITERAL].
+    literals: Vec<Option<Numeric>>,
 }
 
 impl InferCtx {
@@ -241,20 +241,22 @@ impl InferCtx {
     /// among `default`'s family ([TYPE-NUMERIC-LITERAL]).
     pub(crate) fn fresh_literal(&mut self, default: Numeric) -> Type {
         let var = self.fresh();
-        if let Type::Var(id) = var {
-            let _ = self.literals.insert(id, default);
-        }
+        self.literals.resize(self.subst.len() - 1, None);
+        self.literals.push(Some(default));
         var
     }
 
     /// The default of a variable that is an open numeric literal.
     pub(crate) fn literal_default(&self, id: VarId) -> Option<Numeric> {
-        self.literals.get(&id).copied()
+        self.literals
+            .get(usize::try_from(id).ok()?)
+            .copied()
+            .flatten()
     }
 
     /// Whether `t` is still an open numeric literal.
     pub(crate) fn is_open_literal(&mut self, t: &Type) -> bool {
-        matches!(self.prune(t), Type::Var(id) if self.literals.contains_key(&id))
+        matches!(self.prune(t), Type::Var(id) if self.literal_default(id).is_some())
     }
 
     /// Whether arithmetic must settle this open float literal to `float` now
@@ -263,17 +265,21 @@ impl InferCtx {
         matches!(self.prune(t), Type::Var(id) if self.literal_default(id).is_some_and(Numeric::is_float))
     }
 
-    /// Fix to its default every open literal free in `t`: a binding's type is
-    /// decided at the binding, so nothing quantifies over a literal.
-    pub(crate) fn settle_literals_in(&mut self, t: &Type) {
-        if self.literals.is_empty() {
-            return;
-        }
+    /// Return the free variables in `t` after fixing its open numeric literals
+    /// to their defaults. Each default is concrete, so it adds no new variables.
+    pub(crate) fn free_vars_after_defaulting(&mut self, t: &Type) -> BTreeSet<VarId> {
         let mut free = BTreeSet::new();
         self.free_vars(t, &mut free);
-        for id in free {
-            self.settle_literal(id);
+        if !self.literals.is_empty() {
+            free.retain(|id| {
+                let Some(default) = self.literal_default(*id) else {
+                    return true;
+                };
+                self.bind(*id, Type::prim(default.name()));
+                false
+            });
         }
+        free
     }
 
     /// [`Self::expose`] for a rule that must act on the shape now: a literal
@@ -303,14 +309,16 @@ impl InferCtx {
 
     /// Fix to its default every literal nothing has decided.
     pub(crate) fn settle_all_literals(&mut self) {
-        let open: Vec<VarId> = self.literals.keys().copied().collect();
-        for id in open {
-            self.settle_literal(id);
+        for (slot, default) in self.subst.iter_mut().zip(&self.literals) {
+            if let (None, Some(default)) = (&*slot, default) {
+                *slot = Some(Type::prim(default.name()));
+                self.bound += 1;
+            }
         }
     }
 
     fn settle_literal(&mut self, id: VarId) {
-        if let Some(default) = self.literals.get(&id).copied() {
+        if let Some(default) = self.literal_default(id) {
             if self.binding(id).is_none() {
                 self.bind(id, Type::prim(default.name()));
             }
@@ -494,9 +502,20 @@ mod tests {
     fn fresh_vars_are_distinct_and_unbound() {
         let mut c = InferCtx::new();
         let a = c.fresh();
+        let integer = c.fresh_literal(Numeric::INT);
         let b = c.fresh();
+        let float = c.fresh_literal(Numeric::FLOAT);
+        let trailing = c.fresh();
         assert_ne!(a, b);
+        c.settle_all_literals();
         assert_eq!(c.prune(&a), a);
+        assert_eq!(c.prune(&b), b);
+        assert_eq!(c.prune(&trailing), trailing);
+        assert_eq!(c.prune(&integer), Type::int());
+        assert_eq!(c.prune(&float), Type::prim(Numeric::FLOAT.name()));
+        assert_eq!(c.bound_count(), 2);
+        c.settle_all_literals();
+        assert_eq!(c.bound_count(), 2);
     }
 
     #[test]
@@ -561,8 +580,10 @@ mod tests {
         let id = if let Type::Var(id) = v { id } else { 0 };
         let literal = c.fresh_literal(Numeric::INT);
         c.bind(id, literal);
-        c.settle_literals_in(&rec(uni(v.clone())));
         let w = c.fresh();
+        let wid = if let Type::Var(wid) = w { wid } else { 0 };
+        let mixed = rec(uni(Type::fun(vec![v.clone()], w.clone())));
+        assert_eq!(c.free_vars_after_defaulting(&mixed), [wid].into());
         let ctx = &c;
         // `apply` rebuilds records/unions with the binding resolved.
         assert_eq!(ctx.apply(&rec(v.clone())), rec(Type::int()));
@@ -571,7 +592,6 @@ mod tests {
         let mut fv = BTreeSet::new();
         ctx.free_vars(&rec(w.clone()), &mut fv);
         ctx.free_vars(&uni(w.clone()), &mut fv);
-        let wid = if let Type::Var(wid) = w { wid } else { 0 };
         assert!(fv.contains(&wid));
     }
 }

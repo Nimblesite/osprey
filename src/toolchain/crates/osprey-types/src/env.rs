@@ -438,10 +438,8 @@ pub(crate) fn generalize(
     env: &TypeEnv,
     ty: &Type,
 ) -> (Scheme, BTreeSet<VarId>) {
-    ctx.settle_literals_in(ty);
+    let ty_fv = ctx.free_vars_after_defaulting(ty);
     let ty = ctx.apply(ty);
-    let mut ty_fv = BTreeSet::new();
-    ctx.free_vars(&ty, &mut ty_fv);
     let external = if ty_fv.is_empty() {
         BTreeSet::new()
     } else {

@@ -50,8 +50,9 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] `c2cee10f0` removes the unfinished qwen model from the package backend matrix; the existing GPT2 tests stay.
    - [x] `98eb859d8` marks transformers `unfinished`, so it still reports coverage but has no 90% floor. Package coverage passed 28 of 28 on run 42153399114.
 12. **Agent type-check budget [OspreyCodex]**
-   - [x] Root cause: on run 42150529203 `test-app` already took 117.79 s of its 120 s budget, and on run 42153399114 it ran out. Locally a release build checks it in 48 s. A profile shows almost all of that time in the redundant-annotation lint (`redundant_blame::directed`), which reruns full inference for each annotation trial.
-   - [ ] Make the trials cheaper, test first, without raising the budget.
+   - [x] Reproduce the timeout. The three-project check took 117.79 seconds in run 42150529203, then `test-app` exceeded the shared 120-second deadline in run 42153399114. A local profile showed repeated full inference in the annotation lint.
+   - [x] Index numeric literal defaults by variable ID and reuse the free-variable set after defaulting. All 958 type tests and strict Clippy passed, and the unchanged coverage-instrumented Agent test finished in 41.97 seconds locally. Paired `test-app` CPU time was 41.59 versus 42.90 seconds with identical warnings.
+   - [ ] Verify the unchanged Agent budget and full Rust rest shard on hosted Linux.
 13. **Integration job timeout (external)**
    - [x] Run 42153399114 hit the 18-minute limit because the Azure Ubuntu mirror served the Playwright `--with-deps` font packages at 49.6 kB/s (7 min 20 s for 21.9 MB). The previous run installed them in 19 s. No code change; the next push reruns the job.
 
