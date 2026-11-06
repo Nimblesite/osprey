@@ -19,7 +19,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | WebAssembly target | `make _test_wasm_goldens` | pi deepseek-flash | [x] pi deepseek-flash: wasm32 corpus run_test_corpus.sh passed |
 | Website E2E | `cd src/toolchain/website && npm test`; `make -C docs/book check check-examples` | pi deepseek-flash | [ ] |
 | VS Code extension | `make _test_vscode_extension` | check-once-claude | [ ] |
-| Proof kernel and Lean | `make -j3 _test_proof_ci` plus the proof script tests | OspreyCodex | [ ] |
+| Proof kernel and Lean | `make -j3 _test_proof_ci` plus the proof script tests | OspreyCodex | [x] GC/ARC/WASI corpora, 3 byte-identical exports, 70 script checks and both Lean speed cases (`f4a096d2e`) |
 | Integration | `make _bank_test`, profiler, mobile tools, `make _test_agent`, bank Playwright, docs HTML, web compiler Docker | check-once-claude | [ ] |
 | Apple (macOS, iOS, Workbench, Talon Bank) | each matrix `run` command from `ci.yml` | check-once-claude | [ ] |
 | Agent UI (macos-26) | `make -C src/toolchain/targets/macos/tests agent-headless` | check-once-claude | [ ] |
