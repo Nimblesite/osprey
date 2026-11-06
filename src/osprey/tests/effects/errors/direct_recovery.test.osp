@@ -86,14 +86,6 @@ fn allocate(requested: int) -> (int) -> int !StockError = fn(available) => match
 /// Add fixed packaging work after the shared allocation function recovers.
 fn shipmentTotal() ![StockError, Arith] = allocate(9)(5) + 2 
 
-/// Run `body` under a region that answers `StockError.shortage` with `pick`.
-fn withShortage(pick, body) = {
-    handle StockError {
-        shortage requested available => pick(requested)(available)
-    }
-    body()
-}
-
 /// Recover an integer, audit both sides of the perform, and then keep computing.
 fn auditedRecovery() ![RecoveryError, AuditError, Arith] = {
     let value = perform RecoveryError.missingInt("token")
@@ -116,31 +108,24 @@ fn lookupValue(key) !LookupError = perform LookupError.find(key) ?: ((0 - 1) )
 /// Combine both Result branches after one handler supplies their whole values.
 fn combineLookups() ![LookupError, Arith] = lookupValue("known") * 10 + lookupValue("missing") 
 
-/// Run `body` under an arm that substitutes `supplied` for every request and
-/// counts how often that arm was entered.
-fn countedRecovery(supplied, body) = {
+/// Verify that successful code never enters an installed recovery arm.
+fn happyPathBypassCase() = {
     mut recoveries = 0
     let value = {
         handle RecoveryError {
             missingInt _reason => {
                 recoveries = recoveries + 1 
-                supplied
+                99
             }
         }
-        body()
+        requirePositive(7)
     }
-    { value: value, recoveries: recoveries }
-}
-
-/// Verify that successful code never enters an installed recovery arm.
-fn happyPathBypassCase() = {
-    let run = countedRecovery(99, fn() => requirePositive(7))
 
     // The original value survives and the handler remains untouched.
     checkAll("happy path bypass", [
-        run.value == 7,
-        run.recoveries == 0,
-        run.value != 99
+        value == 7,
+        recoveries == 0,
+        value != 99
     ])
 }
 
@@ -229,8 +214,18 @@ fn multipleResultTypesCase() = {
 
 /// Verify the same effectful function can run under two local recovery policies.
 fn twoPoliciesCase() = {
-    let skipped = withShortage(fn(_requested) => fn(_available) => 0, fn() => shipmentTotal())
-    let capped = withShortage(fn(_requested) => fn(available) => available, fn() => shipmentTotal())
+    let skipped = {
+        handle StockError {
+            shortage _requested _available => 0
+        }
+        shipmentTotal()
+    }
+    let capped = {
+        handle StockError {
+            shortage _requested available => available
+        }
+        shipmentTotal()
+    }
 
     // Skip and cap policies change only the handled shortage decision.
     checkAll("two policies over one function", [
@@ -300,13 +295,22 @@ fn outerEffectCompositionCase() = {
 
 /// Verify dynamic handling reaches through helpers and recursive calls.
 fn deepRecursionCase() = {
-    let run = countedRecovery(8, fn() => descend(4))
+    mut recoveries = 0
+    let value = {
+        handle RecoveryError {
+            missingInt _reason => {
+                recoveries = recoveries + 1 
+                8
+            }
+        }
+        descend(4)
+    }
 
     // One bottom-level replacement returns through all four recursive frames.
     checkAll("deep helper recursion", [
-        run.value == 12,
-        run.recoveries == 1,
-        (run.value - 8 ) == 4
+        value == 12,
+        recoveries == 1,
+        (value - 8 ) == 4
     ])
 }
 
@@ -387,15 +391,6 @@ fn everyValue() ![ValueError, Arith] = {
     "${toString(n)}|${t}|${toString(b)}|${s.tag}|${toString(heavy)}|${toString(graded)}|${toString(looked)}"
 }
 
-/// Answer one `ValueError` operation with `value`, ignoring the inspected field name.
-fn askedInt(value, label) = { handle ValueError { asInt _field => value } perform ValueError.asInt(label) }
-fn askedFloat(value, label) = { handle ValueError { asFloat _field => value } perform ValueError.asFloat(label) }
-fn askedBool(value, label) = { handle ValueError { asBool _field => value } perform ValueError.asBool(label) }
-fn askedText(value, label) = { handle ValueError { asText _field => value } perform ValueError.asText(label) }
-fn askedSpare(value, label) = { handle ValueError { asSpare _field => value } perform ValueError.asSpare(label) }
-fn askedGrade(value, label) = { handle ValueError { asGrade _field => value } perform ValueError.asGrade(label) }
-fn askedResult(value, label) = { handle ValueError { asResult _field => value } perform ValueError.asResult(label) }
-
 /// TierError exposes three operations so complementary partial handlers can split them.
 effect TierError {
     /// Supply the base amount for `label`.
@@ -414,11 +409,6 @@ fn tierQuote(label) ![TierError, Arith] = {
     let combined = amount + extra 
     "${name}:${toString(combined)}"
 }
-
-/// Run `body` under a region that answers `TierError.base` with `value`.
-fn withBase(value, body) = { handle TierError { base _label => value } body() }
-fn withBonus(value, body) = { handle TierError { bonus _label => value } body() }
-fn withTier(value, body) = { handle TierError { tier _label => value } body() }
 
 /// Tally lets a callback ask for a scaled contribution and then record it.
 effect Tally {
@@ -449,11 +439,6 @@ fn descendSum(depth) ![StepError, Arith] = match depth {
     }
 }
 
-/// Whether every handler-owned counter still holds its expected count after a
-/// later region has closed.
-fn countsIntact(notes, recoveries, shortages, policies) =
-    notes == 3 && recoveries == 1 && shortages == 1 && policies == 2
-
 /// Cross four effects in one body so a stack of regions has to cooperate.
 fn crossEffectBody() ![RecoveryError, AuditError, StockError, PolicyError] = {
     let filled = perform RecoveryError.missingInt("qty")
@@ -481,10 +466,6 @@ fn fillAll() !TextError = {
     let c = perform TextError.fill("b")
     "${a}/${b}/${c}"
 }
-
-/// Answer one `TextError` operation with `value`, ignoring the requested field name.
-fn fillValue(value, label) = { handle TextError { fill _field => value } perform TextError.fill(label) }
-fn numberValue(value, label) = { handle TextError { number _field => value } perform TextError.number(label) }
 
 /// Verify every declared operation result type survives direct substitution.
 ///
@@ -534,16 +515,66 @@ fn everyResultTypeCase() = {
         }
         everyValue()
     }
-    let intValue = askedInt(0, "zero")
-    let negativeValue = askedInt(-41, "negative")
-    let floatValue = askedFloat(2.5, "ratio")
-    let boolValue = askedBool(false, "blocked")
-    let textValue = askedText("", "empty")
-    let spareValue = askedSpare(Spare { tag: "left", weight: 1.5, ready: true }, "spare")
-    let grantedValue = askedGrade(Granted { score: 7 }, "good")
-    let refusedValue = askedGrade(Refused { reason: "denied" }, "bad")
-    let okValue = askedResult(Success { value: 5 }, "hit")
-    let badValue = askedResult(Error { message: "absent" }, "miss")
+    let intValue = {
+        handle ValueError {
+            asInt _field => 0
+        }
+        perform ValueError.asInt("zero")
+    }
+    let negativeValue = {
+        handle ValueError {
+            asInt _field => -41
+        }
+        perform ValueError.asInt("negative")
+    }
+    let floatValue = {
+        handle ValueError {
+            asFloat _field => 2.5
+        }
+        perform ValueError.asFloat("ratio")
+    }
+    let boolValue = {
+        handle ValueError {
+            asBool _field => false
+        }
+        perform ValueError.asBool("blocked")
+    }
+    let textValue = {
+        handle ValueError {
+            asText _field => ""
+        }
+        perform ValueError.asText("empty")
+    }
+    let spareValue = {
+        handle ValueError {
+            asSpare _field => Spare { tag: "left", weight: 1.5, ready: true }
+        }
+        perform ValueError.asSpare("spare")
+    }
+    let grantedValue = {
+        handle ValueError {
+            asGrade _field => Granted { score: 7 }
+        }
+        perform ValueError.asGrade("good")
+    }
+    let refusedValue = {
+        handle ValueError {
+            asGrade _field => Refused { reason: "denied" }
+        }
+        perform ValueError.asGrade("bad")
+    }
+    let okValue = {
+        handle ValueError {
+            asResult _field => Success { value: 5 }
+        }
+        perform ValueError.asResult("hit")
+    }
+    let badValue = {
+        handle ValueError {
+            asResult _field => Error { message: "absent" }
+        }
+        perform ValueError.asResult("miss")
+    }
     let grantedScore = gradeScore(grantedValue)
     let refusedScore = gradeScore(refusedValue)
     let okScore = resultScore(okValue)
@@ -628,14 +659,19 @@ fn everyResultTypeCase() = {
     checkAll("one region answers every operation of one effect", [
         rendered == "12|fallback|true|spare|false|30|9",
         length(rendered) == 33,
-        startsWith(rendered, "12|"), endsWith(rendered, "|9"),
-        containsAll(rendered, ["|spare|", "|true|"]),
-        containsNone(rendered, ["2.5", "|13|"]),
+        startsWith(rendered, "12|"),
+        endsWith(rendered, "|9"),
+        contains(rendered, "|spare|"),
+        contains(rendered, "|true|"),
+        !contains(rendered, "2.5"),
+        !contains(rendered, "|13|"),
         marks == 1,
         trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
         length(trail) == 69,
-        startsWith(trail, "i:count|"), endsWith(trail, "m:rendered|"),
-        containsAll(trail, ["|s:spare|", "b:allowed|t:name|"]),
+        startsWith(trail, "i:count|"),
+        endsWith(trail, "m:rendered|"),
+        contains(trail, "|s:spare|"),
+        contains(trail, "b:allowed|t:name|"),
         !contains(trail, "|i:count|")
     ])
 }
@@ -698,10 +734,44 @@ fn partialOverrideLatticeCase() = {
         let afterwards = tierQuote("post")
         "${outside}|${inside}|${afterwards}"
     }
-    let split = withBase(10, fn() => withBonus(3, fn() => withTier("silver", fn() => tierQuote("c"))))
-    let reordered = withTier("silver", fn() => withBase(10, fn() => withBonus(3, fn() => tierQuote("d"))))
-    let deepest = withBase(1, fn() => withBonus(0, fn() => withTier("bronze", fn() =>
-        withBase(2, fn() => withBase(3, fn() => tierQuote("e"))))))
+    let split = {
+        handle TierError {
+            base _label => 10
+        }
+        handle TierError {
+            bonus _label => 3
+        }
+        handle TierError {
+            tier _label => "silver"
+        }
+        tierQuote("c")
+    }
+    let reordered = {
+        handle TierError {
+            tier _label => "silver"
+        }
+        handle TierError {
+            base _label => 10
+        }
+        handle TierError {
+            bonus _label => 3
+        }
+        tierQuote("d")
+    }
+    let deepest = {
+        handle TierError {
+            base _label => 1
+            bonus _label => 0
+            tier _label => "bronze"
+        }
+        handle TierError {
+            base _label => 2
+        }
+        handle TierError {
+            base _label => 3
+        }
+        tierQuote("e")
+    }
     let restored = {
         handle TierError {
             base _label => 7
@@ -726,14 +796,16 @@ fn partialOverrideLatticeCase() = {
     checkAll("one handler answers every operation of one effect", [
         flat == "gold:105/gold:105",
         length(flat) == 17,
-        startsWith(flat, "gold:105"), endsWith(flat, "gold:105"),
+        startsWith(flat, "gold:105"),
+        endsWith(flat, "gold:105"),
         contains(flat, "105/gold"),
         flat != "gold:105",
         flatCalls == 6,
         flatCalls == (2 * 3 ),
         flatTrail == "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|",
         length(flatTrail) == 44,
-        startsWith(flatTrail, "base:a|"), endsWith(flatTrail, "tier:b|"),
+        startsWith(flatTrail, "base:a|"),
+        endsWith(flatTrail, "tier:b|"),
         contains(flatTrail, "tier:a|base:b|"),
         !contains(flatTrail, "base:c")
     ])
@@ -748,7 +820,8 @@ fn partialOverrideLatticeCase() = {
         outerBaseCalls > innerBaseCalls,
         (outerBaseCalls + innerBaseCalls ) == 3,
         contains(overridden, "gold:205"),
-        startsWith(overridden, "gold:105|"), endsWith(overridden, "|gold:105"),
+        startsWith(overridden, "gold:105|"),
+        endsWith(overridden, "|gold:105"),
         !contains(overridden, "gold:305"),
         !startsWith(overridden, "gold:205"),
         contains(overridden, "|gold:205|"),
@@ -763,7 +836,8 @@ fn partialOverrideLatticeCase() = {
         reordered == "silver:13",
         split == reordered,
         length(split) == 9,
-        startsWith(split, "silver:"), endsWith(split, ":13"),
+        startsWith(split, "silver:"),
+        endsWith(split, ":13"),
         contains(split, "r:1"),
         !contains(split, "gold"),
         split != flat,
@@ -779,14 +853,18 @@ fn partialOverrideLatticeCase() = {
     checkAll("the innermost matching arm wins and the outer policy is restored", [
         deepest == "bronze:3",
         length(deepest) == 8,
-        startsWith(deepest, "bronze:"), endsWith(deepest, ":3"),
-        containsNone(deepest, [":1", ":2"]),
+        startsWith(deepest, "bronze:"),
+        endsWith(deepest, ":3"),
+        !contains(deepest, ":1"),
+        !contains(deepest, ":2"),
         deepest != split,
         restored == "7|outer/70|7",
         length(restored) == 12,
-        startsWith(restored, "7|"), endsWith(restored, "|7"),
+        startsWith(restored, "7|"),
+        endsWith(restored, "|7"),
         contains(restored, "outer/70"),
-        containsNone(restored, ["70|outer", "|70|"])
+        !contains(restored, "70|outer"),
+        !contains(restored, "|70|")
     ])
 }
 
@@ -854,8 +932,10 @@ fn higherOrderRecoveryCase() = {
         total != 91,
         trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
         length(trail) == 29,
-        startsWith(trail, "14|"), endsWith(trail, "60|"),
-        contains(trail, "6|6|6|"), !contains(trail, "|7|")
+        startsWith(trail, "14|"),
+        endsWith(trail, "60|"),
+        contains(trail, "6|6|6|"),
+        !contains(trail, "|7|")
     ])
 
     // An empty list performs nothing, a singleton performs once, duplicates
@@ -883,7 +963,8 @@ fn higherOrderRecoveryCase() = {
         (listGet(none, 0) ?: missing) == missing,
         (listGet(one, 0) ?: missing) == 7,
         (listGet(one, 1) ?: missing) == missing,
-        (listGet(dup, 0) ?: missing) == 3, (listGet(dup, 2) ?: missing) == 3,
+        (listGet(dup, 0) ?: missing) == 3,
+        (listGet(dup, 2) ?: missing) == 3,
         (listGet(dup, 3) ?: missing) == missing,
         (listGet(mixed, 0) ?: missing) == 1,
         (listGet(mixed, 4) ?: missing) == 5,
@@ -981,9 +1062,11 @@ fn recursiveAccumulationCase() = {
         lastDepth == 1,
         trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
         length(trail) == 32,
-        startsWith(trail, "8:1|"), endsWith(trail, "1:8|"),
+        startsWith(trail, "8:1|"),
+        endsWith(trail, "1:8|"),
         contains(trail, "|4:5|"),
-        containsNone(trail, ["9:", "0:"]),
+        !contains(trail, "9:"),
+        !contains(trail, "0:"),
         (visits * 10 ) == 80,
         total > 0,
         total != 36
@@ -1132,10 +1215,14 @@ fn multiEffectRegionCase() = {
     checkAll("four effects cooperate inside one nested region stack", [
         rendered == "priority:6:4:25",
         length(rendered) == 15,
-        startsWith(rendered, "priority:"), endsWith(rendered, ":25"),
+        startsWith(rendered, "priority:"),
+        endsWith(rendered, ":25"),
         contains(rendered, ":6:4:"),
         !contains(rendered, ":25:"),
-        countsIntact(notes, recoveries, shortages, policies),
+        notes == 3,
+        recoveries == 1,
+        shortages == 1,
+        policies == 2,
         (notes + recoveries + shortages + policies ) == 7,
         notes > recoveries,
         policies > shortages,
@@ -1147,11 +1234,17 @@ fn multiEffectRegionCase() = {
     checkAll("the four channels interleave in the body's order", [
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         length(trail) == 70,
-        startsWith(trail, "R(qty)|"), endsWith(trail, "A(scored 25)|"),
-        containsAll(trail, ["|S(6,4)|", "A(filled 6)", "A(allowed 4)"]),
-        contains(trail, "|L(order)|P(order)|"), !contains(trail, "P(order)|L(order)"),
-        containsNone(trail, ["A(qty)", "S(4,6)"]),
-        !startsWith(trail, "A("), !endsWith(trail, "|P(order)|"),
+        startsWith(trail, "R(qty)|"),
+        endsWith(trail, "A(scored 25)|"),
+        contains(trail, "|S(6,4)|"),
+        contains(trail, "|L(order)|P(order)|"),
+        !contains(trail, "P(order)|L(order)"),
+        !contains(trail, "A(qty)"),
+        contains(trail, "A(filled 6)"),
+        contains(trail, "A(allowed 4)"),
+        !contains(trail, "S(4,6)"),
+        !startsWith(trail, "A("),
+        !endsWith(trail, "|P(order)|"),
         contains(trail, "R(qty)|A(filled 6)|")
     ])
 
@@ -1162,10 +1255,14 @@ fn multiEffectRegionCase() = {
         reordered == "priority:6:4:25",
         auditTrail == "filled 6|allowed 4|scored 25|",
         length(auditTrail) == 29,
-        startsWith(auditTrail, "filled 6|"), endsWith(auditTrail, "scored 25|"),
-        contains(auditTrail, "|allowed 4|"), !contains(auditTrail, "qty"),
-        countsIntact(notes, recoveries, shortages, policies),
-        trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|"
+        startsWith(auditTrail, "filled 6|"),
+        endsWith(auditTrail, "scored 25|"),
+        contains(auditTrail, "|allowed 4|"),
+        !contains(auditTrail, "qty"),
+        notes == 3,
+        trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
+        recoveries == 1,
+        policies == 2
     ])
 
     // A third stack changes every policy: 2 filled, 2+4 allocated, "basic" and
@@ -1174,10 +1271,16 @@ fn multiEffectRegionCase() = {
         generous == "basic:2:6:0",
         length(generous) == 11,
         generous != rendered,
-        startsWith(generous, "basic:"), endsWith(generous, ":0"),
-        contains(generous, ":2:6:"), !contains(generous, "priority"),
-        generousAudits == 3, generousAudits == notes,
-        countsIntact(notes, recoveries, shortages, policies),
+        startsWith(generous, "basic:"),
+        endsWith(generous, ":0"),
+        contains(generous, ":2:6:"),
+        !contains(generous, "priority"),
+        generousAudits == 3,
+        generousAudits == notes,
+        notes == 3,
+        recoveries == 1,
+        shortages == 1,
+        policies == 2,
         auditTrail == "filled 6|allowed 4|scored 25|"
     ])
 }
@@ -1206,15 +1309,60 @@ fn boundaryValueRecoveryCase() = {
         }
         fillAll()
     }
-    let blank = fillValue("", "blank")
-    let single = fillValue("z", "single")
-    let digits = fillValue("007", "digits")
-    let mixedCase = fillValue("OsPrey", "case")
-    let punctuated = fillValue("a-b_c.d,e", "punct")
-    let repeated = fillValue("abab abab", "repeat")
-    let zero = numberValue(0, "zero")
-    let big = numberValue(2147483647, "big")
-    let negative = numberValue(-2147483647, "negative")
+    let blank = {
+        handle TextError {
+            fill _field => ""
+        }
+        perform TextError.fill("blank")
+    }
+    let single = {
+        handle TextError {
+            fill _field => "z"
+        }
+        perform TextError.fill("single")
+    }
+    let digits = {
+        handle TextError {
+            fill _field => "007"
+        }
+        perform TextError.fill("digits")
+    }
+    let mixedCase = {
+        handle TextError {
+            fill _field => "OsPrey"
+        }
+        perform TextError.fill("case")
+    }
+    let punctuated = {
+        handle TextError {
+            fill _field => "a-b_c.d,e"
+        }
+        perform TextError.fill("punct")
+    }
+    let repeated = {
+        handle TextError {
+            fill _field => "abab abab"
+        }
+        perform TextError.fill("repeat")
+    }
+    let zero = {
+        handle TextError {
+            number _field => 0
+        }
+        perform TextError.number("zero")
+    }
+    let big = {
+        handle TextError {
+            number _field => 2147483647
+        }
+        perform TextError.number("big")
+    }
+    let negative = {
+        handle TextError {
+            number _field => -2147483647
+        }
+        perform TextError.number("negative")
+    }
 
     // Three performs, two of them under the duplicate field name "a", get the
     // first, second and third answers: "" then "x" then "  spaced  ", joined
@@ -1227,9 +1375,13 @@ fn boundaryValueRecoveryCase() = {
         fills != 1,
         seen == "a1|a2|b3|",
         length(seen) == 9,
-        startsWith(seen, "a1|"), endsWith(seen, "b3|"),
-        contains(seen, "|a2|"), containsNone(seen, ["b1|", "a3|"]),
-        startsWith(joined, "/x/"), endsWith(joined, "  "),
+        startsWith(seen, "a1|"),
+        endsWith(seen, "b3|"),
+        contains(seen, "|a2|"),
+        !contains(seen, "b1|"),
+        !contains(seen, "a3|"),
+        startsWith(joined, "/x/"),
+        endsWith(joined, "  "),
         contains(joined, "spaced")
     ])
 
@@ -1245,8 +1397,10 @@ fn boundaryValueRecoveryCase() = {
         single != blank,
         digits == "007",
         length(digits) == 3,
-        startsWith(digits, "0"), endsWith(digits, "7"),
-        contains(digits, "07"), !contains(digits, "70"),
+        startsWith(digits, "0"),
+        endsWith(digits, "7"),
+        contains(digits, "07"),
+        !contains(digits, "70"),
         digits != "7"
     ])
 
@@ -1262,8 +1416,9 @@ fn boundaryValueRecoveryCase() = {
         toUpperCase(mixedCase) != toLowerCase(mixedCase),
         punctuated == "a-b_c.d,e",
         length(punctuated) == 9,
-        startsWith(punctuated, "a-"), endsWith(punctuated, ",e"),
+        startsWith(punctuated, "a-"),
         contains(punctuated, "_c."),
+        endsWith(punctuated, ",e"),
         !startsWith(punctuated, "-"),
         !endsWith(punctuated, "e,"),
         repeated == "abab abab",

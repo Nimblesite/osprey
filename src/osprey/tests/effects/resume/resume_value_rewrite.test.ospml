@@ -87,7 +87,15 @@ resumeValueRewriteCase () =
     (* Preserve the complete ten-line golden transcript and every output phase. *)
     checkAll "value-rewrite legacy observations" [
         legacyTranscript == "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n",
-        containsAll legacyTranscript ["supply first=105\n", "supply second=110\n", "supply third=115\n", "seen after third: 330\n", "seen after second: 330\n", "seen after first: 330\n", "result=330\n", "relay answered: carried\n", "word=carried\n"],
+        contains legacyTranscript "supply first=105\n",
+        contains legacyTranscript "supply second=110\n",
+        contains legacyTranscript "supply third=115\n",
+        contains legacyTranscript "seen after third: 330\n",
+        contains legacyTranscript "seen after second: 330\n",
+        contains legacyTranscript "seen after first: 330\n",
+        contains legacyTranscript "result=330\n",
+        contains legacyTranscript "relay answered: carried\n",
+        contains legacyTranscript "word=carried\n",
         endsWith legacyTranscript "checked=10 num=41\n"
     ]
 
@@ -128,17 +136,6 @@ weightedReads () =
     weighted = ((a * 1000) ) + ((b * 100) ) + ((c * 10) ) 
     (weighted + d) 
 
-(** Run the weighted body under one arm that supplies `value` at every slot. *)
-constantReads value =
-    mut reads = 0
-    total =
-        handle Script
-            read _slot =>
-                reads := reads + 1 
-                resume value
-        weightedReads ()
-    { total = total, reads = reads }
-
 (** [EFFECTS-RESUME] "`resume(value)` supplies the current operation result and
     runs the rest of the handled computation." Each perform site must observe
     the value its own arm supplied — not the argument it sent, not a neighbour's
@@ -167,8 +164,21 @@ resumeSubstitutesSuppliedValueCase () =
                 answer
         weightedReads ()
 
-    steady = constantReads 1
-    zeroed = constantReads 0
+    mut steadyReads = 0
+    steady =
+        handle Script
+            read _slot =>
+                steadyReads := steadyReads + 1 
+                resume 1
+        weightedReads ()
+
+    mut zeroReads = 0
+    zeroed =
+        handle Script
+            read _slot =>
+                zeroReads := zeroReads + 1 
+                resume 0
+        weightedReads ()
 
     (* 660 is the weighted head (0 + 700 - 40); the unit slot adds the final 7.
         The rejected values are the answers a broken delivery would produce: 10 is
@@ -187,32 +197,33 @@ resumeSubstitutesSuppliedValueCase () =
     checkAll "reads enter in slot order and settle in reverse" [
         asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
         startsWith seen "4:667|", endsWith seen "1:667|",
-        containsAll seen ["3:667|", "2:667|"],
+        contains seen "3:667|", contains seen "2:667|",
         !(startsWith seen "1:"), asked != seen,
         length seen == 24, reads == 4,
-        containsNone seen ["0:", ":660"]
+        !(contains seen "0:"), !(contains seen ":660")
     ]
 
     (* Every arm's resume returns the one completed answer, never the value that
         arm itself supplied: "4:7", "2:7", "3:-4" and "1:0" are the four ways the
         supplied value could have been handed back by mistake. *)
     checkAll "every arm observes the completed computation answer" [
-        containsAll seen ["1:667", "2:667", "3:667", "4:667"],
-        containsNone seen ["4:7|", "2:7|", "3:-4|", "1:0|"],
+        contains seen "1:667", contains seen "2:667",
+        contains seen "3:667", contains seen "4:667",
+        !(contains seen "4:7|"), !(contains seen "2:7|"),
+        !(contains seen "3:-4|"), !(contains seen "1:0|"),
         contains seen (toString picked),
-        containsAll gave ["0|", "-4|"], containsNone gave ["|4|"]
+        contains gave "0|", contains gave "-4|", !(contains gave "|4|")
     ]
 
     (* The same body under a constant script answers 1*1000 + 1*100 + 1*10 + 1,
         and under an all-zero script answers 0 — the body is fixed, the supplies
         are what move. Neither later region disturbs the first region's state. *)
     checkAll "the same body answers differently under a different script" [
-        steady.total == 1111, steady.reads == 4,
-        steady.total != picked, picked != 1111,
-        ((steady.total - picked) ) == 444,
-        steady.total == (((1000 + 100) ) + ((10 + 1) ) ),
-        zeroed.total == 0, zeroed.reads == 4, zeroed.total != picked,
-        asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steady.reads
+        steady == 1111, steadyReads == 4, steady != picked, picked != 1111,
+        ((steady - picked) ) == 444,
+        steady == (((1000 + 100) ) + ((10 + 1) ) ),
+        zeroed == 0, zeroReads == 4, zeroed != picked,
+        asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steadyReads
     ]
 
 (* Register value substitution at the perform site. *)
@@ -292,10 +303,10 @@ resumeAnswerComposesLifoCase () =
         observes: 3 returns 126 and 2 observes 126; 2 returns 128 and 1 observes
         128; 1 returns 129, which is the whole handle expression's result. *)
     checkAll "each arm's value becomes the next-outer arm's answer" [
-        containsAll returned ["3:126|", "2:128|", "1:129|"],
-        containsAll observed ["2:126|", "1:128|"],
-        containsNone observed ["2:123|", "1:123|"],
-        !(contains returned "3:123|"),
+        contains returned "3:126|", contains observed "2:126|",
+        contains returned "2:128|", contains observed "1:128|",
+        contains returned "1:129|", !(contains observed "2:123|"),
+        !(contains observed "1:123|"), !(contains returned "3:123|"),
         length observed == 18, length returned == 18,
         layeredResult == 129, endsWith returned "1:129|"
     ]
@@ -467,33 +478,42 @@ beatBody () =
     perform Scalar.beat 3
     "steady"
 
-(** Run `body` under a flag region that supplies both truth values, keeping the
-    arm's own call count and supplied marks. *)
-flagRegion body =
-    mut calls = 0
-    mut gave = ""
-    text =
+(** [EFFECTS-RESUME] "`resume()` supplies `Unit`." A Unit operation still
+    suspends its performer, so its arm still observes the handled computation's
+    answer after resuming — here a string, three times over. The boolean half
+    pins both truth values, including one that decides the caller's own branch. *)
+resumeBoolAndUnitPayloadsCase () =
+    mut flagCalls = 0
+    mut flagGave = ""
+    flagText =
         handle Scalar
             flag step =>
-                calls := calls + 1 
+                flagCalls := flagCalls + 1 
                 value = match step
                     2 => false
                     _ => true
                 mark = match value
                     true => "T"
                     false => "F"
-                gave := "${gave}${mark}|"
+                flagGave := "${flagGave}${mark}|"
                 resume value
-        body ()
-    { text = text, calls = calls, gave = gave }
+        flagBody ()
 
-(** [EFFECTS-RESUME] "`resume()` supplies `Unit`." A Unit operation still
-    suspends its performer, so its arm still observes the handled computation's
-    answer after resuming — here a string, three times over. The boolean half
-    pins both truth values, including one that decides the caller's own branch. *)
-resumeBoolAndUnitPayloadsCase () =
-    flag = flagRegion flagBody
-    route = flagRegion routes
+    mut routeCalls = 0
+    mut routeGave = ""
+    routeText =
+        handle Scalar
+            flag step =>
+                routeCalls := routeCalls + 1 
+                value = match step
+                    2 => false
+                    _ => true
+                mark = match value
+                    true => "T"
+                    false => "F"
+                routeGave := "${routeGave}${mark}|"
+                resume value
+        routes ()
 
     mut beats = 0
     mut beatOrder = ""
@@ -513,24 +533,24 @@ resumeBoolAndUnitPayloadsCase () =
     (* "true|false|true" is 15 bytes and holds both renderings; a boolean that
         collapsed to an integer would print "1" or "0" instead. *)
     checkAll "boolean payloads keep both truth values" [
-        flag.text == "true|false|true", length flag.text == 15,
-        containsAll flag.text ["true", "false"],
-        startsWith flag.text "true|", endsWith flag.text "|true",
-        !(startsWith flag.text "false"), flag.calls == 3,
-        flag.gave == "T|F|T|", containsNone flag.text ["1", "0"],
-        toString true == "true",
+        flagText == "true|false|true", length flagText == 15,
+        contains flagText "true", contains flagText "false",
+        startsWith flagText "true|", endsWith flagText "|true",
+        !(startsWith flagText "false"), flagCalls == 3,
+        flagGave == "T|F|T|", !(contains flagText "1"),
+        !(contains flagText "0"), toString true == "true",
         toString false == "false"
     ]
 
     (* The supplied bit selects the caller's own match arm, so the route text
         orders itself by which perform received which value. *)
     checkAll "a supplied boolean drives the caller's own branch" [
-        route.text == "allow/deny", length route.text == 10,
-        startsWith route.text "allow", endsWith route.text "deny",
-        contains route.text "/", route.text != "deny/allow",
-        !(contains route.text "denyallow"), route.calls == 2,
-        route.gave == "T|F|", route.text != flag.text,
-        route.calls != flag.calls, flag.gave != route.gave
+        routeText == "allow/deny", length routeText == 10,
+        startsWith routeText "allow", endsWith routeText "deny",
+        contains routeText "/", routeText != "deny/allow",
+        !(contains routeText "denyallow"), routeCalls == 2,
+        routeGave == "T|F|", routeText != flagText,
+        routeCalls != flagCalls, flagGave != routeGave
     ]
 
     (* Each Unit arm resumes with nothing and still observes the string the
@@ -547,11 +567,11 @@ resumeBoolAndUnitPayloadsCase () =
     (* Three regions over the same effect, each with its own counters; the
         boolean regions never ran a `beat` arm and vice versa. *)
     checkAll "bool and Unit regions keep separate state" [
-        flag.calls == 3, route.calls == 2, beats == 3,
-        flag.calls == beats, flag.calls != route.calls,
-        (((flag.calls + route.calls) ) + beats ) == 8,
-        beatSeen != flag.text, beatOrder != route.gave,
-        flag.text != route.text, beatText != flag.text
+        flagCalls == 3, routeCalls == 2, beats == 3,
+        flagCalls == beats, flagCalls != routeCalls,
+        (((flagCalls + routeCalls) ) + beats ) == 8,
+        beatSeen != flagText, beatOrder != routeGave,
+        flagText != routeText, beatText != flagText
     ]
 
 (* Register boolean and Unit resume payloads. *)
@@ -664,7 +684,7 @@ resumeManagedPayloadsCase () =
     checkAll "string payloads: empty, one byte, punctuation, repeats" [
         textResult == "[][x][a1, b2!][abab]", length textResult == 20,
         startsWith textResult "[][x]", endsWith textResult "[abab]",
-        containsAll textResult ["[]", "a1, b2!"],
+        contains textResult "[]", contains textResult "a1, b2!",
         toUpperCase textResult == "[][X][A1, B2!][ABAB]",
         toLowerCase (toUpperCase textResult) == "[][x][a1, b2!][abab]",
         textCalls == 4,
@@ -679,7 +699,7 @@ resumeManagedPayloadsCase () =
         slotText == "left:3:true/:0:false", length slotText == 20,
         startsWith slotText "left:3:true", endsWith slotText ":0:false",
         contains slotText "/:0:", !(contains slotText "//"),
-        containsAll slotText ["true", "false"],
+        contains slotText "true", contains slotText "false",
         slotCalls == 2, doubledWeight == 42, weightCalls == 1,
         doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
@@ -692,7 +712,7 @@ resumeManagedPayloadsCase () =
         parsedTotal == ((120 - 5) ), length "nope!" == 5,
         parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
         parseGave == "ok=Success|bad=Error|", length parseGave == 21,
-        containsAll parseGave ["ok=Success|", "bad=Error|"],
+        contains parseGave "ok=Success|", contains parseGave "bad=Error|",
         startsWith parseGave "ok=", endsWith parseGave "Error|"
     ]
 
@@ -799,7 +819,8 @@ resumeFromNestedHelpersCase () =
     (* Every arm in the span region observed the one completed answer, and the
         first region's state is untouched by the second. *)
     checkAll "both deep regions keep their own transcripts" [
-        containsAll spanTags ["nested.a|nested.b|", "|tail|"],
+        contains spanTags "nested.a|nested.b|",
+        contains spanTags "|tail|",
         !(contains spanSettled "shallow|tail"),
         spanSeen == "15|15|15|15|", length spanSeen == 12,
         spanCalls == 4, spanSeed == 4,
@@ -866,8 +887,8 @@ manyPerformsOneRegionCase () =
         tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
         length tickGave == 31,
         startsWith tickGave "0|7|-4|", endsWith tickGave "|25|",
-        containsAll tickGave ["|100|", "|-1|", "|12|12|"],
-        !(contains tickGave "|13|"),
+        contains tickGave "|100|", contains tickGave "|-1|",
+        contains tickGave "|12|12|", !(contains tickGave "|13|"),
         drained == 161, (((10 + 111) ) + 40 ) == 161,
         drained != 10, drained != 40, drained != 111
     ]

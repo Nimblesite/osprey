@@ -1,7 +1,19 @@
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+(** [FAILURE-EXPLICIT] A failure stops the case before its consumer. *)
+withBuffer (result, work) = match result
+    Success value => work value
+    Error message => check ("GPU operation", "success", toString message)
 (** [FAILURE-EXPLICIT] Continue only after Success; preserve the original Error. *)
 andThen (result, next) = match result
     Success value => next value
     Error message => Error(message = message)
+(** [FAILURE-EXPLICIT] Allocation errors fail before consuming a grid. *)
+withIndices (n, work) = withBuffer(gpuIota n, work)
 // A GPT-2 shaped transformer at width 4, written with the kernels of the GPT-2
 // port in src/osprey/examples/llms/gpt2: float32 gpuMatMul products [GPU-MATMUL], the float
 // functions [BUILTIN-MATH] inside kernels and as kernels, LayerNorm, GELU,
@@ -168,21 +180,81 @@ tensorFailure32 (result: Result<GpuBuffer<float32>, Error>) =
         Error message => message
 matMulExactCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), \left => withBuffer(floats ([7.0, 8.0, 9.0, 10.0, 11.0, 12.0]), \right => matMulExactCaseUploaded(left, right)))
 matMulExactCaseUploaded (left, right) =
-    withBuffer (product (left, right, 2, 3, 2), \square => withBuffer (floats ([2.0, 3.0]), \uploaded27 => withBuffer (floats ([5.0, 7.0]), \uploaded28 => withBuffer (product (uploaded27, uploaded28, 2, 1, 2), \outer => withBuffer (floats ([]), \uploaded29 => withBuffer (floats ([]), \uploaded30 => withBuffer (product (uploaded29, uploaded30, 2, 0, 2), \hollow => checkAll "gpuMatMul forms the row-major product of the stated shapes" [
-                                    gpuLength square == 4, exact (at (square, 0), 58.0), exact (at (square, 1), 64.0),
-                                    exact (at (square, 2), 139.0), exact (at (square, 3), 154.0), exact (at (outer, 0), 10.0),
-                                    exact (at (outer, 1), 14.0), exact (at (outer, 2), 15.0), exact (at (outer, 3), 21.0),
-                                    gpuLength hollow == 4, gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
-                                    gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
-                                ])))))))
+    match product (left, right, 2, 3, 2)
+        Success value =>
+            square = value
+            match floats ([2.0, 3.0])
+                Success value =>
+                    uploaded27 = value
+                    match floats ([5.0, 7.0])
+                        Success value =>
+                            uploaded28 = value
+                            match product (uploaded27, uploaded28, 2, 1, 2)
+                                Success value =>
+                                    outer = value
+                                    match floats ([])
+                                        Success value =>
+                                            uploaded29 = value
+                                            match floats ([])
+                                                Success value =>
+                                                    uploaded30 = value
+                                                    match product (uploaded29, uploaded30, 2, 0, 2)
+                                                        Success value =>
+                                                            hollow = value
+                                                            checkAll "gpuMatMul forms the row-major product of the stated shapes" [
+                                                                gpuLength square == 4, exact (at (square, 0), 58.0), exact (at (square, 1), 64.0),
+                                                                exact (at (square, 2), 139.0), exact (at (square, 3), 154.0), exact (at (outer, 0), 10.0),
+                                                                exact (at (outer, 1), 14.0), exact (at (outer, 2), 15.0), exact (at (outer, 3), 21.0),
+                                                                gpuLength hollow == 4, gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
+                                                                gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
+                                                            ]
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other association; the last pin is 3 units in the last place only when the product is rounded before it is
     added — a fused multiply-add keeps one more bit. *)
 matMulOrderCase () =
     big = toFloat32 16777216.0
     ulp = toFloat32 1.0 / toFloat32 8388608.0
-    withBuffer (floats ([1.0, 1.0, 1.0]), \ones => withBuffer (toGpu ([big, toFloat32 1.0, toFloat32 0.0 - big]), \uploaded22 => withBuffer (product (uploaded22, ones, 1, 3, 1), \forward => withBuffer (toGpu ([toFloat32 0.0 - big, toFloat32 1.0, big]), \uploaded23 => withBuffer (product (uploaded23, ones, 1, 3, 1), \backward => withBuffer (toGpu ([toFloat32 (-1.0), toFloat32 1.0 + ulp]), \uploaded24 => withBuffer (toGpu ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp]), \uploaded25 => withBuffer (product (uploaded24, uploaded25, 1, 2, 1), \unfused => checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
-                                        exact (at (forward, 0), 0.0), exact (at (backward, 0), 1.0), at (unfused, 0) == 3.0 * ulp
-                                    ]))))))))
+    match floats ([1.0, 1.0, 1.0])
+        Success value =>
+            ones = value
+            match toGpu ([big, toFloat32 1.0, toFloat32 0.0 - big])
+                Success value =>
+                    uploaded22 = value
+                    match product (uploaded22, ones, 1, 3, 1)
+                        Success value =>
+                            forward = value
+                            match toGpu ([toFloat32 0.0 - big, toFloat32 1.0, big])
+                                Success value =>
+                                    uploaded23 = value
+                                    match product (uploaded23, ones, 1, 3, 1)
+                                        Success value =>
+                                            backward = value
+                                            match toGpu ([toFloat32 (-1.0), toFloat32 1.0 + ulp])
+                                                Success value =>
+                                                    uploaded24 = value
+                                                    match toGpu ([toFloat32 1.0, toFloat32 1.0 + toFloat32 2.0 * ulp])
+                                                        Success value =>
+                                                            uploaded25 = value
+                                                            match product (uploaded24, uploaded25, 1, 2, 1)
+                                                                Success value =>
+                                                                    unfused = value
+                                                                    checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
+                                                                        exact (at (forward, 0), 0.0), exact (at (backward, 0), 1.0), at (unfused, 0) == 3.0 * ulp
+                                                                    ]
+                                                                Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => check ("GPU operation", "success", toString message)
+                                        Error message => check ("GPU operation", "success", toString message)
+                                Error message => check ("GPU operation", "success", toString message)
+                        Error message => check ("GPU operation", "success", toString message)
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 matMulShapeCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0]), \four => withBuffer(floats ([1.0, 2.0, 3.0]), \three => matMulShapeCaseUploaded(four, three)))
 matMulShapeCaseUploaded (four, three) =
     checkAll "gpuMatMul names the operand whose length disagrees with the stated shape" [
@@ -377,16 +449,24 @@ loadCase () =
     raw = scratch + "_raw.bin"
     missing = scratch + "_missing.bin"
     ready = written (raw, "ABCDEFGHIJKL")
-    withBuffer (gpuLoad (raw, 0, 3), \words => withBuffer (gpuLoad (raw, 4, 2), \tail => checkAll "gpuLoad keeps little-endian binary32 words and refuses a short read" [
-                ready, gpuLength words == 3, exact (at (words, 0), 781.0352172851562), exact (at (words, 1), 204057.078125), exact (at (words, 2), 53291300.0),
-                gpuLength tail == 2, exact (at (tail, 0), 204057.078125), exact (at (tail, 1), 53291300.0),
-                gpuSatisfies (gpuLoad (raw, 12, 0), \uploaded1 => gpuLength (uploaded1) == 0),
-                loadFailure (raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
-                loadFailure (raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
-                loadFailure (raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
-                loadFailure (raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
-                loadFailure (missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
-            ]))
+    match gpuLoad (raw, 0, 3)
+        Success value =>
+            words = value
+            match gpuLoad (raw, 4, 2)
+                Success value =>
+                    tail = value
+                    checkAll "gpuLoad keeps little-endian binary32 words and refuses a short read" [
+                        ready, gpuLength words == 3, exact (at (words, 0), 781.0352172851562), exact (at (words, 1), 204057.078125), exact (at (words, 2), 53291300.0),
+                        gpuLength tail == 2, exact (at (tail, 0), 204057.078125), exact (at (tail, 1), 53291300.0),
+                        gpuSatisfies (gpuLoad (raw, 12, 0), \uploaded1 => gpuLength (uploaded1) == 0),
+                        loadFailure (raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                        loadFailure (raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                        loadFailure (raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
+                        loadFailure (raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
+                        loadFailure (missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
+                    ]
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
 (** Only ASCII content can be written from a NUL-terminated string, so the header-length prefix is either missing or absurd; the full header grammar is pinned by the
     checked-in fixture under src/toolchain/crates/osprey-cli/tests. *)
 tensorHeaderCase () =

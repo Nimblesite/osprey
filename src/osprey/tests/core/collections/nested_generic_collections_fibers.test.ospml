@@ -14,35 +14,6 @@ groupAt<T> : (Map string (List T), string, int, List T, T) -> T
 groupAt (groups, key, index, fallbackList, fallback) =
     listGet (mapGet groups key ?: fallbackList) index ?: fallback
 
-(** The cases' shared fallbacks, one accessor per element type. *)
-intAt (matrix, row, column) = nestedAt (matrix, row, column, [99], 99)
-textAt (matrix, row, column) = nestedAt (matrix, row, column, ["row"], "item")
-floatAt (groups, key, index) = groupAt (groups, key, index, [9.0], 9.5)
-boolAt (groups, key, index) = groupAt (groups, key, index, [false], false)
-boolMissAt (groups, key, index) = groupAt (groups, key, index, [true], true)
-
-(** The int at `index` of a nested access, or a sentinel no case expects. *)
-listInt xs index = listGet xs index ?: (0 - 999)
-
-(** The string at `index` of a nested access, or a sentinel no case expects. *)
-listText xs index = listGet xs index ?: ""
-
-(** The float at `index` of a nested access, or a sentinel no case expects. *)
-listFloat xs index = listGet xs index ?: (0.0 - 999.0)
-
-(** Asserts each `keys[i]`/`indices[i]` cell reads back `values[i]`, one check each. *)
-checkCells label keys keyPick indices values probe pick =
-    forEachList (toList (range 0 (listLength values))) (\i =>
-        check label (pick (values, i)) (probe ((keyPick (keys, i)), listInt indices i)))
-
-(** The four bool leaf observations that pin the `left`/`right` bool groups. *)
-checkBoolGroups label groups = checkAll label [
-        boolAt (groups, "left", 0),
-        !(boolMissAt (groups, "left", 1)),
-        !(boolMissAt (groups, "right", 0)),
-        boolAt (groups, "right", 1)
-    ]
-
 intMatrix () = [[1, 2], [3, 4, 5]]
 stringMatrix () = [["ant", "bee"], ["cat", "dog", "eel"]]
 floatGroups () = Map () |> mapSet "small" [0.5, 1.25] |> mapSet "large" [8.5, 9.75]
@@ -119,11 +90,21 @@ fiberChannelCollectionCase () =
     send abandonedGroups (mapSet floats "orphan" [1.5])
 
     checkAll "spawn and out-of-order await reconstruct nested collection owners" [
-        intAt (ints, 1, 0) == 3,
-        textAt (strings, 0, 0) == "ant",
-        textAt (strings, 0, 1) == "bee",
-        textAt (strings, 1, 0) == "cat",
-        textAt (strings, 1, 2) == "eel",
+        nestedAt (ints, 0, 0, [99], 99) == 1,
+        nestedAt (ints, 0, 1, [99], 99) == 2,
+        nestedAt (ints, 1, 0, [99], 99) == 3,
+        nestedAt (ints, 1, 2, [99], 99) == 5,
+        nestedAt (strings, 0, 0, ["row"], "item") == "ant",
+        nestedAt (strings, 0, 1, ["row"], "item") == "bee",
+        nestedAt (strings, 1, 0, ["row"], "item") == "cat",
+        nestedAt (strings, 1, 2, ["row"], "item") == "eel",
+        groupAt (floats, "small", 0, [9.0], 9.5) == 0.5,
+        groupAt (floats, "small", 1, [9.0], 9.5) == 1.25,
+        groupAt (floats, "large", 1, [9.0], 9.5) == 9.75,
+        groupAt (bools, "left", 0, [false], false),
+        !(groupAt (bools, "left", 1, [true], true)),
+        !(groupAt (bools, "right", 0, [true], true)),
+        groupAt (bools, "right", 1, [false], false),
         listLength ints == 2,
         listLength strings == 2,
         mapLength floats == 2,
@@ -133,37 +114,39 @@ fiberChannelCollectionCase () =
         fiberDone floatFiber == 1,
         fiberDone boolFiber == 1
     ]
-    checkBoolGroups "spawn and out-of-order await reconstruct nested collection owners" bools
-    checkCells "spawn and out-of-order await reconstruct nested collection owners" [0, 0, 1, 1] (\(xs, i) => listInt xs i) [0, 1, 0, 2] [1, 2, 3, 5] (\(row, column) => intAt (ints, row, column)) (\(xs, i) => listInt xs i)
-    checkCells "spawn and out-of-order await reconstruct nested collection owners" ["small", "small", "large"] (\(xs, i) => listText xs i) [0, 1, 1] [0.5, 1.25, 9.75] (\(key, index) => floatAt (floats, key, index)) (\(xs, i) => listFloat xs i)
 
-    checkCells "Channel<collection> round trips full nested descriptors in FIFO order" ["small", "large"] (\(xs, i) => listText xs i) [0, 1] [0.5, 9.75] (\(key, index) => floatAt (firstGroups, key, index)) (\(xs, i) => listFloat xs i)
-    checkCells "Channel<collection> round trips full nested descriptors in FIFO order" ["small", "extra", "extra"] (\(xs, i) => listText xs i) [1, 0, 1] [1.25, 6.25, 7.5] (\(key, index) => floatAt (secondGroups, key, index)) (\(xs, i) => listFloat xs i)
-    checkCells "Channel<collection> round trips full nested descriptors in FIFO order" ["small", "extra", "extra"] (\(xs, i) => listText xs i) [0, 0, 1] [0.5, 6.25, 7.5] (\(key, index) => floatAt (groupsViaParameter, key, index)) (\(xs, i) => listFloat xs i)
     checkAll "Channel<collection> round trips full nested descriptors in FIFO order" [
         listLength firstMatrix == 2,
         listLength secondMatrix == 3,
-        intAt (firstMatrix, 0, 0) == 1,
-        intAt (firstMatrix, 1, 2) == 5,
-        intAt (secondMatrix, 0, 0) == 1,
-        intAt (secondMatrix, 2, 0) == 6,
-        intAt (secondMatrix, 2, 1) == 7,
+        nestedAt (firstMatrix, 0, 0, [99], 99) == 1,
+        nestedAt (firstMatrix, 1, 2, [99], 99) == 5,
+        nestedAt (secondMatrix, 0, 0, [99], 99) == 1,
+        nestedAt (secondMatrix, 2, 0, [99], 99) == 6,
+        nestedAt (secondMatrix, 2, 1, [99], 99) == 7,
         mapLength firstGroups == 2,
         mapLength secondGroups == 3,
-        intAt (ints, 1, 2) == 5,
-        floatAt (floats, "small", 0) == 0.5,
+        groupAt (firstGroups, "small", 0, [9.0], 9.5) == 0.5,
+        groupAt (firstGroups, "large", 1, [9.0], 9.5) == 9.75,
+        groupAt (secondGroups, "small", 1, [9.0], 9.5) == 1.25,
+        groupAt (secondGroups, "extra", 0, [9.0], 9.5) == 6.25,
+        groupAt (secondGroups, "extra", 1, [9.0], 9.5) == 7.5,
+        nestedAt (ints, 1, 2, [99], 99) == 5,
+        groupAt (floats, "small", 0, [9.0], 9.5) == 0.5,
         listLength ints == 2,
         mapLength floats == 2,
         listLength matrixViaParameter == 3,
-        intAt (matrixViaParameter, 0, 0) == 1,
-        intAt (matrixViaParameter, 1, 2) == 5,
-        intAt (matrixViaParameter, 2, 0) == 6,
-        intAt (matrixViaParameter, 2, 1) == 7,
+        nestedAt (matrixViaParameter, 0, 0, [99], 99) == 1,
+        nestedAt (matrixViaParameter, 1, 2, [99], 99) == 5,
+        nestedAt (matrixViaParameter, 2, 0, [99], 99) == 6,
+        nestedAt (matrixViaParameter, 2, 1, [99], 99) == 7,
         mapLength groupsViaParameter == 3,
+        groupAt (groupsViaParameter, "small", 0, [9.0], 9.5) == 0.5,
+        groupAt (groupsViaParameter, "extra", 0, [9.0], 9.5) == 6.25,
+        groupAt (groupsViaParameter, "extra", 1, [9.0], 9.5) == 7.5,
         listLength matrixViaField == 3,
-        intAt (matrixViaField, 0, 1) == 2,
-        intAt (matrixViaField, 1, 2) == 5,
-        intAt (matrixViaField, 2, 1) == 7
+        nestedAt (matrixViaField, 0, 1, [99], 99) == 2,
+        nestedAt (matrixViaField, 1, 2, [99], 99) == 5,
+        nestedAt (matrixViaField, 2, 1, [99], 99) == 7
     ]
 
 (** A generic effect is performed inside a spawned body, answered by an
@@ -176,23 +159,30 @@ fiberEffectCollectionCase () =
     grownInts = ints |> listAppend [6, 7] |> listReverse
     grownBools = bools |> mapSet "extra" [true, false] |> mapRemove "left"
 
-    checkCells "inherited generic handlers preserve collection results from fibers" [0, 0, 1] (\(xs, i) => listInt xs i) [0, 1, 2] [1, 2, 5] (\(row, column) => intAt (ints, row, column)) (\(xs, i) => listInt xs i)
-    checkCells "inherited generic handlers preserve collection results from fibers" [0, 0, 2] (\(xs, i) => listInt xs i) [0, 1, 0] [6, 7, 1] (\(row, column) => intAt (grownInts, row, column)) (\(xs, i) => listInt xs i)
     checkAll "inherited generic handlers preserve collection results from fibers" [
         listLength ints == 2,
         mapLength bools == 2,
+        nestedAt (ints, 0, 0, [99], 99) == 1,
+        nestedAt (ints, 0, 1, [99], 99) == 2,
+        nestedAt (ints, 1, 2, [99], 99) == 5,
+        groupAt (bools, "left", 0, [false], false),
+        !(groupAt (bools, "left", 1, [true], true)),
+        !(groupAt (bools, "right", 0, [true], true)),
+        groupAt (bools, "right", 1, [false], false),
         listLength grownInts == 3,
+        nestedAt (grownInts, 0, 0, [99], 99) == 6,
+        nestedAt (grownInts, 0, 1, [99], 99) == 7,
+        nestedAt (grownInts, 2, 0, [99], 99) == 1,
         mapLength grownBools == 2,
         !(mapContains grownBools "left"),
         mapContains grownBools "right",
         mapContains grownBools "extra",
-        boolAt (grownBools, "extra", 0),
-        !(boolMissAt (grownBools, "extra", 1)),
+        groupAt (grownBools, "extra", 0, [false], false),
+        !(groupAt (grownBools, "extra", 1, [true], true)),
         listLength ints == 2,
         mapContains bools "left",
         !(mapContains bools "extra")
     ]
-    checkBoolGroups "inherited generic handlers preserve collection results from fibers" bools
 
 (* The channel case was parked with a Skip verdict while `Channel<collection>`
     lost its element type in transit: the wire word is a uniform `i64`, `recv`
@@ -220,15 +210,20 @@ channelThroughClosureCase () =
     groups = Channel 2
     send groups (floatGroups ())
     groupsViaLambdaParameter = drainVia (\c => recv c) groups
-    checkCells "a channel reached through a closure keeps its element descriptor" [0, 0, 1] (\(xs, i) => listInt xs i) [0, 1, 2] [1, 2, 5] (\(row, column) => intAt (viaLambdaParameter, row, column)) (\(xs, i) => listInt xs i)
-    checkCells "a channel reached through a closure keeps its element descriptor" [0, 2, 2] (\(xs, i) => listInt xs i) [0, 0, 1] [1, 6, 7] (\(row, column) => intAt (viaCapture, row, column)) (\(xs, i) => listInt xs i)
-    checkCells "a channel reached through a closure keeps its element descriptor" ["small", "large"] (\(xs, i) => listText xs i) [0, 1] [0.5, 9.75] (\(key, index) => floatAt (groupsViaLambdaParameter, key, index)) (\(xs, i) => listFloat xs i)
     checkAll "a channel reached through a closure keeps its element descriptor" [
             listLength viaLambdaParameter == 2,
+            nestedAt (viaLambdaParameter, 0, 0, [99], 99) == 1,
+            nestedAt (viaLambdaParameter, 0, 1, [99], 99) == 2,
+            nestedAt (viaLambdaParameter, 1, 2, [99], 99) == 5,
             listLength (listGet viaLambdaParameter 1 ?: [99]) == 3,
             listLength viaCapture == 3,
+            nestedAt (viaCapture, 0, 0, [99], 99) == 1,
+            nestedAt (viaCapture, 2, 0, [99], 99) == 6,
+            nestedAt (viaCapture, 2, 1, [99], 99) == 7,
             listLength (listGet viaCapture 2 ?: [99]) == 2,
-            mapLength groupsViaLambdaParameter == 2
+            mapLength groupsViaLambdaParameter == 2,
+            groupAt (groupsViaLambdaParameter, "small", 0, [9.0], 9.5) == 0.5,
+            groupAt (groupsViaLambdaParameter, "large", 1, [9.0], 9.5) == 9.75
     ]
 
 type Verdict = Pass | Fail string | Skip string
