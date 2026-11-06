@@ -5,18 +5,18 @@ effect Files
     write : (string, string) => Result<int, Error>
 
 // Write the lock file; if that fails, put the old manifest back.
-commitLock previous lock = match perform Files.write "osprey.lock" lock
+commitLock (previous, lock) = match perform Files.write "osprey.lock" lock
     Success _ => "installed"
     Error message => match perform Files.write "osprey.toml" previous
         Success _ => "rolled back: ${message}"
         Error _ => "manifest left changed: ${message}"
 
 // Update the manifest, then commit the lock. It never names a disk.
-install manifest lock = match perform Files.read "osprey.toml"
+install (manifest, lock) = match perform Files.read "osprey.toml"
     Error message => "no manifest: ${message}"
     Success value => match perform Files.write "osprey.toml" manifest
         Error message => "manifest not written: ${message}"
-        Success _ => commitLock value lock
+        Success _ => commitLock (value, lock)
 
 // Production passes the real disk (the Playground sandbox has none):
 // handler Files { read path => readFile path  write path text => writeFile path text }
@@ -36,7 +36,7 @@ readOnlyDisk = handler Files
     read _ => Success(value = "version = 1")
     write _ _ => Error(message = "read-only")
 
-upgrade () = install "version = 2" "locked"
+upgrade () = install ("version = 2", "locked")
 
 test "a healthy disk installs" (\() => expect (healthyDisk upgrade) "installed")
 test "a full disk rolls the manifest back" (\() => expect (fullDisk upgrade) "rolled back: disk full")
