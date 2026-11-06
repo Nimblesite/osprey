@@ -36,3 +36,14 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Reproduce the illustration requirement failure from run 42131518920, job 127611007495.
    - [x] Verify the replacement effects illustrations with the exact Playwright check and the full local website suite (318 passed).
    - [ ] Verify hosted Website E2E after the replacement illustrations are pushed.
+
+## Status (run 42138521783)
+
+- Fixed and green: WinUI paths and setup steps, the GPUI release gate's Makefile lookup, deslop,
+  the WASI download retry and wasm-only setup (OspreyCodex `45a12a2d`), and the website media gate.
+  The website images were replaced with new captures by claude-docs-effects in `c35de647a`, on the
+  user's order not to use the old Log screenshots.
+- Flaky: the Agent UI `paste-image` step sometimes misses Message focus after the model picker, and
+  its retry passes.
+- Open [OspreyCodex]: `examples/agent/test-app` still type-checks for more than 120s on hosted Linux.
+  `examples/agent/` is now inside the budget. Coverage thresholds fail only as a knock-on.
