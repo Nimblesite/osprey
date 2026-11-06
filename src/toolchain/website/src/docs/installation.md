@@ -16,6 +16,18 @@ tags:
 
 *By Christian Findlay · Updated 25 October 2026*
 
+## Recommended: the VS Code extension
+
+Install the Osprey extension for VS Code:
+
+```sh
+code --install-extension nimblesite.osprey
+```
+
+It is the quickest way to start. It bundles a version-matched Osprey compiler and C runtime for your platform, the language server, the package manager, the local package registry and the Proof Workbench, so there is nothing else from Osprey to install. To compile and run native programs, you still need LLVM/clang (below). Install `osprey` with Homebrew or Scoop as well only if you also want it on your command line.
+
+## Command line
+
 Install **LLVM/clang first**, then the **Osprey compiler**. Osprey emits LLVM IR and invokes `clang` to link native programs; release packages include the compiler and C runtime archives, **not LLVM**. A missing compiler produces `clang: command not found` or `failed to spawn C compiler`.
 
 {% videoPlayer "agent-native", true %}

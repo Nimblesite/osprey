@@ -283,7 +283,19 @@ test.describe("desktop interactions", () => {
   test("install is a compact strip that leads to the getting started guide", async ({ page }) => {
     await page.goto("/");
     const install = page.locator("#install");
-    await expect(install.locator("code")).toContainText("brew install nimblesite/tap/osprey");
+    const recommended = install.locator('[data-os="vscode"]');
+    await expect(recommended).toContainText("Recommended");
+    await expect(install.locator("code").first()).toHaveText("code --install-extension nimblesite.osprey");
+    await expect(install.locator('[data-os="unix"] code')).toHaveText("brew install nimblesite/tap/osprey");
+    const windows = install.locator('[data-os="windows"]');
+    await expect(windows).toBeVisible();
+    await expect(windows).toContainText("Windows");
+    await expect(windows.locator("code")).toContainText("scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket");
+    await expect(windows.locator("code")).toContainText("scoop install osprey");
+    for (const block of await install.locator(".install-option pre").all()) {
+      expect(await block.evaluate((el) => el.scrollWidth <= el.clientWidth), "an install command is cut off").toBe(true);
+    }
+    await expect(install.locator('[data-os="unix"]')).toContainText("macOS and Linux");
     await expect(install.locator(".install-grid")).toHaveCount(0);
     expect((await install.boundingBox()).height).toBeLessThan(260);
     await install.getByRole("link", { name: "Getting started guide" }).click();

@@ -97,10 +97,16 @@ html:has(.home) { scroll-behavior: auto; }
   .home .native-stage .mobile-gallery { margin: 1.5rem auto 0; transform: none; }
 }
 .showcase-section .overview-film video { border-color: #77d7f440; box-shadow: 0 30px 90px #0008, 0 0 70px #77d7f41c; }
-.home-install { padding-block: 2.25rem; border-block: 1px solid var(--outline-variant); background: radial-gradient(ellipse at 50% 120%, #77d7f418, transparent 65%); }
-.install-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem 1.5rem; }
+.home-install { padding-block: 1.5rem; border-block: 1px solid var(--outline-variant); background: radial-gradient(ellipse at 50% 120%, #77d7f418, transparent 65%); }
+.install-strip { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1.5rem; }
 .home-install .section-title { margin: 0; font-size: clamp(1.6rem, 3vw, 2.2rem); font-weight: 500; letter-spacing: -0.04em; }
 .home .install-strip pre { margin: 0; padding: 0.7rem 1rem; border-radius: 8px; background: var(--surface-lowest); font-size: 0.8rem; }
+.install-options { flex-basis: 100%; display: grid; grid-template-columns: max-content max-content minmax(0, 1fr); gap: 0.75rem; }
+@media (max-width: 1000px) { .install-options { grid-template-columns: minmax(0, 1fr); } }
+.install-label { margin: 0 0 0.25rem; color: var(--on-surface-variant); font-size: 0.75rem; }
+.install-option[data-os="vscode"] .install-label { color: var(--primary); font-weight: 600; }
+.home .install-strip .install-option pre { padding: 0.55rem 0.65rem; font-size: 0.72rem; }
+.home .install-strip .install-option :is(pre, code) { white-space: pre-wrap; overflow-wrap: anywhere; }
 .install-alt { flex-basis: 100%; margin: 0; color: var(--on-surface-variant); font-size: 0.8rem; }
 .home :is(a, button):focus-visible { outline: 2px solid var(--primary); outline-offset: 5px; }
 @media (max-width: 1000px) {
