@@ -18,7 +18,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Language corpus (gc, arc) | `make _conformance-gc` and `make _conformance-arc` | pi deepseek-flash | [x] pi deepseek-flash: gc 322/322, arc pass, logs verified |
 | WebAssembly target | `make _test_wasm_goldens` | pi deepseek-flash | [x] pi deepseek-flash: wasm32 corpus run_test_corpus.sh passed |
 | Website E2E | `cd src/toolchain/website && npm test`; `make -C docs/book check check-examples` | pi deepseek-flash | [ ] |
-| VS Code extension | `make _test_vscode_extension` | check-once-claude | [ ] |
+| VS Code extension | `make _test_vscode_extension` | check-once-claude | [ ] local macOS: 879 pass, 2 fail (native-editor focus: challenge first request, modal boundary); hosted Linux xvfb green at a917c32dc. Investigate |
 | Proof kernel and Lean | `make -j3 _test_proof_ci` plus the proof script tests | OspreyCodex | [x] GC/ARC/WASI corpora, 3 byte-identical exports, 70 script checks and both Lean speed cases (`f4a096d2e`) |
 | Integration | `make _bank_test`, profiler, mobile tools, `make _test_agent`, bank Playwright, docs HTML, web compiler Docker | check-once-claude | [x] 2026-11-06: pi deepseek-flash (bank, profiler, mobile, agent 1876+45, docs HTML, bank Playwright 17/17), check-once-claude (mobile app 25/25, web compiler Docker); Android emulator not run |
 | Apple (macOS, iOS, Workbench, Talon Bank) | each matrix `run` command from `ci.yml` | OspreyCodex | [x] 259 goldens each on macOS and iOS; 114 Workbench tests; 5 Bank UI tests (`f4a096d2e`) |
