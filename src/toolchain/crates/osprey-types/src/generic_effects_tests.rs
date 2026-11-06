@@ -8,7 +8,7 @@
 //! the instantiation surface (inferred or written at `handle`/`perform` and
 //! on effect rows), rows with several generic entries, and the ML twins.
 
-use crate::testutil::{spec_cases, variance_position_message};
+use crate::testutil::{effect_arity_message, spec_cases, variance_position_message};
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 
 /// The position diagnostic for an effect declaration's OPERATION.
@@ -157,7 +157,7 @@ fn main() -> Unit = {
 
     /// A handler discharges only the instantiation it was INFERRED at: a handler
     /// answering `int` does not serve a `Stash<string>.put`.
-    an_inferred_handler_instantiation_discharges_only_its_own_operations: rejected_somehow(Default, r#"effect Stash<T> {
+    an_inferred_handler_instantiation_discharges_only_its_own_operations: rejects_with(Default, r#"effect Stash<T> {
     put: fn(T) -> Unit
 }
 fn store() = perform Stash.put("text")
@@ -169,7 +169,7 @@ fn main() -> Unit = {
         store()
     }
     print("${done}")
-}"#);
+}"#, "unhandled effect operations at program entry: Stash<string>.put");
 
     /// Two handlers at two instantiations coexist in ONE program: "Each handler
     /// site instantiates a generic effect independently", and each infers its own.
@@ -194,7 +194,7 @@ fn main() -> Unit = {
 
     /// A row's written instantiation IS checked for arity — the row is the surface
     /// that keeps the angle spelling, so the count contract lives there.
-    an_effect_row_instantiation_arity_is_checked: rejected_somehow(Default, r#"effect Stash<T> {
+    an_effect_row_instantiation_arity_is_checked: rejects_with(Default, r#"effect Stash<T> {
     put: fn(T) -> Unit
 }
 fn store() -> Unit !Stash<int, string> = perform Stash.put(42)
@@ -206,7 +206,7 @@ fn main() -> Unit = {
         store()
     }
     print("${done}")
-}"#);
+}"#, effect_arity_message("Stash", 1, 2));
 }
 
 // ---------------------------------------------------------------------------

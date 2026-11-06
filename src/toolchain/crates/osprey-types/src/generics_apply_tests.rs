@@ -188,31 +188,31 @@ print("${apply(|n| => n, 5)}")"#, fn_arity_message("f", 0, 1));
 
     /// Value arity is still checked when type arguments are written: the two
     /// argument lists are independent contracts.
-    writing_type_arguments_does_not_excuse_a_missing_value_argument: rejected_somehow(Default, format!(r#"{IDENTITY}print("${{identity<int>()}}")"#));
+    writing_type_arguments_does_not_excuse_a_missing_value_argument: rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<int>()}}")"#), "call arity mismatch: expected 1 argument(s), got 0");
 
     /// "Variance markers are not permitted, exactly as on the binder itself."
-    a_covariance_marker_at_a_call_site_is_rejected: rejected_somehow(Default, format!(r#"{IDENTITY}print("${{identity<out int>(5)}}")"#));
+    a_covariance_marker_at_a_call_site_is_rejected: parse_rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<out int>(5)}}")"#), "variance annotations are only valid on type and effect declarations; remove the marker from `int` at the call to `identity`");
 
     /// The contravariant half of the same rule.
-    a_contravariance_marker_at_a_call_site_is_rejected: rejected_somehow(Default, format!(r#"{IDENTITY}print("${{identity<in int>(5)}}")"#));
+    a_contravariance_marker_at_a_call_site_is_rejected: parse_rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<in int>(5)}}")"#), "variance annotations are only valid on type and effect declarations; remove the marker from `int` at the call to `identity`");
 
     /// A type argument names a TYPE. An undeclared name is not one.
-    an_undeclared_type_argument_is_rejected: rejected_somehow(Default, format!(r#"{IDENTITY}print("${{identity<Nope>(5)}}")"#));
+    an_undeclared_type_argument_is_rejected: rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<Nope>(5)}}")"#), "unknown type `Nope`");
 
     /// An empty argument list is not a type list.
-    an_empty_type_argument_list_is_rejected: rejected_somehow(Default, format!(r#"{IDENTITY}print("${{identity<>(5)}}")"#));
+    an_empty_type_argument_list_is_rejected: parse_rejects_with(Default, format!(r#"{IDENTITY}print("${{identity<>(5)}}")"#), "syntax error near \"<\"");
 
     /// "the matching `>` immediately precedes the call's argument list" — with no
     /// argument list there is no type application, so a bare `identity<int>` value
     /// is not the way to specialise a function value.
-    type_arguments_without_an_argument_list_are_rejected: rejected_somehow(Default, format!(
+    type_arguments_without_an_argument_list_are_rejected: rejects_with(Default, format!(
             r#"{IDENTITY}let g = identity<int>
 print("${{g(5)}}")"#
-        ));
+        ), "unknown identifier `int`");
 
     /// "recognised when the `<` immediately follows the callee name" — a gap makes
     /// it the comparison operator again, and `identity <int> (5)` is then nonsense.
-    a_gap_before_the_angle_is_not_type_application: rejected_somehow(Default, format!(r#"{IDENTITY}print("${{identity <int> (5)}}")"#));
+    a_gap_before_the_angle_is_not_type_application: rejects_with(Default, format!(r#"{IDENTITY}print("${{identity <int> (5)}}")"#), "unknown identifier `int`");
 }
 
 // ---------------------------------------------------------------------------

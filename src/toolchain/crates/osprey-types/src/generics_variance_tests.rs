@@ -11,9 +11,7 @@
 //! it — a wrong entry in that table shows up as a position that should have
 //! been rejected and was not.
 
-use crate::testutil::{
-    accepts, plain_cases, rejected_somehow, rejects_with, variance_position_message,
-};
+use crate::testutil::{accepts, plain_cases, rejects_with, variance_position_message};
 use osprey_syntax::Flavor;
 
 /// The position diagnostic for a type declaration's FIELD.
@@ -97,10 +95,10 @@ plain_cases! {
 
     /// "an invariant argument position demands both directions, so only invariant
     /// parameters may sit there" — a covariant parameter may not.
-    out_inside_an_invariant_constructor_argument_is_rejected: rejected_somehow(Flavor::Default, nested("type Cell<A> = { slot: A }", "<out T>", "Cell<T>"));
+    out_inside_an_invariant_constructor_argument_is_rejected: rejects_with(Flavor::Default, nested("type Cell<A> = { slot: A }", "<out T>", "Cell<T>"), position_message("T", "out", "invariant", "nested", "Holder"));
 
     /// …nor may a contravariant one.
-    in_inside_an_invariant_constructor_argument_is_rejected: rejected_somehow(Flavor::Default, nested("type Cell<A> = { slot: A }", "<in T>", "Cell<T>"));
+    in_inside_an_invariant_constructor_argument_is_rejected: rejects_with(Flavor::Default, nested("type Cell<A> = { slot: A }", "<in T>", "Cell<T>"), position_message("T", "in", "invariant", "nested", "Holder"));
 
     /// An invariant parameter is exactly what an invariant argument accepts.
     an_invariant_parameter_inside_an_invariant_argument_is_legal: accepts(Flavor::Default, nested("type Cell<A> = { slot: A }", "<T>", "Cell<T>"));
@@ -119,7 +117,7 @@ plain_cases! {
     map_is_covariant_in_its_value: accepts(Flavor::Default, decl("<out T>", "byName", "Map<string, T>"));
 
     /// `Map<K, out V>`: the KEY is invariant, so a covariant parameter is rejected.
-    map_keys_are_invariant: rejected_somehow(Flavor::Default, decl("<out T>", "byKey", "Map<T, int>"));
+    map_keys_are_invariant: rejects_with(Flavor::Default, decl("<out T>", "byKey", "Map<T, int>"), position_message("T", "out", "invariant", "byKey", "Holder"));
 
     /// A `List` of a contravariant parameter is an output position.
     in_inside_a_list_is_rejected: rejects_with(Flavor::Default, decl("<in T>", "items", "List<T>"), position_message("T", "in", "output", "items", "Holder"));
@@ -131,8 +129,8 @@ plain_cases! {
 
     /// `Channel<T>` is invariant in both directions.
     channel_is_invariant:
-        rejected_somehow(Flavor::Default, decl("<out T>", "wire", "Channel<T>")),
-        rejected_somehow(Flavor::Default, decl("<in T>", "wire", "Channel<T>"));
+        rejects_with(Flavor::Default, decl("<out T>", "wire", "Channel<T>"), position_message("T", "out", "invariant", "wire", "Holder")),
+        rejects_with(Flavor::Default, decl("<in T>", "wire", "Channel<T>"), position_message("T", "in", "invariant", "wire", "Holder"));
 }
 
 // [TYPE-VARIANCE-ASSIGN] — leaves match exactly, in every container
