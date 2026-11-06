@@ -20,95 +20,6 @@ use staging::{assert_rejected, compile_for_target, compile_staged};
 
 // --- Multiplicity: the second axis of the same declaration [MULTI-AXIS] -----
 
-#[test]
-fn resuming_an_undeclared_operation_twice_is_a_compile_error() {
-    // [MULTI-COMPAT] [MULTI-HANDLE-ONCE] The one place this axis narrows. An
-    // undecorated operation is `once`, which is what the runtime already
-    // enforces, so a program that resumes one continuation twice aborts at run
-    // time TODAY ("fatal: continuation already resumed") and must be rejected
-    // at compile time instead — the same program rejected earlier, not a
-    // program that stops working.
-    //
-    // The check must be syntactic over the arm, never deferred to the runtime
-    // guard in src/toolchain/compiler/runtime/effects_coro.c: that guard is a defensive
-    // backstop, and a language that can see the arm has no excuse to use it as
-    // the normal rejection path.
-    let source = r#"
-effect Choose { control pick: fn() -> int }
-fn both() = satAdd(perform Choose.pick(), 1)
-fn main() = {
-    let total = {
-        handle Choose {
-            pick => {
-                let a = resume(10)
-                let b = resume(20)
-                satAdd(a, b)
-            }
-        }
-        both()
-    }
-    print("total=${total}")
-}
-"#;
-    assert_rejected(
-        source,
-        Flavor::Default,
-        &["Choose.pick", "once"],
-        "expected a compile-time one-shot rejection naming the operation",
-    );
-}
-
-#[test]
-fn an_abort_arm_that_resumes_is_rejected() {
-    // [MULTI-HANDLE-ABORT] An arm for an `abort` operation must not resume:
-    // its value answers the whole region and the `perform` never returns.
-    let source = r#"
-effect Fail { control abort fail: fn(string) -> int }
-fn risky() = satAdd(perform Fail.fail("nope"), 1)
-fn main() = {
-    let outcome = {
-        handle Fail {
-            fail reason => resume(0)
-        }
-        risky()
-    }
-    print("outcome=${outcome}")
-}
-"#;
-    assert_rejected(
-        source,
-        Flavor::Default,
-        &["Fail.fail", "abort"],
-        "expected the abort-arm rejection naming the arm",
-    );
-}
-
-#[test]
-fn multiplicity_on_a_static_operation_is_rejected() {
-    // [MULTI-AXIS-STATIC] Static effects sit outside the lattice:
-    // [STAGE-STATIC-TAIL] pins them at exactly-once-in-tail-position, the one
-    // point where a continuation need not exist. Accepting a multiplicity
-    // there would imply a choice the stage has already made.
-    let source = r#"
-static effect Parallel { control once forEach: fn(int) -> int }
-fn main() = {
-    let v = {
-        handle static Parallel {
-            forEach n => n
-        }
-        perform Parallel.forEach(4)
-    }
-    print("${v}")
-}
-"#;
-    assert_rejected(
-        source,
-        Flavor::Default,
-        &["Parallel.forEach", "multiplicity"],
-        "expected multiplicity-on-static rejection",
-    );
-}
-
 /// The `__osprey_coro_suspend` call sites in `source`'s IR — one per `perform`
 /// that pays for a continuation.
 fn suspend_sites(source: &str) -> usize {
@@ -144,27 +55,10 @@ fn main() = {
 }
 "#;
 
-const MIXED_UNDECLARED: &str = r#"
-effect Job {
-    control step: fn(int) -> int
-    quit: fn(string) -> int
+/// `MIXED_ABORT` with the `abort` keyword (and so the explicit `control`) removed.
+fn mixed_undeclared() -> String {
+    MIXED_ABORT.replacen("control abort quit", "quit", 1)
 }
-fn run() = {
-    let a = perform Job.step(1)
-    let b = perform Job.quit("stop")
-    satAdd(a, b)
-}
-fn main() = {
-    let v = {
-        handle Job {
-            step n => resume(n)
-            quit reason => 0
-        }
-        run()
-    }
-    print("v=${v}")
-}
-"#;
 
 #[test]
 fn the_undeclared_control_pays_for_a_continuation_at_every_perform_site() {
@@ -179,14 +73,90 @@ fn the_undeclared_control_pays_for_a_continuation_at_every_perform_site() {
     // phase-4 measurement is a comparison against a recorded number rather than
     // against a memory.
     assert_eq!(
-        suspend_sites(MIXED_UNDECLARED),
+        suspend_sites(&mixed_undeclared()),
         2,
         "without the keyword every perform site of a resuming region pays for a continuation"
     );
 }
 
-#[test]
-fn an_abort_declaration_is_rejected_until_a_dropped_continuation_unwinds() {
+/// Every multiplicity violation the checker rejects: the program, the needles
+/// its diagnostics must all contain, and what the rejection means.
+const REJECTED: &[(&str, &[&str], &str)] = &[
+    // resuming an undeclared operation twice is a compile error.
+    // [MULTI-COMPAT] [MULTI-HANDLE-ONCE] The one place this axis narrows. An
+    // undecorated operation is `once`, which is what the runtime already
+    // enforces, so a program that resumes one continuation twice aborts at run
+    // time TODAY ("fatal: continuation already resumed") and must be rejected
+    // at compile time instead — the same program rejected earlier, not a
+    // program that stops working.
+    //
+    // The check must be syntactic over the arm, never deferred to the runtime
+    // guard in src/toolchain/compiler/runtime/effects_coro.c: that guard is a defensive
+    // backstop, and a language that can see the arm has no excuse to use it as
+    // the normal rejection path.
+    (
+        r#"
+effect Choose { control pick: fn() -> int }
+fn both() = satAdd(perform Choose.pick(), 1)
+fn main() = {
+    let total = {
+        handle Choose {
+            pick => {
+                let a = resume(10)
+                let b = resume(20)
+                satAdd(a, b)
+            }
+        }
+        both()
+    }
+    print("total=${total}")
+}
+"#,
+        &["Choose.pick", "once"],
+        "expected a compile-time one-shot rejection naming the operation",
+    ),
+    // an abort arm that resumes is rejected.
+    // [MULTI-HANDLE-ABORT] An arm for an `abort` operation must not resume:
+    // its value answers the whole region and the `perform` never returns.
+    (
+        r#"
+effect Fail { control abort fail: fn(string) -> int }
+fn risky() = satAdd(perform Fail.fail("nope"), 1)
+fn main() = {
+    let outcome = {
+        handle Fail {
+            fail reason => resume(0)
+        }
+        risky()
+    }
+    print("outcome=${outcome}")
+}
+"#,
+        &["Fail.fail", "abort"],
+        "expected the abort-arm rejection naming the arm",
+    ),
+    // multiplicity on a static operation is rejected.
+    // [MULTI-AXIS-STATIC] Static effects sit outside the lattice:
+    // [STAGE-STATIC-TAIL] pins them at exactly-once-in-tail-position, the one
+    // point where a continuation need not exist. Accepting a multiplicity
+    // there would imply a choice the stage has already made.
+    (
+        r#"
+static effect Parallel { control once forEach: fn(int) -> int }
+fn main() = {
+    let v = {
+        handle static Parallel {
+            forEach n => n
+        }
+        perform Parallel.forEach(4)
+    }
+    print("${v}")
+}
+"#,
+        &["Parallel.forEach", "multiplicity"],
+        "expected multiplicity-on-static rejection",
+    ),
+    // an abort declaration is rejected until a dropped continuation unwinds.
     // [MULTI-HANDLE-ABORT-MODE] [MULTI-COST-ABORT] `abort` inverts the meaning
     // of a `resume`-free arm: it must ABANDON the region rather than substitute
     // its value. Abandoning ends the suspended computation with `pthread_exit`,
@@ -199,16 +169,12 @@ fn an_abort_declaration_is_rejected_until_a_dropped_continuation_unwinds() {
     // So the declaration is rejected until plan 0026 supplies the unwinding.
     // Rejecting is not a placeholder: it is the truthful answer, and the one
     // the broken-code process requires over a silently wrong one.
-    assert_rejected(
+    (
         MIXED_ABORT,
-        Flavor::Default,
         &["Job.quit", "unwind"],
         "expected a truthful `abort`-not-yet-unwound rejection",
-    );
-}
-
-#[test]
-fn a_many_arm_is_rejected_because_no_re_entrant_continuation_exists() {
+    ),
+    // a many arm is rejected because no re entrant continuation exists.
     // [MULTI-HANDLE-MANY] [MULTI-COST] Native resume is ONE suspended stack,
     // switched to and never switched back; a live pthread stack cannot be
     // cloned, so `many` has no representation until plan 0016 builds one.
@@ -221,7 +187,8 @@ fn a_many_arm_is_rejected_because_no_re_entrant_continuation_exists() {
     // The [MULTI-HANDLE-MANY-LEXICAL] relaxation this program needs (a lambda
     // the arm CONSUMES before returning does have a live continuation) is
     // phase 5, and lands with the runtime that makes the program runnable.
-    let source = r#"
+    (
+        r#"
 effect Choice { control many pick: fn(int) -> int }
 fn search(bound) = perform Choice.pick(bound)
 fn main() = {
@@ -236,23 +203,18 @@ fn main() = {
     }
     print("best=${best}")
 }
-"#;
-    assert_rejected(
-        source,
-        Flavor::Default,
+"#,
         &["Choice.pick", "re-entrant continuation"],
         "expected a truthful `many`-has-no-representation rejection",
-    );
-}
-
-#[test]
-fn a_many_handler_over_a_non_replayable_body_is_rejected_at_the_handle_site() {
+    ),
+    // a many handler over a non replayable body is rejected at the handle site.
     // [MULTI-REPLAY-CHECK] [MULTI-FALSIFY] gate 2. Resuming twice re-runs the
     // remainder of the handled computation, so every non-`E` entry of that
     // expression's row must be `replayable`. Without this check the axis buys
     // nothing: `many` would silently send the email twice, which is the defect
     // no effect row reports today.
-    let source = r#"
+    (
+        r#"
 effect Choice { control many pick: fn(int) -> int }
 effect Email { control send: fn(string) -> Unit }
 fn placeOrder(id) = {
@@ -272,13 +234,17 @@ fn main() = {
     }
     print("best=${best}")
 }
-"#;
-    assert_rejected(
-        source,
-        Flavor::Default,
+"#,
         &["Email.send", "replayable"],
         "expected the replayability rejection naming the offending effect",
-    );
+    ),
+];
+
+#[test]
+fn every_multiplicity_violation_is_rejected_naming_its_operation() {
+    for (source, needles, why) in REJECTED {
+        assert_rejected(source, Flavor::Default, needles, why);
+    }
 }
 
 const ONCE_ON_WASM: &str = r#"
@@ -310,7 +276,7 @@ fn main() = {
 "#;
 
 #[test]
-fn wasm32_names_the_once_operation_it_cannot_yet_run() {
+fn wasm32_names_the_continuation_operation_it_cannot_yet_run() {
     // [MULTI-WASM] The stack-switching proposal specifies ONE-SHOT
     // continuations, so `once` is the multiplicity `wasm32` acquires when that
     // proposal lands — with no change to user code. Until then the rejection
@@ -318,23 +284,16 @@ fn wasm32_names_the_once_operation_it_cannot_yet_run() {
     // "resumable algebraic effects (`resume`)" the target checker emits today.
     // A row that cannot say which effects will start working is a row that
     // cannot be planned against.
-    let (ok, err) = compile_for_target(ONCE_ON_WASM, "wasm32");
-    assert!(!ok, "wasm32 cannot run a one-shot continuation yet");
-    assert!(
-        err.contains("Async.await"),
-        "the rejection must name the operation, got: {err}"
-    );
-}
-
-#[test]
-fn wasm32_rejects_many_before_the_target_gate_is_reached() {
-    // [MULTI-WASM] The current frontend rejects `many` before any target
-    // gate. This is a representation limitation, not a permanent wasm ban:
-    // portable reusable frames or CPS may satisfy the same source contract.
-    let (ok, err) = compile_for_target(MANY_ON_WASM, "wasm32");
-    assert!(!ok, "wasm32 cannot run a multi-shot continuation");
-    assert!(
-        err.contains("Choice.pick"),
-        "the rejection must name the operation, got: {err}"
-    );
+    //
+    // The current frontend rejects `many` before any target gate. This is a
+    // representation limitation, not a permanent wasm ban: portable reusable
+    // frames or CPS may satisfy the same source contract.
+    for (source, operation) in [(ONCE_ON_WASM, "Async.await"), (MANY_ON_WASM, "Choice.pick")] {
+        let (ok, err) = compile_for_target(source, "wasm32");
+        assert!(!ok, "wasm32 cannot run {operation}'s continuation yet");
+        assert!(
+            err.contains(operation),
+            "the rejection must name {operation}, got: {err}"
+        );
+    }
 }
