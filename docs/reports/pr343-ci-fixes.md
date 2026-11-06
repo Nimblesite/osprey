@@ -19,7 +19,8 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Pass the unchanged coverage-instrumented test locally in 69.80 seconds. Run 42125986216 still exceeded 120 seconds on Linux.
    - [x] Reuse free-variable sets across obligation-closure passes. The regression records two relation scans instead of six, and the unchanged local budget test passed in 61.27 seconds.
    - [x] Collect monomorphic free variables directly. The regression uses one scratch set instead of 129, and the unchanged local budget test passed in 57.40 seconds.
-   - [ ] Verify the unchanged test in the hosted Rust workspace rest shard. Run 42131518920 still exceeded 120 seconds before the monomorphic change.
+   - [x] Verify the unchanged test in the hosted Rust workspace rest shard. Run 42142978360 passed in 117.30 seconds with the early environment snapshot drop.
+   - [ ] Verify the full Rust workspace rest shard after the mapped-file fixture fix. Run 42142978360 passed the Agent test and then failed because the Linux fixture forced Metal. Commit `4c745a1c3` selects the available backend outside macOS and retains the Metal path on macOS.
 5. **Deslop gate [OspreyCodex]**
    - [x] Reproduce the gate and remove duplication. The Agent shares its Moonshot wire profiles and MCP request builder.
    - [x] Pass the unchanged local 2.962% ceiling (6,983 duplicated lines out of 236,042).
@@ -35,7 +36,7 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
 8. **Website guide illustrations [claude-docs-effects]**
    - [x] Reproduce the illustration requirement failure from run 42131518920, job 127611007495.
    - [x] Verify the replacement effects illustrations with the exact Playwright check and the full local website suite (318 passed).
-   - [ ] Verify hosted Website E2E after the replacement illustrations are pushed.
+   - [x] Verify hosted Website E2E after the replacement illustrations are pushed. Run 42145657288, job 127656379768, passed.
 
 ## Status (run 42138521783)
 
@@ -45,5 +46,5 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
   user's order not to use the old Log screenshots.
 - Flaky: the Agent UI `paste-image` step sometimes misses Message focus after the model picker, and
   its retry passes.
-- Open [OspreyCodex]: `examples/agent/test-app` still type-checks for more than 120s on hosted Linux.
-  `examples/agent/` is now inside the budget. Coverage thresholds fail only as a knock-on.
+- Subsequent run 42142978360 passed the Agent budget. The mapped-file fixture failure prevented the
+  Rust rest shard from uploading coverage. Run 42145657288 verifies the fixture fix.
