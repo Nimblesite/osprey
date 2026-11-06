@@ -448,3 +448,23 @@ test("Python interop guide's Codon comparison matches the recorded benchmark res
   await page.locator('.prose a[href="/benchmarks/"]').first().click();
   await expect(page.locator("main")).toContainText("Codon");
 });
+
+test("the homepage says what Osprey is for, lists every platform, and has no numbered or duplicated panels", async ({ page }) => {
+  await page.goto("/");
+  const hero = page.locator(".hero-description");
+  for (const phrase of ["apps", "backends", "ML and AI", "mathematics", "GPU"]) await expect(hero).toContainText(phrase);
+  for (const gone of ["instead of panics", "native LLVM compilation"]) await expect(hero).not.toContainText(gone);
+  await expect(hero.locator('a[href="/docs/python/flavor/#local-llms-in-python-flavor"]')).toContainText("Transformers");
+  await expect(page.locator(".target-links a")).toHaveText(["macOS", "Windows", "Linux", "WebAssembly", "iOS", "Android"]);
+  for (const href of await page.locator(".target-links a").evaluateAll((links) => links.map((a) => a.getAttribute("href")))) {
+    const [route, hash] = href.split("#");
+    const response = await page.request.get(route);
+    expect(response.status(), href).toBe(200);
+    if (hash) expect(await response.text(), href).toContain(`id="${hash}"`);
+  }
+  expect(await page.locator(".home-eyebrow, .target-index").allTextContents()).not.toContainEqual(expect.stringMatching(/\d\d \//));
+  await expect(page.locator(".language-section")).toHaveCount(0);
+  const effects = page.locator("section#effects");
+  await expect(effects.locator(".language-grid article")).toHaveCount(4);
+  await expect(effects).not.toContainText("default allocator");
+});

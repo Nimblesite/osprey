@@ -56,7 +56,7 @@ html:has(.home) { scroll-behavior: auto; }
 .pillars-grid p { max-width: 47ch; color: var(--on-surface-variant); font-size: 0.92rem; }
 .pillars-grid a { font-size: 0.8rem; }
 @media (max-width: 900px) { .pillars-grid { grid-template-columns: 1fr; } }
-.language-section { background: var(--surface-lowest); }
+.effect-story .language-grid { margin-top: 4rem; }
 .language-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 5rem; }
 .language-grid article { border-top: 1px solid #77d7f425; padding: 2rem 0; }
 .feature-mark { display: block; font: 1.5rem var(--font-mono); color: var(--primary-container); margin-bottom: 1.5rem; }
@@ -108,6 +108,7 @@ html:has(.home) { scroll-behavior: auto; }
 @media (max-width: 600px) {
   .home-hero { padding-block: 1.5rem 2rem; }
   .home .hero-content { padding-top: 1rem; }
+  .home .target-links { gap: 0.9rem; }
   .home-eyebrow { font-size: 0.6rem; letter-spacing: 0.07em; }
   .home .hero-title { font-size: clamp(3.25rem, 14vw, 4.7rem); }
   .flight-film { top: 1rem; right: -180px; width: 650px; opacity: 0.35; }

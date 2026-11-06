@@ -12,7 +12,11 @@ Osprey stands on three pillars: **safety, elegance and performance**. They are t
 - **Elegance: more program for less text.** Inferred types, effects instead of plumbing, and direct concurrent code without a separate async form. Less text means fewer tokens: Osprey programs are cheaper for AI agents to read, write and review, and easier for people to hold in their heads. Say this plainly; it is a measurable consequence, not a slogan.
 - **Performance: native from the start.** LLVM native binaries with no VM or JIT warm-up, static handler selection that removes runtime effect dispatch, lightweight fibers, and a memory backend chosen per build. Performance is always critical for a language; state it as a design commitment and attach any relative figure to a published benchmark.
 
-Short form: **Safe, elegant, fast.** Longer form: **Osprey is a functional language built for safety, elegance and performance: algebraic effects and `Result` instead of panics, inferred types that say more with less text, and native LLVM compilation.** Removing the pillars from the homepage, README or an introduction is a regression, not a simplification.
+Short form: **Safe, elegant, fast.** Removing the pillars from the homepage, README or an introduction is a regression, not a simplification.
+
+## What Osprey is for
+
+Osprey is for **apps, backends, ML and AI, and mathematics**, and it is built to be good at all of them. Say this on the homepage and in every introduction, before the feature inventory. Back each area with a real example: native apps on macOS, Windows, Linux, iOS, Android and the web; HTTP backends; language models built on the `@osprey/transformers` port and running on native GPU kernels; machine-checked proofs. Name Windows whenever you list desktop platforms. Do not open the homepage with a list of mechanisms (effects, `Result`, LLVM); the pillars section covers them. Homepage section labels are words, never numbers.
 
 ## Message order
 
