@@ -1,9 +1,3 @@
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
 iotaOutcome result = match result
     Success value => "unexpected success ${gpuLength value}"
     Error message => toString message

@@ -1,15 +1,3 @@
-(** [FAILURE-EXPLICIT] A failed allocation, combinator or reduction stops the case before its consumer. *)
-withBuffer (result, work) = match result
-    Success value => work value
-    Error message => check ("GPU operation", "success", toString message)
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
-(** [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs. *)
-withIndices (n, work) = withBuffer (gpuIota n, work)
 // Game-engine workloads on the GPU surface: Q10 fixed-point vector algebra
 // over parallel component buffers, semi-implicit Euler integration, broadphase
 // collision predicates, bounding volumes built by folds, packed-colour

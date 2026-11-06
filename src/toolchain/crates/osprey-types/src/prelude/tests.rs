@@ -99,7 +99,10 @@ fn the_prelude_source_parses_clean_and_lives_past_every_source_line() {
         attached(&rebased.program),
         "the prelude must recognise itself"
     );
-    assert_all_lines(&statement_lines(rebased, statement_position), is_prelude_line);
+    assert_all_lines(
+        &statement_lines(rebased, statement_position),
+        is_prelude_line,
+    );
     assert!(!is_prelude_line(PRELUDE_LINE_BASE) && is_prelude_line(PRELUDE_LINE_BASE + 1));
 }
 
@@ -251,7 +254,10 @@ fn the_testing_source_parses_clean_and_lives_past_json_and_signals() {
     assert_all_lines(&statement_lines(signals(), statement_position), |line| {
         line < testing_base
     });
-    assert!(attached(&rebased.program), "the testing unit must recognise itself");
+    assert!(
+        attached(&rebased.program),
+        "the testing unit must recognise itself"
+    );
 }
 
 #[test]
@@ -266,7 +272,9 @@ fn naming_the_testing_policy_attaches_it_once_and_no_json_or_signals() {
     for source in &sources[..3] {
         let names = attached_names(source);
         assert!(
-            !names.iter().any(|name| name == "Json" || name == "SignalFrame"),
+            !names
+                .iter()
+                .any(|name| name == "Json" || name == "SignalFrame"),
             "only the testing unit attaches: {names:?}"
         );
     }
@@ -277,7 +285,12 @@ fn a_program_declaring_its_own_testing_policy_keeps_its_own() {
     let names = attached_names(
         "fn exactArithmetic(work) = work()\ntest(\"own\", fn() => exactArithmetic(fn() => expect(1, 1)))\n",
     );
-    assert_eq!(names, ["exactArithmetic"], "only the program's own copy");
+    assert_eq!(
+        names.iter().filter(|name| *name == "exactArithmetic").count(),
+        1,
+        "only the program's own copy: {names:?}"
+    );
+    assert_eq!(names.last().map(String::as_str), Some("exactArithmetic"));
     assert_left_as_written(&["test(\"plain\", fn() => expect(1, 1))\n"]);
 }
 
@@ -299,4 +312,21 @@ fn the_testing_policy_discharges_every_arith_fault_in_the_work_it_runs() {
         !crate::check_program(&unhandled).is_empty(),
         "without the policy the program is rejected"
     );
+}
+
+#[test]
+fn the_gpu_result_helpers_attach_with_the_testing_unit_and_type_check() {
+    assert_offers_attach_once(
+        &[
+            "test(\"w\", fn() => withBuffer(toGpu([1, 2]), fn(b) => expect(gpuLength(b), 2)))\n",
+            "test(\"s\", fn() => checkTrue(gpuSatisfies(toGpu([3]), fn(b) => gpuLength(b) == 1)))\n",
+            "test(\"i\", fn() => withIndices(4, fn(b) => expect(gpuLength(b), 4)))\n",
+            "print(iotaError(0 - 1))\n",
+        ],
+        "withBuffer gpuSatisfies withIndices iotaError exactArithmetic",
+    );
+    let source = program(
+        "test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\"]))))\n",
+    );
+    assert_eq!(crate::check_program(&source), Vec::new());
 }

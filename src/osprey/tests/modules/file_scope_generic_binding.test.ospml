@@ -54,12 +54,6 @@ secondBindingCase () = checkAll ("a second generic binding is independent", [
     tagged ("via", roundTo 4) == "via:4"
 ])
 
-(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
-gpuSatisfies (result, predicate) = match result
-    Success value => predicate value
-    Error message =>
-        check ("GPU operation", "success", toString message)
-        false
 (** [TYPE-GENERICS-FN] Specialization preserves declaration scope and caller arguments. *)
 anchor = 2
 fileLambda = \_ignored => anchor

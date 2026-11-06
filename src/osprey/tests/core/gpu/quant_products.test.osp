@@ -5,17 +5,6 @@
 // binary32 in the kernels' order: part p covers the blocks from
 // p * blocks / 16 to (p + 1) * blocks / 16, each weight is multiplied then
 // added, and the parts are added in order from 0.0. x is 0..inner-1.
-/// [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer.
-fn withBuffer(result, work) = match result {
-    Success { value } => work(value)
-    Error { message } => check("GPU operation", "success", toString(message))
-}
-/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => { check("GPU operation", "success", toString(message))
-        false }
-}
 /// productWith compares the product's two words with ggml's own decode element for element.
 fn productWith(label, kind, x, w, inner, expected) = withBuffer(gpuMatMulQuant(x, w, kind, 1, inner, 2), fn(out) => checkAll(label, [
             gpuLength(out) == 2,

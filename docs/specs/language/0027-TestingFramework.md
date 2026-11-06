@@ -78,6 +78,13 @@ own `exactArithmetic` keeps its own. Installing it is still explicit and by
 name, as [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)
 requires: no test gets an ambient policy.
 
+The same unit holds the GPU `Result` helpers the GPU suites share:
+`withBuffer(result, work)` runs `work` on a successful operation's value,
+`gpuSatisfies(result, predicate)` tests it, `withIndices(n, work)` runs `work`
+on `gpuIota(n)`, and `iotaError(n)` names why `gpuIota(n)` failed. A failed
+operation fails the case with its reason, never a substituted value
+([FAILURE-EXPLICIT]).
+
 ## Equality semantics
 
 **`[TESTING-EQUALITY]`** Assertion equality is canonical-string equality

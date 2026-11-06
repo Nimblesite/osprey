@@ -1,11 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => { check("GPU operation", "success", toString(message))
-        false }
-}
-
 /// Staged effects: an effect declared `static` is answered by the compiler and
 /// leaves nothing behind ([STAGE-DECL], [STAGE-RESIDUE],
 /// docs/specs/language/0017-AlgebraicEffects.md). This suite pins the four consequences —
