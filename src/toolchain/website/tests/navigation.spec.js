@@ -192,3 +192,110 @@ test("the docs index shows the Prism Synth app under Build applications, not und
   await expect(prism).toHaveCount(1);
   expect(await section(prism)).toBe("Build applications");
 });
+
+// [WEBSITE-ASSET-VERSIONS] On 2026-11-06 iPhone Safari lost the documentation
+// menu: it kept the previous deploy's prose.css, which hid the menu for markup
+// the new HTML no longer had. Every page must reach every section on a phone,
+// in Safari and Chromium, and every stylesheet and script URL must name the
+// exact bytes it serves, so a browser can never pair new HTML with old CSS.
+const { createHash } = require("node:crypto");
+const DOC_PAGES = require("../src/_data/navigation.json").docs.flatMap((section) => section.items.map((item) => item.url));
+// Full-screen tools in the documentation menu use their own page layout; on a
+// phone they reach the documentation through the site menu's Docs link.
+const STANDALONE = ["/wasm/", "/playground/"];
+const SECTION_LINKS = ".docs-nav-section > .docs-nav-list > li > a";
+const PHONES = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 1024, height: 768 }];
+
+test.describe("mobile documentation menu @safari", () => {
+  for (const url of DOC_PAGES.filter((url) => !STANDALONE.includes(url))) {
+    test(`${url} opens every documentation section from the phone menu`, async ({ page }) => {
+      for (const viewport of PHONES) {
+        await page.setViewportSize(viewport);
+        await page.goto(url);
+        const menu = page.locator(".docs-nav-mobile");
+        const summary = menu.locator(":scope > summary");
+        await expect(summary, `${url} at ${viewport.width}px shows the menu`).toBeVisible();
+        await expect(summary).toHaveText("Browse documentation");
+        await expect(summary).toBeInViewport();
+        await expect(page.locator(".docs-nav-desktop")).toBeHidden();
+        const box = await summary.boundingBox();
+        expect(box.height, "the menu is a full-size touch target").toBeGreaterThanOrEqual(44);
+        expect(box.width, "the menu spans the content column").toBeGreaterThan(Math.min(viewport.width, 700) * 0.8);
+        await summary.click();
+        await expect(menu).toHaveAttribute("open", "");
+        await expect(menu.locator(".docs-nav-section-title")).toHaveText(DOC_SECTIONS);
+        await expect(menu.locator(SECTION_LINKS)).toHaveCount(DOC_PAGES.length);
+        expect(await menu.locator(SECTION_LINKS).evaluateAll((links) => links.map((a) => a.getAttribute("href")))).toEqual(DOC_PAGES);
+        const current = menu.locator(`${SECTION_LINKS}[href="${url}"]`);
+        await expect(current).toHaveAttribute("aria-current", "page");
+        await expect(current, `${url} is listed in its open section`).toBeVisible();
+        await summary.click();
+        await expect(menu).not.toHaveAttribute("open", "");
+      }
+    });
+  }
+
+  for (const url of STANDALONE) {
+    test(`${url} reaches the documentation from the site menu on a phone`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.goto(url);
+      await expect(page.locator(".docs-nav-mobile")).toHaveCount(0);
+      await page.locator("#mobile-menu-toggle").click();
+      await page.locator("#site-navigation > li > a", { hasText: "Docs" }).click();
+      await expect(page).toHaveURL(/\/docs\/$/);
+      await expect(page.locator(".docs-nav-mobile > summary")).toBeVisible();
+    });
+  }
+
+  test("the phone menu walks from the docs index through every section", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/docs/");
+    const menu = page.locator(".docs-nav-mobile");
+    for (const target of [DOC_PAGES[1], DOC_PAGES[DOC_PAGES.length - 1], "/docs/"]) {
+      await menu.locator(":scope > summary").click();
+      const link = menu.locator(`${SECTION_LINKS}[href="${target}"]`);
+      const group = link.locator("xpath=ancestor::details[contains(@class,'docs-nav-section')]");
+      if ((await group.getAttribute("open")) === null) await group.locator(":scope > summary").click();
+      await link.click();
+      await expect(page).toHaveURL(new RegExp(`${target.replace(/\//g, "\\/")}$`));
+      await expect(menu.locator(":scope > summary")).toBeVisible();
+    }
+  });
+});
+
+test.describe("versioned stylesheets and scripts", () => {
+  const sha = (body) => createHash("sha256").update(body).digest("hex").slice(0, 12);
+  const LOCAL = /^\/(?!\/)[^?#]+\.(?:css|js|mjs)(\?v=[0-9a-f]+)?$/;
+
+  async function expectVersioned(request, base, refs, seen) {
+    for (const ref of refs) {
+      const url = new URL(ref, base);
+      if (url.origin !== new URL(base).origin || !LOCAL.test(url.pathname + url.search) || seen.has(url.href)) continue;
+      seen.add(url.href);
+      const response = await request.get(url.href);
+      expect(response.ok(), `${url.pathname} is served`).toBe(true);
+      const body = await response.body();
+      expect(url.search, `${url.pathname} carries a content version`).toBe(`?v=${sha(body)}`);
+      if (url.pathname.endsWith(".css")) {
+        const imports = [...body.toString("utf8").matchAll(/url\(\s*["']?([^"')\s]+)/g)].map(([, href]) => href);
+        await expectVersioned(request, url.href, imports, seen);
+      }
+    }
+  }
+
+  test("every page's local CSS and JS URLs name the bytes they serve", async ({ page, request }) => {
+    const seen = new Set();
+    for (const url of ["/", "/docs/", "/docs/effects/", "/spec/0001-introduction/", "/blog/", "/playground/"]) {
+      await page.goto(url);
+      const refs = await page.evaluate(() => [
+        ...[...document.querySelectorAll('link[rel="stylesheet"][href]')].map((el) => el.getAttribute("href")),
+        ...[...document.querySelectorAll("script[src]")].map((el) => el.getAttribute("src")),
+      ]);
+      const local = refs.filter((ref) => !/^https?:/.test(ref));
+      expect(local.length, `${url} loads site stylesheets and scripts`).toBeGreaterThan(1);
+      for (const ref of local) expect(ref, `${url} references ${ref} with a version`).toMatch(/\?v=[0-9a-f]{12}$/);
+      await expectVersioned(request, page.url(), local, seen);
+    }
+    expect([...seen].some((href) => href.includes("/css/prose.css?v=")), "imported prose.css is versioned").toBe(true);
+  });
+});
