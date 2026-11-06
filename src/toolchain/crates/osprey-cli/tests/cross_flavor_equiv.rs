@@ -217,9 +217,6 @@ fn canonical(src: &str, flavor: Flavor) -> String {
     osprey_ast::canonical::without_positions(&parsed.program)
 }
 
-/// Drop every `Position { line: N, column: M }` from a debug string. `Position`
-/// has no nested braces, so the next `}` always closes it.
-
 /// Default and ML spellings that must (or must not) lower to the same
 /// canonical AST: `(default, ml, equal, why)`.
 const CANONICAL_PAIRS: [(&str, &str, bool, &str); 4] = [
