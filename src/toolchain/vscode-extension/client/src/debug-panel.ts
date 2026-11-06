@@ -76,7 +76,11 @@ export interface DebugNode {
 }
 
 /** An "info" node with a label, one-line description, and icon. */
-const infoNode = (label: string, description: string, icon: string): DebugNode => ({
+const infoNode = (
+  label: string,
+  description: string,
+  icon: string,
+): DebugNode => ({
   kind: "info",
   label,
   description,
@@ -90,12 +94,26 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
     running: "Running",
     stopped: "Paused",
   };
-  const nodes: DebugNode[] = [infoNode("State", stateLabel[snapshot.state], "pulse")];
+  const nodes: DebugNode[] = [
+    infoNode("State", stateLabel[snapshot.state], "pulse"),
+  ];
   if (snapshot.program?.sourceProgram) {
-    nodes.push(infoNode("Source", pathBasename(snapshot.program.sourceProgram), "file-code"));
+    nodes.push(
+      infoNode(
+        "Source",
+        pathBasename(snapshot.program.sourceProgram),
+        "file-code",
+      ),
+    );
   }
   if (snapshot.program?.debugBinary) {
-    nodes.push(infoNode("Debug binary", pathBasename(snapshot.program.debugBinary), "file-binary"));
+    nodes.push(
+      infoNode(
+        "Debug binary",
+        pathBasename(snapshot.program.debugBinary),
+        "file-binary",
+      ),
+    );
   }
   return nodes;
 }
@@ -270,8 +288,12 @@ export class OspreyDebugTreeProvider implements TreeDataProvider<DebugNode> {
     const item = new TreeItem(node.label, collapsible);
     item.description = node.description;
     item.contextValue = node.kind;
-    if (node.variable) item.command = { command: "osprey.profiler.inspectVariable",
-      title: "Inspect in Profiler", arguments: [{ variable: node.variable }] };
+    if (node.variable)
+      item.command = {
+        command: "osprey.profiler.inspectVariable",
+        title: "Inspect in Profiler",
+        arguments: [{ variable: node.variable }],
+      };
     if (node.icon) {
       item.iconPath = new ThemeIcon(node.icon);
     }
