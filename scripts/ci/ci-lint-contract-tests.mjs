@@ -28,6 +28,20 @@ test('Zed builds in phase one and tests the cached compiler once in phase two', 
   assert.doesNotMatch(extension, /zed-extension (?:build|test)\b/)
 })
 
+test('WASM tests use only their toolchain and retain every acceptance step', () => {
+  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+  const wasm = workflow.split('\n  test-wasm:')[1].split('\n  test-website:')[0]
+  assert.doesNotMatch(wasm, /setup-osprey-compiler|libc6-dbg|lldb/)
+  assert.match(wasm, /apt-get install -y clang llvm lld wabt zsh/)
+  assert.match(wasm, /timeout-minutes: 6/)
+  assert.match(wasm, /name: osprey-build/)
+  assert.match(wasm, /make _runtime_wasm/)
+  assert.match(wasm, /wasm-validate .*hello\.wasm/)
+  assert.match(wasm, /for flavor in osp ospml/)
+  assert.match(wasm, /wasm-browser-smoke\.mjs/)
+  assert.match(wasm, /make _test_wasm_goldens/)
+})
+
 // A job-shaped block with the contract's own name and detector gate, so an
 // evasion fails on the guard and not on an incidental mismatch.
 const JOB_HEADER = '  build:\n    name: Build, Format & Analyse\n    needs: changes\n' +
