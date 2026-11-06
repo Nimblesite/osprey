@@ -47,7 +47,7 @@ Depends on: [plan 0041](0041-dependent-types-and-mathlib.md) phase 0 (delete the
 - [ ] Browser: standalone page under `src/osprey/workbench/hosts/web/` reusing the same renderer; `Lean` Unavailable until plan 0041 milestone 3 stage 2; headless smoke test.
 - [ ] macOS/iPadOS: SwiftUI host under `src/osprey/workbench/hosts/apple/` with a `Math` layout view; toolchain bundled on macOS, Unavailable on iPadOS until stage 2; Apple-simulator smoke test.
 - [ ] Decide: `what-is-a-solver` has no prove challenge, which [LESSONS-CURRICULUM](../specs/applications/0052-WorkbenchLessons.md#the-curriculum-lessons-curriculum) requires unless noted — add one or note the exception in spec 0052's table.
-- [ ] Road test recorded in `../reviews/review.md`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes.
+- [ ] Road test recorded in `../reports/proof-evidence.md`: a newcomer writes and checks `and_swap` in a fresh `.lean` file in under ten minutes.
 
 ## Phase 4 — lessons as data, judged by Lean and the kernel (with plan 0041 milestone 3)
 

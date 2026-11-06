@@ -5,4 +5,4 @@
 - [Active plans](plans/): delivery status and remaining work.
 - [Language guides](../src/toolchain/website/src/docs/index.md): using Osprey.
 - [Release process](RELEASING.md): building and publishing releases.
-- [Review](reviews/review.md): regressions by commit and system issues not logged on GitHub.
+- [Review](reviews/review.md): critical defects, regressions and test loosening; non-critical findings live in GitHub issues.
