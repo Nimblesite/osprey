@@ -702,8 +702,7 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
         stampHits == (innerHits + outerHits ),
         startsWith inner "outer",
         restored == "outer4=400/outer4=8",
-        containsAll restored ["outer4=400", "outer4=8"],
-        contains restored "400/outer4",
+        containsAll restored ["outer4=400", "outer4=8", "400/outer4"],
         !(contains restored "outer4=800"),
         outerHits != innerHits,
         outerHits < innerHits
@@ -726,7 +725,7 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     // closes, so the second half of the pair is 8 and not 400.
     checkAll "the enclosing region is restored after the inner one ends" [
         restored == "outer4=400/outer4=8",
-        contains restored "/",
+        containsAll restored ["/", "0/o"],
         !(endsWith restored "400"),
         endsWith restored "=8",
         startsWith restored "outer4=400",
@@ -735,7 +734,6 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
         restored != paired,
         restored != inner,
         !(contains restored "outer4=80"),
-        contains restored "0/o",
         stampHits > innerHits
     ]
 

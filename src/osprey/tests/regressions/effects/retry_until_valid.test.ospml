@@ -830,12 +830,10 @@ nestedRetryRegionsCase () =
         structuralEquals [outerTrail, innerTrail] ["o1=1:0|o2=2:0|o3=3:50|o4=1:0|o5=2:0|o6=3:50|", "i1=1:0|i2=2:700|"],
         structuralEquals [startsWith outerTrail "o1=1:0|", endsWith outerTrail "o6=3:50|"] [true, true],
         containsAll outerTrail ["o4=1:0|", "o3=3:50|"],
-        !(contains outerTrail "700"),
-        !(contains innerTrail "50|"),
+        containsNone outerTrail ["700", "o7"],
+        containsNone innerTrail ["50|", "i3"],
         startsWith innerTrail "i1=1:0|",
         endsWith innerTrail "i2=2:700|",
-        !(contains innerTrail "i3"),
-        !(contains outerTrail "o7"),
         outerTrail != innerTrail,
         length innerTrail == 16
     ]
@@ -846,9 +844,8 @@ nestedRetryRegionsCase () =
         structuralEquals [startsWith outerSettled "o6:800|", endsWith outerSettled "o1:800|"] [true, true],
         structuralEquals [startsWith innerSettled "i2:700|", endsWith innerSettled "i1:700|"] [true, true],
         contains outerSettled "o4:800|",
-        !(contains outerSettled "700"),
+        containsNone outerSettled ["700", "o7"],
         !(contains innerSettled "800"),
-        !(contains outerSettled "o7"),
         structuralEquals [length outerSettled, length innerSettled] [42, 14],
         outerSettled != outerTrail,
         innerSettled != innerTrail
@@ -1040,9 +1037,8 @@ retryPerformSiteMatrixCase () =
         structuralEquals [suppliedFour, sited, (zeroCalls - 1 )] [1234, 2024, 2],
         startsWith trail "z1|",
         contains trail "z3|o4|",
-        !(contains trail "z3|z4|"),
+        containsNone trail ["z3|z4|", "|f1234|f"],
         endsWith trail "f1234|",
-        !(contains trail "|f1234|f"),
         suppliedFour != suppliedOne,
         trail != ""
     ]

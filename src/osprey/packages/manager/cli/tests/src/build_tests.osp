@@ -152,9 +152,8 @@ module BuildTests {
         checkAll("relative project ${dir} is rebased from the derived manifest", [
             a.report.status == 0,
             a.derivedAt == Project::pathAt(dir, derivedPath),
-            contains(a.derived, "source_roots = [\"../../src\"]"),
-            contains(a.derived, "python_sources = [\"../../src/model.py\"]"),
-            contains(a.derived, "entry = \"../../src/main.osp\"")
+            containsAll(a.derived, ["source_roots = [\"../../src\"]", "python_sources = [\"../../src/model.py\"]"]),
+            containsAll(a.derived, ["entry = \"../../src/main.osp\""])
         ])
     }
 

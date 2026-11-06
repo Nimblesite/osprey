@@ -138,8 +138,7 @@ module OverlayTests {
         let derived = RegistryFixture::writtenTo(a, derivedPath())
         checkAll("a bare build compiles the checkout from the development lock", [
             RegistryFixture::accepted(a),
-            contains(derived, "\"../../${localPath}/src\""),
-            contains(derived, "\"../../${installedTwoPath()}/src\""),
+            containsAll(derived, ["\"../../${localPath}/src\"", "\"../../${installedTwoPath()}/src\""]),
             length(RegistryFixture::ranOf(a)) == 1,
             (listGet(RegistryFixture::ranOf(a), 0) ?: "") == "'osprey' build '${project}/.osprey/build' -o '${project}/.osprey/build/app'"
         ])

@@ -785,15 +785,14 @@ layoutAndInterpolationCase () =
         isEmpty "",
         structuralEquals [startsWith text "ab", endsWith text "12", startsWith text ""] [true, true, true],
         structuralEquals [endsWith text "", contains text "", containsAll text [", ", "ab"]] [true, true, true],
-        !(contains text "ba"),
+        containsNone text ["ba", "AB"],
         !(startsWith text "b"), !(endsWith text "1"),
         toUpperCase text == "AB, AB, 12",
         toLowerCase "AB, AB, 12" == text,
         toUpperCase (toLowerCase text) == toUpperCase text,
         toLowerCase text == text,
         length (toUpperCase text) == length text,
-        contains (toUpperCase text) "AB",
-        !(contains text "AB")
+        contains (toUpperCase text) "AB"
     ]
 
 // Registration order fixes the TAP numbering, so these follow the four cases

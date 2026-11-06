@@ -87,15 +87,9 @@ resumeValueRewriteCase () =
     (* Preserve the complete ten-line golden transcript and every output phase. *)
     checkAll "value-rewrite legacy observations" [
         legacyTranscript == "supply first=105\nsupply second=110\nsupply third=115\nseen after third: 330\nseen after second: 330\nseen after first: 330\nresult=330\nrelay answered: carried\nword=carried\nchecked=10 num=41\n",
-        contains legacyTranscript "supply first=105\n",
-        contains legacyTranscript "supply second=110\n",
-        contains legacyTranscript "supply third=115\n",
-        contains legacyTranscript "seen after third: 330\n",
-        contains legacyTranscript "seen after second: 330\n",
-        contains legacyTranscript "seen after first: 330\n",
-        contains legacyTranscript "result=330\n",
-        contains legacyTranscript "relay answered: carried\n",
-        contains legacyTranscript "word=carried\n",
+        containsAll legacyTranscript ["supply first=105\n", "supply second=110\n", "supply third=115\n"],
+        containsAll legacyTranscript ["seen after third: 330\n", "seen after second: 330\n", "seen after first: 330\n"],
+        containsAll legacyTranscript ["result=330\n", "relay answered: carried\n", "word=carried\n"],
         endsWith legacyTranscript "checked=10 num=41\n"
     ]
 
@@ -189,22 +183,21 @@ resumeSubstitutesSuppliedValueCase () =
     checkAll "reads enter in slot order and settle in reverse" [
         structuralEquals [asked, seen] ["1|2|3|4|", "4:667|3:667|2:667|1:667|"],
         startsWith seen "4:667|", endsWith seen "1:667|",
-        contains seen "3:667|", contains seen "2:667|",
+        containsAll seen ["3:667|", "2:667|"],
         !(startsWith seen "1:"), asked != seen,
         structuralEquals [length seen, reads] [24, 4],
-        !(contains seen "0:"), !(contains seen ":660")
+        containsNone seen ["0:", ":660"]
     ]
 
     (* Every arm's resume returns the one completed answer, never the value that
         arm itself supplied: "4:7", "2:7", "3:-4" and "1:0" are the four ways the
         supplied value could have been handed back by mistake. *)
     checkAll "every arm observes the completed computation answer" [
-        contains seen "1:667", contains seen "2:667",
-        contains seen "3:667", contains seen "4:667",
-        !(contains seen "4:7|"), !(contains seen "2:7|"),
-        !(contains seen "3:-4|"), !(contains seen "1:0|"),
+        containsAll seen ["1:667", "2:667", "3:667", "4:667"],
+        containsNone seen ["4:7|", "2:7|", "3:-4|", "1:0|"],
         contains seen (toString picked),
-        contains gave "0|", contains gave "-4|", !(contains gave "|4|")
+        containsAll gave ["0|", "-4|"],
+        !(contains gave "|4|")
     ]
 
     (* The same body under a constant script answers 1*1000 + 1*100 + 1*10 + 1,
@@ -296,10 +289,10 @@ resumeAnswerComposesLifoCase () =
         observes: 3 returns 126 and 2 observes 126; 2 returns 128 and 1 observes
         128; 1 returns 129, which is the whole handle expression's result. *)
     checkAll "each arm's value becomes the next-outer arm's answer" [
-        contains returned "3:126|", contains observed "2:126|",
-        contains returned "2:128|", contains observed "1:128|",
-        contains returned "1:129|", !(contains observed "2:123|"),
-        !(contains observed "1:123|"), !(contains returned "3:123|"),
+        containsAll returned ["3:126|", "2:128|", "1:129|"],
+        containsAll observed ["2:126|", "1:128|"],
+        containsNone observed ["2:123|", "1:123|"],
+        !(contains returned "3:123|"),
         structuralEquals [length observed, length returned, layeredResult] [18, 18, 129],
         endsWith returned "1:129|"
     ]
@@ -528,11 +521,10 @@ resumeBoolAndUnitPayloadsCase () =
         structuralEquals [flagText, flagGave] ["true|false|true", "T|F|T|"],
         structuralEquals [toString true, toString false] ["true", "false"],
         structuralEquals [length flagText, flagCalls] [15, 3],
-        contains flagText "true", contains flagText "false",
+        containsAll flagText ["true", "false"],
         startsWith flagText "true|", endsWith flagText "|true",
         !(startsWith flagText "false"),
-        !(contains flagText "1"),
-        !(contains flagText "0")
+        containsNone flagText ["1", "0"]
     ]
 
     (* The supplied bit selects the caller's own match arm, so the route text
@@ -681,7 +673,7 @@ resumeManagedPayloadsCase () =
         textGave == "empty=|one=x|mixed=a1, b2!|repeated=abab|",
         structuralEquals [length textResult, textCalls, length textGave] [20, 4, 41],
         startsWith textResult "[][x]", endsWith textResult "[abab]",
-        contains textResult "[]", contains textResult "a1, b2!",
+        containsAll textResult ["[]", "a1, b2!"],
         contains textGave "empty=|",
         !(contains textResult "empty"), textResult != textGave
     ]
@@ -692,8 +684,8 @@ resumeManagedPayloadsCase () =
         slotText == "left:3:true/:0:false",
         structuralEquals [length slotText, slotCalls, doubledWeight, weightCalls] [20, 2, 42, 1],
         startsWith slotText "left:3:true", endsWith slotText ":0:false",
-        contains slotText "/:0:", !(contains slotText "//"),
-        contains slotText "true", contains slotText "false",
+        containsAll slotText ["/:0:", "true", "false"],
+        !(contains slotText "//"),
         doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
     ]
@@ -705,7 +697,7 @@ resumeManagedPayloadsCase () =
         parsedTotal == ((120 - 5) ),
         parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
         parseGave == "ok=Success|bad=Error|",
-        contains parseGave "ok=Success|", contains parseGave "bad=Error|",
+        containsAll parseGave ["ok=Success|", "bad=Error|"],
         startsWith parseGave "ok=", endsWith parseGave "Error|"
     ]
 
@@ -811,8 +803,7 @@ resumeFromNestedHelpersCase () =
     (* Every arm in the span region observed the one completed answer, and the
         first region's state is untouched by the second. *)
     checkAll "both deep regions keep their own transcripts" [
-        contains spanTags "nested.a|nested.b|",
-        contains spanTags "|tail|",
+        containsAll spanTags ["nested.a|nested.b|", "|tail|"],
         !(contains spanSettled "shallow|tail"),
         spanSeen == "15|15|15|15|",
         structuralEquals [length spanSeen, spanCalls, spanSeed, depthCalls, depthSeed, deepResult] [12, 4, 4, 2, 2, 19],
@@ -876,8 +867,8 @@ manyPerformsOneRegionCase () =
         tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
         structuralEquals [length tickGave, drained, (((10 + 111) ) + 40 )] [31, 161, 161],
         startsWith tickGave "0|7|-4|", endsWith tickGave "|25|",
-        contains tickGave "|100|", contains tickGave "|-1|",
-        contains tickGave "|12|12|", !(contains tickGave "|13|"),
+        containsAll tickGave ["|100|", "|-1|", "|12|12|"],
+        !(contains tickGave "|13|"),
         drained != 10, drained != 40, drained != 111
     ]
 

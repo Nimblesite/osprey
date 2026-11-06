@@ -762,8 +762,7 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
         stampHits == (innerHits + outerHits ),
         startsWith(inner, "outer"),
         restored == "outer4=400/outer4=8",
-        containsAll(restored, ["outer4=400", "outer4=8"]),
-        contains(restored, "400/outer4"),
+        containsAll(restored, ["outer4=400", "outer4=8", "400/outer4"]),
         !contains(restored, "outer4=800"),
         outerHits != innerHits,
         outerHits < innerHits
@@ -773,14 +772,12 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
     // inner arm would print.
     checkAll("each fiber's own tag threads to its own arm", [
         paired == "outer0=0+outer-2=-200",
-        containsAll(paired, ["outer0=0", "outer-2=-200"]),
+        containsAll(paired, ["outer0=0", "outer-2=-200", "=-200"]),
         structuralEquals([startsWith(paired, "outer0=0+"), endsWith(paired, "-200")], [true, true]),
-        containsNone(paired, ["outer-2=200", "outer2="]),
+        containsNone(paired, ["outer-2=200", "outer2=", "=0+outer-2=200"]),
         structuralEquals([length(paired), innerHits, stampHits], [21, 4, 6]),
         paired != inner,
-        paired != restored,
-        !contains(paired, "=0+outer-2=200"),
-        contains(paired, "=-200")
+        paired != restored
     ])
 
     // The enclosing arm is restored for the fiber spawned after the inner region

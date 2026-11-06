@@ -1128,9 +1128,8 @@ fn retryPerformSiteMatrixCase() = {
         structuralEquals([zeroCalls, suppliedZero, fourCalls], [3, 9, 1]),
         structuralEquals([suppliedFour, sited, (zeroCalls - 1 )], [1234, 2024, 2]),
         structuralEquals([startsWith(trail, "z1|"), contains(trail, "z3|o4|")], [true, true]),
-        !contains(trail, "z3|z4|"),
+        containsNone(trail, ["z3|z4|", "|f1234|f"]),
         endsWith(trail, "f1234|"),
-        !contains(trail, "|f1234|f"),
         suppliedFour != suppliedOne,
         trail != ""
     ])

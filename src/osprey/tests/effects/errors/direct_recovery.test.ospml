@@ -560,8 +560,7 @@ everyResultTypeCase () =
         structuralEquals [length rendered, marks, length trail] [33, 1, 69],
         structuralEquals [startsWith rendered "12|", endsWith rendered "|9"] [true, true],
         structuralEquals (mapList ["|spare|", "|true|"] (\k => contains rendered k)) [true, true],
-        !(contains rendered "2.5"),
-        !(contains rendered "|13|"),
+        containsNone rendered ["2.5", "|13|"],
         structuralEquals [startsWith trail "i:count|", endsWith trail "m:rendered|"] [true, true],
         structuralEquals (mapList ["|s:spare|", "b:allowed|t:name|"] (\k => contains trail k)) [true, true],
         !(contains trail "|i:count|")
@@ -706,13 +705,11 @@ partialOverrideLatticeCase () =
         structuralEquals [length deepest, length restored] [8, 12],
         startsWith deepest "bronze:",
         endsWith deepest ":3",
-        !(contains deepest ":1"),
-        !(contains deepest ":2"),
+        containsNone deepest [":1", ":2"],
         deepest != split,
         structuralEquals [startsWith restored "7|", endsWith restored "|7"] [true, true],
         contains restored "outer/70",
-        !(contains restored "70|outer"),
-        !(contains restored "|70|")
+        containsNone restored ["70|outer", "|70|"]
     ]
 
 (** Verify an operation performed inside a lambda handed to a higher-order
@@ -867,8 +864,7 @@ recursiveAccumulationCase () =
         total == (10 + 20 + 30 + 40 + 50 + 60 + 70 + 80 ),
         trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
         structuralEquals [startsWith trail "8:1|", endsWith trail "1:8|", contains trail "|4:5|"] [true, true, true],
-        !(contains trail "9:"),
-        !(contains trail "0:"),
+        containsNone trail ["9:", "0:"],
         total > 0,
         total != 36
     ]
@@ -995,14 +991,10 @@ multiEffectRegionCase () =
         length trail == 70,
         structuralEquals [startsWith trail "R(qty)|", endsWith trail "A(scored 25)|"] [true, true],
         structuralEquals (mapList ["|S(6,4)|", "|L(order)|P(order)|"] (\k => contains trail k)) [true, true],
-        !(contains trail "P(order)|L(order)"),
-        !(contains trail "A(qty)"),
-        contains trail "A(filled 6)",
-        contains trail "A(allowed 4)",
-        !(contains trail "S(4,6)"),
+        containsNone trail ["P(order)|L(order)", "A(qty)", "S(4,6)"],
+        containsAll trail ["A(filled 6)", "A(allowed 4)", "R(qty)|A(filled 6)|"],
         !(startsWith trail "A("),
-        !(endsWith trail "|P(order)|"),
-        contains trail "R(qty)|A(filled 6)|"
+        !(endsWith trail "|P(order)|")
     ]
 
     // Nesting the same four regions in the opposite order changes nothing the
@@ -1094,8 +1086,7 @@ boundaryValueRecoveryCase () =
         structuralEquals [length joined, fills, length seen] [13, 3, 9],
         fills != 1,
         structuralEquals [startsWith seen "a1|", endsWith seen "b3|", contains seen "|a2|"] [true, true, true],
-        !(contains seen "b1|"),
-        !(contains seen "a3|"),
+        containsNone seen ["b1|", "a3|"],
         structuralEquals [startsWith joined "/x/", endsWith joined "  ", contains joined "spaced"] [true, true, true]
     ]
 
