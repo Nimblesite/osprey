@@ -108,6 +108,23 @@ const recordedText = (name) => fs.readFileSync(RECORDED[name], 'utf8');
 
 const assertLake = (lake, expected) => assert.deepEqual(lake, expected);
 
+const assertClean = (run) => {
+  assert.equal(run.result.status, 0, run.stderr);
+  assert.equal(run.stdout, normalize(VALID_EXPORT));
+};
+
+const assertChecked = (run) => {
+  assert.equal(run.result.status, 0, run.stderr);
+  assert.equal(run.stdout, '', '--check must print nothing to stdout');
+  assert.match(run.stderr, /byte-identical/);
+};
+
+const assertMismatch = (run, message) => {
+  assert.notEqual(run.result.status, 0, message);
+  assert.equal(run.stdout, '');
+  assert.match(run.stderr, /STOP — the export differs from/);
+};
+
 const assertRejected = (run, label) => {
   assert.notEqual(run.result.status, 0, `${label} must fail`);
   assert.equal(run.stdout, '', `${label} must not print an export`);
@@ -123,8 +140,7 @@ test('every selectable theorem has a recorded fixture', () => {
 
 test('default run exports IdImp and prints it to stdout', () => {
   const run = runCase({}, []);
-  assert.equal(run.result.status, 0, run.stderr);
-  assert.equal(run.stdout, normalize(VALID_EXPORT));
+  assertClean(run);
   assertLake(run.lake, ['build lean4export lean4checker IdImp', 'exe lean4export IdImp']);
   assert.match(run.stderr, new RegExp(EXPORTER_REV));
   assert.match(run.stderr, new RegExp(CHECKER_REV));
@@ -140,15 +156,13 @@ test('the pinned lean version is verified from the tools directory', () => {
 
 test('--theorem and_swap builds AndSwap and exports AndSwap', () => {
   const run = runCase({}, ['--theorem', 'and_swap']);
-  assert.equal(run.result.status, 0, run.stderr);
-  assert.equal(run.stdout, normalize(VALID_EXPORT));
+  assertClean(run);
   assertLake(run.lake, ['build lean4export lean4checker AndSwap', 'exe lean4export AndSwap']);
 });
 
 test('--theorem Nat.add_comm builds only the pinned tools', () => {
   const run = runCase({}, ['--theorem', 'Nat.add_comm']);
-  assert.equal(run.result.status, 0, run.stderr);
-  assert.equal(run.stdout, normalize(VALID_EXPORT));
+  assertClean(run);
   assertLake(run.lake, [
     'build lean4export lean4checker',
     'exe lean4export Init.Data.Nat.Basic -- Nat.add_comm',
@@ -169,33 +183,25 @@ test('--theorem and --check are accepted in any argument order', () => {
 
 test('--check accepts a byte-identical and_swap fixture', () => {
   const run = runCase({ exportText: recordedText('and_swap') }, ['--check', '--theorem', 'and_swap']);
-  assert.equal(run.result.status, 0, run.stderr);
-  assert.equal(run.stdout, '');
-  assert.match(run.stderr, /byte-identical/);
+  assertChecked(run);
 });
 
 test('--check compares Nat.add_comm against its own recorded fixture', () => {
   const text = recordedText('Nat.add_comm');
   const run = runCase({ exportText: text }, ['--check', '--theorem', 'Nat.add_comm']);
-  assert.equal(run.result.status, 0, run.stderr);
-  assert.equal(run.stdout, '');
-  assert.match(run.stderr, /byte-identical/);
+  assertChecked(run);
 });
 
 test('--check fails when the export differs from the fixture', () => {
   const drifted = `${recordedText('id_imp')}\n{"decl":{"name":"drift"}}`;
   const run = runCase({ exportText: drifted }, ['--check', '--theorem', 'id_imp']);
-  assert.notEqual(run.result.status, 0, 'a mismatch must fail');
-  assert.equal(run.stdout, '');
-  assert.match(run.stderr, /STOP — the export differs from/);
+  assertMismatch(run, 'a mismatch must fail');
 });
 
 test('--check preserves exact trailing newline bytes', () => {
   for (const text of [recordedText('id_imp').trimEnd(), `${recordedText('id_imp')}\n`]) {
     const run = runCase({ exportText: text }, ['--check']);
-    assert.notEqual(run.result.status, 0, 'a changed trailing newline must fail');
-    assert.equal(run.stdout, '');
-    assert.match(run.stderr, /STOP — the export differs from/);
+    assertMismatch(run, 'a changed trailing newline must fail');
   }
 });
 
