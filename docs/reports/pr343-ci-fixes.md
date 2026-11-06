@@ -43,6 +43,18 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Check the typed refusal on Linux and preserve exact parity and dispatch traces when a device runs. Host and Metal both passed locally.
    - [x] Verify the complete hosted Rust rest shard and its coverage artifact. Run 42150529203, job 127674155353, passed the mapped-file test and uploaded artifact 13473265612. The Agent budget passed in 117.79 seconds.
 
+10. **VS Code working-session capture race [check-once-claude]**
+   - [x] Reproduce: run 42150529203, job 127674155162, timed out after 1000ms waiting for `aria-busy` in `capture` because typing re-runs the WASM program.
+   - [x] Fix in `06eb5dcb7`: `workingSession` waits until the re-run settles, as every other scene does. The VS Code extension job passed on run 42153399114.
+11. **Qwen and transformers scope (user decision, 2026-11-06)**
+   - [x] `c2cee10f0` removes the unfinished qwen model from the package backend matrix; the existing GPT2 tests stay.
+   - [x] `98eb859d8` marks transformers `unfinished`, so it still reports coverage but has no 90% floor. Package coverage passed 28 of 28 on run 42153399114.
+12. **Agent type-check budget [OspreyCodex]**
+   - [x] Root cause: on run 42150529203 `test-app` already took 117.79 s of its 120 s budget, and on run 42153399114 it ran out. Locally a release build checks it in 48 s. A profile shows almost all of that time in the redundant-annotation lint (`redundant_blame::directed`), which reruns full inference for each annotation trial.
+   - [ ] Make the trials cheaper, test first, without raising the budget.
+13. **Integration job timeout (external)**
+   - [x] Run 42153399114 hit the 18-minute limit because the Azure Ubuntu mirror served the Playwright `--with-deps` font packages at 49.6 kB/s (7 min 20 s for 21.9 MB). The previous run installed them in 19 s. No code change; the next push reruns the job.
+
 ## Status (run 42138521783)
 
 - Fixed and green: WinUI paths and setup steps, the GPUI release gate's Makefile lookup, deslop,
