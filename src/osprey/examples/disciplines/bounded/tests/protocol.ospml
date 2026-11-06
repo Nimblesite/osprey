@@ -168,57 +168,60 @@ module Protocol
 
     ignoreEvent (_pid, _kind, _data) = cleanupProcess 0
 
-    (** One module whose every call the discipline must accept. *)
-    inRangeSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
+    // The marker and module shell every source in these cases starts with.
+    boundedHeader = ["// osprey: types=bounded", "namespace demo", "", "module Rate"]
+
+    erasedHeader = ["// osprey: types=hm", "namespace demo", "", "module Rate"]
+
+    // The bounded parameter and export every `scale` case shares.
+    rateBounds = [
         "    // @bound p in 0..100",
         "    export scale (p, total) = intDiv (total * p, 100)",
+        ""
+    ]
+
+    // The two bounded parameters and exports the `add`/`inc` cases share.
+    boundsHeader () = boundedHeader + [
+        "    // @bound a in 0..10",
+        "    // @bound b in 20..30",
+        "    export add (a, b) = a + b",
         "",
+        "    // @bound n in 0..10",
+        "    export inc n = n + 1",
+        ""
+    ]
+
+    source lines = join lines "\n" + "\n"
+
+    boundedSource body = source (boundedHeader + rateBounds + body)
+
+    erasedSource body = source (erasedHeader + body)
+
+    (** One module whose every call the discipline must accept. *)
+    inRangeSource () = boundedSource [
         "    // @bound q in 0..50",
         "    export relay q =",
         "        scale (q + 5 * 9, 10)",
         "",
         "    export literals () = scale (100, 400)"
-    ] "\n" + "\n"
+    ]
 
-    inRangeErased () = join [
-        "// osprey: types=hm",
-        "namespace demo",
-        "",
-        "module Rate",
+    inRangeErased () = erasedSource [
         "    export scale (p, total) = intDiv (total * p, 100)",
         "",
         "    export relay q =",
         "        scale (q + 5 * 9, 10)",
         "",
         "    export literals () = scale (100, 400)"
-    ] "\n" + "\n"
+    ]
 
-    severalSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
-        "    // @bound a in 0..10",
-        "    // @bound b in 20..30",
-        "    export add (a, b) = a + b",
-        "",
-        "    // @bound n in 0..10",
-        "    export inc n = n + 1",
-        "",
+    severalSource () = source (boundsHeader () + [
         "    export ok () =",
         "        add (10, 20)",
         "        inc 10"
-    ] "\n" + "\n"
+    ])
 
-    severalErased () = join [
-        "// osprey: types=hm",
-        "namespace demo",
-        "",
-        "module Rate",
+    severalErased () = erasedSource [
         "    export add (a, b) = a + b",
         "",
         "    export inc n = n + 1",
@@ -226,81 +229,45 @@ module Protocol
         "    export ok () =",
         "        add (10, 20)",
         "        inc 10"
-    ] "\n" + "\n"
+    ]
 
-    literalSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
-        "    // @bound p in 0..100",
-        "    export scale (p, total) = intDiv (total * p, 100)",
-        "",
+    literalSource () = boundedSource [
         "    export wide () =",
         "        scale (150, 10)"
-    ] "\n" + "\n"
+    ]
 
-    compoundSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
-        "    // @bound p in 0..100",
-        "    export scale (p, total) = intDiv (total * p, 100)",
-        "",
+    compoundSource () = boundedSource [
         "    export off () =",
         "        scale (40 + 70, 10)",
         "        scale (5 * 30, 10)"
-    ] "\n" + "\n"
+    ]
 
-    unknownSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
-        "    // @bound p in 0..100",
-        "    export scale (p, total) = intDiv (total * p, 100)",
-        "",
+    unknownSource () = boundedSource [
         "    export probe (x) =",
         "        scale (x, 10)",
         "        scale (x + 1, 10)"
-    ] "\n" + "\n"
+    ]
 
-    secondBoundSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
-        "    // @bound a in 0..10",
-        "    // @bound b in 20..30",
-        "    export add (a, b) = a + b",
-        "",
-        "    // @bound n in 0..10",
-        "    export inc n = n + 1",
-        "",
+    secondBoundSource () = source (boundsHeader () + [
         "    export ok () =",
         "        add (5, 31)"
-    ] "\n" + "\n"
+    ])
 
-    plainSource () = join [
-        "// osprey: types=bounded",
-        "namespace demo",
-        "",
-        "module Rate",
+    plainSource () = source (boundedHeader + [
         "    export plain () = 1"
-    ] "\n" + "\n"
+    ])
 
-    silentSource () = join [
+    silentSource () = source [
         "// osprey: types=bounded",
         "namespace demo",
         "",
         "// @bound p in 0..100",
         "export scale (p, total) = intDiv (total * p, 100)"
-    ] "\n" + "\n"
+    ]
 
-    silentErased () = join [
+    silentErased () = source [
         "// osprey: types=hm",
         "namespace demo",
         "",
         "export scale (p, total) = intDiv (total * p, 100)"
-    ] "\n" + "\n"
+    ]

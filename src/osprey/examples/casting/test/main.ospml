@@ -174,8 +174,31 @@ hover label =
     pointer (p.pointX, p.pointY, false)
 opened path = post (Drive::opened (driven, path))
 frame seconds = post (Drive::frame (driven, seconds))
+
 discovered () = post (Drive::ran (driven, "discover", 0, ""))
 picked path = post (Drive::chosen (driven, "choose", path))
+
+// A frame the host served, then what the controls and the artboard settled on.
+settled text =
+    frame 0.2
+    expect (shows text, true)
+
+lettered text =
+    frame 0.2
+    expect (letters text, true)
+
+// A closed native shell releases its connection and media server exactly once ([CAST-MOBILE-DELIVERY]).
+closedAt now =
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":${toString now}}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+
+// The TV found, a file picked and the play the host was asked for.
+playing file =
+    started ()
+    discovered ()
+    picked file
+    press "Play"
 test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay", \() => bench (\() =>
     started ()
     expect (shows "Looking for TVs…", true)
@@ -203,41 +226,33 @@ test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and
     frame 0.2
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD ")
     expect (fake.fakeLoaded, "audio/mpeg")
-    frame 0.2
-    expect (shows "Playing on Living Room TV", true)
+    settled "Playing on Living Room TV"
     expect (shows "Pause", true)
     expect (shows "03:20", true)
     post "{\"kind\":\"lifecycle\",\"phase\":\"skin:poolside\",\"now\":2}"
     expect (selected "Skin", "poolside")
     expect (enabledOf "Back 10 seconds", true)
     press "Pause"
-    frame 0.2
-    expect (shows "Paused", true)
+    settled "Paused"
     expect (shows "Resume", true)
     press "Resume"
-    frame 0.2
-    expect (shows "Playing on Living Room TV", true)
+    settled "Playing on Living Room TV"
     press "Forward 10 seconds"
-    frame 0.2
-    expect (shows "00:10", true)
+    settled "00:10"
     choose ("Volume 100%", "0.5")
-    frame 0.2
-    expect (shows "Volume 50%", true)
+    settled "Volume 50%"
     choose ("Speed", "1.5")
     frame 0.2
     expect (selected "Speed", "1.5")
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SEEK SET_VOLUME SET_PLAYBACK_RATE ")
     press "Stop"
-    frame 0.2
-    expect (shows "Finished", true)
+    settled "Finished"
     expect (shows "Play", true)
     press "Play"
     frame 0.2
-    frame 0.2
-    expect (shows "Playing on Living Room TV", true)
+    settled "Playing on Living Room TV"
     finishTrack ()
-    frame 0.2
-    expect (shows "Finished", true)))
+    settled "Finished"))
 test ("a Windows launch finds the TVs with the helper `--browse` names, a Mac launch with dns-sd", \() => bench (\() =>
     helped ()
     expect (browser (), "C:/Apps/casting/cast-browse.exe")
@@ -406,18 +421,15 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect ((element "Volume").accessTop, 1712.0)
     expect (heardTypes (), beforeResize)
     tap "Pause"
-    frame 0.2
-    expect (letters "Paused", true)
+    lettered "Paused"
     expect (offers "Resume", true)
     tap "Resume"
-    frame 0.2
-    expect (letters "Playing", true)
+    lettered "Playing"
     tapAt ("Volume", 0.5)
     frame 0.2
     expect (valueOf "Volume", 0.5)
     tapAt ("Position", 0.25)
-    frame 0.2
-    expect (letters "00:50", true)
+    lettered "00:50"
     expect (valueOf "Position", 50.0)
     tap "Speed: 1×"
     expect (labels (), "0.75×|1×|1.25×|1.5×|2×|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
@@ -437,8 +449,7 @@ test ("the canvas: every control is reached by its accessible label, through poi
     expect (labels (), "Appearance: Sherbet Signal|Receiver: Kitchen|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
     expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SET_VOLUME SEEK SET_PLAYBACK_RATE ")
     tap "Stop"
-    frame 0.2
-    expect (letters "Finished", true)
+    lettered "Finished"
     expect (labels (), "Appearance: Sherbet Signal|Receiver: Kitchen|Play|Open file…")
     unplug ()
     tap "Play"
@@ -470,30 +481,15 @@ test ("the player's accessibility tree reads clearly to an agent while it search
     expect (Semantics::unclear (elements ()), "")))
 // [CAST-MOBILE-DELIVERY] A native shell can be closed during launch or playback.
 test ("closing the native shell releases its connection and media server exactly once", \() => bench (\() =>
-    started ()
-    discovered ()
-    picked "/music/Sunroom.mp3"
-    press "Play"
+    playing "/music/Sunroom.mp3"
     expect (fake.fakeClosed, 0)
     expect (fake.fakeStopped, 0)
-    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":3}"
-    expect (fake.fakeClosed, 1)
-    expect (fake.fakeStopped, 1)
-    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":4}"
-    expect (fake.fakeClosed, 1)
-    expect (fake.fakeStopped, 1)
-    started ()
-    discovered ()
-    picked "/music/Sunroom.mp3"
-    press "Play"
+    closedAt 3
+    closedAt 4
+    playing "/music/Sunroom.mp3"
     frame 0.2
-    frame 0.2
-    expect (shows "Playing on Living Room TV", true)
+    settled "Playing on Living Room TV"
     perform Bench.rig (fake(fakeCloseCode = 0 - 1))
-    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":5}"
-    expect (fake.fakeClosed, 1)
-    expect (fake.fakeStopped, 1)
+    closedAt 5
     expect (shows "Cannot close cast services (-1)", true)
-    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":6}"
-    expect (fake.fakeClosed, 1)
-    expect (fake.fakeStopped, 1)))
+    closedAt 6))
