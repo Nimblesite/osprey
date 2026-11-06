@@ -10,7 +10,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Format & Analyse | link-skills, node-deps, release gates, dead code, licenses, package coverage scripts, `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `npm run lint`, `npm run test:shipwright`, deslop, `make -C src/toolchain hawk` | check-once-claude | [x] check-once-claude 2026-11-06 (fmt, clippy, lint, shipwright, deslop, hawk) |
 | Rust workspace (rest) | `make _test_rust_shard RUST_SHARD=rest` | check-once-claude | [ ] |
 | Rust workspace (workbench) | `make _test_rust_shard RUST_SHARD=workbench` | check-once-claude | [ ] |
-| Rust workspace (packages) | `make _test_rust_shard RUST_SHARD=packages` | OspreyCodex | [ ] |
+| Rust workspace (packages) | `make _test_rust_shard RUST_SHARD=packages` | OspreyCodex | [x] GC/ARC oracle matrix passed in 219.82s; LCOV collected (`f4a096d2e`) |
 | Package source coverage | `make _check_packages && make _test_packages` | OspreyCodex | [x] All 28 passed (`f4a096d2e`) |
 | Package manager (gc, arc) | `make _test_registry REGISTRY_MEMORY=gc` and `=arc` | OspreyCodex | [x] 525 Osprey and 13 Python tests per backend (`f4a096d2e`) |
 | Python application ports | `make _test_python_app_ports` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
