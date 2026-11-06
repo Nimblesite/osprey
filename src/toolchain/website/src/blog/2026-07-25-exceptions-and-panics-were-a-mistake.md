@@ -133,7 +133,7 @@ fn describePort(text) = match parseInt(text) {
 print(describePort("8080"))
 ```
 
-`parseInt` returns either `Success` or `Error`. When Osprey knows that a value is a `Result`, a match has to cover both. Code also cannot simply grab the success value: it must match the result, use an explicit `?:` fallback, or use one of the places where Osprey currently unwraps automatically, listed in the [error-handling specification](/spec/0013-errorhandling/).
+`parseInt` returns either `Success` or `Error`. When Osprey knows that a value is a `Result`, a match has to cover both. Code also cannot simply grab the success value: it must match the result or use an explicit `?:` fallback. The compiler never unwraps a `Result` implicitly ([error-handling specification](/spec/0013-errorhandling/)).
 
 Failure is now ordinary data. Code can return it, store it, test it or transform it. The caller decides what to do because the failure is right there in the return value. If another outcome is added later, existing matches fail to compile until they handle it.
 
@@ -287,7 +287,7 @@ Important limits include:
 
 - An `Error` currently always carries a string message. Although signatures use `Result<T, E>`, `E` cannot yet be an arbitrary error value. That is why these examples use `Result<T, string>`.
 - Missing handlers are rejected at the application boundary, including requests through helpers, callbacks and fibers. Callable handlers and rest-of-block `handle` are supported in both flavors. Dynamic control handlers require the native target; WebAssembly and mobile use value handlers or static interpretation. General quantified effect rows and reusable continuations remain unfinished.
-- The compiler automatically extracts the success value from a `Result` in six convenience cases. If the value is actually an `Error`, the current code can discard that error and produce a zero or default value. Osprey therefore does **not** yet force explicit handling of every `Result` on every path. This is a safety gap to fix, not intended language behaviour.
+- The compiler never converts a `Result` to its success value implicitly. Assignments, arguments, comparisons, interpolation and declared return types keep the wrapper, and a discarded `Result` is a compile error, so every `Error` is matched or given a `?:` fallback.
 Operation arity, whole `Result` transport, managed handler answers and curried ML calls have current regression coverage. See [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md) for delivery evidence and remaining ownership work, and the [effects guide](/docs/effects/) for the replacement handler syntax.
 
 ## Stop hiding the second return channel

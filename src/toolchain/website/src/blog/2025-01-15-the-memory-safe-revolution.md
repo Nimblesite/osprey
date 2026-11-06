@@ -13,9 +13,9 @@ Osprey uses immutable values, checked operations and runtime-managed memory to
 avoid common invalid-memory access in Osprey code. Native builds currently
 offer three memory backends:
 
-- `default`: allocation without reclamation
-- `gc`: tracing garbage collection
+- `gc`: tracing garbage collection, the default
 - `arc`: Perceus reference counting
+- `none`: allocation without reclamation, only with an explicit `--memory=none`
 
 The backend is selected at build time and does not change the program's source.
 The strict static-memory subset in the specification remains a design target;

@@ -58,7 +58,7 @@ Every check runs with two controls. A **corrupted proof** keeps the real stateme
 | Recent OpenAI mathematics developments | 17 supporting lemmas | 51 successful root checks; 102 rejected mutations |
 | Actual string-constructor proofs | 2 | 6 successful axiom-free checks; 12 rejected mutations |
 
-Together these are 194 selected statements: 582 successful root checks and 1,164 rejections, verified at the **30 October 2026** checkpoint, when the checker suite also passed all 400 kernel cases on each backend. Source changes since then need fresh validation.
+Together these are 194 selected statements: 582 successful root checks and 1,164 rejections, verified at the **30 October 2026** checkpoint. The kernel suite deliberately keeps one failing case: mutual, nested and indexed recursors, which the kernel does not accept yet. Source changes since then need fresh validation.
 
 - The Lean-core count includes three compatible constructive proofs of the original statements. The three original certificates are still refused at a nested-inductive dependency (`Lean.Syntax`), and an alternative proof does not count as support for the original.
 - The OpenAI lemmas are supporting results (infinite stacks, a doubling loop's exact work cost, finite-index injectivity, five-colour orientation), not the headline research theorems. Five use no axioms, ten use `propext` and two use `Quot.sound`.
