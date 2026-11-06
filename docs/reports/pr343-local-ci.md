@@ -9,7 +9,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Detect changed areas | `node --test scripts/ci/ci-scope.test.mjs`; `python3 src/toolchain/benchmarks/test_merge_results.py --tooling-only`; `python3 src/toolchain/benchmarks/test_instruction_gate.py` | check-once-claude | [x] check-once-claude 2026-11-06 |
 | Format & Analyse | link-skills, node-deps, release gates, dead code, licenses, package coverage scripts, `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `npm run lint`, `npm run test:shipwright`, deslop, `make -C src/toolchain hawk` | check-once-claude | [x] check-once-claude 2026-11-06 (fmt, clippy, lint, shipwright, deslop, hawk) |
 | Rust workspace (rest) | `make _test_rust_shard RUST_SHARD=rest` | check-once-claude | [x] check-once-claude 2026-11-06 (no-fail-fast, all binaries ok) |
-| Rust workspace (workbench) | `make _test_rust_shard RUST_SHARD=workbench` | check-once-claude | [ ] |
+| Rust workspace (workbench) | `make _test_rust_shard RUST_SHARD=workbench` | check-once-claude | [x] check-once-claude 2026-11-06 (3/3) |
 | Rust workspace (packages) | `make _test_rust_shard RUST_SHARD=packages` | OspreyCodex | [x] GC/ARC oracle matrix passed in 219.82s; LCOV collected (`f4a096d2e`) |
 | Package source coverage | `make _check_packages && make _test_packages` | OspreyCodex | [x] All 28 passed (`f4a096d2e`) |
 | Package manager (gc, arc) | `make _test_registry REGISTRY_MEMORY=gc` and `=arc` | OspreyCodex | [x] 525 Osprey and 13 Python tests per backend (`f4a096d2e`) |
