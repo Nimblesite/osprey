@@ -1019,6 +1019,18 @@ multiEffectRegionCase () =
         generousAudits == notes
     ]
 
+(** The text one direct `fill` arm answers for [field], from its own region. *)
+filled (text, field) =
+    handle TextError
+        fill _field => text
+    perform TextError.fill field
+
+(** The number one direct `number` arm answers for [field], from its own region. *)
+numbered (value, field) =
+    handle TextError
+        number _field => value
+    perform TextError.number field
+
 (** Verify boundary values cross a direct arm without being reshaped.
 
     Each `perform` gets its own answer from the same arm, so three requests in
@@ -1039,42 +1051,15 @@ boundaryValueRecoveryCase () =
                     2 => "x"
                     _ => "  spaced  "
         fillAll ()
-    blank =
-        handle TextError
-            fill _field => ""
-        perform TextError.fill "blank"
-    single =
-        handle TextError
-            fill _field => "z"
-        perform TextError.fill "single"
-    digits =
-        handle TextError
-            fill _field => "007"
-        perform TextError.fill "digits"
-    mixedCase =
-        handle TextError
-            fill _field => "OsPrey"
-        perform TextError.fill "case"
-    punctuated =
-        handle TextError
-            fill _field => "a-b_c.d,e"
-        perform TextError.fill "punct"
-    repeated =
-        handle TextError
-            fill _field => "abab abab"
-        perform TextError.fill "repeat"
-    zero =
-        handle TextError
-            number _field => 0
-        perform TextError.number "zero"
-    big =
-        handle TextError
-            number _field => 2147483647
-        perform TextError.number "big"
-    negative =
-        handle TextError
-            number _field => -2147483647
-        perform TextError.number "negative"
+    blank = filled ("", "blank")
+    single = filled ("z", "single")
+    digits = filled ("007", "digits")
+    mixedCase = filled ("OsPrey", "case")
+    punctuated = filled ("a-b_c.d,e", "punct")
+    repeated = filled ("abab abab", "repeat")
+    zero = numbered (0, "zero")
+    big = numbered (2147483647, "big")
+    negative = numbered (-2147483647, "negative")
 
     // Three performs, two of them under the duplicate field name "a", get the
     // first, second and third answers: "" then "x" then "  spaced  ", joined
