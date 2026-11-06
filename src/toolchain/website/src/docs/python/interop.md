@@ -1,16 +1,18 @@
 ---
 layout: page
-title: Python interop
-description: Call Python libraries from Osprey through an effect, call compiled Osprey from a Python application, and reuse much ordinary Python code as Osprey source in the Python flavor.
+title: "Python interop: call Python from Osprey, and Osprey from Python"
+description: "Python interopmaxxing in Osprey: call NumPy, PyTorch or any Python library from a compiled, statically typed language, call fast native Osprey code from Python, and reuse ordinary Python code as Osprey."
 permalink: /docs/python/interop/
-tags: [python, interop, algebraic-effects]
+tags: [python, interop, python-interop, python-ffi, embed-python, numpy, pytorch, data-science, machine-learning, algebraic-effects]
 ---
 
-Osprey works with Python in three ways:
+Osprey goes all in on Python. Call it **Python interopmaxxing**: you keep the Python libraries and habits you already have, and add a compiled, statically typed language with algebraic effects, which makes it easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you shouldn't have to give any of them up to try Osprey.
 
-1. **Write Python-style code that is Osprey.** Much ordinary Python already compiles as Osprey source in the [Python flavor](/docs/python/flavor/).
-2. **Call Python from Osprey.** A `Python` effect calls into a running CPython, so Osprey code can use any Python library.
-3. **Call Osprey from Python.** Compile Osprey to a native library and load it with `import osprey`.
+There are three ways in:
+
+1. **Write Python-style code that is Osprey.** Much ordinary Python already compiles as Osprey source in the [Python flavor](/docs/python/flavor/). Types are inferred and checked before the program runs.
+2. **Call Python from Osprey.** A `Python` effect calls into a running CPython, so Osprey code can use any Python library: models, data loaders, tokenizers, plotting.
+3. **Call Osprey from Python.** Compile Osprey to a native library and `import osprey` from Python, the way you would use a C extension or bindings, but without writing C.
 
 ## A lot of Python is already Osprey
 
@@ -44,7 +46,7 @@ Osprey infers the types, checks them before the program runs, and compiles a nat
 
 A [flavor converter](/docs/python/flavor/#converting-between-flavors-coming) is planned to move Python-flavor files to Default or ML Osprey, and back.
 
-## Call Python from Osprey
+## Call Python from Osprey (embed a Python library)
 
 Python is a capability, so Osprey models it as an effect. Code performs `Python.call(module, function, jsonArgs)`. The `live` handler sends the call to CPython, and a test handler answers with no Python at all:
 
@@ -56,7 +58,7 @@ Python is a capability, so Osprey models it as an effect. Code performs `Python.
 
 This program runs inside a Python process, so it is compiled for the Python target and started from Python, as shown in the next section.
 
-## Call Osprey from Python
+## Call Osprey from Python (native speed, no C extension)
 
 Compile the Osprey file into a native library for Python (on Linux use `.so` instead of `.dylib`):
 
@@ -88,7 +90,7 @@ The Python-flavor version uses typed `@extern` signatures instead of an effect:
 {{ pythonInterop.flavor | safe }}
 ```
 
-## Real use
+## Real use: an ML data pipeline
 
 [LLM dataset audit](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/python/osprey/dataset_audit/README.md) is an installed Python tool. Python loads datasets and tokenizers, and native Osprey decides the policy for every record. It has run on all 15,011 Dolly records with the GPT-2 tokenizer.
 
