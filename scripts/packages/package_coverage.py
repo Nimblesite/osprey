@@ -33,7 +33,7 @@ from package_coverage_evidence import (
 )
 from package_coverage_projects import (
     GATED_KINDS, MIN_THRESHOLD, PACKAGES_DIR, PROJECT_KEYS, gate_entries, kind_map_problems, kind_noun, project_dirs,
-    minimum, project_label, report_name, required_source_files, own_source_relative,
+    minimum, project_label, unfinished_problem, report_name, required_source_files, own_source_relative,
 )
 
 EXIT_OK = 0
@@ -90,7 +90,7 @@ def validate_entry(root: Path, kind: str, name: str, entry: object, verify_golde
         return [f"{label}: gate entry must be an object"]
     floor = minimum(entry)
     threshold = entry.get("threshold", floor)
-    problems = []
+    problems = [f"{label}: {problem}" for problem in unfinished_problem(kind, name, entry)]
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
         problems.append(f"{label}: threshold must be numeric")
     elif not floor <= threshold <= MAX_THRESHOLD:
