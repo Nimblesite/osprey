@@ -5,6 +5,7 @@ description: "Python interopmaxxing in Osprey: call NumPy, PyTorch or any Python
 permalink: /docs/python/interop/
 tags: [python, interop, python-interop, python-ffi, embed-python, numpy, pytorch, data-science, machine-learning, algebraic-effects]
 ---
+{% from "native-capture.njk" import capture %}
 
 Osprey goes all in on Python. Call it **Python interopmaxxing**: keep your Python libraries and habits, and add a compiled, statically typed language whose algebraic effects make it easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you keep them.
 
@@ -43,6 +44,9 @@ carol: 80 is high
 ```
 
 Osprey checks the types before it runs, then compiles natively. It isn't CPython: field mutation and exceptions are rejected, failures are `Result` values, and imports name Osprey modules. See [how Python flavor differs from Python](/docs/python/flavor/#how-python-flavor-differs-from-python). A [flavor converter](/docs/python/flavor/#converting-between-flavors-coming) is planned.
+
+{{ capture("/assets/images/guides/python-hello.png", "Python-flavor source compiled and executed by Osprey · a greeting appears in the output.", "Python-flavor source compiled and executed by Osprey · a greeting appears in the output.", 1440, 920) }}
+{{ capture("/assets/images/guides/python-flavor-static-types.png", "The Playground compiling row = [42, \"Ada\", 3.5] in Python flavor: compilation fails with 3:6: type mismatch: cannot unify int with string, and 3:6: type mismatch: cannot unify int with float.", "Valid Python, rejected before it runs: Osprey cannot give the list a single element type.", 1440, 520) }}
 
 ## Call Python from Osprey (embed a Python library)
 
