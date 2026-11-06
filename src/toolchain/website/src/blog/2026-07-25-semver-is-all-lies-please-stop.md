@@ -85,7 +85,7 @@ The tests are an instrument panel, not a constitutional ban on change. They turn
 
 ## Osprey's package-manager plan separates identity, order, and compatibility
 
-This is why the [Osprey package-manager plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) and [package specification](/spec/0029-packagemanagement/) reject SemVer fields and version ranges. The folder registry, resolver and lock already implement it, and it gives the three jobs hidden inside a semantic version to three different mechanisms:
+This is why the [Osprey package-manager plan](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0020-package-manager.md) and [package specification](/spec/0029-packagemanagement/) reject SemVer fields and version ranges. The design is specified, not implemented yet, and it gives the three jobs hidden inside a semantic version to three different mechanisms:
 
 | Concern | Osprey mechanism | What it actually says |
 | --- | --- | --- |

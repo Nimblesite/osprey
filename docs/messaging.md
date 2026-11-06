@@ -1,32 +1,32 @@
 # Writing about Osprey
 
-**Effects first. Real code. Visible results. One next step.** This is the brief for the homepage, videos, README, examples, and documentation. Pair it with the [Osprey design system](../src/toolchain/website/design_system.md) before writing or rendering.
-
-Osprey is a functional language with algebraic effects, inferred types, and native compilation. Lead with what a program does: it requests storage; one handler writes a file; another simulates being offline. The function stays the same. Show the output before explaining the machinery.
-
-## The three pillars
-
-Osprey stands on three pillars: **safety, elegance and performance**. They are the point of the language. Every feature is evidence for one of them, and every page, video, README and example states them before the feature inventory. Say all three together on first mention, in this order.
-
-- **Safety: fewer bugs and failures.** Osprey is algebraic and has no panics. Expected failures are `Result` values the caller must handle; data models list every case and matching is exhaustive; integer arithmetic follows an explicit `Arith` policy instead of silently wrapping; effects make outside work visible and replaceable. Keep the qualifications below (device-kernel faults, the C boundary) beside these claims.
-- **Elegance: more program for less text.** Inferred types, effects instead of plumbing, and direct concurrent code without a separate async form. Less text means fewer tokens: Osprey programs are cheaper for AI agents to read, write and review, and easier for people to hold in their heads. Say this plainly; it is a measurable consequence, not a slogan.
-- **Performance: native from the start.** LLVM native binaries with no VM or JIT warm-up, static handler selection that removes runtime effect dispatch, lightweight fibers, and a memory backend chosen per build. Performance is always critical for a language; state it as a design commitment and attach any relative figure to a published benchmark.
-
-Short form: **Safe, elegant, fast.** Removing the pillars from the homepage, README or an introduction is a regression, not a simplification.
+**Real code. Visible results. One next step.** This brief covers the homepage, videos, README, examples and documentation. Pair it with the [Osprey design system](../src/toolchain/website/design_system.md).
 
 ## What Osprey is for
 
-Osprey is for **apps, backends, ML and AI, and mathematics**, and it is built to be good at all of them. Say this on the homepage and in every introduction, before the feature inventory. Back each area with a real example: native apps on macOS, Windows, Linux, iOS, Android and the web; HTTP backends; language models built on the `@osprey/transformers` port and running on native GPU kernels; machine-checked proofs. Name Windows whenever you list desktop platforms. Do not open the homepage with a list of mechanisms (effects, `Result`, LLVM); the pillars section covers them. Homepage section labels are words, never numbers.
+Osprey is for **apps, backends, ML and AI, and mathematics**, and it is built to be good at all of them. Say this first, before any feature list, and back each area with a real example: Osprey Native apps on macOS, Windows, Linux, iOS, Android and the web; HTTP backends; language models built on the `@osprey/transformers` port and running on native GPU kernels; machine-checked proofs. Name Windows whenever you list desktop platforms.
+
+## The three pillars
+
+**Safe, elegant, fast.** Say all three together, in this order, on first mention; removing them from the homepage, README or an introduction is a regression.
+
+- **Safety: fewer bugs.** No panics: expected failures are `Result` values the caller must handle, matching is exhaustive, integer arithmetic follows an explicit `Arith` policy, and effects make outside work visible and replaceable. Keep the qualifications below beside these claims.
+- **Elegance: more program, less text.** Inferred types, effects instead of plumbing, concurrency without a separate async form. Less text means fewer tokens: cheaper for AI agents and easier for people.
+- **Performance: native from the start.** LLVM native binaries with no VM or JIT warm-up, static handler selection, lightweight fibers, a memory backend chosen per build. Attach every relative figure to a published benchmark.
+
+## Osprey Native
+
+**Osprey Native (`@osprey/native`) is a headline feature.** One Osprey app (state, logic and UI) compiles ahead of time to native code, and each host draws it either with the platform's own native widgets (SwiftUI, WinUI, Android) or on a GPU canvas (the GPUI host). Say how this differs, concretely: Flutter and Compose Multiplatform draw their own widgets everywhere instead of the platform's; React Native runs JavaScript in an engine. Osprey Native does neither: native code, native widgets or a canvas, your choice per host. Show the real apps (Issue Inbox, Prism Synth, the casting player) rather than describing them. Keep host coverage honest: name which hosts run which app.
 
 ## Message order
 
-1. **Effects:** declare a need with `effect`, request it with `perform`, choose its implementation with a callable `handler` or block-scoped `handle`. Explain the benefit through storage, logging, platform services, or deterministic tests.
-2. **Types:** inference removes repeated annotations; exhaustive matching and `Result` keep cases and failures visible.
-3. **Three syntax flavors. One language:** A syntax flavor is a way to write Osprey: Default braces, ML indentation or Python-style syntax. Say **syntax flavor** on first mention and define it; do not assume “flavor” explains itself. Each keeps its idioms while sharing Osprey’s types, effects and compiler. Choose per file and import across flavors in one project. Show all three in introductory code controls; Python flavor belongs on the homepage; the initial selection is Default (.osp).
-4. **Deployment:** LLVM native programs, WebAssembly, and C ABI libraries for native mobile hosts.
-5. **Concurrency and memory:** isolated fibers, tracing GC, and reference counting where supported.
+1. **What it's for**, with one real example.
+2. **Effects:** `effect` declares a need, `perform` requests it, a `handler` or `handle` block implements it. Show the benefit with storage, logging, platform services or tests.
+3. **Types:** inference removes annotations; exhaustive matching and `Result` keep cases and failures visible.
+4. **Three syntax flavors, one language:** Default braces, ML indentation or Python-style syntax. Say **syntax flavor** and define it on first mention. Show all three; the initial selection is Default (.osp).
+5. **Platforms:** Osprey Native apps, WebAssembly, and C ABI libraries for mobile hosts.
 
-A short introduction needs only the first point, proof, and a next step. Headlines carry the idea; supporting text earns its place by explaining the example. A video demonstrates one change, with narration describing the code or result currently visible. Do not read a feature inventory over decorative footage.
+A short introduction needs only the first point, proof, and a next step. Homepage section labels are words, never numbers. A video demonstrates one change, narrating what is on screen.
 
 ## Python to GPU
 

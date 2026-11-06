@@ -468,3 +468,18 @@ test("the homepage says what Osprey is for, lists every platform, and has no num
   await expect(effects.locator(".language-grid article")).toHaveCount(4);
   await expect(effects).not.toContainText("default allocator");
 });
+
+test("the homepage presents Osprey Native in one panel: native widgets or a canvas, every platform, real captures", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator("#targets, .deployment-section, .mobile-capabilities")).toHaveCount(0);
+  const native = page.locator("section#native");
+  await expect(native.locator("h2")).toContainText("Osprey Native");
+  for (const phrase of ["@osprey/native", "native widgets", "canvas", "Flutter", "React Native", "Compose Multiplatform"]) await expect(native).toContainText(phrase);
+  for (const platform of ["macOS", "Windows", "Linux", "WebAssembly", "iOS", "Android"]) await expect(native.locator(".native-platforms")).toContainText(platform);
+  await expect(native.locator(".mobile-gallery img, .mobile-gallery picture")).not.toHaveCount(0);
+  await native.getByRole("link", { name: "Explore Osprey Native" }).click();
+  await expect(page).toHaveURL(/\/docs\/osprey-native\/$/);
+  const messaging = fs.readFileSync(path.resolve(__dirname, "../../../../docs/messaging.md"), "utf8");
+  expect(messaging).toContain("## Osprey Native");
+  for (const rival of ["Flutter", "React Native", "Compose Multiplatform"]) expect(messaging).toContain(rival);
+});

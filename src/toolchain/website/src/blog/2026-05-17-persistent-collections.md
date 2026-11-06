@@ -66,15 +66,21 @@ Osprey uses the same trick internally. The runtime exposes a `Builder` type that
 
 ## Stream fusion still applies
 
-Osprey's iterator family (`map`, `filter`, `fold`, `forEach`) does compile-time stream fusion in the style of Coutts, Leshchinskiy & Stewart's [*Stream Fusion: From Lists to Streams to Nothing at All*](https://www.cs.tufts.edu/~nr/cs257/archive/duncan-coutts/stream-fusion.pdf) (ICFP 2007): a `map`/`filter` chain over a `range` compiles to a single loop with no intermediate list. A `List` is a separate, materialised type, so fusion applies to range pipelines, not to lists ([spec 0010](/spec/0010-loopconstructsandfunctionaliterators/)).
+Osprey's iterator family (`map`, `filter`, `fold`, `forEach`) already does compile-time stream fusion in the style of Coutts, Leshchinskiy & Stewart's [*Stream Fusion: From Lists to Streams to Nothing at All*](https://www.cs.tufts.edu/~nr/cs257/archive/duncan-coutts/stream-fusion.pdf) (ICFP 2007). With collections in the iterator family, a chain like:
+
+```osprey
+xs |> filter(isEven) |> map(double) |> forEach(print)
+```
+
+compiles to a single loop with no intermediate list materialised, as range pipelines do.
 
 ## What's tested
 
 Every behaviour above is locked in by tests at two levels:
 
-- **C runtime**: 35 vanilla-C unit tests with `assert()` in [`src/toolchain/compiler/runtime/list_tests.c`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/compiler/runtime/list_tests.c), `list_sort_tests.c` and [`src/toolchain/compiler/runtime/map_tests.c`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/compiler/runtime/map_tests.c). These cover empty edges, trie-level transitions at 32 / 33 / 1024 / 1025 elements, a 10 000-element stress, hash collisions, structural-sharing invariants ("mutate one version, the others stay intact"), and equivalence between builder construction and incremental `append`.
+- **C runtime**: 33 vanilla-C unit tests with `assert()` in [`src/toolchain/compiler/runtime/list_tests.c`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/compiler/runtime/list_tests.c) and [`src/toolchain/compiler/runtime/map_tests.c`](https://github.com/Nimblesite/osprey/tree/main/src/toolchain/compiler/runtime/map_tests.c). These cover empty edges, trie-level transitions at 32 / 33 / 1024 / 1025 elements, a 10 000-element stress, hash collisions, structural-sharing invariants ("mutate one version, the others stay intact"), and equivalence between builder construction and incremental `append`.
 
-- **End-to-end Osprey programs**: 9 `.osp` programs, each with an ML twin, in [`src/osprey/tests/core/collections/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/tests/core/collections). Each one compiles to a native binary and its `stdout` is byte-compared against a checked-in `.expectedoutput`. Any regression in length, value, iteration order or persistence breaks the build.
+- **End-to-end Osprey programs**: 12 `.osp` files in [`src/osprey/tests/core/collections/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/tests/core/collections). Each one actually runs through the JIT and its `stdout` is byte-compared against a checked-in `.expectedoutput`. Any regression in length, value, iteration order or persistence breaks the build.
 
 ## What's deferred
 
@@ -84,9 +90,10 @@ A few items were explicitly deferred at the time of this release:
 - **List comprehensions** (`[x * x for x in xs]`) — same grammar pipeline.
 - **Bare `contains` / `get` / `reverse` / `indexOf`** without a `list`/`map` prefix. `length` and `isEmpty` already collapse: they dispatch on the receiver's runtime layout, so one spelling covers strings, lists and maps. The rest need overload resolution keyed on the first argument, which the one-scheme-per-name type environment cannot express yet.
 
-*Update:* the collections plan has since been retired. `[head, ...tail]` list
-patterns have since shipped ([spec 0007](/spec/0007-patternmatching/)), and the
-Python flavor has list comprehensions. The bare `contains` / `get` / `reverse` /
+> **Edit (6 November 2026):** Things went differently from this post. List pipelines did not join stream fusion: fusion applies to `range` pipelines, and a `List` stays a materialised type. The deferred `[head, ...tail]` patterns shipped ([spec 0007](/spec/0007-patternmatching/)), and the Python flavor has list comprehensions. The collection tests compile to native binaries; Osprey has no JIT.
+
+*Update:* the collections plan has since been retired. The grammar-dependent
+items above are still open, but the bare `contains` / `get` / `reverse` /
 `indexOf` surface was **withdrawn** rather than deferred — [spec
 0012](/spec/0012-built-infunctions/) now specifies the prefixed names as the
 shipped surface, with `length` and `isEmpty` the only bare ones.

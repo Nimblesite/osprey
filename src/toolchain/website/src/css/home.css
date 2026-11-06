@@ -63,21 +63,11 @@ html:has(.home) { scroll-behavior: auto; }
 .language-grid h3 { font-size: 1.2rem; font-weight: 500; letter-spacing: -0.03em; }
 .language-grid p { max-width: 47ch; color: var(--on-surface-variant); font-size: 0.92rem; }
 .language-grid a { font-size: 0.8rem; }
-.deployment-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem; }
-.deployment-target { border-block: 1px solid var(--outline-variant); color: var(--on-surface); padding: 1.5rem 0 2rem; transition: border-color 180ms ease; }
-.deployment-target:hover { border-color: var(--primary-container); }
-.target-index { font: 0.6rem var(--font-mono); letter-spacing: 0.1em; color: var(--on-surface-variant); }
-.deployment-target h3 { display: flex; justify-content: space-between; font-size: 1.5rem; margin-top: 1.5rem; font-weight: 500; }
-.deployment-target h3 span { color: var(--primary-container); }
-.deployment-target p { color: var(--on-surface-variant); font-size: 0.9rem; min-height: 4.5rem; }
-.deployment-target code { font-size: 0.7rem; color: var(--primary); overflow-wrap: anywhere; }
-.deployment-note { display: flex; gap: 3rem; align-items: center; justify-content: space-between; margin-top: 2rem; }
-.deployment-note p { max-width: 57ch; color: var(--on-surface-variant); font-size: 0.8rem; margin: 0; }
-.deployment-note a { flex-shrink: 0; font-size: 0.75rem; }
 .home .mobile-showcase { background: linear-gradient(150deg, #151b2d, #0c1325 65%); border-color: #77d7f425; }
 .home .mobile-gallery { transform: rotate(-2deg); }
 .home .mobile-gallery .mobile-capture:nth-child(2) { margin-top: 3rem; }
 .home .mobile-actions { align-items: center; }
+.native-platforms { font: 0.8rem var(--font-mono); letter-spacing: 0.04em; color: var(--primary); }
 .community-section { border-top: 1px solid #77d7f425; background: radial-gradient(ellipse at 85% 100%, #77d7f414, transparent 60%); }
 .community-cta { display: flex; align-items: flex-end; justify-content: space-between; gap: 3rem; flex-wrap: wrap; }
 .community-cta .section-heading { margin-bottom: 0; }
@@ -102,8 +92,6 @@ html:has(.home) { scroll-behavior: auto; }
   .home .hero-code { margin-top: 0; max-width: 600px; width: 100%; }
   .hero-footnote a { margin-left: 0; }
   .effect-layout { gap: 3rem; }
-  .deployment-note { display: block; }
-  .deployment-note a { margin-top: 1rem; }
 }
 @media (max-width: 600px) {
   .home-hero { padding-block: 1.5rem 2rem; }
@@ -119,12 +107,8 @@ html:has(.home) { scroll-behavior: auto; }
   .code-result { font-size: 0.65rem; }
   .result-label { display: none; }
   .hero-footnote { gap: 1rem; font-size: 0.54rem; }
-  .effect-layout, .language-grid, .deployment-grid { grid-template-columns: 1fr; }
+  .effect-layout, .language-grid { grid-template-columns: 1fr; }
   .effect-layout { gap: 2.5rem; }
-  .deployment-grid { gap: 0; }
-  .deployment-target { border-bottom: 0; }
-  .deployment-target:last-child { border-bottom: 1px solid var(--outline-variant); }
-  .deployment-target p { min-height: 0; }
   .home .mobile-gallery { transform: none; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; }
   .home .mobile-gallery figcaption span { font-size: 0.7rem; }
   .community-actions .btn { width: 100%; justify-content: center; }
@@ -148,10 +132,10 @@ html:has(.home) { scroll-behavior: auto; }
   .home .hero-footnote { --arrive-delay: 360ms; }
   .home.motion-ready .flight-film video { animation: film-in 1100ms ease-out both; }
   .home.motion-ready .hero-code [data-source-flavor]:not([hidden]) { animation: film-in 180ms ease-out; }
-  .home :is(.hero-actions .btn, .community-actions .btn, .text-link, .deployment-target h3) > span { transition: transform 180ms ease; }
+  .home :is(.hero-actions .btn, .community-actions .btn, .text-link) > span { transition: transform 180ms ease; }
   .home :is(.hero-actions .btn, .community-actions .btn, .text-link):focus-visible > span { transform: translateX(3px); }
   @media (hover: hover) {
-    .home :is(.hero-actions .btn, .community-actions .btn, .text-link, .deployment-target):hover span { transform: translateX(3px); }
+    .home :is(.hero-actions .btn, .community-actions .btn, .text-link):hover span { transform: translateX(3px); }
   }
   @keyframes arrive { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes film-in { from { opacity: 0.35; } to { opacity: 1; } }
