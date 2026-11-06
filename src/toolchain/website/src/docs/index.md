@@ -34,8 +34,6 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 - **[Use the Proof Workbench](/docs/proof-workbench/)** - write an argument, inspect hypotheses and goals, and work through guided lessons.
 - **[Mathlib port progress](/docs/mathlib-port/)** - real checked imports, reproducible commands and the remaining boundaries.
 
-{{ capture("/assets/images/native/macos-synth.png", "Prism Synth · connect a patch and play it in a native macOS window.", "Prism Synth · connect a patch and play it in a native macOS window.", 2304, 1512) }}
-
 ## Build applications
 
 - **[Osprey Native](/docs/osprey-native/)** — the application framework: one store, signals, typed screens and capabilities; SwiftUI, VS Code and GPU hosts draw them.
@@ -45,6 +43,8 @@ Lean provides the [development oracle](/docs/proofs/#lean-as-an-oracle) for comp
 - **[Explore the WebAssembly studio](/wasm/)** — compare the Default and ML flavors in a browser-hosted example.
 - **[Browse working examples](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/)** — study native, HTTP, WebSocket, terminal, graphics, and WebAssembly programs.
 - **[Document your modules](/docs/documentation/)** — generate HTML API references, add Markdown guides and custom CSS, and test documentation examples.
+
+{{ capture("/assets/images/native/macos-synth.png", "Prism Synth · connect a patch and play it in a native macOS window.", "Prism Synth · connect a patch and play it in a native macOS window.", 2304, 1512) }}
 
 ## Test and investigate
 
