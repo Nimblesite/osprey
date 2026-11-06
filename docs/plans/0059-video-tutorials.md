@@ -232,15 +232,19 @@ Extends the current video to the full four steps using
       the docs home and install pages (`[DOC-TUTORIAL-VIDEO-FINISHED]`).
 - [x] Move every video, poster and caption track to the Videos repository,
       fetched by `make media` (`[MEDIA-EXTERNAL]`).
-- [ ] Add the website tests for `[DOC-TUTORIAL-VIDEO-LENGTH]`,
-      `[DOC-TUTORIAL-VIDEO-CODE]` (code-scene share and path labels),
-      `[DOC-TUTORIAL-VIDEO-PACKAGES]` and `[DOC-TUTORIAL-VIDEO-FRESH]`. They
-      fail against the current videos.
-- [ ] Write the film and render each tutorial in the Videos repository:
-      `package-manager`, `static-typing-python`, `chromecast-from-mac`,
-      `rust-ui-framework-without-rust`, `ui-testing-by-label`, `profiler`,
-      `swift-interop`.
-- [ ] Update each watch page with the package links and the commands it runs.
-- [ ] Re-measure durations with `make -C src/toolchain/website video-metadata`.
+- [x] Every `videos.json` entry is `tutorial` or `intro`; a test checks the
+      kinds and that every tutorial runs 240 to 600 seconds and is listed
+      (`[DOC-TUTORIAL-VIDEO-KIND]`, `[DOC-TUTORIAL-VIDEO-LENGTH]`).
+- [ ] Add the website tests for `[DOC-TUTORIAL-VIDEO-CODE]` (code-scene share
+      and path labels) and `[DOC-TUTORIAL-VIDEO-FRESH]`.
+- [x] Render six tutorials in the Videos repository, each with the code, a
+      real run and one edit the tests catch: `chromecast-from-mac` (effects
+      for I/O, 7:22), `ui-testing-by-label` (6:17), `rust-ui-framework-without-rust`
+      (5:12), `static-typing-python` (4:51), `swift-interop` (4:21),
+      `profiler` (4:17).
+- [ ] Re-make `package-manager` (an `intro` until then; it needs a new shoot
+      in VS Code).
+- [x] Update each watch page with the package links and the commands it runs.
+- [x] Re-measure durations with `make -C src/toolchain/website video-metadata`.
 - [ ] Add the rules to the docs specs, and cite their IDs in the tests and
       the video script.
