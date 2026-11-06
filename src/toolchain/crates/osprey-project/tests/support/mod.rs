@@ -28,6 +28,15 @@ pub(crate) fn config(entry: &str) -> ProjectConfig {
     }
 }
 
+/// The entry file name a single-source project of `flavor` is written as.
+pub(crate) fn main_name(flavor: Flavor) -> &'static str {
+    match flavor {
+        Flavor::Ml => "main.ospml",
+        Flavor::Default => "main.osp",
+        Flavor::Python => "main.py",
+    }
+}
+
 pub(crate) fn parsed(path: &str, flavor: Flavor, text: &str) -> SourceFile {
     let parsed = parse_program_with_flavor(text, flavor);
     assert!(

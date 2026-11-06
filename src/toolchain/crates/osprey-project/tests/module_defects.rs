@@ -8,7 +8,7 @@ mod support;
 
 use osprey_ast::Stmt;
 use osprey_project::{assemble, SourceFile};
-use osprey_syntax::{parse_program_with_flavor, Flavor};
+use osprey_syntax::Flavor;
 use std::path::PathBuf;
 use support::{config, contains, error_messages};
 
@@ -36,24 +36,8 @@ fn dotted_module_members_and_record_fields_share_lexical_resolution(
 
 /// Parse and assemble one written source as a single-file project.
 fn project(flavor: Flavor, text: &str) -> Result<osprey_project::AssembledProject, Vec<String>> {
-    let name = match flavor {
-        Flavor::Ml => "main.ospml",
-        Flavor::Default => "main.osp",
-        Flavor::Python => "main.py",
-    };
-    let parsed = parse_program_with_flavor(text, flavor);
-    assert!(
-        parsed.errors.is_empty(),
-        "parse errors: {:?}",
-        parsed.errors
-    );
-    let source = SourceFile {
-        path: PathBuf::from(name),
-        flavor,
-        source: text.to_string(),
-        program: parsed.program,
-        discipline: None,
-    };
+    let name = support::main_name(flavor);
+    let source = support::parsed(name, flavor, text);
     assemble(&config(name), &[source]).map_err(|errors| {
         errors
             .into_iter()
