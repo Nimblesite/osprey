@@ -44,20 +44,6 @@ TEMPERATURE = 0.0
 NUM_PREDICT = 256
 
 
-def show_request(body):
-    """The model name from an `/api/show` body ([LLM-API-OLLAMA])."""
-    match Wire.decode(body):
-        case Success(value=document):
-            return required(Wire.text(document, "model"))
-        case Error(message=message):
-            return Error(message=message)
-
-
-def required(name):
-    """A required model name, or the rejection both protocols use."""
-    return Success(value=name) if name != "" else Error(message="model is required")
-
-
 class Sampling:
     """Ollama's generation options, reduced to the ones the server honours."""
     num_ctx: int
@@ -81,6 +67,20 @@ class Generate:
     prompt: str
     stream: bool
     sampling: Sampling
+
+
+def show_request(body):
+    """The model name from an `/api/show` body ([LLM-API-OLLAMA])."""
+    match Wire.decode(body):
+        case Success(value=document):
+            return required(Wire.text(document, "model"))
+        case Error(message=message):
+            return Error(message=message)
+
+
+def required(name):
+    """A required model name, or the rejection both protocols use."""
+    return Success(value=name) if name != "" else Error(message="model is required")
 
 
 def default_sampling():

@@ -228,12 +228,20 @@ def step(frame, byte):
             return key_step(frame, byte)
         case "str":
             return string_step(frame, byte, "done")
+        case "colon":
+            return colon_step(frame, byte)
+        case _:
+            return inner_step(frame, byte)
+
+
+def inner_step(frame, byte):
+    """One byte after a value's first: an enum or literal member, a container's
+    separator or closer, or a number's next part."""
+    match frame.stage:
         case "enum":
             return prefix_step(frame, byte)
         case "lit":
             return prefix_step(frame, byte)
-        case "colon":
-            return colon_step(frame, byte)
         case "afterArray":
             return after_step(frame, byte)
         case "afterObject":
@@ -274,6 +282,13 @@ def typed_start(frame, byte, declared):
             return container_start(frame, byte, "{", "objFirst", "object")
         case "array":
             return container_start(frame, byte, "[", "arrFirst", "array")
+        case _:
+            return keyword_start(frame, byte, declared)
+
+
+def keyword_start(frame, byte, declared):
+    """A declared type whose values are fixed words: `null` or a boolean."""
+    match declared:
         case "null":
             return bare_start(frame, byte, ["null"])
         case "boolean":
@@ -506,7 +521,7 @@ def number_digit(frame, byte):
 
 
 def number_step(frame, byte):
-    """The number's integer, fractional and exponent parts, and where a number ends."""
+    """The number's sign and integer part, or its fraction and exponent once begun."""
     match frame.stage:
         case "numSign":
             return number_digit(frame, byte)
@@ -514,6 +529,13 @@ def number_step(frame, byte):
             return zero_step(frame, byte)
         case "numInt":
             return int_step(frame, byte)
+        case _:
+            return number_tail_step(frame, byte)
+
+
+def number_tail_step(frame, byte):
+    """The fraction, the exponent, and where the number ends."""
+    match frame.stage:
         case "numDot":
             return dot_step(frame, byte)
         case "numFrac":

@@ -233,7 +233,7 @@ def restart(literal, byte):
 # --- the call grammar -----------------------------------------------------
 
 def step_call(machine, tools, byte):
-    """One byte of the call grammar, as a consumed-or-not outcome."""
+    """One byte of the call grammar's frame: the function's name and its close."""
     match machine.stage:
         case "fn":
             return strict(machine, byte, FUNCTION_OPEN, "name")
@@ -245,6 +245,13 @@ def step_call(machine, tools, byte):
             return tag_byte(machine, byte)
         case "fnclose":
             return strict(machine, byte, FUNCTION_CLOSE, "cend")
+        case _:
+            return step_argument(machine, byte)
+
+
+def step_argument(machine, byte):
+    """One byte of one argument: its opening tag, its name, its separator, its close."""
+    match machine.stage:
         case "pnopen":
             return strict(machine, byte, PARAMETER_OPEN, "pname")
         case "pname":
@@ -253,14 +260,21 @@ def step_call(machine, tools, byte):
             return separator_byte(machine, byte)
         case "valuestart":
             return value_start_byte(machine, byte)
+        case "ptail":
+            return closed_parameter(machine, byte)
+        case _:
+            return argument_value_byte(machine, byte)
+
+
+def argument_value_byte(machine, byte):
+    """One byte of an argument's value: verbatim text, an enum member, or JSON."""
+    match machine.stage:
         case "raw":
             return raw_byte(machine, byte)
         case "penum":
             return prefix_byte(machine, byte)
         case "json":
             return json_byte(machine, byte)
-        case "ptail":
-            return closed_parameter(machine, byte)
         case _:
             return closed_call(machine, byte)
 
