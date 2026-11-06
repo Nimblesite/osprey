@@ -14,14 +14,6 @@ fn productWith(label, kind, x, w, inner, expected) = withBuffer(gpuMatMulQuant(x
 fn valuesAt(buffer, indices, fallback) = mapList(indices, fn(i) => gpuGet(buffer, i) ?: fallback)
 /// readsTo is whether [buffer] reads exactly [expected] at [indices].
 fn readsTo(buffer, indices, fallback, expected) = structuralEquals(valuesAt(buffer, indices, fallback), expected)
-/// gathersTo is whether the elements at [indices] in an operation's result read [expected].
-fn gathersTo(result, indices, fallback, expected) = gpuSatisfies(result, fn(buffer) => readsTo(buffer, indices, fallback, expected))
-/// foldsTo is whether the fold in [result] equals [expected]; a failed GPU operation fails the case with its reason.
-fn foldsTo(result, expected) = gpuSatisfies(result, fn(total) => total == expected)
-/// lengthIs is whether an operation published [expected] elements.
-fn lengthIs(result, expected) = lengthIs(result, expected)
-/// listLengthIs is whether [result]'s list has [expected] elements.
-fn listLengthIs(result, expected) = listLengthIs(result, expected)
 fn productCase(label, kind, bytes, inner, expected) = withBuffer(toGpu(range(0, inner)), fn(indices) => withBuffer(gpuMap(indices, fn(i) => toFloat32(i)), fn(x) => withBuffer(toGpu(bytes), fn(w) => productWith(label, kind, x, w, inner, expected))))
 
 /// [LLM-MATMUL-QUANT] Q8_0: 32 weights per 34-byte block, a binary16 scale and one signed byte per weight.
