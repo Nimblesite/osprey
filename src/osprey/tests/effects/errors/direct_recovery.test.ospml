@@ -351,6 +351,24 @@ everyValue () =
     looked = resultScore r
     "${toString n}|${t}|${toString b}|${s.tag}|${toString heavy}|${toString graded}|${toString looked}"
 
+(** Answer `ValueError.asInt` with `value`, ignoring the inspected field name. *)
+askedInt value label =
+    handle ValueError
+        asInt _field => value
+    perform ValueError.asInt label
+
+(** Answer `ValueError.asGrade` with `value`, ignoring the inspected field name. *)
+askedGrade value label =
+    handle ValueError
+        asGrade _field => value
+    perform ValueError.asGrade label
+
+(** Answer `ValueError.asResult` with `value`, ignoring the inspected field name. *)
+askedResult value label =
+    handle ValueError
+        asResult _field => value
+    perform ValueError.asResult label
+
 (** TierError exposes three operations so complementary partial handlers can split them. *)
 effect TierError
     (** Supply the base amount for `label`. *)
@@ -423,6 +441,18 @@ fillAll () =
     c = perform TextError.fill "b"
     "${a}/${b}/${c}"
 
+(** Answer `TextError.fill` with `value`, ignoring the requested field name. *)
+fillValue value label =
+    handle TextError
+        fill _field => value
+    perform TextError.fill label
+
+(** Answer `TextError.number` with `value`, ignoring the requested field name. *)
+numberValue value label =
+    handle TextError
+        number _field => value
+    perform TextError.number label
+
 (** Verify every declared operation result type survives direct substitution.
 
     [EFFECTS-HANDLER-ARMS]: with no `resume` anywhere in the region, "the arm's
@@ -461,14 +491,8 @@ everyResultTypeCase () =
                 marks := marks + 1 
                 trail := "${trail}m:${field}|"
         everyValue ()
-    intValue =
-        handle ValueError
-            asInt _field => 0
-        perform ValueError.asInt "zero"
-    negativeValue =
-        handle ValueError
-            asInt _field => -41
-        perform ValueError.asInt "negative"
+    intValue = askedInt 0 "zero"
+    negativeValue = askedInt (-41) "negative"
     floatValue =
         handle ValueError
             asFloat _field => 2.5
@@ -485,22 +509,10 @@ everyResultTypeCase () =
         handle ValueError
             asSpare _field => Spare(tag = "left", weight = 1.5, ready = true)
         perform ValueError.asSpare "spare"
-    grantedValue =
-        handle ValueError
-            asGrade _field => Granted(score = 7)
-        perform ValueError.asGrade "good"
-    refusedValue =
-        handle ValueError
-            asGrade _field => Refused(reason = "denied")
-        perform ValueError.asGrade "bad"
-    okValue =
-        handle ValueError
-            asResult _field => Success(value = 5)
-        perform ValueError.asResult "hit"
-    badValue =
-        handle ValueError
-            asResult _field => Error(message = "absent")
-        perform ValueError.asResult "miss"
+    grantedValue = askedGrade (Granted(score = 7)) "good"
+    refusedValue = askedGrade (Refused(reason = "denied")) "bad"
+    okValue = askedResult (Success(value = 5)) "hit"
+    badValue = askedResult (Error(message = "absent")) "miss"
     grantedScore = gradeScore grantedValue
     refusedScore = gradeScore refusedValue
     okScore = resultScore okValue
@@ -1156,42 +1168,15 @@ boundaryValueRecoveryCase () =
                     2 => "x"
                     _ => "  spaced  "
         fillAll ()
-    blank =
-        handle TextError
-            fill _field => ""
-        perform TextError.fill "blank"
-    single =
-        handle TextError
-            fill _field => "z"
-        perform TextError.fill "single"
-    digits =
-        handle TextError
-            fill _field => "007"
-        perform TextError.fill "digits"
-    mixedCase =
-        handle TextError
-            fill _field => "OsPrey"
-        perform TextError.fill "case"
-    punctuated =
-        handle TextError
-            fill _field => "a-b_c.d,e"
-        perform TextError.fill "punct"
-    repeated =
-        handle TextError
-            fill _field => "abab abab"
-        perform TextError.fill "repeat"
-    zero =
-        handle TextError
-            number _field => 0
-        perform TextError.number "zero"
-    big =
-        handle TextError
-            number _field => 2147483647
-        perform TextError.number "big"
-    negative =
-        handle TextError
-            number _field => -2147483647
-        perform TextError.number "negative"
+    blank = fillValue "" "blank"
+    single = fillValue "z" "single"
+    digits = fillValue "007" "digits"
+    mixedCase = fillValue "OsPrey" "case"
+    punctuated = fillValue "a-b_c.d,e" "punct"
+    repeated = fillValue "abab abab" "repeat"
+    zero = numberValue 0 "zero"
+    big = numberValue 2147483647 "big"
+    negative = numberValue (-2147483647) "negative"
 
     // Three performs, two of them under the duplicate field name "a", get the
     // first, second and third answers: "" then "x" then "  spaced  ", joined

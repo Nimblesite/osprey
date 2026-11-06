@@ -391,6 +391,24 @@ fn everyValue() ![ValueError, Arith] = {
     "${toString(n)}|${t}|${toString(b)}|${s.tag}|${toString(heavy)}|${toString(graded)}|${toString(looked)}"
 }
 
+/// Answer `ValueError.asInt` with `value`, ignoring the inspected field name.
+fn askedInt(value, label) = {
+    handle ValueError { asInt _field => value }
+    perform ValueError.asInt(label)
+}
+
+/// Answer `ValueError.asGrade` with `value`, ignoring the inspected field name.
+fn askedGrade(value, label) = {
+    handle ValueError { asGrade _field => value }
+    perform ValueError.asGrade(label)
+}
+
+/// Answer `ValueError.asResult` with `value`, ignoring the inspected field name.
+fn askedResult(value, label) = {
+    handle ValueError { asResult _field => value }
+    perform ValueError.asResult(label)
+}
+
 /// TierError exposes three operations so complementary partial handlers can split them.
 effect TierError {
     /// Supply the base amount for `label`.
@@ -467,6 +485,18 @@ fn fillAll() !TextError = {
     "${a}/${b}/${c}"
 }
 
+/// Answer `TextError.fill` with `value`, ignoring the requested field name.
+fn fillValue(value, label) = {
+    handle TextError { fill _field => value }
+    perform TextError.fill(label)
+}
+
+/// Answer `TextError.number` with `value`, ignoring the requested field name.
+fn numberValue(value, label) = {
+    handle TextError { number _field => value }
+    perform TextError.number(label)
+}
+
 /// Verify every declared operation result type survives direct substitution.
 ///
 /// [EFFECTS-HANDLER-ARMS]: with no `resume` anywhere in the region, "the arm's
@@ -515,18 +545,8 @@ fn everyResultTypeCase() = {
         }
         everyValue()
     }
-    let intValue = {
-        handle ValueError {
-            asInt _field => 0
-        }
-        perform ValueError.asInt("zero")
-    }
-    let negativeValue = {
-        handle ValueError {
-            asInt _field => -41
-        }
-        perform ValueError.asInt("negative")
-    }
+    let intValue = askedInt(0, "zero")
+    let negativeValue = askedInt(-41, "negative")
     let floatValue = {
         handle ValueError {
             asFloat _field => 2.5
@@ -551,30 +571,10 @@ fn everyResultTypeCase() = {
         }
         perform ValueError.asSpare("spare")
     }
-    let grantedValue = {
-        handle ValueError {
-            asGrade _field => Granted { score: 7 }
-        }
-        perform ValueError.asGrade("good")
-    }
-    let refusedValue = {
-        handle ValueError {
-            asGrade _field => Refused { reason: "denied" }
-        }
-        perform ValueError.asGrade("bad")
-    }
-    let okValue = {
-        handle ValueError {
-            asResult _field => Success { value: 5 }
-        }
-        perform ValueError.asResult("hit")
-    }
-    let badValue = {
-        handle ValueError {
-            asResult _field => Error { message: "absent" }
-        }
-        perform ValueError.asResult("miss")
-    }
+    let grantedValue = askedGrade(Granted { score: 7 }, "good")
+    let refusedValue = askedGrade(Refused { reason: "denied" }, "bad")
+    let okValue = askedResult(Success { value: 5 }, "hit")
+    let badValue = askedResult(Error { message: "absent" }, "miss")
     let grantedScore = gradeScore(grantedValue)
     let refusedScore = gradeScore(refusedValue)
     let okScore = resultScore(okValue)
@@ -1309,60 +1309,15 @@ fn boundaryValueRecoveryCase() = {
         }
         fillAll()
     }
-    let blank = {
-        handle TextError {
-            fill _field => ""
-        }
-        perform TextError.fill("blank")
-    }
-    let single = {
-        handle TextError {
-            fill _field => "z"
-        }
-        perform TextError.fill("single")
-    }
-    let digits = {
-        handle TextError {
-            fill _field => "007"
-        }
-        perform TextError.fill("digits")
-    }
-    let mixedCase = {
-        handle TextError {
-            fill _field => "OsPrey"
-        }
-        perform TextError.fill("case")
-    }
-    let punctuated = {
-        handle TextError {
-            fill _field => "a-b_c.d,e"
-        }
-        perform TextError.fill("punct")
-    }
-    let repeated = {
-        handle TextError {
-            fill _field => "abab abab"
-        }
-        perform TextError.fill("repeat")
-    }
-    let zero = {
-        handle TextError {
-            number _field => 0
-        }
-        perform TextError.number("zero")
-    }
-    let big = {
-        handle TextError {
-            number _field => 2147483647
-        }
-        perform TextError.number("big")
-    }
-    let negative = {
-        handle TextError {
-            number _field => -2147483647
-        }
-        perform TextError.number("negative")
-    }
+    let blank = fillValue("", "blank")
+    let single = fillValue("z", "single")
+    let digits = fillValue("007", "digits")
+    let mixedCase = fillValue("OsPrey", "case")
+    let punctuated = fillValue("a-b_c.d,e", "punct")
+    let repeated = fillValue("abab abab", "repeat")
+    let zero = numberValue(0, "zero")
+    let big = numberValue(2147483647, "big")
+    let negative = numberValue(-2147483647, "negative")
 
     // Three performs, two of them under the duplicate field name "a", get the
     // first, second and third answers: "" then "x" then "  spaced  ", joined

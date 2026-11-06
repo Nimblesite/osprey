@@ -99,6 +99,12 @@ fn withReadOnlyStorage(action) = {
     action()
 }
 
+/// Report whether `file` is gone with `needle` in the failure message.
+fn fileAbsent(file, needle) = match readFile(file) {
+    Success => false
+    Error { message } => contains(message, needle)
+}
+
 /// A fresh 126-bit random suffix isolates concurrent executions of either flavor.
 let diskBook = "osprey_storage_injection_${random()}_${random()}.txt"
 let diskArchive = "${diskBook}.archive.txt"
@@ -180,14 +186,8 @@ fn mockStorageCase() = {
     ])
 
     /// The double touched no file system: nothing named by the test exists.
-    let notesAbsent = match readFile("notes.txt") {
-        Success => false
-        Error { message } => contains(message, "No such file or directory")
-    }
-    let archiveAbsent = match readFile("archive.txt") {
-        Success => false
-        Error { message } => contains(message, "readFile")
-    }
+    let notesAbsent = fileAbsent("notes.txt", "No such file or directory")
+    let archiveAbsent = fileAbsent("archive.txt", "readFile")
     checkAll("mock touched no file system", [
         notesAbsent,
         archiveAbsent
