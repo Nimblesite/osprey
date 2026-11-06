@@ -59,16 +59,10 @@ suite("workbench VSIX browser", () => {
         const icon = frame.getByRole("button", { name: label, exact: true }).locator(".osp-symbol");
         assert.ok(await icon.isVisible(), `${label} retains its visible source asset`);
         assert.strictEqual(await icon.getAttribute("data-symbol"), symbol);
-        // The stylesheet that turns the symbol's image into its mask loads after the markup.
-        await icon.evaluate((node, path) => new Promise<void>((resolve, reject) => {
-          const started = Date.now();
-          const look = (): void => {
-            if (getComputedStyle(node).maskImage.includes(path)) resolve();
-            else if (Date.now() - started > 5000) reject(new Error(`${path} is not the mask: ${getComputedStyle(node).maskImage}`));
-            else setTimeout(look, 50);
-          };
-          look();
-        }), `icons/${file}.svg`);
+        // [#352] The mask comes from the span's inline `--osp-symbol-image` and the inline workspace styles, so it holds the moment the icon exists.
+        const mask = await icon.evaluate(node => getComputedStyle(node).maskImage);
+        assert.ok(mask.includes(`icons/${file}.svg`), `${label} masks with ${file}.svg, got ${mask}`);
+        assert.strictEqual((mask.match(/url\(/g) ?? []).length, 1, `${label} has exactly one mask image`);
       }
       await theme.click();
       await theme.locator('[data-symbol="sun.max"]').waitFor();
