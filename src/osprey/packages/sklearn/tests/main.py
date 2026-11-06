@@ -396,6 +396,11 @@ def stats_cases():
     """The shared Stats helpers."""
     return [
         close_f("stats.sum", Stats.sum_float([1.0, 2.5, 3.0]), 6.5, TIGHT, TIGHT),
+        Check.equal("stats.cmp_int_less", Stats.cmp_int(2, 5), -1),
+        Check.equal("stats.cmp_int_more", Stats.cmp_int(5, 2), 1),
+        Check.equal("stats.cmp_int_same", Stats.cmp_int(3, 3), 0),
+        Check.ints_equal("stats.encode_labels", Stats.encode_labels([3, 7, 9], [9, 3, 7, 9]), [2, 0, 1, 2]),
+        Check.ints_equal("stats.map_indexed", Stats.map_indexed([1.5, 2.5], lambda i: i * 4), [0, 4]),
         close_f("stats.mean", Stats.mean_float([1.0, 2.0, 3.0]), 2.0, TIGHT, TIGHT),
         close_f("stats.min", Stats.min_float([3.0, 1.0, 2.0]), 1.0, TIGHT, TIGHT),
         close_f("stats.max", Stats.max_float([3.0, 1.0, 2.0]), 3.0, TIGHT, TIGHT),

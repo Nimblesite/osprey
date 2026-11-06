@@ -94,7 +94,7 @@ module Json : JsonApi
             Success doc =>
                 count = jsonLength doc ""
                 valid = count <= limit && rows doc 0 count
-                freed = jsonFree doc ?: 0
+                _freed = jsonFree doc ?: 0
                 valid
 
     // A field of an already-parsed document, empty when the document lacks it.

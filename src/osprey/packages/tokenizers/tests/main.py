@@ -20,6 +20,9 @@ from tokenizers.Tokenizer import (
     wordlevel_decode_pipeline, wordlevel_encode_pipeline, wordpiece_decode_pipeline,
     wordpiece_encode, wordpiece_encode_pair,
 )
+from tokenizers.Models import token_index
+from tokenizers.Normalizers import norm_each
+from tokenizers.Unicode import map_indexed
 from tokenizers.Category import LETTER_RANGES, MARK_RANGES, NUMBER_RANGES, is_letter, is_mark, is_number
 from tokenizers.HfJson import load_qwen_tokenizer
 from tokenizers import GgufVocab, NfcData
@@ -298,6 +301,9 @@ def alignment_cases():
     n = append_norm(empty_norm(), 233, 7, 9)
     return [
         Check.equal("norm.align.text", norm_text(n), "é"),
+        Check.equal("norm.each", norm_text(norm_each(norm_of("abc"), lambda acc, i: append_norm(acc, 120, i, i + 1))), "xxx"),
+        Check.equal("models.token_index", unwrap_or(mapGet(token_index(["x", "y", "z"]), "y"), -1), 1),
+        Check.ints_equal("unicode.map_indexed", map_indexed([0, 0], lambda i: i + 5), [5, 6]),
         Check.equal("norm.align.char", char_at(n, 0), 233),
         Check.equal("norm.align.start", start_at(n, 0), 7),
         Check.equal("norm.align.end", end_at(n, 0), 9),

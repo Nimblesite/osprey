@@ -1,6 +1,7 @@
 ok text.codepoints
 ok text.from_codepoints
 ok text.map
+ok text.map_indexed
 ok text.digit
 ok text.alnum
 ok text.collapse
@@ -3082,4 +3083,4 @@ ok bleu.score_corpus
 ok chrf.score_corpus
 ok bleu.BLEUScore
 ok chrf.CHRFScore
-3084 passed, 0 failed
+3085 passed, 0 failed

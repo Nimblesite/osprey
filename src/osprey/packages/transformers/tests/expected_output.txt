@@ -391,9 +391,10 @@ ok stopped_any[3]
 ok stopped_any[4]
 ok stopped_any[5]
 ok min_i
+ok lists.map_indexed
 ok max_i
 ok min_f
 ok max_f
 ok generate
 ok non-finite logits
-398 passed, 0 failed
+399 passed, 0 failed

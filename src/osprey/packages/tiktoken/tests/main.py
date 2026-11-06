@@ -235,6 +235,7 @@ def special_names_case(enc):
     return [
         strings_equal("special.names", names, Expected.SPECIAL_NAMES),
         Check.ints_equal("special.ids", ids, Expected.SPECIAL_IDS),
+        Check.ints_equal("unicode.map_indexed", Unicode.map_indexed([9, 9, 9], lambda i: i - 1), [-1, 0, 1]),
     ]
 
 def vocab_cases(enc):

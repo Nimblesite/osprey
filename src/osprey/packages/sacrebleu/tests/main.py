@@ -56,6 +56,7 @@ def text_cases():
         Check.ints_equal("text.codepoints", Text.codepoints("aé"), [97, 233]),
         Check.equal("text.from_codepoints", Text.from_codepoints([97, 233]), "aé"),
         Check.equal("text.map", Text.map_codepoints("a1!", lambda cp: 120 if cp == 97 else cp), "x1!"),
+        Check.ints_equal("text.map_indexed", Text.map_indexed([5, 6], lambda i: i + 1), [1, 2]),
         Check.truth("text.digit", Text.is_ascii_digit(57) and not Text.is_ascii_digit(58), "digit"),
         Check.truth("text.alnum", Text.is_ascii_lower_alnum(122) and not Text.is_ascii_lower_alnum(91), "alnum"),
         Check.equal("text.collapse", Text.collapse_whitespace("  a\t b\n "), "a b"),
