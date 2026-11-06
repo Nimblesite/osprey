@@ -45,17 +45,41 @@ impl<T: Clone> ErasureMemo<T> {
 
 pub(super) struct Proofs<'a> {
     program: &'a Program,
-    baseline: &'a Snapshot,
+    baseline: OnceLock<Option<Snapshot>>,
+    #[cfg(test)]
+    baseline_override: Option<&'a Snapshot>,
     verdicts: ErasureMemo<bool>,
 }
 
 impl<'a> Proofs<'a> {
+    #[cfg(test)]
     pub(super) fn new(program: &'a Program, baseline: &'a Snapshot) -> Self {
         Self {
+            baseline_override: Some(baseline),
+            ..Self::deferred(program)
+        }
+    }
+
+    pub(super) fn deferred(program: &'a Program) -> Self {
+        Self {
             program,
-            baseline,
+            baseline: OnceLock::new(),
+            #[cfg(test)]
+            baseline_override: None,
             verdicts: ErasureMemo::new(usize::MAX),
         }
+    }
+
+    /// An empty trial result needs no effect proof. Every warning still compares
+    /// the exact published baseline and candidate, including effect refinement.
+    pub(super) fn baseline(&self) -> Option<&Snapshot> {
+        #[cfg(test)]
+        if self.baseline_override.is_some() {
+            return self.baseline_override;
+        }
+        self.baseline
+            .get_or_init(|| super::published(self.program))
+            .as_ref()
     }
 
     pub(super) fn program(&self) -> &'a Program {
@@ -65,7 +89,8 @@ impl<'a> Proofs<'a> {
     pub(super) fn keeps(&self, written: &[Site], chosen: &[usize]) -> bool {
         let members = member_key(written, chosen);
         self.verdicts.compute(&members, || {
-            super::preserves(self.program, self.baseline, &members)
+            self.baseline()
+                .is_some_and(|baseline| super::preserves(self.program, baseline, &members))
         })
     }
 }

@@ -52,6 +52,8 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
 12. **Agent type-check budget [OspreyCodex]**
    - [x] Reproduce the timeout. The three-project check took 117.79 seconds in run 42150529203, then `test-app` exceeded the shared 120-second deadline in run 42153399114. A local profile showed repeated full inference in the annotation lint.
    - [x] Index numeric literal defaults by variable ID and reuse the free-variable set after defaulting. All 958 type tests and strict Clippy passed, and the unchanged coverage-instrumented Agent test finished in 41.97 seconds locally. Paired `test-app` CPU time was 41.59 versus 42.90 seconds with identical warnings.
+   - [x] Run 42157768962 still hit the 120-second deadline in `test-app`. A local trace found 40 rejected annotation trials across 39 single-site groups, so batching groups could not help this workload.
+   - [x] Defer the baseline effect proof until a candidate could produce a warning. The regression records no additional effect proof for a pinned annotation and verifies that a warning still needs an exact proof. All 959 type tests and strict Clippy passed. The paired `test-app` check improved from 40.83 to 36.14 seconds with byte-identical warnings, and the unchanged local Agent budget passed in 37.90 seconds.
    - [ ] Verify the unchanged Agent budget and full Rust rest shard on hosted Linux.
 13. **Integration job timeout (external)**
    - [x] Run 42153399114 hit the 18-minute limit because the Azure Ubuntu mirror served the Playwright `--with-deps` font packages at 49.6 kB/s (7 min 20 s for 21.9 MB). The previous run installed them in 19 s. No code change; the next push reruns the job.

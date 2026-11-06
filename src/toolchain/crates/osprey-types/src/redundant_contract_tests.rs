@@ -31,6 +31,35 @@ fn checked(source: &str) -> Program {
 }
 
 #[test]
+fn only_reportable_annotations_need_a_full_effect_proof() {
+    let pinned = checked("fn pinned(value: int) = 0\n");
+    let before = crate::effect_check_count();
+    assert_eq!(
+        redundant_annotation_sites_for(&pinned, |_| true, &|_| false),
+        []
+    );
+    assert_eq!(crate::effect_check_count(), before);
+
+    let removable = checked("fn text() -> string = \"hi\"\n");
+    let before = crate::effect_check_count();
+    let warnings = redundant_annotation_sites_for(&removable, |_| true, &|_| false);
+    assert!(matches!(warnings.as_slice(), [site]
+        if site.target == crate::redundant::RedundantTarget::Return));
+    assert!(crate::effect_check_count() > before);
+
+    let invalid = parse_program_with_flavor(
+        "fn text() -> string = \"hi\"\neffect Read { get: fn() -> int }\nlet value = perform Read.get()\n",
+        Flavor::Default,
+    );
+    assert_eq!(invalid.errors, []);
+    assert_ne!(crate::check_program(&invalid.program), []);
+    assert_eq!(
+        redundant_annotation_sites_for(&invalid.program, |_| true, &|_| false),
+        []
+    );
+}
+
+#[test]
 fn original_reader_types_are_preserved_during_backend_specialization() -> Result<(), String> {
     let types = crate::infer_program(&checked("fn keep(value)={\nlet saved=value\nsaved\n}\n"));
     let position = Some(Position { line: 2, column: 0 });

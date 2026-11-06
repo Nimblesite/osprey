@@ -159,11 +159,11 @@ pub fn redundant_annotation_sites_for(
     if !written.iter().any(|site| include(site.position)) {
         return Vec::new();
     }
-    let Some(baseline) = published(program) else {
-        return Vec::new();
-    };
-    let proofs = Proofs::new(program, &baseline);
+    let proofs = Proofs::deferred(program);
     let removable = blame::directed(&proofs, &written).unwrap_or_else(|| {
+        if proofs.baseline().is_none() {
+            return Vec::new();
+        }
         let all: Vec<usize> = (0..written.len()).collect();
         search::accumulate_with(&proofs, &written, &all, ANNOTATION_SEARCH_WINDOW)
     });
