@@ -1,4 +1,5 @@
 namespace registry_api;
+import registry::Checked
 import registry::Bytes
 
 /// Strict HTTP header parsing for hosted requests: RFC token names,
@@ -140,8 +141,5 @@ module HostedHeaders {
     })
 
     /// True when a header with that name is present exactly once-verified input.
-    export fn has(headers, name) = match find(headers, name) {
-        Success => true
-        Error => false
-    }
+    export fn has(headers, name) = Checked::succeeded(find(headers, name))
 }

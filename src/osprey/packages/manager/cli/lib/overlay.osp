@@ -94,10 +94,7 @@ module Overlay {
     export fn mappingFor(mappings, key) = Checked::firstMatch(mappings, fn(m) => Names::same(keyOf(m), key), "none")
 
     /// Whether `key` is overridden.
-    export fn overridden(mappings, key) = match mappingFor(mappings, key) {
-        Success => true
-        Error => false
-    }
+    export fn overridden(mappings, key) = Checked::succeeded(mappingFor(mappings, key))
 
     /// `mappings` with `m` replacing any mapping of the same key.
     export fn withMapping(mappings, m) = listAppend(without(mappings, keyOf(m)), m)

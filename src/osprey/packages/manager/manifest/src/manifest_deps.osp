@@ -29,12 +29,6 @@ module ManifestDeps {
 
     fn fail(code, span) = ManifestSections::fail(code, span)
 
-    // `value` and `span` are shared field names (issue #273): the pair
-    // receiver is spelled out once here, like `ManifestSections` does.
-    fn spanOfPair(pair: Toml::Pair) = pair.span
-
-    fn valueOf(pair: Toml::Pair) = pair.value
-
     fn classify(key) = if listContains(requirementKeys, key) { "" }
         else if listContains(versionKeys, key) { "manifest.dependency.version" }
         else if listContains(pathKeys, key) { "manifest.dependency.path" }
@@ -103,7 +97,7 @@ module ManifestDeps {
     /// The pairs of one table of `root`, or no pairs when it is absent.
     fn tablePairs(root, kind) = match ManifestSections::find(ManifestSections::pairsOf(root), kind) {
         Error => []
-        Success { value } => ManifestSections::pairsOf(valueOf(value))
+        Success { value } => ManifestSections::pairsOf(Toml::valueOf(value))
     }
 
     fn tableEdges(root, kind, sofar) = concatenated(sofar, edgesOf(kind, tablePairs(root, kind)))
@@ -203,7 +197,7 @@ module ManifestDeps {
 
     fn withTest(root, sofar) = Checked::andThen(tableEdges(root, "test-dependencies", sofar), fn(value) => checkedEdges(value, root))
 
-    fn segmentByte(b) = Bytes::isLowerDigit(b) || b == 46 || b == 45
+    fn segmentByte(b) = Bytes::isLowerDigitIn(b, [Bytes::dot, Bytes::hyphen])
     fn segmentOk(s) = byteLength(s) >= 1 && byteLength(s) <= segmentMax && !startsWith(s, ".") && !startsWith(s, "-")
         && Bytes::everyByte(s, segmentByte)
 
@@ -218,7 +212,7 @@ module ManifestDeps {
     fn systemWith(pair: Toml::Pair, capability) = if !capabilityOk(capability) { fail("manifest.system.capability", pair.span) }
         else { match ManifestSections::find(ManifestSections::pairsOf(pair.value), "min_revision") {
             Error => fail("manifest.system.min-revision", pair.span)
-            Success { value } => systemRevision(capability, boundedInt(value, 0, "manifest.system.min-revision", spanOfPair(value)))
+            Success { value } => systemRevision(capability, boundedInt(value, 0, "manifest.system.min-revision", Toml::pairSpan(value)))
         } }
 
     fn systemRevision(capability, result) = Checked::andThen(result, fn(value) => Success { value: ManifestModel::SystemRequirement { capability: capability, minimumRevision: value } })
@@ -239,7 +233,7 @@ module ManifestDeps {
     /// `[system.*]` as canonical, sorted requirements with unique capabilities.
     export fn systems(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "system") {
         Error => Success { value: [] }
-        Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(valueOf(value))), spanOfPair(value))
+        Success { value } => systemsSorted(systemsOf(ManifestSections::pairsOf(Toml::valueOf(value))), Toml::pairSpan(value))
     }
 
     fn systemsSorted(result, span) = Checked::andThen(result, fn(value) => uniqueCapabilities(value, span))
@@ -275,14 +269,14 @@ module ManifestDeps {
 
     fn assetLength(pairs, span) = match ManifestSections::find(pairs, "byte_length") {
         Error => fail("manifest.asset.byte-length", span)
-        Success { value } => boundedInt(value, 0, "manifest.asset.byte-length", spanOfPair(value))
+        Success { value } => boundedInt(value, 0, "manifest.asset.byte-length", Toml::pairSpan(value))
     }
 
     fn assetRole(pairs, kind, span) = Checked::andThen(ManifestSections::requiredString(pairs, "role", "manifest.asset.role", span), fn(value) => roleOf(value, kind, capabilityText(pairs), ManifestSections::spanOf(pairs, "role", span)))
 
     /// `!` is not a capability character, so a non-string value fails as one.
     fn capabilityText(pairs) = match ManifestSections::find(pairs, "required_capability") {
-        Success { value } => match valueOf(value) {
+        Success { value } => match Toml::valueOf(value) {
             Toml::Str { text } => text
             _ => "!"
         }
@@ -321,9 +315,9 @@ module ManifestDeps {
     /// `[[assets]]` as canonical, sorted declarations with collision-free paths.
     export fn assets(root) = match ManifestSections::find(ManifestSections::pairsOf(root), "assets") {
         Error => Success { value: [] }
-        Success { value } => match valueOf(value) {
-            Toml::Arr { items } => assetsFrom(items, spanOfPair(value))
-            _ => fail("manifest.asset.shape", spanOfPair(value))
+        Success { value } => match Toml::valueOf(value) {
+            Toml::Arr { items } => assetsFrom(items, Toml::pairSpan(value))
+            _ => fail("manifest.asset.shape", Toml::pairSpan(value))
         }
     }
 

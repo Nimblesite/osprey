@@ -1,5 +1,6 @@
 namespace registry_api;
 import registry::Bundle
+import registry::Bytes
 import registry::Canonical
 import registry::Catalog
 import registry::Json
@@ -64,10 +65,7 @@ module Router {
         _ => notFound()
     }
 
-    fn withoutQuery(path) = match indexOf(path, "?") {
-        Success { value } => take(path, value)
-        Error => path
-    }
+    fn withoutQuery(path) = Bytes::before(path, "?")
 
     fn segments(path) = split(path, "/") ?: [path]
 

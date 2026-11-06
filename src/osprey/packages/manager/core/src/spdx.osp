@@ -11,7 +11,7 @@ module Spdx {
     let maxBytes = 256
     let operators = ["AND", "OR", "WITH"]
 
-    fn idByte(b) = Bytes::isAlnum(b) || b == 46 || b == 45 || b == 43
+    fn idByte(b) = Bytes::isAlnumIn(b, [Bytes::dot, Bytes::hyphen, Bytes::plus])
     fn identifier(token) = byteLength(token) >= 1 && Bytes::everyByte(token, idByte)
         && !startsWith(token, "+") && (indexOf(drop(token, 0), "+") ?: byteLength(token)) >= wrapSub(byteLength(token), 1)
 

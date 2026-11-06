@@ -73,22 +73,20 @@ module TypeDiagram {
         parseFields(tokens, typ.next, listAppend(out, Field { name: tok, typ: typ.ref }))
     }
 
-    fn parseFields(tokens, i, out) = {
+    /// Scan members up to `}` or the end: `step` parses one, `done` closes the list.
+    fn scanMembers(tokens, i, out, step, done) = {
         let tok = peek(tokens, i)
-        if tok == "}" || tok == "" { FieldsStep { parsed: out, next: i + 1 } }
-        else { fieldStep(tokens, i, tok, out) }
+        if tok == "}" || tok == "" { done(out, i + 1) } else { step(tokens, i, tok, out) }
     }
+
+    fn parseFields(tokens, i, out) = scanMembers(tokens, i, out, fieldStep, fn(parsed, next) => FieldsStep { parsed: parsed, next: next })
 
     fn variantStep(tokens, i, tok, out) = {
         let fs = parseFields(tokens, i + 2, [])
         parseVariants(tokens, fs.next, listAppend(out, Variant { name: tok, payload: fs.parsed }))
     }
 
-    fn parseVariants(tokens, i, out) = {
-        let tok = peek(tokens, i)
-        if tok == "}" || tok == "" { VariantsStep { variants: out, next: i + 1 } }
-        else { variantStep(tokens, i, tok, out) }
-    }
+    fn parseVariants(tokens, i, out) = scanMembers(tokens, i, out, variantStep, fn(variants, next) => VariantsStep { variants: variants, next: next })
 
     fn aliasStep(tokens, i, out) = {
         let t = parseTypeRef(tokens, i + 3)

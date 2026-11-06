@@ -42,10 +42,6 @@ module Publish {
     fn folderOf(cmd: CommandLine) = cmd.folder
     fn projectOf(cmd: CommandLine) = cmd.project
     fn breakingOf(cmd: CommandLine) = cmd.breaking
-    fn epochOf(id: Identity::ReleaseId) = id.epoch
-    fn ordinalOf(id: Identity::ReleaseId) = id.ordinal
-    fn idOf(s: Release::Served) = s.id
-    fn filesOf(s: Release::Served) = s.files
     fn assetPath(a: ManifestModel::Asset) = a.path
 
     fn packageKey(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
@@ -87,9 +83,9 @@ module Publish {
         Success { value } => foldList(value.regular, [], fn(ids, path) => appendId(ids, key, path))
     }
 
-    fn newestEpoch(ids) = foldList(ids, 0, fn(best, id) => if epochOf(id) > best { epochOf(id) } else { best })
+    fn newestEpoch(ids) = foldList(ids, 0, fn(best, id) => if Identity::epochOf(id) > best { Identity::epochOf(id) } else { best })
 
-    fn newestOrdinal(ids, epoch) = foldList(ids, 0, fn(best, id) => if epochOf(id) == epoch && ordinalOf(id) > best { ordinalOf(id) } else { best })
+    fn newestOrdinal(ids, epoch) = foldList(ids, 0, fn(best, id) => if Identity::epochOf(id) == epoch && Identity::ordinalOf(id) > best { Identity::ordinalOf(id) } else { best })
 
     /// `1.1` for a new package; else the next ordinal of the newest epoch, or
     /// the first ordinal of the next epoch with `--breaking`.
@@ -102,16 +98,16 @@ module Publish {
 
     // ---- placing the release ----
 
-    fn placedAt(cmd, served) = "${folderOf(cmd)}/${ReleasePath::format(idOf(served))}"
+    fn placedAt(cmd, served) = "${folderOf(cmd)}/${ReleasePath::format(Release::idOf(served))}"
 
     fn placedLines(cmd, served) = [
-        "published ${Lockfile::compact(idOf(served))}",
+        "published ${Lockfile::compact(Release::idOf(served))}",
         Reports::field("into", placedAt(cmd, served)),
-        Reports::field("files", "${length(filesOf(served))}"),
+        Reports::field("files", "${length(Release::filesOf(served))}"),
         "restart registry-serve to serve it"
     ]
 
-    fn placed(cmd, served) = Reports::checked(Fetch::writeFiles(placedAt(cmd, served), filesOf(served)), fn(_finished) => Reports::success(placedLines(cmd, served)))
+    fn placed(cmd, served) = Reports::checked(Fetch::writeFiles(placedAt(cmd, served), Release::filesOf(served)), fn(_finished) => Reports::success(placedLines(cmd, served)))
 
     /// Check and digest the tree as the server will, then place it.
     fn assembled(cmd, key, fileList) = Reports::checked(ReleaseFiles::assemble(nextDir(key, existing(folderOf(cmd), key), breakingOf(cmd)), fileList), fn(value) => placed(cmd, value))

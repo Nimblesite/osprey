@@ -18,14 +18,11 @@ module Paths {
     let legalStems = ["license", "copying", "notice", "authors", "third_party_notices"]
     let legalSuffixes = ["", ".txt", ".md"]
 
-    fn segmentByte(b) = Bytes::isAlnum(b) || b == 46 || b == 95 || b == 45
+    fn segmentByte(b) = Bytes::isAlnumIn(b, [Bytes::dot, Bytes::underscore, Bytes::hyphen])
     fn allSegmentBytes(s) = Bytes::everyByte(s, segmentByte)
     fn hasByte(s, p) = Bytes::anyByte(s, p)
 
-    fn stem(segment) = match indexOf(segment, ".") {
-        Success { value } => take(segment, value)
-        Error => segment
-    }
+    fn stem(segment) = Bytes::before(segment, ".")
 
     fn deviceStem(segment) = listContains(devices, toUpperCase(stem(segment)))
 

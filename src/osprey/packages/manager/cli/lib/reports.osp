@@ -15,6 +15,13 @@ module Reports {
     /// A successful report.
     export fn success(lines) = Report { status: ok, lines: lines }
 
+    // `Report` shares `status` and `lines` with other records; issue #273 needs
+    // the receiver's record spelled out.
+    /// The process status a report answers.
+    export fn statusOf(report: Report) = report.status
+    /// The lines a report shows.
+    export fn linesOf(report: Report) = report.lines
+
     /// A command that could not do what was asked.
     export fn failure(lines) = Report { status: failureStatus, lines: lines }
 

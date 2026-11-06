@@ -18,13 +18,7 @@ module TomlParser {
 
     // -- statements ---------------------------------------------------------
 
-    fn expectClose(c) = {
-        let c1 = TomlLexer::skipSpaces(c)
-        match TomlLexer::cur(c1) == TomlValues::byteRBracket {
-            true => Success { value: TomlLexer::advance(c1) }
-            false => Error { message: Toml::fail(c1, "toml.unexpected-token") }
-        }
-    }
+    fn expectClose(c) = TomlValues::expectByte(c, TomlValues::byteRBracket, "toml.unexpected-token")
 
     fn expectDoubleClose(c) = {
         let c1 = TomlLexer::skipSpaces(c)

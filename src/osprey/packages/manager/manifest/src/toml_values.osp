@@ -302,13 +302,17 @@ module TomlValues {
         false => parseInlineEntries(c, pairs, start)
     }
 
-    /// Skip spaces, then expect `=`; the cursor after it. Shared by inline
-    /// tables and key/value lines. [PACKAGE-MANIFEST]
-    export fn expectEquals(c) = {
+    /// Skip spaces, then expect the byte `wanted`; the cursor after it, or
+    /// `code` located at the byte found instead. [PACKAGE-MANIFEST]
+    export fn expectByte(c, wanted, code) = {
         let c1 = TomlLexer::skipSpaces(c)
-        match TomlLexer::cur(c1) == byteEq {
+        match TomlLexer::cur(c1) == wanted {
             true => Success { value: TomlLexer::advance(c1) }
-            false => Error { message: Toml::fail(c1, "toml.expected-equals") }
+            false => Error { message: Toml::fail(c1, code) }
         }
     }
+
+    /// Skip spaces, then expect `=`; the cursor after it. Shared by inline
+    /// tables and key/value lines. [PACKAGE-MANIFEST]
+    export fn expectEquals(c) = expectByte(c, byteEq, "toml.expected-equals")
 }

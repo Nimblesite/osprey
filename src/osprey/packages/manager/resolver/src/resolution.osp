@@ -42,17 +42,14 @@ module Resolution {
 
     // Shared field names need typed receivers (issue #273).
     fn releaseOf(e: Entry) = e.release
-    fn entryAt(xs, i) -> Entry = listGet(xs, i) ?: blankEntry()
-
-    fn requirementKey(edge) = ManifestModel::requirementOf(edge).package
-    fn requirementEpoch(r: ManifestModel::Requirement) = r.epoch
-    fn requirementFloor(r: ManifestModel::Requirement) = r.minimumOrdinal
+    /// The entry at `i`, or the blank entry past the end.
+    export fn entryAt(xs, i) -> Entry = listGet(xs, i) ?: blankEntry()
 
     /// Edges in canonical order: rank, key, epoch, floor.
     fn compareEdges(a, b) = Order::thenCompare(Order::compareInts(ManifestModel::edgeRank(a), ManifestModel::edgeRank(b)),
-        Order::thenCompare(Names::compare(requirementKey(a), requirementKey(b)),
-            Order::thenCompare(Order::compareInts(requirementEpoch(ManifestModel::requirementOf(a)), requirementEpoch(ManifestModel::requirementOf(b))),
-                Order::compareInts(requirementFloor(ManifestModel::requirementOf(a)), requirementFloor(ManifestModel::requirementOf(b))))))
+        Order::thenCompare(Names::compare(ManifestModel::requirementKey(a), ManifestModel::requirementKey(b)),
+            Order::thenCompare(Order::compareInts(ManifestModel::requirementEpoch(ManifestModel::requirementOf(a)), ManifestModel::requirementEpoch(ManifestModel::requirementOf(b))),
+                Order::compareInts(ManifestModel::requirementFloor(ManifestModel::requirementOf(a)), ManifestModel::requirementFloor(ManifestModel::requirementOf(b))))))
 
     fn blankEdge() = ManifestModel::Runtime { requirement: ManifestModel::Requirement { package: Names::blank(), epoch: 0, minimumOrdinal: 0 } }
 

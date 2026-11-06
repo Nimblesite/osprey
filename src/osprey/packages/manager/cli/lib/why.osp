@@ -24,26 +24,20 @@ module Why {
     /// The labels and keys of the chain walked so far.
     type Chain = { labels: List<string>, keys: List<Names::Key> }
 
-    // Shared field names need typed receivers (issue #273).
-    fn rootEdges(lock: Lockfile::Lock) = lock.root.dependencies
-    fn nameOf(m: ManifestModel::Manifest) = m.projectName
-    fn keyOf(id: Identity::ReleaseId) = id.key
-    fn reqKey(edge) = ManifestModel::requirementOf(edge).package
-
-    fn extended(chain: Chain, pkg) = Chain { labels: listAppend(chain.labels, Lockfile::compact(Lockfile::releaseOf(pkg))), keys: listAppend(chain.keys, keyOf(Lockfile::releaseOf(pkg))) }
+    fn extended(chain: Chain, pkg) = Chain { labels: listAppend(chain.labels, Lockfile::compact(Lockfile::releaseOf(pkg))), keys: listAppend(chain.keys, Identity::keyOf(Lockfile::releaseOf(pkg))) }
     fn walked(chain: Chain, key) = Names::includes(chain.keys, key)
     fn lineOf(chain: Chain) = join(chain.labels, arrow)
 
     /// Every chain through `edges` that ends at `target`.
     fn pathsFrom(lock, target, chain, edges) -> List<string> = foldList(edges, [], fn(acc, edge) => listConcat(acc, pathsVia(lock, target, chain, edge)))
 
-    fn pathsVia(lock, target, chain, edge) -> List<string> = match Lockfile::packageFor(Lockfile::packagesOf(lock), reqKey(edge)) {
+    fn pathsVia(lock, target, chain, edge) -> List<string> = match Lockfile::packageFor(Lockfile::packagesOf(lock), ManifestModel::requirementKey(edge)) {
         Error => []
         Success { value } => pathsThrough(lock, target, chain, value)
     }
 
     fn pathsThrough(lock, target, chain, pkg) -> List<string> = {
-        let key = keyOf(Lockfile::releaseOf(pkg))
+        let key = Identity::keyOf(Lockfile::releaseOf(pkg))
         let next = extended(chain, pkg)
         if Names::same(key, target) { [lineOf(next)] }
         else if walked(chain, key) { [] }
@@ -51,7 +45,7 @@ module Why {
     }
 
     fn chains(manifest, lock, key) = {
-        let lines = pathsFrom(lock, key, Chain { labels: [nameOf(manifest)], keys: [] }, rootEdges(lock))
+        let lines = pathsFrom(lock, key, Chain { labels: [ManifestModel::nameOf(manifest)], keys: [] }, Lockfile::rootEdges(lock))
         if isEmpty(lines) { Reports::failure(["${noPathCode} ${Names::display(key)}"]) } else { Reports::success(lines) }
     }
 

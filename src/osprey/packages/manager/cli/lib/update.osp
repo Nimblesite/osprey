@@ -41,12 +41,6 @@ module Update {
     fn asLocal(s: Transaction::Settings) = Transaction::Settings { base: s.base, project: s.project, acceptRemovals: s.acceptRemovals, fresh: false, local: true }
 
     // Shared field names need typed receivers (issue #273).
-    fn baseOf(s: Transaction::Settings) = s.base
-    fn projectOf(s: Transaction::Settings) = s.project
-    fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
-    fn statusOf(r: Reports::Report) = r.status
-    fn linesOf(r: Reports::Report) = r.lines
-    fn epochOfId(id: Identity::ReleaseId) = id.epoch
     fn note(req: ManifestModel::Requirement, epoch) = "epoch ${Names::display(req.package)} e${req.epoch} -> e${epoch}"
 
     // ---- the release update ----
@@ -63,17 +57,17 @@ module Update {
         Success { value } => if value > req.epoch { moved(d, req, value) } else { d }
     }
 
-    fn draftOf(manifest, text, listing) = foldList(mapList(edgesOf(manifest), ManifestModel::requirementOf), Draft { draft: text, notes: [] }, fn(d, req) => retarget(listing, d, req))
+    fn draftOf(manifest, text, listing) = foldList(mapList(ManifestModel::edgesOf(manifest), ManifestModel::requirementOf), Draft { draft: text, notes: [] }, fn(d, req) => retarget(listing, d, req))
 
     fn committed(s, text, d: Draft) = if isEmpty(d.notes) { Transaction::relock(s) } else { Transaction::commit(s, text, d.draft, d.notes) }
 
     fn withListing(s, manifest, text, listing) = committed(s, text, draftOf(manifest, text, listing))
 
-    fn withManifest(s, manifest, text) = Reports::checked(Listing::fetch(baseOf(s)), fn(value) => withListing(s, manifest, text, value))
+    fn withManifest(s, manifest, text) = Reports::checked(Listing::fetch(Transaction::baseOf(s)), fn(value) => withListing(s, manifest, text, value))
 
-    fn withText(s, text) = Reports::checked(Project::readAt(projectOf(s)), fn(value) => withManifest(s, value, text))
+    fn withText(s, text) = Reports::checked(Project::readAt(Transaction::projectOf(s)), fn(value) => withManifest(s, value, text))
 
-    fn breaking(s) = Reports::checked(Project::manifestTextAt(projectOf(s)), fn(value) => withText(s, value))
+    fn breaking(s) = Reports::checked(Project::manifestTextAt(Transaction::projectOf(s)), fn(value) => withText(s, value))
 
     fn released(s, breakingWanted) = if breakingWanted { breaking(s) } else { Transaction::relock(s) }
 
@@ -90,7 +84,7 @@ module Update {
     fn rebased(m, baseline, breakingWanted) = Overlay::Mapping {
         package: Overlay::keyOf(m),
         path: Overlay::pathOf(m),
-        epoch: if breakingWanted { Maybe::fold(baseline, Overlay::epochOf(m), epochOfId) } else { Overlay::epochOf(m) },
+        epoch: if breakingWanted { Maybe::fold(baseline, Overlay::epochOf(m), Identity::epochOf) } else { Overlay::epochOf(m) },
         baseline: baseline
     }
 
@@ -106,8 +100,8 @@ module Update {
     fn rebaseAll(lock, breakingWanted, mappings) = foldList(mappings, Rebase { mappings: [], notes: [] }, fn(r, m) => rebaseOne(lock, breakingWanted, r, m))
 
     /// A failed development relock restores the release lock too, so the update changes nothing.
-    fn restoredRelease(s, previousRelease, report) = if statusOf(report) == 0 { report } else { match Host::restore(Project::lockPathAt(projectOf(s)), previousRelease) {
-        Error { message } => Reports::failure(listAppend(linesOf(report), "${restoreCode} ${message}"))
+    fn restoredRelease(s, previousRelease, report) = if Reports::statusOf(report) == 0 { report } else { match Host::restore(Project::lockPathAt(Transaction::projectOf(s)), previousRelease) {
+        Error { message } => Reports::failure(listAppend(Reports::linesOf(report), "${restoreCode} ${message}"))
         Success => report
     } }
 
@@ -120,18 +114,18 @@ module Update {
     fn mappingsOf(r: Rebase) = r.mappings
     fn notesOf(r: Rebase) = r.notes
 
-    fn withNewBase(s, mappings, previousRelease, breakingWanted, releaseReport) = match Project::readLockAt(projectOf(s)) {
-        Error { message } => Reports::failure(listAppend(linesOf(releaseReport), message))
-        Success { value } => relockedLocal(s, mappings, previousRelease, value, breakingWanted, linesOf(releaseReport))
+    fn withNewBase(s, mappings, previousRelease, breakingWanted, releaseReport) = match Project::readLockAt(Transaction::projectOf(s)) {
+        Error { message } => Reports::failure(listAppend(Reports::linesOf(releaseReport), message))
+        Success { value } => relockedLocal(s, mappings, previousRelease, value, breakingWanted, Reports::linesOf(releaseReport))
     }
 
     /// Resolve the published base first; then rebase every mapping and relock the development lock.
     fn overlayUpdated(s, mappings, breakingWanted, previousRelease) = {
         let releaseReport = released(s, breakingWanted)
-        if statusOf(releaseReport) != 0 { releaseReport } else { withNewBase(s, mappings, previousRelease, breakingWanted, releaseReport) }
+        if Reports::statusOf(releaseReport) != 0 { releaseReport } else { withNewBase(s, mappings, previousRelease, breakingWanted, releaseReport) }
     }
 
-    fn overlayUpdate(s, mappings, breakingWanted) = Reports::checked(Host::snapshot(Project::lockPathAt(projectOf(s))), fn(value) => overlayUpdated(s, mappings, breakingWanted, value))
+    fn overlayUpdate(s, mappings, breakingWanted) = Reports::checked(Host::snapshot(Project::lockPathAt(Transaction::projectOf(s))), fn(value) => overlayUpdated(s, mappings, breakingWanted, value))
 
     fn withOverlay(s, breakingWanted, mappings) = if Overlay::active(mappings) { overlayUpdate(s, mappings, breakingWanted) } else { released(s, breakingWanted) }
 

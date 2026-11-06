@@ -52,6 +52,10 @@ module Lockfile {
     export fn releaseOf(p: Package) = p.release
     /// One locked package's Runtime/Build edges.
     export fn edgesOf(p: Package) = p.dependencies
+    /// The root's dependency edges.
+    export fn rootEdges(lock: Lock) = lock.root.dependencies
+    /// The lock's Python pins, when the graph uses Python interop.
+    export fn pinsOf(lock: Lock) = lock.python
 
     // `Override` shares `package` and `path`; issue #273 needs typed receivers.
     /// The checkout path of an override.

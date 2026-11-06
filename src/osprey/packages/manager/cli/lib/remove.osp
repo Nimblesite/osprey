@@ -16,7 +16,6 @@ module Remove {
     let missingCode = "remove.missing"
     let usageText = ["usage: osprey-pkg remove @scope/name [--registry <base-url>] [--project <dir>]"]
 
-    fn projectOf(s: Transaction::Settings) = s.project
 
     fn withText(s, key, text) = if ManifestEdit::hasEdge(text, key) {
         Transaction::commit(s, text, ManifestEdit::withoutEdge(text, key), ["removed ${Names::display(key)}"])
@@ -24,7 +23,7 @@ module Remove {
         Reports::failure(["${missingCode} ${Names::display(key)}"])
     }
 
-    fn withSettings(s, key) = Reports::checked(Project::manifestTextAt(projectOf(s)), fn(value) => withText(s, key, value))
+    fn withSettings(s, key) = Reports::checked(Project::manifestTextAt(Transaction::projectOf(s)), fn(value) => withText(s, key, value))
 
     fn withKey(key, flags) = Flags::dispatch(flags, [Fetch::registryFlag, Flags::projectFlag], [], usageCode, usageText,
         fn(parsed) => withSettings(Transaction::releaseSettings(parsed), key))

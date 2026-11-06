@@ -22,17 +22,8 @@ module Catalog {
     fn missingServed() = Release::Served { id: missingId(), files: [] }
     fn servedAt(served, i) = listGet(served, i) ?: missingServed()
 
-    // `Served` shares `id` with `Capabilities::Blocked`, `ReleaseId` shares
-    // `digest`/`key` with `Source::Entry`/`Json::Member`, and `Catalog` shares
-    // `refused` with `Folder::Plan`; issue #273 needs those receivers spelled
-    // out when reading the shared fields.
-    fn idOf(s: Release::Served) = s.id
-    fn digestOf(id: Identity::ReleaseId) = id.digest
-    fn keyOf(id: Identity::ReleaseId) = id.key
-    fn servedOf(catalog: Release::Catalog) = catalog.served
-    fn refusedOf(catalog: Release::Catalog) = catalog.refused
-    fn servedDigest(s) = digestOf(idOf(s))
-    fn servedKey(s) = keyOf(idOf(s))
+    fn servedDigest(s) = Identity::digestOf(Release::idOf(s))
+    fn servedKey(s) = Identity::keyOf(Release::idOf(s))
 
     /// The `{"digest","epoch","ordinal"}` summary of one release.
     fn releaseMembers(id: Identity::ReleaseId) = [
@@ -41,10 +32,10 @@ module Catalog {
         Json::member("ordinal", Json::num(id.ordinal))
     ]
 
-    fn releaseValue(s) = Json::obj(releaseMembers(idOf(s)))
+    fn releaseValue(s) = Json::obj(releaseMembers(Release::idOf(s)))
 
     fn ordered(served) = {
-        let idAt = fn(i) => idOf(servedAt(served, i))
+        let idAt = fn(i) => Release::idOf(servedAt(served, i))
         mapList(Order::permutation(length(served), fn(i, j) => Identity::compare(idAt(i), idAt(j))), fn(i) => servedAt(served, i))
     }
 
@@ -54,13 +45,13 @@ module Catalog {
     export fn of(served, refused) = Release::Catalog { served: ordered(served), refused: refused }
 
     /// The release whose digest is `digest`, or `"catalog.unknown-release"`.
-    export fn byDigest(catalog, digest) = foldList(servedOf(catalog), Error { message: unknownRelease }, fn(found, s) => match found {
+    export fn byDigest(catalog, digest) = foldList(Release::servedOf(catalog), Error { message: unknownRelease }, fn(found, s) => match found {
         Success => found
         Error => if servedDigest(s) == digest { Success { value: s } } else { found }
     })
 
     /// Every release of one package key, in catalog order.
-    export fn releasesOf(catalog, scope, name) = filterList(servedOf(catalog), fn(s) => inPackage(s, scope, name))
+    export fn releasesOf(catalog, scope, name) = filterList(Release::servedOf(catalog), fn(s) => inPackage(s, scope, name))
 
     fn inPackage(s, scope, name) = {
         let key = servedKey(s)
@@ -69,8 +60,8 @@ module Catalog {
 
     /// `{"refused":N,"releases":N,"status":"ok"}`. Implements [PACKAGE-API].
     export fn healthJson(catalog) = text([
-        Json::member("refused", Json::num(length(refusedOf(catalog)))),
-        Json::member("releases", Json::num(length(servedOf(catalog)))),
+        Json::member("refused", Json::num(length(Release::refusedOf(catalog)))),
+        Json::member("releases", Json::num(length(Release::servedOf(catalog)))),
         Json::member("status", Json::str(okStatus))
     ])
 
@@ -93,7 +84,7 @@ module Catalog {
     /// `{"packages":[{"key":"@s/n","releases":[{"digest","epoch","ordinal"}]}]}`
     /// with keys in canonical order. Implements [PACKAGE-FOLDER-REGISTRY].
     export fn packagesJson(catalog) = {
-        let served = servedOf(catalog)
+        let served = Release::servedOf(catalog)
         text([Json::member("packages", Json::arr(mapList(keysInOrder(served), fn(d) => packageValue(served, d))))])
     }
 
@@ -118,8 +109,8 @@ module Catalog {
     /// `{"digest","epoch","files":["path",…],"key","ordinal"}` of one served
     /// release, `files` in stored (path-sorted) order. Implements
     /// [PACKAGE-FOLDER-REGISTRY].
-    export fn releaseJson(served) = text(listConcat(releaseMembers(idOf(served)), [
+    export fn releaseJson(served) = text(listConcat(releaseMembers(Release::idOf(served)), [
         Json::member("files", strings(mapList(served.files, pathOf))),
-        Json::member("key", Json::str(Names::display(keyOf(idOf(served)))))
+        Json::member("key", Json::str(Names::display(Identity::keyOf(Release::idOf(served)))))
     ]))
 }

@@ -41,11 +41,6 @@ module Use {
         "       osprey-pkg use @scope/name --published | use --list | use --clear  [--project <dir>]"
     ]
 
-    fn projectOf(s: Transaction::Settings) = s.project
-    fn baseOf(s: Transaction::Settings) = s.base
-    fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
-    fn epochOfId(id: Identity::ReleaseId) = id.epoch
-
     // ---- the key of a checkout and its place in the graph ----
 
     fn keyOfLocal(mf: ManifestModel::Manifest) = Maybe::fold(mf.publication, Error { message: noPackageCode }, fn(p: ManifestModel::Publication) => Success { value: p.package })
@@ -64,7 +59,7 @@ module Use {
     }
 
     /// The keys the graph knows: the root's dependencies and the current lock's packages.
-    fn inGraph(project, manifest, key) = Names::includes(listConcat(ManifestModel::targets(edgesOf(manifest)), lockedKeys(project)), key)
+    fn inGraph(project, manifest, key) = Names::includes(listConcat(ManifestModel::targets(ManifestModel::edgesOf(manifest)), lockedKeys(project)), key)
 
     // ---- the baseline ----
 
@@ -88,7 +83,7 @@ module Use {
     }
 
     /// The epoch the root requires of `key`, 0 when the root has no edge to it.
-    fn requiredEpoch(manifest, key) = foldList(mapList(edgesOf(manifest), ManifestModel::requirementOf), 0, fn(acc, r: ManifestModel::Requirement) => if Names::same(r.package, key) { r.epoch } else { acc })
+    fn requiredEpoch(manifest, key) = foldList(mapList(ManifestModel::edgesOf(manifest), ManifestModel::requirementOf), 0, fn(acc, r: ManifestModel::Requirement) => if Names::same(r.package, key) { r.epoch } else { acc })
 
     fn baselineFromListing(base, key, epoch) = match Listing::fetch(base) {
         Error => Maybe::none()
@@ -105,11 +100,11 @@ module Use {
     /// The baseline: the development lock's published node, else the release
     /// lock's, else the newest listed release of the epoch in force.
     fn baselineOf(s, manifest, key, epochWord) = {
-        let fromLocks = baselineFromLocks(projectOf(s), key)
-        if Maybe::isPresent(fromLocks) { fromLocks } else { baselineFromListing(baseOf(s), key, parsedEpoch(epochWord, fallbackEpoch(manifest, key))) }
+        let fromLocks = baselineFromLocks(Transaction::projectOf(s), key)
+        if Maybe::isPresent(fromLocks) { fromLocks } else { baselineFromListing(Transaction::baseOf(s), key, parsedEpoch(epochWord, fallbackEpoch(manifest, key))) }
     }
 
-    fn epochOf(epochWord, baseline, manifest, key) = parsedEpoch(epochWord, Maybe::fold(baseline, fallbackEpoch(manifest, key), epochOfId))
+    fn epochOf(epochWord, baseline, manifest, key) = parsedEpoch(epochWord, Maybe::fold(baseline, fallbackEpoch(manifest, key), Identity::epochOf))
 
     fn baselineNote(baseline) = Maybe::fold(baseline, "no baseline", fn(id) => "baseline ${Identity::display(id)}")
 
@@ -131,11 +126,11 @@ module Use {
 
     fn settingsFor(base, project) = Transaction::Settings { base: base, project: project, acceptRemovals: false, fresh: false, local: true }
 
-    fn placed(s, manifest, mappings, key, path, epochWord) = if inGraph(projectOf(s), manifest, key) { mapped(s, manifest, mappings, key, path, epochWord) } else { Reports::failure(["${notDependencyCode} ${Names::display(key)}"]) }
+    fn placed(s, manifest, mappings, key, path, epochWord) = if inGraph(Transaction::projectOf(s), manifest, key) { mapped(s, manifest, mappings, key, path, epochWord) } else { Reports::failure(["${notDependencyCode} ${Names::display(key)}"]) }
 
-    fn withKey(s, mappings, path, epochWord, key) = Reports::checked(Project::readAt(projectOf(s)), fn(value) => placed(s, value, mappings, key, path, epochWord))
+    fn withKey(s, mappings, path, epochWord, key) = Reports::checked(Project::readAt(Transaction::projectOf(s)), fn(value) => placed(s, value, mappings, key, path, epochWord))
 
-    fn usePath(s, mappings, path, epochWord) = Reports::checked(localKey(projectOf(s), path), fn(value) => withKey(s, mappings, path, epochWord, value))
+    fn usePath(s, mappings, path, epochWord) = Reports::checked(localKey(Transaction::projectOf(s), path), fn(value) => withKey(s, mappings, path, epochWord, value))
 
     fn published(s, mappings, key) = if Overlay::overridden(mappings, key) {
         Transaction::commitOverlay(s, Overlay::render(Overlay::without(mappings, key)), ["published ${Names::display(key)}"])
@@ -161,7 +156,7 @@ module Use {
 
     // ---- routing ----
 
-    fn withOverlay(s, parsed, word, mappings) = if Flags::has(parsed, listFlag) { listed(projectOf(s), mappings) }
+    fn withOverlay(s, parsed, word, mappings) = if Flags::has(parsed, listFlag) { listed(Transaction::projectOf(s), mappings) }
         else if Flags::has(parsed, clearFlag) { cleared(s, mappings) }
         else if word == "" { Reports::usageFor(usageCode, usageText) }
         else if startsWith(word, "@") { useKey(s, parsed, word, mappings) }

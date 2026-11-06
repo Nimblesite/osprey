@@ -37,26 +37,17 @@ module ManifestSections {
         _ => []
     }
 
-    // `span` and `value` are shared field names (issue #273): the pair
-    // receiver is spelled out once here.
-    fn spanOfPair(pair: Toml::Pair) = pair.span
-
-    fn valueOf(pair: Toml::Pair) = pair.value
-
     /// The pair named `key`, if present.
     export fn find(pairs, key) = foldList(pairs, Error { message: "absent" }, fn(found, pair: Toml::Pair) => if pair.key == key { Success { value: pair } } else { found })
 
     /// The span of pair `key`, or `fallback`.
     export fn spanOf(pairs, key, fallback) = match find(pairs, key) {
-        Success { value } => spanOfPair(value)
+        Success { value } => Toml::pairSpan(value)
         Error => fallback
     }
 
     /// True when pair `key` exists.
-    export fn has(pairs, key) = match find(pairs, key) {
-        Success => true
-        Error => false
-    }
+    export fn has(pairs, key) = Checked::succeeded(find(pairs, key))
 
     /// The first pair whose key is not allowed, as `code`.
     export fn unknownKeys(pairs, allowed, code) = foldList(pairs, Success { value: 0 }, fn(acc, pair: Toml::Pair) => match acc {
@@ -95,23 +86,17 @@ module ManifestSections {
     /// A string array pair, `fallback` when absent.
     export fn stringList(pairs, key, fallback, code) = match find(pairs, key) {
         Error => Success { value: fallback }
-        Success { value } => match valueOf(value) {
-            Toml::Arr { items } => stringItems(items, spanOfPair(value), code)
-            _ => fail(code, spanOfPair(value))
+        Success { value } => match Toml::valueOf(value) {
+            Toml::Arr { items } => stringItems(items, Toml::pairSpan(value), code)
+            _ => fail(code, Toml::pairSpan(value))
         }
     }
 
-    fn allValidPaths(paths) = foldList(paths, true, fn(ok, path) => ok && match Paths::validate(path) {
-        Success => true
-        Error => false
-    })
+    fn allValidPaths(paths) = foldList(paths, true, fn(ok, path) => ok && Checked::succeeded(Paths::validate(path)))
 
     // Roots follow path rules: exact duplicates and case-fold collisions
     // both fail ([PACKAGE-SOURCE-CANONICAL]).
-    fn uniqueStrings(xs) = match Paths::canonicalSet(xs) {
-        Success => true
-        Error => false
-    }
+    fn uniqueStrings(xs) = Checked::succeeded(Paths::canonicalSet(xs))
 
     fn roots(pairs, key, fallback, code, span) = Checked::andThen(stringList(pairs, key, fallback, code), fn(value) => if allValidPaths(value) && uniqueStrings(value) { Success { value: value } } else { fail(code, spanOf(pairs, key, span)) })
 
@@ -161,29 +146,33 @@ module ManifestSections {
 
     fn projectEnd(pairs, span, name, sourceRoots, ns, entry, flavor) = Checked::andThen(roots(pairs, "test_roots", [], "manifest.project.test-roots", span), fn(value) => pythonSourcesOf(pairs, span, name, sourceRoots, ns, entry, flavor, value))
 
+    /// A section's body once the table holds exactly `allowed` keys; `body`
+    /// gets the pairs and the section's span.
+    fn sectionBody(pair, allowed, unknownCode, body) = match unknownKeys(pairsOf(Toml::valueOf(pair)), allowed, unknownCode) {
+        Error { message } => Error { message: message }
+        Success => body(pairsOf(Toml::valueOf(pair)), Toml::pairSpan(pair))
+    }
+
     /// `[project]`: required, with validated roots, entry and flavor.
     export fn project(root) = match find(pairsOf(root), "project") {
         Error => fail("manifest.project.missing", rootSpan())
-        Success { value } => match unknownKeys(pairsOf(valueOf(value)), projectKeys, "manifest.project.unknown-key") {
-            Error { message } => Error { message: message }
-            Success => projectBody(pairsOf(valueOf(value)), spanOfPair(value))
-        }
+        Success { value } => sectionBody(value, projectKeys, "manifest.project.unknown-key", projectBody)
     }
 
     fn boolOf(pairs, key, fallback, code) = match find(pairs, key) {
         Error => Success { value: fallback }
-        Success { value } => match valueOf(value) {
+        Success { value } => match Toml::valueOf(value) {
             Toml::Bool { flag } => Success { value: flag }
-            _ => fail(code, spanOfPair(value))
+            _ => fail(code, Toml::pairSpan(value))
         }
     }
 
     /// `[modules]`: the wildcard-import policy; `published_library` is advice only.
     export fn modules(root) = match find(pairsOf(root), "modules") {
         Error => Success { value: false }
-        Success { value } => match unknownKeys(pairsOf(valueOf(value)), modulesKeys, "manifest.modules.unknown-key") {
+        Success { value } => match unknownKeys(pairsOf(Toml::valueOf(value)), modulesKeys, "manifest.modules.unknown-key") {
             Error { message } => Error { message: message }
-            Success => modulesBody(pairsOf(valueOf(value)))
+            Success => modulesBody(pairsOf(Toml::valueOf(value)))
         }
     }
 
@@ -242,9 +231,6 @@ module ManifestSections {
     /// `[package]`: optional for application roots; complete when present.
     export fn publication(root) = match find(pairsOf(root), "package") {
         Error => Success { value: Maybe::none() }
-        Success { value } => match unknownKeys(pairsOf(valueOf(value)), packageKeys, "manifest.package.unknown-key") {
-            Error { message } => Error { message: message }
-            Success => packageBody(pairsOf(valueOf(value)), spanOfPair(value))
-        }
+        Success { value } => sectionBody(value, packageKeys, "manifest.package.unknown-key", packageBody)
     }
 }

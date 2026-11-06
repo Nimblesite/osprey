@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Checked
 import registry::Json
 import registry::Bytes
 import registry::Digests
@@ -120,10 +121,7 @@ module SchemaCheck {
     fn uuidOk(value) = textCodeOk(value, fn(text) => uuidCode(text))
 
     fn digestOk(value) = match value {
-        Json::Str { text } => match Digests::parse(text) {
-            Success => true
-            Error => false
-        }
+        Json::Str { text } => Checked::succeeded(Digests::parse(text))
         _ => false
     }
 

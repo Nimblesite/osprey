@@ -18,7 +18,7 @@ module HostedCookies {
     export type Selection = Found { value: string } | Missing | Reject { status: int, code: string }
 
     fn visible(b) = b >= 33 && b < 127
-    fn nameByte(b) = Bytes::isAlnum(b) || b == 95 || b == 45
+    fn nameByte(b) = Bytes::isAlnumIn(b, [Bytes::underscore, Bytes::hyphen])
 
     /// One segment after the separator: exactly one optional leading space,
     /// then `name=value`; the value may itself contain `=` (base64).

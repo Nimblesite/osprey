@@ -43,6 +43,12 @@ module Bytes {
 
     fn hexDigit(nibble) = substring(hexDigits, nibble, nibble + 1) ?: ""
 
+    /// `text` up to its first `separator`, or all of it when there is none.
+    export fn before(text, separator) = match indexOf(text, separator) {
+        Success { value } => take(text, value)
+        Error => text
+    }
+
     /// Two lowercase hex digits of one byte.
     export fn hexByte(b) = hexDigit(intDiv(b, 16) % 16) + hexDigit(b % 16)
 
@@ -88,6 +94,21 @@ module Bytes {
     /// ASCII lowercase letter or digit: the unadorned identifier byte.
     export fn isLowerDigit(b) = isLower(b) || isDigit(b)
 
+    /// The punctuation bytes the identifier rules of the manifests, paths,
+    /// paths inside a registry release and database references admit.
+    export let plus = 43
+    export let hyphen = 45
+    export let dot = 46
+    export let slash = 47
+    export let underscore = 95
+    export let tilde = 126
+
+    /// ASCII letter or digit, or one of the punctuation bytes `extra`.
+    export fn isAlnumIn(b, extra) = isAlnum(b) || listContains(extra, b)
+
+    /// ASCII lowercase letter or digit, or one of the punctuation bytes `extra`.
+    export fn isLowerDigitIn(b, extra) = isLowerDigit(b) || listContains(extra, b)
+
     /// True when every byte of `text` satisfies `ok` (the empty text does).
     export fn everyByte(text, ok) = fold(range(0, byteLength(text)), true, fn(good, i) => good && ok(at(text, i)))
 
@@ -98,7 +119,8 @@ module Bytes {
     /// after the last replaced byte.
     export type Substitution = { out: string, start: int }
 
-    fn between(text, from, to) = take(drop(text, from), to - from)
+    /// `text` from byte `from` up to `to`.
+    export fn between(text, from, to) = take(drop(text, from), to - from)
 
     fn substitutedAt(text, replace, acc: Substitution, i) = match replace(at(text, i)) {
         "" => acc

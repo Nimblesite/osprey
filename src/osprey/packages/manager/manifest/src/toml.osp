@@ -37,6 +37,14 @@ module Toml {
     /// The span of a cursor position.
     export fn spanOf(c: TomlLexer::Cursor) = Span { line: c.line, column: c.column }
 
+    // `Pair` shares `value` and `span` with other records; issue #273 needs
+    // the receiver's record spelled out, so every reader projects through
+    // these two.
+    /// The value of a pair.
+    export fn valueOf(pair: Pair) = pair.value
+    /// The span of a pair.
+    export fn pairSpan(pair: Pair) = pair.span
+
     /// Parse a TOML document into its root table, or the first problem.
     export fn parse(text) -> Result<Value, Problem> = TomlParser::parse(text)
 

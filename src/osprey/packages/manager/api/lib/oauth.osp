@@ -12,7 +12,7 @@ module OAuth {
 
     let callbackPath = "/v1/auth/github/callback"
 
-    fn unreserved(b) = Bytes::isAlnum(b) || b == 45 || b == 46 || b == 95 || b == 126
+    fn unreserved(b) = Bytes::isAlnumIn(b, [Bytes::hyphen, Bytes::dot, Bytes::underscore, Bytes::tilde])
 
     fn character(text, i) = substring(text, i, i + 1) ?: ""
 
@@ -44,7 +44,7 @@ module OAuth {
     export fn challenge(verifier) = Dsse::base64Url(Sha256::digest(Bytes::ofString(verifier)))
 
     /// S256 produces exactly 43 characters of the unpadded base64url alphabet.
-    fn challengeByte(b) = Bytes::isAlnum(b) || b == 45 || b == 95
+    fn challengeByte(b) = Bytes::isAlnumIn(b, [Bytes::hyphen, Bytes::underscore])
 
     export fn challengeCode(text) = if byteLength(text) != 43 || !Bytes::everyByte(text, challengeByte) { "auth.pkce" } else { "" }
 

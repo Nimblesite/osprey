@@ -25,12 +25,6 @@ module Tree {
     /// The lines printed so far and the keys already expanded.
     type Walk = { printed: List<string>, visited: List<Names::Key> }
 
-    // Shared field names need typed receivers (issue #273).
-    fn rootEdges(lock: Lockfile::Lock) = lock.root.dependencies
-    fn nameOf(m: ManifestModel::Manifest) = m.projectName
-    fn keyOf(id: Identity::ReleaseId) = id.key
-    fn reqKey(edge) = ManifestModel::requirementOf(edge).package
-
     /// ` (build)` or ` (test)` after a non-Runtime edge.
     export fn kindSuffix(edge) = match ManifestModel::edgeRank(edge) {
         0 => ""
@@ -43,20 +37,20 @@ module Tree {
 
     fn lineOf(depth, pkg, edge, repeated) = pad(depth) + Lockfile::compact(Lockfile::releaseOf(pkg)) + kindSuffix(edge) + mark(repeated)
 
-    fn unlockedLine(depth, edge) = pad(depth) + Names::display(reqKey(edge)) + kindSuffix(edge) + unlocked
+    fn unlockedLine(depth, edge) = pad(depth) + Names::display(ManifestModel::requirementKey(edge)) + kindSuffix(edge) + unlocked
 
     fn withLine(w: Walk, line) = Walk { printed: listAppend(w.printed, line), visited: w.visited }
     fn withVisited(w: Walk, key) = Walk { printed: w.printed, visited: listAppend(w.visited, key) }
     fn seen(w: Walk, key) = Names::includes(w.visited, key)
 
     /// One edge: the pinned package's line and, the first time, its subtree.
-    fn edgeLines(lock, depth, w, edge) -> Walk = match Lockfile::packageFor(Lockfile::packagesOf(lock), reqKey(edge)) {
+    fn edgeLines(lock, depth, w, edge) -> Walk = match Lockfile::packageFor(Lockfile::packagesOf(lock), ManifestModel::requirementKey(edge)) {
         Error => withLine(w, unlockedLine(depth, edge))
         Success { value } => packageLines(lock, depth, w, edge, value)
     }
 
     fn packageLines(lock, depth, w, edge, pkg) -> Walk = {
-        let key = keyOf(Lockfile::releaseOf(pkg))
+        let key = Identity::keyOf(Lockfile::releaseOf(pkg))
         let repeated = seen(w, key)
         let printed = withLine(w, lineOf(depth, pkg, edge, repeated))
         if repeated { printed } else { childLines(lock, depth + 1, withVisited(printed, key), Lockfile::edgesOf(pkg)) }
@@ -67,14 +61,14 @@ module Tree {
     fn printedOf(w: Walk) = w.printed
 
     /// The tree: the project name, then the root edges and their subtrees.
-    fn treeOf(manifest, lock) = Reports::success(listPrepend(printedOf(childLines(lock, 1, Walk { printed: [], visited: [] }, rootEdges(lock))), nameOf(manifest)))
+    fn treeOf(manifest, lock) = Reports::success(listPrepend(printedOf(childLines(lock, 1, Walk { printed: [], visited: [] }, Lockfile::rootEdges(lock))), ManifestModel::nameOf(manifest)))
 
     fn withLock(project, lock) = Reports::checked(Project::readAt(project), fn(value) => treeOf(value, lock))
 
     /// The tree of the project at `project`, or `tree.no-lock` with the reason.
     fn at(project) = Reports::checkedWith(Project::readLockAt(project), noLockCode, fn(value) => withLock(project, value))
 
-    fn directNames(manifest: ManifestModel::Manifest) = Names::distinct(mapList(manifest.dependencies, reqKey))
+    fn directNames(manifest: ManifestModel::Manifest) = Names::distinct(mapList(manifest.dependencies, ManifestModel::requirementKey))
 
     // Implements [PACKAGE-API]: the editor asks the canonical manifest parser;
     // no lock, registry connection or editor-side TOML parser is needed.

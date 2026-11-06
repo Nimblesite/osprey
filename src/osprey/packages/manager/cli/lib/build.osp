@@ -65,16 +65,20 @@ module Build {
     fn manifestOf(pm: PackageManifest) = pm.manifest
     fn keyText(p: Lockfile::Package) = Names::display(p.release.key)
 
-    /// A package's manifest, or `build.manifest @scope/name <code at line:column>`.
+    /// `build.manifest @scope/name <code at line:column>`: the one failure
+    /// spelling of a package tree whose manifest cannot be used.
+    fn manifestFailure(p, message) = Error { message: "${manifestCode} ${keyText(p)} ${message}" }
+
+    /// A package's manifest, or `manifestFailure` for its rejection.
     fn packageManifestAt(dir, p, text) = match Manifest::accepted(Manifest::parse(text)) {
-        Error { message } => Error { message: "${manifestCode} ${keyText(p)} ${message}" }
+        Error { message } => manifestFailure(p, message)
         Success { value } => Success { value: PackageManifest { dir: dir, manifest: value } }
     }
 
     fn packageManifestIn(project, lock, p) = {
         let dir = Project::treeDirAt(project, lock, p)
         match perform Host::Files.read("${dir}/osprey.toml") {
-            Error { message } => Error { message: "${manifestCode} ${keyText(p)} ${message}" }
+            Error { message } => manifestFailure(p, message)
             Success { value } => packageManifestAt(Project::treeDirAt(".", lock, p), p, value)
         }
     }
@@ -115,13 +119,8 @@ module Build {
 
     fn derivedText(manifest, pms) = join(projectLines(manifest, pms), "\n")
 
-    fn writeDerived(cmd: CommandLine, manifest, pms) = match perform Host::Tree.ensure(Project::pathAt(cmd.project, buildDir)) {
-        Error { message } => Error { message: message }
-        Success => match perform Host::Files.write(Project::pathAt(cmd.project, buildManifest), derivedText(manifest, pms)) {
-            Error { message } => Error { message: message }
-            Success => Success { value: 0 }
-        }
-    }
+    fn writeDerived(cmd: CommandLine, manifest, pms) = Checked::andThen(perform Host::Tree.ensure(Project::pathAt(cmd.project, buildDir)),
+        fn(_dir) => Checked::andThen(perform Host::Files.write(Project::pathAt(cmd.project, buildManifest), derivedText(manifest, pms)), fn(_written) => Success { value: 0 }))
 
     /// The compiler invocation, every variable word shell-quoted ([PACKAGE-HARDENING] C6).
     fn command(cmd: CommandLine, manifest) = if cmd.run {
@@ -146,12 +145,13 @@ module Build {
 
     fn afterVerify(verified: Reports::Report, cmd, read) = if verified.status != 0 { verified } else { Reports::checked(read, fn(value) => compile(cmd, value)) }
 
+    /// The release lock, verified, then compiled.
+    fn releaseVerified(cmd: CommandLine) = afterVerify(Verify::verifyReleaseAt(cmd.project), cmd, Project::readLockAt(cmd.project))
+
     /// The release build: `osprey.lock`, verified, after the empty-overlay preflight.
     fn releaseBuild(cmd: CommandLine, mappings) = if Overlay::active(mappings) {
         Reports::failure(["${overridesCode} ${join(mapList(mappings, fn(m) => Names::display(Overlay::keyOf(m))), " ")}", "run `use --clear` or build without --release"])
-    } else {
-        afterVerify(Verify::verifyReleaseAt(cmd.project), cmd, Project::readLockAt(cmd.project))
-    }
+    } else { releaseVerified(cmd) }
 
     /// The development build: `osprey.local.lock`, verified, locals from their checkouts.
     fn localBuild(cmd: CommandLine) = match Project::readLocalLockAt(cmd.project) {
@@ -161,7 +161,7 @@ module Build {
 
     fn withOverlay(cmd: CommandLine, mappings) = if cmd.release { releaseBuild(cmd, mappings) }
         else if Overlay::active(mappings) { localBuild(cmd) }
-        else { afterVerify(Verify::verifyReleaseAt(cmd.project), cmd, Project::readLockAt(cmd.project)) }
+        else { releaseVerified(cmd) }
 
     fn build(cmd: CommandLine) = Reports::checked(Overlay::readAt(cmd.project), fn(value) => withOverlay(cmd, value))
 

@@ -46,15 +46,10 @@ module Verify {
         oneLine(digest == lock.root.manifestDigest, manifestDigestCode),
         oneLine(Lockfile::dependenciesCanonical(lock.root.dependencies) == Lockfile::dependenciesCanonical(manifest.dependencies), dependenciesCode))
 
-    fn digestMatches(pkg: Lockfile::Package, fileList) = match Install::digestOfFiles(fileList) {
-        Success { value } => value == pkg.release.digest
-        Error => false
-    }
-
     /// `verify.digest` when the bytes differ from the release; with the bytes
     /// right, `capability.surface` when the recomputed surface is not the
     /// pinned one ([PACKAGE-CAPABILITY-CONFINEMENT]).
-    fn publishedFindings(pkg, fileList, name) = if !digestMatches(pkg, fileList) { ["${digestCode} ${name}"] } else { oneLine(Install::surfaceMatches(pkg, fileList), "${surfaceCode} ${name}") }
+    fn publishedFindings(pkg, fileList, name) = if !Install::digestMatches(pkg, fileList) { ["${digestCode} ${name}"] } else { oneLine(Install::surfaceMatches(pkg, fileList), "${surfaceCode} ${name}") }
 
     /// A local checkout must still carry the manifest the development lock was computed from.
     fn localFindings(o, fileList, name) = match Install::manifestDigestOf(fileList) {
@@ -85,7 +80,6 @@ module Verify {
 
     // ---- the Python plane ([PACKAGE-PYTHON-UV]) ----
 
-    fn pythonOf(lock: Lockfile::Lock) = lock.python
     fn hexOf(pkg: Lockfile::Package) = Digests::hexOf(pkg.release.digest)
     fn keyTextOf(pkg: Lockfile::Package) = Names::display(pkg.release.key)
 
@@ -102,19 +96,14 @@ module Verify {
         Checked::andThen(Manifest::accepted(Manifest::parse(readOr("${dir}/osprey.toml"))), fn(value) => PythonPlane::memberOf(value, pythonPathFor(lock, pkg), readOr("${dir}/pyproject.toml")))
     }
 
-    fn appendMember(done, member) = Checked::andThen(member, fn(value) => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) })
-
-    fn members(project, lock, manifest) = foldList(Lockfile::packagesOf(lock), appendMember([], PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml")))), fn(acc, p) => match acc {
-        Error => acc
-        Success { value } => appendMember(value, packageMember(project, lock, p))
-    })
+    fn members(project, lock, manifest) = PythonPlane::membersOver(Lockfile::packagesOf(lock), PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml"))), fn(p) => packageMember(project, lock, p))
 
     fn pythonFindings(project, lock, manifest, pins) = match members(project, lock, manifest) {
         Error { message } => [message]
         Success { value } => PythonPlane::findings(project, value, pins)
     }
 
-    fn pythonLines(project, lock, manifest) = Maybe::fold(pythonOf(lock), [], fn(pins) => pythonFindings(project, lock, manifest, pins))
+    fn pythonLines(project, lock, manifest) = Maybe::fold(Lockfile::pinsOf(lock), [], fn(pins) => pythonFindings(project, lock, manifest, pins))
 
     fn findings(project, lock, manifest, digest) = {
         let lines = listConcat(listConcat(manifestLines(lock, manifest, digest), packageLines(project, lock)), pythonLines(project, lock, manifest))

@@ -46,10 +46,11 @@ module Merkle {
         false => inclusionStep(index, leaves, splitOf(length(leaves)))
     }
 
-    fn inclusionStep(index, leaves, k) = if index < k {
-        listConcat(inclusionProof(index, sub(leaves, 0, k)), [root(sub(leaves, k, length(leaves)))])
-    } else {
-        listConcat(inclusionProof(wrapSub(index, k), sub(leaves, k, length(leaves))), [root(sub(leaves, 0, k))])
+    fn inclusionStep(index, leaves, k) = {
+        let left = sub(leaves, 0, k)
+        let right = sub(leaves, k, length(leaves))
+        if index < k { listConcat(inclusionProof(index, left), [root(right)]) }
+        else { listConcat(inclusionProof(wrapSub(index, k), right), [root(left)]) }
     }
 
     /// PROOF(m, D) of RFC 9162 section 2.1.4.1 for prefix size `first`.
@@ -60,10 +61,11 @@ module Merkle {
         false => proofStep(m, leaves, exact, splitOf(length(leaves)))
     }
 
-    fn proofStep(m, leaves, exact, k) = if m <= k {
-        listConcat(subProof(m, sub(leaves, 0, k), exact), [root(sub(leaves, k, length(leaves)))])
-    } else {
-        listConcat(subProof(wrapSub(m, k), sub(leaves, k, length(leaves)), false), [root(sub(leaves, 0, k))])
+    fn proofStep(m, leaves, exact, k) = {
+        let left = sub(leaves, 0, k)
+        let right = sub(leaves, k, length(leaves))
+        if m <= k { listConcat(subProof(m, left, exact), [root(right)]) }
+        else { listConcat(subProof(wrapSub(m, k), right, false), [root(left)]) }
     }
 
     fn span(start, width, hash) = Span { start: start, width: width, shared: false, hash: hash }

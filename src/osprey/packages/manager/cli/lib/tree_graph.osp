@@ -30,15 +30,9 @@ module TreeGraph {
     fn bool(flag) = Json::Bool { flag: flag }
     fn textList(texts) = Json::arr(mapList(texts, Json::str))
 
-    // Shared field names need typed receivers (issue #273).
-    fn keyOf(id: Identity::ReleaseId) = id.key
-    fn reqKey(edge) = ManifestModel::requirementOf(edge).package
-    fn nameOf(m: ManifestModel::Manifest) = m.projectName
-    fn depsOf(m: ManifestModel::Manifest) = m.dependencies
-
     fn versionOf(id: Identity::ReleaseId) = "e${id.epoch}.r${id.ordinal}"
-    fn directKeys(manifest) = Names::distinct(mapList(depsOf(manifest), reqKey))
-    fn edgeKeys(edges) = Names::distinct(mapList(edges, reqKey))
+    fn directKeys(manifest) = Names::distinct(mapList(ManifestModel::edgesOf(manifest), ManifestModel::requirementKey))
+    fn edgeKeys(edges) = Names::distinct(mapList(edges, ManifestModel::requirementKey))
 
     fn findingOf(line) = match indexOf(line, " ") {
         Success { value } => Finding { code: take(line, value), detail: drop(line, value + 1) }
@@ -59,13 +53,13 @@ module TreeGraph {
         found || (codeIn(line) == missingCode && detailIn(line) == keyText))
 
     fn isPackageKey(packages, text) = foldList(packages, false, fn(found, p: Lockfile::Package) =>
-        found || Names::display(keyOf(Lockfile::releaseOf(p))) == text)
+        found || Names::display(Identity::keyOf(Lockfile::releaseOf(p))) == text)
 
     fn globalLines(lines, packages) = filterList(lines, fn(line) => !isPackageKey(packages, detailIn(line)))
 
     fn dependentsOf(packages, key) = Names::distinct(foldList(packages, [], fn(acc, p: Lockfile::Package) =>
-        if !Names::same(keyOf(Lockfile::releaseOf(p)), key) && Names::includes(edgeKeys(Lockfile::edgesOf(p)), key) {
-            listAppend(acc, keyOf(Lockfile::releaseOf(p)))
+        if !Names::same(Identity::keyOf(Lockfile::releaseOf(p)), key) && Names::includes(edgeKeys(Lockfile::edgesOf(p)), key) {
+            listAppend(acc, Identity::keyOf(Lockfile::releaseOf(p)))
         } else { acc }))
 
     // A local checkout replaces the release's bytes ([PACKAGE-LOCAL-OVERRIDE]), so
@@ -86,14 +80,14 @@ module TreeGraph {
 
     fn packageValue(lines, direct, packages, overrides, pkg: Lockfile::Package) = {
         let id = Lockfile::releaseOf(pkg)
-        let keyText = Names::display(keyOf(id))
-        Json::obj(listConcat(overrideMembers(overrides, keyOf(id)), [
+        let keyText = Names::display(Identity::keyOf(id))
+        Json::obj(listConcat(overrideMembers(overrides, Identity::keyOf(id)), [
             Json::member("key", Json::str(keyText)),
             Json::member("version", Json::str(versionOf(id))),
             Json::member("digest", Json::str(id.digest)),
-            Json::member("direct", bool(Names::includes(direct, keyOf(id)))),
+            Json::member("direct", bool(Names::includes(direct, Identity::keyOf(id)))),
             Json::member("dependencies", textList(mapList(edgeKeys(Lockfile::edgesOf(pkg)), Names::display))),
-            Json::member("dependents", textList(mapList(dependentsOf(packages, keyOf(id)), Names::display))),
+            Json::member("dependents", textList(mapList(dependentsOf(packages, Identity::keyOf(id)), Names::display))),
             Json::member("findings", textList(packageFindings(lines, keyText))),
             Json::member("present", bool(presentOf(lines, keyText)))
         ]))
@@ -105,7 +99,7 @@ module TreeGraph {
         let direct = directKeys(manifest)
         let packages = Lockfile::packagesOf(lock)
         Json::obj([
-            Json::member("project", Json::str(nameOf(manifest))),
+            Json::member("project", Json::str(ManifestModel::nameOf(manifest))),
             Json::member("direct", textList(mapList(direct, Names::display))),
             Json::member("packages", packagesValue(lines, direct, packages, overrides)),
             Json::member("findings", textList(listConcat(codesOf(globalLines(lines, packages)), localFindings)))
@@ -113,7 +107,7 @@ module TreeGraph {
     }
 
     fn notLockedValue(manifest) = Json::obj([
-        Json::member("project", Json::str(nameOf(manifest))),
+        Json::member("project", Json::str(ManifestModel::nameOf(manifest))),
         Json::member("direct", textList(mapList(directKeys(manifest), Names::display))),
         Json::member("packages", Json::arr([])),
         Json::member("findings", textList([notLockedCode]))

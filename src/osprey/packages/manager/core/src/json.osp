@@ -153,10 +153,13 @@ module Json {
     fn membersOf(seen) = mapList(seen, fn(s) => s.member)
     fn hasKey(seen, key) = foldList(seen, false, fn(found, s) => found || s.member.key == key)
 
-    fn parseObject(text, i, depth) = match depth + 1 > depthMax {
+    /// `inside` one level deeper, or `json.depth` when nesting is exhausted.
+    fn nested(depth, i, inside) = match depth + 1 > depthMax {
         true => err(depthCode, i)
-        false => parseMembers(text, skipWs(text, i + 1), depth + 1, [])
+        false => inside(depth + 1)
     }
+
+    fn parseObject(text, i, depth) = nested(depth, i, fn(next) => parseMembers(text, skipWs(text, i + 1), next, []))
 
     /// One member position; `[]` and trailing commas never parse.
     fn parseMembers(text, j, depth, seen) = {
@@ -210,10 +213,7 @@ module Json {
         }
     }
 
-    fn parseArray(text, i, depth) = match depth + 1 > depthMax {
-        true => err(depthCode, i)
-        false => parseItems(text, skipWs(text, i + 1), depth + 1, [])
-    }
+    fn parseArray(text, i, depth) = nested(depth, i, fn(next) => parseItems(text, skipWs(text, i + 1), next, []))
 
     fn parseItems(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0
@@ -304,10 +304,7 @@ module Json {
     export fn describe(problem) = "${problemCode(problem)} at byte ${problemOffset(problem)}"
 
     /// The dotted reason code of an encoded problem.
-    export fn problemCode(problem) = match indexOf(problem, "@") {
-        Success { value } => take(problem, value)
-        Error => problem
-    }
+    export fn problemCode(problem) = Bytes::before(problem, "@")
 
     /// The byte offset of an encoded problem, or -1 when it carries none.
     export fn problemOffset(problem) = match indexOf(problem, "@") {

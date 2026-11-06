@@ -68,20 +68,17 @@ module Fetch {
         _ => Error { message: usageCode }
     }
 
-    fn digestAsk(text) = match Digests::parse(text) {
-        Success { value } => Success { value: ByDigest { digest: value } }
+    /// One argument parsed as a release selector, or `fetch.usage`.
+    fn ask(parsed, make) = match parsed {
+        Success { value } => Success { value: make(value) }
         Error => Error { message: usageCode }
     }
 
-    fn newestAsk(text) = match Names::parse(text) {
-        Success { value } => Success { value: Newest { key: value } }
-        Error => Error { message: usageCode }
-    }
+    fn digestAsk(text) = ask(Digests::parse(text), fn(value) => ByDigest { digest: value })
 
-    fn epochOf(key, versionText) = match decimal(drop(versionText, 1)) {
-        Success { value } => Success { value: InEpoch { key: key, epoch: value } }
-        Error => Error { message: usageCode }
-    }
+    fn newestAsk(text) = ask(Names::parse(text), fn(value) => Newest { key: value })
+
+    fn epochOf(key, versionText) = ask(decimal(drop(versionText, 1)), fn(value) => InEpoch { key: key, epoch: value })
 
     fn epochAsk(keyText, versionText) = match Names::parse(keyText) {
         Error => Error { message: usageCode }

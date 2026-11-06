@@ -8,6 +8,19 @@ module Checked {
         Error { message } => Error { message: message }
     }
 
+    /// True when `result` is a success; the presence test of every lookup.
+    export fn succeeded(result) = match result {
+        Success => true
+        Error => false
+    }
+
+    /// The failure message of `result`, rewritten by `describe`; a success is
+    /// returned unchanged.
+    export fn mapError(result, describe) = match result {
+        Success { value } => Success { value: value }
+        Error { message } => Error { message: describe(message) }
+    }
+
     fn collectAt(items, i, acc, step) = match i >= length(items) {
         true => Success { value: acc }
         false => match listGet(items, i) {

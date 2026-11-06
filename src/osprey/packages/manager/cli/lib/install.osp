@@ -56,7 +56,8 @@ module Install {
     /// Whether the recomputed surface is the one the lock pins.
     export fn surfaceMatches(pkg: Lockfile::Package, fileList) = join(surfaceOfFiles(fileList), "\n") == join(pkg.surface, "\n")
 
-    fn digestMatches(pkg: Lockfile::Package, fileList) = match digestOfFiles(fileList) {
+    /// Whether a tree's bytes are the release's pinned digest.
+    export fn digestMatches(pkg: Lockfile::Package, fileList) = match digestOfFiles(fileList) {
         Success { value } => value == pkg.release.digest
         Error => false
     }
@@ -95,10 +96,9 @@ module Install {
         Error => installOne(base, project, tally, pkg)
     }
 
-    fn pythonOf(lock: Lockfile::Lock) = lock.python
 
     /// With the uv plane pinned, `uv sync --frozen` creates the environment ([PACKAGE-PYTHON-UV]).
-    fn synced(project, lock, tally) = Maybe::fold(pythonOf(lock), tally, fn(pins) => match PythonPlane::synced(project, pins) {
+    fn synced(project, lock, tally) = Maybe::fold(Lockfile::pinsOf(lock), tally, fn(pins) => match PythonPlane::synced(project, pins) {
         Success { value } => line(tally, value)
         Error { message } => failedLine(tally, message)
     })
