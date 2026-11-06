@@ -182,31 +182,11 @@ print "${first},${second},${separate},${text}"
 "#;
     assert_output("inferred_factory", "osp", default, "1,2,11,ready\n");
     assert_output("inferred_factory", "ospml", ml, "1,2,11,ready\n");
-    for (source, original, replacement, flavor) in [
-        (
-            default,
-            "let second = a(|| => perform Count.next())",
-            "let second = a(|| => \"wrong\")",
-            osprey_syntax::Flavor::Default,
-        ),
-        (
-            ml,
-            "second = a (\\() => perform Count.next ())",
-            "second = a (\\() => \"wrong\")",
-            osprey_syntax::Flavor::Ml,
-        ),
-    ] {
-        let mismatched = source.replace(original, replacement);
-        let parsed = osprey_syntax::parse_program_with_flavor(&mismatched, flavor);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let errors = osprey_types::check_program(&parsed.program);
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.message.contains("cannot unify")),
-            "one shared handler value must not change its callback ABI: {errors:?}"
-        );
-    }
+    assert_second_call_mismatch_rejected(
+        default,
+        ml,
+        "one shared handler value must not change its callback ABI",
+    );
 }
 
 #[test]
@@ -251,33 +231,11 @@ first = a (\() => perform Count.next ())
 second = a (\() => perform Count.next ())
 print "${first}:${second}"
 "#;
-    for (source, original, replacement, flavor) in [
-        (
-            default,
-            "let second = a(|| => perform Count.next())",
-            "let second = a(|| => \"wrong\")",
-            osprey_syntax::Flavor::Default,
-        ),
-        (
-            ml,
-            "second = a (\\() => perform Count.next ())",
-            "second = a (\\() => \"wrong\")",
-            osprey_syntax::Flavor::Ml,
-        ),
-    ] {
-        let parsed = osprey_syntax::parse_program_with_flavor(
-            &source.replace(original, replacement),
-            flavor,
-        );
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let errors = osprey_types::check_program(&parsed.program);
-        assert!(
-            errors
-                .iter()
-                .any(|error| error.message.contains("cannot unify")),
-            "one branched handler value must retain one callback ABI: {errors:?}"
-        );
-    }
+    assert_second_call_mismatch_rejected(
+        default,
+        ml,
+        "one branched handler value must retain one callback ABI",
+    );
     assert_output("branched_factory", "osp", default, "1:2\n");
     assert_output("branched_factory", "ospml", ml, "1:2\n");
 }
@@ -481,4 +439,35 @@ print (report ())
 ";
     assert_output("generic_capture", "osp", default, "41\n1\n");
     assert_output("generic_capture", "ospml", ml, "41\n1\n");
+}
+
+/// Both flavors, with the second `a` call's callback answering a string, must
+/// fail to unify: one handler value keeps one callback ABI (`why`).
+fn assert_second_call_mismatch_rejected(default: &str, ml: &str, why: &str) {
+    for (source, original, replacement, flavor) in [
+        (
+            default,
+            "let second = a(|| => perform Count.next())",
+            "let second = a(|| => \"wrong\")",
+            osprey_syntax::Flavor::Default,
+        ),
+        (
+            ml,
+            "second = a (\\() => perform Count.next ())",
+            "second = a (\\() => \"wrong\")",
+            osprey_syntax::Flavor::Ml,
+        ),
+    ] {
+        let mismatched = source.replace(original, replacement);
+        assert_ne!(mismatched, source, "{why}: the mutation must apply");
+        let parsed = osprey_syntax::parse_program_with_flavor(&mismatched, flavor);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        let errors = osprey_types::check_program(&parsed.program);
+        assert!(
+            errors
+                .iter()
+                .any(|error| error.message.contains("cannot unify")),
+            "{why}: {errors:?}"
+        );
+    }
 }
