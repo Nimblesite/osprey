@@ -23,7 +23,12 @@ nativeLoaded work = match MachineDocs::load (readFile "src/osprey/packages/nativ
 
 withNativeFixture work = Runtime::guarded (\() => nativeLoaded work)
 
-nativeTree machine = listGet (Encode::walk ([], Templates::view machine)).nodes 0 ?: JsonNull
+nativeTree machine = firstNode (Encode::walk ([], Templates::view machine))
+
+// A machine renders as one root node and reports no fault.
+expectRendered machine =
+    expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
+    expect (machine.machineFault, "")
 
 nativeElements machine = Canvases::semantics machine
 
@@ -108,9 +113,7 @@ machineCaseCanvasUseCase () = withNativeFixture (\fresh =>
     reopened = Canvases::act (dismissed, "Menu", 0.5)
     option = nativePoint (nativeElement (reopened, "Two"), 0.5)
     held = Canvases::pointer (reopened, option.nativeX, option.nativeY, true)
-    expect (Canvases::chooses (held, "selected", option.nativeX, option.nativeY, false), true)
-    expect (Canvases::chooses (held, "level", option.nativeX, option.nativeY, false), false)
-    expect (Canvases::chooses (held, "selected", option.nativeX, option.nativeY, true), false)
+    forEachList ([{ name = "selected", down = false, chosen = true }, { name = "level", down = false, chosen = false }, { name = "selected", down = true, chosen = false }], \probe => expect (Canvases::chooses (held, probe.name, option.nativeX, option.nativeY, probe.down), probe.chosen))
     expect (Canvases::chooses (held, "selected", 5.0, 5.0, false), false)
     chosen = Canvases::act (reopened, "Two", 0.5)
     expect (nativeLabels chosen, "Menu|Press|Level")

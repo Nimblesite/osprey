@@ -38,17 +38,15 @@ realDocumentSkins () =
     paper = realSkinned (initial, "paper")
     prism = realSkinned (initial, "prism")
     forEachList ([topology, notation, paper, prism], \machine =>
-        expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
-        expect (length (Canvases::semantics machine) > 10, true)
-        expect (machine.machineFault, ""))
+        expectRendered machine
+        expect (length (Canvases::semantics machine) > 10, true))
     forEachList ([{ at = notation, text = "0.70" }, { at = paper, text = "Transform" }, { at = prism, text = "2.5 kHz" }, { at = prism, text = "-24.0" }], \probe => expect (nativeLetters (probe.at, probe.text), true))
 
 realCanvasEdits () =
     prism = realSkinned (signalMachine (), "prism")
     bypassed = realTap (prism, "Bypass Filter")
-    expect (Machines::flag (bypassed, "processOn"), false)
     enabled = realTap (bypassed, "Enable Filter")
-    expect (Machines::flag (enabled, "processOn"), true)
+    expectRead (\machine => Machines::flag (machine, "processOn"), [{ name = bypassed, value = false }, { name = enabled, value = true }])
     lowered = Canvases::act (enabled, "Filter Cutoff", 0.25)
     expect (Machines::number (lowered, "process"), 0.25)
     expect (nativeValue (lowered, "Filter Cutoff"), 0.25)
@@ -77,9 +75,7 @@ realCanvasEdits () =
     hovered = realPointer (dropped, body, false)
     expect (Doc::write (MachineDocs::snapshot hovered), Doc::write (MachineDocs::snapshot dropped))
 
-sceneSize machine =
-    node = listGet (Encode::walk ([], Templates::view machine)).nodes 0 ?: JsonNull
-    take (jsonEncode node ?: "", 45)
+sceneSize machine = take (jsonEncode (nativeTree machine) ?: "", 45)
 
 realCanvasRoomAndSliders () =
     prism = realSkinned (signalMachine (), "prism")
@@ -105,10 +101,7 @@ realPlayerJourney () =
     player = playerMachine ()
     expect (nativeLabels player, "Appearance: Sherbet Signal|Receiver: none|Play|Open file…")
     expect (nativeLetters (player, "Looking for TVs…"), true)
-    forEachList (["sherbet", "midnight", "poolside"], \skin =>
-        machine = realSkinned (player, skin)
-        expect (length (Encode::walk ([], Templates::view machine)).nodes, 1)
-        expect (machine.machineFault, ""))
+    forEachList (["sherbet", "midnight", "poolside"], \skin => expectRendered (realSkinned (player, skin)))
     native = realSkinned (player, "midnight")
     expectRead (\name => nativeShows (native, name), [{ name = "Looking for TVs…", value = true }, { name = "Choose an audio file", value = true }])
     ready = Machines::feed (native, [

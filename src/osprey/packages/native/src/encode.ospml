@@ -209,9 +209,7 @@ module Encode
         Lettering text x y size color depth anchor weight => [JsonInt 6, JsonString text, real x, real y, real size, JsonInt color, JsonInt depth, JsonInt anchor, real weight]
         Path steps outline paint moveX moveY scale depth => [JsonInt 5, JsonArray (mapList (steps, step)), JsonArray (stroke outline), JsonArray (painted paint), JsonArray (moved (moveX, moveY, scale)), JsonInt depth]
 
-    flag on = match on
-        true => JsonInt 1
-        false => JsonInt 0
+    flag on = JsonInt (Pick::either (on, 1, 0))
 
     reals values = mapList (values, \value => real value)
 

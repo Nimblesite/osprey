@@ -49,8 +49,8 @@ completeTemplateVariants () =
     framed = listGet (completeNodes (machine, "framed")) 0 ?: JsonNull
     style = Doc::field (framed, "style")
     expectNumbers (style, [{ name = "width", value = 300 }, { name = "height", value = 200 }, { name = "padding", value = 0 }, { name = "left", value = 12 }])
-    expect (Doc::text (style, "shadow"), "floating")
-    expect (Doc::flag (style, "grow"), true)
+    expectTexts (style, [{ name = "shadow", value = "floating" }])
+    expectFlags (style, [{ name = "grow", value = true }])
     expect (length (Encode::walk ([], Templates::view machine)).bindings > 5, true)
     expect (length (Canvases::semantics machine), 0)
     viewed = Canvases::viewed (machine, 800.0, 600.0)
@@ -87,10 +87,7 @@ completeInputFaults () =
     machine = completeMachine ()
     missing = Machines::put (machine, "missing", Values::text "x")
     expect (missing.machineFault, "no input named \"missing\"")
-    wrongText = Machines::put (machine, "level", Values::text "high")
-    expect (wrongText.machineFault, "input \"level\" is a number")
-    wrongList = Machines::put (machine, "choices", Values::text "one")
-    expect (wrongList.machineFault, "input \"choices\" is a list")
+    forEachList ([{ name = "level", value = "high", fault = "input \"level\" is a number" }, { name = "choices", value = "one", fault = "input \"choices\" is a list" }], \probe => expect ((Machines::put (machine, probe.name, Values::text probe.value)).machineFault, probe.fault))
     unset = Machines::put (machine, "caption", Values::none ())
     expect (unset.machineFault, "input \"caption\" is a text")
     cleared = Machines::put (machine, "choices", Values::list [])
@@ -141,12 +138,12 @@ completeEventAndConvenienceCases () =
             _ => "wrong event"
         Error problem => problem
     expect (completed, "denied")
-    board = listGet (Encode::walk ([], Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso")))).nodes 0 ?: JsonNull
+    board = firstNode (Encode::walk ([], Boards::board ("strokes", 2, true, ui::Fire(fireName = "stroke"), ui::Fire(fireName = "lasso"))))
     expectTexts (board, [{ name = "kind", value = "board" }, { name = "backdrop", value = "" }])
-    field = listGet (Encode::walk ([], Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit")))).nodes 0 ?: JsonNull
+    field = firstNode (Encode::walk ([], Ui::multiline ("Notes", "one\ntwo", "write", ui::Fire(fireName = "edit"))))
     expect (Doc::flag (field, "multiline"), true)
     expect (Doc::text (field, "commit"), "edit")
-    described = listGet (Encode::walk ([], Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), []))).nodes 0 ?: JsonNull
+    described = firstNode (Encode::walk ([], Ui::described (Ui::button ("plain", "", ui::Fire(fireName = "go")), [])))
     expect (Doc::text (described, "kind"), "button")
     expect (length (Lists::slice (["a"], 2, 4)), 0)
     expect (Lists::position ([], \(_item : string) => true), 0 - 1)

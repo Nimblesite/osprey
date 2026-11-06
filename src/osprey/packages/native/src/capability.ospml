@@ -127,32 +127,38 @@ module Requests
 
     http method url headers body limit deadline slice = [Encode::str "kind" "http", Encode::str "method" method, Encode::str "url" url, JsonMember "headers" (JsonArray (mapList (headers, \item => header item))), Encode::str "body" body, Encode::num "limit" limit, Encode::num "timeout" deadline, Encode::str "slice" slice]
 
+    // A capability's members: its `kind` first, then its arguments.
+    kind name members = listPrepend members (Encode::str "kind" name)
+
+    // Arguments followed by the output bound and the slice the output lands in.
+    capped (members, limit, slice) = listConcat members [Encode::num "limit" limit, Encode::str "slice" slice]
+
     members capability = match capability
         Run executable arguments timeout limit plist slice => run executable arguments timeout limit plist slice
-        ListDirectories paths limit slice => [Encode::str "kind" "list-directories", strings "paths" paths, Encode::num "limit" limit, Encode::str "slice" slice]
-        ReadPropertyLists paths keys suffixes limit slice => [Encode::str "kind" "read-plists", strings "paths" paths, strings "keys" keys, strings "suffixes" suffixes, Encode::num "limit" limit, Encode::str "slice" slice]
-        ReadTexts paths limit slice => [Encode::str "kind" "read-texts", strings "paths" paths, Encode::num "limit" limit, Encode::str "slice" slice]
-        Fingerprint path limit => [Encode::str "kind" "fingerprint", Encode::str "path" path, Encode::num "limit" limit]
-        StoreRead name limit slice => [Encode::str "kind" "store-read", Encode::str "name" name, Encode::num "limit" limit, Encode::str "slice" slice]
-        StoreWrite name slice => [Encode::str "kind" "store-write", Encode::str "name" name, Encode::str "slice" slice]
-        StoreList name => [Encode::str "kind" "store-list", Encode::str "name" name]
-        StoreDelete name => [Encode::str "kind" "store-delete", Encode::str "name" name]
+        ListDirectories paths limit slice => capped (kind "list-directories" [strings "paths" paths], limit, slice)
+        ReadPropertyLists paths keys suffixes limit slice => capped (kind "read-plists" [strings "paths" paths, strings "keys" keys, strings "suffixes" suffixes], limit, slice)
+        ReadTexts paths limit slice => capped (kind "read-texts" [strings "paths" paths], limit, slice)
+        Fingerprint path limit => kind "fingerprint" [Encode::str "path" path, Encode::num "limit" limit]
+        StoreRead name limit slice => capped (kind "store-read" [Encode::str "name" name], limit, slice)
+        StoreWrite name slice => kind "store-write" [Encode::str "name" name, Encode::str "slice" slice]
+        StoreList name => kind "store-list" [Encode::str "name" name]
+        StoreDelete name => kind "store-delete" [Encode::str "name" name]
         Http method url headers body limit deadline slice => http method url headers body limit deadline slice
-        HostCall space operation arguments timeout limit slice => [Encode::str "kind" "host-call", Encode::str "namespace" space, Encode::str "operation" operation, JsonMember "arguments" arguments, Encode::num "timeout" timeout, Encode::num "limit" limit, Encode::str "slice" slice]
-        RunningApplications => [Encode::str "kind" "running-applications"]
-        ChooseFile types limit slice => [Encode::str "kind" "choose-file", strings "types" types, Encode::num "limit" limit, Encode::str "slice" slice]
-        ChooseFolder => [Encode::str "kind" "choose-folder"]
-        SaveFile name slice => [Encode::str "kind" "save-file", Encode::str "name" name, Encode::str "slice" slice]
-        MeasureFolders folders limit deadline slice => [Encode::str "kind" "measure-folders", strings "folders" folders, Encode::num "limit" limit, Encode::num "timeout" deadline, Encode::str "slice" slice]
-        Reveal path => [Encode::str "kind" "reveal", Encode::str "path" path]
-        OpenSettings pane => [Encode::str "kind" "open-settings", Encode::str "pane" pane]
-        Cancel target => [Encode::str "kind" "cancel", Encode::str "target" target]
-        Recognise slices limit => [Encode::str "kind" "recognise", strings "slices" slices, Encode::num "limit" limit]
-        Animate on => [Encode::str "kind" "animate", Doc::bit ("on", on)]
-        ProcessStart command arguments env name => [Encode::str "kind" "process-start", Encode::str "command" command, strings "arguments" arguments, JsonMember "env" (JsonArray (mapList (env, \item => envVar item))), Encode::str "name" name]
-        ProcessWrite name input => [Encode::str "kind" "process-write", Encode::str "name" name, Encode::str "input" input]
-        ProcessRead name limit deadline => [Encode::str "kind" "process-read", Encode::str "name" name, Encode::num "limit" limit, Encode::num "timeout" deadline]
-        ProcessStop name => [Encode::str "kind" "process-stop", Encode::str "name" name]
+        HostCall space operation arguments timeout limit slice => kind "host-call" [Encode::str "namespace" space, Encode::str "operation" operation, JsonMember "arguments" arguments, Encode::num "timeout" timeout, Encode::num "limit" limit, Encode::str "slice" slice]
+        RunningApplications => kind "running-applications" []
+        ChooseFile types limit slice => capped (kind "choose-file" [strings "types" types], limit, slice)
+        ChooseFolder => kind "choose-folder" []
+        SaveFile name slice => kind "save-file" [Encode::str "name" name, Encode::str "slice" slice]
+        MeasureFolders folders limit deadline slice => kind "measure-folders" [strings "folders" folders, Encode::num "limit" limit, Encode::num "timeout" deadline, Encode::str "slice" slice]
+        Reveal path => kind "reveal" [Encode::str "path" path]
+        OpenSettings pane => kind "open-settings" [Encode::str "pane" pane]
+        Cancel target => kind "cancel" [Encode::str "target" target]
+        Recognise slices limit => kind "recognise" [strings "slices" slices, Encode::num "limit" limit]
+        Animate on => kind "animate" [Doc::bit ("on", on)]
+        ProcessStart command arguments env name => kind "process-start" [Encode::str "command" command, strings "arguments" arguments, JsonMember "env" (JsonArray (mapList (env, \item => envVar item))), Encode::str "name" name]
+        ProcessWrite name input => kind "process-write" [Encode::str "name" name, Encode::str "input" input]
+        ProcessRead name limit deadline => kind "process-read" [Encode::str "name" name, Encode::num "limit" limit, Encode::num "timeout" deadline]
+        ProcessStop name => kind "process-stop" [Encode::str "name" name]
 
     (** The protocol form of `request`: its ticket beside the capability's kind and arguments. *)
     export encode request = JsonObject (listPrepend (members request.capability) (Encode::str "ticket" request.ticket))

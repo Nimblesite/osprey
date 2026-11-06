@@ -44,7 +44,7 @@ module AdditionCases
         \_ => "frame",
         \(_, _) => "controlled")
 
-    editorNode () = listGet (Doc::items (Doc::field (listGet (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])).nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
+    editorNode () = listGet (Doc::items (Doc::field (firstNode (Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])), "children"))) 1 ?: JsonNull
 
     (** [UI-COMPONENTS-EDITOR]: text and cursor bindings follow the preceding button, and marks retain every field. *)
     export editorEncoding () =
@@ -61,7 +61,7 @@ module AdditionCases
 
     focusedEditorEncoding () =
         node = Editors::focused ("Formula", "p→q", length "p→", 3, Typed, Load)
-        doc = listGet (Encode::walk ([], node)).nodes 0 ?: JsonNull
+        doc = firstNode (Encode::walk ([], node))
         expect (Doc::has (doc, "focusEpoch"), true)
         expectNumbers (doc, [{ name = "focusEpoch", value = 3 }, { name = "cursor", value = length "p→" }, { name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
         expect (Doc::flag (doc, "inline"), true)
@@ -89,10 +89,8 @@ module AdditionCases
     (** [UI-COMPONENTS-BOARD]: a valid stroke retains both ordered points, its width and its completion time. *)
     export strokeDecoding () =
         stroke = Strokes::decode (Doc::parse strokeSource) ?: ui::Stroke(strokePoints = [], strokeWidth = 0, strokeAt = 0)
-        first = listGet stroke.strokePoints 0 ?: ui::Point(pointX = 0 - 1, pointY = 0 - 1)
-        second = listGet stroke.strokePoints 1 ?: ui::Point(pointX = 0 - 1, pointY = 0 - 1)
         expect (length stroke.strokePoints, 2)
-        expect ("${first.pointX},${first.pointY};${second.pointX},${second.pointY}", "1,2;3,4")
+        expect (join (mapList (stroke.strokePoints, \point => "${point.pointX},${point.pointY}")) ";", "1,2;3,4")
         expect (stroke.strokeWidth, 2)
         expect (stroke.strokeAt, 9)
 
@@ -188,8 +186,7 @@ module AdditionCases
     (** [UI-COMPONENTS-MEDIA]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
         walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Media::image ("media/a.jpg", "A chain", 1920, 1080), Media::video ("media/a.mp4", "media/a.jpg", "media/a.vtt", "A film", 40)])
-        doc = listGet walked.nodes 0 ?: JsonNull
-        children = Doc::items (Doc::field (doc, "children"))
+        children = Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))
         image = listGet children 1 ?: JsonNull
         video = listGet children 2 ?: JsonNull
         expect (Doc::write image, "{\"kind\":\"image\",\"source\":\"media/a.jpg\",\"alt\":\"A chain\",\"width\":1920,\"height\":1080}")
@@ -233,12 +230,12 @@ module AdditionCases
         narrowMargin ()
 
     narrowMargin () =
-        node = listGet (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load))).nodes 0 ?: JsonNull
+        node = firstNode (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load)))
         expectNumbers (node, [{ name = "width", value = 184 }, { name = "least", value = 160 }, { name = "most", value = 320 }, { name = "keep", value = 360 }])
 
 
     filledButton () =
-        node = listGet (Encode::walk ([], Ui::action ("Insert", "", ui::Filled, true, Increment))).nodes 0 ?: JsonNull
+        node = firstNode (Encode::walk ([], Ui::action ("Insert", "", ui::Filled, true, Increment)))
         expect (Doc::text (node, "role"), "filled")
         inlineEditor ()
 
@@ -246,6 +243,5 @@ module AdditionCases
         walked = Encode::walk ([], Editors::inline ("Next step", "From h.", 7, Typed, Load))
         node = listGet walked.nodes 0 ?: JsonNull
         expect (Doc::flag (node, "inline"), true)
-        expect (Doc::number (node, "event"), 0)
-        expect (Doc::number (node, "placeEvent"), 1)
+        expectNumbers (node, [{ name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
         expect (length walked.bindings, 2)
