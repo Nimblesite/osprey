@@ -8,34 +8,49 @@ A functional language built on three pillars: **safety, elegance and performance
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS, macOS and Android.
 
-## Write the logic once; the caller picks the disk
+## Write the logic once; the edge picks the disk
 
-This is the package manager's file effect, trimmed. `install` asks for a file write and handles both outcomes, but never names a disk:
+This is the package manager's install, trimmed. `install` and `writeLock` ask for a logger and a file write with `perform`, but nothing passes them a disk or a logger:
 
 ```osprey
 effect Files { write: fn(string, string) -> Result<int, Error> }
+effect Log { info: fn(string) -> Unit }
 
-fn install(lock) = match perform Files.write("osprey.lock", lock) {
+// Deep in the app: no disk or logger is passed in.
+fn writeLock(lock) = match perform Files.write("osprey.lock", lock) {
     Success _ => "installed"
     Error { message } => "rolled back: ${message}"
 }
-fn upgrade() = install("serde = 2")
-
-let disk = handler Files {
-    write path text => writeFile(path, text)
-}
-let fullDisk = handler Files {
-    write _ _ => Error { message: "disk full" }
+fn install(name) = {
+    perform Log.info("resolving ${name}")
+    writeLock("${name} = 2")
 }
 
-print("${disk(upgrade)} · ${fullDisk(upgrade)}")
+// The app's edge picks the real disk and logger, once.
+let shipped = {
+    handle Files { write path text => writeFile(path, text) }
+    handle Log { info text => print("log: ${text}") }
+    install("serde")
+}
+print(shipped)
+
+// A test swaps in a full disk. The app code does not change.
+test("a full disk rolls back", fn() => {
+    handle Files { write _ _ => Error { message: "disk full" } }
+    handle Log { info text => expect(text, "resolving serde") }
+    expect(install("serde"), "rolled back: disk full")
+})
 ```
 
 ```text
-installed · rolled back: disk full
+log: resolving serde
+installed
+ok 1 - a full disk rolls back
+1..1
+# tests=1 passed=1 failed=0 skipped=0
 ```
 
-`disk(upgrade)` runs the install against real files; `fullDisk(upgrade)` runs the same code against a test double that fails, with no disk touched. No type annotations are needed, the `match` must cover both `Success` and `Error`, and calling `upgrade()` with no handler is a compile error.
+The program's edge installs the real disk and logger once, and every function below it uses them. The test installs a disk that is always full and a logger that checks what was logged; the app code is unchanged and no file is touched. Types are inferred, the `match` must cover both `Success` and `Error`, and removing a handler is a compile error.
 
 Read the [effects guide, including the ML version](https://www.ospreylang.dev/docs/effects/), or [try Osprey online](https://www.ospreylang.dev/playground/).
 

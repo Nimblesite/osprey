@@ -4,11 +4,14 @@ const { readFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 
-const heroOutput = "installed · rolled back: disk full\n";
-async function verifyHeroExample(source, file) {
-  expect(await executeExample(source, file)).toBe(heroOutput);
+const hero = require("../src/_data/heroExample.json");
+const productionDisk = { default: ["    handle Files { write path text => writeFile(path, text) }\n", ""], ml: ["    handle Files\n        write path text => writeFile path text\n", ""],
+  python: ['with disk:\n    with terminal:\n        print(install("serde"))', 'with terminal:\n    print(install("serde"))'] };
+async function verifyHeroExample(flavor, source, file) {
+  expect(await executeExample(source, file)).toBe(`${hero.output}\n`);
+  expect(hero.output).toContain("log: resolving serde\ninstalled\nok 1 - a full disk rolls back");
   expect(await readFile(path.join(path.dirname(file), "osprey.lock"), "utf8")).toBe("serde = 2");
-  const unhandled = source.replace(/disk\(upgrade\)|disk upgrade/, "upgrade()");
+  const unhandled = source.replace(...productionDisk[flavor]);
   expect(unhandled).not.toBe(source);
   expect(await exampleResult(unhandled, path.join(path.dirname(file), "unhandled", path.basename(file))))
     .toContain("unhandled effect operations at program entry: Files.write");
@@ -77,13 +80,13 @@ test.describe("homepage flight and source examples", () => {
       await expect(source).toBeVisible();
       const file = testInfo.outputPath(`${flavor}/install.${extension}`);
       const text = await source.textContent();
-      await verifyHeroExample(text, file);
+      await verifyHeroExample(flavor, text, file);
       await expect(page.locator("#source-extension")).toHaveText(`.${extension}`);
       if (flavor === "default") {
         const readme = await readFile(path.resolve("../../../README.md"), "utf8");
         expect(readme.match(/```osprey\n([\s\S]*?)\n```/)[1]).toBe(text);
       }
-      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe(heroOutput);
+      expect(await page.locator(".hero .code-result samp").textContent()).toBe(hero.output);
     }
   });
 
@@ -168,7 +171,7 @@ test.describe("homepage flight and source examples", () => {
     const page = await context.newPage();
     await page.goto("/");
     await expect(page.locator(".hero-title")).toBeVisible();
-    await expect(page.locator("#example-default")).toContainText("handler Files");
+    await expect(page.locator("#example-default")).toContainText("handle Files");
     await expect(page.locator("#motion-toggle")).toBeHidden();
     await openInstallation(page);
     await page.locator("#install").getByRole("link", { name: "Getting started guide" }).click();
@@ -327,7 +330,7 @@ test.describe("desktop interactions", () => {
     // Wait for Monaco to seed the editor with the Default-flavor sample.
     const editorValue = () =>
       page.evaluate(() => window.monaco?.editor?.getModels?.()[0]?.getValue() ?? "");
-    await expect.poll(editorValue, { timeout: 20_000 }).toContain("fn account()");
+    await expect.poll(editorValue, { timeout: 20_000 }).toContain("fn install(manifest, lock)");
     // Both samples render highlighted, not as one plain colour.
     const editorColours = () => paintedColours(page.locator('.monaco-editor .view-line span[class*="mtk"]'));
 
@@ -337,14 +340,14 @@ test.describe("desktop interactions", () => {
     // Switching to ML swaps in the offside-rule twin (no `fn`, `handle … in`).
     await page.locator("#flavor-ospml").click();
     await expect(page.locator("#flavor-ospml")).toHaveClass(/active/);
-    await expect.poll(editorValue).toContain("account () =");
-    expect(await editorValue()).not.toContain("fn account()");
+    await expect.poll(editorValue).toContain("install manifest lock =");
+    expect(await editorValue()).not.toContain("fn install(manifest, lock)");
 
     await expect.poll(editorColours).toBeGreaterThan(1);
 
     // Switching back restores the Default sample.
     await page.locator("#flavor-osp").click();
-    await expect.poll(editorValue).toContain("fn account()");
+    await expect.poll(editorValue).toContain("fn install(manifest, lock)");
     await expect.poll(editorColours).toBeGreaterThan(1);
   });
 
@@ -371,25 +374,25 @@ test.describe("desktop interactions", () => {
     await page.goto("/playground/");
     const editorValue = () =>
       page.evaluate(() => window.monaco?.editor?.getModels?.()[0]?.getValue() ?? "");
-    await expect.poll(editorValue, { timeout: 20_000 }).toContain("fn account()");
+    await expect.poll(editorValue, { timeout: 20_000 }).toContain("fn install(manifest, lock)");
 
     // Select ML, then Run.
     await page.locator("#flavor-ospml").click();
-    await expect.poll(editorValue).toContain("account () =");
+    await expect.poll(editorValue).toContain("install manifest lock =");
     await page.getByRole("button", { name: "Run", exact: true }).click();
 
     // The posted request selects ML and carries the offside-rule source.
     await expect.poll(() => runBody).not.toBeNull();
     expect(runBody.flavor).toBe("ml");
-    expect(runBody.code).toContain("account () =");
-    expect(runBody.code).not.toContain("fn account()");
+    expect(runBody.code).toContain("install manifest lock =");
+    expect(runBody.code).not.toContain("fn install(manifest, lock)");
 
     // Default flavor still posts flavor=default (regression guard).
     await page.locator("#flavor-osp").click();
-    await expect.poll(editorValue).toContain("fn account()");
+    await expect.poll(editorValue).toContain("fn install(manifest, lock)");
     await page.getByRole("button", { name: "Run", exact: true }).click();
     await expect.poll(() => runBody?.flavor).toBe("default");
-    expect(runBody.code).toContain("fn account()");
+    expect(runBody.code).toContain("fn install(manifest, lock)");
   });
 
   test("prose page headings join the one side panel with scroll-spy", async ({ page }) => {
