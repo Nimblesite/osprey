@@ -68,6 +68,19 @@ pub(crate) fn contains(messages: &[String], expected: &str) -> bool {
     messages.iter().any(|message| message.contains(expected))
 }
 
+/// Assemble the `(path, flavor, text)` sources with `entry` selected and prove
+/// the diagnostics mention every one of `needles`.
+pub(crate) fn rejects_sources(entry: &str, sources: &[(&str, Flavor, &str)], needles: &[&str]) {
+    let files: Vec<SourceFile> = sources
+        .iter()
+        .map(|(path, flavor, text)| parsed(path, *flavor, text))
+        .collect();
+    let messages = error_messages(&config(entry), &files);
+    for needle in needles {
+        assert!(contains(&messages, needle), "{needle}: {messages:?}");
+    }
+}
+
 /// Assemble `statements` as the single module `file` and prove the diagnostics
 /// mention every one of `needles`.
 pub(crate) fn rejects(file: &str, statements: Vec<Stmt>, needles: &[&str]) {
