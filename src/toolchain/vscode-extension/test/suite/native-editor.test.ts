@@ -45,7 +45,19 @@ async function withEditorView(run: (frame: Frame, update: EditorUpdate, events: 
   });
   try {
     panel.webview.html = workspaceHtml({ nonce: randomBytes(16).toString("hex"), assetUri: "", cspSource: panel.webview.cspSource });
-    await run(await editorWebviewFrame(browser, 'textarea[aria-label="Argument"]'), update, events);
+    const frame = await editorWebviewFrame(browser, 'textarea[aria-label="Argument"]');
+    // [#344] Focus requests honour `document.hasFocus()`, so these tests need an
+    // active window with the webview as the focused frame. Linux xvfb gives both on
+    // creation; a macOS run behind other apps gives neither, and a scripted
+    // `focus()` cannot move frame focus into the cross-origin webview. Emulate the
+    // active window (as Playwright does for browsers it launches) without raising
+    // it, then enter the webview with real input on its empty body, as a user would.
+    await (await frame.page().context().newCDPSession(frame.page())).send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    const body = await frame.locator("body").boundingBox();
+    assert.ok(body, "the webview body has a layout box");
+    await frame.locator("body").click({ position: { x: body.width / 2, y: body.height - 8 } });
+    assert.ok(await frame.evaluate(() => document.hasFocus()), "the webview is the active frame before each focus contract");
+    await run(frame, update, events);
   } finally { listener.dispose(); panel.dispose(); await browser.close(); }
 }
 
