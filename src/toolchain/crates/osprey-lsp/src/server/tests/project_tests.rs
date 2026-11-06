@@ -158,17 +158,32 @@ async fn project_layout_advice_is_warning_only() -> Result<(), Box<dyn std::erro
     Ok(())
 }
 
-#[tokio::test]
-async fn sibling_syntax_errors_preserve_existing_type_errors() {
-    let root = std::env::temp_dir().join(format!("osprey sibling error {}", std::process::id()));
+/// A two-module project on disk — `src/main.ospml` holding `main` and its
+/// sibling `src/helper.ospml` holding `helper` — plus both URIs.
+fn sibling_project(
+    tag: &str,
+    name: &str,
+    main: &str,
+    helper: &str,
+) -> (std::path::PathBuf, String, String) {
+    let root = std::env::temp_dir().join(format!("osprey {tag} {}", std::process::id()));
     std::fs::create_dir_all(root.join("src")).expect("fixture directory");
-    std::fs::write(root.join("osprey.toml"), "[project]\nname = \"errors\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n").expect("manifest");
-    let main = "print missingName\n";
-    let helper = "suffix text = text + \"!\"\n";
+    let manifest = format!(
+        "[project]\nname = \"{name}\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n"
+    );
+    std::fs::write(root.join("osprey.toml"), manifest).expect("manifest");
     std::fs::write(root.join("src/main.ospml"), main).expect("entry");
     std::fs::write(root.join("src/helper.ospml"), helper).expect("helper");
     let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("URI");
     let sibling = lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("URI");
+    (root, uri, sibling)
+}
+
+#[tokio::test]
+async fn sibling_syntax_errors_preserve_existing_type_errors() {
+    let main = "print missingName\n";
+    let helper = "suffix text = text + \"!\"\n";
+    let (root, uri, sibling) = sibling_project("sibling error", "errors", main, helper);
     let mut h = Harness::start();
     let initial = h
         .open_at(&uri, main)
@@ -189,15 +204,9 @@ async fn sibling_syntax_errors_preserve_existing_type_errors() {
 
 #[tokio::test]
 async fn sibling_open_change_and_close_refresh_signature_warnings() {
-    let root = std::env::temp_dir().join(format!("osprey live diagnostics {}", std::process::id()));
-    std::fs::create_dir_all(root.join("src")).expect("fixture directory");
-    std::fs::write(root.join("osprey.toml"), "[project]\nname = \"warnings\"\nsource_roots = [\"src\"]\ndefault_namespace = \"review\"\nentry = \"src/main.ospml\"\n").expect("manifest");
     let main = "decorate : string -> string\ndecorate text = suffix text\nprint (decorate \"x\")\n";
     let helper = "suffix text = text + \"!\"\n";
-    std::fs::write(root.join("src/main.ospml"), main).expect("entry");
-    std::fs::write(root.join("src/helper.ospml"), helper).expect("helper");
-    let uri = lspkit_server::uri::path_to_uri(&root.join("src/main.ospml")).expect("URI");
-    let sibling = lspkit_server::uri::path_to_uri(&root.join("src/helper.ospml")).expect("URI");
+    let (root, uri, sibling) = sibling_project("live diagnostics", "warnings", main, helper);
     let mut h = Harness::start();
     let initial = h
         .open_at(&uri, main)

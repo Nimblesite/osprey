@@ -107,6 +107,22 @@ impl Out {
         self.expect(status, &self.stderr, "stderr", expected, forbidden);
     }
 
+    /// The run was REJECTED — a non-zero exit, whichever code the gate chose —
+    /// and `stderr` carries a diagnostic. `expected` are the strings that
+    /// diagnostic must name; a rejection with no message would pass a
+    /// code-only check, which is the silent failure this guards.
+    fn expect_rejected(&self, expected: &[&str]) {
+        assert_ne!(self.code, Some(0), "stdout={}", self.stdout);
+        assert!(!self.stderr.is_empty(), "stdout={}", self.stdout);
+        for wanted in expected {
+            assert!(
+                self.stderr.contains(wanted),
+                "missing {wanted:?} in stderr={}",
+                self.stderr
+            );
+        }
+    }
+
     /// The exit status is `status` and `text` — the `stream` a failure names —
     /// carries every `expected` string and none of the `forbidden` ones.
     fn expect(&self, status: i32, text: &str, stream: &str, expected: &[&str], forbidden: &[&str]) {
@@ -132,7 +148,7 @@ impl Out {
     }
 }
 
-fn finish(mut cmd: Command) -> Out {
+fn finish(cmd: &mut Command) -> Out {
     // A spawn failure becomes an empty, code-less `Out`; every caller asserts on
     // an expected code/stdout, so the failure reports loudly through them.
     match cmd.output() {
@@ -153,7 +169,7 @@ fn finish(mut cmd: Command) -> Out {
 fn run_args(args: &[&str]) -> Out {
     let mut cmd = osprey();
     let _ = cmd.args(args);
-    finish(cmd)
+    finish(&mut cmd)
 }
 
 fn run_args_with_stdin(args: &[&str], input: &str) -> Out {
@@ -219,7 +235,7 @@ fn join_accepts_every_string_list_representation() {
 fn run_file(path: &Path, extra: &[&str]) -> Out {
     let mut cmd = osprey();
     let _ = cmd.arg(path).args(extra);
-    finish(cmd)
+    finish(&mut cmd)
 }
 
 /// Run a single `mode` against `path` with `OSPREY_CC` overridden — used to
@@ -227,7 +243,7 @@ fn run_file(path: &Path, extra: &[&str]) -> Out {
 fn run_file_cc(path: &Path, mode: &str, cc: &str) -> Out {
     let mut cmd = osprey();
     let _ = cmd.arg(path).arg(mode).env("OSPREY_CC", cc);
-    finish(cmd)
+    finish(&mut cmd)
 }
 
 /// Type-clean but codegen-rejected: an FFI callback slot is a raw C code
@@ -493,8 +509,7 @@ fn flavor_marker_conflict_exits_two() {
 fn check_type_error_is_reported() {
     let prog = temp_osp("typed", "let y = 1 + \"oops\" - true\n");
     let o = run_file(&prog, &["--check"]);
-    assert_ne!(o.code, Some(0));
-    assert!(!o.stderr.is_empty(), "{}", o.stderr);
+    o.expect_rejected(&[]);
 }
 
 #[test]
@@ -622,13 +637,7 @@ fn sandbox_blocks_filesystem_capability() {
     // [SECURITY-CAPABILITY-GATES]
     let prog = temp_osp("fs", "let c = readFile(\"x.txt\")\n");
     let o = run_file(&prog, &["--llvm", "--no-fs"]);
-    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-    assert!(
-        o.stderr
-            .contains("security: `readFile` is disabled by --no-fs"),
-        "{}",
-        o.stderr
-    );
+    o.expect_rejected(&["security: `readFile` is disabled by --no-fs"]);
 }
 
 #[test]
@@ -651,8 +660,7 @@ fn network_gates_run_before_type_checking() {
     ] {
         let prog = temp_osp(name, source);
         let o = run_file(&prog, &["--llvm", flag]);
-        assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-        assert!(o.stderr.contains(expected), "{}", o.stderr);
+        o.expect_rejected(&[expected]);
         assert!(!o.stderr.contains("expects exactly"), "{}", o.stderr);
     }
 }
@@ -665,13 +673,7 @@ fn no_ffi_rejects_foreign_declarations() {
         "extern fn foreignCall(value: int) -> int\nlet value = foreignCall(1)\n",
     );
     let o = run_file(&prog, &["--check", "--no-ffi"]);
-    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-    assert!(
-        o.stderr
-            .contains("security: extern function `foreignCall` is disabled by --no-ffi"),
-        "{}",
-        o.stderr
-    );
+    o.expect_rejected(&["security: extern function `foreignCall` is disabled by --no-ffi"]);
 }
 
 #[test]
@@ -700,16 +702,14 @@ fn quiet_suppresses_the_ok_line() {
 fn llvm_reports_a_codegen_error() {
     let prog = temp_osp("cgllvm", CODEGEN_REJECTED);
     let o = run_file(&prog, &["--llvm"]);
-    assert_ne!(o.code, Some(0));
-    assert!(o.stderr.contains("codegen"), "{}", o.stderr);
+    o.expect_rejected(&["codegen"]);
 }
 
 #[test]
 fn run_reports_a_codegen_error() {
     let prog = temp_osp("cgrun", CODEGEN_REJECTED);
     let o = run_file(&prog, &["--run"]);
-    assert_ne!(o.code, Some(0));
-    assert!(o.stderr.contains("codegen"), "{}", o.stderr);
+    o.expect_rejected(&["codegen"]);
 }
 
 #[test]
@@ -721,13 +721,7 @@ fn a_generic_closure_value_is_rejected_by_the_type_gate() {
     // the codegen arms of coverage.
     let prog = temp_osp("genval", GENERIC_AS_VALUE);
     let o = run_file(&prog, &["--llvm"]);
-    assert_ne!(o.code, Some(0));
-    assert!(
-        o.stderr
-            .contains("a closure value with a still-generic type cannot be interpolated"),
-        "{}",
-        o.stderr
-    );
+    o.expect_rejected(&["a closure value with a still-generic type cannot be interpolated"]);
 }
 
 #[test]
@@ -736,8 +730,7 @@ fn compile_reports_a_failing_c_compiler() {
     let prog = temp_osp("ccfail", HELLO);
     let o = run_file_cc(&prog, "--compile", "false");
     let _ = std::fs::remove_file(repo_root().join("osprey_cli_e2e_ccfail"));
-    assert_ne!(o.code, Some(0));
-    assert!(!o.stderr.is_empty(), "{}", o.stderr);
+    o.expect_rejected(&[]);
 }
 
 #[test]
@@ -745,8 +738,7 @@ fn run_reports_an_uninvokable_c_compiler() {
     // A missing driver can't be spawned at all -> the "could not invoke" branch.
     let prog = temp_osp("ccmiss", HELLO);
     let o = run_file_cc(&prog, "--run", "osprey_no_such_cc_zzz");
-    assert_ne!(o.code, Some(0));
-    assert!(!o.stderr.is_empty(), "{}", o.stderr);
+    o.expect_rejected(&[]);
 }
 
 // --- testing framework (docs/specs/language/0027-TestingFramework.md) ---------------
@@ -805,7 +797,7 @@ fn run_concurrency_probe(dir: &Path, driver: &Path, jobs: Option<&str>) -> Out {
     if let Some(value) = jobs {
         let _ = cmd.env("OSPREY_TEST_JOBS", value);
     }
-    finish(cmd)
+    finish(&mut cmd)
 }
 
 #[cfg(unix)]
@@ -820,7 +812,7 @@ fn run_conformance_probe(root: &Path, jobs: Option<&str>) -> Out {
     if let Some(value) = jobs {
         let _ = cmd.env("OSPREY_TEST_JOBS", value);
     }
-    finish(cmd)
+    finish(&mut cmd)
 }
 
 #[cfg(unix)]
@@ -847,7 +839,7 @@ fn run_cache_probe(dir: &Path, driver: &Path) -> Out {
         .env("OSPREY_CC", driver)
         .env("OSPREY_CC_COUNT", dir.join("cc-count"))
         .env("OSPREY_TEST_CACHE_DIR", dir.join("cache"));
-    finish(cmd)
+    finish(&mut cmd)
 }
 
 // [TESTING-BUILTIN-TEST][TESTING-BUILTIN-EXPECT][TESTING-BUILTIN-CHECK]
@@ -886,7 +878,7 @@ fn test_filter_env_selects_one_case() {
         .arg(&prog)
         .arg("--run")
         .env("OSPREY_TEST_FILTER", "good math");
-    let o = finish(cmd);
+    let o = finish(&mut cmd);
     o.expect_stdout(0, &["ok 1 - good math", "1..1"], &["bad math"]);
 }
 
@@ -1120,9 +1112,7 @@ fn a_verdict_state_test_cannot_report_is_rejected_by_name() {
          test(\"case\", fn() => Pass)\n",
     );
     let o = run_file(&prog, &["--run"]);
-    assert_ne!(o.code, Some(0), "{}", o.stdout);
-    assert!(o.stderr.contains("Todo"), "{}", o.stderr);
-    assert!(o.stderr.contains("Verdict"), "{}", o.stderr);
+    o.expect_rejected(&["Todo", "Verdict"]);
 }
 
 #[test]
@@ -1233,7 +1223,7 @@ fn run_removes_temporary_native_artifacts() {
         .args([suite.to_string_lossy().as_ref(), "--run", "--quiet"])
         .env("TMPDIR", &scratch)
         .env_remove("OSPREY_TEST_CACHE_DIR");
-    let output = finish(cmd);
+    let output = finish(&mut cmd);
     assert_eq!(output.code, Some(0), "{}", output.stderr);
     let leaked = std::fs::read_dir(&scratch)
         .into_iter()
@@ -1273,7 +1263,7 @@ fn run_keeps_test_file_output_out_of_the_callers_directory() {
             .current_dir(&caller)
             .env("TMPDIR", &scratch)
             .env_remove("OSPREY_TEST_CACHE_DIR");
-        let output = finish(cmd);
+        let output = finish(&mut cmd);
         assert_eq!(output.code, Some(0), "{name}: {}", output.stderr);
         assert_eq!(output.stdout, "saved\nread\n", "{name}");
         assert_eq!(caller.join(OUTPUT).exists(), leaves_output, "{name}");
@@ -1389,7 +1379,7 @@ fn nested_tests_fail_loudly_and_zero_case_runs_keep_the_plan() {
         .arg(&prog)
         .arg("--run")
         .env("OSPREY_TEST_FILTER", "matches nothing");
-    let o = finish(cmd);
+    let o = finish(&mut cmd);
     o.expect_stdout(0, &["1..0", "# tests=0 passed=0 failed=0"], &[]);
 }
 
@@ -1469,13 +1459,7 @@ fn a_written_type_argument_count_mismatch_is_rejected_by_the_cli() {
          print(\"${identity<int, string>(5)}\")\n",
     );
     let o = run_file(&prog, &["--check"]);
-    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-    assert!(
-        o.stderr
-            .contains("function `identity` takes 1 type argument(s), got 2"),
-        "stderr={}",
-        o.stderr
-    );
+    o.expect_rejected(&["function `identity` takes 1 type argument(s), got 2"]);
 }
 
 /// A written argument contradicting the value argument is a type error, not a
@@ -1488,12 +1472,7 @@ fn a_contradicting_written_type_argument_is_rejected_by_the_cli() {
          print(\"${identity<int>(\\\"text\\\")}\")\n",
     );
     let o = run_file(&prog, &["--check"]);
-    assert_ne!(o.code, Some(0), "stdout={}", o.stdout);
-    assert!(
-        o.stderr.contains("cannot unify int with string"),
-        "stderr={}",
-        o.stderr
-    );
+    o.expect_rejected(&["cannot unify int with string"]);
 }
 
 /// A program ends by returning: `main`'s integer is its exit status in every
@@ -1717,17 +1696,7 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         advisory.expect_stderr(0, &["unused parameter `ignored`"], &[]);
 
         let strict = run_file(&warned, &[mode, "--warnings-as-errors"]);
-        assert_ne!(strict.code, Some(0), "{mode} must fail on a warning");
-        assert!(
-            strict.stderr.contains("unused parameter `ignored`"),
-            "{mode}: {}",
-            strict.stderr
-        );
-        assert!(
-            strict.stderr.contains("1 warning (unused-parameter)"),
-            "{mode}: {}",
-            strict.stderr
-        );
+        strict.expect_rejected(&["unused parameter `ignored`", "1 warning (unused-parameter)"]);
         assert!(!strict.stdout.contains("ok ("), "{mode}: {}", strict.stdout);
 
         let skipped = run_file(&warned, &[mode, "--no-warnings"]);
@@ -1742,12 +1711,7 @@ fn warnings_as_errors_fails_only_on_opt_in_and_keeps_the_diagnostics() {
         assert_eq!(fine.code, Some(0), "{mode}: {}", fine.stderr);
 
         let errors = run_file(&broken, &[mode, "--warnings-as-errors"]);
-        assert_ne!(errors.code, Some(0), "{mode}");
-        assert!(
-            errors.stderr.contains("cannot unify string with int"),
-            "{mode}: {}",
-            errors.stderr
-        );
+        errors.expect_rejected(&["cannot unify string with int"]);
     }
     let output = warned.with_extension("bin");
     let output = output.to_str().unwrap_or_default();
@@ -1815,8 +1779,7 @@ fn no_warnings_never_hides_type_errors() {
     // build failed.
     let prog = temp_osp("no_warn_error", "fn broken(unused) = missing\n");
     let o = run_file(&prog, &["--check", "--quiet", "--no-warnings"]);
-    assert_ne!(o.code, Some(0));
-    assert!(o.stderr.contains("missing"), "{}", o.stderr);
+    o.expect_rejected(&["missing"]);
 }
 
 #[test]

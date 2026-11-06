@@ -92,7 +92,7 @@ fn export(project: &Path, output: &Path, format: &str) -> super::Out {
         .arg("--docs-dir")
         .arg(output)
         .args(["--docs-format", format]);
-    finish(command)
+    finish(&mut command)
 }
 
 fn assert_clean(label: &str, result: &super::Out) {

@@ -12,14 +12,26 @@ pub(super) fn export(
     let written = std::fs::write(&path, source);
     assert!(written.is_ok(), "source fixture: {written:?}");
     let output = root.join("docs");
-    let mut command = osprey();
-    let _ = command
-        .arg("--docs")
-        .arg("--source")
-        .arg(&path)
-        .arg("--docs-dir")
-        .arg(&output);
-    (finish(command), output)
+    (
+        finish(
+            osprey()
+                .arg("--docs")
+                .arg("--source")
+                .arg(&path)
+                .arg("--docs-dir")
+                .arg(&output),
+        ),
+        output,
+    )
+}
+
+/// The export of `source` succeeded and these tests only read its pages: the
+/// exit code is asserted once here instead of at every call site. A source that
+/// must be REJECTED keeps the raw [`export`] so it can assert its own code.
+pub(super) fn export_ok(source: &str, extension: &str, name: &str) -> std::path::PathBuf {
+    let (result, output) = export(source, extension, name);
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    output
 }
 
 #[test]
@@ -51,8 +63,7 @@ fn api_docs_export_inferred_signatures_in_both_flavors() {
             "greet : string -> string",
         ),
     ] {
-        let (result, output) = export(source, extension, &format!("docs_signature_{extension}"));
-        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let output = export_ok(source, extension, &format!("docs_signature_{extension}"));
         let page = read_text(&output.join("api/greet.md"));
         assert!(page.contains(signature), "{page}");
         assert!(page.contains("Adds text."), "{page}");
@@ -62,8 +73,7 @@ fn api_docs_export_inferred_signatures_in_both_flavors() {
 #[test]
 fn api_docs_include_children_of_undocumented_modules_and_public_undocumented_apis() {
     let source = "module Math {\n/// Public identity.\nexport fn identity(value) = value\nexport fn label() = \"Math\"\nfn secret() = \"private\"\n}\n";
-    let (result, output) = export(source, "osp", "docs_module_public");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "docs_module_public");
     assert!(output.join("api/math.md").is_file());
     assert!(read_text(&output.join("api/math-identity.md")).contains("Public identity."));
     assert!(read_text(&output.join("api/math-label.md")).contains("string"));
@@ -88,12 +98,12 @@ fn api_docs_reject_missing_flag_values_and_unknown_flags() {
         "--typo",
     ] {
         let root = temp_dir(&format!("docs_option_{}", option.trim_start_matches('-')));
-        let mut command = osprey();
-        let _ = command
-            .args(["--docs", "--docs-dir"])
-            .arg(&root)
-            .arg(option);
-        let result = finish(command);
+        let result = finish(
+            osprey()
+                .args(["--docs", "--docs-dir"])
+                .arg(&root)
+                .arg(option),
+        );
         assert_eq!(result.code, Some(2), "{option}: {}", result.stderr);
     }
 }
@@ -101,8 +111,7 @@ fn api_docs_reject_missing_flag_values_and_unknown_flags() {
 #[test]
 fn api_docs_export_ascribed_public_members_without_leaking_abstract_representation() {
     let source = "signature Api { type Item\nfn create() -> Item\n}\nmodule Store : Api {\ntype Item = { secret: int }\nfn create() = Item { secret: 42 }\nfn hidden() = 7\n}\n";
-    let (result, output) = export(source, "osp", "docs_ascription");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "docs_ascription");
     assert!(output.join("api/store-create.md").is_file());
     assert!(output.join("api/store-item.md").is_file());
     assert!(!output.join("api/store-hidden.md").exists());
@@ -113,8 +122,7 @@ fn api_docs_export_ascribed_public_members_without_leaking_abstract_representati
 #[test]
 fn api_docs_include_type_shapes_operation_signatures_and_authorship() {
     let source = "//! Data tools.\n//! @author Ada\n/// Coordinates.\ntype Point = { x: int, y: int }\n/// Outcomes.\ntype Outcome<T> = Found { value: T } | Missing\n/// Logging.\neffect Log {\n/// Writes a message.\nline : fn(string) -> Unit\n}\n";
-    let (result, output) = export(source, "osp", "docs_shapes");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "docs_shapes");
     let point = read_text(&output.join("api/point.md"));
     assert!(
         point.contains("x: int") && point.contains("y: int"),
@@ -149,13 +157,13 @@ fn api_docs_merge_project_namespaces_and_keep_both_file_docs() {
     .expect("default source");
     std::fs::write(root.join("words.ospml"), "//! Library docs.\nnamespace common\n    module Words\n        export value () = \"word\"\n").expect("ML source");
     let output = root.join("docs");
-    let mut command = osprey();
-    let _ = command
-        .arg("--docs")
-        .arg(&root)
-        .arg("--docs-dir")
-        .arg(&output);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .arg("--docs")
+            .arg(&root)
+            .arg("--docs-dir")
+            .arg(&output),
+    );
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(output.join("api/common.md").is_file());
     assert!(read_text(&output.join("api/common-numbers-value.md")).contains("int"));
@@ -179,13 +187,13 @@ fn api_docs_export_library_projects_without_an_application_entry() {
     )
     .expect("words");
     let output = root.join("docs");
-    let mut command = osprey();
-    let _ = command
-        .arg("--docs")
-        .arg(&root)
-        .arg("--docs-dir")
-        .arg(&output);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .arg("--docs")
+            .arg(&root)
+            .arg("--docs-dir")
+            .arg(&output),
+    );
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(output.join("api/numbers-value.md").is_file());
     assert!(output.join("api/words-value.md").is_file());
@@ -194,8 +202,7 @@ fn api_docs_export_library_projects_without_an_application_entry() {
 #[test]
 fn api_docs_keep_inlined_constants_and_runtime_binding_types() {
     let source = "namespace sample {\nmodule Units { export let each = 1\nexport let label = \"unit\" }\nfn identity(value) = value\nlet runtime = identity(\"runtime\")\n}\n";
-    let (result, output) = export(source, "osp", "docs_constant_types");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "docs_constant_types");
     assert!(read_text(&output.join("api/sample-units-each.md")).contains(": int"));
     assert!(read_text(&output.join("api/sample-units-label.md")).contains(": string"));
     assert!(read_text(&output.join("api/sample-runtime.md")).contains(": string"));
@@ -204,8 +211,7 @@ fn api_docs_keep_inlined_constants_and_runtime_binding_types() {
 #[test]
 fn api_docs_resolve_visibility_by_namespace_identity_not_name_suffix() {
     let source = "module A { fn secret() = \"private\"\nexport fn exposed() = 1 }\nnamespace other { module A { export fn secret() = 42 } }\n";
-    let (result, output) = export(source, "osp", "docs_visibility_identity");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "docs_visibility_identity");
     assert!(!output.join("api/a-secret.md").exists());
     assert!(output.join("api/a-exposed.md").is_file());
     assert!(read_text(&output.join("api/other-a-secret.md")).contains("int"));
@@ -213,8 +219,7 @@ fn api_docs_resolve_visibility_by_namespace_identity_not_name_suffix() {
 
 #[test]
 fn api_docs_never_overwrite_an_index_named_declaration() {
-    let (result, output) = export("/// Indexing.\nfn index() = 42\n", "osp", "docs_index_name");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok("/// Indexing.\nfn index() = 42\n", "osp", "docs_index_name");
     assert!(read_text(&output.join("api/index-2.md")).contains("Indexing."));
     assert!(read_text(&output.join("api/index.md")).contains("index-2.md"));
 }
@@ -225,15 +230,15 @@ fn api_docs_reject_duplicate_guide_paths_before_any_output() {
     let guide = root.join("intro.md");
     std::fs::write(&guide, "# Introduction\nA guide.\n").expect("guide");
     let output = root.join("docs");
-    let mut command = osprey();
-    let _ = command
-        .args(["--docs", "--docs-dir"])
-        .arg(&output)
-        .arg("--docs-page")
-        .arg(&guide)
-        .arg("--docs-page")
-        .arg(&guide);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .args(["--docs", "--docs-dir"])
+            .arg(&output)
+            .arg("--docs-page")
+            .arg(&guide)
+            .arg("--docs-page")
+            .arg(&guide),
+    );
     assert_eq!(result.code, Some(1), "{}", result.stderr);
     assert!(!output.exists());
 }
@@ -244,13 +249,13 @@ fn api_docs_reject_an_explicit_non_markdown_page() {
     let guide = root.join("intro.txt");
     std::fs::write(&guide, "# Introduction\n").expect("guide");
     let output = root.join("docs");
-    let mut command = osprey();
-    let _ = command
-        .args(["--docs", "--docs-dir"])
-        .arg(&output)
-        .arg("--docs-page")
-        .arg(&guide);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .args(["--docs", "--docs-dir"])
+            .arg(&output)
+            .arg("--docs-page")
+            .arg(&guide),
+    );
     result.expect_stderr(1, &["Markdown"], &[]);
     assert!(!output.exists());
 }
@@ -290,7 +295,7 @@ fn api_docs_html_integrates_authored_pages_themes_and_ordered_css() {
             .arg(&first)
             .arg("--docs-css")
             .arg(&second);
-        let result = finish(command);
+        let result = finish(&mut command);
         assert_eq!(result.code, Some(0), "{}", result.stderr);
         let page = read_text(&output.join("guides/deep/my-guide.html"));
         assert!(
@@ -326,12 +331,12 @@ fn api_docs_reject_incompatible_and_unknown_option_values() {
         vec!["--source", "a.osp", "--source", "b.osp"],
     ] {
         let output = temp_dir("docs_invalid_values").join("unwritten");
-        let mut command = osprey();
-        let _ = command
-            .args(["--docs", "--docs-dir"])
-            .arg(&output)
-            .args(&arguments);
-        let result = finish(command);
+        let result = finish(
+            osprey()
+                .args(["--docs", "--docs-dir"])
+                .arg(&output)
+                .args(&arguments),
+        );
         assert_eq!(result.code, Some(2), "{arguments:?}: {}", result.stderr);
         assert!(!output.exists(), "{arguments:?}");
     }
@@ -352,13 +357,13 @@ fn api_docs_export_every_module_corpus_source_in_both_flavors() {
             continue;
         }
         let output = root.join(path.file_name().expect("filename"));
-        let mut command = osprey();
-        let _ = command
-            .arg("--docs")
-            .arg(&path)
-            .arg("--docs-dir")
-            .arg(&output);
-        let result = finish(command);
+        let result = finish(
+            osprey()
+                .arg("--docs")
+                .arg(&path)
+                .arg("--docs-dir")
+                .arg(&output),
+        );
         assert_eq!(
             result.code,
             Some(0),
@@ -381,13 +386,13 @@ fn api_docs_honor_file_flavor_overrides_and_reject_project_overrides() {
     let source = root.join("source.osp");
     std::fs::write(&source, "label () = \"ML\"\n").expect("ML in a default extension");
     let output = root.join("docs");
-    let mut command = osprey();
-    let _ = command
-        .args(["--docs", "--flavor", "ml"])
-        .arg(&source)
-        .arg("--docs-dir")
-        .arg(&output);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .args(["--docs", "--flavor", "ml"])
+            .arg(&source)
+            .arg("--docs-dir")
+            .arg(&output),
+    );
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     assert!(read_text(&output.join("api/label.md")).contains("label : Unit -> string"));
     std::fs::write(
@@ -395,13 +400,13 @@ fn api_docs_honor_file_flavor_overrides_and_reject_project_overrides() {
         "[project]\nname = \"flavor\"\nflavor = \"ml\"\n",
     )
     .expect("manifest");
-    let mut command = osprey();
-    let _ = command
-        .args(["--docs", "--flavor", "ml"])
-        .arg(&root)
-        .arg("--docs-dir")
-        .arg(root.join("unwritten"));
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .args(["--docs", "--flavor", "ml"])
+            .arg(&root)
+            .arg("--docs-dir")
+            .arg(root.join("unwritten")),
+    );
     result.expect_stderr(1, &["--flavor applies to single files"], &[]);
     assert!(!root.join("unwritten").exists());
 }
@@ -412,13 +417,13 @@ fn api_docs_cleanup_preserves_unrelated_markdown() {
     let source = root.join("library.osp");
     let output = root.join("docs");
     let run = || {
-        let mut command = osprey();
-        let _ = command
-            .arg("--docs")
-            .arg(&source)
-            .arg("--docs-dir")
-            .arg(&output);
-        finish(command)
+        finish(
+            osprey()
+                .arg("--docs")
+                .arg(&source)
+                .arg("--docs-dir")
+                .arg(&output),
+        )
     };
     std::fs::write(&source, "fn oldApi() = 1\n").expect("initial source");
     assert_eq!(run().code, Some(0));
@@ -442,7 +447,7 @@ fn api_docs_reject_output_symlinks_without_touching_their_targets() {
     std::os::unix::fs::symlink(&outside, output.join("functions")).expect("symlink");
     let mut command = osprey();
     let _ = command.args(["--docs", "--docs-dir"]).arg(&output);
-    let result = finish(command);
+    let result = finish(&mut command);
     assert_eq!(result.code, Some(1), "{}", result.stderr);
     assert_eq!(read_text(&outside.join("index.md")), "original");
     assert_eq!(

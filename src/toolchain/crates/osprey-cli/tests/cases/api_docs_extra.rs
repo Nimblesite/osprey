@@ -3,7 +3,7 @@
 //! type aliases, exact generic signatures, static effects, ML-flavor module
 //! docs, and malformed option handling. Implements [DOC-EXPORT].
 
-use super::api_docs::export;
+use super::api_docs::export_ok;
 use super::{finish, osprey, read_text, temp_dir};
 
 /// [LSP-EFFECT-REQUIREMENTS] Published APIs retain transitive operation facts.
@@ -13,8 +13,7 @@ fn extra_docs_publish_inferred_effect_requirements_in_both_flavors() {
         ("osp", "effect Read { get: fn() -> int }\nfn leaf() = perform Read.get()\nfn relay() = leaf()\nfn safe() = {\n handle Read { get => 42 }\n relay()\n}\nfn invoke(f) = f()\n"),
         ("ospml", "effect Read\n    get : Unit => int\nleaf () = perform Read.get ()\nrelay () = leaf ()\nsafe () =\n    handle Read\n        get => 42\n    relay ()\ninvoke f = f ()\n"),
     ] {
-        let (result, output) = export(source, extension, &format!("effect_requirements_{extension}"));
-        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let output = export_ok(source, extension, &format!("effect_requirements_{extension}"));
         for name in ["leaf", "relay"] {
             let page = read_text(&output.join(format!("api/{name}.md")));
             assert!(page.contains("Requires on full application: `Read.get`."), "{page}");
@@ -31,8 +30,7 @@ fn extra_docs_publish_inferred_effect_requirements_in_both_flavors() {
 #[test]
 fn extra_docs_export_public_nested_module_chains_to_the_leaf() {
     let source = "module Outer {\nexport module Middle {\nexport module Inner {\nexport fn probe() = 1\n}\n}\n}\n";
-    let (result, output) = export(source, "osp", "extra_docs_deep_modules");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_deep_modules");
     for slug in [
         "outer-middle.md",
         "outer-middle-inner.md",
@@ -48,8 +46,7 @@ fn extra_docs_export_public_nested_module_chains_to_the_leaf() {
 #[test]
 fn extra_docs_private_ancestor_excludes_its_entire_subtree() {
     let source = "module Outer {\nmodule Middle {\nexport fn secret() = 1\n}\n}\n";
-    let (result, output) = export(source, "osp", "extra_docs_private_ancestor");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_private_ancestor");
     assert!(!output.join("api/outer-middle.md").exists());
     assert!(!output.join("api/outer-middle-secret.md").exists());
 }
@@ -60,8 +57,7 @@ fn extra_docs_private_ancestor_excludes_its_entire_subtree() {
 fn extra_docs_state_module_exports_public_members_with_inferred_int() {
     let source =
         "state module Counter {\nexport fn hold(value) = wrapAdd(value, 1)\nfn internal() = 0\n}\n";
-    let (result, output) = export(source, "osp", "extra_docs_state_module");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_state_module");
     let page = read_text(&output.join("api/counter-hold.md"));
     assert!(
         page.contains("::Counter::hold(value: int) -> int"),
@@ -97,14 +93,14 @@ fn assert_state_inventory(
     let file = root.join(format!("source.{extension}"));
     let output = root.join("docs");
     std::fs::write(&file, source)?;
-    let mut command = osprey();
-    let _ = command
-        .args(["--docs", "--source"])
-        .arg(&file)
-        .arg("--docs-dir")
-        .arg(&output)
-        .args(["--docs-format", format]);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .args(["--docs", "--source"])
+            .arg(&file)
+            .arg("--docs-dir")
+            .arg(&output)
+            .args(["--docs-format", format]),
+    );
     result.expect_stderr(0, &["2 warnings (state-boundary)"], &[]);
     assert_inventory_pages(&output, format)?;
     regenerate_without_state(&file, &output, extension, format)?;
@@ -154,14 +150,14 @@ fn regenerate_without_state(
         "identity x = x\n"
     };
     std::fs::write(file, source)?;
-    let mut command = osprey();
-    let _ = command
-        .args(["--docs", "--source"])
-        .arg(file)
-        .arg("--docs-dir")
-        .arg(output)
-        .args(["--docs-format", format]);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .args(["--docs", "--source"])
+            .arg(file)
+            .arg("--docs-dir")
+            .arg(output)
+            .args(["--docs-format", format]),
+    );
     assert_eq!(result.code, Some(0), "{}", result.stderr);
     let extension = if format == "html" { "html" } else { "md" };
     assert!(!output
@@ -174,8 +170,7 @@ fn regenerate_without_state(
 #[test]
 fn extra_docs_extern_declarations_carry_their_ffi_signature() {
     let source = "/// C sin.\nextern fn sin(value: float) -> float\n";
-    let (result, output) = export(source, "osp", "extra_docs_extern");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_extern");
     let page = read_text(&output.join("api/sin.md"));
     assert!(page.contains("float"), "{page}");
     assert!(page.contains("C sin."), "{page}");
@@ -184,8 +179,7 @@ fn extra_docs_extern_declarations_carry_their_ffi_signature() {
 #[test]
 fn extra_docs_type_aliases_export_with_their_target() {
     let source = "/// User id.\ntype UserId = int\n";
-    let (result, output) = export(source, "osp", "extra_docs_alias");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_alias");
     let page = read_text(&output.join("api/userid.md"));
     assert!(page.contains("int"), "{page}");
     assert!(page.contains("User id."), "{page}");
@@ -196,8 +190,7 @@ fn extra_docs_type_aliases_export_with_their_target() {
 #[test]
 fn extra_docs_generic_signature_is_exact() {
     let source = "fn wrap<T>(value: T) -> T = value\n";
-    let (result, output) = export(source, "osp", "extra_docs_generic_binder");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_generic_binder");
     let page = read_text(&output.join("api/wrap.md"));
     assert!(page.contains("fn wrap<T>(value: T) -> T"), "{page}");
 }
@@ -207,8 +200,7 @@ fn extra_docs_generic_signature_is_exact() {
 #[test]
 fn extra_docs_static_effect_page_states_the_static_stage() {
     let source = "/// Compile-time state.\nstatic effect Frozen {\npeek : fn() -> int\n}\n";
-    let (result, output) = export(source, "osp", "extra_docs_static_effect");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_static_effect");
     let page = read_text(&output.join("api/frozen.md"));
     assert!(page.contains("static effect Frozen"), "{page}");
     assert!(output.join("api/frozen-peek.md").is_file());
@@ -217,8 +209,7 @@ fn extra_docs_static_effect_page_states_the_static_stage() {
 #[test]
 fn extra_docs_ml_flavor_module_documentation_exports() {
     let source = "module Numbers\n    (** Members. *)\n    export twice n = n * 2\n";
-    let (result, output) = export(source, "ospml", "extra_docs_ml_module");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "ospml", "extra_docs_ml_module");
     let page = read_text(&output.join("api/numbers-twice.md"));
     assert!(page.contains("Members."), "{page}");
 }
@@ -230,7 +221,7 @@ fn extra_docs_missing_docs_dir_flag_takes_the_usage_branch() {
     std::fs::write(&source, "fn ok() = 1\n").expect("source");
     let mut command = osprey();
     let _ = command.arg("--docs").arg("--source").arg(&source);
-    let result = finish(command);
+    let result = finish(&mut command);
     assert_eq!(result.code, Some(2), "{}", result.stderr);
 }
 
@@ -242,14 +233,14 @@ fn extra_docs_reject_directory_passed_through_source_flag_for_pages() {
     let dir = root.join("proj");
     std::fs::create_dir_all(&dir).expect("proj dir");
     let output = root.join("out");
-    let mut command = osprey();
-    let _ = command
-        .arg("--docs")
-        .arg("--source")
-        .arg(&dir)
-        .arg("--docs-dir")
-        .arg(&output);
-    let result = finish(command);
+    let result = finish(
+        osprey()
+            .arg("--docs")
+            .arg("--source")
+            .arg(&dir)
+            .arg("--docs-dir")
+            .arg(&output),
+    );
     assert_eq!(result.code, Some(1), "{}", result.stderr);
 }
 
@@ -257,8 +248,7 @@ fn extra_docs_reject_directory_passed_through_source_flag_for_pages() {
 #[test]
 fn extra_docs_top_level_bindings_are_public() {
     let source = "fn helper() = 1\nlet exposed = helper()\n";
-    let (result, output) = export(source, "osp", "extra_docs_public_toplevel");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_public_toplevel");
     assert!(output.join("api/helper.md").is_file());
     assert!(output.join("api/exposed.md").is_file());
 }
@@ -276,8 +266,7 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
     let source = "effect Store\n    read : int => string\n\n\
         fetch : int -> string -> string -> string ! Store\n\
         fetch id prefix suffix = \"${prefix}${perform Store.read id}${suffix}\"\n";
-    let (result, output) = export(source, "ospml", "extra_docs_derived_facts");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "ospml", "extra_docs_derived_facts");
     let page = read_text(&output.join("api/fetch.md"));
     assert!(
         page.contains("fetch : int -> (string -> (string -> string)) ! Store\n```"),
@@ -304,8 +293,7 @@ fn extra_docs_undocumented_declarations_state_their_own_facts() {
 fn extra_docs_default_pages_state_effects_without_restating_parameters() {
     let source = "effect Store {\n  read: fn(int) -> string\n}\n\
         fn fetch(id) ![Store] = perform Store.read(id)\n";
-    let (result, output) = export(source, "osp", "extra_docs_default_facts");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_default_facts");
     let page = read_text(&output.join("api/fetch.md"));
     assert!(
         page.contains("fn fetch(id: int) -> string ![Store]\n```"),
@@ -330,8 +318,7 @@ fn extra_docs_distinguish_an_explicit_empty_effect_row_from_an_omitted_row() {
             "(** Declared pure. *)\nclean : Unit -> int ![]\nclean () = 42\ninferred () = 42\n",
         ),
     ] {
-        let (result, output) = export(source, flavor, &format!("extra_docs_empty_row_{flavor}"));
-        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let output = export_ok(source, flavor, &format!("extra_docs_empty_row_{flavor}"));
         let clean = read_text(&output.join("api/clean.md"));
         let inferred = read_text(&output.join("api/inferred.md"));
         assert!(clean.contains("![]"), "{flavor}: {clean}");
@@ -355,8 +342,7 @@ fn extra_docs_show_an_open_effect_remainder() {
             "effect Log\n    write : string => Unit\ninvoke : (Unit -> Unit) -> Unit ![Log | e]\ninvoke callback =\n    perform Log.write \"fixed\"\n    callback ()\n",
         ),
     ] {
-        let (result, output) = export(source, flavor, &format!("extra_docs_open_row_{flavor}"));
-        assert_eq!(result.code, Some(0), "{}", result.stderr);
+        let output = export_ok(source, flavor, &format!("extra_docs_open_row_{flavor}"));
         let invoke = read_text(&output.join("api/invoke.md"));
         assert!(invoke.contains("Log | e"), "{flavor}: {invoke}");
         assert!(
@@ -372,8 +358,7 @@ fn extra_docs_show_an_open_effect_remainder() {
 #[test]
 fn extra_docs_member_listings_fall_back_to_the_member_signature() {
     let source = "module Store {\nexport fn count() = 1\n}\n";
-    let (result, output) = export(source, "osp", "extra_docs_member_signature");
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    let output = export_ok(source, "osp", "extra_docs_member_signature");
     let module = read_text(&output.join("api/store.md"));
     assert!(
         module.contains("| [count](store-count.md) | Function | `fn count() -> int` |"),

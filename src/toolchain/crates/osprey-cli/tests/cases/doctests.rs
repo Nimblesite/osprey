@@ -3,6 +3,20 @@
 
 use super::{run_file, temp_dir, temp_osp};
 
+/// The `--doctests` run exited 0 and reported exactly `tally`.
+fn assert_doc_tests(result: &super::Out, tally: &str) {
+    assert_eq!(result.code, Some(0), "{}", result.stderr);
+    assert_eq!(result.stdout, format!("doctests: {tally}\n"));
+}
+
+/// The `--doctests` run was rejected, naming every string in `expected` on
+/// stderr, and reported exactly `tally` — a rejected run still counts the
+/// examples that passed.
+fn assert_doc_tests_rejected(result: &super::Out, expected: &[&str], tally: &str) {
+    result.expect_stderr(1, expected, &[]);
+    assert_eq!(result.stdout, format!("doctests: {tally}\n"));
+}
+
 const DOCUMENTED: &str = r#"/// Echoes a value.
 /// # Examples
 /// ```osprey
@@ -23,16 +37,14 @@ print("application entry must not run")
 fn doctests_run_in_declaration_context_and_check_compile_only_examples() {
     let source = temp_osp("documentation_context", DOCUMENTED);
     let result = run_file(&source, &["--doctests"]);
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 2 passed, 0 failed\n");
+    assert_doc_tests(&result, "2 passed, 0 failed");
 }
 
 #[test]
 fn doctests_reject_an_output_mismatch() {
     let text = DOCUMENTED.replace("/// documented\n", "/// incorrect\n");
     let result = run_file(&temp_osp("documentation_mismatch", &text), &["--doctests"]);
-    result.expect_stderr(1, &["stdout mismatch", "echo"], &[]);
-    assert_eq!(result.stdout, "doctests: 1 passed, 1 failed\n");
+    assert_doc_tests_rejected(&result, &["stdout mismatch", "echo"], "1 passed, 1 failed");
 }
 
 #[test]
@@ -45,8 +57,7 @@ fn doctests_typecheck_examples_without_output_fences() {
         &temp_osp("documentation_type_error", &text),
         &["--doctests"],
     );
-    result.expect_stderr(1, &["cannot unify"], &[]);
-    assert_eq!(result.stdout, "doctests: 1 passed, 1 failed\n");
+    assert_doc_tests_rejected(&result, &["cannot unify"], "1 passed, 1 failed");
 }
 
 #[test]
@@ -56,8 +67,7 @@ fn doctests_inherit_ml_flavor() {
     let source = "(** Echoes a value.\n# Examples\n```osprey\nprint (echo \"ML\")\n```\n```output\nML\n```\n*)\necho value = value\n";
     std::fs::write(&path, source).expect("write ML doc fixture");
     let result = run_file(&path, &["--doctests"]);
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
@@ -69,8 +79,7 @@ fn doctests_keep_examples_isolated() {
             "let onlyInOtherExample = 42\n/// print(echo(\"documented\"))",
         );
     let result = run_file(&temp_osp("documentation_isolation", &text), &["--doctests"]);
-    result.expect_stderr(1, &["onlyInOtherExample"], &[]);
-    assert_eq!(result.stdout, "doctests: 1 passed, 1 failed\n");
+    assert_doc_tests_rejected(&result, &["onlyInOtherExample"], "1 passed, 1 failed");
 }
 
 #[test]
@@ -95,8 +104,7 @@ fn doctests_use_the_owning_nested_module_and_private_helpers() {
 fn main() = print("application main must not run")
 "#;
     let result = run_file(&temp_osp("documentation_nested", source), &["--doctests"]);
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
@@ -122,8 +130,7 @@ module Container {
 }
 "#;
     let result = run_file(&temp_osp("documentation_inner", source), &["--doctests"]);
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 2 passed, 0 failed\n");
+    assert_doc_tests(&result, "2 passed, 0 failed");
 }
 
 #[test]
@@ -158,8 +165,7 @@ fn doctests_work_in_mixed_flavor_projects() {
     let source = "namespace support\n    module Labels\n        (** Label.\n# Examples\n```osprey\nprint (label ())\n```\n```output\nproject\n```\n*)\n        export label () = \"project\"\n";
     std::fs::write(root.join("labels.ospml"), source).expect("module");
     let result = run_file(&root, &["--doctests"]);
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
@@ -169,8 +175,7 @@ fn doctests_do_not_activate_unrelated_test_helpers() {
         &temp_osp("documentation_unused_tests", &source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 2 passed, 0 failed\n");
+    assert_doc_tests(&result, "2 passed, 0 failed");
 }
 
 #[test]
@@ -195,9 +200,8 @@ fn doctests_stop_examples_that_exceed_the_execution_deadline() {
         .arg(path)
         .arg("--doctests")
         .env("OSPREY_DOCTEST_TIMEOUT_MS", "50");
-    let result = super::finish(command);
-    result.expect_stderr(1, &["execution timed out"], &[]);
-    assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
+    let result = super::finish(&mut command);
+    assert_doc_tests_rejected(&result, &["execution timed out"], "0 passed, 1 failed");
 }
 
 #[test]
@@ -207,8 +211,7 @@ fn doctests_keep_example_type_positions_separate_from_source_positions() {
         &temp_osp("documentation_positions", source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
@@ -222,8 +225,7 @@ fn doctests_can_explicitly_call_the_documented_application_main() {
             ),
             &["--doctests"],
         );
-        assert_eq!(result.code, Some(0), "{}", result.stderr);
-        assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+        assert_doc_tests(&result, "1 passed, 0 failed");
     }
 }
 
@@ -234,8 +236,7 @@ fn doctests_allow_example_helpers_to_capture_example_bindings() {
         &temp_osp("documentation_helper_capture", source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
@@ -245,8 +246,7 @@ fn doctests_allow_qualified_calls_to_documented_main() {
         &temp_osp("documentation_qualified_main", source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert_eq!(result.stdout, "doctests: 1 passed, 0 failed\n");
+    assert_doc_tests(&result, "1 passed, 0 failed");
 }
 
 #[test]
@@ -294,8 +294,7 @@ fn doctests_compare_output_separated_from_its_example_by_blank_lines() {
         &temp_osp("documentation_blank_before_output", source),
         &["--doctests"],
     );
-    result.expect_stderr(1, &["stdout mismatch"], &[]);
-    assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
+    assert_doc_tests_rejected(&result, &["stdout mismatch"], "0 passed, 1 failed");
 }
 
 /// An `output` fence that no example precedes checks nothing. Whatever the
@@ -308,6 +307,5 @@ fn doctests_reject_an_output_fence_with_no_example_before_it() {
         &temp_osp("documentation_orphan_output", source),
         &["--doctests"],
     );
-    result.expect_stderr(1, &["add", "`output` fence"], &[]);
-    assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
+    assert_doc_tests_rejected(&result, &["add", "`output` fence"], "0 passed, 1 failed");
 }
