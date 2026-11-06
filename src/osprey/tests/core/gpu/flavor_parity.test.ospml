@@ -7,15 +7,11 @@ iotaOutcome result = match result
 
 minimumIntCase () =
     minimum = -9223372036854775808
-    match toGpu ([minimum])
-        Success value =>
-            buf = value
-            checkAll "minimum int literal crosses the GPU boundary" [
-                gpuLength buf == 1,
-                (gpuGet (buf, 0) ?: 0) == minimum,
-                gpuSatisfies (fromGpu (buf), \checked0 => (listGet (checked0, 0) ?: 0) == minimum)
-            ]
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (toGpu ([minimum]), \buf => checkAll "minimum int literal crosses the GPU boundary" [
+            gpuLength buf == 1,
+            (gpuGet (buf, 0) ?: 0) == minimum,
+            gpuSatisfies (fromGpu (buf), \checked0 => (listGet (checked0, 0) ?: 0) == minimum)
+        ])
 negativeIotaCase () =
     direct = gpuIota -3
     piped = -7 |> gpuIota

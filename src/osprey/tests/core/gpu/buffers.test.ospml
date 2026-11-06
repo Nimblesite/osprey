@@ -53,97 +53,48 @@ literalCaseUploaded (ints, floats, flags, signed, wide) =
 listCopyCase () = withIndices (0, \indices0 => listCopyWith (indices0))
 listCopyWith (indices0) =
     source = [2, 4, 6, 8]
-    match toGpu (source)
-        Success value =>
-            copied = value
-            match fromGpu (copied)
-                Success value =>
-                    read0 = value
-                    match toGpu (read0)
-                        Success value =>
-                            relayed = value
-                            lone = [11]
-                            match fromGpu (indices0)
-                                Success value =>
-                                    read1 = value
-                                    none = read1
-                                    checkAll "list copy path" [
-                                        listLength source == 4, gpuLength copied == 4, (gpuGet (copied, 0) ?: 0) == 2, (gpuGet (copied, 1) ?: 0) == 4, (gpuGet (copied, 2) ?: 0) == 6, (gpuGet (copied, 3) ?: 0) == 8, (lastOf copied ?: 0) == 8, readback (copied, 4) == oobMessage (),
-                                        readback (copied, -1) == oobMessage (), readback (copied, 0) == "2", gpuSatisfies(gpuFold(copied, 0, addInts), \uploaded89 => (uploaded89) == 20), gpuLength relayed == 4, (gpuGet (relayed, 2) ?: 0) == 6,
-                                        gpuSatisfies(gpuFold(relayed, 0, addInts), \uploaded88 => (uploaded88) == 20), gpuSatisfies (toGpu (lone), \uploaded37 => gpuLength (uploaded37) == 1), gpuSatisfies (toGpu (lone), \uploaded36 => (gpuGet (uploaded36, 0) ?: 0) == 11),
-                                        gpuSatisfies (toGpu (lone), \uploaded35 => (lastOf (uploaded35) ?: 0) == 11), listLength none == 0, gpuSatisfies (toGpu (none), \uploaded34 => gpuLength (uploaded34) == 0),
-                                        gpuSatisfies (toGpu (none), \uploaded33 => gpuSatisfies(gpuFold(uploaded33, 7, addInts), \uploaded87 => (uploaded87) == 7)), gpuSatisfies (toGpu (source), \uploaded32 => widthOf (uploaded32) == widthOf copied),
-                                        gpuSatisfies (toGpu (source), \uploaded31 => gpuSatisfies(gpuFold(uploaded31, 0, addInts), \uploaded85 => gpuSatisfies(gpuFold(copied, 0, addInts), \uploaded86 => (uploaded85) == (uploaded86))))
-                                    ]
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    lone = [11]
+    withBuffer (toGpu (source), \copied => withBuffer (fromGpu (copied), \read0 => withBuffer (toGpu (read0), \relayed => withBuffer (fromGpu (indices0), \none => checkAll "list copy path" [
+                        listLength source == 4, gpuLength copied == 4, (gpuGet (copied, 0) ?: 0) == 2, (gpuGet (copied, 1) ?: 0) == 4, (gpuGet (copied, 2) ?: 0) == 6, (gpuGet (copied, 3) ?: 0) == 8, (lastOf copied ?: 0) == 8, readback (copied, 4) == oobMessage (),
+                        readback (copied, -1) == oobMessage (), readback (copied, 0) == "2", gpuSatisfies(gpuFold(copied, 0, addInts), \uploaded89 => (uploaded89) == 20), gpuLength relayed == 4, (gpuGet (relayed, 2) ?: 0) == 6,
+                        gpuSatisfies(gpuFold(relayed, 0, addInts), \uploaded88 => (uploaded88) == 20), gpuSatisfies (toGpu (lone), \uploaded37 => gpuLength (uploaded37) == 1), gpuSatisfies (toGpu (lone), \uploaded36 => (gpuGet (uploaded36, 0) ?: 0) == 11),
+                        gpuSatisfies (toGpu (lone), \uploaded35 => (lastOf (uploaded35) ?: 0) == 11), listLength none == 0, gpuSatisfies (toGpu (none), \uploaded34 => gpuLength (uploaded34) == 0),
+                        gpuSatisfies (toGpu (none), \uploaded33 => gpuSatisfies(gpuFold(uploaded33, 7, addInts), \uploaded87 => (uploaded87) == 7)), gpuSatisfies (toGpu (source), \uploaded32 => widthOf (uploaded32) == widthOf copied),
+                        gpuSatisfies (toGpu (source), \uploaded31 => gpuSatisfies(gpuFold(uploaded31, 0, addInts), \uploaded85 => gpuSatisfies(gpuFold(copied, 0, addInts), \uploaded86 => (uploaded85) == (uploaded86))))
+                    ]))))
 (** Pin toGpu/fromGpu as an order-preserving dense copy in both directions [GPU-BUFFER-TO-LIST]: list to buffer to list to buffer, every index checked at every hop, with a list index past the end still failing. *)
 roundTripCase () = withIndices (0, \indices0 => withIndices (6, \indices6 => roundTripWith (indices0, indices6)))
 roundTripWith (indices0, indices6) =
-    match toGpu ([3, 1, 4, 1, 5])
-        Success value =>
-            buf = value
-            match fromGpu (buf)
-                Success value =>
-                    back = value
-                    match toGpu (back)
-                        Success value =>
-                            viaList = value
-                            match fromGpu (viaList)
-                                Success value =>
-                                    twice = value
-                                    checkAll "round trip" [
-                                        gpuLength buf == 5, listLength back == 5, (listGet (back, 0) ?: 0) == 3, (listGet (back, 1) ?: 0) == 1, (listGet (back, 2) ?: 0) == 4, (listGet (back, 3) ?: 0) == 1, (listGet (back, 4) ?: 0) == 5, (listGet (back, 5) ?: 99) == 99,
-                                        (listGet (back, -1) ?: 99) == 99, gpuLength viaList == 5, (gpuGet (viaList, 0) ?: 0) == 3, (gpuGet (viaList, 2) ?: 0) == 4, (gpuGet (viaList, 4) ?: 0) == 5, readback (viaList, 5) == oobMessage (),
-                                        gpuSatisfies(gpuFold(viaList, 0, addInts), \uploaded84 => (uploaded84) == 14), listLength twice == 5, (listGet (twice, 4) ?: 0) == 5, gpuSatisfies (toGpu (twice), \uploaded28 => gpuSatisfies(gpuFold(uploaded28, 0, addInts), \uploaded83 => (uploaded83) == 14)),
-                                        gpuSatisfies (fromGpu (indices0), \checked0 => listLength (checked0) == 0), gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded27 => gpuLength (uploaded27) == 6)),
-                                        gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded26 => gpuSatisfies(gpuFold(uploaded26, 0, addInts), \uploaded82 => (uploaded82) == 15))),
-                                        gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded25 => (gpuGet (uploaded25, 5) ?: 0) == 5))
-                                    ]
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (toGpu ([3, 1, 4, 1, 5]), \buf => withBuffer (fromGpu (buf), \back => withBuffer (toGpu (back), \viaList => withBuffer (fromGpu (viaList), \twice => checkAll "round trip" [
+                        gpuLength buf == 5, listLength back == 5, (listGet (back, 0) ?: 0) == 3, (listGet (back, 1) ?: 0) == 1, (listGet (back, 2) ?: 0) == 4, (listGet (back, 3) ?: 0) == 1, (listGet (back, 4) ?: 0) == 5, (listGet (back, 5) ?: 99) == 99,
+                        (listGet (back, -1) ?: 99) == 99, gpuLength viaList == 5, (gpuGet (viaList, 0) ?: 0) == 3, (gpuGet (viaList, 2) ?: 0) == 4, (gpuGet (viaList, 4) ?: 0) == 5, readback (viaList, 5) == oobMessage (),
+                        gpuSatisfies(gpuFold(viaList, 0, addInts), \uploaded84 => (uploaded84) == 14), listLength twice == 5, (listGet (twice, 4) ?: 0) == 5, gpuSatisfies (toGpu (twice), \uploaded28 => gpuSatisfies(gpuFold(uploaded28, 0, addInts), \uploaded83 => (uploaded83) == 14)),
+                        gpuSatisfies (fromGpu (indices0), \checked0 => listLength (checked0) == 0), gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded27 => gpuLength (uploaded27) == 6)),
+                        gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded26 => gpuSatisfies(gpuFold(uploaded26, 0, addInts), \uploaded82 => (uploaded82) == 15))),
+                        gpuSatisfies (fromGpu (indices6), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded25 => (gpuGet (uploaded25, 5) ?: 0) == 5))
+                    ]))))
 (** Pin the zero-element buffer through every builtin that takes one: no element is readable at any index, it materializes as an empty list, maps to another empty buffer, and folds to its seed untouched. *)
 emptyCase () = withIndices (0, \indices0 => emptyWith (indices0))
 emptyWith (indices0) =
     none = indices0
-    match gpuMap(none, square)
-        Success value =>
-            mapped = value
-            match gpuMap(none, isOdd)
-                Success value =>
-                    flags = value
-                    match gpuMap(none, toFloat)
-                        Success value =>
-                            widened = value
-                            checkAll "empty buffers" [
-                                gpuLength none == 0, gpuLength mapped == 0, gpuLength flags == 0, gpuLength widened == 0, gpuSatisfies (toGpu ([]), \(uploaded24: GpuBuffer<int>) => gpuLength (uploaded24) == 0), widthOf none == 0, gpuSatisfies (fromGpu (none), \checked0 => listLength (checked0) == 0),
-                                gpuSatisfies (fromGpu (mapped), \checked0 => listLength (checked0) == 0), gpuSatisfies(gpuFold(none, 0, addInts), \uploaded78 => (uploaded78) == 0), gpuSatisfies(gpuFold(none, (-7), addInts), \uploaded77 => (uploaded77) == -7),
-                                gpuSatisfies(gpuFold(mapped, 3, addInts), \uploaded76 => (uploaded76) == 3), gpuSatisfies(gpuFold(flags, 0, countOdd), \uploaded75 => (uploaded75) == 0), gpuSatisfies(gpuFold(widened, 2.5, addFloats), \uploaded74 => (uploaded74) == 2.5), (gpuGet (none, 0) ?: 42) == 42,
-                                (gpuGet (none, 1) ?: 42) == 42, (gpuGet (none, -1) ?: 42) == 42, (gpuGet (none, 1000000) ?: 42) == 42, (lastOf none ?: 42) == 42, readback (none, 0) == oobMessage (), readback (none, -1) == oobMessage (), readback (mapped, 0) == oobMessage (),
-                                readback (flags, 0) == oobMessage (), readback (widened, 0) == oobMessage ()
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (gpuMap(none, square), \mapped => withBuffer (gpuMap(none, isOdd), \flags => withBuffer (gpuMap(none, toFloat), \widened => checkAll "empty buffers" [
+                    gpuLength none == 0, gpuLength mapped == 0, gpuLength flags == 0, gpuLength widened == 0, gpuSatisfies (toGpu ([]), \(uploaded24: GpuBuffer<int>) => gpuLength (uploaded24) == 0), widthOf none == 0, gpuSatisfies (fromGpu (none), \checked0 => listLength (checked0) == 0),
+                    gpuSatisfies (fromGpu (mapped), \checked0 => listLength (checked0) == 0), gpuSatisfies(gpuFold(none, 0, addInts), \uploaded78 => (uploaded78) == 0), gpuSatisfies(gpuFold(none, (-7), addInts), \uploaded77 => (uploaded77) == -7),
+                    gpuSatisfies(gpuFold(mapped, 3, addInts), \uploaded76 => (uploaded76) == 3), gpuSatisfies(gpuFold(flags, 0, countOdd), \uploaded75 => (uploaded75) == 0), gpuSatisfies(gpuFold(widened, 2.5, addFloats), \uploaded74 => (uploaded74) == 2.5), (gpuGet (none, 0) ?: 42) == 42,
+                    (gpuGet (none, 1) ?: 42) == 42, (gpuGet (none, -1) ?: 42) == 42, (gpuGet (none, 1000000) ?: 42) == 42, (lastOf none ?: 42) == 42, readback (none, 0) == oobMessage (), readback (none, -1) == oobMessage (), readback (mapped, 0) == oobMessage (),
+                    readback (flags, 0) == oobMessage (), readback (widened, 0) == oobMessage ()
+                ])))
 (** Pin the one-element buffer: index 0 is the only address in bounds, so both 1 and -1 fail, and a fold sees exactly one element. *)
 singletonCase () = withIndices (1, \indices1 => singletonWith (indices1))
 singletonWith (indices1) = withBuffer(toGpu ([42]), \lone => withBuffer(toGpu ([2.5]), \loneF => withBuffer(toGpu ([false]), \loneB => singletonWithUploaded(indices1, lone, loneF, loneB))))
 singletonWithUploaded (indices1, lone, loneF, loneB) =
-    match doubledInts(lone)
-        Success value =>
-            doubled = value
-            checkAll "single-element buffers" [
-                gpuLength lone == 1, gpuLength loneF == 1, gpuLength loneB == 1, gpuLength (indices1) == 1, (gpuGet (indices1, 0) ?: 9) == 0, (gpuGet (lone, 0) ?: 0) == 42, (gpuGet (loneF, 0) ?: 9.5) == 2.5, (gpuGet (loneB, 0) ?: true) == false, (gpuGet (lone, 1) ?: 9) == 9,
-                (gpuGet (lone, -1) ?: 9) == 9, (gpuGet (loneF, 1) ?: 9.5) == 9.5, (gpuGet (loneB, 1) ?: true) == true, readback (lone, 1) == oobMessage (), readback (loneF, -1) == oobMessage (), readback (loneB, 2) == oobMessage (), readback (lone, 0) == "42", (lastOf lone ?: 0) == 42,
-                (lastOf loneF ?: 9.5) == 2.5, (lastOf loneB ?: true) == false, gpuSatisfies(gpuFold(lone, 0, addInts), \uploaded72 => (uploaded72) == 42), gpuSatisfies(gpuFold(loneF, 0.0, addFloats), \uploaded71 => (uploaded71) == 2.5),
-                gpuSatisfies(gpuFold(loneB, 0, countOdd), \uploaded70 => (uploaded70) == 0), gpuLength doubled == 1, (gpuGet (doubled, 0) ?: 0) == 84, gpuSatisfies (fromGpu (lone), \checked0 => listLength (checked0) == 1),
-                gpuSatisfies (fromGpu (lone), \checked0 => (listGet (checked0, 0) ?: 0) == 42), gpuSatisfies (fromGpu (lone), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded23 => gpuLength (uploaded23) == 1))
-            ]
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (doubledInts(lone), \doubled => checkAll "single-element buffers" [
+            gpuLength lone == 1, gpuLength loneF == 1, gpuLength loneB == 1, gpuLength (indices1) == 1, (gpuGet (indices1, 0) ?: 9) == 0, (gpuGet (lone, 0) ?: 0) == 42, (gpuGet (loneF, 0) ?: 9.5) == 2.5, (gpuGet (loneB, 0) ?: true) == false, (gpuGet (lone, 1) ?: 9) == 9,
+            (gpuGet (lone, -1) ?: 9) == 9, (gpuGet (loneF, 1) ?: 9.5) == 9.5, (gpuGet (loneB, 1) ?: true) == true, readback (lone, 1) == oobMessage (), readback (loneF, -1) == oobMessage (), readback (loneB, 2) == oobMessage (), readback (lone, 0) == "42", (lastOf lone ?: 0) == 42,
+            (lastOf loneF ?: 9.5) == 2.5, (lastOf loneB ?: true) == false, gpuSatisfies(gpuFold(lone, 0, addInts), \uploaded72 => (uploaded72) == 42), gpuSatisfies(gpuFold(loneF, 0.0, addFloats), \uploaded71 => (uploaded71) == 2.5),
+            gpuSatisfies(gpuFold(loneB, 0, countOdd), \uploaded70 => (uploaded70) == 0), gpuLength doubled == 1, (gpuGet (doubled, 0) ?: 0) == 84, gpuSatisfies (fromGpu (lone), \checked0 => listLength (checked0) == 1),
+            gpuSatisfies (fromGpu (lone), \checked0 => (listGet (checked0, 0) ?: 0) == 42), gpuSatisfies (fromGpu (lone), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded23 => gpuLength (uploaded23) == 1))
+        ])
 (** Pin [GPU-GET] at both ends and far outside them for every element type: an in-bounds read returns the element at the buffer's own scalar type, and index == length, index == -1 and indices a million past either edge all return the identical Error payload. *)
 boundsCase () = withBuffer(toGpu ([10, 20, 30]), \ints => withBuffer(toGpu ([1.25, 2.5]), \floats => withBuffer(toGpu ([true, false]), \flags => boundsCaseUploaded(ints, floats, flags))))
 boundsCaseUploaded (ints, floats, flags) =
@@ -214,42 +165,22 @@ aliasCase () =
             source = value
             alias = source
             alsoAlias = alias
-            match doubledInts(alias)
-                Success value =>
-                    derived = value
-                    checkAll "aliased bindings share one immutable buffer" [
-                        gpuLength source == 4, gpuLength alias == 4, gpuLength alsoAlias == 4, widthOf alias == widthOf source, (gpuGet (alias, 0) ?: 0) == 1, (gpuGet (alsoAlias, 0) ?: 0) == 1, (gpuGet (alias, 3) ?: 0) == 4, (gpuGet (alsoAlias, 3) ?: 0) == 4,
-                        (lastOf alias ?: 0) == (lastOf source ?: 0), gpuSatisfies(gpuFold(source, 0, addInts), \uploaded40 => (uploaded40) == 10), gpuSatisfies(gpuFold(alias, 0, addInts), \uploaded39 => (uploaded39) == 10),
-                        gpuSatisfies(gpuFold(alsoAlias, 0, addInts), \uploaded38 => (uploaded38) == 10), gpuLength derived == 4, gpuSatisfies(gpuFold(derived, 0, addInts), \uploaded37 => (uploaded37) == 20), (gpuGet (derived, 1) ?: 0) == 4, (gpuGet (source, 1) ?: 0) == 2,
-                        (gpuGet (alias, 1) ?: 0) == 2, (gpuGet (alsoAlias, 1) ?: 0) == 2, readback (alias, 4) == oobMessage (), readback (alsoAlias, -1) == oobMessage (), readback (source, 4) == readback (alias, 4), gpuSatisfies (fromGpu (alias), \checked0 => listLength (checked0) == 4),
-                        gpuSatisfies (fromGpu (alsoAlias), \checked0 => (listGet (checked0, 2) ?: 0) == 3)
-                    ]
-                Error message => check ("GPU operation", "success", toString message)
+            withBuffer (doubledInts(alias), \derived => checkAll "aliased bindings share one immutable buffer" [
+                    gpuLength source == 4, gpuLength alias == 4, gpuLength alsoAlias == 4, widthOf alias == widthOf source, (gpuGet (alias, 0) ?: 0) == 1, (gpuGet (alsoAlias, 0) ?: 0) == 1, (gpuGet (alias, 3) ?: 0) == 4, (gpuGet (alsoAlias, 3) ?: 0) == 4,
+                    (lastOf alias ?: 0) == (lastOf source ?: 0), gpuSatisfies(gpuFold(source, 0, addInts), \uploaded40 => (uploaded40) == 10), gpuSatisfies(gpuFold(alias, 0, addInts), \uploaded39 => (uploaded39) == 10),
+                    gpuSatisfies(gpuFold(alsoAlias, 0, addInts), \uploaded38 => (uploaded38) == 10), gpuLength derived == 4, gpuSatisfies(gpuFold(derived, 0, addInts), \uploaded37 => (uploaded37) == 20), (gpuGet (derived, 1) ?: 0) == 4, (gpuGet (source, 1) ?: 0) == 2,
+                    (gpuGet (alias, 1) ?: 0) == 2, (gpuGet (alsoAlias, 1) ?: 0) == 2, readback (alias, 4) == oobMessage (), readback (alsoAlias, -1) == oobMessage (), readback (source, 4) == readback (alias, 4), gpuSatisfies (fromGpu (alias), \checked0 => listLength (checked0) == 4),
+                    gpuSatisfies (fromGpu (alsoAlias), \checked0 => (listGet (checked0, 2) ?: 0) == 3)
+                ])
         Error message => check ("GPU operation", "success", toString message)
 (** Pin [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size. *)
 fusionCase () =
-    match toGpu(range (0, 6))
-        Success value =>
-            straight = value
-            match toGpu(range (1, 5) |> map square)
-                Success value =>
-                    squares = value
-                    match toGpu(range (4, 5))
-                        Success value =>
-                            lone = value
-                            match toGpu(range (3, 3))
-                                Success value =>
-                                    empty = value
-                                    checkAll "iterator fusion fills the buffer directly" [
-                                        gpuLength straight == 6, (gpuGet (straight, 0) ?: 9) == 0, (gpuGet (straight, 5) ?: 0) == 5, (lastOf straight ?: 0) == 5, readback (straight, 6) == oobMessage (), readback (straight, -1) == oobMessage (), gpuLength squares == 4, (gpuGet (squares, 0) ?: 0) == 1,
-                                        (gpuGet (squares, 1) ?: 0) == 4, (gpuGet (squares, 2) ?: 0) == 9, (gpuGet (squares, 3) ?: 0) == 16, (lastOf squares ?: 0) == 16, readback (squares, 4) == oobMessage (), gpuLength lone == 1, (gpuGet (lone, 0) ?: 0) == 4, readback (lone, 1) == oobMessage (),
-                                        gpuLength empty == 0, readback (empty, 0) == oobMessage (), gpuSatisfies(gpuFold(empty, 5, addInts), \uploaded36 => (uploaded36) == 5), widthOf empty == 0, gpuSatisfies (fromGpu (straight), \checked0 => listLength (checked0) == 6),
-                                        gpuSatisfies (fromGpu (squares), \checked0 => (listGet (checked0, 1) ?: 0) == 4), gpuSatisfies (fromGpu (squares), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded15 => gpuSatisfies(gpuFold(uploaded15, 0, addInts), \uploaded35 => (uploaded35) == 30)))
-                                    ]
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (toGpu(range (0, 6)), \straight => withBuffer (toGpu(range (1, 5) |> map square), \squares => withBuffer (toGpu(range (4, 5)), \lone => withBuffer (toGpu(range (3, 3)), \empty => checkAll "iterator fusion fills the buffer directly" [
+                        gpuLength straight == 6, (gpuGet (straight, 0) ?: 9) == 0, (gpuGet (straight, 5) ?: 0) == 5, (lastOf straight ?: 0) == 5, readback (straight, 6) == oobMessage (), readback (straight, -1) == oobMessage (), gpuLength squares == 4, (gpuGet (squares, 0) ?: 0) == 1,
+                        (gpuGet (squares, 1) ?: 0) == 4, (gpuGet (squares, 2) ?: 0) == 9, (gpuGet (squares, 3) ?: 0) == 16, (lastOf squares ?: 0) == 16, readback (squares, 4) == oobMessage (), gpuLength lone == 1, (gpuGet (lone, 0) ?: 0) == 4, readback (lone, 1) == oobMessage (),
+                        gpuLength empty == 0, readback (empty, 0) == oobMessage (), gpuSatisfies(gpuFold(empty, 5, addInts), \uploaded36 => (uploaded36) == 5), widthOf empty == 0, gpuSatisfies (fromGpu (straight), \checked0 => listLength (checked0) == 6),
+                        gpuSatisfies (fromGpu (squares), \checked0 => (listGet (checked0, 1) ?: 0) == 4), gpuSatisfies (fromGpu (squares), \checked0 => gpuSatisfies (toGpu (checked0), \uploaded15 => gpuSatisfies(gpuFold(uploaded15, 0, addInts), \uploaded35 => (uploaded35) == 30)))
+                    ]))))
 (** Pipe a buffer through a named kernel and fold it away, including over negative elements and over no elements at all. *)
 intKernelCase () = withIndices (0, \indices0 => intKernelWith (indices0))
 intKernelWith (indices0) =
@@ -271,20 +202,13 @@ intKernelWith (indices0) =
                                                 Success value =>
                                                     read0 = value
                                                     squares = read0
-                                                    match toGpu ([-1, -2, -3])
-                                                        Success value =>
-                                                            match gpuMap(value, square)
-                                                                Success value =>
-                                                                    negatives = value
-                                                                    checkAll "int kernels" [
-                                                                        total == 30, listLength squares == 3, (listGet (squares, 0) ?: 0) == 1, (listGet (squares, 2) ?: 0) == 9,
-                                                                        gpuSatisfies (toGpu ([10, 20]), \uploaded11 => gpuSatisfies(gpuFold(uploaded11, 5, addInts), \uploaded31 => (uploaded31) == 35)), gpuLength negatives == 3, (gpuGet (negatives, 0) ?: 0) == 1, (gpuGet (negatives, 2) ?: 0) == 9,
-                                                                        gpuSatisfies(gpuFold(negatives, 0, addInts), \uploaded30 => (uploaded30) == 14),
-                                                                        gpuSatisfies (toGpu ([7]), \uploaded10 => gpuSatisfies(gpuMap(uploaded10, square), \uploaded29 => gpuSatisfies(gpuFold(uploaded29, 0, addInts), \uploaded99 => (uploaded99) == 49))),
-                                                                        gpuSatisfies(gpuMap(indices0, square), \uploaded28 => gpuSatisfies(gpuFold(uploaded28, 0, addInts), \uploaded98 => (uploaded98) == 0))
-                                                                    ]
-                                                                Error message => check ("GPU operation", "success", toString message)
-                                                        Error message => check ("GPU operation", "success", toString message)
+                                                    withBuffer (toGpu ([-1, -2, -3]), \value => withBuffer (gpuMap(value, square), \negatives => checkAll "int kernels" [
+                                                                total == 30, listLength squares == 3, (listGet (squares, 0) ?: 0) == 1, (listGet (squares, 2) ?: 0) == 9,
+                                                                gpuSatisfies (toGpu ([10, 20]), \uploaded11 => gpuSatisfies(gpuFold(uploaded11, 5, addInts), \uploaded31 => (uploaded31) == 35)), gpuLength negatives == 3, (gpuGet (negatives, 0) ?: 0) == 1, (gpuGet (negatives, 2) ?: 0) == 9,
+                                                                gpuSatisfies(gpuFold(negatives, 0, addInts), \uploaded30 => (uploaded30) == 14),
+                                                                gpuSatisfies (toGpu ([7]), \uploaded10 => gpuSatisfies(gpuMap(uploaded10, square), \uploaded29 => gpuSatisfies(gpuFold(uploaded29, 0, addInts), \uploaded99 => (uploaded99) == 49))),
+                                                                gpuSatisfies(gpuMap(indices0, square), \uploaded28 => gpuSatisfies(gpuFold(uploaded28, 0, addInts), \uploaded98 => (uploaded98) == 0))
+                                                            ]))
                                                 Error message => check ("GPU operation", "success", toString message)
                                         Error message => check ("GPU operation", "success", toString message)
                                 Error message => check ("GPU operation", "success", toString message)
@@ -294,28 +218,13 @@ intKernelWith (indices0) =
 (** Prove float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer. *)
 floatKernelCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => floatKernelWith (indices0, indices4)))
 floatKernelWith (indices0, indices4) =
-    match toGpu ([1.0, 2.0, 3.0])
-        Success value =>
-            match gpuMap(value, scale)
-                Success value =>
-                    uploaded27 = value
-                    match gpuFold(uploaded27, 0.0, addFloats)
-                        Success value =>
-                            sum = value
-                            match toGpu ([0.5, 0.25, 0.125])
-                                Success value =>
-                                    halves = value
-                                    checkAll "float kernels" [
-                                        sum == 9.0, gpuSatisfies(gpuFold(halves, 0.0, addFloats), \uploaded26 => (uploaded26) == 0.875), gpuSatisfies(gpuMap(halves, scale), \uploaded25 => gpuSatisfies(gpuFold(uploaded25, 0.0, addFloats), \uploaded96 => (uploaded96) == 1.3125)),
-                                        gpuSatisfies(gpuMap(halves, scale), \uploaded24 => (gpuGet ((uploaded24), 2) ?: 9.5) == 0.1875), gpuSatisfies(gpuMap(halves, scale), \uploaded23 => gpuLength (uploaded23) == 3),
-                                        gpuSatisfies (toGpu ([0.5, 0.25]), \uploaded7 => gpuSatisfies(gpuFold(uploaded7, 0.0, addFloats), \uploaded22 => (uploaded22) == 0.75)),
-                                        gpuSatisfies(gpuMap(indices4, toFloat), \uploaded21 => gpuSatisfies(gpuFold(uploaded21, 0.0, addFloats), \uploaded95 => (uploaded95) == 6.0)), gpuSatisfies(gpuMap(indices4, toFloat), \uploaded20 => (gpuGet ((uploaded20), 3) ?: 9.5) == 3.0),
-                                        gpuSatisfies(gpuMap(indices0, toFloat), \uploaded19 => gpuSatisfies(gpuFold(uploaded19, 2.5, addFloats), \uploaded94 => (uploaded94) == 2.5))
-                                    ]
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (toGpu ([1.0, 2.0, 3.0]), \value => withBuffer (gpuMap(value, scale), \uploaded27 => withBuffer (gpuFold(uploaded27, 0.0, addFloats), \sum => withBuffer (toGpu ([0.5, 0.25, 0.125]), \halves => checkAll "float kernels" [
+                        sum == 9.0, gpuSatisfies(gpuFold(halves, 0.0, addFloats), \uploaded26 => (uploaded26) == 0.875), gpuSatisfies(gpuMap(halves, scale), \uploaded25 => gpuSatisfies(gpuFold(uploaded25, 0.0, addFloats), \uploaded96 => (uploaded96) == 1.3125)),
+                        gpuSatisfies(gpuMap(halves, scale), \uploaded24 => (gpuGet ((uploaded24), 2) ?: 9.5) == 0.1875), gpuSatisfies(gpuMap(halves, scale), \uploaded23 => gpuLength (uploaded23) == 3),
+                        gpuSatisfies (toGpu ([0.5, 0.25]), \uploaded7 => gpuSatisfies(gpuFold(uploaded7, 0.0, addFloats), \uploaded22 => (uploaded22) == 0.75)),
+                        gpuSatisfies(gpuMap(indices4, toFloat), \uploaded21 => gpuSatisfies(gpuFold(uploaded21, 0.0, addFloats), \uploaded95 => (uploaded95) == 6.0)), gpuSatisfies(gpuMap(indices4, toFloat), \uploaded20 => (gpuGet ((uploaded20), 3) ?: 9.5) == 3.0),
+                        gpuSatisfies(gpuMap(indices0, toFloat), \uploaded19 => gpuSatisfies(gpuFold(uploaded19, 2.5, addFloats), \uploaded94 => (uploaded94) == 2.5))
+                    ]))))
 (** Map int elements to bool elements and count the odd ones, covering the all-true and all-false buffers beside the mixed one. *)
 boolKernelCase () = withIndices (0, \indices0 => boolKernelWith (indices0))
 boolKernelWith (indices0) =
@@ -329,19 +238,12 @@ boolKernelWith (indices0) =
                             match gpuMap(value, isOdd)
                                 Success value =>
                                     allTrue = value
-                                    match toGpu ([2, 4])
-                                        Success value =>
-                                            match gpuMap(value, isOdd)
-                                                Success value =>
-                                                    allFalse = value
-                                                    checkAll "bool kernels" [
-                                                        gpuLength odds == 5, gpuSatisfies(gpuFold(odds, 0, countOdd), \uploaded15 => (uploaded15) == 3), (gpuGet (odds, 0) ?: false) == true, (gpuGet (odds, 1) ?: true) == false, (gpuGet (odds, 4) ?: false) == true, (lastOf odds ?: false) == true,
-                                                        readback (odds, 1) == "false", readback (odds, 5) == oobMessage (), gpuLength allTrue == 2, gpuSatisfies(gpuFold(allTrue, 0, countOdd), \uploaded14 => (uploaded14) == 2),
-                                                        gpuSatisfies(gpuFold(allFalse, 0, countOdd), \uploaded13 => (uploaded13) == 0), gpuSatisfies (toGpu ([true, true, false]), \uploaded3 => gpuSatisfies(gpuFold(uploaded3, 0, countOdd), \uploaded12 => (uploaded12) == 2)),
-                                                        gpuSatisfies(gpuMap(indices0, isOdd), \uploaded11 => gpuLength (uploaded11) == 0)
-                                                    ]
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
+                                    withBuffer (toGpu ([2, 4]), \value => withBuffer (gpuMap(value, isOdd), \allFalse => checkAll "bool kernels" [
+                                                gpuLength odds == 5, gpuSatisfies(gpuFold(odds, 0, countOdd), \uploaded15 => (uploaded15) == 3), (gpuGet (odds, 0) ?: false) == true, (gpuGet (odds, 1) ?: true) == false, (gpuGet (odds, 4) ?: false) == true, (lastOf odds ?: false) == true,
+                                                readback (odds, 1) == "false", readback (odds, 5) == oobMessage (), gpuLength allTrue == 2, gpuSatisfies(gpuFold(allTrue, 0, countOdd), \uploaded14 => (uploaded14) == 2),
+                                                gpuSatisfies(gpuFold(allFalse, 0, countOdd), \uploaded13 => (uploaded13) == 0), gpuSatisfies (toGpu ([true, true, false]), \uploaded3 => gpuSatisfies(gpuFold(uploaded3, 0, countOdd), \uploaded12 => (uploaded12) == 2)),
+                                                gpuSatisfies(gpuMap(indices0, isOdd), \uploaded11 => gpuLength (uploaded11) == 0)
+                                            ]))
                                 Error message => check ("GPU operation", "success", toString message)
                         Error message => check ("GPU operation", "success", toString message)
                 Error message => check ("GPU operation", "success", toString message)
@@ -350,24 +252,12 @@ boolKernelWith (indices0) =
 bigCase () = withIndices (100000, \indicesWide => bigWith (indicesWide))
 bigWith (indicesWide) =
     wide = indicesWide
-    match doubledInts(wide)
-        Success value =>
-            doubled = value
-            match fromGpu (wide)
-                Success value =>
-                    back = value
-                    match toGpu (back)
-                        Success value =>
-                            rebuilt = value
-                            checkAll "hundred-thousand element copies" [
-                                gpuLength wide == 100000, gpuLength doubled == 100000, listLength back == 100000, gpuLength rebuilt == 100000, gpuSatisfies(gpuFold(wide, 0, addInts), \uploaded9 => (uploaded9) == 4999950000),
-                                gpuSatisfies(gpuFold(doubled, 0, addInts), \uploaded8 => (uploaded8) == 9999900000), gpuSatisfies(gpuFold(rebuilt, 0, addInts), \uploaded7 => (uploaded7) == 4999950000), (gpuGet (wide, 0) ?: 9) == 0, (lastOf wide ?: 0) == 99999,
-                                (gpuGet (doubled, 99999) ?: 0) == 199998, (gpuGet (rebuilt, 99999) ?: 0) == 99999, (listGet (back, 99999) ?: 0) == 99999, (listGet (back, 100000) ?: -1) == -1, readback (wide, 100000) == oobMessage (), readback (rebuilt, -1) == oobMessage (),
-                                widthOf rebuilt == widthOf wide
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+    withBuffer (doubledInts(wide), \doubled => withBuffer (fromGpu (wide), \back => withBuffer (toGpu (back), \rebuilt => checkAll "hundred-thousand element copies" [
+                    gpuLength wide == 100000, gpuLength doubled == 100000, listLength back == 100000, gpuLength rebuilt == 100000, gpuSatisfies(gpuFold(wide, 0, addInts), \uploaded9 => (uploaded9) == 4999950000),
+                    gpuSatisfies(gpuFold(doubled, 0, addInts), \uploaded8 => (uploaded8) == 9999900000), gpuSatisfies(gpuFold(rebuilt, 0, addInts), \uploaded7 => (uploaded7) == 4999950000), (gpuGet (wide, 0) ?: 9) == 0, (lastOf wide ?: 0) == 99999,
+                    (gpuGet (doubled, 99999) ?: 0) == 199998, (gpuGet (rebuilt, 99999) ?: 0) == 99999, (listGet (back, 99999) ?: 0) == 99999, (listGet (back, 100000) ?: -1) == -1, readback (wide, 100000) == oobMessage (), readback (rebuilt, -1) == oobMessage (),
+                    widthOf rebuilt == widthOf wide
+                ])))
 (** A kernel whose body is a BLOCK with an internal binding. Plan 0002 recorded this as failing with `unknown identifier \`base\`` — the inline-callback path was said to lose the block's local scope, with named kernels as the workaround. It lowers correctly; nothing pinned it, so the item could not be closed. The suite runs under BOTH `OSPREY_GPU_KERNELS=extract` and `=inline`, so this holds for the extracted and the inlined lowering alike. Implements [GPU-KERNEL-FORM]. *)
 blockBodiedKernelCase () = withIndices (4, \indices4 => withIndices (3, \indices3 => blockBodiedKernelWith (indices4, indices3)))
 blockBodiedKernelWith (indices4, indices3) =
@@ -412,14 +302,10 @@ denseRoundTripWith (label, values, indices) =
             match gpuMap (buffer, \value => value)
                 Success value =>
                     mapped = value
-                    match gpuZipWith (indices, buffer, \(index, value) => gpuGet (buffer, index) ?: value)
-                        Success value =>
-                            gathered = value
-                            checkAll label [
-                                gpuLength buffer == length values, gpuSatisfies (fromGpu (buffer), \checked0 => structuralEquals (checked0, values)), gpuSatisfies (fromGpu (mapped), \checked0 => structuralEquals (checked0, values)),
-                                gpuSatisfies (fromGpu (gathered), \checked0 => structuralEquals (checked0, values)), range (0, length values) |> fold (true, \(ok, i) => ok && denseRead (buffer, values, i)), denseOutOfBounds (buffer, -1), denseOutOfBounds (buffer, length values)
-                            ]
-                        Error message => check ("GPU operation", "success", toString message)
+                    withBuffer (gpuZipWith (indices, buffer, \(index, value) => gpuGet (buffer, index) ?: value), \gathered => checkAll label [
+                            gpuLength buffer == length values, gpuSatisfies (fromGpu (buffer), \checked0 => structuralEquals (checked0, values)), gpuSatisfies (fromGpu (mapped), \checked0 => structuralEquals (checked0, values)),
+                            gpuSatisfies (fromGpu (gathered), \checked0 => structuralEquals (checked0, values)), range (0, length values) |> fold (true, \(ok, i) => ok && denseRead (buffer, values, i)), denseOutOfBounds (buffer, -1), denseOutOfBounds (buffer, length values)
+                        ])
                 Error message => check ("GPU operation", "success", toString message)
         Error message => check ("GPU operation", "success", toString message)
 denseIntegerWidthsCase () =
