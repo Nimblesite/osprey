@@ -15,7 +15,7 @@ mod staging;
 
 use osprey_syntax::{parse_program_with_flavor, Flavor};
 use residue::HANDLER_RUNTIME_SYMBOLS;
-use staging::{compile_for_target, compile_staged, diagnostics};
+use staging::{assert_rejected, compile_for_target, compile_staged, diagnostics};
 
 fn dependency_report(
     source: &str,
@@ -332,10 +332,11 @@ fn main() = {
     print("${listGet(out, 0) ?: 0}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("not stage-legal") && errors.contains("Log.write"),
-        "expected the stage-legality diagnostic naming the dynamic effect, got: {errors}"
+    assert_rejected(
+        source,
+        Flavor::Default,
+        &["not stage-legal", "Log.write"],
+        "expected the stage-legality diagnostic naming the dynamic effect",
     );
 }
 

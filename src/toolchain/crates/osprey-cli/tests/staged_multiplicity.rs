@@ -16,7 +16,7 @@
 mod staging;
 
 use osprey_syntax::Flavor;
-use staging::{compile_for_target, compile_staged, diagnostics};
+use staging::{assert_rejected, compile_for_target, compile_staged};
 
 // --- Multiplicity: the second axis of the same declaration [MULTI-AXIS] -----
 
@@ -50,10 +50,11 @@ fn main() = {
     print("total=${total}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("Choose.pick") && errors.contains("once"),
-        "expected a compile-time one-shot rejection naming the operation, got: {errors:?}"
+    assert_rejected(
+        source,
+        Flavor::Default,
+        &["Choose.pick", "once"],
+        "expected a compile-time one-shot rejection naming the operation",
     );
 }
 
@@ -74,10 +75,11 @@ fn main() = {
     print("outcome=${outcome}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("Fail.fail") && errors.contains("abort"),
-        "expected the abort-arm rejection naming the arm, got: {errors:?}"
+    assert_rejected(
+        source,
+        Flavor::Default,
+        &["Fail.fail", "abort"],
+        "expected the abort-arm rejection naming the arm",
     );
 }
 
@@ -99,10 +101,11 @@ fn main() = {
     print("${v}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("Parallel.forEach") && errors.contains("multiplicity"),
-        "expected multiplicity-on-static rejection, got: {errors:?}"
+    assert_rejected(
+        source,
+        Flavor::Default,
+        &["Parallel.forEach", "multiplicity"],
+        "expected multiplicity-on-static rejection",
     );
 }
 
@@ -196,10 +199,11 @@ fn an_abort_declaration_is_rejected_until_a_dropped_continuation_unwinds() {
     // So the declaration is rejected until plan 0026 supplies the unwinding.
     // Rejecting is not a placeholder: it is the truthful answer, and the one
     // the broken-code process requires over a silently wrong one.
-    let errors = diagnostics(MIXED_ABORT, Flavor::Default);
-    assert!(
-        errors.contains("Job.quit") && errors.contains("unwind"),
-        "expected a truthful `abort`-not-yet-unwound rejection, got: {errors:?}"
+    assert_rejected(
+        MIXED_ABORT,
+        Flavor::Default,
+        &["Job.quit", "unwind"],
+        "expected a truthful `abort`-not-yet-unwound rejection",
     );
 }
 
@@ -233,10 +237,11 @@ fn main() = {
     print("best=${best}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("Choice.pick") && errors.contains("re-entrant continuation"),
-        "expected a truthful `many`-has-no-representation rejection, got: {errors:?}"
+    assert_rejected(
+        source,
+        Flavor::Default,
+        &["Choice.pick", "re-entrant continuation"],
+        "expected a truthful `many`-has-no-representation rejection",
     );
 }
 
@@ -268,10 +273,11 @@ fn main() = {
     print("best=${best}")
 }
 "#;
-    let errors = diagnostics(source, Flavor::Default);
-    assert!(
-        errors.contains("Email.send") && errors.contains("replayable"),
-        "expected the replayability rejection naming the offending effect, got: {errors:?}"
+    assert_rejected(
+        source,
+        Flavor::Default,
+        &["Email.send", "replayable"],
+        "expected the replayability rejection naming the offending effect",
     );
 }
 
