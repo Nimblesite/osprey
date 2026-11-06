@@ -15,7 +15,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Package manager (gc, arc) | `make _test_registry REGISTRY_MEMORY=gc` and `=arc` | OspreyCodex | [ ] |
 | Python application ports | `make _test_python_app_ports` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
 | C runtime | `make -j2 _test_c_runtime && make _test_hunt_mock` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
-| Language corpus (gc, arc) | `make _conformance-gc` and `make _conformance-arc` | pi deepseek-flash | [ ] |
+| Language corpus (gc, arc) | `make _conformance-gc` and `make _conformance-arc` | pi deepseek-flash | [x] pi deepseek-flash: gc 322/322, arc pass, logs verified |
 | WebAssembly target | `make _test_wasm_goldens` | pi deepseek-flash | [x] pi deepseek-flash: wasm32 corpus run_test_corpus.sh passed |
 | Website E2E | `cd src/toolchain/website && npm test`; `make -C docs/book check check-examples` | pi deepseek-flash | [ ] |
 | VS Code extension | `make _test_vscode_extension` | check-once-claude | [ ] |
