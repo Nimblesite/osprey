@@ -1,0 +1,25 @@
+WEBVTT
+
+00:00.400 --> 00:16.974
+Mathlib is a library of mathematical definitions and proofs built for Lean, a proof assistant. Think of it as reusable mathematics with evidence attached. Osprey's port is underway: an actual Mathlib module is now going through the importer.
+
+00:17.824 --> 00:40.173
+Mathlib saves you from rebuilding mathematics before proving something useful. Lean provides a reference for comparison; Osprey checks the imported evidence itself. Known soundness bugs must not become rules. Osprey's pluggable checker protocol keeps theories separate. Safe theory forks, with fresh checks of affected proofs, are part of the completion milestones.
+
+00:41.023 --> 00:59.354
+Here is one of the recorded Lean export files. It contains declarations, names, and proof terms, plus the information needed to interpret them. The repository preserves the file and its origin. We can replay the data through Osprey instead of asking you to trust a screenshot.
+
+01:01.023 --> 01:18.623
+Now run the actual Osprey-built checker. It accepts three recorded Lean proofs: swapping the order of two facts, reversing an equality, and showing that a statement is equivalent to itself. Those lines come from execution; the public corpus covers 194 statements.
+
+01:23.889 --> 01:41.990
+Here is a real arithmetic result. For every pair of natural numbers, adding them in either order gives the same answer. Osprey checks Lean's proof of that rule, including the definitions it uses. This checks evidence for every natural number, rather than testing a few chosen inputs.
+
+01:42.840 --> 02:04.070
+This imported lemma checks a loop's work counter. For any input width, the counter is exactly three times that width, plus one. The Workbench shows the actual statement and its checked result. It also names the proof's assumption: propositional extensionality. These are supporting lemmas; the headline research results remain separate work.
+
+02:04.920 --> 02:22.522
+The second result deliberately corrupts the arithmetic proof. Osprey rejects it with a type mismatch. Keeping that failure beside the accepted proof checks a useful boundary: changing the proof cannot simply leave a success badge behind. It does not prove the checker has no bugs.
+
+02:24.187 --> 02:43.512
+These selected proofs run under garbage collection, reference counting and WebAssembly. We are now bringing in Euclid's theorem: there are infinitely many primes. Osprey reads its exported proof, but the last full check did not finish. We have isolated a smaller part that checks. The guide tracks the next steps.

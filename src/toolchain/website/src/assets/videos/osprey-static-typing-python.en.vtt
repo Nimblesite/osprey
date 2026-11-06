@@ -1,0 +1,88 @@
+WEBVTT
+
+00:00.500 --> 00:13.304
+In this tutorial, we'll write Python-style code with no type hints, and watch Osprey type-check every line before it runs. Then we'll read a real package written this way, and see how it's tested against CPython.
+
+00:14.054 --> 00:19.775
+Here's the goal. Osprey's Python flavor keeps the syntax you know: def, lambda and f-strings.
+
+00:19.975 --> 00:24.651
+The compiler infers every type at compile time, so you don't write annotations.
+
+00:24.851 --> 00:28.573
+A type mistake stops the build. It never waits for the line to run.
+
+00:28.773 --> 00:34.376
+And it's not a toy. We'll read the chromecast package, which is written entirely in Python flavor.
+
+00:35.126 --> 00:42.104
+This comment on the first line tells Osprey the file is Python flavor. Everything else is plain Python syntax.
+
+00:42.304 --> 00:55.551
+Label takes a name and a host, with no annotations. The compiler works out that host must be a string, because ends with takes a string. Both branches of the conditional return a string, so label returns a string.
+
+00:55.751 --> 00:58.102
+Main calls it with two strings, which fits.
+
+00:58.852 --> 01:07.078
+Run it with osprey label.py --run. It compiles ahead of time to native code, and prints Kitchen (kitchen.local).
+
+01:07.828 --> 01:11.201
+Now pass the port number, 8009, where the host should be.
+
+01:11.401 --> 01:24.531
+The build stops before anything runs. It names the file, the line and the column, and the two types that disagree: a string, and an int. In CPython, this mistake would only surface when that line ran, if it ever did.
+
+01:25.281 --> 01:41.126
+Now a real package. In Python flavor, a class with typed fields is a record. Device holds a Cast device's friendly name, host and port. These fields are the few annotations the package needs, because a record's shape can't be inferred from nowhere.
+
+01:41.876 --> 01:56.297
+Browse is ordinary functional Python. Its return type is written once, as documentation of the public API: a list of devices. Everything inside, the locals and the lambdas passed to filter and map, is inferred.
+
+01:56.497 --> 02:05.730
+Named looks up a device by name, and its signature says it returns a Result. There's no KeyError and no None. You match on Success to get the device.
+
+02:05.930 --> 02:13.443
+Or on Error, which carries a readable message. Every caller has to handle both cases, and the compiler checks that they do.
+
+02:14.193 --> 02:24.667
+Python flavor also has algebraic effects. Wire is declared as a class marked @effect. Its operations are the package's only contact with the outside world.
+
+02:24.867 --> 02:34.858
+Dial, write, read, status and close are the TLS session. Their signatures are annotated, because an effect is an interface with no body to infer from.
+
+02:35.608 --> 02:42.928
+Session.write shows the other side. It builds a frame and performs Wire.write, instead of calling the network directly.
+
+02:43.128 --> 02:56.221
+The result code becomes a Result: success, or an error naming the failure. A handler decides what perform actually does, so a test can answer with a fake device, and the real program answers with TLS.
+
+02:56.971 --> 03:12.116
+How do we know the port behaves like the original? The original sender runs under CPython, as an oracle, and writes the expected results into this file. The header says which CPython version generated it, and that it must never be edited by hand.
+
+03:12.316 --> 03:19.430
+These are the varint inputs, and the exact bytes the original encodes them to. The port must produce the same bytes.
+
+03:20.180 --> 03:29.092
+Run the package's tests with osprey. They start with the varint encodings, and go on through frames, parses, browse results and playback decisions.
+
+03:29.292 --> 03:37.722
+At the end, the failure paths: a failed start, no route to the TV, and a file that can't be opened. Each one has to fail in the same way.
+
+03:37.922 --> 03:44.877
+Two hundred and fifty five passed, none failed. And the whole output matches the committed golden file, byte for byte.
+
+03:45.627 --> 03:57.430
+That's twelve hundred and seventy six lines of Python flavor, and seventy two of its hundred and thirty five functions carry no annotation at all. A missing TV is a Result, never an exception.
+
+03:58.180 --> 04:06.338
+Now change something, and watch inference push back. In label, make the else branch return the length of the name, an int, instead of the name.
+
+04:06.538 --> 04:17.079
+The build stops at line four. One branch is a string, the other an int, and a function has one return type. The compiler found that without a single annotation in the file.
+
+04:17.829 --> 04:34.987
+What to know. Python flavor is Osprey, not CPython, so an arbitrary Python program doesn't run unchanged. Classes are records, and there's no try, while or yield. Imports name Osprey modules. To call real Python libraries, use Osprey's Python interop.
+
+04:35.737 --> 04:48.422
+To try it, write the label sample, run it, then pass it a number and read the error. Then read the chromecast package for a real port. Osprey is actively evolving. Try it on your projects, and tell us what breaks.

@@ -4,7 +4,7 @@ Scripts for building the Osprey website.
 
 ## Videos
 
-The site's videos, posters, caption tracks and homepage motion are made in the Videos repository and arrive with `make media` from the repository root ([MEDIA-EXTERNAL] in [plan 0059](../../../../docs/plans/0059-video-tutorials.md)). `make -C src/toolchain/website video-metadata` measures them for `src/_data/videos.json`.
+The site's videos, posters, caption tracks and homepage motion are made in the Videos repository, copied here with `make media` from the repository root and committed through Git LFS ([MEDIA-VIDEOS-REPO] in [plan 0059](../../../../docs/plans/0059-video-tutorials.md)). `make -C src/toolchain/website video-metadata` measures them for `src/_data/videos.json`.
 
 ## Browser runtime assets
 

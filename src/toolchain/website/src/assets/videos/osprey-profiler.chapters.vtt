@@ -1,0 +1,31 @@
+WEBVTT
+
+00:00.000 --> 00:13.201
+Profiling Osprey
+
+00:13.201 --> 00:28.737
+Goal: find the hot code
+
+00:28.737 --> 01:17.283
+Code: what should be hot
+
+01:17.283 --> 01:36.013
+Run: profile it
+
+01:36.013 --> 01:54.613
+Run: read the results
+
+01:54.613 --> 02:17.680
+Run: attach to it
+
+02:17.680 --> 02:58.946
+Code: memory
+
+02:58.946 --> 03:35.086
+Run: check for leaks
+
+03:35.086 --> 04:00.893
+Change it: less work
+
+04:00.893 --> 04:16.731
+Try it

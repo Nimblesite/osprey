@@ -1,0 +1,34 @@
+WEBVTT
+
+00:00.000 --> 00:15.177
+UI testing by label
+
+00:15.177 --> 00:45.928
+Goal: pixels or labels
+
+00:45.928 --> 01:10.640
+Code: where labels come from
+
+01:10.640 --> 01:37.257
+Code: the tree
+
+01:37.257 --> 02:41.450
+Code: the uitest package
+
+02:41.450 --> 03:17.790
+Code: driving the app
+
+03:17.790 --> 04:19.156
+Code: a test that reads like a user
+
+04:19.156 --> 04:40.358
+Run: no window, no TV
+
+04:40.358 --> 05:19.720
+Change it: rename a label
+
+05:19.720 --> 05:46.629
+Screen readers too
+
+05:46.629 --> 06:17.139
+Try it

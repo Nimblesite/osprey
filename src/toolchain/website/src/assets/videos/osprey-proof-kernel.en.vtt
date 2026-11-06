@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:15.301
+A proof checker is a program that checks whether a piece of evidence establishes the claim attached to it. Osprey is a functional programming language, and this checker is written in Osprey. Let us follow one small proof from its statement to the result.
+
+00:17.050 --> 00:32.971
+The checker turns a proof into a structured value. A sort describes a kind of type. A variable points to an input. A function waits for an argument. Application supplies one. The checker compares these structures instead of trusting the printed theorem.
+
+00:33.821 --> 00:48.808
+To check a proof, Osprey first infers what type the proof term has. Then it simplifies expressions that compute to the same form. Finally it compares the result with the stated claim. A mismatch becomes an error value, not a crash.
+
+00:49.658 --> 01:06.109
+You do not have to build every proof term by hand. This surface syntax lets you write a theorem in a few lines. Osprey parses it into the kernel's representation. Identity and chained implications are checked examples. A deliberately wrong theorem is refused.
+
+01:06.959 --> 01:22.347
+Here is the same example running. The valid identity proof is accepted. The wrong proof is rejected with the kernel's reason. Both lines come from the executable. Reproducing that pair is more useful than seeing a single success message.
+
+01:23.197 --> 01:47.003
+Osprey keeps ordinary inferred code separate from proof checking. Its pluggable discipline protocol lets a project choose a checker. An existing example checks numeric bounds; the dependent-proof kernel lives outside the compiler too. Here it checks a universal arithmetic theorem. Safe theory forks and fresh checking of dependent proofs remain explicit completion milestones.

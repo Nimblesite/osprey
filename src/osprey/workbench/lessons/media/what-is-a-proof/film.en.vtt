@@ -1,0 +1,22 @@
+WEBVTT
+
+00:00.350 --> 00:07.731
+A proof is a chain of allowed steps, from what you know to what you claim. Here is the claim: if p and q, then q and p.
+
+00:08.131 --> 00:14.426
+First, assume h: p and q. This introduces the hypothesis, leaving q and p to prove.
+
+00:14.826 --> 00:20.228
+Next, take h apart by cases. Now hp proves p, and hq proves q.
+
+00:20.628 --> 00:27.246
+To build q and p, it suffices to prove each side separately. The goal becomes q, with p waiting.
+
+00:27.646 --> 00:32.430
+From hq: the first goal is exactly what hq says, so q is done.
+
+00:32.830 --> 00:36.774
+From hp: the remaining goal is p, and hp closes it.
+
+00:37.174 --> 00:42.584
+Every link can be followed, so nobody has to trust anyone. Checked by the Osprey kernel.

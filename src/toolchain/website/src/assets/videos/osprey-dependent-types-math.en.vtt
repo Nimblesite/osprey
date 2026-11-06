@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:18.431
+A dependent type can refer to a value. A later argument or result can then have a type determined by an earlier argument. This is a foundation of modern proof assistants. Osprey is a functional programming language whose current proof kernel checks a small collection of such terms.
+
+00:19.281 --> 00:34.157
+Consider a list type carrying its length. A list of three entries and a list of four entries then have different types. An operation can require exactly the length it needs. This notation is conceptual, not a shipped Osprey type.
+
+00:35.007 --> 00:49.170
+Read p as a proposition and h as a proof of p. The judgement h : p says h has type p. So a claim is a type, and evidence for it is a term of that type. The statement is checked, not just annotated.
+
+00:50.020 --> 01:04.982
+The source states: for every proposition p, a proof of p yields a proof of p. The term takes p and h, then returns h. Its type is a dependent function type, because the result type mentions the first argument p.
+
+01:05.832 --> 01:21.516
+The kernel accepts identity because the proof term has the stated dependent function type. It rejects the deliberate variant that promises q while returning evidence for p. The reasons come from the real run. That pair is the demonstration.
+
+01:22.366 --> 01:43.324
+Identity is the starting example, not the limit of the implementation. Osprey also checks imported logic proofs and natural-number addition commutativity, using inductive definitions and dependent elimination. The library port is already underway. These checked proofs and their dependencies are here in the repository.

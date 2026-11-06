@@ -86,10 +86,10 @@ fmt: $(EXT_NODE_DEPS)
 	cargo fmt --manifest-path src/toolchain/Cargo.toml --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
 
-## media: Download the pinned videos, posters and captions from the Videos repository (scripts/media/media.lock); prints "media: unpacked" or "already in place".
+## media: Copy the published videos, posters and captions from the Videos checkout (../Videos, or VIDEOS_DIR=<path>) into their paths here, then commit them; prints "media: copied N files".
 .PHONY: media
 media:
-	@scripts/media/fetch.sh
+	@scripts/media/copy.sh
 
 ## website: Clean, build and serve the website at http://localhost:8080 (WEBSITE_PORT=<n> to change; Ctrl-C stops it).
 WEBSITE_PORT ?= 8080

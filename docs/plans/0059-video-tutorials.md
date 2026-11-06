@@ -124,17 +124,15 @@ when it publishes, and the website tests check what was published:
 - `durationSeconds`, the chapter list and the `[DOC-TUTORIAL-VIDEO-EXPLAIN]`
   chapters agree with the film's scenes.
 
-### `[MEDIA-EXTERNAL]` Videos are made and stored in the Videos repository
+### `[MEDIA-VIDEOS-REPO]` Videos are made in the Videos repository and committed here
 
-No video, poster or caption track is committed here. The Videos repository
-(`github.com/MelbourneDeveloper/Videos`, `projects/osprey/`) holds each film's
-source, the factory that renders it, and `published/`, which mirrors the paths
-this repository reads. Its `publish.sh` releases those files as one archive.
-[`scripts/media/media.lock`](../../scripts/media/media.lock) pins that release
-and its SHA-256. `make media` downloads it, checks it and unpacks it. The
-website build, the Workbench lessons, VSIX packaging, CI and the deploy all run
-`make media` first, using the `VIDEOS_TOKEN` secret, because the Videos
-repository is private. `.gitignore` keeps the unpacked files out of Git.
+The Videos repository (`github.com/MelbourneDeveloper/Videos`, `projects/osprey/`)
+holds each film's source and the factory that renders it. Its `published/`
+folder mirrors the paths this repository reads. `make media` copies that folder
+from the Videos checkout next to this one (`../Videos`, or `VIDEOS_DIR=<path>`)
+into this checkout, and the copied videos, posters and caption tracks are
+committed here through Git LFS. CI, the deploy and releases read them from the
+checkout: nothing downloads media at build time and no token is involved.
 
 ## Tutorials to make
 
@@ -230,8 +228,8 @@ Extends the current video to the full four steps using
 - [x] Move `agent-native` to an `intro` page on Osprey Native
       (`/docs/osprey-native/agent/`), with no tutorials page, and take it off
       the docs home and install pages (`[DOC-TUTORIAL-VIDEO-FINISHED]`).
-- [x] Move every video, poster and caption track to the Videos repository,
-      fetched by `make media` (`[MEDIA-EXTERNAL]`).
+- [x] Make every video in the Videos repository and copy its published files
+      here with `make media`, committed through Git LFS (`[MEDIA-VIDEOS-REPO]`).
 - [x] Every `videos.json` entry is `tutorial` or `intro`; a test checks the
       kinds and that every tutorial runs 240 to 600 seconds and is listed
       (`[DOC-TUTORIAL-VIDEO-KIND]`, `[DOC-TUTORIAL-VIDEO-LENGTH]`).

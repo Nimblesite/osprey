@@ -10,9 +10,6 @@ on:
   # `workflow_dispatch` allows a manual redeploy. Nothing here fires on a push
   # to main.
   workflow_call:
-    secrets:
-      VIDEOS_TOKEN:
-        required: true
   workflow_dispatch:
 
 permissions:
@@ -95,11 +92,6 @@ jobs:
 
       - name: Build runtimes and website WebAssembly demo
         run: make _runtime && make -C src/toolchain/website wasm-site
-
-      - name: Fetch videos from the Videos repository [MEDIA-EXTERNAL]
-        env:
-          GH_TOKEN: ${{ secrets.VIDEOS_TOKEN }}
-        run: make media
 
       - name: Build website (regenerates reference docs from the compiler)
         working-directory: ./src/toolchain/website

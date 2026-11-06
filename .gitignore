@@ -68,12 +68,3 @@ src/osprey/examples/llms/gpt2/weights/
 # Core dumps from a crashed C test binary (a container run leaves them here)
 /core
 /core.*
-
-# [MEDIA-EXTERNAL] Videos, their posters and caption tracks live in the Videos
-# repository and arrive with `make media` (scripts/media/media.lock).
-/src/toolchain/website/src/assets/videos/
-/src/toolchain/website/src/assets/motion/
-/docs/designs/proof-workbench/video/
-/src/osprey/workbench/lessons/media/*/film.mp4
-/src/osprey/workbench/lessons/media/*/film.en.vtt
-/src/osprey/workbench/lessons/media/*/poster.jpg

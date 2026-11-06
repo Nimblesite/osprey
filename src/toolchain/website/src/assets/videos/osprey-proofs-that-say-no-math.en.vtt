@@ -1,0 +1,19 @@
+WEBVTT
+
+00:00.400 --> 00:17.597
+A theorem checker must distinguish a term of the claimed type from an impostor. Osprey is a functional programming language with a proof kernel written in Osprey. We will compare accepted terms, type mismatches, and unsupported imports to make its current trust boundary concrete.
+
+00:18.447 --> 00:32.263
+This function receives a proof of p and claims to return q. Returning the same term does not change its type. The kernel should reject the mismatch, and it does. A theorem's name cannot repair an invalid term.
+
+00:33.113 --> 00:50.545
+The kernel compares structured terms, not rendered text. A variable refers to its binder, so two occurrences of the same name can mean different inputs. Constants carry universe arguments. Ignoring either distinction would accept invalid proofs. The tests target them.
+
+00:51.395 --> 01:07.410
+An import reader follows the same rule. If an expression form is unsupported, the reader must report it. It must not skip the declaration and announce success. The current reader reports them explicitly. That matters while its theory is smaller than Lean's.
+
+01:08.260 --> 01:23.274
+A checked theorem depends on: the exact statement, its assumptions, the proof term, and the kernel that accepted it. Testing can find bugs, but a green suite is not a theorem that the kernel is correct. State the boundary with the claim.
+
+01:27.060 --> 01:42.727
+Keep the valid and invalid cases together. Confirm identity passes, then inspect the rejected term and reason. A proof tool becomes easier to assess when its limits are as visible as its successes. Osprey is actively evolving.
