@@ -48,10 +48,7 @@ resumeOuterHandlerBridgeCase () =
     // Preserve the complete bridge transcript.
     checkAll "outer-handler legacy observations" [
         legacyTranscript == "[log] form start\nask name\n[log] got Ada\nafter ask: Ada\nresult=Ada\n",
-        contains legacyTranscript "[log] form start\n",
-        contains legacyTranscript "ask name\n",
-        contains legacyTranscript "[log] got Ada\n",
-        contains legacyTranscript "after ask: Ada\n",
+        containsAll legacyTranscript ["[log] form start\n", "ask name\n", "[log] got Ada\n", "after ask: Ada\n"],
         endsWith legacyTranscript "result=Ada\n"
     ]
 
@@ -134,9 +131,8 @@ partialHandlerDelegationCase () =
         total != 24,
         total < 100,
         outerRecords == 0,
-        !(contains auditLog "record:12"),
-        contains auditLog "record:5|",
-        contains auditLog "record:7|",
+        containsAll auditLog ["record:5|", "record:7|"],
+        containsNone auditLog ["record:12"],
         startsWith auditLog "record:5|",
         endsWith auditLog "record:7|",
         length auditLog == 18

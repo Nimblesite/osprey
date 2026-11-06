@@ -17,17 +17,16 @@ fn underCount(n, work) = {
     work()
 }
 
-
-fn initial(n) = fn(at) => {
+/// Run `work` with the `Count` and `Cursor` signals pinned to `n` and `at`.
+fn underSignals(n, at, work) = {
     handle static Signal<Count> { read => Count { value: n } }
     handle static Signal<Cursor> { read => Cursor { at: at } }
-    { counter: signalSnapshot(counterLabel), cursor: signalSnapshot(cursorLabel), status: signalSnapshot(status), footer: signalSnapshot(footer) }
+    work()
 }
-fn refreshAll(old) = fn(changed) => fn(n) => fn(at) => {
-    handle static Signal<Count> { read => Count { value: n } }
-    handle static Signal<Cursor> { read => Cursor { at: at } }
-    { counter: signalRefresh(old.counter, changed, counterLabel), cursor: signalRefresh(old.cursor, changed, cursorLabel), status: signalRefresh(old.status, changed, status), footer: signalRefresh(old.footer, changed, footer) }
-}
+fn initial(n) = fn(at) => underSignals(n, at, || =>
+    { counter: signalSnapshot(counterLabel), cursor: signalSnapshot(cursorLabel), status: signalSnapshot(status), footer: signalSnapshot(footer) })
+fn refreshAll(old) = fn(changed) => fn(n) => fn(at) => underSignals(n, at, || =>
+    { counter: signalRefresh(old.counter, changed, counterLabel), cursor: signalRefresh(old.cursor, changed, cursorLabel), status: signalRefresh(old.status, changed, status), footer: signalRefresh(old.footer, changed, footer) })
 fn selectiveRebuild() = {
     let first = initial(1)(2)
     let changedCount = refreshAll(first)(signalDependencies(count))(7)(9)
@@ -48,16 +47,8 @@ fn selectiveRebuild() = {
 }
 
 fn conservativeBranches() = {
-    let first = {
-        handle static Signal<Count> { read => Count { value: 1 } }
-        handle static Signal<Cursor> { read => Cursor { at: 2 } }
-        signalSnapshot(|| => branch(true))
-    }
-    let changed = {
-        handle static Signal<Count> { read => Count { value: 5 } }
-        handle static Signal<Cursor> { read => Cursor { at: 9 } }
-        signalRefresh(first, signalDependencies(cursor), || => branch(true))
-    }
+    let first = underSignals(1, 2, || => signalSnapshot(|| => branch(true)))
+    let changed = underSignals(5, 9, || => signalRefresh(first, signalDependencies(cursor), || => branch(true)))
     checkAll("may-read includes an inactive branch", [
         length(first.dependencies) == 2, first.value == "count=1",
         changed.value == "count=5", changed.revision == 2

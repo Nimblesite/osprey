@@ -85,6 +85,12 @@ allocate requested available =
 shipmentTotal : Unit -> int ![StockError, Arith]
 shipmentTotal () = allocate 9 5 + 2 
 
+(** Run `body` under a region that answers `StockError.shortage` with `pick`. *)
+withShortage pick body =
+    handle StockError
+        shortage requested available => pick requested available
+    body ()
+
 (** Recover an integer, audit both sides of the perform, and then keep computing. *)
 auditedRecovery : Unit -> int ![RecoveryError, AuditError, Arith]
 auditedRecovery () =
@@ -203,14 +209,8 @@ multipleResultTypesCase () =
 
 (** Verify the same effectful function can run under two local recovery policies. *)
 twoPoliciesCase () =
-    skipped =
-        handle StockError
-            shortage _requested _available => 0
-        shipmentTotal ()
-    capped =
-        handle StockError
-            shortage _requested available => available
-        shipmentTotal ()
+    skipped = withShortage (\_requested => \_available => 0) (\() => shipmentTotal ())
+    capped = withShortage (\_requested => \available => available) (\() => shipmentTotal ())
 
     // Skip and cap policies change only the handled shortage decision.
     checkAll "two policies over one function" [
@@ -386,6 +386,22 @@ tierQuote label =
     name = perform TierError.tier label
     combined = amount + extra 
     "${name}:${toString combined}"
+
+(** Run `body` under one region that answers a single TierError operation. *)
+withBase value body =
+    handle TierError
+        base _label => value
+    body ()
+
+withBonus value body =
+    handle TierError
+        bonus _label => value
+    body ()
+
+withTier value body =
+    handle TierError
+        tier _label => value
+    body ()
 
 (** Tally lets a callback ask for a scaled contribution and then record it. *)
 effect Tally
@@ -655,32 +671,10 @@ partialOverrideLatticeCase () =
             tierQuote "in"
         afterwards = tierQuote "post"
         "${outside}|${inside}|${afterwards}"
-    split =
-        handle TierError
-            base _label => 10
-        handle TierError
-            bonus _label => 3
-        handle TierError
-            tier _label => "silver"
-        tierQuote "c"
-    reordered =
-        handle TierError
-            tier _label => "silver"
-        handle TierError
-            base _label => 10
-        handle TierError
-            bonus _label => 3
-        tierQuote "d"
-    deepest =
-        handle TierError
-            base _label => 1
-            bonus _label => 0
-            tier _label => "bronze"
-        handle TierError
-            base _label => 2
-        handle TierError
-            base _label => 3
-        tierQuote "e"
+    split = withBase 10 (\() => withBonus 3 (\() => withTier "silver" (\() => tierQuote "c")))
+    reordered = withTier "silver" (\() => withBase 10 (\() => withBonus 3 (\() => tierQuote "d")))
+    deepest = withBase 1 (\() => withBonus 0 (\() => withTier "bronze" (\() =>
+        withBase 2 (\() => withBase 3 (\() => tierQuote "e")))))
     restored =
         handle TierError
             base _label => 7

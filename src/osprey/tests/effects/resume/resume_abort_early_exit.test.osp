@@ -80,13 +80,8 @@ fn resumeAbortEarlyExitCase() = {
     // Preserve the complete five-line golden transcript and every visible line.
     checkAll("early-exit legacy observations", [
         legacyTranscript == "before first check\nafter first check: 10\nstopping at zero\ncontinued check 1: answer=999\nresult=999\n",
-        contains(legacyTranscript, "before first check\n"),
-        contains(legacyTranscript, "after first check: 10\n"),
-        contains(legacyTranscript, "stopping at zero\n"),
-        contains(legacyTranscript, "continued check 1: answer=999\n"),
-        contains(legacyTranscript, "result=999\n"),
-        !contains(legacyTranscript, "after second check"),
-        !contains(legacyTranscript, "result=99\n")
+        containsAll(legacyTranscript, ["before first check\n", "after first check: 10\n", "stopping at zero\n", "continued check 1: answer=999\n", "result=999\n"]),
+        containsNone(legacyTranscript, ["after second check", "result=99\n"])
     ])
 
     // Assert the internal branch counts and the arm value that replaced the body.
@@ -135,13 +130,9 @@ fn resumeSiblingArmIndependenceCase() = {
     // The non-resuming arm substitutes: every later line of the body still runs.
     checkAll("sibling-arm legacy observations", [
         legacyTranscript == "work start\nafter tally: 10\nafter supply: 200\nafter second supply: 300\nresult=510\n",
-        contains(legacyTranscript, "work start\n"),
-        contains(legacyTranscript, "after tally: 10\n"),
-        contains(legacyTranscript, "after supply: 200\n"),
-        contains(legacyTranscript, "after second supply: 300\n"),
+        containsAll(legacyTranscript, ["work start\n", "after tally: 10\n", "after supply: 200\n", "after second supply: 300\n"]),
         endsWith(legacyTranscript, "result=510\n"),
-        !contains(legacyTranscript, "result=200\n"),
-        !contains(legacyTranscript, "result=300\n")
+        containsNone(legacyTranscript, ["result=200\n", "result=300\n"])
     ])
 
     // A sibling's `resume` must not turn these arms into early exits.

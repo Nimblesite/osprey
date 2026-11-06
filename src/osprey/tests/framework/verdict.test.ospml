@@ -103,11 +103,8 @@ curriedEffectsReachTheHandlerCase () =
         traceReport == "3/12/30/60/66",
         startsWith traceReport "3/",
         endsWith traceReport "/66",
-        contains traceReport "/12/",
-        contains traceReport "/30/",
-        contains traceReport "/60/",
-        !(contains traceReport "/0/"),
-        !(contains traceReport "//")
+        containsAll traceReport ["/12/", "/30/", "/60/"],
+        containsNone traceReport ["/0/", "//"]
     ]
 
     // The handler saw eighteen distinct labels, in source order, once each.
@@ -117,9 +114,7 @@ curriedEffectsReachTheHandlerCase () =
         length seen == 36,
         startsWith seen "a|b|",
         endsWith seen "q|r|",
-        contains seen "e|f|",
-        contains seen "i|j|",
-        contains seen "n|o|",
+        containsAll seen ["e|f|", "i|j|", "n|o|"],
         steps == 18,
         steps > 14,
         steps != 14,
@@ -134,8 +129,7 @@ curriedEffectsReachTheHandlerCase () =
         // [SYNTAX] — without them `x ?: 0 == 30` reads `x ?: (0 == 30)`.
         ((6 + 7 ) + (8 + 9 ) ) == 30,
         ((15 + 16 ) + (17 + 18 ) ) == 66,
-        contains traceReport "30",
-        contains traceReport "66",
+        containsAll traceReport ["30", "66"],
         (1 + 2 ) == 3,
         ((3 + 4 ) + 5 ) == 12,
         (((10 + 11 ) + (12 + 13 ) ) + 14 ) == 60,
@@ -551,8 +545,8 @@ lambdaCurryingCase () =
         length (joinTwo "ab" "cde") == 5,
         startsWith (joinTwo "ab" "cde") "ab",
         endsWith (joinTwo "ab" "cde") "cde",
-        contains (joinTwo "ab" "cde") "bc",
-        !(contains (joinTwo "ab" "cde") "ce"),
+        containsAll (joinTwo "ab" "cde") ["bc"],
+        containsNone (joinTwo "ab" "cde") ["ce"],
         toUpperCase (joinTwo "ab" "cd") == "ABCD",
         toLowerCase (joinTwo "AB" "CD") == "abcd",
         andBoth true true,

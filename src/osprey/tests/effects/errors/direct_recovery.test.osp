@@ -86,6 +86,14 @@ fn allocate(requested: int) -> (int) -> int !StockError = fn(available) => match
 /// Add fixed packaging work after the shared allocation function recovers.
 fn shipmentTotal() ![StockError, Arith] = allocate(9)(5) + 2 
 
+/// Run `body` under a region that answers `StockError.shortage` with `pick`.
+fn withShortage(pick, body) = {
+    handle StockError {
+        shortage requested available => pick(requested)(available)
+    }
+    body()
+}
+
 /// Recover an integer, audit both sides of the perform, and then keep computing.
 fn auditedRecovery() ![RecoveryError, AuditError, Arith] = {
     let value = perform RecoveryError.missingInt("token")
@@ -221,18 +229,8 @@ fn multipleResultTypesCase() = {
 
 /// Verify the same effectful function can run under two local recovery policies.
 fn twoPoliciesCase() = {
-    let skipped = {
-        handle StockError {
-            shortage _requested _available => 0
-        }
-        shipmentTotal()
-    }
-    let capped = {
-        handle StockError {
-            shortage _requested available => available
-        }
-        shipmentTotal()
-    }
+    let skipped = withShortage(fn(_requested) => fn(_available) => 0, fn() => shipmentTotal())
+    let capped = withShortage(fn(_requested) => fn(available) => available, fn() => shipmentTotal())
 
     // Skip and cap policies change only the handled shortage decision.
     checkAll("two policies over one function", [
@@ -389,23 +387,14 @@ fn everyValue() ![ValueError, Arith] = {
     "${toString(n)}|${t}|${toString(b)}|${s.tag}|${toString(heavy)}|${toString(graded)}|${toString(looked)}"
 }
 
-/// Answer `ValueError.asInt` with `value`, ignoring the inspected field name.
-fn askedInt(value, label) = {
-    handle ValueError { asInt _field => value }
-    perform ValueError.asInt(label)
-}
-
-/// Answer `ValueError.asGrade` with `value`, ignoring the inspected field name.
-fn askedGrade(value, label) = {
-    handle ValueError { asGrade _field => value }
-    perform ValueError.asGrade(label)
-}
-
-/// Answer `ValueError.asResult` with `value`, ignoring the inspected field name.
-fn askedResult(value, label) = {
-    handle ValueError { asResult _field => value }
-    perform ValueError.asResult(label)
-}
+/// Answer one `ValueError` operation with `value`, ignoring the inspected field name.
+fn askedInt(value, label) = { handle ValueError { asInt _field => value } perform ValueError.asInt(label) }
+fn askedFloat(value, label) = { handle ValueError { asFloat _field => value } perform ValueError.asFloat(label) }
+fn askedBool(value, label) = { handle ValueError { asBool _field => value } perform ValueError.asBool(label) }
+fn askedText(value, label) = { handle ValueError { asText _field => value } perform ValueError.asText(label) }
+fn askedSpare(value, label) = { handle ValueError { asSpare _field => value } perform ValueError.asSpare(label) }
+fn askedGrade(value, label) = { handle ValueError { asGrade _field => value } perform ValueError.asGrade(label) }
+fn askedResult(value, label) = { handle ValueError { asResult _field => value } perform ValueError.asResult(label) }
 
 /// TierError exposes three operations so complementary partial handlers can split them.
 effect TierError {
@@ -425,6 +414,11 @@ fn tierQuote(label) ![TierError, Arith] = {
     let combined = amount + extra 
     "${name}:${toString(combined)}"
 }
+
+/// Run `body` under a region that answers `TierError.base` with `value`.
+fn withBase(value, body) = { handle TierError { base _label => value } body() }
+fn withBonus(value, body) = { handle TierError { bonus _label => value } body() }
+fn withTier(value, body) = { handle TierError { tier _label => value } body() }
 
 /// Tally lets a callback ask for a scaled contribution and then record it.
 effect Tally {
@@ -488,17 +482,9 @@ fn fillAll() !TextError = {
     "${a}/${b}/${c}"
 }
 
-/// Answer `TextError.fill` with `value`, ignoring the requested field name.
-fn fillValue(value, label) = {
-    handle TextError { fill _field => value }
-    perform TextError.fill(label)
-}
-
-/// Answer `TextError.number` with `value`, ignoring the requested field name.
-fn numberValue(value, label) = {
-    handle TextError { number _field => value }
-    perform TextError.number(label)
-}
+/// Answer one `TextError` operation with `value`, ignoring the requested field name.
+fn fillValue(value, label) = { handle TextError { fill _field => value } perform TextError.fill(label) }
+fn numberValue(value, label) = { handle TextError { number _field => value } perform TextError.number(label) }
 
 /// Verify every declared operation result type survives direct substitution.
 ///
@@ -550,30 +536,10 @@ fn everyResultTypeCase() = {
     }
     let intValue = askedInt(0, "zero")
     let negativeValue = askedInt(-41, "negative")
-    let floatValue = {
-        handle ValueError {
-            asFloat _field => 2.5
-        }
-        perform ValueError.asFloat("ratio")
-    }
-    let boolValue = {
-        handle ValueError {
-            asBool _field => false
-        }
-        perform ValueError.asBool("blocked")
-    }
-    let textValue = {
-        handle ValueError {
-            asText _field => ""
-        }
-        perform ValueError.asText("empty")
-    }
-    let spareValue = {
-        handle ValueError {
-            asSpare _field => Spare { tag: "left", weight: 1.5, ready: true }
-        }
-        perform ValueError.asSpare("spare")
-    }
+    let floatValue = askedFloat(2.5, "ratio")
+    let boolValue = askedBool(false, "blocked")
+    let textValue = askedText("", "empty")
+    let spareValue = askedSpare(Spare { tag: "left", weight: 1.5, ready: true }, "spare")
     let grantedValue = askedGrade(Granted { score: 7 }, "good")
     let refusedValue = askedGrade(Refused { reason: "denied" }, "bad")
     let okValue = askedResult(Success { value: 5 }, "hit")
@@ -732,44 +698,10 @@ fn partialOverrideLatticeCase() = {
         let afterwards = tierQuote("post")
         "${outside}|${inside}|${afterwards}"
     }
-    let split = {
-        handle TierError {
-            base _label => 10
-        }
-        handle TierError {
-            bonus _label => 3
-        }
-        handle TierError {
-            tier _label => "silver"
-        }
-        tierQuote("c")
-    }
-    let reordered = {
-        handle TierError {
-            tier _label => "silver"
-        }
-        handle TierError {
-            base _label => 10
-        }
-        handle TierError {
-            bonus _label => 3
-        }
-        tierQuote("d")
-    }
-    let deepest = {
-        handle TierError {
-            base _label => 1
-            bonus _label => 0
-            tier _label => "bronze"
-        }
-        handle TierError {
-            base _label => 2
-        }
-        handle TierError {
-            base _label => 3
-        }
-        tierQuote("e")
-    }
+    let split = withBase(10, fn() => withBonus(3, fn() => withTier("silver", fn() => tierQuote("c"))))
+    let reordered = withTier("silver", fn() => withBase(10, fn() => withBonus(3, fn() => tierQuote("d"))))
+    let deepest = withBase(1, fn() => withBonus(0, fn() => withTier("bronze", fn() =>
+        withBase(2, fn() => withBase(3, fn() => tierQuote("e"))))))
     let restored = {
         handle TierError {
             base _label => 7

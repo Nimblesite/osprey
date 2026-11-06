@@ -36,8 +36,7 @@ resumeUnitMarkersCase () =
     checkAll "Unit-resume legacy observations" [
         legacyTranscript == "before one\nbefore two\nafter two: final=7\nafter one: final=7\nresult=7\n",
         startsWith legacyTranscript "before one\nbefore two\n",
-        contains legacyTranscript "after two: final=7\n",
-        contains legacyTranscript "after one: final=7\n",
+        containsAll legacyTranscript ["after two: final=7\n", "after one: final=7\n"],
         endsWith legacyTranscript "result=7\n"
     ]
 
