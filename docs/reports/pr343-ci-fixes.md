@@ -20,7 +20,7 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Reuse free-variable sets across obligation-closure passes. The regression records two relation scans instead of six, and the unchanged local budget test passed in 61.27 seconds.
    - [x] Collect monomorphic free variables directly. The regression uses one scratch set instead of 129, and the unchanged local budget test passed in 57.40 seconds.
    - [x] Verify the unchanged test in the hosted Rust workspace rest shard. Run 42142978360 passed in 117.30 seconds with the early environment snapshot drop.
-   - [ ] Verify the full Rust workspace rest shard after the mapped-file fixture fix. Run 42142978360 passed the Agent test and then failed because the Linux fixture forced Metal. Commit `4c745a1c3` selects the available backend outside macOS and retains the Metal path on macOS.
+   - [x] Confirm the unchanged test passed again in run 42145657288 in 118.55 seconds.
 5. **Deslop gate [OspreyCodex]**
    - [x] Reproduce the gate and remove duplication. The Agent shares its Moonshot wire profiles and MCP request builder.
    - [x] Pass the unchanged local 2.962% ceiling (6,983 duplicated lines out of 236,042).
@@ -37,6 +37,10 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Reproduce the illustration requirement failure from run 42131518920, job 127611007495.
    - [x] Verify the replacement effects illustrations with the exact Playwright check and the full local website suite (318 passed).
    - [x] Verify hosted Website E2E after the replacement illustrations are pushed. Run 42145657288, job 127656379768, passed.
+9. **Mapped-file tensor fixture [OspreyCodex]**
+   - [x] Reproduce the OpenCL driver refusal from run 42145657288 with that run's compiler and runtime archives in Ubuntu 24.04 amd64. The host product and all mapped-file diagnostics matched.
+   - [x] Check the typed refusal on Linux and preserve exact parity and dispatch traces when a device runs. Host and Metal both passed locally.
+   - [ ] Verify the complete hosted Rust rest shard and its coverage artifact.
 
 ## Status (run 42138521783)
 
@@ -47,5 +51,5 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
 - Agent UI `paste-image` (run 42145657288): the self-test posted Cmd-V once, before any field held
   the keyboard after the model picker, so the paste landed nowhere. Root cause fixed in `0d20d9895`:
   the step waits until a text field is first responder and retries the paste until the deadline.
-- Subsequent run 42142978360 passed the Agent budget. The mapped-file fixture failure prevented the
-  Rust rest shard from uploading coverage. Run 42145657288 verifies the fixture fix.
+- Runs 42142978360 and 42145657288 passed the Agent budget. The mapped-file fixture failure prevented
+  the Rust rest shard from uploading coverage in both runs.

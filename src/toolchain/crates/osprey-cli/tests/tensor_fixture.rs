@@ -463,14 +463,38 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
             .output();
         assert!(output.is_ok(), "{gpu}: not run");
         let output = output?;
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(output.status.success(), "{gpu}: {stderr}");
+        let unavailable = if cfg!(target_os = "linux") && gpu == "auto" {
+            stdout.lines().nth(1).filter(|line| {
+                matches!(
+                    *line,
+                    "osprey_matmul32: OpenCL: OpenCL driver unavailable failed (OpenCL status -1)"
+                        | "osprey_matmul32: OpenCL: GPU platform discovery failed (OpenCL status -1001)"
+                        | "osprey_matmul32: OpenCL: GPU platform discovery failed (OpenCL status 0)"
+                        | "osprey_matmul32: OpenCL: compute GPU discovery failed (OpenCL status 0)"
+                )
+            })
+        } else {
+            None
+        };
+        // Driverless Linux must return the typed error, while GPU-equipped hosts must
+        // return the exact product and report the dispatch. Mapping assertions apply to both.
+        let refused = unavailable.map(|error| expected.replacen("4 -1.75 7.0", error, 1));
         assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            expected,
-            "{gpu}: {}",
-            String::from_utf8_lossy(&output.stderr)
+            stdout,
+            refused.as_deref().unwrap_or(&expected),
+            "{gpu}: {stderr}"
         );
-        let reported = String::from_utf8_lossy(&output.stderr).contains("[gpu] metal:");
-        assert_eq!(reported, gpu == "metal", "{gpu}: where the product ran");
+        assert_eq!(stderr.contains("[gpu] metal:"), gpu == "metal", "{stderr}");
+        if cfg!(target_os = "linux") {
+            assert_eq!(
+                stderr.contains("[gpu] opencl:"),
+                gpu == "auto" && unavailable.is_none(),
+                "{stderr}"
+            );
+        }
     }
     std::fs::remove_file(&program)?;
     Ok(())
