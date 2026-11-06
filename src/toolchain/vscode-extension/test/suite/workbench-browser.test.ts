@@ -6,6 +6,7 @@ import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { ColorThemeKind, commands, Uri, window } from "vscode";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
+import { press, waitForIdleWorkbench } from "./profiler-kit";
 import { COMMAND, assertNoFreehandInk, mathematics, viewport, phoneSourceGeometry, capture, lesson, withWorkbench, staleWorkbenchAction, pendingWorkbenchUpdate, frameSource, retainedImport, openProofLibrary, checkedProofFits, checkedMathematicsFits, checkedEquationFits, checkedRunWorkMathematics, sourceCloseBounds, selectImportedProof, rejectEditedImport, rejectReimportedProof, saveWorking, reopenWorking, rejectRetiredWorking, exportWorking, comparisonState } from "./workbench-browser-kit";
 
 suite("workbench VSIX browser", () => {
@@ -25,11 +26,11 @@ suite("workbench VSIX browser", () => {
       await frame.getByText("Checked", { exact: true }).waitFor();
       await frame.locator(".osp-frame-proof-document").waitFor();
       await assertNoFreehandInk(frame);
-      await frame.getByRole("button", { name: "Source", exact: true }).click();
+      await press(frame, "Source");
       await frame.locator(".osp-frame-source-panel").waitFor();
       assert.ok((await frame.locator(".osp-frame-source-code").innerText()).trim().length > 0, "generated source retains real checked text");
       await assertNoFreehandInk(frame);
-      await frame.getByRole("button", { name: "Close source", exact: true }).click();
+      await press(frame, "Close source");
       await frame.getByRole("button", { name: "Close source", exact: true }).waitFor({ state: "detached" });
       await lesson(frame);
       await assertNoFreehandInk(frame);
@@ -73,11 +74,11 @@ suite("workbench VSIX browser", () => {
   });
   test("app-owned field colours follow manual appearance changes and retain the selected theorem", async () => {
     await withWorkbench(async frame => {
-      await frame.getByRole("button", { name: "Notation", exact: true }).click();
-      await frame.getByRole("button", { name: "Natural arithmetic", exact: true }).click();
+      await press(frame, "Notation");
+      await press(frame, "Natural arithmetic");
       const picker = frame.getByRole("combobox", { name: "Theorem", exact: true }), selected = await picker.inputValue();
       for (const [index, [symbol, background]] of [["moon", "rgb(255, 255, 255)"], ["sun.max", "rgb(41, 50, 45)"], ["moon", "rgb(255, 255, 255)"]].entries()) {
-        if (index > 0) await frame.getByRole("button", { name: "Switch appearance", exact: true }).click();
+        if (index > 0) await press(frame, "Switch appearance");
         await frame.getByRole("button", { name: "Switch appearance", exact: true }).locator(`[data-symbol="${symbol}"]`).waitFor();
         assert.strictEqual(await picker.evaluate(node => getComputedStyle(node).backgroundColor), background);
         assert.strictEqual(await picker.inputValue(), selected);
@@ -86,12 +87,12 @@ suite("workbench VSIX browser", () => {
   });
   test("opening a conjunction example leaves imported proof inspection", async () => {
     await withWorkbench(async frame => {
-      await frame.getByRole("button", { name: "Notation", exact: true }).click();
-      await frame.getByRole("button", { name: "Natural arithmetic", exact: true }).click();
+      await press(frame, "Notation");
+      await press(frame, "Natural arithmetic");
       await frame.getByText("Checked theorem", { exact: true }).waitFor();
-      await frame.getByRole("button", { name: "Examples", exact: true }).click();
-      await frame.getByRole("button", { name: "Open conjunction example", exact: true }).click();
-      await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+      await press(frame, "Examples");
+      await press(frame, "Open conjunction example");
+      await waitForIdleWorkbench(frame);
       assert.strictEqual(await frame.locator(".osp-frame-proof-library-inspection").count(), 0, "starting the example must leave imported-library inspection");
       await frame.locator(".osp-frame-proof-rows").waitFor();
       assert.ok((await frame.locator(".osp-frame-proof-rows").textContent())?.includes("From hp."));
@@ -162,8 +163,8 @@ suite("workbench VSIX browser", () => {
     const picker = sinon.spy(window, "showOpenDialog");
     const executed = name === "five-colour" ? sinon.spy(Wasi, "runWasi") : undefined;
     await withWorkbench(async frame => {
-      await frame.getByRole("button", { name: "Notation", exact: true }).click();
-      await frame.getByRole("button", { name: library, exact: true }).click();
+      await press(frame, "Notation");
+      await press(frame, library);
       await selectImportedProof(frame, new RegExp(`^${theorem.replace(/\./g, "\\.")}(?:\\s|$)`));
       await frame.getByText(`Axioms: ${axioms}`, { exact: true }).waitFor();
       assert.strictEqual(picker.callCount, 0, "bundled discovery must read approved assets directly");
@@ -178,9 +179,9 @@ suite("workbench VSIX browser", () => {
   });
   for (const view of ["Proof", "Source"]) test(`the checked arithmetic statement fits completely in ${view} notation view`, async () => {
     await withWorkbench(async frame => {
-      await frame.getByRole("button", { name: view, exact: true }).click();
-      await frame.getByRole("button", { name: "Notation", exact: true }).click();
-      await frame.getByRole("button", { name: "Natural arithmetic", exact: true }).click();
+      await press(frame, view);
+      await press(frame, "Notation");
+      await press(frame, "Natural arithmetic");
       await selectImportedProof(frame, /^Nat\.add_comm(?:\s|$)/);
       await checkedEquationFits(frame);
     });
@@ -188,7 +189,7 @@ suite("workbench VSIX browser", () => {
   test("the shared app exposes its Osprey branding and reference links", async () => {
     await withWorkbench(async frame => {
       assert.strictEqual(await frame.getByRole("link", { name: "Built with Osprey", exact: true }).getAttribute("href"), "https://ospreylang.dev/");
-      await frame.getByRole("button", { name: "Notation", exact: true }).click();
+      await press(frame, "Notation");
       await frame.getByRole("img", { name: "Osprey", exact: true }).waitFor();
       for (const [name, href] of [["Osprey website", "https://ospreylang.dev/"], ["Language documentation", "https://ospreylang.dev/docs/"], ["Workbench source", "https://github.com/Nimblesite/osprey/tree/main/src/osprey/workbench"]])
         assert.strictEqual(await frame.getByRole("link", { name, exact: true }).getAttribute("href"), href);
@@ -220,7 +221,7 @@ suite("workbench VSIX browser", () => {
       await capture(frame, "blank-document");
       assert.ok(await frame.getByRole("button", { name: "Switch appearance", exact: true }).locator(".osp-symbol").isVisible(), "icon-only controls must retain their visible symbol");
       await mathematics(frame);
-      await frame.getByRole("button", { name: "Proof", exact: true }).click();
+      await press(frame, "Proof");
       const colours = await frame.evaluate(() => {
         const proof = document.querySelector(".osp-frame-proof-document"), prose = proof?.querySelector(".osp-rich-text");
         return proof && prose ? [getComputedStyle(prose).color, getComputedStyle(proof).color] : null;
@@ -234,7 +235,7 @@ suite("workbench VSIX browser", () => {
   test("carrying a lesson reveals its appended proof at the authored editor caret", async () => {
     await withWorkbench(async frame => {
       await mathematics(frame);
-      await frame.getByRole("button", { name: "Examples", exact: true }).click();
+      await press(frame, "Examples");
       await frame.locator(".osp-section").filter({ hasText: "Navier–Stokes: equations and evidence" }).getByRole("button", { name: "Open", exact: true }).click();
       const lesson = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../../../../osprey/workbench/lessons/navier-stokes.json"), "utf8"));
       const challenge = lesson.blocks.find((entry: { challenge?: { id: string } }) => entry.challenge?.id === "prove-remaining-outcome").challenge;
@@ -335,7 +336,7 @@ suite("workbench VSIX visual comparison", () => {
       assert.strictEqual(await frame.locator(".osp-frame-source-heading .osp-icon").count(), 1);
       const close = await sourceCloseBounds(frame);
       assert.deepStrictEqual(close, { width: 32, height: 32, top: 12, right: 12 }, "source close control matches the reference inset and size");
-      await frame.getByRole("button", { name: "Close source", exact: true }).click();
+      await press(frame, "Close source");
       await frame.getByRole("button", { name: "Close source", exact: true }).waitFor({ state: "detached" });
       await frame.locator(".osp-frame-proof-document").waitFor();
       await assertNoFreehandInk(frame);
@@ -359,7 +360,7 @@ suite("workbench VSIX visual comparison", () => {
   });
   test("Source opens the paper document alongside generated source", async () => {
     await withWorkbench(async frame => {
-      await frame.getByRole("button", { name: "Source", exact: true }).click();
+      await press(frame, "Source");
       await frame.locator(".osp-frame-source-panel").waitFor();
       await frame.locator(".osp-frame-paper-document").waitFor({ timeout: 1000 });
       const selected = (await frame.getByRole("button", { name: "Source", exact: true }).getAttribute("class"))?.includes("osp-button-prominent");
@@ -368,8 +369,8 @@ suite("workbench VSIX visual comparison", () => {
   });
   test("guided context keeps its caption beside the return action", async () => {
     await withWorkbench(async frame => {
-      await frame.getByRole("button", { name: "Examples", exact: true }).click();
-      await frame.getByRole("button", { name: "Open conjunction example", exact: true }).click();
+      await press(frame, "Examples");
+      await press(frame, "Open conjunction example");
       await frame.getByRole("button", { name: "Return to working", exact: true }).waitFor();
       const gap = await frame.locator(".osp-frame-example-context").evaluate(node => {
         const action = node.querySelector("button")!.getBoundingClientRect();
@@ -436,11 +437,11 @@ suite("workbench VSIX visual comparison", () => {
   test("Board navigation is absent while the typed proof document remains the working surface", async () => {
     await withWorkbench(async frame => {
       await comparisonState(frame, "paper-proof");
-      await frame.getByRole("button", { name: "Source", exact: true }).click();
+      await press(frame, "Source");
       await frame.locator(".osp-frame-source-panel").waitFor();
       assert.strictEqual(await frame.getByRole("button", { name: "Board", exact: true }).count(), 0, "the removed Board navigation cannot return");
       assert.strictEqual(await frame.getByRole("button", { name: "Show working board", exact: true }).count(), 0);
-      await frame.getByRole("button", { name: "Close source", exact: true }).click();
+      await press(frame, "Close source");
       await frame.locator(".osp-frame-proof-document").waitFor();
       await assertNoFreehandInk(frame);
     }, "failure-board-navigation");

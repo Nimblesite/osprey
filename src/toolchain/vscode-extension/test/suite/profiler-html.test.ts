@@ -89,8 +89,9 @@ suite("flame panel document structure", () => {
   });
 
   test("embeds the model as a JSON blob with < escaped", () => {
-    assert.ok(html.includes('<script type="application/json" id="flame-data">'));
-    assert.ok(html.includes('"fibers"') && html.includes('"leftHeavy"'));
+    for (const blob of ['<script type="application/json" id="flame-data">', '"fibers"', '"leftHeavy"']) {
+      assert.ok(html.includes(blob), blob);
+    }
     assert.ok(html.includes("evil\\u003c/script>"), "frame names cannot close the data blob");
     assert.ok(html.includes("acquireVsCodeApi"), "the inline renderer is included");
   });

@@ -2,6 +2,10 @@ import * as assert from "assert";
 import { createWorkspaceSession, type SessionDeps, type WorkspaceSession } from "../../client/src/osprey-ui/session";
 import type { NativeRequest } from "../../client/src/osprey-ui/protocol";
 
+/** Let the session's queued promise callbacks run before asserting on them. */
+const settle = (): Promise<void> =>
+  new Promise((resolve) => setImmediate(resolve));
+
 function envelope(state: string, revision: number, requests: NativeRequest[] = []): string {
   return JSON.stringify({
     version: 1, state, slices: [], diagnostics: [], theme: null, removed: [], requests,
@@ -65,7 +69,7 @@ suite("package workspace session", () => {
       if (active) session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
       refuseStaleAction(session, sent, active);
     }
-    release(); await new Promise(resolve => setImmediate(resolve));
+    release(); await settle();
     assert.strictEqual(calls, 2, "only start and the valid action may execute");
     session.dispose();
   });
@@ -80,10 +84,10 @@ suite("package workspace session", () => {
     sent.length = 0;
     hold = true;
     for (let ordinal = 0; ordinal < 2; ordinal++) session.message({ type: "event", region: "root", revision: 1, ordinal, value: null });
-    await new Promise(resolve => setImmediate(resolve));
+    await settle();
     assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }]);
     release();
-    await new Promise(resolve => setImmediate(resolve));
+    await settle();
     assert.deepStrictEqual(sent.filter(message => message.type === "busy"), [{ type: "busy", active: true }, { type: "busy", active: false }]);
     session.dispose();
   });
@@ -92,11 +96,11 @@ suite("package workspace session", () => {
     await session.start({ project: "old" });
     await session.start({ project: "current" });
     deliver("private retired proof");
-    await new Promise(resolve => setImmediate(resolve));
+    await settle();
     assert.strictEqual(frames.length, 2, "a retired completion cannot dispatch");
     assert.strictEqual(held[1].get("document"), undefined, "retired text leaked into the current session");
     deliver("current proof");
-    await new Promise(resolve => setImmediate(resolve));
+    await settle();
     assert.strictEqual(frames.length, 3);
     assert.deepStrictEqual(frames[2].slices, { document: "current proof" });
     session.dispose();
@@ -137,7 +141,7 @@ suite("package workspace session", () => {
     for (const edit of ["1", null, 0, -1, 0.5, Number.MAX_SAFE_INTEGER + 1]) {
       session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "draft", edit });
     }
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.strictEqual(frames.length, 1);
     assert.strictEqual(sent.length, before);
     session.dispose();
@@ -153,7 +157,7 @@ suite("package workspace session", () => {
       }, execute: async () => { throw "capability refused"; },
     });
     await session.start({});
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.deepStrictEqual(frames.at(-1)?.event,
       { kind: "completed", now: 1, ticket: "refused", ok: false, error: "capability refused" });
     session.dispose();
@@ -165,7 +169,7 @@ suite("package workspace session", () => {
     let executed = 0;
     const { session, sent } = recordedSession(0, { run: () => pending, execute: async () => { executed++; } });
     const started = session.start({});
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     const before = sent.length;
     session.dispose();
     release({ stdout: envelope("late", 1, [{ ticket: "late", kind: "host-call" }]), exitCode: 0 });
@@ -182,7 +186,7 @@ suite("package workspace session", () => {
     } });
     await session.start({});
     session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "draft", edit: 1 });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.deepStrictEqual(sent.slice(-3), [{ type: "edit-result", edit: 1, accepted: false, error: "binding refused" },
       { type: "render", html: "HTML", diagnostics: ["binding refused"] }, { type: "busy", active: false }]);
     session.dispose();
@@ -193,13 +197,13 @@ suite("package workspace session", () => {
     await session.start({});
     for (let revision = 1; revision <= 35; revision++) {
       session.message({ type: "event", region: "root", revision, ordinal: 0, value: null });
-      await new Promise((resolve) => setImmediate(resolve));
+      await settle();
     }
     session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: "expired", edit: 8 });
     assert.deepStrictEqual(sent.at(-1), { type: "edit-result", edit: 8, accepted: false,
       error: "The original text control is no longer available; the edit was not applied." });
     session.message({ type: "event", region: "root", revision: 36, ordinal: 0, value: "live", edit: 9, prior: "forged" });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.deepStrictEqual(frames.at(-1)?.event, { kind: "ui-edit", prior: "s36", region: "root", revision: 36, ordinal: 0, value: "live", now: 1 });
     session.dispose();
   });
@@ -208,9 +212,9 @@ suite("package workspace session", () => {
     const { session, frames, sent } = recordedSession();
     await session.start({});
     session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: null });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     session.message({ type: "event", region: "root", revision: 1, ordinal: 0, value: " draft ", edit: 7 });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.strictEqual(frames.length, 3);
     assert.deepStrictEqual(frames[2], { operation: "dispatch", state: "s2", event: {
       kind: "ui-edit", prior: "s1", region: "root", revision: 1, ordinal: 0, value: " draft ", now: 1,
@@ -224,7 +228,7 @@ suite("package workspace session", () => {
     const { session, frames, sent } = recordedSession(3);
     await session.start({});
     session.message({ type: "event", region: "root", revision: 3, ordinal: 0, value: "draft", edit: 8 });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.strictEqual(frames.length, 1);
     assert.deepStrictEqual(sent.at(-1), { type: "edit-result", edit: 8, accepted: false,
       error: "The original text control is no longer available; the edit was not applied." });
@@ -248,7 +252,7 @@ suite("package workspace session", () => {
       report: () => undefined,
     });
     await session.start({ platform: "vscode" });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.ok(sent.some((message) => (message as { html?: string }).html === "HTML"));
     assert.deepStrictEqual(executed.map((item) => item.ticket), ["snapshot"]);
     assert.ok(frames.some((frame) => frame.includes('"kind":"completed"') && frame.includes('"state":"s1"')));
@@ -265,10 +269,10 @@ suite("package workspace session", () => {
     const before = frames.length;
     session.message({ type: "event", region: "root", revision: 3, ordinal: 0, value: "forged" });
     session.message({ type: "event", region: "root", revision: 4, ordinal: 0, value: { forged: true } });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.strictEqual(frames.length, before);
     session.message({ type: "event", region: "root", revision: 4, ordinal: 0, value: "real" });
-    await new Promise((resolve) => setImmediate(resolve));
+    await settle();
     assert.ok(frames.some((frame) => frame.includes('"state":"s1"') && frame.includes('"value":"real"')));
   });
 
@@ -295,7 +299,7 @@ suite("package workspace session", () => {
       now: () => 1, report: () => undefined,
     });
     await session.start({});
-    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await new Promise((resolve) => setImmediate(resolve));
+    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await settle();
     assert.strictEqual(received.length, 1);
     assert.strictEqual(received[0].slices.get("lessons:progress"), "{\"completed\":[]}");
     assert.strictEqual(frames[0].slices, undefined);
@@ -317,7 +321,7 @@ suite("package workspace session", () => {
       now: () => 1, report: () => undefined,
     });
     await session.start({});
-    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await new Promise((resolve) => setImmediate(resolve));
+    for (let hops = 0; frames.length < 2 && hops < 50; hops += 1) await settle();
     assert.deepStrictEqual((frames.at(-1)?.event as Record<string, unknown>)?.result, { result: "inner", authority: "vscode" });
     session.dispose();
   });

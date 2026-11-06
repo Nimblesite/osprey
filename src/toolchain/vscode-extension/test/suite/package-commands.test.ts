@@ -13,7 +13,7 @@ import {
 import * as sinon from "sinon";
 import { commands, Uri, window, workspace } from "vscode";
 import { activateWithServer, connectEditorBrowser } from "./profiler-kit";
-import { fakeDeps, okAdd } from "./package-harness";
+import { fakeDeps, okAdd, recordQuickPicks } from "./package-harness";
 
 const root = path.resolve("/work/app");
 const spaced = path.resolve("/work/my app");
@@ -70,11 +70,7 @@ suite("package add command", () => {
 
   test("every pick item warns that security evidence is unavailable", async () => {
     const deps = fakeDeps({ listing });
-    const seen: string[] = [];
-    deps.ui.showQuickPick = async (items: any[]) => {
-      seen.push(...items.map((i) => i.detail));
-      return undefined;
-    };
+    const seen = recordQuickPicks(deps, "detail");
     await makeAddHandler(deps)();
     assert.strictEqual(seen.length, 3);
     for (const detail of seen) {
@@ -84,11 +80,7 @@ suite("package add command", () => {
 
   test("duplicate leaf names under distinct orgs are both offered", async () => {
     const deps = fakeDeps({ listing });
-    const keys: string[] = [];
-    deps.ui.showQuickPick = async (items: any[]) => {
-      keys.push(...items.map((i) => i.label));
-      return undefined;
-    };
+    const keys = recordQuickPicks(deps, "label");
     await makeAddHandler(deps)();
     assert.deepStrictEqual(keys.filter((k) => k.endsWith("/util")).sort(), [
       "@demo/util",
@@ -207,11 +199,7 @@ suite("package remove command", () => {
 
   test("only the client's parsed direct dependencies are offered", async () => {
     const deps = fakeDeps({ manifest });
-    const keys: string[] = [];
-    deps.ui.showQuickPick = async (items: any[]) => {
-      keys.push(...items.map((i) => i.label));
-      return undefined;
-    };
+    const keys = recordQuickPicks(deps, "label");
     await makeRemoveHandler(deps)();
     assert.deepStrictEqual(keys.sort(), ["@demo/pyadd", "@other/util"]);
   });

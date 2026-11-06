@@ -6,7 +6,7 @@ import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/web
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { record } from "../../client/src/osprey-ui/protocol";
 import { workspaceHtml } from "../../client/src/osprey-ui/webview-html";
-import { connectEditorBrowser, editorWebviewFrame } from "./profiler-kit";
+import { connectEditorBrowser, editorWebviewFrame, press } from "./profiler-kit";
 
 const editorNode = (extra: Record<string, unknown> = {}) => ({ kind: "editor", label: "Argument", value: "Assume h : p ∧ q.\nFrom hp.", cursor: 0,
   marks: [{ line: 2, underlined: true, tone: "danger", badge: "Needs attention", note: "The goal is q; this step establishes p." }],
@@ -129,7 +129,7 @@ suite("native marked editor", () => {
 
   test("an authored epoch advance returns focus for continued Unicode typing", async () => {
     await withEditorView(async (frame, update, events) => {
-      await frame.getByRole("button", { name: "Insert symbol", exact: true }).click();
+      await press(frame, "Insert symbol");
       await update(6, "p → ");
       await waitEditorFrame(frame, 6, "p → ");
       await frame.waitForFunction(() => document.activeElement?.getAttribute("aria-label") === "Argument", undefined, { timeout: 1000 });
@@ -173,21 +173,27 @@ suite("native marked editor", () => {
 
   test("the Osprey marks retain their line, tone and explanatory text", () => {
     const html = editor();
-    assert.ok(html.includes("<textarea"));
-    assert.ok(html.includes('data-place-ordinal="5"'));
-    assert.ok(html.includes('data-event-ordinal="4"'));
-    assert.ok(html.includes('data-mark-line="2"'));
-    assert.ok(html.includes("osp-editor-underlined osp-tone-danger"));
-    assert.ok(html.includes("Needs attention") && html.includes("The goal is q; this step establishes p."));
-    assert.ok(html.includes("aria-describedby="));
+    for (const mark of [
+      "<textarea",
+      'data-place-ordinal="5"',
+      'data-event-ordinal="4"',
+      'data-mark-line="2"',
+      "osp-editor-underlined osp-tone-danger",
+      "Needs attention",
+      "The goal is q; this step establishes p.",
+      "aria-describedby=",
+    ]) {
+      assert.ok(html.includes(mark), mark);
+    }
   });
 
   test("source text, labels, badges and notes cannot inject markup", () => {
     const html = editor({ label: '"><script>label</script>', value: "</textarea><script>source</script>",
       marks: [{ line: 1, underlined: true, tone: 'danger" onclick="bad', badge: "<img src=x>", note: "<script>note</script>" }] });
-    assert.ok(!html.includes("<script>") && !html.includes("<img src=x>"));
+    for (const injected of ["<script>", "<img src=x>", 'onclick="bad']) {
+      assert.ok(!html.includes(injected), injected);
+    }
     assert.ok(html.includes("&lt;/textarea&gt;"));
-    assert.ok(!html.includes('onclick="bad'));
   });
 
   test("malformed editor values and marks fail explicitly", () => {

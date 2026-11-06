@@ -32,6 +32,7 @@ import {
 import {
   assertCurrentLine,
   assertLocalVariable,
+  assertTopFrameInSource,
   clearDebugBreakpoints,
   getScopes,
   getVariables,
@@ -45,6 +46,9 @@ import {
 } from "./dap-harness";
 
 const extensionId = "nimblesite.osprey";
+
+/** The suffix a bundled compiler carries on this host. */
+const COMPILER_EXE = process.platform === "win32" ? ".exe" : "";
 
 // startDebugRaced runs the real startDebugging path but never hangs the suite
 // on a host without a debug UI: it resolves to a marker string once VS Code
@@ -657,6 +661,24 @@ suite("Osprey Language Features Tests", () => {
       delayMs,
     );
 
+  /**
+   * The hover at `line:character`, once it renders `needle`, asserted to stay
+   * that way. `describe` names what the check proves, in the hover's own text.
+   */
+  async function hoverShowing(
+    uri: vscode.Uri,
+    line: number,
+    character: number,
+    symbol: string,
+    needle: string,
+    describe: (text: string) => string,
+  ): Promise<vscode.Hover[]> {
+    const hovers = await hoverPoll(uri, line, character, symbol);
+    const text = hoverText(hovers[0]);
+    assert.ok(text.includes(needle), describe(text));
+    return hovers;
+  }
+
   /** The definition locations at `line:character`, once any arrive. */
   const defsPoll = (uri: vscode.Uri, line: number, character: number) =>
     pollFor(
@@ -806,10 +828,13 @@ suite("Osprey Language Features Tests", () => {
       "call-site hover matches the declaration hover",
     );
 
-    const periCall = await hoverPoll(doc.uri, 6, 9, "perimeter");
-    assert.ok(
-      hoverText(periCall[0]).includes("fn perimeter(r"),
-      `perimeter hover shows its signature, got: ${hoverText(periCall[0])}`,
+    await hoverShowing(
+      doc.uri,
+      6,
+      9,
+      "perimeter",
+      "fn perimeter(r",
+      (text) => `perimeter hover shows its signature, got: ${text}`,
     );
 
     // --- HOVER: built-ins carry their own typed signatures ---
@@ -831,16 +856,22 @@ suite("Osprey Language Features Tests", () => {
     // This is the regression the user reported: "no bubble on hover of
     // variables". `let radius = 5` is unannotated, so the type is the one the
     // checker INFERRED (int) — proving variable hover end-to-end. [LSP-HOVER-VARIABLES]
-    const radiusHover = await hoverPoll(doc.uri, 3, 4, "radius");
-    assert.ok(
-      hoverText(radiusHover[0]).includes("radius: int"),
-      `variable hover shows "name: inferred-type": ${hoverText(radiusHover[0])}`,
+    await hoverShowing(
+      doc.uri,
+      3,
+      4,
+      "radius",
+      "radius: int",
+      (text) => `variable hover shows "name: inferred-type": ${text}`,
     );
     // A let bound to a builtin call infers its result type too.
-    const countHover = await hoverPoll(doc.uri, 8, 4, "count");
-    assert.ok(
-      hoverText(countHover[0]).includes("count: int"),
-      `count infers int from listLength: ${hoverText(countHover[0])}`,
+    await hoverShowing(
+      doc.uri,
+      8,
+      4,
+      "count",
+      "count: int",
+      (text) => `count infers int from listLength: ${text}`,
     );
 
     // --- GO TO DEFINITION: both calls jump to their declarations ---
@@ -1062,34 +1093,23 @@ suite("Osprey Language Features Tests", () => {
     assert.ok(first[0].range.start.line >= 0, "diagnostic has a real range");
 
     // 2) Editing the buffer into a valid program retracts the diagnostic...
-    const editor = await vscode.window.showTextDocument(doc);
-    await editor.edit((b) =>
-      b.replace(
-        new vscode.Range(0, 0, doc.lineCount, 0),
-        'fn ok(x) = x * 2\nfn main() = {\n    handle Arith { overflow _ _ _ w => w }\n    print("${ok(2)}")\n}\n',
-      ),
+    await rewrite(
+      doc,
+      'fn ok(x) = x * 2\nfn main() = {\n    handle Arith { overflow _ _ _ w => w }\n    print("${ok(2)}")\n}\n',
     );
-    const cleared = await diagnosticsPoll(doc.uri, (d) => d.length === 0);
-    assert.strictEqual(
-      cleared.length,
-      0,
-      "no diagnostics once the code is valid",
-    );
+    await assertClean(doc.uri, "no diagnostics once the code is valid");
     // ...and the now-valid buffer answers hover, proving the server reparsed it.
-    const okHover = await hoverPoll(doc.uri, 0, 3, "ok");
-    assert.ok(
-      hoverText(okHover[0]).includes("fn ok"),
-      "hover works on the corrected program",
+    await hoverShowing(
+      doc.uri,
+      0,
+      3,
+      "ok",
+      "fn ok",
+      () => "hover works on the corrected program",
     );
 
     // 3) Re-breaking the buffer brings the Error diagnostic back.
-    const editor2 = await vscode.window.showTextDocument(doc);
-    await editor2.edit((b) =>
-      b.replace(
-        new vscode.Range(0, 0, doc.lineCount, 0),
-        "\nfn broken( = 42\n",
-      ),
-    );
+    await rewrite(doc, "\nfn broken( = 42\n");
     const second = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
     assert.strictEqual(
       second[0].severity,
@@ -1132,6 +1152,12 @@ suite("Osprey Language Features Tests", () => {
     await editor.edit((b) =>
       b.replace(new vscode.Range(0, 0, doc.lineCount, 0), content),
     );
+  }
+
+  /** `uri` ends up with no diagnostics at all, once the server retracts them. */
+  async function assertClean(uri: vscode.Uri, message: string): Promise<void> {
+    const found = await diagnosticsPoll(uri, (d) => d.length === 0);
+    assert.strictEqual(found.length, 0, message);
   }
 
   /**
@@ -1589,15 +1615,18 @@ suite("Osprey Language Features Tests", () => {
     const doc = await openDoc("patterns.osp", content);
 
     // Hover the declaration and a call: both render the classify signature.
-    const decl = await hoverPoll(doc.uri, 0, 3, "classify");
     // `xs` is proven to be a LIST by the patterns below it; only its element
     // type stays open. This used to assert the bare `fn classify(xs)`, because
     // the only alternative then was `List<t5>` and `t5` is an inference
     // artefact whose number moves when an unrelated line does. A hole is
     // neither: it keeps what the checker proved and names nothing it did not.
-    assert.ok(
-      hoverText(decl[0]).includes("fn classify(xs: List<_>)"),
-      `declaration hover shows classify signature, got: ${hoverText(decl[0])}`,
+    const decl = await hoverShowing(
+      doc.uri,
+      0,
+      3,
+      "classify",
+      "fn classify(xs: List<_>)",
+      (text) => `declaration hover shows classify signature, got: ${text}`,
     );
     assert.ok(
       !/\bt\d/.test(hoverText(decl[0])),
@@ -1838,13 +1867,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- DIAGNOSTICS lifecycle on ML source: break it, then fix it ---
-    const editor = await vscode.window.showTextDocument(doc);
-    await editor.edit((b) =>
-      b.replace(
-        new vscode.Range(0, 0, doc.lineCount, 0),
-        'd = missingFn 5\nprint "${d}"\n',
-      ),
-    );
+    await rewrite(doc, 'd = missingFn 5\nprint "${d}"\n');
     const broken = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
     assert.strictEqual(
       broken[0].severity,
@@ -1857,23 +1880,21 @@ suite("Osprey Language Features Tests", () => {
       "ML diagnostic is attributed to the osprey server",
     );
 
-    const editor2 = await vscode.window.showTextDocument(doc);
-    await editor2.edit((b) =>
-      b.replace(
-        new vscode.Range(0, 0, doc.lineCount, 0),
-        'square x = x * x\nwrapping = handler Arith\n    overflow _ _ _ w => w\nprint "${wrapping (\\() => square 4)}"\n',
-      ),
+    await rewrite(
+      doc,
+      'square x = x * x\nwrapping = handler Arith\n    overflow _ _ _ w => w\nprint "${wrapping (\\() => square 4)}"\n',
     );
-    const fixed = await diagnosticsPoll(doc.uri, (d) => d.length === 0);
-    assert.strictEqual(
-      fixed.length,
-      0,
+    await assertClean(
+      doc.uri,
       "diagnostics clear once the ML program is valid again",
     );
-    const okHover = await hoverPoll(doc.uri, 0, 0, "square");
-    assert.ok(
-      hoverText(okHover[0]).includes("square"),
-      "hover works on the corrected ML program",
+    await hoverShowing(
+      doc.uri,
+      0,
+      0,
+      "square",
+      "square",
+      () => "hover works on the corrected ML program",
     );
   });
 
@@ -2914,13 +2935,7 @@ suite("Osprey VSIX Debugger E2E", () => {
     assert.strictEqual(session.type, "osprey");
 
     const stopped = await waitForStop(session, 45000);
-    const topFrame = stopped.stack.stackFrames[0];
-    assert.ok(topFrame, "debugger must report a stopped stack frame");
-    assert.strictEqual(
-      path.normalize(topFrame.source?.path ?? ""),
-      path.normalize(source),
-      "top stack frame is the Osprey source file",
-    );
+    const topFrame = assertTopFrameInSource(stopped.stack, source);
     assert.strictEqual(topFrame.line, 3, "breakpoint stops on Osprey line 3");
     assert.ok(topFrame.column >= 1, "DAP reports a 1-based source column");
 
@@ -2952,13 +2967,7 @@ suite("Osprey VSIX Debugger E2E", () => {
     // bump would appear on the stack. [DEBUGGER-EDITOR-LAUNCH]
     await session.customRequest("next", { threadId: stopped.threadId });
     const stepped = await waitForStop(session, 45000);
-    const steppedFrame = stepped.stack.stackFrames[0];
-    assert.ok(steppedFrame, "debugger must report a frame after stepping");
-    assert.strictEqual(
-      path.normalize(steppedFrame.source?.path ?? ""),
-      path.normalize(source),
-      "stepping remains in the Osprey source file",
-    );
+    const steppedFrame = assertTopFrameInSource(stepped.stack, source);
     assert.ok(
       !stepped.stack.stackFrames.some((frame) => frame.name.includes("bump")),
       `step over (F10) must NOT descend into bump(); stack was ${stepped.stack.stackFrames
@@ -3055,16 +3064,7 @@ suite("Osprey VSIX Debugger E2E", () => {
         "session is the osprey debugger",
       );
       const stopped = await waitForStop(session, 45000);
-      const topFrame = stopped.stack.stackFrames[0];
-      assert.ok(
-        topFrame,
-        "debugger reports a stopped frame in the saved program",
-      );
-      assert.strictEqual(
-        path.normalize(topFrame.source?.path ?? ""),
-        path.normalize(source),
-        "stopped in the saved .osp source",
-      );
+      const topFrame = assertTopFrameInSource(stopped.stack, source);
       assert.strictEqual(
         topFrame.line,
         2,
@@ -3192,6 +3192,19 @@ suite("Osprey Binary Resolution Unit Tests", () => {
     } as unknown as vscode.ExtensionContext;
   }
 
+  /** Stage the stand-in compiler at bin/<platform>/osprey[.exe] under `root`. */
+  function stageBundledCompiler(root: string): string {
+    const binary = path.join(
+      root,
+      "bin",
+      shipwrightPlatform(),
+      `osprey${COMPILER_EXE}`,
+    );
+    fs.mkdirSync(path.dirname(binary), { recursive: true });
+    fs.writeFileSync(binary, "#!/bin/sh\nexit 0\n");
+    return binary;
+  }
+
   function savedServerSettings(): [
     vscode.WorkspaceConfiguration,
     string | undefined,
@@ -3259,17 +3272,16 @@ suite("Osprey Binary Resolution Unit Tests", () => {
 
   test("resolveBundledCompiler returns the path when the binary exists", () => {
     // Lay down a fake bundled binary at bin/<platform>/osprey[.exe].
-    const exe = process.platform === "win32" ? ".exe" : "";
-    const platDir = path.join(tempDir, "bin", shipwrightPlatform());
-    fs.mkdirSync(platDir, { recursive: true });
-    const bin = path.join(platDir, `osprey${exe}`);
-    fs.writeFileSync(bin, "#!/bin/sh\nexit 0\n");
+    const bin = stageBundledCompiler(tempDir);
 
     const resolved = resolveBundledCompiler(fakeContext(tempDir));
 
     assert.ok(resolved, "a path is returned when the binary exists");
     assert.strictEqual(resolved, bin, "resolved path is the staged binary");
-    assert.ok(resolved?.endsWith(`osprey${exe}`), "ends with the binary name");
+    assert.ok(
+      resolved?.endsWith(`osprey${COMPILER_EXE}`),
+      "ends with the binary name",
+    );
     assert.ok(
       fs.existsSync(resolved as string),
       "resolved path actually exists",
@@ -3341,11 +3353,7 @@ suite("Osprey Binary Resolution Unit Tests", () => {
       );
 
       // Now stage a bundled binary -> it is preferred over the PATH fallback.
-      const exe = process.platform === "win32" ? ".exe" : "";
-      const platDir = path.join(tempDir, "bin", shipwrightPlatform());
-      fs.mkdirSync(platDir, { recursive: true });
-      const bin = path.join(platDir, `osprey${exe}`);
-      fs.writeFileSync(bin, "#!/bin/sh\nexit 0\n");
+      const bin = stageBundledCompiler(tempDir);
 
       assert.strictEqual(
         resolveServerCommand(fakeContext(tempDir)),
@@ -3411,11 +3419,7 @@ suite("Osprey Binary Resolution Unit Tests", () => {
       );
 
       // With a bundled binary present, the fallback prefers it over PATH.
-      const exe = process.platform === "win32" ? ".exe" : "";
-      const platDir = path.join(tempDir, "bin", shipwrightPlatform());
-      fs.mkdirSync(platDir, { recursive: true });
-      const bundled = path.join(platDir, `osprey${exe}`);
-      fs.writeFileSync(bundled, "#!/bin/sh\nexit 0\n");
+      const bundled = stageBundledCompiler(tempDir);
       assert.strictEqual(
         resolveServerCommand(fakeContext(tempDir), () => undefined),
         bundled,

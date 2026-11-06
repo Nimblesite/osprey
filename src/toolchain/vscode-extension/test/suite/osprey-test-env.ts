@@ -103,6 +103,16 @@ export function skipWarningsOf(uri: vscode.Uri): vscode.Diagnostic[] {
     .sort((a, b) => a.range.start.line - b.range.start.line);
 }
 
+/**
+ * The one skip diagnostic `uri` carries, proving it is exactly one — the
+ * published set is JSON-dumped on failure so a wrong set is visible.
+ */
+export function oneSkipWarning(uri: vscode.Uri): vscode.Diagnostic {
+  const warnings = skipWarningsOf(uri);
+  assert.strictEqual(warnings.length, 1, JSON.stringify(warnings));
+  return warnings[0];
+}
+
 export async function compileSdkWasm(
   source: string,
   timeout: number,

@@ -41,12 +41,16 @@ import { resolveBuiltOsprey } from "./osprey-test-env";
 import { activateWithServer, waitFor } from "./profiler-kit";
 import {
   controllerFactory,
+  disposeRegistered,
   DOC_FAIL_FIXTURE,
   DOC_FIXTURE,
+  freshToken,
+  makeFixtureDir,
   ML_DOC_FIXTURE,
   PROFILE_FIXTURE,
   RecordingSink,
   requireCompiler,
+  type FixtureDir,
 } from "./test-explorer-harness";
 
 /** A RecordingSink that also captures the profile directories reported. */
@@ -59,7 +63,7 @@ class ProfileRecordingSink extends RecordingSink {
 
 suite("Osprey test documentation and profiling", () => {
   const compiler = resolveBuiltOsprey();
-  let fixtureDir: string;
+  let fixtures: FixtureDir;
   let docUri: vscode.Uri;
   let docFailUri: vscode.Uri;
   let mlDocUri: vscode.Uri;
@@ -70,16 +74,6 @@ suite("Osprey test documentation and profiling", () => {
     "ospreyTests-docs",
     () => compiler ?? "osprey",
   );
-
-  function writeFixture(name: string, content: string): vscode.Uri {
-    const filePath = path.join(fixtureDir, name);
-    fs.writeFileSync(filePath, content);
-    return vscode.Uri.file(filePath);
-  }
-
-  function token(): vscode.CancellationToken {
-    return new vscode.CancellationTokenSource().token;
-  }
 
   /** Run `items` through `sink` with the suite's compiler, in `mode`. */
   async function runItems(
@@ -92,7 +86,7 @@ suite("Osprey test documentation and profiling", () => {
       controller,
       new vscode.TestRunRequest(items),
       sink,
-      token(),
+      freshToken(),
       () => compiler ?? "osprey",
       mode,
     );
@@ -115,22 +109,16 @@ suite("Osprey test documentation and profiling", () => {
   }
 
   suiteSetup(() => {
-    fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-test-docs-"));
-    docUri = writeFixture("docs.test.osp", DOC_FIXTURE);
-    docFailUri = writeFixture("docfail.test.osp", DOC_FAIL_FIXTURE);
-    mlDocUri = writeFixture("docs.test.ospml", ML_DOC_FIXTURE);
-    profileUri = writeFixture("profiled.test.osp", PROFILE_FIXTURE);
+    fixtures = makeFixtureDir("osprey-test-docs-");
+    docUri = fixtures.write("docs.test.osp", DOC_FIXTURE);
+    docFailUri = fixtures.write("docfail.test.osp", DOC_FAIL_FIXTURE);
+    mlDocUri = fixtures.write("docs.test.ospml", ML_DOC_FIXTURE);
+    profileUri = fixtures.write("profiled.test.osp", PROFILE_FIXTURE);
   });
 
-  suiteTeardown(() => {
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
-  });
+  suiteTeardown(() => fixtures.remove());
 
-  teardown(() => {
-    for (const disposable of disposables.splice(0)) {
-      disposable.dispose();
-    }
-  });
+  teardown(() => disposeRegistered(disposables));
 
   // ---------------------------------------------------------------- discovery
 
@@ -287,7 +275,7 @@ suite("Osprey test documentation and profiling", () => {
 
     test("re-resolving a file after the doc is deleted drops the description", async function () {
       const osprey = requireCompiler(this, compiler, 30000);
-      const uri = writeFixture("edited-docs.test.osp", DOC_FIXTURE);
+      const uri = fixtures.write("edited-docs.test.osp", DOC_FIXTURE);
       const controller = newController();
       const before = await refreshTestFile(controller, uri, osprey);
       assertWholeDoc(
@@ -717,7 +705,7 @@ suite("Osprey test documentation and profiling", () => {
 
     test("profiling one selected case filters through OSPREY_TEST_FILTER", async function () {
       requireSamplingProfiler(this, 120000);
-      const uri = writeFixture(
+      const uri = fixtures.write(
         "two-profiled.test.osp",
         `fn spin(n, acc) = match n <= 0 {
     true => acc
@@ -747,7 +735,7 @@ test("second profiled", fn() => expect(spin(500000, 0) > 0, true))
 
     test("a suite that fails to compile profiles nothing but still errors the item", async function () {
       requireSamplingProfiler(this, 60000);
-      const broken = writeFixture(
+      const broken = fixtures.write(
         "brokenprof.test.osp",
         'test("ok", fn() => expect(1, 1))\n',
       );

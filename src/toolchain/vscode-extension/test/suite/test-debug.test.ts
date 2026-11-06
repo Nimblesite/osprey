@@ -4,8 +4,6 @@
 // The real lldb-dap session is exercised in test-debug.e2e.test.ts.
 
 import * as assert from "assert";
-import * as fs from "fs";
-import * as os from "os";
 import * as path from "path";
 import * as vscode from "vscode";
 import {
@@ -26,10 +24,14 @@ import {
 } from "../../client/src/test-explorer-parse";
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import {
+  assertVerdicts,
   controllerFactory,
+  disposeRegistered,
   FAIL_FIXTURE,
+  makeFixtureDir,
   RecordingSink,
   requireCompiler,
+  type FixtureDir,
 } from "./test-explorer-harness";
 
 const NOTHING = { stdout: "", stderr: "", exitCode: 0 };
@@ -43,7 +45,7 @@ const outputEvent = (category: string | undefined, output: unknown) => ({
 suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
   const compiler = resolveBuiltOsprey();
   const disposables: vscode.Disposable[] = [];
-  let fixtureDir: string;
+  let fixtures: FixtureDir;
   let failUri: vscode.Uri;
   const context = (): vscode.ExtensionContext =>
     ({ subscriptions: disposables }) as unknown as vscode.ExtensionContext;
@@ -54,20 +56,13 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
   );
 
   suiteSetup(() => {
-    fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-test-debug-"));
-    failUri = vscode.Uri.file(path.join(fixtureDir, "fail.test.osp"));
-    fs.writeFileSync(failUri.fsPath, FAIL_FIXTURE);
+    fixtures = makeFixtureDir("osprey-test-debug-");
+    failUri = fixtures.write("fail.test.osp", FAIL_FIXTURE);
   });
 
-  suiteTeardown(() => {
-    fs.rmSync(fixtureDir, { recursive: true, force: true });
-  });
+  suiteTeardown(() => fixtures.remove());
 
-  teardown(() => {
-    for (const disposable of disposables.splice(0)) {
-      disposable.dispose();
-    }
-  });
+  teardown(() => disposeRegistered(disposables));
 
   // -------------------------------------------------------- the output fold
 
@@ -304,12 +299,12 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
         sink.ofKind("passed").map((event) => event.id),
         [leafTestId(failUri.toString(), "good math")],
       );
-      const failures = sink.ofKind("failed");
-      assert.deepStrictEqual(
-        failures.map((event) => event.id),
+      assertVerdicts(
+        sink,
+        "failed",
         [leafTestId(failUri.toString(), "bad math")],
+        /expected 3, got 2/,
       );
-      assert.match(String(failures[0].message), /expected 3, got 2/);
     });
 
     test("a whole-file request launches ONE session with no case filter", async function () {

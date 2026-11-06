@@ -6,7 +6,7 @@ import * as sinon from "sinon";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import type { Frame } from "playwright-core";
 import { ColorThemeKind, commands, Uri, window, workspace, type WebviewPanel } from "vscode";
-import { activateWithServer, connectEditorBrowser, editorWebviewFrame, waitFor } from "./profiler-kit";
+import { activateWithServer, connectEditorBrowser, editorWebviewFrame, press, waitFor, waitForIdleWorkbench } from "./profiler-kit";
 import * as Wasi from "../../client/src/osprey-ui/wasi";
 import * as NativeRendering from "../../client/src/osprey-ui/render";
 export const COMMAND = "osprey.workbench.open";
@@ -143,7 +143,7 @@ async function captureLayout(frame: Frame, evidence: string): Promise<void> {
 }
 
 export async function lesson(frame: Frame): Promise<void> {
-  await frame.getByRole("button", { name: "Examples", exact: true }).click();
+  await press(frame, "Examples");
   const entry = frame.locator(".osp-section").filter({ hasText: "And, the other way around" });
   await entry.getByRole("button", { name: "Open", exact: true }).click();
   await frame.getByRole("button", { name: "All lessons", exact: true }).waitFor();
@@ -178,14 +178,14 @@ export async function withWorkbench(run: (frame: Frame, opened: () => number) =>
 }
 
 export async function staleWorkbenchAction(frame: Frame): Promise<void> {
-  await frame.getByRole("button", { name: "Examples", exact: true }).click();
+  await press(frame, "Examples");
   const lesson = frame.locator(".osp-section").filter({ hasText: "And, the other way around" });
   await lesson.getByRole("button", { name: "Open", exact: true }).waitFor();
-  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  await waitForIdleWorkbench(frame);
   const runtime = sinon.spy(Wasi, "runWasi");
   const proof = frame.getByRole("button", { name: "Proof", exact: true });
   await proof.evaluate(button => { button.setAttribute("data-event-revision", String(Number.MAX_SAFE_INTEGER)); (button as HTMLButtonElement).click(); });
-  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  await waitForIdleWorkbench(frame);
   assert.strictEqual(runtime.callCount, 0, "a stale binding must never reach the runtime");
   assert.strictEqual(await lesson.getByRole("button", { name: "Open", exact: true }).isVisible(), true, "the refused action must not navigate");
   assert.strictEqual(await proof.isEnabled(), true, "an ignored action must not leave controls paused");
@@ -197,14 +197,14 @@ export async function pendingWorkbenchUpdate(frame: Frame): Promise<void> {
   const held = new Promise<void>(resolve => { release = resolve; });
   const run = sinon.stub(Wasi, "runWasi").callsFake(async (module, input, options) => { await held; return actual(module, input, options); });
   try {
-    await frame.getByRole("button", { name: "Proof", exact: true }).click();
+    await press(frame, "Proof");
     const pending = await frame.evaluate(() => ({ busy: document.getElementById("osprey-root")?.getAttribute("aria-busy"),
       disabled: Array.from(document.querySelectorAll<HTMLButtonElement>("#osprey-root button")).every(button => button.disabled),
       notice: document.getElementById("osprey-runtime-status")?.textContent }));
     assert.deepStrictEqual(pending, { busy: "true", disabled: true, notice: "Updating · previous results shown" });
     await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill("Keep pending draft");
   } finally { release(); run.restore(); }
-  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false", undefined, { timeout: 1000 });
+  await waitForIdleWorkbench(frame);
   assert.strictEqual(await frame.getByRole("textbox", { name: "Solution title", exact: true }).inputValue(), "Keep pending draft");
   assert.strictEqual(await frame.getByRole("button", { name: "Source", exact: true }).isEnabled(), true);
 }
@@ -233,7 +233,7 @@ async function currentImport(frame: Frame, valid: boolean): Promise<void> {
   if (valid) {
     await frame.locator('math[aria-label="(∀ (q : Prop), (q → q))"]').waitFor();
     assert.strictEqual(await frame.locator('math[aria-label="(∀ (p : Prop), (p → p))"]').count(), 0, "the previous source's statement must disappear");
-    await frame.getByRole("button", { name: "Imported source", exact: true }).click();
+    await press(frame, "Imported source");
     await frame.getByText("(∀ (q : Prop), (q → q))", { exact: true }).waitFor();
     assert.strictEqual(await frame.getByText("(∀ (p : Prop), (p → p))", { exact: true }).count(), 0);
     await frame.getByText("Checked theorem", { exact: true }).waitFor();
@@ -246,7 +246,7 @@ async function currentImport(frame: Frame, valid: boolean): Promise<void> {
 /** Notation toggles the library, so it is pressed only when the library is closed. */
 export async function openProofLibrary(frame: Frame): Promise<void> {
   const open = frame.getByRole("button", { name: "Open proof library", exact: true });
-  if (await open.count() === 0) await frame.getByRole("button", { name: "Notation", exact: true }).click();
+  if (await open.count() === 0) await press(frame, "Notation");
   await open.click();
 }
 
@@ -278,11 +278,11 @@ export async function checkedMathematicsFits(frame: Frame): Promise<void> {
   });
   assert.ok(layout.label && layout.width > 0 && layout.parentLeft >= 0 && layout.parentRight <= layout.viewport, JSON.stringify(layout));
   assert.ok(layout.right <= layout.parentRight + 1 || ["auto", "scroll"].includes(layout.overflow), `the complete checked mathematics must fit or scroll: ${JSON.stringify(layout)}`);
-  await frame.getByRole("button", { name: "Imported source", exact: true }).click();
+  await press(frame, "Imported source");
   const formal = frame.locator(".osp-frame-proof-library-formal");
   await formal.waitFor();
   assert.strictEqual(await formal.innerText(), layout.label, "the formal view preserves the complete checked statement");
-  await frame.getByRole("button", { name: "Imported source", exact: true }).click();
+  await press(frame, "Imported source");
 }
 
 export async function checkedEquationFits(frame: Frame): Promise<void> {
@@ -339,7 +339,7 @@ export async function selectImportedProof(frame: Frame, name: RegExp): Promise<v
 export async function rejectEditedImport(frame: Frame, source: string, mutate = (text: string) => text.replace('"name":235,"type":730,"value":817', '"name":235,"type":730,"value":730')): Promise<void> {
   const corrupted = mutate(source);
   assert.notStrictEqual(corrupted, source, "corrupt the selected canonical proof term, retaining its statement");
-  await frame.getByRole("button", { name: "Imported source", exact: true }).click();
+  await press(frame, "Imported source");
   const editor = frame.getByRole("textbox", { name: "Current proof export", exact: true });
   assert.strictEqual(await editor.inputValue(), source);
   await editor.fill(corrupted);
@@ -378,7 +378,7 @@ async function writeWorkspace(frame: Frame, file: string, title: string, text: s
 
 async function saveWorkspace(frame: Frame, file: string) {
   fs.rmSync(file, { force: true });
-  await frame.getByRole("button", { name: "Save", exact: true }).click();
+  await press(frame, "Save");
   await waitFor(() => fs.existsSync(file), Boolean, 3000, "real Osprey SaveFile writes the chosen file");
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
@@ -392,7 +392,7 @@ export async function saveWorking(frame: Frame, file: string): Promise<void> {
 }
 
 async function openWorkspaceTo(frame: Frame, title: string): Promise<void> {
-  await frame.getByRole("button", { name: "Open workspace", exact: true }).click();
+  await press(frame, "Open workspace");
   const editor = frame.getByRole("textbox", { name: "Argument & calculations", exact: true });
   await pollUntilResult({ fn: () => editor.inputValue(), until: text => text === WORKING, timeoutMs: 3000, description: "real Osprey ChooseFile restores written working" });
   assert.strictEqual(await frame.getByRole("textbox", { name: "Solution title", exact: true }).inputValue(), title);
@@ -413,19 +413,19 @@ export async function rejectRetiredWorking(frame: Frame, file: string, saved: st
   await frame.getByText("Checked", { exact: true }).waitFor();
   for (const version of [1, 2]) {
     fs.writeFileSync(file, JSON.stringify({ version, title: "Retired experiment", text: WORKING, board: RETIRED_BOARD }));
-    await frame.getByRole("button", { name: "Open workspace", exact: true }).click();
+    await press(frame, "Open workspace");
     await frame.getByText("Workspaces containing drawing data are unsupported.", { exact: true }).waitFor();
     await frame.getByText("Checked", { exact: true }).waitFor();
     await assertNoFreehandInk(frame);
-    await frame.getByRole("button", { name: "Dismiss message", exact: true }).click();
+    await press(frame, "Dismiss message");
     assert.deepStrictEqual(await saveWorkspace(frame, saved), { version: 2, title: "Current experiment", text: ARGUMENT });
   }
 }
 
 export async function exportWorking(frame: Frame, file: string): Promise<void> {
   await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill(ARGUMENT);
-  await frame.getByRole("button", { name: "Source", exact: true }).click();
-  await frame.getByRole("button", { name: "Export generated source", exact: true }).click();
+  await press(frame, "Source");
+  await press(frame, "Export generated source");
   await waitFor(() => fs.existsSync(file), Boolean, 3000, "real Osprey source export writes the chosen file");
   const golden = path.resolve(__dirname, "../../../../../osprey/workbench/tests/golden/and_swap.ospml.expected");
   assert.strictEqual(fs.readFileSync(file, "utf8"), fs.readFileSync(golden, "utf8"));
@@ -444,8 +444,8 @@ export async function comparisonState(frame: Frame, scene: string): Promise<void
   if (obsolete) throw new Error(`obsolete workbench design state "${scene}" requires owner and design-document reconciliation: ${obsolete}`);
   if (scene === "blank-document") return;
   if (scene === "working-session") return workingSession(frame);
-  await frame.getByRole("button", { name: "Examples", exact: true }).click();
-  await frame.getByRole("button", { name: "Open conjunction example", exact: true }).click();
+  await press(frame, "Examples");
+  await press(frame, "Open conjunction example");
   await frame.waitForFunction(() => document.querySelector(".osp-frame-example-context, #osprey-diagnostics:not([hidden])") !== null);
   assert.strictEqual(await frame.locator("#osprey-diagnostics:not([hidden])").count(), 0);
   const removed = scene === "proof-start" ? 5 : scene === "paper-proof" ? 1 : /mismatch|unsupported/.test(scene) ? 2 : 0;
@@ -461,13 +461,13 @@ async function workingSession(frame: Frame): Promise<void> {
 }
 
 async function referenceNavigation(frame: Frame, scene: string): Promise<void> {
-  if (/paper-proof|proof-start|optional-source|phone-source|mismatch|unsupported/.test(scene)) await frame.getByRole("button", { name: "Proof", exact: true }).click();
+  if (/paper-proof|proof-start|optional-source|phone-source|mismatch|unsupported/.test(scene)) await press(frame, "Proof");
   if (/optional-source|phone-source/.test(scene)) {
-    await frame.getByRole("button", { name: "Source", exact: true }).click();
+    await press(frame, "Source");
     await frame.locator(".osp-frame-source-panel").waitFor();
   }
-  if (scene === "reading") await frame.getByRole("button", { name: "Read", exact: true }).click();
-  if (scene === "slate-board") await frame.getByRole("button", { name: "Switch appearance", exact: true }).click();
+  if (scene === "reading") await press(frame, "Read");
+  if (scene === "slate-board") await press(frame, "Switch appearance");
   if (scene === "mismatch-live") await savedNotice(frame);
   if (/mismatch|unsupported/.test(scene)) {
     await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).fill(scene === "unsupported-input" ? "Therefore q, since hq." : "From hp.");
@@ -480,14 +480,14 @@ async function savedNotice(frame: Frame): Promise<void> {
   const file = path.join(directory, "working.json");
   const picker = sinon.stub(window, "showSaveDialog").resolves(Uri.file(file));
   try {
-    await frame.getByRole("button", { name: "Save", exact: true }).click();
+    await press(frame, "Save");
     await waitFor(() => fs.existsSync(file), Boolean, 3000, "reference live mismatch retains a real save receipt");
     await frame.locator(".osp-frame-operation-notice").waitFor();
   } finally { picker.restore(); fs.rmSync(directory, { recursive: true, force: true }); }
 }
 
 async function clearProofTail(frame: Frame, count: number): Promise<void> {
-  await frame.getByRole("button", { name: "Proof", exact: true }).click();
+  await press(frame, "Proof");
   for (let removed = 0; removed < count; removed++) {
     const rows = frame.locator('.osp-frame-proof-rows [role="option"]');
     const before = await rows.count();
@@ -497,5 +497,5 @@ async function clearProofTail(frame: Frame, count: number): Promise<void> {
     await frame.getByRole("textbox", { name: "Write the next step…", exact: true }).fill("");
     await pollUntilResult({ fn: () => rows.count(), until: remaining => remaining === before - 1, timeoutMs: 1000, description: `deleting proof row ${5 - removed}: expected ${before - 1} remaining` });
   }
-  await frame.getByRole("button", { name: "Continue proof", exact: true }).click();
+  await press(frame, "Continue proof");
 }

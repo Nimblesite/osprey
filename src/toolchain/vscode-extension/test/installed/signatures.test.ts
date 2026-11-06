@@ -100,6 +100,23 @@ async function assertNoActions(
   assert.deepStrictEqual(await actions(document, range, kind), [], message);
 }
 
+/**
+ * The single quick fix cached for the warning `name` reports on `header`, with
+ * that warning kept so a test can go on to watch the fix go stale.
+ */
+async function cachedFix(
+  editor: vscode.TextEditor,
+  name: string,
+  header: string,
+): Promise<{ warning: vscode.Diagnostic; cached: vscode.CodeAction[] }> {
+  const [warning] = await diagnostics(editor.document, [
+    signature(name, "(string) -> string", header),
+  ]);
+  const cached = await requiredActions(editor.document, warning.range);
+  assert.strictEqual(cached.length, 1);
+  return { warning, cached };
+}
+
 async function singleFix(
   name: string,
   source: string,
@@ -590,11 +607,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       "edited-signature.ospml",
       `${greetHeader}\n${greetBody}`,
     );
-    const [warning] = await diagnostics(editor.document, [
-      signature("greet", "(string) -> string", greetHeader),
-    ]);
-    const cached = await requiredActions(editor.document, warning.range);
-    assert.strictEqual(cached.length, 1);
+    const { warning, cached } = await cachedFix(editor, "greet", greetHeader);
     await replace(editor, '"hi " + name', "name");
     await diagnostics(editor.document, []);
     assert.deepStrictEqual(await actions(editor.document, warning.range), []);
@@ -640,11 +653,11 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const sibling = await openSource("project/src/helper.ospml", helper);
     await diagnostics(sibling.document, []);
     const editor = await openSource("project/src/main.ospml", source);
-    const [warning] = await diagnostics(editor.document, [
-      signature("warning_project::greet", "(string) -> string", greetHeader),
-    ]);
-    const cached = await requiredActions(editor.document, warning.range);
-    assert.strictEqual(cached.length, 1);
+    const { warning, cached } = await cachedFix(
+      editor,
+      "warning_project::greet",
+      greetHeader,
+    );
     assert.ok(cached[0].command);
     const siblingEditor = await vscode.window.showTextDocument(
       sibling.document,
@@ -723,11 +736,11 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     fs.writeFileSync(helperPath, helper);
     const source = `${greetHeader}\ngreet name = decorate name\nmain () = print (greet "Ada")\n`;
     const editor = await openSource("closed-project/src/main.ospml", source);
-    const [warning] = await diagnostics(editor.document, [
-      signature("closed_project::greet", "(string) -> string", greetHeader),
-    ]);
-    const cached = await requiredActions(editor.document, warning.range);
-    assert.strictEqual(cached.length, 1);
+    const { warning, cached } = await cachedFix(
+      editor,
+      "closed_project::greet",
+      greetHeader,
+    );
     assert.ok(cached[0].command);
     const version = versionWithClosedFile(editor.document, helperPath);
     fs.writeFileSync(helperPath, "decorate text = text\n");

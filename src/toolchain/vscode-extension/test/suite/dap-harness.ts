@@ -428,6 +428,23 @@ export async function assertWatch(
   return result.result;
 }
 
+/** Compare two source paths regardless of separator or case. */
+const norm = (p: string): string => p.replace(/\\/g, "/").toLowerCase();
+
+/** The top frame of `stop`, asserted to sit in `sourcePath`. */
+export function assertTopFrameInSource(
+  stack: { stackFrames: DapStackFrame[] },
+  sourcePath: string,
+): DapStackFrame {
+  const top = stack.stackFrames[0];
+  assert.ok(top, "expected at least one stack frame");
+  assert.ok(
+    top.source?.path && norm(top.source.path) === norm(sourcePath),
+    `expected top frame in ${sourcePath}, was ${top.source?.path}`,
+  );
+  return top;
+}
+
 /** Assert the top frame is on `expectedLine` (and optionally in `sourcePath`). */
 export function assertCurrentLine(
   stack: { stackFrames: DapStackFrame[] },
@@ -442,7 +459,6 @@ export function assertCurrentLine(
     `expected to stop on line ${expectedLine}`,
   );
   if (sourcePath !== undefined) {
-    const norm = (p: string): string => p.replace(/\\/g, "/").toLowerCase();
     assert.ok(
       top.source?.path && norm(top.source.path) === norm(sourcePath),
       `expected top frame in ${sourcePath}, was ${top.source?.path}`,

@@ -85,6 +85,24 @@ export function fakeUi(script: UiScript = {}): RecordedUi {
   };
 }
 
+/**
+ * Answer `showQuickPick` with nothing while collecting one `field` of every
+ * offered item — how the tests observe a list the user then declines.
+ */
+export function recordQuickPicks<Field extends "label" | "detail">(
+  deps: { ui: RecordedUi },
+  field: Field,
+): string[] {
+  const seen: string[] = [];
+  deps.ui.showQuickPick = async <T>(items: T[]) => {
+    for (const item of items) {
+      seen.push(String((item as unknown as Record<Field, unknown>)[field]));
+    }
+    return undefined;
+  };
+  return seen;
+}
+
 export interface DepsScript {
   projects?: string[];
   manifest?: string;

@@ -2,6 +2,9 @@
 // sources and a recording TestRunSink that captures run events for assertion.
 
 import * as assert from "assert";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 import * as vscode from "vscode";
 import {
   registerOspreyTestExplorer,
@@ -326,6 +329,26 @@ export class RecordingSink implements TestRunSink {
 }
 
 /**
+ * The sink's `kind` events carry exactly `ids`, in order, and the first one
+ * carries `message` — the shape every verdict assertion in the suites takes.
+ * Returns those events so a caller can assert further details on them.
+ */
+export function assertVerdicts(
+  sink: RecordingSink,
+  kind: SinkEvent["kind"],
+  ids: string[],
+  message: RegExp,
+): SinkEvent[] {
+  const events = sink.ofKind(kind);
+  assert.deepStrictEqual(
+    events.map((event) => event.id),
+    ids,
+  );
+  assert.match(String(events[0].message), message);
+  return events;
+}
+
+/**
  * Require the freshly built osprey compiler for a test that shells out to it,
  * and give that test `budgetMs` to finish. Returns the compiler so a caller
  * gets a narrowed `string` instead of re-checking the optional resolution.
@@ -338,6 +361,41 @@ export function requireCompiler(
   assert.ok(compiler, "build the Osprey compiler before this suite");
   testContext.timeout(budgetMs);
   return compiler;
+}
+
+/** The temp directory one suite's fixture files live in, removed at teardown. */
+export interface FixtureDir {
+  readonly path: string;
+  write(name: string, content: string): vscode.Uri;
+  remove(): void;
+}
+
+/** A fresh fixture directory under the OS temp dir, named after the suite. */
+export function makeFixtureDir(prefix: string): FixtureDir {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+  return {
+    path: dir,
+    write(name, content) {
+      const filePath = path.join(dir, name);
+      fs.writeFileSync(filePath, content);
+      return vscode.Uri.file(filePath);
+    },
+    remove() {
+      fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+/** Every suite disposes what it registered the same way, in `teardown`. */
+export function disposeRegistered(disposables: vscode.Disposable[]): void {
+  for (const disposable of disposables.splice(0)) {
+    disposable.dispose();
+  }
+}
+
+/** A fresh token for a run request, as the UI would hand the controller. */
+export function freshToken(): vscode.CancellationToken {
+  return new vscode.CancellationTokenSource().token;
 }
 
 /**
