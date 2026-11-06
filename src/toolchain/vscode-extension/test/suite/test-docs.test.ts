@@ -516,16 +516,31 @@ suite("Osprey test documentation and profiling", () => {
       const item = leaf(file, docUri, "documented case");
       const record = testDocFor(item.id);
       assert.ok(record);
-      const existing = new Set(vscode.workspace.textDocuments.map((doc) => doc.uri.toString()));
+      const existing = new Set(
+        vscode.workspace.textDocuments.map((doc) => doc.uri.toString()),
+      );
       const expected = testDocMarkdown(record, docUri.fsPath);
-      assert.strictEqual(await vscode.commands.executeCommand(SHOW_TEST_DOCS_COMMAND, item), expected);
-      const preview = await waitFor(() => vscode.window.visibleTextEditors.find((editor) =>
-        !existing.has(editor.document.uri.toString()) && editor.document.getText() === expected),
-        Boolean, 5000, "the real documentation preview");
+      assert.strictEqual(
+        await vscode.commands.executeCommand(SHOW_TEST_DOCS_COMMAND, item),
+        expected,
+      );
+      const preview = await waitFor(
+        () =>
+          vscode.window.visibleTextEditors.find(
+            (editor) =>
+              !existing.has(editor.document.uri.toString()) &&
+              editor.document.getText() === expected,
+          ),
+        Boolean,
+        5000,
+        "the real documentation preview",
+      );
       assert.ok(preview?.document.isUntitled);
       assert.strictEqual(preview.document.languageId, "markdown");
       await vscode.window.showTextDocument(preview.document);
-      await vscode.commands.executeCommand("workbench.action.revertAndCloseActiveEditor");
+      await vscode.commands.executeCommand(
+        "workbench.action.revertAndCloseActiveEditor",
+      );
     });
   });
 

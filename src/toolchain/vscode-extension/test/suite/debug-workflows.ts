@@ -1,15 +1,35 @@
 // Existing debugger workflows, mounted in the same suite and sharing its real launch setup.
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as vscode from 'vscode';
-import { selectedProfileVariable } from '@nimblesite/lsp-profiler-ui/out/src/debug-selection';
-import { assertCurrentLine, assertLocalVariable, assertTopLocal, continueExecution, getScopes, readFrameVariables, stepOver, waitForDebugSessionEnd, waitForStop, setSourceBreakpoints, type DapStop } from './dap-harness';
+import * as assert from "assert";
+import * as fs from "fs";
+import * as vscode from "vscode";
+import { selectedProfileVariable } from "@nimblesite/lsp-profiler-ui/out/src/debug-selection";
+import {
+  assertCurrentLine,
+  assertLocalVariable,
+  assertTopLocal,
+  continueExecution,
+  getScopes,
+  readFrameVariables,
+  stepOver,
+  waitForDebugSessionEnd,
+  waitForStop,
+  setSourceBreakpoints,
+  type DapStop,
+} from "./dap-harness";
 
-type Launch = (specs: Parameters<typeof setSourceBreakpoints>[1], overrides?: Record<string, unknown>) => Promise<{ session: vscode.DebugSession; stop: DapStop }>;
+type Launch = (
+  specs: Parameters<typeof setSourceBreakpoints>[1],
+  overrides?: Record<string, unknown>,
+) => Promise<{ session: vscode.DebugSession; stop: DapStop }>;
 
-export function registerDebugTailTests(launchToFirstStop: Launch, getSource: () => string, getDebugOutput: () => string, hasFrame: (stop: DapStop, name: string) => boolean, TEST_TIMEOUT_MS: number, LAUNCH_TIMEOUT_MS: number): void {
-
-
+export function registerDebugTailTests(
+  launchToFirstStop: Launch,
+  getSource: () => string,
+  getDebugOutput: () => string,
+  hasFrame: (stop: DapStop, name: string) => boolean,
+  TEST_TIMEOUT_MS: number,
+  LAUNCH_TIMEOUT_MS: number,
+): void {
   test("step over executes a call without descending into it", async function () {
     this.timeout(TEST_TIMEOUT_MS);
 
@@ -31,7 +51,6 @@ export function registerDebugTailTests(launchToFirstStop: Launch, getSource: () 
     await continueExecution(session, afterSecond.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
   });
-
 
   test("multiple breakpoints across functions are each hit in order", async function () {
     this.timeout(TEST_TIMEOUT_MS);
@@ -60,14 +79,19 @@ export function registerDebugTailTests(launchToFirstStop: Launch, getSource: () 
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
   });
 
-
   test("profiler links a real debugger variable and clears it on continue", async function () {
     this.timeout(TEST_TIMEOUT_MS);
     const { session, stop } = await launchToFirstStop([6]);
-    const variables = await readFrameVariables(session, stop.stack.stackFrames[0].id);
-    const variable = variables.find(item => item.name === "first");
+    const variables = await readFrameVariables(
+      session,
+      stop.stack.stackFrames[0].id,
+    );
+    const variable = variables.find((item) => item.name === "first");
     assert.ok(variable);
-    await vscode.commands.executeCommand("osprey.profiler.inspectVariable", { sessionId: session.id, variable });
+    await vscode.commands.executeCommand("osprey.profiler.inspectVariable", {
+      sessionId: session.id,
+      variable,
+    });
     assert.strictEqual(selectedProfileVariable.value?.sessionId, session.id);
     assert.strictEqual(selectedProfileVariable.value?.expression, "first");
     assert.match(selectedProfileVariable.value?.value ?? "", /25/);
@@ -76,7 +100,6 @@ export function registerDebugTailTests(launchToFirstStop: Launch, getSource: () 
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
     assert.strictEqual(selectedProfileVariable.value, undefined);
   });
-
 
   test("scopes and locals expose the program's computed values", async function () {
     this.timeout(TEST_TIMEOUT_MS);
@@ -110,7 +133,6 @@ export function registerDebugTailTests(launchToFirstStop: Launch, getSource: () 
     await continueExecution(session, stop.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
   });
-
 
   test("stopOnEntry pauses before user code, then resumes to completion", async function () {
     this.timeout(TEST_TIMEOUT_MS);

@@ -106,10 +106,7 @@ async function singleFix(
   const editor = await openSource(name, source);
   const [diagnostic] = await diagnostics(editor.document, [warning]);
   await applySingleFix(editor, diagnostic, signatureTitle, expected);
-  await assertNoActions(
-    editor.document,
-    rangeOf(editor.document, "greet"),
-  );
+  await assertNoActions(editor.document, rangeOf(editor.document, "greet"));
   await save(editor.document);
   return editor;
 }
@@ -373,7 +370,8 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   test("a public module signature is held fixed while a private member's is judged", async () => {
     const contract =
       "namespace warnings\nsignature Api\n    greet : string -> string\n\nmodule M : Api\n";
-    const greet = '    greet : string -> string\n    greet name = "hi " + name\n';
+    const greet =
+      '    greet : string -> string\n    greet name = "hi " + name\n';
     const helperHeader = "helper : string -> string";
     const helperBody = '    helper name = "yo " + name\n';
     const editor = await openSource(

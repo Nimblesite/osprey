@@ -402,8 +402,10 @@ suite("Osprey Test Explorer", () => {
       this.timeout(30000);
       const controller = newController();
       let found: vscode.Uri[] = [passUri, mlUri];
-      const discovery = makeDiscovery(controller, () => compiler, () =>
-        Promise.resolve(found),
+      const discovery = makeDiscovery(
+        controller,
+        () => compiler,
+        () => Promise.resolve(found),
       );
       await discovery.rescan();
       assert.strictEqual(
@@ -425,7 +427,9 @@ suite("Osprey Test Explorer", () => {
 
       // The refresh button runs the same rescan.
       const viaButton = newController();
-      await viaButton.refreshHandler?.(new vscode.CancellationTokenSource().token);
+      await viaButton.refreshHandler?.(
+        new vscode.CancellationTokenSource().token,
+      );
       assert.strictEqual(viaButton.items.size, 0);
     });
 
@@ -502,10 +506,7 @@ suite("Osprey Test Explorer", () => {
       assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const { controller, file } = await discovered(failUri);
-      const sink = await runTo(
-        controller,
-        new vscode.TestRunRequest([file]),
-      );
+      const sink = await runTo(controller, new vscode.TestRunRequest([file]));
       const goodId = leafTestId(failUri.toString(), "good math");
       const badId = leafTestId(failUri.toString(), "bad math");
       assert.deepStrictEqual(
@@ -1143,7 +1144,12 @@ suite("Osprey Test Explorer", () => {
           (s.location as vscode.Position).line,
           s.executed,
         ]),
-        [[0, 1], [2, 0], [4, 1], [5, 1]],
+        [
+          [0, 1],
+          [2, 0],
+          [4, 1],
+          [5, 1],
+        ],
         "every executable source line keeps its exact hit count",
       );
       const zeroHit = detailedCoverageFor(fc).find(
@@ -1289,10 +1295,7 @@ suite("Osprey Test Explorer", () => {
       process.env.OSPREY_TEST_FILTER = "zero identity";
       let sink: RecordingSink;
       try {
-        sink = await runTo(
-          controller,
-          new vscode.TestRunRequest([file]),
-        );
+        sink = await runTo(controller, new vscode.TestRunRequest([file]));
       } finally {
         delete process.env.OSPREY_TEST_FILTER;
       }

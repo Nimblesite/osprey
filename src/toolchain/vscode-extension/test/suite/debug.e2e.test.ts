@@ -449,5 +449,12 @@ suite("Osprey Debugger E2E Workflows", function () {
     await continueExecution(session, back.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
   });
-  registerDebugTailTests(launchToFirstStop, () => source, () => debugOutput, hasFrame, TEST_TIMEOUT_MS, LAUNCH_TIMEOUT_MS);
+  registerDebugTailTests(
+    launchToFirstStop,
+    () => source,
+    () => debugOutput,
+    hasFrame,
+    TEST_TIMEOUT_MS,
+    LAUNCH_TIMEOUT_MS,
+  );
 });
