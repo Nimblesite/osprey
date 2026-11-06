@@ -156,13 +156,5 @@ def suite():
             run_task(model, "multifile", REFACTOR_SETUP, REFACTOR_TASK, REFACTOR_VERIFY, REFACTOR_EXTRA if passed(made) else "false"))
 
 
-def report_suite():
-    return Check.report(suite())
-
-
 def main():
-    match Check.strictly(lambda: report_suite()):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(suite)

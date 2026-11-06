@@ -478,8 +478,4 @@ def expanded_cases(context):
 
 
 def main():
-    match Check.strictly(lambda: Check.report(all_cases())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print("suite stopped: " + message)
+    return Check.run(all_cases)

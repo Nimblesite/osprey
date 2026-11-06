@@ -12,7 +12,7 @@ NaN equal only to NaN, so a reference value computed by CPython's numpy or
 torch under a different libm still compares. Implements [PORT-TEST-ORACLE].
 """
 
-__all__ = ["Outcome", "passed", "failed", "equal", "close", "close_all", "ints_equal", "truth", "near", "report", "summary", "ints_text", "float_of", "Fault", "strictly", "lenient", "specials"]
+__all__ = ["Outcome", "passed", "failed", "equal", "close", "close_all", "ints_equal", "truth", "near", "report", "summary", "ints_text", "float_of", "Fault", "strictly", "run", "lenient", "specials"]
 
 
 class Outcome:
@@ -157,6 +157,16 @@ def strictly(work) -> Result[None, str]:
     with halting:
         with arithmetic:
             return Success(value=work())
+
+
+def run(cases):
+    """A suite's entry point: reports `cases()` under `strictly`, or prints why
+    the suite stopped."""
+    match strictly(lambda: report(cases())):
+        case Success(value=value):
+            return value
+        case Error(message=message):
+            return print(f"suite stopped: {message}")
 
 
 def specials():

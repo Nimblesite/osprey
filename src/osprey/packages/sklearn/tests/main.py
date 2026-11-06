@@ -496,8 +496,4 @@ def all_cases():
     return listConcat(listConcat(metric_cases(), regression_cases()), listConcat(preprocessing_cases(), listConcat(model_selection_cases(), listConcat(stats_cases(), listConcat(record_cases(), ext_cases())))))
 
 def main():
-    match Check.strictly(lambda: Check.report(all_cases())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(all_cases)

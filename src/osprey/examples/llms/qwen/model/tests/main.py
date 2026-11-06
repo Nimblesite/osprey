@@ -18,11 +18,7 @@ def close_list(name, got, want, rtol, atol):
 
 
 def main():
-    match Check.strictly(lambda: Check.report(listConcat(tool_cases(), model_fixture_cases()))):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(lambda: listConcat(tool_cases(), model_fixture_cases()))
 
 
 # --- tool calls: [LLM-TOOL-PARSE], [LLM-TOOL-CONSTRAIN], [LLM-TOOL-REPAIR] ---

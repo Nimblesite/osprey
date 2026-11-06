@@ -498,10 +498,9 @@ def json_reject_cases():
     ])
 
 
-def run_cases():
-    """Build every case and report it, under the strict arithmetic policy."""
-    cases = concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), header_json_cases(), header_size_cases(), slice_edge_cases(), zero_shape_cases(), slice_notfound_cases(), helper_cases()])
-    return Check.report(cases)
+def all_cases():
+    """Every case of the suite."""
+    return concat_all([dtype_cases(), multi_cases(), meta_cases(), slice_cases(), special_cases(), error_cases(), notfound_cases(), header_json_cases(), header_size_cases(), slice_edge_cases(), zero_shape_cases(), slice_notfound_cases(), helper_cases()])
 
 
 def long_text_bytes():
@@ -519,8 +518,4 @@ def is_error(result):
 
 
 def main():
-    match Check.strictly(run_cases):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(all_cases)

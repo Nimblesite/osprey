@@ -577,13 +577,5 @@ def suite():
     return flat_map(groups, lambda group: group)
 
 
-def report_suite():
-    return Check.report(suite())
-
-
 def main():
-    match Check.strictly(lambda: report_suite()):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(suite)

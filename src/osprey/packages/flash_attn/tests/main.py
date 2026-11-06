@@ -228,8 +228,4 @@ def all_checks():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(all_checks())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(all_checks)

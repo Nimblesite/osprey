@@ -127,8 +127,4 @@ def cases():
 
 
 def main():
-    match Check.strictly(lambda: Check.report(cases())):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(cases)

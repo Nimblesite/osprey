@@ -289,8 +289,4 @@ def cases(backend):
 
 
 def main():
-    match Check.strictly(lambda: Check.report(listConcat(Host.on_host(lambda: cases("host")), Device.on_gpu(lambda: cases("gpu"))))):
-        case Success(value=value):
-            return value
-        case Error(message=message):
-            return print(f"suite stopped: {message}")
+    return Check.run(lambda: listConcat(Host.on_host(lambda: cases("host")), Device.on_gpu(lambda: cases("gpu"))))
