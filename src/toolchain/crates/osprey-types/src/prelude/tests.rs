@@ -286,7 +286,10 @@ fn a_program_declaring_its_own_testing_policy_keeps_its_own() {
         "fn exactArithmetic(work) = work()\ntest(\"own\", fn() => exactArithmetic(fn() => expect(1, 1)))\n",
     );
     assert_eq!(
-        names.iter().filter(|name| *name == "exactArithmetic").count(),
+        names
+            .iter()
+            .filter(|name| *name == "exactArithmetic")
+            .count(),
         1,
         "only the program's own copy: {names:?}"
     );
@@ -315,7 +318,7 @@ fn the_testing_policy_discharges_every_arith_fault_in_the_work_it_runs() {
 }
 
 #[test]
-fn the_gpu_result_helpers_attach_with_the_testing_unit_and_type_check() {
+fn the_gpu_result_helpers_attach_as_their_own_unit_and_type_check() {
     assert_offers_attach_once(
         &[
             "test(\"w\", fn() => withBuffer(toGpu([1, 2]), fn(b) => expect(gpuLength(b), 2)))\n",
@@ -323,7 +326,7 @@ fn the_gpu_result_helpers_attach_with_the_testing_unit_and_type_check() {
             "test(\"i\", fn() => withIndices(4, fn(b) => expect(gpuLength(b), 4)))\n",
             "print(iotaError(0 - 1))\n",
         ],
-        "withBuffer gpuSatisfies withIndices iotaError exactArithmetic",
+        "withBuffer gpuSatisfies withIndices iotaError",
     );
     let source = program(
         "test(\"all\", fn() => exactArithmetic(fn() => withIndices(3, fn(b) => checkAll(\"gpu\", [gpuSatisfies(gpuMap(b, fn(x) => x * 2), fn(d) => gpuLength(d) == 3), iotaError(0 - 1) != \"\"]))))\n",
@@ -344,4 +347,37 @@ fn the_text_assertion_helpers_attach_and_type_check() {
         "test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", [])]))\n",
     );
     assert_eq!(crate::check_program(&source), Vec::new());
+}
+
+/// A program whose own union declares `Success` names only the arithmetic
+/// policy: it gets that unit and none of the GPU helpers, whose `Success`
+/// patterns its variant would capture. [TESTING-ARITH-POLICY]
+#[test]
+fn a_program_with_its_own_success_variant_gets_only_the_testing_unit_it_names() {
+    let source = "type Outcome = Success | Failed\n\
+         fn score(outcome) = match outcome {\n    Success => 1\n    Failed => 0\n}\n\
+         fn main() = exactArithmetic(fn() => print(toString(score(Success))))\n";
+    let names = attached_names(source);
+    assert!(names.contains(&"exactArithmetic".to_string()), "{names:?}");
+    for helper in ["withBuffer", "gpuSatisfies", "withIndices", "iotaError"] {
+        assert!(!names.contains(&helper.to_string()), "{helper}: {names:?}");
+    }
+    assert_eq!(crate::check_program(&program(source)), Vec::new());
+    let gpu = attached_names(
+        "fn main() = withIndices(4, fn(buffer) => print(toString(gpuLength(buffer))))\n",
+    );
+    assert!(
+        gpu.contains(&"withBuffer".to_string()) && gpu.contains(&"withIndices".to_string()),
+        "{gpu:?}"
+    );
+}
+
+#[test]
+fn the_gpu_testing_source_parses_clean_and_lives_in_its_own_rebased_range() {
+    let rebased = testing_gpu();
+    assert_unit_rebases_cleanly(TESTING_GPU, rebased);
+    let base = PRELUDE_LINE_BASE + 3 * PRELUDE_UNIT_STRIDE;
+    assert_all_lines(&statement_lines(rebased, statement_position), |line| {
+        line >= base
+    });
 }

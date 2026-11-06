@@ -25,32 +25,6 @@ fn exactArithmetic(work) = {
     work()
 }
 
-/// Runs `work` on the value of a successful GPU operation; a failed one fails
-/// the case with its reason before the consumer runs. [FAILURE-EXPLICIT]
-fn withBuffer(result, work) = match result {
-    Success { value } => work(value)
-    Error { message } => check("GPU operation", "success", toString(message))
-}
-
-/// Whether a successful GPU operation's value satisfies `predicate`; a failed
-/// one fails the case with its reason and the predicate. [FAILURE-EXPLICIT]
-fn gpuSatisfies(result, predicate) = match result {
-    Success { value } => predicate(value)
-    Error { message } => {
-        check("GPU operation", "success", toString(message))
-        false
-    }
-}
-
-/// Runs `work` on the indices `0..n` on the GPU, or fails the case.
-fn withIndices(n, work) = withBuffer(gpuIota(n), work)
-
-/// The reason `gpuIota(n)` fails, or the length it unexpectedly produced.
-fn iotaError(n) = match gpuIota(n) {
-    Success { value } => "unexpected success ${gpuLength(value)}"
-    Error { message } => toString(message)
-}
-
 /// Whether `text` contains every one of `parts`; true for no parts.
 fn containsAll(text, parts) = foldList(parts, true, fn(found, part) => found && contains(text, part))
 
