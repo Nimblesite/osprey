@@ -31,6 +31,24 @@ fn errors(src: &str) -> Vec<String> {
         .collect()
 }
 
+/// Parse every `(src, needles)` case through [`assert_error`].
+fn assert_errors(cases: &[(&str, &[&str])]) {
+    for (src, needles) in cases {
+        assert_error(src, needles);
+    }
+}
+
+/// Parse `src` expecting an error whose message mentions every one of `needles`.
+fn assert_error(src: &str, needles: &[&str]) {
+    let found = errors(src);
+    assert!(
+        found
+            .iter()
+            .any(|error| needles.iter().all(|needle| error.contains(needle))),
+        "{src:?} expected an error mentioning {needles:?}, got {found:?}"
+    );
+}
+
 #[test]
 fn file_scoped_namespace_owns_following_declarations() {
     let statements = ok("namespace billing\nanswer = 42\n");
@@ -133,45 +151,43 @@ fn unsigned_definition_can_be_exported_once() {
 
 #[test]
 fn redundancy_and_mutable_exports_are_rejected() {
-    let double =
-        errors("module Tax\n    export addTax : int -> int\n    export addTax cents = cents\n");
-    assert!(double
-        .iter()
-        .any(|error| error.contains("already exported")));
-
-    let ascribed = errors("module Tax : Api\n    export x = 1\n");
-    assert!(ascribed
-        .iter()
-        .any(|error| error.contains("exactly its signature")));
-
-    let mutable = errors("state Store\n    export mut count = 0\n");
-    assert!(mutable
-        .iter()
-        .any(|error| error.contains("cannot be exported")));
+    assert_errors(&[
+        (
+            "module Tax\n    export addTax : int -> int\n    export addTax cents = cents\n",
+            &["already exported"],
+        ),
+        (
+            "module Tax : Api\n    export x = 1\n",
+            &["exactly its signature"],
+        ),
+        (
+            "state Store\n    export mut count = 0\n",
+            &["cannot be exported"],
+        ),
+    ]);
 }
 
 #[test]
 fn orphan_and_redundant_signature_markers_are_rejected() {
-    let orphan = errors("module Tax\n    f : int -> int\n    g x = x\n");
-    assert!(orphan
-        .iter()
-        .any(|error| error.contains("immediately followed")));
-
-    let exported = errors("signature Api\n    export f : int -> int\n");
-    assert!(exported
-        .iter()
-        .any(|error| error.contains("public by definition")));
-
-    let opaque = errors("signature Api\n    opaque type T\n");
-    assert!(opaque.iter().any(|error| error.contains("redundant")));
+    assert_errors(&[
+        (
+            "module Tax\n    f : int -> int\n    g x = x\n",
+            &["immediately followed"],
+        ),
+        (
+            "signature Api\n    export f : int -> int\n",
+            &["public by definition"],
+        ),
+        ("signature Api\n    opaque type T\n", &["redundant"]),
+    ]);
 }
 
 #[test]
 fn redundant_state_module_spelling_is_rejected() {
-    let found = errors("state module Store\n    x = 1\n");
-    assert!(found
-        .iter()
-        .any(|error| error.contains("without redundant 'module'")));
+    assert_error(
+        "state module Store\n    x = 1\n",
+        &["without redundant 'module'"],
+    );
 }
 
 #[test]
@@ -372,87 +388,69 @@ fn module_declaration_docs_attach_to_every_supported_declaration() {
 
 #[test]
 fn malformed_module_heads_and_signature_items_recover_with_specific_errors() {
-    let missing_module_body = errors("module Empty\nnext = 1\n");
-    assert!(missing_module_body
-        .iter()
-        .any(|error| error.contains("module declaration requires an indented body")));
-
-    let missing_signature_body = errors("signature Empty\nnext = 1\n");
-    assert!(missing_signature_body
-        .iter()
-        .any(|error| error.contains("signature declaration requires an indented body")));
-
-    let missing_value_colon = errors("signature Api\n    value int\n");
-    assert!(missing_value_colon
-        .iter()
-        .any(|error| error.contains("expected ':' in signature value")));
-
-    let missing_module_colon = errors("signature Api\n    module Child ChildApi\n");
-    assert!(missing_module_colon
-        .iter()
-        .any(|error| error.contains("expected ':' in nested module signature item")));
-
-    let unexpected_item = errors("signature Api\n    import billing\n");
-    assert!(unexpected_item
-        .iter()
-        .any(|error| error.contains("unexpected token") && error.contains("signature")));
+    assert_errors(&[
+        (
+            "module Empty\nnext = 1\n",
+            &["module declaration requires an indented body"],
+        ),
+        (
+            "signature Empty\nnext = 1\n",
+            &["signature declaration requires an indented body"],
+        ),
+        (
+            "signature Api\n    value int\n",
+            &["expected ':' in signature value"],
+        ),
+        (
+            "signature Api\n    module Child ChildApi\n",
+            &["expected ':' in nested module signature item"],
+        ),
+        (
+            "signature Api\n    import billing\n",
+            &["unexpected token", "signature"],
+        ),
+    ]);
 }
 
 #[test]
 fn malformed_import_projections_recover_with_specific_errors() {
-    let selected_alias = errors("import billing as b\n    item\n");
-    assert!(selected_alias
-        .iter()
-        .any(|error| error.contains("aliased whole import cannot also select members")));
-
-    let wildcard_tail = errors("import billing\n    *\n    item\n");
-    assert!(wildcard_tail
-        .iter()
-        .any(|error| error.contains("wildcard import '*' must be the only selected member")));
-
-    let invalid_member = errors("import billing\n    42\n");
-    assert!(
-        invalid_member
-            .iter()
-            .any(|error| error.contains("expected an identifier")),
-        "{invalid_member:?}"
-    );
-
-    let missing_segment = errors("import billing::\n");
-    assert!(missing_segment
-        .iter()
-        .any(|error| error.contains("expected path segment after '::'")));
+    assert_errors(&[
+        (
+            "import billing as b\n    item\n",
+            &["aliased whole import cannot also select members"],
+        ),
+        (
+            "import billing\n    *\n    item\n",
+            &["wildcard import '*' must be the only selected member"],
+        ),
+        ("import billing\n    42\n", &["expected an identifier"]),
+        ("import billing::\n", &["expected path segment after '::'"]),
+    ]);
 }
 
 #[test]
 fn invalid_export_opaque_and_namespace_forms_are_diagnosed() {
-    let duplicate_export = errors("module M\n    export export x = 1\n");
-    assert!(duplicate_export
-        .iter()
-        .any(|error| error.contains("duplicate 'export'")));
-
-    let invalid_export = errors("module M\n    export import billing\n");
-    assert!(invalid_export
-        .iter()
-        .any(|error| error.contains("'export' must modify")));
-
-    let invalid_opaque = errors("module M\n    export opaque effect E\n");
-    assert!(invalid_opaque
-        .iter()
-        .any(|error| error.contains("'opaque' may modify only a type declaration")));
-
-    let unexported_opaque = errors("module M\n    opaque type Id = int\n");
-    assert!(unexported_opaque
-        .iter()
-        .any(|error| error.contains("requires exactly one 'export opaque type'")));
-
-    let namespace_export = errors("export x = 1\n");
-    assert!(namespace_export
-        .iter()
-        .any(|error| error.contains("namespace declarations are public by default")));
-
-    let invalid_namespace = errors("namespace 42\n");
-    assert!(invalid_namespace
-        .iter()
-        .any(|error| error.contains("expected namespace name")));
+    assert_errors(&[
+        (
+            "module M\n    export export x = 1\n",
+            &["duplicate 'export'"],
+        ),
+        (
+            "module M\n    export import billing\n",
+            &["'export' must modify"],
+        ),
+        (
+            "module M\n    export opaque effect E\n",
+            &["'opaque' may modify only a type declaration"],
+        ),
+        (
+            "module M\n    opaque type Id = int\n",
+            &["requires exactly one 'export opaque type'"],
+        ),
+        (
+            "export x = 1\n",
+            &["namespace declarations are public by default"],
+        ),
+        ("namespace 42\n", &["expected namespace name"]),
+    ]);
 }
