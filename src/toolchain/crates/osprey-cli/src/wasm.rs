@@ -87,7 +87,9 @@ pub(crate) fn build_with_memory(
         ))
     })?;
     let obj = compile_object(&scratch_stem(path), &ir)?;
-    link(&obj, &archive, &libdir, out, web_dispatch)
+    let linked = link(&obj, &archive, &libdir, out, web_dispatch);
+    let _ = std::fs::remove_file(&obj);
+    linked
 }
 
 /// The runtime archive a memory backend links. [WASM-TARGET-MEMORY]
@@ -114,7 +116,9 @@ pub(crate) fn run(path: &str, program: &osprey_ast::Program, memory: &str) -> Ex
     if let Err(code) = build_with_memory(path, program, &wasm, memory) {
         return code;
     }
-    run_host(&wasm)
+    let code = run_host(&wasm);
+    let _ = std::fs::remove_file(&wasm);
+    code
 }
 
 /// Append a `__main_void` thunk that calls Osprey's `i32 @main()`. wasi-libc's
@@ -133,12 +137,13 @@ fn compile_object(stem: &str, ir: &str) -> Result<PathBuf, ExitCode> {
     if let Err(e) = std::fs::write(&ll, ir.as_bytes()) {
         return Err(fail(&format!("cannot write IR to {}: {e}", ll.display())));
     }
-    run_tool(
+    let compiled = run_tool(
         &tool("OSPREY_WASM_CC", "clang"),
         &clang_argv(&ll, &obj),
         TOOLCHAIN_HINT,
-    )?;
-    Ok(obj)
+    );
+    let _ = std::fs::remove_file(&ll);
+    compiled.map(|()| obj)
 }
 
 /// Link the wasm object + runtime archive + libc into a command module.
