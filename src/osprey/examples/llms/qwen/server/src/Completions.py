@@ -21,7 +21,7 @@ from qwen_server import Inference
 from qwen_server import Lists
 from qwen import ToolParser
 
-__all__ = ["TEXT", "THINKING", "complete"]
+__all__ = ["TEXT", "THINKING", "complete", "pieces_text"]
 
 TEXT = "text"
 THINKING = "thinking"
@@ -90,40 +90,34 @@ def run(model, start, sampling, limit):
             return Error(message=message)
 
 
-def next_step(result, model, sampling):
-    """One step of the fold, or the failure that already ended the turn."""
+def continued(result, step):
+    """The next step's answer on success, or the reason this step already
+    ended the turn."""
     match result:
-        case Success(value=draft):
-            return Success(value=draft) if draft.done else one_step(model, draft, sampling)
+        case Success(value=value):
+            return step(value)
         case Error(message=message):
             return Error(message=message)
+
+
+def next_step(result, model, sampling):
+    """One step of the fold, or the failure that already ended the turn."""
+    return continued(result, lambda draft: Success(value=draft) if draft.done else one_step(model, draft, sampling))
 
 
 def one_step(model, draft, sampling):
     """Sample one token and add it to the turn."""
-    match perform(Inference.Generator.step(model, draft.history, sampling)):
-        case Success(value=token):
-            return consumed(model, draft, token)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(perform(Inference.Generator.step(model, draft.history, sampling)), lambda token: consumed(model, draft, token))
 
 
 def consumed(model, draft, token):
     """A turn that ends at the model's end-of-turn token, or one that keeps going."""
-    match perform(Inference.Generator.eos(model)):
-        case Success(value=eos):
-            return Success(value=update(draft, done=True)) if token == eos else decoded(model, draft, token)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(perform(Inference.Generator.eos(model)), lambda eos: Success(value=update(draft, done=True)) if token == eos else decoded(model, draft, token))
 
 
 def decoded(model, draft, token):
     """Feed one decoded token into the tool parser."""
-    match perform(Inference.Generator.decode(model, token)):
-        case Success(value=piece):
-            return fed(model, draft, token, piece)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(perform(Inference.Generator.decode(model, token)), lambda piece: fed(model, draft, token, piece))
 
 
 def parses(tools):
@@ -146,28 +140,25 @@ def fed(model, draft, token, piece):
 
 def fed_parsed(draft):
     """The draft over the parser's newest read of its whole text."""
-    match ToolParser.feed(ToolParser.start(draft.tools), draft.raw):
-        case Success(value=step):
-            return grown_pieces(draft, step)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(ToolParser.feed(ToolParser.start(draft.tools), draft.raw), lambda step: grown_pieces(draft, step))
 
 
 def grown_pieces(draft, step):
     """The draft over one parser step's new text, reasoning and calls."""
     text = drop(step.text, draft.text_length)
     think = drop(step.think, draft.think_length)
-    match after_calls(step.calls, Lists.count(draft.calls)):
-        case Success(value=fresh):
-            return Success(value=update(
-                draft,
-                pieces=listConcat(draft.pieces, listConcat(kept(think, THINKING), kept(text, TEXT))),
-                calls=listConcat(draft.calls, fresh),
-                text_length=len(step.text),
-                think_length=len(step.think),
-            ))
-        case Error(message=message):
-            return Error(message=message)
+    return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: Success(value=update(
+        draft,
+        pieces=listConcat(draft.pieces, listConcat(kept(think, THINKING), kept(text, TEXT))),
+        calls=listConcat(draft.calls, fresh),
+        text_length=len(step.text),
+        think_length=len(step.think),
+    )))
+
+
+def pieces_text(turn, kind):
+    """The turn's pieces of one kind, joined in order."""
+    return join(mapList(filterList(turn.pieces, lambda piece: piece.kind == kind), lambda piece: piece.text), "")
 
 
 def kept(text, kind):
@@ -199,20 +190,12 @@ def finished_turn(model, draft):
 
 def closed(draft):
     """The turn over the parser's closed read of the turn's whole text."""
-    match ToolParser.parse(draft.tools, draft.raw):
-        case Success(value=step):
-            return settled(draft, step)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(ToolParser.parse(draft.tools, draft.raw), lambda step: settled(draft, step))
 
 
 def settled(draft, step):
     """The turn over the closed parse, unless one of its calls failed its schema."""
-    match after_calls(step.calls, Lists.count(draft.calls)):
-        case Success(value=fresh):
-            return calls_checked(update(draft, pieces=listConcat(draft.pieces, listConcat(kept(step.think, THINKING), kept(step.text, TEXT))), calls=listConcat(draft.calls, fresh)))
-        case Error(message=message):
-            return Error(message=message)
+    return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: calls_checked(update(draft, pieces=listConcat(draft.pieces, listConcat(kept(step.think, THINKING), kept(step.text, TEXT))), calls=listConcat(draft.calls, fresh))))
 
 
 def calls_checked(draft):

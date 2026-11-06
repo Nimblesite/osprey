@@ -208,10 +208,16 @@ def free_byte(machine, byte):
         return update(machine, progress=restart(CALL_OPEN, byte))
 
 
+def reset(machine, mode):
+    """The machine with no call open: `mode` ("call" or "free") and a fresh
+    grammar, every per-call field cleared."""
+    return update(machine, mode=mode, stage="fn", progress=0, name="", param="", value="", candidates=[], seen=[], stack=[], anchor=JsonNull, params=[], required=[])
+
+
 def opened(machine):
     """`<tool_call>` completed: arm the call grammar, else record the progress."""
     if machine.progress + 1 == len(CALL_OPEN):
-        return update(machine, mode="call", stage="fn", progress=0, name="", param="", value="", candidates=[], seen=[], stack=[], anchor=JsonNull, params=[], required=[])
+        return reset(machine, "call")
     else:
         return update(machine, progress=machine.progress + 1)
 
@@ -279,7 +285,7 @@ def closed_call(machine, byte):
 
 def closed(machine):
     """The machine a completed call leaves: free text, one call recorded."""
-    cleared = update(machine, mode="free", stage="fn", progress=0, name="", param="", value="", candidates=[], seen=[], stack=[], anchor=JsonNull, params=[], required=[])
+    cleared = reset(machine, "free")
     return update(cleared, finished=True) if machine.stage == "fn" else machine
 
 

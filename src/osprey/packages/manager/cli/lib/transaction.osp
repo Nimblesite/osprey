@@ -1,6 +1,8 @@
 namespace registry_cli;
 import registry_host::Host
 import registry_cli::Reports
+import registry_cli::Flags
+import registry_cli::Fetch
 import registry_cli::Project
 import registry_cli::Overlay
 import registry_cli::Lock
@@ -17,7 +19,19 @@ module Transaction {
     /// development lock is the target (`local`).
     export type Settings = { base: string, project: string, acceptRemovals: bool, fresh: bool, local: bool }
 
-    let failStatus = 1
+    /// Settings from the parsed command line: `--registry`, `--project`, the
+    /// vanished-release policy, sticky-or-fresh choices, and the lock target.
+    export fn settingsOf(parsed, acceptRemovals, fresh, local) = Settings {
+        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
+        project: Flags::project(parsed),
+        acceptRemovals: acceptRemovals,
+        fresh: fresh,
+        local: local
+    }
+
+    /// Settings for the release lock, with nothing dropped from the current choices.
+    export fn releaseSettings(parsed) = settingsOf(parsed, false, false, false)
+
     let restoreCode = "transaction.restore"
 
     // `Report` shares `status` and `lines`; issue #273 needs typed receivers.
@@ -25,13 +39,11 @@ module Transaction {
     fn linesOf(r: Reports::Report) = r.lines
     fn projectOf(s: Settings) = s.project
 
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
-
     /// Relock without touching any file; `update` without `--breaking`.
     export fn relock(s: Settings) = Lock::relock(s.base, s.project, s.fresh, s.acceptRemovals, s.local)
 
     fn restored(path, previous, locked) = match Host::restore(path, previous) {
-        Error { message } => failed(listAppend(linesOf(locked), "${restoreCode} ${message}"))
+        Error { message } => Reports::failure(listAppend(linesOf(locked), "${restoreCode} ${message}"))
         Success => locked
     }
 
@@ -58,20 +70,14 @@ module Transaction {
         else if changed { restored(target, previousLock, restored(path, previous, locked)) } else { locked }
     }
 
-    fn commitAt(target, path, previous, text, prefix, resolve) = match Host::snapshot(target) {
-        Error { message } => failed([message])
-        Success { value } => commitPrepared(target, path, previous, value, text, prefix, resolve)
-    }
+    fn commitAt(target, path, previous, text, prefix, resolve) = Reports::checked(Host::snapshot(target), fn(value) => commitPrepared(target, path, previous, value, text, prefix, resolve))
 
     /// Resolve with proposed manifest `text`; on success `prefix` heads the
     /// lock delta. A reported lock-write failure restores `previous`.
     export fn commit(s, previous, text, prefix) = commitAt(lockPath(s), Project::manifestPathAt(projectOf(s)), Host::Snapshot { present: true, text: previous }, text, prefix, fn() => relock(s))
 
     /// The same for the overlay `osprey.local.toml` and the development lock.
-    export fn commitOverlay(s, text, prefix) = match Host::snapshot(Overlay::pathAt(projectOf(s))) {
-        Error { message } => failed([message])
-        Success { value } => commitAt(lockPath(s), Overlay::pathAt(projectOf(s)), value, text, prefix, fn() => relock(s))
-    }
+    export fn commitOverlay(s, text, prefix) = Reports::checked(Host::snapshot(Overlay::pathAt(projectOf(s))), fn(value) => commitAt(lockPath(s), Overlay::pathAt(projectOf(s)), value, text, prefix, fn() => relock(s)))
 
     /// An unpublished local Add resolves its overlay before writing the new
     /// root dependency. The nested overlay transaction supplies the lock.

@@ -25,7 +25,6 @@ import registry::Names
 /// back the manifest and the release lock. A key already declared is
 /// `add.exists`; a key or epoch the registry does not list is the listing's code.
 module Add {
-    let failStatus = 1
     let usageCode = "add.usage"
     let existsCode = "add.exists"
     let restoreCode = "add.restore"
@@ -34,17 +33,6 @@ module Add {
 
     /// The key to add, the `--epoch` word ("" for the newest) and the relock settings.
     type Request = { key: Names::Key, epochWord: string, settings: Transaction::Settings }
-
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
-
-    fn settingsOf(parsed) = Transaction::Settings {
-        base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
-        project: Flags::project(parsed),
-        acceptRemovals: false,
-        fresh: false,
-        local: false
-    }
 
     // Shared field names need typed receivers (issue #273).
     fn keyOf(req: Request) = req.key
@@ -70,29 +58,20 @@ module Add {
         ManifestEdit::withEdge(text, ManifestEdit::edgeLine(keyOf(req), epoch, floor)),
         ["added ${Names::display(keyOf(req))} e${epoch}.r${floor}"])
 
-    fn withEpoch(req, text, listing, epoch) = match Listing::newestOrdinal(listing, keyOf(req), epoch) {
-        Error { message } => failed([message])
-        Success { value } => committed(req, text, epoch, value)
-    }
+    fn withEpoch(req, text, listing, epoch) = Reports::checked(Listing::newestOrdinal(listing, keyOf(req), epoch), fn(value) => committed(req, text, epoch, value))
 
     fn withListing(req, text, listing) = match chosenEpoch(req, listing) {
-        Error { message } => if message == usageCode { usageReport() } else { failed([message]) }
+        Error { message } => if message == usageCode { Reports::usageFor(usageCode, usageText) } else { Reports::failure([message]) }
         Success { value } => withEpoch(req, text, listing, value)
     }
 
-    fn withText(req, text) = match Listing::fetch(baseOf(settingsIn(req))) {
-        Error { message } => failed([message])
-        Success { value } => withListing(req, text, value)
-    }
+    fn withText(req, text) = Reports::checked(Listing::fetch(baseOf(settingsIn(req))), fn(value) => withListing(req, text, value))
 
-    fn declared(req, text) = if ManifestEdit::hasEdge(text, keyOf(req)) { failed(["${existsCode} ${Names::display(keyOf(req))}"]) } else { withText(req, text) }
+    fn declared(req, text) = if ManifestEdit::hasEdge(text, keyOf(req)) { Reports::failure(["${existsCode} ${Names::display(keyOf(req))}"]) } else { withText(req, text) }
 
-    fn withRequest(req) = match Project::manifestTextAt(projectOf(settingsIn(req))) {
-        Error { message } => failed([message])
-        Success { value } => declared(req, value)
-    }
+    fn withRequest(req) = Reports::checked(Project::manifestTextAt(projectOf(settingsIn(req))), fn(value) => declared(req, value))
 
-    fn requestOf(parsed, key) = Request { key: key, epochWord: Flags::given(parsed, epochFlag, ""), settings: settingsOf(parsed) }
+    fn requestOf(parsed, key) = Request { key: key, epochWord: Flags::given(parsed, epochFlag, ""), settings: Transaction::releaseSettings(parsed) }
 
     fn withKey(key, parsed) = withRequest(requestOf(parsed, key))
 
@@ -118,7 +97,7 @@ module Add {
     fn floorFor(baseline) = Maybe::fold(baseline, 0, ordinalOfId)
 
     fn withRestoreNote(report, result) = match result {
-        Error { message } => failed(listAppend(linesOf(report), "${restoreCode} ${message}"))
+        Error { message } => Reports::failure(listAppend(linesOf(report), "${restoreCode} ${message}"))
         Success => report
     }
 
@@ -142,10 +121,7 @@ module Add {
         if statusOf(released) == 0 { mappedLocal(req, path, text, previousLock, released) } else { released }
     }
 
-    fn declaredPublished(req, path, text, line, note) = match Host::snapshot(Project::lockPathAt(projectOf(settingsIn(req)))) {
-        Error { message } => failed([message])
-        Success { value } => declaredPublishedWith(req, path, text, line, note, value)
-    }
+    fn declaredPublished(req, path, text, line, note) = Reports::checked(Host::snapshot(Project::lockPathAt(projectOf(settingsIn(req)))), fn(value) => declaredPublishedWith(req, path, text, line, note, value))
 
     /// Published keys retain their release baseline; an unpublished key's
     /// proposed manifest is visible only to development resolution until commit.
@@ -161,42 +137,31 @@ module Add {
     }
 
     fn declaredLocal(req, path, text, baseline) = match epochFor(req, baseline) {
-        Error => usageReport()
+        Error => Reports::usageFor(usageCode, usageText)
         Success { value } => declaredLocalAt(req, path, text, baseline, value)
     }
 
-    fn withLocalListing(req, path, text) = match Listing::fetch(baseOf(settingsIn(req))) {
-        Error { message } => failed([message])
-        Success { value } => declaredLocal(req, path, text, baselineFor(req, value))
-    }
+    fn withLocalListing(req, path, text) = Reports::checked(Listing::fetch(baseOf(settingsIn(req))), fn(value) => declaredLocal(req, path, text, baselineFor(req, value)))
 
-    fn declaredPath(req, path, text) = if ManifestEdit::hasEdge(text, keyOf(req)) { failed(["${existsCode} ${Names::display(keyOf(req))}"]) } else { withLocalListing(req, path, text) }
+    fn declaredPath(req, path, text) = if ManifestEdit::hasEdge(text, keyOf(req)) { Reports::failure(["${existsCode} ${Names::display(keyOf(req))}"]) } else { withLocalListing(req, path, text) }
 
     fn withLocalKey(parsed, path, key) = {
         let req = requestOf(parsed, key)
-        match Project::manifestTextAt(projectOf(settingsIn(req))) {
-            Error { message } => failed([message])
-            Success { value } => declaredPath(req, path, value)
-        }
+        Reports::checked(Project::manifestTextAt(projectOf(settingsIn(req))), fn(value) => declaredPath(req, path, value))
     }
 
-    fn withPath(parsed, path) = match Use::localKey(Flags::project(parsed), path) {
-        Error { message } => failed([message])
-        Success { value } => withLocalKey(parsed, path, value)
-    }
+    fn withPath(parsed, path) = Reports::checked(Use::localKey(Flags::project(parsed), path), fn(value) => withLocalKey(parsed, path, value))
 
     fn withWord(parsed, word) = if startsWith(word, "@") {
         match Names::parse(word) {
-            Error => usageReport()
+            Error => Reports::usageFor(usageCode, usageText)
             Success { value } => withKey(value, parsed)
         }
     } else { withPath(parsed, word) }
 
-    fn routed(parsed, word) = if word == "" || startsWith(word, "--") { usageReport() } else { withWord(parsed, word) }
+    fn routed(parsed, word) = if word == "" || startsWith(word, "--") { Reports::usageFor(usageCode, usageText) } else { withWord(parsed, word) }
 
     /// The whole command: the key or path word first, then the flags.
-    export fn run(args) = match Flags::parse(Flags::tail(args), [epochFlag, Fetch::registryFlag, Flags::projectFlag], []) {
-        Error => usageReport()
-        Success { value } => routed(value, listGet(args, 0) ?: "")
-    }
+    export fn run(args) = Flags::dispatch(Flags::tail(args), [epochFlag, Fetch::registryFlag, Flags::projectFlag], [], usageCode, usageText,
+        fn(parsed) => routed(parsed, listGet(args, 0) ?: ""))
 }

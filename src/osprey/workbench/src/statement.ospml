@@ -52,14 +52,6 @@ type Binding =
 module Statements
     heads () = ["Theorem", "Lemma", "Proposition", "Example"]
 
-    codeAt (text, at) = codePointAt (text, at) ?: 0
-
-    width code = codePointWidth code ?: 1
-
-    blank code = code == 32 || code == 9 || code == 10 || code == 13
-
-    cut (text, from, to) = substring (text, from, to) ?: ""
-
     // The byte offset where each line of `rows` begins: line `i` starts at entry `i`.
     spots rows = scanSpots (rows, 0, 0, [])
 
@@ -83,7 +75,7 @@ module Statements
     afterWord (row, at) = match at >= length row
         true => false
         false =>
-            code = codeAt (row, at)
+            code = Lexer::codeAt (row, at)
             code == 32 || code == 46
 
     // The indices of the lines that open declarations.
@@ -116,7 +108,7 @@ module Statements
 
     declare (text, rows, marks, at, bound) =
         from = listGet marks bound.first ?: 0
-        body = substring (text, from, listGet marks bound.after ?: length text) ?: ""
+        body = Lexer::cut (text, from, listGet marks bound.after ?: length text)
         parts = sentence (rows, marks, from, body, headWord (rowOf rows bound.first))
         reading = Formulas::read parts.claim
         Declaration(statement = Statement(name = title (parts, at), named = parts.named, variables = parts.variables, claim = claimed reading), proof = parts.proof, problems = troubles (parts, reading))
@@ -161,10 +153,10 @@ module Statements
         dot = match indexOf (body, ".")
             Success at => at
             Error _ => length body
-        name = trim (cut (body, length keyword, dot))
-        at = skipBlank (body, satAdd dot 1)
+        name = trim (Lexer::cut (body, length keyword, dot))
+        at = Lexer::skipBlank (body, satAdd dot 1)
         stop = sentenceStop (body, at)
-        bound = binder (cut (body, at, stop))
+        bound = binder (Lexer::cut (body, at, stop))
         claimAt = satAdd (satAdd from at) bound.shift
         hold = lineOf (marks, claimAt, 0)
         Pieces(name = name, named = name != "", variables = bound.names, claim = bound.rest, line = satAdd hold 1, column = column (rowOf rows hold, listGet marks hold ?: 0, claimAt), proof = proofOf (body, stop))
@@ -174,7 +166,7 @@ module Statements
 
     counted (row, at, to, count) = match at >= to
         true => count
-        false => counted (row, satAdd at (width (codeAt (row, at))), to, satAdd count 1)
+        false => counted (row, Lexer::after (row, at), to, satAdd count 1)
 
     // The 0-based line that byte offset `at` falls in.
     lineOf (marks, at, index) = match listGet marks (satAdd index 1)
@@ -183,28 +175,24 @@ module Statements
             false => index
         Error _ => index
 
-    skipBlank (text, at) = match at < length text && blank (codeAt (text, at))
-        true => skipBlank (text, satAdd at (width (codeAt (text, at))))
-        false => at
-
     // The offset of the `.` that ends the sentence opening at `at`, or the end of the text.
     sentenceStop (body, at) = match at >= length body
         true => at
-        false => match codeAt (body, at) == 46
-            true => match satAdd at 1 >= length body || blank (codeAt (body, satAdd at 1))
+        false => match Lexer::codeAt (body, at) == 46
+            true => match satAdd at 1 >= length body || Lexer::blank (Lexer::codeAt (body, satAdd at 1))
                 true => at
                 false => sentenceStop (body, satAdd at 1)
-            false => sentenceStop (body, satAdd at (width (codeAt (body, at))))
+            false => sentenceStop (body, Lexer::after (body, at))
 
     // The proof text: everything after the statement sentence, with a leading `Proof.` sentence dropped.
     proofOf (body, stop) = match stop >= length body
         true => ""
         false =>
-            at = skipBlank (body, satAdd stop 1)
+            at = Lexer::skipBlank (body, satAdd stop 1)
             marked = sentenceStop (body, at)
-            match trim (cut (body, at, marked)) == "Proof"
-                true => trim (cut (body, satAdd marked 1, length body))
-                false => trim (cut (body, at, length body))
+            match trim (Lexer::cut (body, at, marked)) == "Proof"
+                true => trim (Lexer::cut (body, satAdd marked 1, length body))
+                false => trim (Lexer::cut (body, at, length body))
 
     // The bound names and claim text of one statement sentence: `For all p q,` binds, the rest claims.
     binder text =
@@ -216,8 +204,8 @@ module Statements
         match wide == 0 || comma >= length text
             true => Binding(names = [], rest = text, shift = 0)
             false =>
-                from = skipBlank (text, satAdd comma 1)
-                Binding(names = boundNames (cut (text, wide, comma)), rest = cut (text, from, length text), shift = from)
+                from = Lexer::skipBlank (text, satAdd comma 1)
+                Binding(names = boundNames (Lexer::cut (text, wide, comma)), rest = Lexer::cut (text, from, length text), shift = from)
 
     // The byte width of the binder phrase the sentence opens with, or 0.
     lead low = match startsWith (low, "for every ")

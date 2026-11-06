@@ -2,6 +2,7 @@ namespace registry_api;
 import registry_api::HostedHeaders
 import registry_api::HostedCookies
 import registry_api::HostedOrigin
+import registry::Bytes
 
 /// The hosted-request admission gate, evaluated in the order required by
 /// [PACKAGE-HOSTED-EDGE]: parse headers, check the edge secret, then the
@@ -58,16 +59,13 @@ module HostedRequest {
     fn methodStage(method) = if listContains(allowedMethods, toUpperCase(method)) { Pass } else { stop(methodStatus, "req.method") }
 
     fn uriByte(b) = b >= 33 && b < 127 && b != 92
-    fn uriBytesOk(uri) = fold(range(0, byteLength(uri)), true, fn(ok, i) => ok && uriByte(byteAt(uri, i) ?: 0))
+    fn uriBytesOk(uri) = Bytes::everyByte(uri, uriByte)
 
     fn uriStage(uri) = if byteLength(uri) > maxUri { stop(uriTooLong, "req.uri") }
         else if !startsWith(uri, "/") || !uriBytesOk(uri) { stop(badRequest, "req.uri") }
         else { Pass }
 
-    fn digits(s) = fold(range(0, byteLength(s)), byteLength(s) > 0, fn(ok, i) => {
-        let b = byteAt(s, i) ?: 0
-        ok && b >= 48 && b <= 57
-    })
+    fn digits(s) = byteLength(s) > 0 && Bytes::everyByte(s, Bytes::isDigit)
 
     fn lengthHeaderOk(headers, body, maxBody) = match HostedHeaders::find(headers, "content-length") {
         Error => true

@@ -11,7 +11,7 @@ multiclass shape); the binary one-column spelling is expressed as its two-column
 equivalent. Implements [PORT-TEST-ORACLE].
 """
 
-from sklearn.Stats import argsort_float, index_of, mean_float, unique_ints
+from sklearn.Stats import argsort_float, encode_labels, mean_float, unique_ints
 
 __all__ = [
     "RocCurve", "PrecisionRecallCurve", "accuracy_score", "precision_score",
@@ -335,11 +335,6 @@ def explained_variance_score(y_true, y_pred):
     return assemble(num, den)
 
 
-def label_encode(labels, ys):
-    """Maps each label to its index in `labels`."""
-    return toList(map(range(len(ys)), lambda i: index_of(labels, unwrap_or(listGet(ys, i), 0))))
-
-
 def row_sum(C, i):
     """Sum of one row of an int matrix."""
     return foldList(unwrap_or(listGet(C, i), []), 0, lambda acc, x: acc + x)
@@ -358,8 +353,8 @@ def dot_float(a, b):
 def matthews_corrcoef(y_true, y_pred):
     """`sklearn.metrics.matthews_corrcoef` for binary and multiclass labels."""
     labels = unique_ints(listConcat(y_true, y_pred))
-    ey = label_encode(labels, y_true)
-    ep = label_encode(labels, y_pred)
+    ey = encode_labels(labels, y_true)
+    ep = encode_labels(labels, y_pred)
     classes = toList(map(range(len(labels)), lambda i: i))
     C = confusion_matrix(ey, ep, classes)
     t_sum = toList(map(range(len(labels)), lambda k: toFloat(row_sum(C, k))))

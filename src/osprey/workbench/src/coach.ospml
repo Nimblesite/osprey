@@ -34,13 +34,8 @@ module Coach
     (** A formula key's `text` inserted at the answer's caret; the text around it stays and the caret follows the key. *)
     export insert (bench, id, text) = bench(tutor = Tutors::insert (bench.tutor, keyed (bench, id), text), shelf = focus (bench.shelf, id))
 
-    rulingOf name = match name
-        "checks" => Checks
-        "fails" => Fails
-        _ => Undecided
-
     (** The learner's ruling on judge challenge `id`: `checks` or `fails`. *)
-    export pick (bench, id, choice) = bench(tutor = Tutors::pick (bench.tutor, keyed (bench, id), rulingOf choice), shelf = focus (bench.shelf, id))
+    export pick (bench, id, choice) = bench(tutor = Tutors::pick (bench.tutor, keyed (bench, id), Tutors::rulingOf choice), shelf = focus (bench.shelf, id))
 
     (** Challenge `id` submitted to the kernel; a newly right answer writes progress ([LESSONS-PROGRESS]). *)
     export submit (bench, id) = match challengeOf (bench, id)
@@ -124,11 +119,7 @@ module Completions
 
     progressed bench = Runtime::step (bench(tutor = merged (bench.tutor, Shelves::completed (perform ui::Slices.fetch Shelves::progressKey))))
 
-    merged (tutor, keys) = tutor(tutorCompleted = foldList (keys, tutor.tutorCompleted, \(done, key) => including (done, key)))
-
-    including (keys, key) = match listContains (keys, key)
-        true => keys
-        false => listAppend (keys, key)
+    merged (tutor, keys) = tutor(tutorCompleted = foldList (keys, tutor.tutorCompleted, \(done, key) => Tutors::including (done, key)))
 
     succeeded (bench, ticket, result) = match startsWith ticket "workspace:"
         true => Workspaces::completed (bench, ticket, result)

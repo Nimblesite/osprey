@@ -10,7 +10,7 @@ record holding the learned attributes, and `*_transform` applies it, so
 zero-variance handling and quantile interpolation match sklearn 1.9.1.
 """
 
-from sklearn.Stats import argsort_float, index_of, max_float, mean_float, min_float, sum_float, unique_ints
+from sklearn.Stats import argsort_float, encode_labels, index_of, max_float, mean_float, min_float, sum_float, unique_ints
 
 __all__ = [
     "StandardScaler", "StandardScalerFitted", "standard_scaler_fit",
@@ -220,7 +220,7 @@ def label_encoder_fit(y):
 
 def label_encoder_transform(classes, y):
     """`LabelEncoder.transform`: each label mapped to its index in `classes`."""
-    return toList(map(range(len(y)), lambda i: index_of(classes, unwrap_or(listGet(y, i), 0))))
+    return encode_labels(classes, y)
 
 
 def one_hot_encoder_fit(X):

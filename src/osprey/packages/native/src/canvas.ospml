@@ -68,10 +68,6 @@ module Canvases
 
     // ---- shapes [UI-MACHINE-CANVAS] ----
 
-    digit code = indexOf "0123456789ABCDEF" (toUpperCase code) ?: 0
-
-    byte (hex, at) = satAdd (satMul (digit (substring hex at (satAdd at 1) ?: "0")) 16) (digit (substring hex (satAdd at 1) (satAdd at 2) ?: "0"))
-
     // A `#RRGGBB` colour as written, or the chosen skin's `@token`; either may be a `{{template}}`.
     skinned (machine, written) =
         named = Templates::fill (machine, written)
@@ -83,12 +79,12 @@ module Canvases
 
     paint (machine, m) =
         hex = skinned (machine, m.markColour)
-        Scenes::hex (satAdd (satMul (byte (hex, 1)) 65536) (satAdd (satMul (byte (hex, 3)) 256) (byte (hex, 5))), Templates::measure (machine, m.markAlpha))
+        Scenes::hex (satAdd (satMul (Contrast::hexByte (hex, 1)) 65536) (satAdd (satMul (Contrast::hexByte (hex, 3)) 256) (Contrast::hexByte (hex, 5))), Templates::measure (machine, m.markAlpha))
 
     // A colour packed with an alpha from 0 to 1.
     colour (machine, m) =
         hex = skinned (machine, m.markColour)
-        Scenes::rgba (byte (hex, 1), byte (hex, 3), byte (hex, 5), floatToInt (round (Templates::measure (machine, m.markAlpha) * 255.0)) ?: 255)
+        Scenes::rgba (Contrast::hexByte (hex, 1), Contrast::hexByte (hex, 3), Contrast::hexByte (hex, 5), floatToInt (round (Templates::measure (machine, m.markAlpha) * 255.0)) ?: 255)
 
     // A corner of a w by h rectangle centred on x, y, turned by `angle` radians.
     corner (x, y, dx, dy, angle) = [x + dx * cos angle - dy * sin angle, y + dx * sin angle + dy * cos angle]

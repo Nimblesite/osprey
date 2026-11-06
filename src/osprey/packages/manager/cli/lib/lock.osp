@@ -36,7 +36,6 @@ import registry::Surface
 /// `lock.release-vanished` without `--accept-removals`, and on a current lock
 /// that does not decode.
 module Lock {
-    let failStatus = 1
     let usageCode = "lock.usage"
     let replacedCode = "lock.release-replaced"
     let vanishedCode = "lock.release-vanished"
@@ -63,9 +62,6 @@ module Lock {
     /// What local mode adds: the overlay's mappings and their checkouts.
     type Locals = { mappings: List<Overlay::Mapping>, trees: List<LocalTree> }
 
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
-
     fn commandLine(parsed) = CommandLine {
         base: Flags::given(parsed, Fetch::registryFlag, Fetch::defaultRegistry),
         project: Flags::project(parsed),
@@ -81,8 +77,6 @@ module Lock {
     fn keyOf(id: Identity::ReleaseId) = id.key
     fn digestOf(id: Identity::ReleaseId) = id.digest
     fn spot(id: Identity::ReleaseId) = "${Names::display(id.key)} e${id.epoch}.r${id.ordinal}"
-    fn releaseOf(p: Lockfile::Package) = p.release
-    fn packagesOf(lock: Lockfile::Lock) = lock.packages
     fn edgesOf(m: ManifestModel::Manifest) = m.dependencies
     fn grantsOf(m: ManifestModel::Manifest) = m.grants
     fn systemCapabilities(m: ManifestModel::Manifest) = mapList(m.systemRequirements, fn(s: ManifestModel::SystemRequirement) => s.capability)
@@ -101,7 +95,7 @@ module Lock {
 
     // ---- the current lock ----
 
-    fn previousOf(lock) = Previous { current: mapList(packagesOf(lock), releaseOf), locked: packagesOf(lock) }
+    fn previousOf(lock) = Previous { current: mapList(Lockfile::packagesOf(lock), Lockfile::releaseOf), locked: Lockfile::packagesOf(lock) }
 
     /// Local mode starts from the development lock when one decodes and from
     /// the release lock otherwise; a damaged development lock is still refused.
@@ -253,15 +247,15 @@ module Lock {
         Error => ""
     }
 
-    fn marked(mark, p, locals) = "${mark} ${Lockfile::compact(releaseOf(p))}${localSuffix(locals, keyOf(releaseOf(p)))}"
+    fn marked(mark, p, locals) = "${mark} ${Lockfile::compact(Lockfile::releaseOf(p))}${localSuffix(locals, keyOf(Lockfile::releaseOf(p)))}"
 
     /// `+` added, `=` unchanged, `~` another release of a locked key.
-    fn deltaOf(previous, p, locals) = match Lockfile::packageFor(previous, keyOf(releaseOf(p))) {
+    fn deltaOf(previous, p, locals) = match Lockfile::packageFor(previous, keyOf(Lockfile::releaseOf(p))) {
         Error => marked("+", p, locals)
-        Success { value } => if Identity::same(releaseOf(value), releaseOf(p)) { marked("=", p, locals) } else { marked("~", p, locals) }
+        Success { value } => if Identity::same(Lockfile::releaseOf(value), Lockfile::releaseOf(p)) { marked("=", p, locals) } else { marked("~", p, locals) }
     }
 
-    fn stillLocked(next, p) = match Lockfile::packageFor(next, keyOf(releaseOf(p))) {
+    fn stillLocked(next, p) = match Lockfile::packageFor(next, keyOf(Lockfile::releaseOf(p))) {
         Success => true
         Error => false
     }
@@ -315,30 +309,20 @@ module Lock {
 
     fn pythonLines(cmd: CommandLine, python) = Maybe::fold(python, [], fn(p) => [PythonPlane::lockedLine(cmd.project)])
 
-    fn writtenWith(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, packages, python) = match writeLock(cmd, lockOf(manifest, digest, packages, locals, python)) {
-        Error { message } => failed([message])
-        Success => Reports::success(listConcat(listConcat(catalog.warnings, deltaLines(packages, prev.locked, locals)), pythonLines(cmd, python)))
-    }
+    fn writtenWith(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, packages, python) =
+        Reports::checked(writeLock(cmd, lockOf(manifest, digest, packages, locals, python)),
+            fn(_written) => Reports::success(listConcat(listConcat(catalog.warnings, deltaLines(packages, prev.locked, locals)), pythonLines(cmd, python))))
 
-    fn withMembers(cmd, manifest, digest, prev, catalog, locals, packages, memberList) = match pythonPins(cmd, memberList) {
-        Error { message } => failed([message])
-        Success { value } => writtenWith(cmd, manifest, digest, prev, catalog, locals, packages, value)
-    }
+    fn withMembers(cmd, manifest, digest, prev, catalog, locals, packages, memberList) = Reports::checked(pythonPins(cmd, memberList), fn(value) => writtenWith(cmd, manifest, digest, prev, catalog, locals, packages, value))
 
     fn written(cmd, manifest, digest, prev: Previous, catalog: Catalog, locals, releases, fetched) = {
         let packages = mapList(releases, fn(r) => packageOf(catalog.candidates, r))
-        match members(cmd, manifest, releases, locals, fetched) {
-            Error { message } => failed([message])
-            Success { value } => withMembers(cmd, manifest, digest, prev, catalog, locals, packages, value)
-        }
+        Reports::checked(members(cmd, manifest, releases, locals, fetched), fn(value) => withMembers(cmd, manifest, digest, prev, catalog, locals, packages, value))
     }
 
-    fn locked(cmd, manifest, prev, catalog, locals, releases, fetched) = match ManifestJson::digest(manifest) {
-        Error { message } => failed([message])
-        Success { value } => written(cmd, manifest, value, prev, catalog, locals, releases, fetched)
-    }
+    fn locked(cmd, manifest, prev, catalog, locals, releases, fetched) = Reports::checked(ManifestJson::digest(manifest), fn(value) => written(cmd, manifest, value, prev, catalog, locals, releases, fetched))
 
-    fn explained(catalog: Catalog, code, packages) = failed(listConcat(catalog.warnings, listPrepend(mapList(packages, Names::display), code)))
+    fn explained(catalog: Catalog, code, packages) = Reports::failure(listConcat(catalog.warnings, listPrepend(mapList(packages, Names::display), code)))
 
     // ---- the command ----
 
@@ -347,48 +331,31 @@ module Lock {
         Resolution::Explain { code, packages } => explained(catalog, code, packages)
     }
 
-    fn resolved(cmd: CommandLine, manifest, prev, locals, listing, warnings) = match fetchAll(cmd.base, cmd.project, listing) {
-        Error { message } => failed([message])
-        Success { value } => solved(cmd, manifest, prev, withLocals(catalogOf(value, warnings), locals), locals, value)
-    }
+    fn resolved(cmd: CommandLine, manifest, prev, locals, listing, warnings) = Reports::checked(fetchAll(cmd.base, cmd.project, listing), fn(value) => solved(cmd, manifest, prev, withLocals(catalogOf(value, warnings), locals), locals, value))
 
     fn withRemovals(cmd: CommandLine, manifest, prev: Previous, locals, listing) = {
         let gone = vanished(published(prev.current, locals), listing)
         if isEmpty(gone) { resolved(cmd, manifest, prev, locals, listing, []) }
         else if cmd.acceptRemovals { resolved(cmd, manifest, prev, locals, listing, mapList(gone, vanishedLine)) }
-        else { failed(mapList(gone, vanishedRefusal)) }
+        else { Reports::failure(mapList(gone, vanishedRefusal)) }
     }
 
     fn checked(cmd, manifest, prev: Previous, locals, listing) = {
         let replaced = replacedLine(published(prev.current, locals), listing)
-        if replaced == "" { withRemovals(cmd, manifest, prev, locals, listing) } else { failed([replaced]) }
+        if replaced == "" { withRemovals(cmd, manifest, prev, locals, listing) } else { Reports::failure([replaced]) }
     }
 
-    fn withLocalsOf(cmd: CommandLine, manifest, prev, locals) = match Listing::fetch(cmd.base) {
-        Error { message } => failed([message])
-        Success { value } => checked(cmd, manifest, prev, locals, value)
-    }
+    fn withLocalsOf(cmd: CommandLine, manifest, prev, locals) = Reports::checked(Listing::fetch(cmd.base), fn(value) => checked(cmd, manifest, prev, locals, value))
 
-    fn withPrevious(cmd, manifest, prev) = match localsAt(cmd) {
-        Error { message } => failed([message])
-        Success { value } => withLocalsOf(cmd, manifest, prev, value)
-    }
+    fn withPrevious(cmd, manifest, prev) = Reports::checked(localsAt(cmd), fn(value) => withLocalsOf(cmd, manifest, prev, value))
 
-    fn withManifest(cmd, manifest) = match previousAt(cmd) {
-        Error { message } => failed([message])
-        Success { value } => withPrevious(cmd, manifest, value)
-    }
+    fn withManifest(cmd, manifest) = Reports::checked(previousAt(cmd), fn(value) => withPrevious(cmd, manifest, value))
 
-    fn withCommand(cmd: CommandLine) = match Project::readAt(cmd.project) {
-        Error { message } => failed([message])
-        Success { value } => withManifest(cmd, value)
-    }
+    fn withCommand(cmd: CommandLine) = Reports::checked(Project::readAt(cmd.project), fn(value) => withManifest(cmd, value))
 
     /// The whole command. Implements [PACKAGE-FOLDER-REGISTRY], [PACKAGE-HARDENING] C5 and [PACKAGE-LOCAL-OVERRIDE].
-    export fn run(args) = match Flags::parse(args, [Fetch::registryFlag, Flags::projectFlag], [removalsFlag, localFlag]) {
-        Error => usageReport()
-        Success { value } => withCommand(commandLine(value))
-    }
+    export fn run(args) = Flags::dispatch(args, [Fetch::registryFlag, Flags::projectFlag], [removalsFlag, localFlag], usageCode, usageText,
+        fn(parsed) => withCommand(commandLine(parsed)))
 
     /// The command as `add`, `remove`, `update` and `use` run it after a file
     /// change: `fresh` makes the current lock's choices non-sticky, `local`

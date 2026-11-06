@@ -13,7 +13,7 @@ by the suite.
 
 __all__ = [
     "sum_float", "mean_float", "min_float", "max_float", "argsort_float",
-    "unique_ints", "index_of",
+    "unique_ints", "index_of", "encode_labels",
 ]
 
 
@@ -85,3 +85,9 @@ def unique_ints(xs):
 def index_of(xs, v):
     """The first index of `v` in an int list, or -1 when absent."""
     return fold(range(len(xs)), -1, lambda acc, i: i if unwrap_or(listGet(xs, i), v) == v and acc == -1 else acc)
+
+
+def encode_labels(labels, ys):
+    """Each label of `ys` as its index in `labels`: LabelEncoder.transform's
+    mapping, which the metrics share."""
+    return toList(map(range(len(ys)), lambda i: index_of(labels, unwrap_or(listGet(ys, i), 0))))

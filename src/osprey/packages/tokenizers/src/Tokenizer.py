@@ -346,13 +346,18 @@ def segment_end(segments, i, nchars):
     return unwrap_or(listGet(segments, i + 1), Segment(added=-1, chars=nchars)).chars
 
 
-def append_added(enc, token, start, stop):
+def with_token(enc, token_id, content, start, stop) -> Encoding:
+    """`enc` with one token appended over the char range [start, stop)."""
     return Encoding(
-        ids=listAppend(enc.ids, token.id),
-        tokens=listAppend(enc.tokens, token.content),
+        ids=listAppend(enc.ids, token_id),
+        tokens=listAppend(enc.tokens, content),
         offsets=listAppend(enc.offsets, Offset(start=start, end=stop)),
         type_ids=listAppend(enc.type_ids, 0),
     )
+
+
+def append_added(enc, token, start, stop):
+    return with_token(enc, token.id, token.content, start, stop)
 
 
 def slice_list(xs, start, stop):
@@ -399,12 +404,7 @@ def append_piece_token(enc, piece, token, byte_char, nchars) -> Encoding:
     reports."""
     start = char_of(byte_char, nchars, start_at(piece, token.start))
     stop = char_of(byte_char, nchars, start_at(piece, token.end - 1)) + 1
-    return Encoding(
-        ids=listAppend(enc.ids, token.id),
-        tokens=listAppend(enc.tokens, token.value),
-        offsets=listAppend(enc.offsets, Offset(start=start, end=stop)),
-        type_ids=listAppend(enc.type_ids, 0),
-    )
+    return with_token(enc, token.id, token.value, start, stop)
 
 
 def qwen_decode(tok, ids, skip_special) -> Result[str, str]:

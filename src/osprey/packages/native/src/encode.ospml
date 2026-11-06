@@ -52,13 +52,16 @@ module Encode
         OnEdit => "edit"
         OnSubmit => "submit"
 
-    str key value = Doc::str (key, value)
+    (** The protocol member `key` holding `value` as text. *)
+    export str key value = Doc::str (key, value)
 
-    num key value = Doc::num (key, value)
+    (** The protocol member `key` holding `value` as a number. *)
+    export num key value = Doc::num (key, value)
 
     bit key value = Doc::bit (key, value)
 
-    kind name members = JsonObject (listPrepend members (str "kind" name))
+    (** A protocol object of `name`'s kind, whose other members are `members`. *)
+    export kind name members = JsonObject (listPrepend members (str "kind" name))
 
     one<A> : (List<Binding<A>>, Json) -> Walked<A>
     one (bindings, json) = Walked(bindings = bindings, nodes = [json])

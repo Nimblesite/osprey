@@ -321,68 +321,53 @@ def is_tokenizer_field(field):
     return startsWith(field.name, TOKENIZER_PREFIX)
 
 
+def holds(field, ok, label, extract):
+    """`extract`'s value when the entry passes `ok`, or the Error naming the kind
+    it does not hold."""
+    if ok:
+        return Success(value=extract())
+    else:
+        return Error(message=kind_error(field, label))
+
+
 def field_int(field):
     """The integer a metadata entry holds, or Error for another kind."""
-    if listContains(INT_KINDS, field.value.kind):
-        return Success(value=field.value.i)
-    else:
-        return Error(message=kind_error(field, "an int"))
+    return holds(field, listContains(INT_KINDS, field.value.kind), "an int", lambda: field.value.i)
 
 
 def field_bool(field):
     """The boolean a metadata entry holds, or Error for another kind."""
-    if field.value.kind == "bool":
-        return Success(value=field.value.i != 0)
-    else:
-        return Error(message=kind_error(field, "a bool"))
+    return holds(field, field.value.kind == "bool", "a bool", lambda: field.value.i != 0)
 
 
 def field_float(field):
     """The number a floating-point metadata entry holds, or Error for another kind."""
-    if listContains(FLOAT_KINDS, field.value.kind):
-        return Success(value=field.value.f)
-    else:
-        return Error(message=kind_error(field, "a float"))
+    return holds(field, listContains(FLOAT_KINDS, field.value.kind), "a float", lambda: field.value.f)
 
 
 def field_string(field):
     """The text a string metadata entry holds, or Error for another kind."""
-    if field.value.kind == "string":
-        return Success(value=field.value.s)
-    else:
-        return Error(message=kind_error(field, "a string"))
+    return holds(field, field.value.kind == "string", "a string", lambda: field.value.s)
 
 
 def field_ints(field):
     """The integers an array entry holds, or Error for another kind."""
-    if array_of(field, INT_KINDS):
-        return Success(value=mapList(field.value.items, element_int))
-    else:
-        return Error(message=kind_error(field, "an int array"))
+    return holds(field, array_of(field, INT_KINDS), "an int array", lambda: mapList(field.value.items, element_int))
 
 
 def field_bools(field):
     """The booleans an array entry holds, or Error for another kind."""
-    if array_of(field, ["bool"]):
-        return Success(value=mapList(field.value.items, element_bool))
-    else:
-        return Error(message=kind_error(field, "a bool array"))
+    return holds(field, array_of(field, ["bool"]), "a bool array", lambda: mapList(field.value.items, element_bool))
 
 
 def field_floats(field):
     """The numbers a floating-point array entry holds, or Error for another kind."""
-    if array_of(field, FLOAT_KINDS):
-        return Success(value=mapList(field.value.items, element_float))
-    else:
-        return Error(message=kind_error(field, "a float array"))
+    return holds(field, array_of(field, FLOAT_KINDS), "a float array", lambda: mapList(field.value.items, element_float))
 
 
 def field_strings(field):
     """The texts a string array entry holds, or Error for another kind."""
-    if array_of(field, ["string"]):
-        return Success(value=mapList(field.value.items, element_string))
-    else:
-        return Error(message=kind_error(field, "a string array"))
+    return holds(field, array_of(field, ["string"]), "a string array", lambda: mapList(field.value.items, element_string))
 
 
 def array_of(field, kinds):

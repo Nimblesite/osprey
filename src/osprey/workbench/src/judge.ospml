@@ -30,7 +30,7 @@ module Judge
 
     posed declaration = match listGet declaration.problems 0
         Success problem => Undeclared problem.message
-        Error _ => Declared declaration.statement (mapList (Steps::sentences declaration.proof, \sentence => Steps::read sentence))
+        Error _ => Declared declaration.statement (Steps::readAll declaration.proof)
 
     (** The kernel's judgement of `answer` as the rest of the proof of a prove challenge ([LESSONS-PROVE]). *)
     export prove (task, answer) = match pose (task.provedHeading, listAppend (task.provedGiven, answer))

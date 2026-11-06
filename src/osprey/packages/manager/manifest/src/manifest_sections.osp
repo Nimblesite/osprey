@@ -8,6 +8,7 @@ import registry::Utf8
 import registry::Order
 import registry::Maybe
 import registry::ManifestModel
+import registry::Bytes
 
 /// `[project]`, `[modules]` and `[package]` as `[PACKAGE-MANIFEST]` and the
 /// canonical-manifest rule of [PACKAGE-TYPE-INVARIANTS] define them. Each
@@ -194,9 +195,9 @@ module ManifestSections {
         Success => boolOf(pairs, "allow_wildcard_imports", false, "manifest.modules.allow-wildcard-imports")
     }
 
-    fn keywordByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45
+    fn keywordByte(b) = Bytes::isDigit(b) || (b >= 97 && b <= 122) || b == 45
     fn keywordOk(k) = byteLength(k) >= 1 && byteLength(k) <= keywordBytes && !startsWith(k, "-")
-        && fold(range(0, byteLength(k)), true, fn(ok, i) => ok && keywordByte(byteAt(k, i) ?: 0))
+        && Bytes::everyByte(k, keywordByte)
 
     fn keywordsOk(keywords, span) = if length(keywords) > keywordMax { fail("manifest.keywords.count", span) }
         else if !foldList(keywords, true, fn(ok, k) => ok && keywordOk(k)) { fail("manifest.keyword.grammar", span) }

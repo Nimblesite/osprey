@@ -14,27 +14,23 @@ module Maths
     export typeset<A> : (Math, string) -> Node<A>
     typeset (tree, text) = Typeset(math = tree, spoken = text)
 
-    str key value = Doc::str (key, value)
-
-    kind name members = JsonObject (listPrepend members (str "kind" name))
-
-    pair (name, first, firstKey, second, secondKey) = kind name [JsonMember firstKey (encode first), JsonMember secondKey (encode second)]
+    pair (name, first, firstKey, second, secondKey) = Encode::kind name [JsonMember firstKey (encode first), JsonMember secondKey (encode second)]
 
     many items = JsonArray (mapList (items, \item => encode item))
 
     (** The protocol form of `tree`: one object per node, named by `kind`, children nested in order. *)
     export encode tree = match tree
-        Sym text => kind "sym" [str "text" text]
-        Num text => kind "num" [str "text" text]
-        Seq items => kind "seq" [JsonMember "items" (many items)]
+        Sym text => Encode::kind "sym" [Encode::str "text" text]
+        Num text => Encode::kind "num" [Encode::str "text" text]
+        Seq items => Encode::kind "seq" [JsonMember "items" (many items)]
         Sup base script => pair ("sup", base, "base", script, "script")
         Sub base script => pair ("sub", base, "base", script, "script")
         Frac top bottom => pair ("frac", top, "top", bottom, "bottom")
-        Root body => kind "root" [JsonMember "body" (encode body)]
-        Binder symbol names body => kind "binder" [str "symbol" symbol, JsonMember "names" (many names), JsonMember "body" (encode body)]
-        Op symbol left right => kind "op" [str "symbol" symbol, JsonMember "left" (encode left), JsonMember "right" (encode right)]
-        Paren body => kind "paren" [JsonMember "body" (encode body)]
-        Big symbol lower upper body => kind "big" [str "symbol" symbol, JsonMember "lower" (encode lower), JsonMember "upper" (encode upper), JsonMember "body" (encode body)]
+        Root body => Encode::kind "root" [JsonMember "body" (encode body)]
+        Binder symbol names body => Encode::kind "binder" [Encode::str "symbol" symbol, JsonMember "names" (many names), JsonMember "body" (encode body)]
+        Op symbol left right => Encode::kind "op" [Encode::str "symbol" symbol, JsonMember "left" (encode left), JsonMember "right" (encode right)]
+        Paren body => Encode::kind "paren" [JsonMember "body" (encode body)]
+        Big symbol lower upper body => Encode::kind "big" [Encode::str "symbol" symbol, JsonMember "lower" (encode lower), JsonMember "upper" (encode upper), JsonMember "body" (encode body)]
 
     // The named member's text, refusing a missing member or a non-string value.
     stringAt (name, doc, key) = match jsonField doc key

@@ -88,6 +88,6 @@ def literal_escape(cps, i, n, flags, gs):
         case Error(message=message):
             return Error(message=message)
         case Success(value=value):
-            cp = unwrap_or(listGet(value, 0), 0)
-            nxt = unwrap_or(listGet(value, 1), n)
+            cp = Program.pair_value(value)
+            nxt = Program.pair_next(value, n)
             return Success(value=Program.PRes(frag=[lit_frag(cp, flags)], next=nxt, gs=gs))

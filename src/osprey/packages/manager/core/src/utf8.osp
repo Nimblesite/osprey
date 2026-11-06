@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Bytes
 
 /// UTF-8 well-formedness over a string's bytes: correct lead/continuation
 /// shapes, no overlongs, no surrogates, nothing above U+10FFFF, and the
@@ -32,5 +33,5 @@ module Utf8 {
     export fn wellFormed(s) = scan(s, 0)
 
     /// True when no byte is a C0 control or DEL; NUL cannot occur in a string.
-    export fn noControls(s) = fold(range(0, byteLength(s)), true, fn(ok, i) => ok && at(s, i) >= 32 && at(s, i) != 127)
+    export fn noControls(s) = Bytes::everyByte(s, fn(b) => b >= 32 && b != 127)
 }

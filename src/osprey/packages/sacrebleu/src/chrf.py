@@ -198,11 +198,21 @@ def zeros_int(n):
     return toList(map(range(n), lambda _: 0))
 
 
-def score_sentence(chrf, hypothesis, references):
-    """chrF for one hypothesis against one or more references."""
-    stats = segment_stats(chrf, hypothesis, references)
+def chrf_score(stats, chrf):
+    """The score record, carrying the configuration that produced it."""
     return CHRFScore(score=chr_f_score(stats, chrf.beta, order(chrf), chrf.eps_smoothing),
                      char_order=chrf.char_order, word_order=chrf.word_order, beta=chrf.beta)
+
+
+def metric_of(char_order, word_order, beta, remove_whitespace, eps_smoothing):
+    """The metric the two compat entry points share."""
+    return CHRF(char_order=char_order, word_order=word_order, beta=beta, lowercase=False,
+                whitespace=not remove_whitespace, eps_smoothing=eps_smoothing)
+
+
+def score_sentence(chrf, hypothesis, references):
+    """chrF for one hypothesis against one or more references."""
+    return chrf_score(segment_stats(chrf, hypothesis, references), chrf)
 
 
 def transpose_row(docs, i):
@@ -221,19 +231,14 @@ def score_corpus(chrf, hypotheses, references):
     seg_refs = transpose(references)
     stats = fold(range(len(hypotheses)), zeros_int(3 * order(chrf)), lambda acc, i: add_int_lists(
         acc, segment_stats(chrf, unwrap_or(listGet(hypotheses, i), ""), unwrap_or(listGet(seg_refs, i), []))))
-    return CHRFScore(score=chr_f_score(stats, chrf.beta, order(chrf), chrf.eps_smoothing),
-                     char_order=chrf.char_order, word_order=chrf.word_order, beta=chrf.beta)
+    return chrf_score(stats, chrf)
 
 
 def sentence_chrf(hypothesis, references, char_order, word_order, beta, remove_whitespace, eps_smoothing):
     """`sacrebleu.sentence_chrf`: sentence-level chrF (compat entry point)."""
-    metric = CHRF(char_order=char_order, word_order=word_order, beta=beta, lowercase=False,
-                  whitespace=not remove_whitespace, eps_smoothing=eps_smoothing)
-    return score_sentence(metric, hypothesis, references)
+    return score_sentence(metric_of(char_order, word_order, beta, remove_whitespace, eps_smoothing), hypothesis, references)
 
 
 def corpus_chrf(hypotheses, references, char_order, word_order, beta, remove_whitespace, eps_smoothing):
     """`sacrebleu.corpus_chrf`: corpus-level chrF (compat entry point)."""
-    metric = CHRF(char_order=char_order, word_order=word_order, beta=beta, lowercase=False,
-                  whitespace=not remove_whitespace, eps_smoothing=eps_smoothing)
-    return score_corpus(metric, hypotheses, references)
+    return score_corpus(metric_of(char_order, word_order, beta, remove_whitespace, eps_smoothing), hypotheses, references)

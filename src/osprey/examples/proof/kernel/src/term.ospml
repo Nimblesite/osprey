@@ -97,9 +97,15 @@ module Terms
         Let name ty value body => Let name (walk (ty, depth)) (walk (value, depth)) (walk (body, satAdd depth 1))
         other => other
 
-    shifted (term, cutoff, by) = match term
-        BVar index => shiftVar (index, cutoff, by)
-        other => mapChildren (other, cutoff, \(child, innerDepth) => shifted (child, innerDepth, by))
+    // The walk every binder-aware traversal shares: `leaf` decides a bound
+    // variable at the current depth, and `mapChildren` advances that depth under
+    // each binder.
+    underBinders : (Term, int, (int, int) -> Term) -> Term
+    underBinders (term, depth, leaf) = match term
+        BVar index => leaf (index, depth)
+        other => mapChildren (other, depth, \(child, innerDepth) => underBinders (child, innerDepth, leaf))
+
+    shifted (term, cutoff, by) = underBinders (term, cutoff, \(index, depth) => shiftVar (index, depth, by))
 
     shiftVar (index, cutoff, by) = match index >= cutoff
         true => BVar (satAdd index by)
@@ -111,9 +117,7 @@ module Terms
         true => substituted (term, depth, value)
         false => term
 
-    substituted (term, depth, value) = match term
-        BVar index => substituteVar (index, depth, value)
-        other => mapChildren (other, depth, \(child, innerDepth) => substituted (child, innerDepth, value))
+    substituted (term, depth, value) = underBinders (term, depth, \(index, depth) => substituteVar (index, depth, value))
 
     substituteVar (index, depth, value) = match index == depth
         true => shift (value, 0, depth)
@@ -136,9 +140,7 @@ module Terms
             true => substitutedMany (body, 0, values)
             false => body
 
-    substitutedMany (term, depth, values) = match term
-        BVar index => manyVar (index, depth, values)
-        other => mapChildren (other, depth, \(child, innerDepth) => substitutedMany (child, innerDepth, values))
+    substitutedMany (term, depth, values) = underBinders (term, depth, \(index, depth) => manyVar (index, depth, values))
 
     manyVar (index, depth, values) = match index < depth
         true => BVar index

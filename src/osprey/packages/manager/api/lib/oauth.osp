@@ -12,8 +12,7 @@ module OAuth {
 
     let callbackPath = "/v1/auth/github/callback"
 
-    fn unreserved(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122)
-    || (b >= 48 && b <= 57) || b == 45 || b == 46 || b == 95 || b == 126
+    fn unreserved(b) = Bytes::isAlnum(b) || b == 45 || b == 46 || b == 95 || b == 126
 
     fn character(text, i) = substring(text, i, i + 1) ?: ""
 
@@ -23,10 +22,10 @@ module OAuth {
                 if unreserved(b) { character(text, i) } else { "%${Bytes::hexByte(b)}" }
         }), "")
 
-    fn hostByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 46
+    fn hostByte(b) = Bytes::isDigit(b) || (b >= 97 && b <= 122) || b == 45 || b == 46
 
     fn origin(text) = startsWith(text, "https://") && byteLength(text) > 8 && byteLength(text) < 262
-    && fold(range(8, byteLength(text)), true, fn(ok, i) => ok && hostByte(byteAt(text, i) ?: 0))
+    && Bytes::everyByte(drop(text, 8), hostByte)
     && !contains(text, "..") && !endsWith(text, ".") && !startsWith(drop(text, 8), ".")
 
     fn callbackOrigin(config: Config) = take(config.callback, byteLength(config.callback) - byteLength(callbackPath))
@@ -45,10 +44,9 @@ module OAuth {
     export fn challenge(verifier) = Dsse::base64Url(Sha256::digest(Bytes::ofString(verifier)))
 
     /// S256 produces exactly 43 characters of the unpadded base64url alphabet.
-    export fn challengeCode(text) = if byteLength(text) != 43 || !fold(range(0, byteLength(text)), true, fn(ok, i) => {
-            let b = byteAt(text, i) ?: 0
-            ok && ((b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 45 || b == 95)
-    }) { "auth.pkce" } else { "" }
+    fn challengeByte(b) = Bytes::isAlnum(b) || b == 45 || b == 95
+
+    export fn challengeCode(text) = if byteLength(text) != 43 || !Bytes::everyByte(text, challengeByte) { "auth.pkce" } else { "" }
 
     fn authorization(config: Config, s256) = "${config.supabaseOrigin}/auth/v1/authorize?provider=github&redirect_to=${component(config.callback)}&code_challenge=${s256}&code_challenge_method=s256"
 

@@ -36,7 +36,7 @@ module McpRun
     envVars brief = mapList (Doc::items (Doc::field (brief, "env")), \item => ui::EnvVar(envName = Doc::text (item, "name"), envValue = Doc::text (item, "value")))
 
     (** The headers every streamable-HTTP request carries: both accept types, our protocol version, the session once assigned, then the configured ones. *)
-    httpHeaders (brief, session) = listConcat [
+    export httpHeaders (brief, session) = listConcat [
         ui::Header(headerName = "Accept", headerValue = "application/json, text/event-stream"),
         ui::Header(headerName = "MCP-Protocol-Version", headerValue = McpClient::protocol_version ()),
         ui::Header(headerName = "Content-Type", headerValue = "application/json"),
@@ -60,22 +60,32 @@ module McpRun
 
     briefOf server = Doc::parse (McpClient::start_brief server.serverConfig)
 
+    (** `server` awaiting the response to its next request, under the id it spends. *)
+    export awaiting (server, stepName) = server(serverRpc = toString server.serverNextId, serverAwait = stepName, serverNextId = satAdd server.serverNextId 1)
+
+    (** `server` at rest with nothing owed, listening again once connected; a cancelled call is forgotten too. *)
+    export resting (server, forgotten) = server(serverRpc = "", serverAwait = Pick::either (server.serverPhase == "connected", "listen", server.serverAwait), serverCallUntil = 0, serverCallChat = Pick::either (forgotten, "", server.serverCallChat), serverCallId = Pick::either (forgotten, "", server.serverCallId))
+
+    (** `of` applied to `name`'s server, or no step at all when the store no longer holds one. *)
+    withServer (store, name, of) = match McpModel::named (store.mcp, name)
+        Error _ => Runtime::step store
+        Success server => of server
+
     (** One server at the start of a connection: nothing owed, nothing listed. *)
     restarted server = server(serverPhase = "connecting", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0)
 
     (** Starts one server's connection: a stdio child process, or the first HTTP POST. *)
-    export begin (store, name) = match McpModel::named (store.mcp, name)
-        Error _ => Runtime::step store
-        Success server =>
-            fresh = restarted server
-            brief = briefOf fresh
-            match Doc::text (brief, "kind")
-                "stdio" => Runtime::asking (put (store, fresh), [startRequest (fresh, brief)])
-                "http" =>
-                    ident = fresh.serverNextId
-                    asking = fresh(serverRpc = toString ident, serverAwait = "initialize", serverNextId = satAdd ident 1)
-                    Runtime::asking (put (store, asking), [httpPost (asking, brief, McpClient::initialize_line (ident), callMs ())])
-                _ => Runtime::step (put (store, fresh(serverPhase = "failed", serverProblem = Pick::either (Doc::text (brief, "problem") == "", "This server entry has neither a command nor a URL.", Doc::text (brief, "problem")))))
+    export begin (store, name) = withServer (store, name, \server => startFrom (store, restarted server))
+
+    startFrom (store, fresh) =
+        brief = briefOf fresh
+        match Doc::text (brief, "kind")
+            "stdio" => Runtime::asking (put (store, fresh), [startRequest (fresh, brief)])
+            "http" =>
+                ident = fresh.serverNextId
+                asking = awaiting (fresh, "initialize")
+                Runtime::asking (put (store, asking), [httpPost (asking, brief, McpClient::initialize_line (ident), callMs ())])
+            _ => Runtime::step (put (store, fresh(serverPhase = "failed", serverProblem = Pick::either (Doc::text (brief, "problem") == "", "This server entry has neither a command nor a URL.", Doc::text (brief, "problem")))))
 
     (** Connects every enabled server that is off. *)
     export connectAll store =
@@ -84,54 +94,54 @@ module McpRun
             Runtime::asking (next.stepStore, listConcat acc.requests next.requests))
 
     (** `ProcessStart` answered: send `initialize`. *)
-    export started (store, name, outcome) = match McpModel::named (store.mcp, name)
-        Error _ => Runtime::step store
-        Success server => match outcome
-            Error problem => Runtime::step (put (store, server(serverPhase = "failed", serverProblem = "${name} could not start: ${problem}")))
-            Success _ =>
-                moved = server(serverRpc = "1", serverAwait = "initialize", serverNextId = 2)
-                Runtime::asking (put (store, moved), [writeRequest (moved, McpClient::initialize_line (1))])
+    export started (store, name, outcome) = withServer (store, name, \server => startedFrom (store, name, server, outcome))
+
+    startedFrom (store, name, server, outcome) = match outcome
+        Error problem => Runtime::step (put (store, server(serverPhase = "failed", serverProblem = "${name} could not start: ${problem}")))
+        Success _ =>
+            moved = server(serverRpc = "1", serverAwait = "initialize", serverNextId = 2)
+            Runtime::asking (put (store, moved), [writeRequest (moved, McpClient::initialize_line (1))])
 
     (** `ProcessWrite` answered: read what came back. *)
-    export written (store, name, outcome) = match McpModel::named (store.mcp, name)
-        Error _ => Runtime::step store
-        Success server => match outcome
-            Error problem => lost (store, server, "could not be reached: ${problem}")
-            Success _ => Runtime::asking (put (store, server(serverReadTicket = ticket "read" name)), [readRequest (store, server)])
+    export written (store, name, outcome) = withServer (store, name, \server => writtenFrom (store, name, server, outcome))
+
+    writtenFrom (store, name, server, outcome) = match outcome
+        Error problem => lost (store, server, "could not be reached: ${problem}")
+        Success _ => Runtime::asking (put (store, server(serverReadTicket = ticket "read" name)), [readRequest (store, server)])
 
     (** `ProcessRead` answered: frame the output and take the next step. A finished call is marked for the update to hand to its conversation. *)
-    export readDone (store, name, outcome) = match McpModel::named (store.mcp, name)
-        Error _ => Runtime::step store
-        Success server => match server.serverPhase == "off"
-            true => Runtime::step store
-            false => match outcome
-                // A new read replaces the one listening, and the host cancels that one; the new one carries on.
-                Error problem => match server.serverAwait == "call" && problem != "Cancelled"
-                    true => callFailed (store, server, "could not be reached: ${problem}", false)
-                    false => Runtime::step store
-                Success result =>
-                    stepped = McpClient::read_step (server.serverBuffer, Doc::text (result, "output"))
-                    messages = mapList (stepped.lines, \line => McpClient::message_json (line))
-                    advance (store, server(serverBuffer = stepped.buffer), messages, Doc::flag (result, "exited"))
+    export readDone (store, name, outcome) = withServer (store, name, \server => readDoneFrom (store, server, outcome))
+
+    readDoneFrom (store, server, outcome) = match server.serverPhase == "off"
+        true => Runtime::step store
+        false => match outcome
+            // A new read replaces the one listening, and the host cancels that one; the new one carries on.
+            Error problem => match server.serverAwait == "call" && problem != "Cancelled"
+                true => callFailed (store, server, "could not be reached: ${problem}", false)
+                false => Runtime::step store
+            Success result =>
+                stepped = McpClient::read_step (server.serverBuffer, Doc::text (result, "output"))
+                messages = mapList (stepped.lines, \line => McpClient::message_json (line))
+                advance (store, server(serverBuffer = stepped.buffer), messages, Doc::flag (result, "exited"))
 
     (** One HTTP POST answered: its messages take the same next step. A finished call is marked for the update to hand to its conversation. *)
-    export postDone (store, name, outcome) = match McpModel::named (store.mcp, name)
-        Error _ => Runtime::step store
-        Success server => match server.serverPhase == "off"
-            true => Runtime::step store
-            false => match outcome
-                Error problem => match server.serverAwait
-                    "call" => callFailed (store, server, "could not be reached: ${problem}", false)
-                    _ => Runtime::step (put (store, failedServer (server, "could not be reached: ${problem}")))
-                Success result =>
-                    status = Doc::number (result, "status")
-                    session = Pick::either (server.serverSession == "" && status < 400, McpClient::header_value (result, "mcp-session-id"), server.serverSession)
-                    moved = server(serverSession = Pick::either (session == "", server.serverSession, session))
-                    match status >= 400
-                        true => match server.serverAwait
-                            "call" => callFailed (store, moved, "answered HTTP ${toString status}.", false)
-                            _ => Runtime::step (put (store, failedServer (moved, "answered HTTP ${toString status}.")))
-                        false => advance (store, moved, McpClient::http_messages (result, perform ui::Slices.fetch (ticket "http" name)), false)
+    export postDone (store, name, outcome) = withServer (store, name, \server => postDoneFrom (store, name, server, outcome))
+
+    postDoneFrom (store, name, server, outcome) = match server.serverPhase == "off"
+        true => Runtime::step store
+        false => match outcome
+            Error problem => match server.serverAwait
+                "call" => callFailed (store, server, "could not be reached: ${problem}", false)
+                _ => Runtime::step (put (store, failedServer (server, "could not be reached: ${problem}")))
+            Success result =>
+                status = Doc::number (result, "status")
+                session = Pick::either (server.serverSession == "" && status < 400, McpClient::header_value (result, "mcp-session-id"), server.serverSession)
+                moved = server(serverSession = Pick::either (session == "", server.serverSession, session))
+                match status >= 400
+                    true => match server.serverAwait
+                        "call" => callFailed (store, moved, "answered HTTP ${toString status}.", false)
+                        _ => Runtime::step (put (store, failedServer (moved, "answered HTTP ${toString status}.")))
+                    false => advance (store, moved, McpClient::http_messages (result, perform ui::Slices.fetch (ticket "http" name)), false)
 
     failedServer (server, problem) = server(serverPhase = "failed", serverProblem = "${server.serverName} ${problem}", serverRpc = "", serverAwait = "", serverReadTicket = "")
 
@@ -148,7 +158,7 @@ module McpRun
             true => match died
                 true => exitStep (store, server)
                 false => match server.serverAwait
-                    "notice" => listNext (store, server, pings, "")
+                    "notice" => askTools (store, server, "", pings)
                     "call" => match store.clock >= server.serverCallUntil
                         true => callFailed (store, server, "did not answer within ${toString (callMs ())} ms.", false)
                         false => settled (store, server, pings, false)
@@ -164,13 +174,13 @@ module McpRun
                     Runtime::asking (put (store, moved), [httpPost (moved, briefOf moved, "${McpClient::initialized_line ()}\n${pings}", callMs ())])
                 _ =>
                     ident = server.serverNextId
-                    moved = server(serverRpc = toString ident, serverAwait = "tools", serverNextId = satAdd ident 1)
+                    moved = awaiting (server, "tools")
                     Runtime::asking (put (store, moved), [writeRequest (moved, "${McpClient::initialized_line ()}\n${McpClient::list_tools_line (ident, "")}\n${pings}")])
 
-    // Over HTTP the initialized notification is its own POST, answered 202 with no body; the list follows.
-    listNext (store, server, pings, cursor) =
+    // The next tools page: over HTTP the initialized notification is its own POST, answered 202 with no body; the list follows the same way.
+    askTools (store, server, cursor, pings) =
         ident = server.serverNextId
-        moved = server(serverRpc = toString ident, serverAwait = "tools", serverNextId = satAdd ident 1)
+        moved = awaiting (server, "tools")
         match server.serverKind
             "url" => Runtime::asking (put (store, moved), [httpPost (moved, briefOf moved, "${McpClient::list_tools_line (ident, cursor)}\n${pings}", callMs ())])
             _ => Runtime::asking (put (store, moved), [writeRequest (moved, "${McpClient::list_tools_line (ident, cursor)}\n${pings}")])
@@ -182,23 +192,18 @@ module McpRun
         tools = JsonArray (listConcat (Doc::items (Doc::parse (server.serverTools))) (Doc::items (Doc::field (page, "tools"))))
         merged = server(serverTools = Doc::write tools, serverProblem = join problems "\n")
         match cursor == ""
-            true =>
-                done = merged(serverPhase = "connected", serverRpc = "", serverAwait = "listen")
-                settled (store, done, pings, false)
-            false =>
-                ident = merged.serverNextId
-                moved = merged(serverRpc = toString ident, serverAwait = "tools", serverNextId = satAdd ident 1, serverProblem = join problems "\n")
-                match server.serverKind
-                    "url" => Runtime::asking (put (store, moved), [httpPost (moved, briefOf moved, "${McpClient::list_tools_line (ident, cursor)}\n${pings}", callMs ())])
-                    _ => Runtime::asking (put (store, moved), [writeRequest (moved, "${McpClient::list_tools_line (ident, cursor)}\n${pings}")])
+            true => settled (store, merged(serverPhase = "connected", serverRpc = "", serverAwait = "listen"), pings, false)
+            false => askTools (store, merged, cursor, pings)
 
     callAnswered (store, server, response, pings) =
-        done = server(serverRpc = "", serverAwait = Pick::either (server.serverPhase == "connected", "listen", server.serverAwait), serverCallUntil = 0, serverCallText = McpClient::call_text_of (response), serverCallDone = true)
+        atRest = resting (server, false)
+        done = atRest(serverCallText = McpClient::call_text_of (response), serverCallDone = true)
         thenListen (put (store, done), done, pings)
 
     // A call that can no longer be answered: the model hears why, the turn moves on, and the server keeps listening.
     callFailed (store, server, problem, markFailed) =
-        done = server(serverRpc = "", serverAwait = Pick::either (server.serverPhase == "connected", "listen", server.serverAwait), serverCallUntil = 0, serverPhase = Pick::either (markFailed, "failed", Pick::either (server.serverPhase == "connected", "connected", server.serverPhase)), serverCallText = "The tool could not run: ${server.serverName} ${problem}", serverCallDone = true)
+        atRest = resting (server, false)
+        done = atRest(serverPhase = Pick::either (markFailed, "failed", Pick::either (server.serverPhase == "connected", "connected", server.serverPhase)), serverCallText = "The tool could not run: ${server.serverName} ${problem}", serverCallDone = true)
         thenListen (put (store, done), done, "")
 
     // A connected stdio server keeps one read outstanding, so a server's own ping is always heard.
@@ -229,13 +234,13 @@ module McpRun
                 _ => Runtime::asking (put (store, server), [writeRequest (server, pings)])
 
     (** Stops one server's process and forgets its connection. *)
-    export stop (store, name) = match McpModel::named (store.mcp, name)
-        Error _ => Runtime::step store
-        Success server =>
-            moved = store(mcp = McpModel::putServer (store.mcp, restarted (server(serverPhase = "off", serverEnabled = false))))
-            match server.serverKind
-                "url" => Runtime::step moved
-                _ => Runtime::asking (moved, [stopRequest name])
+    export stop (store, name) = withServer (store, name, \server => stopFrom (store, name, server))
+
+    stopFrom (store, name, server) =
+        moved = store(mcp = McpModel::putServer (store.mcp, restarted (server(serverPhase = "off", serverEnabled = false))))
+        match server.serverKind
+            "url" => Runtime::step moved
+            _ => Runtime::asking (moved, [stopRequest name])
 
     (** The processes of servers that left the merged list, for a folder change or a config reload. *)
     export stopsFor (old, now) = mapList (filterList (old.stateServers, \server => Lists::any (now.stateServers, \other => other.serverName == server.serverName) == false && server.serverKind != "url"), \server => stopRequest server.serverName)

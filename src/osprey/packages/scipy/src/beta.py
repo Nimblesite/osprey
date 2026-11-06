@@ -52,21 +52,22 @@ def lbeta_asymp(a: float, b: float) -> Signed:
     return Signed(value=v, sign=r.sign)
 
 
+def lgam_sum(a: float, b: float, y: float) -> Signed:
+    """lgam(b) - lgam(y) + lgam(a) with the Cephes sign tracking."""
+    yv = lgam_sgn(y)
+    y2 = lgam_sgn(b)
+    y3 = lgam_sgn(a)
+    return Signed(value=y3.value + (y2.value - yv.value),
+                  sign=yv.sign * y2.sign * y3.sign)
+
+
 def beta_lgam(a: float, b: float, y: float) -> float:
     """beta's lgam path: exp(lgam(b) - lgam(y) + lgam(a)) with signs."""
-    yv = lgam_sgn(y)
-    v0 = yv.value
-    sign0 = yv.sign
-    y2 = lgam_sgn(b)
-    v1 = y2.value - v0
-    sign1 = sign0 * y2.sign
-    y3 = lgam_sgn(a)
-    v2 = y3.value + v1
-    sign2 = sign1 * y3.sign
-    if v2 > MAXLOG:
+    s = lgam_sum(a, b, y)
+    if s.value > MAXLOG:
         return pos_inf()
     else:
-        return sign2 * exp_s(v2)
+        return s.sign * exp_s(s.value)
 
 
 def beta_core(a: float, b: float) -> float:
@@ -81,11 +82,12 @@ def beta_core(a: float, b: float) -> float:
         if abs(y) > MAXGAM or abs(a) > MAXGAM or abs(b) > MAXGAM:
             return beta_lgam(a, b, y)
         else:
-            return beta_rgamma(a, b, y)
+            return rgamma_gamma_product(a, b, y)
 
 
-def beta_rgamma(a: float, b: float, y: float) -> float:
-    """beta's rgamma path: rgamma(a+b) * gamma(a) * gamma(b), Cephes order."""
+def rgamma_gamma_product(a: float, b: float, y: float) -> float:
+    """rgamma(a+b) * gamma(a) * gamma(b) in the Cephes order that keeps the
+    roundoff smallest, +inf once rgamma(y) has overflowed."""
     y2 = rgamma(y)
     a2 = gamma(a)
     b2 = gamma(b)
@@ -97,30 +99,31 @@ def beta_rgamma(a: float, b: float, y: float) -> float:
         return (a2 * y2) * b2
 
 
-def beta(a: float, b: float) -> float:
-    """scipy.special.beta(a, b): the Cephes beta."""
+def past_poles(a: float, b: float, negint, core) -> float:
+    """The negative-integer pole checks beta and lbeta both open with: the
+    reflection rule `negint` while an argument cancels it, else `core`."""
     if a <= 0.0 and a == floor(a):
         if int_ok(a):
-            return beta_negint(a, b)
+            return negint(a, b)
         else:
             return pos_inf()
     elif b <= 0.0 and b == floor(b):
         if int_ok(b):
-            return beta_negint(b, a)
+            return negint(b, a)
         else:
             return pos_inf()
     else:
-        return beta_core(a, b)
+        return core(a, b)
+
+
+def beta(a: float, b: float) -> float:
+    """scipy.special.beta(a, b): the Cephes beta."""
+    return past_poles(a, b, beta_negint, beta_core)
 
 
 def lbeta_lgam(a: float, b: float, y: float) -> float:
     """lbeta's lgam path: lgam(b) - lgam(y) + lgam(a)."""
-    yv = lgam_sgn(y)
-    v0 = yv.value
-    y2 = lgam_sgn(b)
-    v1 = y2.value - v0
-    y3 = lgam_sgn(a)
-    return y3.value + v1
+    return lgam_sum(a, b, y).value
 
 
 def lbeta_core(a: float, b: float) -> float:
@@ -134,31 +137,14 @@ def lbeta_core(a: float, b: float) -> float:
         if abs(y) > MAXGAM or abs(a) > MAXGAM or abs(b) > MAXGAM:
             return lbeta_lgam(a, b, y)
         else:
-            y2 = rgamma(y)
-            a2 = gamma(a)
-            b2 = gamma(b)
-            if is_inf(y2):
-                return pos_inf()
-            else:
-                y3 = (b2 * y2) * a2 if abs(abs(a2 * y2) - 1.0) > abs(abs(b2 * y2) - 1.0) else (a2 * y2) * b2
-                y4 = (0.0 - y3) if y3 < 0.0 else y3
-                return log_s(y4)
+            y3 = rgamma_gamma_product(a, b, y)
+            y4 = (0.0 - y3) if y3 < 0.0 else y3
+            return log_s(y4)
 
 
 def lbeta(a: float, b: float) -> float:
     """scipy.special.betaln(a, b): log(|beta(a, b)|), the Cephes lbeta."""
-    if a <= 0.0 and a == floor(a):
-        if int_ok(a):
-            return lbeta_negint(a, b)
-        else:
-            return pos_inf()
-    elif b <= 0.0 and b == floor(b):
-        if int_ok(b):
-            return lbeta_negint(b, a)
-        else:
-            return pos_inf()
-    else:
-        return lbeta_core(a, b)
+    return past_poles(a, b, lbeta_negint, lbeta_core)
 
 
 def betaln(a: float, b: float) -> float:

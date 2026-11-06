@@ -16,6 +16,17 @@ module Json {
     export type Value = Null | Bool { flag: bool } | Num { value: int } | Str { text: string } | Arr { items: List<Value> } | Obj { members: List<Member> }
     export type Member = { key: string, value: Value }
 
+    /// A `key`/`value` member of an object value.
+    export fn member(key, value) = Member { key: key, value: value }
+    /// A string value.
+    export fn str(text) = Str { text: text }
+    /// An integer value.
+    export fn num(value) = Num { value: value }
+    /// An object value from its members.
+    export fn obj(members) = Obj { members: members }
+    /// An array value from its items.
+    export fn arr(items) = Arr { items: items }
+
     type Step = { value: Value, next: int }
     type Seen = { member: Member, keyAt: int }
 

@@ -28,7 +28,6 @@ import registry::ReleasePath
 /// new release is served after `registry-serve` restarts. The authenticated
 /// `publish` of the trust plane (spec 0030) replaces this in Milestone B.
 module Publish {
-    let failStatus = 1
     let usageCode = "publish.usage"
     let noPackageCode = "publish.no-package"
     let folderFlag = "--folder"
@@ -36,9 +35,6 @@ module Publish {
     let usageText = ["usage: osprey-pkg publish --folder <registry-root> [--breaking] [--project <dir>]"]
 
     type CommandLine = { folder: string, project: string, breaking: bool }
-
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
 
     fn commandLine(parsed) = CommandLine { folder: Flags::given(parsed, folderFlag, ""), project: Flags::project(parsed), breaking: Flags::has(parsed, breakingFlag) }
 
@@ -106,40 +102,27 @@ module Publish {
 
     // ---- placing the release ----
 
-    fn placed(cmd, served) = match Fetch::writeFiles("${folderOf(cmd)}/${ReleasePath::format(idOf(served))}", filesOf(served)) {
-        Error { message } => failed([message])
-        Success => Reports::success([
-            "published ${Lockfile::compact(idOf(served))}",
-            Reports::field("into", "${folderOf(cmd)}/${ReleasePath::format(idOf(served))}"),
-            Reports::field("files", "${length(filesOf(served))}"),
-            "restart registry-serve to serve it"
-        ])
-    }
+    fn placedAt(cmd, served) = "${folderOf(cmd)}/${ReleasePath::format(idOf(served))}"
+
+    fn placedLines(cmd, served) = [
+        "published ${Lockfile::compact(idOf(served))}",
+        Reports::field("into", placedAt(cmd, served)),
+        Reports::field("files", "${length(filesOf(served))}"),
+        "restart registry-serve to serve it"
+    ]
+
+    fn placed(cmd, served) = Reports::checked(Fetch::writeFiles(placedAt(cmd, served), filesOf(served)), fn(_finished) => Reports::success(placedLines(cmd, served)))
 
     /// Check and digest the tree as the server will, then place it.
-    fn assembled(cmd, key, fileList) = match ReleaseFiles::assemble(nextDir(key, existing(folderOf(cmd), key), breakingOf(cmd)), fileList) {
-        Error { message } => failed([message])
-        Success { value } => placed(cmd, value)
-    }
+    fn assembled(cmd, key, fileList) = Reports::checked(ReleaseFiles::assemble(nextDir(key, existing(folderOf(cmd), key), breakingOf(cmd)), fileList), fn(value) => placed(cmd, value))
 
-    fn withKey(cmd, mf, key) = match treeFiles(projectOf(cmd), mf) {
-        Error { message } => failed([message])
-        Success { value } => assembled(cmd, key, value)
-    }
+    fn withKey(cmd, mf, key) = Reports::checked(treeFiles(projectOf(cmd), mf), fn(value) => assembled(cmd, key, value))
 
-    fn withManifest(cmd, mf) = match packageKey(mf) {
-        Error { message } => failed([message])
-        Success { value } => withKey(cmd, mf, value)
-    }
+    fn withManifest(cmd, mf) = Reports::checked(packageKey(mf), fn(value) => withKey(cmd, mf, value))
 
-    fn withCommand(cmd) = if folderOf(cmd) == "" { usageReport() } else { match Project::readAt(projectOf(cmd)) {
-        Error { message } => failed([message])
-        Success { value } => withManifest(cmd, value)
-    } }
+    fn withCommand(cmd) = if folderOf(cmd) == "" { Reports::usageFor(usageCode, usageText) } else { Reports::checked(Project::readAt(projectOf(cmd)), fn(value) => withManifest(cmd, value)) }
 
     /// The whole command.
-    export fn run(args) = match Flags::parse(args, [folderFlag, Flags::projectFlag], [breakingFlag]) {
-        Error => usageReport()
-        Success { value } => withCommand(commandLine(value))
-    }
+    export fn run(args) = Flags::dispatch(args, [folderFlag, Flags::projectFlag], [breakingFlag], usageCode, usageText,
+        fn(parsed) => withCommand(commandLine(parsed)))
 }

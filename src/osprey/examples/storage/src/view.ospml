@@ -94,11 +94,19 @@ module View
         true => "Link · its target is not counted"
         false => "${Disk::formatBytes (system, bytes)} · ${Disk::shareText (bytes, whole)}"
 
+    // A listing row is the same shell every time: the item's own name, a caption
+    // carrying its size, a bar of its share, and Show in the file manager.
+    meterCell (label, captionText, bytes, whole, largest, tint) =
+        Ui::column [Ui::row [label, ui::Spacer, Ui::caption captionText], Ui::meter (Disk::shareText (bytes, whole), bytes, largest, tint)]
+
+    itemEntry (place, item, symbol, body) =
+        Ui::entry (item.itemPath, symbol, "", Ui::contextMenu (body, [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
+
     // One listing row: the item's name and size, a bar of its share beside the largest, and Show in the file manager.
     row (place, options, ranking, largest, item) =
         bytes = Disk::size (options.showHidden, item)
-        cell = Ui::column [Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption (detail (place.osName, item, bytes, ranking.rankBytes))], Ui::meter (Disk::shareText (bytes, ranking.rankBytes), bytes, largest, ui::Accent)]
-        Ui::entry (item.itemPath, Disk::look item, "", Ui::contextMenu (cell, [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
+        cell = meterCell (named (item.itemHidden, item.itemName), detail (place.osName, item, bytes, ranking.rankBytes), bytes, ranking.rankBytes, largest, ui::Accent)
+        itemEntry (place, item, Disk::look item, cell)
 
     sizes (hidden, items) = foldList (items, 0, \(total, item) => satAdd total (Disk::size (hidden, item)))
 
@@ -106,11 +114,11 @@ module View
     remainder (place, options, ranking, largest) =
         count = satSub ranking.rankCount ranking.rankKept
         bytes = satSub ranking.rankBytes (sizes (options.showHidden, ranking.rankTop))
-        cell = Ui::column [Ui::row [Ui::text (plural (count, "smaller item", "smaller items")), ui::Spacer, Ui::caption "${Disk::formatBytes (place.osName, bytes)} · ${Disk::shareText (bytes, ranking.rankBytes)}"], Ui::meter (Disk::shareText (bytes, ranking.rankBytes), bytes, largest, ui::Secondary)]
+        cell = meterCell (Ui::text (plural (count, "smaller item", "smaller items")), "${Disk::formatBytes (place.osName, bytes)} · ${Disk::shareText (bytes, ranking.rankBytes)}", bytes, ranking.rankBytes, largest, ui::Secondary)
         Pick::either (count > 0, [Ui::entry ("smaller", (ui::Symbols::name ui::NoSymbol), "", cell)], [])
 
     // Folders the walk could not open are listed last, so the person sees which ones are not counted.
-    sealed (place, item) = Ui::entry (item.itemPath, (ui::Symbols::name ui::Lock), "", Ui::contextMenu (Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption "Could not be read"], [Ui::button (Words::reveal place.osName, (ui::Symbols::name ui::External), ShowIn(shownPath = item.itemPath))]))
+    sealed (place, item) = itemEntry (place, item, (ui::Symbols::name ui::Lock), Ui::row [named (item.itemHidden, item.itemName), ui::Spacer, Ui::caption "Could not be read"])
 
     guarded (place, options, walked) = mapList (filterList (walked.walkedItems, \item => item.itemGuarded && Disk::inSight (options.showHidden, item)), \item => sealed (place, item))
 
@@ -120,9 +128,11 @@ module View
         scope = [Pick::either (options.showHidden, "Hidden items are counted.", "Hidden items are left out.")]
         mapList (listConcat (listConcat unread cut) scope, \line => Ui::caption line)
 
+    screen (symbol, title, detail) = Ui::empty ((ui::Symbols::name symbol), title, detail)
+
     emptied hidden = match hidden
-        true => Ui::empty ((ui::Symbols::name ui::Folder), "Nothing here", "This folder is empty.")
-        false => Ui::empty ((ui::Symbols::name ui::Info), "Everything here is hidden", "Turn on Hidden items to see what this folder holds.")
+        true => screen (ui::Folder, "Nothing here", "This folder is empty.")
+        false => screen (ui::Info, "Everything here is hidden", "Turn on Hidden items to see what this folder holds.")
 
     summary (place, ranking) = Ui::styled ("${Disk::formatBytes (place.osName, ranking.rankBytes)} in ${plural (ranking.rankCount, "item", "items")}", ui::Headline, ui::Primary)
 
@@ -135,9 +145,9 @@ module View
             false => Ui::column (listAppend head (emptied options.showHidden))
 
     measured (place, options, walked) = match walked.walkedMissing
-        true => Ui::empty ((ui::Symbols::name ui::Question), "This folder is gone", "It was moved or deleted after it was opened. Choose another folder.")
+        true => screen (ui::Question, "This folder is gone", "It was moved or deleted after it was opened. Choose another folder.")
         false => match walked.walkedError == ""
-            false => Ui::empty ((ui::Symbols::name ui::Warning), "Cannot read this folder", walked.walkedError)
+            false => screen (ui::Warning, "Cannot read this folder", walked.walkedError)
             true => ranked (place, options, walked, Disk::rank (options.showHidden, shown (), walked.walkedItems))
 
     measuring place = Ui::column [ui::Progress(label = "Measuring ${Disk::name (place.osName, place.openFolder)}…", detail = "Every file below it counts. A walk that runs past two minutes stops and shows what it measured.")]

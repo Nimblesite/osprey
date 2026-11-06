@@ -32,7 +32,6 @@ module Fetch {
     let sourceSuffix = "/source"
     let okStatus = 200
     let notFoundStatus = 404
-    let failStatus = 1
     let anyEpoch = -1
     let slashByte = 47
     let digestPrefix = "sha256:"
@@ -56,10 +55,6 @@ module Fetch {
 
     /// A parsed command line: the target word and the registry base URL.
     type CommandLine = { target: string, base: string }
-
-    fn failed(code) = Reports::Report { status: failStatus, lines: [code] }
-
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
 
     fn withBase(target, base) = Success { value: CommandLine { target: target, base: base } }
 
@@ -131,24 +126,11 @@ module Fetch {
 
     fn sourcePath(digest) = "${sourcePrefix}${digest}${sourceSuffix}"
 
-    // `JsonRead::field` reads a missing member as `Json::Null` and a
-    // mistyped one as its empty value; matching the concrete value keeps the
-    // strict `fetch.package-shape` refusal without re-implementing a JSON reader.
-    fn stringField(value, field) = match JsonRead::field(value, field) {
-        Json::Str { text } => Success { value: text }
-        _ => Error { message: shapeCode }
-    }
+    fn rowWith(item, digest, epoch) = Checked::andThen(JsonRead::requiredInt(item, "ordinal", shapeCode), fn(value) => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } })
 
-    fn intField(value, field) = match JsonRead::field(value, field) {
-        Json::Num { value } => Success { value: value }
-        _ => Error { message: shapeCode }
-    }
+    fn rowFrom(item, digest) = Checked::andThen(JsonRead::requiredInt(item, "epoch", shapeCode), fn(value) => rowWith(item, digest, value))
 
-    fn rowWith(item, digest, epoch) = Checked::andThen(intField(item, "ordinal"), fn(value) => Success { value: Row { digest: digest, epoch: epoch, ordinal: value } })
-
-    fn rowFrom(item, digest) = Checked::andThen(intField(item, "epoch"), fn(value) => rowWith(item, digest, value))
-
-    fn rowOf(item) = Checked::andThen(stringField(item, "digest"), fn(value) => rowFrom(item, value))
+    fn rowOf(item) = Checked::andThen(JsonRead::requiredText(item, "digest", shapeCode), fn(value) => rowFrom(item, value))
 
     fn appendOne(rows, item) = Checked::andThen(rowOf(item), fn(value) => Success { value: listAppend(rows, value) })
 
@@ -175,7 +157,7 @@ module Fetch {
 
     fn keyedRows(key, rows) = Checked::andThen(rows, fn(value) => Success { value: mapList(value, fn(row: Row) => releaseOf(key, row)) })
 
-    fn keyOfItem(item) = match stringField(item, "key") {
+    fn keyOfItem(item) = match JsonRead::requiredText(item, "key", shapeCode) {
         Error { message } => Error { message: message }
         Success { value } => match Names::parse(value) {
             Error => Error { message: shapeCode }
@@ -354,27 +336,15 @@ module Fetch {
     export fn install(base, digest) = installAt("", base, digest)
 
     /// `fetched` as a report: the `fetch <target>` outcome.
-    export fn installAt(project, base, digest) = match fetched(project, base, digest) {
-        Error { message } => failed(message)
-        Success { value } => fetchedReport(project, value)
-    }
+    export fn installAt(project, base, digest) = Reports::checked(fetched(project, base, digest), fn(value) => fetchedReport(project, value))
 
     fn installRow(base, row: Row) = install(base, row.digest)
 
-    fn withRows(base, rows, epoch) = match chosen(rows, epoch) {
-        Error { message } => failed(message)
-        Success { value } => installRow(base, value)
-    }
+    fn withRows(base, rows, epoch) = Reports::checked(chosen(rows, epoch), fn(value) => installRow(base, value))
 
-    fn withListing(base, epoch, text) = match parseListing(text) {
-        Error { message } => failed(message)
-        Success { value } => withRows(base, value, epoch)
-    }
+    fn withListing(base, epoch, text) = Reports::checked(parseListing(text), fn(value) => withRows(base, value, epoch))
 
-    fn installKey(base, key, epoch) = match getBody(base, listingPath(key)) {
-        Error { message } => failed(message)
-        Success { value } => withListing(base, epoch, value)
-    }
+    fn installKey(base, key, epoch) = Reports::checked(getBody(base, listingPath(key)), fn(value) => withListing(base, epoch, value))
 
     fn runFetch(base, ask) = match ask {
         ByDigest { digest } => install(base, digest)
@@ -383,7 +353,7 @@ module Fetch {
     }
 
     fn asked(cmd) = match parseTarget(cmd.target) {
-        Error => usageReport()
+        Error => Reports::usageFor(usageCode, usageText)
         Success { value } => runFetch(cmd.base, value)
     }
 
@@ -393,7 +363,7 @@ module Fetch {
     /// `.osprey/packages/@scope/name/<digest>/`. Implements
     /// [PACKAGE-FOLDER-REGISTRY].
     export fn run(args) = match commandLine(args) {
-        Error => usageReport()
+        Error => Reports::usageFor(usageCode, usageText)
         Success { value } => asked(value)
     }
 }

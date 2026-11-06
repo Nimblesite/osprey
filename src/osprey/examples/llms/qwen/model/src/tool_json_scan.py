@@ -293,7 +293,7 @@ def inferred_start(frame, byte):
 def quoted_start(frame, byte):
     """A JSON string value's opening quote."""
     if byte == of_char('"'):
-        return Success(value=Turn(frame=update(frame, stage="str", scan="content"), consumed=True, done=False))
+        return advanced(update(frame, stage="str", scan="content"))
     else:
         return Error(message=ToolSchema.violation("json", "string", "expected a quote"))
 
@@ -307,7 +307,7 @@ def container_start(frame, byte, opener, stage, container):
     """An object or array value: its opening brace, then its elements."""
     if byte == of_char(opener):
         opened = update(frame, stage=stage, container=container, child=ToolSchema.items_schema(frame.schema))
-        return Success(value=Turn(frame=opened, consumed=True, done=False))
+        return kept(opened)
     else:
         return Error(message=ToolSchema.violation("json", container, f"expected {opener}"))
 
@@ -323,24 +323,44 @@ def string_step(frame, byte, done_stage):
             return content_step(frame, byte, done_stage)
 
 
+def advanced(updated):
+    """The turn after consuming this byte into the `updated` frame."""
+    return Success(value=Turn(frame=updated, consumed=True, done=False))
+
+
+def kept(frame):
+    """The turn after consuming this byte without moving the frame."""
+    return Success(value=Turn(frame=frame, consumed=True, done=False))
+
+
+def accepted(frame):
+    """The turn where the value ends: the next byte belongs to the document."""
+    return Success(value=Turn(frame=frame, consumed=False, done=True))
+
+
+def closed(frame):
+    """The turn where the document ends at this byte."""
+    return Success(value=Turn(frame=frame, consumed=True, done=True))
+
+
 def content_step(frame, byte, done_stage):
     """String content: a quote ends it, a backslash escapes, a control byte is invalid."""
     if byte == of_char('"'):
         return Success(value=Turn(frame=update(frame, stage=done_stage), consumed=True, done=done_stage == "done"))
     elif byte == of_char("\\"):
-        return Success(value=Turn(frame=update(frame, scan="esc"), consumed=True, done=False))
+        return advanced(update(frame, scan="esc"))
     elif byte < 32:
         return Error(message=ToolSchema.violation("json", "string", "unescaped control byte"))
     else:
-        return Success(value=Turn(frame=frame, consumed=True, done=False))
+        return kept(frame)
 
 
 def escape_step(frame, byte):
     """The character after a backslash."""
     if is_escape_char(byte):
-        return Success(value=Turn(frame=update(frame, scan="content"), consumed=True, done=False))
+        return advanced(update(frame, scan="content"))
     elif byte == of_char("u"):
-        return Success(value=Turn(frame=update(frame, scan="uni", progress=0), consumed=True, done=False))
+        return advanced(update(frame, scan="uni", progress=0))
     else:
         return Error(message=ToolSchema.violation("json", "string", "invalid escape"))
 
@@ -350,9 +370,9 @@ def unicode_step(frame, byte):
     if is_hex(byte) == False:
         return Error(message=ToolSchema.violation("json", "string", "invalid \\u escape"))
     elif frame.progress + 1 == 4:
-        return Success(value=Turn(frame=update(frame, scan="content", progress=0), consumed=True, done=False))
+        return advanced(update(frame, scan="content", progress=0))
     else:
-        return Success(value=Turn(frame=update(frame, progress=frame.progress + 1), consumed=True, done=False))
+        return advanced(update(frame, progress=frame.progress + 1))
 
 
 def may_write_key(frame):
@@ -378,20 +398,20 @@ def key_step(frame, byte):
 def free_key_step(frame, byte):
     """A key of an object that admits undeclared properties: any text, closed by a quote."""
     if byte == of_char('"'):
-        return Success(value=Turn(frame=update(frame, stage="colon"), consumed=True, done=False))
+        return advanced(update(frame, stage="colon"))
     elif byte < 32:
         return Error(message=ToolSchema.violation("json", "key", "unescaped control byte"))
     else:
-        return Success(value=Turn(frame=update(frame, text=frame.text + char_of(byte)), consumed=True, done=False))
+        return advanced(update(frame, text=frame.text + char_of(byte)))
 
 
 def declared_key_step(frame, byte):
     """A key confined to the object's own declared, unwritten property names."""
     longer = frame.text + char_of(byte)
     if len(filterList(frame.candidates, lambda candidate: startsWith(candidate, longer))) > 0:
-        return Success(value=Turn(frame=update(frame, text=longer), consumed=True, done=False))
+        return advanced(update(frame, text=longer))
     elif byte == of_char('"') and len(filterList(frame.candidates, lambda candidate: candidate == frame.text)) > 0:
-        return Success(value=Turn(frame=update(frame, stage="colon"), consumed=True, done=False))
+        return advanced(update(frame, stage="colon"))
     else:
         return Error(message=ToolSchema.violation("json", "key", "not a declared, unwritten property"))
 
@@ -410,9 +430,9 @@ def declared_property(frame):
     """The value schema for the key just read, or a rejection when the schema forbids it."""
     declared = ToolSchema.property_schema(frame.schema, frame.text)
     if ToolSchema.kind_matches("null", declared) == False:
-        return Success(value=Turn(frame=update(frame, stage="value", child=declared, seen=listAppend(frame.seen, frame.text)), consumed=True, done=False))
+        return advanced(update(frame, stage="value", child=declared, seen=listAppend(frame.seen, frame.text)))
     elif ToolSchema.allows_extra(frame.schema):
-        return Success(value=Turn(frame=update(frame, stage="value", child=JsonNull, seen=listAppend(frame.seen, frame.text)), consumed=True, done=False))
+        return advanced(update(frame, stage="value", child=JsonNull, seen=listAppend(frame.seen, frame.text)))
     else:
         return Error(message=ToolSchema.violation("json", "object", f"undeclared property {frame.text}"))
 
@@ -420,15 +440,15 @@ def declared_property(frame):
 def after_step(frame, byte):
     """After a value: a comma continues the container, a closer finishes it."""
     if byte == of_char(",") and frame.container == "array":
-        return Success(value=Turn(frame=update(frame, stage="value"), consumed=True, done=False))
+        return advanced(update(frame, stage="value"))
     elif byte == of_char(",") and frame.container == "object" and may_write_key(frame):
-        return Success(value=Turn(frame=update(frame, stage="keyNext"), consumed=True, done=False))
+        return advanced(update(frame, stage="keyNext"))
     elif byte == of_char(",") and frame.container == "object":
         return Error(message=ToolSchema.violation("json", "object", "no property left to write"))
     elif byte == of_char("]") and frame.container == "array":
-        return Success(value=Turn(frame=frame, consumed=True, done=True))
+        return closed(frame)
     elif byte == of_char("}") and frame.container == "object" and required_met(frame):
-        return Success(value=Turn(frame=frame, consumed=True, done=True))
+        return closed(frame)
     elif byte == of_char("}") and frame.container == "object":
         return Error(message=ToolSchema.violation("json", "object", f"missing {first_missing(frame)}"))
     else:
@@ -440,9 +460,9 @@ def prefix_step(frame, byte):
     byte belongs to none."""
     extended = filterList(frame.candidates, lambda candidate: startsWith(candidate, frame.text + char_of(byte)))
     if len(extended) > 0:
-        return Success(value=Turn(frame=update(frame, text=frame.text + char_of(byte), progress=frame.progress + 1), consumed=True, done=False))
+        return advanced(update(frame, text=frame.text + char_of(byte), progress=frame.progress + 1))
     elif len(filterList(frame.candidates, lambda candidate: candidate == frame.text)) > 0:
-        return Success(value=Turn(frame=frame, consumed=False, done=True))
+        return accepted(frame)
     else:
         return Error(message=ToolSchema.violation("json", "literal", "not an accepted member"))
 
@@ -457,7 +477,7 @@ def char_of(byte):
 def number_start(frame, byte):
     """The first byte of a JSON number: a sign, a zero or a leading digit."""
     if byte == of_char("-"):
-        return Success(value=Turn(frame=update(frame, stage="numSign"), consumed=True, done=False))
+        return advanced(update(frame, stage="numSign"))
     else:
         return number_digit(frame, byte)
 
@@ -465,9 +485,9 @@ def number_start(frame, byte):
 def number_digit(frame, byte):
     """A digit after the sign: a leading zero may not be followed by another digit."""
     if byte == of_char("0"):
-        return Success(value=Turn(frame=update(frame, stage="numZero"), consumed=True, done=False))
+        return advanced(update(frame, stage="numZero"))
     elif is_digit(byte):
-        return Success(value=Turn(frame=update(frame, stage="numInt"), consumed=True, done=False))
+        return advanced(update(frame, stage="numInt"))
     else:
         return Error(message=ToolSchema.violation("json", "number", "expected a digit"))
 
@@ -504,7 +524,7 @@ def zero_step(frame, byte):
 def int_step(frame, byte):
     """Inside the integer part."""
     if is_digit(byte):
-        return Success(value=Turn(frame=frame, consumed=True, done=False))
+        return kept(frame)
     else:
         return frac_or_exp(frame, byte)
 
@@ -514,17 +534,17 @@ def frac_or_exp(frame, byte):
     fractional = byte == of_char(".") and ToolSchema.kind(frame.schema) != "integer"
     exponential = (byte == of_char("e") or byte == of_char("E")) and ToolSchema.kind(frame.schema) != "integer"
     if fractional:
-        return Success(value=Turn(frame=update(frame, stage="numDot"), consumed=True, done=False))
+        return advanced(update(frame, stage="numDot"))
     elif exponential:
-        return Success(value=Turn(frame=update(frame, stage="numExp"), consumed=True, done=False))
+        return advanced(update(frame, stage="numExp"))
     else:
-        return Success(value=Turn(frame=frame, consumed=False, done=True))
+        return accepted(frame)
 
 
 def dot_step(frame, byte):
     """The first fractional digit."""
     if is_digit(byte):
-        return Success(value=Turn(frame=update(frame, stage="numFrac"), consumed=True, done=False))
+        return advanced(update(frame, stage="numFrac"))
     else:
         return Error(message=ToolSchema.violation("json", "number", "expected a fractional digit"))
 
@@ -532,19 +552,19 @@ def dot_step(frame, byte):
 def frac_step(frame, byte):
     """Fractional digits, an exponent, or the end of the number."""
     if is_digit(byte):
-        return Success(value=Turn(frame=frame, consumed=True, done=False))
+        return kept(frame)
     elif byte == of_char("e") or byte == of_char("E"):
-        return Success(value=Turn(frame=update(frame, stage="numExp"), consumed=True, done=False))
+        return advanced(update(frame, stage="numExp"))
     else:
-        return Success(value=Turn(frame=frame, consumed=False, done=True))
+        return accepted(frame)
 
 
 def exp_step(frame, byte):
     """The exponent's sign or first digit."""
     if byte == of_char("+") or byte == of_char("-"):
-        return Success(value=Turn(frame=update(frame, stage="numExpSign"), consumed=True, done=False))
+        return advanced(update(frame, stage="numExpSign"))
     elif is_digit(byte):
-        return Success(value=Turn(frame=update(frame, stage="numExpDigit"), consumed=True, done=False))
+        return advanced(update(frame, stage="numExpDigit"))
     else:
         return Error(message=ToolSchema.violation("json", "number", "expected an exponent"))
 
@@ -552,7 +572,7 @@ def exp_step(frame, byte):
 def exp_sign_step(frame, byte):
     """The exponent's first digit after its sign."""
     if is_digit(byte):
-        return Success(value=Turn(frame=update(frame, stage="numExpDigit"), consumed=True, done=False))
+        return advanced(update(frame, stage="numExpDigit"))
     else:
         return Error(message=ToolSchema.violation("json", "number", "expected an exponent digit"))
 
@@ -560,9 +580,9 @@ def exp_sign_step(frame, byte):
 def exp_digit_step(frame, byte):
     """Exponent digits, or the end of the number."""
     if is_digit(byte):
-        return Success(value=Turn(frame=frame, consumed=True, done=False))
+        return kept(frame)
     else:
-        return Success(value=Turn(frame=frame, consumed=False, done=True))
+        return accepted(frame)
 
 
 def is_space(byte):

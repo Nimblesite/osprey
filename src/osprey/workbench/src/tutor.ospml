@@ -116,9 +116,16 @@ module Tutors
 
     completing (tutor, key) = tutor(tutorCompleted = including (tutor.tutorCompleted, key))
 
-    including (keys, key) = match listContains (keys, key)
+    (** `keys` with `key` appended unless it is already there. *)
+    export including (keys, key) = match listContains (keys, key)
         true => keys
         false => listAppend (keys, key)
+
+    (** The learner's choice a ruling name spells; anything else is undecided. *)
+    export rulingOf name = match name
+        "checks" => Checks
+        "fails" => Fails
+        _ => Undecided
 
     bounded (count, limit) = match count > limit
         true => limit
@@ -166,11 +173,6 @@ module Tries
         Checks => "checks"
         Fails => "fails"
 
-    rulingOf name = match name
-        "checks" => Checks
-        "fails" => Fails
-        _ => Undecided
-
     gradeJson marking = match marking
         Unmarked => JsonNull
         Marked grade => graded grade
@@ -196,7 +198,7 @@ module Tries
 
     attemptOf doc =
         answer = Doc::text (doc, "answer")
-        Attempt(attemptKey = Doc::text (doc, "key"), attemptAnswer = answer, attemptCursor = Tutors::clamped (savedCursor doc, length answer), attemptFocusEpoch = Tutors::focusEpoch (Doc::number (doc, "focusEpoch")), attemptRuling = rulingOf (Doc::text (doc, "ruling")), attemptCount = Doc::number (doc, "count"), attemptHints = Doc::number (doc, "hints"), attemptMarking = markingOf (Doc::field (doc, "mark")), attemptRevealed = Doc::flag (doc, "revealed"))
+        Attempt(attemptKey = Doc::text (doc, "key"), attemptAnswer = answer, attemptCursor = Tutors::clamped (savedCursor doc, length answer), attemptFocusEpoch = Tutors::focusEpoch (Doc::number (doc, "focusEpoch")), attemptRuling = Tutors::rulingOf (Doc::text (doc, "ruling")), attemptCount = Doc::number (doc, "count"), attemptHints = Doc::number (doc, "hints"), attemptMarking = markingOf (Doc::field (doc, "mark")), attemptRevealed = Doc::flag (doc, "revealed"))
 
     (** Every attempt and the completed keys. *)
     export save tutor = JsonObject [JsonMember "tries" (JsonArray (mapList (tutor.tutorTries, \item => attemptJson item))), JsonMember "completed" (JsonArray (mapList (tutor.tutorCompleted, \key => JsonString key)))]

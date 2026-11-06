@@ -52,8 +52,12 @@ module Ledger
 
     export openSql db name = Sqlite::insertIntText db "INSERT INTO accounts (balance, owner) VALUES (?, ?)" 0 name
 
+    deposit = "UPDATE accounts SET balance = balance + ? WHERE id = ?"
+
+    withdraw = "UPDATE accounts SET balance = balance - ? WHERE id = ?"
+
     export creditSql db id cents note =
-        rc = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance + ? WHERE id = ?" cents id
+        rc = Sqlite::updateIntInt db deposit cents id
         entry = journal db id "credit" cents note
         balanceSql db id
 
@@ -63,15 +67,21 @@ module Ledger
     export debitSql db id cents note =
         before = balanceSql db id
         match before < cents
-            true =>
-                entry = journal db id "refused" cents note
-                Refused(why = "insufficient funds")
-            false =>
-                begun = Sqlite::run db "BEGIN IMMEDIATE"
-                rc = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance - ? WHERE id = ?" cents id
-                entry = journal db id "debit" cents note
-                done = Sqlite::run db "COMMIT"
-                Landed(balance = balanceSql db id)
+            true => shortfall db id cents note
+            false => debited db id cents note
+
+    // The refusal a guarded debit and a transfer share: the attempt is journalled as refused.
+    shortfall db id cents note =
+        entry = journal db id "refused" cents note
+        Refused(why = "insufficient funds")
+
+    // The debit inside its own transaction, committed once its journal row exists.
+    debited db id cents note =
+        begun = Sqlite::run db "BEGIN IMMEDIATE"
+        rc = Sqlite::updateIntInt db withdraw cents id
+        entry = journal db id "debit" cents note
+        done = Sqlite::run db "COMMIT"
+        Landed(balance = balanceSql db id)
 
     // Both sides of a transfer and their journal rows commit as one SQLite
     // transaction. The API validates both account ids before invoking this
@@ -80,17 +90,17 @@ module Ledger
     export transferSql db fromId toId cents note =
         before = balanceSql db fromId
         match before < cents
-            true =>
-                entry = journal db fromId "refused" cents note
-                Refused(why = "insufficient funds")
-            false =>
-                begun = Sqlite::run db "BEGIN IMMEDIATE"
-                debited = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance - ? WHERE id = ?" cents fromId
-                credited = Sqlite::updateIntInt db "UPDATE accounts SET balance = balance + ? WHERE id = ?" cents toId
-                sent = journal db fromId "debit" cents note
-                received = journal db toId "credit" cents note
-                done = Sqlite::run db "COMMIT"
-                Landed(balance = balanceSql db fromId)
+            true => shortfall db fromId cents note
+            false => transferred db fromId toId cents note
+
+    transferred db fromId toId cents note =
+        begun = Sqlite::run db "BEGIN IMMEDIATE"
+        taken = Sqlite::updateIntInt db withdraw cents fromId
+        given = Sqlite::updateIntInt db deposit cents toId
+        sent = journal db fromId "debit" cents note
+        received = journal db toId "credit" cents note
+        done = Sqlite::run db "COMMIT"
+        Landed(balance = balanceSql db fromId)
 
     export balanceSql db id = Sqlite::queryInt db "SELECT balance FROM accounts WHERE id = ?" id
 

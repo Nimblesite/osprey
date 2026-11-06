@@ -29,7 +29,8 @@ module Steering
 
     slot (values, i) = listGet values i ?: 0
 
-    squared (x, y) = x * x + y * y
+    (** The squared distance between the points, so comparisons need no square root. *)
+    export squared (x, y) = x * x + y * y
 
     // The neighbouring cell on the side of a sixteen-unit cell this coordinate is nearer to.
     toward value = match value * 0.0625 - floor (value * 0.0625) < 0.5

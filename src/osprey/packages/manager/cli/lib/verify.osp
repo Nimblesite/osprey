@@ -23,7 +23,6 @@ import registry::Names
 /// `verified N packages` and the status is 0. Implements the offline audit of
 /// [PACKAGE-FOLDER-REGISTRY].
 module Verify {
-    let failStatus = 1
     let usageCode = "verify.usage"
     let noLockCode = "verify.no-lock"
     let noLocalLockCode = "verify.no-local-lock"
@@ -38,14 +37,9 @@ module Verify {
 
     let usageText = ["usage: osprey-pkg verify [--offline] [--project <dir>]"]
 
-    fn usageReport() = Reports::usage(listPrepend(usageText, usageCode))
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
-
     fn oneLine(ok, line) = if ok { [] } else { [line] }
 
     // Shared field names need typed receivers (issue #273).
-    fn packagesOf(lock: Lockfile::Lock) = lock.packages
-    fn overridesOf(lock: Lockfile::Lock) = lock.overrides
     fn pinnedManifest(o: Lockfile::Override) = o.manifestDigest
 
     fn manifestLines(lock, manifest, digest) = listConcat(
@@ -68,7 +62,7 @@ module Verify {
         Success { value } => oneLine(value == pinnedManifest(o), "${localManifestCode} ${name}")
     }
 
-    fn treeFindings(lock, pkg: Lockfile::Package, fileList, name) = match Lockfile::overrideFor(overridesOf(lock), pkg.release.key) {
+    fn treeFindings(lock, pkg: Lockfile::Package, fileList, name) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
         Success { value } => localFindings(value, fileList, name)
         Error => publishedFindings(pkg, fileList, name)
     }
@@ -87,7 +81,7 @@ module Verify {
         }
     }
 
-    fn packageLines(project, lock) = foldList(packagesOf(lock), [], fn(lines, p) => listConcat(lines, packageFindings(project, lock, p)))
+    fn packageLines(project, lock) = foldList(Lockfile::packagesOf(lock), [], fn(lines, p) => listConcat(lines, packageFindings(project, lock, p)))
 
     // ---- the Python plane ([PACKAGE-PYTHON-UV]) ----
 
@@ -95,7 +89,7 @@ module Verify {
     fn hexOf(pkg: Lockfile::Package) = Digests::hexOf(pkg.release.digest)
     fn keyTextOf(pkg: Lockfile::Package) = Names::display(pkg.release.key)
 
-    fn pythonPathFor(lock, pkg: Lockfile::Package) = match Lockfile::overrideFor(overridesOf(lock), pkg.release.key) {
+    fn pythonPathFor(lock, pkg: Lockfile::Package) = match Lockfile::overrideFor(Lockfile::overridesOf(lock), pkg.release.key) {
         Success { value } => "../../${Lockfile::overridePathOf(value)}"
         Error => "../packages/${keyTextOf(pkg)}/${hexOf(pkg)}"
     }
@@ -110,7 +104,7 @@ module Verify {
 
     fn appendMember(done, member) = Checked::andThen(member, fn(value) => Success { value: Maybe::fold(value, done, fn(m) => listAppend(done, m)) })
 
-    fn members(project, lock, manifest) = foldList(packagesOf(lock), appendMember([], PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml")))), fn(acc, p) => match acc {
+    fn members(project, lock, manifest) = foldList(Lockfile::packagesOf(lock), appendMember([], PythonPlane::memberOf(manifest, "../..", readOr(Project::pathAt(project, "pyproject.toml")))), fn(acc, p) => match acc {
         Error => acc
         Success { value } => appendMember(value, packageMember(project, lock, p))
     })
@@ -124,44 +118,30 @@ module Verify {
 
     fn findings(project, lock, manifest, digest) = {
         let lines = listConcat(listConcat(manifestLines(lock, manifest, digest), packageLines(project, lock)), pythonLines(project, lock, manifest))
-        if isEmpty(lines) { Reports::success(["verified ${length(packagesOf(lock))} packages"]) }
-        else { failed(lines) }
+        if isEmpty(lines) { Reports::success(["verified ${length(Lockfile::packagesOf(lock))} packages"]) }
+        else { Reports::failure(lines) }
     }
 
-    fn digested(project, lock, manifest) = match ManifestJson::digest(manifest) {
-        Error { message } => failed([message])
-        Success { value } => findings(project, lock, manifest, value)
-    }
+    fn digested(project, lock, manifest) = Reports::checked(ManifestJson::digest(manifest), fn(value) => findings(project, lock, manifest, value))
 
-    fn checked(project, lock) = match Project::readAt(project) {
-        Error { message } => failed([message])
-        Success { value } => digested(project, lock, value)
-    }
+    fn checked(project, lock) = Reports::checked(Project::readAt(project), fn(value) => digested(project, lock, value))
 
     /// The offline check of `osprey.lock` at `project`; `build --release` runs this.
-    export fn verifyReleaseAt(project) = match Project::readLockAt(project) {
-        Error { message } => failed(["${noLockCode} ${message}"])
-        Success { value } => checked(project, value)
-    }
+    export fn verifyReleaseAt(project) = Reports::checkedWith(Project::readLockAt(project), noLockCode, fn(value) => checked(project, value))
 
     /// The offline check of `osprey.local.lock` at `project`; a bare `build` runs this while the overlay is active.
     export fn verifyLocalAt(project) = match Project::readLocalLockAt(project) {
-        Error { message } => failed(["${noLocalLockCode} ${message}", remediation])
+        Error { message } => Reports::failure(["${noLocalLockCode} ${message}", remediation])
         Success { value } => checked(project, value)
     }
 
     /// The offline check of whichever lock the overlay selects.
-    export fn verifyOfflineAt(project) = match Overlay::readAt(project) {
-        Error { message } => failed([message])
-        Success { value } => if Overlay::active(value) { verifyLocalAt(project) } else { verifyReleaseAt(project) }
-    }
+    export fn verifyOfflineAt(project) = Reports::checked(Overlay::readAt(project), fn(value) => if Overlay::active(value) { verifyLocalAt(project) } else { verifyReleaseAt(project) })
 
     /// The whole offline check in the working directory.
     export fn verifyOffline() = verifyOfflineAt("")
 
     /// The command: `verify`, `verify --offline` and `verify --project <dir>`.
-    export fn run(args) = match Flags::parse(args, [Flags::projectFlag], [offlineFlag]) {
-        Error => usageReport()
-        Success { value } => verifyOfflineAt(Flags::project(value))
-    }
+    export fn run(args) = Flags::dispatch(args, [Flags::projectFlag], [offlineFlag], usageCode, usageText,
+        fn(parsed) => verifyOfflineAt(Flags::project(parsed)))
 }

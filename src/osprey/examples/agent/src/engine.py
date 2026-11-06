@@ -63,36 +63,43 @@ class Provider:
 
 MOONSHOT_WIRE = Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=True, maxTokens="max_tokens")
 MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY = Wire(kind="moonshotai", strict=False, reasoning=True, sendBack=False, maxTokens="max_tokens")
+DEEPSEEK_WIRE = Wire(kind="deepseek", strict=True, reasoning=True, sendBack=True, maxTokens="max_tokens")
+DEEPSEEK_PLAIN_WIRE = Wire(kind="deepseek", strict=True, reasoning=False, sendBack=True, maxTokens="max_tokens")
+ZAI_WIRE = Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")
+
+# The effort levels a model offers, in the order its picker shows them.
+LOW_HIGH_MAX = ["low", "high", "max"]
+OFF_HIGH_MAX = ["off", "high", "max"]
 
 DEEPSEEK_MODELS = [
-    ModelEntry(id="deepseek-flash", label="DeepSeek V4.1 Flash", levels=["low", "high", "max"], wire=Wire(kind="deepseek", strict=True, reasoning=True, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="deepseek-v4-pro", label="DeepSeek V4 Pro", levels=["high", "max"], wire=Wire(kind="deepseek", strict=True, reasoning=True, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="deepseek-chat", label="DeepSeek Chat", levels=[], wire=Wire(kind="deepseek", strict=True, reasoning=False, sendBack=True, maxTokens="max_tokens")),
-    ModelEntry(id="deepseek-reasoner", label="DeepSeek Reasoner", levels=[], wire=Wire(kind="deepseek", strict=True, reasoning=True, sendBack=True, maxTokens="max_tokens")),
+    ModelEntry(id="deepseek-flash", label="DeepSeek V4.1 Flash", levels=LOW_HIGH_MAX, wire=DEEPSEEK_WIRE),
+    ModelEntry(id="deepseek-v4-pro", label="DeepSeek V4 Pro", levels=["high", "max"], wire=DEEPSEEK_WIRE),
+    ModelEntry(id="deepseek-chat", label="DeepSeek Chat", levels=[], wire=DEEPSEEK_PLAIN_WIRE),
+    ModelEntry(id="deepseek-reasoner", label="DeepSeek Reasoner", levels=[], wire=DEEPSEEK_WIRE),
 ]
 
 MOONSHOT_MODELS = [
-    ModelEntry(id="kimi-k3", label="Kimi K3", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
+    ModelEntry(id="kimi-k3", label="Kimi K3", levels=LOW_HIGH_MAX, wire=MOONSHOT_WIRE),
     ModelEntry(id="kimi-k2.7-code-highspeed", label="Kimi K2.7 Code HighSpeed", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
     ModelEntry(id="kimi-k2.7-code", label="Kimi K2.7 Code", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
     ModelEntry(id="kimi-k2.6", label="Kimi K2.6", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
 ]
 
 KIMI_CODING_MODELS = [
-    ModelEntry(id="k3", label="Kimi K3", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
-    ModelEntry(id="k3-256k", label="Kimi K3-256K", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
-    ModelEntry(id="kimi-for-coding", label="Kimi For Coding", levels=["low", "high", "max"], wire=MOONSHOT_WIRE),
+    ModelEntry(id="k3", label="Kimi K3", levels=LOW_HIGH_MAX, wire=MOONSHOT_WIRE),
+    ModelEntry(id="k3-256k", label="Kimi K3-256K", levels=LOW_HIGH_MAX, wire=MOONSHOT_WIRE),
+    ModelEntry(id="kimi-for-coding", label="Kimi For Coding", levels=LOW_HIGH_MAX, wire=MOONSHOT_WIRE),
     ModelEntry(id="kimi-for-coding-highspeed", label="Kimi For Coding HighSpeed", levels=[], wire=MOONSHOT_WIRE_WITHOUT_REASONING_HISTORY),
 ]
 
 GLM_MODELS = [
-    ModelEntry(id="glm-5.3", label="GLM-5.3", levels=["low", "high", "max"], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="glm-5.3-flash", label="GLM-5.3-Flash", levels=["low", "high", "max"], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="glm-5.3-highspeed", label="GLM-5.3 Highspeed", levels=["low", "high", "max"], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="glm-5.2", label="GLM-5.2", levels=["off", "high", "max"], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="glm-5.2-highspeed", label="GLM-5.2 Highspeed", levels=["off", "high", "max"], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="glm-5-turbo", label="GLM-5-Turbo", levels=[], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
-    ModelEntry(id="glm-4.7", label="GLM-4.7", levels=[], wire=Wire(kind="zai", strict=True, reasoning=True, sendBack=False, maxTokens="max_tokens")),
+    ModelEntry(id="glm-5.3", label="GLM-5.3", levels=LOW_HIGH_MAX, wire=ZAI_WIRE),
+    ModelEntry(id="glm-5.3-flash", label="GLM-5.3-Flash", levels=LOW_HIGH_MAX, wire=ZAI_WIRE),
+    ModelEntry(id="glm-5.3-highspeed", label="GLM-5.3 Highspeed", levels=LOW_HIGH_MAX, wire=ZAI_WIRE),
+    ModelEntry(id="glm-5.2", label="GLM-5.2", levels=OFF_HIGH_MAX, wire=ZAI_WIRE),
+    ModelEntry(id="glm-5.2-highspeed", label="GLM-5.2 Highspeed", levels=OFF_HIGH_MAX, wire=ZAI_WIRE),
+    ModelEntry(id="glm-5-turbo", label="GLM-5-Turbo", levels=[], wire=ZAI_WIRE),
+    ModelEntry(id="glm-4.7", label="GLM-4.7", levels=[], wire=ZAI_WIRE),
 ]
 
 PROVIDERS = [

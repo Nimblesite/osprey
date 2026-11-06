@@ -104,11 +104,14 @@ module Preludes
     admit (env, constant) =
         statement = Closing::close (constant.statement, [])
         match Infer::sort (env, [], statement)
-            Error message => Refused ("`" + constant.title + "`: " + message)
+            Error message => refused (constant, message)
             Success _ => checked (env, constant, statement)
 
+    // A constant the kernel would not take, naming the constant and the kernel's reason.
+    refused (constant, message) = Refused ("`" + constant.title + "`: " + message)
+
     checked (env, constant, statement) = match Infer::check (env, [], Closing::close (constant.value, []), statement)
-        Error message => Refused ("`" + constant.title + "`: " + message)
+        Error message => refused (constant, message)
         Success _ => added (Environment::add (env, proof::Decl(name = constant.title, params = [], ty = statement, body = body constant)))
 
     added result = match result

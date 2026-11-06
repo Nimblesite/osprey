@@ -171,15 +171,9 @@ def polevl_from(x: float, coef, i: int, ans: float) -> float:
 
 
 def p1evl(x: float, coef) -> float:
-    """Cephes p1evl: Horner evaluation of a polynomial with a leading 1."""
-    return p1evl_from(x, coef, 1, x + unwrap_or(listGet(coef, 0), 0.0))
-
-
-def p1evl_from(x: float, coef, i: int, ans: float) -> float:
-    if i >= len(coef):
-        return ans
-    else:
-        return p1evl_from(x, coef, i + 1, ans * x + unwrap_or(listGet(coef, i), 0.0))
+    """Cephes p1evl: Horner evaluation of a polynomial with a leading 1, so it
+    walks the same recurrence `polevl` does once the leading term is written."""
+    return polevl_from(x, coef, 1, x + unwrap_or(listGet(coef, 0), 0.0))
 
 
 class ChState:

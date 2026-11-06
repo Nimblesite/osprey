@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Bytes
 
 /// SPDX license expressions as `[package].license` accepts them: license
 /// identifiers (`Apache-2.0`, `MIT`, `GPL-3.0-or-later`, `LicenseRef-x`) with
@@ -10,8 +11,8 @@ module Spdx {
     let maxBytes = 256
     let operators = ["AND", "OR", "WITH"]
 
-    fn idByte(b) = (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 46 || b == 45 || b == 43
-    fn identifier(token) = byteLength(token) >= 1 && fold(range(0, byteLength(token)), true, fn(ok, i) => ok && idByte(byteAt(token, i) ?: 0))
+    fn idByte(b) = Bytes::isAlnum(b) || b == 46 || b == 45 || b == 43
+    fn identifier(token) = byteLength(token) >= 1 && Bytes::everyByte(token, idByte)
         && !startsWith(token, "+") && (indexOf(drop(token, 0), "+") ?: byteLength(token)) >= wrapSub(byteLength(token), 1)
 
     fn spaced(text) = replace(replace(text, "(", " ( ") ?: text, ")", " ) ") ?: text

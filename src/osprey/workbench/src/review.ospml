@@ -30,7 +30,7 @@ module Reviews
 
     checked (rows, head, found) = match listGet found.problems 0
         Success problem => Check(checkHead = head, checkLine = satSub problem.line 1, checkTone = "unchecked", checkNote = problem.message)
-        Error _ => judged (rows, head, Verdicts::decide (found.statement, mapList (Steps::sentences found.proof, \sentence => Steps::read sentence)))
+        Error _ => judged (rows, head, Verdicts::decide (found.statement, Steps::readAll found.proof))
 
     judged (rows, head, verdict) = match verdict
         Checked => Check(checkHead = head, checkLine = 0 - 1, checkTone = "checked", checkNote = "Checked by the Osprey kernel")

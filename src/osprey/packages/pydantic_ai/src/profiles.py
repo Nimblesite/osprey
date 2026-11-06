@@ -55,14 +55,19 @@ def merge_profile(base, overrides):
     return mapMerge(base, overrides)
 
 
+def profile_setting(profile, key) -> Json:
+    """The value under `key`, JSON null when absent."""
+    return unwrap_or(mapGet(profile, key), JsonNull())
+
+
 def profile_bool(profile, key, fallback) -> bool:
     """The boolean under `key`, `fallback` when absent."""
-    return unwrap_or(jsonBool(unwrap_or(mapGet(profile, key), JsonNull())), fallback)
+    return unwrap_or(jsonBool(profile_setting(profile, key)), fallback)
 
 
 def profile_text(profile, key, fallback) -> str:
     """The string under `key`, `fallback` when absent or empty."""
-    text = unwrap_or(jsonText(unwrap_or(mapGet(profile, key), JsonNull())), fallback)
+    text = unwrap_or(jsonText(profile_setting(profile, key)), fallback)
     return fallback if text == "" else text
 
 

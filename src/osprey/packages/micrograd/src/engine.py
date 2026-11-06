@@ -89,10 +89,15 @@ def add(g, a, b):
     return append(g, Node(op="+", a=a, b=b, data=data(g, a) + data(g, b), exponent=0))
 
 
+def joined(g, a, operand, op):
+    """Gives the operand its own node, then joins `a` to it with `op`."""
+    g2 = operand(g)
+    return op(g2, a, top(g2))
+
+
 def add_const(g, a, k):
     """`a + k` for a bare number k: micrograd wraps k in a leaf, then adds."""
-    g2 = value(g, k)
-    return add(g2, a, top(g2))
+    return joined(g, a, lambda g2: value(g2, k), add)
 
 
 def mul(g, a, b):
@@ -102,8 +107,7 @@ def mul(g, a, b):
 
 def mul_const(g, a, k):
     """`a * k` for a bare number k: micrograd wraps k in a leaf, then multiplies."""
-    g2 = value(g, k)
-    return mul(g2, a, top(g2))
+    return joined(g, a, lambda g2: value(g2, k), mul)
 
 
 def pow_const(g, a, k):
@@ -116,14 +120,19 @@ def relu(g, a):
     return append(g, Node(op="ReLU", a=a, b=-1, data=0.0 if data(g, a) < 0.0 else data(g, a), exponent=0))
 
 
+def unary(g, a, op, value_of):
+    """One unary node of `op`, whose data `value_of` derives from `a`'s."""
+    return append(g, Node(op=op, a=a, b=-1, data=value_of(data(g, a)), exponent=0))
+
+
 def tanh(g, a):
     """micrograd's lecture `tanh`: `(e^2x - 1) / (e^2x + 1)` as a `tanh` node."""
-    return append(g, Node(op="tanh", a=a, b=-1, data=tanh_of(data(g, a)), exponent=0))
+    return unary(g, a, "tanh", tanh_of)
 
 
 def exp(g, a):
     """micrograd's lecture `exp`: e raised to a, as an `exp` node."""
-    return append(g, Node(op="exp", a=a, b=-1, data=exp_of(data(g, a)), exponent=0))
+    return unary(g, a, "exp", exp_of)
 
 
 def neg(g, a):
@@ -133,8 +142,7 @@ def neg(g, a):
 
 def sub(g, a, b):
     """micrograd's `__sub__` over a Value: `a + (-b)`, the neg's two nodes then a `+`."""
-    g2 = neg(g, b)
-    return add(g2, a, top(g2))
+    return joined(g, a, lambda g2: neg(g2, b), add)
 
 
 def sub_const(g, a, k: float):

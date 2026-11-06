@@ -18,19 +18,9 @@ TONE = ".osprey/scratch/live-tone.mp3"
 """Where the tone is written."""
 
 
-def ignore(_pid, _kind, _text):
-    return None
-
-
 def tone():
     """Writes the six-second tone; ffmpeg's exit status."""
-    match spawnProcess(f"mkdir -p .osprey/scratch && ffmpeg -loglevel error -y -f lavfi -i sine=frequency=440:duration=6 -q:a 9 {TONE}", ignore):
-        case Success(value=pid):
-            code = awaitProcess(pid)
-            cleanupProcess(pid)
-            return code
-        case Error():
-            return -1
+    return Dns.run(f"mkdir -p .osprey/scratch && ffmpeg -loglevel error -y -f lavfi -i sine=frequency=440:duration=6 -q:a 9 {TONE}")
 
 
 def until(player, now, want, budget):

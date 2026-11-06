@@ -110,12 +110,12 @@ def delta_of(piece):
 
 def text_of(turn):
     """The turn's free text."""
-    return join(mapList(filterList(turn.pieces, lambda piece: piece.kind == Completions.TEXT), lambda piece: piece.text), "")
+    return Completions.pieces_text(turn, Completions.TEXT)
 
 
 def reasoning_of(turn):
     """The `reasoning_content` member when the turn reasoned, and nothing when it did not."""
-    reasoned = join(mapList(filterList(turn.pieces, lambda piece: piece.kind == Completions.THINKING), lambda piece: piece.text), "")
+    reasoned = Completions.pieces_text(turn, Completions.THINKING)
     return [] if reasoned == "" else [Wire.text_member("reasoning_content", reasoned)]
 
 

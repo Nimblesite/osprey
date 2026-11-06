@@ -12,68 +12,64 @@ import registry::ManifestModel
 /// Implements the JSON encoding and `H("osprey.manifest.v1", manifest)` of
 /// [PACKAGE-TYPE-INVARIANTS].
 module ManifestJson {
-    fn member(key, value) = Json::Member { key: key, value: value }
-    fn str(text) = Json::Str { text: text }
-    fn num(value) = Json::Num { value: value }
-    fn obj(members) = Json::Obj { members: members }
-    fn strings(items) = Json::Arr { items: mapList(items, str) }
-    fn variant(name, payload) = obj([member(name, payload)])
-    fn empty() = obj([])
+    fn strings(items) = Json::Arr { items: mapList(items, Json::str) }
+    fn variant(name, payload) = Json::obj([Json::member(name, payload)])
+    fn empty() = Json::obj([])
 
-    fn key(k) = obj([member("name", str(k.name)), member("scope", str(k.scope))])
+    fn key(k) = Json::obj([Json::member("name", Json::str(k.name)), Json::member("scope", Json::str(k.scope))])
 
     // `requirementJson` avoids shadowing the `requirement` field bound by the
     // edge patterns below (a bound value is not a function).
-    fn requirementJson(r) = obj([member("epoch", num(r.epoch)), member("minimumOrdinal", num(r.minimumOrdinal)), member("package", key(r.package))])
+    fn requirementJson(r) = Json::obj([Json::member("epoch", Json::num(r.epoch)), Json::member("minimumOrdinal", Json::num(r.minimumOrdinal)), Json::member("package", key(r.package))])
 
     fn edge(e) = match e {
-        ManifestModel::Runtime { requirement } => variant("Runtime", obj([member("requirement", requirementJson(requirement))]))
-        ManifestModel::Build { requirement } => variant("Build", obj([member("requirement", requirementJson(requirement))]))
-        ManifestModel::Test { requirement } => variant("Test", obj([member("requirement", requirementJson(requirement))]))
+        ManifestModel::Runtime { requirement } => variant("Runtime", Json::obj([Json::member("requirement", requirementJson(requirement))]))
+        ManifestModel::Build { requirement } => variant("Build", Json::obj([Json::member("requirement", requirementJson(requirement))]))
+        ManifestModel::Test { requirement } => variant("Test", Json::obj([Json::member("requirement", requirementJson(requirement))]))
     }
 
-    fn system(s) = obj([member("capability", str(s.capability)), member("minimumRevision", num(s.minimumRevision))])
+    fn system(s) = Json::obj([Json::member("capability", Json::str(s.capability)), Json::member("minimumRevision", Json::num(s.minimumRevision))])
 
-    fn grant(g: ManifestModel::Grant) = obj([member("capabilities", strings(g.capabilities)), member("package", key(g.package))])
+    fn grant(g: ManifestModel::Grant) = Json::obj([Json::member("capabilities", strings(g.capabilities)), Json::member("package", key(g.package))])
 
     // `kindJson` avoids shadowing the `kind` field bound by the role patterns below.
     fn kindJson(k) = variant(ManifestModel::kindName(k), empty())
 
     fn role(r) = match r {
-        ManifestModel::Documentation { kind } => variant("Documentation", obj([member("kind", kindJson(kind))]))
-        ManifestModel::RuntimeData { kind, requiredCapability } => variant("RuntimeData", obj([member("kind", kindJson(kind)), member("requiredCapability", str(requiredCapability))]))
+        ManifestModel::Documentation { kind } => variant("Documentation", Json::obj([Json::member("kind", kindJson(kind))]))
+        ManifestModel::RuntimeData { kind, requiredCapability } => variant("RuntimeData", Json::obj([Json::member("kind", kindJson(kind)), Json::member("requiredCapability", Json::str(requiredCapability))]))
     }
 
-    fn asset(a: ManifestModel::Asset) = obj([member("byteLength", num(a.byteLength)), member("digest", str(a.digest)), member("path", str(a.path)), member("role", role(a.role))])
+    fn asset(a: ManifestModel::Asset) = Json::obj([Json::member("byteLength", Json::num(a.byteLength)), Json::member("digest", Json::str(a.digest)), Json::member("path", Json::str(a.path)), Json::member("role", role(a.role))])
 
-    fn discovery(d) = obj([member("keywords", strings(d.keywords)), member("summary", str(d.summary))])
+    fn discovery(d) = Json::obj([Json::member("keywords", strings(d.keywords)), Json::member("summary", Json::str(d.summary))])
 
-    fn publication(p: ManifestModel::Publication) = obj([member("discovery", discovery(p.discovery)), member("licenseExpression", str(p.licenseExpression)), member("package", key(p.package))])
+    fn publication(p: ManifestModel::Publication) = Json::obj([Json::member("discovery", discovery(p.discovery)), Json::member("licenseExpression", Json::str(p.licenseExpression)), Json::member("package", key(p.package))])
 
     fn flavor(f) = variant(ManifestModel::flavorName(f), empty())
 
-    fn optional(name, maybe, encode) = Maybe::fold(maybe, [], fn(value) => [member(name, encode(value))])
+    fn optional(name, maybe, encode) = Maybe::fold(maybe, [], fn(value) => [Json::member(name, encode(value))])
 
     fn required(m: ManifestModel::Manifest) = [
-        member("allowWildcardImports", Json::Bool { flag: m.allowWildcardImports }),
-        member("assets", Json::Arr { items: mapList(m.assets, asset) }),
-        member("dependencies", Json::Arr { items: mapList(m.dependencies, edge) }),
-        member("grants", Json::Arr { items: mapList(m.grants, grant) }),
-        member("projectName", str(m.projectName)),
-        member("sourceRoots", strings(m.sourceRoots)),
-        member("systemRequirements", Json::Arr { items: mapList(m.systemRequirements, system) }),
-        member("testRoots", strings(m.testRoots)),
-        member("pythonSources", strings(m.pythonSources))
+        Json::member("allowWildcardImports", Json::Bool { flag: m.allowWildcardImports }),
+        Json::member("assets", Json::Arr { items: mapList(m.assets, asset) }),
+        Json::member("dependencies", Json::Arr { items: mapList(m.dependencies, edge) }),
+        Json::member("grants", Json::Arr { items: mapList(m.grants, grant) }),
+        Json::member("projectName", Json::str(m.projectName)),
+        Json::member("sourceRoots", strings(m.sourceRoots)),
+        Json::member("systemRequirements", Json::Arr { items: mapList(m.systemRequirements, system) }),
+        Json::member("testRoots", strings(m.testRoots)),
+        Json::member("pythonSources", strings(m.pythonSources))
     ]
 
     fn optionals(m: ManifestModel::Manifest) = listConcat(listConcat(listConcat(
-        optional("defaultNamespace", m.defaultNamespace, str),
-        optional("entry", m.entry, str)),
+        optional("defaultNamespace", m.defaultNamespace, Json::str),
+        optional("entry", m.entry, Json::str)),
         optional("flavor", m.flavor, flavor)),
         optional("publication", m.publication, publication))
 
     /// The JSON value; member order is irrelevant because serialization sorts.
-    export fn toJson(manifest) = obj(listConcat(required(manifest), optionals(manifest)))
+    export fn toJson(manifest) = Json::obj(listConcat(required(manifest), optionals(manifest)))
 
     /// The RFC 8785 bytes of the manifest.
     export fn canonical(manifest) = Canonical::serialize(toJson(manifest))

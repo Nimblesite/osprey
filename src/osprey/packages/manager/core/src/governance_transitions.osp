@@ -88,13 +88,13 @@ module GovernanceTransitions {
     /// key, but the chosen active human member's own fresh acceptance makes
     /// them the single administrator. There is no zero-admin draft and no
     /// way to install an admin without the nominee's credential.
-    export fn createPackage(registry, org, key: Names::Key, id, admin, custodianProof, adminAcceptance) =
+    export fn createPackage(registry, org, key: Names::Key, id, admin, custodianEvidence, adminAcceptance) =
         Checked::andThen(Governance::organizationOf(registry, org), fn(o: Governance::Organization) =>
             Checked::andThen(keyChecks(registry, o, key, id), fn(_) =>
                 Checked::andThen(adminMember(registry, org, admin), fn(m: Governance::Membership) =>
                     Checked::andThen(humanMember(registry, m), fn(_) =>
                         Checked::andThen(custodianProof(registry, org,
-                            Governance::creationStatement(id, key, admin), custodianProof), fn(_) =>
+                            Governance::creationStatement(id, key, admin), custodianEvidence), fn(_) =>
                             Checked::andThen(Governance::requireProof(adminAcceptance, m.principal, admin,
                                 Governance::creationStatement(id, key, admin)), fn(_) =>
                                 Success { value: registry { packages: listAppend(registry.packages,

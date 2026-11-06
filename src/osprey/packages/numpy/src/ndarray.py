@@ -33,25 +33,21 @@ __all__ = [
     "cumsum", "cumprod",
 ]
 
-
 class NDArray[B]:
     """A row-major float64 array: its shape and the buffer holding its
     elements. `B` is the buffer representation the installed handler picked."""
     shape: list[int]
     data: B
 
-
 def scalar(value):
     """A rank-0 array holding one element, which broadcasting spreads to any
     operand: `add(a, scalar(2.0))`."""
     return NDArray(shape=[], data=Storage.built(perform(Storage.Buffer.build(1, lambda i: value))))
 
-
 def empty():
     """A zero-element rank-1 array, the validated-access fallback every
     `unwrap_or` over a list of arrays needs; never actually read."""
     return NDArray(shape=[0], data=Storage.built(perform(Storage.Buffer.build(0, lambda i: 0.0))))
-
 
 # Creation ----------------------------------------------------------------
 
@@ -60,11 +56,9 @@ def array(values, shape):
     g = Errors.require(len(values) == Layout.flat_size(shape), Errors.reshape_failed(len(values), shape))
     return NDArray(shape=shape, data=Storage.lift(values))
 
-
 def array1(values):
     """A rank-1 array from a flat list."""
     return array(values, [len(values)])
-
 
 def array2(rows):
     """A rank-2 array from a list of equal-length rows."""
@@ -73,7 +67,6 @@ def array2(rows):
     g = Errors.require(fold(range(n), True, lambda ok, i: ok and len(unwrap_or(listGet(rows, i), [])) == m), Errors.inhomogeneous(1, [n]))
     flat = fold(range(n), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(rows, i), [])))
     return array(flat, [n, m])
-
 
 def array3(blocks):
     """A rank-3 array from a list of equal-shaped rank-2 blocks."""
@@ -86,36 +79,29 @@ def array3(blocks):
     flat = fold(range(d0), [], lambda acc, i: listConcat(acc, fold(range(d1), [], lambda acc2, r: listConcat(acc2, unwrap_or(listGet(unwrap_or(listGet(blocks, i), []), r), [])))))
     return array(flat, [d0, d1, d2])
 
-
 def full(shape, value):
     """An array of `shape` with every element `value`."""
     return NDArray(shape=shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(shape), lambda i: value))))
-
 
 def zeros(shape):
     """An array of `shape` filled with 0.0."""
     return full(shape, 0.0)
 
-
 def ones(shape):
     """An array of `shape` filled with 1.0."""
     return full(shape, 1.0)
-
 
 def full_like(a, value):
     """An array shaped like `a` with every element `value`."""
     return full(a.shape, value)
 
-
 def zeros_like(a):
     """An array shaped like `a` filled with 0.0."""
     return full(a.shape, 0.0)
 
-
 def ones_like(a):
     """An array shaped like `a` filled with 1.0."""
     return full(a.shape, 1.0)
-
 
 def arange(start, stop, step):
     """np.arange: `start + i*step` for `i` below `ceil((stop-start)/step)`,
@@ -124,7 +110,6 @@ def arange(start, stop, step):
     n = Math.ceil_int((stop - start) / step)
     nn = n if n > 0 else 0
     return NDArray(shape=[nn], data=Storage.built(perform(Storage.Buffer.build(nn, lambda i: start + toFloat(i) * step))))
-
 
 def linspace(start, stop, num):
     """np.linspace: `num` evenly spaced values including `stop`."""
@@ -137,23 +122,19 @@ def linspace(start, stop, num):
         delta = (stop - start) / toFloat(num - 1)
         return NDArray(shape=[num], data=Storage.built(perform(Storage.Buffer.build(num, lambda i: start + delta * toFloat(i)))))
 
-
 def eye(n):
     """The `n` by `n` identity matrix."""
     g = Errors.require(n >= 0, Errors.negative_dimensions())
     return NDArray(shape=[n, n], data=Storage.built(perform(Storage.Buffer.build(n * n, lambda i: 1.0 if i // n == i % n else 0.0))))
-
 
 def eye_m(n, m):
     """The `n` by `m` matrix with ones on the main diagonal."""
     g = Errors.require(n >= 0 and m >= 0, Errors.negative_dimensions())
     return NDArray(shape=[n, m], data=Storage.built(perform(Storage.Buffer.build(n * m, lambda i: 1.0 if i // m == i % m else 0.0))))
 
-
 def identity(n):
     """The `n` by `n` identity matrix (numpy's `identity`)."""
     return eye(n)
-
 
 def diag(a):
     """numpy's `diag`: a 1-D array becomes a diagonal matrix; a 2-D array's
@@ -168,12 +149,10 @@ def diag(a):
         k = m if m < n else n
         return NDArray(shape=[k], data=Storage.built(perform(Storage.Buffer.build(k, lambda i: Storage.at(a.data, i * (n + 1))))))
 
-
 def tri(n):
     """numpy's `tri(n)`: an `n` by `n` matrix with ones on and below the
     main diagonal."""
     return tri_k(n, n, 0)
-
 
 def tri_k(n, m, k):
     """numpy's `tri(n, m, k)`: an `n` by `m` matrix with ones where
@@ -182,28 +161,23 @@ def tri_k(n, m, k):
     mm = m if m > 0 else 0
     return NDArray(shape=[nn, mm], data=Storage.built(perform(Storage.Buffer.build(nn * mm, lambda i: 1.0 if i % mm <= i // mm + k else 0.0))))
 
-
 # Introspection -----------------------------------------------------------
 
 def tolist(a):
     """The elements as a flat host list of floats."""
     return Storage.lower(a.data)
 
-
 def flatten(a):
     """The elements as a flat host list of floats (numpy's `flatten`)."""
     return Storage.lower(a.data)
-
 
 def size(a):
     """The element count."""
     return Layout.flat_size(a.shape)
 
-
 def ndim(a):
     """The number of dimensions."""
     return len(a.shape)
-
 
 # Shape operations --------------------------------------------------------
 
@@ -212,11 +186,9 @@ def reshape(a, shape):
     resolved = Layout.resolve_reshape(Layout.flat_size(a.shape), shape)
     return NDArray(shape=resolved, data=a.data)
 
-
 def ravel(a):
     """A rank-1 view of `a`'s elements in row-major order."""
     return NDArray(shape=[Layout.flat_size(a.shape)], data=a.data)
-
 
 def transpose_perm(a, axes):
     """A transpose along a validated axis permutation."""
@@ -224,15 +196,18 @@ def transpose_perm(a, axes):
     read = Layout.permuted(Layout.strides_of(a.shape), axes)
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: Storage.at(a.data, Layout.offset_of(i, out_shape, read))))))
 
-
 def transpose(a, axes):
     """numpy's `transpose`: a permutation of the axes."""
     return transpose_perm(a, Layout.normalize_axes(axes, len(a.shape)))
 
-
 def transpose_all(a):
     """numpy's `a.T`: every axis reversed."""
     return transpose_perm(a, listReverse(toList(map(range(len(a.shape)), lambda i: i))))
+
+def along(a, axis):
+    """The axis `axis` names for `a`, normalised (a negative axis counts from
+    the last)."""
+    return Layout.normalize_axis(axis, len(a.shape), "")
 
 
 def swapaxes(a, axis1, axis2):
@@ -241,34 +216,28 @@ def swapaxes(a, axis1, axis2):
     ax2 = Layout.normalize_axis(axis2, len(a.shape), "axis2")
     return transpose_perm(a, Layout.swap_perm(len(a.shape), ax1, ax2))
 
-
 def moveaxis(a, source, dest):
     """numpy's `moveaxis`: move `source` axes to `dest` positions."""
     return transpose_perm(a, Layout.moveaxis_perm(len(a.shape), source, dest))
-
 
 def expand_dims(a, axis):
     """numpy's `expand_dims`: a size-1 dimension inserted at `axis`."""
     ax = Layout.normalize_axis(axis, len(a.shape) + 1, "")
     return NDArray(shape=Layout.insert_at(a.shape, ax, 1), data=a.data)
 
-
 def squeeze(a):
     """numpy's `squeeze` with no axis: every size-1 dimension removed."""
     return NDArray(shape=filterList(a.shape, lambda d: d != 1), data=a.data)
 
-
 def squeeze_axis(a, axis):
     """numpy's `squeeze` of one axis, which must have size 1."""
-    ax = Layout.normalize_axis(axis, len(a.shape), "")
+    ax = along(a, axis)
     g = Errors.require(unwrap_or(listGet(a.shape, ax), 1) == 1, Errors.squeeze_failed())
     return NDArray(shape=Layout.drop_at(a.shape, ax), data=a.data)
-
 
 def broadcast_shapes(shapes):
     """np.broadcast_shapes over a list of shapes."""
     return Layout.broadcast_shapes(shapes)
-
 
 def broadcast_to(a, shape):
     """np.broadcast_to: `a` read through broadcast strides over `shape`."""
@@ -276,7 +245,6 @@ def broadcast_to(a, shape):
     g2 = Errors.require(Layout.compatible(a.shape, shape), Errors.broadcast_to_failed(a.shape, shape))
     strides = Layout.broadcast_strides(a.shape, shape)
     return NDArray(shape=shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(shape), lambda i: Storage.at(a.data, Layout.offset_of(i, shape, strides))))))
-
 
 # Joining, moving and gathering -------------------------------------------
 
@@ -298,26 +266,21 @@ def concatenate(arrays, axis):
     out_shape = Layout.set_at(first, ax, fold(range(len(axis_sizes)), 0, lambda acc, t: acc + unwrap_or(listGet(axis_sizes, t), 0)))
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: concat_read(i, out_shape, datas, shapes, ax, axis_sizes, fb)))))
 
-
 def any_concat_row_differs(shapes, first, d):
     """Whether any input's size at dimension `d` differs from `first`'s."""
     return fold(range(len(shapes)), False, lambda any_bad, t: any_bad or unwrap_or(listGet(unwrap_or(listGet(shapes, t), []), d), 0) != unwrap_or(listGet(first, d), 0))
-
 
 def concat_first_row_differs(shapes, first, d):
     """The first input (after index 0) whose size at `d` differs."""
     return fold(range(len(shapes)), -1, lambda bad, t: t if bad < 0 and unwrap_or(listGet(unwrap_or(listGet(shapes, t), []), d), 0) != unwrap_or(listGet(first, d), 0) else bad)
 
-
 def concat_input_index(k, axis_sizes):
     """The input holding the `k`-th element along the concatenation axis."""
     return fold(range(len(axis_sizes)), -1, lambda found, t: t if found < 0 and k < concat_cum_before(t, axis_sizes) + unwrap_or(listGet(axis_sizes, t), 0) else found)
 
-
 def concat_cum_before(j, axis_sizes):
     """The element count before input `j` along the concatenation axis."""
     return fold(range(j), 0, lambda acc, t: acc + unwrap_or(listGet(axis_sizes, t), 0))
-
 
 def concat_read(i, out_shape, datas, shapes, ax, axis_sizes, fb):
     """One concatenate output element: locate the input, then read it."""
@@ -327,7 +290,6 @@ def concat_read(i, out_shape, datas, shapes, ax, axis_sizes, fb):
     in_coords = Layout.set_at(coords, ax, k - concat_cum_before(j, axis_sizes))
     src = Layout.ravel_index(in_coords, unwrap_or(listGet(shapes, j), []))
     return Storage.at(unwrap_or(listGet(datas, j), fb), src)
-
 
 def stack(arrays, axis):
     """np.stack: join equal-shaped arrays along a new axis of their count."""
@@ -341,7 +303,6 @@ def stack(arrays, axis):
     out_shape = Layout.insert_at(first, ax, len(arrays))
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: stack_read(i, out_shape, datas, first, ax, fb)))))
 
-
 def stack_read(i, out_shape, datas, first, ax, fb):
     """One stack output element: which input, then that input's element."""
     coords = Layout.coords_of(i, out_shape)
@@ -349,12 +310,10 @@ def stack_read(i, out_shape, datas, first, ax, fb):
     src = Layout.ravel_index(Layout.drop_at(coords, ax), first)
     return Storage.at(unwrap_or(listGet(datas, j), fb), src)
 
-
 def normalize_index(idx, n, ax):
     """A take index normalised into `[0, n)`, failing with numpy's text."""
     g = Errors.require(idx >= 0 - n and idx < n, Errors.index_out_of_bounds(idx, ax, n))
     return idx if idx >= 0 else idx + n
-
 
 def take(a, indices, axis):
     """np.take: gather `indices` along `axis` (negative indices wrap)."""
@@ -365,7 +324,6 @@ def take(a, indices, axis):
     out_shape = Layout.set_at(a.shape, ax, len(indices))
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: take_read(i, out_shape, a.data, a.shape, normed, ax)))))
 
-
 def take_read(i, out_shape, data, shape, normed, ax):
     """One take output element."""
     coords = Layout.coords_of(i, out_shape)
@@ -373,12 +331,10 @@ def take_read(i, out_shape, data, shape, normed, ax):
     idx = unwrap_or(listGet(normed, k), 0)
     return Storage.at(data, Layout.ravel_index(Layout.set_at(coords, ax, idx), shape))
 
-
 def flip(a, axis):
     """np.flip along one axis."""
-    ax = Layout.normalize_axis(axis, len(a.shape), "")
+    ax = along(a, axis)
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: flip_read(i, a, ax)))))
-
 
 def flip_read(i, a, ax):
     """One flip output element: the axis coordinate is mirrored."""
@@ -386,11 +342,9 @@ def flip_read(i, a, ax):
     n = unwrap_or(listGet(a.shape, ax), 0)
     return Storage.at(a.data, Layout.ravel_index(Layout.set_at(coords, ax, n - 1 - unwrap_or(listGet(coords, ax), 0)), a.shape))
 
-
 def flip_all(a):
     """np.flip with no axis: every dimension reversed."""
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: flip_all_read(i, a)))))
-
 
 def flip_all_read(i, a):
     """One flip-all output element: every coordinate is mirrored."""
@@ -398,12 +352,10 @@ def flip_all_read(i, a):
     mirrored = toList(map(range(len(a.shape)), lambda d: unwrap_or(listGet(a.shape, d), 0) - 1 - unwrap_or(listGet(coords, d), 0)))
     return Storage.at(a.data, Layout.ravel_index(mirrored, a.shape))
 
-
 def roll(a, shift, axis):
     """np.roll along one axis."""
-    ax = Layout.normalize_axis(axis, len(a.shape), "")
+    ax = along(a, axis)
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: roll_read(i, a, ax, shift)))))
-
 
 def roll_read(i, a, ax, shift):
     """One roll output element: the axis coordinate is shifted modulo its
@@ -413,14 +365,12 @@ def roll_read(i, a, ax, shift):
     moved = (((unwrap_or(listGet(coords, ax), 0) - shift) % n) + n) % n
     return Storage.at(a.data, Layout.ravel_index(Layout.set_at(coords, ax, moved), a.shape))
 
-
 def repeat(a, repeats, axis):
     """np.repeat with a scalar count along one axis."""
-    ax = Layout.normalize_axis(axis, len(a.shape), "")
+    ax = along(a, axis)
     n = unwrap_or(listGet(a.shape, ax), 0)
     out_shape = Layout.set_at(a.shape, ax, n * repeats)
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: repeat_read(i, out_shape, a, ax, repeats)))))
-
 
 def repeat_read(i, out_shape, a, ax, repeats):
     """One repeat output element: the axis coordinate is its source's
@@ -428,7 +378,6 @@ def repeat_read(i, out_shape, a, ax, repeats):
     coords = Layout.coords_of(i, out_shape)
     src = Layout.set_at(coords, ax, unwrap_or(listGet(coords, ax), 0) // repeats)
     return Storage.at(a.data, Layout.ravel_index(src, a.shape))
-
 
 def tile(a, reps):
     """np.tile: repeat `a` `reps[d]` times along each dimension."""
@@ -438,14 +387,12 @@ def tile(a, reps):
     out_shape = toList(map(range(len(reps)), lambda d: unwrap_or(listGet(pad, d), 1) * unwrap_or(listGet(reps, d), 1)))
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: tile_read(i, out_shape, a, gap)))))
 
-
 def tile_read(i, out_shape, a, gap):
     """One tile output element: each coordinate is its source's coordinate
     modulo the source dimension."""
     coords = Layout.coords_of(i, out_shape)
     src_coords = toList(map(range(len(a.shape)), lambda d: unwrap_or(listGet(coords, d + gap), 0) % unwrap_or(listGet(a.shape, d), 1)))
     return Storage.at(a.data, Layout.ravel_index(src_coords, a.shape))
-
 
 # Elementwise -------------------------------------------------------------
 
@@ -454,48 +401,103 @@ class BinaryLayout:
     left: list[int]
     right: list[int]
 
-
 def binary_layout(a, b):
     """Share the output shape and strides of an elementwise binary operation."""
     shape = Layout.broadcast_two(a.shape, b.shape)
     return BinaryLayout(shape=shape, left=Layout.broadcast_strides(a.shape, shape), right=Layout.broadcast_strides(b.shape, shape))
 
+# Elementwise kernel tags. A kernel may not call a dynamic function value (the
+# GPU backend rejects a closure it cannot prove pure), so each operation names
+# its kernel by an int tag that `pair_op` and `unary_op` dispatch statically.
+ADD_OP = 0
+SUBTRACT_OP = 1
+MULTIPLY_OP = 2
+DIVIDE_OP = 3
+MAXIMUM_OP = 4
+MINIMUM_OP = 5
+EQUAL_OP = 6
+NOT_EQUAL_OP = 7
+LESS_OP = 8
+LESS_EQUAL_OP = 9
+GREATER_OP = 10
+GREATER_EQUAL_OP = 11
+COMPARE_OPS = EQUAL_OP
+NEGATE_OP = 12
+ABSOLUTE_OP = 13
+SQUARE_OP = 14
+RECIPROCAL_OP = 15
+SIGN_OP = 16
+EXP_OP = 17
+LOG_OP = 18
+SQRT_OP = 19
+TANH_OP = 20
+TRANSCENDENTAL_OPS = EXP_OP
+
+def pair_op(x, y, op):
+    """The elementwise binary kernel selected by an int tag."""
+    return compare_op(x, y, op) if op >= COMPARE_OPS else arith_op(x, y, op)
+
+def arith_op(x, y, op):
+    """The elementwise arithmetic kernel selected by an int tag."""
+    match op:
+        case 0:
+            return Storage.add_f(x, y)
+        case 1:
+            return x - y
+        case 2:
+            return Storage.mul_f(x, y)
+        case 3:
+            return x / y
+        case 4:
+            return Storage.max_f(x, y)
+        case _:
+            return Storage.min_f(x, y)
+
+def compare_op(x, y, op):
+    """The elementwise 0.0/1.0 comparison kernel selected by an int tag."""
+    match op:
+        case 6:
+            return 1.0 if x == y else 0.0
+        case 7:
+            return 0.0 if x == y else 1.0
+        case 8:
+            return 1.0 if x < y else 0.0
+        case 9:
+            return 1.0 if x <= y else 0.0
+        case 10:
+            return 1.0 if x > y else 0.0
+        case _:
+            return 1.0 if x >= y else 0.0
+
+def pair(a, b, op):
+    """An elementwise binary result over the broadcast shape, under the kernel
+    `op` names."""
+    plan = binary_layout(a, b)
+    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: pair_op(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)), op)))))
 
 def add(a, b):
     """np.add, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: Storage.add_f(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)))))))
-
+    return pair(a, b, ADD_OP)
 
 def subtract(a, b):
     """np.subtract, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) - Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right))))))
-
+    return pair(a, b, SUBTRACT_OP)
 
 def multiply(a, b):
     """np.multiply, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: Storage.mul_f(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)))))))
-
+    return pair(a, b, MULTIPLY_OP)
 
 def divide(a, b):
     """np.divide, broadcast. A zero divisor performs Arith.divideByZero."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) / Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right))))))
-
+    return pair(a, b, DIVIDE_OP)
 
 def maximum(a, b):
     """np.maximum, broadcast: NaN wins, else the larger."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: Storage.max_f(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)))))))
-
+    return pair(a, b, MAXIMUM_OP)
 
 def minimum(a, b):
     """np.minimum, broadcast: NaN wins, else the smaller."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: Storage.min_f(Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)), Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)))))))
-
+    return pair(a, b, MINIMUM_OP)
 
 def where(cond, a, b):
     """np.where(cond, a, b): `a` where cond is nonzero, else `b`, all
@@ -506,93 +508,104 @@ def where(cond, a, b):
     sb = Layout.broadcast_strides(b.shape, out)
     return NDArray(shape=out, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out), lambda i: Storage.at(a.data, Layout.offset_of(i, out, sa)) if Storage.at(cond.data, Layout.offset_of(i, out, sc)) != 0.0 else Storage.at(b.data, Layout.offset_of(i, out, sb))))))
 
-
 def equal(a, b):
     """np.equal as 0.0/1.0 floats, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) == Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)) else 0.0))))
-
+    return pair(a, b, EQUAL_OP)
 
 def not_equal(a, b):
     """np.not_equal as 0.0/1.0 floats, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: 0.0 if Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) == Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)) else 1.0))))
-
+    return pair(a, b, NOT_EQUAL_OP)
 
 def less(a, b):
     """np.less as 0.0/1.0 floats, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) < Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)) else 0.0))))
-
+    return pair(a, b, LESS_OP)
 
 def less_equal(a, b):
     """np.less_equal as 0.0/1.0 floats, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) <= Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)) else 0.0))))
-
+    return pair(a, b, LESS_EQUAL_OP)
 
 def greater(a, b):
     """np.greater as 0.0/1.0 floats, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) > Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)) else 0.0))))
-
+    return pair(a, b, GREATER_OP)
 
 def greater_equal(a, b):
     """np.greater_equal as 0.0/1.0 floats, broadcast."""
-    plan = binary_layout(a, b)
-    return NDArray(shape=plan.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(plan.shape), lambda i: 1.0 if Storage.at(a.data, Layout.offset_of(i, plan.shape, plan.left)) >= Storage.at(b.data, Layout.offset_of(i, plan.shape, plan.right)) else 0.0))))
-
+    return pair(a, b, GREATER_EQUAL_OP)
 
 def clip(a, lo, hi):
     """np.clip with scalar bounds."""
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Storage.min_f(Storage.max_f(Storage.at(a.data, i), lo), hi)))))
 
+def transcendental_op(x, op):
+    """The elementwise transcendental kernel selected by an int tag."""
+    match op:
+        case 17:
+            return Math.exp_of(x)
+        case 18:
+            return Math.ln_of(x)
+        case 19:
+            return Math.sqrt_of(x)
+        case _:
+            return Math.tanh_of(x)
+
+def unary_op(x, op):
+    """The elementwise unary kernel selected by an int tag."""
+    return transcendental_op(x, op) if op >= TRANSCENDENTAL_OPS else algebraic_op(x, op)
+
+def algebraic_op(x, op):
+    """The elementwise algebraic kernel selected by an int tag."""
+    match op:
+        case 12:
+            return 0.0 - x
+        case 13:
+            return abs(x)
+        case 14:
+            return x * x
+        case 15:
+            return 1.0 / x
+        case _:
+            return 0.0 if x == 0.0 else (1.0 if x > 0.0 else (0.0 - 1.0 if x < 0.0 else x))
+
+def unary(a, op):
+    """An elementwise unary result shaped like `a`, under the kernel `op`
+    names."""
+    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: unary_op(Storage.at(a.data, i), op)))))
 
 def negative(a):
     """np.negative."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: 0.0 - Storage.at(a.data, i)))))
-
+    return unary(a, NEGATE_OP)
 
 def absolute(a):
     """np.absolute."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: abs(Storage.at(a.data, i))))))
-
+    return unary(a, ABSOLUTE_OP)
 
 def exp(a):
     """np.exp (elementwise natural exponential)."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Math.exp_of(Storage.at(a.data, i))))))
-
+    return unary(a, EXP_OP)
 
 def log(a):
     """np.log (elementwise natural logarithm)."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Math.ln_of(Storage.at(a.data, i))))))
-
+    return unary(a, LOG_OP)
 
 def sqrt(a):
     """np.sqrt."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Math.sqrt_of(Storage.at(a.data, i))))))
-
+    return unary(a, SQRT_OP)
 
 def tanh(a):
     """np.tanh."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Math.tanh_of(Storage.at(a.data, i))))))
-
+    return unary(a, TANH_OP)
 
 def square(a):
     """np.square."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Storage.at(a.data, i) * Storage.at(a.data, i)))))
-
+    return unary(a, SQUARE_OP)
 
 def reciprocal(a):
     """np.reciprocal. A zero element performs Arith.divideByZero."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: 1.0 / Storage.at(a.data, i)))))
-
+    return unary(a, RECIPROCAL_OP)
 
 def sign(a):
     """np.sign: -1.0, 0.0, 1.0, or NaN for NaN."""
-    return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: 0.0 if Storage.at(a.data, i) == 0.0 else (1.0 if Storage.at(a.data, i) > 0.0 else (0.0 - 1.0 if Storage.at(a.data, i) < 0.0 else Storage.at(a.data, i)))))))
-
-
+    return unary(a, SIGN_OP)
 
 # Reductions --------------------------------------------------------------
 
@@ -605,7 +618,6 @@ MAX_OP = 2
 MIN_OP = 3
 AND_OP = 4
 OR_OP = 5
-
 
 def combine_op(acc, x, op):
     """The reduction combine selected by an int tag."""
@@ -622,7 +634,6 @@ def combine_op(acc, x, op):
             return and_kernel(acc, x)
         case _:
             return or_kernel(acc, x)
-
 
 def reduce_all(a, seed, op):
     """Reduce every element in row-major order under the combine `op`, or leave
@@ -641,12 +652,10 @@ def reduce_all(a, seed, op):
         case _:
             return Storage.reduced(perform(Storage.Buffer.reduce(a.data, seed, or_kernel)))
 
-
 def reduced_coords(out_coords, ax, k, keepdims):
     """The source coordinates of reduction element `k`, given the output
     coordinates."""
     return Layout.set_at(out_coords, ax, k) if keepdims else Layout.insert_at(out_coords, ax, k)
-
 
 def reduce_axis(a, axis, keepdims, seed, op):
     """Reduce along one axis into an NDArray, optionally keeping the axis."""
@@ -661,32 +670,26 @@ def reduce_axis(a, axis, keepdims, seed, op):
         out_shape = Layout.drop_at(shape, ax) if not keepdims else Layout.set_at(shape, ax, 1)
         return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: reduce_axis_element(i, out_shape, a, shape, ax, n, keepdims, seed, op)))))
 
-
 def reduce_axis_element(i, out_shape, a, shape, ax, n, keepdims, seed, op):
     """One reduce_axis output element: fold over the reduced axis."""
     coords = Layout.coords_of(i, out_shape)
     return fold(range(n), seed, lambda acc, k: combine_op(acc, Storage.at(a.data, Layout.ravel_index(reduced_coords(coords, ax, k, keepdims), shape)), op))
 
-
 def axis_size(a, axis):
     """The size of a normalised axis of `a`."""
     return unwrap_or(listGet(a.shape, Layout.axis_of(a.shape, axis)), 1)
-
 
 def sum(a):
     """np.sum over all elements."""
     return reduce_all(a, 0.0, SUM_OP)
 
-
 def sum_axis(a, axis, keepdims):
     """np.sum along `axis`."""
     return reduce_axis(a, axis, keepdims, 0.0, SUM_OP)
 
-
 def mean(a):
     """np.mean over all elements."""
     return sum(a) / toFloat(Layout.flat_size(a.shape))
-
 
 def mean_axis(a, axis, keepdims):
     """np.mean along `axis`."""
@@ -694,48 +697,39 @@ def mean_axis(a, axis, keepdims):
     n = axis_size(a, axis)
     return scale(s, 1.0 / toFloat(n))
 
-
 def scale(a, factor):
     """An elementwise scale of `a` by a scalar."""
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: Storage.at(a.data, i) * factor))))
-
 
 def max(a):
     """np.max over all elements (NaN wins)."""
     return reduce_all(a, 0.0 - Storage.infinity(), MAX_OP)
 
-
 def max_axis(a, axis, keepdims):
     """np.max along `axis` (NaN wins)."""
     return reduce_axis(a, axis, keepdims, 0.0 - Storage.infinity(), MAX_OP)
-
 
 def min(a):
     """np.min over all elements (NaN wins)."""
     return reduce_all(a, Storage.infinity(), MIN_OP)
 
-
 def min_axis(a, axis, keepdims):
     """np.min along `axis` (NaN wins)."""
     return reduce_axis(a, axis, keepdims, Storage.infinity(), MIN_OP)
-
 
 def prod(a):
     """np.prod over all elements."""
     return reduce_all(a, 1.0, PROD_OP)
 
-
 def prod_axis(a, axis, keepdims):
     """np.prod along `axis`."""
     return reduce_axis(a, axis, keepdims, 1.0, PROD_OP)
-
 
 def var(a, ddof):
     """np.var over all elements with `ddof` degrees of freedom."""
     n = Layout.flat_size(a.shape)
     m = mean(a)
     return Math.variance(sum(square(subtract(a, scalar(m)))), n, ddof)
-
 
 def var_axis(a, axis, keepdims, ddof):
     """np.var along `axis` with `ddof` degrees of freedom."""
@@ -744,38 +738,31 @@ def var_axis(a, axis, keepdims, ddof):
     n = axis_size(a, axis)
     return NDArray(shape=s.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(s.shape), lambda i: Math.variance(Storage.at(s.data, i), n, ddof)))))
 
-
 def std(a, ddof):
     """np.std over all elements with `ddof` degrees of freedom."""
     return Math.sqrt_of(var(a, ddof))
 
-
 def std_axis(a, axis, keepdims, ddof):
     """np.std along `axis` with `ddof` degrees of freedom."""
     return sqrt(var_axis(a, axis, keepdims, ddof))
-
 
 def better_max(x, y):
     """Whether `x` should replace `y` as argmax: NaN counts as largest, and
     ties keep the earlier index."""
     return x != y and (x != x or x > y)
 
-
 def better_min(x, y):
     """Whether `x` should replace `y` as argmin: NaN counts as smallest, and
     ties keep the earlier index."""
     return x != y and (x != x or x < y)
 
-
 def argmax(a):
     """np.argmax over all elements: the flat index of the first maximum."""
     return fold(range(Layout.flat_size(a.shape)), 0, lambda best, i: i if better_max(Storage.at(a.data, i), Storage.at(a.data, best)) else best)
 
-
 def argmin(a):
     """np.argmin over all elements: the flat index of the first minimum."""
     return fold(range(Layout.flat_size(a.shape)), 0, lambda best, i: i if better_min(Storage.at(a.data, i), Storage.at(a.data, best)) else best)
-
 
 def argmax_axis(a, axis):
     """np.argmax along `axis`: the per-position index, as a flat int list over
@@ -790,7 +777,6 @@ def argmax_axis(a, axis):
         out_shape = Layout.drop_at(shape, ax)
         return toList(map(range(Layout.flat_size(out_shape)), lambda i: argreduce_at(i, out_shape, a, shape, ax, n, True)))
 
-
 def argmin_axis(a, axis):
     """np.argmin along `axis`: the per-position index, as a flat int list over
     the reduced shape."""
@@ -804,12 +790,10 @@ def argmin_axis(a, axis):
         out_shape = Layout.drop_at(shape, ax)
         return toList(map(range(Layout.flat_size(out_shape)), lambda i: argreduce_at(i, out_shape, a, shape, ax, n, False)))
 
-
 def argreduce_at(i, out_shape, a, shape, ax, n, want_max):
     """One argmax/argmin output: the index along `ax` of the extremum."""
     coords = Layout.coords_of(i, out_shape)
     return fold(range(n), 0, lambda best, k: k if arg_better(k, best, coords, a, shape, ax, want_max) else best)
-
 
 def arg_better(k, best, coords, a, shape, ax, want_max):
     """Whether reduction index `k` beats `best` at this position."""
@@ -817,48 +801,39 @@ def arg_better(k, best, coords, a, shape, ax, want_max):
     y = Storage.at(a.data, Layout.ravel_index(Layout.insert_at(coords, ax, best), shape))
     return better_max(x, y) if want_max else better_min(x, y)
 
-
 def and_kernel(acc, x):
     """Logical AND as 0.0/1.0 (nonzero is true, NaN is true)."""
     return 1.0 if acc != 0.0 and x != 0.0 else 0.0
-
 
 def or_kernel(acc, x):
     """Logical OR as 0.0/1.0 (nonzero is true, NaN is true)."""
     return 1.0 if acc != 0.0 or x != 0.0 else 0.0
 
-
 def all(a):
     """np.all over all elements (bool)."""
     return reduce_all(a, 1.0, AND_OP) != 0.0
-
 
 def all_axis(a, axis, keepdims):
     """np.all along `axis`, as 0.0/1.0 floats."""
     return reduce_axis(a, axis, keepdims, 1.0, AND_OP)
 
-
 def any(a):
     """np.any over all elements (bool)."""
     return reduce_all(a, 0.0, OR_OP) != 0.0
-
 
 def any_axis(a, axis, keepdims):
     """np.any along `axis`, as 0.0/1.0 floats."""
     return reduce_axis(a, axis, keepdims, 0.0, OR_OP)
 
-
 def cumsum(a, axis):
     """np.cumsum along `axis`."""
-    ax = Layout.normalize_axis(axis, len(a.shape), "")
+    ax = along(a, axis)
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: cum_read(i, a, ax, SUM_OP)))))
-
 
 def cumprod(a, axis):
     """np.cumprod along `axis`."""
-    ax = Layout.normalize_axis(axis, len(a.shape), "")
+    ax = along(a, axis)
     return NDArray(shape=a.shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(a.shape), lambda i: cum_read(i, a, ax, PROD_OP)))))
-
 
 def cum_read(i, a, ax, op):
     """One cumsum/cumprod output: the prefix over the axis up to this

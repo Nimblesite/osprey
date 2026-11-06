@@ -7,6 +7,7 @@ import registry::Digests
 import registry::Order
 import registry::ManifestModel
 import registry::ManifestSections
+import registry::Bytes
 
 /// `[dependencies]`, `[build-dependencies]`, `[test-dependencies]`,
 /// `[system.*]` and `[[assets]]`. A dependency names one epoch and a minimum
@@ -204,9 +205,9 @@ module ManifestDeps {
 
     fn withTest(root, sofar) = Checked::andThen(tableEdges(root, "test-dependencies", sofar), fn(value) => checkedEdges(value, root))
 
-    fn segmentByte(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 46 || b == 45
+    fn segmentByte(b) = Bytes::isDigit(b) || (b >= 97 && b <= 122) || b == 46 || b == 45
     fn segmentOk(s) = byteLength(s) >= 1 && byteLength(s) <= segmentMax && !startsWith(s, ".") && !startsWith(s, "-")
-        && fold(range(0, byteLength(s)), true, fn(ok, i) => ok && segmentByte(byteAt(s, i) ?: 0))
+        && Bytes::everyByte(s, segmentByte)
 
     /// `[a-z0-9][a-z0-9.-]{0,63}` segments joined by `/`, at most 128 bytes ([PACKAGE-MANIFEST]).
     export fn capabilityOk(name) = byteLength(name) <= capabilityMax && foldList(split(name, "/") ?: [""], true, fn(ok, s) => ok && segmentOk(s))

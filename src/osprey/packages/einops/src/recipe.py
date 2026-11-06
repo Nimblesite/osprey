@@ -114,14 +114,19 @@ def composition_axes(expr) -> list[list[Axis]]:
     return toList(map(range(len(expr.composition)), lambda i: unwrap_or(listGet(expr.composition, i), Composite(kind="group", axes=[])).axes))
 
 
+def ell_groups(ell_axes) -> list[list[Axis]]:
+    """One group per ellipsis axis, in order."""
+    return toList(map(range(len(ell_axes)), lambda i: [unwrap_or(listGet(ell_axes, i), named(""))]))
+
+
 def expand_left_comp(comp, ell_axes) -> list[list[Axis]]:
     """The left composition with the ellipsis slot expanded to one group per axis."""
-    return foldList(comp, [], lambda acc, c: listConcat(acc, toList(map(range(len(ell_axes)), lambda i: [unwrap_or(listGet(ell_axes, i), named(""))]))) if c.kind == "ellipsis" else listAppend(acc, c.axes))
+    return foldList(comp, [], lambda acc, c: listConcat(acc, ell_groups(ell_axes)) if c.kind == "ellipsis" else listAppend(acc, c.axes))
 
 
 def expand_right_one(c, ell_axes) -> list[list[Axis]]:
     if c.kind == "ellipsis":
-        return toList(map(range(len(ell_axes)), lambda i: [unwrap_or(listGet(ell_axes, i), named(""))]))
+        return ell_groups(ell_axes)
     else:
         group = foldList(c.axes, [], lambda acc, ax: listConcat(acc, ell_axes) if ax.kind == "ellipsis" else listAppend(acc, ax))
         return [group]
@@ -321,21 +326,22 @@ def prepare_parts(parts, pattern, operation, axes_names, ndim):
         return prepare_left(parts, pattern, operation, axes_names, ndim)
 
 
-def prepare_left(parts, pattern, operation, axes_names, ndim):
-    rght_str = unwrap_or(listGet(parts, 1), "")
-    match parse(unwrap_or(listGet(parts, 0), ""), False, False):
+def parsed(text, then):
+    """`then` applied to the parsed form of `text`, or the parse's own error."""
+    match parse(text, False, False):
         case Error(message=message):
             return Error(message=message)
         case Success(value=value):
-            return prepare_right(value, rght_str, pattern, operation, axes_names, ndim)
+            return then(value)
+
+
+def prepare_left(parts, pattern, operation, axes_names, ndim):
+    rght_str = unwrap_or(listGet(parts, 1), "")
+    return parsed(unwrap_or(listGet(parts, 0), ""), lambda left: prepare_right(left, rght_str, pattern, operation, axes_names, ndim))
 
 
 def prepare_right(left, rght_str, pattern, operation, axes_names, ndim):
-    match parse(rght_str, False, False):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return prepare_checked(left, value, pattern, operation, axes_names, ndim)
+    return parsed(rght_str, lambda right: prepare_checked(left, right, pattern, operation, axes_names, ndim))
 
 
 def prepare_checked(left, right, pattern, operation, axes_names, ndim):

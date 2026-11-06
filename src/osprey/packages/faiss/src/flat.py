@@ -72,16 +72,25 @@ def distance(metric, a, b):
     return l2sqr(a, b) if metric == "L2" else inner_product(a, b)
 
 
+def distances_to(index, q):
+    """`q`'s distance to every stored row, in stored order."""
+    return toList(map(range(len(index.vectors)), lambda j: distance(index.metric, q, unwrap_or(listGet(index.vectors, j), []))))
+
+
+def per_query(xq, row_of):
+    """`row_of` applied to every query row, in query order."""
+    return toList(map(range(len(xq)), lambda q: row_of(unwrap_or(listGet(xq, q), []))))
+
+
 def search_row(index, q, k):
     """One query's k results: faiss's heap selection over the stored rows."""
-    values = toList(map(range(len(index.vectors)), lambda j: distance(index.metric, q, unwrap_or(listGet(index.vectors, j), []))))
     ids = toList(map(range(len(index.vectors)), lambda j: j))
-    return topk(k, index.metric, values, ids)
+    return topk(k, index.metric, distances_to(index, q), ids)
 
 
 def search(index, xq, k):
     """faiss's `index.search(xq, k)`: distances and labels for every query row."""
-    rows = toList(map(range(len(xq)), lambda q: search_row(index, unwrap_or(listGet(xq, q), []), k)))
+    rows = per_query(xq, lambda q: search_row(index, q, k))
     return SearchResult(distances=mapList(rows, lambda r: r.vals), labels=mapList(rows, lambda r: r.ids))
 
 
@@ -95,7 +104,7 @@ def within(metric, dist, radius):
 def range_row(index, q, radius):
     """One query's range-search matches: every row within `radius`, ascending
     label (faiss's scan order)."""
-    ds = toList(map(range(len(index.vectors)), lambda j: distance(index.metric, q, unwrap_or(listGet(index.vectors, j), []))))
+    ds = distances_to(index, q)
     kept = filterList(toList(map(range(len(index.vectors)), lambda j: j)), lambda j: within(index.metric, unwrap_or(listGet(ds, j), 0.0), radius))
     return RangeRow(distances=mapList(kept, lambda j: unwrap_or(listGet(ds, j), 0.0)), labels=kept)
 
@@ -105,11 +114,16 @@ def prefix_sums(lens):
     return toList(map(range(len(lens) + 1), lambda i: fold(range(i), 0, lambda acc, j: acc + unwrap_or(listGet(lens, j), 0))))
 
 
+def concat_rows(rows, pick):
+    """Every row's `pick` list, concatenated in query order."""
+    return fold(range(len(rows)), [], lambda acc, q: listConcat(acc, pick(unwrap_or(listGet(rows, q), RangeRow(distances=[], labels=[])))))
+
+
 def range_search(index, xq, radius):
     """faiss's `index.range_search(xq, radius)`: lims, distances and labels."""
-    rows = toList(map(range(len(xq)), lambda q: range_row(index, unwrap_or(listGet(xq, q), []), radius)))
-    distances = fold(range(len(rows)), [], lambda acc, q: listConcat(acc, unwrap_or(listGet(rows, q), RangeRow(distances=[], labels=[])).distances))
-    labels = fold(range(len(rows)), [], lambda acc, q: listConcat(acc, unwrap_or(listGet(rows, q), RangeRow(distances=[], labels=[])).labels))
+    rows = per_query(xq, lambda q: range_row(index, q, radius))
+    distances = concat_rows(rows, lambda r: r.distances)
+    labels = concat_rows(rows, lambda r: r.labels)
     return RangeSearchResult(lims=prefix_sums(mapList(rows, lambda r: len(r.distances))), distances=distances, labels=labels)
 
 

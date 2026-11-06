@@ -345,26 +345,31 @@ def retry_model_response(part) -> str:
 # Wire form: ModelMessagesTypeAdapter.dump_python(messages, mode="json") / validate_python
 
 
+def content_part(content, kind) -> Json:
+    """A part's JSON form when its content and its part_kind are all it has."""
+    return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString(kind))])
+
+
 def dump_request_part(part):
     match part:
         case SystemPromptPart(content=content):
-            return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("system-prompt"))])
+            return content_part(content, "system-prompt")
         case UserPromptPart(content=content):
-            return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("user-prompt"))])
+            return content_part(content, "user-prompt")
         case ToolReturnPart(tool_name=tool_name, content=content, tool_call_id=tool_call_id):
             return J.obj([J.member("tool_name", JsonString(tool_name)), J.member("content", JsonString(content)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("tool-return"))])
         case RetryPromptPart(content=content, tool_name=tool_name, tool_call_id=tool_call_id):
             return J.obj([J.member("content", JsonString(content)), J.member("tool_name", JsonNull() if tool_name == "" else JsonString(tool_name)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("retry-prompt"))])
         case InstructionPart(content=content):
-            return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("instruction"))])
+            return content_part(content, "instruction")
 
 
 def dump_response_part(part):
     match part:
         case TextPart(content=content):
-            return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("text"))])
+            return content_part(content, "text")
         case ThinkingPart(content=content):
-            return J.obj([J.member("content", JsonString(content)), J.member("part_kind", JsonString("thinking"))])
+            return content_part(content, "thinking")
         case ToolCallPart(tool_name=tool_name, args=args, tool_call_id=tool_call_id):
             return J.obj([J.member("tool_name", JsonString(tool_name)), J.member("args", JsonString(args)), J.member("tool_call_id", JsonString(tool_call_id)), J.member("part_kind", JsonString("tool-call"))])
 

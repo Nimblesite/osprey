@@ -68,8 +68,8 @@ def parse_flag_group(cps, i, n):
 def add_group(cps, i, j, n):
     """Parse `(?flags...)` starting its flag run at `j`."""
     run = read_flag_run(cps, j, n)
-    add = unwrap_or(listGet(run, 0), 0)
-    k = unwrap_or(listGet(run, 1), j)
+    add = Program.pair_value(run)
+    k = Program.pair_next(run, j)
     c = Program.at(cps, k)
     if c == 41:
         return Success(value=FlagGroup(kind="global", add=add, dele=0, next=k + 1))
@@ -88,8 +88,8 @@ def add_group(cps, i, j, n):
 def del_group(cps, j, n, add):
     """Parse the `-flags:` tail of a flag group."""
     run = read_flag_run(cps, j, n)
-    dele = unwrap_or(listGet(run, 0), 0)
-    k = unwrap_or(listGet(run, 1), j)
+    dele = Program.pair_value(run)
+    k = Program.pair_next(run, j)
     c = Program.at(cps, k)
     if c == 58:
         return Success(value=FlagGroup(kind="scoped", add=add, dele=dele, next=k + 1))
@@ -105,8 +105,8 @@ def scan_global_flags(cps, i, n, flags):
     """Consume leading `(?flags)` groups; return [flags, next]."""
     if is_global_group(cps, i, n):
         run = read_flag_run(cps, i + 2, n)
-        add = unwrap_or(listGet(run, 0), 0)
-        k = unwrap_or(listGet(run, 1), i + 2)
+        add = Program.pair_value(run)
+        k = Program.pair_next(run, i + 2)
         return scan_global_flags(cps, k + 1, n, Program.add_bit(flags, add))
     else:
         return [flags, i]
@@ -118,4 +118,4 @@ def is_global_group(cps, i, n):
         return False
     else:
         run = read_flag_run(cps, i + 2, n)
-        return Program.at(cps, unwrap_or(listGet(run, 1), i + 2)) == 41 and unwrap_or(listGet(run, 0), 0) != 0
+        return Program.at(cps, Program.pair_next(run, i + 2)) == 41 and Program.pair_value(run) != 0

@@ -1,4 +1,5 @@
 namespace registry;
+import registry::Bytes
 
 /// Parses a typeDiagram document — `typeDiagram`, then `alias X = T`,
 /// `type X { ... }`, and `union X { Variant { ... } ... }` declarations whose
@@ -26,7 +27,7 @@ module TypeDiagram {
 
     let unknownType = "schema.unknown-type"
 
-    fn isWordByte(b) = (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95
+    fn isWordByte(b) = Bytes::isAlnum(b) || b == 95
     fn isPunct(b) = b == 123 || b == 125 || b == 58 || b == 61 || b == 60 || b == 62
 
     fn finishWord(text, i, acc) = if acc.wordStart < 0 { acc.tokens } else {

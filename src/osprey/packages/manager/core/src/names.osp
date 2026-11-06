@@ -1,5 +1,6 @@
 namespace registry;
 import registry::Checked
+import registry::Bytes
 
 /// Canonical package keys `@scope/name`. Components are lowercase ASCII
 /// letters, digits and interior hyphens; a scope is 1-39 bytes and a name is
@@ -12,9 +13,8 @@ module Names {
     let nameMax = 63
     let hyphen = 45
 
-    fn lowerAlnum(b) = (b >= 97 && b <= 122) || (b >= 48 && b <= 57)
-    fn byteOk(b) = lowerAlnum(b) || b == hyphen
-    fn bytesOk(s) = fold(range(0, byteLength(s)), true, fn(ok, i) => ok && byteOk(byteAt(s, i) ?: 0))
+    fn byteOk(b) = (Bytes::isDigit(b) || (b >= 97 && b <= 122)) || b == hyphen
+    fn bytesOk(s) = Bytes::everyByte(s, byteOk)
     fn interiorHyphens(s) = !startsWith(s, "-") && !endsWith(s, "-")
 
     /// One component against its length ceiling; `""` means valid.

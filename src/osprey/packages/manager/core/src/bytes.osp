@@ -66,6 +66,46 @@ module Bytes {
     /// Concatenation of several byte sequences, in order.
     export fn concatAll(parts) = foldList(parts, [], fn(acc, part) => listConcat(acc, part))
 
+    let upperA = 65
+    let upperZ = 90
+    let lowerA = 97
+    let lowerZ = 122
+    let digit0 = 48
+    let digit9 = 57
+
+    /// ASCII `A`-`Z` or `a`-`z`.
+    export fn isLetter(b) = (b >= upperA && b <= upperZ) || (b >= lowerA && b <= lowerZ)
+
+    /// ASCII `0`-`9`.
+    export fn isDigit(b) = b >= digit0 && b <= digit9
+
+    /// ASCII letter or digit.
+    export fn isAlnum(b) = isLetter(b) || isDigit(b)
+
+    /// True when every byte of `text` satisfies `ok` (the empty text does).
+    export fn everyByte(text, ok) = fold(range(0, byteLength(text)), true, fn(good, i) => good && ok(at(text, i)))
+
+    /// True when any byte of `text` satisfies `ok` (the empty text does not).
+    export fn anyByte(text, ok) = fold(range(0, byteLength(text)), false, fn(found, i) => found || ok(at(text, i)))
+
+    /// One pass of a substitution: the text written so far and the index just
+    /// after the last replaced byte.
+    export type Substitution = { out: string, start: int }
+
+    fn between(text, from, to) = take(drop(text, from), to - from)
+
+    fn substitutedAt(text, replace, acc: Substitution, i) = match replace(at(text, i)) {
+        "" => acc
+        replacement => Substitution { out: acc.out + between(text, acc.start, i) + replacement, start: i + 1 }
+    }
+
+    /// `text` with every byte `replace` answers for substituted, in one pass;
+    /// `replace` answers `""` for the bytes kept verbatim.
+    export fn substitute(text, replace) = {
+        let scanned = fold(range(0, byteLength(text)), Substitution { out: "", start: 0 }, fn(acc, i) => substitutedAt(text, replace, acc, i))
+        scanned.out + between(text, scanned.start, byteLength(text))
+    }
+
     /// True when every element is a byte.
     export fn wellFormed(bytes) = foldList(bytes, true, fn(ok, b) => ok && b >= 0 && b < byteRange)
 }

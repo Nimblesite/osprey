@@ -12,7 +12,7 @@ there asks its host to run the browse instead.
 
 from chromecast import Discovery
 
-__all__ = ["discover"]
+__all__ = ["discover", "run"]
 
 SCRATCH = ".osprey/scratch"
 

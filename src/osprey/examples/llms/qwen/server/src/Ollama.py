@@ -193,12 +193,12 @@ def message_of(text, thinking, calls):
 
 def text_of(turn):
     """The turn's free text, in order."""
-    return join(mapList(filterList(turn.pieces, lambda piece: piece.kind == Completions.TEXT), lambda piece: piece.text), "")
+    return Completions.pieces_text(turn, Completions.TEXT)
 
 
 def thinking_of(turn):
     """The turn's reasoning, in order."""
-    return join(mapList(filterList(turn.pieces, lambda piece: piece.kind == Completions.THINKING), lambda piece: piece.text), "")
+    return Completions.pieces_text(turn, Completions.THINKING)
 
 
 def piece_text(piece):

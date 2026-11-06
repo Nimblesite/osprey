@@ -1,6 +1,7 @@
 namespace registry;
 import registry::Order
 import registry::Release
+import registry::Bytes
 
 /// The capability surface of a release ([PACKAGE-CAPABILITY-CONFINEMENT]):
 /// the ambient capabilities whose builtins its source names, plus its
@@ -72,7 +73,7 @@ module Surface {
 
     fn begin(text) = Scan { mode: codeMode, start: -1, previous: "", found: [], declared: [], frames: [], skip: if startsWith(text, bom) { byteLength(bom) } else { 0 }, python: startsWith(text, pythonMarker) || startsWith(text, bom + pythonMarker), ml: false, boundary: true }
 
-    fn identByte(s, b) = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95 || ((s.ml || s.python) && b >= 128)
+    fn identByte(s, b) = Bytes::isAlnum(b) || b == 95 || ((s.ml || s.python) && b >= 128)
 
     fn lineBreak(b) = b == newline || b == carriageReturn
 

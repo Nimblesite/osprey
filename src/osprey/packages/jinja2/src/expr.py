@@ -557,13 +557,16 @@ def eval_postfix(toks, i, env, obj):
     elif is_op(t, "["):
         return eval_subscript(toks, i + 1, env, obj)
     elif is_op(t, "("):
-        p = parse_call_args(toks, i + 1, env)
-        if p.error != "":
-            return P(value=halt(p.error), next=p.next)
-        else:
-            return eval_postfix(toks, p.next, env, call_value(env, obj, p.args, p.kwargs))
+        return call_args(toks, i, env, lambda p: eval_postfix(toks, p.next, env, call_value(env, obj, p.args, p.kwargs)))
     else:
         return P(value=obj, next=i)
+
+
+def call_args(toks, i, env, then):
+    """A parenthesised argument list at `i`, then `then` on the parse, or the
+    call's own error."""
+    p = parse_call_args(toks, i + 1, env)
+    return P(value=halt(p.error), next=p.next) if p.error != "" else then(p)
 
 
 def eval_subscript(toks, i, env, obj):
@@ -678,11 +681,7 @@ def eval_filter(toks, i, env, obj):
     elif is_name(t, "is"):
         return eval_test(toks, i + 1, env, obj)
     elif is_op(t, "("):
-        p = parse_call_args(toks, i + 1, env)
-        if p.error != "":
-            return P(value=halt(p.error), next=p.next)
-        else:
-            return eval_filter(toks, p.next, env, call_value(env, obj, p.args, p.kwargs))
+        return call_args(toks, i, env, lambda p: eval_filter(toks, p.next, env, call_value(env, obj, p.args, p.kwargs)))
     else:
         return P(value=obj, next=i)
 

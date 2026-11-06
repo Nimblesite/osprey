@@ -101,18 +101,10 @@ def mlp_of(nin, nouts):
     return MLP(layers=walked.layers)
 
 
-def step_input(acc, w, x):
-    """One input of a neuron: `wi * xi` (a leaf and a `*` node for a bare
-    number) added onto the running activation."""
-    g2 = mul_const(acc.graph, w, x)
-    g3 = add(g2, acc.id, top(g2))
-    return Cursor(graph=g3, id=top(g3))
-
-
-def step_value(acc, w, x):
-    """One Value input of a neuron: `wi * xi` (a bare `*` node) added onto the
-    running activation."""
-    g2 = mul(acc.graph, w, x)
+def step_product(acc, w, x, op):
+    """`w * x` (through `op`, so a bare number becomes a leaf and a `*` node)
+    added onto the running activation."""
+    g2 = op(acc.graph, w, x)
     g3 = add(g2, acc.id, top(g2))
     return Cursor(graph=g3, id=top(g3))
 
@@ -121,39 +113,38 @@ def call_neuron(g, n, xs):
     """micrograd's `Neuron.__call__` with bare-number inputs: the activation is
     `sum(wi * xi, b)` — the bias first, each product a leaf and a `*` node —
     then `relu` when the neuron is nonlinear."""
-    walked = fold(range(len(n.weights)), Cursor(graph=g, id=n.bias), lambda acc, i: step_input(acc, unwrap_or(listGet(n.weights, i), -1), unwrap_or(listGet(xs, i), 0.0)))
+    walked = fold(range(len(n.weights)), Cursor(graph=g, id=n.bias), lambda acc, i: step_product(acc, unwrap_or(listGet(n.weights, i), -1), unwrap_or(listGet(xs, i), 0.0), mul_const))
     return relu(walked.graph, walked.id) if n.nonlin else walked.graph
 
 
 def call_neuron_values(g, n, x_ids):
     """micrograd's `Neuron.__call__` over Value inputs (node ids): the same
     accumulation without wrapping the inputs in leaves."""
-    walked = fold(range(len(n.weights)), Cursor(graph=g, id=n.bias), lambda acc, i: step_value(acc, unwrap_or(listGet(n.weights, i), -1), unwrap_or(listGet(x_ids, i), -1)))
+    walked = fold(range(len(n.weights)), Cursor(graph=g, id=n.bias), lambda acc, i: step_product(acc, unwrap_or(listGet(n.weights, i), -1), unwrap_or(listGet(x_ids, i), -1), mul))
     return relu(walked.graph, walked.id) if n.nonlin else walked.graph
 
 
-def layer_neuron_step(acc, n, xs):
-    """One neuron over bare inputs: append its output id to the running list."""
-    g2 = call_neuron(acc.graph, n, xs)
-    return Forward(graph=g2, outputs=listAppend(acc.outputs, top(g2)))
+def over_neurons(l, g, step):
+    """Each neuron of the layer over the same inputs, in construction order."""
+    return fold(range(len(l.neurons)), Forward(graph=g, outputs=[]), step)
 
 
-def layer_neuron_values_step(acc, n, x_ids):
-    """One neuron over Value inputs: append its output id to the running list."""
-    g2 = call_neuron_values(acc.graph, n, x_ids)
+def layer_neuron(acc, l, j, call):
+    """One neuron of the layer, its output id appended to the running list."""
+    g2 = call(acc.graph, unwrap_or(listGet(l.neurons, j), no_neuron()))
     return Forward(graph=g2, outputs=listAppend(acc.outputs, top(g2)))
 
 
 def call_layer(g, l, xs):
     """micrograd's `Layer.__call__` with bare-number inputs: each neuron over
     the same inputs, in construction order; returns the graph and output ids."""
-    return fold(range(len(l.neurons)), Forward(graph=g, outputs=[]), lambda acc, j: layer_neuron_step(acc, unwrap_or(listGet(l.neurons, j), no_neuron()), xs))
+    return over_neurons(l, g, lambda acc, j: layer_neuron(acc, l, j, lambda gr, n: call_neuron(gr, n, xs)))
 
 
 def call_layer_values(g, l, x_ids):
     """micrograd's `Layer.__call__` over Value inputs: each neuron over the
     same output ids, in construction order; returns the graph and output ids."""
-    return fold(range(len(l.neurons)), Forward(graph=g, outputs=[]), lambda acc, j: layer_neuron_values_step(acc, unwrap_or(listGet(l.neurons, j), no_neuron()), x_ids))
+    return over_neurons(l, g, lambda acc, j: layer_neuron(acc, l, j, lambda gr, n: call_neuron_values(gr, n, x_ids)))
 
 
 def call_mlp(g, m, xs):

@@ -476,22 +476,25 @@ module View
 
     mcpProblems mcp = mapList (mcp.stateProblems, \problem => Look::trouble problem)
 
+    // An editable field grown to its row, one line high unless it takes more.
+    formField (base, label, value, prompt, multiline, bind) = Ui::framed (base(frameGrow = true), ui::Field(label = label, value = value, prompt = prompt, secure = false, multiline = multiline, commit = ui::OnEdit, bind = bind))
+
     // A labelled, bordered box for what takes several lines.
     mcpBox (label, value, prompt, bind) =
         base = Frames::plain
         box = Look::card ("canvas", 6, 8, 6)
-        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (Look::sized (12, "secondary"), Ui::text label), Ui::framed (box(frameGrow = true), Ui::framed (base(frameGrow = true), ui::Field(label = label, value = value, prompt = prompt, secure = false, multiline = true, commit = ui::OnEdit, bind = bind)))])
+        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (Look::sized (12, "secondary"), Ui::text label), Ui::framed (box(frameGrow = true), formField (base, label, value, prompt, true, bind))])
 
     (** The Add server form: name, type, command or URL, environment, validated in words. *)
     mcpForm mcp =
         form = mcp.stateForm
         base = Frames::plain
         heading = Ui::framed (base(frameHug = true), Ui::styled ("Add server", ui::Eyebrow, ui::Secondary))
-        name = Ui::framed (base(frameGrow = true), ui::Field(label = "Name", value = form.formName, prompt = "demo", secure = false, multiline = false, commit = ui::OnEdit, bind = McpName))
+        name = formField (base, "Name", form.formName, "demo", false, McpName)
         typePicker = Ui::framed (base(frameHug = true), ui::Picker(label = "Type", choices = [Ui::choice ("command", "Command"), Ui::choice ("url", "URL")], selected = form.formType, bind = PickMcpType))
         command = match form.formType
-            "url" => [Ui::framed (base(frameGrow = true), ui::Field(label = "URL", value = form.formUrl, prompt = "https://example.com/mcp", secure = false, multiline = false, commit = ui::OnEdit, bind = McpUrl)), mcpBox ("Headers", form.formHeaders, "Authorization=Bearer token", McpHeaders)]
-            _ => [Ui::framed (base(frameGrow = true), ui::Field(label = "Command", value = form.formCommand, prompt = "npx", secure = false, multiline = false, commit = ui::OnEdit, bind = McpCommand)), mcpBox ("Arguments", form.formArguments, "One argument per line", McpArguments)]
+            "url" => [formField (base, "URL", form.formUrl, "https://example.com/mcp", false, McpUrl), mcpBox ("Headers", form.formHeaders, "Authorization=Bearer token", McpHeaders)]
+            _ => [formField (base, "Command", form.formCommand, "npx", false, McpCommand), mcpBox ("Arguments", form.formArguments, "One argument per line", McpArguments)]
         environment = mcpBox ("Environment", form.formEnvironment, "NAME=value", McpEnvironment)
         problem = Pick::either (form.formProblem == "", [], [Look::trouble form.formProblem])
         add = Ui::framed (base(frameHug = true), Ui::action ("Add", Symbols::name ui::Add, ui::Filled, true, AddMcpServer))

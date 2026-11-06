@@ -141,6 +141,13 @@ def step1b_rules(stem):
         return stem
 
 
+def trimmed(word, suffix):
+    """`word` without `suffix`, its follow-up rules applied when the stem
+    still holds a vowel; `word` unchanged when it does not."""
+    stem = replace_suffix(word, suffix, "")
+    return step1b_rules(stem) if contains_vowel(stem) else word
+
+
 def step1b(word):
     """Step 1b: `eed`, `ed` and `ing` removal."""
     if endsWith(word, "ied"):
@@ -149,11 +156,9 @@ def step1b(word):
         stem = replace_suffix(word, "eed", "")
         return stem + "ee" if measure(stem) > 0 else word
     elif endsWith(word, "ed"):
-        stem = replace_suffix(word, "ed", "")
-        return step1b_rules(stem) if contains_vowel(stem) else word
+        return trimmed(word, "ed")
     elif endsWith(word, "ing"):
-        stem = replace_suffix(word, "ing", "")
-        return step1b_rules(stem) if contains_vowel(stem) else word
+        return trimmed(word, "ing")
     else:
         return word
 

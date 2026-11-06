@@ -3,6 +3,7 @@ import registry::Checked
 import registry::TomlLexer
 import registry::Toml
 import registry::TomlTree
+import registry::Bytes
 
 /// Keys, values, numbers, arrays and inline tables of the TOML subset: parses
 /// a key path into `KeySeg`s, a value into the typed `Value` union, and
@@ -43,14 +44,13 @@ module TomlValues {
     let letterT = 116
     let letterF = 102
 
-    fn isDigit(b) = b >= 48 && b <= 57
     fn isDigit1to9(b) = b >= 49 && b <= 57
     fn isLower(b) = b >= 97 && b <= 122
     fn isUpper(b) = b >= 65 && b <= 90
-    fn isBareKeyByte(b) = isLower(b) || isUpper(b) || isDigit(b) || b == byteUnderscore || b == byteMinus
+    fn isBareKeyByte(b) = Bytes::isAlnum(b) || b == byteUnderscore || b == byteMinus
     fn keyEndByte(b) = b == byteDot || b == byteEq || b == byteRBracket || b == byteSpace || b == byteTab || b == byteCr || b == byteNewline || b == -1
 
-    fn hasByte(s, b) = fold(range(0, byteLength(s)), false, fn(found, i) => found || (byteAt(s, i) ?: -1) == b)
+    fn hasByte(s, b) = Bytes::anyByte(s, fn(x) => x == b)
     fn hasMinusAfterStart(s) = fold(range(1, byteLength(s)), false, fn(found, i) => found || (byteAt(s, i) ?: -1) == byteMinus)
     fn stripUnderscores(s) = join(split(s, "_") ?: [s], "")
 
@@ -136,8 +136,8 @@ module TomlValues {
 
     fn parseBareValue(c) = {
         let b = TomlLexer::cur(c)
-        if isDigit(b) { parseNumber(c) }
-        else if b == bytePlus || b == byteMinus { match isDigit(TomlLexer::peek(c, 1)) {
+        if Bytes::isDigit(b) { parseNumber(c) }
+        else if b == bytePlus || b == byteMinus { match Bytes::isDigit(TomlLexer::peek(c, 1)) {
             true => parseNumber(c)
             false => Error { message: Toml::fail(c, "toml.unexpected-token") }
         } }
@@ -196,10 +196,10 @@ module TomlValues {
 
     fn restDigits(d, i) = match i >= byteLength(d) {
         true => ""
-        false => match isDigit(byteAt(d, i) ?: 0) {
+        false => match Bytes::isDigit(byteAt(d, i) ?: 0) {
             true => restDigits(d, i + 1)
             false => match (byteAt(d, i) ?: 0) == byteUnderscore {
-                true => match isDigit(byteAt(d, i + 1) ?: -1) {
+                true => match Bytes::isDigit(byteAt(d, i + 1) ?: -1) {
                     true => restDigits(d, i + 2)
                     false => "toml.bad-integer"
                 }

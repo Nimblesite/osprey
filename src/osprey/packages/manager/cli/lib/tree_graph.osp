@@ -20,26 +20,16 @@ import registry::Names
 /// A missing lock is an explicit not-locked graph (`tree.no-lock`) so a new
 /// project with no dependencies still has a graph; a corrupt lock is an error.
 module TreeGraph {
-    let failStatus = 1
     let notLockedCode = "tree.no-lock"
     let missingCode = "verify.missing"
     let localUnreadableCode = "lock.local-unreadable"
 
     type Finding = { code: string, detail: string }
 
-    fn failed(lines) = Reports::Report { status: failStatus, lines: lines }
-
-    fn member(key, value) = Json::Member { key: key, value: value }
-    fn str(text) = Json::Str { text: text }
     fn bool(flag) = Json::Bool { flag: flag }
-    fn obj(members) = Json::Obj { members: members }
-    fn arr(items) = Json::Arr { items: items }
-    fn textList(texts) = arr(mapList(texts, str))
+    fn textList(texts) = Json::arr(mapList(texts, Json::str))
 
     // Shared field names need typed receivers (issue #273).
-    fn releaseOf(p: Lockfile::Package) = p.release
-    fn edgesOf(p: Lockfile::Package) = p.dependencies
-    fn packagesOf(lock: Lockfile::Lock) = lock.packages
     fn keyOf(id: Identity::ReleaseId) = id.key
     fn reqKey(edge) = ManifestModel::requirementOf(edge).package
     fn nameOf(m: ManifestModel::Manifest) = m.projectName
@@ -69,70 +59,69 @@ module TreeGraph {
         found || (codeIn(line) == missingCode && detailIn(line) == keyText))
 
     fn isPackageKey(packages, text) = foldList(packages, false, fn(found, p: Lockfile::Package) =>
-        found || Names::display(keyOf(releaseOf(p))) == text)
+        found || Names::display(keyOf(Lockfile::releaseOf(p))) == text)
 
     fn globalLines(lines, packages) = filterList(lines, fn(line) => !isPackageKey(packages, detailIn(line)))
 
     fn dependentsOf(packages, key) = Names::distinct(foldList(packages, [], fn(acc, p: Lockfile::Package) =>
-        if !Names::same(keyOf(releaseOf(p)), key) && Names::includes(edgeKeys(edgesOf(p)), key) {
-            listAppend(acc, keyOf(releaseOf(p)))
+        if !Names::same(keyOf(Lockfile::releaseOf(p)), key) && Names::includes(edgeKeys(Lockfile::edgesOf(p)), key) {
+            listAppend(acc, keyOf(Lockfile::releaseOf(p)))
         } else { acc }))
 
     // A local checkout replaces the release's bytes ([PACKAGE-LOCAL-OVERRIDE]), so
     // the editor must be able to tell them apart. Absent for a release, keeping a
     // graph with no overrides byte-identical to one from before local checkouts.
     fn overrideMembers(overrides, key) = match Lockfile::overrideFor(overrides, key) {
-        Success { value } => [member("override", str(overridePath(value)))]
+        Success { value } => [Json::member("override", Json::str(overridePath(value)))]
         Error => []
     }
 
     fn overridePath(o: Lockfile::Override) = o.path
-    fn overridesOf(lock: Lockfile::Lock) = lock.overrides
 
-    fn localLock(project) = Checked::andThen(Project::readLocalLockAt(project), fn(value) => Success { value: overridesOf(value) })
+    fn localLock(project) = Checked::andThen(Project::readLocalLockAt(project), fn(value) => Success { value: Lockfile::overridesOf(value) })
 
     /// The development lock's overrides; a missing one has none, and an unreadable
     /// one is a finding rather than a graph that looks free of overrides.
     fn localOverrides(project) = Checked::andThen(perform Host::Files.exists(Project::localLockPathAt(project)), fn(value) => if value { localLock(project) } else { Success { value: [] } })
 
     fn packageValue(lines, direct, packages, overrides, pkg: Lockfile::Package) = {
-        let id = releaseOf(pkg)
+        let id = Lockfile::releaseOf(pkg)
         let keyText = Names::display(keyOf(id))
-        obj(listConcat(overrideMembers(overrides, keyOf(id)), [
-            member("key", str(keyText)),
-            member("version", str(versionOf(id))),
-            member("digest", str(id.digest)),
-            member("direct", bool(Names::includes(direct, keyOf(id)))),
-            member("dependencies", textList(mapList(edgeKeys(edgesOf(pkg)), Names::display))),
-            member("dependents", textList(mapList(dependentsOf(packages, keyOf(id)), Names::display))),
-            member("findings", textList(packageFindings(lines, keyText))),
-            member("present", bool(presentOf(lines, keyText)))
+        Json::obj(listConcat(overrideMembers(overrides, keyOf(id)), [
+            Json::member("key", Json::str(keyText)),
+            Json::member("version", Json::str(versionOf(id))),
+            Json::member("digest", Json::str(id.digest)),
+            Json::member("direct", bool(Names::includes(direct, keyOf(id)))),
+            Json::member("dependencies", textList(mapList(edgeKeys(Lockfile::edgesOf(pkg)), Names::display))),
+            Json::member("dependents", textList(mapList(dependentsOf(packages, keyOf(id)), Names::display))),
+            Json::member("findings", textList(packageFindings(lines, keyText))),
+            Json::member("present", bool(presentOf(lines, keyText)))
         ]))
     }
 
-    fn packagesValue(lines, direct, packages, overrides) = arr(mapList(packages, fn(p: Lockfile::Package) => packageValue(lines, direct, packages, overrides, p)))
+    fn packagesValue(lines, direct, packages, overrides) = Json::arr(mapList(packages, fn(p: Lockfile::Package) => packageValue(lines, direct, packages, overrides, p)))
 
     fn graphValue(manifest, lock, lines, overrides, localFindings) = {
         let direct = directKeys(manifest)
-        let packages = packagesOf(lock)
-        obj([
-            member("project", str(nameOf(manifest))),
-            member("direct", textList(mapList(direct, Names::display))),
-            member("packages", packagesValue(lines, direct, packages, overrides)),
-            member("findings", textList(listConcat(codesOf(globalLines(lines, packages)), localFindings)))
+        let packages = Lockfile::packagesOf(lock)
+        Json::obj([
+            Json::member("project", Json::str(nameOf(manifest))),
+            Json::member("direct", textList(mapList(direct, Names::display))),
+            Json::member("packages", packagesValue(lines, direct, packages, overrides)),
+            Json::member("findings", textList(listConcat(codesOf(globalLines(lines, packages)), localFindings)))
         ])
     }
 
-    fn notLockedValue(manifest) = obj([
-        member("project", str(nameOf(manifest))),
-        member("direct", textList(mapList(directKeys(manifest), Names::display))),
-        member("packages", arr([])),
-        member("findings", textList([notLockedCode]))
+    fn notLockedValue(manifest) = Json::obj([
+        Json::member("project", Json::str(nameOf(manifest))),
+        Json::member("direct", textList(mapList(directKeys(manifest), Names::display))),
+        Json::member("packages", Json::arr([])),
+        Json::member("findings", textList([notLockedCode]))
     ])
 
     fn serialized(value) = match Canonical::serialize(value) {
         Success { value } => Reports::success([value])
-        Error { message } => failed([message])
+        Error { message } => Reports::failure([message])
     }
 
     fn withLock(project, manifest, lock) = {
@@ -143,10 +132,7 @@ module TreeGraph {
         }
     }
 
-    fn withLockText(project, manifest, text) = match Lockfile::decode(text) {
-        Error { message } => failed([message])
-        Success { value } => withLock(project, manifest, value)
-    }
+    fn withLockText(project, manifest, text) = Reports::checked(Lockfile::decode(text), fn(value) => withLock(project, manifest, value))
 
     fn withManifest(project, manifest) = match perform Host::Files.read(Project::lockPathAt(project)) {
         Error => serialized(notLockedValue(manifest))
@@ -154,8 +140,5 @@ module TreeGraph {
     }
 
     /// The graph of the project at `project` as one canonical JSON report line.
-    export fn reportAt(project) = match Project::readAt(project) {
-        Error { message } => failed([message])
-        Success { value } => withManifest(project, value)
-    }
+    export fn reportAt(project) = Reports::checked(Project::readAt(project), fn(value) => withManifest(project, value))
 }

@@ -51,10 +51,15 @@ class Player:
     request: int
 
 
+def fresh(session, served, title, phase, now, request) -> Player:
+    """A player the device has not reported on yet."""
+    return Player(session=session, served=served, title=title, phase=phase, ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=now, beat_at=now, request=request)
+
+
 def idle() -> Player:
     """A player with nothing cast: ended, on no session, serving nothing.
     A UI holds one until `begin` returns a live player."""
-    return Player(session=Session.Session(handle=0), served=Media.NOTHING, title="", phase="ended", ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=0, beat_at=0, request=0)
+    return fresh(Session.Session(handle=0), Media.NOTHING, "", "ended", 0, 0)
 
 
 def number(text, otherwise):
@@ -63,7 +68,7 @@ def number(text, otherwise):
 
 
 def launched(session, served, path, now) -> Player:
-    return Player(session=session, served=served, title=Media.title(path), phase="launching", ending="", transport="", media_session="", player_state="", lines=[], position=0.0, duration=0.0, rate=1.0, volume=-1.0, commands=0, heard_at=now, beat_at=now, request=3)
+    return fresh(session, served, Media.title(path), "launching", now, 3)
 
 
 def dialed(device, served, path, now) -> Result[Player, str]:
@@ -192,51 +197,58 @@ def elapsed(player, now):
     return moved if player.duration <= 0.0 or moved < player.duration else player.duration
 
 
+def attempt(player, written) -> Result[Player, str]:
+    """A write the device accepted bumps the request counter; a refusal is the
+    caller's error."""
+    match written:
+        case Success():
+            return Success(value=update(player, request=player.request + 1))
+        case Error(message=failure):
+            return Error(message=failure)
+
+
 def commanded(player, payload) -> Result[Player, str]:
     """Sends one media command for the loaded media."""
     if player.media_session == "":
         return Error(message="nothing is playing yet")
     else:
-        match Session.write(player.session, player.transport, "media", payload):
-            case Success():
-                return Success(value=update(player, request=player.request + 1))
-            case Error(message=failure):
-                return Error(message=failure)
+        return attempt(player, Session.write(player.session, player.transport, "media", payload))
+
+
+def command(player, kind, extra) -> Result[Player, str]:
+    """One media command of `kind` for the loaded media, `extra` being its body."""
+    return commanded(player, Protocol.media(kind, player.media_session, extra, player.request))
 
 
 def pause(player) -> Result[Player, str]:
     """Asks the device to pause."""
-    return commanded(player, Protocol.media("PAUSE", player.media_session, "", player.request))
+    return command(player, "PAUSE", "")
 
 
 def play(player) -> Result[Player, str]:
     """Asks the device to play from where it paused."""
-    return commanded(player, Protocol.media("PLAY", player.media_session, "", player.request))
+    return command(player, "PLAY", "")
 
 
 def seek(player, seconds) -> Result[Player, str]:
     """Asks the device to play from `seconds`."""
-    return commanded(player, Protocol.media("SEEK", player.media_session, f"\"currentTime\": {seconds}", player.request))
+    return command(player, "SEEK", f"\"currentTime\": {seconds}")
 
 
 def rate(player, speed) -> Result[Player, str]:
     """Asks the device to play at `speed` (1.0 is normal); the player's
     `rate` changes only if the device reports it."""
-    return commanded(player, Protocol.media("SET_PLAYBACK_RATE", player.media_session, f"\"playbackRate\": {speed}", player.request))
+    return command(player, "SET_PLAYBACK_RATE", f"\"playbackRate\": {speed}")
 
 
 def stop(player) -> Result[Player, str]:
     """Asks the device to stop; it then reports IDLE, which ends the cast."""
-    return commanded(player, Protocol.media("STOP", player.media_session, "", player.request))
+    return command(player, "STOP", "")
 
 
 def volume(player, level) -> Result[Player, str]:
     """Asks the receiver to set its volume, from 0 to 1."""
-    match Session.write(player.session, "receiver-0", "receiver", Protocol.set_volume(level, player.request)):
-        case Success():
-            return Success(value=update(player, request=player.request + 1))
-        case Error(message=failure):
-            return Error(message=failure)
+    return attempt(player, Session.write(player.session, "receiver-0", "receiver", Protocol.set_volume(level, player.request)))
 
 
 def end(player):
