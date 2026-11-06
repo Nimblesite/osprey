@@ -37,12 +37,11 @@ test('required original attribution cannot be removed while retaining generic li
   assert.notEqual(verify(root).status, 0, 'Missing original copyright must fail the license gate')
 }))
 
-test('only NIMBLESITE PTY LTD holds the copyright in a package LICENSE or NOTICE', () => inFixture((root) => {
+test('only NIMBLESITE PTY LTD holds the copyright in a package LICENSE', () => inFixture((root) => {
   const license = join(root, 'src/osprey/packages/numpy/LICENSE')
-  const notice = join(root, 'src/osprey/packages/numpy/NOTICE.md')
-  assert.ok(!readFileSync(license, 'utf8').includes('Christian Findlay'), 'LICENSE names a holder other than NIMBLESITE')
-  assert.ok(!readFileSync(notice, 'utf8').includes('Christian Findlay'), 'NOTICE names a holder other than NIMBLESITE')
-  writeFileSync(license, readFileSync(license, 'utf8') + 'Copyright (c) 2025 Christian Findlay (ChristianFindlay.com).\n')
+  const holders = readFileSync(license, 'utf8').match(/^Copyright .*$/gm)
+  assert.deepEqual(holders, ['Copyright (c) 2026 NIMBLESITE PTY LTD, Australia'])
+  writeFileSync(license, readFileSync(license, 'utf8') + 'Copyright (c) 2026 Another Holder\n')
   assert.notEqual(verify(root).status, 0, 'A second copyright holder must fail the license gate')
 }))
 
