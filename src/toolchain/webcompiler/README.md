@@ -37,4 +37,4 @@ The shared compiler runner adds `--sandbox` to every compile and run request. Th
 
 [server.js](src/server.js), [Dockerfile](Dockerfile) and [start.sh](start.sh) define the running backend. [test.sh](test.sh) requires the local run endpoint's showcase to pass, then checks that both endpoints reject forbidden filesystem, FFI, HTTP and process operations with HTTP 422 and the expected security diagnostic. It needs `curl` and `jq`; these capability probes do not establish full operating-system isolation.
 
-[src/server.osp](src/server.osp) is an unused earlier prototype. Its [implementation note](src/plan.md) is separate from the Node.js service's current delivery status.
+[src/plan.md](src/plan.md) records what the Node.js service implements and what still needs verification.

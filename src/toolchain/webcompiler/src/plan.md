@@ -1,6 +1,6 @@
 # Playground backend implementation status
 
-The running backend is [server.js](server.js), launched by the package's `server` script and [Dockerfile](../Dockerfile). [server.osp](server.osp) is an unused earlier prototype; its TODOs do not describe missing compiler builtins or the deployed API.
+The running backend is [server.js](server.js), launched by the package's `server` script and [Dockerfile](../Dockerfile).
 
 ## Implemented Node.js path
 
