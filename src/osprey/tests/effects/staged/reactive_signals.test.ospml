@@ -16,6 +16,12 @@ branch flag = match flag
     true => counterLabel ()
     false => cursorLabel ()
 
+(** Run `work` with the static `Count` signal pinned to `n`. *)
+underCount (n, work) =
+    handle static Signal<Count>
+        read => Count(value = n)
+    work ()
+
 initial n at =
     handle static Signal<Count>
         read => Count(value = n)
@@ -65,18 +71,12 @@ conservativeBranches () =
     ]
 
 callbackReplacementAndUnknown () =
-    first =
-        handle static Signal<Count>
-            read => Count(value = 1)
-        signalSnapshot counterLabel
+    first = underCount (1, \() => signalSnapshot counterLabel)
     replacement =
         handle static Signal<Cursor>
             read => Cursor(at = 8)
         signalRefresh first [] cursorLabel
-    unknown =
-        handle static Signal<Count>
-            read => Count(value = 3)
-        relay (\() => signalSnapshot counterLabel)
+    unknown = underCount (3, \() => relay (\() => signalSnapshot counterLabel))
     checkAll "callback replacement updates dependencies" [
         replacement.value == "cursor=8", replacement.revision == 2,
         join replacement.dependencies ";" == join (signalDependencies cursorLabel) ";", unknown.value == "count=3",
@@ -93,14 +93,8 @@ unresolvedCallbacksRebuild () =
     ]
 
 managedValues () =
-    first =
-        handle static Signal<Count>
-            read => Count(value = 2)
-        signalSnapshot (\() => [counterLabel (), "kept"])
-    next =
-        handle static Signal<Count>
-            read => Count(value = 4)
-        signalRefresh first (signalDependencies count) (\() => [counterLabel (), "kept"])
+    first = underCount (2, \() => signalSnapshot (\() => [counterLabel (), "kept"]))
+    next = underCount (4, \() => signalRefresh first (signalDependencies count) (\() => [counterLabel (), "kept"]))
     checkAll "snapshots own managed values independently" [
         join first.value "," == "count=2,kept", join next.value "," == "count=4,kept",
         first.revision == 1, next.revision == 2,
@@ -119,14 +113,8 @@ evaluationAndNoOp () =
     handle Audit
         note text =>
             trail := "${trail}${text}"
-    first =
-        handle static Signal<Count>
-            read => Count(value = 2)
-        signalSnapshot (factory ())
-    idle =
-        handle static Signal<Count>
-            read => Count(value = 9)
-        signalRefresh first [] (factory ())
+    first = underCount (2, \() => signalSnapshot (factory ()))
+    idle = underCount (9, \() => signalRefresh first [] (factory ()))
     metadata = signalDependencies (factory ())
     checkAll "arguments run once and clean caches skip their callback" [
         trail == "factory;build;factory;factory;", first.value == "count=2", idle.value == "count=2",
@@ -144,14 +132,8 @@ maybeLabel allowed = match allowed
     true => Success(value = counterLabel ())
     false => Error(message = "denied")
 cachedResultsKeepBothVariants () =
-    first =
-        handle static Signal<Count>
-            read => Count(value = 2)
-        signalSnapshot (\() => maybeLabel true)
-    next =
-        handle static Signal<Count>
-            read => Count(value = 4)
-        signalRefresh first (signalDependencies count) (\() => maybeLabel false)
+    first = underCount (2, \() => signalSnapshot (\() => maybeLabel true))
+    next = underCount (4, \() => signalRefresh first (signalDependencies count) (\() => maybeLabel false))
     firstAnswer = match first.value
         Success value => value
         Error message => message
@@ -175,18 +157,9 @@ capturedLabel () =
     saved = counterLabel ()
     \() => saved
 callableSnapshotsKeepTheirCapturedValues () =
-    first =
-        handle static Signal<Count>
-            read => Count(value = 2)
-        signalSnapshot capturedLabel
-    idle =
-        handle static Signal<Count>
-            read => Count(value = 9)
-        signalRefresh first [] capturedLabel
-    next =
-        handle static Signal<Count>
-            read => Count(value = 4)
-        signalRefresh idle (signalDependencies count) capturedLabel
+    first = underCount (2, \() => signalSnapshot capturedLabel)
+    idle = underCount (9, \() => signalRefresh first [] capturedLabel)
+    next = underCount (4, \() => signalRefresh idle (signalDependencies count) capturedLabel)
     checkAll "callable snapshots own their captured values" [first.value () == "count=2", idle.value () == "count=2", next.value () == "count=4", first.revision == 1, idle.revision == 1, next.revision == 2]
 
 test "cached callables retain their captured values across rebuilds" callableSnapshotsKeepTheirCapturedValues
@@ -207,31 +180,12 @@ pickRow (cached, flag) =
         false => cached
     describeSnapshot row
 refreshArgumentsKeepTheirLayout () =
-    first =
-        handle static Signal<Count>
-            read => Count(value = 2)
-        signalSnapshot counterLabel
-    direct =
-        handle static Signal<Count>
-            read => Count(value = 3)
-        describeSnapshot (signalRefresh (blankSnapshot ()) [] counterLabel)
-    built =
-        handle static Signal<Count>
-            read => Count(value = 3)
-        named ("list", signalRefresh (blankSnapshot ()) [] counterLabel)
-    kept =
-        handle static Signal<Count>
-            read => Count(value = 9)
-        named ("kept", signalRefresh first [] counterLabel)
-    bound =
-        handle static Signal<Count>
-            read => Count(value = 4)
-        next = signalRefresh (blankSnapshot ()) [] counterLabel
-        describeSnapshot next
-    snapshot =
-        handle static Signal<Count>
-            read => Count(value = 5)
-        describeSnapshot (signalSnapshot counterLabel)
+    first = underCount (2, \() => signalSnapshot counterLabel)
+    direct = underCount (3, \() => describeSnapshot (signalRefresh (blankSnapshot ()) [] counterLabel))
+    built = underCount (3, \() => named ("list", signalRefresh (blankSnapshot ()) [] counterLabel))
+    kept = underCount (9, \() => named ("kept", signalRefresh first [] counterLabel))
+    bound = underCount (4, \() => describeSnapshot (signalRefresh (blankSnapshot ()) [] counterLabel))
+    snapshot = underCount (5, \() => describeSnapshot (signalSnapshot counterLabel))
     print "refresh arguments: ${direct} ${built.region}=${built.json}@${built.revision} ${kept.region}=${kept.json}@${kept.revision} ${bound} ${snapshot} ${describeSnapshot first}"
     checkAll "refreshed snapshots keep their record layout as call arguments" [
         direct == "count=3@1", built.region == "list", built.json == "count=3", built.revision == 1,

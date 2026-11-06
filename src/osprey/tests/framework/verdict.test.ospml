@@ -200,6 +200,9 @@ verdictLabel (Pass) = "pass"
 verdictLabel (Fail reason) = "fail(${reason})"
 verdictLabel (Skip why) = "skip(${why})"
 
+(** Whether regrouping an `andThen` chain leaves the same reported outcome. *)
+associates left right = verdictLabel left == verdictLabel right
+
 (** [TESTING-VERDICT] fixes three contracts at once: `assume` turns a false
     condition into `Skip` and a true one into `Pass`; the labeled comparison
     yields `Pass` on equality and otherwise a `Fail` carrying the labeled
@@ -215,6 +218,7 @@ verdictAlgebraCase () =
     skip1 = Skip "first"
     skip2 = Skip "second"
     sumCheck = checkVerdict "sum"
+    mismatch = verdictLabel (checkVerdict "sum" "5" "6")
 
     // Nine ordered pairs over {Pass, Fail, Skip}: the first non-Pass wins, and
     // the second operand's payload must never surface when it does.
@@ -245,12 +249,9 @@ verdictAlgebraCase () =
         verdictLabel (andThen Pass skip1) == verdictLabel skip1,
         verdictLabel (andThen fail1 Pass) == verdictLabel fail1,
         verdictLabel (andThen skip1 Pass) == verdictLabel skip1,
-        verdictLabel (andThen (andThen Pass fail1) skip2) ==
-            verdictLabel (andThen Pass (andThen fail1 skip2)),
-        verdictLabel (andThen (andThen fail1 Pass) skip2) ==
-            verdictLabel (andThen fail1 (andThen Pass skip2)),
-        verdictLabel (andThen (andThen skip1 fail2) Pass) ==
-            verdictLabel (andThen skip1 (andThen fail2 Pass)),
+        associates (andThen (andThen Pass fail1) skip2) (andThen Pass (andThen fail1 skip2)),
+        associates (andThen (andThen fail1 Pass) skip2) (andThen fail1 (andThen Pass skip2)),
+        associates (andThen (andThen skip1 fail2) Pass) (andThen skip1 (andThen fail2 Pass)),
         verdictLabel (andThen (andThen Pass Pass) fail2) == "fail(two)",
         verdictLabel (andThen Pass (andThen Pass fail2)) == "fail(two)",
         verdictLabel (andThen (andThen Pass Pass) Pass) == "pass",
@@ -265,7 +266,7 @@ verdictAlgebraCase () =
     // length is fixed: "fail(" + "sum: expected 5, got 6" (22) + ")" = 28.
     checkAll "the labeled mismatch is carried verbatim" [
         verdictLabel (checkVerdict "sum" "5" "5") == "pass",
-        verdictLabel (checkVerdict "sum" "5" "6") == "fail(sum: expected 5, got 6)",
+        mismatch == "fail(sum: expected 5, got 6)",
         verdictLabel (checkVerdict "empty" "" "") == "pass",
         verdictLabel (checkVerdict "empty" "" "x") == "fail(empty: expected , got x)",
         verdictLabel (checkVerdict "case" "A" "a") == "fail(case: expected A, got a)",
@@ -275,10 +276,9 @@ verdictAlgebraCase () =
         verdictLabel (checkVerdict "bool" (toString (3 < 5)) "true") == "pass",
         verdictLabel (checkVerdict "bool" (toString (5 < 3)) "true") ==
             "fail(bool: expected false, got true)",
-        contains (verdictLabel (checkVerdict "sum" "5" "6")) "expected 5",
-        contains (verdictLabel (checkVerdict "sum" "5" "6")) "got 6",
-        startsWith (verdictLabel (checkVerdict "sum" "5" "6")) "fail(sum:",
-        length (verdictLabel (checkVerdict "sum" "5" "6")) == 28,
+        containsAll mismatch ["expected 5", "got 6"],
+        startsWith mismatch "fail(sum:",
+        length mismatch == 28,
         !(contains (verdictLabel (checkVerdict "sum" "5" "5")) "expected"),
         verdictLabel (sumCheck "5" "5") == "pass",
         verdictLabel (sumCheck "5" "6") == "fail(sum: expected 5, got 6)",
@@ -581,6 +581,10 @@ layoutBuilt =
         depth = 3
         valid = true
 
+(** Whether `record` carries `sensor`, `value`, `depth` and `valid` exactly. *)
+holdsFields record sensor value depth valid =
+    record.sensor == sensor && record.value == value && record.depth == depth && record.valid == valid
+
 (** [FLAVOR-ML-RECORD]: an uppercase head is construction and lowers to
     `Expr::TypeConstructor`; a lowercase inline head is a non-destructive record
     update and lowers to `Expr::Update`. "Non-destructive" is the load-bearing
@@ -605,14 +609,8 @@ recordLayoutAndUpdateCase () =
 
     // The layout head and the inline head must agree on all four fields.
     checkAll "layout and inline record heads build the same value" [
-        layoutBuilt.sensor == "north",
-        layoutBuilt.value == 1.5,
-        layoutBuilt.depth == 3,
-        layoutBuilt.valid,
-        inlineBuilt.sensor == "north",
-        inlineBuilt.value == 1.5,
-        inlineBuilt.depth == 3,
-        inlineBuilt.valid,
+        holdsFields layoutBuilt "north" 1.5 3 true,
+        holdsFields inlineBuilt "north" 1.5 3 true,
         layoutBuilt.sensor == inlineBuilt.sensor,
         layoutBuilt.value == inlineBuilt.value,
         layoutBuilt.depth == inlineBuilt.depth,
@@ -625,47 +623,25 @@ recordLayoutAndUpdateCase () =
 
     // An update replaces exactly the named fields and copies the rest.
     checkAll "an update replaces exactly the named fields" [
-        renamed.sensor == "south",
-        renamed.value == 1.5,
-        renamed.depth == 3,
-        renamed.valid,
-        revalued.value == 2.5,
-        revalued.sensor == "north",
-        revalued.depth == 3,
-        revalued.valid,
-        deepened.depth == 30,
-        deepened.sensor == "north",
-        deepened.value == 1.5,
+        holdsFields renamed "south" 1.5 3 true,
+        holdsFields revalued "north" 2.5 3 true,
+        holdsFields deepened "north" 1.5 30 true,
         !invalidated.valid,
-        invalidated.sensor == "north",
-        invalidated.depth == 3,
-        invalidated.value == 1.5,
-        twoFields.sensor == "south",
-        twoFields.depth == 30,
-        twoFields.value == 1.5,
-        twoFields.valid,
-        everything.sensor == "east",
-        everything.value == 0.0,
-        everything.depth == 0,
-        !everything.valid
+        holdsFields invalidated "north" 1.5 3 false,
+        holdsFields twoFields "south" 1.5 30 true,
+        holdsFields everything "east" 0.0 0 false
     ]
 
     // Every derived record leaves its source untouched, including a second
     // update derived from an already-derived record.
     checkAll "every derived record leaves its source untouched" [
-        inlineBuilt.sensor == "north",
-        inlineBuilt.value == 1.5,
-        inlineBuilt.depth == 3,
-        inlineBuilt.valid,
+        holdsFields inlineBuilt "north" 1.5 3 true,
         renamed.sensor != inlineBuilt.sensor,
         revalued.value != inlineBuilt.value,
         deepened.depth != inlineBuilt.depth,
         invalidated.valid != inlineBuilt.valid,
         everything.depth != inlineBuilt.depth,
-        chained.sensor == "south",
-        chained.depth == 4,
-        chained.value == 1.5,
-        chained.valid,
+        holdsFields chained "south" 1.5 4 true,
         renamed.depth == 3,
         reverted.sensor == "north",
         reverted.depth == 3,
@@ -679,10 +655,7 @@ recordLayoutAndUpdateCase () =
     checkAll "computed updates read the source's own fields" [
         doubledValue == 3.0,
         nextDepth == 4,
-        computed.value == 3.0,
-        computed.depth == 4,
-        computed.sensor == "north",
-        computed.valid,
+        holdsFields computed "north" 3.0 4 true,
         inlineBuilt.value == 1.5,
         inlineBuilt.depth == 3,
         computed.value == inlineBuilt.value * 2.0,
@@ -972,11 +945,9 @@ layoutAndInterpolationCase () =
         startsWith text "",
         endsWith text "",
         contains text "",
-        contains text ", ",
-        contains text "ab",
+        containsAll text [", ", "ab"],
         !(contains text "ba"),
-        !(startsWith text "b"),
-        !(endsWith text "1"),
+        !(startsWith text "b"), !(endsWith text "1"),
         toUpperCase text == "AB, AB, 12",
         toLowerCase "AB, AB, 12" == text,
         toUpperCase (toLowerCase text) == toUpperCase text,

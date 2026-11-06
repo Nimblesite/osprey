@@ -100,6 +100,9 @@ diskArchive = "${diskBook}.archive.txt"
 
 (** This case runs the logic against the real file system and verifies the
     bytes with `readFile` from outside the handler. *)
+(** The answers both storage implementations must give for the same logic. *)
+sharedAnswers (first, second, counted) = first == 1 && second == 2 && counted == 2
+
 diskStorageCase () =
     (** Truncate both paths so a rerun starts from the same file system state. *)
     clearedBook = writeFile diskBook "" ?: (0 - 1 )
@@ -114,13 +117,9 @@ diskStorageCase () =
 
     // The logic's answers come back through the injected disk implementation.
     checkAll "disk implementation answers" [
-        clearedBook == 0,
-        clearedArchive == 0,
-        first == 1,
-        second == 2,
-        counted == 2,
-        archived == byteLength onDisk,
-        missing == 0
+        sharedAnswers (first, second, counted),
+        clearedBook == 0, clearedArchive == 0,
+        archived == byteLength onDisk, missing == 0
     ]
 
     // The file system really was written: these bytes are read back directly.
@@ -148,11 +147,8 @@ mockStorageCase () =
 
     // Every answer matches the disk run above: same logic, same results.
     checkAll "mock answers match the disk implementation" [
-        first == 1,
-        second == 2,
-        counted == 2,
-        archived == 22,
-        missing == 0,
+        sharedAnswers (first, second, counted),
+        archived == 22, missing == 0,
         fixture == 1,
         stored == "buy milk\ncall dentist\n",
         (mapGet mockFiles "archive.txt" ?: "") == stored

@@ -11,6 +11,13 @@ fn footer() = "ready"
 fn relay(callback) !e = callback()
 fn branch(flag) = match flag { true => counterLabel() false => cursorLabel() }
 
+/// Run `work` with the static `Count` signal pinned to `n`.
+fn underCount(n, work) = {
+    handle static Signal<Count> { read => Count { value: n } }
+    work()
+}
+
+
 fn initial(n) = fn(at) => {
     handle static Signal<Count> { read => Count { value: n } }
     handle static Signal<Cursor> { read => Cursor { at: at } }
@@ -58,18 +65,12 @@ fn conservativeBranches() = {
 }
 
 fn callbackReplacementAndUnknown() = {
-    let first = {
-        handle static Signal<Count> { read => Count { value: 1 } }
-        signalSnapshot(counterLabel)
-    }
+    let first = underCount(1, || => signalSnapshot(counterLabel))
     let replacement = {
         handle static Signal<Cursor> { read => Cursor { at: 8 } }
         signalRefresh(first, [], cursorLabel)
     }
-    let unknown = {
-        handle static Signal<Count> { read => Count { value: 3 } }
-        relay(|| => signalSnapshot(counterLabel))
-    }
+    let unknown = underCount(3, || => relay(|| => signalSnapshot(counterLabel)))
     checkAll("callback replacement updates dependencies", [
         replacement.value == "cursor=8", replacement.revision == 2,
         join(replacement.dependencies, ";") == join(signalDependencies(cursorLabel), ";"), unknown.value == "count=3"
@@ -88,14 +89,8 @@ fn unresolvedCallbacksRebuild() = {
 }
 
 fn managedValues() = {
-    let first = {
-        handle static Signal<Count> { read => Count { value: 2 } }
-        signalSnapshot(|| => [counterLabel(), "kept"])
-    }
-    let next = {
-        handle static Signal<Count> { read => Count { value: 4 } }
-        signalRefresh(first, signalDependencies(count), || => [counterLabel(), "kept"])
-    }
+    let first = underCount(2, || => signalSnapshot(|| => [counterLabel(), "kept"]))
+    let next = underCount(4, || => signalRefresh(first, signalDependencies(count), || => [counterLabel(), "kept"]))
     checkAll("snapshots own managed values independently", [
         join(first.value, ",") == "count=2,kept", join(next.value, ",") == "count=4,kept",
         first.revision == 1, next.revision == 2
@@ -114,14 +109,8 @@ fn factory() = {
 fn evaluationAndNoOp() = {
     mut trail = ""
     handle Audit { note text => { trail = "${trail}${text}" } }
-    let first = {
-        handle static Signal<Count> { read => Count { value: 2 } }
-        signalSnapshot(factory())
-    }
-    let idle = {
-        handle static Signal<Count> { read => Count { value: 9 } }
-        signalRefresh(first, [], factory())
-    }
+    let first = underCount(2, || => signalSnapshot(factory()))
+    let idle = underCount(9, || => signalRefresh(first, [], factory()))
     let metadata = signalDependencies(factory())
     checkAll("arguments run once and clean caches skip their callback", [
         trail == "factory;build;factory;factory;", first.value == "count=2", idle.value == "count=2",
@@ -142,14 +131,8 @@ fn maybeLabel(allowed) = match allowed {
     false => Error { message: "denied" }
 }
 fn cachedResultsKeepBothVariants() = {
-    let first = {
-        handle static Signal<Count> { read => Count { value: 2 } }
-        signalSnapshot(|| => maybeLabel(true))
-    }
-    let next = {
-        handle static Signal<Count> { read => Count { value: 4 } }
-        signalRefresh(first, signalDependencies(count), || => maybeLabel(false))
-    }
+    let first = underCount(2, || => signalSnapshot(|| => maybeLabel(true)))
+    let next = underCount(4, || => signalRefresh(first, signalDependencies(count), || => maybeLabel(false)))
     let firstAnswer = match first.value { Success { value } => value Error { message } => message }
     let nextAnswer = match next.value { Success { value } => value Error { message } => message }
     checkAll("cached results preserve success and error payloads", [
@@ -162,18 +145,9 @@ fn capturedLabel() = {
     fn() => saved
 }
 fn callableSnapshotsKeepTheirCapturedValues() = {
-    let first = {
-        handle static Signal<Count> { read => Count { value: 2 } }
-        signalSnapshot(capturedLabel)
-    }
-    let idle = {
-        handle static Signal<Count> { read => Count { value: 9 } }
-        signalRefresh(first, [], capturedLabel)
-    }
-    let next = {
-        handle static Signal<Count> { read => Count { value: 4 } }
-        signalRefresh(idle, signalDependencies(count), capturedLabel)
-    }
+    let first = underCount(2, || => signalSnapshot(capturedLabel))
+    let idle = underCount(9, || => signalRefresh(first, [], capturedLabel))
+    let next = underCount(4, || => signalRefresh(idle, signalDependencies(count), capturedLabel))
     checkAll("callable snapshots own their captured values", [first.value() == "count=2", idle.value() == "count=2", next.value() == "count=4", first.revision == 1, idle.revision == 1, next.revision == 2])
 }
 
@@ -198,31 +172,12 @@ fn pickRow(cached, flag) = {
     describeSnapshot(row)
 }
 fn refreshArgumentsKeepTheirLayout() = {
-    let first = {
-        handle static Signal<Count> { read => Count { value: 2 } }
-        signalSnapshot(counterLabel)
-    }
-    let direct = {
-        handle static Signal<Count> { read => Count { value: 3 } }
-        describeSnapshot(signalRefresh(blankSnapshot(), [], counterLabel))
-    }
-    let built = {
-        handle static Signal<Count> { read => Count { value: 3 } }
-        named("list", signalRefresh(blankSnapshot(), [], counterLabel))
-    }
-    let kept = {
-        handle static Signal<Count> { read => Count { value: 9 } }
-        named("kept", signalRefresh(first, [], counterLabel))
-    }
-    let bound = {
-        handle static Signal<Count> { read => Count { value: 4 } }
-        let next = signalRefresh(blankSnapshot(), [], counterLabel)
-        describeSnapshot(next)
-    }
-    let snapshot = {
-        handle static Signal<Count> { read => Count { value: 5 } }
-        describeSnapshot(signalSnapshot(counterLabel))
-    }
+    let first = underCount(2, || => signalSnapshot(counterLabel))
+    let direct = underCount(3, || => describeSnapshot(signalRefresh(blankSnapshot(), [], counterLabel)))
+    let built = underCount(3, || => named("list", signalRefresh(blankSnapshot(), [], counterLabel)))
+    let kept = underCount(9, || => named("kept", signalRefresh(first, [], counterLabel)))
+    let bound = underCount(4, || => describeSnapshot(signalRefresh(blankSnapshot(), [], counterLabel)))
+    let snapshot = underCount(5, || => describeSnapshot(signalSnapshot(counterLabel)))
     print("refresh arguments: ${direct} ${built.region}=${built.json}@${built.revision} ${kept.region}=${kept.json}@${kept.revision} ${bound} ${snapshot} ${describeSnapshot(first)}")
     checkAll("refreshed snapshots keep their record layout as call arguments", [
         direct == "count=3@1", built.region == "list", built.json == "count=3", built.revision == 1,
