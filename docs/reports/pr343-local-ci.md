@@ -23,7 +23,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Integration | `make _bank_test`, profiler, mobile tools, `make _test_agent`, bank Playwright, docs HTML, web compiler Docker | check-once-claude | [x] 2026-11-06: pi deepseek-flash (bank, profiler, mobile, agent 1876+45, docs HTML, bank Playwright 17/17), check-once-claude (mobile app 25/25, web compiler Docker); Android emulator not run |
 | Apple (macOS, iOS, Workbench, Talon Bank) | each matrix `run` command from `ci.yml` | OspreyCodex | [x] 259 goldens each on macOS and iOS; 114 Workbench tests; 5 Bank UI tests (`f4a096d2e`) |
 | Agent UI (macos-26) | `make -C src/toolchain/targets/macos/tests agent-headless` | OspreyCodex | [x] 46 Swift tests and all headless scenarios with the local Retina goldens (`f4a096d2e`) |
-| Coverage thresholds | `make _coverage_check_rust _coverage_check_vscode_extension _coverage_check_packages _coverage_check_c_runtime` | check-once-claude | [ ] |
+| Coverage thresholds | `make _coverage_check_rust _coverage_check_vscode_extension _coverage_check_packages _coverage_check_c_runtime` | check-once-claude | [x] check-once-claude 2026-11-06: all four gates pass on the merged run 42165292104 artifacts (Rust, VSIX 95.07% branches, packages 28/28, C as Linux); local macOS C gate passes incl. `gpu_metal`, which hosted Linux never measures (#344) |
 
 ## Gaps that cannot run on this Mac
 
