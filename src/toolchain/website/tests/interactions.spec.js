@@ -340,7 +340,7 @@ test.describe("desktop interactions", () => {
     // Switching to ML swaps in the offside-rule twin (no `fn`, `handle … in`).
     await page.locator("#flavor-ospml").click();
     await expect(page.locator("#flavor-ospml")).toHaveClass(/active/);
-    await expect.poll(editorValue).toContain("install manifest lock =");
+    await expect.poll(editorValue).toContain("install (manifest, lock) =");
     expect(await editorValue()).not.toContain("fn install(manifest, lock)");
 
     await expect.poll(editorColours).toBeGreaterThan(1);
@@ -378,13 +378,13 @@ test.describe("desktop interactions", () => {
 
     // Select ML, then Run.
     await page.locator("#flavor-ospml").click();
-    await expect.poll(editorValue).toContain("install manifest lock =");
+    await expect.poll(editorValue).toContain("install (manifest, lock) =");
     await page.getByRole("button", { name: "Run", exact: true }).click();
 
     // The posted request selects ML and carries the offside-rule source.
     await expect.poll(() => runBody).not.toBeNull();
     expect(runBody.flavor).toBe("ml");
-    expect(runBody.code).toContain("install manifest lock =");
+    expect(runBody.code).toContain("install (manifest, lock) =");
     expect(runBody.code).not.toContain("fn install(manifest, lock)");
 
     // Default flavor still posts flavor=default (regression guard).
