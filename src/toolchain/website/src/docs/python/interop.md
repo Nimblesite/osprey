@@ -10,13 +10,13 @@ Osprey goes all in on Python. Call it **Python interopmaxxing**: you keep the Py
 
 There are three ways in:
 
-1. **Write Python-style code that is Osprey.** Much ordinary Python already compiles as Osprey source in the [Python flavor](/docs/python/flavor/). Types are inferred and checked before the program runs.
-2. **Call Python from Osprey.** A `Python` effect calls into a running CPython, so Osprey code can use any Python library: models, data loaders, tokenizers, plotting.
-3. **Call Osprey from Python.** Compile Osprey to a native library and `import osprey` from Python, the way you would use a C extension or bindings, but without writing C.
+1. **Write Python that is Osprey.** Much ordinary Python compiles as the [Python flavor](/docs/python/flavor/), and [NumPy, SciPy, PyTorch, Transformers and more are already ported](/docs/python/flavor/#python-packages-already-ported) to it.
+2. **Call Python from Osprey.** A `Python` effect calls into CPython, so Osprey can use any Python library.
+3. **Call Osprey from Python.** Compile Osprey to a native library and `import osprey`, without writing C.
 
 ## A lot of Python is already Osprey
 
-Add `# osprey: flavor=python` to the top of the file, and simple typed-style Python compiles unchanged with `osprey`. This file prints the same three lines under both `python3` and `osprey --run`:
+With `# osprey: flavor=python` at the top, this file prints the same three lines under `python3` and `osprey --run`:
 
 ```python
 # osprey: flavor=python
@@ -42,21 +42,17 @@ bob: 12 is low
 carol: 80 is high
 ```
 
-Osprey infers the types, checks them before the program runs, and compiles a native binary. It isn't CPython, though. Mutation of fields, `for` loops over lists, exceptions and arbitrary Python imports are rejected, and failures are `Result` values. The [Python flavor guide](/docs/python/flavor/) covers what is supported and what is left out.
-
-A [flavor converter](/docs/python/flavor/#converting-between-flavors-coming) is planned to move Python-flavor files to Default or ML Osprey, and back.
+Osprey infers and checks the types before the program runs, then compiles a native binary. It isn't CPython: field mutation and exceptions are rejected, failures are `Result` values, and imports name Osprey modules. See [how Python flavor differs from Python](/docs/python/flavor/#how-python-flavor-differs-from-python). A [flavor converter](/docs/python/flavor/#converting-between-flavors-coming) is planned.
 
 ## Call Python from Osprey (embed a Python library)
 
-Python is a capability, so Osprey models it as an effect. Code performs `Python.call(module, function, jsonArgs)`. The `live` handler sends the call to CPython, and a test handler answers with no Python at all:
+Python is a capability, so it is an effect. Code performs `Python.call(module, function, jsonArgs)`; the `live` handler sends it to CPython, and a test handler answers without Python:
 
 ```osprey
 {{ pythonInterop.osprey | safe }}
 ```
 
-`squareRoot` uses Python's `math.sqrt` but never says how Python is reached. `squareRootText` runs it under `live`, and `mockedSquareRoot` runs the same function under `fake`, which is how you test Python-dependent code without Python. Python exceptions come back as `Error` values for Osprey to handle. See [algebraic effects](/docs/effects/#test-doubles-are-just-handlers) for more on test doubles.
-
-This program runs inside a Python process, so it is compiled for the Python target and started from Python, as shown in the next section.
+`squareRootText` runs `squareRoot` under `live`; `mockedSquareRoot` runs it under `fake`, a [test double](/docs/effects/#test-doubles-are-just-handlers). Python exceptions come back as `Error` values. The program runs inside a Python process, started as shown next.
 
 ## Call Osprey from Python (native speed, no C extension)
 
@@ -82,7 +78,7 @@ print(library.mockedSquareRoot())
 test answer
 ```
 
-`osprey.load` installs the Python callbacks, so calls flow both ways: Python calls `squareRootText`, which performs `Python.call`, which calls `math.sqrt` back in the same process. `osprey.build` compiles and loads in one step, and `python3 -m osprey` runs a file directly.
+Calls flow both ways: Python calls `squareRootText`, which calls `math.sqrt` back in the same process. `osprey.build` compiles and loads in one step; `python3 -m osprey` runs a file.
 
 The Python-flavor version uses typed `@extern` signatures instead of an effect:
 
@@ -92,7 +88,7 @@ The Python-flavor version uses typed `@extern` signatures instead of an effect:
 
 ## Real use: an ML data pipeline
 
-[LLM dataset audit](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/python/osprey/dataset_audit/README.md) is an installed Python tool. Python loads datasets and tokenizers, and native Osprey decides the policy for every record. It has run on all 15,011 Dolly records with the GPT-2 tokenizer.
+In [LLM dataset audit](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/python/osprey/dataset_audit/README.md), Python loads datasets and tokenizers and native Osprey decides the policy for every record. It has run on all 15,011 Dolly records with the GPT-2 tokenizer.
 
 ## Limits
 
