@@ -341,6 +341,10 @@ mod tests {
                 "type R = { value: int }\nfn target() -> R = R { value: 7 }",
                 1,
             ),
+            (
+                "type R = { value: int }\nfn target(record: R) = record.value",
+                1,
+            ),
             ("fn target(value: int) = 0", 2),
         ] {
             let source = program(&format!("{target}\nfn late_trial_body() = 0\n"));

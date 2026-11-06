@@ -265,6 +265,8 @@ fn a_closed_binding_hides_the_outer_open_one_it_shadows() {
     assert_eq!(grandchild.free_vars(&mut ctx), [2].into_iter().collect());
     assert_eq!(child.free_vars(&mut ctx), [2].into_iter().collect());
     assert_eq!(parent.free_vars(&mut ctx), [0, 1, 2].into_iter().collect());
+    assert!(grandchild.shares_open_vars(&ctx, &[0, 1].into_iter().collect()));
+    assert!(!grandchild.shares_open_vars(&ctx, &[3].into_iter().collect()));
 }
 
 #[test]

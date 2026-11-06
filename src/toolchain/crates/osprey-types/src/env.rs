@@ -281,6 +281,21 @@ impl TypeEnv {
         }
         out
     }
+
+    /// A trial may leave this scope before later constraints run, so even a
+    /// shadowed binding in an enclosing frame can still share a variable.
+    pub(crate) fn shares_open_vars(&self, ctx: &InferCtx, vars: &BTreeSet<VarId>) -> bool {
+        let mut open = BTreeSet::new();
+        self.frames().any(|frame| {
+            for scheme in frame.open.values() {
+                scheme_free_vars(ctx, scheme, &mut open);
+            }
+            for binder in frame.type_params.values().flatten().flatten() {
+                ctx.free_vars(binder, &mut open);
+            }
+            !open.is_disjoint(vars)
+        })
+    }
 }
 
 /// Whether `scheme` can name a variable it does not itself quantify — the only
@@ -332,7 +347,7 @@ fn names_unquantified(ty: &Type, quantified: &[VarId]) -> bool {
 
 /// A scheme's free variables: those of its type and obligations it does not
 /// quantify.
-fn scheme_free_vars(ctx: &mut InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarId>) {
+fn scheme_free_vars(ctx: &InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarId>) {
     #[cfg(test)]
     tests::record_environment_visit(scheme);
     let mut scratch = BTreeSet::new();

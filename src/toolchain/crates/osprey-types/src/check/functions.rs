@@ -87,23 +87,64 @@ impl Checker {
         self.check_function_stmt(statement, env);
         if probe.is_some_and(|(owner, expected)| {
             matches!(statement, Stmt::Function { name, .. }
-                if name == owner && self.fixed_signature_mismatch(name, expected))
+                if name == owner && self.fixed_signature_mismatch(env, name, expected))
         }) {
             return ControlFlow::Break(());
         }
         ControlFlow::Continue(())
     }
 
-    /// A concrete signature cannot change under further substitution. Unresolved
-    /// signatures must still run the full trial, including later constraints.
-    fn fixed_signature_mismatch(&self, name: &str, expected: &Type) -> bool {
+    /// A concrete signature cannot change under further substitution. A closed
+    /// deferred relation can also certify the signature's quantified variables.
+    fn fixed_signature_mismatch(&self, env: &TypeEnv, name: &str, expected: &Type) -> bool {
         self.fn_sigs.get(name).is_some_and(|(params, ret)| {
             let actual = Type::fun(
                 params.iter().map(|ty| self.ctx.apply(ty)).collect(),
                 self.ctx.apply(ret),
             );
-            super::type_is_resolved(&actual) && actual != *expected
+            actual != *expected
+                && (super::type_is_resolved(&actual)
+                    || self.closed_deferred_signature(env, name, &actual))
         })
+    }
+
+    fn closed_deferred_signature(&self, env: &TypeEnv, name: &str, actual: &Type) -> bool {
+        let Some(scheme) = env
+            .get(name)
+            .filter(|scheme| !scheme.obligations.is_empty())
+        else {
+            return false;
+        };
+        if crate::env::possibly_open(scheme)
+            || !env.declared_params(name).is_empty()
+            || super::has_open_handlers(self)
+        {
+            return false;
+        }
+        // Uses of a closed scheme instantiate fresh variables. The original
+        // variables can only still be constrained by pending solver work.
+        let mut free = BTreeSet::new();
+        self.ctx.free_vars(actual, &mut free);
+        if !free.iter().all(|id| scheme.vars.contains(id)) || env.shares_open_vars(&self.ctx, &free)
+        {
+            return false;
+        }
+        self.signature_vars_unshared(name, &free)
+    }
+
+    fn signature_vars_unshared(&self, name: &str, vars: &BTreeSet<crate::ty::VarId>) -> bool {
+        let mut pending = BTreeSet::new();
+        for (_, relation) in &self.builtin_uses {
+            self.ctx.free_vars(relation, &mut pending);
+        }
+        for (other, (params, ret)) in &self.fn_sigs {
+            if other != name {
+                for ty in params.iter().chain(std::iter::once(ret)) {
+                    self.ctx.free_vars(ty, &mut pending);
+                }
+            }
+        }
+        vars.is_disjoint(&pending)
     }
 
     fn check_function_stmt(&mut self, statement: &Stmt, env: &mut TypeEnv) {
