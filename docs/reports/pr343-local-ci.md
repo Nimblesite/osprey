@@ -6,8 +6,8 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 
 | CI job | Local command | Owner | Result |
 | --- | --- | --- | --- |
-| Detect changed areas | `node --test scripts/ci/ci-scope.test.mjs`; `python3 src/toolchain/benchmarks/test_merge_results.py --tooling-only`; `python3 src/toolchain/benchmarks/test_instruction_gate.py` | check-once-claude | [ ] |
-| Format & Analyse | link-skills, node-deps, release gates, dead code, licenses, package coverage scripts, `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `npm run lint`, `npm run test:shipwright`, deslop, `make -C src/toolchain hawk` | check-once-claude | [ ] |
+| Detect changed areas | `node --test scripts/ci/ci-scope.test.mjs`; `python3 src/toolchain/benchmarks/test_merge_results.py --tooling-only`; `python3 src/toolchain/benchmarks/test_instruction_gate.py` | check-once-claude | [x] check-once-claude 2026-11-06 |
+| Format & Analyse | link-skills, node-deps, release gates, dead code, licenses, package coverage scripts, `cargo fmt --check`, `cargo clippy --workspace --all-targets -D warnings`, `npm run lint`, `npm run test:shipwright`, deslop, `make -C src/toolchain hawk` | check-once-claude | [x] check-once-claude 2026-11-06 (fmt, clippy, lint, shipwright, deslop, hawk) |
 | Rust workspace (rest) | `make _test_rust_shard RUST_SHARD=rest` | check-once-claude | [ ] |
 | Rust workspace (workbench) | `make _test_rust_shard RUST_SHARD=workbench` | check-once-claude | [ ] |
 | Rust workspace (packages) | `make _test_rust_shard RUST_SHARD=packages` | OspreyCodex | [ ] |
@@ -16,7 +16,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Python application ports | `make _test_python_app_ports` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
 | C runtime | `make -j2 _test_c_runtime && make _test_hunt_mock` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
 | Language corpus (gc, arc) | `make _conformance-gc` and `make _conformance-arc` | pi deepseek-flash | [ ] |
-| WebAssembly target | `make _test_wasm_goldens` | pi deepseek-flash | [ ] |
+| WebAssembly target | `make _test_wasm_goldens` | pi deepseek-flash | [x] pi deepseek-flash: wasm32 corpus run_test_corpus.sh passed |
 | Website E2E | `cd src/toolchain/website && npm test`; `make -C docs/book check check-examples` | pi deepseek-flash | [ ] |
 | VS Code extension | `make _test_vscode_extension` | check-once-claude | [ ] |
 | Proof kernel and Lean | `make -j3 _test_proof_ci` plus the proof script tests | OspreyCodex | [ ] |
