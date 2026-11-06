@@ -27,7 +27,7 @@ export effect Render
 
 `App::start` and `App::receive` accept a render handler, produce an envelope and perform `Render.present` under that handler. The [browser entry points](client/src/main.ospml) select the browser handler for startup and every event. The operation returns the envelope normally to its caller. The browser handler also sends it to JavaScript; the mobile handler returns it through the C ABI to a native renderer. A test can install a recording handler instead of calling the browser import.
 
-[The account tests](test/accounts.test.ospml) exercise a stateful `vault` handler factory: reusing a handler preserves its balance, separate factory calls own separate balances, and a `return` clause converts the workflow's `Outcome` into a testable string. Another handler records whether invalid payments request any storage operation.
+[The test project](test/osprey.toml) runs every suite against the real domain modules in `src/domain`, so no suite carries a copy of the code it checks. [The account tests](test/accounts.test.ospml) exercise a stateful `vault` handler factory: reusing a handler preserves its balance, separate factory calls own separate balances, and a `return` clause converts the workflow's `Outcome` into a testable string. Another handler records whether invalid payments request any storage operation.
 
 ## Run
 
