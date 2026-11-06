@@ -44,6 +44,17 @@ runs:
         key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
         restore-keys: ${{ runner.os }}-cargo-osprey-
 
+    # The hosted runner's Azure mirror serves some main-pocket packages (zsh, libc6-dbg) at about
+    # 40 kB/s, which spent five minutes of every Linux setup. The downloaded packages are cached
+    # so apt fetches only what changed; the install below still resolves every version itself.
+    - name: Cache apt packages (Linux)
+      if: runner.os == 'Linux'
+      uses: actions/cache@v6
+      with:
+        path: ~/.cache/osprey-apt
+        key: ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('.github/actions/setup-osprey-compiler/action.yml') }}
+        restore-keys: ${{ runner.os }}-${{ runner.arch }}-apt-
+
     - name: Install clang/LLVM, lldb-dap, OpenSSL and SQLite (Linux)
       if: runner.os == 'Linux'
       shell: bash
@@ -86,8 +97,11 @@ runs:
       # passes all six debugger E2E workflows, the 22 snapshot passes none.
       run: |
         set -euo pipefail
+        APT_CACHE="$HOME/.cache/osprey-apt"
+        mkdir -p "$APT_CACHE/partial"
+        apt_install() { sudo apt-get -o Dir::Cache::Archives="$APT_CACHE" -o APT::Keep-Downloaded-Packages=true install -y "$@"; }
         sudo apt-get update
-        sudo apt-get install -y clang llvm libssl-dev libsqlite3-dev pkg-config zsh wget gnupg libc6-dbg
+        apt_install clang llvm libssl-dev libsqlite3-dev pkg-config zsh wget gnupg libc6-dbg
         clang --version
         LLVM_VER=21
         . /etc/os-release
@@ -99,7 +113,9 @@ runs:
         # No fallback to the distro lldb: 18's DAP server is the known-broken
         # one above, so falling back to it trades a loud install failure for
         # eight silent test failures.
-        sudo apt-get install -y "lldb-${LLVM_VER}"
+        apt_install "lldb-${LLVM_VER}"
+        # The cache action runs as the runner user; apt left the packages owned by root.
+        sudo chown -R "$(id -u):$(id -g)" "$APT_CACHE"
         # Resolve the pinned build by name so the extension's PATH//usr/bin
         # resolver finds it. Taking "the newest lldb-dap on the box" instead is
         # how an unrelated toolchain won this slot before; the debugger tests
