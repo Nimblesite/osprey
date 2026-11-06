@@ -1179,6 +1179,9 @@ jobs:
           - part: macOS
             minutes: 15
             run: make -C src/toolchain/targets macos-test
+          - part: Qwen model (Metal)
+            minutes: 30
+            run: make -C src/toolchain/targets/tests qwen-metal
           - part: Talon Bank
             minutes: 22
             run: make -C src/toolchain/targets bank-ios-test
