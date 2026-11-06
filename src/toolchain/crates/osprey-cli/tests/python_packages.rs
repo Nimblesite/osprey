@@ -29,25 +29,6 @@ fn suites() -> Vec<PathBuf> {
     found
 }
 
-/// Example models that build on the packages (`src/osprey/examples/llms/<model>/model`)
-/// run in the same matrix as the packages they use.
-fn model_suites() -> Vec<PathBuf> {
-    let mut found: Vec<PathBuf> = std::fs::read_dir(repo().join("src/osprey/examples/llms"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path().join("model/tests"))
-        .filter(|tests| tests.join("osprey.toml").is_file())
-        .collect();
-    found.sort();
-    found
-}
-
-/// Every suite the matrix executes: each package, then each example model.
-fn executed() -> Vec<PathBuf> {
-    suites().into_iter().chain(model_suites()).collect()
-}
-
 #[test]
 fn every_shipped_package_registers_an_execution_suite() -> std::io::Result<()> {
     let registered = suites();
@@ -122,7 +103,7 @@ fn arc_live(stderr: &str) -> Option<String> {
 
 #[test]
 fn every_python_oracle_golden_records_nonzero_successful_assertions() -> std::io::Result<()> {
-    for suite in executed() {
+    for suite in suites() {
         let manifest = std::fs::read_to_string(suite.join("osprey.toml"))?;
         if !manifest_list(&manifest, "python_sources").is_empty() {
             let output = std::fs::read_to_string(suite.join("expected_output.txt"))?;
@@ -172,19 +153,15 @@ fn matrix_jobs(suites: &[PathBuf]) -> Vec<(&Path, &str)> {
 }
 
 #[test]
-fn the_package_matrix_runs_all_56_suite_backend_pairs_once() {
-    let suites = executed();
+fn the_package_matrix_runs_all_54_suite_backend_pairs_once() {
+    let suites = suites();
     let jobs = matrix_jobs(&suites);
     let unique: std::collections::BTreeSet<_> = jobs.iter().copied().collect();
-    assert_eq!(
-        model_suites(),
-        [repo().join("src/osprey/examples/llms/qwen/model/tests")]
-    );
-    assert_eq!(
-        jobs.len(),
-        56,
-        "all 27 packages and the qwen model need both managed backends"
-    );
+    // The unfinished qwen model is out of the matrix by user decision (2026-11-06); GPT2 keeps its own tests.
+    assert!(suites
+        .iter()
+        .all(|suite| !suite.starts_with(repo().join("src/osprey/examples"))));
+    assert_eq!(jobs.len(), 54, "all 27 packages need both managed backends");
     assert_eq!(unique.len(), jobs.len(), "duplicate job");
     for suite in &suites {
         for memory in ["gc", "arc"] {
@@ -196,7 +173,7 @@ fn the_package_matrix_runs_all_56_suite_backend_pairs_once() {
 #[test]
 fn every_ported_package_matches_its_cpython_oracle_under_every_memory_backend(
 ) -> std::io::Result<()> {
-    let suites = executed();
+    let suites = suites();
     assert!(
         !suites.is_empty(),
         "no src/osprey/packages/*/tests suites were found"
@@ -293,7 +270,7 @@ fn unexercised_exports(package: &Path) -> Vec<String> {
 
 #[test]
 fn every_public_export_of_every_ported_package_is_exercised_by_its_suite() {
-    let problems: Vec<String> = executed()
+    let problems: Vec<String> = suites()
         .iter()
         .flat_map(|suite| {
             unexercised_exports(&suite.parent().map(Path::to_path_buf).unwrap_or_default())
