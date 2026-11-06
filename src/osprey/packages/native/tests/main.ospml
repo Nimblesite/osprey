@@ -63,36 +63,54 @@ tree () = Ui::column [
 encoded () = jsonEncode (listGet (Encode::walk ([], tree ())).nodes 0 ?: JsonNull) ?: ""
 
 kindAt doc path = jsonText (jsonField (jsonIndex (jsonField doc "children" ?: JsonNull) path ?: JsonNull) "kind" ?: JsonNull) ?: "missing"
+
+// The `index`th item of `doc`'s `key` list, or null when the list is shorter.
+itemAt (doc, key, index) = jsonIndex (jsonField doc key ?: JsonNull) index ?: JsonNull
+
+// The first item of `doc`'s `key` list, or null when the list is empty or absent.
+firstOf (doc, key) = listGet (Doc::items (Doc::field (doc, key))) 0 ?: JsonNull
+
+// How many items `doc`'s `key` list holds; zero when it is absent.
+countOf (doc, key) = length (Doc::items (Doc::field (doc, key)))
+
+// A control's ordinal, or -1 when it declares none.
+eventOf doc = jsonInt (jsonField doc "event" ?: JsonNull) ?: 0 - 1
+
+// The `index`th of `parts`, or null when the list is shorter.
+partOf (parts, index) = listGet parts index ?: JsonNull
+
+// A refused envelope: it names `reason`, patches no region and leaves no requests behind.
+refusedClean (envelope, reason) =
+    expect (contains (Probes::problems envelope) reason, true)
+    expect (Probes::keys envelope, "")
+    expect (countOf (envelope, "patches"), 0)
 // [UI-COMPONENTS]: a disclosure binds before the controls it reveals.
 revealed () = Ui::layer [Ui::disclosure ("Limits", false, Load, [Ui::label ("Scope", "info"), ui::Spacer, Ui::button ("Go", "play", Increment)]), Ui::slot "alert"]
 test ("a disclosure takes its ordinal before the controls it reveals", \() =>
     walked = Encode::walk ([], revealed ())
     doc = listGet walked.nodes 0 ?: JsonNull
-    disclosure = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
-    go = jsonIndex (jsonField disclosure "children" ?: JsonNull) 2 ?: JsonNull
+    disclosure = itemAt (doc, "children", 0)
+    go = itemAt (disclosure, "children", 2)
     expect (length walked.bindings, 2)
     expect (kindAt doc 0, "disclosure")
-    expect (jsonInt (jsonField disclosure "event" ?: JsonNull) ?: 0 - 1, 0)
-    expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 1))
+    expect (join (mapList ([disclosure, go], \child => "${eventOf child}")) ",", "0,1"))
 // [UI-EVENTS]: a screen's toolbar controls are bound before its children.
 test ("a screen's toolbar controls take ordinals before its children", \() =>
     walked = Encode::walk ([], Ui::screen ("T", "", [Ui::field ("F", "", "p", Typed)], [Ui::button ("Go", "play", Increment)]))
     doc = listGet walked.nodes 0 ?: JsonNull
-    field = jsonIndex (jsonField doc "toolbar" ?: JsonNull) 0 ?: JsonNull
-    button = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
-    expect (jsonInt (jsonField field "event" ?: JsonNull) ?: 0 - 1, 0)
-    expect (jsonInt (jsonField button "event" ?: JsonNull) ?: 0 - 1, 1))
+    field = itemAt (doc, "toolbar", 0)
+    button = itemAt (doc, "children", 0)
+    expect (join (mapList ([field, button], \child => "${eventOf child}")) ",", "0,1"))
 // [UI-COMPONENTS]: an aside's pane binds before its column; rows carry their symbol and group.
 inspected () = Ui::aside (Ui::rows ([Ui::entry ("a", "star", "Recent", Ui::text "A")], "a", Load), ui::Trailing, Ui::column [Ui::icon "info", ui::Divider, Ui::button ("Go", "play", Increment)], 420, Typed)
 test ("an aside's pane takes ordinals before its column and rows keep their symbol and group", \() =>
     walked = Encode::walk ([], inspected ())
     doc = listGet walked.nodes 0 ?: JsonNull
     pane = jsonField doc "pane" ?: JsonNull
-    row = jsonIndex (jsonField pane "rows" ?: JsonNull) 0 ?: JsonNull
-    go = jsonIndex (jsonField (jsonField doc "aside" ?: JsonNull) "children" ?: JsonNull) 2 ?: JsonNull
+    row = itemAt (pane, "rows", 0)
+    go = itemAt (Doc::field (doc, "aside"), "children", 2)
     expect (jsonText (jsonField doc "side" ?: JsonNull) ?: "", "trailing")
-    expect (jsonInt (jsonField pane "event" ?: JsonNull) ?: 0 - 1, 0)
-    expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 1)
+    expect (join (mapList ([pane, go], \child => "${eventOf child}")) ",", "0,1")
     expect (jsonText (jsonField row "symbol" ?: JsonNull) ?: "", "star")
     expect (jsonText (jsonField row "group" ?: JsonNull) ?: "", "Recent"))
 // [UI-COMPONENTS-SPLITTER]: the splitter between an aside's pane and its column carries the column's width and
@@ -101,11 +119,7 @@ test ("an aside's splitter carries the column width and its limits and binds aft
     walked = Encode::walk ([], inspected ())
     doc = listGet walked.nodes 0 ?: JsonNull
     expect (length walked.bindings, 3)
-    expect (Doc::number (doc, "width"), 420)
-    expect (Doc::number (doc, "least"), Splitters::least)
-    expect (Doc::number (doc, "most"), Splitters::most)
-    expect (Doc::number (doc, "keep"), Splitters::keep)
-    expect (Doc::number (doc, "event"), 2))
+    expectNumbers (doc, [{ name = "width", value = 420 }, { name = "least", value = Splitters::least }, { name = "most", value = Splitters::most }, { name = "keep", value = Splitters::keep }, { name = "event", value = 2 }]))
 
 resized value = Messages::route (Events::bind (ui::SizeInput(action = Typed), value) ?: ui::Act(act = Load), \_ => 0 - 1, \(_, _) => 0 - 2, \(_, _) => 0 - 3, \(_, points) => points, \(_, _) => 0 - 4, \_ => 0 - 5, \(_, _) => 0 - 6, \(_, _) => 0 - 7, \_ => 0 - 8, \(_, _) => 0 - 9)
 // [UI-COMPONENTS-SPLITTER]: a dragged width reaches the application only within the splitter's limits, and only as a whole number of points.
@@ -120,14 +134,14 @@ test ("a splitter delivers its dragged width clamped to its limits", \() =>
 test ("a link carries its label and web address and takes no ordinal", \() =>
     walked = Encode::walk ([], Ui::column [Ui::link ("Osprey guide", "https://example.test/guide"), Ui::button ("Go", "play", Increment)])
     doc = listGet walked.nodes 0 ?: JsonNull
-    link = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
-    go = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
+    link = itemAt (doc, "children", 0)
+    go = itemAt (doc, "children", 1)
     expect (kindAt doc 0, "link")
     expect (jsonText (jsonField link "label" ?: JsonNull) ?: "", "Osprey guide")
     expect (jsonText (jsonField link "url" ?: JsonNull) ?: "", "https://example.test/guide")
-    expect (jsonInt (jsonField link "event" ?: JsonNull) ?: 0 - 1, 0 - 1)
+    expect (eventOf link, 0 - 1)
     expect (length walked.bindings, 1)
-    expect (jsonInt (jsonField go "event" ?: JsonNull) ?: 0 - 1, 0))
+    expect (eventOf go, 0))
 test ("controls take depth-first ordinals in drawing order", \() =>
     expect (length (Encode::walk ([], tree ())).bindings, 3))
 test ("an encoded region decodes with its components and text intact", \() =>
@@ -137,8 +151,8 @@ test ("an encoded region decodes with its components and text intact", \() =>
     expect (title, "Title \"quoted\"\n"))
 test ("a control carries the ordinal of its binding", \() =>
     doc = jsonDecode (encoded ()) ?: JsonNull
-    picker = jsonIndex (jsonField doc "children" ?: JsonNull) 3 ?: JsonNull
-    expect (jsonInt (jsonField picker "event" ?: JsonNull) ?: 0 - 1, 2))
+    picker = itemAt (doc, "children", 3)
+    expect (eventOf picker, 2))
 test ("start sends every region once with the theme", \() =>
     first = Probes::started ()
     expect (Probes::keys first, "root,note")
@@ -149,13 +163,13 @@ test ("a tap refreshes only the region whose signal changed", \() =>
     second = Probes::post (Probes::started (), Probes::tap ("root", 1, 0))
     expect (Probes::keys second, "root")
     expect (Probes::problems second, "")
-    root = Doc::field (listGet (Doc::items (Doc::field (second, "patches"))) 0 ?: JsonNull, "node")
-    label = Doc::text (listGet (Doc::items (Doc::field (root, "children"))) 0 ?: JsonNull, "text")
+    root = Doc::field (firstOf (second, "patches"), "node")
+    label = Doc::text (firstOf (root, "children"), "text")
     expect (label, "Count 1"))
 test ("text input reaches update through its binding and patches its own region", \() =>
     second = Probes::post (Probes::started (), Probes::typed (1, "hello"))
     expect (Probes::keys second, "note")
-    echo = listGet (Doc::items (Doc::field (second, "slices"))) 0 ?: JsonNull
+    echo = firstOf (second, "slices")
     expect ("${Doc::text (echo, "key")}=${Doc::text (echo, "text")}", "echo=hello")
     third = Probes::post (second, Probes::tap ("root", 1, 0))
     expect (Probes::keys third, "root"))
@@ -177,8 +191,8 @@ test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
     counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
     expect (Probes::problems counted, "")
     expect (Probes::keys counted, "root")
-    root = Doc::field (listGet (Doc::items (Doc::field (counted, "patches"))) 0 ?: JsonNull, "node")
-    expect (Doc::text (listGet (Doc::items (Doc::field (root, "children"))) 0 ?: JsonNull, "text"), "Count 1")
+    root = Doc::field (firstOf (counted, "patches"), "node")
+    expect (Doc::text (firstOf (root, "children"), "text"), "Count 1")
     // At count 1 the buttons are [Load]; the host's ordinal 0 (Increment in prior) still means Increment, but it is withdrawn now.
     shifted = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
     expect (Probes::keys shifted, "")
@@ -186,25 +200,21 @@ test ("an edit from prior state keeps its meaning when ordinals shift", \() =>
     // Prior ordinal 1 (Load) still means Load even though it now sits at ordinal 0.
     loaded = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 1, "null"))
     expect (Probes::problems loaded, "")
-    expect (Doc::text (listGet (Doc::items (Doc::field (loaded, "requests"))) 0 ?: JsonNull, "ticket"), "load:1"))
+    expect (Doc::text (firstOf (loaded, "requests"), "ticket"), "load:1"))
 // [UI-EVENTS]: identical-looking controls are told apart by their typed actions; a withdrawn action refuses.
 test ("an edit whose typed action is gone or ambiguous refuses without change", \() =>
     first = Probes::started ()
     // Prior ordinal 1 is Load; the note region draws two identical Load buttons.
     duped = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 1, "null"))
-    expect (contains (Probes::problems duped) "More than one", true)
-    expect (Probes::keys duped, "")
-    expect (length (Doc::items (Doc::field (duped, "patches"))), 0)
+    refusedClean (duped, "More than one")
     // At count 1 only Load is drawn; the withdrawn Increment (prior ordinal 0) refuses instead of dispatching Load.
     counted = Probes::post (first, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
     gone = Probes::post (counted, Probes::edit (Probes::saved (first), "root", 1, 0, "null"))
-    expect (contains (Probes::problems gone) "no longer exists", true)
-    expect (Probes::keys gone, "")
-    expect (length (Doc::items (Doc::field (gone, "patches"))), 0)
+    refusedClean (gone, "no longer exists")
     // The refusal changed nothing: the current session still answers its own controls.
     intact = Probes::post (gone, Probes::tap ("root", 2, 0))
     expect (Probes::problems intact, "")
-    expect (Doc::text (listGet (Doc::items (Doc::field (intact, "requests"))) 0 ?: JsonNull, "ticket"), "load:1")
+    expect (Doc::text (firstOf (intact, "requests"), "ticket"), "load:1")
     expect (Doc::number (Probes::stored intact, "tally"), 1))
 // [UI-EVENTS]: an edit is refused when its original revision, region or ordinal cannot be recovered from the prior state.
 test ("an edit with an impossible original refuses without change", \() =>
@@ -221,7 +231,7 @@ test ("an edit with an impossible original refuses without change", \() =>
     wrongKind = Probes::post (first, Probes::edit (Probes::saved (first), "note", 1, 0, "7"))
     expect (contains (Probes::problems wrongKind) "wrong kind", true)
     expect (Probes::keys wrongKind, "")
-    expect (length (Doc::items (Doc::field (wrongKind, "requests"))), 0)
+    expect (countOf (wrongKind, "requests"), 0)
     // Every refusal left the session whole.
     after = Probes::post (first, Probes::tap ("root", 1, 0))
     expect (Probes::problems after, "")
@@ -239,12 +249,11 @@ test ("a resolved edit updates the current state", \() =>
     expect (Doc::number (Probes::stored edited, "tally"), 1))
 test ("capability requests carry tickets and completions return to update", \() =>
     asked = Probes::post (Probes::started (), Probes::tap ("note", 1, 1))
-    request = listGet (Doc::items (Doc::field (asked, "requests"))) 0 ?: JsonNull
-    expect (Doc::text (request, "ticket"), "load:1")
-    expect (Doc::text (request, "kind"), "store-read")
+    request = firstOf (asked, "requests")
+    expectTexts (request, [{ name = "ticket", value = "load:1" }, { name = "kind", value = "store-read" }])
     done = Probes::post (asked, "{\"kind\":\"completed\",\"ticket\":\"load:1\",\"ok\":true,\"result\":\"from disk\",\"now\":9}")
     expect (Probes::keys done, "note")
-    field = listGet (Doc::items (Doc::field (Doc::field (listGet (Doc::items (Doc::field (done, "patches"))) 0 ?: JsonNull, "node"), "children"))) 0 ?: JsonNull
+    field = firstOf (Doc::field (firstOf (done, "patches"), "node"), "children")
     expect (Doc::text (field, "value"), "from disk"))
 test ("malformed events are diagnosed, never guessed", \() =>
     bad = Probes::post (Probes::started (), "{not json")
@@ -269,57 +278,48 @@ tabbed () = Ui::column [
 test ("tabs carry their pages and bind after the pages' controls, and segments carry their tones", \() =>
     walked = Encode::walk ([], tabbed ())
     doc = listGet walked.nodes 0 ?: JsonNull
-    tabs = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
-    second = jsonIndex (jsonField tabs "tabs" ?: JsonNull) 1 ?: JsonNull
-    segments = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
+    tabs = itemAt (doc, "children", 0)
+    second = itemAt (tabs, "tabs", 1)
+    segments = itemAt (doc, "children", 1)
     expect (length walked.bindings, 2)
-    expect (Doc::text (tabs, "kind"), "tabs")
-    expect (Doc::text (tabs, "selected"), "two")
+    expectTexts (tabs, [{ name = "kind", value = "tabs" }, { name = "selected", value = "two" }])
     expect (Doc::number (tabs, "event"), 1)
-    expect (Doc::text (second, "label"), "Two")
-    expect (Doc::text (second, "symbol"), "2.circle")
-    expect (Doc::text (Doc::field (second, "child"), "text"), "Second")
-    expect (Doc::text (Doc::field (second, "child"), "role"), "caption")
+    expectTexts (second, [{ name = "label", value = "Two" }, { name = "symbol", value = "2.circle" }])
+    expectTexts (Doc::field (second, "child"), [{ name = "text", value = "Second" }, { name = "role", value = "caption" }])
     expect (join (Doc::texts (segments, "tones")) ",", "good,danger")
     expect (Doc::text (segments, "label"), "2 states"))
 // [UI-COMPONENTS]: every constructor encodes as the component it names, with its role, tone, axis and enabled state.
 built () = Ui::split [Ui::row [Ui::styled ("H", ui::Heading, ui::Accent), Ui::evidence ("Label", "Value"), Ui::badge ("Partial", "info", ui::Caution), Ui::empty ("inbox", "Nothing", "Why"), Ui::action ("Stop", "stop", ui::Destructive, false, Load), Ui::toggle ("AI", true, Typed), Ui::picker ("Model", [Ui::choice ("a", "A")], "a", Load), Ui::rows ([Ui::item ("k", Ui::text "cell")], "k", Load)]]
 test ("every constructor encodes as the component it names", \() =>
     doc = listGet (Encode::walk ([], built ())).nodes 0 ?: JsonNull
-    row = jsonIndex (jsonField doc "children" ?: JsonNull) 0 ?: JsonNull
+    row = itemAt (doc, "children", 0)
     parts = Doc::items (Doc::field (row, "children"))
     expect (Doc::text (doc, "kind"), "split")
     expect (Doc::text (row, "axis"), "horizontal")
     expect (join (mapList (parts, \child => Doc::text (child, "kind"))) ",", "text,evidence,badge,empty,button,toggle,picker,rows")
-    expect (Doc::text (listGet parts 0 ?: JsonNull, "role"), "heading")
-    expect (Doc::text (listGet parts 0 ?: JsonNull, "tone"), "accent")
-    expect (Doc::text (listGet parts 2 ?: JsonNull, "tone"), "caution")
-    expect (Doc::text (listGet parts 3 ?: JsonNull, "detail"), "Why")
-    expect (Doc::text (listGet parts 4 ?: JsonNull, "role"), "destructive")
-    expect (Doc::flag (listGet parts 4 ?: JsonNull, "enabled"), false)
-    expect (Doc::flag (listGet parts 5 ?: JsonNull, "on"), true)
-    expect (Doc::text (listGet (Doc::items (Doc::field (listGet parts 7 ?: JsonNull, "rows"))) 0 ?: JsonNull, "key"), "k"))
+    expectTexts (partOf (parts, 0), [{ name = "role", value = "heading" }, { name = "tone", value = "accent" }])
+    expect (Doc::text (partOf (parts, 2), "tone"), "caution")
+    expect (Doc::text (partOf (parts, 3), "detail"), "Why")
+    expect (Doc::text (partOf (parts, 4), "role"), "destructive")
+    expect (Doc::flag (partOf (parts, 4), "enabled"), false)
+    expect (Doc::flag (partOf (parts, 5), "on"), true)
+    expect (Doc::text (firstOf (partOf (parts, 7), "rows"), "key"), "k"))
 // [UI-EFFECTS]: a run and an HTTP request encode their bounds, headers and the slices their output lands in.
 runRequest plist = Requests::encode (Requests::ask ("ps", ui::Run(executable = "/bin/ps", arguments = ["-axo", "pid="], timeout = 10000, outputLimit = 8000000, plist = plist, runSlice = "work/run")))
 test ("run and http requests encode their bounds, headers and slices", \() =>
     run = runRequest false
-    expect (Doc::text (run, "ticket"), "ps")
-    expect (Doc::text (run, "kind"), "run")
+    expectTexts (run, [{ name = "ticket", value = "ps" }, { name = "kind", value = "run" }, { name = "slice", value = "work/run" }])
     expect (join (Doc::texts (run, "arguments")) " ", "-axo pid=")
-    expect (Doc::number (run, "timeout"), 10000)
-    expect (Doc::number (run, "limit"), 8000000)
+    expectNumbers (run, [{ name = "timeout", value = 10000 }, { name = "limit", value = 8000000 }])
     expect (Doc::flag (run, "plist"), false)
     expect (Doc::has (run, "plist"), true)
     expect (Doc::flag (runRequest true, "plist"), true)
     expect (Doc::has (runRequest true, "plist"), true)
-    expect (Doc::text (run, "slice"), "work/run")
     http = Requests::encode (Requests::ask ("kev", ui::Http(method = "GET", url = "https://example.test/feed", headers = [ui::Header(headerName = "Accept", headerValue = "application/json")], body = "", responseLimit = 1000, deadline = 30000, httpSlice = "work/http")))
-    header = listGet (Doc::items (Doc::field (http, "headers"))) 0 ?: JsonNull
-    expect (Doc::text (http, "method"), "GET")
+    header = firstOf (http, "headers")
+    expectTexts (http, [{ name = "method", value = "GET" }, { name = "slice", value = "work/http" }])
     expect ("${Doc::text (header, "name")}: ${Doc::text (header, "value")}", "Accept: application/json")
-    expect (Doc::number (http, "limit"), 1000)
-    expect (Doc::number (http, "timeout"), 30000)
-    expect (Doc::text (http, "slice"), "work/http")
+    expectNumbers (http, [{ name = "limit", value = 1000 }, { name = "timeout", value = 30000 }])
     write = Requests::write ("echo", "text")
     expect ("${write.sliceKey}=${write.sliceText}", "echo=text"))
 
@@ -380,19 +380,15 @@ test ("semantic text roles preserve every protocol spelling", \() =>
 test ("host capabilities preserve namespace operation arguments and bounds", \() =>
     request = ui::HostCall(hostNamespace = "vscode", hostOperation = "workspace.snapshot", hostArguments = JsonObject [Doc::str ("workspace", "file:///app")], hostTimeout = 1000, hostLimit = 4096, hostSlice = "workspace")
     doc = Requests::encode (Requests::ask ("host:1", request))
-    expect (Doc::text (doc, "kind"), "host-call")
-    expect (Doc::text (doc, "namespace"), "vscode")
-    expect (Doc::text (doc, "operation"), "workspace.snapshot")
-    expect (Doc::number (doc, "timeout"), 1000)
-    expect (Doc::number (doc, "limit"), 4096)
-    expect (Doc::text (doc, "slice"), "workspace")
+    expectTexts (doc, [{ name = "kind", value = "host-call" }, { name = "namespace", value = "vscode" }, { name = "operation", value = "workspace.snapshot" }, { name = "slice", value = "workspace" }])
+    expectNumbers (doc, [{ name = "timeout", value = 1000 }, { name = "limit", value = 4096 }])
     expect (Doc::text (Doc::field (doc, "arguments"), "workspace"), "file:///app"))
 // [UI-COMPONENTS-CONTEXT-MENU]: menu commands use the same issued binding IDs.
 test ("context menus bind actions after their content controls", \() =>
     built = Ui::contextMenu (Ui::button ("Select", "package", Increment), [Ui::button ("Remove", "delete", Load)])
     walked = Encode::walk ([], built)
     doc = listGet walked.nodes 0 ?: JsonNull
-    item = listGet (Doc::items (Doc::field (doc, "items"))) 0 ?: JsonNull
+    item = firstOf (doc, "items")
     expect (Doc::text (doc, "kind"), "context-menu")
     expect (Doc::number (Doc::field (doc, "body"), "event"), 0)
     expect (Doc::number (item, "event"), 1)
@@ -456,10 +452,8 @@ test ("presentation frames explicitly disable viewport sizing by default", \() =
     style = Doc::field (listGet walked.nodes 0 ?: JsonNull, "style")
     expect (Doc::has (style, "viewportHeightInset"), true)
     expect (Doc::number (style, "viewportHeightInset"), -1)
-    expect (Doc::has (style, "scrollY"), true)
-    expect (Doc::flag (style, "scrollY"), false)
-    expect (Doc::has (style, "selectionGroup"), true)
-    expect (Doc::flag (style, "selectionGroup"), false))
+    expectPresence (style, [{ name = "scrollY", value = true }, { name = "selectionGroup", value = true }])
+    expectFlags (style, [{ name = "scrollY", value = false }, { name = "selectionGroup", value = false }]))
 
 test ("presentation frames preserve exact dimensions and inner control provenance", \() =>
     style = plain(frameName = "solution-column", frameWidth = 430, frameHeight = 440, frameViewportHeightInset = 270, frameScrollY = true, frameTop = 34, frameRight = 30, frameBottom = 30, frameLeft = 30, frameGap = 24, frameFill = "canvas", frameFont = "serif", frameTextSize = 27, frameItalic = true, frameHug = true, frameAlign = "center", frameCross = "end", frameControlHeight = 40, frameControlPadding = 12, frameMathScale = 1.08, frameLineHeight = 34.72, frameTracking = -0.6, frameQuietControls = true, frameFadeBackdrop = true, frameTrailingSymbols = true, frameSelectionGroup = true, frameShadow = "floating", frameSymbolSize = 13)
@@ -467,16 +461,10 @@ test ("presentation frames preserve exact dimensions and inner control provenanc
     encoded = listGet walked.nodes 0 ?: JsonNull
     geometry = Doc::field (encoded, "style")
     expect (Doc::text (encoded, "kind"), "framed")
-    expect (Doc::number (geometry, "width"), 430)
-    expect (Doc::number (geometry, "height"), 440)
-    expect (Doc::number (geometry, "viewportHeightInset"), 270)
-    expect (Doc::flag (geometry, "scrollY"), true)
-    expect (Doc::flag (geometry, "selectionGroup"), true)
-    expect (Doc::number (geometry, "left"), 30)
-    expect (Doc::number (geometry, "gap"), 24)
+    expectNumbers (geometry, [{ name = "width", value = 430 }, { name = "height", value = 440 }, { name = "viewportHeightInset", value = 270 }, { name = "left", value = 30 }, { name = "gap", value = 24 }, { name = "symbolSize", value = 13 }])
+    expectFlags (geometry, [{ name = "scrollY", value = true }, { name = "selectionGroup", value = true }])
     expect (Doc::text (geometry, "fill"), "canvas")
     expect (Doc::has (geometry, "symbolSize"), true)
-    expect (Doc::number (geometry, "symbolSize"), 13)
     AdditionCases::frameTypography geometry
     expect (length walked.bindings, 1)
     expect (Doc::number (Doc::field (encoded, "body"), "event"), 0))
@@ -487,8 +475,7 @@ test ("scoped themes and dialogs retain their inner controls and dismissal prove
     scoped = listGet walked.nodes 0 ?: JsonNull
     dialog = Doc::field (scoped, "body")
     expect (Doc::text (scoped, "kind"), "themed")
-    expect (Doc::text (dialog, "kind"), "dialog")
-    expect (Doc::text (dialog, "title"), "Review transcription")
+    expectTexts (dialog, [{ name = "kind", value = "dialog" }, { name = "title", value = "Review transcription" }])
     expect (Doc::number (dialog, "event"), 0)
     expect (Doc::number (Doc::field (dialog, "body"), "event"), 1)
     expect (length walked.bindings, 2))
@@ -501,12 +488,11 @@ test ("inline text retains mathematical emphasis and semantic source colours wit
     runs = Doc::items (Doc::field (node, "runs"))
     variable = listGet runs 1 ?: JsonNull
     expect (Doc::text (node, "kind"), "rich-text")
-    expect (Doc::text (variable, "text"), "p")
-    expect (Doc::text (variable, "ink"), "sourceType")
+    expectTexts (variable, [{ name = "text", value = "p" }, { name = "ink", value = "sourceType" }])
     expect (Doc::flag (variable, "italic"), true)
     expect (length walked.bindings, 0)
     branded = listGet (Encode::walk ([], Ui::column [ui::Brand, Ui::button ("Continue", "", Increment)])).nodes 0 ?: JsonNull
-    expect (Doc::text (listGet (Doc::items (Doc::field (branded, "children"))) 0 ?: JsonNull, "kind"), "brand"))
+    expect (Doc::text (firstOf (branded, "children"), "kind"), "brand"))
 
 test ("machine canvas use case: accessible controls, geometry, sliders, repeated menus, dismissal and live lettering", \() => machineCaseCanvasUseCase ())
 test ("native machine views render ordinary controls and preserve every host value kind", \() => machineCaseNativeViews ())

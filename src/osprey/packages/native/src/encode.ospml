@@ -91,18 +91,17 @@ module Encode
     first walked = listGet walked.nodes 0 ?: JsonNull
 
     entryAt<A> : (Walked<A>, List<Tab<A>>, int) -> Walked<A>
-    entryAt (walked, tabs, index) = match listGet tabs index
-        Success tab =>
-            inner = walk (walked.bindings, tab.page)
-            json = JsonObject [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol, JsonMember "child" (first inner)]
-            Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
-        Error _ => walked
+    entryAt (walked, tabs, index) = at (walked, tabs, index, \tab => tab.page, \tab => [str "key" tab.tabKey, str "label" tab.tabLabel, str "symbol" tab.tabSymbol])
 
     rowAt<A> : (Walked<A>, List<Row<A>>, int) -> Walked<A>
-    rowAt (walked, rows, index) = match listGet rows index
-        Success item =>
-            inner = walk (walked.bindings, item.cell)
-            json = JsonObject [str "key" item.rowKey, str "symbol" item.rowSymbol, str "group" item.rowGroup, JsonMember "child" (first inner)]
+    rowAt (walked, rows, index) = at (walked, rows, index, \row => row.cell, \row => [str "key" row.rowKey, str "symbol" row.rowSymbol, str "group" row.rowGroup])
+
+    // The `index`th entry as one more child of `walked`: its own content is walked first, so its controls take ordinals before the entries after it.
+    at<A, B> : (Walked<A>, List<B>, int, (B) -> Node<A>, (B) -> List<JsonMember>) -> Walked<A>
+    at (walked, entries, index, content, members) = match listGet entries index
+        Success entry =>
+            inner = walk (walked.bindings, content entry)
+            json = JsonObject (listAppend (members entry) (JsonMember "child" (first inner)))
             Walked(bindings = inner.bindings, nodes = listAppend walked.nodes json)
         Error _ => walked
 

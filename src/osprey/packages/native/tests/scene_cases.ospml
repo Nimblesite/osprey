@@ -27,6 +27,9 @@ arityAt (shapes, index) = length (Doc::items (listGet shapes index ?: JsonNull))
 // [UI-SCENE]: a scene encodes flat: one small array per primitive, a type code first, sprites by
 // atlas index, glyph text inline, and one input binding.
 (** a scene encodes its primitives as flat typed arrays. *)
+// The integers `0` to `count - 1`, in order.
+indices count = range (0, count) |> fold [] (\(out, index) => listAppend out index)
+
 sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     drawn = [Scenes::rect (1.0, 2.0, 3.0, 4.0, 0.5, Scenes::rgb (255, 0, 0), 0), Scenes::disc (5.0, 6.0, 7.0, Scenes::rgba (0, 0, 255, 128), 1), Scenes::strip ([0.0, 0.0, 10.0, 10.0], Scenes::rgb (0, 255, 0), 2.0, 1), Scenes::sprite (1, 8.0, 9.0, 2.0, 2.0, 0.0, Scenes::rgb (255, 255, 255), 2), Scenes::glyphs ("Score 3", 1.0, 1.0, 12.0, Scenes::rgb (0, 0, 0), 3)]
     walked = Encode::walk ([], Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320.0, 200.0, ["bird", "hawk"], drawn, Typed)])
@@ -34,27 +37,17 @@ sceneCaseASceneEncodesItsPrimitivesAsFlat () =
     scene = jsonIndex (jsonField doc "children" ?: JsonNull) 1 ?: JsonNull
     shapes = Doc::items (Doc::field (scene, "shapes"))
     expect (Doc::text (scene, "kind"), "scene")
-    expect (Doc::decimal (scene, "width"), 320.0)
-    expect (Doc::decimal (scene, "height"), 200.0)
-    expect (Doc::decimal (scene, "zoom"), 1.0)
+    expectDecimals (scene, [{ name = "width", value = 320.0 }, { name = "height", value = 200.0 }, { name = "zoom", value = 1.0 }])
     expect (join (Doc::texts (scene, "atlas")) ",", "bird,hawk")
     zoomed = listGet (Encode::walk ([], Ui::zoomed (0.75, 1536.0, 828.0, [], drawn, Typed))).nodes 0 ?: JsonNull
-    expect (Doc::decimal (zoomed, "zoom"), 0.75)
-    expect (Doc::decimal (zoomed, "width"), 1536.0)
+    expectDecimals (zoomed, [{ name = "zoom", value = 0.75 }, { name = "width", value = 1536.0 }])
     expect (length shapes, 5)
-    expect (codeAt (shapes, 0), 0)
-    expect (arityAt (shapes, 0), 8)
+    forEachList (indices (length shapes), \index => expect (codeAt (shapes, index), index))
+    arities = [8, 6, 9, 9, 7]
+    forEachList (indices (length arities), \index => expect (arityAt (shapes, index), listGet arities index ?: 0 - 1))
     expect (jsonInt (jsonIndex (listGet shapes 0 ?: JsonNull) 6 ?: JsonNull) ?: 0 - 1, Scenes::rgb (255, 0, 0))
-    expect (codeAt (shapes, 1), 1)
-    expect (arityAt (shapes, 1), 6)
-    expect (codeAt (shapes, 2), 2)
-    expect (arityAt (shapes, 2), 9)
     expect (jsonInt (jsonIndex (listGet shapes 2 ?: JsonNull) 1 ?: JsonNull) ?: 0 - 1, 2)
-    expect (codeAt (shapes, 3), 3)
-    expect (arityAt (shapes, 3), 9)
     expect (jsonInt (jsonIndex (listGet shapes 3 ?: JsonNull) 1 ?: JsonNull) ?: 0 - 1, 1)
-    expect (codeAt (shapes, 4), 4)
-    expect (arityAt (shapes, 4), 7)
     expect (jsonText (jsonIndex (listGet shapes 4 ?: JsonNull) 1 ?: JsonNull) ?: "", "Score 3")
     expect (Doc::number (scene, "event"), 1)
     expect (length walked.bindings, 2)
@@ -129,9 +122,8 @@ sceneCaseAFrameEventDeliversItsElapsedSeconds () =
 (** an animate request carries its on flag. *)
 sceneCaseAnAnimateRequestCarriesItsOnFlag () =
     doc = Requests::encode (Requests::ask ("clock:1", ui::Animate(animated = true)))
-    expect (Doc::text (doc, "kind"), "animate")
+    expectTexts (doc, [{ name = "kind", value = "animate" }, { name = "ticket", value = "clock:1" }])
     expect (Doc::flag (doc, "on"), true)
-    expect (Doc::text (doc, "ticket"), "clock:1")
 
 occurrences (names, name) = length (range (0, length names) |> fold [] (\(found, index) => Pick::either ((listGet names index ?: "") == name, listAppend found index, found)))
 
@@ -211,7 +203,7 @@ streamScene () = Ui::column [Ui::button ("Pause", "pause", Load), Ui::scene (320
 sceneCaseASplitSceneStreamsItsFixedSize () =
     walked = Encode::walk ([], streamedFrom (streamScene ()))
     expect (streamedTrace, "0@1;1@2;3@4;")
-    scene = jsonIndex (jsonField (listGet walked.nodes 0 ?: JsonNull) "children" ?: JsonNull) 1 ?: JsonNull
+    scene = itemAt (listGet walked.nodes 0 ?: JsonNull, "children", 1)
     shapes = Doc::items (Doc::field (scene, "shapes"))
     expect (Doc::number (scene, "streamed"), 3)
     expect (join (mapList (shapes, \shape => "${jsonInt (jsonIndex shape 0 ?: JsonNull) ?: 0 - 1}")) ",", "2,4")
@@ -221,7 +213,7 @@ sceneCaseASplitSceneStreamsItsFixedSize () =
 // [UI-SCENE-STREAM]: an unsplit scene streams nothing and says so.
 (** an enveloped scene reports nothing streamed. *)
 sceneCaseAnEnvelopedSceneReportsNothingStreamed () =
-    scene = jsonIndex (jsonField (listGet (Encode::walk ([], streamScene ())).nodes 0 ?: JsonNull) "children" ?: JsonNull) 1 ?: JsonNull
+    scene = itemAt (listGet (Encode::walk ([], streamScene ())).nodes 0 ?: JsonNull, "children", 1)
     expect (Doc::number (scene, "streamed"), 0)
     expect (length (Doc::items (Doc::field (scene, "shapes"))), 5)
 

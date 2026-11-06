@@ -52,14 +52,10 @@ module AdditionCases
         walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Editors::editor ("Proof", "one\ntwo", 3, [Editors::mark (2, true, ui::Danger, "E", "Expected a premise")], Typed, Load)])
         doc = editorNode ()
         mark = listGet (Doc::items (Doc::field (doc, "marks"))) 0 ?: JsonNull
-        expect (Doc::text (doc, "kind"), "editor")
-        expect (Doc::text (doc, "label"), "Proof")
-        expect (Doc::text (doc, "value"), "one\ntwo")
-        expect (Doc::number (doc, "cursor"), 3)
-        expect (Doc::number (doc, "event"), 1)
-        expect (Doc::number (doc, "placeEvent"), 2)
+        expectTexts (doc, [{ name = "kind", value = "editor" }, { name = "label", value = "Proof" }, { name = "value", value = "one\ntwo" }])
+        expectNumbers (doc, [{ name = "cursor", value = 3 }, { name = "event", value = 1 }, { name = "placeEvent", value = 2 }])
         expect (length walked.bindings, 3)
-        expect (Doc::number (mark, "line"), 2)
+        expectNumbers (mark, [{ name = "line", value = 2 }])
         expect (Doc::flag (mark, "underlined"), true)
         expect ("${Doc::text (mark, "tone")}/${Doc::text (mark, "badge")}/${Doc::text (mark, "note")}", "danger/E/Expected a premise")
 
@@ -67,11 +63,8 @@ module AdditionCases
         node = Editors::focused ("Formula", "p→q", length "p→", 3, Typed, Load)
         doc = listGet (Encode::walk ([], node)).nodes 0 ?: JsonNull
         expect (Doc::has (doc, "focusEpoch"), true)
-        expect (Doc::number (doc, "focusEpoch"), 3)
+        expectNumbers (doc, [{ name = "focusEpoch", value = 3 }, { name = "cursor", value = length "p→" }, { name = "event", value = 0 }, { name = "placeEvent", value = 1 }])
         expect (Doc::flag (doc, "inline"), true)
-        expect (Doc::number (doc, "cursor"), length "p→")
-        expect (Doc::number (doc, "event"), 0)
-        expect (Doc::number (doc, "placeEvent"), 1)
         expect (Doc::has (editorNode (), "focusEpoch"), true)
         expect (Doc::number (editorNode (), "focusEpoch"), 0)
 
@@ -87,13 +80,9 @@ module AdditionCases
     export boardEncoding () =
         walked = Encode::walk ([], Ui::column [Ui::button ("Before", "", Increment), Boards::illustrated ("proof/strokes", 2, true, "chalk-study.png", Typed, Load)])
         doc = listGet (Doc::items (Doc::field (listGet walked.nodes 0 ?: JsonNull, "children"))) 1 ?: JsonNull
-        expect (Doc::text (doc, "kind"), "board")
-        expect (Doc::text (doc, "slice"), "proof/strokes")
-        expect (Doc::text (doc, "backdrop"), "chalk-study.png")
-        expect (Doc::number (doc, "count"), 2)
-        expect (Doc::flag (doc, "lasso"), true)
-        expect (Doc::number (doc, "event"), 1)
-        expect (Doc::number (doc, "lassoEvent"), 2)
+        expectTexts (doc, [{ name = "kind", value = "board" }, { name = "slice", value = "proof/strokes" }, { name = "backdrop", value = "chalk-study.png" }])
+        expectNumbers (doc, [{ name = "count", value = 2 }, { name = "event", value = 1 }, { name = "lassoEvent", value = 2 }])
+        expectFlags (doc, [{ name = "lasso", value = true }])
         expect (length walked.bindings, 3)
         boardCamera ()
 
@@ -109,16 +98,16 @@ module AdditionCases
 
     malformed source = refusal (Strokes::decode (Doc::parse source))
 
+    malformedStrokes () = [
+        "{\"points\":[],\"width\":2,\"at\":9}", "{\"points\":[[1,-2]],\"width\":2,\"at\":9}",
+        "{\"points\":[3],\"width\":2,\"at\":9}", "{\"points\":[[1,2,3]],\"width\":2,\"at\":9}",
+        "{\"points\":[[1,2]],\"at\":9}", "{\"points\":[[1,2]],\"width\":0,\"at\":9}",
+        "{\"points\":[[1,2]],\"width\":2,\"at\":-1}", "{\"points\":[[1,2]],\"width\":2,\"at\":\"9\"}",
+    ]
+
     (** [UI-COMPONENTS-BOARD]: empty points, negative coordinates and non-pair points are refused with the exact diagnostic. *)
     export strokeRefusals () =
-        expect (malformed "{\"points\":[],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[[1,-2]],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[3],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[[1,2,3]],\"width\":2,\"at\":9}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[[1,2]],\"at\":9}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[[1,2]],\"width\":0,\"at\":9}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[[1,2]],\"width\":2,\"at\":-1}", "A board control sent a malformed stroke")
-        expect (malformed "{\"points\":[[1,2]],\"width\":2,\"at\":\"9\"}", "A board control sent a malformed stroke")
+        forEachList (malformedStrokes (), \source => expect (malformed source, "A board control sent a malformed stroke"))
 
     (** [UI-COMPONENTS-BOARD]: a lasso delivers non-negative stroke indices and refuses strings and negative indices. *)
     export lassoValues () =
@@ -170,36 +159,31 @@ module AdditionCases
         Success _ => "accepted"
         Error problem => problem
 
+    refusedCase tested = expect (decodeError tested.source, tested.expected)
+
     (** [UI-COMPONENTS-MATH]: decoding refuses an unknown kind, a missing child, a non-array `items`, a non-object node and non-string text or symbol with the exact diagnostic. *)
     export mathRefusals () =
-        expect (decodeError "{\"kind\":\"foo\"}", "a math node has the unknown kind `foo`")
-        expect (decodeError "{\"kind\":\"root\"}", "a math node of kind `root` is missing its child `body`")
-        expect (decodeError "{\"kind\":\"seq\",\"items\":7}", "a math node of kind `seq` has a non-array `items`")
-        expect (decodeError "7", "a math node must be an object")
-        expect (decodeError "{\"kind\":\"sym\",\"text\":7}", "a math node of kind `sym` has a non-string `text`")
-        expect (decodeError "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `op` has a non-string `symbol`")
+        forEachList ([
+            { source = "{\"kind\":\"foo\"}", expected = "a math node has the unknown kind `foo`" }, { source = "{\"kind\":\"root\"}", expected = "a math node of kind `root` is missing its child `body`" },
+            { source = "{\"kind\":\"seq\",\"items\":7}", expected = "a math node of kind `seq` has a non-array `items`" }, { source = "7", expected = "a math node must be an object" },
+            { source = "{\"kind\":\"sym\",\"text\":7}", expected = "a math node of kind `sym` has a non-string `text`" }, { source = "{\"kind\":\"op\",\"symbol\":7,\"left\":{\"kind\":\"sym\",\"text\":\"x\"},\"right\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `op` has a non-string `symbol`" },
+        ], refusedCase)
         mathShapeRefusals ()
         mathChildRefusals ()
 
-    mathShapeRefusals () =
-        expect (decodeError "{}", "a math node is missing its kind")
-        expect (decodeError "{\"kind\":7}", "a math node is missing its kind")
-        expect (decodeError "{\"kind\":\"sym\"}", "a math node of kind `sym` is missing its `text`")
-        expect (decodeError "{\"kind\":\"seq\"}", "a math node of kind `seq` is missing its `items`")
-        expect (decodeError "{\"kind\":\"seq\",\"items\":[{},{}]}", "a math node is missing its kind")
-        expect (decodeError "{\"kind\":\"binder\"}", "a math node of kind `binder` is missing its `symbol`")
-        expect (decodeError "{\"kind\":\"binder\",\"symbol\":\"∀\"}", "a math node of kind `binder` is missing its `names`")
-        expect (decodeError "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[]}", "a math node of kind `binder` is missing its child `body`")
+    mathShapeRefusals () = forEachList ([
+        { source = "{}", expected = "a math node is missing its kind" }, { source = "{\"kind\":7}", expected = "a math node is missing its kind" },
+        { source = "{\"kind\":\"sym\"}", expected = "a math node of kind `sym` is missing its `text`" }, { source = "{\"kind\":\"seq\"}", expected = "a math node of kind `seq` is missing its `items`" },
+        { source = "{\"kind\":\"seq\",\"items\":[{},{}]}", expected = "a math node is missing its kind" }, { source = "{\"kind\":\"binder\"}", expected = "a math node of kind `binder` is missing its `symbol`" },
+        { source = "{\"kind\":\"binder\",\"symbol\":\"∀\"}", expected = "a math node of kind `binder` is missing its `names`" }, { source = "{\"kind\":\"binder\",\"symbol\":\"∀\",\"names\":[]}", expected = "a math node of kind `binder` is missing its child `body`" },
+    ], refusedCase)
 
-    mathChildRefusals () =
-        expect (decodeError "{\"kind\":\"sup\"}", "a math node of kind `sup` is missing its child `base`")
-        expect (decodeError "{\"kind\":\"sup\",\"base\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `sup` is missing its child `script`")
-        expect (decodeError "{\"kind\":\"op\",\"symbol\":\"=\"}", "a math node of kind `op` is missing its child `left`")
-        expect (decodeError "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `op` is missing its child `right`")
-        expect (decodeError "{\"kind\":\"big\"}", "a math node of kind `big` is missing its `symbol`")
-        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\"}", "a math node of kind `big` is missing its child `lower`")
-        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", "a math node of kind `big` is missing its child `upper`")
-        expect (decodeError "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", "a math node of kind `big` is missing its child `body`")
+    mathChildRefusals () = forEachList ([
+        { source = "{\"kind\":\"sup\"}", expected = "a math node of kind `sup` is missing its child `base`" }, { source = "{\"kind\":\"sup\",\"base\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `sup` is missing its child `script`" },
+        { source = "{\"kind\":\"op\",\"symbol\":\"=\"}", expected = "a math node of kind `op` is missing its child `left`" }, { source = "{\"kind\":\"op\",\"symbol\":\"=\",\"left\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `op` is missing its child `right`" },
+        { source = "{\"kind\":\"big\"}", expected = "a math node of kind `big` is missing its `symbol`" }, { source = "{\"kind\":\"big\",\"symbol\":\"∑\"}", expected = "a math node of kind `big` is missing its child `lower`" },
+        { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"}}", expected = "a math node of kind `big` is missing its child `upper`" }, { source = "{\"kind\":\"big\",\"symbol\":\"∑\",\"lower\":{\"kind\":\"num\",\"text\":\"1\"},\"upper\":{\"kind\":\"num\",\"text\":\"2\"}}", expected = "a math node of kind `big` is missing its child `body`" },
+    ], refusedCase)
 
     (** [UI-COMPONENTS-MEDIA]: an image and a video encode as leaves with their media fields and take no control ordinal. *)
     export mediaEncoding () =
@@ -216,21 +200,10 @@ module AdditionCases
 
 
     export frameTypography geometry =
-        expect (Doc::text (geometry, "font"), "serif")
-        expect (Doc::number (geometry, "textSize"), 27)
-        expect (Doc::flag (geometry, "italic"), true)
-        expect (Doc::flag (geometry, "hug"), true)
-        expect (Doc::text (geometry, "align"), "center")
-        expect (Doc::text (geometry, "cross"), "end")
-        expect (Doc::number (geometry, "controlHeight"), 40)
-        expect (Doc::number (geometry, "controlPadding"), 12)
-        expect (jsonFloat (Doc::field (geometry, "lineHeight")) ?: 0.0, 34.72)
-        expect (jsonFloat (Doc::field (geometry, "tracking")) ?: 0.0, -0.6)
-        expect (jsonFloat (Doc::field (geometry, "mathScale")) ?: 0.0, 1.08)
-        expect (Doc::flag (geometry, "quietControls"), true)
-        expect (Doc::flag (geometry, "fadeBackdrop"), true)
-        expect (Doc::flag (geometry, "trailingSymbols"), true)
-        expect (Doc::text (geometry, "shadow"), "floating")
+        expectTexts (geometry, [{ name = "font", value = "serif" }, { name = "align", value = "center" }, { name = "cross", value = "end" }, { name = "shadow", value = "floating" }])
+        expectNumbers (geometry, [{ name = "textSize", value = 27 }, { name = "controlHeight", value = 40 }, { name = "controlPadding", value = 12 }])
+        expectFlags (geometry, [{ name = "italic", value = true }, { name = "hug", value = true }, { name = "quietControls", value = true }, { name = "fadeBackdrop", value = true }, { name = "trailingSymbols", value = true }])
+        expectFloats (geometry, [{ name = "lineHeight", value = 34.72 }, { name = "tracking", value = -0.6 }, { name = "mathScale", value = 1.08 }])
         filledButton ()
         frameHelpers ()
 
@@ -254,19 +227,14 @@ module AdditionCases
         node = listGet walked.nodes 0 ?: JsonNull
         expect (Doc::flag (node, "panning"), true)
         expect (Doc::text (node, "backdrop"), "chalk-study.png")
-        expect (Doc::number (node, "event"), 0)
-        expect (Doc::number (node, "lassoEvent"), 1)
-        expect (Doc::number (node, "panEvent"), 2)
+        expectNumbers (node, [{ name = "event", value = 0 }, { name = "lassoEvent", value = 1 }, { name = "panEvent", value = 2 }])
         expect (length walked.bindings, 3)
         expect (routed (Events::bind (listGet walked.bindings 2 ?: ui::Tap(action = Increment), JsonString "{x:12}") ?: ui::Act(act = Increment)), "text load:{x:12}")
         narrowMargin ()
 
     narrowMargin () =
         node = listGet (Encode::walk ([], Ui::boundedAside (Ui::text "Proof", ui::Trailing, Ui::text "Goal", 184, 160, 320, 360, Load))).nodes 0 ?: JsonNull
-        expect (Doc::number (node, "width"), 184)
-        expect (Doc::number (node, "least"), 160)
-        expect (Doc::number (node, "most"), 320)
-        expect (Doc::number (node, "keep"), 360)
+        expectNumbers (node, [{ name = "width", value = 184 }, { name = "least", value = 160 }, { name = "most", value = 320 }, { name = "keep", value = 360 }])
 
 
     filledButton () =
