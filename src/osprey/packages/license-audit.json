@@ -4,7 +4,7 @@
   "packages": {
     "chromecast": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey port of a project-owned CPython CAST v2 sender; no third-party implementation or data.",
@@ -12,7 +12,7 @@
     },
     "einops": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -26,7 +26,7 @@
     },
     "faiss": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -40,7 +40,7 @@
     },
     "fastapi": {
       "license": "MIT AND BSD-3-Clause",
-      "original_license_sha256": "fcf29365015ed49c737174592a3d89884df35dc8bdc99fa6b2e8098c6a631423",
+      "original_license_sha256": "87650e3bd18432543ec133ccbaa6b4cb25a0d924f21841ab5e911ca2e2a31e54",
       "upstreams": [
         {
           "component": "fastapi",
@@ -92,7 +92,7 @@
     },
     "flash_attn": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -106,7 +106,7 @@
     },
     "gguf": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "llama.cpp",
@@ -137,7 +137,7 @@
     },
     "jinja2": {
       "license": "MIT AND Apache-2.0",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "Qwen3.8-27B chat template",
@@ -168,7 +168,7 @@
     },
     "micrograd": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "micrograd",
@@ -220,7 +220,7 @@
     },
     "native": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey implementation; no third-party port identified.",
@@ -228,7 +228,7 @@
     },
     "numpy": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -242,7 +242,7 @@
     },
     "pydantic_ai": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -271,7 +271,7 @@
     },
     "re": {
       "license": "MIT AND Unicode-DFS-2016",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "unicode15",
@@ -305,7 +305,7 @@
     },
     "rouge_score": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -324,7 +324,7 @@
     },
     "sacrebleu": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -338,7 +338,7 @@
     },
     "safetensors": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -352,7 +352,7 @@
     },
     "scipy": {
       "license": "MIT AND BSD-3-Clause AND BSL-1.0",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "xsf",
@@ -492,7 +492,7 @@
     },
     "sklearn": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -506,7 +506,7 @@
     },
     "testing": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -520,7 +520,7 @@
     },
     "tiktoken": {
       "license": "MIT AND Unicode-3.0",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "tiktoken",
@@ -580,7 +580,7 @@
     },
     "tokenizers": {
       "license": "MIT AND Unicode-DFS-2016 AND Unicode-3.0",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [
         {
           "component": "unicode15",
@@ -647,7 +647,7 @@
     },
     "torch": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -661,7 +661,7 @@
     },
     "transformers": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [
         {
@@ -675,7 +675,7 @@
     },
     "graphics": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey typed scene library; no third-party implementation or data.",
@@ -683,7 +683,7 @@
     },
     "json": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey JSON codec; no third-party implementation or data.",
@@ -691,7 +691,7 @@
     },
     "signal_flow": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey signal-flow machine, app and skins; no third-party implementation or data.",
@@ -699,7 +699,7 @@
     },
     "uitest": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey UI test library; no third-party implementation or data.",
@@ -707,7 +707,7 @@
     },
     "vscode": {
       "license": "MIT",
-      "original_license_sha256": "c8c2676117d0305df6e28b27fd0826994c5fc06a7101edc86452ba40a0889936",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
       "upstreams": [],
       "references": [],
       "review": "Original Osprey typed editor SDK; no copied third-party implementation or data.",

@@ -53,6 +53,7 @@ const verifyPackage = (name) => {
   const notice = read(join(dir, 'NOTICE.md'))
   requireThat(manifest.match(/^license = "([^"]+)"$/m)?.[1] === entry.license, `${name}: unreviewed license expression`)
   requireThat(license.includes(HOLDER) && digest(license) === entry.original_license_sha256, `${name}: MIT license changed`)
+  requireThat(license.match(/^Copyright .*$/gm)?.every((line) => line.includes(HOLDER)), `${name}: LICENSE names a copyright holder other than ${HOLDER}`)
   requireThat(notice.includes(entry.license) && notice.includes(HOLDER), `${name}: attribution or license summary missing`)
   for (const upstream of entry.upstreams) verifyUpstream(dir, upstream, notice)
   const expected = [...new Set(entry.upstreams.map((upstream) => join(dir, upstream.file)))].sort()

@@ -4,7 +4,7 @@ All package infrastructure and libraries live here. [manager/](manager/README.md
 
 ## Licensing and provenance audit
 
-Reviewed on 25 October 2026. Each package carries the normal MIT grant from **NIMBLESITE PTY LTD, Australia**, retaining the earlier Christian Findlay notice. The packages reimplement selected APIs and behavior in Osprey; they do not bundle, link or redistribute the corresponding Python packages. An API reference, oracle output or the word “port” does not by itself import an upstream license.
+Reviewed on 25 October 2026. Each package carries the normal MIT grant from **NIMBLESITE PTY LTD, Australia**. The packages reimplement selected APIs and behavior in Osprey; they do not bundle, link or redistribute the corresponding Python packages. An API reference, oracle output or the word “port” does not by itself import an upstream license.
 
 Each package's `NOTICE.md` acknowledges the original repositories and comparison releases. Upstream license copies are retained only for the specific reused implementation or derived data identified below. The original authors retain ownership of that material; the Nimblesite MIT grant does not reassign it.
 
