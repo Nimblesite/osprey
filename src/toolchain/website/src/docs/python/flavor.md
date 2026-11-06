@@ -281,7 +281,7 @@ Two handlers, each in its own file, answer every operation. [`cpu.py`](https://g
 {{ gpuExample.gpu | safe }}
 ```
 
-The installed handler selects the backend. Both must answer every operation with compatible types; products and loads return Result so callers handle failure. [One model, two backends](/docs/one-model-two-backends/) walks through the full effect and both handlers.
+The installed handler selects the backend. Both must answer every operation with compatible types; products and loads return Result so callers handle failure. [Run the same model on CPU or GPU](/docs/cpu-or-gpu/) walks through the full effect and both handlers.
 
 ## Modules and mixed-flavor projects
 

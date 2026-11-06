@@ -357,7 +357,7 @@ test("Python GPU documentation preserves the current fallible tensor contract", 
 });
 
 test("backend guide handles product failures without the removed abort helpers", async ({ page }) => {
-  await page.goto("/docs/one-model-two-backends/");
+  await page.goto("/docs/cpu-or-gpu/");
   const code = (await page.locator('pre code').allTextContents()).join("\n");
   expect(code).toContain("Result<B, string>");
   expect(code).toContain("answered(gpuMatMul(a, b, rows, inner, cols))");

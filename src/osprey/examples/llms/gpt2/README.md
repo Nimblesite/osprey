@@ -92,7 +92,7 @@ The Default entry point installs the selected handler around the whole run:
 Backends::under(input(), fn() => run(prompt, count))
 ```
 
-Each branch is compiled with its handler specialised into the model. [One model, two backends](../../../../toolchain/website/src/docs/one-model-two-backends.md) explains the effect and what the compiler proves.
+Each branch is compiled with its handler specialised into the model. [Run the same model on CPU or GPU](../../../../toolchain/website/src/docs/cpu-or-gpu.md) explains the effect and what the compiler proves.
 
 ## Working alongside Python
 

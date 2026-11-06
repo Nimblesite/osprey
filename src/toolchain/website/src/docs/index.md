@@ -13,7 +13,7 @@ Osprey is built for **safety, elegance and performance**: typed effects and `Res
 ## Start here
 
 - **[Algebraic effects](/docs/effects/)** — declare an operation, call a reusable handler, replace it in a test, and choose an arithmetic policy.
-- **[One model, two backends](/docs/one-model-two-backends/)** — run GPT-2 on host lists or the GPU by changing its `Tensor` handler.
+- **[Run the same model on CPU or GPU](/docs/cpu-or-gpu/)**: GPT-2 runs on the CPU or the GPU by changing one handler.
 - **[Write Osprey in the Python flavor](/docs/python/flavor/)** — compile Python-style Osprey code, declare effects and call CPython through interop.
 - **[Call Python from Osprey, and Osprey from Python](/docs/python/interop/)** — the `Python` effect, `import osprey`, and test doubles for Python calls.
 - **[Python flavor for AI agents](/docs/python/for-ai/)** — commands, effect decorators, supported syntax and bug-reporting instructions for coding agents.

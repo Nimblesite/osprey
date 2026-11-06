@@ -37,8 +37,8 @@
           "url": "/docs/effects/"
         },
         {
-          "text": "One model, two backends",
-          "url": "/docs/one-model-two-backends/"
+          "text": "Same model on CPU or GPU",
+          "url": "/docs/cpu-or-gpu/"
         },
         {
           "text": "Installation",
