@@ -153,7 +153,7 @@ module BuildTests {
             a.report.status == 0,
             a.derivedAt == Project::pathAt(dir, derivedPath),
             containsAll(a.derived, ["source_roots = [\"../../src\"]", "python_sources = [\"../../src/model.py\"]"]),
-            containsAll(a.derived, ["entry = \"../../src/main.osp\""])
+            contains(a.derived, "entry = \"../../src/main.osp\"")
         ])
     }
 
