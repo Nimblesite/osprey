@@ -22,18 +22,21 @@ pub(super) fn all_requirements(
     required
 }
 
+/// Every name a statement or program mentions as an identifier.
+#[derive(Default)]
+struct References(BTreeSet<String>);
+
+impl crate::AstVisitor for References {
+    fn expression(&mut self, expression: &Expr) {
+        if let Expr::Identifier(name) = expression {
+            let _ = self.0.insert(name.clone());
+        }
+    }
+}
+
 /// Specializing one caller does not consume dynamic callers of the same helper.
 /// Keep originals reachable from surviving statements, including their callees.
 pub(super) fn retain_referenced_originals(program: &mut Program, consumed: &BTreeSet<String>) {
-    #[derive(Default)]
-    struct References(BTreeSet<String>);
-    impl crate::AstVisitor for References {
-        fn expression(&mut self, expression: &Expr) {
-            if let Expr::Identifier(name) = expression {
-                let _ = self.0.insert(name.clone());
-            }
-        }
-    }
     let mut retained = BTreeSet::new();
     loop {
         let mut roots = program.clone();
@@ -89,15 +92,6 @@ pub(super) fn static_performers(
 }
 
 fn referenced_names(statement: &Stmt) -> BTreeSet<String> {
-    #[derive(Default)]
-    struct References(BTreeSet<String>);
-    impl crate::AstVisitor for References {
-        fn expression(&mut self, expression: &Expr) {
-            if let Expr::Identifier(name) = expression {
-                let _ = self.0.insert(name.clone());
-            }
-        }
-    }
     let mut references = References::default();
     crate::walk_statement(statement, &mut references);
     references.0

@@ -68,6 +68,18 @@ pub(crate) fn contains(messages: &[String], expected: &str) -> bool {
     messages.iter().any(|message| message.contains(expected))
 }
 
+/// Assemble `statements` as the single module `file` and prove the diagnostics
+/// mention every one of `needles`.
+pub(crate) fn rejects(file: &str, statements: Vec<Stmt>, needles: &[&str]) {
+    let messages = error_messages(&config(file), &[ast(file, statements)]);
+    for needle in needles {
+        assert!(
+            contains(&messages, needle),
+            "missing {needle:?} in {messages:?}"
+        );
+    }
+}
+
 pub(crate) fn state_module(
     name: &str,
     initializer: Expr,

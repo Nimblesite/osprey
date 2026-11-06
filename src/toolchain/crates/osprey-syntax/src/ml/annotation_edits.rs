@@ -2,6 +2,18 @@
 use super::token::{TokKind, Token};
 use crate::annotation_edits::token_edits;
 use crate::{AnnotationEdit, AnnotationTarget, SourceEdit};
+use std::ops::Range;
+
+/// Non-empty token ranges in `start..end`; an exhausted span yields no ranges.
+fn token_ranges(tokens: &[Token], start: usize, end: usize) -> Vec<Range<usize>> {
+    tokens
+        .get(start..end)
+        .unwrap_or_default()
+        .iter()
+        .map(|t| t.range.clone())
+        .filter(|r| !r.is_empty())
+        .collect()
+}
 
 pub(super) fn parameter(
     source: &str,
@@ -17,13 +29,7 @@ pub(super) fn parameter(
     let Some(ty) = tokens.get(start + 1) else {
         return;
     };
-    let ranges: Vec<_> = tokens
-        .get(start..end)
-        .unwrap_or_default()
-        .iter()
-        .map(|t| t.range.clone())
-        .filter(|r| !r.is_empty())
-        .collect();
+    let ranges = token_ranges(tokens, start, end);
     let Some(last) = ranges.last() else {
         return;
     };
@@ -52,13 +58,7 @@ pub(super) fn signature(
     let Some(first) = tokens.get(start) else {
         return;
     };
-    let ranges: Vec<_> = tokens
-        .get(start..end)
-        .unwrap_or_default()
-        .iter()
-        .map(|t| t.range.clone())
-        .filter(|r| !r.is_empty())
-        .collect();
+    let ranges = token_ranges(tokens, start, end);
     let Some(last) = ranges.last() else {
         return;
     };

@@ -62,16 +62,18 @@ impl Ty {
 
     /// The source spelling, for diagnostics.
     fn name(self) -> &'static str {
-        match self {
-            Ty::Num(n) => n.name(),
-            Ty::Bool => "bool",
-        }
+        self.spelled(Numeric::name)
     }
 
     /// The storage spelling: a buffer element's type (`half` for `float16`).
     fn spelling(self) -> &'static str {
+        self.spelled(Numeric::device)
+    }
+
+    /// How this type is spelled, its numeric width naming itself.
+    fn spelled(self, numeric: fn(Numeric) -> &'static str) -> &'static str {
         match self {
-            Ty::Num(n) => n.device(),
+            Ty::Num(n) => numeric(n),
             Ty::Bool => "bool",
         }
     }

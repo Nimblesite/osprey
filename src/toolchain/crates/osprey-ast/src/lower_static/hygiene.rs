@@ -30,6 +30,16 @@ impl Resolver {
         format!("{name}$stage{}", self.next)
     }
 
+    /// Introduce `name` in this block: a top-level binding is its own
+    /// resolution, a nested one is renamed out of the way of its siblings.
+    fn bind_block(&mut self, name: &mut String, scope: &mut Scope, top: bool) {
+        if top {
+            let _ = scope.insert(name.clone(), name.clone());
+        } else {
+            self.bind(name, scope);
+        }
+    }
+
     fn bind(&mut self, name: &mut String, scope: &mut Scope) {
         let resolved = self.fresh(name);
         let _ = scope.insert(name.clone(), resolved.clone());
@@ -46,11 +56,7 @@ impl Resolver {
         // Named functions are recursive and visible throughout their block.
         for statement in &mut *statements {
             if let Stmt::Function { name, .. } = statement {
-                if top {
-                    let _ = scope.insert(name.clone(), name.clone());
-                } else {
-                    self.bind(name, scope);
-                }
+                self.bind_block(name, scope, top);
             }
         }
         for statement in statements {
@@ -62,11 +68,7 @@ impl Resolver {
         match statement {
             Stmt::Let { name, value, .. } => {
                 self.expression(value, scope);
-                if top {
-                    let _ = scope.insert(name.clone(), name.clone());
-                } else {
-                    self.bind(name, scope);
-                }
+                self.bind_block(name, scope, top);
             }
             Stmt::Assignment { name, value, .. } => {
                 Self::reference(name, scope);

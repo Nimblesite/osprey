@@ -1,5 +1,6 @@
 //! Type/effect-name rewriting and alias expansion.
 
+use crate::collect_support::Diagnostics;
 use crate::contribution::Contribution;
 use crate::model::{DeclKind, ProjectGraph, SymbolKey};
 use crate::resolve::{AliasInfo, Context, Locals, Resolver};

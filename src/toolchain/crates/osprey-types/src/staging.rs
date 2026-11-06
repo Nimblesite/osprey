@@ -304,6 +304,16 @@ mod tests {
     use super::*;
     use std::collections::{BTreeMap, HashMap};
 
+    /// The types inferred from `source` after static lowering, or `None` when
+    /// lowering reported errors the caller's assertion has already shown.
+    fn lowered_types(source: &str) -> Option<crate::info::ProgramTypes> {
+        let parsed =
+            osprey_syntax::parse_program_with_flavor(source, osprey_syntax::Flavor::Default);
+        let lowered = lower_static_checked(&parsed.program);
+        assert!(lowered.is_ok(), "lowering failed: {lowered:?}");
+        lowered.ok().map(|lowered| crate::infer_program(&lowered))
+    }
+
     const GPU_ARMS_WITH_RESULT_FALLBACKS: &str = "static effect Tensor<B> {\n    get: fn(B, int) -> Result<float, Error>\n    matMul: fn(B, B, int, int, int) -> B\n}\nfn chain(result, next) = match result { Success { value } => next(value) Error { message } => Error { message: message } }\nfn onGpu(work) = {\n    handle static Tensor<Result<GpuBuffer<float>, Error>> {\n        get b i => chain(b, fn(buffer) => gpuGet(buffer, i))\n        matMul a b rows inner cols => chain(a, fn(left) => chain(b, fn(right) => Success { value: gpuMatMul(left, right, rows, inner, cols) } ?: toGpu([])))\n    }\n    work()\n}\nfn main() = {\n    let ones = toGpu([1.0, 1.0, 1.0, 1.0])\n    onGpu(fn() => perform Tensor.get(perform Tensor.matMul(ones, ones, 2, 2, 2), 0))\n}\n";
 
     /// [PATTERN-RESULT-DEFAULT] The outer Success carries the complete matrix
@@ -312,14 +322,9 @@ mod tests {
     /// buffer. Static lowering must preserve both payload layers and labels.
     #[test]
     fn a_static_arm_keeps_its_result_field_labels_so_the_residual_types_its_fallback() {
-        let parsed = osprey_syntax::parse_program_with_flavor(
-            GPU_ARMS_WITH_RESULT_FALLBACKS,
-            osprey_syntax::Flavor::Default,
-        );
-        let lowered = lower_static_checked(&parsed.program);
-        assert!(lowered.is_ok(), "lowering failed: {lowered:?}");
-        let Ok(lowered) = lowered else { return };
-        let types = crate::infer_program(&lowered);
+        let Some(types) = lowered_types(GPU_ARMS_WITH_RESULT_FALLBACKS) else {
+            return;
+        };
         let elements: Vec<_> = types
             .lists
             .iter()
@@ -351,14 +356,9 @@ mod tests {
     /// slots as raw words — reading every float as an int.
     #[test]
     fn a_discharged_arm_keeps_the_operation_s_declared_callback_types() {
-        let parsed = osprey_syntax::parse_program_with_flavor(
-            GENERIC_MODEL_OVER_A_TENSOR_EFFECT,
-            osprey_syntax::Flavor::Default,
-        );
-        let lowered = lower_static_checked(&parsed.program);
-        assert!(lowered.is_ok(), "lowering failed: {lowered:?}");
-        let Ok(lowered) = lowered else { return };
-        let types = crate::infer_program(&lowered);
+        let Some(types) = lowered_types(GENERIC_MODEL_OVER_A_TENSOR_EFFECT) else {
+            return;
+        };
         let lambdas: Vec<String> = types.lambdas.values().map(ToString::to_string).collect();
         assert!(
             lambdas.len() >= 3,

@@ -24,6 +24,35 @@ use result::{gen_result_match, is_result_arm};
 use structural::gen_structural_match;
 use union::{gen_union_match, union_owner};
 
+/// Whether any arm's pattern satisfies `shape`.
+fn any_arm(arms: &[MatchArm], shape: impl Fn(&Pattern) -> bool) -> bool {
+    arms.iter().any(|arm| shape(&arm.pattern))
+}
+
+/// Whether `pattern` catches every value the arms before it missed.
+fn is_catch_all(pattern: &Pattern) -> bool {
+    matches!(
+        pattern,
+        Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. }
+    )
+}
+
+/// End a pattern chain: a catch-all binds the whole scrutinee and stops the
+/// chain, and every other shape is one this chain cannot lower.
+fn close_chain(
+    cg: &mut Codegen,
+    pattern: &Pattern,
+    arm: &MatchArm,
+    disc: &Value,
+    phi_in: &mut Vec<(Value, String)>,
+    unsupported: &str,
+) -> Result<()> {
+    if !is_catch_all(pattern) {
+        return Err(CodegenError::unsupported(unsupported));
+    }
+    take_catch_all(cg, arm, disc, phi_in)
+}
+
 pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Result<Value> {
     if std::env::var("OSPREY_DBG_MATCH").is_ok() {
         eprintln!(
@@ -41,16 +70,10 @@ pub(crate) fn gen_match(cg: &mut Codegen, value: &Expr, arms: &[MatchArm]) -> Re
     {
         return gen_result_match(cg, &disc, arms);
     }
-    if arms
-        .iter()
-        .any(|a| matches!(a.pattern, Pattern::List { .. }))
-    {
+    if any_arm(arms, |p| matches!(p, Pattern::List { .. })) {
         return gen_list_match(cg, &disc, arms);
     }
-    if arms
-        .iter()
-        .any(|a| matches!(a.pattern, Pattern::Structural { .. }))
-    {
+    if any_arm(arms, |p| matches!(p, Pattern::Structural { .. })) {
         return gen_structural_match(cg, &disc, arms);
     }
     if let Some(owner) = union_owner(cg, arms) {

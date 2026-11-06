@@ -57,6 +57,20 @@ impl Analyzer<'_> {
         payload
     }
 
+    /// A list or map literal's summary: the element value its members agree
+    /// on. A literal has no field names of its own.
+    fn collection_value(elements: impl Iterator<Item = Option<Value>>) -> Value {
+        let mut element = None;
+        for value in elements {
+            merge_optional_value(&mut element, value.unwrap_or_else(Value::unknown_value));
+        }
+        Value {
+            element: element.map(Box::new),
+            field_names: Some(BTreeSet::new()),
+            ..Value::default()
+        }
+    }
+
     pub(super) fn value(
         &self,
         expression: &Expr,
@@ -248,36 +262,14 @@ impl Analyzer<'_> {
                 let owner = self.field_owner(target);
                 self.owned_field_value(&owner, field, projected)
             }
-            Expr::List(items, _) => {
-                let mut element = None;
-                for item in items {
-                    merge_optional_value(
-                        &mut element,
-                        self.value(item, scope, env)
-                            .unwrap_or_else(Value::unknown_value),
-                    );
-                }
-                Some(Value {
-                    element: element.map(Box::new),
-                    field_names: Some(BTreeSet::new()),
-                    ..Value::default()
-                })
-            }
-            Expr::Map(entries) => {
-                let mut element = None;
-                for entry in entries {
-                    merge_optional_value(
-                        &mut element,
-                        self.value(&entry.value, scope, env)
-                            .unwrap_or_else(Value::unknown_value),
-                    );
-                }
-                Some(Value {
-                    element: element.map(Box::new),
-                    field_names: Some(BTreeSet::new()),
-                    ..Value::default()
-                })
-            }
+            Expr::List(items, _) => Some(Self::collection_value(
+                items.iter().map(|item| self.value(item, scope, env)),
+            )),
+            Expr::Map(entries) => Some(Self::collection_value(
+                entries
+                    .iter()
+                    .map(|entry| self.value(&entry.value, scope, env)),
+            )),
             Expr::TypeConstructor { name, fields, .. }
                 if !self.index.constructors.contains_key(name) && env.shadowed.contains(name) =>
             {
@@ -422,13 +414,7 @@ impl Analyzer<'_> {
                 position,
                 stage,
             } => {
-                let site = super::handlers::HandlerSite {
-                    effect,
-                    arms,
-                    body,
-                    position: *position,
-                    stage: *stage,
-                };
+                let site = super::handlers::HandlerSite::new(effect, arms, body, *position, *stage);
                 let local = self.handler_body_env(&site, scope, env);
                 let normal = self
                     .value(body, scope, &local)

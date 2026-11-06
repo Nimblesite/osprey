@@ -52,6 +52,22 @@ fn read(dir: &Path, relative: &str) -> String {
     std::fs::read_to_string(dir.join(relative)).unwrap_or_default()
 }
 
+/// Export `pages` into `dir` as the `osprey` documentation.
+fn export(dir: &Path, pages: &[Page]) {
+    generate(dir, pages, "osprey", &[]).expect("the export succeeds");
+}
+
+/// Export `pages` into `dir`, then read the whole rendered page at `slug`.
+fn exported_page(dir: &Path, pages: &[Page], slug: &str) -> String {
+    export(dir, pages);
+    read(dir, &format!("{slug}.html"))
+}
+
+/// Export `pages` into `dir`, then read the article of the page at `slug`.
+fn exported_article(dir: &Path, pages: &[Page], slug: &str) -> String {
+    article(&exported_page(dir, pages, slug))
+}
+
 #[test]
 fn generated_paths_stay_inside_the_trees_the_exporter_owns() {
     // A slug reaches the exporter from user input. Traversal, absolute paths
@@ -78,7 +94,7 @@ fn generated_paths_stay_inside_the_trees_the_exporter_owns() {
     );
     // The trees it does own are written.
     let owned = vec![page("api/math", "Math", "Modules", "# Math\n")];
-    generate(&dir, &owned, "osprey", &[]).expect("owned paths are written");
+    export(&dir, &owned);
     assert!(dir.join("api/math.html").is_file());
 }
 
@@ -169,7 +185,7 @@ fn regeneration_prunes_only_what_the_exporter_wrote() {
     std::fs::write(dir.join("api/handwritten.html"), "mine").expect("write");
 
     let second = vec![page("api/keep", "Keep", "Modules", "# Keep\n")];
-    generate(&dir, &second, "osprey", &[]).expect("second pass");
+    export(&dir, &second);
 
     assert!(dir.join("api/keep.html").is_file(), "kept page was removed");
     assert!(
@@ -194,8 +210,7 @@ fn hostile_documentation_text_cannot_break_out_of_any_context() {
         signature: String::new(),
         markdown: "# Heading\n\n<script>alert(2)</script>\n".into(),
     };
-    generate(&dir, std::slice::from_ref(&hostile), "osprey", &[]).expect("generates");
-    let html = read(&dir, "api/evil.html");
+    let html = exported_article(&dir, std::slice::from_ref(&hostile), "api/evil");
     crate::testkit::contents(&html, &[], &["<script>alert(1)", "<script>alert(2)"]);
     // The index stays parseable even with `</script>` in the text, and cannot
     // close a `<script>` element if it is ever inlined into one.
@@ -258,8 +273,7 @@ fn summaries_reach_plain_text_contexts_without_markdown_markers() {
     let dir = fresh_dir("summaries");
     let mut with_summary = page("api/m", "M", "Modules", "# M\n");
     with_summary.summary = "**Bold** summary".into();
-    generate(&dir, std::slice::from_ref(&with_summary), "osprey", &[]).expect("generates");
-    let html = read(&dir, "api/m.html");
+    let html = exported_article(&dir, std::slice::from_ref(&with_summary), "api/m");
     crate::testkit::contents(&html, &["Bold summary"], &["**Bold**"]);
     let index = read(&dir, "assets/search-index.js");
     crate::testkit::contents(&index, &[], &["**Bold**"]);
@@ -273,9 +287,7 @@ fn search_works_from_the_filesystem_without_fetching_anything() {
     // to arrive as a script the document loads directly.
     let dir = fresh_dir("file_url");
     let pages = vec![page("api/math", "Math", "Modules", "# Math\n")];
-    generate(&dir, &pages, "osprey", &[]).expect("generates");
-
-    let html = read(&dir, "api/math.html");
+    let html = exported_page(&dir, &pages, "api/math");
     crate::testkit::contents(&html, &["src=\"../assets/search-index.js\""], &["fetch("]);
     let index = read(&dir, "assets/search-index.js");
     assert!(
@@ -307,8 +319,7 @@ fn documentation_symbol_links_point_at_the_declaration_they_name() {
         page("api/ledger-post", "bank::Ledger::post", "Function", "# p\n"),
         page("api/audit-post", "bank::Audit::post", "Function", "# p\n"),
     ];
-    generate(&dir, &pages, "osprey", &[]).expect("generates");
-    let body = article(&read(&dir, "api/ledger.html"));
+    let body = exported_article(&dir, &pages, "api/ledger");
 
     // A dotted link names its owner, so it resolves even where the leaf alone
     // would not ([DOC-LINK]).
@@ -378,7 +389,7 @@ fn a_symbol_link_resolves_in_its_own_scope_before_anywhere_else() {
         ),
         page("api/b-helper", "shop::B::helper", "Function", "# h\n"),
     ];
-    generate(&dir, &pages, "osprey", &[]).expect("generates");
+    export(&dir, &pages);
 
     let a = article(&read(&dir, "api/a-read.html"));
     crate::testkit::contents(
@@ -403,8 +414,7 @@ fn navigation_collapses_on_a_phone_and_opens_from_the_keyboard() {
     // A disclosure fixes that without a script and without losing the links.
     let dir = fresh_dir("menu");
     let pages = vec![page("api/math", "Math", "Modules", "# Math\n")];
-    generate(&dir, &pages, "osprey", &[]).expect("generates");
-    let html = read(&dir, "api/math.html");
+    let html = exported_page(&dir, &pages, "api/math");
 
     // `<details>`/`<summary>` is operable by keyboard with no script of ours,
     // and `open` in the markup means the links are all still there when

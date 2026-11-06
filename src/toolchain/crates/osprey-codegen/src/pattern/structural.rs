@@ -1,7 +1,9 @@
 //! Structural pattern lowering.
-use super::{bind_value, emit_arm, finish_phi, match_state, open_guarded_arm, take_catch_all};
+use super::{
+    bind_value, close_chain, emit_arm, finish_phi, match_state, open_guarded_arm, take_catch_all,
+};
 use crate::builder::Codegen;
-use crate::error::{CodegenError, Result};
+use crate::error::Result;
 use crate::llty::{LType, Value};
 use osprey_ast::{MatchArm, Pattern};
 
@@ -104,32 +106,29 @@ fn gen_any_match(cg: &mut Codegen, disc: &Value, arms: &[MatchArm]) -> Result<Va
     let (desc_ptr, payload) = crate::anybox::open_box(cg, disc);
     let (end, mut phi_in, _, mark) = match_state(cg, arms);
     for arm in arms {
-        match &arm.pattern {
-            Pattern::Structural { fields, open } => {
-                let names: Vec<String> = fields.iter().map(|(f, _)| f.clone()).collect();
-                for row in crate::anybox::candidate_rows(cg, &names, *open) {
-                    let global =
-                        crate::anybox::descriptor(cg, &crate::anybox::DescKey::Row(row.clone()))?;
-                    let cond = cg.emit_reg(format!(
-                        "icmp eq i8* {desc_ptr}, {}",
-                        crate::anybox::desc_operand(&global)
-                    ));
-                    let next_lbl = open_guarded_arm(cg, &cond);
-                    emit_arm(cg, arm, &mut phi_in, |cg| {
-                        bind_row_children(cg, &payload, &row, fields);
-                    })?;
-                    cg.start_block(&next_lbl);
-                }
-            }
-            Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                take_catch_all(cg, arm, disc, &mut phi_in)?;
-                break;
-            }
-            _ => {
-                return Err(CodegenError::unsupported(
-                    "non-structural arm over an erased `any`",
-                ));
-            }
+        let Pattern::Structural { fields, open } = &arm.pattern else {
+            close_chain(
+                cg,
+                &arm.pattern,
+                arm,
+                disc,
+                &mut phi_in,
+                "non-structural arm over an erased `any`",
+            )?;
+            break;
+        };
+        let names: Vec<String> = fields.iter().map(|(f, _)| f.clone()).collect();
+        for row in crate::anybox::candidate_rows(cg, &names, *open) {
+            let global = crate::anybox::descriptor(cg, &crate::anybox::DescKey::Row(row.clone()))?;
+            let cond = cg.emit_reg(format!(
+                "icmp eq i8* {desc_ptr}, {}",
+                crate::anybox::desc_operand(&global)
+            ));
+            let next_lbl = open_guarded_arm(cg, &cond);
+            emit_arm(cg, arm, &mut phi_in, |cg| {
+                bind_row_children(cg, &payload, &row, fields);
+            })?;
+            cg.start_block(&next_lbl);
         }
     }
     // The checker requires a catch-all over `any`, so control never falls out.

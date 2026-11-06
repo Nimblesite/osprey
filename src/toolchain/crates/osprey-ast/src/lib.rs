@@ -315,6 +315,29 @@ pub fn is_positional_field(name: &str) -> bool {
 
 pub use symbol::{is_constructor_name, is_record_constructor};
 
+/// The expression a brace head denotes: an uppercase or qualified name
+/// constructs a type carrying its fields, a lowercase one updates the record it
+/// names ([TYPE-RECORD-UPDATE]). One definition for both flavors, so the
+/// checker and the backend never see an update dressed as a constructor.
+#[must_use]
+pub fn record_expression(
+    name: String,
+    type_args: Vec<TypeExpr>,
+    fields: Vec<FieldAssignment>,
+) -> Expr {
+    if is_record_constructor(&name, !type_args.is_empty()) {
+        return Expr::TypeConstructor {
+            name,
+            type_args,
+            fields,
+        };
+    }
+    Expr::Update {
+        record: name,
+        fields,
+    }
+}
+
 /// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
 /// slot *i* is the decimal field [`positional_field_name`], its binder the
 /// written name (empty for `_`). One definition for both flavors, so ML
@@ -761,24 +784,29 @@ pub enum SelectOperation {
     Default,
 }
 
+/// Every expression a `select` arm's operation evaluates on entry, in written
+/// order. Shared by the reading and the rewriting accessor, which differ only
+/// in the borrow they hold, so the two can never drift apart.
+macro_rules! select_operands {
+    ($operation:expr) => {
+        match $operation {
+            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
+            Self::Send { channel, value } => vec![channel, value],
+            Self::Default => Vec::new(),
+        }
+    };
+}
+
 impl SelectOperation {
     /// The expressions evaluated on entry to the `select`.
     #[must_use]
     pub fn operands(&self) -> Vec<&Expr> {
-        match self {
-            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
-            Self::Send { channel, value } => vec![channel, value],
-            Self::Default => Vec::new(),
-        }
+        select_operands!(self)
     }
 
     /// The expressions evaluated on entry to the `select`, for rewriting.
     pub fn operands_mut(&mut self) -> Vec<&mut Expr> {
-        match self {
-            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
-            Self::Send { channel, value } => vec![channel, value],
-            Self::Default => Vec::new(),
-        }
+        select_operands!(self)
     }
 }
 

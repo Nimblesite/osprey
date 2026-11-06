@@ -1,5 +1,6 @@
 //! Lexically aware value, declaration, and constructor rewriting.
 
+use crate::collect_support::Diagnostics;
 use crate::model::SymbolKey;
 use crate::purity::{is_function_reference, is_pure};
 use crate::resolve::{symbol_key, Context, Locals, Resolver};

@@ -154,13 +154,7 @@ fn latent_operations(value: &super::Value) -> super::Requirements {
             operations.extend(latent_operations(returned));
         }
     }
-    for nested in value
-        .fields
-        .values()
-        .chain(value.element.as_deref())
-        .chain(value.result_payload.as_deref())
-        .chain(value.fiber_payload.as_deref())
-    {
+    for nested in value.nested() {
         operations.extend(latent_operations(nested));
     }
     operations

@@ -1,5 +1,6 @@
 //! Resolved value-symbol materialization and constant substitution.
 
+use crate::collect_support::Diagnostics;
 use crate::model::{DeclKind, SymbolKey};
 use crate::resolve::{Context, Resolver};
 use osprey_ast::{Expr, FieldAssignment, Stmt};

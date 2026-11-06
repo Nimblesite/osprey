@@ -261,6 +261,14 @@ mod tests {
         }
     }
 
+    /// Constructor layouts registered under their own owners.
+    fn types_with(ctors: impl IntoIterator<Item = CtorLayout>) -> ProgramTypes {
+        let mut prog = ProgramTypes::default();
+        prog.ctors
+            .extend(ctors.into_iter().map(|ctor| (ctor.owner.clone(), ctor)));
+        prog
+    }
+
     fn generic_record(owner: &str, fields: &[(&str, Type)]) -> CtorLayout {
         CtorLayout {
             owner: owner.to_string(),
@@ -287,10 +295,7 @@ mod tests {
             record("Point", &["x", "y"]),
             record("Pixel", &["x", "shade"]),
         ];
-        let mut prog = ProgramTypes::default();
-        prog.ctors
-            .extend(ctors.into_iter().map(|ctor| (ctor.owner.clone(), ctor)));
-        let cg = Codegen::with_types(prog);
+        let cg = Codegen::with_types(types_with(ctors));
         let untracked = Value::new("%receiver", LType::Ptr);
         assert_eq!(
             guessed_field_owner(&cg, &untracked, "x"),
@@ -317,10 +322,7 @@ mod tests {
             generic_record("Tab", &[("name", string.clone()), ("child", Type::Var(0))]),
             generic_record("Row", &[("key", string.clone()), ("child", Type::Var(0))]),
         ];
-        let mut prog = ProgramTypes::default();
-        prog.ctors
-            .extend(ctors.into_iter().map(|ctor| (ctor.owner.clone(), ctor)));
-        let mut cg = Codegen::with_types(prog);
+        let mut cg = Codegen::with_types(types_with(ctors));
         let tab_receiver = Type::con("Tab", vec![string.clone()]);
         let receiver = Value {
             inferred_type: Some(tab_receiver),

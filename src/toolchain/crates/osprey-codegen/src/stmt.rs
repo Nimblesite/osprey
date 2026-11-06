@@ -191,12 +191,7 @@ fn with_stmt_debug(
 type ReturnedLambda = (Vec<Parameter>, Vec<Parameter>, Expr, Option<Position>);
 
 fn generic_returned_lambda(cg: &Codegen, value: &Expr) -> Option<ReturnedLambda> {
-    let Expr::Call { function, .. } = value else {
-        return None;
-    };
-    let Expr::Identifier(callee) = crate::expr::unapplied(function) else {
-        return None;
-    };
+    let callee = crate::expr::callee_name(value)?;
     // A CONCRETELY-typed result materializes a real cell on the ordinary path,
     // which keeps one-evaluation semantics; this is only for the generic shape
     // that has no single ABI to emit.
@@ -226,12 +221,7 @@ fn factory_lambda_abi(
     value: &Expr,
     position: Option<Position>,
 ) -> Option<(Vec<Position>, osprey_types::Type)> {
-    let Expr::Call { function, .. } = value else {
-        return None;
-    };
-    let Expr::Identifier(callee) = crate::expr::unapplied(function) else {
-        return None;
-    };
+    let callee = crate::expr::callee_name(value)?;
     let (_, body, _) = cg.fn_defs.get(callee)?;
     let mut lambdas = Vec::new();
     returned_lambda_positions(body, &mut lambdas);
@@ -282,10 +272,7 @@ fn captures_callee_params(cg: &Codegen, value: &Expr) -> bool {
 /// ABI exists for it, so it stays an inline body its call sites specialise
 /// ([TYPE-GENERICS-FN]).
 fn lambda_cell(cg: &Codegen, position: Option<Position>) -> Option<(osprey_types::Type, FnSig)> {
-    let ty = cg
-        .prog
-        .lambda_type(cg.source_function.as_deref(), position)
-        .filter(|t| crate::types::fn_value_concrete(t))?;
+    let ty = crate::expr::concrete_lambda_type(cg, position)?;
     Some((ty.clone(), Codegen::fn_value_sig(&cg.prog, ty)?))
 }
 

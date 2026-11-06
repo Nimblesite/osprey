@@ -229,6 +229,15 @@ mod tests {
     const NUMERIC_PREFIXES: [(Flavor, &str); 2] =
         [(Flavor::Default, "let value = "), (Flavor::Ml, "value = ")];
 
+    /// The stage-discharge errors of a Default-flavor program that must parse.
+    fn discharge_errors(source: &str) -> Vec<osprey_ast::stage::StageError> {
+        let parsed = parse_program_with_flavor(source, Flavor::Default);
+        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+        osprey_ast::stage::discharge(&parsed.program)
+            .err()
+            .unwrap_or_default()
+    }
+
     /// [FLOAT-LITERAL-RANGE] Both flavors reject overflow at the source token.
     #[test]
     fn both_flavors_reject_overflowing_float_literals_with_positions() {
@@ -390,11 +399,7 @@ fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
 effect Log { write: fn(string) -> Unit }\n\
 fn shade(px) = {\n    perform Log.write(\"px\")\n    (px * perform Tile.size()) ?: 0\n}\n\
 fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
-        let parsed = parse_program_with_flavor(source, Flavor::Default);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let errors = osprey_ast::stage::discharge(&parsed.program)
-            .err()
-            .unwrap_or_default();
+        let errors = discharge_errors(source);
         assert!(
             errors.iter().any(|e| e.message.contains(
                 "kernel body is not stage-legal; it requires dynamic effects: Log.write"
@@ -411,20 +416,12 @@ fn frame() = kernel\n    Tile size => 8\nin shade(2)\n";
     fn an_instantiated_dynamic_effect_names_the_same_operation() {
         let source = "effect Signal<T> { read: fn() -> T }\n\
 fn counter(n) = (perform Signal<Count>.read()) ?: n\n";
-        let parsed = parse_program_with_flavor(source, Flavor::Default);
-        assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        let errors = osprey_ast::stage::discharge(&parsed.program)
-            .err()
-            .unwrap_or_default();
+        let errors = discharge_errors(source);
         assert!(errors.is_empty(), "{errors:?}");
-        let wrong_arity = parse_program_with_flavor(
+        let errors = discharge_errors(
             "effect Signal<T> { read: fn() -> T }\n\
 fn counter(n) = (perform Signal<Count, Extra>.read()) ?: n\n",
-            Flavor::Default,
         );
-        let errors = osprey_ast::stage::discharge(&wrong_arity.program)
-            .err()
-            .unwrap_or_default();
         assert!(
             !errors.is_empty(),
             "a two-argument mention of a one-parameter effect must be rejected"

@@ -100,7 +100,7 @@ fn sources(root: &Path, manifest: &Path, extra: Option<PathBuf>) -> Result<Vec<P
     roots.extend(extra);
     let mut files = Vec::new();
     for found in roots {
-        visit(&root.join(found), &mut files)?;
+        CHECKED.visit(&root.join(found), &mut files, &unreadable)?;
     }
     files.sort();
     files.dedup();
@@ -125,22 +125,16 @@ fn roots(root: &Path, manifest: &Path) -> Result<Vec<PathBuf>, String> {
         })
 }
 
-fn visit(path: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-    if path.is_file() {
-        if is_source(path) {
-            out.push(path.to_path_buf());
-        }
-        return Ok(());
-    }
-    let unreadable = |error: std::io::Error| format!("cannot list {}: {error}", path.display());
-    let entries = std::fs::read_dir(path).map_err(unreadable)?;
-    for entry in entries {
-        let found = entry.map_err(unreadable)?.path();
-        if !hidden(&found) {
-            visit(&found, out)?;
-        }
-    }
-    Ok(())
+/// Every file the checker hashes: Osprey sources, Python sources and the
+/// Osprey modules beside them, climbing past hidden entries.
+const CHECKED: crate::source::Rules<'_> = crate::source::Rules {
+    keep: &is_source,
+    skip: &hidden,
+};
+
+/// A directory the walk cannot list, in the checker's message form.
+fn unreadable(path: &Path, error: &std::io::Error) -> String {
+    format!("cannot list {}: {error}", path.display())
 }
 
 fn is_source(path: &Path) -> bool {

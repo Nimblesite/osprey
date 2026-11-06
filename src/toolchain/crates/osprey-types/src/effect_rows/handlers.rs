@@ -14,6 +14,25 @@ pub(super) struct HandlerSite<'a> {
     pub(super) stage: osprey_ast::Stage,
 }
 
+impl<'a> HandlerSite<'a> {
+    /// The handler as written, whose arms run at `stage`.
+    pub(super) fn new(
+        effect: &'a str,
+        arms: &'a [HandlerArm],
+        body: &'a Expr,
+        position: Option<Position>,
+        stage: osprey_ast::Stage,
+    ) -> Self {
+        Self {
+            effect,
+            arms,
+            body,
+            position,
+            stage,
+        }
+    }
+}
+
 impl Analyzer<'_> {
     pub(super) fn handler_arm_env(
         &self,

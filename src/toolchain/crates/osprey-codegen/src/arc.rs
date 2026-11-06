@@ -352,15 +352,19 @@ fn push_parent(cg: &mut Codegen, entry: Entry) {
 /// a value spelled as a constant. Both hooks are null-safe and ignore pointers
 /// the heap never registered (rodata), so an unconditional pair is correct.
 pub(crate) fn retain_operand(cg: &mut Codegen, operand: &str) {
-    cg.add_extern(RETAIN_DECL);
-    cg.emit(format!("call void @osp_retain(i8* {operand})"));
+    ownership_call(cg, RETAIN_DECL, "retain", operand);
 }
 
 /// Emit `osp_release` on a raw `i8*` operand (a loaded old cell value, a
 /// runtime-held env whose structural end has been reached).
 pub(crate) fn release_operand(cg: &mut Codegen, operand: &str) {
-    cg.add_extern(RELEASE_DECL);
-    cg.emit(format!("call void @osp_release(i8* {operand})"));
+    ownership_call(cg, RELEASE_DECL, "release", operand);
+}
+
+/// Emit one runtime ownership call over a raw `i8*` operand, declaring it once.
+fn ownership_call(cg: &mut Codegen, declaration: &str, call: &str, operand: &str) {
+    cg.add_extern(declaration);
+    cg.emit(format!("call void @osp_{call}(i8* {operand})"));
 }
 
 /// Emit `osp_retain` on a candidate value (dup).

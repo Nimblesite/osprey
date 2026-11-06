@@ -219,6 +219,21 @@ fn str_int_str(
     Ok(v)
 }
 
+/// Call `cname` with the already-lowered operand registers `ops` under the
+/// parameter spelling `params`, returning the result register.
+fn call_ops(cg: &mut Codegen, ret: &str, cname: &str, params: &str, ops: &[String]) -> String {
+    let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
+    cg.call(ret, cname, params, &op_refs)
+}
+
+/// A runtime `char*` that is NULL on failure, owned here (+1) and wrapped into
+/// `Result<string, _>` with `errmsg` as the Error reason.
+fn owned_nullable_str(cg: &mut Codegen, ptr: &str, errmsg: &str) -> Result<Value> {
+    // The raw +1 return is owned here; the Result block dups its own copy.
+    crate::arc::own(cg, &Value::new(ptr, LType::Str));
+    result_from_nullable(cg, ptr, Some(errmsg), None)
+}
+
 /// A runtime predicate returning `i64` truthiness, narrowed to `i1`. `sig` lists
 /// each argument index and the LLVM type it travels as.
 fn bool_from_i64(
@@ -229,8 +244,7 @@ fn bool_from_i64(
     _named: &[NamedArgument],
 ) -> Result<Value> {
     let (ops, params) = typed_args(cg, sig, args)?;
-    let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
-    let raw = cg.call("i64", cname, &params, &op_refs);
+    let raw = call_ops(cg, "i64", cname, &params, &ops);
     let r = cg.emit_reg(format!("icmp ne i64 {raw}, 0"));
     Ok(Value::new(r, LType::I1))
 }
@@ -274,9 +288,7 @@ fn substring(cg: &mut Codegen, args: &[Expr], _named: &[NamedArgument]) -> Resul
         "i8*, i64, i64",
         &[&s.operand, &start.operand, &end.operand],
     );
-    // The raw +1 return is owned here; the Result block dups its own copy.
-    crate::arc::own(cg, &Value::new(&ptr, LType::Str));
-    result_from_nullable(cg, &ptr, Some("substring: index out of range"), None)
+    owned_nullable_str(cg, &ptr, "substring: index out of range")
 }
 
 /// A fallible string transform returning a runtime `char*` that is NULL on
@@ -291,10 +303,8 @@ fn nullable_str(
     _named: &[NamedArgument],
 ) -> Result<Value> {
     let (ops, params) = typed_args_for_types(cg, argtys, args)?;
-    let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
-    let ptr = cg.call("i8*", cname, &params, &op_refs);
-    crate::arc::own(cg, &Value::new(&ptr, LType::Str));
-    result_from_nullable(cg, &ptr, Some(errmsg), None)
+    let ptr = call_ops(cg, "i8*", cname, &params, &ops);
+    owned_nullable_str(cg, &ptr, errmsg)
 }
 
 /// `parseInt`/`parseFloat`: strict parse writing through an out-slot, returning
@@ -357,8 +367,7 @@ fn cursor_int(cg: &mut Codegen, cname: &str, argtys: &[LType], args: &[Expr]) ->
     cg.emit(format!("store i64 0, i64* {slot}"));
     ops.push(slot.clone());
     let full_params = format!("{params}, i64*");
-    let op_refs: Vec<&str> = ops.iter().map(String::as_str).collect();
-    let emsg = cg.call("i8*", cname, &full_params, &op_refs);
+    let emsg = call_ops(cg, "i8*", cname, &full_params, &ops);
     let parsed = cg.emit_reg(format!("load i64, i64* {slot}"));
     let is_err = cg.emit_reg(format!("icmp ne i8* {emsg}, null"));
     let disc = cg.emit_reg(format!("select i1 {is_err}, i8 1, i8 0"));
@@ -386,8 +395,7 @@ fn typed_args_for_types(
 fn from_codepoint(cg: &mut Codegen, args: &[Expr]) -> Result<Value> {
     let cp = arg(cg, args, 0, LType::I64)?;
     let ptr = cg.call("i8*", "osp_string_from_codepoint", "i64", &[&cp.operand]);
-    crate::arc::own(cg, &Value::new(&ptr, LType::Str));
-    result_from_nullable(cg, &ptr, Some("fromCodePoint: invalid code point"), None)
+    owned_nullable_str(cg, &ptr, "fromCodePoint: invalid code point")
 }
 
 /// `join(list: List<string>, separator: string) -> string`. The list takes the

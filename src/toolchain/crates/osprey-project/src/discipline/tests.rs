@@ -47,11 +47,16 @@ fn scripted(answer: Result<&str, &str>) -> Scripted {
     }
 }
 
-fn temp_project(name: &str) -> ProjectConfig {
-    let dir = std::env::temp_dir().join(format!("osprey-discipline-{name}-{}", std::process::id()));
+/// A fresh, empty scratch directory named `prefix-name`, unique per process.
+pub(crate) fn scratch_dir(prefix: &str, name: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!("osprey-{prefix}-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).expect("temp dir");
-    ProjectConfig::for_root(&dir)
+    dir
+}
+
+fn temp_project(name: &str) -> ProjectConfig {
+    ProjectConfig::for_root(&scratch_dir("discipline", name))
 }
 
 fn write_file(root: &Path, relative: &str, text: &str) {
@@ -60,7 +65,7 @@ fn write_file(root: &Path, relative: &str, text: &str) {
     std::fs::write(path, text).expect("write");
 }
 
-fn source(text: &str) -> SourceFile {
+pub(crate) fn source(text: &str) -> SourceFile {
     let parsed = osprey_syntax::parse_program_with_flavor(text, Flavor::Ml);
     let errors = &parsed.errors;
     assert!(errors.is_empty(), "fixture parses: {errors:?}");
@@ -73,14 +78,20 @@ fn source(text: &str) -> SourceFile {
     }
 }
 
-fn bounded(root: &Path) -> Discipline {
+/// The `bounded` discipline rooted at `root`, its checker `root/checker.ospml`
+/// and a `timeout`-second deadline.
+pub(crate) fn discipline_at(root: &Path, timeout: u64) -> Discipline {
     Discipline {
         name: "bounded".into(),
         package: "@osprey/bounded".into(),
         root: root.to_path_buf(),
         checker: root.join("checker.ospml"),
-        timeout: Duration::from_secs(1),
+        timeout: Duration::from_secs(timeout),
     }
+}
+
+fn bounded(root: &Path) -> Discipline {
+    discipline_at(root, 1)
 }
 
 fn registry(root: &Path) -> Registry {
@@ -107,7 +118,7 @@ fn seam(name: &str, signature: &str, erased: &str) -> (ProjectConfig, Scripted, 
     (config, runner, registry)
 }
 
-const MARKED: &str =
+pub(crate) const MARKED: &str =
     "// osprey: types=bounded\nnamespace proof\n\nmodule Nat\n    export zero = 0\n";
 const SIGNATURE: &str = "signature Nat\n    zero : int\n";
 const ERASED: &str = "namespace proof\n\nmodule Nat\n    export zero = 0\n";
@@ -289,7 +300,7 @@ fn unchanged_request_is_answered_from_the_cache() {
     assert!(Response::parse("{\"version\":2,\"result\":\"maybe\"}").is_err());
 }
 
-fn source_at(path: &str, text: &str) -> SourceFile {
+pub(crate) fn source_at(path: &str, text: &str) -> SourceFile {
     let mut file = source(text);
     file.path = PathBuf::from(path);
     file
@@ -398,6 +409,13 @@ const RANGE_MAIN: &str = "namespace bounded\n\nimport bounded::Range\n\nmain () 
 const RANGE_ZERO: &str = "namespace bounded\n\nmodule Range\n    export zero = 0\n";
 const RANGE_ONE: &str = "namespace bounded\n\nmodule Range\n    export zero = 1\n";
 
+/// Overwrite the checker input `relative` with `text` and return the build
+/// digest the change produces.
+fn digest_after_rewrite(discipline: &Discipline, root: &Path, relative: &str, text: &str) -> u64 {
+    std::fs::write(root.join(relative), text).expect("rewrite input");
+    inputs::build_digest(discipline).expect("digest")
+}
+
 /// A package on disk: manifest, entry module and one imported module whose
 /// text a test rewrites.
 fn checker_package(name: &str) -> PathBuf {
@@ -434,8 +452,7 @@ fn changing_an_imported_checker_module_changes_the_build_digest_and_binary_name(
         found, built,
         "a built binary is found again under the name its inputs hash to"
     );
-    std::fs::write(root.join("src/Range.ospml"), RANGE_ONE).expect("rewrite imported module");
-    let after = inputs::build_digest(&discipline).expect("digest");
+    let after = digest_after_rewrite(&discipline, &root, "src/Range.ospml", RANGE_ONE);
     assert_ne!(
         after, digest,
         "a change to an imported module is a change to an input"
@@ -548,15 +565,17 @@ fn a_checker_project_directory_is_digested_over_its_manifest_and_every_module() 
     let root = checker_project("checker-dir");
     let discipline = checker_discipline(&root);
     let digest = inputs::build_digest(&discipline).expect("digest");
-    std::fs::write(root.join("checker/src/range.ospml"), RANGE_ONE).expect("rewrite module");
-    let changed = inputs::build_digest(&discipline).expect("digest");
+    let changed = digest_after_rewrite(&discipline, &root, "checker/src/range.ospml", RANGE_ONE);
     assert_ne!(
         changed, digest,
         "a module of the checker project is an input"
     );
-    std::fs::write(root.join("checker/osprey.toml"), CHECKER_MANIFEST_STRICT)
-        .expect("rewrite manifest");
-    let after = inputs::build_digest(&discipline).expect("digest");
+    let after = digest_after_rewrite(
+        &discipline,
+        &root,
+        "checker/osprey.toml",
+        CHECKER_MANIFEST_STRICT,
+    );
     assert_ne!(after, changed, "the checker project's manifest is an input");
     let _ = std::fs::remove_dir_all(&root);
 }

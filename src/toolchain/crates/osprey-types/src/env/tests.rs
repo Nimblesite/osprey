@@ -111,10 +111,7 @@ fn a_child_scope_neither_leaks_nor_sees_later_parent_bindings() {
 #[test]
 fn removing_or_shadowing_hides_an_outer_binding_from_every_query() {
     let mut ctx = InferCtx::new();
-    let mut parent = TypeEnv::new();
-    parent.insert("pinned", Scheme::mono(Type::Var(0)));
-    parent.insert("gone", Scheme::mono(Type::Var(1)));
-    let mut child = parent.child();
+    let (parent, mut child) = scoped(&[("pinned", 0), ("gone", 1)]);
     child.insert("pinned", Scheme::mono(Type::int()));
     child.remove("gone");
     assert!(child.get("gone").is_none() && parent.get("gone").is_some());
@@ -181,9 +178,8 @@ fn a_scope_written_under_many_snapshots_stays_shallow() {
 #[test]
 fn generalize_skips_env_bound_vars() {
     let mut ctx = InferCtx::new();
-    let mut env = TypeEnv::new();
     // An outer binding pins t0, so a let over (t0 -> t1) may only quantify t1.
-    env.insert("outer", Scheme::mono(Type::Var(0)));
+    let env = open_env(&[("outer", 0)]);
     let (scheme, external) =
         generalize(&mut ctx, &env, &Type::fun(vec![Type::Var(0)], Type::Var(1)));
     assert_eq!(scheme.vars, vec![1]);
@@ -204,6 +200,23 @@ fn closed_poly_scheme() -> Scheme {
 
 fn environment_visits() -> usize {
     ENVIRONMENT_VISITS.with(std::cell::Cell::get)
+}
+
+/// An environment holding one monomorphic open scheme per `(name, free
+/// variable)` pair — the starting shape every shadowing test asserts over.
+fn open_env(bindings: &[(&str, VarId)]) -> TypeEnv {
+    let mut env = TypeEnv::new();
+    for &(name, var) in bindings {
+        env.insert(name, Scheme::mono(Type::Var(var)));
+    }
+    env
+}
+
+/// `open_env(bindings)` and the child scope derived from it.
+fn scoped(bindings: &[(&str, VarId)]) -> (TypeEnv, TypeEnv) {
+    let parent = open_env(bindings);
+    let child = parent.child();
+    (parent, child)
 }
 
 #[test]
@@ -252,11 +265,7 @@ fn a_visible_open_binding_still_reports_its_free_variables() {
 #[test]
 fn a_closed_binding_hides_the_outer_open_one_it_shadows() {
     let mut ctx = InferCtx::new();
-    let mut parent = TypeEnv::new();
-    parent.insert("shadowed", Scheme::mono(Type::Var(0)));
-    parent.insert("shared", Scheme::mono(Type::Var(1)));
-    parent.insert("visible", Scheme::mono(Type::Var(2)));
-    let mut child = parent.child();
+    let (parent, mut child) = scoped(&[("shadowed", 0), ("shared", 1), ("visible", 2)]);
     child.insert("shadowed", closed_scheme());
     child.insert("shared", closed_poly_scheme());
     // A third level keeps a closed name of its own that hides nothing.
@@ -292,9 +301,7 @@ fn monomorphic_bindings_collect_free_variables_without_per_binding_scratch() {
 #[test]
 fn a_shadowing_open_binding_reports_only_the_innermost_variables() {
     let mut ctx = InferCtx::new();
-    let mut env = TypeEnv::new();
-    env.insert("x", Scheme::mono(Type::Var(0)));
-    let mut child = env.child();
+    let (_, mut child) = scoped(&[("x", 0)]);
     child.insert("x", Scheme::mono(Type::Var(7)));
     let mut grandchild = child.child();
     grandchild.insert("y", Scheme::mono(Type::Var(9)));
@@ -311,9 +318,7 @@ fn a_shadowing_open_binding_reports_only_the_innermost_variables() {
 #[test]
 fn a_removed_name_still_hides_the_outer_open_binding() {
     let mut ctx = InferCtx::new();
-    let mut parent = TypeEnv::new();
-    parent.insert("gone", Scheme::mono(Type::Var(0)));
-    let mut child = parent.child();
+    let (_, mut child) = scoped(&[("gone", 0)]);
     child.remove("gone");
     assert_eq!(child.free_vars(&mut ctx), BTreeSet::new());
 }

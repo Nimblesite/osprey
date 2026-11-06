@@ -17,6 +17,15 @@ use osprey_ast::Variance;
 
 mod erasure;
 
+/// Decide an open literal against `b` and unify the decided type with it; one
+/// that no width can settle stays open and accepts anything.
+fn settle_against(ctx: &mut InferCtx, var: VarId, b: &Type) -> Result<(), TypeError> {
+    match settle_literal_to(ctx, var, b) {
+        Some(settled) => unify(ctx, &settled, b),
+        None => Ok(()),
+    }
+}
+
 /// Unify two types, recording the solution in `ctx`. Errors are structural; a
 /// failing call may have applied partial bindings, so callers that want to
 /// "try" a unification should pre-check shapes rather than relying on rollback.
@@ -28,18 +37,10 @@ pub(crate) fn unify(ctx: &mut InferCtx, a: &Type, b: &Type) -> Result<(), TypeEr
         // An open literal stays the root, so what is bound to it stays open
         // with it; anything else decides it ([TYPE-NUMERIC-LITERAL]).
         (Type::Var(x), Type::Var(y)) if literal_family_clash(ctx, *x, *y) => {
-            match settle_literal_to(ctx, *x, b) {
-                Some(settled) => unify(ctx, &settled, b),
-                None => Ok(()),
-            }
+            settle_against(ctx, *x, b)
         }
         (Type::Var(x), Type::Var(y)) if ctx.literal_default(*x).is_some() => bind_var(ctx, *y, a),
-        (Type::Var(x), _) if ctx.literal_default(*x).is_some() => {
-            match settle_literal_to(ctx, *x, b) {
-                Some(settled) => unify(ctx, &settled, b),
-                None => Ok(()),
-            }
-        }
+        (Type::Var(x), _) if ctx.literal_default(*x).is_some() => settle_against(ctx, *x, b),
         (_, Type::Var(y)) if ctx.literal_default(*y).is_some() && !matches!(a, Type::Var(_)) => {
             match settle_literal_to(ctx, *y, a) {
                 Some(settled) => unify(ctx, a, &settled),

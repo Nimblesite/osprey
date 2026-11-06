@@ -41,14 +41,10 @@ pub(crate) fn load_input(cli: &Cli) -> Result<CompilationInput, ExitCode> {
         return load_project(cli);
     }
     let source = std::fs::read_to_string(&cli.path).map_err(|error| {
-        eprintln!("error: cannot read {}: {error}", cli.path);
-        ExitCode::from(2)
+        crate::usage_error(&format!("error: cannot read {}: {error}", cli.path))
     })?;
-    let flavor =
-        osprey_syntax::resolve_flavor(cli.flavor, &cli.path, &source).map_err(|error| {
-            eprintln!("{error}");
-            ExitCode::from(2)
-        })?;
+    let flavor = osprey_syntax::resolve_flavor(cli.flavor, &cli.path, &source)
+        .map_err(|error| crate::usage_error(&error))?;
     load_script(&cli.path, source, flavor)
 }
 
@@ -307,12 +303,12 @@ pub(super) fn target_ir(cli: &Cli, input: &CompilationInput) -> Result<String, S
 
 pub(super) fn reject_debug_cross_target(cli: &Cli) -> Option<ExitCode> {
     if cli.debug {
-        eprintln!("error: --debug is currently supported only for --target=native");
-        return Some(ExitCode::from(2));
+        let message = "error: --debug is currently supported only for --target=native";
+        return Some(crate::usage_error(message));
     }
     if cli.profile {
-        eprintln!("error: --profile is currently supported only for --target=native");
-        return Some(ExitCode::from(2));
+        let message = "error: --profile is currently supported only for --target=native";
+        return Some(crate::usage_error(message));
     }
     None
 }

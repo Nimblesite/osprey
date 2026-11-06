@@ -118,9 +118,7 @@ pub(crate) fn build(
     }
     crate::toolchain::validate_archive_output(out, target.platform()).map_err(|e| fail(&e))?;
     let (ir, header) = source(program, path, target, scope).map_err(|e| fail(&e))?;
-    let http = crate::linking::uses_http(&ir);
-    let runtime = runtime_archive(cli, target, http)?;
-    let scratch = Scratch::new(path, target.name())?;
+    let (_, runtime, scratch) = build_environment(cli, target, &ir, path)?;
     let ll = scratch.path.join("app.ll");
     let obj = scratch.path.join("app.o");
     let archive = scratch.path.join("app.a");
@@ -156,6 +154,19 @@ fn runtime_archive(cli: &Cli, target: Target, http: bool) -> Result<String, Exit
     crate::linking::fresh_runtime(&runtime).map_err(|e| fail(&e))
 }
 
+/// What an archive and a DLL build both start from: whether the program reaches
+/// HTTP, the runtime archive to bundle, and the scratch directory to build in.
+fn build_environment(
+    cli: &Cli,
+    target: Target,
+    ir: &str,
+    path: &str,
+) -> Result<(bool, String, Scratch), ExitCode> {
+    let http = crate::linking::uses_http(ir);
+    let runtime = runtime_archive(cli, target, http)?;
+    Ok((http, runtime, Scratch::new(path, target.name())?))
+}
+
 /// Whether `out` names a Windows DLL rather than an archive. [WINUI-HOST-DLL]
 fn is_dll(out: &Path) -> bool {
     out.extension()
@@ -177,9 +188,7 @@ fn build_dll(
         .map_err(|e| fail(&e))?;
     let (ir, slotted) = ios_abi::windows_dll::adapt(&ir, &abi, true).map_err(|e| fail(&e))?;
     let header = ios_abi::windows_dll::header(&abi.exports, &slotted, path, target.name());
-    let http = crate::linking::uses_http(&ir);
-    let runtime = runtime_archive(cli, target, http)?;
-    let scratch = Scratch::new(path, target.name())?;
+    let (http, runtime, scratch) = build_environment(cli, target, &ir, path)?;
     let ll = scratch.path.join("app.ll");
     let dll = scratch.path.join("app.dll");
     write(&ll, &ir)?;

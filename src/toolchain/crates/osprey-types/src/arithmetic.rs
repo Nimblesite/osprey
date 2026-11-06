@@ -20,36 +20,29 @@ pub(crate) fn absolute_scheme() -> crate::ty::Scheme {
     scheme
 }
 
-/// [TYPE-NUMERIC-SIZED] A builtin `(T, …) -> ret` open over the integer types:
-/// one overload per use, retained by wrappers until their call sites resolve
-/// it, exactly as [`absolute_scheme`] is. `ret` is written over `Type::Var(0)`.
-pub(crate) fn open_integer_scheme(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
-    open_scheme(
-        crate::builtin_constraints::INTEGER_OPERAND_PREFIX,
-        op,
-        arity,
-        ret,
-    )
+/// The open-scheme families: one row per operand obligation, each naming the
+/// prefix its obligation is spelled with. All three share [`open_scheme`].
+macro_rules! open_schemes {
+    ($($(#[$doc:meta])* $name:ident = $prefix:ident;)*) => {
+        $(
+            $(#[$doc])*
+            pub(crate) fn $name(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
+                open_scheme(crate::builtin_constraints::$prefix, op, arity, ret)
+            }
+        )*
+    };
 }
 
-/// [BUILTIN-MATH] A builtin open over the three float widths.
-pub(crate) fn open_float_scheme(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
-    open_scheme(
-        crate::builtin_constraints::FLOAT_OPERAND_PREFIX,
-        op,
-        arity,
-        ret,
-    )
-}
-
-/// [BUILTIN-CONVERT-FLOAT] A conversion open over every numeric source type.
-pub(crate) fn open_numeric_scheme(op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
-    open_scheme(
-        crate::builtin_constraints::NUMERIC_OPERAND_PREFIX,
-        op,
-        arity,
-        ret,
-    )
+open_schemes! {
+    /// [TYPE-NUMERIC-SIZED] A builtin `(T, …) -> ret` open over the integer
+    /// types: one overload per use, retained by wrappers until their call sites
+    /// resolve it, exactly as [`absolute_scheme`] is. `ret` is written over
+    /// `Type::Var(0)`.
+    open_integer_scheme = INTEGER_OPERAND_PREFIX;
+    /// [BUILTIN-MATH] A builtin open over the three float widths.
+    open_float_scheme = FLOAT_OPERAND_PREFIX;
+    /// [BUILTIN-CONVERT-FLOAT] A conversion open over every numeric source type.
+    open_numeric_scheme = NUMERIC_OPERAND_PREFIX;
 }
 
 fn open_scheme(prefix: &str, op: &str, arity: usize, ret: Type) -> crate::ty::Scheme {
@@ -204,28 +197,37 @@ impl Constant {
 }
 
 impl Checker {
+    /// Bank a constant site for the width check that follows inference.
+    fn bank_constant(
+        &mut self,
+        value: Constant,
+        ty: &Type,
+        position: Option<Position>,
+        operator: Option<String>,
+    ) {
+        self.constants.push(ConstantSite {
+            value,
+            ty: ty.clone(),
+            position,
+            operator,
+        });
+    }
+
+    /// The type of a numeric literal: open until a context decides it.
+    fn literal(&mut self, value: Constant, numeric: Numeric) -> Type {
+        let ty = self.ctx.fresh_literal(numeric);
+        self.bank_constant(value, &ty, self.expr_position, None);
+        ty
+    }
+
     /// The type of an integer literal: open until a context decides it.
     pub(crate) fn integer_literal(&mut self, value: i64) -> Type {
-        let ty = self.ctx.fresh_literal(Numeric::INT);
-        self.constants.push(ConstantSite {
-            value: Constant::Integer(value),
-            ty: ty.clone(),
-            position: self.expr_position,
-            operator: None,
-        });
-        ty
+        self.literal(Constant::Integer(value), Numeric::INT)
     }
 
     /// The type of a float literal: open until a float context decides it.
     pub(crate) fn float_literal(&mut self, value: f64) -> Type {
-        let ty = self.ctx.fresh_literal(Numeric::FLOAT);
-        self.constants.push(ConstantSite {
-            value: Constant::Float(value),
-            ty: ty.clone(),
-            position: self.expr_position,
-            operator: None,
-        });
-        ty
+        self.literal(Constant::Float(value), Numeric::FLOAT)
     }
 
     /// Bank a folded operator for the width check.
@@ -234,12 +236,12 @@ impl Checker {
             return;
         };
         if let Ok(Some(Expr::Integer(value))) = fold_arithmetic(expr) {
-            self.constants.push(ConstantSite {
-                value: Constant::Integer(value),
-                ty: ty.clone(),
-                position: operator_position(expr).or(self.expr_position),
-                operator: Some(spelling(expr)),
-            });
+            self.bank_constant(
+                Constant::Integer(value),
+                ty,
+                operator_position(expr).or(self.expr_position),
+                Some(spelling(expr)),
+            );
         }
     }
 

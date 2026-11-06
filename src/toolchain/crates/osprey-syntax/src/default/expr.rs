@@ -4,9 +4,7 @@
 use super::lower::Lowerer;
 use crate::strings::{lower_interpolation, unquote};
 use osprey_ast::SelectOperation;
-use osprey_ast::{
-    Expr, FieldAssignment, MapEntry, MatchArm, NamedArgument, Pattern, Stmt, SymbolPath,
-};
+use osprey_ast::{Expr, FieldAssignment, MapEntry, MatchArm, NamedArgument, Pattern, Stmt};
 use tree_sitter::Node;
 
 impl Lowerer<'_> {
@@ -118,11 +116,7 @@ impl Lowerer<'_> {
             "object_literal" => Expr::Object(self.lower_field_assignments(node)),
             "block" => self.lower_block(node),
             "literal" => self.lower_literal(node),
-            "qualified_path" => Expr::Path(SymbolPath::new(
-                self.descendants_of_kind(node, "identifier")
-                    .into_iter()
-                    .map(|identifier| self.text(identifier)),
-            )),
+            "qualified_path" => Expr::Path(self.lower_symbol_path(node)),
             "identifier" => Expr::Identifier(self.text(node)),
             "ternary_expression" => self.lower_ternary(node),
             _ => Expr::Bool(false),
@@ -157,10 +151,7 @@ impl Lowerer<'_> {
                         .map(|binding| self.text(binding))
                         .filter(|name| name != "_")
                         .map_or(Pattern::Wildcard, Pattern::Binding),
-                    body: crate::desugar::positioned(
-                        self.lower_expr_field(*arm, "body"),
-                        Some(self.pos(*arm)),
-                    ),
+                    body: self.arm_body(*arm),
                 })
                 .collect(),
         }
@@ -317,6 +308,12 @@ impl Lowerer<'_> {
         (positional, Vec::new())
     }
 
+    /// A match or `select` arm's body, carrying the arm's own source position,
+    /// so diagnostics point at the arm rather than at the shared body shape.
+    fn arm_body(&self, arm: Node<'_>) -> Expr {
+        crate::desugar::positioned(self.lower_expr_field(arm, "body"), Some(self.pos(arm)))
+    }
+
     fn lower_arms(&self, node: Node<'_>) -> Vec<MatchArm> {
         self.named_of_kind(node, "match_arm")
             .iter()
@@ -324,10 +321,7 @@ impl Lowerer<'_> {
                 pattern: arm
                     .child_by_field_name("pattern")
                     .map_or(Pattern::Wildcard, |p| self.lower_pattern(p)),
-                body: crate::desugar::positioned(
-                    self.lower_expr_field(*arm, "body"),
-                    Some(self.pos(*arm)),
-                ),
+                body: self.arm_body(*arm),
             })
             .collect()
     }
@@ -340,37 +334,20 @@ impl Lowerer<'_> {
         let base = self.field_text(node, "effect");
         let arguments = node
             .child_by_field_name("instantiation")
-            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
-            .map(|list| self.lower_type_list(list))
-            .unwrap_or_default();
+            .map_or_else(Vec::new, |instantiation| self.type_list_of(instantiation));
         osprey_ast::effect_name::instantiated(&base, &arguments)
     }
 
     /// `head { field: value, … }`. The grammar gives every brace head the
     /// `type_constructor` shape (it wins the dynamic-precedence tie with
-    /// `update_expression`), so the lowerer decides what the author meant by
-    /// the same rule as ML: an uppercase or qualified head constructs, a
-    /// lowercase binding is updated ([TYPE-RECORD-UPDATE]). The checker and
-    /// the backend therefore never see an update dressed as a constructor.
+    /// `update_expression`), so the head's spelling decides what the author
+    /// meant by the same rule as ML ([TYPE-RECORD-UPDATE]).
     fn lower_brace_head(&self, node: Node<'_>) -> Expr {
-        let name = self.field_text(node, "name");
-        let type_args = self
-            .first_child_of_kind(node, "type_arguments")
-            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
-            .map(|l| self.lower_type_list(l))
-            .unwrap_or_default();
-        let fields = self.lower_field_assignments(node);
-        if !osprey_ast::is_record_constructor(&name, !type_args.is_empty()) {
-            return Expr::Update {
-                record: name,
-                fields,
-            };
-        }
-        Expr::TypeConstructor {
-            name,
-            type_args,
-            fields,
-        }
+        osprey_ast::record_expression(
+            self.field_text(node, "name"),
+            self.type_arguments_of(node),
+            self.lower_field_assignments(node),
+        )
     }
 
     fn lower_field_assignments(&self, node: Node<'_>) -> Vec<FieldAssignment> {

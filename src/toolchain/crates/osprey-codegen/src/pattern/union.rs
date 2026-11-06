@@ -1,8 +1,8 @@
 //! Union pattern lowering.
-use super::{bind_value, emit_arm, finish_phi, match_mark, open_guarded_arm, take_catch_all};
+use super::{bind_value, close_chain, emit_arm, finish_phi, match_mark, open_guarded_arm};
 use crate::builder::Codegen;
 use crate::builder::CtorView;
-use crate::error::{CodegenError, Result};
+use crate::error::Result;
 use crate::llty::Value;
 use osprey_ast::{MatchArm, Pattern};
 
@@ -122,13 +122,15 @@ pub(super) fn gen_union_match(
             })?;
             cg.start_block(&next_lbl);
         } else {
-            match &arm.pattern {
-                Pattern::Wildcard | Pattern::Binding(_) | Pattern::TypeAnnotated { .. } => {
-                    take_catch_all(cg, arm, disc, &mut phi_in)?;
-                    break;
-                }
-                _ => return Err(CodegenError::unsupported("structural union arm")),
-            }
+            close_chain(
+                cg,
+                &arm.pattern,
+                arm,
+                disc,
+                &mut phi_in,
+                "structural union arm",
+            )?;
+            break;
         }
     }
     // A non-exhaustive fall-through is unreachable by construction.

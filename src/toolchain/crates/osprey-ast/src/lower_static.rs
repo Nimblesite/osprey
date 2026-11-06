@@ -403,7 +403,7 @@ fn parameter(name: &str) -> Parameter {
     }
 }
 
-fn call(name: &str, arguments: Vec<Expr>) -> Expr {
+pub(crate) fn call(name: &str, arguments: Vec<Expr>) -> Expr {
     Expr::Call {
         function: Box::new(Expr::Identifier(name.to_owned())),
         arguments,

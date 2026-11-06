@@ -137,6 +137,23 @@ mod tests {
     use osprey_ast::Position;
     use osprey_types::{TypeWarning, REDUNDANT_ANNOTATION};
 
+    /// The program must type-check with no error at all.
+    fn assert_checks_clean(program: &osprey_ast::Program) {
+        assert_eq!(
+            osprey_types::check_program(program),
+            Vec::<osprey_types::TypeError>::new()
+        );
+    }
+
+    /// Just the `unused-*` warnings of `warnings`, as `(rule, message)` pairs.
+    fn unused_warnings(warnings: &[TypeWarning]) -> Vec<(&str, &str)> {
+        warnings
+            .iter()
+            .filter(|warning| warning.rule.starts_with("unused-"))
+            .map(|warning| (warning.rule, warning.message.as_str()))
+            .collect()
+    }
+
     /// A single-file unit whose warnings resolve against `main.osp`.
     fn unit() -> CompilationInput {
         let program = osprey_syntax::parse_program("let answer = 42\n").program;
@@ -219,10 +236,7 @@ mod tests {
         let source = "fn choose(value, ignored) = {\n let spare: int = 1\n value\n}\nlet result = choose(2, 3)\n";
         let parsed = osprey_syntax::parse_program(source);
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-        assert_eq!(
-            osprey_types::check_program(&parsed.program),
-            Vec::<osprey_types::TypeError>::new()
-        );
+        assert_checks_clean(&parsed.program);
         let warnings = super::of(&parsed.program, &|_| false);
         let input = CompilationInput::script("mixed.osp", source.to_owned(), parsed.program);
         assert_eq!(render(&input, &warnings), Some(
@@ -253,11 +267,7 @@ mod tests {
         assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
         let warnings = super::of(&parsed.program, &|_| false);
         assert_eq!(
-            warnings
-                .iter()
-                .filter(|warning| warning.rule.starts_with("unused-"))
-                .map(|warning| (warning.rule, warning.message.as_str()))
-                .collect::<Vec<_>>(),
+            unused_warnings(&warnings),
             [("unused-parameter", "unused parameter `unused`")]
         );
         assert_eq!(
@@ -300,11 +310,7 @@ mod tests {
         .unwrap_or_else(|errors| panic!("{errors:?}"));
         let warnings = super::collect(&input);
         assert_eq!(
-            warnings
-                .iter()
-                .filter(|warning| warning.rule.starts_with("unused-"))
-                .map(|warning| (warning.rule, warning.message.as_str()))
-                .collect::<Vec<_>>(),
+            unused_warnings(&warnings),
             [(
                 "unused-handler-parameter",
                 "unused handler parameter `id` of `test::Vault.balance`"
@@ -330,10 +336,7 @@ mod tests {
         ] {
             let parsed = osprey_syntax::parse_program_with_flavor(source, flavor);
             assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-            assert_eq!(
-                osprey_types::check_program(&parsed.program),
-                Vec::<osprey_types::TypeError>::new()
-            );
+            assert_checks_clean(&parsed.program);
             let warnings = super::of(&parsed.program, &|_| false);
             let input = CompilationInput::script("top-level", source.to_owned(), parsed.program);
             assert_eq!(render(&input, &warnings), Some("\ntop-level\n  1:0  warning: unused pattern binding `unused`\n\n1 warning (unused-pattern-binding)".to_owned()));

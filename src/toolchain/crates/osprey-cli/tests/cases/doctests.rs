@@ -31,13 +31,7 @@ fn doctests_run_in_declaration_context_and_check_compile_only_examples() {
 fn doctests_reject_an_output_mismatch() {
     let text = DOCUMENTED.replace("/// documented\n", "/// incorrect\n");
     let result = run_file(&temp_osp("documentation_mismatch", &text), &["--doctests"]);
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("stdout mismatch"),
-        "{}",
-        result.stderr
-    );
-    assert!(result.stderr.contains("echo"), "{}", result.stderr);
+    result.expect_stderr(1, &["stdout mismatch", "echo"], &[]);
     assert_eq!(result.stdout, "doctests: 1 passed, 1 failed\n");
 }
 
@@ -51,8 +45,7 @@ fn doctests_typecheck_examples_without_output_fences() {
         &temp_osp("documentation_type_error", &text),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(result.stderr.contains("cannot unify"), "{}", result.stderr);
+    result.expect_stderr(1, &["cannot unify"], &[]);
     assert_eq!(result.stdout, "doctests: 1 passed, 1 failed\n");
 }
 
@@ -76,12 +69,7 @@ fn doctests_keep_examples_isolated() {
             "let onlyInOtherExample = 42\n/// print(echo(\"documented\"))",
         );
     let result = run_file(&temp_osp("documentation_isolation", &text), &["--doctests"]);
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("onlyInOtherExample"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["onlyInOtherExample"], &[]);
     assert_eq!(result.stdout, "doctests: 1 passed, 1 failed\n");
 }
 
@@ -144,20 +132,14 @@ fn doctests_reject_invalid_source_even_without_examples() {
         &temp_osp("documentation_invalid", "let bad: int = \"wrong\""),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(result.stderr.contains("cannot unify"), "{}", result.stderr);
+    result.expect_stderr(1, &["cannot unify"], &[]);
 }
 
 #[test]
 fn doctests_preserve_stdout_whitespace_exactly() {
     let text = DOCUMENTED.replace("/// documented\n", "/// documented \n");
     let result = run_file(&temp_osp("documentation_space", &text), &["--doctests"]);
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("stdout mismatch"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["stdout mismatch"], &[]);
 }
 
 #[test]
@@ -201,12 +183,7 @@ fn doctests_typecheck_uncalled_declarations_inside_examples() {
         &temp_osp("documentation_uncalled_error", &source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("missingFromExample"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["missingFromExample"], &[]);
 }
 
 #[test]
@@ -219,12 +196,7 @@ fn doctests_stop_examples_that_exceed_the_execution_deadline() {
         .arg("--doctests")
         .env("OSPREY_DOCTEST_TIMEOUT_MS", "50");
     let result = super::finish(command);
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("execution timed out"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["execution timed out"], &[]);
     assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
 }
 
@@ -322,12 +294,7 @@ fn doctests_compare_output_separated_from_its_example_by_blank_lines() {
         &temp_osp("documentation_blank_before_output", source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(1), "{} {}", result.stdout, result.stderr);
-    assert!(
-        result.stderr.contains("stdout mismatch"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["stdout mismatch"], &[]);
     assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
 }
 
@@ -341,16 +308,6 @@ fn doctests_reject_an_output_fence_with_no_example_before_it() {
         &temp_osp("documentation_orphan_output", source),
         &["--doctests"],
     );
-    assert_eq!(result.code, Some(1), "{} {}", result.stdout, result.stderr);
-    assert!(
-        result.stderr.contains("add"),
-        "must name the declaration: {}",
-        result.stderr
-    );
-    assert!(
-        result.stderr.contains("`output` fence"),
-        "must say what is wrong: {}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["add", "`output` fence"], &[]);
     assert_eq!(result.stdout, "doctests: 0 passed, 1 failed\n");
 }

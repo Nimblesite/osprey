@@ -105,12 +105,7 @@ fn assert_state_inventory(
         .arg(&output)
         .args(["--docs-format", format]);
     let result = finish(command);
-    assert_eq!(result.code, Some(0), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("2 warnings (state-boundary)"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(0, &["2 warnings (state-boundary)"], &[]);
     assert_inventory_pages(&output, format)?;
     regenerate_without_state(&file, &output, extension, format)?;
     Ok(())

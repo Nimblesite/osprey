@@ -6,6 +6,16 @@ use super::{
 use crate::ml::cst::{MlSelectArm, MlSelectOperation};
 
 impl Parser<'_> {
+    /// Where the current keyword stands, then the effect name following it,
+    /// with any written instantiation, as `perform`, `mask` and `instance` all
+    /// spell it ([FLAVOR-ML-EFFECT]).
+    fn effect_head(&mut self) -> (osprey_ast::Position, String) {
+        let pos = self.pos();
+        self.advance();
+        let head = self.ident().unwrap_or_default();
+        (pos, self.instantiated_effect(head))
+    }
+
     /// `spawn body` — start a fiber. The body is an indented layout block or an
     /// inline expression, parsed exactly like a `=`/`=>` body ([FLAVOR-ML-SPAWN]).
     pub(in crate::ml) fn spawn_expr(&mut self) -> MlExpr {
@@ -17,10 +27,7 @@ impl Parser<'_> {
     /// whitespace-applied arguments ([FLAVOR-ML-EFFECT]). The head is the
     /// dotted `Effect.operation`; the trailing atoms are its arguments.
     pub(in crate::ml) fn perform_expr(&mut self) -> MlExpr {
-        let pos = self.pos();
-        self.advance(); // `perform`
-        let first = self.ident().unwrap_or_default();
-        let effect = self.instantiated_effect(first);
+        let (pos, effect) = self.effect_head();
         if !self.eat(&TokKind::Dot) {
             self.error("expected '.' between effect and operation in perform");
         }
@@ -50,10 +57,7 @@ impl Parser<'_> {
 
     /// `mask Effect` + an indented body. Implements [EFFECTS-MASK].
     pub(in crate::ml) fn mask_expr(&mut self) -> MlExpr {
-        let pos = self.pos();
-        self.advance(); // `mask`
-        let first = self.ident().unwrap_or_default();
-        let effect = self.instantiated_effect(first);
+        let (pos, effect) = self.effect_head();
         if !matches!(self.peek(), TokKind::Indent) {
             self.error("expected an indented body after `mask Effect`");
         }
@@ -66,13 +70,8 @@ impl Parser<'_> {
 
     /// `instance Effect` — a fresh capability. Implements [EFFECTS-INSTANCE].
     pub(in crate::ml) fn instance_expr(&mut self) -> MlExpr {
-        let pos = self.pos();
-        self.advance(); // `instance`
-        let first = self.ident().unwrap_or_default();
-        MlExpr::Instance {
-            effect: self.instantiated_effect(first),
-            pos,
-        }
+        let (pos, effect) = self.effect_head();
+        MlExpr::Instance { effect, pos }
     }
 
     /// `handler Effect` + indented arms — the handler ITSELF, with no region

@@ -1,12 +1,11 @@
-use super::{read_text, run_args, run_args_with_stdin, temp_dir, temp_osp};
+use super::{read_text, run_args, run_args_with_stdin, set_mode, temp_dir, temp_osp};
 
 #[test]
 fn fmt_stdout_check_and_rewrite_modes() {
     let prog = temp_osp("fmt_modes", "fn main() = {\nprint(1)\n}\n");
     let path = prog.to_string_lossy().into_owned();
     let shown = run_args(&["fmt", "--stdout", "--flavor", "default", &path]);
-    assert_eq!(shown.code, Some(0), "stderr={}", shown.stderr);
-    assert!(shown.stdout.contains("    print(1)"), "{}", shown.stdout);
+    shown.expect_stdout(0, &[" print(1)"], &[]);
     let unchanged = read_text(&prog);
     assert!(unchanged.contains("\nprint(1)\n"), "{unchanged}");
 
@@ -33,17 +32,7 @@ fn fmt_stdout_check_and_rewrite_modes() {
     let loud = temp_osp("fmt_loud", "fn main() = {\nprint(2)\n}\n");
     let loud_path = loud.to_string_lossy().into_owned();
     let rewritten_loud = run_args(&["fmt", &loud_path]);
-    assert_eq!(
-        rewritten_loud.code,
-        Some(0),
-        "stderr={}",
-        rewritten_loud.stderr
-    );
-    assert!(
-        rewritten_loud.stdout.contains("formatted"),
-        "{}",
-        rewritten_loud.stdout
-    );
+    rewritten_loud.expect_stdout(0, &["formatted"], &[]);
 }
 
 #[test]
@@ -60,14 +49,10 @@ fn fmt_recurses_directories_and_formats_stdin() {
 
     let dir_arg = dir.to_string_lossy().into_owned();
     let shown = run_args(&["fmt", "--stdout", &dir_arg]);
-    assert_eq!(shown.code, Some(0), "stderr={}", shown.stderr);
-    assert!(shown.stdout.contains("print(1)"), "{}", shown.stdout);
-    assert!(shown.stdout.contains("print 2"), "{}", shown.stdout);
-    assert!(!shown.stdout.contains("not osprey"), "{}", shown.stdout);
+    shown.expect_stdout(0, &["print(1)", "print 2"], &["not osprey"]);
 
     let piped = run_args_with_stdin(&["fmt", "--flavor=ml", "-"], "print 3\n");
-    assert_eq!(piped.code, Some(0), "stderr={}", piped.stderr);
-    assert!(piped.stdout.contains("print 3"), "{}", piped.stdout);
+    piped.expect_stdout(0, &["print 3"], &[]);
 
     let bad_stdin = run_args_with_stdin(&["fmt", "-"], "fn main( = {\n");
     assert_ne!(bad_stdin.code, Some(0));
@@ -77,36 +62,16 @@ fn fmt_recurses_directories_and_formats_stdin() {
 #[test]
 fn fmt_reports_usage_parse_and_read_errors() {
     let no_paths = run_args(&["fmt"]);
-    assert_eq!(no_paths.code, Some(2));
-    assert!(
-        no_paths.stderr.contains("usage: osprey fmt"),
-        "{}",
-        no_paths.stderr
-    );
+    no_paths.expect_stderr(2, &["usage: osprey fmt"], &[]);
 
     let missing_flavor = run_args(&["fmt", "--flavor"]);
-    assert_eq!(missing_flavor.code, Some(2));
-    assert!(
-        missing_flavor.stderr.contains("--flavor requires"),
-        "{}",
-        missing_flavor.stderr
-    );
+    missing_flavor.expect_stderr(2, &["--flavor requires"], &[]);
 
     let bad_flavor = run_args(&["fmt", "--flavor=bogus", "x.osp"]);
-    assert_eq!(bad_flavor.code, Some(2));
-    assert!(
-        bad_flavor.stderr.contains("unknown flavor"),
-        "{}",
-        bad_flavor.stderr
-    );
+    bad_flavor.expect_stderr(2, &["unknown flavor"], &[]);
 
     let bad_flag = run_args(&["fmt", "--bogus", "x.osp"]);
-    assert_eq!(bad_flag.code, Some(2));
-    assert!(
-        bad_flag.stderr.contains("unknown flag --bogus"),
-        "{}",
-        bad_flag.stderr
-    );
+    bad_flag.expect_stderr(2, &["unknown flag --bogus"], &[]);
 
     let missing = run_args(&["fmt", "/no/such/osprey_fmt_missing.osp"]);
     assert_ne!(missing.code, Some(0));
@@ -122,37 +87,19 @@ fn fmt_reports_usage_parse_and_read_errors() {
 #[cfg(unix)]
 #[test]
 fn fmt_reports_write_errors() {
-    use std::os::unix::fs::PermissionsExt;
-
     let blocked_dir = temp_dir("fmt_blocked");
-    if let Ok(metadata) = std::fs::metadata(&blocked_dir) {
-        let mut perms = metadata.permissions();
-        perms.set_mode(0o000);
-        let _ = std::fs::set_permissions(&blocked_dir, perms);
-    }
+    set_mode(&blocked_dir, 0o000);
     let blocked_arg = blocked_dir.to_string_lossy().into_owned();
     let blocked = run_args(&["fmt", &blocked_arg]);
-    if let Ok(metadata) = std::fs::metadata(&blocked_dir) {
-        let mut perms = metadata.permissions();
-        perms.set_mode(0o755);
-        let _ = std::fs::set_permissions(&blocked_dir, perms);
-    }
+    set_mode(&blocked_dir, 0o755);
     assert_eq!(blocked.code, Some(0), "stderr={}", blocked.stderr);
 
     let prog = temp_osp("fmt_readonly", "fn main() = {\nprint(1)\n}\n");
     let path = prog.to_string_lossy().into_owned();
-    if let Ok(metadata) = std::fs::metadata(&prog) {
-        let mut perms = metadata.permissions();
-        perms.set_mode(0o444);
-        let _ = std::fs::set_permissions(&prog, perms);
-    }
+    set_mode(&prog, 0o444);
 
     let out = run_args(&["fmt", &path]);
-    if let Ok(metadata) = std::fs::metadata(&prog) {
-        let mut perms = metadata.permissions();
-        perms.set_mode(0o644);
-        let _ = std::fs::set_permissions(&prog, perms);
-    }
+    set_mode(&prog, 0o644);
     assert_ne!(out.code, Some(0));
     assert!(out.stderr.contains("cannot write"), "{}", out.stderr);
 }

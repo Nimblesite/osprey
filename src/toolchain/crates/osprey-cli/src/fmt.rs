@@ -38,10 +38,7 @@ struct Tally {
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let parsed = match parse(args) {
         Ok(parsed) => parsed,
-        Err(message) => {
-            eprintln!("{message}");
-            return ExitCode::from(2);
-        }
+        Err(message) => return crate::usage_error(&message),
     };
     if parsed.paths == ["-"] {
         return format_stdin(&parsed);
@@ -181,8 +178,7 @@ fn emit(formatted: &str, source: &str, path: &Path, args: &FmtArgs, tally: &mut 
 fn format_stdin(args: &FmtArgs) -> ExitCode {
     let mut source = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut source) {
-        eprintln!("error: cannot read stdin: {e}");
-        return ExitCode::from(2);
+        return crate::usage_error(&format!("error: cannot read stdin: {e}"));
     }
     match osprey_fmt::format_source(&source, args.flavor.unwrap_or(Flavor::Default)) {
         Ok(formatted) => {

@@ -251,8 +251,7 @@ fn api_docs_reject_an_explicit_non_markdown_page() {
         .arg("--docs-page")
         .arg(&guide);
     let result = finish(command);
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(result.stderr.contains("Markdown"), "{}", result.stderr);
+    result.expect_stderr(1, &["Markdown"], &[]);
     assert!(!output.exists());
 }
 
@@ -403,12 +402,7 @@ fn api_docs_honor_file_flavor_overrides_and_reject_project_overrides() {
         .arg("--docs-dir")
         .arg(root.join("unwritten"));
     let result = finish(command);
-    assert_eq!(result.code, Some(1), "{}", result.stderr);
-    assert!(
-        result.stderr.contains("--flavor applies to single files"),
-        "{}",
-        result.stderr
-    );
+    result.expect_stderr(1, &["--flavor applies to single files"], &[]);
     assert!(!root.join("unwritten").exists());
 }
 

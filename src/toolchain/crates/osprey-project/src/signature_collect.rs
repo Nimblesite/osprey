@@ -1,10 +1,9 @@
 //! Signature lookup, conformance, export, and opacity finalization.
 
 use crate::collect::Collector;
-use crate::collect_support::{kind_matches, signature_name_kind};
+use crate::collect_support::{kind_matches, signature_name_kind, Diagnostics};
 use crate::model::{ModuleInfo, SymbolKey};
-use crate::ProjectError;
-use osprey_ast::{Position, SignatureItem, Visibility};
+use osprey_ast::{SignatureItem, Visibility};
 use std::collections::BTreeSet;
 
 impl Collector<'_> {
@@ -118,19 +117,5 @@ impl Collector<'_> {
         }
         let _ = exports.insert(name.to_string());
         let _ = self.graph.annotations.insert(declaration, item.clone());
-    }
-
-    pub(crate) fn error(
-        &mut self,
-        source: usize,
-        position: Option<Position>,
-        message: impl Into<String>,
-    ) {
-        self.errors.push(ProjectError::in_source(
-            self.sources,
-            source,
-            position,
-            message,
-        ));
     }
 }

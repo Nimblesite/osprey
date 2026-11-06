@@ -499,9 +499,7 @@ impl<'a> Lowerer<'a> {
             .iter()
             .map(|p| ExternParameter {
                 name: self.field_text(*p, "name"),
-                ty: p
-                    .child_by_field_name("type")
-                    .map_or_else(|| TypeExpr::named(""), |n| self.lower_type(n)),
+                ty: self.type_or_empty(*p),
             })
             .collect()
     }
@@ -559,11 +557,7 @@ impl<'a> Lowerer<'a> {
         refs.iter()
             .map(|r| EffectRef {
                 name: self.field_text(*r, "name"),
-                type_args: self
-                    .first_child_of_kind(*r, "type_arguments")
-                    .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
-                    .map(|l| self.lower_type_list(l))
-                    .unwrap_or_default(),
+                type_args: self.type_arguments_of(*r),
                 position: Some(self.pos(*r)),
             })
             .collect()
@@ -610,6 +604,24 @@ impl<'a> Lowerer<'a> {
             }
             _ => TypeExpr::named(self.text(node)),
         }
+    }
+
+    /// The declared type a node carries, or an empty name when it wrote none.
+    pub(crate) fn type_or_empty(&self, node: Node<'_>) -> TypeExpr {
+        node.child_by_field_name("type")
+            .map_or_else(|| TypeExpr::named(""), |ty| self.lower_type(ty))
+    }
+
+    /// The types a `type_list` holds, lowered in order.
+    pub(crate) fn type_list_of(&self, node: Node<'_>) -> Vec<TypeExpr> {
+        self.first_child_of_kind(node, "type_list")
+            .map_or_else(Vec::new, |list| self.lower_type_list(list))
+    }
+
+    /// The explicit type arguments a head wrote, or none when it wrote none.
+    pub(crate) fn type_arguments_of(&self, node: Node<'_>) -> Vec<TypeExpr> {
+        self.first_child_of_kind(node, "type_arguments")
+            .map_or_else(Vec::new, |arguments| self.type_list_of(arguments))
     }
 
     pub(crate) fn lower_type_list(&self, list: Node<'_>) -> Vec<TypeExpr> {

@@ -7,9 +7,9 @@
 
 use super::{build, run_executable, CheckerRunner, ProcessRunner};
 use crate::discipline::protocol::Request;
+use crate::discipline::tests::{discipline_at, scratch_dir, source_at, MARKED};
 use crate::discipline::{cache, Discipline};
 use crate::{ProjectConfig, SourceFile};
-use osprey_syntax::Flavor;
 use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
@@ -29,9 +29,7 @@ struct Script {
 
 impl Script {
     fn new(name: &str, body: &str) -> Self {
-        let dir = std::env::temp_dir().join(format!("osprey-runner-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).expect("checker temp dir");
+        let dir = scratch_dir("runner", name);
         let path = dir.join(name);
         std::fs::write(&path, body).expect("checker script");
         let mut permissions = std::fs::metadata(&path)
@@ -53,6 +51,17 @@ impl Script {
         let (error, elapsed) = self.failure(request, deadline);
         assert!(error.contains(expected), "{error}");
         assert!(elapsed < limit, "deadline enforced after {elapsed:?}");
+    }
+
+    /// A `body` checker given the oversized request and a `wait`-second
+    /// deadline must fail with `expected` within `limit` seconds.
+    fn rejects_large_request(name: &str, body: &str, wait: u64, expected: &str, limit: u64) {
+        Self::new(name, body).rejects_within(
+            &large_request(),
+            deadline(wait),
+            expected,
+            Duration::from_secs(limit),
+        );
     }
 
     fn runner(&self) -> (ProcessRunner, Discipline) {
@@ -89,16 +98,10 @@ fn invalid_diagnostic(status: i32) -> String {
     checker.failure("request", deadline(30)).0
 }
 
-/// A discipline whose checker is `root/checker.ospml` and whose build lands
-/// in `root/build`, as a registry entry would describe it.
+/// A discipline whose checker is `root/checker.ospml`, as a registry entry
+/// would describe it, with the generous deadline these tests take.
 fn discipline(root: &Path) -> Discipline {
-    Discipline {
-        name: "bounded".into(),
-        package: "@osprey/bounded".into(),
-        root: root.to_path_buf(),
-        checker: root.join("checker.ospml"),
-        timeout: Duration::from_secs(30),
-    }
+    discipline_at(root, 30)
 }
 
 /// The names in `dir`, sorted, so a test can prove what survived a build.
@@ -122,12 +125,12 @@ fn a_checker_that_never_reads_stdin_is_killed_at_the_deadline() {
     // Review item 1 of 0041: `feed` used to write synchronously, so a checker
     // that never read stdin blocked the compiler on a full pipe for ever and
     // the deadline never applied.
-    let checker = Script::new("sleep.sh", "#!/bin/sh\nsleep 30\n");
-    checker.rejects_within(
-        &large_request(),
-        deadline(1),
+    Script::rejects_large_request(
+        "sleep.sh",
+        "#!/bin/sh\nsleep 30\n",
+        1,
         "exceeded its time limit",
-        Duration::from_secs(5),
+        5,
     );
 }
 
@@ -149,13 +152,7 @@ fn a_descendant_holding_the_pipes_cannot_outlive_the_deadline() {
 fn a_checker_that_exits_without_reading_reports_no_response() {
     // A checker exiting cleanly with no output is the no-response error, and
     // the stdin writer thread neither panics nor hangs on the closed pipe.
-    let checker = Script::new("exit.sh", "#!/bin/sh\nexit 0\n");
-    checker.rejects_within(
-        &large_request(),
-        deadline(30),
-        "no response",
-        Duration::from_secs(10),
-    );
+    Script::rejects_large_request("exit.sh", "#!/bin/sh\nexit 0\n", 30, "no response", 10);
 }
 
 #[test]
@@ -429,16 +426,7 @@ fn one_deadline_covers_both_cold_compilation_and_the_checker_response() {
 }
 
 fn module() -> SourceFile {
-    let text = "// osprey: types=bounded\nnamespace proof\n\nmodule Nat\n    export zero = 0\n";
-    let parsed = osprey_syntax::parse_program_with_flavor(text, Flavor::Ml);
-    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
-    SourceFile {
-        path: PathBuf::from("src/Nat.ospml"),
-        flavor: Flavor::Ml,
-        source: text.to_string(),
-        program: parsed.program,
-        discipline: None,
-    }
+    source_at("src/Nat.ospml", MARKED)
 }
 
 fn accepted_line() -> String {

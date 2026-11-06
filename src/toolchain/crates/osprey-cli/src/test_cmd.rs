@@ -59,10 +59,7 @@ use crate::test_skips::{declared_test_names, skip_diagnostics, SKIP_ERROR};
 pub(crate) fn run(args: &[String]) -> ExitCode {
     let opts = match parse(args) {
         Ok(opts) => opts,
-        Err(msg) => {
-            eprintln!("{msg}");
-            return ExitCode::from(2);
-        }
+        Err(msg) => return crate::usage_error(&msg),
     };
     let files = discover(Path::new(&opts.path));
     if files.is_empty() {
@@ -71,10 +68,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     }
     let jobs = match configured_jobs(files.len()) {
         Ok(jobs) => jobs,
-        Err(message) => {
-            eprintln!("osprey test: {message}");
-            return ExitCode::from(2);
-        }
+        Err(message) => return crate::usage_error(&format!("osprey test: {message}")),
     };
     run_suites(&files, &opts, jobs)
 }

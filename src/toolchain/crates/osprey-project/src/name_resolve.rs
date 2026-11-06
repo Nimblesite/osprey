@@ -1,6 +1,7 @@
 //! Logical path lookup with lexical precedence and boundary checks.
 //! Implements [MODULES-RESOLUTION] and [MODULES-EXPORTS].
 
+use crate::collect_support::Diagnostics;
 use crate::model::SymbolKey;
 use crate::resolve::{Context, Locals, Resolver};
 use osprey_ast::Position;

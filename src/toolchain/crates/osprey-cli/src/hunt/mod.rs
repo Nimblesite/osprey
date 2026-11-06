@@ -43,10 +43,7 @@ pub(crate) fn run(args: &[String]) -> ExitCode {
     }
     let options = match options::parse(args) {
         Ok(options) => options,
-        Err(message) => {
-            eprintln!("{message}");
-            return ExitCode::from(2);
-        }
+        Err(message) => return crate::usage_error(&message),
     };
     match hunt(&options) {
         Ok((rendered, code)) => {
@@ -160,8 +157,7 @@ fn relocate(input: &CompilationInput, findings: &mut [findings::Finding]) {
 }
 
 fn tool_error(message: &str) -> ExitCode {
-    eprintln!("osprey hunt: {message}");
-    ExitCode::from(2)
+    crate::usage_error(&format!("osprey hunt: {message}"))
 }
 
 fn load(options: &Options) -> Result<CompilationInput, ExitCode> {

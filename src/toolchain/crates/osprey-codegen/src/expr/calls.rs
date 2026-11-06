@@ -44,6 +44,18 @@ pub(crate) fn unapplied(mut expression: &Expr) -> &Expr {
     expression
 }
 
+/// The name a call's callee spells, ignoring any type application written on
+/// the way to it, or `None` for a call through a computed function value.
+pub(crate) fn callee_name(call: &Expr) -> Option<&str> {
+    let Expr::Call { function, .. } = call else {
+        return None;
+    };
+    match unapplied(function) {
+        Expr::Identifier(name) => Some(name),
+        _ => None,
+    }
+}
+
 pub(crate) fn with_application<R>(
     cg: &mut Codegen,
     function: &Expr,

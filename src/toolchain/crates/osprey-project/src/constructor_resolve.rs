@@ -2,6 +2,7 @@
 //! A union variant applied to positional payloads stays an ordinary call: the
 //! checker types it against the variant's payload, as in its own source.
 //! Implements [FLAVOR-PYTHON-CLASS], [MODULES-RESOLUTION].
+use crate::collect_support::Diagnostics;
 use crate::model::{DeclKind, SymbolKey};
 use crate::resolve::{Context, Resolver};
 use osprey_ast::{Expr, FieldAssignment, TypeExpr};
