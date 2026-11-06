@@ -32,7 +32,7 @@ _harness.__file__ = str(HERE / "harness.cpython")
 _loader.exec_module(_harness)
 sys.modules["harness"] = _harness
 
-from harness import case, real_case, client, openai_client, reference, MODEL, CONTEXT, PORTS, READ_FILE, RUN_TESTS, READ_PROMPT, base, main  # the harness registers cases through `case`
+from harness import case, real_case, client, openai_client, reference, MODEL, CONTEXT, PORTS, READ_FILE, RUN_TESTS, READ_PROMPT, ROOT, base, main  # the harness registers cases through `case`
 
 
 # --- step 1: metadata endpoints of the Ollama protocol ---------------------
@@ -470,9 +470,13 @@ def real_openai_completion_stops_at_the_end_of_turn(port):
 
 @real_case
 def real_second_turn_continues_the_same_conversation(port):
-    """Two `/api/chat` turns of one conversation: the model's reasoning comes back in
+    """Three `/api/chat` turns of one conversation: the model's reasoning comes back in
     `thinking`, apart from the text; the second turn carries the first in its history,
-    so the cache continues rather than restarting, and both finish."""
+    so the cache continues from the checkpoint taken after the first prompt rather than
+    restarting (the history holds the answer without its reasoning, so the live cache
+    does not match); the third rewrites the last user turn, as an agent does, and still
+    continues from that checkpoint. The server log names the tokens each turn reused
+    ([LLM-CACHE-CHECKPOINT])."""
     first = client(port).chat(model=MODEL, messages=[{"role": "user", "content": "Reply with exactly: ping"}], options={"num_predict": 96})
     assert first.message.content.strip() == "ping", first.message.content
     assert first.message.thinking and first.message.thinking.count("The user") == 1, first.message.thinking
@@ -480,6 +484,13 @@ def real_second_turn_continues_the_same_conversation(port):
     second = client(port).chat(model=MODEL, messages=history, options={"num_predict": 96})
     assert second.message.content.strip() == "pong", second.message.content
     assert second.prompt_eval_count > first.prompt_eval_count, (first.prompt_eval_count, second.prompt_eval_count)
+    rewritten = history[:2] + [{"role": "user", "content": "Now reply with exactly: pang"}]
+    third = client(port).chat(model=MODEL, messages=rewritten, options={"num_predict": 96})
+    assert third.message.content.strip() == "pang", third.message.content
+    continued = [line for line in (ROOT / "target" / "llms" / "qwen-server" / "server-real.log").read_text().splitlines() if line.startswith("cache: continued from ")]
+    assert len(continued) >= 3, continued
+    reused = [int(line.split()[3]) for line in continued[-3:]]
+    assert reused[0] == 0 and reused[1] > 0 and reused[2] > 0, continued[-3:]
 
 
 @real_case

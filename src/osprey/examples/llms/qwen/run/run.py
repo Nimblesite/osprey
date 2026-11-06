@@ -9,17 +9,10 @@ its own receipt ([LLM-TOKENIZER], [LLM-WEIGHTS-MAPPED], [LLM-MODEL-ORACLE]):
     printf '%s\\n%s\\n%s\\n' ~/.cache/osprey-llm/gguf/Qwen3.8-27B-UD-Q4_K_XL.gguf 'The capital of France is' 8 \\
       | OSPREY_GPU=metal osprey src/osprey/examples/llms/qwen/run --run --memory=arc
 """
-from gguf import Chain, Reader
-from qwen import Qwen3_5Cache, Qwen3_5Device, Qwen3_5Gguf, Qwen3_5Model
-from tokenizers import GgufVocab, Tokenizer
-from tokenizers.Tokenizer import qwen_decode, qwen_encode
-
-
-class Tables:
-    """The three vocabulary tables a GGUF carries."""
-    tokens: list[str]
-    types: list[int]
-    merges: list[str]
+from gguf import Chain
+from qwen import Qwen3_5Cache, Qwen3_5Device, Qwen3_5Gguf, Qwen3_5Model, Qwen3_5Vocab
+from tokenizers import Tokenizer
+from tokenizers.Tokenizer import qwen_decode
 
 
 class Run:
@@ -28,28 +21,6 @@ class Run:
     best: int
     added: list[int]
     failed: str
-
-
-def strings(file, key):
-    return Chain.then(Reader.field(file, key), lambda field: Reader.field_strings(field))
-
-
-def ints(file, key):
-    return Chain.then(Reader.field(file, key), lambda field: Reader.field_ints(field))
-
-
-def tables(file):
-    """`tokenizer.ggml.tokens`, `token_type` and `merges`, or the first one missing."""
-    return Chain.then(strings(file, "tokenizer.ggml.tokens"), lambda tokens: Chain.then(ints(file, "tokenizer.ggml.token_type"), lambda types: Chain.then(strings(file, "tokenizer.ggml.merges"), lambda merges: Success(value=Tables(tokens=tokens, types=types, merges=merges)))))
-
-
-def tokenizer(file):
-    """The file's tokenizer, from its own tables."""
-    return Chain.then(tables(file), lambda t: GgufVocab.qwen_from_vocabulary(t.tokens, t.types, t.merges))
-
-
-def ids_of(tok, text):
-    return Chain.then(qwen_encode(tok, text), lambda encoding: Success(value=encoding.ids))
 
 
 def step(model, state, prompt, pos):
@@ -103,7 +74,7 @@ class Job:
 
 
 def job(path, text, count):
-    return Chain.then(Qwen3_5Gguf.open_file(path), lambda source: Chain.then(tokenizer(source.file), lambda tok: Chain.then(ids_of(tok, text), lambda prompt: Chain.then(count_of(count), lambda n: Success(value=Job(source=source, tok=tok, prompt=prompt, count=n))))))
+    return Chain.then(Qwen3_5Gguf.open_file(path), lambda source: Chain.then(Qwen3_5Vocab.tokenizer(source.file), lambda tok: Chain.then(Qwen3_5Vocab.ids_of(tok, text), lambda prompt: Chain.then(count_of(count), lambda n: Success(value=Job(source=source, tok=tok, prompt=prompt, count=n))))))
 
 
 def answered(j):

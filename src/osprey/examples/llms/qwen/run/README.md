@@ -1,7 +1,7 @@
 # Qwen3.8-27B on Metal
 
 The real model on the real weights, greedy, through the package: `Qwen3_5Gguf` maps the
-GGUF, the tokenizer is built from the file's own `tokenizer.ggml.*` tables, and every
+GGUF, the tokenizer is built from the file's own `tokenizer.ggml.*` tables (`Qwen3_5Vocab`, shared with the server), and every
 token prints as `position token -> next`, so a run is its own receipt.
 
 ```

@@ -52,13 +52,26 @@ With a GGUF path the handler is `src/RealModel.py`: `Qwen3_5Gguf` (in
 `../model`) maps every tensor of the file through `gpuMapFile`, quantized blocks
 decoded by `gpuMatMulQuant` on the device, the tokenizer is built from the
 file's own `tokenizer.ggml.*` tables, and the end-of-turn id is the one the
-file declares. The handle is a `Session`: the model, the tokens its KV and
-recurrent cache has seen, and the logits after the last of them. A step feeds
-only the tokens the history adds past what the cache holds, so a turn costs one
-forward pass per token (the prompt is still fed one token at a time); a history
-that does not extend the cache starts from a fresh one. Both handlers sample
-through `src/Sampler.py` — `argmax` at temperature 0, else a seeded draw over
-the warped softmax — so the same request options mean the same thing.
+file declares (all three through `Qwen3_5Vocab` in `../model`). The handle is a
+`Session`: the model, the tokenizer, and a one-slot channel holding the cache's
+`State`: the tokens the KV and recurrent cache has seen, the logits after the
+last of them, and the last four prompt checkpoints behind it. A step takes the
+state out of the slot, feeds only the tokens the history adds past what the
+cache holds, and puts it back, so a turn costs one forward pass per token (the
+prompt is still fed one token at a time) and the next request starts where this
+one ended; the slot is the one thing the server mutates, and a request waits on
+it for the request before. A history that stops extending the live cache (an
+agent that rewrote its last turn, or one that carries the answer without its
+reasoning) continues from the newest checkpoint it still begins with, and only
+from a fresh cache when none matches; the log says `cache: continued from N of
+M tokens` for every prompt, so reuse is visible
+(`2026-11-07_095000-server-real-lane-checkpoints.txt`: the second and the
+rewritten third turn both continue from the first prompt's 14 tokens). The
+renderer trims message content so an answer beginning with newlines does not
+merge with the `assistant` prefix's newline into one token, which is what had
+kept a history from matching its own prompt. Both handlers sample through
+`src/Sampler.py` — `argmax` at temperature 0, else a seeded draw over the warped
+softmax — so the same request options mean the same thing.
 
 Receipt, 2026-11-07 (`target/local-coding-model/runs/2026-11-07_080714-server-real-weights.txt`,
 Apple M4 Max, Metal, ARC): ready 15 s after launch; `/api/generate`,

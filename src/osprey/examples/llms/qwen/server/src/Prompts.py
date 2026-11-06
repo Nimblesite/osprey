@@ -42,8 +42,13 @@ def system_turn(system):
 
 
 def turn(message):
-    """One rendered message; a message without a role is a `user` turn."""
+    """One rendered message; a message without a role is a `user` turn. The content is
+    trimmed: an answer that begins with newlines (as one does after `</think>`) would
+    otherwise merge with the newline that ends the `assistant` prefix into one BPE
+    token, so a history carrying that answer would no longer begin with the prompt's
+    tokens and the cache checkpoint taken after the prompt could not be reused
+    ([LLM-CACHE-CHECKPOINT])."""
     role = Wire.text(message, "role")
-    content = Wire.text(message, "content")
+    content = trim(Wire.text(message, "content"))
     spelled = "user" if role == "" else role
     return f"{OPEN}{spelled}\n{content}\n{CLOSE}\n"

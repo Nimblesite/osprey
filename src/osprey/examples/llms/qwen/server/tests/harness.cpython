@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import types
 import traceback
@@ -33,6 +34,9 @@ CONTEXT = 65536
 PORTS = {"gc": 11535, "arc": 11536, "real": 11537}
 WEIGHTS = os.environ.get("OSPREY_QWEN_GGUF", "")
 READY_SECONDS = {"gc": 60.0, "arc": 60.0, "real": 300.0}
+LANE_SECONDS = {"gc": 600.0, "arc": 600.0, "real": 900.0}
+"""The wall-clock cap on one lane: the server is killed when it runs out, so a hung
+model never holds the GPU past it."""
 READ_FILE = {
     "type": "function",
     "function": {
@@ -75,7 +79,7 @@ def client(port):
 
 
 def openai_client(port):
-    return openai.OpenAI(base_url=base(port) + "/v1", api_key="osprey-local")
+    return openai.OpenAI(base_url=base(port) + "/v1", api_key="osprey-local", timeout=120.0)
 
 
 def load(name):
@@ -120,6 +124,10 @@ def run_cases(lane, port, weights, cases, memory):
     log = ROOT / "target" / "llms" / "qwen-server" / f"server-{lane}.log"
     env = dict(os.environ, OSPREY_GPU=os.environ.get("OSPREY_GPU", "metal")) if weights else None
     process = subprocess.Popen([str(build(memory))], stdin=subprocess.PIPE, stdout=log.open("w"), stderr=subprocess.STDOUT, env=env)
+    expired = threading.Event()
+    watchdog = threading.Timer(LANE_SECONDS[lane], lambda: (expired.set(), process.kill()))
+    watchdog.daemon = True
+    watchdog.start()
     failures = []
     try:
         process.stdin.write(f"{port}\n{weights}\n".encode())
@@ -133,9 +141,21 @@ def run_cases(lane, port, weights, cases, memory):
                 failures.append(f"{check.__name__}\n{traceback.format_exc()}")
                 print(f"not ok {lane}/{check.__name__}", flush=True)
     finally:
-        process.terminate()
-        process.wait(timeout=180)
+        watchdog.cancel()
+        stopped(process)
+    if expired.is_set():
+        failures.append(f"{lane}: the lane ran past {LANE_SECONDS[lane]:.0f} seconds and the server was killed")
     return failures
+
+
+def stopped(process):
+    """Stop the server, forcing it if it does not exit on its own."""
+    process.terminate()
+    try:
+        process.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=60)
 
 
 def lanes(argv):
