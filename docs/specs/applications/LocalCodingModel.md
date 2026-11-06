@@ -1,6 +1,6 @@
 # Local coding model [LLM]
 
-**Status:** planned; not implemented. Nothing here exists yet: no GGUF reader, no `qwen3_5` model, no tokenizer, no tool calling, no server. [Plan 0049](../../plans/0049-local-coding-model.md) owns delivery; every rule below is a delivery target.
+**Status:** in delivery, 2026-11-07. Built and receipted: the GGUF reader (`@osprey/gguf`), the `qwen3_5` model and its GGUF loader (`src/osprey/examples/llms/qwen/model`), the tokenizer from the file's own tables (`@osprey/tokenizers`), the tool-call parser and mask, and the server (`src/osprey/examples/llms/qwen/server`) answering the Ollama and OpenAI routes from the real weights. Not yet met: [LLM-BASELINE], [LLM-SPEED] on a quiet machine, [LLM-STATE-OWNED], the full chat template in the server, [LLM-CACHE-CHECKPOINT], [LLM-MEMORY], [LLM-ACCEPT]. [Plan 0049](../../plans/0049-local-coding-model.md) owns delivery and lists what each rule still lacks.
 
 ## Model and weights [LLM-WEIGHTS]
 

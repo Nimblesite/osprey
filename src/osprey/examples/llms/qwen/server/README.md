@@ -10,13 +10,18 @@ and the evaluation need.
 ## Run it
 
 ```sh
-target/debug/osprey src/osprey/examples/llms/qwen/server --compile -o target/llms/qwen-server/server
-printf '11435\n' | target/llms/qwen-server/server      # one line of stdin names the port
+target/release/osprey src/osprey/examples/llms/qwen/server --compile --memory=arc -o target/llms/qwen-server/server-arc
+printf '11435\n%s\n' ~/.cache/osprey-llm/gguf/Qwen3.8-27B-UD-Q4_K_XL.gguf \
+  | OSPREY_GPU=metal target/llms/qwen-server/server-arc
 ```
 
-`printf '\n'` — or a closed stdin — serves the default port 11435. The runtime
-logs one structured line per request on stdout; the process stops the listener
-and exits cleanly when its lifetime ends.
+Two lines of stdin: the port (empty, or a closed stdin, for 11435) and the GGUF
+to serve. An empty second line serves the fixture table instead (see below). The
+process prints `serving <path>` once the weights are mapped — about 15 s for the
+17.6 GB Q4_K_XL file — and a file that is missing or not a `qwen35` GGUF ends
+startup with `model error: …` and exit code 1; nothing is served from a model
+that did not load. The runtime logs one structured line per request on stdout,
+and the process stops the listener and exits cleanly when its lifetime ends.
 
 ## What it serves
 
@@ -38,16 +43,36 @@ method is a 405, and a body without a model name is a 400; every failure is the
 ## The model behind it
 
 The inference seam is the `Generator` effect (`src/Inference.py`): a tokenizer
-step each way, the model's end-of-turn token, and one sampling step. A route
-never names a weight file, a device or a vocabulary, so plan 0049 Phase 3
-replaces the handler and no route changes.
+step each way, the model's end-of-turn token, and one sampling step that answers
+with the token and the handle to continue from. A route never names a weight
+file, a device or a vocabulary; `Server.py` chooses the handler at startup and
+hands its handle to every request.
 
-The handler installed today is `src/TableModel.py`, a real model that is tiny: a
-twelve-token context whose successor counts come from `CORPUS`, a transcript in
-the served chat framing, sampled through `@osprey/transformers`' `generate`. Its
-turns are the model's own continuation of the prompt — `tests/model_reference.cpython`
-recomputes them independently from the same corpus, and the suite compares the
-two — never a string the server was handed.
+With a GGUF path the handler is `src/RealModel.py`: `Qwen3_5Gguf` (in
+`../model`) maps every tensor of the file through `gpuMapFile`, quantized blocks
+decoded by `gpuMatMulQuant` on the device, the tokenizer is built from the
+file's own `tokenizer.ggml.*` tables, and the end-of-turn id is the one the
+file declares. The handle is a `Session`: the model, the tokens its KV and
+recurrent cache has seen, and the logits after the last of them. A step feeds
+only the tokens the history adds past what the cache holds, so a turn costs one
+forward pass per token (the prompt is still fed one token at a time); a history
+that does not extend the cache starts from a fresh one. Both handlers sample
+through `src/Sampler.py` — `argmax` at temperature 0, else a seeded draw over
+the warped softmax — so the same request options mean the same thing.
+
+Receipt, 2026-11-07 (`target/local-coding-model/runs/2026-11-07_080714-server-real-weights.txt`,
+Apple M4 Max, Metal, ARC): ready 15 s after launch; `/api/generate`,
+`/api/chat` and `/v1/chat/completions` each answered from the real weights, the
+OpenAI turn ending `</think>\n\npong` with `finish_reason` `stop` after 37
+tokens. The model thinks before it answers, and that reasoning is returned
+inside the text today: Ollama's separate `thinking` field is open work.
+
+With an empty path the handler is `src/TableModel.py`, the CI stand-in: a real
+model that is tiny — a twelve-token context whose successor counts come from
+`CORPUS`, a transcript in the served chat framing. Its turns are the model's
+own continuation of the prompt — `tests/model_reference.cpython` recomputes
+them independently from the same corpus, and the suite compares the two —
+never a string the server was handed.
 
 A `/api/chat` turn runs its text through plan 0049 Phase 6's streaming tool
 parser (`qwen.ToolParser` in `../model`): free text becomes
@@ -63,8 +88,8 @@ with `tool_calls` arguments as the JSON *string* OpenAI clients parse, and a
 failure in OpenAI's `{"error": {"message": …}}` shape.
 
 `/api/tags`, `/api/show` and `/api/ps` declare the pinned target model from plan
-0049 — `Qwen3.8-27B` `UD-Q4_K_XL` at 64K context — and report no `digest`,
-because no weights file has been read.
+0049 — `Qwen3.8-27B` `UD-Q4_K_XL` at 64K context — and report no `digest`:
+they describe the pin, not the file that was opened, under either handler.
 
 ## One generation at a time
 
@@ -92,11 +117,14 @@ that lost its instructions would answer wrongly with nothing to warn it.
 
 ## Limits of the served model
 
-The fixture tokenizer's vocabulary is the characters of `CORPUS`, so a prompt
-with any other byte is a 400 naming that byte's offset; the real Qwen tokenizer
-arrives with [LLM-TOKENIZER]. Two protocols' timestamps are one fixed instant
-because Osprey has no clock builtin. Nothing here streams over the socket as it
-is produced: the runtime writes one response body, so streaming means one NDJSON
+The fixture tokenizer's vocabulary is the characters of `CORPUS`, so under the
+table a prompt with any other byte is a 400 naming that byte's offset; the real
+handler tokenizes with the GGUF's vocabulary. The chat framing is the
+`<|im_start|>` subset in `src/Prompts.py`, not the full chat template, so
+tools reach the real model as text the parser reads back rather than as the
+template's tool block. Two protocols' timestamps are one fixed instant because
+Osprey has no clock builtin. Nothing here streams over the socket as it is
+produced: the runtime writes one response body, so streaming means one NDJSON
 line per token in that body, which both clients parse identically.
 
 ## Tests
@@ -111,9 +139,13 @@ objects, so a wire shape is only accepted when the client accepts it.
 ```
 
 `tests/harness.cpython` compiles the server, waits for its listener, runs every
-registered case and reports one `ok <backend>/<case>` line each;
-`tests/model_reference.cpython` is the independent CPython model the answers are
-compared with.
+registered case and reports one `ok <lane>/<case>` line each;
+`tests/model_reference.cpython` is the independent CPython model the table's
+answers are compared with.
 
-Pass `gc` or `arc` as arguments to narrow the run; it builds and drives both
-managed backends by default.
+Three lanes: `gc` and `arc` drive the fixture table (CI runs these; no weights
+are downloaded), and `real` drives the ARC binary over the GGUF named by
+`OSPREY_QWEN_GGUF` on Metal, asserting that the weights answer ("Paris",
+"pong", a second turn that continues the first). Without that variable, or with
+a path that is not a file, each real case prints `skip real/<case>: <reason>`
+rather than passing silently. Pass lane names as arguments to narrow the run.

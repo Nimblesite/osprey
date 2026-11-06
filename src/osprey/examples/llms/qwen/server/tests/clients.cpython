@@ -32,7 +32,7 @@ _harness.__file__ = str(HERE / "harness.cpython")
 _loader.exec_module(_harness)
 sys.modules["harness"] = _harness
 
-from harness import case, client, openai_client, reference, MODEL, CONTEXT, PORTS, READ_FILE, RUN_TESTS, READ_PROMPT, base, main  # the harness registers cases through `case`
+from harness import case, real_case, client, openai_client, reference, MODEL, CONTEXT, PORTS, READ_FILE, RUN_TESTS, READ_PROMPT, base, main  # the harness registers cases through `case`
 
 
 # --- step 1: metadata endpoints of the Ollama protocol ---------------------
@@ -437,6 +437,42 @@ def a_prompt_that_fits_is_served_whole(port):
 
 
 # --- the harness ----------------------------------------------------------
+
+
+# --- the real weights: only with OSPREY_QWEN_GGUF, otherwise a named skip ---------
+
+
+@real_case
+def real_generate_answers_from_the_weights(port):
+    """`/api/generate` over the mapped GGUF: the model thinks, then names Paris; the
+    counts are the real tokenizer's, and the turn ends at the model's end-of-turn token."""
+    reply = client(port).generate(model=MODEL, prompt="What is the capital of France? Answer in one word.", options={"num_predict": 192})
+    assert "Paris" in reply.response, reply.response
+    assert reply.prompt_eval_count > 10 and reply.eval_count <= 192, (reply.prompt_eval_count, reply.eval_count)
+    assert reply.done_reason == "stop", (reply.done_reason, reply.response)
+
+
+@real_case
+def real_openai_completion_stops_at_the_end_of_turn(port):
+    """`/v1/chat/completions` over the mapped GGUF: `pong` after the model's thinking,
+    `finish_reason` `stop`, and the usage from the real tokenizer."""
+    completion = openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": "Reply with exactly: pong"}], max_tokens=96)
+    choice = completion.choices[0]
+    assert choice.message.content.rstrip().endswith("pong"), choice.message.content
+    assert choice.finish_reason == "stop", choice.finish_reason
+    assert completion.usage.prompt_tokens > 5 and completion.usage.completion_tokens < 96, completion.usage
+
+
+@real_case
+def real_second_turn_continues_the_same_conversation(port):
+    """Two `/api/chat` turns of one conversation: the second carries the first turn in
+    its history, so the cache continues rather than restarting, and both finish."""
+    first = client(port).chat(model=MODEL, messages=[{"role": "user", "content": "Reply with exactly: ping"}], options={"num_predict": 96})
+    assert first.message.content.rstrip().endswith("ping"), first.message.content
+    history = [{"role": "user", "content": "Reply with exactly: ping"}, {"role": "assistant", "content": first.message.content}, {"role": "user", "content": "Now reply with exactly: pong"}]
+    second = client(port).chat(model=MODEL, messages=history, options={"num_predict": 96})
+    assert second.message.content.rstrip().endswith("pong"), second.message.content
+    assert second.prompt_eval_count > first.prompt_eval_count, (first.prompt_eval_count, second.prompt_eval_count)
 
 
 if __name__ == "__main__":

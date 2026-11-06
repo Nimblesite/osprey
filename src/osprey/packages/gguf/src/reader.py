@@ -319,53 +319,54 @@ def is_tokenizer_field(field):
     return startsWith(field.name, TOKENIZER_PREFIX)
 
 
-def holds(field, ok, label, extract):
-    """`extract`'s value when the entry passes `ok`, or the Error naming the kind
-    it does not hold."""
+def holds(field, ok, label, value):
+    """`value` when the entry passes `ok`, or the Error naming the kind it does not
+    hold. The value is read eagerly: a field read cannot fault, and a closure here
+    would leave the accessor generic for the code generator."""
     if ok:
-        return Success(value=extract())
+        return Success(value=value)
     else:
         return Error(message=kind_error(field, label))
 
 
 def field_int(field):
     """The integer a metadata entry holds, or Error for another kind."""
-    return holds(field, listContains(INT_KINDS, field.value.kind), "an int", lambda: field.value.i)
+    return holds(field, listContains(INT_KINDS, field.value.kind), "an int", field.value.i)
 
 
 def field_bool(field):
     """The boolean a metadata entry holds, or Error for another kind."""
-    return holds(field, field.value.kind == "bool", "a bool", lambda: field.value.i != 0)
+    return holds(field, field.value.kind == "bool", "a bool", field.value.i != 0)
 
 
 def field_float(field):
     """The number a floating-point metadata entry holds, or Error for another kind."""
-    return holds(field, listContains(FLOAT_KINDS, field.value.kind), "a float", lambda: field.value.f)
+    return holds(field, listContains(FLOAT_KINDS, field.value.kind), "a float", field.value.f)
 
 
 def field_string(field):
     """The text a string metadata entry holds, or Error for another kind."""
-    return holds(field, field.value.kind == "string", "a string", lambda: field.value.s)
+    return holds(field, field.value.kind == "string", "a string", field.value.s)
 
 
 def field_ints(field):
     """The integers an array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, INT_KINDS), "an int array", lambda: mapList(field.value.items, element_int))
+    return holds(field, array_of(field, INT_KINDS), "an int array", mapList(field.value.items, element_int))
 
 
 def field_bools(field):
     """The booleans an array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, ["bool"]), "a bool array", lambda: mapList(field.value.items, element_bool))
+    return holds(field, array_of(field, ["bool"]), "a bool array", mapList(field.value.items, element_bool))
 
 
 def field_floats(field):
     """The numbers a floating-point array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, FLOAT_KINDS), "a float array", lambda: mapList(field.value.items, element_float))
+    return holds(field, array_of(field, FLOAT_KINDS), "a float array", mapList(field.value.items, element_float))
 
 
 def field_strings(field):
     """The texts a string array entry holds, or Error for another kind."""
-    return holds(field, array_of(field, ["string"]), "a string array", lambda: mapList(field.value.items, element_string))
+    return holds(field, array_of(field, ["string"]), "a string array", mapList(field.value.items, element_string))
 
 
 def array_of(field, kinds):

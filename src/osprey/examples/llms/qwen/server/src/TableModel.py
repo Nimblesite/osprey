@@ -3,15 +3,17 @@
 # osprey: module=TableModel
 """The fixture model behind `Generator`: four-token context counts over a transcript.
 
-Plan 0049 Phase 3 puts the real `qwen3_5` weights behind the same effect; until
-then every route is exercised against a model that is real but tiny. Its handle
+It is the CI stand-in for the real weights (`RealModel.py`), which the server
+installs when started with a GGUF path; every route is exercised against a model
+that is real but tiny. Its handle
 (`Model`) carries the vocabulary and the token ids of `CORPUS`, a transcript in
 the served chat framing: a step counts, for the four-token context at the end of
 the history, how often each token followed that context in the corpus, and asks
 `@osprey/transformers`' `generate` for one token from those counts. Nothing here
 is a canned reply — the text a turn produces is the model's own continuation of
 its prompt, and `tests/model_reference.cpython` recomputes that continuation
-independently from the same corpus.
+independently from the same corpus. The step itself is `Sampler.one_token` over the
+counts, the same sampler the real weights use.
 
 A context the corpus never showed falls back to a seeded row, so a prompt
 outside the training text still yields a deterministic token rather than an
@@ -23,19 +25,16 @@ Every integer operation here is one of the total helpers
 wrapped hash or a clamped count is the definition rather than a fault.
 """
 
+from gguf import Chain
 from qwen_server import Inference
 from qwen_server import Lists
-from transformers import Generation
-from transformers import LogitsProcess
-from transformers import Math
-from transformers import StoppingCriteria
+from qwen_server import Sampler
 
 __all__ = ["CORPUS", "Table", "installed"]
 
 WINDOW = 12
 EOS_CHAR = "~"
 SEEDED_ROW = 1024
-DRAW_ROW = 1000000
 
 CORPUS = """<|im_start|>system
 You are a local coding model served by Osprey.<|im_end|>
@@ -112,7 +111,7 @@ class Table:
         return model.eos
 
     def step(model, history, sampling):
-        return next_token(model, history, sampling)
+        return Chain.then(Sampler.one_token(logits(model, history, sampling), history, sampling, model.eos), lambda token: Success(value=Inference.Stepped(token=token, model=model)))
 
 
 # --- the vocabulary -------------------------------------------------------
@@ -264,49 +263,6 @@ def bias(anchor, token):
     return residue_seeded(satAdd(wrapMul(satAdd(anchor, token), 1103515245), 12345))
 
 
-def draw(seed, at):
-    """A deterministic draw in [0, 1) from the seed and the position."""
-    return toFloat32(toFloat(residue_draw(wrapMul(satAdd(seed, wrapMul(at, 2654435761)), 1103515245))) / 1000000.0)
-
-
 def residue_seeded(value):
     """`value` modulo `SEEDED_ROW`, never negative."""
     return satSub(abs(value), wrapMul(intDiv(abs(value), SEEDED_ROW), SEEDED_ROW))
-
-
-def residue_draw(value):
-    """`value` modulo `DRAW_ROW`, never negative."""
-    return satSub(abs(value), wrapMul(intDiv(abs(value), DRAW_ROW), DRAW_ROW))
-
-
-def temperature_processors(sampling):
-    """The temperature warper, or none for greedy sampling."""
-    return [] if sampling.temperature <= 0.0 else [LogitsProcess.TemperatureLogitsWarper(toFloat32(sampling.temperature))]
-
-
-def sampler(sampling, at):
-    """`argmax` for greedy sampling, and a seeded draw over the softmax otherwise."""
-    return Math.argmax if sampling.temperature <= 0.0 else (lambda scores: Math.multinomial(Math.softmax(scores), draw(sampling.seed, at)))
-
-
-def next_token(model, history, sampling):
-    """One token from `generate` over the fixture model's counts."""
-    return sampled(Generation.generate(lambda tokens: logits(model, tokens, sampling), history, temperature_processors(sampling), [StoppingCriteria.EosTokenCriteria([model.eos])], sampler(sampling, Lists.count(history)), 1))
-
-
-def sampled(result):
-    """The newest token of a one-token generation, or its error."""
-    match result:
-        case Success(value=tokens):
-            return newest_token(listGet(tokens, satSub(Lists.count(tokens), 1)))
-        case Error(message=message):
-            return Error(message=message)
-
-
-def newest_token(token):
-    """A generated token, or an error when the generation produced none."""
-    match token:
-        case Success(value=value):
-            return Success(value=value)
-        case Error(message=message):
-            return Error(message=f"generate produced no token: {message}")

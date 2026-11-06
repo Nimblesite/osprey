@@ -1,9 +1,14 @@
 """The harness every case in `clients.cpython` runs under: build, launch, report.
 
-It keeps the suite's case registry, compiles the server for one memory backend,
+It keeps the suite's case registries, compiles the server for one memory backend,
 waits for its listener, runs every registered case against it, and reports one
 `ok <backend>/<case>` line each plus the totals. Run the suite through
 `clients.cpython`, which registers the cases and calls `main`.
+
+Two lanes: the fixture table (`gc` and `arc`, every `case`), which CI runs, and
+the real weights (`real`, every `real_case`), which runs only when
+`OSPREY_QWEN_GGUF` names a GGUF that exists; otherwise each real case prints a
+`skip real/<case>` line, never a silent pass.
 """
 import importlib.machinery
 import json
@@ -25,7 +30,9 @@ ROOT = PROJECT.parents[5]
 COMPILER = Path(os.environ.get("OSPREY_COMPILER", ROOT / "target/debug/osprey"))
 MODEL = "qwen3.8:27b"
 CONTEXT = 65536
-PORTS = {"gc": 11535, "arc": 11536}
+PORTS = {"gc": 11535, "arc": 11536, "real": 11537}
+WEIGHTS = os.environ.get("OSPREY_QWEN_GGUF", "")
+READY_SECONDS = {"gc": 60.0, "arc": 60.0, "real": 300.0}
 READ_FILE = {
     "type": "function",
     "function": {
@@ -44,11 +51,18 @@ RUN_TESTS = {
 }
 READ_PROMPT = "read the readme"
 CASES = []
+REAL_CASES = []
 
 
 def case(fn):
-    """Register one named case; the suite runs every case on every backend."""
+    """Register one named case; the suite runs every case on every table backend."""
     CASES.append(fn)
+    return fn
+
+
+def real_case(fn):
+    """Register a case that needs the real weights; it runs on the `real` lane only."""
+    REAL_CASES.append(fn)
     return fn
 
 
@@ -89,8 +103,8 @@ def build(memory):
     return binary
 
 
-def wait_ready(process, port):
-    deadline = time.time() + 60.0
+def wait_ready(process, port, seconds):
+    deadline = time.time() + seconds
     while time.time() < deadline:
         assert process.poll() is None, f"server exited {process.returncode}"
         try:
@@ -98,43 +112,58 @@ def wait_ready(process, port):
                 return
         except httpx.HTTPError:
             time.sleep(0.05)
-    raise TimeoutError(f"server did not answer on port {port} within 60 seconds")
+    raise TimeoutError(f"server did not answer on port {port} within {seconds:.0f} seconds")
 
 
-def run_cases(memory, port):
-    log = ROOT / "target" / "llms" / "qwen-server" / f"server-{memory}.log"
-    process = subprocess.Popen([str(build(memory))], stdin=subprocess.PIPE, stdout=log.open("w"), stderr=subprocess.STDOUT)
+def run_cases(lane, port, weights, cases, memory):
+    """Launch the `memory` binary on `port` over `weights` ("" for the table) and run `cases`."""
+    log = ROOT / "target" / "llms" / "qwen-server" / f"server-{lane}.log"
+    env = dict(os.environ, OSPREY_GPU=os.environ.get("OSPREY_GPU", "metal")) if weights else None
+    process = subprocess.Popen([str(build(memory))], stdin=subprocess.PIPE, stdout=log.open("w"), stderr=subprocess.STDOUT, env=env)
     failures = []
     try:
-        process.stdin.write(f"{port}\n".encode())
+        process.stdin.write(f"{port}\n{weights}\n".encode())
         process.stdin.close()
-        wait_ready(process, port)
-        for check in CASES:
+        wait_ready(process, port, READY_SECONDS[lane])
+        for check in cases:
             try:
                 check(port)
-                print(f"ok {memory}/{check.__name__}", flush=True)
+                print(f"ok {lane}/{check.__name__}", flush=True)
             except Exception:
                 failures.append(f"{check.__name__}\n{traceback.format_exc()}")
-                print(f"not ok {memory}/{check.__name__}", flush=True)
+                print(f"not ok {lane}/{check.__name__}", flush=True)
     finally:
         process.kill()
         process.wait(timeout=30)
     return failures
 
 
-def memories(argv):
-    wanted = [argument for argument in argv if argument in PORTS] or ["gc", "arc"]
-    return wanted
+def lanes(argv):
+    """The lanes named on the command line, or the two table backends plus `real`."""
+    return [argument for argument in argv if argument in PORTS] or ["gc", "arc", "real"]
+
+
+def real_lane():
+    """The real lane's failures, or the named skips when no GGUF is available."""
+    if WEIGHTS and Path(WEIGHTS).is_file():
+        return run_cases("real", PORTS["real"], WEIGHTS, REAL_CASES, "arc"), len(REAL_CASES)
+    reason = "OSPREY_QWEN_GGUF is not set" if not WEIGHTS else f"{WEIGHTS} is not a file"
+    for check in REAL_CASES:
+        print(f"skip real/{check.__name__}: {reason}", flush=True)
+    return [], 0
 
 
 def main(argv):
     if not COMPILER.exists():
         raise SystemExit(f"no compiler at {COMPILER}; set OSPREY_COMPILER")
     failures, total = [], 0
-    for memory in memories(argv):
-        found = run_cases(memory, PORTS[memory])
+    for lane in lanes(argv):
+        if lane == "real":
+            found, ran = real_lane()
+        else:
+            found, ran = run_cases(lane, PORTS[lane], "", CASES, lane), len(CASES)
         failures.extend(found)
-        total += len(CASES)
+        total += ran
     for failure in failures:
         print(failure, file=sys.stderr)
     print(f"{total - len(failures)} passed, {len(failures)} failed")

@@ -12,7 +12,6 @@ from the same parsed call, in `call_of` here and in `Ollama.call_of` there.
 
 from qwen_server import Completions
 from qwen_server import Requests as Q
-from qwen_server import TableModel
 from qwen_server import Wire
 
 __all__ = ["models", "completions", "failed"]
@@ -35,13 +34,9 @@ def entry():
     ])
 
 
-def completions(request):
+def completions(model, request):
     """`/v1/chat/completions`: one assistant turn, streamed as SSE or answered whole."""
-    match TableModel.installed():
-        case Success(value=model):
-            return turn(model, request)
-        case Error(message=message):
-            return failed(500, message)
+    return turn(model, request)
 
 
 def turn(model, request):
