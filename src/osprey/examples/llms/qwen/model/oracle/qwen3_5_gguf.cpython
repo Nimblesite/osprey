@@ -1,0 +1,281 @@
+"""Tiny GGUF files of the `qwen3_5` fixture, for the package's GGUF loader
+([LLM-MODEL-ORACLE], [LLM-WEIGHTS-QUANT], docs/plans/0049-local-coding-model.md Phase 3).
+
+The seeded checkpoint `qwen3_5.cpython` builds is written to
+src/osprey/examples/llms/qwen/model/tests/fixtures/ by gguf 0.19.0's `GGUFWriter`, with the
+tensor names, metadata keys and value conventions llama.cpp's `convert_hf_to_gguf.py`
+uses for this architecture: `qwen35.*` keys, a `block_count` that includes the NextN
+layer the text model skips, zero-centred norms stored as `1 + weight`, `A_log` as
+`-exp(A_log)`, the convolution squeezed to `[channels, kernel]`, and the
+linear-attention value heads in tiled order (value head `t` beside key head `t % heads`).
+
+`tiny-f32.gguf` holds every tensor as `F32` with the embedding tied to the head, so the
+loader must reproduce `MODEL_HIDDEN_VALUES` exactly as the Transformers loader does.
+`tiny-q8_0.gguf` quantizes every matrix to `Q8_0` and carries a separate `output.weight`;
+Transformers runs the same model over those weights dequantized by gguf-py, and the
+result is `MODEL_Q8_HIDDEN_VALUES`, so the on-device block decode is checked against the
+reference decode of the same bytes. The `refuse-*.gguf` files each lack one thing the
+loader requires. CI never downloads weights: the largest file is under a megabyte.
+"""
+import hashlib
+import importlib.machinery
+import importlib.metadata
+import importlib.util
+import pathlib
+import re
+
+import numpy
+import torch
+import transformers
+import gguf
+from gguf import GGMLQuantizationType, GGUFWriter
+from gguf.quants import dequantize, quantize
+from expected_module import ROOT, write
+
+HERE = pathlib.Path(__file__).resolve().parent
+HOME = "src/osprey/examples/llms/qwen/model"
+FIXTURES = ROOT / HOME / "tests" / "fixtures"
+ARCH = "qwen35"
+INTERVAL = 4
+STAGES = ("layer0", "layer1", "layer2", "layer3", "final_norm")
+LAYER_NAMES = {
+    "input_layernorm.weight": "attn_norm.weight",
+    "post_attention_layernorm.weight": "post_attention_norm.weight",
+    "mlp.gate_proj.weight": "ffn_gate.weight",
+    "mlp.up_proj.weight": "ffn_up.weight",
+    "mlp.down_proj.weight": "ffn_down.weight",
+    "self_attn.q_proj.weight": "attn_q.weight",
+    "self_attn.k_proj.weight": "attn_k.weight",
+    "self_attn.v_proj.weight": "attn_v.weight",
+    "self_attn.o_proj.weight": "attn_output.weight",
+    "self_attn.q_norm.weight": "attn_q_norm.weight",
+    "self_attn.k_norm.weight": "attn_k_norm.weight",
+    "linear_attn.in_proj_qkv.weight": "attn_qkv.weight",
+    "linear_attn.in_proj_z.weight": "attn_gate.weight",
+    "linear_attn.in_proj_b.weight": "ssm_beta.weight",
+    "linear_attn.in_proj_a.weight": "ssm_alpha.weight",
+    "linear_attn.out_proj.weight": "ssm_out.weight",
+    "linear_attn.conv1d.weight": "ssm_conv1d.weight",
+    "linear_attn.A_log": "ssm_a",
+    "linear_attn.dt_bias": "ssm_dt.bias",
+    "linear_attn.norm.weight": "ssm_norm.weight",
+}
+
+
+def sibling():
+    """The fixture oracle, loaded by path as the runner loads this one."""
+    path = HERE / "qwen3_5.cpython"
+    loader = importlib.machinery.SourceFileLoader("oracle_qwen3_5", str(path))
+    spec = importlib.util.spec_from_loader("oracle_qwen3_5", loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def gguf_name(name):
+    """The GGUF tensor name for a `Qwen3_5TextModel` parameter."""
+    if name == "embed_tokens.weight":
+        return "token_embd.weight"
+    if name == "norm.weight":
+        return "output_norm.weight"
+    index, rest = re.fullmatch(r"layers\.(\d+)\.(.+)", name).groups()
+    return f"blk.{index}.{LAYER_NAMES[rest]}"
+
+
+class Heads:
+    """The linear-attention head geometry a tiled reorder needs."""
+
+    def __init__(self, cfg):
+        self.hk = cfg.linear_num_key_heads
+        self.r = cfg.linear_num_value_heads // cfg.linear_num_key_heads
+        self.dv = cfg.linear_value_head_dim
+        self.key_dim = cfg.linear_key_head_dim * cfg.linear_num_key_heads
+
+    def grouped(self, tiled):
+        """The grouped value head that sits at tiled slot `tiled`."""
+        return (tiled % self.hk) * self.r + tiled // self.hk
+
+    def tiled(self, grouped):
+        """The tiled slot of grouped value head `grouped` (the inverse of `grouped`)."""
+        return (grouped % self.r) * self.hk + grouped // self.r
+
+
+def reordered(values, axis, start, dim, heads, slot_of):
+    """Blocks of `dim` along `axis` from `start`, block `t` taken from block `slot_of(t)`."""
+    count = heads.hk * heads.r
+    order = list(range(start)) + [start + slot_of(t) * dim + d for t in range(count) for d in range(dim)]
+    assert len(order) == values.shape[axis], (len(order), values.shape, axis)
+    return numpy.take(values, order, axis=axis)
+
+
+def head_layout(name, values, heads, slot_of):
+    """The per-value-head reorder `convert_hf_to_gguf.py` applies to `name`, if any,
+    with `slot_of` choosing the direction."""
+    if "conv1d" in name or "in_proj_qkv" in name:
+        return reordered(values, 0, 2 * heads.key_dim, heads.dv, heads, slot_of)
+    if "in_proj_z" in name:
+        return reordered(values, 0, 0, heads.dv, heads, slot_of)
+    if "in_proj_b" in name or "in_proj_a" in name or name.endswith("A_log") or name.endswith("dt_bias"):
+        return reordered(values, 0, 0, 1, heads, slot_of)
+    if "out_proj" in name:
+        return reordered(values, 1, 0, heads.dv, heads, slot_of)
+    return values
+
+
+def converted(name, tensor, heads):
+    """`tensor` as the converter stores it: squeezed, offset, negated and tiled."""
+    values = tensor.detach().numpy().astype(numpy.float32)
+    if "conv1d" in name:
+        values = values.reshape(values.shape[0], -1)
+    if name.endswith("A_log"):
+        values = -numpy.exp(values)
+    if name.endswith("norm.weight") and "linear_attn" not in name:
+        values = values + 1
+    return head_layout(name, values, heads, heads.grouped)
+
+
+def quantizable(name, values):
+    """Whether the converter would quantize this tensor: every matrix, never a vector or the convolution."""
+    return values.ndim == 2 and "conv1d" not in name
+
+
+def metadata(writer, cfg, vocab, skip=()):
+    """The `qwen35.*` keys the loader reads, and a tokenizer of `vocab`."""
+    rope = cfg.rope_parameters
+    keys = [
+        (writer.add_block_count, cfg.num_hidden_layers + 1),
+        (lambda n: writer.add_uint32(f"{ARCH}.nextn_predict_layers", n), 1),
+        (writer.add_context_length, cfg.max_position_embeddings),
+        (writer.add_embedding_length, cfg.hidden_size),
+        (writer.add_feed_forward_length, cfg.intermediate_size),
+        (writer.add_head_count, cfg.num_attention_heads),
+        (writer.add_head_count_kv, cfg.num_key_value_heads),
+        (writer.add_key_length, cfg.head_dim),
+        (writer.add_value_length, cfg.head_dim),
+        (writer.add_rope_freq_base, rope["rope_theta"]),
+        (writer.add_rope_dimension_count, int(cfg.head_dim * rope["partial_rotary_factor"])),
+        (writer.add_layer_norm_rms_eps, cfg.rms_norm_eps),
+        (writer.add_ssm_conv_kernel, cfg.linear_conv_kernel_dim),
+        (writer.add_ssm_state_size, cfg.linear_key_head_dim),
+        (writer.add_ssm_group_count, cfg.linear_num_key_heads),
+        (writer.add_ssm_time_step_rank, cfg.linear_num_value_heads),
+        (writer.add_ssm_inner_size, cfg.linear_value_head_dim * cfg.linear_num_value_heads),
+        (lambda n: writer.add_uint32(f"{ARCH}.full_attention_interval", n), INTERVAL),
+    ]
+    for index, (add, value) in enumerate(keys):
+        if index not in skip:
+            add(value)
+    writer.add_tokenizer_model("gpt2")
+    writer.add_token_list(vocab)
+    writer.add_token_types([1] * len(vocab))
+
+
+def written(name, arch, cfg, vocab, tensors, skip=()):
+    """Write `tensors` (name -> (array, quant type or None)) under the fixture metadata."""
+    FIXTURES.mkdir(parents=True, exist_ok=True)
+    path = FIXTURES / name
+    writer = GGUFWriter(str(path), arch=arch, use_temp_file=False)
+    metadata(writer, cfg, vocab, skip)
+    for tensor_name, (values, kind) in tensors.items():
+        if kind is None:
+            writer.add_tensor(tensor_name, values)
+        else:
+            writer.add_tensor(tensor_name, quantize(values, kind), raw_dtype=kind)
+    writer.write_header_to_file()
+    writer.write_kv_data_to_file()
+    writer.write_tensors_to_file()
+    writer.close()
+    return path
+
+
+def dense_tensors(model, heads):
+    """Every parameter in GGUF layout, `F32`."""
+    return {gguf_name(name): (converted(name, tensor, heads), None) for name, tensor in model.named_parameters()}
+
+
+def quantized_tensors(dense):
+    """`dense` with every matrix as `Q8_0` and the head stored separately."""
+    tensors = {name: (values, GGMLQuantizationType.Q8_0 if quantizable(name, values) else None) for name, (values, _) in dense.items()}
+    tensors["output.weight"] = tensors["token_embd.weight"]
+    return tensors
+
+
+def reference_state(model, tensors, heads):
+    """The model's `state_dict` with every quantized matrix replaced by gguf-py's decode
+    of its own `Q8_0` blocks, carried back into Transformers' layout."""
+    state = {}
+    for name, tensor in model.named_parameters():
+        values, kind = tensors[gguf_name(name)]
+        if kind is None:
+            state[name] = tensor.detach().clone()
+        else:
+            decoded = dequantize(quantize(values, kind), kind).astype(numpy.float32)
+            state[name] = torch.from_numpy(numpy.ascontiguousarray(head_layout(name, decoded, heads, heads.tiled)))
+    return state
+
+
+def truncated(source, name, cut):
+    """`source` with its last `cut` bytes missing."""
+    data = source.read_bytes()
+    path = FIXTURES / name
+    path.write_bytes(data[:-cut])
+    return path
+
+
+def refusals(cfg, vocab, dense):
+    """One file per refusal the loader names."""
+    embed = dense["token_embd.weight"]
+    norm = dense["output_norm.weight"]
+    head = {"token_embd.weight": embed, "output_norm.weight": norm}
+    files = [
+        written("refuse-arch.gguf", "qwen3", cfg, vocab, head),
+        written("refuse-missing.gguf", ARCH, cfg, vocab, head),
+        written("refuse-shape.gguf", ARCH, cfg, vocab, {"token_embd.weight": (embed[0][:, :32].copy(), None)}),
+        written("refuse-type.gguf", ARCH, cfg, vocab, {"token_embd.weight": (embed[0], GGMLQuantizationType.Q4_0)}),
+        written("refuse-key.gguf", ARCH, cfg, vocab, head, skip=(16,)),
+    ]
+    return files + [truncated(files[1], "refuse-truncated.gguf", 100)]
+
+
+def stages(oracle, model, cfg):
+    """Every stage of the one-token input and of the eight cached tokens, as the fixture lays them out."""
+    single = oracle.forward(model, oracle.ONE).hidden_states
+    cached, _ = oracle.cached_stages(model, cfg, oracle.EIGHT)
+    return [oracle.flat(stage) for stage in list(single) + list(cached)]
+
+
+def checked(paths):
+    """Every written file but the truncated one reads back with gguf-py."""
+    for path in paths:
+        if "truncated" not in path.name:
+            gguf.GGUFReader(str(path))
+
+
+def main():
+    oracle = sibling()
+    cfg = oracle.config()
+    assert list(cfg.layer_types) == ["linear_attention"] * 3 + ["full_attention"], cfg.layer_types
+    model = oracle.build(cfg)
+    heads = Heads(cfg)
+    vocab = [f"t{i}" for i in range(cfg.vocab_size)]
+    dense = dense_tensors(model, heads)
+    q8 = quantized_tensors(dense)
+    paths = [written("tiny-f32.gguf", ARCH, cfg, vocab, dense), written("tiny-q8_0.gguf", ARCH, cfg, vocab, q8)]
+    paths += refusals(cfg, vocab, dense)
+    checked(paths)
+    C = {}
+    C["MODEL_GGUF_FILES"] = [path.name for path in paths]
+    C["MODEL_GGUF_SIZES"] = [path.stat().st_size for path in paths]
+    C["MODEL_GGUF_SHA256"] = [hashlib.sha256(path.read_bytes()).hexdigest() for path in paths]
+    C["MODEL_GGUF_TENSORS"] = sorted(dense)
+    C["MODEL_Q8_STAGES"] = list(STAGES)
+    model.load_state_dict(reference_state(model, q8, heads))
+    C["MODEL_Q8_HIDDEN_VALUES"] = stages(oracle, model, cfg)
+    summary = (
+        "The qwen3_5 fixture as tiny GGUF files, and Transformers' activations over the Q8_0 file's dequantized weights.\n\n"
+        f"Files in tests/fixtures/: {', '.join(C['MODEL_GGUF_FILES'])}. MODEL_Q8_HIDDEN_VALUES holds the "
+        "five stages of the one-token input followed by the five stages of the eight tokens fed one at a time."
+    )
+    versions = {"transformers": transformers.__version__, "torch": torch.__version__, "gguf": importlib.metadata.version("gguf")}
+    target = write("qwen3_5_gguf", summary, versions, C, module="ExpectedGguf", namespace="qwen_gguf_expected", file="expected_gguf.py", home=HOME)
+    print(f"wrote {target} ({target.stat().st_size} bytes) and {len(paths)} fixtures, largest {max(C['MODEL_GGUF_SIZES'])} bytes")

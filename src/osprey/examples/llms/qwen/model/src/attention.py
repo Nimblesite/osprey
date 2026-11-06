@@ -76,10 +76,18 @@ def geometry(config, shapes) -> Geometry:
 
 
 def scores(q, keys, n, config, shapes) -> GpuBuffer[float32]:
-    """Every head's score against every cached position, `[position, head]`."""
+    """Every head's score against every cached position, `[position, head]`. The geometry
+    is unpacked into scalars first: a kernel captures numbers, never a record."""
     g = geometry(config, shapes)
-    scale = toFloat32(1.0 / sqrt(toFloat(g.width)))
-    return must(gpuMap(grid(g.heads * n), lambda i: score(q, keys, rem(i, g.hm, g.hs, g.heads), quot(i, g.hm, g.hs), g.width, g.kv_width, quot(rem(i, g.hm, g.hs, g.heads), g.gm, g.gs), scale)))
+    heads = g.heads
+    width = g.width
+    kv_width = g.kv_width
+    hm = g.hm
+    hs = g.hs
+    gm = g.gm
+    gs = g.gs
+    scale = toFloat32(1.0 / sqrt(toFloat(width)))
+    return must(gpuMap(grid(heads * n), lambda i: score(q, keys, rem(i, hm, hs, heads), quot(i, hm, hs), width, kv_width, quot(rem(i, hm, hs, heads), gm, gs), scale)))
 
 
 def peak(s, h, n, heads) -> float32:
@@ -109,9 +117,14 @@ def attended(w, values, n, h, d, heads, width, kv_width, kvh) -> float32:
 def output(w, values, n, config, shapes) -> GpuBuffer[float32]:
     """`softmax(scores) @ values` for every head, heads side by side."""
     g = geometry(config, shapes)
+    heads = g.heads
+    width = g.width
+    kv_width = g.kv_width
+    gm = g.gm
+    gs = g.gs
     mul = shapes.head_dim.mul
     shift = shapes.head_dim.shift
-    return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, g.width), g.heads, g.width, g.kv_width, quot(quot(i, mul, shift), g.gm, g.gs))))
+    return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, width), heads, width, kv_width, quot(quot(i, mul, shift), gm, gs))))
 
 
 def mix(x, layer, slot, config, shapes) -> Mixed:
