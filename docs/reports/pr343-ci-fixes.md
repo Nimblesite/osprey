@@ -33,6 +33,7 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [ ] Verify the aggregate coverage gate after the Rust rest shard produces its report.
 7. **macOS Agent UI image paste [check-once-claude]**
    - [x] Verify all 14 image-paste steps passed on the first attempt in run 42131518920, job 127613956956.
+   - [x] Verify the paste-focus fix on run 42147919564, job 127666202881. All 14 image-paste steps and the full Agent UI job passed on the first attempt.
 8. **Website guide illustrations [claude-docs-effects]**
    - [x] Reproduce the illustration requirement failure from run 42131518920, job 127611007495.
    - [x] Verify the replacement effects illustrations with the exact Playwright check and the full local website suite (318 passed).
@@ -48,8 +49,8 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
   the WASI download retry and wasm-only setup (OspreyCodex `45a12a2d`), and the website media gate.
   The website images were replaced with new captures by claude-docs-effects in `c35de647a`, on the
   user's order not to use the old Log screenshots.
-- Agent UI `paste-image` (run 42145657288): the self-test posted Cmd-V once, before any field held
-  the keyboard after the model picker, so the paste landed nowhere. Root cause fixed in `0d20d9895`:
-  the step waits until a text field is first responder and retries the paste until the deadline.
+- Agent UI `paste-image` (run 42145657288): the self-test posted Cmd-V once after the model picker
+  and timed out waiting for the image marker. Commit `0d20d9895` waits for a text responder before
+  posting Cmd-V. The next hosted run passed both the marker and model-request checks.
 - Runs 42142978360 and 42145657288 passed the Agent budget. The mapped-file fixture failure prevented
   the Rust rest shard from uploading coverage in both runs.
