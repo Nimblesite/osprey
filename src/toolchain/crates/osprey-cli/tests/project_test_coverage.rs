@@ -11,6 +11,12 @@ use std::process::Command;
 #[path = "project_test_coverage/callback.rs"]
 mod callback;
 
+/// Every project-level check reports success or the failure that broke the fixture.
+type TestResult = Result<(), Box<dyn std::error::Error>>;
+
+/// A covered run's process output together with the report it wrote.
+type CoveredRun = Result<(std::process::Output, serde_json::Value), Box<dyn std::error::Error>>;
+
 fn repo_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
 }
@@ -45,6 +51,15 @@ import calc::Words
 test "greets" (\() => expect (Words::greet "ann", "hi ann"))
 "#;
 
+/// A changed compiler or manifest must rebuild every cached stage.
+const REBUILD_ALL: &str = "changed compiler must invalidate every stage";
+
+/// GC and ARC share codegen but link and execute separately.
+const SHARED_CODEGEN: &str = "one IR/object, separately linked GC and ARC executables";
+
+/// `Pick.get` runs once; `Pick.unused` never runs.
+const STATIC_ARM: &str = "namespace calc;\nstatic effect Pick {\n    get: fn() -> int\n    unused: fn() -> int\n}\nmodule Words {\n    export fn greet(name) = {\n        handle static Pick {\n            get => 7\n            unused => 9\n        }\n        let chosen = perform Pick.get()\n        if chosen == 7 { \"hi ${name}\" } else { \"wrong\" }\n    }\n}\n";
+
 fn project(name: &str) -> PathBuf {
     let root =
         std::env::temp_dir().join(format!("osprey_project_cov_{name}_{}", std::process::id()));
@@ -53,6 +68,12 @@ fn project(name: &str) -> PathBuf {
     write(&root.join("framework/src/calc.ospml"), CALC);
     write(&root.join("tests/main.ospml"), MAIN);
     root
+}
+
+/// Deletes the fixture project and reports the test as passed.
+fn finished(root: PathBuf) -> TestResult {
+    std::fs::remove_dir_all(root)?;
+    Ok(())
 }
 
 fn osprey_test(args: &[&str]) -> (Option<i32>, String, String) {
@@ -89,16 +110,33 @@ fn file_lines(report: &serde_json::Value, suffix: &str) -> Vec<(u32, u64)> {
     rows
 }
 
+/// Asserts the file ending in `suffix` records every row in `rows`.
+fn assert_rows(report: &serde_json::Value, suffix: &str, rows: &[(u32, u64)], label: &str) {
+    let lines = file_lines(report, suffix);
+    for row in rows {
+        assert!(lines.contains(row), "{label} {row:?}: {lines:?}");
+    }
+}
+
 fn coverage_report(root: &Path) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let bytes = std::fs::read(root.join("cov.json"))?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-fn covered_run(
-    root: &Path,
-    memory: &str,
-) -> Result<(std::process::Output, serde_json::Value), Box<dyn std::error::Error>> {
-    let output = cached_run(root, memory)?;
+/// Runs the suite with coverage JSON for `root`, asserting a clean exit.
+fn run_coverage(root: &Path) -> (String, serde_json::Value) {
+    let json = root.join("cov.json");
+    let (code, stdout, stderr) = osprey_test(&[
+        root.to_string_lossy().as_ref(),
+        "--coverage-json",
+        json.to_string_lossy().as_ref(),
+    ]);
+    assert_eq!(code, Some(0), "stdout={stdout}\nstderr={stderr}");
+    (stdout, coverage_report(root).expect("valid coverage json"))
+}
+
+fn covered_run(root: &Path, memory: &str) -> CoveredRun {
+    let output = cached_command(root, memory).output()?;
     assert!(output.status.success(), "{output:?}");
     if memory == "arc" {
         assert_arc_exit(&output.stderr);
@@ -109,26 +147,16 @@ fn covered_run(
 #[test]
 fn a_project_suite_reports_coverage_for_each_source_file() {
     let root = project("per_file");
-    let json = root.join("cov.json");
-    let (code, stdout, stderr) = osprey_test(&[
-        root.to_string_lossy().as_ref(),
-        "--coverage-json",
-        json.to_string_lossy().as_ref(),
-    ]);
-    assert_eq!(code, Some(0), "stdout={stdout}\nstderr={stderr}");
+    let (stdout, report) = run_coverage(&root);
     assert!(stdout.contains("ok 1 - greets"), "{stdout}");
     assert!(stdout.contains("# suites: 1 passed, 0 failed"), "{stdout}");
     for file in ["calc.ospml", "main.ospml"] {
-        assert!(
-            stdout
-                .lines()
-                .any(|row| row.starts_with("# coverage: ") && row.ends_with(file)),
-            "no per-file row for {file}: {stdout}"
-        );
+        let row = |line: &str| line.starts_with("# coverage: ") && line.ends_with(file);
+        let found = stdout.lines().any(row);
+        assert!(found, "no per-file row for {file}: {stdout}");
     }
     assert!(stdout.contains("# coverage total: "), "{stdout}");
 
-    let report = coverage_report(&root).expect("valid coverage json");
     // `greet` is defined on calc.ospml's own line 7 and runs once; `shout`,
     // on line 11, never runs. Flattened lines would land past the entry's.
     assert_eq!(file_lines(&report, "calc.ospml"), vec![(7, 1), (11, 0)]);
@@ -141,17 +169,14 @@ fn a_project_suite_runs_without_coverage() {
     let root = project("plain");
     let (code, stdout, stderr) = osprey_test(&[root.to_string_lossy().as_ref()]);
     assert_eq!(code, Some(0), "stdout={stdout}\nstderr={stderr}");
-    assert!(
-        stdout.contains(&format!("# file: {}", root.display())),
-        "{stdout}"
-    );
+    let file_row = format!("# file: {}", root.display());
+    assert!(stdout.contains(&file_row), "{stdout}");
     assert!(stdout.contains("ok 1 - greets"), "{stdout}");
     let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]
-fn folded_module_alias_initialization_remains_in_source_coverage(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn folded_module_alias_initialization_remains_in_source_coverage() -> TestResult {
     assert_alias_coverage("alias_top_level", &MAIN.replace("Words", "Facade"))?;
     assert_alias_coverage(
         "alias_main",
@@ -159,24 +184,17 @@ fn folded_module_alias_initialization_remains_in_source_coverage(
     )
 }
 
-fn assert_alias_coverage(name: &str, entry: &str) -> Result<(), Box<dyn std::error::Error>> {
+/// Covers the `facade` module's alias initializer on its own source line 4.
+fn assert_alias_coverage(name: &str, entry: &str) -> TestResult {
     let root = project(name);
     write(
         &root.join("framework/src/facade.ospml"),
         "namespace calc\nimport calc::Words\nmodule Facade\n    export greet = Words::greet\n",
     );
     write(&root.join("tests/main.ospml"), entry);
-    let json = root.join("cov.json");
-    let (code, stdout, stderr) = osprey_test(&[
-        root.to_string_lossy().as_ref(),
-        "--coverage-json",
-        json.to_string_lossy().as_ref(),
-    ]);
-    assert_eq!(code, Some(0), "stdout={stdout}\nstderr={stderr}");
-    let report = serde_json::from_slice(&std::fs::read(&json)?)?;
+    let report = run_coverage(&root).1;
     assert_eq!(file_lines(&report, "facade.ospml"), vec![(4, 1)]);
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
 fn cached_command(root: &Path, memory: &str) -> Command {
@@ -193,10 +211,6 @@ fn cached_command(root: &Path, memory: &str) -> Command {
     command
 }
 
-fn cached_run(root: &Path, memory: &str) -> std::io::Result<std::process::Output> {
-    cached_command(root, memory).output()
-}
-
 fn assert_arc_exit(stderr: &[u8]) {
     let stderr = String::from_utf8_lossy(stderr);
     let sentinels: Vec<_> = stderr
@@ -204,15 +218,13 @@ fn assert_arc_exit(stderr: &[u8]) {
         .filter(|line| line.starts_with("[osp-arc] exit:"))
         .collect();
     assert_eq!(sentinels.len(), 1, "{stderr}");
-    assert!(
-        sentinels
-            .iter()
-            .all(|line| line.starts_with("[osp-arc] exit: 0 live objects,")),
-        "{stderr}"
-    );
+    let all_clean = sentinels
+        .iter()
+        .all(|line| line.starts_with("[osp-arc] exit: 0 live objects,"));
+    assert!(all_clean, "{stderr}");
 }
 
-fn cached_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn cached_coverage(root: &Path, memory: &str) -> TestResult {
     let (output, report) = covered_run(root, memory)?;
     assert!(String::from_utf8_lossy(&output.stdout).contains("# suites: 1 passed, 0 failed"));
     assert_eq!(file_lines(&report, "calc.ospml"), vec![(7, 1), (11, 0)]);
@@ -232,82 +244,57 @@ fn artifact_counts(root: &Path) -> Result<[usize; 3], std::io::Error> {
 }
 
 #[test]
-fn allocator_runs_share_codegen_but_link_and_execute_each_runtime(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn allocator_runs_share_codegen_but_link_and_execute_each_runtime() -> TestResult {
     let root = project("shared_codegen");
     for memory in ["gc", "arc"] {
         cached_coverage(&root, memory)?;
     }
-    assert_eq!(
-        artifact_counts(&root)?,
-        [1, 1, 2],
-        "one IR/object, separately linked GC and ARC executables"
-    );
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    assert_eq!(artifact_counts(&root)?, [1, 1, 2], "{SHARED_CODEGEN}");
+    finished(root)
 }
 
 #[test]
-fn shared_codegen_cannot_replay_a_stale_success_after_source_changes(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn shared_codegen_cannot_replay_a_stale_success_after_source_changes() -> TestResult {
     let root = project("shared_codegen_invalidation");
     cached_coverage(&root, "arc")?;
-    write(
-        &root.join("framework/src/calc.ospml"),
-        &CALC.replace("hi ${name}", "bye ${name}"),
-    );
-    let failed = cached_run(&root, "gc")?;
+    let calc = CALC.replace("hi ${name}", "bye ${name}");
+    write(&root.join("framework/src/calc.ospml"), &calc);
+    let failed = cached_command(&root, "gc").output()?;
     assert!(!failed.status.success(), "stale success: {failed:?}");
     assert!(
         String::from_utf8_lossy(&failed.stdout).contains("not ok 1 - greets"),
         "{failed:?}"
     );
     assert_eq!(artifact_counts(&root)?, [2, 2, 2]);
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
 fn static_arm_project() -> PathBuf {
     let root = project("static_arm_hits");
     let _ = std::fs::remove_file(root.join("framework/src/calc.ospml"));
-    write(
-        &root.join("framework/src/calc.osp"),
-        "namespace calc;\nstatic effect Pick {\n    get: fn() -> int\n    unused: fn() -> int\n}\nmodule Words {\n    export fn greet(name) = {\n        handle static Pick {\n            get => 7\n            unused => 9\n        }\n        let chosen = perform Pick.get()\n        if chosen == 7 { \"hi ${name}\" } else { \"wrong\" }\n    }\n}\n",
-    );
+    write(&root.join("framework/src/calc.osp"), STATIC_ARM);
     root
 }
 
 #[test]
-fn static_handler_arms_record_execution_and_keep_unused_arms_uncovered(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn static_handler_arms_record_execution_and_keep_unused_arms_uncovered() -> TestResult {
     let root = static_arm_project();
     for memory in ["gc", "arc"] {
-        let output = cached_run(&root, memory)?;
-        assert!(output.status.success(), "{output:?}");
-        let report = serde_json::from_slice(&std::fs::read(root.join("cov.json"))?)?;
+        let (_, report) = covered_run(&root, memory)?;
         let lines = file_lines(&report, "calc.osp");
         assert_eq!(lines.iter().find(|(line, _)| *line == 7), Some(&(7, 1)));
         assert_eq!(lines.iter().find(|(line, _)| *line == 9), Some(&(9, 1)));
         assert_eq!(lines.iter().find(|(line, _)| *line == 10), Some(&(10, 0)));
-        if memory == "arc" {
-            assert_arc_exit(&output.stderr);
-        }
     }
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
 #[cfg(unix)]
 fn install_driver(root: &Path, generation: usize) -> std::io::Result<()> {
     use std::os::unix::fs::PermissionsExt;
     let path = root.join("cache-cc");
-    std::fs::write(
-        &path,
-        format!(
-            "#!/bin/sh\nexec clang \"$@\"\n# {}\n",
-            "x".repeat(generation)
-        ),
-    )?;
+    let head = "#!/bin/sh\nexec clang \"$@\"\n# ";
+    std::fs::write(&path, format!("{head}{}\n", "x".repeat(generation)))?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
 }
 
@@ -325,163 +312,126 @@ fn run_driver(root: &Path) -> Result<std::process::Output, Box<dyn std::error::E
 
 #[cfg(unix)]
 #[test]
-fn a_compiler_resolved_from_path_invalidates_all_cached_artifacts_when_changed(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn a_compiler_resolved_from_path_invalidates_all_cached_artifacts_when_changed() -> TestResult {
     let root = project("compiler_identity");
     for generation in [1, 2] {
         install_driver(&root, generation)?;
         let output = run_driver(&root)?;
         assert!(output.status.success(), "{output:?}");
-        assert_eq!(
-            artifact_counts(&root)?,
-            [generation; 3],
-            "changed compiler must invalidate every stage"
-        );
+        assert_eq!(artifact_counts(&root)?, [generation; 3], "{REBUILD_ALL}");
     }
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
-fn handler_project(name: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+/// Python fixture for the `answer` handler; `dynamic` uses `@effect`/`@handler`.
+fn handler_project(name: &str, dynamic: bool) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let root = project(name);
     std::fs::remove_file(root.join("framework/src/calc.ospml"))?;
     std::fs::remove_file(root.join("tests/main.ospml"))?;
+    let prefix = if dynamic { "@" } else { "@static_" };
     write(&root.join("osprey.toml"), "[project]\nname = \"static-covered\"\nsource_roots = [\"framework/src\", \"tests\"]\npython_sources = [\"framework/src/caps.py\", \"framework/src/reader.py\", \"tests/main.py\"]\ndefault_namespace = \"fixture\"\nentry = \"tests/main.py\"\n");
-    write(&root.join("framework/src/caps.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Caps\n__all__ = [\"Read\"]\n@static_effect\nclass Read:\n    def value() -> int: ...\n    def unused() -> int: ...\n");
-    write(&root.join("framework/src/reader.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\nfrom fixture.Caps import Read\n__all__ = [\"answer\"]\n\n@static_handler(Read)\nclass answer:\n    def value():\n        return 7\n    def unused():\n        return 99\n");
+    write(&root.join("framework/src/caps.py"), &format!("# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Caps\n__all__ = [\"Read\"]\n{prefix}effect\nclass Read:\n    def value() -> int: ...\n    def unused() -> int: ...\n"));
+    write(&root.join("framework/src/reader.py"), &format!("# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\nfrom fixture.Caps import Read\n__all__ = [\"answer\"]\n\n{prefix}handler(Read)\nclass answer:\n    def value():\n        return 7\n    def unused():\n        return 99\n"));
     write(&root.join("tests/main.py"), "# osprey: flavor=python\nfrom fixture import Reader\nfrom fixture.Caps import Read\ndef main():\n    print(Reader.answer(lambda: perform(Read.value())))\n");
     Ok(root)
 }
 
-fn assert_handler_rows(report: &serde_json::Value) {
-    let lines = file_lines(report, "reader.py");
-    for row in [(8, 1), (9, 1), (10, 1), (11, 0), (12, 0)] {
-        assert!(
-            lines.contains(&row),
-            "missing or incorrect handler coverage {row:?}: {lines:?}"
-        );
-    }
+fn assert_handler_coverage(root: &Path, memory: &str) -> TestResult {
+    let (output, report) = covered_run(root, memory)?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.lines().any(|line| line == "7"), "{output:?}");
+    assert_rows(
+        &report,
+        "reader.py",
+        &[(8, 1), (9, 1), (10, 1), (11, 0), (12, 0)],
+        "missing or incorrect handler coverage",
+    );
+    Ok(())
 }
 
 fn branch_project() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let root = handler_project("python_branch_lines")?;
+    let root = handler_project("python_branch_lines", false)?;
     write(&root.join("framework/src/reader.py"), "# osprey: flavor=python\n# osprey: namespace=fixture\n# osprey: module=Reader\n__all__ = [\"choose\", \"unused\", \"pick\"]\ndef choose(flag):\n    if flag:\n        return 1\n    else:\n        return 2\ndef unused():\n    return 99\ndef pick(r):\n    match r:\n        case Success(value=v):\n            return v\n        case Error(message=m):\n            return m\n");
     write(&root.join("tests/main.py"), "# osprey: flavor=python\nfrom fixture import Reader\ndef main():\n    print(Reader.choose(True))\n    print(Reader.pick(Success(value=\"3\")))\n");
     Ok(root)
 }
 
-fn assert_branch_rows(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn assert_branch_rows(root: &Path, memory: &str) -> TestResult {
     let (_, report) = covered_run(root, memory)?;
-    let lines = file_lines(&report, "reader.py");
-    for row in [
-        (5, 1),
-        (6, 1),
-        (7, 1),
-        (9, 0),
-        (10, 0),
-        (11, 0),
-        (15, 1),
-        (17, 0),
-    ] {
-        assert!(
-            lines.contains(&row),
-            "missing branch/return {row:?}: {lines:?}"
-        );
-    }
+    assert_rows(
+        &report,
+        "reader.py",
+        &[(5, 1), (6, 1), (7, 1), (9, 0)],
+        "missing branch/return",
+    );
+    assert_rows(
+        &report,
+        "reader.py",
+        &[(10, 0), (11, 0), (15, 1), (17, 0)],
+        "missing branch/return",
+    );
     assert!(file_lines(&report, "main.py").contains(&(3, 1)));
     Ok(())
 }
 
 #[test]
-fn python_coverage_counts_selected_returns_and_retains_untaken_branches(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn python_coverage_counts_selected_returns_and_retains_untaken_branches() -> TestResult {
     let root = branch_project()?;
     for memory in ["gc", "arc"] {
         assert_branch_rows(&root, memory)?;
     }
-    std::fs::remove_dir_all(root)?;
-    Ok(())
-}
-
-fn assert_handler_coverage(root: &Path, memory: &str) -> Result<(), Box<dyn std::error::Error>> {
-    let (output, report) = covered_run(root, memory)?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.lines().any(|line| line == "7"), "{output:?}");
-    assert_handler_rows(&report);
-    Ok(())
+    finished(root)
 }
 
 #[test]
-fn static_handler_arm_coverage_records_execution_and_retains_unused_arms(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let root = handler_project("static_handler_coverage")?;
+fn static_handler_arm_coverage_records_execution_and_retains_unused_arms() -> TestResult {
+    let root = handler_project("static_handler_coverage", false)?;
     for memory in ["gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
     }
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
 #[test]
-fn dynamic_handler_coverage_counts_execution_instead_of_registration(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let root = handler_project("dynamic_handler_coverage")?;
-    for (file, old, new) in [
-        ("caps.py", "@static_effect", "@effect"),
-        ("reader.py", "@static_handler", "@handler"),
-    ] {
-        let path = root.join("framework/src").join(file);
-        std::fs::write(&path, std::fs::read_to_string(&path)?.replace(old, new))?;
-    }
+fn dynamic_handler_coverage_counts_execution_instead_of_registration() -> TestResult {
+    let root = handler_project("dynamic_handler_coverage", true)?;
     for memory in ["gc", "arc"] {
         assert_handler_coverage(&root, memory)?;
     }
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
 fn namespace_project() -> PathBuf {
     let root = project("manifest_cache_identity");
-    write(
-        &root.join("framework/src/calc.ospml"),
-        &CALC.replace("namespace calc\n", ""),
-    );
-    write(
-        &root.join("tests/main.ospml"),
-        &MAIN
-            .replace("namespace app\n", "")
-            .replace("import calc::Words\n", ""),
-    );
+    let calc = CALC.replace("namespace calc\n", "");
+    write(&root.join("framework/src/calc.ospml"), &calc);
+    let main = MAIN
+        .replace("namespace app\n", "")
+        .replace("import calc::Words\n", "");
+    write(&root.join("tests/main.ospml"), &main);
     root
 }
 
+/// Rewrites the manifest's `default_namespace` to `namespace`.
 fn select_namespace(root: &Path, namespace: &str) {
     let declaration = format!("default_namespace = \"{namespace}\"");
-    write(
-        &root.join("osprey.toml"),
-        &MANIFEST.replace("default_namespace = \"app\"", &declaration),
-    );
+    let manifest = MANIFEST.replace("default_namespace = \"app\"", &declaration);
+    write(&root.join("osprey.toml"), &manifest);
 }
 
 #[test]
-fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchanged(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn manifest_namespace_changes_invalidate_codegen_even_when_source_text_is_unchanged() -> TestResult
+{
     let root = namespace_project();
     for (generation, namespace) in [(1, "app"), (2, "alternate")] {
         select_namespace(&root, namespace);
-        let output = cached_run(&root, "gc")?;
-        assert!(output.status.success(), "{output:?}");
+        let _ = covered_run(&root, "gc")?;
         assert_eq!(artifact_counts(&root)?, [generation; 3]);
     }
-    std::fs::remove_dir_all(root)?;
-    Ok(())
+    finished(root)
 }
 
-fn assert_native_arm_rows(
-    root: &Path,
-    memory: &str,
-    flavor: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn assert_native_arm_rows(root: &Path, memory: &str, flavor: &str) -> TestResult {
     let (_, report) = covered_run(root, memory)?;
     let lines = file_lines(&report, &format!("calc.{flavor}"));
     let selected = if flavor == "osp" { 4 } else { 5 };
@@ -492,8 +442,7 @@ fn assert_native_arm_rows(
 }
 
 #[test]
-fn native_match_coverage_keeps_untaken_arms_in_both_flavors(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn native_match_coverage_keeps_untaken_arms_in_both_flavors() -> TestResult {
     for (flavor, source) in [
         ("osp", "namespace calc;\nmodule Words {\nexport fn greet(name) = match name {\n\"ann\" => \"hi ${name}\"\n_ => \"unused\"\n}\n}\n"),
         ("ospml", "namespace calc\nmodule Words\n    export greet name =\n        match name\n            \"ann\" => \"hi ${name}\"\n            _ => \"unused\"\n"),
@@ -502,7 +451,7 @@ fn native_match_coverage_keeps_untaken_arms_in_both_flavors(
         std::fs::remove_file(root.join("framework/src/calc.ospml"))?;
         write(&root.join(format!("framework/src/calc.{flavor}")), source);
         for memory in ["gc", "arc"] { assert_native_arm_rows(&root, memory, flavor)?; }
-        std::fs::remove_dir_all(root)?;
+        finished(root)?;
     }
     Ok(())
 }
