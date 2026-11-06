@@ -12,6 +12,11 @@ src/toolchain/benchmarks/cases/<name>/
   <name>.osp   <name>.rs   <name>.c   <name>.codon   <name>.ml   <name>.hs   expected.txt   bench.json
 ```
 
+The list and text cases share one seed reader and hash per language in
+`shared/`: Rust `include!`s `seed.rs`, Dart imports `seed.dart`, and `run.sh`
+compiles `Seed.cs` beside each C# case. Each case still builds as one compiler
+invocation, and the timed loops stay in the case files.
+
 ```bash
 make -C src/toolchain/benchmarks bench                       # build everything, run the whole suite
 make -C src/toolchain/benchmarks bench-osprey                # ONLY the Osprey columns; other languages untouched

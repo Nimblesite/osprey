@@ -1,6 +1,5 @@
 // Word-frequency count over a tiny vocab — exercises hashing + counting.
-const long MINSTD = 16807;
-const long MODULUS = 2147483647;
+using static Seed;
 
 long seed = ReadSeed();
 
@@ -17,16 +16,6 @@ for (long k = 0; k < 8; k++)
 }
 
 System.Console.WriteLine(result);
-
-static long R1(long x)
-{
-    return (x * MINSTD) % MODULUS;
-}
-
-static long HashAt(long s, long i)
-{
-    return R1(R1(s + i));
-}
 
 static long ReadSeed()
 {

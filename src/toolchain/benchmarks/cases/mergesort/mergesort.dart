@@ -1,31 +1,11 @@
 // Mergesort — naive top-down merge sort: deal the list into two fresh halves
 // by alternating elements, sort both, merge. Checksum is rank-weighted.
-import 'dart:io';
-import 'dart:math';
 
-const int minstd = 16807;
-const int modulus = 2147483647;
+import '../../shared/seed.dart';
+
 const int bigMod = 1000000007;
 const int n = 2000;
 const int spread = 100000;
-
-int r1(int x) => (x * minstd) % modulus;
-
-int hashAt(int s, int i) => r1(r1(s + i));
-
-int readSeed() {
-  final line = stdin.readLineSync();
-  int m = 0;
-  if (line != null) {
-    m = int.tryParse(line.trim()) ?? 0;
-  }
-  if (m == 0) {
-    return 1;
-  }
-  final rng = Random.secure();
-  final val = (rng.nextInt(1 << 31) << 31) | rng.nextInt(1 << 31);
-  return (val % 2147483646) + 1;
-}
 
 List<int> merge(List<int> left, List<int> right) {
   final merged = <int>[];

@@ -119,9 +119,10 @@ build() {
     c)       cc -O2 -o "$out" "$dir/$name.c" 2>/dev/null ;;
     # C# via NativeAOT (dotnet publish): a real native binary, the fair
     # comparison against the other AOT columns. One throwaway SDK project per
-    # case in $TMP; the published binary is moved to $out.
+    # case in $TMP, with the shared Seed.cs beside it; the published binary is
+    # moved to $out.
     csharp)  csd="$TMP/cs_$name" && rm -rf "$csd" && mkdir -p "$csd" && \
-             cp "$dir/$name.cs" "$csd/Program.cs" && \
+             cp "$dir/$name.cs" "$csd/Program.cs" && cp "$BENCHDIR/shared/Seed.cs" "$csd/" && \
              printf '%s\n' '<Project Sdk="Microsoft.NET.Sdk"><PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><PublishAot>true</PublishAot><OptimizationPreference>Speed</OptimizationPreference><InvariantGlobalization>true</InvariantGlobalization><Nullable>disable</Nullable><AssemblyName>bench</AssemblyName></PropertyGroup></Project>' > "$csd/bench.csproj" && \
              ( cd "$csd" && dotnet publish -c Release -o out --nologo -v q >/dev/null 2>&1 ) && \
              mv -f "$csd/out/bench" "$out" ;;
