@@ -17,8 +17,8 @@ fn pinnedRedirect() = match OAuth::authorizeUrl(config(), "E9Melhoa2OwvFrEMTJguC
     Error { message } => check("configured callback constructs", "ok", message)
     Success { value } => checkAll("OAuth uses pinned redirect and S256", [
             startsWith(value, "https://project.supabase.co/auth/v1/authorize?provider=github&"),
-            containsAll(value, ["code_challenge_method=s256"]),
-            containsAll(value, ["redirect_to=https%3a%2f%2fpackages-api.example.test%2fv1%2fauth%2fgithub%2fcallback"]),
+            contains(value, "code_challenge_method=s256"),
+            contains(value, "redirect_to=https%3a%2f%2fpackages-api.example.test%2fv1%2fauth%2fgithub%2fcallback"),
             !contains(value, "sb_publishable_fixture")
     ])
 }
