@@ -31,6 +31,23 @@ fn checkMatrix(label, matrix, expected, fallbackRow, fallback) = {
     })
 }
 
+/// The int at `index` of `xs`, or a sentinel no case expects.
+fn listInt(xs, index) = listGet(xs, index) ?: (0 - 999)
+
+/// The string at `index` of `xs`, or a sentinel no case expects.
+fn listText(xs, index) = listGet(xs, index) ?: ""
+
+/// The float at `index` of `xs`, or a sentinel no case expects.
+fn listFloat(xs, index) = listGet(xs, index) ?: (0.0 - 999.0)
+
+/// Asserts each `keys[i]`/`indices[i]` cell reads back `values[i]`, one check each.
+fn checkCells(label, keys, keyPick, indices, values, probe, pick) = {
+    let _ = foldList(toList(range(0, listLength(values))), 0, fn(acc, i) => {
+        check(label, pick(values, i), probe(keyPick(keys, i), listInt(indices, i)))
+        acc
+    })
+}
+
 fn intMatrix() = [[1, 2], [3, 4, 5]]
 fn stringMatrix() = [["ant", "bee"], ["cat", "dog", "eel"]]
 fn floatGroups() = mapSet(mapSet(Map(), "small", [0.5, 1.25]), "large", [8.5, 9.75])
@@ -109,9 +126,6 @@ fn fiberChannelCollectionCase() = {
     checkMatrix("spawn and out-of-order await reconstruct nested collection owners", strings, [["ant", "bee"], ["cat", "dog", "eel"]], ["row"], "item")
 
     checkAll("spawn and out-of-order await reconstruct nested collection owners", [
-            floatAt(floats, "small", 0) == 0.5,
-            floatAt(floats, "small", 1) == 1.25,
-            floatAt(floats, "large", 1) == 9.75,
             boolAt(bools, "left", 0),
             !boolMissAt(bools, "left", 1),
             !boolMissAt(bools, "right", 0),
@@ -125,31 +139,27 @@ fn fiberChannelCollectionCase() = {
             fiberDone(floatFiber) == 1,
             fiberDone(boolFiber) == 1
     ])
+    checkCells("spawn and out-of-order await reconstruct nested collection owners", ["small", "small", "large"], listText, [0, 1, 1], [0.5, 1.25, 9.75], fn(key, index) => floatAt(floats, key, index), listFloat)
 
     checkMatrix("Channel<collection> round trips full nested descriptors in FIFO order", firstMatrix, [[1, 2], [3, 4, 5]], [99], 99)
     checkMatrix("Channel<collection> round trips full nested descriptors in FIFO order", secondMatrix, [[1, 2], [3, 4, 5], [6, 7]], [99], 99)
     checkMatrix("Channel<collection> round trips full nested descriptors in FIFO order", matrixViaParameter, [[1, 2], [3, 4, 5], [6, 7]], [99], 99)
     checkMatrix("Channel<collection> round trips full nested descriptors in FIFO order", matrixViaField, [[1, 2], [3, 4, 5], [6, 7]], [99], 99)
 
+    checkCells("Channel<collection> round trips full nested descriptors in FIFO order", ["small", "large"], listText, [0, 1], [0.5, 9.75], fn(key, index) => floatAt(firstGroups, key, index), listFloat)
+    checkCells("Channel<collection> round trips full nested descriptors in FIFO order", ["small", "extra", "extra"], listText, [1, 0, 1], [1.25, 6.25, 7.5], fn(key, index) => floatAt(secondGroups, key, index), listFloat)
+    checkCells("Channel<collection> round trips full nested descriptors in FIFO order", ["small", "extra", "extra"], listText, [0, 0, 1], [0.5, 6.25, 7.5], fn(key, index) => floatAt(groupsViaParameter, key, index), listFloat)
+    checkCells("Channel<collection> round trips full nested descriptors in FIFO order", [1], listInt, [2], [5], fn(row, column) => intAt(ints, row, column), listInt)
     checkAll("Channel<collection> round trips full nested descriptors in FIFO order", [
             listLength(firstMatrix) == 2,
             listLength(secondMatrix) == 3,
             mapLength(firstGroups) == 2,
             mapLength(secondGroups) == 3,
-            floatAt(firstGroups, "small", 0) == 0.5,
-            floatAt(firstGroups, "large", 1) == 9.75,
-            floatAt(secondGroups, "small", 1) == 1.25,
-            floatAt(secondGroups, "extra", 0) == 6.25,
-            floatAt(secondGroups, "extra", 1) == 7.5,
-            intAt(ints, 1, 2) == 5,
             floatAt(floats, "small", 0) == 0.5,
             listLength(ints) == 2,
             mapLength(floats) == 2,
             listLength(matrixViaParameter) == 3,
             mapLength(groupsViaParameter) == 3,
-            floatAt(groupsViaParameter, "small", 0) == 0.5,
-            floatAt(groupsViaParameter, "extra", 0) == 6.25,
-            floatAt(groupsViaParameter, "extra", 1) == 7.5,
             listLength(matrixViaField) == 3,
             intAt(matrixViaField, 0, 1) == 2
     ])
@@ -167,12 +177,10 @@ fn fiberEffectCollectionCase() = {
 
     checkMatrix("inherited generic handlers preserve collection results from fibers", grownInts, [[6, 7], [3, 4, 5], [1, 2]], [99], 99)
 
+    checkCells("inherited generic handlers preserve collection results from fibers", [0, 0, 1], listInt, [0, 1, 2], [1, 2, 5], fn(row, column) => intAt(ints, row, column), listInt)
     checkAll("inherited generic handlers preserve collection results from fibers", [
             listLength(ints) == 2,
             mapLength(bools) == 2,
-            intAt(ints, 0, 0) == 1,
-            intAt(ints, 0, 1) == 2,
-            intAt(ints, 1, 2) == 5,
             boolAt(bools, "left", 0),
             !boolMissAt(bools, "left", 1),
             !boolMissAt(bools, "right", 0),
@@ -219,20 +227,15 @@ fn channelThroughClosureCase() = {
     send(groups, floatGroups())
     let groupsViaLambdaParameter = drainVia(|c| => recv(c), groups)
 
+    checkCells("a channel reached through a closure keeps its element descriptor", [0, 0, 1], listInt, [0, 1, 2], [1, 2, 5], fn(row, column) => intAt(viaLambdaParameter, row, column), listInt)
+    checkCells("a channel reached through a closure keeps its element descriptor", [0, 2, 2], listInt, [0, 0, 1], [1, 6, 7], fn(row, column) => intAt(viaCapture, row, column), listInt)
+    checkCells("a channel reached through a closure keeps its element descriptor", ["small", "large"], listText, [0, 1], [0.5, 9.75], fn(key, index) => floatAt(groupsViaLambdaParameter, key, index), listFloat)
     checkAll("a channel reached through a closure keeps its element descriptor", [
             listLength(viaLambdaParameter) == 2,
-            intAt(viaLambdaParameter, 0, 0) == 1,
-            intAt(viaLambdaParameter, 0, 1) == 2,
-            intAt(viaLambdaParameter, 1, 2) == 5,
             listLength(listGet(viaLambdaParameter, 1) ?: [99]) == 3,
             listLength(viaCapture) == 3,
-            intAt(viaCapture, 0, 0) == 1,
-            intAt(viaCapture, 2, 0) == 6,
-            intAt(viaCapture, 2, 1) == 7,
             listLength(listGet(viaCapture, 2) ?: [99]) == 2,
-            mapLength(groupsViaLambdaParameter) == 2,
-            floatAt(groupsViaLambdaParameter, "small", 0) == 0.5,
-            floatAt(groupsViaLambdaParameter, "large", 1) == 9.75
+            mapLength(groupsViaLambdaParameter) == 2
     ])
 }
 

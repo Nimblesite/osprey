@@ -18,6 +18,18 @@ floatGroup (groups, key, index) = groupAt (groups, key, index, [9.0], 9.5)
 boolGroup (groups, key, index) = groupAt (groups, key, index, [false], false)
 boolMissGroup (groups, key, index) = groupAt (groups, key, index, [true], true)
 
+(** The int at `index` of `xs`, or a sentinel no case expects. *)
+listInt xs index = listGet xs index ?: (0 - 999)
+
+(** The string at `index` of `xs`, or a sentinel no case expects. *)
+listText xs index = listGet xs index ?: ""
+
+(** The float at `index` of `xs`, or a sentinel no case expects. *)
+listFloat xs index = listGet xs index ?: (0.0 - 999.0)
+
+(** Asserts each `keys[i]`/`indices[i]` cell reads back `values[i]`, one check each. *)
+checkCells label keys keyPick indices values probe pick = forEachList (toList (range 0 (listLength values))) (\i => check label (pick (values, i)) (probe ((keyPick (keys, i)), listInt indices i)))
+
 intGroups () = Map () |> mapSet "low" [1, 2] |> mapSet "high" [30, 40, 50]
 stringGroups () = Map () |> mapSet "short" ["a", "bb"] |> mapSet "long" ["three", "seven"]
 floatGroups () = Map () |> mapSet "small" [0.5, 1.25] |> mapSet "large" [8.5, 9.75]
@@ -76,6 +88,9 @@ nestedMapEffectPipelineCase () =
     rewritten = ints |> mapSet "extra" [6, 7] |> mapRemove "low"
     merged = ints |> mapMerge (mapSet (Map ()) "high" [80, 90])
 
+    checkCells "Map<string,List<T>> recovers four concrete leaf arguments" ["low", "low", "high", "high", "high"] (\(xs, i) => listText xs i) [0, 1, 0, 1, 2] [1, 2, 30, 40, 50] (\(key, index) => intGroup (ints, key, index)) (\(xs, i) => listInt xs i)
+    checkCells "Map<string,List<T>> recovers four concrete leaf arguments" ["short", "short", "long", "long"] (\(xs, i) => listText xs i) [0, 1, 0, 1] ["a", "bb", "three", "seven"] (\(key, index) => textGroup (strings, key, index)) (\(xs, i) => listText xs i)
+    checkCells "Map<string,List<T>> recovers four concrete leaf arguments" ["small", "small", "large", "large"] (\(xs, i) => listText xs i) [0, 1, 0, 1] [0.5, 1.25, 8.5, 9.75] (\(key, index) => floatGroup (floats, key, index)) (\(xs, i) => listFloat xs i)
     checkAll "Map<string,List<T>> recovers four concrete leaf arguments" [
         mapLength ints == 2,
         mapLength strings == 2,
@@ -83,23 +98,10 @@ nestedMapEffectPipelineCase () =
         mapLength bools == 2,
         listLength (mapGet ints "low" ?: [99]) == 2,
         listLength (mapGet ints "high" ?: [99]) == 3,
-        intGroup (ints, "low", 0) == 1,
-        intGroup (ints, "low", 1) == 2,
-        intGroup (ints, "high", 0) == 30,
-        intGroup (ints, "high", 1) == 40,
-        intGroup (ints, "high", 2) == 50,
         intGroup (ints, "missing", 0) == 91,
         intGroup (ints, "low", 8) == 99,
-        textGroup (strings, "short", 0) == "a",
-        textGroup (strings, "short", 1) == "bb",
-        textGroup (strings, "long", 0) == "three",
-        textGroup (strings, "long", 1) == "seven",
         length (textGroup (strings, "long", 1)) == 5,
         textGroup (strings, "missing", 0) == "row",
-        floatGroup (floats, "small", 0) == 0.5,
-        floatGroup (floats, "small", 1) == 1.25,
-        floatGroup (floats, "large", 0) == 8.5,
-        floatGroup (floats, "large", 1) == 9.75,
         floatGroup (floats, "small", 0) + floatGroup (floats, "small", 1) == 1.75,
         boolGroup (bools, "left", 0),
         !(boolMissGroup (bools, "left", 1)),
@@ -115,10 +117,6 @@ nestedMapEffectPipelineCase () =
         mapLength second == 2,
         mapLength third == 1,
         intGroup (listGet generations 0 ?: intGroups (), "high", 2) == 50,
-        intGroup (second, "high", 0) == 60,
-        intGroup (second, "high", 1) == 70,
-        intGroup (third, "only", 0) == 80,
-        intGroup (third, "only", 1) == 90,
         mapListShape (Map ()) == "empty",
         mapListShape (mapSet (Map ()) "one" [1]) == "one:1",
         mapListShape ints == "many:2/2",
@@ -126,19 +124,18 @@ nestedMapEffectPipelineCase () =
         mapListShape floats == "many:2/2",
         mapListShape bools == "many:2/2"
     ]
+    checkCells "List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T" ["high", "high"] (\(xs, i) => listText xs i) [0, 1] [60, 70] (\(key, index) => intGroup (second, key, index)) (\(xs, i) => listInt xs i)
+    checkCells "List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T" ["only", "only"] (\(xs, i) => listText xs i) [0, 1] [80, 90] (\(key, index) => intGroup (third, key, index)) (\(xs, i) => listInt xs i)
 
+    checkCells "persistent map pipelines preserve descendants and source generations" ["high", "extra", "extra"] (\(xs, i) => listText xs i) [2, 0, 1] [50, 6, 7] (\(key, index) => intGroup (rewritten, key, index)) (\(xs, i) => listInt xs i)
+    checkCells "persistent map pipelines preserve descendants and source generations" ["high", "high"] (\(xs, i) => listText xs i) [0, 1] [80, 90] (\(key, index) => intGroup (merged, key, index)) (\(xs, i) => listInt xs i)
+    checkCells "persistent map pipelines preserve descendants and source generations" ["high"] (\(xs, i) => listText xs i) [0] [30] (\(key, index) => intGroup (ints, key, index)) (\(xs, i) => listInt xs i)
     checkAll "persistent map pipelines preserve descendants and source generations" [
         mapLength rewritten == 2,
         !(mapContains rewritten "low"),
         mapContains rewritten "high",
         mapContains rewritten "extra",
-        intGroup (rewritten, "high", 2) == 50,
-        intGroup (rewritten, "extra", 0) == 6,
-        intGroup (rewritten, "extra", 1) == 7,
         mapLength merged == 2,
-        intGroup (merged, "high", 0) == 80,
-        intGroup (merged, "high", 1) == 90,
-        intGroup (ints, "high", 0) == 30,
         mapContains ints "low",
         !(mapContains ints "extra"),
         listLength (mapKeys ints) == 2,

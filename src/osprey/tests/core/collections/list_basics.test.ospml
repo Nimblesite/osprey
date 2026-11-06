@@ -21,15 +21,47 @@ listInt xs index = listGet xs index ?: (0 - 999)
 (** The string at `index`, or a sentinel no case expects. *)
 listText xs index = listGet xs index ?: ""
 
-(** Asserts `xs` holds every int in `expected` at the same index. *)
-checkList label xs expected =
+(** The float at `index`, or a sentinel no case expects. *)
+listFloat xs index = listGet xs index ?: (0.0 - 999.0)
+
+(** Asserts `xs` holds every entry of `expected` at the same index. *)
+checkSame label xs expected pick =
     forEachList (toList (range 0 (listLength expected))) (\i =>
-        check label (listInt expected i) (listInt xs i))
+        check label (pick expected i) (pick xs i))
+
+(** Asserts `xs` holds every int in `expected` at the same index. *)
+checkList label xs expected = checkSame label xs expected listInt
 
 (** Asserts `xs` holds every string in `expected` at the same index. *)
-checkTextList label xs expected =
+checkTextList label xs expected = checkSame label xs expected listText
+
+(** Asserts each `[index, value]` row of `rows` reads back from `xs`. *)
+checkIndexRows label xs rows =
+    forEachList rows (\row =>
+        check label (listInt row 1) (listInt xs (listInt row 0)))
+
+(** Asserts `xs` holds every item of `present` and none of `absent`. *)
+checkMembership label xs present absent =
+    forEachList present (\item => check label true (listContains xs item))
+    forEachList absent (\item => check label false (listContains xs item))
+
+(** True when indexing `xs` at `index` answers the exact out-of-bounds error. *)
+indexOob xs index = match listGet xs index
+    Success _value => false
+    Error message => message == "index out of bounds"
+
+(** Asserts `probe` answers `expected` at each index, comparing through `pick`. *)
+checkProbes label cases expected probe pick = checkCases label cases expected probe pick (List ())
+
+(** Asserts `probe` answers `expected` at each index, `fallback` standing in for a missing case. *)
+checkCases label cases expected probe pick fallback =
     forEachList (toList (range 0 (listLength expected))) (\i =>
-        check label (listText expected i) (listText xs i))
+        check label (pick expected i) (probe (listGet cases i ?: fallback)))
+
+(** Asserts every index of `indices` misses `xs`, yielding `missing`. *)
+checkPast label xs missing indices =
+    forEachList indices (\i =>
+        check label missing (listGet xs i ?: missing))
 
 (** appendThrough builds inclusive integer ranges while preserving every prior list version. *)
 appendThrough xs next last = match next > last
@@ -108,14 +140,10 @@ constructionAndIdentityCase () =
 
     // All three legacy contains results survive alongside additional positive and
     // endpoint checks ([BUILTIN-LIST-CONTAINS]).
+    checkMembership "contains behavior" a [2, 1, 3] [99]
+    checkMembership "contains behavior" concatenated [10, 20] []
     checkAll "contains behavior" [
-        listContains a 2,
-        !(listContains a 99),
         !(listContains (List ()) 1),
-        listContains a 1,
-        listContains a 3,
-        listContains concatenated 10,
-        listContains concatenated 20,
         !(listContains prepended 99)
     ]
 
@@ -163,29 +191,16 @@ iterationAndPersistenceCase () =
     ]
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
-    checkAll "persistent generation and branch contents" [
-        !(listContains g0 10),
-        listContains g1 10,
-        !(listContains g1 20),
-        listContains g2 10,
-        listContains g2 20,
-        !(listContains g2 30),
-        listContains g5 10,
-        listContains g5 50,
-        !(listContains g2 50),
-        listContains x 999,
-        !(listContains x 888),
-        listContains y 888,
-        !(listContains y 999),
-        listContains y2 777,
-        !(listContains y 777),
-        !(listContains g3 999),
-        !(listContains g3 888),
-        !(listContains g3 777),
-        listInt g5 4 == 50,
-        listInt y2 3 == 888,
-        listInt y2 4 == 777
-    ]
+    checkMembership "persistent generation and branch contents" g1 [10] [20]
+    checkMembership "persistent generation and branch contents" g2 [10, 20] [30, 50]
+    checkMembership "persistent generation and branch contents" g5 [10, 50] []
+    checkMembership "persistent generation and branch contents" x [999] [888]
+    checkMembership "persistent generation and branch contents" y [888] [999, 777]
+    checkMembership "persistent generation and branch contents" y2 [777] []
+    checkMembership "persistent generation and branch contents" g3 [] [999, 888, 777]
+    checkIndexRows "persistent generation and branch contents" g5 [[4, 50]]
+    checkIndexRows "persistent generation and branch contents" y2 [[3, 888], [4, 777]]
+    checkAll "persistent generation and branch contents" [ !(listContains g0 10) ]
 
 (** tailBoundaryCase retains the 10/20/30/35 generations and probes both sides of the 32-element tail boundary. *)
 tailBoundaryCase () =
@@ -207,23 +222,13 @@ tailBoundaryCase () =
     ]
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
+    checkIndexRows "tail boundary contents" t [[0, 1], [9, 10]]
+    checkIndexRows "tail boundary contents" t2 [[10, 11], [19, 20]]
+    checkIndexRows "tail boundary contents" t3 [[29, 30]]
+    checkIndexRows "tail boundary contents" t4 [[30, 31], [31, 32], [32, 33], [34, 35]]
+    checkIndexRows "tail boundary contents" reversed [[0, 35], [2, 33], [3, 32], [34, 1]]
+    checkIndexRows "tail boundary contents" doubled [[34, 35], [35, 1], [69, 35]]
     checkAll "tail boundary contents" [
-        listInt t 0 == 1,
-        listInt t 9 == 10,
-        listInt t2 10 == 11,
-        listInt t2 19 == 20,
-        listInt t3 29 == 30,
-        listInt t4 30 == 31,
-        listInt t4 31 == 32,
-        listInt t4 32 == 33,
-        listInt t4 34 == 35,
-        listInt reversed 0 == 35,
-        listInt reversed 2 == 33,
-        listInt reversed 3 == 32,
-        listInt reversed 34 == 1,
-        listInt doubled 34 == 35,
-        listInt doubled 35 == 1,
-        listInt doubled 69 == 35,
         listLength t3 == 30,
         !(listContains t3 31),
         sumList t == 55,
@@ -248,9 +253,7 @@ indexingPatternsAndDispatchCase () =
     dispatchTwenty = listConcat dispatchTen dispatchTen
     dispatchThirty = listConcat dispatchTwenty dispatchTen
     dispatchThirtyFive = listConcat dispatchThirty dispatchFive
-    commandOob = match commands[5]
-        Success _value => false
-        Error message => message == "index out of bounds"
+    commandOob = indexOob commands 5
     emptyOob = match empty[0]
         Success _value => false
         Error message => message == "index out of bounds"
@@ -602,30 +605,8 @@ stringListPatternCase () =
 
     // Arm selection depends on written length alone, so a string list picks the
     // same arms an int list of the same length picks.
-    checkAll "string list patterns select the arm for the written length" [
-        shapeOf noWords == "none",
-        shapeOf solo == "single",
-        shapeOf duo == "pair",
-        shapeOf words == "long+2",
-        shapeOf quad == "long+3",
-        shapeOf odd == "long+5",
-        shapeOf dup == "long+3",
-        shapeOf ["x"] == "single",
-        shapeOf ["x", "y"] == "pair",
-        shapeOf ["x", "y", "z"] == "long+2",
-        shapeOf (listReverse words) == "long+2",
-        shapeOf (listAppend duo "third") == "long+2",
-        shapeOf (listPrepend solo "first") == "pair",
-        shapeOf (listConcat noWords solo) == "single",
-        shapeOf (listConcat duo noWords) == "pair",
-        shapeOf (noWords + noWords) == "none",
-        tailLength noWords == ((0 - 1) ),
-        tailLength solo == 0,
-        tailLength duo == 1,
-        tailLength words == 2,
-        tailLength odd == 5,
-        tailLength dup == 3
-    ]
+    checkProbes "string list patterns select the arm for the written length" [noWords, solo, duo, words, quad, odd, dup, ["x"], ["x", "y"], ["x", "y", "z"], listReverse words, listAppend duo "third", listPrepend solo "first", listConcat noWords solo, listConcat duo noWords, noWords + noWords] ["none", "single", "pair", "long+2", "long+3", "long+5", "long+3", "single", "pair", "long+2", "long+2", "long+2", "pair", "single", "pair", "none"] shapeOf listText
+    checkProbes "string list patterns select the arm for the written length" [noWords, solo, duo, words, odd, dup] [0 - 1, 0, 1, 2, 5, 3] tailLength listInt
 
     // Each binder carries its OWN element: head, second and the fallback are
     // three distinct strings, so a binder reading the wrong slot is visible.
@@ -739,51 +720,17 @@ floatAndBoolListPatternCase () =
     pairOn = [true, false]
 
     // Arm selection and binder identity for float elements.
-    checkAll "float list patterns select arms and bind elements" [
-        shapeOf noFloats == "none",
-        shapeOf oneFloat == "single",
-        shapeOf twoFloats == "pair",
-        shapeOf ratios == "long+2",
-        shapeOf quarters == "long+3",
-        shapeOf dupFloats == "long+2",
-        headOr (noFloats, 9.5) == 9.5,
-        headOr (oneFloat, 9.5) == 1.5,
-        headOr (twoFloats, 9.5) == 0.25,
-        headOr (ratios, 9.5) == 0.5,
-        headOr (quarters, 9.5) == 0.0,
-        headOr (listReverse ratios, 9.5) == 2.75,
-        secondOr (noFloats, 9.5) == 9.5,
-        secondOr (oneFloat, 9.5) == 9.5,
-        secondOr (twoFloats, 9.5) == 0.75,
-        secondOr (ratios, 9.5) == 1.25,
-        secondOr (quarters, 9.5) == 0.25,
-        tailLength noFloats == ((0 - 1) ),
-        tailLength oneFloat == 0,
-        tailLength ratios == 2,
-        tailLength quarters == 3
-    ]
+    checkProbes "float list patterns select arms and bind elements" [noFloats, oneFloat, twoFloats, ratios, quarters, dupFloats] ["none", "single", "pair", "long+2", "long+3", "long+2"] shapeOf listText
+    checkProbes "float list patterns select arms and bind elements" [noFloats, oneFloat, twoFloats, ratios, quarters, listReverse ratios] [9.5, 1.5, 0.25, 0.5, 0.0, 2.75] (\(xs) => headOr (xs, 9.5)) listFloat
+    checkProbes "float list patterns select arms and bind elements" [noFloats, oneFloat, twoFloats, ratios, quarters] [9.5, 9.5, 0.75, 1.25, 0.25] (\(xs) => secondOr (xs, 9.5)) listFloat
+    checkProbes "float list patterns select arms and bind elements" [noFloats, oneFloat, ratios, quarters] [0 - 1, 0, 2, 3] tailLength listInt
 
     // 0.5+1.25+2.75 = 4.5 and 0.0+0.25+0.5+0.75 = 1.5, both exact in binary, so
     // reversal and either concatenation order must reproduce them exactly
     // ([BUILTIN-LIST-REVERSE], [BUILTIN-LIST-CONCAT]).
+    checkProbes "float head-tail recursion sums every element exactly once" [noFloats, oneFloat, twoFloats, ratios, quarters, dupFloats, listReverse ratios, listReverse quarters] [0.0, 1.5, 1.0, 4.5, 1.5, 5.0, 4.5, 1.5] sumFloats listFloat
+    checkProbes "float head-tail recursion sums every element exactly once" [ratios + twoFloats, twoFloats + ratios, noFloats + ratios, ratios + noFloats, ratios + ratios, listAppend ratios 0.5, listPrepend ratios 0.5, [0.25], [0.25, 0.25]] [5.5, 5.5, 4.5, 4.5, 9.0, 5.0, 5.0, 0.25, 0.5] sumFloats listFloat
     checkAll "float head-tail recursion sums every element exactly once" [
-        sumFloats noFloats == 0.0,
-        sumFloats oneFloat == 1.5,
-        sumFloats twoFloats == 1.0,
-        sumFloats ratios == 4.5,
-        sumFloats quarters == 1.5,
-        sumFloats dupFloats == 5.0,
-        sumFloats (listReverse ratios) == 4.5,
-        sumFloats (listReverse quarters) == 1.5,
-        sumFloats (ratios + twoFloats) == 5.5,
-        sumFloats (twoFloats + ratios) == 5.5,
-        sumFloats (noFloats + ratios) == 4.5,
-        sumFloats (ratios + noFloats) == 4.5,
-        sumFloats (ratios + ratios) == 9.0,
-        sumFloats (listAppend ratios 0.5) == 5.0,
-        sumFloats (listPrepend ratios 0.5) == 5.0,
-        sumFloats [0.25] == 0.25,
-        sumFloats [0.25, 0.25] == 0.5,
         listLength ratios == 3,
         listLength (ratios + twoFloats) == 5,
         listContains ratios 1.25,
@@ -793,27 +740,9 @@ floatAndBoolListPatternCase () =
 
     // Every bool permutation of length 0..3 is counted independently, so a
     // pattern that drops or double-counts the head cannot hide in a total.
+    checkProbes "bool list patterns count every permutation" [noFlags, [true], pairOn, mixed] ["none", "single", "pair", "long+2"] shapeOf listText
+    checkProbes "bool list patterns count every permutation" [noFlags, [true], [false], [true, true], [true, false], [false, true], [false, false], allOn, allOff, mixed, listReverse mixed, mixed + allOn, allOff + mixed, listAppend mixed false, listPrepend mixed false, listAppend allOff true] [0, 1, 0, 2, 1, 1, 0, 3, 0, 2, 2, 5, 2, 2, 2, 1] countTrue listInt
     checkAll "bool list patterns count every permutation" [
-        shapeOf noFlags == "none",
-        shapeOf [true] == "single",
-        shapeOf pairOn == "pair",
-        shapeOf mixed == "long+2",
-        countTrue noFlags == 0,
-        countTrue [true] == 1,
-        countTrue [false] == 0,
-        countTrue [true, true] == 2,
-        countTrue [true, false] == 1,
-        countTrue [false, true] == 1,
-        countTrue [false, false] == 0,
-        countTrue allOn == 3,
-        countTrue allOff == 0,
-        countTrue mixed == 2,
-        countTrue (listReverse mixed) == 2,
-        countTrue (mixed + allOn) == 5,
-        countTrue (allOff + mixed) == 2,
-        countTrue (listAppend mixed false) == 2,
-        countTrue (listPrepend mixed false) == 2,
-        countTrue (listAppend allOff true) == 1,
         boolWeight true == 1,
         boolWeight false == 0
     ]

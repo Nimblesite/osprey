@@ -31,6 +31,30 @@ fn checkEach(label, items, predicate) = {
     })
 }
 
+/// True when `mapGet` answers the exact missing-key error for `key`.
+fn keyMissing(m, key) = match mapGet(m, key) {
+    Success => false
+    Error { message } => message == "mapGet: key not found"
+}
+
+/// Asserts `m` binds every entry of `expected`.
+fn checkMapIs(label, m, expected) = checkEach(label, mapKeys(expected),
+    fn(key) => mapInt(m, key) == mapInt(expected, key))
+
+/// Asserts `m` binds every entry of `expected` and lacks every key of `absent`.
+fn checkMapBindings(label, m, expected, absent) = {
+    checkMapIs(label, m, expected)
+    checkEach(label, absent, fn(key) => !mapContains(m, key))
+}
+
+/// Asserts none of `absent` appears in the key view of `m`.
+fn checkKeysLack(label, m, absent) = checkEach(label, absent,
+    fn(key) => !listContains(mapKeys(m), key))
+
+/// Asserts `m` maps the key at `i` of `keys` to the value at `i` of `values`.
+fn checkPairs(label, m, keys, values) = checkIndices(label, listLength(keys),
+    fn(i) => (mapGet(m, listGet(keys, i) ?: "absent") ?: (0 - 1)) == (listGet(values, i) ?: (0 - 2)))
+
 /// constructionAndOverwriteCase preserves empty, set, contains, overwrite, and source-isolation observations.
 fn constructionAndOverwriteCase() = {
     let empty = Map()
@@ -38,10 +62,7 @@ fn constructionAndOverwriteCase() = {
     let m2 = mapSet(m1, "bob", 30)
     let m3 = mapSet(m2, "charlie", 35)
     let m4 = mapSet(m3, "alice", 99)
-    let m4Missing = match mapGet(m4, "dave") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let m4Missing = keyMissing(m4, "dave")
 
     // Every legacy empty, growth, contains, and overwrite-length observation remains independent.
     checkAll("legacy map construction observations", [
@@ -59,21 +80,12 @@ fn constructionAndOverwriteCase() = {
     ])
 
     // Added value checks ensure correct bindings and persistence rather than length-only success.
-    checkAll("map construction values and isolation", [
-            mapInt(m1, "alice") == 25,
-            !mapContains(m1, "bob"),
-            mapInt(m2, "alice") == 25,
-            mapInt(m2, "bob") == 30,
-            !mapContains(m2, "charlie"),
-            mapInt(m3, "alice") == 25,
-            mapInt(m3, "bob") == 30,
-            mapInt(m3, "charlie") == 35,
-            mapInt(m4, "alice") == 99,
-            mapInt(m4, "bob") == 30,
-            mapInt(m4, "charlie") == 35,
-            mapInt(m3, "alice") == 25,
-            m4Missing
-    ])
+    checkMapBindings("map construction values and isolation", m1, { "alice": 25 }, ["bob"])
+    checkMapBindings("map construction values and isolation", m2, { "alice": 25, "bob": 30 }, ["charlie"])
+    checkMapIs("map construction values and isolation", m3, { "alice": 25, "bob": 30, "charlie": 35 })
+    checkMapIs("map construction values and isolation", m4, { "alice": 99, "bob": 30, "charlie": 35 })
+    checkMapIs("map construction values and isolation", m3, { "alice": 25 })
+    check("map construction values and isolation", true, m4Missing)
 }
 
 /// generationsAndBranchesCase preserves the five-generation chain and validates sibling branch isolation.
@@ -105,19 +117,13 @@ fn generationsAndBranchesCase() = {
     ])
 
     // Value-level checks prove old generations retain bindings after descendant creation.
+    checkMapBindings("persistent map generation values", g1, { "k1": 1 }, ["k2"])
+    checkMapBindings("persistent map generation values", g2, { "k1": 1, "k2": 2 }, ["k3"])
+    checkMapBindings("persistent map generation values", g3, { "k3": 3 }, ["k4"])
+    checkMapBindings("persistent map generation values", g4, { "k4": 4 }, ["k5"])
+    checkMapIs("persistent map generation values", g5, { "k1": 1, "k5": 5 })
     checkAll("persistent map generation values", [
             !mapContains(g0, "k1"),
-            mapInt(g1, "k1") == 1,
-            !mapContains(g1, "k2"),
-            mapInt(g2, "k1") == 1,
-            mapInt(g2, "k2") == 2,
-            !mapContains(g2, "k3"),
-            mapInt(g3, "k3") == 3,
-            !mapContains(g3, "k4"),
-            mapInt(g4, "k4") == 4,
-            !mapContains(g4, "k5"),
-            mapInt(g5, "k1") == 1,
-            mapInt(g5, "k5") == 5,
             mapLength(g2) == 2,
             mapLength(g3) == 3
     ])
@@ -152,10 +158,7 @@ fn removalAndMergeCase() = {
     let mergedAB = mapMerge(a, b)
     let mergedBA = mapMerge(b, a)
     let mergedPlus = a + b
-    let removedMissing = match mapGet(removed, "k3") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let removedMissing = keyMissing(removed, "k3")
 
     // All four legacy removal observations remain direct predicates.
     checkAll("persistent removal legacy observations", [
@@ -166,15 +169,11 @@ fn removalAndMergeCase() = {
     ])
 
     // Added removal checks validate retained values, exact failure, original preservation, and absent-key identity behavior.
+    checkMapIs("persistent removal values and isolation", removed, { "k1": 1, "k2": 2, "k4": 4, "k5": 5 })
+    checkMapIs("persistent removal values and isolation", g5, { "k3": 3 })
+    checkMapIs("persistent removal values and isolation", absentRemoved, { "k1": 1, "k5": 5 })
     checkAll("persistent removal values and isolation", [
-            mapInt(removed, "k1") == 1,
-            mapInt(removed, "k2") == 2,
-            mapInt(removed, "k4") == 4,
-            mapInt(removed, "k5") == 5,
             removedMissing,
-            mapInt(g5, "k3") == 3,
-            mapInt(absentRemoved, "k1") == 1,
-            mapInt(absentRemoved, "k5") == 5,
             mapContains(absentRemoved, "k3"),
             !mapContains(g4, "k5")
     ])
@@ -190,22 +189,11 @@ fn removalAndMergeCase() = {
     ])
 
     // Exact lookups pin right-biased merge semantics in both directions and through the plus alias.
-    checkAll("map merge right-biased values", [
-            mapInt(mergedAB, "x") == 1,
-            mapInt(mergedAB, "y") == 20,
-            mapInt(mergedAB, "z") == 30,
-            mapInt(mergedAB, "w") == 40,
-            mapInt(mergedBA, "x") == 1,
-            mapInt(mergedBA, "y") == 2,
-            mapInt(mergedBA, "z") == 3,
-            mapInt(mergedBA, "w") == 40,
-            mapInt(mergedPlus, "x") == 1,
-            mapInt(mergedPlus, "y") == 20,
-            mapInt(mergedPlus, "z") == 30,
-            mapInt(mergedPlus, "w") == 40,
-            mapInt(a, "y") == 2,
-            mapInt(b, "y") == 20
-    ])
+    checkMapIs("map merge right-biased values", mergedAB, { "x": 1, "y": 20, "z": 30, "w": 40 })
+    checkMapIs("map merge right-biased values", mergedBA, { "x": 1, "y": 2, "z": 3, "w": 40 })
+    checkMapIs("map merge right-biased values", mergedPlus, { "x": 1, "y": 20, "z": 30, "w": 40 })
+    checkMapIs("map merge right-biased values", a, { "y": 2 })
+    checkMapIs("map merge right-biased values", b, { "y": 20 })
 }
 
 /// viewsAndCrossCollectionCase preserves keys, values, and list/map coexistence observations.
@@ -265,18 +253,13 @@ fn literalsAndDispatchCase() = {
     let empty = Map()
     let prices = { "apple": 2, "banana": 3, "cherry": 5 }
     let duplicate = { "key": 1, "key": 2 }
-    let priceMissing = match mapGet(prices, "mango") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let priceMissing = keyMissing(prices, "mango")
 
     // All three legacy literal lookup outcomes remain asserted with exact missing-key behavior.
+    checkMapIs("map literal lookup behavior", prices, { "apple": 2, "banana": 3, "cherry": 5 })
     checkAll("map literal lookup behavior", [
-            mapInt(prices, "apple") == 2,
             priceMissing,
             mapInt(duplicate, "key") == 2,
-            mapInt(prices, "banana") == 3,
-            mapInt(prices, "cherry") == 5,
             ({ "apple": 2, "banana": 3 }["apple"] ?: ((0 - 999) )) == 2,
             ({ "key": 1, "key": 2 }["key"] ?: ((0 - 999) )) == 2,
             mapLength(prices) == 3,
@@ -453,10 +436,7 @@ fn keyShapeCase() = {
     let shapedLong = mapSet(shaped, longKey, 12)
     let gap = " "
     let shapes = ["", "a", "A", " ", " a", "a ", "a b", "a.b", "a-b", "a_b", "007", "7"]
-    let emptyKeyMissing = match mapGet(mapRemove(shaped, ""), "") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let emptyKeyMissing = keyMissing(mapRemove(shaped, ""), "")
 
     // Twelve literal keys carry values 0..11 in declaration order and the long
     // key carries 12; the long key spells 26 letters + 10 digits + "abcd" = 40.
@@ -481,31 +461,22 @@ fn keyShapeCase() = {
 
     checkAll("map membership follows exact key content", [
             mapContains(shapedLong, longKey),
-            !mapContains(shaped, longKey),
-            !mapContains(shapedLong, longKeyPrefix),
-            !mapContains(shapedLong, toUpperCase(longKey)),
-            !mapContains(shaped, "b"),
-            !mapContains(shaped, "B"),
-            !mapContains(shaped, "  "),
-            !mapContains(shaped, " a "),
-            !mapContains(shaped, "ab"),
-            !mapContains(shaped, "a.b.c"),
-            !mapContains(shaped, "0007"),
-            !mapContains(shaped, "07"),
-            !mapContains(shaped, "a-B")
+            !mapContains(shaped, longKey)
     ])
+    checkEach("map membership follows exact key content",
+        [longKeyPrefix, toUpperCase(longKey)], fn(key) => !mapContains(shapedLong, key))
+    checkEach("map membership follows exact key content",
+        ["b", "B", "  ", " a ", "ab", "a.b.c", "0007", "07", "a-B"],
+        fn(key) => !mapContains(shaped, key))
 
     // Keys that differ only by case, spacing or punctuation hold different values,
     // computed keys reach the same bindings as literal ones, and overwriting the
     // empty-string key leaves the source generation at its original value.
+    checkEach("case, spacing and punctuation keys stay distinct",
+        [["a", "A"], [" a", "a "], ["a b", "a.b"], ["a.b", "a-b"], ["a-b", "a_b"], ["007", "7"], ["", " "]],
+        fn(pair) => mapInt(shaped, listGet(pair, 0) ?: "absent") != mapIntMiss(shaped, listGet(pair, 1) ?: "absent"))
+
     checkAll("case, spacing and punctuation keys stay distinct", [
-            mapInt(shaped, "a") != mapIntMiss(shaped, "A"),
-            mapInt(shaped, " a") != mapIntMiss(shaped, "a "),
-            mapInt(shaped, "a b") != mapIntMiss(shaped, "a.b"),
-            mapInt(shaped, "a.b") != mapIntMiss(shaped, "a-b"),
-            mapInt(shaped, "a-b") != mapIntMiss(shaped, "a_b"),
-            mapInt(shaped, "007") != mapIntMiss(shaped, "7"),
-            mapInt(shaped, "") != mapIntMiss(shaped, " "),
             mapInt(shaped, toUpperCase("a")) == 2,
             mapInt(shaped, toLowerCase("A")) == 1,
             mapInt(shaped, "a${gap}b") == 6,
@@ -526,14 +497,13 @@ fn keyShapeCase() = {
     checkEach("map key and value views report each shape once", shapes,
         fn(key) => listContains(mapKeys(shapedLong), key))
 
+    checkKeysLack("map key and value views report each shape once", shapedLong,
+        [longKeyPrefix, "b", "  "])
     checkAll("map key and value views report each shape once", [
             listLength(mapKeys(shapedLong)) == 13,
             listLength(mapValues(shapedLong)) == 13,
             listLength(mapKeys(shapedLong)) == mapLength(shapedLong),
             listContains(mapKeys(shapedLong), longKey),
-            !listContains(mapKeys(shapedLong), longKeyPrefix),
-            !listContains(mapKeys(shapedLong), "b"),
-            !listContains(mapKeys(shapedLong), "  "),
             !listContains(mapKeys(shaped), longKey),
             listContains(mapValues(shapedLong), 0),
             listContains(mapValues(shapedLong), 6),
@@ -564,29 +534,17 @@ fn overwriteChainCase() = {
     let v7 = mapSet(v6, "slot", 5)
     let prefixes = { "p": 1, "pa": 2, "pat": 3, "path": 4 }
     let prefixOverwritten = mapSet(prefixes, "pa", 20)
+    let generations = [v0, v1, v2, v3, v4, v5, v6, v7]
 
     // Three overwrites of "slot" never grow the map; adding "other" grows it once
     // and re-setting "slot" to the value it already holds changes nothing.
+    checkIndices("overwrite chain lengths and per-generation values", 8,
+        fn(i) => mapLength(listGet(generations, i) ?: Map()) == listInt([0, 1, 1, 1, 2, 2, 2, 2], i))
+    checkIndices("overwrite chain lengths and per-generation values", 7,
+        fn(i) => mapInt(listGet(generations, i + 1) ?: Map(), "slot") == listInt([1, 2, 3, 3, 5, 5, 5], i))
+    checkIndices("overwrite chain lengths and per-generation values", 4,
+        fn(i) => mapInt(listGet(generations, i + 4) ?: Map(), "other") == listInt([40, 40, 60, 60], i))
     checkAll("overwrite chain lengths and per-generation values", [
-            mapLength(v0) == 0,
-            mapLength(v1) == 1,
-            mapLength(v2) == 1,
-            mapLength(v3) == 1,
-            mapLength(v4) == 2,
-            mapLength(v5) == 2,
-            mapLength(v6) == 2,
-            mapLength(v7) == 2,
-            mapInt(v1, "slot") == 1,
-            mapInt(v2, "slot") == 2,
-            mapInt(v3, "slot") == 3,
-            mapInt(v4, "slot") == 3,
-            mapInt(v5, "slot") == 5,
-            mapInt(v6, "slot") == 5,
-            mapInt(v7, "slot") == 5,
-            mapInt(v4, "other") == 40,
-            mapInt(v5, "other") == 40,
-            mapInt(v6, "other") == 60,
-            mapInt(v7, "other") == 60,
             !mapContains(v0, "slot"),
             !mapContains(v3, "other"),
             isEmpty(v0),
@@ -637,18 +595,12 @@ fn overwriteChainCase() = {
 
     // "p", "pa", "pat" and "path" are nested prefixes; overwriting "pa" alone must
     // move only its value, and the source generation keeps the old 2.
+    checkMapIs("overwriting one prefix key leaves its neighbours alone", prefixes, { "p": 1, "pa": 2, "pat": 3, "path": 4 })
+    checkMapIs("overwriting one prefix key leaves its neighbours alone", prefixOverwritten, { "p": 1, "pa": 20, "pat": 3, "path": 4 })
+    checkMapIs("overwriting one prefix key leaves its neighbours alone", prefixes, { "pa": 2 })
     checkAll("overwriting one prefix key leaves its neighbours alone", [
             mapLength(prefixes) == 4,
             mapLength(prefixOverwritten) == 4,
-            mapInt(prefixes, "p") == 1,
-            mapInt(prefixes, "pa") == 2,
-            mapInt(prefixes, "pat") == 3,
-            mapInt(prefixes, "path") == 4,
-            mapInt(prefixOverwritten, "p") == 1,
-            mapInt(prefixOverwritten, "pa") == 20,
-            mapInt(prefixOverwritten, "pat") == 3,
-            mapInt(prefixOverwritten, "path") == 4,
-            mapInt(prefixes, "pa") == 2,
             !mapContains(prefixes, "pathx"),
             !mapContains(prefixes, "Path"),
             !mapContains(prefixes, ""),
@@ -751,13 +703,11 @@ fn mergeAlgebraCase() = {
     // Views of a merged map hold exactly the surviving bindings — 1 and 30 lost
     // their keys to the right map — and merging a map with a subset of itself is
     // still right-biased, so the full map wins when it stands on the right.
+    checkEach("merged views and single-key override interaction", ["", " ", "k-k", "K"],
+        fn(key) => listContains(mapKeys(lr), key))
     checkAll("merged views and single-key override interaction", [
             listLength(mapKeys(lr)) == 6,
             listLength(mapValues(lr)) == 6,
-            listContains(mapKeys(lr), ""),
-            listContains(mapKeys(lr), " "),
-            listContains(mapKeys(lr), "k-k"),
-            listContains(mapKeys(lr), "K"),
             !listContains(mapKeys(lr), "q"),
             listContains(mapValues(lr), 10),
             listContains(mapValues(lr), 50),
@@ -795,35 +745,21 @@ fn removalSweepCase() = {
     let baFirst = mapRemove(mapRemove(base, "b"), "a")
     let drained = mapRemove(mapRemove(mapRemove(mapRemove(mapRemove(base, "a"), "b"), "c"), "d"), "e")
     let widened = mapMerge(base, extra)
-    let drainedMissing = match mapGet(drained, "a") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let drainedMissing = keyMissing(drained, "a")
+    let sweeps = [noA, noB, noC, noD, noE]
 
     // Each of the five single removals leaves four bindings, and the four that
     // survive keep their original values.
+    checkEach("each single removal drops exactly one binding", sweeps, fn(m) => mapLength(m) == 4)
+    checkIndices("each single removal drops exactly one binding", 5,
+        fn(i) => !mapContains(listGet(sweeps, i) ?: base, listGet(["a", "b", "c", "d", "e"], i) ?: "a"))
+    checkMapIs("each single removal drops exactly one binding", noA, { "b": 2, "e": 5 })
+    checkMapIs("each single removal drops exactly one binding", noB, { "a": 1, "c": 3 })
+    checkMapIs("each single removal drops exactly one binding", noC, { "b": 2, "d": 4 })
+    checkMapIs("each single removal drops exactly one binding", noD, { "c": 3, "e": 5 })
+    checkMapIs("each single removal drops exactly one binding", noE, { "a": 1, "d": 4 })
     checkAll("each single removal drops exactly one binding", [
             mapLength(base) == 5,
-            mapLength(noA) == 4,
-            mapLength(noB) == 4,
-            mapLength(noC) == 4,
-            mapLength(noD) == 4,
-            mapLength(noE) == 4,
-            !mapContains(noA, "a"),
-            !mapContains(noB, "b"),
-            !mapContains(noC, "c"),
-            !mapContains(noD, "d"),
-            !mapContains(noE, "e"),
-            mapInt(noA, "b") == 2,
-            mapInt(noA, "e") == 5,
-            mapInt(noB, "a") == 1,
-            mapInt(noB, "c") == 3,
-            mapInt(noC, "b") == 2,
-            mapInt(noC, "d") == 4,
-            mapInt(noD, "c") == 3,
-            mapInt(noD, "e") == 5,
-            mapInt(noE, "a") == 1,
-            mapInt(noE, "d") == 4,
             mapContains(base, "a"),
             mapContains(base, "e"),
             mapInt(base, "c") == 3
@@ -857,13 +793,9 @@ fn removalSweepCase() = {
     // A key that is absent by case, spacing, length or emptiness is still absent,
     // so each of these removals must leave all five bindings in place, and a
     // second removal of an already-removed key must be a no-op as well.
+    checkEach("removing an absent key leaves the map unchanged", ["z", "", " ", "A", "ab", "a "],
+        fn(key) => mapLength(mapRemove(base, key)) == 5)
     checkAll("removing an absent key leaves the map unchanged", [
-            mapLength(mapRemove(base, "z")) == 5,
-            mapLength(mapRemove(base, "")) == 5,
-            mapLength(mapRemove(base, " ")) == 5,
-            mapLength(mapRemove(base, "A")) == 5,
-            mapLength(mapRemove(base, "ab")) == 5,
-            mapLength(mapRemove(base, "a ")) == 5,
             mapInt(mapRemove(base, "A"), "a") == 1,
             mapInt(mapRemove(base, ""), "a") == 1,
             mapInt(mapRemove(base, "ab"), "b") == 2,
@@ -958,16 +890,14 @@ fn nestedCollectionCase() = {
 
     // Three maps stored as list elements keep their own two, two and zero
     // bindings; an out-of-range index still takes the Error branch.
+    checkMapIs("maps stored in a list keep their own contents", firstNested, { "x": 1, "y": 2 })
+    checkMapIs("maps stored in a list keep their own contents", secondNested, { "x": 10, "z": 30 })
     checkAll("maps stored in a list keep their own contents", [
             listLength(maps) == 3,
             mapLength(firstNested) == 2,
             mapLength(secondNested) == 2,
             mapLength(thirdNested) == 0,
             isEmpty(thirdNested),
-            mapInt(firstNested, "x") == 1,
-            mapInt(firstNested, "y") == 2,
-            mapInt(secondNested, "x") == 10,
-            mapInt(secondNested, "z") == 30,
             !mapContains(firstNested, "z"),
             !mapContains(secondNested, "y"),
             !mapContains(thirdNested, "x"),
@@ -982,6 +912,9 @@ fn nestedCollectionCase() = {
 
     // A map of maps answers three outer keys while each inner map keeps its own
     // bindings, and replacing one inner map must not disturb the original nest.
+    checkMapIs("maps stored as map values keep their own contents", innerOne, { "x": 1, "y": 2 })
+    checkMapIs("maps stored as map values keep their own contents", innerTwo, { "x": 10, "z": 30 })
+    checkMapIs("maps stored as map values keep their own contents", innerOne, { "x": 1 })
     checkAll("maps stored as map values keep their own contents", [
             mapLength(outer) == 3,
             listLength(mapKeys(outer)) == 3,
@@ -990,10 +923,6 @@ fn nestedCollectionCase() = {
             !listContains(mapKeys(outer), "four"),
             mapLength(innerOne) == 2,
             mapLength(innerTwo) == 2,
-            mapInt(innerOne, "x") == 1,
-            mapInt(innerOne, "y") == 2,
-            mapInt(innerTwo, "x") == 10,
-            mapInt(innerTwo, "z") == 30,
             !mapContains(innerOne, "z"),
             mapLength(innerMissing) == 1,
             mapInt(innerMissing, "fallback") == 0,
@@ -1007,13 +936,12 @@ fn nestedCollectionCase() = {
 
     // Lists stored as map values keep index order and length; growing one value
     // list produces a four-element list while the stored three-element one stands.
+    checkIndices("lists stored as map values keep index order", 3,
+        fn(i) => listInt(oddsBack, i) == listInt(odds, i))
     checkAll("lists stored as map values keep index order", [
             mapLength(byParity) == 2,
             listLength(oddsBack) == 3,
             listLength(evensBack) == 4,
-            listInt(oddsBack, 0) == 1,
-            listInt(oddsBack, 1) == 3,
-            listInt(oddsBack, 2) == 5,
             listInt(evensBack, 0) == 2,
             listInt(evensBack, 3) == 8,
             listInt(oddsBack, 3) == ((0 - 999) ),
@@ -1086,8 +1014,7 @@ fn keyValueViewPairingCase() = {
     // Whatever order the views come back in, index i of one must address index i
     // of the other; 1+2+3+4+5+6 = 21 is order-independent. The two sentinels
     // differ so a pair of failed lookups cannot satisfy the equality.
-    checkIndices("key and value views pair index by index", listLength(keys),
-        fn(i) => (mapGet(m, listGet(keys, i) ?: "absent") ?: (0 - 1)) == (listGet(values, i) ?: (0 - 2)))
+    checkPairs("key and value views pair index by index", m, keys, values)
     checkEach("key and value views pair index by index", keys,
         fn(key) => mapContains(m, key))
 
@@ -1105,8 +1032,7 @@ fn keyValueViewPairingCase() = {
         fn(key) => listContains(keys, key))
     checkEach("key and value views hold every binding once", [1, 2, 3, 4, 5, 6],
         fn(value) => listContains(values, value))
-    checkIndices("key and value views hold every binding once", 6,
-        fn(i) => (mapGet(m, listGet(listReverse(keys), i) ?: "absent") ?: (0 - 1)) == (listGet(listReverse(values), i) ?: (0 - 2)))
+    checkPairs("key and value views hold every binding once", m, listReverse(keys), listReverse(values))
 
     checkAll("key and value views hold every binding once", [
             !listContains(keys, "g"),
@@ -1118,8 +1044,7 @@ fn keyValueViewPairingCase() = {
 
     // Overwriting "c" from 3 to 33 raises the total by exactly 30 (21 -> 51),
     // leaves the key count at six, and the source map still totals 21.
-    checkIndices("an overwrite moves exactly one paired value", listLength(bumpedKeys),
-        fn(i) => (mapGet(bumped, listGet(bumpedKeys, i) ?: "absent") ?: (0 - 1)) == (listGet(bumpedValues, i) ?: (0 - 2)))
+    checkPairs("an overwrite moves exactly one paired value", bumped, bumpedKeys, bumpedValues)
 
     checkAll("an overwrite moves exactly one paired value", [
             listLength(bumpedKeys) == 6,
@@ -1139,8 +1064,7 @@ fn keyValueViewPairingCase() = {
 
     // Removing "e" drops the total by exactly its value 5 (21 -> 16) and both
     // views by one entry, while the remaining five stay paired.
-    checkIndices("a removal drops exactly one pair", listLength(trimmedKeys),
-        fn(i) => (mapGet(trimmed, listGet(trimmedKeys, i) ?: "absent") ?: (0 - 1)) == (listGet(trimmedValues, i) ?: (0 - 2)))
+    checkPairs("a removal drops exactly one pair", trimmed, trimmedKeys, trimmedValues)
 
     checkAll("a removal drops exactly one pair", [
             listLength(trimmedKeys) == 5,

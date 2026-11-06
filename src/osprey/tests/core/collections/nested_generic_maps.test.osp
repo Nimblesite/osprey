@@ -17,6 +17,23 @@ fn floatGroup(groups, key, index) = groupAt(groups, key, index, [9.0], 9.5)
 fn boolGroup(groups, key, index) = groupAt(groups, key, index, [false], false)
 fn boolMissGroup(groups, key, index) = groupAt(groups, key, index, [true], true)
 
+/// The int at `index` of `xs`, or a sentinel no case expects.
+fn listInt(xs, index) = listGet(xs, index) ?: (0 - 999)
+
+/// The string at `index` of `xs`, or a sentinel no case expects.
+fn listText(xs, index) = listGet(xs, index) ?: ""
+
+/// The float at `index` of `xs`, or a sentinel no case expects.
+fn listFloat(xs, index) = listGet(xs, index) ?: (0.0 - 999.0)
+
+/// Asserts each `keys[i]`/`indices[i]` cell reads back `values[i]`, one check each.
+fn checkCells(label, keys, keyPick, indices, values, probe, pick) = {
+    let _ = foldList(toList(range(0, listLength(values))), 0, fn(acc, i) => {
+        check(label, pick(values, i), probe(keyPick(keys, i), listInt(indices, i)))
+        acc
+    })
+}
+
 fn intGroups() = mapSet(mapSet(Map(), "low", [1, 2]), "high", [30, 40, 50])
 fn stringGroups() = mapSet(mapSet(Map(), "short", ["a", "bb"]), "long", ["three", "seven"])
 fn floatGroups() = mapSet(mapSet(Map(), "small", [0.5, 1.25]), "large", [8.5, 9.75])
@@ -75,6 +92,9 @@ fn nestedMapEffectPipelineCase() = {
     let rewritten = mapRemove(mapSet(ints, "extra", [6, 7]), "low")
     let merged = mapMerge(ints, mapSet(Map(), "high", [80, 90]))
 
+    checkCells("Map<string,List<T>> recovers four concrete leaf arguments", ["low", "low", "high", "high", "high"], listText, [0, 1, 0, 1, 2], [1, 2, 30, 40, 50], fn(key, index) => intGroup(ints, key, index), listInt)
+    checkCells("Map<string,List<T>> recovers four concrete leaf arguments", ["short", "short", "long", "long"], listText, [0, 1, 0, 1], ["a", "bb", "three", "seven"], fn(key, index) => textGroup(strings, key, index), listText)
+    checkCells("Map<string,List<T>> recovers four concrete leaf arguments", ["small", "small", "large", "large"], listText, [0, 1, 0, 1], [0.5, 1.25, 8.5, 9.75], fn(key, index) => floatGroup(floats, key, index), listFloat)
     checkAll("Map<string,List<T>> recovers four concrete leaf arguments", [
             mapLength(ints) == 2,
             mapLength(strings) == 2,
@@ -82,23 +102,10 @@ fn nestedMapEffectPipelineCase() = {
             mapLength(bools) == 2,
             listLength(mapGet(ints, "low") ?: [99]) == 2,
             listLength(mapGet(ints, "high") ?: [99]) == 3,
-            intGroup(ints, "low", 0) == 1,
-            intGroup(ints, "low", 1) == 2,
-            intGroup(ints, "high", 0) == 30,
-            intGroup(ints, "high", 1) == 40,
-            intGroup(ints, "high", 2) == 50,
             intGroup(ints, "missing", 0) == 91,
             intGroup(ints, "low", 8) == 99,
-            textGroup(strings, "short", 0) == "a",
-            textGroup(strings, "short", 1) == "bb",
-            textGroup(strings, "long", 0) == "three",
-            textGroup(strings, "long", 1) == "seven",
             length(textGroup(strings, "long", 1)) == 5,
             textGroup(strings, "missing", 0) == "row",
-            floatGroup(floats, "small", 0) == 0.5,
-            floatGroup(floats, "small", 1) == 1.25,
-            floatGroup(floats, "large", 0) == 8.5,
-            floatGroup(floats, "large", 1) == 9.75,
             floatGroup(floats, "small", 0) + floatGroup(floats, "small", 1) == 1.75,
             boolGroup(bools, "left", 0),
             !boolMissGroup(bools, "left", 1),
@@ -106,6 +113,8 @@ fn nestedMapEffectPipelineCase() = {
             boolGroup(bools, "right", 1)
     ])
 
+    checkCells("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", ["high", "high"], listText, [0, 1], [60, 70], fn(key, index) => intGroup(second, key, index), listInt)
+    checkCells("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", ["only", "only"], listText, [0, 1], [80, 90], fn(key, index) => intGroup(third, key, index), listInt)
     checkAll("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", [
             listLength(listOfMaps) == 3,
             mapLength(mapOfListsOfMaps) == 1,
@@ -114,10 +123,6 @@ fn nestedMapEffectPipelineCase() = {
             mapLength(second) == 2,
             mapLength(third) == 1,
             intGroup(listGet(generations, 0) ?: intGroups(), "high", 2) == 50,
-            intGroup(second, "high", 0) == 60,
-            intGroup(second, "high", 1) == 70,
-            intGroup(third, "only", 0) == 80,
-            intGroup(third, "only", 1) == 90,
             mapListShape(Map()) == "empty",
             mapListShape(mapSet(Map(), "one", [1])) == "one:1",
             mapListShape(ints) == "many:2/2",
@@ -126,18 +131,15 @@ fn nestedMapEffectPipelineCase() = {
             mapListShape(bools) == "many:2/2"
     ])
 
+    checkCells("persistent map pipelines preserve descendants and source generations", ["high", "extra", "extra"], listText, [2, 0, 1], [50, 6, 7], fn(key, index) => intGroup(rewritten, key, index), listInt)
+    checkCells("persistent map pipelines preserve descendants and source generations", ["high", "high"], listText, [0, 1], [80, 90], fn(key, index) => intGroup(merged, key, index), listInt)
+    checkCells("persistent map pipelines preserve descendants and source generations", ["high"], listText, [0], [30], fn(key, index) => intGroup(ints, key, index), listInt)
     checkAll("persistent map pipelines preserve descendants and source generations", [
             mapLength(rewritten) == 2,
             !mapContains(rewritten, "low"),
             mapContains(rewritten, "high"),
             mapContains(rewritten, "extra"),
-            intGroup(rewritten, "high", 2) == 50,
-            intGroup(rewritten, "extra", 0) == 6,
-            intGroup(rewritten, "extra", 1) == 7,
             mapLength(merged) == 2,
-            intGroup(merged, "high", 0) == 80,
-            intGroup(merged, "high", 1) == 90,
-            intGroup(ints, "high", 0) == 30,
             mapContains(ints, "low"),
             !mapContains(ints, "extra"),
             listLength(mapKeys(ints)) == 2,
