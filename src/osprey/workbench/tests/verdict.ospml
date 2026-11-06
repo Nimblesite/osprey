@@ -3,6 +3,7 @@
 namespace workbenchtests
 
 import workbench::Statements
+import workbenchtests::StatementCases
 import workbench::Steps
 import workbench::Verdicts
 import workbench::Goals
@@ -10,13 +11,7 @@ import workbench::Preludes
 
 (** The kernel-verdict cases of [WORKBENCH-VERIFICATION]. *)
 module VerdictCases
-    fresh () = workbench::Declaration(statement = workbench::Statement(name = "", named = false, variables = [], claim = workbench::Bot), proof = "", problems = [])
-
-    sole found = match listGet found 0
-        Success one => one
-        Error _ => fresh ()
-
-    declaration text = sole (workbench::Statements::document text)
+    declaration text = StatementCases::sole (workbench::Statements::document text)
 
     steps declaration = mapList (workbench::Steps::sentences declaration.proof, \sentence => workbench::Steps::read sentence)
 
@@ -113,8 +108,7 @@ module VerdictCases
 
     refused (walk, outcome) = match outcome
         workbench::Stuck _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.at }
-        workbench::UnsupportedStep _ _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.stuck }
-        workbench::Advanced _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.stuck }
+        _ => { outcome = outcome, at = satAdd walk.at 1, stuck = walk.stuck }
 
     refusalAt (statement, stepList) = (foldList (stepList, walk0 statement, \(walk, step) => moved (walk, step))).stuck
 

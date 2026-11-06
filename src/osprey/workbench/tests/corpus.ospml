@@ -33,53 +33,40 @@ module CorpusCases
 
     sameNames (left, right) = length left == length right && sameNamesAt (left, right, 0)
 
-    sameVar (name, other) = match other
-        workbench::Var found => name == found
-        _ => false
+    // The constructor as a tag, the names it binds (a variable binds itself), and its children.
+    tag formula = match formula
+        workbench::Var _ => "var"
+        workbench::Top => "top"
+        workbench::Bot => "bot"
+        workbench::Not _ => "not"
+        workbench::And _ _ => "and"
+        workbench::Or _ _ => "or"
+        workbench::Imp _ _ => "imp"
+        workbench::Iff _ _ => "iff"
+        workbench::Forall _ _ => "forall"
 
-    sameTop other = match other
-        workbench::Top => true
-        _ => false
+    bound formula = match formula
+        workbench::Var name => [name]
+        workbench::Forall names _ => names
+        _ => []
 
-    sameBot other = match other
-        workbench::Bot => true
-        _ => false
+    children formula = match formula
+        workbench::Not inner => [inner]
+        workbench::And left right => [left, right]
+        workbench::Or left right => [left, right]
+        workbench::Imp left right => [left, right]
+        workbench::Iff left right => [left, right]
+        workbench::Forall _ inner => [inner]
+        _ => []
 
-    sameNot (inner, other) = match other
-        workbench::Not found => same (inner, found)
-        _ => false
+    sameChildrenAt (lefts, rights, at) = match at >= length lefts
+        true => true
+        false => same (listGet lefts at ?: workbench::Bot, listGet rights at ?: workbench::Bot) && sameChildrenAt (lefts, rights, satAdd at 1)
 
-    sameAnd (left, right, other) = match other
-        workbench::And foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
-        _ => false
-
-    sameOr (left, right, other) = match other
-        workbench::Or foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
-        _ => false
-
-    sameImp (left, right, other) = match other
-        workbench::Imp foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
-        _ => false
-
-    sameIff (left, right, other) = match other
-        workbench::Iff foundLeft foundRight => same (left, foundLeft) && same (right, foundRight)
-        _ => false
-
-    sameForall (names, inner, other) = match other
-        workbench::Forall foundNames foundInner => sameNames (names, foundNames) && same (inner, foundInner)
-        _ => false
+    sameChildren (lefts, rights) = length lefts == length rights && sameChildrenAt (lefts, rights, 0)
 
     // Structural equality, deliberately independent of both `Formulas::equal` and `show`.
-    same (a, b) = match a
-        workbench::Var name => sameVar (name, b)
-        workbench::Top => sameTop b
-        workbench::Bot => sameBot b
-        workbench::Not inner => sameNot (inner, b)
-        workbench::And left right => sameAnd (left, right, b)
-        workbench::Or left right => sameOr (left, right, b)
-        workbench::Imp left right => sameImp (left, right, b)
-        workbench::Iff left right => sameIff (left, right, b)
-        workbench::Forall names inner => sameForall (names, inner, b)
+    same (a, b) = tag a == tag b && sameNames (bound a, bound b) && sameChildren (children a, children b)
 
     readsSame (text, formula) = match Formulas::read text
         workbench::Read found => same (formula, found)

@@ -96,46 +96,61 @@ module ImportedFlowCases
 
     current envelope = Doc::field (Drive::stored envelope, "imports")
 
+    (** The library's own notice text, checked as a string table. *)
+    told (envelope, messages) = AppCases::present (Drive::visibleText (actions envelope), messages)
+
+    // Assertion tables over the shared host flow: the inspected library text,
+    // the current receipt and its refusal reason.
+    shows (envelope, parts) = AppCases::present (shown envelope, parts)
+
+    hides (envelope, parts) = AppCases::absent (shown envelope, parts)
+
+    refusedWith (envelope, reason) =
+        shows (envelope, [reason])
+        hides (envelope, ["Checked theorem"])
+
+    readsSelection (envelope, name) = expect (Doc::text (current envelope, "selected"), name)
+
+    readsSource (envelope, source) = expect (Doc::text (current envelope, "source"), source)
+
     ask () =
         first = Drive::started ()
         asked (first, first)
 
     asked (first, _issued) =
-        visible = Drive::activate (first, first, "root", "Notation")
-        requested = Drive::activate (visible, visible, "library-actions", "Open proof library")
+        visible = Drive::press (first, "root", "Notation")
+        requested = Drive::press (visible, "library-actions", "Open proof library")
         expect (Drive::tickets requested, "proof:opened")
         requested
 
-    loaded (requested, source) = Drive::postHeld (requested, Drive::done ("proof:opened", "{\"path\":\"proof.ndjson\"}"), JsonObject [Doc::str ("proof:import", source)])
+    loaded (requested, source) = Drive::completedHeld (requested, "proof:opened", "{\"path\":\"proof.ndjson\"}", JsonObject [Doc::str ("proof:import", source)])
 
     picked (before, name) =
         rows = Drive::findLabel ("Theorem", pane before)
         expect (Doc::has (rows, "event"), true)
-        Drive::post (before, Drive::control ("library", Drive::revision (before, "library"), Doc::number (rows, "event"), Drive::quoted name))
+        Drive::controlOf (before, "library", Doc::number (rows, "event"), Drive::quoted name)
 
     expanded before =
         disclosure = Drive::findTitle ("Imported source", pane before)
-        Drive::post (before, Drive::control ("library", Drive::revision (before, "library"), Doc::number (disclosure, "event"), "true"))
+        Drive::controlOf (before, "library", Doc::number (disclosure, "event"), "true")
 
     edited (before, source) = Drive::post (before, Drive::labelled (before, before, "library", "Current proof export", Drive::quoted source))
 
     export ledgerBoundaries () =
         selected = picked (loaded (ask (), receiptSource ()), "root")
-        expect (Doc::text (current selected, "selected"), "root")
-        expect (AppCases::has (shown selected, "Axioms: \"none\""), true)
+        readsSelection (selected, "root")
+        shows (selected, ["Axioms: \"none\""])
 
     receiptSource () = (replace (ImportedCases::withUnused (), "unusedAssumption", "none") ?: "") + "{\"ie\":1000,\"const\":{\"name\":16,\"us\":[]}}\n{\"ie\":1001,\"forallE\":{\"name\":0,\"type\":1000,\"body\":1000,\"binderInfo\":\"default\"}}\n{\"ie\":1002,\"lam\":{\"name\":0,\"type\":1000,\"body\":1,\"binderInfo\":\"default\"}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"root\"}}\n{\"thm\":{\"name\":17,\"levelParams\":[],\"type\":1001,\"value\":1002,\"all\":[]}}\n"
 
     export fileImport () =
         source = Fixtures::idImp ()
         after = loaded (ask (), source)
-        expect (Doc::text (current after, "source"), source)
-        expect (Doc::text (current after, "selected"), "id_imp")
-        expect (AppCases::has (shown after, "Checked theorem"), true)
-        expect (AppCases::has (shown after, "(∀ (p : Prop), (p → p))"), true)
-        expect (AppCases::has (shown after, "Axioms: none"), true)
+        readsSource (after, source)
+        readsSelection (after, "id_imp")
+        shows (after, ["Checked theorem", "(∀ (p : Prop), (p → p))", "Axioms: none"])
         expect (Doc::text (selectedMath after, "kind"), "math")
-        expect (Doc::text (Drive::stored after, "text"), "")
+        AppCases::kept (after, "")
         arithmetic ()
         customEquality ()
         customAddition ()
@@ -144,32 +159,32 @@ module ImportedFlowCases
     export inspectionLayout () =
         initial = Drive::started ()
         before = asked (AppCases::reopened (AppCases::typed (initial, "Keep this free-form argument.")), initial)
-        expect (Doc::text (Drive::findNamed ("proof-library-inspection", Drive::node (before, "root")), "kind"), "")
+        expect (AppCases::namedKind (Drive::node (before, "root"), "proof-library-inspection"), "")
         after = loaded (before, Fixtures::idImp ())
         root = Drive::node (after, "root")
-        expect (Doc::text (Drive::findNamed ("proof-library-inspection", root), "kind"), "framed")
+        expect (AppCases::namedKind (root, "proof-library-inspection"), "framed")
         expect (Doc::text (Drive::findNode ("aside", root), "kind"), "")
-        closed = Drive::activate (after, after, "root", "Close proof library")
-        expect (Doc::text (Drive::findNode ("aside", Drive::node (closed, "root")), "kind"), "aside")
+        closed = Drive::press (after, "root", "Close proof library")
+        expect (Doc::text (Drive::kindedIn ("aside", closed, "root"), "kind"), "aside")
         expect (Doc::write (current closed), Doc::write (current after))
-        expect (Doc::text (Drive::stored closed, "text"), "Keep this free-form argument.")
+        AppCases::kept (closed, "Keep this free-form argument.")
         WorkspaceCases::withoutDrawing (Drive::stored closed)
-        reopened = Drive::activate (closed, closed, "root", "Notation")
-        expect (Doc::text (Drive::findNamed ("proof-library-inspection", Drive::node (reopened, "root")), "kind"), "framed")
-        expect (Doc::text (Drive::stored reopened, "text"), Doc::text (Drive::stored before, "text"))
+        reopened = Drive::press (closed, "root", "Notation")
+        expect (AppCases::namedKind (Drive::node (reopened, "root"), "proof-library-inspection"), "framed")
+        AppCases::agrees (Drive::stored reopened, Drive::stored before, ["text"])
 
     export exampleAfterImport () =
         initial = Drive::started ()
-        catalogue = Drive::post (initial, Drive::done ("lessons:catalogue", "{}"))
-        ready = Drive::post (catalogue, Drive::done ("lessons:texts", "{}"))
+        catalogue = Drive::completed (initial, "lessons:catalogue", "{}")
+        ready = Drive::completed (catalogue, "lessons:texts", "{}")
         imported = loaded (asked (ready, initial), Fixtures::idImp ())
-        opened = Drive::activate (imported, imported, "root", "Examples")
-        started = Drive::activate (opened, opened, "catalogue", "Open conjunction example")
+        opened = Drive::press (imported, "root", "Examples")
+        started = Drive::press (opened, "catalogue", "Open conjunction example")
         root = Drive::node (started, "root")
-        expect (Doc::text (Drive::findNamed ("proof-library-inspection", root), "kind"), "")
-        expect (Doc::text (Drive::findNamed ("example-context", root), "kind"), "framed")
-        expect (AppCases::has (Doc::text (Drive::stored started, "text"), "Theorem and_swap"), true)
-        expect (Doc::text (current started, "selected"), "id_imp")
+        expect (AppCases::namedKind (root, "proof-library-inspection"), "")
+        expect (AppCases::namedKind (root, "example-context"), "framed")
+        AppCases::present (Doc::text (Drive::stored started, "text"), ["Theorem and_swap"])
+        readsSelection (started, "id_imp")
 
     customEquality () = forEachList ([counterfeitEquality (), counterfeitEqualityRenamed ()], \source => customRelation (source, "claimed_equality", "Eq", "="))
 
@@ -178,16 +193,16 @@ module ImportedFlowCases
     customRelation (source, name, head, symbol) =
         imported = loaded (ask (), source)
         chosen = picked (imported, name)
-        expect (AppCases::has (shown chosen, "Checked theorem"), true)
-        expect (AppCases::has (Doc::text (selectedMath chosen, "spoken"), head), true)
-        expect (AppCases::has (Doc::write (Doc::field (selectedMath chosen, "math")), "\"symbol\":\"${symbol}\""), false)
+        shows (chosen, ["Checked theorem"])
+        AppCases::present (Doc::text (selectedMath chosen, "spoken"), [head])
+        AppCases::absent (Doc::write (Doc::field (selectedMath chosen, "math")), ["\"symbol\":\"${symbol}\""])
 
     arithmetic () =
         imported = loaded (ask (), Fixtures::natAddComm ())
         chosen = picked (imported, "Nat.add_comm")
         typeset = selectedMath chosen
         expect (Doc::write (Doc::field (typeset, "math")), Doc::write (Maths::encode (arithmeticTree ())))
-        expect (AppCases::has (Doc::text (typeset, "spoken"), "HAdd.hAdd"), true)
+        AppCases::present (Doc::text (typeset, "spoken"), ["HAdd.hAdd"])
         revealed = expanded chosen
         formal = Drive::findNamed ("proof-library-formal", pane revealed)
         expect (Doc::text (Drive::findNode ("text", formal), "text"), Doc::text (typeset, "spoken"))
@@ -199,90 +214,82 @@ module ImportedFlowCases
     export selection () =
         after = loaded (ask (), ImportedCases::withUnused ())
         chosen = picked (after, "id_imp")
-        expect (AppCases::has (shown chosen, "Axioms: none"), true)
+        shows (chosen, ["Axioms: none"])
         missing = picked (after, "not_present")
-        expect (AppCases::has (shown missing, "Import refused"), true)
-        expect (AppCases::has (shown missing, "Checked theorem"), false)
+        refusedWith (missing, "Import refused")
         axiom = picked (after, "unusedAssumption")
-        expect (AppCases::has (shown axiom, "not a theorem"), true)
-        expect (AppCases::has (shown axiom, "Checked theorem"), false)
-        expect (Doc::text (Drive::stored axiom, "text"), "")
+        refusedWith (axiom, "not a theorem")
+        AppCases::kept (axiom, "")
 
     export currentSource () =
         after = expanded (loaded (ask (), Fixtures::idImp ()))
         broken = edited (after, Fixtures::idImpBad ())
-        expect (Doc::text (current broken, "source"), Fixtures::idImpBad ())
-        expect (AppCases::has (shown broken, "Import refused"), true)
-        expect (AppCases::has (shown broken, "Checked theorem"), false)
+        readsSource (broken, Fixtures::idImpBad ())
+        refusedWith (broken, "Import refused")
         repaired = edited (broken, Fixtures::idImp ())
-        expect (AppCases::has (shown repaired, "Checked theorem"), true)
-        expect (Doc::text (current repaired, "selected"), "id_imp")
+        shows (repaired, ["Checked theorem"])
+        readsSelection (repaired, "id_imp")
         empty = edited (repaired, "")
-        expect (AppCases::has (shown empty, "Import refused"), true)
-        expect (AppCases::has (shown empty, "Checked theorem"), false)
+        refusedWith (empty, "Import refused")
 
     export refusals () =
         pendingFile ()
         requested = ask ()
-        cancelled = Drive::post (requested, Drive::done ("proof:opened", "{\"cancelled\":true}"))
-        expect (Doc::text (current cancelled, "source"), "")
+        cancelled = Drive::completed (requested, "proof:opened", "{\"cancelled\":true}")
+        readsSource (cancelled, "")
         malformed = loaded (requested, "not NDJSON")
-        expect (AppCases::has (shown malformed, "Import refused"), true)
-        expect (AppCases::has (shown malformed, "Checked theorem"), false)
-        missing = Drive::post (requested, Drive::done ("proof:opened", "{}"))
-        expect (Doc::flag (Drive::stored missing, "noticeBad"), true)
+        refusedWith (malformed, "Import refused")
+        missing = Drive::completed (requested, "proof:opened", "{}")
+        AppCases::flagged (Drive::stored missing, ["noticeBad"])
         failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
-        expect (AppCases::has (Doc::text (Drive::stored failed, "notice"), "Permission denied"), true)
+        AppCases::present (Doc::text (Drive::stored failed, "notice"), ["Permission denied"])
 
     pendingFile () =
         previous = loaded (ask (), Fixtures::idImp ())
-        requested = Drive::activate (previous, previous, "library-actions", "Open proof library")
-        expect (AppCases::has (shown requested, "Reading the selected proof library…"), true)
-        expect (AppCases::has (shown requested, "Checked theorem"), false)
-        cancelled = Drive::post (requested, Drive::done ("proof:opened", "{\"cancelled\":true}"))
-        expect (AppCases::has (shown cancelled, "Checked theorem"), true)
-        expect (Doc::text (current cancelled, "source"), Fixtures::idImp ())
+        requested = Drive::press (previous, "library-actions", "Open proof library")
+        shows (requested, ["Reading the selected proof library…"])
+        hides (requested, ["Checked theorem"])
+        cancelled = Drive::completed (requested, "proof:opened", "{\"cancelled\":true}")
+        shows (cancelled, ["Checked theorem"])
+        readsSource (cancelled, Fixtures::idImp ())
         failed = Drive::post (requested, Drive::failed ("proof:opened", "Permission denied"))
-        expect (AppCases::has (shown failed, "Checked theorem"), true)
-        expect (Doc::text (current failed, "source"), Fixtures::idImp ())
+        shows (failed, ["Checked theorem"])
+        readsSource (failed, Fixtures::idImp ())
 
     withUsed () = "${Fixtures::idImp ()}{\"in\":16,\"str\":{\"pre\":0,\"str\":\"trusted_assumption\"}}\n{\"axiom\":{\"levelParams\":[],\"name\":16,\"type\":4}}\n{\"ie\":7,\"const\":{\"name\":16,\"us\":[]}}\n{\"in\":17,\"str\":{\"pre\":0,\"str\":\"uses_assumption\"}}\n{\"thm\":{\"levelParams\":[],\"name\":17,\"type\":4,\"value\":7}}\n"
 
     export axioms () =
         after = loaded (ask (), withUsed ())
         clean = picked (after, "id_imp")
-        expect (AppCases::has (shown clean, "Axioms: none"), true)
+        shows (clean, ["Axioms: none"])
         assumed = picked (after, "uses_assumption")
-        expect (AppCases::has (shown assumed, "Checked theorem"), true)
-        expect (AppCases::has (shown assumed, "Axioms: trusted_assumption"), true)
-        expect (Doc::text (current assumed, "selected"), "uses_assumption")
+        shows (assumed, ["Checked theorem", "Axioms: trusted_assumption"])
+        readsSelection (assumed, "uses_assumption")
 
     export largeSource () = match repeat ("\n", 1048577)
         Error problem => expect (problem, "allocated fixture padding")
         Success padding =>
             source = Fixtures::idImp () + padding
             after = loaded (ask (), source)
-            expect (Doc::flag (current after, "large"), true)
-            expect (Doc::text (current after, "source"), "")
-            expect (AppCases::has (shown after, "Checked theorem"), true)
+            AppCases::flagged (current after, ["large"])
+            readsSource (after, "")
+            shows (after, ["Checked theorem"])
             lost = picked (after, "id_imp")
-            expect (AppCases::has (shown lost, "Checked theorem"), false)
-            expect (AppCases::has (shown lost, "Import refused"), true)
-            expect (AppCases::has (shown lost, "The imported source is unavailable. Open the proof export again."), true)
+            hides (lost, ["Checked theorem"])
+            shows (lost, ["Import refused", "The imported source is unavailable. Open the proof export again."])
 
     bundled () =
         first = Drive::started ()
-        requested = Drive::activate (first, first, "root", "Notation")
+        requested = Drive::press (first, "root", "Notation")
         expect (Drive::tickets requested, "proof:catalogue")
         manifest = "{\"libraries\":[{\"title\":\"Identity fixture\",\"path\":\"proof-libraries/identity.ndjson\"}]}"
         listed = readCompleted (requested, "proof:catalogue", "proof-libraries.json", manifest)
-        expect (Doc::has (Drive::findLabel ("Identity fixture", actions listed), "event"), true)
-        expect (AppCases::has (shown listed, "Checked theorem"), false)
-        selected = Drive::activate (listed, listed, "library-actions", "Identity fixture")
+        AppCases::holds (Drive::findLabel ("Identity fixture", actions listed), ["event"])
+        hides (listed, ["Checked theorem"])
+        selected = Drive::press (listed, "library-actions", "Identity fixture")
         expect (Drive::tickets selected, "proof:bundled:2")
-        checked = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImp ())
-        expect (AppCases::has (shown checked, "Checked theorem"), true)
-        expect (AppCases::has (shown checked, "Axioms: none"), true)
+        checked = bundledAt (selected, "proof:bundled:2", Fixtures::idImp ())
+        shows (checked, ["Checked theorem", "Axioms: none"])
         bundledLarge selected
         bundledRefused selected
         bundledRaces selected
@@ -294,61 +301,61 @@ module ImportedFlowCases
         Success padding => retainedBundled (selected, padding + Fixtures::idImp (), padding + Fixtures::idImpBad ())
 
     retainedBundled (selected, source, corrupted) =
-        large = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", source)
+        large = bundledAt (selected, "proof:bundled:2", source)
         held = Drive::hostSlices [large]
-        expect (Doc::flag (current large, "large"), true)
-        expect (Doc::text (current large, "selected"), "id_imp")
+        AppCases::flagged (current large, ["large"])
+        readsSelection (large, "id_imp")
         expect (Doc::text (held, "proof:import"), source)
-        expect (AppCases::has (shown large, "Checked theorem"), true)
+        shows (large, ["Checked theorem"])
         event = Drive::labelled (large, large, "library", "Theorem", Drive::quoted "id_imp")
         retained = Drive::postHeld (large, event, held)
-        expect (AppCases::has (shown retained, "Checked theorem"), true)
+        shows (retained, ["Checked theorem"])
         damaged = Drive::postHeld (large, event, JsonObject [Doc::str ("proof:import", corrupted)])
-        expect (AppCases::has (shown damaged, "Checked theorem"), false)
-        expect (AppCases::has (shown damaged, "type mismatch"), true)
+        hides (damaged, ["Checked theorem"])
+        shows (damaged, ["type mismatch"])
+
+    (** A bundled library read of `source` from the canonical identity fixture path. *)
+    bundledAt (envelope, ticket, source) = readCompleted (envelope, ticket, "proof-libraries/identity.ndjson", source)
 
     readCompleted (before, ticket, path, source) =
         file = JsonObject [Doc::str ("path", path), Doc::str ("error", ""), Doc::str ("text", source)]
         held = JsonObject [Doc::str (ticket, Doc::write (JsonObject [JsonMember "files" (JsonArray [file])]))]
-        Drive::postHeld (before, Drive::done (ticket, "{}"), held)
+        Drive::completedHeld (before, ticket, "{}", held)
 
     bundledRefused selected =
-        invalid = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImpBad ())
-        expect (AppCases::has (shown invalid, "Import refused"), true)
-        expect (AppCases::has (shown invalid, "Checked theorem"), false)
-        missing = readCompleted (selected, "proof:bundled:2", "proof-libraries/identity.ndjson", "")
-        expect (AppCases::has (shown missing, "Import refused"), true)
-        expect (AppCases::has (shown missing, "Checked theorem"), false)
+        invalid = bundledAt (selected, "proof:bundled:2", Fixtures::idImpBad ())
+        refusedWith (invalid, "Import refused")
+        missing = bundledAt (selected, "proof:bundled:2", "")
+        refusedWith (missing, "Import refused")
 
     bundledRaces selected =
         choice = Drive::findTitle ("Bundled proof libraries", actions selected)
-        reopened = Drive::post (selected, Drive::control ("library-actions", Drive::revision (selected, "library-actions"), Doc::number (choice, "event"), "true"))
-        newer = Drive::activate (reopened, reopened, "library-actions", "Identity fixture")
+        reopened = Drive::controlOf (selected, "library-actions", Doc::number (choice, "event"), "true")
+        newer = Drive::press (reopened, "library-actions", "Identity fixture")
         expect (Drive::tickets newer, "proof:bundled:3")
-        stale = readCompleted (newer, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImpBad ())
-        expect (Drive::keys stale, "")
-        checked = readCompleted (stale, "proof:bundled:3", "proof-libraries/identity.ndjson", Fixtures::idImp ())
-        expect (AppCases::has (shown checked, "Checked theorem"), true)
-        manual = loaded (Drive::activate (selected, selected, "library-actions", "Open proof library"), Fixtures::idImp ())
-        late = readCompleted (manual, "proof:bundled:2", "proof-libraries/identity.ndjson", Fixtures::idImpBad ())
-        expect (Drive::keys late, "")
-        expect (AppCases::has (shown manual, "Checked theorem"), true)
+        stale = bundledAt (newer, "proof:bundled:2", Fixtures::idImpBad ())
+        AppCases::undrawn stale
+        checked = bundledAt (stale, "proof:bundled:3", Fixtures::idImp ())
+        shows (checked, ["Checked theorem"])
+        manual = loaded (Drive::press (selected, "library-actions", "Open proof library"), Fixtures::idImp ())
+        late = bundledAt (manual, "proof:bundled:2", Fixtures::idImpBad ())
+        AppCases::undrawn late
+        shows (manual, ["Checked theorem"])
         wrong = readCompleted (selected, "proof:bundled:2", "proof-libraries/wrong.ndjson", Fixtures::idImp ())
-        expect (AppCases::has (shown wrong, "Import refused"), true)
-        expect (AppCases::has (shown wrong, "Checked theorem"), false)
+        refusedWith (wrong, "Import refused")
         failed = Drive::post (selected, Drive::failed ("proof:bundled:2", "file unavailable"))
-        expect (AppCases::has (shown failed, "Import refused"), true)
+        shows (failed, ["Import refused"])
 
     catalogueRefusals requested =
         sources = ["{", "{}", "{\"libraries\":[]}", "{\"libraries\":[{\"title\":\"Escape\",\"path\":\"proof-libraries/../secret.ndjson\"}]}"]
         forEachList (sources, \source =>
             refused = readCompleted (requested, "proof:catalogue", "proof-libraries.json", source)
-            expect (AppCases::has (Drive::visibleText (actions refused), "Bundled libraries could not be loaded"), true)
-            expect (AppCases::has (shown refused, "Checked theorem"), false))
+            told (refused, ["Bundled libraries could not be loaded"])
+            hides (refused, ["Checked theorem"]))
         wrong = readCompleted (requested, "proof:catalogue", "wrong.json", "{}")
-        expect (AppCases::has (Drive::visibleText (actions wrong), "different library catalogue"), true)
-        absent = Drive::postHeld (requested, Drive::done ("proof:catalogue", "{}"), JsonObject [])
-        expect (AppCases::has (Drive::visibleText (actions absent), "library read result is invalid"), true)
+        told (wrong, ["different library catalogue"])
+        absent = Drive::completedHeld (requested, "proof:catalogue", "{}", JsonObject [])
+        told (absent, ["library read result is invalid"])
 
     restoredCatalogue () =
         path = "proof-libraries/../../secrets.ndjson"
