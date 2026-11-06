@@ -19,7 +19,7 @@ The rules below go into the docs specs when this plan is implemented.
 
   | Video | Length | What it shows |
   | --- | --- | --- |
-  | `agent-native` | 1:20 | One app screenshot, panned, with captions. It shows no code. |
+  | `agent-native` | 1:20 | One app screenshot, panned. The agent is unfinished, so it has no tutorial (`[DOC-TUTORIAL-VIDEO-FINISHED]`). |
   | `package-manager` | 0:49 | A tour of the VS Code panel |
   | `static-typing-python` | 1:30 | A summary of the blog post |
   | `chromecast-from-mac` | 1:37 | A summary of the blog post |
@@ -48,6 +48,20 @@ Every entry in `src/_data/videos.json` has `"kind": "tutorial"` or
 [Osprey Native](../../src/toolchain/website/src/docs/osprey-native.md)) and has
 no page under `/docs/tutorials/`. The proof films keep their own learning path
 and are `intro` entries until they meet the tutorial rules.
+
+### `[DOC-TUTORIAL-VIDEO-OSPREY]` A tutorial teaches Osprey
+
+Tutorials exist to teach people Osprey: the language, its packages and its
+tools. Each one is titled by the Osprey concept it teaches (effects for I/O,
+type inference in the Python flavor, exports and externs, GPUI apps in
+Osprey, testing by label, profiling) and uses an app only as the worked
+example. A film about an app with no Osprey lesson is an `intro`.
+
+### `[DOC-TUTORIAL-VIDEO-FINISHED]` Tutorials only for finished, working features
+
+A tutorial teaches something a viewer can use today. A feature that is still
+in progress, such as Osprey Agent, gets no tutorial and no film on the docs
+home or install pages; at most a short `intro` on its own feature page.
 
 ### `[DOC-TUTORIAL-VIDEO-LENGTH]` A tutorial runs at least four minutes
 
@@ -128,20 +142,6 @@ Each tutorial below replaces the current video with the same id. Where the
 current video is a good introduction, it stays as an `intro` on its feature
 page.
 
-### `agent-native`: build a native coding agent in Osprey
-
-The current film becomes an `intro` on Osprey Native. The new tutorial walks
-through [`src/osprey/examples/agent`](../../src/osprey/examples/agent):
-
-- the agent loop in `main.ospml` and the effects it uses for the model,
-  tools and file system;
-- how a tool call goes from a model reply to a command and back as a result;
-- the MCP server and how `self-test/verify_mcp.py` drives it;
-- **Run:** `make -C src/toolchain/targets/macos agent PROJECT=...` on a sample
-  project, with the agent reading and editing a file;
-- **Change it:** add a tool, run the self-test, and see the new tool listed.
-- The unsandboxed warning stays on screen while the agent runs commands.
-
 ### `package-manager`: add, audit and remove a package
 
 Walks through the [`src/osprey/packages/manager`](../../src/osprey/packages/manager)
@@ -164,7 +164,7 @@ package written in the Python flavor, such as
 - **Run:** compile and run `interop.osp`, then `run.py`;
 - **Change it:** introduce a type mistake and fix it from the diagnostic.
 
-### `chromecast-from-mac`: cast to a TV from Osprey
+### `chromecast-from-mac`: effects for I/O, with casting as the example
 
 Walks through [`src/osprey/packages/chromecast/src`](../../src/osprey/packages/chromecast/src)
 (`cast.py`, `media.py`, `wire.py`):
@@ -228,14 +228,15 @@ Extends the current video to the full four steps using
       index (`[DOC-TUTORIAL-VIDEO-KIND]`). Every other entry still needs
       `"kind": "tutorial"`.
 - [x] Move `agent-native` to an `intro` page on Osprey Native
-      (`/docs/osprey-native/agent/`), with no tutorials page.
+      (`/docs/osprey-native/agent/`), with no tutorials page, and take it off
+      the docs home and install pages (`[DOC-TUTORIAL-VIDEO-FINISHED]`).
 - [x] Move every video, poster and caption track to the Videos repository,
       fetched by `make media` (`[MEDIA-EXTERNAL]`).
 - [ ] Add the website tests for `[DOC-TUTORIAL-VIDEO-LENGTH]`,
       `[DOC-TUTORIAL-VIDEO-CODE]` (code-scene share and path labels),
       `[DOC-TUTORIAL-VIDEO-PACKAGES]` and `[DOC-TUTORIAL-VIDEO-FRESH]`. They
       fail against the current videos.
-- [ ] Write the film and render each tutorial in the Videos repository: `agent-native`,
+- [ ] Write the film and render each tutorial in the Videos repository:
       `package-manager`, `static-typing-python`, `chromecast-from-mac`,
       `rust-ui-framework-without-rust`, `ui-testing-by-label`, `profiler`,
       `swift-interop`.

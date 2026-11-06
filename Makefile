@@ -86,7 +86,7 @@ fmt: $(EXT_NODE_DEPS)
 	cargo fmt --manifest-path src/toolchain/Cargo.toml --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
 
-## media: Download the pinned videos, posters and captions from the Videos repository (scripts/media/media.lock); prints "media: unpacked" or "already unpacked".
+## media: Download the pinned videos, posters and captions from the Videos repository (scripts/media/media.lock); prints "media: unpacked" or "already in place".
 .PHONY: media
 media:
 	@scripts/media/fetch.sh

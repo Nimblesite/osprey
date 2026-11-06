@@ -122,6 +122,10 @@ test("the tutorials section lists no introduction film", async ({ page }) => {
     expect(fs.existsSync(path.join(SITE, "docs/tutorials", id))).toBe(false);
   }
   expect(read("docs/osprey-native/agent/index.html")).toContain('data-video="agent-native"');
+  // [DOC-TUTORIAL-VIDEO-FINISHED]: an unfinished feature's film stays on its own feature page.
+  for (const page of ["docs/index.html", "docs/installation/index.html"]) {
+    for (const id of intros) expect(read(page), `${page} plays ${id}`).not.toContain(`data-video="${id}"`);
+  }
 });
 
 test("WebVTT cues and durations parse the way the markup needs them", async () => {

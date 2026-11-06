@@ -30,8 +30,6 @@ It is the quickest way to start. It bundles a version-matched Osprey compiler an
 
 Install **LLVM/clang first**, then the **Osprey compiler**. Osprey emits LLVM IR and invokes `clang` to link native programs; release packages include the compiler and C runtime archives, **not LLVM**. A missing compiler produces `clang: command not found` or `failed to spawn C compiler`.
 
-{% videoPlayer "agent-native", true %}
-
 ## What Osprey needs
 
 | Task | Required tools |
@@ -190,3 +188,5 @@ The current GC supports Apple and glibc-Linux. On Windows, select ARC. GC also s
 ## No install required
 
 Use the [Playground](/playground/) without installing a local toolchain. It sends Default, ML or Python-flavor source to the hosted compiler service and displays the result; compilation and execution happen on the server.
+
+{{ capture("/assets/images/guides/first-app-run.png", "The Playground running a Default-flavor program and showing its output.", "The Playground running a Default-flavor program and showing its output.", 1440, 920) }}
