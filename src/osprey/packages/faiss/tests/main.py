@@ -21,6 +21,17 @@ RTOL_SQRT = 0.000001
 ATOL_SQRT = 0.000001
 
 
+class Vectors:
+    """One oracle scenario's base and query matrices."""
+    base: list[list[float]]
+    query: list[list[float]]
+
+
+def vectors(s):
+    """The base and query matrices of one oracle scenario."""
+    return Vectors(base=unwrap_or(listGet(Expected.XB, s), []), query=unwrap_or(listGet(Expected.XQ, s), []))
+
+
 def d_of(xq):
     """The dimension of a scenario, read from its first query row."""
     return len(unwrap_or(listGet(xq, 0), []))
@@ -38,16 +49,15 @@ def int_rows(name, got, want):
 
 def search_scenario(metric, s):
     """All search assertions for one scenario and metric."""
-    xb = unwrap_or(listGet(Expected.XB, s), [])
-    xq = unwrap_or(listGet(Expected.XQ, s), [])
+    v = vectors(s)
     k = unwrap_or(listGet(Expected.KS, s), 1)
     sd = Expected.L2_SD if metric == "L2" else Expected.IP_SD
     si = Expected.L2_SI if metric == "L2" else Expected.IP_SI
     want_d = unwrap_or(listGet(sd, s), [])
     want_i = unwrap_or(listGet(si, s), [])
-    idx = add(IndexFlatL2(d_of(xq)) if metric == "L2" else IndexFlatIP(d_of(xq)), xb)
-    res = search(idx, xq, k)
-    rows = search_rows(metric, xb, xq, k)
+    idx = add(IndexFlatL2(d_of(v.query)) if metric == "L2" else IndexFlatIP(d_of(v.query)), v.base)
+    res = search(idx, v.query, k)
+    rows = search_rows(metric, v.base, v.query, k)
     direct = listConcat(close_rows(f"search.{metric}.{s}.D", res.distances, want_d, RTOL_EXACT, ATOL_EXACT), int_rows(f"search.{metric}.{s}.I", res.labels, want_i))
     materialized = listConcat(close_rows(f"search_rows.{metric}.{s}.D", rows.distances, want_d, RTOL_EXACT, ATOL_EXACT), int_rows(f"search_rows.{metric}.{s}.I", rows.labels, want_i))
     return listConcat(direct, materialized)
@@ -62,8 +72,7 @@ def search_cases():
 
 def range_scenario(metric, s):
     """All range-search assertions for one scenario and metric."""
-    xb = unwrap_or(listGet(Expected.XB, s), [])
-    xq = unwrap_or(listGet(Expected.XQ, s), [])
+    v = vectors(s)
     radius = unwrap_or(listGet(Expected.RADII, s), 0.0)
     rl = Expected.L2_RLIMS if metric == "L2" else Expected.IP_RLIMS
     rd = Expected.L2_RD if metric == "L2" else Expected.IP_RD
@@ -71,8 +80,8 @@ def range_scenario(metric, s):
     wl = unwrap_or(listGet(rl, s), [])
     wd = unwrap_or(listGet(rd, s), [])
     wi = unwrap_or(listGet(ri, s), [])
-    idx = add(IndexFlatL2(d_of(xq)) if metric == "L2" else IndexFlatIP(d_of(xq)), xb)
-    res = range_search(idx, xq, radius)
+    idx = add(IndexFlatL2(d_of(v.query)) if metric == "L2" else IndexFlatIP(d_of(v.query)), v.base)
+    res = range_search(idx, v.query, radius)
     return [
         Check.ints_equal(f"range.{metric}.{s}.lims", res.lims, wl),
         Check.close_all(f"range.{metric}.{s}.D", res.distances, wd, RTOL_EXACT, ATOL_EXACT),
@@ -101,9 +110,8 @@ def recon_one(t):
     i0 = unwrap_or(listGet(idx, 1), 0)
     ni0 = unwrap_or(listGet(idx, 2), 0)
     want = unwrap_or(listGet(Expected.RECON_V, t), [])
-    xb = unwrap_or(listGet(Expected.XB, s), [])
-    xq = unwrap_or(listGet(Expected.XQ, s), [])
-    built = add(IndexFlatL2(d_of(xq)), xb)
+    v = vectors(s)
+    built = add(IndexFlatL2(d_of(v.query)), v.base)
     got = reconstruct_n(built, i0, ni0)
     return close_rows(f"recon.{t}", value_of(got), want, RTOL_EXACT, ATOL_EXACT)
 
@@ -131,12 +139,11 @@ def remove_one(t):
     arg = unwrap_or(listGet(Expected.REMOVE_ARG, t), [])
     want_n = unwrap_or(listGet(Expected.REMOVE_N, t), 0)
     want_i = unwrap_or(listGet(Expected.REMOVE_SEARCH_I, t), [])
-    xb = unwrap_or(listGet(Expected.XB, s), [])
-    xq = unwrap_or(listGet(Expected.XQ, s), [])
+    v = vectors(s)
     sel = IDSelectorBatch(arg) if kind == "batch" else IDSelectorRange(unwrap_or(listGet(arg, 0), 0), unwrap_or(listGet(arg, 1), 0))
-    before = ntotal(add(IndexFlatL2(d_of(xq)), xb))
-    after_idx = remove_ids(add(IndexFlatL2(d_of(xq)), xb), sel)
-    res = search(after_idx, xq, 5)
+    before = ntotal(add(IndexFlatL2(d_of(v.query)), v.base))
+    after_idx = remove_ids(add(IndexFlatL2(d_of(v.query)), v.base), sel)
+    res = search(after_idx, v.query, 5)
     return listConcat(
         [Check.equal(f"remove.{t}.n", before - ntotal(after_idx), want_n)],
         int_rows(f"remove.{t}.I", res.labels, want_i))
@@ -151,13 +158,12 @@ def idmap_one(t):
     """One ID-map case: add_with_ids, search labels, IDMap2 reconstruct, removal."""
     s = unwrap_or(listGet(Expected.ID_SCEN, t), 0)
     ids = unwrap_or(listGet(Expected.ID_IDS, t), [])
-    xb = unwrap_or(listGet(Expected.XB, s), [])
-    xq = unwrap_or(listGet(Expected.XQ, s), [])
-    base = IndexFlatL2(d_of(xq))
-    m = add_with_ids(IndexIDMap(base), xb, ids)
-    m2 = add_with_ids(IndexIDMap2(base), xb, ids)
+    v = vectors(s)
+    base = IndexFlatL2(d_of(v.query))
+    m = add_with_ids(IndexIDMap(base), v.base, ids)
+    m2 = add_with_ids(IndexIDMap2(base), v.base, ids)
     removed = m if len(ids) == 0 else idmap_remove_ids(m, IDSelectorBatch([unwrap_or(listGet(ids, 0), -1)]))
-    return listConcat(idmap_searches(t, m, m2, removed, xq), idmap_recons(t, m, m2, ids))
+    return listConcat(idmap_searches(t, m, m2, removed, v.query), idmap_recons(t, m, m2, ids))
 
 
 def idmap_searches(t, m, m2, removed, xq):

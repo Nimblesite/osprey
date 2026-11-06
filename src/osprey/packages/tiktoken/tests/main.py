@@ -64,6 +64,22 @@ def concat(groups):
     """Flatten a list of outcome lists into one."""
     return foldList(groups, [], listConcat)
 
+def checked(name, result, compare):
+    """A `Result` case: `compare name value` when it answered, the reported failure otherwise."""
+    match result:
+        case Success(value=value):
+            return compare(name, value)
+        case Error(message=message):
+            return Check.failed(name, message)
+
+def refused(name, why, result):
+    """A `Result` case that must be an error; a success is the failure, reported as `why`."""
+    match result:
+        case Success(value=_value):
+            return Check.failed(name, why)
+        case Error(message=_message):
+            return Check.passed(name)
+
 # Encodings under test
 
 def trained_ranks():
@@ -113,48 +129,24 @@ def class_case(i):
 # Training
 
 def train_gpt2_case():
-    match Educational.bpe_train(Expected.CORPUS, Expected.TRAIN_VOCAB, Pattern.Gpt2()):
-        case Success(value=value):
-            return nested_equal("train.gpt2.merges", Bpe.merges_of(value), Expected.TRAIN_MERGES)
-        case Error(message=message):
-            return Check.failed("train.gpt2.merges", message)
+    return checked("train.gpt2.merges", Educational.bpe_train(Expected.CORPUS, Expected.TRAIN_VOCAB, Pattern.Gpt2()), lambda name, value: nested_equal(name, Bpe.merges_of(value), Expected.TRAIN_MERGES))
 
 def train_cl100k_case():
-    match Educational.bpe_train(Expected.CORPUS, Expected.TRAIN_VOCAB_CL100K, Pattern.Cl100kBase()):
-        case Success(value=value):
-            return nested_equal("train.cl100k.merges", Bpe.merges_of(value), Expected.TRAIN_MERGES_CL100K)
-        case Error(message=message):
-            return Check.failed("train.cl100k.merges", message)
+    return checked("train.cl100k.merges", Educational.bpe_train(Expected.CORPUS, Expected.TRAIN_VOCAB_CL100K, Pattern.Cl100kBase()), lambda name, value: nested_equal(name, Bpe.merges_of(value), Expected.TRAIN_MERGES_CL100K))
 
 def train_edge_case():
-    match Educational.bpe_train(Expected.CORPUS, 256, Pattern.Gpt2()):
-        case Success(value=value):
-            return nested_equal("train.edge.merges", Bpe.merges_of(value), Expected.TRAIN_EDGE_MERGES)
-        case Error(message=message):
-            return Check.failed("train.edge.merges", message)
+    return checked("train.edge.merges", Educational.bpe_train(Expected.CORPUS, 256, Pattern.Gpt2()), lambda name, value: nested_equal(name, Bpe.merges_of(value), Expected.TRAIN_EDGE_MERGES))
 
 def train_small_case():
-    match Educational.bpe_train(Expected.CORPUS, Expected.TRAIN_SMALL_VOCAB, Pattern.Gpt2()):
-        case Success(value=value):
-            return Check.failed("train.small", "expected an error for vocab_size < 256")
-        case Error(message=message):
-            return Check.passed("train.small")
+    return refused("train.small", "expected an error for vocab_size < 256", Educational.bpe_train(Expected.CORPUS, Expected.TRAIN_SMALL_VOCAB, Pattern.Gpt2()))
 
 # Encoding (ordinary and special-token aware)
 
 def encode_ordinary_case(enc, i):
-    match Core.encode_ordinary(enc, text(atl(Expected.ENC_TEXTS, i))):
-        case Success(value=value):
-            return Check.ints_equal(f"encode.ordinary[{i}]", value, atl(Expected.ENC_ORDINARY, i))
-        case Error(message=message):
-            return Check.failed(f"encode.ordinary[{i}]", message)
+    return checked(f"encode.ordinary[{i}]", Core.encode_ordinary(enc, text(atl(Expected.ENC_TEXTS, i))), lambda name, value: Check.ints_equal(name, value, atl(Expected.ENC_ORDINARY, i)))
 
 def encode_all_case(enc, i):
-    match Core.encode(enc, text(atl(Expected.ENC_ALL_TEXTS, i)), ALL_SPECIALS):
-        case Success(value=value):
-            return Check.ints_equal(f"encode.all[{i}]", value, atl(Expected.ENC_ALL_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"encode.all[{i}]", message)
+    return checked(f"encode.all[{i}]", Core.encode(enc, text(atl(Expected.ENC_ALL_TEXTS, i)), ALL_SPECIALS), lambda name, value: Check.ints_equal(name, value, atl(Expected.ENC_ALL_IDS, i)))
 
 def encode_one_case(enc, i):
     want_error = atb(Expected.ENC_ONE_ERROR, i)
@@ -176,18 +168,10 @@ def encode_none_case(enc, i):
 # Decoding
 
 def decode_replace_case(enc, i):
-    match Core.decode(enc, atl(Expected.DECODE_SEQS, i)):
-        case Success(value=value):
-            return Check.equal(f"decode.replace[{i}]", value, ats(Expected.DECODE_REPLACE, i))
-        case Error(message=message):
-            return Check.failed(f"decode.replace[{i}]", message)
+    return checked(f"decode.replace[{i}]", Core.decode(enc, atl(Expected.DECODE_SEQS, i)), lambda name, value: Check.equal(name, value, ats(Expected.DECODE_REPLACE, i)))
 
 def decode_ignore_case(enc, i):
-    match Core.decode_errors(enc, atl(Expected.DECODE_SEQS, i), "ignore"):
-        case Success(value=value):
-            return Check.equal(f"decode.ignore[{i}]", value, ats(Expected.DECODE_IGNORE, i))
-        case Error(message=message):
-            return Check.failed(f"decode.ignore[{i}]", message)
+    return checked(f"decode.ignore[{i}]", Core.decode_errors(enc, atl(Expected.DECODE_SEQS, i), "ignore"), lambda name, value: Check.equal(name, value, ats(Expected.DECODE_IGNORE, i)))
 
 def decode_strict_case(enc, i):
     want_ok = atb(Expected.DECODE_STRICT_OK, i)
@@ -198,25 +182,13 @@ def decode_strict_case(enc, i):
             return Check.truth(f"decode.strict[{i}]", not want_ok, message)
 
 def decode_nul_case(enc, i):
-    match Core.decode(enc, atl(Expected.DECODE_NUL_SEQS, i)):
-        case Success(value=value):
-            return Check.failed(f"decode.nul[{i}]", "expected an error for NUL")
-        case Error(message=message):
-            return Check.passed(f"decode.nul[{i}]")
+    return refused(f"decode.nul[{i}]", "expected an error for NUL", Core.decode(enc, atl(Expected.DECODE_NUL_SEQS, i)))
 
 def decode_unknown_case(enc, i):
-    match Core.decode(enc, atl(Expected.DECODE_UNKNOWN_SEQS, i)):
-        case Success(value=value):
-            return Check.failed(f"decode.unknown[{i}]", "expected an unknown-token error")
-        case Error(message=message):
-            return Check.passed(f"decode.unknown[{i}]")
+    return refused(f"decode.unknown[{i}]", "expected an unknown-token error", Core.decode(enc, atl(Expected.DECODE_UNKNOWN_SEQS, i)))
 
 def decode_bytes_case(enc, i):
-    match Core.decode_bytes(enc, atl(Expected.DECODE_BYTES_CASES, i)):
-        case Success(value=value):
-            return Check.ints_equal(f"decode.bytes[{i}]", value, atl(Expected.DECODE_BYTES, i))
-        case Error(message=message):
-            return Check.failed(f"decode.bytes[{i}]", message)
+    return checked(f"decode.bytes[{i}]", Core.decode_bytes(enc, atl(Expected.DECODE_BYTES_CASES, i)), lambda name, value: Check.ints_equal(name, value, atl(Expected.DECODE_BYTES, i)))
 
 # Single tokens and token byte values
 
@@ -237,11 +209,7 @@ def single_bytes_case(enc, i):
             return Check.truth(f"single.bytes[{i}]", want_error, message)
 
 def tokens_bytes_case(enc, i):
-    match Core.decode_tokens_bytes(enc, atl(Expected.TOKENS_BYTES_SEQS, i)):
-        case Success(value=value):
-            return nested_equal(f"tokens.bytes[{i}]", value, atl(Expected.TOKENS_BYTES, i))
-        case Error(message=message):
-            return Check.failed(f"tokens.bytes[{i}]", message)
+    return checked(f"tokens.bytes[{i}]", Core.decode_tokens_bytes(enc, atl(Expected.TOKENS_BYTES_SEQS, i)), lambda name, value: nested_equal(name, value, atl(Expected.TOKENS_BYTES, i)))
 
 def special_probe(i):
     """The token the oracle probed for is_special_token at index i."""
@@ -280,48 +248,24 @@ def vocab_cases(enc):
 # Overlap and truncation encodings
 
 def overlap_case(i):
-    match Core.encode(overlap_enc(), text(atl(Expected.OVERLAP_TEXTS, i)), ["<|a|>", "<|a|>x", "<|b|>"]):
-        case Success(value=value):
-            return Check.ints_equal(f"overlap[{i}]", value, atl(Expected.OVERLAP_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"overlap[{i}]", message)
+    return checked(f"overlap[{i}]", Core.encode(overlap_enc(), text(atl(Expected.OVERLAP_TEXTS, i)), ["<|a|>", "<|a|>x", "<|b|>"]), lambda name, value: Check.ints_equal(name, value, atl(Expected.OVERLAP_IDS, i)))
 
 def gpt2_trunc_ordinary_case(i):
-    match Core.encode_ordinary(gpt2_trunc_enc(), text(atl(Expected.GPT2_TRUNC_TEXTS, i))):
-        case Success(value=value):
-            return Check.ints_equal(f"gpt2.trunc[{i}]", value, atl(Expected.GPT2_TRUNC_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"gpt2.trunc[{i}]", message)
+    return checked(f"gpt2.trunc[{i}]", Core.encode_ordinary(gpt2_trunc_enc(), text(atl(Expected.GPT2_TRUNC_TEXTS, i))), lambda name, value: Check.ints_equal(name, value, atl(Expected.GPT2_TRUNC_IDS, i)))
 
 def gpt2_trunc_special_case(i):
-    match Core.encode(gpt2_trunc_enc(), text(atl(Expected.GPT2_TRUNC_TEXTS, i)), ["<|endoftext|>"]):
-        case Success(value=value):
-            return Check.ints_equal(f"gpt2.trunc.special[{i}]", value, atl(Expected.GPT2_TRUNC_SPECIAL_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"gpt2.trunc.special[{i}]", message)
+    return checked(f"gpt2.trunc.special[{i}]", Core.encode(gpt2_trunc_enc(), text(atl(Expected.GPT2_TRUNC_TEXTS, i)), ["<|endoftext|>"]), lambda name, value: Check.ints_equal(name, value, atl(Expected.GPT2_TRUNC_SPECIAL_IDS, i)))
 
 def cl100k_trunc_ordinary_case(i):
-    match Core.encode_ordinary(cl100k_trunc_enc(), text(atl(Expected.CL100K_TRUNC_TEXTS, i))):
-        case Success(value=value):
-            return Check.ints_equal(f"cl100k.trunc[{i}]", value, atl(Expected.CL100K_TRUNC_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"cl100k.trunc[{i}]", message)
+    return checked(f"cl100k.trunc[{i}]", Core.encode_ordinary(cl100k_trunc_enc(), text(atl(Expected.CL100K_TRUNC_TEXTS, i))), lambda name, value: Check.ints_equal(name, value, atl(Expected.CL100K_TRUNC_IDS, i)))
 
 def cl100k_trunc_special_case(i):
-    match Core.encode(cl100k_trunc_enc(), text(atl(Expected.CL100K_TRUNC_TEXTS, i)), ["<|endoftext|>"]):
-        case Success(value=value):
-            return Check.ints_equal(f"cl100k.trunc.special[{i}]", value, atl(Expected.CL100K_TRUNC_SPECIAL_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"cl100k.trunc.special[{i}]", message)
+    return checked(f"cl100k.trunc.special[{i}]", Core.encode(cl100k_trunc_enc(), text(atl(Expected.CL100K_TRUNC_TEXTS, i)), ["<|endoftext|>"]), lambda name, value: Check.ints_equal(name, value, atl(Expected.CL100K_TRUNC_SPECIAL_IDS, i)))
 
 # Educational codec and module-level bpe_encode
 
 def simple_ids_case(i):
-    match Educational.encode(simple_enc(), text(atl(Expected.SIMPLE_TEXTS, i))):
-        case Success(value=value):
-            return Check.ints_equal(f"simple.ids[{i}]", value, atl(Expected.SIMPLE_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"simple.ids[{i}]", message)
+    return checked(f"simple.ids[{i}]", Educational.encode(simple_enc(), text(atl(Expected.SIMPLE_TEXTS, i))), lambda name, value: Check.ints_equal(name, value, atl(Expected.SIMPLE_IDS, i)))
 
 def encode_ids(s):
     """The educational codec's ids for a string, [] on error."""
@@ -337,34 +281,18 @@ def simple_decode_ids_case(i):
 
 def simple_decode_case(i):
     s = ats(Expected.SIMPLE_DECODE_TEXTS, i)
-    match Educational.decode(simple_enc(), encode_ids(s)):
-        case Success(value=value):
-            return Check.equal(f"simple.decode[{i}]", value, ats(Expected.SIMPLE_DECODE, i))
-        case Error(message=message):
-            return Check.failed(f"simple.decode[{i}]", message)
+    return checked(f"simple.decode[{i}]", Educational.decode(simple_enc(), encode_ids(s)), lambda name, value: Check.equal(name, value, ats(Expected.SIMPLE_DECODE, i)))
 
 def simple_decode_bytes_case(i):
     s = ats(Expected.SIMPLE_DECODE_TEXTS, i)
-    match Educational.decode_bytes(simple_enc(), encode_ids(s)):
-        case Success(value=value):
-            return Check.ints_equal(f"simple.decode.bytes[{i}]", value, atl(Expected.SIMPLE_DECODE_BYTES, i))
-        case Error(message=message):
-            return Check.failed(f"simple.decode.bytes[{i}]", message)
+    return checked(f"simple.decode.bytes[{i}]", Educational.decode_bytes(simple_enc(), encode_ids(s)), lambda name, value: Check.ints_equal(name, value, atl(Expected.SIMPLE_DECODE_BYTES, i)))
 
 def simple_tokens_bytes_case(i):
     s = ats(Expected.SIMPLE_DECODE_TEXTS, i)
-    match Educational.decode_tokens_bytes(simple_enc(), encode_ids(s)):
-        case Success(value=value):
-            return nested_equal(f"simple.tokens.bytes[{i}]", value, atl(Expected.SIMPLE_TOKENS_BYTES, i))
-        case Error(message=message):
-            return Check.failed(f"simple.tokens.bytes[{i}]", message)
+    return checked(f"simple.tokens.bytes[{i}]", Educational.decode_tokens_bytes(simple_enc(), encode_ids(s)), lambda name, value: nested_equal(name, value, atl(Expected.SIMPLE_TOKENS_BYTES, i)))
 
 def bpe_case(i):
-    match Educational.bpe_encode(trained_ranks(), atl(Expected.BPE_PIECES, i)):
-        case Success(value=value):
-            return Check.ints_equal(f"bpe[{i}]", value, atl(Expected.BPE_IDS, i))
-        case Error(message=message):
-            return Check.failed(f"bpe[{i}]", message)
+    return checked(f"bpe[{i}]", Educational.bpe_encode(trained_ranks(), atl(Expected.BPE_PIECES, i)), lambda name, value: Check.ints_equal(name, value, atl(Expected.BPE_IDS, i)))
 
 # Suite assembly
 

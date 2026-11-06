@@ -59,6 +59,29 @@ def scalar2_nf_fin(name, fn, xs, ys, zs, rtol, atol):
                                                              Check.float_of(unwrap_or(listGet(zs, i), "")), rtol, atol)))
 
 
+def scalar1_both(name, fn, xs, ys, nfx, nfy, rtol, atol):
+    """A one-argument scalar function: the finite cases, then the text-decoded ones."""
+    return listConcat(scalar1(name, fn, xs, ys, rtol, atol),
+                      scalar1_nf(name, fn, nfx, nfy, rtol, atol))
+
+
+def scalar2_both(name, fn, xs, ys, zs, nfx, nfy, nfz, rtol, atol):
+    """A two-argument scalar function whose text cases decode both operands and the result."""
+    return listConcat(scalar2(name, fn, xs, ys, zs, rtol, atol),
+                      scalar2_nf(name, fn, nfx, nfy, nfz, rtol, atol))
+
+
+def scalar2_both_fin(name, fn, xs, ys, zs, nfx, nfy, nfz, rtol, atol):
+    """A two-argument scalar function: finite float operands, text result."""
+    return listConcat(scalar2(name, fn, xs, ys, zs, rtol, atol),
+                      scalar2_nf_fin(name, fn, nfx, nfy, nfz, rtol, atol))
+
+
+def over(name, wants, step):
+    """Every case of a table: `step` names and checks case `i` of `wants`."""
+    return toList(map(range(len(wants)), lambda i: step(f"{name}[{i}]", i)))
+
+
 def ints1(name, fn, xs, ys):
     """One-argument int function, exact equality."""
     return toList(map(range(len(ys)), lambda i: Check.equal(f"{name}[{i}]", fn(unwrap_or(listGet(xs, i), 0)), unwrap_or(listGet(ys, i), 0))))
@@ -83,53 +106,43 @@ def poly_cases(nf):
 
 
 def gamma_cases():
-    return listConcat(scalar1("gamma", Special.gamma, Expected.GAMMA_X, Expected.GAMMA_Y, PURE_R, PURE_A),
-                      scalar1_nf("gamma", Special.gamma, Expected.GAMMA_NF_X, Expected.GAMMA_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("gamma", Special.gamma, Expected.GAMMA_X, Expected.GAMMA_Y, Expected.GAMMA_NF_X, Expected.GAMMA_NF_Y, PURE_R, PURE_A)
 
 
 def gammaln_cases():
-    return listConcat(scalar1("gammaln", Special.gammaln, Expected.GAMMALN_X, Expected.GAMMALN_Y, LGAM_R, LGAM_A),
-                      scalar1_nf("gammaln", Special.gammaln, Expected.GAMMALN_NF_X, Expected.GAMMALN_NF_Y, LGAM_R, LGAM_A))
+    return scalar1_both("gammaln", Special.gammaln, Expected.GAMMALN_X, Expected.GAMMALN_Y, Expected.GAMMALN_NF_X, Expected.GAMMALN_NF_Y, LGAM_R, LGAM_A)
 
 
 def loggamma_cases():
-    return listConcat(scalar1("loggamma", Special.loggamma, Expected.LOGGAMMA_X, Expected.LOGGAMMA_Y, LGAM_R, LGAM_A),
-                      scalar1_nf("loggamma", Special.loggamma, Expected.LOGGAMMA_NF_X, Expected.LOGGAMMA_NF_Y, LGAM_R, LGAM_A))
+    return scalar1_both("loggamma", Special.loggamma, Expected.LOGGAMMA_X, Expected.LOGGAMMA_Y, Expected.LOGGAMMA_NF_X, Expected.LOGGAMMA_NF_Y, LGAM_R, LGAM_A)
 
 
 def rgamma_cases():
-    return listConcat(scalar1("rgamma", Special.rgamma, Expected.RGAMMA_X, Expected.RGAMMA_Y, PURE_R, PURE_A),
-                      scalar1_nf("rgamma", Special.rgamma, Expected.RGAMMA_NF_X, Expected.RGAMMA_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("rgamma", Special.rgamma, Expected.RGAMMA_X, Expected.RGAMMA_Y, Expected.RGAMMA_NF_X, Expected.RGAMMA_NF_Y, PURE_R, PURE_A)
 
 
 def digamma_cases():
-    return listConcat(scalar1("digamma", Special.digamma, Expected.DIGAMMA_X, Expected.DIGAMMA_Y, ROOT_R, ROOT_A),
-                      scalar1_nf("digamma", Special.digamma, Expected.DIGAMMA_NF_X, Expected.DIGAMMA_NF_Y, ROOT_R, ROOT_A))
+    return scalar1_both("digamma", Special.digamma, Expected.DIGAMMA_X, Expected.DIGAMMA_Y, Expected.DIGAMMA_NF_X, Expected.DIGAMMA_NF_Y, ROOT_R, ROOT_A)
 
 
 def zeta_cases():
-    return listConcat(scalar1("zeta", Special.zeta, Expected.ZETA_X, Expected.ZETA_Y, PURE_R, PURE_A),
-                      scalar1_nf("zeta", Special.zeta, Expected.ZETA_NF_X, Expected.ZETA_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("zeta", Special.zeta, Expected.ZETA_X, Expected.ZETA_Y, Expected.ZETA_NF_X, Expected.ZETA_NF_Y, PURE_R, PURE_A)
 
 
 def zetaq_cases():
-    return listConcat(scalar2("zeta_q", Special.zeta_q, Expected.ZETAQ_X, Expected.ZETAQ_Q, Expected.ZETAQ_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("zeta_q", Special.zeta_q, Expected.ZETAQ_NF_X, Expected.ZETAQ_NF_Q, Expected.ZETAQ_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("zeta_q", Special.zeta_q, Expected.ZETAQ_X, Expected.ZETAQ_Q, Expected.ZETAQ_Y, Expected.ZETAQ_NF_X, Expected.ZETAQ_NF_Q, Expected.ZETAQ_NF_Y, PURE_R, PURE_A)
 
 
 def beta_cases():
-    return listConcat(scalar2("beta", Special.beta, Expected.BETA_A, Expected.BETA_B, Expected.BETA_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("beta", Special.beta, Expected.BETA_NF_A, Expected.BETA_NF_B, Expected.BETA_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("beta", Special.beta, Expected.BETA_A, Expected.BETA_B, Expected.BETA_Y, Expected.BETA_NF_A, Expected.BETA_NF_B, Expected.BETA_NF_Y, PURE_R, PURE_A)
 
 
 def betaln_cases():
-    return listConcat(scalar2("betaln", Special.betaln, Expected.BETALN_A, Expected.BETALN_B, Expected.BETALN_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("betaln", Special.betaln, Expected.BETALN_NF_A, Expected.BETALN_NF_B, Expected.BETALN_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("betaln", Special.betaln, Expected.BETALN_A, Expected.BETALN_B, Expected.BETALN_Y, Expected.BETALN_NF_A, Expected.BETALN_NF_B, Expected.BETALN_NF_Y, PURE_R, PURE_A)
 
 
 def factorial_cases():
-    return listConcat(scalar1("factorial", Special.factorial, Expected.FACT_X, Expected.FACT_Y, PURE_R, PURE_A),
-                      scalar1_nf("factorial", Special.factorial, Expected.FACT_NF_X, Expected.FACT_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("factorial", Special.factorial, Expected.FACT_X, Expected.FACT_Y, Expected.FACT_NF_X, Expected.FACT_NF_Y, PURE_R, PURE_A)
 
 
 def factorial_exact_cases():
@@ -137,8 +150,7 @@ def factorial_exact_cases():
 
 
 def comb_cases():
-    return listConcat(scalar2("comb", Special.comb, Expected.COMB_N, Expected.COMB_K, Expected.COMB_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("comb", Special.comb, Expected.COMB_NF_N, Expected.COMB_NF_K, Expected.COMB_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("comb", Special.comb, Expected.COMB_N, Expected.COMB_K, Expected.COMB_Y, Expected.COMB_NF_N, Expected.COMB_NF_K, Expected.COMB_NF_Y, PURE_R, PURE_A)
 
 
 def comb_exact_cases():
@@ -146,8 +158,7 @@ def comb_exact_cases():
 
 
 def perm_cases():
-    return listConcat(scalar2("perm", Special.perm, Expected.PERM_N, Expected.PERM_K, Expected.PERM_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("perm", Special.perm, Expected.PERM_NF_N, Expected.PERM_NF_K, Expected.PERM_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("perm", Special.perm, Expected.PERM_N, Expected.PERM_K, Expected.PERM_Y, Expected.PERM_NF_N, Expected.PERM_NF_K, Expected.PERM_NF_Y, PURE_R, PURE_A)
 
 
 def perm_exact_cases():
@@ -155,73 +166,59 @@ def perm_exact_cases():
 
 
 def binom_cases():
-    return listConcat(scalar2("binom", Special.binom, Expected.BINOM_N, Expected.BINOM_K, Expected.BINOM_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("binom", Special.binom, Expected.BINOM_NF_N, Expected.BINOM_NF_K, Expected.BINOM_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("binom", Special.binom, Expected.BINOM_N, Expected.BINOM_K, Expected.BINOM_Y, Expected.BINOM_NF_N, Expected.BINOM_NF_K, Expected.BINOM_NF_Y, PURE_R, PURE_A)
 
 
 def poch_cases():
-    return listConcat(scalar2("poch", Special.poch, Expected.POCH_A, Expected.POCH_M, Expected.POCH_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("poch", Special.poch, Expected.POCH_NF_A, Expected.POCH_NF_M, Expected.POCH_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("poch", Special.poch, Expected.POCH_A, Expected.POCH_M, Expected.POCH_Y, Expected.POCH_NF_A, Expected.POCH_NF_M, Expected.POCH_NF_Y, PURE_R, PURE_A)
 
 
 def expit_cases():
-    return listConcat(scalar1("expit", Special.expit, Expected.EXPIT_X, Expected.EXPIT_Y, PURE_R, PURE_A),
-                      scalar1_nf("expit", Special.expit, Expected.EXPIT_NF_X, Expected.EXPIT_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("expit", Special.expit, Expected.EXPIT_X, Expected.EXPIT_Y, Expected.EXPIT_NF_X, Expected.EXPIT_NF_Y, PURE_R, PURE_A)
 
 
 def log_expit_cases():
-    return listConcat(scalar1("log_expit", Special.log_expit, Expected.LOG_EXPIT_X, Expected.LOG_EXPIT_Y, PURE_R, PURE_A),
-                      scalar1_nf("log_expit", Special.log_expit, Expected.LOG_EXPIT_NF_X, Expected.LOG_EXPIT_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("log_expit", Special.log_expit, Expected.LOG_EXPIT_X, Expected.LOG_EXPIT_Y, Expected.LOG_EXPIT_NF_X, Expected.LOG_EXPIT_NF_Y, PURE_R, PURE_A)
 
 
 def logit_cases():
-    return listConcat(scalar1("logit", Special.logit, Expected.LOGIT_X, Expected.LOGIT_Y, PURE_R, PURE_A),
-                      scalar1_nf("logit", Special.logit, Expected.LOGIT_NF_X, Expected.LOGIT_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("logit", Special.logit, Expected.LOGIT_X, Expected.LOGIT_Y, Expected.LOGIT_NF_X, Expected.LOGIT_NF_Y, PURE_R, PURE_A)
 
 
 def xlogy_cases():
-    return listConcat(scalar2("xlogy", Special.xlogy, Expected.XLOGY_X, Expected.XLOGY_Y, Expected.XLOGY_Z, PURE_R, PURE_A),
-                      scalar2_nf("xlogy", Special.xlogy, Expected.XLOGY_NF_X, Expected.XLOGY_NF_Y, Expected.XLOGY_NF_Z, PURE_R, PURE_A))
+    return scalar2_both("xlogy", Special.xlogy, Expected.XLOGY_X, Expected.XLOGY_Y, Expected.XLOGY_Z, Expected.XLOGY_NF_X, Expected.XLOGY_NF_Y, Expected.XLOGY_NF_Z, PURE_R, PURE_A)
 
 
 def xlog1py_cases():
-    return listConcat(scalar2("xlog1py", Special.xlog1py, Expected.XLOG1PY_X, Expected.XLOG1PY_Y, Expected.XLOG1PY_Z, PURE_R, PURE_A),
-                      scalar2_nf("xlog1py", Special.xlog1py, Expected.XLOG1PY_NF_X, Expected.XLOG1PY_NF_Y, Expected.XLOG1PY_NF_Z, PURE_R, PURE_A))
+    return scalar2_both("xlog1py", Special.xlog1py, Expected.XLOG1PY_X, Expected.XLOG1PY_Y, Expected.XLOG1PY_Z, Expected.XLOG1PY_NF_X, Expected.XLOG1PY_NF_Y, Expected.XLOG1PY_NF_Z, PURE_R, PURE_A)
 
 
 def entr_cases():
-    return listConcat(scalar1("entr", Special.entr, Expected.ENTR_X, Expected.ENTR_Y, PURE_R, PURE_A),
-                      scalar1_nf("entr", Special.entr, Expected.ENTR_NF_X, Expected.ENTR_NF_Y, PURE_R, PURE_A))
+    return scalar1_both("entr", Special.entr, Expected.ENTR_X, Expected.ENTR_Y, Expected.ENTR_NF_X, Expected.ENTR_NF_Y, PURE_R, PURE_A)
 
 
 def rel_entr_cases():
-    return listConcat(scalar2("rel_entr", Special.rel_entr, Expected.REL_ENTR_X, Expected.REL_ENTR_Y, Expected.REL_ENTR_Z, PURE_R, PURE_A),
-                      scalar2_nf("rel_entr", Special.rel_entr, Expected.REL_ENTR_NF_X, Expected.REL_ENTR_NF_Y, Expected.REL_ENTR_NF_Z, PURE_R, PURE_A))
+    return scalar2_both("rel_entr", Special.rel_entr, Expected.REL_ENTR_X, Expected.REL_ENTR_Y, Expected.REL_ENTR_Z, Expected.REL_ENTR_NF_X, Expected.REL_ENTR_NF_Y, Expected.REL_ENTR_NF_Z, PURE_R, PURE_A)
 
 
 def kl_div_cases():
-    return listConcat(scalar2("kl_div", Special.kl_div, Expected.KL_DIV_X, Expected.KL_DIV_Y, Expected.KL_DIV_Z, PURE_R, PURE_A),
-                      scalar2_nf("kl_div", Special.kl_div, Expected.KL_DIV_NF_X, Expected.KL_DIV_NF_Y, Expected.KL_DIV_NF_Z, PURE_R, PURE_A))
+    return scalar2_both("kl_div", Special.kl_div, Expected.KL_DIV_X, Expected.KL_DIV_Y, Expected.KL_DIV_Z, Expected.KL_DIV_NF_X, Expected.KL_DIV_NF_Y, Expected.KL_DIV_NF_Z, PURE_R, PURE_A)
 
 
 def huber_cases():
-    return listConcat(scalar2("huber", Special.huber, Expected.HUBER_D, Expected.HUBER_R, Expected.HUBER_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("huber", Special.huber, Expected.HUBER_NF_D, Expected.HUBER_NF_R, Expected.HUBER_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("huber", Special.huber, Expected.HUBER_D, Expected.HUBER_R, Expected.HUBER_Y, Expected.HUBER_NF_D, Expected.HUBER_NF_R, Expected.HUBER_NF_Y, PURE_R, PURE_A)
 
 
 def pseudo_huber_cases():
-    return listConcat(scalar2("pseudo_huber", Special.pseudo_huber, Expected.PHUBER_D, Expected.PHUBER_R, Expected.PHUBER_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("pseudo_huber", Special.pseudo_huber, Expected.PHUBER_NF_D, Expected.PHUBER_NF_R, Expected.PHUBER_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("pseudo_huber", Special.pseudo_huber, Expected.PHUBER_D, Expected.PHUBER_R, Expected.PHUBER_Y, Expected.PHUBER_NF_D, Expected.PHUBER_NF_R, Expected.PHUBER_NF_Y, PURE_R, PURE_A)
 
 
 def boxcox_cases():
-    return listConcat(scalar2("boxcox", Special.boxcox, Expected.BOXCOX_X, Expected.BOXCOX_L, Expected.BOXCOX_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("boxcox", Special.boxcox, Expected.BOXCOX_NF_X, Expected.BOXCOX_NF_L, Expected.BOXCOX_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("boxcox", Special.boxcox, Expected.BOXCOX_X, Expected.BOXCOX_L, Expected.BOXCOX_Y, Expected.BOXCOX_NF_X, Expected.BOXCOX_NF_L, Expected.BOXCOX_NF_Y, PURE_R, PURE_A)
 
 
 def inv_boxcox_cases():
-    return listConcat(scalar2("inv_boxcox", Special.inv_boxcox, Expected.IBOX_X, Expected.IBOX_L, Expected.IBOX_Y, PURE_R, PURE_A),
-                      scalar2_nf_fin("inv_boxcox", Special.inv_boxcox, Expected.IBOX_NF_X, Expected.IBOX_NF_L, Expected.IBOX_NF_Y, PURE_R, PURE_A))
+    return scalar2_both_fin("inv_boxcox", Special.inv_boxcox, Expected.IBOX_X, Expected.IBOX_L, Expected.IBOX_Y, Expected.IBOX_NF_X, Expected.IBOX_NF_L, Expected.IBOX_NF_Y, PURE_R, PURE_A)
 
 
 def lse_cases():
@@ -236,22 +233,21 @@ def lse_cases():
 
 
 def lse_b_cases():
-    return toList(map(range(len(Expected.LSEB_Y)), lambda i: Check.close(
-        f"logsumexp_b[{i}]",
-        Special.logsumexp_b(unwrap_or(listGet(Expected.LSEB_A, i), []), unwrap_or(listGet(Expected.LSEB_B, i), [])),
-        unwrap_or(listGet(Expected.LSEB_Y, i), 0.0), PURE_R, PURE_A)))
+    return over("logsumexp_b", Expected.LSEB_Y, lambda name, i: Check.close(
+        name, Special.logsumexp_b(unwrap_or(listGet(Expected.LSEB_A, i), []), unwrap_or(listGet(Expected.LSEB_B, i), [])),
+        unwrap_or(listGet(Expected.LSEB_Y, i), 0.0), PURE_R, PURE_A))
 
 
 def softmax_cases():
-    return toList(map(range(len(Expected.SOFT_Y)), lambda i: Check.close_all(
-        f"softmax[{i}]", Special.softmax(unwrap_or(listGet(Expected.SOFT_IN, i), [])),
-        unwrap_or(listGet(Expected.SOFT_Y, i), []), LIST_R, LIST_A)))
+    return over("softmax", Expected.SOFT_Y, lambda name, i: Check.close_all(
+        name, Special.softmax(unwrap_or(listGet(Expected.SOFT_IN, i), [])),
+        unwrap_or(listGet(Expected.SOFT_Y, i), []), LIST_R, LIST_A))
 
 
 def log_softmax_cases():
-    return toList(map(range(len(Expected.LOGSOFT_Y)), lambda i: Check.close_all(
-        f"log_softmax[{i}]", Special.log_softmax(unwrap_or(listGet(Expected.LOGSOFT_IN, i), [])),
-        unwrap_or(listGet(Expected.LOGSOFT_Y, i), []), LIST_R, LIST_A)))
+    return over("log_softmax", Expected.LOGSOFT_Y, lambda name, i: Check.close_all(
+        name, Special.log_softmax(unwrap_or(listGet(Expected.LOGSOFT_IN, i), [])),
+        unwrap_or(listGet(Expected.LOGSOFT_Y, i), []), LIST_R, LIST_A))
 
 
 def constant_cases():

@@ -16,10 +16,7 @@ cable index = listGet driven.drivenSeen.renderedCurves index ?: []
 cableIs (index, expected) =
     actual = cable index
     expect (length actual, 4)
-    near (listGet actual 0 ?: 0.0, listGet expected 0 ?: 1.0)
-    near (listGet actual 1 ?: 0.0, listGet expected 1 ?: 1.0)
-    near (listGet actual 2 ?: 0.0, listGet expected 2 ?: 1.0)
-    near (listGet actual 3 ?: 0.0, listGet expected 3 ?: 1.0)
+    forEachList ([0, 1, 2, 3], \i => near (listGet actual i ?: 0.0, listGet expected i ?: 1.0))
 
 // Where the host was last told to draw the sprite at atlas `index`.
 spriteAt index =
@@ -89,18 +86,10 @@ filterDrag () =
 
 // The moved Filter's switch, slider and body answer where they now are; a press that stays put still selects.
 movedControls () =
-    tap "Bypass Filter"
-    flag ("processOn", false)
-    tap "Enable Filter"
-    flag ("processOn", true)
+    switched ("Bypass Filter", "Enable Filter", "process")
     tapAt ("Filter Cutoff", 0.25)
     knobNumber ("process", 0.25)
-    tap "Select Master"
-    knobText ("selected", "output")
-    tap "Select Filter"
-    knobText ("selected", "process")
-    tap "Select Oscillator"
-    knobText ("selected", "source")
+    selects ([{ label = "Select Master", role = "output" }, { label = "Select Filter", role = "process" }, { label = "Select Oscillator", role = "source" }])
     knobNumber ("sourceX", 0.0)
 
 scopeDrag () =
