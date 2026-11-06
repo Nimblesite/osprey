@@ -125,7 +125,8 @@ longChainWith (indices100000) =
         |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower))
         |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) )
     match climbResult
-        Success climbed =>
+        Success value =>
+            climbed = value
             cancelResult = (gpuMap(climbed, lower) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower))
                 |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) |> andThen(\buffer => gpuMap(buffer, lower)) )
             withBuffer (cancelResult, \cancelled => checkAll "twenty-four chained passes" [

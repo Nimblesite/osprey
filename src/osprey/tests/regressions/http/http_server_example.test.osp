@@ -47,6 +47,21 @@ print("Starting server listener with callback handler...")
 let listenResult = (httpListen(serverId, handleHttpRequest) ?: -1)
 print("Server listening on http://127.0.0.1:18080")
 
+/// Issues one `method` request for `path`, printing the request line and its
+/// status line in the order the golden records them.
+fn request(client, method, path, payload) = {
+    print("${method} ${path}")
+    let result = match method {
+        "GET" => httpGet(client, path, "")
+        "POST" => httpPost(client, path, payload, "Content-Type: application/json")
+        "PUT" => httpPut(client, path, payload, "Content-Type: application/json")
+        _ => httpDelete(client, path, "")
+    }
+    let status = result ?: -1
+    print("${method} ${path} result: ${status}")
+    status
+}
+
 // Create HTTP client to connect to OUR Osprey server
 print("Creating HTTP client...")
 let clientId = (httpCreateClient("http://127.0.0.1:18080", 5000) ?: -1)
@@ -55,42 +70,17 @@ print("Client created with ID: ${clientId}")
 // Test HTTP methods against our REAL Osprey server
 print("=== Testing HTTP Methods ===")
 
-// Test GET request
-print("GET /api/users")
-let getUsersResult = (httpGet(clientId, "/api/users", "") ?: -1)
-print("GET /api/users result: ${getUsersResult}")
-
-print("GET /health")
-let getHealthResult = (httpGet(clientId, "/health", "") ?: -1)
-print("GET /health result: ${getHealthResult}")
-
-// Test POST request
-print("POST /api/users")
-let createUserData = "{\"name\": \"Charlie\", \"email\": \"charlie@example.com\"}"
-let postResult = (httpPost(clientId, "/api/users", createUserData, "Content-Type: application/json") ?: -1)
-print("POST /api/users result: ${postResult}")
-
-print("POST /api/auth/login")
-let loginData = "{\"username\": \"admin\", \"password\": \"secret\"}"
-let loginResult = (httpPost(clientId, "/api/auth/login", loginData, "Content-Type: application/json") ?: -1)
-print("POST /api/auth/login result: ${loginResult}")
-
-// Test PUT request
-print("PUT /api/users/1")
-let updateUserData = "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}"
-let putResult = (httpPut(clientId, "/api/users/1", updateUserData, "Content-Type: application/json") ?: -1)
-print("PUT /api/users/1 result: ${putResult}")
-
-// Test DELETE request
-print("DELETE /api/users/1")
-let deleteResult = (httpDelete(clientId, "/api/users/1", "") ?: -1)
-print("DELETE /api/users/1 result: ${deleteResult}")
+/// Test GET, POST, PUT and DELETE against the routes the handler serves.
+let getUsersResult = request(clientId, "GET", "/api/users", "")
+let getHealthResult = request(clientId, "GET", "/health", "")
+let postResult = request(clientId, "POST", "/api/users", "{\"name\": \"Charlie\", \"email\": \"charlie@example.com\"}")
+let loginResult = request(clientId, "POST", "/api/auth/login", "{\"username\": \"admin\", \"password\": \"secret\"}")
+let putResult = request(clientId, "PUT", "/api/users/1", "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}")
+let deleteResult = request(clientId, "DELETE", "/api/users/1", "")
 
 // Test non-existent endpoints
 print("=== Testing Error Cases ===")
-print("GET /nonexistent")
-let notFoundResult = (httpGet(clientId, "/nonexistent", "") ?: -1)
-print("GET /nonexistent result: ${notFoundResult}")
+let notFoundResult = request(clientId, "GET", "/nonexistent", "")
 
 print("=== Server Shutdown Test ===")
 print("✅ All HTTP operations completed successfully")

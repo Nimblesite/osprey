@@ -42,20 +42,27 @@ divideZero value = value / 0.0
 remainderZero value = value % -0.0
 gpuIeeeCase () =
     match toGpu ([10000000000000000.0])
-        Success seed =>
+        Success value =>
+            seed = value
             match gpuMap(seed, squareScalar)
-                Success uploaded9 =>
+                Success value =>
+                    uploaded9 = value
                     match gpuMap(uploaded9, squareScalar)
-                        Success fourth =>
+                        Success value =>
+                            fourth = value
                             match gpuMap(fourth, squareScalar)
-                                Success uploaded10 =>
+                                Success value =>
+                                    uploaded10 = value
                                     match gpuMap(uploaded10, squareScalar)
-                                        Success uploaded17 =>
+                                        Success value =>
+                                            uploaded17 = value
                                             match gpuMap(uploaded17, squareScalar)
-                                                Success infinityBuffer =>
+                                                Success value =>
+                                                    infinityBuffer = value
                                                     infinity = gpuGet (infinityBuffer, 0) ?: 0.0
                                                     match gpuMap(infinityBuffer, subtractSelf)
-                                                        Success nanBuffer =>
+                                                        Success value =>
+                                                            nanBuffer = value
                                                             nan = gpuGet (nanBuffer, 0) ?: 0.0
                                                             withBuffer (toGpu ([infinity, nan, -0.0]), \uploaded7 => withBuffer (fromGpu (uploaded7), \read0 => withBuffer (toGpu (listReverse (read0)), \roundTrip => checkAll "host GPU kernels preserve non-finite values and signed zero" [
                                                                             infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), \uploaded8 => (uploaded8) == infinity), (gpuGet (roundTrip, 2) ?: 0.0) == infinity, (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
@@ -79,7 +86,8 @@ gpuFloatZeroCase () =
             faults := faults + op
             0.25
     match toGpu ([1.0, 0.0, -1.0])
-        Success input =>
+        Success value =>
+            input = value
             quotients = gpuMap(input, divideZero)
             remainders = gpuMap(input, remainderZero)
             match gpuDevice () == "host"
@@ -100,7 +108,8 @@ gpuAbsoluteCase () =
     match toGpu ([-2.5, -0.0, 3.5])
         Success value =>
             match gpuMap(value, abs)
-                Success floats =>
+                Success value =>
+                    floats = value
                     mut faults = ""
                     handle Arith
                         overflow op lhs rhs wrapped =>
@@ -112,7 +121,8 @@ gpuAbsoluteCase () =
                     match toGpu ([-9223372036854775808, -3, 4])
                         Success value =>
                             match gpuMap(value, abs)
-                                Success integers =>
+                                Success value =>
+                                    integers = value
                                     checkAll "GPU abs keeps float and integer callback contracts" [
                                         (gpuGet (floats, 0) ?: 0.0) == 2.5, toString (gpuGet (floats, 1) ?: 1.0) == "0.0", (gpuGet (floats, 2) ?: 0.0) == 3.5, (gpuGet (integers, 0) ?: 0) == 17, (gpuGet (integers, 1) ?: 0) == 3, (gpuGet (integers, 2) ?: 0) == 4, faults == "abs"
                                     ]

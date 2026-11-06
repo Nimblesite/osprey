@@ -91,9 +91,7 @@ run () =
 repoTableCase () =
     bodyText = run ()
     checkAll "repository table data" [
-        contains bodyText "\"name\":\"osprey\"",
-        contains bodyText "\"stars\":9001",
-        contains bodyText "\"lang\":\"Java\"",
+        containsAll bodyText ["\"name\":\"osprey\"", "\"stars\":9001", "\"lang\":\"Java\""],
         pad ("Go", 4) == "Go  ",
         startsWith (cyan "*") "\e[36m"
     ]

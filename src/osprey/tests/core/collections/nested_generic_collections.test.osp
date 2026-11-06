@@ -9,18 +9,15 @@ effect LeafAudit<T> {
 fn nestedAt<T>(matrix: List<List<T>>, row: int, column: int, fallbackRow: List<T>, fallback: T) =
 listGet(listGet(matrix, row) ?: fallbackRow, column) ?: fallback
 
-/// Asserts every cell of `matrix` equals the same cell of `expected`, one
-/// independent check each, so a whole nested matrix is stated once.
-fn checkMatrix(label, matrix, expected, fallbackRow, fallback) = {
-    let _ = foldList(toList(range(0, listLength(expected))), 0, fn(acc, row) => {
-        let expectedRow = listGet(expected, row) ?: fallbackRow
-        let _ = foldList(toList(range(0, listLength(expectedRow))), 0, fn(cellAcc, column) => {
-            check(label, listGet(expectedRow, column) ?: fallback, nestedAt(matrix, row, column, fallbackRow, fallback))
-            cellAcc
-        })
-        acc
-    })
-}
+/// Asserts every cell of one `expectedRow` matches `matrix`, one check each.
+fn checkRow(label, matrix, expectedRow, row, fallbackRow, fallback) =
+forEachList(toList(range(0, listLength(expectedRow))), fn(column) =>
+    check(label, listGet(expectedRow, column) ?: fallback, nestedAt(matrix, row, column, fallbackRow, fallback)))
+
+/// Asserts every cell of `matrix` equals the same cell of `expected`.
+fn checkMatrix(label, matrix, expected, fallbackRow, fallback) =
+forEachList(toList(range(0, listLength(expected))), fn(row) =>
+    checkRow(label, matrix, listGet(expected, row) ?: fallbackRow, row, fallbackRow, fallback))
 
 fn chooseByCollection<T, U>(items: List<T>, present: U, empty: U) -> U = match isEmpty(items) {
     true => empty

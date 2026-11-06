@@ -9,16 +9,19 @@ weave (acc, value) = satAdd (satMul acc 10) value
 
 upper word = toUpperCase word
 
+(** Asserts `xs` holds exactly `expected`, index by index, through `listGet`. *)
+checkItems (label, xs, expected, fallback) =
+    forEachList (toList (range 0 (listLength expected))) (\i =>
+        check label (listGet expected i ?: fallback) (listGet xs i ?: fallback))
+
 (** mapList/filterList/foldList over a list built with listAppend (a runtime
     handle) and over a flat literal (rebuilt at the call boundary). *)
 eagerCombinatorsCase () =
     ints = listAppend (listAppend (listAppend (List ()) 3) 1) 2
     words = ["beta", "alpha", "gamma"]
 
-    checkAll "mapList transforms each element in index order" [
-        (listGet (mapList ints double) 0 ?: 0) == 6,
-        (listGet (mapList ints double) 1 ?: 0) == 2,
-        (listGet (mapList ints double) 2 ?: 0) == 4,
+    checkItems ("mapList transforms each element in index order", mapList ints double, [6, 2, 4], 0)
+    checkAll "mapList keeps the element type" [
         listLength (mapList ints double) == 3,
         join (mapList words upper) "," == "BETA,ALPHA,GAMMA",
         join (mapList ["a", "b"] upper) "," == "A,B"
@@ -44,16 +47,11 @@ sortCase () =
     ints = listSort [3, 1, 2]
     words = listSort ["beta", "alpha", "gamma"]
 
-    checkAll "listSort orders int lists ascending" [
+    checkItems ("listSort orders int lists ascending", ints, [1, 2, 3], 0)
+    checkItems ("listSort orders a signed literal list", listSort [-1, 5, 0], [-1, 0, 5], 0)
+    checkItems ("listSort orders an appended list", listSort (listAppend (listAppend (listAppend (List ()) 30) 10) 20), [10, 20, 30], 0)
+    checkAll "listSort keeps every element" [
         listLength ints == 3,
-        (listGet ints 0 ?: 0) == 1,
-        (listGet ints 1 ?: 0) == 2,
-        (listGet ints 2 ?: 0) == 3,
-        (listGet (listSort [-1, 5, 0]) 0 ?: 0) == -1,
-        (listGet (listSort [-1, 5, 0]) 1 ?: 0) == 0,
-        (listGet (listSort [-1, 5, 0]) 2 ?: 0) == 5,
-        (listGet (listSort (listAppend (listAppend (listAppend (List ()) 30) 10) 20)) 0 ?: 0) == 10,
-        (listGet (listSort (listAppend (listAppend (listAppend (List ()) 30) 10) 20)) 2 ?: 0) == 30,
         listLength (listSort [7]) == 1,
         listLength (listSort (List ())) == 0
     ]

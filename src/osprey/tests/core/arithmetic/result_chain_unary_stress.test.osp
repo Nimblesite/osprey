@@ -4,12 +4,18 @@
 fn runtimeValue(n) = n
 fn negateValue(n) = -n
 
+/// The maximum value, reached through the runtime call.
+fn maxValue() = runtimeValue(9223372036854775807)
+
+/// The three-digit case suffix each sweep index carries, for indices 1..15.
+fn caseSuffix(n) = if n < 10 { "00${toString(n)}" } else { "0${toString(n)}" }
+
 /// The ordered two-fault paths, one helper per repeated fault pair.
-fn overflowThenDivision(delta) = verify(fn() => (runtimeValue(9223372036854775807) + delta) + (delta / 0), -9223372036854775808.0, "overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});zero(/,${delta}.0);")
-fn remainderThenOverflow(delta) = verify(fn() => (delta % 0) * (runtimeValue(9223372036854775807) + delta), 0, "remainder(${delta});overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});")
-fn multiplyThenRemainder() = verify(fn() => (runtimeValue(9223372036854775807) * 2) % 0, 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);")
-fn divisionThenMultiply(delta) = verify(fn() => (delta / 0) + (runtimeValue(9223372036854775807) * 2), -2.5, "zero(/,${delta}.0);overflow(*,9223372036854775807,2,-2);")
-fn lateOverflowThenRemainder(delta) = verify(fn() => (((runtimeValue(9223372036854775807) - delta) + delta) + 1) * (delta % 0), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(${delta});")
+fn overflowThenDivision(delta) = verify(fn() => (maxValue() + delta) + (delta / 0), -9223372036854775808.0, "overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});zero(/,${delta}.0);")
+fn remainderThenOverflow(delta) = verify(fn() => (delta % 0) * (maxValue() + delta), 0, "remainder(${delta});overflow(+,9223372036854775807,${delta},${wrapAdd(9223372036854775807, delta)});")
+fn multiplyThenRemainder() = verify(fn() => (maxValue() * 2) % 0, 0, "overflow(*,9223372036854775807,2,-2);remainder(-2);")
+fn divisionThenMultiply(delta) = verify(fn() => (delta / 0) + (maxValue() * 2), -2.5, "zero(/,${delta}.0);overflow(*,9223372036854775807,2,-2);")
+fn lateOverflowThenRemainder(delta) = verify(fn() => (((maxValue() - delta) + delta) + 1) * (delta % 0), 0, "overflow(+,9223372036854775807,1,-9223372036854775808);remainder(${delta});")
 
 fn verify(work, expected, wantedFaults) = {
     mut faults = ""
@@ -39,6 +45,31 @@ fn choose(work, replacement) = {
         }
     }
     work()
+}
+
+/// Deltas 001..004 of the ordered two-fault pairs, in original case order.
+fn twoFaultSweep() = {
+    let _ = forEachList(toList(range(1, 5)), fn(delta) => {
+        let suffix = caseSuffix(delta)
+        test("overflow precedes division error ${suffix}", fn() => overflowThenDivision(delta))
+        test("remainder error precedes overflow ${suffix}", fn() => remainderThenOverflow(delta))
+        test("multiply overflow precedes remainder error ${suffix}", fn() => multiplyThenRemainder())
+        test("division error precedes multiply overflow ${suffix}", fn() => divisionThenMultiply(delta))
+        test("late maximum overflow dispatches before right fault ${suffix}", fn() => lateOverflowThenRemainder(delta))
+    })
+}
+
+/// Indices 001..010 of the nested-policy pairs, healthy case first in each.
+fn policySweep() = {
+    let _ = forEachList(toList(range(1, 11)), fn(k) => {
+        let suffix = caseSuffix(k)
+        let leftOperand = satMul(k, 4)
+        let rightOperand = satAdd(k, 2)
+        let sum = satAdd(leftOperand, rightOperand)
+        let replacement = satAdd(k, 900)
+        test("healthy arithmetic bypasses nested policy ${suffix}", fn() => verify(fn() => choose(fn() => leftOperand + rightOperand, sum), sum, ""))
+        test("nested overflow policy ${suffix}", fn() => verify(fn() => choose(fn() => maxValue() + k, replacement), replacement, "overflow(+,9223372036854775807,${k},${wrapAdd(9223372036854775807, k)});"))
+    })
 }
 
 test("unary negation 001", fn() => verify(fn() => -(1), -1, ""))
@@ -101,46 +132,10 @@ test("mixed float value chain 007", fn() => verify(fn() => ((72 / 8) + 11.0), 20
 test("mixed float value chain 008", fn() => verify(fn() => ((90 / 9) + 12.0), 22.0, ""))
 test("mixed float value chain 009", fn() => verify(fn() => ((110 / 10) + 13.0), 24.0, ""))
 test("mixed float value chain 010", fn() => verify(fn() => ((132 / 11) + 14.0), 26.0, ""))
-test("overflow precedes division error 001", fn() => overflowThenDivision(1))
-test("remainder error precedes overflow 001", fn() => remainderThenOverflow(001))
-test("multiply overflow precedes remainder error 001", fn() => multiplyThenRemainder())
-test("division error precedes multiply overflow 001", fn() => divisionThenMultiply(001))
-test("late maximum overflow dispatches before right fault 001", fn() => lateOverflowThenRemainder(1))
-test("overflow precedes division error 002", fn() => overflowThenDivision(2))
-test("remainder error precedes overflow 002", fn() => remainderThenOverflow(002))
-test("multiply overflow precedes remainder error 002", fn() => multiplyThenRemainder())
-test("division error precedes multiply overflow 002", fn() => divisionThenMultiply(002))
-test("late maximum overflow dispatches before right fault 002", fn() => lateOverflowThenRemainder(2))
-test("overflow precedes division error 003", fn() => overflowThenDivision(3))
-test("remainder error precedes overflow 003", fn() => remainderThenOverflow(003))
-test("multiply overflow precedes remainder error 003", fn() => multiplyThenRemainder())
-test("division error precedes multiply overflow 003", fn() => divisionThenMultiply(003))
-test("late maximum overflow dispatches before right fault 003", fn() => lateOverflowThenRemainder(3))
-test("overflow precedes division error 004", fn() => overflowThenDivision(4))
-test("remainder error precedes overflow 004", fn() => remainderThenOverflow(004))
-test("multiply overflow precedes remainder error 004", fn() => multiplyThenRemainder())
-test("division error precedes multiply overflow 004", fn() => divisionThenMultiply(004))
-test("late maximum overflow dispatches before right fault 004", fn() => lateOverflowThenRemainder(4))
-test("healthy arithmetic bypasses nested policy 001", fn() => verify(fn() => choose(fn() => (4 + 3), 7), 7, ""))
-test("nested overflow policy 001", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 1), 901), 901, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("healthy arithmetic bypasses nested policy 002", fn() => verify(fn() => choose(fn() => (8 + 4), 12), 12, ""))
-test("nested overflow policy 002", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 2), 902), 902, "overflow(+,9223372036854775807,2,-9223372036854775807);"))
-test("healthy arithmetic bypasses nested policy 003", fn() => verify(fn() => choose(fn() => (12 + 5), 17), 17, ""))
-test("nested overflow policy 003", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 3), 903), 903, "overflow(+,9223372036854775807,3,-9223372036854775806);"))
-test("healthy arithmetic bypasses nested policy 004", fn() => verify(fn() => choose(fn() => (16 + 6), 22), 22, ""))
-test("nested overflow policy 004", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 4), 904), 904, "overflow(+,9223372036854775807,4,-9223372036854775805);"))
-test("healthy arithmetic bypasses nested policy 005", fn() => verify(fn() => choose(fn() => (20 + 7), 27), 27, ""))
-test("nested overflow policy 005", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 5), 905), 905, "overflow(+,9223372036854775807,5,-9223372036854775804);"))
-test("healthy arithmetic bypasses nested policy 006", fn() => verify(fn() => choose(fn() => (24 + 8), 32), 32, ""))
-test("nested overflow policy 006", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 6), 906), 906, "overflow(+,9223372036854775807,6,-9223372036854775803);"))
-test("healthy arithmetic bypasses nested policy 007", fn() => verify(fn() => choose(fn() => (28 + 9), 37), 37, ""))
-test("nested overflow policy 007", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 7), 907), 907, "overflow(+,9223372036854775807,7,-9223372036854775802);"))
-test("healthy arithmetic bypasses nested policy 008", fn() => verify(fn() => choose(fn() => (32 + 10), 42), 42, ""))
-test("nested overflow policy 008", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 8), 908), 908, "overflow(+,9223372036854775807,8,-9223372036854775801);"))
-test("healthy arithmetic bypasses nested policy 009", fn() => verify(fn() => choose(fn() => (36 + 11), 47), 47, ""))
-test("nested overflow policy 009", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 9), 909), 909, "overflow(+,9223372036854775807,9,-9223372036854775800);"))
-test("healthy arithmetic bypasses nested policy 010", fn() => verify(fn() => choose(fn() => (40 + 12), 52), 52, ""))
-test("nested overflow policy 010", fn() => verify(fn() => choose(fn() => (runtimeValue(9223372036854775807) + 10), 910), 910, "overflow(+,9223372036854775807,10,-9223372036854775799);"))
+
+twoFaultSweep()
+policySweep()
+
 test("policy observes arithmetic value and faults 001", fn() => verify(fn() => (10 + 3), 13, ""))
 test("policy observes arithmetic value and faults 002", fn() => verify(fn() => (20 + 4), 24, ""))
 test("policy observes arithmetic value and faults 003", fn() => verify(fn() => (30 + 5), 35, ""))
@@ -153,3 +148,4 @@ test("policy observes arithmetic value and faults 009", fn() => verify(fn() => (
 test("policy observes arithmetic value and faults 010", fn() => verify(fn() => (10 / 0), -0.5, "zero(/,10.0);"))
 test("literal negation is a plain int", fn() => verify(fn() => -(7), -7, ""))
 test("runtime negation is a plain int", fn() => verify(fn() => negateValue(7), -7, ""))
+

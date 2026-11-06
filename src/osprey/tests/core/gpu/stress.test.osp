@@ -144,7 +144,9 @@ fn longChainWith(indices100000) = {
     |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump))
     |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
     |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
-    withBuffer(climbResult, fn(climbed) => {
+    match climbResult {
+        Success { value } => {
+            let climbed = value
             let cancelResult = gpuMap(climbed, lower) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
             |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
             withBuffer(cancelResult, fn(cancelled) => {
@@ -153,13 +155,15 @@ fn longChainWith(indices100000) = {
                             gpuSatisfies(gpuFold(cancelled, 0, tally), fn(uploaded110) => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), fn(uploaded109) => gpuSatisfies(gpuFold(uploaded109, 0, tally), fn(uploaded144) => (uploaded144) == 2499950000))
                     ])
                 })
-        })
+        }
+        Error { message } => check("GPU operation", "success", toString(message))
+    }
 }
+
 /// rebuildCase rebuilds a buffer from its own materialized output six times.
 fn rebuildCase() = withIndices(20000, fn(indices20000) => withIndices(0, fn(indices0) => withIndices(1, fn(indices1) => rebuildWith(indices20000, indices0, indices1))))
 fn rebuildWith(indices20000, indices0, indices1) = {
-    withBuffer(rebuild(indices20000, 6), fn(read0) => {
-            let settled = read0
+    withBuffer(rebuild(indices20000, 6), fn(settled) => {
             withBuffer(fromGpu(settled), fn(back) => {
                     withBuffer(toGpu(back), fn(again) => {
                             checkAll("six host round trips", [

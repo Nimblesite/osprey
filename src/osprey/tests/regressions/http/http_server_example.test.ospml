@@ -48,43 +48,36 @@ print "Starting server listener with callback handler..."
 listenResult = httpListen serverId handleHttpRequest ?: -1
 print "Server listening on http://127.0.0.1:18080"
 
+(** Issues one `method` request for `path`, printing the request line then the
+    status line in the order the golden records them. *)
+request (client, method, path, payload) =
+    print "${method} ${path}"
+    result =
+        match method
+            "GET" => httpGet client path ""
+            "POST" => httpPost client path payload "Content-Type: application/json"
+            "PUT" => httpPut client path payload "Content-Type: application/json"
+            _ => httpDelete client path ""
+    status = result ?: -1
+    print "${method} ${path} result: ${status}"
+    status
+
 print "Creating HTTP client..."
 clientId = httpCreateClient "http://127.0.0.1:18080" 5000 ?: -1
 print "Client created with ID: ${clientId}"
 
 print "=== Testing HTTP Methods ==="
 
-print "GET /api/users"
-getUsersResult = httpGet clientId "/api/users" "" ?: -1
-print "GET /api/users result: ${getUsersResult}"
-
-print "GET /health"
-getHealthResult = httpGet clientId "/health" "" ?: -1
-print "GET /health result: ${getHealthResult}"
-
-print "POST /api/users"
-createUserData = "{\"name\": \"Charlie\", \"email\": \"charlie@example.com\"}"
-postResult = httpPost clientId "/api/users" createUserData "Content-Type: application/json" ?: -1
-print "POST /api/users result: ${postResult}"
-
-print "POST /api/auth/login"
-loginData = "{\"username\": \"admin\", \"password\": \"secret\"}"
-loginResult = httpPost clientId "/api/auth/login" loginData "Content-Type: application/json" ?: -1
-print "POST /api/auth/login result: ${loginResult}"
-
-print "PUT /api/users/1"
-updateUserData = "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}"
-putResult = httpPut clientId "/api/users/1" updateUserData "Content-Type: application/json" ?: -1
-print "PUT /api/users/1 result: ${putResult}"
-
-print "DELETE /api/users/1"
-deleteResult = httpDelete clientId "/api/users/1" "" ?: -1
-print "DELETE /api/users/1 result: ${deleteResult}"
+(** Verify GET, POST, PUT and DELETE against the routes the handler serves. *)
+getUsersResult = request (clientId, "GET", "/api/users", "")
+getHealthResult = request (clientId, "GET", "/health", "")
+postResult = request (clientId, "POST", "/api/users", "{\"name\": \"Charlie\", \"email\": \"charlie@example.com\"}")
+loginResult = request (clientId, "POST", "/api/auth/login", "{\"username\": \"admin\", \"password\": \"secret\"}")
+putResult = request (clientId, "PUT", "/api/users/1", "{\"name\": \"Alice Smith\", \"email\": \"alice.smith@example.com\"}")
+deleteResult = request (clientId, "DELETE", "/api/users/1", "")
 
 print "=== Testing Error Cases ==="
-print "GET /nonexistent"
-notFoundResult = httpGet clientId "/nonexistent" "" ?: -1
-print "GET /nonexistent result: ${notFoundResult}"
+notFoundResult = request (clientId, "GET", "/nonexistent", "")
 
 print "=== Server Shutdown Test ==="
 print "✅ All HTTP operations completed successfully"

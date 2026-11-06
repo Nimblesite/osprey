@@ -121,6 +121,5 @@ test "HTTP requests update every handled state layer" (\() => exactArithmetic ((
     taskCount == 3,
     requests == 4,
     diskBytes == 60,
-    contains tasks "#1 welcome to osprey",
-    contains tasks "#3 land the effects PR"
+    containsAll tasks ["#1 welcome to osprey", "#3 land the effects PR"]
 ])))

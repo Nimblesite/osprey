@@ -2,14 +2,21 @@
 
 /// Boundary operands cross a function call so runtime dispatch is exercised.
 fn runtimeValue(n) = n
-fn negateValue(n) = -n
+
+/// The maximum and minimum boundary values, reached through the runtime call.
+fn maxValue() = runtimeValue(9223372036854775807)
+fn minValue() = (0 - maxValue()) - 1
 
 /// The maximum and minimum boundary paths, one helper per repeated expression.
-fn maxMinus(delta) = runtimeValue(9223372036854775807) - delta
+fn maxMinus(delta) = maxValue() - delta
 fn maxRestored(delta) = maxMinus(delta) + delta
 fn maxThenOverflow(delta) = maxRestored(delta) + 1
-fn minPlus(delta) = ((0 - runtimeValue(9223372036854775807)) - 1) + delta
+fn minPlus(delta) = minValue() + delta
 
+/// The one fault the intermediate overflow raises for every delta.
+let maxOverflowFault = "overflow(+,9223372036854775807,1,-9223372036854775808);"
+
+/// Runs `work` under a recording Arith policy and checks value and fault order.
 fn verify(work, expected, wantedFaults) = {
     mut faults = ""
     handle Arith {
@@ -30,105 +37,89 @@ fn verify(work, expected, wantedFaults) = {
     expect(faults, wantedFaults)
 }
 
-test("maximum minus delta 001", fn() => verify(fn() => maxMinus(1), 9223372036854775806, ""))
-test("maximum restored after subtraction 001", fn() => verify(fn() => maxRestored(1), 9223372036854775807, ""))
-test("maximum intermediate then overflow 001", fn() => verify(fn() => maxThenOverflow(1), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 001", fn() => verify(fn() => minPlus(1), -9223372036854775807, ""))
-test("maximum minus delta 002", fn() => verify(fn() => maxMinus(2), 9223372036854775805, ""))
-test("maximum restored after subtraction 002", fn() => verify(fn() => maxRestored(2), 9223372036854775807, ""))
-test("maximum intermediate then overflow 002", fn() => verify(fn() => maxThenOverflow(2), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 002", fn() => verify(fn() => minPlus(2), -9223372036854775806, ""))
-test("maximum minus delta 003", fn() => verify(fn() => maxMinus(3), 9223372036854775804, ""))
-test("maximum restored after subtraction 003", fn() => verify(fn() => maxRestored(3), 9223372036854775807, ""))
-test("maximum intermediate then overflow 003", fn() => verify(fn() => maxThenOverflow(3), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 003", fn() => verify(fn() => minPlus(3), -9223372036854775805, ""))
-test("maximum minus delta 004", fn() => verify(fn() => maxMinus(4), 9223372036854775803, ""))
-test("maximum restored after subtraction 004", fn() => verify(fn() => maxRestored(4), 9223372036854775807, ""))
-test("maximum intermediate then overflow 004", fn() => verify(fn() => maxThenOverflow(4), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 004", fn() => verify(fn() => minPlus(4), -9223372036854775804, ""))
-test("maximum minus delta 005", fn() => verify(fn() => maxMinus(5), 9223372036854775802, ""))
-test("maximum restored after subtraction 005", fn() => verify(fn() => maxRestored(5), 9223372036854775807, ""))
-test("maximum intermediate then overflow 005", fn() => verify(fn() => maxThenOverflow(5), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 005", fn() => verify(fn() => minPlus(5), -9223372036854775803, ""))
-test("maximum minus delta 006", fn() => verify(fn() => maxMinus(6), 9223372036854775801, ""))
-test("maximum restored after subtraction 006", fn() => verify(fn() => maxRestored(6), 9223372036854775807, ""))
-test("maximum intermediate then overflow 006", fn() => verify(fn() => maxThenOverflow(6), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 006", fn() => verify(fn() => minPlus(6), -9223372036854775802, ""))
-test("maximum minus delta 007", fn() => verify(fn() => maxMinus(7), 9223372036854775800, ""))
-test("maximum restored after subtraction 007", fn() => verify(fn() => maxRestored(7), 9223372036854775807, ""))
-test("maximum intermediate then overflow 007", fn() => verify(fn() => maxThenOverflow(7), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 007", fn() => verify(fn() => minPlus(7), -9223372036854775801, ""))
-test("maximum minus delta 008", fn() => verify(fn() => maxMinus(8), 9223372036854775799, ""))
-test("maximum restored after subtraction 008", fn() => verify(fn() => maxRestored(8), 9223372036854775807, ""))
-test("maximum intermediate then overflow 008", fn() => verify(fn() => maxThenOverflow(8), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 008", fn() => verify(fn() => minPlus(8), -9223372036854775800, ""))
-test("maximum minus delta 009", fn() => verify(fn() => maxMinus(9), 9223372036854775798, ""))
-test("maximum restored after subtraction 009", fn() => verify(fn() => maxRestored(9), 9223372036854775807, ""))
-test("maximum intermediate then overflow 009", fn() => verify(fn() => maxThenOverflow(9), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 009", fn() => verify(fn() => minPlus(9), -9223372036854775799, ""))
-test("maximum minus delta 010", fn() => verify(fn() => maxMinus(10), 9223372036854775797, ""))
-test("maximum restored after subtraction 010", fn() => verify(fn() => maxRestored(10), 9223372036854775807, ""))
-test("maximum intermediate then overflow 010", fn() => verify(fn() => maxThenOverflow(10), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 010", fn() => verify(fn() => minPlus(10), -9223372036854775798, ""))
-test("maximum minus delta 011", fn() => verify(fn() => maxMinus(11), 9223372036854775796, ""))
-test("maximum restored after subtraction 011", fn() => verify(fn() => maxRestored(11), 9223372036854775807, ""))
-test("maximum intermediate then overflow 011", fn() => verify(fn() => maxThenOverflow(11), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 011", fn() => verify(fn() => minPlus(11), -9223372036854775797, ""))
-test("maximum minus delta 012", fn() => verify(fn() => maxMinus(12), 9223372036854775795, ""))
-test("maximum restored after subtraction 012", fn() => verify(fn() => maxRestored(12), 9223372036854775807, ""))
-test("maximum intermediate then overflow 012", fn() => verify(fn() => maxThenOverflow(12), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 012", fn() => verify(fn() => minPlus(12), -9223372036854775796, ""))
-test("maximum minus delta 013", fn() => verify(fn() => maxMinus(13), 9223372036854775794, ""))
-test("maximum restored after subtraction 013", fn() => verify(fn() => maxRestored(13), 9223372036854775807, ""))
-test("maximum intermediate then overflow 013", fn() => verify(fn() => maxThenOverflow(13), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 013", fn() => verify(fn() => minPlus(13), -9223372036854775795, ""))
-test("maximum minus delta 014", fn() => verify(fn() => maxMinus(14), 9223372036854775793, ""))
-test("maximum restored after subtraction 014", fn() => verify(fn() => maxRestored(14), 9223372036854775807, ""))
-test("maximum intermediate then overflow 014", fn() => verify(fn() => maxThenOverflow(14), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 014", fn() => verify(fn() => minPlus(14), -9223372036854775794, ""))
-test("maximum minus delta 015", fn() => verify(fn() => maxMinus(15), 9223372036854775792, ""))
-test("maximum restored after subtraction 015", fn() => verify(fn() => maxRestored(15), 9223372036854775807, ""))
-test("maximum intermediate then overflow 015", fn() => verify(fn() => maxThenOverflow(15), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("minimum plus delta 015", fn() => verify(fn() => minPlus(15), -9223372036854775793, ""))
-test("division by zero 001", fn() => verify(fn() => (37 / 0), -0.5, "zero(/,37.0);"))
-test("remainder by zero 001", fn() => verify(fn() => (37 % 0), 0, "remainder(37);"))
-test("division by zero 002", fn() => verify(fn() => (74 / 0), -0.5, "zero(/,74.0);"))
-test("remainder by zero 002", fn() => verify(fn() => (74 % 0), 0, "remainder(74);"))
-test("division by zero 003", fn() => verify(fn() => (111 / 0), -0.5, "zero(/,111.0);"))
-test("remainder by zero 003", fn() => verify(fn() => (111 % 0), 0, "remainder(111);"))
-test("division by zero 004", fn() => verify(fn() => (148 / 0), -0.5, "zero(/,148.0);"))
-test("remainder by zero 004", fn() => verify(fn() => (148 % 0), 0, "remainder(148);"))
-test("division by zero 005", fn() => verify(fn() => (185 / 0), -0.5, "zero(/,185.0);"))
-test("remainder by zero 005", fn() => verify(fn() => (185 % 0), 0, "remainder(185);"))
-test("division by zero 006", fn() => verify(fn() => (6.5 / 0.0), -0.5, "zero(/,6.5);"))
-test("remainder by zero 006", fn() => verify(fn() => (6.5 % 0.0), -0.5, "zero(%,6.5);"))
-test("division by zero 007", fn() => verify(fn() => (7.5 / 0.0), -0.5, "zero(/,7.5);"))
-test("remainder by zero 007", fn() => verify(fn() => (7.5 % 0.0), -0.5, "zero(%,7.5);"))
-test("division by zero 008", fn() => verify(fn() => (8.5 / 0.0), -0.5, "zero(/,8.5);"))
-test("remainder by zero 008", fn() => verify(fn() => (8.5 % 0.0), -0.5, "zero(%,8.5);"))
-test("division by zero 009", fn() => verify(fn() => (9.5 / 0.0), -0.5, "zero(/,9.5);"))
-test("remainder by zero 009", fn() => verify(fn() => (9.5 % 0.0), -0.5, "zero(%,9.5);"))
-test("division by zero 010", fn() => verify(fn() => (10.5 / 0.0), -0.5, "zero(/,10.5);"))
-test("remainder by zero 010", fn() => verify(fn() => (10.5 % 0.0), -0.5, "zero(%,10.5);"))
-test("maximum plus one overflows", fn() => verify(fn() => (runtimeValue(9223372036854775807) + 1), -9223372036854775808, "overflow(+,9223372036854775807,1,-9223372036854775808);"))
-test("maximum times two overflows", fn() => verify(fn() => (runtimeValue(9223372036854775807) * 2), -2, "overflow(*,9223372036854775807,2,-2);"))
-test("square above signed root overflows", fn() => verify(fn() => (runtimeValue(3037000500) * runtimeValue(3037000500)), -9223372036709301616, "overflow(*,3037000500,3037000500,-9223372036709301616);"))
-test("minimum minus one overflows", fn() => verify(fn() => (((0 - runtimeValue(9223372036854775807)) - 1) - 1), 9223372036854775807, "overflow(-,-9223372036854775808,1,9223372036854775807);"))
-test("minimum times negative one overflows", fn() => verify(fn() => (((0 - runtimeValue(9223372036854775807)) - 1) * -(1)), -9223372036854775808, "overflow(*,-9223372036854775808,-1,-9223372036854775808);"))
-test("negating minimum overflows", fn() => verify(fn() => -(((0 - runtimeValue(9223372036854775807)) - 1)), -9223372036854775808, "overflow(neg,-9223372036854775808,0,-9223372036854775808);"))
-test("absolute minimum overflows", fn() => verify(fn() => abs(((0 - runtimeValue(9223372036854775807)) - 1)), -9223372036854775808, "overflow(abs,-9223372036854775808,0,-9223372036854775808);"))
-test("minimum remainder negative one is representable", fn() => verify(fn() => (((0 - runtimeValue(9223372036854775807)) - 1) % -(1)), 0, ""))
-test("minimum remainder one is zero", fn() => verify(fn() => (((0 - runtimeValue(9223372036854775807)) - 1) % 1), 0, ""))
-test("minimum float division by negative one is finite", fn() => verify(fn() => (((0 - runtimeValue(9223372036854775807)) - 1) / -(1)), 9223372036854775808.0, ""))
-test("integer division minimum by negative one overflows", fn() => verify(fn() => intDiv(((0 - runtimeValue(9223372036854775807)) - 1), (0 - 1)), -9223372036854775808, "overflow(intDiv,-9223372036854775808,-1,-9223372036854775808);"))
-test("integer division minimum by one succeeds", fn() => verify(fn() => intDiv(((0 - runtimeValue(9223372036854775807)) - 1), 1), -9223372036854775808, ""))
-test("checkedAdd success", fn() => verify(fn() => toString(checkedAdd(2, 3)), "Success(5)", ""))
-test("checkedSub negative success", fn() => verify(fn() => toString(checkedSub(2, 3)), "Success(-1)", ""))
-test("checkedMul success", fn() => verify(fn() => toString(checkedMul(6, 7)), "Success(42)", ""))
-test("checkedAdd maximum overflow", fn() => verify(fn() => toString(checkedAdd(runtimeValue(9223372036854775807), 1)), "Error(integer overflow)", ""))
-test("checkedSub minimum overflow", fn() => verify(fn() => toString(checkedSub(((0 - runtimeValue(9223372036854775807)) - 1), 1)), "Error(integer overflow)", ""))
-test("checkedMul wide overflow", fn() => verify(fn() => toString(checkedMul(runtimeValue(4294967296), runtimeValue(4294967296))), "Error(integer overflow)", ""))
-test("checkedAdd reaches maximum", fn() => verify(fn() => toString(checkedAdd(runtimeValue(9223372036854775806), 1)), "Success(9223372036854775807)", ""))
-test("checkedSub reaches minimum", fn() => verify(fn() => toString(checkedSub((((0 - runtimeValue(9223372036854775807)) - 1) + 1), 1)), "Success(-9223372036854775808)", ""))
-test("checkedMul maximum identity", fn() => verify(fn() => toString(checkedMul(runtimeValue(9223372036854775807), 1)), "Success(9223372036854775807)", ""))
-test("checkedMul minimum identity", fn() => verify(fn() => toString(checkedMul(((0 - runtimeValue(9223372036854775807)) - 1), 1)), "Success(-9223372036854775808)", ""))
+/// A delta and the two boundary results that move with it.
+type DeltaCase = { delta: int, minus: int, plus: int }
+
+/// Deltas 001..015 with the subtraction and minimum-walk results they assert.
+fn deltaCases() = [
+    DeltaCase { delta: 1, minus: 9223372036854775806, plus: -9223372036854775807 },
+    DeltaCase { delta: 2, minus: 9223372036854775805, plus: -9223372036854775806 },
+    DeltaCase { delta: 3, minus: 9223372036854775804, plus: -9223372036854775805 },
+    DeltaCase { delta: 4, minus: 9223372036854775803, plus: -9223372036854775804 },
+    DeltaCase { delta: 5, minus: 9223372036854775802, plus: -9223372036854775803 },
+    DeltaCase { delta: 6, minus: 9223372036854775801, plus: -9223372036854775802 },
+    DeltaCase { delta: 7, minus: 9223372036854775800, plus: -9223372036854775801 },
+    DeltaCase { delta: 8, minus: 9223372036854775799, plus: -9223372036854775800 },
+    DeltaCase { delta: 9, minus: 9223372036854775798, plus: -9223372036854775799 },
+    DeltaCase { delta: 10, minus: 9223372036854775797, plus: -9223372036854775798 },
+    DeltaCase { delta: 11, minus: 9223372036854775796, plus: -9223372036854775797 },
+    DeltaCase { delta: 12, minus: 9223372036854775795, plus: -9223372036854775796 },
+    DeltaCase { delta: 13, minus: 9223372036854775794, plus: -9223372036854775795 },
+    DeltaCase { delta: 14, minus: 9223372036854775793, plus: -9223372036854775794 },
+    DeltaCase { delta: 15, minus: 9223372036854775792, plus: -9223372036854775793 }
+]
+
+/// The three-digit case suffix each sweep index carries, for indices 1..15.
+fn caseSuffix(n) = if n < 10 { "00${toString(n)}" } else { "0${toString(n)}" }
+
+/// The four maximum/minimum boundary cases, swept over every delta in order.
+fn deltaSweep() = {
+    let _ = forEachList(deltaCases(), fn(row) => {
+        let suffix = caseSuffix(row.delta)
+        test("maximum minus delta ${suffix}", fn() => verify(fn() => maxMinus(row.delta), row.minus, ""))
+        test("maximum restored after subtraction ${suffix}", fn() => verify(fn() => maxRestored(row.delta), maxValue(), ""))
+        test("maximum intermediate then overflow ${suffix}", fn() => verify(fn() => maxThenOverflow(row.delta), -9223372036854775808, maxOverflowFault))
+        test("minimum plus delta ${suffix}", fn() => verify(fn() => minPlus(row.delta), row.plus, ""))
+    })
+}
+
+/// Integer numerators 37..185 divided and remainded by a zero literal.
+fn intZeroDivisorSweep() = {
+    let _ = forEachList(toList(range(1, 6)), fn(k) => {
+        let numerator = satMul(k, 37)
+        test("division by zero ${caseSuffix(k)}", fn() => verify(fn() => numerator / 0, -0.5, "zero(/,${toString(numerator)}.0);"))
+        test("remainder by zero ${caseSuffix(k)}", fn() => verify(fn() => numerator % 0, 0, "remainder(${toString(numerator)});"))
+    })
+}
+
+/// Float divisors 6.5..10.5 divided and remainded by a zero literal.
+fn floatZeroDivisorSweep() = {
+    let divisors = [6.5, 7.5, 8.5, 9.5, 10.5]
+    let _ = forEachList(toList(range(0, 5)), fn(k) => {
+        let divisor = listGet(divisors, k) ?: 0.0
+        let suffix = caseSuffix(satAdd(k, 6))
+        test("division by zero ${suffix}", fn() => verify(fn() => divisor / 0.0, -0.5, "zero(/,${toString(divisor)});"))
+        test("remainder by zero ${suffix}", fn() => verify(fn() => divisor % 0.0, -0.5, "zero(%,${toString(divisor)});"))
+    })
+}
+
+/// checked* renders through `toString`, so its exact Result text is asserted.
+fn assertRendered(label, work, expected) = test(label, fn() => verify(fn() => toString(work()), expected, ""))
+
+deltaSweep()
+intZeroDivisorSweep()
+floatZeroDivisorSweep()
+
+test("maximum plus one overflows", fn() => verify(fn() => maxValue() + 1, -9223372036854775808, maxOverflowFault))
+test("maximum times two overflows", fn() => verify(fn() => maxValue() * 2, -2, "overflow(*,9223372036854775807,2,-2);"))
+test("square above signed root overflows", fn() => verify(fn() => runtimeValue(3037000500) * runtimeValue(3037000500), -9223372036709301616, "overflow(*,3037000500,3037000500,-9223372036709301616);"))
+test("minimum minus one overflows", fn() => verify(fn() => minValue() - 1, 9223372036854775807, "overflow(-,-9223372036854775808,1,9223372036854775807);"))
+test("minimum times negative one overflows", fn() => verify(fn() => minValue() * -(1), -9223372036854775808, "overflow(*,-9223372036854775808,-1,-9223372036854775808);"))
+test("negating minimum overflows", fn() => verify(fn() => -(minValue()), -9223372036854775808, "overflow(neg,-9223372036854775808,0,-9223372036854775808);"))
+test("absolute minimum overflows", fn() => verify(fn() => abs(minValue()), -9223372036854775808, "overflow(abs,-9223372036854775808,0,-9223372036854775808);"))
+test("minimum remainder negative one is representable", fn() => verify(fn() => minValue() % -(1), 0, ""))
+test("minimum remainder one is zero", fn() => verify(fn() => minValue() % 1, 0, ""))
+test("minimum float division by negative one is finite", fn() => verify(fn() => minValue() / -(1), 9223372036854775808.0, ""))
+test("integer division minimum by negative one overflows", fn() => verify(fn() => intDiv(minValue(), (0 - 1)), -9223372036854775808, "overflow(intDiv,-9223372036854775808,-1,-9223372036854775808);"))
+test("integer division minimum by one succeeds", fn() => verify(fn() => intDiv(minValue(), 1), -9223372036854775808, ""))
+
+assertRendered("checkedAdd success", fn() => checkedAdd(2, 3), "Success(5)")
+assertRendered("checkedSub negative success", fn() => checkedSub(2, 3), "Success(-1)")
+assertRendered("checkedMul success", fn() => checkedMul(6, 7), "Success(42)")
+assertRendered("checkedAdd maximum overflow", fn() => checkedAdd(maxValue(), 1), "Error(integer overflow)")
+assertRendered("checkedSub minimum overflow", fn() => checkedSub(minValue(), 1), "Error(integer overflow)")
+assertRendered("checkedMul wide overflow", fn() => checkedMul(runtimeValue(4294967296), runtimeValue(4294967296)), "Error(integer overflow)")
+assertRendered("checkedAdd reaches maximum", fn() => checkedAdd(runtimeValue(9223372036854775806), 1), "Success(9223372036854775807)")
+assertRendered("checkedSub reaches minimum", fn() => checkedSub(minValue() + 1, 1), "Success(-9223372036854775808)")
+assertRendered("checkedMul maximum identity", fn() => checkedMul(maxValue(), 1), "Success(9223372036854775807)")
+assertRendered("checkedMul minimum identity", fn() => checkedMul(minValue(), 1), "Success(-9223372036854775808)")

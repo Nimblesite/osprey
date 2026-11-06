@@ -538,19 +538,8 @@ fn substringPositionCase() = {
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [
-        contains(subject, "ban"),
-        contains(subject, "nan"),
-        contains(subject, "ana"),
-        contains(subject, "banana"),
-        contains(subject, "b"),
-        contains(subject, "a"),
-        contains(subject, "n"),
-        contains(subject, ""),
-        !contains(subject, "bananas"),
-        !contains(subject, "xyz"),
-        !contains(subject, "BAN"),
-        !contains(subject, "bn"),
-        !contains(subject, " "),
+        containsAll(subject, ["ban", "nan", "ana", "banana", "b", "a", "n", ""]),
+        containsNone(subject, ["bananas", "xyz", "BAN", "bn", " "]),
         contains("", ""),
         !contains("", "a"),
         contains("a", "a"),
@@ -582,8 +571,7 @@ fn substringPositionCase() = {
         !endsWith("", "a"),
         startsWith("a", "a"),
         endsWith("a", "a"),
-        contains(subject, "ba"),
-        contains(subject, "na")
+        containsAll(subject, ["ba", "na"])
     ])
 
     // The reported index must reconstruct the needle through substring/take/drop.
