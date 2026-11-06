@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""Regressions for independent package coverage thresholds and missing evidence.
-
-The real `src/osprey/tests/coverage-thresholds.json` is asserted to gate every shipped package
-with its own entry, a 90% minimum and optional higher thresholds. The checker is driven
-through a throwaway checkout so each rule — threshold boundary, own-source-only
-accounting, cross-host paths, malformed rows, oracle replay, stale evidence and
-ungated packages — is proven by behaviour rather than by mirroring the code.
-"""
+"""Package coverage gates, proven by driving the checker through a throwaway checkout:
+a 90% floor unless `unfinished`, higher thresholds, own-source accounting and evidence rules."""
 import json
 import os
 import runpy
@@ -51,8 +45,7 @@ class PackageThresholdTests(CoverageTestCase):
         self.assert_gated_group(packages, ROOT / "src" / "osprey" / "packages")
 
     def test_collection_runs_at_most_one_compiler_per_cpu(self):
-        # 19 concurrent `osprey test` collections exhausted the CI runner's
-        # memory and the runner was shut down mid-step (exit 143), twice.
+        # 19 concurrent `osprey test` collections exhausted the CI runner's memory (exit 143), twice.
         checker = runpy.run_path(str(ROOT / "scripts/packages/package_coverage.py"))
         names = [f"package-{index}" for index in range(19)]
         self.assertEqual(checker["worker_count"](names, cpus=4), 2)
@@ -69,7 +62,7 @@ class PackageThresholdTests(CoverageTestCase):
         config = json.loads((ROOT / "src/osprey/tests/coverage-thresholds.json").read_text())
         for group in config["projects"].values():
             for name, entry in group.items():
-                if "threshold" in entry:
+                if "threshold" in entry and not entry.get("unfinished"):
                     self.assertGreater(entry["threshold"], 90, name)
 
 
@@ -88,6 +81,13 @@ class CheckerTests(CoverageTestCase):
                 self.assertNotIn("(threshold 90%)", result.stdout)
                 self.assertEqual(fixture.measurements()["packages"]["demo"]["covered"], covered)
                 self.assertNotIn("threshold", fixture.config()["projects"]["packages"]["demo"])
+
+    def test_unfinished_project_reports_below_the_90_floor_only_when_marked(self):
+        for unfinished, threshold, code in ((True, None, 0), (True, 5, 0), (True, 50, 1), (False, None, 1), (False, 5, 2)):
+            fixture, gate = self.simple_fixture(lines=10), {"language": "osprey", "unfinished": unfinished} | ({} if threshold is None else {"threshold": threshold})
+            write_json(fixture.root / "coverage-thresholds.json", {"projects": {"packages": {"demo": gate}}})
+            fixture.write_report("demo", own_report("demo", 1, 10))
+            self.assert_exit(fixture.check(), code, f"{unfinished=} {threshold=}: ")
 
     def test_higher_package_threshold_still_rejects_90_percent(self):
         fixture = self.threshold_fixture(95, 100)

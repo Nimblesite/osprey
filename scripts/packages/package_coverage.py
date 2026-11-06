@@ -32,8 +32,8 @@ from package_coverage_evidence import (
     definition_problems, record_measurements, seal_evidence, sealed_inputs, unique_object,
 )
 from package_coverage_projects import (
-    GATED_KINDS, PACKAGES_DIR, PROJECT_KEYS, gate_entries, kind_map_problems, kind_noun, project_dirs,
-    project_label, report_name, required_source_files, own_source_relative,
+    GATED_KINDS, MIN_THRESHOLD, PACKAGES_DIR, PROJECT_KEYS, gate_entries, kind_map_problems, kind_noun, project_dirs,
+    minimum, project_label, report_name, required_source_files, own_source_relative,
 )
 
 EXIT_OK = 0
@@ -42,7 +42,6 @@ EXIT_USAGE = 2
 REPORT_SUFFIX = ".json"
 LOG_SUFFIX = ".log"
 SUMMARY_NAME = "summary.json"
-MIN_THRESHOLD = 90
 MAX_THRESHOLD = 100
 HUNDRED = 100
 DEFAULT_LANGUAGE = "osprey"
@@ -89,12 +88,13 @@ def validate_entry(root: Path, kind: str, name: str, entry: object, verify_golde
     label = project_label(kind, name)
     if not isinstance(entry, dict):
         return [f"{label}: gate entry must be an object"]
-    threshold = entry.get("threshold", MIN_THRESHOLD)
+    floor = minimum(entry)
+    threshold = entry.get("threshold", floor)
     problems = []
     if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
         problems.append(f"{label}: threshold must be numeric")
-    elif not MIN_THRESHOLD <= threshold <= MAX_THRESHOLD:
-        problems.append(f"{label}: threshold {threshold} must be {MIN_THRESHOLD}..{MAX_THRESHOLD}")
+    elif not floor <= threshold <= MAX_THRESHOLD:
+        problems.append(f"{label}: threshold {threshold} must be {floor}..{MAX_THRESHOLD}")
     if entry.get("language") != DEFAULT_LANGUAGE:
         problems.append(f"{label}: language must be {DEFAULT_LANGUAGE!r}")
     problems += [f"{label}: {problem}" for problem in suite_problems(root / kind / name / "tests", verify_golden)]
@@ -194,7 +194,7 @@ def percentage(covered: int, total: int) -> float | None:
 def result_template(name: str, configured: dict) -> dict:
     return {
         "name": name,
-        "threshold": configured.get("threshold", MIN_THRESHOLD),
+        "threshold": configured.get("threshold", minimum(configured)),
         "language": configured["language"],
         "covered": 0,
         "total": 0,

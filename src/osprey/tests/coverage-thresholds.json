@@ -356,7 +356,7 @@
       },
       "transformers": {
         "language": "osprey",
-        "threshold": 97.6
+        "unfinished": true
       },
       "vscode": {
         "language": "osprey",

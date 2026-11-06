@@ -14,6 +14,7 @@ from pathlib import Path
 
 PACKAGES_DIR = "src/osprey/packages"
 APPS_DIR = "src/osprey"
+MIN_THRESHOLD = 90
 PROJECT_KEYS = {PACKAGES_DIR: "packages", APPS_DIR: "apps"}
 GATED_KINDS = tuple(PROJECT_KEYS)
 SOURCE_SUFFIXES = frozenset({".py", ".osp", ".ospml"})
@@ -134,3 +135,8 @@ def required_source_files(root: Path, kind: str, name: str) -> set[str]:
         if path.is_file() and path.suffix in SOURCE_SUFFIXES and has_definitions(path):
             files.append(relative.as_posix())
     return set(files)
+
+
+def minimum(entry: dict) -> int:
+    """An `"unfinished": true` project (user decision) still reports coverage but has no 90% floor."""
+    return 0 if entry.get("unfinished") is True else MIN_THRESHOLD
