@@ -9,6 +9,32 @@ effect IterationProbe {
 /// Slot is a record element, so `listGet` must hand back the whole record.
 type Slot = { label: string, weight: float, ready: bool }
 
+/// The two-slot record fixture every typed retrieval case indexes.
+fn slotFixture() = [
+    Slot { label: "left", weight: 1.5, ready: true },
+    Slot { label: "right", weight: 2.5, ready: false }
+]
+
+/// The int at `index`, or a sentinel far outside every case's value range.
+fn listInt(xs, index) = listGet(xs, index) ?: (0 - 999)
+
+/// The string at `index`, or a sentinel no case expects.
+fn listText(xs, index) = listGet(xs, index) ?: ""
+
+/// Asserts `xs` holds every int in `expected` at the same index.
+fn checkList(label, xs, expected) = {
+    let _ = forEachList(toList(range(0, listLength(expected))), fn(i) => {
+        check(label, listInt(expected, i), listInt(xs, i))
+    })
+}
+
+/// Asserts `xs` holds every string in `expected` at the same index.
+fn checkTextList(label, xs, expected) = {
+    let _ = forEachList(toList(range(0, listLength(expected))), fn(i) => {
+        check(label, listText(expected, i), listText(xs, i))
+    })
+}
+
 /// appendThrough builds inclusive integer ranges while preserving every prior list version.
 fn appendThrough(xs) =
     fn(next) => fn(last) => match next > last {
@@ -78,36 +104,18 @@ fn constructionAndIdentityCase() = {
     ])
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
-    checkAll("construction and reverse contents", [
-        (listGet(a, 0) ?: ((0 - 999) )) == 1,
-        (listGet(a, 1) ?: ((0 - 999) )) == 2,
-        (listGet(a, 2) ?: ((0 - 999) )) == 3,
-        (listGet(b, 0) ?: ((0 - 999) )) == 10,
-        (listGet(b, 1) ?: ((0 - 999) )) == 20,
-        (listGet(reversed, 0) ?: ((0 - 999) )) == 3,
-        (listGet(reversed, 1) ?: ((0 - 999) )) == 2,
-        (listGet(reversed, 2) ?: ((0 - 999) )) == 1,
-        (listGet(restored, 0) ?: ((0 - 999) )) == 1,
-        (listGet(restored, 1) ?: ((0 - 999) )) == 2,
-        (listGet(restored, 2) ?: ((0 - 999) )) == 3,
-        (listGet(prepended, 0) ?: ((0 - 999) )) == 0,
-        (listGet(prepended, 1) ?: ((0 - 999) )) == 1,
-        (listGet(prepended, 2) ?: ((0 - 999) )) == 2,
-        (listGet(prepended, 3) ?: ((0 - 999) )) == 3
-    ])
+    checkList("construction and reverse contents", a, [1, 2, 3])
+    checkList("construction and reverse contents", b, [10, 20])
+    checkList("construction and reverse contents", reversed, [3, 2, 1])
+    checkList("construction and reverse contents", restored, [1, 2, 3])
+    checkList("construction and reverse contents", prepended, [0, 1, 2, 3])
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
-    checkAll("concat identities and boundaries", [
-        (listGet(concatenated, 0) ?: ((0 - 999) )) == 1,
-        (listGet(concatenated, 2) ?: ((0 - 999) )) == 3,
-        (listGet(concatenated, 3) ?: ((0 - 999) )) == 10,
-        (listGet(concatenated, 4) ?: ((0 - 999) )) == 20,
-        (listGet(emptyPlusA, 0) ?: ((0 - 999) )) == 1,
-        (listGet(aPlusEmpty, 2) ?: ((0 - 999) )) == 3,
-        (listGet(doubledA, 3) ?: ((0 - 999) )) == 1,
-        (listGet(abPlusA, 5) ?: ((0 - 999) )) == 1,
-        (listGet(abPlusA, 7) ?: ((0 - 999) )) == 3
-    ])
+    checkList("concat identities and boundaries", concatenated, [1, 2, 3, 10, 20])
+    checkList("concat identities and boundaries", emptyPlusA, [1, 2, 3])
+    checkList("concat identities and boundaries", aPlusEmpty, [1, 2, 3])
+    checkList("concat identities and boundaries", doubledA, [1, 2, 3, 1, 2, 3])
+    checkList("concat identities and boundaries", abPlusA, [1, 2, 3, 10, 20, 1, 2, 3])
 
     // All three legacy contains results survive alongside additional positive and
     // endpoint checks ([BUILTIN-LIST-CONTAINS]).
@@ -147,19 +155,9 @@ fn iterationAndPersistenceCase() = {
     ])
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
-    checkAll("iteration constituent values", [
-        (listGet(a, 0) ?: ((0 - 999) )) == 1,
-        (listGet(a, 1) ?: ((0 - 999) )) == 2,
-        (listGet(a, 2) ?: ((0 - 999) )) == 3,
-        (listGet(reversed, 0) ?: ((0 - 999) )) == 3,
-        (listGet(reversed, 1) ?: ((0 - 999) )) == 2,
-        (listGet(reversed, 2) ?: ((0 - 999) )) == 1,
-        (listGet(combined, 0) ?: ((0 - 999) )) == 1,
-        (listGet(combined, 1) ?: ((0 - 999) )) == 2,
-        (listGet(combined, 2) ?: ((0 - 999) )) == 3,
-        (listGet(combined, 3) ?: ((0 - 999) )) == 10,
-        (listGet(combined, 4) ?: ((0 - 999) )) == 20
-    ])
+    checkList("iteration constituent values", a, [1, 2, 3])
+    checkList("iteration constituent values", reversed, [3, 2, 1])
+    checkList("iteration constituent values", combined, [1, 2, 3, 10, 20])
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
     checkAll("persistent generation and branch lengths", [
@@ -196,9 +194,9 @@ fn iterationAndPersistenceCase() = {
         !listContains(g3, 999),
         !listContains(g3, 888),
         !listContains(g3, 777),
-        (listGet(g5, 4) ?: ((0 - 999) )) == 50,
-        (listGet(y2, 3) ?: ((0 - 999) )) == 888,
-        (listGet(y2, 4) ?: ((0 - 999) )) == 777
+        listInt(g5, 4) == 50,
+        listInt(y2, 3) == 888,
+        listInt(y2, 4) == 777
     ])
 }
 
@@ -223,22 +221,22 @@ fn tailBoundaryCase() = {
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll("tail boundary contents", [
-        (listGet(t, 0) ?: ((0 - 999) )) == 1,
-        (listGet(t, 9) ?: ((0 - 999) )) == 10,
-        (listGet(t2, 10) ?: ((0 - 999) )) == 11,
-        (listGet(t2, 19) ?: ((0 - 999) )) == 20,
-        (listGet(t3, 29) ?: ((0 - 999) )) == 30,
-        (listGet(t4, 30) ?: ((0 - 999) )) == 31,
-        (listGet(t4, 31) ?: ((0 - 999) )) == 32,
-        (listGet(t4, 32) ?: ((0 - 999) )) == 33,
-        (listGet(t4, 34) ?: ((0 - 999) )) == 35,
-        (listGet(reversed, 0) ?: ((0 - 999) )) == 35,
-        (listGet(reversed, 2) ?: ((0 - 999) )) == 33,
-        (listGet(reversed, 3) ?: ((0 - 999) )) == 32,
-        (listGet(reversed, 34) ?: ((0 - 999) )) == 1,
-        (listGet(doubled, 34) ?: ((0 - 999) )) == 35,
-        (listGet(doubled, 35) ?: ((0 - 999) )) == 1,
-        (listGet(doubled, 69) ?: ((0 - 999) )) == 35,
+        listInt(t, 0) == 1,
+        listInt(t, 9) == 10,
+        listInt(t2, 10) == 11,
+        listInt(t2, 19) == 20,
+        listInt(t3, 29) == 30,
+        listInt(t4, 30) == 31,
+        listInt(t4, 31) == 32,
+        listInt(t4, 32) == 33,
+        listInt(t4, 34) == 35,
+        listInt(reversed, 0) == 35,
+        listInt(reversed, 2) == 33,
+        listInt(reversed, 3) == 32,
+        listInt(reversed, 34) == 1,
+        listInt(doubled, 34) == 35,
+        listInt(doubled, 35) == 1,
+        listInt(doubled, 69) == 35,
         listLength(t3) == 30,
         !listContains(t3, 31),
         sumList(t) == 55,
@@ -353,10 +351,10 @@ fn indexingPatternsAndDispatchCase() = {
         !listContains(empty + commands, "echo missing"),
         listLength(a + [7, 8]) == 5,
         listLength([7, 8] + a) == 5,
-        (listGet([7, 8] + a, 0) ?: ((0 - 999) )) == 7,
-        (listGet([7, 8] + a, 2) ?: ((0 - 999) )) == 1,
-        (listGet(a + [7, 8], 3) ?: ((0 - 999) )) == 7,
-        (listGet(a + [7, 8], 4) ?: ((0 - 999) )) == 8,
+        listInt([7, 8] + a, 0) == 7,
+        listInt([7, 8] + a, 2) == 1,
+        listInt(a + [7, 8], 3) == 7,
+        listInt(a + [7, 8], 4) == 8,
         length([7, 8] + a) == 5
     ])
 }
@@ -384,10 +382,7 @@ fn typedElementRetrievalCase() = {
     let words = ["alpha", "beta", "gamma"]
     let ratios = [0.5, 1.25, 2.75]
     let flags = [true, false, true]
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let slots = slotFixture()
     let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
     let firstSlot = listGet(slots, 0) ?: missingSlot
     let secondSlot = listGet(slots, 1) ?: missingSlot
@@ -395,13 +390,10 @@ fn typedElementRetrievalCase() = {
 
     // A string element comes back as its own string, at every index, through
     // both spellings the spec calls equivalent [BUILTIN-LIST-GET].
+    checkTextList("string elements survive listGet", words, ["alpha", "beta", "gamma"])
+    checkTextList("string elements survive listGet", [words[0] ?: "none", words[1] ?: "none", words[2] ?: "none"], ["alpha", "beta", "gamma"])
+
     checkAll("string elements survive listGet", [
-        (listGet(words, 0) ?: "none") == "alpha",
-        (listGet(words, 1) ?: "none") == "beta",
-        (listGet(words, 2) ?: "none") == "gamma",
-        (words[0] ?: "none") == "alpha",
-        (words[1] ?: "none") == "beta",
-        (words[2] ?: "none") == "gamma",
         (listGet(words, 0) ?: "none") == (words[0] ?: "other"),
         (listGet(words, 1) ?: "none") == (words[1] ?: "other"),
         (listGet(words, 2) ?: "none") == (words[2] ?: "other"),
@@ -423,22 +415,19 @@ fn typedElementRetrievalCase() = {
     // still yields strings, not the words its cells happen to hold
     // ([BUILTIN-LIST-REVERSE], [BUILTIN-LIST-PREPEND], [BUILTIN-LIST-APPEND],
     // [BUILTIN-LIST-CONCAT]).
+    checkTextList("string elements survive every list producer", listReverse(words), ["gamma", "beta", "alpha"])
+    checkTextList("string elements survive every list producer", listPrepend(words, "zero"), ["zero", "alpha", "beta", "gamma"])
+    checkTextList("string elements survive every list producer", listAppend(words, "delta"), ["alpha", "beta", "gamma", "delta"])
+    checkTextList("string elements survive every list producer", words + ["delta"], ["alpha", "beta", "gamma", "delta"])
+    checkTextList("string elements survive every list producer", ["zero"] + words, ["zero", "alpha", "beta", "gamma"])
+
     checkAll("string elements survive every list producer", [
-        (listGet(listReverse(words), 0) ?: "none") == "gamma",
-        (listGet(listReverse(words), 2) ?: "none") == "alpha",
-        (listGet(listPrepend(words, "zero"), 0) ?: "none") == "zero",
-        (listGet(listPrepend(words, "zero"), 1) ?: "none") == "alpha",
-        (listGet(listAppend(words, "delta"), 3) ?: "none") == "delta",
-        (listGet(listAppend(words, "delta"), 0) ?: "none") == "alpha",
-        (listGet(words + ["delta"], 3) ?: "none") == "delta",
-        (listGet(["zero"] + words, 0) ?: "none") == "zero",
-        (listGet(["zero"] + words, 1) ?: "none") == "alpha",
         listLength(listAppend(words, "delta")) == 4,
         listLength(listPrepend(words, "zero")) == 4,
         listContains(words, "beta"),
         !listContains(words, "delta"),
         listContains(listAppend(words, "delta"), "delta"),
-        (listGet(listReverse(listReverse(words)), 1) ?: "none") == "beta"
+        listText(listReverse(listReverse(words)), 1) == "beta"
     ])
 
     // A float element keeps its IEEE value; a bool element keeps true/false.
@@ -895,10 +884,7 @@ fn recordListPatternCase() = {
     let soloSlot = Slot { label: "solo", weight: 3.0, ready: true }
     let noSlots: List<Slot> = []
     let oneSlot = [soloSlot]
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let slots = slotFixture()
     let trio = listAppend(slots, Slot { label: "extra", weight: 4.0, ready: true })
     let noneHead = headOr(noSlots, missingSlot)
     let soloHead = headOr(oneSlot, missingSlot)
@@ -1104,10 +1090,7 @@ fn typedIterationOrderCase() = {
     let counts = [7, 8, 9]
     let ratios = [0.5, 1.25, 2.75]
     let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let slots = slotFixture()
     mut log = ""
 
     handle TranscriptProbe {
@@ -1249,10 +1232,7 @@ fn boundaryIndexCase() = {
     let ratios = [0.5, 1.25, 2.75]
     let marks = [true, false]
     let missingSlot = Slot { label: "missing", weight: 0.0, ready: false }
-    let slots = [
-        Slot { label: "left", weight: 1.5, ready: true },
-        Slot { label: "right", weight: 2.5, ready: false }
-    ]
+    let slots = slotFixture()
     let negIndex = (0 - 1) 
     let farNegIndex = (0 - 1000) 
     let lastIndex = (listLength(forty) - 1) 

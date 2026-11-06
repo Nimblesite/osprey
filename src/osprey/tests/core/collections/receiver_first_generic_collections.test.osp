@@ -28,6 +28,10 @@ fn suppliedStrings() = {
 fn groupAt<T>(groups: Map<string, List<T>>, key: string, index: int, fallbackList: List<T>, fallback: T) =
 (groups.mapGet(key) ?: fallbackList).listGet(index) ?: fallback
 
+/// The cases' shared fallbacks, one accessor per element type.
+fn intGroup(groups, key, index) = groupAt(groups, key, index, [91], 99)
+fn textGroup(groups, key, index) = groupAt(groups, key, index, ["row"], "item")
+
 /// One UFCS chain crosses generic effect erasure, Map<string,List<T>> lookup,
 /// Result recovery, persistent operations, view conversion, reversal, and leaf
 /// extraction. Implements [BUILTIN-STRING-UFCS], [EFFECTS-GENERIC-RUNTIME],
@@ -59,10 +63,10 @@ fn receiverFirstCollectionCase() = {
             (long.listGet(0) ?: "missing") == "three",
             (long.listGet(1) ?: "missing") == "seven",
             length(long.listGet(0) ?: "missing") == 5,
-            groupAt(ints, "low", 0, [91], 99) == 1,
-            groupAt(ints, "low", 1, [91], 99) == 2,
-            groupAt(strings, "short", 0, ["row"], "item") == "a",
-            groupAt(strings, "short", 1, ["row"], "item") == "bb"
+            intGroup(ints, "low", 0) == 1,
+            intGroup(ints, "low", 1) == 2,
+            textGroup(strings, "short", 0) == "a",
+            textGroup(strings, "short", 1) == "bb"
     ])
 
     checkAll("pipe chains preserve persistence views and source isolation", [
@@ -70,15 +74,15 @@ fn receiverFirstCollectionCase() = {
             !grownInts.mapContains("low"),
             grownInts.mapContains("high"),
             grownInts.mapContains("extra"),
-            groupAt(grownInts, "high", 2, [91], 99) == 50,
-            groupAt(grownInts, "extra", 0, [91], 99) == 6,
-            groupAt(grownInts, "extra", 1, [91], 99) == 7,
+            intGroup(grownInts, "high", 2) == 50,
+            intGroup(grownInts, "extra", 0) == 6,
+            intGroup(grownInts, "extra", 1) == 7,
             ints.mapContains("low"),
             !ints.mapContains("extra"),
             grownStrings.mapLength() == 2,
-            groupAt(grownStrings, "long", 0, ["row"], "item") == "eight",
-            groupAt(grownStrings, "long", 1, ["row"], "item") == "nine",
-            groupAt(strings, "long", 0, ["row"], "item") == "three",
+            textGroup(grownStrings, "long", 0) == "eight",
+            textGroup(grownStrings, "long", 1) == "nine",
+            textGroup(strings, "long", 0) == "three",
             intValues.listLength() == 2,
             (intValues.listGet(0) ?: [99]).listLength() >= 2,
             (intValues.listGet(1) ?: [99]).listLength() >= 2,

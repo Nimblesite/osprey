@@ -10,6 +10,16 @@ nestedAt<T> : (List (List T), int, int, List T, T) -> T
 nestedAt (matrix, row, column, fallbackRow, fallback) =
     listGet (listGet matrix row ?: fallbackRow) column ?: fallback
 
+(** Asserts every cell of one `expectedRow` matches `matrix`, one check each. *)
+checkRow label matrix expectedRow row fallbackRow fallback =
+    forEachList (toList (range 0 (listLength expectedRow))) (\column =>
+        check label (listGet expectedRow column ?: fallback) (nestedAt (matrix, row, column, fallbackRow, fallback)))
+
+(** Asserts every cell of `matrix` equals the same cell of `expected`. *)
+checkMatrix label matrix expected fallbackRow fallback =
+    forEachList (toList (range 0 (listLength expected))) (\row =>
+        checkRow label matrix (listGet expected row ?: fallbackRow) row fallbackRow fallback)
+
 chooseByCollection<T, U> : (List T, U, U) -> U
 chooseByCollection (items, present, empty) = match isEmpty items
     true => empty
@@ -58,6 +68,11 @@ nestedListEffectPatternCase () =
     grownInts = ints |> listAppend [6, 7] |> listPrepend [8, 9] |> listReverse
     grownStrings = strings |> listAppend ["fox", "gnu"] |> listReverse
 
+    checkMatrix "four leaf arguments survive nested Result extraction" ints [[1, 2], [3, 4, 5]] [99] 99
+    checkMatrix "four leaf arguments survive nested Result extraction" strings [["ant", "bee"], ["cat", "dog", "eel"]] ["row"] "item"
+    checkMatrix "four leaf arguments survive nested Result extraction" floats [[1.25, 2.5], [3.75, 4.5, 5.25]] [9.0] 9.5
+    checkMatrix "four leaf arguments survive nested Result extraction" bools [[true, false], [false, true, true]] [false] false
+
     checkAll "four leaf arguments survive nested Result extraction" [
         listLength ints == 2,
         listLength strings == 2,
@@ -65,37 +80,20 @@ nestedListEffectPatternCase () =
         listLength bools == 2,
         listLength (listGet ints 0 ?: [99]) == 2,
         listLength (listGet ints 1 ?: [99]) == 3,
-        nestedAt (ints, 0, 0, [99], 99) == 1,
-        nestedAt (ints, 0, 1, [99], 99) == 2,
-        nestedAt (ints, 1, 0, [99], 99) == 3,
-        nestedAt (ints, 1, 1, [99], 99) == 4,
-        nestedAt (ints, 1, 2, [99], 99) == 5,
         nestedAt (ints, 8, 0, [91, 92], 99) == 91,
         nestedAt (ints, 0, 8, [91], 99) == 99,
-        nestedAt (strings, 0, 0, ["row"], "item") == "ant",
-        nestedAt (strings, 0, 1, ["row"], "item") == "bee",
-        nestedAt (strings, 1, 0, ["row"], "item") == "cat",
-        nestedAt (strings, 1, 1, ["row"], "item") == "dog",
-        nestedAt (strings, 1, 2, ["row"], "item") == "eel",
         nestedAt (strings, 8, 0, ["row"], "item") == "row",
         nestedAt (strings, 0, 8, ["row"], "item") == "item",
         length (nestedAt (strings, 1, 0, ["row"], "item")) == 3,
-        nestedAt (floats, 0, 0, [9.0], 9.5) == 1.25,
-        nestedAt (floats, 0, 1, [9.0], 9.5) == 2.5,
-        nestedAt (floats, 1, 0, [9.0], 9.5) == 3.75,
-        nestedAt (floats, 1, 1, [9.0], 9.5) == 4.5,
-        nestedAt (floats, 1, 2, [9.0], 9.5) == 5.25,
         nestedAt (floats, 0, 0, [9.0], 9.5) + nestedAt (floats, 0, 1, [9.0], 9.5) == 3.75,
         nestedAt (floats, 9, 0, [9.0], 9.5) == 9.0,
         nestedAt (floats, 0, 9, [9.0], 9.5) == 9.5,
-        nestedAt (bools, 0, 0, [false], false),
-        !(nestedAt (bools, 0, 1, [true], true)),
-        !(nestedAt (bools, 1, 0, [true], true)),
-        nestedAt (bools, 1, 1, [false], false),
-        nestedAt (bools, 1, 2, [false], false),
         nestedAt (bools, 9, 0, [true], false),
         !(nestedAt (bools, 0, 9, [true], false))
     ]
+
+    checkMatrix "deep persistence patterns and generic effects stay coherent" grownInts [[6, 7], [3, 4, 5], [1, 2], [8, 9]] [99] 99
+    checkMatrix "deep persistence patterns and generic effects stay coherent" grownStrings [["fox", "gnu"], ["cat", "dog", "eel"], ["ant", "bee"]] ["row"] "item"
 
     checkAll "deep persistence patterns and generic effects stay coherent" [
         listLength intCube == 3,
@@ -115,15 +113,7 @@ nestedListEffectPatternCase () =
         auditStrings strings == "ant/bee/cat/dog/eel/",
         auditStrings [["fox"], ["gnu", "hare"]] == "fox/gnu/hare/",
         listLength grownInts == 4,
-        nestedAt (grownInts, 0, 0, [99], 99) == 6,
-        nestedAt (grownInts, 0, 1, [99], 99) == 7,
-        nestedAt (grownInts, 1, 0, [99], 99) == 3,
-        nestedAt (grownInts, 2, 0, [99], 99) == 1,
-        nestedAt (grownInts, 3, 0, [99], 99) == 8,
-        nestedAt (grownInts, 3, 1, [99], 99) == 9,
         listLength grownStrings == 3,
-        nestedAt (grownStrings, 0, 0, ["row"], "item") == "fox",
-        nestedAt (grownStrings, 2, 1, ["row"], "item") == "bee",
         chooseByCollection (listGet ints 0 ?: [99], "present", "empty") == "present",
         chooseByCollection (listGet strings 0 ?: ["x"], 41, 99) == 41,
         chooseByCollection (List (), true, false) == false,
