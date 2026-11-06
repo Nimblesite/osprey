@@ -120,4 +120,4 @@ fn tokenScanCase() = {
     ])
 }
 
-test("token scanner finds every integer and boundary", fn() => exactArithmetic(tokenScanCase))
+test("token scanner finds every integer and boundary", exactly(tokenScanCase))

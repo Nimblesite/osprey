@@ -145,7 +145,7 @@ fn diskStorageCase() = {
 
 // Register the production implementation against the real file system.
 
-test("injected disk handler persists the notebook to real files", fn() => exactArithmetic(diskStorageCase))
+test("injected disk handler persists the notebook to real files", exactly(diskStorageCase))
 
 /// This case runs the identical logic against the in-memory double and
 /// verifies both the answers and the calls the logic made.
@@ -186,7 +186,7 @@ fn mockStorageCase() = {
 }
 
 // Register the test double standing in for the file system.
-test("injected mock handler replaces the file system and records every call", fn() => exactArithmetic(mockStorageCase))
+test("injected mock handler replaces the file system and records every call", exactly(mockStorageCase))
 
 /// This case swaps in a third policy to show the logic is unchanged by it.
 fn readOnlyStorageCase() = {
@@ -213,4 +213,4 @@ fn readOnlyStorageCase() = {
 }
 
 // Register the third policy, proving the logic depends on none of them.
-test("swapping the injected handler swaps the policy, not the logic", fn() => exactArithmetic(readOnlyStorageCase))
+test("swapping the injected handler swaps the policy, not the logic", exactly(readOnlyStorageCase))

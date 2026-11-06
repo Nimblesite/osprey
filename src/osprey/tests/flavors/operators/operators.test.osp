@@ -55,9 +55,9 @@ fn booleanOperatorsCase() = {
 
 // Register the arithmetic documentation scenario.
 
-test("operator precedence retains every arithmetic golden", fn() => exactArithmetic(arithmeticOperatorsCase))
+test("operator precedence retains every arithmetic golden", exactly(arithmeticOperatorsCase))
 // Register the boolean documentation scenario.
-test("boolean composition retains every logical golden", fn() => exactArithmetic(booleanOperatorsCase))
+test("boolean composition retains every logical golden", exactly(booleanOperatorsCase))
 
 /// [FLOAT-OPERANDS] One constrained helper accepts int and float callers.
 fn numericScale(x) = x * 1.5
@@ -80,4 +80,4 @@ fn numericPolymorphismCase() = {
         (((4.0 / 0.0) * 1.5) ) == -1.5
     ])
 }
-test("numeric constraints retain mixed arithmetic and policy substitution", fn() => exactArithmetic(numericPolymorphismCase))
+test("numeric constraints retain mixed arithmetic and policy substitution", exactly(numericPolymorphismCase))

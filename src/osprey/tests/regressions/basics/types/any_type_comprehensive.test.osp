@@ -273,4 +273,4 @@ fn anyTypeBehaviorCase() = {
     ])
 }
 
-test("any values retain usable behavior across typed boundaries", fn() => exactArithmetic(anyTypeBehaviorCase))
+test("any values retain usable behavior across typed boundaries", exactly(anyTypeBehaviorCase))

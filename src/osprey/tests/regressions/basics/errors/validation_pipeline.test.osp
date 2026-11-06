@@ -89,4 +89,4 @@ fn validationPipelineCase() = checkAll("age validation pipeline", [
     runAll(0, 4) == 0
 ])
 
-test("age validation preserves values and rejection reasons", fn() => exactArithmetic(validationPipelineCase))
+test("age validation preserves values and rejection reasons", exactly(validationPipelineCase))

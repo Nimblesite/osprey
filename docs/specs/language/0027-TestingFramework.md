@@ -77,6 +77,8 @@ which attaches only to a program that names it; a program that declares its
 own `exactArithmetic` keeps its own. Installing it is still explicit and by
 name, as [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)
 requires: no test gets an ambient policy.
+`exactly(work)` is the test body that runs `work` under that policy, so a
+case registers as `test("name", exactly(work))`.
 
 The same unit holds the GPU `Result` helpers the GPU suites share:
 `withBuffer(result, work)` runs `work` on a successful operation's value,

@@ -304,7 +304,7 @@ fn typeEqualityCase() = {
     ])
 }
 
-test("equivalent type shapes compose while union tags remain distinct", fn() => exactArithmetic(typeEqualityCase))
+test("equivalent type shapes compose while union tags remain distinct", exactly(typeEqualityCase))
 
 /// A transparent alias is its representation everywhere it is written: a
 /// scalar, a function type and a record field alike unify with what they
@@ -322,4 +322,4 @@ fn aliasCase() = checkAll("transparent type aliases are their representation eve
     structuralEquals([applyKernel(fn(i) => toFloat(i) * 0.5, 4), combine(fn(a, b) => a + b, 1.5, 2.0)], [2.0, 3.5])
 ])
 
-test("transparent type aliases are their representation everywhere", fn() => exactArithmetic(aliasCase))
+test("transparent type aliases are their representation everywhere", exactly(aliasCase))

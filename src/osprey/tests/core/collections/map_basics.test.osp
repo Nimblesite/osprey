@@ -208,19 +208,19 @@ fn literalsAndDispatchCase() = {
 }
 
 // Register empty, set, overwrite, and source-isolation behavior.
-test("maps construct, overwrite, and retain source bindings", fn() => exactArithmetic(constructionAndOverwriteCase))
+test("maps construct, overwrite, and retain source bindings", exactly(constructionAndOverwriteCase))
 
 // Register generation-chain and sibling-branch persistence behavior.
-test("map generations and sibling branches remain isolated", fn() => exactArithmetic(generationsAndBranchesCase))
+test("map generations and sibling branches remain isolated", exactly(generationsAndBranchesCase))
 
 // Register persistent removal and right-biased merge behavior.
-test("map removal and merge preserve values and bias", fn() => exactArithmetic(removalAndMergeCase))
+test("map removal and merge preserve values and bias", exactly(removalAndMergeCase))
 
 // Register key/value views beside independent persistent lists.
-test("map views and list interactions preserve both collections", fn() => exactArithmetic(viewsAndCrossCollectionCase))
+test("map views and list interactions preserve both collections", exactly(viewsAndCrossCollectionCase))
 
 // Register literal lookup, duplicate keys, and receiver-directed dispatch.
-test("map literals and receiver dispatch preserve lookup semantics", fn() => exactArithmetic(literalsAndDispatchCase))
+test("map literals and receiver dispatch preserve lookup semantics", exactly(literalsAndDispatchCase))
 
 /// [BUILTIN-MAP-GET] declares `mapGet(map: Map<string, V>, key: string) -> Result<V, Error>`,
 /// equivalent to `map[key]`, with a missing key returning `Error`. `V` is the
@@ -329,7 +329,7 @@ fn typedValueRetrievalCase() = {
 }
 
 // Register typed value retrieval across string, float, bool and record maps.
-test("mapGet returns the value type for every value type", fn() => exactArithmetic(typedValueRetrievalCase))
+test("mapGet returns the value type for every value type", exactly(typedValueRetrievalCase))
 
 /// [BUILTIN-MAP] states that `Map()` and map literals create *string*-keyed maps,
 /// and [BUILTIN-MAP-GET]/[BUILTIN-MAP-CONTAINS] key them by that string alone. A
@@ -430,7 +430,7 @@ fn keyShapeCase() = {
 }
 
 // Register exact-content key behavior across every key shape.
-test("map keys are distinguished by exact string content", fn() => exactArithmetic(keyShapeCase))
+test("map keys are distinguished by exact string content", exactly(keyShapeCase))
 
 /// [BUILTIN-MAP-SET] returns a map with `key` bound to `value`, "replacing any
 /// prior binding", while the Collection Functions preamble states operations
@@ -519,7 +519,7 @@ fn overwriteChainCase() = {
 }
 
 // Register repeated-overwrite and prefix-key isolation behavior.
-test("map overwrite chains keep one binding per key", fn() => exactArithmetic(overwriteChainCase))
+test("map overwrite chains keep one binding per key", exactly(overwriteChainCase))
 
 /// [BUILTIN-MAP-MERGE] "returns the right-biased union" and states `left + right`
 /// is equivalent. Right bias makes merge non-commutative but still associative,
@@ -608,7 +608,7 @@ fn mergeAlgebraCase() = {
 }
 
 // Register right-biased merge algebra: identity, idempotence, associativity.
-test("map merge is right-biased, associative, and identity-preserving", fn() => exactArithmetic(mergeAlgebraCase))
+test("map merge is right-biased, associative, and identity-preserving", exactly(mergeAlgebraCase))
 
 /// [BUILTIN-MAP-REMOVE] "returns a map without `key`" and states "a missing key
 /// leaves the map unchanged". Sweeping a five-key map one key at a time must drop
@@ -709,7 +709,7 @@ fn removalSweepCase() = {
 }
 
 // Register the removal sweep, absent-key no-op, and removal/merge composition.
-test("map removal drops exactly one binding and leaves absent keys alone", fn() => exactArithmetic(removalSweepCase))
+test("map removal drops exactly one binding and leaves absent keys alone", exactly(removalSweepCase))
 
 /// Bucket holds a Map and a List field, so a record can carry whole collections.
 type Bucket = { name: string, items: Map<string, int>, tags: List<string> }
@@ -828,7 +828,7 @@ fn nestedCollectionCase() = {
 }
 
 // Register nesting of maps inside lists, maps and records.
-test("maps nest inside lists, maps, and records without flattening", fn() => exactArithmetic(nestedCollectionCase))
+test("maps nest inside lists, maps, and records without flattening", exactly(nestedCollectionCase))
 
 /// [BUILTIN-MAP-KEYS] returns all keys "in unspecified order" and
 /// [BUILTIN-MAP-VALUES] returns all values "in the same traversal order as
@@ -920,4 +920,4 @@ fn keyValueViewPairingCase() = {
 }
 
 // Register the mapKeys/mapValues traversal-order pairing contract.
-test("mapKeys and mapValues stay paired index by index", fn() => exactArithmetic(keyValueViewPairingCase))
+test("mapKeys and mapValues stay paired index by index", exactly(keyValueViewPairingCase))

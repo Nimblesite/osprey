@@ -250,4 +250,4 @@ fn inferredBehaviorCase() = {
     ])
 }
 
-test("inference preserves polymorphism and derived values", fn() => exactArithmetic(inferredBehaviorCase))
+test("inference preserves polymorphism and derived values", exactly(inferredBehaviorCase))

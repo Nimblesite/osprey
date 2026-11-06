@@ -200,4 +200,4 @@ fn typedErrorChannelCase() = {
     ])
 }
 
-test("typed error channels compose and restore shadowed handlers", fn() => exactArithmetic(typedErrorChannelCase))
+test("typed error channels compose and restore shadowed handlers", exactly(typedErrorChannelCase))

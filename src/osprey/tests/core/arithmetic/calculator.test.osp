@@ -71,8 +71,8 @@ let exactArithmetic = handler Arith {
 }
 
 // Register the mixed arithmetic interaction.
-test("arithmetic composes across calls", fn() => exactArithmetic(additionCase))
+test("arithmetic composes across calls", exactly(additionCase))
 // Register the multi-stage pipeline interaction.
-test("pipes and lambdas compose", fn() => exactArithmetic(pipelineCase))
+test("pipes and lambdas compose", exactly(pipelineCase))
 // Register the matching and rendering interaction.
-test("matching, interpolation and calls interact", fn() => exactArithmetic(patternCase))
+test("matching, interpolation and calls interact", exactly(patternCase))

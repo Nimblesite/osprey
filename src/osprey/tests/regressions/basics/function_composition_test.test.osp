@@ -270,7 +270,7 @@ fn effectCompositionCase() = {
     checkAll("effect-managed function state", [count == 3, rebound(2) == 42])
 }
 
-test("functions compose across scalar and string values", fn() => exactArithmetic(basicCompositionCase))
-test("closures retain captures through higher-order consumers", fn() => exactArithmetic(closureCompositionCase))
-test("capturing callbacks preserve iterator results", fn() => exactArithmetic(iteratorCompositionCase))
-test("effects own mutation and closure rebinding", fn() => exactArithmetic(effectCompositionCase))
+test("functions compose across scalar and string values", exactly(basicCompositionCase))
+test("closures retain captures through higher-order consumers", exactly(closureCompositionCase))
+test("capturing callbacks preserve iterator results", exactly(iteratorCompositionCase))
+test("effects own mutation and closure rebinding", exactly(effectCompositionCase))

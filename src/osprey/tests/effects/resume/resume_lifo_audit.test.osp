@@ -47,7 +47,7 @@ fn resumeLifoAuditCase() = {
 
 // Register the post-resume LIFO regression.
 
-test("post-resume code unwinds in reverse operation order", fn() => exactArithmetic(resumeLifoAuditCase))
+test("post-resume code unwinds in reverse operation order", exactly(resumeLifoAuditCase))
 
 /// Alpha, Beta, Gamma and Delta are single-operation channels, one per nesting
 /// depth, so every transcript entry names both the region that answered an
@@ -161,7 +161,7 @@ fn nestedInterleavedDepthTwoCase() = {
 }
 
 // Register the two-depth interleaved settlement audit.
-test("interleaved performs across two nested regions settle innermost first", fn() => exactArithmetic(nestedInterleavedDepthTwoCase))
+test("interleaved performs across two nested regions settle innermost first", exactly(nestedInterleavedDepthTwoCase))
 
 /// Three regions, rotated: the OUTERMOST region handles Gamma, the middle one
 /// Alpha and the innermost one Beta, while the body performs them in a third
@@ -253,7 +253,7 @@ fn nestedDepthThreeRotationCase() = {
 }
 
 // Register the three-depth rotated settlement audit.
-test("three rotated regions settle by live arm nesting, not by perform order", fn() => exactArithmetic(nestedDepthThreeRotationCase))
+test("three rotated regions settle by live arm nesting, not by perform order", exactly(nestedDepthThreeRotationCase))
 
 /// Four nested regions, one effect each, performed 1-2-3-4-4-3-2-1 so the depth
 /// pattern is a palindrome while the labels are not. Spec 0017 [EFFECTS-RESUME]
@@ -376,7 +376,7 @@ fn nestedDepthFourStaircaseCase() = {
 }
 
 // Register the four-depth nested settlement audit.
-test("four nested regions settle by live arm nesting, deepest arm first", fn() => exactArithmetic(nestedDepthFourStaircaseCase))
+test("four nested regions settle by live arm nesting, deepest arm first", exactly(nestedDepthFourStaircaseCase))
 
 /// Twin gives two nested regions something to divide between them.
 effect Twin {
@@ -475,7 +475,7 @@ fn nestedPartialInnerResumeCase() = {
 }
 
 // Register the partial-inner-region settlement audit.
-test("a partial inner region resumes while its uncovered operation crosses outward", fn() => exactArithmetic(nestedPartialInnerResumeCase))
+test("a partial inner region resumes while its uncovered operation crosses outward", exactly(nestedPartialInnerResumeCase))
 
 /// Layer is handled twice at two depths, the inner region covering only part of
 /// the outer body.
@@ -564,4 +564,4 @@ fn sameEffectTwoDepthsCase() = {
 }
 
 // Register the same-effect two-depth settlement audit.
-test("an inner region settles fully before the outer region's later operation", fn() => exactArithmetic(sameEffectTwoDepthsCase))
+test("an inner region settles fully before the outer region's later operation", exactly(sameEffectTwoDepthsCase))

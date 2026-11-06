@@ -88,4 +88,4 @@ fn utf8WalkCase() = {
     ])
 }
 
-test("UTF-8 walker advances only on scalar boundaries", fn() => exactArithmetic(utf8WalkCase))
+test("UTF-8 walker advances only on scalar boundaries", exactly(utf8WalkCase))

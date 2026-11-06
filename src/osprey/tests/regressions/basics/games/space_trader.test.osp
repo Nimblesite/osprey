@@ -283,4 +283,4 @@ fn spaceTraderCase() = {
     ])
 }
 
-test("space trading preserves market, ledger, and ship state", fn() => exactArithmetic(spaceTraderCase))
+test("space trading preserves market, ledger, and ship state", exactly(spaceTraderCase))

@@ -119,7 +119,7 @@ fn resumeValueRewriteCase() = {
 
 // Register the value-rewriting and generic-resume regression.
 
-test("resume rewrites values across scalar, Result, and generic effects", fn() => exactArithmetic(resumeValueRewriteCase))
+test("resume rewrites values across scalar, Result, and generic effects", exactly(resumeValueRewriteCase))
 
 /// Script hands the performer one scripted integer per numbered slot.
 effect Script {
@@ -240,7 +240,7 @@ fn resumeSubstitutesSuppliedValueCase() = {
 }
 
 // Register value substitution at the perform site.
-test("resume substitutes exactly the value each arm supplied", fn() => exactArithmetic(resumeSubstitutesSuppliedValueCase))
+test("resume substitutes exactly the value each arm supplied", exactly(resumeSubstitutesSuppliedValueCase))
 
 /// Layer lets each arm adjust the answer its resumed continuation produced.
 effect Layer {
@@ -358,7 +358,7 @@ fn resumeAnswerComposesLifoCase() = {
 }
 
 // Register the composition of post-resume adjustments.
-test("post-resume adjustments compose into the region answer", fn() => exactArithmetic(resumeAnswerComposesLifoCase))
+test("post-resume adjustments compose into the region answer", exactly(resumeAnswerComposesLifoCase))
 
 /// Scalar carries one operation per scalar payload kind a resume can supply.
 effect Scalar {
@@ -491,7 +491,7 @@ fn resumeScalarPayloadsCase() = {
 }
 
 // Register integer and float resume payloads.
-test("resume carries integer and float payloads", fn() => exactArithmetic(resumeScalarPayloadsCase))
+test("resume carries integer and float payloads", exactly(resumeScalarPayloadsCase))
 
 /// Three booleans rendered in order, so both truth values must survive.
 fn flagBody() = {
@@ -634,7 +634,7 @@ fn resumeBoolAndUnitPayloadsCase() = {
 }
 
 // Register boolean and Unit resume payloads.
-test("resume carries boolean and Unit payloads", fn() => exactArithmetic(resumeBoolAndUnitPayloadsCase))
+test("resume carries boolean and Unit payloads", exactly(resumeBoolAndUnitPayloadsCase))
 
 /// Slot is a record supplied whole through one resumed operation.
 type Slot = { label: string, weight: int, ready: bool }
@@ -804,7 +804,7 @@ fn resumeManagedPayloadsCase() = {
 }
 
 // Register string, record and Result resume payloads.
-test("resume carries string record and Result payloads", fn() => exactArithmetic(resumeManagedPayloadsCase))
+test("resume carries string record and Result payloads", exactly(resumeManagedPayloadsCase))
 
 /// Depth exposes one operation performed only by the deepest frame.
 effect Depth {
@@ -916,7 +916,7 @@ fn resumeFromNestedHelpersCase() = {
 }
 
 // Register a perform reached through four frames of helpers.
-test("resume reaches a perform four frames deep", fn() => exactArithmetic(resumeFromNestedHelpersCase))
+test("resume reaches a perform four frames deep", exactly(resumeFromNestedHelpersCase))
 
 /// Ticker supplies one scripted value per index of a twelve-step walk.
 effect Ticker {
@@ -995,4 +995,4 @@ fn manyPerformsOneRegionCase() = {
 }
 
 // Register twelve performs settling through one region.
-test("twelve performs in one region each settle once", fn() => exactArithmetic(manyPerformsOneRegionCase))
+test("twelve performs in one region each settle once", exactly(manyPerformsOneRegionCase))

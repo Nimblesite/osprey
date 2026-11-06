@@ -18,7 +18,7 @@ fn recursiveGenericCase() = {
     ])
 }
 
-test("recursive generic functions specialize for integers and strings", fn() => exactArithmetic(recursiveGenericCase))
+test("recursive generic functions specialize for integers and strings", exactly(recursiveGenericCase))
 
 /// Repeated generic calls share closed instantiations after bounded expansion.
 fn twice(x) = "${x}${x}"

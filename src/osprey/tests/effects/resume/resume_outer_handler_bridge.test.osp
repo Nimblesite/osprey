@@ -69,7 +69,7 @@ fn resumeOuterHandlerBridgeCase() = {
 
 // Register the resumed-body outer-handler regression.
 
-test("a resumed body retains its outer handlers", fn() => exactArithmetic(resumeOuterHandlerBridgeCase))
+test("a resumed body retains its outer handlers", exactly(resumeOuterHandlerBridgeCase))
 
 /// Ledger is handled by two nested regions, only one of which is complete.
 effect Ledger {
@@ -161,4 +161,4 @@ fn partialHandlerDelegationCase() = {
 }
 
 // Register partial-handler delegation to the enclosing region.
-test("an arm delegates an operation its own handler does not cover", fn() => exactArithmetic(partialHandlerDelegationCase))
+test("an arm delegates an operation its own handler does not cover", exactly(partialHandlerDelegationCase))

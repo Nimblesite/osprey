@@ -287,7 +287,7 @@ fn handlerStateThroughNestedCallsCase() = {
 }
 
 // Register handler-owned state across nested performs and a file-scope region.
-test("handler-owned state is one cell across nested calls and file scope", fn() => exactArithmetic(handlerStateThroughNestedCallsCase))
+test("handler-owned state is one cell across nested calls and file scope", exactly(handlerStateThroughNestedCallsCase))
 
 /// (4) `handle E { arm… }` names no body and handles the rest of the block it
 /// sits in ([EFFECTS-HANDLE-REST]). Nothing has to be indented to say "from
@@ -309,7 +309,7 @@ fn restOfBlockCase() = {
 }
 
 // A handler region that names no body still covers everything after it.
-test("a handle with no `in` handles the rest of its block", fn() => exactArithmetic(restOfBlockCase))
+test("a handle with no `in` handles the rest of its block", exactly(restOfBlockCase))
 
 /// A captured handler must retain its shared state when another handler calls it.
 /// [EFFECTS-HANDLER-VALUE-STATE]

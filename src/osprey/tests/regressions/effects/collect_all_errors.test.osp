@@ -111,4 +111,4 @@ fn collectAllErrorsCase() = {
     ])
 }
 
-test("validation collects every error in field order", fn() => exactArithmetic(collectAllErrorsCase))
+test("validation collects every error in field order", exactly(collectAllErrorsCase))

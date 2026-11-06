@@ -130,15 +130,15 @@ fn recursionCase() = {
 
 // Register the closure capture scenario.
 
-test("closures retain independent captured state", fn() => exactArithmetic(closuresCase))
+test("closures retain independent captured state", exactly(closuresCase))
 // Register the partial-application scenario.
-test("partial application retains every curried golden", fn() => exactArithmetic(curryPartialCase))
+test("partial application retains every curried golden", exactly(curryPartialCase))
 // Register the higher-order function scenario.
-test("higher-order functions retain every application golden", fn() => exactArithmetic(higherOrderCase))
+test("higher-order functions retain every application golden", exactly(higherOrderCase))
 // Register the nested-call scenario.
-test("nested calls retain evaluation structure", fn() => exactArithmetic(nestedCallsCase))
+test("nested calls retain evaluation structure", exactly(nestedCallsCase))
 // Register the recursive-sum scenario.
-test("recursion retains base and recursive branches", fn() => exactArithmetic(recursionCase))
+test("recursion retains base and recursive branches", exactly(recursionCase))
 
 /// Identity as a GENERIC definition — no single concrete ABI, so it exists
 /// only as a body its call sites specialise ([TYPE-GENERICS-FN]).
@@ -207,4 +207,4 @@ fn genericValueCase() = {
 }
 
 // Register the file-scope generic function value scenario.
-test("file-scope generic function values resolve by name", fn() => exactArithmetic(genericValueCase))
+test("file-scope generic function values resolve by name", exactly(genericValueCase))

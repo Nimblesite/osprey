@@ -68,6 +68,6 @@ fn stringsCase() = {
 
 // Register the pipeline composition scenario.
 
-test("pipelines retain each stage and complete chain", fn() => exactArithmetic(pipeChainCase))
+test("pipelines retain each stage and complete chain", exactly(pipeChainCase))
 // Register the string composition scenario.
-test("string calls retain interpolation and concatenation", fn() => exactArithmetic(stringsCase))
+test("string calls retain interpolation and concatenation", exactly(stringsCase))

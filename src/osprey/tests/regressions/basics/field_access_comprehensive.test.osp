@@ -90,4 +90,4 @@ fn fieldAccessCase() = {
     ])
 }
 
-test("field access feeds expressions without mutating records", fn() => exactArithmetic(fieldAccessCase))
+test("field access feeds expressions without mutating records", exactly(fieldAccessCase))

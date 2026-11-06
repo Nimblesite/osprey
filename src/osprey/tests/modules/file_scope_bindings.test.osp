@@ -59,6 +59,6 @@ fn initializationOrderCase() = checkAll("initializers run in source order", [
 
 exactArithmetic(fn() => print("${summary()} ${scaled()} ${trace}"))
 
-test("file-scope constants are readable from functions", fn() => exactArithmetic(constantReadCase))
-test("a handler-owned cell is one shared storage", fn() => exactArithmetic(handlerOwnedCellCase))
-test("file-scope initializers run in source order", fn() => exactArithmetic(initializationOrderCase))
+test("file-scope constants are readable from functions", exactly(constantReadCase))
+test("a handler-owned cell is one shared storage", exactly(handlerOwnedCellCase))
+test("file-scope initializers run in source order", exactly(initializationOrderCase))

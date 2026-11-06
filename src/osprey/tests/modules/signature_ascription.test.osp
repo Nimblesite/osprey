@@ -111,6 +111,6 @@ fn nestedAndExtraCase() = checkAll("nested ascription and extra exports", [
 
 exactArithmetic(fn() => print("${Counters::size(Counters::bump(Counters::empty()))} ${Trees::doubled()} ${Extended::seeded()}"))
 
-test("abstract signature types stay abstract", fn() => exactArithmetic(abstractTypeCase))
-test("signature effects remain performable", fn() => exactArithmetic(signatureEffectCase))
-test("nested ascription and extra exports conform", fn() => exactArithmetic(nestedAndExtraCase))
+test("abstract signature types stay abstract", exactly(abstractTypeCase))
+test("signature effects remain performable", exactly(signatureEffectCase))
+test("nested ascription and extra exports conform", exactly(nestedAndExtraCase))

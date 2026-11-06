@@ -178,4 +178,4 @@ fn comprehensiveMathCase() = {
     ])
 }
 
-test("math showcase produces checked deterministic state", fn() => exactArithmetic(comprehensiveMathCase))
+test("math showcase produces checked deterministic state", exactly(comprehensiveMathCase))

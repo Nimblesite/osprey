@@ -70,10 +70,10 @@ fn iq3_sCase() = {
     let expected: List<float32> = [137610.21875, -171571.40625]
     productCase("the IQ3_S product matches ggml's decode in the kernels' lane order", "IQ3_S", bytes, 256, expected)
 }
-test("the Q8_0 product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(q8_0Case))
-test("the Q6_K product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(q6_kCase))
-test("the Q5_K product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(q5_kCase))
-test("the Q3_K product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(q3_kCase))
-test("the IQ4_NL product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(iq4_nlCase))
-test("the IQ4_XS product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(iq4_xsCase))
-test("the IQ3_S product matches ggml's decode in the kernels' lane order", fn() => exactArithmetic(iq3_sCase))
+test("the Q8_0 product matches ggml's decode in the kernels' lane order", exactly(q8_0Case))
+test("the Q6_K product matches ggml's decode in the kernels' lane order", exactly(q6_kCase))
+test("the Q5_K product matches ggml's decode in the kernels' lane order", exactly(q5_kCase))
+test("the Q3_K product matches ggml's decode in the kernels' lane order", exactly(q3_kCase))
+test("the IQ4_NL product matches ggml's decode in the kernels' lane order", exactly(iq4_nlCase))
+test("the IQ4_XS product matches ggml's decode in the kernels' lane order", exactly(iq4_xsCase))
+test("the IQ3_S product matches ggml's decode in the kernels' lane order", exactly(iq3_sCase))

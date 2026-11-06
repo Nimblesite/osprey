@@ -68,10 +68,10 @@ fn blockBodyCase() = {
                 })
         })
 }
-test("float kernel slots type both multiplication orders", fn() => exactArithmetic(multiplicationOrderCase))
-test("named generic float combines specialize from buffer slots", fn() => exactArithmetic(genericCombineCase))
-test("unannotated recursive helpers are valid GPU kernels", fn() => exactArithmetic(recursiveHelperCase))
-test("block-bodied GPU kernels keep local bindings", fn() => exactArithmetic(blockBodyCase))
+test("float kernel slots type both multiplication orders", exactly(multiplicationOrderCase))
+test("named generic float combines specialize from buffer slots", exactly(genericCombineCase))
+test("unannotated recursive helpers are valid GPU kernels", exactly(recursiveHelperCase))
+test("block-bodied GPU kernels keep local bindings", exactly(blockBodyCase))
 fn builtinMapCase() = {
     withBuffer(toGpu([9007199254740993, -7]), fn(uploaded12) => {
             withBuffer(gpuMap(uploaded12, toFloat), fn(floats) => {

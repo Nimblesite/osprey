@@ -116,4 +116,4 @@ fn repoTableCase() = {
     ])
 }
 
-test("repository JSON renders after an HTTP response round trip", fn() => exactArithmetic(repoTableCase))
+test("repository JSON renders after an HTTP response round trip", exactly(repoTableCase))

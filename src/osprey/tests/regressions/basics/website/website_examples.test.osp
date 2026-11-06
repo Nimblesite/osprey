@@ -85,4 +85,4 @@ fn websiteExamplesCase() = {
     ])
 }
 
-test("website snippets produce their documented values", fn() => exactArithmetic(websiteExamplesCase))
+test("website snippets produce their documented values", exactly(websiteExamplesCase))

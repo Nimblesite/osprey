@@ -54,4 +54,4 @@ fn resumeUnitMarkersCase() = {
 
 // Register the Unit-returning explicit-resume regression.
 
-test("Unit operations resume and unwind in LIFO order", fn() => exactArithmetic(resumeUnitMarkersCase))
+test("Unit operations resume and unwind in LIFO order", exactly(resumeUnitMarkersCase))
