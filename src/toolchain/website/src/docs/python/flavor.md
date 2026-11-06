@@ -2,7 +2,7 @@
 mlTwins: manual
 layout: page
 title: Python flavor
-description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. GPT-2 is the worked example.
+description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. Ports of NumPy, PyTorch, Transformers and more are already written in it, and a Qwen3.5 model is being built on them.
 permalink: /docs/python/flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---
@@ -13,9 +13,9 @@ Osprey's flavors share type inference, effect checking, modules, memory manageme
 
 The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary.
 
-[GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python) loads published Hugging Face weights and uses effect handlers to choose CPU or GPU execution. Its output matches the Default-flavor generator byte for byte on tested backends.
+Much of Python's ML and data stack is [already ported](#python-packages-already-ported) to it: NumPy, SciPy, PyTorch, scikit-learn, Transformers, tokenizers and more. The [local LLM work](#local-llms-in-python-flavor), a Qwen3.5 model and an Ollama-compatible server, is written in it too.
 
-## Python flavor is not Python
+## How Python flavor differs from Python
 
 Python-flavor files and Python files both end in `.py`, but they are different languages run by different programs:
 
@@ -26,10 +26,80 @@ Python-flavor files and Python files both end in `.py`, but they are different l
 | Run by | `osprey`, which compiles a native binary | CPython, which interprets it |
 | Types | Inferred and checked before the program runs | Checked at run time |
 | Values | Immutable records, `Result` for failure | Mutable objects, exceptions |
-| Imports | Osprey modules, in any flavor | Python packages |
+| Imports | Osprey modules, including Osprey's ports of NumPy, PyTorch, Transformers and more | Python packages from PyPI |
 | GPT-2 in this repository | [`src/osprey/examples/llms/gpt2/python/`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python), the model | [`src/osprey/examples/llms/gpt2/reference.py`](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/reference.py), the reference it is checked against |
 
 Every Python-flavor sample here starts with `# osprey: flavor=python` and runs through Osprey. To call CPython libraries, use [Python interop](/spec/0042-pythoninterop/).
+
+### Strong, static types: the biggest difference
+
+Python checks types while the program runs. Python flavor checks every type before the program runs. You don't write type hints: Osprey infers them from how each value is used, and every value must have exactly one type. When it can't work one out, the program does not compile, even if it is valid Python.
+
+```python
+# osprey: flavor=python
+
+row = [42, "Ada", 3.5]
+
+print(f"{row[1]} scored {row[2]}")
+```
+
+CPython runs this without complaint:
+
+```text
+$ python3 row.py
+Ada scored 3.5
+```
+
+Osprey rejects it. A list holds one element type, and nothing says whether this one is a list of `int`, `str` or `float`:
+
+{{ capture("/assets/images/guides/python-flavor-static-types.png", "The Playground compiling row = [42, \"Ada\", 3.5] in Python flavor: compilation fails with 3:6: type mismatch: cannot unify int with string, and 3:6: type mismatch: cannot unify int with float.", "Valid Python, rejected before it runs: Osprey cannot give the list a single element type.", 1440, 520) }}
+
+In Python, the same mix of types often hides a bug that only shows up on a code path that rarely runs, such as `row[0] + 1` getting the name instead of the id. In Osprey, give each field its own type with a record:
+
+```python
+# osprey: flavor=python
+
+class Row:
+    id: int
+    name: str
+    score: float
+
+
+row = Row(id=42, name="Ada", score=3.5)
+
+print(f"{row.name} scored {row.score}")
+```
+
+That prints `Ada scored 3.5`, and every use of `row.id` is now known to be an `int`. A class with annotated fields is an Osprey record; CPython would need `@dataclass` to run it. You add annotations only where nothing pins a type down, such as an empty list that is never used (`no_scores: list[int] = []`).
+
+### Python packages: already ported
+
+`import` names Osprey modules, and the repository already ports a lot of the Python ML and data stack to Python flavor. The ports keep their originals' module, function and argument names, and their test suites compare results against the real library running under CPython:
+
+- **Arrays and maths:** [`@osprey/numpy`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/numpy), [`@osprey/scipy`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/scipy), [`@osprey/einops`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/einops)
+- **Machine learning:** [`@osprey/torch`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/torch), [`@osprey/sklearn`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/sklearn), [`@osprey/micrograd`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/micrograd), [`@osprey/flash_attn`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/flash_attn), [`@osprey/faiss`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/faiss)
+- **Language models:** [`@osprey/transformers`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/transformers), [`@osprey/tokenizers`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/tokenizers), [`@osprey/tiktoken`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/tiktoken), [`@osprey/safetensors`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/safetensors), [`@osprey/gguf`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/gguf), [`@osprey/sacrebleu`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/sacrebleu), [`@osprey/rouge_score`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/rouge_score)
+- **Apps and agents:** [`@osprey/fastapi`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/fastapi), [`@osprey/pydantic_ai`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/pydantic_ai), [`@osprey/jinja2`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/jinja2), [`@osprey/re`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/re)
+
+Imports look the way they do in Python. This is the top of the [vector-search example](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/python/ports/vector-search/main.py), FAISS's flat-index tutorial ported to Osprey:
+
+```python
+from numpy import Array, Errors, Host
+from faiss import Flat, Normalize
+from scipy import Information
+```
+
+Each package's README lists what its port covers; for example, `@osprey/numpy` covers float64 arrays only. To call a package that hasn't been ported, call CPython through [Python interop](/docs/python/interop/).
+
+### Language features
+
+The Python flavor borrows Python's syntax, not its runtime. Code that depends on Python's runtime behavior is rejected; it is never passed to an interpreter.
+
+- Integers are 64-bit with an `Arith` policy, and floats are binary64. There is no arbitrary precision. Only booleans can be used as conditions, and `and`/`or` return booleans.
+- `while`, `break`, `continue`, `try`/`except`, `raise`, `async`/`await` and `yield` are rejected. Use `fold`, recursion, `Result` and fibers instead.
+- Classes are records, effects or handlers. There is no inheritance, `__init__`, `self` or method dispatch.
+
+`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). Frontend and tooling coverage is still incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md) tracks the remaining requirements.
 
 To run real CPython code, or call Osprey from a Python application, see [Python interop](/docs/python/interop/).
 
@@ -252,30 +322,22 @@ fn main() = print("Discounted: ${discounted(price: 80.0, percent: 25.0)}")
 Discounted: 60.0
 ```
 
-The `# osprey: namespace=` and `# osprey: module=` comments place the file in a module. `__all__` lists the names it exports; anything not listed stays private to the module. `from gpt2.Backends import Tensor` and `from gpt2 import Cpu, Gpu` import Osprey modules, whatever flavor they are written in. They cannot import Python packages.
+The `# osprey: namespace=` and `# osprey: module=` comments place the file in a module. `__all__` lists the names it exports; anything not listed stays private to the module. `from gpt2.Backends import Tensor` and `from gpt2 import Cpu, Gpu` import Osprey modules, whatever flavor they are written in, including the ported packages above.
 
-## What the Python flavor leaves out
+## Local LLMs in Python flavor
 
-The Python flavor borrows Python's look, not its runtime. Code that depends on Python's runtime behavior is rejected; it is never passed to an interpreter.
+Python flavor is what Osprey's language-model work is written in. The goal is a local model server you can use instead of Ollama, written in Osprey and running on Osprey's own GPU kernels. [Plan 0049](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0049-local-coding-model.md) tracks it.
 
-- `import numpy` and other Python packages are unavailable, because imports name Osprey modules.
-- Integers are 64-bit with an `Arith` policy, and floats are binary64. There is no arbitrary precision. Only booleans can be used as conditions, and `and`/`or` return booleans.
-- `while`, `break`, `continue`, `try`/`except`, `raise`, `async`/`await` and `yield` are rejected. Use `fold`, recursion, `Result` and fibers instead.
-- Classes are records, effects or handlers. There is no inheritance, `__init__`, `self` or method dispatch.
+- **The generation layer:** [`@osprey/transformers`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/transformers) ports Hugging Face's model-independent generation code (logits processors and warpers, sampling, stopping criteria and `generate`) and is checked against Transformers and PyTorch.
+- **The Qwen3.5 model:** [`qwen/model`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/model) translates Transformers' `qwen3_5` model (attention, DeltaNet, RoPE, the cache, the tool-call parser) to Osprey GPU code. So far it has only run a tiny 4-layer fixture, compared layer by layer against PyTorch. It does not run the real weights yet.
+- **Real weights:** the one-file [`qwen/run/qwen.py`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/run/qwen.py) runs the real Qwen3.5 `UD-Q4_K_XL` GGUF on Metal and continues "The capital of France is" with " Paris.". One run measured 8.92 tokens/s, against 8.0 for Ollama on the same file. Both runs were on a loaded machine, so treat the figures as preliminary; plan 0049 will re-measure them on a quiet one.
+- **The Ollama-compatible server:** [`qwen/server`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/server) speaks Ollama's API (`/api/chat`, `/api/generate`, `/api/tags` and more) and OpenAI's (`/v1/chat/completions`, `/v1/models`), with streaming and tool calls. Tools that talk to Ollama can point at it. Today it answers from a small built-in table model; it will serve real Qwen output once the package model runs the real weights.
 
-`for` loops and list comprehensions are implemented over the existing iterator operations; `for` takes an iterator, not an arbitrary Python iterable. `@union` declares sum types, and keyword patterns may bind a different name (`case Circle(radius=r)`). These forms share Osprey's type and effect checks. Frontend and tooling coverage remain incomplete: VS Code still opens `.py` files as ordinary Python. [Plan 0031](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0031-python.md) tracks the remaining requirements.
-
-## Run the Python-flavor GPT-2
-
-From the repository root, after building Osprey:
+GPT-2 came first and is still a working example: the [Python-flavor GPT-2](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python) loads published Hugging Face weights, and its output matches the Default-flavor generator byte for byte on host lists, Metal and OpenCL. From the repository root, after building Osprey:
 
 ```bash
 make -C src/toolchain/targets gpt2 FLAVOR=python GPU=metal PROMPT="The capital of France is" TOKENS=20
-make -C src/toolchain/targets gpt2 FLAVOR=python BACKEND=lists PROMPT="The capital of France is" TOKENS=1
 ```
 
-The first command installs `on_gpu` and the second `on_lists`; the model is unchanged. The test `python_gpt2_generator_output_is_byte_identical_to_the_default_generator` checks that the Python generator prints exactly what the Default generator prints on host lists, Metal and OpenCL. Only generation has been ported so far; the training step is still Default-only.
-
-- [GPT-2 in the Python flavor](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python): the complete source.
 - [Python flavor specification](/spec/0041-pythonflavorsyntax/): the full contract.
 - [Language flavors](/spec/0023-languageflavors/): how every flavor lowers into the shared AST.

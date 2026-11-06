@@ -392,3 +392,38 @@ test("long authored guides retain a useful image or inline video per 500 prose w
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), file).toBe(true);
   }
 });
+
+test("Python flavor guide shows valid Python that Osprey rejects, the ported packages and the local LLM work", async ({ page }, testInfo) => {
+  const { execFileSync } = require("node:child_process");
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const { executeExample, exampleResult } = require("./helpers");
+  await page.goto("/docs/python/flavor/");
+  await expect(page.locator("h2#how-python-flavor-differs-from-python")).toHaveCount(1);
+  await expect(page.locator("h2", { hasText: "leaves out" })).toHaveCount(0);
+  // Valid CPython that Osprey refuses: a list with no single element type.
+  const source = await page.locator("pre > code.language-python", { hasText: 'row = [42, "Ada", 3.5]' }).textContent();
+  const file = testInfo.outputPath("row.py");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, source);
+  expect(execFileSync("python3", [file], { encoding: "utf8" })).toBe("Ada scored 3.5\n");
+  const rejected = await exampleResult(source, testInfo.outputPath("osprey/row.py"));
+  expect(rejected).toContain("3:6: type mismatch: cannot unify int with string");
+  expect(rejected).toContain("3:6: type mismatch: cannot unify int with float");
+  const fixed = await page.locator("pre > code.language-python", { hasText: "class Row:" }).textContent();
+  expect(await executeExample(fixed, testInfo.outputPath("fixed/row.py"))).toBe("Ada scored 3.5\n");
+  await expect(page.locator('img[src="/assets/images/guides/python-flavor-static-types.png"]')).toHaveCount(1);
+  // Imports reach Osprey's ports of Python packages; the quoted import is real.
+  const text = await page.locator(".prose").innerText();
+  expect(text).not.toContain("are unavailable");
+  for (const name of ["numpy", "torch", "transformers", "scipy", "sklearn", "tokenizers", "tiktoken", "safetensors", "faiss", "einops", "jinja2", "pydantic_ai", "fastapi"]) {
+    expect(text, name).toContain(`@osprey/${name}`);
+    expect(fs.existsSync(path.resolve(__dirname, `../../../osprey/packages/${name}/src`)), name).toBe(true);
+  }
+  const imports = await page.locator("pre > code.language-python", { hasText: "from numpy import Array, Errors, Host" }).textContent();
+  const port = fs.readFileSync(path.resolve(__dirname, "../../../osprey/examples/python/ports/vector-search/main.py"), "utf8");
+  for (const line of imports.trim().split("\n")) expect(port).toContain(line);
+  // The LLM section states Qwen and the Ollama-compatible server, and keeps GPT-2.
+  await expect(page.locator("h2#local-llms-in-python-flavor")).toHaveCount(1);
+  for (const phrase of ["Qwen3.5", "Ollama", "/api/chat", "/v1/chat/completions", "GPT-2", "plan 0049"]) expect(text).toContain(phrase);
+});

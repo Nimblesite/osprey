@@ -13,6 +13,7 @@ Captured on 3 November 2026. Screens show running tools or their real saved outp
 | hunt-clean | src/osprey/tests/hunt/clean.osp with the same budget: six completed paths, no findings. Bounded clean control, not a correctness proof. |
 | hunt-limits | src/osprey/tests/hunt/process.osp: unmodelled pipe operation, no native replay. Engine limitation control, not a reproduced crash. |
 | effects-python-doubles, effects-unhandled | Captured 6 November 2026 from the Playground UI with runs routed to the native compiler. The Python-flavor Files test doubles and the Default Files example with no handler, both copied from docs/algebraic-effects.md. Output is the compiler's real stdout or diagnostic. |
+| python-flavor-static-types | Captured 6 November 2026 from the Playground UI with runs routed to the native compiler: the mixed-type list example in docs/python/flavor.md. The diagnostics are the compiler's real output; CPython runs the same file and prints Ada scored 3.5. |
 | api-index, api-function | Real compiler HTML export of src/osprey/packages/json, midnight theme; library landing page and ui::Doc::string. |
 | storage-macos, storage-ios | Frames at 12 and 174 seconds of the published Swift interop tutorial, showing recorded native app footage. |
 | mathlib-check, mathlib-library | Frames at 80 and 116 seconds of the published Mathlib bridge tutorial. Historical footage; guide qualifications about imported proofs and assumptions apply. |
