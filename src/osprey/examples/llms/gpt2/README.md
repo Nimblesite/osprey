@@ -2,11 +2,11 @@
 
 Run OpenAI's 124M-parameter GPT-2 in Osprey's **Python flavor**: familiar `def`, `lambda` and f-strings, compiled to native code, with one model running on CPU or GPU. Algebraic effects let the caller choose where the arithmetic runs; inferred types and compiler-checked handlers keep that choice out of the transformer.
 
-**Keep Python in your workflow.** Osprey also supports [calling native Osprey functions from Python and Python libraries from Osprey](../../../../../docs/specs/platforms/0042-PythonInterop.md). You can retain Python tooling while moving computation into a compiled language with GPU kernels. The Python flavor is Osprey source, marked `# osprey: flavor=python`; ordinary Python packages are reached through the explicit interop bridge. Osprey is actively evolving, and shared tensor storage across that bridge remains planned.
+**Keep Python in your workflow.** Osprey also supports [calling native Osprey functions from Python and Python libraries from Osprey](../../../../../docs/specs/platforms/0042-PythonInterop.md). You can retain Python tooling while moving computation into a compiled language with GPU kernels. The Python flavor is Osprey source, marked `# osprey: flavor=python`; it calls no CPython; the bridge is only for Python packages Osprey hasn't ported. Osprey is actively evolving, and shared tensor storage across that bridge remains planned.
 
 This example loads [Hugging Face's published weights](https://huggingface.co/openai-community/gpt2) directly from `model.safetensors`, rebuilds the byte-level BPE tokenizer from `merges.txt`, and implements the transformer, KV-cached generation and greedy sampling in Osprey. No retraining or checkpoint conversion is needed.
 
-- **Start with Python flavor:** [`src/toolchain/python/`](../../../../toolchain/python/README.md) contains the model, tokenizer, sampler and both device handlers as `.py` modules. The [flavor guide](https://www.ospreylang.dev/docs/python/flavor/) covers the supported Python constructs and Osprey additions.
+- **Start with Python flavor:** [`python/`](python/) contains the model, tokenizer, sampler and both device handlers as `.py` modules. The [flavor guide](https://www.ospreylang.dev/docs/python/flavor/) covers the supported Python constructs and Osprey additions.
 - **Explore Default flavor:** [`model/`](model), [`generate/`](generate) and [`train/`](train) include generation and a training step. Training is currently Default-only.
 - **Compare with Python:** [`reference.py`](reference.py) is an independent implementation run by CPython. The Default and Python-flavor generators print identical bytes for the same prompt on each tested backend.
 
@@ -62,7 +62,7 @@ loss after one step 3.8539085307403895
 
 | Path | What it is |
 | --- | --- |
-| [`src/toolchain/python/`](../../../../toolchain/python/README.md) | Python-flavor generation: effect, handlers, tokenizer, loader, model and sampler |
+| [`python/`](python/) | Python-flavor generation: effect, handlers, tokenizer, loader, model and sampler |
 | `model/backends.osp` | `Tensor<B>` effect, arithmetic policy `strictly` and handler selector `under` |
 | `model/cpu.osp`, `model/gpu.osp` | CPU-list and Metal/OpenCL-buffer handlers |
 | `model/tokenizer.osp` | Byte-level BPE tokenizer from `merges.txt` |

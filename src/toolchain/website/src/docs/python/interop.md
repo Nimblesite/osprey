@@ -6,7 +6,7 @@ permalink: /docs/python/interop/
 tags: [python, interop, python-interop, python-ffi, embed-python, numpy, pytorch, data-science, machine-learning, algebraic-effects]
 ---
 
-Osprey goes all in on Python. Call it **Python interopmaxxing**: you keep the Python libraries and habits you already have, and add a compiled, statically typed language with algebraic effects, which makes it easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you shouldn't have to give any of them up to try Osprey.
+Osprey goes all in on Python. Call it **Python interopmaxxing**: keep your Python libraries and habits, and add a compiled, statically typed language whose algebraic effects make it easy to test. If your work runs on NumPy, pandas, PyTorch, scikit-learn or SciPy, you keep them.
 
 There are three ways in:
 
@@ -42,7 +42,7 @@ bob: 12 is low
 carol: 80 is high
 ```
 
-Osprey infers and checks the types before the program runs, then compiles a native binary. It isn't CPython: field mutation and exceptions are rejected, failures are `Result` values, and imports name Osprey modules. See [how Python flavor differs from Python](/docs/python/flavor/#how-python-flavor-differs-from-python). A [flavor converter](/docs/python/flavor/#converting-between-flavors-coming) is planned.
+Osprey checks the types before it runs, then compiles natively. It isn't CPython: field mutation and exceptions are rejected, failures are `Result` values, and imports name Osprey modules. See [how Python flavor differs from Python](/docs/python/flavor/#how-python-flavor-differs-from-python). A [flavor converter](/docs/python/flavor/#converting-between-flavors-coming) is planned.
 
 ## Call Python from Osprey (embed a Python library)
 
@@ -56,14 +56,14 @@ Python is a capability, so it is an effect. Code performs `Python.call(module, f
 
 ## Call Osprey from Python (native speed, no C extension)
 
-Compile the Osprey file into a native library for Python (on Linux use `.so` instead of `.dylib`):
+Compile Osprey into a native library (`.so` on Linux):
 
 ```sh
 python3 -m pip install -e src/toolchain/python
 osprey src/osprey/examples/python/interop.osp --compile --target=python --memory=arc -o interop.dylib
 ```
 
-Then load it in an ordinary Python program and call its exported functions:
+Then load it from Python:
 
 ```python
 import osprey
@@ -78,9 +78,9 @@ print(library.mockedSquareRoot())
 test answer
 ```
 
-Calls flow both ways: Python calls `squareRootText`, which calls `math.sqrt` back in the same process. `osprey.build` compiles and loads in one step; `python3 -m osprey` runs a file.
+Calls flow both ways: `squareRootText` calls `math.sqrt` back in the same process. `osprey.build` compiles and loads in one step; `python3 -m osprey` runs a file.
 
-The Python-flavor version uses typed `@extern` signatures instead of an effect:
+The Python-flavor version uses typed `@extern` signatures:
 
 ```python
 {{ pythonInterop.flavor | safe }}
@@ -90,11 +90,15 @@ The Python-flavor version uses typed `@extern` signatures instead of an effect:
 
 In [LLM dataset audit](https://github.com/Nimblesite/osprey/blob/main/src/toolchain/python/osprey/dataset_audit/README.md), Python loads datasets and tokenizers and native Osprey decides the policy for every record. It has run on all 15,011 Dolly records with the GPT-2 tokenizer.
 
+## Speed: in Codon's range
+
+Codon also compiles Python-like code natively. On the [benchmarks](/benchmarks/), Osprey with ARC takes 0.96× Codon's time (geometric mean) and is faster on 18 of 24 programs. Of the rest, four are up to 2× slower and two allocation-heavy sorts are 11–20× slower. Codon ran on a busy machine, so this is approximate. Performance improves all the time.
+
 ## Limits
 
-- Linux and macOS only. Exported functions take and return scalars, strings and JSON text.
-- One loading thread, the GIL is held, and the library uses ARC memory management.
-- Python objects such as tensors stay in Python. Pass them as opaque references with `library.keep(obj)`, `resolve(id)` and `release(id)`, and release them explicitly.
+- Linux and macOS today; Windows coming soon. Exported functions take and return scalars, strings and JSON text.
+- One loading thread, the GIL is held, and the library uses ARC.
+- Objects from CPython libraries stay in Python, as handles from `library.keep(obj)` that you `release(id)`. The [ported packages](/docs/python/flavor/#python-packages-already-ported), including `@osprey/torch` and `@osprey/transformers`, are pure Osprey and never cross this bridge.
 - These calls cross Osprey's C memory-safety boundary.
 
 The [Python interop specification](/spec/0042-pythoninterop/) defines the exact protocol. Run the integration tests with `cargo test --manifest-path src/toolchain/Cargo.toml -p osprey-cli --test python_interop`.

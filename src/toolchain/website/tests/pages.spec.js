@@ -427,3 +427,24 @@ test("Python flavor guide shows valid Python that Osprey rejects, the ported pac
   await expect(page.locator("h2#local-llms-in-python-flavor")).toHaveCount(1);
   for (const phrase of ["Qwen3.5", "Ollama", "/api/chat", "/v1/chat/completions", "GPT-2", "plan 0049"]) expect(text).toContain(phrase);
 });
+
+test("Python interop guide's Codon comparison matches the recorded benchmark results", async ({ page }) => {
+  const results = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../../benchmarks/results/results.json"), "utf8"));
+  const ratios = Object.values(results.cases).filter((c) => c.codon?.status === "ok" && c["osprey-arc"]?.status === "ok")
+    .map((c) => c["osprey-arc"].mean / c.codon.mean);
+  const geomean = Math.exp(ratios.reduce((sum, r) => sum + Math.log(r), 0) / ratios.length).toFixed(2);
+  const slowest = ratios.filter((r) => r >= 5).map(Math.round).sort((a, b) => a - b);
+  const slower = ratios.filter((r) => r >= 1 && r < 5);
+  await page.goto("/docs/python/interop/");
+  await expect(page.locator(".prose li", { hasText: "Linux and macOS today; Windows coming soon." })).toHaveCount(1);
+  await expect(page.locator(".prose li", { hasText: "library.keep(obj)" })).toContainText("never cross this bridge");
+  const section = page.locator(".prose p", { hasText: "Codon" });
+  await expect(section).toContainText(`${geomean}×`);
+  await expect(section).toContainText(`${ratios.filter((r) => r < 1).length} of ${ratios.length}`);
+  const word = (n) => ["zero", "one", "two", "three", "four", "five", "six"][n] ?? `${n}`;
+  await expect(section).toContainText(`${word(slower.length)} are up to ${Math.round(Math.max(...slower))}× slower`);
+  await expect(section).toContainText(`${word(slowest.length)} allocation-heavy sorts are ${slowest[0]}–${slowest.at(-1)}× slower`);
+  await expect(section.locator('a[href="/benchmarks/"]')).toHaveCount(1);
+  await page.locator('.prose a[href="/benchmarks/"]').first().click();
+  await expect(page.locator("main")).toContainText("Codon");
+});
