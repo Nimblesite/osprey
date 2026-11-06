@@ -523,14 +523,19 @@ _deslop:
 
 # Package, agent and Python-port steps behind `make test`.
 .PHONY: _test_packages _coverage_check_packages
-# [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
-# editor see it. A package's tests list sibling source roots by hand, so they
-# stay green when the package's own manifest cannot resolve its dependencies.
-.PHONY: _check_packages
-_check_packages:
-	for manifest in src/osprey/packages/*/osprey.toml; do \
-		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
-	done
+# [PACKAGE-WORKSPACE] Every Osprey project in the repository compiles on its
+# own, as a consumer and the editor see it: each tracked osprey.toml under
+# src/osprey (packages, their tests and hunt drivers, examples) is lowered to
+# LLVM IR. The registry's sample packages, the e2e consumer and the manifest
+# fixtures are left out: they are data that resolves only through a registry.
+.PHONY: _check_projects
+_check_projects:
+	git ls-files 'src/osprey/**/osprey.toml' 'src/osprey/*/osprey.toml' \
+		| grep -vE '/sample-registry/|/e2e/consumer/|/fixtures/manifests/' \
+		| { failed=0; while read -r manifest; do \
+			$(BIN) $$(dirname $$manifest) --llvm --quiet --no-warnings >/dev/null \
+				|| { echo "project does not compile: $$manifest" >&2; failed=1; }; \
+		done; exit $$failed; }
 
 # [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
 # reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
