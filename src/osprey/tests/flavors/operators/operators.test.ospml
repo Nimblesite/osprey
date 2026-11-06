@@ -13,16 +13,11 @@ arithmeticOperatorsCase () =
     ]
     // Check each derived number independently.
     checkAll "arithmetic legacy constituent values" [
-        (a ) == 14,
-        (b ) == 20,
-        (c ) == 8,
-        (d ) == 26
+        structuralEquals [(a ), (b ), (c ), (d )] [14, 20, 8, 26]
     ]
     // Exercise associativity, grouping, zero, and negative results.
     checkAll "arithmetic precedence edge cases" [
-        (20 - 6 - 2 ) == 12,
-        (20 - (6 - 2) ) == 16,
-        (7 + 9 * 0 ) == 7,
+        structuralEquals [(20 - 6 - 2 ), (20 - (6 - 2) ), (7 + 9 * 0 )] [12, 16, 7],
         (0 - 5 * 2 ) == ((0 - 10) )
     ]
 
@@ -71,15 +66,9 @@ numericPolymorphismCase () =
             -1.0
     alias = numericScale
     checkAll "numeric helper polymorphism" [
-        numericScale 2 == 3.0,
-        numericScale 2.5 == 3.75,
-        alias 4 == 6.0,
-        alias 4.5 == 6.75,
-        runNumeric numericScale 5 == 7.5,
-        runNumeric numericScale 5.5 == 8.25,
-        (numericQuotient 3 1.5 ) == 2.0,
-        (numericQuotient 2.5 2 ) == 1.25,
-        (((4.0 / 2.0) * 1.5) ) == 3.0,
+        structuralEquals [numericScale 2, numericScale 2.5, alias 4] [3.0, 3.75, 6.0],
+        structuralEquals [alias 4.5, runNumeric numericScale 5, runNumeric numericScale 5.5] [6.75, 7.5, 8.25],
+        structuralEquals [(numericQuotient 3 1.5 ), (numericQuotient 2.5 2 ), (((4.0 / 2.0) * 1.5) )] [2.0, 1.25, 3.0],
         (((4.0 / 0.0) * 1.5) ) == -1.5
     ]
 test "numeric constraints retain mixed arithmetic and policy substitution" (\() => exactArithmetic (numericPolymorphismCase))

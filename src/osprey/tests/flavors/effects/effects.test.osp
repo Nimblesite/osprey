@@ -21,14 +21,11 @@ fn runBatchAssertions() = {
     let missing = mapGet(base, "missing") ?: [99]
 
     checkAll("effect batch collection preconditions", [
-            structuralEquals([total, mapLength(base), mapLength(grown), mapLength(replaced)], [10, 2, 3, 3]),
-            structuralEquals([mapLength(removed), listLength(first), listLength(second)], [2, 2, 2]),
-            listLength(missing) == 1,
-            (first.listGet(0) ?: 99) == 2,
-            (first.listGet(1) ?: 99) == 3,
-            (second.listGet(0) ?: 99) == 5,
-            (second.listGet(1) ?: 99) == 9,
-            (missing.listGet(0) ?: 0) == 99,
+            structuralEquals([total, mapLength(base), mapLength(grown)], [10, 2, 3]),
+            structuralEquals([mapLength(replaced), mapLength(removed), listLength(first)], [3, 2, 2]),
+            structuralEquals([listLength(second), listLength(missing), (first.listGet(0) ?: 99)], [2, 1, 2]),
+            structuralEquals([(first.listGet(1) ?: 99), (second.listGet(0) ?: 99)], [3, 5]),
+            structuralEquals([(second.listGet(1) ?: 99), (missing.listGet(0) ?: 0)], [9, 99]),
             structuralEquals([mapContains(base, "third"), mapContains(grown, "third")], [false, true]),
             !mapContains(removed, "second")
     ])
@@ -55,8 +52,8 @@ fn runBatchAssertions() = {
     ])
 
     checkAll("handler exit preserves state and persistent collection versions", [
-            structuralEquals([total, mapLength(base), mapLength(grown)], [25, 2, 3]),
-            listLength(grown.mapGet("third") ?: empty) == 3,
+            structuralEquals([total, mapLength(base)], [25, 2]),
+            structuralEquals([mapLength(grown), listLength(grown.mapGet("third") ?: empty)], [3, 3]),
             ((grown.mapGet("third") ?: empty).listGet(2) ?: 99) == 13,
             listLength(replaced.mapGet("first") ?: empty) == 1,
             ((replaced.mapGet("first") ?: empty).listGet(0) ?: 99) == 20,

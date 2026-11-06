@@ -232,6 +232,5 @@ print "Generic Stash: <string> gave ${words}, <int> gave ${count}"
 
 test "effect handlers produce and preserve typed results" (\() => exactArithmetic ((\() => checkAll "comprehensive effect results" [
     words == "stash-words",
-    count == 42,
-    doubleValue 21 == 42
+    structuralEquals [count, doubleValue 21] [42, 42]
 ])))

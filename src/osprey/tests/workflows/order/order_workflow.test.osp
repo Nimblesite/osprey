@@ -55,12 +55,12 @@ fn receiptInteraction() = {
     checkAll("receipt state", [
         receipt("  Ada ")("gold")("coffee")(5) == "ADA:coffee:5:48",
         receipt("Lin")("guest")("tea")(2) == "LIN:tea:2:0",
+        (receipt("Ada")("guest")("fruit")(2) |> fn(text) => text.toUpperCase()) == "ADA:FRUIT:2:14",
+        receipt("Kai")("silver")(itemAt(1)("missing"))((2 * 2) ) == "KAI:bread:4:18",
         contains(receipt("Ada")("gold")("bread")(2), ":bread:"),
         startsWith(receipt("  jo ")("guest")("fruit")(1), "JO:"),
         endsWith(receipt("Ada")("silver")("coffee")(2), ":22"),
-        !contains(receipt(" Ada ")("guest")("fruit")(1), " "),
-        (receipt("Ada")("guest")("fruit")(2) |> fn(text) => text.toUpperCase()) == "ADA:FRUIT:2:14",
-        receipt("Kai")("silver")(itemAt(1)("missing"))((2 * 2) ) == "KAI:bread:4:18"
+        !contains(receipt(" Ada ")("guest")("fruit")(1), " ")
     ])
 }
 

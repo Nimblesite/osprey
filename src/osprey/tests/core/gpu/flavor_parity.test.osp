@@ -17,8 +17,8 @@ fn negativeIotaCase() = {
     checkAll("negative gpuIota arguments report allocation errors", [
             iotaOutcome(direct) == "gpu: buffer allocation: a negative element count",
             iotaOutcome(piped) == "gpu: buffer allocation: a negative element count",
-            iotaOutcome(direct) == iotaOutcome(piped),
-            iotaOutcome(gpuIota(-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
+            iotaOutcome(gpuIota(-9223372036854775808)) == "gpu: buffer allocation: a negative element count",
+            iotaOutcome(direct) == iotaOutcome(piped)
     ])
 }
 test("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)

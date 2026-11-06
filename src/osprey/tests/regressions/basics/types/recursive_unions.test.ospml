@@ -238,19 +238,14 @@ recursiveUnionCase () =
     recursiveExpression = EBlk(body = SRet(value = EAdd(args = expressionArgs)))
     unwrappedExpression = unwrapRet (unwrapBlk recursiveExpression)
     checkAll "recursive union payloads" [
-        describe recursiveArray == "arr",
-        arrayLength == 2,
-        arrayHasNumber,
-        describe recursiveObject == "obj",
-        objectLength == 2,
-        objectHasWord,
-        label recursiveTree == "node",
-        rootVal recursiveTree == 4,
-        leftLabel recursiveTree == "node",
-        structuralEquals [leftRightVal recursiveTree, rightRootVal recursiveTree] [3, 6],
-        rightRightVal recursiveTree == 7,
+        structuralEquals [describe recursiveArray, describe recursiveObject] ["arr", "obj"],
+        structuralEquals [label recursiveTree, leftLabel recursiveTree] ["node", "node"],
         structuralEquals [descExpr recursiveExpression, descStmt (unwrapBlk recursiveExpression)] ["blk", "ret"],
         descExpr unwrappedExpression == "add",
-        unwrapAddLen unwrappedExpression == 2
+        structuralEquals [arrayLength, objectLength, rootVal recursiveTree] [2, 2, 4],
+        structuralEquals [leftRightVal recursiveTree, rightRootVal recursiveTree] [3, 6],
+        structuralEquals [rightRightVal recursiveTree, unwrapAddLen unwrappedExpression] [7, 2],
+        arrayHasNumber,
+        objectHasWord
     ]
 test "recursive union payloads retain nested tags and values" recursiveUnionCase

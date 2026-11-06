@@ -62,10 +62,8 @@ fn resumeOuterHandlerBridgeCase() = {
 
     // Assert both outer logs crossed the prompt and the prompt settled once.
     checkAll("outer-handler internal state", [
-        result == "Ada",
-        settledAnswer == "Ada",
-        structuralEquals([logCalls, promptCalls, promptSettled], [2, 1, 1]),
-        logMessages == "form start|got Ada|"
+        structuralEquals([result, settledAnswer, logMessages], ["Ada", "Ada", "form start|got Ada|"]),
+        structuralEquals([logCalls, promptCalls, promptSettled], [2, 1, 1])
     ])
 }
 
@@ -128,11 +126,11 @@ fn partialHandlerDelegationCase() = {
     // The arm's own operation stays with the inner region; the operation it
     // does not cover reaches the outer one, twice.
     checkAll("a partial handler delegates the operation it lacks", [
-        structuralEquals([total, innerRecords, outerAudits, outerRecords, lastNoted], [28, 2, 2, 0, 8]),
+        structuralEquals([total, innerRecords, outerAudits], [28, 2, 2]),
+        structuralEquals([outerRecords, lastNoted, (innerRecords + outerAudits )], [0, 8, 4]),
         auditLog == "record:5|record:7|",
         innerRecords == outerAudits,
-        innerRecords != outerRecords,
-        (innerRecords + outerAudits ) == 4
+        innerRecords != outerRecords
     ])
 
     // The outer `record` arm multiplies by 1000, so any leak of a `record`
@@ -142,24 +140,20 @@ fn partialHandlerDelegationCase() = {
         total != (5000 + 7000 ),
         total != 24,
         total < 100,
-        outerRecords == 0,
+        structuralEquals([outerRecords, length(auditLog)], [0, 18]),
         containsAll(auditLog, ["record:5|", "record:7|"]),
         structuralEquals([containsNone(auditLog, ["record:12"]), startsWith(auditLog, "record:5|")], [true, true]),
-        endsWith(auditLog, "record:7|"),
-        length(auditLog) == 18
+        endsWith(auditLog, "record:7|")
     ])
 
     // Each delegated audit answered its own label's length, and the label the
     // outer arm saw was built from the amount the inner arm received.
     checkAll("delegated answers return to the performing arm", [
         lastNoted == length("record:7"),
-        lastNoted == 8,
-        (5 + 8 ) == 13,
-        (7 + 8 ) == 15,
-        // `?:` is the LOWEST precedence and right-associative, so the whole
-        // sum needs its own parentheses to sit under the `==` [SYNTAX].
+        structuralEquals([lastNoted, (5 + 8 ), (7 + 8 ), outerAudits], [8, 13, 15, 2]),
+        // `?:` is the LOWEST precedence and right-associative, so the whole,
+        // sum needs its own parentheses to sit under the `==` [SYNTAX].,
         total == ((5 + 7 ) + (8 + 8 ) ),
-        outerAudits == 2,
         auditLog != "",
         auditLog != "record:5|",
         length(auditLog) == (9 + 9 )

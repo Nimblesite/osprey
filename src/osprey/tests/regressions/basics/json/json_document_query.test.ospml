@@ -78,11 +78,10 @@ jsonDocumentCase () =
     reportDeepString root
     checkAll "recursive JSON document" [
         structuralEquals [describe JsonNull, describe (JsonBoolean(value = true))] ["null", "boolean"],
-        describe (JsonNumber(value = 17)) == "number",
-        describe deepest == "string", describe outer == "array",
-        describe root == "object", objectFieldCount root == 1,
-        deepString root == "devon@osprey.dev",
-        deepString JsonNull == ""
+        structuralEquals [describe (JsonNumber(value = 17)), describe deepest] ["number", "string"],
+        structuralEquals [describe outer, describe root] ["array", "object"],
+        structuralEquals [deepString root, deepString JsonNull] ["devon@osprey.dev", ""],
+        objectFieldCount root == 1
     ]
 test "recursive JSON traversal preserves the nested value" jsonDocumentCase
 
@@ -98,12 +97,11 @@ scalarAt (doc, path) = jsonGet doc path ?: noScalar
 parsedDocumentCase () =
     match jsonParse "{\"owner\":\"devon\",\"tags\":[\"a\",\"b\",\"c\"],\"active\":true,\"stars\":17}"
         Success value => checkAll "built-in JSON document" [
-            scalarAt (value, "owner") == "devon", scalarAt (value, "tags[1]") == "b",
-            scalarAt (value, "active") == "true", scalarAt (value, "stars") == "17",
+            structuralEquals [scalarAt (value, "owner"), scalarAt (value, "tags[1]")] ["devon", "b"],
+            structuralEquals [scalarAt (value, "active"), scalarAt (value, "stars")] ["true", "17"],
             scalarAt (value, "tags") == noScalar, scalarAt (value, "absent") == noScalar,
-            jsonLength value "" == 4, jsonLength value "tags" == 3,
+            structuralEquals [jsonLength value "", jsonLength value "tags", (jsonFree value ?: notReleased)] [4, 3, 0],
             jsonLength value "owner" == notAContainer,
-            (jsonFree value ?: notReleased) == 0,
             (jsonFree value ?: notReleased) == notReleased
         ]
         Error _message => checkAll "built-in JSON document" [false]
@@ -152,10 +150,12 @@ jsonNumberCase () =
         parses "1.25e-3", parses "[0,-0,1.5e10,-2E-2]"
     ]
     checkAll "a number reads back as its source text" [
-        numberText "1.50" == "1.50", numberText "-0" == "-0",
-        numberText "1E+05" == "1E+05", numberText "2.5e-3" == "2.5e-3",
+        structuralEquals [numberText "1.50", numberText "-0"] ["1.50", "-0"],
+        structuralEquals [numberText "1E+05", numberText "2.5e-3"] ["1E+05", "2.5e-3"],
         numberText "123456789012345678901234567890" == "123456789012345678901234567890",
-        numberText "0" == "0", textAt ("17", "") == "17", textAt ("-0.25", "") == "-0.25"
+        numberText "0" == "0",
+        textAt ("17", "") == "17",
+        textAt ("-0.25", "") == "-0.25"
     ]
     checkAll "every non-RFC number makes the document malformed" [
         refusesNumber "-", refusesNumber "+1", refusesNumber ".5", refusesNumber "1.",
@@ -176,17 +176,17 @@ test "JSON numbers follow RFC 8259 and keep their source text" jsonNumberCase
     [BUILTIN-JSON-STRING] *)
 jsonStringCase () =
     checkAll "the eight short escapes decode" [
-        decoded "a\\\"b" == "a\"b", decoded "a\\\\b" == "a\\b",
-        decoded "a\\/b" == "a/b", decoded "a\\nb" == "a\nb",
-        decoded "a\\tb" == "a\tb", decoded "a\\rb" == "a\rb",
+        structuralEquals [decoded "a\\\"b", decoded "a\\\\b", decoded "a\\/b"] ["a\"b", "a\\b", "a/b"],
+        structuralEquals [decoded "a\\nb", decoded "a\\tb", decoded "a\\rb"] ["a\nb", "a\tb", "a\rb"],
         decoded "\\b" == ctl 8, decoded "\\f" == ctl 12
     ]
     checkAll "unicode escapes and literal UTF-8 decode to their scalars" [
-        decoded "\\u0041" == "A", decoded "\\u00e9" == "é", decoded "\\u00E9" == "é",
-        decoded "\\u20AC" == "€", decoded "\\uD83E\\uDD85" == "🦅",
-        byteLength (decoded "\\uD83E\\uDD85") == 4, decoded "é🦅" == "é🦅",
+        structuralEquals [decoded "\\u0041", decoded "\\u00e9", decoded "\\u00E9"] ["A", "é", "é"],
+        structuralEquals [decoded "\\u20AC", decoded "\\uD83E\\uDD85", decoded "é🦅"] ["€", "🦅", "é🦅"],
+        structuralEquals [decoded "", decoded "plain"] ["", "plain"],
+        byteLength (decoded "\\uD83E\\uDD85") == 4,
         decoded "\\u0001" == ctl 1, decoded "\\u001F" == ctl 31,
-        decoded (ctl 127) == ctl 127, decoded "" == "", decoded "plain" == "plain"
+        decoded (ctl 127) == ctl 127
     ]
     checkAll "any other escape is refused, never taken literally" [
         refusesString "\\a", refusesString "\\x41", refusesString "\\'",
@@ -215,8 +215,8 @@ jsonDocumentShapeCase () =
     checkAll "every complete value parses, whitespace around it included" [
         parses "{}", parses "[]", parses " {\"a\":1} ", parses "true", parses "false",
         parses "null", parses "\"text\"", parses "[[],{},[{}]]",
-        textAt ("\"text\"", "") == "text", textAt ("true", "") == "true",
-        textAt ("null", "") == "null", textAt ("false", "") == "false"
+        structuralEquals [textAt ("\"text\"", ""), textAt ("true", "")] ["text", "true"],
+        structuralEquals [textAt ("null", ""), textAt ("false", "")] ["null", "false"]
     ]
     checkAll "empty, trailing, unseparated and unterminated documents are refused" [
         !(parses ""), !(parses "   "), !(parses "{\"a\":1} x"), !(parses "{\"a\":1}{}"),
@@ -236,17 +236,16 @@ jsonPathCase () =
     match jsonParse nested
         Success doc =>
             checkAll "a live document answers every path" [
-                doc > 0, scalarAt (doc, "user.name") == "devon",
-                scalarAt (doc, "user.items[0].name") == "talon",
-                scalarAt (doc, "user.items[1].name") == "wing",
-                scalarAt (doc, "user.items[2].name") == noScalar,
-                scalarAt (doc, "user.flag") == "false",
+                doc > 0,
+                structuralEquals [scalarAt (doc, "user.name"), scalarAt (doc, "user.items[0].name")] ["devon", "talon"],
+                structuralEquals [scalarAt (doc, "user.items[1].name"), scalarAt (doc, "user.flag")] ["wing", "false"],
                 scalarAt (doc, "user.nothing") == "null",
+                scalarAt (doc, "user.items[2].name") == noScalar,
                 scalarAt (doc, "user.items") == noScalar, scalarAt (doc, "user") == noScalar,
                 scalarAt (doc, "user.missing") == noScalar, scalarAt (doc, "") == noScalar,
-                jsonLength doc "" == 1, jsonLength doc "user" == 6,
-                jsonLength doc "user.items" == 2, jsonLength doc "user.items[0]" == 1,
-                jsonLength doc "user.empty" == 0, jsonLength doc "user.none" == 0,
+                structuralEquals [jsonLength doc "", jsonLength doc "user"] [1, 6],
+                structuralEquals [jsonLength doc "user.items", jsonLength doc "user.items[0]"] [2, 1],
+                structuralEquals [jsonLength doc "user.empty", jsonLength doc "user.none"] [0, 0],
                 jsonLength doc "user.name" == notAContainer,
                 jsonLength doc "user.nothing" == notAContainer,
                 jsonLength doc "user.missing" == notAContainer

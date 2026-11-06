@@ -236,26 +236,18 @@ fn inferredBehaviorCase() = {
     let inferredBox = makeBox("boxed")
     let inferredGeneric = makeAnotherGeneric(a: 4, b: "four")
     checkAll("Hindley-Milner inferred behavior", [
-        identity(7) == 7,
-        identity("hm") == "hm",
+        structuralEquals([identity(7), add(a: 12, b: 30), getFirst(inferredPair)], [7, 42, 11]),
+        structuralEquals([getSecond(inferredPair), inferredPoint.x, inferredPoint.y], [12, 6, 8]),
+        structuralEquals([distance(inferredPoint), apply(f: identityP, x: 99)], [100, 99]),
+        structuralEquals([inferredGeneric.first, typeTest1(21)], [4, 42]),
+        structuralEquals([identity("hm"), concat(s1: "type", s2: "safe")], ["hm", "typesafe"]),
+        structuralEquals([getValue(inferredContainer), combine(inferredContainer)], ["type", "typesafe"]),
+        structuralEquals([apply(f: toString, x: 123), inferredBox.item], ["123", "boxed"]),
+        structuralEquals([inferredGeneric.second, typeTest2("ha")], ["four", "haha"]),
+        pick("left", "right") == "left",
         identity(true),
-        add(a: 12, b: 30) == 42,
-        concat(s1: "type", s2: "safe") == "typesafe",
         negate(false),
-        getFirst(inferredPair) == 11,
-        getSecond(inferredPair) == 12,
-        getValue(inferredContainer) == "type",
-        structuralEquals([inferredPoint.x, inferredPoint.y, distance(inferredPoint)], [6, 8, 100]),
-        combine(inferredContainer) == "typesafe",
-        apply(f: identityP, x: 99) == 99,
-        apply(f: toString, x: 123) == "123",
-        inferredBox.item == "boxed",
-        inferredGeneric.first == 4,
-        inferredGeneric.second == "four",
-        typeTest1(21) == 42,
-        typeTest2("ha") == "haha",
-        typeTest3(false),
-        pick("left", "right") == "left"
+        typeTest3(false)
     ])
 }
 

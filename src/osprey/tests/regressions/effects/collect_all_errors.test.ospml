@@ -95,19 +95,18 @@ collectAllErrorsCase () =
     ]
 
     checkAll "validation reports retain strings inside nested collections" [
-        listLength reports == 8,
-        contains (listGet reports 0 ?: "missing") "REJECTED (4 errors",
-        contains (listGet reports 1 ?: "missing") "ACCEPTED (0 errors)",
-        contains (listGet reports 7 ?: "missing") "missing '@'",
-        mapLength byKind == 3,
+        structuralEquals [listLength reports, mapLength byKind] [8, 3],
         listLength (mapGet byKind "multi" ?: ["missing"]) == 2,
         listLength (mapGet byKind "clean" ?: ["missing"]) == 3,
         listLength (mapGet byKind "single" ?: ["missing"]) == 5,
+        listLength (mapKeys byKind) == 3,
+        listLength (mapValues byKind) == 3,
+        contains (listGet reports 0 ?: "missing") "REJECTED (4 errors",
+        contains (listGet reports 1 ?: "missing") "ACCEPTED (0 errors)",
+        contains (listGet reports 7 ?: "missing") "missing '@'",
         contains (listGet (mapGet byKind "multi" ?: ["missing"]) 1 ?: "missing") "REJECTED (3 errors",
         contains (listGet (mapGet byKind "clean" ?: ["missing"]) 2 ?: "missing") "ACCEPTED (0 errors)",
         contains (listGet (mapGet byKind "single" ?: ["missing"]) 3 ?: "missing") "score above 100",
-        listLength (mapKeys byKind) == 3,
-        listLength (mapValues byKind) == 3,
         !(mapContains byKind "missing")
     ]
 

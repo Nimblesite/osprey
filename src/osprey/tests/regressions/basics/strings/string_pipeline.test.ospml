@@ -142,35 +142,34 @@ stringPipelineCase () =
         Success _value => false
         Error message => message != ""
     checkAll "string inspection and transformations" [
-        length source == 36,
+        structuralEquals [length source, (source |> length)] [36, 36],
         !(isEmpty source),
         structuralEquals [contains source "GET", startsWith source "  ", endsWith source "  "] [true, true, true],
-        (source |> length) == 36,
-        cleaned == "get /api/users?name=alice&age=30",
-        startsWith cleaned "get ",
-        structuralEquals [toUpperCase "hello", trimStart "  hi  ", trimEnd "  hi  "] ["HELLO", "hi  ", "  hi"],
-        structuralEquals [join ["a", "b", "c"] "-", take cleaned 5, take "hello" 3] ["a-b-c", "get /", "hel"],
-        structuralEquals [drop "hello" 3, reverse "abc"] ["lo", "cba"]
+        structuralEquals [cleaned, toUpperCase "hello"] ["get /api/users?name=alice&age=30", "HELLO"],
+        structuralEquals [trimStart "  hi  ", trimEnd "  hi  "] ["hi  ", "  hi"],
+        structuralEquals [join ["a", "b", "c"] "-", take cleaned 5] ["a-b-c", "get /"],
+        structuralEquals [take "hello" 3, drop "hello" 3] ["hel", "lo"],
+        reverse "abc" == "cba",
+        startsWith cleaned "get "
     ]
     checkAll "fallible string values and collection results" [
-        (indexOf source "?" ?: ((0 - 1) )) == 16,
+        structuralEquals [(indexOf source "?" ?: ((0 - 1) )), (parseInt "123" ?: 0)] [16, 123],
+        structuralEquals [listLength (lines "a\nb\nc"), listLength (words "  hello   world  ")] [3, 2],
+        splitCount == 3,
         (substring "hello world" 6 11 ?: "missing") == "world",
         (replace "a-b-c-d" "-" "/" ?: "missing") == "a/b/c/d",
         (repeat "ab" 4 ?: "missing") == "abababab",
         (padStart "42" 5 "0" ?: "missing") == "00042",
         (padEnd "42" 5 "0" ?: "missing") == "42000",
-        (parseInt "123" ?: 0) == 123,
         (parseFloat "3.14" ?: 0.0) == 3.14,
-        structuralEquals [listLength (lines "a\nb\nc"), listLength (words "  hello   world  "), splitCount] [3, 2, 3],
         splitEmptyRejected,
         invalidIntegerRejected,
         missingIndexRejected
     ]
     checkAll "HTTP routing branches" [
         structuralEquals (mapList ["/health", "/api/users/42"] (\k => route ("GET", k))) ["200 ok", "200 user-detail 42"],
-        route ("GET", "/api/orders") == "200 api-fallback",
-        structuralEquals (mapList ["/api/users", "/other"] (\k => route ("POST", k))) ["201 created", "404 not-found"],
-        route ("GET", "/random") == "404 not-found",
-        route ("DELETE", "/anything") == "405 method-not-allowed"
+        structuralEquals [route ("GET", "/api/orders"), route ("GET", "/random")] ["200 api-fallback", "404 not-found"],
+        route ("DELETE", "/anything") == "405 method-not-allowed",
+        structuralEquals (mapList ["/api/users", "/other"] (\k => route ("POST", k))) ["201 created", "404 not-found"]
     ]
 test "string pipeline preserves transformations and routing" stringPipelineCase

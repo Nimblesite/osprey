@@ -85,7 +85,8 @@ processHandleCase () =
     cleanupProcess first
     cleanupProcess second
     checkAll "process handles are fresh and released exactly once" [
-        first > 0, second > first, firstExit == 0, secondExit == 0,
+        first > 0, second > first,
+        structuralEquals [firstExit, secondExit] [0, 0],
         awaitProcess first == -1, awaitProcess second == -1,
         awaitProcess 999999 == -1, awaitProcess (-1) == -1, awaitProcess 0 == -1
     ]

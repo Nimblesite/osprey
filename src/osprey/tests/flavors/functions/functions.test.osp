@@ -66,13 +66,13 @@ fn higherOrderCase() = {
     ])
     // Check all four application results that were formerly combined.
     checkAll("higher-order legacy constituent values", [
-            structuralEquals([hofApply(hofDouble)(5), hofApply(hofInc)(9), hofTwice(hofDouble)(3)], [10, 10, 12]),
-            hofTwice(hofInc)(40) == 42
+            structuralEquals([hofApply(hofDouble)(5), hofApply(hofInc)(9)], [10, 10]),
+            structuralEquals([hofTwice(hofDouble)(3), hofTwice(hofInc)(40)], [12, 42])
     ])
     // Exercise zero inputs, repeated application, and composed function values.
     checkAll("higher-order edge cases", [
-            structuralEquals([hofApply(hofDouble)(0), hofTwice(hofInc)(0), hofTwice(hofDouble)(1)], [0, 2, 4]),
-            hofApply(hofInc)(hofApply(hofDouble)(3)) == 7
+            structuralEquals([hofApply(hofDouble)(0), hofTwice(hofInc)(0)], [0, 2]),
+            structuralEquals([hofTwice(hofDouble)(1), hofApply(hofInc)(hofApply(hofDouble)(3))], [4, 7])
     ])
 }
 
@@ -94,9 +94,8 @@ fn nestedCallsCase() = {
     ])
     // Check each deeply derived integer independently.
     checkAll("nested calls legacy constituent values", [
-            deep == 15,
-            nestedNeg(nestedInc(nestedDouble(5))) == ((0 - 11) ),
-            nestedDouble(nestedDouble(4)) == 16
+            structuralEquals([deep, nestedDouble(nestedDouble(4))], [15, 16]),
+            nestedNeg(nestedInc(nestedDouble(5))) == ((0 - 11) )
     ])
     // Exercise each primitive and additional nested paths around zero.
     checkAll("nested calls edge cases", [
@@ -195,21 +194,15 @@ fn applyTwo(f, a, b) = f(a)(b)
 fn genericValueCase() = {
     let curriedSum = |a| => |b| => a + b 
     checkAll("file-scope generic function values resolve by name", [
-            throughAlias(7) == 7,
-            throughAlias("osp") == "osp",
-            throughLambda(9) == 9,
-            throughLambda("ml") == "ml",
-            nestedGeneric(21) == 21,
-            nestedGeneric("x") == "x",
-            genericIdentity(genericIdentity(genericIdentity(5))) == 5,
-            globalHead() == 1
+            structuralEquals([throughAlias(7), throughLambda(9), nestedGeneric(21)], [7, 9, 21]),
+            structuralEquals([genericIdentity(genericIdentity(genericIdentity(5))), globalHead()], [5, 1]),
+            structuralEquals([throughAlias("osp"), throughLambda("ml"), nestedGeneric("x")], ["osp", "ml", "x"])
     ])
     checkAll("a parameter never changes calls outside its own scope", [
-            shadowsBuiltin(3) == 3,
+            structuralEquals([shadowsBuiltin(3), applyTwo(curriedSum, 20, 22)], [3, 42]),
             shadowsBuiltin("keep") == "keep",
             structuralEquals([builtinAfterShadow(), contains("alpha", "ph")], [true, true]),
-            !contains("alpha", "zz"),
-            applyTwo(curriedSum, 20, 22) == 42
+            !contains("alpha", "zz")
     ])
 }
 

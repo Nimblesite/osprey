@@ -142,44 +142,35 @@ typedErrorChannelCase () =
 
     checkAll "typed channel direct substitution policies" [
         structuralEquals [combined, strictRangeForTest (), relaxedRangeForTest ()] [40, 1, 10],
-        strictRangeForTest () != relaxedRangeForTest (),
         structuralEquals [parseUnder ("bad", 0), parseUnder ("bad", 7), parseUnder ("other", 99)] [0, 7, 99],
         structuralEquals [missingUnder "timeout", missingUnder "retries", clampUnder (5, 10)] [30, 1, 5],
         structuralEquals [clampUnder (10, 10), clampUnder (11, 10), clampUnder (500, 10)] [10, 10, 10],
-        structuralEquals [forceUnder (5, 10, 4), forceUnder (500, 10, 4)] [4, 4]
+        structuralEquals [forceUnder (5, 10, 4), forceUnder (500, 10, 4)] [4, 4],
+        strictRangeForTest () != relaxedRangeForTest ()
     ]
 
     checkAll "nested handlers restore outer policies around collection values" [
-        listLength trace == 3,
-        (listGet trace 0 ?: 99) == 10,
-        (listGet trace 1 ?: 99) == 1,
-        (listGet trace 2 ?: 99) == 10,
-        listLength healthyTrace == 3,
-        (listGet healthyTrace 0 ?: 99) == 5,
-        (listGet healthyTrace 1 ?: 99) == 1,
-        (listGet healthyTrace 2 ?: 99) == 5,
-        structuralEquals [traceShape [], traceShape [7], traceShape [7, 8]] ["empty", "one:7", "two:7/8"],
-        traceShape trace == "many:10+2"
+        structuralEquals [listLength trace, (listGet trace 0 ?: 99), (listGet trace 1 ?: 99)] [3, 10, 1],
+        structuralEquals [(listGet trace 2 ?: 99), listLength healthyTrace, (listGet healthyTrace 0 ?: 99)] [10, 3, 5],
+        structuralEquals [(listGet healthyTrace 1 ?: 99), (listGet healthyTrace 2 ?: 99)] [1, 5],
+        structuralEquals [traceShape [], traceShape [7]] ["empty", "one:7"],
+        structuralEquals [traceShape [7, 8], traceShape trace] ["two:7/8", "many:10+2"]
     ]
 
     checkAll "typed effect results remain coherent inside maps of lists" [
-        mapLength scalars == 3,
-        (mapGet scalars "parse" ?: 99) == 7,
-        (mapGet scalars "missing" ?: 99) == 30,
-        (mapGet scalars "range" ?: 99) == 10,
-        (mapGet scalars "absent" ?: 99) == 99,
-        mapLength nested == 2,
-        mapLength grown == 3,
-        listLength (mapGet nested "outer-inner-outer" ?: [99]) == 3,
+        structuralEquals [mapLength scalars, (mapGet scalars "parse" ?: 99)] [3, 7],
+        structuralEquals [(mapGet scalars "missing" ?: 99), (mapGet scalars "range" ?: 99)] [30, 10],
+        structuralEquals [(mapGet scalars "absent" ?: 99), mapLength nested] [99, 2],
+        structuralEquals [mapLength grown, listLength (mapGet nested "outer-inner-outer" ?: [99])] [3, 3],
         (listGet (mapGet nested "outer-inner-outer" ?: [99]) 1 ?: 99) == 1,
         (listGet (mapGet nested "healthy-inner-healthy" ?: [99]) 2 ?: 99) == 5,
         listLength (mapGet grown "forced" ?: [99]) == 2,
         (listGet (mapGet grown "forced" ?: [99]) 0 ?: 99) == 4,
         (listGet (mapGet grown "forced" ?: [99]) 1 ?: 99) == 4,
-        !(mapContains nested "forced"),
-        mapContains grown "forced",
         listLength (mapKeys grown) == 3,
-        listLength (mapValues grown) == 3
+        listLength (mapValues grown) == 3,
+        !(mapContains nested "forced"),
+        mapContains grown "forced"
     ]
 
 test "typed error channels compose and restore shadowed handlers" (\() => exactArithmetic (typedErrorChannelCase))

@@ -81,8 +81,7 @@ fn codepointIsRejected(s, index) = match codePointAt(s, index) {
 fn utf8WalkCase() = {
     let text = sample()
     checkAll("UTF-8 recursive walk", [
-        byteLength(text) == 18,
-        walk(text, 0, 0) == 12,
+        structuralEquals([byteLength(text), walk(text, 0, 0)], [18, 12]),
         structuralEquals([codepointIs(text, 0, 65), codepointIs(text, 1, 233)], [true, true]),
         structuralEquals([codepointIs(text, 3, 19990), codepointIs(text, 6, 128512)], [true, true]),
         structuralEquals([codepointIs(text, 10, 44), codepointIsRejected(text, 7)], [true, true])

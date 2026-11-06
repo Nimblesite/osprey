@@ -77,9 +77,8 @@ retrySendsOneReceiptCase () =
         placeOrder 120)
     checkAll "retry answers once and mails once" [
         run.outcome == "settled 120",
-        attempts == 2,
-        run.receipts == 1,
         run.transcript == "declined: gateway timeout; retrying\nemail: receipt for 120\n",
+        structuralEquals [attempts, run.receipts] [2, 1],
         !contains run.transcript "email: receipt for 120\nemail: receipt for 120\n"
     ]
 
@@ -95,9 +94,8 @@ declineSendsNoReceiptCase () =
                     "declined: ${message}"
         placeOrder 75)
     checkAll "abandoning the continuation mails nothing" [
-        run.outcome == "declined: gateway timeout",
-        run.receipts == 0,
-        run.transcript == "abandoned 75: gateway timeout\n"
+        structuralEquals [run.outcome, run.transcript] ["declined: gateway timeout", "abandoned 75: gateway timeout\n"],
+        run.receipts == 0
     ]
 
 (** ONE unannotated definition applied under two different effects — the
@@ -124,7 +122,7 @@ sharedAcrossMultiplicitiesCase () =
             deliver _body => audits := audits + 1 
         applyTwice (audited, 5)
     checkAll "one function serves both multiplicities" [
-        noisy == 16, doubled == 20, audits == 2
+        structuralEquals [noisy, doubled, audits] [16, 20, 2]
     ]
 
 (** An operation NAMED with a modifier word declares, performs and handles like
@@ -142,7 +140,7 @@ contextualKeywordCase () =
     many = 100
     abort = (many + total) 
     checkAll "modifier words stay ordinary identifiers" [
-        total == 15, abort == 115
+        structuralEquals [total, abort] [15, 115]
     ]
 
 test "a once arm retrying internally sends exactly one receipt" (\() => exactArithmetic (retrySendsOneReceiptCase))

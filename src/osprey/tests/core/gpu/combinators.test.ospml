@@ -68,11 +68,13 @@ oobMessage (buf, i) = match gpuGet (buf, i)
 emptyShapeCase () = withBuffer (emptyInts (), \intEmpty => withBuffer (emptyFloats (), \floatEmpty => emptyShapeWith (intEmpty, floatEmpty)))
 emptyShapeWith (intEmpty, floatEmpty) =
     withBuffer (gpuMap(intEmpty, dbl), \uploaded169 => withBuffer (gpuFilter(uploaded169, isEven), \uploaded213 => withBuffer (gpuScan(uploaded213, 0, sumI), \uploaded222 => withBuffer (gpuMap(uploaded222, inc), \chained => checkAll "empty shapes" [
-                        gpuLength (intEmpty) == 0, gpuSatisfies(gpuMap(intEmpty, dbl), \uploaded168 => gpuLength (uploaded168) == 0), gpuSatisfies(gpuMap(intEmpty, toFloat), \uploaded167 => gpuLength (uploaded167) == 0), gpuSatisfies(gpuMap(intEmpty, isEven), \uploaded166 => gpuLength (uploaded166) == 0),
+                        structuralEquals [gpuLength (intEmpty), (gpuGet (intEmpty, 0) ?: 42)] [0, 42],
+                        gpuLength chained == 0,
+                        gpuSatisfies(gpuMap(intEmpty, dbl), \uploaded168 => gpuLength (uploaded168) == 0), gpuSatisfies(gpuMap(intEmpty, toFloat), \uploaded167 => gpuLength (uploaded167) == 0), gpuSatisfies(gpuMap(intEmpty, isEven), \uploaded166 => gpuLength (uploaded166) == 0),
                         gpuSatisfies(gpuMap(floatEmpty, half), \uploaded165 => gpuLength (uploaded165) == 0), gpuSatisfies(gpuFilter(intEmpty, keepEvery), \uploaded164 => gpuLength (uploaded164) == 0), gpuSatisfies(gpuFilter(intEmpty, keepNone), \uploaded163 => gpuLength (uploaded163) == 0),
                         gpuSatisfies(gpuScan(intEmpty, 0, sumI), \uploaded162 => gpuLength (uploaded162) == 0), gpuSatisfies(gpuScan(intEmpty, 99, maxI), \uploaded161 => gpuLength (uploaded161) == 0),
                         gpuSatisfies (toGpu ([1, 2, 3]), \uploaded61 => gpuSatisfies(gpuZipWith (intEmpty, uploaded61, sumI), \uploaded160 => gpuLength (uploaded160) == 0)), gpuSatisfies (toGpu ([1, 2, 3]), \uploaded60 => gpuSatisfies(gpuZipWith (uploaded60, intEmpty, sumI), \uploaded159 => gpuLength (uploaded159) == 0)),
-                        gpuSatisfies (fromGpu (intEmpty), \checked0 => listLength (checked0) == 0), (gpuGet (intEmpty, 0) ?: 42) == 42, gpuLength chained == 0
+                        gpuSatisfies (fromGpu (intEmpty), \checked0 => listLength (checked0) == 0)
                     ]))))
 (** Pin [GPU-FOLD]'s base case: with no element to combine, the result is exactly the initial value — for every combine, and for a buffer emptied by compaction rather than born empty. *)
 emptyFoldCase () = withIndices (0, \indices0 => emptyFoldWith (indices0))
@@ -88,18 +90,22 @@ emptyFoldOn (indices0, intEmpty, floatEmpty) =
 (** Walk the one-element buffer through every combinator: the smallest shape where a kernel actually runs, and the one where an off-by-one in a loop bound or a prefix seed shows up immediately. *)
 singletonCase () =
     withBuffer (toGpu ([5]), \one => withBuffer (gpuScan(one, 3, sumI), \scanned => checkAll "singleton" [
-                gpuLength one == 1, gpuSatisfies(gpuMap(one, dbl), \uploaded143 => (gpuGet (uploaded143, 0) ?: 0) == 10), gpuSatisfies(gpuFilter(one, isEven), \uploaded142 => gpuLength (uploaded142) == 0),
-                gpuSatisfies (toGpu ([4]), \uploaded57 => gpuSatisfies(gpuFilter(uploaded57, isEven), \uploaded141 => gpuLength (uploaded141) == 1)), gpuSatisfies (toGpu ([4]), \uploaded56 => gpuSatisfies(gpuFilter(uploaded56, isEven), \uploaded140 => (gpuGet (uploaded140, 0) ?: 0) == 4)), gpuLength scanned == 1,
-                (gpuGet (scanned, 0) ?: 0) == 8, gpuSatisfies(gpuScan(one, 0, maxI), \uploaded139 => (gpuGet (uploaded139, 0) ?: 0) == 5), gpuSatisfies(gpuFold(one, 3, sumI), \uploaded138 => (uploaded138) == 8), gpuSatisfies(gpuFold(one, 10, subI), \uploaded137 => (uploaded137) == 5),
-                gpuSatisfies (toGpu ([7]), \uploaded55 => gpuSatisfies(gpuZipWith (one, uploaded55, sumI), \uploaded136 => (gpuGet (uploaded136, 0) ?: 0) == 12)), gpuSatisfies (toGpu ([1, 2, 3]), \uploaded54 => gpuSatisfies(gpuZipWith (uploaded54, one, sumI), \uploaded135 => (gpuGet (uploaded135, 0) ?: 0) == 6)),
-                (gpuGet (one, 1) ?: 42) == 42
+                structuralEquals [gpuLength one, gpuLength scanned] [1, 1],
+                structuralEquals [(gpuGet (scanned, 0) ?: 0), (gpuGet (one, 1) ?: 42)] [8, 42],
+                gpuSatisfies(gpuMap(one, dbl), \uploaded143 => (gpuGet (uploaded143, 0) ?: 0) == 10), gpuSatisfies(gpuFilter(one, isEven), \uploaded142 => gpuLength (uploaded142) == 0),
+                gpuSatisfies (toGpu ([4]), \uploaded57 => gpuSatisfies(gpuFilter(uploaded57, isEven), \uploaded141 => gpuLength (uploaded141) == 1)), gpuSatisfies (toGpu ([4]), \uploaded56 => gpuSatisfies(gpuFilter(uploaded56, isEven), \uploaded140 => (gpuGet (uploaded140, 0) ?: 0) == 4)),
+                gpuSatisfies(gpuScan(one, 0, maxI), \uploaded139 => (gpuGet (uploaded139, 0) ?: 0) == 5), gpuSatisfies(gpuFold(one, 3, sumI), \uploaded138 => (uploaded138) == 8), gpuSatisfies(gpuFold(one, 10, subI), \uploaded137 => (uploaded137) == 5),
+                gpuSatisfies (toGpu ([7]), \uploaded55 => gpuSatisfies(gpuZipWith (one, uploaded55, sumI), \uploaded136 => (gpuGet (uploaded136, 0) ?: 0) == 12)), gpuSatisfies (toGpu ([1, 2, 3]), \uploaded54 => gpuSatisfies(gpuZipWith (uploaded54, one, sumI), \uploaded135 => (gpuGet (uploaded135, 0) ?: 0) == 6))
             ]))
 (** Pin [GPU-ZIPWITH]'s truncation to the shorter operand in both argument orders, with a non-commutative kernel so a swapped operand pair could not pass by accident. *)
 raggedCase () = withIndices (3, \indices3 => withIndices (7, \indices7 => withIndices (4, \indices4 => raggedWith (indices3, indices7, indices4))))
 raggedWith (indices3, indices7, indices4) =
     withBuffer (toGpu ([1, 2, 3, 4, 5]), \uploaded50 => withBuffer (toGpu ([10, 20]), \uploaded51 => withBuffer (gpuZipWith (uploaded50, uploaded51, subI), \leftFirst => withBuffer (toGpu ([10, 20]), \uploaded52 => withBuffer (toGpu ([1, 2, 3, 4, 5]), \uploaded53 => withBuffer (gpuZipWith (uploaded52, uploaded53, subI), \rightFirst => checkAll "ragged zip" [
-                                gpuLength leftFirst == 2, gpuLength rightFirst == 2, (gpuGet (rightFirst, 0) ?: 0) == 9, (gpuGet (rightFirst, 1) ?: 0) == 18, gpuSatisfies(gpuFold(leftFirst, 27, sumI), \uploaded132 => (uploaded132) == 0),
-                                gpuSatisfies(gpuFold(rightFirst, 0, sumI), \uploaded131 => (uploaded131) == 27), (gpuGet (leftFirst, 2) ?: 77) == 77,
+                                structuralEquals [gpuLength leftFirst, gpuLength rightFirst] [2, 2],
+                                structuralEquals [(gpuGet (rightFirst, 0) ?: 0), (gpuGet (rightFirst, 1) ?: 0)] [9, 18],
+                                (gpuGet (leftFirst, 2) ?: 77) == 77,
+                                gpuSatisfies(gpuFold(leftFirst, 27, sumI), \uploaded132 => (uploaded132) == 0),
+                                gpuSatisfies(gpuFold(rightFirst, 0, sumI), \uploaded131 => (uploaded131) == 27),
                                 gpuSatisfies (toGpu ([1, 2, 3]), \uploaded48 => gpuSatisfies (toGpu ([9]), \uploaded49 => gpuSatisfies(gpuZipWith (uploaded48, uploaded49, mulI), \uploaded130 => gpuLength (uploaded130) == 1))),
                                 gpuSatisfies (toGpu ([9]), \uploaded46 => gpuSatisfies (toGpu ([1, 2, 3]), \uploaded47 => gpuSatisfies(gpuZipWith (uploaded46, uploaded47, mulI), \uploaded129 => gpuLength (uploaded129) == 1))),
                                 gpuSatisfies(gpuZipWith (indices3, indices7, sumI), \uploaded128 => gpuLength (uploaded128) == 3), gpuSatisfies(gpuZipWith (indices7, indices3, sumI), \uploaded127 => gpuLength (uploaded127) == 3),
@@ -108,16 +114,24 @@ raggedWith (indices3, indices7, indices4) =
 (** Pin that the zip kernel's result type is the buffer's, not either operand's, including a pair whose two operands differ in type. *)
 zipTypeCase () =
     withBuffer (toGpu ([1, 2, 3, 4]), \uploaded40 => withBuffer (toGpu ([3, 5, 7, 9]), \uploaded41 => withBuffer (gpuZipWith (uploaded40, uploaded41, sameParity), \parity => withBuffer (toGpu ([1, 3]), \uploaded42 => withBuffer (toGpu ([3, 5]), \uploaded43 => withBuffer (gpuZipWith (uploaded42, uploaded43, meanF), \means => withBuffer (toGpu ([1, 2]), \uploaded44 => withBuffer (toGpu ([0.5, 0.25]), \uploaded45 => withBuffer (gpuZipWith (uploaded44, uploaded45, mixAdd), \mixed => checkAll "zip element types" [
-                                            gpuLength parity == 4, (gpuGet (parity, 0) ?: false) == true, (gpuGet (parity, 1) ?: true) == false, gpuSatisfies(gpuFold(parity, 0, countTrue), \uploaded121 => (uploaded121) == 2), gpuLength means == 2, (gpuGet (means, 0) ?: 0.0) == 2.0,
-                                            (gpuGet (means, 1) ?: 0.0) == 4.0, gpuSatisfies(gpuFold(means, 0.0, addF), \uploaded120 => (uploaded120) == 6.0), (gpuGet (mixed, 0) ?: 0.0) == 1.5, gpuSatisfies(gpuFold(mixed, 0.0, addF), \uploaded119 => (uploaded119) == 3.75),
+                                            structuralEquals [gpuLength parity, gpuLength means] [4, 2],
+                                            (gpuGet (parity, 0) ?: false) == true, (gpuGet (parity, 1) ?: true) == false, gpuSatisfies(gpuFold(parity, 0, countTrue), \uploaded121 => (uploaded121) == 2),
+                                            (gpuGet (means, 0) ?: 0.0) == 2.0,
+                                            (gpuGet (means, 1) ?: 0.0) == 4.0,
+                                            (gpuGet (mixed, 0) ?: 0.0) == 1.5,
+                                            gpuSatisfies(gpuFold(means, 0.0, addF), \uploaded120 => (uploaded120) == 6.0), gpuSatisfies(gpuFold(mixed, 0.0, addF), \uploaded119 => (uploaded119) == 3.75),
                                             gpuSatisfies (toGpu ([1, 2, 3]), \uploaded38 => gpuSatisfies (toGpu ([0.5]), \uploaded39 => gpuSatisfies(gpuZipWith (uploaded38, uploaded39, mixAdd), \uploaded118 => gpuLength (uploaded118) == 1))),
                                             gpuSatisfies (toGpu ([1.0, 2.0, 3.0]), \uploaded36 => gpuSatisfies (toGpu ([3.0, 2.0, 1.0]), \uploaded37 => gpuSatisfies(gpuZipWith (uploaded36, uploaded37, lessF), \uploaded117 => gpuSatisfies(gpuFold(uploaded117, 0, countTrue), \uploaded208 => (uploaded208) == 1))))
                                         ])))))))))
 (** Pin the three shapes of a compaction — every element kept, none kept, alternating — and read the kept run back element by element so [GPU-FILTER]'s source-order guarantee is checked, not just its count. *)
 filterKeepCase () =
     withBuffer (toGpu ([9, 4, 7, 2, 5, 8]), \src => withBuffer (gpuFilter(src, keepEvery), \kept => withBuffer (gpuFilter(src, isEven), \alternates => checkAll "filter keep sets" [
-                    gpuLength kept == 6, (gpuGet (kept, 0) ?: 0) == 9, (gpuGet (kept, 5) ?: 0) == 8, gpuSatisfies(gpuFold(kept, 0, sumI), \uploaded114 => (uploaded114) == 35), gpuSatisfies(gpuFilter(src, keepNone), \uploaded113 => gpuLength (uploaded113) == 0), gpuLength alternates == 3, (gpuGet (alternates, 0) ?: 0) == 4,
-                    (gpuGet (alternates, 1) ?: 0) == 2, (gpuGet (alternates, 2) ?: 0) == 8, (gpuGet (alternates, 3) ?: 55) == 55, gpuSatisfies(gpuFilter(src, isOddP), \uploaded112 => gpuLength (uploaded112) == 3),
+                    structuralEquals [gpuLength kept, (gpuGet (kept, 0) ?: 0)] [6, 9],
+                    structuralEquals [(gpuGet (kept, 5) ?: 0), gpuLength alternates] [8, 3],
+                    structuralEquals [(gpuGet (alternates, 0) ?: 0), (gpuGet (alternates, 1) ?: 0)] [4, 2],
+                    structuralEquals [(gpuGet (alternates, 2) ?: 0), (gpuGet (alternates, 3) ?: 55)] [8, 55],
+                    gpuSatisfies(gpuFold(kept, 0, sumI), \uploaded114 => (uploaded114) == 35), gpuSatisfies(gpuFilter(src, keepNone), \uploaded113 => gpuLength (uploaded113) == 0),
+                    gpuSatisfies(gpuFilter(src, isOddP), \uploaded112 => gpuLength (uploaded112) == 3),
                     gpuSatisfies(gpuFilter(src, isOddP), \uploaded111 => gpuSatisfies(gpuFold(uploaded111, 0, horner), \uploaded207 => (uploaded207) == 975))
                 ])))
 (** Feed the predicate slot from comparisons and from every boolean operator, over int and float elements and over a bool buffer whose elements are the predicate. *)
@@ -136,23 +150,32 @@ filterPredicateWith (indices10, indices6) =
 scanPrefixCase () = withIndices (5, \indices5 => scanPrefixWith (indices5))
 scanPrefixWith (indices5) =
     withBuffer (toGpu ([1, 2, 3, 4, 5]), \value => withBuffer (gpuScan(value, 0, sumI), \sums => withBuffer (gpuScan(sums, 0, sumI), \twice => withBuffer (toGpu ([1, 2, 3, 4]), \value => withBuffer (gpuScan(value, 1, mulI), \products => checkAll "inclusive prefix" [
-                            gpuLength sums == 5, (gpuGet (sums, 0) ?: 0) == 1, (gpuGet (sums, 1) ?: 0) == 3, (gpuGet (sums, 2) ?: 0) == 6, (gpuGet (sums, 3) ?: 0) == 10, (gpuGet (sums, 4) ?: 0) == 15, (gpuGet (sums, 5) ?: 77) == 77,
-                            gpuSatisfies (toGpu ([1, 2, 3, 4, 5]), \uploaded31 => gpuSatisfies(gpuFold(uploaded31, 0, sumI), \uploaded94 => (gpuGet (sums, 4) ?: 0) == (uploaded94))), (gpuGet (twice, 4) ?: 0) == 35, gpuLength products == 4, (gpuGet (products, 3) ?: 0) == 24,
+                            structuralEquals [gpuLength sums, (gpuGet (sums, 0) ?: 0)] [5, 1],
+                            structuralEquals [(gpuGet (sums, 1) ?: 0), (gpuGet (sums, 2) ?: 0)] [3, 6],
+                            structuralEquals [(gpuGet (sums, 3) ?: 0), (gpuGet (sums, 4) ?: 0)] [10, 15],
+                            structuralEquals [(gpuGet (sums, 5) ?: 77), (gpuGet (twice, 4) ?: 0)] [77, 35],
+                            structuralEquals [gpuLength products, (gpuGet (products, 3) ?: 0)] [4, 24],
+                            gpuSatisfies (toGpu ([1, 2, 3, 4, 5]), \uploaded31 => gpuSatisfies(gpuFold(uploaded31, 0, sumI), \uploaded94 => (gpuGet (sums, 4) ?: 0) == (uploaded94))),
                             gpuSatisfies(gpuScan(indices5, 0, sumI), \uploaded93 => (gpuGet (uploaded93, 4) ?: 0) == 10)
                         ])))))
 (** Pin the seed's role — element 0 is combine(initial, src 0), never src 0 — over a sum, a maximum a high seed swamps, and a bool latch. *)
 scanSeedCase () =
     withBuffer (toGpu ([1, 2, 3]), \value => withBuffer (gpuScan(value, 10, sumI), \seeded => withBuffer (toGpu ([3, 1, 4, 1, 5, 9, 2, 6]), \value => withBuffer (gpuScan(value, 0, maxI), \running => withBuffer (toGpu ([1, 3, 4, 7]), \value => withBuffer (gpuMap(value, isEven), \uploaded90 => withBuffer (gpuScan(uploaded90, false, orB), \latched => checkAll "scan seeds" [
-                                    (gpuGet (seeded, 0) ?: 0) == 11, (gpuGet (seeded, 1) ?: 0) == 13, (gpuGet (seeded, 2) ?: 0) == 16, (gpuGet (running, 0) ?: 0) == 3, (gpuGet (running, 1) ?: 0) == 3, (gpuGet (running, 3) ?: 0) == 4, (gpuGet (running, 7) ?: 0) == 9,
+                                    structuralEquals [(gpuGet (seeded, 0) ?: 0), (gpuGet (seeded, 1) ?: 0)] [11, 13],
+                                    structuralEquals [(gpuGet (seeded, 2) ?: 0), (gpuGet (running, 0) ?: 0)] [16, 3],
+                                    structuralEquals [(gpuGet (running, 1) ?: 0), (gpuGet (running, 3) ?: 0)] [3, 4],
+                                    structuralEquals [(gpuGet (running, 7) ?: 0), gpuLength latched] [9, 4],
                                     gpuSatisfies(gpuFold(running, 0, sumI), \uploaded89 => (uploaded89) == 46), gpuSatisfies (toGpu ([3, 1, 4]), \uploaded27 => gpuSatisfies(gpuScan(uploaded27, 100, maxI), \uploaded88 => gpuSatisfies(gpuFold(uploaded88, 0, sumI), \uploaded198 => (uploaded198) == 300))),
-                                    gpuLength latched == 4, (gpuGet (latched, 1) ?: true) == false, gpuSatisfies(gpuFold(latched, 0, countTrue), \uploaded87 => (uploaded87) == 2)
+                                    (gpuGet (latched, 1) ?: true) == false, gpuSatisfies(gpuFold(latched, 0, countTrue), \uploaded87 => (uploaded87) == 2)
                                 ])))))))
 (** Pin the traversal itself. Every combine here is order-sensitive, so reversing the source has to change the answer, and a scan's last element has to agree with the fold running the same combine — the left-to-right host contract [GPU-BACKEND-HOST], written out as numbers. *)
 orderCase () =
     withBuffer (toGpu ([1, 2, 3, 4]), \digitsUp => withBuffer (gpuScan(digitsUp, 0, horner), \running => checkAll "traversal order" [
                 gpuSatisfies(gpuFold(digitsUp, 0, horner), \uploaded85 => (uploaded85) == 1234), gpuSatisfies (toGpu ([4, 3, 2, 1]), \uploaded25 => gpuSatisfies(gpuFold(uploaded25, 0, horner), \uploaded84 => (uploaded84) == 4321)), gpuSatisfies(gpuFold(digitsUp, 9, horner), \uploaded83 => (uploaded83) == 91234),
-                gpuSatisfies (toGpu ([1, 2, 3]), \uploaded24 => gpuSatisfies(gpuFold(uploaded24, 100, subI), \uploaded82 => (uploaded82) == 94)), gpuSatisfies (toGpu ([3, 2, 1]), \uploaded23 => gpuSatisfies(gpuFold(uploaded23, 100, subI), \uploaded81 => (uploaded81) == 94)), (gpuGet (running, 0) ?: 0) == 1,
-                (gpuGet (running, 1) ?: 0) == 12, (gpuGet (running, 2) ?: 0) == 123, (gpuGet (running, 3) ?: 0) == 1234, gpuSatisfies(gpuFold(digitsUp, 0, horner), \uploaded80 => (gpuGet (running, 3) ?: 0) == (uploaded80)),
+                gpuSatisfies (toGpu ([1, 2, 3]), \uploaded24 => gpuSatisfies(gpuFold(uploaded24, 100, subI), \uploaded82 => (uploaded82) == 94)), gpuSatisfies (toGpu ([3, 2, 1]), \uploaded23 => gpuSatisfies(gpuFold(uploaded23, 100, subI), \uploaded81 => (uploaded81) == 94)),
+                structuralEquals [(gpuGet (running, 0) ?: 0), (gpuGet (running, 1) ?: 0)] [1, 12],
+                structuralEquals [(gpuGet (running, 2) ?: 0), (gpuGet (running, 3) ?: 0)] [123, 1234],
+                gpuSatisfies(gpuFold(digitsUp, 0, horner), \uploaded80 => (gpuGet (running, 3) ?: 0) == (uploaded80)),
                 gpuSatisfies (toGpu ([1, 2, 3]), \uploaded22 => gpuSatisfies(gpuScan(uploaded22, 10, subI), \uploaded79 => gpuSatisfies(gpuFold(uploaded79, 0, sumI), \uploaded197 => (uploaded197) == 20))),
                 gpuSatisfies (toGpu ([1, 2, 3]), \uploaded21 => gpuSatisfies(gpuScan(uploaded21, 0, subI), \uploaded78 => gpuSatisfies(gpuFold(uploaded78, 10, sumI), \uploaded196 => (uploaded196) == 0))), gpuSatisfies(gpuFold(running, 0, sumI), \uploaded77 => (uploaded77) == 1370)
             ]))
@@ -160,18 +183,27 @@ orderCase () =
 deepChainCase () = withIndices (12, \indices12 => withIndices (8, \indices8 => withIndices (20, \indices20 => deepChainWith (indices12, indices8, indices20))))
 deepChainWith (indices12, indices8, indices20) =
     withBuffer (gpuMap(indices12, dbl), \uploaded74 => withBuffer (gpuMap(uploaded74, toFloat), \uploaded195 => withBuffer (gpuMap(uploaded195, half), \widened => withBuffer (gpuMap(indices8, inc), \uploaded75 => withBuffer (gpuMap(uploaded75, dbl), \uploaded194 => withBuffer (gpuMap(uploaded194, inc), \uploaded220 => withBuffer (gpuMap(uploaded220, dbl), \uploaded223 => withBuffer (gpuMap(uploaded223, inc), \stepped => withBuffer (gpuMap(indices20, dbl), \uploaded76 => withBuffer (gpuFilter(uploaded76, isBig), \uploaded193 => withBuffer (gpuScan(uploaded193, 0, sumI), \compacted => checkAll "deep chains" [
-                                                    gpuLength compacted == 17, (gpuGet (compacted, 0) ?: 0) == 6, (gpuGet (compacted, 16) ?: 0) == 374, gpuSatisfies(gpuFold(compacted, 0, sumI), \uploaded73 => (uploaded73) == 2550),
+                                                    gpuLength compacted == 17,
+                                                    (gpuGet (compacted, 0) ?: 0) == 6,
+                                                    (gpuGet (compacted, 16) ?: 0) == 374,
+                                                    gpuLength stepped == 8,
+                                                    (gpuGet (stepped, 0) ?: 0) == 7,
+                                                    (gpuGet (stepped, 7) ?: 0) == 35,
+                                                    gpuSatisfies(gpuFold(compacted, 0, sumI), \uploaded73 => (uploaded73) == 2550),
                                                     gpuSatisfies(gpuFold(widened, 0.0, addF), \uploaded72 => (uploaded72) == 66.0),
-                                                    gpuSatisfies(gpuMap(widened, isPositive), \uploaded71 => gpuSatisfies(gpuMap(uploaded71, toBit), \uploaded192 => gpuSatisfies(gpuFold(uploaded192, 0, sumI), \uploaded218 => (uploaded218) == 11))), gpuLength stepped == 8,
-                                                    (gpuGet (stepped, 0) ?: 0) == 7, (gpuGet (stepped, 7) ?: 0) == 35, gpuSatisfies(gpuFold(stepped, 0, sumI), \uploaded70 => (uploaded70) == 168),
+                                                    gpuSatisfies(gpuMap(widened, isPositive), \uploaded71 => gpuSatisfies(gpuMap(uploaded71, toBit), \uploaded192 => gpuSatisfies(gpuFold(uploaded192, 0, sumI), \uploaded218 => (uploaded218) == 11))),
+                                                    gpuSatisfies(gpuFold(stepped, 0, sumI), \uploaded70 => (uploaded70) == 168),
                                                     gpuSatisfies(gpuFilter(stepped, isOddP), \uploaded69 => gpuSatisfies(gpuFold(uploaded69, 0, sumI), \uploaded191 => (uploaded191) == 168)), gpuSatisfies(gpuFilter(stepped, isEven), \uploaded68 => gpuLength (uploaded68) == 0)
                                                 ])))))))))))
 (** Interleave the shape-changing combinators — a compaction feeding a scan feeding another compaction, a zip feeding a map feeding a filter — where a wrong published length silently shortens everything after. *)
 mixedChainCase () = withIndices (30, \indices30 => withIndices (6, \indices6 => mixedChainWith (indices30, indices6)))
 mixedChainWith (indices30, indices6) =
     withBuffer (gpuFilter(indices30, isEven), \uploaded65 => withBuffer (gpuScan(uploaded65, 0, sumI), \uploaded190 => withBuffer (gpuFilter(uploaded190, bigEven), \prefixes => withBuffer (gpuMap(indices6, (\x => (x * 3) )), \tripled => withBuffer (gpuZipWith (indices6, tripled, mulI), \uploaded67 => withBuffer (gpuMap(uploaded67, inc), \uploaded189 => withBuffer (gpuFilter(uploaded189, isOddP), \woven => checkAll "mixed chains" [
-                                    gpuLength prefixes == 13, (gpuGet (prefixes, 0) ?: 0) == 6, (gpuGet (prefixes, 12) ?: 0) == 210, gpuSatisfies(gpuFold(prefixes, 0, sumI), \uploaded64 => (uploaded64) == 1118), gpuSatisfies(gpuFold(tripled, 0, sumI), \uploaded63 => (uploaded63) == 45),
-                                    gpuSatisfies(gpuZipWith (tripled, indices6, subI), \uploaded62 => gpuSatisfies(gpuFold(uploaded62, 0, sumI), \uploaded188 => (uploaded188) == 30)), gpuLength woven == 3, (gpuGet (woven, 0) ?: 0) == 1, (gpuGet (woven, 2) ?: 0) == 49,
+                                    structuralEquals [gpuLength prefixes, (gpuGet (prefixes, 0) ?: 0)] [13, 6],
+                                    structuralEquals [(gpuGet (prefixes, 12) ?: 0), gpuLength woven] [210, 3],
+                                    structuralEquals [(gpuGet (woven, 0) ?: 0), (gpuGet (woven, 2) ?: 0)] [1, 49],
+                                    gpuSatisfies(gpuFold(prefixes, 0, sumI), \uploaded64 => (uploaded64) == 1118), gpuSatisfies(gpuFold(tripled, 0, sumI), \uploaded63 => (uploaded63) == 45),
+                                    gpuSatisfies(gpuZipWith (tripled, indices6, subI), \uploaded62 => gpuSatisfies(gpuFold(uploaded62, 0, sumI), \uploaded188 => (uploaded188) == 30)),
                                     gpuSatisfies(gpuFold(woven, 0, sumI), \uploaded61 => (uploaded61) == 63), gpuSatisfies(gpuFilter(woven, isEven), \uploaded60 => gpuLength (uploaded60) == 0),
                                     gpuSatisfies(gpuScan(woven, 0, sumI), \uploaded59 => gpuSatisfies(gpuFold(uploaded59, 0, sumI), \uploaded187 => (uploaded187) == 78))
                                 ])))))))
@@ -188,7 +220,8 @@ typeChangeCase () =
 fusionSourceCase () =
     withBuffer (toGpu(range (0, 10) |> filter isEven |> map (\x => (x * 2) )), \staged => checkAll "fused sources" [
             gpuSatisfies (toGpu(range (0, 4) |> map toFloat |> map half), \uploaded15 => gpuSatisfies(gpuFold(uploaded15, 0.0, addF), \uploaded47 => (uploaded47) == 3.0)), gpuSatisfies (toGpu(range (0, 4) |> map dbl |> map inc), \uploaded14 => gpuSatisfies(gpuFold(uploaded14, 0, sumI), \uploaded46 => (uploaded46) == 16)),
-            gpuLength staged == 5, (gpuGet (staged, 4) ?: 0) == 16, gpuSatisfies(gpuFold(staged, 0, sumI), \uploaded45 => (uploaded45) == 40), gpuSatisfies (toGpu(range (0, 10) |> filter isEven), \uploaded13 => gpuSatisfies(gpuFold(uploaded13, 0, horner), \uploaded44 => (uploaded44) == 2468)),
+            structuralEquals [gpuLength staged, (gpuGet (staged, 4) ?: 0)] [5, 16],
+            gpuSatisfies(gpuFold(staged, 0, sumI), \uploaded45 => (uploaded45) == 40), gpuSatisfies (toGpu(range (0, 10) |> filter isEven), \uploaded13 => gpuSatisfies(gpuFold(uploaded13, 0, horner), \uploaded44 => (uploaded44) == 2468)),
             gpuSatisfies (toGpu(range (3, 7)), \uploaded12 => gpuSatisfies(gpuFold(uploaded12, 0, sumI), \uploaded43 => (uploaded43) == 18)), gpuSatisfies (toGpu(range (0, 1)), \uploaded11 => gpuLength (uploaded11) == 1), gpuSatisfies (toGpu(range (5, 5)), \uploaded10 => gpuLength (uploaded10) == 0),
             gpuSatisfies (toGpu(range (9, 2)), \uploaded9 => gpuLength (uploaded9) == 0), gpuSatisfies (toGpu(range (0, 10) |> filter keepNone), \uploaded8 => gpuLength (uploaded8) == 0), gpuSatisfies (toGpu(range (0, 10) |> filter keepEvery), \uploaded7 => gpuLength (uploaded7) == 10),
             gpuSatisfies (toGpu(range (0, 6) |> map toFloat), \uploaded6 => gpuSatisfies(gpuFold(uploaded6, 0.0, addF), \uploaded42 => (uploaded42) == 15.0)), gpuSatisfies (toGpu(range (0, 6) |> map isEven), \uploaded5 => gpuSatisfies(gpuFold(uploaded5, 0, countTrue), \uploaded41 => (uploaded41) == 3))
@@ -209,16 +242,25 @@ iotaCase () = withIndices (5, \indices5 => withIndices (1, \indices1 => withIndi
 iotaWith (indices5, indices1, indices0, indices3) =
     idx = indices5
     checkAll "iota" [
-        gpuLength idx == 5, gpuSatisfies(gpuFold(idx, 0, sumI), \uploaded27 => (uploaded27) == 10), (gpuGet (idx, 0) ?: 9) == 0, (gpuGet (idx, 4) ?: 0) == 4, (gpuGet (idx, 5) ?: 77) == 77, gpuSatisfies(gpuFold(idx, 0, horner), \uploaded26 => (uploaded26) == 1234), gpuLength (indices1) == 1, (gpuGet (indices1, 0) ?: 9) == 0,
-        gpuLength (indices0) == 0, gpuSatisfies(gpuFold(indices0, 3, sumI), \uploaded25 => (uploaded25) == 3), iotaError (0 - 4) == "gpu: buffer allocation: a negative element count", gpuSatisfies(gpuZipWith (idx, idx, mulI), \uploaded24 => gpuSatisfies(gpuFold(uploaded24, 0, sumI), \uploaded172 => (uploaded172) == 30)),
+        structuralEquals [gpuLength idx, (gpuGet (idx, 0) ?: 9), (gpuGet (idx, 4) ?: 0)] [5, 0, 4],
+        structuralEquals [(gpuGet (idx, 5) ?: 77), gpuLength (indices1)] [77, 1],
+        structuralEquals [(gpuGet (indices1, 0) ?: 9), gpuLength (indices0)] [0, 0],
+        gpuSatisfies(gpuFold(idx, 0, sumI), \uploaded27 => (uploaded27) == 10), gpuSatisfies(gpuFold(idx, 0, horner), \uploaded26 => (uploaded26) == 1234),
+        gpuSatisfies(gpuFold(indices0, 3, sumI), \uploaded25 => (uploaded25) == 3), iotaError (0 - 4) == "gpu: buffer allocation: a negative element count", gpuSatisfies(gpuZipWith (idx, idx, mulI), \uploaded24 => gpuSatisfies(gpuFold(uploaded24, 0, sumI), \uploaded172 => (uploaded172) == 30)),
         gpuSatisfies(gpuMap(idx, toFloat), \uploaded23 => gpuSatisfies(gpuFold(uploaded23, 0.0, addF), \uploaded171 => (uploaded171) == 10.0)), gpuSatisfies(gpuScan(indices3, 0, horner), \uploaded22 => gpuSatisfies(gpuFold(uploaded22, 0, sumI), \uploaded170 => (uploaded170) == 13))
     ]
 (** Pin typed reads in bounds and a visible Error out of bounds, at both ends of the index range and at both element types — plus a gather kernel, since reading a buffer is pure and therefore legal inside one. *)
 getCase () = withIndices (3, \indices3 => getWith (indices3))
 getWith (indices3) =
     withBuffer (toGpu ([7, 8, 9]), \ints => withBuffer (toGpu ([1.5, 2.5]), \floats => withBuffer (gpuMap(indices3, (\i => gpuGet (ints, (2 - i) ) ?: 0)), \reversed => checkAll "get" [
-                    (gpuGet (ints, 0) ?: 0) == 7, (gpuGet (ints, 1) ?: 0) == 8, (gpuGet (ints, 2) ?: 0) == 9, (gpuGet (floats, 0) ?: 0.0) == 1.5, (gpuGet (floats, 1) ?: 0.0) == 2.5, (gpuGet (ints, 3) ?: 999) == 999, (gpuGet (ints, (0 - 1) ) ?: 999) == 999, (gpuGet (floats, 2) ?: 9.5) == 9.5, oobMessage (ints, 0) == "value 7",
-                    oobMessage (ints, 3) == "gpuGet: index out of bounds", (gpuGet (reversed, 0) ?: 0) == 9, gpuSatisfies(gpuFold(reversed, 0, horner), \uploaded20 => (uploaded20) == 987)
+                    structuralEquals [(gpuGet (ints, 0) ?: 0), (gpuGet (ints, 1) ?: 0)] [7, 8],
+                    structuralEquals [(gpuGet (ints, 2) ?: 0), (gpuGet (ints, 3) ?: 999)] [9, 999],
+                    structuralEquals [(gpuGet (ints, (0 - 1) ) ?: 999), (gpuGet (reversed, 0) ?: 0)] [999, 9],
+                    structuralEquals [(gpuGet (floats, 0) ?: 0.0), (gpuGet (floats, 1) ?: 0.0)] [1.5, 2.5],
+                    (gpuGet (floats, 2) ?: 9.5) == 9.5,
+                    oobMessage (ints, 0) == "value 7",
+                    oobMessage (ints, 3) == "gpuGet: index out of bounds",
+                    gpuSatisfies(gpuFold(reversed, 0, horner), \uploaded20 => (uploaded20) == 987)
                 ])))
 (** Pin backend introspection: the host backend names itself, and says so rather than reporting a device it does not have [GPU-DEVICE]. *)
 deviceCase () = checkAll "device" [

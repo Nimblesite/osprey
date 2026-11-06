@@ -169,11 +169,8 @@ fn forwardResultForTest() = {
 // Re-enters the forward call chain and checks nested handler restoration.
 
 test("nested handlers override locally and restore outer scope", fn() => exactArithmetic(fn() => checkAll("handler scope results", [
-        (forwardResultForTest() ) == 42,
-        nested == 10,
-        shadowed == 2,
-        nested != shadowed,
-        audited == 18
+        structuralEquals([(forwardResultForTest() ), nested, shadowed, audited], [42, 10, 2, 18]),
+        nested != shadowed
 ])))
 
 /// Counter proves handler-owned state is one shared cell no matter how deep the
@@ -255,17 +252,17 @@ fn handlerStateThroughNestedCallsCase() = {
 
     // The arm's own answers accumulate on one cell across three call levels.
     checkAll("nested performs share the handler cell", [
-        structuralEquals([sum, cell, bumps, snapshots, lastAmount, after], [27, 111, 3, 1, 6, 111]),
+        structuralEquals([sum, cell, bumps, snapshots], [27, 111, 3, 1]),
+        structuralEquals([lastAmount, after, (bumps + snapshots )], [6, 111, 4]),
         after == cell,
         sum != cell,
-        bumps != snapshots,
-        (bumps + snapshots ) == 4
+        bumps != snapshots
     ])
 
     // Each intermediate total is observable, so a lost update cannot hide
     // behind a correct final sum.
     checkAll("handler cell reaches every intermediate total", [
-        (5 + 11 ) == 16,
+        structuralEquals([(5 + 11 ), bumps], [16, 3]),
         sum == (16 + 11 ),
         cell == (11 + 100 ),
         lastAmount == (5 + 1 ),
@@ -273,8 +270,7 @@ fn handlerStateThroughNestedCallsCase() = {
         cell != 0,
         sum > 0,
         after > sum,
-        after > lastAmount,
-        bumps == 3
+        after > lastAmount
     ])
 
     // The file-scope region owns its own cell, on the same rule.

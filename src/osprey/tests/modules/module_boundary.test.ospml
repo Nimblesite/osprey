@@ -42,8 +42,8 @@ module Ledger
 
 (** Exported functions compute across the private constant and helper. *)
 exportedSurfaceCase () = checkAll ("Tax exported surface", [
-    structuralEquals [Tax::add 100, Tax::add 0, Tax::add 1, Tax::add 9, Tax::add 10] [110, 0, 1, 9, 11],
-    Tax::rateUsed () == 10
+    structuralEquals [Tax::add 100, Tax::add 0, Tax::add 1] [110, 0, 1],
+    structuralEquals [Tax::add 9, Tax::add 10, Tax::rateUsed ()] [9, 11, 10]
 ])
 
 (** Nested modules are addressable through their exporting parent. *)
@@ -56,8 +56,7 @@ nestedModuleCase () = checkAll ("nested module boundary", [
 crossModuleCase () = checkAll ("cross-module consumption", [
     Ledger::withTax 200 == 220,
     Ledger::withTax 100 == Tax::add 100,
-    Ledger::label 100 == "cents=110",
-    Ledger::label 0 == "cents=0"
+    structuralEquals [Ledger::label 100, Ledger::label 0] ["cents=110", "cents=0"]
 ])
 
 exactArithmetic (\() =>

@@ -160,9 +160,10 @@ captureSharedWithUploaded (indices4, input0) =
     xs = input0
     withBuffer(gpuScan (xs, toFloat32 0.0, \(acc, x) => acc + t * x), \scanned => withBuffer(gpuFilter (xs, \x => x > t), \kept => checkAll "shared capture" [
         gpuSatisfies(gpuMap (xs, \x => t * x), \scaled => sumOf(scaled, \total => total == toFloat32 20.0)),
-        gpuLength kept == 2, sumOf(kept, \total => total == toFloat32 7.0), (gpuGet (kept, 0) ?: toFloat32 0.0) == toFloat32 3.0,
+        structuralEquals [gpuLength kept, gpuLength scanned] [2, 4],
+        sumOf(kept, \total => total == toFloat32 7.0), (gpuGet (kept, 0) ?: toFloat32 0.0) == toFloat32 3.0,
         gpuSatisfies(gpuFold (xs, toFloat32 0.0, \(acc, x) => acc + t * x), \total => total == toFloat32 20.0),
-        (gpuGet (scanned, 0) ?: toFloat32 0.0) == toFloat32 2.0, (gpuGet (scanned, 3) ?: toFloat32 0.0) == toFloat32 20.0, gpuLength scanned == 4,
+        (gpuGet (scanned, 0) ?: toFloat32 0.0) == toFloat32 2.0, (gpuGet (scanned, 3) ?: toFloat32 0.0) == toFloat32 20.0,
         gpuSatisfies(gpuZipWith (xs, xs, \(x, y) => t * x * y), \products => sumOf(products, \total => total == toFloat32 60.0)),
         gpuSatisfies(gpuMap (indices4, \i => t * toFloat32 i), \scaledIndices => sumOf(scaledIndices, \total => total == toFloat32 12.0)),
         gpuSatisfies(gpuFilter (xs, \x => t > x), \small => gpuLength small == 1),
@@ -392,9 +393,10 @@ layerWithUploaded (rows0, rows1, rows2, input0, input1, input2, input3, input4, 
     w1 = input0
     x = input1
     denseEach(w1, x, 3, rows2, input2, \h => denseEach(input3, h, 2, rows1, input4, \out => checkAll "dense layers" [
-        gpuLength h == 2, (gpuGet (h, 0) ?: toFloat32 9.9) == toFloat32 0.0, (gpuGet (h, 1) ?: toFloat32 0.0) == toFloat32 4.0,
+        structuralEquals [gpuLength h, gpuLength out] [2, 1],
+        (gpuGet (h, 0) ?: toFloat32 9.9) == toFloat32 0.0, (gpuGet (h, 1) ?: toFloat32 0.0) == toFloat32 4.0,
         sumOf(h, \total => total == toFloat32 4.0), gpuSatisfies(gpuFilter (h, isActive), \active => gpuLength active == 1),
-        gpuLength out == 1, (gpuGet (out, 0) ?: toFloat32 0.0) == toFloat32 1.5,
+        (gpuGet (out, 0) ?: toFloat32 0.0) == toFloat32 1.5,
         matVecOf(w1, x, 3, rows2, \rows => (gpuGet (rows, 0) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 4.0),
         matVecOf(w1, x, 3, rows2, \rows => (gpuGet (rows, 1) ?: toFloat32 0.0) == toFloat32 6.0),
         denseOf(w1, x, 3, rows2, input5, \zeros => sumOf(zeros, \total => total == toFloat32 6.0)),

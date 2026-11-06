@@ -69,29 +69,22 @@ fn sharedFieldRecursionCase() = {
     let decls = [Decl { name: "x", ty: 10, extra: 7 }, Decl { name: "y", ty: 20, extra: 8 }]
 
     checkAll("binders", [
-            join(names(binders), ",") == "a,b,c",
-            tySum(binders) == 6,
-            pairNames(binders) == "abc",
-            joined(binders, ">") == ">abc",
-            tyOf(binders, "a") == 1,
-            tyOf(binders, "c") == 3,
-            tyOf(binders, "q") == -1,
-            nameOf(binders, "b") == "b",
-            nameOf(binders, "q") == "no q"
+            structuralEquals([join(names(binders), ","), pairNames(binders)], ["a,b,c", "abc"]),
+            structuralEquals([joined(binders, ">"), nameOf(binders, "b")], [">abc", "b"]),
+            nameOf(binders, "q") == "no q",
+            structuralEquals([tySum(binders), tyOf(binders, "a"), tyOf(binders, "c")], [6, 1, 3]),
+            tyOf(binders, "q") == -1
     ])
     checkAll("declarations", [
-            join(names(decls), ",") == "x,y",
-            tySum(decls) == 30,
-            pairNames(decls) == "xy",
-            joined(decls, "") == "xy"
+            structuralEquals([join(names(decls), ","), pairNames(decls), joined(decls, "")], ["x,y", "xy", "xy"]),
+            tySum(decls) == 30
     ])
     checkAll("empty and single", [
-            join(names(noBinders), ",") == "",
+            structuralEquals([join(names(noBinders), ","), pairNames(noBinders)], ["", ""]),
+            structuralEquals([pairNames([Binder { name: "z", ty: 0 }]), joined(noBinders, "-")], ["z", "-"]),
+            nameOf(noBinders, "a") == "no a",
             tySum(noBinders) == 0,
-            structuralEquals([pairNames(noBinders), pairNames([Binder { name: "z", ty: 0 }])], ["", "z"]),
-            joined(noBinders, "-") == "-",
-            tyOf(noBinders, "a") == -1,
-            nameOf(noBinders, "a") == "no a"
+            tyOf(noBinders, "a") == -1
     ])
 }
 

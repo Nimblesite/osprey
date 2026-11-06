@@ -81,12 +81,11 @@ print "=== Showcase Complete ==="
 (** Verify direct helpers and every scalar pipe from the showcase. *)
 scalarPipelineCase () =
     checkAll "functional scalar pipelines" [
-        dbl 7 == 14, sq 5 == 25, inc 9 == 10,
+        structuralEquals [dbl 7, sq 5, inc 9] [14, 25, 10],
+        structuralEquals [add (7, 8), mul (6, 7), (3 |> inc |> dbl |> sq)] [15, 42, 64],
+        structuralEquals [(10 |> \x => x + 5 ), (5 |> (\x => x + 100 ) |> (\x => x * 2 ))] [15, 210],
         gt4 5, !gt4 4, lt3 2, !lt3 3,
-        even 2, !even 3, add (7, 8) == 15, mul (6, 7) == 42,
-        (3 |> inc |> dbl |> sq) == 64,
-        (10 |> \x => x + 5 ) == 15,
-        (5 |> (\x => x + 100 ) |> (\x => x * 2 )) == 210
+        even 2, !even 3
     ]
 
 (** Verify range boundaries and both map/filter orderings through folds. *)
@@ -98,10 +97,8 @@ iteratorPipelineCase () =
     names = range 0 3 |> map (\i => "n${i}") |> toList
     halves = range 1 3 |> map (\i => toFloat i * 0.5) |> toList
     checkAll "functional iterator pipelines" [
-        (range 1 6 |> fold 0 add) == 15,
-        (range 1 5 |> fold 1 mul) == 24,
-        (range 5 5 |> fold 9 add) == 9,
-        (range ((0 - 2) ) 3 |> fold 0 add) == 0,
+        structuralEquals [(range 1 6 |> fold 0 add), (range 1 5 |> fold 1 mul)] [15, 24],
+        structuralEquals [(range 5 5 |> fold 9 add), (range ((0 - 2) ) 3 |> fold 0 add)] [9, 0],
         (range 1 5 |> map dbl |> filter gt4 |> fold 0 add) == 14,
         (range 1 6 |> filter lt3 |> map dbl |> fold 0 add) == 6,
         (small |> fold 0 add) == 3,
@@ -112,7 +109,9 @@ iteratorPipelineCase () =
         listLength kept == 2,
         (listGet kept 0 ?: 0) == 6,
         (listGet kept 1 ?: 0) == 8,
-        structuralEquals [listLength (range 3 3 |> toList), listLength (source |> toList), listLength names] [0, 4, 3],
+        listLength (range 3 3 |> toList) == 0,
+        listLength (source |> toList) == 4,
+        listLength names == 3,
         (listGet names 2 ?: "none") == "n2",
         (listGet halves 1 ?: 9.5) == 1.0
     ]
@@ -137,10 +136,9 @@ lambdaOverloadCase () =
     curriedJoin = \a => \b => a + b
     sum = \(a, b) => a + b 
     checkAll "a let-bound lambda picks its overload from its use" [
-        structuralEquals [join ("os", "prey"), join ("", "x"), curriedJoin "os" "prey"] ["osprey", "x", "osprey"],
-        curriedJoin "a" "" == "a",
-        sum (20, 22) == 42,
-        length (join ("ab", "cde")) == 5
+        structuralEquals [join ("os", "prey"), join ("", "x")] ["osprey", "x"],
+        structuralEquals [curriedJoin "os" "prey", curriedJoin "a" ""] ["osprey", "a"],
+        structuralEquals [sum (20, 22), length (join ("ab", "cde"))] [42, 5]
     ]
 
 (** A handler region inside a closure, driven by a list literal the closure
@@ -175,20 +173,16 @@ functionValueCollectionCase () =
     takeCaptured = \i => listGet captured i
     groupsFrom = \k => mapSet (Map ()) k [1.5, 2.5]
     checkAll "a function value returning a collection keeps its element type" [
-        (listGet (floatsFrom 0.5) 0 ?: 9.5) == 0.5,
-        (listGet (floatsFrom 0.5) 1 ?: 9.5) == 1.0,
-        listLength (floatsFrom 0.5) == 2,
-        (listGet (namesFrom "os") 0 ?: "none") == "os",
-        (listGet (namesFrom "os") 1 ?: "none") == "os!",
-        (listGet (listGet (nestedFrom 1) 0 ?: [99]) 1 ?: 99) == 2,
+        structuralEquals [(listGet (floatsFrom 0.5) 0 ?: 9.5), (listGet (floatsFrom 0.5) 1 ?: 9.5)] [0.5, 1.0],
+        structuralEquals [(takeCaptured 0 ?: 9.5), (takeCaptured 2 ?: 9.5)] [0.25, 0.75],
+        (listGet (applyTo floatsFrom 1.25) 0 ?: 9.5) == 1.25,
+        (listGet (mapGet (groupsFrom "k") "k" ?: [9.0]) 1 ?: 9.5) == 2.5,
+        structuralEquals [listLength (floatsFrom 0.5), (listGet (listGet (nestedFrom 1) 0 ?: [99]) 1 ?: 99)] [2, 2],
         (listGet (listGet (nestedFrom 1) 1 ?: [99]) 0 ?: 99) == 3,
         listLength (listGet (nestedFrom 1) 0 ?: [99]) == 2,
-        (takeCaptured 0 ?: 9.5) == 0.25,
-        (takeCaptured 2 ?: 9.5) == 0.75,
-        (listGet (applyTo floatsFrom 1.25) 0 ?: 9.5) == 1.25,
-        (listGet (applyTo namesFrom "hi") 1 ?: "none") == "hi!",
-        (listGet (mapGet (groupsFrom "k") "k" ?: [9.0]) 1 ?: 9.5) == 2.5,
-        mapLength (groupsFrom "k") == 1
+        mapLength (groupsFrom "k") == 1,
+        structuralEquals [(listGet (namesFrom "os") 0 ?: "none"), (listGet (namesFrom "os") 1 ?: "none")] ["os", "os!"],
+        (listGet (applyTo namesFrom "hi") 1 ?: "none") == "hi!"
     ]
 
 (** A GENERIC function whose body is a lambda. One closure cell has one ABI and
@@ -235,16 +229,13 @@ genericReturnedLambdaCase () =
                 runs := runs + value 
         agreesFromSeed ()
     checkAll "a generic function's returned lambda specialises per call site" [
-        identityValue 7 == 7,
-        identityValue "os" == "os",
-        identityValue 2.5 == 2.5,
-        identityValue true,
-        structuralEquals [alwaysText 0, alwaysText "any", alwaysText 1.5] ["kept", "kept", "kept"],
-        structuralEquals [alwaysNumber "z", alwaysNumber false, sharedIdentity 5] [42, 42, 5],
+        structuralEquals [identityValue 7, alwaysNumber "z", alwaysNumber false] [7, 42, 42],
+        structuralEquals [sharedIdentity 5, seedAgrees, runs] [5, 1, 1],
+        structuralEquals [identityValue "os", alwaysText 0] ["os", "kept"],
+        structuralEquals [alwaysText "any", alwaysText 1.5] ["kept", "kept"],
         sharedIdentity "across a function boundary" == "across a function boundary",
-        sharedIdentity 1.25 == 1.25,
-        seedAgrees == 1,
-        runs == 1
+        structuralEquals [identityValue 2.5, sharedIdentity 1.25] [2.5, 1.25],
+        identityValue true
     ]
 
 (** A still-generic lambda has no closure cell, so it is applied inline at each
@@ -299,15 +290,21 @@ genericLambdaEnvironmentCase () =
     perform Tally.note 5
     checkAll "a generic lambda keeps the environment it was defined in" [
         structuralEquals [fold staged "" (\(acc, s) => acc + s), afterStage] ["0:kept-51:kept-5", "kept-6"],
-        structuralEquals [shadowedStage, tagged 1, tagged "s"] ["shadow0:kept-71:kept-7", "1:kept-7", "s:kept-7"],
-        structuralEquals [fromFactory 1, fromFactory "s", later] ["kept-8", "kept-8", "kept-9"],
+        structuralEquals [shadowedStage, tagged 1] ["shadow0:kept-71:kept-7", "1:kept-7"],
+        structuralEquals [tagged "s", fromFactory 1] ["s:kept-7", "kept-8"],
+        structuralEquals [fromFactory "s", later] ["kept-8", "kept-9"],
         structuralEquals [shadowed, runThunk (\() => tagged 2)] ["1:kept-7/shadow", "2:kept-7"],
         runThunk (\() => runThunk (\() => tagged "deep")) == "deep:kept-7",
-        structuralEquals [runThunk (\() => fromFactory 3), runThunk (\() => viaLambda 4)] ["kept-8", "4:kept-7"],
+        runThunk (\() => fromFactory 3) == "kept-8",
+        runThunk (\() => viaLambda 4) == "4:kept-7",
+        viaAlias "a" == "a",
+        viaShout 4 == "4!",
+        viaShout "b" == "b!",
+        inArm == "arm:kept-7",
+        report "t" == "t=5",
+        runThunk (\() => report true) == "true=5",
         viaAlias 3 == 3,
-        structuralEquals [viaAlias "a", viaShout 4, viaShout "b"] ["a", "4!", "b!"],
-        rebound,
-        structuralEquals [inArm, report "t", runThunk (\() => report true)] ["arm:kept-7", "t=5", "true=5"]
+        rebound
     ]
 
 test "scalar pipes preserve helper composition" (\() => exactArithmetic (scalarPipelineCase))

@@ -11,9 +11,7 @@ fn classify(n) = match n {
 fn arithmeticCase() = {
     // Six independent soft assertions cover results and algebraic behavior.
     checkAll("arithmetic foundations", [
-            sub(7)(3) == 4,
-            (6 * 7 ) == 42,
-            sub(20)(2 * 4 ) == 12,
+            structuralEquals([sub(7)(3), (6 * 7 ), sub(20)(2 * 4 )], [4, 42, 12]),
             sub(8)(3) > 4,
             sub(100)(1) > 0,
             sub(9)(4) != sub(4)(9)
@@ -24,8 +22,8 @@ fn arithmeticCase() = {
 fn classifyCase() = {
     // The conditions cover exact arms, wildcard behavior, and string consumers.
     checkAll("classification foundations", [
-            structuralEquals([classify(0), classify(1), classify(9)], ["zero", "one", "many"]),
-            classify(sub(4)(3)) == "one",
+            structuralEquals([classify(0), classify(1)], ["zero", "one"]),
+            structuralEquals([classify(9), classify(sub(4)(3))], ["many", "one"]),
             startsWith(classify(20), "m"),
             classify(99) != classify(0)
     ])
@@ -36,8 +34,7 @@ fn stringsAndListsCase() = {
     // Seven separately reported conditions document the combined standard-library behavior.
     checkAll("string and list foundations", [
             contains("talon bank", "bank"),
-            (repeat("ab", 3) ?: "") == "ababab",
-            trim("  Osprey  ") == "Osprey",
+            structuralEquals([(repeat("ab", 3) ?: ""), trim("  Osprey  ")], ["ababab", "Osprey"]),
             toUpperCase("Osprey") == "OSPREY",
             startsWith("osprey language", "osprey"),
             !endsWith("osprey language", "compiler"),

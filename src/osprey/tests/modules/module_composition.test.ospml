@@ -40,10 +40,10 @@ rendered outcome = match outcome
 
 (** Four `apply` declarations resolve independently [MODULES-ABI]. *)
 linkageIdentityCase () = checkAll ("same simple name, four declarations", [
-    structuralEquals [compute::Adder::apply 1, compute::Scaler::apply 2, compute::Scaler::Inner::apply 2] [2, 6, 20],
-    report::Adder::apply "x" == "<x>",
-    compute::Adder::apply (compute::Scaler::apply 1) == 4,
-    compute::Scaler::Inner::apply (compute::Adder::apply 0) == 10
+    structuralEquals [compute::Adder::apply 1, compute::Scaler::apply 2] [2, 6],
+    structuralEquals [compute::Scaler::Inner::apply 2, compute::Adder::apply (compute::Scaler::apply 1)] [20, 4],
+    compute::Scaler::Inner::apply (compute::Adder::apply 0) == 10,
+    report::Adder::apply "x" == "<x>"
 ])
 
 (** Fibers and iterators call module exports without special handling. *)
@@ -58,8 +58,7 @@ resultChannelCase () = checkAll ("module Results keep both branches", [
     rendered (compute::Runner::checkedSum (compute::Runner::halve 10, 0)) == "ok 5",
     rendered (compute::Runner::checkedSum (compute::Runner::halve 0, 0)) == "ok 0",
     rendered (compute::Runner::checkedSum (compute::Runner::halve 9, 0)) == "ok 4",
-    (compute::Runner::halve 7 ) == 3,
-    (((compute::Runner::halve 7 ) + compute::Scaler::apply 1) ) == 6
+    structuralEquals [(compute::Runner::halve 7 ), (((compute::Runner::halve 7 ) + compute::Scaler::apply 1) )] [3, 6]
 ])
 
 exactArithmetic (\() =>

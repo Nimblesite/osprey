@@ -36,16 +36,15 @@ memberImportCase () = checkAll ("member imports bind exported members", [
 
 (** A whole-module import binds its final segment, or its explicit alias. *)
 wholeModuleImportCase () = checkAll ("whole-module imports and aliases", [
-    structuralEquals [Units::each, U::each, Units::pack 3, U::pack 3, U::crate 1] [1, 1, 36, 36, 48],
-    structuralEquals [Units::Metric::grams 2, Metric::grams 2, U::Metric::grams 1] [2000, 2000, 1000]
+    structuralEquals [Units::each, U::each, Units::pack 3, U::pack 3] [1, 1, 36, 36],
+    structuralEquals [U::crate 1, Units::Metric::grams 2, Metric::grams 2, U::Metric::grams 1] [48, 2000, 2000, 1000]
 ])
 
 (** Every spelling of one declaration agrees, and locals outrank imports. *)
 resolutionOrderCase () = checkAll ("resolution prefers the nearest binding", [
-    structuralEquals [localWins (), catalog::Pricing::cents 1, cents 1] [7, 100, 100],
+    structuralEquals [localWins (), catalog::Pricing::cents 1, cents 1, U::pack U::each] [7, 100, 100, 12],
     catalog::Units::Metric::grams 3 == Metric::grams 3,
-    Units::crate 2 == bigCrate 2,
-    U::pack U::each == 12
+    Units::crate 2 == bigCrate 2
 ])
 
 exactArithmetic (\() =>

@@ -101,14 +101,11 @@ resumeValueRewriteCase () =
 
     (* Assert supplied values, LIFO settlement, Result shape, and both Relay types. *)
     checkAll "value-rewrite internal state" [
-        structuralEquals [result, seed, supplyCalls] [330, 115, 3],
-        supplied == "first:105|second:110|third:115|",
-        settled == "third:330|second:330|first:330|",
-        result == (105 + 110 + 115 ),
-        word == "carried",
-        wordRelayCalls == 1,
-        wordSettled == "carried",
+        structuralEquals [result, seed, supplyCalls, wordRelayCalls] [330, 115, 3, 1],
         structuralEquals [checked, checkedCalls, num, numRelayCalls] [10, 1, 41, 1],
+        structuralEquals [supplied, settled] ["first:105|second:110|third:115|", "third:330|second:330|first:330|"],
+        structuralEquals [word, wordSettled] ["carried", "carried"],
+        result == (105 + 110 + 115 ),
         checked != num
     ]
 
@@ -180,21 +177,21 @@ resumeSubstitutesSuppliedValueCase () =
         the unweighted sum, 7777 every site receiving 7, 6670 the script arriving
         reversed, and 1234 the slot numbers arriving instead of the script. *)
     checkAll "resume substitutes the scripted value at each perform site" [
-        picked == 667, picked == ((660 + 7) ), reads == 4,
-        gave == "0|7|-4|7|", asked == "1|2|3|4|",
+        structuralEquals [picked, reads, length gave, length asked] [667, 4, 9, 8],
+        picked == ((660 + 7) ),
+        structuralEquals [gave, asked] ["0|7|-4|7|", "1|2|3|4|"],
         picked != 10, picked != 7777, picked != 6670, picked != 1234,
-        picked != 0, picked > 660, picked < 700,
-        length gave == 9, length asked == 8
+        picked != 0, picked > 660, picked < 700
     ]
 
     (* Operations enter in the order the body performs them and their arms
         settle in the reverse order, so `asked` and `seen` must disagree. *)
     checkAll "reads enter in slot order and settle in reverse" [
-        asked == "1|2|3|4|", seen == "4:667|3:667|2:667|1:667|",
+        structuralEquals [asked, seen] ["1|2|3|4|", "4:667|3:667|2:667|1:667|"],
         startsWith seen "4:667|", endsWith seen "1:667|",
         contains seen "3:667|", contains seen "2:667|",
         !(startsWith seen "1:"), asked != seen,
-        length seen == 24, reads == 4,
+        structuralEquals [length seen, reads] [24, 4],
         !(contains seen "0:"), !(contains seen ":660")
     ]
 
@@ -214,11 +211,12 @@ resumeSubstitutesSuppliedValueCase () =
         and under an all-zero script answers 0 — the body is fixed, the supplies
         are what move. Neither later region disturbs the first region's state. *)
     checkAll "the same body answers differently under a different script" [
-        steady == 1111, steadyReads == 4, steady != picked, picked != 1111,
-        ((steady - picked) ) == 444,
+        structuralEquals [steady, steadyReads, ((steady - picked) ), zeroed, zeroReads] [1111, 4, 444, 0, 4],
+        steady != picked, picked != 1111,
         steady == (((1000 + 100) ) + ((10 + 1) ) ),
-        zeroed == 0, zeroReads == 4, zeroed != picked,
-        asked == "1|2|3|4|", gave == "0|7|-4|7|", reads == steadyReads
+        zeroed != picked,
+        structuralEquals [asked, gave] ["1|2|3|4|", "0|7|-4|7|"],
+        reads == steadyReads
     ]
 
 (* Register value substitution at the perform site. *)
@@ -286,8 +284,8 @@ resumeAnswerComposesLifoCase () =
         next-inner arm's value; 126 is the answer if only the innermost
         adjustment survived; 123 is the answer if all three were discarded. *)
     checkAll "post-resume adjustments compose out of the region" [
-        layeredResult == 129, entered == "1|2|3|",
-        observed == "3:123|2:126|1:128|", returned == "3:126|2:128|1:129|",
+        layeredResult == 129,
+        structuralEquals [entered, observed, returned] ["1|2|3|", "3:123|2:126|1:128|", "3:126|2:128|1:129|"],
         layeredResult != 123, layeredResult != 126, layeredResult != 124,
         layeredResult == ((123 + 6) ),
         startsWith observed "3:", endsWith observed "1:128|",
@@ -302,25 +300,25 @@ resumeAnswerComposesLifoCase () =
         contains returned "2:128|", contains observed "1:128|",
         contains returned "1:129|", !(contains observed "2:123|"),
         !(contains observed "1:123|"), !(contains returned "3:123|"),
-        length observed == 18, length returned == 18,
-        layeredResult == 129, endsWith returned "1:129|"
+        structuralEquals [length observed, length returned, layeredResult] [18, 18, 129],
+        endsWith returned "1:129|"
     ]
 
     (* An arm that returns its answer unchanged leaves the body's own value as
         the region's result, which is what the adjusting region moved by 1+2+3. *)
     checkAll "an unadjusted region answers with the body value" [
-        plain == 123, plainCalls == 3,
+        structuralEquals [plain, plainCalls, ((layeredResult - plain) ), plainCalls] [123, 3, 6, 3],
         plain == ((((1 * 100) ) + ((2 * 10) ) + 3) ),
-        plain != layeredResult, ((layeredResult - plain) ) == 6,
+        plain != layeredResult,
         layeredResult == ((plain + 6) ),
-        plain > 100, plain < 129, plainCalls == 3,
+        plain > 100, plain < 129,
         !(contains observed "3:129|"), entered == "1|2|3|"
     ]
 
     (* With one perform the arm's own value is unmistakably the region answer:
         the body computes 4 + 1 = 5 and the arm triples it. *)
     checkAll "a single-perform arm supplies the whole region answer" [
-        solo == 15, soloObserved == 5, soloCalls == 1,
+        structuralEquals [solo, soloObserved, soloCalls] [15, 5, 1],
         solo == ((soloObserved * 3) ),
         soloObserved == ((4 + 1) ),
         solo != 5, solo != 4, solo != 12, solo != layeredResult,
@@ -412,23 +410,23 @@ resumeScalarPayloadsCase () =
     (* "0/-9/1000000/-9" is 15 bytes; "/0/" would appear only if the large
         supply had been dropped, and "|9|" only if a sign had been lost. *)
     checkAll "integer payloads: zero, negative, large and duplicate" [
-        countText == "0/-9/1000000/-9", countCalls == 4,
-        length countText == 15,
+        structuralEquals [countText, countGave, toString 1000000] ["0/-9/1000000/-9", "0|-9|1000000|-9|", "1000000"],
+        structuralEquals [countCalls, length countText, length countGave] [4, 15, 16],
         startsWith countText "0/-9/", endsWith countText "/-9",
         contains countText "/1000000/", !(contains countText "/0/"),
-        countGave == "0|-9|1000000|-9|", length countGave == 16,
         contains countGave "|1000000|", !(contains countGave "|9|"),
-        toString 1000000 == "1000000", countText != countGave
+        countText != countGave
     ]
 
     (* A float payload crosses the mailbox as its own bits: 2.5 arrives as 2.5,
         and only an exactly-supplied 2.5 doubles to 5.0. *)
     checkAll "float payloads arrive as the bits that were supplied" [
-        lone == 2.5, loneCalls == 1, lone != 0.0, lone != 2.0, lone != 3.0,
-        (lone * 2.0) == 5.0, (lone + lone) == 5.0, toString lone == "2.5",
-        ratioTotal == 3.5, ratioCalls == 3, ratioTotal != 0.0,
-        ratioTotal != 5.0, lastRatioAnswer == 3.5,
-        ratioSlots == "1|2|3|", ratioSettled == "3|2|1|",
+        structuralEquals [lone, (lone * 2.0), (lone + lone), ratioTotal, lastRatioAnswer] [2.5, 5.0, 5.0, 3.5, 3.5],
+        structuralEquals [loneCalls, ratioCalls] [1, 3],
+        lone != 0.0, lone != 2.0, lone != 3.0,
+        structuralEquals [toString lone, ratioSlots, ratioSettled] ["2.5", "1|2|3|", "3|2|1|"],
+        ratioTotal != 0.0,
+        ratioTotal != 5.0,
         ratioSlots != ratioSettled
     ]
 
@@ -439,9 +437,8 @@ resumeScalarPayloadsCase () =
         ratioTotal == (((1.25 * 4.0) + (0.0 * 100.0)) + ((0.0 - 0.75) * 2.0)),
         ((0.0 - 0.75) * 2.0) == -1.5,
         lastRatioAnswer == ratioTotal, lone != ratioTotal,
-        countCalls == 4, ratioCalls == 3, loneCalls == 1,
+        structuralEquals [countCalls, ratioCalls, loneCalls, (((countCalls + ratioCalls) ) + loneCalls )] [4, 3, 1, 8],
         countCalls != ratioCalls,
-        (((countCalls + ratioCalls) ) + loneCalls ) == 8,
         countText != ""
     ]
 
@@ -528,43 +525,45 @@ resumeBoolAndUnitPayloadsCase () =
     (* "true|false|true" is 15 bytes and holds both renderings; a boolean that
         collapsed to an integer would print "1" or "0" instead. *)
     checkAll "boolean payloads keep both truth values" [
-        flagText == "true|false|true", length flagText == 15,
+        structuralEquals [flagText, flagGave] ["true|false|true", "T|F|T|"],
+        structuralEquals [toString true, toString false] ["true", "false"],
+        structuralEquals [length flagText, flagCalls] [15, 3],
         contains flagText "true", contains flagText "false",
         startsWith flagText "true|", endsWith flagText "|true",
-        !(startsWith flagText "false"), flagCalls == 3,
-        flagGave == "T|F|T|", !(contains flagText "1"),
-        !(contains flagText "0"), toString true == "true",
-        toString false == "false"
+        !(startsWith flagText "false"),
+        !(contains flagText "1"),
+        !(contains flagText "0")
     ]
 
     (* The supplied bit selects the caller's own match arm, so the route text
         orders itself by which perform received which value. *)
     checkAll "a supplied boolean drives the caller's own branch" [
-        routeText == "allow/deny", length routeText == 10,
+        structuralEquals [routeText, routeGave] ["allow/deny", "T|F|"],
+        structuralEquals [length routeText, routeCalls] [10, 2],
         startsWith routeText "allow", endsWith routeText "deny",
         contains routeText "/", routeText != "deny/allow",
-        !(contains routeText "denyallow"), routeCalls == 2,
-        routeGave == "T|F|", routeText != flagText,
+        !(contains routeText "denyallow"),
+        routeText != flagText,
         routeCalls != flagCalls, flagGave != routeGave
     ]
 
     (* Each Unit arm resumes with nothing and still observes the string the
         whole computation answers with, three times, unwinding in reverse. *)
     checkAll "resume() supplies Unit and still returns the answer" [
-        beatText == "steady", beats == 3,
-        beatOrder == "1|2|3|", beatAfter == "3|2|1|",
-        beatOrder != beatAfter, beatSeen == "steady|steady|steady|",
-        length beatSeen == 21, contains beatSeen "steady|steady|",
+        structuralEquals [beatText, beatOrder] ["steady", "1|2|3|"],
+        structuralEquals [beatAfter, beatSeen] ["3|2|1|", "steady|steady|steady|"],
+        structuralEquals [beats, length beatSeen, length beatText] [3, 21, 6],
+        beatOrder != beatAfter,
+        contains beatSeen "steady|steady|",
         startsWith beatOrder "1|", endsWith beatAfter "1|",
-        beatText != "", length beatText == 6
+        beatText != ""
     ]
 
     (* Three regions over the same effect, each with its own counters; the
         boolean regions never ran a `beat` arm and vice versa. *)
     checkAll "bool and Unit regions keep separate state" [
-        flagCalls == 3, routeCalls == 2, beats == 3,
+        structuralEquals [flagCalls, routeCalls, beats, (((flagCalls + routeCalls) ) + beats )] [3, 2, 3, 8],
         flagCalls == beats, flagCalls != routeCalls,
-        (((flagCalls + routeCalls) ) + beats ) == 8,
         beatSeen != flagText, beatOrder != routeGave,
         flagText != routeText, beatText != flagText
     ]
@@ -677,25 +676,24 @@ resumeManagedPayloadsCase () =
         bytes of payload. The leading "[]" is the empty supply arriving as an
         empty string rather than as a missing one. *)
     checkAll "string payloads: empty, one byte, punctuation, repeats" [
-        textResult == "[][x][a1, b2!][abab]", length textResult == 20,
+        structuralEquals [textResult, toUpperCase textResult] ["[][x][a1, b2!][abab]", "[][X][A1, B2!][ABAB]"],
+        toLowerCase (toUpperCase textResult) == "[][x][a1, b2!][abab]",
+        textGave == "empty=|one=x|mixed=a1, b2!|repeated=abab|",
+        structuralEquals [length textResult, textCalls, length textGave] [20, 4, 41],
         startsWith textResult "[][x]", endsWith textResult "[abab]",
         contains textResult "[]", contains textResult "a1, b2!",
-        toUpperCase textResult == "[][X][A1, B2!][ABAB]",
-        toLowerCase (toUpperCase textResult) == "[][x][a1, b2!][abab]",
-        textCalls == 4,
-        textGave == "empty=|one=x|mixed=a1, b2!|repeated=abab|",
-        length textGave == 41, contains textGave "empty=|",
+        contains textGave "empty=|",
         !(contains textResult "empty"), textResult != textGave
     ]
 
     (* Both records arrive whole: three fields each, the second one carrying an
         empty label, a zero weight and a false flag. *)
     checkAll "a whole record crosses one operation intact" [
-        slotText == "left:3:true/:0:false", length slotText == 20,
+        slotText == "left:3:true/:0:false",
+        structuralEquals [length slotText, slotCalls, doubledWeight, weightCalls] [20, 2, 42, 1],
         startsWith slotText "left:3:true", endsWith slotText ":0:false",
         contains slotText "/:0:", !(contains slotText "//"),
         contains slotText "true", contains slotText "false",
-        slotCalls == 2, doubledWeight == 42, weightCalls == 1,
         doubledWeight == ((21 * 2) ),
         doubledWeight != 21, doubledWeight != 0
     ]
@@ -703,18 +701,18 @@ resumeManagedPayloadsCase () =
     (* Success carries 12 and Error carries a five-byte message, so the caller's
         own match turns them into 12 and -5, weighted to 120 - 5 = 115. *)
     checkAll "resume inside a match arm supplies whole Results" [
-        parsedTotal == 115, parseCalls == 2,
-        parsedTotal == ((120 - 5) ), length "nope!" == 5,
+        structuralEquals [parsedTotal, parseCalls, length "nope!", length parseGave] [115, 2, 5, 21],
+        parsedTotal == ((120 - 5) ),
         parsedTotal != 120, parsedTotal != 125, parsedTotal != 12,
-        parseGave == "ok=Success|bad=Error|", length parseGave == 21,
+        parseGave == "ok=Success|bad=Error|",
         contains parseGave "ok=Success|", contains parseGave "bad=Error|",
         startsWith parseGave "ok=", endsWith parseGave "Error|"
     ]
 
     (* Four regions over three managed operations, each with its own counter. *)
     checkAll "managed regions keep separate state" [
-        textCalls == 4, slotCalls == 2, weightCalls == 1, parseCalls == 2,
-        (((textCalls + slotCalls) ) + ((weightCalls + parseCalls) ) ) == 9,
+        structuralEquals [textCalls, slotCalls, weightCalls] [4, 2, 1],
+        structuralEquals [parseCalls, (((textCalls + slotCalls) ) + ((weightCalls + parseCalls) ) )] [2, 9],
         textCalls != parseCalls, slotCalls == parseCalls,
         textResult != slotText, slotText != "", parsedTotal > 100
     ]
@@ -789,11 +787,10 @@ resumeFromNestedHelpersCase () =
     (* 24 is the answer if the +5 had been folded in before the doubling, 14 if
         the outermost frame's constant were lost, 7 if the doubling were lost. *)
     checkAll "a perform four frames deep reaches the region's arm" [
-        deepResult == 19, depthCalls == 2, depthSeed == 2,
-        depthTags == "deep.a|deep.b|", depthSettled == "deep.b|deep.a|",
-        depthTags != depthSettled, depthAnswers == "19|19|",
-        deepResult == ((14 + 5) ), ((3 + 4) ) == 7,
-        ((7 * 2) ) == 14,
+        structuralEquals [deepResult, depthCalls, depthSeed, ((3 + 4) ), ((7 * 2) )] [19, 2, 2, 7, 14],
+        structuralEquals [depthTags, depthSettled, depthAnswers] ["deep.a|deep.b|", "deep.b|deep.a|", "19|19|"],
+        depthTags != depthSettled,
+        deepResult == ((14 + 5) ),
         deepResult != 7, deepResult != 14, deepResult != 24,
         deepResult > 14, deepResult < 24
     ]
@@ -801,14 +798,14 @@ resumeFromNestedHelpersCase () =
     (* The same handler serves a perform before the nested chain, two inside it,
         and one after it returned: 1 + ((2+3)*2) + 4 = 15. *)
     checkAll "the deep handler stays installed across the continuation" [
-        spanResult == 15, spanCalls == 4,
-        spanTags == "shallow|nested.a|nested.b|tail|",
-        spanSettled == "tail|nested.b|nested.a|shallow|",
+        structuralEquals [spanResult, spanCalls, length spanTags] [15, 4, 31],
+        structuralEquals [length spanSettled, (((2 + 3) ) * 2 )] [31, 10],
+        structuralEquals [spanTags, spanSettled] ["shallow|nested.a|nested.b|tail|", "tail|nested.b|nested.a|shallow|"],
         startsWith spanTags "shallow|", endsWith spanTags "tail|",
         startsWith spanSettled "tail|", endsWith spanSettled "shallow|",
-        spanTags != spanSettled, length spanTags == 31,
-        length spanSettled == 31, spanResult == ((11 + 4) ),
-        (((2 + 3) ) * 2 ) == 10, spanResult != 10, spanResult != 5
+        spanTags != spanSettled,
+        spanResult == ((11 + 4) ),
+        spanResult != 10, spanResult != 5
     ]
 
     (* Every arm in the span region observed the one completed answer, and the
@@ -817,9 +814,8 @@ resumeFromNestedHelpersCase () =
         contains spanTags "nested.a|nested.b|",
         contains spanTags "|tail|",
         !(contains spanSettled "shallow|tail"),
-        spanSeen == "15|15|15|15|", length spanSeen == 12,
-        spanCalls == 4, spanSeed == 4,
-        depthCalls == 2, depthSeed == 2, deepResult == 19,
+        spanSeen == "15|15|15|15|",
+        structuralEquals [length spanSeen, spanCalls, spanSeed, depthCalls, depthSeed, deepResult] [12, 4, 4, 2, 2, 19],
         deepResult != spanResult, depthTags != spanTags
     ]
 
@@ -867,35 +863,32 @@ manyPerformsOneRegionCase () =
     (* The script is exactly twelve entries long, so the sum below is exhaustive
         and every out-of-range read falls back instead of contributing. *)
     checkAll "twelve sequential suspensions each settle exactly once" [
-        drained == 161, tickEntered == 12, tickSettled == 12,
-        tickEntered == tickSettled, listLength (scriptValues ()) == 12,
-        (listGet (scriptValues ()) 0 ?: 99) == 0,
-        (listGet (scriptValues ()) 11 ?: 99) == 25,
-        (listGet (scriptValues ()) 12 ?: 99) == 99,
-        (listGet (scriptValues ()) (-1) ?: 99) == 99,
-        (listGet (scriptValues ()) 1000 ?: 99) == 99,
+        structuralEquals [drained, tickEntered, tickSettled] [161, 12, 12],
+        structuralEquals [listLength (scriptValues ()), (listGet (scriptValues ()) 0 ?: 99)] [12, 0],
+        structuralEquals [(listGet (scriptValues ()) 11 ?: 99), (listGet (scriptValues ()) 12 ?: 99)] [25, 99],
+        structuralEquals [(listGet (scriptValues ()) (-1) ?: 99), (listGet (scriptValues ()) 1000 ?: 99)] [99, 99],
+        tickEntered == tickSettled,
         drained != 0, drained > 100, drained < 200
     ]
 
     (* Partial sums: 0+7-4+7 = 10, 100+0-1+12 = 111, 12+3+0+25 = 40. *)
     checkAll "each index receives its own scripted value" [
         tickGave == "0|7|-4|7|100|0|-1|12|12|3|0|25|",
-        length tickGave == 31,
+        structuralEquals [length tickGave, drained, (((10 + 111) ) + 40 )] [31, 161, 161],
         startsWith tickGave "0|7|-4|", endsWith tickGave "|25|",
         contains tickGave "|100|", contains tickGave "|-1|",
         contains tickGave "|12|12|", !(contains tickGave "|13|"),
-        drained == 161, (((10 + 111) ) + 40 ) == 161,
         drained != 10, drained != 40, drained != 111
     ]
 
     (* Twelve arms, one completed answer: 161 * 12 = 1932. *)
     checkAll "the whole region settles in reverse index order" [
         tickOrder == "11|10|9|8|7|6|5|4|3|2|1|0|",
-        length tickOrder == 26,
+        structuralEquals [length tickOrder, tickSettled, tickEntered, seenSum] [26, 12, 12, 1932],
         startsWith tickOrder "11|10|", endsWith tickOrder "|1|0|",
         !(startsWith tickOrder "0|"), contains tickOrder "|5|4|",
-        tickOrder != tickGave, tickSettled == 12, tickEntered == 12,
-        seenSum == 1932, seenSum == ((161 * 12) ),
+        tickOrder != tickGave,
+        seenSum == ((161 * 12) ),
         seenSum != 161, seenSum != 0
     ]
 

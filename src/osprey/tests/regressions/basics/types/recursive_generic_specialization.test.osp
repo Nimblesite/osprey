@@ -12,13 +12,9 @@ fn recursiveGenericCase() = {
     let ints = walk([5, 6, 7], 2)
     let strings = walk(["a", "b"], 1)
     checkAll("recursive generic calls specialize without annotations", [
-        listLength(ints) == 3,
-        (listGet(ints, 0) ?: 0) == 5,
-        (listGet(ints, 1) ?: 0) == 6,
-        (listGet(ints, 2) ?: 0) == 7,
-        listLength(strings) == 2,
-        (listGet(strings, 0) ?: "") == "b",
-        (listGet(strings, 1) ?: "") == "a"
+        structuralEquals([listLength(ints), (listGet(ints, 0) ?: 0), (listGet(ints, 1) ?: 0)], [3, 5, 6]),
+        structuralEquals([(listGet(ints, 2) ?: 0), listLength(strings)], [7, 2]),
+        structuralEquals([(listGet(strings, 0) ?: ""), (listGet(strings, 1) ?: "")], ["b", "a"])
     ])
 }
 
@@ -49,13 +45,10 @@ fn withProbe(label) = {
 fn sharedGenericCase() = {
     let expanded = twoFiftySix("q")
     checkAll("shared generic ABI and Result normalization", [
-        byteLength(expanded) == 256,
-        (byteAt(expanded, 0) ?: 0) == 113,
-        (byteAt(expanded, 255) ?: 0) == 113,
-        unpack(Packet { payload: "payload" }) == "payload",
-        structuralEquals([unpack(Packet { payload: 73 }), recover(Error { message: "bad" })], [73, 3]),
-        recover(Success { value: 41 }) == 42,
-        withProbe("left") == "left!",
+        structuralEquals([byteLength(expanded), (byteAt(expanded, 0) ?: 0)], [256, 113]),
+        structuralEquals([(byteAt(expanded, 255) ?: 0), unpack(Packet { payload: 73 })], [113, 73]),
+        structuralEquals([recover(Error { message: "bad" }), recover(Success { value: 41 })], [3, 42]),
+        structuralEquals([unpack(Packet { payload: "payload" }), withProbe("left")], ["payload", "left!"]),
         withProbe("right") == "right!"
     ])
 }

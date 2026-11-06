@@ -112,57 +112,47 @@ fn resultAndEffectsCase() = {
     }
 
     checkAll("Result and effect pipeline state", [
-            structuralEquals([bareSuccess, bareError, boundResult, rescues, total, localOk], [1, 9, 1, 3, 430, 1]),
+            structuralEquals([bareSuccess, bareError, boundResult], [1, 9, 1]),
+            structuralEquals([rescues, total, localOk], [3, 430, 1]),
+            structuralEquals([integerDefault(-1, fn() => intDiv(20, 4)), integerDefault(-1, fn() => 17 % 5)], [5, 2]),
+            structuralEquals([(checkedAdd(100, 23) ?: 0), (checkedAdd(9223372036854775807, 1) ?: 77)], [123, 77]),
             localBad == ((0 - 1) ),
-            toString(floatDefault(fn() => 10 / 0)) == "-1.0",
-            integerDefault(-1, fn() => intDiv(20, 4)) == 5,
-            integerDefault(-1, fn() => intDiv(20, 0)) == ((0 - 1) ),
-            integerDefault(-1, fn() => 17 % 5) == 2,
-            integerDefault(-1, fn() => 17 % 0) == ((0 - 1) ),
-            (checkedAdd(100, 23) ?: 0) == 123,
-            (checkedAdd(9223372036854775807, 1) ?: 77) == 77,
-            toString(intDiv(20, 4)) == "5",
+            structuralEquals([toString(floatDefault(fn() => 10 / 0)), toString(intDiv(20, 4))], ["-1.0", "5"]),
             toString(integerDefault(-1, fn() => intDiv(20, 0))) == "-1",
-            toString(checkedAdd(9223372036854775807, 1)) == "Error(integer overflow)"
+            toString(checkedAdd(9223372036854775807, 1)) == "Error(integer overflow)",
+            integerDefault(-1, fn() => intDiv(20, 0)) == ((0 - 1) ),
+            integerDefault(-1, fn() => 17 % 0) == ((0 - 1) )
     ])
 
     checkAll("each Rescue policy replaces only failing collection elements", [
-            listLength(hundreds) == 6,
-            (hundreds.listGet(0) ?: 99) == 100,
-            (hundreds.listGet(1) ?: 99) == 5,
-            (hundreds.listGet(2) ?: 99) == 100,
-            (hundreds.listGet(3) ?: 99) == 2,
-            (hundreds.listGet(4) ?: 99) == 100,
-            (hundreds.listGet(5) ?: 99) == 123,
-            (hundreds.listGet(9) ?: 99) == 99,
-            listLength(sevens) == 6,
-            (sevens.listGet(0) ?: 99) == 7,
-            (sevens.listGet(1) ?: 99) == 5,
-            (sevens.listGet(2) ?: 99) == 7,
-            (sevens.listGet(3) ?: 99) == 2,
-            (sevens.listGet(4) ?: 99) == 7,
+            structuralEquals([listLength(hundreds), (hundreds.listGet(0) ?: 99)], [6, 100]),
+            structuralEquals([(hundreds.listGet(1) ?: 99), (hundreds.listGet(2) ?: 99)], [5, 100]),
+            structuralEquals([(hundreds.listGet(3) ?: 99), (hundreds.listGet(4) ?: 99)], [2, 100]),
+            structuralEquals([(hundreds.listGet(5) ?: 99), (hundreds.listGet(9) ?: 99)], [123, 99]),
+            structuralEquals([listLength(sevens), (sevens.listGet(0) ?: 99)], [6, 7]),
+            structuralEquals([(sevens.listGet(1) ?: 99), (sevens.listGet(2) ?: 99)], [5, 7]),
+            structuralEquals([(sevens.listGet(3) ?: 99), (sevens.listGet(4) ?: 99)], [2, 7]),
             (sevens.listGet(5) ?: 99) == 123,
             (negatives.listGet(0) ?: 99) == ((0 - 1) ),
             (negatives.listGet(4) ?: 99) == ((0 - 1) )
     ])
 
     checkAll("recovered lists retain element types inside nested maps", [
-            listLength(policyMatrix) == 3,
-            listLength(policyMatrix.listGet(0) ?: [99]) == 6,
+            structuralEquals([listLength(policyMatrix), listLength(policyMatrix.listGet(0) ?: [99])], [3, 6]),
             ((policyMatrix.listGet(0) ?: [99]).listGet(4) ?: 99) == 100,
             ((policyMatrix.listGet(1) ?: [99]).listGet(4) ?: 99) == 7,
-            ((policyMatrix.listGet(2) ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
             mapLength(policyMap) == 3,
             mapLength(grownMap) == 4,
             listLength(policyMap.mapGet("hundred") ?: [99]) == 6,
             ((policyMap.mapGet("hundred") ?: [99]).listGet(0) ?: 99) == 100,
             ((policyMap.mapGet("seven") ?: [99]).listGet(2) ?: 99) == 7,
-            ((policyMap.mapGet("negative") ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
             ((grownMap.mapGet("zero") ?: [99]).listGet(0) ?: 99) == 0,
-            !mapContains(policyMap, "zero"),
-            mapContains(grownMap, "zero"),
             listLength(mapKeys(grownMap)) == 4,
-            listLength(mapValues(grownMap)) == 4
+            listLength(mapValues(grownMap)) == 4,
+            ((policyMatrix.listGet(2) ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
+            ((policyMap.mapGet("negative") ?: [99]).listGet(4) ?: 99) == ((0 - 1) ),
+            !mapContains(policyMap, "zero"),
+            mapContains(grownMap, "zero")
     ])
 }
 

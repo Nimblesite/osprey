@@ -250,26 +250,17 @@ inferredBehaviorCase () =
     inferredBox = makeBox "boxed"
     inferredGeneric = makeAnotherGeneric (4, "four")
     checkAll "Hindley-Milner inferred behavior" [
-        identity 7 == 7,
-        identity "hm" == "hm",
-        identity true,
-        add (12, 30) == 42,
-        concat ("type", "safe") == "typesafe",
-        negate false,
-        getFirst inferredPair == 11,
-        getSecond inferredPair == 12,
-        getValue inferredContainer == "type",
+        structuralEquals [identity 7, add (12, 30), getFirst inferredPair, getSecond inferredPair] [7, 42, 11, 12],
         structuralEquals [inferredPoint.x, inferredPoint.y, distance inferredPoint] [6, 8, 100],
-        combine inferredContainer == "typesafe",
-        apply (identityP, 99) == 99,
-        apply (toString, 123) == "123",
-        inferredBox.item == "boxed",
-        inferredGeneric.first == 4,
-        inferredGeneric.second == "four",
-        typeTest1 21 == 42,
-        typeTest2 "ha" == "haha",
-        typeTest3 false,
-        pick ("left", "right") == "left"
+        structuralEquals [apply (identityP, 99), inferredGeneric.first, typeTest1 21] [99, 4, 42],
+        structuralEquals [identity "hm", concat ("type", "safe")] ["hm", "typesafe"],
+        structuralEquals [getValue inferredContainer, combine inferredContainer] ["type", "typesafe"],
+        structuralEquals [apply (toString, 123), inferredBox.item] ["123", "boxed"],
+        structuralEquals [inferredGeneric.second, typeTest2 "ha"] ["four", "haha"],
+        pick ("left", "right") == "left",
+        identity true,
+        negate false,
+        typeTest3 false
     ]
 
 test "inference preserves polymorphism and derived values" (\() => exactArithmetic (inferredBehaviorCase))

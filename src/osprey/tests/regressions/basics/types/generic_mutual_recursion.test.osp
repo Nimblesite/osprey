@@ -21,10 +21,8 @@ fn mutualGenericCase() = {
     let ints = all(Node { kids: [Leaf { item: 1 }, Leaf { item: 2 }] })
     let texts = all(Leaf { item: "x" })
     checkAll("mutually recursive generics instantiate at each type", [
-        listLength(ints) == 2,
-        (listGet(ints, 0) ?: 0) == 1,
-        (listGet(ints, 1) ?: 0) == 2,
-        listLength(texts) == 1,
+        structuralEquals([listLength(ints), (listGet(ints, 0) ?: 0)], [2, 1]),
+        structuralEquals([(listGet(ints, 1) ?: 0), listLength(texts)], [2, 1]),
         (listGet(texts, 0) ?: "") == "x"
     ])
 }

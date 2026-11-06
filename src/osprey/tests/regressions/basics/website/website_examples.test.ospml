@@ -72,12 +72,10 @@ websiteExamplesCase () =
     worker = spawn (compute 7)
     fiberValue = await worker
     checkAll "website example behavior" [
-        structuralEquals [double 21, square 12, pipedValue] [42, 144, 100],
+        structuralEquals [double 21, square 12, pipedValue, compute 11, fiberValue] [42, 144, 100, 22, 14],
         structuralEquals [analyzeNumber 0, analyzeNumber 42, analyzeNumber 5] ["Zero", "The answer!", "Something else"],
         structuralEquals [getGrade 100, getGrade 95, getGrade 85] ["Perfect!", "Excellent", "Very Good"],
-        structuralEquals [getGrade 75, getGrade 50] ["Good", "Needs Improvement"],
-        compute 11 == 22,
-        fiberValue == 14
+        structuralEquals [getGrade 75, getGrade 50] ["Good", "Needs Improvement"]
     ]
 
 test "website snippets produce their documented values" (\() => exactArithmetic (websiteExamplesCase))

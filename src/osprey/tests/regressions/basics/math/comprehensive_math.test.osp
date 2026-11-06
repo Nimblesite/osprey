@@ -151,37 +151,31 @@ fn comprehensiveMathCase() = {
         Error { message } => message != ""
     }
     checkAll("math values, branches, and checked errors", [
-        (power(base: 2, exp: 0) ) == 1,
-        (power(base: 2, exp: 1) ) == 2,
-        (power(base: 2, exp: 2) ) == 4,
-        (power(base: 2, exp: 3) ) == 8,
-        (power(base: 2, exp: 4) ) == 16,
-        structuralEquals([factorial(0), factorial(5), factorial(9), fibonacci(0), fibonacci(5)], [1, 120, 720, 0, 5]),
-        fibonacci(9) == 8,
-        (complex(a: 5, b: 3) ) == 18,
+        structuralEquals([(power(base: 2, exp: 0) ), (power(base: 2, exp: 1) ), (power(base: 2, exp: 2) )], [1, 2, 4]),
+        structuralEquals([(power(base: 2, exp: 3) ), (power(base: 2, exp: 4) ), factorial(0)], [8, 16, 1]),
+        structuralEquals([factorial(5), factorial(9), fibonacci(0)], [120, 720, 0]),
+        structuralEquals([fibonacci(5), fibonacci(9), (complex(a: 5, b: 3) )], [5, 8, 18]),
+        structuralEquals([safeDivide(a: 10, b: 2), safeDivide(a: 20, b: 4), safeDivide(a: 15, b: 3)], [5, 5, 0]),
+        structuralEquals([safeDivide(a: 15, b: 0), (checkedAdd(2, 3) ?: 0), (checkedMul(6, 7) ?: 0)], [999999, 5, 42]),
+        structuralEquals([(intDiv(25, 2) ), (abs((0 - 5000000000) ) )], [12, 5000000000]),
         isEven(8),
         !isEven(7),
-        structuralEquals([classify(0), classify(1), classify(5)], ["Zero", "One", "Many"]),
-        structuralEquals([safeDivide(a: 10, b: 2), safeDivide(a: 20, b: 4), safeDivide(a: 15, b: 3)], [5, 5, 0]),
-        safeDivide(a: 15, b: 0) == 999999,
-        (checkedAdd(2, 3) ?: 0) == 5,
+        structuralEquals([classify(0), classify(1)], ["Zero", "One"]),
+        structuralEquals([classify(5), minimumAbs.fault], ["Many", "integer overflow"]),
+        structuralEquals([minimumDivision.fault, input()], ["integer overflow", ""]),
         (checkedSub(2, 3) ?: 0) == ((0 - 1) ),
-        (checkedMul(6, 7) ?: 0) == 42,
-        (intDiv(25, 2) ) == 12,
-        (abs((0 - 5000000000) ) ) == 5000000000,
         overflowRejected,
         zeroDivisionRejected,
-        minimumAbs.fault == "integer overflow", minimumAbs.value == -9223372036854775808,
-        minimumDivision.fault == "integer overflow", minimumDivision.value == -9223372036854775808,
+        minimumAbs.value == -9223372036854775808,
+        minimumDivision.value == -9223372036854775808,
         boundedRandom,
         invalidRandomBound,
         random() >= 0,
-        // [BUILTIN-RANDOM]: "calls are not reproducible". Two draws that match
-        // mean the source is not one -- an uninitialised stack word reused from
-        // the same frame slot satisfies `>= 0` above and this catches it. A
-        // genuine collision is one in 2^63.
-        random() != random(),
-        input() == ""
+        // [BUILTIN-RANDOM]: "calls are not reproducible". Two draws that match,
+        // mean the source is not one -- an uninitialised stack word reused from,
+        // the same frame slot satisfies `>= 0` above and this catches it. A,
+        // genuine collision is one in 2^63.,
+        random() != random()
     ])
 }
 

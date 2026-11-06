@@ -217,18 +217,17 @@ fn adventureGameCase() = {
 
     checkAll("adventure branch tables", [
         structuralEquals([calculatePlayerLevel(0), calculatePlayerLevel(1), calculatePlayerLevel(2)], [1, 2, 3]),
-        structuralEquals([calculatePlayerLevel(3), calculatePlayerLevel(9)], [4, 5]),
+        structuralEquals([calculatePlayerLevel(3), calculatePlayerLevel(9), calculateWeaponDamage(1)], [4, 5, 25]),
+        structuralEquals([calculateWeaponDamage(2), calculateWeaponDamage(3), calculateWeaponDamage(9)], [40, 60, 15]),
+        structuralEquals([calculateBarehandDamage(1), calculateBarehandDamage(2)], [10, 15]),
+        structuralEquals([calculateBarehandDamage(3), calculateBarehandDamage(9)], [20, 5]),
+        structuralEquals([getEnemyHealth(1), getEnemyHealth(2)], [30, 60]),
+        structuralEquals([getEnemyHealth(3), getEnemyHealth(9)], [120, 25]),
         structuralEquals([getPlayerTitle(1), getPlayerTitle(2)], ["Novice Adventurer", "Brave Explorer"]),
         structuralEquals([getPlayerTitle(3), getPlayerTitle(4)], ["Seasoned Warrior", "Legendary Hero"]),
-        getPlayerTitle(5) == "Master of the Realm",
-        structuralEquals([calculateWeaponDamage(1), calculateWeaponDamage(2), calculateWeaponDamage(3)], [25, 40, 60]),
-        structuralEquals([calculateWeaponDamage(9), calculateBarehandDamage(1)], [15, 10]),
-        structuralEquals([calculateBarehandDamage(2), calculateBarehandDamage(3)], [15, 20]),
-        calculateBarehandDamage(9) == 5,
-        structuralEquals([getEnemyName(1), getEnemyName(2)], ["Sneaky Goblin", "Fierce Orc"]),
-        structuralEquals([getEnemyName(3), getEnemyName(9)], ["Ancient Dragon", "Mysterious Shadow"]),
-        structuralEquals([getEnemyHealth(1), getEnemyHealth(2), getEnemyHealth(3)], [30, 60, 120]),
-        getEnemyHealth(9) == 25
+        structuralEquals([getPlayerTitle(5), getEnemyName(1)], ["Master of the Realm", "Sneaky Goblin"]),
+        structuralEquals([getEnemyName(2), getEnemyName(3)], ["Fierce Orc", "Ancient Dragon"]),
+        getEnemyName(9) == "Mysterious Shadow"
     ])
     checkAll("adventure room and quest state", [
         exploreRoom(1) == "the Grand Entrance Hall with marble columns",
@@ -237,15 +236,15 @@ fn adventureGameCase() = {
         exploreRoom(4) == "the Treasure Chamber sparkling with gold",
         exploreRoom(5) == "the Throne Room where shadows dance",
         exploreRoom(9) == "a mysterious room filled with swirling mist",
+        getPlayerTitle(calculatePlayerLevel(defeated)) == "Brave Explorer",
         structuralEquals([getRoomTreasure(1), getRoomTreasure(2), getRoomTreasure(3)], [10, 25, 0]),
         structuralEquals([getRoomTreasure(4), getRoomTreasure(5), getRoomTreasure(9)], [100, 50, 5]),
-        structuralEquals([hasRoomWeapon(3), hasRoomWeapon(2), hasRoomKey(2), hasRoomKey(3)], [1, 0, 1, 0]),
-        structuralEquals([afterRoomOne, afterRoomTwo, damage], [60, 85, 60]),
-        (getEnemyHealth(3) / damage ) == 2.0,
-        structuralEquals([healthAfterOne, healthAfterTwo, defeated, calculatePlayerLevel(defeated)], [60, 0, 1, 2]),
-        getPlayerTitle(calculatePlayerLevel(defeated)) == "Brave Explorer",
-        rewardBalance == 285,
-        questBalance == 385
+        structuralEquals([hasRoomWeapon(3), hasRoomWeapon(2), hasRoomKey(2)], [1, 0, 1]),
+        structuralEquals([hasRoomKey(3), afterRoomOne, afterRoomTwo], [0, 60, 85]),
+        structuralEquals([damage, healthAfterOne, healthAfterTwo], [60, 60, 0]),
+        structuralEquals([defeated, calculatePlayerLevel(defeated)], [1, 2]),
+        structuralEquals([rewardBalance, questBalance], [285, 385]),
+        (getEnemyHealth(3) / damage ) == 2.0
     ])
 }
 

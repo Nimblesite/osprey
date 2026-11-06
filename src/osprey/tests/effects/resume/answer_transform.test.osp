@@ -122,9 +122,8 @@ fn applyBoth(first, second, work) = "${first(work)}|${second(work)}"
 
 /// Normal completion passes through the return clause, identity when absent.
 fn returnClauseCase() = checkAll("a return clause converts normal completion", [
-    replace(valueWork) == "done=42", plain(valueWork) == 42,
-    replace(twoValues) == "done=451", plain(twoValues) == 451,
-    (checkedDouble(20)(valueWork) ?: -1) == 42,
+    structuralEquals([replace(valueWork), replace(twoValues)], ["done=42", "done=451"]),
+    structuralEquals([plain(valueWork), plain(twoValues), (checkedDouble(20)(valueWork) ?: -1)], [42, 451, 42]),
     (checkedDouble(4611686018427387904)(valueWork) ?: -1) == -1
 ])
 
@@ -179,9 +178,9 @@ fn controlAnswerCase() = {
     let opened = gate(true)
     let closed = gate(false)
     checkAll("a control arm's answer bypasses the return clause", [
-        around(controlWork) == "done=42!", stop(controlWork) == "stopped",
-        bracket(twoAsks) == "[[done=44]]", opened(controlWork) == "open 6",
-        closed(controlWork) == "closed", closed(twoAsks) == "closed",
+        structuralEquals([around(controlWork), stop(controlWork)], ["done=42!", "stopped"]),
+        structuralEquals([bracket(twoAsks), opened(controlWork)], ["[[done=44]]", "open 6"]),
+        structuralEquals([closed(controlWork), closed(twoAsks)], ["closed", "closed"]),
         structuralEquals([opened(twoAsks), resumeBoxText(resumeBoxValues())], ["open 55", "boxed"]),
         structuralEquals([plainBoxResume(resumeBoxWork), promotedBoxResume(resumeResultBoxWork)], ["boxed", "boxed"]),
         wrappedBoxResume(resumeResultBoxWork) == "boxed",
@@ -195,18 +194,17 @@ fn factoryStateCase() = {
     let first = tally("a")
     let second = tally("b")
     checkAll("factory handlers own their state", [
-        first(twoValues) == "a:21/2", first(twoValues) == "a:43/4",
-        second(twoValues) == "b:21/2", first(valueWork) == "a:6/5",
-        second(valueWork) == "b:4/3"
+        structuralEquals([first(twoValues), first(twoValues), second(twoValues)], ["a:21/2", "a:43/4", "b:21/2"]),
+        structuralEquals([first(valueWork), second(valueWork)], ["a:6/5", "b:4/3"])
     ])
 }
 
 /// Inner answers are transformed before an outer region sees them.
 fn compositionCase() = checkAll("nested handlers transform inner answers first", [
-    labeller(labelled) == "(stage:42)", doubler(valueWork) == 42,
-    doubler(twoValues) == 440, plain(innerThenOuter) == 83,
+    labeller(labelled) == "(stage:42)",
     applyBoth(replace, tally("c"), twoValues) == "done=451|c:21/2",
-    plain(buildsButNeverInstalls) == 42
+    structuralEquals([doubler(valueWork), doubler(twoValues)], [42, 440]),
+    structuralEquals([plain(innerThenOuter), plain(buildsButNeverInstalls)], [83, 42])
 ])
 
 test("a return clause converts the body's normal completion", returnClauseCase)

@@ -74,14 +74,13 @@ genericRecordCollectionEffectCase () =
     missingBack = mapGet envelopeMap "missing" ?: stringFallback
 
     checkAll "Envelope<List<List<int>>,string> survives list storage and persistence" [
-        listLength envelopes == 2,
-        listLength grown == 3,
-        structuralEquals [firstBack.metadata, secondBack.metadata] ["int-matrix", "second"],
-        thirdBack.metadata == "third",
-        structuralEquals [length firstBack.metadata, length secondBack.metadata, length thirdBack.metadata] [10, 6, 5],
-        (listGet envelopes 8 ?: fallback).metadata == "fallback",
+        structuralEquals [listLength envelopes, listLength grown] [2, 3],
+        structuralEquals [length firstBack.metadata, length secondBack.metadata] [10, 6],
+        length thirdBack.metadata == 5,
         nestedAt ((listGet envelopes 8 ?: fallback).payload, 0, 0, [91], 98) == 99,
         listLength envelopes == 2,
+        structuralEquals [firstBack.metadata, secondBack.metadata] ["int-matrix", "second"],
+        structuralEquals [thirdBack.metadata, (listGet envelopes 8 ?: fallback).metadata] ["third", "fallback"],
         structuralEquals [firstBack.metadata, auditEnvelopeMetadata envelopes] ["int-matrix", "int-matrix/second/"],
         auditEnvelopeMetadata grown == "int-matrix/second/third/"
     ]
@@ -104,13 +103,13 @@ genericRecordCollectionEffectCase () =
     ])
 
     checkAll "Envelope<Map<string,List<string>>,int> survives map storage and lookup" [
-        mapLength envelopeMap == 1,
+        structuralEquals [mapLength envelopeMap, stringBack.metadata] [1, 17],
+        structuralEquals [length (textGroup (stringBack.payload, "long", 1)), missingBack.metadata] [5, 99],
+        structuralEquals [mapLength stringBack.payload, mapLength missingBack.payload] [2, 1],
+        listLength (mapKeys stringBack.payload) == 2,
         mapContains envelopeMap "primary",
         !(mapContains envelopeMap "missing"),
-        structuralEquals [stringBack.metadata, length (textGroup (stringBack.payload, "long", 1))] [17, 5],
         structuralEquals (mapList ["short", "long"] (\k => groupSize (stringBack.payload, k))) [2, 2],
-        structuralEquals [missingBack.metadata, mapLength stringBack.payload, mapLength missingBack.payload] [99, 2, 1],
-        listLength (mapKeys stringBack.payload) == 2,
         listContains (mapKeys stringBack.payload) "short",
         listContains (mapKeys stringBack.payload) "long",
         !(listContains (mapKeys stringBack.payload) "missing")

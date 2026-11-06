@@ -19,9 +19,8 @@ localHttpRoundTrip () =
     stopped = httpStopServer server ?: -1
     checkAll "loopback HTTP round trip" [
         server != 0,
-        listening == 0,
-        client != 0,
-        structuralEquals [status, closed, stopped] [200, 0, 0]
+        structuralEquals [listening, status, closed, stopped] [0, 200, 0, 0],
+        client != 0
     ]
 
 test "status-only HTTP client uses a local server" localHttpRoundTrip

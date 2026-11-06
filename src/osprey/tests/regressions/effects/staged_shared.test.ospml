@@ -40,8 +40,7 @@ dynamicTotal =
         twice counted 0)
 
 test "one unannotated function serves both stages in one program" (\() => exactArithmetic ((\() => checkAll "stage polymorphism" [
-    staticTotal == 18,
-    dynamicTotal == 2,
+    structuralEquals [staticTotal, dynamicTotal] [18, 2],
     trail == "[n=0][n=1]"
 ])))
 
@@ -71,8 +70,7 @@ reactiveFibersAndContinuations () =
             read => 7
         signalRefresh idle (signalDependencies liveLabel) fiberLabel
     checkAll "reactive rebuild crosses fibers and deep resume" [
-        first.value == "live=3", idle.value == "live=3", next.value == "live=7",
-        first.revision == 1, idle.revision == 1, next.revision == 2,
-        log == "live=3;live=7;"
+        structuralEquals [first.value, idle.value, next.value, log] ["live=3", "live=3", "live=7", "live=3;live=7;"],
+        structuralEquals [first.revision, idle.revision, next.revision] [1, 1, 2]
     ]
 test "reactive rebuilds compose static signals with fibers and continuations" reactiveFibersAndContinuations

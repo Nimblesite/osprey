@@ -40,10 +40,8 @@ fn resumeLifoAuditCase() = {
 
     // Assert issue order, settle order, operation count, and combined answer.
     checkAll("LIFO internal state", [
-        total == 3,
-        n == 2,
-        issued == "load:1|parse:2|",
-        settled == "parse:3|load:3|"
+        structuralEquals([total, n], [3, 2]),
+        structuralEquals([issued, settled], ["load:1|parse:2|", "parse:3|load:3|"])
     ])
 }
 
@@ -136,8 +134,7 @@ fn nestedInterleavedDepthTwoCase() = {
     // answers them: the outer region answers first and third.
     checkAll("two nested depths enter in perform order", [
         entered == "a:a1|b:b1|a:a2|b:b2|",
-        alphaCalls == 2,
-        betaCalls == 2
+        structuralEquals([alphaCalls, betaCalls], [2, 2])
     ])
 
     // Settlement follows the live arm nesting: `a2` crossed the Beta region on
@@ -459,8 +456,7 @@ fn nestedPartialInnerResumeCase() = {
 
     // Entry order is the body's order, alternating between the two depths.
     checkAll("a crossing operation enters between inner suspensions", [
-        entered == "near:1|far:2|near:3|far:4|",
-        supplies == "n1=10|f2=2000|n3=30|f4=4000|"
+        structuralEquals([entered, supplies], ["near:1|far:2|near:3|far:4|", "n1=10|f2=2000|n3=30|f4=4000|"])
     ])
 
     // Both inner `near` arms settle first: each `far` crossed them on its way
@@ -543,8 +539,7 @@ fn sameEffectTwoDepthsCase() = {
     // Shadow and restore: the inner arm answered exactly the two operations
     // inside its region, the outer arm the one before it and the one after it.
     checkAll("an inner region shadows only its own lexical region", [
-        outerCalls == 2,
-        innerCalls == 2,
+        structuralEquals([outerCalls, innerCalls], [2, 2]),
         entered == "out:before|in:in1|in:in2|out:after|"
     ])
 

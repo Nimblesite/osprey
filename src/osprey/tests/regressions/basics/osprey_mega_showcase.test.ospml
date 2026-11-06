@@ -122,15 +122,13 @@ megaShowcaseCase () =
     scoreC = crunch 40
     fleetScore = scoreA + scoreB + scoreC
     checkAll "effect worlds and functional scoring state" [
-        realResult == 350,
-        mockResult == 0,
+        structuralEquals [realResult, mockResult, sq 9, crunch 1, scoreA] [350, 0, 81, 0, 120],
+        structuralEquals [scoreB, scoreC, fiberResult, fleetScore] [1140, 9880, 220, 11140],
         even 2,
         !(even 3),
-        structuralEquals [sq 9, crunch 1, scoreA, scoreB, scoreC, fiberResult] [81, 0, 120, 1140, 9880, 220],
-        fleetScore == 11140,
         structuralEquals [badge (tier 499), badge (tier 500), badge (tier 1999)] ["🟢 STARTER", "🔵 SOLID", "🔵 SOLID"],
-        structuralEquals [badge (tier 2000), badge Starter, badge Solid] ["🟣 EPIC", "🟢 STARTER", "🔵 SOLID"],
-        badge Epic == "🟣 EPIC"
+        structuralEquals [badge (tier 2000), badge Starter] ["🟣 EPIC", "🟢 STARTER"],
+        structuralEquals [badge Solid, badge Epic] ["🔵 SOLID", "🟣 EPIC"]
     ]
 
 mut faulted = false

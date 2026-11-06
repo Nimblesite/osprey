@@ -123,16 +123,13 @@ fn receiverFirstCollectionCase() = {
     checkContains("reversed key membership", stringKeys, ["short", "long"], ["missing"])
 
     checkAll("receiver-first entries and nested leaves", [
-            (high.listGet(0) ?: 99) == 30,
-            (high.listGet(1) ?: 99) == 40,
-            (high.listGet(2) ?: 99) == 50,
-            (long.listGet(0) ?: "missing") == "three",
-            (long.listGet(1) ?: "missing") == "seven",
-            length(long.listGet(0) ?: "missing") == 5,
-            nestedLength(intValues, 0) >= 2,
-            nestedLength(intValues, 1) >= 2,
+            structuralEquals([(high.listGet(0) ?: 99), (high.listGet(1) ?: 99)], [30, 40]),
+            structuralEquals([(high.listGet(2) ?: 99), length(long.listGet(0) ?: "missing")], [50, 5]),
             ((Map().mapSet("one", [1]).mapGet("one") ?: [99]).listGet(0) ?: 99) == 1,
-            ((List().listAppend([8, 9]).listGet(0) ?: [99]).listGet(1) ?: 99) == 9
+            ((List().listAppend([8, 9]).listGet(0) ?: [99]).listGet(1) ?: 99) == 9,
+            structuralEquals([(long.listGet(0) ?: "missing"), (long.listGet(1) ?: "missing")], ["three", "seven"]),
+            nestedLength(intValues, 0) >= 2,
+            nestedLength(intValues, 1) >= 2
     ])
 }
 

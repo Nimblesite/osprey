@@ -23,10 +23,9 @@ fn pipeChainCase() = {
     ])
     // Exercise intermediate stages, zero input, and a different stage order.
     checkAll("pipe chain composition edges", [
-            (5 |> pipeInc) == 6,
-            p1 == pipeDouble(pipeInc(5)),
-            (0 |> pipeInc |> pipeDouble) == 2,
-            (3 |> pipeSquare |> pipeDouble) == 18
+            structuralEquals([(5 |> pipeInc), (0 |> pipeInc |> pipeDouble)], [6, 2]),
+            (3 |> pipeSquare |> pipeDouble) == 18,
+            p1 == pipeDouble(pipeInc(5))
     ])
 }
 
@@ -52,10 +51,8 @@ fn stringsCase() = {
     ])
     // Exercise empty inputs, equivalent nested calls, and reversed concatenation.
     checkAll("strings composition edges", [
-            stringGreet("") == "Hi ",
-            stringShout("") == "!",
-            stringShout(hello) == stringShout(stringGreet(name)),
-            name + hello == "AdaHi Ada"
+            structuralEquals([stringGreet(""), stringShout(""), name + hello], ["Hi ", "!", "AdaHi Ada"]),
+            stringShout(hello) == stringShout(stringGreet(name))
     ])
     let rows = [1, 2, 3]
     // A lambda parameter inside an interpolation stays code, whatever its first letter.

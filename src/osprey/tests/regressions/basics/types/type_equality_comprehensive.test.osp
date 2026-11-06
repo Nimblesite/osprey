@@ -264,35 +264,36 @@ fn typeEqualityCase() = {
     let pair = makePair(a: 8, b: "eight")
     let triple = makeTriple(a: 9, b: "nine", c: 10)
     checkAll("generic, function, and union type behavior", [
-        container.value == 7,
-        pair.first == 8,
-        pair.second == "eight",
-        triple.first == 9,
-        triple.second == "nine",
-        structuralEquals([triple.third, applyInt(f: addOne, x: 9), applyInt(f: timesTwo, x: 9)], [10, 10, 18]),
-        applyInt(f: minusOne, x: 9) == 8,
+        structuralEquals([container.value, pair.first], [7, 8]),
+        structuralEquals([triple.first, triple.third], [9, 10]),
+        structuralEquals([applyInt(f: addOne, x: 9), applyInt(f: timesTwo, x: 9)], [10, 18]),
+        structuralEquals([applyInt(f: minusOne, x: 9), applyTwo(f: twoArgAdd, a: 5, b: 7)], [8, 12]),
+        structuralEquals([applyThree(f: threeArgAdd, a: 1, b: 2, c: 3), length(identityOf<List<int>>([1, 2]))], [6, 2]),
+        structuralEquals([length(emptyOf<int>()), length(identityOf<List<string>>(["a", "b"]))], [0, 2]),
+        mapLength(identityOf<Map<string, List<int>>>({ "a": [1], "b": [2] })) == 2,
+        (identityOf<Result<int, string>>(20 * 5) ?: 0) == 100,
+        length(srcInt().items) == 2,
+        (srcInt().items.listGet(1) ?: 0) == 2,
+        sinkInt().hof(|_n| => 3) == 7,
+        bothInt().slot == 5,
+        bothInt().consume(1) == 6,
+        keepSource(srcInt()) == 4,
+        keepSink(sinkInt()) == 7,
+        structuralEquals([pair.second, triple.second], ["eight", "nine"]),
         structuralEquals([applyStr(f: excl, s: "hi"), applyStr(f: ques, s: "hi")], ["hi!", "hi?"]),
-        applyToStr(f: intToString, x: 42) == "42",
-        applyTwo(f: twoArgAdd, a: 5, b: 7) == 12,
-        applyThree(f: threeArgAdd, a: 1, b: 2, c: 3) == 6,
+        structuralEquals([applyToStr(f: intToString, x: 42), colorName(Green)], ["42", "green"]),
+        structuralEquals([label(mkFeed()), erasedChainValue(integerChain())], ["supplied", "19,23,end"]),
+        structuralEquals([erasedFunctionFeedValue(functionFeed()), describe(mkGate())], ["17", "guarded"]),
         sameColor(a: Red, b: Red),
         !(sameColor(a: Red, b: Blue)),
-        colorName(Green) == "green",
-        label(mkFeed()) == "supplied",
         covariantErasureCase(),
-        erasedChainValue(integerChain()) == "19,23,end",
-        erasedFunctionFeedValue(functionFeed()) == "17",
         contravariantErasureCase(),
-        describe(mkGate()) == "guarded",
         identityOf<int>(5) == 5,
         identityOf<string>("os") == "os",
-        structuralEquals([length(identityOf<List<int>>([1, 2])), length(emptyOf<int>())], [2, 0]),
         pickOf<int, string>(7, "seven") == 7,
         identityOf<bool>(true),
         !identityOf<bool>(false),
         identityOf<float>(2.5) == 2.5,
-        length(identityOf<List<string>>(["a", "b"])) == 2,
-        mapLength(identityOf<Map<string, List<int>>>({ "a": [1], "b": [2] })) == 2,
         identityOf<Container<int>>(Container { value: 9 }).value == 9,
         identityOf<Container<string>>(Container { value: "c" }).value == "c",
         isEmpty(emptyOf<string>()),
@@ -304,13 +305,8 @@ fn typeEqualityCase() = {
         headOr<string>(["a"], "z") == "a",
         repeatOf<int>(7, 3) == 7,
         repeatOf<string>("os", 2) == "os",
-        (identityOf<Result<int, string>>(20 * 5) ?: 0) == 100,
         structuralEquals([identityOf<int>(identityOf<int>(6)), srcInt().produce, srcInt().make(9)], [6, 4, 9]),
-        length(srcInt().items) == 2,
-        (srcInt().items.listGet(1) ?: 0) == 2,
-        sinkInt().admit(1),
-        structuralEquals([sinkInt().hof(|_n| => 3), bothInt().slot, bothInt().consume(1)], [7, 5, 6]),
-        structuralEquals([keepSource(srcInt()), keepSink(sinkInt())], [4, 7])
+        sinkInt().admit(1)
     ])
 }
 
@@ -329,8 +325,7 @@ fn applyKernel(k: Kernel, i) = k(i)
 fn combine(c: Combine, a, b) = c(a, b)
 fn aliasCase() = checkAll("transparent type aliases are their representation everywhere", [
     Scored { label: "a", score: 41 }.score + 1 == 42,
-    applyKernel(fn(i) => toFloat(i) * 0.5, 4) == 2.0,
-    combine(fn(a, b) => a + b, 1.5, 2.0) == 3.5
+    structuralEquals([applyKernel(fn(i) => toFloat(i) * 0.5, 4), combine(fn(a, b) => a + b, 1.5, 2.0)], [2.0, 3.5])
 ])
 
 test("transparent type aliases are their representation everywhere", fn() => exactArithmetic(aliasCase))

@@ -120,7 +120,6 @@ fn codepointRoundTripCase() = checkAll("Unicode cursor round trips", [
     scalarIsRejected(55296), scalarIsRejected(57343),
     scalarIsRejected(1114112),
     byteIs("é", 0, 195), byteIs("é", 1, 169),
-    roundTrip(65) == 0, roundTrip(55296) == 0,
-    rejectInvalid(55296) == 0
+    structuralEquals([roundTrip(65), roundTrip(55296), rejectInvalid(55296)], [0, 0, 0])
 ])
 test("Unicode scalars survive encode and decode", codepointRoundTripCase)

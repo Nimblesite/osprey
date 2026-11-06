@@ -118,18 +118,17 @@ diskStorageCase () =
     // The logic's answers come back through the injected disk implementation.
     checkAll "disk implementation answers" [
         sharedAnswers (first, second, counted),
-        clearedBook == 0, clearedArchive == 0,
-        archived == byteLength onDisk, missing == 0
+        structuralEquals [clearedBook, clearedArchive, missing] [0, 0, 0],
+        archived == byteLength onDisk
     ]
 
     // The file system really was written: these bytes are read back directly.
     checkAll "disk implementation side effects" [
         onDisk == "buy milk\ncall dentist\n",
         archivedOnDisk == onDisk,
-        byteLength onDisk == 22,
+        structuralEquals [byteLength onDisk, entryCount onDisk] [22, 2],
         contains onDisk "buy milk\n",
-        endsWith onDisk "call dentist\n",
-        entryCount onDisk == 2
+        endsWith onDisk "call dentist\n"
     ]
 
 test "injected disk handler persists the notebook to real files" (\() => exactArithmetic (diskStorageCase))
@@ -148,8 +147,7 @@ mockStorageCase () =
     // Every answer matches the disk run above: same logic, same results.
     checkAll "mock answers match the disk implementation" [
         sharedAnswers (first, second, counted),
-        archived == 22, missing == 0,
-        fixture == 1,
+        structuralEquals [archived, missing, fixture] [22, 0, 1],
         stored == "buy milk\ncall dentist\n",
         (mapGet mockFiles "archive.txt" ?: "") == stored
     ]
@@ -192,8 +190,8 @@ readOnlyStorageCase () =
         mockSaves == savesBefore,
         mockSaves == 3,
         (mapGet mockFiles "notes.txt" ?: "") == "buy milk\ncall dentist\n",
-        !(contains mockLog "locked"),
-        (readFile diskBook ?: "") == "buy milk\ncall dentist\n"
+        (readFile diskBook ?: "") == "buy milk\ncall dentist\n",
+        !(contains mockLog "locked")
     ]
 
 test "swapping the injected handler swaps the policy, not the logic" (\() => exactArithmetic (readOnlyStorageCase))

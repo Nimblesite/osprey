@@ -67,8 +67,7 @@ operationNameCase () =
         yield n => wrapAdd n 1
     said = words conversation
     checkAll "reserved words name operations in all three positions" [
-        said == "heard|2|4|1|8|true|value|7|8|9|7",
-        sent == "hello",
+        structuralEquals [said, sent] ["heard|2|4|1|8|true|value|7|8|9|7", "hello"],
         startsWith said "heard|", endsWith said "|7"
     ]
 
@@ -87,11 +86,9 @@ spineCase () =
     checkAll "a call spine is curried only when its head is bound" [
         viaParameter longer, !(viaParameter same),
         contains "alpha" "ph", !(contains "alpha" "zz"),
-        (substring "osprey" 1 4 ?: "") == "spr",
-        (padStart "7" 3 "0" ?: "") == "007",
-        join ["a", "b", "c"] "-" == "a-b-c",
-        hello "world" == "hello world", hello "" == "hello ",
-        prefixWith "a" "b" == "ab",
+        structuralEquals [(substring "osprey" 1 4 ?: ""), (padStart "7" 3 "0" ?: "")] ["spr", "007"],
+        structuralEquals [join ["a", "b", "c"] "-", hello "world"] ["a-b-c", "hello world"],
+        structuralEquals [hello "", prefixWith "a" "b"] ["hello ", "ab"],
         startsWith (prefixWith "os" "prey") "osp"
     ]
 

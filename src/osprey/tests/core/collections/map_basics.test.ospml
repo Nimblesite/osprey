@@ -22,25 +22,21 @@ constructionAndOverwriteCase () =
 
     // Check empty, growth, membership, and overwrite state.
     checkAll "legacy map construction observations" [
-        mapLength empty == 0,
+        structuralEquals [mapLength empty, mapLength m1, mapLength m2] [0, 1, 2],
+        structuralEquals [mapLength m3, mapLength m4, mapLength m3] [3, 3, 3],
         !(mapContains empty "missing"),
-        structuralEquals [mapLength m1, mapLength m2, mapLength m3] [1, 2, 3],
         structuralEquals (mapList ["alice", "bob", "charlie"] (\k => mapContains m3 k)) [true, true, true],
-        !(mapContains m3 "dave"),
-        mapLength m4 == 3,
-        mapLength m3 == 3
+        !(mapContains m3 "dave")
     ]
 
     // Check exact values and source isolation.
     checkAll "map construction values and isolation" [
-        intAt (m1, "alice") == 25,
+        structuralEquals [intAt (m1, "alice"), intAt (m2, "alice")] [25, 25],
+        structuralEquals [intAt (m2, "bob"), intAt (m3, "alice")] [30, 25],
         !(mapContains m1 "bob"),
-        intAt (m2, "alice") == 25,
-        intAt (m2, "bob") == 30,
         !(mapContains m2 "charlie"),
         structuralEquals (mapList ["alice", "bob", "charlie"] (\k => intAt (m3, k))) [25, 30, 35],
         structuralEquals (mapList ["alice", "bob", "charlie"] (\k => intAt (m4, k))) [99, 30, 35],
-        intAt (m3, "alice") == 25,
         m4Missing
     ]
 
@@ -57,41 +53,36 @@ generationsAndBranchesCase () =
 
     // Check generation lengths and branch membership.
     checkAll "persistent map generation and branch observations" [
-        structuralEquals [mapLength g0, mapLength g1, mapLength g2, mapLength g3, mapLength g4] [0, 1, 2, 3, 4],
-        mapLength g5 == 5,
+        structuralEquals [mapLength g0, mapLength g1, mapLength g2, mapLength g3] [0, 1, 2, 3],
+        structuralEquals [mapLength g4, mapLength g5, mapLength g3] [4, 5, 3],
         mapContains g2 "k1",
         !(mapContains g2 "k4"),
         mapContains xa "X",
         !(mapContains xa "Y"),
         !(mapContains xb "X"),
-        mapContains xb "Y",
-        mapLength g3 == 3
+        mapContains xb "Y"
     ]
 
     // Check that earlier generations retain their values.
     checkAll "persistent map generation values" [
         !(mapContains g0 "k1"),
-        intAt (g1, "k1") == 1,
+        structuralEquals [intAt (g1, "k1"), intAt (g2, "k1"), intAt (g2, "k2")] [1, 1, 2],
+        structuralEquals [intAt (g3, "k3"), intAt (g4, "k4"), intAt (g5, "k1")] [3, 4, 1],
+        structuralEquals [intAt (g5, "k5"), mapLength g2, mapLength g3] [5, 2, 3],
         !(mapContains g1 "k2"),
-        intAt (g2, "k1") == 1,
-        intAt (g2, "k2") == 2,
         !(mapContains g2 "k3"),
-        intAt (g3, "k3") == 3,
         !(mapContains g3 "k4"),
-        intAt (g4, "k4") == 4,
-        !(mapContains g4 "k5"),
-        structuralEquals [intAt (g5, "k1"), intAt (g5, "k5"), mapLength g2, mapLength g3] [1, 5, 2, 3]
+        !(mapContains g4 "k5")
     ]
 
     // Check sibling values, absences, and parent isolation.
     checkAll "persistent map branch values and isolation" [
-        structuralEquals [intAt (xa, "X"), intAt (xb, "Y"), intAt (xa, "k1"), intAt (xb, "k3")] [100, 200, 1, 3],
+        structuralEquals [intAt (xa, "X"), intAt (xb, "Y"), intAt (xa, "k1")] [100, 200, 1],
+        structuralEquals [intAt (xb, "k3"), mapLength xa, mapLength xb] [3, 4, 4],
         !(mapContains xa "Y"),
         !(mapContains xb "X"),
         !(mapContains g3 "X"),
-        !(mapContains g3 "Y"),
-        mapLength xa == 4,
-        mapLength xb == 4
+        !(mapContains g3 "Y")
     ]
 
 (** Exercise persistent removal and right-biased merge. *)
@@ -115,18 +106,17 @@ removalAndMergeCase () =
 
     // Check removal lengths and membership.
     checkAll "persistent removal legacy observations" [
-        mapLength removed == 4,
+        structuralEquals [mapLength removed, mapLength absentRemoved] [4, 5],
         !(mapContains removed "k3"),
-        mapContains g5 "k3",
-        mapLength absentRemoved == 5
+        mapContains g5 "k3"
     ]
 
     // Check retained values, exact failure, and source preservation.
     checkAll "persistent removal values and isolation" [
         structuralEquals (mapList ["k1", "k2", "k4"] (\k => intAt (removed, k))) [1, 2, 4],
-        intAt (removed, "k5") == 5,
+        structuralEquals [intAt (removed, "k5"), intAt (g5, "k3")] [5, 3],
+        structuralEquals [intAt (absentRemoved, "k1"), intAt (absentRemoved, "k5")] [1, 5],
         removedMissing,
-        structuralEquals [intAt (g5, "k3"), intAt (absentRemoved, "k1"), intAt (absentRemoved, "k5")] [3, 1, 5],
         mapContains absentRemoved "k3",
         !(mapContains g4 "k5")
     ]
@@ -134,9 +124,8 @@ removalAndMergeCase () =
     // Check merge lengths, membership, identities, and the + alias.
     checkAll "map merge legacy observations" [
         structuralEquals [mapLength mergedAB, mapLength mergedBA, mapLength mergedPlus] [4, 4, 4],
-        mapContains mergedAB "w",
-        mapLength (mapMerge (Map ()) a) == 3,
-        mapLength (mapMerge a a) == 3
+        structuralEquals [mapLength (mapMerge (Map ()) a), mapLength (mapMerge a a)] [3, 3],
+        mapContains mergedAB "w"
     ]
 
     // Check exact right-biased values in both directions.
@@ -144,8 +133,8 @@ removalAndMergeCase () =
         structuralEquals (mapList ["x", "y", "z"] (\k => intAt (mergedAB, k))) [1, 20, 30],
         structuralEquals [intAt (mergedAB, "w"), intAt (mergedBA, "x"), intAt (mergedBA, "y")] [40, 1, 2],
         structuralEquals [intAt (mergedBA, "z"), intAt (mergedBA, "w"), intAt (mergedPlus, "x")] [3, 40, 1],
-        structuralEquals (mapList ["y", "z", "w"] (\k => intAt (mergedPlus, k))) [20, 30, 40],
-        structuralEquals [intAt (a, "y"), intAt (b, "y")] [2, 20]
+        structuralEquals [intAt (a, "y"), intAt (b, "y")] [2, 20],
+        structuralEquals (mapList ["y", "z", "w"] (\k => intAt (mergedPlus, k))) [20, 30, 40]
     ]
 
 (** Exercise key/value views beside persistent lists. *)
@@ -165,8 +154,8 @@ viewsAndCrossCollectionCase () =
     // Check view and cross-collection lengths.
     checkAll "map views and cross-collection legacy lengths" [
         structuralEquals [listLength keys, listLength values, listLength (mapKeys (Map ()))] [5, 5, 0],
-        structuralEquals [listLength xs2, mapLength mm2, listLength xs, mapLength g3] [4, 4, 3, 3],
-            listLength (mapValues g3 + xs) == 6
+        structuralEquals [listLength xs2, mapLength mm2, listLength xs] [4, 4, 3],
+        structuralEquals [mapLength g3, listLength (mapValues g3 + xs)] [3, 6]
     ]
 
     // Check view contents without assuming iteration order.
@@ -180,14 +169,11 @@ viewsAndCrossCollectionCase () =
 
     // Check isolation across List and Map descendants.
     checkAll "list and map cross-collection isolation" [
-        (listGet xs 0 ?: ((0 - 999) )) == 100,
-        (listGet xs 2 ?: ((0 - 999) )) == 300,
-        (listGet xs2 3 ?: ((0 - 999) )) == 400,
+        structuralEquals [(listGet xs 0 ?: ((0 - 999) )), (listGet xs 2 ?: ((0 - 999) ))] [100, 300],
+        structuralEquals [(listGet xs2 3 ?: ((0 - 999) )), intAt (mm2, "d")] [400, 4],
+        structuralEquals [intAt (g3, "k3"), intAt (g5, "k5")] [3, 5],
         !(listContains xs 400),
-        intAt (mm2, "d") == 4,
         !(mapContains g3 "d"),
-        intAt (g3, "k3") == 3,
-        intAt (g5, "k5") == 5,
         mapLength g5 == listLength keys,
         mapLength g5 == listLength values
     ]
@@ -203,13 +189,13 @@ literalsAndDispatchCase () =
 
     // Check literal lookup, duplicates, and exact missing-key behavior.
     checkAll "map literal lookup behavior" [
-        intAt (prices, "apple") == 2,
-        priceMissing,
-        structuralEquals [intAt (duplicate, "key"), intAt (prices, "banana"), intAt (prices, "cherry")] [2, 3, 5],
+        structuralEquals [intAt (prices, "apple"), intAt (duplicate, "key")] [2, 2],
+        structuralEquals [intAt (prices, "banana"), intAt (prices, "cherry")] [3, 5],
         (["apple" => 2, "banana" => 3]["apple"] ?: ((0 - 999) )) == 2,
         (["key" => 1, "key" => 2]["key"] ?: ((0 - 999) )) == 2,
         mapLength prices == 3,
         mapLength duplicate == 1,
+        priceMissing,
         mapContains duplicate "key"
     ]
 
@@ -258,26 +244,22 @@ typedValueRetrievalCase () =
     // A string value comes back as its own string, through both spellings the
     // spec calls equivalent, and a missing key still takes the `Error` branch.
     checkAll "string values survive mapGet" [
-        (mapGet titles "a" ?: "none") == "alpha",
-        (mapGet titles "b" ?: "none") == "beta",
-        (mapGet titles "c" ?: "none") == "gamma",
-        (titles["a"] ?: "none") == "alpha",
-        (titles["b"] ?: "none") == "beta",
-        (titles["c"] ?: "none") == "gamma",
-        (mapGet titles "a" ?: "none") == (titles["a"] ?: "other"),
-        (mapGet titles "c" ?: "none") == (titles["c"] ?: "other"),
-        length (mapGet titles "a" ?: "") == 5,
-        length (mapGet titles "b" ?: "") == 4,
-        contains (mapGet titles "c" ?: "none") "amm",
-        startsWith (mapGet titles "a" ?: "none") "alp",
-        endsWith (mapGet titles "b" ?: "none") "eta",
+        structuralEquals [(mapGet titles "a" ?: "none"), (mapGet titles "b" ?: "none")] ["alpha", "beta"],
+        structuralEquals [(mapGet titles "c" ?: "none"), (titles["a"] ?: "none")] ["gamma", "alpha"],
+        structuralEquals [(titles["b"] ?: "none"), (titles["c"] ?: "none")] ["beta", "gamma"],
         toUpperCase (mapGet titles "b" ?: "none") == "BETA",
         "${mapGet titles "a" ?: "none"}+${mapGet titles "b" ?: "none"}" == "alpha+beta",
         absentTitle == "mapGet: key not found",
         (mapGet titles "zzz" ?: "absent") == "absent",
+        (mapGet titles "a" ?: "none") == (titles["a"] ?: "other"),
+        (mapGet titles "c" ?: "none") == (titles["c"] ?: "other"),
+        structuralEquals [length (mapGet titles "a" ?: ""), length (mapGet titles "b" ?: "")] [5, 4],
+        mapLength titles == 3,
+        contains (mapGet titles "c" ?: "none") "amm",
+        startsWith (mapGet titles "a" ?: "none") "alp",
+        endsWith (mapGet titles "b" ?: "none") "eta",
         mapContains titles "a",
-        !(mapContains titles "zzz"),
-        mapLength titles == 3
+        !(mapContains titles "zzz")
     ]
 
     // Persistent producers keep values typed too: an overwritten, removed or
@@ -290,29 +272,27 @@ typedValueRetrievalCase () =
         (mapGet (mapRemove titles "b") "a" ?: "none") == "alpha",
         (mapGet (mapRemove titles "b") "c" ?: "none") == "gamma",
         (mapGet (mapRemove titles "b") "b" ?: "gone") == "gone",
-        !(mapContains (mapRemove titles "b") "b"),
-        mapLength (mapRemove titles "b") == 2,
-        mapLength titles == 3,
         (mapGet (mapMerge titles (mapSet (Map ()) "d" "delta")) "d" ?: "none") == "delta",
         (mapGet (mapMerge titles (mapSet (Map ()) "d" "delta")) "a" ?: "none") == "alpha",
         (mapGet (mapMerge titles (mapSet (Map ()) "a" "right wins")) "a" ?: "none") == "right wins",
+        !(mapContains (mapRemove titles "b") "b"),
+        structuralEquals [mapLength (mapRemove titles "b"), mapLength titles] [2, 3],
         mapLength (mapMerge titles (mapSet (Map ()) "d" "delta")) == 4,
+        listLength (mapKeys titles) == 3,
         listContains (mapKeys titles) "a",
-        listContains (mapKeys titles) "c",
-        listLength (mapKeys titles) == 3
+        listContains (mapKeys titles) "c"
     ]
 
     // A float value keeps its IEEE value; a bool value keeps true/false.
     checkAll "float and bool values survive mapGet" [
-        (mapGet scores "half" ?: 0.0) == 0.5,
-        (mapGet scores "quarter" ?: 0.0) == 1.25,
+        structuralEquals [(mapGet scores "half" ?: 0.0), (mapGet scores "quarter" ?: 0.0)] [0.5, 1.25],
         (scores["half"] ?: 0.0) == 0.5,
         (mapGet scores "half" ?: 0.0) + (mapGet scores "quarter" ?: 0.0) == 1.75,
         (mapGet scores "quarter" ?: 0.0) * 4.0 == 5.0,
         (mapGet scores "missing" ?: 9.5) == 9.5,
         (mapGet (mapSet scores "half" 3.5) "half" ?: 0.0) == 3.5,
         (mapGet scores "half" ?: 0.0) == 0.5,
-        mapLength scores == 2,
+        structuralEquals [mapLength scores, mapLength flags] [2, 2],
         (mapGet flags "on" ?: false),
         !(mapGet flags "off" ?: true),
         (flags["on"] ?: false),
@@ -322,34 +302,26 @@ typedValueRetrievalCase () =
         (mapGet (mapSet flags "on" false) "on" ?: true) == false,
         (mapGet flags "on" ?: false),
         mapContains flags "off",
-        !(mapContains flags "unknown"),
-        mapLength flags == 2
+        !(mapContains flags "unknown")
     ]
 
     // A record value comes back whole: every field of the stored record is
     // readable off the retrieved one, and a missing key still takes `Error`.
     checkAll "record values survive mapGet whole" [
-        leftEntry.title == "Left",
-        leftEntry.score == 1.5,
+        structuralEquals [leftEntry.title, rightEntry.title] ["Left", "Right"],
+        structuralEquals ["${leftEntry.title}/${rightEntry.title}", absentEntry.title] ["Left/Right", "none"],
+        (mapGet (mapSet entries "left" blank) "left" ?: rightEntry).title == "none",
+        (mapGet (mapSet entries "left" blank) "right" ?: blank).title == "Right",
+        (mapGet (mapRemove entries "left") "left" ?: blank).title == "none",
+        structuralEquals [leftEntry.score, rightEntry.score, leftEntry.score + rightEntry.score] [1.5, 2.5, 4.0],
+        structuralEquals [absentEntry.score, (mapGet (mapRemove entries "left") "right" ?: blank).score] [0.0, 2.5],
         leftEntry.active,
-        rightEntry.title == "Right",
-        rightEntry.score == 2.5,
         !rightEntry.active,
         leftEntry.title != rightEntry.title,
         leftEntry.score != rightEntry.score,
         leftEntry.active != rightEntry.active,
-        leftEntry.score + rightEntry.score == 4.0,
-        length leftEntry.title == 4,
-        length rightEntry.title == 5,
-        "${leftEntry.title}/${rightEntry.title}" == "Left/Right",
-        absentEntry.title == "none",
-        absentEntry.score == 0.0,
-        !absentEntry.active,
-        (mapGet (mapSet entries "left" blank) "left" ?: rightEntry).title == "none",
-        (mapGet (mapSet entries "left" blank) "right" ?: blank).title == "Right",
-        (mapGet (mapRemove entries "left") "right" ?: blank).score == 2.5,
-        (mapGet (mapRemove entries "left") "left" ?: blank).title == "none",
-        mapLength entries == 2
+        structuralEquals [length leftEntry.title, length rightEntry.title, mapLength entries] [4, 5, 2],
+        !absentEntry.active
     ]
 
 test "mapGet returns the value type for every value type" (\() => exactArithmetic (typedValueRetrievalCase))
@@ -377,10 +349,8 @@ keyShapeCase () =
         structuralEquals (mapList ["a b", "a.b", "a-b"] (\k => intAt (shaped, k))) [6, 7, 8],
         structuralEquals (mapList ["a_b", "007", "7"] (\k => intAt (shaped, k))) [9, 10, 11],
         structuralEquals [intAt (shapedLong, longKey), mapLength shaped, mapLength shapedLong] [12, 12, 13],
-        length shapedLong == 13,
+        structuralEquals [length shapedLong, length longKey, length longKeyPrefix] [13, 40, 39],
         !(isEmpty shaped),
-        length longKey == 40,
-        length longKeyPrefix == 39,
         emptyKeyMissing
     ]
 
@@ -419,7 +389,9 @@ keyShapeCase () =
         intAt (shaped, "") != (mapGet shaped " " ?: ((0 - 998) )),
         (mapGet shaped (toUpperCase "a") ?: ((0 - 999) )) == 2,
         (mapGet shaped (toLowerCase "A") ?: ((0 - 999) )) == 1,
-        structuralEquals [intAt (shaped, "a${gap}b"), intAt (shaped, "${gap}a"), intAt (shaped, "a${gap}")] [6, 4, 5],
+        intAt (shaped, "a${gap}b") == 6,
+        intAt (shaped, "${gap}a") == 4,
+        intAt (shaped, "a${gap}") == 5,
         (shaped[""] ?: ((0 - 999) )) == 0,
         (shaped["a b"] ?: ((0 - 999) )) == 6,
         (shaped["007"] ?: ((0 - 999) )) == 10,
@@ -433,8 +405,7 @@ keyShapeCase () =
     // The key view holds all thirteen shapes and nothing else; the value view is
     // the same length and the twelve-key parent must not have gained the long key.
     checkAll "map key and value views report each shape once" [
-        listLength (mapKeys shapedLong) == 13,
-        listLength (mapValues shapedLong) == 13,
+        structuralEquals [listLength (mapKeys shapedLong), listLength (mapValues shapedLong)] [13, 13],
         listLength (mapKeys shapedLong) == mapLength shapedLong,
         structuralEquals (mapList ["", "a"] (\k => listContains (mapKeys shapedLong) k)) [true, true],
         structuralEquals (mapList ["A", " "] (\k => listContains (mapKeys shapedLong) k)) [true, true],
@@ -479,9 +450,10 @@ overwriteChainCase () =
     // Three overwrites of "slot" never grow the map; adding "other" grows it once
     // and re-setting "slot" to the value it already holds changes nothing.
     checkAll "overwrite chain lengths and per-generation values" [
-        structuralEquals [mapLength v0, mapLength v1, mapLength v2, mapLength v3, mapLength v4] [0, 1, 1, 1, 2],
-        structuralEquals [mapLength v5, mapLength v6, mapLength v7, intAt (v1, "slot")] [2, 2, 2, 1],
-        structuralEquals [intAt (v2, "slot"), intAt (v3, "slot"), intAt (v4, "slot"), intAt (v5, "slot")] [2, 3, 3, 5],
+        structuralEquals [mapLength v0, mapLength v1, mapLength v2, mapLength v3] [0, 1, 1, 1],
+        structuralEquals [mapLength v4, mapLength v5, mapLength v6] [2, 2, 2],
+        structuralEquals [mapLength v7, intAt (v1, "slot"), intAt (v2, "slot")] [2, 1, 2],
+        structuralEquals [intAt (v3, "slot"), intAt (v4, "slot"), intAt (v5, "slot")] [3, 3, 5],
         structuralEquals [intAt (v6, "slot"), intAt (v7, "slot"), intAt (v4, "other")] [5, 5, 40],
         structuralEquals [intAt (v5, "other"), intAt (v6, "other"), intAt (v7, "other")] [40, 60, 60],
         !(mapContains v0 "slot"),
@@ -502,11 +474,11 @@ overwriteChainCase () =
         (mapGet (mapSet (mapSet v0 "k" 1) "K" 2) "k" ?: ((0 - 999) )) == 1,
         (mapGet (mapSet (mapSet v0 "k" 1) "K" 2) "K" ?: ((0 - 999) )) == 2,
         mapLength v6 == 2,
-        mapContains (mapSet v6 "fresh" 7) "fresh",
-        !(mapContains v6 "fresh"),
         (mapGet (mapSet v6 "slot" 7) "slot" ?: ((0 - 999) )) == 7,
         (mapGet (mapSet v6 "slot" 7) "other" ?: ((0 - 999) )) == 60,
-        intAt (v6, "slot") == 5
+        intAt (v6, "slot") == 5,
+        mapContains (mapSet v6 "fresh" 7) "fresh",
+        !(mapContains v6 "fresh")
     ]
 
     // set-then-remove is the identity on the key it touched, remove is idempotent
@@ -514,12 +486,11 @@ overwriteChainCase () =
     // must land on an empty map rather than a stale one.
     checkAll "set and remove round-trip without disturbing neighbours" [
         mapLength (mapRemove (mapSet v6 "fresh" 7) "fresh") == 2,
-        !(mapContains (mapRemove (mapSet v6 "fresh" 7) "fresh") "fresh"),
         (mapGet (mapRemove (mapSet v6 "fresh" 7) "fresh") "slot" ?: ((0 - 999) )) == 5,
         (mapGet (mapRemove (mapSet v6 "fresh" 7) "fresh") "other" ?: ((0 - 999) )) == 60,
-        structuralEquals [mapLength (mapRemove v6 "slot"), mapLength (mapRemove (mapRemove v6 "slot") "slot")] [1, 1],
+        mapLength (mapRemove v6 "slot") == 1,
+        mapLength (mapRemove (mapRemove v6 "slot") "slot") == 1,
         mapLength (mapRemove (mapRemove v6 "slot") "other") == 0,
-        isEmpty (mapRemove (mapRemove v6 "slot") "other"),
         mapLength (mapRemove v6 "absent") == 2,
         mapLength (mapRemove v0 "absent") == 0,
         (mapGet (mapSet (mapRemove v6 "slot") "slot" 5) "slot" ?: ((0 - 999) )) == 5,
@@ -527,6 +498,8 @@ overwriteChainCase () =
         mapLength (mapSet (mapRemove v6 "slot") "slot" 5) == 2,
         (mapGet (mapRemove v6 "slot") "other" ?: ((0 - 999) )) == 60,
         mapLength v6 == 2,
+        !(mapContains (mapRemove (mapSet v6 "fresh" 7) "fresh") "fresh"),
+        isEmpty (mapRemove (mapRemove v6 "slot") "other"),
         mapContains v6 "slot"
     ]
 
@@ -534,14 +507,13 @@ overwriteChainCase () =
     // move only its value, and the source generation keeps the old 2.
     checkAll "overwriting one prefix key leaves its neighbours alone" [
         structuralEquals [mapLength prefixes, mapLength prefixOverwritten, intAt (prefixes, "p")] [4, 4, 1],
+        structuralEquals [intAt (prefixes, "pa"), listLength (mapKeys prefixOverwritten)] [2, 4],
         structuralEquals (mapList ["pa", "pat", "path"] (\k => intAt (prefixes, k))) [2, 3, 4],
         structuralEquals (mapList ["p", "pa", "pat", "path"] (\k => intAt (prefixOverwritten, k))) [1, 20, 3, 4],
-        intAt (prefixes, "pa") == 2,
         !(mapContains prefixes "pathx"),
         !(mapContains prefixes "Path"),
         !(mapContains prefixes ""),
         mapContains prefixOverwritten "pat",
-        listLength (mapKeys prefixOverwritten) == 4,
         listContains (mapKeys prefixOverwritten) "path",
         !(listContains (mapValues prefixOverwritten) 2),
         listContains (mapValues prefixOverwritten) 20,
@@ -570,8 +542,8 @@ mergeAlgebraCase () =
     // "K" and "k.k" only exist on the left (2, 3), "k-k" and " " only on the right.
     checkAll "right-biased union values and lengths" [
         structuralEquals [mapLength left, mapLength right, mapLength third, mapLength lr, mapLength rl] [4, 4, 3, 6, 6],
-        structuralEquals (mapList ["k", "K", "k.k", ""] (\k => intAt (lr, k))) [10, 2, 3, 40],
         structuralEquals [intAt (lr, "k-k"), intAt (lr, " "), intAt (rl, "k"), intAt (rl, "K")] [30, 50, 1, 2],
+        structuralEquals (mapList ["k", "K", "k.k", ""] (\k => intAt (lr, k))) [10, 2, 3, 40],
         structuralEquals (mapList ["k.k", "", "k-k", " "] (\k => intAt (rl, k))) [3, 4, 30, 50],
         intAt (lr, "k") != (mapGet rl "k" ?: ((0 - 998) )),
         intAt (lr, "") != (mapGet rl "" ?: ((0 - 998) )),
@@ -582,21 +554,24 @@ mergeAlgebraCase () =
     // The empty map is a two-sided identity, merging a map with itself is the
     // identity too, and neither operand is disturbed by any of it.
     checkAll "merge identity, idempotence and operand preservation" [
-        mapLength (mapMerge empty left) == 4,
-        mapLength (mapMerge left empty) == 4,
+        structuralEquals [mapLength (mapMerge empty left), mapLength (mapMerge left empty)] [4, 4],
         (mapGet (mapMerge empty left) "k" ?: ((0 - 999) )) == 1,
         (mapGet (mapMerge empty left) "" ?: ((0 - 999) )) == 4,
         (mapGet (mapMerge left empty) "K" ?: ((0 - 999) )) == 2,
         (mapGet (mapMerge left empty) "k.k" ?: ((0 - 999) )) == 3,
         mapLength (mapMerge empty empty) == 0,
-        isEmpty (mapMerge empty empty),
         mapLength (mapMerge left left) == 4,
         (mapGet (mapMerge left left) "k" ?: ((0 - 999) )) == 1,
         (mapGet (mapMerge left left) "" ?: ((0 - 999) )) == 4,
         mapLength (mapMerge right right) == 4,
         (mapGet (mapMerge right right) " " ?: ((0 - 999) )) == 50,
-        structuralEquals [mapLength left, mapLength right, intAt (left, "k"), intAt (right, "k")] [4, 4, 1, 10],
-        structuralEquals [intAt (left, ""), intAt (right, "")] [4, 40],
+        mapLength left == 4,
+        mapLength right == 4,
+        intAt (left, "k") == 1,
+        intAt (right, "k") == 10,
+        intAt (left, "") == 4,
+        intAt (right, "") == 40,
+        isEmpty (mapMerge empty empty),
         !(mapContains left "k-k"),
         !(mapContains right "K")
     ]
@@ -606,11 +581,11 @@ mergeAlgebraCase () =
     // and `left + right + third` associates to the left, so it agrees as well.
     checkAll "merge is associative and the + alias agrees" [
         structuralEquals [mapLength lrThenThird, mapLength leftThenRt, mapLength plusChain] [7, 7, 7],
+        structuralEquals [intAt (lrThenThird, "q"), intAt (leftThenRt, "k"), intAt (leftThenRt, "K")] [700, 10, 200],
+        structuralEquals [intAt (leftThenRt, " "), intAt (leftThenRt, "q"), intAt (plusChain, "K")] [50, 700, 200],
         structuralEquals (mapList ["k", "K", "k.k"] (\k => intAt (lrThenThird, k))) [10, 200, 3],
         structuralEquals (mapList ["", "k-k", " "] (\k => intAt (lrThenThird, k))) [40, 300, 50],
-        structuralEquals [intAt (lrThenThird, "q"), intAt (leftThenRt, "k"), intAt (leftThenRt, "K")] [700, 10, 200],
         structuralEquals (mapList ["k.k", "", "k-k"] (\k => intAt (leftThenRt, k))) [3, 40, 300],
-        structuralEquals [intAt (leftThenRt, " "), intAt (leftThenRt, "q"), intAt (plusChain, "K")] [50, 700, 200],
         structuralEquals (mapList ["k-k", "q"] (\k => intAt (plusChain, k))) [300, 700],
         intAt (lrThenThird, "K") == (mapGet leftThenRt "K" ?: ((0 - 998) )),
         intAt (lrThenThird, "k-k") == (mapGet leftThenRt "k-k" ?: ((0 - 998) ))
@@ -620,23 +595,21 @@ mergeAlgebraCase () =
     // their keys to the right map — and merging a map with a subset of itself is
     // still right-biased, so the full map wins when it stands on the right.
     checkAll "merged views and single-key override interaction" [
-        listLength (mapKeys lr) == 6,
-        listLength (mapValues lr) == 6,
+        structuralEquals [listLength (mapKeys lr), listLength (mapValues lr)] [6, 6],
+        structuralEquals [listLength (mapKeys lrThenThird), mapLength (mapMerge lr overrideK)] [7, 6],
+        (mapGet (mapMerge lr overrideK) "k" ?: ((0 - 999) )) == 999,
+        (mapGet (mapMerge overrideK lr) "k" ?: ((0 - 999) )) == 10,
+        mapLength (mapMerge lr (mapRemove lr "k")) == 6,
+        mapLength (mapMerge (mapRemove lr "k") lr) == 6,
+        (mapGet (mapMerge (mapRemove lr "k") lr) "k" ?: ((0 - 999) )) == 10,
         structuralEquals (mapList ["", " ", "k-k", "K"] (\k => listContains (mapKeys lr) k)) [true, true, true, true],
         !(listContains (mapKeys lr) "q"),
         listContains (mapValues lr) 10,
         listContains (mapValues lr) 50,
         !(listContains (mapValues lr) 1),
-        listLength (mapKeys lrThenThird) == 7,
         listContains (mapKeys lrThenThird) "q",
         listContains (mapValues lrThenThird) 700,
-        !(listContains (mapValues lrThenThird) 30),
-        mapLength (mapMerge lr overrideK) == 6,
-        (mapGet (mapMerge lr overrideK) "k" ?: ((0 - 999) )) == 999,
-        (mapGet (mapMerge overrideK lr) "k" ?: ((0 - 999) )) == 10,
-        mapLength (mapMerge lr (mapRemove lr "k")) == 6,
-        mapLength (mapMerge (mapRemove lr "k") lr) == 6,
-        (mapGet (mapMerge (mapRemove lr "k") lr) "k" ?: ((0 - 999) )) == 10
+        !(listContains (mapValues lrThenThird) 30)
     ]
 
 test "map merge is right-biased, associative, and identity-preserving" (\() => exactArithmetic (mergeAlgebraCase))
@@ -665,26 +638,26 @@ removalSweepCase () =
     // Each of the five single removals leaves four bindings, and the four that
     // survive keep their original values.
     checkAll "each single removal drops exactly one binding" [
-        structuralEquals [mapLength base, mapLength noA, mapLength noB, mapLength noC, mapLength noD] [5, 4, 4, 4, 4],
-        mapLength noE == 4,
+        structuralEquals [mapLength base, mapLength noA, mapLength noB, mapLength noC] [5, 4, 4, 4],
+        structuralEquals [mapLength noD, mapLength noE, intAt (noA, "b"), intAt (noA, "e")] [4, 4, 2, 5],
+        structuralEquals [intAt (noB, "a"), intAt (noB, "c"), intAt (noC, "b"), intAt (noC, "d")] [1, 3, 2, 4],
+        structuralEquals [intAt (noD, "c"), intAt (noD, "e"), intAt (base, "c")] [3, 5, 3],
         !(mapContains noA "a"),
         !(mapContains noB "b"),
         !(mapContains noC "c"),
         !(mapContains noD "d"),
         !(mapContains noE "e"),
-        structuralEquals [intAt (noA, "b"), intAt (noA, "e"), intAt (noB, "a"), intAt (noB, "c")] [2, 5, 1, 3],
-        structuralEquals [intAt (noC, "b"), intAt (noC, "d"), intAt (noD, "c"), intAt (noD, "e")] [2, 4, 3, 5],
         structuralEquals (mapList ["a", "d"] (\k => intAt (noE, k))) [1, 4],
         mapContains base "a",
-        mapContains base "e",
-        intAt (base, "c") == 3
+        mapContains base "e"
     ]
 
     // Removing "a" then "b" and "b" then "a" must agree on every surviving key,
     // and removing all five must land on a genuinely empty map with empty views.
     checkAll "removal is order-insensitive and drains to empty" [
-        mapLength abFirst == 3,
-        mapLength baFirst == 3,
+        structuralEquals [mapLength abFirst, mapLength baFirst, intAt (abFirst, "c")] [3, 3, 3],
+        structuralEquals [intAt (baFirst, "e"), mapLength drained, length drained] [5, 0, 0],
+        structuralEquals [listLength (mapKeys drained), listLength (mapValues drained), mapLength base] [0, 0, 5],
         !(mapContains abFirst "a"),
         !(mapContains abFirst "b"),
         !(mapContains baFirst "a"),
@@ -692,12 +665,9 @@ removalSweepCase () =
         intAt (abFirst, "c") == (mapGet baFirst "c" ?: ((0 - 998) )),
         intAt (abFirst, "d") == (mapGet baFirst "d" ?: ((0 - 998) )),
         intAt (abFirst, "e") == (mapGet baFirst "e" ?: ((0 - 998) )),
-        structuralEquals [intAt (abFirst, "c"), intAt (baFirst, "e"), mapLength drained] [3, 5, 0],
         isEmpty drained,
-        structuralEquals [length drained, listLength (mapKeys drained), listLength (mapValues drained)] [0, 0, 0],
         drainedMissing,
         !(mapContains drained "c"),
-        mapLength base == 5,
         !(isEmpty base)
     ]
 
@@ -712,35 +682,30 @@ removalSweepCase () =
         (mapGet (mapRemove base "") "a" ?: ((0 - 999) )) == 1,
         (mapGet (mapRemove base "ab") "b" ?: ((0 - 999) )) == 2,
         (mapGet (mapRemove base "a ") "a" ?: ((0 - 999) )) == 1,
+        mapLength (mapRemove drained "a") == 0,
+        mapLength (mapRemove (mapRemove base "a") "a") == 4,
+        (mapGet (mapRemove (mapRemove base "a") "a") "b" ?: ((0 - 999) )) == 2,
+        listLength (mapKeys (mapRemove base "z")) == 5,
         mapContains (mapRemove base "z") "a",
         mapContains (mapRemove base "z") "e",
-        mapLength (mapRemove drained "a") == 0,
         isEmpty (mapRemove drained "a"),
-        mapLength (mapRemove (mapRemove base "a") "a") == 4,
-        !(mapContains (mapRemove (mapRemove base "a") "a") "a"),
-        (mapGet (mapRemove (mapRemove base "a") "a") "b" ?: ((0 - 999) )) == 2,
-        listLength (mapKeys (mapRemove base "z")) == 5
+        !(mapContains (mapRemove (mapRemove base "a") "a") "a")
     ]
 
     // Merging a removed generation back against the full map restores the missing
     // binding from whichever side holds it, and set-after-remove rebinds the key
     // without disturbing the source generation.
     checkAll "removal composes with set and merge" [
-        mapLength (mapMerge noB base) == 5,
-        (mapGet (mapMerge noB base) "b" ?: ((0 - 999) )) == 2,
-        mapLength (mapMerge base noB) == 5,
-        (mapGet (mapMerge base noB) "b" ?: ((0 - 999) )) == 2,
-        structuralEquals [mapLength widened, intAt (widened, "f"), mapLength (mapRemove widened "f")] [6, 6, 5],
+        structuralEquals [mapLength (mapMerge noB base), (mapGet (mapMerge noB base) "b" ?: ((0 - 999) ))] [5, 2],
+        structuralEquals [mapLength (mapMerge base noB), (mapGet (mapMerge base noB) "b" ?: ((0 - 999) ))] [5, 2],
+        structuralEquals [mapLength widened, intAt (widened, "f")] [6, 6],
+        structuralEquals [mapLength (mapRemove widened "f"), mapLength (mapSet noC "c" 33)] [5, 5],
+        structuralEquals [(mapGet (mapSet noC "c" 33) "c" ?: ((0 - 999) )), intAt (base, "c")] [33, 3],
+        structuralEquals [mapLength (mapSet drained "a" 1), (mapGet (mapSet drained "a" 1) "a" ?: ((0 - 999) ))] [1, 1],
+        structuralEquals [listLength (mapKeys noA), listLength (mapValues noA)] [4, 4],
         !(mapContains (mapRemove widened "f") "f"),
-        mapLength (mapSet noC "c" 33) == 5,
-        (mapGet (mapSet noC "c" 33) "c" ?: ((0 - 999) )) == 33,
-        intAt (base, "c") == 3,
-        mapLength (mapSet drained "a" 1) == 1,
-        (mapGet (mapSet drained "a" 1) "a" ?: ((0 - 999) )) == 1,
-        listLength (mapKeys noA) == 4,
         !(listContains (mapKeys noA) "a"),
         listContains (mapKeys noA) "b",
-        listLength (mapValues noA) == 4,
         !(listContains (mapValues noA) 1),
         listContains (mapValues noA) 5
     ]
@@ -803,33 +768,31 @@ nestedCollectionCase () =
     // bindings; an out-of-range index still takes the Error branch.
     checkAll "maps stored in a list keep their own contents" [
         structuralEquals [listLength maps, mapLength firstNested, mapLength secondNested] [3, 2, 2],
-        mapLength thirdNested == 0,
+        structuralEquals [mapLength thirdNested, intAt (firstNested, "x"), intAt (firstNested, "y")] [0, 1, 2],
+        structuralEquals [intAt (secondNested, "x"), intAt (secondNested, "z")] [10, 30],
+        structuralEquals [mapLength pastEndNested, intAt (pastEndNested, "fallback")] [1, 0],
+        structuralEquals [listLength (listAppend maps inner1), listLength maps] [4, 3],
+        structuralEquals [mapLength inner1, mapLength inner2] [2, 2],
         isEmpty thirdNested,
-        structuralEquals [intAt (firstNested, "x"), intAt (firstNested, "y"), intAt (secondNested, "x")] [1, 2, 10],
-        intAt (secondNested, "z") == 30,
         !(mapContains firstNested "z"),
         !(mapContains secondNested "y"),
         !(mapContains thirdNested "x"),
-        intAt (firstNested, "x") != (mapGet secondNested "x" ?: ((0 - 998) )),
-        structuralEquals [mapLength pastEndNested, intAt (pastEndNested, "fallback")] [1, 0],
-        structuralEquals [listLength (listAppend maps inner1), listLength maps, mapLength inner1] [4, 3, 2],
-        mapLength inner2 == 2
+        intAt (firstNested, "x") != (mapGet secondNested "x" ?: ((0 - 998) ))
     ]
 
     // A map of maps answers three outer keys while each inner map keeps its own
     // bindings, and replacing one inner map must not disturb the original nest.
     checkAll "maps stored as map values keep their own contents" [
-        mapLength outer == 3,
-        listLength (mapKeys outer) == 3,
+        structuralEquals [mapLength outer, listLength (mapKeys outer), mapLength innerOne] [3, 3, 2],
+        structuralEquals [mapLength innerTwo, intAt (innerOne, "x"), intAt (innerOne, "y")] [2, 1, 2],
+        structuralEquals [intAt (innerTwo, "x"), intAt (innerTwo, "z"), mapLength innerMissing] [10, 30, 1],
+        structuralEquals [intAt (innerMissing, "fallback"), mapLength innerReplaced] [0, 2],
+        structuralEquals [intAt (innerReplaced, "z"), intAt (innerOne, "x")] [30, 1],
+        structuralEquals [mapLength outer, mapLength (mapRemove outer "two")] [3, 2],
         listContains (mapKeys outer) "one",
         listContains (mapKeys outer) "three",
         !(listContains (mapKeys outer) "four"),
-        structuralEquals [mapLength innerOne, mapLength innerTwo, intAt (innerOne, "x")] [2, 2, 1],
-        structuralEquals [intAt (innerOne, "y"), intAt (innerTwo, "x"), intAt (innerTwo, "z")] [2, 10, 30],
         !(mapContains innerOne "z"),
-        structuralEquals [mapLength innerMissing, intAt (innerMissing, "fallback"), mapLength innerReplaced] [1, 0, 2],
-        structuralEquals [intAt (innerReplaced, "z"), intAt (innerOne, "x"), mapLength outer] [30, 1, 3],
-        mapLength (mapRemove outer "two") == 2,
         !(mapContains (mapRemove outer "two") "two")
     ]
 
@@ -837,46 +800,36 @@ nestedCollectionCase () =
     // list produces a four-element list while the stored three-element one stands.
     checkAll "lists stored as map values keep index order" [
         structuralEquals [mapLength byParity, listLength oddsBack, listLength evensBack] [2, 3, 4],
-        (listGet oddsBack 0 ?: ((0 - 999) )) == 1,
-        (listGet oddsBack 1 ?: ((0 - 999) )) == 3,
-        (listGet oddsBack 2 ?: ((0 - 999) )) == 5,
-        (listGet evensBack 0 ?: ((0 - 999) )) == 2,
-        (listGet evensBack 3 ?: ((0 - 999) )) == 8,
+        structuralEquals [(listGet oddsBack 0 ?: ((0 - 999) )), (listGet oddsBack 1 ?: ((0 - 999) ))] [1, 3],
+        structuralEquals [(listGet oddsBack 2 ?: ((0 - 999) )), (listGet evensBack 0 ?: ((0 - 999) ))] [5, 2],
+        structuralEquals [(listGet evensBack 3 ?: ((0 - 999) )), listLength listMissing] [8, 1],
+        structuralEquals [(listGet listMissing 0 ?: ((0 - 999) )), listLength oddsGrown] [0, 4],
+        structuralEquals [(listGet oddsGrown 3 ?: ((0 - 999) )), listLength oddsBack] [7, 3],
+        structuralEquals [listLength odds, (listGet (listReverse evensBack) 0 ?: ((0 - 999) ))] [3, 8],
         (listGet oddsBack 3 ?: ((0 - 999) )) == ((0 - 999) ),
         listContains oddsBack 5,
         !(listContains oddsBack 2),
         listContains evensBack 8,
-        !(listContains evensBack 1),
-        listLength listMissing == 1,
-        (listGet listMissing 0 ?: ((0 - 999) )) == 0,
-        listLength oddsGrown == 4,
-        (listGet oddsGrown 3 ?: ((0 - 999) )) == 7,
-        listLength oddsBack == 3,
-        listLength odds == 3,
-        (listGet (listReverse evensBack) 0 ?: ((0 - 999) )) == 8
+        !(listContains evensBack 1)
     ]
 
     // A record carries a whole Map and a whole List, and a map of records hands
     // each record back whole with its nested collections still addressable.
     checkAll "records hold collections and maps hold records" [
-        bucketA.name == "alpha",
+        structuralEquals [bucketA.name, (listGet bucketTags 0 ?: "none")] ["alpha", "red"],
+        structuralEquals [(listGet bucketTags 1 ?: "none"), alphaBack.name] ["blue", "alpha"],
+        structuralEquals [betaBack.name, bucketMissing.name] ["beta", "none"],
         structuralEquals [mapLength bucketItems, mapLength bucketA.items, listLength bucketTags] [2, 2, 2],
+        structuralEquals [mapLength betaItems, intAt (betaItems, "z"), listLength betaTags] [2, 30, 3],
+        structuralEquals [mapLength buckets, mapLength missingItems] [2, 0],
         structuralEquals (mapList ["x", "y"] (\k => intAt (bucketItems, k))) [1, 2],
         !(mapContains bucketItems "z"),
-        (listGet bucketTags 0 ?: "none") == "red",
-        (listGet bucketTags 1 ?: "none") == "blue",
         listContains bucketTags "blue",
         !(listContains bucketTags "green"),
-        structuralEquals [alphaBack.name, betaBack.name, bucketMissing.name] ["alpha", "beta", "none"],
-        mapLength betaItems == 2,
-        intAt (betaItems, "z") == 30,
         !(mapContains betaItems "y"),
-        listLength betaTags == 3,
         listContains betaTags "green",
-        mapLength buckets == 2,
         listContains (mapKeys buckets) "alpha",
         !(listContains (mapKeys buckets) "gamma"),
-        mapLength missingItems == 0,
         isEmpty missingItems
     ]
 
@@ -906,8 +859,7 @@ keyValueViewPairingCase () =
     // of the other; 1+2+3+4+5+6 = 21 is order-independent. The two sentinels
     // differ so a pair of failed lookups cannot satisfy the equality.
     checkAll "key and value views pair index by index" [
-        listLength keys == 6,
-        listLength values == 6,
+        structuralEquals [listLength keys, listLength values, total] [6, 6, 21],
         listLength keys == mapLength m,
         listLength values == mapLength m,
         (mapGet m (listGet keys 0 ?: "absent") ?: ((0 - 1) )) == (listGet values 0 ?: ((0 - 2) )),
@@ -916,7 +868,6 @@ keyValueViewPairingCase () =
         (mapGet m (listGet keys 3 ?: "absent") ?: ((0 - 1) )) == (listGet values 3 ?: ((0 - 2) )),
         (mapGet m (listGet keys 4 ?: "absent") ?: ((0 - 1) )) == (listGet values 4 ?: ((0 - 2) )),
         (mapGet m (listGet keys 5 ?: "absent") ?: ((0 - 1) )) == (listGet values 5 ?: ((0 - 2) )),
-        total == 21,
         mapContains m (listGet keys 0 ?: "absent"),
         mapContains m (listGet keys 1 ?: "absent"),
         mapContains m (listGet keys 2 ?: "absent"),
@@ -946,8 +897,7 @@ keyValueViewPairingCase () =
     // leaves the key count at six, and the source map still totals 21.
     checkAll "an overwrite moves exactly one paired value" [
         structuralEquals [listLength bumpedKeys, listLength bumpedValues, mapLength bumped, bumpedTotal] [6, 6, 6, 51],
-        (bumpedTotal - total ) == 30,
-        structuralEquals [intAt (bumped, "c"), intAt (m, "c"), total] [33, 3, 21],
+        structuralEquals [(bumpedTotal - total ), intAt (bumped, "c"), intAt (m, "c"), total] [30, 33, 3, 21],
         listContains bumpedValues 33,
         !(listContains bumpedValues 3),
         listContains values 3,
@@ -964,22 +914,21 @@ keyValueViewPairingCase () =
     // Removing "e" drops the total by exactly its value 5 (21 -> 16) and both
     // views by one entry, while the remaining five stay paired.
     checkAll "a removal drops exactly one pair" [
-        structuralEquals [listLength trimmedKeys, listLength trimmedValues, mapLength trimmed] [5, 5, 5],
-        trimmedTotal == 16,
-        (total - trimmedTotal ) == 5,
+        structuralEquals [listLength trimmedKeys, listLength trimmedValues] [5, 5],
+        structuralEquals [mapLength trimmed, trimmedTotal] [5, 16],
+        structuralEquals [(total - trimmedTotal ), listLength keys] [5, 6],
+        listLength (mapKeys (mapRemove trimmed "zzz")) == 5,
+        listLength (mapValues (mapRemove trimmed "zzz")) == 5,
         !(listContains trimmedKeys "e"),
         !(listContains trimmedValues 5),
         listContains trimmedKeys "a",
         listContains trimmedValues 6,
-        listLength keys == 6,
         listContains keys "e",
         (mapGet trimmed (listGet trimmedKeys 0 ?: "absent") ?: ((0 - 1) )) == (listGet trimmedValues 0 ?: ((0 - 2) )),
         (mapGet trimmed (listGet trimmedKeys 1 ?: "absent") ?: ((0 - 1) )) == (listGet trimmedValues 1 ?: ((0 - 2) )),
         (mapGet trimmed (listGet trimmedKeys 2 ?: "absent") ?: ((0 - 1) )) == (listGet trimmedValues 2 ?: ((0 - 2) )),
         (mapGet trimmed (listGet trimmedKeys 3 ?: "absent") ?: ((0 - 1) )) == (listGet trimmedValues 3 ?: ((0 - 2) )),
-        (mapGet trimmed (listGet trimmedKeys 4 ?: "absent") ?: ((0 - 1) )) == (listGet trimmedValues 4 ?: ((0 - 2) )),
-        listLength (mapKeys (mapRemove trimmed "zzz")) == 5,
-        listLength (mapValues (mapRemove trimmed "zzz")) == 5
+        (mapGet trimmed (listGet trimmedKeys 4 ?: "absent") ?: ((0 - 1) )) == (listGet trimmedValues 4 ?: ((0 - 2) ))
     ]
 
 test "mapKeys and mapValues stay paired index by index" (\() => exactArithmetic (keyValueViewPairingCase))

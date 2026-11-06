@@ -29,16 +29,15 @@ eagerCombinatorsCase () =
 
     checkAll "filterList keeps matching elements in index order" [
         join (filterList words (\word => word != "beta")) "," == "alpha,gamma",
+        join (filterList ["a", "b", "c"] (\w => w != "b")) "," == "a,c",
         listLength (filterList ints (\n => n > 1)) == 2,
         (listGet (filterList ints (\n => n > 1)) 0 ?: 0) == 3,
-        (listGet (filterList ints (\n => n > 1)) 1 ?: 0) == 2,
-        join (filterList ["a", "b", "c"] (\w => w != "b")) "," == "a,c"
+        (listGet (filterList ints (\n => n > 1)) 1 ?: 0) == 2
     ]
 
     checkAll "foldList reduces in index order" [
-        foldList ints 0 weave == 312,
-        foldList words "" (\(acc, word) => acc + word) == "betaalphagamma",
-        foldList [1, 2, 3] 0 weave == 123
+        structuralEquals [foldList ints 0 weave, foldList [1, 2, 3] 0 weave] [312, 123],
+        foldList words "" (\(acc, word) => acc + word) == "betaalphagamma"
     ]
 
 (** listSort is ascending and total for int and string lists; a float, bool or
@@ -90,9 +89,9 @@ sortByCase () =
         titles (listSortBy evidence (\(x, y) => order (x.at, y.at))) == "alert,boot,disk,crash",
         titles (listSortBy evidence (\(x, y) => satMul newestFirst (order (x.at, y.at)))) == "crash,disk,alert,boot",
         join (mapList (listSortBy [2.5, -1.0, 0.5] order) toString) "," == "-1.0,0.5,2.5",
+        titles (listSortBy [Evidence(title = "only", at = 0)] byTitle) == "only",
         join (listSortBy words order) "," == join (listSort words) ",",
-        listLength (listSortBy (List ()) order) == 0,
-        titles (listSortBy [Evidence(title = "only", at = 0)] byTitle) == "only"
+        listLength (listSortBy (List ()) order) == 0
     ]
 
 test "list map/filter/fold traverse eagerly" (\() => eagerCombinatorsCase ())

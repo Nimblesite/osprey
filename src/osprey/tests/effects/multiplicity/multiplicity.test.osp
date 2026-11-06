@@ -98,9 +98,8 @@ fn retrySendsOneReceiptCase() = {
     })
     checkAll("retry answers once and mails once", [
         run.outcome == "settled 120",
-        attempts == 2,
-        run.receipts == 1,
         run.transcript == "declined: gateway timeout; retrying\nemail: receipt for 120\n",
+        structuralEquals([attempts, run.receipts], [2, 1]),
         !contains(run.transcript, "email: receipt for 120\nemail: receipt for 120\n")
     ])
 }
@@ -123,8 +122,8 @@ fn declineSendsNoReceiptCase() = {
     })
     checkAll("abandoning the continuation mails nothing", [
         run.outcome == "declined: gateway timeout",
-        run.receipts == 0,
-        run.transcript == "abandoned 75: gateway timeout\n"
+        run.transcript == "abandoned 75: gateway timeout\n",
+        run.receipts == 0
     ])
 }
 
@@ -182,8 +181,7 @@ fn contextualKeywordCase() = {
     let many = 100
     let abort = (many + total) 
     checkAll("modifier words stay ordinary identifiers", [
-        total == 15,
-        abort == 115
+        structuralEquals([total, abort], [15, 115])
     ])
 }
 

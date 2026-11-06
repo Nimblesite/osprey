@@ -93,10 +93,8 @@ print "mixed answer: ${stoppedAnswer}"
 // Verify both continuation policies and their exact operation counts.
 
 test "resuming completes while returning aborts the pipeline" (\() => exactArithmetic ((\() => checkAll "abort versus resume state" [
-    recovered == 60,
-    counter == 3,
+    structuralEquals [recovered, counter, counter2] [60, 3, 2],
     aborted == sentinel,
-    counter2 == 2,
     recovered != aborted,
     stoppedAnswer == "stopped"
 ])))

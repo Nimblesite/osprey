@@ -133,26 +133,25 @@ fn stringPipelineCase() = {
         Error { message } => message != ""
     }
     checkAll("string inspection and transformations", [
-        length(source) == 36,
+        structuralEquals([length(source), source.length()], [36, 36]),
         structuralEquals([isEmpty(source), contains(source, "GET"), startsWith(source, "  ")], [false, true, true]),
         endsWith(source, "  "),
-        source.length() == 36,
-        cleaned == "get /api/users?name=alice&age=30",
+        structuralEquals([cleaned, toUpperCase("hello")], ["get /api/users?name=alice&age=30", "HELLO"]),
+        structuralEquals([trimStart("  hi  "), trimEnd("  hi  ")], ["hi  ", "  hi"]),
+        structuralEquals([drop("hello", 3), reverse("abc")], ["lo", "cba"]),
         startsWith(cleaned, "get "),
-        structuralEquals([toUpperCase("hello"), trimStart("  hi  "), trimEnd("  hi  ")], ["HELLO", "hi  ", "  hi"]),
-        structuralEquals([join(["a", "b", "c"], "-"), cleaned |> take(5), take("hello", 3)], ["a-b-c", "get /", "hel"]),
-        structuralEquals([drop("hello", 3), reverse("abc")], ["lo", "cba"])
+        structuralEquals([join(["a", "b", "c"], "-"), cleaned |> take(5), take("hello", 3)], ["a-b-c", "get /", "hel"])
     ])
     checkAll("fallible string values and collection results", [
-        (indexOf(source, "?") ?: ((0 - 1) )) == 16,
+        structuralEquals([(indexOf(source, "?") ?: ((0 - 1) )), (parseInt("123") ?: 0)], [16, 123]),
+        structuralEquals([listLength(lines("a\nb\nc")), listLength(words("  hello   world  "))], [3, 2]),
+        splitCount == 3,
         (substring("hello world", 6, 11) ?: "missing") == "world",
         (replace("a-b-c-d", "-", "/") ?: "missing") == "a/b/c/d",
         (repeat("ab", 4) ?: "missing") == "abababab",
         (padStart("42", 5, "0") ?: "missing") == "00042",
         (padEnd("42", 5, "0") ?: "missing") == "42000",
-        (parseInt("123") ?: 0) == 123,
         (parseFloat("3.14") ?: 0.0) == 3.14,
-        structuralEquals([listLength(lines("a\nb\nc")), listLength(words("  hello   world  ")), splitCount], [3, 2, 3]),
         splitEmptyRejected,
         invalidIntegerRejected,
         missingIndexRejected

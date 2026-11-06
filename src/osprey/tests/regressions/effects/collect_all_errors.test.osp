@@ -96,19 +96,18 @@ fn collectAllErrorsCase() = {
     ])
 
     checkAll("validation reports retain strings inside nested collections", [
-            listLength(reports) == 8,
-            (reports.listGet(0) ?: "missing").contains("REJECTED (4 errors"),
-            (reports.listGet(1) ?: "missing").contains("ACCEPTED (0 errors)"),
-            (reports.listGet(7) ?: "missing").contains("missing '@'"),
-            mapLength(byKind) == 3,
+            structuralEquals([listLength(reports), mapLength(byKind)], [8, 3]),
             listLength(byKind.mapGet("multi") ?: ["missing"]) == 2,
             listLength(byKind.mapGet("clean") ?: ["missing"]) == 3,
             listLength(byKind.mapGet("single") ?: ["missing"]) == 5,
+            listLength(mapKeys(byKind)) == 3,
+            listLength(mapValues(byKind)) == 3,
+            (reports.listGet(0) ?: "missing").contains("REJECTED (4 errors"),
+            (reports.listGet(1) ?: "missing").contains("ACCEPTED (0 errors)"),
+            (reports.listGet(7) ?: "missing").contains("missing '@'"),
             ((byKind.mapGet("multi") ?: ["missing"]).listGet(1) ?: "missing").contains("REJECTED (3 errors"),
             ((byKind.mapGet("clean") ?: ["missing"]).listGet(2) ?: "missing").contains("ACCEPTED (0 errors)"),
             ((byKind.mapGet("single") ?: ["missing"]).listGet(3) ?: "missing").contains("score above 100"),
-            listLength(mapKeys(byKind)) == 3,
-            listLength(mapValues(byKind)) == 3,
             !mapContains(byKind, "missing")
     ])
 }

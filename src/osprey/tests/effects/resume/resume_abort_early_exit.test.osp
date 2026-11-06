@@ -134,9 +134,9 @@ fn resumeSiblingArmIndependenceCase() = {
 
     // A sibling's `resume` must not turn these arms into early exits.
     checkAll("sibling-arm internal state", [
-        structuralEquals([result, tallyCalls, supplyCalls, lastSupplied, resumedAnswer], [510, 1, 2, 300, 510]),
-        resumedAnswer == result,
-        (tallyCalls + supplyCalls ) == 3
+        structuralEquals([result, tallyCalls, supplyCalls], [510, 1, 2]),
+        structuralEquals([lastSupplied, resumedAnswer, (tallyCalls + supplyCalls )], [300, 510, 3]),
+        resumedAnswer == result
     ])
 }
 

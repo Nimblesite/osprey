@@ -26,7 +26,7 @@ resumeRecoveryContinuesCase () =
                 answer
         recoveredSum ()
     checkAll "resuming recovery continues" [
-        result == 42, completed == 42, calls == 1
+        structuralEquals [result, completed, calls] [42, 42, 1]
     ]
 
 (** FatalExit models one operation whose recoverable branch resumes and fatal branch stops. *)
@@ -69,7 +69,7 @@ fatalExitStopsDeepCallCase () =
                 _ => resume 0
         middleFailure ()
     checkAll "fatal exit stops deep call" [
-        result == 503, failures == 1,
+        structuralEquals [result, failures] [503, 1],
         trace == "middle-before|deepest|",
         !(contains trace "middle-after")
     ]
@@ -103,7 +103,8 @@ recursiveRetryCase () =
                 resume candidate
         requirePositive 1
     checkAll "recursive retry remains handled" [
-        accepted == 9, calls == 3, supplied == "-3|0|9|"
+        structuralEquals [accepted, calls] [9, 3],
+        supplied == "-3|0|9|"
     ]
 
 (** ParseRecovery supplies an integer while LookupRecovery supplies a string. *)
@@ -141,7 +142,7 @@ nestedRecoveryChannelsCase () =
         recoveredConfig ()
     checkAll "nested typed recoveries compose" [
         score == 8089,
-        entered == "parse|lookup|", settled == "lookup|parse|"
+        structuralEquals [entered, settled] ["parse|lookup|", "lookup|parse|"]
     ]
 
 (** ScopedRecovery demonstrates nearest-handler lookup for a resuming effect. *)
@@ -172,7 +173,7 @@ resumingHandlerShadowCase () =
         after = scopedValue 3
         before + inside + after 
     checkAll "resuming handler shadow and restore" [
-        total == 216, outerCalls == 2, innerCalls == 1
+        structuralEquals [total, outerCalls, innerCalls] [216, 2, 1]
     ]
 
 (** WrapAnswer exposes how post-resume code can transform the completed answer. *)
@@ -195,7 +196,8 @@ postResumeTransformsAnswerCase () =
                 answer * 2 
         wrappedBody ()
     checkAll "post-resume code transforms answer" [
-        bodyAnswer == 11, result == 22, result == (bodyAnswer * 2 )
+        structuralEquals [bodyAnswer, result] [11, 22],
+        result == (bodyAnswer * 2 )
     ]
 
 (** ResultRecovery returns the complete Result value through a continuation. *)
@@ -224,7 +226,7 @@ resumeWholeResultCase () =
                 answer
         resultValue "ready" + resultValue "absent" 
     checkAll "resume carries whole Result values" [
-        total == 14, calls == 2, settled == 2, length "missing" == 7
+        structuralEquals [total, calls, settled, length "missing"] [14, 2, 2, 7]
     ]
 
 (** RecoveryChoice is a domain-specific value supplied by a handler. *)
@@ -253,7 +255,8 @@ resumeTaggedChoiceCase () =
                     _ => resume (Reject 12)
         choiceValue "cache" + choiceValue "network" 
     checkAll "resume carries tagged recovery choices" [
-        total == 18, calls == 2, total == (30 - 12 )
+        structuralEquals [total, calls] [18, 2],
+        total == (30 - 12 )
     ]
 
 (** DeepRecovery drives many sequential suspensions through one handler. *)
@@ -279,7 +282,8 @@ deepResumeStressCase () =
                 answer
         deepSum 32
     checkAll "deep resume stress" [
-        total == 528, entered == 32, settled == 32, entered == settled
+        structuralEquals [total, entered, settled] [528, 32, 32],
+        entered == settled
     ]
 
 (** TypedRecovery combines integer, string, boolean, and Unit operations in one region. *)
@@ -324,8 +328,7 @@ heterogeneousResumeCase () =
                 resume ()
         typedRecoveryBody ()
     checkAll "heterogeneous operation resumes" [
-        result == 16, calls == 4,
-        length "osprey.local" == 12
+        structuralEquals [result, calls, length "osprey.local"] [16, 4, 12]
     ]
 
 (** StringAnswerRecovery carries a managed continuation answer out of a handler. *)
@@ -353,8 +356,8 @@ stringAnswerCase () =
         stringAnswerBody ()
 
     checkAll "managed continuation answer" [
-        answer == "ready!", calls == 1,
-        length answer == 6
+        answer == "ready!",
+        structuralEquals [calls, length answer] [1, 6]
     ]
 
 (** SixteenArgumentRecovery locks the largest operation payload the current runtime transports. *)
@@ -379,7 +382,7 @@ sixteenArgumentBoundaryCase () =
                 resume a16
         sixteenArgumentBody ()
     checkAll "sixteen-argument resume boundary" [
-        result == 116, calls == 1,
+        structuralEquals [result, calls] [116, 1],
         observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16"
     ]
 
@@ -431,8 +434,8 @@ wideManagedArgumentCase () =
         wideManagedBody ()
 
     checkAll "wide managed argument transport" [
-        joined == "s11s22s33s44s55s66s77s88s99", calls == 1,
-        length joined == 27
+        joined == "s11s22s33s44s55s66s77s88s99",
+        structuralEquals [calls, length joined] [1, 27]
     ]
 
 // Register recovery that resumes the caller with a fallback.

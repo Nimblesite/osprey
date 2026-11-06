@@ -99,15 +99,13 @@ fn sqliteRoundTripCase() = {
     let testFreed = osprey_ffi_free(cell: testCell)
     // Opening, schema creation, and status rendering agree on SQLITE_OK.
     checkAll("SQLite setup status", [
-        testOpen == 0,
-        okText(testOpen) == "ok",
-        testDdl == 0
+        structuralEquals([testOpen, testDdl], [0, 0]),
+        okText(testOpen) == "ok"
     ])
     // Bound parameters produce SQLITE_DONE and the expected typed row.
     checkAll("SQLite bound row", [
-        structuralEquals([testInsert, testRow, selectedId], [101, 100, 7]),
-        selectedName == "Grace",
-        testDone == 101
+        structuralEquals([testInsert, testRow, selectedId, testDone], [101, 100, 7, 101]),
+        selectedName == "Grace"
     ])
     // Statements, connections, and generic pointer cells all release cleanly.
     checkAll("SQLite cleanup status", [

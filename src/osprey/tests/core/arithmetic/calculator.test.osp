@@ -44,8 +44,7 @@ fn pipelineCase() = {
     let six = 3 |> double
     // Every condition is reported separately even though the syntax is grouped.
     checkAll("pipeline state", [
-        (10 |> double |> double) == 40,
-        (5 |> fn(x) => x + 100) == 105,
+        structuralEquals([(10 |> double |> double), (5 |> fn(x) => x + 100)], [40, 105]),
         (six |> fn(x) => add(x, 4)) == 10,
         (-2 |> double |> double) == -8,
         (6 |> double |> fn(x) => x == 12),

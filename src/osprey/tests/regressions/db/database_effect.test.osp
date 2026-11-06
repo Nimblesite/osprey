@@ -188,9 +188,9 @@ fn databaseEffectCase() = {
         Success { value } => checkAll("Database effect round trip", [
             databaseOpened(result),
             structuralEquals([value.createStatus, value.insertStatus, value.rowStatus], [0, 101, 100]),
-            value.selectedId == 7,
-            value.selectedName == "Grace",
-            structuralEquals([value.doneStatus, value.finalizeStatus, value.closeStatus], [101, 0, 0])
+            structuralEquals([value.selectedId, value.doneStatus], [7, 101]),
+            structuralEquals([value.finalizeStatus, value.closeStatus], [0, 0]),
+            value.selectedName == "Grace"
         ])
         Error { message } => checkAll("Database effect open result", [
             databaseOpened(result),

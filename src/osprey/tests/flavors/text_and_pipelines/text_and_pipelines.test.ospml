@@ -28,10 +28,8 @@ pipeChainCase () =
     ]
     // Exercise intermediate, zero, and reordered stages.
     checkAll "pipe chain composition edges" [
-        (5 |> pipeInc) == 6,
-        p1 == pipeDouble (pipeInc 5),
-        (0 |> pipeInc |> pipeDouble) == 2,
-        (3 |> pipeSquare |> pipeDouble) == 18
+        structuralEquals [(5 |> pipeInc), (0 |> pipeInc |> pipeDouble), (3 |> pipeSquare |> pipeDouble)] [6, 2, 18],
+        p1 == pipeDouble (pipeInc 5)
     ]
 
 (** Append an exclamation mark. *)
@@ -52,15 +50,13 @@ stringsCase () =
     ]
     // Check each dynamic string independently.
     checkAll "strings legacy constituent values" [
-        structuralEquals [hello, stringShout hello, stringShout (stringGreet name)] ["Hi Ada", "Hi Ada!", "Hi Ada!"],
-        hello + name == "Hi AdaAda"
+        structuralEquals [hello, stringShout hello] ["Hi Ada", "Hi Ada!"],
+        structuralEquals [stringShout (stringGreet name), hello + name] ["Hi Ada!", "Hi AdaAda"]
     ]
     // Exercise empty inputs, nested calls, and reversed concatenation.
     checkAll "strings composition edges" [
-        stringGreet "" == "Hi ",
-        stringShout "" == "!",
-        stringShout hello == stringShout (stringGreet name),
-        name + hello == "AdaHi Ada"
+        structuralEquals [stringGreet "", stringShout "", name + hello] ["Hi ", "!", "AdaHi Ada"],
+        stringShout hello == stringShout (stringGreet name)
     ]
     rows = [1, 2, 3]
     // A lambda parameter inside an interpolation stays code: `\row`, `\name`, `\thing`, `\each` and `\zero` are not escapes.

@@ -43,23 +43,23 @@ selectiveRebuild () =
     batch = refreshAll changedCursor (signalDependencies status) 3 6
     idle = refreshAll batch [] 99 99
     checkAll "selective reactive views" [
-        first.status.value == "count=1/cursor=2",
-        changedCount.counter.value == "count=7", changedCount.cursor.value == "cursor=2",
-        changedCount.status.value == "count=7/cursor=9", changedCount.footer.revision == 1,
-        changedCount.counter.revision == 2, changedCount.cursor.revision == 1,
-        changedCursor.counter.value == "count=7", changedCursor.cursor.value == "cursor=4",
-        changedCursor.status.value == "count=8/cursor=4",
-        batch.counter.value == "count=3", batch.cursor.value == "cursor=6", batch.status.revision == 4,
-        idle.status.value == batch.status.value, idle.status.revision == 4,
-        idle.footer.value == "ready", idle.footer.revision == 1,
+        structuralEquals [first.status.value, changedCount.counter.value] ["count=1/cursor=2", "count=7"],
+        structuralEquals [changedCount.cursor.value, changedCount.status.value] ["cursor=2", "count=7/cursor=9"],
+        structuralEquals [changedCursor.counter.value, changedCursor.cursor.value] ["count=7", "cursor=4"],
+        structuralEquals [changedCursor.status.value, batch.counter.value] ["count=8/cursor=4", "count=3"],
+        structuralEquals [batch.cursor.value, idle.footer.value] ["cursor=6", "ready"],
+        structuralEquals [changedCount.footer.revision, changedCount.counter.revision] [1, 2],
+        structuralEquals [changedCount.cursor.revision, batch.status.revision] [1, 4],
+        structuralEquals [idle.status.revision, idle.footer.revision] [4, 1],
+        idle.status.value == batch.status.value,
     ]
 
 conservativeBranches () =
     first = underSignals (1, 2, \() => signalSnapshot (\() => branch true))
     changed = underSignals (5, 9, \() => signalRefresh first (signalDependencies cursor) (\() => branch true))
     checkAll "may-read includes an inactive branch" [
-        length first.dependencies == 2, first.value == "count=1",
-        changed.value == "count=5", changed.revision == 2,
+        structuralEquals [length first.dependencies, changed.revision] [2, 2],
+        structuralEquals [first.value, changed.value] ["count=1", "count=5"],
     ]
 
 callbackReplacementAndUnknown () =
@@ -70,8 +70,9 @@ callbackReplacementAndUnknown () =
         signalRefresh first [] cursorLabel
     unknown = underCount (3, \() => relay (\() => signalSnapshot counterLabel))
     checkAll "callback replacement updates dependencies" [
-        replacement.value == "cursor=8", replacement.revision == 2,
-        join replacement.dependencies ";" == join (signalDependencies cursorLabel) ";", unknown.value == "count=3",
+        structuralEquals [replacement.value, unknown.value] ["cursor=8", "count=3"],
+        replacement.revision == 2,
+        join replacement.dependencies ";" == join (signalDependencies cursorLabel) ";",
     ]
 
 rowsStayOpen callback = signalSnapshot callback
@@ -80,16 +81,16 @@ unresolvedCallbacksRebuild () =
     first = rowsStayOpen (\() => "first")
     next = unknownRefresh first (\() => "next")
     checkAll "unknown dependencies invalidate conservatively" [
-        join first.dependencies ";" == "<unknown>", first.value == "first",
-        next.value == "next", next.revision == 2,
+        structuralEquals [join first.dependencies ";", first.value, next.value] ["<unknown>", "first", "next"],
+        next.revision == 2,
     ]
 
 managedValues () =
     first = underCount (2, \() => signalSnapshot (\() => [counterLabel (), "kept"]))
     next = underCount (4, \() => signalRefresh first (signalDependencies count) (\() => [counterLabel (), "kept"]))
     checkAll "snapshots own managed values independently" [
-        join first.value "," == "count=2,kept", join next.value "," == "count=4,kept",
-        first.revision == 1, next.revision == 2,
+        structuralEquals [join first.value ",", join next.value ","] ["count=2,kept", "count=4,kept"],
+        structuralEquals [first.revision, next.revision] [1, 2],
     ]
 
 effect Audit
@@ -109,7 +110,7 @@ evaluationAndNoOp () =
     idle = underCount (9, \() => signalRefresh first [] (factory ()))
     metadata = signalDependencies (factory ())
     checkAll "arguments run once and clean caches skip their callback" [
-        trail == "factory;build;factory;factory;", first.value == "count=2", idle.value == "count=2",
+        structuralEquals [trail, first.value, idle.value] ["factory;build;factory;factory;", "count=2", "count=2"],
         idle.revision == 1, join metadata ";" == join (signalDependencies count) ";"
     ]
 
@@ -117,7 +118,8 @@ unresolvedChangesRebuild () =
     first = signalSnapshot (\() => "first")
     next = signalRefresh first ["<unknown>"] (\() => "next")
     checkAll "unknown changes invalidate conservatively" [
-        first.value == "first", next.value == "next", next.revision == 2
+        structuralEquals [first.value, next.value] ["first", "next"],
+        next.revision == 2
     ]
 
 maybeLabel allowed = match allowed
@@ -133,7 +135,8 @@ cachedResultsKeepBothVariants () =
         Success value => value
         Error message => message
     checkAll "cached results preserve success and error payloads" [
-        firstAnswer == "count=2", nextAnswer == "denied", first.revision == 1, next.revision == 2
+        structuralEquals [firstAnswer, nextAnswer] ["count=2", "denied"],
+        structuralEquals [first.revision, next.revision] [1, 2]
     ]
 
 test "reactive views rebuild selectively through helpers" selectiveRebuild
@@ -180,12 +183,15 @@ refreshArgumentsKeepTheirLayout () =
     snapshot = underCount (5, \() => describeSnapshot (signalSnapshot counterLabel))
     print "refresh arguments: ${direct} ${built.region}=${built.json}@${built.revision} ${kept.region}=${kept.json}@${kept.revision} ${bound} ${snapshot} ${describeSnapshot first}"
     checkAll "refreshed snapshots keep their record layout as call arguments" [
-        direct == "count=3@1", built.region == "list", built.json == "count=3", built.revision == 1,
+        structuralEquals [direct, built.region] ["count=3@1", "list"],
+        structuralEquals [built.json, kept.region] ["count=3", "kept"],
+        structuralEquals [kept.json, bound] ["count=2", "count=4@1"],
+        structuralEquals [snapshot, describeSnapshot first] ["count=5@1", "count=2@1"],
+        pickRow ({ revision = 9, value = "cached" }, false) == "cached@9",
+        pickRow ({ revision = 9, value = "cached" }, true) == "fresh@1",
+        structuralEquals [built.revision, kept.revision] [1, 1],
         join built.dependencies ";" == join (signalDependencies counterLabel) ";",
-        kept.region == "kept", kept.json == "count=2", kept.revision == 1,
         join kept.dependencies ";" == join first.dependencies ";",
-        bound == "count=4@1", snapshot == "count=5@1", describeSnapshot first == "count=2@1",
-        pickRow ({ revision = 9, value = "cached" }, false) == "cached@9", pickRow ({ revision = 9, value = "cached" }, true) == "fresh@1",
     ]
 
 test "refreshed snapshots keep their layout as call arguments" refreshArgumentsKeepTheirLayout

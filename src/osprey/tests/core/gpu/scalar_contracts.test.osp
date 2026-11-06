@@ -16,7 +16,9 @@ fn listValueTagsCase() = {
     withBuffer(toGpu(floatListValue()), fn(floats) => {
             withBuffer(toGpu(boolListValue()), fn(flags) => {
                     checkAll("runtime list values keep GPU scalar tags", [
-                            gpuLength(floats) == 2, (gpuGet(floats, 0) ?: 99.0) == 1.5, (gpuGet(floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded15) => (uploaded15) == 4.0), gpuLength(flags) == 3, (gpuGet(flags, 0) ?: true) == false, (gpuGet(flags, 1) ?: true) == false, (gpuGet(flags, 2) ?: false) == true,
+                            structuralEquals([gpuLength(floats), gpuLength(flags)], [2, 3]),
+                            structuralEquals([(gpuGet(floats, 0) ?: 99.0), (gpuGet(floats, 1) ?: 99.0)], [1.5, 2.5]),
+                            gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded15) => (uploaded15) == 4.0), (gpuGet(flags, 0) ?: true) == false, (gpuGet(flags, 1) ?: true) == false, (gpuGet(flags, 2) ?: false) == true,
                             gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded14) => (uploaded14) == 1)
                     ])
                 })
@@ -28,7 +30,11 @@ fn fromGpuScalarCase() = {
                     withBuffer(toGpu([true, false, true]), fn(uploaded16) => {
                             withBuffer(fromGpu(uploaded16), fn(flags) => {
                                     checkAll("fromGpu preserves float and bool list elements", [
-                                            listLength(floats) == 3, (listGet(floats, 0) ?: 99.0) == 1.25, (listGet(floats, 1) ?: 99.0) == 2.5, (listGet(floats, 2) ?: 99.0) == 5.0, listLength(flags) == 3, (listGet(flags, 0) ?: false) == true, (listGet(flags, 1) ?: true) == false, (listGet(flags, 2) ?: false) == true
+                                            structuralEquals([listLength(floats), listLength(flags)], [3, 3]),
+                                            (listGet(floats, 0) ?: 99.0) == 1.25,
+                                            (listGet(floats, 1) ?: 99.0) == 2.5,
+                                            (listGet(floats, 2) ?: 99.0) == 5.0,
+                                            (listGet(flags, 0) ?: false) == true, (listGet(flags, 1) ?: true) == false, (listGet(flags, 2) ?: false) == true
                                     ])
                                 })
                         })
@@ -45,8 +51,14 @@ fn repeatedCrossingCase() = {
                                                     withBuffer(fromGpu(floats), fn(floatsBack) => {
                                                             withBuffer(fromGpu(flags), fn(flagsBack) => {
                                                                     checkAll("repeated host and GPU crossings retain scalar types", [
-                                                                            gpuLength(floats) == 2, (gpuGet(floats, 0) ?: 99.0) == 1.5, (gpuGet(floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded13) => (uploaded13) == 4.0), (listGet(floatsBack, 0) ?: 99.0) == 1.5, (listGet(floatsBack, 1) ?: 99.0) == 2.5,
-                                                                            gpuLength(flags) == 3, gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded12) => (uploaded12) == 1), (listGet(flagsBack, 0) ?: true) == false, (listGet(flagsBack, 2) ?: false) == true
+                                                                            gpuLength(floats) == 2,
+                                                                            gpuLength(flags) == 3,
+                                                                            (gpuGet(floats, 0) ?: 99.0) == 1.5,
+                                                                            (gpuGet(floats, 1) ?: 99.0) == 2.5,
+                                                                            (listGet(floatsBack, 0) ?: 99.0) == 1.5,
+                                                                            (listGet(floatsBack, 1) ?: 99.0) == 2.5,
+                                                                            gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded13) => (uploaded13) == 4.0),
+                                                                            gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded12) => (uploaded12) == 1), (listGet(flagsBack, 0) ?: true) == false, (listGet(flagsBack, 2) ?: false) == true
                                                                     ])
                                                                 })
                                                         })
@@ -173,12 +185,17 @@ fn gpuAbsoluteCase() = {
                         Success { value } => {
                             let integers = value
                             checkAll("GPU abs keeps float and integer callback contracts", [
-                                    (gpuGet(floats, 0) ?: 0.0) == 2.5, toString(gpuGet(floats, 1) ?: 1.0) == "0.0", (gpuGet(floats, 2) ?: 0.0) == 3.5, (gpuGet(integers, 0) ?: 0) == 17, (gpuGet(integers, 1) ?: 0) == 3, (gpuGet(integers, 2) ?: 0) == 4, faults == "abs"
+                                    (gpuGet(floats, 0) ?: 0.0) == 2.5,
+                                    (gpuGet(floats, 2) ?: 0.0) == 3.5,
+                                    structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", "abs"]),
+                                    structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0)], [17, 3]),
+                                    (gpuGet(integers, 2) ?: 0) == 4
                             ])
                         }
                         Error { message } => checkAll("GPU abs keeps float and integer callback contracts", [
-                                (gpuGet(floats, 0) ?: 0.0) == 2.5, toString(gpuGet(floats, 1) ?: 1.0) == "0.0", (gpuGet(floats, 2) ?: 0.0) == 3.5,
-                                gpuDevice() != "host", contains(message, "integer overflow"), faults == "",
+                                structuralEquals([(gpuGet(floats, 0) ?: 0.0), (gpuGet(floats, 2) ?: 0.0)], [2.5, 3.5]),
+                                structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", ""]),
+                                gpuDevice() != "host", contains(message, "integer overflow"),
                                 gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
                         ])
                     }

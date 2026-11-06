@@ -100,8 +100,7 @@ fn sharedAcrossStagesCase() = {
         twice(logged, 0)
     }
     checkAll("one function serves both stages", [
-        early == 128,
-        late == 2,
+        structuralEquals([early, late], [128, 2]),
         transcript == "step 0 -> 1;step 1 -> 2;"
     ])
 }

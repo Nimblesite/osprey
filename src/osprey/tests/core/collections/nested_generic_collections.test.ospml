@@ -74,14 +74,12 @@ nestedListEffectPatternCase () =
     checkMatrix "four leaf arguments survive nested Result extraction" bools [[true, false], [false, true, true]] [false] false
 
     checkAll "four leaf arguments survive nested Result extraction" [
-        structuralEquals [listLength ints, listLength strings, listLength floats, listLength bools] [2, 2, 2, 2],
-        listLength (listGet ints 0 ?: [99]) == 2,
-        listLength (listGet ints 1 ?: [99]) == 3,
-        nestedAt (ints, 8, 0, [91, 92], 99) == 91,
-        nestedAt (ints, 0, 8, [91], 99) == 99,
+        structuralEquals [listLength ints, listLength strings, listLength floats] [2, 2, 2],
+        structuralEquals [listLength bools, listLength (listGet ints 0 ?: [99])] [2, 2],
+        structuralEquals [listLength (listGet ints 1 ?: [99]), nestedAt (ints, 8, 0, [91, 92], 99)] [3, 91],
+        structuralEquals [nestedAt (ints, 0, 8, [91], 99), length (nestedAt (strings, 1, 0, ["row"], "item"))] [99, 3],
         nestedAt (strings, 8, 0, ["row"], "item") == "row",
         nestedAt (strings, 0, 8, ["row"], "item") == "item",
-        length (nestedAt (strings, 1, 0, ["row"], "item")) == 3,
         nestedAt (floats, 0, 0, [9.0], 9.5) + nestedAt (floats, 0, 1, [9.0], 9.5) == 3.75,
         nestedAt (floats, 9, 0, [9.0], 9.5) == 9.0,
         nestedAt (floats, 0, 9, [9.0], 9.5) == 9.5,
@@ -94,20 +92,20 @@ nestedListEffectPatternCase () =
 
     checkAll "deep persistence patterns and generic effects stay coherent" [
         structuralEquals [listLength intCube, listLength stringCube, nestedAt (intPlane, 1, 2, [99], 99)] [3, 3, 9],
+        structuralEquals [nestedAt (listGet intCube 2 ?: [[99]], 0, 3, [99], 99), auditInts ints] [13, 12345],
+        structuralEquals [auditInts [[6], [7, 8]], listLength grownInts] [678, 4],
+        structuralEquals [listLength grownStrings, chooseByCollection (listGet strings 0 ?: ["x"], 41, 99)] [3, 41],
         nestedAt (stringPlane, 1, 1, ["row"], "item") == "hare",
-        nestedAt (listGet intCube 2 ?: [[99]], 0, 3, [99], 99) == 13,
         nestedAt (listGet stringCube 2 ?: [["missing"]], 0, 1, ["row"], "item") == "jay",
-        structuralEquals [matrixShape (List ()), matrixShape [[]]] ["empty", "one-empty-row"],
-        structuralEquals [matrixShape [[7]], matrixShape ints] ["one-singleton-row", "two:2/3"],
-        structuralEquals [matrixShape strings, matrixShape [[1], [2], [3]]] ["two:2/3", "many:1+2"],
-        auditInts ints == 12345,
-        auditInts [[6], [7, 8]] == 678,
+        matrixShape (List ()) == "empty",
+        matrixShape [[]] == "one-empty-row",
+        matrixShape [[7]] == "one-singleton-row",
+        matrixShape ints == "two:2/3",
+        matrixShape strings == "two:2/3",
+        matrixShape [[1], [2], [3]] == "many:1+2",
         auditStrings strings == "ant/bee/cat/dog/eel/",
         auditStrings [["fox"], ["gnu", "hare"]] == "fox/gnu/hare/",
-        listLength grownInts == 4,
-        listLength grownStrings == 3,
         chooseByCollection (listGet ints 0 ?: [99], "present", "empty") == "present",
-        chooseByCollection (listGet strings 0 ?: ["x"], 41, 99) == 41,
         chooseByCollection (List (), true, false) == false,
         chooseByCollection (listGet floats 1 ?: [0.0], 6.5, 7.5) == 6.5
     ]

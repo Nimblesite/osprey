@@ -48,9 +48,7 @@ pipelineCase () =
     six = 3 |> double
     // Check every pipeline stage independently.
     checkAll "pipeline state" [
-        (10 |> double |> double) == 40,
-        (5 |> \x => x + 100) == 105,
-        (six |> \x => add (x, 4)) == 10,
+        structuralEquals [(10 |> double |> double), (5 |> \x => x + 100), (six |> \x => add (x, 4))] [40, 105, 10],
         (-2 |> double |> double) == -8,
         (6 |> double |> \x => x == 12),
         (1 |> double |> double) > 0

@@ -13,17 +13,27 @@ floatListValue () = listReverse [2.5, 1.5]
 boolListValue () = listReverse [true, false, false]
 listValueTagsCase () =
     withBuffer (toGpu (floatListValue ()), \floats => withBuffer (toGpu (boolListValue ()), \flags => checkAll "runtime list values keep GPU scalar tags" [
-                gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded15 => (uploaded15) == 4.0), gpuLength flags == 3, (gpuGet (flags, 0) ?: true) == false, (gpuGet (flags, 1) ?: true) == false, (gpuGet (flags, 2) ?: false) == true,
+                structuralEquals [gpuLength floats, gpuLength flags] [2, 3],
+                structuralEquals [(gpuGet (floats, 0) ?: 99.0), (gpuGet (floats, 1) ?: 99.0)] [1.5, 2.5],
+                gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded15 => (uploaded15) == 4.0), (gpuGet (flags, 0) ?: true) == false, (gpuGet (flags, 1) ?: true) == false, (gpuGet (flags, 2) ?: false) == true,
                 gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded14 => (uploaded14) == 1)
             ]))
 fromGpuScalarCase () =
     withBuffer (toGpu ([1.25, 2.5, 5.0]), \uploaded17 => withBuffer (fromGpu (uploaded17), \floats => withBuffer (toGpu ([true, false, true]), \uploaded16 => withBuffer (fromGpu (uploaded16), \flags => checkAll "fromGpu preserves float and bool list elements" [
-                        listLength floats == 3, (listGet (floats, 0) ?: 99.0) == 1.25, (listGet (floats, 1) ?: 99.0) == 2.5, (listGet (floats, 2) ?: 99.0) == 5.0, listLength flags == 3, (listGet (flags, 0) ?: false) == true, (listGet (flags, 1) ?: true) == false, (listGet (flags, 2) ?: false) == true
+                        structuralEquals [listLength floats, listLength flags] [3, 3],
+                        structuralEquals [(listGet (floats, 0) ?: 99.0), (listGet (floats, 1) ?: 99.0)] [1.25, 2.5],
+                        (listGet (floats, 2) ?: 99.0) == 5.0,
+                        (listGet (flags, 0) ?: false) == true, (listGet (flags, 1) ?: true) == false, (listGet (flags, 2) ?: false) == true
                     ]))))
 repeatedCrossingCase () =
     withBuffer (toGpu (floatListValue ()), \uploaded15 => withBuffer (fromGpu (uploaded15), \read0 => withBuffer (toGpu (read0), \floats => withBuffer (toGpu (boolListValue ()), \uploaded14 => withBuffer (fromGpu (uploaded14), \read1 => withBuffer (toGpu (read1), \flags => withBuffer (fromGpu (floats), \floatsBack => withBuffer (fromGpu (flags), \flagsBack => checkAll "repeated host and GPU crossings retain scalar types" [
-                                        gpuLength floats == 2, (gpuGet (floats, 0) ?: 99.0) == 1.5, (gpuGet (floats, 1) ?: 99.0) == 2.5, gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded13 => (uploaded13) == 4.0), (listGet (floatsBack, 0) ?: 99.0) == 1.5, (listGet (floatsBack, 1) ?: 99.0) == 2.5,
-                                        gpuLength flags == 3, gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded12 => (uploaded12) == 1), (listGet (flagsBack, 0) ?: true) == false, (listGet (flagsBack, 2) ?: false) == true
+                                        structuralEquals [gpuLength floats, gpuLength flags] [2, 3],
+                                        (gpuGet (floats, 0) ?: 99.0) == 1.5,
+                                        (gpuGet (floats, 1) ?: 99.0) == 2.5,
+                                        (listGet (floatsBack, 0) ?: 99.0) == 1.5,
+                                        (listGet (floatsBack, 1) ?: 99.0) == 2.5,
+                                        gpuSatisfies(gpuFold(floats, 0.0, addFloats), \uploaded13 => (uploaded13) == 4.0),
+                                        gpuSatisfies(gpuFold(flags, 0, countTrue), \uploaded12 => (uploaded12) == 1), (listGet (flagsBack, 0) ?: true) == false, (listGet (flagsBack, 2) ?: false) == true
                                     ]))))))))
 (** With no first element to inspect, lowering must use the inferred result type. *)
 emptyTypedLiteralCase () =
@@ -124,11 +134,18 @@ gpuAbsoluteCase () =
                                 Success value =>
                                     integers = value
                                     checkAll "GPU abs keeps float and integer callback contracts" [
-                                        (gpuGet (floats, 0) ?: 0.0) == 2.5, toString (gpuGet (floats, 1) ?: 1.0) == "0.0", (gpuGet (floats, 2) ?: 0.0) == 3.5, (gpuGet (integers, 0) ?: 0) == 17, (gpuGet (integers, 1) ?: 0) == 3, (gpuGet (integers, 2) ?: 0) == 4, faults == "abs"
+                                        (gpuGet (floats, 0) ?: 0.0) == 2.5,
+                                        (gpuGet (floats, 2) ?: 0.0) == 3.5,
+                                        structuralEquals [toString (gpuGet (floats, 1) ?: 1.0), faults] ["0.0", "abs"],
+                                        (gpuGet (integers, 0) ?: 0) == 17,
+                                        (gpuGet (integers, 1) ?: 0) == 3,
+                                        (gpuGet (integers, 2) ?: 0) == 4
                                     ]
                                 Error message => checkAll "GPU abs keeps float and integer callback contracts" [
-                                    (gpuGet (floats, 0) ?: 0.0) == 2.5, toString (gpuGet (floats, 1) ?: 1.0) == "0.0", (gpuGet (floats, 2) ?: 0.0) == 3.5,
-                                    gpuDevice () != "host", contains(message, "integer overflow"), faults == "",
+                                    (gpuGet (floats, 0) ?: 0.0) == 2.5,
+                                    (gpuGet (floats, 2) ?: 0.0) == 3.5,
+                                    structuralEquals [toString (gpuGet (floats, 1) ?: 1.0), faults] ["0.0", ""],
+                                    gpuDevice () != "host", contains(message, "integer overflow"),
                                     gpuSatisfies(toGpu([-3, 4]), \safe => gpuSatisfies(gpuMap(safe, abs), \integers => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
                                 ]
                         Error message => check ("GPU operation", "success", toString message)

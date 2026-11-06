@@ -29,8 +29,7 @@ helloSmokeCase () =
 
     // Preserve both complete rendered lines.
     checkAll "hello legacy rendered lines" [
-        greeting == "Hello from the ML flavor",
-        "2 + 3 = ${2 + 3}" == "2 + 3 = 5"
+        structuralEquals [greeting, "2 + 3 = ${2 + 3}"] ["Hello from the ML flavor", "2 + 3 = 5"]
     ]
     // Check the dynamic values independently.
     checkAll "hello legacy constituent values" [
@@ -45,11 +44,11 @@ helloSmokeCase () =
     ]
 
     checkAll "generic list lookups preserve unrelated element types" [
-        listLength words == 5,
+        structuralEquals [listLength words, listLength numbers, atOr (numbers, 0, 99)] [5, 4, 2],
+        structuralEquals [atOr (numbers, 1, 99), atOr (numbers, 3, 99)] [3, 8],
+        structuralEquals [atOr (numbers, 9, 99), chooseByList (words, 41, 99)] [99, 41],
         structuralEquals [atOr (words, 0, "missing"), atOr (words, 3, "missing")] ["Hello", "ML"],
         structuralEquals [atOr (words, 4, "missing"), atOr (words, 9, "missing")] ["flavor", "missing"],
-        structuralEquals [listLength numbers, atOr (numbers, 0, 99), atOr (numbers, 1, 99)] [4, 2, 3],
-        structuralEquals [atOr (numbers, 3, 99), atOr (numbers, 9, 99), chooseByList (words, 41, 99)] [8, 99, 41],
         chooseByList (numbers, "present", "empty") == "present",
         chooseByList (List (), true, false) == false
     ]
@@ -65,20 +64,19 @@ helloSmokeCase () =
     ]
 
     checkAll "maps of generic lists compose with interpolation and Result fallback" [
-        mapLength wordBuckets == 2,
-        mapLength numberBuckets == 2,
+        structuralEquals [mapLength wordBuckets, mapLength numberBuckets] [2, 2],
+        structuralEquals [bucketAt (numberBuckets, "small", 0, 99), bucketAt (numberBuckets, "small", 3, 99)] [2, 8],
+        bucketAt (numberBuckets, "large", 2, 99) == 34,
+        bucketAt (numberBuckets, "missing", 0, 99) == 99,
+        listLength (mapKeys wordBuckets) == 2,
+        listLength (mapValues numberBuckets) == 2,
         bucketAt (wordBuckets, "greeting", 0, "missing") == "Hello",
         bucketAt (wordBuckets, "greeting", 4, "missing") == "flavor",
         bucketAt (wordBuckets, "targets", 0, "missing") == "IR",
         bucketAt (wordBuckets, "targets", 1, "missing") == "wasm",
         bucketAt (wordBuckets, "missing", 0, "fallback") == "fallback",
-        structuralEquals [bucketAt (numberBuckets, "small", 0, 99), bucketAt (numberBuckets, "small", 3, 99)] [2, 8],
-        bucketAt (numberBuckets, "large", 2, 99) == 34,
-        bucketAt (numberBuckets, "missing", 0, 99) == 99,
         "${bucketAt (wordBuckets, "targets", 0, "missing")}/${bucketAt (wordBuckets, "targets", 1, "missing")}" == "IR/wasm",
-        "${bucketAt (numberBuckets, "small", 0, 99) + bucketAt (numberBuckets, "small", 1, 99) }" == "5",
-        listLength (mapKeys wordBuckets) == 2,
-        listLength (mapValues numberBuckets) == 2
+        "${bucketAt (numberBuckets, "small", 0, 99) + bucketAt (numberBuckets, "small", 1, 99) }" == "5"
     ]
 
 test "top-level binding and interpolation retain both hello lines" (\() => exactArithmetic (helloSmokeCase))

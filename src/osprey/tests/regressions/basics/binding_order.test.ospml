@@ -36,18 +36,14 @@ same value = value
 (** Callers above their helpers use them at int and at string. *)
 orderCase () = checkAll "a caller above its helper is generic" [
     order (1, 2) == -1,
-    order (2, 1) == 1,
-    order (3, 3) == 0,
+    structuralEquals [order (2, 1), order (3, 3), order ("b", "a"), length (boxed 4)] [1, 0, 1, 1],
     order ("a", "b") == -1,
-    order ("b", "a") == 1,
-    join (boxed "x") "," == "x",
-    length (boxed 4) == 1
+    join (boxed "x") "," == "x"
 ]
 
 (** A recursive group below its caller still checks. *)
 recursionCase () = checkAll "a recursive group below its caller" [
-    parity 4 == "even",
-    parity 7 == "odd"
+    structuralEquals [parity 4, parity 7] ["even", "odd"]
 ]
 
 test "a caller above its helper is generic" orderCase

@@ -42,8 +42,7 @@ resumeUnitMarkersCase () =
 
     (* Check marker count, entry order, unwind order, and values. *)
     checkAll "Unit-resume internal state" [
-        result == 7,
-        markCount == 2,
+        structuralEquals [result, markCount] [7, 2],
         structuralEquals [beforeLabels, afterLabels, finalValues] ["one|two|", "two|one|", "7|7|"],
         beforeLabels != afterLabels
     ]

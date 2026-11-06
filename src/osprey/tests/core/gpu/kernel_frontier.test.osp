@@ -21,7 +21,9 @@ fn multiplicationOrderCase() = {
                     withBuffer(gpuZipWith(xs, ys, fn(x, y) => t * x * y), fn(captureFirst) => {
                             withBuffer(gpuZipWith(xs, ys, fn(x, y) => x * y * t), fn(captureLast) => {
                                     checkAll("buffer slots type every multiplication order", [
-                                            gpuSatisfies(gpuFold(captureFirst, 0.0, addFloats), fn(uploaded203) => (uploaded203) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addFloats), fn(uploaded202) => (uploaded202) == 22.0), (gpuGet(captureFirst, 0) ?: 0.0) == 6.0, (gpuGet(captureLast, 1) ?: 0.0) == 16.0
+                                            gpuSatisfies(gpuFold(captureFirst, 0.0, addFloats), fn(uploaded203) => (uploaded203) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addFloats), fn(uploaded202) => (uploaded202) == 22.0),
+                                            (gpuGet(captureFirst, 0) ?: 0.0) == 6.0,
+                                            (gpuGet(captureLast, 1) ?: 0.0) == 16.0
                                     ])
                                 })
                         })
@@ -41,7 +43,10 @@ fn recursiveHelperWith(indices) = {
             withBuffer(toGpu([10.0, 20.0]), fn(vector) => {
                     withBuffer(gpuMap(indices, fn(row) => rowDot(matrix, vector, 2, row, 0)), fn(rows) => {
                             checkAll("recursive GPU helpers monomorphize from their call site", [
-                                    gpuLength(rows) == 2, (gpuGet(rows, 0) ?: 0.0) == 50.0, (gpuGet(rows, 1) ?: 0.0) == 110.0, gpuSatisfies(gpuFold(rows, 0.0, addFloats), fn(uploaded1) => (uploaded1) == 160.0)
+                                    gpuLength(rows) == 2,
+                                    (gpuGet(rows, 0) ?: 0.0) == 50.0,
+                                    (gpuGet(rows, 1) ?: 0.0) == 110.0,
+                                    gpuSatisfies(gpuFold(rows, 0.0, addFloats), fn(uploaded1) => (uploaded1) == 160.0)
                             ])
                         })
                 })
@@ -55,7 +60,10 @@ fn blockBodyCase() = {
                     y + t
             }), fn(mapped) => {
                     checkAll("block-bodied kernels preserve local bindings", [
-                            gpuLength(mapped) == 3, (gpuGet(mapped, 0) ?: 0.0) == 4.0, (gpuGet(mapped, 1) ?: 0.0) == 6.0, (gpuGet(mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, addFloats), fn(uploaded198) => (uploaded198) == 18.0)
+                            gpuLength(mapped) == 3,
+                            structuralEquals([(gpuGet(mapped, 0) ?: 0.0), (gpuGet(mapped, 1) ?: 0.0)], [4.0, 6.0]),
+                            (gpuGet(mapped, 2) ?: 0.0) == 8.0,
+                            gpuSatisfies(gpuFold(mapped, 0.0, addFloats), fn(uploaded198) => (uploaded198) == 18.0)
                     ])
                 })
         })
@@ -73,7 +81,11 @@ fn builtinMapCase() = {
                                     withBuffer(toGpu([3.0]), fn(uploaded14) => {
                                             withBuffer(gpuMap(uploaded14, abs), fn(shadowed) => {
                                                     checkAll("builtin maps preserve scalar types and lexical shadowing", [
-                                                            (gpuGet(floats, 0) ?: 0.0) == 9007199254740992.0, (gpuGet(floats, 1) ?: 0.0) == -7.0, (gpuGet(positive, 0) ?: 0.0) == 1.5, toString(gpuGet(positive, 1) ?: 1.0) == "0.0", (gpuGet(positive, 2) ?: 0.0) == 2.25, (gpuGet(shadowed, 0) ?: 0.0) == 6.0
+                                                            (gpuGet(floats, 0) ?: 0.0) == 9007199254740992.0,
+                                                            (gpuGet(positive, 0) ?: 0.0) == 1.5,
+                                                            (gpuGet(positive, 2) ?: 0.0) == 2.25,
+                                                            (gpuGet(shadowed, 0) ?: 0.0) == 6.0,
+                                                            (gpuGet(floats, 1) ?: 0.0) == -7.0, toString(gpuGet(positive, 1) ?: 1.0) == "0.0"
                                                     ])
                                                 })
                                         })
@@ -89,8 +101,13 @@ fn builtinZipCaseUploaded(left, right) = {
                     withBuffer(gpuZipWith(left, right, wrapMul), fn(multiplied) => {
                             withBuffer(gpuZipWith(left, right, satMul), fn(saturated) => {
                                     checkAll("builtin zip preserves wrapping and saturation boundaries", [
-                                            (gpuGet(added, 0) ?: 0) == -9223372036854775808, (gpuGet(added, 1) ?: 0) == 9223372036854775807, (gpuGet(subtracted, 0) ?: 0) == 9223372036854775806, (gpuGet(subtracted, 1) ?: 0) == -9223372036854775807, (gpuGet(multiplied, 1) ?: 0) == -9223372036854775808,
-                                            (gpuGet(multiplied, 2) ?: 0) == -2446744073709551616, (gpuGet(saturated, 1) ?: 0) == 9223372036854775807, (gpuGet(saturated, 2) ?: 0) == 9223372036854775807
+                                            (gpuGet(added, 0) ?: 0) == -9223372036854775808,
+                                            (gpuGet(added, 1) ?: 0) == 9223372036854775807,
+                                            (gpuGet(subtracted, 0) ?: 0) == 9223372036854775806,
+                                            (gpuGet(saturated, 1) ?: 0) == 9223372036854775807,
+                                            (gpuGet(saturated, 2) ?: 0) == 9223372036854775807,
+                                            (gpuGet(subtracted, 1) ?: 0) == -9223372036854775807, (gpuGet(multiplied, 1) ?: 0) == -9223372036854775808,
+                                            (gpuGet(multiplied, 2) ?: 0) == -2446744073709551616
                                     ])
                                 })
                         })
@@ -123,7 +140,8 @@ fn builtinPolicyCase() = {
     withBuffer(toGpu([-9223372036854775808, -4, 5]), fn(uploaded10) => {
             withBuffer(gpuMap(uploaded10, abs), fn(values) => {
                     checkAll("builtin kernel dispatches to the active arithmetic policy", [
-                            faults == 1, (gpuGet(values, 0) ?: 0) == 77, (gpuGet(values, 1) ?: 0) == 4, (gpuGet(values, 2) ?: 0) == 5
+                            structuralEquals([faults, (gpuGet(values, 0) ?: 0)], [1, 77]),
+                            structuralEquals([(gpuGet(values, 1) ?: 0), (gpuGet(values, 2) ?: 0)], [4, 5])
                     ])
                 })
         })
@@ -152,7 +170,9 @@ fn builtinDivisionCase() = {
             withBuffer(toGpu([-1, 0, 2]), fn(uploaded9) => {
                     withBuffer(gpuZipWith(uploaded8, uploaded9, intDiv), fn(values) => {
                             checkAll("builtin division dispatches once in element order", [
-                                    faults == "overflow;zero;", (gpuGet(values, 0) ?: 0) == 41, (gpuGet(values, 1) ?: 0) == 42, (gpuGet(values, 2) ?: 0) == 4
+                                    faults == "overflow;zero;",
+                                    structuralEquals([(gpuGet(values, 0) ?: 0), (gpuGet(values, 1) ?: 0)], [41, 42]),
+                                    (gpuGet(values, 2) ?: 0) == 4
                             ])
                         })
                 })
@@ -170,8 +190,11 @@ fn lexicalKernelCase() = {
                     withBuffer(gpuZipWith(source, uploaded7, choose), fn(zipped) => {
                             withBuffer(gpuScan(source, 42.0, choose), fn(scanned) => {
                                     checkAll("closed kernels keep their definition environment", [
-                                            enabled == false, gpuSatisfies(gpuFilter(source, keep), fn(uploaded182) => gpuLength(uploaded182) == 2), gpuSatisfies(gpuMap(source, identity), fn(uploaded181) => (gpuGet(uploaded181, 1) ?: 0.0) == 2.0), (gpuGet(zipped, 1) ?: 0.0) == 2.0,
-                                            gpuSatisfies(gpuFold(source, 42.0, choose), fn(uploaded180) => uploaded180 == 42.0), (gpuGet(scanned, 0) ?: 0.0) == 42.0, (gpuGet(scanned, 1) ?: 0.0) == 42.0
+                                            enabled == false, gpuSatisfies(gpuFilter(source, keep), fn(uploaded182) => gpuLength(uploaded182) == 2), gpuSatisfies(gpuMap(source, identity), fn(uploaded181) => (gpuGet(uploaded181, 1) ?: 0.0) == 2.0),
+                                            (gpuGet(zipped, 1) ?: 0.0) == 2.0,
+                                            (gpuGet(scanned, 0) ?: 0.0) == 42.0,
+                                            (gpuGet(scanned, 1) ?: 0.0) == 42.0,
+                                            gpuSatisfies(gpuFold(source, 42.0, choose), fn(uploaded180) => uploaded180 == 42.0)
                                     ])
                                 })
                         })
@@ -210,7 +233,9 @@ fn capturedArithmeticCase() = {
         overflow op left right wrapped => {
             faults = wrapAdd(faults, 1)
             checkAll("captured kernel overflow arguments", [
-                    op == "+", left == 1, right == 9223372036854775807, wrapped == -9223372036854775808
+                    op == "+",
+                    structuralEquals([left, right], [1, 9223372036854775807]),
+                    wrapped == -9223372036854775808
             ])
             42
         }
@@ -218,7 +243,9 @@ fn capturedArithmeticCase() = {
     withBuffer(toGpu([1, 0]), fn(uploaded3) => {
             withBuffer(gpuMap(uploaded3, add), fn(values) => {
                     checkAll("captured kernel dispatches through the active policy", [
-                            limit == 0, faults == 1, (gpuGet(values, 0) ?: 0) == 42, (gpuGet(values, 1) ?: 0) == 9223372036854775807
+                            structuralEquals([limit, faults], [0, 1]),
+                            (gpuGet(values, 0) ?: 0) == 42,
+                            (gpuGet(values, 1) ?: 0) == 9223372036854775807
                     ])
                 })
         })
@@ -230,7 +257,9 @@ fn mathTotalityCase() = {
     let nan = sqrt(-1.0)
     withBuffer(toGpu([0.0, 1.0]), fn(value) => {withBuffer(gpuMap(value, exp), fn(probabilities) => {
                     checkAll("float math builtins are total over IEEE doubles", [
-                            sqrt(4.0) == 2.0, nan != nan, ln(0.0) < -1000.0, ln(0.0) == ln(0.0) * 2.0, exp(1000.0) == exp(2000.0), exp(1000.0) > 1.0, tanh(1000000.0) == 1.0, tanh(-1000000.0) == -1.0, (gpuGet(probabilities, 0) ?: 0.0) == 1.0,
+                            structuralEquals([sqrt(4.0), tanh(1000000.0)], [2.0, 1.0]),
+                            (gpuGet(probabilities, 0) ?: 0.0) == 1.0,
+                            nan != nan, ln(0.0) < -1000.0, ln(0.0) == ln(0.0) * 2.0, exp(1000.0) == exp(2000.0), exp(1000.0) > 1.0, tanh(-1000000.0) == -1.0,
                             gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => gpuSatisfies(gpuFold(uploaded175, 0.0, addFloats), fn(uploaded206) => (uploaded206) == 6.0)))
                     ])
                 })

@@ -148,9 +148,8 @@ fn collectionAndSuccessCase() = {
         hasDiagnostic(xs[9]),
         hasDiagnostic(prices["mango"]),
         (parseInt("42") ?: 0) == 42,
-        (fromCodePoint(65) ?: "") == "A",
-        divisionWorks,
-        toString(boom()) == "Error(user boom)"
+        structuralEquals([(fromCodePoint(65) ?: ""), toString(boom())], ["A", "Error(user boom)"]),
+        divisionWorks
     ])
 }
 

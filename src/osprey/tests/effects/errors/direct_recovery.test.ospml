@@ -121,8 +121,7 @@ happyPathBypassCase () =
 
     // The original value survives and the handler remains untouched.
     checkAll "happy path bypass" [
-        value == 7,
-        recoveries == 0,
+        structuralEquals [value, recoveries] [7, 0],
         value != 99
     ]
 
@@ -154,8 +153,7 @@ repeatedRecoveryStateCase () =
 
     // Each call observes the updated handler-owned counter.
     checkAll "repeated recovery state" [
-        total == 60,
-        recoveries == 3,
+        structuralEquals [total, recoveries] [60, 3],
         reasons == "first|second|third|",
         total == (10 + 20 + 30 )
     ]
@@ -173,9 +171,8 @@ collectAllReportsCase () =
 
     // Validation reaches its final value after all four broken rules report.
     checkAll "collect all reports" [
-        result == "finished",
+        structuralEquals [result, fields] ["finished", "name|age|email|at-sign|"],
         reports == 4,
-        fields == "name|age|email|at-sign|",
         contains fields "age|"
     ]
 
@@ -208,10 +205,8 @@ twoPoliciesCase () =
 
     // Skip and cap policies change only the handled shortage decision.
     checkAll "two policies over one function" [
-        skipped == 2,
-        capped == 7,
-        capped > skipped,
-        (capped - skipped ) == 5
+        structuralEquals [skipped, capped, (capped - skipped )] [2, 7, 5],
+        capped > skipped
     ]
 
 (** Verify an inner same-effect arm overrides one operation and then disappears. *)
@@ -254,8 +249,7 @@ outerEffectCompositionCase () =
 
     // The outer audit observes the handler decision and the resumed caller work.
     checkAll "outer effect composition" [
-        result == 42,
-        noteCount == 2,
+        structuralEquals [result, noteCount] [42, 2],
         notes == "handler saw token|body saw 41|",
         contains notes "body saw 41"
     ]
@@ -272,9 +266,7 @@ deepRecursionCase () =
 
     // One bottom-level replacement returns through all four recursive frames.
     checkAll "deep helper recursion" [
-        value == 12,
-        recoveries == 1,
-        (value - 8 ) == 4
+        structuralEquals [value, recoveries, (value - 8 )] [12, 1, 4]
     ]
 
 (** A direct arm returning a whole `Result` must deliver that exact value. *)
@@ -292,7 +284,7 @@ wholeResultOperationCase () =
     // Both arms travel as complete Result blocks: Success{4} scales to 40 and
     // Error{"absent"} matches to its 6-character length.
     checkAll "whole Result operation values" [
-        combined == 39, lookups == 2
+        structuralEquals [combined, lookups] [39, 2]
     ]
 
 (** Spare is the record a direct arm must hand back whole. *)
@@ -510,50 +502,36 @@ everyResultTypeCase () =
     // negative boundaries. `-41` is a folded negated literal, so it is a plain
     // `int` and not a `Result` [ARITH-NEG-LITERAL].
     checkAll "scalar operation results cross a direct arm" [
-        intValue == 0,
+        structuralEquals [intValue, (intValue - negativeValue ), (negativeValue + 41 ), length textValue] [0, 41, 0, 0],
         intValue != 12,
         negativeValue == -41,
         negativeValue < 0,
-        (intValue - negativeValue ) == 41,
-        (negativeValue + 41 ) == 0,
-        floatValue == 2.5,
+        structuralEquals [floatValue, floatValue + 1.5, floatValue * 2.0, floatValue - 2.5] [2.5, 4.0, 5.0, 0.0],
         floatValue > 2.0,
         floatValue < 3.0,
-        floatValue + 1.5 == 4.0,
-        floatValue * 2.0 == 5.0,
-        floatValue - 2.5 == 0.0,
         boolValue == false,
         !boolValue,
         boolValue != true,
-        textValue == "",
+        structuralEquals [textValue, "${textValue}x"] ["", "x"],
         isEmpty textValue,
-        length textValue == 0,
-        !(contains textValue "a"),
-        "${textValue}x" == "x"
+        !(contains textValue "a")
     ]
 
     // A record arrives with every field readable and a union arrives with its
     // constructor and payload: `Refused { reason: "denied" }` folds to
     // -length("denied") == -6, so granted - refused == 7 - (-6) == 13.
     checkAll "record and union operation results arrive whole" [
-        spareValue.tag == "left",
-        spareValue.weight == 1.5,
+        structuralEquals [spareValue.tag, toUpperCase spareValue.tag] ["left", "LEFT"],
+        structuralEquals [spareValue.weight, spareValue.weight + floatValue, spareValue.weight * 2.0] [1.5, 4.0, 3.0],
         spareValue.ready,
         spareValue.tag != "spare",
-        length spareValue.tag == 4,
-        toUpperCase spareValue.tag == "LEFT",
-        spareValue.weight + floatValue == 4.0,
-        spareValue.weight * 2.0 == 3.0,
-        grantedScore == 7,
+        structuralEquals [length spareValue.tag, grantedScore, length "denied"] [4, 7, 6],
+        structuralEquals [(grantedScore + refusedScore ), (grantedScore - refusedScore )] [1, 13],
+        structuralEquals [gradeScore (Granted(score = 0)), gradeScore (Refused(reason = ""))] [0, 0],
         grantedScore > 0,
         refusedScore == -6,
         refusedScore < 0,
-        length "denied" == 6,
         grantedScore != refusedScore,
-        (grantedScore + refusedScore ) == 1,
-        (grantedScore - refusedScore ) == 13,
-        gradeScore (Granted(score = 0)) == 0,
-        gradeScore (Refused(reason = "")) == 0,
         gradeScore (Granted(score = -3)) == -3,
         gradeScore (Refused(reason = "no")) == -2
     ]
@@ -561,21 +539,15 @@ everyResultTypeCase () =
     // A direct arm may choose either `Result` constructor, and the `Unit`
     // channel changes nothing the caller receives beyond handler-owned state.
     checkAll "Result and Unit operation results cross a direct arm" [
-        okScore == 5,
-        badScore == 6,
+        structuralEquals [okScore, badScore, (okScore + badScore )] [5, 6, 11],
+        structuralEquals [resultScore (Success(value = 0)), resultScore (Error(message = ""))] [0, 0],
+        structuralEquals [resultScore (Error(message = "x")), (okValue ?: 0)] [1, 5],
+        structuralEquals [(badValue ?: 0), (badValue ?: 77)] [0, 77],
+        structuralEquals [marks, (marks * 3 )] [1, 3],
         okScore != badScore,
-        (okScore + badScore ) == 11,
         badScore == length "absent",
-        resultScore (Success(value = 0)) == 0,
-        resultScore (Error(message = "")) == 0,
         resultScore (Success(value = -2)) == -2,
-        resultScore (Error(message = "x")) == 1,
-        (okValue ?: 0) == 5,
-        (badValue ?: 0) == 0,
-        (badValue ?: 77) == 77,
-        marks == 1,
         marks != 0,
-        (marks * 3 ) == 3,
         endsWith trail "m:rendered|"
     ]
 
@@ -584,14 +556,12 @@ everyResultTypeCase () =
     // so the render is "12|fallback|true|spare|false|30|9" (33 characters).
     checkAll "one region answers every operation of one effect" [
         rendered == "12|fallback|true|spare|false|30|9",
-        length rendered == 33,
+        trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
+        structuralEquals [length rendered, marks, length trail] [33, 1, 69],
         structuralEquals [startsWith rendered "12|", endsWith rendered "|9"] [true, true],
         structuralEquals (mapList ["|spare|", "|true|"] (\k => contains rendered k)) [true, true],
         !(contains rendered "2.5"),
         !(contains rendered "|13|"),
-        marks == 1,
-        trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
-        length trail == 69,
         structuralEquals [startsWith trail "i:count|", endsWith trail "m:rendered|"] [true, true],
         structuralEquals (mapList ["|s:spare|", "b:allowed|t:name|"] (\k => contains trail k)) [true, true],
         !(contains trail "|i:count|")
@@ -688,15 +658,12 @@ partialOverrideLatticeCase () =
     // Two quotes under one three-arm handler: six arm entries, base+bonus of
     // 100+5, and a transcript in the order the body draws the channels.
     checkAll "one handler answers every operation of one effect" [
-        flat == "gold:105/gold:105",
-        length flat == 17,
+        structuralEquals [flat, flatTrail] ["gold:105/gold:105", "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|"],
+        structuralEquals [length flat, flatCalls, length flatTrail] [17, 6, 44],
         structuralEquals [startsWith flat "gold:105", endsWith flat "gold:105"] [true, true],
         contains flat "105/gold",
         flat != "gold:105",
-        flatCalls == 6,
         flatCalls == (2 * 3 ),
-        flatTrail == "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|",
-        length flatTrail == 44,
         structuralEquals [startsWith flatTrail "base:a|", endsWith flatTrail "tier:b|"] [true, true],
         contains flatTrail "tier:a|base:b|",
         !(contains flatTrail "base:c")
@@ -707,28 +674,25 @@ partialOverrideLatticeCase () =
     checkAll "an inner arm overrides one operation and the outer arms remain" [
         overridden == "gold:105|gold:205|gold:105",
         structuralEquals [length overridden, outerBaseCalls, innerBaseCalls] [26, 2, 1],
+        structuralEquals [(outerBaseCalls + innerBaseCalls ), (200 + 5 )] [3, 205],
         outerBaseCalls > innerBaseCalls,
-        (outerBaseCalls + innerBaseCalls ) == 3,
         structuralEquals [contains overridden "gold:205", startsWith overridden "gold:105|"] [true, true],
         endsWith overridden "|gold:105",
         !(contains overridden "gold:305"),
         !(startsWith overridden "gold:205"),
         contains overridden "|gold:205|",
-        overridden != flat,
-        (200 + 5 ) == 205
+        overridden != flat
     ]
 
     // Three single-arm regions cover complementary operations; nesting them in
     // either order discharges the same three operations to the same values.
     checkAll "complementary partial handlers each discharge their own operation" [
-        split == "silver:13",
-        reordered == "silver:13",
+        structuralEquals [split, reordered] ["silver:13", "silver:13"],
         split == reordered,
-        length split == 9,
+        structuralEquals [length split, (10 + 3 )] [9, 13],
         structuralEquals [startsWith split "silver:", endsWith split ":13", contains split "r:1"] [true, true, true],
         !(contains split "gold"),
         split != flat,
-        (10 + 3 ) == 13,
         !(startsWith reordered "13"),
         endsWith reordered "13"
     ]
@@ -738,15 +702,13 @@ partialOverrideLatticeCase () =
     // After an inner region ends the outer policy answers again, so the
     // before/inside/after readings are 7, 70 and 7.
     checkAll "the innermost matching arm wins and the outer policy is restored" [
-        deepest == "bronze:3",
-        length deepest == 8,
+        structuralEquals [deepest, restored] ["bronze:3", "7|outer/70|7"],
+        structuralEquals [length deepest, length restored] [8, 12],
         startsWith deepest "bronze:",
         endsWith deepest ":3",
         !(contains deepest ":1"),
         !(contains deepest ":2"),
         deepest != split,
-        restored == "7|outer/70|7",
-        length restored == 12,
         structuralEquals [startsWith restored "7|", endsWith restored "|7"] [true, true],
         contains restored "outer/70",
         !(contains restored "70|outer"),
@@ -800,16 +762,12 @@ higherOrderRecoveryCase () =
     // 3s to 6 each (18), 1..5 to 2..10 (30) and [[10,20],[30]] to 20+40+60
     // (120). 14 + 18 + 30 + 120 == 182.
     checkAll "a lambda handed to a higher-order function reaches the handler" [
-        finished == "finished",
-        steps == 12,
-        scaled == 12,
+        structuralEquals [finished, trail] ["finished", "14|6|6|6|2|4|6|8|10|20|40|60|"],
+        structuralEquals [steps, scaled, total, length trail] [12, 12, 182, 29],
         scaled == steps,
-        total == 182,
         total == (14 + 18 + 30 + 120 ),
         total > 0,
         total != 91,
-        trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
-        length trail == 29,
         structuralEquals [startsWith trail "14|", endsWith trail "60|", contains trail "6|6|6|"] [true, true, true],
         !(contains trail "|7|")
     ]
@@ -817,8 +775,8 @@ higherOrderRecoveryCase () =
     // An empty list performs nothing, a singleton performs once, duplicates
     // perform once per occurrence, and the nested traversal adds three more.
     checkAll "empty, singleton, duplicate and nested inputs each contribute once" [
-        structuralEquals [listLength none, listLength one, listLength dup, listLength mixed] [0, 1, 3, 5],
-        listLength nested == 2,
+        structuralEquals [listLength none, listLength one, listLength dup] [0, 1, 3],
+        structuralEquals [listLength mixed, listLength nested] [5, 2],
         isEmpty none,
         !(isEmpty one),
         steps == (listLength one + listLength dup + listLength mixed + 3 ),
@@ -834,32 +792,25 @@ higherOrderRecoveryCase () =
     // last index, one past the end and a negative index.
     checkAll "the traversed lists are unchanged by the effectful callback" [
         (listGet none 0 ?: missing) == missing,
-        (listGet one 0 ?: missing) == 7,
-        (listGet one 1 ?: missing) == missing,
-        (listGet dup 0 ?: missing) == 3,
-        (listGet dup 2 ?: missing) == 3,
-        (listGet dup 3 ?: missing) == missing,
-        (listGet mixed 0 ?: missing) == 1,
-        (listGet mixed 4 ?: missing) == 5,
-        (listGet mixed 5 ?: missing) == missing,
-        (listGet mixed missing ?: 0) == 0,
-        (listGet (listReverse mixed) 0 ?: missing) == 5,
-        listLength (listGet nested 0 ?: none) == 2,
+        structuralEquals [(listGet one 0 ?: missing), (listGet dup 0 ?: missing)] [7, 3],
+        structuralEquals [(listGet dup 2 ?: missing), (listGet mixed 0 ?: missing)] [3, 1],
+        structuralEquals [(listGet mixed 4 ?: missing), (listGet mixed missing ?: 0)] [5, 0],
+        structuralEquals [(listGet (listReverse mixed) 0 ?: missing), listLength (listGet nested 0 ?: none)] [5, 2],
         (listGet (listGet nested 0 ?: none) 1 ?: missing) == 20,
-        (listGet (listGet nested 1 ?: none) 0 ?: missing) == 30
+        (listGet (listGet nested 1 ?: none) 0 ?: missing) == 30,
+        (listGet one 1 ?: missing) == missing,
+        (listGet dup 3 ?: missing) == missing,
+        (listGet mixed 5 ?: missing) == missing
     ]
 
     // The second region negates instead of doubling and touches only its own
     // cell: 1..5 negated sums to -15 while the first region's state stands.
     checkAll "a second policy over the same callback changes only its own state" [
-        negated == "negated",
+        structuralEquals [negated, trail] ["negated", "14|6|6|6|2|4|6|8|10|20|40|60|"],
         negatives == -15,
         negatives < 0,
-        (negatives + 15 ) == 0,
-        (0 - negatives ) == 15,
-        (1 + 2 + 3 + 4 + 5 ) == 15,
+        structuralEquals [(negatives + 15 ), (0 - negatives ), (1 + 2 + 3 + 4 + 5 )] [0, 15, 15],
         structuralEquals [total, steps, scaled] [182, 12, 12],
-        trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
         negatives != total,
         negated != finished
     ]
@@ -912,16 +863,12 @@ recursiveAccumulationCase () =
     // Eight levels answer 10, 20 ... 80 from the handler's own counter, so the
     // total is 360 and the transcript pairs each depth with its visit number.
     checkAll "each recursion level enters the handler exactly once" [
-        total == 360,
+        structuralEquals [total, visits, lastDepth, length trail, (visits * 10 )] [360, 8, 1, 32, 80],
         total == (10 + 20 + 30 + 40 + 50 + 60 + 70 + 80 ),
-        visits == 8,
-        lastDepth == 1,
         trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
-        length trail == 32,
         structuralEquals [startsWith trail "8:1|", endsWith trail "1:8|", contains trail "|4:5|"] [true, true, true],
         !(contains trail "9:"),
         !(contains trail "0:"),
-        (visits * 10 ) == 80,
         total > 0,
         total != 36
     ]
@@ -929,44 +876,38 @@ recursiveAccumulationCase () =
     // Depth zero performs nothing at all, so an installed arm stays untouched;
     // depth one performs exactly once and answers 1 * 3.
     checkAll "zero and one level recursions" [
-        structuralEquals [zeroTotal, zeroVisits, oneTotal, oneVisits] [0, 0, 3, 1],
+        structuralEquals [zeroTotal, zeroVisits, oneTotal] [0, 0, 3],
+        structuralEquals [oneVisits, (oneTotal - zeroTotal ), (zeroVisits + oneVisits )] [1, 3, 1],
         zeroVisits < oneVisits,
         zeroTotal != oneTotal,
         zeroTotal < oneTotal,
-        (oneTotal - zeroTotal ) == 3,
         oneTotal != 99,
         zeroTotal != 99,
-        (zeroVisits + oneVisits ) == 1,
         oneVisits != visits
     ]
 
     // 33 levels echoing their own depth sum to 33 * 34 / 2 == 561, and the
     // doubling policy over the same body yields exactly twice that.
     checkAll "recursion past the thirty-two level boundary" [
-        deepTotal == 561,
-        // `/` is always float division [ARITH-CHECKED], so the integer
-        // half-sum goes through `intDiv`.
+        structuralEquals [deepTotal, deepVisits, doubled] [561, 33, 1122],
+        structuralEquals [(doubled - deepTotal ), (deepVisits - visits )] [561, 25],
+        // `/` is always float division [ARITH-CHECKED], so the integer,
+        // half-sum goes through `intDiv`.,
         deepTotal == (intDiv (33 * 34 ) 2 ),
-        deepVisits == 33,
         deepVisits > 32,
-        doubled == 1122,
         doubled == (deepTotal * 2 ),
         doubled != deepTotal,
-        (doubled - deepTotal ) == 561,
         deepTotal > total,
         deepVisits > visits,
-        (deepVisits - visits ) == 25,
         deepTotal != 528
     ]
 
     // Across all four runs 8 + 0 + 1 + 33 == 42 arm entries happened, and each
     // run's own answer is still readable after the later regions have closed.
     checkAll "every level of every run entered its own handler" [
-        (visits + zeroVisits + oneVisits + deepVisits ) == 42,
-        structuralEquals [visits, deepVisits, total, deepTotal, doubled, oneTotal] [8, 33, 360, 561, 1122, 3],
-        zeroTotal == 0,
-        (total + oneTotal + zeroTotal ) == 363,
-        (deepTotal + doubled ) == 1683
+        structuralEquals [(visits + zeroVisits + oneVisits + deepVisits ), visits, deepVisits, total] [42, 8, 33, 360],
+        structuralEquals [deepTotal, doubled, oneTotal] [561, 1122, 3],
+        structuralEquals [zeroTotal, (total + oneTotal + zeroTotal ), (deepTotal + doubled )] [0, 363, 1683]
     ]
 
 (** Verify four effects compose in one stack of nested direct regions.
@@ -1037,12 +978,11 @@ multiEffectRegionCase () =
     // 25 from PolicyError and audits three times, so 3+1+1+2 == 7 arm entries.
     checkAll "four effects cooperate inside one nested region stack" [
         rendered == "priority:6:4:25",
-        length rendered == 15,
+        structuralEquals [length rendered, notes, recoveries] [15, 3, 1],
+        structuralEquals [shortages, policies, (notes + recoveries + shortages + policies )] [1, 2, 7],
         structuralEquals [startsWith rendered "priority:", endsWith rendered ":25"] [true, true],
         contains rendered ":6:4:",
         !(contains rendered ":25:"),
-        structuralEquals [notes, recoveries, shortages, policies] [3, 1, 1, 2],
-        (notes + recoveries + shortages + policies ) == 7,
         notes > recoveries,
         policies > shortages,
         recoveries == shortages
@@ -1069,31 +1009,24 @@ multiEffectRegionCase () =
     // body sees, and the first stack's own state is untouched by the second.
     checkAll "reordering independent handler regions preserves every value" [
         reordered == rendered,
-        reordered == "priority:6:4:25",
-        auditTrail == "filled 6|allowed 4|scored 25|",
-        length auditTrail == 29,
+        structuralEquals [reordered, auditTrail] ["priority:6:4:25", "filled 6|allowed 4|scored 25|"],
+        trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
+        structuralEquals [length auditTrail, notes, recoveries, policies] [29, 3, 1, 2],
         structuralEquals [startsWith auditTrail "filled 6|", endsWith auditTrail "scored 25|"] [true, true],
         contains auditTrail "|allowed 4|",
-        !(contains auditTrail "qty"),
-        notes == 3,
-        trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
-        recoveries == 1,
-        policies == 2
+        !(contains auditTrail "qty")
     ]
 
     // A third stack changes every policy: 2 filled, 2+4 allocated, "basic" and
     // 0, so the render is "basic:2:6:0" while the audit count is unchanged.
     checkAll "changing the policies changes only the handled decisions" [
-        generous == "basic:2:6:0",
-        length generous == 11,
+        structuralEquals [generous, auditTrail] ["basic:2:6:0", "filled 6|allowed 4|scored 25|"],
+        structuralEquals [length generous, generousAudits, notes, recoveries, shortages, policies] [11, 3, 3, 1, 1, 2],
         generous != rendered,
         structuralEquals [startsWith generous "basic:", endsWith generous ":0"] [true, true],
         contains generous ":2:6:",
         !(contains generous "priority"),
-        generousAudits == 3,
-        generousAudits == notes,
-        structuralEquals [notes, recoveries, shortages, policies] [3, 1, 1, 2],
-        auditTrail == "filled 6|allowed 4|scored 25|"
+        generousAudits == notes
     ]
 
 (** Verify boundary values cross a direct arm without being reshaped.
@@ -1157,13 +1090,9 @@ boundaryValueRecoveryCase () =
     // first, second and third answers: "" then "x" then "  spaced  ", joined
     // as "/x/  spaced  " (13 characters).
     checkAll "repeated failures in one region are answered one at a time" [
-        joined == "/x/  spaced  ",
-        length joined == 13,
-        trim joined == "/x/  spaced",
-        fills == 3,
+        structuralEquals [joined, trim joined, seen] ["/x/  spaced  ", "/x/  spaced", "a1|a2|b3|"],
+        structuralEquals [length joined, fills, length seen] [13, 3, 9],
         fills != 1,
-        seen == "a1|a2|b3|",
-        length seen == 9,
         structuralEquals [startsWith seen "a1|", endsWith seen "b3|", contains seen "|a2|"] [true, true, true],
         !(contains seen "b1|"),
         !(contains seen "a3|"),
@@ -1173,15 +1102,11 @@ boundaryValueRecoveryCase () =
     // Empty, one-character and digit-bearing replacements keep their exact
     // bytes rather than being normalised on the way out of the arm.
     checkAll "empty, single-character and digit-bearing replacements" [
-        blank == "",
+        structuralEquals [blank, single, digits] ["", "z", "007"],
         isEmpty blank,
-        length blank == 0,
-        single == "z",
-        length single == 1,
+        structuralEquals [length blank, length single, length digits] [0, 1, 3],
         !(isEmpty single),
         single != blank,
-        digits == "007",
-        length digits == 3,
         structuralEquals [startsWith digits "0", endsWith digits "7", contains digits "07"] [true, true, true],
         !(contains digits "70"),
         digits != "7"
@@ -1190,40 +1115,32 @@ boundaryValueRecoveryCase () =
     // Case folding is ASCII-only and total, and a substring is found at the
     // start, in the middle and at the end but not in the wrong orientation.
     checkAll "case folding and substring position at start, middle and end" [
-        mixedCase == "OsPrey",
-        length mixedCase == 6,
-        toUpperCase mixedCase == "OSPREY",
-        toLowerCase mixedCase == "osprey",
+        structuralEquals [mixedCase, toUpperCase mixedCase, toLowerCase mixedCase] ["OsPrey", "OSPREY", "osprey"],
+        structuralEquals [punctuated, repeated] ["a-b_c.d,e", "abab abab"],
+        structuralEquals [length mixedCase, length punctuated, length repeated] [6, 9, 9],
         mixedCase != toUpperCase mixedCase,
         mixedCase != toLowerCase mixedCase,
         toUpperCase mixedCase != toLowerCase mixedCase,
-        punctuated == "a-b_c.d,e",
-        length punctuated == 9,
         structuralEquals [startsWith punctuated "a-", contains punctuated "_c."] [true, true],
         endsWith punctuated ",e",
         !(startsWith punctuated "-"),
         !(endsWith punctuated "e,"),
-        repeated == "abab abab",
         structuralEquals [startsWith repeated "abab", endsWith repeated "abab"] [true, true],
         contains repeated "b a",
-        !(contains repeated "abc"),
-        length repeated == 9
+        !(contains repeated "abc")
     ]
 
     // Zero, the largest 32-bit positive and its negation cross the arm and then
     // cancel exactly under checked arithmetic.
     checkAll "numeric boundaries survive direct substitution" [
-        zero == 0,
+        structuralEquals [zero, big, (big + negative ), (big - big )] [0, 2147483647, 0, 0],
         !(zero > 0),
         !(zero < 0),
-        big == 2147483647,
         big > zero,
         big > 0,
         negative == -2147483647,
         negative < zero,
         negative < 0,
-        (big + negative ) == 0,
-        (big - big ) == 0,
         (zero - negative ) == big,
         big != negative,
         (abs negative ) == big

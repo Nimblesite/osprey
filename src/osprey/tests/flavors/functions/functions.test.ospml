@@ -23,15 +23,11 @@ closuresCase () =
     ]
     // Check each captured call independently.
     checkAll "closures legacy constituent values" [
-        add10 5 == 15,
-        add100 5 == 105,
-        (closureAdder 3) 4 == 7
+        structuralEquals [add10 5, add100 5, (closureAdder 3) 4] [15, 105, 7]
     ]
     // Exercise identity, cancellation, and capture independence.
     checkAll "closures capture edge cases" [
-        add10 ((0 - 10) ) == 0,
-        add100 0 == 100,
-        (closureAdder 0) 9 == 9,
+        structuralEquals [add10 ((0 - 10) ), add100 0, (closureAdder 0) 9] [0, 100, 9],
         (add10 5 == add100 5) == false
     ]
 
@@ -52,14 +48,11 @@ curryPartialCase () =
     ]
     // Check each application independently.
     checkAll "partial application legacy constituent values" [
-        structuralEquals [add5 10, add5 0, add100 23] [15, 5, 123],
-        (partialAdd 7) 8 == 15
+        structuralEquals [add5 10, add5 0, add100 23, (partialAdd 7) 8] [15, 5, 123, 15]
     ]
     // Exercise identity, cancellation, and equivalent sums.
     checkAll "partial application edge cases" [
-        add5 ((0 - 5) ) == 0,
-        add100 0 == 100,
-        (partialAdd 0) 9 == 9,
+        structuralEquals [add5 ((0 - 5) ), add100 0, (partialAdd 0) 9] [0, 100, 9],
         (partialAdd 5) 5 == (partialAdd 8) 2
     ]
 
@@ -86,13 +79,13 @@ higherOrderCase () =
     ]
     // Check each application independently.
     checkAll "higher-order legacy constituent values" [
-        structuralEquals [hofApply hofDouble 5, hofApply hofInc 9, hofTwice hofDouble 3] [10, 10, 12],
-        hofTwice hofInc 40 == 42
+        structuralEquals [hofApply hofDouble 5, hofApply hofInc 9] [10, 10],
+        structuralEquals [hofTwice hofDouble 3, hofTwice hofInc 40] [12, 42]
     ]
     // Exercise zero, repetition, and nested higher-order calls.
     checkAll "higher-order edge cases" [
-        structuralEquals [hofApply hofDouble 0, hofTwice hofInc 0, hofTwice hofDouble 1] [0, 2, 4],
-        hofApply hofInc (hofApply hofDouble 3) == 7
+        structuralEquals [hofApply hofDouble 0, hofTwice hofInc 0] [0, 2],
+        structuralEquals [hofTwice hofDouble 1, hofApply hofInc (hofApply hofDouble 3)] [4, 7]
     ]
 
 (** Increment values in nested call expressions. *)
@@ -115,9 +108,8 @@ nestedCallsCase () =
     ]
     // Check each nested result independently.
     checkAll "nested calls legacy constituent values" [
-        deep == 15,
-        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) ),
-        nestedDouble (nestedDouble 4) == 16
+        structuralEquals [deep, nestedDouble (nestedDouble 4)] [15, 16],
+        nestedNeg (nestedInc (nestedDouble 5)) == ((0 - 11) )
     ]
     // Exercise each helper and additional zero paths.
     checkAll "nested calls edge cases" [
@@ -208,22 +200,16 @@ applyTwo (f, a, b) = f a b
 genericValueCase () =
     curriedSum = \a => \b => a + b 
     checkAll "file-scope generic function values resolve by name" [
-        throughAlias 7 == 7,
-        throughAlias "osp" == "osp",
-        throughLambda 9 == 9,
-        throughLambda "ml" == "ml",
-        nestedGeneric 21 == 21,
-        nestedGeneric "x" == "x",
-        genericIdentity (genericIdentity (genericIdentity 5)) == 5,
-        globalHead () == 1
+        structuralEquals [throughAlias 7, throughLambda 9, nestedGeneric 21] [7, 9, 21],
+        structuralEquals [genericIdentity (genericIdentity (genericIdentity 5)), globalHead ()] [5, 1],
+        structuralEquals [throughAlias "osp", throughLambda "ml", nestedGeneric "x"] ["osp", "ml", "x"]
     ]
     checkAll "a parameter never changes calls outside its own scope" [
-        shadowsBuiltin 3 == 3,
+        structuralEquals [shadowsBuiltin 3, applyTwo (curriedSum, 20, 22)] [3, 42],
         shadowsBuiltin "keep" == "keep",
         builtinAfterShadow (),
         contains "alpha" "ph",
-        !(contains "alpha" "zz"),
-        applyTwo (curriedSum, 20, 22) == 42
+        !(contains "alpha" "zz")
     ]
 
 test "file-scope generic function values resolve by name" (\() => exactArithmetic (genericValueCase))

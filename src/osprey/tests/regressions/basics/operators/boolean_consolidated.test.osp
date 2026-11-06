@@ -170,8 +170,7 @@ fn ieeeArithmeticCase() = {
         isNan(infinity + -infinity), isNan(infinity * 0.0),
         isNan(nan + 1.0), isNan(1.0 - nan), isNan(nan * 2.0),
         isNan(-nan), -infinity < -large,
-        (5 + 0.5) == 5.5, (0.5 * 5) == 2.5,
-        toFloat(9223372036854775807) == 9223372036854775808.0,
+        structuralEquals([(5 + 0.5), (0.5 * 5), toFloat(9223372036854775807)], [5.5, 2.5, 9223372036854775808.0]),
         toFloat(-9223372036854775808) == -9223372036854775808.0
     ])
 }
@@ -179,13 +178,14 @@ fn ieeeArithmeticCase() = {
 fn signedZeroAndUnderflowCase() = {
     let small = floatIdentity(smallFinite)
     checkAll("signed zeros and gradual underflow", [
-        small * small == 0.0, -small * small == -0.0,
-        toString(-small * small) == "-0.0", toString(-0.0 * 2.0) == "-0.0",
-        toString(-0.0 - 0.0) == "-0.0", toString(-(-0.0)) == "0.0",
+        structuralEquals([small * small, 5.5 % 2.0, 5.5 % -2.0], [0.0, 1.5, 1.5]),
+        -small * small == -0.0,
+        structuralEquals([toString(-small * small), toString(-0.0 * 2.0)], ["-0.0", "-0.0"]),
+        structuralEquals([toString(-0.0 - 0.0), toString(-(-0.0))], ["-0.0", "0.0"]),
+        structuralEquals([toString(-0.0 / 2.0), toString(-0.0 % 2.0)], ["-0.0", "-0.0"]),
         smallFinite * 0.0000000001 > 0.0, -0.0 == 0.0,
-        toString(-0.0 / 2.0) == "-0.0", toString(-0.0 % 2.0) == "-0.0",
-        5.5 % 2.0 == 1.5, -5.5 % 2.0 == -1.5,
-        5.5 % -2.0 == 1.5, -5.5 % -2.0 == -1.5
+        -5.5 % 2.0 == -1.5,
+        -5.5 % -2.0 == -1.5
     ])
 }
 
@@ -196,10 +196,11 @@ fn nonFiniteDivisionCase() = {
         0.0 } }
     checkAll("nonzero division and remainder retain IEEE results", [
         largeFinite / smallFinite == infinity,
-        infinity / 2.0 == infinity, 2.0 / infinity == 0.0,
+        infinity / 2.0 == infinity,
+        structuralEquals([2.0 / infinity, 2.0 % infinity], [0.0, 2.0]),
         toString(-2.0 / infinity) == "-0.0", isNan(infinity / infinity),
         isNan(nan / 2.0), isNan(2.0 / nan), isNan(nan / nan),
-        isNan(infinity % 2.0), 2.0 % infinity == 2.0,
+        isNan(infinity % 2.0),
         isNan(nan % 2.0), isNan(2.0 % nan), isNan(infinity % infinity)
     ])
 }
@@ -213,10 +214,9 @@ fn zeroDivisorCase() = {
         7.25
     } }
     checkAll("zero divisors recover before IEEE division or remainder", [
-        1.0 / 0.0 == 7.25, 1.0 / -0.0 == 7.25,
-        0.0 / 0.0 == 7.25, infinity / -0.0 == 7.25, nan / 0.0 == 7.25,
-        1.0 % 0.0 == 7.25, 1.0 % -0.0 == 7.25,
-        0.0 % 0.0 == 7.25, infinity % -0.0 == 7.25, nan % 0.0 == 7.25
+        structuralEquals([1.0 / 0.0, 1.0 / -0.0, 0.0 / 0.0, infinity / -0.0], [7.25, 7.25, 7.25, 7.25]),
+        structuralEquals([nan / 0.0, 1.0 % 0.0, 1.0 % -0.0], [7.25, 7.25, 7.25]),
+        structuralEquals([0.0 % 0.0, infinity % -0.0, nan % 0.0], [7.25, 7.25, 7.25])
     ])
     expect(faults, "/v/v/v/v/n%v%v%v%v%n")
 }
@@ -234,11 +234,11 @@ fn floatAbsoluteCase() = {
     let nan = infinity - infinity
     let magnitude = abs
     checkAll("float absolute value preserves its numeric type and IEEE values", [
-        abs(-2.5) == 2.5, abs(2.5) == 2.5,
-        toString(abs(-0.0)) == "0.0", toString(abs(0.0)) == "0.0",
+        structuralEquals([abs(-2.5), abs(2.5), absoluteValue(-3.5)], [2.5, 2.5, 3.5]),
+        structuralEquals([magnitude(-4.5), applyAbsolute(abs, -5.5)], [4.5, 5.5]),
+        structuralEquals([toString(abs(-0.0)), toString(abs(0.0))], ["0.0", "0.0"]),
         abs(-infinity) == infinity, abs(infinity) == infinity,
-        isNan(abs(nan)), absoluteValue(-3.5) == 3.5,
-        magnitude(-4.5) == 4.5, applyAbsolute(abs, -5.5) == 5.5
+        isNan(abs(nan))
     ])
 }
 test("float absolute value is total through function values", floatAbsoluteCase)
@@ -253,8 +253,7 @@ fn absoluteTransportCase() = {
     let selected = listGet(functions, 0) ?: fn(value) => value * 1.0
     let branch = true ? abs : fn(value) => value * 1.0
     checkAll("absolute function values retain float ABI and lexical bindings", [
-        returned(-2.5) == 2.5, record.apply(-3.5) == 3.5,
-        selected(-4.5) == 4.5, branch(-5.5) == 5.5,
+        structuralEquals([returned(-2.5), record.apply(-3.5), selected(-4.5), branch(-5.5)], [2.5, 3.5, 4.5, 5.5]),
         shadowedAbsolute(fn(value) => value * 2.0) == -13.0
     ])
 }
@@ -269,9 +268,9 @@ fn integerAbsoluteCase() = {
     } }
     let magnitude = abs
     checkAll("integer abs function values retain explicit recovery", [
-        magnitude(-9223372036854775808) == 19,
-        applyAbsolute(abs, -9223372036854775808) == 19,
-        magnitude(-27) == 27, faults == "absabs"
+        structuralEquals([magnitude(-9223372036854775808), applyAbsolute(abs, -9223372036854775808)], [19, 19]),
+        magnitude(-27) == 27,
+        faults == "absabs"
     ])
 }
 test("integer absolute function values keep overflow recovery", integerAbsoluteCase)

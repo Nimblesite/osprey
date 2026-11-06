@@ -175,9 +175,11 @@ fn matMulExactCaseUploaded(left, right) = {
                                             match floats([]) { Success { value } => { let uploaded30 = value
                                                     match product(uploaded29, uploaded30, 2, 0, 2) { Success { value } => { let hollow = value
                                                             checkAll("gpuMatMul forms the row-major product of the stated shapes", [
-                                                                    gpuLength(square) == 4, exact(at(square, 0), 58.0), exact(at(square, 1), 64.0), exact(at(square, 2), 139.0), exact(at(square, 3), 154.0),
+                                                                    gpuLength(square) == 4,
+                                                                    gpuLength(hollow) == 4,
+                                                                    exact(at(square, 0), 58.0), exact(at(square, 1), 64.0), exact(at(square, 2), 139.0), exact(at(square, 3), 154.0),
                                                                     exact(at(outer, 0), 10.0), exact(at(outer, 1), 14.0), exact(at(outer, 2), 15.0), exact(at(outer, 3), 21.0),
-                                                                    gpuLength(hollow) == 4, gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
+                                                                    gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
                                                                     gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
                                                             ])
                                                         } Error { message } => check("GPU operation", "success", toString(message)) }
@@ -303,8 +305,9 @@ fn attentionExactWith(grid0, grid1, grid2) =
             withBuffer(pairQkv(), fn(uploaded12) =>
                 withBuffer(attention(uploaded12, 2, grid2, grid1, grid2), fn(pair) =>
                     checkAll("attention returns a lone token's value and averages equal keys", [
-                            gpuLength(single) == 4, exact(at(single, 0), 8.0), exact(at(single, 1), 9.0), exact(at(single, 2), 10.0), exact(at(single, 3), 11.0),
-                            gpuLength(pair) == 8, exact(at(pair, 0), 1.0), exact(at(pair, 1), 2.0), exact(at(pair, 2), 3.0), exact(at(pair, 3), 4.0),
+                            structuralEquals([gpuLength(single), gpuLength(pair)], [4, 8]),
+                            exact(at(single, 0), 8.0), exact(at(single, 1), 9.0), exact(at(single, 2), 10.0), exact(at(single, 3), 11.0),
+                            exact(at(pair, 0), 1.0), exact(at(pair, 1), 2.0), exact(at(pair, 2), 3.0), exact(at(pair, 3), 4.0),
                             exact(at(pair, 4), 3.0), exact(at(pair, 5), 4.0), exact(at(pair, 6), 5.0), exact(at(pair, 7), 6.0)
                     ])))))
 fn embedCase() = withIndices(20, fn(grid0) => withIndices(12, fn(grid1) => withIndices(8, fn(grid2) => embedWith(grid0, grid1, grid2))))
@@ -401,8 +404,10 @@ fn loadCase() = {
     match gpuLoad(raw, 0, 3) { Success { value } => { let words = value
             match gpuLoad(raw, 4, 2) { Success { value } => { let tail = value
                     checkAll("gpuLoad keeps little-endian binary32 words and refuses a short read", [
-                            ready, gpuLength(words) == 3, exact(at(words, 0), 781.0352172851562), exact(at(words, 1), 204057.078125), exact(at(words, 2), 53291300.0),
-                            gpuLength(tail) == 2, exact(at(tail, 0), 204057.078125), exact(at(tail, 1), 53291300.0),
+                            ready,
+                            structuralEquals([gpuLength(words), gpuLength(tail)], [3, 2]),
+                            exact(at(words, 0), 781.0352172851562), exact(at(words, 1), 204057.078125), exact(at(words, 2), 53291300.0),
+                            exact(at(tail, 0), 204057.078125), exact(at(tail, 1), 53291300.0),
                             gpuSatisfies(gpuLoad(raw, 12, 0), fn(uploaded1) => gpuLength(uploaded1) == 0),
                             loadFailure(raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
                             loadFailure(raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",

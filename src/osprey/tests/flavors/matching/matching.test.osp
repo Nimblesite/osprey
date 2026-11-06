@@ -45,13 +45,13 @@ fn matchBooleanCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("boolean match legacy constituent values", [
-            structuralEquals([matchGrade(80), matchGrade(20), matchEven(4)], ["pass", "fail", "even"]),
-            matchEven(7) == "odd"
+            structuralEquals([matchGrade(80), matchGrade(20)], ["pass", "fail"]),
+            structuralEquals([matchEven(4), matchEven(7)], ["even", "odd"])
     ])
     // Exercise the grade threshold and parity boundary values.
     checkAll("boolean match boundaries", [
-            structuralEquals([matchGrade(50), matchGrade(49), matchEven(0)], ["pass", "fail", "even"]),
-            matchEven(9) == "odd"
+            structuralEquals([matchGrade(50), matchGrade(49)], ["pass", "fail"]),
+            structuralEquals([matchEven(0), matchEven(9)], ["even", "odd"])
     ])
 }
 
@@ -72,8 +72,8 @@ fn matchIntegerCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("integer match legacy constituent values", [
-            structuralEquals([matchLabel(0), matchLabel(1), matchLabel(2)], ["none", "single", "pair"]),
-            matchLabel(7) == "many"
+            structuralEquals([matchLabel(0), matchLabel(1)], ["none", "single"]),
+            structuralEquals([matchLabel(2), matchLabel(7)], ["pair", "many"])
     ])
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
@@ -140,16 +140,20 @@ fn bindingScope() = {
     let value = 100
     let selected = match 2 { value => value }
     checkAll("a catch-all binding leaves its outer value intact", [
-        selected == 2, value == 100
+        structuralEquals([selected, value], [2, 100])
     ])
 }
 
 fn siblingScopeCase() = checkAll("pattern arms have independent bindings", [
     resultScope(Success { value: 2 }) == "2:outer:100:outer",
-    structuralEquals([resultScope(Error { message: "bad" }), unionScope(Pick(2))], ["100:bad:100:outer", "2:100"]),
-    structuralEquals([unionScope(Other), listScope([2, 3]), listScope([])], ["100:100", "3:100:2", "100:100:2"]),
+    resultScope(Error { message: "bad" }) == "100:bad:100:outer",
+    unionScope(Pick(2)) == "2:100",
+    unionScope(Other) == "100:100",
+    listScope([2, 3]) == "3:100:2",
+    listScope([]) == "100:100:2",
     structuralScope(Coordinates { x: 2, y: 3 }) == "3:100",
-    structuralEquals([erasedScope(Coordinates { x: 2, y: 3 }), erasedScope(0)], ["2:100", "none:100"])
+    erasedScope(Coordinates { x: 2, y: 3 }) == "2:100",
+    erasedScope(0) == "none:100"
 ])
 
 fn capturedPattern(input) = {
@@ -162,8 +166,7 @@ fn capturedPattern(input) = {
 }
 
 fn capturedPatternCase() = checkAll("closures retain the selected arm's binding", [
-    capturedPattern(Pick(2)) == "2:100",
-    capturedPattern(Other) == "100:100"
+    structuralEquals([capturedPattern(Pick(2)), capturedPattern(Other)], ["2:100", "100:100"])
 ])
 
 test("catch-all bindings remain inside their arm", bindingScope)
@@ -196,7 +199,7 @@ fn mutablePatternCase() = {
     let selected = selectedReader()
     let updated = perform PatternCounter.set(101)
     checkAll("pattern values shadow cell storage without changing it", [
-        selected == 2, selectedReader() == 2, updated == 101, value == 101, readOuter() == 101
+        structuralEquals([selected, selectedReader(), updated, value, readOuter()], [2, 2, 101, 101, 101])
     ])
 }
 
@@ -214,7 +217,7 @@ fn callablePatternCase() = {
     let record = IntOperation { run: fn(n) => wrapAdd(n, 2) }
     let structural = match record { { run } => run(2) }
     checkAll("pattern bindings retain function signatures", [
-        selected == 3, apply(2) == 102, structural == 4, run(2) == 202
+        structuralEquals([selected, apply(2), structural, run(2)], [3, 102, 4, 202])
     ])
 }
 
@@ -231,7 +234,7 @@ fn callablePayloadCase() = {
     let listed = match callbacks { [] => 0 [value, ...rest] => wrapAdd(value(2), listLength(rest)) }
     let bound = match value { call => call(2) }
     checkAll("Result list and catch-all bindings retain callable signatures", [
-        selected == 3, listed == 4, bound == 102, value(2) == 102
+        structuralEquals([selected, listed, bound, value(2)], [3, 4, 102, 102])
     ])
 }
 
@@ -258,7 +261,7 @@ fn applyJoined(flag) = match joinedCallable(flag) {
     Error { message } => toFloat(length(message))
 }
 fn joinedCallablePatternCase() = checkAll("joined callable Results retain their float ABI", [
-    applyJoined(true) == 2.5, applyJoined(false) == 3.75
+    structuralEquals([applyJoined(true), applyJoined(false)], [2.5, 3.75])
 ])
 
 test("joined callable Results retain their payload signatures", joinedCallablePatternCase)

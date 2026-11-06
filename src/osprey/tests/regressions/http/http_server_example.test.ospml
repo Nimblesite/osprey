@@ -92,6 +92,6 @@ print "=== HTTP API Test Complete ==="
 test "local HTTP API routes every method and status" (\() => checkAll "HTTP API statuses" [
     serverId > 0,
     clientId > 0,
-    structuralEquals [getUsersResult, getHealthResult, postResult, loginResult, putResult] [200, 200, 201, 200, 200],
-    structuralEquals [deleteResult, notFoundResult, stopResult] [200, 404, 0]
+    structuralEquals [getUsersResult, getHealthResult, postResult, loginResult] [200, 200, 201, 200],
+    structuralEquals [putResult, deleteResult, notFoundResult, stopResult] [200, 200, 404, 0]
 ])

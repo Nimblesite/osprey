@@ -168,44 +168,36 @@ fn typedErrorChannelCase() = {
 
     checkAll("typed channel direct substitution policies", [
             structuralEquals([combined, strictRangeForTest(), relaxedRangeForTest()], [40, 1, 10]),
-            strictRangeForTest() != relaxedRangeForTest(),
             structuralEquals([parseUnder("bad", 0), parseUnder("bad", 7), parseUnder("other", 99)], [0, 7, 99]),
             structuralEquals([missingUnder("timeout"), missingUnder("retries"), clampUnder(5, 10)], [30, 1, 5]),
             structuralEquals([clampUnder(10, 10), clampUnder(11, 10), clampUnder(500, 10)], [10, 10, 10]),
-            structuralEquals([forceUnder(5, 10, 4), forceUnder(500, 10, 4)], [4, 4])
+            structuralEquals([forceUnder(5, 10, 4), forceUnder(500, 10, 4)], [4, 4]),
+            strictRangeForTest() != relaxedRangeForTest()
     ])
 
     checkAll("nested handlers restore outer policies around collection values", [
-            listLength(trace) == 3,
-            (trace.listGet(0) ?: 99) == 10,
-            (trace.listGet(1) ?: 99) == 1,
-            (trace.listGet(2) ?: 99) == 10,
-            listLength(healthyTrace) == 3,
-            (healthyTrace.listGet(0) ?: 99) == 5,
-            (healthyTrace.listGet(1) ?: 99) == 1,
-            (healthyTrace.listGet(2) ?: 99) == 5,
-            structuralEquals([traceShape([]), traceShape([7]), traceShape([7, 8])], ["empty", "one:7", "two:7/8"]),
-            traceShape(trace) == "many:10+2"
+            structuralEquals([listLength(trace), (trace.listGet(0) ?: 99)], [3, 10]),
+            structuralEquals([(trace.listGet(1) ?: 99), (trace.listGet(2) ?: 99)], [1, 10]),
+            structuralEquals([listLength(healthyTrace), (healthyTrace.listGet(0) ?: 99)], [3, 5]),
+            structuralEquals([(healthyTrace.listGet(1) ?: 99), (healthyTrace.listGet(2) ?: 99)], [1, 5]),
+            structuralEquals([traceShape([]), traceShape([7])], ["empty", "one:7"]),
+            structuralEquals([traceShape([7, 8]), traceShape(trace)], ["two:7/8", "many:10+2"])
     ])
 
     checkAll("typed effect results remain coherent inside maps of lists", [
-            mapLength(scalars) == 3,
-            (scalars.mapGet("parse") ?: 99) == 7,
-            (scalars.mapGet("missing") ?: 99) == 30,
-            (scalars.mapGet("range") ?: 99) == 10,
-            (scalars.mapGet("absent") ?: 99) == 99,
-            mapLength(nested) == 2,
-            mapLength(grown) == 3,
-            listLength(nested.mapGet("outer-inner-outer") ?: [99]) == 3,
+            structuralEquals([mapLength(scalars), (scalars.mapGet("parse") ?: 99)], [3, 7]),
+            structuralEquals([(scalars.mapGet("missing") ?: 99), (scalars.mapGet("range") ?: 99)], [30, 10]),
+            structuralEquals([(scalars.mapGet("absent") ?: 99), mapLength(nested)], [99, 2]),
+            structuralEquals([mapLength(grown), listLength(nested.mapGet("outer-inner-outer") ?: [99])], [3, 3]),
             ((nested.mapGet("outer-inner-outer") ?: [99]).listGet(1) ?: 99) == 1,
             ((nested.mapGet("healthy-inner-healthy") ?: [99]).listGet(2) ?: 99) == 5,
             listLength(grown.mapGet("forced") ?: [99]) == 2,
             ((grown.mapGet("forced") ?: [99]).listGet(0) ?: 99) == 4,
             ((grown.mapGet("forced") ?: [99]).listGet(1) ?: 99) == 4,
-            !mapContains(nested, "forced"),
-            mapContains(grown, "forced"),
             listLength(mapKeys(grown)) == 3,
-            listLength(mapValues(grown)) == 3
+            listLength(mapValues(grown)) == 3,
+            !mapContains(nested, "forced"),
+            mapContains(grown, "forced")
     ])
 }
 
