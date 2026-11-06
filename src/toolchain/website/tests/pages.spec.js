@@ -502,3 +502,20 @@ test("the homepage presents Osprey Native in one panel with the showcase film an
   expect(messaging).toContain("## Osprey Native");
   for (const rival of ["Flutter", "React Native", "Compose Multiplatform"]) expect(messaging).toContain(rival);
 });
+
+test("the homepage's effects panel is short and the build panel covers LLMs, maths and bringing Python along", async ({ page }) => {
+  await page.goto("/");
+  const words = (locator) => locator.evaluate((el) => el.innerText.split(/\s+/).filter(Boolean).length);
+  const effects = page.locator("section#effects");
+  expect(await words(effects), "effects panel words").toBeLessThan(170);
+  await expect(effects.locator(".feature-mark")).toHaveCount(0);
+  await expect(page.locator("#gpt2")).toHaveCount(0);
+  const build = page.locator("section#build");
+  await expect(build.locator("h2")).toContainText("LLMs");
+  for (const [name, href] of [["LLMs", "/docs/python/flavor/#local-llms-in-python-flavor"], ["Mathematics", "/docs/mathlib-port/"], ["Python", "/docs/python/interop/"]]) {
+    const item = build.locator("article", { has: page.locator("h3", { hasText: name }) });
+    await expect(item, name).toHaveCount(1);
+    await expect(item.locator(`a[href="${href}"]`), name).toHaveCount(1);
+  }
+  expect(await words(build.locator(".build-items")), "build panel words").toBeLessThan(130);
+});

@@ -168,7 +168,7 @@ for (const width of [390, 1440]) {
 
 test("homepage Python GPU excerpt includes the actual tensor operation", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator('#gpt2 code.language-python')).toContainText('return or_stop(perform(Tensor.mat_mul(a, b, rows, inner, cols)), lambda: a)');
+  await expect(page.locator('#build code.language-python')).toContainText('return or_stop(perform(Tensor.mat_mul(a, b, rows, inner, cols)), lambda: a)');
 });
 
 

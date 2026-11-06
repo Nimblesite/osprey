@@ -81,39 +81,43 @@ date: "git Last Modified"
   <div class="container">
     <div class="section-heading"><p class="home-eyebrow">Effects and types</p><h2 id="effects-title">Checked effects.<br><span class="muted-heading">Inferred types.</span></h2></div>
     <div class="effect-layout">
-      <div class="effect-intro"><p><code>effect</code> declares an operation’s arguments and result type. <code>perform</code> requests the operation; a <code>handler</code> supplies the implementation.</p><p>Choose storage once: <code>disk(onSave)</code> supplies it for <code>onSave</code> and the <code>saveDraft</code> helper it calls. Neither function takes a storage object. Replace the handler in a test to simulate a failure; the application logic stays the same.</p><p>The compiler checks operation types and rejects requests without a matching handler, including requests made through helper functions.</p><a class="text-link" href="/docs/effects/">See effect and handler syntax <span>↗</span></a></div>
+      <div class="effect-intro"><p><code>effect</code> declares a need, <code>perform</code> requests it, and a <code>handler</code> supplies it. Swap the handler in a test and the logic stays the same; a missing handler is a compile error.</p><a class="text-link" href="/docs/effects/">See effects <span>↗</span></a></div>
       <figure class="overview-film">
         <video id="overview-video" controls playsinline preload="none" poster="/assets/videos/osprey-overview-poster.jpg" width="1920" height="1080" aria-label="Osprey: effects, three flavors, and Python flavor on the GPU">
           <source src="/assets/videos/osprey-overview.mp4" type="video/mp4">
           <track kind="captions" srclang="en" label="English" src="/assets/videos/osprey-overview.en.vtt" default>
         </video>
-        <figcaption>Watch the walkthrough: real storage and a simulated failure using the same function. <a href="/docs/effects/">Run the example →</a></figcaption>
+        <figcaption>Real storage and a simulated failure, same function.</figcaption>
       </figure>
     </div>
     <div class="language-grid">
-      <article><span class="feature-mark" aria-hidden="true">:τ</span><h3>Inferred static types</h3><p>Inferred static types, immutable data, and exhaustive pattern matching. Expected failures remain visible as <code>Result</code> values.</p><a href="/spec/0004-typesystem/">Explore the type system ↗</a></article>
-      <article><span class="feature-mark" aria-hidden="true">{ λ }</span><h3>Three syntax flavors. One language.</h3><p>A syntax flavor is a way to write the same Osprey language: Default uses braces, ML uses indentation, and Python flavor uses Python-style syntax. Choose per file and import across flavors; all share one type system, effects and compiler.</p><a href="/blog/2026-06-30-osprey-flavors/">Compare the syntax flavors ↗</a></article>
-      <article><span class="feature-mark" aria-hidden="true">⇄</span><h3>Native fibers and channels</h3><p>Native fibers and channels keep concurrent work in ordinary functions. Choose tracing GC or reference counting for each native build.</p><a href="/spec/0011-lightweightfibersandconcurrency/">Follow the fibers ↗</a></article>
-      <article><span class="feature-mark" aria-hidden="true">+ !</span><h3>Arithmetic with a stated policy</h3><p>On the host, an <code>Arith</code> handler supplies the integer overflow policy. Wrapping and saturating helpers state their behavior in the call.</p><a href="/spec/0037-arithmeticeffects/">See arithmetic effects ↗</a></article>
+      <article><h3>Inferred types</h3><p>No annotations; exhaustive matching and <code>Result</code> for failures. <a href="/spec/0004-typesystem/">Types ↗</a></p></article>
+      <article><h3>Three syntax flavors</h3><p>Default, ML or Python-style syntax, one language. <a href="/blog/2026-06-30-osprey-flavors/">Flavors ↗</a></p></article>
+      <article><h3>Fibers and channels</h3><p>Concurrency in ordinary functions, on GC or ARC. <a href="/spec/0011-lightweightfibersandconcurrency/">Fibers ↗</a></p></article>
+      <article><h3>Checked arithmetic</h3><p>An <code>Arith</code> handler sets the overflow policy. <a href="/spec/0037-arithmeticeffects/">Arithmetic ↗</a></p></article>
     </div>
-    <p class="support-note">Osprey is actively evolving. Native control effects support single-shot resumption; full scoped effect rows and reusable continuations remain in development. <a href="/status/#algebraic-effects">Current support →</a></p>
+    <p class="support-note">Resumption is single-shot; scoped effect rows are in development. <a href="/status/#algebraic-effects">Current support →</a></p>
   </div>
 </section>
 
 
-<section class="section effect-story model-section" id="gpt2" aria-labelledby="model-title">
+<section class="section effect-story model-section" id="build" aria-labelledby="build-title">
   <div class="container">
-    <div class="section-heading"><p class="home-eyebrow">Python flavor and tensor handlers</p><h2 id="model-title">Port your Python.<br><span class="muted-heading">Choose CPU or GPU handlers.</span></h2></div>
+    <div class="section-heading"><p class="home-eyebrow">What you can build</p><h2 id="build-title">LLMs, maths and more.<br><span class="muted-heading">Bring your Python along.</span></h2></div>
     <div class="effect-layout">
-      <div class="effect-intro"><p>Keep <code>def</code>, <code>lambda</code>, and f-strings. Port computation into Osprey’s Python syntax flavor with inferred types and checked effects. Keep Python libraries through <a href="/spec/0042-pythoninterop/">explicit interop</a>.</p><p>GPT-2 is the worked port: one <code>Tensor</code> effect, a CPU handler, and a GPU handler using Metal or OpenCL. The handler decides where the arithmetic runs. A Qwen3.8-27B model on the <code>@osprey/transformers</code> port is in progress.</p><a class="text-link" href="/docs/python/flavor/">Port with Python flavor <span>↗</span></a></div>
+      <div class="build-items">
+        <article><h3>LLMs</h3><p>GPT-2 runs on Metal and OpenCL, and a Qwen3.8-27B model on our Transformers port is in progress. <a href="/docs/python/flavor/#local-llms-in-python-flavor">Local LLMs ↗</a></p></article>
+        <article><h3>Mathematics</h3><p>Machine-checked proofs, with Lean's proof checking being brought to Osprey. <a href="/docs/mathlib-port/">Mathlib port ↗</a></p></article>
+        <article><h3>Python</h3><p>Much Python already compiles as Osprey, NumPy and PyTorch are ported, and interop calls CPython both ways. <a href="/docs/python/interop/">Python interop ↗</a></p></article>
+      </div>
       <div class="flight-code">
         <div class="code-toolbar"><span>src/osprey/examples/llms/gpt2/python/model.py</span><span>Python flavor</span></div>
         <pre class="language-python"><code class="language-python"># osprey: flavor=python
 {{ gpuExample.product | escape }}</code></pre>
-        <div class="code-result"><span aria-hidden="true">↳</span><samp>make -C src/toolchain/targets gpt2 FLAVOR=python BACKEND=gpu</samp><span class="result-label">TRY IT</span></div>
+        <div class="code-result"><span aria-hidden="true">↳</span><samp>make -C src/toolchain/targets gpt2 FLAVOR=python</samp><span class="result-label">TRY IT</span></div>
       </div>
     </div>
-    <p class="support-note">Python flavor is Osprey source; porting requires adapting Python’s dynamic behavior. Shared tensor storage across Python interop is planned. GPU kernels are not fused; speed depends on the workload and backend. <a href="https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/README.md">Measurements and source →</a></p>
+    </div>
   </div>
 </section>
 

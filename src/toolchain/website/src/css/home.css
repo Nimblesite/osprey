@@ -58,11 +58,16 @@ html:has(.home) { scroll-behavior: auto; }
 @media (max-width: 900px) { .pillars-grid { grid-template-columns: 1fr; } }
 .effect-story .language-grid { margin-top: 4rem; }
 .language-grid { display: grid; grid-template-columns: 1fr 1fr; column-gap: 5rem; }
-.language-grid article { border-top: 1px solid #77d7f425; padding: 2rem 0; }
+.language-grid article { border-top: 1px solid #77d7f425; padding: 1.25rem 0; }
 .feature-mark { display: block; font: 1.5rem var(--font-mono); color: var(--primary-container); margin-bottom: 1.5rem; }
 .language-grid h3 { font-size: 1.2rem; font-weight: 500; letter-spacing: -0.03em; }
 .language-grid p { max-width: 47ch; color: var(--on-surface-variant); font-size: 0.92rem; }
-.language-grid a { font-size: 0.8rem; }
+.language-grid a { font-size: 0.8rem; white-space: nowrap; }
+.build-items article { border-top: 1px solid #77d7f425; padding: 1.25rem 0; }
+.build-items h3 { font-size: 1.2rem; font-weight: 500; letter-spacing: -0.03em; }
+.build-items p { color: var(--on-surface-variant); font-size: 0.95rem; margin: 0.4rem 0 0; }
+.build-items a { white-space: nowrap; }
+#build .flight-code { align-self: center; }
 .home .mobile-actions { align-items: center; }
 .native-platforms { font: 0.8rem var(--font-mono); letter-spacing: 0.04em; color: var(--primary); }
 .community-section { border-top: 1px solid #77d7f425; background: radial-gradient(ellipse at 85% 100%, #77d7f414, transparent 60%); }
