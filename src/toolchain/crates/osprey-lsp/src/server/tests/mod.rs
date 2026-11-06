@@ -315,6 +315,17 @@ fn sweep_progress(message: &Message, kind: &str) -> bool {
 /// Every diagnostic the server publishes up to the barrier request's reply and,
 /// when diagnostics work began meanwhile, until it ends: requests are answered
 /// while files are still being checked [LSP-DIAGNOSTICS-SCOPE].
+/// Settle request `id` and prove its reports cleared every diagnostic for `uri`.
+async fn settles_cleared(h: &mut Harness, id: i64, uri: &str, why: &str) {
+    let reports = settled(h, id).await;
+    assert!(
+        reports
+            .iter()
+            .any(|p| p["uri"] == uri && p["diagnostics"] == json!([])),
+        "{why}: {reports:?}"
+    );
+}
+
 async fn settled(h: &mut Harness, id: i64) -> Vec<Value> {
     h.send(&Message::request(
         RequestId::Number(id),
