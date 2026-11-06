@@ -135,6 +135,8 @@ impl Checker {
         let outer_position = self.expr_position;
         self.expr_position = pos.or(outer_position);
         let body_ty = self.infer_expr(body, &local);
+        // Release the body's snapshot before publishing into the parent scope.
+        drop(local);
         self.expr_position = outer_position;
         self.current_fn = enclosing;
         self.current_fn_typarams = HashMap::new();

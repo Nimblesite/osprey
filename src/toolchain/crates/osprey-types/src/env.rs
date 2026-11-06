@@ -232,6 +232,8 @@ impl TypeEnv {
     /// proportional to the small nested frames instead of to the part of the
     /// program already checked.
     fn flattened(&self) -> TypeEnv {
+        #[cfg(test)]
+        tests::FLATTEN_PASSES.with(|count| count.set(count.get() + 1));
         let sizes: Vec<usize> = self.frames().map(|frame| frame.vars.len()).collect();
         let cut = kept_from(&sizes);
         let mut merged = Frame::default();

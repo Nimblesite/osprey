@@ -4,6 +4,7 @@ use crate::unify::unify;
 
 std::thread_local! {
     pub(super) static SCHEME_SCRATCH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    pub(super) static FLATTEN_PASSES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static ENVIRONMENT_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     pub(crate) static MARKER_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
@@ -142,6 +143,23 @@ fn deep_nesting_flattens_without_changing_what_a_scope_sees() {
             if std::ptr::eq(before, after)),
         "flattening must share immutable schemes instead of cloning their full type trees"
     );
+}
+
+#[test]
+fn function_body_scopes_do_not_force_their_parent_to_flatten() -> Result<(), std::fmt::Error> {
+    use std::fmt::Write;
+    let mut source = String::new();
+    for index in 0..256 {
+        writeln!(source, "fn family{index}(x) = x")?;
+    }
+    source.push_str("print(family0(1))\nprint(family255(true))\n");
+    let parsed = osprey_syntax::parse_program(&source);
+    assert!(parsed.errors.is_empty(), "{:?}", parsed.errors);
+    FLATTEN_PASSES.with(|count| count.set(0));
+    let errors = crate::check_program(&parsed.program);
+    assert!(errors.is_empty(), "{errors:?}");
+    assert_eq!(FLATTEN_PASSES.with(std::cell::Cell::get), 0);
+    Ok(())
 }
 
 #[test]
