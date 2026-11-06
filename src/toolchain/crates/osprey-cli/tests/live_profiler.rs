@@ -81,10 +81,6 @@ impl Recorder {
 
 /// The shared service with only the Osprey runtime, reading `fixture`'s
 /// endpoint directory and writing exports under its scratch directory.
-fn service(fixture: &Fixture) -> ProfilerService {
-    service_with(fixture, Arc::new(Silent))
-}
-
 fn service_with(fixture: &Fixture, events: Arc<dyn ProfilerEvents>) -> ProfilerService {
     let runtime = OspreyRuntime::new(OspreyConfig {
         socket_dir: Some(fixture.socket_dir.clone()),
@@ -94,6 +90,13 @@ fn service_with(fixture: &Fixture, events: Arc<dyn ProfilerEvents>) -> ProfilerS
         ..ProfilerConfig::default()
     };
     ProfilerService::new(vec![Arc::new(runtime)], config, events)
+}
+
+/// `name`'s fixture, running, with the shared service attached to it.
+fn running(name: &str, flavor: Flavor) -> (Fixture, ProfilerService) {
+    let fixture = Fixture::start(name, flavor);
+    let service = service_with(&fixture, Arc::new(Silent));
+    (fixture, service)
 }
 
 async fn call(service: &ProfilerService, method: &str, params: Value) -> Value {
@@ -108,6 +111,11 @@ async fn error_code(service: &ProfilerService, method: &str, params: Value) -> i
         Ok(value) => panic!("{method} must be refused, got {value}"),
         Err(error) => error.code(),
     }
+}
+
+/// Stop `session`, dropping its report.
+async fn stop(service: &ProfilerService, session: Value) {
+    drop(call(service, methods::CPU_STOP, session).await);
 }
 
 /// Start a CPU session on the fixture, returning its `{ session_id }`.
@@ -190,8 +198,7 @@ fn samples(report: &Value) -> i64 {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn the_program_is_listed_as_an_attachable_osprey_process() {
-    let fixture = Fixture::start("lp-list", Flavor::Default);
-    let service = service(&fixture);
+    let (fixture, service) = running("lp-list", Flavor::Default);
     let list = call(
         &service,
         methods::PROCESSES,
@@ -219,31 +226,21 @@ async fn the_program_is_listed_as_an_attachable_osprey_process() {
         started.get("runtime_version").and_then(Value::as_str),
         Some(version)
     );
-    drop(
-        call(
-            &service,
-            methods::CPU_STOP,
-            json!({ "session_id": started.get("session_id") }),
-        )
-        .await,
-    );
+    stop(&service, json!({ "session_id": started.get("session_id") })).await;
     service.shutdown().await;
 }
 
+/// Both twins find their hot function and its lines; the ML twin is attributed
+/// to its own .ospml source, line for line.
 #[tokio::test(flavor = "multi_thread")]
 async fn cpu_profiling_finds_the_hot_function_and_its_lines() {
-    finds_the_hot_function_and_its_lines(Flavor::Default, "lp-cpu").await;
-}
-
-// The ML twin is attributed to its own .ospml source, line for line.
-#[tokio::test(flavor = "multi_thread")]
-async fn cpu_profiling_finds_the_ml_twins_hot_function_and_its_lines() {
-    finds_the_hot_function_and_its_lines(Flavor::Ml, "lp-cpu-ml").await;
+    for (flavor, name) in [(Flavor::Default, "lp-cpu"), (Flavor::Ml, "lp-cpu-ml")] {
+        finds_the_hot_function_and_its_lines(flavor, name).await;
+    }
 }
 
 async fn finds_the_hot_function_and_its_lines(flavor: Flavor, name: &str) {
-    let fixture = Fixture::start(name, flavor);
-    let service = service(&fixture);
+    let (fixture, service) = running(name, flavor);
     let report = profile(&service, &fixture, json!({}), 3 * RATE_HZ).await;
     assert!(samples(&report) > 100, "{report}");
     let spin = hot_functions(&report)
@@ -285,19 +282,16 @@ async fn finds_the_hot_function_and_its_lines(flavor: Flavor, name: &str) {
     service.shutdown().await;
 }
 
+/// Both twins' native frames appear only on request.
 #[tokio::test(flavor = "multi_thread")]
 async fn native_frames_appear_only_on_request() {
-    native_frames_only_on_request(Flavor::Default, "lp-native").await;
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn the_ml_twins_native_frames_appear_only_on_request() {
-    native_frames_only_on_request(Flavor::Ml, "lp-native-ml").await;
+    for (flavor, name) in [(Flavor::Default, "lp-native"), (Flavor::Ml, "lp-native-ml")] {
+        native_frames_only_on_request(flavor, name).await;
+    }
 }
 
 async fn native_frames_only_on_request(flavor: Flavor, name: &str) {
-    let fixture = Fixture::start(name, flavor);
-    let service = service(&fixture);
+    let (fixture, service) = running(name, flavor);
     // A native frame is any frame outside Osprey source (.osp or .ospml):
     // unlocated on a host without system debug info, located in libc
     // (`./stdio-common/...`) on one with it, as on the Linux runners.
@@ -329,55 +323,30 @@ async fn native_frames_only_on_request(flavor: Flavor, name: &str) {
     service.shutdown().await;
 }
 
-/// [PROF-ERRORS]: a pid that names no process is `PROCESS_NOT_FOUND`; a live
-/// process without an endpoint (this test binary) is `UNSUPPORTED_RUNTIME`.
+/// [PROF-ERRORS] [PROF-CPU-START]: `cpu.start` classifies its refusals — a pid
+/// naming no process, a live process without an Osprey endpoint (this test
+/// binary), and a pid already being recorded.
 #[tokio::test(flavor = "multi_thread")]
-async fn a_pid_without_an_osprey_endpoint_is_classified() {
-    let fixture = Fixture::start("lp-errors", Flavor::Default);
-    let service = service(&fixture);
-    let missing = json!({ "pid": 999_999 });
-    assert_eq!(
-        error_code(&service, methods::CPU_START, missing).await,
-        -32001
-    );
-    let own = json!({ "pid": std::process::id() });
-    assert_eq!(error_code(&service, methods::CPU_START, own).await, -32002);
-    service.shutdown().await;
-}
-
-/// [PROF-CPU-START]: a pid with a session is `ALREADY_PROFILING`.
-#[tokio::test(flavor = "multi_thread")]
-async fn a_second_session_on_the_same_program_is_refused() {
-    let fixture = Fixture::start("lp-busy", Flavor::Default);
-    let service = service(&fixture);
+async fn cpu_start_refusals_are_classified() {
+    let (fixture, service) = running("lp-errors", Flavor::Default);
     let started = call(&service, methods::CPU_START, json!({ "pid": fixture.pid })).await;
-    assert_eq!(
-        error_code(&service, methods::CPU_START, json!({ "pid": fixture.pid })).await,
-        -32004
-    );
-    drop(
-        call(
-            &service,
-            methods::CPU_STOP,
-            json!({ "session_id": started.get("session_id") }),
-        )
-        .await,
-    );
+    let recording = json!({ "session_id": started.get("session_id") });
+    for (params, code) in [
+        (json!({ "pid": 999_999 }), -32001),
+        (json!({ "pid": std::process::id() }), -32002),
+        (json!({ "pid": fixture.pid }), -32004),
+    ] {
+        assert_eq!(error_code(&service, methods::CPU_START, params).await, code);
+    }
+    stop(&service, recording).await;
     service.shutdown().await;
 }
 
 /// [PROF-CPU-SESSIONS]: a duration ends the session by itself.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_duration_caps_the_recorded_time() {
-    let fixture = Fixture::start("lp-duration", Flavor::Default);
-    let service = service(&fixture);
-    let started = call(
-        &service,
-        methods::CPU_START,
-        json!({ "pid": fixture.pid, "sample_rate": RATE_HZ, "duration_secs": 1.0 }),
-    )
-    .await;
-    let session = json!({ "session_id": started.get("session_id") });
+    let (fixture, service) = running("lp-duration", Flavor::Default);
+    let session = start_session(&service, &fixture, json!({ "duration_secs": 1.0 })).await;
     await_listing(
         &service,
         &session,
@@ -401,13 +370,12 @@ async fn a_duration_caps_the_recorded_time() {
 /// [PROF-CPU-SNAPSHOT]: samples stream while recording, so a snapshot has them.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_mid_session_snapshot_reports_the_samples_so_far() {
-    let fixture = Fixture::start("lp-snapshot", Flavor::Default);
-    let service = service(&fixture);
+    let (fixture, service) = running("lp-snapshot", Flavor::Default);
     let started = call(&service, methods::CPU_START, json!({ "pid": fixture.pid })).await;
     let session = json!({ "session_id": started.get("session_id") });
     await_samples(&service, &session, 1).await;
     let snapshot = call(&service, methods::CPU_SNAPSHOT, session.clone()).await;
-    drop(call(&service, methods::CPU_STOP, session).await);
+    stop(&service, session).await;
     assert!(
         samples(&snapshot) > 0,
         "once samples are streaming, the snapshot has them: {snapshot}"
@@ -419,8 +387,7 @@ async fn a_mid_session_snapshot_reports_the_samples_so_far() {
 /// it lived.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_program_killed_mid_session_keeps_its_samples() {
-    let mut fixture = Fixture::start("lp-killed", Flavor::Default);
-    let service = service(&fixture);
+    let (mut fixture, service) = running("lp-killed", Flavor::Default);
     let started = call(&service, methods::CPU_START, json!({ "pid": fixture.pid })).await;
     let session = json!({ "session_id": started.get("session_id") });
     await_samples(&service, &session, 1).await;
