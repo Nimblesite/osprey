@@ -394,11 +394,10 @@ test.describe("desktop interactions", () => {
     expect(runBody.code).toContain("fn account()");
   });
 
-  test("prose page shows a TOC with scroll-spy", async ({ page }) => {
+  test("prose page headings join the one side panel with scroll-spy", async ({ page }) => {
     await page.goto("/spec/0001-introduction/");
-    const toc = page.locator(".toc");
-    await expect(toc).toBeVisible();
-    const links = page.locator(".toc-link");
+    await expect(page.locator(".toc, .toc-aside nav:not(.docs-nav)")).toHaveCount(0);
+    const links = page.locator(".docs-nav-desktop .toc-link");
     expect(await links.count()).toBeGreaterThan(0);
 
     // Clicking a TOC link jumps to that section.
@@ -412,7 +411,7 @@ test.describe("desktop interactions", () => {
     // Scroll spy marks an active link.
     await page.evaluate(() => window.scrollBy(0, 1200));
     await page.waitForTimeout(400);
-    await expect(page.locator(".toc-link.active")).toHaveCount(1);
+    await expect(page.locator(".docs-nav-desktop .toc-link.active")).toHaveCount(1);
   });
 
   test("prose headings render as plain text, not links", async ({ page }) => {

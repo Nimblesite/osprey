@@ -1,5 +1,5 @@
 /* ============================ Prose (docs / spec / blog post / status) ==== */
-/* Docs navigation scrolls with the page; article TOCs remain sticky. */
+/* One side panel on every prose page: sticky, scrolls on its own. */
 .prose-layout {
   max-width: var(--max-width);
   margin-inline: auto;
@@ -19,49 +19,21 @@
   .prose-wide-layout .comparison-table :is(th, td) { padding-inline: clamp(0.35rem, 0.8vw, 1rem); }
 }
 
-.toc {
-  position: sticky;
-  top: calc(var(--header-height) + var(--space-4));
-  max-height: calc(100vh - var(--header-height) - (2 * var(--space-4)));
+.toc-list { list-style: none; margin: 0 0 var(--space-2); padding: 0 0 0 var(--space-3); }
+.toc-list li { margin: 0; }
+.docs-nav .toc-link { min-height: 30px; padding-block: 0.25rem; font-size: 0.8rem; box-shadow: none; background: none; }
+.docs-nav .toc-h3 .toc-link { padding-left: 1.4rem; font-size: 0.75rem; }
+.docs-nav .toc-link.active { color: var(--primary-container); background: none; box-shadow: inset 2px 0 0 var(--primary-container); }
+
+.toc-aside { position: sticky; top: calc(var(--header-height) + var(--space-4)); }
+.docs-nav-desktop {
+  max-height: calc(100dvh - var(--header-height) - 2 * var(--space-4));
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: transparent;
-  border: 0;
+  scrollbar-width: thin;
+  scrollbar-color: var(--outline-variant) transparent;
   border-left: 1px solid var(--outline-variant);
-  border-radius: 0;
-  padding: var(--space-2) 0 var(--space-2) var(--space-4);
-}
-.toc-title {
-  font-family: var(--font-sans);
-  font-size: var(--fs-label);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--on-surface-variant);
-  margin: 0 0 var(--space-3);
-}
-.toc-list { list-style: none; margin: 0; padding: 0; }
-.toc-list li { margin: 0; }
-.toc-link {
-  display: block;
-  font-size: 0.85rem;
-  line-height: 1.35;
-  color: var(--on-surface-variant);
-  padding: 0.3rem 0 0.3rem 0.8rem;
-  border-left: 2px solid transparent;
-}
-.toc-link:hover { color: var(--primary); }
-.toc-link.active {
-  color: var(--primary-container);
-  border-left-color: var(--primary-container);
-  font-weight: 500;
-}
-.toc-h3 .toc-link { padding-left: 1.6rem; font-size: 0.8rem; }
-
-/* Documentation pages keep the shared prose shell while replacing the local
-   heading list with a real, site-wide hierarchy. */
-.docs-nav {
-  border-left: 1px solid var(--outline-variant);
-  padding-left: var(--space-3);
+  padding: 0 var(--space-2) var(--space-4) var(--space-3);
 }
 .docs-nav-home {
   display: block;
@@ -108,19 +80,18 @@
 .docs-nav :is(a, summary):focus-visible, .docs-nav-mobile > summary:focus-visible { outline: 2px solid var(--primary-container); outline-offset: 2px; }
 .docs-nav-mobile { display: none; }
 
-/* No TOC (short page) → single, centred column. */
-.prose-layout.toc-empty { grid-template-columns: minmax(0, 1fr); }
-.prose-layout.toc-empty .prose { margin-inline: auto; }
 /* Below the docs breakpoint: drop the grid entirely (block flow) so the article
    fills the width and nothing can land in an auto-sized implicit column. */
 @media (max-width: 1024px) {
   .prose-layout { display: block; }
-  .toc-aside { display: none; }
   .prose { margin-inline: auto; }
-  .docs-prose-layout .toc-aside {
-    display: block;
+  .toc-aside {
+    position: sticky;
+    top: var(--header-height);
+    z-index: 5;
     max-width: var(--content-width);
-    margin: 0 auto var(--space-6);
+    margin: calc(-1 * var(--space-4)) auto var(--space-6);
+    background: var(--surface);
   }
   .docs-nav-desktop { display: none; }
   .docs-nav-mobile {
@@ -145,7 +116,13 @@
   .docs-nav-mobile summary::after { content: ""; width: 6px; height: 6px; margin-right: 4px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
   .docs-nav-mobile[open] > summary::after, .docs-nav-mobile details[open] > summary::after { transform: rotate(225deg); }
   .docs-nav-mobile[open] > summary { border-bottom: 1px solid var(--outline-variant); }
-  .docs-nav-mobile-list { padding: 0 var(--space-2); border: 0; }
+  .docs-nav-mobile-list {
+    max-height: calc(100dvh - var(--header-height) - 49px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 var(--space-2) var(--space-4);
+    border: 0;
+  }
   .docs-nav-mobile .docs-nav-section + .docs-nav-section { margin-top: 0; border-top: 1px solid var(--glass-border); }
   .docs-nav-mobile .docs-nav-section-title { margin: 0; }
   .docs-nav-mobile .docs-nav-current > summary { color: var(--primary-container); }

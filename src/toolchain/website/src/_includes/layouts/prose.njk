@@ -28,23 +28,15 @@ layout: layouts/base.njk
     </nav>
 {% endmacro %}
 {# Shared layout for every long-form page (docs, spec, blog posts, status).
-   One prose design for all of them — see src/css/prose.css `.prose`.
-   The TOC is built client-side from the article's own headings (toc.js), so
-   it adds no content — just navigation derived from what's already on the page. #}
-{% set isDocs = page.url.startsWith('/docs/') %}
-<div class="prose-layout{% if isDocs %} docs-prose-layout{% endif %}{% if wide %} prose-wide-layout{% endif %}">
+   One prose design and ONE side panel for all of them: the documentation
+   navigation, with the page's own headings nested under it by toc.js. #}
+<div class="prose-layout{% if wide %} prose-wide-layout{% endif %}">
   <aside class="toc-aside">
-{% if isDocs %}
 {{ documentationNavigation('docs-nav-desktop') }}
     <details class="docs-nav-mobile">
       <summary>Browse documentation</summary>
 {{ documentationNavigation('docs-nav-mobile-list', true) }}
     </details>
-{% else %}
-    <nav class="toc" id="toc" aria-label="On this page">
-      <p class="toc-title">Contents</p>
-    </nav>
-{% endif %}
   </aside>
   <article class="prose"{% if modified %} data-date-modified="{{ modified | isoDate }}"{% endif %}>
 {% if image %}
@@ -73,6 +65,6 @@ layout: layouts/base.njk
 {{ content | safe }}
   </article>
 </div>
-{% if not isDocs and not wide %}
+{% if not wide %}
 <script src="/js/toc.js" defer></script>
 {% endif %}
