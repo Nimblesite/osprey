@@ -7,4 +7,34 @@ module Checked {
         Success { value } => next(value)
         Error { message } => Error { message: message }
     }
+
+    fn collectAt(items, i, acc, step) = match i >= length(items) {
+        true => Success { value: acc }
+        false => match listGet(items, i) {
+            Error => Success { value: acc }
+            Success { value } => andThen(step(value), fn(parsed) => collectAt(items, i + 1, listAppend(acc, parsed), step))
+        }
+    }
+
+    /// Every element parsed through `step` and appended in order; the first
+    /// failure wins. Recursive on purpose: `foldList` over a `Result` list
+    /// crashes the runtime under the current codegen.
+    export fn collectAll(items, step) = collectAt(items, 0, [], step)
+
+    fn matchAt(items, i, ok, code) = match i >= length(items) {
+        true => Error { message: code }
+        false => match listGet(items, i) {
+            Error => Error { message: code }
+            Success { value } => if ok(value) { Success { value: value } } else { matchAt(items, i + 1, ok, code) }
+        }
+    }
+
+    /// The first element satisfying `ok`, else `code`.
+    export fn firstMatch(items, ok, code) = matchAt(items, 0, ok, code)
+
+    /// `onSuccess` of a valid result; any failure is reported as `code`.
+    export fn orElseCode(result, code, onSuccess) = match result {
+        Error => Error { message: code }
+        Success { value } => onSuccess(value)
+    }
 }

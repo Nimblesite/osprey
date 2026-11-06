@@ -3,6 +3,7 @@ import registry::Checked
 import registry_cli::Fetch
 import registry::Identity
 import registry::Names
+import registry::Maybe
 
 /// The folder registry's one listing, `GET /v1/packages`, as release
 /// identities, and the choices `add` and `update` make over it: the newest
@@ -35,5 +36,15 @@ module Listing {
     export fn newestOrdinal(listing, key, epoch) = {
         let releases = filterList(ofKey(listing, key), fn(r) => epochOf(r) == epoch)
         if isEmpty(releases) { Error { message: "${epochCode} ${Names::display(key)} e${epoch}" } } else { Success { value: largest(releases, ordinalOf) } }
+    }
+
+    /// The release at one exact slot, or the blank identity.
+    export fn releaseIn(listing, key, epoch, ordinal) = foldList(listing, Identity::blank(), fn(found, r: Identity::ReleaseId) =>
+        if Names::same(r.key, key) && r.epoch == epoch && r.ordinal == ordinal { r } else { found })
+
+    /// The newest release of `epoch` for `key`, when that epoch lists one.
+    export fn newestIn(listing, key, epoch) = match newestOrdinal(listing, key, epoch) {
+        Error => Maybe::none()
+        Success { value } => Maybe::some(releaseIn(listing, key, epoch, value))
     }
 }

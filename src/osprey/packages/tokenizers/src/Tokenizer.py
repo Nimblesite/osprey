@@ -13,7 +13,7 @@ the original string.
 from tiktoken import Bpe
 from tokenizers.Decoders import bytelevel_decode
 from tokenizers.Models import BpeModel, Token, bpe_tokenize, char_starts, id_to_token, unigram_tokenize, wordlevel_tokenize, wordpiece_tokenize
-from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_of, norm_text, start_at
+from tokenizers.Normalizers import Norm, append_norm, bert_normalize, char_at, empty_norm, end_at, nfc_normalize, norm_each, norm_of, norm_text, start_at
 from tokenizers.PreTokenizers import META_CP, bert_pretokenize, bytelevel_text, metaspace_pretokenize, qwen_pretokenize, whitespace_pretokenize
 from tokenizers.Processors import Encoding, Offset, bert_template, concat_two, empty_encoding
 from tokenizers.Unicode import cps_text, is_whitespace, is_word_char, text_cp_starts, text_cps
@@ -375,7 +375,7 @@ def text_encoding(tok, seg, stop, acc, cps, starts, byte_char):
 def norm_shifted(text, base):
     """A Norm over text whose byte ranges are offset by base."""
     n = norm_of(text)
-    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: append_norm(acc, char_at(n, i), start_at(n, i) + base, end_at(n, i) + base))
+    return norm_each(n, lambda acc, i: append_norm(acc, char_at(n, i), start_at(n, i) + base, end_at(n, i) + base))
 
 
 def pieces_encoding(m, pieces, acc, byte_char, nchars) -> Encodings:

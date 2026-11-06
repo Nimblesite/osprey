@@ -79,13 +79,8 @@ module Build {
         }
     }
 
-    fn appendManifest(done, project, lock, p) = Checked::andThen(packageManifestIn(project, lock, p), fn(value) => Success { value: listAppend(done, value) })
-
     /// Every locked package's manifest in lock order; the first rejection stops the build.
-    fn packageManifests(project, lock) = foldList(Lockfile::packagesOf(lock), Success { value: [] }, fn(acc, p) => match acc {
-        Error => acc
-        Success { value } => appendManifest(value, project, lock, p)
-    })
+    fn packageManifests(project, lock) = Checked::collectAll(Lockfile::packagesOf(lock), fn(p) => packageManifestIn(project, lock, p))
 
     fn packageRootsOf(pm) = mapList(manifestOf(pm).sourceRoots, fn(r) => rootPath("${dirOf(pm)}/${r}"))
 

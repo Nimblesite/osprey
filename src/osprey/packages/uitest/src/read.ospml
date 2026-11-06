@@ -50,7 +50,10 @@ module Read
     // Shape code 5 is a path; one that moves to a point and runs a cubic curve (step code 3) to another is a curve between them, read as x1, y1, x2, y2.
     path = 5
 
-    curve steps = [Doc::real (Doc::at (Doc::at (steps, 0), 1)), Doc::real (Doc::at (Doc::at (steps, 0), 2)), Doc::real (Doc::at (Doc::at (steps, 1), 1)), Doc::real (Doc::at (Doc::at (steps, 1), 2))]
+    // One curve coordinate: the `axis`th number of the `step`th step of the path.
+    curveCoord (steps, step, axis) = Doc::real (Doc::at (Doc::at (steps, step), axis))
+
+    curve steps = [curveCoord (steps, 0, 1), curveCoord (steps, 0, 2), curveCoord (steps, 1, 1), curveCoord (steps, 1, 2)]
 
     curved s = Doc::real (Doc::at (s, 0)) == toFloat path && Doc::real (Doc::at (Doc::at (Doc::at (s, 1), 1), 0)) == 3.0
 

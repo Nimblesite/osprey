@@ -317,22 +317,23 @@ def parse_object(text, pos):
     return object_members(text, pos + 1, [])
 
 
-def float_number(token, end):
-    """Parse a float token's text into a float value."""
-    match parseFloat(token):
+def number_from(parsed, end, wrap):
+    """A parsed number token wrapped into a JSON value, or a bad-number error."""
+    match parsed:
         case Success(value=value):
-            return Success(value=Parsed(value=jfloat(value), next=end))
+            return Success(value=Parsed(value=wrap(value), next=end))
         case Error(message=message):
             return Error(message="invalid JSON: bad number")
+
+
+def float_number(token, end):
+    """Parse a float token's text into a float value."""
+    return number_from(parseFloat(token), end, jfloat)
 
 
 def int_number(token, end):
     """Parse an integer token's text into an int value."""
-    match parseInt(token):
-        case Success(value=value):
-            return Success(value=Parsed(value=jint(value), next=end))
-        case Error(message=message):
-            return Error(message="invalid JSON: bad number")
+    return number_from(parseInt(token), end, jint)
 
 
 def number_value(token, end):

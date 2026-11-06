@@ -367,13 +367,18 @@ def esc_char(c, delimiter):
                 return c
 
 
+def contains_any(xs, item):
+    """Whether `item` equals any of `xs`."""
+    return any_from(len(xs), lambda i: equal(unwrap_or(listGet(xs, i), none()), item))
+
+
 def contains(container, item):
     """Jinja `in`: list/dict membership, or substring test for strings."""
     match container.kind:
         case "list":
-            return any_from(len(container.elems), lambda i: equal(unwrap_or(listGet(container.elems, i), none()), item))
+            return contains_any(container.elems, item)
         case "dict":
-            return any_from(len(container.keys), lambda i: equal(unwrap_or(listGet(container.keys, i), none()), item))
+            return contains_any(container.keys, item)
         case "string":
             return item.kind == K_STRING and contains_text(container.sval, item.sval)
         case _:

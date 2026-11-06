@@ -71,8 +71,24 @@ module McpRun
         Error _ => Runtime::step store
         Success server => of server
 
+    (** The form's fault in words, with nothing written. *)
+    export formProblem (store, problem) =
+        mcp = store.mcp
+        form = mcp.stateForm
+        Runtime::step (store(mcp = mcp(stateForm = form(formProblem = problem))))
+
+    (** The mcp.json document `saved` held, its servers connected and written back; a fault is words in the form. *)
+    export acceptSaved (store, saved) = match saved.problem == ""
+        false => formProblem (store, saved.problem)
+        true =>
+            mcp = store.mcp
+            loaded = McpModel::globalLoaded (mcp(stateForm = McpModel::blankForm ()), saved.text)
+            Model::persistingAfter (connectAll (store(mcp = loaded)), "mcp.json")
+
     (** One server at the start of a connection: nothing owed, nothing listed. *)
-    restarted server = server(serverPhase = "connecting", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0)
+    restarted server =
+        base = McpModel::cleared server
+        base(serverPhase = "connecting")
 
     (** Starts one server's connection: a stdio child process, or the first HTTP POST. *)
     export begin (store, name) = withServer (store, name, \server => startFrom (store, restarted server))

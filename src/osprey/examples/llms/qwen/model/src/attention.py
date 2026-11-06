@@ -19,7 +19,7 @@ from qwen import Qwen3_5Norm as Norm
 from qwen import Qwen3_5Rope as Rope
 from qwen.Qwen3_5Device import Weight, at, grid, linear, must, quot, rem, sigmoid
 
-__all__ = ["Layer", "Mixed", "mix"]
+__all__ = ["Geometry", "Layer", "Mixed", "mix"]
 
 
 class Layer:
@@ -30,6 +30,17 @@ class Layer:
     o: Weight
     q_norm: GpuBuffer[float32]
     k_norm: GpuBuffer[float32]
+
+
+class Geometry:
+    """The head widths and the split/shift pairs a cell index is addressed with."""
+    heads: int
+    width: int
+    kv_width: int
+    hm: int
+    hs: int
+    gm: int
+    gs: int
 
 
 class Mixed:
@@ -57,17 +68,18 @@ def score(q, keys, h, t, width, kv_width, kvh, scale: float32) -> float32:
     return fold(range(0, width), toFloat32(0.0), lambda a, d: a + at(q, wrapAdd(wrapMul(h, width), d)) * at(keys, wrapAdd(wrapMul(t, kv_width), wrapAdd(wrapMul(kvh, width), d)))) * scale
 
 
+def geometry(config, shapes) -> Geometry:
+    """The head arithmetic both attention kernels address cells with: widths, and the
+    split/shift pairs that turn a flat cell index into a head and its offset."""
+    width = config.head_dim
+    return Geometry(heads=config.num_attention_heads, width=width, kv_width=config.num_key_value_heads * width, hm=shapes.attention_heads.mul, hs=shapes.attention_heads.shift, gm=shapes.kv_groups.mul, gs=shapes.kv_groups.shift)
+
+
 def scores(q, keys, n, config, shapes) -> GpuBuffer[float32]:
     """Every head's score against every cached position, `[position, head]`."""
-    heads = config.num_attention_heads
-    width = config.head_dim
-    kv_width = config.num_key_value_heads * width
-    hm = shapes.attention_heads.mul
-    hs = shapes.attention_heads.shift
-    gm = shapes.kv_groups.mul
-    gs = shapes.kv_groups.shift
-    scale = toFloat32(1.0 / sqrt(toFloat(width)))
-    return must(gpuMap(grid(heads * n), lambda i: score(q, keys, rem(i, hm, hs, heads), quot(i, hm, hs), width, kv_width, quot(rem(i, hm, hs, heads), gm, gs), scale)))
+    g = geometry(config, shapes)
+    scale = toFloat32(1.0 / sqrt(toFloat(g.width)))
+    return must(gpuMap(grid(g.heads * n), lambda i: score(q, keys, rem(i, g.hm, g.hs, g.heads), quot(i, g.hm, g.hs), g.width, g.kv_width, quot(rem(i, g.hm, g.hs, g.heads), g.gm, g.gs), scale)))
 
 
 def peak(s, h, n, heads) -> float32:
@@ -96,14 +108,10 @@ def attended(w, values, n, h, d, heads, width, kv_width, kvh) -> float32:
 
 def output(w, values, n, config, shapes) -> GpuBuffer[float32]:
     """`softmax(scores) @ values` for every head, heads side by side."""
-    heads = config.num_attention_heads
-    width = config.head_dim
-    kv_width = config.num_key_value_heads * width
+    g = geometry(config, shapes)
     mul = shapes.head_dim.mul
     shift = shapes.head_dim.shift
-    gm = shapes.kv_groups.mul
-    gs = shapes.kv_groups.shift
-    return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, width), heads, width, kv_width, quot(quot(i, mul, shift), gm, gs))))
+    return must(gpuMap(shapes.q_cells, lambda i: attended(w, values, n, quot(i, mul, shift), rem(i, mul, shift, g.width), g.heads, g.width, g.kv_width, quot(quot(i, mul, shift), g.gm, g.gs))))
 
 
 def mix(x, layer, slot, config, shapes) -> Mixed:

@@ -1,6 +1,7 @@
 namespace registry_editor
 import ui::Doc
 import ui::Lists
+import registry::Checked
 import registry::Names
 
 // Implements [PACKAGE-EDITOR-GRAPH]: the editor consumes the canonical
@@ -35,23 +36,7 @@ type CatalogEntry =
 module Packages
     failure message = Error(message = message)
 
-    stringField (doc, key) = match jsonField doc key
-        Error _ => failure "Package data is missing ${key}"
-        Success value => match jsonText value
-            Error _ => failure "Package data has a non-string ${key}"
-            Success text => Success(value = text)
-
-    intField (doc, key) = match jsonField doc key
-        Error _ => failure "Package data is missing ${key}"
-        Success value => match jsonInt value
-            Error _ => failure "Package data has a non-integer ${key}"
-            Success number => Success(value = number)
-
-    boolField (doc, key) = match jsonField doc key
-        Error _ => failure "Package data is missing ${key}"
-        Success value => match jsonBool value
-            Error _ => failure "Package data has a non-boolean ${key}"
-            Success flag => Success(value = flag)
+    dataLabel = "Package data"
 
     canonical text = match Names::parse text
         Error _ => failure "${text} is not a canonical package key"
@@ -63,134 +48,94 @@ module Packages
         Error _ => failure "Package keys must be strings"
         Success text => canonical text
 
-    appendKey (parsed, item) = match parsed
+    appendParsed (parsed, parseItem, item) = match parsed
         Error problem => Error(message = problem)
-        Success keys => match keyText item
+        Success values => match parseItem item
             Error problem => Error(message = problem)
-            Success text => Success(value = listAppend keys text)
+            Success value => Success(value = listAppend values value)
 
-    keyListAt (doc, key) = match jsonField doc key
+    collect (items, parseItem) = foldList (items, Success(value = []), \(parsed, item) => appendParsed (parsed, parseItem, item))
+
+    /// The array member `key` parsed one item at a time by `parseItem`.
+    listAt (doc, key, parseItem) = match jsonField doc key
         Error _ => failure "Package data is missing ${key}"
         Success value => match value
-            JsonArray items => foldList (items, Success(value = []), \(parsed, item) => appendKey (parsed, item))
+            JsonArray items => collect (items, parseItem)
             _ => failure "Package data has a non-list ${key}"
 
-    appendText (parsed, item) = match parsed
-        Error problem => Error(message = problem)
-        Success texts => match jsonText item
-            Error _ => failure "Package data has a non-string entry"
-            Success text => Success(value = listAppend texts text)
+    keyListAt (doc, key) = listAt (doc, key, keyText)
 
-    textListAt (doc, key) = match jsonField doc key
-        Error _ => failure "Package data is missing ${key}"
-        Success value => match value
-            JsonArray items => foldList (items, Success(value = []), \(parsed, item) => appendText (parsed, item))
-            _ => failure "Package data has a non-list ${key}"
+    textItem item = match jsonText item
+        Error _ => failure "Package data has a non-string entry"
+        Success text => Success(value = text)
 
-    identity doc = match stringField (doc, "key")
-        Error problem => Error(message = problem)
-        Success text => match canonical text
-            Error problem => Error(message = problem)
-            Success key => match stringField (doc, "version")
-                Error problem => Error(message = problem)
-                Success version => match stringField (doc, "digest")
-                    Error problem => Error(message = problem)
-                    Success digest => Success(value = EntryIdentity(entryKey = key, entryVersion = version, entryDigest = digest))
+    textListAt (doc, key) = listAt (doc, key, textItem)
 
-    flags identityValue doc = match boolField (doc, "direct")
-        Error problem => Error(message = problem)
-        Success direct => match boolField (doc, "present")
-            Error problem => Error(message = problem)
-            Success present => Success(value = PackageEntry(entryIdentity = identityValue, entryDirect = direct, entryPresent = present, entryDependencies = [], entryDependents = [], entryFindings = []))
+    identityFor (doc, key) = Checked::andThen (Fields::stringField (doc, "version", dataLabel), \version =>
+        Checked::andThen (Fields::stringField (doc, "digest", dataLabel), \digest => Success(value = EntryIdentity(entryKey = key, entryVersion = version, entryDigest = digest))))
 
-    links draft doc = match keyListAt (doc, "dependencies")
-        Error problem => Error(message = problem)
-        Success dependencies => match keyListAt (doc, "dependents")
-            Error problem => Error(message = problem)
-            Success dependents => match textListAt (doc, "findings")
-                Error problem => Error(message = problem)
-                Success findings => Success(value = PackageEntry(entryIdentity = draft.entryIdentity, entryDirect = draft.entryDirect, entryPresent = draft.entryPresent, entryDependencies = dependencies, entryDependents = dependents, entryFindings = findings))
+    identity doc = Checked::andThen (Fields::stringField (doc, "key", dataLabel), \text =>
+        Checked::andThen (canonical text, \key => identityFor (doc, key)))
 
-    entry doc = match identity doc
-        Error problem => Error(message = problem)
-        Success identityValue => match flags identityValue doc
-            Error problem => Error(message = problem)
-            Success draft => links draft doc
+    flags identityValue doc = Checked::andThen (Fields::boolField (doc, "direct", dataLabel), \direct =>
+        Checked::andThen (Fields::boolField (doc, "present", dataLabel), \present => Success(value = PackageEntry(entryIdentity = identityValue, entryDirect = direct, entryPresent = present, entryDependencies = [], entryDependents = [], entryFindings = []))))
 
-    appendEntry (parsed, item) = match parsed
-        Error problem => Error(message = problem)
-        Success packages => match entry item
-            Error problem => Error(message = problem)
-            Success package => Success(value = listAppend packages package)
+    linkedDraft (doc, draft, dependencies, dependents) = Checked::andThen (textListAt (doc, "findings"), \findings => Success(value = PackageEntry(entryIdentity = draft.entryIdentity, entryDirect = draft.entryDirect, entryPresent = draft.entryPresent, entryDependencies = dependencies, entryDependents = dependents, entryFindings = findings)))
 
-    entries items = foldList (items, Success(value = []), \(parsed, item) => appendEntry (parsed, item))
+    links draft doc = Checked::andThen (keyListAt (doc, "dependencies"), \dependencies =>
+        Checked::andThen (keyListAt (doc, "dependents"), \dependents => linkedDraft (doc, draft, dependencies, dependents)))
+
+    entry doc = Checked::andThen (identity doc, \identityValue => Checked::andThen (flags identityValue doc, \draft => links draft doc))
+
+    entries items = collect (items, entry)
 
     keyOf item = item.entryIdentity.entryKey
 
-    graph doc = match stringField (doc, "project")
-        Error problem => Error(message = problem)
-        Success project => match keyListAt (doc, "direct")
-            Error problem => Error(message = problem)
-            Success direct => match jsonField doc "packages"
-                Error _ => failure "Package graph is missing packages"
-                Success packagesValue => match packagesValue
-                    JsonArray items => match entries items
-                        Error problem => Error(message = problem)
-                        Success packages => match textListAt (doc, "findings")
-                            Error problem => Error(message = problem)
-                            Success findings => match Lists::distinct (mapList (packages, \item => keyOf item))
-                                false => failure "Package graph repeats a package key"
-                                true => Success(value = Graph(graphProject = project, graphPackages = packages, graphDirect = direct, graphFindings = findings))
-                    _ => failure "Package graph has a non-list packages"
+    packagesField doc = match jsonField doc "packages"
+        Error _ => failure "Package graph is missing packages"
+        Success value => match value
+            JsonArray items => entries items
+            _ => failure "Package graph has a non-list packages"
 
-    release doc = match intField (doc, "epoch")
-        Error problem => Error(message = problem)
-        Success epoch => match intField (doc, "ordinal")
-            Error problem => Error(message = problem)
-            Success ordinal => Success(value = "e${epoch}.r${ordinal}")
+    checkedGraph (project, packages, direct, findings) = match Lists::distinct (mapList (packages, \item => keyOf item))
+        false => failure "Package graph repeats a package key"
+        true => Success(value = Graph(graphProject = project, graphPackages = packages, graphDirect = direct, graphFindings = findings))
 
-    appendRelease (parsed, item) = match parsed
-        Error problem => Error(message = problem)
-        Success versions => match release item
-            Error problem => Error(message = problem)
-            Success version => Success(value = listAppend versions version)
+    graphOf (doc, project, direct) = Checked::andThen (packagesField doc, \packages =>
+        Checked::andThen (textListAt (doc, "findings"), \findings => checkedGraph (project, packages, direct, findings)))
 
-    releases items = foldList (items, Success(value = []), \(parsed, item) => appendRelease (parsed, item))
+    graph doc = Checked::andThen (Fields::stringField (doc, "project", dataLabel), \project =>
+        Checked::andThen (keyListAt (doc, "direct"), \direct => graphOf (doc, project, direct)))
+
+    release doc = Checked::andThen (Fields::intField (doc, "epoch", dataLabel), \epoch =>
+        Checked::andThen (Fields::intField (doc, "ordinal", dataLabel), \ordinal => Success(value = "e${epoch}.r${ordinal}")))
+
+    releases items = collect (items, release)
+
+    nonEmptyVersions versions = match isEmpty versions
+        true => failure "Catalog package has no releases"
+        false => Success(value = versions)
 
     catalogVersion doc = match jsonField doc "releases"
         Error _ => failure "Catalog package is missing releases"
         Success value => match value
-            JsonArray items => match releases items
-                Error problem => Error(message = problem)
-                Success versions => match isEmpty versions
-                    true => failure "Catalog package has no releases"
-                    false => Success(value = versions)
+            JsonArray items => Checked::andThen (releases items, \versions => nonEmptyVersions versions)
             _ => failure "Catalog package has a non-list releases"
 
     catalogFindings doc = match Doc::has (doc, "findings")
         false => Success(value = [])
         true => textListAt (doc, "findings")
 
-    catalogEntry doc = match stringField (doc, "key")
-        Error problem => Error(message = problem)
-        Success text => match canonical text
-            Error problem => Error(message = problem)
-            Success key => match catalogVersion doc
-                Error problem => Error(message = problem)
-                Success versions => match catalogFindings doc
-                    Error problem => Error(message = problem)
-                    Success findings => Success(value = CatalogEntry(catalogKey = key, catalogVersions = versions, catalogFindings = findings, catalogEvidence = false))
+    catalogEntryAt (doc, key) = Checked::andThen (catalogVersion doc, \versions =>
+        Checked::andThen (catalogFindings doc, \findings => Success(value = CatalogEntry(catalogKey = key, catalogVersions = versions, catalogFindings = findings, catalogEvidence = false))))
 
-    appendCatalog (parsed, item) = match parsed
-        Error problem => Error(message = problem)
-        Success entriesValue => match catalogEntry item
-            Error problem => Error(message = problem)
-            Success entryValue => Success(value = listAppend entriesValue entryValue)
+    catalogEntry doc = Checked::andThen (Fields::stringField (doc, "key", dataLabel), \text =>
+        Checked::andThen (canonical text, \key => catalogEntryAt (doc, key)))
 
     catalog doc = match jsonField doc "packages"
         Error _ => failure "Registry catalog is missing packages"
         Success value => match value
-            JsonArray items => foldList (items, Success(value = []), \(parsed, item) => appendCatalog (parsed, item))
+            JsonArray items => collect (items, catalogEntry)
             _ => failure "Registry catalog has a non-list packages"
 
     catalogKeys entries = mapList (entries, \item => item.catalogKey)

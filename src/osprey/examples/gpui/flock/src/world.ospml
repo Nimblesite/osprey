@@ -144,14 +144,17 @@ module Simulation
 
     cellIndex (cx, cy) = satAdd (satMul (satAdd cy 1) 23) (satAdd cx 1)
 
+    // A position with no bird there reads as still at the origin.
+    still () = Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+
     // Each bird's code is its cell index times 32768 plus its own index, so one integer sort groups the flock by cell.
     code (birds, i) =
-        b = listGet birds i ?: Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+        b = listGet birds i ?: still ()
         satAdd (satMul (cellIndex (cell b.birdX, cell b.birdY)) 32768) i
 
     cellOf value = intDiv value 32768
 
-    birdOf (birds, value) = listGet birds (satSub value (satMul (cellOf value) 32768)) ?: Bird(birdX = 0.0, birdY = 0.0, birdVx = 0.0, birdVy = 0.0)
+    birdOf (birds, value) = listGet birds (satSub value (satMul (cellOf value) 32768)) ?: still ()
 
     // Where each cell's run begins in the sorted flock: every cell up to this bird's starts at its position.
     opened (starts, position, value) = range (length starts, satAdd (cellOf value) 1) |> fold starts (\(out, _) => listAppend out position)

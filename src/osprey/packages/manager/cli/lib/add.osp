@@ -77,18 +77,11 @@ module Add {
 
     // ---- add <path> ([PACKAGE-LOCAL-OVERRIDE]) ----
 
-    fn releaseIn(listing, key, epoch, ordinal) = foldList(listing, Identity::blank(), fn(found, r: Identity::ReleaseId) => if Names::same(r.key, key) && r.epoch == epoch && r.ordinal == ordinal { r } else { found })
-
-    fn newestIn(listing, key, epoch) = match Listing::newestOrdinal(listing, key, epoch) {
-        Error => Maybe::none()
-        Success { value } => Maybe::some(releaseIn(listing, key, epoch, value))
-    }
-
     /// The published baseline of the checkout's key: the newest release of the
     /// epoch in force, none when nothing is published.
     fn baselineFor(req, listing) = match chosenEpoch(req, listing) {
         Error => Maybe::none()
-        Success { value } => newestIn(listing, keyOf(req), value)
+        Success { value } => Listing::newestIn(listing, keyOf(req), value)
     }
 
     fn epochFor(req, baseline) = Maybe::fold(baseline,

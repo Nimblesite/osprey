@@ -279,22 +279,23 @@ def has_tool_calls(response) -> bool:
     return len(tool_calls(response)) > 0
 
 
-def tool_name_of(part) -> str:
-    """`ToolCallPart.tool_name`; empty for any other part."""
+def tool_field(part, want_id) -> str:
+    """A `ToolCallPart`'s name or id; empty for any other part."""
     match part:
-        case ToolCallPart(tool_name=tool_name):
-            return tool_name
+        case ToolCallPart(tool_name=tool_name, tool_call_id=tool_call_id):
+            return tool_call_id if want_id else tool_name
         case _:
             return ""
+
+
+def tool_name_of(part) -> str:
+    """`ToolCallPart.tool_name`; empty for any other part."""
+    return tool_field(part, False)
 
 
 def tool_call_id_of(part) -> str:
     """`ToolCallPart.tool_call_id`; empty for any other part."""
-    match part:
-        case ToolCallPart(tool_call_id=tool_call_id):
-            return tool_call_id
-        case _:
-            return ""
+    return tool_field(part, True)
 
 
 def args_text(part):

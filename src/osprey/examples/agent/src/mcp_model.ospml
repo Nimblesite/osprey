@@ -86,16 +86,30 @@ module McpModel
 
     export memory (name, folder, enabled) = McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = false)
 
-    memoryOf (mcp, name, folder) = listGet (filterList (mcp.stateMemories, \item => item.memoryName == name && item.memoryFolder == folder)) 0
+    (** `of` applied to the first item `matches`, or `absent` when none does. *)
+    export firstWhere (items, matches, of, absent) = match Lists::find (items, matches)
+        Success found => of found
+        Error _ => absent
 
     (** Global servers default on; cloned project commands default off until opted in for this folder. *)
     export enabledFor (mcp, name, origin) =
         folder = Pick::either (origin == "project", mcp.stateFolder, "")
-        match memoryOf (mcp, name, folder)
-            Success found => found.memoryEnabled
-            Error _ => origin != "project"
+        firstWhere (mcp.stateMemories, \item => item.memoryName == name && item.memoryFolder == folder, \item => item.memoryEnabled, origin != "project")
 
-    export offline (view, enabled) = McpServer(serverName = view.viewName, serverOrigin = view.viewOrigin, serverKind = view.viewKind, serverEndpoint = view.viewEndpoint, serverConfig = view.viewConfig, serverEnabled = enabled, serverPhase = "off", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0, serverCallText = "", serverCallDone = false)
+    (** A server with nothing configured and nothing owed. *)
+    export blankServer (name) = McpServer(serverName = name, serverOrigin = "", serverKind = "", serverEndpoint = "", serverConfig = "", serverEnabled = false, serverPhase = "", serverTools = "[]", serverProblem = "", serverBuffer = "", serverSession = "", serverRpc = "", serverAwait = "", serverNextId = 1, serverReadTicket = "", serverCallChat = "", serverCallId = "", serverCallUntil = 0, serverCallText = "", serverCallDone = false)
+
+    (** The view of no server: a name no server has. *)
+    export noView = McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false)
+
+    export offline (view, enabled) =
+        base = blankServer view.viewName
+        base(serverOrigin = view.viewOrigin, serverKind = view.viewKind, serverEndpoint = view.viewEndpoint, serverConfig = view.viewConfig, serverEnabled = enabled, serverPhase = "off")
+
+    (** `server` with nothing owed and nothing listed: its entry, and any finished call's text, unchanged. *)
+    export cleared server =
+        base = blankServer server.serverName
+        base(serverOrigin = server.serverOrigin, serverKind = server.serverKind, serverEndpoint = server.serverEndpoint, serverConfig = server.serverConfig, serverEnabled = server.serverEnabled, serverCallText = server.serverCallText, serverCallDone = server.serverCallDone)
 
     // A server keeps its runtime connection when the merged view still names it with the same entry.
     sameEntry : (McpServer, McpClient::ServerView) -> bool
@@ -167,7 +181,7 @@ module McpModel
     labelled : (List<McpServer>, string) -> List<McpServer>
     labelled (servers, name) = filterList (servers, \server => server.serverEnabled && hasTool (server, name))
 
-    export serverLabel (mcp, name) = (listGet (labelled (mcp.stateServers, name)) 0 ?: offline (McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false), false)).serverName
+    export serverLabel (mcp, name) = (listGet (labelled (mcp.stateServers, name)) 0 ?: offline (noView, false)).serverName
 
     remember : (List<McpMemory>, string, string, bool) -> List<McpMemory>
     remember (memories, name, folder, enabled) = listPrepend (filterList (memories, \item => item.memoryName != name || item.memoryFolder != folder)) (McpMemory(memoryName = name, memoryFolder = folder, memoryEnabled = enabled))
@@ -176,7 +190,7 @@ module McpModel
     switched (found, enabled) = found(serverEnabled = enabled, serverProblem = "", serverPhase = Pick::either (enabled, found.serverPhase, "off"), serverTools = Pick::either (enabled, found.serverTools, "[]"))
 
     export withMemory (mcp, name, enabled) =
-        found = named (mcp, name) ?: offline (McpClient::ServerView(viewName = "", viewOrigin = "", viewKind = "", viewEndpoint = "", viewConfig = "", viewEnabled = false), false)
+        found = named (mcp, name) ?: offline (noView, false)
         folder = Pick::either (found.serverOrigin == "project", mcp.stateFolder, "")
         putServer (mcp(stateMemories = remember (mcp.stateMemories, name, folder, enabled)), switched (found, enabled))
 

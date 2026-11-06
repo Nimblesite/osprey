@@ -16,17 +16,22 @@ module ManifestJson {
     fn variant(name, payload) = Json::obj([Json::member(name, payload)])
     fn empty() = Json::obj([])
 
-    fn key(k) = Json::obj([Json::member("name", Json::str(k.name)), Json::member("scope", Json::str(k.scope))])
+    /// The `{name, scope}` object of a package key.
+    export fn key(k) = Json::obj([Json::member("name", Json::str(k.name)), Json::member("scope", Json::str(k.scope))])
 
     // `requirementJson` avoids shadowing the `requirement` field bound by the
     // edge patterns below (a bound value is not a function).
-    fn requirementJson(r) = Json::obj([Json::member("epoch", Json::num(r.epoch)), Json::member("minimumOrdinal", Json::num(r.minimumOrdinal)), Json::member("package", key(r.package))])
+    export fn requirementJson(r) = Json::obj([Json::member("epoch", Json::num(r.epoch)), Json::member("minimumOrdinal", Json::num(r.minimumOrdinal)), Json::member("package", key(r.package))])
 
-    fn edge(e) = match e {
+    /// One Runtime/Build/Test edge as its one-member union object.
+    export fn edge(e) = match e {
         ManifestModel::Runtime { requirement } => variant("Runtime", Json::obj([Json::member("requirement", requirementJson(requirement))]))
         ManifestModel::Build { requirement } => variant("Build", Json::obj([Json::member("requirement", requirementJson(requirement))]))
         ManifestModel::Test { requirement } => variant("Test", Json::obj([Json::member("requirement", requirementJson(requirement))]))
     }
+
+    /// An edge list as the `dependencies` array the lock and the manifest share.
+    export fn dependenciesJson(edges) = Json::arr(mapList(edges, edge))
 
     fn system(s) = Json::obj([Json::member("capability", Json::str(s.capability)), Json::member("minimumRevision", Json::num(s.minimumRevision))])
 

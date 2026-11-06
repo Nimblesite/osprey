@@ -32,16 +32,9 @@ module View
 
     metadata model doc prefix =
         local = Annotations::get model.annotations (text doc (prefix + ".id"))
-        Json::strField "body" (text doc (prefix + ".body")) + "," + Json::strField "labels" (text doc (prefix + ".labels")) + "," + Json::strField "note" local.note + "," + Json::strField "priority" local.priority
+        Json::members [Json::strField "body" (text doc (prefix + ".body")), Json::strField "labels" (text doc (prefix + ".labels")), Json::strField "note" local.note, Json::strField "priority" local.priority]
 
-    item model doc prefix bookmarked = Json::obj (
-        Json::strField "id" (text doc (prefix + ".id")) + "," +
-        Json::numField "number" (parseInt (text doc (prefix + ".number")) ?: 0) + "," +
-        Json::strField "title" (text doc (prefix + ".title")) + "," +
-        Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + text doc (prefix + ".number")) + "," +
-        Json::strField "author" (text doc (prefix + ".author")) + "," +
-        Json::numField "comments" (parseInt (text doc (prefix + ".comments")) ?: 0) + "," +
-        Json::rawField "bookmarked" (toString bookmarked) + "," + metadata model doc prefix)
+    item model doc prefix bookmarked = Json::obj (Json::members [Json::strField "id" (text doc (prefix + ".id")), Json::numField "number" (parseInt (text doc (prefix + ".number")) ?: 0), Json::strField "title" (text doc (prefix + ".title")), Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + text doc (prefix + ".number")), Json::strField "author" (text doc (prefix + ".author")), Json::numField "comments" (parseInt (text doc (prefix + ".comments")) ?: 0), Json::rawField "bookmarked" (toString bookmarked), metadata model doc prefix])
 
     detail model doc index count = match index >= count
         true => "null"
@@ -50,13 +43,6 @@ module View
             match text doc (prefix + ".id") == model.selected
                 true => item model doc prefix (saved model model.selected)
                 false => detail model doc ((satAdd index 1) ) count
-
-    // Join two comma-separated JSON member lists, either of which may be empty.
-    export append left right = match length left == 0
-        true => right
-        false => match length right == 0
-            true => left
-            false => left + "," + right
 
     rows model doc index count output marked = match index >= count
         true => IssueRows(elements = output, total = count, bookmarked = marked)
@@ -67,7 +53,7 @@ module View
                 true => (satAdd marked 1)
                 false => marked
             nextOutput = match visible model doc prefix bookmarked
-                true => append output (item model doc prefix bookmarked)
+                true => Json::append output (item model doc prefix bookmarked)
                 false => output
             rows model doc ((satAdd index 1) ) count nextOutput nextMarked
 
@@ -75,13 +61,7 @@ module View
         true => "${model.error} ${model.storageError}"
         false => "${model.error}${model.storageError}"
 
-    document model result selected = Json::obj (
-        Json::strField "repo" model.repo + "," + Json::strField "search" model.search + "," +
-        Json::strField "filter" model.filter + "," + Json::strField "status" model.status + "," +
-        Json::strField "error" (errors model) + "," + Json::rawField "loading" model.loading + "," +
-        Json::rawField "items" (Json::arr result.elements) + "," +
-        Json::numField "total" result.total + "," + Json::numField "bookmarked" result.bookmarked + "," +
-        Json::strField "selected" model.selected + "," + Json::rawField "detail" selected)
+    document model result selected = Json::obj (Json::members [Json::strField "repo" model.repo, Json::strField "search" model.search, Json::strField "filter" model.filter, Json::strField "status" model.status, Json::strField "error" (errors model), Json::rawField "loading" model.loading, Json::rawField "items" (Json::arr result.elements), Json::numField "total" result.total, Json::numField "bookmarked" result.bookmarked, Json::strField "selected" model.selected, Json::rawField "detail" selected])
 
     export render model =
         doc = jsonParse model.items ?: 0

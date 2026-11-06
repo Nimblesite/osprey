@@ -87,12 +87,9 @@ module ManifestSections {
         Error => Success { value: Maybe::none() }
     }
 
-    fn stringItems(items, span, code) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
-        Error { message } => Error { message: message }
-        Success { value } => match item {
-            Toml::Str { text } => Success { value: listAppend(value, text) }
-            _ => fail(code, span)
-        }
+    fn stringItems(items, span, code) = Checked::collectAll(items, fn(item) => match item {
+        Toml::Str { text } => Success { value: text }
+        _ => fail(code, span)
     })
 
     /// A string array pair, `fallback` when absent.
@@ -195,7 +192,7 @@ module ManifestSections {
         Success => boolOf(pairs, "allow_wildcard_imports", false, "manifest.modules.allow-wildcard-imports")
     }
 
-    fn keywordByte(b) = Bytes::isDigit(b) || (b >= 97 && b <= 122) || b == 45
+    fn keywordByte(b) = Bytes::isLowerDigit(b) || b == 45
     fn keywordOk(k) = byteLength(k) >= 1 && byteLength(k) <= keywordBytes && !startsWith(k, "-")
         && Bytes::everyByte(k, keywordByte)
 

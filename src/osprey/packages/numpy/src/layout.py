@@ -18,6 +18,7 @@ __all__ = [
     "flat_size", "strides_of", "offset_of", "coords_of", "ravel_index",
     "broadcast_two", "broadcast_shapes", "broadcast_strides", "compatible",
     "normalize_axis", "normalize_axes", "resolve_reshape", "drop_at",
+    "second_dim", "diag_extent",
     "insert_at", "set_at", "permuted", "swap_perm", "moveaxis_perm",
     "axis_of", "contains",
 ]
@@ -27,6 +28,18 @@ def flat_size(shape):
     """The number of elements a shape holds: the product of its dimensions,
     1 for rank 0."""
     return fold(range(len(shape)), 1, lambda acc, d: acc * unwrap_or(listGet(shape, d), 1))
+
+
+def second_dim(shape):
+    """The extent of the second axis, 0 when the shape has none."""
+    return unwrap_or(listGet(shape, 1), 0)
+
+
+def diag_extent(shape):
+    """The diagonal length of the first two axes."""
+    m = unwrap_or(listGet(shape, 0), 0)
+    n = second_dim(shape)
+    return m if m < n else n
 
 
 def strides_of(shape):

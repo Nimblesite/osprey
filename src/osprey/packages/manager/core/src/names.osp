@@ -13,7 +13,7 @@ module Names {
     let nameMax = 63
     let hyphen = 45
 
-    fn byteOk(b) = (Bytes::isDigit(b) || (b >= 97 && b <= 122)) || b == hyphen
+    fn byteOk(b) = Bytes::isLowerDigit(b) || b == hyphen
     fn bytesOk(s) = Bytes::everyByte(s, byteOk)
     fn interiorHyphens(s) = !startsWith(s, "-") && !endsWith(s, "-")
 

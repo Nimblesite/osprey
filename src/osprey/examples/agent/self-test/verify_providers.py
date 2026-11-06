@@ -10,6 +10,17 @@ import sys
 GLM_URL = "https://api.z.ai/api/paas/v4/chat/completions"
 KIMI_URL = "https://api.kimi.com/coding/v1/chat/completions"
 
+# The Kimi endpoint takes no thinking object and no strict tool definitions.
+KIMI_EXPECTATION = {
+    "url": KIMI_URL,
+    "model": "k3",
+    "reasoning_effort": "max",
+    "tool_choice": "auto",
+    "stream": False,
+    "strict_tools": False,
+    "no_thinking": True,
+}
+
 EXPECTATIONS = [
     {
         "url": GLM_URL,
@@ -20,24 +31,8 @@ EXPECTATIONS = [
         "stream": False,
         "strict_tools": True,
     },
-    {
-        "url": KIMI_URL,
-        "model": "k3",
-        "reasoning_effort": "max",
-        "tool_choice": "auto",
-        "stream": False,
-        "strict_tools": False,
-        "no_thinking": True,
-    },
-    {
-        "url": KIMI_URL,
-        "model": "k3",
-        "reasoning_effort": "max",
-        "tool_choice": "auto",
-        "stream": False,
-        "strict_tools": False,
-        "no_thinking": True,
-    },
+    KIMI_EXPECTATION,
+    KIMI_EXPECTATION,
 ]
 
 

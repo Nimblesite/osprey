@@ -83,14 +83,19 @@ def sq(x):
     return x * x
 
 
+def col_of(X, j, fallback):
+    """Column `j` of a matrix as a flat list, `fallback` for a missing element."""
+    return toList(map(range(len(X)), lambda i: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), fallback)))
+
+
 def col_float(X, j):
     """Column `j` of a float matrix as a flat list."""
-    return toList(map(range(len(X)), lambda i: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0)))
+    return col_of(X, j, 0.0)
 
 
 def col_int(X, j):
     """Column `j` of an int matrix as a flat list."""
-    return toList(map(range(len(X)), lambda i: unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0)))
+    return col_of(X, j, 0)
 
 
 def col_var(X, j, mean):
@@ -190,12 +195,17 @@ def robust_scaler_transform(fitted, X):
     return toList(map(range(len(X)), lambda i: toList(map(range(nf), lambda j: (unwrap_or(listGet(unwrap_or(listGet(X, i), []), j), 0.0) - unwrap_or(listGet(fitted.center, j), 0.0)) / unwrap_or(listGet(fitted.scale, j), 1.0)))))
 
 
+def abs_row(row):
+    """A float row's absolute values."""
+    return toList(map(range(len(row)), lambda i: abs(unwrap_or(listGet(row, i), 0.0))))
+
+
 def row_norm(row, norm):
     """The l1, l2 or max norm of a float row."""
     if norm == "l1":
-        return sum_float(toList(map(range(len(row)), lambda i: abs(unwrap_or(listGet(row, i), 0.0)))))
+        return sum_float(abs_row(row))
     elif norm == "max":
-        return max_float(toList(map(range(len(row)), lambda i: abs(unwrap_or(listGet(row, i), 0.0)))))
+        return max_float(abs_row(row))
     else:
         return sqrt(sum_float(toList(map(range(len(row)), lambda i: sq(unwrap_or(listGet(row, i), 0.0))))))
 

@@ -22,7 +22,7 @@ module OAuth {
                 if unreserved(b) { character(text, i) } else { "%${Bytes::hexByte(b)}" }
         }), "")
 
-    fn hostByte(b) = Bytes::isDigit(b) || (b >= 97 && b <= 122) || b == 45 || b == 46
+    fn hostByte(b) = Bytes::isLowerDigit(b) || b == 45 || b == 46
 
     fn origin(text) = startsWith(text, "https://") && byteLength(text) > 8 && byteLength(text) < 262
     && Bytes::everyByte(drop(text, 8), hostByte)

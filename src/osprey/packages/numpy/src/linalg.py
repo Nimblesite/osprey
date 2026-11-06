@@ -172,9 +172,8 @@ def vdot(a, b):
 def trace(a):
     """np.trace: the sum of the diagonal over the first two axes (a rank-0
     array for 2-D input, numpy's scalar)."""
-    m = unwrap_or(listGet(a.shape, 0), 0)
-    n = unwrap_or(listGet(a.shape, 1), 0)
-    k = m if m < n else n
+    n = Layout.second_dim(a.shape)
+    k = Layout.diag_extent(a.shape)
     head = slice_coords(a.shape, 2, len(a.shape))
     return Array.NDArray(shape=head, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(head), lambda i: trace_element(i, head, a, n, k)))))
 

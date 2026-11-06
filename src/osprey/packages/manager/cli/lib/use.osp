@@ -90,16 +90,9 @@ module Use {
     /// The epoch the root requires of `key`, 0 when the root has no edge to it.
     fn requiredEpoch(manifest, key) = foldList(mapList(edgesOf(manifest), ManifestModel::requirementOf), 0, fn(acc, r: ManifestModel::Requirement) => if Names::same(r.package, key) { r.epoch } else { acc })
 
-    fn releaseIn(listing, key, epoch, ordinal) = foldList(listing, Identity::blank(), fn(found, r: Identity::ReleaseId) => if Names::same(r.key, key) && r.epoch == epoch && r.ordinal == ordinal { r } else { found })
-
-    fn newestIn(listing, key, epoch) = match Listing::newestOrdinal(listing, key, epoch) {
-        Error => Maybe::none()
-        Success { value } => Maybe::some(releaseIn(listing, key, epoch, value))
-    }
-
     fn baselineFromListing(base, key, epoch) = match Listing::fetch(base) {
         Error => Maybe::none()
-        Success { value } => newestIn(value, key, epoch)
+        Success { value } => Listing::newestIn(value, key, epoch)
     }
 
     fn parsedEpoch(word, fallback) = if word == "" { fallback } else { parseInt(word) ?: fallback }

@@ -136,23 +136,21 @@ module Update
         busy = Model::set (Model::notice model "info" title "Contacting the protected ledger…") "busy" "true"
         result busy (Commands::post command endpoint body)
 
-    deposit : AppModel -> string -> UpdateResult
-    deposit model data =
+    // A movement against one account: the deposit and withdrawal forms carry the same fields.
+    movement : AppModel -> string -> string -> string -> string -> string -> UpdateResult
+    movement model data said command endpoint title =
         account = integer (formValue data "account")
         cents = BankData::amountCents (formValue data "amount")
         note = trim (formValue data "note")
         match account > 0 && cents > 0
-            false => invalid model "Check the deposit" "Choose an account and enter a positive amount."
-            true => postMovement model "mutate-deposit" "/api/deposit" (Json::obj (Json::numField "account" account + "," + Json::numField "cents" cents + "," + Json::strField "note" note)) "Depositing funds"
+            false => invalid model ("Check the " + said) "Choose an account and enter a positive amount."
+            true => postMovement model command endpoint (Json::obj (Json::members [Json::numField "account" account, Json::numField "cents" cents, Json::strField "note" note])) title
+
+    deposit : AppModel -> string -> UpdateResult
+    deposit model data = movement model data "deposit" "mutate-deposit" "/api/deposit" "Depositing funds"
 
     withdraw : AppModel -> string -> UpdateResult
-    withdraw model data =
-        account = integer (formValue data "account")
-        cents = BankData::amountCents (formValue data "amount")
-        note = trim (formValue data "note")
-        match account > 0 && cents > 0
-            false => invalid model "Check the withdrawal" "Choose an account and enter a positive amount."
-            true => postMovement model "mutate-withdraw" "/api/withdraw" (Json::obj (Json::numField "account" account + "," + Json::numField "cents" cents + "," + Json::strField "note" note)) "Authorising withdrawal"
+    withdraw model data = movement model data "withdrawal" "mutate-withdraw" "/api/withdraw" "Authorising withdrawal"
 
     transfer : AppModel -> string -> UpdateResult
     transfer model data =
@@ -164,7 +162,7 @@ module Update
             true => invalid model "Choose two accounts" "Source and destination must be different."
             false => match from > 0 && to > 0 && cents > 0
                 false => invalid model "Check the transfer" "Choose both accounts and enter a positive amount."
-                true => postMovement model "mutate-transfer" "/api/transfer" (Json::obj (Json::numField "from" from + "," + Json::numField "to" to + "," + Json::numField "cents" cents + "," + Json::strField "note" note)) "Transferring funds"
+                true => postMovement model "mutate-transfer" "/api/transfer" (Json::obj (Json::members [Json::numField "from" from, Json::numField "to" to, Json::numField "cents" cents, Json::strField "note" note])) "Transferring funds"
 
     openAccount : AppModel -> string -> UpdateResult
     openAccount model data =

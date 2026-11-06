@@ -141,14 +141,10 @@ module Model
     export key (provider, value) = ProviderKey(keyProvider = provider, keyValue = value)
 
     (** The saved key for `provider`, empty when none. *)
-    export keyOf (settings, provider) = match Lists::find (settings.keys, \key => key.keyProvider == provider)
-        Success found => found.keyValue
-        Error _ => ""
+    export keyOf (settings, provider) = McpModel::firstWhere (settings.keys, \key => key.keyProvider == provider, \key => key.keyValue, "")
 
     (** The key being typed for `provider`, empty when none. *)
-    export draftOf (settings, provider) = match Lists::find (settings.keyDrafts, \key => key.keyProvider == provider)
-        Success found => found.keyValue
-        Error _ => ""
+    export draftOf (settings, provider) = McpModel::firstWhere (settings.keyDrafts, \key => key.keyProvider == provider, \key => key.keyValue, "")
 
     (** `keys` with `provider`'s entry set to `value`; an empty value removes it. *)
     replacing (keys, provider, value) =
@@ -183,9 +179,7 @@ module Model
     export blank (id, folder, model, effort, now) = Chat(chatId = id, chatTitle = "New chat", chatFolder = folder, chatModel = model, chatEffort = effort, chatHistory = Engine::new_history (), chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [], chatProblem = "", chatProblemStatus = 0, chatStarted = now)
 
     (** The models `provider` offers: what its API said, or the catalogue until it has answered. *)
-    export modelsOf (settings, provider) = match Lists::find (settings.listed, \list => list.listedProvider == provider)
-        Success found => found.listedIds
-        Error _ => Engine::model_ids provider
+    export modelsOf (settings, provider) = McpModel::firstWhere (settings.listed, \list => list.listedProvider == provider, \list => list.listedIds, Engine::model_ids provider)
 
     (** `effort` when `model` has that level, otherwise the provider's default, which is the empty level. *)
     export effortFor (model, effort) = Pick::either (Lists::any (Engine::model_levels model, \level => level == effort), effort, "")
@@ -349,6 +343,11 @@ module Model
         "mcp.json" => Doc::parse store.mcp.stateGlobal
         "mcp-state.json" => McpModel::switchesJson store.mcp
         _ => fileJson store
+
+    (** A step after `stepped` that writes `name` to the store, once whatever it asked for has finished. *)
+    export persistingAfter (stepped, name) =
+        saving = persisting (stepped.stepStore, name)
+        saving(requests = listConcat stepped.requests saving.requests)
 
     (** The conversations or the providers written to the app's private store: never the keys into the conversations file. One write runs at a time, so an older one cannot land after a newer one; a change during a write waits, by file, and is saved when it ends. *)
     export persisting (store, name) =

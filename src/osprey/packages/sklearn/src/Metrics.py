@@ -75,7 +75,7 @@ def count_of(xs, v):
 
 def count_both(yt, yp, v):
     """Positions where both `yt` and `yp` equal `v`."""
-    return fold(range(len(yt)), 0, lambda acc, i: acc + 1 if unwrap_or(listGet(yt, i), v) == v and unwrap_or(listGet(yp, i), v) == v else acc)
+    return count_pair(yt, yp, v, v)
 
 
 def count_pair(yt, yp, a, b):
@@ -99,13 +99,18 @@ def weighted_mean(vals, weights):
     return num / toFloat(sum_int(weights))
 
 
+def tp_ratio(tp, denominator, i, zd):
+    """`tp[i] / denominator[i]` under sklearn's zero-division policy."""
+    return divide_z(toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(denominator, i), 0)), zd)
+
+
 def class_stats(yt, yp, labels, zd):
     """Per-label tp, predicted and true counts, then precision/recall/f1."""
     tp = toList(map(range(len(labels)), lambda i: count_both(yt, yp, unwrap_or(listGet(labels, i), 0))))
     pred = toList(map(range(len(labels)), lambda i: count_of(yp, unwrap_or(listGet(labels, i), 0))))
     true = toList(map(range(len(labels)), lambda i: count_of(yt, unwrap_or(listGet(labels, i), 0))))
-    precision = toList(map(range(len(labels)), lambda i: divide_z(toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(pred, i), 0)), zd)))
-    recall = toList(map(range(len(labels)), lambda i: divide_z(toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)), zd)))
+    precision = toList(map(range(len(labels)), lambda i: tp_ratio(tp, pred, i, zd)))
+    recall = toList(map(range(len(labels)), lambda i: tp_ratio(tp, true, i, zd)))
     f1 = toList(map(range(len(labels)), lambda i: divide_z(2.0 * toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)) + toFloat(unwrap_or(listGet(pred, i), 0)), zd)))
     return ClassStats(tp=tp, pred=pred, true=true, precision=precision, recall=recall, f1=f1)
 
@@ -227,9 +232,14 @@ def roc_curve(y_true, y_score):
     thresholds = filter_floats(p.thresholds, flags)
     fps0 = listConcat([0.0], fps)
     tps0 = listConcat([0.0], tps)
-    fpr = all_nan(len(fps0)) if unwrap_or(listGet(fps0, len(fps0) - 1), 0.0) <= 0.0 else divide_by_last(fps0)
-    tpr = all_nan(len(tps0)) if unwrap_or(listGet(tps0, len(tps0) - 1), 0.0) <= 0.0 else divide_by_last(tps0)
+    fpr = rate_curve(fps0)
+    tpr = rate_curve(tps0)
     return RocCurve(fpr=fpr, tpr=tpr, thresholds=listConcat([exp(1000.0)], thresholds))
+
+
+def rate_curve(xs):
+    """A rate curve: all NaN when its last count is zero, else the running ratio."""
+    return all_nan(len(xs)) if unwrap_or(listGet(xs, len(xs) - 1), 0.0) <= 0.0 else divide_by_last(xs)
 
 
 def auc_trapezoid(xs, ys):
@@ -329,10 +339,15 @@ def explained_variance_score(y_true, y_pred):
     unexplained to the total variance."""
     diffs = toList(map(range(len(y_true)), lambda i: unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0)))
     dm = mean_float(diffs)
-    num = mean_float(toList(map(range(len(diffs)), lambda i: (unwrap_or(listGet(diffs, i), 0.0) - dm) * (unwrap_or(listGet(diffs, i), 0.0) - dm))))
+    num = mean_sq_dev(diffs, dm)
     ym = mean_float(y_true)
-    den = mean_float(toList(map(range(len(y_true)), lambda i: (unwrap_or(listGet(y_true, i), 0.0) - ym) * (unwrap_or(listGet(y_true, i), 0.0) - ym))))
+    den = mean_sq_dev(y_true, ym)
     return assemble(num, den)
+
+
+def mean_sq_dev(xs, m):
+    """The mean of the squared deviations of `xs` from `m`."""
+    return mean_float(toList(map(range(len(xs)), lambda i: (unwrap_or(listGet(xs, i), 0.0) - m) * (unwrap_or(listGet(xs, i), 0.0) - m))))
 
 
 def row_sum(C, i):

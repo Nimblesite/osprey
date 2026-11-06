@@ -52,15 +52,7 @@ module Annotations
         true => true
         false => validRow doc index && validRows doc ((satAdd index 1) ) count
 
-    export valid source = match startsWith (trimStart source) "["
-        false => false
-        true => match jsonParse source
-            Error why => false
-            Success doc =>
-                count = jsonLength doc ""
-                valid = count <= 200 && validRows doc 0 count
-                freed = jsonFree doc ?: 0
-                valid
+    export valid source = Json::validArray source 200 validRows
 
     export capacity source id =
         doc = jsonParse source ?: 0

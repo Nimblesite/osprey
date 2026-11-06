@@ -79,6 +79,5 @@ module Identity {
 
     /// Canonical `(package, epoch, ordinal, digest)` order.
     export fn compare(a: ReleaseId, b: ReleaseId) = Order::thenCompare(Names::compare(a.key, b.key),
-        Order::thenCompare(Order::compareInts(a.epoch, b.epoch),
-            Order::thenCompare(Order::compareInts(a.ordinal, b.ordinal), Order::compareStrings(a.digest, b.digest))))
+        Order::thenCompare(Order::compareSpots(a.epoch, a.ordinal, b.epoch, b.ordinal), Order::compareStrings(a.digest, b.digest)))
 }

@@ -25,17 +25,24 @@ module Coach
 
     focus (shelf, id) = shelf(focused = id)
 
+    focused (bench, id, tutor) = bench(tutor = tutor, shelf = focus (bench.shelf, id))
+
+    // `step` sees the challenge `id` names; a challenge that is not there leaves the store alone.
+    withChallenge (bench, id, step) = match challengeOf (bench, id)
+        Error _ => bench
+        Success challenge => step challenge
+
     (** The answer to challenge `id` replaced by `text`; that challenge takes the focus. *)
-    export answer (bench, id, text) = bench(tutor = Tutors::answer (bench.tutor, keyed (bench, id), text), shelf = focus (bench.shelf, id))
+    export answer (bench, id, text) = focused (bench, id, Tutors::answer (bench.tutor, keyed (bench, id), text))
 
     (** The caret of challenge `id` moved to `offset`, kept within its answer; that challenge takes the focus. *)
-    export moved (bench, id, offset) = bench(tutor = Tutors::moved (bench.tutor, keyed (bench, id), offset), shelf = focus (bench.shelf, id))
+    export moved (bench, id, offset) = focused (bench, id, Tutors::moved (bench.tutor, keyed (bench, id), offset))
 
     (** A formula key's `text` inserted at the answer's caret; the text around it stays and the caret follows the key. *)
-    export insert (bench, id, text) = bench(tutor = Tutors::insert (bench.tutor, keyed (bench, id), text), shelf = focus (bench.shelf, id))
+    export insert (bench, id, text) = focused (bench, id, Tutors::insert (bench.tutor, keyed (bench, id), text))
 
     (** The learner's ruling on judge challenge `id`: `checks` or `fails`. *)
-    export pick (bench, id, choice) = bench(tutor = Tutors::pick (bench.tutor, keyed (bench, id), Tutors::rulingOf choice), shelf = focus (bench.shelf, id))
+    export pick (bench, id, choice) = focused (bench, id, Tutors::pick (bench.tutor, keyed (bench, id), Tutors::rulingOf choice))
 
     (** Challenge `id` submitted to the kernel; a newly right answer writes progress ([LESSONS-PROGRESS]). *)
     export submit (bench, id) = match challengeOf (bench, id)
@@ -47,14 +54,10 @@ module Coach
         true => ui::Step(stepStore = bench(tutor = tutor), requests = [Shelves::store ()], writes = [Shelves::progressWrite tutor])
 
     (** One more hint shown on challenge `id`. *)
-    export hint (bench, id) = match challengeOf (bench, id)
-        Error _ => bench
-        Success challenge => bench(tutor = Tutors::hint (bench.tutor, keyed (bench, id), challenge))
+    export hint (bench, id) = withChallenge (bench, id, \challenge => bench(tutor = Tutors::hint (bench.tutor, keyed (bench, id), challenge)))
 
     (** The solution of challenge `id` placed in its answer, when `Tutors::revealable` allows it. *)
-    export reveal (bench, id) = match challengeOf (bench, id)
-        Error _ => bench
-        Success challenge => bench(tutor = Tutors::reveal (bench.tutor, keyed (bench, id), challenge))
+    export reveal (bench, id) = withChallenge (bench, id, \challenge => bench(tutor = Tutors::reveal (bench.tutor, keyed (bench, id), challenge)))
 
     (** Challenge `id` and the learner's answer appended to the Work document as a declaration, and Work shown ([LESSONS-MODE]). *)
     export carry (bench, id) = match challengeOf (bench, id)
@@ -101,20 +104,22 @@ module Completions
                 false => failedLesson (bench, ticket, said)
 
     failedLesson (bench, ticket, said) = match ticket == Shelves::catalogueKey || ticket == Shelves::textsKey
-        true => Runtime::step (bench(shelf = problem (bench.shelf, "The lessons could not be loaded: " + said)))
+        true => refused (bench, "The lessons could not be loaded: " + said)
         false => unsaved (bench, ticket, said)
 
     // A missing progress file is no progress; a progress write that failed is said, so work is never lost silently.
     unsaved (bench, ticket, said) = match ticket == Shelves::savedKey
-        true => Runtime::step (bench(shelf = problem (bench.shelf, "Your progress was not saved: " + said)))
+        true => refused (bench, "Your progress was not saved: " + said)
         false => Runtime::step bench
 
+    refused (bench, said) = Runtime::step (bench(shelf = problem (bench.shelf, said)))
+
     catalogued bench = match Shelves::slugs (perform ui::Slices.fetch Shelves::catalogueKey)
-        Error said => Runtime::step (bench(shelf = problem (bench.shelf, said)))
+        Error said => refused (bench, said)
         Success slugs => Runtime::asking (bench, [Shelves::lessons slugs])
 
     gathered bench = match Shelves::slugs (perform ui::Slices.fetch Shelves::catalogueKey)
-        Error said => Runtime::step (bench(shelf = problem (bench.shelf, said)))
+        Error said => refused (bench, said)
         Success slugs => Runtime::step (bench(shelf = listed (bench.shelf, Shelves::entries (slugs, perform ui::Slices.fetch Shelves::textsKey))))
 
     progressed bench = Runtime::step (bench(tutor = merged (bench.tutor, Shelves::completed (perform ui::Slices.fetch Shelves::progressKey))))

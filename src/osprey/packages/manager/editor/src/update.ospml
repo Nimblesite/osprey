@@ -11,26 +11,28 @@ module Update
 
     currentTicket (current, prefix) = "${prefix}:${current.packageGeneration}"
 
+    /// Continue only after success, turning a typed failure into the fault screen.
+    stepOrFault (current, result, next) = match result
+        Error problem => Runtime::step (Store::fault (current, problem))
+        Success value => next value
+
     knownTicket (current, ticket) = Lists::any (["package/catalog", "package/graph", "package/add", "package/remove", "package/fetch"], \prefix => ticket == currentTicket (current, prefix))
 
 
-    completeCatalog (current, result, waiting) = match Reports::catalogBody result
-        Error problem => Runtime::step (Store::fault (current, problem))
-        Success body => match Packages::validCatalog (Doc::parse body)
-            Error problem => Runtime::step (Store::fault (current, problem))
-            Success entries => Runtime::step (Store::withCatalog (current, entries, waiting))
+    withEntries (current, entries, waiting) = Runtime::step (Store::withCatalog (current, entries, waiting))
 
-    completeGraph (current, result, waiting) = match Reports::graph result
-        Error problem => Runtime::step (Store::fault (current, problem))
-        Success completion => match completion
-            MissingLock reason => Runtime::step (Store::withGraph (current, Store::absent reason, waiting))
-            ResolvedGraph graph => Runtime::step (Store::withGraph (current, Store::workspaceOf graph, waiting))
+    catalogEntries (current, body, waiting) = stepOrFault (current, Packages::validCatalog (Doc::parse body), \entries => withEntries (current, entries, waiting))
 
-    checked (current, result, next) = match Reports::process result
-        Error problem => Runtime::step (Store::fault (current, problem))
-        Success report => match Reports::succeeded report
-            Error problem => Runtime::step (Store::fault (current, problem))
-            Success _ => next current
+    completeCatalog (current, result, waiting) = stepOrFault (current, Reports::catalogBody result, \body => catalogEntries (current, body, waiting))
+
+    graphOutcome (current, completion, waiting) = match completion
+        MissingLock reason => Runtime::step (Store::withGraph (current, Store::absent reason, waiting))
+        ResolvedGraph graph => Runtime::step (Store::withGraph (current, Store::workspaceOf graph, waiting))
+
+    completeGraph (current, result, waiting) = stepOrFault (current, Reports::graph result, \completion => graphOutcome (current, completion, waiting))
+
+    checked (current, result, next) = stepOrFault (current, Reports::process result, \report =>
+        stepOrFault (current, Reports::succeeded report, \_ => next current))
 
     fetchLocked current =
         generation = satAdd current.packageGeneration 1
@@ -47,17 +49,13 @@ module Update
 
     completed (current, ticket, outcome) = match knownTicket (current, ticket)
         false => Runtime::step current
-        true => match outcome
-            Error problem => Runtime::step (Store::fault (current, problem))
-            Success result => received (current, ticket, result)
+        true => stepOrFault (current, outcome, \result => received (current, ticket, result))
 
     execute (current, verb, key) =
         generation = satAdd current.packageGeneration 1
         notice = "${verb} ${key}…"
         ready = Store::change (current, notice, generation, 1)
-        match Store::changeRequest (ready, verb, key, "package/${verb}:${generation}")
-            Error problem => Runtime::step (Store::fault (ready, problem))
-            Success request => Runtime::asking (ready, [request])
+        stepOrFault (ready, Store::changeRequest (ready, verb, key, "package/${verb}:${generation}"), \request => Runtime::asking (ready, [request]))
 
     confirmUnverified (current, key) = match Packages::isLoopback current.packageRegistry
         true => Runtime::step (Store::begin (current, "Confirm adding ${key} from the unverified local registry.", "add", key))

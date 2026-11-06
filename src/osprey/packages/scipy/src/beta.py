@@ -103,17 +103,17 @@ def past_poles(a: float, b: float, negint, core) -> float:
     """The negative-integer pole checks beta and lbeta both open with: the
     reflection rule `negint` while an argument cancels it, else `core`."""
     if a <= 0.0 and a == floor(a):
-        if int_ok(a):
-            return negint(a, b)
-        else:
-            return pos_inf()
+        return pole_gamma(a, b, negint)
     elif b <= 0.0 and b == floor(b):
-        if int_ok(b):
-            return negint(b, a)
-        else:
-            return pos_inf()
+        return pole_gamma(b, a, negint)
     else:
         return core(a, b)
+
+
+def pole_gamma(x: float, other: float, negint) -> float:
+    """One argument at a negative-integer pole: the reflection `negint` when the
+    pole is a true integer, else +inf."""
+    return negint(x, other) if int_ok(x) else pos_inf()
 
 
 def beta(a: float, b: float) -> float:

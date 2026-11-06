@@ -69,10 +69,7 @@ module PythonPlane {
         }
     }
 
-    fn projectIn(root) = match Toml::get(root, "project") {
-        Error => Error { message: pyprojectMissing }
-        Success { value } => nameIn(value)
-    }
+    fn projectIn(root) = Checked::orElseCode(Toml::get(root, "project"), pyprojectMissing, nameIn)
 
     // ---- P2: a member's own pyproject names no index and no outside source ----
 
@@ -117,10 +114,7 @@ module PythonPlane {
         else if !sourcesOk(uvTable(root)) { Error { message: sourceForbidden } }
         else { projectIn(root) }
 
-    fn pep621Name(pyprojectText) = match Toml::parse(pyprojectText) {
-        Error => Error { message: pyprojectMissing }
-        Success { value } => named(value)
-    }
+    fn pep621Name(pyprojectText) = Checked::orElseCode(Toml::parse(pyprojectText), pyprojectMissing, named)
 
     /// The member a manifest contributes at `path`: none when it does not
     /// declare the plane; `python.pyproject-missing <path>` when it does but

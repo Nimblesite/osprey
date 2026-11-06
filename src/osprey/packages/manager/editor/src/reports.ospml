@@ -1,6 +1,7 @@
 namespace registry_editor
 import ui::Doc
 import ui::Lists
+import registry::Checked
 
 // Implements [PACKAGE-EDITOR-COMPLETIONS]: host envelopes carry bounded raw
 // output; semantic success comes only from the CLI report, never exit code 0.
@@ -28,25 +29,14 @@ module Reports
         JsonArray values => foldList (values, Success(value = []), \(parsed, item) => appendLine (parsed, item))
         _ => failure "Package report lines must be a list"
 
-    intField (doc, key) = match jsonField doc key
-        Error _ => failure "Package completion is missing ${key}"
-        Success value => match jsonInt value
-            Error _ => failure "Package completion has a non-integer ${key}"
-            Success number => Success(value = number)
+    completionLabel = "Package completion"
 
-    stringField (doc, key) = match jsonField doc key
-        Error _ => failure "Package completion is missing ${key}"
-        Success value => match jsonText value
-            Error _ => failure "Package completion has a non-string ${key}"
-            Success text => Success(value = text)
+    linesField doc = match jsonField doc "lines"
+        Error _ => failure "Package report is missing lines"
+        Success lines => strings lines
 
-    report doc = match intField (doc, "status")
-        Error problem => Error(message = problem)
-        Success status => match jsonField doc "lines"
-            Error _ => failure "Package report is missing lines"
-            Success lines => match strings lines
-                Error problem => Error(message = problem)
-                Success parsed => Success(value = SemanticReport(reportLines = parsed, reportStatus = status))
+    report doc = Checked::andThen (Fields::intField (doc, "status", completionLabel), \status =>
+        Checked::andThen (linesField doc, \parsed => Success(value = SemanticReport(reportLines = parsed, reportStatus = status))))
 
     jsonReportLines stdout = filterList (split stdout "\n" ?: [], \line => startsWith (trim line) "{")
 
@@ -58,37 +48,28 @@ module Reports
 
     processCode result = match jsonText result
         Success _ => Success(value = 0)
-        Error _ => match intField (result, "code")
-            Error problem => Error(message = problem)
-            Success code => Success(value = code)
+        Error _ => Fields::intField (result, "code", completionLabel)
 
-    processStdout result = match stringField (result, "stdout")
-        Success stdout => Success(value = stdout)
-        Error problem => Error(message = problem)
+    checkedPair (code, parsed) = match parsed
+        Error problem => match code == 0
+            true => Error(message = problem)
+            false => failure "Package command exited with code ${code}"
+        Success report => match code == 0 || report.reportStatus != 0
+            true => Success(value = report)
+            false => failure "Package command exited with code ${code}"
 
     export process result = match jsonText result
         Success stdout => parseReport stdout
-        Error _ => match processCode result
-            Error problem => Error(message = problem)
-            Success code => match processStdout result
-                Error problem => Error(message = problem)
-                Success stdout => match parseReport stdout
-                    Error problem => match code == 0
-                        true => Error(message = problem)
-                        false => failure "Package command exited with code ${code}"
-                    Success parsed => match code == 0 || parsed.reportStatus != 0
-                        true => Success(value = parsed)
-                        false => failure "Package command exited with code ${code}"
+        Error _ => Checked::andThen (processCode result, \code =>
+            Checked::andThen (Fields::stringField (result, "stdout", completionLabel), \stdout => checkedPair (code, parseReport stdout)))
+
+    bodyAt (result, status) = match status == 200
+        false => failure "Registry returned HTTP ${status}"
+        true => Fields::stringField (result, "body", completionLabel)
 
     body result = match jsonText result
         Success text => Success(value = text)
-        Error _ => match intField (result, "status")
-            Error problem => Error(message = problem)
-            Success status => match status == 200
-                false => failure "Registry returned HTTP ${status}"
-                true => match stringField (result, "body")
-                    Error problem => Error(message = problem)
-                    Success text => Success(value = text)
+        Error _ => Checked::andThen (Fields::intField (result, "status", completionLabel), \status => bodyAt (result, status))
 
     detail report = match isEmpty report.reportLines
         true => "Package command failed with semantic status ${report.reportStatus}"
@@ -108,12 +89,8 @@ module Reports
             false => failure "Graph report must contain exactly one JSON line"
             true => match jsonDecode (listGet report.reportLines 0 ?: "")
                 Error _ => failure "Graph report line is not JSON"
-                Success doc => match Packages::validGraph doc
-                    Error problem => Error(message = problem)
-                    Success graph => Success(value = ResolvedGraph(graphValue = graph))
+                Success doc => Checked::andThen (Packages::validGraph doc, \graph => Success(value = ResolvedGraph(graphValue = graph)))
 
-    export graph result = match process result
-        Error problem => Error(message = problem)
-        Success report => graphLine report
+    export graph result = Checked::andThen (process result, graphLine)
 
     export catalogBody result = body result

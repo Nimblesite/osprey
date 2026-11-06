@@ -10,7 +10,17 @@ CPython code does inline (`data.get('x')`, `to_json`, `from_json`).
 __all__ = [
     "text_at", "int_at", "float_at", "bool_at", "number", "list_at", "object_at", "member", "obj",
     "encode", "decode", "members_of", "items_of", "of_map", "to_map", "is_null", "has", "jtext", "jint", "member_name", "member_value",
+    "rewrap",
 ]
+
+
+def rewrap(result, wrap):
+    """`result`'s value passed to `wrap`, or its error unchanged."""
+    match result:
+        case Success(value=value):
+            return Success(value=wrap(value))
+        case Error(message=message):
+            return Error(message=message)
 
 
 def is_null(value) -> bool:

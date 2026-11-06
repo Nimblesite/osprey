@@ -82,6 +82,12 @@ module Bytes {
     /// ASCII letter or digit.
     export fn isAlnum(b) = isLetter(b) || isDigit(b)
 
+    /// ASCII `a`-`z`.
+    export fn isLower(b) = b >= lowerA && b <= lowerZ
+
+    /// ASCII lowercase letter or digit: the unadorned identifier byte.
+    export fn isLowerDigit(b) = isLower(b) || isDigit(b)
+
     /// True when every byte of `text` satisfies `ok` (the empty text does).
     export fn everyByte(text, ok) = fold(range(0, byteLength(text)), true, fn(good, i) => good && ok(at(text, i)))
 

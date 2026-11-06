@@ -45,7 +45,7 @@ def main(source):
         pairs = [(numbers[i], numbers[i + 1]) for i in range(0, len(numbers) - 1, 2)]
         if name == "move_to":
             to = pairs[0]
-            steps.append(f"ui::MoveTo(toX = {literal(to[0])}, toY = {literal(to[1])})")
+            steps.append(f"move ({literal(to[0])}, {literal(to[1])})")
             first = current = to
             last = "begin"
         elif name == "close":
@@ -67,7 +67,7 @@ def main(source):
                 to = (current[0], f32(current[1] + numbers[0]))
             else:
                 raise SystemExit(f"unhandled logo command {name}")
-            steps.append(f"ui::LineTo(toX = {literal(to[0])}, toY = {literal(to[1])})")
+            steps.append(f"line ({literal(to[0])}, {literal(to[1])})")
             current = to
             last = "line"
         elif name.endswith("cubic_bezier_to"):
@@ -83,7 +83,7 @@ def main(source):
             else:
                 raise SystemExit(f"unhandled logo command {name}")
             steps.append(
-                f"ui::CubicTo(toX = {literal(to[0])}, toY = {literal(to[1])}, ctrlAX = {literal(a[0])}, ctrlAY = {literal(a[1])}, ctrlBX = {literal(b[0])}, ctrlBY = {literal(b[1])})"
+                f"curve ({literal(to[0])}, {literal(to[1])}, {literal(a[0])}, {literal(a[1])}, {literal(b[0])}, {literal(b[1])})"
             )
             current, last_ctrl, last = to, b, "cubic"
         else:
@@ -97,7 +97,10 @@ def main(source):
         "(** The Rust logo path as absolute builder commands. *)\n"
         "module Logo\n"
         "    (** Every command of the logo, in lyon's order. *)\n"
-        f"    export steps () = [\n        {lines}]\n"
+        f"    export steps () = [\n        {lines}\n    ]\n\n"
+        "    move (x, y) = ui::MoveTo(toX = x, toY = y)\n\n"
+        "    line (x, y) = ui::LineTo(toX = x, toY = y)\n\n"
+        "    curve (x, y, ctrlAX, ctrlAY, ctrlBX, ctrlBY) = ui::CubicTo(toX = x, toY = y, ctrlAX = ctrlAX, ctrlAY = ctrlAY, ctrlBX = ctrlBX, ctrlBY = ctrlBY)\n"
     )
     print(f"{len(steps)} steps -> {out}")
 

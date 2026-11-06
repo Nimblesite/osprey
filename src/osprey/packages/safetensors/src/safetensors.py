@@ -413,12 +413,16 @@ def decode_range(file, info, start_elem, count):
     """Decode `count` elements starting at element `start_elem`."""
     stride = Dtype.dtype_size(info.dtype)
     base = file.data_offset + info.start + start_elem * stride
+    offsets = element_offsets(base, stride, count)
     if Dtype.is_float_dtype(info.dtype):
-        vals = toList(map(range(count), lambda i: decode_one_float(file.data, base + i * stride, info.dtype)))
-        return DecodedTensor(kind="floats", floats=vals, ints=[])
+        return DecodedTensor(kind="floats", floats=mapList(offsets, lambda off: decode_one_float(file.data, off, info.dtype)), ints=[])
     else:
-        vals = toList(map(range(count), lambda i: decode_one_int(file.data, base + i * stride, info.dtype)))
-        return DecodedTensor(kind="ints", floats=[], ints=vals)
+        return DecodedTensor(kind="ints", floats=[], ints=mapList(offsets, lambda off: decode_one_int(file.data, off, info.dtype)))
+
+
+def element_offsets(base, stride, count):
+    """The byte offset of each of `count` elements from `base`."""
+    return toList(map(range(count), lambda i: base + i * stride))
 
 
 def decode_one_float(data, off, dtype):

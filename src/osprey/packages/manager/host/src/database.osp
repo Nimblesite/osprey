@@ -55,7 +55,7 @@ module Database {
 
     fn connectionString(config: Connection) = "service=${config.service} sslmode=verify-full sslrootcert=${config.rootCertificate} connect_timeout=5"
 
-    fn serviceNameByte(b) = Bytes::isDigit(b) || (b >= 97 && b <= 122) || b == 95 || b == 45
+    fn serviceNameByte(b) = Bytes::isLowerDigit(b) || b == 95 || b == 45
     fn serviceCode(text) = text != "" && Bytes::everyByte(text, serviceNameByte)
 
     fn mountedByte(b) = Bytes::isAlnum(b) || b == 47 || b == 46 || b == 95 || b == 45

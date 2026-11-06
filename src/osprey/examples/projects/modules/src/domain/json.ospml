@@ -17,6 +17,9 @@ signature JsonApi
     strField : string -> string -> string
     numField : string -> int -> string
     rawField : string -> string -> string
+    members : List<string> -> string
+    append : string -> string -> string
+    validArray : string -> int -> (int -> int -> int -> bool) -> bool
     obj : string -> string
     arr : string -> string
     error : string -> string
@@ -62,12 +65,35 @@ module Json : JsonApi
 
     // Wrap a comma-joined member list into an object / array. Callers join the
     // members with `,`; these only add the braces so nesting stays composable.
-    obj members = "{" + members + "}"
+    obj joined = "{" + joined + "}"
+
+    // Object members in declaration order, so a record lists its fields without
+    // hand-joining the separators (one escaping rule, one separator).
+    members fields = join (fields, ",")
+
+    // Two encoded member lists joined with the one separator, either of which may be empty.
+    append left right = match length left == 0
+        true => right
+        false => match length right == 0
+            true => left
+            false => left + "," + right
 
     arr elements = "[" + elements + "]"
 
     // The one canonical error body shape, so every 4xx path is identical.
     error why = obj (strField "error" why)
+
+    // A parsed JSON array of at most `limit` rows, every one accepted by `rows`.
+    // The bounds check lives here so no boundary reads a document unbounded.
+    validArray source limit rows = match startsWith (trimStart source) "["
+        false => false
+        true => match jsonParse source
+            Error _ => false
+            Success doc =>
+                count = jsonLength doc ""
+                valid = count <= limit && rows doc 0 count
+                freed = jsonFree doc ?: 0
+                valid
 
     // Scalar-only projection used by the browser model boundary. Documents
     // are always freed here, so consumers cannot accidentally retain handles.

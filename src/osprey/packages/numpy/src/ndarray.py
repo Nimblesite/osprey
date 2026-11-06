@@ -60,11 +60,15 @@ def array1(values):
     """A rank-1 array from a flat list."""
     return array(values, [len(values)])
 
+def uniform_rows(rows, count, width):
+    """Whether each of `count` rows holds exactly `width` elements."""
+    return fold(range(count), True, lambda ok, i: ok and len(unwrap_or(listGet(rows, i), [])) == width)
+
 def array2(rows):
     """A rank-2 array from a list of equal-length rows."""
     n = len(rows)
     m = len(unwrap_or(listGet(rows, 0), []))
-    g = Errors.require(fold(range(n), True, lambda ok, i: ok and len(unwrap_or(listGet(rows, i), [])) == m), Errors.inhomogeneous(1, [n]))
+    g = Errors.require(uniform_rows(rows, n, m), Errors.inhomogeneous(1, [n]))
     flat = fold(range(n), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(rows, i), [])))
     return array(flat, [n, m])
 
@@ -74,7 +78,7 @@ def array3(blocks):
     first = unwrap_or(listGet(blocks, 0), [])
     d1 = len(first)
     d2 = len(unwrap_or(listGet(first, 0), []))
-    g = Errors.require(fold(range(d0), True, lambda ok, i: ok and len(unwrap_or(listGet(blocks, i), [])) == d1), Errors.inhomogeneous(1, [d0]))
+    g = Errors.require(uniform_rows(blocks, d0, d1), Errors.inhomogeneous(1, [d0]))
     g2 = Errors.require(fold(range(d0), True, lambda ok, i: ok and fold(range(d1), True, lambda ok2, r: ok2 and len(unwrap_or(listGet(unwrap_or(listGet(blocks, i), []), r), [])) == d2)), Errors.inhomogeneous(2, [d0, d1]))
     flat = fold(range(d0), [], lambda acc, i: listConcat(acc, fold(range(d1), [], lambda acc2, r: listConcat(acc2, unwrap_or(listGet(unwrap_or(listGet(blocks, i), []), r), [])))))
     return array(flat, [d0, d1, d2])
@@ -144,9 +148,8 @@ def diag(a):
         n = unwrap_or(listGet(a.shape, 0), 0)
         return NDArray(shape=[n, n], data=Storage.built(perform(Storage.Buffer.build(n * n, lambda i: Storage.at(a.data, i // n) if i // n == i % n else 0.0))))
     else:
-        m = unwrap_or(listGet(a.shape, 0), 0)
-        n = unwrap_or(listGet(a.shape, 1), 0)
-        k = m if m < n else n
+        n = Layout.second_dim(a.shape)
+        k = Layout.diag_extent(a.shape)
         return NDArray(shape=[k], data=Storage.built(perform(Storage.Buffer.build(k, lambda i: Storage.at(a.data, i * (n + 1))))))
 
 def tri(n):
@@ -758,27 +761,32 @@ def better_min(x, y):
 
 def argmax(a):
     """np.argmax over all elements: the flat index of the first maximum."""
-    return fold(range(Layout.flat_size(a.shape)), 0, lambda best, i: i if better_max(Storage.at(a.data, i), Storage.at(a.data, best)) else best)
+    return arg_reduce(a, True)
 
 def argmin(a):
     """np.argmin over all elements: the flat index of the first minimum."""
-    return fold(range(Layout.flat_size(a.shape)), 0, lambda best, i: i if better_min(Storage.at(a.data, i), Storage.at(a.data, best)) else best)
+    return arg_reduce(a, False)
+
+def arg_reduce(a, want_max):
+    """The flat index of the first extremum over every element."""
+    return fold(range(Layout.flat_size(a.shape)), 0, lambda best, i: i if better_of(Storage.at(a.data, i), Storage.at(a.data, best), want_max) else best)
+
+def better_of(x, y, want_max):
+    """Whether `x` beats `y` as the extremum: NaN is extreme, ties keep `y`."""
+    return better_max(x, y) if want_max else better_min(x, y)
 
 def argmax_axis(a, axis):
     """np.argmax along `axis`: the per-position index, as a flat int list over
     the reduced shape."""
-    shape = a.shape
-    nd = len(shape)
-    if nd == 0:
-        return [0]
-    else:
-        ax = Layout.normalize_axis(axis, nd, "")
-        n = unwrap_or(listGet(shape, ax), 1)
-        out_shape = Layout.drop_at(shape, ax)
-        return toList(map(range(Layout.flat_size(out_shape)), lambda i: argreduce_at(i, out_shape, a, shape, ax, n, True)))
+    return arg_reduce_axis(a, axis, True)
 
 def argmin_axis(a, axis):
     """np.argmin along `axis`: the per-position index, as a flat int list over
+    the reduced shape."""
+    return arg_reduce_axis(a, axis, False)
+
+def arg_reduce_axis(a, axis, want_max):
+    """The per-position extremum index along `axis`, as a flat int list over
     the reduced shape."""
     shape = a.shape
     nd = len(shape)
@@ -788,7 +796,7 @@ def argmin_axis(a, axis):
         ax = Layout.normalize_axis(axis, nd, "")
         n = unwrap_or(listGet(shape, ax), 1)
         out_shape = Layout.drop_at(shape, ax)
-        return toList(map(range(Layout.flat_size(out_shape)), lambda i: argreduce_at(i, out_shape, a, shape, ax, n, False)))
+        return toList(map(range(Layout.flat_size(out_shape)), lambda i: argreduce_at(i, out_shape, a, shape, ax, n, want_max)))
 
 def argreduce_at(i, out_shape, a, shape, ax, n, want_max):
     """One argmax/argmin output: the index along `ax` of the extremum."""
@@ -799,7 +807,7 @@ def arg_better(k, best, coords, a, shape, ax, want_max):
     """Whether reduction index `k` beats `best` at this position."""
     x = Storage.at(a.data, Layout.ravel_index(Layout.insert_at(coords, ax, k), shape))
     y = Storage.at(a.data, Layout.ravel_index(Layout.insert_at(coords, ax, best), shape))
-    return better_max(x, y) if want_max else better_min(x, y)
+    return better_of(x, y, want_max)
 
 def and_kernel(acc, x):
     """Logical AND as 0.0/1.0 (nonzero is true, NaN is true)."""

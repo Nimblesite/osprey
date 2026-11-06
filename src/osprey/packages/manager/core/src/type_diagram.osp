@@ -51,15 +51,15 @@ module TypeDiagram {
 
     fn peek(tokens, i) = listGet(tokens, i) ?: ""
 
-    fn listStep(tokens, i) = {
+    /// `List<T>` and `Option<T>`: one inner reference wrapped by `wrap`.
+    fn wrapStep(tokens, i, wrap) = {
         let inner = parseTypeRef(tokens, i + 2)
-        RefStep { ref: ListOf { element: inner.ref }, next: inner.next + 1 }
+        RefStep { ref: wrap(inner.ref), next: inner.next + 1 }
     }
 
-    fn optionStep(tokens, i) = {
-        let inner = parseTypeRef(tokens, i + 2)
-        RefStep { ref: OptionOf { element: inner.ref }, next: inner.next + 1 }
-    }
+    fn listStep(tokens, i) = wrapStep(tokens, i, fn(element) => ListOf { element: element })
+
+    fn optionStep(tokens, i) = wrapStep(tokens, i, fn(element) => OptionOf { element: element })
 
     fn parseTypeRef(tokens, i) = {
         let name = peek(tokens, i)
@@ -128,9 +128,11 @@ module TypeDiagram {
         OptionOf { element } => refKnown(names, element)
     }
 
-    fn fieldKnown(names, field) = refKnown(names, field.typ)
-    fn fieldsKnown(names, fields) = foldList(fields, true, fn(ok, f) => ok && fieldKnown(names, f))
-    fn variantsKnown(names, variants) = foldList(variants, true, fn(ok, v) => ok && fieldsKnown(names, v.payload))
+    /// True when every item satisfies `ok`.
+    fn allOf(items, ok) = foldList(items, true, fn(acc, item) => acc && ok(item))
+
+    fn fieldsKnown(names, fields) = allOf(fields, fn(field) => refKnown(names, field.typ))
+    fn variantsKnown(names, variants) = allOf(variants, fn(variant) => fieldsKnown(names, variant.payload))
 
     fn declKnown(names, decl) = match decl {
         Alias { target } => refKnown(names, target)

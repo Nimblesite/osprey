@@ -37,10 +37,13 @@ module Steering
         true => 0 - 1
         false => 1
 
-    // Separation acts only inside six units.
-    crowd (delta, distance) = match distance < 36.0
-        true => delta * (36.0 - distance) * 0.03
+    // A force away from `delta` that acts only inside `radius`, harder the closer it is.
+    falloff (delta, distance, radius, strength) = match distance < radius
+        true => delta * (radius - distance) * strength
         false => 0.0
+
+    // Separation acts only inside six units.
+    crowd (delta, distance) = falloff (delta, distance, 36.0, 0.03)
 
     done (count, sx, sy, ax, ay, cx, cy) = Mates(mateCount = count, mateSepX = sx, mateSepY = sy, mateAlignX = ax, mateAlignY = ay, mateCohereX = cx, mateCohereY = cy)
 
@@ -96,9 +99,7 @@ module Steering
         false => 0.0
 
     // A bird within twenty units of a hawk bolts away from it, harder the closer it is.
-    flee (delta, distance) = match distance < 400.0
-        true => delta * (400.0 - distance) * 0.0004
-        false => 0.0
+    flee (delta, distance) = falloff (delta, distance, 400.0, 0.0004)
 
     panic (mine, other, hawkMine, hawkOther) = range (0, length hawkMine) |> fold 0.0 (\(sum, h) => sum + flee (mine - at (hawkMine, h), squared (mine - at (hawkMine, h), other - at (hawkOther, h))))
 

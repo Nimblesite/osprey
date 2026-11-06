@@ -13,7 +13,7 @@ MergedWithNext (Metaspace's `▁`).
 from tiktoken.Unicode import utf8_of_cp
 from tokenizers import Category
 from tokenizers.Unicode import is_numeric, is_punctuation, is_whitespace, is_word_char, text_cps
-from tokenizers.Normalizers import Norm, append_norm, char_at, empty_norm, end_at, prepend_cp, replace_space, start_at
+from tokenizers.Normalizers import Norm, append_norm, char_at, empty_norm, end_at, norm_each, prepend_cp, replace_space, start_at
 
 __all__ = [
     "bert_pretokenize", "whitespace_pretokenize", "whitespace_split",
@@ -411,7 +411,7 @@ def bytelevel_piece(n):
     """ByteLevel without its regex: every byte of the piece becomes one symbol,
     each keeping the original character span it came from, so a token that covers
     part of a character still reports that whole character."""
-    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: append_char_bytes(acc, n, i))
+    return norm_each(n, lambda acc, i: append_char_bytes(acc, n, i))
 
 
 def append_char_bytes(acc, n, i):

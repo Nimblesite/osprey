@@ -53,10 +53,7 @@ module Overlay {
         Success { value } => Checked::andThen(ManifestSections::intOf(value, epochCode), fn(value) => if value < 1 { Error { message: epochCode } } else { Success { value: value } })
     }
 
-    fn parsedBaseline(text) = match Identity::parse(text) {
-        Error => Error { message: baselineCode }
-        Success { value } => Success { value: Maybe::some(value) }
-    }
+    fn parsedBaseline(text) = Checked::orElseCode(Identity::parse(text), baselineCode, fn(value) => Success { value: Maybe::some(value) })
 
     fn baselineIn(pairs) = match ManifestSections::find(pairs, "baseline") {
         Error => Success { value: Maybe::none() }
@@ -74,17 +71,9 @@ module Overlay {
         _ => Error { message: shapeCode }
     }
 
-    fn mappingOf(p) = match Names::parse(pairKey(p)) {
-        Error => Error { message: shapeCode }
-        Success { value } => mappingIn(value, pairValue(p))
-    }
+    fn mappingOf(p) = Checked::orElseCode(Names::parse(pairKey(p)), shapeCode, fn(value) => mappingIn(value, pairValue(p)))
 
-    fn appendMapping(done, p) = Checked::andThen(mappingOf(p), fn(value) => Success { value: listAppend(done, value) })
-
-    fn mappingsOf(pairs) = foldList(pairs, Success { value: [] }, fn(acc, p) => match acc {
-        Error => acc
-        Success { value } => appendMapping(value, p)
-    })
+    fn mappingsOf(pairs) = Checked::collectAll(pairs, mappingOf)
 
     fn parsed(text) = match Toml::parse(text) {
         Error { message } => Error { message: "${shapeCode} ${message}" }
@@ -102,10 +91,7 @@ module Overlay {
     export fn active(mappings) = !isEmpty(mappings)
 
     /// The mapping of `key`, if overridden.
-    export fn mappingFor(mappings, key) -> Result<Mapping, string> = foldList(mappings, Error { message: "none" }, fn(acc, m) => match acc {
-        Success => acc
-        Error => if Names::same(keyOf(m), key) { Success { value: m } } else { acc }
-    })
+    export fn mappingFor(mappings, key) = Checked::firstMatch(mappings, fn(m) => Names::same(keyOf(m), key), "none")
 
     /// Whether `key` is overridden.
     export fn overridden(mappings, key) = match mappingFor(mappings, key) {

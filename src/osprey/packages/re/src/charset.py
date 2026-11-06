@@ -11,9 +11,9 @@ decodes the single-code-point escapes (`\\a \\f \\n \\r \\t \\v \\\\`,
 their literal). Error messages and positions match CPython.
 """
 
-from re import Program, Tables, Unicode
+from re import Flags, Program, Tables, Unicode
 
-__all__ = ["parse_class", "escape_cp", "parse_hex", "single_cp"]
+__all__ = ["parse_class", "escape_cp", "parse_hex", "single_cp", "cat_code"]
 
 
 class ClassItem:
@@ -61,9 +61,6 @@ def is_octal(cp):
     return cp >= 48 and cp <= 55
 
 
-def is_letter(cp):
-    """Whether a code point is an ASCII letter."""
-    return (cp >= 65 and cp <= 90) or (cp >= 97 and cp <= 122)
 
 
 def parse_hex(cps, i, n, digits):
@@ -87,12 +84,17 @@ def hex_digits_text(cps, i, count):
         return Unicode.utf8_of(at(cps, i)) + hex_digits_text(cps, i + 1, count - 1)
 
 
-def escape_cp(cps, i, n):
-    """Decode one backslash escape at `i` to a single code point."""
+def escape_at(cps, i, n, body):
+    """Decode one backslash escape at `i`, rejecting a backslash at the end."""
     if i + 1 >= n:
         return fail("bad escape (end of pattern)", i)
     else:
-        return escape_body(cps, i, n)
+        return body(cps, i, n)
+
+
+def escape_cp(cps, i, n):
+    """Decode one backslash escape at `i` to a single code point."""
+    return escape_at(cps, i, n, escape_body)
 
 
 def escape_body(cps, i, n):
@@ -120,7 +122,7 @@ def escape_body(cps, i, n):
         return u_escape(cps, i, n)
     elif is_octal(c):
         return octal_escape(cps, i, n)
-    elif is_letter(c):
+    elif Flags.is_alpha(c):
         return fail("bad escape " + "\\" + Unicode.utf8_of(c), i)
     else:
         return Success(value=[c, i + 2])
@@ -131,7 +133,7 @@ def hex_escape(cps, i, n, digits):
     got = parse_hex(cps, i + 2, n, digits)
     read = unwrap_or(listGet(got, 1), 0)
     if read < digits:
-        return fail("incomplete escape " + "\\" + Unicode.utf8_of(at(cps, i + 1)) + hex_digits_text(cps, i + 2, read), i)
+        return incomplete_escape(cps, i, read)
     else:
         return Success(value=[unwrap_or(listGet(got, 0), 0), unwrap_or(listGet(got, 2), n)])
 
@@ -141,7 +143,7 @@ def u_escape(cps, i, n):
     got = parse_hex(cps, i + 2, n, 8)
     read = unwrap_or(listGet(got, 1), 0)
     if read < 8:
-        return fail("incomplete escape " + "\\" + Unicode.utf8_of(at(cps, i + 1)) + hex_digits_text(cps, i + 2, read), i)
+        return incomplete_escape(cps, i, read)
     else:
         return u_escape_cp(cps, i, n, got)
 
@@ -153,6 +155,11 @@ def u_escape_cp(cps, i, n, got):
         return fail("bad escape " + "\\U" + hex_digits_text(cps, i + 2, 8), i)
     else:
         return Success(value=[cp, unwrap_or(listGet(got, 2), n)])
+
+
+def incomplete_escape(cps, i, read):
+    """CPython's "incomplete escape" error, naming the partial hex text."""
+    return fail("incomplete escape " + "\\" + Unicode.utf8_of(at(cps, i + 1)) + hex_digits_text(cps, i + 2, read), i)
 
 
 def octal_escape(cps, i, n):
@@ -187,8 +194,8 @@ def single_cp(pieces):
         return -1
 
 
-def cat_of(c):
-    """The category piece code for a category escape letter, or 0."""
+def cat_code(c):
+    """The category piece code for `\\d \\D \\w \\W \\s \\S`, or 0."""
     if c == 100:
         return 1
     elif c == 68:
@@ -216,10 +223,7 @@ def class_item(cps, j, n):
 
 def class_escape(cps, i, n):
     """One backslash escape inside a character class."""
-    if i + 1 >= n:
-        return fail("bad escape (end of pattern)", i)
-    else:
-        return class_escape_body(cps, i, n)
+    return escape_at(cps, i, n, class_escape_body)
 
 
 def class_escape_body(cps, i, n):
@@ -233,7 +237,7 @@ def class_escape_body(cps, i, n):
 
 def class_escape_cat(cps, i, n, c):
     """A category escape, or fall through to a literal escape."""
-    cat = cat_of(c)
+    cat = cat_code(c)
     if cat != 0:
         return Success(value=ClassItem(pieces=[Program.cat_piece(cat)], next=i + 2, src="\\" + Unicode.utf8_of(c)))
     else:

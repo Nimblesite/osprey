@@ -25,46 +25,62 @@ def drop(xs, n):
     return V.slice_list(xs, V.Slice(start=n, stop=len(xs), step=1, has_start=True, has_stop=True, has_step=True))
 
 
+def kw_at(kwargs, i):
+    """Keyword argument `i`, or a nameless `none` pair when absent."""
+    return unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none()))
+
+
 def has_kw(kwargs, name):
     """Whether `kwargs` holds `name`."""
-    return fold(range(len(kwargs)), False, lambda acc, i: acc or unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name == name)
+    return fold(range(len(kwargs)), False, lambda acc, i: acc or kw_at(kwargs, i).name == name)
 
 
 def kw_get(kwargs, name):
     """The value of keyword `name`, or `none` when absent."""
-    return fold(range(len(kwargs)), V.none(), lambda acc, i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).value if unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name == name else acc)
+    return fold(range(len(kwargs)), V.none(), lambda acc, i: kw_at(kwargs, i).value if kw_at(kwargs, i).name == name else acc)
+
+
+def string_map(v, op):
+    """A string filter: `op` applied to the text, any other value unchanged."""
+    if v.kind == "string":
+        return V.text(op(v.sval))
+    else:
+        return v
+
+
+def trim_text(s):
+    """`s` without its surrounding ASCII whitespace."""
+    return trim(s)
+
+
+def upper_text(s):
+    """`s` in ASCII uppercase."""
+    return toUpperCase(s)
+
+
+def lower_text(s):
+    """`s` in ASCII lowercase."""
+    return toLowerCase(s)
 
 
 def f_trim(v):
     """`|trim`: strip ASCII whitespace; undefined stays undefined (renders empty)."""
-    if v.kind == "string":
-        return V.text(trim(v.sval))
-    else:
-        return v
+    return string_map(v, trim_text)
 
 
 def f_upper(v):
     """`|upper`: ASCII uppercase."""
-    if v.kind == "string":
-        return V.text(toUpperCase(v.sval))
-    else:
-        return v
+    return string_map(v, upper_text)
 
 
 def f_lower(v):
     """`|lower`: ASCII lowercase."""
-    if v.kind == "string":
-        return V.text(toLowerCase(v.sval))
-    else:
-        return v
+    return string_map(v, lower_text)
 
 
 def f_capitalize(v):
     """`|capitalize`: ASCII capitalize."""
-    if v.kind == "string":
-        return V.text(V.capitalize(v.sval))
-    else:
-        return v
+    return string_map(v, V.capitalize)
 
 
 def f_length(v):
@@ -113,26 +129,25 @@ def f_default(v, args):
         return d if v.kind == V.K_UNDEFINED else v
 
 
+def edge_element(v, elems, i, none_text, empty_text):
+    """Element `i` of a sequence filter's elements, which must be non-empty and not `none`."""
+    if v.kind == V.K_NONE:
+        return halt(none_text)
+    elif len(elems) == 0:
+        return V.undefined(empty_text)
+    else:
+        return unwrap_or(listGet(elems, i), V.none())
+
+
 def f_first(v):
     """`|first`: the first element or character; undefined when empty."""
-    elems = iterable_elements(v)
-    if v.kind == V.K_NONE:
-        return halt("'NoneType' object is not iterable")
-    elif len(elems) == 0:
-        return V.undefined("No first item, sequence was empty.")
-    else:
-        return unwrap_or(listGet(elems, 0), V.none())
+    return edge_element(v, iterable_elements(v), 0, "'NoneType' object is not iterable", "No first item, sequence was empty.")
 
 
 def f_last(v):
     """`|last`: the last element or character; undefined when empty."""
     elems = iterable_elements(v)
-    if v.kind == V.K_NONE:
-        return halt("'NoneType' object is not reversible")
-    elif len(elems) == 0:
-        return V.undefined("No last item, sequence was empty.")
-    else:
-        return unwrap_or(listGet(elems, len(elems) - 1), V.none())
+    return edge_element(v, elems, len(elems) - 1, "'NoneType' object is not reversible", "No last item, sequence was empty.")
 
 
 def f_list(v):

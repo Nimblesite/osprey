@@ -17,7 +17,7 @@ from tokenizers.PreTokenizers import bytelevel_raw, bytelevel_text
 __all__ = [
     "Token", "build_wordpiece", "wordpiece_tokenize", "build_unigram",
     "unigram_tokenize", "unigram_encode", "build_wordlevel", "wordlevel_tokenize",
-    "id_to_token", "char_starts", "BpeModel", "build_bpe", "bpe_tokenize",
+    "id_to_token", "char_starts", "BpeModel", "build_bpe", "bpe_tokenize", "token_index",
 ]
 
 K_UNK_PENALTY = 10.0
@@ -93,9 +93,14 @@ def id_to_token(tokens, id):
 # WordPiece
 # ---------------------------------------------------------------------------
 
+def token_index(tokens):
+    """Every spelling's id: the token->id map an id-ordered token list defines."""
+    return fold(range(len(tokens)), {}, lambda m, i: mapSet(m, unwrap_or(listGet(tokens, i), ""), i))
+
+
 def build_wordpiece(vocab, unk_token, prefix, max_chars):
     """A WordPiece model from an id-ordered token list."""
-    token_to_id = fold(range(len(vocab)), {}, lambda m, i: mapSet(m, unwrap_or(listGet(vocab, i), ""), i))
+    token_to_id = token_index(vocab)
     return WordPieceModel(tokens=vocab, token_to_id=token_to_id, unk_token=unk_token, continuing_prefix=prefix, max_chars=max_chars)
 
 
@@ -121,12 +126,24 @@ def wordpiece_greedy(m, text, starts, si, acc):
         if found < 0:
             return [Token(id=unk_id(m, m.unk_token), value=m.unk_token, start=0, end=len(text))]
         else:
-            s = unwrap_or(listGet(starts, si), 0)
-            e = unwrap_or(listGet(starts, found), len(text))
-            sub = unwrap_or(substring(text, s, e), "")
-            key = m.continuing_prefix + sub if si > 0 else sub
-            tok = Token(id=unk_id(m, key), value=key, start=s, end=e)
-            return wordpiece_greedy(m, text, starts, found, listAppend(acc, tok))
+            return wordpiece_greedy(m, text, starts, found, listAppend(acc, part_token(m, text, part_span(text, starts, si, found), si)))
+
+
+def part_span(text, starts, si, end_idx):
+    """The byte span [start, end) of the chars [si, end_idx)."""
+    return [unwrap_or(listGet(starts, si), 0), unwrap_or(listGet(starts, end_idx), len(text))]
+
+
+def part_key(m, text, span, si):
+    """The vocab key of one word part: its text, prefixed when it continues a word."""
+    sub = unwrap_or(substring(text, unwrap_or(listGet(span, 0), 0), unwrap_or(listGet(span, 1), len(text))), "")
+    return m.continuing_prefix + sub if si > 0 else sub
+
+
+def part_token(m, text, span, si):
+    """The token of one word part: its key and its byte span."""
+    key = part_key(m, text, span, si)
+    return Token(id=unk_id(m, key), value=key, start=unwrap_or(listGet(span, 0), 0), end=unwrap_or(listGet(span, 1), len(text)))
 
 
 def longest_match(m, text, starts, si, end_idx):
@@ -135,11 +152,7 @@ def longest_match(m, text, starts, si, end_idx):
     if end_idx <= si:
         return -1
     else:
-        s = unwrap_or(listGet(starts, si), 0)
-        e = unwrap_or(listGet(starts, end_idx), len(text))
-        sub = unwrap_or(substring(text, s, e), "")
-        key = m.continuing_prefix + sub if si > 0 else sub
-        if mapContains(m.token_to_id, key):
+        if mapContains(m.token_to_id, part_key(m, text, part_span(text, starts, si, end_idx), si)):
             return end_idx
         else:
             return longest_match(m, text, starts, si, end_idx - 1)
@@ -151,7 +164,7 @@ def longest_match(m, text, starts, si, end_idx):
 
 def build_unigram(tokens, scores, unk_id, byte_fallback):
     """A Unigram model from parallel token and score lists."""
-    token_to_id = fold(range(len(tokens)), {}, lambda m, i: mapSet(m, unwrap_or(listGet(tokens, i), ""), i))
+    token_to_id = token_index(tokens)
     min_score = fold(range(len(scores)), exp(1000.0), lambda acc, i: low(acc, unwrap_or(listGet(scores, i), 0.0)))
     return UnigramModel(tokens=tokens, scores=scores, token_to_id=token_to_id, unk_id=unk_id, byte_fallback=byte_fallback, fuse_unk=True, min_score=min_score)
 
@@ -290,7 +303,7 @@ def unigram_backtrack(m, text, best, ends_at, results, fused):
 
 def build_wordlevel(vocab, unk_token):
     """A WordLevel model from an id-ordered token list."""
-    token_to_id = fold(range(len(vocab)), {}, lambda m, i: mapSet(m, unwrap_or(listGet(vocab, i), ""), i))
+    token_to_id = token_index(vocab)
     return WordLevelModel(tokens=vocab, token_to_id=token_to_id, unk_token=unk_token)
 
 
@@ -368,15 +381,7 @@ def merge_step(state, i, left, right, id):
 def bpe_tokenize(m, text) -> Result[list[Token], str]:
     """Byte-pair encode one byte-level piece: tiktoken's merge loop over the piece's
     bytes, then each id read back as its token's text and byte span."""
-    match bytelevel_raw(text):
-        case Success(value=octets):
-            match Bpe.bpe_encode(m.ranks, octets):
-                case Success(value=ids):
-                    return tokens_by_id(m, ids)
-                case Error(message=message):
-                    return Error(message=message)
-        case Error(message=message):
-            return Error(message=message)
+    return continued(bytelevel_raw(text), lambda octets: continued(Bpe.bpe_encode(m.ranks, octets), lambda ids: tokens_by_id(m, ids)))
 
 
 class Spans:
@@ -385,6 +390,15 @@ class Spans:
     tokens: list[Token]
     offset: int
     bad: int
+
+
+def continued(result, step):
+    """The next step's answer on success, or the reason it already failed."""
+    match result:
+        case Success(value=value):
+            return step(value)
+        case Error(message=message):
+            return Error(message=message)
 
 
 def tokens_by_id(m, ids) -> Result[list[Token], str]:

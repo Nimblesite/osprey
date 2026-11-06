@@ -342,17 +342,22 @@ def template_escape(cps, n, prog, i, acc):
     elif c == 103:
         return template_group(cps, n, prog, i, acc)
     elif c == 110:
-        return parse_template_at(cps, n, prog, i + 2, listAppend(acc, TplPiece(kind=0, text="\n", gid=0)))
+        return template_literal(cps, n, prog, i, acc, "\n")
     elif c == 116:
-        return parse_template_at(cps, n, prog, i + 2, listAppend(acc, TplPiece(kind=0, text="\t", gid=0)))
+        return template_literal(cps, n, prog, i, acc, "\t")
     elif c == 114:
-        return parse_template_at(cps, n, prog, i + 2, listAppend(acc, TplPiece(kind=0, text="\r", gid=0)))
+        return template_literal(cps, n, prog, i, acc, "\r")
     elif c == 92:
-        return parse_template_at(cps, n, prog, i + 2, listAppend(acc, TplPiece(kind=0, text="\\", gid=0)))
+        return template_literal(cps, n, prog, i, acc, "\\")
     elif c >= 65 and c <= 122:
         return Error(message="bad escape \\" + Unicode.utf8_of(c) + " at position 0")
     else:
         return parse_template_at(cps, n, prog, i + 2, listAppend(acc, TplPiece(kind=0, text="\\" + Unicode.utf8_of(c), gid=0)))
+
+
+def template_literal(cps, n, prog, i, acc, text):
+    """One single-character escape decoded inside a replacement template."""
+    return parse_template_at(cps, n, prog, i + 2, listAppend(acc, TplPiece(kind=0, text=text, gid=0)))
 
 
 def template_group(cps, n, prog, i, acc):
@@ -365,7 +370,7 @@ def template_group(cps, n, prog, i, acc):
 
 def template_group_name(cps, n, prog, j, acc):
     """Read the name of a `\\g<...>` reference and resolve it to a group."""
-    name = read_group_name(cps, j, n, 62)
+    name = Program.read_name(cps, j, n, 62)
     text = name.name
     after = name.next
     if after >= n:
@@ -386,19 +391,6 @@ def template_number_ref(cps, n, prog, after, acc, gid):
         return Error(message=f"invalid group reference {gid}")
     else:
         return parse_template_at(cps, n, prog, after + 1, listAppend(acc, TplPiece(kind=1, text="", gid=gid)))
-
-
-def read_group_name(cps, j, n, term):
-    """The template group name, and the terminator's index."""
-    return read_group_name_from(cps, j, n, term, "")
-
-
-def read_group_name_from(cps, j, n, term, acc):
-    """Accumulate the template group name until `term` or the end."""
-    if j >= n or Unicode.at(cps, j) == term:
-        return Program.NameRead(name=acc, next=j)
-    else:
-        return read_group_name_from(cps, j + 1, n, term, acc + Unicode.utf8_of(Unicode.at(cps, j)))
 
 
 def is_digits(s):

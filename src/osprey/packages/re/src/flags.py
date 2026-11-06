@@ -14,7 +14,7 @@ divergence).
 
 from re import Program
 
-__all__ = ["parse_flag_group", "scan_global_flags", "flag_bit", "FlagGroup"]
+__all__ = ["parse_flag_group", "scan_global_flags", "flag_bit", "FlagGroup", "is_alpha"]
 
 
 class FlagGroup:

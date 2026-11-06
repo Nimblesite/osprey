@@ -30,16 +30,32 @@ def is_period_comma(cp):
     return cp == 46 or cp == 44
 
 
-def rule2_from(cps, i, acc):
-    """Period or comma after a non-digit becomes its own token."""
+def pair_split_from(cps, i, acc, splits):
+    """One pair-separating rule: where `splits` says so the pair `a`, `b` gets
+    spaces around it, otherwise only `a` is kept."""
     if i >= len(cps):
         return acc
     else:
         a = unwrap_or(listGet(cps, i), 0)
         b = unwrap_or(listGet(cps, i + 1), 0)
-        matchable = i + 1 < len(cps) and not is_ascii_digit(a) and is_period_comma(b)
+        matchable = i + 1 < len(cps) and splits(a, b)
         next_acc = listConcat(acc, [a, 32, b, 32]) if matchable else listAppend(acc, a)
-        return rule2_from(cps, i + 2 if matchable else i + 1, next_acc)
+        return pair_split_from(cps, i + 2 if matchable else i + 1, next_acc, splits)
+
+
+def rule2_from(cps, i, acc):
+    """Period or comma after a non-digit becomes its own token."""
+    return pair_split_from(cps, i, acc, period_after)
+
+
+def period_after(a, b):
+    """Whether `b` is a period or comma that follows a non-digit `a`."""
+    return not is_ascii_digit(a) and is_period_comma(b)
+
+
+def dash_after(a, b):
+    """Whether `b` is a dash that follows a digit `a`."""
+    return is_ascii_digit(a) and b == 45
 
 
 def rule3_from(cps, i, acc):
@@ -56,14 +72,7 @@ def rule3_from(cps, i, acc):
 
 def rule4_from(cps, i, acc):
     """A dash after a digit becomes its own token."""
-    if i >= len(cps):
-        return acc
-    else:
-        a = unwrap_or(listGet(cps, i), 0)
-        b = unwrap_or(listGet(cps, i + 1), 0)
-        matchable = i + 1 < len(cps) and is_ascii_digit(a) and b == 45
-        next_acc = listConcat(acc, [a, 32, b, 32]) if matchable else listAppend(acc, a)
-        return rule4_from(cps, i + 2 if matchable else i + 1, next_acc)
+    return pair_split_from(cps, i, acc, dash_after)
 
 
 def rule1(cps):

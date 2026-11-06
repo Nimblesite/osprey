@@ -174,18 +174,17 @@ module Goals
         true => first
         false => second
 
-    exact (progress, goal, rest, name) = match lookup (goal, name)
+    // A named hypothesis that proves the goal closes it; otherwise `then` decides.
+    resolved (progress, goal, rest, name, then) = match lookup (goal, name)
         Absent => unknown (goal, name)
         Held formula => match holds (formula, goal.target)
             true => closed (progress, goal, rest)
-            false => stuck (goal.target, formula, "the goal is `" + Formulas::show goal.target + "`, but `" + name + "` proves `" + Formulas::show formula + "`")
+            false => then formula
+
+    exact (progress, goal, rest, name) = resolved (progress, goal, rest, name, \formula => stuck (goal.target, formula, "the goal is `" + Formulas::show goal.target + "`, but `" + name + "` proves `" + Formulas::show formula + "`"))
 
     // `Apply h` with `h : A` on goal `A` closes it, as Lean's `apply` does; otherwise `h` must be an implication.
-    applied (progress, goal, rest, name) = match lookup (goal, name)
-        Absent => unknown (goal, name)
-        Held formula => match holds (formula, goal.target)
-            true => closed (progress, goal, rest)
-            false => premised (progress, goal, rest, { name = name, formula = formula })
+    applied (progress, goal, rest, name) = resolved (progress, goal, rest, name, \formula => premised (progress, goal, rest, { name = name, formula = formula }))
 
     premised (progress, goal, rest, held) = match Formulas::expandNot held.formula
         Imp premise conclusion => concluded (progress, goal, rest, { name = held.name, premise = premise, conclusion = conclusion })

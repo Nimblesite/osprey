@@ -95,16 +95,14 @@ def warper(kind, setting, filter_value, min_tokens_to_keep):
 def TemperatureLogitsWarper(temperature):
     """`TemperatureLogitsWarper(temperature)`: divide every logit by the
     strictly positive temperature."""
-    base = blank()
-    return update(base, kind="temperature", temperature=temperature)
+    return update(blank(), kind="temperature", temperature=temperature)
 
 
 def TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep):
     """`TopKLogitsWarper(top_k, filter_value, min_tokens_to_keep)`: keep the
     top-k scores, masking the rest with `filter_value`; the kept count is at
     least `min_tokens_to_keep`."""
-    base = blank()
-    return update(base, kind="top_k", top_k=top_k, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
+    return update(blank(), kind="top_k", top_k=top_k, filter_value=filter_value, min_tokens_to_keep=min_tokens_to_keep)
 
 
 def TopPLogitsWarper(top_p, filter_value, min_tokens_to_keep):
@@ -147,59 +145,51 @@ def RepetitionPenaltyLogitsProcessor(penalty, prompt_ignore_length):
     positive scores and multiply negative scores of each token already present
     (after skipping the first `prompt_ignore_length` history tokens) by
     `penalty`."""
-    base = blank()
-    return update(base, kind="repetition_penalty", penalty=penalty, prompt_ignore_length=prompt_ignore_length)
+    return update(blank(), kind="repetition_penalty", penalty=penalty, prompt_ignore_length=prompt_ignore_length)
 
 
 def NoRepeatNGramLogitsProcessor(ngram_size):
     """`NoRepeatNGramLogitsProcessor(ngram_size)`: mask with -inf every token
     that would complete an n-gram that already appears in the history."""
-    base = blank()
-    return update(base, kind="no_repeat_ngram", ngram_size=ngram_size)
+    return update(blank(), kind="no_repeat_ngram", ngram_size=ngram_size)
 
 
 def MinLengthLogitsProcessor(min_length, eos_ids):
     """`MinLengthLogitsProcessor(min_length, eos_ids)`: mask every eos id with
     -inf while the sequence is shorter than `min_length`."""
-    base = blank()
-    return update(base, kind="min_length", min_length=min_length, eos_ids=eos_ids)
+    return update(blank(), kind="min_length", min_length=min_length, eos_ids=eos_ids)
 
 
 def MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens, eos_ids):
     """`MinNewTokensLengthLogitsProcessor(prompt_length_to_skip, min_new_tokens,
     eos_ids)`: mask every eos id with -inf while fewer than `min_new_tokens`
     tokens follow the skipped prompt."""
-    base = blank()
-    return update(base, kind="min_new_tokens", eos_ids=eos_ids, prompt_length_to_skip=prompt_length_to_skip, min_new_tokens=min_new_tokens)
+    return update(blank(), kind="min_new_tokens", eos_ids=eos_ids, prompt_length_to_skip=prompt_length_to_skip, min_new_tokens=min_new_tokens)
 
 
 def ForcedBOSTokenLogitsProcessor(bos_token_id):
     """`ForcedBOSTokenLogitsProcessor(bos_token_id)`: when the history is one
     token long, force `bos_token_id` (everything else -inf)."""
-    base = blank()
-    return update(base, kind="forced_bos", bos_token_id=bos_token_id)
+    return update(blank(), kind="forced_bos", bos_token_id=bos_token_id)
 
 
 def ForcedEOSTokenLogitsProcessor(max_length, eos_ids):
     """`ForcedEOSTokenLogitsProcessor(max_length, eos_ids)`: when the history is
     `max_length - 1` tokens long, force the eos ids (everything else -inf)."""
-    base = blank()
-    return update(base, kind="forced_eos", eos_ids=eos_ids, max_length=max_length)
+    return update(blank(), kind="forced_eos", eos_ids=eos_ids, max_length=max_length)
 
 
 def SuppressTokensLogitsProcessor(suppress_ids):
     """`SuppressTokensLogitsProcessor(suppress_ids)`: mask every listed token
     with -inf."""
-    base = blank()
-    return update(base, kind="suppress_tokens", suppress_ids=suppress_ids)
+    return update(blank(), kind="suppress_tokens", suppress_ids=suppress_ids)
 
 
 def NoBadWordsLogitsProcessor(bad_words_ids, eos_ids):
     """`NoBadWordsLogitsProcessor(bad_words_ids, eos_token_id)`: mask with -inf the
     last token of any bad word the history is about to complete, and every
     single-token bad word; single-token bad words equal to an eos id are ignored."""
-    base = blank()
-    return update(base, kind="bad_words", eos_ids=eos_ids, bad_words_ids=bad_words_ids)
+    return update(blank(), kind="bad_words", eos_ids=eos_ids, bad_words_ids=bad_words_ids)
 
 
 def apply_list(processors, input_ids, scores: list[float32]):

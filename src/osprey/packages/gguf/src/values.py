@@ -322,11 +322,7 @@ def truncated(off):
 
 def word_at(data, off, n, swapped):
     """The `n` bytes at `off`, reversed when the file's words are byte-swapped."""
-    match bytes_at(data, off, n):
-        case Success(value=value):
-            return Success(value=ordered_word(value, swapped))
-        case Error(message=problem):
-            return Error(message=problem)
+    return Chain.then(bytes_at(data, off, n), lambda word: Success(value=ordered_word(word, swapped)))
 
 
 def ordered_word(word, swapped):
@@ -344,17 +340,9 @@ def number_of(word):
 
 def unsigned_at(data, off, n, swapped):
     """The unsigned `n`-byte word at `off`, n at most 7 so it cannot overflow."""
-    match word_at(data, off, n, swapped):
-        case Success(value=value):
-            return Success(value=number_of(value))
-        case Error(message=problem):
-            return Error(message=problem)
+    return Chain.then(word_at(data, off, n, swapped), lambda word: Success(value=number_of(word)))
 
 
 def u64_at(data, off, swapped):
     """The uint64 at `off`, or Error when it exceeds the int64 range."""
-    match word_at(data, off, 8, swapped):
-        case Success(value=value):
-            return u64_of(value, off)
-        case Error(message=problem):
-            return Error(message=problem)
+    return Chain.then(word_at(data, off, 8, swapped), lambda word: u64_of(word, off))

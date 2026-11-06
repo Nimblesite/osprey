@@ -38,6 +38,9 @@ module Look
         style = Frames::inset (vertical, horizontal, vertical, horizontal)
         style(frameFill = fill, frameLine = "line", frameRadius = radius, frameGap = 8)
 
+    (** A panel: a card on the surface colour, with its padding. *)
+    export panel () = card ("surface", 12, 14, 12)
+
     (** Text at `size` in the `ink` token. *)
     export sized (size, ink) =
         style = Frames::plain
@@ -53,6 +56,17 @@ module Look
     export trouble words =
         style = sized (12, "danger")
         Ui::framed (style(frameHug = false), Ui::label (words, Symbols::name ui::Warning))
+
+    (** A state badge: its `label` and `symbol` in the colour `ink` reads as. *)
+    export badge (label, symbol, ink) = Ui::badge (label, Symbols::name symbol, ink)
+
+    (** A group's name above it, in small capitals. *)
+    export eyebrow words =
+        base = Frames::plain
+        Ui::framed (base(frameHug = true), Ui::styled (words, ui::Eyebrow, ui::Secondary))
+
+    (** Where a card's subject lives, in words. *)
+    export endpoint words = Ui::framed (mono (11, "secondary"), Ui::text words)
 
     export gapped gap =
         style = Frames::plain
@@ -178,10 +192,10 @@ module Items
         _ => Symbols::name ui::Terminal
 
     status step = match step.stepDone
-        false => Ui::badge ("Running", Symbols::name ui::Clock, ui::Caution)
+        false => Look::badge ("Running", ui::Clock, ui::Caution)
         true => match step.stepFailed
-            true => Ui::badge ("Failed", Symbols::name ui::Warning, ui::Danger)
-            false => Ui::badge ("Done", Symbols::name ui::Check, ui::Good)
+            true => Look::badge ("Failed", ui::Warning, ui::Danger)
+            false => Look::badge ("Done", ui::Check, ui::Good)
 
     // At most this many lines of a tool's output are drawn; the model saw all of it.
     shownLines () = 28
@@ -228,6 +242,32 @@ module View
 
     draftNow () = (perform Signal<Draft>.read ()).draftText
 
+    // A live action with a symbol, in the `style` it reads as.
+    liveAction (label, symbol, style, action) = Ui::action (label, Symbols::name symbol, style, true, action)
+
+    // How many tools `server` offers.
+    toolCount server = length (Doc::items (Doc::parse server.serverTools))
+
+    // `problem` in words, or nothing to draw when it is empty.
+    problemNote problem = shown (problem != "", [Look::trouble problem])
+
+    // `item` in a plain frame, hugging its content.
+    plainHug item =
+        base = Frames::plain
+        Ui::framed (base(frameHug = true), item)
+
+    // The list holding `items` when `on`, and nothing otherwise.
+    shown (on, items) = filterList (items, \_ => on)
+
+    // A small icon-only button, framing `button`.
+    iconButton (base, button) = Ui::framed (base(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), button)
+
+    // The one line `words` draws when a list has nothing in it.
+    emptyNote words = [Ui::framed (Look::sized (12, "faint"), Ui::text words)]
+
+    // A card's title row: `name`, then `extra`, then its badge on the right.
+    titleRow (name, extra, mark) = Ui::row (listConcat [Ui::framed (Look::sized (14, "primary"), Ui::text name)] (listConcat extra [ui::Spacer, mark]))
+
     activeChat () =
         panel = panelNow ()
         chats = chatsNow ()
@@ -266,8 +306,7 @@ module View
         actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat)])
         foot = Frames::inset (10, 16, 14, 16)
         chat = activeChat ()
-        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
-        symbol = Pick::either (missing, Symbols::name ui::Warning, Symbols::name ui::Settings)
+        symbol = Pick::either (missingKey (chat, settings), Symbols::name ui::Warning, Symbols::name ui::Settings)
         base5 = Frames::plain
         settingsButton = Ui::framed (base5(frameQuietControls = true), Ui::button ("Settings", symbol, OpenSettings))
         Ui::column [actions, Ui::framed (base5(frameGrow = true), Ui::rows (mapList (chatsNow (), \chat => chatRow chat), panel.panelActive, PickChat)), Ui::framed (foot, settingsButton)]
@@ -280,7 +319,7 @@ module View
         base6 = Frames::plain
         titles = Ui::framed (base6(frameTextSize = 14, frameHug = true), Ui::styled (chat.chatTitle, ui::Headline, ui::Primary))
         base7 = Frames::plain
-        toggle = Ui::framed (base7(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button (Pick::either (panel.panelOpen, "Hide inspector", "Show inspector"), Symbols::name ui::Panel, TogglePanel))
+        toggle = iconButton (base7, Ui::button (Pick::either (panel.panelOpen, "Hide inspector", "Show inspector"), Symbols::name ui::Panel, TogglePanel))
         Ui::framed (bar(frameHeight = 52, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center", frameGap = 2), Ui::row [titles, ui::Spacer, toggle])
 
     suggestion (title, detail, prompt) =
@@ -320,20 +359,17 @@ module View
     trouble chat = match chat.chatStage == "failed"
         false => []
         true =>
-            card = Look::card ("surface", 12, 14, 12)
+            card = Look::panel ()
             base14 = Frames::plain
             title = Ui::framed (base14(frameInk = "danger", frameTextSize = 13), Ui::styled ("The request failed", ui::Headline, ui::Primary))
             detail = Ui::framed (Look::mono (12, "secondary"), Ui::text chat.chatProblem)
-            sentence = Pick::either (troubleWords chat == "", [], [Ui::framed (Look::sized (13, "primary"), Ui::text (troubleWords chat))])
+            sentence = shown (troubleWords chat != "", [Ui::framed (Look::sized (13, "primary"), Ui::text (troubleWords chat))])
             base15 = Frames::plain
-            buttons = listConcat [Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))] (Pick::either (troubleWords chat == "", [], [Ui::framed (base15(frameHug = true), Ui::button ("Open Settings", Symbols::name ui::Settings, OpenSettings))]))
+            buttons = listConcat [Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))] (shown (troubleWords chat != "", [Ui::framed (base15(frameHug = true), Ui::button ("Open Settings", Symbols::name ui::Settings, OpenSettings))]))
             words = Ui::column (listConcat [title, detail] sentence)
             [Ui::framed (card(frameLine = "danger"), Ui::column [words, Ui::framed (Look::gapped 8, Ui::row buttons)])]
 
-    saveTrouble () =
-        problem = (settingsNow ()).saveProblem
-        base = Frames::plain
-        Pick::either (problem == "", [], [Look::trouble problem])
+    saveTrouble () = problemNote ((settingsNow ()).saveProblem)
 
     // While a round of tools runs, its finished answers show before the round goes back to the model.
     visibleHistory chat = Pick::either (length chat.chatResults > 0, Engine::add_returns (chat.chatHistory, chat.chatResults), chat.chatHistory)
@@ -392,9 +428,9 @@ module View
 
     primary (chat, words, settings) =
         match Model::busy chat
-            true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
+            true => liveAction ("Stop", ui::Stop, ui::Filled, StopTurn)
             false => match missingKey (chat, settings)
-                true => Ui::action ("Add an API key", Symbols::name ui::Settings, ui::Filled, true, OpenSettings)
+                true => liveAction ("Add an API key", ui::Settings, ui::Filled, OpenSettings)
                 false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, trim words != "", SendDraft)
 
     (** The one-line truth about the agent's power, always on show under the composer. *)
@@ -424,26 +460,26 @@ module View
     providerCard (settings, provider) =
         keySaved = Model::hasKey (settings, provider)
         label = Engine::provider_label provider
-        badge = Pick::either (keySaved, Ui::badge ("Key saved", Symbols::name ui::Check, ui::Good), Ui::badge ("No key", Symbols::name ui::Warning, ui::Caution))
+        badge = Pick::either (keySaved, Look::badge ("Key saved", ui::Check, ui::Good), Look::badge ("No key", ui::Warning, ui::Caution))
         base21 = Frames::plain
-        head = Ui::row [Ui::framed (Look::sized (14, "primary"), Ui::text label), ui::Spacer, badge]
-        endpoint = Ui::framed (Look::mono (11, "secondary"), Ui::text (Engine::provider_base provider))
+        head = titleRow (label, [], badge)
+        endpoint = Look::endpoint (Engine::provider_base provider)
         draft = Model::draftOf (settings, provider)
         field = ui::Field(label = "${label} key", value = draft, prompt = "Paste the key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey(keyProvider = provider))
         save = Ui::action ("Save ${label} key", "", ui::Filled, draft != "", SaveKey(keyProvider = provider))
         remove = Ui::action ("Remove ${label} key", "", ui::Destructive, true, RemoveKey(keyProvider = provider))
         controls = listConcat [Ui::framed (base21(frameGrow = true), field), save] (Pick::either (keySaved, [remove], []))
-        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [head, endpoint, Ui::framed (Look::gapped 8, Ui::row controls)])
+        Ui::framed (Look::panel (), Ui::column [head, endpoint, Ui::framed (Look::gapped 8, Ui::row controls)])
 
     defaultModelSection settings =
         base22 = Frames::plain
-        heading = Ui::framed (base22(frameHug = true), Ui::styled ("Default model", ui::Eyebrow, ui::Secondary))
+        heading = Look::eyebrow "Default model"
         providers = mapList (Engine::provider_ids (), \provider => Ui::choice (provider, Engine::provider_label provider))
         providerPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Provider", providers, settings.providerOpen, PickProvider))
         models = mapList (Model::modelsOf (settings, settings.providerOpen), \model => Ui::choice (Engine::full_model (settings.providerOpen, model), Engine::model_label (Engine::full_model (settings.providerOpen, model))))
         modelPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Model", models, settings.defaultModel, PickDefaultModel))
         effort = mapList (effortPicker (settings.defaultModel, settings.defaultEffort, PickDefaultEffort), \picker => Ui::framed (base22(frameGrow = true), picker))
-        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [heading, Ui::framed (Look::gapped 12, Ui::row (listConcat [providerPicker, modelPicker] effort))])
+        Ui::framed (Look::panel (), Ui::column [heading, Ui::framed (Look::gapped 12, Ui::row (listConcat [providerPicker, modelPicker] effort))])
 
     providersPane settings =
         cards = Ui::framed (Look::gapped 12, Ui::column (mapList (Engine::provider_ids (), \provider => providerCard (settings, provider))))
@@ -451,12 +487,12 @@ module View
 
     // One server's coloured state, with its tool count when connected.
     mcpBadge server = match server.serverPhase
-        "connected" => Ui::badge ("Connected · ${toString (length (Doc::items (Doc::parse (server.serverTools))))} tools", Symbols::name ui::Check, ui::Good)
-        "connecting" => Ui::badge ("Connecting", Symbols::name ui::Clock, ui::Caution)
-        "failed" => Ui::badge ("Failed", Symbols::name ui::Warning, ui::Danger)
-        _ => Ui::badge ("Off", Symbols::name ui::NoSymbol, ui::Secondary)
+        "connected" => Look::badge ("Connected · ${toString (toolCount server)} tools", ui::Check, ui::Good)
+        "connecting" => Look::badge ("Connecting", ui::Clock, ui::Caution)
+        "failed" => Look::badge ("Failed", ui::Warning, ui::Danger)
+        _ => Look::badge ("Off", ui::NoSymbol, ui::Secondary)
 
-    mcpProblem server = Pick::either (server.serverProblem == "", [], [Look::trouble server.serverProblem])
+    mcpProblem server = problemNote server.serverProblem
 
     mcpToolRow tool =
         base = Frames::plain
@@ -464,43 +500,42 @@ module View
 
     mcpCard server =
         mcp = mcpNow ()
-        base = Frames::plain
-        projectLabel = Pick::either (server.serverOrigin == "project", [Ui::framed (base(frameHug = true), Ui::badge (".mcp.json", Symbols::name ui::Document, ui::Secondary))], [])
-        head = Ui::row (listConcat [Ui::framed (Look::sized (14, "primary"), Ui::text server.serverName)] (listConcat projectLabel [ui::Spacer, mcpBadge server]))
-        endpoint = Ui::framed (Look::mono (11, "secondary"), Ui::text server.serverEndpoint)
-        switch = Ui::framed (base(frameHug = true), ui::Toggle(label = server.serverName, on = server.serverEnabled, bind = ToggleMcp(mcpActionName = server.serverName)))
-        reconnect = Pick::either (server.serverPhase == "failed" || server.serverPhase == "connected", [Ui::framed (base(frameHug = true), Ui::action ("Reconnect ${server.serverName}", Symbols::name ui::Refresh, ui::Plain, true, ReconnectMcp(mcpActionName = server.serverName)))], [])
-        remove = Pick::either (server.serverOrigin == "global", [Ui::framed (base(frameHug = true), Ui::action ("Remove ${server.serverName}", Symbols::name ui::Delete, ui::Destructive, true, RemoveMcp(mcpActionName = server.serverName)))], [])
+        projectLabel = shown (server.serverOrigin == "project", [plainHug (Look::badge (".mcp.json", ui::Document, ui::Secondary))])
+        head = titleRow (server.serverName, projectLabel, mcpBadge server)
+        endpoint = Look::endpoint server.serverEndpoint
+        switch = plainHug (ui::Toggle(label = server.serverName, on = server.serverEnabled, bind = ToggleMcp(mcpActionName = server.serverName)))
+        reconnect = shown (server.serverPhase == "failed" || server.serverPhase == "connected", [plainHug (liveAction ("Reconnect ${server.serverName}", ui::Refresh, ui::Plain, ReconnectMcp(mcpActionName = server.serverName)))])
+        remove = shown (server.serverOrigin == "global", [plainHug (liveAction ("Remove ${server.serverName}", ui::Delete, ui::Destructive, RemoveMcp(mcpActionName = server.serverName)))])
         tools = Ui::disclosure ("${server.serverName} tools", listContains (mcp.stateExpanded, server.serverName), ToggleMcpTools(mcpActionName = server.serverName), mapList (Doc::items (Doc::parse (server.serverTools)), \tool => mcpToolRow tool))
-        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column (listConcat [head, endpoint] (listConcat (mcpProblem server) [Ui::framed (Look::gapped 8, Ui::row (listConcat (listPrepend reconnect switch) remove)), tools])))
+        Ui::framed (Look::panel (), Ui::column (listConcat [head, endpoint] (listConcat (mcpProblem server) [Ui::framed (Look::gapped 8, Ui::row (listConcat (listPrepend reconnect switch) remove)), tools])))
 
     mcpProblems mcp = mapList (mcp.stateProblems, \problem => Look::trouble problem)
 
     // An editable field grown to its row, one line high unless it takes more.
-    formField (base, label, value, prompt, multiline, bind) = Ui::framed (base(frameGrow = true), ui::Field(label = label, value = value, prompt = prompt, secure = false, multiline = multiline, commit = ui::OnEdit, bind = bind))
+    formField (label, value, prompt, multiline, bind) =
+        base = Frames::plain
+        Ui::framed (base(frameGrow = true), ui::Field(label = label, value = value, prompt = prompt, secure = false, multiline = multiline, commit = ui::OnEdit, bind = bind))
 
     // A labelled, bordered box for what takes several lines.
     mcpBox (label, value, prompt, bind) =
-        base = Frames::plain
         box = Look::card ("canvas", 6, 8, 6)
-        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (Look::sized (12, "secondary"), Ui::text label), Ui::framed (box(frameGrow = true), formField (base, label, value, prompt, true, bind))])
+        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (Look::sized (12, "secondary"), Ui::text label), Ui::framed (box(frameGrow = true), formField (label, value, prompt, true, bind))])
 
     (** The Add server form: name, type, command or URL, environment, validated in words. *)
     mcpForm mcp =
         form = mcp.stateForm
-        base = Frames::plain
-        heading = Ui::framed (base(frameHug = true), Ui::styled ("Add server", ui::Eyebrow, ui::Secondary))
-        name = formField (base, "Name", form.formName, "demo", false, McpName)
-        typePicker = Ui::framed (base(frameHug = true), ui::Picker(label = "Type", choices = [Ui::choice ("command", "Command"), Ui::choice ("url", "URL")], selected = form.formType, bind = PickMcpType))
+        heading = Look::eyebrow "Add server"
+        name = formField ("Name", form.formName, "demo", false, McpName)
+        typePicker = plainHug (ui::Picker(label = "Type", choices = [Ui::choice ("command", "Command"), Ui::choice ("url", "URL")], selected = form.formType, bind = PickMcpType))
         command = match form.formType
-            "url" => [formField (base, "URL", form.formUrl, "https://example.com/mcp", false, McpUrl), mcpBox ("Headers", form.formHeaders, "Authorization=Bearer token", McpHeaders)]
-            _ => [formField (base, "Command", form.formCommand, "npx", false, McpCommand), mcpBox ("Arguments", form.formArguments, "One argument per line", McpArguments)]
+            "url" => [formField ("URL", form.formUrl, "https://example.com/mcp", false, McpUrl), mcpBox ("Headers", form.formHeaders, "Authorization=Bearer token", McpHeaders)]
+            _ => [formField ("Command", form.formCommand, "npx", false, McpCommand), mcpBox ("Arguments", form.formArguments, "One argument per line", McpArguments)]
         environment = mcpBox ("Environment", form.formEnvironment, "NAME=value", McpEnvironment)
-        problem = Pick::either (form.formProblem == "", [], [Look::trouble form.formProblem])
-        add = Ui::framed (base(frameHug = true), Ui::action ("Add", Symbols::name ui::Add, ui::Filled, true, AddMcpServer))
+        problem = problemNote form.formProblem
+        add = plainHug (liveAction ("Add", ui::Add, ui::Filled, AddMcpServer))
         paste = mcpBox ("JSON config", form.formPaste, "{\"mcpServers\":{...}}", McpPaste)
-        pasteButton = Ui::framed (base(frameHug = true), Ui::action ("Paste JSON", Symbols::name ui::Document, ui::Plain, trim form.formPaste != "", PasteMcpServers))
-        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column (listConcat [heading, Ui::framed (Look::gapped 8, Ui::row [name, typePicker])] (listConcat command (listConcat [environment] (listConcat problem [Ui::framed (Look::gapped 8, Ui::row [ui::Spacer, add]), paste, pasteButton])))))
+        pasteButton = plainHug (Ui::action ("Paste JSON", Symbols::name ui::Document, ui::Plain, trim form.formPaste != "", PasteMcpServers))
+        Ui::framed (Look::panel (), Ui::column (listConcat [heading, Ui::framed (Look::gapped 8, Ui::row [name, typePicker])] (listConcat command (listConcat [environment] (listConcat problem [Ui::framed (Look::gapped 8, Ui::row [ui::Spacer, add]), paste, pasteButton])))))
 
     (** The MCP servers tab: a card per server, the problems from both files, and the Add server form. The empty state is one function. *)
     mcpState () =
@@ -519,7 +554,7 @@ module View
         bar = Frames::inset (10, 24, 10, 24)
         base23 = Frames::plain
         title = Ui::framed (base23(frameTextSize = 17, frameHug = true), Ui::styled ("Settings", ui::Headline, ui::Primary))
-        close = Ui::framed (base23(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button ("Close", Symbols::name ui::Dismiss, CloseSettings))
+        close = iconButton (base23, Ui::button ("Close", Symbols::name ui::Dismiss, CloseSettings))
         tabs = Ui::framed (Look::gapped 8, Ui::row [settingsTab (settings, "providers", "Providers", ui::Shield), settingsTab (settings, "mcp", "MCP servers", ui::Package), ui::Spacer])
         pane = Pick::either (settings.settingsTab == "mcp", mcpState (), providersPane settings)
         body = Frames::inset (20, 24, 20, 24)
@@ -528,7 +563,7 @@ module View
     (** One enabled server's line in the inspector: its state and tool count, opening Settings when pressed. *)
     mcpLine one =
         words = match one.serverPhase
-            "connected" => "Connected · ${toString (length (Doc::items (Doc::parse (one.serverTools))))} tools"
+            "connected" => "Connected · ${toString (toolCount one)} tools"
             "connecting" => "Connecting"
             "failed" => "Failed"
             _ => "Off"
@@ -553,13 +588,9 @@ module View
         files = Engine::files_changed chat.chatHistory
         side = Frames::inset (58, 18, 18, 18)
         fileLook = Frames::plain
-        changed = match length files == 0
-            true => [Ui::framed (Look::sized (12, "faint"), Ui::text "Nothing yet")]
-            false => mapList (files, \file => Ui::framed (fileLook(frameTextSize = 12), Ui::label (file, Symbols::name ui::Document)))
+        changed = Pick::either (length files == 0, emptyNote "Nothing yet", mapList (files, \file => Ui::framed (fileLook(frameTextSize = 12), Ui::label (file, Symbols::name ui::Document))))
         mcp = mcpNow ()
-        servers = match length (filterList (mcp.stateServers, \server => server.serverEnabled)) == 0
-            true => [Ui::framed (Look::sized (12, "faint"), Ui::text "None enabled")]
-            false => mapList (filterList (mcp.stateServers, \server => server.serverEnabled), \server => mcpLine server)
+        servers = Pick::either (length (filterList (mcp.stateServers, \server => server.serverEnabled)) == 0, emptyNote "None enabled", mapList (filterList (mcp.stateServers, \server => server.serverEnabled), \server => mcpLine server))
         Ui::framed (side(frameFill = "inset", frameLine = "line", frameLineEdge = "left", frameGrow = true, frameGap = 8, frameTextSize = 12), Ui::column (listConcat (listConcat [
             heading "Usage",
             fact ("Context", grouped usage.lastInput),

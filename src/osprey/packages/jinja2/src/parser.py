@@ -105,16 +105,19 @@ def parse(chunks) -> Result[list[Node], str]:
             return Error(message=message)
 
 
+def leaf_kind(kind):
+    """The node kind of a leaf chunk."""
+    return "text" if kind == "data" else "output"
+
+
 def parse_nodes(chunks, i, n, stops, acc) -> Result[Step, str]:
     """Parse nodes until a block keyword in `stops` (which is left unconsumed)."""
     if i >= n:
         return Success(value=Step(nodes=acc, next=i)) if len(stops) == 0 else Error(message="unexpected end of template, expected 'end of statement block'")
     else:
         chunk = unwrap_or(listGet(chunks, i), Chunk(kind="data", text=""))
-        if chunk.kind == "data":
-            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, leaf("text", chunk.text)))
-        elif chunk.kind == "variable":
-            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, leaf("output", chunk.text)))
+        if chunk.kind == "data" or chunk.kind == "variable":
+            return parse_nodes(chunks, i + 1, n, stops, listAppend(acc, leaf(leaf_kind(chunk.kind), chunk.text)))
         else:
             k = split_kw(chunk.text)
             if kw_in(stops, k.word):

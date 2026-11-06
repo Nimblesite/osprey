@@ -21,6 +21,9 @@ module Order {
     /// The first non-zero comparison, so tuple orders compose.
     export fn thenCompare(first, next) = if first == 0 { next } else { first }
 
+    /// `(epoch, ordinal)` order: the release slot, digest aside.
+    export fn compareSpots(aEpoch, aOrdinal, bEpoch, bOrdinal) = thenCompare(compareInts(aEpoch, bEpoch), compareInts(aOrdinal, bOrdinal))
+
     fn intSlice(xs, from, to) = range(from, to) |> map(fn(i) => listGet(xs, i) ?: 0) |> toList
 
     fn mergeStep(left, right, less, out) = {
@@ -74,4 +77,11 @@ module Order {
             false => Error { message: "list.duplicate" }
         }
     }
+
+    /// The distinct strings in first-seen order. Monomorphic: a shared generic
+    /// reader would sit at one instantiation per program (issue #277).
+    export fn distinctStrings(xs) = foldList(xs, [], fn(acc, x) => if listContains(acc, x) { acc } else { listAppend(acc, x) })
+
+    /// The distinct integers in first-seen order; monomorphic for the same reason.
+    export fn distinctInts(xs) = foldList(xs, [], fn(acc, x) => if listContains(acc, x) { acc } else { listAppend(acc, x) })
 }

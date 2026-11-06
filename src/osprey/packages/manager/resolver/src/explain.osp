@@ -1,5 +1,6 @@
 namespace registry;
 import registry::Names
+import registry::Order
 import registry::ManifestModel
 import registry::Candidates
 import registry::Resolution
@@ -67,7 +68,6 @@ module Explain {
     /// Every requirement on `key`: the root's, then every release's active edges.
     fn edgesTo(graph, key) = filterList(listConcat(requirementsOf(graph.rootDeps), catalogRequirements(graph)), fn(r) => Names::same(reqKey(r), key))
 
-    fn distinctInts(xs) = foldList(xs, [], fn(acc, x) => if listContains(acc, x) { acc } else { listAppend(acc, x) })
 
     fn reqEpochOf(graph, key) = match listGet(edgesTo(graph, key), 0) {
         Success { value } => reqEpoch(value)
@@ -80,7 +80,7 @@ module Explain {
 
     fn missingAt(graph, k) = isEmpty(Candidates::ofKey(graph, k))
 
-    fn epochConflictAt(graph, k) = length(distinctInts(mapList(edgesTo(graph, k), reqEpoch))) >= 2
+    fn epochConflictAt(graph, k) = length(Order::distinctInts(mapList(edgesTo(graph, k), reqEpoch))) >= 2
 
     fn anyRevoked(graph, k) = foldList(Candidates::ofKey(graph, k), false, fn(f, e) => f || isRevoked(e))
 
@@ -111,12 +111,6 @@ module Explain {
         if isEmpty(cyc) { none() } else { found(cycle, cyc) }
     }
 
-    /// The found explanation, or `fallback` when the cause did not hold.
-    fn pick(result, fallback) = match result {
-        Success { value } => value
-        Error => fallback
-    }
-
     /// The explanation of a refuted graph over its reachable keys: the
     /// oracle's path, and the resolver's when the solver returned no core.
     export fn of(graph) = within(graph, reachableKeys(graph))
@@ -132,13 +126,22 @@ module Explain {
 
     /// The first cause, in the spec order, that holds for one of `keys`; the
     /// floor code over all of them when none does.
-    fn within(graph, keys) = {
-        pick(firstKey(keys, missing, fn(k) => missingAt(graph, k)),
-            pick(firstKey(keys, epochConflict, fn(k) => epochConflictAt(graph, k)),
-                pick(cycleOutcome(graph, keys),
-                    pick(firstKey(keys, revoked, fn(k) => revokedAt(graph, k)),
-                        pick(firstKey(keys, noTarget, fn(k) => noTargetAt(graph, k)),
-                            pick(firstKey(keys, capability, fn(k) => capabilityAt(graph, k)),
-                                pick(firstKey(keys, floor, fn(k) => floorAt(graph, k)), Resolution::Explain { code: floor, packages: keys })))))))
+    fn within(graph, keys) = firstCause([
+        fn() => firstKey(keys, missing, fn(k) => missingAt(graph, k)),
+        fn() => firstKey(keys, epochConflict, fn(k) => epochConflictAt(graph, k)),
+        fn() => cycleOutcome(graph, keys),
+        fn() => firstKey(keys, revoked, fn(k) => revokedAt(graph, k)),
+        fn() => firstKey(keys, noTarget, fn(k) => noTargetAt(graph, k)),
+        fn() => firstKey(keys, capability, fn(k) => capabilityAt(graph, k)),
+        fn() => firstKey(keys, floor, fn(k) => floorAt(graph, k))
+    ], Resolution::Explain { code: floor, packages: keys })
+
+    /// The first cause that holds, in order, else `fallback`.
+    fn firstCause(causes, fallback) = match foldList(causes, none(), fn(acc, cause) => match acc {
+        Success => acc
+        Error => cause()
+    }) {
+        Success { value } => value
+        Error => fallback
     }
 }

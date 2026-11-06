@@ -60,6 +60,9 @@ module Json {
 
     fn err(code, offset) = JsonScan::failure(code, offset)
 
+    /// The failure for text that ended in the middle of a value.
+    fn endErr(text) = err(unexpectedEnd, byteLength(text))
+
     fn isWs(b) = b == 32 || b == 9 || b == 13 || b == 10
     fn isDigit(b) = b >= digitZero && b <= digitNine
 
@@ -95,7 +98,7 @@ module Json {
         let k = digitsEnd(text, j)
         let tail = byteAt(text, k) ?: -1
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if !isDigit(first) {
             err(unexpectedToken, j)
         } else if badShape(first, k - j, neg) {
@@ -116,7 +119,7 @@ module Json {
     fn expectWord(text, i, word, node) = {
         let end = i + byteLength(word)
         if byteLength(text) < end {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else {
             match substring(text, i, end) {
                 Success { value } => if value == word {
@@ -124,7 +127,7 @@ module Json {
                 } else {
                     err(unexpectedToken, i)
                 }
-                Error => err(unexpectedEnd, byteLength(text))
+                Error => endErr(text)
             }
         }
     }
@@ -134,7 +137,7 @@ module Json {
         let j = skipWs(text, i)
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == openObject { parseObject(text, j, depth) }
         else if b == openArray { parseArray(text, j, depth) }
         else if b == quote { parseStr(text, j) }
@@ -159,7 +162,7 @@ module Json {
     fn parseMembers(text, j, depth, seen) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == closeObject && isEmpty(seen) {
             Success { value: Step { value: Obj { members: membersOf(seen) }, next: j + 1 } }
         } else if b != quote {
@@ -175,7 +178,7 @@ module Json {
         let colon = skipWs(text, scan.next)
         let b = byteAt(text, colon) ?: 0
         if colon >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b != colonByte {
             err(unexpectedToken, colon)
         } else {
@@ -197,7 +200,7 @@ module Json {
     fn nextMember(text, j, depth, seen) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == commaByte {
             parseMembers(text, skipWs(text, j + 1), depth, seen)
         } else if b == closeObject {
@@ -215,7 +218,7 @@ module Json {
     fn parseItems(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == closeArray && isEmpty(items) {
             Success { value: Step { value: Arr { items: items }, next: j + 1 } }
         } else {
@@ -228,7 +231,7 @@ module Json {
     fn nextItem(text, j, depth, items) = {
         let b = byteAt(text, j) ?: 0
         if j >= byteLength(text) {
-            err(unexpectedEnd, byteLength(text))
+            endErr(text)
         } else if b == commaByte {
             parseItems(text, skipWs(text, j + 1), depth, items)
         } else if b == closeArray {
@@ -257,7 +260,8 @@ module Json {
         _ => false
     }
 
-    fn findMember(members, key) = foldList(members, Error { message: missingKey }, fn(acc, m) => match acc {
+    /// The value of the member named `key`, or `code` when it is absent.
+    export fn memberOr(members, key, code) = foldList(members, Error { message: code }, fn(acc, m) => match acc {
         Success => acc
         Error => if m.key == key { Success { value: m.value } } else { acc }
     })
@@ -265,7 +269,7 @@ module Json {
     /// The value at `key`, or `"json.missing-key"` / `"json.not-an-object"`.
     /// Implements [PACKAGE-PUBLISH].
     export fn get(object, key) = match object {
-        Obj { members } => findMember(members, key)
+        Obj { members } => memberOr(members, key, missingKey)
         _ => Error { message: notObject }
     }
 

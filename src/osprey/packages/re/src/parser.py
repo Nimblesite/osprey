@@ -68,16 +68,6 @@ def read_number_from(cps, j, n, acc):
     else:
         return read_number_from(cps, j + 1, n, acc * 10 + Program.at(cps, j) - 48)
 
-def read_name(cps, j, n, term):
-    """The string from j to `term`, and the terminator's index."""
-    return read_name_from(cps, j, n, term, "")
-
-def read_name_from(cps, j, n, term, acc):
-    """Accumulate the name until `term` or the end."""
-    if j >= n or Program.at(cps, j) == term:
-        return Program.NameRead(name=acc, next=j)
-    else:
-        return read_name_from(cps, j + 1, n, term, acc + Unicode.utf8_of(Program.at(cps, j)))
 
 def skip_ws(cps, i, n):
     """Skip VERBOSE whitespace and comments."""
@@ -86,16 +76,16 @@ def skip_ws(cps, i, n):
     elif is_ws(Program.at(cps, i)):
         return skip_ws(cps, i + 1, n)
     elif Program.at(cps, i) == 35:
-        return skip_ws(cps, skip_comment(cps, i + 1, n), n)
+        return skip_ws(cps, skip_to(cps, i + 1, n, 10), n)
     else:
         return i
 
-def skip_comment(cps, i, n):
-    """Skip to the end of a VERBOSE comment."""
-    if i >= n or Program.at(cps, i) == 10:
+def skip_to(cps, i, n, term):
+    """Skip to the code point `term`, or to the end."""
+    if i >= n or Program.at(cps, i) == term:
         return i
     else:
-        return skip_comment(cps, i + 1, n)
+        return skip_to(cps, i + 1, n, term)
 
 def is_stop(cp):
     """Whether a code point ends the current subpattern."""
@@ -103,22 +93,18 @@ def is_stop(cp):
 
 def parse_alt(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse `seq (| seq)*`."""
-    match parse_seq(cps, i, n, flags, gs):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            if value.next < n and Program.at(cps, value.next) == 124:
-                return parse_alt_rest(cps, value, n, flags)
-            else:
-                return Success(value=value)
+    return Program.then(parse_seq(cps, i, n, flags, gs), lambda value: alt_after(cps, value, n, flags))
+
+def alt_after(cps, value, n, flags):
+    """The `|` continuation of a parsed sequence, or the sequence itself."""
+    if value.next < n and Program.at(cps, value.next) == 124:
+        return parse_alt_rest(cps, value, n, flags)
+    else:
+        return Success(value=value)
 
 def parse_alt_rest(cps, first, n, flags):
     """Parse the right side of `|` and join with the left fragment."""
-    match parse_alt(cps, first.next + 1, n, flags, first.gs):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return Success(value=Program.PRes(frag=Builder.alt_frag(first.frag, value.frag), next=value.next, gs=value.gs))
+    return Program.then(parse_alt(cps, first.next + 1, n, flags, first.gs), lambda value: Success(value=Program.PRes(frag=Builder.alt_frag(first.frag, value.frag), next=value.next, gs=value.gs)))
 
 def parse_seq(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
     """Parse a run of quantified atoms."""
@@ -130,27 +116,15 @@ def parse_seq(cps, i, n, flags, gs) -> Result[Program.PRes, str]:
 
 def parse_seq_rest(cps, i, n, flags, gs):
     """Parse one atom, then the rest of the sequence."""
-    match parse_quantified(cps, i, n, flags, gs):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return seq_after(cps, value, n, flags)
+    return Program.then(parse_quantified(cps, i, n, flags, gs), lambda value: seq_after(cps, value, n, flags))
 
 def seq_after(cps, atom, n, flags):
     """Append the rest of the sequence after one atom."""
-    match parse_seq(cps, atom.next, n, flags, atom.gs):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return Success(value=Program.PRes(frag=Program.concat(atom.frag, value.frag), next=value.next, gs=value.gs))
+    return Program.then(parse_seq(cps, atom.next, n, flags, atom.gs), lambda value: Success(value=Program.PRes(frag=Program.concat(atom.frag, value.frag), next=value.next, gs=value.gs)))
 
 def parse_quantified(cps, i, n, flags, gs):
     """Parse an atom and any quantifier that follows it."""
-    match parse_atom(cps, i, n, flags, gs):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return add_quantifier(cps, value, n, flags)
+    return Program.then(parse_atom(cps, i, n, flags, gs), lambda value: add_quantifier(cps, value, n, flags))
 
 def parse_braces(cps, j, n):
     """Parse `{m}`, `{m,}` or `{m,n}` at `j`; a [mn, mx, next] triple, or [] when `{` is a literal."""
@@ -239,6 +213,11 @@ def brace_spec(cps, r, j, n, spec):
     else:
         return lazy_after(cps, r, after, n, mn, mx)
 
+def single_atom(op, bit, i, flags, gs):
+    """An atom of one instruction whose `a` field is the on/off of flag `bit`."""
+    return Success(value=Program.PRes(frag=[Program.ins_a(op, 1 if Program.has(flags, bit) else 0)], next=i + 1, gs=gs))
+
+
 def parse_atom(cps, i, n, flags, gs):
     """Parse one unquantified atom."""
     c = Program.at(cps, i)
@@ -247,9 +226,9 @@ def parse_atom(cps, i, n, flags, gs):
     elif c == 91:
         return parse_class_atom(cps, i, n, flags, gs)
     elif c == 46:
-        return Success(value=Program.PRes(frag=[Program.ins_a("any", 1 if Program.has(flags, Program.S_BIT) else 0)], next=i + 1, gs=gs))
+        return single_atom("any", Program.S_BIT, i, flags, gs)
     elif c == 94:
-        return Success(value=Program.PRes(frag=[Program.ins_a("bol", 1 if Program.has(flags, Program.M_BIT) else 0)], next=i + 1, gs=gs))
+        return single_atom("bol", Program.M_BIT, i, flags, gs)
     elif c == 36:
         return Success(value=Program.PRes(frag=[Program.ins_ab("eol", 1 if Program.has(flags, Program.M_BIT) else 0, 0)], next=i + 1, gs=gs))
     elif c == 92:
@@ -263,11 +242,7 @@ def parse_atom(cps, i, n, flags, gs):
 
 def parse_class_atom(cps, i, n, flags, gs):
     """A `[...]` atom via `Charset.parse_class`."""
-    match Charset.parse_class(cps, i, n, 1 if Program.has(flags, Program.I_BIT) else 0):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            return Success(value=Program.PRes(frag=[value.ins], next=value.next, gs=gs))
+    return Program.then(Charset.parse_class(cps, i, n, 1 if Program.has(flags, Program.I_BIT) else 0), lambda value: Success(value=Program.PRes(frag=[value.ins], next=value.next, gs=gs)))
 
 def parse_group(cps, i, n, flags, gs):
     """A `(` group: capturing, or an extended `(?...)` form."""
@@ -325,15 +300,15 @@ def parse_plain(cps, i, j, n, flags, gs):
 
 def parse_inline(cps, i, n, flags, gs):
     """An inline flag group: global flags are an error mid-pattern."""
-    match Flags.parse_flag_group(cps, i, n):
-        case Error(message=message):
-            return Error(message=message)
-        case Success(value=value):
-            if value.kind == "global":
-                return Program.fail("global flags not at the start of the expression", i)
-            else:
-                new_flags = Program.drop_bits(Program.add_bit(flags, value.add), value.dele)
-                return parse_plain(cps, i, value.next, n, new_flags, gs)
+    return Program.then(Flags.parse_flag_group(cps, i, n), lambda value: inline_group(cps, i, n, flags, gs, value))
+
+def inline_group(cps, i, n, flags, gs, value):
+    """Apply one parsed inline flag group to the following group."""
+    if value.kind == "global":
+        return Program.fail("global flags not at the start of the expression", i)
+    else:
+        new_flags = Program.drop_bits(Program.add_bit(flags, value.add), value.dele)
+        return parse_plain(cps, i, value.next, n, new_flags, gs)
 
 def parse_named(cps, i, n, flags, gs):
     """A `(?P...)` group: named capture or named backreference."""
@@ -348,7 +323,7 @@ def parse_named(cps, i, n, flags, gs):
 
 def parse_named_group(cps, i, ns, n, flags, gs):
     """A `(?P<name>...)` capturing group."""
-    nr = read_name(cps, ns, n, 62)
+    nr = Program.read_name(cps, ns, n, 62)
     name = nr.name
     after = nr.next
     if after >= n:
@@ -362,7 +337,7 @@ def parse_named_group(cps, i, ns, n, flags, gs):
 
 def parse_named_backref(cps, ns, n, gs):
     """A `(?P=name)` backreference."""
-    nr = read_name(cps, ns, n, 41)
+    nr = Program.read_name(cps, ns, n, 41)
     name = nr.name
     after = nr.next
     if after >= n and name == "":
@@ -411,18 +386,11 @@ def lookbehind_frag(cps, i, j, r, negate):
 
 def parse_comment(cps, i, j, n, flags, gs):
     """A `(?#...)` comment, which matches nothing."""
-    end = skip_to_paren(cps, j, n)
+    end = skip_to(cps, j, n, 41)
     if end >= n:
         return Program.fail("missing ), unterminated comment", i)
     else:
         return Success(value=Program.PRes(frag=[], next=end + 1, gs=gs))
-
-def skip_to_paren(cps, i, n):
-    """The index of the next `)`."""
-    if i >= n or Program.at(cps, i) == 41:
-        return i
-    else:
-        return skip_to_paren(cps, i + 1, n)
 
 def compile_pattern(pattern, flags):
     """Compile a pattern string: a Program, or a CPython `re.error` message."""

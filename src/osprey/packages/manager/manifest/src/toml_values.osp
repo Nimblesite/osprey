@@ -45,7 +45,6 @@ module TomlValues {
     let letterF = 102
 
     fn isDigit1to9(b) = b >= 49 && b <= 57
-    fn isLower(b) = b >= 97 && b <= 122
     fn isUpper(b) = b >= 65 && b <= 90
     fn isBareKeyByte(b) = Bytes::isAlnum(b) || b == byteUnderscore || b == byteMinus
     fn keyEndByte(b) = b == byteDot || b == byteEq || b == byteRBracket || b == byteSpace || b == byteTab || b == byteCr || b == byteNewline || b == -1
@@ -145,14 +144,15 @@ module TomlValues {
         else { Error { message: Toml::fail(c, "toml.unexpected-token") } }
     }
 
-    fn parseBasicValue(c) = match TomlLexer::peek(c, 1) == byteQuote && TomlLexer::peek(c, 2) == byteQuote {
-        true => Error { message: Toml::fail(c, "toml.unsupported-multiline-string") }
-        false => Checked::andThen(TomlLexer::basicString(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
-    }
+    fn parseBasicValue(c) = quotedValue(c, byteQuote, fn(at) => TomlLexer::basicString(at))
 
-    fn parseLiteralValue(c) = match TomlLexer::peek(c, 1) == byteApostrophe && TomlLexer::peek(c, 2) == byteApostrophe {
+    fn parseLiteralValue(c) = quotedValue(c, byteApostrophe, fn(at) => TomlLexer::literalString(at))
+
+    /// A single-quoted string scanned by `scan`; the tripled quote that would
+    /// open a multiline string is refused.
+    fn quotedValue(c, quoteByte, scan) = match TomlLexer::peek(c, 1) == quoteByte && TomlLexer::peek(c, 2) == quoteByte {
         true => Error { message: Toml::fail(c, "toml.unsupported-multiline-string") }
-        false => Checked::andThen(TomlLexer::literalString(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
+        false => Checked::andThen(scan(c), fn(value) => Success { value: Val { value: Toml::Str { text: value.text }, at: value.at } })
     }
 
     fn parseNumber(c) = Checked::andThen(TomlLexer::scanBare(c), fn(value) => classifyNumber(value.token, value.at, c))
@@ -210,71 +210,65 @@ module TomlValues {
 
     // -- arrays -------------------------------------------------------------
 
-    fn parseArray(c) = {
-        let open = TomlLexer::advance(c)
-        parseArrayItems(open, [], c)
+    fn parseArray(c) = parseArrayItems(TomlLexer::advance(c), [], c)
+
+    /// The next array element at `c`: close, or parse one value. After a comma
+    /// both an element and the closing bracket are allowed.
+    fn parseArrayItems(c, items, start) = nextArrayItem(TomlLexer::skipTrivia(c), items, start)
+
+    fn nextArrayItem(c, items, start) = match TomlLexer::eof(c) {
+        true => arrayUnterminated(start)
+        false => match TomlLexer::cur(c) == byteRBracket {
+            true => closedArr(c, items)
+            false => Checked::andThen(parseValue(c), fn(value) => parseArrayNext(value.at, listAppend(items, value.value), start))
+        }
     }
 
-    fn parseArrayItems(c, items, start) = {
-        let c1 = TomlLexer::skipTrivia(c)
-        match TomlLexer::eof(c1) {
-            true => Error { message: Toml::fail(start, "toml.unterminated-array") }
-            false => match TomlLexer::cur(c1) == byteRBracket {
-                true => Success { value: Val { value: Toml::Arr { items: items }, at: TomlLexer::advance(c1) } }
-                false => Checked::andThen(parseValue(c1), fn(value) => parseArrayNext(value.at, listAppend(items, value.value), start))
+    fn parseArrayNext(c, items, start) = nextArrayTail(TomlLexer::skipTrivia(c), items, start)
+
+    fn nextArrayTail(c, items, start) = match TomlLexer::eof(c) {
+        true => arrayUnterminated(start)
+        false => match TomlLexer::cur(c) == byteComma {
+            true => parseArrayItems(TomlLexer::advance(c), items, start)
+            false => match TomlLexer::cur(c) == byteRBracket {
+                true => closedArr(c, items)
+                false => Error { message: Toml::fail(c, "toml.unexpected-token") }
             }
         }
     }
 
-    fn parseArrayNext(c, items, start) = {
-        let c1 = TomlLexer::skipTrivia(c)
-        match TomlLexer::eof(c1) {
-            true => Error { message: Toml::fail(start, "toml.unterminated-array") }
-            false => match TomlLexer::cur(c1) == byteComma {
-                true => parseArrayAfterComma(TomlLexer::advance(c1), items, start)
-                false => match TomlLexer::cur(c1) == byteRBracket {
-                    true => Success { value: Val { value: Toml::Arr { items: items }, at: TomlLexer::advance(c1) } }
-                    false => Error { message: Toml::fail(c1, "toml.unexpected-token") }
-                }
-            }
-        }
-    }
-
-    fn parseArrayAfterComma(c, items, start) = {
-        let c1 = TomlLexer::skipTrivia(c)
-        match TomlLexer::eof(c1) {
-            true => Error { message: Toml::fail(start, "toml.unterminated-array") }
-            false => match TomlLexer::cur(c1) == byteRBracket {
-                true => Success { value: Val { value: Toml::Arr { items: items }, at: TomlLexer::advance(c1) } }
-                false => parseArrayItems(c1, items, start)
-            }
-        }
-    }
+    fn arrayUnterminated(start) = Error { message: Toml::fail(start, "toml.unterminated-array") }
+    fn closedArr(c, items) = Success { value: closed(c, Toml::Arr { items: items }) }
 
     // -- inline tables ------------------------------------------------------
 
-    fn skipInlineSpaces(c) = skipInlineUpTo(c)
-    fn skipInlineUpTo(c) = match TomlLexer::cur(c) == byteSpace || TomlLexer::cur(c) == byteTab {
-        true => skipInlineUpTo(TomlLexer::advance(c))
+    fn skipInlineSpaces(c) = match TomlLexer::cur(c) == byteSpace || TomlLexer::cur(c) == byteTab {
+        true => skipInlineSpaces(TomlLexer::advance(c))
         false => c
     }
 
-    fn parseInlineTable(c) = {
-        let open = TomlLexer::advance(c)
-        parseInlineEntries(open, [], c)
+    fn parseInlineTable(c) = parseInlineEntries(TomlLexer::advance(c), [], c)
+
+    fn closed(c, value) = Val { value: value, at: TomlLexer::advance(c) }
+    fn closedTable(c, pairs) = Success { value: closed(c, Toml::Table { pairs: pairs }) }
+
+    /// A stop inside an inline table: a newline, the end of input, or a byte
+    /// that cannot start an entry.
+    fn inlineStop(c, start) = match TomlLexer::cur(c) == byteNewline || TomlLexer::cur(c) == byteCr {
+        true => Error { message: Toml::fail(c, "toml.inline-table-newline") }
+        false => match TomlLexer::eof(c) {
+            true => Error { message: Toml::fail(start, "toml.unterminated-inline-table") }
+            false => Error { message: Toml::fail(c, "toml.unexpected-token") }
+        }
     }
 
-    fn parseInlineEntries(c, pairs, start) = {
-        let c1 = skipInlineSpaces(c)
-        match TomlLexer::cur(c1) == byteRBrace {
-            true => Success { value: Val { value: Toml::Table { pairs: pairs }, at: TomlLexer::advance(c1) } }
-            false => match TomlLexer::eof(c1) {
-                true => Error { message: Toml::fail(start, "toml.unterminated-inline-table") }
-                false => match TomlLexer::cur(c1) == byteNewline || TomlLexer::cur(c1) == byteCr {
-                    true => Error { message: Toml::fail(c1, "toml.inline-table-newline") }
-                    false => parseInlineEntry(c1, pairs, start)
-                }
-            }
+    fn parseInlineEntries(c, pairs, start) = inlineEntryAt(skipInlineSpaces(c), pairs, start)
+
+    fn inlineEntryAt(c, pairs, start) = match TomlLexer::cur(c) == byteRBrace {
+        true => closedTable(c, pairs)
+        false => match TomlLexer::eof(c) || TomlLexer::cur(c) == byteNewline || TomlLexer::cur(c) == byteCr {
+            true => inlineStop(c, start)
+            false => parseInlineEntry(c, pairs, start)
         }
     }
 
@@ -291,31 +285,21 @@ module TomlValues {
         false => Success { value: listAppend(pairs, Toml::Pair { key: seg.name, value: val, span: seg.span }) }
     }
 
-    fn inlineAfterComma(c, pairs, start) = {
-        let c1 = skipInlineSpaces(c)
-        match TomlLexer::cur(c1) == byteComma {
-            true => inlineComma(TomlLexer::advance(c1), pairs, start)
-            false => match TomlLexer::cur(c1) == byteRBrace {
-                true => Success { value: Val { value: Toml::Table { pairs: pairs }, at: TomlLexer::advance(c1) } }
-                false => inlineCloseError(c1, start)
-            }
+    fn inlineAfterComma(c, pairs, start) = inlineTailAt(skipInlineSpaces(c), pairs, start)
+
+    fn inlineTailAt(c, pairs, start) = match TomlLexer::cur(c) == byteComma {
+        true => inlineComma(TomlLexer::advance(c), pairs, start)
+        false => match TomlLexer::cur(c) == byteRBrace {
+            true => closedTable(c, pairs)
+            false => inlineStop(c, start)
         }
     }
 
-    fn inlineComma(c, pairs, start) = {
-        let c1 = skipInlineSpaces(c)
-        match TomlLexer::cur(c1) == byteRBrace {
-            true => Error { message: Toml::fail(c1, "toml.inline-table-trailing-comma") }
-            false => parseInlineEntries(c1, pairs, start)
-        }
-    }
+    fn inlineComma(c, pairs, start) = inlineCommaAt(skipInlineSpaces(c), pairs, start)
 
-    fn inlineCloseError(c, start) = match TomlLexer::cur(c) == byteNewline || TomlLexer::cur(c) == byteCr {
-        true => Error { message: Toml::fail(c, "toml.inline-table-newline") }
-        false => match TomlLexer::eof(c) {
-            true => Error { message: Toml::fail(start, "toml.unterminated-inline-table") }
-            false => Error { message: Toml::fail(c, "toml.unexpected-token") }
-        }
+    fn inlineCommaAt(c, pairs, start) = match TomlLexer::cur(c) == byteRBrace {
+        true => Error { message: Toml::fail(c, "toml.inline-table-trailing-comma") }
+        false => parseInlineEntries(c, pairs, start)
     }
 
     /// Skip spaces, then expect `=`; the cursor after it. Shared by inline

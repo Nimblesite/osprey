@@ -175,10 +175,9 @@ module Surface {
 
     fn foundIn(s: Scan) = s.found
 
-    fn distinct(capabilities) = foldList(capabilities, [], fn(acc, c) => if listContains(acc, c) { acc } else { listAppend(acc, c) })
 
     /// Sorted and duplicate-free: a surface is a set.
-    fn canonicalOrEmpty(capabilities) = listSort(distinct(capabilities))
+    fn canonicalOrEmpty(capabilities) = listSort(Order::distinctStrings(capabilities))
 
     fn scanFrom(text, initial) = {
         let n = byteLength(text)

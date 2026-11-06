@@ -50,12 +50,18 @@ module Flow
         monitored = ui::Pick::either (Machines::flag (machine, "monitorOn"), level, 0.0)
         [fact ("signal", Values::number signal), fact ("level", Values::number level), fact ("delivered", Values::number delivered), fact ("monitored", Values::number monitored)]
 
+    // One health fact whose value is a boolean switch read from `key`.
+    switchedFact (machine, name, key) = fact (name, Values::text (switched (Machines::flag (machine, key))))
+
+    // One health fact whose value is the delivery health of `key`.
+    deliveryFact (machine, name, key) = fact (name, Values::text (deliveryHealth (machine, key)))
+
     healthFacts machine = [
-        fact ("controlHealth", Values::text (switched (Machines::flag (machine, "controlOn")))),
-        fact ("sourceHealth", Values::text (switched (Machines::flag (machine, "sourceOn")))),
+        switchedFact (machine, "controlHealth", "controlOn"),
+        switchedFact (machine, "sourceHealth", "sourceOn"),
         fact ("processHealth", Values::text (processHealth machine)),
-        fact ("outputHealth", Values::text (deliveryHealth (machine, "outputOn"))),
-        fact ("monitorHealth", Values::text (deliveryHealth (machine, "monitorOn"))),
+        deliveryFact (machine, "outputHealth", "outputOn"),
+        deliveryFact (machine, "monitorHealth", "monitorOn"),
     ]
 
     historyFacts store = [fact ("canUndo", Values::flag (length store.past > 1)), fact ("canRedo", Values::flag (length store.future > 0))]

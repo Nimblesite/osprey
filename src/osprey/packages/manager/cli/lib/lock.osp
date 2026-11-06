@@ -229,10 +229,7 @@ module Lock {
 
     // ---- the lock and its delta ----
 
-    fn entryFor(candidates, release) -> Result<Resolution::Entry, string> = foldList(candidates, Error { message: "none" }, fn(acc, e) => match acc {
-        Success => acc
-        Error => if Identity::same(Candidates::releaseOf(e), release) { Success { value: e } } else { acc }
-    })
+    fn entryFor(candidates, release) = Checked::firstMatch(candidates, fn(e) => Identity::same(Candidates::releaseOf(e), release), "none")
 
     /// The lock package of a selected release: its Runtime/Build edges and its
     /// surface; every selected release is a candidate, so the fallback never prints.

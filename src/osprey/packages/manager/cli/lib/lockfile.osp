@@ -5,6 +5,7 @@ import registry::Digests
 import registry::Identity
 import registry::Json
 import registry::JsonRead
+import registry::ManifestJson
 import registry::ManifestModel
 import registry::Names
 import registry::Maybe
@@ -57,10 +58,7 @@ module Lockfile {
     export fn overridePathOf(o: Override) = o.path
 
     /// The override of `key` among `overrides`, if the lock takes it locally.
-    export fn overrideFor(overrides, key) -> Result<Override, string> = foldList(overrides, Error { message: "none" }, fn(acc, o: Override) => match acc {
-        Success => acc
-        Error => if Names::same(o.package, key) { Success { value: o } } else { acc }
-    })
+    export fn overrideFor(overrides, key) = Checked::firstMatch(overrides, fn(o: Override) => Names::same(o.package, key), "none")
 
     // `ReleaseId` shares `key`, `epoch`, `ordinal` and `digest` with other
     // records; issue #273 needs the receiver spelled out.
@@ -72,10 +70,7 @@ module Lockfile {
     export fn blankPackage() = Package { release: Identity::blank(), dependencies: [], surface: [] }
 
     /// The package pinned for `key` among `packages`, if one is.
-    export fn packageFor(packages, key) -> Result<Package, string> = foldList(packages, Error { message: "none" }, fn(acc, p: Package) => match acc {
-        Success => acc
-        Error => if Names::same(p.release.key, key) { Success { value: p } } else { acc }
-    })
+    export fn packageFor(packages, key) = Checked::firstMatch(packages, fn(p: Package) => Names::same(p.release.key, key), "none")
 
     let formatValue = 0
     let formatCode = "lock.format"
@@ -84,38 +79,23 @@ module Lockfile {
     let orderCode = "lock.order"
 
 
-    // The edge/requirement/key projection matches `ManifestJson` member for
-    // member; the canonical serializer sorts members, so spelling order below
-    // is irrelevant to the bytes.
-    fn keyJson(k: Names::Key) = Json::obj([Json::member("name", Json::str(k.name)), Json::member("scope", Json::str(k.scope))])
-
-    fn requirementJson(r) = Json::obj([
-        Json::member("epoch", Json::num(r.epoch)),
-        Json::member("minimumOrdinal", Json::num(r.minimumOrdinal)),
-        Json::member("package", keyJson(r.package))
-    ])
-
-    fn edgeJson(e) = match e {
-        ManifestModel::Runtime { requirement } => Json::obj([Json::member("Runtime", Json::obj([Json::member("requirement", requirementJson(requirement))]))])
-        ManifestModel::Build { requirement } => Json::obj([Json::member("Build", Json::obj([Json::member("requirement", requirementJson(requirement))]))])
-        ManifestModel::Test { requirement } => Json::obj([Json::member("Test", Json::obj([Json::member("requirement", requirementJson(requirement))]))])
-    }
-
-    fn dependenciesJson(edges) = Json::arr(mapList(edges, edgeJson))
+    // The edge/requirement/key projection is `ManifestJson`'s, member for
+    // member; the canonical serializer sorts members, so spelling order is
+    // irrelevant to the bytes.
 
     /// The RFC 8785 bytes of an edge list, for the lock and for comparing the
     /// lock's root edges against a manifest's. Implements [PACKAGE-MANIFEST].
-    export fn dependenciesCanonical(edges) = Canonical::serialize(dependenciesJson(edges)) ?: ""
+    export fn dependenciesCanonical(edges) = Canonical::serialize(ManifestJson::dependenciesJson(edges)) ?: ""
 
     fn releaseJson(id: Identity::ReleaseId) = Json::obj([
-        Json::member("package", keyJson(id.key)),
+        Json::member("package", ManifestJson::key(id.key)),
         Json::member("epoch", Json::num(id.epoch)),
         Json::member("ordinal", Json::num(id.ordinal)),
         Json::member("digest", Json::str(id.digest))
     ])
 
     fn packageJson(p: Package) = Json::obj([
-        Json::member("dependencies", dependenciesJson(p.dependencies)),
+        Json::member("dependencies", ManifestJson::dependenciesJson(p.dependencies)),
         Json::member("release", releaseJson(p.release)),
         Json::member("surface", Json::arr(mapList(p.surface, Json::str)))
     ])
@@ -125,7 +105,7 @@ module Lockfile {
     fn pythonMembers(python) = Maybe::fold(python, [], fn(p) => [Json::member("python", pinsJson(p))])
 
     fn rootJson(root: Root, python) = Json::obj(listConcat([
-        Json::member("dependencies", dependenciesJson(root.dependencies)),
+        Json::member("dependencies", ManifestJson::dependenciesJson(root.dependencies)),
         Json::member("manifestDigest", Json::str(root.manifestDigest))
     ], pythonMembers(python)))
 
@@ -148,7 +128,7 @@ module Lockfile {
     fn overrideJson(o: Override) = Json::obj([
         Json::member("epoch", Json::num(o.epoch)),
         Json::member("manifestDigest", Json::str(o.manifestDigest)),
-        Json::member("package", keyJson(o.package)),
+        Json::member("package", ManifestJson::key(o.package)),
         Json::member("path", Json::str(o.path))
     ])
 
@@ -193,21 +173,21 @@ module Lockfile {
     /// A member that must be a well-formed `sha256:` envelope ([PACKAGE-HARDENING] C3).
     fn digestMember(object, key) = Checked::andThen(JsonRead::requiredText(object, key, shapeCode), fn(value) => parsedDigest(value))
 
-    fn readRelease(object) = Checked::andThen(JsonRead::requiredObject(object, "package", shapeCode), fn(value) => readReleaseWithKey(object, readKey(value)))
+    /// A member `package` key, then `next(object, key)` — the first step every
+    /// locked identity shares.
+    fn readKeyed(object, next) = Checked::andThen(JsonRead::requiredObject(object, "package", shapeCode), fn(value) =>
+        Checked::andThen(readKey(value), fn(key) => next(object, key)))
 
-    fn readReleaseWithKey(object, key) = Checked::andThen(key, fn(value) => readEpoch(object, value))
+    /// The `epoch` member, then `next(object, key, epoch)`.
+    fn readEpoch(object, key, next) = Checked::andThen(JsonRead::requiredInt(object, "epoch", shapeCode), fn(value) => next(object, key, value))
 
-    fn readEpoch(object, key) = Checked::andThen(JsonRead::requiredInt(object, "epoch", shapeCode), fn(value) => readOrdinal(object, key, value))
+    fn readRelease(object) = readKeyed(object, fn(o, key) => readEpoch(o, key, readOrdinal))
 
     fn readOrdinal(object, key, epoch) = Checked::andThen(JsonRead::requiredInt(object, "ordinal", shapeCode), fn(value) => readDigest(object, key, epoch, value))
 
     fn readDigest(object, key, epoch, ordinal) = Checked::andThen(digestMember(object, "digest"), fn(value) => Success { value: Identity::ReleaseId { key: key, epoch: epoch, ordinal: ordinal, digest: value } })
 
-    fn readRequirement(object) = Checked::andThen(JsonRead::requiredObject(object, "package", shapeCode), fn(value) => readRequirementWithKey(object, readKey(value)))
-
-    fn readRequirementWithKey(object, key) = Checked::andThen(key, fn(value) => readReqEpoch(object, value))
-
-    fn readReqEpoch(object, key) = Checked::andThen(JsonRead::requiredInt(object, "epoch", shapeCode), fn(value) => readReqFloor(object, key, value))
+    fn readRequirement(object) = readKeyed(object, fn(o, key) => readEpoch(o, key, readReqFloor))
 
     fn readReqFloor(object, key, epoch) = Checked::andThen(JsonRead::requiredInt(object, "minimumOrdinal", shapeCode), fn(value) => Success { value: ManifestModel::Requirement { package: key, epoch: epoch, minimumOrdinal: value } })
 
@@ -233,13 +213,7 @@ module Lockfile {
 
     fn edgeFromRequirement(m, reqObj) = Checked::andThen(readRequirement(reqObj), fn(value) => readEdgeNamed(m.key, value))
 
-    // A recursive accumulator avoids `foldList` over a `Result<List<…>>`.
-    fn edgesAt(items, i, acc) -> Result<List<ManifestModel::Edge>, string> = match i >= length(items) {
-        true => Success { value: acc }
-        false => Checked::andThen(edgeOfValue(listGet(items, i) ?: Json::Null), fn(value) => edgesAt(items, i + 1, listAppend(acc, value)))
-    }
-
-    fn edgesFrom(object) = Checked::andThen(JsonRead::requiredItems(object, "dependencies", shapeCode), fn(value) => edgesAt(value, 0, []))
+    fn edgesFrom(object) = Checked::andThen(JsonRead::requiredItems(object, "dependencies", shapeCode), fn(items) => Checked::collectAll(items, edgeOfValue))
 
     fn readRoot(object) = Checked::andThen(digestMember(object, "manifestDigest"), fn(value) => readRootWithDeps(object, value))
 
@@ -251,13 +225,12 @@ module Lockfile {
 
     fn packageWithDeps(pkg, release) = Checked::andThen(edgesFrom(pkg), fn(value) => packageWithSurface(pkg, release, value))
 
-    fn textsOf(items) = foldList(items, Success { value: [] }, fn(acc, item) => match acc {
-        Error => acc
-        Success { value } => match item {
-            Json::Str { text } => Success { value: listAppend(value, text) }
-            _ => Error { message: shapeCode }
-        }
-    })
+    fn textOf(item) = match item {
+        Json::Str { text } => Success { value: text }
+        _ => Error { message: shapeCode }
+    }
+
+    fn textsOf(items) = Checked::collectAll(items, fn(item) => textOf(item))
 
     /// A surface is a canonical set: sorted, distinct strings; anything else is `lock.shape`.
     fn canonicalSurface(texts) = match Order::canonicalSet(texts) {
@@ -268,11 +241,6 @@ module Lockfile {
     fn surfaceOf(pkg) = Checked::andThen(JsonRead::requiredItems(pkg, "surface", shapeCode), fn(value) => Checked::andThen(textsOf(value), fn(value) => canonicalSurface(value)))
 
     fn packageWithSurface(pkg, release, deps) = Checked::andThen(surfaceOf(pkg), fn(value) => Success { value: Package { release: release, dependencies: deps, surface: value } })
-
-    fn packagesAt(items, i, acc) -> Result<List<Package>, string> = match i >= length(items) {
-        true => Success { value: acc }
-        false => Checked::andThen(packageOf(listGet(items, i) ?: Json::Null), fn(value) => packagesAt(items, i + 1, listAppend(acc, value)))
-    }
 
     fn packageKeyText(p: Package) = Names::display(p.release.key)
 
@@ -291,17 +259,12 @@ module Lockfile {
 
     fn overrideOf(object) = Checked::andThen(JsonRead::requiredObject(object, "package", shapeCode), fn(value) => Checked::andThen(readKey(value), fn(value) => overridePath(object, value)))
 
-    fn overridesAt(items, i, acc) -> Result<List<Override>, string> = match i >= length(items) {
-        true => Success { value: acc }
-        false => Checked::andThen(overrideOf(listGet(items, i) ?: Json::Null), fn(value) => overridesAt(items, i + 1, listAppend(acc, value)))
-    }
-
     /// `overrides` is optional: absent means none; present, it is an array of
     /// well-formed overrides sorted by key.
     fn overridesFrom(root) = {
         let value = JsonRead::field(root, "overrides")
         if Json::isNull(value) { Success { value: [] } } else { match value {
-            Json::Arr { items } => overridesAt(items, 0, [])
+            Json::Arr { items } => Checked::collectAll(items, overrideOf)
             _ => Error { message: shapeCode }
         } }
     }
@@ -326,19 +289,14 @@ module Lockfile {
 
     /// Strictly parse a folder-lock document; the first problem is one of
     /// `lock.format`, `lock.shape`, `lock.duplicate-key` or `lock.order`.
-    export fn decode(text) = match Json::parse(text) {
-        Error => Error { message: shapeCode }
-        Success { value } => decodeValue(value)
-    }
+    export fn decode(text) = Checked::orElseCode(Json::parse(text), shapeCode, decodeValue)
 
     fn decodeValue(root) = match formatOf(root) {
         Error { message } => Error { message: message }
         Success => decodePackages(root)
     }
 
-    fn decodePackages(root) = Checked::andThen(JsonRead::requiredItems(root, "packages", shapeCode), fn(value) => decodePackageItems(root, value))
-
-    fn decodePackageItems(root, items) = Checked::andThen(packagesAt(items, 0, []), fn(value) => decodeRoot(root, value))
+    fn decodePackages(root) = Checked::andThen(JsonRead::requiredItems(root, "packages", shapeCode), fn(items) => Checked::andThen(Checked::collectAll(items, packageOf), fn(packages) => decodeRoot(root, packages)))
 
     fn decodeRoot(root, packages) = Checked::andThen(JsonRead::requiredObject(root, "root", shapeCode), fn(value) => decodeRootValue(root, packages, value))
 

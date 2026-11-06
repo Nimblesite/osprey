@@ -99,18 +99,23 @@ def product_lengths(side, has, needs):
     return f"gpuMatMul: {side} operand: has {has} elements, the stated shape needs {needs}"
 
 
+def shape_repr(shape, sep):
+    """A parenthesised shape with `sep` between its dimensions and a trailing
+    comma when it has exactly one."""
+    inner = join(mapList(shape, lambda d: toString(d)), sep)
+    return "(" + inner + ("," if len(shape) == 1 else "") + ")"
+
+
 def shape_text(shape):
     """numpy's compact shape text: "(2,3)", "(4,)" for one dimension, "()" for
     none — the form the broadcast and reshape messages print."""
-    inner = join(mapList(shape, lambda d: toString(d)), ",")
-    return "(" + inner + ("," if len(shape) == 1 else "") + ")"
+    return shape_repr(shape, ",")
 
 
 def tuple_text(shape):
     """Python's tuple repr of a shape: "(2, 3)", "(4,)", "()" — the form
     np.broadcast_shapes' message prints."""
-    inner = join(mapList(shape, lambda d: toString(d)), ", ")
-    return "(" + inner + ("," if len(shape) == 1 else "") + ")"
+    return shape_repr(shape, ", ")
 
 
 def broadcast_failed(a, b):

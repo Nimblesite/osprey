@@ -235,13 +235,23 @@ def waiting(state, text, think, calls):
     return Success(value=Step(state=state, text=text, think=think, calls=calls))
 
 
+def holding(state, body, text, think, calls):
+    """Wait for more input, holding the buffer read so far."""
+    return waiting(update(state, buffer=body), text, think, calls)
+
+
+def entered(state, body, tag, stage, text, think, calls):
+    """Consume the matched `tag`, leaving `body` after it in `stage`."""
+    return consume(update(state, stage=stage, buffer=drop(body, len(tag))), text, think, calls)
+
+
 def open_function(state, text, think, calls):
     """Skip the whitespace after `<tool_call>` and match `<function=`."""
     body = skip_space(state.buffer)
     if startsWith(body, FUNCTION_OPEN):
-        return consume(update(state, stage="name", buffer=drop(body, len(FUNCTION_OPEN))), text, think, calls)
+        return entered(state, body, FUNCTION_OPEN, "name", text, think, calls)
     elif is_prefix(body, FUNCTION_OPEN):
-        return waiting(update(state, buffer=body), text, think, calls)
+        return holding(state, body, text, think, calls)
     else:
         return Error(message=ToolSchema.violation("format", "call", f"expected {FUNCTION_OPEN}"))
 
@@ -256,7 +266,7 @@ def read_before_gt(state, text, think, calls, next_state, unterminated):
     elif len(body) > MAX_NAME:
         return Error(message=ToolSchema.violation("format", "call", unterminated))
     else:
-        return waiting(update(state, buffer=body), text, think, calls)
+        return holding(state, body, text, think, calls)
 
 
 def named_state(state, body, at):
@@ -278,11 +288,11 @@ def read_params(state, text, think, calls):
     """After a `>`: the next `<parameter=` or the closing `</function>`."""
     body = skip_space(state.buffer)
     if startsWith(body, PARAMETER_OPEN):
-        return consume(update(state, stage="pname", buffer=drop(body, len(PARAMETER_OPEN))), text, think, calls)
+        return entered(state, body, PARAMETER_OPEN, "pname", text, think, calls)
     elif startsWith(body, FUNCTION_CLOSE):
-        return consume(update(state, stage="end", buffer=drop(body, len(FUNCTION_CLOSE))), text, think, calls)
+        return entered(state, body, FUNCTION_CLOSE, "end", text, think, calls)
     elif is_prefix(body, PARAMETER_OPEN) or is_prefix(body, FUNCTION_CLOSE):
-        return waiting(update(state, buffer=body), text, think, calls)
+        return holding(state, body, text, think, calls)
     else:
         return Error(message=ToolSchema.violation("format", "call", f"expected {PARAMETER_OPEN} or {FUNCTION_CLOSE}"))
 
@@ -322,7 +332,7 @@ def close_call(state, text, think, calls):
         call = bind(state, state.name, state.raws)
         return consume(update(state, mode="text", stage="open", name="", param="", raws=[], buffer=drop(body, len(CALL_CLOSE))), text, think, listAppend(calls, call))
     elif is_prefix(body, CALL_CLOSE):
-        return waiting(update(state, buffer=body), text, think, calls)
+        return holding(state, body, text, think, calls)
     else:
         return Error(message=ToolSchema.violation("format", "call", f"expected {CALL_CLOSE}"))
 

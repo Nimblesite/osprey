@@ -14,7 +14,8 @@ for @osprey/tokenizers.
 from tokenizers import Nfc
 from tokenizers.Unicode import cps_text, is_chinese_char, is_control, is_whitespace, lowercase, strip_base
 
-__all__ = ["Norm", "norm_of", "norm_text", "bert_normalize", "nfc_normalize", "replace_space", "prepend_cp", "empty_norm", "append_norm", "char_at", "start_at", "end_at"]
+__all__ = [
+    "norm_each","Norm", "norm_of", "norm_text", "bert_normalize", "nfc_normalize", "replace_space", "prepend_cp", "empty_norm", "append_norm", "char_at", "start_at", "end_at"]
 
 
 class Norm:
@@ -66,7 +67,7 @@ def norm_text(n):
 def norm_expand(n, f):
     """Apply f (codepoint -> list of codepoints) to every char; each output
     codepoint inherits the input char's original byte range."""
-    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: expand_one(acc, n, i, f))
+    return norm_each(n, lambda acc, i: expand_one(acc, n, i, f))
 
 
 def expand_one(acc, n, i, f):
@@ -77,9 +78,14 @@ def expand_one(acc, n, i, f):
     return fold(range(len(outs)), acc, lambda a2, k: append_norm(a2, unwrap_or(listGet(outs, k), 0), s, e))
 
 
+def norm_each(n, step):
+    """Every character of `n` folded into a fresh Norm by `step`."""
+    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: step(acc, i))
+
+
 def clean_text(n):
     """Drop NUL, U+FFFD and control characters; map every whitespace to space."""
-    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: clean_one(acc, n, i))
+    return norm_each(n, lambda acc, i: clean_one(acc, n, i))
 
 
 def clean_one(acc, n, i):
@@ -97,7 +103,7 @@ def clean_one(acc, n, i):
 def handle_chinese(n):
     """Put a space on each side of every CJK character, all three chars sharing
     the original char's byte range."""
-    return fold(range(len(n.chars)), empty_norm(), lambda acc, i: chinese_one(acc, n, i))
+    return norm_each(n, lambda acc, i: chinese_one(acc, n, i))
 
 
 def chinese_one(acc, n, i):

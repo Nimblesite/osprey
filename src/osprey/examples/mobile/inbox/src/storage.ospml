@@ -61,15 +61,7 @@ module Storage
         true => true
         false => validItem doc index && validItems doc ((satAdd index 1) ) count
 
-    validArray source = match startsWith (trimStart source) "["
-        false => false
-        true => match jsonParse source
-            Error why => false
-            Success doc =>
-                count = jsonLength doc ""
-                valid = count >= 0 && count <= 100 && validItems doc 0 count
-                freed = jsonFree doc ?: 0
-                valid
+    validArray source = Json::validArray source 100 validItems
 
     export restore model snapshot =
         repo = Json::getOr snapshot "repo" ""

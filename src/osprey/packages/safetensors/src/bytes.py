@@ -41,22 +41,19 @@ def le64(data, off):
     return le_bytes(data, off, 8)
 
 
+def signed(value, limit, span, to_signed):
+    """The signed reading of an unsigned `value`, two's complement above `limit`."""
+    return to_signed(value - span) if value >= limit else to_signed(value)
+
+
 def le16s(data, off):
     """The int16 whose bits are the two little-endian bytes at `off`."""
-    v = le16(data, off)
-    if v >= 32768:
-        return toInt16(v - 65536)
-    else:
-        return toInt16(v)
+    return signed(le16(data, off), 32768, 65536, toInt16)
 
 
 def le32s(data, off):
     """The int32 whose bits are the four little-endian bytes at `off`."""
-    v = le32(data, off)
-    if v >= 2147483648:
-        return toInt32(v - 4294967296)
-    else:
-        return toInt32(v)
+    return signed(le32(data, off), 2147483648, 4294967296, toInt32)
 
 
 def read_bytes(data, off, n):
