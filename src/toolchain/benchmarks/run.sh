@@ -109,11 +109,17 @@ toolchain_ok() {
 }
 
 # build <lang> <casedir> <name> <out-binary> — compile to a native binary.
+# An Osprey case that shares `shared/bench.osp` carries an osprey.toml beside it
+# ([MODULES-MODEL]); that project directory IS the compiler input, and the
+# manifest's `name` is the case name so the artifact lands where the script
+# expects it.
 build() {
   local lang=$1 dir=$2 name=$3 out=$4
+  local input="${name}.osp"
+  [[ -f "$dir/osprey.toml" ]] && input=.
   case "$lang" in
-    osprey-gc)  ( cd "$dir" && "$OSP" "$name.osp" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
-    osprey-arc) ( cd "$dir" && "$OSP" "$name.osp" --memory=arc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
+    osprey-gc)  ( cd "$dir" && "$OSP" "$input" --memory=gc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
+    osprey-arc) ( cd "$dir" && "$OSP" "$input" --memory=arc --compile >/dev/null 2>&1 ) && mv -f "$dir/$name" "$out" ;;
     rust)    rustc -C opt-level=3 -C overflow-checks=off -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     rust-checked) rustc -C opt-level=3 -C overflow-checks=on -o "$out" "$dir/$name.rs" 2>/dev/null ;;
     c)       cc -O2 -o "$out" "$dir/$name.c" 2>/dev/null ;;
@@ -134,7 +140,7 @@ build() {
     # --- wasm32-wasip1 cross-builds, run via the wasm_wrap wrapper. A case that
     #     uses a non-portable builtin (input/random/fibers) fails to link here and
     #     is reported as wasm-incompatible (a skip, not a hard failure). ---
-    osprey-wasm) ( cd "$dir" && "$OSP" "$name.osp" --target=wasm32 --compile -o "$out.wasm" >/dev/null 2>&1 ) && wasm_wrap "$out" ;;
+    osprey-wasm) ( cd "$dir" && "$OSP" "$input" --target=wasm32 --compile -o "$out.wasm" >/dev/null 2>&1 ) && wasm_wrap "$out" ;;
     rust-wasm)   rustc --target wasm32-wasip1 -C opt-level=3 -o "$out.wasm" "$dir/$name.rs" 2>/dev/null && wasm_wrap "$out" ;;
     c-wasm)      clang --target=wasm32-wasip1 --sysroot="$WASI_SYSROOT" -O2 -o "$out.wasm" "$dir/$name.c" 2>/dev/null && wasm_wrap "$out" ;;
   esac

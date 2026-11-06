@@ -1,0 +1,5 @@
+[project]
+name = "powmod"
+source_roots = [".", "../../shared"]
+default_namespace = "powmod"
+entry = "powmod.osp"

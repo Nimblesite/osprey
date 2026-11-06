@@ -1,0 +1,5 @@
+[project]
+name = "josephus"
+source_roots = [".", "../../shared"]
+default_namespace = "josephus"
+entry = "josephus.osp"

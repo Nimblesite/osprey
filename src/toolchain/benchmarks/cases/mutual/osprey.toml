@@ -1,0 +1,5 @@
+[project]
+name = "mutual"
+source_roots = [".", "../../shared"]
+default_namespace = "mutual"
+entry = "mutual.osp"

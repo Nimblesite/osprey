@@ -1,0 +1,5 @@
+[project]
+name = "ackermann"
+source_roots = [".", "../../shared"]
+default_namespace = "ackermann"
+entry = "ackermann.osp"

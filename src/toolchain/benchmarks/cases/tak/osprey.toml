@@ -1,0 +1,5 @@
+[project]
+name = "tak"
+source_roots = [".", "../../shared"]
+default_namespace = "tak"
+entry = "tak.osp"

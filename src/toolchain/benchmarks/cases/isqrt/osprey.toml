@@ -1,0 +1,5 @@
+[project]
+name = "isqrt"
+source_roots = [".", "../../shared"]
+default_namespace = "isqrt"
+entry = "isqrt.osp"

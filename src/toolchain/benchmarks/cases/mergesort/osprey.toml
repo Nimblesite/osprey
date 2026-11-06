@@ -1,0 +1,5 @@
+[project]
+name = "mergesort"
+source_roots = [".", "../../shared"]
+default_namespace = "mergesort"
+entry = "mergesort.osp"

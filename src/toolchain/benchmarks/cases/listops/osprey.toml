@@ -1,0 +1,5 @@
+[project]
+name = "listops"
+source_roots = [".", "../../shared"]
+default_namespace = "listops"
+entry = "listops.osp"

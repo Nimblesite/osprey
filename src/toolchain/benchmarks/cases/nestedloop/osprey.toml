@@ -1,0 +1,5 @@
+[project]
+name = "nestedloop"
+source_roots = [".", "../../shared"]
+default_namespace = "nestedloop"
+entry = "nestedloop.osp"

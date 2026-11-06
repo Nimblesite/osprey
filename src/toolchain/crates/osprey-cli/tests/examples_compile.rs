@@ -11,9 +11,16 @@
 use std::fs;
 use std::path::Path;
 
+// Only the corpus walk is used here; the IR-symbol helpers `common` also
+// carries serve the wellformedness gates, not this one.
+#[expect(
+    dead_code,
+    reason = "the corpus walk is shared; the IR-symbol helpers are not used here"
+)]
+mod common;
 #[path = "examples_compile/support.rs"]
 mod support;
-use support::{compile, rejection_diagnostics, repo_root, sources};
+use support::{compile, compile_project, rejection_diagnostics, repo_root, sources};
 
 #[test]
 fn unhandled_integer_overflow_in_mutation_is_rejected() {
@@ -142,8 +149,16 @@ fn every_benchmark_source_compiles_after_checked_arithmetic_change() {
 
     let mut failures = Vec::new();
     for path in &files {
-        let source = fs::read_to_string(path).expect("read benchmark");
-        if let Err(stage) = compile(path, &source) {
+        // A case with its own osprey.toml shares the benchmark module, so it
+        // compiles as the project `run.sh` builds; a lone file compiles alone.
+        let project = path
+            .parent()
+            .filter(|dir| dir.join("osprey.toml").is_file());
+        let outcome = match project {
+            Some(root) => compile_project(root),
+            None => compile(path, &fs::read_to_string(path).expect("read benchmark")),
+        };
+        if let Err(stage) = outcome {
             let rel = path.strip_prefix(&dir).unwrap_or(path);
             failures.push(format!("{}: {stage}", rel.display()));
         }

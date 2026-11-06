@@ -1,0 +1,70 @@
+// Shared benchmark support: the one `Arith` policy every case installs around
+// its timed work, plus the seed, hash and collection helpers the list and text
+// cases use identically. Each case still holds its own timed work; only the
+// byte-identical copies live here, so a policy change is made once.
+namespace bench;
+
+/// The `Arith` policy and the seed, hash and collection helpers every
+/// benchmark case shares.
+module Bench {
+    /// Run `work` under the benchmark policy: a trapped integer overflow or
+    /// zero divisor prints the failure and substitutes a defined value instead
+    /// of aborting, so each case still prints one deterministic answer.
+    export fn guarded(work) = {
+        handle Arith {
+            overflow _ _ _ wrapped => {
+                print("unexpected integer overflow")
+                wrapped
+            }
+            remainderByZero _ => {
+                print("unexpected zero divisor")
+                0
+            }
+        }
+        work()
+    }
+
+    /// `a + b`, checked by `guarded`.
+    export fn add(a, b) = a + b
+
+    /// `a - b`, checked by `guarded`.
+    export fn sub(a, b) = a - b
+
+    /// `a * b`, checked by `guarded`.
+    export fn mul(a, b) = a * b
+
+    /// `a % b`, checked by `guarded`.
+    export fn modp(a, b) = a % b
+
+    /// One Park-Miller MINSTD step: `x * 16807 mod 2^31-1` stays inside `int`,
+    /// so it needs no arithmetic fault policy and is reproducible in every port.
+    fn r1(x) = modp(mul(x, 16807), 2147483647)
+
+    /// The generator value at stream position `i` for `seed`.
+    export fn hashAt(seed, i) = r1(r1(add(seed, i)))
+
+    /// `a + b` folded into the 1e9+7 checksum ring.
+    export fn addM(a, b) = modp(add(a, b), 1000000007)
+
+    /// `a * b` folded into the 1e9+7 checksum ring.
+    export fn mulM(a, b) = modp(mul(a, b), 1000000007)
+
+    /// A fresh cryptographically-secure seed in `1..=2147483646`.
+    fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error _ => 1 }
+
+    /// The run mode: `"0"` keeps the fixed seed `1` (deterministic, oracled);
+    /// anything else draws a fresh secure seed for the same workload.
+    export fn seedOf(s) = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error _ => 1 }
+
+    /// A persistent `List<int>` of `n` generator values, each below `cap`.
+    export fn buildList(s, n, cap) = range(0, n) |> fold(List(), |acc, i| => listAppend(acc, modp(hashAt(s, i), cap)))
+
+    /// Rank-weighted checksum of a sorted list: a wrong ORDER changes the answer.
+    export fn weigh(xs, rank) = match xs { [] => 0  [head, ...tail] => addM(mul(head, rank), weigh(tail, add(rank, 1))) }
+
+    /// The `k`-th token of the shared eight-word corpus.
+    export fn word(k) = match k {
+        0 => "the"    1 => "quick"  2 => "brown"  3 => "fox"
+        4 => "jumps"  5 => "over"   6 => "lazy"   _ => "dog"
+    }
+}

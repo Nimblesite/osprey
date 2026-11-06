@@ -7,16 +7,7 @@
 //
 // Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
 // oracle-checked); "1" -> cryptographically-secure random seed (randomBelow).
-fn add(a, b) = a + b
-fn sub(a, b) = a - b
-fn mul(a, b) = a * b
-fn modp(a, b) = a % b
-fn r1(x) = modp(mul(x, 16807), 2147483647)
-fn hashAt(seed, i) = r1(r1(add(seed, i)))
-fn addM(a, b) = modp(add(a, b), 1000000007)
-fn mulM(a, b) = modp(mul(a, b), 1000000007)
-fn randSeed() = match randomBelow(2147483646) { Success { value } => add(value, 1)  Error { message } => 1 }
-fn seedOf(s) = match parseInt(s) { Success { value } => match value { 0 => 1  _ => randSeed() }  Error { message } => 1 }
+import bench::Bench::{add, sub, mul, modp, hashAt, addM, mulM, seedOf}
 type Expr = Lit { v: int } | Add { l: Expr, r: Expr } | Mul { l: Expr, r: Expr }
 fn build(seed, idx, depth) = match depth {
     0 => Lit { v: modp(hashAt(seed, idx), 1000) }

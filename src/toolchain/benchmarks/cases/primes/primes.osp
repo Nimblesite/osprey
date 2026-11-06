@@ -1,11 +1,9 @@
 // Count primes below a limit by trial division — integer % in a tight loop.
-fn add(a, b) = a + b
-fn mul(a, b) = a * b
-fn mod_(a, b) = a % b
+import bench::Bench::{guarded, add, mul, modp}
 
 fn hasFactor(n, d) = match (mul(d, d) > n) {
     true  => false
-    false => match mod_(n, d) { 0 => true  _ => hasFactor(n, add(d, 1)) }
+    false => match modp(n, d) { 0 => true  _ => hasFactor(n, add(d, 1)) }
 }
 fn isPrime(n) = match (n < 2) {
     true  => false
@@ -13,16 +11,4 @@ fn isPrime(n) = match (n < 2) {
 }
 fn tally(acc, n) = match isPrime(n) { true => add(acc, 1)  false => acc }
 
-fn main() = {
-    handle Arith {
-        overflow _ _ _ wrapped => {
-            print("unexpected integer overflow")
-            wrapped
-        }
-        remainderByZero _ => {
-            print("unexpected zero divisor")
-            0
-        }
-    }
-    print("${range(2, 200000) |> fold(0, tally)}")
-}
+fn main() = guarded(|| => print("${range(2, 200000) |> fold(0, tally)}"))

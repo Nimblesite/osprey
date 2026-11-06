@@ -1,36 +1,10 @@
 //! Shared corpus compilation and exact diagnostic formatting.
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-pub(super) fn repo_root() -> PathBuf {
-    // `src/toolchain/crates/osprey-cli` -> repo root. Left un-canonicalized (no fallible call):
-    // the `..` segments resolve fine for `read_dir`, and `strip_prefix` below
-    // uses this same prefix.
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../..")
-}
-
-/// Every file with extension `ext` under `dir`, recursively, sorted for stable
-/// failure output.
-pub(super) fn sources(dir: &Path, ext: &str) -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    collect(dir, ext, &mut out);
-    out.sort();
-    out
-}
-
-fn collect(dir: &Path, ext: &str, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect(&path, ext, out);
-        } else if path.extension().is_some_and(|e| e == ext) {
-            out.push(path);
-        }
-    }
-}
+/// The repo root and the corpus walk are [`crate::common`]'s, so this harness
+/// and the other corpus gates cannot drift on what "every committed program"
+/// means.
+pub(super) use crate::common::{repo_root, sources};
 
 /// Compile one source the way `osprey --run` does: resolve the flavor from the
 /// path and any `// osprey: flavor=…` marker, parse, gate on type errors, then
@@ -58,11 +32,32 @@ pub(super) fn compile(path: &Path, source: &str) -> Result<usize, String> {
                 first.unwrap_or("assembly failed with no diagnostic")
             )
         })?;
-    let type_errors = osprey_types::check_program(&program);
+    lower(&program, backend.as_ref())
+}
+
+/// Compile the project rooted at `root` the way `osprey <dir> --run` does:
+/// load its manifest and sources, assemble the module graph, then gate and
+/// lower exactly as [`compile`] does for one source.
+pub(super) fn compile_project(root: &Path) -> Result<usize, String> {
+    let assembled = osprey_project::load_and_assemble(root).map_err(|errors| {
+        let first = errors.first().map(|error| error.message.as_str());
+        format!(
+            "project: {}",
+            first.unwrap_or("assembly failed with no diagnostic")
+        )
+    })?;
+    lower(&assembled.program, assembled.backend.as_ref())
+}
+
+fn lower(
+    program: &osprey_ast::Program,
+    backend: Option<&osprey_ast::Program>,
+) -> Result<usize, String> {
+    let type_errors = osprey_types::check_program(program);
     if let Some(first) = type_errors.first() {
         return Err(format!("typecheck: {first:?}"));
     }
-    osprey_codegen::compile_program(backend.as_ref().unwrap_or(&program))
+    osprey_codegen::compile_program(backend.unwrap_or(program))
         .map(|ir| ir.len())
         .map_err(|e| format!("codegen: {e:?}"))
 }

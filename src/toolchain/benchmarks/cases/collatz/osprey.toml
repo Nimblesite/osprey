@@ -1,0 +1,5 @@
+[project]
+name = "collatz"
+source_roots = [".", "../../shared"]
+default_namespace = "collatz"
+entry = "collatz.osp"

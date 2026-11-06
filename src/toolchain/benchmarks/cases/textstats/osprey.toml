@@ -1,0 +1,5 @@
+[project]
+name = "textstats"
+source_roots = [".", "../../shared"]
+default_namespace = "textstats"
+entry = "textstats.osp"

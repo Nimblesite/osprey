@@ -1,0 +1,5 @@
+[project]
+name = "coprime"
+source_roots = [".", "../../shared"]
+default_namespace = "coprime"
+entry = "coprime.osp"
