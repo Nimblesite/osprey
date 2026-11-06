@@ -1,6 +1,6 @@
 # Local coding model [LLM]
 
-**Status:** in delivery, 2026-11-07. Built and receipted: the GGUF reader (`@osprey/gguf`), the `qwen3_5` model and its GGUF loader (`src/osprey/examples/llms/qwen/model`), the tokenizer from the file's own tables (`@osprey/tokenizers`), the tool-call parser and mask, and the server (`src/osprey/examples/llms/qwen/server`) answering the Ollama and OpenAI routes from the real weights. Not yet met: [LLM-BASELINE], [LLM-SPEED] on a quiet machine, [LLM-STATE-OWNED], the full chat template in the server, [LLM-CACHE-CHECKPOINT], [LLM-MEMORY], [LLM-ACCEPT]. [Plan 0049](../../plans/0049-local-coding-model.md) owns delivery and lists what each rule still lacks.
+**Status:** in delivery, 2026-11-07. Built and receipted: the GGUF reader (`@osprey/gguf`), the `qwen3_5` model and its GGUF loader (`src/osprey/examples/llms/qwen/model`), the tokenizer from the file's own tables (`@osprey/tokenizers`), the tool-call parser and mask, and the server (`src/osprey/examples/llms/qwen/server`) answering the Ollama and OpenAI routes from the real weights, with the model's reasoning returned apart from its text and the prompt cache kept across requests with checkpoints a rewritten turn reuses ([LLM-CACHE-CHECKPOINT]). Not yet met: [LLM-BASELINE], [LLM-SPEED] on a quiet machine, [LLM-STATE-OWNED], the full chat template in the server, [LLM-MEMORY], [LLM-ACCEPT]. [Plan 0049](../../plans/0049-local-coding-model.md) owns delivery and lists what each rule still lacks.
 
 ## Model and weights [LLM-WEIGHTS]
 
