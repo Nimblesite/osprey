@@ -160,8 +160,7 @@ mockStorageCase () =
         !(mapContains mockFiles "never-written.txt"),
         mockLog == "load(notes.txt);save(notes.txt,9);load(notes.txt);save(notes.txt,22);exists(notes.txt);load(notes.txt);exists(notes.txt);load(notes.txt);save(archive.txt,22);exists(never-written.txt);exists(fixture.txt);load(fixture.txt);",
         startsWith mockLog "load(notes.txt);save(notes.txt,9);",
-        contains mockLog "save(archive.txt,22);",
-        endsWith mockLog "load(fixture.txt);"
+        structuralEquals [contains mockLog "save(archive.txt,22);", endsWith mockLog "load(fixture.txt);"] [true, true]
     ]
 
     (** The double touched no file system: nothing named by the test exists. *)

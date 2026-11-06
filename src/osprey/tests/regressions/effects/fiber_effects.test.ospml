@@ -524,11 +524,9 @@ handlerCellCrossesTheFiberBoundaryCase () =
     checkAll "the transcript records every hop in body order" [
         trail == "3:3|4:7|5:12|6:18|4:22|",
         length trail == 23,
-        startsWith trail "3:3|",
-        endsWith trail "4:22|",
+        structuralEquals [startsWith trail "3:3|", endsWith trail "4:22|"] [true, true],
         containsAll trail ["4:7|", "5:12|", "6:18|"],
-        containsNone trail ["3:4|", "4:11|", "6:14|"],
-        contains trail "|4:22|",
+        structuralEquals [containsNone trail ["3:4|", "4:11|", "6:14|"], contains trail "|4:22|"] [true, true],
         !(startsWith trail "4:7|"),
         !(endsWith trail "6:18|"),
         trail != ""
@@ -741,9 +739,7 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
         inner != "outer3=6",
         outerOnly == "outer3=6",
         inner != outerOnly,
-        contains inner "=300",
-        contains outerOnly "=6",
-        startsWith inner "outer3",
+        structuralEquals [contains inner "=300", contains outerOnly "=6", startsWith inner "outer3"] [true, true, true],
         startsWith outerOnly "outer3",
         !(contains inner "=6"),
         endsWith inner "300",
@@ -773,10 +769,8 @@ nestedRegionsPickTheInnermostArmForFibersCase () =
     // inner arm would print.
     checkAll "each fiber's own tag threads to its own arm" [
         paired == "outer0=0+outer-2=-200",
-        containsAll paired ["outer0=0", "outer-2=-200"],
-        startsWith paired "outer0=0+",
-        endsWith paired "-200",
-        containsNone paired ["outer-2=200", "outer2="],
+        structuralEquals [containsAll paired ["outer0=0", "outer-2=-200"], startsWith paired "outer0=0+"] [true, true],
+        structuralEquals [endsWith paired "-200", containsNone paired ["outer-2=200", "outer2="]] [true, true],
         length paired == 21,
         paired != inner,
         paired != restored,
@@ -889,11 +883,9 @@ fiberPipelineTranscriptIsDeterministicCase () =
     checkAll "the handler transcript records every stage exactly once" [
         script == "s1=1;s2=3;s3=7;s4=15;s5=20;s6=40;s7=5;",
         length script == 38,
-        startsWith script "s1=1;",
-        endsWith script "s7=5;",
+        structuralEquals [startsWith script "s1=1;", endsWith script "s7=5;"] [true, true],
         containsAll script ["s4=15;", "s5=20;", "s6=40;"],
-        containsNone script ["s8=", "s1=2;", "s4=14;"],
-        contains script ";s2=3;",
+        structuralEquals [containsNone script ["s8=", "s1=2;", "s4=14;"], contains script ";s2=3;"] [true, true],
         !(endsWith script "s6=40;"),
         !(startsWith script "s2="),
         script != ""

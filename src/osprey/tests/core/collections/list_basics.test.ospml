@@ -89,9 +89,7 @@ constructionAndIdentityCase () =
         listContains a 2,
         !(listContains a 99),
         !(listContains (List ()) 1),
-        listContains a 1,
-        listContains a 3,
-        listContains concatenated 10,
+        structuralEquals [listContains a 1, listContains a 3, listContains concatenated 10] [true, true, true],
         listContains concatenated 20,
         !(listContains prepended 99)
     ]
@@ -716,12 +714,9 @@ floatAndBoolListPatternCase () =
         !(headOr (allOff, true)),
         headOr (mixed, false),
         !(headOr (listReverse pairOn, true)),
-        secondOr (mixed, true) == false,
-        secondOr (pairOn, true) == false,
-        secondOr ([false, true], false),
-        secondOr (noFlags, true),
-        listContains mixed false,
-        listContains mixed true,
+        structuralEquals [secondOr (mixed, true), secondOr (pairOn, true)] [false, false],
+        structuralEquals [secondOr ([false, true], false), secondOr (noFlags, true)] [true, true],
+        structuralEquals [listContains mixed false, listContains mixed true] [true, true],
         !(listContains allOn false),
         !(listContains allOff true),
         structuralEquals [listLength (mixed + allOff), countTrue (mixed + allOff), tailLength mixed] [6, 2, 2],
@@ -938,9 +933,7 @@ typedIterationOrderCase () =
     checkAll "forEachList visits string elements in index order" [
         log == "alpha|beta|gamma|",
         length log == 17,
-        startsWith log "alpha|",
-        endsWith log "gamma|",
-        contains log "|beta|",
+        structuralEquals [startsWith log "alpha|", endsWith log "gamma|", contains log "|beta|"] [true, true, true],
         !(contains log "gamma|beta|"),
         log == joinWords words
     ]
@@ -984,8 +977,7 @@ typedIterationOrderCase () =
     checkAll "forEachList follows the derived list, not its source" [
         log == "alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|",
         length log == 62,
-        endsWith log "gamma|beta|alpha|",
-        startsWith log "alpha|beta|gamma|",
+        structuralEquals [endsWith log "gamma|beta|alpha|", startsWith log "alpha|beta|gamma|"] [true, true],
         contains log "right|gamma|",
         joinWords words == "alpha|beta|gamma|",
         joinWords (listReverse words) == "gamma|beta|alpha|"

@@ -29,8 +29,7 @@ fn runBatchAssertions() = {
             (second.listGet(0) ?: 99) == 5,
             (second.listGet(1) ?: 99) == 9,
             (missing.listGet(0) ?: 0) == 99,
-            !mapContains(base, "third"),
-            mapContains(grown, "third"),
+            structuralEquals([mapContains(base, "third"), mapContains(grown, "third")], [false, true]),
             !mapContains(removed, "second")
     ])
 

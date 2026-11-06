@@ -114,8 +114,7 @@ numericErrorCase () =
         Success _value => false
         Error message => message == "user boom"
     checkAll "numeric Result diagnostics" [
-        hasDiagnostic (parseInt "nope"),
-        hasDiagnostic (parseFloat "x"),
+        structuralEquals [hasDiagnostic (parseInt "nope"), hasDiagnostic (parseFloat "x")] [true, true],
         hasDiagnostic (divideResult (10, 0)),
         userFailure
     ]
@@ -123,24 +122,18 @@ numericErrorCase () =
 (** Verify every fallible string operation used by the catalogue. *)
 stringErrorCase () =
     checkAll "string Result diagnostics" [
-        hasDiagnostic (split "a" ""),
-        hasDiagnostic (indexOf "abc" "z"),
-        hasDiagnostic (substring "hi" ((0 - 1) ) 5),
-        hasDiagnostic (replace "h" "" ""),
-        hasDiagnostic (repeat "a" ((0 - 1) )),
-        hasDiagnostic (padStart "x" 5 ""),
+        structuralEquals [hasDiagnostic (split "a" ""), hasDiagnostic (indexOf "abc" "z")] [true, true],
+        structuralEquals [hasDiagnostic (substring "hi" ((0 - 1) ) 5), hasDiagnostic (replace "h" "" "")] [true, true],
+        structuralEquals [hasDiagnostic (repeat "a" ((0 - 1) )), hasDiagnostic (padStart "x" 5 "")] [true, true],
         hasDiagnostic (padEnd "x" 5 "")
     ]
 
 (** Verify cursor bounds, invalid scalars, and malformed UTF-8 diagnostics. *)
 cursorErrorCase () =
     checkAll "cursor Result diagnostics" [
-        hasDiagnostic (byteAt "a" 9),
-        hasDiagnostic (codePointAt "a" 9),
-        hasDiagnostic (codePointAt "é" 1),
-        hasDiagnostic (codePointWidth 55296),
-        hasDiagnostic (codePointWidth 1114112),
-        hasDiagnostic (fromCodePoint 1114112),
+        structuralEquals [hasDiagnostic (byteAt "a" 9), hasDiagnostic (codePointAt "a" 9)] [true, true],
+        structuralEquals [hasDiagnostic (codePointAt "é" 1), hasDiagnostic (codePointWidth 55296)] [true, true],
+        structuralEquals [hasDiagnostic (codePointWidth 1114112), hasDiagnostic (fromCodePoint 1114112)] [true, true],
         !hasDiagnostic (codePointAt (take "é" 1) 0)
     ]
 

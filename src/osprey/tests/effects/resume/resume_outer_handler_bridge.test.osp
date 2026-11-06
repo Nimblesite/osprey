@@ -144,8 +144,7 @@ fn partialHandlerDelegationCase() = {
         total < 100,
         outerRecords == 0,
         containsAll(auditLog, ["record:5|", "record:7|"]),
-        containsNone(auditLog, ["record:12"]),
-        startsWith(auditLog, "record:5|"),
+        structuralEquals([containsNone(auditLog, ["record:12"]), startsWith(auditLog, "record:5|")], [true, true]),
         endsWith(auditLog, "record:7|"),
         length(auditLog) == 18
     ])

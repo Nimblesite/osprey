@@ -71,9 +71,7 @@ module VectorTests {
         let intent = Fixtures::field(fx, "releaseIntent")
         Fixtures::report("dsse PAE bytes", Fixtures::itemsOf(fx, "pae"), paeOk)
         checkAll("dsse release intent detached forms", [
-            intentPae(intent),
-            intentCanonical(intent),
-            intentChallenge(intent),
+            structuralEquals([intentPae(intent), intentCanonical(intent), intentChallenge(intent)], [true, true, true]),
             intentEnvelope(intent)
         ])
     }

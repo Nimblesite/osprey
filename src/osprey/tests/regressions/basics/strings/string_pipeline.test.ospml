@@ -144,9 +144,7 @@ stringPipelineCase () =
     checkAll "string inspection and transformations" [
         length source == 36,
         !(isEmpty source),
-        contains source "GET",
-        startsWith source "  ",
-        endsWith source "  ",
+        structuralEquals [contains source "GET", startsWith source "  ", endsWith source "  "] [true, true, true],
         (source |> length) == 36,
         cleaned == "get /api/users?name=alice&age=30",
         startsWith cleaned "get ",

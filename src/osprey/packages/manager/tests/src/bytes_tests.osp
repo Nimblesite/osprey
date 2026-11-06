@@ -16,8 +16,7 @@ module BytesTests {
         structuralEquals([Bytes::hex([0, 15, 16, 171, 255]), Bytes::hex([])], ["000f10abff", ""]),
         structuralEquals([ints(Bytes::ofString("abc")), ints(Bytes::ofString(""))], ["97,98,99", ""]),
         ints(Bytes::concatAll([[1], [], [2, 3]])) == "1,2,3",
-        Bytes::wellFormed([0, 255]),
-        !Bytes::wellFormed([256]),
+        structuralEquals([Bytes::wellFormed([0, 255]), Bytes::wellFormed([256])], [true, false]),
         !Bytes::wellFormed([-1])
     ])
 
@@ -43,8 +42,7 @@ module BytesTests {
             Error { message } => message == "list.duplicate"
         },
         Order::strictlyAscending(["a", "b", "c"]),
-        !Order::strictlyAscending(["a", "a"]),
-        !Order::strictlyAscending(["b", "a"]),
+        structuralEquals([Order::strictlyAscending(["a", "a"]), Order::strictlyAscending(["b", "a"])], [false, false]),
         Order::strictlyAscending([])
     ])
 

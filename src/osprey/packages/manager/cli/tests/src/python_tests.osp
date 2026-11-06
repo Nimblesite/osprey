@@ -57,8 +57,7 @@ module PythonTests {
     fn composesVersion(floor, version) = contains(PythonPlane::compose([PythonPlane::Member { name: "demo-py", path: "./demo", floor: floor }]), "requires-python = \">=${version}\"\n")
 
     fn floorComposition() = checkAll("Python version floors use integer components", [
-        composesVersion(31200, "3.12"),
-        composesVersion(31307, "3.13.7"),
+        structuralEquals([composesVersion(31200, "3.12"), composesVersion(31307, "3.13.7")], [true, true]),
         composesVersion(10000, "1.0")
     ])
 

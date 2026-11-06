@@ -99,12 +99,8 @@ fn booleanBehaviorCase() = {
     }
     let localLabel = (3 < 5) ? "yes" : "no"
     checkAll("boolean operators and branches", [
-        getTrue(),
-        !getFalse(),
-        isEqual(x: 5, y: 5),
-        !isEqual(x: 5, y: 6),
-        !xor(a: true, b: true),
-        xor(a: true, b: false),
+        structuralEquals([getTrue(), getFalse(), isEqual(x: 5, y: 5), isEqual(x: 5, y: 6)], [true, false, true, false]),
+        structuralEquals([xor(a: true, b: true), xor(a: true, b: false)], [false, true]),
         !xor(a: false, b: false),
         leftShortCircuits,
         rightShortCircuits,

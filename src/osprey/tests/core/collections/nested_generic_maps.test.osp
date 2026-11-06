@@ -100,10 +100,8 @@ fn nestedMapEffectPipelineCase() = {
             length(textGroup(strings, "long", 1)) == 5,
             textGroup(strings, "missing", 0) == "row",
             floatGroup(floats, "small", 0) + floatGroup(floats, "small", 1) == 1.75,
-            boolGroup(bools, "left", 0),
-            !boolMissGroup(bools, "left", 1),
-            !boolMissGroup(bools, "right", 0),
-            boolGroup(bools, "right", 1)
+            structuralEquals([boolGroup(bools, "left", 0), boolMissGroup(bools, "left", 1)], [true, false]),
+            structuralEquals([boolMissGroup(bools, "right", 0), boolGroup(bools, "right", 1)], [false, true])
     ])
 
     checkAll("List<Map<string,List<T>>> and Map<string,List<Map<string,List<T>>>> retain T", [
@@ -124,16 +122,14 @@ fn nestedMapEffectPipelineCase() = {
     checkCells("persistent map pipelines preserve descendants and source generations", ["high"], fn(xs, i) => listText(xs)(i), [0], [30], fn(key, index) => intGroup(ints, key, index), fn(xs, i) => listInt(xs)(i))
     checkAll("persistent map pipelines preserve descendants and source generations", [
             mapLength(rewritten) == 2,
-            !mapContains(rewritten, "low"),
-            mapContains(rewritten, "high"),
+            structuralEquals([mapContains(rewritten, "low"), mapContains(rewritten, "high")], [false, true]),
             mapContains(rewritten, "extra"),
             mapLength(merged) == 2,
             mapContains(ints, "low"),
             !mapContains(ints, "extra"),
             listLength(mapKeys(ints)) == 2,
             listLength(mapValues(ints)) == 2,
-            listContains(mapKeys(ints), "low"),
-            listContains(mapKeys(ints), "high"),
+            structuralEquals([listContains(mapKeys(ints), "low"), listContains(mapKeys(ints), "high")], [true, true]),
             !listContains(mapKeys(ints), "extra"),
             listLength(listGet(mapValues(ints), 0) ?: [99]) >= 2,
             listLength(listGet(mapValues(ints), 1) ?: [99]) >= 2

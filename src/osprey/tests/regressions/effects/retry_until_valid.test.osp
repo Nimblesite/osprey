@@ -196,18 +196,12 @@ fn retryAttemptMatrixCase() = {
     checkAll("issue transcripts record every attempt in order", [
         structuralEquals([issuedA, issuedB, issuedC], ["1:100|", "1:0|2:200|", "1:0|2:-5|3:300|"]),
         issuedD == "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|",
-        startsWith(issuedB, "1:0|"),
-        endsWith(issuedB, "2:200|"),
-        startsWith(issuedC, "1:0|2:-5|"),
-        endsWith(issuedC, "3:300|"),
-        startsWith(issuedD, "1:-1|"),
-        endsWith(issuedD, "9:900|"),
-        contains(issuedD, "5:-5|"),
-        contains(issuedC, "2:-5|"),
-        !contains(issuedA, "2:"),
-        !contains(issuedB, "3:"),
-        !contains(issuedC, "4:"),
-        !contains(issuedD, "10:"),
+        structuralEquals([startsWith(issuedB, "1:0|"), endsWith(issuedB, "2:200|")], [true, true]),
+        structuralEquals([startsWith(issuedC, "1:0|2:-5|"), endsWith(issuedC, "3:300|")], [true, true]),
+        structuralEquals([startsWith(issuedD, "1:-1|"), endsWith(issuedD, "9:900|")], [true, true]),
+        structuralEquals([contains(issuedD, "5:-5|"), contains(issuedC, "2:-5|")], [true, true]),
+        structuralEquals([contains(issuedA, "2:"), contains(issuedB, "3:")], [false, false]),
+        structuralEquals([contains(issuedC, "4:"), contains(issuedD, "10:")], [false, false]),
         length(issuedA) == 6
     ])
 
@@ -219,14 +213,10 @@ fn retryAttemptMatrixCase() = {
         settledB != issuedB,
         settledC != issuedC,
         settledD != issuedD,
-        startsWith(settledB, "2:200|"),
-        endsWith(settledB, "1:200|"),
-        startsWith(settledC, "3:300|"),
-        endsWith(settledC, "1:300|"),
-        startsWith(settledD, "9:900|"),
-        endsWith(settledD, "1:900|"),
-        !contains(settledB, "1:0|"),
-        !contains(settledC, "2:-5|")
+        structuralEquals([startsWith(settledB, "2:200|"), endsWith(settledB, "1:200|")], [true, true]),
+        structuralEquals([startsWith(settledC, "3:300|"), endsWith(settledC, "1:300|")], [true, true]),
+        structuralEquals([startsWith(settledD, "9:900|"), endsWith(settledD, "1:900|")], [true, true]),
+        structuralEquals([contains(settledB, "1:0|"), contains(settledC, "2:-5|")], [false, false])
     ])
 
     // Four regions, four separate cells: nothing crosses between them.
@@ -234,12 +224,9 @@ fn retryAttemptMatrixCase() = {
         issuedA != issuedB,
         issuedB != issuedC,
         issuedC != issuedD,
-        !contains(issuedA, "200"),
-        !contains(issuedB, "300"),
-        !contains(issuedC, "900"),
-        !contains(issuedD, "100|"),
-        !contains(settledD, "300"),
-        contains(issuedD, "900"),
+        structuralEquals([contains(issuedA, "200"), contains(issuedB, "300")], [false, false]),
+        structuralEquals([contains(issuedC, "900"), contains(issuedD, "100|")], [false, false]),
+        structuralEquals([contains(settledD, "300"), contains(issuedD, "900")], [false, true]),
         acceptedD != acceptedC,
         (acceptedD - acceptedC ) == 600,
         structuralEquals([length(settledB), length(settledC), length(settledD)], [12, 18, 54])
@@ -374,16 +361,11 @@ fn retryBudgetExhaustionCase() = {
     checkAll("the trail names every try and then the refusal", [
         structuralEquals([trail1, trail2], ["try:1|giveup:2|", "try:1|try:2|giveup:3|"]),
         structuralEquals([trail3, trail5], ["try:1|try:2|try:3|giveup:4|", "try:1|try:2|try:3|"]),
-        startsWith(trail1, "try:1|"),
-        endsWith(trail1, "giveup:2|"),
-        endsWith(trail2, "giveup:3|"),
-        endsWith(trail3, "giveup:4|"),
-        endsWith(trail5, "try:3|"),
-        contains(trail3, "try:2|"),
-        !contains(trail5, "giveup"),
-        !contains(trail1, "try:2|"),
-        !contains(trail2, "try:3|"),
-        !contains(trail3, "try:4|"),
+        structuralEquals([startsWith(trail1, "try:1|"), endsWith(trail1, "giveup:2|")], [true, true]),
+        structuralEquals([endsWith(trail2, "giveup:3|"), endsWith(trail3, "giveup:4|")], [true, true]),
+        structuralEquals([endsWith(trail5, "try:3|"), contains(trail3, "try:2|")], [true, true]),
+        structuralEquals([contains(trail5, "giveup"), contains(trail1, "try:2|")], [false, false]),
+        structuralEquals([contains(trail2, "try:3|"), contains(trail3, "try:4|")], [false, false]),
         length(trail1) == 15,
         length(trail5) == 18
     ])
@@ -393,14 +375,10 @@ fn retryBudgetExhaustionCase() = {
     checkAll("an abandoned continuation settles the outer frames", [
         structuralEquals([settled1, settled2, settled3], ["1:-1000|", "2:-2000|1:-2000|", "3:-3000|2:-3000|1:-3000|"]),
         settled5 == "3:777|2:777|1:777|",
-        startsWith(settled2, "2:-2000|"),
-        endsWith(settled2, "1:-2000|"),
-        startsWith(settled3, "3:-3000|"),
-        endsWith(settled3, "1:-3000|"),
-        contains(settled3, "2:-3000|"),
-        !contains(settled1, "2:"),
-        !contains(settled2, "3:"),
-        !contains(settled3, "4:"),
+        structuralEquals([startsWith(settled2, "2:-2000|"), endsWith(settled2, "1:-2000|")], [true, true]),
+        structuralEquals([startsWith(settled3, "3:-3000|"), endsWith(settled3, "1:-3000|")], [true, true]),
+        structuralEquals([contains(settled3, "2:-3000|"), contains(settled1, "2:")], [true, false]),
+        structuralEquals([contains(settled2, "3:"), contains(settled3, "4:")], [false, false]),
         length(settled1) == 8,
         length(settled5) == 18,
         settled1 != settled2
@@ -408,14 +386,10 @@ fn retryBudgetExhaustionCase() = {
 
     // The refusing attempt is issued but never settles: it has no continuation.
     checkAll("the refusing attempt is issued but never settles", [
-        contains(trail1, "giveup:2|"),
-        !contains(settled1, "2:"),
-        contains(trail2, "giveup:3|"),
-        !contains(settled2, "3:"),
-        contains(trail3, "giveup:4|"),
-        !contains(settled3, "4:"),
-        !contains(trail5, "giveup:"),
-        contains(settled5, "3:777|"),
+        structuralEquals([contains(trail1, "giveup:2|"), contains(settled1, "2:")], [true, false]),
+        structuralEquals([contains(trail2, "giveup:3|"), contains(settled2, "3:")], [true, false]),
+        structuralEquals([contains(trail3, "giveup:4|"), contains(settled3, "4:")], [true, false]),
+        structuralEquals([contains(trail5, "giveup:"), contains(settled5, "3:777|")], [false, true]),
         out1 == ((0 - 1000) ),
         out2 != out5,
         out5 != out3,
@@ -670,22 +644,17 @@ fn retryPayloadChannelMatrixCase() = {
         structuralEquals([ratioTrail, checkedTrail, markTrail], ["1|2|3|", "1|2|3|", "4|3|2|1|"]),
         ratioTrail == checkedTrail,
         markTrail != ratioTrail,
-        startsWith(textTrail, "1:no|"),
-        endsWith(textTrail, "3:ready|"),
-        contains(textTrail, "2:abc|"),
-        startsWith(flagTrail, "1:false|"),
-        endsWith(flagTrail, "4:true|"),
-        !contains(flagTrail, "5:"),
-        !contains(textTrail, "4:"),
-        startsWith(markTrail, "4|"),
+        structuralEquals([startsWith(textTrail, "1:no|"), endsWith(textTrail, "3:ready|")], [true, true]),
+        structuralEquals([contains(textTrail, "2:abc|"), startsWith(flagTrail, "1:false|")], [true, true]),
+        structuralEquals([endsWith(flagTrail, "4:true|"), contains(flagTrail, "5:")], [true, false]),
+        structuralEquals([contains(textTrail, "4:"), startsWith(markTrail, "4|")], [false, true]),
         endsWith(markTrail, "1|")
     ])
 
     // The six-arm region interleaves all six channels in body order.
     checkAll("a six-arm region serves every channel in body order", [
         comboTrail == "t1|f1|f2|r1|c1|m0|s1|s2|",
-        startsWith(comboTrail, "t1|"),
-        endsWith(comboTrail, "s2|"),
+        structuralEquals([startsWith(comboTrail, "t1|"), endsWith(comboTrail, "s2|")], [true, true]),
         containsAll(comboTrail, ["f1|f2|", "m0|", "c1|"]),
         containsNone(comboTrail, ["t2|", "s3|", "f3|"]),
         length(comboTrail) == 24,
@@ -697,10 +666,8 @@ fn retryPayloadChannelMatrixCase() = {
 
     // One channel's retries never disturb another's cell.
     checkAll("one channel's retries never disturb another", [
-        !contains(textTrail, "true"),
-        !contains(flagTrail, "ready"),
-        !contains(ratioTrail, ":"),
-        !contains(checkedTrail, ":"),
+        structuralEquals([contains(textTrail, "true"), contains(flagTrail, "ready")], [false, false]),
+        structuralEquals([contains(ratioTrail, ":"), contains(checkedTrail, ":")], [false, false]),
         !contains(markTrail, ":"),
         textTrail != flagTrail,
         textCalls != markCalls,
@@ -825,10 +792,8 @@ fn retryScriptedCandidateMatrixCase() = {
     // The drawn transcript follows list order exactly, boundaries included.
     checkAll("the drawn transcript follows list order", [
         drawn == "0|-1|0|-100000|0|4321|",
-        startsWith(drawn, "0|-1|"),
-        endsWith(drawn, "4321|"),
-        contains(drawn, "-100000|"),
-        !contains(drawn, "|4321|4321"),
+        structuralEquals([startsWith(drawn, "0|-1|"), endsWith(drawn, "4321|")], [true, true]),
+        structuralEquals([contains(drawn, "-100000|"), contains(drawn, "|4321|4321")], [true, false]),
         (listGet(script, 0) ?: 1) == 0,
         (listGet(script, 1) ?: 0) == ((0 - 1) ),
         (listGet(script, 3) ?: 0) == ((0 - 100000) ),
@@ -847,10 +812,8 @@ fn retryScriptedCandidateMatrixCase() = {
         sparseTrail == "1:-21|2:-21|3:-21|4:5555|",
         mapLength(table) == 3,
         mapLength(sparse) == 1,
-        mapContains(table, "3"),
-        !mapContains(table, "4"),
-        mapContains(sparse, "4"),
-        !mapContains(sparse, "1"),
+        structuralEquals([mapContains(table, "3"), mapContains(table, "4")], [true, false]),
+        structuralEquals([mapContains(sparse, "4"), mapContains(sparse, "1")], [true, false]),
         (mapGet(table, "3") ?: 0) == 8888,
         (mapGet(sparse, "4") ?: 0) == 5555,
         length("mapGet: key not found") == 21,
@@ -864,15 +827,12 @@ fn retryScriptedCandidateMatrixCase() = {
     checkAll("zero and minus one are rejected and one is accepted", [
         boundaryTrail == "0|-1|1|",
         fromBoundary == 1,
-        startsWith(boundaryTrail, "0|"),
-        contains(boundaryTrail, "-1|"),
-        endsWith(boundaryTrail, "1|"),
-        !contains(boundaryTrail, "2|"),
+        structuralEquals([startsWith(boundaryTrail, "0|"), contains(boundaryTrail, "-1|")], [true, true]),
+        structuralEquals([endsWith(boundaryTrail, "1|"), contains(boundaryTrail, "2|")], [true, false]),
         length(boundaryTrail) == 7,
         boundaryCalls == 3,
         boundaryTrail != drawn,
-        !contains(drawn, "8888"),
-        !contains(mapTrail, "4321"),
+        structuralEquals([contains(drawn, "8888"), contains(mapTrail, "4321")], [false, false]),
         !contains(sparseTrail, "8888"),
         fromBoundary != fromSparse
     ])
@@ -967,15 +927,11 @@ fn nestedRetryRegionsCase() = {
     checkAll("the inner region overrides then restores the outer", [
         outerTrail == "o1=1:0|o2=2:0|o3=3:50|o4=1:0|o5=2:0|o6=3:50|",
         innerTrail == "i1=1:0|i2=2:700|",
-        startsWith(outerTrail, "o1=1:0|"),
-        endsWith(outerTrail, "o6=3:50|"),
+        structuralEquals([startsWith(outerTrail, "o1=1:0|"), endsWith(outerTrail, "o6=3:50|")], [true, true]),
         containsAll(outerTrail, ["o4=1:0|", "o3=3:50|"]),
-        !contains(outerTrail, "700"),
-        !contains(innerTrail, "50|"),
-        startsWith(innerTrail, "i1=1:0|"),
-        endsWith(innerTrail, "i2=2:700|"),
-        !contains(innerTrail, "i3"),
-        !contains(outerTrail, "o7"),
+        structuralEquals([contains(outerTrail, "700"), contains(innerTrail, "50|")], [false, false]),
+        structuralEquals([startsWith(innerTrail, "i1=1:0|"), endsWith(innerTrail, "i2=2:700|")], [true, true]),
+        structuralEquals([contains(innerTrail, "i3"), contains(outerTrail, "o7")], [false, false]),
         outerTrail != innerTrail,
         length(innerTrail) == 16
     ])
@@ -984,14 +940,10 @@ fn nestedRetryRegionsCase() = {
     checkAll("settlement unwinds LIFO across the whole nest", [
         outerSettled == "o6:800|o5:800|o4:800|o3:800|o2:800|o1:800|",
         innerSettled == "i2:700|i1:700|",
-        startsWith(outerSettled, "o6:800|"),
-        endsWith(outerSettled, "o1:800|"),
-        startsWith(innerSettled, "i2:700|"),
-        endsWith(innerSettled, "i1:700|"),
-        contains(outerSettled, "o4:800|"),
-        !contains(outerSettled, "700"),
-        !contains(innerSettled, "800"),
-        !contains(outerSettled, "o7"),
+        structuralEquals([startsWith(outerSettled, "o6:800|"), endsWith(outerSettled, "o1:800|")], [true, true]),
+        structuralEquals([startsWith(innerSettled, "i2:700|"), endsWith(innerSettled, "i1:700|")], [true, true]),
+        structuralEquals([contains(outerSettled, "o4:800|"), contains(outerSettled, "700")], [true, false]),
+        structuralEquals([contains(innerSettled, "800"), contains(outerSettled, "o7")], [false, false]),
         length(outerSettled) == 42,
         length(innerSettled) == 14,
         outerSettled != outerTrail,
@@ -1003,8 +955,7 @@ fn nestedRetryRegionsCase() = {
         chargeTrail == "10@10|10@20|10@30|1@31|1@32|10@42|10@52|10@62|",
         chargeCalls == 8,
         charged == 62,
-        startsWith(chargeTrail, "10@10|"),
-        endsWith(chargeTrail, "10@62|"),
+        structuralEquals([startsWith(chargeTrail, "10@10|"), endsWith(chargeTrail, "10@62|")], [true, true]),
         containsAll(chargeTrail, ["1@31|1@32|", "10@42|"]),
         containsNone(chargeTrail, ["1@33", "10@70", "@63"]),
         length(chargeTrail) == 46,
@@ -1016,8 +967,7 @@ fn nestedRetryRegionsCase() = {
     // A Retry arm performs Budget, never its own Retry.supply.
     checkAll("an arm performs a different effect, never its own", [
         structuralEquals([innerCalls, outerCalls, chargeCalls], [2, 6, 8]),
-        containsAll(chargeTrail, ["1@31|", "1@32|"]),
-        !contains(innerTrail, "o"),
+        structuralEquals([containsAll(chargeTrail, ["1@31|", "1@32|"]), contains(innerTrail, "o")], [true, false]),
         !contains(outerTrail, "i"),
         charged == 62,
         total == 800,
@@ -1169,8 +1119,7 @@ fn retryPerformSiteMatrixCase() = {
         trail == "z1|z2|z3|o4|t5+50|h6+20+300|n7|n8|f1234|",
         containsAll(trail, ["o4|", "t5+50|", "h6+20+300|", "f1234|", "n7|n8|"]),
         containsNone(trail, ["t50+5|", "h300+20+6|", "f4321|", "n8|n7|", "z4|"]),
-        startsWith(trail, "z1|z2|z3|"),
-        endsWith(trail, "f1234|"),
+        structuralEquals([startsWith(trail, "z1|z2|z3|"), endsWith(trail, "f1234|")], [true, true]),
         length(trail) == 40
     ])
 
@@ -1196,10 +1145,8 @@ fn retryPerformSiteMatrixCase() = {
         listLength(probe) == 2,
         (listGet(probe, 0) ?: 0) == 7,
         (listGet(probe, 1) ?: 0) == 8,
-        containsAll(trail, ["n7|", "n8|"]),
-        !contains(trail, "n9|"),
-        listContains(probe, 7),
-        !listContains(probe, 9),
+        structuralEquals([containsAll(trail, ["n7|", "n8|"]), contains(trail, "n9|")], [true, false]),
+        structuralEquals([listContains(probe, 7), listContains(probe, 9)], [true, false]),
         noteTotal == 15,
         noteCalls != zeroCalls,
         !isEmpty(probe)
@@ -1209,8 +1156,7 @@ fn retryPerformSiteMatrixCase() = {
     checkAll("recursion and a match arm are ordinary perform sites", [
         zeroCalls == 3,
         suppliedZero == 9,
-        startsWith(trail, "z1|"),
-        contains(trail, "z3|o4|"),
+        structuralEquals([startsWith(trail, "z1|"), contains(trail, "z3|o4|")], [true, true]),
         !contains(trail, "z3|z4|"),
         fourCalls == 1,
         suppliedFour == 1234,

@@ -24,10 +24,8 @@ fn binding() = {
     let text = "'; \\! touch /tmp/registry-injection\nSELECT secret; --"
     let bound = Database::binding([text])
     checkAll("database values use extended-protocol hex parameters", [
-            startsWith(bound, "\\bind '"),
-            !contains(bound, text),
-            !contains(bound, "touch"),
-            !contains(bound, "SELECT"),
+            structuralEquals([startsWith(bound, "\\bind '"), contains(bound, text)], [true, false]),
+            structuralEquals([contains(bound, "touch"), contains(bound, "SELECT")], [false, false]),
             endsWith(bound, "' \\g\n")
     ])
 }

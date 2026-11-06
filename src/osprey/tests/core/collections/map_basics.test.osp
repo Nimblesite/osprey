@@ -23,10 +23,8 @@ fn constructionAndOverwriteCase() = {
             mapLength(empty) == 0,
             !mapContains(empty, "missing"),
             structuralEquals([mapLength(m1), mapLength(m2), mapLength(m3)], [1, 2, 3]),
-            mapContains(m3, "alice"),
-            mapContains(m3, "bob"),
-            mapContains(m3, "charlie"),
-            !mapContains(m3, "dave"),
+            structuralEquals([mapContains(m3, "alice"), mapContains(m3, "bob")], [true, true]),
+            structuralEquals([mapContains(m3, "charlie"), mapContains(m3, "dave")], [true, false]),
             mapLength(m4) == 3,
             mapLength(m3) == 3
     ])
@@ -60,12 +58,8 @@ fn generationsAndBranchesCase() = {
     checkAll("persistent map generation and branch observations", [
             structuralEquals([mapLength(g0), mapLength(g1), mapLength(g2), mapLength(g3)], [0, 1, 2, 3]),
             structuralEquals([mapLength(g4), mapLength(g5)], [4, 5]),
-            mapContains(g2, "k1"),
-            !mapContains(g2, "k4"),
-            mapContains(xa, "X"),
-            !mapContains(xa, "Y"),
-            !mapContains(xb, "X"),
-            mapContains(xb, "Y"),
+            structuralEquals([mapContains(g2, "k1"), mapContains(g2, "k4"), mapContains(xa, "X")], [true, false, true]),
+            structuralEquals([mapContains(xa, "Y"), mapContains(xb, "X"), mapContains(xb, "Y")], [false, false, true]),
             mapLength(g3) == 3
     ])
 
@@ -87,9 +81,7 @@ fn generationsAndBranchesCase() = {
     // Branch-specific values and absences catch aliasing between siblings and their parent.
     checkAll("persistent map branch values and isolation", [
             structuralEquals([intAt(xa, "X"), intAt(xb, "Y"), intAt(xa, "k1"), intAt(xb, "k3")], [100, 200, 1, 3]),
-            !mapContains(xa, "Y"),
-            !mapContains(xb, "X"),
-            !mapContains(g3, "X"),
+            structuralEquals([mapContains(xa, "Y"), mapContains(xb, "X"), mapContains(g3, "X")], [false, false, false]),
             !mapContains(g3, "Y"),
             mapLength(xa) == 4,
             mapLength(xb) == 4
@@ -175,18 +167,12 @@ fn viewsAndCrossCollectionCase() = {
 
     // Key and value membership checks validate view content without assuming hash iteration order.
     checkAll("map key and value view contents", [
-            listContains(keys, "k1"),
-            listContains(keys, "k2"),
-            listContains(keys, "k3"),
-            listContains(keys, "k4"),
-            listContains(keys, "k5"),
-            !listContains(keys, "missing"),
-            listContains(values, 1),
-            listContains(values, 2),
-            listContains(values, 3),
-            listContains(values, 4),
-            listContains(values, 5),
-            !listContains(values, 99)
+            structuralEquals([listContains(keys, "k1"), listContains(keys, "k2")], [true, true]),
+            structuralEquals([listContains(keys, "k3"), listContains(keys, "k4")], [true, true]),
+            structuralEquals([listContains(keys, "k5"), listContains(keys, "missing")], [true, false]),
+            structuralEquals([listContains(values, 1), listContains(values, 2)], [true, true]),
+            structuralEquals([listContains(values, 3), listContains(values, 4)], [true, true]),
+            structuralEquals([listContains(values, 5), listContains(values, 99)], [true, false])
     ])
 
     // Added cross-collection checks prove list and map descendants remain isolated from both source structures.
@@ -233,9 +219,7 @@ fn literalsAndDispatchCase() = {
 
     // The old composite bare-isEmpty row is split and extended across literal and derived maps.
     checkAll("receiver-directed map isEmpty dispatch", [
-            isEmpty(empty),
-            !isEmpty(prices),
-            !isEmpty(duplicate),
+            structuralEquals([isEmpty(empty), isEmpty(prices), isEmpty(duplicate)], [true, false, false]),
             isEmpty(mapRemove(duplicate, "key"))
     ])
 }
@@ -415,31 +399,19 @@ fn keyShapeCase() = {
     // Membership follows exact content, so every near miss — a differing case, an
     // extra space, a longer or shorter spelling, a leading zero — must be absent.
     checkAll("map membership follows exact key content", [
-            mapContains(shaped, ""),
-            mapContains(shaped, "a"),
-            mapContains(shaped, "A"),
-            mapContains(shaped, " "),
-            mapContains(shaped, " a"),
-            mapContains(shaped, "a "),
-            mapContains(shaped, "a b"),
-            mapContains(shaped, "a.b"),
-            mapContains(shaped, "a-b"),
-            mapContains(shaped, "a_b"),
-            mapContains(shaped, "007"),
-            mapContains(shaped, "7"),
-            mapContains(shapedLong, longKey),
-            !mapContains(shaped, longKey),
+            structuralEquals([mapContains(shaped, ""), mapContains(shaped, "a")], [true, true]),
+            structuralEquals([mapContains(shaped, "A"), mapContains(shaped, " ")], [true, true]),
+            structuralEquals([mapContains(shaped, " a"), mapContains(shaped, "a ")], [true, true]),
+            structuralEquals([mapContains(shaped, "a b"), mapContains(shaped, "a.b")], [true, true]),
+            structuralEquals([mapContains(shaped, "a-b"), mapContains(shaped, "a_b")], [true, true]),
+            structuralEquals([mapContains(shaped, "007"), mapContains(shaped, "7")], [true, true]),
+            structuralEquals([mapContains(shapedLong, longKey), mapContains(shaped, longKey)], [true, false]),
             !mapContains(shapedLong, longKeyPrefix),
-            !mapContains(shapedLong, toUpperCase(longKey)),
-            !mapContains(shaped, "b"),
-            !mapContains(shaped, "B"),
-            !mapContains(shaped, "  "),
-            !mapContains(shaped, " a "),
-            !mapContains(shaped, "ab"),
-            !mapContains(shaped, "a.b.c"),
-            !mapContains(shaped, "0007"),
-            !mapContains(shaped, "07"),
-            !mapContains(shaped, "a-B")
+            structuralEquals([mapContains(shapedLong, toUpperCase(longKey)), mapContains(shaped, "b")], [false, false]),
+            structuralEquals([mapContains(shaped, "B"), mapContains(shaped, "  ")], [false, false]),
+            structuralEquals([mapContains(shaped, " a "), mapContains(shaped, "ab")], [false, false]),
+            structuralEquals([mapContains(shaped, "a.b.c"), mapContains(shaped, "0007")], [false, false]),
+            structuralEquals([mapContains(shaped, "07"), mapContains(shaped, "a-B")], [false, false])
     ])
 
     // Keys that differ only by case, spacing or punctuation hold different values,
@@ -529,9 +501,7 @@ fn overwriteChainCase() = {
             structuralEquals([intAt(v4, "slot"), intAt(v5, "slot"), intAt(v6, "slot")], [3, 5, 5]),
             structuralEquals([intAt(v7, "slot"), intAt(v4, "other"), intAt(v5, "other")], [5, 40, 40]),
             structuralEquals([intAt(v6, "other"), intAt(v7, "other")], [60, 60]),
-            !mapContains(v0, "slot"),
-            !mapContains(v3, "other"),
-            isEmpty(v0),
+            structuralEquals([mapContains(v0, "slot"), mapContains(v3, "other"), isEmpty(v0)], [false, false, true]),
             !isEmpty(v1)
     ])
 
@@ -585,10 +555,8 @@ fn overwriteChainCase() = {
             structuralEquals([intAt(prefixOverwritten, "p"), intAt(prefixOverwritten, "pa")], [1, 20]),
             structuralEquals([intAt(prefixOverwritten, "pat"), intAt(prefixOverwritten, "path")], [3, 4]),
             intAt(prefixes, "pa") == 2,
-            !mapContains(prefixes, "pathx"),
-            !mapContains(prefixes, "Path"),
-            !mapContains(prefixes, ""),
-            mapContains(prefixOverwritten, "pat"),
+            structuralEquals([mapContains(prefixes, "pathx"), mapContains(prefixes, "Path")], [false, false]),
+            structuralEquals([mapContains(prefixes, ""), mapContains(prefixOverwritten, "pat")], [false, true]),
             listLength(mapKeys(prefixOverwritten)) == 4,
             listContains(mapKeys(prefixOverwritten), "path"),
             !listContains(mapValues(prefixOverwritten), 2),
@@ -674,14 +642,10 @@ fn mergeAlgebraCase() = {
     checkAll("merged views and single-key override interaction", [
             listLength(mapKeys(lr)) == 6,
             listLength(mapValues(lr)) == 6,
-            listContains(mapKeys(lr), ""),
-            listContains(mapKeys(lr), " "),
-            listContains(mapKeys(lr), "k-k"),
-            listContains(mapKeys(lr), "K"),
-            !listContains(mapKeys(lr), "q"),
-            listContains(mapValues(lr), 10),
-            listContains(mapValues(lr), 50),
-            !listContains(mapValues(lr), 1),
+            structuralEquals([listContains(mapKeys(lr), ""), listContains(mapKeys(lr), " ")], [true, true]),
+            structuralEquals([listContains(mapKeys(lr), "k-k"), listContains(mapKeys(lr), "K")], [true, true]),
+            structuralEquals([listContains(mapKeys(lr), "q"), listContains(mapValues(lr), 10)], [false, true]),
+            structuralEquals([listContains(mapValues(lr), 50), listContains(mapValues(lr), 1)], [true, false]),
             listLength(mapKeys(lrThenThird)) == 7,
             listContains(mapKeys(lrThenThird), "q"),
             listContains(mapValues(lrThenThird), 700),
@@ -725,10 +689,8 @@ fn removalSweepCase() = {
     checkAll("each single removal drops exactly one binding", [
             structuralEquals([mapLength(base), mapLength(noA), mapLength(noB), mapLength(noC)], [5, 4, 4, 4]),
             structuralEquals([mapLength(noD), mapLength(noE)], [4, 4]),
-            !mapContains(noA, "a"),
-            !mapContains(noB, "b"),
-            !mapContains(noC, "c"),
-            !mapContains(noD, "d"),
+            structuralEquals([mapContains(noA, "a"), mapContains(noB, "b")], [false, false]),
+            structuralEquals([mapContains(noC, "c"), mapContains(noD, "d")], [false, false]),
             !mapContains(noE, "e"),
             structuralEquals([intAt(noA, "b"), intAt(noA, "e"), intAt(noB, "a"), intAt(noB, "c")], [2, 5, 1, 3]),
             structuralEquals([intAt(noC, "b"), intAt(noC, "d"), intAt(noD, "c"), intAt(noD, "e")], [2, 4, 3, 5]),
@@ -743,10 +705,8 @@ fn removalSweepCase() = {
     checkAll("removal is order-insensitive and drains to empty", [
             mapLength(abFirst) == 3,
             mapLength(baFirst) == 3,
-            !mapContains(abFirst, "a"),
-            !mapContains(abFirst, "b"),
-            !mapContains(baFirst, "a"),
-            !mapContains(baFirst, "b"),
+            structuralEquals([mapContains(abFirst, "a"), mapContains(abFirst, "b")], [false, false]),
+            structuralEquals([mapContains(baFirst, "a"), mapContains(baFirst, "b")], [false, false]),
             intAt(abFirst, "c") == (mapGet(baFirst, "c") ?: ((0 - 998) )),
             intAt(abFirst, "d") == (mapGet(baFirst, "d") ?: ((0 - 998) )),
             intAt(abFirst, "e") == (mapGet(baFirst, "e") ?: ((0 - 998) )),
@@ -865,8 +825,7 @@ fn nestedCollectionCase() = {
             isEmpty(thirdNested),
             structuralEquals([intAt(firstNested, "x"), intAt(firstNested, "y"), intAt(secondNested, "x")], [1, 2, 10]),
             intAt(secondNested, "z") == 30,
-            !mapContains(firstNested, "z"),
-            !mapContains(secondNested, "y"),
+            structuralEquals([mapContains(firstNested, "z"), mapContains(secondNested, "y")], [false, false]),
             !mapContains(thirdNested, "x"),
             intAt(firstNested, "x") != (mapGet(secondNested, "x") ?: ((0 - 998) )),
             structuralEquals([mapLength(pastEndNested), intAt(pastEndNested, "fallback")], [1, 0]),
@@ -901,10 +860,8 @@ fn nestedCollectionCase() = {
             (listGet(evensBack, 0) ?: ((0 - 999) )) == 2,
             (listGet(evensBack, 3) ?: ((0 - 999) )) == 8,
             (listGet(oddsBack, 3) ?: ((0 - 999) )) == ((0 - 999) ),
-            listContains(oddsBack, 5),
-            !listContains(oddsBack, 2),
-            listContains(evensBack, 8),
-            !listContains(evensBack, 1),
+            structuralEquals([listContains(oddsBack, 5), listContains(oddsBack, 2)], [true, false]),
+            structuralEquals([listContains(evensBack, 8), listContains(evensBack, 1)], [true, false]),
             listLength(listMissing) == 1,
             (listGet(listMissing, 0) ?: ((0 - 999) )) == 0,
             listLength(oddsGrown) == 4,
@@ -988,22 +945,14 @@ fn keyValueViewPairingCase() = {
     // Both views hold every binding and nothing extra. Reversing both preserves
     // the pairing, because reverse maps index i to index n-1-i on either side.
     checkAll("key and value views hold every binding once", [
-            listContains(keys, "a"),
-            listContains(keys, "b"),
-            listContains(keys, "c"),
-            listContains(keys, "d"),
-            listContains(keys, "e"),
-            listContains(keys, "f"),
-            !listContains(keys, "g"),
-            !listContains(keys, ""),
-            listContains(values, 1),
-            listContains(values, 2),
-            listContains(values, 3),
-            listContains(values, 4),
-            listContains(values, 5),
-            listContains(values, 6),
-            !listContains(values, 0),
-            !listContains(values, 7),
+            structuralEquals([listContains(keys, "a"), listContains(keys, "b")], [true, true]),
+            structuralEquals([listContains(keys, "c"), listContains(keys, "d")], [true, true]),
+            structuralEquals([listContains(keys, "e"), listContains(keys, "f")], [true, true]),
+            structuralEquals([listContains(keys, "g"), listContains(keys, "")], [false, false]),
+            structuralEquals([listContains(values, 1), listContains(values, 2)], [true, true]),
+            structuralEquals([listContains(values, 3), listContains(values, 4)], [true, true]),
+            structuralEquals([listContains(values, 5), listContains(values, 6)], [true, true]),
+            structuralEquals([listContains(values, 0), listContains(values, 7)], [false, false]),
             listLength(listReverse(keys)) == 6,
             (mapGet(m, (listGet(listReverse(keys), 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(listReverse(values), 0) ?: ((0 - 2) )),
             (mapGet(m, (listGet(listReverse(keys), 3) ?: "absent")) ?: ((0 - 1) )) == (listGet(listReverse(values), 3) ?: ((0 - 2) )),
@@ -1017,10 +966,8 @@ fn keyValueViewPairingCase() = {
             bumpedTotal == 51,
             (bumpedTotal - total ) == 30,
             structuralEquals([intAt(bumped, "c"), intAt(m, "c"), total], [33, 3, 21]),
-            listContains(bumpedValues, 33),
-            !listContains(bumpedValues, 3),
-            listContains(values, 3),
-            !listContains(values, 33),
+            structuralEquals([listContains(bumpedValues, 33), listContains(bumpedValues, 3)], [true, false]),
+            structuralEquals([listContains(values, 3), listContains(values, 33)], [true, false]),
             listContains(bumpedKeys, "c"),
             (mapGet(bumped, (listGet(bumpedKeys, 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 0) ?: ((0 - 2) )),
             (mapGet(bumped, (listGet(bumpedKeys, 1) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 1) ?: ((0 - 2) )),
@@ -1036,10 +983,8 @@ fn keyValueViewPairingCase() = {
             structuralEquals([listLength(trimmedKeys), listLength(trimmedValues), mapLength(trimmed)], [5, 5, 5]),
             trimmedTotal == 16,
             (total - trimmedTotal ) == 5,
-            !listContains(trimmedKeys, "e"),
-            !listContains(trimmedValues, 5),
-            listContains(trimmedKeys, "a"),
-            listContains(trimmedValues, 6),
+            structuralEquals([listContains(trimmedKeys, "e"), listContains(trimmedValues, 5)], [false, false]),
+            structuralEquals([listContains(trimmedKeys, "a"), listContains(trimmedValues, 6)], [true, true]),
             listLength(keys) == 6,
             listContains(keys, "e"),
             (mapGet(trimmed, (listGet(trimmedKeys, 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(trimmedValues, 0) ?: ((0 - 2) )),

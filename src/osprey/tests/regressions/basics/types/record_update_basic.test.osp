@@ -279,13 +279,9 @@ fn flowUpdateCase() = {
         structuralEquals([stepped.x, stepped.y, shifted.y, shifted.x, walked.x, walked.y], [1, 0, 10, 1, 3, 6]),
         structuralEquals([start.x, steeredPoint.x, steeredPoint.y], [0, 11, 6]),
         describe(start { y: 9, x: 8 }) == "8,9",
-        nestedAnonymousCapture(),
-        httpRecordLayout(),
-        resultRecordCase(),
-        genericResultRecordCase(),
-        anonymousResultRecordCase(),
-        resultTransportCase(),
-        genericUnionResultCase()
+        structuralEquals([nestedAnonymousCapture(), httpRecordLayout(), resultRecordCase()], [true, true, true]),
+        structuralEquals([genericResultRecordCase(), anonymousResultRecordCase()], [true, true]),
+        structuralEquals([resultTransportCase(), genericUnionResultCase()], [true, true])
     ])
 }
 

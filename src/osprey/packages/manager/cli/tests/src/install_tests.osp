@@ -140,8 +140,7 @@ module InstallTests {
             [sourceWeb(second)],
             [])
         checkAll("a corrupt installed tree is re-fetched", [
-            accepted(a),
-            startsWith(Fixture::line(a.report, 0), "= @demo/one"),
+            structuralEquals([accepted(a), startsWith(Fixture::line(a.report, 0), "= @demo/one")], [true, true]),
             startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
             a.fetched == "${sourcePath(second)}|"
         ])

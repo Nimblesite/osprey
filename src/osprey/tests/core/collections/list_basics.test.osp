@@ -91,14 +91,9 @@ fn constructionAndIdentityCase() = {
     // All three legacy contains results survive alongside additional positive and
     // endpoint checks ([BUILTIN-LIST-CONTAINS]).
     checkAll("contains behavior", [
-        listContains(a, 2),
-        !listContains(a, 99),
-        !listContains(List(), 1),
-        listContains(a, 1),
-        listContains(a, 3),
-        listContains(concatenated, 10),
-        listContains(concatenated, 20),
-        !listContains(prepended, 99)
+        structuralEquals([listContains(a, 2), listContains(a, 99), listContains(List(), 1)], [true, false, false]),
+        structuralEquals([listContains(a, 1), listContains(a, 3), listContains(concatenated, 10)], [true, true, true]),
+        structuralEquals([listContains(concatenated, 20), listContains(prepended, 99)], [true, false])
     ])
 }
 
@@ -141,24 +136,12 @@ fn iterationAndPersistenceCase() = {
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkAll("persistent generation and branch contents", [
-        !listContains(g0, 10),
-        listContains(g1, 10),
-        !listContains(g1, 20),
-        listContains(g2, 10),
-        listContains(g2, 20),
-        !listContains(g2, 30),
-        listContains(g5, 10),
-        listContains(g5, 50),
-        !listContains(g2, 50),
-        listContains(x, 999),
-        !listContains(x, 888),
-        listContains(y, 888),
-        !listContains(y, 999),
-        listContains(y2, 777),
-        !listContains(y, 777),
-        !listContains(g3, 999),
-        !listContains(g3, 888),
-        !listContains(g3, 777),
+        structuralEquals([listContains(g0, 10), listContains(g1, 10), listContains(g1, 20)], [false, true, false]),
+        structuralEquals([listContains(g2, 10), listContains(g2, 20), listContains(g2, 30)], [true, true, false]),
+        structuralEquals([listContains(g5, 10), listContains(g5, 50), listContains(g2, 50)], [true, true, false]),
+        structuralEquals([listContains(x, 999), listContains(x, 888), listContains(y, 888)], [true, false, true]),
+        structuralEquals([listContains(y, 999), listContains(y2, 777), listContains(y, 777)], [false, true, false]),
+        structuralEquals([listContains(g3, 999), listContains(g3, 888), listContains(g3, 777)], [false, false, false]),
         structuralEquals([intAt(g5, 4), intAt(y2, 3), intAt(y2, 4)], [50, 888, 777])
     ])
 }
@@ -260,12 +243,8 @@ fn indexingPatternsAndDispatchCase() = {
 
     // The old composite bare-isEmpty row is split and extended across derived lists.
     checkAll("receiver-directed isEmpty dispatch", [
-        isEmpty(empty),
-        !isEmpty(a),
-        isEmpty(""),
-        !isEmpty("abcd"),
-        !isEmpty(listReverse(a)),
-        isEmpty(listConcat(empty, empty)),
+        structuralEquals([isEmpty(empty), isEmpty(a), isEmpty(""), isEmpty("abcd")], [true, false, true, false]),
+        structuralEquals([isEmpty(listReverse(a)), isEmpty(listConcat(empty, empty))], [false, true]),
         !isEmpty(commands)
     ])
 
@@ -364,8 +343,7 @@ fn typedElementRetrievalCase() = {
         (listGet(["zero"] + words, 1) ?: "none") == "alpha",
         listLength(listAppend(words, "delta")) == 4,
         listLength(listPrepend(words, "zero")) == 4,
-        listContains(words, "beta"),
-        !listContains(words, "delta"),
+        structuralEquals([listContains(words, "beta"), listContains(words, "delta")], [true, false]),
         listContains(listAppend(words, "delta"), "delta"),
         (listGet(listReverse(listReverse(words)), 1) ?: "none") == "beta"
     ])
@@ -640,13 +618,9 @@ fn stringListPatternCase() = {
         contains(listGet(odd, 5) ?: "x", " "),
         toUpperCase(listGet(words, 1) ?: "x") == "BETA",
         toLowerCase(toUpperCase(listGet(words, 2) ?: "x")) == "gamma",
-        listContains(odd, ""),
-        listContains(odd, " "),
-        !listContains(odd, "A"),
-        listContains(dup, "same"),
-        listContains(dup, "other"),
-        !listContains(dup, "missing"),
-        !listContains(noWords, ""),
+        structuralEquals([listContains(odd, ""), listContains(odd, " "), listContains(odd, "A")], [true, true, false]),
+        structuralEquals([listContains(dup, "same"), listContains(dup, "other")], [true, true]),
+        structuralEquals([listContains(dup, "missing"), listContains(noWords, "")], [false, false]),
         structuralEquals([listLength(dup), listLength(odd), listLength(listReverse(dup))], [4, 6, 4]),
         (listGet(dup, 0) ?: "x") == (listGet(dup, 3) ?: "y"),
         (listGet(dup, 0) ?: "x") != (listGet(dup, 2) ?: "y"),
@@ -717,8 +691,7 @@ fn floatAndBoolListPatternCase() = {
         sumFloats([0.25, 0.25]) == 0.5,
         listLength(ratios) == 3,
         listLength(ratios + twoFloats) == 5,
-        listContains(ratios, 1.25),
-        !listContains(ratios, 1.5),
+        structuralEquals([listContains(ratios, 1.25), listContains(ratios, 1.5)], [true, false]),
         listContains(dupFloats, 2.0)
     ])
 
@@ -738,19 +711,12 @@ fn floatAndBoolListPatternCase() = {
 
     // A bool element keeps its own value through every binder and producer.
     checkAll("bool elements keep their value through binders and producers", [
-        headOr(noFlags, false) == false,
-        headOr(allOn, false),
-        !headOr(allOff, true),
-        headOr(mixed, false),
-        !headOr(listReverse(pairOn), true),
-        secondOr(mixed, true) == false,
-        secondOr(pairOn, true) == false,
-        secondOr([false, true], false),
-        secondOr(noFlags, true),
-        listContains(mixed, false),
-        listContains(mixed, true),
-        !listContains(allOn, false),
-        !listContains(allOff, true),
+        structuralEquals([headOr(noFlags, false), headOr(allOn, false), headOr(allOff, true)], [false, true, false]),
+        structuralEquals([headOr(mixed, false), headOr(listReverse(pairOn), true)], [true, false]),
+        structuralEquals([secondOr(mixed, true), secondOr(pairOn, true)], [false, false]),
+        structuralEquals([secondOr([false, true], false), secondOr(noFlags, true)], [true, true]),
+        structuralEquals([listContains(mixed, false), listContains(mixed, true)], [true, true]),
+        structuralEquals([listContains(allOn, false), listContains(allOff, true)], [false, false]),
         structuralEquals([listLength(mixed + allOff), countTrue(mixed + allOff), tailLength(mixed)], [6, 2, 2]),
         tailLength(noFlags) == ((0 - 1) ),
         listLength(listReverse(allOn)) == 3
@@ -971,10 +937,8 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList visits string elements in index order", [
         log == "alpha|beta|gamma|",
         length(log) == 17,
-        startsWith(log, "alpha|"),
-        endsWith(log, "gamma|"),
-        contains(log, "|beta|"),
-        !contains(log, "gamma|beta|"),
+        structuralEquals([startsWith(log, "alpha|"), endsWith(log, "gamma|")], [true, true]),
+        structuralEquals([contains(log, "|beta|"), contains(log, "gamma|beta|")], [true, false]),
         log == joinWords(words)
     ])
 
@@ -984,8 +948,7 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList visits bool elements in index order", [
         log == "alpha|beta|gamma|true|false|",
         length(log) == 28,
-        endsWith(log, "true|false|"),
-        !endsWith(log, "false|true|"),
+        structuralEquals([endsWith(log, "true|false|"), endsWith(log, "false|true|")], [true, false]),
         contains(log, "gamma|true|")
     ])
 
@@ -995,8 +958,7 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList visits int elements in index order", [
         log == "alpha|beta|gamma|true|false|7|8|9|",
         length(log) == 34,
-        endsWith(log, "7|8|9|"),
-        !contains(log, "9|8|7|"),
+        structuralEquals([endsWith(log, "7|8|9|"), contains(log, "9|8|7|")], [true, false]),
         contains(log, "false|7|")
     ])
 
@@ -1006,8 +968,7 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList visits record elements in index order", [
         log == "alpha|beta|gamma|true|false|7|8|9|left|right|",
         length(log) == 45,
-        endsWith(log, "left|right|"),
-        !endsWith(log, "right|left|"),
+        structuralEquals([endsWith(log, "left|right|"), endsWith(log, "right|left|")], [true, false]),
         contains(log, "9|left|")
     ])
 
@@ -1017,8 +978,7 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList follows the derived list, not its source", [
         log == "alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|",
         length(log) == 62,
-        endsWith(log, "gamma|beta|alpha|"),
-        startsWith(log, "alpha|beta|gamma|"),
+        structuralEquals([endsWith(log, "gamma|beta|alpha|"), startsWith(log, "alpha|beta|gamma|")], [true, true]),
         contains(log, "right|gamma|"),
         joinWords(words) == "alpha|beta|gamma|",
         joinWords(listReverse(words)) == "gamma|beta|alpha|"
@@ -1061,9 +1021,7 @@ fn typedIterationOrderCase() = {
         (range(1, 4) |> fold("", fn(acc, v) => "${acc}${v},")) == "1,2,3,",
         twice(0) == 0,
         twice(21) == 42,
-        isEvenValue(0),
-        !isEvenValue(7),
-        isEvenValue(8),
+        structuralEquals([isEvenValue(0), isEvenValue(7), isEvenValue(8)], [true, false, true]),
         weave(0, 5) == 5,
         weave(12, 3) == 123
     ])
@@ -1171,10 +1129,8 @@ fn boundaryIndexCase() = {
         tailLength(forty) == 39,
         structuralEquals([headOr(forty, "?"), secondOr(forty, "?"), lastWord(five)], ["s0", "s1", "s4"]),
         lastWord(ten) == "s4",
-        listContains(forty, "s3"),
-        !listContains(forty, "s5"),
-        listContains(five, "s0"),
-        !listContains(noWords, "s0"),
+        structuralEquals([listContains(forty, "s3"), listContains(forty, "s5")], [true, false]),
+        structuralEquals([listContains(five, "s0"), listContains(noWords, "s0")], [true, false]),
         (listGet(ten, 9) ?: "?") == "s4",
         (listGet(twenty, 19) ?: "?") == "s4",
         (listGet(twenty, 10) ?: "?") == "s0",

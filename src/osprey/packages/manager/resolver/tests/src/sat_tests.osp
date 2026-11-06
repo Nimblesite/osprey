@@ -145,10 +145,8 @@ module SatTests {
     ])
 
     fn oracle() = checkAll("every model is canonical and passes the oracle", [
-        passesOracle(2, [[1], [-2]]),
-        passesOracle(3, []),
-        passesOracle(2, [[1, 2]]),
-        passesOracle(4, [[2, 3, 4], [-4]]),
+        structuralEquals([passesOracle(2, [[1], [-2]]), passesOracle(3, [])], [true, true]),
+        structuralEquals([passesOracle(2, [[1, 2]]), passesOracle(4, [[2, 3, 4], [-4]])], [true, true]),
         passesOracle(3, [[-1, 2], [-2, 3], [1, 2, 3], [-3]]),
         passesOracle(3, [[1, 2], [2, 3]])
     ])

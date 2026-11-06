@@ -92,8 +92,7 @@ fn collectAllErrorsCase() = {
             containsAll(onlyMissingAt, ["#1 email is missing '@'", "REJECTED (1 errors"]),
             contains(scoreZero, "ACCEPTED (0 errors)"),
             contains(scoreHundred, "ACCEPTED (0 errors)"),
-            !contains(scoreZero, "REJECTED"),
-            !contains(scoreHundred, "REJECTED")
+            structuralEquals([contains(scoreZero, "REJECTED"), contains(scoreHundred, "REJECTED")], [false, false])
     ])
 
     checkAll("validation reports retain strings inside nested collections", [

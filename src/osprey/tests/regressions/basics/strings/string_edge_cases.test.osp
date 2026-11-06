@@ -199,11 +199,8 @@ fn stringEdgeCase() = {
     }
 
     checkAll("total string boundary values", [
-        isEmpty(""),
-        !isEmpty("x"),
-        startsWith("abc", ""),
-        endsWith("abc", ""),
-        !startsWith("hi", "hello"),
+        structuralEquals([isEmpty(""), isEmpty("x"), startsWith("abc", "")], [true, false, true]),
+        structuralEquals([endsWith("abc", ""), startsWith("hi", "hello")], [true, false]),
         !endsWith("hi", "hello"),
         structuralEquals([take("hi", (0 - 5) ), take("hi", 99), drop("hi", (0 - 5) )], ["", "hi", "hi"]),
         structuralEquals([drop("hi", 99), trim("   "), trim("")], ["", "", ""]),
@@ -429,11 +426,8 @@ fn escapeSequenceCase() = {
         length("\d") == 2,
         (byteAt("\d", 1) ?: 0) == 100,
         length("\s\q") == 4,
-        contains("\q", "\\"),
-        startsWith("\q", "\\"),
-        endsWith("\q", "q"),
-        !contains("\q", "\t"),
-        !isEmpty("\q"),
+        structuralEquals([contains("\q", "\\"), startsWith("\q", "\\"), endsWith("\q", "q")], [true, true, true]),
+        structuralEquals([contains("\q", "\t"), isEmpty("\q")], [false, false]),
         structuralEquals([toUpperCase("\q"), toLowerCase("\Q"), reverse("\q")], ["\Q", "\q", "q\\"]),
         length("path\to") == 6,
         (byteAt("path\to", 4) ?: 0) == 9,
@@ -458,9 +452,7 @@ fn escapeSequenceCase() = {
         join(lines("a\nb\nc"), "-") == "a-b-c",
         join(words("  x  y  "), "+") == "x+y",
         tabSplitCount == 2,
-        contains("a\nb", "\n"),
-        !contains("ab", "\n"),
-        startsWith("\tx", "\t"),
+        structuralEquals([contains("a\nb", "\n"), contains("ab", "\n"), startsWith("\tx", "\t")], [true, false, true]),
         endsWith("x\n", "\n")
     ])
 }
@@ -485,39 +477,23 @@ fn substringPositionCase() = {
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [
         containsAll(subject, ["ban", "nan", "ana", "banana", "b", "a", "n", ""]),
-        containsNone(subject, ["bananas", "xyz", "BAN", "bn", " "]),
-        contains("", ""),
-        !contains("", "a"),
-        contains("a", "a"),
-        !contains("a", "aa"),
-        contains("a b", " "),
-        contains(toLowerCase("BANANA"), "banana"),
+        structuralEquals([containsNone(subject, ["bananas", "xyz", "BAN", "bn", " "]), contains("", "")], [true, true]),
+        structuralEquals([contains("", "a"), contains("a", "a"), contains("a", "aa")], [false, true, false]),
+        structuralEquals([contains("a b", " "), contains(toLowerCase("BANANA"), "banana")], [true, true]),
         length(subject) == 6
     ])
 
     checkAll("startsWith and endsWith agree with contains at both ends", [
-        startsWith(subject, ""),
-        startsWith(subject, "b"),
-        startsWith(subject, "ba"),
-        startsWith(subject, "banana"),
-        !startsWith(subject, "banana!"),
-        !startsWith(subject, "anana"),
-        !startsWith(subject, "B"),
-        endsWith(subject, ""),
-        endsWith(subject, "a"),
-        endsWith(subject, "na"),
-        endsWith(subject, "ana"),
-        endsWith(subject, "banana"),
-        !endsWith(subject, "!banana"),
-        !endsWith(subject, "banan"),
-        !endsWith(subject, "A"),
-        startsWith("", ""),
-        !startsWith("", "a"),
-        endsWith("", ""),
-        !endsWith("", "a"),
-        startsWith("a", "a"),
-        endsWith("a", "a"),
-        containsAll(subject, ["ba", "na"])
+        structuralEquals([startsWith(subject, ""), startsWith(subject, "b")], [true, true]),
+        structuralEquals([startsWith(subject, "ba"), startsWith(subject, "banana")], [true, true]),
+        structuralEquals([startsWith(subject, "banana!"), startsWith(subject, "anana")], [false, false]),
+        structuralEquals([startsWith(subject, "B"), endsWith(subject, "")], [false, true]),
+        structuralEquals([endsWith(subject, "a"), endsWith(subject, "na")], [true, true]),
+        structuralEquals([endsWith(subject, "ana"), endsWith(subject, "banana")], [true, true]),
+        structuralEquals([endsWith(subject, "!banana"), endsWith(subject, "banan")], [false, false]),
+        structuralEquals([endsWith(subject, "A"), startsWith("", ""), startsWith("", "a")], [false, true, false]),
+        structuralEquals([endsWith("", ""), endsWith("", "a"), startsWith("a", "a")], [true, false, true]),
+        structuralEquals([endsWith("a", "a"), containsAll(subject, ["ba", "na"])], [true, true])
     ])
 
     // The reported index must reconstruct the needle through substring/take/drop.
@@ -598,10 +574,8 @@ fn caseFoldingCase() = {
 
     checkAll("case folding composes with the search and slicing builtins", [
         contains(toLowerCase("HELLO WORLD"), "world"),
-        !contains("HELLO WORLD", "world"),
-        startsWith(toLowerCase("GET /x"), "get "),
-        !startsWith("GET /x", "get "),
-        endsWith(toUpperCase("image.png"), ".PNG"),
+        structuralEquals([contains("HELLO WORLD", "world"), startsWith(toLowerCase("GET /x"), "get ")], [false, true]),
+        structuralEquals([startsWith("GET /x", "get "), endsWith(toUpperCase("image.png"), ".PNG")], [false, true]),
         !endsWith("image.png", ".PNG"),
         (indexOf(toUpperCase("banana"), "NA") ?: missing) == 2,
         (indexOf(toLowerCase("BANANA"), "na") ?: missing) == 2,
@@ -649,11 +623,8 @@ fn concatLengthCase() = {
         length(left + middle) == ((length(left) + length(middle)) ),
         length(joined) == ((((length(left) + length(middle)) ) + length(right)) ),
         length("" + "") == 0,
-        isEmpty("" + ""),
-        !isEmpty(joined),
-        startsWith(joined, left),
-        endsWith(joined, right),
-        contains(joined, middle)
+        structuralEquals([isEmpty("" + ""), isEmpty(joined), startsWith(joined, left)], [true, false, true]),
+        structuralEquals([endsWith(joined, right), contains(joined, middle)], [true, true])
     ])
 
     // take(s, n) + drop(s, n) == s must hold at, inside and outside both ends.
@@ -773,14 +744,10 @@ fn interpolationCompositionCase() = {
         structuralEquals([step0, step1, step2, step3], ["", "red|", "red|green|", "red|green|blue|"]),
         step4 == "red|green|blue|?|",
         structuralEquals([length(step1), length(step2), length(step3), length(step4)], [4, 10, 15, 17]),
-        startsWith(step4, step3),
-        startsWith(step3, step2),
-        startsWith(step2, step1),
-        !startsWith(step1, step2),
-        endsWith(step4, "?|"),
-        endsWith(step3, "blue|"),
-        contains(step3, "green|"),
-        !contains(step2, "blue"),
+        structuralEquals([startsWith(step4, step3), startsWith(step3, step2)], [true, true]),
+        structuralEquals([startsWith(step2, step1), startsWith(step1, step2)], [true, false]),
+        structuralEquals([endsWith(step4, "?|"), endsWith(step3, "blue|")], [true, true]),
+        structuralEquals([contains(step3, "green|"), contains(step2, "blue")], [true, false]),
         step1 + "green|" == step2,
         step2 + "blue|" == step3,
         (indexOf(step3, "green") ?: 0) == 4,

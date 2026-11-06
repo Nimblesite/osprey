@@ -421,9 +421,7 @@ escapeSequenceCase () =
         length "\d" == 2,
         (byteAt "\d" 1 ?: 0) == 100,
         length "\s\q" == 4,
-        contains "\q" "\\",
-        startsWith "\q" "\\",
-        endsWith "\q" "q",
+        structuralEquals [contains "\q" "\\", startsWith "\q" "\\", endsWith "\q" "q"] [true, true, true],
         !(contains "\q" "\t"),
         !(isEmpty "\q"),
         structuralEquals [toUpperCase "\q", toLowerCase "\Q", reverse "\q"] ["\Q", "\q", "q\\"],
@@ -474,8 +472,7 @@ substringPositionCase () =
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll "contains finds a needle at the start, middle, end and nowhere" [
         containsAll subject ["ban", "nan", "ana", "banana", "b", "a", "n", ""],
-        containsNone subject ["bananas", "xyz", "BAN", "bn", " "],
-        contains "" "",
+        structuralEquals [containsNone subject ["bananas", "xyz", "BAN", "bn", " "], contains "" ""] [true, true],
         !(contains "" "a"),
         contains "a" "a",
         !(contains "a" "aa"),
@@ -485,18 +482,13 @@ substringPositionCase () =
     ]
 
     checkAll "startsWith and endsWith agree with contains at both ends" [
-        startsWith subject "",
-        startsWith subject "b",
-        startsWith subject "ba",
+        structuralEquals [startsWith subject "", startsWith subject "b", startsWith subject "ba"] [true, true, true],
         startsWith subject "banana",
         !(startsWith subject "banana!"),
         !(startsWith subject "anana"),
         !(startsWith subject "B"),
-        endsWith subject "",
-        endsWith subject "a",
-        endsWith subject "na",
-        endsWith subject "ana",
-        endsWith subject "banana",
+        structuralEquals [endsWith subject "", endsWith subject "a", endsWith subject "na"] [true, true, true],
+        structuralEquals [endsWith subject "ana", endsWith subject "banana"] [true, true],
         !(endsWith subject "!banana"),
         !(endsWith subject "banan"),
         !(endsWith subject "A"),
@@ -504,9 +496,7 @@ substringPositionCase () =
         !(startsWith "" "a"),
         endsWith "" "",
         !(endsWith "" "a"),
-        startsWith "a" "a",
-        endsWith "a" "a",
-        containsAll subject ["ba", "na"]
+        structuralEquals [startsWith "a" "a", endsWith "a" "a", containsAll subject ["ba", "na"]] [true, true, true]
     ]
 
     // The reported index must reconstruct the needle through substring/take/drop.
@@ -639,9 +629,7 @@ concatLengthCase () =
         length ("" + "") == 0,
         isEmpty ("" + ""),
         !(isEmpty joined),
-        startsWith joined left,
-        endsWith joined right,
-        contains joined middle
+        structuralEquals [startsWith joined left, endsWith joined right, contains joined middle] [true, true, true]
     ]
 
     // take s n + drop s n == s must hold at, inside and outside both ends.
@@ -759,13 +747,9 @@ interpolationCompositionCase () =
         structuralEquals [step0, step1, step2, step3] ["", "red|", "red|green|", "red|green|blue|"],
         step4 == "red|green|blue|?|",
         structuralEquals [length step1, length step2, length step3, length step4] [4, 10, 15, 17],
-        startsWith step4 step3,
-        startsWith step3 step2,
-        startsWith step2 step1,
+        structuralEquals [startsWith step4 step3, startsWith step3 step2, startsWith step2 step1] [true, true, true],
         !(startsWith step1 step2),
-        endsWith step4 "?|",
-        endsWith step3 "blue|",
-        contains step3 "green|",
+        structuralEquals [endsWith step4 "?|", endsWith step3 "blue|", contains step3 "green|"] [true, true, true],
         !(contains step2 "blue"),
         (step1 + "green|") == step2,
         (step2 + "blue|") == step3,

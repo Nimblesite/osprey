@@ -207,8 +207,7 @@ fn genericValueCase() = {
     checkAll("a parameter never changes calls outside its own scope", [
             shadowsBuiltin(3) == 3,
             shadowsBuiltin("keep") == "keep",
-            builtinAfterShadow(),
-            contains("alpha", "ph"),
+            structuralEquals([builtinAfterShadow(), contains("alpha", "ph")], [true, true]),
             !contains("alpha", "zz"),
             applyTwo(curriedSum, 20, 22) == 42
     ])
