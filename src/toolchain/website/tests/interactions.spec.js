@@ -96,12 +96,14 @@ test.describe("homepage flight and source examples", () => {
     const blocks = page.locator("pre > code.language-osprey, pre > code.language-python, pre > code.language-osprey-ml");
     const tap = (names) => `${names.map((name, i) => `ok ${i + 1} - ${name}\n`).join("")}1..${names.length}\n# tests=${names.length} passed=${names.length} failed=0 skipped=0\n`;
     const [pair, trio] = [tap(["a full disk rolls the manifest back", "a healthy disk writes manifest then lock"]), tap(["a healthy disk installs", "a full disk rolls the manifest back", "a read-only disk changes nothing"])];
-    const outputs = [pair, null, trio, pair, "version = 3\n", "Submitted / Cancelled\n", "30\n"];
+    const outputs = [pair, null, trio, pair, "version = 3\n", "Submitted / Cancelled\n", "30\n", "apple $2, pear $2\napple? pear? apple $3, pear $3\nno price for apple\n",
+      { rejects: "`Choose.flip` is declared `many`, but a re-entrant continuation does not exist" }, { rejects: "handler for `Choose.flip` may resume more than once, but the handled expression requires non-replayable effect `Email.send`" }];
     await expect(blocks).toHaveCount(outputs.length);
     for (let i = 0; i < outputs.length; i++) {
       const [lang, source] = [await blocks.nth(i).getAttribute("class"), await blocks.nth(i).textContent()];
       const extension = lang.includes("osprey-ml") ? "ospml" : lang.includes("python") ? "py" : "osp";
       if (outputs[i] === null) expect(source).toBe(require("../src/_data/effectsTestExample.js").excerpt);
+      else if (outputs[i].rejects) expect(await exampleResult(source, testInfo.outputPath(`effects-${i}.osp`))).toContain(outputs[i].rejects);
       else expect(await executeExample(source, testInfo.outputPath(`effects-${i}.${extension}`))).toBe(outputs[i]);
       if (i === 0) expect(await exampleResult(source.replace("memory(true)(upgrade)", "upgrade()"), testInfo.outputPath("effects-unhandled.osp"))).toContain("unhandled effect operations at program entry: Files.read, Files.write");
     }

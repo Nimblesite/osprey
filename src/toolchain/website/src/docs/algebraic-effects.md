@@ -332,6 +332,100 @@ print(answer)
 
 Integer arithmetic performs the built-in `Arith` effect on overflow and division by zero, so you choose the policy. For example, `handler Arith { overflow _ _ _ wrapped => wrapped }` wraps. See [arithmetic effects](/spec/0037-arithmeticeffects/).
 
+## Resuming and multishot
+
+When code performs a `control` operation, its handler receives the rest of the computation, called the continuation. `resume(value)` runs that rest with `value` as the result of `perform`, and returns whatever the rest produces. An arm can therefore continue the caller, add to its result, or not continue it at all:
+
+```osprey
+effect Shop { control price: fn(string) -> string }
+
+fn basket() = {
+    let apple = perform Shop.price("apple")
+    let pear = perform Shop.price("pear")
+    "apple ${apple}, pear ${pear}"
+}
+
+let listed = handler Shop { price _ => resume("$2") }
+let logged = handler Shop { price item => "${item}? ${resume("$3")}" }
+let closed = handler Shop { price item => "no price for ${item}" }
+
+print("${listed(basket)}\n${logged(basket)}\n${closed(basket)}")
+```
+
+```text
+apple $2, pear $2
+apple? pear? apple $3, pear $3
+no price for apple
+```
+
+- `listed` answers and resumes, so `basket` runs to the end.
+- `logged` adds to what `resume` returns. Handlers are deep: the second `perform` is answered by the same handler while the first `resume` is still running, so both prefixes appear before the basket.
+- `closed` never resumes. `basket` stops at the first price, the arm's string is the whole answer, and the pear is never asked about.
+
+{{ capture("/assets/images/guides/effects-resume.png", "The Playground running the Shop example: listed, logged and closed handlers print apple $2, pear $2, then apple? pear? apple $3, pear $3, then no price for apple.", "The resume example run in the Playground: three handlers, three answers.", 1440, 780) }}
+
+### How many times an arm may resume
+
+A control operation declares how many times its continuation may be resumed. The compiler checks every arm against that declaration.
+
+| Declaration | Resumes | Today |
+|---|---|---|
+| `control price` or `control once price` | At most once | Works on native targets |
+| `control many flip` | Any number of times (multishot) | Planned; rejected at compile time |
+| `control abort quit` | Never | Planned; rejected until an abandoned region releases its frames |
+
+`once` counts per path through the arm. An arm may retry work, for example calling a payment gateway again, and resume on whichever `match` branch succeeds; it may also resume zero times. Two `resume` calls on the same path are a compile error: ``handler arm `Choose.flip` may resume more than once; `Choose.flip` is declared `once` ``. In Python flavor, decorate the operation with `@control`, then `@once`, `@many` or `@replayable`.
+
+### Multishot: `control many` (planned)
+
+A `many` arm can resume the same continuation more than once. Each resumption runs the rest of the computation from the same point with its own state, and returns that branch's answer. One handler can then explore every choice:
+
+```osprey
+effect Choose { control many flip: fn() -> bool }
+
+fn meal() = {
+    let main = if perform Choose.flip() { "fish" } else { "pasta" }
+    let side = if perform Choose.flip() { "salad" } else { "chips" }
+    "${main} + ${side}"
+}
+
+let every = handler Choose { flip => "${resume(true)} | ${resume(false)}" }
+
+print(every(meal))
+```
+
+Under the [specification](/spec/0017-algebraiceffects/), this prints `fish + salad | fish + chips | pasta + salad | pasta + chips`. Native `resume` is currently a single suspended stack that cannot be copied, so the compiler rejects the program instead of running an incorrect single-resume version:
+
+```text
+9:29: `Choose.flip` is declared `many`, but a re-entrant continuation does not exist: native resume is one suspended stack, switched to and never switched back (docs/plans/0016-algebraic-effects-and-handlers.md). Declare `Choose.flip` `once`
+```
+
+The safety rules for multishot are already enforced. Resuming twice reruns the rest of the computation, so a `many` handler rejects a region that performs anything that is not safe to repeat:
+
+```osprey
+effect Choose { control many flip: fn() -> bool }
+effect Email { send: fn(string) -> Unit }
+
+fn order() = {
+    let main = if perform Choose.flip() { "fish" } else { "pasta" }
+    perform Email.send("ordered ${main}")
+    main
+}
+
+let picks = {
+    handle Email { send body => print(body) }
+    handle Choose { flip => "${resume(true)} | ${resume(false)}" }
+    order()
+}
+print(picks)
+```
+
+```text
+12:20: handler for `Choose.flip` may resume more than once, but the handled expression requires non-replayable effect `Email.send`; the whole handled expression's row is read, so move the non-replayable work outside the region
+```
+
+Mark an operation `replayable` when repeating it is harmless. A `many` arm also cannot capture a `mut` binding; it combines branches through the values `resume` returns. A continuation cannot span a spawned fiber, because the resumptions would have no order. Reusable continuations are tracked in [plan 0016](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0016-algebraic-effects-and-handlers.md).
+
 ## Where effects are used
 
 - [Talon Bank](/docs/web-apps/#algebraic-effects-what-runs-where) uses handlers for server storage and auditing, and for its browser boundary.
