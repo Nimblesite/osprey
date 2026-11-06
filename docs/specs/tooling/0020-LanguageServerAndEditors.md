@@ -107,6 +107,14 @@ absolute paths, file URIs, or paths relative to each workspace folder. Multiple
 folders are supported. Open buffers are included in every enabled scope, and
 unsaved text takes precedence over disk. `openFiles` performs no background scan.
 
+Diagnostics never delay a request. Opened and edited buffers, then their
+siblings, then the repository sweep are checked on a background thread beside
+the request loop, and each project root has its own analysis lock: a hover, a
+completion or a definition is answered while files are still being checked. A
+client that advertises `window.workDoneProgress` sees "Checking Osprey files"
+progress begin when files are queued and end once every queued file has been
+published.
+
 Scope settings apply live without a restart. Startup, workspace-folder changes,
 and watched source/manifest changes refresh findings; shrinking the scope,
 closing an excluded buffer, deleting a file, or disabling diagnostics clears

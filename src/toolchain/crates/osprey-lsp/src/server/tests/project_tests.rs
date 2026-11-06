@@ -254,7 +254,7 @@ async fn manifest_changes_refresh_unchanged_buffer_diagnostics() {
     let file = root.join("src/main.ospml");
     std::fs::write(&file, source).expect("entry");
     let uri = lspkit_server::uri::path_to_uri(&file).expect("URI");
-    let mut h = Harness::start();
+    let mut h = Harness::start_with_progress().await;
     let initial = h
         .open_at(&uri, source)
         .await
@@ -270,22 +270,9 @@ async fn manifest_changes_refresh_unchanged_buffer_diagnostics() {
         json!({"textDocument":{"uri":uri,"version":2},"contentChanges":[{"text":source}]}),
     )
     .await;
-    // A request is a barrier even if the diagnostics bus coalesces an unchanged
-    // (stale) report. Do not wait forever for a notification in that case.
-    h.send(&Message::request(
-        RequestId::Number(901),
-        "initialize",
-        json!({}),
-    ))
-    .await;
-    let mut reports = Vec::new();
-    loop {
-        let message = h.read_message().await;
-        if message.id == Some(RequestId::Number(901)) {
-            break;
-        }
-        reports.push(message.params.expect("diagnostics notification"));
-    }
+    // Diagnostics are published beside requests: wait until every queued file
+    // is published. The bus may coalesce an unchanged (stale) report.
+    let reports = settled(&mut h, 901).await;
     assert!(
         reports
             .iter()
@@ -373,11 +360,11 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         .request(
             400,
             "initialize",
-            json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}]}),
+            with_progress(json!({"workspaceFolders": [{"uri": crate::workspace::uri_of(&root), "name": "repo"}]})),
         )
         .await;
     h.notify("initialized", json!({})).await;
-    let reports = scope_reports(&mut h, 401).await;
+    let reports = settled(&mut h, 401).await;
     for folder in ["one", "two", "other"] {
         assert!(
             reports.iter().any(|p| p["uri"] == uri(folder)
@@ -394,7 +381,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"settings":{"osprey":{"diagnostics":{"scope":"roots", "roots":["one", "two"]}}}}),
     )
     .await;
-    let reports = scope_reports(&mut h, 402).await;
+    let reports = settled(&mut h, 402).await;
     assert!(
         reports
             .iter()
@@ -407,7 +394,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"changes":[{"uri":uri("two"),"type":2}]}),
     )
     .await;
-    let reports = scope_reports(&mut h, 403).await;
+    let reports = settled(&mut h, 403).await;
     assert!(
         reports
             .iter()
@@ -419,7 +406,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"settings":{"osprey":{"diagnostics":{"scope":"openFiles"}}}}),
     )
     .await;
-    let reports = scope_reports(&mut h, 404).await;
+    let reports = settled(&mut h, 404).await;
     assert!(
         reports
             .iter()
@@ -437,7 +424,7 @@ async fn repository_diagnostics_default_and_live_scope_roots(
         json!({"textDocument":{"uri":uri("one")}}),
     )
     .await;
-    let reports = scope_reports(&mut h, 405).await;
+    let reports = settled(&mut h, 405).await;
     assert!(
         reports
             .iter()

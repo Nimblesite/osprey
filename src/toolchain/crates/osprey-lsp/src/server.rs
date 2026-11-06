@@ -146,15 +146,15 @@ async fn notify(
             scope::lock(engine).folders_changed(params.get("event").unwrap_or(&Value::Null));
             scope::refresh(engine, bus).await;
         }
-        "textDocument/didOpen" => did_open(engine, bus, &params).await,
-        "textDocument/didChange" => did_change(engine, bus, &params).await,
+        "textDocument/didOpen" => did_open(engine, &params),
+        "textDocument/didChange" => did_change(engine, &params),
         "textDocument/didClose" => {
             if let Some(uri) = wire::doc_uri(&params) {
                 let doc = DocumentUri::new(uri);
                 engine.vfs().close(&doc);
                 scope::lock(engine).opened(doc.as_str(), false);
                 engine.project_cache.opened(doc.as_str(), false);
-                publish_siblings(engine, bus, &doc).await;
+                scope::publish_siblings(engine, bus, &doc).await;
                 scope::refresh(engine, bus).await;
             }
         }
@@ -170,7 +170,7 @@ async fn notify(
     }
 }
 
-async fn did_open(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, params: &Value) {
+fn did_open(engine: &OspreyEngine, params: &Value) {
     let (Some(uri), Some(text)) = (wire::doc_uri(params), wire::open_text(params)) else {
         return;
     };
@@ -182,11 +182,10 @@ async fn did_open(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, pa
     );
     engine.project_cache.opened(doc.as_str(), true);
     scope::lock(engine).opened(doc.as_str(), true);
-    publish(engine, bus, doc.clone()).await;
-    publish_siblings(engine, bus, &doc).await;
+    scope::queue_edit(engine, &doc);
 }
 
-async fn did_change(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, params: &Value) {
+fn did_change(engine: &OspreyEngine, params: &Value) {
     let Some(uri) = wire::doc_uri(params) else {
         return;
     };
@@ -194,38 +193,13 @@ async fn did_change(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, 
     apply_changes(engine.vfs(), &doc, params);
     engine.project_cache.opened(doc.as_str(), true);
     scope::lock(engine).opened(doc.as_str(), true);
-    publish(engine, bus, doc.clone()).await;
-    publish_siblings(engine, bus, &doc).await;
+    scope::queue_edit(engine, &doc);
 }
 
 /// Live sibling changes can make a formerly redundant annotation necessary.
 /// Refresh other open project files on open/change/close, so their diagnostics
 /// agree with the current-program proof used by actions.
 /// Implements [LSP-CODE-ACTIONS-ANNOTATIONS].
-async fn publish_siblings(
-    engine: &OspreyEngine,
-    bus: &lspkit_server::DiagnosticsBus,
-    changed: &DocumentUri,
-) {
-    for doc in diagnostic_documents(engine) {
-        if doc != *changed
-            && engine
-                .project_cache
-                .affected(doc.as_str(), changed.as_str())
-        {
-            publish(engine, bus, doc).await;
-        }
-    }
-}
-
-fn diagnostic_documents(engine: &OspreyEngine) -> Vec<DocumentUri> {
-    let mut docs = scope::lock(engine).tracked();
-    docs.extend(engine.project_cache.documents());
-    docs.sort_by(|a, b| a.as_str().cmp(b.as_str()));
-    docs.dedup();
-    docs
-}
-
 /// Apply a `didChange`. A conformant client sends either a single full-document
 /// replacement (no range) or a batch of incremental edits — never both. Handling
 /// them as separate paths avoids the version collision that would arise from an
@@ -255,14 +229,20 @@ async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc
         return;
     }
     scope::lock(engine).remember(doc.as_str());
-    let snapshot = engine
-        .report(Query::Diagnostics(doc.clone()), CancellationToken::new())
-        .await;
-    if let Ok(snap) = snapshot {
-        if let Report::Diagnostics(diagnostics) = snap.data {
-            bus.publish(DiagnosticsBatch::new(doc, snap.generation, diagnostics))
-                .await;
+    if let Some(batch) = diagnosed(engine, doc).await {
+        bus.publish(batch).await;
+    }
+}
+
+/// The diagnostics of `doc`, ready to publish.
+async fn diagnosed(engine: &OspreyEngine, doc: DocumentUri) -> Option<DiagnosticsBatch> {
+    let query = Query::Diagnostics(doc.clone());
+    let snap = engine.report(query, CancellationToken::new()).await.ok()?;
+    match snap.data {
+        Report::Diagnostics(diagnostics) => {
+            Some(DiagnosticsBatch::new(doc, snap.generation, diagnostics))
         }
+        _ => None,
     }
 }
 

@@ -153,9 +153,9 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
     let a_uri = crate::workspace::uri_of(&a).ok_or("a URI")?;
     let b_uri = crate::workspace::uri_of(&b).ok_or("b URI")?;
     let mut h = Harness::start();
-    let _ = h.request(500, "initialize", json!({"rootUri":a_uri,"initializationOptions":{"diagnostics":{"scope":"roots","roots":[a,b_uri]}}})).await;
+    let _ = h.request(500, "initialize", with_progress(json!({"rootUri":a_uri,"initializationOptions":{"diagnostics":{"scope":"roots","roots":[a,b_uri]}}}))).await;
     h.notify("initialized", json!({})).await;
-    let reports = scope_reports(&mut h, 501).await;
+    let reports = settled(&mut h, 501).await;
     assert!(
         reports.iter().any(|p| p["uri"] == warning_uri
             && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))
@@ -184,7 +184,7 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
         json!({"changes":[{"uri":warning_uri,"type":2}]}),
     )
     .await;
-    let reports = scope_reports(&mut h, 502).await;
+    let reports = settled(&mut h, 502).await;
     assert!(
         !reports
             .iter()
@@ -193,7 +193,7 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
     );
     h.notify("textDocument/didClose", text_doc(&warning_uri))
         .await;
-    let reports = scope_reports(&mut h, 503).await;
+    let reports = settled(&mut h, 503).await;
     assert!(
         reports.iter().any(|p| p["uri"] == warning_uri
             && p.pointer("/diagnostics/0/code") == Some(&json!("redundant-annotation"))),
@@ -205,7 +205,7 @@ async fn diagnostic_scope_initial_roots_unsaved_python_and_workspace_changes(
         json!({"changes":[{"uri":python_uri,"type":3}]}),
     )
     .await;
-    let reports = scope_reports(&mut h, 504).await;
+    let reports = settled(&mut h, 504).await;
     assert!(
         reports
             .iter()
@@ -224,7 +224,7 @@ async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &st
         json!({"settings":{"osprey":{"diagnostics":{"enabled":false}}}}),
     )
     .await;
-    let reports = scope_reports(h, 505).await;
+    let reports = settled(h, 505).await;
     assert!(
         reports
             .iter()
@@ -236,7 +236,7 @@ async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &st
         json!({"settings":{"osprey":{"diagnostics":{"scope":"repository"}}}}),
     )
     .await;
-    let reports = scope_reports(h, 506).await;
+    let reports = settled(h, 506).await;
     assert!(
         reports
             .iter()
@@ -249,7 +249,7 @@ async fn scope_disable_and_remove(h: &mut Harness, warning_uri: &str, a_uri: &st
         json!({"event":{"removed":[{"uri":a_uri}],"added":[{"uri":b_uri}]}}),
     )
     .await;
-    let reports = scope_reports(h, 507).await;
+    let reports = settled(h, 507).await;
     assert!(
         reports
             .iter()
@@ -294,9 +294,9 @@ async fn repository_scope_expands_git_parent_and_initial_open_only_does_not_scan
         (610, json!({"diagnostics":{"scope":"openFiles"}}), false),
     ] {
         let mut h = Harness::start();
-        let _ = h.request(id, "initialize", json!({"rootUri":crate::workspace::uri_of(&root.join("nested")), "initializationOptions":options})).await;
+        let _ = h.request(id, "initialize", with_progress(json!({"rootUri":crate::workspace::uri_of(&root.join("nested")), "initializationOptions":options}))).await;
         h.notify("initialized", json!({})).await;
-        let reports = scope_reports(&mut h, id + 1).await;
+        let reports = settled(&mut h, id + 1).await;
         assert_eq!(
             reports.iter().any(|p| p["uri"] == file_uri
                 && p.pointer("/diagnostics/0/code") == Some(&json!("type-error"))),
@@ -306,4 +306,78 @@ async fn repository_scope_expands_git_parent_and_initial_open_only_does_not_scan
         h.shutdown_and_exit().await;
     }
     std::fs::remove_dir_all(root).expect("fixture cleanup");
+}
+
+const SWEPT_FILES: usize = 120;
+
+/// A hover is answered while the repository sweep is still checking files, so
+/// a large workspace never leaves the editor's hover on "Loading…"; the sweep
+/// still publishes every file and reports its progress [LSP-DIAGNOSTICS-SCOPE].
+#[tokio::test]
+async fn requests_are_answered_before_the_workspace_sweep_finishes(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("osprey sweep {}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    std::fs::create_dir_all(&root)?;
+    for n in 0..SWEPT_FILES {
+        std::fs::write(root.join(format!("f{n}.osp")), SRC)?;
+    }
+    let opened = crate::workspace::uri_of(&root.join("f0.osp")).ok_or("opened URI")?;
+    let folder = crate::workspace::uri_of(&root).ok_or("folder URI")?;
+    let mut h = Harness::start();
+    let _ = h
+        .request(
+            700,
+            "initialize",
+            with_progress(json!({"workspaceFolders":[{"uri":folder,"name":"repo"}]})),
+        )
+        .await;
+    h.notify("initialized", json!({})).await;
+    h.notify(
+        "textDocument/didOpen",
+        json!({"textDocument":{"uri":opened,"version":1,"text":SRC}}),
+    )
+    .await;
+    h.send(&Message::request(
+        RequestId::Number(701),
+        "textDocument/hover",
+        position_params(&opened, 0, 3),
+    ))
+    .await;
+    let mut published = std::collections::BTreeSet::new();
+    let (mut began, mut hover_at) = (false, None);
+    loop {
+        let message = tokio::time::timeout(std::time::Duration::from_secs(60), h.read_message())
+            .await
+            .map_err(|elapsed| format!("the sweep reports its end: {elapsed}"))?;
+        began |= sweep_progress(&message, "begin");
+        if message.id == Some(RequestId::Number(701)) {
+            assert_at(
+                message.result.as_ref().ok_or("hover result")?,
+                "/contents/kind",
+                "markdown",
+            );
+            hover_at = Some(published.len());
+        }
+        if let Some(uri) = message.params.as_ref().and_then(|p| p["uri"].as_str()) {
+            let _ = published.insert(uri.to_string());
+        }
+        if sweep_progress(&message, "end") {
+            break;
+        }
+    }
+    assert!(began, "the sweep reports when it begins");
+    let hover_at = hover_at.ok_or("hover answered before the sweep ended")?;
+    assert!(
+        hover_at < SWEPT_FILES,
+        "hover waited for {hover_at} of {SWEPT_FILES} files"
+    );
+    assert_eq!(
+        published.len(),
+        SWEPT_FILES,
+        "every workspace file is published"
+    );
+    h.shutdown_and_exit().await;
+    std::fs::remove_dir_all(root)?;
+    Ok(())
 }
