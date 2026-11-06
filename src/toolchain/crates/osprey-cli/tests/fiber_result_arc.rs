@@ -132,23 +132,11 @@ let observed = await(spawn checked(9223372036854775807))
 print(toString(observed))
 ";
 
-    let output = run_arc(source)?;
-
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        "Error(integer overflow)\n"
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(())
+    assert_arc_clean(
+        source,
+        Some("Error(integer overflow)\n"),
+        "no object may outlive the program",
+    )
 }
 
 #[test]
@@ -163,23 +151,11 @@ let second = await(task)
 print(toString(second))
 ";
 
-    let output = run_arc(source)?;
-
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        "Success(42)\nSuccess(42)\n"
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(())
+    assert_arc_clean(
+        source,
+        Some("Success(42)\nSuccess(42)\n"),
+        "no object may outlive the program",
+    )
 }
 
 #[test]
@@ -194,23 +170,11 @@ let second = await(task)
 print(second)
 "#;
 
-    let output = run_arc(source)?;
-
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        String::from_utf8_lossy(&output.stdout),
-        "hello 7\nhello 7\n"
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(())
+    assert_arc_clean(
+        source,
+        Some("hello 7\nhello 7\n"),
+        "no object may outlive the program",
+    )
 }
 
 #[test]
@@ -242,19 +206,7 @@ test("map branch scalar", fn() => checkAll("map branch scalar", [
 ]))
 "#;
 
-    let output = run_arc(source)?;
-
-    assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    Ok(())
+    assert_arc_clean(source, None, "no object may outlive the program")
 }
 
 #[test]
@@ -277,17 +229,22 @@ test("sibling owners", fn() => checkAll("sibling owners", [
 ]))
 "#;
 
-    let output = run_arc(source)?;
+    assert_arc_clean(source, None, "no object may outlive the program")
+}
 
+/// Run `source` under ARC and assert it succeeds, prints `stdout` when given,
+/// and ends with no live objects; `why` says what a survivor would mean.
+fn assert_arc_clean(source: &str, stdout: Option<&str>, why: &str) -> io::Result<()> {
+    let output = run_arc(source)?;
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr={stderr}");
+    if let Some(expected) = stdout {
+        assert_eq!(String::from_utf8_lossy(&output.stdout), expected);
+    }
     assert!(
-        output.status.success(),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
-        "stderr={}",
-        String::from_utf8_lossy(&output.stderr)
+        stderr.contains("[osp-arc] exit: 0 live objects"),
+        "{why}: {}",
+        arc_census(&stderr)
     );
     Ok(())
 }
@@ -320,18 +277,12 @@ let taken = recv(queue)
 print(toString(listLength(taken)))
 ";
 
-    let output = run_arc(source)?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert!(output.status.success(), "stderr={stderr}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "3\n");
-    assert!(
-        stderr.contains("[osp-arc] exit: 0 live objects"),
+    assert_arc_clean(
+        source,
+        Some("3\n"),
         "the list still queued must be released by the channel's teardown, \
-         not left alive: {}",
-        arc_census(&stderr)
-    );
-    Ok(())
+         not left alive",
+    )
 }
 
 // [CONCURRENCY-CHANNEL] A non-positive capacity is REJECTED: "`Channel(capacity)`
@@ -406,15 +357,9 @@ let back = recv(ch)
 print(toString(listLength(back)))
 ";
 
-    let output = run_arc(source)?;
-    let stderr = String::from_utf8_lossy(&output.stderr);
-
-    assert!(output.status.success(), "stderr={stderr}");
-    assert_eq!(String::from_utf8_lossy(&output.stdout), "3\n");
-    assert!(
-        stderr.contains("[osp-arc] exit: 0 live objects"),
-        "a received value must be released like any other: {}",
-        arc_census(&stderr)
-    );
-    Ok(())
+    assert_arc_clean(
+        source,
+        Some("3\n"),
+        "a received value must be released like any other",
+    )
 }
