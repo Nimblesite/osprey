@@ -8,8 +8,8 @@ A `Layer` is `Qwen3_5DecoderLayer`: `input_layernorm`, the token mixer its
 `layer_types` entry names, a residual, `post_attention_layernorm`, `Qwen3_5MLP`, a
 residual. `forward` threads one hidden row and the cache through every layer and
 keeps each layer's output (`output_hidden_states`); `normed` is the final norm,
-`logits` the tied or separate `lm_head`, `greedy` the first index of the largest
-logit. Every GPU failure ends the step as the `Error` of its `Result` through the
+`logits` the tied or separate `lm_head`, `finite` the check that no logit is NaN or
+infinite, `greedy` the first index of the largest logit. Every GPU failure ends the step as the `Error` of its `Result` through the
 shared `Fault` handler. The embedding row comes from a dense table or straight from a
 mapped quantized file, so the 248,320-row table of a real checkpoint is never
 expanded. Implements [LLM-MODEL-DELTANET], [LLM-MODEL-ATTENTION], [LLM-MODEL-ROPE],
@@ -25,7 +25,7 @@ from qwen import Qwen3_5Norm as Norm
 from qwen import Qwen3_5Shapes as Shapes
 from qwen.Qwen3_5Device import Fault, Weight, added, at, grid, linear, must, slice_of, strictly, wrapping
 
-__all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "greedy", "step", "decode"]
+__all__ = ["Mixer", "Embedding", "Layer", "Model", "Walk", "Next", "identity", "embed", "forward", "normed", "logits", "finite", "greedy", "step", "decode"]
 
 
 @union
@@ -219,15 +219,34 @@ def decoded(model, cache, token) -> Result[Next, str]:
     row = embed(model, token)
     match forward(model, cache, row):
         case Success(value=walk):
-            return Success(value=finished(model, row, walk))
+            return finished(model, row, walk)
         case Error(message=message):
             return Error(message=message)
 
 
-def finished(model, row, walk) -> Next:
+def chunk_finite(values, c, chunk):
+    """1 when every value of chunk `c` is finite, else 0: a NaN fails `x == x`, an
+    infinity fails `x - x == 0`."""
+    first = wrapMul(c, chunk)
+    return fold(range(0, chunk), toFloat32(1.0), lambda a, i: a if at(values, wrapAdd(first, i)) == at(values, wrapAdd(first, i)) and at(values, wrapAdd(first, i)) - at(values, wrapAdd(first, i)) == toFloat32(0.0) else toFloat32(0.0))
+
+
+def finite(model, values) -> bool:
+    """Whether every logit is finite: a thread per chunk, the chunk flags read on the host."""
+    chunk = model.shapes.vocab_chunk
+    flags = must(gpuMap(model.shapes.vocab_chunks, lambda c: chunk_finite(values, c, chunk)))
+    return fold(range(0, model.config.vocab_size // chunk), True, lambda ok, c: ok and at(flags, c) == toFloat32(1.0))
+
+
+def finished(model, row, walk) -> Result[Next, str]:
+    """The step's logits and their argmax, or the refusal when a logit is not finite:
+    an argmax over NaN would pick an index from garbage ([LLM-ARITH-IEEE])."""
     x = normed(model, walk.hidden)
     values = logits(model, x)
-    return Next(row=row, walk=walk, normed=x, logits=values, best=greedy(model, values))
+    if finite(model, values):
+        return Success(value=Next(row=row, walk=walk, normed=x, logits=values, best=greedy(model, values)))
+    else:
+        return Error(message="decode: step logits are not finite")
 
 
 def decode(model, cache, token) -> Result[Next, str]:

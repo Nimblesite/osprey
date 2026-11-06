@@ -2166,6 +2166,7 @@ ok model_tiled_final_norm
 ok model_load_missing
 ok model_load_sized
 ok model_decode_missing_slot
+ok model_decode_nan_logits
 ok model_step_missing_slot
 ok model_fault_negative_grid
 ok model_fault_missing_values
@@ -2312,4 +2313,4 @@ ok gguf_refuse_type
 ok gguf_refuse_key
 ok gguf_refuse_truncated
 ok gguf_refuse_absent
-2314 passed, 0 failed
+2315 passed, 0 failed

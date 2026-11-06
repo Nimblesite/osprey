@@ -32,9 +32,13 @@ their work; it does not imply that they endorse this port.
 
 ## Tests
 
-`tests/` runs 2,177 assertions under `Check.strictly`, identical under GC and ARC and
-golden in `tests/expected_output.txt`; it runs in the package matrix
-(`cargo test -p osprey-cli --test python_packages`) beside the packages it uses.
+`tests/` runs 2,315 assertions under `Check.strictly`, identical under GC, ARC, Metal GC and
+Metal ARC and golden in `tests/expected_output.txt`: the tool-call modules (`ToolSupport`,
+`ParserCases`, `ConstrainCases`), the device model against the fixture (`ModelCases`,
+`FixtureCases`, `TiledCases`) and the GGUF loader against `tests/fixtures/` (`GgufCases`,
+written by `oracle/qwen3_5_gguf.cpython`). Run it with
+`osprey src/osprey/examples/llms/qwen/model/tests --run --memory=gc` (and `--memory=arc`,
+and `OSPREY_GPU=metal` for the device); it is not in the CI package matrix yet.
 
 ## The tiny `Qwen3_5TextConfig` fixture
 
