@@ -204,31 +204,51 @@ const DOC_PAGES = require("../src/_data/navigation.json").docs.flatMap((section)
 // phone they reach the documentation through the site menu's Docs link.
 const STANDALONE = ["/wasm/", "/playground/"];
 const SECTION_LINKS = ".docs-nav-section > .docs-nav-list > li > a";
+// WebKit runs one page of each layout (the first page of every section, and the wide benchmarks
+// layout); Chromium runs every page. Every menu page uses one of those two layouts.
+const SAFARI_PAGES = [...require("../src/_data/navigation.json").docs.map((section) => section.items[0].url), "/benchmarks/"];
 const PHONES = [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 430, height: 932 }, { width: 1024, height: 768 }];
 
-test.describe("mobile documentation menu @safari", () => {
+test.describe("mobile documentation menu", () => {
+  test("WebKit covers both menu layouts", () => {
+    expect(SAFARI_PAGES.filter((url) => !DOC_PAGES.includes(url))).toEqual([]);
+    expect(SAFARI_PAGES).toContain("/benchmarks/");
+    expect(new Set(SAFARI_PAGES).size).toBe(SAFARI_PAGES.length);
+  });
+
   for (const url of DOC_PAGES.filter((url) => !STANDALONE.includes(url))) {
-    test(`${url} opens every documentation section from the phone menu`, async ({ page }) => {
+    test(`${url} opens every documentation section from the phone menu${SAFARI_PAGES.includes(url) ? " @safari" : ""}`, async ({ page }) => {
+      // One load, then every width: the media queries re-apply on resize, so each width is checked
+      // on the same page without paying for four navigations (the job has an 8-minute budget).
+      await page.setViewportSize(PHONES[0]);
+      await page.goto(url);
+      const menu = page.locator(".docs-nav-mobile"), summary = menu.locator(":scope > summary");
+      // Everything a width shows, read in one round trip; each field is then asserted exactly.
+      const snapshot = () => page.evaluate(([links, url]) => {
+        const shown = (el) => !!el && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== "hidden";
+        const menu = document.querySelector(".docs-nav-mobile"), summary = menu?.querySelector(":scope > summary");
+        const box = summary?.getBoundingClientRect(), current = menu?.querySelector(`${links}[href="${url}"]`);
+        return {
+          summary: shown(summary), text: summary?.textContent.trim(), desktop: shown(document.querySelector(".docs-nav-desktop")),
+          inView: !!box && box.top >= 0 && box.bottom <= innerHeight, height: box?.height ?? 0, width: box?.width ?? 0,
+          open: menu?.open ?? false, sections: [...(menu?.querySelectorAll(".docs-nav-section-title") ?? [])].map((el) => el.textContent.trim()),
+          hrefs: [...(menu?.querySelectorAll(links) ?? [])].map((a) => a.getAttribute("href")),
+          current: current?.getAttribute("aria-current") ?? null, currentShown: shown(current),
+        };
+      }, [SECTION_LINKS, url]);
       for (const viewport of PHONES) {
         await page.setViewportSize(viewport);
-        await page.goto(url);
-        const menu = page.locator(".docs-nav-mobile");
-        const summary = menu.locator(":scope > summary");
-        await expect(summary, `${url} at ${viewport.width}px shows the menu`).toBeVisible();
-        await expect(summary).toHaveText("Browse documentation");
-        await expect(summary).toBeInViewport();
-        await expect(page.locator(".docs-nav-desktop")).toBeHidden();
-        const box = await summary.boundingBox();
-        expect(box.height, "the menu is a full-size touch target").toBeGreaterThanOrEqual(44);
-        expect(box.width, "the menu spans the content column").toBeGreaterThan(Math.min(viewport.width, 700) * 0.8);
+        const at = `${url} at ${viewport.width}px`, closed = await snapshot();
+        expect([closed.summary, closed.text, closed.inView, closed.desktop, closed.open], `${at} shows the closed menu, not the desktop panel`)
+          .toEqual([true, "Browse documentation", true, false, false]);
+        expect(closed.height, `${at}: the menu is a full-size touch target`).toBeGreaterThanOrEqual(44);
+        expect(closed.width, `${at}: the menu spans the content column`).toBeGreaterThan(Math.min(viewport.width, 700) * 0.8);
         await summary.click();
         await expect(menu).toHaveAttribute("open", "");
-        await expect(menu.locator(".docs-nav-section-title")).toHaveText(DOC_SECTIONS);
-        await expect(menu.locator(SECTION_LINKS)).toHaveCount(DOC_PAGES.length);
-        expect(await menu.locator(SECTION_LINKS).evaluateAll((links) => links.map((a) => a.getAttribute("href")))).toEqual(DOC_PAGES);
-        const current = menu.locator(`${SECTION_LINKS}[href="${url}"]`);
-        await expect(current).toHaveAttribute("aria-current", "page");
-        await expect(current, `${url} is listed in its open section`).toBeVisible();
+        const open = await snapshot();
+        expect(open.sections, `${at} lists every section`).toEqual(DOC_SECTIONS);
+        expect(open.hrefs, `${at} lists every page in order`).toEqual(DOC_PAGES);
+        expect([open.current, open.currentShown], `${at} marks and shows the current page in its open section`).toEqual(["page", true]);
         await summary.click();
         await expect(menu).not.toHaveAttribute("open", "");
       }
@@ -236,7 +256,7 @@ test.describe("mobile documentation menu @safari", () => {
   }
 
   for (const url of STANDALONE) {
-    test(`${url} reaches the documentation from the site menu on a phone`, async ({ page }) => {
+    test(`${url} reaches the documentation from the site menu on a phone @safari`, async ({ page }) => {
       await page.setViewportSize({ width: 390, height: 844 });
       await page.goto(url);
       await expect(page.locator(".docs-nav-mobile")).toHaveCount(0);
@@ -247,7 +267,7 @@ test.describe("mobile documentation menu @safari", () => {
     });
   }
 
-  test("the phone menu walks from the docs index through every section", async ({ page }) => {
+  test("the phone menu walks from the docs index through every section @safari", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/docs/");
     const menu = page.locator(".docs-nav-mobile");
