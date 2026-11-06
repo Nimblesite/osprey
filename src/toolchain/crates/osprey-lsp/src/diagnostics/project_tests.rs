@@ -109,7 +109,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
     // ([TYPE-ANNOTATION-REDUNDANT]).
     let source = "namespace test\n\n(** Amounts. *)\nmodule Money\n    (** Whether `cents` is above zero. *)\n    export positive : int -> bool\n    positive cents = above cents\n    above : int -> bool\n    above cents = cents > 0\n\ntest \"positive\" (\\() => expect (Money::positive 1) true)\n";
     assert_redundant_annotations(
-        &compute(source, &uri, U16),
+        &compute(source, uri, U16),
         &[(
             "redundant type signature on `test::Money::above`: inference derives `(int) -> bool` without it",
             (7, 4, 7, 23),
@@ -119,7 +119,7 @@ fn module_bearing_files_outside_project_roots_are_assembled_standalone() {
         .replace("    export positive : int -> bool\n", "")
         .replace("    positive cents =", "    export positive cents =")
         .replace("    above : int -> bool\n", "");
-    assert_warnings(&compute(&inferred, &uri, U16), &[]);
+    assert_warnings(&compute(&inferred, uri, U16), &[]);
 }
 
 #[cfg(unix)]
