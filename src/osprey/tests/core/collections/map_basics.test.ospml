@@ -48,6 +48,13 @@ checkKeysLack label m absent = checkEach label absent (\key =>
 checkPairs label m keys values = checkIndices label (listLength keys) (\i =>
     (mapGet m (listGet keys i ?: "absent") ?: (0 - 1)) == (listGet values i ?: (0 - 2)))
 
+(** Asserts `xs` answers `expected` at every index, one independent check each. *)
+checkInts label xs expected = checkIndices label (listLength expected) (\i =>
+    listInt xs i == listInt expected i)
+
+(** Generation `n` of the canonical five-key chain k1..k5, rebuilt per call. *)
+genChain n = foldList (toList (range 1 (n + 1))) (Map ()) (\(m, i) => mapSet m "k${i}" i)
+
 (** Exercise construction, overwrite, membership, and source isolation. *)
 constructionAndOverwriteCase () =
     empty = Map ()
@@ -82,42 +89,31 @@ constructionAndOverwriteCase () =
 
 (** Exercise a five-generation chain and sibling branch isolation. *)
 generationsAndBranchesCase () =
-    g0 = Map ()
-    g1 = mapSet g0 "k1" 1
-    g2 = mapSet g1 "k2" 2
-    g3 = mapSet g2 "k3" 3
-    g4 = mapSet g3 "k4" 4
-    g5 = mapSet g4 "k5" 5
-    xa = mapSet g3 "X" 100
-    xb = mapSet g3 "Y" 200
+    xa = mapSet (genChain 3) "X" 100
+    xb = mapSet (genChain 3) "Y" 200
 
     // Check generation lengths and branch membership.
+    checkEach "persistent map generation and branch observations" [0, 1, 2, 3, 4, 5, 3] (\n =>
+        mapLength (genChain n) == n)
     checkAll "persistent map generation and branch observations" [
-        mapLength g0 == 0,
-        mapLength g1 == 1,
-        mapLength g2 == 2,
-        mapLength g3 == 3,
-        mapLength g4 == 4,
-        mapLength g5 == 5,
-        mapContains g2 "k1",
-        !(mapContains g2 "k4"),
+        mapContains (genChain 2) "k1",
+        !(mapContains (genChain 2) "k4"),
         mapContains xa "X",
         !(mapContains xa "Y"),
         !(mapContains xb "X"),
-        mapContains xb "Y",
-        mapLength g3 == 3
+        mapContains xb "Y"
     ]
 
     // Check that earlier generations retain their values.
-    checkMapBindings "persistent map generation values" g1 ["k1" => 1] ["k2"]
-    checkMapBindings "persistent map generation values" g2 ["k1" => 1, "k2" => 2] ["k3"]
-    checkMapBindings "persistent map generation values" g3 ["k3" => 3] ["k4"]
-    checkMapBindings "persistent map generation values" g4 ["k4" => 4] ["k5"]
-    checkMapIs "persistent map generation values" g5 ["k1" => 1, "k5" => 5]
+    checkMapBindings "persistent map generation values" (genChain 1) ["k1" => 1] ["k2"]
+    checkMapBindings "persistent map generation values" (genChain 2) ["k1" => 1, "k2" => 2] ["k3"]
+    checkMapBindings "persistent map generation values" (genChain 3) ["k3" => 3] ["k4"]
+    checkMapBindings "persistent map generation values" (genChain 4) ["k4" => 4] ["k5"]
+    checkMapIs "persistent map generation values" (genChain 5) ["k1" => 1, "k5" => 5]
     checkAll "persistent map generation values" [
-        !(mapContains g0 "k1"),
-        mapLength g2 == 2,
-        mapLength g3 == 3
+        !(mapContains (genChain 0) "k1"),
+        mapLength (genChain 2) == 2,
+        mapLength (genChain 3) == 3
     ]
 
     // Check sibling values, absences, and parent isolation.
@@ -128,22 +124,15 @@ generationsAndBranchesCase () =
         mapInt xb "k3" == 3,
         !(mapContains xa "Y"),
         !(mapContains xb "X"),
-        !(mapContains g3 "X"),
-        !(mapContains g3 "Y"),
-        mapLength xa == 4,
-        mapLength xb == 4
+        !(mapContains (genChain 3) "X"),
+        !(mapContains (genChain 3) "Y")
     ]
+    checkInts "persistent map branch values and isolation" (mapList [xa, xb] mapLength) [4, 4]
 
 (** Exercise persistent removal and right-biased merge. *)
 removalAndMergeCase () =
-    g0 = Map ()
-    g1 = mapSet g0 "k1" 1
-    g2 = mapSet g1 "k2" 2
-    g3 = mapSet g2 "k3" 3
-    g4 = mapSet g3 "k4" 4
-    g5 = mapSet g4 "k5" 5
-    removed = mapRemove g5 "k3"
-    absentRemoved = mapRemove g5 "nonexistent"
+    removed = mapRemove (genChain 5) "k3"
+    absentRemoved = mapRemove (genChain 5) "nonexistent"
     a = mapSet (mapSet (mapSet (Map ()) "x" 1) "y" 2) "z" 3
     b = mapSet (mapSet (mapSet (Map ()) "y" 20) "z" 30) "w" 40
     mergedAB = mapMerge a b
@@ -155,25 +144,23 @@ removalAndMergeCase () =
     checkAll "persistent removal legacy observations" [
         mapLength removed == 4,
         !(mapContains removed "k3"),
-        mapContains g5 "k3",
+        mapContains (genChain 5) "k3",
         mapLength absentRemoved == 5
     ]
 
     // Check retained values, exact failure, and source preservation.
     checkMapIs "persistent removal values and isolation" removed ["k1" => 1, "k2" => 2, "k4" => 4, "k5" => 5]
-    checkMapIs "persistent removal values and isolation" g5 ["k3" => 3]
+    checkMapIs "persistent removal values and isolation" (genChain 5) ["k3" => 3]
     checkMapIs "persistent removal values and isolation" absentRemoved ["k1" => 1, "k5" => 5]
     checkAll "persistent removal values and isolation" [
         removedMissing,
         mapContains absentRemoved "k3",
-        !(mapContains g4 "k5")
+        !(mapContains (genChain 4) "k5")
     ]
 
     // Check merge lengths, membership, identities, and the + alias.
+    checkInts "map merge legacy observations" (mapList [mergedAB, mergedBA, mergedPlus] mapLength) [4, 4, 4]
     checkAll "map merge legacy observations" [
-        mapLength mergedAB == 4,
-        mapLength mergedBA == 4,
-        mapLength mergedPlus == 4,
         mapContains mergedAB "w",
         mapLength (mapMerge (Map ()) a) == 3,
         mapLength (mapMerge a a) == 3
@@ -201,16 +188,9 @@ viewsAndCrossCollectionCase () =
     mm2 = mapSet g3 "d" 4
 
     // Check view and cross-collection lengths.
-    checkAll "map views and cross-collection legacy lengths" [
-        listLength keys == 5,
-        listLength values == 5,
-        listLength (mapKeys (Map ())) == 0,
-        listLength xs2 == 4,
-        mapLength mm2 == 4,
-        listLength xs == 3,
-        mapLength g3 == 3,
-            listLength (mapValues g3 + xs) == 6
-    ]
+    checkInts "map views and cross-collection legacy lengths" (mapList [keys, mapKeys (Map ())] listLength) [5, 0]
+    checkInts "map views and cross-collection legacy lengths" (mapList [values, xs2, xs, mapValues g3 + xs] listLength) [5, 4, 3, 6]
+    checkInts "map views and cross-collection legacy lengths" (mapList [mm2, g3] mapLength) [4, 3]
 
     // Check view contents without assuming iteration order.
     checkEach "map key view contents" ["k1", "k2", "k3", "k4", "k5"] (\key =>
@@ -257,11 +237,7 @@ literalsAndDispatchCase () =
     ]
 
     // Check receiver-directed length dispatch.
-    checkAll "receiver-directed map length dispatch" [
-        length prices == 3,
-        length duplicate == 1,
-        length empty == 0
-    ]
+    checkInts "receiver-directed map length dispatch" (mapList [prices, duplicate, empty] length) [3, 1, 0]
 
     // Check receiver-directed isEmpty dispatch.
     checkAll "receiver-directed map isEmpty dispatch" [
@@ -570,8 +546,6 @@ overwriteChainCase () =
     checkMapIs "overwriting one prefix key leaves its neighbours alone" prefixOverwritten ["p" => 1, "pa" => 20, "pat" => 3, "path" => 4]
     checkMapIs "overwriting one prefix key leaves its neighbours alone" prefixes ["pa" => 2]
     checkAll "overwriting one prefix key leaves its neighbours alone" [
-        mapLength prefixes == 4,
-        mapLength prefixOverwritten == 4,
         !(mapContains prefixes "pathx"),
         !(mapContains prefixes "Path"),
         !(mapContains prefixes ""),
@@ -582,6 +556,7 @@ overwriteChainCase () =
         listContains (mapValues prefixOverwritten) 20,
         listContains (mapValues prefixes) 2
     ]
+    checkInts "overwriting one prefix key leaves its neighbours alone" (mapList [prefixes, prefixOverwritten] mapLength) [4, 4]
 
 test "map overwrite chains keep one binding per key" (\() => exactArithmetic (overwriteChainCase))
 
@@ -614,35 +589,25 @@ mergeAlgebraCase () =
         mapInt rl (listGet unionKeys i ?: "absent") == listInt rlWants i)
 
     checkAll "right-biased union values and lengths" [
-        mapLength left == 4,
-        mapLength right == 4,
-        mapLength third == 3,
-        mapLength lr == 6,
-        mapLength rl == 6,
         mapInt lr "k" != mapIntMiss rl "k",
         mapInt lr "" != mapIntMiss rl "",
         !(mapContains lr "q"),
         !(mapContains rl "q")
     ]
+    checkInts "right-biased union values and lengths" (mapList [left, right, third, lr, rl] mapLength) [4, 4, 3, 6, 6]
 
     // The empty map is a two-sided identity, merging a map with itself is the
     // identity too, and neither operand is disturbed by any of it.
     checkAll "merge identity, idempotence and operand preservation" [
-        mapLength (mapMerge empty left) == 4,
-        mapLength (mapMerge left empty) == 4,
         mapInt (mapMerge empty left) "k" == 1,
         mapInt (mapMerge empty left) "" == 4,
         mapInt (mapMerge left empty) "K" == 2,
         mapInt (mapMerge left empty) "k.k" == 3,
         mapLength (mapMerge empty empty) == 0,
         isEmpty (mapMerge empty empty),
-        mapLength (mapMerge left left) == 4,
         mapInt (mapMerge left left) "k" == 1,
         mapInt (mapMerge left left) "" == 4,
-        mapLength (mapMerge right right) == 4,
         mapInt (mapMerge right right) " " == 50,
-        mapLength left == 4,
-        mapLength right == 4,
         mapInt left "k" == 1,
         mapInt right "k" == 10,
         mapInt left "" == 4,
@@ -650,6 +615,7 @@ mergeAlgebraCase () =
         !(mapContains left "k-k"),
         !(mapContains right "K")
     ]
+    checkInts "merge identity, idempotence and operand preservation" (mapList [mapMerge empty left, mapMerge left empty, mapMerge left left, mapMerge right right, left, right] mapLength) [4, 4, 4, 4, 4, 4]
 
     // ((left ∪ right) ∪ third) and (left ∪ (right ∪ third)) both resolve to
     // k=10, K=200, k.k=3, ""=40, k-k=300, " "=50, q=700 — seven keys either way —
@@ -662,12 +628,10 @@ mergeAlgebraCase () =
         mapInt plusChain (listGet assocKeys i ?: "absent") == listInt assocWants i)
 
     checkAll "merge is associative and the + alias agrees" [
-        mapLength lrThenThird == 7,
-        mapLength leftThenRt == 7,
-        mapLength plusChain == 7,
         mapInt lrThenThird "K" == mapIntMiss leftThenRt "K",
         mapInt lrThenThird "k-k" == mapIntMiss leftThenRt "k-k"
     ]
+    checkInts "merge is associative and the + alias agrees" (mapList [lrThenThird, leftThenRt, plusChain] mapLength) [7, 7, 7]
 
     // Views of a merged map hold exactly the surviving bindings — 1 and 30 lost
     // their keys to the right map — and merging a map with a subset of itself is
@@ -735,27 +699,22 @@ removalSweepCase () =
     // Removing "a" then "b" and "b" then "a" must agree on every surviving key,
     // and removing all five must land on a genuinely empty map with empty views.
     checkAll "removal is order-insensitive and drains to empty" [
-        mapLength abFirst == 3,
-        mapLength baFirst == 3,
-        !(mapContains abFirst "a"),
-        !(mapContains abFirst "b"),
-        !(mapContains baFirst "a"),
-        !(mapContains baFirst "b"),
         mapInt abFirst "c" == mapIntMiss baFirst "c",
         mapInt abFirst "d" == mapIntMiss baFirst "d",
         mapInt abFirst "e" == mapIntMiss baFirst "e",
         mapInt abFirst "c" == 3,
         mapInt baFirst "e" == 5,
-        mapLength drained == 0,
         isEmpty drained,
         length drained == 0,
-        listLength (mapKeys drained) == 0,
-        listLength (mapValues drained) == 0,
         drainedMissing,
         !(mapContains drained "c"),
         mapLength base == 5,
         !(isEmpty base)
     ]
+    checkInts "removal is order-insensitive and drains to empty" (mapList [abFirst, baFirst, drained] mapLength) [3, 3, 0]
+    checkEach "removal is order-insensitive and drains to empty" [mapKeys drained] (\keys => listLength keys == 0)
+    checkEach "removal is order-insensitive and drains to empty" [mapValues drained] (\values => listLength values == 0)
+    checkEach "removal is order-insensitive and drains to empty" [abFirst, baFirst] (\m => !(mapContains m "a") && !(mapContains m "b"))
 
     // A key that is absent by case, spacing, length or emptiness is still absent,
     // so each of these removals must leave all five bindings in place, and a
@@ -862,21 +821,16 @@ nestedCollectionCase () =
     checkMapIs "maps stored in a list keep their own contents" secondNested ["x" => 10, "z" => 30]
     checkAll "maps stored in a list keep their own contents" [
         listLength maps == 3,
-        mapLength firstNested == 2,
-        mapLength secondNested == 2,
-        mapLength thirdNested == 0,
         isEmpty thirdNested,
         !(mapContains firstNested "z"),
         !(mapContains secondNested "y"),
         !(mapContains thirdNested "x"),
         mapInt firstNested "x" != mapIntMiss secondNested "x",
-        mapLength pastEndNested == 1,
         mapInt pastEndNested "fallback" == 0,
         listLength (listAppend maps inner1) == 4,
-        listLength maps == 3,
-        mapLength inner1 == 2,
-        mapLength inner2 == 2
+        listLength maps == 3
     ]
+    checkInts "maps stored in a list keep their own contents" (mapList [firstNested, secondNested, thirdNested, pastEndNested, inner1, inner2] mapLength) [2, 2, 0, 1, 2, 2]
 
     // A map of maps answers three outer keys while each inner map keeps its own
     // bindings, and replacing one inner map must not disturb the original nest.
@@ -908,8 +862,6 @@ nestedCollectionCase () =
         listInt oddsBack i == listInt odds i)
     checkAll "lists stored as map values keep index order" [
         mapLength byParity == 2,
-        listLength oddsBack == 3,
-        listLength evensBack == 4,
         listInt evensBack 0 == 2,
         listInt evensBack 3 == 8,
         listInt oddsBack 3 == ((0 - 999) ),
@@ -917,14 +869,12 @@ nestedCollectionCase () =
         !(listContains oddsBack 2),
         listContains evensBack 8,
         !(listContains evensBack 1),
-        listLength listMissing == 1,
         listInt listMissing 0 == 0,
-        listLength oddsGrown == 4,
         listInt oddsGrown 3 == 7,
-        listLength oddsBack == 3,
-        listLength odds == 3,
         listInt (listReverse evensBack) 0 == 8
     ]
+    checkInts "lists stored as map values keep index order" (mapList [oddsBack, evensBack] listLength) [3, 4]
+    checkInts "lists stored as map values keep index order" (mapList [listMissing, oddsGrown, oddsBack, odds] listLength) [1, 4, 3, 3]
 
     // A record carries a whole Map and a whole List, and a map of records hands
     // each record back whole with its nested collections still addressable.
@@ -985,12 +935,12 @@ keyValueViewPairingCase () =
         mapContains m key)
 
     checkAll "key and value views pair index by index" [
-        listLength keys == 6,
-        listLength values == 6,
         listLength keys == mapLength m,
         listLength values == mapLength m,
-        total == 21,
+        total == 21
     ]
+    checkInts "key and value views pair index by index" (mapList [keys] listLength) [6]
+    checkInts "key and value views pair index by index" (mapList [values] listLength) [6]
 
     // Both views hold every binding and nothing extra. Reversing both preserves
     // the pairing, because reverse maps index i to index n-1-i on either side.
@@ -1013,8 +963,6 @@ keyValueViewPairingCase () =
     checkPairs "an overwrite moves exactly one paired value" bumped bumpedKeys bumpedValues
 
     checkAll "an overwrite moves exactly one paired value" [
-        listLength bumpedKeys == 6,
-        listLength bumpedValues == 6,
         mapLength bumped == 6,
         bumpedTotal == 51,
         (bumpedTotal - total ) == 30,
@@ -1027,6 +975,8 @@ keyValueViewPairingCase () =
         !(listContains values 33),
         listContains bumpedKeys "c"
     ]
+    checkInts "an overwrite moves exactly one paired value" (mapList [bumpedKeys] listLength) [6]
+    checkInts "an overwrite moves exactly one paired value" (mapList [bumpedValues] listLength) [6]
 
     // Removing "e" drops the total by exactly its value 5 (21 -> 16) and both
     // views by one entry, while the remaining five stay paired.

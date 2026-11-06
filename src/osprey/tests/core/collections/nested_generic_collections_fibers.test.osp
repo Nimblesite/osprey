@@ -48,6 +48,14 @@ fn checkCells(label, keys, keyPick, indices, values, probe, pick) = {
     })
 }
 
+/// The four bool leaf observations that pin the `left`/`right` bool groups.
+fn checkBoolGroups(label, groups) = checkAll(label, [
+        boolAt(groups, "left", 0),
+        !boolMissAt(groups, "left", 1),
+        !boolMissAt(groups, "right", 0),
+        boolAt(groups, "right", 1)
+])
+
 fn intMatrix() = [[1, 2], [3, 4, 5]]
 fn stringMatrix() = [["ant", "bee"], ["cat", "dog", "eel"]]
 fn floatGroups() = mapSet(mapSet(Map(), "small", [0.5, 1.25]), "large", [8.5, 9.75])
@@ -126,10 +134,6 @@ fn fiberChannelCollectionCase() = {
     checkMatrix("spawn and out-of-order await reconstruct nested collection owners", strings, [["ant", "bee"], ["cat", "dog", "eel"]], ["row"], "item")
 
     checkAll("spawn and out-of-order await reconstruct nested collection owners", [
-            boolAt(bools, "left", 0),
-            !boolMissAt(bools, "left", 1),
-            !boolMissAt(bools, "right", 0),
-            boolAt(bools, "right", 1),
             listLength(ints) == 2,
             listLength(strings) == 2,
             mapLength(floats) == 2,
@@ -139,6 +143,7 @@ fn fiberChannelCollectionCase() = {
             fiberDone(floatFiber) == 1,
             fiberDone(boolFiber) == 1
     ])
+    checkBoolGroups("spawn and out-of-order await reconstruct nested collection owners", bools)
     checkCells("spawn and out-of-order await reconstruct nested collection owners", ["small", "small", "large"], listText, [0, 1, 1], [0.5, 1.25, 9.75], fn(key, index) => floatAt(floats, key, index), listFloat)
 
     checkMatrix("Channel<collection> round trips full nested descriptors in FIFO order", firstMatrix, [[1, 2], [3, 4, 5]], [99], 99)
@@ -181,10 +186,6 @@ fn fiberEffectCollectionCase() = {
     checkAll("inherited generic handlers preserve collection results from fibers", [
             listLength(ints) == 2,
             mapLength(bools) == 2,
-            boolAt(bools, "left", 0),
-            !boolMissAt(bools, "left", 1),
-            !boolMissAt(bools, "right", 0),
-            boolAt(bools, "right", 1),
             listLength(grownInts) == 3,
             mapLength(grownBools) == 2,
             !mapContains(grownBools, "left"),
@@ -196,6 +197,7 @@ fn fiberEffectCollectionCase() = {
             mapContains(bools, "left"),
             !mapContains(bools, "extra")
     ])
+    checkBoolGroups("inherited generic handlers preserve collection results from fibers", bools)
 }
 
 /// The channel case was parked with a Skip verdict while

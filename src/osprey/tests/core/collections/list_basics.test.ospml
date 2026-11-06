@@ -109,20 +109,7 @@ constructionAndIdentityCase () =
     abPlusA = a + b + a
 
     // Every legacy length observation remains an independent assertion.
-    checkAll "legacy construction and operation lengths" [
-        listLength empty == 0,
-        listLength a == 3,
-        listLength b == 2,
-        listLength reversed == 3,
-        listLength restored == 3,
-        listLength concatenated == 5,
-        listLength (listConcat empty a) == 3,
-        listLength (listConcat a empty) == 3,
-        listLength (a + a) == 6,
-        listLength (a + b + a) == 8,
-        listLength prepended == 4,
-        listLength a == 3
-    ]
+    checkList "legacy construction and operation lengths" (mapList [empty, a, b, reversed, restored, concatenated, listConcat empty a, listConcat a empty, a + a, a + b + a, prepended, a] listLength) [0, 3, 2, 3, 3, 5, 3, 3, 6, 8, 4, 3]
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
     checkList "construction and reverse contents" a [1, 2, 3]
@@ -164,11 +151,7 @@ iterationAndPersistenceCase () =
     y2 = listAppend y 777
 
     // Callback encodings preserve every legacy forEachList sequence and its exact order.
-    checkAll "forEachList iteration order" [
-        encodeIteration a == 10203,
-        encodeIteration reversed == 30201,
-        encodeIteration combined == 102031020
-    ]
+    checkList "forEachList iteration order" (mapList [a, reversed, combined] encodeIteration) [10203, 30201, 102031020]
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
     checkList "iteration constituent values" a [1, 2, 3]
@@ -176,19 +159,7 @@ iterationAndPersistenceCase () =
     checkList "iteration constituent values" combined [1, 2, 3, 10, 20]
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
-    checkAll "persistent generation and branch lengths" [
-        listLength g0 == 0,
-        listLength g1 == 1,
-        listLength g2 == 2,
-        listLength g3 == 3,
-        listLength g4 == 4,
-        listLength g5 == 5,
-        listLength g2 == 2,
-        listLength x == 4,
-        listLength y == 4,
-        listLength y2 == 5,
-        listLength g3 == 3
-    ]
+    checkList "persistent generation and branch lengths" (mapList [g0, g1, g2, g3, g4, g5, g2, x, y, y2, g3] listLength) [0, 1, 2, 3, 4, 5, 2, 4, 4, 5, 3]
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkMembership "persistent generation and branch contents" g1 [10] [20]
@@ -212,14 +183,7 @@ tailBoundaryCase () =
     doubled = listConcat t4 t4
 
     // All six legacy tail-boundary length observations remain independent.
-    checkAll "tail boundary legacy lengths" [
-        listLength t == 10,
-        listLength t2 == 20,
-        listLength t3 == 30,
-        listLength t4 == 35,
-        listLength reversed == 35,
-        listLength doubled == 70
-    ]
+    checkList "tail boundary legacy lengths" (mapList [t, t2, t3, t4, reversed, doubled] listLength) [10, 20, 30, 35, 35, 70]
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkIndexRows "tail boundary contents" t [[0, 1], [9, 10]]
@@ -230,10 +194,9 @@ tailBoundaryCase () =
     checkIndexRows "tail boundary contents" doubled [[34, 35], [35, 1], [69, 35]]
     checkAll "tail boundary contents" [
         listLength t3 == 30,
-        !(listContains t3 31),
-        sumList t == 55,
-        sumList t4 == 630
+        !(listContains t3 31)
     ]
+    checkList "tail boundary contents" (mapList [t, t4] sumList) [55, 630]
 
 (** indexingPatternsAndDispatchCase preserves Result indexing, list patterns, recursion, and receiver-directed builtins. *)
 indexingPatternsAndDispatchCase () =
@@ -381,11 +344,6 @@ typedElementRetrievalCase () =
     checkTextList "string elements survive listGet" [words[0] ?: "none", words[1] ?: "none", words[2] ?: "none"] ["alpha", "beta", "gamma"]
 
     checkAll "string elements survive listGet" [
-        (listGet words 0 ?: "none") == (words[0] ?: "other"),
-        (listGet words 1 ?: "none") == (words[1] ?: "other"),
-        (listGet words 2 ?: "none") == (words[2] ?: "other"),
-        length (listGet words 0 ?: "") == 5,
-        length (listGet words 1 ?: "") == 4,
         length (listGet words 2 ?: "") == 5,
         "${listGet words 0 ?: "none"}-${listGet words 2 ?: "none"}" == "alpha-gamma",
         contains (listGet words 1 ?: "none") "et",
@@ -397,6 +355,8 @@ typedElementRetrievalCase () =
         (listGet words 99 ?: "past end") == "past end",
         (words[3] ?: "past end") == "past end"
     ]
+    checkCases "string elements survive listGet" [0, 1, 2] ["alpha", "beta", "gamma"] (\(i) => listGet words i ?: "none") listText 0
+    checkCases "string elements survive listGet" [0, 1, 2] [5, 4, 5] (\(i) => length (listGet words i ?: "")) listInt 0
 
     // The same rule holds through every persistent producer: a rebuilt list
     // still yields strings, not the words its cells happen to hold
@@ -409,19 +369,15 @@ typedElementRetrievalCase () =
     checkTextList "string elements survive every list producer" (["zero"] + words) ["zero", "alpha", "beta", "gamma"]
 
     checkAll "string elements survive every list producer" [
-        listLength (listAppend words "delta") == 4,
-        listLength (listPrepend words "zero") == 4,
         listContains words "beta",
         !(listContains words "delta"),
         listContains (listAppend words "delta") "delta",
         listText (listReverse (listReverse words)) 1 == "beta"
     ]
+    checkList "string elements survive every list producer" (mapList [listAppend words "delta", listPrepend words "zero"] listLength) [4, 4]
 
     // A float element keeps its IEEE value; a bool element keeps true/false.
     checkAll "float and bool elements survive listGet" [
-        (listGet ratios 0 ?: 0.0) == 0.5,
-        (listGet ratios 1 ?: 0.0) == 1.25,
-        (listGet ratios 2 ?: 0.0) == 2.75,
         (ratios[1] ?: 0.0) == 1.25,
         (listGet ratios 0 ?: 0.0) + (listGet ratios 1 ?: 0.0) == 1.75,
         (listGet ratios 2 ?: 0.0) - (listGet ratios 0 ?: 0.0) == 2.25,
@@ -440,33 +396,28 @@ typedElementRetrievalCase () =
         (listGet (listReverse flags) 1 ?: true) == false,
         listLength flags == 3
     ]
+    checkCases "float and bool elements survive listGet" [0, 1, 2] [0.5, 1.25, 2.75] (\(i) => listGet ratios i ?: 0.0) listFloat 0
 
     // A record element comes back whole: every field of the stored record is
     // readable off the retrieved one, and the out-of-range case still takes
     // the declared `Error` branch rather than fabricating a record.
     checkAll "record elements survive listGet whole" [
-        firstSlot.label == "left",
-        firstSlot.weight == 1.5,
         firstSlot.ready,
-        secondSlot.label == "right",
-        secondSlot.weight == 2.5,
         !secondSlot.ready,
         firstSlot.label != secondSlot.label,
         firstSlot.weight != secondSlot.weight,
         firstSlot.ready != secondSlot.ready,
         firstSlot.weight + secondSlot.weight == 4.0,
-        length firstSlot.label == 4,
-        length secondSlot.label == 5,
         "${firstSlot.label}/${secondSlot.label}" == "left/right",
-        pastEndSlot.label == "missing",
-        pastEndSlot.weight == 0.0,
         !pastEndSlot.ready,
-        (listGet (listReverse slots) 0 ?: missingSlot).label == "right",
-        (listGet (listReverse slots) 1 ?: missingSlot).label == "left",
         (listGet (listAppend slots missingSlot) 2 ?: firstSlot).label == "missing",
         (listGet (listPrepend slots missingSlot) 0 ?: firstSlot).weight == 0.0,
         listLength slots == 2
     ]
+    checkSame "record elements survive listGet whole" (mapList [firstSlot, secondSlot, pastEndSlot] (\(slot) => slot.label)) ["left", "right", "missing"] listText
+    checkSame "record elements survive listGet whole" (mapList [firstSlot, secondSlot, pastEndSlot] (\(slot) => slot.weight)) [1.5, 2.5, 0.0] listFloat
+    checkList "record elements survive listGet whole" (mapList [firstSlot, secondSlot] (\(slot) => length slot.label)) [4, 5]
+    checkCases "record elements survive listGet whole" [0, 1] ["right", "left"] (\(i) => (listGet (listReverse slots) i ?: missingSlot).label) listText 0
 
 // Register typed element retrieval across string, float, bool and record lists.
 test "listGet returns the element type for every element type" (\() => exactArithmetic (typedElementRetrievalCase))
@@ -610,91 +561,37 @@ stringListPatternCase () =
 
     // Each binder carries its OWN element: head, second and the fallback are
     // three distinct strings, so a binder reading the wrong slot is visible.
-    checkAll "string binders carry their own element" [
-        headOr (noWords, "empty") == "empty",
-        headOr (solo, "empty") == "solo",
-        headOr (duo, "empty") == "left",
-        headOr (words, "empty") == "alpha",
-        headOr (odd, "empty") == "",
-        headOr (dup, "empty") == "same",
-        headOr (listReverse words, "empty") == "gamma",
-        headOr (listPrepend words "zero", "empty") == "zero",
-        headOr (listAppend words "delta", "empty") == "alpha",
-        headOr (noWords + words, "empty") == "alpha",
-        headOr (words + noWords, "empty") == "alpha",
-        secondOr (noWords, "none") == "none",
-        secondOr (solo, "none") == "none",
-        secondOr (duo, "none") == "right",
-        secondOr (words, "none") == "beta",
-        secondOr (odd, "none") == " ",
-        secondOr (dup, "none") == "same",
-        secondOr (listReverse words, "none") == "beta",
-        secondOr (listReverse quad, "none") == "ccc",
-        secondOr (["x", "y", "z"], "none") == "y",
-        headOr (["only"], "empty") == "only"
-    ]
+    checkProbes "string binders carry their own element" [noWords, solo, duo, words, odd, dup, listReverse words, listPrepend words "zero", listAppend words "delta", noWords + words, words + noWords, ["only"]] ["empty", "solo", "left", "alpha", "", "same", "gamma", "zero", "alpha", "alpha", "alpha", "only"] (\(xs) => headOr (xs, "empty")) listText
+    checkProbes "string binders carry their own element" [noWords, solo, duo, words, odd, dup, listReverse words, listReverse quad, ["x", "y", "z"]] ["none", "none", "right", "beta", " ", "same", "beta", "ccc", "y"] (\(xs) => secondOr (xs, "none")) listText
 
     // Recursive head/tail traversal keeps every element, in index order, once.
     // "alpha|beta|gamma|" is 5+1+4+1+5+1 = 17 bytes; the six `odd` elements are
     // 0+1+1+2+3+5 = 12 bytes plus six separators = 18.
-    checkAll "recursive rest-binder traversal keeps string order" [
-        joinWords noWords == "",
-        joinWords solo == "solo|",
-        joinWords duo == "left|right|",
-        joinWords words == "alpha|beta|gamma|",
-        joinWords quad == "a|bb|ccc|dddd|",
-        joinWords odd == "| |a|12|a,b|ab ab|",
-        joinWords dup == "same|same|other|same|",
-        joinWords (listReverse words) == "gamma|beta|alpha|",
-        joinWords (listReverse (listReverse words)) == joinWords words,
-        joinWords (listReverse dup) == "same|other|same|same|",
-        joinWords (listAppend words "delta") == "alpha|beta|gamma|delta|",
-        joinWords (listPrepend words "zero") == "zero|alpha|beta|gamma|",
-        joinWords (duo + words) == "left|right|alpha|beta|gamma|",
-        joinWords (words + duo) == "alpha|beta|gamma|left|right|",
-        joinWords (noWords + words) == joinWords words,
-        joinWords (words + noWords) == joinWords words,
-        length (joinWords words) == 17,
-        length (joinWords odd) == 18,
-        length (joinWords quad) == 14,
-        length (joinWords dup) == 21,
-        lastWord noWords == "none",
-        lastWord solo == "solo",
-        lastWord words == "gamma",
-        lastWord (listReverse words) == "alpha",
-        lastWord (listAppend words "delta") == "delta"
-    ]
+    checkProbes "recursive rest-binder traversal keeps string order" [noWords, solo, duo, words, quad, odd, dup, listReverse words, listReverse (listReverse words), listReverse dup, listAppend words "delta", listPrepend words "zero", duo + words, words + duo, noWords + words, words + noWords] ["", "solo|", "left|right|", "alpha|beta|gamma|", "a|bb|ccc|dddd|", "| |a|12|a,b|ab ab|", "same|same|other|same|", "gamma|beta|alpha|", "alpha|beta|gamma|", "same|other|same|same|", "alpha|beta|gamma|delta|", "zero|alpha|beta|gamma|", "left|right|alpha|beta|gamma|", "alpha|beta|gamma|left|right|", "alpha|beta|gamma|", "alpha|beta|gamma|"] joinWords listText
+    checkList "recursive rest-binder traversal keeps string order" (mapList [words, odd, quad, dup] (\(xs) => length (joinWords xs))) [17, 18, 14, 21]
+    checkProbes "recursive rest-binder traversal keeps string order" [noWords, solo, words, listReverse words, listAppend words "delta"] ["none", "solo", "gamma", "alpha", "delta"] lastWord listText
 
     // String elements are compared by CONTENT for membership
     // ([BUILTIN-LIST-CONTAINS]), so the empty string is a findable element and a
     // case difference is not.
     checkAll "string element edge cases survive indexing and membership" [
-        (listGet odd 0 ?: "x") == "",
         isEmpty (listGet odd 0 ?: "x"),
         length (listGet odd 0 ?: "x") == 0,
-        (listGet odd 1 ?: "x") == " ",
         length (listGet odd 1 ?: "x") == 1,
-        (listGet odd 3 ?: "x") == "12",
         contains (listGet odd 4 ?: "x") ",",
         startsWith (listGet odd 5 ?: "x") "ab",
         endsWith (listGet odd 5 ?: "x") "ab",
         contains (listGet odd 5 ?: "x") " ",
         toUpperCase (listGet words 1 ?: "x") == "BETA",
         toLowerCase (toUpperCase (listGet words 2 ?: "x")) == "gamma",
-        listContains odd "",
-        listContains odd " ",
-        !(listContains odd "A"),
-        listContains dup "same",
-        listContains dup "other",
-        !(listContains dup "missing"),
         !(listContains noWords ""),
-        listLength dup == 4,
-        listLength odd == 6,
-        listLength (listReverse dup) == 4,
         (listGet dup 0 ?: "x") == (listGet dup 3 ?: "y"),
-        (listGet dup 0 ?: "x") != (listGet dup 2 ?: "y"),
-        listLength words == 3
+        (listGet dup 0 ?: "x") != (listGet dup 2 ?: "y")
     ]
+    checkCases "string element edge cases survive indexing and membership" [0, 1, 3] ["", " ", "12"] (\(i) => listGet odd i ?: "x") listText 0
+    checkMembership "string element edge cases survive indexing and membership" odd ["", " "] ["A"]
+    checkMembership "string element edge cases survive indexing and membership" dup ["same", "other"] ["missing"]
+    checkList "string element edge cases survive indexing and membership" (mapList [dup, odd, listReverse dup, words] listLength) [4, 6, 4, 3]
 
 // Register list patterns over string elements.
 test "string lists destructure, iterate, and rebuild through list patterns" (\() => exactArithmetic (stringListPatternCase))
@@ -796,22 +693,13 @@ recordListPatternCase () =
 
     // The bound head is a whole record: three fields of two different types are
     // readable off it, and the empty-list arm returns the caller's own record.
+    checkProbes "record list patterns bind whole records" [noSlots, oneSlot, slots, trio] ["none", "single", "pair", "long+2"] shapeOf listText
+    checkSame "record list patterns bind whole records" (mapList [noneHead, soloHead, firstOfSlots, reversedHead] (\(slot) => slot.label)) ["missing", "solo", "left", "right"] listText
+    checkSame "record list patterns bind whole records" (mapList [noneHead, soloHead, firstOfSlots, reversedHead] (\(slot) => slot.weight)) [0.0, 3.0, 1.5, 2.5] listFloat
     checkAll "record list patterns bind whole records" [
-        shapeOf noSlots == "none",
-        shapeOf oneSlot == "single",
-        shapeOf slots == "pair",
-        shapeOf trio == "long+2",
-        noneHead.label == "missing",
-        noneHead.weight == 0.0,
         !noneHead.ready,
-        soloHead.label == "solo",
-        soloHead.weight == 3.0,
         soloHead.ready,
-        firstOfSlots.label == "left",
-        firstOfSlots.weight == 1.5,
         firstOfSlots.ready,
-        reversedHead.label == "right",
-        reversedHead.weight == 2.5,
         !reversedHead.ready,
         noneSecond.label == "missing",
         soloSecond.label == "missing",
@@ -819,42 +707,20 @@ recordListPatternCase () =
         secondOfSlots.weight == 2.5,
         !secondOfSlots.ready,
         secondOfTrio.label == "right",
-        firstOfSlots.label != secondOfSlots.label,
-        tailLength slots == 1,
-        tailLength trio == 2
+        firstOfSlots.label != secondOfSlots.label
     ]
+    checkList "record list patterns bind whole records" (mapList [slots, trio] tailLength) [1, 2]
 
     // Recursion over the rest binder reaches every record, in order, once.
     // "left>right>extra>" is 5+6+6 = 17 bytes; weights 1.5+2.5+4.0 = 8.0.
-    checkAll "record fields survive head-tail recursion" [
-        slotLabels noSlots == "",
-        slotLabels oneSlot == "solo>",
-        slotLabels slots == "left>right>",
-        slotLabels trio == "left>right>extra>",
-        slotLabels (listReverse slots) == "right>left>",
-        slotLabels (listReverse trio) == "extra>right>left>",
-        slotLabels (listPrepend slots soloSlot) == "solo>left>right>",
-        slotLabels (noSlots + slots) == "left>right>",
-        length (slotLabels trio) == 17,
-        readySlots noSlots == 0,
-        readySlots oneSlot == 1,
-        readySlots slots == 1,
-        readySlots trio == 2,
-        readySlots (listReverse trio) == 2,
-        readySlots (listPrepend slots missingSlot) == 1,
-        totalWeight noSlots == 0.0,
-        totalWeight oneSlot == 3.0,
-        totalWeight slots == 4.0,
-        totalWeight trio == 8.0,
-        totalWeight (listReverse trio) == 8.0,
-        totalWeight (slots + slots) == 8.0
-    ]
+    checkProbes "record fields survive head-tail recursion" [noSlots, oneSlot, slots, trio, listReverse slots, listReverse trio, listPrepend slots soloSlot, noSlots + slots] ["", "solo>", "left>right>", "left>right>extra>", "right>left>", "extra>right>left>", "solo>left>right>", "left>right>"] slotLabels listText
+    checkList "record fields survive head-tail recursion" (mapList [trio] (\(xs) => length (slotLabels xs))) [17]
+    checkList "record fields survive head-tail recursion" (mapList [noSlots, oneSlot, slots, trio, listReverse trio, listPrepend slots missingSlot] readySlots) [0, 1, 1, 2, 2, 1]
+    checkSame "record fields survive head-tail recursion" (mapList [noSlots, oneSlot, slots, trio, listReverse trio, slots + slots] totalWeight) [0.0, 3.0, 4.0, 8.0, 8.0, 8.0] listFloat
 
     // Building `trio` left `slots` untouched. A record has no decided `==`
     // ([BOOL-EQUALITY]), so membership is asked of a key, the label.
     checkAll "record lists stay persistent and are searched by key" [
-        listLength slots == 2,
-        listLength trio == 3,
         slotLabels slots == "left>right>",
         readySlots slots == 1,
         totalWeight slots == 4.0,
@@ -864,8 +730,6 @@ recordListPatternCase () =
         !(contains (slotLabels slots) "${missingSlot.label}>"),
         contains (slotLabels slots) "left>",
         !(contains (slotLabels noSlots) "${missingSlot.label}>"),
-        listLength (listAppend trio missingSlot) == 4,
-        listLength trio == 3,
         (listGet trio 2 ?: missingSlot).label == "extra",
         (listGet trio 2 ?: missingSlot).weight == 4.0,
         (listGet trio 2 ?: missingSlot).ready,
@@ -873,10 +737,10 @@ recordListPatternCase () =
         (listGet slots 2 ?: missingSlot).label == "missing",
         (listGet noSlots 0 ?: missingSlot).label == "missing",
         isEmpty noSlots,
-        !(isEmpty slots),
-        length slots == 2,
-        length noSlots == 0
+        !(isEmpty slots)
     ]
+    checkList "record lists stay persistent and are searched by key" (mapList [slots, trio, listAppend trio missingSlot, noSlots] listLength) [2, 3, 4, 0]
+    checkList "record lists stay persistent and are searched by key" (mapList [slots, trio, listAppend trio missingSlot, noSlots] length) [2, 3, 4, 0]
 
 // Register list patterns over record elements.
 test "record lists destructure whole through list patterns" (\() => exactArithmetic (recordListPatternCase))
@@ -900,76 +764,35 @@ nestedListCase () =
     // Row sums: [1,2]=3, [3,4,5]=12, [6,7,8,9]=30, so sumInner(rows) = 45 and
     // sumInner(grown) = 45 + 21 = 66.
     checkAll "nested list elements come back as lists" [
-        listLength rows == 3,
-        listLength firstRow == 2,
-        sumList firstRow == 3,
-        (listGet firstRow 0 ?: 0) == 1,
-        (listGet firstRow 1 ?: 0) == 2,
-        listLength (rowAt (rows, 1)) == 3,
-        sumList (rowAt (rows, 1)) == 12,
-        (listGet (rowAt (rows, 1)) 2 ?: 0) == 5,
-        listLength (rowAt (rows, 2)) == 4,
-        sumList (rowAt (rows, 2)) == 30,
-        (listGet (rowAt (rows, 2)) 3 ?: 0) == 9,
         (listGet (rowAt (rows, 2)) 4 ?: 77) == 77,
-        sumList sentinelProbe == 777,
-        listLength sentinelProbe == 1,
-        sumInner rows == 45,
-        sumInner oneRow == 27,
-        sumInner twoRows == 6,
-        sumInner withEmptyRow == 45,
-        sumInner grown == 66,
-        listLength withEmptyRow == 4,
-        isEmpty (rowAt (withEmptyRow, 3)),
-        listLength (rowAt (withEmptyRow, 3)) == 0
+        isEmpty (rowAt (withEmptyRow, 3))
     ]
+    checkList "nested list elements come back as lists" (mapList [rows, withEmptyRow, grown, listReverse rows, rows + rows] listLength) [3, 4, 4, 3, 6]
+    checkList "nested list elements come back as lists" (mapList [firstRow, rowAt (rows, 1), rowAt (rows, 2), sentinelProbe, rowAt (withEmptyRow, 3)] listLength) [2, 3, 4, 1, 0]
+    checkList "nested list elements come back as lists" (mapList [firstRow, rowAt (rows, 1), rowAt (rows, 2), sentinelProbe] sumList) [3, 12, 30, 777]
+    checkList "nested list elements come back as lists" (mapList [rows, oneRow, twoRows, withEmptyRow, grown] sumInner) [45, 27, 6, 45, 66]
+    checkList "nested list elements come back as lists" (mapList [0, 1] (\(i) => listGet firstRow i ?: 0)) [1, 2]
+    checkList "nested list elements come back as lists" (mapList [[1, 2], [2, 3]] (\(cell) => listGet (rowAt (rows, listInt cell 0)) (listInt cell 1) ?: 0)) [5, 9]
 
     // The outer arm is chosen by the outer length while the message reports the
     // inner length, so mixing the two up is visible in every arm.
-    checkAll "nested list patterns read outer arm and inner length" [
-        shapeOf oneRow == "single",
-        shapeOf twoRows == "pair",
-        shapeOf rows == "long+2",
-        shapeOf grown == "long+3",
-        describeMatrix oneRow == "one row of 3",
-        describeMatrix twoRows == "rows 1+2",
-        describeMatrix rows == "head 2 then 2 more",
-        describeMatrix grown == "head 2 then 3 more",
-        describeMatrix withEmptyRow == "head 2 then 3 more",
-        describeMatrix (listReverse rows) == "head 4 then 2 more",
-        listLength (headOr (rows, emptyRow)) == 2,
-        listLength (headOr (listReverse rows, emptyRow)) == 4,
-        sumList (headOr (rows, emptyRow)) == 3,
-        sumList (secondOr (rows, emptyRow)) == 12,
-        listLength (secondOr (twoRows, emptyRow)) == 2,
-        sumList (secondOr (oneRow, emptyRow)) == 0,
-        tailLength rows == 2,
-        tailLength oneRow == 0
-    ]
+    checkProbes "nested list patterns read outer arm and inner length" [oneRow, twoRows, rows, grown] ["single", "pair", "long+2", "long+3"] shapeOf listText
+    checkProbes "nested list patterns read outer arm and inner length" [oneRow, twoRows, rows, grown, withEmptyRow, listReverse rows] ["one row of 3", "rows 1+2", "head 2 then 2 more", "head 2 then 3 more", "head 2 then 3 more", "head 4 then 2 more"] describeMatrix listText
+    checkList "nested list patterns read outer arm and inner length" (mapList [headOr (rows, emptyRow), headOr (listReverse rows, emptyRow), secondOr (twoRows, emptyRow)] listLength) [2, 4, 2]
+    checkList "nested list patterns read outer arm and inner length" (mapList [headOr (rows, emptyRow), secondOr (rows, emptyRow), secondOr (oneRow, emptyRow)] sumList) [3, 12, 0]
+    checkList "nested list patterns read outer arm and inner length" (mapList [rows, oneRow] tailLength) [2, 0]
 
     // Appending to a retrieved row builds a NEW row and leaves the matrix alone:
     // the stored row keeps its own contents ([BOOL-EQUALITY] decides no `==`
     // for lists, so the rows are compared by their sums).
     checkAll "nested lists stay isolated when a retrieved row grows" [
-        listLength rows == 3,
-        listLength grown == 4,
-        sumInner rows == 45,
-        listLength firstRow == 2,
-        listLength biggerFirstRow == 3,
-        sumList biggerFirstRow == 102,
-        sumList firstRow == 3,
-        listLength (rowAt (rows, 0)) == 2,
         sumList (rowAt (rows, 0)) != sumList biggerFirstRow,
-        sumList (rowAt (rows, 0)) == sumList [1, 2],
-        sumInner (listReverse rows) == 45,
-        sumList (rowAt (listReverse rows, 0)) == 30,
-        sumList (rowAt (listReverse rows, 2)) == 3,
-        listLength (listReverse rows) == 3,
-        sumInner (rows + rows) == 90,
-        listLength (rows + rows) == 6,
-        sumList (rowAt (rows + rows, 3)) == 3,
-        sumInner rows == 45
+        sumList (rowAt (rows, 0)) == sumList [1, 2]
     ]
+    checkList "nested lists stay isolated when a retrieved row grows" (mapList [rows, grown, listReverse rows, rows + rows] listLength) [3, 4, 3, 6]
+    checkList "nested lists stay isolated when a retrieved row grows" (mapList [firstRow, biggerFirstRow, rowAt (rows, 0)] listLength) [2, 3, 2]
+    checkList "nested lists stay isolated when a retrieved row grows" (mapList [biggerFirstRow, firstRow, rowAt (listReverse rows, 0), rowAt (listReverse rows, 2), rowAt (rows + rows, 3)] sumList) [102, 3, 30, 3, 3]
+    checkList "nested lists stay isolated when a retrieved row grows" (mapList [rows, listReverse rows, rows + rows, rows] sumInner) [45, 45, 90, 45]
 
 // Register nested-list indexing, patterns and isolation.
 test "nested lists index, destructure, and stay isolated" (\() => exactArithmetic (nestedListCase))

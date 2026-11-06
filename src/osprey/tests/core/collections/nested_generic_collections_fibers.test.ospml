@@ -35,6 +35,14 @@ checkCells label keys keyPick indices values probe pick =
     forEachList (toList (range 0 (listLength values))) (\i =>
         check label (pick (values, i)) (probe ((keyPick (keys, i)), listInt indices i)))
 
+(** The four bool leaf observations that pin the `left`/`right` bool groups. *)
+checkBoolGroups label groups = checkAll label [
+        boolAt (groups, "left", 0),
+        !(boolMissAt (groups, "left", 1)),
+        !(boolMissAt (groups, "right", 0)),
+        boolAt (groups, "right", 1)
+    ]
+
 intMatrix () = [[1, 2], [3, 4, 5]]
 stringMatrix () = [["ant", "bee"], ["cat", "dog", "eel"]]
 floatGroups () = Map () |> mapSet "small" [0.5, 1.25] |> mapSet "large" [8.5, 9.75]
@@ -116,10 +124,6 @@ fiberChannelCollectionCase () =
         textAt (strings, 0, 1) == "bee",
         textAt (strings, 1, 0) == "cat",
         textAt (strings, 1, 2) == "eel",
-        boolAt (bools, "left", 0),
-        !(boolMissAt (bools, "left", 1)),
-        !(boolMissAt (bools, "right", 0)),
-        boolAt (bools, "right", 1),
         listLength ints == 2,
         listLength strings == 2,
         mapLength floats == 2,
@@ -129,6 +133,7 @@ fiberChannelCollectionCase () =
         fiberDone floatFiber == 1,
         fiberDone boolFiber == 1
     ]
+    checkBoolGroups "spawn and out-of-order await reconstruct nested collection owners" bools
     checkCells "spawn and out-of-order await reconstruct nested collection owners" [0, 0, 1, 1] (\(xs, i) => listInt xs i) [0, 1, 0, 2] [1, 2, 3, 5] (\(row, column) => intAt (ints, row, column)) (\(xs, i) => listInt xs i)
     checkCells "spawn and out-of-order await reconstruct nested collection owners" ["small", "small", "large"] (\(xs, i) => listText xs i) [0, 1, 1] [0.5, 1.25, 9.75] (\(key, index) => floatAt (floats, key, index)) (\(xs, i) => listFloat xs i)
 
@@ -176,10 +181,6 @@ fiberEffectCollectionCase () =
     checkAll "inherited generic handlers preserve collection results from fibers" [
         listLength ints == 2,
         mapLength bools == 2,
-        boolAt (bools, "left", 0),
-        !(boolMissAt (bools, "left", 1)),
-        !(boolMissAt (bools, "right", 0)),
-        boolAt (bools, "right", 1),
         listLength grownInts == 3,
         mapLength grownBools == 2,
         !(mapContains grownBools "left"),
@@ -191,6 +192,7 @@ fiberEffectCollectionCase () =
         mapContains bools "left",
         !(mapContains bools "extra")
     ]
+    checkBoolGroups "inherited generic handlers preserve collection results from fibers" bools
 
 (* The channel case was parked with a Skip verdict while `Channel<collection>`
     lost its element type in transit: the wire word is a uniform `i64`, `recv`
