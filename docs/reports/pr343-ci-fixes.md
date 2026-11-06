@@ -41,7 +41,7 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
 9. **Mapped-file tensor fixture [OspreyCodex]**
    - [x] Reproduce the OpenCL driver refusal from run 42145657288 with that run's compiler and runtime archives in Ubuntu 24.04 amd64. The host product and all mapped-file diagnostics matched.
    - [x] Check the typed refusal on Linux and preserve exact parity and dispatch traces when a device runs. Host and Metal both passed locally.
-   - [ ] Verify the complete hosted Rust rest shard and its coverage artifact.
+   - [x] Verify the complete hosted Rust rest shard and its coverage artifact. Run 42150529203, job 127674155353, passed the mapped-file test and uploaded artifact 13473265612. The Agent budget passed in 117.79 seconds.
 
 ## Status (run 42138521783)
 
