@@ -153,11 +153,7 @@ fn pairedScoreForTest() = {
 // Re-executes effectful fiber work and checks deterministic results on the main fiber.
 
 test("fiber results remain deterministic across effect handlers", fn() => exactArithmetic(fn() => checkAll("fiber and effect results", [
-        highScoreForTest() == 81,
-        pairedScoreForTest() == 30,
-        prodR == 10,
-        silentR == 0,
-        raceSum == 30,
+        structuralEquals([highScoreForTest(), pairedScoreForTest(), prodR, silentR, raceSum], [81, 30, 10, 0, 30]),
         priWeight(Low) == 1
 ])))
 
@@ -291,11 +287,7 @@ fn awaitReplaysOneEffectfulRunCase() = {
     checkAll("one body run answers every await", [
         replayed == 21,
         replayed == (7 * 3 ),
-        zeroRun == 14,
-        negRun == 2,
-        stepped == 61117,
-        twice == 35,
-        performs == 8,
+        structuralEquals([zeroRun, negRun, stepped, twice, performs], [14, 2, 61117, 35, 8]),
         performs != 10,
         total == 17,
         lastAmount == (0 - 1 ),
@@ -560,9 +552,7 @@ fn handlerCellCrossesTheFiberBoundaryCase() = {
         ((intDiv(mixed, 10000) ) % 100 ) == 7,
         ((intDiv(mixed, 100) ) % 100 ) == 12,
         (mixed % 100 ) == 18,
-        carried == 22,
-        cell == 22,
-        hops == 6,
+        structuralEquals([carried, cell, hops], [22, 22, 6]),
         cell == (3 + 4 + 5 + 6 + 4 ),
         carried == cell,
         mixed != 0,
@@ -825,9 +815,7 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
     // Six calls to relayBoth stamp once and fetch once each, so the stamp count
     // must equal the two fetch counts added together: 6 == 4 + 2.
     checkAll("an operation the inner region omits reaches the enclosing one", [
-        stampHits == 6,
-        innerHits == 4,
-        outerHits == 2,
+        structuralEquals([stampHits, innerHits, outerHits], [6, 4, 2]),
         (stampHits - innerHits ) == 2,
         stampHits == (innerHits + outerHits ),
         startsWith(inner, "outer"),
@@ -865,9 +853,7 @@ fn nestedRegionsPickTheInnermostArmForFibersCase() = {
         !endsWith(restored, "400"),
         endsWith(restored, "=8"),
         startsWith(restored, "outer4=400"),
-        length(restored) == 19,
-        outerHits == 2,
-        innerHits == 4,
+        structuralEquals([length(restored), outerHits, innerHits], [19, 2, 4]),
         (outerHits * 2 ) == innerHits,
         restored != paired,
         restored != inner,
@@ -966,10 +952,7 @@ fn fiberPipelineTranscriptIsDeterministicCase() = {
         (3 * 2 + 1 ) == 7,
         (7 * 2 + 1 ) == 15,
         piped != 1030716,
-        steps == 7,
-        running == 5,
-        yielded == 40,
-        probe == 51
+        structuralEquals([steps, running, yielded, probe], [7, 5, 40, 51])
     ])
 
     // "s4=14;" is the stage a single lost increment would write, "s8=" a stage

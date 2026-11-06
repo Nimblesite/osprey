@@ -20,14 +20,8 @@ runBatchAssertions () =
     missing = mapGet base "missing" ?: [99]
 
     checkAll "effect batch collection preconditions" [
-        total == 10,
-        mapLength base == 2,
-        mapLength grown == 3,
-        mapLength replaced == 3,
-        mapLength removed == 2,
-        listLength first == 2,
-        listLength second == 2,
-        listLength missing == 1,
+        structuralEquals [total, mapLength base, mapLength grown, mapLength replaced] [10, 2, 3, 3],
+        structuralEquals [mapLength removed, listLength first, listLength second, listLength missing] [2, 2, 2, 1],
         (listGet first 0 ?: 99) == 2,
         (listGet first 1 ?: 99) == 3,
         (listGet second 0 ?: 99) == 5,
@@ -60,9 +54,7 @@ runBatchAssertions () =
     ]
 
     checkAll "handler exit preserves state and persistent collection versions" [
-        total == 25,
-        mapLength base == 2,
-        mapLength grown == 3,
+        structuralEquals [total, mapLength base, mapLength grown] [25, 2, 3],
         listLength (mapGet grown "third" ?: empty) == 3,
         (listGet (mapGet grown "third" ?: empty) 2 ?: 99) == 13,
         listLength (mapGet replaced "first" ?: empty) == 1,

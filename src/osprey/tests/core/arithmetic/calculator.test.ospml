@@ -38,11 +38,7 @@ additionCase () =
     subtotal = add (10, 20)
     // Check arithmetic values and ordering.
     checkAll "addition state" [
-        add (2, 3) == 5,
-        add (-1, 1) == 0,
-        add (subtotal, -5) == 25,
-        add (0, 0) == 0,
-        add (1000, -250) == 750,
+        structuralEquals [add (2, 3), add (-1, 1), add (subtotal, -5), add (0, 0), add (1000, -250)] [5, 0, 25, 0, 750],
         add (4, 5) > add (2, 3),
         !(add (-2, 1) > 0)
     ]
@@ -64,11 +60,8 @@ pipelineCase () =
 patternCase () =
     // Check branch selection and composed results.
     checkAll "pattern state" [
-        parity 4 == "even",
-        parity 7 == "odd",
-        parity (add (5, 5)) == "even",
-        "${parity 3}:${double 3}" == "odd:6",
-        parity (double 9) == "even",
+        structuralEquals [parity 4, parity 7, parity (add (5, 5))] ["even", "odd", "even"],
+        structuralEquals ["${parity 3}:${double 3}", parity (double 9)] ["odd:6", "even"],
         parity 3 != parity 4
     ]
 

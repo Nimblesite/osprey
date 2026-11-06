@@ -70,8 +70,7 @@ module SchemaCheckTests {
         let result = TypeDiagram::parse(readFile(schemaPath) ?: "")
         match result {
             Success { value } => checkAll("schema model declares every type exactly once", [
-                    length(value.decls) == 113,
-                    length(filterList(value.decls, isAlias)) == 14,
+                    structuralEquals([length(value.decls), length(filterList(value.decls, isAlias))], [113, 14]),
                     length(filterList(value.decls, isStruct)) == 71,
                     length(filterList(value.decls, isUnion)) == 28,
                     everyNameResolves(value)
@@ -124,8 +123,7 @@ module SchemaCheckTests {
     }
 
     fn floats() = checkAll("non-integer numbers are parse-level rejections", [
-            floatProblem("1.5") == "json.non-integer@0",
-            floatProblem("1e3") == "json.non-integer@0",
+            structuralEquals([floatProblem("1.5"), floatProblem("1e3")], ["json.non-integer@0", "json.non-integer@0"]),
             floatProblem("0.0") == "json.non-integer@0"
     ])
 

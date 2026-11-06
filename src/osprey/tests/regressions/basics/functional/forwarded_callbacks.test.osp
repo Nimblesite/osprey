@@ -34,9 +34,7 @@ fn forwardSame(decode) = sameName("b", decode)
 fn forwardDeep(decode) = twoDeep("c", decode)
 
 fn forwardedByAnyName() = checkAll("the forwarded callable is the one passed", [
-    forwardRenamed(load).text == "a",
-    forwardSame(load).text == "b",
-    forwardDeep(load).text == "c",
+    structuralEquals([forwardRenamed(load).text, forwardSame(load).text, forwardDeep(load).text], ["a", "b", "c"]),
     run("d", shown, load) == "shown:d"
 ])
 
@@ -50,8 +48,7 @@ fn builtinsByName() = {
     let words = [" beta ", "alpha"]
     let trimmed = mapList(words, trim)
     checkAll("a built-in named as a callback is called", [
-        join(trimmed, ",") == "beta,alpha",
-        join(mapList(trimmed, toUpperCase), ",") == "BETA,ALPHA",
+        structuralEquals([join(trimmed, ","), join(mapList(trimmed, toUpperCase), ",")], ["beta,alpha", "BETA,ALPHA"]),
         join(mapList(mapList(trimmed, length), toString), ",") == "4,5",
         join(range(0, 2) |> map(toString) |> map(toUpperCase) |> toList, ",") == "0,1"
     ])

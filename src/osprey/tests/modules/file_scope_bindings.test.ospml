@@ -36,9 +36,7 @@ scaled () = (hits * base)
 
 (** Both file-scope bindings are readable from ordinary function bodies. *)
 constantReadCase () = checkAll ("functions read file-scope bindings", [
-    base == 100,
-    total == 10,
-    scaled () == 700,
+    structuralEquals [base, total, scaled ()] [100, 10, 700],
     ((base + total) ) == 110,
     "${base}" == "100"
 ])

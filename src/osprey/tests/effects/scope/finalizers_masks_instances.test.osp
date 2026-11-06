@@ -123,8 +123,7 @@ fn instanceCase() = {
     let both = fn() => wrapAdd(perform left.get("a"), wrapMul(perform right.get("b"), 10))
     let mixed = fn() => wrapAdd(perform Store.get("x"), perform left.get("y"))
     checkAll("an instance is a capability only its own handlers answer", [
-        leftAnswers(fn() => rightAnswers(both)) == 21,
-        rightAnswers(fn() => leftAnswers(both)) == 21,
+        structuralEquals([leftAnswers(fn() => rightAnswers(both)), rightAnswers(fn() => leftAnswers(both))], [21, 21]),
         defaultAnswers(fn() => leftAnswers(mixed)) == 51,
         leftAnswers(fn() => defaultAnswers(mixed)) == 51
     ])

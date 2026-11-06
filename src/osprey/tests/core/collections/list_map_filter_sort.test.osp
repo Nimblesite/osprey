@@ -54,16 +54,12 @@ fn sortCase() = {
     checkItems("listSort orders a signed literal list", listSort([-1, 5, 0]), [-1, 0, 5], 0)
     checkItems("listSort orders an appended list", listSort(listAppend(listAppend(listAppend(List(), 30), 10), 20)), [10, 20, 30], 0)
     checkAll("listSort keeps every element", [
-        listLength(ints) == 3,
-        listLength(listSort([7])) == 1,
-        listLength(listSort(List())) == 0
+        structuralEquals([listLength(ints), listLength(listSort([7])), listLength(listSort(List()))], [3, 1, 0])
     ])
 
     checkAll("listSort orders string lists ascending", [
-        join(words, ",") == "alpha,beta,gamma",
-        join(listSort(["z", "a", "m"]), ",") == "a,m,z",
-        join(listSort([""]), ",") == "",
-        join(listSort(["same", "same"]), ",") == "same,same"
+        structuralEquals([join(words, ","), join(listSort(["z", "a", "m"]), ",")], ["alpha,beta,gamma", "a,m,z"]),
+        structuralEquals([join(listSort([""]), ","), join(listSort(["same", "same"]), ",")], ["", "same,same"])
     ])
 }
 

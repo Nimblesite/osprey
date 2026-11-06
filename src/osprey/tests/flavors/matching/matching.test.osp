@@ -11,21 +11,15 @@ fn tourClassify(n) = match n {
 fn matchTourCase() = {
     // Preserve each complete one-word output line independently.
     checkAll("match tour legacy rendered lines", [
-            tourClassify(0) == "zero",
-            tourClassify(1) == "one",
-            tourClassify(9) == "many"
+            structuralEquals([tourClassify(0), tourClassify(1), tourClassify(9)], ["zero", "one", "many"])
     ])
     // Repeat the dynamic branch results as explicit constituent assertions.
     checkAll("match tour legacy constituent values", [
-            tourClassify(0) == "zero",
-            tourClassify(1) == "one",
-            tourClassify(9) == "many"
+            structuralEquals([tourClassify(0), tourClassify(1), tourClassify(9)], ["zero", "one", "many"])
     ])
     // Extend wildcard coverage across adjacent, negative, and large integers.
     checkAll("match tour wildcard edge cases", [
-            tourClassify(2) == "many",
-            tourClassify((0 - 1) ) == "many",
-            tourClassify(100) == "many",
+            structuralEquals([tourClassify(2), tourClassify((0 - 1) ), tourClassify(100)], ["many", "many", "many"]),
             (tourClassify(0) == tourClassify(1)) == false
     ])
 }
@@ -51,16 +45,12 @@ fn matchBooleanCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("boolean match legacy constituent values", [
-            matchGrade(80) == "pass",
-            matchGrade(20) == "fail",
-            matchEven(4) == "even",
+            structuralEquals([matchGrade(80), matchGrade(20), matchEven(4)], ["pass", "fail", "even"]),
             matchEven(7) == "odd"
     ])
     // Exercise the grade threshold and parity boundary values.
     checkAll("boolean match boundaries", [
-            matchGrade(50) == "pass",
-            matchGrade(49) == "fail",
-            matchEven(0) == "even",
+            structuralEquals([matchGrade(50), matchGrade(49), matchEven(0)], ["pass", "fail", "even"]),
             matchEven(9) == "odd"
     ])
 }
@@ -82,16 +72,12 @@ fn matchIntegerCase() = {
     ])
     // Split all four matched labels into independent assertions.
     checkAll("integer match legacy constituent values", [
-            matchLabel(0) == "none",
-            matchLabel(1) == "single",
-            matchLabel(2) == "pair",
+            structuralEquals([matchLabel(0), matchLabel(1), matchLabel(2)], ["none", "single", "pair"]),
             matchLabel(7) == "many"
     ])
     // Extend the wildcard across adjacent, negative, and large integers.
     checkAll("integer match wildcard boundaries", [
-            matchLabel(3) == "many",
-            matchLabel((0 - 1) ) == "many",
-            matchLabel(100) == "many"
+            structuralEquals([matchLabel(3), matchLabel((0 - 1) ), matchLabel(100)], ["many", "many", "many"])
     ])
 }
 
@@ -160,14 +146,10 @@ fn bindingScope() = {
 
 fn siblingScopeCase() = checkAll("pattern arms have independent bindings", [
     resultScope(Success { value: 2 }) == "2:outer:100:outer",
-    resultScope(Error { message: "bad" }) == "100:bad:100:outer",
-    unionScope(Pick(2)) == "2:100",
-    unionScope(Other) == "100:100",
-    listScope([2, 3]) == "3:100:2",
-    listScope([]) == "100:100:2",
+    structuralEquals([resultScope(Error { message: "bad" }), unionScope(Pick(2))], ["100:bad:100:outer", "2:100"]),
+    structuralEquals([unionScope(Other), listScope([2, 3]), listScope([])], ["100:100", "3:100:2", "100:100:2"]),
     structuralScope(Coordinates { x: 2, y: 3 }) == "3:100",
-    erasedScope(Coordinates { x: 2, y: 3 }) == "2:100",
-    erasedScope(0) == "none:100"
+    structuralEquals([erasedScope(Coordinates { x: 2, y: 3 }), erasedScope(0)], ["2:100", "none:100"])
 ])
 
 fn capturedPattern(input) = {

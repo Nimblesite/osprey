@@ -110,8 +110,7 @@ module BundleTests {
         codeOf(Bundle::verify(goodBundle(), wrongDigest)) == "bundle.unexpected-digest",
         codeOf(Bundle::verify("not json", goldenDigest)) == "json.unexpected-token at byte 0",
         codeOf(Bundle::verify(missingFieldBundle(), goldenDigest)) == "bundle.shape",
-        Bundle::sizeCode(134217728) == "",
-        Bundle::sizeCode(134217729) == "bundle.too-large"
+        structuralEquals([Bundle::sizeCode(134217728), Bundle::sizeCode(134217729)], ["", "bundle.too-large"])
     ])
 
     export fn run() = {

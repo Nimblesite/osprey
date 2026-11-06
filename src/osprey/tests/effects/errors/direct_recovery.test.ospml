@@ -712,9 +712,7 @@ partialOverrideLatticeCase () =
     // outer arms, so the inner quote is 200+5 while both outer quotes are 100+5.
     checkAll "an inner arm overrides one operation and the outer arms remain" [
         overridden == "gold:105|gold:205|gold:105",
-        length overridden == 26,
-        outerBaseCalls == 2,
-        innerBaseCalls == 1,
+        structuralEquals [length overridden, outerBaseCalls, innerBaseCalls] [26, 2, 1],
         outerBaseCalls > innerBaseCalls,
         (outerBaseCalls + innerBaseCalls ) == 3,
         contains overridden "gold:205",
@@ -831,10 +829,7 @@ higherOrderRecoveryCase () =
     // An empty list performs nothing, a singleton performs once, duplicates
     // perform once per occurrence, and the nested traversal adds three more.
     checkAll "empty, singleton, duplicate and nested inputs each contribute once" [
-        listLength none == 0,
-        listLength one == 1,
-        listLength dup == 3,
-        listLength mixed == 5,
+        structuralEquals [listLength none, listLength one, listLength dup, listLength mixed] [0, 1, 3, 5],
         listLength nested == 2,
         isEmpty none,
         !(isEmpty one),
@@ -875,9 +870,7 @@ higherOrderRecoveryCase () =
         (negatives + 15 ) == 0,
         (0 - negatives ) == 15,
         (1 + 2 + 3 + 4 + 5 ) == 15,
-        total == 182,
-        steps == 12,
-        scaled == 12,
+        structuralEquals [total, steps, scaled] [182, 12, 12],
         trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
         negatives != total,
         negated != finished
@@ -950,10 +943,7 @@ recursiveAccumulationCase () =
     // Depth zero performs nothing at all, so an installed arm stays untouched;
     // depth one performs exactly once and answers 1 * 3.
     checkAll "zero and one level recursions" [
-        zeroTotal == 0,
-        zeroVisits == 0,
-        oneTotal == 3,
-        oneVisits == 1,
+        structuralEquals [zeroTotal, zeroVisits, oneTotal, oneVisits] [0, 0, 3, 1],
         zeroVisits < oneVisits,
         zeroTotal != oneTotal,
         zeroTotal < oneTotal,
@@ -987,12 +977,7 @@ recursiveAccumulationCase () =
     // run's own answer is still readable after the later regions have closed.
     checkAll "every level of every run entered its own handler" [
         (visits + zeroVisits + oneVisits + deepVisits ) == 42,
-        visits == 8,
-        deepVisits == 33,
-        total == 360,
-        deepTotal == 561,
-        doubled == 1122,
-        oneTotal == 3,
+        structuralEquals [visits, deepVisits, total, deepTotal, doubled, oneTotal] [8, 33, 360, 561, 1122, 3],
         zeroTotal == 0,
         (total + oneTotal + zeroTotal ) == 363,
         (deepTotal + doubled ) == 1683
@@ -1071,10 +1056,7 @@ multiEffectRegionCase () =
         endsWith rendered ":25",
         contains rendered ":6:4:",
         !(contains rendered ":25:"),
-        notes == 3,
-        recoveries == 1,
-        shortages == 1,
-        policies == 2,
+        structuralEquals [notes, recoveries, shortages, policies] [3, 1, 1, 2],
         (notes + recoveries + shortages + policies ) == 7,
         notes > recoveries,
         policies > shortages,
@@ -1129,10 +1111,7 @@ multiEffectRegionCase () =
         !(contains generous "priority"),
         generousAudits == 3,
         generousAudits == notes,
-        notes == 3,
-        recoveries == 1,
-        shortages == 1,
-        policies == 2,
+        structuralEquals [notes, recoveries, shortages, policies] [3, 1, 1, 2],
         auditTrail == "filled 6|allowed 4|scored 25|"
     ]
 

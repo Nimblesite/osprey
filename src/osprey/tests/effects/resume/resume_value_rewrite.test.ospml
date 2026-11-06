@@ -101,19 +101,14 @@ resumeValueRewriteCase () =
 
     (* Assert supplied values, LIFO settlement, Result shape, and both Relay types. *)
     checkAll "value-rewrite internal state" [
-        result == 330,
-        seed == 115,
-        supplyCalls == 3,
+        structuralEquals [result, seed, supplyCalls] [330, 115, 3],
         supplied == "first:105|second:110|third:115|",
         settled == "third:330|second:330|first:330|",
         result == (105 + 110 + 115 ),
         word == "carried",
         wordRelayCalls == 1,
         wordSettled == "carried",
-        checked == 10,
-        checkedCalls == 1,
-        num == 41,
-        numRelayCalls == 1,
+        structuralEquals [checked, checkedCalls, num, numRelayCalls] [10, 1, 41, 1],
         checked != num
     ]
 

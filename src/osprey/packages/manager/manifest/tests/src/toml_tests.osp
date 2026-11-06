@@ -73,8 +73,7 @@ module TomlTests {
         let project = Toml::get(root, "project") ?: Toml::Table { pairs: [] }
         let name = Toml::get(project, "name") ?: Toml::Str { text: "" }
         checkAll("get/keys follow document order and reason codes", [
-            render(name) == "\"ledger\"",
-            codeAt(Toml::get(root, "project")) == "",
+            structuralEquals([render(name), codeAt(Toml::get(root, "project"))], ["\"ledger\"", ""]),
             codeAt(Toml::get(root, "nope")) == "toml.missing-key",
             codeAt(Toml::get(name, "x")) == "toml.not-a-table",
             join(Toml::keys(project), ",") == "name,source_roots"

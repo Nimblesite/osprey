@@ -112,30 +112,17 @@ blockStatementsCase () =
     ]
 
     checkAll "block statement values" [
-        listHeadBlock () == 42,
-        mapProductBlock () == 20,
-        shadowedBlock () == 85,
-        compute () == 30,
-        matrixBlock () == 20,
-        conditionalBlock 42 == 94,
-        conditionalBlock 10 == 0
+        structuralEquals [listHeadBlock (), mapProductBlock (), shadowedBlock (), compute ()] [42, 20, 85, 30],
+        structuralEquals [matrixBlock (), conditionalBlock 42, conditionalBlock 10] [20, 94, 0]
     ]
 
     checkAll "top-level bindings and lexical shadowing remain stable" [
-        r1 == 42,
-        r2 == 20,
-        r3 == 85,
-        r5 == 20,
-        r6 == 94,
-        outer == 100,
-        value == 42,
+        structuralEquals [r1, r2, r3, r5, r6, outer, value] [42, 20, 85, 20, 94, 100, 42],
         shadowedBlock () == r3,
         compute () == compute (),
         matrixBlock () == r5,
         conditionalBlock value == r6,
-        conditionalBlock 0 == 0,
-        conditionalBlock 41 == 0,
-        conditionalBlock 43 == 0,
+        structuralEquals [conditionalBlock 0, conditionalBlock 41, conditionalBlock 43] [0, 0, 0],
         conditionalBlock ((0 - 1) ) == 0
     ]
 

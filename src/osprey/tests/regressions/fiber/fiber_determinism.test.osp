@@ -94,9 +94,7 @@ test("deterministic fibers complete in spawn order", fn() => exactArithmetic(fn(
     completionTrace() == "task-1:1200|task-2:1600|task-3:600|total:3400",
     startsWith(completionTrace(), "task-1:"),
     endsWith(completionTrace(), "total:3400"),
-    calculateComplexity(Urgent) == 750,
-    calculateComplexity(High) == 450,
-    calculateTaskTime(600) == 62
+    structuralEquals([calculateComplexity(Urgent), calculateComplexity(High), calculateTaskTime(600)], [750, 450, 62])
 ])))
 
 /// A select with nothing ready runs queued fibers in spawn order until an arm is

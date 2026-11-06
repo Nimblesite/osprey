@@ -59,18 +59,15 @@ fn addThenReset() = {
 
 /// Cell writes accumulate across operations inside one installed scope.
 fn accumulationCase() = checkAll("state accumulates within one scope", [
-    Tally::withTally(threeAdds) == "1/11/111",
-    Tally::withTally(addThenCount) == "5:1",
+    structuralEquals([Tally::withTally(threeAdds), Tally::withTally(addThenCount)], ["1/11/111", "5:1"]),
     Tally::withTally(addThenReset) == "9->1"
 ])
 
 /// Every installer call allocates its own cells [MODULES-STATE-MODULE].
 fn freshCellsCase() = checkAll("each installer call gets fresh cells", [
     Tally::withTally(threeAdds) == Tally::withTally(threeAdds),
-    Tally::withTally(addThenCount) == "5:1",
-    Tally::withTally(addThenCount) == "5:1",
-    Tally::withTally(threeAdds) == "1/11/111",
-    Tally::withTally(addThenReset) == "9->1"
+    structuralEquals([Tally::withTally(addThenCount), Tally::withTally(addThenCount)], ["5:1", "5:1"]),
+    structuralEquals([Tally::withTally(threeAdds), Tally::withTally(addThenReset)], ["1/11/111", "9->1"])
 ])
 
 /// Reading through the effect is the only route to the owned state.

@@ -24,9 +24,7 @@ pipeChainCase () =
     ]
     // Check each pipeline result independently.
     checkAll "pipe chain legacy constituent values" [
-        p1 == 12,
-        p2 == 37,
-        p3 == 24
+        structuralEquals [p1, p2, p3] [12, 37, 24]
     ]
     // Exercise intermediate, zero, and reordered stages.
     checkAll "pipe chain composition edges" [
@@ -54,9 +52,7 @@ stringsCase () =
     ]
     // Check each dynamic string independently.
     checkAll "strings legacy constituent values" [
-        hello == "Hi Ada",
-        stringShout hello == "Hi Ada!",
-        stringShout (stringGreet name) == "Hi Ada!",
+        structuralEquals [hello, stringShout hello, stringShout (stringGreet name)] ["Hi Ada", "Hi Ada!", "Hi Ada!"],
         hello + name == "Hi AdaAda"
     ]
     // Exercise empty inputs, nested calls, and reversed concatenation.

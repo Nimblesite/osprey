@@ -255,12 +255,7 @@ fn handlerStateThroughNestedCallsCase() = {
 
     // The arm's own answers accumulate on one cell across three call levels.
     checkAll("nested performs share the handler cell", [
-        sum == 27,
-        cell == 111,
-        bumps == 3,
-        snapshots == 1,
-        lastAmount == 6,
-        after == 111,
+        structuralEquals([sum, cell, bumps, snapshots, lastAmount, after], [27, 111, 3, 1, 6, 111]),
         after == cell,
         sum != cell,
         bumps != snapshots,
@@ -284,9 +279,7 @@ fn handlerStateThroughNestedCallsCase() = {
 
     // The file-scope region owns its own cell, on the same rule.
     checkAll("a top-level handler region owns its state", [
-        topSum == 7,
-        topCell == 5,
-        topBumps == 2,
+        structuralEquals([topSum, topCell, topBumps], [7, 5, 2]),
         topCell != cell,
         topSum != sum,
         topCell == (2 + 3 ),

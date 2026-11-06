@@ -167,21 +167,12 @@ fn typedErrorChannelCase() = {
     let grown = mapSet(nested, "forced", [forceUnder(9, 10, 4), forceUnder(99, 10, 4)])
 
     checkAll("typed channel direct substitution policies", [
-            combined == 40,
-            strictRangeForTest() == 1,
-            relaxedRangeForTest() == 10,
+            structuralEquals([combined, strictRangeForTest(), relaxedRangeForTest()], [40, 1, 10]),
             strictRangeForTest() != relaxedRangeForTest(),
-            parseUnder("bad", 0) == 0,
-            parseUnder("bad", 7) == 7,
-            parseUnder("other", 99) == 99,
-            missingUnder("timeout") == 30,
-            missingUnder("retries") == 1,
-            clampUnder(5, 10) == 5,
-            clampUnder(10, 10) == 10,
-            clampUnder(11, 10) == 10,
-            clampUnder(500, 10) == 10,
-            forceUnder(5, 10, 4) == 4,
-            forceUnder(500, 10, 4) == 4
+            structuralEquals([parseUnder("bad", 0), parseUnder("bad", 7), parseUnder("other", 99)], [0, 7, 99]),
+            structuralEquals([missingUnder("timeout"), missingUnder("retries"), clampUnder(5, 10)], [30, 1, 5]),
+            structuralEquals([clampUnder(10, 10), clampUnder(11, 10), clampUnder(500, 10)], [10, 10, 10]),
+            structuralEquals([forceUnder(5, 10, 4), forceUnder(500, 10, 4)], [4, 4])
     ])
 
     checkAll("nested handlers restore outer policies around collection values", [
@@ -193,9 +184,7 @@ fn typedErrorChannelCase() = {
             (healthyTrace.listGet(0) ?: 99) == 5,
             (healthyTrace.listGet(1) ?: 99) == 1,
             (healthyTrace.listGet(2) ?: 99) == 5,
-            traceShape([]) == "empty",
-            traceShape([7]) == "one:7",
-            traceShape([7, 8]) == "two:7/8",
+            structuralEquals([traceShape([]), traceShape([7]), traceShape([7, 8])], ["empty", "one:7", "two:7/8"]),
             traceShape(trace) == "many:10+2"
     ])
 

@@ -126,9 +126,6 @@ fn alphaBatchForTest() = {
 // Verifies preprocessing, classification, and the awaited batch total.
 
 test("fiber batch preserves transformed results", fn() => exactArithmetic(fn() => checkAll("fiber batch results", [
-    alphaBatchForTest() == 2700,
-    preprocessData(150) == 400,
-    transformData(400) == 1200,
-    calculateEfficiency(52) == 100,
-    calculateComplexity(Low) == 75
+    structuralEquals([alphaBatchForTest(), preprocessData(150), transformData(400)], [2700, 400, 1200]),
+    structuralEquals([calculateEfficiency(52), calculateComplexity(Low)], [100, 75])
 ])))

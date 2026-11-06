@@ -162,8 +162,7 @@ errorNestedResume = handler NestedBoxResultAsk
     value => resume (Error(message = join ["nested", "error"] " "))
 
 nestedResumeChecks () = checkAll "nested lists preserve erased resume payloads" [
-    nestedResumeText (nestedResumeValues ()) == "boxed",
-    plainNestedResume nestedResumeWork == "boxed",
+    structuralEquals [nestedResumeText (nestedResumeValues ()), plainNestedResume nestedResumeWork] ["boxed", "boxed"],
     promotedNestedResume nestedResultResumeWork == "boxed",
     wrappedNestedResume nestedResultResumeWork == "boxed",
     errorNestedResume nestedResultResumeWork == "nested error"
@@ -177,10 +176,8 @@ controlAnswerCase () =
         around controlWork == "done=42!", stop controlWork == "stopped",
         bracket twoAsks == "[[done=44]]", opened controlWork == "open 6",
         closed controlWork == "closed", closed twoAsks == "closed",
-        opened twoAsks == "open 55",
-        resumeBoxText (resumeBoxValues ()) == "boxed",
-        plainBoxResume resumeBoxWork == "boxed",
-        promotedBoxResume resumeResultBoxWork == "boxed",
+        structuralEquals [opened twoAsks, resumeBoxText (resumeBoxValues ())] ["open 55", "boxed"],
+        structuralEquals [plainBoxResume resumeBoxWork, promotedBoxResume resumeResultBoxWork] ["boxed", "boxed"],
         wrappedBoxResume resumeResultBoxWork == "boxed",
         errorBoxResume resumeResultBoxWork == "resume error"
     ]

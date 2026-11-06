@@ -76,17 +76,13 @@ genericRecordCollectionEffectCase () =
     checkAll "Envelope<List<List<int>>,string> survives list storage and persistence" [
         listLength envelopes == 2,
         listLength grown == 3,
-        firstBack.metadata == "int-matrix",
-        secondBack.metadata == "second",
+        structuralEquals [firstBack.metadata, secondBack.metadata] ["int-matrix", "second"],
         thirdBack.metadata == "third",
-        length firstBack.metadata == 10,
-        length secondBack.metadata == 6,
-        length thirdBack.metadata == 5,
+        structuralEquals [length firstBack.metadata, length secondBack.metadata, length thirdBack.metadata] [10, 6, 5],
         (listGet envelopes 8 ?: fallback).metadata == "fallback",
         nestedAt ((listGet envelopes 8 ?: fallback).payload, 0, 0, [91], 98) == 99,
         listLength envelopes == 2,
-        firstBack.metadata == "int-matrix",
-        auditEnvelopeMetadata envelopes == "int-matrix/second/",
+        structuralEquals [firstBack.metadata, auditEnvelopeMetadata envelopes] ["int-matrix", "int-matrix/second/"],
         auditEnvelopeMetadata grown == "int-matrix/second/third/"
     ]
 
@@ -111,13 +107,9 @@ genericRecordCollectionEffectCase () =
         mapLength envelopeMap == 1,
         mapContains envelopeMap "primary",
         !(mapContains envelopeMap "missing"),
-        stringBack.metadata == 17,
-        length (textGroup (stringBack.payload, "long", 1)) == 5,
-        groupSize (stringBack.payload, "short") == 2,
-        groupSize (stringBack.payload, "long") == 2,
-        missingBack.metadata == 99,
-        mapLength stringBack.payload == 2,
-        mapLength missingBack.payload == 1,
+        structuralEquals [stringBack.metadata, length (textGroup (stringBack.payload, "long", 1))] [17, 5],
+        structuralEquals [groupSize (stringBack.payload, "short"), groupSize (stringBack.payload, "long")] [2, 2],
+        structuralEquals [missingBack.metadata, mapLength stringBack.payload, mapLength missingBack.payload] [99, 2, 1],
         listLength (mapKeys stringBack.payload) == 2,
         listContains (mapKeys stringBack.payload) "short",
         listContains (mapKeys stringBack.payload) "long",
@@ -141,9 +133,7 @@ genericRecordCollectionEffectCase () =
         intAt (secondBack.payload, 0, 0) != intAt (thirdBack.payload, 0, 0),
         stringBack.metadata != missingBack.metadata,
         textGroup (stringBack.payload, "short", 0) != textGroup (missingBack.payload, "missing", 0),
-        mapLength envelopeMap == 1,
-        listLength envelopes == 2,
-        listLength grown == 3
+        structuralEquals [mapLength envelopeMap, listLength envelopes, listLength grown] [1, 2, 3]
     ]
 
 test "multi-argument generic records mix effects lists maps and Results" genericRecordCollectionEffectCase

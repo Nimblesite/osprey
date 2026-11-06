@@ -131,20 +131,14 @@ userDefinedUnionCase () =
     fallback = Err(message = "fallback")
 
     checkAll "union tags and payloads survive direct construction" [
-        describe loaded == "ok: loaded",
-        describe missing == "err: missing",
-        describe cached == "ok: cached",
-        describe (Err(message = "offline")) == "err: offline",
-        label Active == "active",
-        label Inactive == "inactive",
+        structuralEquals [describe loaded, describe missing] ["ok: loaded", "err: missing"],
+        structuralEquals [describe cached, describe (Err(message = "offline"))] ["ok: cached", "err: offline"],
+        structuralEquals [label Active, label Inactive] ["active", "inactive"],
         label Active != label Inactive
     ]
 
     checkAll "union lists preserve order patterns Results and persistence" [
-        listLength outcomes == 2,
-        listLength grown == 3,
-        listLength prefixed == 4,
-        listLength reversed == 4,
+        structuralEquals [listLength outcomes, listLength grown, listLength prefixed, listLength reversed] [2, 3, 4, 4],
         describe (listGet outcomes 0 ?: fallback) == "ok: loaded",
         describe (listGet outcomes 1 ?: fallback) == "err: missing",
         describe (listGet grown 2 ?: fallback) == "ok: cached",
@@ -153,19 +147,14 @@ userDefinedUnionCase () =
         describe (listGet reversed 3 ?: fallback) == "err: offline",
         describe (listGet outcomes 9 ?: fallback) == "err: fallback",
         listLength outcomes == 2,
-        outcomeShape [] == "empty",
-        outcomeShape [loaded] == "one:ok: loaded",
+        structuralEquals [outcomeShape [], outcomeShape [loaded]] ["empty", "one:ok: loaded"],
         outcomeShape outcomes == "two:ok: loaded/err: missing",
-        outcomeShape grown == "many:ok: loaded+2",
-        auditOutcomes outcomes == "ok: loaded|err: missing|",
+        structuralEquals [outcomeShape grown, auditOutcomes outcomes] ["many:ok: loaded+2", "ok: loaded|err: missing|"],
         auditOutcomes grown == "ok: loaded|err: missing|ok: cached|"
     ]
 
     checkAll "union maps preserve replacement removal lookup and generic choices" [
-        mapLength byName == 2,
-        mapLength updated == 3,
-        mapLength withoutFailure == 2,
-        mapLength merged == 3,
+        structuralEquals [mapLength byName, mapLength updated, mapLength withoutFailure, mapLength merged] [2, 3, 2, 3],
         describe (mapGet byName "primary" ?: fallback) == "ok: loaded",
         describe (mapGet byName "failure" ?: fallback) == "err: missing",
         describe (mapGet updated "cached" ?: fallback) == "ok: cached",
@@ -175,8 +164,7 @@ userDefinedUnionCase () =
         mapContains byName "primary",
         mapContains updated "cached",
         !(mapContains withoutFailure "failure"),
-        listLength (mapKeys merged) == 3,
-        listLength (mapValues merged) == 3,
+        structuralEquals [listLength (mapKeys merged), listLength (mapValues merged)] [3, 3],
         chooseOutcome (loaded, 41, 99) == 41,
         chooseOutcome (missing, "accepted", "rejected") == "rejected",
         chooseOutcome (cached, true, false),
@@ -185,10 +173,8 @@ userDefinedUnionCase () =
     ]
 
     checkAll "returned union values stay valid call arguments" [
-        render (classify 27) == "score 27",
-        render (classify 0) == "reason empty",
-        render (classify ((0 - 4) )) == "score -4",
-        render (Score(points = 9)) == "score 9",
+        structuralEquals [render (classify 27), render (classify 0)] ["score 27", "reason empty"],
+        structuralEquals [render (classify ((0 - 4) )), render (Score(points = 9))] ["score -4", "score 9"],
         render (Reason(text = "blocked")) == "reason blocked"
     ]
 
@@ -221,23 +207,17 @@ builtMapIndexCase () =
         mapContains built "b",
         !(mapContains built "missing"),
         absent,
-        mapLength replaced == 2,
-        valueOr (replaced, "a", 0) == 25,
-        valueOr (built, "a", 0) == 9,
+        structuralEquals [mapLength replaced, valueOr (replaced, "a", 0), valueOr (built, "a", 0)] [2, 25, 9],
         mapLength removed == 1,
         mapContains removed "a",
         !(mapContains removed "b"),
-        mapLength merged == 3,
-        valueOr (merged, "a", 0) == 9,
-        valueOr (merged, "b", 0) == 36,
-        valueOr (merged, "c", 0) == 49,
-        auditIntKeys (built, ["a", "b"]) == 916,
+        structuralEquals [mapLength merged, valueOr (merged, "a", 0), valueOr (merged, "b", 0)] [3, 9, 36],
+        structuralEquals [valueOr (merged, "c", 0), auditIntKeys (built, ["a", "b"])] [49, 916],
         auditIntKeys (merged, ["a", "b", "c"]) == 93649
     ]
 
     checkAll "generic lookup instantiations stay isolated across leaf types" [
-        valueOr (words, "first", "missing") == "ant",
-        valueOr (words, "second", "missing") == "bee",
+        structuralEquals [valueOr (words, "first", "missing"), valueOr (words, "second", "missing")] ["ant", "bee"],
         valueOr (words, "absent", "missing") == "missing",
         mapLength words == 2,
         mapLength wordGrowth == 3,
@@ -250,16 +230,12 @@ builtMapIndexCase () =
     ]
 
     checkAll "maps of lists retain their nested element descriptors" [
-        mapLength buckets == 2,
-        mapLength bucketGrowth == 3,
+        structuralEquals [mapLength buckets, mapLength bucketGrowth] [2, 3],
         listLength (valueOr (buckets, "odd", [99])) == 3,
         listLength (valueOr (bucketGrowth, "prime", [99])) == 4,
-        listValueAt (buckets, "odd", 0, 99) == 1,
-        listValueAt (buckets, "odd", 2, 99) == 5,
-        listValueAt (buckets, "even", 0, 99) == 2,
-        listValueAt (buckets, "even", 2, 99) == 6,
-        listValueAt (bucketGrowth, "prime", 3, 99) == 7,
-        listValueAt (buckets, "missing", 0, 99) == 99,
+        structuralEquals [listValueAt (buckets, "odd", 0, 99), listValueAt (buckets, "odd", 2, 99)] [1, 5],
+        structuralEquals [listValueAt (buckets, "even", 0, 99), listValueAt (buckets, "even", 2, 99)] [2, 6],
+        structuralEquals [listValueAt (bucketGrowth, "prime", 3, 99), listValueAt (buckets, "missing", 0, 99)] [7, 99],
         listValueAt (buckets, "odd", 9, 99) == 99,
         listValueAt (stringBuckets, "short", 0, "missing") == "a",
         listValueAt (stringBuckets, "short", 1, "missing") == "bb",

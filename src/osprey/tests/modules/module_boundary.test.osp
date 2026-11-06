@@ -45,22 +45,14 @@ module Ledger {
 
 /// Exported functions compute across the private constant and helper.
 fn exportedSurfaceCase() = checkAll("Tax exported surface", [
-    Tax::add(100) == 110,
-    Tax::add(0) == 0,
-    Tax::add(1) == 1,
-    Tax::add(9) == 9,
-    Tax::add(10) == 11,
+    structuralEquals([Tax::add(100), Tax::add(0), Tax::add(1), Tax::add(9), Tax::add(10)], [110, 0, 1, 9, 11]),
     Tax::rateUsed() == 10
 ])
 
 /// Nested modules are addressable through their exporting parent.
 fn nestedModuleCase() = checkAll("nested module boundary", [
-    Tax::Rounding::down(13) == 10,
-    Tax::Rounding::down(10) == 10,
-    Tax::Rounding::down(4) == 0,
-    Tax::addRounded(100) == 110,
-    Tax::addRounded(37) == 40,
-    Tax::addRounded(9) == 5
+    structuralEquals([Tax::Rounding::down(13), Tax::Rounding::down(10), Tax::Rounding::down(4)], [10, 10, 0]),
+    structuralEquals([Tax::addRounded(100), Tax::addRounded(37), Tax::addRounded(9)], [110, 40, 5])
 ])
 
 /// One module consuming another's exports keeps both boundaries intact.

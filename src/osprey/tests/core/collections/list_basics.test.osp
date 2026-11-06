@@ -66,50 +66,26 @@ fn constructionAndIdentityCase() = {
 
     // Every legacy length observation remains an independent assertion.
     checkAll("legacy construction and operation lengths", [
-        listLength(empty) == 0,
-        listLength(a) == 3,
-        listLength(b) == 2,
-        listLength(reversed) == 3,
-        listLength(restored) == 3,
-        listLength(concatenated) == 5,
-        listLength(listConcat(empty, a)) == 3,
-        listLength(listConcat(a, empty)) == 3,
-        listLength(a + a) == 6,
-        listLength(a + b + a) == 8,
-        listLength(prepended) == 4,
-        listLength(a) == 3
+        structuralEquals([listLength(empty), listLength(a), listLength(b), listLength(reversed)], [0, 3, 2, 3]),
+        structuralEquals([listLength(restored), listLength(concatenated), listLength(listConcat(empty, a))], [3, 5, 3]),
+        structuralEquals([listLength(listConcat(a, empty)), listLength(a + a), listLength(a + b + a)], [3, 6, 8]),
+        structuralEquals([listLength(prepended), listLength(a)], [4, 3])
     ])
 
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
     checkAll("construction and reverse contents", [
-        intAt(a, 0) == 1,
-        intAt(a, 1) == 2,
-        intAt(a, 2) == 3,
-        intAt(b, 0) == 10,
-        intAt(b, 1) == 20,
-        intAt(reversed, 0) == 3,
-        intAt(reversed, 1) == 2,
-        intAt(reversed, 2) == 1,
-        intAt(restored, 0) == 1,
-        intAt(restored, 1) == 2,
-        intAt(restored, 2) == 3,
-        intAt(prepended, 0) == 0,
-        intAt(prepended, 1) == 1,
-        intAt(prepended, 2) == 2,
+        structuralEquals([intAt(a, 0), intAt(a, 1), intAt(a, 2), intAt(b, 0), intAt(b, 1)], [1, 2, 3, 10, 20]),
+        structuralEquals([intAt(reversed, 0), intAt(reversed, 1), intAt(reversed, 2)], [3, 2, 1]),
+        structuralEquals([intAt(restored, 0), intAt(restored, 1), intAt(restored, 2)], [1, 2, 3]),
+        structuralEquals([intAt(prepended, 0), intAt(prepended, 1), intAt(prepended, 2)], [0, 1, 2]),
         intAt(prepended, 3) == 3
     ])
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll("concat identities and boundaries", [
-        intAt(concatenated, 0) == 1,
-        intAt(concatenated, 2) == 3,
-        intAt(concatenated, 3) == 10,
-        intAt(concatenated, 4) == 20,
-        intAt(emptyPlusA, 0) == 1,
-        intAt(aPlusEmpty, 2) == 3,
-        intAt(doubledA, 3) == 1,
-        intAt(abPlusA, 5) == 1,
-        intAt(abPlusA, 7) == 3
+        structuralEquals([intAt(concatenated, 0), intAt(concatenated, 2), intAt(concatenated, 3)], [1, 3, 10]),
+        structuralEquals([intAt(concatenated, 4), intAt(emptyPlusA, 0), intAt(aPlusEmpty, 2)], [20, 1, 3]),
+        structuralEquals([intAt(doubledA, 3), intAt(abPlusA, 5), intAt(abPlusA, 7)], [1, 1, 3])
     ])
 
     // All three legacy contains results survive alongside additional positive and
@@ -144,39 +120,23 @@ fn iterationAndPersistenceCase() = {
 
     // Callback encodings preserve every legacy forEachList sequence and its exact order.
     checkAll("forEachList iteration order", [
-        encodeIteration(a) == 10203,
-        encodeIteration(reversed) == 30201,
+        structuralEquals([encodeIteration(a), encodeIteration(reversed)], [10203, 30201]),
         encodeIteration(combined) == 102031020
     ])
 
     // One condition per formerly printed iteration value keeps the golden observations explicit.
     checkAll("iteration constituent values", [
-        intAt(a, 0) == 1,
-        intAt(a, 1) == 2,
-        intAt(a, 2) == 3,
-        intAt(reversed, 0) == 3,
-        intAt(reversed, 1) == 2,
-        intAt(reversed, 2) == 1,
-        intAt(combined, 0) == 1,
-        intAt(combined, 1) == 2,
-        intAt(combined, 2) == 3,
-        intAt(combined, 3) == 10,
+        structuralEquals([intAt(a, 0), intAt(a, 1), intAt(a, 2), intAt(reversed, 0)], [1, 2, 3, 3]),
+        structuralEquals([intAt(reversed, 1), intAt(reversed, 2), intAt(combined, 0)], [2, 1, 1]),
+        structuralEquals([intAt(combined, 1), intAt(combined, 2), intAt(combined, 3)], [2, 3, 10]),
         intAt(combined, 4) == 20
     ])
 
     // The six generation lengths, retained g2 length, and all branch lengths mirror the old golden.
     checkAll("persistent generation and branch lengths", [
-        listLength(g0) == 0,
-        listLength(g1) == 1,
-        listLength(g2) == 2,
-        listLength(g3) == 3,
-        listLength(g4) == 4,
-        listLength(g5) == 5,
-        listLength(g2) == 2,
-        listLength(x) == 4,
-        listLength(y) == 4,
-        listLength(y2) == 5,
-        listLength(g3) == 3
+        structuralEquals([listLength(g0), listLength(g1), listLength(g2), listLength(g3)], [0, 1, 2, 3]),
+        structuralEquals([listLength(g4), listLength(g5), listLength(g2), listLength(x)], [4, 5, 2, 4]),
+        structuralEquals([listLength(y), listLength(y2), listLength(g3)], [4, 5, 3])
     ])
 
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
@@ -199,9 +159,7 @@ fn iterationAndPersistenceCase() = {
         !listContains(g3, 999),
         !listContains(g3, 888),
         !listContains(g3, 777),
-        intAt(g5, 4) == 50,
-        intAt(y2, 3) == 888,
-        intAt(y2, 4) == 777
+        structuralEquals([intAt(g5, 4), intAt(y2, 3), intAt(y2, 4)], [50, 888, 777])
     ])
 }
 
@@ -216,33 +174,17 @@ fn tailBoundaryCase() = {
 
     // All six legacy tail-boundary length observations remain independent.
     checkAll("tail boundary legacy lengths", [
-        listLength(t) == 10,
-        listLength(t2) == 20,
-        listLength(t3) == 30,
-        listLength(t4) == 35,
-        listLength(reversed) == 35,
-        listLength(doubled) == 70
+        structuralEquals([listLength(t), listLength(t2), listLength(t3), listLength(t4)], [10, 20, 30, 35]),
+        structuralEquals([listLength(reversed), listLength(doubled)], [35, 70])
     ])
 
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll("tail boundary contents", [
-        intAt(t, 0) == 1,
-        intAt(t, 9) == 10,
-        intAt(t2, 10) == 11,
-        intAt(t2, 19) == 20,
-        intAt(t3, 29) == 30,
-        intAt(t4, 30) == 31,
-        intAt(t4, 31) == 32,
-        intAt(t4, 32) == 33,
-        intAt(t4, 34) == 35,
-        intAt(reversed, 0) == 35,
-        intAt(reversed, 2) == 33,
-        intAt(reversed, 3) == 32,
-        intAt(reversed, 34) == 1,
-        intAt(doubled, 34) == 35,
-        intAt(doubled, 35) == 1,
-        intAt(doubled, 69) == 35,
-        listLength(t3) == 30,
+        structuralEquals([intAt(t, 0), intAt(t, 9), intAt(t2, 10), intAt(t2, 19), intAt(t3, 29)], [1, 10, 11, 20, 30]),
+        structuralEquals([intAt(t4, 30), intAt(t4, 31), intAt(t4, 32), intAt(t4, 34)], [31, 32, 33, 35]),
+        structuralEquals([intAt(reversed, 0), intAt(reversed, 2), intAt(reversed, 3)], [35, 33, 32]),
+        structuralEquals([intAt(reversed, 34), intAt(doubled, 34), intAt(doubled, 35)], [1, 35, 1]),
+        structuralEquals([intAt(doubled, 69), listLength(t3)], [35, 30]),
         !listContains(t3, 31),
         sumList(t) == 55,
         sumList(t4) == 630
@@ -288,15 +230,9 @@ fn indexingPatternsAndDispatchCase() = {
 
     // Every legacy classify, recursive sum, and wildcard-rest result remains directly asserted.
     checkAll("list pattern and recursion results", [
-        classify(List()) == "empty",
-        classify(b) == "two(10,20)",
-        classify(a) == "many head=1 rest=2",
+        structuralEquals([classify(List()), classify(b), classify(a)], ["empty", "two(10,20)", "many head=1 rest=2"]),
         classify(singleton) == "one(7)",
-        sumList(a) == 6,
-        sumList(t) == 55,
-        restLen(a) == 1,
-        restLen(short) == 0,
-        restLen(pair) == 0,
+        structuralEquals([sumList(a), sumList(t), restLen(a), restLen(short), restLen(pair)], [6, 55, 1, 0, 0]),
         restLen(four) == 2,
         classify(patternFour) == "many head=4 rest=3"
     ])
@@ -308,13 +244,9 @@ fn indexingPatternsAndDispatchCase() = {
     // `osprey_list_length` masked it by reading both layouts' shared leading
     // `i64`, which is why the length-only assertions above never caught it.
     checkAll("list patterns bind through a literal argument", [
-        classify([9]) == "one(9)",
-        classify([9, 8]) == "two(9,8)",
+        structuralEquals([classify([9]), classify([9, 8])], ["one(9)", "two(9,8)"]),
         classify([9, 8, 7]) == "many head=9 rest=2",
-        sumList([1, 2, 3]) == 6,
-        sumList([5]) == 5,
-        restLen([1, 2, 3, 4]) == 2,
-        restLen([1]) == 0
+        structuralEquals([sumList([1, 2, 3]), sumList([5]), restLen([1, 2, 3, 4]), restLen([1])], [6, 5, 2, 0])
     ])
 
     // The old composite bare-length row is split into one condition per receiver.
@@ -322,13 +254,8 @@ fn indexingPatternsAndDispatchCase() = {
     // handle and a string: it used to reach `osp_strlen`, which counted the
     // length word's bytes and answered 1 for any list of 1..=255 elements.
     checkAll("receiver-directed length dispatch", [
-        length(a) == 3,
-        length(dispatchThirtyFive) == 35,
-        length("abcd") == 4,
-        length(empty) == 0,
-        length("") == 0,
-        length(commands) == 3,
-        length(lines("a\nb\nc")) == 3
+        structuralEquals([length(a), length(dispatchThirtyFive), length("abcd"), length(empty)], [3, 35, 4, 0]),
+        structuralEquals([length(""), length(commands), length(lines("a\nb\nc"))], [0, 3, 3])
     ])
 
     // The old composite bare-isEmpty row is split and extended across derived lists.
@@ -349,8 +276,7 @@ fn indexingPatternsAndDispatchCase() = {
     // operand is normalised to a runtime list first, so all four combinations of
     // literal and handle concatenate and keep their order.
     checkAll("list literal and runtime handle concatenate in either position", [
-        listLength(commands + commands) == 6,
-        listLength(commands + empty) == 3,
+        structuralEquals([listLength(commands + commands), listLength(commands + empty)], [6, 3]),
         listLength(empty + commands) == 3,
         listContains(commands + empty, "echo test"),
         !listContains(empty + commands, "echo missing"),
@@ -648,67 +574,41 @@ fn stringListPatternCase() = {
     // Arm selection depends on written length alone, so a string list picks the
     // same arms an int list of the same length picks.
     checkAll("string list patterns select the arm for the written length", [
-        shapeOf(noWords) == "none",
-        shapeOf(solo) == "single",
-        shapeOf(duo) == "pair",
-        shapeOf(words) == "long+2",
-        shapeOf(quad) == "long+3",
-        shapeOf(odd) == "long+5",
-        shapeOf(dup) == "long+3",
-        shapeOf(["x"]) == "single",
-        shapeOf(["x", "y"]) == "pair",
-        shapeOf(["x", "y", "z"]) == "long+2",
-        shapeOf(listReverse(words)) == "long+2",
-        shapeOf(listAppend(duo, "third")) == "long+2",
-        shapeOf(listPrepend(solo, "first")) == "pair",
-        shapeOf(listConcat(noWords, solo)) == "single",
-        shapeOf(listConcat(duo, noWords)) == "pair",
+        structuralEquals([shapeOf(noWords), shapeOf(solo), shapeOf(duo)], ["none", "single", "pair"]),
+        structuralEquals([shapeOf(words), shapeOf(quad), shapeOf(odd)], ["long+2", "long+3", "long+5"]),
+        structuralEquals([shapeOf(dup), shapeOf(["x"]), shapeOf(["x", "y"])], ["long+3", "single", "pair"]),
+        structuralEquals([shapeOf(["x", "y", "z"]), shapeOf(listReverse(words))], ["long+2", "long+2"]),
+        structuralEquals([shapeOf(listAppend(duo, "third")), shapeOf(listPrepend(solo, "first"))], ["long+2", "pair"]),
+        structuralEquals([shapeOf(listConcat(noWords, solo)), shapeOf(listConcat(duo, noWords))], ["single", "pair"]),
         shapeOf(noWords + noWords) == "none",
         tailLength(noWords) == ((0 - 1) ),
-        tailLength(solo) == 0,
-        tailLength(duo) == 1,
-        tailLength(words) == 2,
-        tailLength(odd) == 5,
+        structuralEquals([tailLength(solo), tailLength(duo), tailLength(words), tailLength(odd)], [0, 1, 2, 5]),
         tailLength(dup) == 3
     ])
 
     // Each binder carries its OWN element: head, second and the fallback are
     // three distinct strings, so a binder reading the wrong slot is visible.
     checkAll("string binders carry their own element", [
-        headOr(noWords, "empty") == "empty",
-        headOr(solo, "empty") == "solo",
-        headOr(duo, "empty") == "left",
-        headOr(words, "empty") == "alpha",
-        headOr(odd, "empty") == "",
-        headOr(dup, "empty") == "same",
-        headOr(listReverse(words), "empty") == "gamma",
+        structuralEquals([headOr(noWords, "empty"), headOr(solo, "empty")], ["empty", "solo"]),
+        structuralEquals([headOr(duo, "empty"), headOr(words, "empty"), headOr(odd, "empty")], ["left", "alpha", ""]),
+        structuralEquals([headOr(dup, "empty"), headOr(listReverse(words), "empty")], ["same", "gamma"]),
         headOr(listPrepend(words, "zero"), "empty") == "zero",
         headOr(listAppend(words, "delta"), "empty") == "alpha",
-        headOr(noWords + words, "empty") == "alpha",
-        headOr(words + noWords, "empty") == "alpha",
-        secondOr(noWords, "none") == "none",
-        secondOr(solo, "none") == "none",
-        secondOr(duo, "none") == "right",
-        secondOr(words, "none") == "beta",
-        secondOr(odd, "none") == " ",
-        secondOr(dup, "none") == "same",
-        secondOr(listReverse(words), "none") == "beta",
-        secondOr(listReverse(quad), "none") == "ccc",
-        secondOr(["x", "y", "z"], "none") == "y",
-        headOr(["only"], "empty") == "only"
+        structuralEquals([headOr(noWords + words, "empty"), headOr(words + noWords, "empty")], ["alpha", "alpha"]),
+        structuralEquals([secondOr(noWords, "none"), secondOr(solo, "none")], ["none", "none"]),
+        structuralEquals([secondOr(duo, "none"), secondOr(words, "none")], ["right", "beta"]),
+        structuralEquals([secondOr(odd, "none"), secondOr(dup, "none")], [" ", "same"]),
+        structuralEquals([secondOr(listReverse(words), "none"), secondOr(listReverse(quad), "none")], ["beta", "ccc"]),
+        structuralEquals([secondOr(["x", "y", "z"], "none"), headOr(["only"], "empty")], ["y", "only"])
     ])
 
     // Recursive head/tail traversal keeps every element, in index order, once.
     // "alpha|beta|gamma|" is 5+1+4+1+5+1 = 17 bytes; the six `odd` elements are
     // 0+1+1+2+3+5 = 12 bytes plus six separators = 18.
     checkAll("recursive rest-binder traversal keeps string order", [
-        joinWords(noWords) == "",
-        joinWords(solo) == "solo|",
-        joinWords(duo) == "left|right|",
-        joinWords(words) == "alpha|beta|gamma|",
-        joinWords(quad) == "a|bb|ccc|dddd|",
-        joinWords(odd) == "| |a|12|a,b|ab ab|",
-        joinWords(dup) == "same|same|other|same|",
+        structuralEquals([joinWords(noWords), joinWords(solo), joinWords(duo)], ["", "solo|", "left|right|"]),
+        structuralEquals([joinWords(words), joinWords(quad)], ["alpha|beta|gamma|", "a|bb|ccc|dddd|"]),
+        structuralEquals([joinWords(odd), joinWords(dup)], ["| |a|12|a,b|ab ab|", "same|same|other|same|"]),
         joinWords(listReverse(words)) == "gamma|beta|alpha|",
         joinWords(listReverse(listReverse(words))) == joinWords(words),
         joinWords(listReverse(dup)) == "same|other|same|same|",
@@ -718,15 +618,10 @@ fn stringListPatternCase() = {
         joinWords(words + duo) == "alpha|beta|gamma|left|right|",
         joinWords(noWords + words) == joinWords(words),
         joinWords(words + noWords) == joinWords(words),
-        length(joinWords(words)) == 17,
-        length(joinWords(odd)) == 18,
-        length(joinWords(quad)) == 14,
+        structuralEquals([length(joinWords(words)), length(joinWords(odd)), length(joinWords(quad))], [17, 18, 14]),
         length(joinWords(dup)) == 21,
-        lastWord(noWords) == "none",
-        lastWord(solo) == "solo",
-        lastWord(words) == "gamma",
-        lastWord(listReverse(words)) == "alpha",
-        lastWord(listAppend(words, "delta")) == "delta"
+        structuralEquals([lastWord(noWords), lastWord(solo), lastWord(words)], ["none", "solo", "gamma"]),
+        structuralEquals([lastWord(listReverse(words)), lastWord(listAppend(words, "delta"))], ["alpha", "delta"])
     ])
 
     // String elements are compared by CONTENT for membership
@@ -752,9 +647,7 @@ fn stringListPatternCase() = {
         listContains(dup, "other"),
         !listContains(dup, "missing"),
         !listContains(noWords, ""),
-        listLength(dup) == 4,
-        listLength(odd) == 6,
-        listLength(listReverse(dup)) == 4,
+        structuralEquals([listLength(dup), listLength(odd), listLength(listReverse(dup))], [4, 6, 4]),
         (listGet(dup, 0) ?: "x") == (listGet(dup, 3) ?: "y"),
         (listGet(dup, 0) ?: "x") != (listGet(dup, 2) ?: "y"),
         listLength(words) == 3
@@ -784,12 +677,8 @@ fn floatAndBoolListPatternCase() = {
 
     // Arm selection and binder identity for float elements.
     checkAll("float list patterns select arms and bind elements", [
-        shapeOf(noFloats) == "none",
-        shapeOf(oneFloat) == "single",
-        shapeOf(twoFloats) == "pair",
-        shapeOf(ratios) == "long+2",
-        shapeOf(quarters) == "long+3",
-        shapeOf(dupFloats) == "long+2",
+        structuralEquals([shapeOf(noFloats), shapeOf(oneFloat), shapeOf(twoFloats)], ["none", "single", "pair"]),
+        structuralEquals([shapeOf(ratios), shapeOf(quarters), shapeOf(dupFloats)], ["long+2", "long+3", "long+2"]),
         headOr(noFloats, 9.5) == 9.5,
         headOr(oneFloat, 9.5) == 1.5,
         headOr(twoFloats, 9.5) == 0.25,
@@ -802,9 +691,7 @@ fn floatAndBoolListPatternCase() = {
         secondOr(ratios, 9.5) == 1.25,
         secondOr(quarters, 9.5) == 0.25,
         tailLength(noFloats) == ((0 - 1) ),
-        tailLength(oneFloat) == 0,
-        tailLength(ratios) == 2,
-        tailLength(quarters) == 3
+        structuralEquals([tailLength(oneFloat), tailLength(ratios), tailLength(quarters)], [0, 2, 3])
     ])
 
     // 0.5+1.25+2.75 = 4.5 and 0.0+0.25+0.5+0.75 = 1.5, both exact in binary, so
@@ -838,28 +725,15 @@ fn floatAndBoolListPatternCase() = {
     // Every bool permutation of length 0..3 is counted independently, so a
     // pattern that drops or double-counts the head cannot hide in a total.
     checkAll("bool list patterns count every permutation", [
-        shapeOf(noFlags) == "none",
-        shapeOf([true]) == "single",
-        shapeOf(pairOn) == "pair",
+        structuralEquals([shapeOf(noFlags), shapeOf([true]), shapeOf(pairOn)], ["none", "single", "pair"]),
         shapeOf(mixed) == "long+2",
-        countTrue(noFlags) == 0,
-        countTrue([true]) == 1,
-        countTrue([false]) == 0,
-        countTrue([true, true]) == 2,
-        countTrue([true, false]) == 1,
-        countTrue([false, true]) == 1,
-        countTrue([false, false]) == 0,
-        countTrue(allOn) == 3,
-        countTrue(allOff) == 0,
-        countTrue(mixed) == 2,
-        countTrue(listReverse(mixed)) == 2,
-        countTrue(mixed + allOn) == 5,
-        countTrue(allOff + mixed) == 2,
-        countTrue(listAppend(mixed, false)) == 2,
-        countTrue(listPrepend(mixed, false)) == 2,
-        countTrue(listAppend(allOff, true)) == 1,
-        boolWeight(true) == 1,
-        boolWeight(false) == 0
+        structuralEquals([countTrue(noFlags), countTrue([true]), countTrue([false])], [0, 1, 0]),
+        structuralEquals([countTrue([true, true]), countTrue([true, false]), countTrue([false, true])], [2, 1, 1]),
+        structuralEquals([countTrue([false, false]), countTrue(allOn), countTrue(allOff)], [0, 3, 0]),
+        structuralEquals([countTrue(mixed), countTrue(listReverse(mixed)), countTrue(mixed + allOn)], [2, 2, 5]),
+        structuralEquals([countTrue(allOff + mixed), countTrue(listAppend(mixed, false))], [2, 2]),
+        structuralEquals([countTrue(listPrepend(mixed, false)), countTrue(listAppend(allOff, true))], [2, 1]),
+        structuralEquals([boolWeight(true), boolWeight(false)], [1, 0])
     ])
 
     // A bool element keeps its own value through every binder and producer.
@@ -877,9 +751,7 @@ fn floatAndBoolListPatternCase() = {
         listContains(mixed, true),
         !listContains(allOn, false),
         !listContains(allOff, true),
-        listLength(mixed + allOff) == 6,
-        countTrue(mixed + allOff) == 2,
-        tailLength(mixed) == 2,
+        structuralEquals([listLength(mixed + allOff), countTrue(mixed + allOff), tailLength(mixed)], [6, 2, 2]),
         tailLength(noFlags) == ((0 - 1) ),
         listLength(listReverse(allOn)) == 3
     ])
@@ -915,11 +787,8 @@ fn recordListPatternCase() = {
     // The bound head is a whole record: three fields of two different types are
     // readable off it, and the empty-list arm returns the caller's own record.
     checkAll("record list patterns bind whole records", [
-        shapeOf(noSlots) == "none",
-        shapeOf(oneSlot) == "single",
-        shapeOf(slots) == "pair",
-        shapeOf(trio) == "long+2",
-        noneHead.label == "missing",
+        structuralEquals([shapeOf(noSlots), shapeOf(oneSlot), shapeOf(slots)], ["none", "single", "pair"]),
+        structuralEquals([shapeOf(trio), noneHead.label], ["long+2", "missing"]),
         noneHead.weight == 0.0,
         !noneHead.ready,
         soloHead.label == "solo",
@@ -931,9 +800,7 @@ fn recordListPatternCase() = {
         reversedHead.label == "right",
         reversedHead.weight == 2.5,
         !reversedHead.ready,
-        noneSecond.label == "missing",
-        soloSecond.label == "missing",
-        secondOfSlots.label == "right",
+        structuralEquals([noneSecond.label, soloSecond.label, secondOfSlots.label], ["missing", "missing", "right"]),
         secondOfSlots.weight == 2.5,
         !secondOfSlots.ready,
         secondOfTrio.label == "right",
@@ -945,20 +812,13 @@ fn recordListPatternCase() = {
     // Recursion over the rest binder reaches every record, in order, once.
     // "left>right>extra>" is 5+6+6 = 17 bytes; weights 1.5+2.5+4.0 = 8.0.
     checkAll("record fields survive head-tail recursion", [
-        slotLabels(noSlots) == "",
-        slotLabels(oneSlot) == "solo>",
-        slotLabels(slots) == "left>right>",
-        slotLabels(trio) == "left>right>extra>",
-        slotLabels(listReverse(slots)) == "right>left>",
+        structuralEquals([slotLabels(noSlots), slotLabels(oneSlot), slotLabels(slots)], ["", "solo>", "left>right>"]),
+        structuralEquals([slotLabels(trio), slotLabels(listReverse(slots))], ["left>right>extra>", "right>left>"]),
         slotLabels(listReverse(trio)) == "extra>right>left>",
         slotLabels(listPrepend(slots, soloSlot)) == "solo>left>right>",
         slotLabels(noSlots + slots) == "left>right>",
-        length(slotLabels(trio)) == 17,
-        readySlots(noSlots) == 0,
-        readySlots(oneSlot) == 1,
-        readySlots(slots) == 1,
-        readySlots(trio) == 2,
-        readySlots(listReverse(trio)) == 2,
+        structuralEquals([length(slotLabels(trio)), readySlots(noSlots), readySlots(oneSlot)], [17, 0, 1]),
+        structuralEquals([readySlots(slots), readySlots(trio), readySlots(listReverse(trio))], [1, 2, 2]),
         readySlots(listPrepend(slots, missingSlot)) == 1,
         totalWeight(noSlots) == 0.0,
         totalWeight(oneSlot) == 3.0,
@@ -1018,9 +878,7 @@ fn nestedListCase() = {
     // Row sums: [1,2]=3, [3,4,5]=12, [6,7,8,9]=30, so sumInner(rows) = 45 and
     // sumInner(grown) = 45 + 21 = 66.
     checkAll("nested list elements come back as lists", [
-        listLength(rows) == 3,
-        listLength(firstRow) == 2,
-        sumList(firstRow) == 3,
+        structuralEquals([listLength(rows), listLength(firstRow), sumList(firstRow)], [3, 2, 3]),
         (listGet(firstRow, 0) ?: 0) == 1,
         (listGet(firstRow, 1) ?: 0) == 2,
         listLength(rowAt(rows, 1)) == 3,
@@ -1030,14 +888,9 @@ fn nestedListCase() = {
         sumList(rowAt(rows, 2)) == 30,
         (listGet(rowAt(rows, 2), 3) ?: 0) == 9,
         (listGet(rowAt(rows, 2), 4) ?: 77) == 77,
-        sumList(sentinelProbe) == 777,
-        listLength(sentinelProbe) == 1,
-        sumInner(rows) == 45,
-        sumInner(oneRow) == 27,
-        sumInner(twoRows) == 6,
-        sumInner(withEmptyRow) == 45,
-        sumInner(grown) == 66,
-        listLength(withEmptyRow) == 4,
+        structuralEquals([sumList(sentinelProbe), listLength(sentinelProbe), sumInner(rows)], [777, 1, 45]),
+        structuralEquals([sumInner(oneRow), sumInner(twoRows), sumInner(withEmptyRow)], [27, 6, 45]),
+        structuralEquals([sumInner(grown), listLength(withEmptyRow)], [66, 4]),
         isEmpty(rowAt(withEmptyRow, 3)),
         listLength(rowAt(withEmptyRow, 3)) == 0
     ])
@@ -1045,47 +898,30 @@ fn nestedListCase() = {
     // The outer arm is chosen by the outer length while the message reports the
     // inner length, so mixing the two up is visible in every arm.
     checkAll("nested list patterns read outer arm and inner length", [
-        shapeOf(oneRow) == "single",
-        shapeOf(twoRows) == "pair",
-        shapeOf(rows) == "long+2",
-        shapeOf(grown) == "long+3",
-        describeMatrix(oneRow) == "one row of 3",
-        describeMatrix(twoRows) == "rows 1+2",
-        describeMatrix(rows) == "head 2 then 2 more",
+        structuralEquals([shapeOf(oneRow), shapeOf(twoRows), shapeOf(rows)], ["single", "pair", "long+2"]),
+        structuralEquals([shapeOf(grown), describeMatrix(oneRow)], ["long+3", "one row of 3"]),
+        structuralEquals([describeMatrix(twoRows), describeMatrix(rows)], ["rows 1+2", "head 2 then 2 more"]),
         describeMatrix(grown) == "head 2 then 3 more",
         describeMatrix(withEmptyRow) == "head 2 then 3 more",
         describeMatrix(listReverse(rows)) == "head 4 then 2 more",
-        listLength(headOr(rows, emptyRow)) == 2,
-        listLength(headOr(listReverse(rows), emptyRow)) == 4,
-        sumList(headOr(rows, emptyRow)) == 3,
-        sumList(secondOr(rows, emptyRow)) == 12,
-        listLength(secondOr(twoRows, emptyRow)) == 2,
-        sumList(secondOr(oneRow, emptyRow)) == 0,
-        tailLength(rows) == 2,
-        tailLength(oneRow) == 0
+        structuralEquals([listLength(headOr(rows, emptyRow)), listLength(headOr(listReverse(rows), emptyRow))], [2, 4]),
+        structuralEquals([sumList(headOr(rows, emptyRow)), sumList(secondOr(rows, emptyRow))], [3, 12]),
+        structuralEquals([listLength(secondOr(twoRows, emptyRow)), sumList(secondOr(oneRow, emptyRow))], [2, 0]),
+        structuralEquals([tailLength(rows), tailLength(oneRow)], [2, 0])
     ])
 
     // Appending to a retrieved row builds a NEW row and leaves the matrix alone:
     // the stored row keeps its own contents ([BOOL-EQUALITY] decides no `==`
     // for lists, so the rows are compared by their sums).
     checkAll("nested lists stay isolated when a retrieved row grows", [
-        listLength(rows) == 3,
-        listLength(grown) == 4,
-        sumInner(rows) == 45,
-        listLength(firstRow) == 2,
-        listLength(biggerFirstRow) == 3,
-        sumList(biggerFirstRow) == 102,
-        sumList(firstRow) == 3,
+        structuralEquals([listLength(rows), listLength(grown), sumInner(rows), listLength(firstRow)], [3, 4, 45, 2]),
+        structuralEquals([listLength(biggerFirstRow), sumList(biggerFirstRow), sumList(firstRow)], [3, 102, 3]),
         listLength(rowAt(rows, 0)) == 2,
         sumList(rowAt(rows, 0)) != sumList(biggerFirstRow),
         sumList(rowAt(rows, 0)) == sumList([1, 2]),
-        sumInner(listReverse(rows)) == 45,
-        sumList(rowAt(listReverse(rows), 0)) == 30,
-        sumList(rowAt(listReverse(rows), 2)) == 3,
-        listLength(listReverse(rows)) == 3,
-        sumInner(rows + rows) == 90,
-        listLength(rows + rows) == 6,
-        sumList(rowAt(rows + rows, 3)) == 3,
+        structuralEquals([sumInner(listReverse(rows)), sumList(rowAt(listReverse(rows), 0))], [45, 30]),
+        structuralEquals([sumList(rowAt(listReverse(rows), 2)), listLength(listReverse(rows))], [3, 3]),
+        structuralEquals([sumInner(rows + rows), listLength(rows + rows), sumList(rowAt(rows + rows, 3))], [90, 6, 3]),
         sumInner(rows) == 45
     ])
 }
@@ -1275,10 +1111,7 @@ fn boundaryIndexCase() = {
     // `forty` repeats "s0".."s4", so the element at index i is "s${i % 5}":
     // index 30 -> "s0", 31 -> "s1", 32 -> "s2" (the tail split), 39 -> "s4".
     checkAll("string list index boundaries around the 32-element tail", [
-        listLength(five) == 5,
-        listLength(ten) == 10,
-        listLength(twenty) == 20,
-        listLength(forty) == 40,
+        structuralEquals([listLength(five), listLength(ten), listLength(twenty), listLength(forty)], [5, 10, 20, 40]),
         lastIndex == 39,
         (listGet(forty, 0) ?: "?") == "s0",
         (listGet(forty, 4) ?: "?") == "s4",
@@ -1332,15 +1165,11 @@ fn boundaryIndexCase() = {
     // same way its source did. "s0|s1|s2|s3|s4|" is 5 * 3 = 15 bytes.
     checkAll("doubled and derived lists index consistently", [
         joinWords(five) == "s0|s1|s2|s3|s4|",
-        length(joinWords(five)) == 15,
-        length(joinWords(ten)) == 30,
-        length(joinWords(twenty)) == 60,
+        structuralEquals([length(joinWords(five)), length(joinWords(ten)), length(joinWords(twenty))], [15, 30, 60]),
         length(joinWords(forty)) == 120,
         shapeOf(forty) == "long+39",
         tailLength(forty) == 39,
-        headOr(forty, "?") == "s0",
-        secondOr(forty, "?") == "s1",
-        lastWord(five) == "s4",
+        structuralEquals([headOr(forty, "?"), secondOr(forty, "?"), lastWord(five)], ["s0", "s1", "s4"]),
         lastWord(ten) == "s4",
         listContains(forty, "s3"),
         !listContains(forty, "s5"),

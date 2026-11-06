@@ -179,9 +179,7 @@ module BuildTests {
         let a = runBuild(readsOf(lockText(otherDigest, mapList(packages, pkgOf)), packages), walksOf(packages), ["--project", project])
         checkAll("a verify failure is the build's failure and compiles nothing", [
             a.report.status == 1,
-            Fixture::line(a.report, 0) == "verify.manifest-digest",
-            a.derived == "",
-            a.ensures == "",
+            structuralEquals([Fixture::line(a.report, 0), a.derived, a.ensures], ["verify.manifest-digest", "", ""]),
             a.commands == ""
         ])
     }

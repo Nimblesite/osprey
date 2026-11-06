@@ -143,27 +143,10 @@ fn spawnedGenericLambda() = {
 test("fiber primitives compose into deterministic values", fn() => exactArithmetic(fn() => checkAll("fiber showcase results", [
     "${await(spawn erasedFiberResult())}" == "fiber",
     spawnedGenericLambda() == "job-7:1 job-7:two",
-    mappedTotal == 1400,
-    p == 200,
-    y1 == 25,
-    y2 == 50,
-    y3 == 75,
-    advYield == 200,
-    dbl(10) == 20,
-    tri(7) == 21,
-    addF(5, 8) == 13,
-    b1 == 1024,
-    b2 == 2048,
-    b3 == 4096,
-    await(spawn fetchUserData(5)) == 5123,
-    await(spawn fetchOrderData(5)) == 545,
-    combine(capArg, 5) == 705,
-    fiberDone(capF) == 1,
-    runJob(jobHigh) == 27,
-    runJob(jobWide) == 28,
-    spawnedJob == 28,
-    jobHigh.id == 3,
-    jobHigh.weight == 9
+    structuralEquals([mappedTotal, p, y1, y2, y3, advYield, dbl(10), tri(7)], [1400, 200, 25, 50, 75, 200, 20, 21]),
+    structuralEquals([addF(5, 8), b1, b2, b3, await(spawn fetchUserData(5))], [13, 1024, 2048, 4096, 5123]),
+    structuralEquals([await(spawn fetchOrderData(5)), combine(capArg, 5), fiberDone(capF)], [545, 705, 1]),
+    structuralEquals([runJob(jobHigh), runJob(jobWide), spawnedJob, jobHigh.id, jobHigh.weight], [27, 28, 28, 3, 9])
 ])))
 
 /// Joins two strings inside a fiber body.

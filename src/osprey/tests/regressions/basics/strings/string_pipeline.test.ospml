@@ -150,14 +150,9 @@ stringPipelineCase () =
         (source |> length) == 36,
         cleaned == "get /api/users?name=alice&age=30",
         startsWith cleaned "get ",
-        toUpperCase "hello" == "HELLO",
-        trimStart "  hi  " == "hi  ",
-        trimEnd "  hi  " == "  hi",
-        join ["a", "b", "c"] "-" == "a-b-c",
-        take cleaned 5 == "get /",
-        take "hello" 3 == "hel",
-        drop "hello" 3 == "lo",
-        reverse "abc" == "cba"
+        structuralEquals [toUpperCase "hello", trimStart "  hi  ", trimEnd "  hi  "] ["HELLO", "hi  ", "  hi"],
+        structuralEquals [join ["a", "b", "c"] "-", take cleaned 5, take "hello" 3] ["a-b-c", "get /", "hel"],
+        structuralEquals [drop "hello" 3, reverse "abc"] ["lo", "cba"]
     ]
     checkAll "fallible string values and collection results" [
         (indexOf source "?" ?: ((0 - 1) )) == 16,
@@ -168,19 +163,15 @@ stringPipelineCase () =
         (padEnd "42" 5 "0" ?: "missing") == "42000",
         (parseInt "123" ?: 0) == 123,
         (parseFloat "3.14" ?: 0.0) == 3.14,
-        listLength (lines "a\nb\nc") == 3,
-        listLength (words "  hello   world  ") == 2,
-        splitCount == 3,
+        structuralEquals [listLength (lines "a\nb\nc"), listLength (words "  hello   world  "), splitCount] [3, 2, 3],
         splitEmptyRejected,
         invalidIntegerRejected,
         missingIndexRejected
     ]
     checkAll "HTTP routing branches" [
-        route ("GET", "/health") == "200 ok",
-        route ("GET", "/api/users/42") == "200 user-detail 42",
+        structuralEquals [route ("GET", "/health"), route ("GET", "/api/users/42")] ["200 ok", "200 user-detail 42"],
         route ("GET", "/api/orders") == "200 api-fallback",
-        route ("POST", "/api/users") == "201 created",
-        route ("POST", "/other") == "404 not-found",
+        structuralEquals [route ("POST", "/api/users"), route ("POST", "/other")] ["201 created", "404 not-found"],
         route ("GET", "/random") == "404 not-found",
         route ("DELETE", "/anything") == "405 method-not-allowed"
     ]

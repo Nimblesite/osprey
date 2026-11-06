@@ -48,9 +48,7 @@ fn resumeUnitMarkersCase() = {
     checkAll("Unit-resume internal state", [
         result == 7,
         markCount == 2,
-        beforeLabels == "one|two|",
-        afterLabels == "two|one|",
-        finalValues == "7|7|",
+        structuralEquals([beforeLabels, afterLabels, finalValues], ["one|two|", "two|one|", "7|7|"]),
         beforeLabels != afterLabels
     ])
 }

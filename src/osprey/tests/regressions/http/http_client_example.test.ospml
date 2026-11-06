@@ -21,9 +21,7 @@ localHttpRoundTrip () =
         server != 0,
         listening == 0,
         client != 0,
-        status == 200,
-        closed == 0,
-        stopped == 0
+        structuralEquals [status, closed, stopped] [200, 0, 0]
     ]
 
 test "status-only HTTP client uses a local server" localHttpRoundTrip

@@ -29,13 +29,10 @@ fn receipt(customer: string) -> (string) -> (string) -> (int) -> string =
 fn catalogueInteraction() = {
     // Eight independent predicates cover both successful and fallback interactions.
     checkAll("catalogue state", [
-        itemAt(0)("missing") == "coffee",
-        itemAt(2)("missing") == "fruit",
+        structuralEquals([itemAt(0)("missing"), itemAt(2)("missing")], ["coffee", "fruit"]),
         itemAt(8)("missing") == "missing",
-        unitPrice(itemAt(0)("missing")) == 12,
-        unitPrice(itemAt(1)("missing")) == 5,
-        unitPrice("tea") == 0,
-        listLength(["coffee", "bread", "fruit"]) == 3,
+        structuralEquals([unitPrice(itemAt(0)("missing")), unitPrice(itemAt(1)("missing"))], [12, 5]),
+        structuralEquals([unitPrice("tea"), listLength(["coffee", "bread", "fruit"])], [0, 3]),
         itemAt(9)("missing") != itemAt(0)("missing")
     ])
 }
@@ -44,12 +41,9 @@ fn catalogueInteraction() = {
 fn pricingInteraction() = {
     // The batch checks every pricing branch and a cross-tier business invariant.
     checkAll("pricing state", [
-        total("gold")("coffee")(5) == 48,
-        total("silver")("bread")(4) == 18,
-        total("guest")("fruit")(3) == 21,
-        total("gold")("tea")(10) == 0,
-        loyaltyDiscount("gold")(60) == 12,
-        loyaltyDiscount("silver")(60) == 6,
+        structuralEquals([total("gold")("coffee")(5), total("silver")("bread")(4)], [48, 18]),
+        structuralEquals([total("guest")("fruit")(3), total("gold")("tea")(10)], [21, 0]),
+        structuralEquals([loyaltyDiscount("gold")(60), loyaltyDiscount("silver")(60)], [12, 6]),
         loyaltyDiscount("guest")(60) == 0,
         total("gold")("coffee")(5) < total("guest")("coffee")(5)
     ])

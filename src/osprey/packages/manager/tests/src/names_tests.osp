@@ -17,28 +17,20 @@ module NamesTests {
     fn longest(n) = repeat("a", n) ?: ""
 
     fn acceptsCanonicalKeys() = checkAll("canonical keys parse and round-trip", [
-        shown("@finch/ledger") == "@finch/ledger",
-        shown("@osprey/http") == "@osprey/http",
+        structuralEquals([shown("@finch/ledger"), shown("@osprey/http")], ["@finch/ledger", "@osprey/http"]),
         shown("@a1/b-2") == "@a1/b-2",
         shown("@${longest(39)}/${longest(63)}") == "@${longest(39)}/${longest(63)}",
         shown("@a/a--b") == "@a/a--b"
     ])
 
     fn rejectsWithReasonCodes() = checkAll("every rejection names one stable reason code", [
-        code("finch/ledger") == "name.missing-at",
-        code("@finch") == "name.unscoped-or-missing-slash",
-        code("@finch/ledger/extra") == "name.extra-slash",
-        code("@/ledger") == "name.scope.length",
-        code("@finch/") == "name.name.length",
-        code("@${longest(40)}/x") == "name.scope.length",
-        code("@x/${longest(64)}") == "name.name.length",
-        code("@Finch/ledger") == "name.scope.chars",
-        code("@finch/Ledger") == "name.name.chars",
-        code("@finch/-ledger") == "name.name.chars",
-        code("@finch-/ledger") == "name.scope.chars",
-        code("@finch/led_ger") == "name.name.chars",
-        code("@finch/lédger") == "name.name.chars",
-        code("@finch/led ger") == "name.name.chars"
+        structuralEquals([code("finch/ledger"), code("@finch")], ["name.missing-at", "name.unscoped-or-missing-slash"]),
+        structuralEquals([code("@finch/ledger/extra"), code("@/ledger")], ["name.extra-slash", "name.scope.length"]),
+        structuralEquals([code("@finch/"), code("@${longest(40)}/x")], ["name.name.length", "name.scope.length"]),
+        structuralEquals([code("@x/${longest(64)}"), code("@Finch/ledger")], ["name.name.length", "name.scope.chars"]),
+        structuralEquals([code("@finch/Ledger"), code("@finch/-ledger")], ["name.name.chars", "name.name.chars"]),
+        structuralEquals([code("@finch-/ledger"), code("@finch/led_ger")], ["name.scope.chars", "name.name.chars"]),
+        structuralEquals([code("@finch/lédger"), code("@finch/led ger")], ["name.name.chars", "name.name.chars"])
     ])
 
     fn key(scope, name) = Names::Key { scope: scope, name: name }

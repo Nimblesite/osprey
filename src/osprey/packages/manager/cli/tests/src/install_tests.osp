@@ -105,9 +105,7 @@ module InstallTests {
             length(a.report.lines) == 2,
             startsWith(Fixture::line(a.report, 0), "= @demo/one"),
             startsWith(Fixture::line(a.report, 1), "= @demo/two"),
-            a.writes == "",
-            a.ensures == "",
-            a.fetched == ""
+            structuralEquals([a.writes, a.ensures, a.fetched], ["", "", ""])
         ])
     }
 

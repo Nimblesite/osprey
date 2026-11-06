@@ -11,8 +11,7 @@ import registry_web::WebFixtures
 module EscapeTests {
     fn entities() = checkAll("web: escape neutralizes markup, quotes and control bytes", [
         Html::escape("<script>alert(1)</script>") == "&lt;script&gt;alert(1)&lt;/script&gt;",
-        Html::escape("AT&T") == "AT&amp;T",
-        Html::escape("'") == "&#39;",
+        structuralEquals([Html::escape("AT&T"), Html::escape("'")], ["AT&amp;T", "&#39;"]),
         Html::escape("\"") == "&quot;",
         Html::escape("<a href=\"x\">y</a>") == "&lt;a href=&quot;x&quot;&gt;y&lt;/a&gt;",
         Html::escape((fromCodePoint(27) ?: "?") + "[31m") == "?[31m",
@@ -22,8 +21,7 @@ module EscapeTests {
     ])
 
     fn identifiers() = checkAll("web: heading identifiers collapse to the name grammar", [
-        Html::id("@atlas/util") == "-atlas-util",
-        Html::id("ok-name-1") == "ok-name-1",
+        structuralEquals([Html::id("@atlas/util"), Html::id("ok-name-1")], ["-atlas-util", "ok-name-1"]),
         Html::id("<img src=x>") == "-img-src-x-",
         Html::id("\" onload=\"alert(1)") == "-onload-alert-1"
     ])

@@ -86,10 +86,7 @@ fn resumeAbortEarlyExitCase() = {
 
     // Assert the internal branch counts and the arm value that replaced the body.
     checkAll("early-exit internal state", [
-        result == 999,
-        checks == 2,
-        resumed == 1,
-        aborted == 1,
+        structuralEquals([result, checks, resumed, aborted], [999, 2, 1, 1]),
         checks == (resumed + aborted )
     ])
 }
@@ -137,11 +134,7 @@ fn resumeSiblingArmIndependenceCase() = {
 
     // A sibling's `resume` must not turn these arms into early exits.
     checkAll("sibling-arm internal state", [
-        result == 510,
-        tallyCalls == 1,
-        supplyCalls == 2,
-        lastSupplied == 300,
-        resumedAnswer == 510,
+        structuralEquals([result, tallyCalls, supplyCalls, lastSupplied, resumedAnswer], [510, 1, 2, 300, 510]),
         resumedAnswer == result,
         (tallyCalls + supplyCalls ) == 3
     ])

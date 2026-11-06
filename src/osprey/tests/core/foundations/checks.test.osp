@@ -24,9 +24,7 @@ fn arithmeticCase() = {
 fn classifyCase() = {
     // The conditions cover exact arms, wildcard behavior, and string consumers.
     checkAll("classification foundations", [
-            classify(0) == "zero",
-            classify(1) == "one",
-            classify(9) == "many",
+            structuralEquals([classify(0), classify(1), classify(9)], ["zero", "one", "many"]),
             classify(sub(4)(3)) == "one",
             startsWith(classify(20), "m"),
             classify(99) != classify(0)

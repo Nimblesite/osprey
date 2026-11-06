@@ -75,9 +75,7 @@ fn nestedListEffectPatternCase() = {
     checkMatrix("four leaf arguments survive nested Result extraction", bools, [[true, false], [false, true, true]], [false], false)
 
     checkAll("four leaf arguments survive nested Result extraction", [
-            listLength(ints) == 2,
-            listLength(strings) == 2,
-            listLength(floats) == 2,
+            structuralEquals([listLength(ints), listLength(strings), listLength(floats)], [2, 2, 2]),
             listLength(bools) == 2,
             listLength(listGet(ints, 0) ?: [99]) == 2,
             listLength(listGet(ints, 1) ?: [99]) == 3,
@@ -97,18 +95,14 @@ fn nestedListEffectPatternCase() = {
     checkMatrix("deep persistence patterns and generic effects stay coherent", grownStrings, [["fox", "gnu"], ["cat", "dog", "eel"], ["ant", "bee"]], ["row"], "item")
 
     checkAll("deep persistence patterns and generic effects stay coherent", [
-            listLength(intCube) == 3,
-            listLength(stringCube) == 3,
+            structuralEquals([listLength(intCube), listLength(stringCube)], [3, 3]),
             nestedAt(intPlane, 1, 2, [99], 99) == 9,
             nestedAt(stringPlane, 1, 1, ["row"], "item") == "hare",
             nestedAt(listGet(intCube, 2) ?: [[99]], 0, 3, [99], 99) == 13,
             nestedAt(listGet(stringCube, 2) ?: [["missing"]], 0, 1, ["row"], "item") == "jay",
-            matrixShape(List()) == "empty",
-            matrixShape([[]]) == "one-empty-row",
-            matrixShape([[7]]) == "one-singleton-row",
-            matrixShape(ints) == "two:2/3",
-            matrixShape(strings) == "two:2/3",
-            matrixShape([[1], [2], [3]]) == "many:1+2",
+            structuralEquals([matrixShape(List()), matrixShape([[]])], ["empty", "one-empty-row"]),
+            structuralEquals([matrixShape([[7]]), matrixShape(ints)], ["one-singleton-row", "two:2/3"]),
+            structuralEquals([matrixShape(strings), matrixShape([[1], [2], [3]])], ["two:2/3", "many:1+2"]),
             auditInts(ints) == 12345,
             auditInts([[6], [7, 8]]) == 678,
             auditStrings(strings) == "ant/bee/cat/dog/eel/",

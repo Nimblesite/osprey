@@ -33,21 +33,17 @@ module ReleasePathTests {
 
     fn accepts() = checkAll("release paths parse and round-trip", [
         shown("@finch/ledger/3.42") == "@finch/ledger/3.42",
-        shown("@finch/ledger/1.1") == "@finch/ledger/1.1",
-        shown("@a1/b-2/1.1") == "@a1/b-2/1.1",
+        structuralEquals([shown("@finch/ledger/1.1"), shown("@a1/b-2/1.1")], ["@finch/ledger/1.1", "@a1/b-2/1.1"]),
         shown("@osprey/http/99.9223372036854775807") == "@osprey/http/99.9223372036854775807",
         digestOf("@finch/ledger/3.42") == ""
     ])
 
     fn rejectsSegmentsAndNames() = checkAll("path and name rejections", [
-        code("") == "release-path.segments",
-        code("@finch/ledger") == "release-path.segments",
+        structuralEquals([code(""), code("@finch/ledger")], ["release-path.segments", "release-path.segments"]),
         code("@finch/ledger/3.42/extra") == "release-path.segments",
-        code("/ledger/3.42") == "name.missing-at",
-        code("finch/ledger/3.42") == "name.missing-at",
+        structuralEquals([code("/ledger/3.42"), code("finch/ledger/3.42")], ["name.missing-at", "name.missing-at"]),
         code("@Finch/ledger/3.42") == "name.scope.chars",
-        code("@finch/Ledger/3.42") == "name.name.chars",
-        code("@/ledger/3.42") == "name.scope.length",
+        structuralEquals([code("@finch/Ledger/3.42"), code("@/ledger/3.42")], ["name.name.chars", "name.scope.length"]),
         code("@finch//3.42") == "name.name.length"
     ])
 
@@ -56,13 +52,11 @@ module ReleasePathTests {
         code("@finch/ledger/3.42.1") == "release-path.version",
         code("@finch/ledger/03.42") == "release.epoch",
         code("@finch/ledger/3.042") == "release.ordinal",
-        code("@finch/ledger/.42") == "release.epoch",
-        code("@finch/ledger/3.") == "release.ordinal",
+        structuralEquals([code("@finch/ledger/.42"), code("@finch/ledger/3.")], ["release.epoch", "release.ordinal"]),
         code("@finch/ledger/") == "release-path.version",
         code("@finch/ledger/-3.42") == "release.epoch",
         code("@finch/ledger/+3.42") == "release.epoch",
-        code("@finch/ledger/3.4a") == "release.ordinal",
-        code("@finch/ledger/0.1") == "release.epoch",
+        structuralEquals([code("@finch/ledger/3.4a"), code("@finch/ledger/0.1")], ["release.ordinal", "release.epoch"]),
         code("@finch/ledger/1.0") == "release.ordinal",
         code("@finch/ledger/9223372036854775808") == "release-path.version"
     ])

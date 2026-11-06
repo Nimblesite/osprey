@@ -53,8 +53,7 @@ fn sharedGenericCase() = {
         (byteAt(expanded, 0) ?: 0) == 113,
         (byteAt(expanded, 255) ?: 0) == 113,
         unpack(Packet { payload: "payload" }) == "payload",
-        unpack(Packet { payload: 73 }) == 73,
-        recover(Error { message: "bad" }) == 3,
+        structuralEquals([unpack(Packet { payload: 73 }), recover(Error { message: "bad" })], [73, 3]),
         recover(Success { value: 41 }) == 42,
         withProbe("left") == "left!",
         withProbe("right") == "right!"
@@ -82,11 +81,8 @@ fn sharedResultPayloadCase() = {
     let numbers = payloadResult("ints", true, 1) ?: []
     let second = payloadResult(73, true, 1) ?: []
     checkAll("specialized Result list payloads remain lists", [
-        byteLength(expanded) == 256,
-        length(numbers) == 2,
-        length(second) == 2,
-        payloadLength("marker") == 2,
-        payloadLength(73) == 2
+        structuralEquals([byteLength(expanded), length(numbers), length(second)], [256, 2, 2]),
+        structuralEquals([payloadLength("marker"), payloadLength(73)], [2, 2])
     ])
 }
 

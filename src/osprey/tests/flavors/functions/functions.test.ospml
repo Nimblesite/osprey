@@ -52,9 +52,7 @@ curryPartialCase () =
     ]
     // Check each application independently.
     checkAll "partial application legacy constituent values" [
-        add5 10 == 15,
-        add5 0 == 5,
-        add100 23 == 123,
+        structuralEquals [add5 10, add5 0, add100 23] [15, 5, 123],
         (partialAdd 7) 8 == 15
     ]
     // Exercise identity, cancellation, and equivalent sums.
@@ -88,16 +86,12 @@ higherOrderCase () =
     ]
     // Check each application independently.
     checkAll "higher-order legacy constituent values" [
-        hofApply hofDouble 5 == 10,
-        hofApply hofInc 9 == 10,
-        hofTwice hofDouble 3 == 12,
+        structuralEquals [hofApply hofDouble 5, hofApply hofInc 9, hofTwice hofDouble 3] [10, 10, 12],
         hofTwice hofInc 40 == 42
     ]
     // Exercise zero, repetition, and nested higher-order calls.
     checkAll "higher-order edge cases" [
-        hofApply hofDouble 0 == 0,
-        hofTwice hofInc 0 == 2,
-        hofTwice hofDouble 1 == 4,
+        structuralEquals [hofApply hofDouble 0, hofTwice hofInc 0, hofTwice hofDouble 1] [0, 2, 4],
         hofApply hofInc (hofApply hofDouble 3) == 7
     ]
 
@@ -127,10 +121,7 @@ nestedCallsCase () =
     ]
     // Exercise each helper and additional zero paths.
     checkAll "nested calls edge cases" [
-        nestedInc 0 == 1,
-        nestedDouble 0 == 0,
-        nestedNeg 0 == 0,
-        nestedInc (nestedDouble 2) == 5,
+        structuralEquals [nestedInc 0, nestedDouble 0, nestedNeg 0, nestedInc (nestedDouble 2)] [1, 0, 0, 5],
         nestedNeg (nestedInc (nestedDouble 0)) == ((0 - 1) )
     ]
 
@@ -147,15 +138,11 @@ recursionCase () =
     ]
     // Check each sum independently.
     checkAll "recursion legacy constituent values" [
-        recursiveSumTo 5 == 15,
-        recursiveSumTo 10 == 55,
-        recursiveSumTo 1 == 1
+        structuralEquals [recursiveSumTo 5, recursiveSumTo 10, recursiveSumTo 1] [15, 55, 1]
     ]
     // Exercise the base, short, long, and recurrence cases.
     checkAll "recursion edge cases" [
-        recursiveSumTo 0 == 0,
-        recursiveSumTo 2 == 3,
-        recursiveSumTo 6 == 21,
+        structuralEquals [recursiveSumTo 0, recursiveSumTo 2, recursiveSumTo 6] [0, 3, 21],
         recursiveSumTo 6 == (recursiveSumTo 5 + 6 )
     ]
 

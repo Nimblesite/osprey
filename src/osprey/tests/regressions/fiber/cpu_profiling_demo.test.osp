@@ -68,8 +68,6 @@ fn tunedForTest(n) = {
 // Verifies recursion, arithmetic helpers, and effectful tuning with small inputs.
 
 test("profiling workload computes deterministic values", fn() => exactArithmetic(fn() => checkAll("profiling workload", [
-    fib(10) == 55,
-    tunedForTest(10) == 76,
-    add(20, 22) == 42,
+    structuralEquals([fib(10), tunedForTest(10), add(20, 22)], [55, 76, 42]),
     sub(20, 22) == ((0 - 2) )
 ])))

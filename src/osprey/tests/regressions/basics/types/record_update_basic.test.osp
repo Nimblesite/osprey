@@ -61,18 +61,11 @@ fn recordUpdateCase() = {
     let olderPerson = person { age: 26 }
     let computedPoint = original { x: original.y, y: original.x }
     checkAll("non-destructive record updates", [
-        original.x == 10,
-        original.y == 20,
-        moved.x == 30,
-        moved.y == 20,
-        replaced.x == 50,
-        replaced.y == 60,
+        structuralEquals([original.x, original.y, moved.x, moved.y, replaced.x, replaced.y], [10, 20, 30, 20, 50, 60]),
         person.name == "Alice",
         person.age == 25,
         olderPerson.name == "Alice",
-        olderPerson.age == 26,
-        computedPoint.x == 20,
-        computedPoint.y == 10,
+        structuralEquals([olderPerson.age, computedPoint.x, computedPoint.y], [26, 20, 10]),
         (_ { x: 9 }).x == 9
     ])
 }
@@ -131,14 +124,10 @@ fn genericUpdateCase() = {
     let pair = Pair { first: 1, second: "one" }
     let repaired = second(pair, "uno")
     checkAll("updates through generic functions", [
-        movedPoint.x == 7,
-        movedPoint.y == 2,
-        point.x == 1,
+        structuralEquals([movedPoint.x, movedPoint.y, point.x], [7, 2, 1]),
         retagged.x == "b",
         renamed.name == "Bob",
-        renamed.age == 25,
-        boxed.held == 1,
-        reboxed.held == 5,
+        structuralEquals([renamed.age, boxed.held, reboxed.held], [25, 1, 5]),
         swapped.held == "b",
         repaired.first == 1,
         repaired.second == "uno",
@@ -287,15 +276,8 @@ fn flowUpdateCase() = {
     let walked = walk(start, 3)
     let steeredPoint = steered()
     checkAll("updates inside match arms, lambdas, recursion and handler arms", [
-        stepped.x == 1,
-        stepped.y == 0,
-        shifted.y == 10,
-        shifted.x == 1,
-        walked.x == 3,
-        walked.y == 6,
-        start.x == 0,
-        steeredPoint.x == 11,
-        steeredPoint.y == 6,
+        structuralEquals([stepped.x, stepped.y, shifted.y, shifted.x, walked.x, walked.y], [1, 0, 10, 1, 3, 6]),
+        structuralEquals([start.x, steeredPoint.x, steeredPoint.y], [0, 11, 6]),
         describe(start { y: 9, x: 8 }) == "8,9",
         nestedAnonymousCapture(),
         httpRecordLayout(),

@@ -15,8 +15,7 @@ module CookieTests {
         found("theme=dark; session=abc", "session") == "abc",
         found("session=abc", "session") == "abc",
         found("session=YWJj=ZA==", "session") == "YWJj=ZA==",
-        found("theme=dark", "session") == "missing",
-        found("sessionx=1", "session") == "missing",
+        structuralEquals([found("theme=dark", "session"), found("sessionx=1", "session")], ["missing", "missing"]),
         found("session=a; theme=b; session=c", "session") == "reject:req.duplicate-cookie"
     ])
 

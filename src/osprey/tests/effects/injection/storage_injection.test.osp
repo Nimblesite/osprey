@@ -170,10 +170,7 @@ fn mockStorageCase() = {
 
     // Verification a real file system cannot offer: which calls were made.
     checkAll("mock recorded every call", [
-        mockSaves == 3,
-        mockLoads == 5,
-        mockExistsCalls == 4,
-        mapLength(mockFiles) == 3,
+        structuralEquals([mockSaves, mockLoads, mockExistsCalls, mapLength(mockFiles)], [3, 5, 4, 3]),
         !mapContains(mockFiles, "never-written.txt"),
         mockLog == "load(notes.txt);save(notes.txt,9);load(notes.txt);save(notes.txt,22);exists(notes.txt);load(notes.txt);exists(notes.txt);load(notes.txt);save(archive.txt,22);exists(never-written.txt);exists(fixture.txt);load(fixture.txt);",
         startsWith(mockLog, "load(notes.txt);save(notes.txt,9);"),
@@ -203,10 +200,7 @@ fn readOnlyStorageCase() = {
     // A refused write still answers the operation's declared type, so the
     // logic keeps running and reports what the policy actually stored.
     checkAll("read-only policy answers", [
-        appended == 2,
-        counted == 1,
-        archived == 0,
-        entryCount("locked entry\n") == 1
+        structuralEquals([appended, counted, archived, entryCount("locked entry\n")], [2, 1, 0, 1])
     ])
 
     // Swapping the handler swapped the implementation and nothing else: the

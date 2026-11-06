@@ -16,8 +16,7 @@ module PathsTests {
     fn ctrl() = fromCodePoint(7) ?: ""
 
     fn grammar() = checkAll("every rule of the ASCII relative path grammar has a reason code", [
-        code(Paths::validate("src/main.osp")) == "",
-        code(Paths::validate("osprey.toml")) == "",
+        structuralEquals([code(Paths::validate("src/main.osp")), code(Paths::validate("osprey.toml"))], ["", ""]),
         code(Paths::validate("docs/a-b_c.d/README.md")) == "",
         code(Paths::validate("${long(128)}/${long(128)}")) == "",
         code(Paths::validate("")) == "path.empty",
@@ -35,8 +34,7 @@ module PathsTests {
         code(Paths::validate("src/CON")) == "path.device-stem",
         code(Paths::validate("nul.txt")) == "path.device-stem",
         code(Paths::validate("docs/com9.md")) == "path.device-stem",
-        code(Paths::validate("lpt0.md")) == "",
-        code(Paths::validate("console.osp")) == "",
+        structuralEquals([code(Paths::validate("lpt0.md")), code(Paths::validate("console.osp"))], ["", ""]),
         code(Paths::validate("${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(100)}/${long(16)}")) == "path.length"
     ])
 
@@ -90,8 +88,7 @@ module PathsTests {
     ])
 
     fn collection() = checkAll("forbidden kinds, LFS pointers and submission bounds", [
-        Source::kindCode("regular") == "",
-        Source::kindCode("symlink") == "source.kind.symlink",
+        structuralEquals([Source::kindCode("regular"), Source::kindCode("symlink")], ["", "source.kind.symlink"]),
         Source::kindCode("submodule") == "source.kind.submodule",
         Source::kindCode("executable") == "source.kind.executable",
         Source::kindCode("hardlink") == "source.kind.hardlink",

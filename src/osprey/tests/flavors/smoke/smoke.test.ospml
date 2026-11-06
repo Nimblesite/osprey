@@ -46,23 +46,16 @@ helloSmokeCase () =
 
     checkAll "generic list lookups preserve unrelated element types" [
         listLength words == 5,
-        atOr (words, 0, "missing") == "Hello",
-        atOr (words, 3, "missing") == "ML",
-        atOr (words, 4, "missing") == "flavor",
-        atOr (words, 9, "missing") == "missing",
-        listLength numbers == 4,
-        atOr (numbers, 0, 99) == 2,
-        atOr (numbers, 1, 99) == 3,
-        atOr (numbers, 3, 99) == 8,
-        atOr (numbers, 9, 99) == 99,
-        chooseByList (words, 41, 99) == 41,
+        structuralEquals [atOr (words, 0, "missing"), atOr (words, 3, "missing")] ["Hello", "ML"],
+        structuralEquals [atOr (words, 4, "missing"), atOr (words, 9, "missing")] ["flavor", "missing"],
+        structuralEquals [listLength numbers, atOr (numbers, 0, 99), atOr (numbers, 1, 99)] [4, 2, 3],
+        structuralEquals [atOr (numbers, 3, 99), atOr (numbers, 9, 99), chooseByList (words, 41, 99)] [8, 99, 41],
         chooseByList (numbers, "present", "empty") == "present",
         chooseByList (List (), true, false) == false
     ]
 
     checkAll "nested generic lists keep their inner descriptors" [
-        listLength nestedWords == 2,
-        listLength (atOr (nestedWords, 0, ["missing"])) == 5,
+        structuralEquals [listLength nestedWords, listLength (atOr (nestedWords, 0, ["missing"]))] [2, 5],
         listLength (atOr (nestedWords, 1, ["missing"])) == 3,
         nestedAt (nestedWords, 0, 0, "missing") == "Hello",
         nestedAt (nestedWords, 0, 3, "missing") == "ML",
@@ -79,8 +72,7 @@ helloSmokeCase () =
         bucketAt (wordBuckets, "targets", 0, "missing") == "IR",
         bucketAt (wordBuckets, "targets", 1, "missing") == "wasm",
         bucketAt (wordBuckets, "missing", 0, "fallback") == "fallback",
-        bucketAt (numberBuckets, "small", 0, 99) == 2,
-        bucketAt (numberBuckets, "small", 3, 99) == 8,
+        structuralEquals [bucketAt (numberBuckets, "small", 0, 99), bucketAt (numberBuckets, "small", 3, 99)] [2, 8],
         bucketAt (numberBuckets, "large", 2, 99) == 34,
         bucketAt (numberBuckets, "missing", 0, 99) == 99,
         "${bucketAt (wordBuckets, "targets", 0, "missing")}/${bucketAt (wordBuckets, "targets", 1, "missing")}" == "IR/wasm",

@@ -139,8 +139,7 @@ module SatTests {
     fn trivial() = checkAll("trivial satisfiable and unsatisfiable formulas", [
         outcome(Sat::solve(2, [[1], [-2]])) == "sat:1,-2",
         outcome(Sat::solve(1, [[1], [-1]])) == "unsat:0,1:",
-        outcome(Sat::solve(3, [])) == "sat:-1,-2,-3",
-        outcome(Sat::solve(2, [[]])) == "unsat:0:",
+        structuralEquals([outcome(Sat::solve(3, [])), outcome(Sat::solve(2, [[]]))], ["sat:-1,-2,-3", "unsat:0:"]),
         outcome(Sat::solve(2, [[1, 2]])) == "sat:-1,2",
         outcome(Sat::solve(2, [[1], [-1], []])) == "unsat:0,1:"
     ])

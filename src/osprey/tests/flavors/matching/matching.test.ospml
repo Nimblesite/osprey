@@ -9,21 +9,15 @@ tourClassify _ = "many"
 matchTourCase () =
     // Preserve each rendered branch result.
     checkAll "match tour legacy rendered lines" [
-        tourClassify 0 == "zero",
-        tourClassify 1 == "one",
-        tourClassify 9 == "many"
+        structuralEquals [tourClassify 0, tourClassify 1, tourClassify 9] ["zero", "one", "many"]
     ]
     // Check each dynamic result independently.
     checkAll "match tour legacy constituent values" [
-        tourClassify 0 == "zero",
-        tourClassify 1 == "one",
-        tourClassify 9 == "many"
+        structuralEquals [tourClassify 0, tourClassify 1, tourClassify 9] ["zero", "one", "many"]
     ]
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "match tour wildcard edge cases" [
-        tourClassify 2 == "many",
-        tourClassify ((0 - 1) ) == "many",
-        tourClassify 100 == "many",
+        structuralEquals [tourClassify 2, tourClassify ((0 - 1) ), tourClassify 100] ["many", "many", "many"],
         (tourClassify 0 == tourClassify 1) == false
     ]
 
@@ -48,17 +42,11 @@ matchBooleanCase () =
     ]
     // Check each label independently.
     checkAll "boolean match legacy constituent values" [
-        matchGrade 80 == "pass",
-        matchGrade 20 == "fail",
-        matchEven 4 == "even",
-        matchEven 7 == "odd"
+        structuralEquals [matchGrade 80, matchGrade 20, matchEven 4, matchEven 7] ["pass", "fail", "even", "odd"]
     ]
     // Exercise threshold and parity boundaries.
     checkAll "boolean match boundaries" [
-        matchGrade 50 == "pass",
-        matchGrade 49 == "fail",
-        matchEven 0 == "even",
-        matchEven 9 == "odd"
+        structuralEquals [matchGrade 50, matchGrade 49, matchEven 0, matchEven 9] ["pass", "fail", "even", "odd"]
     ]
 
 (** Label integer literals through adjacent pattern clauses. *)
@@ -76,16 +64,11 @@ matchIntegerCase () =
     ]
     // Check each label independently.
     checkAll "integer match legacy constituent values" [
-        matchLabel 0 == "none",
-        matchLabel 1 == "single",
-        matchLabel 2 == "pair",
-        matchLabel 7 == "many"
+        structuralEquals [matchLabel 0, matchLabel 1, matchLabel 2, matchLabel 7] ["none", "single", "pair", "many"]
     ]
     // Exercise adjacent, negative, and large wildcard inputs.
     checkAll "integer match wildcard boundaries" [
-        matchLabel 3 == "many",
-        matchLabel ((0 - 1) ) == "many",
-        matchLabel 100 == "many"
+        structuralEquals [matchLabel 3, matchLabel ((0 - 1) ), matchLabel 100] ["many", "many", "many"]
     ]
 
 test "literal matching retains every printed arm" matchTourCase
@@ -146,14 +129,10 @@ bindingScope () =
 
 siblingScopeCase () = checkAll ("pattern arms have independent bindings", [
     resultScope (Success(value = 2)) == "2:outer:100:outer",
-    resultScope (Error(message = "bad")) == "100:bad:100:outer",
-    unionScope (Pick 2) == "2:100",
-    unionScope Other == "100:100",
-    listScope [2, 3] == "3:100:2",
-    listScope [] == "100:100:2",
+    structuralEquals [resultScope (Error(message = "bad")), unionScope (Pick 2)] ["100:bad:100:outer", "2:100"],
+    structuralEquals [unionScope Other, listScope [2, 3], listScope []] ["100:100", "3:100:2", "100:100:2"],
     structuralScope (Coordinates(x = 2, y = 3)) == "3:100",
-    erasedScope (Coordinates(x = 2, y = 3)) == "2:100",
-    erasedScope 0 == "none:100"
+    structuralEquals [erasedScope (Coordinates(x = 2, y = 3)), erasedScope 0] ["2:100", "none:100"]
 ])
 
 capturedPattern input =

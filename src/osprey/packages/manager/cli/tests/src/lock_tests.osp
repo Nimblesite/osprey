@@ -125,8 +125,7 @@ module LockTests {
             RegistryFixture::statusOf(a) == 1,
             startsWith(RegistryFixture::lineOf(a, 0), "lock.invalid-manifest ${compact(RegistryFixture::badOne())} manifest.project.name at "),
             RegistryFixture::lineOf(a, 1) == "resolution.missing-package",
-            RegistryFixture::lineOf(a, 2) == "@demo/one",
-            lockOf(a) == ""
+            structuralEquals([RegistryFixture::lineOf(a, 2), lockOf(a)], ["@demo/one", ""])
         ])
     }
 

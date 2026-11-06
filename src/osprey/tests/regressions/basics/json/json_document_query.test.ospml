@@ -77,8 +77,7 @@ jsonDocumentCase () =
     root = JsonObject(fields = Map() |> mapSet "workspace" outer)
     reportDeepString root
     checkAll "recursive JSON document" [
-        describe JsonNull == "null",
-        describe (JsonBoolean(value = true)) == "boolean",
+        structuralEquals [describe JsonNull, describe (JsonBoolean(value = true))] ["null", "boolean"],
         describe (JsonNumber(value = 17)) == "number",
         describe deepest == "string", describe outer == "array",
         describe root == "object", objectFieldCount root == 1,

@@ -78,17 +78,10 @@ fn websiteExamplesCase() = {
     let worker = spawn compute(7)
     let fiberValue = await(worker)
     checkAll("website example behavior", [
-        double(21) == 42,
-        square(12) == 144,
-        pipedValue == 100,
-        analyzeNumber(0) == "Zero",
-        analyzeNumber(42) == "The answer!",
-        analyzeNumber(5) == "Something else",
-        getGrade(100) == "Perfect!",
-        getGrade(95) == "Excellent",
-        getGrade(85) == "Very Good",
-        getGrade(75) == "Good",
-        getGrade(50) == "Needs Improvement",
+        structuralEquals([double(21), square(12), pipedValue], [42, 144, 100]),
+        structuralEquals([analyzeNumber(0), analyzeNumber(42)], ["Zero", "The answer!"]),
+        structuralEquals([analyzeNumber(5), getGrade(100), getGrade(95)], ["Something else", "Perfect!", "Excellent"]),
+        structuralEquals([getGrade(85), getGrade(75), getGrade(50)], ["Very Good", "Good", "Needs Improvement"]),
         compute(11) == 22,
         fiberValue == 14
     ])

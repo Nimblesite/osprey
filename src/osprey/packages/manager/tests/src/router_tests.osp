@@ -14,8 +14,7 @@ module RouterTests {
         let r = respond("GET", "/v1/health")
         checkAll("router: health route", [
             r.status == 200,
-            r.contentType == "application/json",
-            r.etag == "",
+            structuralEquals([r.contentType, r.etag], ["application/json", ""]),
             r.body == "{\"refused\":1,\"releases\":3,\"status\":\"ok\"}"
         ])
     }
@@ -74,8 +73,7 @@ module RouterTests {
         let r = respond("POST", "/v1/health")
         checkAll("router: non-GET rejected", [
             r.status == 405,
-            r.contentType == "application/problem+json",
-            r.etag == "",
+            structuralEquals([r.contentType, r.etag], ["application/problem+json", ""]),
             r.body == "{\"code\":\"api.method-not-allowed\",\"status\":405,\"title\":\"Method not allowed\"}"
         ])
     }
@@ -92,8 +90,7 @@ module RouterTests {
             r.status == 404,
             r.contentType == "application/problem+json",
             r.body == "{\"code\":\"api.not-found\",\"status\":404,\"title\":\"Not found\"}",
-            respond("GET", "/").status == 404,
-            respond("GET", "/v1/packages/a/b/c").status == 404,
+            structuralEquals([respond("GET", "/").status, respond("GET", "/v1/packages/a/b/c").status], [404, 404]),
             respond("GET", "/v1/releases/x/other").status == 404,
             respond("GET", "/v1/health/extra").status == 404
         ])
@@ -122,8 +119,7 @@ module RouterTests {
         respond("GET", "/v1/packages/%40finch/util").status == 404,
         respond("GET", "/v1/packages/finch/util/../ledger").status == 404,
         respond("GET", "//v1/packages").status == 404,
-        respond("HEAD", "/v1/health").status == 405,
-        respond("DELETE", "/v1/packages").status == 405,
+        structuralEquals([respond("HEAD", "/v1/health").status, respond("DELETE", "/v1/packages").status], [405, 405]),
         respond("PUT", "/v1/releases/${CatalogTests::digestA()}/source").status == 405
     ])
 

@@ -126,19 +126,10 @@ megaShowcaseCase () =
         mockResult == 0,
         even 2,
         !(even 3),
-        sq 9 == 81,
-        crunch 1 == 0,
-        scoreA == 120,
-        scoreB == 1140,
-        scoreC == 9880,
-        fiberResult == 220,
+        structuralEquals [sq 9, crunch 1, scoreA, scoreB, scoreC, fiberResult] [81, 0, 120, 1140, 9880, 220],
         fleetScore == 11140,
-        badge (tier 499) == "🟢 STARTER",
-        badge (tier 500) == "🔵 SOLID",
-        badge (tier 1999) == "🔵 SOLID",
-        badge (tier 2000) == "🟣 EPIC",
-        badge Starter == "🟢 STARTER",
-        badge Solid == "🔵 SOLID",
+        structuralEquals [badge (tier 499), badge (tier 500), badge (tier 1999)] ["🟢 STARTER", "🔵 SOLID", "🔵 SOLID"],
+        structuralEquals [badge (tier 2000), badge Starter, badge Solid] ["🟣 EPIC", "🟢 STARTER", "🔵 SOLID"],
         badge Epic == "🟣 EPIC"
     ]
 

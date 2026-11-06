@@ -105,17 +105,13 @@ fn sqliteRoundTripCase() = {
     ])
     // Bound parameters produce SQLITE_DONE and the expected typed row.
     checkAll("SQLite bound row", [
-        testInsert == 101,
-        testRow == 100,
-        selectedId == 7,
+        structuralEquals([testInsert, testRow, selectedId], [101, 100, 7]),
         selectedName == "Grace",
         testDone == 101
     ])
     // Statements, connections, and generic pointer cells all release cleanly.
     checkAll("SQLite cleanup status", [
-        testFinalized == 0,
-        testClosed == 0,
-        testFreed == 0
+        structuralEquals([testFinalized, testClosed, testFreed], [0, 0, 0])
     ])
 }
 test("SQLite FFI binds and reads a typed row", sqliteRoundTripCase)

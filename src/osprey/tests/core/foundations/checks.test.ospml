@@ -22,10 +22,7 @@ arithmeticCase () =
 classifyCase () =
     // Check exact clauses, the wildcard, and a string consumer.
     checkAll "classification foundations" [
-        classify 0 == "zero",
-        classify 1 == "one",
-        classify 9 == "many",
-        classify (sub 4 3) == "one",
+        structuralEquals [classify 0, classify 1, classify 9, classify (sub 4 3)] ["zero", "one", "many", "one"],
         startsWith (classify 20) "m",
         classify 99 != classify 0
     ]

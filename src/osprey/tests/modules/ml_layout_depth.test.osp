@@ -51,27 +51,18 @@ fn tapping(rate, body) = {
 
 /// Every nesting level stays addressable by its full path and by its import.
 fn nestingDepthCase() = checkAll("layout nesting keeps every level addressable", [
-    depth::Trunk::Branch::Twig::value() == 7,
-    Twig::value() == 7,
-    depth::Trunk::Branch::pick() == 7,
-    Twig::scaled(2) == 14,
-    depth::Trunk::Branch::Twig::scaled(3) == 21,
-    depth::Trunk::amplify(2) == 6
+    structuralEquals([depth::Trunk::Branch::Twig::value(), Twig::value(), depth::Trunk::Branch::pick()], [7, 7, 7]),
+    structuralEquals([Twig::scaled(2), depth::Trunk::Branch::Twig::scaled(3), depth::Trunk::amplify(2)], [14, 21, 6])
 ])
 
 /// A layout import selecting two members binds both, alias included.
 fn layoutImportCase() = checkAll("indented member selection binds each name", [
-    amplify(2) == 6,
-    boost(2) == 6,
-    amplify(0) == 0,
-    boost(Twig::value()) == 21,
-    amplify(boost(1)) == 9
+    structuralEquals([amplify(2), boost(2), amplify(0), boost(Twig::value()), amplify(boost(1))], [6, 6, 0, 21, 9])
 ])
 
 /// The deepest module's effect is handled by a top-level installer.
 fn deepEffectCase() = checkAll("an effect four segments deep still propagates", [
-    tapping(2, fn() => Bud::drink(5)) == 10,
-    tapping(1, fn() => Bud::drink(5)) == 5,
+    structuralEquals([tapping(2, fn() => Bud::drink(5)), tapping(1, fn() => Bud::drink(5))], [10, 5]),
     tapping(0, fn() => Bud::drink(5)) == 0,
     tapping(3, fn() => (Bud::drink(2) + Bud::drink(4)) ) == 18,
     tapping(2, fn() => Bud::drink(Twig::value())) == 14

@@ -162,10 +162,7 @@ fn retryAttemptMatrixCase() = {
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll("each rejection count accepts its own magnitude", [
-        acceptedA == 100,
-        acceptedB == 200,
-        acceptedC == 300,
-        acceptedD == 900,
+        structuralEquals([acceptedA, acceptedB, acceptedC, acceptedD], [100, 200, 300, 900]),
         acceptedA != acceptedB,
         acceptedB != acceptedC,
         acceptedC != acceptedD,
@@ -180,10 +177,7 @@ fn retryAttemptMatrixCase() = {
 
     // Attempts are rejections plus one: 0+1, 1+1, 2+1 and 8+1.
     checkAll("one operation per attempt and not one more", [
-        callsA == 1,
-        callsB == 2,
-        callsC == 3,
-        callsD == 9,
+        structuralEquals([callsA, callsB, callsC, callsD], [1, 2, 3, 9]),
         (callsA + callsB + callsC + callsD ) == 15,
         (callsB - callsA ) == 1,
         (callsC - callsB ) == 1,
@@ -200,9 +194,7 @@ fn retryAttemptMatrixCase() = {
 
     // The issue transcript names every candidate in the order it was supplied.
     checkAll("issue transcripts record every attempt in order", [
-        issuedA == "1:100|",
-        issuedB == "1:0|2:200|",
-        issuedC == "1:0|2:-5|3:300|",
+        structuralEquals([issuedA, issuedB, issuedC], ["1:100|", "1:0|2:200|", "1:0|2:-5|3:300|"]),
         issuedD == "1:-1|2:-2|3:-3|4:-4|5:-5|6:-6|7:-7|8:-8|9:900|",
         startsWith(issuedB, "1:0|"),
         endsWith(issuedB, "2:200|"),
@@ -221,9 +213,7 @@ fn retryAttemptMatrixCase() = {
 
     // Post-resume code unwinds in reverse, each frame seeing the accepted answer.
     checkAll("settlement unwinds LIFO with the accepted answer", [
-        settledA == "1:100|",
-        settledB == "2:200|1:200|",
-        settledC == "3:300|2:300|1:300|",
+        structuralEquals([settledA, settledB, settledC], ["1:100|", "2:200|1:200|", "3:300|2:300|1:300|"]),
         settledD == "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|",
         settledA == issuedA,
         settledB != issuedB,
@@ -252,9 +242,7 @@ fn retryAttemptMatrixCase() = {
         contains(issuedD, "900"),
         acceptedD != acceptedC,
         (acceptedD - acceptedC ) == 600,
-        length(settledB) == 12,
-        length(settledC) == 18,
-        length(settledD) == 54
+        structuralEquals([length(settledB), length(settledC), length(settledD)], [12, 18, 54])
     ])
 }
 
@@ -369,10 +357,7 @@ fn retryBudgetExhaustionCase() = {
 
     // Budget B costs B resuming attempts plus the one refusal that ends it.
     checkAll("attempt count is the budget plus one refusal", [
-        calls1 == 2,
-        calls2 == 3,
-        calls3 == 4,
-        calls5 == 3,
+        structuralEquals([calls1, calls2, calls3, calls5], [2, 3, 4, 3]),
         (calls1 - 1 ) == 1,
         (calls2 - 1 ) == 2,
         (calls3 - 1 ) == 3,
@@ -387,10 +372,8 @@ fn retryBudgetExhaustionCase() = {
 
     // The ordered trail distinguishes a resumed try from the terminal refusal.
     checkAll("the trail names every try and then the refusal", [
-        trail1 == "try:1|giveup:2|",
-        trail2 == "try:1|try:2|giveup:3|",
-        trail3 == "try:1|try:2|try:3|giveup:4|",
-        trail5 == "try:1|try:2|try:3|",
+        structuralEquals([trail1, trail2], ["try:1|giveup:2|", "try:1|try:2|giveup:3|"]),
+        structuralEquals([trail3, trail5], ["try:1|try:2|try:3|giveup:4|", "try:1|try:2|try:3|"]),
         startsWith(trail1, "try:1|"),
         endsWith(trail1, "giveup:2|"),
         endsWith(trail2, "giveup:3|"),
@@ -408,9 +391,7 @@ fn retryBudgetExhaustionCase() = {
     // Abandoning the innermost frame still delivers the sentinel to every
     // outer frame's `resume`, so their post-resume code runs with it.
     checkAll("an abandoned continuation settles the outer frames", [
-        settled1 == "1:-1000|",
-        settled2 == "2:-2000|1:-2000|",
-        settled3 == "3:-3000|2:-3000|1:-3000|",
+        structuralEquals([settled1, settled2, settled3], ["1:-1000|", "2:-2000|1:-2000|", "3:-3000|2:-3000|1:-3000|"]),
         settled5 == "3:777|2:777|1:777|",
         startsWith(settled2, "2:-2000|"),
         endsWith(settled2, "1:-2000|"),
@@ -660,9 +641,7 @@ fn retryPayloadChannelMatrixCase() = {
         firstTrue == 4,
         acceptedRatio == 2.5,
         acceptedRatio > 1.0,
-        checkedValue == 4200,
-        markTotal == 4,
-        combo == 73,
+        structuralEquals([checkedValue, markTotal, combo], [4200, 4, 73]),
         word != "abc",
         firstTrue != 3,
         acceptedRatio != 1.0,
@@ -674,12 +653,7 @@ fn retryPayloadChannelMatrixCase() = {
 
     // Counts per channel: 3, 4, 3, 3, 4 and eight in the six-arm region.
     checkAll("operation counts per payload channel", [
-        textCalls == 3,
-        flagCalls == 4,
-        ratioCalls == 3,
-        checkedCalls == 3,
-        markCalls == 4,
-        comboCalls == 8,
+        structuralEquals([textCalls, flagCalls, ratioCalls, checkedCalls, markCalls, comboCalls], [3, 4, 3, 3, 4, 8]),
         textCalls == ratioCalls,
         ratioCalls == checkedCalls,
         flagCalls == markCalls,
@@ -692,11 +666,8 @@ fn retryPayloadChannelMatrixCase() = {
 
     // Every channel's transcript is its own, in issue order.
     checkAll("channel transcripts record each candidate in order", [
-        textTrail == "1:no|2:abc|3:ready|",
-        flagTrail == "1:false|2:false|3:false|4:true|",
-        ratioTrail == "1|2|3|",
-        checkedTrail == "1|2|3|",
-        markTrail == "4|3|2|1|",
+        structuralEquals([textTrail, flagTrail], ["1:no|2:abc|3:ready|", "1:false|2:false|3:false|4:true|"]),
+        structuralEquals([ratioTrail, checkedTrail, markTrail], ["1|2|3|", "1|2|3|", "4|3|2|1|"]),
         ratioTrail == checkedTrail,
         markTrail != ratioTrail,
         startsWith(textTrail, "1:no|"),
@@ -737,9 +708,7 @@ fn retryPayloadChannelMatrixCase() = {
         checkedValue != combo,
         acceptedRatio != 3.5,
         firstTrue == markTotal,
-        length(ratioTrail) == 6,
-        length(markTrail) == 8,
-        length(flagTrail) == 31
+        structuralEquals([length(ratioTrail), length(markTrail), length(flagTrail)], [6, 8, 31])
     ])
 }
 
@@ -824,10 +793,7 @@ fn retryScriptedCandidateMatrixCase() = {
 
     // Each loop stops on the first valid candidate its source offers.
     checkAll("scripted loops accept the first valid candidate", [
-        fromList == 4321,
-        fromMap == 8888,
-        fromSparse == 5555,
-        fromBoundary == 1,
+        structuralEquals([fromList, fromMap, fromSparse, fromBoundary], [4321, 8888, 5555, 1]),
         fromList != fromMap,
         fromMap != fromSparse,
         fromBoundary < fromList,
@@ -845,9 +811,7 @@ fn retryScriptedCandidateMatrixCase() = {
         scriptCalls == 6,
         cursor == 6,
         cursor == scriptCalls,
-        mapCalls == 3,
-        sparseCalls == 4,
-        boundaryCalls == 3,
+        structuralEquals([mapCalls, sparseCalls, boundaryCalls], [3, 4, 3]),
         cursor == listLength(script),
         listLength(script) == 6,
         (scriptCalls - mapCalls ) == 3,
@@ -987,11 +951,7 @@ fn nestedRetryRegionsCase() = {
 
     // 50 before the inner region, 700 inside it, 50 after it is torn down.
     checkAll("nested retry regions each accept their own value", [
-        total == 800,
-        charged == 62,
-        outerCalls == 6,
-        innerCalls == 2,
-        chargeCalls == 8,
+        structuralEquals([total, charged, outerCalls, innerCalls, chargeCalls], [800, 62, 6, 2, 8]),
         chargeCalls == (outerCalls + innerCalls ),
         total == (50 + 700 + 50 ),
         outerCalls > innerCalls,
@@ -1055,9 +1015,7 @@ fn nestedRetryRegionsCase() = {
 
     // A Retry arm performs Budget, never its own Retry.supply.
     checkAll("an arm performs a different effect, never its own", [
-        innerCalls == 2,
-        outerCalls == 6,
-        chargeCalls == 8,
+        structuralEquals([innerCalls, outerCalls, chargeCalls], [2, 6, 8]),
         containsAll(chargeTrail, ["1@31|", "1@32|"]),
         !contains(innerTrail, "o"),
         !contains(outerTrail, "i"),
@@ -1194,12 +1152,7 @@ fn retryPerformSiteMatrixCase() = {
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll("every perform site reaches the same region", [
-        sited == 2024,
-        zeroCalls == 3,
-        oneCalls == 1,
-        twoCalls == 1,
-        threeCalls == 1,
-        fourCalls == 1,
+        structuralEquals([sited, zeroCalls, oneCalls, twoCalls, threeCalls, fourCalls], [2024, 3, 1, 1, 1, 1]),
         noteCalls == 2,
         (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls ) == 9,
         sited == (9 + 400 + 55 + 326 + 1234 ),
@@ -1223,10 +1176,7 @@ fn retryPerformSiteMatrixCase() = {
 
     // Call depth changes nothing about which handler answers.
     checkAll("call depth does not change which handler answers", [
-        suppliedZero == 9,
-        suppliedOne == 400,
-        suppliedTwo == 55,
-        suppliedThree == 326,
+        structuralEquals([suppliedZero, suppliedOne, suppliedTwo, suppliedThree], [9, 400, 55, 326]),
         suppliedFour == 1234,
         sited == (suppliedZero + suppliedOne + suppliedTwo + suppliedThree + suppliedFour ),
         suppliedOne != suppliedTwo,

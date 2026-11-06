@@ -58,13 +58,8 @@ fn structAllocationCase() = {
     let sample = forge(4)
     let bumpedOnce = bump(sample, 99)
     checkAll("struct allocation and aggregate state", [
-        testTotal == 15000050000,
-        testHeavyTotal == 11249875000,
-        testBumped.mass == 100002,
-        sample.id == 4,
-        sample.mass == 12,
-        energy(sample) == 16,
-        bumpedOnce.mass == 13,
+        structuralEquals([testTotal, testHeavyTotal, testBumped.mass], [15000050000, 11249875000, 100002]),
+        structuralEquals([sample.id, sample.mass, energy(sample), bumpedOnce.mass], [4, 12, 16, 13]),
         !heavy(forge(50000)),
         heavy(forge(50001)),
         length(keepItems(listAppend([], 7), false).items) == 0,

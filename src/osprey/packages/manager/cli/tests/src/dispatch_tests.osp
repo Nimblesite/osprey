@@ -73,8 +73,7 @@ module DispatchTests {
         let report = onHealthyHost(doctor)
         checkAll("doctor reports a healthy host and every blocked capability", [
             report.status == 0,
-            line(report, 0) == "process: ok",
-            line(report, 1) == "files: ok",
+            structuralEquals([line(report, 0), line(report, 1)], ["process: ok", "files: ok"]),
             line(report, 2) == "compiler: /usr/local/bin/osprey",
             line(report, 3) == "uv: missing (python/uv: needed only by packages declaring python/interop)",
             length(report.lines) == 4 + length(Capabilities::blocked()),

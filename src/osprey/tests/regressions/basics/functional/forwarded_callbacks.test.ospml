@@ -50,8 +50,7 @@ builtinsByName () =
     words = [" beta ", "alpha"]
     trimmed = mapList words trim
     checkAll "a built-in named as a callback is called" [
-        join trimmed "," == "beta,alpha",
-        join (mapList trimmed toUpperCase) "," == "BETA,ALPHA",
+        structuralEquals [join trimmed ",", join (mapList trimmed toUpperCase) ","] ["beta,alpha", "BETA,ALPHA"],
         join (mapList (mapList trimmed length) toString) "," == "4,5",
         join (range 0 2 |> map toString |> map toUpperCase |> toList) "," == "0,1",
     ]

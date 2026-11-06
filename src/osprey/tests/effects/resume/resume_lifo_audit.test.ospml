@@ -207,9 +207,7 @@ nestedDepthThreeRotationCase () =
     (* Six operations, three depths, entered in body order: d1 d2 d3 d1 d3 d2. *)
     checkAll "three rotated depths enter in perform order" [
         entered == "d1:g0|d2:a1|d3:b1|d1:g1|d3:b2|d2:a2|",
-        gammaCalls == 2,
-        alphaCalls == 2,
-        betaCalls == 2
+        structuralEquals [gammaCalls, alphaCalls, betaCalls] [2, 2, 2]
     ]
 
     (* Settlement does NOT reverse that sequence: each crossing operation put
@@ -316,10 +314,7 @@ nestedDepthFourStaircaseCase () =
     (* Eight operations descend the four depths and climb back out. *)
     checkAll "four nested depths enter in perform order" [
         entered == "1:a1|2:b1|3:g1|4:x1|4:x2|3:g2|2:b2|1:a2|",
-        alphaCalls == 2,
-        betaCalls == 2,
-        gammaCalls == 2,
-        deltaCalls == 2
+        structuralEquals [alphaCalls, betaCalls, gammaCalls, deltaCalls] [2, 2, 2, 2]
     ]
 
     (* Deepest live arm first: both Delta suspensions, then both Gamma, then
@@ -418,9 +413,7 @@ nestedPartialInnerResumeCase () =
     (* The inner region answered both `near` operations; the outer one answered
        both `far` operations and never saw a `near`. *)
     checkAll "a partial inner region keeps only its own operation" [
-        innerNear == 2,
-        outerFar == 2,
-        outerNear == 0
+        structuralEquals [innerNear, outerFar, outerNear] [2, 2, 0]
     ]
 
     (* Entry order is the body's order, alternating between the two depths. *)

@@ -42,23 +42,14 @@ curryTourCase () =
     ]
     // Check all dynamic values independently.
     checkAll "curry tour legacy constituent values" [
-        base == 42,
-        tourInc base == 43,
-        tourSquare 9 == 81,
-        scaled 7 == 21,
-        tourAdd 5 6 == 11,
-        tourName 0 == "zero",
-        tourName 1 == "one",
-        tourName 9 == "9",
-        tourParity 7 == "odd",
+        structuralEquals [base, tourInc base, tourSquare 9, scaled 7, tourAdd 5 6] [42, 43, 81, 21, 11],
+        structuralEquals [tourName 0, tourName 1, tourName 9, tourParity 7] ["zero", "one", "9", "odd"],
         tourParity 8 == "even",
         (10 |> tourInc |> tourSquare) == 121
     ]
     // Exercise zero, wildcard, closure, parity, and intermediate pipes.
     checkAll "curry tour cross-feature edges" [
-        tourInc 0 == 1,
-        tourSquare 0 == 0,
-        tourMakeScaler 0 9 == 0,
+        structuralEquals [tourInc 0, tourSquare 0, tourMakeScaler 0 9] [1, 0, 0],
         tourName 2 == "2",
         tourParity 0 == "even",
         (10 |> tourInc) == 11
@@ -137,18 +128,13 @@ resultsStateHigherOrderCase () =
     ]
     // Check each dynamic value independently.
     checkAll "Result and higher-order legacy constituent values" [
-        total == 2,
-        resultSafeMod 20 7 == 6,
-        resultTwice resultBump 5 == 25,
-        addTen 32 == 42,
+        structuralEquals [total, resultSafeMod 20 7, resultTwice resultBump 5, addTen 32] [2, 6, 25, 42],
         resultAdder 7 8 == 15
     ]
     // Exercise error fallback, zero remainder, repetition, and captures.
     checkAll "Result and higher-order branch edges" [
         resultSafeMod 5 0 == ((0 - 1) ),
-        resultSafeMod 20 5 == 0,
-        resultTwice resultBump 0 == 20,
-        resultAdder 0 9 == 9,
+        structuralEquals [resultSafeMod 20 5, resultTwice resultBump 0, resultAdder 0 9] [0, 20, 9],
         resultAdder ((0 - 5) ) 5 == 0
     ]
 

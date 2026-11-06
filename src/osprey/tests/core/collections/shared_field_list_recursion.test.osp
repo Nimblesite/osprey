@@ -88,8 +88,7 @@ fn sharedFieldRecursionCase() = {
     checkAll("empty and single", [
             join(names(noBinders), ",") == "",
             tySum(noBinders) == 0,
-            pairNames(noBinders) == "",
-            pairNames([Binder { name: "z", ty: 0 }]) == "z",
+            structuralEquals([pairNames(noBinders), pairNames([Binder { name: "z", ty: 0 }])], ["", "z"]),
             joined(noBinders, "-") == "-",
             tyOf(noBinders, "a") == -1,
             nameOf(noBinders, "a") == "no a"

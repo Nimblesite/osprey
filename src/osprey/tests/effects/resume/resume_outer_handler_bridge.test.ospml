@@ -56,9 +56,7 @@ resumeOuterHandlerBridgeCase () =
     checkAll "outer-handler internal state" [
         result == "Ada",
         settledAnswer == "Ada",
-        logCalls == 2,
-        promptCalls == 1,
-        promptSettled == 1,
+        structuralEquals [logCalls, promptCalls, promptSettled] [2, 1, 1],
         logMessages == "form start|got Ada|"
     ]
 
@@ -112,11 +110,7 @@ partialHandlerDelegationCase () =
     // The arm's own operation stays with the inner region; the operation it
     // does not cover reaches the outer one, twice.
     checkAll "a partial handler delegates the operation it lacks" [
-        total == 28,
-        innerRecords == 2,
-        outerAudits == 2,
-        outerRecords == 0,
-        lastNoted == 8,
+        structuralEquals [total, innerRecords, outerAudits, outerRecords, lastNoted] [28, 2, 2, 0, 8],
         auditLog == "record:5|record:7|",
         innerRecords == outerAudits,
         innerRecords != outerRecords,

@@ -161,9 +161,7 @@ fn sharedAcrossMultiplicitiesCase() = {
         applyTwice(audited, 5)
     }
     checkAll("one function serves both multiplicities", [
-        noisy == 16,
-        doubled == 20,
-        audits == 2
+        structuralEquals([noisy, doubled, audits], [16, 20, 2])
     ])
 }
 
