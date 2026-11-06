@@ -126,13 +126,27 @@ test.describe("documentation sub-page navigation", () => {
   });
 });
 
-test("every long-form page carries the same single side panel", async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  for (const url of ["/docs/", "/docs/effects/", "/spec/0001-introduction/", "/blog/2026-10-05-effect-handlers-you-can-call/", "/status/", "/credits/", "/docs/packages/json/"]) {
-    await page.goto(url);
-    await expect(page.locator(".toc-aside"), url).toHaveCount(1);
-    await expect(page.locator(".toc, .toc-title"), url).toHaveCount(0);
-    await expect(page.locator(".docs-nav-desktop .docs-nav-section-title").filter({ hasText: "Reference" }), url).toHaveCount(1);
+test("every long-form page carries the same single side panel; only documentation pages list the documentation", async ({ page }) => {
+  for (const [width, panel] of [[1440, ".docs-nav-desktop"], [390, ".docs-nav-mobile"]]) {
+    await page.setViewportSize({ width, height: 900 });
+    for (const url of ["/docs/", "/docs/effects/", "/spec/0001-introduction/", "/credits/", "/status/", "/docs/packages/json/"]) {
+      await page.goto(url);
+      await expect(page.locator(".toc-aside"), url).toHaveCount(1);
+      await expect(page.locator(".toc, .toc-title"), url).toHaveCount(0);
+      await expect(page.locator(`${panel} .docs-nav-section-title`).filter({ hasText: "Reference" }), url).toHaveCount(1);
+    }
+    for (const url of ["/blog/2026-11-03-osprey-agent-and-pydantic-ai-port/", "/blog/2026-10-05-effect-handlers-you-can-call/", "/blog/2026-10-25-python-packages-osprey-uv/"]) {
+      await page.goto(url);
+      await expect(page.locator(".toc-aside"), url).toHaveCount(1);
+      await expect(page.locator(".toc-aside .docs-nav-section-title"), url).toHaveText(["On this page", "On this page"]);
+      await expect(page.locator(".toc-aside").getByText(/Start here|Documentation|Browse documentation|Mathlib/), url).toHaveCount(0);
+      if (width < 1024) await page.locator(".docs-nav-mobile > summary").click();
+      const first = page.locator(`${panel} .toc-link`).first();
+      await expect(first, url).toBeVisible();
+      const target = (await first.getAttribute("href")).slice(1);
+      await first.click();
+      await expect(page.locator(`${panel} .toc-link.active`), url).toHaveAttribute("href", `#${target}`);
+    }
   }
 });
 

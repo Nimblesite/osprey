@@ -49,6 +49,8 @@
   };
 
   if (heads.length >= 2) panels.forEach(attach);
+  // A page outside the documentation with no headings has nothing to list.
+  if (heads.length < 2 && !document.querySelector(".toc-aside .docs-nav-section")) document.querySelector(".toc-aside").hidden = true;
   reveal(desktop, desktop && desktop.querySelector('a[aria-current="page"]'), true);
   // Choosing a heading on mobile closes the menu so the section is visible.
   if (mobile) mobile.addEventListener("click", (e) => { if (e.target.closest(".toc-link")) mobile.open = false; });

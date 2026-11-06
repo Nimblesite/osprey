@@ -28,15 +28,26 @@ layout: layouts/base.njk
     </nav>
 {% endmacro %}
 {# Shared layout for every long-form page (docs, spec, blog posts, status).
-   One prose design and ONE side panel for all of them: the documentation
-   navigation, with the page's own headings nested under it by toc.js. #}
+   One prose design and ONE side panel for all of them. Documentation pages
+   list the documentation navigation; other pages (blog posts, status) list
+   only their own headings. toc.js adds the headings in both cases. #}
+{% set listsDocs = page.url.startsWith('/docs/') or page.url.startsWith('/spec/') %}
+{% for section in navigation.docs %}{% for item in section.items %}{% if item.url == page.url %}{% set listsDocs = true %}{% endif %}{% endfor %}{% endfor %}
 <div class="prose-layout{% if wide %} prose-wide-layout{% endif %}">
   <aside class="toc-aside">
+{% if listsDocs %}
 {{ documentationNavigation('docs-nav-desktop') }}
     <details class="docs-nav-mobile">
       <summary>Browse documentation</summary>
 {{ documentationNavigation('docs-nav-mobile-list', true) }}
     </details>
+{% else %}
+    <nav class="docs-nav docs-nav-desktop" aria-label="On this page"></nav>
+    <details class="docs-nav-mobile">
+      <summary>On this page</summary>
+      <nav class="docs-nav docs-nav-mobile-list" aria-label="On this page"></nav>
+    </details>
+{% endif %}
   </aside>
   <article class="prose"{% if modified %} data-date-modified="{{ modified | isoDate }}"{% endif %}>
 {% if image %}
