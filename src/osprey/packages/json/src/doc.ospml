@@ -5,7 +5,16 @@ namespace ui
 
 (** Total readers and member builders over Osprey's built-in `Json`, for the framework's own trusted state. Validate hostile input with the built-in `Result` readers instead. *)
 module Doc
-    (** `source` as JSON, or `JsonNull` when it is not JSON. *)
+    (** `source` as JSON, or `JsonNull` when it is not JSON.
+    # Examples
+    ```osprey
+    doc = Doc::parse "{\"name\":\"Osprey\",\"age\":3}"
+    print "${Doc::text (doc, "name")} is ${Doc::number (doc, "age")}; ${Doc::kind (Doc::parse "{oops")}"
+    ```
+    ```output
+    Osprey is 3; null
+    ```
+    *)
     export parse source = jsonDecode source ?: JsonNull
 
     (** The member `key` of an object, or `JsonNull` when it is absent or `doc` is not an object. *)

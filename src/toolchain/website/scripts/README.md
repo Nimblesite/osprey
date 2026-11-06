@@ -31,8 +31,8 @@ Adds ML examples to generated reference pages. Set `mlTwins: manual` in a hand-a
 Publishes the subject folders in `docs/specs/` using their shared `sections.json` metadata. Language and compiler contracts have their own indexes; runtime, platforms, tools, ecosystem and applications are separate. Existing per-document URLs remain stable. Inter-contract links resolve to the published page, while source links point to GitHub. Unclassified folders, flat contract files and colliding URLs fail the build.
 
 ### `update-playground.js`
-Syncs the playground editor content from
-`src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp`.
+Syncs the playground editor content from the three flavor twins of
+`src/osprey/tests/regressions/basics/osprey_mega_showcase.test.{osp,ospml,py}`.
 
 ## Manual Documentation Generation
 

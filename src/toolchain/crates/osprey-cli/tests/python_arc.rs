@@ -28,3 +28,17 @@ fn an_escaped_brace_in_an_f_string_stays_one_brace_per_escape() {
         ),
     );
 }
+
+/// [FLAVOR-IR-EQUIV] The Playground's Python sample is the Default showcase's
+/// third twin: effects, fibers, unions and tests print the Default golden.
+#[test]
+fn the_python_mega_showcase_prints_the_default_golden() {
+    effect_execution::assert_flavored_output(
+        "osprey_mega_showcase",
+        "py",
+        include_str!("../../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.py"),
+        include_str!(
+            "../../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.osp.expectedoutput"
+        ),
+    );
+}

@@ -3,12 +3,12 @@
 const fs = require('fs');
 const path = require('path');
 
-// Reuse the assertion showcase and the Python guide's runnable effects example.
+// One tested showcase, written in each of the three flavors.
 const SHOWCASES = {
     osp: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.osp'),
     ospml: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml'),
+    py: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.py'),
 };
-const PYTHON_GUIDE = path.join(__dirname, '../src/docs/python/flavor.md');
 const PLAYGROUND_PATH = path.join(__dirname, '../src/playground/index.md');
 
 // Each showcase is embedded inside a JS template literal (`key: \`...\``). Any
@@ -55,11 +55,6 @@ function updatePlayground() {
             console.log('📖 Filled SAMPLES.' + flavor + ' (' + code.length + ' chars)');
         }
 
-        const guide = fs.readFileSync(PYTHON_GUIDE, 'utf8');
-        const effects = guide.split('## Effects and handlers')[1];
-        const sample = effects?.match(/```python\n([\s\S]*?)```/);
-        if (!sample) throw new Error('Python guide effects example is missing');
-        content = fillSample(content, 'py', sample[1]);
         fs.writeFileSync(PLAYGROUND_PATH, content, 'utf8');
         console.log('✅ Playground seeded with the tested showcase in all three syntax flavors!');
         return true;
