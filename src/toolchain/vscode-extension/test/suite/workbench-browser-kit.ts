@@ -456,6 +456,8 @@ export async function comparisonState(frame: Frame, scene: string): Promise<void
 async function workingSession(frame: Frame): Promise<void> {
   await frame.getByRole("textbox", { name: "Solution title", exact: true }).fill("A geometric series");
   await frame.getByRole("textbox", { name: "Argument & calculations", exact: true }).fill("For |r| < 1, consider the partial sum.\n\nSₙ = 1 + r + r² + … + rⁿ\n\nMultiply by r and subtract:\n\n(1 − r)Sₙ = 1 − rⁿ⁺¹\n\nAs n grows, rⁿ⁺¹ tends to zero.");
+  // Typing re-runs the WASM program; like every other scene, settle on that result before capture checks readiness.
+  await frame.waitForFunction(() => document.getElementById("osprey-root")?.getAttribute("aria-busy") === "false");
 }
 
 async function referenceNavigation(frame: Frame, scene: string): Promise<void> {
