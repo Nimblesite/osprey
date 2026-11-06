@@ -44,7 +44,8 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
   the WASI download retry and wasm-only setup (OspreyCodex `45a12a2d`), and the website media gate.
   The website images were replaced with new captures by claude-docs-effects in `c35de647a`, on the
   user's order not to use the old Log screenshots.
-- Flaky: the Agent UI `paste-image` step sometimes misses Message focus after the model picker, and
-  its retry passes.
+- Agent UI `paste-image` (run 42145657288): the self-test posted Cmd-V once, before any field held
+  the keyboard after the model picker, so the paste landed nowhere. Root cause fixed in `0d20d9895`:
+  the step waits until a text field is first responder and retries the paste until the deadline.
 - Subsequent run 42142978360 passed the Agent budget. The mapped-file fixture failure prevented the
   Rust rest shard from uploading coverage. Run 42145657288 verifies the fixture fix.
