@@ -24,25 +24,18 @@ const TWINS: [(&str, &str); 2] = [
 fn manifest() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
-/// Write `template` with the fixture's absolute path spliced in; a failed
-/// write yields `None` and the test reports it through its own assertion.
-fn program(ext: &str, template: &str) -> Option<PathBuf> {
-    let fixture = manifest()
-        .join("tests")
-        .join("fixtures")
-        .join("transformer.safetensors");
+/// Write `template` with the fixture's absolute path spliced in, as `name.ext`;
+/// a failed write yields `None` and the test reports it through its own assertion.
+fn program(name: &str, ext: &str, template: &str) -> Option<PathBuf> {
+    let fixture = manifest().join("tests/fixtures/transformer.safetensors");
     let source = template.replace("@FIXTURE@", &fixture.display().to_string());
-    let path = std::env::temp_dir().join(format!(
-        "osprey_tensor_fixture_{}.{ext}",
-        std::process::id()
-    ));
-    std::fs::write(&path, source).ok().map(|()| path)
+    let file = format!("osprey_{name}_{}.{ext}", std::process::id());
+    std::fs::write(std::env::temp_dir().join(&file), source)
+        .ok()
+        .map(|()| std::env::temp_dir().join(file))
 }
-/// `(exit code, stdout, stderr)` of `osprey <path> --run --quiet`, rooted at
-/// the repo so the runtime archives resolve.
-fn run(path: &Path) -> (Option<i32>, String, String) {
-    run_with_gpu(path, "host")
-}
+/// `(exit code, stdout, stderr)` of `osprey <path> --run --quiet --memory=gc`,
+/// rooted at the repo so the runtime archives resolve.
 fn run_with_gpu(path: &Path, backend: &str) -> (Option<i32>, String, String) {
     run_with_memory(path, backend, "gc")
 }
@@ -64,14 +57,47 @@ fn run_with_memory(path: &Path, backend: &str, memory: &str) -> (Option<i32>, St
         Err(_) => (None, String::new(), String::new()),
     }
 }
+/// `OSPREY_GPU` when the harness sets one, else the host backend.
+fn preferred_backend() -> String {
+    std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned())
+}
+/// `osprey <path> --run`, with `OSPREY_GPU` set when `gpu` is given.
+fn run_plain(path: &Path, gpu: Option<&str>) -> std::io::Result<std::process::Output> {
+    let gpu_env = gpu.into_iter().map(|gpu| ("OSPREY_GPU", gpu));
+    Command::new(env!("CARGO_BIN_EXE_osprey"))
+        .arg(path)
+        .arg("--run")
+        .envs(gpu_env)
+        .output()
+}
+/// Run `path` with `backend` and assert it exits 0 with exactly `expected`.
+fn assert_stdout(path: &Path, backend: &str, expected: &str) {
+    let (code, stdout, stderr) = run_with_gpu(path, backend);
+    assert_eq!(code, Some(0), "{stderr}");
+    assert_eq!(stdout, expected, "{stderr}");
+}
+/// The runtime line a clean ARC shutdown prints exactly once.
+const ARC_CLEAN: &str = "[osp-arc] exit: 0 live objects";
+/// Run `path` under `gc` and `arc` for every `backend`, asserting exit 0 and
+/// handing `(backend, memory, stdout, stderr)` to `check`; ARC exits cleanly.
+fn for_each_launch(path: &Path, backends: &[&str], check: impl Fn(&str, &str, &str, &str)) {
+    for memory in ["gc", "arc"] {
+        for &backend in backends {
+            let (code, stdout, stderr) = run_with_memory(path, backend, memory);
+            assert_eq!(code, Some(0), "{backend} {memory}: {stderr}");
+            check(backend, memory, &stdout, &stderr);
+            if memory == "arc" {
+                assert_eq!(stderr.matches(ARC_CLEAN).count(), 1, "{stderr}");
+            }
+        }
+    }
+}
 #[test]
 fn both_flavors_read_the_safetensors_fixture_exactly() {
     for (ext, template) in TWINS {
-        let path = program(ext, template);
-        assert!(path.is_some(), "{ext}: the program could not be written");
-        let (code, stdout, stderr) = path.as_deref().map(run).unwrap_or_default();
-        assert_eq!(code, Some(0), "{ext}: stderr: {stderr}");
-        assert_eq!(stdout, EXPECTED, "{ext}");
+        let path = program("twin", ext, template).expect("write tensor fixture");
+        assert_stdout(&path, "host", EXPECTED);
+        std::fs::remove_file(path).expect("remove tensor fixture");
     }
 }
 const INDEX_FAILURE_SOURCE: &str = r#"
@@ -91,6 +117,8 @@ copied xs = toGpu xs
 print "${describe (gpuIota 0)}\n${describe (gpuIota 3)}\n${describe (gpuIota (-1))}\n${describe (gpuIota 9223372036854775807)}\n${describe (gpuIota 1152921504606846975)}\n${describe (toGpu (range (0, 9223372036854775807)))}\n${describe (toGpu (range (-9223372036854775807, 9223372036854775807)))}\n${describe (toGpu (range (3, 0)))}\n${describe (toGpu (range (-2, 2)))}\n${describe (toGpu [7, 8])}\n${describe (copied [4, 5, 6])}\n${describe (toGpu [])}\n${describe (copied [])}\n${describe (toGpu (range (9223372036854775807, -9223372036854775807)))}"
 "#;
 const INDEX_FAILURE_EXPECTED: &str = "length 0\nlength 3\ngpu: buffer allocation: a negative element count\ngpu: buffer allocation: element count overflows the byte size\ngpu: buffer allocation: out of memory\ngpu: buffer allocation: element count overflows the byte size\ntoGpu: range span overflows the element count\nlength 0\nlength 4\nlength 2\nlength 3\nlength 0\nlength 0\nlength 0\n";
+/// `fromGpu` refuses the NULL buffer, then lists round-trip length and head.
+const READBACK_EXPECTED: &str = "fromGpu: buffer unavailable\n0:-1\n2:7\n";
 #[test]
 fn buffer_allocation_errors_reach_the_caller() {
     // [FAILURE-EXPLICIT] Invalid/OOM requests never become successful empties.
@@ -98,20 +126,11 @@ fn buffer_allocation_errors_reach_the_caller() {
         ("index_failures.osp", INDEX_FAILURE_SOURCE),
         ("index_failures.ospml", INDEX_FAILURE_ML),
     ] {
-        let path = program(ext, source).expect("write index allocation fixture");
-        for memory in ["gc", "arc"] {
-            let (code, stdout, stderr) = run_with_memory(&path, "host", memory);
-            assert_eq!(code, Some(0), "{ext} {memory}: {stderr}");
+        let path = program(ext, ext, source).expect("write allocation fixture");
+        for_each_launch(&path, &["host"], |_, memory, stdout, _| {
             assert_eq!(stdout, INDEX_FAILURE_EXPECTED, "{ext} {memory}");
-            if memory == "arc" {
-                assert_eq!(
-                    stderr.matches("[osp-arc] exit: 0 live objects").count(),
-                    1,
-                    "{stderr}"
-                );
-            }
-        }
-        std::fs::remove_file(path).expect("remove index allocation fixture");
+        });
+        std::fs::remove_file(path).expect("remove allocation fixture");
     }
 }
 const DISPATCH_SOURCE: &str = "fn report(result) = match result { Success _ => \"ok\" Error { message } => message }\nmatch toGpu([1, 2]) { Success { value } => {\nlet input = value\nprint(\"${report(gpuMap(input, fn(x) => wrapAdd(x, 1)))}\\n${report(gpuFold(input, 0, wrapAdd))}\\n${report(gpuZipWith(input, input, wrapAdd))}\\n${report(gpuScan(input, 0, wrapAdd))}\\n${report(gpuFilter(input, fn(x) => x == 1))}\")\n} Error { message } => print(message) }\n";
@@ -124,31 +143,20 @@ fn every_combinator_preserves_the_dispatch_failure_reason() {
         ("dispatch.osp", DISPATCH_SOURCE),
         ("dispatch.ospml", DISPATCH_ML),
     ] {
-        let path = program(ext, source).expect("write dispatch failure fixture");
-        for memory in ["gc", "arc"] {
-            for backend in ["host", "invalid"] {
-                let (code, stdout, stderr) = run_with_memory(&path, backend, memory);
-                assert_eq!(code, Some(0), "{ext} {memory} {backend}: {stderr}");
-                let lines: Vec<_> = stdout.lines().collect();
-                assert_eq!(lines.len(), 5, "{stdout}");
-                if backend == "host" {
-                    assert!(lines.iter().all(|line| *line == "ok"), "{stdout}");
-                } else {
-                    assert!(
-                        lines.iter().all(|line| line
-                            .contains("unknown backend; expected host, auto, metal, or opencl")),
-                        "{stdout}"
-                    );
-                }
-                if memory == "arc" {
-                    assert_eq!(
-                        stderr.matches("[osp-arc] exit: 0 live objects").count(),
-                        1,
-                        "{stderr}"
-                    );
-                }
+        let path = program(ext, ext, source).expect("write dispatch failure fixture");
+        for_each_launch(&path, &["host", "invalid"], |backend, _, stdout, _| {
+            let lines: Vec<_> = stdout.lines().collect();
+            assert_eq!(lines.len(), 5, "{stdout}");
+            if backend == "host" {
+                assert!(lines.iter().all(|line| *line == "ok"), "{stdout}");
+            } else {
+                assert!(
+                    lines.iter().all(|line| line
+                        .contains("unknown backend; expected host, auto, metal, or opencl")),
+                    "{stdout}"
+                );
             }
-        }
+        });
         std::fs::remove_file(path).expect("remove dispatch failure fixture");
     }
 }
@@ -161,18 +169,10 @@ fn readback_preserves_lists_and_refuses_a_missing_buffer() {
         ("readback.osp", READBACK_SOURCE),
         ("readback.ospml", READBACK_ML),
     ] {
-        let path = program(ext, source).expect("write readback fixture");
-        for memory in ["gc", "arc"] {
-            let (code, stdout, stderr) = run_with_memory(&path, "host", memory);
-            assert_eq!(code, Some(0), "{ext} {memory}: {stderr}");
-            assert_eq!(stdout, "fromGpu: buffer unavailable\n0:-1\n2:7\n");
-            if memory == "arc" {
-                assert!(
-                    stderr.contains("[osp-arc] exit: 0 live objects"),
-                    "{stderr}"
-                );
-            }
-        }
+        let path = program(ext, ext, source).expect("write readback fixture");
+        for_each_launch(&path, &["host"], |_, memory, stdout, _| {
+            assert_eq!(stdout, READBACK_EXPECTED, "{ext} {memory}");
+        });
         std::fs::remove_file(path).expect("remove readback fixture");
     }
 }
@@ -209,13 +209,8 @@ fn main() = {
             source.replace("gpuLoadTensor(", "load(")
         };
         let source = format!("{prefix}{body}");
-        let path = program("typed_sites.osp", &source).expect("write typed tensor fixture");
-        let (code, stdout, stderr) = run(&path);
-        assert_eq!(code, Some(0), "{prefix}: {stderr}");
-        assert_eq!(
-            stdout, "wide 4 0.5 3.0\nsmall 2 1.0 -2.5\n",
-            "{prefix}: {stderr}"
-        );
+        let path = program("typed_sites", "osp", &source).expect("write typed tensor fixture");
+        assert_stdout(&path, "host", "wide 4 0.5 3.0\nsmall 2 1.0 -2.5\n");
         std::fs::remove_file(path).expect("remove typed tensor fixture");
     }
 }
@@ -238,25 +233,20 @@ fn main() = match toGpu([toFloat32(16777216.0), toFloat32(1.0), toFloat32(-16777
     Error { message } => print(message)
 }
 "#;
-    let path = program("reduction32.osp", source).expect("write reduction fixture");
+    let path = program("reduction32", "osp", source).expect("write reduction fixture");
     assert!(
-        !llvm(&path).contains("@osprey_gpu_declined"),
+        !llvm(&path).contains(GPU_DECLINED),
         "binary32 reduction must have a device form"
     );
-    let (code, stdout, stderr) = run(&path);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(stdout, "0.0 16777216.0\n", "{stderr}");
+    assert_stdout(&path, "host", "0.0 16777216.0\n");
     std::fs::remove_file(path).expect("remove reduction fixture");
 }
 /// [GPU-FOLD] Erased host metadata must retain the device body's numeric width.
 #[test]
 fn effect_handled_float32_maximum_keeps_its_device_result_width() {
     let source = "import gpt2::Backends\nimport gpt2::Gpu\nimport gpt2::Model\nfn work() = {\nlet values = Model::orStop(perform Backends::Tensor.fromList([toFloat32(-108.95427), toFloat32(1.25), toFloat32(-3.5)]), Model::empty)\nlet maximum = Model::peak(values)\nlet found = Model::indexOf(values, maximum)\nprint(\"${maximum} ${found}\")\n}\nfn main() = match Backends::strictly(fn() => Gpu::onGpu(work)) {\nSuccess { value } => value\nError { message } => print(message)\n}\n";
-    let path = gpt2_project("maximum32", source).expect("write float32 maximum fixture");
-    let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
-    let (code, stdout, stderr) = run_with_gpu(&path, &backend);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(stdout, "1.25 1\n", "{stderr}");
+    let path = gpt2_project("maximum32", source);
+    assert_stdout(&path, &preferred_backend(), "1.25 1\n");
     std::fs::remove_dir_all(path).expect("remove maximum fixture");
 }
 /// [GPU-SCAN] [GPU-FILTER] Both sequential shapes preserve binary32 elements.
@@ -281,15 +271,12 @@ fn main() = match toGpu([toFloat32(1.0), toFloat32(-2.0), toFloat32(3.0)]) {
     Error { message } => print(message)
 }
 "#;
-    let path = program("sequence32.osp", source).expect("write sequence fixture");
+    let path = program("sequence32", "osp", source).expect("write sequence fixture");
     assert!(
-        !llvm(&path).contains("@osprey_gpu_declined"),
+        !llvm(&path).contains(GPU_DECLINED),
         "scan and filter must have device forms"
     );
-    let backend = std::env::var("OSPREY_GPU").unwrap_or_else(|_| "host".to_owned());
-    let (code, stdout, stderr) = run_with_gpu(&path, &backend);
-    assert_eq!(code, Some(0), "{stderr}");
-    assert_eq!(stdout, "2 1.0 3.0 2.0\n", "{stderr}");
+    assert_stdout(&path, &preferred_backend(), "2 1.0 3.0 2.0\n");
     std::fs::remove_file(path).expect("remove sequence fixture");
 }
 /// [GPU-BUFFER-ELEM]: actual compiled uint8 storage, not a reported width.
@@ -315,66 +302,53 @@ fn main() = {
 }
 "#;
     for mode in ["extract", "inline"] {
-        let path = std::env::temp_dir().join(format!(
-            "osprey_dense_uint8_{}_{mode}.osp",
-            std::process::id()
-        ));
-        std::fs::write(&path, source).expect("write dense buffer fixture");
-        let output = dense_fixture_output(&path, mode).expect("compile and run dense fixture");
-        assert_dense_fixture(&output, mode);
+        let path = program(&format!("dense_{mode}"), "osp", source).expect("write dense fixture");
+        assert_dense_fixture(&path, mode);
         std::fs::remove_file(path).expect("remove dense fixture");
     }
 }
-fn dense_fixture_output(path: &Path, mode: &str) -> std::io::Result<std::process::Output> {
-    Command::new(env!("CARGO_BIN_EXE_osprey"))
+/// Compile and run the dense fixture on `path` in `mode`, asserting that the
+/// payload plus its 40-byte header allocated once and dropped cleanly.
+fn assert_dense_fixture(path: &Path, mode: &str) {
+    let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
         .current_dir(repo())
         .arg(path)
         .args(["--run", "--quiet", "--memory=arc", "--no-warnings"])
         .env("OSPREY_ARC_DEBUG", "1")
         .env("OSPREY_GPU_KERNELS", mode)
         .output()
-}
-fn assert_dense_fixture(output: &std::process::Output, mode: &str) {
-    assert!(
-        output.status.success(),
-        "{mode}: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    assert_eq!(
-        output.stdout, b"1000040 1000000 127\n",
-        "{mode}: payload + 40-byte header"
-    );
-    assert!(
-        String::from_utf8_lossy(&output.stderr).contains("[osp-arc] exit: 0 live objects"),
-        "{mode}: leaked"
-    );
+        .expect("compile and run dense fixture");
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "{mode}: {stderr}");
+    assert_eq!(output.stdout, b"1000040 1000000 127\n", "{mode}: payload");
+    assert!(stderr.contains(ARC_CLEAN), "{mode}: leaked");
 }
 /// `directory` holding `config` and the entry `entry`, whose `@FIXTURE@` names
 /// the committed safetensors fixture.
-fn project_at(directory: PathBuf, entry: &str, source: &str, config: &str) -> Option<PathBuf> {
+fn project_at(directory: PathBuf, entry: &str, source: &str, config: &str) -> PathBuf {
     let fixture = manifest().join("tests/fixtures/transformer.safetensors");
-    std::fs::create_dir_all(&directory).ok()?;
-    std::fs::write(directory.join("osprey.toml"), config).ok()?;
+    std::fs::create_dir_all(&directory).expect("create project directory");
+    std::fs::write(directory.join("osprey.toml"), config).expect("write project manifest");
     let source = source.replace("@FIXTURE@", &fixture.display().to_string());
-    std::fs::write(directory.join(entry), source).ok()?;
-    Some(directory)
+    std::fs::write(directory.join(entry), source).expect("write project entry");
+    directory
 }
 /// A project whose `main.osp` is `source`, importing the gpt2 model modules.
-fn gpt2_project(name: &str, source: &str) -> Option<PathBuf> {
+fn gpt2_project(name: &str, source: &str) -> PathBuf {
     let directory = std::env::temp_dir().join(format!("osprey_gpt2_{name}_{}", std::process::id()));
     let model = repo().join("src/osprey/examples/llms/gpt2/model");
-    let model = serde_json::to_string(&model.to_string_lossy()).ok()?;
+    let model = serde_json::to_string(&model.to_string_lossy()).expect("model path");
     let config = format!("[project]\nname = \"failure\"\nsource_roots = [{model}, \".\"]\ndefault_namespace = \"failure\"\nentry = \"main.osp\"\n");
     project_at(directory, "main.osp", source, &config)
 }
 /// A Python-flavor project whose `main.py` is `source`, over the port's own
 /// modules. Python sources are manifest-relative, so it lives under target/.
-fn python_gpt2_project(name: &str, source: &str) -> Option<PathBuf> {
+fn python_gpt2_project(name: &str, source: &str) -> PathBuf {
     let directory = repo()
         .join("target")
         .join(format!("osprey_pygpt2_{name}_{}", std::process::id()));
     let port = repo().join("src/osprey/examples/llms/gpt2/python");
-    let port = serde_json::to_string(&port.to_string_lossy()).ok()?;
+    let port = serde_json::to_string(&port.to_string_lossy()).expect("port path");
     let modules = ["backends", "cpu", "gpu", "model"]
         .map(|m| format!("\"../../src/osprey/examples/llms/gpt2/python/{m}.py\""))
         .join(", ");
@@ -401,26 +375,36 @@ def square():\n    w = Model.loaded(\"@FIXTURE@\", \"w\")\n    p = Model.product
 first = perform(Tensor.get(p, 0))\n    last = perform(Tensor.get(p, 3))\n    return print(f\"{device} {first} {last}\")\n\n\n\
 def main():\n    match Backends.strictly(lambda: @MODULE@.@HANDLER@(square)):\n        case Success(value=value):\n            return value\n        \
 case Error(message=message):\n            return print(message)\n";
+/// `(flavor, IR, stdout)` of one `square` handler run.
+type SquareRun = (&'static str, String, String);
 /// `square` under `module`'s handler in each flavor, as `(flavor, project)`.
-fn square_projects(module: &str, handlers: [&str; 2]) -> Vec<(&'static str, Option<PathBuf>)> {
+fn square_projects(module: &str, handlers: [&str; 2]) -> Vec<(&'static str, PathBuf)> {
     let source = |template: &str, handler: &str| {
-        template
-            .replace("@MODULE@", module)
-            .replace("@HANDLER@", handler)
+        let named = template.replace("@MODULE@", module);
+        named.replace("@HANDLER@", handler)
     };
+    let osp = format!("{module}_osp");
+    let py = format!("{module}_py");
+    let default = source(DEFAULT_SQUARE, handlers[0]);
+    let python = source(PYTHON_SQUARE, handlers[1]);
     vec![
-        (
-            "default",
-            gpt2_project(
-                &format!("{module}_osp"),
-                &source(DEFAULT_SQUARE, handlers[0]),
-            ),
-        ),
-        (
-            "python",
-            python_gpt2_project(&format!("{module}_py"), &source(PYTHON_SQUARE, handlers[1])),
-        ),
+        ("default", gpt2_project(&osp, &default)),
+        ("python", python_gpt2_project(&py, &python)),
     ]
+}
+/// `square` under `module`'s handler in each flavor, run on `backend`; every
+/// project is removed again.
+fn square_runs(module: &str, handlers: [&str; 2], backend: &str) -> Vec<SquareRun> {
+    square_projects(module, handlers)
+        .into_iter()
+        .map(|(flavor, path)| {
+            let ir = llvm(&path);
+            let (code, stdout, stderr) = run_with_gpu(&path, backend);
+            assert_eq!(code, Some(0), "{flavor}: {stderr}");
+            let _ = std::fs::remove_dir_all(path);
+            (flavor, ir, stdout)
+        })
+        .collect()
 }
 /// [LLM-WEIGHTS-MAPPED] A mapped region is the file's own bytes on the host and
 /// on the GPU: `w` at byte 124, its square through the device product, single
@@ -447,8 +431,7 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
          gpuMapFile: {path}: the file ends before the region does\n\
          gpuMapFile: {path}: a negative offset\n"
     );
-    let program = std::env::temp_dir().join(format!("osprey_map_{}.osp", std::process::id()));
-    assert!(std::fs::write(&program, osp).is_ok(), "not written");
+    let program = program("map", "osp", &osp).expect("write map fixture");
     // Metal exists only on macOS; elsewhere `auto` picks whatever device the runtime has.
     let devices: &[&str] = if cfg!(target_os = "macos") {
         &["host", "metal"]
@@ -456,44 +439,32 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
         &["host", "auto"]
     };
     for &gpu in devices {
-        let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-            .arg(&program)
-            .arg("--run")
-            .env("OSPREY_GPU", gpu)
-            .output();
+        let output = run_plain(&program, Some(gpu));
         assert!(output.is_ok(), "{gpu}: not run");
         let output = output?;
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
         assert!(output.status.success(), "{gpu}: {stderr}");
         let unavailable = if cfg!(target_os = "linux") && gpu == "auto" {
-            stdout.lines().nth(1).filter(|line| {
-                matches!(
-                    *line,
-                    "osprey_matmul32: OpenCL: OpenCL driver unavailable failed (OpenCL status -1)"
-                        | "osprey_matmul32: OpenCL: GPU platform discovery failed (OpenCL status -1001)"
-                        | "osprey_matmul32: OpenCL: GPU platform discovery failed (OpenCL status 0)"
-                        | "osprey_matmul32: OpenCL: compute GPU discovery failed (OpenCL status 0)"
-                )
-            })
+            let errors = [
+                "osprey_matmul32: OpenCL: OpenCL driver unavailable failed (OpenCL status -1)",
+                "osprey_matmul32: OpenCL: GPU platform discovery failed (OpenCL status -1001)",
+                "osprey_matmul32: OpenCL: GPU platform discovery failed (OpenCL status 0)",
+                "osprey_matmul32: OpenCL: compute GPU discovery failed (OpenCL status 0)",
+            ];
+            stdout.lines().nth(1).filter(|line| errors.contains(line))
         } else {
             None
         };
         // Driverless Linux must return the typed error, while GPU-equipped hosts must
         // return the exact product and report the dispatch. Mapping assertions apply to both.
         let refused = unavailable.map(|error| expected.replacen("4 -1.75 7.0", error, 1));
-        assert_eq!(
-            stdout,
-            refused.as_deref().unwrap_or(&expected),
-            "{gpu}: {stderr}"
-        );
+        let reference = refused.as_deref().unwrap_or(&expected);
+        assert_eq!(stdout, reference, "{gpu}: {stderr}");
         assert_eq!(stderr.contains("[gpu] metal:"), gpu == "metal", "{stderr}");
         if cfg!(target_os = "linux") {
-            assert_eq!(
-                stderr.contains("[gpu] opencl:"),
-                gpu == "auto" && unavailable.is_none(),
-                "{stderr}"
-            );
+            let opencl = stderr.contains("[gpu] opencl:");
+            assert_eq!(opencl, gpu == "auto" && unavailable.is_none(), "{stderr}");
         }
     }
     std::fs::remove_file(&program)?;
@@ -508,10 +479,8 @@ fn both_flavors_read_binary_bytes_through_every_nul() -> Result<(), Box<dyn std:
     let fixture = manifest().join("tests/fixtures/transformer.safetensors");
     let size = std::fs::metadata(&fixture)?.len();
     let path = fixture.display().to_string();
-    let osp = format!(
-        "fn render(value: List<int>, i: int) -> string = match i >= listLength(value) {{\n    true => \"\"\n    false => \" ${{listGet(value, i) ?: -1}}${{render(value, satAdd(i, 1))}}\"\n}}\n\
-         fn show(label: string, read: Result<List<int>, Error>) = match read {{\n    Success {{ value }} => print(\"${{label}} ${{listLength(value)}}:${{render(value, 0)}}\")\n    Error {{ message }} => print(\"${{label}} ${{message}}\")\n}}\n\
-         show(\"head\", readFileBytes(\"{path}\", 0, 8))\n\
+    let calls = format!(
+        "show(\"head\", readFileBytes(\"{path}\", 0, 8))\n\
          show(\"half\", readFileBytes(\"{path}\", 124, 4))\n\
          show(\"tail\", readFileBytes(\"{path}\", {tail}, 100))\n\
          show(\"past\", readFileBytes(\"{path}\", {size}, 100))\n\
@@ -519,15 +488,14 @@ fn both_flavors_read_binary_bytes_through_every_nul() -> Result<(), Box<dyn std:
          show(\"missing\", readFileBytes(\"/nonexistent/osprey.bin\", 0, 1))\n",
         tail = size - 2,
     );
+    let osp = format!(
+        "fn render(value: List<int>, i: int) -> string = match i >= listLength(value) {{\n    true => \"\"\n    false => \" ${{listGet(value, i) ?: -1}}${{render(value, satAdd(i, 1))}}\"\n}}\n\
+         fn show(label: string, read: Result<List<int>, Error>) = match read {{\n    Success {{ value }} => print(\"${{label}} ${{listLength(value)}}:${{render(value, 0)}}\")\n    Error {{ message }} => print(\"${{label}} ${{message}}\")\n}}\n\
+         {calls}"
+    );
     let python = format!(
         "# osprey: flavor=python\n\n\ndef render(value: list[int], i: int) -> str:\n    if i >= listLength(value):\n        return \"\"\n    else:\n        return f\" {{unwrap_or(listGet(value, i), -1)}}{{render(value, satAdd(i, 1))}}\"\n\n\ndef show(label: str, read: Result[list[int], Error]):\n    match read:\n        case Success(value=value):\n            print(f\"{{label}} {{listLength(value)}}:{{render(value, 0)}}\")\n        case Error(message=message):\n            print(f\"{{label}} {{message}}\")\n\n\n\
-         show(\"head\", readFileBytes(\"{path}\", 0, 8))\n\
-         show(\"half\", readFileBytes(\"{path}\", 124, 4))\n\
-         show(\"tail\", readFileBytes(\"{path}\", {tail}, 100))\n\
-         show(\"past\", readFileBytes(\"{path}\", {size}, 100))\n\
-         show(\"negative\", readFileBytes(\"{path}\", -1, 1))\n\
-         show(\"missing\", readFileBytes(\"/nonexistent/osprey.bin\", 0, 1))\n",
-        tail = size - 2,
+         {calls}"
     );
     let bytes = std::fs::read(&fixture)?;
     let [first, second] = bytes
@@ -540,76 +508,47 @@ fn both_flavors_read_binary_bytes_through_every_nul() -> Result<(), Box<dyn std:
          missing readFileBytes: /nonexistent/osprey.bin: No such file or directory\n"
     );
     for (ext, source) in [("osp", osp), ("py", python)] {
-        let program =
-            std::env::temp_dir().join(format!("osprey_read_bytes_{}.{ext}", std::process::id()));
-        assert!(
-            std::fs::write(&program, source).is_ok(),
-            "{ext}: not written"
-        );
-        let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
-            .arg(&program)
-            .args(["--run"])
-            .output();
-        let _ = std::fs::remove_file(&program);
+        let path = program("read_bytes", ext, &source).expect("write read bytes fixture");
+        let output = run_plain(&path, None);
+        let _ = std::fs::remove_file(&path);
         assert!(output.is_ok(), "{ext}: not run");
         let output = output?;
-        assert_eq!(
-            String::from_utf8_lossy(&output.stdout),
-            expected,
-            "{ext}: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(stdout, expected, "{ext}: {stderr}");
     }
     Ok(())
 }
+/// The host tensor loader the CPU handler must name.
+const HOST_LOAD: &str = "@osprey_load_tensor(";
+/// The device loader and product the GPU handler must name.
+const GPU_LOAD: &str = "@osprey_gpu_load_tensor(";
+const GPU_MATMUL: &str = "@osprey_gpu_matmul(";
 /// [BUILTIN-FILE-TENSOR] The CPU handler loads and multiplies over host lists
 /// with no GPU surface in the program at all: its IR names no `osprey_gpu_`
 /// symbol, and it runs under an `OSPREY_GPU` that aborts any GPU call.
 #[test]
 fn the_cpu_handler_never_touches_the_gpu_in_either_flavor() {
-    for (flavor, path) in square_projects("Cpu", ["onLists", "on_lists"]) {
-        assert!(path.is_some(), "{flavor}: the program could not be written");
-        let path = path.unwrap_or_default();
-        let ir = llvm(&path);
-        assert!(
-            ir.contains("@osprey_load_tensor("),
-            "{flavor}: no host load: {ir}"
-        );
-        assert!(
-            !ir.contains("osprey_gpu_"),
-            "{flavor}: the CPU handler reached the GPU surface: {ir}"
-        );
-        let (code, stdout, stderr) = run_with_gpu(&path, "invalid");
-        assert_eq!(
-            (code, stdout.as_str()),
-            (Some(0), "lists -1.75 7.0\n"),
-            "{flavor}: {stderr}"
-        );
-        let _ = std::fs::remove_dir_all(path);
+    for (flavor, ir, stdout) in square_runs("Cpu", ["onLists", "on_lists"], "invalid") {
+        assert!(ir.contains(HOST_LOAD), "{flavor}: no host load");
+        assert!(!ir.contains("osprey_gpu_"), "{flavor}: reached GPU");
+        assert_eq!(stdout, "lists -1.75 7.0\n", "{flavor}");
     }
 }
 /// The GPU handler loads and multiplies through the GPU surface alone: its IR
 /// names the host loader nowhere.
 #[test]
 fn the_gpu_handler_never_touches_the_host_tensor_surface_in_either_flavor() {
-    for (flavor, path) in square_projects("Gpu", ["onGpu", "on_gpu"]) {
-        assert!(path.is_some(), "{flavor}: the program could not be written");
-        let path = path.unwrap_or_default();
-        let ir = llvm(&path);
-        assert!(
-            ir.contains("@osprey_gpu_load_tensor(") && ir.contains("@osprey_gpu_matmul("),
-            "{flavor}: {ir}"
-        );
-        assert!(!ir.contains("osprey_load_tensor"), "{flavor}: {ir}");
-        let (code, stdout, stderr) = run_with_gpu(&path, "host");
-        assert_eq!(
-            (code, stdout.as_str()),
-            (Some(0), "host -1.75 7.0\n"),
-            "{flavor}: {stderr}"
-        );
-        let _ = std::fs::remove_dir_all(path);
+    for (flavor, ir, stdout) in square_runs("Gpu", ["onGpu", "on_gpu"], "host") {
+        assert!(ir.contains(GPU_LOAD), "{flavor}: no device load");
+        assert!(ir.contains(GPU_MATMUL), "{flavor}: no device product");
+        assert!(!ir.contains("osprey_load_tensor"), "{flavor}: host load");
+        assert_eq!(stdout, "host -1.75 7.0\n", "{flavor}");
     }
 }
+/// The launcher every GPT-2 kernel must reach, and the decline marker.
+const GPU_LAUNCH: &str = "call i32 @osprey_gpu_launch(";
+const GPU_DECLINED: &str = "@osprey_gpu_declined";
 /// [GPU-BACKEND-DEVICE] A launch site whose kernel has no device form runs on
 /// the CPU under the host and aborts under a device. No GPT-2 program has one,
 /// so under a selected device every kernel the GPU handler launches runs there.
@@ -617,12 +556,9 @@ fn the_gpu_handler_never_touches_the_host_tensor_surface_in_either_flavor() {
 fn every_gpt2_kernel_has_a_device_form() {
     for program in ["generate", "train", "python/generate"] {
         let ir = llvm(&repo().join("src/osprey/examples/llms/gpt2").join(program));
+        assert!(ir.contains(GPU_LAUNCH), "{program}: no device launch: {ir}");
         assert!(
-            ir.contains("call i32 @osprey_gpu_launch("),
-            "{program}: no device launch: {ir}"
-        );
-        assert!(
-            !ir.contains("@osprey_gpu_declined"),
+            !ir.contains(GPU_DECLINED),
             "{program}: a kernel has no device form"
         );
     }
@@ -642,11 +578,7 @@ fn main() = match Backends::strictly(fn() => Gpu::onGpu(runProduct)) {
 }
 "#;
     let path = gpt2_project("failure", source);
-    assert!(path.is_some(), "GPU failure project could not be written");
-    let (code, stdout, stderr) = path
-        .as_deref()
-        .map(|p| run_with_gpu(p, "invalid"))
-        .unwrap_or_default();
+    let (code, stdout, stderr) = run_with_gpu(&path, "invalid");
     // The failed product stops the run with the runtime's reason as an Error
     // ([FAILURE-EXPLICIT]); no length of an empty matrix is ever printed.
     assert_eq!(code, Some(0), "{stderr}");
@@ -654,9 +586,7 @@ fn main() = match Backends::strictly(fn() => Gpu::onGpu(runProduct)) {
         stdout.starts_with("gpu: device selection: unknown backend") && stdout.lines().count() == 1,
         "failed GPU dispatch continued: {stdout}"
     );
-    if let Some(path) = path {
-        let _ = std::fs::remove_dir_all(path);
-    }
+    let _ = std::fs::remove_dir_all(path);
 }
 /// The arithmetic policy GPT-2's `main` installs halts on a fault and hands the
 /// caller an `Error` naming it. Substituting `0`/`0.0` was indistinguishable
@@ -674,8 +604,7 @@ fn main() = print("${report(Backends::strictly(fn() => quotient(listLength([1, 2
 #[test]
 fn gpt2_arithmetic_faults_reach_the_caller_instead_of_substituting_zero() {
     let path = gpt2_project("arith", ARITH_FAULTS);
-    assert!(path.is_some(), "Arith fault project could not be written");
-    let (code, stdout, stderr) = path.as_deref().map(run).unwrap_or_default();
+    let (code, stdout, stderr) = run_with_gpu(&path, "host");
     assert_eq!(code, Some(0), "stderr: {stderr}");
     assert_eq!(
         stdout,
@@ -684,7 +613,5 @@ fn gpt2_arithmetic_faults_reach_the_caller_instead_of_substituting_zero() {
          fault: division by zero: 3.0 / 0\n\
          fault: integer overflow: 3 * 4611686018427387904\n"
     );
-    if let Some(path) = path {
-        let _ = std::fs::remove_dir_all(path);
-    }
+    let _ = std::fs::remove_dir_all(path);
 }
