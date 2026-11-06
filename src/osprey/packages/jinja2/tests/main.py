@@ -12,6 +12,31 @@ def same(name, got, want):
     return Check.truth(name, structuralEquals(got, want), "values differ")
 
 
+def at(xs, i):
+    """Element `i` of a string list, or "" past the end."""
+    return unwrap_or(listGet(xs, i), "")
+
+
+def row(xs, i):
+    """Element `i` of a list of rows, or the empty row past the end."""
+    return unwrap_or(listGet(xs, i), [])
+
+
+def first_node(nodes):
+    """The first node a parse produced, or a blank one when it produced none."""
+    return unwrap_or(listGet(nodes, 0), P.blank("missing"))
+
+
+def contract(name, result, accepted, compare):
+    """A render compared with the oracle's answer: `compare(name, answer)` where the
+    template must produce `accepted`-ly, and a failure naming the answer where not."""
+    match result:
+        case Success(value=value):
+            return compare(name, value) if accepted else Check.failed(name, value)
+        case Error(message=message):
+            return Check.failed(name, message) if accepted else compare(name, message)
+
+
 def parsed_same(name, result, want):
     match result:
         case Success(value=value):
@@ -20,20 +45,23 @@ def parsed_same(name, result, want):
             return Check.failed(name, message)
 
 
-def run(case, context):
-    name = unwrap_or(listGet(case, 0), "")
-    template = unwrap_or(listGet(case, 1), "")
-    expected = unwrap_or(listGet(case, 2), "")
-    match R.render(R.chat_environment(), template, context):
-        case Success(value=value):
-            return same(name, value, expected)
+def parse_step(name, result, step):
+    """`step` applied to the nodes a parse produced, or the failure its diagnostic reports."""
+    match result:
+        case Success(value=nodes):
+            return step(nodes)
         case Error(message=message):
-            return Check.failed(name, message)
+            return [Check.failed(name, message)]
+
+
+def run(case, context):
+    return contract(at(case, 0), R.render(R.chat_environment(), at(case, 1), context), True,
+                    lambda name, value: same(name, value, at(case, 2)))
 
 
 def all_cases():
     context = {"name": V.text("world"), "nums": V.list_([V.int_(1), V.int_(2), V.int_(3)]), "enabled": V.bool_(True), "nothing": V.none(), "obj": V.typed_dict([V.text("x")], [V.int_(4)])}
-    renders = toList(map(range(len(Expected.RENDERS)), lambda i: run(unwrap_or(listGet(Expected.RENDERS, i), []), context)))
+    renders = toList(map(range(len(Expected.RENDERS)), lambda i: run(row(Expected.RENDERS, i), context)))
     rest = listConcat(kind_cases(), listConcat(string_cases(), listConcat(value_cases(), listConcat(scope_cases(), listConcat(syntax_cases(), macro_cases())))))
     return listConcat(renders, listConcat(error_chain_cases(), listConcat(rest, expanded_cases(context))))
 
@@ -132,71 +160,50 @@ def syntax_cases():
 
 def macro_node(chunks):
     """The name, parameters and defaults of the first macro in `chunks`."""
-    match P.parse(chunks):
-        case Success(value=value):
-            node = unwrap_or(listGet(value, 0), P.blank("missing"))
-            return [same("macro name", node.name, Expected.MACRO_NAME),
-                    same("macro parameters", node.params, Expected.MACRO_PARAMS),
-                    same("macro defaults", node.defaults, [""])]
-        case Error(message=message):
-            return [Check.failed("macro parse", message)]
+    node = first_node(chunks)
+    return [same("macro name", node.name, Expected.MACRO_NAME),
+            same("macro parameters", node.params, Expected.MACRO_PARAMS),
+            same("macro defaults", node.defaults, [""])]
 
 
 def macro_parse():
-    match L.scan(Expected.MACRO_SOURCE, True, True):
-        case Success(value=value):
-            return macro_node(value)
-        case Error(message=message):
-            return [Check.failed("macro lex", message)]
+    return parse_step("macro lex", L.scan(Expected.MACRO_SOURCE, True, True),
+                      lambda chunks: parse_step("macro parse", P.parse(chunks), macro_node))
 
 
 def defaulted_macro_node(chunks):
     """The parameters and defaults of a macro that declares a default."""
-    match P.parse(chunks):
-        case Success(value=value):
-            node = unwrap_or(listGet(value, 0), P.blank("missing"))
-            return [same("defaulted macro parameters", node.params, ["a", "b", "c"]),
-                    same("defaulted macro defaults", node.defaults, ["", "7", "a + b"])]
-        case Error(message=message):
-            return [Check.failed("defaulted macro parse", message)]
+    node = first_node(chunks)
+    return [same("defaulted macro parameters", node.params, ["a", "b", "c"]),
+            same("defaulted macro defaults", node.defaults, ["", "7", "a + b"])]
 
 
 def defaulted_macro_parse():
-    match L.scan("{% macro m(a, b=7, c = a + b) %}{% endmacro %}", True, True):
-        case Success(value=value):
-            return defaulted_macro_node(value)
-        case Error(message=message):
-            return [Check.failed("defaulted macro lex", message)]
+    return parse_step("defaulted macro lex", L.scan("{% macro m(a, b=7, c = a + b) %}{% endmacro %}", True, True),
+                      lambda chunks: parse_step("defaulted macro parse", P.parse(chunks), defaulted_macro_node))
 
 
 def macro_table_cases():
     """The macro table API the renderer's expansion path is built on."""
-    match L.scan("{% macro m(a) %}{% endmacro %}", True, True):
-        case Success(value=chunks):
-            return macro_table_from(chunks)
-        case Error(message=message):
-            return [Check.failed("macro table lex", message)]
+    return parse_step("macro table lex", L.scan("{% macro m(a) %}{% endmacro %}", True, True),
+                      lambda chunks: parse_step("macro table parse", P.parse(chunks), macro_table_from))
 
 
-def macro_table_from(chunks):
-    match P.parse(chunks):
-        case Success(value=nodes):
-            node = unwrap_or(listGet(nodes, 0), P.blank("missing"))
-            empty = V.Env(frames=[{}], macros=[])
-            env = V.bind_macro(empty, node)
-            return [
-                same("macro declaration", V.Macro(node=node, frames=[]).node.name, "m"),
-                same("macro table bind", len(env.macros), 1),
-                same("macro table lookup", V.find_macro(env, 0, "m").node.name, "m"),
-                same("macro table miss", V.find_macro(env, 0, "absent").node.name, ""),
-                same("macro reference kind", V.macro_ref("m").kind, V.K_MACRO),
-                same("environment copy keeps macros", len(V.env_with(env, [{}]).macros), 1),
-                same("undefined macro expansion", V.is_error(R.expand_macro(empty, "absent", [], [])), True),
-                same("unknown node kind", unknown_node(), "unknown node kind `bogus`"),
-                same("value type name", E.type_name(V.text("a")), "str"),
-            ]
-        case Error(message=message):
-            return [Check.failed("macro table parse", message)]
+def macro_table_from(nodes):
+    node = first_node(nodes)
+    empty = V.Env(frames=[{}], macros=[])
+    env = V.bind_macro(empty, node)
+    return [
+        same("macro declaration", V.Macro(node=node, frames=[]).node.name, "m"),
+        same("macro table bind", len(env.macros), 1),
+        same("macro table lookup", V.find_macro(env, 0, "m").node.name, "m"),
+        same("macro table miss", V.find_macro(env, 0, "absent").node.name, ""),
+        same("macro reference kind", V.macro_ref("m").kind, V.K_MACRO),
+        same("environment copy keeps macros", len(V.env_with(env, [{}]).macros), 1),
+        same("undefined macro expansion", V.is_error(R.expand_macro(empty, "absent", [], [])), True),
+        same("unknown node kind", unknown_node(), "unknown node kind `bogus`"),
+        same("value type name", E.type_name(V.text("a")), "str"),
+    ]
 
 
 def unknown_node():
@@ -293,18 +300,12 @@ DIVERGENT_ERRORS = [
 
 
 def error_run(context, entry):
-    name = unwrap_or(listGet(entry, 0), "")
-    template = unwrap_or(listGet(entry, 1), "")
-    want = unwrap_or(listGet(entry, 2), "")
-    match R.render(R.chat_environment(), template, context):
-        case Error(message=message):
-            return same(name, message, want)
-        case Success(value=value):
-            return Check.failed(name, value)
+    return contract(at(entry, 0), R.render(R.chat_environment(), at(entry, 1), context), False,
+                    lambda name, message: same(name, message, at(entry, 2)))
 
 
 def error_table(context, table):
-    return toList(map(range(len(table)), lambda i: error_run(context, unwrap_or(listGet(table, i), []))))
+    return toList(map(range(len(table)), lambda i: error_run(context, row(table, i))))
 
 
 def oracle_errors(context):
@@ -312,17 +313,12 @@ def oracle_errors(context):
 
 
 def rejects_like_python(context, entry):
-    name = unwrap_or(listGet(entry, 0), "")
-    template = unwrap_or(listGet(entry, 1), "")
-    match R.render(R.chat_environment(), template, context):
-        case Error(message=message):
-            return Check.truth(name, len(message) > 0, "rejected with a diagnostic")
-        case Success(value=value):
-            return Check.failed(name, value)
+    return contract(at(entry, 0), R.render(R.chat_environment(), at(entry, 1), context), False,
+                    lambda name, message: Check.truth(name, len(message) > 0, "rejected with a diagnostic"))
 
 
 def divergent_errors(context):
-    return toList(map(range(len(DIVERGENT_ERRORS)), lambda i: rejects_like_python(context, unwrap_or(listGet(DIVERGENT_ERRORS, i), []))))
+    return toList(map(range(len(DIVERGENT_ERRORS)), lambda i: rejects_like_python(context, row(DIVERGENT_ERRORS, i))))
 
 
 def error_cases(context):
@@ -330,12 +326,13 @@ def error_cases(context):
 
 
 def malformed_errors(context):
-    return toList(map(range(len(MALFORMED_EXPR)), lambda i: rejects_like_python(context, unwrap_or(listGet(MALFORMED_EXPR, i), []))))
+    return toList(map(range(len(MALFORMED_EXPR)), lambda i: rejects_like_python(context, row(MALFORMED_EXPR, i))))
 
 
 def fallback_cases():
     return [
         same("chars of empty", V.chars(""), []),
+        same("indexed rebuild", V.map_indexed(["a", "b", "c"], lambda i: i + 10), [10, 11, 12]),
         same("length of undefined", F.apply_filter("length", V.undefined("x"), [], []), V.int_(0)),
         same("method on int", V.is_error(F.call_method(V.int_(1), "upper", [])), True),
         same("bind fallback innermost", V.lookup(V.bind_found(V.Env(frames=[{}, {}], macros=[]), "x", V.int_(1)), "x"), V.int_(1)),
@@ -355,20 +352,13 @@ def dict_write_cases():
 
 
 def empty_macro_node(nodes):
-    node = unwrap_or(listGet(nodes, 0), P.blank("missing"))
+    node = first_node(nodes)
     return [same("empty macro name", node.name, "m"), same("empty macro params", node.params, [])]
 
 
 def empty_macro_cases():
-    match L.scan("{% macro m() %}Hi{% endmacro %}", True, True):
-        case Success(value=value):
-            match P.parse(value):
-                case Success(value=parsed):
-                    return empty_macro_node(parsed)
-                case Error(message=message):
-                    return [Check.failed("empty macro parse", message)]
-        case Error(message=message):
-            return [Check.failed("empty macro lex", message)]
+    return parse_step("empty macro lex", L.scan("{% macro m() %}Hi{% endmacro %}", True, True),
+                      lambda chunks: parse_step("empty macro parse", P.parse(chunks), empty_macro_node))
 
 
 def json_value(doc):
@@ -436,27 +426,23 @@ def render_context(doc):
 
 def chat_case(entry):
     """One `CHAT_RENDERS` row: the template's output over the oracle's context."""
-    name = unwrap_or(listGet(entry, 0), "")
-    match render_chat(unwrap_or(listGet(entry, 1), "{}")):
-        case Success(value=value):
-            return same(name, value, unwrap_or(listGet(entry, 2), ""))
-        case Error(message=message):
-            return Check.failed(name, message)
+    return chat_contract(entry, True)
 
 
 def chat_error_case(entry):
     """One `CHAT_ERRORS` row: the template rejects the oracle's context."""
-    name = unwrap_or(listGet(entry, 0), "")
-    match render_chat(unwrap_or(listGet(entry, 1), "{}")):
-        case Error(message=message):
-            return same(name, message, unwrap_or(listGet(entry, 2), ""))
-        case Success(value=value):
-            return Check.failed(name, value)
+    return chat_contract(entry, False)
+
+
+def chat_contract(entry, accepted):
+    """One chat row: the render the oracle recorded, or the diagnostic it recorded."""
+    return contract(at(entry, 0), render_chat(unwrap_or(listGet(entry, 1), "{}")), accepted,
+                    lambda name, answer: same(name, answer, at(entry, 2)))
 
 
 def chat_cases():
-    renders = toList(map(range(len(Expected.CHAT_RENDERS)), lambda i: chat_case(unwrap_or(listGet(Expected.CHAT_RENDERS, i), []))))
-    return listConcat(renders, toList(map(range(len(Expected.CHAT_ERRORS)), lambda i: chat_error_case(unwrap_or(listGet(Expected.CHAT_ERRORS, i), [])))))
+    renders = toList(map(range(len(Expected.CHAT_RENDERS)), lambda i: chat_case(row(Expected.CHAT_RENDERS, i))))
+    return listConcat(renders, toList(map(range(len(Expected.CHAT_ERRORS)), lambda i: chat_error_case(row(Expected.CHAT_ERRORS, i)))))
 
 
 # Divergences from CPython Jinja 3.1.6 that @osprey/jinja2 documents in its README.
@@ -475,11 +461,7 @@ def vision_counts(text):
 def vision_divergence():
     """Picture numbering restarts in each message (Jinja counts 1, 2, 3 across both)."""
     name = "vision picture numbering is call scoped (known divergence)"
-    match render_chat(VISION_CONTEXT):
-        case Success(value=value):
-            return same(name, vision_counts(value), [2, 1, 0])
-        case Error(message=message):
-            return Check.failed(name, message)
+    return contract(name, render_chat(VISION_CONTEXT), True, lambda tag, text: same(tag, vision_counts(text), [2, 1, 0]))
 
 
 def divergence_cases():

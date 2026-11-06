@@ -44,44 +44,34 @@ def arr(vals, shape):
     return Array.array(vals, shape)
 
 
-def finish_list(name, compute, want, tol):
-    match Errors.checked_values(compute):
+def finished(name, result, compare):
+    """`compare(name, value)` for the value a checked computation produced, or the
+    arithmetic error its refusal reports."""
+    match result:
         case Success(value=value):
-            return Check.close_all(name, value, want, tol, ATOL)
+            return compare(name, value)
         case Error(message=message):
             return Check.failed(name, f"error: {message}")
+
+
+def finish_list(name, compute, want, tol):
+    return finished(name, Errors.checked_values(compute), lambda tag, value: Check.close_all(tag, value, want, tol, ATOL))
 
 
 def finish_float(name, compute, want, tol):
-    match Errors.checked_float(compute):
-        case Success(value=value):
-            return Check.close(name, value, want, tol, ATOL)
-        case Error(message=message):
-            return Check.failed(name, f"error: {message}")
+    return finished(name, Errors.checked_float(compute), lambda tag, value: Check.close(tag, value, want, tol, ATOL))
 
 
 def finish_int(name, compute, want):
-    match Errors.checked_int(compute):
-        case Success(value=value):
-            return Check.equal(name, value, want)
-        case Error(message=message):
-            return Check.failed(name, f"error: {message}")
+    return finished(name, Errors.checked_int(compute), lambda tag, value: Check.equal(tag, value, want))
 
 
 def finish_ints(name, compute, want):
-    match Errors.checked_ints(compute):
-        case Success(value=value):
-            return Check.ints_equal(name, value, want)
-        case Error(message=message):
-            return Check.failed(name, f"error: {message}")
+    return finished(name, Errors.checked_ints(compute), lambda tag, value: Check.ints_equal(tag, value, want))
 
 
 def finish_bool(name, compute, want):
-    match Errors.checked_bool(compute):
-        case Success(value=value):
-            return Check.equal(name, value, want)
-        case Error(message=message):
-            return Check.failed(name, f"error: {message}")
+    return finished(name, Errors.checked_bool(compute), lambda tag, value: Check.equal(tag, value, want))
 
 
 def red_arr(i):

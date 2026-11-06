@@ -8,6 +8,7 @@ from faiss.Flat import IndexFlat, IndexFlatL2, IndexFlatIP, SearchResult, RangeS
 from faiss.IdMap import IndexIDMap, IndexIDMap2, add_with_ids, search as idmap_search, ntotal as idmap_ntotal, remove_ids as idmap_remove_ids, reconstruct as idmap_reconstruct
 from faiss.Kmeans import Kmeans, train, assign
 from faiss.Metrics import Topk, l2sqr, inner_product, topk
+from faiss import Metrics
 from faiss.ScalarQuant import ScalarQuantizer, QT_8bit, QT_4bit, QT_8bit_uniform, train as sq_train, compute_codes, decode, IndexScalarQuantizer, sq_add, sq_search
 from faiss.Normalize import normalize_L2
 from faiss.ProductQuant import ProductQuantizer, set_centroids, compute_codes as pq_compute_codes, decode as pq_decode, sdc_table, IndexPQ, pq_add, pq_search
@@ -326,6 +327,7 @@ def record_cases():
     """The exported result and selector records, and the quantizer type constants."""
     return [
         Check.equal("select.record", IDSelector(kind="range", ids=[], imin=2, imax=5).imax, 5),
+        Check.ints_equal("indexed.rebuild", Metrics.map_indexed([1.5, 2.5, 3.5], lambda i: i * i), [0, 1, 4]),
         Check.equal("search.result.record", len(SearchResult(distances=[[1.0]], labels=[[2]]).distances), 1),
         Check.ints_equal("range.result.record", RangeSearchResult(lims=[0, 1], distances=[1.0], labels=[3]).labels, [3]),
         Check.close_all("topk.record", Topk(vals=[1.0], ids=[4]).vals, [1.0], RTOL_EXACT, ATOL_EXACT),

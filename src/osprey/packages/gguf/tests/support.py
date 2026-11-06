@@ -10,8 +10,7 @@ from gguf_expected import Expected
 from testing import Check
 
 __all__ = ["TIGHT", "ATOL", "Rejected", "Fixture", "QuantCase", "fixtures", "quant_types", "empty_file", "loaded", "str_list_equal", "int_rows", "float_rows", "str_rows", "bool_rows", "ats", "ati", "atf", "atb", "atl", "flag_int",
-           "cell_case", "error_case", "swapped", "entry_offset", "entry_kind", "entry_item_kind",
-           "tensor_dims", "tensor_elements", "tensor_sizes", "tensor_start", "tensor_name"]
+           "cell_case", "error_case", "swapped", "equal_case", "checked"]
 
 TIGHT = 0.000000000001
 """The float tolerance: these are bit-exact decodes, so nothing downstream rounds."""
@@ -223,36 +222,33 @@ def str_list_equal(tag, got, want):
         return Check.truth(tag, i == len(want), "index " + toString(i) + ": got " + ats(got, i) + ", want " + ats(want, i))
 
 
-def int_rows(tag, got, want):
-    """One exact int-list assertion per row of a list of int lists."""
+def rows(tag, got, want, compare):
+    """One `compare` assertion per row of `want`, numbered, or a single failure when
+    the row counts differ — a short list of rows would otherwise check nothing."""
     if len(got) != len(want):
         return [Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))]
     else:
-        return toList(map(range(len(want)), lambda i: Check.ints_equal(tag + "." + toString(i), atl(got, i), atl(want, i))))
+        return toList(map(range(len(want)), lambda i: compare(tag + "." + toString(i), atl(got, i), atl(want, i))))
+
+
+def int_rows(tag, got, want):
+    """One exact int-list assertion per row of a list of int lists."""
+    return rows(tag, got, want, lambda name, row, expected: Check.ints_equal(name, row, expected))
 
 
 def float_rows(tag, got, want):
     """One float-list assertion per row, compared with numpy's isclose rule."""
-    if len(got) != len(want):
-        return [Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))]
-    else:
-        return toList(map(range(len(want)), lambda i: Check.close_all(tag + "." + toString(i), atl(got, i), atl(want, i), TIGHT, ATOL)))
+    return rows(tag, got, want, lambda name, row, expected: Check.close_all(name, row, expected, TIGHT, ATOL))
 
 
 def str_rows(tag, got, want):
     """One string-list assertion per row of a list of string lists."""
-    if len(got) != len(want):
-        return [Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))]
-    else:
-        return toList(map(range(len(want)), lambda i: str_list_equal(tag + "." + toString(i), atl(got, i), atl(want, i))))
+    return rows(tag, got, want, lambda name, row, expected: str_list_equal(name, row, expected))
 
 
 def bool_rows(tag, got, want):
     """One bool-list assertion per row, compared as 1 and 0."""
-    if len(got) != len(want):
-        return [Check.failed(tag, "length " + toString(len(got)) + ", want " + toString(len(want)))]
-    else:
-        return toList(map(range(len(want)), lambda i: Check.ints_equal(tag + "." + toString(i), mapList(atl(got, i), flag_int), mapList(atl(want, i), flag_int))))
+    return rows(tag, got, want, lambda name, row, expected: Check.ints_equal(name, mapList(row, flag_int), mapList(expected, flag_int)))
 
 
 def swapped(fixture):
@@ -263,15 +259,15 @@ def swapped(fixture):
 def cell_case(tag, field, kind, ints, floats, bools, strings):
     """One metadata value through the accessor its declared kind selects."""
     if kind == "string":
-        return text_case(tag, Reader.field_string(field), ats(strings, 0))
+        return equal_case(tag, Reader.field_string(field), ats(strings, 0))
     elif kind == "bool":
-        return bool_case(tag, Reader.field_bool(field), atb(bools, 0))
+        return equal_case(tag, Reader.field_bool(field), atb(bools, 0))
     elif kind == "float32" or kind == "float64":
-        return number_case(tag, Reader.field_float(field), atf(floats, 0))
+        return equal_case(tag, Reader.field_float(field), atf(floats, 0))
     elif kind == "array":
         return array_case(tag, field, ints, floats, bools, strings)
     else:
-        return number_case(tag, Reader.field_int(field), ati(ints, 0))
+        return equal_case(tag, Reader.field_int(field), ati(ints, 0))
 
 
 def array_case(tag, field, ints, floats, bools, strings):
@@ -288,67 +284,39 @@ def array_case(tag, field, ints, floats, bools, strings):
         return ints_case(tag, Reader.field_ints(field), ints)
 
 
-def number_case(tag, result, want):
-    """One integer compared exactly."""
+def checked(tag, result, compare):
+    """`compare(tag, got)` for the value a read produced, or a failure carrying the
+    message the refusal recorded."""
     match result:
         case Success(value=got):
-            return Check.equal(tag, got, want)
+            return compare(tag, got)
         case Error(message=problem):
             return Check.failed(tag, problem)
 
 
-def bool_case(tag, result, want):
-    """One boolean compared exactly."""
-    match result:
-        case Success(value=got):
-            return Check.equal(tag, got, want)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
-
-
-def text_case(tag, result, want):
-    """One string compared exactly."""
-    match result:
-        case Success(value=got):
-            return Check.equal(tag, got, want)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+def equal_case(tag, result, want):
+    """One scalar — an integer, a boolean or a string — compared exactly."""
+    return checked(tag, result, lambda t, got: Check.equal(t, got, want))
 
 
 def ints_case(tag, result, want):
     """An integer list compared exactly."""
-    match result:
-        case Success(value=got):
-            return Check.ints_equal(tag, got, want)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+    return checked(tag, result, lambda t, got: Check.ints_equal(t, got, want))
 
 
 def flags_case(tag, result, want):
     """A boolean list compared exactly, as 1 and 0."""
-    match result:
-        case Success(value=got):
-            return Check.ints_equal(tag, mapList(got, flag_int), mapList(want, flag_int))
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+    return checked(tag, result, lambda t, got: Check.ints_equal(t, mapList(got, flag_int), mapList(want, flag_int)))
 
 
 def numbers_case(tag, result, want):
     """A float list compared with numpy's isclose rule."""
-    match result:
-        case Success(value=got):
-            return Check.close_all(tag, got, want, TIGHT, ATOL)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+    return checked(tag, result, lambda t, got: Check.close_all(t, got, want, TIGHT, ATOL))
 
 
 def strings_case(tag, result, want):
     """A string list compared exactly."""
-    match result:
-        case Success(value=got):
-            return str_list_equal(tag, got, want)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+    return checked(tag, result, lambda t, got: str_list_equal(t, got, want))
 
 
 def error_case(tag, result):
@@ -360,41 +328,9 @@ def error_case(tag, result):
             return Check.passed(tag)
 
 
-def entry_offset(field):
-    """A metadata entry's starting offset."""
-    return field.offset
 
 
-def entry_kind(field):
-    """A metadata entry's declared value kind."""
-    return field.value.kind
 
 
-def entry_item_kind(field):
-    """A metadata entry's element kind, empty for a scalar."""
-    return field.value.item_kind
 
 
-def tensor_dims(info):
-    """A tensor's dims as stored."""
-    return info.dims
-
-
-def tensor_elements(info):
-    """A tensor's element count."""
-    return info.n_elements
-
-
-def tensor_sizes(info):
-    """A tensor's byte size."""
-    return info.n_bytes
-
-
-def tensor_start(info):
-    """Where a tensor's bytes start."""
-    return info.data_offset
-
-
-def tensor_name(info):
-    """A tensor's name."""
-    return info.name

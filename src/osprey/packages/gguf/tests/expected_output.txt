@@ -417,6 +417,8 @@ ok chain.then
 ok chain.then_error
 ok chain.first
 ok chain.first_empty
+ok chain.walk_checked
+ok chain.walk_checked_problem
 ok decode.supported
 ok decode.F32.length
 ok decode.F32.values
@@ -756,4 +758,4 @@ ok bounds.uint64_overflow
 ok bounds.huge_array
 ok bounds.short_string
 ok bounds.past_end
-758 passed, 0 failed
+760 passed, 0 failed

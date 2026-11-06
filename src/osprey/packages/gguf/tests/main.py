@@ -9,7 +9,7 @@ from gguf import Chain, Constants, Quant, Reader
 from gguf_expected import Expected
 from testing import Check
 
-from gguf_tests.Support import TIGHT, ATOL, Rejected, fixtures, loaded, quant_types, str_list_equal, int_rows, float_rows, str_rows, bool_rows, ats, ati, atf, atl, cell_case, error_case, entry_offset, entry_kind, entry_item_kind, tensor_dims, tensor_elements, tensor_sizes, tensor_start
+from gguf_tests.Support import TIGHT, ATOL, Rejected, fixtures, loaded, quant_types, str_list_equal, int_rows, float_rows, str_rows, bool_rows, ats, ati, atf, atl, cell_case, checked, equal_case, error_case
 from gguf_tests import Units
 
 REJECTED = [
@@ -49,9 +49,9 @@ def field_cases(fixture, file):
     """Every metadata key, its offset and declared kinds, and its value."""
     lists = [
         str_list_equal(fixture.name + ".keys", Reader.field_names(file), fixture.fields),
-        Check.ints_equal(fixture.name + ".field_offsets", mapList(file.fields, entry_offset), fixture.offsets),
-        str_list_equal(fixture.name + ".field_kinds", mapList(file.fields, entry_kind), fixture.kinds),
-        str_list_equal(fixture.name + ".field_item_kinds", mapList(file.fields, entry_item_kind), fixture.item_kinds),
+        Check.ints_equal(fixture.name + ".field_offsets", mapList(file.fields, lambda entry: entry.offset), fixture.offsets),
+        str_list_equal(fixture.name + ".field_kinds", mapList(file.fields, lambda entry: entry.value.kind), fixture.kinds),
+        str_list_equal(fixture.name + ".field_item_kinds", mapList(file.fields, lambda entry: entry.value.item_kind), fixture.item_kinds),
     ]
     return listConcat(lists, toList(map(range(len(fixture.fields)), lambda i: field_case(fixture, file, i))))
 
@@ -72,11 +72,11 @@ def tensor_cases(fixture, file):
         str_list_equal(fixture.name + ".tensors", Reader.tensor_names(file), fixture.tensors),
         str_list_equal(fixture.name + ".tensor_types", Reader.tensor_types(file), fixture.types),
         str_list_equal(fixture.name + ".distinct_types", Reader.distinct_tensor_types(file), fixture.distinct),
-        Check.ints_equal(fixture.name + ".elements", mapList(file.tensors, tensor_elements), fixture.elements),
-        Check.ints_equal(fixture.name + ".sizes", mapList(file.tensors, tensor_sizes), fixture.sizes),
-        Check.ints_equal(fixture.name + ".tensor_offsets", mapList(file.tensors, tensor_start), fixture.tensor_offsets),
+        Check.ints_equal(fixture.name + ".elements", mapList(file.tensors, lambda info: info.n_elements), fixture.elements),
+        Check.ints_equal(fixture.name + ".sizes", mapList(file.tensors, lambda info: info.n_bytes), fixture.sizes),
+        Check.ints_equal(fixture.name + ".tensor_offsets", mapList(file.tensors, lambda info: info.data_offset), fixture.tensor_offsets),
     ]
-    rows = listConcat(int_rows(fixture.name + ".dims", mapList(file.tensors, tensor_dims), fixture.dims),
+    rows = listConcat(int_rows(fixture.name + ".dims", mapList(file.tensors, lambda info: info.dims), fixture.dims),
                       int_rows(fixture.name + ".bytes", tensor_bytes(file, fixture), fixture.tensor_data))
     return listConcat(lists, listConcat(rows, tensor_index_cases(fixture, file)))
 
@@ -154,44 +154,20 @@ def table_cases():
         Check.equal("table.version", Constants.VERSION, Expected.VERSION),
         Check.ints_equal("table.supported_versions", Constants.SUPPORTED_VERSIONS, Expected.SUPPORTED_VERSIONS),
         Check.equal("table.default_alignment", Constants.DEFAULT_ALIGNMENT, Expected.DEFAULT_ALIGNMENT),
-        Check.ints_equal("table.value_type_ids", mapList(Constants.VALUE_TYPES, kind_id), Expected.VALUE_TYPE_IDS),
-        str_list_equal("table.value_type_names", mapList(Constants.VALUE_TYPES, kind_name), Expected.VALUE_TYPE_NAMES),
-        Check.ints_equal("table.quant_type_ids", mapList(Constants.QUANT_TYPES, quant_id), Expected.QUANT_TYPE_IDS),
-        str_list_equal("table.quant_type_names", mapList(Constants.QUANT_TYPES, quant_name), Expected.QUANT_TYPE_NAMES),
-        Check.ints_equal("table.quant_type_blocks", mapList(Constants.QUANT_TYPES, quant_block), Expected.QUANT_TYPE_BLOCKS),
-        Check.ints_equal("table.quant_type_sizes", mapList(Constants.QUANT_TYPES, quant_size), Expected.QUANT_TYPE_SIZES),
+        Check.ints_equal("table.value_type_ids", mapList(Constants.VALUE_TYPES, lambda kind: kind.id), Expected.VALUE_TYPE_IDS),
+        str_list_equal("table.value_type_names", mapList(Constants.VALUE_TYPES, lambda kind: kind.name), Expected.VALUE_TYPE_NAMES),
+        Check.ints_equal("table.quant_type_ids", mapList(Constants.QUANT_TYPES, lambda quant: quant.id), Expected.QUANT_TYPE_IDS),
+        str_list_equal("table.quant_type_names", mapList(Constants.QUANT_TYPES, lambda quant: quant.name), Expected.QUANT_TYPE_NAMES),
+        Check.ints_equal("table.quant_type_blocks", mapList(Constants.QUANT_TYPES, lambda quant: quant.block), Expected.QUANT_TYPE_BLOCKS),
+        Check.ints_equal("table.quant_type_sizes", mapList(Constants.QUANT_TYPES, lambda quant: quant.size), Expected.QUANT_TYPE_SIZES),
         str_list_equal("table.tokenizer_keys", Constants.TOKENIZER_KEYS, Expected.TOKENIZER_KEYS),
     ]
 
 
-def kind_id(kind):
-    """A value type's wire id."""
-    return kind.id
 
 
-def kind_name(kind):
-    """A value type's name."""
-    return kind.name
 
 
-def quant_id(quant):
-    """A tensor type's wire id."""
-    return quant.id
-
-
-def quant_name(quant):
-    """A tensor type's name."""
-    return quant.name
-
-
-def quant_block(quant):
-    """A tensor type's block size in elements."""
-    return quant.block
-
-
-def quant_size(quant):
-    """A tensor type's block size in bytes."""
-    return quant.size
 
 
 def lookup_cases():
@@ -205,49 +181,42 @@ def lookup_cases():
 
 def kind_lookup(i):
     """The value type for one wire id matches the table's row."""
-    tag = "lookup.value_type." + ats(Expected.VALUE_TYPE_NAMES, i)
-    match Constants.value_type(ati(Expected.VALUE_TYPE_IDS, i)):
-        case Success(value=kind):
-            return Check.equal(tag, kind.name, ats(Expected.VALUE_TYPE_NAMES, i))
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+    return named_lookup("lookup.value_type.", ats(Expected.VALUE_TYPE_NAMES, i), Constants.value_type(ati(Expected.VALUE_TYPE_IDS, i)))
 
 
 def quant_lookup(i):
     """The tensor type for one wire id matches the table's row."""
-    tag = "lookup.quant_type." + ats(Expected.QUANT_TYPE_NAMES, i)
-    match Constants.quant_type(ati(Expected.QUANT_TYPE_IDS, i)):
-        case Success(value=quant):
-            return Check.equal(tag, quant.name, ats(Expected.QUANT_TYPE_NAMES, i))
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+    return named_lookup("lookup.quant_type.", ats(Expected.QUANT_TYPE_NAMES, i), Constants.quant_type(ati(Expected.QUANT_TYPE_IDS, i)))
+
+
+def named_lookup(prefix, want, found):
+    """The entry a wire id found carries exactly the name the oracle recorded."""
+    return checked(prefix + want, found, lambda tag, entry: Check.equal(tag, entry.name, want))
+
+
+class Tally:
+    """A walk record for `Chain.walk_checked`: the sum so far and the first problem."""
+    total: int
+    problem: str
+
+
+def tally_step(walk, i):
+    return Tally(total=walk.total + i, problem=walk.problem)
+
+
+def refusing_step(walk, i):
+    return Tally(total=walk.total, problem=f"step {i} refused" if i == 2 and walk.problem == "" else walk.problem)
 
 
 def chain_cases():
     """`then` continues a Success and keeps an Error; the picker takes the head."""
     continued = Chain.then(Constants.value_type(ati(Expected.VALUE_TYPE_IDS, 2)), lambda kind: Success(value=kind.name))
-    return [cell_text("chain.then", continued, ats(Expected.VALUE_TYPE_NAMES, 2)),
+    return [equal_case("chain.then", continued, ats(Expected.VALUE_TYPE_NAMES, 2)),
             error_case("chain.then_error", Chain.then(Constants.value_type(Expected.UNKNOWN_VALUE_TYPE), lambda kind: Success(value=kind.name))),
-            cell_number("chain.first", Chain.first_or_error(Expected.BASE_FIELD_OFFSETS, ""), ati(Expected.BASE_FIELD_OFFSETS, 0)),
-            error_case("chain.first_empty", Chain.first_or_error([], "the selection is empty"))]
-
-
-def cell_text(tag, result, want):
-    """A string Result compared exactly."""
-    match result:
-        case Success(value=got):
-            return Check.equal(tag, got, want)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
-
-
-def cell_number(tag, result, want):
-    """An integer Result compared exactly."""
-    match result:
-        case Success(value=got):
-            return Check.equal(tag, got, want)
-        case Error(message=problem):
-            return Check.failed(tag, problem)
+            equal_case("chain.first", Chain.first_or_error(Expected.BASE_FIELD_OFFSETS, ""), ati(Expected.BASE_FIELD_OFFSETS, 0)),
+            error_case("chain.first_empty", Chain.first_or_error([], "the selection is empty")),
+            equal_case("chain.walk_checked", Chain.then(Chain.walk_checked(4, Tally(total=0, problem=""), tally_step), lambda walk: Success(value=walk.total)), 6),
+            error_case("chain.walk_checked_problem", Chain.walk_checked(4, Tally(total=0, problem=""), refusing_step))]
 
 
 def quant_cases():
@@ -259,7 +228,7 @@ def quant_cases():
 def quant_decodes():
     """The types the port decodes, which is the list the oracle recorded."""
     types = quant_types()
-    listed = [str_list_equal("decode.supported", Quant.SUPPORTED, mapList(types, type_name))]
+    listed = [str_list_equal("decode.supported", Quant.SUPPORTED, mapList(types, lambda quant: quant.name))]
     return listConcat(listed, foldList(types, [], lambda acc, case: listConcat(acc, quant_case(case))))
 
 
@@ -325,19 +294,19 @@ def expected_values(text):
     return mapList(unwrap_or(split(text, ","), [""]), Check.float_of)
 
 
+def head(xs, n, at):
+    """The first `n` elements of `xs`, `at` reading each."""
+    return toList(map(range(n), lambda i: at(xs, i)))
+
+
 def head_ints(xs, n):
     """The first `n` integers of `xs`."""
-    return toList(map(range(n), lambda i: ati(xs, i)))
+    return head(xs, n, ati)
 
 
 def head_floats(xs, n):
     """The first `n` floats of `xs`."""
-    return toList(map(range(n), lambda i: atf(xs, i)))
-
-
-def type_name(case):
-    """A quant case's tensor type name."""
-    return case.name
+    return head(xs, n, atf)
 
 
 def cases():

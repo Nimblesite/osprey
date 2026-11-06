@@ -428,7 +428,12 @@ ok layout.normalize_axes
 ok layout.resolve_reshape
 ok layout.swap_perm
 ok layout.moveaxis_perm
+ok layout.map_indexed
 ok layout.flat_size
+ok layout.second_dim
+ok layout.second_dim_absent
+ok layout.diag_extent_tall
+ok layout.diag_extent_wide
 ok layout.ravel_index
 ok layout.axis_of
 ok layout.normalize_axis
@@ -905,7 +910,12 @@ ok layout.normalize_axes
 ok layout.resolve_reshape
 ok layout.swap_perm
 ok layout.moveaxis_perm
+ok layout.map_indexed
 ok layout.flat_size
+ok layout.second_dim
+ok layout.second_dim_absent
+ok layout.diag_extent_tall
+ok layout.diag_extent_wide
 ok layout.ravel_index
 ok layout.axis_of
 ok layout.normalize_axis
@@ -952,4 +962,4 @@ ok array.ones_like
 ok array.full_like
 ok array.identity
 ok array.eye_m
-954 passed, 0 failed
+964 passed, 0 failed

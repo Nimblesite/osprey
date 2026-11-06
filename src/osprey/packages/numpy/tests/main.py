@@ -75,24 +75,21 @@ def broadcast_to_cases(b):
     return fold(range(len(Expected.BT_OUT)), [], lambda acc, i: listConcat(acc, [finish_list(f"broadcast_to.{i}.{b}", lambda: Array.tolist(broadcast_to_of(i)), atl(Expected.BT_OUT, i), TIGHT), finish_ints(f"broadcast_to.shape.{i}.{b}", lambda: broadcast_to_of(i).shape, atl(Expected.BT_OUT_SHAPES, i))]))
 
 
-def concat_arrays(i):
-    vals = atl(Expected.CONCAT_VALS, i)
-    shapes = atl(Expected.CONCAT_SHAPES, i)
+def array_rows(vals_c, shapes_c, i):
+    """Every array one case's value list holds, from its values and shape tables."""
+    vals = atl(vals_c, i)
+    shapes = atl(shapes_c, i)
     return toList(map(range(len(vals)), lambda t: arr(atl(vals, t), atl(shapes, t))))
 
 
 def concat_cases(b):
-    return fold(range(len(Expected.CONCAT_OUT)), [], lambda acc, i: listConcat(acc, [finish_list(f"concat.{i}.{b}", lambda: Array.tolist(Array.concatenate(concat_arrays(i), ati(Expected.CONCAT_AXIS, i))), atl(Expected.CONCAT_OUT, i), TIGHT), finish_ints(f"concat.shape.{i}.{b}", lambda: Array.concatenate(concat_arrays(i), ati(Expected.CONCAT_AXIS, i)).shape, atl(Expected.CONCAT_OUT_SHAPES, i))]))
+    return fold(range(len(Expected.CONCAT_OUT)), [], lambda acc, i: listConcat(acc, [finish_list(f"concat.{i}.{b}", lambda: Array.tolist(Array.concatenate(array_rows(Expected.CONCAT_VALS, Expected.CONCAT_SHAPES, i), ati(Expected.CONCAT_AXIS, i))), atl(Expected.CONCAT_OUT, i), TIGHT), finish_ints(f"concat.shape.{i}.{b}", lambda: Array.concatenate(array_rows(Expected.CONCAT_VALS, Expected.CONCAT_SHAPES, i), ati(Expected.CONCAT_AXIS, i)).shape, atl(Expected.CONCAT_OUT_SHAPES, i))]))
 
 
-def stack_arrays(i):
-    vals = atl(Expected.STACK_VALS, i)
-    shapes = atl(Expected.STACK_SHAPES, i)
-    return toList(map(range(len(vals)), lambda t: arr(atl(vals, t), atl(shapes, t))))
 
 
 def stack_cases(b):
-    return fold(range(len(Expected.STACK_OUT)), [], lambda acc, i: listConcat(acc, [finish_list(f"stack.{i}.{b}", lambda: Array.tolist(Array.stack(stack_arrays(i), ati(Expected.STACK_AXIS, i))), atl(Expected.STACK_OUT, i), TIGHT), finish_ints(f"stack.shape.{i}.{b}", lambda: Array.stack(stack_arrays(i), ati(Expected.STACK_AXIS, i)).shape, atl(Expected.STACK_OUT_SHAPES, i))]))
+    return fold(range(len(Expected.STACK_OUT)), [], lambda acc, i: listConcat(acc, [finish_list(f"stack.{i}.{b}", lambda: Array.tolist(Array.stack(array_rows(Expected.STACK_VALS, Expected.STACK_SHAPES, i), ati(Expected.STACK_AXIS, i))), atl(Expected.STACK_OUT, i), TIGHT), finish_ints(f"stack.shape.{i}.{b}", lambda: Array.stack(array_rows(Expected.STACK_VALS, Expected.STACK_SHAPES, i), ati(Expected.STACK_AXIS, i)).shape, atl(Expected.STACK_OUT_SHAPES, i))]))
 
 
 def take_cases(b):

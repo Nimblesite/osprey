@@ -154,12 +154,17 @@ def layout_lists():
         Check.ints_equal("layout.resolve_reshape", Layout.resolve_reshape(6, [2, -1]), [2, 3]),
         Check.ints_equal("layout.swap_perm", Layout.swap_perm(3, 0, 2), [2, 1, 0]),
         Check.ints_equal("layout.moveaxis_perm", Layout.moveaxis_perm(3, [0], [2]), [1, 2, 0]),
+        Check.ints_equal("layout.map_indexed", Layout.map_indexed([7, 8, 9], lambda i: i * 2), [0, 2, 4]),
     ]
 
 
 def layout_scalars():
     return [
         Check.equal("layout.flat_size", Layout.flat_size([2, 3, 4]), 24),
+        Check.equal("layout.second_dim", Layout.second_dim([2, 3]), 3),
+        Check.equal("layout.second_dim_absent", Layout.second_dim([5]), 0),
+        Check.equal("layout.diag_extent_tall", Layout.diag_extent([4, 2, 9]), 2),
+        Check.equal("layout.diag_extent_wide", Layout.diag_extent([2, 5]), 2),
         Check.equal("layout.ravel_index", Layout.ravel_index([1, 2], [2, 3]), 5),
         Check.equal("layout.axis_of", Layout.axis_of([2, 3], -1), 1),
         Check.equal("layout.normalize_axis", Layout.normalize_axis(-1, 3, ""), 2),

@@ -113,12 +113,9 @@ def tools():
     ]
 
 
-def first_two(xs):
-    return [unwrap_or(listGet(xs, 0), Tools.tool_definition("", "", JsonNull())), unwrap_or(listGet(xs, 1), Tools.tool_definition("", "", JsonNull()))]
-
-
-def last_two(xs):
-    return [unwrap_or(listGet(xs, 1), Tools.tool_definition("", "", JsonNull())), unwrap_or(listGet(xs, 2), Tools.tool_definition("", "", JsonNull()))]
+def two_of(xs, start):
+    """The tool definition at `start` and the one after it, blank ones past the end."""
+    return toList(map(range(start, start + 2), lambda i: unwrap_or(listGet(xs, i), Tools.tool_definition("", "", JsonNull()))))
 
 
 def plain():
@@ -161,13 +158,13 @@ def scenario(i):
     elif name == "no_max_completion":
         return Scenario(model=openai_model("gpt-4o", {"openai_chat_supports_max_completion_tokens": JsonBool(False)}), messages=plain(), settings={"max_tokens": JsonInt(10)}, parameters=Models.model_request_parameters())
     elif name == "history":
-        return Scenario(model=openai_model("gpt-4o", {}), messages=history(), settings={}, parameters=params_with(first_two(tools()), True, [M.InstructionPart(content="inst")]))
+        return Scenario(model=openai_model("gpt-4o", {}), messages=history(), settings={}, parameters=params_with(two_of(tools(), 0), True, [M.InstructionPart(content="inst")]))
     elif name == "deepseek_history":
-        return Scenario(model=ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(first_two(tools())))
+        return Scenario(model=ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(two_of(tools(), 0)))
     elif name == "o1_mini":
         return Scenario(model=openai_model("o1-mini", {}), messages=plain(), settings={"temperature": JsonFloat(0.5), "max_tokens": JsonInt(5), "openai_reasoning_effort": JsonString("low")}, parameters=Models.model_request_parameters())
     elif name == "ollama":
-        return Scenario(model=ModelsOpenai.OpenAIChatModel("llama3", ProvidersHttp.OllamaProvider("http://localhost:11434/v1"), {}), messages=plain(), settings={}, parameters=Models.with_tools(last_two(tools())))
+        return Scenario(model=ModelsOpenai.OpenAIChatModel("llama3", ProvidersHttp.OllamaProvider("http://localhost:11434/v1"), {}), messages=plain(), settings={}, parameters=Models.with_tools(two_of(tools(), 1)))
     else:
         return Scenario(model=openai_model("gpt-4o", {}), messages=plain(), settings={}, parameters=params_with([unwrap_or(listGet(tools(), 0), Tools.tool_definition("", "", JsonNull()))], False, []))
 
@@ -261,7 +258,18 @@ def validate_error_cases():
     return [
         Check.equal("validate.bad_part", error_text(bad_part), "unknown request part_kind: mystery"),
         Check.equal("validate.bad_kind", error_text(bad_kind), "unknown message kind: other"),
+        Check.equal("json_util.rewrap.error", error_text(J.rewrap(bad_kind, lambda messages: len(messages))), "unknown message kind: other"),
+        Check.equal("json_util.rewrap.value", ok_value(J.rewrap(M.validate_messages(decode("[]")), lambda messages: len(messages) + 3), -1), 3),
+        Check.ints_equal("messages.map_indexed", M.map_indexed(["a", "b"], lambda i: i * 5), [0, 5]),
     ]
+
+
+def ok_value(result, fallback):
+    match result:
+        case Success(value=value):
+            return value
+        case Error(message=_m):
+            return fallback
 
 
 def error_text(result):
@@ -816,14 +824,19 @@ MALFORMED_MESSAGES = [
 """Texts read through `read_message`: an exact want, or a prefix the decoder's own words finish."""
 
 
-def mcp_malformed_case(i):
-    text = ats(atl(MALFORMED_MESSAGES, i), 0)
-    want = ats(atl(MALFORMED_MESSAGES, i), 1)
-    got = incoming_text(Mcp.read_message(text))
+def matched(tag, got, want, exact):
+    """`got` against the oracle's text: a `prefix:` want only has to be contained, any
+    other must match exactly — `exact` is the text with its marker already removed."""
     if startsWith(want, "prefix:"):
-        return Check.truth(f"mcp.malformed[{i}]", contains(got, drop(want, length("prefix:"))), got)
+        return Check.truth(tag, contains(got, drop(want, length("prefix:"))), got)
     else:
-        return Check.equal(f"mcp.malformed[{i}]", got, drop(want, length("exact:")))
+        return Check.equal(tag, got, exact)
+
+
+def mcp_malformed_case(i):
+    want = ats(atl(MALFORMED_MESSAGES, i), 1)
+    text = ats(atl(MALFORMED_MESSAGES, i), 0)
+    return matched(f"mcp.malformed[{i}]", incoming_text(Mcp.read_message(text)), want, drop(want, length("exact:")))
 
 
 def framing_case(name, text, i, wants):
@@ -876,10 +889,7 @@ def mcp_sse_case(i):
     body = ats(atl(SSE_FORMS, i), 0)
     want = ats(atl(SSE_FORMS, i), 1)
     got = join(mapList(Mcp.reply_messages("text/event-stream", body), incoming_text), ";")
-    if startsWith(want, "prefix:"):
-        return Check.truth(f"mcp.sse[{i}]", contains(got, drop(want, length("prefix:"))), got)
-    else:
-        return Check.equal(f"mcp.sse[{i}]", got, want)
+    return matched(f"mcp.sse[{i}]", got, want, want)
 
 
 def mcp_sse_broken_case():
@@ -1010,12 +1020,8 @@ def atd(xs, i):
 
 def mcp_config_case(i):
     load = Mcp.parse_config(ats(CONFIG_TEXTS, i), atd(CONFIG_ENVIRONMENTS, i))
-    got = config_load_text(load)
     want = ats(CONFIG_WANTS, i)
-    if startsWith(want, "prefix:"):
-        return Check.truth(f"mcp.config[{i}]", contains(got, drop(want, length("prefix:"))), got)
-    else:
-        return Check.equal(f"mcp.config[{i}]", got, want)
+    return matched(f"mcp.config[{i}]", config_load_text(load), want, want)
 
 
 def mcp_merge_cases():

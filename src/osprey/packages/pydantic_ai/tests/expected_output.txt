@@ -48,6 +48,9 @@ ok validate[3]
 ok validate[4]
 ok validate.bad_part
 ok validate.bad_kind
+ok json_util.rewrap.error
+ok json_util.rewrap.value
+ok messages.map_indexed
 ok gen[0]
 ok gen[1]
 ok gen[2]
@@ -505,4 +508,4 @@ ok typed.http_reply
 ok typed.settings
 ok typed.tool_definition
 ok typed.run_usage
-507 passed, 0 failed
+510 passed, 0 failed
