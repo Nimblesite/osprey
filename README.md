@@ -8,30 +8,34 @@ A functional language built on three pillars: **safety, elegance and performance
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS, macOS and Android.
 
-## Choose storage once, at the application boundary
+## Write the logic once; the caller picks the disk
 
-The save callback calls application logic, which requests storage. Neither function takes a storage object:
+This is the package manager's file effect, trimmed. `install` asks for a file write and handles both outcomes, but never names a disk:
 
 ```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
-fn saveDraft(path, text) = match perform Drafts.save(path, text) {
-    Success _ => "Saved"
-    Error { message } => "Retry: ${message}"
-}
-fn onSave() = saveDraft("draft.txt", "Ship it.")
+effect Files { write: fn(string, string) -> Result<int, Error> }
 
-let disk = handler Drafts {
-    save path text => writeFile(path, text)
+fn install(lock) = match perform Files.write("osprey.lock", lock) {
+    Success _ => "installed"
+    Error { message } => "rolled back: ${message}"
+}
+fn upgrade() = install("serde = 2")
+
+let disk = handler Files {
+    write path text => writeFile(path, text)
+}
+let fullDisk = handler Files {
+    write _ _ => Error { message: "disk full" }
 }
 
-print(disk(onSave))
+print("${disk(upgrade)} · ${fullDisk(upgrade)}")
 ```
 
 ```text
-Saved
+installed · rolled back: disk full
 ```
 
-`disk(onSave)` supplies storage for the entire call chain: `onSave` → `saveDraft` → `Drafts.save`. The draft is written once. Intermediate functions need no storage parameters. A test can replace the handler's `writeFile(path, text)` with `Error { message: "offline" }` and exercise the same retry logic without touching disk. The compiler rejects the call if no handler supplies storage.
+`disk(upgrade)` runs the install against real files; `fullDisk(upgrade)` runs the same code against a test double that fails, with no disk touched. No type annotations are needed, the `match` must cover both `Success` and `Error`, and calling `upgrade()` with no handler is a compile error.
 
 Read the [effects guide, including the ML version](https://www.ospreylang.dev/docs/effects/), or [try Osprey online](https://www.ospreylang.dev/playground/).
 

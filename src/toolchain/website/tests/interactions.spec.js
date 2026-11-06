@@ -4,19 +4,14 @@ const { readFile } = require("node:fs/promises");
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 
-async function verifyDraftExample(source, file) {
-  expect(await executeExample(source, file)).toBe("Saved\n");
-  expect(await readFile(path.join(path.dirname(file), "draft.txt"), "utf8")).toBe("Ship it.");
-  const offline = source.replace('writeFile(path, text)', source.startsWith('# osprey:') ? 'Error(message="offline")' : 'Error { message: "offline" }')
-    .replace('writeFile path text', 'Error(message = "offline")');
-  const isolated = path.join(path.dirname(file), "offline", path.basename(file));
-  expect(offline).not.toBe(source);
-  expect(await executeExample(offline, isolated)).toBe("Retry: offline\n");
-  await expect(readFile(path.join(path.dirname(isolated), "draft.txt"))).rejects.toMatchObject({ code: "ENOENT" });
-  const unhandled = source.replace('disk(onSave)', 'onSave()').replace('disk onSave', 'onSave ()');
+const heroOutput = "installed · rolled back: disk full\n";
+async function verifyHeroExample(source, file) {
+  expect(await executeExample(source, file)).toBe(heroOutput);
+  expect(await readFile(path.join(path.dirname(file), "osprey.lock"), "utf8")).toBe("serde = 2");
+  const unhandled = source.replace(/disk\(upgrade\)|disk upgrade/, "upgrade()");
   expect(unhandled).not.toBe(source);
   expect(await exampleResult(unhandled, path.join(path.dirname(file), "unhandled", path.basename(file))))
-    .toContain("unhandled effect operations at program entry: Drafts.save");
+    .toContain("unhandled effect operations at program entry: Files.write");
 }
 
 async function heroBounds(page) {
@@ -80,14 +75,15 @@ test.describe("homepage flight and source examples", () => {
       await page.locator(`.flavor-controls button[data-flavor="${flavor}"]`).click();
       const source = page.locator(`#example-${flavor}`);
       await expect(source).toBeVisible();
-      const file = testInfo.outputPath(`${flavor}/save-draft.${extension}`);
+      const file = testInfo.outputPath(`${flavor}/install.${extension}`);
       const text = await source.textContent();
-      await verifyDraftExample(text, file);
+      await verifyHeroExample(text, file);
+      await expect(page.locator("#source-extension")).toHaveText(`.${extension}`);
       if (flavor === "default") {
         const readme = await readFile(path.resolve("../../../README.md"), "utf8");
         expect(readme.match(/```osprey\n([\s\S]*?)\n```/)[1]).toBe(text);
       }
-      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe("Saved\n");
+      expect(`${await page.locator(".hero .code-result samp").textContent()}\n`).toBe(heroOutput);
     }
   });
 
@@ -172,7 +168,7 @@ test.describe("homepage flight and source examples", () => {
     const page = await context.newPage();
     await page.goto("/");
     await expect(page.locator(".hero-title")).toBeVisible();
-    await expect(page.locator("#example-default")).toContainText("handler Drafts");
+    await expect(page.locator("#example-default")).toContainText("handler Files");
     await expect(page.locator("#motion-toggle")).toBeHidden();
     await openInstallation(page);
     await page.locator("#install").getByRole("link", { name: "Getting started guide" }).click();
