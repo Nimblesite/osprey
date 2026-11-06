@@ -17,9 +17,10 @@ here. The embedding is `Mapped` when quantized, so a 248,320-row table is read o
 at a time; `output.weight` is the head when present, else the embedding is tied.
 
 A missing tensor, a tensor of the wrong shape, a type the device does not decode, a
-truncated file and a foreign architecture each end the load as the named `Error`,
-before any token runs ([FAILURE-EXPLICIT]). Implements [LLM-WEIGHTS-MAPPED],
-[LLM-WEIGHTS-QUANT], [LLM-MODEL-ORACLE].
+truncated file, a foreign architecture and a key head size that is not the value head
+size each end the load as the named `Error`, before any token runs
+([FAILURE-EXPLICIT]). Implements [LLM-WEIGHTS-MAPPED], [LLM-WEIGHTS-QUANT],
+[LLM-MODEL-ORACLE].
 """
 
 from gguf import Chain, Quant, Reader, Tensors
@@ -156,11 +157,19 @@ def vocab_of(file):
     return positive("token_embd.weight rows", unwrap_or(listGet(info_of(file, "token_embd.weight").dims, 1), 0))
 
 
+def key_head_dim(file, v_dim):
+    """The key head size `ssm.state_size` names, when it is the value head size; the
+    delta rule lays key rows over value-sized cells, so any other size is refused."""
+    key = width(file, "qwen35.ssm.state_size")
+    return key if key == v_dim else perform(Refuse.number(f"qwen gguf: ssm.state_size {key} is not the value head size {v_dim}; the delta rule keeps key and value heads the same size"))
+
+
 def config_of(file) -> C.Config:
-    """`Qwen3_5TextConfig` from the `qwen35.*` keys; refuses a missing, mistyped or non-positive key."""
+    """`Qwen3_5TextConfig` from the `qwen35.*` keys; refuses a missing, mistyped or non-positive key, or a key head size that is not the value head size."""
     layers = key_int(file, "qwen35.block_count") - key_int_or(file, "qwen35.nextn_predict_layers", 0)
     head_dim = width(file, "qwen35.attention.key_length")
     v_heads = width(file, "qwen35.ssm.time_step_rank")
+    v_dim = positive("qwen35.ssm.inner_size / qwen35.ssm.time_step_rank", width(file, "qwen35.ssm.inner_size") // v_heads)
     return C.Config(
         hidden_size=width(file, "qwen35.embedding_length"),
         intermediate_size=width(file, "qwen35.feed_forward_length"),
@@ -174,8 +183,8 @@ def config_of(file) -> C.Config:
         rms_norm_eps=key_float(file, "qwen35.attention.layer_norm_rms_epsilon"),
         linear_num_key_heads=width(file, "qwen35.ssm.group_count"),
         linear_num_value_heads=v_heads,
-        linear_key_head_dim=width(file, "qwen35.ssm.state_size"),
-        linear_value_head_dim=positive("qwen35.ssm.inner_size / qwen35.ssm.time_step_rank", width(file, "qwen35.ssm.inner_size") // v_heads),
+        linear_key_head_dim=key_head_dim(file, v_dim),
+        linear_value_head_dim=v_dim,
         linear_conv_kernel_dim=width(file, "qwen35.ssm.conv_kernel"),
         layer_types=layer_types(layers, width(file, "qwen35.full_attention_interval")),
     )

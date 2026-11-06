@@ -2183,6 +2183,7 @@ ok gguf_fixture_size[refuse-missing.gguf]
 ok gguf_fixture_size[refuse-shape.gguf]
 ok gguf_fixture_size[refuse-type.gguf]
 ok gguf_fixture_size[refuse-key.gguf]
+ok gguf_fixture_size[refuse-heads.gguf]
 ok gguf_fixture_size[refuse-truncated.gguf]
 ok gguf_open
 ok gguf_tensor_names
@@ -2311,6 +2312,7 @@ ok gguf_refuse_missing
 ok gguf_refuse_shape
 ok gguf_refuse_type
 ok gguf_refuse_key
+ok gguf_refuse_heads
 ok gguf_refuse_truncated
 ok gguf_refuse_absent
-2315 passed, 0 failed
+2317 passed, 0 failed

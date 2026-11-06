@@ -230,6 +230,7 @@ def refusal_cases():
         refusal("gguf_refuse_shape", load("refuse-shape.gguf"), "qwen gguf: tensor `token_embd.weight` is [32, 128], not [64, 128]"),
         refusal("gguf_refuse_type", load("refuse-type.gguf"), "qwen gguf: tensor `token_embd.weight` is Q4_0, which the device does not decode; expected one of F32, Q8_0, Q3_K, Q4_K, Q5_K, Q6_K, IQ4_NL, IQ4_XS, IQ3_S"),
         refusal("gguf_refuse_key", load("refuse-key.gguf"), "qwen gguf: gguf: the file has no metadata key `qwen35.ssm.inner_size`"),
+        refusal("gguf_refuse_heads", load("refuse-heads.gguf"), "qwen gguf: ssm.state_size 16 is not the value head size 8; the delta rule keeps key and value heads the same size"),
         prefixed("gguf_refuse_truncated", load("refuse-truncated.gguf"), "qwen gguf: " + path("refuse-truncated.gguf") + ": gguf: "),
         prefixed("gguf_refuse_absent", load("absent.gguf"), "qwen gguf: " + path("absent.gguf") + ": "),
     ]

@@ -14,8 +14,8 @@ loader must reproduce `MODEL_HIDDEN_VALUES` exactly as the Transformers loader d
 `tiny-q8_0.gguf` quantizes every matrix to `Q8_0` and carries a separate `output.weight`;
 Transformers runs the same model over those weights dequantized by gguf-py, and the
 result is `MODEL_Q8_HIDDEN_VALUES`, so the on-device block decode is checked against the
-reference decode of the same bytes. The `refuse-*.gguf` files each lack one thing the
-loader requires. CI never downloads weights: the largest file is under a megabyte.
+reference decode of the same bytes. The `refuse-*.gguf` files each lack or miswrite one
+thing the loader requires. CI never downloads weights: the largest file is under a megabyte.
 """
 import hashlib
 import importlib.machinery
@@ -139,8 +139,9 @@ def quantizable(name, values):
     return values.ndim == 2 and "conv1d" not in name
 
 
-def metadata(writer, cfg, vocab, skip=()):
-    """The `qwen35.*` keys the loader reads, and a tokenizer of `vocab`."""
+def metadata(writer, cfg, vocab, skip=(), state_size=None):
+    """The `qwen35.*` keys the loader reads, and a tokenizer of `vocab`; `state_size`
+    overrides the key head size a refuse file miswrites."""
     rope = cfg.rope_parameters
     keys = [
         (writer.add_block_count, cfg.num_hidden_layers + 1),
@@ -156,7 +157,7 @@ def metadata(writer, cfg, vocab, skip=()):
         (writer.add_rope_dimension_count, int(cfg.head_dim * rope["partial_rotary_factor"])),
         (writer.add_layer_norm_rms_eps, cfg.rms_norm_eps),
         (writer.add_ssm_conv_kernel, cfg.linear_conv_kernel_dim),
-        (writer.add_ssm_state_size, cfg.linear_key_head_dim),
+        (writer.add_ssm_state_size, cfg.linear_key_head_dim if state_size is None else state_size),
         (writer.add_ssm_group_count, cfg.linear_num_key_heads),
         (writer.add_ssm_time_step_rank, cfg.linear_num_value_heads),
         (writer.add_ssm_inner_size, cfg.linear_value_head_dim * cfg.linear_num_value_heads),
@@ -170,12 +171,12 @@ def metadata(writer, cfg, vocab, skip=()):
     writer.add_token_types([1] * len(vocab))
 
 
-def written(name, arch, cfg, vocab, tensors, skip=()):
+def written(name, arch, cfg, vocab, tensors, skip=(), state_size=None):
     """Write `tensors` (name -> (array, quant type or None)) under the fixture metadata."""
     FIXTURES.mkdir(parents=True, exist_ok=True)
     path = FIXTURES / name
     writer = GGUFWriter(str(path), arch=arch, use_temp_file=False)
-    metadata(writer, cfg, vocab, skip)
+    metadata(writer, cfg, vocab, skip, state_size)
     for tensor_name, (values, kind) in tensors.items():
         if kind is None:
             writer.add_tensor(tensor_name, values)
@@ -233,6 +234,7 @@ def refusals(cfg, vocab, dense):
         written("refuse-shape.gguf", ARCH, cfg, vocab, {"token_embd.weight": (embed[0][:, :32].copy(), None)}),
         written("refuse-type.gguf", ARCH, cfg, vocab, {"token_embd.weight": (embed[0], GGMLQuantizationType.Q4_0)}),
         written("refuse-key.gguf", ARCH, cfg, vocab, head, skip=(16,)),
+        written("refuse-heads.gguf", ARCH, cfg, vocab, head, state_size=16),
     ]
     return files + [truncated(files[1], "refuse-truncated.gguf", 100)]
 
