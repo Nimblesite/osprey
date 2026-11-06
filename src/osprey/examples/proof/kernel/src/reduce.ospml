@@ -165,8 +165,12 @@ module Reduce
         Success decl => iotaDecl (env, term, spine, decl, levels)
         Error _ => Whnf term
 
+    (** The spine position of `elim`'s major premise: its parameters and
+        motives, then its minor premises and indices. *)
+    majorIndex elim = satAdd (satAdd elim.elimParams elim.elimMotives) (satAdd elim.elimMinors elim.elimIndices)
+
     iotaDecl (env, term, spine, decl, levels) = match decl.body
-        Recursor elim => iotaMajor (env, term, spine, decl, elim, levels, satAdd (satAdd elim.elimParams elim.elimMotives) (satAdd elim.elimMinors elim.elimIndices))
+        Recursor elim => iotaMajor (env, term, spine, decl, elim, levels, majorIndex elim)
         Quotient kind => quotient (env, term, spine.spineArgs, kind)
         other => Whnf term
 
@@ -306,7 +310,7 @@ module Reduce
         other => term
 
     contextualBody (env, context, term, spine, decl, levels, body) = match body
-        Recursor elim => match listGet (spine.spineArgs, satAdd (satAdd elim.elimParams elim.elimMotives) (satAdd elim.elimMinors elim.elimIndices))
+        Recursor elim => match listGet (spine.spineArgs, majorIndex elim)
             Success major => contextualMajor (env, context, term, spine, decl, levels, elim, major, Infer::infer (env, context, major))
             Error _ => term
         other => term
@@ -353,7 +357,7 @@ module Reduce
         Error _ => term
         Success _ => match Infer::infer (env, context, term)
             Error _ => term
-            Success _ => contextualStep (env, context, term, settled (env, iotaCtor (env, term, spine, decl, elim, levels, satAdd (satAdd elim.elimParams elim.elimMotives) (satAdd elim.elimMinors elim.elimIndices), Terms::spine candidate)))
+            Success _ => contextualStep (env, context, term, settled (env, iotaCtor (env, term, spine, decl, elim, levels, majorIndex elim, Terms::spine candidate)))
 
     contextualStep (env, context, term, next) = match Terms::equal (term, next)
         true => term

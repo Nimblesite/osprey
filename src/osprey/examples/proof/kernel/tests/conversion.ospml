@@ -3,15 +3,7 @@ namespace prooftests
 import proof::Environment
 import proof::Infer
 import proof
-    Zero
-    Succ
-    Sort
-    BVar
-    Const
-    App
-    Lam
-    Pi
-    Binder
+    Zero Succ Sort BVar Const App Lam Pi Binder
 import prooftests::Support
 
 (** Typed definitional equality: proof arguments are interchangeable only

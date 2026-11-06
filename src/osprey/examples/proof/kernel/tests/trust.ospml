@@ -9,22 +9,7 @@ import proof::Trust
 import proof::Fixtures
 import proof::Naturals
 import proof
-    Zero
-    Succ
-    Sort
-    Const
-    App
-    Lam
-    Pi
-    BVar
-    Let
-    Proj
-    NatLit
-    Decl
-    Axiom
-    Definition
-    Theorem
-    Opaque
+    Zero Succ Sort Const App Lam Pi BVar Let Proj NatLit Decl Axiom Definition Theorem Opaque
 
 (** Assumptions are reported per root ([PROOF-KERNEL-AXIOMS]): an axiom counts
     only when that declaration reaches it. Every positive case starts from an
@@ -115,15 +100,20 @@ module TrustTests
 
     axiomRoot () = rootA (axiomProof (axiomAt (Environment::empty (), "Ax")))
 
-    axiomProof (env) = assumedAt (env, "AxProof", Const "Ax" [])
+    axiomProof (env) = assuming (env, "Ax")
 
-    rootA (env) = theorem (env, "rootA", Const "Ax" [], Const "AxProof" [])
+    rootA (env) = rooted (env, "rootA", "Ax")
 
     otherRoot (env) = rootB (otherProof (axiomAt (env, "Other")))
 
-    otherProof (env) = assumedAt (env, "OtherProof", Const "Other" [])
+    otherProof (env) = assuming (env, "Other")
 
-    rootB (env) = theorem (env, "rootB", Const "Other" [], Const "OtherProof" [])
+    rootB (env) = rooted (env, "rootB", "Other")
+    (** `familyProof : family` declared as an assumption. *)
+    assuming (env, family) = assumedAt (env, "${family}Proof", Const family [])
+    (** A theorem named `name` whose statement is `family` and whose proof is
+        `familyProof`. *)
+    rooted (env, name, family) = theorem (env, name, Const family [], Const "${family}Proof" [])
 
     transitiveEnv () = opaqueBridge (definitionBridge (axiomAt (Environment::empty (), "Ax")))
 
@@ -174,13 +164,18 @@ module TrustTests
 
     twoCycleAxioms () = axiomAt (axiomAt (Environment::empty (), "AxA"), "AxB")
 
-    cycleA1 (env) = attached (env, "cycleA1", Definition (App (Const "cycleA2" []) (Const "AxA" [])))
+    cycleA1 (env) = cycleStart (env, "cycleA1", "cycleA2", "AxA")
 
-    cycleA2 (env) = attached (env, "cycleA2", Definition (Const "cycleA1" []))
+    cycleA2 (env) = cycleLink (env, "cycleA2", "cycleA1")
 
-    cycleB1 (env) = attached (env, "cycleB1", Definition (App (Const "cycleB2" []) (Const "AxB" [])))
+    cycleB1 (env) = cycleStart (env, "cycleB1", "cycleB2", "AxB")
 
-    cycleB2 (env) = attached (env, "cycleB2", Definition (Const "cycleB1" []))
+    cycleB2 (env) = cycleLink (env, "cycleB2", "cycleB1")
+    (** One member of a two-cycle, resting on the axiom `axiom` through its
+        reference to `next`. *)
+    cycleStart (env, name, next, axiom) = attached (env, name, Definition (App (Const next []) (Const axiom [])))
+    (** One member of a two-cycle that references `next` and nothing else. *)
+    cycleLink (env, name, next) = attached (env, name, Definition (Const next []))
 
     cyclicEnv () = axiomLoop (pairLoop (selfLoop (Environment::empty ())))
 
@@ -188,7 +183,7 @@ module TrustTests
 
     pairLoop (env) = loopB (attached (env, "loopA", Definition (Const "loopB" [])))
 
-    loopB (env) = attached (env, "loopB", Definition (Const "loopA" []))
+    loopB (env) = cycleLink (env, "loopB", "loopA")
 
     axiomLoop (env) = loopy (attached (env, "cycAxiom", Axiom))
 

@@ -4,23 +4,11 @@ import proof::Terms
 import proof::Environment
 import proof::Checked
 import proof::Fixtures
-import proof::Inductive
 import proof::Infer
 import proof::Reduce
 import prooftests::Support
 import proof
-    Proj
-    BVar
-    Const
-    App
-    Pi
-    Sort
-    Succ
-    Zero
-    Param
-    Binder
-    Decl
-    Axiom
+    Proj BVar Const App Sort Succ Zero Param Binder
 
 (** Real structure projections and rejection of data extraction from Prop.
     Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)
@@ -50,12 +38,12 @@ module ProjectionTests
         test ("a dependent field type substitutes the previous projection", \() =>
             expect (Support::inferred (packedEnv (), [Binder(name = "h", ty = Const "Packed" [])], Proj "Packed" 1 (BVar 0)), "(Packed.0 #0)"))
 
-    andEnv () = Support::verified ("projection fixture declarations check", "success", Environment::empty (), Checked::exported (Environment::empty (), Fixtures::andSwap ()))
+    andEnv () = Support::fixture ("projection fixture declarations check", Checked::exported (Environment::empty (), Fixtures::andSwap ()))
 
     context () = [Binder(name = "h", ty = Terms::apps (Const "And" [], [BVar 1, BVar 0])), Binder(name = "q", ty = Sort Zero), Binder(name = "p", ty = Sort Zero)]
 
     pair () = Terms::apps (Const "And.intro" [], [BVar 3, BVar 2, BVar 1, BVar 0])
 
-    hiddenEnv () = Support::verified ("projection fixture declarations check", "success", Environment::empty (), Inductive::declare (Environment::empty (), Decl(name = "Hidden", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort Zero), body = Axiom), [Decl(name = "Hidden.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "w" (BVar 0) (App (Const "Hidden" []) (BVar 1))), body = Axiom)], 1))
+    hiddenEnv () = Support::fixture ("projection fixture declarations check", Support::hiddenIn (Environment::empty (), 1))
 
-    packedEnv () = Support::verified ("projection fixture declarations check", "success", Environment::empty (), Inductive::declare (Environment::empty (), Decl(name = "Packed", params = [], ty = Sort (Succ (Succ Zero)), body = Axiom), [Decl(name = "Packed.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "x" (BVar 0) (Const "Packed" [])), body = Axiom)], 0))
+    packedEnv () = Support::fixture ("projection fixture declarations check", Support::packedIn (Environment::empty ()))

@@ -8,18 +8,7 @@ import proof::Terms
 import proof::Trust
 import prooftests::Shapes
 import proof
-    Axiom
-    Definition
-    Theorem
-    Single
-    Group
-    Pi
-    Sort
-    Zero
-    Const
-    App
-    BVar
-    Succ
+    Axiom Definition Theorem Single Group Pi Sort Zero Const App BVar Succ
 import prooftests::Support
 
 (** Reading `lean4export` NDJSON 3.1.0 files into kernel declarations

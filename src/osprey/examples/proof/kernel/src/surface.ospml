@@ -102,8 +102,11 @@ module Surface
         "λ" => quantified (rest, satAdd position 1, names, true)
         other => arrow (rest, position, names)
 
-    quantified (rest, position, names, lambda) = match binders (rest, position, names)
-        Success opened => quantifiedBody (rest, opened, names, lambda)
+    quantified (rest, position, names, lambda) = chained (binders (rest, position, names), \opened => quantifiedBody (rest, opened, names, lambda))
+
+    (** The parser `outcome`'s value handed to `next`, or its refusal as it is. *)
+    chained (outcome, next) = match outcome
+        Success value => next value
         Error message => Error(message = message)
 
     quantifiedBody (rest, opened, names, lambda) = match at (rest, opened.next) == separator lambda
@@ -118,13 +121,14 @@ module Surface
         true => "=>"
         false => ","
 
-    arrow (rest, position, names) = match application (rest, position, names)
-        Success head => arrowTail (rest, head, names)
-        Error message => Error(message = message)
+    arrow (rest, position, names) = chained (application (rest, position, names), \head => arrowTail (rest, head, names))
 
-    arrowTail (rest, head, names) = match isArrow (at (rest, head.next))
+    arrowTail (rest, head, names) = continued (head, isArrow (at (rest, head.next)), \() => arrowBody (rest, head, names))
+
+    (** `head` finished as it stands, or `more` when the next token continues it. *)
+    continued (head, carries, more) = match carries
         false => Success(value = head)
-        true => arrowBody (rest, head, names)
+        true => more ()
 
     arrowBody (rest, head, names) = match expr (rest, satAdd head.next 1, listPrepend (names, "_"))
         Success tail => Success(value = Parsed(term = Pi "_" head.term tail.term, next = tail.next))
@@ -133,13 +137,9 @@ module Surface
     isArrow token = token == "→" || token == "->"
 
     (** Juxtaposed atoms are left-nested application. *)
-    application (rest, position, names) = match atom (rest, position, names)
-        Success head => applied (rest, head, names)
-        Error message => Error(message = message)
+    application (rest, position, names) = chained (atom (rest, position, names), \head => applied (rest, head, names))
 
-    applied (rest, head, names) = match startsAtom (at (rest, head.next))
-        false => Success(value = head)
-        true => appliedTo (rest, head, names)
+    applied (rest, head, names) = continued (head, startsAtom (at (rest, head.next)), \() => appliedTo (rest, head, names))
 
     appliedTo (rest, head, names) = match atom (rest, head.next, names)
         Success arg => applied (rest, Parsed(term = App head.term arg.term, next = arg.next), names)
@@ -163,9 +163,7 @@ module Surface
         "" => Error(message = "unexpected end of input")
         name => Success(value = Parsed(term = variable (name, names, 0), next = satAdd position 1))
 
-    parenthesised (rest, position, names) = match expr (rest, position, names)
-        Success inner => parenthesisedClose (rest, inner)
-        Error message => Error(message = message)
+    parenthesised (rest, position, names) = chained (expr (rest, position, names), \inner => parenthesisedClose (rest, inner))
 
     parenthesisedClose (rest, inner) = match at (rest, inner.next) == ")"
         false => Error(message = "expected `)`")

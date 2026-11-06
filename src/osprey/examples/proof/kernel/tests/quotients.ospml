@@ -10,23 +10,7 @@ import proof::Inductive
 import prooftests::Shapes
 import prooftests::Support
 import proof
-    Zero
-    Succ
-    Sort
-    Param
-    BVar
-    Const
-    App
-    Lam
-    Pi
-    Decl
-    Env
-    Axiom
-    Quotient
-    QuotType
-    QuotCtor
-    QuotLift
-    QuotInd
+    Zero Succ Sort Param BVar Const App Lam Pi Decl Env Axiom Quotient QuotType QuotCtor QuotLift QuotInd
 
 (** The four quotient primitives and the soundness axiom
     ([PROOF-KERNEL-THEORY], [PROOF-KERNEL-AXIOMS]). The recorded
@@ -173,14 +157,14 @@ module QuotientTests
         Success _ => "the refusal names ${member}"
         Error _ => message
 
-    (** The five recorded declaration lines, verbatim. *)
-    typeLine () = "{\"quot\":{\"kind\":\"type\",\"levelParams\":[6],\"name\":23,\"type\":74}}"
+    (** The recorded declaration lines, as `claimed` states them. *)
+    typeLine () = claimed ("type", "[6]", 23, 74)
 
-    ctorLine () = "{\"quot\":{\"kind\":\"ctor\",\"levelParams\":[6],\"name\":25,\"type\":80}}"
+    ctorLine () = claimed ("ctor", "[6]", 25, 80)
 
-    liftLine () = "{\"quot\":{\"kind\":\"lift\",\"levelParams\":[6,27],\"name\":26,\"type\":100}}"
+    liftLine () = claimed ("lift", "[6,27]", 26, 100)
 
-    indLine () = "{\"quot\":{\"kind\":\"ind\",\"levelParams\":[6],\"name\":31,\"type\":116}}"
+    indLine () = claimed ("ind", "[6]", 31, 116)
 
     soundLine () = "{\"axiom\":{\"isUnsafe\":false,\"levelParams\":[6],\"name\":73,\"type\":272}}"
 

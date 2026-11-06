@@ -5,18 +5,7 @@ import proof::Environment
 import proof::Fixtures
 import proof::Terms
 import proof
-    Single
-    Group
-    Decl
-    Block
-    Axiom
-    TypeFormer
-    Constructor
-    Recursor
-    Family
-    Eliminator
-    Sort
-    Zero
+    Single Group Decl Block Axiom TypeFormer Constructor Recursor Family Eliminator Sort Zero
 import prooftests::Support
 
 (** Reading the `inductive` line of `lean4export` NDJSON 3.1.0
@@ -141,7 +130,7 @@ module ExportInductiveTests
     blankElim () = Eliminator(elimFamily = "", elimAll = [], elimMotives = 0, elimParams = 0, elimIndices = 0, elimMinors = 0, elimRules = [], elimK = false)
 
     (** Every item's kind and name, in file order. *)
-    sequence (items) = foldList (items, "", \(acc, item) => "${acc}${gap acc}${itemKind item}")
+    sequence (items) = joined (mapList (items, itemKind))
 
     itemKind (item) = match item
         Single decl => "single ${decl.name}"
@@ -212,19 +201,19 @@ module ExportInductiveTests
         with the facts the line claims about it. *)
     blockShape (block) = joined ([formersText block.formers, ctorTexts block.ctors, recTexts block.recursors])
 
-    formersText (decls) = joined (mapList (decls, \decl => formerText decl))
+    formersText (decls) = rendered (decls, formerText)
 
     formerText (decl) = match decl.body
         TypeFormer family => "${declaredText decl} {params ${toString family.familyParams}, indices ${toString family.familyIndices}, ctors ${listed family.familyCtors}, recursive ${toString family.familyRecursive}, reflexive ${toString family.familyReflexive}, all ${listed family.familyAll}, nested ${toString family.familyNested}}"
         other => "${declaredText decl} is not a type former"
 
-    ctorTexts (decls) = joined (mapList (decls, \decl => ctorText decl))
+    ctorTexts (decls) = rendered (decls, ctorText)
 
     ctorText (decl) = match decl.body
         Constructor ctor => "${declaredText decl} {family ${ctor.ctorFamily}, index ${toString ctor.ctorIndex}, params ${toString ctor.ctorParams}, fields ${toString ctor.ctorFields}}"
         other => "${declaredText decl} is not a constructor"
 
-    recTexts (decls) = joined (mapList (decls, \decl => recText decl))
+    recTexts (decls) = rendered (decls, recText)
 
     recText (decl) = match decl.body
         Recursor elim => "${declaredText decl} {family ${elim.elimFamily}, params ${toString elim.elimParams}, indices ${toString elim.elimIndices}, minors ${toString elim.elimMinors}, k ${toString elim.elimK}, rules ${ruleTexts elim.elimRules}, motives ${toString elim.elimMotives}, all ${listed elim.elimAll}}"
@@ -253,7 +242,7 @@ module ExportInductiveTests
 
     named (decl) = "${decl.name} ${listed decl.params}"
 
-    ruleTexts (rules) = listed (mapList (rules, \rule => ruleText rule))
+    ruleTexts (rules) = listed (mapList (rules, ruleText))
 
     ruleText (rule) = "${rule.ruleCtor}/${toString rule.ruleFields} => ${Terms::show (rule.ruleRhs, [])}"
 
@@ -263,6 +252,9 @@ module ExportInductiveTests
     folded (decls, part) = match decls
         [] => "no declaration"
         _ => joined (mapList (decls, part))
+
+    (** Each declaration rendered by `part`, joined. *)
+    rendered (decls, part) = joined (mapList (decls, part))
 
     (** `a, b` inside brackets, and `[]` for none. *)
     listed (names) = match names

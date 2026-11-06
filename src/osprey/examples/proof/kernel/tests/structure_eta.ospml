@@ -8,22 +8,7 @@ import proof::Reduce
 import proof::Fixtures
 import prooftests::Support
 import proof
-    Proj
-    BVar
-    Const
-    App
-    Lam
-    Pi
-    Sort
-    Succ
-    Zero
-    Max
-    Param
-    Decl
-    Axiom
-    Definition
-    Opaque
-    Binder
+    Proj BVar Const App Lam Pi Sort Succ Zero Max Param Decl Axiom Definition Opaque Binder
 (** Structure eta of [PROOF-KERNEL-THEORY]: one side a saturated constructor
     application of a one-constructor, zero-index, non-recursive family, the
     other side any term of the same type; they are definitionally equal when
@@ -53,8 +38,7 @@ module StructureEtaTests
     (** Core Prod.map pattern-matches through a recursor, unlike the
         projection-only fixture. Implements [PROOF-KERNEL-THEORY]. *)
     export core () =
-        test ("core Prod.map_id rfl proof checks", \() => expect (verdict (Fixtures::coreProdMap (), "Prod.map_id"), "declared"))
-        test ("core Prod.map_id' rfl proof checks", \() => expect (verdict (Fixtures::coreProdMap (), "Prod.map_id'"), "declared"))
+        forEachList (["Prod.map_id", "Prod.map_id'"], \name => test ("core ${name} rfl proof checks", \() => expect (verdict (Fixtures::coreProdMap (), name), "declared")))
         test ("core product composition proofs check with the full dependency export", \() => expect (verdict (Fixtures::coreProdAll (), "Prod.map_comp_map"), "declared"))
         coreComparison (coreEnvironment ())
         propositionMajor (unitEnvironment ())
@@ -73,7 +57,7 @@ module StructureEtaTests
     coreId (domain, level) = App (Const "id" [Succ (Param level)]) domain
     coreMap (second) = Terms::apps (Const "Prod.map" [Param "u", Param "u", Param "v", Param "v"], [BVar 2, BVar 2, BVar 1, BVar 1, coreId (BVar 2, "u"), second])
     coreIdentity () = App (Const "id" [Max (Succ (Param "u")) (Succ (Param "v"))]) (corePair ())
-    coreDifferent (env) = declared (Checked::declare (env, Decl(name = "k", params = ["v"], ty = Pi "β" (Sort (Succ (Param "v"))) (Pi "x" (BVar 0) (BVar 1)), body = Axiom)), "the distinct field function checks")
+    coreDifferent (env) = declared (Checked::declare (env, Support::declWith ("k", ["v"], Pi "β" (Sort (Succ (Param "v"))) (Pi "x" (BVar 0) (BVar 1)), Axiom)), "the distinct field function checks")
 
     propositionMajor (env) =
         test ("a Prop structure recursor application remains well typed", \() => expect (checkedIn (env, unitContext (), unitApplication (), Const "EtaData" []), "ok: EtaData"))
@@ -114,7 +98,11 @@ module StructureEtaTests
     (** The theorem-free export fully checked; naming `Prod.map` proves the
         whole stripped text loaded, nothing dropped mid-file. *)
     defsEnv () = declared (Checked::exportedDeclaring (Environment::empty (), stripped (), "Prod.map"), "the stripped export checks")
-    declared (result, label) = Support::verified (label, "success", Environment::empty (), result)
+    declared (result, label) = Support::fixture (label, result)
+    added (env, label, decl) = declared (Environment::add (env, decl), label)
+    (** An inductive family declared in an empty environment, its `label`
+        naming it when the declaration is refused. *)
+    familyEnv (label, former, ctors, indices) = declared (Inductive::declare (Environment::empty (), former, ctors, indices), label)
     // The real-export positives --
     (** The two theorems real Lean checked: the kernel must declare each one
         again from the recording that carries only it. *)
@@ -151,10 +139,10 @@ module StructureEtaTests
     directRaw () =
         test ("the recorded constructor of raw projections equals the pair", \() => expect (conversionIn (aliasEnv (), prodContext (), rawMk (), BVar 0), true))
     rawMk () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, Proj "Prod" 0 (BVar 0), Proj "Prod" 1 (BVar 0)])
-    aliasEnv () = declared (Environment::add (defsEnv (), aliasDecl ("pairAlias", Definition (aliasValue ()))), "the transparent alias declares")
-    opaqueEnv () = second (declared (Environment::add (aliasEnv (), aliasDecl ("axAlias", Axiom)), "the axiom alias declares"))
-    second (env) = declared (Environment::add (env, aliasDecl ("opAlias", Opaque (aliasValue ()))), "the opaque alias declares")
-    aliasDecl (name, body) = Decl(name = name, params = ["u", "v"], ty = ctorType (defsEnv ()), body = body)
+    aliasEnv () = added (defsEnv (), "the transparent alias declares", aliasDecl ("pairAlias", Definition (aliasValue ())))
+    opaqueEnv () = second (added (aliasEnv (), "the axiom alias declares", aliasDecl ("axAlias", Axiom)))
+    second (env) = added (env, "the opaque alias declares", aliasDecl ("opAlias", Opaque (aliasValue ())))
+    aliasDecl (name, body) = Support::declWith (name, ["u", "v"], ctorType (defsEnv ()), body)
     (** The recorded `Prod.mk` type: four Π binders, two parameters then two
         fields. A missing constant fails the enclosing case, never silently. *)
     ctorType (env) = match Environment::find (env, "Prod.mk")
@@ -178,7 +166,7 @@ module StructureEtaTests
     (** `Sig : Type 1` with one constructor of four fields, the fourth
         dependent on the third: `Sig.mk : ∀ (A : Type 0) (B : A → Type 0)
         (x : A), B x → Sig`. *)
-    sigFormer () = Decl(name = "Sig", params = [], ty = Sort (Succ (Succ Zero)), body = Axiom)
+    sigFormer () = Support::axiomOf ("Sig", Sort (Succ (Succ Zero)))
     sigCtor () = Decl(name = "Sig.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "B" (Pi "b" (BVar 0) (Sort (Succ Zero))) (Pi "x" (BVar 1) (Pi "y" (Terms::apps (BVar 1, [BVar 0])) (Const "Sig" [])))), body = Axiom)
     sigContext () = [Binder(name = "s", ty = Const "Sig" []), Binder(name = "B", ty = Pi "b" (BVar 0) (Sort (Succ Zero))), Binder(name = "A", ty = Sort (Succ Zero))]
     sigMk () = Terms::apps (Const "Sig.mk" [], [Proj "Sig" 0 (BVar 0), Proj "Sig" 1 (BVar 0), Proj "Sig" 2 (BVar 0), Proj "Sig" 3 (BVar 0)])
@@ -219,9 +207,11 @@ module StructureEtaTests
     (** `Prod.{u, v} α β` under the whole context. *)
     prodTypeUnder () = Terms::apps (Const "Prod" [Param "u", Param "v"], [BVar 2, BVar 1])
     (** `Prod.mk α β (Prod.fst α β p) (Prod.snd α β p)`. *)
-    mkOfProjections () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 0, projectionAt 1])
+    mkOfProjections () = paired (0, 1)
     (** `Prod.mk α β (Prod.snd α β p) (Prod.fst α β p)`. *)
-    mkSwapped () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 1, projectionAt 0])
+    mkSwapped () = paired (1, 0)
+    (** `Prod.mk α β` applied to the pair's two projections, in this order. *)
+    paired (first, second) = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt first, projectionAt second])
     projectionAt (index) = Terms::apps (projectionHead index, [BVar 2, BVar 1, BVar 0])
     projectionHead (index) = match index
         0 => Const "Prod.fst" [Param "u", Param "v"]
@@ -232,37 +222,42 @@ module StructureEtaTests
     idTerm () = Terms::apps (Const "id" [eqLevel ()], [prodTypeUnder ()])
     (** The level `Prod α β` lives at. *)
     eqLevel () = Max (Succ Zero) (Max (Param "u") (Param "v"))
-    eqOf (left, right) = Terms::apps (Const "Eq" [eqLevel ()], [prodTypeUnder (), left, right])
-    eqRefl (term) = Terms::apps (Const "Eq.refl" [eqLevel ()], [prodTypeUnder (), term])
+    eqOf (left, right) = equated (prodTypeUnder (), left, right)
+    eqRefl (term) = reflOf (prodTypeUnder (), term)
+    (** `Eq` and `Eq.refl` at `eqLevel ()` over `ofType`. *)
+    equated (ofType, left, right) = Terms::apps (Const "Eq" [eqLevel ()], [ofType, left, right])
+    reflOf (ofType, term) = Terms::apps (Const "Eq.refl" [eqLevel ()], [ofType, term])
     functionType () = Pi "p" (prodTypeUnder ()) (Terms::shift (prodTypeUnder (), 0, 1))
-    functionEq (left, right) = Terms::apps (Const "Eq" [eqLevel ()], [functionType (), left, right])
-    functionRefl term = Terms::apps (Const "Eq.refl" [eqLevel ()], [functionType (), term])
+    functionEq (left, right) = equated (functionType (), left, right)
+    functionRefl term = reflOf (functionType (), term)
     checkedIn (env, context, term, expected) = match Infer::check (env, context, term, expected)
         Success ty => "ok: ${Support::render ty}"
         Error message => "error: ${message}"
     // Adversarial families declared beside the Prod environment --
     packedContext () = [Binder(name = "x", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
     (** `Packed : Type 1` with `Packed.mk : ∀ (A : Type 0) (x : A), Packed`. *)
-    packedEnv () = declared (Inductive::declare (Environment::empty (), Decl(name = "Packed", params = [], ty = Sort (Succ (Succ Zero)), body = Axiom), [Decl(name = "Packed.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "x" (BVar 0) (Const "Packed" [])), body = Axiom)], 0), "the packed family declares")
-    n2Context () = [Binder(name = "n", ty = Const "N2" [])]
+    packedEnv () = declared (Support::packedIn (Environment::empty ()), "the packed family declares")
+    n2Context () = singleBinder ("n", "N2")
     (** `N2 : Type` with two constructors, the recursive one of one field. *)
-    n2Env () = declared (Inductive::declare (Environment::empty (), Decl(name = "N2", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "N2.zero2", params = [], ty = Const "N2" [], body = Axiom), Decl(name = "N2.succ2", params = [], ty = Pi "n" (Const "N2" []) (Const "N2" []), body = Axiom)], 0), "the two-constructor family declares")
-    r1Context () = [Binder(name = "r", ty = Const "R1" [])]
+    n2Env () = familyEnv ("the two-constructor family declares", Support::axiomOf ("N2", Sort (Succ Zero)), [Support::axiomOf ("N2.zero2", Const "N2" []), Support::axiomOf ("N2.succ2", Pi "n" (Const "N2" []) (Const "N2" []))], 0)
+    r1Context () = singleBinder ("r", "R1")
     (** `R1 : Type` with one recursive constructor of one field: exactly the
         family `is_structure_like` refuses, where accepting eta would equate
         every element by infinite descent. *)
-    r1Env () = declared (Inductive::declare (Environment::empty (), Decl(name = "R1", params = [], ty = Sort (Succ Zero), body = Axiom), [Decl(name = "R1.mk", params = [], ty = Pi "r" (Const "R1" []) (Const "R1" []), body = Axiom)], 0), "the recursive family declares")
+    r1Env () = familyEnv ("the recursive family declares", Support::axiomOf ("R1", Sort (Succ Zero)), [Support::axiomOf ("R1.mk", Pi "r" (Const "R1" []) (Const "R1" []))], 0)
     i1Context () = [Binder(name = "w", ty = Terms::apps (Const "I1" [], [Sort Zero]))]
     (** `I1 : Type 0 → Type 0` with one constructor of one field: one index,
         so `is_structure_like` refuses it. *)
-    i1Env () = declared (Inductive::declare (Environment::empty (), Decl(name = "I1", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort (Succ (Succ Zero))), body = Axiom), [Decl(name = "I1.wrap", params = [], ty = Pi "A" (Sort (Succ Zero)) (Terms::apps (Const "I1" [], [BVar 0])), body = Axiom)], 1), "the indexed family declares")
-    fkContext () = [Binder(name = "y", ty = Const "Fk" [])]
+    i1Env () = familyEnv ("the indexed family declares", Support::axiomOf ("I1", Pi "A" (Sort (Succ Zero)) (Sort (Succ (Succ Zero)))), [Support::axiomOf ("I1.wrap", Pi "A" (Sort (Succ Zero)) (Terms::apps (Const "I1" [], [BVar 0])))], 1)
+    fkContext () = singleBinder ("y", "Fk")
+    (** A one-binder context over the family `family`. *)
+    singleBinder (name, family) = [Binder(name = name, ty = Const family [])]
     (** `Fk : Type` with `Fk.mk : Fk → Fk` named only by an axiom: no
         constructor body anywhere, so nothing may eta. *)
-    fkEnv () = declared (Environment::add (declared (Environment::add (Environment::empty (), Decl(name = "Fk", params = [], ty = Sort (Succ Zero), body = Axiom)), "the fake family declares"), Decl(name = "Fk.mk", params = [], ty = Pi "x" (Const "Fk" []) (Const "Fk" []), body = Axiom)), "the fake constructor declares")
+    fkEnv () = added (added (Environment::empty (), "the fake family declares", Support::axiomOf ("Fk", Sort (Succ Zero))), "the fake constructor declares", Support::axiomOf ("Fk.mk", Pi "x" (Const "Fk" []) (Const "Fk" [])))
     hiddenContext () = [Binder(name = "h", ty = App (Const "Hidden" []) (BVar 1)), Binder(name = "w", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
     hiddenTwoContext () = [Binder(name = "w1", ty = BVar 1), Binder(name = "w2", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
     hiddenMkOf (witness) = Terms::apps (Const "Hidden.mk" [], [BVar 2, witness])
     (** `Hidden : Type 1 → Prop` with one constructor of one data field:
         proof irrelevance's home, and the projection the kernel refuses. *)
-    hiddenEnv () = declared (Inductive::declare (Environment::empty (), Decl(name = "Hidden", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort Zero), body = Axiom), [Decl(name = "Hidden.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "w" (BVar 0) (App (Const "Hidden" []) (BVar 1))), body = Axiom)], 0), "the hidden family declares")
+    hiddenEnv () = declared (Support::hiddenIn (Environment::empty (), 0), "the hidden family declares")

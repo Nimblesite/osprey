@@ -10,18 +10,7 @@ import proof::Infer
 import proof::Reduce
 import prooftests::Support
 import proof
-    NatLit
-    Natural
-    Group
-    Const
-    App
-    Lam
-    BVar
-    Sort
-    Succ
-    Zero
-    Decl
-    Axiom
+    NatLit Natural Group Const App Lam BVar Sort Succ Zero Decl Axiom
 
 (** Literal inference is tied to the checked Nat family, not its spelling.
     Implements [PROOF-KERNEL-THEORY] [PROOF-RUNNABLE-LIBRARY]. *)

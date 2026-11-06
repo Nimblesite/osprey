@@ -5,18 +5,9 @@ import proof::Terms
 import proof::Environment
 import proof::Reduce
 import proof::Infer
+import proof::Inductive
 import proof
-    Zero
-    Sort
-    BVar
-    Const
-    App
-    Lam
-    Pi
-    Decl
-    Axiom
-    Definition
-    Theorem
+    Zero Succ Sort BVar Const App Lam Pi Decl Axiom Definition Theorem
 
 (** Builders and renderings the kernel cases share. Every helper that can
     fail reports the failure through a soft assertion or an `error:` string,
@@ -37,6 +28,12 @@ module Support
     (** A declaration of `name` with the given body. *)
     export decl (name, body) = Decl(name = name, params = [], ty = Sort Zero, body = body)
 
+    (** A declaration of `name` under the universe parameters `params`. *)
+    export declWith (name, params, ty, body) = Decl(name = name, params = params, ty = ty, body = body)
+
+    (** A declaration of `name`, typed `ty`, whose body is an axiom. *)
+    export axiomOf (name, ty) = declWith (name, [], ty, Axiom)
+
     (** An environment holding `decl`; a rejected add fails the enclosing case
         before falling back. *)
     export envWithDecl decl = match Environment::add (Environment::empty (), decl)
@@ -48,6 +45,14 @@ module Support
     (** An environment holding `c` with the given body. *)
     export envWith body = envWithDecl (decl ("c", body))
 
+    (** The `Hidden` Prop family: one constructor of one data field, declared
+        with `indices` indices. *)
+    export hiddenIn (env, indices) = Inductive::declare (env, axiomOf ("Hidden", Pi "A" (Sort (Succ Zero)) (Sort Zero)), [axiomOf ("Hidden.mk", Pi "A" (Sort (Succ Zero)) (Pi "w" (BVar 0) (App (Const "Hidden" []) (BVar 1))))], indices)
+
+    (** The `Packed` dependent family: `Packed : Type 1` with one constructor
+        of two fields, the second of them in the first's type. *)
+    export packedIn (env) = Inductive::declare (env, axiomOf ("Packed", Sort (Succ (Succ Zero))), [axiomOf ("Packed.mk", Pi "A" (Sort (Succ Zero)) (Pi "x" (BVar 0) (Const "Packed" [])))], 0)
+
     (** The payload of a checked outcome; a failure fails the enclosing case
         with `expected` before falling back to `fallback`. *)
     export verified (label, expected, fallback, outcome) = match outcome
@@ -55,6 +60,10 @@ module Support
         Error message =>
             check label expected message
             fallback
+
+    (** A fixture that must check: a failure fails the enclosing case with
+        `label`, so no case reads a broken fixture as a pass. *)
+    export fixture (label, outcome) = verified (label, "success", Environment::empty (), outcome)
 
     (** Two attempts to declare `name` in a fresh environment. *)
     export twice name = match Environment::add (Environment::empty (), decl (name, Axiom))

@@ -6,13 +6,7 @@ import proof::Environment
 import proof::Fixtures
 import proof::Terms
 import proof
-    Single
-    Theorem
-    Const
-    App
-    NatLit
-    Succ
-    Zero
+    Single Theorem Const App NatLit Succ Zero
 import proof::Naturals
 import prooftests::Support
 

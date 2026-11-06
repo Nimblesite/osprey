@@ -2,17 +2,7 @@ namespace prooftests
 
 import proof::Terms
 import proof
-    Zero
-    Succ
-    Param
-    Sort
-    BVar
-    Const
-    App
-    Lam
-    Pi
-    Let
-    Proj
+    Zero Succ Param Sort BVar Const App Lam Pi Let Proj
 import prooftests::Support
 
 (** Shifting, substitution, occurrence and printing of de Bruijn terms. *)

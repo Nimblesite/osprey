@@ -71,11 +71,11 @@ module NumericTests
         productCase (env, "checked multiplication zero times word", small 0, word (), "0")
         productCase (env, "checked multiplication beyond the machine integer", word (), word (), "18446744073709551616")
         refused (env, "symbolic multiplication stays on ordinary reduction", multiplied (BVar 0, small 3))
-        forgedProduct (mutated (env, "Nat.mul", Definition (zeroFunction ())), "forged multiplication body")
-        forgedProduct (mutated (env, "Nat.add", Definition (zeroFunction ())), "forged addition dependency")
-        forgedProduct (betaEnvironment (env, "Nat.add.match_1"), "changed addition matcher disables multiplication")
-        forgedProduct (betaEnvironment (env, "Nat.mul.match_1"), "changed multiplication matcher disables multiplication")
-        forgedProduct (betaEnvironment (env, "instOfNatNat"), "changed numeral instance disables multiplication")
+        forged (mutated (env, "Nat.mul", Definition (zeroFunction ())), "forged multiplication body", multiplied (small 2, small 3))
+        forged (mutated (env, "Nat.add", Definition (zeroFunction ())), "forged addition dependency", multiplied (small 2, small 3))
+        forged (betaEnvironment (env, "Nat.add.match_1"), "changed addition matcher disables multiplication", multiplied (small 2, small 3))
+        forged (betaEnvironment (env, "Nat.mul.match_1"), "changed multiplication matcher disables multiplication", multiplied (small 2, small 3))
+        forged (betaEnvironment (env, "instOfNatNat"), "changed numeral instance disables multiplication", multiplied (small 2, small 3))
 
     productCase (env, label, left, right, text) = test (label, \() => productExpected (env, left, right, text))
 
@@ -86,10 +86,6 @@ module NumericTests
             NoNumericRule => expect ("disabled", "a checked numeric multiplication")
 
     zeroFunction () = Lam "a" (Const "Nat" []) (Lam "b" (Const "Nat" []) (Const "Nat.zero" []))
-
-    forgedProduct (result, label) = match result
-        Error message => check label "success" message
-        Success env => refused (env, label, multiplied (small 2, small 3))
 
     differentials (env) =
         differential (env, "Nat.ble", small 2, small 3)
@@ -134,16 +130,16 @@ module NumericTests
 
     forgeries (env) =
         refused (Environment::empty (), "missing canonical declarations", ble (small 0, small 1))
-        forged (mutated (env, "Nat.brecOn", Definition (Const "Nat.zero" [])), "forged helper body")
-        forged (mutated (env, "Nat.zero", Constructor (Ctor(ctorFamily = "Nat", ctorIndex = 1, ctorParams = 0, ctorFields = 0))), "forged constructor tag")
-        forged (changedDeclaration (env, "Nat.ble", true), "forged comparison type")
-        forged (changedDeclaration (env, "Nat.ble", false), "forged universe parameter")
-        forged (changedRecursor (env, "k"), "forged recursor K flag")
-        forged (changedRecursor (env, "rhs"), "forged recursor rule body")
-        forged (changedRecursor (env, "fields"), "forged recursor rule field count")
-        forged (mutated (env, "Bool.true", Constructor (Ctor(ctorFamily = "Bool", ctorIndex = 0, ctorParams = 0, ctorFields = 0))), "forged Bool constructor tag")
-        forged (mutated (env, "PProd.mk", Constructor (Ctor(ctorFamily = "PProd", ctorIndex = 0, ctorParams = 2, ctorFields = 1))), "forged pair constructor field count")
-        forged (changedRecursor (env, "minors"), "forged recursor minor count")
+        forgedBle (mutated (env, "Nat.brecOn", Definition (Const "Nat.zero" [])), "forged helper body")
+        forgedBle (mutated (env, "Nat.zero", Constructor (Ctor(ctorFamily = "Nat", ctorIndex = 1, ctorParams = 0, ctorFields = 0))), "forged constructor tag")
+        forgedBle (changedDeclaration (env, "Nat.ble", true), "forged comparison type")
+        forgedBle (changedDeclaration (env, "Nat.ble", false), "forged universe parameter")
+        forgedBle (changedRecursor (env, "k"), "forged recursor K flag")
+        forgedBle (changedRecursor (env, "rhs"), "forged recursor rule body")
+        forgedBle (changedRecursor (env, "fields"), "forged recursor rule field count")
+        forgedBle (mutated (env, "Bool.true", Constructor (Ctor(ctorFamily = "Bool", ctorIndex = 0, ctorParams = 0, ctorFields = 0))), "forged Bool constructor tag")
+        forgedBle (mutated (env, "PProd.mk", Constructor (Ctor(ctorFamily = "PProd", ctorIndex = 0, ctorParams = 2, ctorFields = 1))), "forged pair constructor field count")
+        forgedBle (changedRecursor (env, "minors"), "forged recursor minor count")
         match loaded "forged-ble-defs.ndjson"
             Error message => check "forged but well typed fixture loads" "success" message
             Success fake =>
@@ -172,9 +168,15 @@ module NumericTests
         [first, ...rest] => match kind == "rhs"
             true => mutated (env, name, Recursor (elim(elimRules = listPrepend (rest, first(ruleRhs = Const "Nat.zero" [])))))
             false => mutated (env, name, Recursor (elim(elimRules = listPrepend (rest, first(ruleFields = 1)))))
-    forged (result, label) = match result
+    (** `result`'s environment, or the refusal of `term`, which the forgery
+        must not accelerate: a failed mutation fails the case before it can
+        read as a refusal. *)
+    forged (result, label, term) = match result
         Error message => check label "success" message
-        Success env => refused (env, label, ble (small 0, small 1))
+        Success env => refused (env, label, term)
+
+    (** The forgery cases all read their verdict through one comparison. *)
+    forgedBle (result, label) = forged (result, label, ble (small 0, small 1))
 
     (** A symbolic left operand disables the numeric shortcut regardless of
         the right operand. The enclosing lambda independently checks its scope

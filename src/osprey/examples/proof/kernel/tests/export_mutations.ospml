@@ -6,12 +6,7 @@ import proof::Fixtures
 import prooftests::Support
 import prooftests::Shapes
 import proof
-    Sort
-    Zero
-    BVar
-    Const
-    App
-    Pi
+    Sort Zero BVar Const App Pi
 
 (** The export reader and the kernel against mutated exports
     ([PROOF-EXPORT], [PROOF-KERNEL]): every single-edit corruption of the

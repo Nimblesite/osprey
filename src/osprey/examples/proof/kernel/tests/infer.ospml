@@ -3,19 +3,7 @@ namespace prooftests
 import proof::Environment
 import proof::Infer
 import proof
-    Zero
-    Succ
-    Param
-    Sort
-    BVar
-    Const
-    App
-    Lam
-    Pi
-    Let
-    Decl
-    Axiom
-    Definition
+    Zero Succ Param Sort BVar Const App Lam Pi Let Decl Axiom Definition
 import prooftests::Support
 
 (** Inference, checking and universe levels, including each refusal. *)

@@ -2,11 +2,7 @@ namespace prooftests
 
 import proof::Levels
 import proof
-    Zero
-    Succ
-    Max
-    IMax
-    Param
+    Zero Succ Max IMax Param
 
 (** Normalisation, equality and printing of universe levels. *)
 module LevelsTests

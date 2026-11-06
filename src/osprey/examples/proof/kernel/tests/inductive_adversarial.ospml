@@ -7,11 +7,7 @@ import proof::Fixtures
 import proof::Inductive
 import proof::Telescope
 import proof
-    FormerSpec
-    Shape
-    Sort
-    Spec
-    Zero
+    FormerSpec Shape Sort Spec Zero
 import prooftests::Shapes
 import prooftests::ExportInductiveTests
 import prooftests::ExportTests
