@@ -54,16 +54,23 @@
   if (mobile) mobile.addEventListener("click", (e) => { if (e.target.closest(".toc-link")) mobile.open = false; });
 
   if (heads.length < 2) return;
-  // Scroll-spy: the active heading is the last one above the reading line.
+  // Scroll-spy: the active heading is the last one above the reading line,
+  // which sits just below the page's scroll padding (the sticky header).
+  // A heading chosen in the panel stays selected until the reader scrolls,
+  // because headings near the end can never reach the reading line.
   const links = Array.from(document.querySelectorAll(".toc-link"));
+  let chosen = null;
   let pending = false;
   const spy = () => {
     pending = false;
-    const line = 100;
-    const current = heads.filter((h) => h.getBoundingClientRect().top <= line).pop() || heads[0];
+    const line = parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) + 24;
+    const current = chosen || heads.filter((h) => h.getBoundingClientRect().top <= line).pop() || heads[0];
     for (const l of links) l.classList.toggle("active", l.getAttribute("href") === "#" + current.id);
     reveal(desktop, desktop && desktop.querySelector(".toc-link.active"), false);
   };
-  addEventListener("scroll", () => { if (!pending) { pending = true; requestAnimationFrame(spy); } }, { passive: true });
+  const queue = () => { if (!pending) { pending = true; requestAnimationFrame(spy); } };
+  for (const l of links) l.addEventListener("click", () => { chosen = document.getElementById(l.getAttribute("href").slice(1)); queue(); });
+  for (const type of ["wheel", "touchmove", "keydown"]) addEventListener(type, () => { chosen = null; }, { passive: true });
+  addEventListener("scroll", queue, { passive: true });
   spy();
 })();

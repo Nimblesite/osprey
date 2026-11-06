@@ -135,3 +135,34 @@ test("every long-form page carries the same single side panel", async ({ page })
     await expect(page.locator(".docs-nav-desktop .docs-nav-section-title").filter({ hasText: "Reference" }), url).toHaveCount(1);
   }
 });
+
+for (const [width, height, panel] of [[1440, 900, ".docs-nav-desktop"], [390, 844, ".docs-nav-mobile"]]) {
+  test(`choosing a heading in the side panel selects it at ${width}px`, async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width, height }, hasTouch: width < 1024 });
+    const page = await context.newPage();
+    await page.goto("/docs/my-first-app/");
+    const names = ["Model JSON as data", "Encode every case", "Decode at the boundary", "Run it twice", "Create the app", "Update and save"];
+    for (const name of names) {
+      if (panel === ".docs-nav-mobile") await page.locator(".docs-nav-mobile > summary").click();
+      const link = page.locator(`${panel} .toc-link`, { hasText: name });
+      await (width < 1024 ? link.tap() : link.click());
+      await expect(page.locator(`${panel} .toc-link.active`), `${name} is selected`).toHaveText(name);
+      const id = (await link.getAttribute("href")).slice(1);
+      // The heading settles in view, below the sticky header and (on mobile) the sticky menu bar.
+      const clear = await page.evaluate(() => Math.max(...[".site-header", ".toc-aside"].map((s) => {
+        const r = document.querySelector(s).getBoundingClientRect();
+        return ["sticky", "fixed"].includes(getComputedStyle(document.querySelector(s)).position) && r.bottom < 200 ? r.bottom : 0;
+      })));
+      await expect.poll(() => page.locator(`#${id}`).evaluate((h, [top, bottom]) => {
+        const r = h.getBoundingClientRect();
+        return Math.round(r.top) >= top && r.bottom <= bottom;
+      }, [Math.floor(clear), height]), `${name} settles in view`).toBe(true);
+    }
+    // Scrolling by hand after a choice hands selection back to the scroll position.
+    await page.mouse.move(width / 2, height / 2);
+    await page.mouse.wheel(0, -400);
+    await page.keyboard.press("Home");
+    await expect(page.locator(`${panel} .toc-link.active`)).toHaveText("Create the app");
+    await context.close();
+  });
+}

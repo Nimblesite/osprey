@@ -83,6 +83,8 @@
 /* Below the docs breakpoint: drop the grid entirely (block flow) so the article
    fills the width and nothing can land in an auto-sized implicit column. */
 @media (max-width: 1024px) {
+  /* Headings land below the sticky header and the sticky "Browse documentation" bar. */
+  html:has(.toc-aside) { scroll-padding-top: calc(var(--header-height) + 3.25rem + var(--space-4)); }
   .prose-layout { display: block; }
   .prose { margin-inline: auto; }
   .toc-aside {
@@ -146,12 +148,8 @@
   font-size: var(--fs-h2);
   margin-top: var(--space-12);
   margin-bottom: var(--space-4);
-  scroll-margin-top: calc(var(--header-height) + var(--space-4));
 }
-.prose h3 {
-  margin-top: var(--space-8);
-  scroll-margin-top: calc(var(--header-height) + var(--space-4));
-}
+.prose h3 { margin-top: var(--space-8); }
 .prose p,
 .prose li { color: var(--on-surface-variant); line-height: 1.75; }
 /* Blog-post header image. */
