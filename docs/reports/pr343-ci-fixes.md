@@ -30,7 +30,7 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Retry the pinned download with bounded backoff. The local HTTP probe recovers from one 504 and fails after four attempts on persistent 504s.
    - [x] Verify hosted Rust packages, proof kernel and VS Code extension passed on run 42125986216.
    - [x] Verify WebAssembly goldens. The pinned download and runtime build passed on run 42125986216, then WebAssembly passed all 236 goldens on run 42129545423 and passed again on run 42131518920.
-   - [ ] Verify the aggregate coverage gate after the Rust rest shard produces its report.
+   - [x] Verify aggregate coverage. Run 42165292104 passed the merged Rust, VS Code, package and C runtime thresholds.
 7. **macOS Agent UI image paste [check-once-claude]**
    - [x] Verify all 14 image-paste steps passed on the first attempt in run 42131518920, job 127613956956.
    - [x] Verify the paste-focus fix on run 42147919564, job 127666202881. All 14 image-paste steps and the full Agent UI job passed on the first attempt.
@@ -57,7 +57,7 @@ Owner of each job is the agent named in brackets. Claim or report via TMC to `ch
    - [x] Stop a singleton trial after its declaration when the inferred signature and baseline are both concrete and differ. The regression counts two visits to an unrelated later body before the fix and one after. Unresolved signatures still visit it twice. All 960 type tests and strict Clippy passed. The unchanged local Agent gate passed in 34.90 seconds, and the paired `test-app` check improved from 36.59 to 33.52 seconds with identical warnings.
    - [x] Apply the same early rejection to a closed signature with deferred relations when its variables are quantified and independent of open enclosing scopes, other signatures, pending relations and handler refinement. The new field-relation case visits the unrelated body once, while the unconstrained control still visits twice. All 960 type tests and strict Clippy passed. The unchanged local Agent gate passed in 29.98 seconds, and the paired `test-app` check improved from 33.20 to 29.21 seconds with byte-identical warnings.
    - [x] Verify the unchanged Agent budget on hosted Linux. Run 42161453710 passed in 79.53 seconds with the 120-second budget.
-   - [ ] Verify the full Rust rest shard. Run 42161453710 stopped at LLVM IR parity for `install.test`, before the shard could upload coverage.
+   - [x] Verify the full hosted Rust rest shard. Run 42165292104 passed the unchanged Agent budget in 87.80 seconds, the ML/Default IR parity test and mapped-file tensor test, then uploaded coverage artifact 13479223634.
 13. **Integration job timeout (external)**
    - [x] Run 42153399114 hit the 18-minute limit because the Azure Ubuntu mirror served the Playwright `--with-deps` font packages at 49.6 kB/s (7 min 20 s for 21.9 MB). The previous run installed them in 19 s. No code change; the next push reruns the job.
 
