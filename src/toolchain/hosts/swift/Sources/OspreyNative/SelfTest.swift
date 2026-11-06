@@ -447,8 +447,10 @@ public final class SelfTestRun {
     }
 
     /// Cmd-V through the event queue with a small picture on this run's own pasteboard, which is
-    /// the route a person's paste takes; their clipboard stays theirs.
-    private func pasteImage() throws {
+    /// the route a person's paste takes; their clipboard stays theirs. It waits for a field to hold
+    /// the keyboard, because a paste while a picker still has it lands nowhere.
+    private func pasteImage() throws -> String? {
+        guard window.firstResponder is NSText else { return "no field holds the keyboard to paste into" }
         let board = NSPasteboard(name: NSPasteboard.Name("Osprey self-test paste"))
         board.clearContents()
         let image = NSImage(size: NSSize(width: 4, height: 4), flipped: false) { rect in
@@ -462,6 +464,7 @@ public final class SelfTestRun {
         }
         PastedImage.pasteboard = board
         NSApp.postEvent(event, atStart: false)
+        return nil
     }
 
     /// A real click where the button named `name` is drawn, so a control that only looks like a
@@ -603,8 +606,8 @@ public final class SelfTestRun {
                 guard let problem = pressOn(name) else { return }
                 try await hold(problem, until: deadline)
             case .pastingImage:
-                try pasteImage()
-                return
+                guard let problem = try pasteImage() else { return }
+                try await hold(problem, until: deadline)
             case let .keyPress(letter):
                 guard let problem = pressCommand(letter) else { return }
                 try await hold(problem, until: deadline)
