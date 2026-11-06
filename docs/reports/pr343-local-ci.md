@@ -20,7 +20,7 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Website E2E | `cd src/toolchain/website && npm test`; `make -C docs/book check check-examples` | pi deepseek-flash | [ ] |
 | VS Code extension | `make _test_vscode_extension` | check-once-claude | [ ] |
 | Proof kernel and Lean | `make -j3 _test_proof_ci` plus the proof script tests | OspreyCodex | [x] GC/ARC/WASI corpora, 3 byte-identical exports, 70 script checks and both Lean speed cases (`f4a096d2e`) |
-| Integration | `make _bank_test`, profiler, mobile tools, `make _test_agent`, bank Playwright, docs HTML, web compiler Docker | check-once-claude | [ ] |
+| Integration | `make _bank_test`, profiler, mobile tools, `make _test_agent`, bank Playwright, docs HTML, web compiler Docker | check-once-claude | [x] 2026-11-06: pi deepseek-flash (bank, profiler, mobile, agent 1876+45, docs HTML, bank Playwright 17/17), check-once-claude (mobile app 25/25, web compiler Docker); Android emulator not run |
 | Apple (macOS, iOS, Workbench, Talon Bank) | each matrix `run` command from `ci.yml` | check-once-claude | [ ] |
 | Agent UI (macos-26) | `make -C src/toolchain/targets/macos/tests agent-headless` | check-once-claude | [ ] |
 | Coverage thresholds | `make _coverage_check_rust _coverage_check_vscode_extension _coverage_check_packages _coverage_check_c_runtime` | check-once-claude | [ ] |
