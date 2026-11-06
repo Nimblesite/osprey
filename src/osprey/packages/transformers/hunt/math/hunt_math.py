@@ -11,8 +11,8 @@ from transformers.Math import argmax, log_softmax, multinomial, softmax
 def run():
     x0 = unwrap_or(parseFloat(input()), 0.0)
     x1 = unwrap_or(parseFloat(input()), 0.0)
-    u = unwrap_or(parseFloat(input()), 0.5)
-    logits = listConcat([x0, x1], Check.specials())
+    u = toFloat32(unwrap_or(parseFloat(input()), 0.5))
+    logits = mapList(listConcat([x0, x1], Check.specials()), toFloat32)
     probs = softmax(logits)
     logprobs = log_softmax(logits)
     best = argmax(logits)

@@ -13,8 +13,8 @@ from transformers.LogitsProcess import (
 def run():
     x0 = unwrap_or(parseFloat(input()), 0.0)
     x1 = unwrap_or(parseFloat(input()), 0.0)
-    p = unwrap_or(parseFloat(input()), 0.9)
-    logits = listConcat([x0, x1], Check.specials())
+    p = toFloat32(unwrap_or(parseFloat(input()), 0.9))
+    logits = mapList(listConcat([x0, x1], Check.specials()), toFloat32)
     b = apply(TopPLogitsWarper(p, neg_inf(), 1), [], logits)
     d = apply(TypicalLogitsWarper(0.9, neg_inf(), 1), [], logits)
     f = apply(EtaLogitsWarper(0.1, neg_inf(), 1), [], logits)
