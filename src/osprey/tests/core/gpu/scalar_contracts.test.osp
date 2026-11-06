@@ -87,54 +87,26 @@ fn subtractSelf(value) = value - value
 fn divideZero(value) = value / 0.0
 fn remainderZero(value) = value % -0.0
 fn gpuIeeeCase() = {
-    match toGpu([10000000000000000.0]) {
-        Success { value } => {
-            let seed = value
-            match gpuMap(seed, squareScalar) {
-                Success { value } => {
-                    let uploaded9 = value
-                    match gpuMap(uploaded9, squareScalar) {
-                        Success { value } => {
-                            let fourth = value
-                            match gpuMap(fourth, squareScalar) {
-                                Success { value } => {
-                                    let uploaded10 = value
-                                    match gpuMap(uploaded10, squareScalar) {
-                                        Success { value } => {
-                                            let uploaded17 = value
-                                            match gpuMap(uploaded17, squareScalar) {
-                                                Success { value } => {
-                                                    let infinityBuffer = value
-                                                    let infinity = gpuGet(infinityBuffer, 0) ?: 0.0
-                                                    match gpuMap(infinityBuffer, subtractSelf) {
-                                                        Success { value } => {
-                                                            let nanBuffer = value
-                                                            let nan = gpuGet(nanBuffer, 0) ?: 0.0
-                                                            withBuffer(toGpu([infinity, nan, -0.0]), fn(uploaded7) => withBuffer(fromGpu(uploaded7), fn(read0) => withBuffer(toGpu(listReverse(read0)), fn(roundTrip) => checkAll("host GPU kernels preserve non-finite values and signed zero", [
-                                                                    infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), fn(uploaded8) => (uploaded8) == infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
-                                                                    toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
-                                                            ]))))
-                                                        }
-                                                        Error { message } => gpuFailed(message)
-                                                    }
-                                                }
-                                                Error { message } => gpuFailed(message)
-                                            }
-                                        }
-                                        Error { message } => gpuFailed(message)
-                                    }
-                                }
-                                Error { message } => gpuFailed(message)
-                            }
-                        }
-                        Error { message } => gpuFailed(message)
-                    }
-                }
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(toGpu([10000000000000000.0]), fn(seed) => {
+        withBuffer(gpuMap(seed, squareScalar), fn(uploaded9) => {
+            withBuffer(gpuMap(uploaded9, squareScalar), fn(fourth) => {
+                withBuffer(gpuMap(fourth, squareScalar), fn(uploaded10) => {
+                    withBuffer(gpuMap(uploaded10, squareScalar), fn(uploaded17) => {
+                        withBuffer(gpuMap(uploaded17, squareScalar), fn(infinityBuffer) => {
+                            let infinity = gpuGet(infinityBuffer, 0) ?: 0.0
+                            withBuffer(gpuMap(infinityBuffer, subtractSelf), fn(nanBuffer) => {
+                                let nan = gpuGet(nanBuffer, 0) ?: 0.0
+                                withBuffer(toGpu([infinity, nan, -0.0]), fn(uploaded7) => withBuffer(fromGpu(uploaded7), fn(read0) => withBuffer(toGpu(listReverse(read0)), fn(roundTrip) => checkAll("host GPU kernels preserve non-finite values and signed zero", [
+                                        infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), fn(uploaded8) => (uploaded8) == infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
+                                        toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
+                                ]))))
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })
 }
 /// [GPU-DEVICE-FAULT] A selected device reports its fault without invoking host recovery.
 fn deviceFault(result, reason) = match result {
@@ -145,65 +117,57 @@ fn gpuFloatZeroCase() = {
     mut faults = ""
     handle Arith { divideByZero op _ => { faults = faults + op
             0.25 } }
-    match toGpu([1.0, 0.0, -1.0]) {
-        Success { value } => {
-            let input = value
-            let quotients = gpuMap(input, divideZero)
-            let remainders = gpuMap(input, remainderZero)
-            match gpuDevice() == "host" {
-                true => checkAll("host GPU zero divisors use the enclosing policy", [
-                        gpuSatisfies(quotients, fn(q) => gpuSatisfies(gpuFold(q, 0.0, addFloats), fn(total) => total == 0.75)),
-                        gpuSatisfies(remainders, fn(r) => gpuSatisfies(gpuFold(r, 0.0, addFloats), fn(total) => total == 0.75)),
-                        faults == "///%%%"
-                ])
-                false => checkAll("host GPU zero divisors use the enclosing policy", [
-                        deviceFault(quotients, "division by zero"), deviceFault(remainders, "remainder by zero"), faults == ""
-                ])
-            }
+    withBuffer(toGpu([1.0, 0.0, -1.0]), fn(input) => {
+        let quotients = gpuMap(input, divideZero)
+        let remainders = gpuMap(input, remainderZero)
+        match gpuDevice() == "host" {
+            true => checkAll("host GPU zero divisors use the enclosing policy", [
+                    gpuSatisfies(quotients, fn(q) => gpuSatisfies(gpuFold(q, 0.0, addFloats), fn(total) => total == 0.75)),
+                    gpuSatisfies(remainders, fn(r) => gpuSatisfies(gpuFold(r, 0.0, addFloats), fn(total) => total == 0.75)),
+                    faults == "///%%%"
+            ])
+            false => checkAll("host GPU zero divisors use the enclosing policy", [
+                    deviceFault(quotients, "division by zero"), deviceFault(remainders, "remainder by zero"), faults == ""
+            ])
         }
-        Error { message } => gpuFailed(message)
-    }
+    })
 }
 test("host GPU arithmetic preserves IEEE non-finite values", gpuIeeeCase)
 test("host GPU float zero divisors use explicit recovery", gpuFloatZeroCase)
 /// [BUILTIN-ABS]: builtin callbacks use their inferred scalar ABI and policy.
 fn gpuAbsoluteCase() = {
     match toGpu([-2.5, -0.0, 3.5]) {
-        Success { value } => match gpuMap(value, abs) {
-            Success { value } => {
-                let floats = value
-                mut faults = ""
-                handle Arith { overflow op lhs rhs wrapped => {
-                        checkAll("GPU abs overflow payload", [
-                                lhs == -9223372036854775808, rhs == 0, wrapped == lhs
-                        ])
-                        faults = faults + op
-                        17
-                    } }
-                match toGpu([-9223372036854775808, -3, 4]) {
-                    Success { value } => match gpuMap(value, abs) {
-                        Success { value } => {
-                            let integers = value
-                            checkAll("GPU abs keeps float and integer callback contracts", [
-                                    (gpuGet(floats, 0) ?: 0.0) == 2.5,
-                                    (gpuGet(floats, 2) ?: 0.0) == 3.5,
-                                    structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", "abs"]),
-                                    structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0)], [17, 3]),
-                                    (gpuGet(integers, 2) ?: 0) == 4
-                            ])
-                        }
-                        Error { message } => checkAll("GPU abs keeps float and integer callback contracts", [
-                                structuralEquals([(gpuGet(floats, 0) ?: 0.0), (gpuGet(floats, 2) ?: 0.0)], [2.5, 3.5]),
-                                structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", ""]),
-                                gpuDevice() != "host", contains(message, "integer overflow"),
-                                gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
+        Success { value } => withBuffer(gpuMap(value, abs), fn(floats) => {
+            mut faults = ""
+            handle Arith { overflow op lhs rhs wrapped => {
+                    checkAll("GPU abs overflow payload", [
+                            lhs == -9223372036854775808, rhs == 0, wrapped == lhs
+                    ])
+                    faults = faults + op
+                    17
+                } }
+            match toGpu([-9223372036854775808, -3, 4]) {
+                Success { value } => match gpuMap(value, abs) {
+                    Success { value } => {
+                        let integers = value
+                        checkAll("GPU abs keeps float and integer callback contracts", [
+                                (gpuGet(floats, 0) ?: 0.0) == 2.5,
+                                (gpuGet(floats, 2) ?: 0.0) == 3.5,
+                                structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", "abs"]),
+                                structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0)], [17, 3]),
+                                (gpuGet(integers, 2) ?: 0) == 4
                         ])
                     }
-                    Error { message } => gpuFailed(message)
+                    Error { message } => checkAll("GPU abs keeps float and integer callback contracts", [
+                            structuralEquals([(gpuGet(floats, 0) ?: 0.0), (gpuGet(floats, 2) ?: 0.0)], [2.5, 3.5]),
+                            structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", ""]),
+                            gpuDevice() != "host", contains(message, "integer overflow"),
+                            gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
+                    ])
                 }
+                Error { message } => gpuFailed(message)
             }
-            Error { message } => gpuFailed(message)
-        }
+        })
         Error { message } => gpuFailed(message)
     }
 }

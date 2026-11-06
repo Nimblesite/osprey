@@ -167,28 +167,28 @@ fn tensorFailure32(result: Result<GpuBuffer<float32>, Error>) = match result {
 }
 fn matMulExactCase() = withBuffer(floats([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]), fn(left) => withBuffer(floats([7.0, 8.0, 9.0, 10.0, 11.0, 12.0]), fn(right) => matMulExactCaseUploaded(left, right)))
 fn matMulExactCaseUploaded(left, right) = {
-    match product(left, right, 2, 3, 2) { Success { value } => { let square = value
-            match floats([2.0, 3.0]) { Success { value } => { let uploaded27 = value
-                    match floats([5.0, 7.0]) { Success { value } => { let uploaded28 = value
-                            match product(uploaded27, uploaded28, 2, 1, 2) { Success { value } => { let outer = value
-                                    match floats([]) { Success { value } => { let uploaded29 = value
-                                            match floats([]) { Success { value } => { let uploaded30 = value
-                                                    match product(uploaded29, uploaded30, 2, 0, 2) { Success { value } => { let hollow = value
-                                                            checkAll("gpuMatMul forms the row-major product of the stated shapes", [
-                                                                    gpuLength(square) == 4,
-                                                                    gpuLength(hollow) == 4,
-                                                                    exact(at(square, 0), 58.0), exact(at(square, 1), 64.0), exact(at(square, 2), 139.0), exact(at(square, 3), 154.0),
-                                                                    exact(at(outer, 0), 10.0), exact(at(outer, 1), 14.0), exact(at(outer, 2), 15.0), exact(at(outer, 3), 21.0),
-                                                                    gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
-                                                                    gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
-                                                            ])
-                                                        } Error { message } => gpuFailed(message) }
-                                                } Error { message } => gpuFailed(message) }
-                                        } Error { message } => gpuFailed(message) }
-                                } Error { message } => gpuFailed(message) }
-                        } Error { message } => gpuFailed(message) }
-                } Error { message } => gpuFailed(message) }
-        } Error { message } => gpuFailed(message) }
+    withBuffer(product(left, right, 2, 3, 2), fn(square) => {
+        withBuffer(floats([2.0, 3.0]), fn(uploaded27) => {
+            withBuffer(floats([5.0, 7.0]), fn(uploaded28) => {
+                withBuffer(product(uploaded27, uploaded28, 2, 1, 2), fn(outer) => {
+                    withBuffer(floats([]), fn(uploaded29) => {
+                        withBuffer(floats([]), fn(uploaded30) => {
+                            withBuffer(product(uploaded29, uploaded30, 2, 0, 2), fn(hollow) => {
+                                checkAll("gpuMatMul forms the row-major product of the stated shapes", [
+                                        gpuLength(square) == 4,
+                                        gpuLength(hollow) == 4,
+                                        exact(at(square, 0), 58.0), exact(at(square, 1), 64.0), exact(at(square, 2), 139.0), exact(at(square, 3), 154.0),
+                                        exact(at(outer, 0), 10.0), exact(at(outer, 1), 14.0), exact(at(outer, 2), 15.0), exact(at(outer, 3), 21.0),
+                                        gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
+                                        gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
+                                ])
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })
 }
 /// 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
 /// association; the last pin is 3 units in the last place only when the
@@ -197,25 +197,25 @@ fn matMulExactCaseUploaded(left, right) = {
 fn matMulOrderCase() = {
     let big = toFloat32(16777216.0)
     let ulp = toFloat32(1.0) / toFloat32(8388608.0)
-    match floats([1.0, 1.0, 1.0]) { Success { value } => { let ones = value
-            match toGpu([big, toFloat32(1.0), toFloat32(0.0) - big]) { Success { value } => { let uploaded22 = value
-                    match product(uploaded22, ones, 1, 3, 1) { Success { value } => { let forward = value
-                            match toGpu([toFloat32(0.0) - big, toFloat32(1.0), big]) { Success { value } => { let uploaded23 = value
-                                    match product(uploaded23, ones, 1, 3, 1) { Success { value } => { let backward = value
-                                            match toGpu([toFloat32(-1.0), toFloat32(1.0) + ulp]) { Success { value } => { let uploaded24 = value
-                                                    match toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]) { Success { value } => { let uploaded25 = value
-                                                            match product(uploaded24, uploaded25, 1, 2, 1) { Success { value } => { let unfused = value
-                                                                    checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
-                                                                            exact(at(forward, 0), 0.0), exact(at(backward, 0), 1.0), at(unfused, 0) == 3.0 * ulp
-                                                                    ])
-                                                                } Error { message } => gpuFailed(message) }
-                                                        } Error { message } => gpuFailed(message) }
-                                                } Error { message } => gpuFailed(message) }
-                                        } Error { message } => gpuFailed(message) }
-                                } Error { message } => gpuFailed(message) }
-                        } Error { message } => gpuFailed(message) }
-                } Error { message } => gpuFailed(message) }
-        } Error { message } => gpuFailed(message) }
+    withBuffer(floats([1.0, 1.0, 1.0]), fn(ones) => {
+        withBuffer(toGpu([big, toFloat32(1.0), toFloat32(0.0) - big]), fn(uploaded22) => {
+            withBuffer(product(uploaded22, ones, 1, 3, 1), fn(forward) => {
+                withBuffer(toGpu([toFloat32(0.0) - big, toFloat32(1.0), big]), fn(uploaded23) => {
+                    withBuffer(product(uploaded23, ones, 1, 3, 1), fn(backward) => {
+                        withBuffer(toGpu([toFloat32(-1.0), toFloat32(1.0) + ulp]), fn(uploaded24) => {
+                            withBuffer(toGpu([toFloat32(1.0), toFloat32(1.0) + toFloat32(2.0) * ulp]), fn(uploaded25) => {
+                                withBuffer(product(uploaded24, uploaded25, 1, 2, 1), fn(unfused) => {
+                                    checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
+                                            exact(at(forward, 0), 0.0), exact(at(backward, 0), 1.0), at(unfused, 0) == 3.0 * ulp
+                                    ])
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        })
+    })
 }
 fn matMulShapeCase() = withBuffer(floats([1.0, 2.0, 3.0, 4.0]), fn(four) => withBuffer(floats([1.0, 2.0, 3.0]), fn(three) => matMulShapeCaseUploaded(four, three)))
 fn matMulShapeCaseUploaded(four, three) = {
@@ -401,22 +401,22 @@ fn loadCase() = {
     let raw = scratch + "_raw.bin"
     let missing = scratch + "_missing.bin"
     let ready = written(raw, "ABCDEFGHIJKL")
-    match gpuLoad(raw, 0, 3) { Success { value } => { let words = value
-            match gpuLoad(raw, 4, 2) { Success { value } => { let tail = value
-                    checkAll("gpuLoad keeps little-endian binary32 words and refuses a short read", [
-                            ready,
-                            structuralEquals([gpuLength(words), gpuLength(tail)], [3, 2]),
-                            exact(at(words, 0), 781.0352172851562), exact(at(words, 1), 204057.078125), exact(at(words, 2), 53291300.0),
-                            exact(at(tail, 0), 204057.078125), exact(at(tail, 1), 53291300.0),
-                            gpuSatisfies(gpuLoad(raw, 12, 0), fn(uploaded1) => gpuLength(uploaded1) == 0),
-                            loadFailure(raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
-                            loadFailure(raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
-                            loadFailure(raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
-                            loadFailure(raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
-                            loadFailure(missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
-                    ])
-                } Error { message } => gpuFailed(message) }
-        } Error { message } => gpuFailed(message) }
+    withBuffer(gpuLoad(raw, 0, 3), fn(words) => {
+        withBuffer(gpuLoad(raw, 4, 2), fn(tail) => {
+            checkAll("gpuLoad keeps little-endian binary32 words and refuses a short read", [
+                    ready,
+                    structuralEquals([gpuLength(words), gpuLength(tail)], [3, 2]),
+                    exact(at(words, 0), 781.0352172851562), exact(at(words, 1), 204057.078125), exact(at(words, 2), 53291300.0),
+                    exact(at(tail, 0), 204057.078125), exact(at(tail, 1), 53291300.0),
+                    gpuSatisfies(gpuLoad(raw, 12, 0), fn(uploaded1) => gpuLength(uploaded1) == 0),
+                    loadFailure(raw, 0, 4) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                    loadFailure(raw, 100, 1) == "gpuLoad: " + raw + ": file ends before the tensor does",
+                    loadFailure(raw, 0, -1) == "gpuLoad: " + raw + ": a negative element count",
+                    loadFailure(raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
+                    loadFailure(missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
+            ])
+        })
+    })
 }
 /// Only ASCII content can be written from a NUL-terminated string, so the
 /// header-length prefix is either missing or absurd; the full header grammar is

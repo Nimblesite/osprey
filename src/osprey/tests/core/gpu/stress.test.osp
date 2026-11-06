@@ -157,24 +157,20 @@ fn longChainWith(indices100000) = {
     |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump)) |> andThen(fn(buffer) => gpuMap(buffer, bump))
     |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
     |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
-    match climbResult {
-        Success { value } => {
-            let climbed = value
-            let cancelResult = gpuMap(climbed, lower) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
-            |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
-            withBuffer(cancelResult, fn(cancelled) => {
-                    checkAll("twenty-four chained passes", [
-                            structuralEquals([gpuLength(climbed), (gpuGet(climbed, 0) ?: -1)], [100000, 8]),
-                            structuralEquals([(gpuGet(climbed, 99999) ?: -1), gpuLength(cancelled)], [100007, 100000]),
-                            (gpuGet(cancelled, 0) ?: -1) == 0,
-                            (gpuGet(cancelled, 99999) ?: -1) == 99999,
-                            gpuSatisfies(gpuFold(climbed, 0, tally), fn(uploaded111) => (uploaded111) == 5000750000),
-                            gpuSatisfies(gpuFold(cancelled, 0, tally), fn(uploaded110) => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), fn(uploaded109) => gpuSatisfies(gpuFold(uploaded109, 0, tally), fn(uploaded144) => (uploaded144) == 2499950000))
-                    ])
-                })
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(climbResult, fn(climbed) => {
+        let cancelResult = gpuMap(climbed, lower) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
+        |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower)) |> andThen(fn(buffer) => gpuMap(buffer, lower))
+        withBuffer(cancelResult, fn(cancelled) => {
+                checkAll("twenty-four chained passes", [
+                        structuralEquals([gpuLength(climbed), (gpuGet(climbed, 0) ?: -1)], [100000, 8]),
+                        structuralEquals([(gpuGet(climbed, 99999) ?: -1), gpuLength(cancelled)], [100007, 100000]),
+                        (gpuGet(cancelled, 0) ?: -1) == 0,
+                        (gpuGet(cancelled, 99999) ?: -1) == 99999,
+                        gpuSatisfies(gpuFold(climbed, 0, tally), fn(uploaded111) => (uploaded111) == 5000750000),
+                        gpuSatisfies(gpuFold(cancelled, 0, tally), fn(uploaded110) => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), fn(uploaded109) => gpuSatisfies(gpuFold(uploaded109, 0, tally), fn(uploaded144) => (uploaded144) == 2499950000))
+                ])
+            })
+    })
 }
 
 /// rebuildCase rebuilds a buffer from its own materialized output six times.

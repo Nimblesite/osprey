@@ -204,71 +204,51 @@ fn elementCaseUploaded(ints, floats, flags) = {
 }
 /// flowCase pins the handle and its element tag through all four binding forms a value takes — a let, a pipe, a function parameter and a function return — plus a match arm and a lambda parameter. A float buffer that lost its tag anywhere along the way would read back as raw bits.
 fn flowCase() = {
-    match toGpu([1.5, 2.5, 3.5]) {
-        Success { value } => {
-            let held = value
-            match gpuMap(held, scale) {
-                Success { value } => {
-                    let piped = value
-                    match scaledFloats(held) {
-                        Success { value } => {
-                            let returned = value
-                            let chosen = chooseBuffer(true, held, piped)
-                            match scaledFloats(returned) {
-                                Success { value } => {
-                                    let twice = value
-                                    let lamLength = fn(b) => gpuLength(b)
-                                    checkAll("buffers flow through every binding form", [
-                                            readsTo(held, [0], 9.5, [1.5]), readsTo(piped, [0, 2], 9.5, [2.25, 5.25]), readsTo(returned, [0, 2], 9.5, [2.25, 5.25]),
-                                            (lastOf(returned) ?: 9.5) == 5.25,
-                                            (lastOf(chosen) ?: 9.5) == 3.5,
-                                            (lastOf(twice) ?: 9.5) == 7.875,
-                                            readsTo(chosen, [1], 9.5, [2.5]),
-                                            readsTo(chooseBuffer(false, held, piped), [1], 9.5, [3.75]), readsTo(twice, [0], 9.5, [3.375]),
-                                            structuralEquals([widthOf(held), widthOf(piped)], [3, 3]),
-                                            structuralEquals([widthOf(returned), widthOf(chosen)], [3, 3]),
-                                            structuralEquals([lamLength(held), lamLength(twice)], [3, 3]),
-                                            foldsTo(gpuFold(held, 0.0, addFloats), 7.5),
-                                            foldsTo(gpuFold(piped, 0.0, addFloats), 11.25), foldsTo(gpuFold(returned, 0.0, addFloats), 11.25), foldsTo(gpuFold(twice, 0.0, addFloats), 16.875),
-                                            readback(held, 0) == "1.5",
-                                            readback(returned, 0) == "2.25",
-                                            readback(returned, 3) == oobMessage(), readback(twice, -1) == oobMessage(),
-                                            listLengthIs(fromGpu(held), 3)
-                                    ])
-                                }
-                                Error { message } => gpuFailed(message)
-                            }
-                        }
-                        Error { message } => gpuFailed(message)
-                    }
-                }
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(toGpu([1.5, 2.5, 3.5]), fn(held) => {
+        withBuffer(gpuMap(held, scale), fn(piped) => {
+            withBuffer(scaledFloats(held), fn(returned) => {
+                let chosen = chooseBuffer(true, held, piped)
+                withBuffer(scaledFloats(returned), fn(twice) => {
+                    let lamLength = fn(b) => gpuLength(b)
+                    checkAll("buffers flow through every binding form", [
+                            readsTo(held, [0], 9.5, [1.5]), readsTo(piped, [0, 2], 9.5, [2.25, 5.25]), readsTo(returned, [0, 2], 9.5, [2.25, 5.25]),
+                            (lastOf(returned) ?: 9.5) == 5.25,
+                            (lastOf(chosen) ?: 9.5) == 3.5,
+                            (lastOf(twice) ?: 9.5) == 7.875,
+                            readsTo(chosen, [1], 9.5, [2.5]),
+                            readsTo(chooseBuffer(false, held, piped), [1], 9.5, [3.75]), readsTo(twice, [0], 9.5, [3.375]),
+                            structuralEquals([widthOf(held), widthOf(piped)], [3, 3]),
+                            structuralEquals([widthOf(returned), widthOf(chosen)], [3, 3]),
+                            structuralEquals([lamLength(held), lamLength(twice)], [3, 3]),
+                            foldsTo(gpuFold(held, 0.0, addFloats), 7.5),
+                            foldsTo(gpuFold(piped, 0.0, addFloats), 11.25), foldsTo(gpuFold(returned, 0.0, addFloats), 11.25), foldsTo(gpuFold(twice, 0.0, addFloats), 16.875),
+                            readback(held, 0) == "1.5",
+                            readback(returned, 0) == "2.25",
+                            readback(returned, 3) == oobMessage(), readback(twice, -1) == oobMessage(),
+                            listLengthIs(fromGpu(held), 3)
+                    ])
+                })
+            })
+        })
+    })
 }
 
 /// aliasCase pins two bindings onto one buffer. Buffers are immutable values [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and leaves every alias of the source reading what it read before.
 fn aliasCase() = {
-    match toGpu([1, 2, 3, 4]) {
-        Success { value } => {
-            let source = value
-            let alias = source
-            let alsoAlias = alias
-            withBuffer(doubledInts(alias), fn(derived) => checkAll("aliased bindings share one immutable buffer", [
-                            structuralEquals([gpuLength(source), gpuLength(alias)], [4, 4]),
-                            structuralEquals([gpuLength(alsoAlias), gpuLength(derived)], [4, 4]),
-                            widthOf(alias) == widthOf(source), readsTo(alias, [0, 3], 0, [1, 4]),
-                            readsTo(alsoAlias, [0, 3], 0, [1, 4]), (lastOf(alias) ?: 0) == (lastOf(source) ?: 0),
-                            foldsTo(gpuFold(source, 0, addInts), 10), foldsTo(gpuFold(alias, 0, addInts), 10), foldsTo(gpuFold(alsoAlias, 0, addInts), 10),
-                            foldsTo(gpuFold(derived, 0, addInts), 20), readsTo(derived, [1], 0, [4]), readsTo(source, [1], 0, [2]), readsTo(alias, [1], 0, [2]),
-                            readsTo(alsoAlias, [1], 0, [2]), readback(alias, 4) == oobMessage(), readback(alsoAlias, -1) == oobMessage(), readback(source, 4) == readback(alias, 4),
-                            listLengthIs(fromGpu(alias), 4), listResultReadsTo(fromGpu(alsoAlias), [2], 0, [3])
-                    ]))
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(toGpu([1, 2, 3, 4]), fn(source) => {
+        let alias = source
+        let alsoAlias = alias
+        withBuffer(doubledInts(alias), fn(derived) => checkAll("aliased bindings share one immutable buffer", [
+                        structuralEquals([gpuLength(source), gpuLength(alias)], [4, 4]),
+                        structuralEquals([gpuLength(alsoAlias), gpuLength(derived)], [4, 4]),
+                        widthOf(alias) == widthOf(source), readsTo(alias, [0, 3], 0, [1, 4]),
+                        readsTo(alsoAlias, [0, 3], 0, [1, 4]), (lastOf(alias) ?: 0) == (lastOf(source) ?: 0),
+                        foldsTo(gpuFold(source, 0, addInts), 10), foldsTo(gpuFold(alias, 0, addInts), 10), foldsTo(gpuFold(alsoAlias, 0, addInts), 10),
+                        foldsTo(gpuFold(derived, 0, addInts), 20), readsTo(derived, [1], 0, [4]), readsTo(source, [1], 0, [2]), readsTo(alias, [1], 0, [2]),
+                        readsTo(alsoAlias, [1], 0, [2]), readback(alias, 4) == oobMessage(), readback(alsoAlias, -1) == oobMessage(), readback(source, 4) == readback(alias, 4),
+                        listLengthIs(fromGpu(alias), 4), listResultReadsTo(fromGpu(alsoAlias), [2], 0, [3])
+                ]))
+    })
 }
 
 /// fusionCase pins [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size.
@@ -298,45 +278,25 @@ fn fusionCase() = {
 fn intKernelCase() = withIndices(0, fn(indices0) => intKernelWith(indices0))
 fn intKernelWith(indices0) = {
     match toGpu([1, 2, 3, 4]) {
-        Success { value } => match gpuMap(value, square) {
-            Success { value } => {
-                let uploaded34 = value
-                match gpuFold(uploaded34, 0, addInts) {
-                    Success { value } => {
-                        let total = value
-                        match toGpu([1, 2, 3]) {
-                            Success { value } => {
-                                let uploaded14 = value
-                                match gpuMap(uploaded14, fn(x) => (x * x) ) {
-                                    Success { value } => {
-                                        let uploaded33 = value
-                                        match fromGpu(uploaded33) {
-                                            Success { value } => {
-                                                let read0 = value
-                                                let squares = read0
-                                                withBuffer(toGpu([-1, -2, -3]), fn(value) => withBuffer(gpuMap(value, square), fn(negatives) => checkAll("int kernels", [
-                                                                            total == 30,
-                                                                            listLength(squares) == 3,
-                                                                            gpuLength(negatives) == 3,
-                                                                            listReadsTo(squares, [0, 2], 0, [1, 9]), gpuSatisfies(toGpu([10, 20]), fn(uploaded11) => foldsTo(gpuFold(uploaded11, 5, addInts), 35)),
-                                                                            readsTo(negatives, [0, 2], 0, [1, 9]), foldsTo(gpuFold(negatives, 0, addInts), 14),
-                                                                            gpuSatisfies(toGpu([7]), fn(uploaded10) => gpuSatisfies(gpuMap(uploaded10, square), fn(uploaded29) => foldsTo(gpuFold(uploaded29, 0, addInts), 49))), gpuSatisfies(gpuMap(indices0, square), fn(uploaded28) => foldsTo(gpuFold(uploaded28, 0, addInts), 0))
-                                                    ])))
-                                            }
-                                            Error { message } => gpuFailed(message)
-                                        }
-                                    }
-                                    Error { message } => gpuFailed(message)
-                                }
-                            }
-                            Error { message } => gpuFailed(message)
-                        }
-                    }
-                    Error { message } => gpuFailed(message)
-                }
-            }
-            Error { message } => gpuFailed(message)
-        }
+        Success { value } => withBuffer(gpuMap(value, square), fn(uploaded34) => {
+            withBuffer(gpuFold(uploaded34, 0, addInts), fn(total) => {
+                withBuffer(toGpu([1, 2, 3]), fn(uploaded14) => {
+                    withBuffer(gpuMap(uploaded14, fn(x) => (x * x) ), fn(uploaded33) => {
+                        withBuffer(fromGpu(uploaded33), fn(read0) => {
+                            let squares = read0
+                            withBuffer(toGpu([-1, -2, -3]), fn(value) => withBuffer(gpuMap(value, square), fn(negatives) => checkAll("int kernels", [
+                                                        total == 30,
+                                                        listLength(squares) == 3,
+                                                        gpuLength(negatives) == 3,
+                                                        listReadsTo(squares, [0, 2], 0, [1, 9]), gpuSatisfies(toGpu([10, 20]), fn(uploaded11) => foldsTo(gpuFold(uploaded11, 5, addInts), 35)),
+                                                        readsTo(negatives, [0, 2], 0, [1, 9]), foldsTo(gpuFold(negatives, 0, addInts), 14),
+                                                        gpuSatisfies(toGpu([7]), fn(uploaded10) => gpuSatisfies(gpuMap(uploaded10, square), fn(uploaded29) => foldsTo(gpuFold(uploaded29, 0, addInts), 49))), gpuSatisfies(gpuMap(indices0, square), fn(uploaded28) => foldsTo(gpuFold(uploaded28, 0, addInts), 0))
+                                ])))
+                        })
+                    })
+                })
+            })
+        })
         Error { message } => gpuFailed(message)
     }
 }
@@ -362,29 +322,21 @@ fn floatKernelWith(indices0, indices4) = {
 fn boolKernelCase() = withIndices(0, fn(indices0) => boolKernelWith(indices0))
 fn boolKernelWith(indices0) = {
     match toGpu([1, 2, 3, 4, 5]) {
-        Success { value } => match gpuMap(value, isOdd) {
-            Success { value } => {
-                let odds = value
-                match toGpu([1, 3]) {
-                    Success { value } => match gpuMap(value, isOdd) {
-                        Success { value } => {
-                            let allTrue = value
-                            withBuffer(toGpu([2, 4]), fn(value) => withBuffer(gpuMap(value, isOdd), fn(allFalse) => checkAll("bool kernels", [
-                                                            gpuLength(odds) == 5,
-                                                            gpuLength(allTrue) == 2,
-                                                            foldsTo(gpuFold(odds, 0, countOdd), 3), readsTo(odds, [0, 1, 4], false, [true, false, true]),
-                                                            (lastOf(odds) ?: false) == true, readback(odds, 1) == "false", readback(odds, 5) == oobMessage(),
-                                                            foldsTo(gpuFold(allTrue, 0, countOdd), 2), foldsTo(gpuFold(allFalse, 0, countOdd), 0), gpuSatisfies(toGpu([true, true, false]), fn(uploaded3) => foldsTo(gpuFold(uploaded3, 0, countOdd), 2)),
-                                                            bufferLengthIs(gpuMap(indices0, isOdd), 0)
-                            ])))
-                        }
-                        Error { message } => gpuFailed(message)
-                    }
-                    Error { message } => gpuFailed(message)
-                }
+        Success { value } => withBuffer(gpuMap(value, isOdd), fn(odds) => {
+            match toGpu([1, 3]) {
+                Success { value } => withBuffer(gpuMap(value, isOdd), fn(allTrue) => {
+                    withBuffer(toGpu([2, 4]), fn(value) => withBuffer(gpuMap(value, isOdd), fn(allFalse) => checkAll("bool kernels", [
+                                                    gpuLength(odds) == 5,
+                                                    gpuLength(allTrue) == 2,
+                                                    foldsTo(gpuFold(odds, 0, countOdd), 3), readsTo(odds, [0, 1, 4], false, [true, false, true]),
+                                                    (lastOf(odds) ?: false) == true, readback(odds, 1) == "false", readback(odds, 5) == oobMessage(),
+                                                    foldsTo(gpuFold(allTrue, 0, countOdd), 2), foldsTo(gpuFold(allFalse, 0, countOdd), 0), gpuSatisfies(toGpu([true, true, false]), fn(uploaded3) => foldsTo(gpuFold(uploaded3, 0, countOdd), 2)),
+                                                    bufferLengthIs(gpuMap(indices0, isOdd), 0)
+                    ])))
+                })
+                Error { message } => gpuFailed(message)
             }
-            Error { message } => gpuFailed(message)
-        }
+        })
         Error { message } => gpuFailed(message)
     }
 }
@@ -455,24 +407,16 @@ fn denseOutOfBounds(buffer, index) = match gpuGet(buffer, index) {
 /// [GPU-BUFFER-ELEM]: every scalar width narrows into dense storage and widens back exactly — gpuGet reads each index at the element's own width, the identity kernel and fromGpu both return the source list, and out-of-bounds reads error.
 fn denseRoundTrip(label, values) = withIndices(length(values), fn(indices) => denseRoundTripWith(label, values, indices))
 fn denseRoundTripWith(label, values, indices) = {
-    match toGpu(values) {
-        Success { value } => {
-            let buffer = value
-            match gpuMap(buffer, fn(value) => value) {
-                Success { value } => {
-                    let mapped = value
-                    withBuffer(gpuZipWith(indices, buffer, fn(index, value) => gpuGet(buffer, index) ?: value), fn(gathered) => checkAll(label, [
-                                    gpuLength(buffer) == length(values), gpuSatisfies(fromGpu(buffer), fn(checked0) => structuralEquals(checked0, values)),
-                                    gpuSatisfies(fromGpu(mapped), fn(checked0) => structuralEquals(checked0, values)),
-                                    gpuSatisfies(fromGpu(gathered), fn(checked0) => structuralEquals(checked0, values)),
-                                    range(0, length(values)) |> fold(true, fn(ok, i) => ok && denseRead(buffer, values, i)), denseOutOfBounds(buffer, -1), denseOutOfBounds(buffer, length(values))
-                    ]))
-                }
-                Error { message } => gpuFailed(message)
-            }
-        }
-        Error { message } => gpuFailed(message)
-    }
+    withBuffer(toGpu(values), fn(buffer) => {
+        withBuffer(gpuMap(buffer, fn(value) => value), fn(mapped) => {
+            withBuffer(gpuZipWith(indices, buffer, fn(index, value) => gpuGet(buffer, index) ?: value), fn(gathered) => checkAll(label, [
+                            gpuLength(buffer) == length(values), gpuSatisfies(fromGpu(buffer), fn(checked0) => structuralEquals(checked0, values)),
+                            gpuSatisfies(fromGpu(mapped), fn(checked0) => structuralEquals(checked0, values)),
+                            gpuSatisfies(fromGpu(gathered), fn(checked0) => structuralEquals(checked0, values)),
+                            range(0, length(values)) |> fold(true, fn(ok, i) => ok && denseRead(buffer, values, i)), denseOutOfBounds(buffer, -1), denseOutOfBounds(buffer, length(values))
+            ]))
+        })
+    })
 }
 
 fn denseIntegerWidthsCase() = {
