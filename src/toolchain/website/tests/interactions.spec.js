@@ -295,6 +295,11 @@ test.describe("desktop interactions", () => {
     for (const block of await install.locator(".install-option pre").all()) {
       expect(await block.evaluate((el) => el.scrollWidth <= el.clientWidth), "an install command is cut off").toBe(true);
     }
+    await page.setViewportSize({ width: 390, height: 900 });
+    for (const block of await install.locator(".install-option pre").all()) {
+      expect(await block.evaluate((el) => el.scrollWidth <= el.clientWidth), "an install command is cut off on a phone").toBe(true);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
     await expect(install.locator('[data-os="unix"]')).toContainText("macOS and Linux");
     await expect(install.locator(".install-grid")).toHaveCount(0);
     expect((await install.boundingBox()).height).toBeLessThan(260);
