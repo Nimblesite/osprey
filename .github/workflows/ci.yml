@@ -1019,8 +1019,13 @@ jobs:
       - name: Bank native tests (osprey test)
         run: make _bank_test
 
+      # glibc's allocator internals need build-id symbols for the offline
+      # symbolization assertion [PROF-SYMBOLIZE-OFFLINE].
       - name: Profiler suite
-        run: make _test_profiler
+        run: |
+          set -euo pipefail
+          sudo apt-get -o Dir::Cache::Archives="$HOME/.cache/osprey-apt" -o APT::Keep-Downloaded-Packages=true install -y libc6-dbg
+          make _test_profiler
 
       - name: Shared mobile domain and build-tool regressions
         run: |

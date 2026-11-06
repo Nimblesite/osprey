@@ -42,6 +42,13 @@ test('WASM tests use only their toolchain and retain every acceptance step', () 
   assert.match(wasm, /make _test_wasm_goldens/)
 })
 
+test('Only the Linux profiler suite installs glibc debug symbols', () => {
+  const setup = readFileSync('.github/actions/setup-osprey-compiler/action.yml', 'utf8')
+  const workflow = readFileSync('.github/workflows/ci.yml', 'utf8')
+  assert.doesNotMatch(setup, /(?:apt_install|apt-get install)[^\n]*libc6-dbg/)
+  assert.match(workflow, /- name: Profiler suite\n        run: \|\n[\s\S]*?install -y libc6-dbg\n          make _test_profiler/)
+})
+
 // A job-shaped block with the contract's own name and detector gate, so an
 // evasion fails on the guard and not on an incidental mismatch.
 const JOB_HEADER = '  build:\n    name: Build, Format & Analyse\n    needs: changes\n' +
