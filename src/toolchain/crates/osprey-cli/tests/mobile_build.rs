@@ -264,34 +264,30 @@ fn desktop_slices_build_with_the_hosts_tools() -> std::io::Result<()> {
 #[test]
 fn mobile_sdk_errors_are_actionable_and_ndk_overrides_win() -> std::io::Result<()> {
     let fixture = Fixture::new("discovery")?;
-    fails(
-        &fixture
-            .command("ios", "app.a")
-            .env("OSPREY_XCRUN", fixture.0.join("missing"))
-            .output()?,
-        "install Xcode",
-    );
-    fails(
-        &fixture
-            .command("ios-sim", "app.a")
-            .env("MOBILE_SDK", fixture.0.join("missing"))
-            .output()?,
-        "iphonesimulator SDK unavailable",
-    );
-    fails(
-        &fixture
-            .command("macos", "app.a")
-            .env("MOBILE_SDK", fixture.0.join("missing"))
-            .output()?,
-        "macosx SDK unavailable",
-    );
-    for key in ["ANDROID_NDK_HOME", "ANDROID_NDK_ROOT"] {
+    // Each target with its toolchain variable pointed at a missing path names
+    // what to install.
+    for (target, key, message) in [
+        ("ios", "OSPREY_XCRUN", "install Xcode"),
+        ("ios-sim", "MOBILE_SDK", "iphonesimulator SDK unavailable"),
+        ("macos", "MOBILE_SDK", "macosx SDK unavailable"),
+        (
+            "android-arm64",
+            "ANDROID_NDK_HOME",
+            "Android NDK clang not found",
+        ),
+        (
+            "android-arm64",
+            "ANDROID_NDK_ROOT",
+            "Android NDK clang not found",
+        ),
+    ] {
+        let missing = fixture.0.join("missing");
         fails(
             &fixture
-                .command("android-arm64", "app.a")
-                .env(key, fixture.0.join("missing"))
+                .command(target, "app.a")
+                .env(key, missing)
                 .output()?,
-            "Android NDK clang not found",
+            message,
         );
     }
     // The numeric newest version wins (28.2 > 9.9), even when 9.9 has a broken compiler.
