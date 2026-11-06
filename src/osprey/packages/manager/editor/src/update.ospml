@@ -71,17 +71,20 @@ module Update
             true => confirmUnverified (current, item.entryIdentity.entryKey)
             false => Runtime::step (Store::fault (current, "Recorded findings block adding ${item.entryIdentity.entryKey}."))
 
-    startAdd current = match current.packagePending || current.packageSelection == ""
-        true => Runtime::step current
-        false => match Packages::catalogAt (current.packageCatalog, current.packageSelection)
+    /// No package work in flight and a package selected to act on.
+    selected current = current.packagePending == false && current.packageSelection != ""
+
+    startAdd current = match selected current
+        false => Runtime::step current
+        true => match Packages::catalogAt (current.packageCatalog, current.packageSelection)
             Success item => addCatalog (current, item)
             Error _ => match Packages::packageAt (current.packageGraph.workspacePackages, current.packageSelection)
                 Success item => addPackage (current, item)
                 Error _ => Runtime::step (Store::fault (current, "Select a package before adding it."))
 
-    startRemove current = match current.packagePending || current.packageSelection == ""
-        true => Runtime::step current
-        false => match Packages::packageAt (current.packageGraph.workspacePackages, current.packageSelection)
+    startRemove current = match selected current
+        false => Runtime::step current
+        true => match Packages::packageAt (current.packageGraph.workspacePackages, current.packageSelection)
             Error _ => Runtime::step (Store::fault (current, "Select an installed package before removing it."))
             Success item => match item.entryDirect
                 false => Runtime::step (Store::status (current, "Only direct dependencies can be removed.", false, false))

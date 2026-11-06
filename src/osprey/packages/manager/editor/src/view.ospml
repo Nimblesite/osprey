@@ -39,9 +39,11 @@ module View
         true => Ui::badge (unverified, unverifiedSymbol, ui::Caution)
         false => Ui::badge ("${length findings} findings", "exclamationmark.shield", ui::Danger)
 
+    installedBadges item = [Ui::badge (item.entryIdentity.entryVersion, "tag", ui::Accent), presenceBadge item, dependencyBadge item]
+
     installedRow item = Ui::entry (installedKey item, "shippingbox", groupOf item, Ui::column [
         Ui::styled (installedKey item, ui::Headline, ui::Primary),
-        Ui::row [Ui::badge (item.entryIdentity.entryVersion, "tag", ui::Accent), presenceBadge item, dependencyBadge item, findingsBadge item.entryFindings],
+        Ui::row (listAppend (installedBadges item, findingsBadge item.entryFindings)),
     ])
 
     groupOf item = match item.entryDirect
@@ -50,7 +52,7 @@ module View
 
     catalogRow item = Ui::entry (catalogKey item, "globe", "Registry", Ui::column [
         Ui::styled (catalogKey item, ui::Headline, ui::Primary),
-        Ui::row [Ui::badge (Packages::newest item, "tag", ui::Accent), findingsBadge item.catalogFindings],
+        catalogBadges item,
     ])
 
     searchField snapshot = ui::Field(label = "Search packages", value = snapshot.packageSearch, prompt = "Search @organization/package", secure = false, multiline = false, commit = ui::OnEdit, bind = Search)
@@ -94,8 +96,10 @@ module View
     findingLines findings = mapList (findings, \finding => Ui::styled (finding, ui::Callout, ui::Danger))
 
     findingsSection findings = match isEmpty findings
-        true => Ui::section ("Security findings", "Findings are unverified local report data; none recorded is not an audit.", [Ui::badge (unverified, unverifiedSymbol, ui::Caution)])
-        false => Ui::section ("Security findings", "Resolve these findings before installing or adding this release.", findingLines findings)
+        true => findingsPanel "Findings are unverified local report data; none recorded is not an audit." [Ui::badge (unverified, unverifiedSymbol, ui::Caution)]
+        false => findingsPanel "Resolve these findings before installing or adding this release." (findingLines findings)
+
+    findingsPanel note body = Ui::section ("Security findings", note, body)
 
     projectOf snapshot = match snapshot.packageGraph.workspaceProject
         "" => snapshot.packageWorkspace
@@ -104,7 +108,7 @@ module View
     projectNode snapshot = Ui::evidence ("Project", projectOf snapshot)
 
     installedFacts item = Ui::column [
-        Ui::row [Ui::badge (item.entryIdentity.entryVersion, "tag", ui::Accent), presenceBadge item, dependencyBadge item],
+        Ui::row (installedBadges item),
         Ui::evidence ("Digest", item.entryIdentity.entryDigest),
     ]
 
@@ -117,9 +121,11 @@ module View
         keyList ("Required by", item.entryDependents),
     ]
 
-    addInstalledEnabled (snapshot, item) = snapshot.packagePending == false && item.entryDirect == false && isEmpty item.entryFindings
+    idle snapshot = snapshot.packagePending == false
 
-    removeInstalledEnabled (snapshot, item) = snapshot.packagePending == false && item.entryDirect
+    addInstalledEnabled (snapshot, item) = idle snapshot && item.entryDirect == false && isEmpty item.entryFindings
+
+    removeInstalledEnabled (snapshot, item) = idle snapshot && item.entryDirect
 
     installedActions (snapshot, item) = [
         Ui::action ("Add to project", "plus", ui::Plain, addInstalledEnabled (snapshot, item), Add),
@@ -132,8 +138,10 @@ module View
             true => Ui::styled ("Audit status unverified: ${unverified}. Adding from this local registry requires explicit confirmation.", ui::Callout, ui::Caution)
             false => Ui::styled ("Audit status unverified. Hosted installation is disabled until an authenticated audit contract exists.", ui::Callout, ui::Danger)
 
+    catalogBadges item = Ui::row [Ui::badge (Packages::newest item, "tag", ui::Accent), findingsBadge item.catalogFindings]
+
     catalogFacts (snapshot, item) = Ui::column [
-        Ui::row [Ui::badge (Packages::newest item, "tag", ui::Accent), findingsBadge item.catalogFindings],
+        catalogBadges item,
         Ui::evidence ("Releases", join item.catalogVersions ", "),
         Ui::evidence ("Registry", snapshot.packageRegistry),
     ]
@@ -146,10 +154,10 @@ module View
         findingsSection item.catalogFindings,
     ]
 
-    addOffered (snapshot, item) = snapshot.packagePending == false && isEmpty item.catalogFindings && (item.catalogEvidence || Packages::isLoopback snapshot.packageRegistry)
+    addOffered (snapshot, item) = idle snapshot && isEmpty item.catalogFindings && (item.catalogEvidence || Packages::isLoopback snapshot.packageRegistry)
 
     removeOffered (snapshot, key) = match Packages::packageAt (snapshot.packageGraph.workspacePackages, key)
-        Success item => item.entryPresent && item.entryDirect && snapshot.packagePending == false
+        Success item => item.entryPresent && item.entryDirect && idle snapshot
         Error _ => false
 
     catalogActions (snapshot, item) = [
