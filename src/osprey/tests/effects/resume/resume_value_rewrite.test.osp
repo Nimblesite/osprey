@@ -914,7 +914,7 @@ fn resumeFromNestedHelpersCase() = {
     // Every arm in the span region observed the one completed answer, and the
     // first region's state is untouched by the second.
     checkAll("both deep regions keep their own transcripts", [
-        structuralEquals([contains(spanTags, "nested.a|nested.b|"), contains(spanTags, "|tail|")], [true, true]),
+        structuralEquals(mapList(["nested.a|nested.b|", "|tail|"], fn(k) => contains(spanTags, k)), [true, true]),
         !contains(spanSettled, "shallow|tail"),
         spanSeen == "15|15|15|15|", length(spanSeen) == 12,
         spanCalls == 4, spanSeed == 4,

@@ -122,14 +122,14 @@ fn nestedMapEffectPipelineCase() = {
     checkCells("persistent map pipelines preserve descendants and source generations", ["high"], fn(xs, i) => listText(xs)(i), [0], [30], fn(key, index) => intGroup(ints, key, index), fn(xs, i) => listInt(xs)(i))
     checkAll("persistent map pipelines preserve descendants and source generations", [
             mapLength(rewritten) == 2,
-            structuralEquals([mapContains(rewritten, "low"), mapContains(rewritten, "high")], [false, true]),
+            structuralEquals(mapList(["low", "high"], fn(k) => mapContains(rewritten, k)), [false, true]),
             mapContains(rewritten, "extra"),
             mapLength(merged) == 2,
             mapContains(ints, "low"),
             !mapContains(ints, "extra"),
             listLength(mapKeys(ints)) == 2,
             listLength(mapValues(ints)) == 2,
-            structuralEquals([listContains(mapKeys(ints), "low"), listContains(mapKeys(ints), "high")], [true, true]),
+            structuralEquals(mapList(["low", "high"], fn(k) => listContains(mapKeys(ints), k)), [true, true]),
             !listContains(mapKeys(ints), "extra"),
             listLength(listGet(mapValues(ints), 0) ?: [99]) >= 2,
             listLength(listGet(mapValues(ints), 1) ?: [99]) >= 2

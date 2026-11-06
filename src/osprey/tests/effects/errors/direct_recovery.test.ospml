@@ -586,14 +586,14 @@ everyResultTypeCase () =
         rendered == "12|fallback|true|spare|false|30|9",
         length rendered == 33,
         structuralEquals [startsWith rendered "12|", endsWith rendered "|9"] [true, true],
-        structuralEquals [contains rendered "|spare|", contains rendered "|true|"] [true, true],
+        structuralEquals (mapList ["|spare|", "|true|"] (\k => contains rendered k)) [true, true],
         !(contains rendered "2.5"),
         !(contains rendered "|13|"),
         marks == 1,
         trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
         length trail == 69,
         structuralEquals [startsWith trail "i:count|", endsWith trail "m:rendered|"] [true, true],
-        structuralEquals [contains trail "|s:spare|", contains trail "b:allowed|t:name|"] [true, true],
+        structuralEquals (mapList ["|s:spare|", "b:allowed|t:name|"] (\k => contains trail k)) [true, true],
         !(contains trail "|i:count|")
     ]
 
@@ -1054,7 +1054,7 @@ multiEffectRegionCase () =
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         length trail == 70,
         structuralEquals [startsWith trail "R(qty)|", endsWith trail "A(scored 25)|"] [true, true],
-        structuralEquals [contains trail "|S(6,4)|", contains trail "|L(order)|P(order)|"] [true, true],
+        structuralEquals (mapList ["|S(6,4)|", "|L(order)|P(order)|"] (\k => contains trail k)) [true, true],
         !(contains trail "P(order)|L(order)"),
         !(contains trail "A(qty)"),
         contains trail "A(filled 6)",

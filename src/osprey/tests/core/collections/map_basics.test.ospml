@@ -25,7 +25,7 @@ constructionAndOverwriteCase () =
         mapLength empty == 0,
         !(mapContains empty "missing"),
         structuralEquals [mapLength m1, mapLength m2, mapLength m3] [1, 2, 3],
-        structuralEquals [mapContains m3 "alice", mapContains m3 "bob", mapContains m3 "charlie"] [true, true, true],
+        structuralEquals (mapList ["alice", "bob", "charlie"] (\k => mapContains m3 k)) [true, true, true],
         !(mapContains m3 "dave"),
         mapLength m4 == 3,
         mapLength m3 == 3
@@ -38,8 +38,8 @@ constructionAndOverwriteCase () =
         intAt (m2, "alice") == 25,
         intAt (m2, "bob") == 30,
         !(mapContains m2 "charlie"),
-        structuralEquals [intAt (m3, "alice"), intAt (m3, "bob"), intAt (m3, "charlie")] [25, 30, 35],
-        structuralEquals [intAt (m4, "alice"), intAt (m4, "bob"), intAt (m4, "charlie")] [99, 30, 35],
+        structuralEquals (mapList ["alice", "bob", "charlie"] (\k => intAt (m3, k))) [25, 30, 35],
+        structuralEquals (mapList ["alice", "bob", "charlie"] (\k => intAt (m4, k))) [99, 30, 35],
         intAt (m3, "alice") == 25,
         m4Missing
     ]
@@ -123,7 +123,7 @@ removalAndMergeCase () =
 
     // Check retained values, exact failure, and source preservation.
     checkAll "persistent removal values and isolation" [
-        structuralEquals [intAt (removed, "k1"), intAt (removed, "k2"), intAt (removed, "k4")] [1, 2, 4],
+        structuralEquals (mapList ["k1", "k2", "k4"] (\k => intAt (removed, k))) [1, 2, 4],
         intAt (removed, "k5") == 5,
         removedMissing,
         structuralEquals [intAt (g5, "k3"), intAt (absentRemoved, "k1"), intAt (absentRemoved, "k5")] [3, 1, 5],
@@ -141,10 +141,10 @@ removalAndMergeCase () =
 
     // Check exact right-biased values in both directions.
     checkAll "map merge right-biased values" [
-        structuralEquals [intAt (mergedAB, "x"), intAt (mergedAB, "y"), intAt (mergedAB, "z")] [1, 20, 30],
+        structuralEquals (mapList ["x", "y", "z"] (\k => intAt (mergedAB, k))) [1, 20, 30],
         structuralEquals [intAt (mergedAB, "w"), intAt (mergedBA, "x"), intAt (mergedBA, "y")] [40, 1, 2],
         structuralEquals [intAt (mergedBA, "z"), intAt (mergedBA, "w"), intAt (mergedPlus, "x")] [3, 40, 1],
-        structuralEquals [intAt (mergedPlus, "y"), intAt (mergedPlus, "z"), intAt (mergedPlus, "w")] [20, 30, 40],
+        structuralEquals (mapList ["y", "z", "w"] (\k => intAt (mergedPlus, k))) [20, 30, 40],
         structuralEquals [intAt (a, "y"), intAt (b, "y")] [2, 20]
     ]
 
@@ -171,11 +171,10 @@ viewsAndCrossCollectionCase () =
 
     // Check view contents without assuming iteration order.
     checkAll "map key and value view contents" [
-        structuralEquals [listContains keys "k1", listContains keys "k2", listContains keys "k3"] [true, true, true],
-        structuralEquals [listContains keys "k4", listContains keys "k5"] [true, true],
+        structuralEquals (mapList ["k1", "k2", "k3"] (\k => listContains keys k)) [true, true, true],
+        structuralEquals (mapList ["k4", "k5"] (\k => listContains keys k)) [true, true],
         !(listContains keys "missing"),
-        structuralEquals [listContains values 1, listContains values 2, listContains values 3] [true, true, true],
-        structuralEquals [listContains values 4, listContains values 5] [true, true],
+        structuralEquals (mapList [1, 2, 3, 4, 5] (\k => listContains values k)) [true, true, true, true, true],
         !(listContains values 99)
     ]
 
@@ -374,10 +373,9 @@ keyShapeCase () =
     // Twelve literal keys carry values 0..11 in declaration order and the long
     // key carries 12; the long key spells 26 letters + 10 digits + "abcd" = 40.
     checkAll "every key shape binds its own value" [
-        structuralEquals [intAt (shaped, ""), intAt (shaped, "a"), intAt (shaped, "A")] [0, 1, 2],
-        structuralEquals [intAt (shaped, " "), intAt (shaped, " a"), intAt (shaped, "a ")] [3, 4, 5],
-        structuralEquals [intAt (shaped, "a b"), intAt (shaped, "a.b"), intAt (shaped, "a-b")] [6, 7, 8],
-        structuralEquals [intAt (shaped, "a_b"), intAt (shaped, "007"), intAt (shaped, "7")] [9, 10, 11],
+        structuralEquals (mapList ["", "a", "A", " ", " a", "a "] (\k => intAt (shaped, k))) [0, 1, 2, 3, 4, 5],
+        structuralEquals (mapList ["a b", "a.b", "a-b"] (\k => intAt (shaped, k))) [6, 7, 8],
+        structuralEquals (mapList ["a_b", "007", "7"] (\k => intAt (shaped, k))) [9, 10, 11],
         structuralEquals [intAt (shapedLong, longKey), mapLength shaped, mapLength shapedLong] [12, 12, 13],
         length shapedLong == 13,
         !(isEmpty shaped),
@@ -389,11 +387,10 @@ keyShapeCase () =
     // Membership follows exact content, so every near miss — a differing case, an
     // extra space, a longer or shorter spelling, a leading zero — must be absent.
     checkAll "map membership follows exact key content" [
-        structuralEquals [mapContains shaped "", mapContains shaped "a", mapContains shaped "A"] [true, true, true],
-        structuralEquals [mapContains shaped " ", mapContains shaped " a", mapContains shaped "a "] [true, true, true],
-        structuralEquals [mapContains shaped "a b", mapContains shaped "a.b"] [true, true],
-        structuralEquals [mapContains shaped "a-b", mapContains shaped "a_b"] [true, true],
-        structuralEquals [mapContains shaped "007", mapContains shaped "7"] [true, true],
+        structuralEquals (mapList ["", "a", "A"] (\k => mapContains shaped k)) [true, true, true],
+        structuralEquals (mapList [" ", " a", "a "] (\k => mapContains shaped k)) [true, true, true],
+        structuralEquals (mapList ["a b", "a.b", "a-b", "a_b"] (\k => mapContains shaped k)) [true, true, true, true],
+        structuralEquals (mapList ["007", "7"] (\k => mapContains shaped k)) [true, true],
         mapContains shapedLong longKey,
         !(mapContains shaped longKey),
         !(mapContains shapedLong longKeyPrefix),
@@ -439,20 +436,20 @@ keyShapeCase () =
         listLength (mapKeys shapedLong) == 13,
         listLength (mapValues shapedLong) == 13,
         listLength (mapKeys shapedLong) == mapLength shapedLong,
-        structuralEquals [listContains (mapKeys shapedLong) "", listContains (mapKeys shapedLong) "a"] [true, true],
-        structuralEquals [listContains (mapKeys shapedLong) "A", listContains (mapKeys shapedLong) " "] [true, true],
-        structuralEquals [listContains (mapKeys shapedLong) " a", listContains (mapKeys shapedLong) "a "] [true, true],
+        structuralEquals (mapList ["", "a"] (\k => listContains (mapKeys shapedLong) k)) [true, true],
+        structuralEquals (mapList ["A", " "] (\k => listContains (mapKeys shapedLong) k)) [true, true],
+        structuralEquals (mapList [" a", "a "] (\k => listContains (mapKeys shapedLong) k)) [true, true],
         listContains (mapKeys shapedLong) "a b",
         listContains (mapKeys shapedLong) "a.b",
         listContains (mapKeys shapedLong) "a-b",
         listContains (mapKeys shapedLong) "a_b",
-        structuralEquals [listContains (mapKeys shapedLong) "007", listContains (mapKeys shapedLong) "7"] [true, true],
+        structuralEquals (mapList ["007", "7"] (\k => listContains (mapKeys shapedLong) k)) [true, true],
         listContains (mapKeys shapedLong) longKey,
         !(listContains (mapKeys shapedLong) longKeyPrefix),
         !(listContains (mapKeys shapedLong) "b"),
         !(listContains (mapKeys shapedLong) "  "),
         !(listContains (mapKeys shaped) longKey),
-        structuralEquals [listContains (mapValues shapedLong) 0, listContains (mapValues shapedLong) 6] [true, true],
+        structuralEquals (mapList [0, 6] (\k => listContains (mapValues shapedLong) k)) [true, true],
         listContains (mapValues shapedLong) 12,
         !(listContains (mapValues shapedLong) 13),
         !(listContains (mapValues shaped) 12)
@@ -537,9 +534,8 @@ overwriteChainCase () =
     // move only its value, and the source generation keeps the old 2.
     checkAll "overwriting one prefix key leaves its neighbours alone" [
         structuralEquals [mapLength prefixes, mapLength prefixOverwritten, intAt (prefixes, "p")] [4, 4, 1],
-        structuralEquals [intAt (prefixes, "pa"), intAt (prefixes, "pat"), intAt (prefixes, "path")] [2, 3, 4],
-        structuralEquals [intAt (prefixOverwritten, "p"), intAt (prefixOverwritten, "pa")] [1, 20],
-        structuralEquals [intAt (prefixOverwritten, "pat"), intAt (prefixOverwritten, "path")] [3, 4],
+        structuralEquals (mapList ["pa", "pat", "path"] (\k => intAt (prefixes, k))) [2, 3, 4],
+        structuralEquals (mapList ["p", "pa", "pat", "path"] (\k => intAt (prefixOverwritten, k))) [1, 20, 3, 4],
         intAt (prefixes, "pa") == 2,
         !(mapContains prefixes "pathx"),
         !(mapContains prefixes "Path"),
@@ -574,9 +570,9 @@ mergeAlgebraCase () =
     // "K" and "k.k" only exist on the left (2, 3), "k-k" and " " only on the right.
     checkAll "right-biased union values and lengths" [
         structuralEquals [mapLength left, mapLength right, mapLength third, mapLength lr, mapLength rl] [4, 4, 3, 6, 6],
-        structuralEquals [intAt (lr, "k"), intAt (lr, "K"), intAt (lr, "k.k"), intAt (lr, "")] [10, 2, 3, 40],
+        structuralEquals (mapList ["k", "K", "k.k", ""] (\k => intAt (lr, k))) [10, 2, 3, 40],
         structuralEquals [intAt (lr, "k-k"), intAt (lr, " "), intAt (rl, "k"), intAt (rl, "K")] [30, 50, 1, 2],
-        structuralEquals [intAt (rl, "k.k"), intAt (rl, ""), intAt (rl, "k-k"), intAt (rl, " ")] [3, 4, 30, 50],
+        structuralEquals (mapList ["k.k", "", "k-k", " "] (\k => intAt (rl, k))) [3, 4, 30, 50],
         intAt (lr, "k") != (mapGet rl "k" ?: ((0 - 998) )),
         intAt (lr, "") != (mapGet rl "" ?: ((0 - 998) )),
         !(mapContains lr "q"),
@@ -610,12 +606,12 @@ mergeAlgebraCase () =
     // and `left + right + third` associates to the left, so it agrees as well.
     checkAll "merge is associative and the + alias agrees" [
         structuralEquals [mapLength lrThenThird, mapLength leftThenRt, mapLength plusChain] [7, 7, 7],
-        structuralEquals [intAt (lrThenThird, "k"), intAt (lrThenThird, "K"), intAt (lrThenThird, "k.k")] [10, 200, 3],
-        structuralEquals [intAt (lrThenThird, ""), intAt (lrThenThird, "k-k"), intAt (lrThenThird, " ")] [40, 300, 50],
+        structuralEquals (mapList ["k", "K", "k.k"] (\k => intAt (lrThenThird, k))) [10, 200, 3],
+        structuralEquals (mapList ["", "k-k", " "] (\k => intAt (lrThenThird, k))) [40, 300, 50],
         structuralEquals [intAt (lrThenThird, "q"), intAt (leftThenRt, "k"), intAt (leftThenRt, "K")] [700, 10, 200],
-        structuralEquals [intAt (leftThenRt, "k.k"), intAt (leftThenRt, ""), intAt (leftThenRt, "k-k")] [3, 40, 300],
+        structuralEquals (mapList ["k.k", "", "k-k"] (\k => intAt (leftThenRt, k))) [3, 40, 300],
         structuralEquals [intAt (leftThenRt, " "), intAt (leftThenRt, "q"), intAt (plusChain, "K")] [50, 700, 200],
-        structuralEquals [intAt (plusChain, "k-k"), intAt (plusChain, "q")] [300, 700],
+        structuralEquals (mapList ["k-k", "q"] (\k => intAt (plusChain, k))) [300, 700],
         intAt (lrThenThird, "K") == (mapGet leftThenRt "K" ?: ((0 - 998) )),
         intAt (lrThenThird, "k-k") == (mapGet leftThenRt "k-k" ?: ((0 - 998) ))
     ]
@@ -626,8 +622,7 @@ mergeAlgebraCase () =
     checkAll "merged views and single-key override interaction" [
         listLength (mapKeys lr) == 6,
         listLength (mapValues lr) == 6,
-        structuralEquals [listContains (mapKeys lr) "", listContains (mapKeys lr) " "] [true, true],
-        structuralEquals [listContains (mapKeys lr) "k-k", listContains (mapKeys lr) "K"] [true, true],
+        structuralEquals (mapList ["", " ", "k-k", "K"] (\k => listContains (mapKeys lr) k)) [true, true, true, true],
         !(listContains (mapKeys lr) "q"),
         listContains (mapValues lr) 10,
         listContains (mapValues lr) 50,
@@ -679,7 +674,7 @@ removalSweepCase () =
         !(mapContains noE "e"),
         structuralEquals [intAt (noA, "b"), intAt (noA, "e"), intAt (noB, "a"), intAt (noB, "c")] [2, 5, 1, 3],
         structuralEquals [intAt (noC, "b"), intAt (noC, "d"), intAt (noD, "c"), intAt (noD, "e")] [2, 4, 3, 5],
-        structuralEquals [intAt (noE, "a"), intAt (noE, "d")] [1, 4],
+        structuralEquals (mapList ["a", "d"] (\k => intAt (noE, k))) [1, 4],
         mapContains base "a",
         mapContains base "e",
         intAt (base, "c") == 3
@@ -866,7 +861,7 @@ nestedCollectionCase () =
     checkAll "records hold collections and maps hold records" [
         bucketA.name == "alpha",
         structuralEquals [mapLength bucketItems, mapLength bucketA.items, listLength bucketTags] [2, 2, 2],
-        structuralEquals [intAt (bucketItems, "x"), intAt (bucketItems, "y")] [1, 2],
+        structuralEquals (mapList ["x", "y"] (\k => intAt (bucketItems, k))) [1, 2],
         !(mapContains bucketItems "z"),
         (listGet bucketTags 0 ?: "none") == "red",
         (listGet bucketTags 1 ?: "none") == "blue",
@@ -933,12 +928,12 @@ keyValueViewPairingCase () =
     // Both views hold every binding and nothing extra. Reversing both preserves
     // the pairing, because reverse maps index i to index n-1-i on either side.
     checkAll "key and value views hold every binding once" [
-        structuralEquals [listContains keys "a", listContains keys "b", listContains keys "c"] [true, true, true],
-        structuralEquals [listContains keys "d", listContains keys "e", listContains keys "f"] [true, true, true],
+        structuralEquals (mapList ["a", "b", "c"] (\k => listContains keys k)) [true, true, true],
+        structuralEquals (mapList ["d", "e", "f"] (\k => listContains keys k)) [true, true, true],
         !(listContains keys "g"),
         !(listContains keys ""),
-        structuralEquals [listContains values 1, listContains values 2, listContains values 3] [true, true, true],
-        structuralEquals [listContains values 4, listContains values 5, listContains values 6] [true, true, true],
+        structuralEquals (mapList [1, 2, 3] (\k => listContains values k)) [true, true, true],
+        structuralEquals (mapList [4, 5, 6] (\k => listContains values k)) [true, true, true],
         !(listContains values 0),
         !(listContains values 7),
         listLength (listReverse keys) == 6,

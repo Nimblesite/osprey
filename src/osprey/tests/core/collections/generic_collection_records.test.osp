@@ -107,7 +107,7 @@ fn genericRecordCollectionEffectCase() = {
             mapContains(envelopeMap, "primary"),
             !mapContains(envelopeMap, "missing"),
             structuralEquals([stringBack.metadata, length(textGroup(stringBack.payload, "long", 1))], [17, 5]),
-            structuralEquals([groupSize(stringBack.payload, "short"), groupSize(stringBack.payload, "long")], [2, 2]),
+            structuralEquals(mapList(["short", "long"], fn(k) => groupSize(stringBack.payload, k)), [2, 2]),
             structuralEquals([missingBack.metadata, mapLength(stringBack.payload)], [99, 2]),
             structuralEquals([mapLength(missingBack.payload), listLength(mapKeys(stringBack.payload))], [1, 2]),
             listContains(mapKeys(stringBack.payload), "short"),

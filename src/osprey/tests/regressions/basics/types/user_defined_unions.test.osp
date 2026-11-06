@@ -198,7 +198,7 @@ fn builtMapIndexCase() = {
             valueOr(built, "a", ((0 - 1) )) == 9,
             valueOr(built, "missing", ((0 - 1) )) == ((0 - 1) ),
             mapLength(built) == 2,
-            structuralEquals([mapContains(built, "a"), mapContains(built, "b")], [true, true]),
+            structuralEquals(mapList(["a", "b"], fn(k) => mapContains(built, k)), [true, true]),
             !mapContains(built, "missing"),
             absent,
             structuralEquals([mapLength(replaced), valueOr(replaced, "a", 0), valueOr(built, "a", 0)], [2, 25, 9]),

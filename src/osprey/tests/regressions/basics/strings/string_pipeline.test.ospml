@@ -167,9 +167,9 @@ stringPipelineCase () =
         missingIndexRejected
     ]
     checkAll "HTTP routing branches" [
-        structuralEquals [route ("GET", "/health"), route ("GET", "/api/users/42")] ["200 ok", "200 user-detail 42"],
+        structuralEquals (mapList ["/health", "/api/users/42"] (\k => route ("GET", k))) ["200 ok", "200 user-detail 42"],
         route ("GET", "/api/orders") == "200 api-fallback",
-        structuralEquals [route ("POST", "/api/users"), route ("POST", "/other")] ["201 created", "404 not-found"],
+        structuralEquals (mapList ["/api/users", "/other"] (\k => route ("POST", k))) ["201 created", "404 not-found"],
         route ("GET", "/random") == "404 not-found",
         route ("DELETE", "/anything") == "405 method-not-allowed"
     ]

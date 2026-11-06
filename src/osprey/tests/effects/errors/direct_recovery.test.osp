@@ -660,13 +660,13 @@ fn everyResultTypeCase() = {
         rendered == "12|fallback|true|spare|false|30|9",
         length(rendered) == 33,
         structuralEquals([startsWith(rendered, "12|"), endsWith(rendered, "|9")], [true, true]),
-        structuralEquals([contains(rendered, "|spare|"), contains(rendered, "|true|")], [true, true]),
-        structuralEquals([contains(rendered, "2.5"), contains(rendered, "|13|")], [false, false]),
+        structuralEquals(mapList(["|spare|", "|true|"], fn(k) => contains(rendered, k)), [true, true]),
+        structuralEquals(mapList(["2.5", "|13|"], fn(k) => contains(rendered, k)), [false, false]),
         marks == 1,
         trail == "i:count|f:ratio|b:allowed|t:name|s:spare|g:grade|r:lookup|m:rendered|",
         length(trail) == 69,
         structuralEquals([startsWith(trail, "i:count|"), endsWith(trail, "m:rendered|")], [true, true]),
-        structuralEquals([contains(trail, "|s:spare|"), contains(trail, "b:allowed|t:name|")], [true, true]),
+        structuralEquals(mapList(["|s:spare|", "b:allowed|t:name|"], fn(k) => contains(trail, k)), [true, true]),
         !contains(trail, "|i:count|")
     ])
 }
@@ -799,7 +799,7 @@ fn partialOverrideLatticeCase() = {
         flatTrail == "base:a|bonus:a|tier:a|base:b|bonus:b|tier:b|",
         length(flatTrail) == 44,
         structuralEquals([startsWith(flatTrail, "base:a|"), endsWith(flatTrail, "tier:b|")], [true, true]),
-        structuralEquals([contains(flatTrail, "tier:a|base:b|"), contains(flatTrail, "base:c")], [true, false])
+        structuralEquals(mapList(["tier:a|base:b|", "base:c"], fn(k) => contains(flatTrail, k)), [true, false])
     ])
 
     // The inner region supplies only `base`; `bonus` and `tier` still reach the
@@ -824,7 +824,7 @@ fn partialOverrideLatticeCase() = {
         split == reordered,
         length(split) == 9,
         structuralEquals([startsWith(split, "silver:"), endsWith(split, ":13")], [true, true]),
-        structuralEquals([contains(split, "r:1"), contains(split, "gold")], [true, false]),
+        structuralEquals(mapList(["r:1", "gold"], fn(k) => contains(split, k)), [true, false]),
         split != flat,
         (10 + 3 ) == 13,
         !startsWith(reordered, "13"),
@@ -839,12 +839,12 @@ fn partialOverrideLatticeCase() = {
         deepest == "bronze:3",
         length(deepest) == 8,
         structuralEquals([startsWith(deepest, "bronze:"), endsWith(deepest, ":3")], [true, true]),
-        structuralEquals([contains(deepest, ":1"), contains(deepest, ":2")], [false, false]),
+        structuralEquals(mapList([":1", ":2"], fn(k) => contains(deepest, k)), [false, false]),
         deepest != split,
         restored == "7|outer/70|7",
         length(restored) == 12,
         structuralEquals([startsWith(restored, "7|"), endsWith(restored, "|7")], [true, true]),
-        structuralEquals([contains(restored, "outer/70"), contains(restored, "70|outer")], [true, false]),
+        structuralEquals(mapList(["outer/70", "70|outer"], fn(k) => contains(restored, k)), [true, false]),
         !contains(restored, "|70|")
     ])
 }
@@ -914,7 +914,7 @@ fn higherOrderRecoveryCase() = {
         trail == "14|6|6|6|2|4|6|8|10|20|40|60|",
         length(trail) == 29,
         structuralEquals([startsWith(trail, "14|"), endsWith(trail, "60|")], [true, true]),
-        structuralEquals([contains(trail, "6|6|6|"), contains(trail, "|7|")], [true, false])
+        structuralEquals(mapList(["6|6|6|", "|7|"], fn(k) => contains(trail, k)), [true, false])
     ])
 
     // An empty list performs nothing, a singleton performs once, duplicates
@@ -1033,7 +1033,7 @@ fn recursiveAccumulationCase() = {
         trail == "8:1|7:2|6:3|5:4|4:5|3:6|2:7|1:8|",
         length(trail) == 32,
         structuralEquals([startsWith(trail, "8:1|"), endsWith(trail, "1:8|")], [true, true]),
-        structuralEquals([contains(trail, "|4:5|"), contains(trail, "9:")], [true, false]),
+        structuralEquals(mapList(["|4:5|", "9:"], fn(k) => contains(trail, k)), [true, false]),
         !contains(trail, "0:"),
         (visits * 10 ) == 80,
         total > 0,
@@ -1176,7 +1176,7 @@ fn multiEffectRegionCase() = {
         rendered == "priority:6:4:25",
         length(rendered) == 15,
         structuralEquals([startsWith(rendered, "priority:"), endsWith(rendered, ":25")], [true, true]),
-        structuralEquals([contains(rendered, ":6:4:"), contains(rendered, ":25:")], [true, false]),
+        structuralEquals(mapList([":6:4:", ":25:"], fn(k) => contains(rendered, k)), [true, false]),
         structuralEquals([notes, recoveries, shortages, policies], [3, 1, 1, 2]),
         (notes + recoveries + shortages + policies ) == 7,
         notes > recoveries,
@@ -1190,9 +1190,9 @@ fn multiEffectRegionCase() = {
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         length(trail) == 70,
         structuralEquals([startsWith(trail, "R(qty)|"), endsWith(trail, "A(scored 25)|")], [true, true]),
-        structuralEquals([contains(trail, "|S(6,4)|"), contains(trail, "|L(order)|P(order)|")], [true, true]),
-        structuralEquals([contains(trail, "P(order)|L(order)"), contains(trail, "A(qty)")], [false, false]),
-        structuralEquals([contains(trail, "A(filled 6)"), contains(trail, "A(allowed 4)")], [true, true]),
+        structuralEquals(mapList(["|S(6,4)|", "|L(order)|P(order)|"], fn(k) => contains(trail, k)), [true, true]),
+        structuralEquals(mapList(["P(order)|L(order)", "A(qty)"], fn(k) => contains(trail, k)), [false, false]),
+        structuralEquals(mapList(["A(filled 6)", "A(allowed 4)"], fn(k) => contains(trail, k)), [true, true]),
         !contains(trail, "S(4,6)"),
         !startsWith(trail, "A("),
         !endsWith(trail, "|P(order)|"),
@@ -1207,7 +1207,7 @@ fn multiEffectRegionCase() = {
         auditTrail == "filled 6|allowed 4|scored 25|",
         length(auditTrail) == 29,
         structuralEquals([startsWith(auditTrail, "filled 6|"), endsWith(auditTrail, "scored 25|")], [true, true]),
-        structuralEquals([contains(auditTrail, "|allowed 4|"), contains(auditTrail, "qty")], [true, false]),
+        structuralEquals(mapList(["|allowed 4|", "qty"], fn(k) => contains(auditTrail, k)), [true, false]),
         notes == 3,
         trail == "R(qty)|A(filled 6)|S(6,4)|A(allowed 4)|L(order)|P(order)|A(scored 25)|",
         recoveries == 1,
@@ -1221,7 +1221,7 @@ fn multiEffectRegionCase() = {
         length(generous) == 11,
         generous != rendered,
         structuralEquals([startsWith(generous, "basic:"), endsWith(generous, ":0")], [true, true]),
-        structuralEquals([contains(generous, ":2:6:"), contains(generous, "priority")], [true, false]),
+        structuralEquals(mapList([":2:6:", "priority"], fn(k) => contains(generous, k)), [true, false]),
         generousAudits == 3,
         generousAudits == notes,
         structuralEquals([notes, recoveries, shortages, policies], [3, 1, 1, 2]),
@@ -1320,7 +1320,7 @@ fn boundaryValueRecoveryCase() = {
         seen == "a1|a2|b3|",
         length(seen) == 9,
         structuralEquals([startsWith(seen, "a1|"), endsWith(seen, "b3|"), contains(seen, "|a2|")], [true, true, true]),
-        structuralEquals([contains(seen, "b1|"), contains(seen, "a3|")], [false, false]),
+        structuralEquals(mapList(["b1|", "a3|"], fn(k) => contains(seen, k)), [false, false]),
         structuralEquals([startsWith(joined, "/x/"), endsWith(joined, "  ")], [true, true]),
         contains(joined, "spaced")
     ])
@@ -1359,7 +1359,7 @@ fn boundaryValueRecoveryCase() = {
         !endsWith(punctuated, "e,"),
         repeated == "abab abab",
         structuralEquals([startsWith(repeated, "abab"), endsWith(repeated, "abab")], [true, true]),
-        structuralEquals([contains(repeated, "b a"), contains(repeated, "abc")], [true, false]),
+        structuralEquals(mapList(["b a", "abc"], fn(k) => contains(repeated, k)), [true, false]),
         length(repeated) == 9
     ])
 

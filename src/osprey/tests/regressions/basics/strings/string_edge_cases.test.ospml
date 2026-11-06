@@ -482,13 +482,13 @@ substringPositionCase () =
     ]
 
     checkAll "startsWith and endsWith agree with contains at both ends" [
-        structuralEquals [startsWith subject "", startsWith subject "b", startsWith subject "ba"] [true, true, true],
+        structuralEquals (mapList ["", "b", "ba"] (\k => startsWith subject k)) [true, true, true],
         startsWith subject "banana",
         !(startsWith subject "banana!"),
         !(startsWith subject "anana"),
         !(startsWith subject "B"),
-        structuralEquals [endsWith subject "", endsWith subject "a", endsWith subject "na"] [true, true, true],
-        structuralEquals [endsWith subject "ana", endsWith subject "banana"] [true, true],
+        structuralEquals (mapList ["", "a", "na"] (\k => endsWith subject k)) [true, true, true],
+        structuralEquals (mapList ["ana", "banana"] (\k => endsWith subject k)) [true, true],
         !(endsWith subject "!banana"),
         !(endsWith subject "banan"),
         !(endsWith subject "A"),
@@ -766,8 +766,8 @@ utf8CutCase () =
     eagle = "🦅x"
     checkAll "utf-8 cuts" [
         length quote == 8,
-        structuralEquals [take quote 1, take quote 2, take quote 3, take quote 4] ["“", "“", "“", "“o"],
-        structuralEquals [drop quote 1, drop quote 3, drop quote 5, drop quote 6] ["ok”", "ok”", "”", ""],
+        structuralEquals (mapList [1, 2, 3, 4] (\k => take quote k)) ["“", "“", "“", "“o"],
+        structuralEquals (mapList [1, 3, 5, 6] (\k => drop quote k)) ["ok”", "ok”", "”", ""],
         structuralEquals [take eagle 1, drop eagle 1] ["🦅", "x"],
         take quote 2 + drop quote 2 == quote,
         take eagle 3 + drop eagle 3 == eagle

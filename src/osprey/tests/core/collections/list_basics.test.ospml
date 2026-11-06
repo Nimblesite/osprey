@@ -70,15 +70,15 @@ constructionAndIdentityCase () =
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
     checkAll "construction and reverse contents" [
         structuralEquals [intAt (a, 0), intAt (a, 1), intAt (a, 2), intAt (b, 0), intAt (b, 1)] [1, 2, 3, 10, 20],
-        structuralEquals [intAt (reversed, 0), intAt (reversed, 1), intAt (reversed, 2)] [3, 2, 1],
-        structuralEquals [intAt (restored, 0), intAt (restored, 1), intAt (restored, 2)] [1, 2, 3],
-        structuralEquals [intAt (prepended, 0), intAt (prepended, 1), intAt (prepended, 2)] [0, 1, 2],
+        structuralEquals (mapList [0, 1, 2] (\k => intAt (reversed, k))) [3, 2, 1],
+        structuralEquals (mapList [0, 1, 2] (\k => intAt (restored, k))) [1, 2, 3],
+        structuralEquals (mapList [0, 1, 2] (\k => intAt (prepended, k))) [0, 1, 2],
         intAt (prepended, 3) == 3
     ]
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll "concat identities and boundaries" [
-        structuralEquals [intAt (concatenated, 0), intAt (concatenated, 2), intAt (concatenated, 3)] [1, 3, 10],
+        structuralEquals (mapList [0, 2, 3] (\k => intAt (concatenated, k))) [1, 3, 10],
         structuralEquals [intAt (concatenated, 4), intAt (emptyPlusA, 0), intAt (aPlusEmpty, 2)] [20, 1, 3],
         structuralEquals [intAt (doubledA, 3), intAt (abPlusA, 5), intAt (abPlusA, 7)] [1, 1, 3]
     ]
@@ -120,7 +120,7 @@ iterationAndPersistenceCase () =
     checkAll "iteration constituent values" [
         structuralEquals [intAt (a, 0), intAt (a, 1), intAt (a, 2), intAt (reversed, 0)] [1, 2, 3, 3],
         structuralEquals [intAt (reversed, 1), intAt (reversed, 2), intAt (combined, 0)] [2, 1, 1],
-        structuralEquals [intAt (combined, 1), intAt (combined, 2), intAt (combined, 3)] [2, 3, 10],
+        structuralEquals (mapList [1, 2, 3] (\k => intAt (combined, k))) [2, 3, 10],
         intAt (combined, 4) == 20
     ]
 
@@ -716,7 +716,7 @@ floatAndBoolListPatternCase () =
         !(headOr (listReverse pairOn, true)),
         structuralEquals [secondOr (mixed, true), secondOr (pairOn, true)] [false, false],
         structuralEquals [secondOr ([false, true], false), secondOr (noFlags, true)] [true, true],
-        structuralEquals [listContains mixed false, listContains mixed true] [true, true],
+        structuralEquals (mapList [false, true] (\k => listContains mixed k)) [true, true],
         !(listContains allOn false),
         !(listContains allOff true),
         structuralEquals [listLength (mixed + allOff), countTrue (mixed + allOff), tailLength mixed] [6, 2, 2],

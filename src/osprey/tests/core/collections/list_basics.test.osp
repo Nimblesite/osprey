@@ -75,15 +75,15 @@ fn constructionAndIdentityCase() = {
     // Constituent checks ensure the old length-only observations cannot hide corrupt contents.
     checkAll("construction and reverse contents", [
         structuralEquals([intAt(a, 0), intAt(a, 1), intAt(a, 2), intAt(b, 0), intAt(b, 1)], [1, 2, 3, 10, 20]),
-        structuralEquals([intAt(reversed, 0), intAt(reversed, 1), intAt(reversed, 2)], [3, 2, 1]),
-        structuralEquals([intAt(restored, 0), intAt(restored, 1), intAt(restored, 2)], [1, 2, 3]),
-        structuralEquals([intAt(prepended, 0), intAt(prepended, 1), intAt(prepended, 2)], [0, 1, 2]),
+        structuralEquals(mapList([0, 1, 2], fn(k) => intAt(reversed, k)), [3, 2, 1]),
+        structuralEquals(mapList([0, 1, 2], fn(k) => intAt(restored, k)), [1, 2, 3]),
+        structuralEquals(mapList([0, 1, 2], fn(k) => intAt(prepended, k)), [0, 1, 2]),
         intAt(prepended, 3) == 3
     ])
 
     // Concatenation identities and the operator alias are checked at their seams and endpoints.
     checkAll("concat identities and boundaries", [
-        structuralEquals([intAt(concatenated, 0), intAt(concatenated, 2), intAt(concatenated, 3)], [1, 3, 10]),
+        structuralEquals(mapList([0, 2, 3], fn(k) => intAt(concatenated, k)), [1, 3, 10]),
         structuralEquals([intAt(concatenated, 4), intAt(emptyPlusA, 0), intAt(aPlusEmpty, 2)], [20, 1, 3]),
         structuralEquals([intAt(doubledA, 3), intAt(abPlusA, 5), intAt(abPlusA, 7)], [1, 1, 3])
     ])
@@ -123,7 +123,7 @@ fn iterationAndPersistenceCase() = {
     checkAll("iteration constituent values", [
         structuralEquals([intAt(a, 0), intAt(a, 1), intAt(a, 2), intAt(reversed, 0)], [1, 2, 3, 3]),
         structuralEquals([intAt(reversed, 1), intAt(reversed, 2), intAt(combined, 0)], [2, 1, 1]),
-        structuralEquals([intAt(combined, 1), intAt(combined, 2), intAt(combined, 3)], [2, 3, 10]),
+        structuralEquals(mapList([1, 2, 3], fn(k) => intAt(combined, k)), [2, 3, 10]),
         intAt(combined, 4) == 20
     ])
 
@@ -137,11 +137,11 @@ fn iterationAndPersistenceCase() = {
     // Added content checks prove later generations and sibling branches do not mutate their ancestors.
     checkAll("persistent generation and branch contents", [
         structuralEquals([listContains(g0, 10), listContains(g1, 10), listContains(g1, 20)], [false, true, false]),
-        structuralEquals([listContains(g2, 10), listContains(g2, 20), listContains(g2, 30)], [true, true, false]),
+        structuralEquals(mapList([10, 20, 30], fn(k) => listContains(g2, k)), [true, true, false]),
         structuralEquals([listContains(g5, 10), listContains(g5, 50), listContains(g2, 50)], [true, true, false]),
         structuralEquals([listContains(x, 999), listContains(x, 888), listContains(y, 888)], [true, false, true]),
         structuralEquals([listContains(y, 999), listContains(y2, 777), listContains(y, 777)], [false, true, false]),
-        structuralEquals([listContains(g3, 999), listContains(g3, 888), listContains(g3, 777)], [false, false, false]),
+        structuralEquals(mapList([999, 888, 777], fn(k) => listContains(g3, k)), [false, false, false]),
         structuralEquals([intAt(g5, 4), intAt(y2, 3), intAt(y2, 4)], [50, 888, 777])
     ])
 }
@@ -164,8 +164,8 @@ fn tailBoundaryCase() = {
     // Boundary indices assert actual content before, at, and after the 32-element trie tail split.
     checkAll("tail boundary contents", [
         structuralEquals([intAt(t, 0), intAt(t, 9), intAt(t2, 10), intAt(t2, 19), intAt(t3, 29)], [1, 10, 11, 20, 30]),
-        structuralEquals([intAt(t4, 30), intAt(t4, 31), intAt(t4, 32), intAt(t4, 34)], [31, 32, 33, 35]),
-        structuralEquals([intAt(reversed, 0), intAt(reversed, 2), intAt(reversed, 3)], [35, 33, 32]),
+        structuralEquals(mapList([30, 31, 32, 34], fn(k) => intAt(t4, k)), [31, 32, 33, 35]),
+        structuralEquals(mapList([0, 2, 3], fn(k) => intAt(reversed, k)), [35, 33, 32]),
         structuralEquals([intAt(reversed, 34), intAt(doubled, 34), intAt(doubled, 35)], [1, 35, 1]),
         structuralEquals([intAt(doubled, 69), listLength(t3)], [35, 30]),
         !listContains(t3, 31),
@@ -343,7 +343,7 @@ fn typedElementRetrievalCase() = {
         (listGet(["zero"] + words, 1) ?: "none") == "alpha",
         listLength(listAppend(words, "delta")) == 4,
         listLength(listPrepend(words, "zero")) == 4,
-        structuralEquals([listContains(words, "beta"), listContains(words, "delta")], [true, false]),
+        structuralEquals(mapList(["beta", "delta"], fn(k) => listContains(words, k)), [true, false]),
         listContains(listAppend(words, "delta"), "delta"),
         (listGet(listReverse(listReverse(words)), 1) ?: "none") == "beta"
     ])
@@ -618,8 +618,8 @@ fn stringListPatternCase() = {
         contains(listGet(odd, 5) ?: "x", " "),
         toUpperCase(listGet(words, 1) ?: "x") == "BETA",
         toLowerCase(toUpperCase(listGet(words, 2) ?: "x")) == "gamma",
-        structuralEquals([listContains(odd, ""), listContains(odd, " "), listContains(odd, "A")], [true, true, false]),
-        structuralEquals([listContains(dup, "same"), listContains(dup, "other")], [true, true]),
+        structuralEquals(mapList(["", " ", "A"], fn(k) => listContains(odd, k)), [true, true, false]),
+        structuralEquals(mapList(["same", "other"], fn(k) => listContains(dup, k)), [true, true]),
         structuralEquals([listContains(dup, "missing"), listContains(noWords, "")], [false, false]),
         structuralEquals([listLength(dup), listLength(odd), listLength(listReverse(dup))], [4, 6, 4]),
         (listGet(dup, 0) ?: "x") == (listGet(dup, 3) ?: "y"),
@@ -715,7 +715,7 @@ fn floatAndBoolListPatternCase() = {
         structuralEquals([headOr(mixed, false), headOr(listReverse(pairOn), true)], [true, false]),
         structuralEquals([secondOr(mixed, true), secondOr(pairOn, true)], [false, false]),
         structuralEquals([secondOr([false, true], false), secondOr(noFlags, true)], [true, true]),
-        structuralEquals([listContains(mixed, false), listContains(mixed, true)], [true, true]),
+        structuralEquals(mapList([false, true], fn(k) => listContains(mixed, k)), [true, true]),
         structuralEquals([listContains(allOn, false), listContains(allOff, true)], [false, false]),
         structuralEquals([listLength(mixed + allOff), countTrue(mixed + allOff), tailLength(mixed)], [6, 2, 2]),
         tailLength(noFlags) == ((0 - 1) ),
@@ -938,7 +938,7 @@ fn typedIterationOrderCase() = {
         log == "alpha|beta|gamma|",
         length(log) == 17,
         structuralEquals([startsWith(log, "alpha|"), endsWith(log, "gamma|")], [true, true]),
-        structuralEquals([contains(log, "|beta|"), contains(log, "gamma|beta|")], [true, false]),
+        structuralEquals(mapList(["|beta|", "gamma|beta|"], fn(k) => contains(log, k)), [true, false]),
         log == joinWords(words)
     ])
 
@@ -948,7 +948,7 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList visits bool elements in index order", [
         log == "alpha|beta|gamma|true|false|",
         length(log) == 28,
-        structuralEquals([endsWith(log, "true|false|"), endsWith(log, "false|true|")], [true, false]),
+        structuralEquals(mapList(["true|false|", "false|true|"], fn(k) => endsWith(log, k)), [true, false]),
         contains(log, "gamma|true|")
     ])
 
@@ -968,7 +968,7 @@ fn typedIterationOrderCase() = {
     checkAll("forEachList visits record elements in index order", [
         log == "alpha|beta|gamma|true|false|7|8|9|left|right|",
         length(log) == 45,
-        structuralEquals([endsWith(log, "left|right|"), endsWith(log, "right|left|")], [true, false]),
+        structuralEquals(mapList(["left|right|", "right|left|"], fn(k) => endsWith(log, k)), [true, false]),
         contains(log, "9|left|")
     ])
 
@@ -1129,7 +1129,7 @@ fn boundaryIndexCase() = {
         tailLength(forty) == 39,
         structuralEquals([headOr(forty, "?"), secondOr(forty, "?"), lastWord(five)], ["s0", "s1", "s4"]),
         lastWord(ten) == "s4",
-        structuralEquals([listContains(forty, "s3"), listContains(forty, "s5")], [true, false]),
+        structuralEquals(mapList(["s3", "s5"], fn(k) => listContains(forty, k)), [true, false]),
         structuralEquals([listContains(five, "s0"), listContains(noWords, "s0")], [true, false]),
         (listGet(ten, 9) ?: "?") == "s4",
         (listGet(twenty, 19) ?: "?") == "s4",

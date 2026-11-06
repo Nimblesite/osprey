@@ -25,7 +25,7 @@ fn binding() = {
     let bound = Database::binding([text])
     checkAll("database values use extended-protocol hex parameters", [
             structuralEquals([startsWith(bound, "\\bind '"), contains(bound, text)], [true, false]),
-            structuralEquals([contains(bound, "touch"), contains(bound, "SELECT")], [false, false]),
+            structuralEquals(mapList(["touch", "SELECT"], fn(k) => contains(bound, k)), [false, false]),
             endsWith(bound, "' \\g\n")
     ])
 }

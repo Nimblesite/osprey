@@ -71,7 +71,7 @@ fn listsRow() = {
         structuralEquals([1, 2], [1, 2]),
         !structuralEquals([1, 2], [1, 2, 3]),
         !structuralEquals([1, 2], [2, 1]),
-        structuralEquals([route("a", 1)], [route("a", 1)]),
+        structuralEquals(mapList([1], fn(k) => route("a", k)), [route("a", 1)]),
         !structuralEquals([route("a", 1)], [route("a", 2)]),
         structuralEquals([[1], [2]], [[1], [2]]),
         !structuralEquals([[1], [2]], [[1], [3]])

@@ -729,7 +729,7 @@ matchLayoutAndClausesCase () =
         structuralEquals [shape (listAppend nums 40), shape (listReverse nums)] ["many(10+3)", "many(30+2)"],
         shape (listPrepend nums 5) == "many(5+3)",
         shape single != shape nums,
-        structuralEquals [readAt nums 0, readAt nums 1, readAt nums 2] ["at 0 = 10", "at 1 = 20", "at 2 = 30"],
+        structuralEquals (mapList [0, 1, 2] (\k => readAt nums k)) ["at 0 = 10", "at 1 = 20", "at 2 = 30"],
         structuralEquals [readAt nums 3, readAt nums 99, readAt nums ((0 - 1) )] ["miss 3", "miss 99", "miss -1"],
         structuralEquals [readAt single 0, readAt [7] 1, readAt [7] 0] ["at 0 = 42", "miss 1", "at 0 = 7"],
         readAt nums 0 != readAt nums 1,
