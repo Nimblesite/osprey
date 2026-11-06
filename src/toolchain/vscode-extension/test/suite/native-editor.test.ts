@@ -1,7 +1,7 @@
 import * as assert from "node:assert/strict";
 import { randomBytes } from "node:crypto";
 import { ViewColumn, window } from "vscode";
-import type { Frame } from "playwright-core";
+import type { CDPSession, Frame } from "playwright-core";
 import { pollUntilResult } from "@nimblesite/lsp-profiler-ui/out/src/testing/webview-contract-helpers";
 import { renderWorkspace } from "../../client/src/osprey-ui/render";
 import { record } from "../../client/src/osprey-ui/protocol";
@@ -34,7 +34,7 @@ function editorFrame(epoch: number, value: string, shown: boolean, revision: num
 async function withEditorView(run: (frame: Frame, update: EditorUpdate, events: Record<string, unknown>[]) => Promise<void>): Promise<void> {
   const browser = await connectEditorBrowser(), events: Record<string, unknown>[] = [];
   const panel = window.createWebviewPanel("osprey.editor.focus", "Editor focus contract", ViewColumn.One, { enableScripts: true });
-  let revision = 0;
+  let revision = 0, focus: CDPSession | undefined;
   const update: EditorUpdate = async (epoch, value = "p", shown = true, dialog = "none", region = "root") => {
     await panel.webview.postMessage({ type: "render", html: editorFrame(epoch, value, shown, ++revision, dialog, region), diagnostics: [] });
   };
@@ -52,13 +52,19 @@ async function withEditorView(run: (frame: Frame, update: EditorUpdate, events: 
     // `focus()` cannot move frame focus into the cross-origin webview. Emulate the
     // active window (as Playwright does for browsers it launches) without raising
     // it, then enter the webview with real input on its empty body, as a user would.
-    await (await frame.page().context().newCDPSession(frame.page())).send("Emulation.setFocusEmulationEnabled", { enabled: true });
+    focus = await frame.page().context().newCDPSession(frame.page());
+    await focus.send("Emulation.setFocusEmulationEnabled", { enabled: true });
     const body = await frame.locator("body").boundingBox();
     assert.ok(body, "the webview body has a layout box");
     await frame.locator("body").click({ position: { x: body.width / 2, y: body.height - 8 } });
     assert.ok(await frame.evaluate(() => document.hasFocus()), "the webview is the active frame before each focus contract");
     await run(frame, update, events);
-  } finally { listener.dispose(); panel.dispose(); await browser.close(); }
+  } finally {
+    // The emulation belongs to the shared VS Code window: switch it off so it never reaches a later suite.
+    await focus?.send("Emulation.setFocusEmulationEnabled", { enabled: false });
+    await focus?.detach();
+    listener.dispose(); panel.dispose(); await browser.close();
+  }
 }
 
 async function waitEditorFrame(frame: Frame, epoch: number, value: string): Promise<void> {
