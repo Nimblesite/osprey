@@ -86,69 +86,62 @@ acceptPositive attempt =
     success, so one body crosses the retry-count axis 0, 1, 2 and 8. Each arm
     records what it issued before `resume` and what the resumed computation
     answered afterwards, which pins both the issue order and the LIFO unwind. *)
+(** A retry run: the attempts the handler issued, the LIFO settlement and the
+    accepted value. *)
+type RetryRun =
+    calls : int
+    issued : string
+    settled : string
+    accepted : int
+
+(** Run `acceptPositive` under a handler that derives each candidate from `n`. *)
+retryRun candidateFor =
+    mut calls = 0
+    mut issued = ""
+    mut settled = ""
+    accepted =
+        handle Retry
+            supply n =>
+                calls := calls + 1 
+                candidate = candidateFor n
+                issued := "${issued}${toString n}:${toString candidate}|"
+                answer = resume candidate
+                settled := "${settled}${toString n}:${toString answer}|"
+                answer
+        acceptPositive 1
+    RetryRun(calls = calls, issued = issued, settled = settled, accepted = accepted)
+
 retryAttemptMatrixCase () =
-    mut callsA = 0
-    mut issuedA = ""
-    mut settledA = ""
-    acceptedA =
-        handle Retry
-            supply n =>
-                callsA := callsA + 1 
-                candidate = (n * 100) 
-                issuedA := "${issuedA}${toString n}:${toString candidate}|"
-                answer = resume candidate
-                settledA := "${settledA}${toString n}:${toString answer}|"
-                answer
-        acceptPositive 1
-
-    mut callsB = 0
-    mut issuedB = ""
-    mut settledB = ""
-    acceptedB =
-        handle Retry
-            supply n =>
-                callsB := callsB + 1 
-                candidate = match n
-                    1 => 0
-                    _ => 200
-                issuedB := "${issuedB}${toString n}:${toString candidate}|"
-                answer = resume candidate
-                settledB := "${settledB}${toString n}:${toString answer}|"
-                answer
-        acceptPositive 1
-
-    mut callsC = 0
-    mut issuedC = ""
-    mut settledC = ""
-    acceptedC =
-        handle Retry
-            supply n =>
-                callsC := callsC + 1 
-                candidate = match n
-                    1 => 0
-                    2 => (0 - 5) 
-                    _ => 300
-                issuedC := "${issuedC}${toString n}:${toString candidate}|"
-                answer = resume candidate
-                settledC := "${settledC}${toString n}:${toString answer}|"
-                answer
-        acceptPositive 1
-
-    mut callsD = 0
-    mut issuedD = ""
-    mut settledD = ""
-    acceptedD =
-        handle Retry
-            supply n =>
-                callsD := callsD + 1 
-                candidate = match n > 8
-                    true => 900
-                    false => (0 - n) 
-                issuedD := "${issuedD}${toString n}:${toString candidate}|"
-                answer = resume candidate
-                settledD := "${settledD}${toString n}:${toString answer}|"
-                answer
-        acceptPositive 1
+    runA = retryRun (\n => (n * 100) )
+    runB = retryRun (\n =>
+        match n
+            1 => 0
+            _ => 200)
+    runC = retryRun (\n =>
+        match n
+            1 => 0
+            2 => (0 - 5) 
+            _ => 300)
+    runD = retryRun (\n =>
+        match n > 8
+            true => 900
+            false => (0 - n) )
+    callsA = runA.calls
+    issuedA = runA.issued
+    settledA = runA.settled
+    acceptedA = runA.accepted
+    callsB = runB.calls
+    issuedB = runB.issued
+    settledB = runB.settled
+    acceptedB = runB.accepted
+    callsC = runC.calls
+    issuedC = runC.issued
+    settledC = runC.settled
+    acceptedC = runC.accepted
+    callsD = runD.calls
+    issuedD = runD.issued
+    settledD = runD.settled
+    acceptedD = runD.accepted
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll "each rejection count accepts its own magnitude" [
@@ -254,60 +247,52 @@ test "retry loops accept after zero one two and eight rejections" (\() => exactA
     the suspended computation and its value becomes the result of the whole
     handler." A retry budget therefore ends the loop by NOT resuming, and the
     sentinel it returns is what every still-suspended frame observes. *)
+(** A budgeted retry run: what the handler issued, what it settled and the
+    value the whole handled computation produced. *)
+type BudgetRun =
+    calls : int
+    trail : string
+    settled : string
+    out : int
+
+(** Retries `acceptPositive` with a budget: the attempt after `budget` refuses
+    without resuming and answers `sentinel`, which every outer frame observes. *)
+budgetRun (budget, sentinel) =
+    mut calls = 0
+    mut trail = ""
+    mut settled = ""
+    out =
+        handle Retry
+            supply n =>
+                calls := calls + 1 
+                match n > budget
+                    true =>
+                        trail := "${trail}giveup:${toString n}|"
+                        (0 - sentinel) 
+                    false =>
+                        trail := "${trail}try:${toString n}|"
+                        answer = resume ((0 - n) )
+                        settled := "${settled}${toString n}:${toString answer}|"
+                        answer
+        acceptPositive 1
+    BudgetRun(calls = calls, trail = trail, settled = settled, out = out)
+
 retryBudgetExhaustionCase () =
-    mut calls1 = 0
-    mut trail1 = ""
-    mut settled1 = ""
-    out1 =
-        handle Retry
-            supply n =>
-                calls1 := calls1 + 1 
-                match n > 1
-                    true =>
-                        trail1 := "${trail1}giveup:${toString n}|"
-                        (0 - 1000) 
-                    false =>
-                        trail1 := "${trail1}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled1 := "${settled1}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
-
-    mut calls2 = 0
-    mut trail2 = ""
-    mut settled2 = ""
-    out2 =
-        handle Retry
-            supply n =>
-                calls2 := calls2 + 1 
-                match n > 2
-                    true =>
-                        trail2 := "${trail2}giveup:${toString n}|"
-                        (0 - 2000) 
-                    false =>
-                        trail2 := "${trail2}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled2 := "${settled2}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
-
-    mut calls3 = 0
-    mut trail3 = ""
-    mut settled3 = ""
-    out3 =
-        handle Retry
-            supply n =>
-                calls3 := calls3 + 1 
-                match n > 3
-                    true =>
-                        trail3 := "${trail3}giveup:${toString n}|"
-                        (0 - 3000) 
-                    false =>
-                        trail3 := "${trail3}try:${toString n}|"
-                        answer = resume ((0 - n) )
-                        settled3 := "${settled3}${toString n}:${toString answer}|"
-                        answer
-        acceptPositive 1
+    run1 = budgetRun (1, 1000)
+    run2 = budgetRun (2, 2000)
+    run3 = budgetRun (3, 3000)
+    calls1 = run1.calls
+    trail1 = run1.trail
+    settled1 = run1.settled
+    out1 = run1.out
+    calls2 = run2.calls
+    trail2 = run2.trail
+    settled2 = run2.settled
+    out2 = run2.out
+    calls3 = run3.calls
+    trail3 = run3.trail
+    settled3 = run3.settled
+    out3 = run3.out
 
     (** A generous budget the loop never reaches: success arrives on attempt 3. *)
     mut calls5 = 0

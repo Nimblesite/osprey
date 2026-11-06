@@ -29,6 +29,12 @@ roundTrip cp =
             print "cp=${cp} encode FAILED: ${message}\n"
             0
 
+(** Round-trip every scalar in `scalars`, in order. *)
+roundTrips scalars = foldList scalars 0 (\(_acc, cp) => roundTrip cp)
+
+(** Reject every invalid scalar in `scalars`, in order. *)
+rejectInvalids scalars = foldList scalars 0 (\(_acc, cp) => rejectInvalid cp)
+
 (** An invalid scalar must be rejected by encode with an Error message. *)
 rejectInvalid cp =
     match fromCodePoint cp
@@ -39,34 +45,23 @@ rejectInvalid cp =
 // 1-byte (0x01..0x7F): low 0x01, 'A', boundary 0x7F. (NUL 0x00 is the
 // C-string terminator, so it is not representable as a standalone char.)
 print "=== 1-byte: 0x01..0x7F ===\n"
-_a0 = roundTrip 1
-_a1 = roundTrip 65
-_a2 = roundTrip 127
+_a0 = roundTrips [1, 65, 127]
 
 // 2-byte (0x80..0x7FF): boundary 0x80, 'é', boundary 0x7FF.
 print "=== 2-byte: 0x80..0x7FF ===\n"
-_b0 = roundTrip 128
-_b1 = roundTrip 233
-_b2 = roundTrip 2047
+_b0 = roundTrips [128, 233, 2047]
 
 // 3-byte (0x800..0xFFFF): boundary 0x800, '世', boundary 0xFFFF.
 print "=== 3-byte: 0x800..0xFFFF ===\n"
-_c0 = roundTrip 2048
-_c1 = roundTrip 19990
-_c2 = roundTrip 65535
+_c0 = roundTrips [2048, 19990, 65535]
 
 // 4-byte (0x10000..0x10FFFF): boundary 0x10000, '😀', max scalar 0x10FFFF.
 print "=== 4-byte: 0x10000..0x10FFFF ===\n"
-_d0 = roundTrip 65536
-_d1 = roundTrip 128512
-_d2 = roundTrip 1114111
+_d0 = roundTrips [65536, 128512, 1114111]
 
 // Invalid scalars: surrogate range 0xD800..0xDFFF, past-max 0x110000, neg.
 print "=== invalid scalars are rejected ===\n"
-_s0 = rejectInvalid 55296
-_s1 = rejectInvalid 57343
-_s2 = rejectInvalid 1114112
-_s3 = rejectInvalid ((0 - 1) )
+_s0 = rejectInvalids [55296, 57343, 1114112, (0 - 1) ]
 
 // Direct codePointWidth band classification, one assertion per width band.
 print "=== codePointWidth band boundaries ===\n"

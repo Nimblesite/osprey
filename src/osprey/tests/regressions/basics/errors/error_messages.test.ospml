@@ -34,85 +34,62 @@ longFailure () = Error(message = longText ())
 
 longSuccess : Unit -> Result<string, string>
 longSuccess () = Success(value = longText ())
+
+(** Print a fallible call under its label: the reason on Error, "unexpected" on Success. *)
+report (name, result) =
+    match result
+        Success value => print "${name}: unexpected ${toString value}\n"
+        Error message => print "${name}: ${message}\n"
+
+(** Print a call expected to succeed: the value on Success, "unexpected" on Error. *)
+reportOk (name, result) =
+    match result
+        Success value => print "${name}: ${toString value}\n"
+        Error message => print "${name}: unexpected ${message}\n"
+
+(** Like `report`, for a payload whose type has no toString. *)
+reportPlain (name, result) =
+    match result
+        Success _value => print "${name}: unexpected\n"
+        Error message => print "${name}: ${message}\n"
 // ---- numeric parsing ----
-match parseInt "nope"
-    Success value => print "parseInt: unexpected ${value}\n"
-    Error message => print "parseInt: ${message}\n"
-match parseFloat "x"
-    Success value => print "parseFloat: unexpected ${value}\n"
-    Error message => print "parseFloat: ${message}\n"
+report ("parseInt", parseInt "nope")
+report ("parseFloat", parseFloat "x")
 
 // ---- string operations ----
-match split "a" ""
-    Success _value => print "split: unexpected\n"
-    Error message => print "split: ${message}\n"
-match indexOf "abc" "z"
-    Success value => print "indexOf: unexpected ${value}\n"
-    Error message => print "indexOf: ${message}\n"
-match substring "hi" ((0 - 1) ) 5
-    Success value => print "substring: unexpected ${value}\n"
-    Error message => print "substring: ${message}\n"
-match replace "h" "" ""
-    Success value => print "replace: unexpected ${value}\n"
-    Error message => print "replace: ${message}\n"
-match repeat "a" ((0 - 1) )
-    Success value => print "repeat: unexpected ${value}\n"
-    Error message => print "repeat: ${message}\n"
-match padStart "x" 5 ""
-    Success value => print "padStart: unexpected ${value}\n"
-    Error message => print "padStart: ${message}\n"
-match padEnd "x" 5 ""
-    Success value => print "padEnd: unexpected ${value}\n"
-    Error message => print "padEnd: ${message}\n"
+reportPlain ("split", split "a" "")
+report ("indexOf", indexOf "abc" "z")
+report ("substring", substring "hi" ((0 - 1) ) 5)
+report ("replace", replace "h" "" "")
+report ("repeat", repeat "a" ((0 - 1) ))
+report ("padStart", padStart "x" 5 "")
+report ("padEnd", padEnd "x" 5 "")
 
 // ---- O(1) cursor primitives ([BUILTIN-STRING-CURSOR]) ----
-match byteAt "a" 9
-    Success value => print "byteAt: unexpected ${value}\n"
-    Error message => print "byteAt: ${message}\n"
-match codePointAt "a" 9
-    Success value => print "codePointAt-oob: unexpected ${value}\n"
-    Error message => print "codePointAt-oob: ${message}\n"
+report ("byteAt", byteAt "a" 9)
+report ("codePointAt-oob", codePointAt "a" 9)
 // "é" is U+00E9 (bytes 0xC3 0xA9): byte index 1 lands mid-codepoint.
-match codePointAt "é" 1
-    Success value => print "codePointAt-mid: unexpected ${value}\n"
-    Error message => print "codePointAt-mid: ${message}\n"
+report ("codePointAt-mid", codePointAt "é" 1)
 // 0xD800 = 55296 (a UTF-16 surrogate — not a valid scalar value).
-match codePointWidth 55296
-    Success value => print "codePointWidth-surrogate: unexpected ${value}\n"
-    Error message => print "codePointWidth-surrogate: ${message}\n"
+report ("codePointWidth-surrogate", codePointWidth 55296)
 // 0x110000 = 1114112 (one past the last Unicode scalar value).
-match codePointWidth 1114112
-    Success value => print "codePointWidth-toobig: unexpected ${value}\n"
-    Error message => print "codePointWidth-toobig: ${message}\n"
-match fromCodePoint 1114112
-    Success value => print "fromCodePoint: unexpected ${value}\n"
-    Error message => print "fromCodePoint: ${message}\n"
+report ("codePointWidth-toobig", codePointWidth 1114112)
+report ("fromCodePoint", fromCodePoint 1114112)
 // `take` keeps a character whole, so no Osprey string operation can produce the
 // truncated or broken sequences the runtime's C tests feed `codePointAt`.
-match codePointAt (take "é" 1) 0
-    Success value => print "codePointAt-whole: ${value}\n"
-    Error message => print "codePointAt-whole: unexpected ${message}\n"
+reportOk ("codePointAt-whole", codePointAt (take "é" 1) 0)
 
 // ---- division: error AND success on the same construct ----
-exactArithmetic (\() =>
-    match divideResult (10, 0)
-        Success value => print "divide: unexpected ${value}\n"
-        Error message => print "divide: ${message}\n")
-match divideResult (7, 2)
-    Success value => print "divide-ok: ${value}\n"
-    Error message => print "divide-ok: unexpected ${message}\n"
+exactArithmetic (\() => report ("divide", divideResult (10, 0)))
+reportOk ("divide-ok", divideResult (7, 2))
 
 (** ---- out-of-bounds list index ---- *)
 xs = [1, 2, 3]
-match xs[9]
-    Success value => print "listIndex: unexpected ${value}\n"
-    Error message => print "listIndex: ${message}\n"
+report ("listIndex", xs[9])
 
 (** ---- missing map key ---- *)
 prices = ["apple" => 2, "banana" => 3]
-match prices["mango"]
-    Success value => print "mapKey: unexpected ${value}\n"
-    Error message => print "mapKey: ${message}\n"
+report ("mapKey", prices["mango"])
 
 // ---- toString(Result) renders the real reason (the other half of
 //      [ERR-PAYLOAD]): Error(<reason>) for failures, Success(<value>) else ----

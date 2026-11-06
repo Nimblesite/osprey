@@ -100,17 +100,13 @@ print ""
 // Explore multiple rooms
 print "🚪 Room 1: You enter ${exploreRoom 1}"
 room1Gold = getRoomTreasure 1
-newGold1 =
-    exactArithmetic (\() =>
-        goldCoins + room1Gold)
+newGold1 = exactArithmetic (\() => goldCoins + room1Gold)
 print "You find ${room1Gold} gold coins! Total: ${newGold1} 💰"
 print ""
 
 print "📚 Room 2: You discover ${exploreRoom 2}"
 room2Gold = getRoomTreasure 2
-newGold2 =
-    exactArithmetic (\() =>
-        newGold1 + room2Gold)
+newGold2 = exactArithmetic (\() => newGold1 + room2Gold)
 foundKey = hasRoomKey 2
 print "You find ${room2Gold} gold coins and acquire a mysterious key! 🗝️"
 print "Total gold: ${newGold2} 💰"
@@ -155,16 +151,12 @@ print ""
 
 // Simulate battle rounds
 print "🥊 Round 1: You strike for ${playerDamage} damage!"
-remainingHealth1 =
-    exactArithmetic (\() =>
-        enemyHealth - playerDamage)
+remainingHealth1 = exactArithmetic (\() => enemyHealth - playerDamage)
 print "Dragon health remaining: ${remainingHealth1}"
 print ""
 
 print "🥊 Round 2: Another powerful blow for ${playerDamage} damage!"
-remainingHealth2 =
-    exactArithmetic (\() =>
-        remainingHealth1 - playerDamage)
+remainingHealth2 = exactArithmetic (\() => remainingHealth1 - playerDamage)
 print "Dragon health remaining: ${remainingHealth2}"
 print ""
 
@@ -174,15 +166,11 @@ print "Critical hit for ${finalDamage} damage!"
 print ""
 
 (** Victory and level progression *)
-newMonstersDefeated =
-    exactArithmetic (\() =>
-        monstersDefeated + 1)
+newMonstersDefeated = exactArithmetic (\() => monstersDefeated + 1)
 newLevel = calculatePlayerLevel newMonstersDefeated
 newTitle = getPlayerTitle newLevel
 victoryGold = 200
-finalGold =
-    exactArithmetic (\() =>
-        newGold2 + victoryGold)
+finalGold = exactArithmetic (\() => newGold2 + victoryGold)
 
 print "🎉 VICTORY! 🎉"
 print "The ${enemyName} has been defeated!"
@@ -198,9 +186,7 @@ print ""
 // Final treasure room
 print "🏆 Room 4: You enter ${exploreRoom 4}"
 treasureGold = getRoomTreasure 4
-ultimateGold =
-    exactArithmetic (\() =>
-        finalGold + treasureGold)
+ultimateGold = exactArithmetic (\() => finalGold + treasureGold)
 print "You discover the legendary treasure chest!"
 print "Inside: ${treasureGold} gold coins! 💎"
 print "Your final wealth: ${ultimateGold} 💰"

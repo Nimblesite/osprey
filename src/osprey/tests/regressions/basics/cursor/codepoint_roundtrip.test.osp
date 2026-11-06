@@ -33,6 +33,12 @@ fn roundTrip(cp) = {
     }
 }
 
+/// Round-trips every scalar in `scalars`, in order.
+fn roundTrips(scalars) = foldList(scalars, 0, fn(_acc, cp) => roundTrip(cp))
+
+/// Rejects every invalid scalar in `scalars`, in order.
+fn rejectInvalids(scalars) = foldList(scalars, 0, fn(_acc, cp) => rejectInvalid(cp))
+
 /// An invalid scalar must be rejected by encode with an Error message.
 fn rejectInvalid(cp) = {
     match fromCodePoint(cp) {
@@ -45,34 +51,23 @@ fn rejectInvalid(cp) = {
 // 1-byte (0x01..0x7F): low 0x01, 'A', boundary 0x7F. (NUL 0x00 is the
 // C-string terminator, so it is not representable as a standalone char.)
 print("=== 1-byte: 0x01..0x7F ===\n")
-let _a0 = roundTrip(1)
-let _a1 = roundTrip(65)
-let _a2 = roundTrip(127)
+let _a0 = roundTrips([1, 65, 127])
 
 // 2-byte (0x80..0x7FF): boundary 0x80, 'é', boundary 0x7FF.
 print("=== 2-byte: 0x80..0x7FF ===\n")
-let _b0 = roundTrip(128)
-let _b1 = roundTrip(233)
-let _b2 = roundTrip(2047)
+let _b0 = roundTrips([128, 233, 2047])
 
 // 3-byte (0x800..0xFFFF): boundary 0x800, '世', boundary 0xFFFF.
 print("=== 3-byte: 0x800..0xFFFF ===\n")
-let _c0 = roundTrip(2048)
-let _c1 = roundTrip(19990)
-let _c2 = roundTrip(65535)
+let _c0 = roundTrips([2048, 19990, 65535])
 
 // 4-byte (0x10000..0x10FFFF): boundary 0x10000, '😀', max scalar 0x10FFFF.
 print("=== 4-byte: 0x10000..0x10FFFF ===\n")
-let _d0 = roundTrip(65536)
-let _d1 = roundTrip(128512)
-let _d2 = roundTrip(1114111)
+let _d0 = roundTrips([65536, 128512, 1114111])
 
 // Invalid scalars: surrogate range 0xD800..0xDFFF, past-max 0x110000, neg.
 print("=== invalid scalars are rejected ===\n")
-let _s0 = rejectInvalid(55296)
-let _s1 = rejectInvalid(57343)
-let _s2 = rejectInvalid(1114112)
-let _s3 = rejectInvalid((0 - 1) )
+let _s0 = rejectInvalids([55296, 57343, 1114112, (0 - 1) ])
 
 // Direct codePointWidth band classification, one assertion per width band.
 print("=== codePointWidth band boundaries ===\n")

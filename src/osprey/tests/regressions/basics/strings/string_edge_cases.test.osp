@@ -33,6 +33,42 @@ fn divideResult(a, b) = {
 /// A user-declared fallible function: its Error message must reach the arm.
 fn failWith(reason) -> Result<int, string> = Error { message: reason }
 
+/// Prints a successful `Result` as `<label>=<value>`; a failure is loud.
+fn showValue(label, result) = match result {
+    Success { value } => print("${label}=${value}\n")
+    Error => print("${label} FAILED\n")
+}
+
+/// Same, with the value quoted: `<label>="<value>"`.
+fn showQuoted(label, result) = match result {
+    Success { value } => print("${label}=\"${value}\"\n")
+    Error => print("${label} FAILED\n")
+}
+
+/// Prints a rejected call as `<label> rejected`; a success is unexpected.
+fn showRejected(label, result) = match result {
+    Success => print("${label} unexpected\n")
+    Error => print("${label} rejected\n")
+}
+
+/// Prints a Result's real Error reason; a success is unexpected.
+fn showError(label, result) = match result {
+    Success => print("${label} unexpected\n")
+    Error { message } => print("${label}=${message}\n")
+}
+
+/// Prints a successful value, or the reason it failed.
+fn showOrFail(label, result) = match result {
+    Success { value } => print("${label}=${value}\n")
+    Error { message } => print("${label} FAILED: ${message}\n")
+}
+
+/// Whether a fallible call failed with a non-empty diagnostic.
+fn rejected(result) = match result {
+    Success => false
+    Error { message } => message != ""
+}
+
   // ---- isEmpty edges ----
   print("empty-emp=${"" |> isEmpty}\n")
   print("empty-x=${"x" |> isEmpty}\n")
@@ -55,159 +91,60 @@ fn failWith(reason) -> Result<int, string> = Error { message: reason }
   print("trim-empty=\"${"" |> trim}\"\n")
 
   // ---- substring boundaries ----
-  match substring("hi", 0, 0) {
-Success { value }   => print("sub-empty=\"${value}\"\n")
-Error => print("sub-empty FAILED\n")
-  }
-  match substring("hi", 0, 2) {
-Success { value }   => print("sub-full=\"${value}\"\n")
-Error => print("sub-full FAILED\n")
-  }
-  match substring("hi", (0 - 1) , 2) {
-Success   => print("sub-neg unexpected\n")
-Error => print("sub-neg rejected\n")
-  }
-  match substring("hi", 0, 99) {
-Success   => print("sub-over unexpected\n")
-Error => print("sub-over rejected\n")
-  }
-  match substring("hi", 2, 0) {
-Success   => print("sub-inverted unexpected\n")
-Error => print("sub-inverted rejected\n")
-  }
+  showQuoted("sub-empty", substring("hi", 0, 0))
+  showQuoted("sub-full", substring("hi", 0, 2))
+  showRejected("sub-neg", substring("hi", (0 - 1) , 2))
+  showRejected("sub-over", substring("hi", 0, 99))
+  showRejected("sub-inverted", substring("hi", 2, 0))
 
   // ---- indexOf empty needle and not-found ----
-  match indexOf("hello", "") {
-Success { value }   => print("idx-empty=${value}\n")
-Error => print("idx-empty FAILED\n")
-  }
-  match indexOf("hello", "xyz") {
-Success   => print("idx-missing unexpected\n")
-Error => print("idx-missing rejected\n")
-  }
+  showValue("idx-empty", indexOf("hello", ""))
+  showRejected("idx-missing", indexOf("hello", "xyz"))
 
   // ---- replace empty needle rejected ----
-  match replace("hello", "", "x") {
-Success   => print("rep-empty unexpected\n")
-Error => print("rep-empty rejected\n")
-  }
+  showRejected("rep-empty", replace("hello", "", "x"))
   // replace shrinking
-  match replace("hello", "l", "") {
-Success { value }   => print("rep-shrink=\"${value}\"\n")
-Error => print("rep-shrink FAILED\n")
-  }
+  showQuoted("rep-shrink", replace("hello", "l", ""))
 
   // ---- repeat n=0 and n<0 ----
-  match repeat("ab", 0) {
-Success { value }   => print("rep0=\"${value}\"\n")
-Error => print("rep0 FAILED\n")
-  }
-  match repeat("ab", (0 - 1) ) {
-Success   => print("rep-neg unexpected\n")
-Error => print("rep-neg rejected\n")
-  }
+  showQuoted("rep0", repeat("ab", 0))
+  showRejected("rep-neg", repeat("ab", (0 - 1) ))
 
   // ---- padStart / padEnd empty fill rejected ----
-  match padStart("hi", 5, "") {
-Success   => print("padS-empty unexpected\n")
-Error => print("padS-empty rejected\n")
-  }
-  match padEnd("hi", 5, "") {
-Success   => print("padE-empty unexpected\n")
-Error => print("padE-empty rejected\n")
-  }
+  showRejected("padS-empty", padStart("hi", 5, ""))
+  showRejected("padE-empty", padEnd("hi", 5, ""))
   // target <= len → no padding
-  match padStart("hi", 1, "x") {
-Success { value }   => print("padS-noop=\"${value}\"\n")
-Error => print("padS-noop FAILED\n")
-  }
+  showQuoted("padS-noop", padStart("hi", 1, "x"))
   // multi-char fill cycles
-  match padStart("42", 5, "ab") {
-Success { value }   => print("padS-multi=\"${value}\"\n")
-Error => print("padS-multi FAILED\n")
-  }
+  showQuoted("padS-multi", padStart("42", 5, "ab"))
 
   // ---- parseFloat rejects junk ----
-  match parseFloat("") {
-Success   => print("pf-empty unexpected\n")
-Error => print("pf-empty rejected\n")
-  }
-  match parseFloat("3.14x") {
-Success   => print("pf-trailing unexpected\n")
-Error => print("pf-trailing rejected\n")
-  }
-  match parseFloat(" 3.14") {
-Success   => print("pf-space unexpected\n")
-Error => print("pf-space rejected\n")
-  }
-  match parseFloat("nan") {
-Success   => print("pf-nan unexpected\n")
-Error => print("pf-nan rejected\n")
-  }
-  match parseFloat("0x1p2") {
-Success   => print("pf-hex unexpected\n")
-Error => print("pf-hex rejected\n")
-  }
-  match parseFloat("1e9999") {
-Success   => print("pf-infinite unexpected\n")
-Error => print("pf-infinite rejected\n")
-  }
+  showRejected("pf-empty", parseFloat(""))
+  showRejected("pf-trailing", parseFloat("3.14x"))
+  showRejected("pf-space", parseFloat(" 3.14"))
+  showRejected("pf-nan", parseFloat("nan"))
+  showRejected("pf-hex", parseFloat("0x1p2"))
+  showRejected("pf-infinite", parseFloat("1e9999"))
 
   // ---- parseInt overflow ----
-  match parseInt("99999999999999999999") {
-Success   => print("pi-overflow unexpected\n")
-Error => print("pi-overflow rejected\n")
-  }
-  match parseInt("-9223372036854775808") {
-Success { value }   => print("pi-min=${value}\n")
-Error => print("pi-min FAILED\n")
-  }
-  match parseInt(" 42") {
-Success   => print("pi-leading-space unexpected\n")
-Error => print("pi-leading-space rejected\n")
-  }
+  showRejected("pi-overflow", parseInt("99999999999999999999"))
+  showValue("pi-min", parseInt("-9223372036854775808"))
+  showRejected("pi-leading-space", parseInt(" 42"))
 
   // ---- O(1) byte / codepoint cursor [BUILTIN-STRING-CURSOR] ----
   // "héllo": é is U+00E9 (bytes 0xC3 0xA9), so byteLength is 6, not 5.
   print("byteLen=${byteLength("héllo")}\n")
-  match byteAt("héllo", 1) {
-Success { value }   => print("byteAt1=${value}\n")
-Error   { message } => print("byteAt1 FAILED: ${message}\n")
-  }
-  match byteAt("héllo", 99) {
-Success   => print("byteAt-oob unexpected\n")
-Error   { message } => print("byteAt-oob=${message}\n")
-  }
-  match codePointAt("héllo", 1) {
-Success { value }   => print("cpAt1=${value}\n")
-Error   { message } => print("cpAt1 FAILED: ${message}\n")
-  }
-  match codePointAt("héllo", 2) {
-Success   => print("cpAt-mid unexpected\n")
-Error   { message } => print("cpAt-mid=${message}\n")
-  }
-  match codePointWidth(128512) {
-Success { value }   => print("cpWidth=${value}\n")
-Error   { message } => print("cpWidth FAILED: ${message}\n")
-  }
-  match codePointWidth(55296) {
-Success   => print("cpWidth-surrogate unexpected\n")
-Error   { message } => print("cpWidth-surrogate=${message}\n")
-  }
-  match fromCodePoint(128512) {
-Success { value }   => print("fromCp=${value}\n")
-Error   { message } => print("fromCp FAILED: ${message}\n")
-  }
-  match fromCodePoint(2000000) {
-Success   => print("fromCp-bad unexpected\n")
-Error   { message } => print("fromCp-bad=${message}\n")
-  }
+  showOrFail("byteAt1", byteAt("héllo", 1))
+  showError("byteAt-oob", byteAt("héllo", 99))
+  showOrFail("cpAt1", codePointAt("héllo", 1))
+  showError("cpAt-mid", codePointAt("héllo", 2))
+  showOrFail("cpWidth", codePointWidth(128512))
+  showError("cpWidth-surrogate", codePointWidth(55296))
+  showOrFail("fromCp", fromCodePoint(128512))
+  showError("fromCp-bad", fromCodePoint(2000000))
   // U+0000 is a scalar, but cannot inhabit the runtime's NUL-terminated
   // [BUILTIN-STRING-FROMCODEPOINT] representation.
-  match fromCodePoint(0) {
-Success   => print("fromCp-nul unexpected\n")
-Error   { message } => print("fromCp-nul=${message}\n")
-  }
+  showError("fromCp-nul", fromCodePoint(0))
   // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
   match fromCodePoint(233) {
 Success { value }   => match codePointAt(value, 0) {
@@ -218,108 +155,36 @@ Error   { message } => print("roundtrip FAILED: ${message}\n")
   }
 
   // ---- real error payloads reach the Error arm ([ERR-PAYLOAD]) ----
-  match parseInt("oops") {
-Success   => print("pi-msg unexpected\n")
-Error   { message } => print("pi-msg=${message}\n")
-  }
-exactArithmetic(fn() =>   match divideResult(10, 0) {
-Success   => print("div-msg unexpected\n")
-Error   { message } => print("div-msg=${message}\n")
-  })
-  match failWith("custom boom") {
-Success   => print("user-msg unexpected\n")
-Error   { message } => print("user-msg=${message}\n")
-  }
+  showError("pi-msg", parseInt("oops"))
+exactArithmetic(fn() => showError("div-msg", divideResult(10, 0)))
+  showError("user-msg", failWith("custom boom"))
 
   print("=== Edge Cases Complete ===\n")
 
 /// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
 fn stringEdgeCase() = {
     let negativeOne = (0 - 1) 
-    let substringNegative = match substring("hi", negativeOne, 2) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let substringOverrun = match substring("hi", 0, 99) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let substringInverted = match substring("hi", 2, 0) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let indexMissing = match indexOf("hello", "xyz") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let replaceEmpty = match replace("hello", "", "x") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let repeatNegative = match repeat("ab", negativeOne) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let padStartEmpty = match padStart("hi", 5, "") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let padEndEmpty = match padEnd("hi", 5, "") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let emptyFloat = match parseFloat("") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let trailingFloat = match parseFloat("3.14x") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let spacedFloat = match parseFloat(" 3.14") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let nanFloat = match parseFloat("nan") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let hexFloat = match parseFloat("0x1p2") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let infiniteFloat = match parseFloat("1e9999") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let integerOverflow = match parseInt("99999999999999999999") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let integerLeadingSpace = match parseInt(" 42") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let byteOutOfBounds = match byteAt("héllo", 99) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let codePointMidSequence = match codePointAt("héllo", 2) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let surrogateRejected = match codePointWidth(55296) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let invalidCodePoint = match fromCodePoint(2000000) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let nulCodePoint = match fromCodePoint(0) {
-        Success => false
-        Error { message } => message != ""
-    }
+    let substringNegative = rejected(substring("hi", negativeOne, 2))
+    let substringOverrun = rejected(substring("hi", 0, 99))
+    let substringInverted = rejected(substring("hi", 2, 0))
+    let indexMissing = rejected(indexOf("hello", "xyz"))
+    let replaceEmpty = rejected(replace("hello", "", "x"))
+    let repeatNegative = rejected(repeat("ab", negativeOne))
+    let padStartEmpty = rejected(padStart("hi", 5, ""))
+    let padEndEmpty = rejected(padEnd("hi", 5, ""))
+    let emptyFloat = rejected(parseFloat(""))
+    let trailingFloat = rejected(parseFloat("3.14x"))
+    let spacedFloat = rejected(parseFloat(" 3.14"))
+    let nanFloat = rejected(parseFloat("nan"))
+    let hexFloat = rejected(parseFloat("0x1p2"))
+    let infiniteFloat = rejected(parseFloat("1e9999"))
+    let integerOverflow = rejected(parseInt("99999999999999999999"))
+    let integerLeadingSpace = rejected(parseInt(" 42"))
+    let byteOutOfBounds = rejected(byteAt("héllo", 99))
+    let codePointMidSequence = rejected(codePointAt("héllo", 2))
+    let surrogateRejected = rejected(codePointWidth(55296))
+    let invalidCodePoint = rejected(fromCodePoint(2000000))
+    let nulCodePoint = rejected(fromCodePoint(0))
     let roundTrip = match fromCodePoint(233) {
         Success { value } => (codePointAt(value, 0) ?: 0) == 233
         Error => false
