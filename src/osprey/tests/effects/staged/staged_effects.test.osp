@@ -5,23 +5,6 @@ fn gpuSatisfies(result, predicate) = match result {
     Error { message } => { check("GPU operation", "success", toString(message))
         false }
 }
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 
 /// Staged effects: an effect declared `static` is answered by the compiler and
 /// leaves nothing behind ([STAGE-DECL], [STAGE-RESIDUE],
@@ -182,7 +165,6 @@ fn signalIdentityCase() = {
         labels == "count: 7 at: 2"
     ])
 }
-
 
 test("static handlers are discharged before the program runs", fn() => exactArithmetic(staticDischargeCase))
 test("one function serves the static and dynamic stages", fn() => exactArithmetic(sharedAcrossStagesCase))

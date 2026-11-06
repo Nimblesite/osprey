@@ -1,4 +1,5 @@
 use super::*;
+use osprey_ast::Position;
 use osprey_syntax::parse_program;
 
 fn program(source: &str) -> Program {
@@ -98,7 +99,7 @@ fn the_prelude_source_parses_clean_and_lives_past_every_source_line() {
         attached(&rebased.program),
         "the prelude must recognise itself"
     );
-    assert_all_lines(&statement_lines(rebased, type_position), is_prelude_line);
+    assert_all_lines(&statement_lines(rebased, statement_position), is_prelude_line);
     assert!(!is_prelude_line(PRELUDE_LINE_BASE) && is_prelude_line(PRELUDE_LINE_BASE + 1));
 }
 
@@ -237,4 +238,65 @@ fn the_signals_prelude_type_checks_beside_a_program_that_renders_keyed_regions()
          print(\"${toString(signalRevisionOf(first, \"route\"))}/${toString(signalRevisionOf(next, \"route\"))}\")\n",
     );
     assert_eq!(crate::check_program(&source), Vec::new());
+}
+
+#[test]
+fn the_testing_source_parses_clean_and_lives_past_json_and_signals() {
+    let rebased = testing();
+    assert_unit_rebases_cleanly(TESTING, rebased);
+    let testing_base = PRELUDE_LINE_BASE + 2 * PRELUDE_UNIT_STRIDE;
+    assert_all_lines(&statement_lines(rebased, statement_position), |line| {
+        line >= testing_base
+    });
+    assert_all_lines(&statement_lines(signals(), statement_position), |line| {
+        line < testing_base
+    });
+    assert!(attached(&rebased.program), "the testing unit must recognise itself");
+}
+
+#[test]
+fn naming_the_testing_policy_attaches_it_once_and_no_json_or_signals() {
+    let sources = [
+        "test(\"sum\", fn() => exactArithmetic(fn() => expect(1 + 2, 3)))\n",
+        "fn case() = check(\"q\", \"2\", toString(7 / 3))\ntest(\"q\", fn() => exactArithmetic(case))\n",
+        "let policy = exactArithmetic\npolicy(fn() => print(toString(9 * 9)))\n",
+        "exactArithmetic fn () => print (toString (2 + 2))\n",
+    ];
+    assert_offers_attach_once(&sources[..3], "exactArithmetic");
+    for source in &sources[..3] {
+        let names = attached_names(source);
+        assert!(
+            !names.iter().any(|name| name == "Json" || name == "SignalFrame"),
+            "only the testing unit attaches: {names:?}"
+        );
+    }
+}
+
+#[test]
+fn a_program_declaring_its_own_testing_policy_keeps_its_own() {
+    let names = attached_names(
+        "fn exactArithmetic(work) = work()\ntest(\"own\", fn() => exactArithmetic(fn() => expect(1, 1)))\n",
+    );
+    assert_eq!(names, ["exactArithmetic"], "only the program's own copy");
+    assert_left_as_written(&["test(\"plain\", fn() => expect(1, 1))\n"]);
+}
+
+#[test]
+fn the_testing_policy_discharges_every_arith_fault_in_the_work_it_runs() {
+    for body in [
+        "expect(9223372036854775807 + 0, 9223372036854775807)",
+        "check(\"div\", \"2.5\", toString(5 / 2))",
+        "expect(rest(3), 1)",
+        "expect(abs(0 - 5) * 2, 10)",
+    ] {
+        let source = program(&format!(
+            "fn rest(n) = 7 % n\ntest(\"faults\", fn() => exactArithmetic(fn() => {body}))\n"
+        ));
+        assert_eq!(crate::check_program(&source), Vec::new(), "{body}");
+    }
+    let unhandled = program("fn rest(n) = 7 % n\ntest(\"bare\", fn() => expect(rest(3), 1))\n");
+    assert!(
+        !crate::check_program(&unhandled).is_empty(),
+        "without the policy the program is rejected"
+    );
 }

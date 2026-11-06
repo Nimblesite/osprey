@@ -1,22 +1,3 @@
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
-
 // 🔗 Function Composition Test
 // Tests passing functions as arguments to other functions
 
@@ -295,7 +276,6 @@ fn effectCompositionCase() = {
     perform ClosureSlot.rebindAdder(40)
     checkAll("effect-managed function state", [count == 3, rebound(2) == 42])
 }
-
 
 test("functions compose across scalar and string values", fn() => exactArithmetic(basicCompositionCase))
 test("closures retain captures through higher-order consumers", fn() => exactArithmetic(closureCompositionCase))

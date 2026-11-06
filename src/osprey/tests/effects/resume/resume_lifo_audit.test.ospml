@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** Audit supplies numbered values and observes continuation unwind order. *)
 effect Audit
     (** Request the numbered value for `label`, recording the visit. *)

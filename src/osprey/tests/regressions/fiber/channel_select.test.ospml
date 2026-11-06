@@ -1,20 +1,6 @@
 // [CONCURRENCY-SELECT] Select chooses among channel operations; the arms join as a
 // match does and every arm kind is exercised across element types.
 
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** A shopping order on a channel, for a managed element. *)
 type Order =
     item : string

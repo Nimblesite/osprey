@@ -71,24 +71,6 @@ fn blockBodyCase() = {
                 } Error { message } => check("GPU operation", "success", toString(message)) }
         } Error { message } => check("GPU operation", "success", toString(message)) }
 }
-/// Exact-value tests record any arithmetic fault as a failed assertion.
-fn exactArithmetic(work) = {
-    handle Arith {
-        overflow op _ _ wrapped => {
-            check("unexpected arithmetic overflow", "none", op)
-            wrapped
-        }
-        divideByZero op _ => {
-            check("unexpected zero divisor", "none", op)
-            0.0
-        }
-        remainderByZero _ => {
-            expectFalse(true)
-            0
-        }
-    }
-    work()
-}
 test("float kernel slots type both multiplication orders", fn() => exactArithmetic(multiplicationOrderCase))
 test("named generic float combines specialize from buffer slots", fn() => exactArithmetic(genericCombineCase))
 test("unannotated recursive helpers are valid GPU kernels", fn() => exactArithmetic(recursiveHelperCase))

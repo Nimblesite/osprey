@@ -21,19 +21,6 @@ productWith (label, kind, x, w, inner, expected) = withBuffer (gpuMatMulQuant (x
     gpuSatisfies (fromGpu out, \values => structuralEquals (values, expected))
 ]))
 productCase (label, kind, bytes, inner, expected) = withBuffer (toGpu (range (0, inner)), \indices => withBuffer (gpuMap (indices, \i => toFloat32 i), \x => withBuffer (toGpu bytes, \w => productWith (label, kind, x, w, inner, expected))))
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 
 (** [LLM-MATMUL-QUANT] Q8_0: 32 weights per 34-byte block, a binary16 scale and one signed byte per weight. *)
 q8_0Case () =

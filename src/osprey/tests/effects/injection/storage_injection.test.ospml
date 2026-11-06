@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** Storage names the persistence the notebook logic needs and nothing more.
     No implementation appears here: `save`, `load` and `exists` are answered
     by whoever installs the handler, so the logic compiles once and runs unchanged
@@ -140,7 +126,6 @@ diskStorageCase () =
         endsWith onDisk "call dentist\n",
         entryCount onDisk == 2
     ]
-
 
 test "injected disk handler persists the notebook to real files" (\() => exactArithmetic (diskStorageCase))
 

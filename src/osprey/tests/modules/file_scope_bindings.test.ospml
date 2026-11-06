@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 (** ML surface for [MODULES-FILE-SCOPE-BINDING] and [MODULES-INIT]: a file-scope
     binding or `mut` cell is a declaration whose initializer runs where it is
     written, in source order, before the entry's statements. A function body

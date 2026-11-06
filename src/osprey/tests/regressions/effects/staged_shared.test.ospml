@@ -1,17 +1,3 @@
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 // [STAGE-POLY] [STAGE-POLY-ERASURE] [STAGE-COMPAT] The same higher-order
 // definition serves static Scale and dynamic Audit in one program. Source
 // contracts are validated before specialization; the residual program is
@@ -52,7 +38,6 @@ dynamicTotal =
                 trail := "${trail}[${message}]"
                 resume ()
         twice counted 0)
-
 
 test "one unannotated function serves both stages in one program" (\() => exactArithmetic ((\() => checkAll "stage polymorphism" [
     staticTotal == 18,

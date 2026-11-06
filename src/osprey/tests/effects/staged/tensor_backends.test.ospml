@@ -270,20 +270,6 @@ declaredTypesCase () = checkAll "a kernel keeps the operation's declared element
     Backends::onLists (\() => settledText (declaredTypes ())) == "6.0 18.0"
 ]
 
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 test "the block over lists matches the reference pass" (\() => exactArithmetic listsCase)
 test "the same block over GPU buffers matches the reference pass" (\() => exactArithmetic gpuCase)
 test "both interpretations compute the same doubles" (\() => exactArithmetic agreementSettled)

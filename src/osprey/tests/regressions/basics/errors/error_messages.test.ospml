@@ -11,20 +11,6 @@ divideResult (a, b) =
         true => Error(message = "division by zero")
         false => Success(value = value)
 
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
-
 // ML-flavor twin of error_messages.osp — byte-identical IR.
 // Error-message catalogue: the ERROR path of every fallible builtin, with the
 // real reason threaded through the `Error message` arm — never a placeholder.
@@ -206,7 +192,6 @@ oversizedPayloadCase () =
         toString (longSuccess ()) == "Success(${text})",
         length (toString (longSuccess ())) == ((length text + 9) )
     ]
-
 
 test "numeric failures retain their reasons" (\() => exactArithmetic (numericErrorCase))
 test "string failures retain their reasons" (\() => exactArithmetic (stringErrorCase))

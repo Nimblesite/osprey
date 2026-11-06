@@ -65,6 +65,19 @@ either: static discovery (`[TESTING-LIST]`), the test-case hover
 (`[TESTING-DOC-HOVER]`), and skip warnings (`[TESTING-SKIP-WARNING]`) all treat
 its `test(...)` calls as ordinary calls to the user's own function.
 
+### `exactArithmetic(work: fn() -> a) -> a` — `[TESTING-ARITH-POLICY]`
+
+The `Arith` policy a test installs around exact-value work. It runs `work` and
+records any arithmetic fault in it as a failed assertion that names the
+operator (`unexpected arithmetic overflow`, `unexpected zero divisor`), so a
+test cannot pass on a wrapped or substituted value. It ships as the `testing`
+unit of the source prelude
+([`prelude/testing.osp`](../../../src/toolchain/crates/osprey-types/src/prelude/testing.osp)),
+which attaches only to a program that names it; a program that declares its
+own `exactArithmetic` keeps its own. Installing it is still explicit and by
+name, as [ARITH-TOTAL](0037-ArithmeticEffects.md#the-guarantee--arith-total)
+requires: no test gets an ambient policy.
+
 ## Equality semantics
 
 **`[TESTING-EQUALITY]`** Assertion equality is canonical-string equality

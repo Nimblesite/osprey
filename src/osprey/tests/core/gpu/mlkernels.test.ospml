@@ -441,19 +441,6 @@ trainCaseUploaded (input0, input1) =
         mseOf(toFloat32 2.0, xs, ys, \loss => loss == toFloat32 0.0), mseOf(toFloat32 3.0, xs, ys, \above => mseOf(toFloat32 1.0, xs, ys, \below => above == below)),
         mseOf(toFloat32 0.0, xs, ys, \unfit => mseOf(w, xs, ys, \fitted => unfit > fitted))
     ]))
-(** Exact-value tests record any arithmetic fault as a failed assertion. *)
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 test ("dot product fuses zip and fold", \() => exactArithmetic (dotCase))
 test ("saxpy runs elementwise over buffer pairs", \() => exactArithmetic (saxpyCase))
 test ("a kernel closes over one host scalar", \() => exactArithmetic (captureScalarCase))

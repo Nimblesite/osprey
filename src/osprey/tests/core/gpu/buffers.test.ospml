@@ -487,18 +487,6 @@ quantWith (x, w) = withBuffer(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 2), \out => c
     quantMessage(gpuMatMulQuant(x, w, "Q4_K", 1, 256, 3)) == "gpuMatMulQuant: weights: has 288 elements, the stated shape needs 432",
     quantMessage(gpuMatMulQuant(x, w, "Q4_K", 2, 256, 2)) == "gpuMatMulQuant: x operand: has 256 elements, the stated shape needs 512"
 ]))
-exactArithmetic work =
-    handle Arith
-        overflow op _ _ wrapped =>
-            check "unexpected arithmetic overflow" "none" op
-            wrapped
-        divideByZero op _ =>
-            check "unexpected zero divisor" "none" op
-            0.0
-        remainderByZero _ =>
-            expectFalse true
-            0
-    work ()
 test ("buffer literals store elements densely at constant indices", \() => exactArithmetic (literalCase))
 test ("a list value copies into a buffer element for element", \() => exactArithmetic (listCopyCase))
 test ("gpu buffers round-trip lists densely", \() => exactArithmetic (roundTripCase))
