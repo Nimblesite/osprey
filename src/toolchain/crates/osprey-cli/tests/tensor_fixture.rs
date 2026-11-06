@@ -449,7 +449,13 @@ refused(region(123, 1))\nrefused(region(124, 100000))\nrefused(region(-4, 1))\n"
     );
     let program = std::env::temp_dir().join(format!("osprey_map_{}.osp", std::process::id()));
     assert!(std::fs::write(&program, osp).is_ok(), "not written");
-    for gpu in ["host", "metal"] {
+    // Metal exists only on macOS; elsewhere `auto` picks whatever device the runtime has.
+    let devices: &[&str] = if cfg!(target_os = "macos") {
+        &["host", "metal"]
+    } else {
+        &["host", "auto"]
+    };
+    for &gpu in devices {
         let output = Command::new(env!("CARGO_BIN_EXE_osprey"))
             .arg(&program)
             .arg("--run")
