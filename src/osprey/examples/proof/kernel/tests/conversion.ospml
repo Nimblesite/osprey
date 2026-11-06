@@ -57,30 +57,23 @@ module ConversionTests
         , Binder(name = "P", ty = Sort Zero) ]
 
     sameProposition () =
-        test ("proof arguments of the same proposition are interchangeable", \() =>
-            expect (outcome (propositionContext (), BVar 0, App (BVar 1) (BVar 2)), "accepted"))
+        test ("proof arguments of the same proposition are interchangeable", \() => expect (outcome (propositionContext (), BVar 0, App (BVar 1) (BVar 2)), "accepted"))
 
     distinctPropositions () =
-        test ("proofs of distinct propositions are not interchangeable", \() =>
-            expect (outcome (twoPropositionsContext (), BVar 0, BVar 1), "type mismatch: `h1` has type `P` but `Q` was expected"))
+        test ("proofs of distinct propositions are not interchangeable", \() => expect (outcome (twoPropositionsContext (), BVar 0, BVar 1), "type mismatch: `h1` has type `P` but `Q` was expected"))
 
-        test ("propositions themselves are types, not interchangeable proofs", \() =>
-            expect (outcome ([Binder(name = "P", ty = Sort Zero), Binder(name = "Q", ty = Sort Zero)], BVar 0, BVar 1), "type mismatch: `P` has type `Prop` but `Q` was expected"))
+        test ("propositions themselves are types, not interchangeable proofs", \() => expect (outcome ([Binder(name = "P", ty = Sort Zero), Binder(name = "Q", ty = Sort Zero)], BVar 0, BVar 1), "type mismatch: `P` has type `Prop` but `Q` was expected"))
 
     distinctData () =
-        test ("data arguments of distinct values are not interchangeable", \() =>
-            expect (outcome (dataContext (), BVar 0, App (BVar 1) (BVar 2)), "type mismatch: `v` has type `(G a)` but `(G b)` was expected"))
+        test ("data arguments of distinct values are not interchangeable", \() => expect (outcome (dataContext (), BVar 0, App (BVar 1) (BVar 2)), "type mismatch: `v` has type `(G a)` but `(G b)` was expected"))
 
     binderContext () =
-        test ("proof irrelevance reaches under a Pi binder", \() =>
-            expect (outcome (propositionContext (), Lam "x" (BVar 4) (BVar 1), Pi "x" (BVar 4) (App (BVar 2) (BVar 3))), "accepted"))
+        test ("proof irrelevance reaches under a Pi binder", \() => expect (outcome (propositionContext (), Lam "x" (BVar 4) (BVar 1), Pi "x" (BVar 4) (App (BVar 2) (BVar 3))), "accepted"))
 
     malformedProofs () =
-        test ("an unknown proof reference still refuses proof irrelevance", \() =>
-            expect (outcome (proofContext (), BVar 0, Const "Q" []), "type mismatch: `h` has type `P` but `Q` was expected"))
+        test ("an unknown proof reference still refuses proof irrelevance", \() => expect (outcome (proofContext (), BVar 0, Const "Q" []), "type mismatch: `h` has type `P` but `Q` was expected"))
 
-        test ("a malformed proof term is rejected before any expected Prop", \() =>
-            expect (outcome ([Binder(name = "P", ty = Sort Zero)], BVar 9, Sort Zero), "unbound variable #9"))
+        test ("a malformed proof term is rejected before any expected Prop", \() => expect (outcome ([Binder(name = "P", ty = Sort Zero)], BVar 9, Sort Zero), "unbound variable #9"))
 
     (** The kernel's verdict, with a success reduced to `accepted` so a
         failure to render never reads as a pass. *)

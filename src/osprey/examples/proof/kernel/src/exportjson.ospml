@@ -57,27 +57,23 @@ module ExportJson
         Success flag => Success(value = flag)
         Error _ => Error(message = "${name} is not a boolean")
 
+    (** The entry `index` of `table`, or an error naming the `kind` of table
+        that does not hold it. *)
+    entryOf (table, kind, index) = match mapGet (table, toString index)
+        Success value => Success(value = value)
+        Error _ => Error(message = "unknown ${kind} ${toString index}")
+
     (** Name 0 is the anonymous root and prints as the empty prefix. *)
     export nameOf (tables, index) = match index == 0
         true => Success(value = "")
-        false => namedEntry (tables, index)
-
-    namedEntry (tables, index) = match mapGet (tables.names, toString index)
-        Success name => Success(value = name)
-        Error _ => Error(message = "unknown name ${toString index}")
+        false => entryOf (tables.names, "name", index)
 
     (** Level 0 is `Zero`. *)
     export levelOf (tables, index) = match index == 0
         true => Success(value = Zero)
-        false => leveledEntry (tables, index)
+        false => entryOf (tables.levels, "level", index)
 
-    leveledEntry (tables, index) = match mapGet (tables.levels, toString index)
-        Success level => Success(value = level)
-        Error _ => Error(message = "unknown level ${toString index}")
-
-    export exprOf (tables, index) = match mapGet (tables.exprs, toString index)
-        Success term => Success(value = term)
-        Error _ => Error(message = "unknown expr ${toString index}")
+    export exprOf (tables, index) = entryOf (tables.exprs, "expr", index)
 
     (** A declaration's name, through the name table. *)
     export declName (tables, json) = upon (intIn (json, "name"), \ref => declarationName (tables, ref))

@@ -35,17 +35,13 @@ module InductiveAdversarialTests
         convertibleClaim ()
 
     nameCollisions () =
-        test ("a genuine constructor name containing a comma is accepted literally", \() =>
-            expect (literalCommaName (), "checked"))
+        test ("a genuine constructor name containing a comma is accepted literally", \() => expect (literalCommaName (), "checked"))
 
-        test ("comma-bearing constructor names cannot impersonate two constructors", \() =>
-            expect (collisionVerdict (forged (Fixtures::natAddComm (), "Nat.zero, Nat.succ", "\"ctors\":[2,3]", "\"ctors\":[999999984]")), "rejected"))
+        test ("comma-bearing constructor names cannot impersonate two constructors", \() => expect (collisionVerdict (forged (Fixtures::natAddComm (), "Nat.zero, Nat.succ", "\"ctors\":[2,3]", "\"ctors\":[999999984]")), "rejected"))
 
-        test ("comma-bearing universe names cannot impersonate two recursor parameters", \() =>
-            expect (collisionVerdict (forged (Fixtures::andSwap (), "u_1, u", "\"levelParams\":[11,2]", "\"levelParams\":[999999984]")), "rejected"))
+        test ("comma-bearing universe names cannot impersonate two recursor parameters", \() => expect (collisionVerdict (forged (Fixtures::andSwap (), "u_1, u", "\"levelParams\":[11,2]", "\"levelParams\":[999999984]")), "rejected"))
 
-        test ("one comma-bearing rule cannot impersonate a complete recursor rule list", \() =>
-            expect (collisionVerdict (forged (Fixtures::natAddComm (), "Nat.zero/0, Nat.succ", "\"rules\":[{\"ctor\":2,\"nfields\":0,\"rhs\":24},{\"ctor\":3,\"nfields\":1,\"rhs\":35}]", "\"rules\":[{\"ctor\":999999984,\"nfields\":1,\"rhs\":24}]")), "rejected"))
+        test ("one comma-bearing rule cannot impersonate a complete recursor rule list", \() => expect (collisionVerdict (forged (Fixtures::natAddComm (), "Nat.zero/0, Nat.succ", "\"rules\":[{\"ctor\":2,\"nfields\":0,\"rhs\":24},{\"ctor\":3,\"nfields\":1,\"rhs\":35}]", "\"rules\":[{\"ctor\":999999984,\"nfields\":1,\"rhs\":24}]")), "rejected"))
 
     literalCommaName () = match replace (Fixtures::andSwap (), "\"str\":\"refl\"", "\"str\":\"refl, literal\"")
         Success source => verdict source
@@ -67,20 +63,16 @@ module InductiveAdversarialTests
         constructor count: the constructor's fields and the family's
         indices, on two different blocks. *)
     countClaims () =
-        test ("a constructor claiming one field over none is refused on its count", \() =>
-            expect (theory (ExportInductiveTests::eqCtor (), "\"numFields\":0", "\"numFields\":1"), "`Eq.refl` as exported claims constructor 0 of Eq, 2 parameters, 1 fields, the kernel derives constructor 0 of Eq, 2 parameters, 0 fields"))
+        test ("a constructor claiming one field over none is refused on its count", \() => expect (theory (ExportInductiveTests::eqCtor (), "\"numFields\":0", "\"numFields\":1"), "`Eq.refl` as exported claims constructor 0 of Eq, 2 parameters, 1 fields, the kernel derives constructor 0 of Eq, 2 parameters, 0 fields"))
 
-        test ("a family claiming one index over none is refused on its count", \() =>
-            expect (theory (ExportInductiveTests::iffType (), "\"numIndices\":0", "\"numIndices\":1"), "`Iff` as exported claims 2 parameters, 1 indices, constructors [Iff.intro], recursive false, reflexive false, all [Iff], nested 0, the kernel derives 2 parameters, 0 indices, constructors [Iff.intro], recursive false, reflexive false, all [Iff], nested 0"))
+        test ("a family claiming one index over none is refused on its count", \() => expect (theory (ExportInductiveTests::iffType (), "\"numIndices\":0", "\"numIndices\":1"), "`Iff` as exported claims 2 parameters, 1 indices, constructors [Iff.intro], recursive false, reflexive false, all [Iff], nested 0, the kernel derives 2 parameters, 0 indices, constructors [Iff.intro], recursive false, reflexive false, all [Iff], nested 0"))
 
     (** Claims about the derived recursor: a ι rule claiming another field
         count, and K disclaimed over a family the kernel knows supports it. *)
     recursorClaims () =
-        test ("a rule claiming one field over none is refused on the rule count", \() =>
-            expect (theory (ExportInductiveTests::eqRule (), "\"nfields\":0", "\"nfields\":1"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/1], motives 1, all [Eq], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0], motives 1, all [Eq]"))
+        test ("a rule claiming one field over none is refused on the rule count", \() => expect (theory (ExportInductiveTests::eqRule (), "\"nfields\":0", "\"nfields\":1"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/1], motives 1, all [Eq], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0], motives 1, all [Eq]"))
 
-        test ("a recursor disclaiming K over a K family is refused on K", \() =>
-            expect (theory (ExportInductiveTests::eqRec (), "\"k\":true", "\"k\":false"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K false, rules [Eq.refl/0], motives 1, all [Eq], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0], motives 1, all [Eq]"))
+        test ("a recursor disclaiming K over a K family is refused on K", \() => expect (theory (ExportInductiveTests::eqRec (), "\"k\":true", "\"k\":false"), "`Eq.rec` as exported claims recursor of Eq, 2 parameters, 1 indices, 1 minors, K false, rules [Eq.refl/0], motives 1, all [Eq], the kernel derives recursor of Eq, 2 parameters, 1 indices, 1 minors, K true, rules [Eq.refl/0], motives 1, all [Eq]"))
 
     (** Claims about a whole group, mutual or nested: the motive count,
         motive order, index count and group inventory a block states, the
@@ -89,66 +81,47 @@ module InductiveAdversarialTests
         kernel re-derives from the declarations alone. The genuine Lean
         4.25 mutual and nested fixtures supply the groups. *)
     groupClaims () =
-        test ("a recursor claiming two motives over one is refused naming both counts", \() =>
-            expect (fragments (theory (ExportInductiveTests::eqRec (), "\"numMotives\":1", "\"numMotives\":2"), ["`Eq.rec` as exported claims", "motives 2", "motives 1", "the kernel derives"]), "`Eq.rec` as exported claims | motives 2 | motives 1 | the kernel derives"))
+        test ("a recursor claiming two motives over one is refused naming both counts", \() => expect (fragments (theory (ExportInductiveTests::eqRec (), "\"numMotives\":1", "\"numMotives\":2"), ["`Eq.rec` as exported claims", "motives 2", "motives 1", "the kernel derives"]), "`Eq.rec` as exported claims | motives 2 | motives 1 | the kernel derives"))
 
-        test ("a type claiming another family in its group inventory is refused on the inventory", \() =>
-            expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
+        test ("a type claiming another family in its group inventory is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
 
-        test ("a recursor claiming another family in its group inventory is refused on the inventory", \() =>
-            expect (fragments (theory (ExportInductiveTests::eqRec (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq.rec` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq.rec` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
+        test ("a recursor claiming another family in its group inventory is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqRec (), "\"all\":[1]", "\"all\":[1,9]"), ["`Eq.rec` as exported claims", "all [Eq, Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq.rec` as exported claims | all [Eq, Eq.refl] | all [Eq] | the kernel derives"))
 
-        test ("a type whose inventory names another family only is refused on the inventory", \() =>
-            expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[9]"), ["`Eq` as exported claims", "all [Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq.refl] | all [Eq] | the kernel derives"))
+        test ("a type whose inventory names another family only is refused on the inventory", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"all\":[1]", "\"all\":[9]"), ["`Eq` as exported claims", "all [Eq.refl]", "all [Eq]", "the kernel derives"]), "`Eq` as exported claims | all [Eq.refl] | all [Eq] | the kernel derives"))
 
-        test ("a type claiming one nested family over none is refused on the count", \() =>
-            expect (fragments (theory (ExportInductiveTests::eqType (), "\"numNested\":0", "\"numNested\":1"), ["`Eq` as exported claims", "nested 1", "nested 0", "the kernel derives"]), "`Eq` as exported claims | nested 1 | nested 0 | the kernel derives"))
+        test ("a type claiming one nested family over none is refused on the count", \() => expect (fragments (theory (ExportInductiveTests::eqType (), "\"numNested\":0", "\"numNested\":1"), ["`Eq` as exported claims", "nested 1", "nested 0", "the kernel derives"]), "`Eq` as exported claims | nested 1 | nested 0 | the kernel derives"))
 
-        test ("a block naming one family twice is refused on the name", \() =>
-            expect (verdict (duplicatedType ()), "constant `Eq` is already declared"))
+        test ("a block naming one family twice is refused on the name", \() => expect (verdict (duplicatedType ()), "constant `Eq` is already declared"))
 
-        test ("a block claiming one recursor twice is refused on the count", \() =>
-            expect (duplicatedRecursor (), "the block claims 2 recursors where the kernel derives 1"))
+        test ("a block claiming one recursor twice is refused on the count", \() => expect (duplicatedRecursor (), "the block claims 2 recursors where the kernel derives 1"))
 
-        test ("a genuine mutual recursor claiming three motives over two is refused naming both counts", \() =>
-            expect (fragments (mutualTheory ("\"numMotives\":2", "\"numMotives\":3"), ["`Tree.rec` as exported claims", "motives 3", "motives 2", "the kernel derives"]), "`Tree.rec` as exported claims | motives 3 | motives 2 | the kernel derives"))
+        test ("a genuine mutual recursor claiming three motives over two is refused naming both counts", \() => expect (fragments (mutualTheory ("\"numMotives\":2", "\"numMotives\":3"), ["`Tree.rec` as exported claims", "motives 3", "motives 2", "the kernel derives"]), "`Tree.rec` as exported claims | motives 3 | motives 2 | the kernel derives"))
 
-        test ("a genuine mutual recursor claiming no indices over one is refused on the count", \() =>
-            expect (fragments (mutualTheory ("\"numIndices\":1,\"numMinors\":6", "\"numIndices\":0,\"numMinors\":6"), ["`IndexedTree.rec` as exported claims", "0 indices", "1 indices", "the kernel derives"]), "`IndexedTree.rec` as exported claims | 0 indices | 1 indices | the kernel derives"))
+        test ("a genuine mutual recursor claiming no indices over one is refused on the count", \() => expect (fragments (mutualTheory ("\"numIndices\":1,\"numMinors\":6", "\"numIndices\":0,\"numMinors\":6"), ["`IndexedTree.rec` as exported claims", "0 indices", "1 indices", "the kernel derives"]), "`IndexedTree.rec` as exported claims | 0 indices | 1 indices | the kernel derives"))
 
-        test ("a genuine mutual type claiming a constructor in its group inventory is refused on the inventory", \() =>
-            expect (fragments (mutualTheory ("\"all\":[23,24]", "\"all\":[23,24,25]"), ["`Tree` as exported claims", "all [Tree, Forest, Tree.leaf]", "all [Tree, Forest]", "the kernel derives"]), "`Tree` as exported claims | all [Tree, Forest, Tree.leaf] | all [Tree, Forest] | the kernel derives"))
+        test ("a genuine mutual type claiming a constructor in its group inventory is refused on the inventory", \() => expect (fragments (mutualTheory ("\"all\":[23,24]", "\"all\":[23,24,25]"), ["`Tree` as exported claims", "all [Tree, Forest, Tree.leaf]", "all [Tree, Forest]", "the kernel derives"]), "`Tree` as exported claims | all [Tree, Forest, Tree.leaf] | all [Tree, Forest] | the kernel derives"))
 
-        test ("a genuine nested field naming another container lowers another group and is refused on its size", \() =>
-            expect (mutualTheory (arrayNest (), listNest ()), "the block claims 3 recursors where the kernel derives 2"))
+        test ("a genuine nested field naming another container lowers another group and is refused on its size", \() => expect (mutualTheory (arrayNest (), listNest ()), "the block claims 3 recursors where the kernel derives 2"))
 
-        test ("a genuine nested recursor's motive order is refused when swapped", \() =>
-            expect (fragments (nestedTheory ("\"body\":124,\"name\":28,\"type\":97", "\"body\":124,\"name\":28,\"type\":98"), ["`NestedTree.rec` as exported has type", "the kernel derives"]), "`NestedTree.rec` as exported has type | the kernel derives"))
+        test ("a genuine nested recursor's motive order is refused when swapped", \() => expect (fragments (nestedTheory ("\"body\":124,\"name\":28,\"type\":97", "\"body\":124,\"name\":28,\"type\":98"), ["`NestedTree.rec` as exported has type", "the kernel derives"]), "`NestedTree.rec` as exported has type | the kernel derives"))
 
-        test ("a forged auxiliary rule field count is refused naming both rules", \() =>
-            expect (fragments (nestedTheory ("\"ctor\":17,\"nfields\":2,\"rhs\":173", "\"ctor\":17,\"nfields\":3,\"rhs\":173"), ["`NestedTree.rec_1` as exported claims", "List.cons/3", "List.cons/2", "the kernel derives"]), "`NestedTree.rec_1` as exported claims | List.cons/3 | List.cons/2 | the kernel derives"))
+        test ("a forged auxiliary rule field count is refused naming both rules", \() => expect (fragments (nestedTheory ("\"ctor\":17,\"nfields\":2,\"rhs\":173", "\"ctor\":17,\"nfields\":3,\"rhs\":173"), ["`NestedTree.rec_1` as exported claims", "List.cons/3", "List.cons/2", "the kernel derives"]), "`NestedTree.rec_1` as exported claims | List.cons/3 | List.cons/2 | the kernel derives"))
 
-        test ("a constructor taking the family as a function's domain is refused as non-positive", \() =>
-            expect (verdict (negative ()), "non-positive occurrence of `Bad` in constructor `Bad.mk`"))
+        test ("a constructor taking the family as a function's domain is refused as non-positive", \() => expect (verdict (negative ()), "non-positive occurrence of `Bad` in constructor `Bad.mk`"))
 
     (** Repairs exercised directly: K counts the constructor, a nested
         parameter spine holding a local variable is refused, and a Pi
         instantiation that runs out of binders is refused, never truncated. *)
     repairClaims () =
-        test ("K refuses an empty Prop family", \() =>
-            expect (kValue ([]), "false"))
+        test ("K refuses an empty Prop family", \() => expect (kValue ([]), "false"))
 
-        test ("K accepts exactly one fieldless constructor", \() =>
-            expect (kValue ([fieldless ()]), "true"))
+        test ("K accepts exactly one fieldless constructor", \() => expect (kValue ([fieldless ()]), "true"))
 
-        test ("K refuses two constructors", \() =>
-            expect (kValue ([fieldless (), fieldless ()]), "false"))
+        test ("K refuses two constructors", \() => expect (kValue ([fieldless (), fieldless ()]), "false"))
 
-        test ("a nested container parameter containing a local variable is refused", \() =>
-            expect (looseNest (), "invalid nested inductive datatype `List`, nested inductive datatype parameters cannot contain local variables"))
+        test ("a nested container parameter containing a local variable is refused", \() => expect (looseNest (), "invalid nested inductive datatype `List`, nested inductive datatype parameters cannot contain local variables"))
 
-        test ("an applied type with too few Pi binders is refused, never truncated", \() =>
-            expect (appliedOutcome (), "not enough Pi binders to instantiate the type"))
+        test ("an applied type with too few Pi binders is refused, never truncated", \() => expect (appliedOutcome (), "not enough Pi binders to instantiate the type"))
 
     kValue (shapes) = toString (Inductive::k (propSpec (shapes)))
 
@@ -218,11 +191,9 @@ module InductiveAdversarialTests
         the terms, so the cases pin the clause and the constant the refusal
         is about, never the printed binder names, which change per export. *)
     termClaims () =
-        test ("a rule whose right-hand side is another member's type names the rule", \() =>
-            expect (ruleView (theory (ExportInductiveTests::eqRule (), "\"rhs\":41", "\"rhs\":12")), "`Eq.rec`'s rule for `Eq.refl` as exported is | the kernel derives"))
+        test ("a rule whose right-hand side is another member's type names the rule", \() => expect (ruleView (theory (ExportInductiveTests::eqRule (), "\"rhs\":41", "\"rhs\":12")), "`Eq.rec`'s rule for `Eq.refl` as exported is | the kernel derives"))
 
-        test ("a recursor whose statement is another member's type names itself", \() =>
-            expect (typeView (theory (ExportInductiveTests::eqRec (), "\"type\":37", "\"type\":12")), "`Eq.rec` as exported has type | the kernel derives"))
+        test ("a recursor whose statement is another member's type names itself", \() => expect (typeView (theory (ExportInductiveTests::eqRec (), "\"type\":37", "\"type\":12")), "`Eq.rec` as exported has type | the kernel derives"))
 
     (** The clause a refusal must carry, or the refusal itself when not. *)
     held (message, part) = match indexOf (message, part)
@@ -234,8 +205,7 @@ module InductiveAdversarialTests
     typeView (message) = Shapes::views [held (message, "`Eq.rec` as exported has type"), held (message, "the kernel derives")]
 
     convertibleClaim () =
-        test ("an untyped beta-redex cannot conceal a forged recursor statement", \() =>
-            expect (typeView (verdict (concealedType ())), "`Eq.rec` as exported has type | the kernel derives"))
+        test ("an untyped beta-redex cannot conceal a forged recursor statement", \() => expect (typeView (verdict (concealedType ())), "`Eq.rec` as exported has type | the kernel derives"))
 
     concealedType () = changedRecursor (insertedExpressions ())
 

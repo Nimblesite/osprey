@@ -53,22 +53,16 @@ module StructureEtaTests
     (** Core Prod.map pattern-matches through a recursor, unlike the
         projection-only fixture. Implements [PROOF-KERNEL-THEORY]. *)
     export core () =
-        test ("core Prod.map_id rfl proof checks", \() =>
-            expect (verdict (Fixtures::coreProdMap (), "Prod.map_id"), "declared"))
-        test ("core Prod.map_id' rfl proof checks", \() =>
-            expect (verdict (Fixtures::coreProdMap (), "Prod.map_id'"), "declared"))
-        test ("core product composition proofs check with the full dependency export", \() =>
-            expect (verdict (Fixtures::coreProdAll (), "Prod.map_comp_map"), "declared"))
+        test ("core Prod.map_id rfl proof checks", \() => expect (verdict (Fixtures::coreProdMap (), "Prod.map_id"), "declared"))
+        test ("core Prod.map_id' rfl proof checks", \() => expect (verdict (Fixtures::coreProdMap (), "Prod.map_id'"), "declared"))
+        test ("core product composition proofs check with the full dependency export", \() => expect (verdict (Fixtures::coreProdAll (), "Prod.map_comp_map"), "declared"))
         coreComparison (coreEnvironment ())
         propositionMajor (unitEnvironment ())
 
     coreComparison (env) =
-        test ("core recursor map identity equals the identity function", \() =>
-            expect (conversionIn (env, coreContext (), coreMap (coreId (BVar 1, "v")), coreIdentity ()), true))
-        test ("core recursor map identity applied to a variable computes", \() =>
-            expect (conversionIn (env, coreContext (), App (coreMap (coreId (BVar 1, "v"))) (BVar 0), BVar 0), true))
-        test ("core recursor map with a distinct field function refuses identity", \() =>
-            expect (conversionIn (coreDifferent env, coreContext (), coreMap (App (Const "k" [Param "v"]) (BVar 1)), coreIdentity ()), false))
+        test ("core recursor map identity equals the identity function", \() => expect (conversionIn (env, coreContext (), coreMap (coreId (BVar 1, "v")), coreIdentity ()), true))
+        test ("core recursor map identity applied to a variable computes", \() => expect (conversionIn (env, coreContext (), App (coreMap (coreId (BVar 1, "v"))) (BVar 0), BVar 0), true))
+        test ("core recursor map with a distinct field function refuses identity", \() => expect (conversionIn (coreDifferent env, coreContext (), coreMap (App (Const "k" [Param "v"]) (BVar 1)), coreIdentity ()), false))
 
     coreEnvironment () = match split (Fixtures::coreProdMap (), "\n")
         Success lines => declared (Checked::exportedDeclaring (Environment::empty (), join (filterList (lines, \line => !startsWith (line, "{\"thm\":")), "\n"), "Prod.map"), "the actual core definitions check")
@@ -82,10 +76,8 @@ module StructureEtaTests
     coreDifferent (env) = declared (Checked::declare (env, Decl(name = "k", params = ["v"], ty = Pi "β" (Sort (Succ (Param "v"))) (Pi "x" (BVar 0) (BVar 1)), body = Axiom)), "the distinct field function checks")
 
     propositionMajor (env) =
-        test ("a Prop structure recursor application remains well typed", \() =>
-            expect (checkedIn (env, unitContext (), unitApplication (), Const "EtaData" []), "ok: EtaData"))
-        test ("a Prop structure major is not eta-expanded for data computation", \() =>
-            expect (conversionIn (env, unitContext (), unitApplication (), Const "etaValue" []), false))
+        test ("a Prop structure recursor application remains well typed", \() => expect (checkedIn (env, unitContext (), unitApplication (), Const "EtaData" []), "ok: EtaData"))
+        test ("a Prop structure major is not eta-expanded for data computation", \() => expect (conversionIn (env, unitContext (), unitApplication (), Const "etaValue" []), false))
 
     unitContext () = [Binder(name = "p", ty = Const "PUnit" [Zero])]
     unitApplication () = Terms::apps (Const "PUnit.rec" [Succ Zero, Zero], [Lam "p" (Const "PUnit" [Zero]) (Const "EtaData" []), Const "etaValue" [], BVar 0])
@@ -122,27 +114,19 @@ module StructureEtaTests
     (** The theorem-free export fully checked; naming `Prod.map` proves the
         whole stripped text loaded, nothing dropped mid-file. *)
     defsEnv () = declared (Checked::exportedDeclaring (Environment::empty (), stripped (), "Prod.map"), "the stripped export checks")
-    declared (result, label) = match result
-        Success env => env
-        Error message =>
-            check label "success" message
-            Environment::empty ()
+    declared (result, label) = Support::verified (label, "success", Environment::empty (), result)
     // The real-export positives --
     (** The two theorems real Lean checked: the kernel must declare each one
         again from the recording that carries only it. *)
     recorded () =
-        test ("the real Lean prod_eta proof checks through the kernel", \() =>
-            expect (verdict (fixture (), "prod_eta"), "declared"))
-        test ("the real Lean prod_map_id proof checks through the kernel", \() =>
-            expect (verdict (withoutEta (), "prod_map_id"), "declared"))
+        test ("the real Lean prod_eta proof checks through the kernel", \() => expect (verdict (fixture (), "prod_eta"), "declared"))
+        test ("the real Lean prod_map_id proof checks through the kernel", \() => expect (verdict (withoutEta (), "prod_map_id"), "declared"))
     verdict (text, name) = match Checked::exportedDeclaring (Environment::empty (), text, name)
         Success env => "declared"
         Error message => "error: ${message}"
     eta () =
-        test ("a constructor of the projections equals the original pair", \() =>
-            expect (conversionIn (defsEnv (), prodContext (), mkOfProjections (), BVar 0), true))
-        test ("rfl proves the constructor of the projections equals the pair", \() =>
-            expect (checkedIn (defsEnv (), prodContext (), eqRefl (mkOfProjections ()), eqOf (mkOfProjections (), BVar 0)), "ok: ${Support::render (eqOf (mkOfProjections (), BVar 0))}"))
+        test ("a constructor of the projections equals the original pair", \() => expect (conversionIn (defsEnv (), prodContext (), mkOfProjections (), BVar 0), true))
+        test ("rfl proves the constructor of the projections equals the pair", \() => expect (checkedIn (defsEnv (), prodContext (), eqRefl (mkOfProjections ()), eqOf (mkOfProjections (), BVar 0)), "ok: ${Support::render (eqOf (mkOfProjections (), BVar 0))}"))
         transparentAlias ()
         opaqueAliases ()
         directRaw ()
@@ -153,27 +137,19 @@ module StructureEtaTests
         spine. The alias type is the recorded constructor's own type, so no
         universe or binder choice here is ours to get wrong. *)
     transparentAlias () =
-        test ("the recorded constructor type types the alias value", \() =>
-            expect (checkedIn (aliasEnv (), [], aliasValue (), ctorType (defsEnv ())), "ok: ${Support::render (ctorType (defsEnv ()))}"))
-        test ("the alias application has the pair's type", \() =>
-            expect (Support::inferred (aliasEnv (), prodContext (), aliased ("pairAlias")), Support::render (prodTypeUnder ())))
-        test ("a transparent alias of the projections equals the pair", \() =>
-            expect (conversionIn (aliasEnv (), prodContext (), aliased ("pairAlias"), BVar 0), true))
+        test ("the recorded constructor type types the alias value", \() => expect (checkedIn (aliasEnv (), [], aliasValue (), ctorType (defsEnv ())), "ok: ${Support::render (ctorType (defsEnv ()))}"))
+        test ("the alias application has the pair's type", \() => expect (Support::inferred (aliasEnv (), prodContext (), aliased ("pairAlias")), Support::render (prodTypeUnder ())))
+        test ("a transparent alias of the projections equals the pair", \() => expect (conversionIn (aliasEnv (), prodContext (), aliased ("pairAlias"), BVar 0), true))
     opaqueAliases () =
-        test ("an axiom-bodied alias is never eta'd", \() =>
-            expect (conversionIn (opaqueEnv (), prodContext (), aliased ("axAlias"), BVar 0), false))
-        test ("an axiom-bodied alias does not unfold", \() =>
-            expect (Support::unfolded (opaqueEnv (), "axAlias"), "error: axioms do not unfold"))
-        test ("an opaque-bodied alias is never eta'd", \() =>
-            expect (conversionIn (opaqueEnv (), prodContext (), aliased ("opAlias"), BVar 0), false))
-        test ("an opaque-bodied alias does not unfold", \() =>
-            expect (Support::unfolded (opaqueEnv (), "opAlias"), "error: opaque declarations do not unfold"))
+        test ("an axiom-bodied alias is never eta'd", \() => expect (conversionIn (opaqueEnv (), prodContext (), aliased ("axAlias"), BVar 0), false))
+        test ("an axiom-bodied alias does not unfold", \() => expect (Support::unfolded (opaqueEnv (), "axAlias"), "error: axioms do not unfold"))
+        test ("an opaque-bodied alias is never eta'd", \() => expect (conversionIn (opaqueEnv (), prodContext (), aliased ("opAlias"), BVar 0), false))
+        test ("an opaque-bodied alias does not unfold", \() => expect (Support::unfolded (opaqueEnv (), "opAlias"), "error: opaque declarations do not unfold"))
     (** The same pair built from raw projections, in the alias environment:
         η with no δ in front of it. Green here beside the red alias case is
         what rules out a bad environment, context or typing. *)
     directRaw () =
-        test ("the recorded constructor of raw projections equals the pair", \() =>
-            expect (conversionIn (aliasEnv (), prodContext (), rawMk (), BVar 0), true))
+        test ("the recorded constructor of raw projections equals the pair", \() => expect (conversionIn (aliasEnv (), prodContext (), rawMk (), BVar 0), true))
     rawMk () = Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 2, BVar 1, Proj "Prod" 0 (BVar 0), Proj "Prod" 1 (BVar 0)])
     aliasEnv () = declared (Environment::add (defsEnv (), aliasDecl ("pairAlias", Definition (aliasValue ()))), "the transparent alias declares")
     opaqueEnv () = second (declared (Environment::add (aliasEnv (), aliasDecl ("axAlias", Axiom)), "the axiom alias declares"))
@@ -194,12 +170,10 @@ module StructureEtaTests
         other => Terms::apps (Const "Prod.mk" [Param "u", Param "v"], [BVar 3, BVar 2, BVar 1, BVar 0])
     aliased (name) = Terms::apps (Const name [Param "u", Param "v"], [BVar 2, BVar 1, projectionAt 0, projectionAt 1])
     mapId () =
-        test ("Prod.map id id is the identity function", \() =>
-            expect (checkedIn (defsEnv (), prodContext (), functionRefl (mapIdTerm ()), functionEq (mapIdTerm (), idTerm ())), "ok: ${Support::render (functionEq (mapIdTerm (), idTerm ()))}"))
+        test ("Prod.map id id is the identity function", \() => expect (checkedIn (defsEnv (), prodContext (), functionRefl (mapIdTerm ()), functionEq (mapIdTerm (), idTerm ())), "ok: ${Support::render (functionEq (mapIdTerm (), idTerm ()))}"))
     // The dependent-family positive --
     dependent () =
-        test ("a constructor of the projections equals the original in a dependent family", \() =>
-            expect (checkedIn (sigEnv (), sigContext (), sigRefl (sigMk ()), sigEqOf (sigMk (), BVar 0)), "ok: ${Support::render (sigEqOf (sigMk (), BVar 0))}"))
+        test ("a constructor of the projections equals the original in a dependent family", \() => expect (checkedIn (sigEnv (), sigContext (), sigRefl (sigMk ()), sigEqOf (sigMk (), BVar 0)), "ok: ${Support::render (sigEqOf (sigMk (), BVar 0))}"))
     sigEnv () = declared (Inductive::declare (defsEnv (), sigFormer (), [sigCtor ()], 0), "the dependent family declares")
     (** `Sig : Type 1` with one constructor of four fields, the fourth
         dependent on the third: `Sig.mk : ∀ (A : Type 0) (B : A → Type 0)
@@ -217,37 +191,23 @@ module StructureEtaTests
         fakeBoundaries ()
 
     basicBoundaries () =
-        test ("function eta still compares a lambda with its spine", \() =>
-            expect (Support::defeqOf (defsEnv (), Lam "x" (Sort Zero) (App (BVar 1) (BVar 0)), BVar 0), true))
-        test ("a constructor of the swapped projections is not the pair", \() =>
-            expect (conversionIn (defsEnv (), prodContext (), mkSwapped (), BVar 0), false))
-        test ("another family's constructor never collapses to its argument", \() =>
-            expect (conversionIn (packedEnv (), packedContext (), Terms::apps (Const "Packed.mk" [], [BVar 1, BVar 0]), BVar 0), false))
+        test ("function eta still compares a lambda with its spine", \() => expect (Support::defeqOf (defsEnv (), Lam "x" (Sort Zero) (App (BVar 1) (BVar 0)), BVar 0), true))
+        test ("a constructor of the swapped projections is not the pair", \() => expect (conversionIn (defsEnv (), prodContext (), mkSwapped (), BVar 0), false))
+        test ("another family's constructor never collapses to its argument", \() => expect (conversionIn (packedEnv (), packedContext (), Terms::apps (Const "Packed.mk" [], [BVar 1, BVar 0]), BVar 0), false))
     familyBoundaries () =
-        test ("a two-constructor family refuses eta even on matching projections", \() =>
-            expect (conversionIn (n2Env (), n2Context (), Terms::apps (Const "N2.succ2" [], [Proj "N2" 0 (BVar 0)]), BVar 0), false))
-        test ("a two-constructor family has no projections to project", \() =>
-            expect (Support::messageOf (Infer::infer (n2Env (), n2Context (), Proj "N2" 0 (BVar 0))), "invalid projection `N2.0`"))
-        test ("a recursive one-constructor family refuses eta even on matching projections", \() =>
-            expect (conversionIn (r1Env (), r1Context (), Terms::apps (Const "R1.mk" [], [Proj "R1" 0 (BVar 0)]), BVar 0), false))
-        test ("an indexed one-constructor family refuses eta even on matching projections", \() =>
-            expect (conversionIn (i1Env (), i1Context (), Terms::apps (Const "I1.wrap" [], [Proj "I1" 0 (BVar 0)]), BVar 0), false))
+        test ("a two-constructor family refuses eta even on matching projections", \() => expect (conversionIn (n2Env (), n2Context (), Terms::apps (Const "N2.succ2" [], [Proj "N2" 0 (BVar 0)]), BVar 0), false))
+        test ("a two-constructor family has no projections to project", \() => expect (Support::messageOf (Infer::infer (n2Env (), n2Context (), Proj "N2" 0 (BVar 0))), "invalid projection `N2.0`"))
+        test ("a recursive one-constructor family refuses eta even on matching projections", \() => expect (conversionIn (r1Env (), r1Context (), Terms::apps (Const "R1.mk" [], [Proj "R1" 0 (BVar 0)]), BVar 0), false))
+        test ("an indexed one-constructor family refuses eta even on matching projections", \() => expect (conversionIn (i1Env (), i1Context (), Terms::apps (Const "I1.wrap" [], [Proj "I1" 0 (BVar 0)]), BVar 0), false))
     fakeBoundaries () =
-        test ("a constructor named only by an axiom never collapses to its argument", \() =>
-            expect (conversionIn (fkEnv (), fkContext (), App (Const "Fk.mk" []) (BVar 0), BVar 0), false))
-        test ("a projection of an axiom-named constructor never reduces", \() =>
-            expect (Terms::equal (Reduce::whnf (fkEnv (), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), true))
+        test ("a constructor named only by an axiom never collapses to its argument", \() => expect (conversionIn (fkEnv (), fkContext (), App (Const "Fk.mk" []) (BVar 0), BVar 0), false))
+        test ("a projection of an axiom-named constructor never reduces", \() => expect (Terms::equal (Reduce::whnf (fkEnv (), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), true))
     propositions () =
-        test ("proof irrelevance still answers for a Prop family", \() =>
-            expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, true), true))
-        test ("differing hidden data is never collapsed", \() =>
-            expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenTwoMkOf (BVar 0), hiddenTwoMkOf (BVar 1), false), false))
-        test ("differing hidden data still answers irrelevant as proofs", \() =>
-            expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenTwoMkOf (BVar 0), hiddenTwoMkOf (BVar 1), true), true))
-        test ("a proof constructor is not its hidden witness without irrelevance", \() =>
-            expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, false), false))
-        test ("eta cannot make a forbidden Prop projection inferable", \() =>
-            expect (Support::messageOf (Infer::infer (hiddenEnv (), hiddenContext (), Proj "Hidden" 0 (BVar 0))), "invalid projection `Hidden.0`"))
+        test ("proof irrelevance still answers for a Prop family", \() => expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, true), true))
+        test ("differing hidden data is never collapsed", \() => expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenMkOf (BVar 0), hiddenMkOf (BVar 1), false), false))
+        test ("differing hidden data still answers irrelevant as proofs", \() => expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenMkOf (BVar 0), hiddenMkOf (BVar 1), true), true))
+        test ("a proof constructor is not its hidden witness without irrelevance", \() => expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, false), false))
+        test ("eta cannot make a forbidden Prop projection inferable", \() => expect (Support::messageOf (Infer::infer (hiddenEnv (), hiddenContext (), Proj "Hidden" 0 (BVar 0))), "invalid projection `Hidden.0`"))
     // Terms and contexts under the Prod environment --
     (** Definitional equality in a binder context, without irrelevance:
         exactly what plain `defeq` is where terms mention binders. *)
@@ -303,7 +263,6 @@ module StructureEtaTests
     hiddenContext () = [Binder(name = "h", ty = App (Const "Hidden" []) (BVar 1)), Binder(name = "w", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
     hiddenTwoContext () = [Binder(name = "w1", ty = BVar 1), Binder(name = "w2", ty = BVar 0), Binder(name = "A", ty = Sort (Succ Zero))]
     hiddenMkOf (witness) = Terms::apps (Const "Hidden.mk" [], [BVar 2, witness])
-    hiddenTwoMkOf (witness) = Terms::apps (Const "Hidden.mk" [], [BVar 2, witness])
     (** `Hidden : Type 1 → Prop` with one constructor of one data field:
         proof irrelevance's home, and the projection the kernel refuses. *)
     hiddenEnv () = declared (Inductive::declare (Environment::empty (), Decl(name = "Hidden", params = [], ty = Pi "A" (Sort (Succ Zero)) (Sort Zero), body = Axiom), [Decl(name = "Hidden.mk", params = [], ty = Pi "A" (Sort (Succ Zero)) (Pi "w" (BVar 0) (App (Const "Hidden" []) (BVar 1))), body = Axiom)], 0), "the hidden family declares")

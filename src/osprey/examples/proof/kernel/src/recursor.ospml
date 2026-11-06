@@ -76,21 +76,19 @@ module Recursors
 
     (** The name, index telescope, recursor name and constructors of the
         family at `d`. *)
-    formerName (spec, d) = match listGet (spec.specFormers, d)
-        Success former => former.formerName
-        Error _ => "?"
+    (** The field `get` of the family at `d`, or `fallback` when the group
+        declares no family there. *)
+    formerField (spec, d, get, fallback) = match listGet (spec.specFormers, d)
+        Success former => get former
+        Error _ => fallback
 
-    formerIndices (spec, d) = match listGet (spec.specFormers, d)
-        Success former => former.formerIndices
-        Error _ => []
+    formerName (spec, d) = formerField (spec, d, \former => former.formerName, "?")
 
-    formerRec (spec, d) = match listGet (spec.specFormers, d)
-        Success former => former.formerRec
-        Error _ => "?"
+    formerIndices (spec, d) = formerField (spec, d, \former => former.formerIndices, [])
 
-    formerShapes (spec, d) = match listGet (spec.specFormers, d)
-        Success former => former.formerShapes
-        Error _ => []
+    formerRec (spec, d) = formerField (spec, d, \former => former.formerRec, "?")
+
+    formerShapes (spec, d) = formerField (spec, d, \former => former.formerShapes, [])
 
     (** The family at `e` applied to the shared parameters, seen from
         `offset` binders past them, and to its innermost indices. *)

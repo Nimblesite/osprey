@@ -29,13 +29,9 @@ module TelescopeTests
         lowering ()
 
     identities () =
-        test ("recursor binders remove unary identity type annotations", \() =>
-            expect (stripped (unary ("outParam", Definition (Lam "A" (universe ()) (BVar 0))), annotated ("outParam")), "Prop")
-            expect (stripped (unary ("semiOutParam", Definition (Lam "A" (universe ()) (BVar 0))), annotated ("semiOutParam")), "Prop"))
+        test ("recursor binders remove unary identity type annotations", \() => expectAll [stripped (unary ("outParam", Definition (Lam "A" (universe ()) (BVar 0))), annotated ("outParam")) == "Prop", stripped (unary ("semiOutParam", Definition (Lam "A" (universe ()) (BVar 0))), annotated ("semiOutParam")) == "Prop"])
 
-        test ("recursor binders remove default argument identity annotations", \() =>
-            expect (stripped (binary "optParam", defaulted "optParam"), "Prop")
-            expect (stripped (binary "autoParam", defaulted "autoParam"), "Prop"))
+        test ("recursor binders remove default argument identity annotations", \() => expectAll [stripped (binary "optParam", defaulted "optParam") == "Prop", stripped (binary "autoParam", defaulted "autoParam") == "Prop"])
 
         test ("recursor binders consume repeated identity annotations", \() =>
             expect (stripped (unary ("outParam", Definition (Lam "A" (universe ()) (BVar 0))), App (Const "outParam" []) (annotated "outParam")), "Prop"))

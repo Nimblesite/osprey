@@ -38,37 +38,19 @@ module InferTests
     polyDef () = Support::envWithDecl (Decl(name = "id", params = ["u"], ty = Pi "a" (Sort (Param "u")) (Sort (Param "u")), body = Definition (Lam "a" (Sort (Param "u")) (BVar 0))))
 
     export run () =
-        test ("repeated binder names cannot smuggle a proof of q → p past q → q", \() =>
-            expect (Support::checked (Environment::empty (), shadowedProof (), shadowedType ()), "ok: (Prop → (∀ (x : Prop), (x → x)))")
-            expect (Support::checked (Environment::empty (), shadowedProof (), shadowedWrong ()), "error: type mismatch: `(fun (x : Prop) => (fun (x : Prop) => (fun (x : x) => x)))` has type `(Prop → (∀ (x : Prop), (x → x)))` but `(∀ (x : Prop), (∀ (x : Prop), (x → x)))` was expected"))
+        test ("repeated binder names cannot smuggle a proof of q → p past q → q", \() => expectAll [Support::checked (Environment::empty (), shadowedProof (), shadowedType ()) == "ok: (Prop → (∀ (x : Prop), (x → x)))", Support::checked (Environment::empty (), shadowedProof (), shadowedWrong ()) == "error: type mismatch: `(fun (x : Prop) => (fun (x : Prop) => (fun (x : x) => x)))` has type `(Prop → (∀ (x : Prop), (x → x)))` but `(∀ (x : Prop), (∀ (x : Prop), (x → x)))` was expected"])
 
-        test ("a constant's type is instantiated at the universe it is used at", \() =>
-            expect (Support::inferred (polyEnv (), [], Const "F" [Succ Zero]), "(Type → Type)")
-            expect (Support::inferred (polyEnv (), [], Const "F" [Zero]), "(Prop → Prop)")
-            expect (Support::inferred (polyEnv (), [], App (Const "F" [Succ Zero]) (Sort Zero)), "Type")
-            expect (Support::inferred (polyEnv (), [], App (Const "F" [Zero]) (Sort Zero)), "error: type mismatch: `Prop` has type `Type` but `Prop` was expected"))
+        test ("a constant's type is instantiated at the universe it is used at", \() => expectAll [Support::inferred (polyEnv (), [], Const "F" [Succ Zero]) == "(Type → Type)", Support::inferred (polyEnv (), [], Const "F" [Zero]) == "(Prop → Prop)", Support::inferred (polyEnv (), [], App (Const "F" [Succ Zero]) (Sort Zero)) == "Type", Support::inferred (polyEnv (), [], App (Const "F" [Zero]) (Sort Zero)) == "error: type mismatch: `Prop` has type `Type` but `Prop` was expected"])
 
-        test ("a universe arity mismatch is rejected", \() =>
-            expect (Support::inferred (polyEnv (), [], Const "F" []), "error: `F` takes 1 universe arguments but 0 were given")
-            expect (Support::inferred (polyEnv (), [], Const "F" [Zero, Zero]), "error: `F` takes 1 universe arguments but 2 were given"))
+        test ("a universe arity mismatch is rejected", \() => expectAll [Support::inferred (polyEnv (), [], Const "F" []) == "error: `F` takes 1 universe arguments but 0 were given", Support::inferred (polyEnv (), [], Const "F" [Zero, Zero]) == "error: `F` takes 1 universe arguments but 2 were given"])
 
-        test ("distinct universe instantiations of one constant are not equal", \() =>
-            expect (Support::defeqOf (polyEnv (), Const "F" [Zero], Const "F" [Succ Zero]), false)
-            expect (Support::defeqOf (polyEnv (), Const "F" [Succ Zero], Const "F" [Succ Zero]), true))
+        test ("distinct universe instantiations of one constant are not equal", \() => expectAll [Support::defeqOf (polyEnv (), Const "F" [Zero], Const "F" [Succ Zero]) == false, Support::defeqOf (polyEnv (), Const "F" [Succ Zero], Const "F" [Succ Zero]) == true])
 
-        test ("a definition unfolds at the universe it is used at", \() =>
-            expect (Support::whnfOf (polyDef (), App (Const "id" [Succ Zero]) (Sort Zero)), "Prop")
-            expect (Support::inferred (polyDef (), [], App (Const "id" [Succ (Succ Zero)]) (Sort (Succ Zero))), "Sort 2")
-            expect (Support::defeqOf (polyDef (), Const "id" [Succ Zero], Lam "b" (Sort (Succ Zero)) (BVar 0)), true)
-            expect (Support::defeqOf (polyDef (), Const "id" [Zero], Lam "b" (Sort (Succ Zero)) (BVar 0)), false))
+        test ("a definition unfolds at the universe it is used at", \() => expectAll [Support::whnfOf (polyDef (), App (Const "id" [Succ Zero]) (Sort Zero)) == "Prop", Support::inferred (polyDef (), [], App (Const "id" [Succ (Succ Zero)]) (Sort (Succ Zero))) == "Sort 2", Support::defeqOf (polyDef (), Const "id" [Succ Zero], Lam "b" (Sort (Succ Zero)) (BVar 0)) == true, Support::defeqOf (polyDef (), Const "id" [Zero], Lam "b" (Sort (Succ Zero)) (BVar 0)) == false])
 
-        test ("a declaration may not use an undeclared universe parameter", \() =>
-            expect (Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = [], ty = Sort (Param "u"), body = Axiom))), "constant `G` uses a universe parameter it does not declare, or declares one twice")
-            expect (Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = ["u", "u"], ty = Sort (Param "u"), body = Axiom))), "constant `G` uses a universe parameter it does not declare, or declares one twice"))
+        test ("a declaration may not use an undeclared universe parameter", \() => expectAll [Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = [], ty = Sort (Param "u"), body = Axiom))) == "constant `G` uses a universe parameter it does not declare, or declares one twice", Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = ["u", "u"], ty = Sort (Param "u"), body = Axiom))) == "constant `G` uses a universe parameter it does not declare, or declares one twice"])
 
-        test ("infer of Prop is Type", \() =>
-            expect (Support::inferred (Environment::empty (), [], Sort Zero), "Type")
-            expect (Support::sorted (Environment::empty (), [], Support::idType ()), "0"))
+        test ("infer of Prop is Type", \() => expectAll [Support::inferred (Environment::empty (), [], Sort Zero) == "Type", Support::sorted (Environment::empty (), [], Support::idType ()) == "0"])
 
         test ("the id proof checks against the id type", \() =>
             expect (Support::checked (Environment::empty (), Support::idProof (), Support::idType ()), "ok: (∀ (p : Prop), (p → p))"))

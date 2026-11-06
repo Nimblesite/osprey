@@ -37,20 +37,24 @@ module Support
     (** A declaration of `name` with the given body. *)
     export decl (name, body) = Decl(name = name, params = [], ty = Sort Zero, body = body)
 
-    (** An environment holding `c` with the given body; a rejected add fails
-        the enclosing case before falling back. *)
-    export envWith body = match Environment::add (Environment::empty (), decl ("c", body))
-        Success env => env
-        Error message =>
-            check "the environment accepts the declaration" "no error" message
-            Environment::empty ()
-
-    (** An environment holding `decl`; a rejected add fails the enclosing case. *)
+    (** An environment holding `decl`; a rejected add fails the enclosing case
+        before falling back. *)
     export envWithDecl decl = match Environment::add (Environment::empty (), decl)
         Success env => env
         Error message =>
             check "the environment accepts the declaration" "no error" message
             Environment::empty ()
+
+    (** An environment holding `c` with the given body. *)
+    export envWith body = envWithDecl (decl ("c", body))
+
+    (** The payload of a checked outcome; a failure fails the enclosing case
+        with `expected` before falling back to `fallback`. *)
+    export verified (label, expected, fallback, outcome) = match outcome
+        Success value => value
+        Error message =>
+            check label expected message
+            fallback
 
     (** Two attempts to declare `name` in a fresh environment. *)
     export twice name = match Environment::add (Environment::empty (), decl (name, Axiom))

@@ -21,24 +21,12 @@ module ExportInductive
 
     grouped (tables, group) = ExportJson::upon (ExportJson::arrayIn (group, "types"), \types => ExportJson::upon (nonEmpty (types, "type"), \families => ExportJson::upon (ExportJson::arrayIn (group, "ctors"), \ctors => ExportJson::upon (ExportJson::arrayIn (group, "recs"), \recs => ExportJson::upon (nonEmpty (recs, "recursor"), \eliminators => groupedAs (tables, families, ctors, eliminators))))))
 
-    groupedAs (tables, families, ctors, eliminators) = ExportJson::upon (eachFormer (tables, families, []), \formers => ExportJson::upon (eachCtor (tables, ctors, []), \ctorDecls => ExportJson::upon (eachRec (tables, eliminators, []), \recDecls => Success(value = Block(formers = formers, ctors = ctorDecls, recursors = recDecls)))))
+    groupedAs (tables, families, ctors, eliminators) = ExportJson::upon (eachOf (\json => formerOf (tables, json), families, []), \formers => ExportJson::upon (eachOf (\json => constructorOf (tables, json), ctors, []), \ctorDecls => ExportJson::upon (eachOf (\json => recursorOf (tables, json), eliminators, []), \recDecls => Success(value = Block(formers = formers, ctors = ctorDecls, recursors = recDecls)))))
 
     (** A member list that must hold at least one entry. *)
     nonEmpty (items, what) = match items
         [] => Error(message = "no ${what}")
         [first, ...rest] => Success(value = items)
-
-    eachFormer (tables, items, done) = match items
-        [] => Success(value = done)
-        [first, ...rest] => ExportJson::upon (formerOf (tables, first), \decl => ExportJson::upon (eachFormer (tables, rest, done), \more => Success(value = listPrepend (more, decl))))
-
-    eachCtor (tables, items, done) = match items
-        [] => Success(value = done)
-        [first, ...rest] => ExportJson::upon (constructorOf (tables, first), \decl => ExportJson::upon (eachCtor (tables, rest, done), \more => Success(value = listPrepend (more, decl))))
-
-    eachRec (tables, items, done) = match items
-        [] => Success(value = done)
-        [first, ...rest] => ExportJson::upon (recursorOf (tables, first), \decl => ExportJson::upon (eachRec (tables, rest, done), \more => Success(value = listPrepend (more, decl))))
 
     formerOf (tables, json) = ExportJson::upon (strict (json, typeMembers (), "type"), \known => ExportJson::upon (clean (json), \safe => ExportJson::upon (familyOf (tables, json), \family => ExportJson::upon (declared (tables, json, TypeFormer family), \decl => Success(value = decl)))))
 
@@ -71,11 +59,12 @@ module ExportInductive
             true => first
             false => prefixed (rest, name, fallback)
 
-    rulesOf (tables, json) = ExportJson::upon (ExportJson::arrayIn (json, "rules"), \items => eachRule (tables, items))
+    rulesOf (tables, json) = ExportJson::upon (ExportJson::arrayIn (json, "rules"), \items => eachOf (\item => ruleOf (tables, item), items, []))
 
-    eachRule (tables, items) = match items
-        [] => Success(value = [])
-        [first, ...rest] => ExportJson::upon (ruleOf (tables, first), \rule => ExportJson::upon (eachRule (tables, rest), \rules => Success(value = listPrepend (rules, rule))))
+    (** Every member of `items`, each read by `step`, in file order. *)
+    eachOf (step, items, done) = match items
+        [] => Success(value = done)
+        [first, ...rest] => ExportJson::upon (step first, \decl => ExportJson::upon (eachOf (step, rest, done), \more => Success(value = listPrepend (more, decl))))
 
     ruleOf (tables, json) = ExportJson::upon (strict (json, ruleMembers (), "rule"), \known => ExportJson::upon (ExportJson::intIn (json, "ctor"), \ref => ExportJson::upon (ExportJson::nameOf (tables, ref), \name => ExportJson::upon (ExportJson::intIn (json, "nfields"), \fields => ExportJson::upon (ExportJson::intIn (json, "rhs"), \rhs => ExportJson::upon (ExportJson::exprOf (tables, rhs), \term => Success(value = Rule(ruleCtor = name, ruleFields = fields, ruleRhs = term))))))))
 

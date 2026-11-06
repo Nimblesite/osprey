@@ -28,31 +28,23 @@ module OpaqueTests
         safety ()
 
     reading () =
-        test ("an opaque declaration reads as Body Opaque with its statement and proof, never a theorem", \() =>
-            expect (described (Export::read (opaqueExport ())), "id_imp | (∀ (p : Prop), (p → p)) | opaque (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
+        test ("an opaque declaration reads as Body Opaque with its statement and proof, never a theorem", \() => expect (described (Export::read (opaqueExport ())), "id_imp | (∀ (p : Prop), (p → p)) | opaque (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
 
-        test ("the compact theorem export still reads as a theorem, not opaque", \() =>
-            expect (described (Export::read (Fixtures::idImp ())), "id_imp | (∀ (p : Prop), (p → p)) | theorem (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
+        test ("the compact theorem export still reads as a theorem, not opaque", \() => expect (described (Export::read (Fixtures::idImp ())), "id_imp | (∀ (p : Prop), (p → p)) | theorem (fun (x._@.IdImp.4195544489._hygCtx._hyg.10 : Prop) => (fun (h : x._@.IdImp.4195544489._hygCtx._hyg.10) => h))"))
 
     checking () =
-        test ("an accepted opaque checks and is declared", \() =>
-            expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), opaqueExport (), "id_imp")), "declared"))
+        test ("an accepted opaque checks and is declared", \() => expect (declaredOutcome (Checked::exportedDeclaring (Environment::empty (), opaqueExport (), "id_imp")), "declared"))
 
-        test ("an accepted opaque never unfolds", \() =>
-            expect (Support::unfolded (declaredEnv (Checked::exportedDeclaring (Environment::empty (), opaqueExport (), "id_imp")), "id_imp"), "error: opaque declarations do not unfold"))
+        test ("an accepted opaque never unfolds", \() => expect (Support::unfolded (declaredEnv (Checked::exportedDeclaring (Environment::empty (), opaqueExport (), "id_imp")), "id_imp"), "error: opaque declarations do not unfold"))
 
-        test ("the wrong proof of an opaque statement is refused", \() =>
-            expect (startsWith (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), wrongProofExport (), "id_imp")), "type mismatch"), true))
+        test ("the wrong proof of an opaque statement is refused", \() => expect (startsWith (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), wrongProofExport (), "id_imp")), "type mismatch"), true))
 
     safety () =
-        test ("an unsafe opaque is refused, named by its line", \() =>
-            expect (Support::messageOf (Export::read (unsafeExport ())), "line 24: unsafe opaque declarations are refused"))
+        test ("an unsafe opaque is refused, named by its line", \() => expect (Support::messageOf (Export::read (unsafeExport ())), "line 24: unsafe opaque declarations are refused"))
 
-        test ("an opaque without its safety flag is refused", \() =>
-            expect (Support::messageOf (Export::read (unflaggedExport ())), "line 24: no isUnsafe"))
+        test ("an opaque without its safety flag is refused", \() => expect (Support::messageOf (Export::read (unflaggedExport ())), "line 24: no isUnsafe"))
 
-        test ("an opaque value cannot smuggle an undeclared universe parameter", \() =>
-            expect (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), smuggled (), "opaque_u")), "constant `opaque_u` uses a universe parameter it does not declare, or declares one twice"))
+        test ("an opaque value cannot smuggle an undeclared universe parameter", \() => expect (Support::messageOf (Checked::exportedDeclaring (Environment::empty (), smuggled (), "opaque_u")), "constant `opaque_u` uses a universe parameter it does not declare, or declares one twice"))
 
     (** One declaration rendered as `name | statement | body`; anything
         else reads as its own failure, never as a pass. *)
@@ -79,11 +71,7 @@ module OpaqueTests
 
     (** A checked export, or a failed case before any use of the empty
         fallback. *)
-    declaredEnv (outcome) = match outcome
-        Success env => env
-        Error message =>
-            check "the export declares the opaque" "no error" message
-            Environment::empty ()
+    declaredEnv (outcome) = Support::verified ("the export declares the opaque", "no error", Environment::empty (), outcome)
 
     declaredOutcome (outcome) = match outcome
         Success env => "declared"

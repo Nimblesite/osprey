@@ -40,10 +40,7 @@ module ReduceTests
         test ("whnf beta-reduces a lambda applied to a term", \() =>
             expect (Support::whnfOf (Environment::empty (), App (Lam "x" (Sort Zero) (BVar 0)) (closed ())), "Type"))
 
-        test ("whnf unfolds a definition but not a theorem or an axiom", \() =>
-            expect (Support::whnfOf (Support::envWith (Definition (closed ())), Const "c" []), "Type")
-            expect (Support::whnfOf (Support::envWith (Theorem (closed ())), Const "c" []), "c")
-            expect (Support::whnfOf (Support::envWith Axiom, Const "c" []), "c"))
+        test ("whnf unfolds a definition but not a theorem or an axiom", \() => expectAll [Support::whnfOf (Support::envWith (Definition (closed ())), Const "c" []) == "Type", Support::whnfOf (Support::envWith (Theorem (closed ())), Const "c" []) == "c", Support::whnfOf (Support::envWith Axiom, Const "c" []) == "c"])
 
         test ("whnf reduces a let by substituting its value", \() =>
             expect (Support::whnfOf (Environment::empty (), Let "x" (Sort Zero) (closed ()) (BVar 0)), "Type"))
@@ -57,9 +54,7 @@ module ReduceTests
         test ("defeq rejects distinct sorts", \() =>
             expect (Support::defeqOf (Environment::empty (), Sort Zero, Sort (Succ Zero)), false))
 
-        test ("defeq unfolds a definition and keeps distinct constants apart", \() =>
-            expect (Support::defeqOf (Support::envWith (Definition (closed ())), Const "c" [], closed ()), true)
-            expect (Support::defeqOf (Environment::empty (), Const "c" [], Const "d" []), false))
+        test ("defeq unfolds a definition and keeps distinct constants apart", \() => expectAll [Support::defeqOf (Support::envWith (Definition (closed ())), Const "c" [], closed ()) == true, Support::defeqOf (Environment::empty (), Const "c" [], Const "d" []) == false])
 
     congruence () = test ("application congruence preserves unfolding, beta fallback and distinct arguments or heads", \() =>
         match comparisonEnvironment ()
@@ -91,9 +86,7 @@ module ReduceTests
     comparisonDefinitionValue (name, body) = Decl(name = name, params = [], ty = Pi "T" (closed ()) (closed ()), body = Definition body)
 
     batchBeta () =
-        test ("multi-binder beta matches sequential substitution with free arguments", \() =>
-            expect (sameBeta (threeBinders (), [BVar 4, BVar 7]), true)
-            expect (sameBeta (threeBinders (), [BVar 4, BVar 7, Const "last" []]), true))
+        test ("multi-binder beta matches sequential substitution with free arguments", \() => expectAll [sameBeta (threeBinders (), [BVar 4, BVar 7]) == true, sameBeta (threeBinders (), [BVar 4, BVar 7, Const "last" []]) == true])
 
         test ("multi-binder beta substitutes into a remaining dependent domain", \() =>
             expect (sameBeta (Lam "x" (closed ()) (Lam "y" (BVar 0) (BVar 1)), [Sort Zero]), true))
