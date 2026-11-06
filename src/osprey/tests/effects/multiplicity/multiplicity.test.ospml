@@ -143,7 +143,7 @@ contextualKeywordCase () =
         structuralEquals [total, abort] [15, 115]
     ]
 
-test "a once arm retrying internally sends exactly one receipt" (\() => exactArithmetic (retrySendsOneReceiptCase))
-test "a once arm that declines to resume sends no receipt" (\() => exactArithmetic (declineSendsNoReceiptCase))
-test "one unannotated function serves both multiplicities" (\() => exactArithmetic (sharedAcrossMultiplicitiesCase))
-test "abort, once, many and replayable stay legal identifiers" (\() => exactArithmetic (contextualKeywordCase))
+test "a once arm retrying internally sends exactly one receipt" (exactly retrySendsOneReceiptCase)
+test "a once arm that declines to resume sends no receipt" (exactly declineSendsNoReceiptCase)
+test "one unannotated function serves both multiplicities" (exactly sharedAcrossMultiplicitiesCase)
+test "abort, once, many and replayable stay legal identifiers" (exactly contextualKeywordCase)

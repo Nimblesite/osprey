@@ -49,8 +49,8 @@ booleanOperatorsCase () =
         (t && !f) == true
     ]
 
-test "operator precedence retains every arithmetic golden" (\() => exactArithmetic (arithmeticOperatorsCase))
-test "boolean composition retains every logical golden" (\() => exactArithmetic (booleanOperatorsCase))
+test "operator precedence retains every arithmetic golden" (exactly arithmeticOperatorsCase)
+test "boolean composition retains every logical golden" (exactly booleanOperatorsCase)
 
 (** [FLOAT-OPERANDS] One constrained helper accepts int and float callers. *)
 numericScale x = x * 1.5
@@ -71,4 +71,4 @@ numericPolymorphismCase () =
         structuralEquals [(numericQuotient 3 1.5 ), (numericQuotient 2.5 2 ), (((4.0 / 2.0) * 1.5) )] [2.0, 1.25, 3.0],
         (((4.0 / 0.0) * 1.5) ) == -1.5
     ]
-test "numeric constraints retain mixed arithmetic and policy substitution" (\() => exactArithmetic (numericPolymorphismCase))
+test "numeric constraints retain mixed arithmetic and policy substitution" (exactly numericPolymorphismCase)

@@ -29,8 +29,8 @@ passingCase () =
 skippedCase () =
     andThen (assume (2 > 3)) (checkVerdict "ignored after skip" "0" "1")
 
-test "pass folds several good interactions" (\() => exactArithmetic (passingCase))
-test "skip preserves an unmet precondition" (\() => exactArithmetic (skippedCase))
+test "pass folds several good interactions" (exactly passingCase)
+test "skip preserves an unmet precondition" (exactly skippedCase)
 
 (** Trace records every operation a curried body performs. *)
 effect Trace
@@ -162,8 +162,8 @@ partialApplicationCase () =
         addFlat (10, 2, 3) == otherPart 2 3
     ]
 
-test "curried ML bodies perform every operation through the handler" (\() => exactArithmetic (curriedEffectsReachTheHandlerCase))
-test "ML partial application follows the currying rule" (\() => exactArithmetic (partialApplicationCase))
+test "curried ML bodies perform every operation through the handler" (exactly curriedEffectsReachTheHandlerCase)
+test "ML partial application follows the currying rule" (exactly partialApplicationCase)
 
 (** Render a Verdict as canonical text so both its state and its payload are
     assertable without comparing union values directly. Adjacent clauses with a
@@ -790,9 +790,9 @@ layoutAndInterpolationCase () =
 
 // Registration order fixes the TAP numbering, so these follow the four cases
 // registered above.
-test "Verdict folding obeys the andThen monoid laws" (\() => exactArithmetic (verdictAlgebraCase))
-test "curried arities two through six apply in every grouping" (\() => exactArithmetic (curriedArityLadderCase))
-test "curried and flat lambda heads split as specified" (\() => exactArithmetic (lambdaCurryingCase))
-test "ML record layout, inline heads and updates agree" (\() => exactArithmetic (recordLayoutAndUpdateCase))
-test "ML match layout, clauses and list patterns select correctly" (\() => exactArithmetic (matchLayoutAndClausesCase))
-test "ML layout blocks and interpolation render juxtaposed calls" (\() => exactArithmetic (layoutAndInterpolationCase))
+test "Verdict folding obeys the andThen monoid laws" (exactly verdictAlgebraCase)
+test "curried arities two through six apply in every grouping" (exactly curriedArityLadderCase)
+test "curried and flat lambda heads split as specified" (exactly lambdaCurryingCase)
+test "ML record layout, inline heads and updates agree" (exactly recordLayoutAndUpdateCase)
+test "ML match layout, clauses and list patterns select correctly" (exactly matchLayoutAndClausesCase)
+test "ML layout blocks and interpolation render juxtaposed calls" (exactly layoutAndInterpolationCase)

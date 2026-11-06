@@ -172,4 +172,4 @@ typedErrorChannelCase () =
         mapContains grown "forced"
     ]
 
-test "typed error channels compose and restore shadowed handlers" (\() => exactArithmetic (typedErrorChannelCase))
+test "typed error channels compose and restore shadowed handlers" (exactly typedErrorChannelCase)

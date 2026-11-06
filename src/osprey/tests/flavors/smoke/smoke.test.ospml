@@ -78,4 +78,4 @@ helloSmokeCase () =
         "${bucketAt (numberBuckets, "small", 0, 99) + bucketAt (numberBuckets, "small", 1, 99) }" == "5"
     ]
 
-test "top-level binding and interpolation retain both hello lines" (\() => exactArithmetic (helloSmokeCase))
+test "top-level binding and interpolation retain both hello lines" (exactly helloSmokeCase)

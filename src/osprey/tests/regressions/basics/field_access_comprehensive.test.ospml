@@ -102,4 +102,4 @@ fieldAccessCase () =
         structuralEquals [userStatus user, userStatus inactive] ["Active User", "Inactive User"]
     ]
 
-test "field access feeds expressions without mutating records" (\() => exactArithmetic (fieldAccessCase))
+test "field access feeds expressions without mutating records" (exactly fieldAccessCase)

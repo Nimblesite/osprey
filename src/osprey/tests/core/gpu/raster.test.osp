@@ -194,13 +194,13 @@ fn gallery(indices1536, indices64, indices16, texels) =
 fn dispatchCase() = withIndices(0, fn(indices0) => withIndices(8, fn(indices8) => withIndices(16, fn(indices16) => withIndices(64, fn(indices64) => withIndices(1536, fn(indices1536) => dispatchWith(indices0, indices8, indices16, indices64, indices1536))))))
 fn dispatchWith(indices0, indices8, indices16, indices64, indices1536) = checkAll("dispatch", [
         structuralEquals([gpuLength(indices1536), gpuLength(indices64), gpuLength(indices0)], [1536, 64, 0]),
-        gpuSatisfies(mandelFrame(indices1536), fn(frame) => gpuLength(frame) == 1536),
-        gpuSatisfies(sphereFrame(indices1536), fn(frame) => gpuLength(frame) == 1536),
-        gpuSatisfies(triCover(indices64), fn(cover) => gpuLength(cover) == 64),
-        gpuSatisfies(gpuMap(indices16, gradientPixel), fn(gradient) => gpuSatisfies(gpuMap(indices16, wedgePixel), fn(wedge) => gpuSatisfies(gpuZipWith(gradient, wedge, overLayer), fn(quad) => gpuLength(quad) == 16))),
-        gpuSatisfies(triCover(indices64), fn(cover) => gpuSatisfies(rowSums(cover, tileEdge(), indices8), fn(sums) => gpuLength(sums) == 8)),
-        gpuSatisfies(gpuMap(indices0, residual), fn(empty) => gpuLength(empty) == 0),
-        litCountOf(indices0, fn(lit) => lit == 0), gpuSatisfies(total(indices0), fn(grand) => grand == 0), texel(indices0, 0) == outOfFrame(),
+        gpuLengthIs(mandelFrame(indices1536), 1536),
+        gpuLengthIs(sphereFrame(indices1536), 1536),
+        gpuLengthIs(triCover(indices64), 64),
+        gpuSatisfies(gpuMap(indices16, gradientPixel), fn(gradient) => gpuSatisfies(gpuMap(indices16, wedgePixel), fn(wedge) => gpuLengthIs(gpuZipWith(gradient, wedge, overLayer), 16))),
+        gpuSatisfies(triCover(indices64), fn(cover) => gpuLengthIs(rowSums(cover, tileEdge(), indices8), 8)),
+        gpuLengthIs(gpuMap(indices0, residual), 0),
+        litCountOf(indices0, fn(lit) => lit == 0), gpuEquals(total(indices0), 0), texel(indices0, 0) == outOfFrame(),
         gpuSatisfies(triCover(indices64), fn(cover) => texel(cover, 64) == outOfFrame()),
         gpuSatisfies(triCover(indices64), fn(cover) => texel(cover, (0 - 1) ) == outOfFrame()), gpuDevice() == "host"
 ])
@@ -221,10 +221,10 @@ fn decomposeCase() = withIndices(1536, fn(indices1536) => decomposeWith(indices1
 fn decomposeWith(indices1536) = {
     withBuffer(gpuMap(indices1536, columnOfPixel), fn(cols) => withBuffer(gpuMap(indices1536, rowOfPixel), fn(rows) =>
         checkAll("decompose", [
-                gpuSatisfies(gpuMap(indices1536, residual), fn(residues) => gpuSatisfies(total(residues), fn(grand) => grand == 0)),
+                gpuSatisfies(gpuMap(indices1536, residual), fn(residues) => gpuEquals(total(residues), 0)),
                 gpuSatisfies(gpuMap(indices1536, residual), fn(residues) => litCountOf(residues, fn(lit) => lit == 0)),
-                gpuSatisfies(total(cols), fn(grand) => grand == 48384), gpuSatisfies(total(rows), fn(grand) => grand == 17664), gpuSatisfies(total(indices1536), fn(grand) => grand == 1178880),
-                gpuSatisfies(gpuFilter(cols, lastColumn), fn(last) => gpuLength(last) == 24), litCountOf(cols, fn(lit) => lit == 1512), litCountOf(rows, fn(lit) => lit == 1472),
+                gpuEquals(total(cols), 48384), gpuEquals(total(rows), 17664), gpuEquals(total(indices1536), 1178880),
+                gpuLengthIs(gpuFilter(cols, lastColumn), 24), litCountOf(cols, fn(lit) => lit == 1512), litCountOf(rows, fn(lit) => lit == 1472),
                 structuralEquals([texel(cols, 0), texel(rows, 0), texel(cols, 63), texel(rows, 63)], [0, 0, 63, 0]),
                 structuralEquals([texel(cols, 64), texel(rows, 64), texel(cols, 1535)], [0, 1, 63]),
                 structuralEquals([texel(rows, 1535), flatIndex(0, 0, frameWidth())], [23, 0]),
@@ -253,7 +253,7 @@ fn edgeCase() = checkAll("edge function", [
 fn triangleCase() = withIndices(8, fn(indices8) => withIndices(64, fn(indices64) => triangleWith(indices8, indices64)))
 fn triangleWith(indices8, indices64) = withBuffer(triCover(indices64), fn(cover) => withBuffer(rowSums(cover, tileEdge(), indices8), fn(sums) =>
     checkAll("triangle", [
-            gpuSatisfies(total(cover), fn(grand) => grand == 21), litCountOf(cover, fn(lit) => lit == 21),
+            gpuEquals(total(cover), 21), litCountOf(cover, fn(lit) => lit == 21),
             structuralEquals([texel(sums, 0), texel(sums, 1), texel(sums, 2), texel(sums, 3)], [0, 6, 5, 4]),
             structuralEquals([texel(sums, 4), texel(sums, 5), texel(sums, 6), texel(sums, 7)], [3, 2, 1, 0]),
             structuralEquals([spanStart(cover, tileEdge(), 0, 0), spanStart(cover, tileEdge(), 1, 0)], [8, 1]),
@@ -263,37 +263,37 @@ fn triangleWith(indices8, indices64) = withBuffer(triCover(indices64), fn(cover)
             texel(cover, flatIndex(0, 1, tileEdge())) == 0,
             texel(cover, flatIndex(4, 4, tileEdge())) == 0,
             texel(cover, flatIndex(3, 3, tileEdge())) == 1,
-            gpuSatisfies(total(sums), fn(grand) => grand == 21),
-            gpuSatisfies(coverBuf(1, 6, 6, 1, 1, 1, indices64), fn(inverted) => gpuSatisfies(total(inverted), fn(grand) => grand == 0)),
-            gpuSatisfies(coverBuf(2, 2, 2, 2, 2, 2, indices64), fn(point) => gpuSatisfies(total(point), fn(grand) => grand == 64)),
-            gpuSatisfies(coverBuf(0, 0, 3, 0, 6, 0, indices64), fn(line) => gpuSatisfies(total(line), fn(grand) => grand == 8)),
-            gpuSatisfies(coverBuf(20, 20, 26, 20, 20, 26, indices64), fn(offTile) => gpuSatisfies(total(offTile), fn(grand) => grand == 0)),
-            gpuSatisfies(coverBuf(0, 0, 7, 0, 0, 7, indices64), fn(wide) => gpuSatisfies(total(wide), fn(grand) => grand == 36)),
-            gpuSatisfies(coverBuf((0 - 9), (0 - 9), 40, (0 - 9), (0 - 9), 40, indices64), fn(oversized) => gpuSatisfies(total(oversized), fn(grand) => grand == 64))
+            gpuEquals(total(sums), 21),
+            gpuSatisfies(coverBuf(1, 6, 6, 1, 1, 1, indices64), fn(inverted) => gpuEquals(total(inverted), 0)),
+            gpuSatisfies(coverBuf(2, 2, 2, 2, 2, 2, indices64), fn(point) => gpuEquals(total(point), 64)),
+            gpuSatisfies(coverBuf(0, 0, 3, 0, 6, 0, indices64), fn(line) => gpuEquals(total(line), 8)),
+            gpuSatisfies(coverBuf(20, 20, 26, 20, 20, 26, indices64), fn(offTile) => gpuEquals(total(offTile), 0)),
+            gpuSatisfies(coverBuf(0, 0, 7, 0, 0, 7, indices64), fn(wide) => gpuEquals(total(wide), 36)),
+            gpuSatisfies(coverBuf((0 - 9), (0 - 9), 40, (0 - 9), (0 - 9), 40, indices64), fn(oversized) => gpuEquals(total(oversized), 64))
     ])))
 /// spanCase pins scanline filling and every degenerate span: a normal run, a single pixel, a whole row, an inverted range, a row off the tile, and one off-image span that
 /// draws nothing until clipped.
 fn spanCase() = withIndices(64, fn(indices64) => spanWith(indices64))
 fn spanWith(indices64) = withBuffer(spanBuf(3, 2, 5, indices64), fn(mid) =>
     checkAll("span fill", [
-            gpuSatisfies(total(mid), fn(grand) => grand == 4),
+            gpuEquals(total(mid), 4),
             structuralEquals([spanStart(mid, tileEdge(), 3, 0), texel(mid, flatIndex(2, 3, tileEdge()))], [2, 1]),
             texel(mid, flatIndex(5, 3, tileEdge())) == 1,
             texel(mid, flatIndex(1, 3, tileEdge())) == 0,
             texel(mid, flatIndex(6, 3, tileEdge())) == 0,
             texel(mid, flatIndex(2, 2, tileEdge())) == 0,
             texel(mid, flatIndex(2, 4, tileEdge())) == 0,
-            gpuSatisfies(spanBuf(0, 0, 0, indices64), fn(single) => gpuSatisfies(total(single), fn(grand) => grand == 1)),
-            gpuSatisfies(spanBuf(7, 7, 7, indices64), fn(corner) => gpuSatisfies(total(corner), fn(grand) => grand == 1)),
-            gpuSatisfies(spanBuf(0, 0, 7, indices64), fn(row) => gpuSatisfies(total(row), fn(grand) => grand == 8)),
-            gpuSatisfies(spanBuf(4, 5, 2, indices64), fn(reversed) => gpuSatisfies(total(reversed), fn(grand) => grand == 0)),
-            gpuSatisfies(spanBuf(8, 0, 7, indices64), fn(offTile) => gpuSatisfies(total(offTile), fn(grand) => grand == 0)),
-            gpuSatisfies(spanBuf((0 - 1), 0, 7, indices64), fn(negativeRow) => gpuSatisfies(total(negativeRow), fn(grand) => grand == 0)),
-            gpuSatisfies(spanBuf(2, (0 - 4), (0 - 1), indices64), fn(offLeft) => gpuSatisfies(total(offLeft), fn(grand) => grand == 0)),
-            gpuSatisfies(clampedSpan(2, (0 - 4), (0 - 1), indices64), fn(clipped) => gpuSatisfies(total(clipped), fn(grand) => grand == 1)),
-            gpuSatisfies(clampedSpan(5, (0 - 4), 2, indices64), fn(leftClipped) => gpuSatisfies(total(leftClipped), fn(grand) => grand == 3)),
-            gpuSatisfies(clampedSpan(5, 6, 99, indices64), fn(rightClipped) => gpuSatisfies(total(rightClipped), fn(grand) => grand == 2)),
-            gpuSatisfies(spanBuf(1, (0 - 9), 99, indices64), fn(whole) => gpuSatisfies(total(whole), fn(grand) => grand == 8)),
+            gpuSatisfies(spanBuf(0, 0, 0, indices64), fn(single) => gpuEquals(total(single), 1)),
+            gpuSatisfies(spanBuf(7, 7, 7, indices64), fn(corner) => gpuEquals(total(corner), 1)),
+            gpuSatisfies(spanBuf(0, 0, 7, indices64), fn(row) => gpuEquals(total(row), 8)),
+            gpuSatisfies(spanBuf(4, 5, 2, indices64), fn(reversed) => gpuEquals(total(reversed), 0)),
+            gpuSatisfies(spanBuf(8, 0, 7, indices64), fn(offTile) => gpuEquals(total(offTile), 0)),
+            gpuSatisfies(spanBuf((0 - 1), 0, 7, indices64), fn(negativeRow) => gpuEquals(total(negativeRow), 0)),
+            gpuSatisfies(spanBuf(2, (0 - 4), (0 - 1), indices64), fn(offLeft) => gpuEquals(total(offLeft), 0)),
+            gpuSatisfies(clampedSpan(2, (0 - 4), (0 - 1), indices64), fn(clipped) => gpuEquals(total(clipped), 1)),
+            gpuSatisfies(clampedSpan(5, (0 - 4), 2, indices64), fn(leftClipped) => gpuEquals(total(leftClipped), 3)),
+            gpuSatisfies(clampedSpan(5, 6, 99, indices64), fn(rightClipped) => gpuEquals(total(rightClipped), 2)),
+            gpuSatisfies(spanBuf(1, (0 - 9), 99, indices64), fn(whole) => gpuEquals(total(whole), 8)),
             gpuSatisfies(clampedSpan(2, (0 - 4), (0 - 1), indices64), fn(clipped) => texel(clipped, flatIndex(0, 2, tileEdge())) == 1),
             gpuSatisfies(spanBuf(3, 2, 5, indices64), fn(midSpan) => gpuSatisfies(gpuMap(midSpan, fullBright), fn(bright) => rowText(bright, tileEdge(), 3) == "  @@@@  ")),
             gpuSatisfies(spanBuf(3, 2, 5, indices64), fn(midSpan) => gpuSatisfies(gpuMap(midSpan, fullBright), fn(bright) => rowText(bright, tileEdge(), 2) == "        "))
@@ -311,9 +311,9 @@ fn saturateCaseUploaded(base, addend) = {
             gpuSatisfies(gpuZipWith(base, addend, channelAdd), fn(summed) => texel(summed, 0) == 255),
             gpuSatisfies(gpuZipWith(base, addend, channelAdd), fn(summed) => texel(summed, 1) == 0),
             gpuSatisfies(gpuZipWith(base, addend, channelAdd), fn(summed) => texel(summed, 4) == 50),
-            gpuSatisfies(gpuZipWith(base, addend, channelAdd), fn(summed) => gpuSatisfies(total(summed), fn(grand) => grand == 815)),
-            gpuSatisfies(gpuZipWith(base, addend, channelSub), fn(differenced) => gpuSatisfies(total(differenced), fn(grand) => grand == 384)),
-            gpuSatisfies(gpuZipWith(base, addend, channelMul), fn(scaled) => gpuSatisfies(total(scaled), fn(grand) => grand == 180)),
+            gpuSatisfies(gpuZipWith(base, addend, channelAdd), fn(summed) => gpuEquals(total(summed), 815)),
+            gpuSatisfies(gpuZipWith(base, addend, channelSub), fn(differenced) => gpuEquals(total(differenced), 384)),
+            gpuSatisfies(gpuZipWith(base, addend, channelMul), fn(scaled) => gpuEquals(total(scaled), 180)),
             gpuSatisfies(gpuZipWith(base, addend, channelAdd), fn(summed) => litCountOf(summed, fn(lit) => lit == 4))
     ])
 }
@@ -334,10 +334,10 @@ fn samplingWith(indices0, indices4, indices16) = withBuffer(toGpu([1, 2, 3, 4]),
             gpuSatisfies(toGpu([7]), fn(uploaded7) => sampleClamped(uploaded7, 1, 1, 5, 5) == 7),
             gpuSatisfies(toGpu([5, 6, 7]), fn(uploaded6) => sampleClamped(uploaded6, 3, 1, 2, 4) == 7),
             gpuSatisfies(toGpu([5, 6, 7]), fn(uploaded5) => sampleClamped(uploaded5, 1, 3, 4, 2) == 7),
-            gpuSatisfies(total(big), fn(grand) => grand == 40),
-            gpuSatisfies(toGpu([7]), fn(uploaded4) => gpuSatisfies(upscale2(uploaded4, 1, 1, indices4), fn(single) => gpuLength(single) == 4)),
-            gpuSatisfies(toGpu([7]), fn(uploaded3) => gpuSatisfies(upscale2(uploaded3, 1, 1, indices4), fn(single) => gpuSatisfies(total(single), fn(grand) => grand == 28))),
-            gpuSatisfies(upscale2(indices0, 0, 0, indices0), fn(empty) => gpuLength(empty) == 0)
+            gpuEquals(total(big), 40),
+            gpuSatisfies(toGpu([7]), fn(uploaded4) => gpuLengthIs(upscale2(uploaded4, 1, 1, indices4), 4)),
+            gpuSatisfies(toGpu([7]), fn(uploaded3) => gpuSatisfies(upscale2(uploaded3, 1, 1, indices4), fn(single) => gpuEquals(total(single), 28))),
+            gpuLengthIs(upscale2(indices0, 0, 0, indices0), 0)
     ])))
 /// gatherCase pins row and column addressing over a non-square raster: transpose by gather alone, its involution, the reductions it turns into each other, and a prefix
 /// scan read at each scanline boundary.
@@ -354,7 +354,7 @@ fn gatherWith(indices1, indices2, indices3, indices6, indices64) =
                             structuralEquals([rowTotal(src, 6, 0, 0), rowTotal(src, 1, 4, 0)], [21, 5]),
                             structuralEquals([texel(running, 7), texel(running, 15)], [0, 6]),
                             structuralEquals([texel(running, 23), texel(running, 63)], [11, 21]),
-                            gpuSatisfies(transposeOf(flipped, 2, 3, indices6), fn(restored) => gpuSatisfies(gpuZipWith(restored, src, channelSub), fn(difference) => gpuSatisfies(total(difference), fn(grand) => grand == 0))),
+                            gpuSatisfies(transposeOf(flipped, 2, 3, indices6), fn(restored) => gpuSatisfies(gpuZipWith(restored, src, channelSub), fn(difference) => gpuEquals(total(difference), 0))),
                             gpuSatisfies(rowSums(src, 3, indices2), fn(sums) => texel(sums, 0) == 6), gpuSatisfies(rowSums(src, 3, indices2), fn(sums) => texel(sums, 1) == 15),
                             gpuSatisfies(rowSums(flipped, 2, indices3), fn(sums) => texel(sums, 0) == 5), gpuSatisfies(rowSums(flipped, 2, indices3), fn(sums) => texel(sums, 1) == 7),
                             gpuSatisfies(rowSums(flipped, 2, indices3), fn(sums) => texel(sums, 2) == 9),
@@ -370,7 +370,7 @@ fn quadWith(indices0, indices16) = quadEach(indices16, fn(quad) =>
             structuralEquals([texel(quad, 7), texel(quad, 8), texel(quad, 9)], [6, 9, 9]),
             structuralEquals([texel(quad, 10), texel(quad, 11), texel(quad, 12)], [4, 6, 9]),
             structuralEquals([texel(quad, 13), texel(quad, 14), texel(quad, 15)], [2, 4, 6]),
-            gpuSatisfies(total(quad), fn(grand) => grand == 118), gpuSatisfies(gpuFilter(quad, interiorPixel), fn(interior) => gpuLength(interior) == 10),
+            gpuEquals(total(quad), 118), gpuLengthIs(gpuFilter(quad, interiorPixel), 10),
             litCountOf(quad, fn(lit) => lit == 16),
             structuralEquals([rowText(quad, quadEdge(), 0), rowText(quad, quadEdge(), 1)], ["@@@@", "@@@*"]),
             structuralEquals([rowText(quad, quadEdge(), 2), rowText(quad, quadEdge(), 3)], ["@@=*", "@:=*"]),
@@ -395,7 +395,7 @@ fn symmetryWith(indices24, indices1536) =
                         range(0, frameHeight()) |> fold(0, |acc, y| => mirrorRow(mandel, acc, y)) == 24,
                         structuralEquals([gpuLength(interior), spanStart(mandel, frameWidth(), 0, 0)], [344, 24]),
                         structuralEquals([texel(mandel, 0), texel(mandel, 1535)], [0, 0]),
-                        litCountOf(mandel, fn(lit) => lit == 1212), gpuSatisfies(total(mandel), fn(grand) => grand == 4624),
+                        litCountOf(mandel, fn(lit) => lit == 1212), gpuEquals(total(mandel), 4624),
                         row(mandel, 0) == row(mandel, 23), row(mandel, 11) == row(mandel, 12),
                         texel(sums, 11) == texel(sums, 12)
                 ]))))
@@ -415,7 +415,7 @@ fn shadingWith(indices24, indices1536) =
                         structuralEquals([spanStart(sphere, frameWidth(), 12, 0), isqrt(0), isqrt(1)], [10, 0, 1]),
                         structuralEquals([isqrt(16), isqrt(17), isqrt(4096), isqrt((0 - 9) )], [4, 4, 64, 0]),
                         litCountOf(sphere, fn(lit) => lit == 764),
-                        gpuSatisfies(total(sphere), fn(grand) => grand == 2928)
+                        gpuEquals(total(sphere), 2928)
                 ]))))
 /// compositeCase pins that one elementwise pass layers sphere over fractal. The silhouette falls entirely inside what the fractal drew, so the composite lights exactly the
 /// fractal's cells while its brightness total drops — the foreground is darker than what it hides.
@@ -431,9 +431,9 @@ fn compositeWith(indices0, indices16, indices1536) =
                         texel(composite, 0) == texel(mandel, 0),
                         litCountOf(composite, fn(lit) => lit == 1212),
                         gpuSatisfies(gpuFilter(composite, litPixel), fn(compositeLit) => litCountOf(mandel, fn(mandelLit) => gpuLength(compositeLit) == mandelLit)),
-                        gpuSatisfies(total(composite), fn(grand) => grand == 3860),
-                        gpuSatisfies(gpuZipWith(mandel, indices0, overLayer), fn(empty) => gpuLength(empty) == 0),
-                        gpuSatisfies(gpuZipWith(indices16, sphere, overLayer), fn(sized) => gpuLength(sized) == 16)
+                        gpuEquals(total(composite), 3860),
+                        gpuLengthIs(gpuZipWith(mandel, indices0, overLayer), 0),
+                        gpuLengthIs(gpuZipWith(indices16, sphere, overLayer), 16)
                 ]))))
 exactArithmetic(fn() => withBuffer(toGpu([1, 4, 7, 9]), fn(texels) => withIndices(1536, fn(indices1536) => withIndices(64, fn(indices64) => withIndices(16, fn(indices16) => gallery(indices1536, indices64, indices16, texels))))))
 test("one kernel dispatch covers the whole pixel grid", exactly(dispatchCase))

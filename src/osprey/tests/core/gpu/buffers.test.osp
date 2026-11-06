@@ -44,29 +44,26 @@ fn valuesAt(buffer, indices, fallback) = mapList(indices, fn(i) => gpuGet(buffer
 fn readsTo(buffer, indices, fallback, expected) = structuralEquals(valuesAt(buffer, indices, fallback), expected)
 /// listReadsTo is the same gather over a list, for the paths that hand back a list instead of a buffer.
 fn listReadsTo(values, indices, fallback, expected) = structuralEquals(mapList(indices, fn(i) => listGet(values, i) ?: fallback), expected)
-/// foldsTo is whether the fold in [result] equals [expected]; a failed GPU operation fails the case with its reason.
-fn foldsTo(result, expected) = gpuSatisfies(result, fn(total) => total == expected)
 /// listLengthIs is whether the list produced by [result] has [expected] elements.
 fn listLengthIs(result, expected) = gpuSatisfies(result, fn(values) => listLength(values) == expected)
 /// listResultReadsTo is whether the list produced by [result] reads [expected] at [indices].
 fn listResultReadsTo(result, indices, fallback, expected) = gpuSatisfies(result, fn(values) => listReadsTo(values, indices, fallback, expected))
-/// bufferReadsTo and bufferLengthIs are the buffer-result forms of the gathers above, for an operation that hands back a `Result` rather than a buffer.
+/// bufferReadsTo is the buffer-result form of the gathers above, for an operation that hands back a `Result` rather than a buffer.
 fn bufferReadsTo(result, indices, fallback, expected) = gpuSatisfies(result, fn(buffer) => readsTo(buffer, indices, fallback, expected))
-fn bufferLengthIs(result, expected) = gpuSatisfies(result, fn(buffer) => gpuLength(buffer) == expected)
 /// relayReadsTo and relayLengthIs check a list round-trip relayed back onto the GPU through the same gathers.
 fn relayReadsTo(buffer, indices, fallback, expected) = gpuSatisfies(fromGpu(buffer), fn(values) => bufferReadsTo(toGpu(values), indices, fallback, expected))
-fn relayLengthIs(buffer, expected) = gpuSatisfies(fromGpu(buffer), fn(values) => bufferLengthIs(toGpu(values), expected))
+fn relayLengthIs(buffer, expected) = gpuSatisfies(fromGpu(buffer), fn(values) => gpuLengthIs(toGpu(values), expected))
 /// literalCase pins [GPU-BUFFER-LITERAL]: a literal argument stores its elements straight into the dense buffer at constant indices, with no list built at all. Every scalar element type [GPU-BUFFER-ELEM] is covered, plus the degenerate one- and zero-element literals and the sign and magnitude extremes an int word must hold.
 fn literalCase() = withBuffer(toGpu([3, 1, 4, 1, 5]), fn(ints) => withBuffer(toGpu([0.25, 0.5, 0.75, 1.0]), fn(floats) => withBuffer(toGpu([true, false, true]), fn(flags) => withBuffer(toGpu([-3, 0, 7, -1]), fn(signed) => withBuffer(toGpu([4611686018427387904, -4611686018427387904]), fn(wide) => literalCaseUploaded(ints, floats, flags, signed, wide))))))
 fn literalCaseUploaded(ints, floats, flags, signed, wide) = {
     checkAll("buffer literals", [
             structuralEquals([gpuLength(ints), gpuLength(floats), gpuLength(flags), gpuLength(signed)], [5, 4, 3, 4]),
             structuralEquals([gpuLength(wide), widthOf(ints), (lastOf(ints) ?: 0)], [2, 5, 5]),
-            bufferLengthIs(toGpu([9]), 1),
+            gpuLengthIs(toGpu([9]), 1),
             gpuSatisfies(toGpu([]), fn(uploaded41: GpuBuffer<int>) => gpuLength(uploaded41) == 0), readsTo(ints, [0, 1, 2, 3, 4], 0, [3, 1, 4, 1, 5]),
             readsTo(floats, [0, 1, 2, 3], 9.5, [0.25, 0.5, 0.75, 1.0]), readsTo(flags, [0, 1, 2], false, [true, false, true]), (lastOf(flags) ?: false) == true,
             readsTo(signed, [0, 1, 2, 3], 9, [-3, 0, 7, -1]), readsTo(wide, [0, 1], 0, [4611686018427387904, -4611686018427387904]), (lastOf(floats) ?: 9.5) == 1.0,
-            bufferReadsTo(toGpu([9]), [0], 0, [9]), foldsTo(gpuFold(ints, 0, addInts), 14), foldsTo(gpuFold(signed, 0, addInts), 3), foldsTo(gpuFold(floats, 0.0, addFloats), 2.5), foldsTo(gpuFold(flags, 0, countOdd), 2)
+            bufferReadsTo(toGpu([9]), [0], 0, [9]), gpuEquals(gpuFold(ints, 0, addInts), 14), gpuEquals(gpuFold(signed, 0, addInts), 3), gpuEquals(gpuFold(floats, 0.0, addFloats), 2.5), gpuEquals(gpuFold(flags, 0, countOdd), 2)
     ])
 }
 /// listCopyCase pins [GPU-BUFFER-FROM-LIST]: a list *value* takes the copy loop rather than the literal path and must land on a buffer indistinguishable from the literal one — same length, same elements, same reduction — down to the one- and zero-element lists.
@@ -82,9 +79,9 @@ fn listCopyWith(indices0) = {
                                             structuralEquals([(lastOf(copied) ?: 0), gpuLength(relayed)], [8, 4]),
                                             listLength(none) == 0,
                                             readsTo(copied, [0, 1, 2, 3], 0, [2, 4, 6, 8]), readback(copied, 4) == oobMessage(),
-                                            readback(copied, -1) == oobMessage(), readback(copied, 0) == "2", foldsTo(gpuFold(copied, 0, addInts), 20), readsTo(relayed, [2], 0, [6]),
-                                            foldsTo(gpuFold(relayed, 0, addInts), 20), bufferLengthIs(toGpu(lone), 1), bufferReadsTo(toGpu(lone), [0], 0, [11]), gpuSatisfies(toGpu(lone), fn(uploaded35) => (lastOf(uploaded35) ?: 0) == 11),
-                                            bufferLengthIs(toGpu(none), 0), gpuSatisfies(toGpu(none), fn(uploaded33) => foldsTo(gpuFold(uploaded33, 7, addInts), 7)), gpuSatisfies(toGpu(source), fn(uploaded32) => widthOf(uploaded32) == widthOf(copied)),
+                                            readback(copied, -1) == oobMessage(), readback(copied, 0) == "2", gpuEquals(gpuFold(copied, 0, addInts), 20), readsTo(relayed, [2], 0, [6]),
+                                            gpuEquals(gpuFold(relayed, 0, addInts), 20), gpuLengthIs(toGpu(lone), 1), bufferReadsTo(toGpu(lone), [0], 0, [11]), gpuSatisfies(toGpu(lone), fn(uploaded35) => (lastOf(uploaded35) ?: 0) == 11),
+                                            gpuLengthIs(toGpu(none), 0), gpuSatisfies(toGpu(none), fn(uploaded33) => gpuEquals(gpuFold(uploaded33, 7, addInts), 7)), gpuSatisfies(toGpu(source), fn(uploaded32) => widthOf(uploaded32) == widthOf(copied)),
                                             gpuSatisfies(toGpu(source), fn(uploaded31) => gpuSatisfies(gpuFold(uploaded31, 0, addInts), fn(uploaded85) => gpuSatisfies(gpuFold(copied, 0, addInts), fn(uploaded86) => (uploaded85) == (uploaded86))))
                             ]))
                         })
@@ -104,9 +101,9 @@ fn roundTripWith(indices0, indices6) = {
                                             structuralEquals([gpuLength(viaList), listLength(twice)], [5, 5]),
                                             listReadsTo(back, [0, 1, 2, 3, 4, 5, -1], 99, [3, 1, 4, 1, 5, 99, 99]),
                                             readsTo(viaList, [0, 2, 4], 0, [3, 4, 5]), readback(viaList, 5) == oobMessage(),
-                                            foldsTo(gpuFold(viaList, 0, addInts), 14), listReadsTo(twice, [4], 0, [5]), gpuSatisfies(toGpu(twice), fn(uploaded28) => foldsTo(gpuFold(uploaded28, 0, addInts), 14)),
+                                            gpuEquals(gpuFold(viaList, 0, addInts), 14), listReadsTo(twice, [4], 0, [5]), gpuSatisfies(toGpu(twice), fn(uploaded28) => gpuEquals(gpuFold(uploaded28, 0, addInts), 14)),
                                             listLengthIs(fromGpu(indices0), 0), relayLengthIs(indices6, 6),
-                                            gpuSatisfies(fromGpu(indices6), fn(checked0) => gpuSatisfies(toGpu(checked0), fn(uploaded26) => foldsTo(gpuFold(uploaded26, 0, addInts), 15))),
+                                            gpuSatisfies(fromGpu(indices6), fn(checked0) => gpuSatisfies(toGpu(checked0), fn(uploaded26) => gpuEquals(gpuFold(uploaded26, 0, addInts), 15))),
                                             relayReadsTo(indices6, [5], 0, [5])
                                     ])
                                 })
@@ -127,8 +124,8 @@ fn emptyWith(indices0) = {
                                     structuralEquals([widthOf(none), (lastOf(none) ?: 42)], [0, 42]),
                                     gpuSatisfies(toGpu([]), fn(uploaded24: GpuBuffer<int>) => gpuLength(uploaded24) == 0),
                                     listLengthIs(fromGpu(none), 0), listLengthIs(fromGpu(mapped), 0),
-                                    foldsTo(gpuFold(none, 0, addInts), 0), foldsTo(gpuFold(none, -7, addInts), -7), foldsTo(gpuFold(mapped, 3, addInts), 3), foldsTo(gpuFold(flags, 0, countOdd), 0),
-                                    foldsTo(gpuFold(widened, 2.5, addFloats), 2.5), readsTo(none, [0, 1, -1, 1000000], 42, [42, 42, 42, 42]), readback(none, 0) == oobMessage(), readback(none, -1) == oobMessage(),
+                                    gpuEquals(gpuFold(none, 0, addInts), 0), gpuEquals(gpuFold(none, -7, addInts), -7), gpuEquals(gpuFold(mapped, 3, addInts), 3), gpuEquals(gpuFold(flags, 0, countOdd), 0),
+                                    gpuEquals(gpuFold(widened, 2.5, addFloats), 2.5), readsTo(none, [0, 1, -1, 1000000], 42, [42, 42, 42, 42]), readback(none, 0) == oobMessage(), readback(none, -1) == oobMessage(),
                                     readback(mapped, 0) == oobMessage(), readback(flags, 0) == oobMessage(), readback(widened, 0) == oobMessage()
                             ])
                         })
@@ -146,7 +143,7 @@ fn singletonWithUploaded(indices1, lone, loneF, loneB) = {
                     readsTo(indices1, [0], 9, [0]), readsTo(lone, [0, 1, -1], 9, [42, 9, 9]),
                     readsTo(loneF, [0, 1], 9.5, [2.5, 9.5]), readsTo(loneB, [0, 1], true, [false, true]), readback(lone, 1) == oobMessage(), readback(loneF, -1) == oobMessage(),
                     readback(loneB, 2) == oobMessage(), readback(lone, 0) == "42", (lastOf(loneF) ?: 9.5) == 2.5, (lastOf(loneB) ?: true) == false,
-                    foldsTo(gpuFold(lone, 0, addInts), 42), foldsTo(gpuFold(loneF, 0.0, addFloats), 2.5), foldsTo(gpuFold(loneB, 0, countOdd), 0),
+                    gpuEquals(gpuFold(lone, 0, addInts), 42), gpuEquals(gpuFold(loneF, 0.0, addFloats), 2.5), gpuEquals(gpuFold(loneB, 0, countOdd), 0),
                     readsTo(doubled, [0], 0, [84]), listLengthIs(fromGpu(lone), 1),
                     listResultReadsTo(fromGpu(lone), [0], 0, [42]), relayLengthIs(lone, 1)
             ])
@@ -184,8 +181,8 @@ fn iotaWith(indices0, indices1, indices2, indices7, indicesWide) = {
             readsTo(one, [0], 9, [0]), readsTo(pair, [0, 1], 9, [0, 1]),
             readsTo(seven, [0, 6], 9, [0, 6]),
             readsTo(wide, [0, 100000], 9, [0, 100000]), readback(seven, 7) == oobMessage(), readback(one, 1) == oobMessage(), readback(wide, 200000) == oobMessage(),
-            foldsTo(gpuFold(seven, 0, addInts), 21), foldsTo(gpuFold(pair, 0, addInts), 1),
-            foldsTo(gpuFold(one, 0, addInts), 0), foldsTo(gpuFold(wide, 0, addInts), 19999900000), gpuSatisfies(gpuMap(seven, square), fn(uploaded65) => foldsTo(gpuFold(uploaded65, 0, addInts), 91)),
+            gpuEquals(gpuFold(seven, 0, addInts), 21), gpuEquals(gpuFold(pair, 0, addInts), 1),
+            gpuEquals(gpuFold(one, 0, addInts), 0), gpuEquals(gpuFold(wide, 0, addInts), 19999900000), gpuSatisfies(gpuMap(seven, square), fn(uploaded65) => gpuEquals(gpuFold(uploaded65, 0, addInts), 91)),
             listLengthIs(fromGpu(seven), 7), listResultReadsTo(fromGpu(seven), [3], 0, [3])
     ])
 }
@@ -196,9 +193,9 @@ fn elementCaseUploaded(ints, floats, flags) = {
             bufferReadsTo(gpuMap(ints, same), [0, 1, 2], 0, [-9, 0, 9]), bufferReadsTo(gpuMap(floats, same), [0, 1, 2], 9.5, [-0.5, 0.0, 0.125]), bufferReadsTo(gpuMap(flags, same), [0, 1], true, [false, true]),
             structuralEquals([readback(ints, 0), readback(ints, 1), readback(floats, 0)], ["-9", "0", "-0.5"]),
             structuralEquals([readback(floats, 1), readback(floats, 2), readback(flags, 0)], ["0.0", "0.125", "false"]),
-            foldsTo(gpuFold(ints, 0, addInts), 0),
-            foldsTo(gpuFold(floats, 0.0, addFloats), -0.375), foldsTo(gpuFold(flags, 0, countOdd), 1), bufferLengthIs(gpuMap(floats, same), 3), gpuSatisfies(gpuMap(flags, same), fn(uploaded52) => widthOf(uploaded52) == 2),
-            gpuSatisfies(gpuMap(ints, same), fn(uploaded51) => listLengthIs(fromGpu(uploaded51), 3)), gpuSatisfies(toGpu([2.0]), fn(uploaded22) => foldsTo(gpuFold(uploaded22, 0.0, addFloats), 2.0)),
+            gpuEquals(gpuFold(ints, 0, addInts), 0),
+            gpuEquals(gpuFold(floats, 0.0, addFloats), -0.375), gpuEquals(gpuFold(flags, 0, countOdd), 1), gpuLengthIs(gpuMap(floats, same), 3), gpuSatisfies(gpuMap(flags, same), fn(uploaded52) => widthOf(uploaded52) == 2),
+            gpuSatisfies(gpuMap(ints, same), fn(uploaded51) => listLengthIs(fromGpu(uploaded51), 3)), gpuSatisfies(toGpu([2.0]), fn(uploaded22) => gpuEquals(gpuFold(uploaded22, 0.0, addFloats), 2.0)),
             gpuSatisfies(gpuMap(floats, same), fn(uploaded49) => (lastOf(uploaded49) ?: 9.5) == 0.125)
     ])
 }
@@ -218,8 +215,8 @@ fn flowCase() = {
                             readsTo(chooseBuffer(false, held, piped), [1], 9.5, [3.75]), readsTo(twice, [0], 9.5, [3.375]),
                             structuralEquals([widthOf(held), widthOf(piped), widthOf(returned)], [3, 3, 3]),
                             structuralEquals([widthOf(chosen), lamLength(held), lamLength(twice)], [3, 3, 3]),
-                            foldsTo(gpuFold(held, 0.0, addFloats), 7.5),
-                            foldsTo(gpuFold(piped, 0.0, addFloats), 11.25), foldsTo(gpuFold(returned, 0.0, addFloats), 11.25), foldsTo(gpuFold(twice, 0.0, addFloats), 16.875),
+                            gpuEquals(gpuFold(held, 0.0, addFloats), 7.5),
+                            gpuEquals(gpuFold(piped, 0.0, addFloats), 11.25), gpuEquals(gpuFold(returned, 0.0, addFloats), 11.25), gpuEquals(gpuFold(twice, 0.0, addFloats), 16.875),
                             structuralEquals([readback(held, 0), readback(returned, 0)], ["1.5", "2.25"]),
                             readback(returned, 3) == oobMessage(), readback(twice, -1) == oobMessage(),
                             listLengthIs(fromGpu(held), 3)
@@ -240,8 +237,8 @@ fn aliasCase() = {
                         structuralEquals([gpuLength(alsoAlias), gpuLength(derived)], [4, 4]),
                         widthOf(alias) == widthOf(source), readsTo(alias, [0, 3], 0, [1, 4]),
                         readsTo(alsoAlias, [0, 3], 0, [1, 4]), (lastOf(alias) ?: 0) == (lastOf(source) ?: 0),
-                        foldsTo(gpuFold(source, 0, addInts), 10), foldsTo(gpuFold(alias, 0, addInts), 10), foldsTo(gpuFold(alsoAlias, 0, addInts), 10),
-                        foldsTo(gpuFold(derived, 0, addInts), 20), readsTo(derived, [1], 0, [4]), readsTo(source, [1], 0, [2]), readsTo(alias, [1], 0, [2]),
+                        gpuEquals(gpuFold(source, 0, addInts), 10), gpuEquals(gpuFold(alias, 0, addInts), 10), gpuEquals(gpuFold(alsoAlias, 0, addInts), 10),
+                        gpuEquals(gpuFold(derived, 0, addInts), 20), readsTo(derived, [1], 0, [4]), readsTo(source, [1], 0, [2]), readsTo(alias, [1], 0, [2]),
                         readsTo(alsoAlias, [1], 0, [2]), readback(alias, 4) == oobMessage(), readback(alsoAlias, -1) == oobMessage(), readback(source, 4) == readback(alias, 4),
                         listLengthIs(fromGpu(alias), 4), listResultReadsTo(fromGpu(alsoAlias), [2], 0, [3])
                 ]))
@@ -262,9 +259,9 @@ fn fusionCase() = {
                                             readsTo(straight, [0, 5], 9, [0, 5]), readback(straight, 6) == oobMessage(),
                                             readback(straight, -1) == oobMessage(), readsTo(squares, [0, 1, 2, 3], 0, [1, 4, 9, 16]),
                                             readback(squares, 4) == oobMessage(), readsTo(lone, [0], 0, [4]),
-                                            readback(lone, 1) == oobMessage(), readback(empty, 0) == oobMessage(), foldsTo(gpuFold(empty, 5, addInts), 5),
+                                            readback(lone, 1) == oobMessage(), readback(empty, 0) == oobMessage(), gpuEquals(gpuFold(empty, 5, addInts), 5),
                                             listLengthIs(fromGpu(straight), 6), listResultReadsTo(fromGpu(squares), [1], 0, [4]),
-                                            gpuSatisfies(fromGpu(squares), fn(checked0) => gpuSatisfies(toGpu(checked0), fn(uploaded15) => foldsTo(gpuFold(uploaded15, 0, addInts), 30)))
+                                            gpuSatisfies(fromGpu(squares), fn(checked0) => gpuSatisfies(toGpu(checked0), fn(uploaded15) => gpuEquals(gpuFold(uploaded15, 0, addInts), 30)))
                                     ])
                                 })
                         })
@@ -284,9 +281,9 @@ fn intKernelWith(indices0) = {
                             withBuffer(toGpu([-1, -2, -3]), fn(value) => withBuffer(gpuMap(value, square), fn(negatives) => checkAll("int kernels", [
                                                         structuralEquals([total, listLength(squares)], [30, 3]),
                                                         gpuLength(negatives) == 3,
-                                                        listReadsTo(squares, [0, 2], 0, [1, 9]), gpuSatisfies(toGpu([10, 20]), fn(uploaded11) => foldsTo(gpuFold(uploaded11, 5, addInts), 35)),
-                                                        readsTo(negatives, [0, 2], 0, [1, 9]), foldsTo(gpuFold(negatives, 0, addInts), 14),
-                                                        gpuSatisfies(toGpu([7]), fn(uploaded10) => gpuSatisfies(gpuMap(uploaded10, square), fn(uploaded29) => foldsTo(gpuFold(uploaded29, 0, addInts), 49))), gpuSatisfies(gpuMap(indices0, square), fn(uploaded28) => foldsTo(gpuFold(uploaded28, 0, addInts), 0))
+                                                        listReadsTo(squares, [0, 2], 0, [1, 9]), gpuSatisfies(toGpu([10, 20]), fn(uploaded11) => gpuEquals(gpuFold(uploaded11, 5, addInts), 35)),
+                                                        readsTo(negatives, [0, 2], 0, [1, 9]), gpuEquals(gpuFold(negatives, 0, addInts), 14),
+                                                        gpuSatisfies(toGpu([7]), fn(uploaded10) => gpuSatisfies(gpuMap(uploaded10, square), fn(uploaded29) => gpuEquals(gpuFold(uploaded29, 0, addInts), 49))), gpuSatisfies(gpuMap(indices0, square), fn(uploaded28) => gpuEquals(gpuFold(uploaded28, 0, addInts), 0))
                                 ])))
                         })
                     })
@@ -304,10 +301,10 @@ fn floatKernelWith(indices0, indices4) = {
                     withBuffer(gpuFold(uploaded27, 0.0, addFloats), fn(sum) => {
                             withBuffer(toGpu([0.5, 0.25, 0.125]), fn(halves) => {
                                     checkAll("float kernels", [
-                                            sum == 9.0, foldsTo(gpuFold(halves, 0.0, addFloats), 0.875), gpuSatisfies(gpuMap(halves, scale), fn(uploaded25) => foldsTo(gpuFold(uploaded25, 0.0, addFloats), 1.3125)),
-                                            bufferReadsTo(gpuMap(halves, scale), [2], 9.5, [0.1875]), bufferLengthIs(gpuMap(halves, scale), 3), gpuSatisfies(toGpu([0.5, 0.25]), fn(uploaded7) => foldsTo(gpuFold(uploaded7, 0.0, addFloats), 0.75)),
-                                            gpuSatisfies(gpuMap(indices4, toFloat), fn(uploaded21) => foldsTo(gpuFold(uploaded21, 0.0, addFloats), 6.0)), bufferReadsTo(gpuMap(indices4, toFloat), [3], 9.5, [3.0]),
-                                            gpuSatisfies(gpuMap(indices0, toFloat), fn(uploaded19) => foldsTo(gpuFold(uploaded19, 2.5, addFloats), 2.5))
+                                            sum == 9.0, gpuEquals(gpuFold(halves, 0.0, addFloats), 0.875), gpuSatisfies(gpuMap(halves, scale), fn(uploaded25) => gpuEquals(gpuFold(uploaded25, 0.0, addFloats), 1.3125)),
+                                            bufferReadsTo(gpuMap(halves, scale), [2], 9.5, [0.1875]), gpuLengthIs(gpuMap(halves, scale), 3), gpuSatisfies(toGpu([0.5, 0.25]), fn(uploaded7) => gpuEquals(gpuFold(uploaded7, 0.0, addFloats), 0.75)),
+                                            gpuSatisfies(gpuMap(indices4, toFloat), fn(uploaded21) => gpuEquals(gpuFold(uploaded21, 0.0, addFloats), 6.0)), bufferReadsTo(gpuMap(indices4, toFloat), [3], 9.5, [3.0]),
+                                            gpuSatisfies(gpuMap(indices0, toFloat), fn(uploaded19) => gpuEquals(gpuFold(uploaded19, 2.5, addFloats), 2.5))
                                     ])
                                 })
                         })
@@ -323,10 +320,10 @@ fn boolKernelWith(indices0) = {
                 Success { value } => withBuffer(gpuMap(value, isOdd), fn(allTrue) => {
                     withBuffer(toGpu([2, 4]), fn(value) => withBuffer(gpuMap(value, isOdd), fn(allFalse) => checkAll("bool kernels", [
                                                     structuralEquals([gpuLength(odds), gpuLength(allTrue)], [5, 2]),
-                                                    foldsTo(gpuFold(odds, 0, countOdd), 3), readsTo(odds, [0, 1, 4], false, [true, false, true]),
+                                                    gpuEquals(gpuFold(odds, 0, countOdd), 3), readsTo(odds, [0, 1, 4], false, [true, false, true]),
                                                     (lastOf(odds) ?: false) == true, readback(odds, 1) == "false", readback(odds, 5) == oobMessage(),
-                                                    foldsTo(gpuFold(allTrue, 0, countOdd), 2), foldsTo(gpuFold(allFalse, 0, countOdd), 0), gpuSatisfies(toGpu([true, true, false]), fn(uploaded3) => foldsTo(gpuFold(uploaded3, 0, countOdd), 2)),
-                                                    bufferLengthIs(gpuMap(indices0, isOdd), 0)
+                                                    gpuEquals(gpuFold(allTrue, 0, countOdd), 2), gpuEquals(gpuFold(allFalse, 0, countOdd), 0), gpuSatisfies(toGpu([true, true, false]), fn(uploaded3) => gpuEquals(gpuFold(uploaded3, 0, countOdd), 2)),
+                                                    gpuLengthIs(gpuMap(indices0, isOdd), 0)
                     ])))
                 })
                 Error { message } => gpuFailed(message)
@@ -347,7 +344,7 @@ fn bigWith(indicesWide) = {
                                     structuralEquals([gpuLength(wide), gpuLength(doubled)], [100000, 100000]),
                                     structuralEquals([listLength(back), gpuLength(rebuilt)], [100000, 100000]),
                                     (lastOf(wide) ?: 0) == 99999,
-                                    foldsTo(gpuFold(wide, 0, addInts), 4999950000), foldsTo(gpuFold(doubled, 0, addInts), 9999900000), foldsTo(gpuFold(rebuilt, 0, addInts), 4999950000),
+                                    gpuEquals(gpuFold(wide, 0, addInts), 4999950000), gpuEquals(gpuFold(doubled, 0, addInts), 9999900000), gpuEquals(gpuFold(rebuilt, 0, addInts), 4999950000),
                                     readsTo(wide, [0], 9, [0]), readsTo(doubled, [99999], 0, [199998]), readsTo(rebuilt, [99999], 0, [99999]),
                                     listReadsTo(back, [99999, 100000], -1, [99999, -1]), readback(wide, 100000) == oobMessage(), readback(rebuilt, -1) == oobMessage(),
                                     widthOf(rebuilt) == widthOf(wide)
@@ -375,7 +372,7 @@ fn blockBodiedKernelWith(indices4, indices3) = {
                                     structuralEquals([gpuLength(fromFn), gpuLength(fromLambda)], [4, 4]),
                                     gpuLength(widened) == 3,
                                     readsTo(fromFn, [0, 1, 3], 99, [1, 4, 10]),
-                                    readsTo(fromLambda, [0, 3], 99, [1, 10]), foldsTo(gpuFold(fromFn, 0, addInts), 22),
+                                    readsTo(fromLambda, [0, 3], 99, [1, 10]), gpuEquals(gpuFold(fromFn, 0, addInts), 22),
                                     readsTo(widened, [0, 2], 9.5, [0.0, 1.0])
                             ])
                         }

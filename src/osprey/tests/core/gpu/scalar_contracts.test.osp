@@ -18,8 +18,8 @@ fn listValueTagsCase() = {
                     checkAll("runtime list values keep GPU scalar tags", [
                             structuralEquals([gpuLength(floats), gpuLength(flags)], [2, 3]),
                             structuralEquals([(gpuGet(floats, 0) ?: 99.0), (gpuGet(floats, 1) ?: 99.0)], [1.5, 2.5]),
-                            gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded15) => (uploaded15) == 4.0), (gpuGet(flags, 0) ?: true) == false, (gpuGet(flags, 1) ?: true) == false, (gpuGet(flags, 2) ?: false) == true,
-                            gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded14) => (uploaded14) == 1)
+                            gpuEquals(gpuFold(floats, 0.0, addFloats), 4.0), (gpuGet(flags, 0) ?: true) == false, (gpuGet(flags, 1) ?: true) == false, (gpuGet(flags, 2) ?: false) == true,
+                            gpuEquals(gpuFold(flags, 0, countTrue), 1)
                     ])
                 })
         })
@@ -57,8 +57,8 @@ fn repeatedCrossingCase() = {
                                                                             (gpuGet(floats, 1) ?: 99.0) == 2.5,
                                                                             (listGet(floatsBack, 0) ?: 99.0) == 1.5,
                                                                             (listGet(floatsBack, 1) ?: 99.0) == 2.5,
-                                                                            gpuSatisfies(gpuFold(floats, 0.0, addFloats), fn(uploaded13) => (uploaded13) == 4.0),
-                                                                            gpuSatisfies(gpuFold(flags, 0, countTrue), fn(uploaded12) => (uploaded12) == 1), (listGet(flagsBack, 0) ?: true) == false, (listGet(flagsBack, 2) ?: false) == true
+                                                                            gpuEquals(gpuFold(floats, 0.0, addFloats), 4.0),
+                                                                            gpuEquals(gpuFold(flags, 0, countTrue), 1), (listGet(flagsBack, 0) ?: true) == false, (listGet(flagsBack, 2) ?: false) == true
                                                                     ])
                                                                 })
                                                         })
@@ -97,7 +97,7 @@ fn gpuIeeeCase() = {
                             withBuffer(gpuMap(infinityBuffer, subtractSelf), fn(nanBuffer) => {
                                 let nan = gpuGet(nanBuffer, 0) ?: 0.0
                                 withBuffer(toGpu([infinity, nan, -0.0]), fn(uploaded7) => withBuffer(fromGpu(uploaded7), fn(read0) => withBuffer(toGpu(listReverse(read0)), fn(roundTrip) => checkAll("host GPU kernels preserve non-finite values and signed zero", [
-                                        infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), fn(uploaded8) => (uploaded8) == infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
+                                        infinity > 10000000000000000.0, nan != nan, gpuEquals(gpuFold(infinityBuffer, 0.0, addFloats), infinity), (gpuGet(roundTrip, 2) ?: 0.0) == infinity, (gpuGet(roundTrip, 1) ?: 0.0) != (gpuGet(roundTrip, 1) ?: 0.0),
                                         toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
                                 ]))))
                             })
@@ -122,8 +122,8 @@ fn gpuFloatZeroCase() = {
         let remainders = gpuMap(input, remainderZero)
         match gpuDevice() == "host" {
             true => checkAll("host GPU zero divisors use the enclosing policy", [
-                    gpuSatisfies(quotients, fn(q) => gpuSatisfies(gpuFold(q, 0.0, addFloats), fn(total) => total == 0.75)),
-                    gpuSatisfies(remainders, fn(r) => gpuSatisfies(gpuFold(r, 0.0, addFloats), fn(total) => total == 0.75)),
+                    gpuSatisfies(quotients, fn(q) => gpuEquals(gpuFold(q, 0.0, addFloats), 0.75)),
+                    gpuSatisfies(remainders, fn(r) => gpuEquals(gpuFold(r, 0.0, addFloats), 0.75)),
                     faults == "///%%%"
             ])
             false => checkAll("host GPU zero divisors use the enclosing policy", [

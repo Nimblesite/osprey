@@ -120,7 +120,7 @@ fn stagedKernelCase() = {
     }
     match uploaded { Success { scaled } =>
         checkAll("a static effect is legal inside a GPU kernel", [
-            gpuSatisfies(gpuFold(scaled, 0, fn(a, v) => (a + v) ), fn(total) => total == 30),
+            gpuEquals(gpuFold(scaled, 0, fn(a, v) => (a + v) ), 30),
             gpuLength(scaled) == 4
         ])
       Error { message } => gpuFailed(message) }

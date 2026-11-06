@@ -81,7 +81,7 @@ resumeAbortEarlyExitCase () =
         checks == (resumed + aborted )
     ]
 
-test "returning without resume aborts the suspended continuation" (\() => exactArithmetic (resumeAbortEarlyExitCase))
+test "returning without resume aborts the suspended continuation" (exactly resumeAbortEarlyExitCase)
 
 (** [EFFECTS-HANDLER-ARMS] gives an arm's value one of two meanings: an arm that
     does not resume "substitutes for its operation's declared result", while an
@@ -128,4 +128,4 @@ resumeSiblingArmIndependenceCase () =
         resumedAnswer == result
     ]
 
-test "a non-resuming arm is unaffected by a sibling arm's resume" (\() => exactArithmetic (resumeSiblingArmIndependenceCase))
+test "a non-resuming arm is unaffected by a sibling arm's resume" (exactly resumeSiblingArmIndependenceCase)

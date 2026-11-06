@@ -78,4 +78,4 @@ websiteExamplesCase () =
         structuralEquals [getGrade 75, getGrade 50] ["Good", "Needs Improvement"]
     ]
 
-test "website snippets produce their documented values" (\() => exactArithmetic (websiteExamplesCase))
+test "website snippets produce their documented values" (exactly websiteExamplesCase)

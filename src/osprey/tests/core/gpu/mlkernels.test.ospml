@@ -37,8 +37,6 @@ sumOf (xs, predicate) = gpuSatisfies(gpuFold (xs, toFloat32 0.0, addF), predicat
 equals32 expected = \actual => actual == toFloat32 expected
 (** Whether the buffer in [result] sums to exactly [expected]. *)
 sumsTo (result, expected) = gpuSatisfies(result, \buffer => sumOf(buffer, equals32 expected))
-(** Whether the buffer in [result] has [expected] elements. *)
-lengthIs (result, expected) = gpuSatisfies(result, \buffer => gpuLength buffer == expected)
 (** Whether element [index] of [buffer] is exactly [expected]. *)
 readsAt (buffer, index, expected) = (gpuGet (buffer, index) ?: toFloat32 0.0) == toFloat32 expected
 (** Empty statistics and zero-spread normalisation choose an explicit boundary value. *)
@@ -107,7 +105,7 @@ dotCaseUploaded (input0, input1, input2, input3, input4, input5, input6, input7,
         dotOf(input2, input3, equals32 0.0), dotOf(xs, input4, equals32 0.0), dotOf(input5, input6, equals32 0.0),
         dotOf(input7, input8, \total => total == toFloat32 0.0 - toFloat32 11.0), dotOf(xs, input9, equals32 6.0),
         dotOf(input10, input11, equals32 0.25), dotOf(input12, ys, equals32 4.0),
-        lengthIs(gpuZipWith (xs, ys, mulF), 3), lengthIs(gpuZipWith (xs, input13, mulF), 1)
+        gpuLengthIs(gpuZipWith (xs, ys, mulF), 3), gpuLengthIs(gpuZipWith (xs, input13, mulF), 1)
     ]
 (** Pin BLAS saxpy, then the same shape with the scale factor captured —
     including alphas zero and one, which reduce to projections. *)
@@ -121,7 +119,7 @@ saxpyCaseUploaded (input0, input1, input2, input3, input4, input5) =
         sumsTo(gpuZipWith (xs, xs, \(x, y) => toFloat32 0.0 * x + y), 6.0),
         sumsTo(gpuZipWith (xs, xs, \(x, y) => toFloat32 1.0 * x + y), 12.0),
         sumsTo(gpuZipWith (xs, input3, saxpy), 36.0),
-        lengthIs(gpuZipWith (input4, xs, saxpy), 0),
+        gpuLengthIs(gpuZipWith (input4, xs, saxpy), 0),
         sumsTo(gpuZipWith (xs, input5, \(x, y) => alpha * x + y), 3.0)
     ]))
 (** The first acceptance shape: one host scalar closed over by a kernel, spent
@@ -135,9 +133,9 @@ captureScalarCaseUploaded (input0, input1) =
         sumOf(twice, equals32 27.0), readsAt (twice, 2, 12.0),
         sumsTo(gpuMap (scaled, \y => k * y), 54.0),
         sumsTo(gpuMap (xs, \x => k + x), 15.0),
-        lengthIs(gpuFilter (xs, \x => x > k), 0),
-        lengthIs(gpuFilter (xs, \x => k > x), 2),
-        lengthIs(gpuMap (input1, \x => k * x), 0),
+        gpuLengthIs(gpuFilter (xs, \x => x > k), 0),
+        gpuLengthIs(gpuFilter (xs, \x => k > x), 2),
+        gpuLengthIs(gpuMap (input1, \x => k * x), 0),
         gpuSatisfies(gpuFold (xs, toFloat32 0.0, \(a, x) => a + k * x), equals32 18.0),
         gpuSatisfies(gpuScan (xs, toFloat32 0.0, \(a, x) => a + k * x), \prefix => readsAt (prefix, 2, 18.0))
     ]))
@@ -174,7 +172,7 @@ captureSharedWithUploaded (indices4, input0) =
         readsAt (scanned, 0, 2.0), readsAt (scanned, 3, 20.0),
         sumsTo(gpuZipWith (xs, xs, \(x, y) => t * x * y), 60.0),
         sumsTo(gpuMap (indices4, \i => t * toFloat32 i), 12.0),
-        lengthIs(gpuFilter (xs, \x => t > x), 1),
+        gpuLengthIs(gpuFilter (xs, \x => t > x), 1),
         gpuSatisfies(gpuMap (xs, \x => t * x), \scaled => sumsTo(gpuFilter (scaled, \y => y > t), 18.0))
     ]))
 (** The shape [GPU-KERNEL-FORM] spells out: the capture is itself a fold over
@@ -192,7 +190,7 @@ captureFoldedCaseUploaded (input0, input1, input2) =
                 gpuSatisfies(gpuFold (ws, toFloat32 0.0, minF), equals32 0.0),
                 gpuSatisfies(gpuFold (ws, gpuGet (ws, 0) ?: toFloat32 0.0, minF), equals32 1.0),
                 sumsTo(gpuMap (ws, \w => (w / total) ), 1.0),
-                lengthIs(gpuFilter (ws, \w => w * toFloat32 4.0 >= total), 2),
+                gpuLengthIs(gpuFilter (ws, \w => w * toFloat32 4.0 >= total), 2),
                 gpuSatisfies(gpuZipWith (xs, xs, mulF), \products => sumsTo(gpuMap (products, \p => (p / total) ), 1.25)),
                 gpuSatisfies(gpuFold (input2, total, addF), equals32 16.0)
             ]))
@@ -217,7 +215,7 @@ captureShapeWithUploaded (indices5, indices3, input0) =
         sumsTo(gpuMap (w, \k => toFloat32 2.0 * k), 120.0),
         gpuSatisfies(gpuMap (indices3, toFloat32), \asFloats => sumsTo(gpuZipWith (w, asFloats, \(x, i) => x - k * i), 51.0)),
         gpuSatisfies(gpuFold (w, toFloat32 0.0, \(a, x) => a + (\z => toFloat32 0.5 * z) x), equals32 30.0),
-        lengthIs(gpuFilter (w, \x => (\z => z > k) x), 3)
+        gpuLengthIs(gpuFilter (w, \x => (\z => z > k) x), 3)
     ])
 (** The boundary sweep: a captured zero divisor whose checked division must
     surface as its fallback rather than an infinity, the identity captures, an
@@ -234,11 +232,11 @@ captureDegenerateWithUploaded (emptyIndices, input0, input1, input2, input3, inp
         sumsTo(gpuMap (xs, \x => one * x), 6.0),
         sumsTo(gpuMap (xs, \x => zero + x), 6.0),
         sumsTo(gpuMap (xs, \_x => one), 3.0),
-        lengthIs(gpuFilter (input1, \x => x > zero), 0),
+        gpuLengthIs(gpuFilter (input1, \x => x > zero), 0),
         gpuSatisfies(gpuFold (input2, one, \(a, x) => a + zero * x), equals32 1.0),
         sumsTo(gpuMap (input3, \x => one * x), 5.0),
-        lengthIs(gpuZipWith (xs, input4, \(x, y) => zero * x + y), 0),
-        lengthIs(gpuZipWith (input5, xs, \(x, y) => one * x + y), 1),
+        gpuLengthIs(gpuZipWith (xs, input4, \(x, y) => zero * x + y), 0),
+        gpuLengthIs(gpuZipWith (input5, xs, \(x, y) => one * x + y), 1),
         sumsTo(gpuMap (emptyIndices, \i => one * toFloat32 i), 0.0)
     ])
 (** Pin weighted sum and weighted mean: the weight total is folded once,
@@ -330,7 +328,7 @@ normalizeCaseUploaded (input0, input1) =
                     meanOf(scaled, equals32 0.4375),
                     sumsTo(gpuMap (xs, \v => ((hi - v) / (hi - lo)) ), 2.25),
                     gpuSatisfies(gpuFold (xs, hi, minF), equals32 1.0),
-                    lengthIs(gpuFilter (xs, \v => v > lo), 3),
+                    gpuLengthIs(gpuFilter (xs, \v => v > lo), 3),
                     degenerate(0.5, \() => sumsTo(gpuMap (input1, \v => (v - toFloat32 4.0) / toFloat32 0.0), 1.0))
                 ])))
 (** Pin clamping, active-unit counting, and a leaky variant whose slope is
@@ -345,7 +343,7 @@ reluCaseUploaded (input0, input1, input2) =
         false => slope * x
     withBuffer(gpuMap (acts, relu), \clamped => withBuffer(gpuMap (acts, leaky), \leaked => checkAll "activations" [
         sumOf(clamped, equals32 3.5), (gpuGet (clamped, 0) ?: toFloat32 9.9) == toFloat32 0.0,
-        lengthIs(gpuFilter (acts, isActive), 2), sumOf(leaked, equals32 2.5),
+        gpuLengthIs(gpuFilter (acts, isActive), 2), sumOf(leaked, equals32 2.5),
         (gpuGet (leaked, 0) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 0.75, readsAt (leaked, 1, 2.5),
         (gpuGet (leaked, 2) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 0.25,
         sumsTo(gpuMap (acts, \x => relu x - slope * relu (toFloat32 0.0 - x)), 2.5),
@@ -403,7 +401,7 @@ layerWithUploaded (rows0, rows1, rows2, input0, input1, input2, input3, input4, 
     denseEach(w1, x, 3, rows2, input2, \h => denseEach(input3, h, 2, rows1, input4, \out => checkAll "dense layers" [
         structuralEquals [gpuLength h, gpuLength out] [2, 1],
         (gpuGet (h, 0) ?: toFloat32 9.9) == toFloat32 0.0, readsAt (h, 1, 4.0),
-        sumOf(h, equals32 4.0), lengthIs(gpuFilter (h, isActive), 1),
+        sumOf(h, equals32 4.0), gpuLengthIs(gpuFilter (h, isActive), 1),
         readsAt (out, 0, 1.5),
         matVecOf(w1, x, 3, rows2, \rows => (gpuGet (rows, 0) ?: toFloat32 0.0) == toFloat32 0.0 - toFloat32 4.0),
         matVecOf(w1, x, 3, rows2, \rows => readsAt (rows, 1, 6.0)),

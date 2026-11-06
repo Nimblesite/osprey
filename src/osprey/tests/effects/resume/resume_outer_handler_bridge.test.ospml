@@ -58,7 +58,7 @@ resumeOuterHandlerBridgeCase () =
         structuralEquals [logCalls, promptCalls, promptSettled] [2, 1, 1]
     ]
 
-test "a resumed body retains its outer handlers" (\() => exactArithmetic (resumeOuterHandlerBridgeCase))
+test "a resumed body retains its outer handlers" (exactly resumeOuterHandlerBridgeCase)
 
 (** Ledger is handled by two nested regions, only one of which is complete. *)
 effect Ledger
@@ -141,4 +141,4 @@ partialHandlerDelegationCase () =
         length auditLog == (9 + 9 )
     ]
 
-test "an arm delegates an operation its own handler does not cover" (\() => exactArithmetic (partialHandlerDelegationCase))
+test "an arm delegates an operation its own handler does not cover" (exactly partialHandlerDelegationCase)

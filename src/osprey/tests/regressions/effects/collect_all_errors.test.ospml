@@ -109,4 +109,4 @@ collectAllErrorsCase () =
         !(mapContains byKind "missing")
     ]
 
-test "validation collects every error in field order" (\() => exactArithmetic (collectAllErrorsCase))
+test "validation collects every error in field order" (exactly collectAllErrorsCase)

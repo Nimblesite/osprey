@@ -440,30 +440,30 @@ wideManagedArgumentCase () =
 
 // Register recovery that resumes the caller with a fallback.
 
-test "resuming recovery continues after the failed operation" (\() => exactArithmetic (resumeRecoveryContinuesCase))
+test "resuming recovery continues after the failed operation" (exactly resumeRecoveryContinuesCase)
 // Register exception-style abort across a deep helper chain.
-test "returning without resume stops a deep failed computation" (\() => exactArithmetic (fatalExitStopsDeepCallCase))
+test "returning without resume stops a deep failed computation" (exactly fatalExitStopsDeepCallCase)
 // Register recursive retry under one deep handler.
-test "resumed validation can perform the same effect again" (\() => exactArithmetic (recursiveRetryCase))
+test "resumed validation can perform the same effect again" (exactly recursiveRetryCase)
 // Register independently typed nested recovery channels.
-test "nested resuming error channels enter FIFO and settle LIFO" (\() => exactArithmetic (nestedRecoveryChannelsCase))
+test "nested resuming error channels enter FIFO and settle LIFO" (exactly nestedRecoveryChannelsCase)
 // Register nearest-handler shadowing and restoration.
-test "an inner resuming handler shadows then restores its outer handler" (\() => exactArithmetic (resumingHandlerShadowCase))
+test "an inner resuming handler shadows then restores its outer handler" (exactly resumingHandlerShadowCase)
 // Register post-resume transformation of the completed answer.
-test "a handler can transform the completed continuation answer" (\() => exactArithmetic (postResumeTransformsAnswerCase))
+test "a handler can transform the completed continuation answer" (exactly postResumeTransformsAnswerCase)
 // Register complete Result transport through resume.
-test "resume preserves Success and Error values" (\() => exactArithmetic (resumeWholeResultCase))
+test "resume preserves Success and Error values" (exactly resumeWholeResultCase)
 // Register tagged domain recovery values through resume.
-test "resume preserves tagged recovery choices" (\() => exactArithmetic (resumeTaggedChoiceCase))
+test "resume preserves tagged recovery choices" (exactly resumeTaggedChoiceCase)
 // Register repeated deep suspension and settlement.
-test "thirty-two sequential recoveries settle exactly once" (\() => exactArithmetic (deepResumeStressCase))
+test "thirty-two sequential recoveries settle exactly once" (exactly deepResumeStressCase)
 // Register multiple operation result types in one resuming handler.
-test "one handler resumes integer string boolean and Unit operations" (\() => exactArithmetic (heterogeneousResumeCase))
+test "one handler resumes integer string boolean and Unit operations" (exactly heterogeneousResumeCase)
 // Register the managed continuation answer that must release under ARC.
-test "string continuation answers release under ARC" (\() => exactArithmetic (stringAnswerCase))
+test "string continuation answers release under ARC" (exactly stringAnswerCase)
 // Register the sixteen-argument operation boundary.
-test "sixteen resumable operation arguments arrive intact" (\() => exactArithmetic (sixteenArgumentBoundaryCase))
+test "sixteen resumable operation arguments arrive intact" (exactly sixteenArgumentBoundaryCase)
 // Register the first arity past the mailbox's former fixed width.
-test "seventeen resumable operation arguments arrive intact" (\() => exactArithmetic (seventeenArgumentCase))
+test "seventeen resumable operation arguments arrive intact" (exactly seventeenArgumentCase)
 // Register managed and scalar arguments interleaved past that width.
-test "managed and scalar arguments cross one wide operation" (\() => exactArithmetic (wideManagedArgumentCase))
+test "managed and scalar arguments cross one wide operation" (exactly wideManagedArgumentCase)

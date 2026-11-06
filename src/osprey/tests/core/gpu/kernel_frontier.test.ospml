@@ -12,20 +12,20 @@ rowDot (matrix, vector, cols, row, col) = match col == cols
 multiplicationOrderCase () =
     t = 2.0
     withBuffer (toGpu ([1.0, 2.0]), \xs => withBuffer (toGpu ([3.0, 4.0]), \ys => withBuffer (gpuZipWith (xs, ys, \(x, y) => t * x * y), \captureFirst => withBuffer (gpuZipWith (xs, ys, \(x, y) => x * y * t), \captureLast => checkAll "buffer slots type every multiplication order" [
-                        gpuSatisfies(gpuFold(captureFirst, 0.0, addFloats), \uploaded31 => (uploaded31) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addFloats), \uploaded30 => (uploaded30) == 22.0),
+                        gpuEquals(gpuFold(captureFirst, 0.0, addFloats), 22.0), gpuEquals(gpuFold(captureLast, 0.0, addFloats), 22.0),
                         (gpuGet (captureFirst, 0) ?: 0.0) == 6.0,
                         (gpuGet (captureLast, 1) ?: 0.0) == 16.0
                     ]))))
 genericCombineCase () =
     withBuffer (toGpu ([1.0, 2.0, 3.0]), \xs => checkAll "named generic float combines specialize from buffer slots" [
-            gpuSatisfies(gpuFold(xs, 0.0, plus), \uploaded29 => (uploaded29) == 6.0), gpuSatisfies(gpuScan(xs, 0.0, plus), \uploaded28 => (gpuGet (uploaded28, 2) ?: 0.0) == 6.0)
+            gpuEquals(gpuFold(xs, 0.0, plus), 6.0), gpuSatisfies(gpuScan(xs, 0.0, plus), \uploaded28 => (gpuGet (uploaded28, 2) ?: 0.0) == 6.0)
         ])
 recursiveHelperCase () = withBuffer(gpuIota 2, recursiveHelperWith)
 recursiveHelperWith indices =
     withBuffer (toGpu ([1.0, 2.0, 3.0, 4.0]), \matrix => withBuffer (toGpu ([10.0, 20.0]), \vector => withBuffer (gpuMap(indices, (\row => rowDot (matrix, vector, 2, row, 0))), \rows => checkAll "recursive GPU helpers monomorphize from their call site" [
                     gpuLength rows == 2,
                     structuralEquals [(gpuGet (rows, 0) ?: 0.0), (gpuGet (rows, 1) ?: 0.0)] [50.0, 110.0],
-                    gpuSatisfies(gpuFold(rows, 0.0, addFloats), \uploaded26 => (uploaded26) == 160.0)
+                    gpuEquals(gpuFold(rows, 0.0, addFloats), 160.0)
                 ])))
 blockBodyCase () =
     t = 2.0
@@ -35,7 +35,7 @@ blockBodyCase () =
                 gpuLength mapped == 3,
                 structuralEquals [(gpuGet (mapped, 0) ?: 0.0), (gpuGet (mapped, 1) ?: 0.0)] [4.0, 6.0],
                 (gpuGet (mapped, 2) ?: 0.0) == 8.0,
-                gpuSatisfies(gpuFold(mapped, 0.0, addFloats), \uploaded24 => (uploaded24) == 18.0)
+                gpuEquals(gpuFold(mapped, 0.0, addFloats), 18.0)
             ]))
 test ("float kernel slots type both multiplication orders", exactly multiplicationOrderCase)
 test ("named generic float combines specialize from buffer slots", exactly genericCombineCase)
@@ -58,7 +58,7 @@ builtinZipCaseUploaded (left, right) =
                     ]))))
 builtinFoldCase () =
     withBuffer (toGpu ([1, 1]), \source => withBuffer (gpuScan (source, -9223372036854775808, satSub), \lower => withBuffer (gpuScan (source, 9223372036854775807, satAdd), \upper => checkAll "builtin folds and scans preserve accumulator policy" [
-                    gpuSatisfies(gpuFold (source, 9223372036854775807, wrapAdd), \uploaded14 => uploaded14 == -9223372036854775807), gpuSatisfies(gpuFold (source, 9223372036854775807, satAdd), \uploaded13 => uploaded13 == 9223372036854775807), (gpuGet (lower, 1) ?: 0) == -9223372036854775808,
+                    gpuEquals(gpuFold (source, 9223372036854775807, wrapAdd), -9223372036854775807), gpuEquals(gpuFold (source, 9223372036854775807, satAdd), 9223372036854775807), (gpuGet (lower, 1) ?: 0) == -9223372036854775808,
                     (gpuGet (upper, 1) ?: 0) == 9223372036854775807
                 ])))
 builtinPolicyCase () =
@@ -108,10 +108,10 @@ lexicalKernelCase () =
         false => x
     enabled = false
     withBuffer (toGpu ([1.0, 2.0]), \source => withBuffer (toGpu ([30.0, 40.0]), \uploaded7 => withBuffer (gpuZipWith (source, uploaded7, choose), \zipped => withBuffer (gpuScan (source, 42.0, choose), \scanned => checkAll "closed kernels keep their definition environment" [
-                        enabled == false, gpuSatisfies(gpuFilter source keep, \uploaded8 => gpuLength (uploaded8) == 2), gpuSatisfies(gpuMap source identity, \uploaded7 => (gpuGet (uploaded7, 1) ?: 0.0) == 2.0),
+                        enabled == false, gpuLengthIs(gpuFilter source keep, 2), gpuSatisfies(gpuMap source identity, \uploaded7 => (gpuGet (uploaded7, 1) ?: 0.0) == 2.0),
                         structuralEquals [(gpuGet (zipped, 1) ?: 0.0), (gpuGet (scanned, 0) ?: 0.0)] [2.0, 42.0],
                         (gpuGet (scanned, 1) ?: 0.0) == 42.0,
-                        gpuSatisfies(gpuFold (source, 42.0, choose), \uploaded6 => uploaded6 == 42.0)
+                        gpuEquals(gpuFold (source, 42.0, choose), 42.0)
                     ]))))
 effect KernelSwitch
     disable : Unit => int
@@ -124,7 +124,7 @@ liveKernelCellCase () =
             0
     changed = perform KernelSwitch.disable ()
     checkAll "host-bound kernels retain live cell identity" [
-        changed == 0, gpuSatisfies (toGpu ([1, 2]), \uploaded5 => gpuSatisfies(gpuFilter (uploaded5) keep, \uploaded5 => gpuLength (uploaded5) == 0))
+        changed == 0, gpuSatisfies (toGpu ([1, 2]), \uploaded5 => gpuLengthIs(gpuFilter (uploaded5) keep, 0))
     ]
 test "closed GPU kernels retain lexical uniforms" lexicalKernelCase
 test "host GPU kernels retain live cells" liveKernelCellCase
@@ -133,7 +133,7 @@ managedKernelCase () =
     keep = \_x => length label > 0
     label = ""
     checkAll "declined extraction retains the captured managed value" [
-        label == "", gpuSatisfies (toGpu ([1, 2]), \uploaded4 => gpuSatisfies(gpuFilter (uploaded4) keep, \uploaded4 => gpuLength (uploaded4) == 2))
+        label == "", gpuSatisfies (toGpu ([1, 2]), \uploaded4 => gpuLengthIs(gpuFilter (uploaded4) keep, 2))
     ]
 capturedArithmeticCase () =
     limit = 9223372036854775807
@@ -159,7 +159,7 @@ mathTotalityCase () =
     withBuffer (toGpu ([0.0, 1.0]), \value => withBuffer (gpuMap(value, exp), \probabilities => checkAll "float math builtins are total over IEEE doubles" [
                 structuralEquals [sqrt 4.0, tanh 1000000.0, (gpuGet (probabilities, 0) ?: 0.0)] [2.0, 1.0, 1.0],
                 nan != nan, ln 0.0 < -1000.0, ln 0.0 == ln 0.0 * 2.0, exp 1000.0 == exp 2000.0, exp 1000.0 > 1.0, tanh (-1000000.0) == -1.0,
-                gpuSatisfies (toGpu ([1.0, 4.0, 9.0]), \uploaded1 => gpuSatisfies(gpuMap(uploaded1, sqrt), \uploaded1 => gpuSatisfies(gpuFold(uploaded1, 0.0, addFloats), \uploaded34 => (uploaded34) == 6.0)))
+                gpuSatisfies (toGpu ([1.0, 4.0, 9.0]), \uploaded1 => gpuSatisfies(gpuMap(uploaded1, sqrt), \uploaded1 => gpuEquals(gpuFold(uploaded1, 0.0, addFloats), 6.0)))
             ]))
 test "declined GPU extraction preserves managed captures" managedKernelCase
 test "captured GPU kernels preserve arithmetic policy" capturedArithmeticCase

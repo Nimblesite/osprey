@@ -262,4 +262,4 @@ inferredBehaviorCase () =
         typeTest3 false
     ]
 
-test "inference preserves polymorphism and derived values" (\() => exactArithmetic (inferredBehaviorCase))
+test "inference preserves polymorphism and derived values" (exactly inferredBehaviorCase)

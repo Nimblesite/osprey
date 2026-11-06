@@ -245,4 +245,4 @@ adventureGameCase () =
         (getEnemyHealth 3 / damage ) == 2.0
     ]
 
-test "adventure game preserves branch and progression state" (\() => exactArithmetic (adventureGameCase))
+test "adventure game preserves branch and progression state" (exactly adventureGameCase)

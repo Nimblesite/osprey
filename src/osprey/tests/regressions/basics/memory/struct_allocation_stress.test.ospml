@@ -72,4 +72,4 @@ structAllocationCase () =
         heavy (forge 50001)
     ]
 
-test "record allocation preserves aggregate values" (\() => exactArithmetic (structAllocationCase))
+test "record allocation preserves aggregate values" (exactly structAllocationCase)

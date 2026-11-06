@@ -138,11 +138,11 @@ recursionCase () =
         recursiveSumTo 6 == (recursiveSumTo 5 + 6 )
     ]
 
-test "closures retain independent captured state" (\() => exactArithmetic (closuresCase))
-test "partial application retains every curried golden" (\() => exactArithmetic (curryPartialCase))
-test "higher-order functions retain every application golden" (\() => exactArithmetic (higherOrderCase))
-test "nested calls retain evaluation structure" (\() => exactArithmetic (nestedCallsCase))
-test "recursion retains base and recursive branches" (\() => exactArithmetic (recursionCase))
+test "closures retain independent captured state" (exactly closuresCase)
+test "partial application retains every curried golden" (exactly curryPartialCase)
+test "higher-order functions retain every application golden" (exactly higherOrderCase)
+test "nested calls retain evaluation structure" (exactly nestedCallsCase)
+test "recursion retains base and recursive branches" (exactly recursionCase)
 
 (** Identity as a GENERIC definition — no single concrete ABI, so it exists
     only as a body its call sites specialise ([TYPE-GENERICS-FN]). *)
@@ -212,4 +212,4 @@ genericValueCase () =
         !(contains "alpha" "zz")
     ]
 
-test "file-scope generic function values resolve by name" (\() => exactArithmetic (genericValueCase))
+test "file-scope generic function values resolve by name" (exactly genericValueCase)

@@ -131,7 +131,7 @@ diskStorageCase () =
         endsWith onDisk "call dentist\n"
     ]
 
-test "injected disk handler persists the notebook to real files" (\() => exactArithmetic (diskStorageCase))
+test "injected disk handler persists the notebook to real files" (exactly diskStorageCase)
 
 (** This case runs the identical logic against the in-memory double and
     verifies both the answers and the calls the logic made. *)
@@ -169,7 +169,7 @@ mockStorageCase () =
         archiveAbsent
     ]
 
-test "injected mock handler replaces the file system and records every call" (\() => exactArithmetic (mockStorageCase))
+test "injected mock handler replaces the file system and records every call" (exactly mockStorageCase)
 
 (** This case swaps in a third policy to show the logic is unchanged by it. *)
 readOnlyStorageCase () =
@@ -194,4 +194,4 @@ readOnlyStorageCase () =
         !(contains mockLog "locked")
     ]
 
-test "swapping the injected handler swaps the policy, not the logic" (\() => exactArithmetic (readOnlyStorageCase))
+test "swapping the injected handler swaps the policy, not the logic" (exactly readOnlyStorageCase)

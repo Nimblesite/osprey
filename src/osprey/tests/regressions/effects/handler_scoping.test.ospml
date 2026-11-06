@@ -244,7 +244,7 @@ handlerStateThroughNestedCallsCase () =
         topSum > topCell
     ]
 
-test "handler-owned state is one cell across nested calls and file scope" (\() => exactArithmetic (handlerStateThroughNestedCallsCase))
+test "handler-owned state is one cell across nested calls and file scope" (exactly handlerStateThroughNestedCallsCase)
 
 (** (4) A `handle` that names no body handles the rest of the block it sits in
     ([EFFECTS-HANDLE-REST]). Nothing has to be indented to say "from here on",
@@ -264,7 +264,7 @@ restOfBlockCase () =
     ]
 
 // A handler region that names no body still covers everything after it.
-test "a handle with no `in` handles the rest of its block" (\() => exactArithmetic (restOfBlockCase))
+test "a handle with no `in` handles the rest of its block" (exactly restOfBlockCase)
 
 (** A captured handler must retain its shared state when another handler calls it.
     [EFFECTS-HANDLER-VALUE-STATE] *)

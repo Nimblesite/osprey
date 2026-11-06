@@ -30,7 +30,7 @@ fn denseFloatCombinatorsCase() = {
                     withBuffer(gpuFilter(buffer, fn(value) => value > toFloat32(0.5)), fn(kept) =>
                             withBuffer(gpuZipWith(buffer, buffer, fn(a, b) => a + b), fn(zipped) =>
                                     checkAll("dense float32 combinators", [
-                                            gpuSatisfies(gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value), fn(uploaded1) => uploaded1 == toFloat32(3.0)),
+                                            gpuEquals(gpuFold(buffer, toFloat32(0.0), fn(acc, value) => acc + value), toFloat32(3.0)),
                                             gpuSatisfies(fromGpu(scan), fn(checked0) => join(mapList(checked0, toString), ",") == "0.5,1.5,3.0"),
                                             gpuSatisfies(fromGpu(kept), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,1.5"),
                                             gpuSatisfies(fromGpu(zipped), fn(checked0) => join(mapList(checked0, toString), ",") == "1.0,2.0,3.0")

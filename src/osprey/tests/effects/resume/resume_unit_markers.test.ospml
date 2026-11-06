@@ -47,4 +47,4 @@ resumeUnitMarkersCase () =
         beforeLabels != afterLabels
     ]
 
-test "Unit operations resume and unwind in LIFO order" (\() => exactArithmetic (resumeUnitMarkersCase))
+test "Unit operations resume and unwind in LIFO order" (exactly resumeUnitMarkersCase)

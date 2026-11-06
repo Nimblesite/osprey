@@ -129,4 +129,4 @@ keyValueParserCase () =
         pairIsRejected "bad_entry_no_equals"
     ]
 
-test "cursor parser preserves values and rejection reasons" (\() => exactArithmetic (keyValueParserCase))
+test "cursor parser preserves values and rejection reasons" (exactly keyValueParserCase)

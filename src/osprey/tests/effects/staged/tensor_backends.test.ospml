@@ -270,9 +270,9 @@ declaredTypesCase () = checkAll "a kernel keeps the operation's declared element
     Backends::onLists (\() => settledText (declaredTypes ())) == "6.0 18.0"
 ]
 
-test "the block over lists matches the reference pass" (\() => exactArithmetic listsCase)
-test "the same block over GPU buffers matches the reference pass" (\() => exactArithmetic gpuCase)
-test "both interpretations compute the same doubles" (\() => exactArithmetic agreementSettled)
-test "an inferred instantiation selects the innermost region" (\() => exactArithmetic inferenceCase)
-test "a static arm forwards the model's callback to its kernel" (\() => exactArithmetic forwardedKernelCase)
-test "a kernel keeps the operation's declared element types inside a generic function" (\() => exactArithmetic declaredTypesCase)
+test "the block over lists matches the reference pass" (exactly listsCase)
+test "the same block over GPU buffers matches the reference pass" (exactly gpuCase)
+test "both interpretations compute the same doubles" (exactly agreementSettled)
+test "an inferred instantiation selects the innermost region" (exactly inferenceCase)
+test "a static arm forwards the model's callback to its kernel" (exactly forwardedKernelCase)
+test "a kernel keeps the operation's declared element types inside a generic function" (exactly declaredTypesCase)

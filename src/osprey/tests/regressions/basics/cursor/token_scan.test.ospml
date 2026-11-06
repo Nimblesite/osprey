@@ -127,4 +127,4 @@ tokenScanCase () =
         tokenIs (scanned, 4, 42)
     ]
 
-test "token scanner finds every integer and boundary" (\() => exactArithmetic (tokenScanCase))
+test "token scanner finds every integer and boundary" (exactly tokenScanCase)

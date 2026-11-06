@@ -23,6 +23,14 @@ fn gpuSatisfies(result, predicate) = match result {
     }
 }
 
+/// Whether a successful GPU operation's value equals `expected`; a failed one
+/// fails the case with its reason. [FAILURE-EXPLICIT]
+fn gpuEquals(result, expected) = gpuSatisfies(result, fn(value) => value == expected)
+
+/// Whether a successful GPU operation's buffer holds `expected` elements; a
+/// failed one fails the case with its reason. [FAILURE-EXPLICIT]
+fn gpuLengthIs(result, expected) = gpuSatisfies(result, fn(buffer) => gpuLength(buffer) == expected)
+
 /// Runs `work` on the indices `0..n` on the GPU, or fails the case.
 fn withIndices(n, work) = withBuffer(gpuIota(n), work)
 

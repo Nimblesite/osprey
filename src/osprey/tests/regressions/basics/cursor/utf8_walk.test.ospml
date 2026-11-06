@@ -74,4 +74,4 @@ utf8WalkCase () =
         structuralEquals [codepointIs (text, 10, 44), codepointIsRejected (text, 7)] [true, true]
     ]
 
-test "UTF-8 walker advances only on scalar boundaries" (\() => exactArithmetic (utf8WalkCase))
+test "UTF-8 walker advances only on scalar boundaries" (exactly utf8WalkCase)

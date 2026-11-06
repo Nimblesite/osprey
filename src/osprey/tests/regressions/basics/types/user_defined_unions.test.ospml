@@ -178,7 +178,7 @@ userDefinedUnionCase () =
         render (Reason(text = "blocked")) == "reason blocked"
     ]
 
-test "user-defined union variants preserve their tags and payloads" (\() => exactArithmetic (userDefinedUnionCase))
+test "user-defined union variants preserve their tags and payloads" (exactly userDefinedUnionCase)
 
 (** Exercise generic lookup at scalar and nested collection types on maps BUILT
     at runtime, then route every recovered value through one generic effect. *)
@@ -239,4 +239,4 @@ builtMapIndexCase () =
         listValueAt (stringBuckets, "long", 0, "missing") == "three",
         listValueAt (stringBuckets, "long", 1, "missing") == "seven"
     ]
-test "built maps support indexed lookup" (\() => exactArithmetic (builtMapIndexCase))
+test "built maps support indexed lookup" (exactly builtMapIndexCase)

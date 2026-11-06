@@ -58,6 +58,6 @@ receiptInteraction () =
         !(contains (receipt " Ada " "guest" "fruit" 1) " ")
     ]
 
-test "catalogue lookup drives prices and fallbacks" (\() => exactArithmetic (catalogueInteraction))
-test "pricing combines maps, matches, Results and arithmetic" (\() => exactArithmetic (pricingInteraction))
-test "receipts compose normalization, totals and pipelines" (\() => exactArithmetic (receiptInteraction))
+test "catalogue lookup drives prices and fallbacks" (exactly catalogueInteraction)
+test "pricing combines maps, matches, Results and arithmetic" (exactly pricingInteraction)
+test "receipts compose normalization, totals and pipelines" (exactly receiptInteraction)

@@ -291,4 +291,4 @@ anyTypeBehaviorCase () =
         structuralEquals [compareColors (Red, Red), compareColors (Red, Blue)] ["Both red", "Different colors"]
     ]
 
-test "any values retain usable behavior across typed boundaries" (\() => exactArithmetic (anyTypeBehaviorCase))
+test "any values retain usable behavior across typed boundaries" (exactly anyTypeBehaviorCase)

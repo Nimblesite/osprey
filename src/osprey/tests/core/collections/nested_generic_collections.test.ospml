@@ -106,4 +106,4 @@ nestedListEffectPatternCase () =
         chooseByCollection (listGet floats 1 ?: [0.0], 6.5, 7.5) == 6.5
     ]
 
-test "nested generic lists mix effects patterns Results and persistence" (\() => exactArithmetic (nestedListEffectPatternCase))
+test "nested generic lists mix effects patterns Results and persistence" (exactly nestedListEffectPatternCase)

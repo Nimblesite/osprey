@@ -433,7 +433,7 @@ nextTokenWith (grid0, grid1, grid2, grid3, grid4, grid5, grid6, grid7, grid8, gr
         near(at(logits, 0), 1.2843501567840576), near(at(logits, 1), 2.434096336364746),
         near(at(logits, 2), 3.5838427543640137), near(at(logits, 3), 4.733589172363281),
         near(at(logits, 4), -4.4127888679504395),
-        token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), \uploaded4 => gpuSatisfies(argmax(uploaded4, grid3), \peak => peak == 1))
+        token == 3, gpuSatisfies(floats([1.0, 9.0, 9.0, 2.0]), \uploaded4 => gpuEquals(argmax(uploaded4, grid3), 1))
     ])))))))))
 (** "ABCDEFGHIJKL" is three little-endian binary32 words; every failure names the operation, the path and the reason. *)
 loadCase () =

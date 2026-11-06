@@ -346,7 +346,7 @@ typeEqualityCase () =
         (sinkInt ()).admit 1
     ]
 
-test "equivalent type shapes compose while union tags remain distinct" (\() => exactArithmetic (typeEqualityCase))
+test "equivalent type shapes compose while union tags remain distinct" (exactly typeEqualityCase)
 
 (** A transparent alias is its representation everywhere it is written: a
     scalar, a function type and a record field alike unify with what they
@@ -366,4 +366,4 @@ aliasCase () = checkAll "transparent type aliases are their representation every
         structuralEquals [applyKernel (\i => toFloat i * 0.5, 4), combine (\(a, b) => a + b, 1.5, 2.0)] [2.0, 3.5]
     ]
 
-test "transparent type aliases are their representation everywhere" (\() => exactArithmetic (aliasCase))
+test "transparent type aliases are their representation everywhere" (exactly aliasCase)

@@ -82,7 +82,8 @@ case registers as `test("name", exactly(work))`.
 
 The same unit holds the GPU `Result` helpers the GPU suites share:
 `withBuffer(result, work)` runs `work` on a successful operation's value,
-`gpuSatisfies(result, predicate)` tests it, `withIndices(n, work)` runs `work`
+`gpuSatisfies(result, predicate)` tests it, `gpuEquals(result, expected)` and
+`gpuLengthIs(result, expected)` compare its value or length, `withIndices(n, work)` runs `work`
 on `gpuIota(n)`, and `iotaError(n)` names why `gpuIota(n)` failed. A failed
 operation fails the case with its reason, never a substituted value
 ([FAILURE-EXPLICIT]). `containsAll(text, parts)` and `containsNone(text, parts)`
