@@ -333,15 +333,22 @@ fn names_unquantified(ty: &Type, quantified: &[VarId]) -> bool {
 fn scheme_free_vars(ctx: &mut InferCtx, scheme: &Scheme, out: &mut BTreeSet<VarId>) {
     #[cfg(test)]
     tests::record_environment_visit(scheme);
-    let mut fv = BTreeSet::new();
-    ctx.free_vars(&scheme.ty, &mut fv);
+    let mut scratch = BTreeSet::new();
+    let free = if scheme.vars.is_empty() {
+        &mut *out
+    } else {
+        #[cfg(test)]
+        tests::SCHEME_SCRATCH.with(|count| count.set(count.get() + 1));
+        &mut scratch
+    };
+    ctx.free_vars(&scheme.ty, free);
     for (_, obligation) in &scheme.obligations {
-        ctx.free_vars(obligation, &mut fv);
+        ctx.free_vars(obligation, free);
     }
     for q in &scheme.vars {
-        let _ = fv.remove(q);
+        let _ = free.remove(q);
     }
-    out.extend(fv);
+    out.extend(scratch);
 }
 
 /// A flatten pass keeps at most this many frames in place: the chain has to

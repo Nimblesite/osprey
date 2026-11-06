@@ -3,6 +3,7 @@ use super::*;
 use crate::unify::unify;
 
 std::thread_local! {
+    pub(super) static SCHEME_SCRATCH: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static ENVIRONMENT_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     pub(crate) static MARKER_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
@@ -246,6 +247,26 @@ fn a_closed_binding_hides_the_outer_open_one_it_shadows() {
     assert_eq!(grandchild.free_vars(&mut ctx), [2].into_iter().collect());
     assert_eq!(child.free_vars(&mut ctx), [2].into_iter().collect());
     assert_eq!(parent.free_vars(&mut ctx), [0, 1, 2].into_iter().collect());
+}
+
+#[test]
+fn monomorphic_bindings_collect_free_variables_without_per_binding_scratch() {
+    let mut ctx = InferCtx::new();
+    let mut env = TypeEnv::new();
+    for index in 0..128 {
+        env.insert(format!("open{index}"), Scheme::mono(Type::Var(index)));
+    }
+    env.insert(
+        "mixed",
+        Scheme {
+            vars: vec![129],
+            ty: Type::fun(vec![Type::Var(128)], Type::Var(129)),
+            obligations: vec![("constraint".into(), Type::Var(130))],
+        },
+    );
+    SCHEME_SCRATCH.with(|count| count.set(0));
+    assert_eq!(env.free_vars(&mut ctx), (0..=128).chain([130]).collect());
+    assert_eq!(SCHEME_SCRATCH.with(std::cell::Cell::get), 1);
 }
 
 #[test]
