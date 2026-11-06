@@ -64,8 +64,13 @@ Receipt, 2026-11-07 (`target/local-coding-model/runs/2026-11-07_080714-server-re
 Apple M4 Max, Metal, ARC): ready 15 s after launch; `/api/generate`,
 `/api/chat` and `/v1/chat/completions` each answered from the real weights, the
 OpenAI turn ending `</think>\n\npong` with `finish_reason` `stop` after 37
-tokens. The model thinks before it answers, and that reasoning is returned
-inside the text today: Ollama's separate `thinking` field is open work.
+tokens. The model thinks before it answers; since later that day every chat
+turn runs through the tool parser whether or not tools are advertised, so that
+reasoning comes back in Ollama's `thinking` field and OpenAI's
+`reasoning_content`, apart from the text, and a turn `num_predict` cuts off
+inside its reasoning reports `length` with the reasoning so far rather than an
+error. The real lane's four cases cover both
+(`2026-11-07_091500-server-real-lane-thinking.txt`).
 
 With an empty path the handler is `src/TableModel.py`, the CI stand-in: a real
 model that is tiny — a twelve-token context whose successor counts come from

@@ -112,6 +112,17 @@ def decimal(options, name, fallback):
             return fallback
 
 
+def advertised(document):
+    """The request's `tools`, or an empty list when it names none: a chat turn always runs
+    through the tool parser, so the model's `<think>` reasoning is returned apart from its
+    text; only `/api/generate` keeps the raw completion."""
+    match Wire.field(document, "tools"):
+        case JsonNull:
+            return JsonArray([])
+        case value:
+            return value
+
+
 def chat_request(body):
     """An `/api/chat` or `/v1/chat/completions` body as a `Chat` ([LLM-API-OLLAMA])."""
     match Wire.decode(body):
@@ -128,7 +139,7 @@ def named(model, document):
             return Success(value=Chat(
                 model=name,
                 prompt=Prompts.render(Wire.items(Wire.field(document, "messages"))),
-                tools=Wire.field(document, "tools"),
+                tools=advertised(document),
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))

@@ -145,7 +145,8 @@ def fed_parsed(draft):
 
 
 def grown_pieces(draft, step):
-    """The draft over one parser step's new text, reasoning and calls."""
+    """The draft over one parser step: only the text, reasoning and calls past what the
+    earlier replays already emitted, so a closed parse adds nothing twice."""
     text = drop(step.text, draft.text_length)
     think = drop(step.think, draft.think_length)
     return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: Success(value=update(
@@ -182,21 +183,19 @@ def collected(calls, seen, at, kept_calls):
 
 
 def finished_turn(draft):
-    """Close the parser, reject an invalid call, and report the turn."""
-    if not parses(draft.tools):
-        return calls_checked(draft)
-    else:
+    """Close the parser, reject an invalid call, and report the turn. Only a turn the
+    model ended is closed: one the token budget cut off reports what it emitted, with
+    `length` as its reason, because a tag left open by the budget is not the model's
+    doing ([LLM-TOOL-REPAIR])."""
+    if parses(draft.tools) and draft.done:
         return closed(draft)
+    else:
+        return calls_checked(draft)
 
 
 def closed(draft):
     """The turn over the parser's closed read of the turn's whole text."""
-    return continued(ToolParser.parse(draft.tools, draft.raw), lambda step: settled(draft, step))
-
-
-def settled(draft, step):
-    """The turn over the closed parse, unless one of its calls failed its schema."""
-    return continued(after_calls(step.calls, Lists.count(draft.calls)), lambda fresh: calls_checked(update(draft, pieces=listConcat(draft.pieces, listConcat(kept(step.think, THINKING), kept(step.text, TEXT))), calls=listConcat(draft.calls, fresh))))
+    return continued(ToolParser.parse(draft.tools, draft.raw), lambda step: continued(grown_pieces(draft, step), calls_checked))
 
 
 def calls_checked(draft):

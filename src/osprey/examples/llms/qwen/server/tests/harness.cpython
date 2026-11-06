@@ -133,8 +133,8 @@ def run_cases(lane, port, weights, cases, memory):
                 failures.append(f"{check.__name__}\n{traceback.format_exc()}")
                 print(f"not ok {lane}/{check.__name__}", flush=True)
     finally:
-        process.kill()
-        process.wait(timeout=30)
+        process.terminate()
+        process.wait(timeout=180)
     return failures
 
 
