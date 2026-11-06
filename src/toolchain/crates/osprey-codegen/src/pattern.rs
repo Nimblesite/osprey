@@ -244,25 +244,9 @@ fn finish_phi(
     let llvm_ty = first_val.llvm_ty();
     if let Some((odd, _)) = incoming_values.iter().find(|(v, _)| v.llvm_ty() != llvm_ty) {
         if !cg.value_discarded {
-            for (v, blk) in &incoming_values {
-                eprintln!(
-                    "DBG arm blk {blk}: llvm {:?} ty {:?} osp_ty {:?} result_inner {:?} inferred {:?} operand {}",
-                    v.llvm_ty(),
-                    v.ty,
-                    v.osp_ty,
-                    v.result_inner,
-                    v.inferred_type,
-                    v.operand
-                );
-            }
-            eprintln!(
-                "DBG match arms disagree in {:?}: `{}` vs `{}`",
-                cg.source_function,
-                llvm_ty,
-                odd.llvm_ty()
-            );
             return Err(CodegenError::invalid(format!(
-                "match arms disagree on type: `{}` and `{}`",
+                "match arms disagree on type in `{}`: `{}` and `{}`",
+                cg.source_function.as_deref().unwrap_or("<entry>"),
                 llvm_ty,
                 odd.llvm_ty()
             )));
