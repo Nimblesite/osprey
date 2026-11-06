@@ -30,7 +30,7 @@ class Tensor[B]:
     def mat_mul(a: B, b: B, rows: int, inner: int, cols: int) -> B: ...
 
 
-@static_handler(Tensor[GpuBuffer[float]])
+@static_handler(Tensor[GpuBuffer[float32]])
 class on_gpu:
     def build(n, f):
         match gpuIota(n):
@@ -40,7 +40,7 @@ class on_gpu:
                 return Error(message=toString(message))
 
     def mat_mul(a, b, rows, inner, cols):
-        return or_abort(gpuMatMul(a, b, rows, inner, cols))
+        return answered(gpuMatMul(a, b, rows, inner, cols))
 
 
 def product(a, b, rows, inner, cols):
@@ -87,7 +87,7 @@ These measurements used an Apple M4 Max through Metal and OpenCL, not every supp
 
 These recorded measurements are from 16 October 2026: Apple M4 Max, release build, ARC memory mode, a five-token prompt and the median of three runs. Times include loading the weights.
 
-Training gives the GPU larger pieces of work and gets a clear speedup. Short text generation still pays for many small GPU launches. Combining those jobs and adding faster numerical formats are further work; this version uses carefully checked 64-bit arithmetic.
+Training gives the GPU larger pieces of work and gets a clear speedup. Short text generation still pays for many small GPU launches. Combining those jobs is further work. These measurements used carefully checked 64-bit arithmetic; *update, 6 November 2026:* the model now computes in `float32`, the GPU's native single precision.
 
 ## Run it
 

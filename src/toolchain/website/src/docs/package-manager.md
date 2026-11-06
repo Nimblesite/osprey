@@ -14,7 +14,7 @@ The contracts cover [manifests and commands](/spec/0029-packagemanagement/), [tr
 
 ## Add and remove packages in VS Code
 
-Browse the registry, inspect a release, add a package and remove it from your project in the package workspace. The video shows all 19 available packages and the actual confirmation and installation screens.
+Browse the registry, inspect a release, add a package and remove it from your project in the package workspace. The video shows the 19 packages available when it was recorded, and the actual confirmation and installation screens.
 
 {% videoCard "package-manager", "/docs/packages-in-vscode/" %}
 

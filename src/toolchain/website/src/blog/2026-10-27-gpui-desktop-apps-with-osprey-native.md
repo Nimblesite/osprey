@@ -97,4 +97,4 @@ make -C src/toolchain/benchmarks painting-compare    # captures the port and the
 make _gpui-test                                # the Osprey suites, the host's tests and clippy, and both smoke runs
 ```
 
-Linux and Windows are next. GPUI already runs on both, so the work is Osprey library targets for them and CI that runs the same smoke tests there. The plan, with its measured numbers, is [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native.md). The host's contract is [spec 0046](/spec/0046-gpuidesktophost/).
+Linux and Windows were next when this was written. *Update, 6 November 2026:* both now have Osprey library targets (`linux-x64`, `linux-arm64`, `windows-x64`), and CI opens Flock and Painting in real windows on Windows. The plan, with its measured numbers, is [plan 0037](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0037-osprey-native.md). The host's contract is [spec 0046](/spec/0046-gpuidesktophost/).

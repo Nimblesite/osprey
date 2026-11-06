@@ -180,5 +180,5 @@ The [Python-flavor checks](../../../../toolchain/python/README.md) additionally 
 
 - Three stdin lines for `generate` (prompt, token count, backend) and two for `train` (prompt, backend); an unknown backend name prints an error and runs nothing.
 - The pre-tokenizer is an ASCII approximation of GPT-2's Unicode regular expression; prompts in other scripts tokenize correctly only where the letter/number/punctuation classes agree with the ASCII rules.
-- Computation is double precision throughout (the fp32 weights widen exactly), so logits differ from an fp32 implementation in the last digits; the greedy choice has agreed on every token compared so far.
+- Computation is `float32`, matching the fp32 weights; on the GPU it runs in the device's native single precision.
 - Training is one plain SGD step at a fixed learning rate: no optimiser state, no batching, no weight decay, and the updated weights are not written back.

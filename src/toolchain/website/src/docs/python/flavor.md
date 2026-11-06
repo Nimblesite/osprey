@@ -2,7 +2,7 @@
 mlTwins: manual
 layout: page
 title: Python flavor
-description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. Ports of NumPy, PyTorch, Transformers and more are already written in it, and a Qwen3.5 model is being built on them.
+description: The Python flavor is Osprey source that looks like typed Python. The Osprey compiler lowers it into the same AST as every other flavor and compiles it to a native binary; CPython never runs it. Ports of NumPy, PyTorch, Transformers and more are already written in it, and a Qwen3.8-27B model is being built on them.
 permalink: /docs/python/flavor/
 tags: [flavors, python, algebraic-effects, gpu]
 ---
@@ -13,7 +13,7 @@ Osprey's flavors share type inference, effect checking, modules, memory manageme
 
 The Python flavor is Osprey that looks like typed Python. You write `def`, `lambda`, `match`, f-strings and PEP 484/695 annotations, and declare effects and handlers with decorated classes. But the program is Osprey: the `osprey` compiler parses it, checks it with Osprey's types and effects, and produces a native binary.
 
-Much of Python's ML and data stack is [already ported](#python-packages-already-ported) to it: NumPy, SciPy, PyTorch, scikit-learn, Transformers, tokenizers and more. The [local LLM work](#local-llms-in-python-flavor), a Qwen3.5 model and an Ollama-compatible server, is written in it too.
+Much of Python's ML and data stack is [already ported](#python-packages-already-ported) to it: NumPy, SciPy, PyTorch, scikit-learn, Transformers, tokenizers and more. The [local LLM work](#local-llms-in-python-flavor), a Qwen3.8-27B model and an Ollama-compatible server, is written in it too.
 
 ## How Python flavor differs from Python
 
@@ -329,8 +329,8 @@ The `# osprey: namespace=` and `# osprey: module=` comments place the file in a 
 Python flavor is what Osprey's language-model work is written in. The goal is a local model server you can use instead of Ollama, written in Osprey and running on Osprey's own GPU kernels. [Plan 0049](https://github.com/Nimblesite/osprey/blob/main/docs/plans/0049-local-coding-model.md) tracks it.
 
 - **The generation layer:** [`@osprey/transformers`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/transformers) ports Hugging Face's model-independent generation code (logits processors and warpers, sampling, stopping criteria and `generate`) and is checked against Transformers and PyTorch.
-- **The Qwen3.5 model:** [`qwen/model`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/model) translates Transformers' `qwen3_5` model (attention, DeltaNet, RoPE, the cache, the tool-call parser) to Osprey GPU code. So far it has only run a tiny 4-layer fixture, compared layer by layer against PyTorch. It does not run the real weights yet.
-- **Real weights:** the one-file [`qwen/run/qwen.py`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/run/qwen.py) runs the real Qwen3.5 `UD-Q4_K_XL` GGUF on Metal and continues "The capital of France is" with " Paris.". One run measured 8.92 tokens/s, against 8.0 for Ollama on the same file. Both runs were on a loaded machine, so treat the figures as preliminary; plan 0049 will re-measure them on a quiet one.
+- **The Qwen3.8-27B model:** [`qwen/model`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/model) translates Transformers' `qwen3_5` model (attention, DeltaNet, RoPE, the cache, the tool-call parser) to Osprey GPU code. So far it has only run a tiny 4-layer fixture, compared layer by layer against PyTorch. It does not run the real weights yet.
+- **Real weights:** the one-file [`qwen/run/qwen.py`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/run/qwen.py) runs the real Qwen3.8-27B `UD-Q4_K_XL` GGUF on Metal and continues "The capital of France is" with " Paris.". One run measured 8.92 tokens/s, against 8.0 for Ollama on the same file. Both runs were on a loaded machine, so treat the figures as preliminary; plan 0049 will re-measure them on a quiet one.
 - **The Ollama-compatible server:** [`qwen/server`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/qwen/server) speaks Ollama's API (`/api/chat`, `/api/generate`, `/api/tags` and more) and OpenAI's (`/v1/chat/completions`, `/v1/models`), with streaming and tool calls. Tools that talk to Ollama can point at it. Today it answers from a small built-in table model; it will serve real Qwen output once the package model runs the real weights.
 
 GPT-2 came first and is still a working example: the [Python-flavor GPT-2](https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/llms/gpt2/python) loads published Hugging Face weights, and its output matches the Default-flavor generator byte for byte on host lists, Metal and OpenCL. From the repository root, after building Osprey:

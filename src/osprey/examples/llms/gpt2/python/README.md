@@ -22,7 +22,7 @@ class on_gpu:
                 return Error(message=toString(message))
 
     def mat_mul(a, b, rows, inner, cols):
-        return or_abort(gpuMatMul(a, b, rows, inner, cols))
+        return answered(gpuMatMul(a, b, rows, inner, cols))
 
 
 # model.py

@@ -45,7 +45,7 @@ To run one port's checks from the repository root:
 ./target/release/osprey src/osprey/packages/einops/tests --run
 ```
 
-The default-backend run checked for this post finishes with `103 passed, 0 failed`, matching its recorded output. Those checks cover the port's parsing, recipes and shape reconstruction, not the upstream tensor-backend API.
+The default-backend run checked for this post finished with `103 passed, 0 failed`, matching the recorded output at the time; the suite has since grown to 258 checks. Those checks cover the port's parsing, recipes and shape reconstruction, not the upstream tensor-backend API.
 
 ## A manifest identifies the Python-flavor source
 

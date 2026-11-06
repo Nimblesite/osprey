@@ -56,7 +56,7 @@ Osprey sends one render envelope per update. JavaScript parses it once; React re
 | React | Element creation and reconciliation inside one root | The authoritative application model |
 | Native Osprey server in Talon Bank | HTTP routes, SQLite adapter, storage/audit handlers, embedded assets | Browser rendering |
 
-The server and Wasm client share the bank’s `Money` module. Its signature exposes an integer `Cents` alias and an abstract `Amount`: callers use `Money::fromCents`, `Money::show` and `Money::toCents` while the record representation stays private. The compiler rejects direct construction, field access and passing a raw integer where an amount is required. Native tests cover both source flavors and all three allocators; the browser journeys exercise the same module through WebAssembly.
+The server and Wasm client share the bank’s `Money` module. Its signature exposes an integer `Cents` alias and an abstract `Amount`: callers use `Money::fromCents`, `Money::show` and `Money::toCents` while the record representation stays private. The compiler rejects direct construction, field access and passing a raw integer where an amount is required. Native tests cover both source flavors under tracing GC and ARC; the browser journeys exercise the same module through WebAssembly.
 
 ## The complete startup and event loop
 
@@ -395,7 +395,7 @@ When extending the framework:
 - The renderer is client-only. It uses `createRoot`, not server rendering or `hydrateRoot`, so initial app content is not pre-rendered HTML.
 - WebAssembly rejects unsupported fibers, socket HTTP/WebSocket, process, terminal and arbitrary C imports before code generation. Approved browser imports and supported host filesystem operations remain available.
 - Dynamic control handlers require native continuation support; value-operation handlers work on Wasm.
-- The current Wasm runtime uses the non-reclaiming allocator, so a long-lived app must watch linear-memory growth.
+- Wasm builds default to ARC, which reclaims memory; only the explicit `--memory=none` opt-out never frees, so a long-lived app built that way must watch linear-memory growth.
 - Routing is hash-based only. The example has no pathname deep links, route parameters, query parser, or React Router integration.
 - HTTP commands run concurrently without cancellation, timeout, or stale-response generation checks; applications with overlapping requests must add those policies.
 - React protects text and the adapter blocks raw HTML/callback props, but the host still trusts protocol-provided tags, URLs, and most DOM properties. Treat view documents as trusted application output, not sanitized third-party input.

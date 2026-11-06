@@ -89,7 +89,7 @@ An agent operating this app does not need vision or coordinates. It reads a shor
 
 ## What is not done yet
 
-- **Other hosts.** The GPUI host maps the tree to AccessKit, which announces it through NSAccessibility on macOS, UI Automation on Windows and AT-SPI on Linux. The WinUI, VS Code and Apple hosts do not map it yet.
+- **Other hosts.** The GPUI host maps the tree to AccessKit, which announces it through NSAccessibility on macOS, UI Automation on Windows and AT-SPI on Linux. Since 6 November 2026 the WinUI host also maps it to UI Automation; the VS Code and Apple hosts do not map it yet.
 - **No agent server.** There is no ready-made MCP server that exposes a running app's tree to an external agent. `semantics` and `act` are the pieces such a server would call.
 - **UI machines only.** The tree comes from UI machine documents. Interfaces written directly as Osprey view code do not produce it.
 

@@ -37,10 +37,10 @@ make build
 The command is `osprey hunt`. The demo's exit status is **1**, because the failure reproduced. Its source is small enough to inspect completely:
 
 ```osprey
-/// Deliberately planted input-triggered crash for Hunt.
+/// Deliberately planted input-triggered crash for Hunt [SYMEX-FINDINGS] [SYMEX-REPLAY].
 extern fn abort() -> int
 let line = input()
-let result = if line == "9" { abort() } else { 0 }
+let result = match line { "9" => abort()  _ => 0 }
 print("result ${result}")
 ```
 

@@ -126,7 +126,7 @@ To gate the JSON list in CI, use a fresh output directory:
 python3 scripts/hunt/hunt_sample.py --manifest target/my-hunt-sample/safe-runs.json --out target/hunt-ci
 ```
 
-This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The required CI job runs the pinned 215-program `src/osprey/tests/hunt/safe-runs.json` corpus at those same limits and uploads its reports.
+This reruns every listed program under the recorded limits and returns a nonzero exit if any run times out, reports a finding, remains incomplete, or fails. Passing applies to those limits; it does not prove safety for every input. The pinned 215-program `src/osprey/tests/hunt/safe-runs.json` corpus is run by hand on a machine with KLEE; CI does not run it while issues #306 and #307 are open.
 
 ## Verify deliberate crash detection
 
@@ -136,7 +136,7 @@ make -C src/osprey/tests/hunt hunt-crashes
 
 The gate covers fifteen planted input cases: stdin, parsing, checked arithmetic, lists, maps, closures, recursion, unions, record invariants, JSON, file input, invalid C free, C double free, ML flavor and Python flavor. Each runs independently within ten seconds. Every expected class, source location, concrete input, file payload and native signal must match. Each case must also have a normal symbolic path, and benign stdin `Z` must finish normally with the exact expected output. Missing findings, unfinished analysis, tool errors, skipped replay and KLEE-only findings fail the gate.
 
-These tests deliberately violate application invariants or the unsafe C boundary. They demonstrate detection of known failures; they are not new compiler defects. CI runs the real KLEE/native-replay gate in the existing required macOS coverage job and the mock/runtime tooling tests in the required C-runtime job. Reports are uploaded as `hunt-crash-reports`. A missing engine fails the crash gate rather than skipping it.
+These tests deliberately violate application invariants or the unsafe C boundary. They demonstrate detection of known failures; they are not new compiler defects. CI runs only the mock/runtime tooling tests (`make _test_hunt_mock`) in the required C-runtime job. The real KLEE/native-replay crash gate runs by hand (`make -C src/osprey/tests/hunt hunt-crashes`) until issues #306 and #307 are fixed. A missing engine fails the crash gate rather than skipping it.
 
 ## Use it in VSCode
 

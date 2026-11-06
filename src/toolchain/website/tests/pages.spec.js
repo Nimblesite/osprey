@@ -425,7 +425,7 @@ test("Python flavor guide shows valid Python that Osprey rejects, the ported pac
   for (const line of imports.trim().split("\n")) expect(port).toContain(line);
   // The LLM section states Qwen and the Ollama-compatible server, and keeps GPT-2.
   await expect(page.locator("h2#local-llms-in-python-flavor")).toHaveCount(1);
-  for (const phrase of ["Qwen3.5", "Ollama", "/api/chat", "/v1/chat/completions", "GPT-2", "plan 0049"]) expect(text).toContain(phrase);
+  for (const phrase of ["Qwen3.8-27B", "Ollama", "/api/chat", "/v1/chat/completions", "GPT-2", "plan 0049"]) expect(text).toContain(phrase);
 });
 
 test("Python interop guide's Codon comparison matches the recorded benchmark results", async ({ page }) => {

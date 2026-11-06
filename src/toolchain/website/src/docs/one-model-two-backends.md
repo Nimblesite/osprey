@@ -91,7 +91,7 @@ Inference carries `B` through model helpers. `Kernel` and `Combine` name the cal
 
 The [list handler](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/model/cpu.osp) stores tensors in host lists and loads safetensors with `loadTensor`. Matrix accumulation follows `k` order from `0.0`; shape mismatches and failed loads return Error.
 
-The [GPU handler](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/model/gpu.osp) uses `GpuBuffer<float>`, GPU kernels, `gpuMatMul` and `gpuLoadTensor`. Its current product/load arms forward their results through `answered`, which preserves Success or converts the error reason to text:
+The [GPU handler](https://github.com/Nimblesite/osprey/blob/main/src/osprey/examples/llms/gpt2/model/gpu.osp) uses `GpuBuffer<float32>`, GPU kernels, `gpuMatMul` and `gpuLoadTensor`. Its current product/load arms forward their results through `answered`, which preserves Success or converts the error reason to text:
 
 ```osprey
 {{ gpuExample.nativeGpuProduct | safe }}

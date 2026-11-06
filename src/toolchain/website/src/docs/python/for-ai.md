@@ -128,8 +128,8 @@ hello from the Python flavor
 | `osprey f.py --ast` | Print the canonical AST |
 | `osprey f.py --llvm` | Print the generated LLVM IR |
 | `osprey f.py --symbols` | Print the file's symbols as JSON |
-| `osprey f.py --run --memory=arc` | Choose managed memory: native `gc` (default tracing collector) or `arc` (reference counting); Windows uses ARC |
-| `osprey f.py --compile --target=wasm32 --memory=arc` | WebAssembly. Other targets: `native` (default), `ios`, `ios-sim`, `macos`, `android-arm64`, `android-x64`, `python` |
+| `osprey f.py --run --memory=arc` | Choose managed memory: native `gc` (default tracing collector) or `arc` (reference counting); on Windows, pass `--memory=arc` because the tracing GC does not support Windows |
+| `osprey f.py --compile --target=wasm32 --memory=arc` | WebAssembly. Other targets: `native` (default), `ios`, `ios-sim`, `macos`, `android-arm64`, `android-x64`, `linux-x64`, `linux-arm64`, `windows-x64`, `python` |
 | `osprey f.py --run --sandbox` | Deny HTTP, WebSocket, file system, process and FFI capabilities. Individual subset flags: `--no-http`, `--no-websocket`, `--no-fs`, `--no-ffi` |
 | `osprey f.py --run --quiet` | Suppress compiler progress output; warnings and errors still print |
 | `osprey f.py --run --no-warnings` | Skip the warning pass entirely; errors still print |
