@@ -746,6 +746,10 @@ jobs:
       # assets/lessons media it stages verbatim. Refuse pointers.
       - name: Fetch extension icon, README media and workbench assets
         run: git lfs install --local && git lfs pull --include="src/toolchain/website/src/assets/images/logo.png,src/toolchain/vscode-extension/media/package-tour.gif,src/toolchain/vscode-extension/media/showcase.gif,src/osprey/workbench/assets/**,src/osprey/workbench/lessons/media/**"
+      - name: Fetch videos from the Videos repository [MEDIA-EXTERNAL]
+        env:
+          GH_TOKEN: ${{ secrets.VIDEOS_TOKEN }}
+        run: make media
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -962,6 +966,11 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
         working-directory: ./src/toolchain/website
+
+      - name: Fetch videos from the Videos repository [MEDIA-EXTERNAL]
+        env:
+          GH_TOKEN: ${{ secrets.VIDEOS_TOKEN }}
+        run: make media
 
       - name: Run end-to-end tests
         run: npm test
@@ -1210,6 +1219,12 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
+
+      - name: Fetch videos from the Videos repository [MEDIA-EXTERNAL]
+        if: matrix.part == 'Workbench'
+        env:
+          GH_TOKEN: ${{ secrets.VIDEOS_TOKEN }}
+        run: make media
 
       - name: ${{ matrix.part }} builds, ABI, goldens and app tests
         env:

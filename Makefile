@@ -86,10 +86,15 @@ fmt: $(EXT_NODE_DEPS)
 	cargo fmt --manifest-path src/toolchain/Cargo.toml --all$(if $(CHECK), --check,)
 	cd $(EXT_DIR) && npx prettier$(if $(CHECK), --check, --write) .
 
+## media: Download the pinned videos, posters and captions from the Videos repository (scripts/media/media.lock); prints "media: unpacked" or "already unpacked".
+.PHONY: media
+media:
+	@scripts/media/fetch.sh
+
 ## website: Clean, build and serve the website at http://localhost:8080 (WEBSITE_PORT=<n> to change; Ctrl-C stops it).
 WEBSITE_PORT ?= 8080
 .PHONY: website
-website: $(WEBSITE_NODE_DEPS)
+website: media $(WEBSITE_NODE_DEPS)
 	cd src/toolchain/website && npm run clean && npm run build && node tests/serve.cjs $(WEBSITE_PORT)
 
 ## clean: Remove all build artifacts

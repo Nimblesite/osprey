@@ -28,10 +28,10 @@ The rules below go into the docs specs when this plan is implemented.
   | `ui-testing-by-label` | 2:08 | A summary of the blog post |
   | `swift-interop` | 3:14 | The closest to a tutorial, but under four minutes |
 
-- **The repository cannot make a video.** The MP4s, posters and WebVTT files
-  were produced outside the repository. No script, storyboard or narration
-  source is checked in, so no video can be regenerated after the code changes.
-  A video that shows code goes stale without anyone noticing.
+- **Videos are made in the Videos repository's factory.** A film's
+  `film.mjs` reads its code excerpts from an Osprey checkout when it is
+  published, so a renamed file stops the next publish. Nothing re-publishes a
+  film when the code it quotes changes.
 - **Nothing tests what a tutorial contains.** `videos.spec.js` checks the
   player, captions, chapters and structured data. It never checks length,
   that code is shown, or that the code shown still exists.
@@ -92,26 +92,35 @@ page gives the command that runs it.
 
 ### `[DOC-TUTORIAL-VIDEO-SOURCE]` Every video is built from checked-in source
 
-Each video has a storyboard in
-`src/toolchain/website/videos/<id>/storyboard.json`. For every scene the
-storyboard lists the narration, the chapter, and the visual: a code scene
-(file, line range, highlighted lines), a command scene (the command, recorded
-with its real output), or an app capture (a headless self-test screenshot or
-an approved screen recording). `make -C src/toolchain/website video ID=<id>`
-renders the scenes, synthesizes the narration, builds captions and chapters
-from the storyboard and writes the MP4, poster and WebVTT files. Captions are
-generated from the narration text, so the two always match.
+Each video is a screen film in the Videos repository
+(`projects/osprey/videos/<id>/`): `film.mjs` lists the scenes (code excerpts by
+file and text, commands, app clips), `narration.json` holds the spoken lines,
+and `film.source.html` draws the page. `./bin/factory film osprey/<id>`
+renders the MP4, poster, captions and chapters. Captions come from the
+narration text, so the two always match.
 
 ### `[DOC-TUTORIAL-VIDEO-FRESH]` A tutorial fails when its code drifts
 
-The website test suite checks each `tutorial` storyboard against the
-repository:
+The Videos factory checks each `tutorial` film against the Osprey checkout
+when it publishes, and the website tests check what was published:
 
 - every file it shows exists, and the shown lines match the file byte for
-  byte, or the storyboard records the commit and the video is rebuilt;
+  byte, or the film is re-published;
 - every command it runs is still a documented `make` target or CLI command;
 - `durationSeconds`, the chapter list and the `[DOC-TUTORIAL-VIDEO-EXPLAIN]`
-  chapters agree with the storyboard.
+  chapters agree with the film's scenes.
+
+### `[MEDIA-EXTERNAL]` Videos are made and stored in the Videos repository
+
+No video, poster or caption track is committed here. The Videos repository
+(`github.com/MelbourneDeveloper/Videos`, `projects/osprey/`) holds each film's
+source, the factory that renders it, and `published/`, which mirrors the paths
+this repository reads. Its `publish.sh` releases those files as one archive.
+[`scripts/media/media.lock`](../../scripts/media/media.lock) pins that release
+and its SHA-256. `make media` downloads it, checks it and unpacks it. The
+website build, the Workbench lessons, VSIX packaging, CI and the deploy all run
+`make media` first, using the `VIDEOS_TOKEN` secret, because the Videos
+repository is private. `.gitignore` keeps the unpacked files out of Git.
 
 ## Tutorials to make
 
@@ -215,20 +224,18 @@ Extends the current video to the full four steps using
 
 ## Checklist
 
-- [ ] Add `kind` to every `videos.json` entry, and list only `tutorial` entries
-      on the tutorials index (`[DOC-TUTORIAL-VIDEO-KIND]`).
-- [ ] Move `agent-native` to an `intro` on Osprey Native, with no tutorials
-      page.
-- [ ] Add the storyboard format and the `video` make target
-      (`[DOC-TUTORIAL-VIDEO-SOURCE]`): code scenes rendered by Playwright from
-      the real file, command scenes recorded from real runs, narration
-      synthesized from storyboard text, and captions and chapters generated
-      from the storyboard.
+- [x] Mark `agent-native` as `kind: intro` and list no intro on the tutorials
+      index (`[DOC-TUTORIAL-VIDEO-KIND]`). Every other entry still needs
+      `"kind": "tutorial"`.
+- [x] Move `agent-native` to an `intro` page on Osprey Native
+      (`/docs/osprey-native/agent/`), with no tutorials page.
+- [x] Move every video, poster and caption track to the Videos repository,
+      fetched by `make media` (`[MEDIA-EXTERNAL]`).
 - [ ] Add the website tests for `[DOC-TUTORIAL-VIDEO-LENGTH]`,
       `[DOC-TUTORIAL-VIDEO-CODE]` (code-scene share and path labels),
       `[DOC-TUTORIAL-VIDEO-PACKAGES]` and `[DOC-TUTORIAL-VIDEO-FRESH]`. They
       fail against the current videos.
-- [ ] Write the storyboard and render each tutorial: `agent-native`,
+- [ ] Write the film and render each tutorial in the Videos repository: `agent-native`,
       `package-manager`, `static-typing-python`, `chromecast-from-mac`,
       `rust-ui-framework-without-rust`, `ui-testing-by-label`, `profiler`,
       `swift-interop`.

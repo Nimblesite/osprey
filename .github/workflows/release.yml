@@ -511,6 +511,11 @@ jobs:
       - name: Fetch extension icon, README media and workbench assets
         shell: bash
         run: git lfs install --local && git lfs pull --include="src/toolchain/website/src/assets/images/logo.png,src/toolchain/vscode-extension/media/package-tour.gif,src/toolchain/vscode-extension/media/showcase.gif,src/osprey/workbench/assets/**,src/osprey/workbench/lessons/media/**"
+      - name: Fetch videos from the Videos repository [MEDIA-EXTERNAL]
+        env:
+          GH_TOKEN: ${{ secrets.VIDEOS_TOKEN }}
+        shell: bash
+        run: bash scripts/media/fetch.sh
       - uses: actions/setup-node@v7
         with: { node-version: '20' }
       - uses: actions/download-artifact@v8
@@ -711,6 +716,8 @@ jobs:
     needs: [scope, audit]
     if: ${{ needs.scope.outputs.website == 'true' && !contains(github.ref_name, '-') }}
     uses: ./.github/workflows/deploy-pages.yml
+    secrets:
+      VIDEOS_TOKEN: ${{ secrets.VIDEOS_TOKEN }}
     permissions:
       contents: read
       pages: write

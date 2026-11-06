@@ -4,6 +4,7 @@ Run commands from the repository root. The root Makefile is the build entry poin
 
 | Directory | Purpose |
 | --- | --- |
+| `media/` | `make media`: downloads the pinned videos, posters and captions from the Videos repository |
 | `make/` | Configuration and the private build, runtime, test, application, mobile and extension steps behind the root Makefile's targets |
 | `ci/` | CI scope, gates, branch protection, root layout, dead code, docs checks and developer tool installers |
 | `hunt/` | Symbolic-execution corpus runner, sampler and report, with their tests |
