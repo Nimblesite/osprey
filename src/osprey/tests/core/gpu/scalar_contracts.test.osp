@@ -115,25 +115,25 @@ fn gpuIeeeCase() = {
                                                                     toString(gpuGet(roundTrip, 0) ?: 1.0) == "-0.0"
                                                             ]))))
                                                         }
-                                                        Error { message } => check("GPU operation", "success", toString(message))
+                                                        Error { message } => gpuFailed(message)
                                                     }
                                                 }
-                                                Error { message } => check("GPU operation", "success", toString(message))
+                                                Error { message } => gpuFailed(message)
                                             }
                                         }
-                                        Error { message } => check("GPU operation", "success", toString(message))
+                                        Error { message } => gpuFailed(message)
                                     }
                                 }
-                                Error { message } => check("GPU operation", "success", toString(message))
+                                Error { message } => gpuFailed(message)
                             }
                         }
-                        Error { message } => check("GPU operation", "success", toString(message))
+                        Error { message } => gpuFailed(message)
                     }
                 }
-                Error { message } => check("GPU operation", "success", toString(message))
+                Error { message } => gpuFailed(message)
             }
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 /// [GPU-DEVICE-FAULT] A selected device reports its fault without invoking host recovery.
@@ -161,7 +161,7 @@ fn gpuFloatZeroCase() = {
                 ])
             }
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 test("host GPU arithmetic preserves IEEE non-finite values", gpuIeeeCase)
@@ -199,12 +199,12 @@ fn gpuAbsoluteCase() = {
                                 gpuSatisfies(toGpu([-3, 4]), fn(safe) => gpuSatisfies(gpuMap(safe, abs), fn(integers) => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
                         ])
                     }
-                    Error { message } => check("GPU operation", "success", toString(message))
+                    Error { message } => gpuFailed(message)
                 }
             }
-            Error { message } => check("GPU operation", "success", toString(message))
+            Error { message } => gpuFailed(message)
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 test("host GPU abs callbacks retain numeric types and recovery", gpuAbsoluteCase)

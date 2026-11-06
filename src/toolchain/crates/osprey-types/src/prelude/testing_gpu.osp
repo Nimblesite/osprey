@@ -3,11 +3,14 @@
 //! names only the arithmetic policy must not receive them. Implements
 //! [TESTING-ARITH-POLICY].
 
+/// Fails the case with the reason a GPU operation reported. [FAILURE-EXPLICIT]
+fn gpuFailed(message) = check("GPU operation", "success", toString(message))
+
 /// Runs `work` on the value of a successful GPU operation; a failed one fails
 /// the case with its reason before the consumer runs. [FAILURE-EXPLICIT]
 fn withBuffer(result, work) = match result {
     Success { value } => work(value)
-    Error { message } => check("GPU operation", "success", toString(message))
+    Error { message } => gpuFailed(message)
 }
 
 /// Whether a successful GPU operation's value satisfies `predicate`; a failed
@@ -15,7 +18,7 @@ fn withBuffer(result, work) = match result {
 fn gpuSatisfies(result, predicate) = match result {
     Success { value } => predicate(value)
     Error { message } => {
-        check("GPU operation", "success", toString(message))
+        gpuFailed(message)
         false
     }
 }

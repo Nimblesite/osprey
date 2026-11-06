@@ -168,7 +168,7 @@ canvas pixels = frameText (pixels, frameWidth (), frameHeight ())
 withBrightText (result, work) =
     match result
         Success pixels => withBuffer(gpuMap(pixels, fullBright), \bright => work(frameText(bright, tileEdge(), tileEdge())))
-        Error message => check("GPU operation", "success", toString(message))
+        Error message => gpuFailed(message)
 
 (** gallery renders all three layers and their buffer statistics as one frame of output — one dispatch per scene, one elementwise pass to composite — then the raster
     primitives at a size every pixel can be read at: both windings of a triangle, spans clipped and unclipped, a magnified texel block, and the quad whose every pixel

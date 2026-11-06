@@ -142,7 +142,7 @@ longChainWith (indices100000) =
                     gpuSatisfies(gpuFold(climbed, 0, tally), \uploaded111 => (uploaded111) == 5000750000),
                     gpuSatisfies(gpuFold(cancelled, 0, tally), \uploaded110 => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), \uploaded109 => gpuSatisfies(gpuFold(uploaded109, 0, tally), \uploaded144 => (uploaded144) == 2499950000))
                 ])
-        Error message => check ("GPU operation", "success", toString message)
+        Error message => gpuFailed message
 (** Rebuild a buffer from its own materialized output six times. *)
 rebuildCase () = withIndices (20000, \indices20000 => withIndices (0, \indices0 => withIndices (1, \indices1 => rebuildWith (indices20000, indices0, indices1))))
 rebuildWith (indices20000, indices0, indices1) =

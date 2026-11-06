@@ -173,7 +173,7 @@ fn longChainWith(indices100000) = {
                     ])
                 })
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 

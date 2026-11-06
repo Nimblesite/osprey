@@ -78,13 +78,13 @@ gpuIeeeCase () =
                                                                             infinity > 10000000000000000.0, nan != nan, gpuSatisfies(gpuFold(infinityBuffer, 0.0, addFloats), \uploaded8 => (uploaded8) == infinity), (gpuGet (roundTrip, 2) ?: 0.0) == infinity, (gpuGet (roundTrip, 1) ?: 0.0) != (gpuGet (roundTrip, 1) ?: 0.0),
                                                                             toString (gpuGet (roundTrip, 0) ?: 1.0) == "-0.0"
                                                                         ])))
-                                                        Error message => check ("GPU operation", "success", toString message)
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => gpuFailed message
+                                                Error message => gpuFailed message
+                                        Error message => gpuFailed message
+                                Error message => gpuFailed message
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** [GPU-DEVICE-FAULT] A selected device reports its fault without invoking host recovery. *)
 deviceFault (result, reason) = match result
     Success _ => false
@@ -109,7 +109,7 @@ gpuFloatZeroCase () =
                 false => checkAll "host GPU zero divisors use the enclosing policy" [
                     deviceFault(quotients, "division by zero"), deviceFault(remainders, "remainder by zero"), faults == ""
                 ]
-        Error message => check ("GPU operation", "success", toString message)
+        Error message => gpuFailed message
 
 test "host GPU arithmetic preserves IEEE non-finite values" gpuIeeeCase
 test "host GPU float zero divisors use explicit recovery" gpuFloatZeroCase
@@ -148,9 +148,9 @@ gpuAbsoluteCase () =
                                     gpuDevice () != "host", contains(message, "integer overflow"),
                                     gpuSatisfies(toGpu([-3, 4]), \safe => gpuSatisfies(gpuMap(safe, abs), \integers => (gpuGet(integers, 0) ?: 0) == 3 && (gpuGet(integers, 1) ?: 0) == 4))
                                 ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 test "host GPU abs callbacks retain numeric types and recovery" gpuAbsoluteCase
 (** [GPU-DEVICE-NATIVE] [%]: signs, subnormals and non-finite values at width 64. *)
 remainder64Case () = gpuSatisfies(toGpu([toFloat(5.5), toFloat(-5.5), toFloat(-0.0), floatFromBits(1), floatFromBits(9218868437227405312), floatFromBits(9221120237041090560)]), \input => gpuSatisfies(gpuMap(input, \x => x % toFloat(2.0)), \output => gpuLength(output) == 6 && gpuSatisfies(gpuGet(output, 0), \x => floatBits(x) == 4609434218613702656) && gpuSatisfies(gpuGet(output, 1), \x => floatBits(x) == -4613937818241073152) && gpuSatisfies(gpuGet(output, 2), \x => floatBits(x) == -9223372036854775808) && gpuSatisfies(gpuGet(output, 3), \x => floatBits(x) == 1) && gpuSatisfies(gpuGet(output, 4), \x => x != x) && gpuSatisfies(gpuGet(output, 5), \x => x != x)))

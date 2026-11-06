@@ -123,7 +123,7 @@ fn stagedKernelCase() = {
             gpuSatisfies(gpuFold(scaled, 0, fn(a, v) => (a + v) ), fn(total) => total == 30),
             gpuLength(scaled) == 4
         ])
-      Error { message } => check("GPU operation", "success", toString(message)) }
+      Error { message } => gpuFailed(message) }
 }
 
 /// `kernel` is a handler region, not a magic block: ONE region supplies the

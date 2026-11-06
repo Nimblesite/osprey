@@ -198,13 +198,13 @@ matMulExactCaseUploaded (left, right) =
                                                                 gpuSatisfies (gpuFold (hollow, 0.0, addF), \total => exact (total, 0.0)),
                                                                 gpuSatisfies (toGpu ([]), \uploaded26 => gpuSatisfies (product (uploaded26, right, 0, 3, 2), \uploaded34 => gpuLength (uploaded34) == 0))
                                                             ]
-                                                        Error message => check ("GPU operation", "success", toString message)
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                                                        Error message => gpuFailed message
+                                                Error message => gpuFailed message
+                                        Error message => gpuFailed message
+                                Error message => gpuFailed message
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other association; the last pin is 3 units in the last place only when the product is rounded before it is
     added — a fused multiply-add keeps one more bit. *)
 matMulOrderCase () =
@@ -237,14 +237,14 @@ matMulOrderCase () =
                                                                     checkAll "gpuMatMul accumulates in k order from 0.0 without a fused multiply-add" [
                                                                         exact (at (forward, 0), 0.0), exact (at (backward, 0), 1.0), at (unfused, 0) == 3.0 * ulp
                                                                     ]
-                                                                Error message => check ("GPU operation", "success", toString message)
-                                                        Error message => check ("GPU operation", "success", toString message)
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                                                                Error message => gpuFailed message
+                                                        Error message => gpuFailed message
+                                                Error message => gpuFailed message
+                                        Error message => gpuFailed message
+                                Error message => gpuFailed message
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 matMulShapeCase () = withBuffer(floats ([1.0, 2.0, 3.0, 4.0]), \four => withBuffer(floats ([1.0, 2.0, 3.0]), \three => matMulShapeCaseUploaded(four, three)))
 matMulShapeCaseUploaded (four, three) =
     checkAll "gpuMatMul names the operand whose length disagrees with the stated shape" [
@@ -458,8 +458,8 @@ loadCase () =
                         loadFailure (raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
                         loadFailure (missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
                     ]
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** Only ASCII content can be written from a NUL-terminated string, so the header-length prefix is either missing or absurd; the full header grammar is pinned by the
     checked-in fixture under src/toolchain/crates/osprey-cli/tests. *)
 tensorHeaderCase () =

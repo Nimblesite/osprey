@@ -182,13 +182,13 @@ fn matMulExactCaseUploaded(left, right) = {
                                                                     gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
                                                                     gpuSatisfies(toGpu([]), fn(uploaded26) => gpuSatisfies(product(uploaded26, right, 0, 3, 2), fn(uploaded34) => gpuLength(uploaded34) == 0))
                                                             ])
-                                                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                                                } Error { message } => check("GPU operation", "success", toString(message)) }
-                                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                                } Error { message } => check("GPU operation", "success", toString(message)) }
-                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                } Error { message } => check("GPU operation", "success", toString(message)) }
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                        } Error { message } => gpuFailed(message) }
+                                                } Error { message } => gpuFailed(message) }
+                                        } Error { message } => gpuFailed(message) }
+                                } Error { message } => gpuFailed(message) }
+                        } Error { message } => gpuFailed(message) }
+                } Error { message } => gpuFailed(message) }
+        } Error { message } => gpuFailed(message) }
 }
 /// 2^24 + 1 - 2^24 is 0.0 in binary32 k order and 1.0 in any other
 /// association; the last pin is 3 units in the last place only when the
@@ -208,14 +208,14 @@ fn matMulOrderCase() = {
                                                                     checkAll("gpuMatMul accumulates in k order from 0.0 without a fused multiply-add", [
                                                                             exact(at(forward, 0), 0.0), exact(at(backward, 0), 1.0), at(unfused, 0) == 3.0 * ulp
                                                                     ])
-                                                                } Error { message } => check("GPU operation", "success", toString(message)) }
-                                                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                                                } Error { message } => check("GPU operation", "success", toString(message)) }
-                                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                                } Error { message } => check("GPU operation", "success", toString(message)) }
-                        } Error { message } => check("GPU operation", "success", toString(message)) }
-                } Error { message } => check("GPU operation", "success", toString(message)) }
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                                                } Error { message } => gpuFailed(message) }
+                                                        } Error { message } => gpuFailed(message) }
+                                                } Error { message } => gpuFailed(message) }
+                                        } Error { message } => gpuFailed(message) }
+                                } Error { message } => gpuFailed(message) }
+                        } Error { message } => gpuFailed(message) }
+                } Error { message } => gpuFailed(message) }
+        } Error { message } => gpuFailed(message) }
 }
 fn matMulShapeCase() = withBuffer(floats([1.0, 2.0, 3.0, 4.0]), fn(four) => withBuffer(floats([1.0, 2.0, 3.0]), fn(three) => matMulShapeCaseUploaded(four, three)))
 fn matMulShapeCaseUploaded(four, three) = {
@@ -415,8 +415,8 @@ fn loadCase() = {
                             loadFailure(raw, -1, 1) == "gpuLoad: " + raw + ": Invalid argument",
                             loadFailure(missing, 0, 1) == "gpuLoad: " + missing + ": No such file or directory"
                     ])
-                } Error { message } => check("GPU operation", "success", toString(message)) }
-        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => gpuFailed(message) }
+        } Error { message } => gpuFailed(message) }
 }
 /// Only ASCII content can be written from a NUL-terminated string, so the
 /// header-length prefix is either missing or absurd; the full header grammar is

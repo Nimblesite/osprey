@@ -236,16 +236,16 @@ fn flowCase() = {
                                             listLengthIs(fromGpu(held), 3)
                                     ])
                                 }
-                                Error { message } => check("GPU operation", "success", toString(message))
+                                Error { message } => gpuFailed(message)
                             }
                         }
-                        Error { message } => check("GPU operation", "success", toString(message))
+                        Error { message } => gpuFailed(message)
                     }
                 }
-                Error { message } => check("GPU operation", "success", toString(message))
+                Error { message } => gpuFailed(message)
             }
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 
@@ -267,7 +267,7 @@ fn aliasCase() = {
                             listLengthIs(fromGpu(alias), 4), listResultReadsTo(fromGpu(alsoAlias), [2], 0, [3])
                     ]))
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 
@@ -323,21 +323,21 @@ fn intKernelWith(indices0) = {
                                                                             gpuSatisfies(toGpu([7]), fn(uploaded10) => gpuSatisfies(gpuMap(uploaded10, square), fn(uploaded29) => foldsTo(gpuFold(uploaded29, 0, addInts), 49))), gpuSatisfies(gpuMap(indices0, square), fn(uploaded28) => foldsTo(gpuFold(uploaded28, 0, addInts), 0))
                                                     ])))
                                             }
-                                            Error { message } => check("GPU operation", "success", toString(message))
+                                            Error { message } => gpuFailed(message)
                                         }
                                     }
-                                    Error { message } => check("GPU operation", "success", toString(message))
+                                    Error { message } => gpuFailed(message)
                                 }
                             }
-                            Error { message } => check("GPU operation", "success", toString(message))
+                            Error { message } => gpuFailed(message)
                         }
                     }
-                    Error { message } => check("GPU operation", "success", toString(message))
+                    Error { message } => gpuFailed(message)
                 }
             }
-            Error { message } => check("GPU operation", "success", toString(message))
+            Error { message } => gpuFailed(message)
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 
@@ -378,14 +378,14 @@ fn boolKernelWith(indices0) = {
                                                             bufferLengthIs(gpuMap(indices0, isOdd), 0)
                             ])))
                         }
-                        Error { message } => check("GPU operation", "success", toString(message))
+                        Error { message } => gpuFailed(message)
                     }
-                    Error { message } => check("GPU operation", "success", toString(message))
+                    Error { message } => gpuFailed(message)
                 }
             }
-            Error { message } => check("GPU operation", "success", toString(message))
+            Error { message } => gpuFailed(message)
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 
@@ -432,13 +432,13 @@ fn blockBodiedKernelWith(indices4, indices3) = {
                                     readsTo(widened, [0, 2], 9.5, [0.0, 1.0])
                             ])
                         }
-                        Error { message } => check("GPU operation", "success", toString(message))
+                        Error { message } => gpuFailed(message)
                     }
                 }
-                Error { message } => check("GPU operation", "success", toString(message))
+                Error { message } => gpuFailed(message)
             }
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 
@@ -468,10 +468,10 @@ fn denseRoundTripWith(label, values, indices) = {
                                     range(0, length(values)) |> fold(true, fn(ok, i) => ok && denseRead(buffer, values, i)), denseOutOfBounds(buffer, -1), denseOutOfBounds(buffer, length(values))
                     ]))
                 }
-                Error { message } => check("GPU operation", "success", toString(message))
+                Error { message } => gpuFailed(message)
             }
         }
-        Error { message } => check("GPU operation", "success", toString(message))
+        Error { message } => gpuFailed(message)
     }
 }
 

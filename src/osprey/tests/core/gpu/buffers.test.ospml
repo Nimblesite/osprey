@@ -193,10 +193,10 @@ flowCase () =
                                         structuralEquals [readback (held, 0), readback (returned, 0)] ["1.5", "2.25"],
                                         readback (returned, 3) == oobMessage (), readback (twice, -1) == oobMessage (), listLengthIs (fromGpu (held), 3)
                                     ]
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                                Error message => gpuFailed message
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** Pin two bindings onto one buffer. Buffers are immutable values [GPU-BUFFER], so a kernel run through one alias publishes a new buffer and leaves every alias of the source reading what it read before. *)
 aliasCase () =
     match toGpu ([1, 2, 3, 4])
@@ -213,7 +213,7 @@ aliasCase () =
                     readsTo (alias, [1], 0, [2]), readsTo (alsoAlias, [1], 0, [2]), readback (alias, 4) == oobMessage (), readback (alsoAlias, -1) == oobMessage (), readback (source, 4) == readback (alias, 4), listLengthIs (fromGpu (alias), 4),
                     listResultReadsTo (fromGpu (alsoAlias), [2], 0, [3])
                 ])
-        Error message => check ("GPU operation", "success", toString message)
+        Error message => gpuFailed message
 (** Pin [GPU-BUFFER-FUSE] from the indexing side: whatever the pipeline fused into the buffer has to be addressable element by element, the published length has to bound gpuGet exactly, and a one-element or empty range has to land on a buffer of that size. *)
 fusionCase () =
     withBuffer (toGpu(range (0, 6)), \straight => withBuffer (toGpu(range (1, 5) |> map square), \squares => withBuffer (toGpu(range (4, 5)), \lone => withBuffer (toGpu(range (3, 3)), \empty => checkAll "iterator fusion fills the buffer directly" [
@@ -255,12 +255,12 @@ intKernelWith (indices0) =
                                                                 gpuSatisfies (toGpu ([7]), \uploaded10 => gpuSatisfies(gpuMap(uploaded10, square), \uploaded29 => foldsTo (gpuFold (uploaded29, 0, addInts), 49))),
                                                                 gpuSatisfies(gpuMap(indices0, square), \uploaded28 => foldsTo (gpuFold (uploaded28, 0, addInts), 0))
                                                             ]))
-                                                Error message => check ("GPU operation", "success", toString message)
-                                        Error message => check ("GPU operation", "success", toString message)
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                                                Error message => gpuFailed message
+                                        Error message => gpuFailed message
+                                Error message => gpuFailed message
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** Prove float words keep their bits through map and fold, including the [GPU-CONVERT] seed that widens an index buffer. *)
 floatKernelCase () = withIndices (0, \indices0 => withIndices (4, \indices4 => floatKernelWith (indices0, indices4)))
 floatKernelWith (indices0, indices4) =
@@ -291,10 +291,10 @@ boolKernelWith (indices0) =
                                                 foldsTo (gpuFold (allFalse, 0, countOdd), 0), gpuSatisfies (toGpu ([true, true, false]), \uploaded3 => foldsTo (gpuFold (uploaded3, 0, countOdd), 2)),
                                                 bufferLengthIs (gpuMap(indices0, isOdd), 0)
                                             ]))
-                                Error message => check ("GPU operation", "success", toString message)
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                                Error message => gpuFailed message
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** Push the copy path itself to scale: a hundred thousand elements out to a list and back into a buffer, boundary indices and closed-form sums checked on every hop. *)
 bigCase () = withIndices (100000, \indicesWide => bigWith (indicesWide))
 bigWith (indicesWide) =
@@ -330,9 +330,9 @@ blockBodiedKernelWith (indices4, indices3) =
                                 readsTo (fromFn, [0, 1, 3], 99, [1, 4, 10]), readsTo (fromLambda, [0, 3], 99, [1, 10]),
                                 foldsTo (gpuFold (fromFn, 0, addInts), 22), readsTo (widened, [0, 2], 9.5, [0.0, 1.0])
                             ]
-                        Error message => check ("GPU operation", "success", toString message)
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                        Error message => gpuFailed message
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 (** [GPU-BUFFER-ELEM]: one index read back through gpuGet equals the source. *)
 denseRead (buffer, values, i) = match gpuGet (buffer, i)
     Success actual => match listGet (values, i)
@@ -356,8 +356,8 @@ denseRoundTripWith (label, values, indices) =
                             gpuLength buffer == length values, gpuSatisfies (fromGpu (buffer), \checked0 => structuralEquals (checked0, values)), gpuSatisfies (fromGpu (mapped), \checked0 => structuralEquals (checked0, values)),
                             gpuSatisfies (fromGpu (gathered), \checked0 => structuralEquals (checked0, values)), range (0, length values) |> fold (true, \(ok, i) => ok && denseRead (buffer, values, i)), denseOutOfBounds (buffer, -1), denseOutOfBounds (buffer, length values)
                         ])
-                Error message => check ("GPU operation", "success", toString message)
-        Error message => check ("GPU operation", "success", toString message)
+                Error message => gpuFailed message
+        Error message => gpuFailed message
 denseIntegerWidthsCase () =
     i8 : List<int8>
     i8 = [-128, 0, 127]

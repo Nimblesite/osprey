@@ -56,9 +56,9 @@ softmaxEach (scores, work) =
         Success peak => match gpuMap(scores, \s => softWeight(peak - s))
             Success weights => match gpuFold(weights, toFloat32(0.0), addF)
                 Success partition => withBuffer(gpuMap(weights, \w => (w / partition) ), work)
-                Error message => check("GPU operation", "success", toString(message))
-            Error message => check("GPU operation", "success", toString(message))
-        Error message => check("GPU operation", "success", toString(message))
+                Error message => gpuFailed(message)
+            Error message => gpuFailed(message)
+        Error message => gpuFailed(message)
 (** rowDot walks one row of a flat row-major matrix against a vector. The
     recursion carries the same captured buffers through every column. *)
 rowDot (m, v, cols, r, c) = match c == cols
@@ -78,8 +78,8 @@ gradStepEach (w, xs: GpuBuffer<float32>, ys, work) =
     match gpuZipWith(xs, ys, \(x, y) => toFloat32(2.0) * (w * x - y) * x)
         Success residuals => match gpuFold(residuals, toFloat32(0.0), addF)
             Success total => work(w - toFloat32(0.05) * (total / toFloat32(3.0)))
-            Error message => check("GPU operation", "success", toString(message))
-        Error message => check("GPU operation", "success", toString(message))
+            Error message => gpuFailed(message)
+        Error message => gpuFailed(message)
 gradStepOf (w, xs: GpuBuffer<float32>, ys, predicate) = gpuSatisfies(gpuZipWith (xs, ys, \(x, y) => toFloat32 2.0 * (w * x - y) * x), \residuals => sumOf(residuals, \total => predicate(w - toFloat32 0.05 * (total / toFloat32 3.0))))
 (** trainEach iterates gradStepEach n times, keeping the loop on buffers. *)
 trainEach (w, xs, ys, n, work) = match n
@@ -255,8 +255,8 @@ weightedSumCaseUploaded (input0, input1, input2, input3, input4, input5) =
                 gpuSatisfies(gpuZipWith(vals, ws, \(v, w) => wtot * v * w), \weighted => sumOf(weighted, \total => total == toFloat32(168.0))),
                 gpuSatisfies(gpuMap(vals, \v => (v / wtot) ), \share => sumOf(share, \total => total == toFloat32(1.25)))
             ])
-            Error message => check("GPU operation", "success", toString(message))
-        Error message => check("GPU operation", "success", toString(message))
+            Error message => gpuFailed(message)
+        Error message => gpuFailed(message)
 (** Center a feature column: the folded mean is captured by the centering
     kernel, and the centered column's own mean vanishes. *)
 meanCase () = withIndices(9, \indices9 => meanWith(indices9))
@@ -281,8 +281,8 @@ meanWithUploaded (indices9, input0, input1, input2, input3) =
                     gpuSatisfies(gpuMap(indices9, toFloat32), \asFloats => meanOf(asFloats, \total => total == toFloat32(4.0))),
                     gpuSatisfies(gpuFilter(xs, \v => v > mean), \above => gpuLength(above) == 1)
                 ])
-                Error message => check("GPU operation", "success", toString(message))
-        Error message => check("GPU operation", "success", toString(message))
+                Error message => gpuFailed(message)
+        Error message => gpuFailed(message)
 (** Pin two-pass variance and the z-scores built on it: a normalised column has
     mean zero and variance one, and a constant column's zero deviation must fall
     back rather than divide. *)
@@ -308,8 +308,8 @@ varianceCaseUploaded (input0, input1, input2, input3) =
                     varianceOf(input2, \empty => empty == toFloat32(0.0)),
                     degenerate(0.0, \() => gpuSatisfies(gpuMap(input3, \v => (v - toFloat32(3.0)) / toFloat32(0.0)), \flat => sumOf(flat, \total => total == toFloat32(0.0))))
                 ])
-                Error message => check("GPU operation", "success", toString(message))
-        Error message => check("GPU operation", "success", toString(message))
+                Error message => gpuFailed(message)
+        Error message => gpuFailed(message)
 (** Pin the min-max rescale: both extremes are folded out and captured, and a
     constant column's zero range falls back instead of dividing. *)
 normalizeCase () = withBuffer(toGpu ([toFloat32 1.0, toFloat32 3.0, toFloat32 5.0, toFloat32 9.0]), \input0 => withBuffer(toGpu ([toFloat32 4.0, toFloat32 4.0]), \input1 => normalizeCaseUploaded(input0, input1)))
