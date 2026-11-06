@@ -17,6 +17,7 @@ Captured on 3 November 2026. Screens show running tools or their real saved outp
 | api-index, api-function | Real compiler HTML export of src/osprey/packages/json, midnight theme; library landing page and ui::Doc::string. |
 | storage-macos, storage-ios | Frames at 12 and 174 seconds of the published Swift interop tutorial, showing recorded native app footage. |
 | mathlib-check, mathlib-library | Frames at 80 and 116 seconds of the published Mathlib bridge tutorial. Historical footage; guide qualifications about imported proofs and assumptions apply. |
+| proof-workbench-commutativity | A frame at 0:33 of the real recording osprey-proof-workbench-math.mp4, cropped to the Proof Workbench window: Commutativity of conjunction, checked by the Osprey kernel. |
 
 The Playground captures use the real site UI and a local adapter that sends the exact editor source to the native Osprey compiler, rather than to the hosted service. Success stdout and compiler errors come from that execution; rejected programs return HTTP 400 to preserve the UI's compilation-failure state. This does not demonstrate browser-side compilation. No output, program result or model response was fabricated.
 
@@ -27,4 +28,3 @@ A stale release compiler initially called the old five-argument matrix ABI again
 - A guide of 500 prose words or more carries at least one illustration per 500 words. This is the project's editorial target, not a search rule; a browser test enforces it. Video-card posters don't count, and short reference entries and generated function pages are outside it.
 - No screenshot is a mockup, and none promises universal host conformance. Keep the security qualifications and feature limits a capture shows.
 - After changing a video asset, run `make -C src/toolchain/website video-metadata`: `VideoObject` durations come from the measured file, and upload dates stay as originally published.
-| proof-workbench-commutativity | A frame at 0:33 of the real recording osprey-proof-workbench-math.mp4, cropped to the Proof Workbench window: Commutativity of conjunction, checked by the Osprey kernel. |
