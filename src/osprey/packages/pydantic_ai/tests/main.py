@@ -394,6 +394,42 @@ def transport_error_case():
             return Check.equal("transport_error", f"{E.message_of(error)}/{E.status_code_of(error)}", "connection refused/0")
 
 
+HTTP_TEXTS = ["{\"ok\":1}", ""]
+HTTP_READ_FAILURES = ["", "error httpResponseFree returned -1", "error httpResponseFree failed: unknown response handle"]
+HTTP_CLOSE_OUTCOMES = ["reply 200 kept", "error httpCloseClient returned -1", "error httpCloseClient failed: unknown client"]
+
+
+def http_outcome(result):
+    match result:
+        case Success(value=reply):
+            return f"reply {reply.status} {reply.body}"
+        case Error(message=message):
+            return f"error {message}"
+
+
+def http_code(k, missing):
+    """Success(0), Success(-1) or Error(missing), the outcomes of a runtime free or close."""
+    return Error(message=missing) if k == 2 else Success(value=-k)
+
+
+def http_reply_case(i):
+    """A failed body read or free is an Error, never a Success with an empty body."""
+    status = ati([200, 429, 500], i // 9)
+    body = (i // 3) % 3
+    freed = i % 3
+    text = Error(message="out of memory") if body == 2 else Success(value=ats(HTTP_TEXTS, body))
+    clean = f"reply {status} {ats(HTTP_TEXTS, body)}" if body < 2 else "error httpResponseBody failed: out of memory"
+    expected = clean if body == 2 or freed == 0 else ats(HTTP_READ_FAILURES, freed)
+    return Check.equal(f"providers.http_reply_{i}", http_outcome(ProvidersHttp.reply_of(status, text, http_code(freed, "unknown response handle"))), expected)
+
+
+def http_close_case(i):
+    """A close failure fails a good request; a request's own error outranks the close."""
+    request = Error(message="connection refused") if i >= 3 else Success(value=Providers.HttpReply(status=200, body="kept"))
+    expected = ats(HTTP_CLOSE_OUTCOMES, i % 3) if i < 3 else "error connection refused"
+    return Check.equal(f"providers.http_close_{i}", http_outcome(ProvidersHttp.after_close(request, http_code(i % 3, "unknown client"))), expected)
+
+
 def usage_limit_case():
     model = scripted_model([ats(Expected.SCRIPTED_REPLIES, 0)], 200)
     match Agent.run_sync(build(model, False), "go", []):
@@ -1347,6 +1383,8 @@ def suite():
         scripted_cases(),
         status_error_cases(),
         [transport_error_case(), usage_limit_case()],
+        cases(27, http_reply_case),
+        cases(6, http_close_case),
         profile_cases(),
         settings_cases(),
         cases(len(THINKING_TABLE), thinking_body_case),

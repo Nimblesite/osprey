@@ -11,7 +11,7 @@ cannot link it.
 """
 from pydantic_ai import Providers as P
 
-__all__ = ["OpenAIProvider", "OllamaProvider", "DeepSeekProvider", "MoonshotAIProvider", "ZaiProvider", "provider", "post_json"]
+__all__ = ["OpenAIProvider", "OllamaProvider", "DeepSeekProvider", "MoonshotAIProvider", "ZaiProvider", "provider", "post_json", "reply_of", "after_close"]
 
 REQUEST_TIMEOUT_MS = 600000
 """The 600 s timeout `openai.AsyncOpenAI` defaults to."""
@@ -21,9 +21,7 @@ def post_json(base_url, path, body, headers) -> Result[P.HttpReply, str]:
     """One POST through the runtime HTTP client; `Error` names a transport failure."""
     match httpCreateClient(base_url, REQUEST_TIMEOUT_MS):
         case Success(value=client):
-            result = post_with(client, path, body, headers)
-            closed = unwrap_or(httpCloseClient(client), -1)
-            return result if closed == 0 else result
+            return after_close(post_with(client, path, body, headers), httpCloseClient(client))
         case Error(message=message):
             return Error(message=f"httpCreateClient failed: {message}")
 
@@ -32,11 +30,37 @@ def post_with(client, path, body, headers) -> Result[P.HttpReply, str]:
     match httpPostResponse(client, path, body, headers):
         case Success(value=handle):
             status = httpResponseStatus(handle)
-            text = unwrap_or(httpResponseBody(handle), "")
-            freed = unwrap_or(httpResponseFree(handle), 0)
-            return Success(value=P.HttpReply(status=status, body=text)) if freed == 0 else Success(value=P.HttpReply(status=status, body=text))
+            text = httpResponseBody(handle)
+            return reply_of(status, text, httpResponseFree(handle))
         case Error(message=message):
             return Error(message=message)
+
+
+def reply_of(status, text, freed) -> Result[P.HttpReply, str]:
+    """The reply once the body is read and the response freed; a failed read or free is an `Error`, as httpx raises."""
+    match text:
+        case Success(value=body):
+            return released(Success(value=P.HttpReply(status=status, body=body)), "httpResponseFree", freed)
+        case Error(message=message):
+            return Error(message=f"httpResponseBody failed: {message}")
+
+
+def after_close(result, closed) -> Result[P.HttpReply, str]:
+    """The request's result once the client is closed; a failed close fails a good request."""
+    match result:
+        case Success(value=_reply):
+            return released(result, "httpCloseClient", closed)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def released(result, call, code) -> Result[P.HttpReply, str]:
+    """`result` when the runtime `call` that releases it returned 0, otherwise the release failure."""
+    match code:
+        case Success(value=value):
+            return result if value == 0 else Error(message=f"{call} returned {value}")
+        case Error(message=message):
+            return Error(message=f"{call} failed: {message}")
 
 
 def provider(name, base_url, api_key):

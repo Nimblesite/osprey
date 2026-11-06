@@ -83,6 +83,39 @@ ok status_error.message
 ok status_error.text
 ok transport_error
 ok usage_limit
+ok providers.http_reply_0
+ok providers.http_reply_1
+ok providers.http_reply_2
+ok providers.http_reply_3
+ok providers.http_reply_4
+ok providers.http_reply_5
+ok providers.http_reply_6
+ok providers.http_reply_7
+ok providers.http_reply_8
+ok providers.http_reply_9
+ok providers.http_reply_10
+ok providers.http_reply_11
+ok providers.http_reply_12
+ok providers.http_reply_13
+ok providers.http_reply_14
+ok providers.http_reply_15
+ok providers.http_reply_16
+ok providers.http_reply_17
+ok providers.http_reply_18
+ok providers.http_reply_19
+ok providers.http_reply_20
+ok providers.http_reply_21
+ok providers.http_reply_22
+ok providers.http_reply_23
+ok providers.http_reply_24
+ok providers.http_reply_25
+ok providers.http_reply_26
+ok providers.http_close_0
+ok providers.http_close_1
+ok providers.http_close_2
+ok providers.http_close_3
+ok providers.http_close_4
+ok providers.http_close_5
 ok profile.flags
 ok profile.texts
 ok profile.merge
@@ -472,4 +505,4 @@ ok typed.http_reply
 ok typed.settings
 ok typed.tool_definition
 ok typed.run_usage
-474 passed, 0 failed
+507 passed, 0 failed
