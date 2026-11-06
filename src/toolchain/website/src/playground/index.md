@@ -583,472 +583,182 @@ date: "git Last Modified"
         updateStatus('connected', 'Ready');
     });
 
-    // Default and ML share a showcase; Python demonstrates typed effect handlers.
+    // One tested program, the package manager's install, in all three flavors.
     // Switch the editor contents with the flavor toggle in the header.
     let currentFlavor = 'osp';
     const SAMPLES = {
-        // @generated:osp — filled from src/osprey/tests/regressions/basics/osprey_mega_showcase.test.osp by scripts/update-playground.js
-        osp: `/// Osprey in one screen — algebraic effects, fibers, unions, HM inference.
-/// The SAME account() runs in two worlds; only the installed handler differs.
-effect Console {
-    /// Write one line to the console the handler represents.
-    emit: fn(string) -> Unit
-}
-effect Ledger {
-    /// Post \`amount\` to the account and return the new balance.
-    post: fn(int) -> int
+        // @generated:osp — filled from src/osprey/tests/effects/install/install.test.osp by scripts/update-playground.js
+        osp: `/// The package manager's file-system effect: one install, a real disk and
+/// three test doubles. The Playground opens on this program in every flavor.
+effect Files {
+    read: fn(string) -> Result<string, Error>
+    write: fn(string, string) -> Result<int, Error>
 }
 
-/// account() only performs effects — it never learns whether the ledger is real.
-fn account() ![Console, Ledger] = {
-    perform Console.emit("open account")
-    let afterDeposit = perform Ledger.post(100)
-    perform Console.emit("deposit 100  → balance \${afterDeposit}")
-    let afterMore = perform Ledger.post(250)
-    perform Console.emit("deposit 250  → balance \${afterMore}")
-    let afterDraw = perform Ledger.post(-90)
-    perform Console.emit("withdraw 90  → balance \${afterDraw}")
-    afterMore
-}
-
-/// World A: a real, stateful ledger — the handler owns a \`mut\` it threads through.
-fn realWorld() = {
-    mut balance = 0
-    handle Console {
-        emit line => print("  💸 \${line}")
-    }
-    handle Ledger {
-        post amount => {
-            balance = balance + amount
-            balance
-        }
-    }
-    account()
-}
-
-/// World B: same code, a frozen compliance mock — every post is a no-op.
-fn dryRun() = {
-    handle Console {
-        emit line => print("  🧪 [dry-run] \${line}")
-    }
-    handle Ledger {
-        post _amount => 0
-    }
-    account()
-}
-
-/// Pure pipeline: Σ of squares of the evens in [1, n) — no loops, no mutation.
-fn even(x) = x % 2 == 0
-fn sq(x)   = x * x
-fn crunch(n) = range(1, n) |> filter(even) |> map(sq) |> fold(0, fn(a, b) => a + b)
-
-/// Exhaustive match over a union — drop a case and it won't compile.
-type Tier = Epic | Solid | Starter
-
-/// \`if\`/\`else if\` desugars to the same boolean match the ML twin writes
-/// explicitly — byte-identical IR across flavors ([FLAVOR-IR-EQUIV]).
-fn tier(score) = if score >= 2000 { Epic } else if score >= 500 { Solid } else { Starter }
-
-fn badge(t) = match t {
-    Epic    => "🟣 EPIC"
-    Solid   => "🔵 SOLID"
-    Starter => "🟢 STARTER"
-}
-
-/// ACT 1: the same account() body runs against a real ledger and a dry run.
-fn showWorlds() = {
-    print("OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds")
-    let real = realWorld()
-    print("  ↳ realWorld() returned \${real}")
-    let mock = dryRun()
-    print("  ↳ dryRun()   returned \${mock}")
-}
-
-/// ACT 2: each crunch() runs in its own fiber; awaiting in order keeps the report deterministic.
-fn showFleet() = {
-    print("══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel")
-    let fa = spawn crunch(10)
-    let fb = spawn crunch(20)
-    let fc = spawn crunch(40)
-    let ra = await(fa)
-    let rb = await(fb)
-    let rc = await(fc)
-    print("  Σeven² <10  = \${ra}  \${badge(tier(ra))}\\n  Σeven² <20  = \${rb}  \${badge(tier(rb))}\\n  Σeven² <40  = \${rc}  \${badge(tier(rc))}\\n══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge(tier(ra + rb + rc))}")
-}
-
-/// Replays both effect worlds and the fiber-backed scoring pipeline.
-fn megaShowcaseCase() = {
-    let realResult = realWorld()
-    let mockResult = dryRun()
-    let future = spawn crunch(12)
-    let fiberResult = await(future)
-    let scoreA = crunch(10)
-    let scoreB = crunch(20)
-    let scoreC = crunch(40)
-    let fleetScore = scoreA + scoreB + scoreC
-    checkAll("effect worlds and functional scoring state", [
-        realResult == 350,
-        mockResult == 0,
-        even(2),
-        !even(3),
-        sq(9) == 81,
-        crunch(1) == 0,
-        scoreA == 120,
-        scoreB == 1140,
-        scoreC == 9880,
-        fiberResult == 220,
-        fleetScore == 11140,
-        badge(tier(499)) == "🟢 STARTER",
-        badge(tier(500)) == "🔵 SOLID",
-        badge(tier(1999)) == "🔵 SOLID",
-        badge(tier(2000)) == "🟣 EPIC",
-        badge(Starter) == "🟢 STARTER",
-        badge(Solid) == "🔵 SOLID",
-        badge(Epic) == "🟣 EPIC"
-    ])
-}
-
-mut faulted = false
-/// One fault-sticky policy covers ledger arms, helpers and spawned pipelines.
-let faultSticky = handler Arith {
-    overflow _ lhs _ _ => {
-        faulted = true
-        lhs
+/// Write the lock file; if that fails, put the old manifest back.
+fn commitLock(previous, lock) = match perform Files.write("osprey.lock", lock) {
+    Success _ => "installed"
+    Error { message } => match perform Files.write("osprey.toml", previous) {
+        Success _ => "rolled back: \${message}"
+        Error _ => "manifest left changed: \${message}"
     }
 }
 
-faultSticky(showWorlds)
-faultSticky(showFleet)
-test("mega showcase preserves effect, fiber, and tier state", fn() => {
-    faultSticky(megaShowcaseCase)
-    expectFalse(faulted)
-})
+/// Update the manifest, then commit the lock. It never names a disk.
+fn install(manifest, lock) = match perform Files.read("osprey.toml") {
+    Error { message } => "no manifest: \${message}"
+    Success { value } => match perform Files.write("osprey.toml", manifest) {
+        Error { message } => "manifest not written: \${message}"
+        Success _ => commitLock(value, lock)
+    }
+}
+
+// Production passes the real disk (the Playground sandbox has none):
+// handler Files { read path => readFile(path)  write path text => writeFile(path, text) }
+
+/// Test doubles: canned disks, no files touched.
+let healthyDisk = handler Files {
+    read _ => Success { value: "version = 1" }
+    write _ text => Success { value: byteLength(text) }
+}
+
+let fullDisk = handler Files {
+    read _ => Success { value: "version = 1" }
+    write path text => if path == "osprey.lock" { Error { message: "disk full" } } else { Success { value: byteLength(text) } }
+}
+
+let readOnlyDisk = handler Files {
+    read _ => Success { value: "version = 1" }
+    write _ _ => Error { message: "read-only" }
+}
+
+fn upgrade() = install("version = 2", "locked")
+
+test("a healthy disk installs", fn() => expect(healthyDisk(upgrade), "installed"))
+test("a full disk rolls the manifest back", fn() => expect(fullDisk(upgrade), "rolled back: disk full"))
+test("a read-only disk changes nothing", fn() => expect(readOnlyDisk(upgrade), "manifest not written: read-only"))
 `,
-        // @generated:ospml — filled from src/osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml by scripts/update-playground.js
-        ospml: `(* ═══════════════════════════════════════════════════════════════════════
-   Osprey feature tour, ML flavor. Comments use the ML-family forms:
-     (*  … *)  ordinary block comment (nests)
-     (** … *)  documentation comment  (odoc double-star — spec 0026)
-     //  …     line comment
-   The (** *) docs below show the ML documentation idiom; each attaches to the
-   declaration that follows it. See docs/specs/language/0026-DocumentationComments.md.
-   ═══════════════════════════════════════════════════════════════════════ *)
+        // @generated:ospml — filled from src/osprey/tests/effects/install/install.test.ospml by scripts/update-playground.js
+        ospml: `// The package manager's file-system effect: one install, a real disk and
+// three test doubles. The Playground opens on this program in every flavor.
+effect Files
+    read : string => Result<string, Error>
+    write : (string, string) => Result<int, Error>
 
-(** An effect that emits a line of human-readable output.
-    The handler decides where the line goes — a real console, or nowhere. *)
-effect Console
-    (** Write one line to the console the handler represents. *)
-    emit : string => Unit
+// Write the lock file; if that fails, put the old manifest back.
+commitLock previous lock = match perform Files.write "osprey.lock" lock
+    Success _ => "installed"
+    Error message => match perform Files.write "osprey.toml" previous
+        Success _ => "rolled back: \${message}"
+        Error _ => "manifest left changed: \${message}"
 
-(** A ledger effect: post a signed [amount] and get the running balance back.
-    Whether that balance is real or faked is entirely the handler's choice. *)
-effect Ledger
-    (** Post \`amount\` to the account and return the new balance. *)
-    post : int => int
+// Update the manifest, then commit the lock. It never names a disk.
+install manifest lock = match perform Files.read "osprey.toml"
+    Error message => "no manifest: \${message}"
+    Success value => match perform Files.write "osprey.toml" manifest
+        Error message => "manifest not written: \${message}"
+        Success _ => commitLock value lock
 
-(** Run a fixed sequence of account operations, purely in terms of effects.
-    Performs [Console.emit] and [Ledger.post] — it does NOT know or care how
-    either is handled, which is what lets [realWorld] and [dryRun] give it two
-    completely different behaviours from the same code.
+// Production passes the real disk (the Playground sandbox has none):
+// handler Files { read path => readFile path  write path text => writeFile path text }
 
-    # Returns
-    The balance after the final deposit. *)
-account () =
-    perform Console.emit "open account"
-    afterDeposit = perform Ledger.post 100
-    perform Console.emit "deposit 100  → balance \${afterDeposit}"
-    afterMore = perform Ledger.post 250
-    perform Console.emit "deposit 250  → balance \${afterMore}"
-    afterDraw = perform Ledger.post (-90)
-    perform Console.emit "withdraw 90  → balance \${afterDraw}"
-    afterMore
+// Test doubles: canned disks, no files touched.
+healthyDisk = handler Files
+    read _ => Success(value = "version = 1")
+    write _ text => Success(value = byteLength text)
 
-(** The PRODUCTION interpretation of [account]: the ledger mutates a real
-    running balance and the console prints each line. Same [account] body,
-    real-world handlers. *)
-realWorld () =
-    mut balance = 0
-    handle Console
-        emit line => print "  💸 \${line}"
-    handle Ledger
-        (* the resuming arm updates state, then hands the balance back *)
-        post amount =>
-            balance := balance + amount
-            balance
-    account ()
+fullDisk = handler Files
+    read _ => Success(value = "version = 1")
+    write path text => match path == "osprey.lock"
+        true => Error(message = "disk full")
+        false => Success(value = byteLength text)
 
-(** The DRY-RUN interpretation of [account]: the console is tagged and the
-    ledger is a no-op that always reports a zero balance. Same [account] body,
-    fake handlers — this is the payoff of algebraic effects. *)
-dryRun () =
-    handle Console
-        emit line => print "  🧪 [dry-run] \${line}"
-    handle Ledger
-        post _amount => 0
-    account ()
+readOnlyDisk = handler Files
+    read _ => Success(value = "version = 1")
+    write _ _ => Error(message = "read-only")
 
-(** [true] when [x] is even. *)
-even x = x % 2 == 0
+upgrade () = install "version = 2" "locked"
 
-(** The square of [x]. *)
-sq x   = x * x
-
-(** Σ of the squares of the even numbers in [1, n).
-    A pure pipeline: no loops, no mutation — [range] feeds [filter], [map],
-    then [fold]. *)
-crunch n = range 1 n |> filter even |> map sq |> fold 0 (\\(a, b) => a + b)
-
-(** A performance tier a score falls into. Exhaustive: dropping a variant is a
-    compile error at every [match] over it. *)
-type Tier =
-    Epic
-    Solid
-    Starter
-
-(** Classify a [score] into its [Tier] via nested boolean matches. *)
-tier score = match score >= 2000
-    true  => Epic
-    false => match score >= 500
-        true  => Solid
-        false => Starter
-
-(** The display badge for a [Tier]. *)
-badge t = match t
-    Epic    => "🟣 EPIC"
-    Solid   => "🔵 SOLID"
-    Starter => "🟢 STARTER"
-
-(** ACT 1: the same [account] body runs against a real ledger and a dry run. *)
-showWorlds () =
-    print "OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds"
-    real = realWorld ()
-    print "  ↳ realWorld() returned \${real}"
-    mock = dryRun ()
-    print "  ↳ dryRun()   returned \${mock}"
-
-(** ACT 2: each [crunch] runs in its own fiber; awaiting in order keeps the
-    report deterministic. *)
-showFleet () =
-    print "══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel"
-    fa = spawn crunch 10
-    fb = spawn crunch 20
-    fc = spawn crunch 40
-    ra = await fa
-    rb = await fb
-    rc = await fc
-    print "  Σeven² <10  = \${ra}  \${badge (tier ra)}\\n  Σeven² <20  = \${rb}  \${badge (tier rb)}\\n  Σeven² <40  = \${rc}  \${badge (tier rc)}\\n══════════════════════════════════════\\ntotal \${ra + rb + rc}  ·  fleet \${badge (tier (ra + rb + rc))}"
-
-(** Replay both effect worlds and the fiber-backed scoring pipeline. *)
-megaShowcaseCase () =
-    realResult = realWorld ()
-    mockResult = dryRun ()
-    future = spawn (crunch 12)
-    fiberResult = await future
-    scoreA = crunch 10
-    scoreB = crunch 20
-    scoreC = crunch 40
-    fleetScore = scoreA + scoreB + scoreC
-    checkAll "effect worlds and functional scoring state" [
-        realResult == 350,
-        mockResult == 0,
-        even 2,
-        !(even 3),
-        sq 9 == 81,
-        crunch 1 == 0,
-        scoreA == 120,
-        scoreB == 1140,
-        scoreC == 9880,
-        fiberResult == 220,
-        fleetScore == 11140,
-        badge (tier 499) == "🟢 STARTER",
-        badge (tier 500) == "🔵 SOLID",
-        badge (tier 1999) == "🔵 SOLID",
-        badge (tier 2000) == "🟣 EPIC",
-        badge Starter == "🟢 STARTER",
-        badge Solid == "🔵 SOLID",
-        badge Epic == "🟣 EPIC"
-    ]
-
-mut faulted = false
-(** One fault-sticky policy covers ledger arms, helpers and spawned pipelines. *)
-faultSticky = handler Arith
-    overflow _ lhs _ _ =>
-        faulted := true
-        lhs
-
-faultSticky showWorlds
-faultSticky showFleet
-test "mega showcase preserves effect, fiber, and tier state" (\\() =>
-    faultSticky megaShowcaseCase
-    expectFalse faulted)
+test "a healthy disk installs" (\\() => expect (healthyDisk upgrade) "installed")
+test "a full disk rolls the manifest back" (\\() => expect (fullDisk upgrade) "rolled back: disk full")
+test "a read-only disk changes nothing" (\\() => expect (readOnlyDisk upgrade) "manifest not written: read-only")
 `,
-        // @generated:py — filled from src/osprey/tests/regressions/basics/osprey_mega_showcase.test.py by scripts/update-playground.js
+        // @generated:py — filled from src/osprey/tests/effects/install/install.test.py by scripts/update-playground.js
         py: `# osprey: flavor=python
-# Osprey in one screen: algebraic effects, fibers, unions, HM inference.
-# The SAME account() runs in two worlds; only the installed handler differs.
 
-
+# The package manager's file-system effect: one install, a real disk and
+# three test doubles. The Playground opens on this program in every flavor.
 @effect
-class Console:
-    def emit(line: str) -> None: ...
+class Files:
+    def read(path: str) -> Result[str, Error]: ...
+    def write(path: str, text: str) -> Result[int, Error]: ...
 
 
-@effect
-class Ledger:
-    def post(balance: int, amount: int) -> int: ...
+def commit_lock(previous, lock):
+    match perform(Files.write("osprey.lock", lock)):
+        case Success():
+            return "installed"
+        case Error(message=message):
+            match perform(Files.write("osprey.toml", previous)):
+                case Success():
+                    return f"rolled back: {message}"
+                case Error():
+                    return f"manifest left changed: {message}"
 
 
-def account():
-    """account() only performs effects: it never learns whether the ledger is real."""
-    perform(Console.emit("open account"))
-    after_deposit = perform(Ledger.post(0, 100))
-    perform(Console.emit(f"deposit 100  → balance {after_deposit}"))
-    after_more = perform(Ledger.post(after_deposit, 250))
-    perform(Console.emit(f"deposit 250  → balance {after_more}"))
-    after_draw = perform(Ledger.post(after_more, -90))
-    perform(Console.emit(f"withdraw 90  → balance {after_draw}"))
-    return after_more
+def install(manifest, lock):
+    match perform(Files.read("osprey.toml")):
+        case Error(message=message):
+            return f"no manifest: {message}"
+        case Success(value=previous):
+            match perform(Files.write("osprey.toml", manifest)):
+                case Error(message=message):
+                    return f"manifest not written: {message}"
+                case Success():
+                    return commit_lock(previous, lock)
 
 
-@handler(Console)
-class teller:
-    def emit(line):
-        print(f"  💸 {line}")
+# Production passes the real disk (the Playground sandbox has none):
+# @handler(Files) class disk: read returns readFile(path), write returns writeFile(path, text)
 
 
-@handler(Ledger)
-class books:
-    """The real ledger books every posting."""
-    def post(balance, amount):
-        return balance + amount
+# Test doubles: canned disks, no files touched.
+@handler(Files)
+class healthy_disk:
+    def read(_path):
+        return Success(value="version = 1")
+
+    def write(_path, text):
+        return Success(value=byteLength(text))
 
 
-def real_world():
-    """World A: the real ledger."""
-    return teller(lambda: books(account))
+@handler(Files)
+class full_disk:
+    def read(_path):
+        return Success(value="version = 1")
+
+    def write(path, text):
+        return Error(message="disk full") if path == "osprey.lock" else Success(value=byteLength(text))
 
 
-@handler(Console)
-class sandbox:
-    def emit(line):
-        print(f"  🧪 [dry-run] {line}")
+@handler(Files)
+class read_only_disk:
+    def read(_path):
+        return Success(value="version = 1")
+
+    def write(_path, _text):
+        return Error(message="read-only")
 
 
-@handler(Ledger)
-class frozen:
-    def post(_balance, _amount):
-        return 0
+def upgrade():
+    return install("version = 2", "locked")
 
 
-def dry_run():
-    """World B: same code, a frozen compliance mock. Every post is a no-op."""
-    return sandbox(lambda: frozen(account))
-
-
-def even(x):
-    return x % 2 == 0
-
-
-def sq(x):
-    return x * x
-
-
-def crunch(n):
-    """Pure pipeline: sum of squares of the evens in [1, n). No loops, no mutation."""
-    return fold(map(filter(range(1, n), even), sq), 0, lambda a, b: a + b)
-
-
-@union
-class Tier:
-    """Exhaustive match over a union: drop a case and it won't compile."""
-    class Epic:
-        pass
-    class Solid:
-        pass
-    class Starter:
-        pass
-
-
-def tier(score):
-    if score >= 2000:
-        return Epic()
-    elif score >= 500:
-        return Solid()
-    else:
-        return Starter()
-
-
-def badge(t):
-    match t:
-        case Epic():
-            return "🟣 EPIC"
-        case Solid():
-            return "🔵 SOLID"
-        case Starter():
-            return "🟢 STARTER"
-
-
-def show_worlds():
-    """ACT 1: the same account() body runs against a real ledger and a dry run."""
-    print("OSPREY FEATURE TOUR\\n══════════════════════════════════════\\nACT 1 · algebraic effects — same code, two worlds")
-    real = real_world()
-    print(f"  ↳ realWorld() returned {real}")
-    mock = dry_run()
-    print(f"  ↳ dryRun()   returned {mock}")
-
-
-def show_fleet():
-    """ACT 2: each crunch() runs in its own fiber; awaiting in order keeps the report deterministic."""
-    print("══════════════════════════════════════\\nACT 2 · fibers compute functional pipelines in parallel")
-    fa = spawn(lambda: crunch(10))
-    fb = spawn(lambda: crunch(20))
-    fc = spawn(lambda: crunch(40))
-    ra = await_fiber(fa)
-    rb = await_fiber(fb)
-    rc = await_fiber(fc)
-    print(f"  Σeven² <10  = {ra}  {badge(tier(ra))}\\n  Σeven² <20  = {rb}  {badge(tier(rb))}\\n  Σeven² <40  = {rc}  {badge(tier(rc))}\\n══════════════════════════════════════\\ntotal {ra + rb + rc}  ·  fleet {badge(tier(ra + rb + rc))}")
-
-
-def mega_showcase_case():
-    """Replays both effect worlds and the fiber-backed scoring pipeline."""
-    real_result = real_world()
-    mock_result = dry_run()
-    fiber_result = await_fiber(spawn(lambda: crunch(12)))
-    score_a = crunch(10)
-    score_b = crunch(20)
-    score_c = crunch(40)
-    return checkAll("effect worlds and functional scoring state", [
-        real_result == 350,
-        mock_result == 0,
-        even(2),
-        not even(3),
-        sq(9) == 81,
-        crunch(1) == 0,
-        score_a == 120,
-        score_b == 1140,
-        score_c == 9880,
-        fiber_result == 220,
-        score_a + score_b + score_c == 11140,
-        badge(tier(499)) == "🟢 STARTER",
-        badge(tier(500)) == "🔵 SOLID",
-        badge(tier(1999)) == "🔵 SOLID",
-        badge(tier(2000)) == "🟣 EPIC",
-        badge(Starter()) == "🟢 STARTER",
-        badge(Solid()) == "🔵 SOLID",
-        badge(Epic()) == "🟣 EPIC",
-    ])
-
-
-@handler(Arith)
-class fault_sticky:
-    """One overflow policy covers ledger arms, helpers and spawned pipelines."""
-    def overflow(_op, lhs, _rhs, _width):
-        return lhs
-
-
-fault_sticky(show_worlds)
-fault_sticky(show_fleet)
-test("mega showcase preserves effect, fiber, and tier state", lambda: fault_sticky(mega_showcase_case))
+def main():
+    test("a healthy disk installs", lambda: expect(healthy_disk(upgrade), "installed"))
+    test("a full disk rolls the manifest back", lambda: expect(full_disk(upgrade), "rolled back: disk full"))
+    with read_only_disk:
+        test("a read-only disk changes nothing", lambda: expect(upgrade(), "manifest not written: read-only"))
 `,
     };
 

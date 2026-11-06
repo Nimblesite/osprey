@@ -32,7 +32,7 @@ Publishes the subject folders in `docs/specs/` using their shared `sections.json
 
 ### `update-playground.js`
 Syncs the playground editor content from the three flavor twins of
-`src/osprey/tests/regressions/basics/osprey_mega_showcase.test.{osp,ospml,py}`.
+`src/osprey/tests/effects/install/install.test.{osp,ospml,py}`.
 
 ## Manual Documentation Generation
 

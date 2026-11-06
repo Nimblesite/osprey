@@ -3,15 +3,15 @@
 const fs = require('fs');
 const path = require('path');
 
-// One tested showcase, written in each of the three flavors.
+// One tested program, the package manager's install, in each of the three flavors.
 const SHOWCASES = {
-    osp: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.osp'),
-    ospml: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.ospml'),
-    py: path.join(__dirname, '../../../osprey/tests/regressions/basics/osprey_mega_showcase.test.py'),
+    osp: path.join(__dirname, '../../../osprey/tests/effects/install/install.test.osp'),
+    ospml: path.join(__dirname, '../../../osprey/tests/effects/install/install.test.ospml'),
+    py: path.join(__dirname, '../../../osprey/tests/effects/install/install.test.py'),
 };
 const PLAYGROUND_PATH = path.join(__dirname, '../src/playground/index.md');
 
-// Each showcase is embedded inside a JS template literal (`key: \`...\``). Any
+// Each sample is embedded inside a JS template literal (`key: \`...\``). Any
 // backslash, backtick, or `${` in the Osprey source must be escaped or the
 // browser evaluates it as JS — an unescaped `${expr}` (Osprey string
 // interpolation) throws a ReferenceError that aborts the script and leaves
@@ -56,7 +56,7 @@ function updatePlayground() {
         }
 
         fs.writeFileSync(PLAYGROUND_PATH, content, 'utf8');
-        console.log('✅ Playground seeded with the tested showcase in all three syntax flavors!');
+        console.log('✅ Playground seeded with the tested install sample in all three syntax flavors!');
         return true;
     } catch (error) {
         console.error('❌ Error updating playground:', error.message);
@@ -66,7 +66,7 @@ function updatePlayground() {
 
 // Run the update
 if (require.main === module) {
-    console.log('🚀 Updating Osprey Playground with the tested showcase (all three syntax flavors)...');
+    console.log('🚀 Updating Osprey Playground with the tested install sample (all three syntax flavors)...');
     const success = updatePlayground();
     process.exit(success ? 0 : 1);
 }

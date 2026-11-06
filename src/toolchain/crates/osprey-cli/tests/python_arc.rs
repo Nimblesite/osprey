@@ -42,3 +42,14 @@ fn the_python_mega_showcase_prints_the_default_golden() {
         ),
     );
 }
+
+/// The Playground's install sample: the Python twin prints the Default golden.
+#[test]
+fn the_python_install_sample_prints_the_default_golden() {
+    effect_execution::assert_flavored_output(
+        "install",
+        "py",
+        include_str!("../../../../osprey/tests/effects/install/install.test.py"),
+        include_str!("../../../../osprey/tests/effects/install/install.test.osp.expectedoutput"),
+    );
+}
