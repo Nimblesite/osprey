@@ -13,7 +13,7 @@ const WATCH = "/docs/tutorials/swift-interop/";
 /** Every watch page, each with its own video. */
 const proofVideos = require("../src/_data/proofVideos.js");
 const proofWatch = (id) => `/docs/proofs/videos/${id}/`;
-const WATCH_PAGES = [WATCH, "/docs/tutorials/agent-native/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
+const WATCH_PAGES = [WATCH, "/docs/osprey-native/agent/", "/docs/tutorials/profiler/", "/docs/tutorials/chromecast-from-mac/", "/docs/tutorials/static-typing-python/", "/docs/tutorials/ui-testing-by-label/", "/docs/tutorials/rust-ui-framework-without-rust/", "/docs/packages-in-vscode/", ...proofVideos.map(({ id }) => proofWatch(id))];
 const read = (file) => fs.readFileSync(path.join(SITE, file), "utf8");
 const jsonLd = (html) =>
   [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map(([, json]) => JSON.parse(json));
@@ -108,6 +108,20 @@ test("the tutorials section lists each watch page", async ({ page }) => {
   await page.goto("/docs/tutorials/");
   await expect(page.locator(`a.video-card[href="${WATCH}"]`)).toBeVisible();
   await expect(page.locator(`.docs-nav-desktop a[href="/docs/tutorials/"]`)).toBeVisible();
+});
+
+// Implements [DOC-TUTORIAL-VIDEO-KIND]: an introduction film is not a tutorial.
+test("the tutorials section lists no introduction film", async ({ page }) => {
+  const videos = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../src/_data/videos.json"), "utf8"));
+  const intros = Object.entries(videos).filter(([id, v]) => !id.startsWith("_") && v.kind === "intro").map(([id]) => id);
+  expect(intros).toContain("agent-native");
+  await page.goto("/docs/tutorials/");
+  for (const id of intros) {
+    await expect(page.locator(`a.video-card[href="/docs/tutorials/${id}/"]`)).toHaveCount(0);
+    await expect(page.locator(`[data-video="${id}"]`)).toHaveCount(0);
+    expect(fs.existsSync(path.join(SITE, "docs/tutorials", id))).toBe(false);
+  }
+  expect(read("docs/osprey-native/agent/index.html")).toContain('data-video="agent-native"');
 });
 
 test("WebVTT cues and durations parse the way the markup needs them", async () => {

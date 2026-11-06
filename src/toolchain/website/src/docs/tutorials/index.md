@@ -16,14 +16,14 @@ The series follows the [Lean oracle relationship](/docs/proofs/#lean-as-an-oracl
 
 ## Applications and tools
 
-{%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and not item.data.film and item.url.startsWith("/docs/") %}{% set v = item.data.video | video %}
+{%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and not item.data.film and item.url.startsWith("/docs/") %}{% set v = item.data.video | video %}{% if v.kind != "intro" %}
 
 ## {{ v.name }}
 
 {% videoCard item.data.video, item.url %}
 
 {{ v.description }}
-{%- endif %}{% endfor %}
+{%- endif %}{% endif %}{% endfor %}
 
 ## More to read
 

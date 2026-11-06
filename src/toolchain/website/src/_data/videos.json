@@ -404,6 +404,7 @@
   "agent-native": {
     "name": "Osprey Agent: a native coding agent in action",
     "description": "Watch the real macOS SwiftUI agent: inspect failed tests, review an edit and its successful verification, then read the corrected code. Narrated walkthrough of a recorded calculator conversation, with native controls and AOT Osprey application logic.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-agent-native.mp4",
     "poster": "/assets/videos/osprey-agent-native-poster.jpg",
     "posterAlt": "Osprey Agent showing syntax-highlighted calculator code and its native usage inspector",

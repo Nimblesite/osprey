@@ -5,8 +5,8 @@ video: agent-native
 eleventyComputed:
   title: "{{ (video | video).name }}"
   description: "{{ (video | video).description }}"
-permalink: /docs/tutorials/agent-native/
-tags: [tutorials, video, native, swiftui, agents]
+permalink: /docs/osprey-native/agent/
+tags: [video, native, swiftui, agents]
 ---
 
 {% videoPlayer video %}
