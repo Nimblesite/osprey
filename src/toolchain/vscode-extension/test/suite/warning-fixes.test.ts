@@ -1,6 +1,9 @@
 import * as assert from "assert";
 import * as vscode from "vscode";
-import { CodeAction as ProtocolAction } from "vscode-languageserver-protocol";
+import {
+  CodeAction as ProtocolAction,
+  type TextDocumentEdit,
+} from "vscode-languageserver-protocol";
 import {
   applyWarningFix,
   applyWarningFixCommand,
@@ -139,6 +142,31 @@ async function discardUntitledDocuments(): Promise<void> {
   }
 }
 
+/**
+ * A clone of `action` together with its first document change, which is
+ * asserted to be the versioned edit a fresh proof always carries.
+ */
+function alteredProof(action: ProtocolAction): {
+  proof: ProtocolAction;
+  change: TextDocumentEdit;
+} {
+  const proof = structuredClone(action);
+  const change = proof.edit?.documentChanges?.[0];
+  assert.ok(
+    change && "textDocument" in change,
+    "the fresh proof carries a versioned document change",
+  );
+  return { proof, change };
+}
+
+/** The single delete-the-annotation edit every annotated action carries. */
+const DELETE_ANNOTATION_EDITS = [
+  {
+    newText: "",
+    range: [0, 0, 0, 3] as [number, number, number, number],
+  },
+];
+
 suite("Warning fix document-version guard", () => {
   teardown(discardUntitledDocuments);
 
@@ -147,6 +175,28 @@ suite("Warning fix document-version guard", () => {
   // saving an untitled file raises a native Save As sheet that blocks the test
   // host until a human dismisses it. This suite must leave none behind.
   suiteTeardown(() => assert.deepStrictEqual(dirtyUntitledDocuments(), []));
+
+  /** Wrap `action` and assert the guard stripped its edit and command. */
+  async function assertGuarded(
+    document: vscode.TextDocument,
+    action: vscode.CodeAction,
+  ): Promise<vscode.CodeAction> {
+    await wrap(document, [action]);
+    assert.strictEqual(action.edit, undefined);
+    assert.strictEqual(action.command, undefined);
+    return action;
+  }
+
+  /** Insert `text` at `character` on line 0, asserting the edit lands. */
+  async function insertOnFirstLine(
+    document: vscode.TextDocument,
+    character: number,
+    text: string,
+  ): Promise<void> {
+    const edit = new vscode.WorkspaceEdit();
+    edit.insert(document.uri, new vscode.Position(0, character), text);
+    assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+  }
 
   test("converted warning carries plain command payload with the original document snapshot", async () => {
     const document = await untitled("abc body");
@@ -168,12 +218,7 @@ suite("Warning fix document-version guard", () => {
           title: action.title,
           kind: "quickfix",
           range: [0, 0, 0, 0] as [number, number, number, number],
-          edits: [
-            {
-              newText: "",
-              range: [0, 0, 0, 3] as [number, number, number, number],
-            },
-          ],
+          edits: DELETE_ANNOTATION_EDITS,
         },
       ],
     });
@@ -221,10 +266,7 @@ suite("Warning fix document-version guard", () => {
     ]) {
       const action = annotated(document);
       action.data = data;
-      await wrap(document, [action]);
-      assert.strictEqual(action.edit, undefined);
-      assert.strictEqual(action.command, undefined);
-      assert.deepStrictEqual(action.disabled, {
+      assert.deepStrictEqual((await assertGuarded(document, action)).disabled, {
         reason: "The document changed. Request the quick fix again.",
       });
     }
@@ -246,11 +288,8 @@ suite("Warning fix document-version guard", () => {
     ]) {
       const action = annotated(document);
       action.edit = edit;
-      await wrap(document, [action]);
-      assert.strictEqual(action.edit, undefined);
-      assert.strictEqual(action.command, undefined);
       assert.strictEqual(
-        action.disabled?.reason,
+        (await assertGuarded(document, action)).disabled?.reason,
         "The document changed. Request the quick fix again.",
       );
     }
@@ -266,12 +305,7 @@ suite("Warning fix document-version guard", () => {
       title: "Remove redundant type signature",
       kind: "quickfix",
       range: [0, 0, 0, 0] as [number, number, number, number],
-      edits: [
-        {
-          newText: "",
-          range: [0, 0, 0, 3] as [number, number, number, number],
-        },
-      ],
+      edits: DELETE_ANNOTATION_EDITS,
     };
     for (const changed of [
       { ...fix, version: fix.version + 1 },
@@ -295,9 +329,7 @@ suite("Warning fix document-version guard", () => {
     assert.strictEqual(document.getText(), "content");
     const fresh = await wrappedAction(document);
     assert.ok(fresh.command);
-    const edit = new vscode.WorkspaceEdit();
-    edit.insert(sibling.uri, new vscode.Position(0, 9), "0");
-    assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+    await insertOnFirstLine(sibling, 9, "0");
     assert.strictEqual(
       await applyWarningFix(fresh.command.arguments?.[0]),
       false,
@@ -310,32 +342,18 @@ suite("Warning fix document-version guard", () => {
     const action = await wrappedAction(document);
     const payload = action.command?.arguments?.[0];
     const original = freshAction(document);
-    const changed = structuredClone(original);
-    assert.ok(
-      changed.edit?.documentChanges?.[0] &&
-        "textDocument" in changed.edit.documentChanges[0],
-    );
-    Object.assign(changed.edit.documentChanges[0].edits[0], {
-      newText: "different",
-    });
-    const stale = structuredClone(original);
-    assert.ok(
-      stale.edit?.documentChanges?.[0] &&
-        "textDocument" in stale.edit.documentChanges[0],
-    );
-    stale.edit.documentChanges[0].textDocument.version = document.version + 1;
-    const foreign = structuredClone(original);
-    assert.ok(
-      foreign.edit?.documentChanges?.[0] &&
-        "textDocument" in foreign.edit.documentChanges[0],
-    );
-    foreign.edit.documentChanges[0].textDocument.uri = "file:///foreign.ospml";
+    const changed = alteredProof(original);
+    Object.assign(changed.change.edits[0], { newText: "different" });
+    const stale = alteredProof(original);
+    stale.change.textDocument.version = document.version + 1;
+    const foreign = alteredProof(original);
+    foreign.change.textDocument.uri = "file:///foreign.ospml";
     for (const result of [
       null,
       [],
-      [changed],
-      [stale],
-      [foreign],
+      [changed.proof],
+      [stale.proof],
+      [foreign.proof],
       [{ ...original, edit: undefined }],
       [{ ...original, diagnostics: [] }],
       [{ ...original, title: "Different fix" }],
@@ -369,9 +387,7 @@ suite("Warning fix document-version guard", () => {
     const response = freshAction(document);
     assert.strictEqual(
       await applyWarningFix(action.command?.arguments?.[0], async () => {
-        const edit = new vscode.WorkspaceEdit();
-        edit.insert(document.uri, new vscode.Position(0, 8), " changed");
-        assert.strictEqual(await vscode.workspace.applyEdit(edit), true);
+        await insertOnFirstLine(document, 8, " changed");
         return [response];
       }),
       false,

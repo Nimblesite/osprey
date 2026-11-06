@@ -53,6 +53,20 @@ export function clearDebugBreakpoints(): void {
   vscode.debug.removeBreakpoints(vscode.debug.breakpoints);
 }
 
+/**
+ * Stop the debug session that is still running, if any. Cleanup that races a
+ * session which is already terminating is expected and swallowed.
+ */
+export async function stopActiveDebugSession(): Promise<void> {
+  if (vscode.debug.activeDebugSession) {
+    try {
+      await vscode.debug.stopDebugging();
+    } catch {
+      // The session can terminate naturally while cleanup races it.
+    }
+  }
+}
+
 /** Replace all breakpoints with one per spec on `filePath` (1-based lines). */
 export function setSourceBreakpoints(
   filePath: string,

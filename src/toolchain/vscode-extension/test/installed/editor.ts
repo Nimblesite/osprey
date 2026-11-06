@@ -31,6 +31,40 @@ export async function waitFor<T>(
   return value;
 }
 
+/** Assert `document` is warning-free and save it. */
+export async function saveClean(document: vscode.TextDocument): Promise<void> {
+  await diagnostics(document, []);
+  await save(document);
+}
+
+/** Undo the last edit and wait until `document` reads `expected` again. */
+export async function undoTo(
+  document: vscode.TextDocument,
+  expected: string,
+  description: string,
+): Promise<void> {
+  await vscode.commands.executeCommand("undo");
+  await waitFor(
+    () => document.getText(),
+    (text) => text === expected,
+    description,
+  );
+}
+
+/** Redo the last undone edit and wait until `document` reads `expected`. */
+export async function redoTo(
+  document: vscode.TextDocument,
+  expected: string,
+  description: string,
+): Promise<void> {
+  await vscode.commands.executeCommand("redo");
+  await waitFor(
+    () => document.getText(),
+    (text) => text === expected,
+    description,
+  );
+}
+
 export function rangeOf(
   document: vscode.TextDocument,
   text: string,

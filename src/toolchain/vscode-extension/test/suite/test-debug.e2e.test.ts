@@ -16,10 +16,7 @@ import {
   debugSuite,
   type DebugSuiteRunner,
 } from "../../client/src/test-debug";
-import {
-  refreshTestFile,
-  registerOspreyTestExplorer,
-} from "../../client/src/test-explorer";
+import { refreshTestFile } from "../../client/src/test-explorer";
 import { leafTestId } from "../../client/src/test-explorer-parse";
 import {
   assertCurrentLine,
@@ -27,8 +24,9 @@ import {
   clearDebugBreakpoints,
   continueExecution,
   setSourceBreakpoints,
-  waitForDebugSessionStart,
+  stopActiveDebugSession,
   waitForDebugSessionEnd,
+  waitForDebugSessionStart,
   waitForStop,
 } from "./dap-harness";
 import {
@@ -37,7 +35,7 @@ import {
   resolveRequiredLldbDap,
   type PinnedOspreySettings,
 } from "./osprey-test-env";
-import { RecordingSink } from "./test-explorer-harness";
+import { controllerFactory, RecordingSink } from "./test-explorer-harness";
 
 // Line numbers are load-bearing — the assertions below reference them. A `let`
 // inside the case body is what a breakpoint lands on; verified against the
@@ -72,7 +70,11 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
   let fixtureDir: string;
   let uri: vscode.Uri;
   let pinned: PinnedOspreySettings;
-  let controllerSequence = 0;
+  const newController = controllerFactory(
+    disposables,
+    "ospreyTests-debug-e2e",
+    () => compiler ?? "osprey",
+  );
 
   const realRun: DebugSuiteRunner = (target, filter, token) =>
     debugSuite(target, filter, token, (folder, config) =>
@@ -105,25 +107,14 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
     for (const disposable of disposables.splice(0)) {
       disposable.dispose();
     }
-    if (vscode.debug.activeDebugSession) {
-      try {
-        await vscode.debug.stopDebugging();
-      } catch {
-        // A session may terminate naturally while cleanup races it.
-      }
-    }
+    await stopActiveDebugSession();
   });
 
   async function discoveredFile(): Promise<{
     controller: vscode.TestController;
     file: vscode.TestItem;
   }> {
-    controllerSequence += 1;
-    const controller = registerOspreyTestExplorer(
-      { subscriptions: disposables } as unknown as vscode.ExtensionContext,
-      () => compiler ?? "osprey",
-      `ospreyTests-debug-e2e-${controllerSequence}`,
-    );
+    const controller = newController();
     const file = await refreshTestFile(controller, uri, compiler ?? "osprey");
     assert.strictEqual(file.error, undefined);
     return { controller, file };

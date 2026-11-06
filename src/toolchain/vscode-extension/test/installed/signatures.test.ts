@@ -13,9 +13,12 @@ import {
   invokeFix,
   openSource,
   rangeOf,
+  redoTo,
   replace,
   requiredActions,
   save,
+  saveClean,
+  undoTo,
   waitFor,
 } from "./editor";
 
@@ -109,6 +112,62 @@ async function singleFix(
   await assertNoActions(editor.document, rangeOf(editor.document, "greet"));
   await save(editor.document);
   return editor;
+}
+
+/**
+ * Run the source fix-all at `anchor`: assert it offers exactly one action that
+ * produces `expected` (and, when given, carries `editCount` deletions), apply
+ * it, and assert no warnings remain.
+ */
+async function applyFixAll(
+  editor: vscode.TextEditor,
+  anchor: string,
+  expected: string,
+  options: {
+    editCount?: { count: number; message: string };
+    remaining?: ExpectedDiagnostic[];
+  } = {},
+): Promise<vscode.CodeAction> {
+  const range = rangeOf(editor.document, anchor);
+  const fixes = await requiredActions(editor.document, range, fixAllKind);
+  assert.strictEqual(fixes.length, 1);
+  if (options.editCount) {
+    assert.strictEqual(
+      fixes[0].command?.arguments?.[0].edits.length,
+      options.editCount.count,
+      options.editCount.message,
+    );
+  }
+  assertEdit(fixes[0], editor.document, expected);
+  await invokeFix(editor, range, expected, fixAllKind.value);
+  await diagnostics(editor.document, options.remaining ?? []);
+  return fixes[0];
+}
+
+/** Create `workspace/<name>` with its manifest and return its path. */
+function makeProject(name: string, manifest: string): string {
+  const project = path.join(
+    process.env.OSPREY_VSIX_TEST_ROOT ?? "",
+    "workspace",
+    name,
+  );
+  fs.mkdirSync(path.join(project, "src"), { recursive: true });
+  fs.writeFileSync(path.join(project, "osprey.toml"), manifest);
+  return project;
+}
+
+/** `document`'s version, with `filePath` asserted not to be open. */
+function versionWithClosedFile(
+  document: vscode.TextDocument,
+  filePath: string,
+): number {
+  assert.ok(
+    !vscode.workspace.textDocuments.some(
+      (open) => open.uri.fsPath === filePath,
+    ),
+    `${filePath} must not be open`,
+  );
+  return document.version;
 }
 
 suite("Installed VSIX compiler warnings and signature edits", () => {
@@ -243,8 +302,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       (text) => text === greetBody,
       "Redo reapplies the same deletion",
     );
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("one curried signature produces one action without invented lambda annotations", async () => {
@@ -427,8 +485,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     assert.strictEqual(fixes[0].kind?.value, fixAllKind.value);
     assertEdit(fixes[0], editor.document, result);
     await invokeFix(editor, raised[0].range, result, fixAllKind.value);
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("fix-all removes two signatures atomically and one undo restores both", async () => {
@@ -443,26 +500,8 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       signature("shout", "(string) -> string", secondHeader),
     ];
     await diagnostics(editor.document, warnings);
-    const fixes = await requiredActions(
-      editor.document,
-      rangeOf(editor.document, greetHeader),
-      fixAllKind,
-    );
-    assert.strictEqual(fixes.length, 1);
-    assertEdit(fixes[0], editor.document, expected);
-    await invokeFix(
-      editor,
-      rangeOf(editor.document, greetHeader),
-      expected,
-      fixAllKind.value,
-    );
-    await diagnostics(editor.document, []);
-    await vscode.commands.executeCommand("undo");
-    await waitFor(
-      () => editor.document.getText(),
-      (text) => text === source,
-      "One undo restores both headers",
-    );
+    await applyFixAll(editor, greetHeader, expected);
+    await undoTo(editor.document, source, "One undo restores both headers");
     await diagnostics(editor.document, warnings);
     await save(editor.document);
   });
@@ -485,25 +524,12 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       ),
     ]);
     await assertNoActions(editor.document, rangeOf(editor.document, "-> int"));
-    const fixes = await requiredActions(
-      editor.document,
-      rangeOf(editor.document, "smaller"),
-      fixAllKind,
-    );
-    assert.strictEqual(fixes.length, 1);
-    assert.strictEqual(
-      fixes[0].command?.arguments?.[0].edits.length,
-      2,
-      "Only the two parameter annotations are deleted",
-    );
-    assertEdit(fixes[0], editor.document, expected);
-    await invokeFix(
-      editor,
-      rangeOf(editor.document, "smaller"),
-      expected,
-      fixAllKind.value,
-    );
-    await diagnostics(editor.document, []);
+    await applyFixAll(editor, "smaller", expected, {
+      editCount: {
+        count: 2,
+        message: "Only the two parameter annotations are deleted",
+      },
+    });
     assert.ok(editor.document.getText().includes("-> int"));
     await assertNoActions(
       editor.document,
@@ -548,25 +574,13 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       unused,
     ];
     await diagnostics(editor.document, warnings);
-    const fixes = await requiredActions(
-      editor.document,
-      rangeOf(editor.document, "greet"),
-      fixAllKind,
-    );
-    assert.strictEqual(fixes.length, 1);
-    assert.strictEqual(
-      fixes[0].command?.arguments?.[0].edits.length,
-      4,
-      "Fix-all deletes only the four removable annotations",
-    );
-    assertEdit(fixes[0], editor.document, expected);
-    await invokeFix(
-      editor,
-      rangeOf(editor.document, "greet"),
-      expected,
-      fixAllKind.value,
-    );
-    await diagnostics(editor.document, [unused]);
+    await applyFixAll(editor, "greet", expected, {
+      editCount: {
+        count: 4,
+        message: "Fix-all deletes only the four removable annotations",
+      },
+      remaining: [unused],
+    });
     await assertNoActions(editor.document, rangeOf(editor.document, "ignored"));
     await save(editor.document);
   });
@@ -615,14 +629,8 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   });
 
   test("an unsaved sibling change invalidates cached and newly requested project fixes", async () => {
-    const project = path.join(
-      process.env.OSPREY_VSIX_TEST_ROOT ?? "",
-      "workspace",
+    const project = makeProject(
       "project",
-    );
-    fs.mkdirSync(path.join(project, "src"), { recursive: true });
-    fs.writeFileSync(
-      path.join(project, "osprey.toml"),
       '[project]\nname = "warnings"\nsource_roots = ["src"]\ndefault_namespace = "warning_project"\nentry = "src/main.ospml"\n',
     );
     const helper = 'decorate text = text + "!"\n';
@@ -657,10 +665,9 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       "Current project proof must use the unsaved sibling",
     );
     await assertNoActions(editor.document, warning.range, fixAllKind);
-    await vscode.commands.executeCommand("undo");
-    await waitFor(
-      () => sibling.document.getText(),
-      (text) => text === helper,
+    await undoTo(
+      sibling.document,
+      helper,
       "Undo restores the sibling's concrete inference",
     );
     await diagnostics(editor.document, [
@@ -668,10 +675,9 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     ]);
     const refreshed = await requiredActions(editor.document, warning.range);
     assert.strictEqual(refreshed.length, 1);
-    await vscode.commands.executeCommand("redo");
-    await waitFor(
-      () => sibling.document.getText(),
-      (text) => text === helper.replace('text + "!"', "text"),
+    await redoTo(
+      sibling.document,
+      helper.replace('text + "!"', "text"),
       "Redo changes the sibling again",
     );
     await diagnostics(editor.document, []);
@@ -708,14 +714,8 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
   });
 
   test("a closed project sibling changed on disk is rechecked when a cached quick fix runs", async () => {
-    const project = path.join(
-      process.env.OSPREY_VSIX_TEST_ROOT ?? "",
-      "workspace",
+    const project = makeProject(
       "closed-project",
-    );
-    fs.mkdirSync(path.join(project, "src"), { recursive: true });
-    fs.writeFileSync(
-      path.join(project, "osprey.toml"),
       '[project]\nname = "closed"\nsource_roots = ["src"]\ndefault_namespace = "closed_project"\nentry = "src/main.ospml"\n',
     );
     const helperPath = path.join(project, "src", "helper.ospml");
@@ -729,12 +729,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     const cached = await requiredActions(editor.document, warning.range);
     assert.strictEqual(cached.length, 1);
     assert.ok(cached[0].command);
-    const version = editor.document.version;
-    assert.ok(
-      !vscode.workspace.textDocuments.some(
-        (document) => document.uri.fsPath === helperPath,
-      ),
-    );
+    const version = versionWithClosedFile(editor.document, helperPath);
     fs.writeFileSync(helperPath, "decorate text = text\n");
     assert.strictEqual(await replayFix(cached[0]), false);
     assert.strictEqual(
@@ -758,8 +753,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
       editor.document.getText(),
       source.replace(`${greetHeader}\n`, ""),
     );
-    await diagnostics(editor.document, []);
-    await save(editor.document);
+    await saveClean(editor.document);
   });
 
   test("manifest source-root changes revalidate both cached quick fixes and fix-all against the new project", async () => {
@@ -802,12 +796,7 @@ suite("Installed VSIX compiler warnings and signature edits", () => {
     );
     assert.strictEqual(quick.length, 1);
     assert.strictEqual(all.length, 1);
-    const version = editor.document.version;
-    assert.ok(
-      !vscode.workspace.textDocuments.some(
-        (document) => document.uri.fsPath === manifestPath,
-      ),
-    );
+    const version = versionWithClosedFile(editor.document, manifestPath);
     fs.writeFileSync(manifestPath, manifest.replace('"concrete"', '"generic"'));
     for (const action of [quick[0], all[0]]) {
       assert.strictEqual(await replayFix(action), false);

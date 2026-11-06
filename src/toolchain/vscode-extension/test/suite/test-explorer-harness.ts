@@ -1,8 +1,12 @@
 // Shared harness for the Test Explorer integration suite: the Osprey fixture
 // sources and a recording TestRunSink that captures run events for assertion.
 
+import * as assert from "assert";
 import * as vscode from "vscode";
-import type { TestRunSink } from "../../client/src/test-explorer";
+import {
+  registerOspreyTestExplorer,
+  type TestRunSink,
+} from "../../client/src/test-explorer";
 
 /** Two passing cases ("addition works" line 3, "zero identity" line 7). */
 export const PASS_FIXTURE = `fn add(a, b) = wrapAdd(a, b)
@@ -319,4 +323,40 @@ export class RecordingSink implements TestRunSink {
   public ofKind(kind: SinkEvent["kind"]): SinkEvent[] {
     return this.events.filter((event) => event.kind === kind);
   }
+}
+
+/**
+ * Require the freshly built osprey compiler for a test that shells out to it,
+ * and give that test `budgetMs` to finish. Returns the compiler so a caller
+ * gets a narrowed `string` instead of re-checking the optional resolution.
+ */
+export function requireCompiler(
+  testContext: { timeout(ms: number): unknown },
+  compiler: string | undefined,
+  budgetMs: number,
+): string {
+  assert.ok(compiler, "build the Osprey compiler before this suite");
+  testContext.timeout(budgetMs);
+  return compiler;
+}
+
+/**
+ * A controller factory for one suite: every call registers a fresh Test
+ * Explorer controller with a `idPrefix`-numbered id and records its
+ * disposables in `subscriptions`, exactly as an activation would.
+ */
+export function controllerFactory(
+  subscriptions: vscode.Disposable[],
+  idPrefix: string,
+  resolveCompiler: () => string,
+): (override?: () => string) => vscode.TestController {
+  let sequence = 0;
+  return (override) => {
+    sequence += 1;
+    return registerOspreyTestExplorer(
+      { subscriptions } as unknown as vscode.ExtensionContext,
+      override ?? resolveCompiler,
+      `${idPrefix}-${sequence}`,
+    );
+  };
 }

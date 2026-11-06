@@ -30,6 +30,15 @@ export function registerDebugTailTests(
   TEST_TIMEOUT_MS: number,
   LAUNCH_TIMEOUT_MS: number,
 ): void {
+  /** Continue past the last stop and wait for the session to end. */
+  async function finishSession(
+    session: vscode.DebugSession,
+    threadId: number,
+  ): Promise<void> {
+    await continueExecution(session, threadId);
+    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+  }
+
   test("step over executes a call without descending into it", async function () {
     this.timeout(TEST_TIMEOUT_MS);
 
@@ -48,8 +57,7 @@ export function registerDebugTailTests(
     const afterSecond = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     assertCurrentLine(afterSecond.stack, 5, getSource());
 
-    await continueExecution(session, afterSecond.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, afterSecond.threadId);
   });
 
   test("multiple breakpoints across functions are each hit in order", async function () {
@@ -75,8 +83,7 @@ export function registerDebugTailTests(
     assert.ok(hasFrame(thirdHit, "addThree"), "third stop is in addThree");
     await assertTopLocal(session, thirdHit, "n", /\b49\b/);
 
-    await continueExecution(session, thirdHit.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, thirdHit.threadId);
   });
 
   test("profiler links a real debugger variable and clears it on continue", async function () {
@@ -96,8 +103,7 @@ export function registerDebugTailTests(
     assert.strictEqual(selectedProfileVariable.value?.expression, "first");
     assert.match(selectedProfileVariable.value?.value ?? "", /25/);
     await vscode.commands.executeCommand("osprey.profiler.watchVariable");
-    await continueExecution(session, stop.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, stop.threadId);
     assert.strictEqual(selectedProfileVariable.value, undefined);
   });
 
@@ -130,8 +136,7 @@ export function registerDebugTailTests(
     await assertLocalVariable(session, frameId, "second", /\b49\b/);
     await assertLocalVariable(session, frameId, "third", /\b52\b/);
 
-    await continueExecution(session, stop.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, stop.threadId);
   });
 
   test("stopOnEntry pauses before user code, then resumes to completion", async function () {
@@ -146,8 +151,7 @@ export function registerDebugTailTests(
       "stopOnEntry paused with a live stack",
     );
 
-    await continueExecution(session, stop.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, stop.threadId);
     assert.ok(
       fs.existsSync(getDebugOutput()),
       "the debug launch compiled a native binary for the adapter",

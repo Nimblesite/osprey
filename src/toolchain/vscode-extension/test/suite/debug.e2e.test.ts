@@ -26,14 +26,15 @@ import {
   assertWatch,
   clearDebugBreakpoints,
   continueExecution,
+  type DapStop,
   readFrameVariables,
   setSourceBreakpoints,
   stepIn,
   stepOut,
+  stopActiveDebugSession,
   waitForDebugSessionEnd,
   waitForDebugSessionStart,
   waitForStop,
-  type DapStop,
 } from "./dap-harness";
 
 const extensionId = "nimblesite.osprey";
@@ -109,13 +110,7 @@ suite("Osprey Debugger E2E Workflows", function () {
 
   teardown(async () => {
     clearDebugBreakpoints();
-    if (vscode.debug.activeDebugSession) {
-      try {
-        await vscode.debug.stopDebugging();
-      } catch {
-        // A session may terminate naturally while cleanup races it.
-      }
-    }
+    await stopActiveDebugSession();
   });
 
   // Set the given breakpoints, launch the real adapter, and wait for the first
@@ -144,6 +139,34 @@ suite("Osprey Debugger E2E Workflows", function () {
     assert.strictEqual(session.type, "osprey");
     const stop = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     return { session, stop };
+  }
+
+  /** Write a fixture into the temp dir and launch it to its first stop. */
+  async function launchFile(
+    name: string,
+    text: string,
+    specs: Parameters<typeof setSourceBreakpoints>[1],
+  ): Promise<{
+    program: string;
+    session: vscode.DebugSession;
+    stop: DapStop;
+  }> {
+    const program = path.join(tempDir, name);
+    fs.writeFileSync(program, text);
+    const { session, stop } = await launchToFirstStop(specs, {
+      program,
+      debugOutput: defaultDebugOutputPath(program),
+    });
+    return { program, session, stop };
+  }
+
+  /** Continue past the last stop and wait for the session to end. */
+  async function finishSession(
+    session: vscode.DebugSession,
+    threadId: number,
+  ): Promise<void> {
+    await continueExecution(session, threadId);
+    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
   }
 
   for (const extension of ["osp", "ospml"]) {
@@ -211,12 +234,11 @@ suite("Osprey Debugger E2E Workflows", function () {
   ]) {
     test(`module stack frames retain their source names (${extension})`, async function () {
       this.timeout(TEST_TIMEOUT_MS);
-      const program = path.join(tempDir, `module.${extension}`);
-      fs.writeFileSync(program, text);
-      const { session, stop } = await launchToFirstStop([3], {
-        program,
-        debugOutput: defaultDebugOutputPath(program),
-      });
+      const { program, session, stop } = await launchFile(
+        `module.${extension}`,
+        text,
+        [3],
+      );
       const frame = assertCurrentLine(stop.stack, 3, program);
       assert.ok(frame.name.includes("billing/api::Tax::add"), frame.name);
       assert.ok(
@@ -224,8 +246,7 @@ suite("Osprey Debugger E2E Workflows", function () {
         "no encoded names in user frames",
       );
       await assertLocalVariable(session, frame.id, "n", /\b41\b/);
-      await continueExecution(session, stop.threadId);
-      await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+      await finishSession(session, stop.threadId);
     });
   }
 
@@ -233,12 +254,11 @@ suite("Osprey Debugger E2E Workflows", function () {
     for (const [extension, text] of Object.entries(fixture.sources)) {
       test(`${fixture.label} (${extension})`, async function () {
         this.timeout(TEST_TIMEOUT_MS);
-        const program = path.join(tempDir, `${fixture.prefix}.${extension}`);
-        fs.writeFileSync(program, text);
-        const { session, stop } = await launchToFirstStop([fixture.line], {
-          program,
-          debugOutput: defaultDebugOutputPath(program),
-        });
+        const { program, session, stop } = await launchFile(
+          `${fixture.prefix}.${extension}`,
+          text,
+          [fixture.line],
+        );
         await assertFrameLocals(
           session,
           stop,
@@ -247,8 +267,7 @@ suite("Osprey Debugger E2E Workflows", function () {
           fixture.prefix,
           fixture.locals,
         );
-        await continueExecution(session, stop.threadId);
-        await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+        await finishSession(session, stop.threadId);
       });
     }
   }
@@ -257,12 +276,11 @@ suite("Osprey Debugger E2E Workflows", function () {
     for (const [extension, source] of Object.entries(fixture.sources)) {
       test(`${fixture.label} (${extension})`, async function () {
         this.timeout(TEST_TIMEOUT_MS);
-        const program = path.join(tempDir, `cell.${extension}`);
-        fs.writeFileSync(program, source.text);
-        const { session, stop } = await launchToFirstStop([source.line], {
-          program,
-          debugOutput: defaultDebugOutputPath(program),
-        });
+        const { program, session, stop } = await launchFile(
+          `cell.${extension}`,
+          source.text,
+          [source.line],
+        );
         await assertCellState(
           session,
           stop,
@@ -285,8 +303,7 @@ suite("Osprey Debugger E2E Workflows", function () {
           43,
           fixture.record,
         );
-        await continueExecution(session, second.threadId);
-        await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+        await finishSession(session, second.threadId);
       });
     }
   }
@@ -311,14 +328,10 @@ suite("Osprey Debugger E2E Workflows", function () {
   for (const fixture of lexicalFixtures) {
     test(`${fixture.label} (${fixture.extension})`, async function () {
       this.timeout(TEST_TIMEOUT_MS);
-      const program = path.join(tempDir, `pattern.${fixture.extension}`);
-      fs.writeFileSync(program, fixture.text);
-      const { session, stop } = await launchToFirstStop(
+      const { program, session, stop } = await launchFile(
+        `pattern.${fixture.extension}`,
+        fixture.text,
         [fixture.innerLine, fixture.outerLine],
-        {
-          program,
-          debugOutput: defaultDebugOutputPath(program),
-        },
       );
       const inside = await assertFrameLocals(
         session,
@@ -377,8 +390,7 @@ suite("Osprey Debugger E2E Workflows", function () {
         ),
         "inner locals leave scope after the expression",
       );
-      await continueExecution(session, outside.threadId);
-      await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+      await finishSession(session, outside.threadId);
     });
   }
 
@@ -409,8 +421,7 @@ suite("Osprey Debugger E2E Workflows", function () {
     await assertWatch(session, top.id, "n == 7", /true|1/);
     await assertWatch(session, top.id, "n == 5", /false|0/);
 
-    await continueExecution(session, stop.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, stop.threadId);
   });
 
   test("step in descends into the callee; step out returns to the caller", async function () {
@@ -446,8 +457,7 @@ suite("Osprey Debugger E2E Workflows", function () {
       `stepped back out to main (was ${topName(back)})`,
     );
 
-    await continueExecution(session, back.threadId);
-    await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);
+    await finishSession(session, back.threadId);
   });
   registerDebugTailTests(
     launchToFirstStop,

@@ -19,16 +19,18 @@ import {
   registerTestDebugProfile,
   type StartDebugging,
 } from "../../client/src/test-debug";
-import {
-  refreshTestFile,
-  registerOspreyTestExplorer,
-} from "../../client/src/test-explorer";
+import { refreshTestFile } from "../../client/src/test-explorer";
 import {
   leafTestId,
   type ExecResult,
 } from "../../client/src/test-explorer-parse";
 import { resolveBuiltOsprey } from "./osprey-test-env";
-import { FAIL_FIXTURE, RecordingSink } from "./test-explorer-harness";
+import {
+  controllerFactory,
+  FAIL_FIXTURE,
+  RecordingSink,
+  requireCompiler,
+} from "./test-explorer-harness";
 
 const NOTHING = { stdout: "", stderr: "", exitCode: 0 };
 
@@ -43,19 +45,13 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
   const disposables: vscode.Disposable[] = [];
   let fixtureDir: string;
   let failUri: vscode.Uri;
-  let controllerSequence = 0;
-
   const context = (): vscode.ExtensionContext =>
     ({ subscriptions: disposables }) as unknown as vscode.ExtensionContext;
-
-  function newController(): vscode.TestController {
-    controllerSequence += 1;
-    return registerOspreyTestExplorer(
-      context(),
-      () => compiler ?? "osprey",
-      `ospreyTests-debug-${controllerSequence}`,
-    );
-  }
+  const newController = controllerFactory(
+    disposables,
+    "ospreyTests-debug",
+    () => compiler ?? "osprey",
+  );
 
   suiteSetup(() => {
     fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-test-debug-"));
@@ -274,8 +270,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     }
 
     test("a refused launch errors the suite instead of reporting nothing", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const controller = newController();
       const file = await discovered(controller);
       const sink = new RecordingSink();
@@ -291,8 +286,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("a session's own TAP decides every verdict", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const controller = newController();
       const file = await discovered(controller);
       const sink = new RecordingSink();
@@ -319,8 +313,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("a whole-file request launches ONE session with no case filter", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const controller = newController();
       const file = await discovered(controller);
       const launched: vscode.DebugConfiguration[] = [];
@@ -336,8 +329,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("a single-case request filters the session to that case", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      requireCompiler(this, compiler, 30000);
       const controller = newController();
       const file = await discovered(controller);
       const good = file.children.get(
@@ -358,8 +350,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
     });
 
     test("cancelling the run stops waiting on the session", async function () {
-      assert.ok(compiler, "build the Osprey compiler before this suite");
-      this.timeout(30000);
+      const osprey = requireCompiler(this, compiler, 30000);
       const controller = newController();
       const file = await discovered(controller);
       const source = new vscode.CancellationTokenSource();
@@ -372,7 +363,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
       };
       await makeDebugHandler(
         controller,
-        () => compiler,
+        () => osprey,
         start,
       )(new vscode.TestRunRequest([file]), source.token);
       assert.ok(source.token.isCancellationRequested);
