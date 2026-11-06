@@ -220,72 +220,52 @@ fn canonical(src: &str, flavor: Flavor) -> String {
 /// Drop every `Position { line: N, column: M }` from a debug string. `Position`
 /// has no nested braces, so the next `}` always closes it.
 
-#[test]
-fn doc_comments_lower_identically_across_flavors() {
+/// Default and ML spellings that must (or must not) lower to the same
+/// canonical AST: `(default, ml, equal, why)`.
+const CANONICAL_PAIRS: [(&str, &str, bool, &str); 4] = [
     // A `///`-documented Default function and its `(** … *)` ML twin lower to
-    // the SAME DocComment on the canonical AST — the doc body markup is
-    // flavor-neutral, only the sigil differs ([DOC-MODEL], [DOC-ATTACH],
-    // [DOC-BODY-MARKDOWN], [DOC-SECTIONS], [DOC-SIGIL-DEFAULT],
-    // [DOC-SIGIL-ML], [FLAVOR-BOUNDARY]).
-    // Both are curried single-param functions so the whole AST (doc included)
-    // matches, not just the doc field.
-    let default_doc = "/// Doubles `x`.\n\
-                       ///\n\
-                       /// # Returns\n\
-                       /// twice x\n\
-                       fn dbl(x) = fn(y) => x + y\n";
-    let ml_doc = "(** Doubles `x`.\n\n    # Returns\n    twice x *)\n\
-                  dbl x y = x + y\n";
-    assert_eq!(
-        canonical(default_doc, Flavor::Default),
-        canonical(ml_doc, Flavor::Ml),
-        "a documented function must lower to an identical DocComment in both flavors"
-    );
-}
+    // the SAME DocComment: the doc body markup is flavor-neutral, only the
+    // sigil differs ([DOC-MODEL], [DOC-ATTACH], [DOC-BODY-MARKDOWN],
+    // [DOC-SECTIONS], [DOC-SIGIL-DEFAULT], [DOC-SIGIL-ML], [FLAVOR-BOUNDARY]).
+    // Both are curried single-param functions so the whole AST matches.
+    (
+        "/// Doubles `x`.\n///\n/// # Returns\n/// twice x\nfn dbl(x) = fn(y) => x + y\n",
+        "(** Doubles `x`.\n\n    # Returns\n    twice x *)\ndbl x y = x + y\n",
+        true,
+        "a documented function must lower to an identical DocComment in both flavors",
+    ),
+    // ML curries by default, so the multi-binding `add x y = …` IS the Default
+    // explicit-curry chain: Function { params: [x] } returning Lambda { [y] }.
+    (
+        "fn add(x) = fn(y) => x + y\n",
+        "add x y = x + y\n",
+        true,
+        "curried ML multi-binding must equal Default explicit-curry",
+    ),
+    // ML's uncurried surface `add (x, y) = …` is one flat two-parameter
+    // Function, the mirror twin of every multi-parameter Default function.
+    (
+        "fn add(x, y) = x + y\n",
+        "add (x, y) = x + y\n",
+        true,
+        "ML uncurried tuple binding must equal Default multi-param",
+    ),
+    // Currying is a real semantic difference, not a spelling: the curried ML
+    // chain never lowers to the two-parameter Default form.
+    (
+        "fn add(x, y) = x + y\n",
+        "add x y = x + y\n",
+        false,
+        "Default multi-param must NOT equal the curried ML multi-binding",
+    ),
+];
 
 #[test]
-fn ml_multiparam_equals_default_explicit_curry() {
-    // Both lower to a one-parameter Function { params: [x] } whose body is a
-    // Lambda { params: [y], body: x + y } — ML curries by default, so the
-    // multi-binding `add x y = …` IS the Default explicit-curry chain.
-    let default_curry = "fn add(x) = fn(y) => x + y\n";
-    let ml_multi = "add x y = x + y\n";
-    assert_eq!(
-        canonical(default_curry, Flavor::Default),
-        canonical(ml_multi, Flavor::Ml),
-        "curried ML multi-binding must equal Default explicit-curry at the canonical AST"
-    );
-}
-
-#[test]
-fn ml_uncurried_tuple_equals_default_multiparam() {
-    // Bucket 2: ML's uncurried surface `add (x, y) = …` lowers to one flat
-    // two-parameter Function { params: [x, y], body: x + y } — byte-identical to
-    // Default `fn add(x, y)`. This is the mirror twin for every multi-parameter
-    // Default function, so a `.osp` multi-param binding pairs with a `.ospml`
-    // tuple binding and they emit identical IR.
-    let default_multi = "fn add(x, y) = x + y\n";
-    let ml_tuple = "add (x, y) = x + y\n";
-    assert_eq!(
-        canonical(default_multi, Flavor::Default),
-        canonical(ml_tuple, Flavor::Ml),
-        "ML uncurried tuple binding must equal Default multi-param at the canonical AST"
-    );
-}
-
-#[test]
-fn ml_multiparam_differs_from_default_multiparam() {
-    // Default `fn add(x, y) = …` is one two-parameter Function — the uncurried
-    // `(int, int) -> int`, a different node than the curried ML chain (a
-    // one-parameter Function returning a Lambda). Currying is a real semantic
-    // difference, not a spelling: ML never lowers to the multi-parameter form.
-    let default_multi = "fn add(x, y) = x + y\n";
-    let ml_multi = "add x y = x + y\n";
-    assert_ne!(
-        canonical(default_multi, Flavor::Default),
-        canonical(ml_multi, Flavor::Ml),
-        "Default multi-param must NOT equal the curried ML multi-binding"
-    );
+fn flavor_spellings_lower_to_the_expected_canonical_ast() {
+    for (default, ml, equal, why) in CANONICAL_PAIRS {
+        let same = canonical(default, Flavor::Default) == canonical(ml, Flavor::Ml);
+        assert_eq!(same, equal, "{why}:\n{default}\n{ml}");
+    }
 }
 
 /// [TYPE-RECORD-UPDATE] Qualification and type application construct even when
