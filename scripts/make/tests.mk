@@ -239,7 +239,7 @@ _test_gpu_device: $(GPU_DEVICE_NATIVE)
 # by the expectation suite. clean.osp cannot finish inside the pinned
 # 64-byte/30-second settings on either backend (~49s of solver work on idle
 # Apple silicon; strictly worse under GC) — GitHub issue #306, plan 0034
-# known-bug items, docs/reviews/review.md#hunt. Verify a fix
+# known-bug items. Verify a fix
 # with `make _test_hunt_clean`; it stays red until the fix lands.
 HUNT_KNOWN_BUGS ?= clean
 

@@ -27,6 +27,8 @@ Callable handler values, block-scoped `handle`, declared value/control modes, re
 
 ## Phase 4 — Targets, traces, editor
 
+- [ ] Reproduce or close the review lead (2026-11-06, unconfirmed): static-handler monotonicity is not transitive, and invalid unused arms are erased before they are checked (`osprey-ast/src/stage.rs`, `lower_static.rs`). A confirmed case becomes a GitHub bug.
+- [ ] Run the 63 resumable-effect corpus programs on the macOS host target. They are skipped there with "a suspended continuation cannot cross or outlive a synchronous host call" (`tests/effects/{multiplicity,resume,scope}`, `tests/modules/{ml_layout_depth,module_effects_rows,signature_ascription}`).
 - [ ] Run continuation programs on native and wasm32 with identical answers; support `once` on wasm32 when the stack-switching backend provides it and keep `many` portable (no permanent ban); keep rejecting missing capabilities before linking, naming the operation ([MULTI-WASM], [STAGE-WASM]). Files: `src/toolchain/crates/osprey-cli/src/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/target_capabilities.rs`, `src/toolchain/crates/osprey-cli/tests/staged_multiplicity.rs`. Acceptance: `ONCE_ON_WASM` compiles and runs; `MANY_ON_WASM` runs once a portable representation exists; capability rejections still name the operation.
 
 - [ ] Ship the effect trace: a debug build and DAP view record the resolved perform site, actual runtime handler instance and resumption branch, innermost first; static-discharged sites are excluded ([MULTI-TRACE], [DEBUGGER-EFFECT-TRACE]). Files: `src/toolchain/crates/osprey-debug`, debug codegen, VS Code extension DAP view. Acceptance: a paused session shows the trace and selecting an entry navigates to the perform or arm.

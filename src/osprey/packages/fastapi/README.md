@@ -58,7 +58,15 @@ Known remaining parameter limits: implicit `Annotated`/decorator binding is not 
 
 The HTTP drivers refuse `python -O`, retain diagnostic logs, and bound owned processes by runtime, memory and output limits. Native suites retry occupied loopback ports and verify listener recovery; GC/ARC acceptance runs concurrently. The external corpus also checks all eight non-GET methods, empty HEAD bodies, raw non-NUL binary payloads, CRLF content and larger echo bodies.
 
-Run `make -C src/osprey/packages fastapi-benchmark` to compare health and bundle routing, valid identity-provider bodies and indexed 422 responses on GC, ARC and pinned CPython FastAPI. Every timed response is asserted. The benchmark writes per-trial results to `target/fastapi/benchmark/results.json`. See [FASTAPI-BENCHMARK-SUBSET](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) and the [measured results](../../../../docs/reports/fastapi-acceptance.md).
+Run `make -C src/osprey/packages fastapi-benchmark` to compare health and bundle routing, valid identity-provider bodies and indexed 422 responses on GC, ARC and pinned CPython FastAPI. Every timed response is asserted. The benchmark writes per-trial results to `target/fastapi/benchmark/results.json`. See [FASTAPI-BENCHMARK-SUBSET](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md).
+
+Results from 5 November 2026 on an Apple-silicon Mac, over 18,603 verified responses (IDP is the identity-provider model-binding workload):
+
+| Runtime | Health req/s | Bundle req/s | Valid IDP req/s | Invalid IDP req/s |
+|---|---:|---:|---:|---:|
+| osprey-gc | 3,302 | 3,185 | 2,479 | 2,662 |
+| osprey-arc | 6,075 | 5,791 | 4,272 | 4,408 |
+| cpython | 5,585 | 4,509 | 4,905 | 3,594 |
 
 `Applications.with_exception_handler(app, status, handler)` registers an immutable handler for typed HTTP failures from routing, dependencies or endpoints. The latest registration for a status wins. Handlers receive the request and typed exception, and their response passes through the app middleware. Ordinary responses keep their original body and headers. `Applications.include_router` preserves registrations. Class-based uncaught exception and database error handling remain open.
 

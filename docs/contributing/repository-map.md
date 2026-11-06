@@ -56,6 +56,6 @@ Manual `osprey program.osp --run` retains normal application semantics: relative
 
 ## Supporting material
 
-Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `.github/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
+Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `.github/` holds tooling schemas. `docs/regressions.md` lists regressions since the last release; released bugs are GitHub issues.
 
 Configuration files stay at the root when their tools discover them there. Workspace, compiler and release manifests are entry points, not miscellaneous project documentation.
