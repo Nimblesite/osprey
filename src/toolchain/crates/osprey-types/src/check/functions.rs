@@ -1,26 +1,41 @@
 //! Type checking: functions.
+use std::ops::ControlFlow;
+
 use super::binding_order::BindingOrder;
 use super::{
     BTreeSet, Checker, EffectRef, Expr, HashMap, Parameter, Position, Program, Scheme, Stmt, Type,
     TypeEnv,
 };
 
+#[cfg(test)]
+std::thread_local! {
+    pub(super) static LATE_TRIAL_BODY_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 impl Checker {
     /// Pass two: infer bodies and run top-level statements.
-    pub(super) fn check(&mut self, program: &Program, env: &mut TypeEnv) {
-        self.check_statements(&mut program.statements.iter(), env);
+    pub(super) fn check(
+        &mut self,
+        program: &Program,
+        env: &mut TypeEnv,
+        probe: Option<(&str, &Type)>,
+    ) -> ControlFlow<()> {
+        self.check_statements(&mut program.statements.iter(), env, probe)
     }
 
     pub(super) fn check_statements(
         &mut self,
         statements: &mut dyn Iterator<Item = &Stmt>,
         env: &mut TypeEnv,
-    ) {
+        probe: Option<(&str, &Type)>,
+    ) -> ControlFlow<()> {
         let statements: Vec<&Stmt> = statements.collect();
         let mut order = BindingOrder::new(statements.clone());
         for (cursor, statement) in statements.into_iter().enumerate() {
             match statement {
-                Stmt::Function { .. } => self.check_callees_first(&mut order, cursor, cursor, env),
+                Stmt::Function { .. } => {
+                    self.check_callees_first(&mut order, cursor, cursor, env, probe)?;
+                }
                 Stmt::Module { body, .. } => {
                     let mut inner = env.child();
                     // Module declarations live in their own lexical scope. Run
@@ -34,18 +49,20 @@ impl Checker {
                     self.check_statements(
                         &mut body.iter().map(|item| item.declaration.as_ref()),
                         &mut inner,
-                    );
+                        probe,
+                    )?;
                 }
                 Stmt::Namespace { body, .. } => {
                     let mut inner = env.child();
                     self.collect_statements(body.iter(), &mut inner);
-                    self.check_statements(&mut body.iter(), &mut inner);
+                    self.check_statements(&mut body.iter(), &mut inner, probe)?;
                 }
                 // `let` / assignment / bare-expr statements infer the same way at
                 // top level and inside a block.
                 other => self.infer_block_stmt(other, env),
             }
         }
+        ControlFlow::Continue(())
     }
 
     /// Check the function at `index` after the later-defined functions it
@@ -59,14 +76,34 @@ impl Checker {
         index: usize,
         cursor: usize,
         env: &mut TypeEnv,
-    ) {
+        probe: Option<(&str, &Type)>,
+    ) -> ControlFlow<()> {
         let Some(statement) = order.start(index) else {
-            return;
+            return ControlFlow::Continue(());
         };
         for callee in order.callees(index, cursor) {
-            self.check_callees_first(order, callee, cursor, env);
+            self.check_callees_first(order, callee, cursor, env, probe)?;
         }
         self.check_function_stmt(statement, env);
+        if probe.is_some_and(|(owner, expected)| {
+            matches!(statement, Stmt::Function { name, .. }
+                if name == owner && self.fixed_signature_mismatch(name, expected))
+        }) {
+            return ControlFlow::Break(());
+        }
+        ControlFlow::Continue(())
+    }
+
+    /// A concrete signature cannot change under further substitution. Unresolved
+    /// signatures must still run the full trial, including later constraints.
+    fn fixed_signature_mismatch(&self, name: &str, expected: &Type) -> bool {
+        self.fn_sigs.get(name).is_some_and(|(params, ret)| {
+            let actual = Type::fun(
+                params.iter().map(|ty| self.ctx.apply(ty)).collect(),
+                self.ctx.apply(ret),
+            );
+            super::type_is_resolved(&actual) && actual != *expected
+        })
     }
 
     fn check_function_stmt(&mut self, statement: &Stmt, env: &mut TypeEnv) {
@@ -81,6 +118,10 @@ impl Checker {
         else {
             return;
         };
+        #[cfg(test)]
+        if name == "late_trial_body" {
+            LATE_TRIAL_BODY_CHECKS.with(|checks| checks.set(checks.get() + 1));
+        }
         let outer = std::mem::replace(&mut self.site, name.clone());
         let outer_site = self.ctx.enter(name.clone());
         self.check_function(name, parameters, effects, body, env, *position);

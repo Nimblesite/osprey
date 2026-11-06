@@ -221,14 +221,18 @@ pub(crate) fn published(program: &Program) -> Option<Snapshot> {
 }
 
 /// The solved types without the effect proof, or the errors that stopped them.
-fn tried(program: &Program) -> Result<Tried, Vec<crate::TypeError>> {
+fn tried(
+    program: &Program,
+    probe: Option<(&str, &Type)>,
+) -> Result<Option<Tried>, Vec<crate::TypeError>> {
     #[cfg(test)]
     let _proof = cost_tests::record(program);
-    let (types, open_handlers) = infer_annotation_trial(program)?;
-    Ok(Tried {
-        snapshot: snapshot(types),
-        open_handlers,
-    })
+    Ok(
+        infer_annotation_trial(program, probe)?.map(|(types, open_handlers)| Tried {
+            snapshot: snapshot(types),
+            open_handlers,
+        }),
+    )
 }
 
 fn snapshot(types: crate::info::ProgramTypes) -> Snapshot {

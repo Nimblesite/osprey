@@ -55,7 +55,7 @@ struct Trials<'a> {
 /// Select the jointly removable set, or `None` when the failure-directed search
 /// cannot prove one and the source-order search has to decide.
 pub(super) fn directed(proofs: &Proofs<'_>, written: &[Site]) -> Option<Vec<usize>> {
-    let baseline = tried(proofs.program()).ok()?;
+    let baseline = tried(proofs.program(), None).ok()??;
     let leaves = leaves(proofs.program());
     let owners = written.iter().map(|site| owners(&leaves, site)).collect();
     let trials = Trials {
@@ -204,10 +204,20 @@ impl Trials<'_> {
     fn judge_new(&self, chosen: &[usize], members: &[usize]) -> Result<(), Blame> {
         let erasing: BTreeSet<usize> = members.iter().copied().collect();
         let candidate = erase(self.proofs.program(), &mut |slot| !erasing.contains(&slot));
-        let trial = tried(&candidate).map_err(|errors| Blame {
+        let probe = self.signature_probe(chosen);
+        let trial = tried(&candidate, probe).map_err(|errors| Blame {
             positions: errors.iter().filter_map(|error| error.position).collect(),
             functions: BTreeSet::new(),
         })?;
+        let Some(trial) = trial else {
+            return Err(Blame {
+                positions: Vec::new(),
+                functions: probe
+                    .into_iter()
+                    .map(|(owner, _)| owner.to_owned())
+                    .collect(),
+            });
+        };
         let (base, other) = (&self.baseline.snapshot, &trial.snapshot);
         let same = base.methods == other.methods && same_types(&base.types, &other.types);
         let open = self.baseline.open_handlers || trial.open_handlers;
@@ -215,6 +225,15 @@ impl Trials<'_> {
             return Ok(());
         }
         Err(blame_labels(&base.types, &other.types))
+    }
+
+    fn signature_probe(&self, chosen: &[usize]) -> Option<(&str, &crate::ty::Type)> {
+        let [index] = chosen else {
+            return None;
+        };
+        let owner = self.written.get(*index)?.slot.owner()?;
+        let expected = self.baseline.snapshot.types.get(&format!("fn {owner}"))?;
+        (!crate::ty::has_type_var(expected)).then_some((owner, expected))
     }
 }
 

@@ -1,4 +1,6 @@
 //! Type checking: driver.
+use std::ops::ControlFlow;
+
 use crate::effect_rows::LibraryExports;
 
 use super::{
@@ -178,11 +180,14 @@ pub(crate) fn infer_annotation_candidate(
 /// what it selects with [`infer_annotation_candidate`].
 pub(crate) fn infer_annotation_trial(
     program: &Program,
-) -> Result<(crate::info::ProgramTypes, bool), Vec<TypeError>> {
+    probe: Option<(&str, &crate::ty::Type)>,
+) -> Result<Option<(crate::info::ProgramTypes, bool)>, Vec<TypeError>> {
     let program = crate::prelude::with_prelude(program);
-    let mut trial = Checker::new();
-    trial.expression_types = None;
-    let mut checker = inferred_data_contracts(&program, false, trial);
+    let mut checker = Checker::new();
+    checker.expression_types = None;
+    if check_data_contracts(&program, false, &mut checker, probe).is_break() {
+        return Ok(None);
+    }
     checker.resolve_field_uses();
     if checker.errors.is_empty() {
         finish_data_contracts(&mut checker, &program);
@@ -191,7 +196,7 @@ pub(crate) fn infer_annotation_trial(
         return Err(distinct(checker.errors));
     }
     let open = has_open_handlers(&checker);
-    Ok((publish_program(&program, checker, false), open))
+    Ok(Some((publish_program(&program, checker, false), open)))
 }
 
 fn infer_checked_with_rejection(
@@ -284,15 +289,25 @@ fn inferred_data_contracts(
     source_validated: bool,
     mut checker: Checker,
 ) -> Checker {
+    let _ = check_data_contracts(program, source_validated, &mut checker, None);
+    checker
+}
+
+fn check_data_contracts(
+    program: &Program,
+    source_validated: bool,
+    checker: &mut Checker,
+    probe: Option<(&str, &crate::ty::Type)>,
+) -> ControlFlow<()> {
     checker.source_contracts_validated = source_validated;
     let mut env = base_env();
     checker.collect(program, &mut env);
-    checker.check(program, &mut env);
+    checker.check(program, &mut env, probe)?;
     checker.ctx.settle_all_literals();
     checker.resolve_deferred_arithmetic();
     checker.validate_constants();
     checker.default_untracked_receivers();
-    checker
+    ControlFlow::Continue(())
 }
 pub(super) fn finish_data_contracts(checker: &mut Checker, program: &Program) {
     checker.validate_builtin_uses();
@@ -315,6 +330,25 @@ mod tests {
         EFFECT_CHECKS.with(|calls| calls.set(0));
         let accepted = crate::redundant::published(&program).is_some();
         (accepted, EFFECT_CHECKS.with(std::cell::Cell::get))
+    }
+
+    #[test]
+    fn a_fixed_signature_mismatch_stops_before_unrelated_bodies() {
+        use super::super::functions::LATE_TRIAL_BODY_CHECKS;
+
+        for (target, checks) in [
+            (
+                "type R = { value: int }\nfn target() -> R = R { value: 7 }",
+                1,
+            ),
+            ("fn target(value: int) = 0", 2),
+        ] {
+            let source = program(&format!("{target}\nfn late_trial_body() = 0\n"));
+            assert_eq!(check_program(&source), []);
+            LATE_TRIAL_BODY_CHECKS.with(|checks| checks.set(0));
+            assert_eq!(crate::redundant::redundant_annotations(&source), []);
+            assert_eq!(LATE_TRIAL_BODY_CHECKS.with(std::cell::Cell::get), checks);
+        }
     }
 
     #[test]
