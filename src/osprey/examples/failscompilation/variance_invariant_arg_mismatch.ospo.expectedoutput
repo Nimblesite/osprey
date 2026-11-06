@@ -1,1 +1,1 @@
-13:3: type mismatch: cannot unify int with Result<int, string>
+13:3: type mismatch: cannot unify int with Result<int, string>; decode the `Result` with `match` or `?:` before using it as `int`

@@ -1,1 +1,1 @@
-4:4: type mismatch: cannot unify int with Result<int, Error>
+4:4: type mismatch: cannot unify int with Result<int, Error>; decode the `Result` with `match` or `?:` before using it as `int`

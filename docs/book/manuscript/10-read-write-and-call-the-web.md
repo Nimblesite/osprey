@@ -215,7 +215,7 @@ fn heading(title) = "Flight Log: " + title
 fn main() = heading(readFile("flight-log.txt")) |> print
 ```
 
-From `docs/book`, check it with `../../target/release/osprey examples/chapter-10/failscompilation/undecoded-result.osp --check`. The diagnostic ends with the exact message `type mismatch: cannot unify string with Result<string, Error>`.
+From `docs/book`, check it with `../../target/release/osprey examples/chapter-10/failscompilation/undecoded-result.osp --check`. The diagnostic ends with the exact message ``type mismatch: cannot unify string with Result<string, Error>; decode the `Result` with `match` or `?:` before using it as `string` ``.
 
 The requirement comes from string concatenation in `heading`. The supplied argument is a result containing either text or an error. Changing an annotation cannot make those possibilities disappear, and the compiler rejects this without reading the file.
 
