@@ -39,13 +39,20 @@ date: "git Last Modified"
 
 <section class="section showcase-section" id="showcase" aria-labelledby="showcase-title">
   <div class="container">
-    <div class="showcase-heading"><p class="home-eyebrow">Built with Osprey</p><h2 id="showcase-title">Real apps on web, Android, iPhone, macOS, Windows and the GPU.</h2></div>
-    <figure class="overview-film showcase-film">
-      <video id="showcase-video" controls playsinline preload="none" poster="/assets/videos/osprey-showcase-poster.jpg" width="1920" height="1080" aria-label="Osprey showcase: apps built with Osprey running on web, Android, iPhone, macOS, Windows and the GPU">
-        <source src="/assets/videos/osprey-showcase.mp4" type="video/mp4">
-      </video>
-      <figcaption>Real footage: Talon Bank on web, Android and iPhone, Issue Inbox, Data Studio, Osprey Storage, Vigil, Metal scenes, Flock, Prism Synth, Casting and the Proof Workbench; the Windows shots are screen captures of the signal-flow editor, Storage and Casting in the WinUI host. Music: “Raving Energy” by Kevin MacLeod (incompetech.com), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</figcaption>
-    </figure>
+    <div class="showcase-heading"><p class="home-eyebrow">Apps</p><h2 id="showcase-title">Osprey Native. Truly native apps on every platform.</h2></div>
+    <div class="native-stage">
+      <figure class="overview-film showcase-film">
+        <video id="showcase-video" controls playsinline preload="none" poster="/assets/videos/osprey-showcase-poster.jpg" width="1920" height="1080" aria-label="Osprey showcase: apps built with Osprey running on web, Android, iPhone, macOS, Windows and the GPU">
+          <source src="/assets/videos/osprey-showcase.mp4" type="video/mp4">
+        </video>
+      </figure>
+      {{ gallery(mobile.screenshots) }}
+    </div>
+    <div class="native-copy">
+      <div><p>With <a href="/docs/osprey-native/"><code>@osprey/native</code></a>, one Osprey app compiles ahead of time to native code, and each host draws it with the platform's own native widgets (SwiftUI, WinUI, Android) or on a GPU canvas. Flutter and Compose Multiplatform draw their own widgets everywhere, and React Native runs JavaScript in an engine; Osprey Native does neither.</p><p class="native-platforms">macOS · Windows · Linux · WebAssembly · iOS · Android</p></div>
+      <div class="mobile-actions"><a class="btn btn-primary" href="/docs/osprey-native/">Explore Osprey Native ↗</a><a class="text-link" href="https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/mobile">Issue Inbox source →</a></div>
+    </div>
+    <p class="showcase-credits">Real footage: Talon Bank on web, Android and iPhone, Issue Inbox, Data Studio, Osprey Storage, Vigil, Metal scenes, Flock, Prism Synth, Casting and the Proof Workbench; the Windows shots are screen captures of the signal-flow editor, Storage and Casting in the WinUI host. The phones are Issue Inbox in the iPhone simulator and Android emulator. WebAssembly and mobile reject unsupported dynamic control effects. Music: “Raving Energy” by Kevin MacLeod (incompetech.com), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
   </div>
 </section>
 
@@ -110,12 +117,6 @@ date: "git Last Modified"
   </div>
 </section>
 
-<section class="section mobile-showcase" id="native" aria-labelledby="native-title">
-  <div class="container">
-    <div class="mobile-intro"><p class="home-eyebrow">Apps</p><h2 id="native-title">Osprey Native.<br>Truly native apps.</h2><p>With <a href="/docs/osprey-native/"><code>@osprey/native</code></a>, one Osprey app compiles ahead of time to native code, and each host draws it with the platform's own native widgets (SwiftUI, WinUI, Android) or on a GPU canvas. Flutter and Compose Multiplatform draw their own widgets everywhere, and React Native runs JavaScript in an engine; Osprey Native does neither.</p><p class="native-platforms">macOS · Windows · Linux · WebAssembly · iOS · Android</p><div class="mobile-actions"><a class="btn btn-primary" href="/docs/osprey-native/">Explore Osprey Native ↗</a><a class="text-link" href="https://github.com/Nimblesite/osprey/tree/main/src/osprey/examples/mobile">Issue Inbox source →</a></div><p class="mobile-proof">Issue Inbox, from shared Osprey modules: real simulator and emulator captures. WebAssembly and mobile reject unsupported dynamic control effects.</p></div>
-    {{ gallery(mobile.screenshots) }}
-  </div>
-</section>
 
 <section class="section community-section" id="community" aria-labelledby="community-title">
   <div class="container community-cta">

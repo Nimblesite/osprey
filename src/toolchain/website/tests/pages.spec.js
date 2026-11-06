@@ -469,14 +469,33 @@ test("the homepage says what Osprey is for, lists every platform, and has no num
   await expect(effects).not.toContainText("default allocator");
 });
 
-test("the homepage presents Osprey Native in one panel: native widgets or a canvas, every platform, real captures", async ({ page }) => {
+test("the homepage presents Osprey Native in one panel with the showcase film and the phone captures", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("#targets, .deployment-section, .mobile-capabilities")).toHaveCount(0);
-  const native = page.locator("section#native");
+  await expect(page.locator("#targets, #native, #mobile-apps, .deployment-section, .mobile-capabilities")).toHaveCount(0);
+  const native = page.locator("section#showcase");
+  await expect(page.locator(".home > section").nth(1)).toHaveId("showcase");
   await expect(native.locator("h2")).toContainText("Osprey Native");
   for (const phrase of ["@osprey/native", "native widgets", "canvas", "Flutter", "React Native", "Compose Multiplatform"]) await expect(native).toContainText(phrase);
   for (const platform of ["macOS", "Windows", "Linux", "WebAssembly", "iOS", "Android"]) await expect(native.locator(".native-platforms")).toContainText(platform);
-  await expect(native.locator(".mobile-gallery img, .mobile-gallery picture")).not.toHaveCount(0);
+  const phones = native.locator(".mobile-gallery img");
+  await expect(phones).toHaveCount(2);
+  const video = native.locator("#showcase-video");
+  for (const [width, overlap] of [[1440, true], [390, false]]) {
+    await page.setViewportSize({ width, height: 900 });
+    await video.scrollIntoViewIfNeeded();
+    const v = await video.boundingBox();
+    let overlapping = 0;
+    for (const phone of await phones.all()) {
+      await expect(phone).toBeVisible();
+      const p = await phone.boundingBox();
+      if (p.x < v.x + v.width && p.x + p.width > v.x && p.y < v.y + v.height && p.y + p.height > v.y) overlapping += 1;
+      // Never over the play button or the control bar.
+      expect(p.x > v.x + v.width / 2 + 60 || p.y > v.y + v.height, `play button clear at ${width}px`).toBe(true);
+      expect(p.y + p.height < v.y + v.height - 56 || p.y > v.y + v.height || p.x > v.x + v.width, `controls clear at ${width}px`).toBe(true);
+    }
+    expect(overlapping > 0, `a phone overlaps the film at ${width}px`).toBe(overlap);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `no sideways scroll at ${width}px`).toBe(true);
+  }
   await native.getByRole("link", { name: "Explore Osprey Native" }).click();
   await expect(page).toHaveURL(/\/docs\/osprey-native\/$/);
   const messaging = fs.readFileSync(path.resolve(__dirname, "../../../../docs/messaging.md"), "utf8");
