@@ -169,4 +169,22 @@ suite("Profiler — Manifest", () => {
     const stale = { ...manifest, contributes: { ...manifest.contributes, commands: [] } };
     assert.equal(sync.needsSync(`${JSON.stringify(stale, null, 2)}\r\n`), true, "a manifest missing the commands is out of sync");
   });
+
+  // [#352] The UI now comes from the registry, so pin the install to the lock: a stale, linked or hand-copied package fails.
+  test("the installed profiler UI is the locked registry release, not a stale, linked or packed copy", () => {
+    const name = "@nimblesite/lsp-profiler-ui", key = `node_modules/${name}`;
+    type Entry = { version?: string; resolved?: string; integrity?: string; link?: boolean };
+    const read = (file: string): Record<string, Entry> => (JSON.parse(fs.readFileSync(path.join(extensionRoot, file), "utf8")) as { packages: Record<string, Entry> }).packages;
+    const [locked, installed] = [read("package-lock.json")[key], read("node_modules/.package-lock.json")[key]];
+    assert.ok(locked?.version && locked.integrity, "the lock pins the profiler UI with an integrity hash");
+    assert.equal(locked.resolved, `https://registry.npmjs.org/${name}/-/lsp-profiler-ui-${locked.version}.tgz`, "the lock resolves to the registry tarball");
+    assert.notEqual(locked.link, true, "the lock never links a local checkout");
+    assert.deepEqual(installed && [installed.version, installed.resolved, installed.integrity, installed.link], [locked.version, locked.resolved, locked.integrity, undefined],
+      "npm installed exactly the locked tarball; run npm ci");
+    const dir = path.join(extensionRoot, key);
+    assert.ok(!fs.lstatSync(dir).isSymbolicLink(), "the installed UI is not a symlink to another build");
+    assert.equal((JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as Entry).version, locked.version, "the installed manifest is the locked version");
+    assert.equal(fs.realpathSync(require.resolve(name)).startsWith(fs.realpathSync(dir) + path.sep), true, "the extension loads the UI from its own node_modules");
+    assert.ok(fs.readdirSync(path.join(dir, "out", "src")).some(file => file.endsWith(".js")), "the release ships its built UI");
+  });
 });
