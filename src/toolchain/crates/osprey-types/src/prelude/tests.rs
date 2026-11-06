@@ -330,3 +330,18 @@ fn the_gpu_result_helpers_attach_with_the_testing_unit_and_type_check() {
     );
     assert_eq!(crate::check_program(&source), Vec::new());
 }
+
+#[test]
+fn the_text_assertion_helpers_attach_and_type_check() {
+    assert_offers_attach_once(
+        &[
+            "test(\"a\", fn() => checkTrue(containsAll(\"alpha|beta\", [\"alpha\", \"beta\"])))\n",
+            "test(\"n\", fn() => checkTrue(containsNone(\"alpha|beta\", [\"gamma\"])))\n",
+        ],
+        "containsAll containsNone exactArithmetic",
+    );
+    let source = program(
+        "test(\"text\", fn() => checkAll(\"parts\", [containsAll(\"12|spare|9\", [\"12|\", \"|spare|\", \"|9\"]), containsNone(\"12|spare|9\", [\"2.5\", \"|13|\"]), !containsAll(\"ab\", [\"a\", \"c\"]), !containsNone(\"ab\", [\"b\"]), containsAll(\"\", []), containsNone(\"\", [])]))\n",
+    );
+    assert_eq!(crate::check_program(&source), Vec::new());
+}

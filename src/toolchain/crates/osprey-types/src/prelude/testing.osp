@@ -50,3 +50,9 @@ fn iotaError(n) = match gpuIota(n) {
     Success { value } => "unexpected success ${gpuLength(value)}"
     Error { message } => toString(message)
 }
+
+/// Whether `text` contains every one of `parts`; true for no parts.
+fn containsAll(text, parts) = foldList(parts, true, fn(found, part) => found && contains(text, part))
+
+/// Whether `text` contains none of `parts`; true for no parts.
+fn containsNone(text, parts) = foldList(parts, true, fn(absent, part) => absent && !contains(text, part))

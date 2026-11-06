@@ -83,7 +83,8 @@ The same unit holds the GPU `Result` helpers the GPU suites share:
 `gpuSatisfies(result, predicate)` tests it, `withIndices(n, work)` runs `work`
 on `gpuIota(n)`, and `iotaError(n)` names why `gpuIota(n)` failed. A failed
 operation fails the case with its reason, never a substituted value
-([FAILURE-EXPLICIT]).
+([FAILURE-EXPLICIT]). `containsAll(text, parts)` and `containsNone(text, parts)`
+state that a rendered transcript holds every part, or none, in one assertion.
 
 ## Equality semantics
 
