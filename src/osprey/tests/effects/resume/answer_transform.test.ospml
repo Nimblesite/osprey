@@ -172,9 +172,8 @@ controlAnswerCase () =
     opened = gate true
     closed = gate false
     checkAll "a control arm's answer bypasses the return clause" [
-        structuralEquals [around controlWork, stop controlWork] ["done=42!", "stopped"],
-        structuralEquals [bracket twoAsks, opened controlWork] ["[[done=44]]", "open 6"],
-        structuralEquals [closed controlWork, closed twoAsks] ["closed", "closed"],
+        structuralEquals [around controlWork, stop controlWork, bracket twoAsks] ["done=42!", "stopped", "[[done=44]]"],
+        structuralEquals [opened controlWork, closed controlWork, closed twoAsks] ["open 6", "closed", "closed"],
         structuralEquals [opened twoAsks, resumeBoxText (resumeBoxValues ())] ["open 55", "boxed"],
         structuralEquals [plainBoxResume resumeBoxWork, promotedBoxResume resumeResultBoxWork] ["boxed", "boxed"],
         wrappedBoxResume resumeResultBoxWork == "boxed",

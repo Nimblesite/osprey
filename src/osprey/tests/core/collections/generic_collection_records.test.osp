@@ -71,9 +71,8 @@ fn genericRecordCollectionEffectCase() = {
     let missingBack = mapGet(envelopeMap, "missing") ?: stringFallback
 
     checkAll("Envelope<List<List<int>>,string> survives list storage and persistence", [
-            structuralEquals([listLength(envelopes), listLength(grown)], [2, 3]),
-            structuralEquals([length(firstBack.metadata), length(secondBack.metadata)], [10, 6]),
-            length(thirdBack.metadata) == 5,
+            structuralEquals([listLength(envelopes), listLength(grown), length(firstBack.metadata)], [2, 3, 10]),
+            structuralEquals([length(secondBack.metadata), length(thirdBack.metadata)], [6, 5]),
             nestedAt((listGet(envelopes, 8) ?: fallback).payload, 0, 0, [91], 98) == 99,
             listLength(envelopes) == 2,
             structuralEquals([firstBack.metadata, secondBack.metadata], ["int-matrix", "second"]),

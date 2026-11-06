@@ -18,9 +18,8 @@ module NamesTests {
 
     fn acceptsCanonicalKeys() = checkAll("canonical keys parse and round-trip", [
         structuralEquals([shown("@finch/ledger"), shown("@osprey/http")], ["@finch/ledger", "@osprey/http"]),
-        shown("@a1/b-2") == "@a1/b-2",
-        shown("@${longest(39)}/${longest(63)}") == "@${longest(39)}/${longest(63)}",
-        shown("@a/a--b") == "@a/a--b"
+        structuralEquals([shown("@a1/b-2"), shown("@a/a--b")], ["@a1/b-2", "@a/a--b"]),
+        shown("@${longest(39)}/${longest(63)}") == "@${longest(39)}/${longest(63)}"
     ])
 
     fn rejectsWithReasonCodes() = checkAll("every rejection names one stable reason code", [

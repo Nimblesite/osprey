@@ -22,11 +22,8 @@ module ReleasePathTests {
 
     fn fields() = match ReleasePath::parse("@finch/ledger/3.42") {
         Success { value } => checkAll("parse splits key, epoch and ordinal", [
-            value.key.scope == "finch",
-            value.key.name == "ledger",
-            value.epoch == 3,
-            value.ordinal == 42,
-            value.digest == ""
+            structuralEquals([value.key.scope, value.key.name, value.digest], ["finch", "ledger", ""]),
+            structuralEquals([value.epoch, value.ordinal], [3, 42])
         ])
         Error => checkAll("parse splits key, epoch and ordinal", [false])
     }

@@ -158,8 +158,7 @@ fn vectorCaseUploaded(input0, input1, input2, input3) = {
                                                             at(cross, 1, 0) == 2048,
                                                             at(cross, 2, 1) == 0,
                                                             at(cross, 3, 0) == 2048,
-                                                            at(perp, 3, 1) == 0,
-                                                            gpuLength(dots) == 4,
+                                                            structuralEquals([at(perp, 3, 1), gpuLength(dots)], [0, 4]),
                                                             gpuLength(cross) == 4,
                                                             gpuSatisfies(gpuFold(dots, 0, sumInts), fn(total) => total == 7168), gpuSatisfies(gpuFold(cross, 0, sumInts), fn(total) => total == 4096),
                                                             gpuSatisfies(gpuFold(perp, 0, speedOf), fn(total) => total == 0),
@@ -275,8 +274,7 @@ fn circleCaseUploaded(input0, input1, input2, input3, input4, input5) =
                                     structuralEquals([at(dist2, 0, 1), at(dist2, 1, 0)], [0, 25000000]),
                                     structuralEquals([at(dist2, 2, 0), at(dist2, 3, 0)], [25000000, 100000000]),
                                     structuralEquals([at(thresh, 0, 0), at(thresh, 1, 0)], [40000, 25000000]),
-                                    structuralEquals([gpuLength(hit), addSquares(3, 4)], [4, 25]),
-                                    addSquares(0, 0) == 0,
+                                    structuralEquals([gpuLength(hit), addSquares(3, 4), addSquares(0, 0)], [4, 25, 0]),
                                     gpuSatisfies(gpuFold(dist2, 0, sumInts), fn(total) => total == 150000000),
                                     at(hit, 0, false) == true, at(hit, 1, false) == true, at(hit, 2, false) == true,
                                     at(hit, 3, true) == false, gpuSatisfies(gpuMap(hit, hitCost), fn(costs) => gpuSatisfies(gpuFold(costs, 0, sumInts), fn(total) => total == 3))
@@ -336,15 +334,13 @@ fn easingCaseUploaded(input0, input1, input2) = {
 fn packCase() = withBuffer(toGpu([255, 0, 18, 300]), fn(input0) => withBuffer(toGpu([0, 255, 52, 128]), fn(input1) => withBuffer(toGpu([0, 0, 86, negFp(20)]), fn(input2) => packCaseUploaded(input0, input1, input2))))
 fn packCaseUploaded(input0, input1, input2) = withBuffer(gpuZipWith(input0, input1, packRG), fn(rg) => withBuffer(gpuZipWith(rg, input2, packRGB), fn(packed) => checkAll("colour packing", [
                     at(packed, 0, 0) == red(), at(packed, 1, 0) == green(),
-                    structuralEquals([at(packed, 2, 0), at(packed, 3, 0)], [1193046, 16744448]),
-                    structuralEquals([gpuLength(packed), redOf(white())], [4, 255]),
-                    structuralEquals([greenOf(white()), blueOf(white())], [255, 255]),
-                    structuralEquals([redOf(black()), greenOf(green())], [0, 255]),
-                    structuralEquals([redOf(green()), redOf(packRGB(packRG(300, 0), 0))], [0, 255]),
+                    structuralEquals([at(packed, 2, 0), at(packed, 3, 0), gpuLength(packed)], [1193046, 16744448, 4]),
+                    structuralEquals([redOf(white()), greenOf(white()), blueOf(white())], [255, 255, 255]),
+                    structuralEquals([redOf(black()), greenOf(green()), redOf(green())], [0, 255, 0]),
+                    redOf(packRGB(packRG(300, 0), 0)) == 255,
                     structuralEquals([blueOf(packRGB(packRG(0, 0), negFp(20))), clampChannel(255)], [0, 255]),
-                    structuralEquals([clampChannel(256), clampChannel(negFp(1))], [255, 0]),
-                    structuralEquals([luminance(white()), luminance(black())], [255, 0]),
-                    luminance(red()) == 76,
+                    structuralEquals([clampChannel(256), clampChannel(negFp(1)), luminance(white())], [255, 0, 255]),
+                    structuralEquals([luminance(black()), luminance(red())], [0, 76]),
                     gpuSatisfies(gpuMap(packed, redOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 528)),
                     gpuSatisfies(gpuMap(packed, greenOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 435)),
                     gpuSatisfies(gpuMap(packed, blueOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 86)),
@@ -364,8 +360,7 @@ fn blendCaseUploaded(input0, input1, input2) = {
                             structuralEquals([redOf(at(blended, 1, 0)), greenOf(at(blended, 1, 0))], [127, 127]),
                             structuralEquals([blueOf(at(blended, 1, 0)), redOf(at(blended, 3, 0))], [0, 63]),
                             structuralEquals([greenOf(at(blended, 3, 0)), blueOf(at(blended, 3, 0))], [191, 0]),
-                            structuralEquals([invAlpha(0), invAlpha(256)], [256, 0]),
-                            gpuLength(blended) == 4,
+                            structuralEquals([invAlpha(0), invAlpha(256), gpuLength(blended)], [256, 0, 4]),
                             gpuSatisfies(gpuMap(blended, luminance), fn(levels) => gpuSatisfies(gpuFold(levels, 0, sumInts), fn(total) => total == 754)),
                             scaleColor(white(), 256) == white(), scaleColor(white(), 0) == black()
                     ])))))
@@ -447,9 +442,8 @@ fn budgetCaseUploaded(input0, input1, input2) = {
                         checkAll("frame budget", [
                                 structuralEquals([at(running, 0, 0), at(running, 1, 0), at(running, 3, 0)], [3, 8, 17]),
                                 structuralEquals([at(running, 5, 0), gpuLength(running)], [27, 6]),
-                                structuralEquals([at(carried, 0, 0), at(carried, 5, 0)], [103, 127]),
-                                structuralEquals([at(peak, 2, 0), at(peak, 5, 0)], [5, 9]),
-                                structuralEquals([at(one, 0, 0), gpuLength(empty)], [3, 0]),
+                                structuralEquals([at(carried, 0, 0), at(carried, 5, 0), at(peak, 2, 0)], [103, 127, 5]),
+                                structuralEquals([at(peak, 5, 0), at(one, 0, 0), gpuLength(empty)], [9, 3, 0]),
                                 gpuSatisfies(gpuFold(costs, 0, sumInts), fn(total) => at(running, 5, 0) == total),
                                 gpuSatisfies(gpuFilter(running, fn(c) => c > 12), fn(over) => gpuLength(over) == 3)
                         ]))))))
@@ -477,10 +471,8 @@ fn emptyWorldWithUploaded(indices0, input0, input1, input2, input3, input4) = {
                                                         gpuLength(prefix) == 0,
                                                         gpuLength(forward) == 0,
                                                         gpuLength(backward) == 0,
-                                                        gpuLength(stepped) == 0,
-                                                        total == 0,
-                                                        seeded == 9999,
-                                                        speed == 0,
+                                                        structuralEquals([gpuLength(stepped), total], [0, 0]),
+                                                        structuralEquals([seeded, speed], [9999, 0]),
                                                         gpuLength(gathered) == 0,
                                                         at(none, 0, negFp(1)) == negFp(1), at(idx, 0, negFp(1)) == negFp(1)
                                                 ]))))))))))))

@@ -96,13 +96,10 @@ encodingIsCompactAndOrdered () =
     print "encoded: ${text}"
     checkAll "members keep their order, floats keep their point" [
         text == "{\"name\":\"osprey\",\"tags\":[\"fast\",\"typed\"],\"version\":3,\"ratio\":0.25,\"whole\":2.0,\"nested\":{\"empty\":[],\"none\":{}},\"flags\":[true,false,null]}",
-        encoded JsonNull == "null",
-        encoded (JsonInt (-9223372036854775807)) == "-9223372036854775807",
+        structuralEquals [encoded JsonNull, encoded (JsonInt (-9223372036854775807))] ["null", "-9223372036854775807"],
         encoded (JsonFloat (parseFloat "1e300" ?: 0.0)) == "1e+300",
-        encoded (JsonFloat (-0.5)) == "-0.5",
-        encoded (JsonArray []) == "[]",
-        encoded (JsonObject []) == "{}",
-        encoded (JsonArray [JsonArray [JsonArray []]]) == "[[[]]]",
+        structuralEquals [encoded (JsonFloat (-0.5)), encoded (JsonArray [])] ["-0.5", "[]"],
+        structuralEquals [encoded (JsonObject []), encoded (JsonArray [JsonArray [JsonArray []]])] ["{}", "[[[]]]"],
     ]
 
 stringsEscapeExactly () =
@@ -119,11 +116,8 @@ stringsEscapeExactly () =
     ]
 
 numbersKeepTheirKind () = checkAll "integers and floats stay distinct both ways" [
-    firstKind "[1]" == "int",
-    firstKind "[1.0]" == "float",
-    firstKind "[1e2]" == "float",
-    firstKind "[-0]" == "int",
-    firstKind "[0.5e-3]" == "float",
+    structuralEquals [firstKind "[1]", firstKind "[1.0]", firstKind "[1e2]"] ["int", "float", "float"],
+    structuralEquals [firstKind "[-0]", firstKind "[0.5e-3]"] ["int", "float"],
     canonical "[1,1.0,1e2,-0,123456789012345678]" == "[1,1.0,100.0,0,123456789012345678]",
     canonical "[0.1,2.5e-8,1.7976931348623157e308]" == "[0.1,2.5e-08,1.7976931348623157e+308]",
     reason (jsonDecode "[9223372036854775808]") == "jsonDecode: byte 1: integer outside the 64-bit range",

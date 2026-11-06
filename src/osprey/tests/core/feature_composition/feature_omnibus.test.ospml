@@ -54,19 +54,14 @@ unionsResultsAndScalars () =
     // Check union, Result, and scalar state.
     checkAll "union/result/scalar state" [
         "=== omnibus ===" == "=== omnibus ===",
-        "${colorName Green} wrapped ${wrappedValue}" == "green wrapped 42",
-        bySlot == "ada/36",
-        swapped == "36/ada",
-        "next ${25 + 1} half ${25 / 2}" == "next 26 half 12.5",
-        parseStatus "oops" == "parseInt rejected oops",
-        parseStatus "123" == "parsed 123",
-        structuralEquals [priWeight High, priWeight Med] [9, 5],
-        structuralEquals [priWeight Low, parseOr "oops" 77] [1, 77],
+        structuralEquals ["${colorName Green} wrapped ${wrappedValue}", bySlot] ["green wrapped 42", "ada/36"],
+        structuralEquals [swapped, "next ${25 + 1} half ${25 / 2}"] ["36/ada", "next 26 half 12.5"],
+        structuralEquals [parseStatus "oops", parseStatus "123"] ["parseInt rejected oops", "parsed 123"],
+        structuralEquals [priWeight High, priWeight Med, priWeight Low, parseOr "oops" 77] [9, 5, 1, 77],
         parseOr "123" 77 == 123,
         parseOr "0000000000000000000000000000000000000000000000000000000000000000" 77 == 0,
         parseOr "+0009223372036854775807" 77 == 9223372036854775807,
-        parseOr "0009223372036854775808" 77 == 77,
-        parseOr "-0009223372036854775809" 77 == 77,
+        structuralEquals [parseOr "0009223372036854775808" 77, parseOr "-0009223372036854775809" 77] [77, 77],
         parseOr "18446744073709551616" 77 == 77,
         parseOr "000000000000000000000000000000000000000000000000000000000000000x" 77 == 77,
         1.5 == 1.5,
@@ -110,10 +105,8 @@ effectsAndCollections () =
     checkAll "effect/collection state" [
         structuralEquals ["counter ${counter}", "list len ${listLength combined}"] ["counter 3", "list len 4"],
         "contains 20 ${listContains xs 20}" == "contains 20 true",
-        "map len ${mapLength m}" == "map len 2",
-        "map has a ${mapContains m "a"}" == "map has a true",
-        "scores[1] ${scoreAtOne}" == "scores[1] 92",
-        "banana ${bananaPrice}" == "banana 3",
+        structuralEquals ["map len ${mapLength m}", "map has a ${mapContains m "a"}"] ["map len 2", "map has a true"],
+        structuralEquals ["scores[1] ${scoreAtOne}", "banana ${bananaPrice}"] ["scores[1] 92", "banana 3"],
         structuralEquals [counter, listLength xs, listLength ys] [3, 3, 1],
         structuralEquals [listLength combined, scoreAtOne, bananaPrice] [4, 92, 3],
         listContains xs 20,
@@ -128,9 +121,7 @@ stringInteractions () =
     s = "  Hello  "
     // Check string and cross-feature composition.
     checkAll "string/composed state" [
-        trim s == "Hello",
-        toUpperCase s == "  HELLO  ",
-        toUpperCase (trim s) == "HELLO",
+        structuralEquals [trim s, toUpperCase s, toUpperCase (trim s)] ["Hello", "  HELLO  ", "HELLO"],
         "${toUpperCase (colorName Green)}:${toUpperCase (trim s)}:${parseOr "42" 0}" == "GREEN:HELLO:42",
         "=== omnibus done ===" == "=== omnibus done ===",
         length s == 9,

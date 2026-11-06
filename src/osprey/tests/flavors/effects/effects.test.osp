@@ -52,13 +52,12 @@ fn runBatchAssertions() = {
     ])
 
     checkAll("handler exit preserves state and persistent collection versions", [
-            structuralEquals([total, mapLength(base)], [25, 2]),
-            structuralEquals([mapLength(grown), listLength(grown.mapGet("third") ?: empty)], [3, 3]),
+            structuralEquals([total, mapLength(base), mapLength(grown)], [25, 2, 3]),
+            listLength(grown.mapGet("third") ?: empty) == 3,
             ((grown.mapGet("third") ?: empty).listGet(2) ?: 99) == 13,
             listLength(replaced.mapGet("first") ?: empty) == 1,
             ((replaced.mapGet("first") ?: empty).listGet(0) ?: 99) == 20,
-            listLength(base.mapGet("first") ?: empty) == 2,
-            listLength(mapKeys(grown)) == 3,
+            structuralEquals([listLength(base.mapGet("first") ?: empty), listLength(mapKeys(grown))], [2, 3]),
             listLength(mapValues(grown)) == 3
     ])
 }

@@ -138,9 +138,8 @@ fixedPointCaseUploaded (input0, input1) =
         structuralEquals [fpMul(unit(), 0), fpMul(0, unit()), fpMul(512, 512)] [0, 0, 256],
         structuralEquals [fpMul(negFp(512), negFp(512)), fpMul(1, 1), fpMul(negFp(1), 1)] [256, 0, 0],
         structuralEquals [fpDiv(unit(), (2 * unit()) ), fpDiv(768, 256), fpDiv(unit(), 0)] [512, 3072, 0],
-        structuralEquals [fpDiv(0, unit()), fpAbs(negFp(7)), fpAbs(0)] [0, 7, 0],
-        structuralEquals [fpAbs(7), negFp(negFp(9)), at(scaled, 0, 0)] [7, 9, 2048],
-        structuralEquals [at(scaled, 1, 0), at(scaled, 2, 1), gpuLength(scaled)] [1024, 0, 4],
+        structuralEquals [fpDiv(0, unit()), fpAbs(negFp(7)), fpAbs(0), fpAbs(7), negFp(negFp(9))] [0, 7, 0, 7, 9],
+        structuralEquals [at(scaled, 0, 0), at(scaled, 1, 0), at(scaled, 2, 1), gpuLength(scaled)] [2048, 1024, 0, 4],
         fpMul(negFp(512), 512) == negFp(256),
         fpDiv(negFp(512), 512) == negFp(1024),
         at(scaled, 3, 0) == negFp(512), gpuSatisfies(gpuFold(scaled, 0, sumInts), \total => total == 2560),
@@ -326,12 +325,11 @@ packCaseUploaded (input0, input1, input2) =
     withBuffer(gpuZipWith(input0, input1, packRG), \rg => withBuffer(gpuZipWith(rg, input2, packRGB), \packed => checkAll("colour packing", [
         at(packed, 0, 0) == red(), at(packed, 1, 0) == green(),
         structuralEquals [at(packed, 2, 0), at(packed, 3, 0), gpuLength(packed)] [1193046, 16744448, 4],
-        structuralEquals [redOf(white()), greenOf(white()), blueOf(white())] [255, 255, 255],
-        structuralEquals [redOf(black()), greenOf(green()), redOf(green())] [0, 255, 0],
-        structuralEquals [redOf(packRGB(packRG(300, 0), 0)), blueOf(packRGB(packRG(0, 0), negFp(20)))] [255, 0],
-        structuralEquals [clampChannel(255), clampChannel(256)] [255, 255],
-        structuralEquals [clampChannel(negFp(1)), luminance(white())] [0, 255],
-        structuralEquals [luminance(black()), luminance(red())] [0, 76],
+        structuralEquals [redOf(white()), greenOf(white()), blueOf(white()), redOf(black())] [255, 255, 255, 0],
+        structuralEquals [greenOf(green()), redOf(green()), redOf(packRGB(packRG(300, 0), 0))] [255, 0, 255],
+        structuralEquals [blueOf(packRGB(packRG(0, 0), negFp(20))), clampChannel(255), clampChannel(256)] [0, 255, 255],
+        structuralEquals [clampChannel(negFp(1)), luminance(white()), luminance(black())] [0, 255, 0],
+        luminance(red()) == 76,
         gpuSatisfies(gpuMap(packed, redOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 528)),
         gpuSatisfies(gpuMap(packed, greenOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 435)),
         gpuSatisfies(gpuMap(packed, blueOf), \channels => gpuSatisfies(gpuFold(channels, 0, sumInts), \total => total == 86)),
@@ -345,10 +343,8 @@ blendCaseUploaded (input0, input1, input2) =
     withBuffer(gpuMap(alpha, invAlpha), \inverse => withBuffer(gpuZipWith(input1, inverse, scaleColor), \base => withBuffer(gpuZipWith(input2, alpha, scaleColor), \layer => withBuffer(gpuZipWith(base, layer, sumInts), \blended => checkAll("alpha blending", [
         at(blended, 0, 0) == white(), at(blended, 2, 0) == white(),
         structuralEquals [redOf(at(blended, 1, 0)), greenOf(at(blended, 1, 0))] [127, 127],
-        structuralEquals [blueOf(at(blended, 1, 0)), redOf(at(blended, 3, 0))] [0, 63],
-        structuralEquals [greenOf(at(blended, 3, 0)), blueOf(at(blended, 3, 0))] [191, 0],
-        structuralEquals [invAlpha(0), invAlpha(256)] [256, 0],
-        gpuLength(blended) == 4,
+        structuralEquals [blueOf(at(blended, 1, 0)), redOf(at(blended, 3, 0)), greenOf(at(blended, 3, 0))] [0, 63, 191],
+        structuralEquals [blueOf(at(blended, 3, 0)), invAlpha(0), invAlpha(256), gpuLength(blended)] [0, 256, 0, 4],
         gpuSatisfies(gpuMap(blended, luminance), \levels => gpuSatisfies(gpuFold(levels, 0, sumInts), \total => total == 754)),
         scaleColor(white(), 256) == white(), scaleColor(white(), 0) == black()
     ])))))
@@ -400,9 +396,8 @@ stencilWithUploaded (indices5, input0, input1) =
     spike = input0
     withBuffer(gpuMap(indices5, \i => blurAt(spike, 5, i)), \smoothed => withBuffer(gpuMap(indices5, \i => blurAt(input1, 5, i)), \plateau => checkAll("edge-clamped stencil", [
         structuralEquals [at(smoothed, 0, 1), at(smoothed, 1, 0), at(smoothed, 2, 0)] [0, 30, 30],
-        structuralEquals [at(smoothed, 3, 0), at(smoothed, 4, 1), at(plateau, 0, 0)] [30, 0, 7],
-        structuralEquals [at(plateau, 4, 0), clampIdx(negFp(9), 5)] [7, 0],
-        structuralEquals [clampIdx(99, 5), clampIdx(2, 5)] [4, 2],
+        structuralEquals [at(smoothed, 3, 0), at(smoothed, 4, 1), at(plateau, 0, 0), at(plateau, 4, 0)] [30, 0, 7, 7],
+        structuralEquals [clampIdx(negFp(9), 5), clampIdx(99, 5), clampIdx(2, 5)] [0, 4, 2],
         gpuSatisfies(gpuFold(smoothed, 0, sumInts), \total => total == 90), gpuSatisfies(gpuFold(smoothed, 0, boundMax), \total => total == 30),
         gpuSatisfies(gpuFold(spike, 0, boundMax), \total => total == 90), gpuSatisfies(gpuFold(plateau, 0, sumInts), \total => total == 35)
     ])))

@@ -274,8 +274,7 @@ awaitReplaysOneEffectfulRunCase () =
     // Every intermediate total is observable, so a lost update cannot hide
     // behind a correct final one. Amounts in order: 7, 0, -5, 4, 5, 6, 1, -1.
     checkAll "the shared cell walks through every intermediate total" [
-        structuralEquals [(0 + 7 ), (7 + 0 ), (7 - 5 )] [7, 7, 2],
-        structuralEquals [(2 + 4 ), (6 + 5 ), (11 + 6 )] [6, 11, 17],
+        structuralEquals [(0 + 7 ), (7 + 0 ), (7 - 5 ), (2 + 4 ), (6 + 5 ), (11 + 6 )] [7, 7, 2, 6, 11, 17],
         structuralEquals [(17 + 1 ), (18 - 1 ), (intDiv stepped 10000 )] [18, 17, 6],
         structuralEquals [((intDiv stepped 100 ) % 100 ), (stepped % 100 ), total] [11, 17, 17],
         negRun == (7 - 5 ),
@@ -478,8 +477,7 @@ handlerCellCrossesTheFiberBoundaryCase () =
     // spawned one.
     checkAll "one promoted cell serves main-fiber and fiber performs" [
         structuralEquals [mixed, (intDiv mixed 1000000 ), ((intDiv mixed 10000 ) % 100 )] [3071218, 3, 7],
-        structuralEquals [((intDiv mixed 100 ) % 100 ), (mixed % 100 ), carried] [12, 18, 22],
-        structuralEquals [cell, hops] [22, 6],
+        structuralEquals [((intDiv mixed 100 ) % 100 ), (mixed % 100 ), carried, cell, hops] [12, 18, 22, 22, 6],
         cell == (3 + 4 + 5 + 6 + 4 ),
         carried == cell,
         mixed != 0,
@@ -587,8 +585,7 @@ channelHandoffKeepsFibersIsolatedCase () =
     // 44332211 is what a last-in-first-out buffer would print.
     checkAll "a channel hands values over oldest first" [
         structuralEquals [drained, (intDiv drained 1000000 ), ((intDiv drained 10000 ) % 100 )] [11223344, 11, 22],
-        structuralEquals [((intDiv drained 100 ) % 100 ), (drained % 100 )] [33, 44],
-        structuralEquals [sent, length trail] [110, 12],
+        structuralEquals [((intDiv drained 100 ) % 100 ), (drained % 100 ), sent, length trail] [33, 44, 110, 12],
         drained != 44332211,
         drained != 0,
         sent == (11 + 22 + 33 + 44 ),
@@ -601,8 +598,7 @@ channelHandoffKeepsFibersIsolatedCase () =
     // 975 is what a reversed drain would print; 1 + 2 - 3 balances to zero.
     checkAll "two fibers exchange only through the buffer" [
         structuralEquals [consumed, (intDiv consumed 100 ), ((intDiv consumed 10 ) % 10 )] [579, 5, 7],
-        structuralEquals [(consumed % 10 ), p1] [9, 1],
-        structuralEquals [p2, (p1 + p2 + p3 )] [2, 0],
+        structuralEquals [(consumed % 10 ), p1, p2, (p1 + p2 + p3 )] [9, 1, 2, 0],
         consumed != 975,
         consumed != 0,
         consumed == (500 + 70 + 9 ),
@@ -806,9 +802,8 @@ fiberPipelineTranscriptIsDeterministicCase () =
 
     checkAll "a data-dependent pipeline fixes a total order" [
         structuralEquals [piped, (intDiv piped 1000000 ), ((intDiv piped 10000 ) % 100 )] [1030715, 1, 3],
-        structuralEquals [((intDiv piped 100 ) % 100 ), (piped % 100 ), (1 * 2 + 1 )] [7, 15, 3],
-        structuralEquals [(3 * 2 + 1 ), (7 * 2 + 1 ), steps] [7, 15, 7],
-        structuralEquals [running, yielded, probe] [5, 40, 51],
+        structuralEquals [((intDiv piped 100 ) % 100 ), (piped % 100 ), (1 * 2 + 1 ), (3 * 2 + 1 )] [7, 15, 3, 7],
+        structuralEquals [(7 * 2 + 1 ), steps, running, yielded, probe] [15, 7, 5, 40, 51],
         piped != 0,
         piped != 1030716
     ]

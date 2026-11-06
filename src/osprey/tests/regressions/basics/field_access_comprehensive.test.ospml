@@ -95,10 +95,9 @@ fieldAccessCase () =
     incremented = counter(count = counter.count)
     moved = point(x = 100, y = 200)
     checkAll "record field behavior" [
-        structuralEquals [point.x, point.y, user.id] [15, 25, 42],
-        structuralEquals [(calculateArea rect), (rect.width + rect.height ), (point.x + point.y )] [50, 15, 40],
-        structuralEquals [counter.count, incremented.count, moved.x] [0, 0, 100],
-        structuralEquals [moved.y, point.x, point.y] [200, 15, 25],
+        structuralEquals [point.x, point.y, user.id, (calculateArea rect)] [15, 25, 42, 50],
+        structuralEquals [(rect.width + rect.height ), (point.x + point.y ), counter.count] [15, 40, 0],
+        structuralEquals [incremented.count, moved.x, moved.y, point.x, point.y] [0, 100, 200, 15, 25],
         user.active, !inactive.active,
         structuralEquals [userStatus user, userStatus inactive] ["Active User", "Inactive User"]
     ]

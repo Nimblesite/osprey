@@ -160,14 +160,13 @@ typedErrorChannelCase () =
     checkAll "typed effect results remain coherent inside maps of lists" [
         structuralEquals [mapLength scalars, (mapGet scalars "parse" ?: 99)] [3, 7],
         structuralEquals [(mapGet scalars "missing" ?: 99), (mapGet scalars "range" ?: 99)] [30, 10],
-        structuralEquals [(mapGet scalars "absent" ?: 99), mapLength nested] [99, 2],
-        structuralEquals [mapLength grown, listLength (mapGet nested "outer-inner-outer" ?: [99])] [3, 3],
+        structuralEquals [(mapGet scalars "absent" ?: 99), mapLength nested, mapLength grown] [99, 2, 3],
+        listLength (mapGet nested "outer-inner-outer" ?: [99]) == 3,
         (listGet (mapGet nested "outer-inner-outer" ?: [99]) 1 ?: 99) == 1,
         (listGet (mapGet nested "healthy-inner-healthy" ?: [99]) 2 ?: 99) == 5,
         listLength (mapGet grown "forced" ?: [99]) == 2,
         (listGet (mapGet grown "forced" ?: [99]) 0 ?: 99) == 4,
-        (listGet (mapGet grown "forced" ?: [99]) 1 ?: 99) == 4,
-        listLength (mapKeys grown) == 3,
+        structuralEquals [(listGet (mapGet grown "forced" ?: [99]) 1 ?: 99), listLength (mapKeys grown)] [4, 3],
         listLength (mapValues grown) == 3,
         !(mapContains nested "forced"),
         mapContains grown "forced"

@@ -15,8 +15,7 @@ module EscapeTests {
         Html::escape("\"") == "&quot;",
         Html::escape("<a href=\"x\">y</a>") == "&lt;a href=&quot;x&quot;&gt;y&lt;/a&gt;",
         Html::escape((fromCodePoint(27) ?: "?") + "[31m") == "?[31m",
-        Html::escape((fromCodePoint(127) ?: "?") + "x") == "?x",
-        Html::escape("") == "",
+        structuralEquals([Html::escape((fromCodePoint(127) ?: "?") + "x"), Html::escape("")], ["?x", ""]),
         Html::escape("plain ascii") == "plain ascii"
     ])
 

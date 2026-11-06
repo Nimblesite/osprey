@@ -117,8 +117,7 @@ blockStatementsCase () =
     ]
 
     checkAll "top-level bindings and lexical shadowing remain stable" [
-        structuralEquals [r1, r2, r3, r5] [42, 20, 85, 20],
-        structuralEquals [r6, outer, value, conditionalBlock 0] [94, 100, 42, 0],
+        structuralEquals [r1, r2, r3, r5, r6, outer, value, conditionalBlock 0] [42, 20, 85, 20, 94, 100, 42, 0],
         structuralEquals [conditionalBlock 41, conditionalBlock 43, conditionalBlock ((0 - 1) )] [0, 0, 0],
         shadowedBlock () == r3,
         compute () == compute (),
@@ -127,11 +126,10 @@ blockStatementsCase () =
     ]
 
     checkAll "block results retain element types in nested lists" [
-        structuralEquals [listLength results, (listGet results 0 ?: 99)] [6, 42],
-        structuralEquals [(listGet results 1 ?: 99), (listGet results 2 ?: 99)] [20, 85],
-        structuralEquals [(listGet results 3 ?: 99), (listGet results 4 ?: 99)] [30, 20],
-        structuralEquals [(listGet results 5 ?: 99), (listGet results 9 ?: 99)] [94, 99],
-        structuralEquals [listLength nestedResults, listLength (listGet nestedResults 0 ?: [99])] [3, 6],
+        structuralEquals [listLength results, (listGet results 0 ?: 99), (listGet results 1 ?: 99)] [6, 42, 20],
+        structuralEquals [(listGet results 2 ?: 99), (listGet results 3 ?: 99), (listGet results 4 ?: 99)] [85, 30, 20],
+        structuralEquals [(listGet results 5 ?: 99), (listGet results 9 ?: 99), listLength nestedResults] [94, 99, 3],
+        listLength (listGet nestedResults 0 ?: [99]) == 6,
         listLength (listGet nestedResults 1 ?: [99]) == 2,
         listLength (listGet nestedResults 2 ?: [99]) == 1,
         (listGet (listGet nestedResults 0 ?: [99]) 2 ?: 99) == 85,

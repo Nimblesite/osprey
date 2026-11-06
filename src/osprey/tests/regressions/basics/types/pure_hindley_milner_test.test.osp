@@ -243,8 +243,7 @@ fn inferredBehaviorCase() = {
         structuralEquals([identity("hm"), concat(s1: "type", s2: "safe")], ["hm", "typesafe"]),
         structuralEquals([getValue(inferredContainer), combine(inferredContainer)], ["type", "typesafe"]),
         structuralEquals([apply(f: toString, x: 123), inferredBox.item], ["123", "boxed"]),
-        structuralEquals([inferredGeneric.second, typeTest2("ha")], ["four", "haha"]),
-        pick("left", "right") == "left",
+        structuralEquals([inferredGeneric.second, typeTest2("ha"), pick("left", "right")], ["four", "haha", "left"]),
         identity(true),
         negate(false),
         typeTest3(false)

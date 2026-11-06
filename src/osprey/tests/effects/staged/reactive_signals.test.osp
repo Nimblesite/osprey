@@ -174,10 +174,9 @@ fn refreshArgumentsKeepTheirLayout() = {
     let snapshot = underCount(5, || => describeSnapshot(signalSnapshot(counterLabel)))
     print("refresh arguments: ${direct} ${built.region}=${built.json}@${built.revision} ${kept.region}=${kept.json}@${kept.revision} ${bound} ${snapshot} ${describeSnapshot(first)}")
     checkAll("refreshed snapshots keep their record layout as call arguments", [
-        structuralEquals([direct, built.region], ["count=3@1", "list"]),
-        structuralEquals([built.json, kept.region], ["count=3", "kept"]),
-        structuralEquals([kept.json, bound], ["count=2", "count=4@1"]),
-        structuralEquals([snapshot, describeSnapshot(first)], ["count=5@1", "count=2@1"]),
+        structuralEquals([direct, built.region, built.json, kept.region], ["count=3@1", "list", "count=3", "kept"]),
+        structuralEquals([kept.json, bound, snapshot], ["count=2", "count=4@1", "count=5@1"]),
+        describeSnapshot(first) == "count=2@1",
         pickRow({ revision: 9, value: "cached" }, false) == "cached@9",
         pickRow({ revision: 9, value: "cached" }, true) == "fresh@1",
         structuralEquals([built.revision, kept.revision], [1, 1]),

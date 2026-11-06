@@ -23,8 +23,7 @@ module RouterTests {
         let r = respond("GET", "/v1/packages")
         checkAll("router: packages route", [
             r.status == 200,
-            r.contentType == "application/json",
-            r.etag == "",
+            structuralEquals([r.contentType, r.etag], ["application/json", ""]),
             r.body == (Catalog::packagesJson(CatalogTests::fixture()) ?: "?")
         ])
     }
@@ -34,10 +33,9 @@ module RouterTests {
         let bare = respond("GET", "/v1/packages/finch/util")
         let missing = respond("GET", "/v1/packages/finch/gone")
         checkAll("router: package route, \"@\" optional", [
-            withAt.status == 200,
+            structuralEquals([withAt.status, missing.status], [200, 404]),
             withAt.body == bare.body,
             withAt.body == "{\"key\":\"@finch/util\",\"releases\":[{\"digest\":\"${CatalogTests::digestC()}\",\"epoch\":1,\"ordinal\":1}]}",
-            missing.status == 404,
             missing.contentType == "application/problem+json",
             missing.body == "{\"code\":\"catalog.unknown-package\",\"status\":404,\"title\":\"Unknown package\"}"
         ])
@@ -47,10 +45,9 @@ module RouterTests {
         let r = respond("GET", "/v1/releases/${CatalogTests::digestA()}")
         let missing = respond("GET", "/v1/releases/sha256:zz")
         checkAll("router: release route", [
-            r.status == 200,
+            structuralEquals([r.status, missing.status], [200, 404]),
             r.etag == "\"${CatalogTests::digestA()}\"",
             r.body == "{\"digest\":\"${CatalogTests::digestA()}\",\"epoch\":1,\"files\":[\"osprey.toml\",\"src/lib.osp\"],\"key\":\"@finch/ledger\",\"ordinal\":1}",
-            missing.status == 404,
             missing.etag == "",
             missing.body == "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}"
         ])
@@ -60,11 +57,10 @@ module RouterTests {
         let r = respond("GET", "/v1/releases/${CatalogTests::digestA()}/source")
         let missing = respond("GET", "/v1/releases/sha256:zz/source")
         checkAll("router: source route", [
-            r.status == 200,
+            structuralEquals([r.status, missing.status], [200, 404]),
             r.contentType == "application/json",
             r.etag == "\"${CatalogTests::digestA()}\"",
             r.body == (Bundle::encode(CatalogTests::ledgerEarly()) ?: "?"),
-            missing.status == 404,
             missing.body == "{\"code\":\"catalog.unknown-release\",\"status\":404,\"title\":\"Unknown release\"}"
         ])
     }

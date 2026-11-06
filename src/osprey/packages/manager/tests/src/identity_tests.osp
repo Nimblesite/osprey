@@ -29,11 +29,10 @@ module IdentityTests {
         code(Digests::parse("sha256:${take(hex, 63)}")) == "digest.length",
         code(Digests::parse("sha256:${toUpperCase(hex)}")) == "digest.hex",
         code(Digests::parse("sha256:${take(hex, 63)}g")) == "digest.hex",
-        Digests::format([0, 255]) == "sha256:00ff",
-        Digests::hexOf(digest) == hex,
-        Digests::algorithmName() == "sha256",
+        structuralEquals([Digests::format([0, 255]), Digests::algorithmName()], ["sha256:00ff", "sha256"]),
         ints(Digests::preimage("d", [9])) == "100,0,0,0,0,0,0,0,0,1,9",
-        ints(Digests::preimage("", [])) == "0,0,0,0,0,0,0,0,0"
+        ints(Digests::preimage("", [])) == "0,0,0,0,0,0,0,0,0",
+        Digests::hexOf(digest) == hex
     ])
 
     fn displayForms() = checkAll("release ids round-trip and reject every malformed part", [
@@ -77,8 +76,7 @@ module IdentityTests {
     fn spec0031Domains() = {
         let all = Domains::all()
         checkAll("every H(d, x) domain is spelled as spec 0031 writes it, once", [
-            length(all) == 26,
-            length(Order::canonicalSet(all) ?: []) == 26,
+            structuralEquals([length(all), length(Order::canonicalSet(all) ?: [])], [26, 26]),
             foldList(all, true, fn(ok, d) => ok && startsWith(d, "osprey.") && endsWith(d, ".v1")),
             Domains::manifestDomain() == "osprey.manifest.v1",
             Domains::buildPlanDomain() == "osprey.build-plan.v1",

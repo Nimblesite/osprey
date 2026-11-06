@@ -26,9 +26,7 @@ fn binaryRead() = {
     let content = readFile(binary) ?: ""
     checkAll("readFile returns every byte of a binary file", [
         ready,
-        byteLength(content) == 5,
-        (byteAt(content, 1) ?: -1) == 0,
-        (byteAt(content, 3) ?: -1) == 255
+        structuralEquals([byteLength(content), (byteAt(content, 1) ?: -1), (byteAt(content, 3) ?: -1)], [5, 0, 255])
     ])
 }
 

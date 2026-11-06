@@ -150,12 +150,10 @@ jsonNumberCase () =
         parses "1.25e-3", parses "[0,-0,1.5e10,-2E-2]"
     ]
     checkAll "a number reads back as its source text" [
-        structuralEquals [numberText "1.50", numberText "-0"] ["1.50", "-0"],
-        structuralEquals [numberText "1E+05", numberText "2.5e-3"] ["1E+05", "2.5e-3"],
+        structuralEquals [numberText "1.50", numberText "-0", numberText "1E+05"] ["1.50", "-0", "1E+05"],
+        numberText "2.5e-3" == "2.5e-3",
         numberText "123456789012345678901234567890" == "123456789012345678901234567890",
-        numberText "0" == "0",
-        textAt ("17", "") == "17",
-        textAt ("-0.25", "") == "-0.25"
+        structuralEquals [numberText "0", textAt ("17", ""), textAt ("-0.25", "")] ["0", "17", "-0.25"]
     ]
     checkAll "every non-RFC number makes the document malformed" [
         refusesNumber "-", refusesNumber "+1", refusesNumber ".5", refusesNumber "1.",

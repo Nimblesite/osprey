@@ -129,14 +129,10 @@ bindingScope () =
 
 siblingScopeCase () = checkAll ("pattern arms have independent bindings", [
     resultScope (Success(value = 2)) == "2:outer:100:outer",
-    resultScope (Error(message = "bad")) == "100:bad:100:outer",
-    unionScope (Pick 2) == "2:100",
-    unionScope Other == "100:100",
-    listScope [2, 3] == "3:100:2",
-    listScope [] == "100:100:2",
+    structuralEquals [resultScope (Error(message = "bad")), unionScope (Pick 2)] ["100:bad:100:outer", "2:100"],
+    structuralEquals [unionScope Other, listScope [2, 3], listScope []] ["100:100", "3:100:2", "100:100:2"],
     structuralScope (Coordinates(x = 2, y = 3)) == "3:100",
-    erasedScope (Coordinates(x = 2, y = 3)) == "2:100",
-    erasedScope 0 == "none:100"
+    structuralEquals [erasedScope (Coordinates(x = 2, y = 3)), erasedScope 0] ["2:100", "none:100"]
 ])
 
 capturedPattern input =

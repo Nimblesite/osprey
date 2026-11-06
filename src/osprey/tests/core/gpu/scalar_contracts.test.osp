@@ -151,8 +151,7 @@ fn gpuAbsoluteCase() = {
                     Success { value } => {
                         let integers = value
                         checkAll("GPU abs keeps float and integer callback contracts", [
-                                (gpuGet(floats, 0) ?: 0.0) == 2.5,
-                                (gpuGet(floats, 2) ?: 0.0) == 3.5,
+                                structuralEquals([(gpuGet(floats, 0) ?: 0.0), (gpuGet(floats, 2) ?: 0.0)], [2.5, 3.5]),
                                 structuralEquals([toString(gpuGet(floats, 1) ?: 1.0), faults], ["0.0", "abs"]),
                                 structuralEquals([(gpuGet(integers, 0) ?: 0), (gpuGet(integers, 1) ?: 0)], [17, 3]),
                                 (gpuGet(integers, 2) ?: 0) == 4

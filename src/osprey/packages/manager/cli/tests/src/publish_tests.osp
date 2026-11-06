@@ -54,10 +54,9 @@ module PublishTests {
         let breaking = RegistryFixture::runWith(projectReads(), [projectWalk(), existingWalk()], [], ["publish", "--folder", folder, "--breaking", "--project", project])
         let first = RegistryFixture::runWith(projectReads(), [projectWalk()], [], ["publish", "--folder", folder, "--project", project])
         checkAll("--breaking opens epoch 2; a new package is 1.1", [
-            RegistryFixture::statusOf(breaking) == 0,
+            structuralEquals([RegistryFixture::statusOf(breaking), RegistryFixture::statusOf(first)], [0, 0]),
             publishedAt(breaking, "@demo/one/2.1"),
             RegistryFixture::lineOf(breaking, 0) == "published @demo/one e2.r1 ${expectedDigest("@demo/one/2.1")}",
-            RegistryFixture::statusOf(first) == 0,
             publishedAt(first, "@demo/one/1.1")
         ])
     }
@@ -68,11 +67,10 @@ module PublishTests {
         let noFolder = RegistryFixture::runWith(projectReads(), [projectWalk()], [], ["publish", "--project", project])
         let badPython = RegistryFixture::runWith(listAppend(projectReads(), Fixture::readRoute("${project}/src/model.py", "print(1)\n")), [Fixture::walkRoute(project, ["osprey.toml", "src/main.osp", "src/model.py"])], [], ["publish", "--folder", folder, "--project", project])
         checkAll("publish.no-package, publish.usage and the source rules refuse before writing", [
-            RegistryFixture::statusOf(plain) == 1,
-            RegistryFixture::lineOf(plain, 0) == "publish.no-package",
-            RegistryFixture::statusOf(noFolder) == 2,
-            RegistryFixture::lineOf(noFolder, 0) == "publish.usage",
+            structuralEquals([RegistryFixture::statusOf(plain), RegistryFixture::statusOf(noFolder)], [1, 2]),
             RegistryFixture::statusOf(badPython) == 1,
+            RegistryFixture::lineOf(plain, 0) == "publish.no-package",
+            RegistryFixture::lineOf(noFolder, 0) == "publish.usage",
             RegistryFixture::lineOf(badPython, 0) == "source.python-flavor-header",
             isEmpty(RegistryFixture::linesOf(plain)) == false && RegistryFixture::writesTo(badPython, "${folder}/@demo/one/1.1/osprey.toml") == 0
         ])

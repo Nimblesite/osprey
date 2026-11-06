@@ -193,8 +193,7 @@ overflowBoundaryWith (indices20, indices21, indices62, indices63) =
     withBuffer (gpuMap(indices20, bump), \uploaded84 => withBuffer (gpuFold(uploaded84, 1, prodSat), \fits => withBuffer (gpuMap(indices21, bump), \uploaded85 => withBuffer (gpuFold(uploaded85, 1, prodSat), \spills => withBuffer (toGpu ([3037000499, 3037000500]), \value => withBuffer (gpuMap(value, sqSat), \roots => withBuffer (toGpu ([minInt (), -1, 0, 1, maxInt ()]), \value => withBuffer (gpuMap(value, negSat), \edges => checkAll "checked overflow boundaries" [
                                         fits == 2432902008176640000,
                                         (gpuGet (roots, 0) ?: 0) == 9223372030926249001,
-                                        (gpuGet (edges, 1) ?: 0) == 1,
-                                        (gpuGet (edges, 2) ?: 0) == 0,
+                                        structuralEquals [(gpuGet (edges, 1) ?: 0), (gpuGet (edges, 2) ?: 0)] [1, 0],
                                         spills == overflowMark (), gpuSatisfies(gpuFold(indices62, 1, doubleUp), \uploaded81 => (uploaded81) == 4611686018427387904), gpuSatisfies(gpuFold(indices63, 1, doubleUp), \uploaded80 => (uploaded80) == overflowMark ()),
                                         (gpuGet (roots, 1) ?: 0) == overflowMark (), (gpuGet (edges, 0) ?: 0) == overflowMark (), (gpuGet (edges, 3) ?: 0) == -1,
                                         (gpuGet (edges, 4) ?: 0) == -9223372036854775807, gpuSatisfies (toGpu ([maxInt ()]), \uploaded10 => gpuSatisfies(gpuFold(uploaded10, 0, addOr), \uploaded79 => (uploaded79) == maxInt ())),

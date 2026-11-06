@@ -80,9 +80,8 @@ fn websiteExamplesCase() = {
     checkAll("website example behavior", [
         structuralEquals([double(21), square(12), pipedValue, compute(11), fiberValue], [42, 144, 100, 22, 14]),
         structuralEquals([analyzeNumber(0), analyzeNumber(42)], ["Zero", "The answer!"]),
-        structuralEquals([analyzeNumber(5), getGrade(100)], ["Something else", "Perfect!"]),
-        structuralEquals([getGrade(95), getGrade(85)], ["Excellent", "Very Good"]),
-        structuralEquals([getGrade(75), getGrade(50)], ["Good", "Needs Improvement"])
+        structuralEquals([analyzeNumber(5), getGrade(100), getGrade(95)], ["Something else", "Perfect!", "Excellent"]),
+        structuralEquals([getGrade(85), getGrade(75), getGrade(50)], ["Very Good", "Good", "Needs Improvement"])
     ])
 }
 

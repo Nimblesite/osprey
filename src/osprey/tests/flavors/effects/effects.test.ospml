@@ -51,13 +51,12 @@ runBatchAssertions () =
     ]
 
     checkAll "handler exit preserves state and persistent collection versions" [
-        structuralEquals [total, mapLength base] [25, 2],
-        structuralEquals [mapLength grown, listLength (mapGet grown "third" ?: empty)] [3, 3],
+        structuralEquals [total, mapLength base, mapLength grown] [25, 2, 3],
+        listLength (mapGet grown "third" ?: empty) == 3,
         (listGet (mapGet grown "third" ?: empty) 2 ?: 99) == 13,
         listLength (mapGet replaced "first" ?: empty) == 1,
         (listGet (mapGet replaced "first" ?: empty) 0 ?: 99) == 20,
-        listLength (mapGet base "first" ?: empty) == 2,
-        listLength (mapKeys grown) == 3,
+        structuralEquals [listLength (mapGet base "first" ?: empty), listLength (mapKeys grown)] [2, 3],
         listLength (mapValues grown) == 3
     ]
 

@@ -30,8 +30,7 @@ module GrantTests {
         let granted = grantPkgF1(world, "g-1", "m-carol", Governance::PublishRelease, Maybe::none())
         checkAll("each grant records grantor, epochs and expiry", [
             grantRow(granted, "g-1").grantor == "m-alice",
-            grantRow(granted, "g-1").packageEpoch == 1,
-            grantRow(granted, "g-1").memberEpoch == 1,
+            structuralEquals([grantRow(granted, "g-1").packageEpoch, grantRow(granted, "g-1").memberEpoch], [1, 1]),
             Maybe::isPresent(grantRow(granted, "g-1").expiresAt) == false,
             Fixture::code(GovernanceTransitions::authorize(granted, "pkg-f1", "m-carol", Governance::PublishRelease, 100)) == "",
             Fixture::code(GovernanceTransitions::authorize(granted, "pkg-f1", "m-bob", Governance::PublishRelease, 100)) == "governance.permission.missing",

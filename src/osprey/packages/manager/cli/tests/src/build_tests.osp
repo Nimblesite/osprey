@@ -190,8 +190,7 @@ module BuildTests {
         checkAll("a rejected package manifest is build.manifest with no compiler run", [
             a.report.status == 1,
             startsWith(Fixture::line(a.report, 0), "build.manifest @demo/one manifest.project.name at "),
-            a.derived == "",
-            a.commands == ""
+            structuralEquals([a.derived, a.commands], ["", ""])
         ])
     }
 

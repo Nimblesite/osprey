@@ -61,10 +61,9 @@ constructionAndIdentityCase () =
 
     // Every legacy length observation remains an independent assertion.
     checkAll "legacy construction and operation lengths" [
-        structuralEquals [listLength empty, listLength a, listLength b] [0, 3, 2],
-        structuralEquals [listLength reversed, listLength restored, listLength concatenated] [3, 3, 5],
-        structuralEquals [listLength (listConcat empty a), listLength (listConcat a empty)] [3, 3],
-        structuralEquals [listLength (a + a), listLength (a + b + a)] [6, 8],
+        structuralEquals [listLength empty, listLength a, listLength b, listLength reversed] [0, 3, 2, 3],
+        structuralEquals [listLength restored, listLength concatenated, listLength (listConcat empty a)] [3, 5, 3],
+        structuralEquals [listLength (listConcat a empty), listLength (a + a), listLength (a + b + a)] [3, 6, 8],
         structuralEquals [listLength prepended, listLength a] [4, 3]
     ]
 
@@ -308,8 +307,7 @@ typedElementRetrievalCase () =
         structuralEquals [(words[1] ?: "none"), (words[2] ?: "none")] ["beta", "gamma"],
         "${listGet words 0 ?: "none"}-${listGet words 2 ?: "none"}" == "alpha-gamma",
         toUpperCase (listGet words 0 ?: "none") == "ALPHA",
-        (listGet words 3 ?: "past end") == "past end",
-        (listGet words 99 ?: "past end") == "past end",
+        structuralEquals [(listGet words 3 ?: "past end"), (listGet words 99 ?: "past end")] ["past end", "past end"],
         (words[3] ?: "past end") == "past end",
         (listGet words 0 ?: "none") == (words[0] ?: "other"),
         (listGet words 1 ?: "none") == (words[1] ?: "other"),
@@ -349,8 +347,7 @@ typedElementRetrievalCase () =
         structuralEquals [(listGet ratios 2 ?: 0.0), (ratios[1] ?: 0.0)] [2.75, 1.25],
         (listGet ratios 0 ?: 0.0) + (listGet ratios 1 ?: 0.0) == 1.75,
         (listGet ratios 2 ?: 0.0) - (listGet ratios 0 ?: 0.0) == 2.25,
-        (listGet ratios 1 ?: 0.0) * 2.0 == 2.5,
-        (listGet ratios 9 ?: 9.5) == 9.5,
+        structuralEquals [(listGet ratios 1 ?: 0.0) * 2.0, (listGet ratios 9 ?: 9.5)] [2.5, 9.5],
         (listGet (listReverse ratios) 0 ?: 0.0) == 2.75,
         structuralEquals [listLength ratios, listLength flags] [3, 3],
         (listGet flags 0 ?: false),
@@ -539,42 +536,32 @@ stringListPatternCase () =
     // three distinct strings, so a binder reading the wrong slot is visible.
     checkAll "string binders carry their own element" [
         structuralEquals [headOr (noWords, "empty"), headOr (solo, "empty")] ["empty", "solo"],
-        structuralEquals [headOr (duo, "empty"), headOr (words, "empty")] ["left", "alpha"],
-        structuralEquals [headOr (odd, "empty"), headOr (dup, "empty")] ["", "same"],
-        headOr (listReverse words, "empty") == "gamma",
+        structuralEquals [headOr (duo, "empty"), headOr (words, "empty"), headOr (odd, "empty")] ["left", "alpha", ""],
+        structuralEquals [headOr (dup, "empty"), headOr (listReverse words, "empty")] ["same", "gamma"],
         headOr (listPrepend words "zero", "empty") == "zero",
         headOr (listAppend words "delta", "empty") == "alpha",
-        headOr (noWords + words, "empty") == "alpha",
-        headOr (words + noWords, "empty") == "alpha",
-        secondOr (noWords, "none") == "none",
-        secondOr (solo, "none") == "none",
-        secondOr (duo, "none") == "right",
-        secondOr (words, "none") == "beta",
-        secondOr (odd, "none") == " ",
-        secondOr (dup, "none") == "same",
-        secondOr (listReverse words, "none") == "beta",
-        secondOr (listReverse quad, "none") == "ccc",
-        secondOr (["x", "y", "z"], "none") == "y",
-        headOr (["only"], "empty") == "only"
+        structuralEquals [headOr (noWords + words, "empty"), headOr (words + noWords, "empty")] ["alpha", "alpha"],
+        structuralEquals [secondOr (noWords, "none"), secondOr (solo, "none")] ["none", "none"],
+        structuralEquals [secondOr (duo, "none"), secondOr (words, "none")] ["right", "beta"],
+        structuralEquals [secondOr (odd, "none"), secondOr (dup, "none")] [" ", "same"],
+        structuralEquals [secondOr (listReverse words, "none"), secondOr (listReverse quad, "none")] ["beta", "ccc"],
+        structuralEquals [secondOr (["x", "y", "z"], "none"), headOr (["only"], "empty")] ["y", "only"]
     ]
 
     // Recursive head/tail traversal keeps every element, in index order, once.
     // "alpha|beta|gamma|" is 5+1+4+1+5+1 = 17 bytes; the six `odd` elements are
     // 0+1+1+2+3+5 = 12 bytes plus six separators = 18.
     checkAll "recursive rest-binder traversal keeps string order" [
-        structuralEquals [joinWords noWords, joinWords solo] ["", "solo|"],
-        structuralEquals [joinWords duo, joinWords words] ["left|right|", "alpha|beta|gamma|"],
-        structuralEquals [joinWords quad, joinWords odd] ["a|bb|ccc|dddd|", "| |a|12|a,b|ab ab|"],
-        structuralEquals [joinWords dup, joinWords (listReverse words)] ["same|same|other|same|", "gamma|beta|alpha|"],
+        structuralEquals [joinWords noWords, joinWords solo, joinWords duo] ["", "solo|", "left|right|"],
+        structuralEquals [joinWords words, joinWords quad] ["alpha|beta|gamma|", "a|bb|ccc|dddd|"],
+        structuralEquals [joinWords odd, joinWords dup] ["| |a|12|a,b|ab ab|", "same|same|other|same|"],
+        joinWords (listReverse words) == "gamma|beta|alpha|",
         joinWords (listReverse dup) == "same|other|same|same|",
         joinWords (listAppend words "delta") == "alpha|beta|gamma|delta|",
         joinWords (listPrepend words "zero") == "zero|alpha|beta|gamma|",
         joinWords (duo + words) == "left|right|alpha|beta|gamma|",
-        joinWords (words + duo) == "alpha|beta|gamma|left|right|",
-        lastWord noWords == "none",
-        lastWord solo == "solo",
-        lastWord words == "gamma",
-        lastWord (listReverse words) == "alpha",
+        structuralEquals [joinWords (words + duo), lastWord noWords] ["alpha|beta|gamma|left|right|", "none"],
+        structuralEquals [lastWord solo, lastWord words, lastWord (listReverse words)] ["solo", "gamma", "alpha"],
         lastWord (listAppend words "delta") == "delta",
         joinWords (listReverse (listReverse words)) == joinWords words,
         joinWords (noWords + words) == joinWords words,
@@ -739,9 +726,8 @@ recordListPatternCase () =
     // Recursion over the rest binder reaches every record, in order, once.
     // "left>right>extra>" is 5+6+6 = 17 bytes; weights 1.5+2.5+4.0 = 8.0.
     checkAll "record fields survive head-tail recursion" [
-        structuralEquals [slotLabels noSlots, slotLabels oneSlot] ["", "solo>"],
-        structuralEquals [slotLabels slots, slotLabels trio] ["left>right>", "left>right>extra>"],
-        slotLabels (listReverse slots) == "right>left>",
+        structuralEquals [slotLabels noSlots, slotLabels oneSlot, slotLabels slots] ["", "solo>", "left>right>"],
+        structuralEquals [slotLabels trio, slotLabels (listReverse slots)] ["left>right>extra>", "right>left>"],
         slotLabels (listReverse trio) == "extra>right>left>",
         slotLabels (listPrepend slots soloSlot) == "solo>left>right>",
         slotLabels (noSlots + slots) == "left>right>",
@@ -797,14 +783,12 @@ nestedListCase () =
     // sumInner(grown) = 45 + 21 = 66.
     checkAll "nested list elements come back as lists" [
         structuralEquals [listLength rows, listLength firstRow, sumList firstRow] [3, 2, 3],
-        structuralEquals [(listGet firstRow 0 ?: 0), (listGet firstRow 1 ?: 0)] [1, 2],
-        structuralEquals [listLength (rowAt (rows, 1)), sumList (rowAt (rows, 1))] [3, 12],
-        structuralEquals [(listGet (rowAt (rows, 1)) 2 ?: 0), listLength (rowAt (rows, 2))] [5, 4],
-        structuralEquals [sumList (rowAt (rows, 2)), (listGet (rowAt (rows, 2)) 3 ?: 0)] [30, 9],
-        structuralEquals [(listGet (rowAt (rows, 2)) 4 ?: 77), sumList sentinelProbe] [77, 777],
-        structuralEquals [listLength sentinelProbe, sumInner rows] [1, 45],
-        structuralEquals [sumInner oneRow, sumInner twoRows] [27, 6],
-        structuralEquals [sumInner withEmptyRow, sumInner grown] [45, 66],
+        structuralEquals [(listGet firstRow 0 ?: 0), (listGet firstRow 1 ?: 0), listLength (rowAt (rows, 1))] [1, 2, 3],
+        structuralEquals [sumList (rowAt (rows, 1)), (listGet (rowAt (rows, 1)) 2 ?: 0)] [12, 5],
+        structuralEquals [listLength (rowAt (rows, 2)), sumList (rowAt (rows, 2))] [4, 30],
+        structuralEquals [(listGet (rowAt (rows, 2)) 3 ?: 0), (listGet (rowAt (rows, 2)) 4 ?: 77)] [9, 77],
+        structuralEquals [sumList sentinelProbe, listLength sentinelProbe, sumInner rows] [777, 1, 45],
+        structuralEquals [sumInner oneRow, sumInner twoRows, sumInner withEmptyRow, sumInner grown] [27, 6, 45, 66],
         structuralEquals [listLength withEmptyRow, listLength (rowAt (withEmptyRow, 3))] [4, 0],
         isEmpty (rowAt (withEmptyRow, 3))
     ]
@@ -819,25 +803,20 @@ nestedListCase () =
         describeMatrix withEmptyRow == "head 2 then 3 more",
         describeMatrix (listReverse rows) == "head 4 then 2 more",
         listLength (headOr (rows, emptyRow)) == 2,
-        listLength (headOr (listReverse rows, emptyRow)) == 4,
-        sumList (headOr (rows, emptyRow)) == 3,
-        sumList (secondOr (rows, emptyRow)) == 12,
-        listLength (secondOr (twoRows, emptyRow)) == 2,
-        sumList (secondOr (oneRow, emptyRow)) == 0,
-        tailLength rows == 2,
-        tailLength oneRow == 0
+        structuralEquals [listLength (headOr (listReverse rows, emptyRow)), sumList (headOr (rows, emptyRow))] [4, 3],
+        structuralEquals [sumList (secondOr (rows, emptyRow)), listLength (secondOr (twoRows, emptyRow))] [12, 2],
+        structuralEquals [sumList (secondOr (oneRow, emptyRow)), tailLength rows, tailLength oneRow] [0, 2, 0]
     ]
 
     // Appending to a retrieved row builds a NEW row and leaves the matrix alone:
     // the stored row keeps its own contents ([BOOL-EQUALITY] decides no `==`
     // for lists, so the rows are compared by their sums).
     checkAll "nested lists stay isolated when a retrieved row grows" [
-        structuralEquals [listLength rows, listLength grown, sumInner rows] [3, 4, 45],
-        structuralEquals [listLength firstRow, listLength biggerFirstRow, sumList biggerFirstRow] [2, 3, 102],
-        structuralEquals [sumList firstRow, listLength (rowAt (rows, 0))] [3, 2],
-        structuralEquals [sumInner (listReverse rows), sumList (rowAt (listReverse rows, 0))] [45, 30],
-        structuralEquals [sumList (rowAt (listReverse rows, 2)), listLength (listReverse rows)] [3, 3],
-        structuralEquals [sumInner (rows + rows), listLength (rows + rows)] [90, 6],
+        structuralEquals [listLength rows, listLength grown, sumInner rows, listLength firstRow] [3, 4, 45, 2],
+        structuralEquals [listLength biggerFirstRow, sumList biggerFirstRow, sumList firstRow] [3, 102, 3],
+        structuralEquals [listLength (rowAt (rows, 0)), sumInner (listReverse rows)] [2, 45],
+        structuralEquals [sumList (rowAt (listReverse rows, 0)), sumList (rowAt (listReverse rows, 2))] [30, 3],
+        structuralEquals [listLength (listReverse rows), sumInner (rows + rows), listLength (rows + rows)] [3, 90, 6],
         structuralEquals [sumList (rowAt (rows + rows, 3)), sumInner rows] [3, 45],
         sumList (rowAt (rows, 0)) != sumList biggerFirstRow,
         sumList (rowAt (rows, 0)) == sumList [1, 2]
@@ -927,8 +906,7 @@ typedIterationOrderCase () =
     // 45 + 17 = 62; the derived list is traversed, the source is not.
     checkAll "forEachList follows the derived list, not its source" [
         log == "alpha|beta|gamma|true|false|7|8|9|left|right|gamma|beta|alpha|",
-        joinWords words == "alpha|beta|gamma|",
-        joinWords (listReverse words) == "gamma|beta|alpha|",
+        structuralEquals [joinWords words, joinWords (listReverse words)] ["alpha|beta|gamma|", "gamma|beta|alpha|"],
         length log == 62,
         structuralEquals [endsWith log "gamma|beta|alpha|", startsWith log "alpha|beta|gamma|"] [true, true],
         contains log "right|gamma|"
@@ -946,8 +924,7 @@ typedIterationOrderCase () =
         (range (1, 3) |> fold 0 (\(acc, i) => weave (acc, (listGet counts i ?: 0)))) == 89,
         (range (0, 0) |> fold 0 (\(acc, i) => weave (acc, (listGet counts i ?: 0)))) == 0,
         (range (0, 2) |> fold 0 (\(acc, i) => acc + boolWeight (listGet flags i ?: false) )) == 1,
-        (range (0, 5) |> fold 0 (\(acc, i) => acc + i )) == 10,
-        (range (5, 5) |> fold 99 weave) == 99,
+        structuralEquals [(range (0, 5) |> fold 0 (\(acc, i) => acc + i )), (range (5, 5) |> fold 99 weave)] [10, 99],
         (range (1, 6) |> fold 0 weave) == 12345,
         (range (0, 2) |> fold 0.0 (\(acc, i) => acc + (listGet ratios i ?: 0.0))) == 1.75,
         (range (0, 3) |> fold 0.0 (\(acc, i) => acc + (listGet ratios i ?: 0.0))) == 4.5
@@ -966,10 +943,7 @@ typedIterationOrderCase () =
         (range (1, 6) |> filter isEvenValue |> fold 0 (\(a, b) => a + b )) == 6,
         (range (0, 4) |> map twice |> fold 0 weave) == 246,
         (range (0, 1) |> map twice |> fold 7 weave) == 70,
-        (range (2, 2) |> map twice |> fold 5 weave) == 5,
-        twice 0 == 0,
-        twice 21 == 42,
-        weave (0, 5) == 5,
+        structuralEquals [(range (2, 2) |> map twice |> fold 5 weave), twice 0, twice 21, weave (0, 5)] [5, 0, 42, 5],
         weave (12, 3) == 123,
         (range (1, 4) |> map twice |> fold "" (\(acc, v) => "${acc}${v},")) == "2,4,6,",
         (range (1, 4) |> fold "" (\(acc, v) => "${acc}${v},")) == "1,2,3,",
@@ -1040,8 +1014,7 @@ boundaryIndexCase () =
         structuralEquals [(listGet words 3 ?: "past"), (listGet words negIndex ?: "past")] ["past", "past"],
         structuralEquals [(listGet words 2 ?: "past"), (listGet slots 2 ?: missingSlot).label] ["gamma", "missing"],
         (listGet slots negIndex ?: missingSlot).label == "missing",
-        (listGet slots 1 ?: missingSlot).label == "right",
-        (listGet noWords 0 ?: "past") == "past",
+        structuralEquals [(listGet slots 1 ?: missingSlot).label, (listGet noWords 0 ?: "past")] ["right", "past"],
         (listGet noWords negIndex ?: "past") == "past",
         structuralEquals [(listGet ratios 3 ?: 9.5), (listGet ratios negIndex ?: 9.5)] [9.5, 9.5],
         (listGet ratios 2 ?: 9.5) == 2.75,

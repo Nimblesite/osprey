@@ -539,11 +539,9 @@ everyResultTypeCase () =
     // A direct arm may choose either `Result` constructor, and the `Unit`
     // channel changes nothing the caller receives beyond handler-owned state.
     checkAll "Result and Unit operation results cross a direct arm" [
-        structuralEquals [okScore, badScore, (okScore + badScore )] [5, 6, 11],
-        structuralEquals [resultScore (Success(value = 0)), resultScore (Error(message = ""))] [0, 0],
-        structuralEquals [resultScore (Error(message = "x")), (okValue ?: 0)] [1, 5],
-        structuralEquals [(badValue ?: 0), (badValue ?: 77)] [0, 77],
-        structuralEquals [marks, (marks * 3 )] [1, 3],
+        structuralEquals [okScore, badScore, (okScore + badScore ), resultScore (Success(value = 0))] [5, 6, 11, 0],
+        structuralEquals [resultScore (Error(message = "")), resultScore (Error(message = "x"))] [0, 1],
+        structuralEquals [(okValue ?: 0), (badValue ?: 0), (badValue ?: 77), marks, (marks * 3 )] [5, 0, 77, 1, 3],
         okScore != badScore,
         badScore == length "absent",
         resultScore (Success(value = -2)) == -2,

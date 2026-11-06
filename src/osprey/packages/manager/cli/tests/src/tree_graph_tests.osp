@@ -127,8 +127,7 @@ module TreeGraphTests {
         let inner = Json::parse(listGet(lines, 0) ?: "") ?: Json::Null
         checkAll("tree graph: --json has one semantic graph line", [
             oneLine(a, 0),
-            length(lines) == 1,
-            JsonRead::number(JsonRead::field(outer, "status")) == 0,
+            structuralEquals([length(lines), JsonRead::number(JsonRead::field(outer, "status"))], [1, 0]),
             textField(inner, "project") == "app"
         ])
     }
@@ -167,8 +166,7 @@ module TreeGraphTests {
         let a = runAll(present, ["tree", "--graph"])
         let doc = graphOf(a)
         checkAll("tree graph: a locked package without a tree is not present", [
-            a.status == 0,
-            length(JsonRead::items(JsonRead::field(doc, "packages"))) == 5
+            structuralEquals([a.status, length(JsonRead::items(JsonRead::field(doc, "packages")))], [0, 5])
         ])
         checkPackage(doc, "@demo/greeting", false, [], ["@demo/maths", "@demo/report"], ["verify.missing"], false)
     }

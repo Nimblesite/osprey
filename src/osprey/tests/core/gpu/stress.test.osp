@@ -115,8 +115,7 @@ fn megaPipelineWith(idx) = {
                                     (gpuGet(squares, 999999) ?: -1) == 999998000001,
                                     gpuLength(evens) == 500000,
                                     (gpuGet(evens, 499999) ?: -1) == 999998,
-                                    gpuLength(running) == 1000000,
-                                    (gpuGet(running, 0) ?: -1) == 0,
+                                    structuralEquals([gpuLength(running), (gpuGet(running, 0) ?: -1)], [1000000, 0]),
                                     (gpuGet(running, 1) ?: -1) == 1,
                                     (gpuGet(running, 999999) ?: -1) == 499999500000,
                                     (gpuGet(idx, 1000000) ?: -1) == -1, gpuSatisfies(gpuFold(evens, 0, tally), fn(uploaded118) => (uploaded118) == 249999500000)
@@ -135,11 +134,9 @@ fn scanScaleWith(indices100000) = {
                                     structuralEquals([(gpuGet(running, 0) ?: -1), (gpuGet(running, 1) ?: -1)], [0, 1]),
                                     (gpuGet(running, 2) ?: -1) == 3,
                                     (gpuGet(running, 99999) ?: -1) == 4999950000,
-                                    gpuLength(running) == 100000,
-                                    (gpuGet(seeded, 0) ?: -1) == 1000,
+                                    structuralEquals([gpuLength(running), (gpuGet(seeded, 0) ?: -1)], [100000, 1000]),
                                     (gpuGet(seeded, 99999) ?: -1) == 4999951000,
-                                    gpuLength(seeded) == 100000,
-                                    (gpuGet(twice, 0) ?: -1) == 0,
+                                    structuralEquals([gpuLength(seeded), (gpuGet(twice, 0) ?: -1)], [100000, 0]),
                                     (gpuGet(twice, 2) ?: -1) == 4,
                                     (gpuGet(twice, 99999) ?: -1) == 166666666650000,
                                     gpuSatisfies(gpuFold(running, 0, minI), fn(uploaded114) => (uploaded114) == 0)
@@ -164,8 +161,7 @@ fn longChainWith(indices100000) = {
                 checkAll("twenty-four chained passes", [
                         structuralEquals([gpuLength(climbed), (gpuGet(climbed, 0) ?: -1)], [100000, 8]),
                         structuralEquals([(gpuGet(climbed, 99999) ?: -1), gpuLength(cancelled)], [100007, 100000]),
-                        (gpuGet(cancelled, 0) ?: -1) == 0,
-                        (gpuGet(cancelled, 99999) ?: -1) == 99999,
+                        structuralEquals([(gpuGet(cancelled, 0) ?: -1), (gpuGet(cancelled, 99999) ?: -1)], [0, 99999]),
                         gpuSatisfies(gpuFold(climbed, 0, tally), fn(uploaded111) => (uploaded111) == 5000750000),
                         gpuSatisfies(gpuFold(cancelled, 0, tally), fn(uploaded110) => (uploaded110) == 4999950000), gpuSatisfies(gpuFilter(cancelled, isEven), fn(uploaded109) => gpuSatisfies(gpuFold(uploaded109, 0, tally), fn(uploaded144) => (uploaded144) == 2499950000))
                 ])
@@ -182,10 +178,8 @@ fn rebuildWith(indices20000, indices0, indices1) = {
                             checkAll("six host round trips", [
                                     structuralEquals([gpuLength(settled), (gpuGet(settled, 0) ?: -1)], [20000, 6]),
                                     (gpuGet(settled, 19999) ?: -1) == 20005,
-                                    listLength(back) == 20000,
-                                    (listGet(back, 0) ?: -1) == 6,
-                                    (listGet(back, 19999) ?: -1) == 20005,
-                                    gpuLength(again) == 20000,
+                                    structuralEquals([listLength(back), (listGet(back, 0) ?: -1)], [20000, 6]),
+                                    structuralEquals([(listGet(back, 19999) ?: -1), gpuLength(again)], [20005, 20000]),
                                     gpuSatisfies(gpuFold(settled, 0, tally), fn(uploaded108) => (uploaded108) == 200110000),
                                     gpuSatisfies(gpuFold(again, 0, tally), fn(uploaded107) => (uploaded107) == 200110000), gpuSatisfies(gpuFilter(again, isEven), fn(uploaded106) => gpuSatisfies(gpuFold(uploaded106, 0, tally), fn(uploaded143) => (uploaded143) == 100050000)),
                                     gpuSatisfies(rebuild(indices0, 4), fn(checked0) => gpuLength(checked0) == 0), gpuSatisfies(rebuild(indices1, 3), fn(checked0) => gpuSatisfies(gpuFold(checked0, 0, tally), fn(uploaded105) => (uploaded105) == 3))
@@ -221,8 +215,7 @@ fn zipScaleWith(idx, indices1000000, indices3, indices0) = {
                                             gpuSatisfies(gpuFold(squares, 0, tally), fn(uploaded93) => (uploaded93) == 5208302083375000),
                                             gpuLength(squares) == 250000,
                                             (gpuGet(squares, 249999) ?: -1) == 62499500001,
-                                            gpuLength(ragged) == 3,
-                                            gpuLength(cancel) == 250000,
+                                            structuralEquals([gpuLength(ragged), gpuLength(cancel)], [3, 250000]),
                                             (gpuGet(cancel, 249999) ?: -1) == 0,
                                             gpuSatisfies(gpuFold(ragged, 0, tally), fn(uploaded92) => (uploaded92) == 6),
                                             gpuSatisfies(gpuZipWith(indices3, indices1000000, tally), fn(uploaded91) => gpuLength(uploaded91) == 3), gpuSatisfies(gpuZipWith(idx, indices0, tally), fn(uploaded90) => gpuLength(uploaded90) == 0),

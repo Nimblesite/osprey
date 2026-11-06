@@ -187,14 +187,13 @@ fn typedErrorChannelCase() = {
     checkAll("typed effect results remain coherent inside maps of lists", [
             structuralEquals([mapLength(scalars), (scalars.mapGet("parse") ?: 99)], [3, 7]),
             structuralEquals([(scalars.mapGet("missing") ?: 99), (scalars.mapGet("range") ?: 99)], [30, 10]),
-            structuralEquals([(scalars.mapGet("absent") ?: 99), mapLength(nested)], [99, 2]),
-            structuralEquals([mapLength(grown), listLength(nested.mapGet("outer-inner-outer") ?: [99])], [3, 3]),
+            structuralEquals([(scalars.mapGet("absent") ?: 99), mapLength(nested), mapLength(grown)], [99, 2, 3]),
+            listLength(nested.mapGet("outer-inner-outer") ?: [99]) == 3,
             ((nested.mapGet("outer-inner-outer") ?: [99]).listGet(1) ?: 99) == 1,
             ((nested.mapGet("healthy-inner-healthy") ?: [99]).listGet(2) ?: 99) == 5,
             listLength(grown.mapGet("forced") ?: [99]) == 2,
             ((grown.mapGet("forced") ?: [99]).listGet(0) ?: 99) == 4,
-            ((grown.mapGet("forced") ?: [99]).listGet(1) ?: 99) == 4,
-            listLength(mapKeys(grown)) == 3,
+            structuralEquals([((grown.mapGet("forced") ?: [99]).listGet(1) ?: 99), listLength(mapKeys(grown))], [4, 3]),
             listLength(mapValues(grown)) == 3,
             !mapContains(nested, "forced"),
             mapContains(grown, "forced")

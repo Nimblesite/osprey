@@ -212,18 +212,15 @@ fn flowCase() = {
                     let lamLength = fn(b) => gpuLength(b)
                     checkAll("buffers flow through every binding form", [
                             readsTo(held, [0], 9.5, [1.5]), readsTo(piped, [0, 2], 9.5, [2.25, 5.25]), readsTo(returned, [0, 2], 9.5, [2.25, 5.25]),
-                            (lastOf(returned) ?: 9.5) == 5.25,
-                            (lastOf(chosen) ?: 9.5) == 3.5,
+                            structuralEquals([(lastOf(returned) ?: 9.5), (lastOf(chosen) ?: 9.5)], [5.25, 3.5]),
                             (lastOf(twice) ?: 9.5) == 7.875,
                             readsTo(chosen, [1], 9.5, [2.5]),
                             readsTo(chooseBuffer(false, held, piped), [1], 9.5, [3.75]), readsTo(twice, [0], 9.5, [3.375]),
-                            structuralEquals([widthOf(held), widthOf(piped)], [3, 3]),
-                            structuralEquals([widthOf(returned), widthOf(chosen)], [3, 3]),
-                            structuralEquals([lamLength(held), lamLength(twice)], [3, 3]),
+                            structuralEquals([widthOf(held), widthOf(piped), widthOf(returned)], [3, 3, 3]),
+                            structuralEquals([widthOf(chosen), lamLength(held), lamLength(twice)], [3, 3, 3]),
                             foldsTo(gpuFold(held, 0.0, addFloats), 7.5),
                             foldsTo(gpuFold(piped, 0.0, addFloats), 11.25), foldsTo(gpuFold(returned, 0.0, addFloats), 11.25), foldsTo(gpuFold(twice, 0.0, addFloats), 16.875),
-                            readback(held, 0) == "1.5",
-                            readback(returned, 0) == "2.25",
+                            structuralEquals([readback(held, 0), readback(returned, 0)], ["1.5", "2.25"]),
                             readback(returned, 3) == oobMessage(), readback(twice, -1) == oobMessage(),
                             listLengthIs(fromGpu(held), 3)
                     ])
@@ -285,8 +282,7 @@ fn intKernelWith(indices0) = {
                         withBuffer(fromGpu(uploaded33), fn(read0) => {
                             let squares = read0
                             withBuffer(toGpu([-1, -2, -3]), fn(value) => withBuffer(gpuMap(value, square), fn(negatives) => checkAll("int kernels", [
-                                                        total == 30,
-                                                        listLength(squares) == 3,
+                                                        structuralEquals([total, listLength(squares)], [30, 3]),
                                                         gpuLength(negatives) == 3,
                                                         listReadsTo(squares, [0, 2], 0, [1, 9]), gpuSatisfies(toGpu([10, 20]), fn(uploaded11) => foldsTo(gpuFold(uploaded11, 5, addInts), 35)),
                                                         readsTo(negatives, [0, 2], 0, [1, 9]), foldsTo(gpuFold(negatives, 0, addInts), 14),
@@ -326,8 +322,7 @@ fn boolKernelWith(indices0) = {
             match toGpu([1, 3]) {
                 Success { value } => withBuffer(gpuMap(value, isOdd), fn(allTrue) => {
                     withBuffer(toGpu([2, 4]), fn(value) => withBuffer(gpuMap(value, isOdd), fn(allFalse) => checkAll("bool kernels", [
-                                                    gpuLength(odds) == 5,
-                                                    gpuLength(allTrue) == 2,
+                                                    structuralEquals([gpuLength(odds), gpuLength(allTrue)], [5, 2]),
                                                     foldsTo(gpuFold(odds, 0, countOdd), 3), readsTo(odds, [0, 1, 4], false, [true, false, true]),
                                                     (lastOf(odds) ?: false) == true, readback(odds, 1) == "false", readback(odds, 5) == oobMessage(),
                                                     foldsTo(gpuFold(allTrue, 0, countOdd), 2), foldsTo(gpuFold(allFalse, 0, countOdd), 0), gpuSatisfies(toGpu([true, true, false]), fn(uploaded3) => foldsTo(gpuFold(uploaded3, 0, countOdd), 2)),

@@ -259,11 +259,10 @@ interpolationScalarCase () =
     // Integers: no thousands separator, no sign for a positive, an explicit
     // "-" for a negative, and the two 64-bit extremes spelled in full.
     checkAll "integers render identically in a hole and in toString" [
-        structuralEquals ["${0}", "${1}", "${42}"] ["0", "1", "42"],
-        structuralEquals ["${negativeSeven}", "${intMax}"] ["-7", "9223372036854775807"],
-        structuralEquals ["${intMin}", toString 0] ["-9223372036854775808", "0"],
-        structuralEquals [toString 42, toString negativeSeven] ["42", "-7"],
-        structuralEquals [toString intMax, toString intMin] ["9223372036854775807", "-9223372036854775808"],
+        structuralEquals ["${0}", "${1}", "${42}", "${negativeSeven}"] ["0", "1", "42", "-7"],
+        structuralEquals ["${intMax}", "${intMin}", toString 0] ["9223372036854775807", "-9223372036854775808", "0"],
+        structuralEquals [toString 42, toString negativeSeven, toString intMax] ["42", "-7", "9223372036854775807"],
+        toString intMin == "-9223372036854775808",
         "${0}" == toString 0,
         "${negativeSeven}" == toString negativeSeven,
         "${intMax}" == toString intMax,
@@ -277,12 +276,11 @@ interpolationScalarCase () =
     // renders as an int; [BUILTIN-CONVERT-FLOAT] pins toFloat 7 == 7.0 and
     // toFloat (-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
     checkAll "floats and booleans render with their scalar spelling" [
-        structuralEquals ["${0.0}", "${1.5}", "${3.5}"] ["0.0", "1.5", "3.5"],
-        structuralEquals ["${2.0}", "${100000.0}", "${0.0 - 0.25}"] ["2.0", "100000.0", "-0.25"],
-        structuralEquals ["${1.5 + 2.5}", "${1.5 * 2.0}", toString 0.0] ["4.0", "3.0", "0.0"],
-        structuralEquals [toString 3.5, "${toFloat 7}", "${toFloat 0}"] ["3.5", "7.0", "0.0"],
-        structuralEquals ["${toFloat negativeSeven}", "${true}", "${false}"] ["-7.0", "true", "false"],
-        structuralEquals [toString true, toString false, "${1 == 1}"] ["true", "false", "true"],
+        structuralEquals ["${0.0}", "${1.5}", "${3.5}", "${2.0}"] ["0.0", "1.5", "3.5", "2.0"],
+        structuralEquals ["${100000.0}", "${0.0 - 0.25}", "${1.5 + 2.5}"] ["100000.0", "-0.25", "4.0"],
+        structuralEquals ["${1.5 * 2.0}", toString 0.0, toString 3.5, "${toFloat 7}"] ["3.0", "0.0", "3.5", "7.0"],
+        structuralEquals ["${toFloat 0}", "${toFloat negativeSeven}", "${true}"] ["0.0", "-7.0", "true"],
+        structuralEquals ["${false}", toString true, toString false, "${1 == 1}"] ["false", "true", "false", "true"],
         structuralEquals ["${1 != 1}", "${!(1 == 2)}"] ["false", "true"],
         "${2.0}" == toString 2.0,
         "${2.0}" != "2",
@@ -313,21 +311,13 @@ interpolationResultCase () =
     checkAll "Results retain their wrapper and arithmetic stays plain" [
         structuralEquals ["${parseInt "42"}", "${parseInt "0"}"] ["Success(42)", "Success(0)"],
         "${parseInt "-9223372036854775808"}" == "Success(-9223372036854775808)",
-        "${parseFloat "3.5"}" == "Success(3.5)",
-        "${parseFloat "2"}" == "Success(2.0)",
-        "${parseFloat "1e3"}" == "Success(1000.0)",
-        "${parseFloat "-0.5"}" == "Success(-0.5)",
-        "${intDiv (7, 2)}" == "3",
-        "${intDiv (255643, 10)}" == "25564",
-        "${10 / 4}" == "2.5",
-        "${abs negativeFive}" == "5",
-        "${fromCodePoint 65}" == "Success(A)",
-        "${indexOf "banana" "na"}" == "Success(2)",
-        "${substring "banana" 1 4}" == "Success(ana)",
-        "${repeat "ab" 2}" == "Success(abab)",
-        "${padStart "7" 3 "0"}" == "Success(007)",
-        "${byteAt "A" 0}" == "Success(65)",
-        "${codePointWidth 233}" == "Success(2)"
+        structuralEquals ["${parseFloat "3.5"}", "${parseFloat "2"}"] ["Success(3.5)", "Success(2.0)"],
+        structuralEquals ["${parseFloat "1e3"}", "${parseFloat "-0.5"}"] ["Success(1000.0)", "Success(-0.5)"],
+        structuralEquals ["${intDiv (7, 2)}", "${intDiv (255643, 10)}", "${10 / 4}"] ["3", "25564", "2.5"],
+        structuralEquals ["${abs negativeFive}", "${fromCodePoint 65}"] ["5", "Success(A)"],
+        structuralEquals ["${indexOf "banana" "na"}", "${substring "banana" 1 4}"] ["Success(2)", "Success(ana)"],
+        structuralEquals ["${repeat "ab" 2}", "${padStart "7" 3 "0"}"] ["Success(abab)", "Success(007)"],
+        structuralEquals ["${byteAt "A" 0}", "${codePointWidth 233}"] ["Success(65)", "Success(2)"]
     ]
 
     // Every message here is the reason the runtime actually produces; a
@@ -388,12 +378,11 @@ escapeSequenceCase () =
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
     checkAll "each recognised escape collapses to exactly one byte" [
         structuralEquals [length "\n", (byteAt "\n" 0 ?: 0), length "\r", (byteAt "\r" 0 ?: 0)] [1, 10, 1, 13],
-        structuralEquals [length "\t", (byteAt "\t" 0 ?: 0), length "\e"] [1, 9, 1],
-        structuralEquals [(byteAt "\e" 0 ?: 0), length "\"", (byteAt "\"" 0 ?: 0)] [27, 1, 34],
-        structuralEquals [length "\\", (byteAt "\\" 0 ?: 0), byteLength "\n\r\t\e"] [1, 92, 4],
-        structuralEquals [(byteAt "\n\r\t\e" 0 ?: 0), (byteAt "\n\r\t\e" 3 ?: 0), length "a\nb"] [10, 27, 3],
-        structuralEquals [(byteAt "a\nb" 0 ?: 0), (byteAt "a\nb" 1 ?: 0), (byteAt "a\nb" 2 ?: 0)] [97, 10, 98],
-        structuralEquals [length "\\n", length "a\"b", (byteAt "a\"b" 1 ?: 0)] [2, 3, 34],
+        structuralEquals [length "\t", (byteAt "\t" 0 ?: 0), length "\e", (byteAt "\e" 0 ?: 0)] [1, 9, 1, 27],
+        structuralEquals [length "\"", (byteAt "\"" 0 ?: 0), length "\\", (byteAt "\\" 0 ?: 0)] [1, 34, 1, 92],
+        structuralEquals [byteLength "\n\r\t\e", (byteAt "\n\r\t\e" 0 ?: 0), (byteAt "\n\r\t\e" 3 ?: 0)] [4, 10, 27],
+        structuralEquals [length "a\nb", (byteAt "a\nb" 0 ?: 0), (byteAt "a\nb" 1 ?: 0)] [3, 97, 10],
+        structuralEquals [(byteAt "a\nb" 2 ?: 0), length "\\n", length "a\"b", (byteAt "a\"b" 1 ?: 0)] [98, 2, 3, 34],
         "\n" != "n",
         "\\n" != "\n"
     ]
@@ -420,9 +409,8 @@ escapeSequenceCase () =
         structuralEquals [join (lines "a\nb\nc") "-", join (words "  x  y  ") "+"] ["a-b-c", "x+y"],
         structuralEquals [length (trim "\e hi "), listLength (lines "a\nb\nc"), listLength (lines "a\n")] [4, 3, 1],
         structuralEquals [listLength (lines "a\n\nb"), listLength (lines "solo")] [3, 1],
-        structuralEquals [listLength (words "a\tb\nc"), listLength (words "   ")] [3, 0],
-        structuralEquals [listLength (words ""), listLength (words " a ")] [0, 1],
-        structuralEquals [listLength (words "a\r\nb"), tabSplitCount] [2, 2],
+        structuralEquals [listLength (words "a\tb\nc"), listLength (words "   "), listLength (words "")] [3, 0, 0],
+        structuralEquals [listLength (words " a "), listLength (words "a\r\nb"), tabSplitCount] [1, 2, 2],
         contains "a\nb" "\n",
         !(contains "ab" "\n"),
         startsWith "\tx" "\t",
@@ -552,12 +540,9 @@ caseFoldingCase () =
         (repeat (toUpperCase "ab") 2 ?: "missing") == "ABAB",
         (padStart (toUpperCase "z") 3 "y" ?: "missing") == "yyZ",
         (padEnd (toLowerCase "Z") 3 "y" ?: "missing") == "zyy",
-        (substring (toUpperCase "banana") 0 3 ?: "missing") == "BAN",
-        trim (toUpperCase "  a  ") == "A",
-        toUpperCase (trim "  a  ") == "A",
-        join [toUpperCase "a", toLowerCase "B"] "-" == "A-b",
-        "${toUpperCase "ab"}" == "AB",
-        "${toLowerCase "AB"}" == "ab"
+        structuralEquals [(substring (toUpperCase "banana") 0 3 ?: "missing"), trim (toUpperCase "  a  ")] ["BAN", "A"],
+        structuralEquals [toUpperCase (trim "  a  "), join [toUpperCase "a", toLowerCase "B"] "-"] ["A", "A-b"],
+        structuralEquals ["${toUpperCase "ab"}", "${toLowerCase "AB"}"] ["AB", "ab"]
     ]
 
 (** [BUILTIN-STRING-CONCAT]: "The `+` operator on two `string` values returns
@@ -600,8 +585,7 @@ concatLengthCase () =
         (take joined 6 + drop joined 6) == joined,
         (take joined 7 + drop joined 7) == joined,
         (take joined negativeFive + drop joined negativeFive) == joined,
-        structuralEquals [take joined 0, drop joined 6] ["", ""],
-        structuralEquals [drop joined 99, take joined negativeFive] ["", ""],
+        structuralEquals [take joined 0, drop joined 6, drop joined 99, take joined negativeFive] ["", "", "", ""],
         structuralEquals [(substring joined 0 0 ?: "missing"), (substring joined 6 6 ?: "missing")] ["", ""],
         drop joined 0 == joined,
         take joined 6 == joined,
@@ -617,14 +601,12 @@ concatLengthCase () =
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
     checkAll "repeat, reverse, padding and join keep their length contracts" [
         structuralEquals [(repeat left 0 ?: "missing"), (repeat left 3 ?: "missing")] ["", "ababab"],
-        structuralEquals [(repeat "" 5 ?: "missing"), reverse ""] ["", ""],
-        structuralEquals [reverse "a", reverse joined] ["a", "fedcba"],
+        structuralEquals [(repeat "" 5 ?: "missing"), reverse "", reverse "a", reverse joined] ["", "", "a", "fedcba"],
         structuralEquals [reverse (reverse "héllo"), (padStart "7" 5 "0" ?: "missing")] ["héllo", "00007"],
         structuralEquals [(padEnd "7" 5 "0" ?: "missing"), (padStart "x" 6 "ab" ?: "missing")] ["70000", "ababax"],
         structuralEquals [(padEnd "x" 6 "ab" ?: "missing"), (padStart "hello" 3 "0" ?: "missing")] ["xababa", "hello"],
         structuralEquals [(padEnd "hello" 3 "0" ?: "missing"), join ["a", "b", "c"] ""] ["hello", "abc"],
-        structuralEquals [join ["a"] "-", join ["", ""] "-"] ["a", "-"],
-        join noParts "-" == "",
+        structuralEquals [join ["a"] "-", join ["", ""] "-", join noParts "-"] ["a", "-", ""],
         (repeat left 1 ?: "missing") == left,
         structuralEquals [length (repeat left 5 ?: ""), length (repeat "" 5 ?: "x")] [10, 0],
         structuralEquals [length (reverse "héllo"), length (padStart "7" 5 "0" ?: "")] [6, 5],
@@ -653,14 +635,12 @@ interpolationCompositionCase () =
         Error _message => (0 - 1) 
 
     checkAll "a hole may hold a call, a pipe, an operator or an index" [
-        structuralEquals ["${length "abc"}", "${toUpperCase name}"] ["3", "ALICE"],
-        structuralEquals ["${name |> toUpperCase}", "${name |> length}"] ["ALICE", "5"],
-        structuralEquals ["${toString count}", "${toUpperCase (toLowerCase "AbC")}"] ["3", "ABC"],
-        structuralEquals ["${take name 2}", "${drop name 2}"] ["al", "ice"],
-        structuralEquals ["${reverse name}", "${count == 3}"] ["ecila", "true"],
-        structuralEquals ["${count != 3}", "${!(count == 3)}"] ["false", "false"],
-        structuralEquals ["${isEmpty ""}", "${contains name "lic"}"] ["true", "true"],
-        structuralEquals ["${(count + 4) }", "${(count * 4) }"] ["7", "12"],
+        structuralEquals ["${length "abc"}", "${toUpperCase name}", "${name |> toUpperCase}"] ["3", "ALICE", "ALICE"],
+        structuralEquals ["${name |> length}", "${toString count}"] ["5", "3"],
+        structuralEquals ["${toUpperCase (toLowerCase "AbC")}", "${take name 2}"] ["ABC", "al"],
+        structuralEquals ["${drop name 2}", "${reverse name}", "${count == 3}"] ["ice", "ecila", "true"],
+        structuralEquals ["${count != 3}", "${!(count == 3)}", "${isEmpty ""}"] ["false", "false", "true"],
+        structuralEquals ["${contains name "lic"}", "${(count + 4) }", "${(count * 4) }"] ["true", "7", "12"],
         structuralEquals ["${(listGet xs 0) ?: "none"}", "${(listGet xs 9) ?: "none"}"] ["red", "none"],
         structuralEquals ["${xs[2] ?: "none"}", "${prices["apple"] ?: 0}"] ["blue", "2"],
         structuralEquals ["${prices["mango"] ?: 0}", "${listLength xs}"] ["0", "3"]

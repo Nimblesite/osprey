@@ -243,8 +243,7 @@ fn capturedArithmeticCase() = {
     withBuffer(toGpu([1, 0]), fn(uploaded3) => {
             withBuffer(gpuMap(uploaded3, add), fn(values) => {
                     checkAll("captured kernel dispatches through the active policy", [
-                            structuralEquals([limit, faults], [0, 1]),
-                            (gpuGet(values, 0) ?: 0) == 42,
+                            structuralEquals([limit, faults, (gpuGet(values, 0) ?: 0)], [0, 1, 42]),
                             (gpuGet(values, 1) ?: 0) == 9223372036854775807
                     ])
                 })

@@ -64,8 +64,7 @@ print("=== Showcase Complete ===")
 
 /// Verifies direct helpers and every scalar pipe from the showcase.
 fn scalarPipelineCase() = checkAll("functional scalar pipelines", [
-    structuralEquals([dbl(7), sq(5), inc(9)], [14, 25, 10]),
-    structuralEquals([add(7, 8), mul(6, 7), (3 |> inc |> dbl |> sq)], [15, 42, 64]),
+    structuralEquals([dbl(7), sq(5), inc(9), add(7, 8), mul(6, 7), (3 |> inc |> dbl |> sq)], [14, 25, 10, 15, 42, 64]),
     structuralEquals([(10 |> fn(x) => x + 5 ), (5 |> (fn(x) => x + 100 ) |> (fn(x) => x * 2 ))], [15, 210]),
     gt4(5), !gt4(4), lt3(2), !lt3(3),
     even(2), !even(3)
@@ -88,17 +87,11 @@ fn iteratorPipelineCase() = {
         structuralEquals([(range(1, 6) |> fold(0, add)), (range(1, 5) |> fold(1, mul))], [15, 24]),
         structuralEquals([(range(5, 5) |> fold(9, add)), (range((0 - 2) , 3) |> fold(0, add))], [9, 0]),
         (range(1, 5) |> map(dbl) |> filter(gt4) |> fold(0, add)) == 14,
-        (range(1, 6) |> filter(lt3) |> map(dbl) |> fold(0, add)) == 6,
-        (small |> fold(0, add)) == 3,
-        (doubled |> fold(0, add)) == 20,
-        (doubled |> filter(gt4) |> fold(0, add)) == 14,
-        (doubled |> fold(0, add)) == 20,
-        (source |> fold(0, add)) == 10,
-        listLength(kept) == 2,
-        (listGet(kept, 0) ?: 0) == 6,
-        (listGet(kept, 1) ?: 0) == 8,
-        listLength(range(3, 3) |> toList) == 0,
-        listLength(source |> toList) == 4,
+        structuralEquals([(range(1, 6) |> filter(lt3) |> map(dbl) |> fold(0, add)), (small |> fold(0, add))], [6, 3]),
+        structuralEquals([(doubled |> fold(0, add)), (doubled |> filter(gt4) |> fold(0, add))], [20, 14]),
+        structuralEquals([(doubled |> fold(0, add)), (source |> fold(0, add)), listLength(kept)], [20, 10, 2]),
+        structuralEquals([(listGet(kept, 0) ?: 0), (listGet(kept, 1) ?: 0)], [6, 8]),
+        structuralEquals([listLength(range(3, 3) |> toList), listLength(source |> toList)], [0, 4]),
         listLength(names) == 3,
         (listGet(names, 2) ?: "none") == "n2",
         (listGet(halves, 1) ?: 9.5) == 1.0
@@ -173,8 +166,7 @@ fn functionValueCollectionCase() = {
         (listGet(mapGet(groupsFrom("k"), "k") ?: [9.0], 1) ?: 9.5) == 2.5,
         structuralEquals([listLength(floatsFrom(0.5)), (listGet(listGet(nestedFrom(1), 0) ?: [99], 1) ?: 99)], [2, 2]),
         (listGet(listGet(nestedFrom(1), 1) ?: [99], 0) ?: 99) == 3,
-        listLength(listGet(nestedFrom(1), 0) ?: [99]) == 2,
-        mapLength(groupsFrom("k")) == 1,
+        structuralEquals([listLength(listGet(nestedFrom(1), 0) ?: [99]), mapLength(groupsFrom("k"))], [2, 1]),
         (listGet(namesFrom("os"), 0) ?: "none") == "os",
         (listGet(namesFrom("os"), 1) ?: "none") == "os!",
         (listGet(applyTo(namesFrom, "hi"), 1) ?: "none") == "hi!"
@@ -295,19 +287,13 @@ fn genericLambdaEnvironmentCase() = {
 
     checkAll("a generic lambda keeps the environment it was defined in", [
         structuralEquals([fold(staged, "", |acc, s| => acc + s), afterStage], ["0:kept-51:kept-5", "kept-6"]),
-        structuralEquals([shadowedStage, tagged(1)], ["shadow0:kept-71:kept-7", "1:kept-7"]),
-        structuralEquals([tagged("s"), fromFactory(1)], ["s:kept-7", "kept-8"]),
-        structuralEquals([fromFactory("s"), later], ["kept-8", "kept-9"]),
+        structuralEquals([shadowedStage, tagged(1), tagged("s")], ["shadow0:kept-71:kept-7", "1:kept-7", "s:kept-7"]),
+        structuralEquals([fromFactory(1), fromFactory("s"), later], ["kept-8", "kept-8", "kept-9"]),
         structuralEquals([shadowed, runThunk(|| => tagged(2))], ["1:kept-7/shadow", "2:kept-7"]),
         runThunk(|| => runThunk(|| => tagged("deep"))) == "deep:kept-7",
-        runThunk(|| => fromFactory(3)) == "kept-8",
-        runThunk(|| => viaLambda(4)) == "4:kept-7",
-        viaAlias("a") == "a",
-        viaShout(4) == "4!",
-        viaShout("b") == "b!",
-        inArm == "arm:kept-7",
-        report("t") == "t=5",
-        runThunk(|| => report(true)) == "true=5",
+        structuralEquals([runThunk(|| => fromFactory(3)), runThunk(|| => viaLambda(4))], ["kept-8", "4:kept-7"]),
+        structuralEquals([viaAlias("a"), viaShout(4), viaShout("b"), inArm], ["a", "4!", "b!", "arm:kept-7"]),
+        structuralEquals([report("t"), runThunk(|| => report(true))], ["t=5", "true=5"]),
         viaAlias(3) == 3,
         rebound
     ])

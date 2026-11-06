@@ -22,7 +22,7 @@ module ProviderTests {
         "{\"id\":\"auth-subject\",\"email\":\"ignored@example.test\",\"identities\":[{\"provider\":\"github\",\"provider_id\":\"123456\"}],\"user_metadata\":{\"admin\":true,\"organization\":\"attacker\"}}") {
         Error { message } => check("verified provider identity", "ok", message)
         Success { value } => checkAll("authority uses immutable provider fields, never email or metadata", [
-                value.authSubject == "auth-subject", value.githubId == "123456"
+                structuralEquals([value.authSubject, value.githubId], ["auth-subject", "123456"])
         ])
     }
 

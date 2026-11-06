@@ -57,8 +57,7 @@ fn linkageIdentityCase() = checkAll("same simple name, four declarations", [
 /// Fibers and iterators call module exports without special handling.
 fn concurrencyAndIterationCase() = checkAll("modules compose with fibers and iterators", [
     structuralEquals([compute::Runner::spawned(4), compute::Runner::spawned(0)], [12, 0]),
-    structuralEquals([compute::Runner::folded(4), compute::Runner::folded(1)], [10, 1]),
-    compute::Runner::folded(0) == 0
+    structuralEquals([compute::Runner::folded(4), compute::Runner::folded(1), compute::Runner::folded(0)], [10, 1, 0])
 ])
 
 /// Module boundaries do not erase a `Result`'s error channel.

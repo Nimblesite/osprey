@@ -255,9 +255,8 @@ inferredBehaviorCase () =
         structuralEquals [apply (identityP, 99), inferredGeneric.first, typeTest1 21] [99, 4, 42],
         structuralEquals [identity "hm", concat ("type", "safe")] ["hm", "typesafe"],
         structuralEquals [getValue inferredContainer, combine inferredContainer] ["type", "typesafe"],
-        structuralEquals [apply (toString, 123), inferredBox.item] ["123", "boxed"],
-        structuralEquals [inferredGeneric.second, typeTest2 "ha"] ["four", "haha"],
-        pick ("left", "right") == "left",
+        structuralEquals [apply (toString, 123), inferredBox.item, inferredGeneric.second] ["123", "boxed", "four"],
+        structuralEquals [typeTest2 "ha", pick ("left", "right")] ["haha", "left"],
         identity true,
         negate false,
         typeTest3 false

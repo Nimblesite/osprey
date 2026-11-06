@@ -143,8 +143,7 @@ retryAttemptMatrixCase () =
 
     // Distinctive magnitudes: 100, 200, 300 and 900 cannot sum by coincidence.
     checkAll "each rejection count accepts its own magnitude" [
-        structuralEquals [acceptedA, acceptedB] [100, 200],
-        structuralEquals [acceptedC, acceptedD] [300, 900],
+        structuralEquals [acceptedA, acceptedB, acceptedC, acceptedD] [100, 200, 300, 900],
         structuralEquals [(acceptedA + acceptedB ), (acceptedA + acceptedB + acceptedC + acceptedD )] [300, 1500],
         acceptedA != acceptedB,
         acceptedB != acceptedC,
@@ -186,8 +185,7 @@ retryAttemptMatrixCase () =
 
     // Post-resume code unwinds in reverse, each frame seeing the accepted answer.
     checkAll "settlement unwinds LIFO with the accepted answer" [
-        structuralEquals [settledA, settledB] ["1:100|", "2:200|1:200|"],
-        settledC == "3:300|2:300|1:300|",
+        structuralEquals [settledA, settledB, settledC] ["1:100|", "2:200|1:200|", "3:300|2:300|1:300|"],
         settledD == "9:900|8:900|7:900|6:900|5:900|4:900|3:900|2:900|1:900|",
         settledA == issuedA,
         settledB != issuedB,
@@ -555,9 +553,7 @@ retryPayloadChannelMatrixCase () =
 
     // Counts per channel: 3, 4, 3, 3, 4 and eight in the six-arm region.
     checkAll "operation counts per payload channel" [
-        structuralEquals [textCalls, flagCalls] [3, 4],
-        structuralEquals [ratioCalls, checkedCalls] [3, 3],
-        structuralEquals [markCalls, comboCalls] [4, 8],
+        structuralEquals [textCalls, flagCalls, ratioCalls, checkedCalls, markCalls, comboCalls] [3, 4, 3, 3, 4, 8],
         (textCalls + flagCalls + ratioCalls + checkedCalls + markCalls ) == 17,
         (comboCalls - markCalls ) == 4,
         textCalls == ratioCalls,
@@ -571,8 +567,7 @@ retryPayloadChannelMatrixCase () =
     // Every channel's transcript is its own, in issue order.
     checkAll "channel transcripts record each candidate in order" [
         structuralEquals [textTrail, flagTrail] ["1:no|2:abc|3:ready|", "1:false|2:false|3:false|4:true|"],
-        structuralEquals [ratioTrail, checkedTrail] ["1|2|3|", "1|2|3|"],
-        markTrail == "4|3|2|1|",
+        structuralEquals [ratioTrail, checkedTrail, markTrail] ["1|2|3|", "1|2|3|", "4|3|2|1|"],
         ratioTrail == checkedTrail,
         markTrail != ratioTrail,
         structuralEquals [startsWith textTrail "1:no|", endsWith textTrail "3:ready|"] [true, true],
@@ -694,10 +689,8 @@ retryScriptedCandidateMatrixCase () =
 
     // The cursor advances exactly once per operation, never more.
     checkAll "the cursor advances once per operation" [
-        structuralEquals [scriptCalls, cursor] [6, 6],
-        structuralEquals [mapCalls, sparseCalls] [3, 4],
-        structuralEquals [boundaryCalls, listLength script] [3, 6],
-        structuralEquals [(scriptCalls - mapCalls ), (sparseCalls - boundaryCalls )] [3, 1],
+        structuralEquals [scriptCalls, cursor, mapCalls, sparseCalls, boundaryCalls] [6, 6, 3, 4, 3],
+        structuralEquals [listLength script, (scriptCalls - mapCalls ), (sparseCalls - boundaryCalls )] [6, 3, 1],
         (scriptCalls + mapCalls + sparseCalls + boundaryCalls ) == 16,
         cursor == scriptCalls,
         cursor == listLength script,
@@ -983,8 +976,7 @@ retryPerformSiteMatrixCase () =
 
     // 9 + 400 + 55 + 326 + 1234 = 2024, and nine operations produced it.
     checkAll "every perform site reaches the same region" [
-        structuralEquals [sited, zeroCalls, oneCalls] [2024, 3, 1],
-        structuralEquals [twoCalls, threeCalls, fourCalls] [1, 1, 1],
+        structuralEquals [sited, zeroCalls, oneCalls, twoCalls, threeCalls, fourCalls] [2024, 3, 1, 1, 1, 1],
         structuralEquals [noteCalls, (zeroCalls + oneCalls + twoCalls + threeCalls + fourCalls + noteCalls )] [2, 9],
         sited == (9 + 400 + 55 + 326 + 1234 ),
         zeroCalls > noteCalls,

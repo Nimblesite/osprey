@@ -63,14 +63,12 @@ module PathsTests {
         let one = Source::envelope([entry("src/main.osp", 5, zeros(32))]) ?: []
         let two = Source::envelope([entry("src/b.osp", 1, zeros(32)), entry("src/a.osp", 2, zeros(32))]) ?: []
         checkAll("the envelope is domain, count, then sorted entries", [
-            length(one) == 78,
+            structuralEquals([length(one), (listGet(two, 21 + 3) ?: -1)], [78, 9]),
+            structuralEquals([(listGet(two, 21 + 4 + 4) ?: -1), (listGet(two, 21 + 4 + 9 + 1 + 7) ?: -1)], [97, 2]),
+            length(Source::envelope([]) ?: []) == 21,
             ints(range(0, 21) |> map(fn(i) => listGet(one, i) ?: -1) |> toList) == "111,115,112,114,101,121,46,115,111,117,114,99,101,46,118,49,0,0,0,0,1",
             ints(range(21, 46) |> map(fn(i) => listGet(one, i) ?: -1) |> toList) == "0,0,0,12,115,114,99,47,109,97,105,110,46,111,115,112,0,0,0,0,0,0,0,0,5",
-            length(two) == 21 + 2 * (4 + 9 + 1 + 8 + 32),
-            (listGet(two, 21 + 3) ?: -1) == 9,
-            (listGet(two, 21 + 4 + 4) ?: -1) == 97,
-            (listGet(two, 21 + 4 + 9 + 1 + 7) ?: -1) == 2,
-            length(Source::envelope([]) ?: []) == 21
+            length(two) == 21 + 2 * (4 + 9 + 1 + 8 + 32)
         ])
     }
 

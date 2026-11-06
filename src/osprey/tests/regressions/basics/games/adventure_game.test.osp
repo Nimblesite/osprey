@@ -220,9 +220,8 @@ fn adventureGameCase() = {
         structuralEquals([calculatePlayerLevel(3), calculatePlayerLevel(9), calculateWeaponDamage(1)], [4, 5, 25]),
         structuralEquals([calculateWeaponDamage(2), calculateWeaponDamage(3), calculateWeaponDamage(9)], [40, 60, 15]),
         structuralEquals([calculateBarehandDamage(1), calculateBarehandDamage(2)], [10, 15]),
-        structuralEquals([calculateBarehandDamage(3), calculateBarehandDamage(9)], [20, 5]),
-        structuralEquals([getEnemyHealth(1), getEnemyHealth(2)], [30, 60]),
-        structuralEquals([getEnemyHealth(3), getEnemyHealth(9)], [120, 25]),
+        structuralEquals([calculateBarehandDamage(3), calculateBarehandDamage(9), getEnemyHealth(1)], [20, 5, 30]),
+        structuralEquals([getEnemyHealth(2), getEnemyHealth(3), getEnemyHealth(9)], [60, 120, 25]),
         structuralEquals([getPlayerTitle(1), getPlayerTitle(2)], ["Novice Adventurer", "Brave Explorer"]),
         structuralEquals([getPlayerTitle(3), getPlayerTitle(4)], ["Seasoned Warrior", "Legendary Hero"]),
         structuralEquals([getPlayerTitle(5), getEnemyName(1)], ["Master of the Realm", "Sneaky Goblin"]),
@@ -239,11 +238,9 @@ fn adventureGameCase() = {
         getPlayerTitle(calculatePlayerLevel(defeated)) == "Brave Explorer",
         structuralEquals([getRoomTreasure(1), getRoomTreasure(2), getRoomTreasure(3)], [10, 25, 0]),
         structuralEquals([getRoomTreasure(4), getRoomTreasure(5), getRoomTreasure(9)], [100, 50, 5]),
-        structuralEquals([hasRoomWeapon(3), hasRoomWeapon(2), hasRoomKey(2)], [1, 0, 1]),
-        structuralEquals([hasRoomKey(3), afterRoomOne, afterRoomTwo], [0, 60, 85]),
-        structuralEquals([damage, healthAfterOne, healthAfterTwo], [60, 60, 0]),
-        structuralEquals([defeated, calculatePlayerLevel(defeated)], [1, 2]),
-        structuralEquals([rewardBalance, questBalance], [285, 385]),
+        structuralEquals([hasRoomWeapon(3), hasRoomWeapon(2), hasRoomKey(2), hasRoomKey(3)], [1, 0, 1, 0]),
+        structuralEquals([afterRoomOne, afterRoomTwo, damage, healthAfterOne, healthAfterTwo], [60, 85, 60, 60, 0]),
+        structuralEquals([defeated, calculatePlayerLevel(defeated), rewardBalance, questBalance], [1, 2, 285, 385]),
         (getEnemyHealth(3) / damage ) == 2.0
     ])
 }

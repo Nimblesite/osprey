@@ -229,12 +229,11 @@ fn closureCompositionCase() = {
     let unwrapped = fn(x) => mkR(x) ?: 0
     let idAlias = identity
     checkAll("closure and generic composition", [
-        structuralEquals([plus5(3), plus10(3), plus5(100)], [8, 13, 105]),
-        structuralEquals([makeAdder(7)(3), (makeScaler(3)(7))], [10, 21]),
-        structuralEquals([applyFunction(value: 11, func: addOffset), middleware(20)], [111, 41]),
-        structuralEquals([(nested(10)(20) ), applyFunction(value: 21, func: alias)], [33, 42]),
-        structuralEquals([applyFunction(value: 9, func: unwrapped), applyFunction(value: 33, func: identity)], [9, 33]),
-        structuralEquals([idAlias(7), (alsoDo(21, fn(n) => n * 2) )], [7, 42]),
+        structuralEquals([plus5(3), plus10(3), plus5(100), makeAdder(7)(3), (makeScaler(3)(7))], [8, 13, 105, 10, 21]),
+        structuralEquals([applyFunction(value: 11, func: addOffset), middleware(20), (nested(10)(20) )], [111, 41, 33]),
+        structuralEquals([applyFunction(value: 21, func: alias), applyFunction(value: 9, func: unwrapped)], [42, 9]),
+        structuralEquals([applyFunction(value: 33, func: identity), idAlias(7)], [33, 7]),
+        (alsoDo(21, fn(n) => n * 2) ) == 42,
         check(50), !check(5),
         alsoDo("osp", fn(s) => s + "!") == "osp!"
     ])

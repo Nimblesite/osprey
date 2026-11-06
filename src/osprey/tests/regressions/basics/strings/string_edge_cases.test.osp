@@ -202,9 +202,8 @@ fn stringEdgeCase() = {
         structuralEquals([isEmpty(""), isEmpty("x"), startsWith("abc", "")], [true, false, true]),
         structuralEquals([endsWith("abc", ""), startsWith("hi", "hello")], [true, false]),
         !endsWith("hi", "hello"),
-        structuralEquals([take("hi", (0 - 5) ), take("hi", 99)], ["", "hi"]),
-        structuralEquals([drop("hi", (0 - 5) ), drop("hi", 99)], ["hi", ""]),
-        structuralEquals([trim("   "), trim("")], ["", ""]),
+        structuralEquals([take("hi", (0 - 5) ), take("hi", 99), drop("hi", (0 - 5) )], ["", "hi", "hi"]),
+        structuralEquals([drop("hi", 99), trim("   "), trim("")], ["", "", ""]),
         structuralEquals([(substring("hi", 0, 0) ?: "missing"), (substring("hi", 0, 2) ?: "missing")], ["", "hi"]),
         structuralEquals([(replace("hello", "l", "") ?: "missing"), (repeat("ab", 0) ?: "missing")], ["heo", ""]),
         (padStart("hi", 1, "x") ?: "missing") == "hi",
@@ -262,9 +261,8 @@ fn interpolationScalarCase() = {
     // Integers: no thousands separator, no sign for a positive, an explicit
     // "-" for a negative, and the two 64-bit extremes spelled in full.
     checkAll("integers render identically in a hole and in toString", [
-        structuralEquals(["${0}", "${1}", "${42}"], ["0", "1", "42"]),
-        structuralEquals(["${negativeSeven}", "${intMax}"], ["-7", "9223372036854775807"]),
-        structuralEquals(["${intMin}", toString(0)], ["-9223372036854775808", "0"]),
+        structuralEquals(["${0}", "${1}", "${42}", "${negativeSeven}"], ["0", "1", "42", "-7"]),
+        structuralEquals(["${intMax}", "${intMin}", toString(0)], ["9223372036854775807", "-9223372036854775808", "0"]),
         structuralEquals([toString(42), toString(negativeSeven)], ["42", "-7"]),
         structuralEquals([toString(intMax), toString(intMin)], ["9223372036854775807", "-9223372036854775808"]),
         "${0}" == toString(0),
@@ -280,13 +278,12 @@ fn interpolationScalarCase() = {
     // renders as an int; [BUILTIN-CONVERT-FLOAT] pins toFloat(7) == 7.0 and
     // toFloat(-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
     checkAll("floats and booleans render with their scalar spelling", [
-        structuralEquals(["${0.0}", "${1.5}", "${3.5}"], ["0.0", "1.5", "3.5"]),
-        structuralEquals(["${2.0}", "${100000.0}", "${0.0 - 0.25}"], ["2.0", "100000.0", "-0.25"]),
-        structuralEquals(["${1.5 + 2.5}", "${1.5 * 2.0}", toString(0.0)], ["4.0", "3.0", "0.0"]),
-        structuralEquals([toString(3.5), "${toFloat(7)}", "${toFloat(0)}"], ["3.5", "7.0", "0.0"]),
-        structuralEquals(["${toFloat(negativeSeven)}", "${true}", "${false}"], ["-7.0", "true", "false"]),
-        structuralEquals([toString(true), toString(false), "${1 == 1}"], ["true", "false", "true"]),
-        structuralEquals(["${1 != 1}", "${!(1 == 2)}"], ["false", "true"]),
+        structuralEquals(["${0.0}", "${1.5}", "${3.5}", "${2.0}"], ["0.0", "1.5", "3.5", "2.0"]),
+        structuralEquals(["${100000.0}", "${0.0 - 0.25}", "${1.5 + 2.5}"], ["100000.0", "-0.25", "4.0"]),
+        structuralEquals(["${1.5 * 2.0}", toString(0.0), toString(3.5), "${toFloat(7)}"], ["3.0", "0.0", "3.5", "7.0"]),
+        structuralEquals(["${toFloat(0)}", "${toFloat(negativeSeven)}", "${true}"], ["0.0", "-7.0", "true"]),
+        structuralEquals(["${false}", toString(true), toString(false)], ["false", "true", "false"]),
+        structuralEquals(["${1 == 1}", "${1 != 1}", "${!(1 == 2)}"], ["true", "false", "true"]),
         "${2.0}" == toString(2.0),
         "${2.0}" != "2",
         "${true}" != "1"
@@ -317,20 +314,13 @@ fn interpolationResultCase() = {
     checkAll("Results retain their wrapper and arithmetic stays plain", [
         structuralEquals(["${parseInt("42")}", "${parseInt("0")}"], ["Success(42)", "Success(0)"]),
         "${parseInt("-9223372036854775808")}" == "Success(-9223372036854775808)",
-        "${parseFloat("3.5")}" == "Success(3.5)",
-        "${parseFloat("2")}" == "Success(2.0)",
-        "${parseFloat("1e3")}" == "Success(1000.0)",
-        "${parseFloat("-0.5")}" == "Success(-0.5)",
-        "${intDiv(7, 2)}" == "3",
-        "${intDiv(255643, 10)}" == "25564",
-        "${10 / 4}" == "2.5",
-        "${abs(negativeFive)}" == "5",
-        "${fromCodePoint(65)}" == "Success(A)",
+        structuralEquals(["${parseFloat("3.5")}", "${parseFloat("2")}"], ["Success(3.5)", "Success(2.0)"]),
+        structuralEquals(["${parseFloat("1e3")}", "${parseFloat("-0.5")}"], ["Success(1000.0)", "Success(-0.5)"]),
+        structuralEquals(["${intDiv(7, 2)}", "${intDiv(255643, 10)}", "${10 / 4}"], ["3", "25564", "2.5"]),
+        structuralEquals(["${abs(negativeFive)}", "${fromCodePoint(65)}"], ["5", "Success(A)"]),
         "${indexOf("banana", "na")}" == "Success(2)",
-        "${substring("banana", 1, 4)}" == "Success(ana)",
-        "${repeat("ab", 2)}" == "Success(abab)",
-        "${padStart("7", 3, "0")}" == "Success(007)",
-        "${byteAt("A", 0)}" == "Success(65)",
+        structuralEquals(["${substring("banana", 1, 4)}", "${repeat("ab", 2)}"], ["Success(ana)", "Success(abab)"]),
+        structuralEquals(["${padStart("7", 3, "0")}", "${byteAt("A", 0)}"], ["Success(007)", "Success(65)"]),
         "${codePointWidth(233)}" == "Success(2)"
     ])
 
@@ -419,18 +409,15 @@ fn escapeSequenceCase() = {
     // NOT whitespace ([BUILTIN-STRING-TRIM], [BUILTIN-STRING-WORDS]).
     // "A trailing newline does not produce an empty final element" ([BUILTIN-STRING-LINES]).
     checkAll("escaped whitespace drives trim, words, lines and split", [
-        structuralEquals([trim("\n\t hi \r\n"), trimStart("\n\thi")], ["hi", "hi"]),
-        structuralEquals([trimEnd("hi\t\n"), trim("\t\r\n ")], ["hi", ""]),
-        structuralEquals([trim("\e"), (listGet(lines("a\nb"), 1) ?: "missing")], ["\e", "b"]),
+        structuralEquals([trim("\n\t hi \r\n"), trimStart("\n\thi"), trimEnd("hi\t\n")], ["hi", "hi", "hi"]),
+        structuralEquals([trim("\t\r\n "), trim("\e"), (listGet(lines("a\nb"), 1) ?: "missing")], ["", "\e", "b"]),
         (listGet(lines("a\nb"), 0) ?: "missing") == "a",
-        (listGet(words("a\tb"), 1) ?: "missing") == "b",
-        join(lines("a\nb\nc"), "-") == "a-b-c",
+        structuralEquals([(listGet(words("a\tb"), 1) ?: "missing"), join(lines("a\nb\nc"), "-")], ["b", "a-b-c"]),
         join(words("  x  y  "), "+") == "x+y",
         structuralEquals([length(trim("\e hi ")), listLength(lines("a\nb\nc")), listLength(lines("a\n"))], [4, 3, 1]),
         structuralEquals([listLength(lines("a\n\nb")), listLength(lines("solo"))], [3, 1]),
-        structuralEquals([listLength(words("a\tb\nc")), listLength(words("   "))], [3, 0]),
-        structuralEquals([listLength(words("")), listLength(words(" a "))], [0, 1]),
-        structuralEquals([listLength(words("a\r\nb")), tabSplitCount], [2, 2]),
+        structuralEquals([listLength(words("a\tb\nc")), listLength(words("   ")), listLength(words(""))], [3, 0, 0]),
+        structuralEquals([listLength(words(" a ")), listLength(words("a\r\nb")), tabSplitCount], [1, 2, 2]),
         structuralEquals([contains("a\nb", "\n"), contains("ab", "\n"), startsWith("\tx", "\t")], [true, false, true]),
         endsWith("x\n", "\n")
     ])
@@ -485,8 +472,7 @@ fn substringPositionCase() = {
         indexEmptySubject,
         (substring(subject, 1, 4) ?: "missing") == "ana",
         (substring(subject, 2, 4) ?: "missing") == "na",
-        (substring(subject, 6, 6) ?: "missing") == "",
-        (substring(subject, 3, 3) ?: "missing") == "",
+        structuralEquals([(substring(subject, 6, 6) ?: "missing"), (substring(subject, 3, 3) ?: "missing")], ["", ""]),
         take(subject, (indexOf(subject, "na") ?: missing)) == "ba",
         drop(subject, (indexOf(subject, "na") ?: missing)) == "nana",
         (substring(subject, 0, 6) ?: "missing") == subject,
@@ -554,10 +540,8 @@ fn caseFoldingCase() = {
         (padStart(toUpperCase("z"), 3, "y") ?: "missing") == "yyZ",
         (padEnd(toLowerCase("Z"), 3, "y") ?: "missing") == "zyy",
         (substring(toUpperCase("banana"), 0, 3) ?: "missing") == "BAN",
-        trim(toUpperCase("  a  ")) == "A",
-        toUpperCase(trim("  a  ")) == "A",
-        join([toUpperCase("a"), toLowerCase("B")], "-") == "A-b",
-        "${toUpperCase("ab")}" == "AB",
+        structuralEquals([trim(toUpperCase("  a  ")), toUpperCase(trim("  a  "))], ["A", "A"]),
+        structuralEquals([join([toUpperCase("a"), toLowerCase("B")], "-"), "${toUpperCase("ab")}"], ["A-b", "AB"]),
         "${toLowerCase("AB")}" == "ab"
     ])
 }
@@ -617,18 +601,15 @@ fn concatLengthCase() = {
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
     checkAll("repeat, reverse, padding and join keep their length contracts", [
         structuralEquals([(repeat(left, 0) ?: "missing"), (repeat(left, 3) ?: "missing")], ["", "ababab"]),
-        structuralEquals([(repeat("", 5) ?: "missing"), reverse("")], ["", ""]),
-        structuralEquals([reverse("a"), reverse(joined)], ["a", "fedcba"]),
-        structuralEquals([reverse(reverse("héllo")), (padStart("7", 5, "0") ?: "missing")], ["héllo", "00007"]),
+        structuralEquals([(repeat("", 5) ?: "missing"), reverse(""), reverse("a")], ["", "", "a"]),
+        structuralEquals([reverse(joined), reverse(reverse("héllo"))], ["fedcba", "héllo"]),
+        (padStart("7", 5, "0") ?: "missing") == "00007",
         (padEnd("7", 5, "0") ?: "missing") == "70000",
         (padStart("x", 6, "ab") ?: "missing") == "ababax",
         (padEnd("x", 6, "ab") ?: "missing") == "xababa",
         (padStart("hello", 3, "0") ?: "missing") == "hello",
-        (padEnd("hello", 3, "0") ?: "missing") == "hello",
-        join(["a", "b", "c"], "") == "abc",
-        join(["a"], "-") == "a",
-        join(["", ""], "-") == "-",
-        join(noParts, "-") == "",
+        structuralEquals([(padEnd("hello", 3, "0") ?: "missing"), join(["a", "b", "c"], "")], ["hello", "abc"]),
+        structuralEquals([join(["a"], "-"), join(["", ""], "-"), join(noParts, "-")], ["a", "-", ""]),
         (repeat(left, 1) ?: "missing") == left,
         structuralEquals([length(repeat(left, 5) ?: ""), length(repeat("", 5) ?: "x")], [10, 0]),
         structuralEquals([length(reverse("héllo")), length(padStart("7", 5, "0") ?: "")], [6, 5]),
@@ -660,13 +641,11 @@ fn interpolationCompositionCase() = {
 
     checkAll("a hole may hold a call, a pipe, an operator or an index", [
         structuralEquals(["${length("abc")}", "${toUpperCase(name)}"], ["3", "ALICE"]),
-        structuralEquals(["${name |> toUpperCase}", "${name |> length}"], ["ALICE", "5"]),
-        structuralEquals(["${toString(count)}", "${toUpperCase(toLowerCase("AbC"))}"], ["3", "ABC"]),
-        structuralEquals(["${take(name, 2)}", "${drop(name, 2)}"], ["al", "ice"]),
-        structuralEquals(["${reverse(name)}", "${count == 3}"], ["ecila", "true"]),
-        structuralEquals(["${count != 3}", "${!(count == 3)}"], ["false", "false"]),
-        structuralEquals(["${isEmpty("")}", "${contains(name, "lic")}"], ["true", "true"]),
-        structuralEquals(["${(count + 4) }", "${(count * 4) }"], ["7", "12"]),
+        structuralEquals(["${name |> toUpperCase}", "${name |> length}", "${toString(count)}"], ["ALICE", "5", "3"]),
+        structuralEquals(["${toUpperCase(toLowerCase("AbC"))}", "${take(name, 2)}"], ["ABC", "al"]),
+        structuralEquals(["${drop(name, 2)}", "${reverse(name)}", "${count == 3}"], ["ice", "ecila", "true"]),
+        structuralEquals(["${count != 3}", "${!(count == 3)}", "${isEmpty("")}"], ["false", "false", "true"]),
+        structuralEquals(["${contains(name, "lic")}", "${(count + 4) }", "${(count * 4) }"], ["true", "7", "12"]),
         structuralEquals(["${listGet(xs, 0) ?: "none"}", "${listGet(xs, 9) ?: "none"}"], ["red", "none"]),
         structuralEquals(["${xs[2] ?: "none"}", "${prices["apple"] ?: 0}"], ["blue", "2"]),
         structuralEquals(["${prices["mango"] ?: 0}", "${listLength(xs)}"], ["0", "3"])

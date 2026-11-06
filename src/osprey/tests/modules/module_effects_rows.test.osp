@@ -61,9 +61,8 @@ fn collecting(body) = {
 
 /// An operation performed inside a module reaches the caller's handler.
 fn crossBoundaryCase() = checkAll("module operations reach caller handlers", [
-    structuralEquals([feeding(7, Source::pull), feeding(0, Source::pull)], [7, 0]),
-    structuralEquals([feeding(7, Source::pair), feeding(21, Source::pair)], [14, 42]),
-    feeding(3, fn() => Stage::run(fn(v) => (v * 2) )) == 6,
+    structuralEquals([feeding(7, Source::pull), feeding(0, Source::pull), feeding(7, Source::pair)], [7, 0, 14]),
+    structuralEquals([feeding(21, Source::pair), feeding(3, fn() => Stage::run(fn(v) => (v * 2) ))], [42, 6]),
     feeding(5, fn() => Stage::run(fn(v) => (v + 1) )) == 6
 ])
 

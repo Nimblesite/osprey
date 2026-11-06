@@ -62,10 +62,9 @@ structAllocationCase () =
     sample = forge 4
     bumpedOnce = bump (sample, 99)
     checkAll "struct allocation and aggregate state" [
-        structuralEquals [testTotal, testHeavyTotal] [15000050000, 11249875000],
-        structuralEquals [testBumped.mass, sample.id] [100002, 4],
-        structuralEquals [sample.mass, energy sample] [12, 16],
-        structuralEquals [bumpedOnce.mass, length (keepItems (listAppend [] 7, false)).items] [13, 0],
+        structuralEquals [testTotal, testHeavyTotal, testBumped.mass, sample.id] [15000050000, 11249875000, 100002, 4],
+        structuralEquals [sample.mass, energy sample, bumpedOnce.mass] [12, 16, 13],
+        length (keepItems (listAppend [] 7, false)).items == 0,
         (listGet (keepItems (listAppend [] 7, true)).items 0 ?: 0) == 7,
         length (keepSuccess (listAppend [] 9, false)).items == 0,
         (listGet (keepSuccess (listAppend [] 9, true)).items 0 ?: 0) == 9,

@@ -144,8 +144,7 @@ fn stringPipelineCase() = {
     ])
     checkAll("fallible string values and collection results", [
         structuralEquals([(indexOf(source, "?") ?: ((0 - 1) )), (parseInt("123") ?: 0)], [16, 123]),
-        structuralEquals([listLength(lines("a\nb\nc")), listLength(words("  hello   world  "))], [3, 2]),
-        splitCount == 3,
+        structuralEquals([listLength(lines("a\nb\nc")), listLength(words("  hello   world  ")), splitCount], [3, 2, 3]),
         (substring("hello world", 6, 11) ?: "missing") == "world",
         (replace("a-b-c-d", "-", "/") ?: "missing") == "a/b/c/d",
         (repeat("ab", 4) ?: "missing") == "abababab",

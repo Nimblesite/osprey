@@ -127,8 +127,7 @@ fn blockStatementsCase() = {
     ])
 
     checkAll("top-level bindings and lexical shadowing remain stable", [
-            structuralEquals([r1, r2, r3, r5], [42, 20, 85, 20]),
-            structuralEquals([r6, outer, value, conditionalBlock(0)], [94, 100, 42, 0]),
+            structuralEquals([r1, r2, r3, r5, r6, outer, value, conditionalBlock(0)], [42, 20, 85, 20, 94, 100, 42, 0]),
             structuralEquals([conditionalBlock(41), conditionalBlock(43), conditionalBlock((0 - 1) )], [0, 0, 0]),
             shadowedBlock() == r3,
             compute() == compute(),

@@ -36,9 +36,8 @@ fn memberImportCase() = checkAll("member imports bind exported members", [
 
 /// A whole-module import binds its final segment, or its explicit alias.
 fn wholeModuleImportCase() = checkAll("whole-module imports and aliases", [
-    structuralEquals([Units::each, U::each, Units::pack(3)], [1, 1, 36]),
-    structuralEquals([U::pack(3), U::crate(1), Units::Metric::grams(2)], [36, 48, 2000]),
-    structuralEquals([Metric::grams(2), U::Metric::grams(1)], [2000, 1000])
+    structuralEquals([Units::each, U::each, Units::pack(3), U::pack(3), U::crate(1)], [1, 1, 36, 36, 48]),
+    structuralEquals([Units::Metric::grams(2), Metric::grams(2), U::Metric::grams(1)], [2000, 2000, 1000])
 ])
 
 /// Every spelling of one declaration agrees, and locals outrank imports.

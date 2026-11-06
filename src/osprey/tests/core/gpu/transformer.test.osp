@@ -175,8 +175,7 @@ fn matMulExactCaseUploaded(left, right) = {
                         withBuffer(floats([]), fn(uploaded30) => {
                             withBuffer(product(uploaded29, uploaded30, 2, 0, 2), fn(hollow) => {
                                 checkAll("gpuMatMul forms the row-major product of the stated shapes", [
-                                        gpuLength(square) == 4,
-                                        gpuLength(hollow) == 4,
+                                        structuralEquals([gpuLength(square), gpuLength(hollow)], [4, 4]),
                                         exact(at(square, 0), 58.0), exact(at(square, 1), 64.0), exact(at(square, 2), 139.0), exact(at(square, 3), 154.0),
                                         exact(at(outer, 0), 10.0), exact(at(outer, 1), 14.0), exact(at(outer, 2), 15.0), exact(at(outer, 3), 21.0),
                                         gpuSatisfies(gpuFold(hollow, 0.0, addF), fn(total) => exact(total, 0.0)),
