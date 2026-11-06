@@ -40,6 +40,15 @@ def literal(value, floats_as_text=False):
     raise TypeError(f"no Python-flavor literal for {type(value).__name__}")
 
 
+def aliased(text, name, first_named):
+    """`text`, or the name of the earlier constant with the same non-empty list literal, so
+    two oracle cases that agree (a v2 file and its v3 twin) share one literal."""
+    if not text.startswith("[") or text == "[]":
+        return text
+    first = first_named.setdefault(text, name)
+    return text if first == name else first
+
+
 def write(package, summary, versions, constants, docs=None, module="Expected", namespace=None, file="expected.py", home=None):
     """Write `<home>/tests/expected.py` holding `constants` (name -> value); `home` defaults
     to src/osprey/packages/<package>, and an example model passes its own directory.
@@ -66,9 +75,11 @@ def write(package, summary, versions, constants, docs=None, module="Expected", n
         "__all__ = [" + ", ".join(f'"{name}"' for name in constants) + "]",
         "",
     ]
+    first_named = {}
     for name, value in constants.items():
         doc = (docs or {}).get(name, f"Oracle value `{name}`, computed by {home}/oracle/{package}.cpython.")
-        lines += [f"{name} = {literal(value, non_finite(value))}", f'"""{doc}"""']
+        text = literal(value, non_finite(value))
+        lines += [f"{name} = {aliased(text, name, first_named)}", f'"""{doc}"""']
     target = ROOT / home / "tests" / file
     target.write_text("\n".join(lines) + "\n")
     return target
