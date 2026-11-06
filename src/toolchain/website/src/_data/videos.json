@@ -1,8 +1,9 @@
 {
   "_comment": "One source for video players, VideoObject markup and the video sitemap. durationSeconds is measured from the delivered MP4 with ffprobe; captions and chapters are WebVTT. Preserve original upload dates when updating metadata.",
   "swift-interop": {
-    "name": "Osprey and Swift interop: Mac and iPhone app tutorial",
-    "description": "A three-minute video tutorial. Osprey exports compile to a C header that Swift calls, Swift @_cdecl functions become Osprey imports, and one Xcode target ships the same app to the Mac and the iPhone.",
+    "name": "Osprey exports and externs: one app for the Mac and iPhone with Swift",
+    "description": "A four-minute tutorial. Osprey exports compile to a C header that Swift calls, Swift @_cdecl functions become Osprey externs, an effect keeps the boundary testable, and one Xcode target ships the app to the Mac and the iPhone. Then the Osprey tests, and an edit to the hidden-files rule that they catch.",
+    "kind": "tutorial",
     "content": "/assets/videos/osprey-swift-interop.mp4",
     "poster": "/assets/videos/osprey-swift-interop-poster.jpg",
     "posterAlt": "Osprey + Swift title card with the Osprey bird, the Osprey Storage app icon and the words One app, Mac and iPhone",
@@ -22,11 +23,12 @@
       "Xcode",
       "algebraic effects"
     ],
-    "durationSeconds": 194.224
+    "durationSeconds": 261.417
   },
   "profiler": {
-    "name": "Profiling Osprey in VS Code: CPU, memory and leaks",
-    "description": "A two-minute video tutorial. Run and profile the open file, read the flame graph and the heat on your source, attach to a program that is already running, then see how Osprey's memory backends work and check a program for leaks with ARC.",
+    "name": "Profiling Osprey programs in VS Code: CPU, memory and leaks",
+    "description": "A four-minute tutorial. Read two sample programs and predict where the time goes, then profile them in VS Code, read the flame graph and the heat on the source, attach to a running program, compare Osprey's memory backends, and check for leaks with ARC.",
+    "kind": "tutorial",
     "content": "/assets/videos/osprey-profiler.mp4",
     "poster": "/assets/videos/osprey-profiler-poster.jpg",
     "posterAlt": "The Profiling Osprey title card with the Osprey bird and the words CPU, memory, leaks, in VS Code",
@@ -45,11 +47,12 @@
       "ARC",
       "leak detection"
     ],
-    "durationSeconds": 120.073
+    "durationSeconds": 256.652
   },
   "package-manager": {
     "name": "Add and remove Osprey packages in VS Code",
     "description": "Browse Osprey packages, review audit warnings, add and verify a dependency, then remove it through the VS Code package workspace.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-package-manager.mp4",
     "poster": "/assets/videos/osprey-package-manager-poster.jpg",
     "posterAlt": "The VS Code Command Palette with Osprey: Manage Packages selected.",
@@ -70,6 +73,7 @@
   "dependent-types": {
     "name": "What are dependent types?: for programmers",
     "description": "Types can describe facts about values. Start with a list-length example, then watch Osprey check an actual identity proof. This version is for programmers.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-dependent-types.mp4",
     "poster": "/assets/videos/osprey-dependent-types-poster.jpg",
     "posterAlt": "What are dependent types? with Osprey branding and real proof tools.",
@@ -91,6 +95,7 @@
   "osprey-proof-kernel": {
     "name": "How Osprey checks a proof: for programmers",
     "description": "Follow a statement and its evidence through the proof kernel written in Osprey. This version is for programmers.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-proof-kernel.mp4",
     "poster": "/assets/videos/osprey-proof-kernel-poster.jpg",
     "posterAlt": "How Osprey checks a proof with Osprey branding and real proof tools.",
@@ -112,6 +117,7 @@
   "proof-workbench": {
     "name": "Meet the proof workbench: for programmers",
     "description": "Write a small argument, inspect hypotheses and goals, and complete a guided exercise in the real Workbench. This version is for programmers.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-proof-workbench.mp4",
     "poster": "/assets/videos/osprey-proof-workbench-poster.jpg",
     "posterAlt": "Meet the proof workbench with Osprey branding and real proof tools.",
@@ -133,6 +139,7 @@
   "mathlib-bridge": {
     "name": "The Mathlib port is already underway: for programmers",
     "description": "See selected imported proofs checked in Osprey and learn how the actual Mathlib Euclid import is progressing. This version is for programmers.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-mathlib-bridge.mp4",
     "poster": "/assets/videos/osprey-mathlib-bridge-poster.jpg",
     "posterAlt": "The Mathlib port is already underway with Osprey branding and real proof tools.",
@@ -154,6 +161,7 @@
   "proofs-that-say-no": {
     "name": "A proof checker must say no: for programmers",
     "description": "Compare a valid proof with deliberately corrupted evidence and a false replacement statement. This version is for programmers.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-proofs-that-say-no.mp4",
     "poster": "/assets/videos/osprey-proofs-that-say-no-poster.jpg",
     "posterAlt": "A proof checker must say no with Osprey branding and real proof tools.",
@@ -175,6 +183,7 @@
   "navier-stokes-proof": {
     "name": "Navier-Stokes: OpenAI's published solution: for programmers",
     "description": "Understand OpenAI's published Navier-Stokes solution and Lean formalization, then explore a real Osprey fluid calculation and checked Workbench exercise. This version is for programmers.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-navier-stokes-proof.mp4",
     "poster": "/assets/videos/osprey-navier-stokes-proof-poster.jpg",
     "posterAlt": "Navier-Stokes: OpenAI's published solution with Osprey branding and real proof tools.",
@@ -196,6 +205,7 @@
   "dependent-types-math": {
     "name": "What are dependent types?: for mathematicians",
     "description": "Types can describe facts about values. Start with a list-length example, then watch Osprey check an actual identity proof. This version is for mathematicians.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-dependent-types-math.mp4",
     "poster": "/assets/videos/osprey-dependent-types-math-poster.jpg",
     "posterAlt": "What are dependent types? with Osprey branding and real proof tools.",
@@ -217,6 +227,7 @@
   "osprey-proof-kernel-math": {
     "name": "Inside a small proof kernel: for mathematicians",
     "description": "Follow a statement and its evidence through the proof kernel written in Osprey. This version is for mathematicians.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-proof-kernel-math.mp4",
     "poster": "/assets/videos/osprey-proof-kernel-math-poster.jpg",
     "posterAlt": "Inside a small proof kernel with Osprey branding and real proof tools.",
@@ -238,6 +249,7 @@
   "proof-workbench-math": {
     "name": "The proof workbench: goals and evidence: for mathematicians",
     "description": "Write a small argument, inspect hypotheses and goals, and complete a guided exercise in the real Workbench. This version is for mathematicians.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-proof-workbench-math.mp4",
     "poster": "/assets/videos/osprey-proof-workbench-math-poster.jpg",
     "posterAlt": "The proof workbench: goals and evidence with Osprey branding and real proof tools.",
@@ -259,6 +271,7 @@
   "mathlib-bridge-math": {
     "name": "Osprey rechecks imported mathematical proofs: for mathematicians",
     "description": "See selected imported proofs checked in Osprey and learn how the actual Mathlib Euclid import is progressing. This version is for mathematicians.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-mathlib-bridge-math.mp4",
     "poster": "/assets/videos/osprey-mathlib-bridge-math-poster.jpg",
     "posterAlt": "Osprey rechecks imported mathematical proofs with Osprey branding and real proof tools.",
@@ -280,6 +293,7 @@
   "proofs-that-say-no-math": {
     "name": "Rejection is part of the proof: for mathematicians",
     "description": "Compare a valid proof with deliberately corrupted evidence and a false replacement statement. This version is for mathematicians.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-proofs-that-say-no-math.mp4",
     "poster": "/assets/videos/osprey-proofs-that-say-no-math-poster.jpg",
     "posterAlt": "Rejection is part of the proof with Osprey branding and real proof tools.",
@@ -301,6 +315,7 @@
   "navier-stokes-proof-math": {
     "name": "Navier-Stokes: the published solution, then an exact flow: for mathematicians",
     "description": "Understand OpenAI's published Navier-Stokes solution and Lean formalization, then explore a real Osprey fluid calculation and checked Workbench exercise. This version is for mathematicians.",
+    "kind": "intro",
     "content": "/assets/videos/osprey-navier-stokes-proof-math.mp4",
     "poster": "/assets/videos/osprey-navier-stokes-proof-math-poster.jpg",
     "posterAlt": "Navier-Stokes: the published solution, then an exact flow with Osprey branding and real proof tools.",
@@ -320,8 +335,9 @@
     "durationSeconds": 145.781
   },
   "chromecast-from-mac": {
-    "name": "How to Chromecast from a Mac to a TV",
-    "description": "A 97-second video. A native Mac player written in Osprey finds Chromecasts and Google TVs, plays an MP3 with full controls and a spectrum visualiser, and is tested end to end without a TV.",
+    "name": "Osprey effects for I/O: a Chromecast sender you can test with no TV",
+    "description": "A seven-minute tutorial. Write every byte of input and output as one Osprey effect, return failures as Result, answer the effect with a real handler in the app and a fake one in tests. The worked example is the @osprey/chromecast package and the casting player: discovery, the CAST v2 frame format, serving the file, the app's adapter, eight tests with no TV, and an edit the tests catch.",
+    "kind": "tutorial",
     "content": "/assets/videos/osprey-chromecast-from-mac.mp4",
     "poster": "/assets/videos/osprey-chromecast-from-mac-poster.jpg",
     "posterAlt": "Title card with the Osprey bird and the words Chromecast from a Mac to a TV",
@@ -338,11 +354,12 @@
       "casting",
       "GPUI"
     ],
-    "durationSeconds": 96.804
+    "durationSeconds": 441.926
   },
   "static-typing-python": {
-    "name": "Static typing for Python-style code, with no type hints",
-    "description": "A 90-second video. Osprey's Python flavor infers every type and stops a mistyped call at compile time, shown on a 1,262-line Chromecast sender ported from CPython and checked against it.",
+    "name": "Type inference in the Osprey Python flavor: static types with no hints",
+    "description": "A five-minute tutorial. Python-style code with no annotations, type-checked before it runs: a small sample, the error a wrong argument gives, records, Result and match, effects, and the @osprey/chromecast package checked against CPython. Then one edit that mixes two return types, caught at compile time.",
+    "kind": "tutorial",
     "content": "/assets/videos/osprey-static-typing-python.mp4",
     "poster": "/assets/videos/osprey-static-typing-python-poster.jpg",
     "posterAlt": "Title card with the Osprey bird and the words Static typing for Python, no hints",
@@ -358,11 +375,12 @@
       "type inference",
       "Python"
     ],
-    "durationSeconds": 90.11
+    "durationSeconds": 290.544
   },
   "ui-testing-by-label": {
-    "name": "An accessibility tree AI agents can drive: UI testing by label",
-    "description": "A two-minute video. Osprey UI machines give every native control a role and a label; tests and agents find controls by name and press them with pointer events, with no window or browser.",
+    "name": "Testing Osprey apps by label with @osprey/uitest",
+    "description": "A six-minute tutorial. Where a control's role and label come from, how @osprey/native builds the accessibility tree, how @osprey/uitest finds controls by label and drives them with real pointer events, a whole journey from the casting player's tests, and an edit that renames one label and fails three tests.",
+    "kind": "tutorial",
     "content": "/assets/videos/osprey-ui-testing-by-label.mp4",
     "poster": "/assets/videos/osprey-ui-testing-by-label-poster.jpg",
     "posterAlt": "Title card with the Osprey bird and the words An accessibility tree agents can drive",
@@ -378,11 +396,12 @@
       "AI agents",
       "end-to-end tests"
     ],
-    "durationSeconds": 128.239
+    "durationSeconds": 377.078
   },
   "rust-ui-framework-without-rust": {
-    "name": "A Rust UI framework without writing Rust: GPUI apps as state machines",
-    "description": "A 104-second video. Osprey UI machines describe a GPUI app as parallel state machines, a view and skins in one JSON document, with a small Osprey adapter and no layout code.",
+    "name": "GPUI apps in Osprey: a Rust UI framework without writing Rust",
+    "description": "A five-minute tutorial. GPUI's own painting example ported to Osprey, file by file: the two-function boundary the Rust host calls, the store, the drawing rules and the view. Then its tests and headless self-test with no window, and an edit to the dash pattern that one test catches.",
+    "kind": "tutorial",
     "content": "/assets/videos/osprey-rust-ui-framework-without-rust.mp4",
     "poster": "/assets/videos/osprey-rust-ui-framework-without-rust-poster.jpg",
     "posterAlt": "Title card with the Osprey bird and the words A Rust UI framework, no Rust",
@@ -399,7 +418,7 @@
       "state machines",
       "Osprey Native"
     ],
-    "durationSeconds": 104.154
+    "durationSeconds": 311.848
   },
   "agent-native": {
     "name": "Osprey Agent: a native coding agent in action",

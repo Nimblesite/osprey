@@ -8,13 +8,26 @@ eleventyComputed:
 tags: [tutorials, video, python-flavor, static-typing, types]
 ---
 
-Static typing checks every value's type before a program runs. This video shows Osprey's Python flavor doing that with no type hints, first on a five-line sample, then on a real port of a CPython program.
+Learn how Osprey's Python flavor type-checks Python-style code with no type hints. Every type is inferred at compile time, so a wrong call stops the build instead of failing at run time.
 
 {% videoPlayer video %}
 
-The full write-up, with the code and its limits, is [Static typing for Python-style code, without writing type hints](/blog/2026-11-01-static-typing-python-without-type-hints/).
+## What you will learn
 
-Osprey is actively evolving.
+- Inference on a five-line sample, and the error a wrong argument gives.
+- Records, lambdas, `Result` and `match` in a real package, [`@osprey/chromecast`](https://github.com/Nimblesite/osprey/tree/main/src/osprey/packages/chromecast).
+- Effects instead of exceptions (`@effect`, `perform`).
+- How the package is checked against CPython: 255 checks that must match a CPython oracle.
+- One edit that mixes two return types, caught at compile time.
+
+## Try it
+
+```sh
+osprey label.py --run                                  # the five-line sample
+osprey src/osprey/packages/chromecast/tests --run      # the CPython-checked port
+```
+
+The longer write-up is [Static typing for Python-style code, without writing type hints](/blog/2026-11-01-static-typing-python-without-type-hints/). Osprey is actively evolving.
 
 ## Transcript
 

@@ -1,12 +1,12 @@
 ---
 layout: page
 title: "Osprey video tutorials"
-description: Video tutorials for Osprey applications and tools, including VS Code package management, profiling, and native app interop.
+description: Video tutorials that teach Osprey through real code - effects for I/O, Python-flavor type inference, GPUI apps, Swift interop, UI testing by label and profiling.
 permalink: /docs/tutorials/
 tags: [tutorials, video]
 ---
 
-Watch real Osprey applications and tools. Each video includes captions, chapters and a transcript; the accompanying guide explains how to use the feature.
+Each tutorial teaches one part of Osprey through real code from the repository. It shows the files, runs them, and makes one change so you see its effect. Every video has captions, chapters and a transcript.
 
 ## Proofs and mathematics
 
@@ -14,7 +14,7 @@ Watch real Osprey applications and tools. Each video includes captions, chapters
 
 The series follows the [Lean oracle relationship](/docs/proofs/#lean-as-an-oracle): real reference proofs, Osprey's own checker, and explicit milestones toward independent operation.
 
-## Applications and tools
+## Learn Osprey
 
 {%- for item in collections.all | sort(false, false, "data.title") %}{% if item.data.video and not item.data.film and item.url.startsWith("/docs/") %}{% set v = item.data.video | video %}{% if v.kind != "intro" %}
 

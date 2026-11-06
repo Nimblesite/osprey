@@ -110,6 +110,22 @@ test("the tutorials section lists each watch page", async ({ page }) => {
   await expect(page.locator(`.docs-nav-desktop a[href="/docs/tutorials/"]`)).toBeVisible();
 });
 
+// Implements [DOC-TUTORIAL-VIDEO-KIND] and [DOC-TUTORIAL-VIDEO-LENGTH]: every film is a tutorial or an
+// introduction, and a tutorial runs four to ten minutes and is listed on the tutorials index.
+test("every film is a tutorial or an introduction, and every tutorial runs four to ten minutes", async ({ page }) => {
+  const videos = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../src/_data/videos.json"), "utf8"));
+  const films = Object.entries(videos).filter(([id]) => !id.startsWith("_"));
+  for (const [id, v] of films) expect(["tutorial", "intro"], id).toContain(v.kind);
+  const tutorials = films.filter(([, v]) => v.kind === "tutorial");
+  expect(tutorials.length).toBeGreaterThanOrEqual(6);
+  await page.goto("/docs/tutorials/");
+  for (const [id, v] of tutorials) {
+    expect(v.durationSeconds, id).toBeGreaterThanOrEqual(240);
+    expect(v.durationSeconds, id).toBeLessThanOrEqual(600);
+    await expect(page.locator(`[data-video="${id}"], a.video-card[href*="${id}"]`).first(), id).toBeAttached();
+  }
+});
+
 // Implements [DOC-TUTORIAL-VIDEO-KIND]: an introduction film is not a tutorial.
 test("the tutorials section lists no introduction film", async ({ page }) => {
   const videos = JSON.parse(fs.readFileSync(path.resolve(__dirname, "../src/_data/videos.json"), "utf8"));
