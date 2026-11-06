@@ -12,11 +12,17 @@ import {
   sourceFixtures,
 } from "./debug-fixtures";
 import { defaultDebugOutputPath } from "../../client/src/extension";
-import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
+import {
+  pinOspreySettings,
+  resolveBuiltOsprey,
+  resolveRequiredLldbDap,
+  type PinnedOspreySettings,
+} from "./osprey-test-env";
 import {
   assertCurrentLine,
   assertFrameLocals,
   assertLocalVariable,
+  assertTopLocal,
   assertWatch,
   clearDebugBreakpoints,
   continueExecution,
@@ -63,8 +69,7 @@ suite("Osprey Debugger E2E Workflows", function () {
   let source: string;
   let debugOutput: string;
   let lldbDapPath: string;
-  let priorCompilerPath: string | undefined;
-  let priorLldbDapPath: string | undefined;
+  let pinned: PinnedOspreySettings;
 
   suiteSetup(async function () {
     this.timeout(60_000);
@@ -81,20 +86,10 @@ suite("Osprey Debugger E2E Workflows", function () {
       "a freshly built osprey binary (target/release) is required for the debugger E2E",
     );
     lldbDapPath = resolveRequiredLldbDap();
-
-    const config = vscode.workspace.getConfiguration("osprey");
-    priorCompilerPath = config.get<string>("server.compilerPath");
-    priorLldbDapPath = config.get<string>("debug.lldbDapPath");
-    await config.update(
-      "server.compilerPath",
-      ospreyPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      lldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    pinned = await pinOspreySettings({
+      "server.compilerPath": ospreyPath,
+      "debug.lldbDapPath": lldbDapPath,
+    });
 
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, "Osprey extension must be installed in the test host");
@@ -106,17 +101,7 @@ suite("Osprey Debugger E2E Workflows", function () {
   });
 
   suiteTeardown(async () => {
-    const config = vscode.workspace.getConfiguration("osprey");
-    await config.update(
-      "server.compilerPath",
-      priorCompilerPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      priorLldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    await pinned.restore();
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
@@ -445,12 +430,7 @@ suite("Osprey Debugger E2E Workflows", function () {
       `stepped into addThree (was ${topName(inside)})`,
     );
     // second = square(7) = 49, so addThree sees n == 49.
-    await assertLocalVariable(
-      session,
-      inside.stack.stackFrames[0].id,
-      "n",
-      /\b49\b/,
-    );
+    await assertTopLocal(session, inside, "n", /\b49\b/);
     await assertWatch(
       session,
       inside.stack.stackFrames[0].id,

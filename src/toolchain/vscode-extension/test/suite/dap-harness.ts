@@ -384,6 +384,21 @@ export async function assertLocalVariable(
   return variable;
 }
 
+/**
+ * Assert a named local in the TOP frame of `stop` matches — the frame a test
+ * stopped at a breakpoint always inspects.
+ */
+export async function assertTopLocal(
+  session: vscode.DebugSession,
+  stop: DapStop,
+  name: string,
+  matcher: ValueMatcher,
+): Promise<DapVariable> {
+  const frame = stop.stack.stackFrames[0];
+  assert.ok(frame, "a stop must report at least one stack frame");
+  return assertLocalVariable(session, frame.id, name, matcher);
+}
+
 /** Assert an evaluated watch expression matches. Returns the result string. */
 export async function assertWatch(
   session: vscode.DebugSession,

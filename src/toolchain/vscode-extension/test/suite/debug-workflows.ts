@@ -3,7 +3,7 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { selectedProfileVariable } from '@nimblesite/lsp-profiler-ui/out/src/debug-selection';
-import { assertCurrentLine, assertLocalVariable, continueExecution, getScopes, readFrameVariables, stepOver, waitForDebugSessionEnd, waitForStop, setSourceBreakpoints, type DapStop } from './dap-harness';
+import { assertCurrentLine, assertLocalVariable, assertTopLocal, continueExecution, getScopes, readFrameVariables, stepOver, waitForDebugSessionEnd, waitForStop, setSourceBreakpoints, type DapStop } from './dap-harness';
 
 type Launch = (specs: Parameters<typeof setSourceBreakpoints>[1], overrides?: Record<string, unknown>) => Promise<{ session: vscode.DebugSession; stop: DapStop }>;
 
@@ -41,35 +41,20 @@ export function registerDebugTailTests(launchToFirstStop: Launch, getSource: () 
 
     // First hit: square(5).
     assertCurrentLine(stop.stack, 1, getSource());
-    await assertLocalVariable(
-      session,
-      stop.stack.stackFrames[0].id,
-      "n",
-      /\b5\b/,
-    );
+    await assertTopLocal(session, stop, "n", /\b5\b/);
 
     // Second hit: square(7).
     await continueExecution(session, stop.threadId);
     const secondHit = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     assertCurrentLine(secondHit.stack, 1, getSource());
-    await assertLocalVariable(
-      session,
-      secondHit.stack.stackFrames[0].id,
-      "n",
-      /\b7\b/,
-    );
+    await assertTopLocal(session, secondHit, "n", /\b7\b/);
 
     // Third hit: addThree(second) where second == 49.
     await continueExecution(session, secondHit.threadId);
     const thirdHit = await waitForStop(session, LAUNCH_TIMEOUT_MS);
     assertCurrentLine(thirdHit.stack, 2, getSource());
     assert.ok(hasFrame(thirdHit, "addThree"), "third stop is in addThree");
-    await assertLocalVariable(
-      session,
-      thirdHit.stack.stackFrames[0].id,
-      "n",
-      /\b49\b/,
-    );
+    await assertTopLocal(session, thirdHit, "n", /\b49\b/);
 
     await continueExecution(session, thirdHit.threadId);
     await waitForDebugSessionEnd(LAUNCH_TIMEOUT_MS, session.id);

@@ -18,6 +18,25 @@ function openSources() {
     .sort((left, right) => left.uri.localeCompare(right.uri));
 }
 
+/**
+ * An unsaved document to hang a guarded action on: `plaintext` by default so
+ * the Osprey guard sees a foreign document, with the content the action edits.
+ */
+function untitled(
+  content = "content",
+  language = "plaintext",
+): Thenable<vscode.TextDocument> {
+  return vscode.workspace.openTextDocument({ content, language });
+}
+
+/** An annotated action for `document` after the guard middleware wrapped it. */
+async function wrappedAction(
+  document: vscode.TextDocument,
+): Promise<vscode.CodeAction & { data?: object }> {
+  const action = await wrappedAction(document);
+  return action;
+}
+
 function annotated(
   document: vscode.TextDocument,
 ): vscode.CodeAction & { data?: object } {
@@ -130,10 +149,7 @@ suite("Warning fix document-version guard", () => {
   suiteTeardown(() => assert.deepStrictEqual(dirtyUntitledDocuments(), []));
 
   test("converted warning carries plain command payload with the original document snapshot", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "abc body",
-      language: "plaintext",
-    });
+    const document = await untitled("abc body");
     const action = annotated(document);
     const originalDiagnostics = action.diagnostics;
     assert.deepStrictEqual(await wrap(document, [action]), [action]);
@@ -179,10 +195,7 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("ordinary server commands and actions retain their original behavior", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "content",
-      language: "plaintext",
-    });
+    const document = await untitled();
     const command = { command: "other.command", title: "Other" };
     const noDiagnostic = new vscode.CodeAction("No diagnostic");
     const unrelated = annotated(document);
@@ -199,10 +212,7 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("missing or inconsistent version metadata disables the unsafe edit", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "content",
-      language: "plaintext",
-    });
+    const document = await untitled();
     for (const data of [
       undefined,
       {},
@@ -221,14 +231,8 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("absent, empty or cross-document workspace edits cannot bypass the guard", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "content",
-      language: "plaintext",
-    });
-    const other = await vscode.workspace.openTextDocument({
-      content: "other",
-      language: "plaintext",
-    });
+    const document = await untitled();
+    const other = await untitled("other");
     const foreign = new vscode.WorkspaceEdit();
     foreign.delete(other.uri, new vscode.Range(0, 0, 0, 1));
     const multiple = new vscode.WorkspaceEdit();
@@ -253,10 +257,7 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("stale versions, reopened content and closed documents are rejected without edits", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "content",
-      language: "plaintext",
-    });
+    const document = await untitled();
     const fix = {
       uri: document.uri.toString(),
       version: document.version,
@@ -283,24 +284,16 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("changed or newly opened Osprey siblings invalidate a cached fix", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "content",
-      language: "plaintext",
-    });
-    const action = annotated(document);
-    await wrap(document, [action]);
+    const document = await untitled();
+    const action = await wrappedAction(document);
     assert.ok(action.command);
-    const sibling = await vscode.workspace.openTextDocument({
-      content: "value = 1",
-      language: "osprey-ml",
-    });
+    const sibling = await untitled("value = 1", "osprey-ml");
     assert.strictEqual(
       await applyWarningFix(action.command.arguments?.[0]),
       false,
     );
     assert.strictEqual(document.getText(), "content");
-    const fresh = annotated(document);
-    await wrap(document, [fresh]);
+    const fresh = await wrappedAction(document);
     assert.ok(fresh.command);
     const edit = new vscode.WorkspaceEdit();
     edit.insert(sibling.uri, new vscode.Position(0, 9), "0");
@@ -313,12 +306,8 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("absent, changed, unversioned and failed fresh compiler proofs reject cached edits", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "abc body",
-      language: "plaintext",
-    });
-    const action = annotated(document);
-    await wrap(document, [action]);
+    const document = await untitled("abc body");
+    const action = await wrappedAction(document);
     const payload = action.command?.arguments?.[0];
     const original = freshAction(document);
     const changed = structuredClone(original);
@@ -373,12 +362,8 @@ suite("Warning fix document-version guard", () => {
   });
 
   test("an editor change while the fresh compiler proof is pending invalidates the returned proof", async () => {
-    const document = await vscode.workspace.openTextDocument({
-      content: "abc body",
-      language: "plaintext",
-    });
-    const action = annotated(document);
-    await wrap(document, [action]);
+    const document = await untitled("abc body");
+    const action = await wrappedAction(document);
     const response = freshAction(document);
     assert.strictEqual(
       await applyWarningFix(action.command?.arguments?.[0], async () => {

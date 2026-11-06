@@ -31,7 +31,12 @@ import {
   waitForDebugSessionEnd,
   waitForStop,
 } from "./dap-harness";
-import { resolveBuiltOsprey, resolveRequiredLldbDap } from "./osprey-test-env";
+import {
+  pinOspreySettings,
+  resolveBuiltOsprey,
+  resolveRequiredLldbDap,
+  type PinnedOspreySettings,
+} from "./osprey-test-env";
 import { RecordingSink } from "./test-explorer-harness";
 
 // Line numbers are load-bearing — the assertions below reference them. A `let`
@@ -66,8 +71,7 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
   const disposables: vscode.Disposable[] = [];
   let fixtureDir: string;
   let uri: vscode.Uri;
-  let priorCompilerPath: string | undefined;
-  let priorLldbDapPath: string | undefined;
+  let pinned: PinnedOspreySettings;
   let controllerSequence = 0;
 
   const realRun: DebugSuiteRunner = (target, filter, token) =>
@@ -82,37 +86,17 @@ suite("Osprey Test Explorer Debug profile E2E", function () {
     uri = vscode.Uri.file(path.join(fixtureDir, "steps.test.osp"));
     fs.writeFileSync(uri.fsPath, FIXTURE);
 
-    const lldbDapPath = resolveRequiredLldbDap();
-    const config = vscode.workspace.getConfiguration("osprey");
-    priorCompilerPath = config.get<string>("server.compilerPath");
-    priorLldbDapPath = config.get<string>("debug.lldbDapPath");
-    await config.update(
-      "server.compilerPath",
-      compiler,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      lldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    pinned = await pinOspreySettings({
+      "server.compilerPath": compiler,
+      "debug.lldbDapPath": resolveRequiredLldbDap(),
+    });
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, "Osprey extension must be installed in the test host");
     await extension.activate();
   });
 
   suiteTeardown(async () => {
-    const config = vscode.workspace.getConfiguration("osprey");
-    await config.update(
-      "server.compilerPath",
-      priorCompilerPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      priorLldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    await pinned.restore();
     fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
 

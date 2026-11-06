@@ -23,8 +23,11 @@ import {
 } from "../../client/src/extension";
 import {
   extensionRoot,
+  pinOspreySettings,
   resolveBuiltOsprey,
   resolveRequiredLldbDap,
+  skipWarningsOf,
+  type PinnedOspreySettings,
 } from "./osprey-test-env";
 import {
   assertCurrentLine,
@@ -56,6 +59,39 @@ async function startDebugRaced(
     .then((value) => `resolved:${String(value)}`)
     .catch((error: unknown) => `error:${String(error)}`);
   return Promise.race([start, timeout]);
+}
+
+/** Wait `ms` milliseconds without ever rejecting. */
+const settle = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+// makeActive shows the document and polls until it is genuinely the active
+// text editor. The extension shows an "Osprey Debug" output channel during
+// activation, and that output pseudo-editor steals the active-editor slot in
+// the headless host. We close panels and refocus the editor group between
+// attempts so the .osp document becomes (and stays) the active editor at the
+// moment a command captures window.activeTextEditor.
+async function makeActive(document: vscode.TextDocument): Promise<boolean> {
+  for (let i = 0; i < 25; i++) {
+    // Hide the output panel and any output pseudo-editor stealing focus.
+    await vscode.commands
+      .executeCommand("workbench.action.closePanel")
+      .then(undefined, () => undefined);
+    await vscode.window.showTextDocument(document, {
+      viewColumn: vscode.ViewColumn.One,
+      preserveFocus: false,
+      preview: false,
+    });
+    await vscode.commands
+      .executeCommand("workbench.action.focusActiveEditorGroup")
+      .then(undefined, () => undefined);
+    await settle(120);
+    const active = vscode.window.activeTextEditor;
+    if (active && active.document.uri.toString() === document.uri.toString()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 // The compiled test lives at <ext>/out/test/suite, so the extension root is
@@ -91,8 +127,6 @@ let manifestWasStaged = false;
 // is re-derived here. [DEBUGGER-REUSE]
 
 suite("Osprey Shipwright Activation Coverage", () => {
-  const settle = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
   let priorCompilerPath: string | undefined;
   let setCompilerPath = false;
 
@@ -583,6 +617,71 @@ suite("Osprey Language Features Tests", () => {
   const startLines = (locs: vscode.Location[]): number[] =>
     locs.map((l) => l.range.start.line).sort((a, b) => a - b);
 
+  /** The hover at `line:character` once it renders `needle`. */
+  const hoverPoll = (
+    uri: vscode.Uri,
+    line: number,
+    character: number,
+    needle: string,
+    tries = 40,
+    delayMs = 250,
+  ) =>
+    pollFor(
+      () => hoverAt(uri, line, character),
+      (h) => nonEmptyHover(h) && hoverText(h[0]).includes(needle),
+      tries,
+      delayMs,
+    );
+
+  /** The definition locations at `line:character`, once any arrive. */
+  const defsPoll = (uri: vscode.Uri, line: number, character: number) =>
+    pollFor(
+      () => defsAt(uri, line, character),
+      (d) => Array.isArray(d) && d.length > 0,
+    );
+
+  /** The references at `line:character`, once at least `min` arrive. */
+  const refsPoll = (
+    uri: vscode.Uri,
+    line: number,
+    character: number,
+    min = 1,
+  ) =>
+    pollFor(
+      () => refsAt(uri, line, character),
+      (r) => Array.isArray(r) && r.length >= min,
+    );
+
+  /** The document symbols for `uri`, once at least `min` arrive. */
+  const symbolsPoll = (uri: vscode.Uri, min = 1) =>
+    pollFor(
+      () => symbolsOf(uri),
+      (s) => Array.isArray(s) && s.length >= min,
+    );
+
+  /** The completions at `line:character`, once `ok` accepts the list. */
+  const completionPoll = (
+    uri: vscode.Uri,
+    line: number,
+    character: number,
+    ok: (list: vscode.CompletionList) => boolean = (list) =>
+      list.items.length > 0,
+  ) =>
+    pollFor(
+      () => completionAt(uri, line, character),
+      (l) => !!l && Array.isArray(l.items) && ok(l),
+    );
+
+  /** The diagnostics for `uri`, once `ok` accepts them. */
+  const diagnosticsPoll = (
+    uri: vscode.Uri,
+    ok: (found: vscode.Diagnostic[]) => boolean,
+  ) =>
+    pollFor(
+      () => Promise.resolve(vscode.languages.getDiagnostics(uri)),
+      ok,
+    );
+
   suiteSetup(async function () {
     this.timeout(60000);
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-feat-"));
@@ -666,10 +765,7 @@ suite("Osprey Language Features Tests", () => {
     const doc = await openDoc("sweep.osp", RICH);
 
     // --- HOVER: user functions at declaration and call site ---
-    const areaDecl = await pollFor(
-      () => hoverAt(doc.uri, 1, 3),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
-    );
+    const areaDecl = await hoverPoll(doc.uri, 1, 3, "area");
     const areaDeclMd = hoverText(areaDecl[0]);
     // `fn area(r) = wrapMul(r, r)` writes neither the parameter type nor the return
     // type, so both slots come from the checker ([LSP-HOVER-INFERRED-SIGNATURE]).
@@ -685,30 +781,21 @@ suite("Osprey Language Features Tests", () => {
       "area decl hover shows the inferred return type, not the Unit fallback",
     );
 
-    const areaCall = await pollFor(
-      () => hoverAt(doc.uri, 4, 9),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
-    );
+    const areaCall = await hoverPoll(doc.uri, 4, 9, "area");
     assert.strictEqual(
       hoverText(areaCall[0]),
       areaDeclMd,
       "call-site hover matches the declaration hover",
     );
 
-    const periCall = await pollFor(
-      () => hoverAt(doc.uri, 6, 9),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("perimeter"),
-    );
+    const periCall = await hoverPoll(doc.uri, 6, 9, "perimeter");
     assert.ok(
       hoverText(periCall[0]).includes("fn perimeter(r"),
       `perimeter hover shows its signature, got: ${hoverText(periCall[0])}`,
     );
 
     // --- HOVER: built-ins carry their own typed signatures ---
-    const lenHover = await pollFor(
-      () => hoverAt(doc.uri, 8, 13),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("listLength"),
-    );
+    const lenHover = await hoverPoll(doc.uri, 8, 13, "listLength");
     const lenMd = hoverText(lenHover[0]);
     assert.ok(
       lenMd.includes("->") && lenMd.includes("int"),
@@ -716,10 +803,7 @@ suite("Osprey Language Features Tests", () => {
     );
     assert.ok(lenMd.includes("List"), "listLength hover mentions List");
 
-    const printHover = await pollFor(
-      () => hoverAt(doc.uri, 9, 9),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("print"),
-    );
+    const printHover = await hoverPoll(doc.uri, 9, 9, "print");
     assert.ok(
       hoverText(printHover[0]).includes("Unit"),
       "print hover shows it returns Unit",
@@ -729,29 +813,20 @@ suite("Osprey Language Features Tests", () => {
     // This is the regression the user reported: "no bubble on hover of
     // variables". `let radius = 5` is unannotated, so the type is the one the
     // checker INFERRED (int) — proving variable hover end-to-end. [LSP-HOVER-VARIABLES]
-    const radiusHover = await pollFor(
-      () => hoverAt(doc.uri, 3, 4),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("radius"),
-    );
+    const radiusHover = await hoverPoll(doc.uri, 3, 4, "radius");
     assert.ok(
       hoverText(radiusHover[0]).includes("radius: int"),
       `variable hover shows "name: inferred-type": ${hoverText(radiusHover[0])}`,
     );
     // A let bound to a builtin call infers its result type too.
-    const countHover = await pollFor(
-      () => hoverAt(doc.uri, 8, 4),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("count"),
-    );
+    const countHover = await hoverPoll(doc.uri, 8, 4, "count");
     assert.ok(
       hoverText(countHover[0]).includes("count: int"),
       `count infers int from listLength: ${hoverText(countHover[0])}`,
     );
 
     // --- GO TO DEFINITION: both calls jump to their declarations ---
-    const areaDef = await pollFor(
-      () => defsAt(doc.uri, 4, 9),
-      (d) => Array.isArray(d) && d.length > 0,
-    );
+    const areaDef = await defsPoll(doc.uri, 4, 9);
     assert.strictEqual(areaDef.length, 1, "area has exactly one definition");
     assert.strictEqual(
       areaDef[0].range.start.line,
@@ -769,10 +844,7 @@ suite("Osprey Language Features Tests", () => {
       "definition is in this document",
     );
 
-    const periDef = await pollFor(
-      () => defsAt(doc.uri, 6, 9),
-      (d) => Array.isArray(d) && d.length > 0,
-    );
+    const periDef = await defsPoll(doc.uri, 6, 9);
     assert.strictEqual(
       periDef[0].range.start.line,
       2,
@@ -780,10 +852,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- FIND REFERENCES: declaration + every call, scoped to the function ---
-    const areaRefs = await pollFor(
-      () => refsAt(doc.uri, 1, 3),
-      (r) => Array.isArray(r) && r.length >= 3,
-    );
+    const areaRefs = await refsPoll(doc.uri, 1, 3, 3);
     assert.strictEqual(areaRefs.length, 3, "area: declaration + two calls");
     assert.deepStrictEqual(
       startLines(areaRefs),
@@ -795,10 +864,7 @@ suite("Osprey Language Features Tests", () => {
       "all area references in this document",
     );
 
-    const periRefs = await pollFor(
-      () => refsAt(doc.uri, 2, 3),
-      (r) => Array.isArray(r) && r.length >= 2,
-    );
+    const periRefs = await refsPoll(doc.uri, 2, 3, 2);
     assert.strictEqual(periRefs.length, 2, "perimeter: declaration + one call");
     assert.deepStrictEqual(
       startLines(periRefs),
@@ -807,10 +873,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- DOCUMENT SYMBOLS: type, functions and lets with correct kinds ---
-    const syms = await pollFor(
-      () => symbolsOf(doc.uri),
-      (s) => Array.isArray(s) && s.length >= 10,
-    );
+    const syms = await symbolsPoll(doc.uri, 10);
     const byName = new Map(syms.map((s) => [s.name, s]));
     for (const name of [
       "Shape",
@@ -878,9 +941,8 @@ suite("Osprey Language Features Tests", () => {
     // answered from an empty prefix, which classifies as a declaration position
     // and legitimately offers `fn`. Waiting on a symbol only this document
     // declares is what proves the answer belongs to it.
-    const list = await pollFor(
-      () => completionAt(doc.uri, 9, 9),
-      (l) => !!l && Array.isArray(l.items) && labelsOf(l).includes("perimeter"),
+    const list = await completionPoll(doc.uri, 9, 9, (list) =>
+      labelsOf(list).includes("perimeter"),
     );
     const labels = labelsOf(list);
     for (const sym of ["Shape", "area", "perimeter", "radius", "count"]) {
@@ -904,10 +966,7 @@ suite("Osprey Language Features Tests", () => {
 
     // Line 10 is the empty line past the program — declaration position, where
     // every keyword the flavor has is legal again.
-    const atTopLevel = await pollFor(
-      () => completionAt(doc.uri, 10, 0),
-      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
-    );
+    const atTopLevel = await completionPoll(doc.uri, 10, 0);
     const topLevelLabels = labelsOf(atTopLevel);
     for (const kw of ["fn", "let", "match", "type"]) {
       assert.ok(
@@ -936,10 +995,7 @@ suite("Osprey Language Features Tests", () => {
     const doc = await openDoc("documented.osp", content);
 
     // Top-level documented let: type + doc prose.
-    const top = await pollFor(
-      () => hoverAt(doc.uri, 1, 4),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("maxRetries"),
-    );
+    const top = await hoverPoll(doc.uri, 1, 4, "maxRetries");
     const topMd = hoverText(top[0]);
     assert.ok(
       topMd.includes("maxRetries: int"),
@@ -952,10 +1008,7 @@ suite("Osprey Language Features Tests", () => {
 
     // Nested documented let inside a function block: type + doc prose. This is
     // the exact shape from the reported screenshot (a `let` inside `in { … }`).
-    const nested = await pollFor(
-      () => hoverAt(doc.uri, 4, 6),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("banner"),
-    );
+    const nested = await hoverPoll(doc.uri, 4, 6, "banner");
     const nestedMd = hoverText(nested[0]);
     assert.ok(
       nestedMd.includes("banner: string"),
@@ -972,10 +1025,7 @@ suite("Osprey Language Features Tests", () => {
     const doc = await openDoc("lifecycle.osp", "\nfn broken( = 42\n");
 
     // 1) The broken program must surface a real Error diagnostic from osprey.
-    const first = await pollFor(
-      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
-      (d) => d.length > 0,
-    );
+    const first = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
     assert.strictEqual(
       first[0].severity,
       vscode.DiagnosticSeverity.Error,
@@ -1001,20 +1051,14 @@ suite("Osprey Language Features Tests", () => {
         'fn ok(x) = x * 2\nfn main() = {\n    handle Arith { overflow _ _ _ w => w }\n    print("${ok(2)}")\n}\n',
       ),
     );
-    const cleared = await pollFor(
-      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
-      (d) => d.length === 0,
-    );
+    const cleared = await diagnosticsPoll(doc.uri, (d) => d.length === 0);
     assert.strictEqual(
       cleared.length,
       0,
       "no diagnostics once the code is valid",
     );
     // ...and the now-valid buffer answers hover, proving the server reparsed it.
-    const okHover = await pollFor(
-      () => hoverAt(doc.uri, 0, 3),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("ok"),
-    );
+    const okHover = await hoverPoll(doc.uri, 0, 3, "ok");
     assert.ok(
       hoverText(okHover[0]).includes("fn ok"),
       "hover works on the corrected program",
@@ -1028,10 +1072,7 @@ suite("Osprey Language Features Tests", () => {
         "\nfn broken( = 42\n",
       ),
     );
-    const second = await pollFor(
-      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
-      (d) => d.length > 0,
-    );
+    const second = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
     assert.strictEqual(
       second[0].severity,
       vscode.DiagnosticSeverity.Error,
@@ -1044,13 +1085,6 @@ suite("Osprey Language Features Tests", () => {
   // NO test may be skipped or ignored without a diagnostic warning. These
   // drive the REAL `osprey lsp` server: the warning must be there the moment
   // the file is open, before anything runs.
-
-  /** Every `test-skipped` Warning currently published for `uri`, in order. */
-  const skipWarningsOf = (uri: vscode.Uri): vscode.Diagnostic[] =>
-    vscode.languages
-      .getDiagnostics(uri)
-      .filter((d) => d.code === "test-skipped")
-      .sort((a, b) => a.range.start.line - b.range.start.line);
 
   /**
    * Every Error diagnostic for `uri`. A reasoned skip is a warning and never
@@ -1230,10 +1264,7 @@ suite("Osprey Language Features Tests", () => {
       hoverText(hov[0]).includes("static skip with reason"),
       `hover still names the skipped case: ${hoverText(hov[0])}`,
     );
-    const symbols = await pollFor(
-      () => symbolsOf(doc.uri),
-      (s) => Array.isArray(s) && s.length > 0,
-    );
+    const symbols = await symbolsPoll(doc.uri, 1);
     const symbolNames = symbols.map((s) => s.name);
     assert.ok(
       symbolNames.includes("guard") && symbolNames.includes("parked"),
@@ -1311,9 +1342,8 @@ suite("Osprey Language Features Tests", () => {
     // (5) Breaking the syntax suppresses skip warnings — an unparsable file
     // reports its syntax error ALONE, matching the CLI gate [LSP-DIAGNOSTICS].
     await rewrite(doc, editedReason.join("\n") + "\nfn broken( = 42\n");
-    const broken = await pollFor(
-      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
-      (d) => d.some((item) => item.code === "syntax-error"),
+    const broken = await diagnosticsPoll(doc.uri, (d) =>
+      d.some((item) => item.code === "syntax-error"),
     );
     assert.ok(
       broken.some((d) => d.severity === vscode.DiagnosticSeverity.Error),
@@ -1441,10 +1471,7 @@ suite("Osprey Language Features Tests", () => {
       "notests.osp",
       "fn add(a, b) = wrapAdd(a, b)\nlet total = add(1, 2)\n",
     );
-    await pollFor(
-      () => symbolsOf(noTests.uri),
-      (s) => Array.isArray(s) && s.length > 0,
-    );
+    await symbolsPoll(noTests.uri, 1);
     assert.deepStrictEqual(skipWarningsOf(noTests.uri), []);
   });
 
@@ -1544,10 +1571,7 @@ suite("Osprey Language Features Tests", () => {
     const doc = await openDoc("patterns.osp", content);
 
     // Hover the declaration and a call: both render the classify signature.
-    const decl = await pollFor(
-      () => hoverAt(doc.uri, 0, 3),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
-    );
+    const decl = await hoverPoll(doc.uri, 0, 3, "classify");
     // `xs` is proven to be a LIST by the patterns below it; only its element
     // type stays open. This used to assert the bare `fn classify(xs)`, because
     // the only alternative then was `List<t5>` and `t5` is an inference
@@ -1561,10 +1585,7 @@ suite("Osprey Language Features Tests", () => {
       !/\bt\d/.test(hoverText(decl[0])),
       `an inference artefact must never reach a reader, got: ${hoverText(decl[0])}`,
     );
-    const call = await pollFor(
-      () => hoverAt(doc.uri, 4, 9),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
-    );
+    const call = await hoverPoll(doc.uri, 4, 9, "classify");
     assert.strictEqual(
       hoverText(call[0]),
       hoverText(decl[0]),
@@ -1572,10 +1593,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // Definition from the first call lands on the declaration.
-    const def = await pollFor(
-      () => defsAt(doc.uri, 4, 9),
-      (d) => Array.isArray(d) && d.length > 0,
-    );
+    const def = await defsPoll(doc.uri, 4, 9);
     assert.strictEqual(
       def[0].range.start.line,
       0,
@@ -1588,10 +1606,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // References include the declaration and both calls.
-    const refs = await pollFor(
-      () => refsAt(doc.uri, 0, 3),
-      (r) => Array.isArray(r) && r.length >= 3,
-    );
+    const refs = await refsPoll(doc.uri, 0, 3, 3);
     assert.strictEqual(refs.length, 3, "classify: declaration + two calls");
     assert.deepStrictEqual(
       startLines(refs),
@@ -1600,10 +1615,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // Symbols: the function plus the two lets, with correct kinds.
-    const syms = await pollFor(
-      () => symbolsOf(doc.uri),
-      (s) => Array.isArray(s) && s.length >= 3,
-    );
+    const syms = await symbolsPoll(doc.uri, 3);
     const byName = new Map(syms.map((s) => [s.name, s]));
     assert.strictEqual(
       byName.get("classify")?.kind,
@@ -1622,10 +1634,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // Completion inside the second call offers the user function classify.
-    const list = await pollFor(
-      () => completionAt(doc.uri, 5, 10),
-      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
-    );
+    const list = await completionPoll(doc.uri, 5, 10);
     assert.ok(
       labelsOf(list).includes("classify"),
       "completion offers the classify function",
@@ -1673,9 +1682,11 @@ suite("Osprey Language Features Tests", () => {
     // constructed command list's exact size. This probe is both executed by the
     // corpus and tied to observable list behavior rather than legacy stdout.
     const lenAt = at("listLength(commands) == 3", "listLength");
-    const lenHover = await pollFor(
-      () => hoverAt(doc.uri, lenAt.line, lenAt.character),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("listLength"),
+    const lenHover = await hoverPoll(
+      doc.uri,
+      lenAt.line,
+      lenAt.character,
+      "listLength",
       80,
       250,
     );
@@ -1691,9 +1702,11 @@ suite("Osprey Language Features Tests", () => {
     // Hover the user-defined `classify` function where the registered scenario
     // executes its many-element branch and verifies the captured head and tail.
     const classifyAt = at('classify(a) == "many head=1 rest=2"', "classify");
-    const classifyHover = await pollFor(
-      () => hoverAt(doc.uri, classifyAt.line, classifyAt.character),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
+    const classifyHover = await hoverPoll(
+      doc.uri,
+      classifyAt.line,
+      classifyAt.character,
+      "classify",
     );
     assert.ok(
       hoverText(classifyHover[0]).includes("fn classify"),
@@ -1701,10 +1714,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // Document symbols include the functions defined in the example.
-    const syms = await pollFor(
-      () => symbolsOf(doc.uri),
-      (s) => Array.isArray(s) && s.length > 0,
-    );
+    const syms = await symbolsPoll(doc.uri, 1);
     const names = syms.map((s) => s.name);
     assert.ok(
       names.includes("classify"),
@@ -1757,42 +1767,28 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- HOVER: the curried function at its declaration and a call site ---
-    const declHover = await pollFor(
-      () => hoverAt(doc.uri, 0, 0),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("double"),
-      80,
-      250,
-    );
+    const declHover = await hoverPoll(doc.uri, 0, 0, "double", 80, 250);
     const declMd = hoverText(declHover[0]);
     assert.ok(declMd.includes("double"), "ML fn hover names the function");
     assert.ok(
       declMd.includes("->"),
       "ML fn hover renders a function-type arrow",
     );
-    const callHover = await pollFor(
-      () => hoverAt(doc.uri, 3, 4),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("double"),
-    );
+    const callHover = await hoverPoll(doc.uri, 3, 4, "double");
     assert.strictEqual(
       hoverText(callHover[0]),
       declMd,
       "ML call-site hover matches the declaration hover",
     );
     // A binding hovers with its inferred type — no annotation in the source.
-    const baseHover = await pollFor(
-      () => hoverAt(doc.uri, 2, 0),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("base"),
-    );
+    const baseHover = await hoverPoll(doc.uri, 2, 0, "base");
     assert.ok(
       /base\s*:\s*int/i.test(hoverText(baseHover[0])),
       `ML binding hover shows inferred type: ${hoverText(baseHover[0])}`,
     );
 
     // --- GO TO DEFINITION: a call jumps back to the ML declaration ---
-    const def = await pollFor(
-      () => defsAt(doc.uri, 3, 4),
-      (d) => Array.isArray(d) && d.length > 0,
-    );
+    const def = await defsPoll(doc.uri, 3, 4);
     assert.strictEqual(def[0].range.start.line, 0, "double defined on line 0");
     assert.strictEqual(
       def[0].uri.toString(),
@@ -1801,10 +1797,7 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- FIND REFERENCES: declaration + both call sites of double ---
-    const refs = await pollFor(
-      () => refsAt(doc.uri, 0, 0),
-      (r) => Array.isArray(r) && r.length >= 3,
-    );
+    const refs = await refsPoll(doc.uri, 0, 0, 3);
     assert.deepStrictEqual(
       startLines(refs),
       [0, 3, 5],
@@ -1812,20 +1805,14 @@ suite("Osprey Language Features Tests", () => {
     );
 
     // --- DOCUMENT SYMBOLS: both functions and every binding are listed ---
-    const syms = await pollFor(
-      () => symbolsOf(doc.uri),
-      (s) => Array.isArray(s) && s.length >= 5,
-    );
+    const syms = await symbolsPoll(doc.uri, 5);
     const names = new Set(syms.map((s) => s.name));
     for (const name of ["double", "triple", "base", "d", "t", "u"]) {
       assert.ok(names.has(name), `ML symbol ${name} is listed`);
     }
 
     // --- COMPLETION: user-defined ML symbols are offered ---
-    const list = await pollFor(
-      () => completionAt(doc.uri, 4, 4),
-      (l) => !!l && Array.isArray(l.items) && l.items.length > 0,
-    );
+    const list = await completionPoll(doc.uri, 4, 4);
     const labels = labelsOf(list);
     assert.ok(
       labels.includes("double") && labels.includes("triple"),
@@ -1840,10 +1827,7 @@ suite("Osprey Language Features Tests", () => {
         'd = missingFn 5\nprint "${d}"\n',
       ),
     );
-    const broken = await pollFor(
-      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
-      (d) => d.length > 0,
-    );
+    const broken = await diagnosticsPoll(doc.uri, (d) => d.length > 0);
     assert.strictEqual(
       broken[0].severity,
       vscode.DiagnosticSeverity.Error,
@@ -1862,19 +1846,13 @@ suite("Osprey Language Features Tests", () => {
         'square x = x * x\nwrapping = handler Arith\n    overflow _ _ _ w => w\nprint "${wrapping (\\() => square 4)}"\n',
       ),
     );
-    const fixed = await pollFor(
-      () => Promise.resolve(vscode.languages.getDiagnostics(doc.uri)),
-      (d) => d.length === 0,
-    );
+    const fixed = await diagnosticsPoll(doc.uri, (d) => d.length === 0);
     assert.strictEqual(
       fixed.length,
       0,
       "diagnostics clear once the ML program is valid again",
     );
-    const okHover = await pollFor(
-      () => hoverAt(doc.uri, 0, 0),
-      (h) => nonEmptyHover(h) && hoverText(h[0]).includes("square"),
-    );
+    const okHover = await hoverPoll(doc.uri, 0, 0, "square");
     assert.ok(
       hoverText(okHover[0]).includes("square"),
       "hover works on the corrected ML program",
@@ -1985,10 +1963,7 @@ suite("Osprey Language Features Tests", () => {
     /// individually sound before it is ever compared. `label` names the buffer
     /// state so a failure says which side broke.
     async function snapshot(label: string): Promise<ProviderSnapshot> {
-      const areaHoverRaw = await pollFor(
-        () => hoverAt(doc.uri, 0, 4),
-        (h) => nonEmptyHover(h) && hoverText(h[0]).includes("area"),
-      );
+      const areaHoverRaw = await hoverPoll(doc.uri, 0, 4, "area");
       const areaHover = hoverText(areaHoverRaw[0]);
       assert.strictEqual(
         areaHover,
@@ -1997,10 +1972,7 @@ suite("Osprey Language Features Tests", () => {
       );
       assertNoLeak(`${label}: area hover`, areaHover);
 
-      const classifyHoverRaw = await pollFor(
-        () => hoverAt(doc.uri, 1, 4),
-        (h) => nonEmptyHover(h) && hoverText(h[0]).includes("classify"),
-      );
+      const classifyHoverRaw = await hoverPoll(doc.uri, 1, 4, "classify");
       const classifyHover = hoverText(classifyHoverRaw[0]);
       assert.strictEqual(
         classifyHover,
@@ -2011,10 +1983,7 @@ suite("Osprey Language Features Tests", () => {
 
       // The outline is the second view of the same types, so it must agree with
       // hover rather than carry its own rendering.
-      const symbols = await pollFor(
-        () => symbolsOf(doc.uri),
-        (s) => Array.isArray(s) && s.length >= 2,
-      );
+      const symbols = await symbolsPoll(doc.uri, 2);
       // Only the two functions under test. The edit below appends a SENTINEL
       // declaration to prove the server reprocessed, and that sentinel must not
       // itself make the before/after outlines differ.
@@ -2110,10 +2079,7 @@ signatures, in source order`,
       assertNoLeak(`${label}: completion detail`, completionDetail);
 
       // Go-to-definition from the call on line 5 must land on the declaration.
-      const defs = await pollFor(
-        () => defsAt(doc.uri, 5, 9),
-        (d) => Array.isArray(d) && d.length > 0,
-      );
+      const defs = await defsPoll(doc.uri, 5, 9);
       // URI and the exact identifier span, not just the line. A line-only
       // projection accepts a jump into the wrong file, and it accepts a range
       // that covers the whole declaration instead of the name the editor
@@ -2238,12 +2204,6 @@ suite("Osprey Command Handler Coverage", () => {
   let tempDir: string;
   const extension = () => vscode.extensions.getExtension(extensionId);
 
-  // The compile/run handlers shell out to `osprey` and write to an output
-  // channel from the execFile callback; the callback completes after a tick, so
-  // give it a generous window before we let the test (and the host) move on.
-  const settle = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
-
   async function closeEverything(): Promise<void> {
     // closeAllEditors races with VS Code's async editor teardown, so poll until
     // the active editor actually drains (or give up after a bounded number of
@@ -2254,38 +2214,9 @@ suite("Osprey Command Handler Coverage", () => {
     }
   }
 
-  // makeActive shows the document and polls until it is genuinely the active
-  // text editor. The extension shows an "Osprey Debug" output channel during
-  // activation, and that output pseudo-editor steals the active-editor slot in
-  // the headless host. We close panels and refocus the editor group between
-  // attempts so the .osp document becomes (and stays) the active editor at the
-  // moment a command captures window.activeTextEditor.
-  async function makeActive(document: vscode.TextDocument): Promise<boolean> {
-    for (let i = 0; i < 25; i++) {
-      // Hide the output panel and any output pseudo-editor stealing focus.
-      await vscode.commands
-        .executeCommand("workbench.action.closePanel")
-        .then(undefined, () => undefined);
-      await vscode.window.showTextDocument(document, {
-        viewColumn: vscode.ViewColumn.One,
-        preserveFocus: false,
-        preview: false,
-      });
-      await vscode.commands
-        .executeCommand("workbench.action.focusActiveEditorGroup")
-        .then(undefined, () => undefined);
-      await settle(120);
-      const active = vscode.window.activeTextEditor;
-      if (
-        active &&
-        active.document.uri.toString() === document.uri.toString()
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
+  // makeActive (module scope) shows the document and polls until it is the
+  // genuinely active text editor; the compile/run handlers capture
+  // window.activeTextEditor, so every command test goes through it first.
   async function openOsp(
     name: string,
     content: string,
@@ -2619,38 +2550,11 @@ suite("Osprey Command Handler Coverage", () => {
 suite("Osprey Activation Side-Effect Coverage", () => {
   let tempDir: string;
   const extensionId2 = extensionId;
-  const settle = (ms: number) =>
-    new Promise((resolve) => setTimeout(resolve, ms));
 
   // Same focus-stealing workaround as the command suite: the extension's
   // "Osprey Debug" output channel grabs the active-editor slot in the headless
-  // host, so we close panels and refocus the editor group until the target
-  // document is genuinely active.
-  async function makeActive(document: vscode.TextDocument): Promise<boolean> {
-    for (let i = 0; i < 25; i++) {
-      await vscode.commands
-        .executeCommand("workbench.action.closePanel")
-        .then(undefined, () => undefined);
-      await vscode.window.showTextDocument(document, {
-        viewColumn: vscode.ViewColumn.One,
-        preserveFocus: false,
-        preview: false,
-      });
-      await vscode.commands
-        .executeCommand("workbench.action.focusActiveEditorGroup")
-        .then(undefined, () => undefined);
-      await settle(120);
-      const active = vscode.window.activeTextEditor;
-      if (
-        active &&
-        active.document.uri.toString() === document.uri.toString()
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
+  // host, so makeActive (module scope) closes panels and refocuses the editor
+  // group until the target document is genuinely active.
   setup(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "osprey-side-"));
   });
@@ -2824,9 +2728,8 @@ suite("Osprey Activation Side-Effect Coverage", () => {
 
 suite("Osprey VSIX Debugger E2E", () => {
   let tempDir: string;
-  let priorCompilerPath: string | undefined;
-  let priorLldbDapPath: string | undefined;
   let lldbDapPath: string;
+  let pinned: PinnedOspreySettings;
 
   setup(async function () {
     this.timeout(60000);
@@ -2838,20 +2741,10 @@ suite("Osprey VSIX Debugger E2E", () => {
       "a freshly built osprey binary is required for VSIX debugger E2E",
     );
     lldbDapPath = resolveRequiredLldbDap();
-
-    const config = vscode.workspace.getConfiguration("osprey");
-    priorCompilerPath = config.get<string>("server.compilerPath");
-    priorLldbDapPath = config.get<string>("debug.lldbDapPath");
-    await config.update(
-      "server.compilerPath",
-      ospreyPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      lldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    pinned = await pinOspreySettings({
+      "server.compilerPath": ospreyPath,
+      "debug.lldbDapPath": lldbDapPath,
+    });
 
     const extension = vscode.extensions.getExtension(extensionId);
     assert.ok(extension, "Osprey extension should be installed in test host");
@@ -2867,17 +2760,7 @@ suite("Osprey VSIX Debugger E2E", () => {
         // The session can terminate naturally while cleanup is racing it.
       }
     }
-    const config = vscode.workspace.getConfiguration("osprey");
-    await config.update(
-      "server.compilerPath",
-      priorCompilerPath,
-      vscode.ConfigurationTarget.Global,
-    );
-    await config.update(
-      "debug.lldbDapPath",
-      priorLldbDapPath,
-      vscode.ConfigurationTarget.Global,
-    );
+    await pinned.restore();
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

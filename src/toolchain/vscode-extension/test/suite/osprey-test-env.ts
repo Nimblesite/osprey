@@ -6,6 +6,7 @@ import * as assert from "assert";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import * as vscode from "vscode";
 import { execFileSync } from "child_process";
 import { resolveLldbDapExecutable } from "../../client/src/extension";
 import { compileWasi, runWasi } from "../../client/src/osprey-ui/wasi";
@@ -50,6 +51,48 @@ export function resolveRequiredLldbDap(): string {
   assert.fail(
     `lldb-dap is required for the Osprey VSIX debugger E2E; resolved "${command}" but it was not executable`,
   );
+}
+
+/** User settings pinned at real binaries, with a restore for suite teardown. */
+export interface PinnedOspreySettings {
+  restore(): Promise<void>;
+}
+
+/**
+ * Pin `values` as GLOBAL Osprey settings for a suite, returning a handle whose
+ * restore() puts back exactly what was configured before (an unset key stays
+ * unset, which is how VS Code itself represents "no explicit value").
+ */
+export async function pinOspreySettings(
+  values: Record<string, string>,
+): Promise<PinnedOspreySettings> {
+  const config = vscode.workspace.getConfiguration("osprey");
+  const prior = new Map<string, string | undefined>();
+  for (const key of Object.keys(values)) {
+    prior.set(key, config.get<string>(key));
+  }
+  for (const [key, value] of Object.entries(values)) {
+    await config.update(key, value, vscode.ConfigurationTarget.Global);
+  }
+  return {
+    async restore(): Promise<void> {
+      for (const [key, value] of prior) {
+        await config.update(key, value, vscode.ConfigurationTarget.Global);
+      }
+    },
+  };
+}
+
+/**
+ * Every `test-skipped` diagnostic currently published for `uri`, in source
+ * order — the editor's own view of which cases are skipped or ignored
+ * ([TESTING-SKIP-WARNING]).
+ */
+export function skipWarningsOf(uri: vscode.Uri): vscode.Diagnostic[] {
+  return vscode.languages
+    .getDiagnostics(uri)
+    .filter((diagnostic) => diagnostic.code === "test-skipped")
+    .sort((a, b) => a.range.start.line - b.range.start.line);
 }
 
 export async function compileSdkWasm(source: string, timeout: number): Promise<WebAssembly.Module> {

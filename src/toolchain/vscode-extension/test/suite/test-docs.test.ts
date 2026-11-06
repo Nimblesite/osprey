@@ -19,7 +19,11 @@ import {
   testDocFor,
   type TestRunSink,
 } from "../../client/src/test-explorer";
-import { leafTestId } from "../../client/src/test-explorer-parse";
+import {
+  leafTestId,
+  PLAIN_RUN,
+  type RunMode,
+} from "../../client/src/test-explorer-parse";
 import { testDocMarkdown } from "../../client/src/test-explorer-docs";
 import {
   NO_TEST_MESSAGE,
@@ -82,6 +86,23 @@ suite("Osprey test documentation and profiling", () => {
 
   function token(): vscode.CancellationToken {
     return new vscode.CancellationTokenSource().token;
+  }
+
+  /** Run `items` through `sink` with the suite's compiler, in `mode`. */
+  async function runItems(
+    controller: vscode.TestController,
+    items: vscode.TestItem[],
+    sink: TestRunSink,
+    mode: RunMode = PLAIN_RUN,
+  ): Promise<void> {
+    await executeRunRequest(
+      controller,
+      new vscode.TestRunRequest(items),
+      sink,
+      token(),
+      () => compiler ?? "osprey",
+      mode,
+    );
   }
 
   async function discovered(uri: vscode.Uri): Promise<{
@@ -320,13 +341,7 @@ suite("Osprey test documentation and profiling", () => {
       this.timeout(30000);
       const { controller, file } = await discovered(docFailUri);
       const sink = new RecordingSink();
-      await executeRunRequest(
-        controller,
-        new vscode.TestRunRequest([file]),
-        sink,
-        token(),
-        () => compiler,
-      );
+      await runItems(controller, [file], sink);
       const failed = sink.ofKind("failed");
       assert.strictEqual(failed.length, 1, "the one case failed");
       const message = failed[0].message ?? "";
@@ -355,13 +370,7 @@ suite("Osprey test documentation and profiling", () => {
       this.timeout(30000);
       const { controller, file } = await discovered(docUri);
       const sink = new RecordingSink();
-      await executeRunRequest(
-        controller,
-        new vscode.TestRunRequest([file]),
-        sink,
-        token(),
-        () => compiler,
-      );
+      await runItems(controller, [file], sink);
       assert.strictEqual(sink.ofKind("passed").length, 3, "all three passed");
       assert.strictEqual(sink.ofKind("failed").length, 0);
       assert.strictEqual(sink.ofKind("end").length, 1);
@@ -575,14 +584,7 @@ suite("Osprey test documentation and profiling", () => {
       const sink = new ProfileRecordingSink();
       const root = await makeProfileRoot();
       try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([file]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+        await runItems(controller, [file], sink, profileMode(root));
         // The verdicts are unchanged by profiling.
         assert.strictEqual(sink.ofKind("passed").length, 1, sink.output);
         assert.strictEqual(sink.ofKind("failed").length, 0, sink.output);
@@ -617,14 +619,7 @@ suite("Osprey test documentation and profiling", () => {
       const sink = new ProfileRecordingSink();
       const root = await makeProfileRoot();
       try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([file]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+        await runItems(controller, [file], sink, profileMode(root));
         const dir = sink.profiles[0]?.dir;
         assert.ok(dir, "a profile directory was reported");
         const shown: string[] = [];
@@ -744,14 +739,7 @@ test("second profiled", fn() => expect(spin(500000, 0) > 0, true))
       const sink = new ProfileRecordingSink();
       const root = await makeProfileRoot();
       try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([only]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+        await runItems(controller, [only], sink, profileMode(root));
         assert.strictEqual(sink.ofKind("passed").length, 1);
         assert.ok(sink.output.includes("second profiled"), sink.output);
         assert.ok(!sink.output.includes("ok 1 - first profiled"), sink.output);
@@ -776,14 +764,7 @@ test("second profiled", fn() => expect(spin(500000, 0) > 0, true))
       const sink = new ProfileRecordingSink();
       const root = await makeProfileRoot();
       try {
-        await executeRunRequest(
-          controller,
-          new vscode.TestRunRequest([file]),
-          sink,
-          token(),
-          () => compiler,
-          profileMode(root),
-        );
+        await runItems(controller, [file], sink, profileMode(root));
         assert.ok(
           sink.ofKind("errored").length > 0,
           "compile failure surfaced",

@@ -23,7 +23,10 @@ import {
   refreshTestFile,
   registerOspreyTestExplorer,
 } from "../../client/src/test-explorer";
-import { leafTestId } from "../../client/src/test-explorer-parse";
+import {
+  leafTestId,
+  type ExecResult,
+} from "../../client/src/test-explorer-parse";
 import { resolveBuiltOsprey } from "./osprey-test-env";
 import { FAIL_FIXTURE, RecordingSink } from "./test-explorer-harness";
 
@@ -233,18 +236,50 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
       return item;
     }
 
+    /** A `startDebugging` double that records every launch and accepts it. */
+    function recordingStart(
+      launched: vscode.DebugConfiguration[],
+    ): StartDebugging {
+      return (_folder, config) => {
+        launched.push(config);
+        return Promise.resolve(false);
+      };
+    }
+
+    /** Invoke the Debug profile's handler for `request` with `start`. */
+    async function runDebugHandler(
+      controller: vscode.TestController,
+      request: vscode.TestRunRequest,
+      start: StartDebugging,
+    ): Promise<void> {
+      await makeDebugHandler(
+        controller,
+        () => compiler ?? "osprey",
+        start,
+      )(request, new vscode.CancellationTokenSource().token);
+    }
+
+    /** Drive the debug executor for `file` with `outcome` as the session. */
+    async function runDebugExecutor(
+      sink: RecordingSink,
+      file: vscode.TestItem,
+      outcome: ExecResult | undefined,
+    ): Promise<void> {
+      const token = new vscode.CancellationTokenSource().token;
+      await debugExecutor(sink, token, () => Promise.resolve(outcome))(
+        file,
+        childrenOf(file),
+        undefined,
+      );
+    }
+
     test("a refused launch errors the suite instead of reporting nothing", async function () {
       assert.ok(compiler, "build the Osprey compiler before this suite");
       this.timeout(30000);
       const controller = newController();
       const file = await discovered(controller);
       const sink = new RecordingSink();
-      const token = new vscode.CancellationTokenSource().token;
-      await debugExecutor(sink, token, () => Promise.resolve(undefined))(
-        file,
-        childrenOf(file),
-        undefined,
-      );
+      await runDebugExecutor(sink, file, undefined);
       const errors = sink.ofKind("errored");
       assert.deepStrictEqual(
         errors.map((event) => event.id),
@@ -261,7 +296,6 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
       const controller = newController();
       const file = await discovered(controller);
       const sink = new RecordingSink();
-      const token = new vscode.CancellationTokenSource().token;
       // The debugged binary is the same program `osprey --run` executes, so
       // the session's own stdout IS the TAP stream the verdicts come from —
       // folded here exactly as the adapter tracker folds it.
@@ -271,11 +305,7 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
         outputEvent("stdout", "ok 2 - good math\n1..2\n"),
         { type: "event", event: "exited", body: { exitCode: 1 } },
       ].reduce(foldDapMessage, NOTHING);
-      await debugExecutor(sink, token, () => Promise.resolve(outcome))(
-        file,
-        childrenOf(file),
-        undefined,
-      );
+      await runDebugExecutor(sink, file, outcome);
       assert.deepStrictEqual(
         sink.ofKind("passed").map((event) => event.id),
         [leafTestId(failUri.toString(), "good math")],
@@ -294,17 +324,11 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
       const controller = newController();
       const file = await discovered(controller);
       const launched: vscode.DebugConfiguration[] = [];
-      const start: StartDebugging = (_folder, config) => {
-        launched.push(config);
-        return Promise.resolve(false);
-      };
-      await makeDebugHandler(
+      const start = recordingStart(launched);
+      await runDebugHandler(
         controller,
-        () => compiler,
-        start,
-      )(
         new vscode.TestRunRequest([file]),
-        new vscode.CancellationTokenSource().token,
+        start,
       );
       assert.strictEqual(launched.length, 1);
       assert.deepStrictEqual(launched[0].env, { OSPREY_TEST_FILTER: "" });
@@ -321,17 +345,11 @@ suite("Osprey Test Explorer Debug profile ([TESTING-DEBUG-VSCODE])", () => {
       );
       assert.ok(good, "discovery found the case to debug");
       const launched: vscode.DebugConfiguration[] = [];
-      const start: StartDebugging = (_folder, config) => {
-        launched.push(config);
-        return Promise.resolve(false);
-      };
-      await makeDebugHandler(
+      const start = recordingStart(launched);
+      await runDebugHandler(
         controller,
-        () => compiler,
-        start,
-      )(
         new vscode.TestRunRequest([good]),
-        new vscode.CancellationTokenSource().token,
+        start,
       );
       assert.deepStrictEqual(
         launched.map((config) => config.env),
