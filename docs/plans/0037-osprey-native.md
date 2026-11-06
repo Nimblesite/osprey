@@ -11,46 +11,46 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 ## 1. Finish framework neutrality [NATIVE-HOSTS-NEUTRAL]
 
-- [ ] Remove `ReadPropertyLists`, `Fingerprint`, `RunningApplications`, `OpenSettings` from `Capability` and `Requests::members` in `packages/native/src/capability.ospml`, and remove `Run`'s `plist` field; product work travels as `HostCall`. Drop `read-plists`, `fingerprint`, `running-applications`, `open-settings` from `hosts/gpui/src/coverage.rs` (UNANSWERED) and `hosts/winui/OspreyHost.Core/Coverage.cs` (Unanswered). Check: `osprey packages/native/tests --run --memory=arc` and `--memory=gc` green; none of the four constructors remain in `capability.ospml`.
-- [ ] Remove `Evidence` and fold it into `Pair` (`Ui::pair`, wire `pair`): delete `Evidence` from `Node` in `packages/native/src/node.ospml`, delete `Ui::evidence` and the `encode.ospml` arm, and drop `evidence` from GPUI `coverage.rs` REFUSED and WinUI `Coverage.cs` Refused. Check: `pair` is in both hosts' drawn lists (already is) and `grep evidence packages/native/src` is empty.
-- [ ] Delete `Brand` from `Node`/`Ui`/`encode.ospml`; `Keyed::region`'s placeholder stays `Spacer` (`packages/native/src/reactive.ospml` already uses it); drop `brand` from GPUI `coverage.rs` REFUSED and WinUI `Coverage.cs` Refused. Check: `grep brand packages/native/src` is empty; `cargo test coverage` and WinUI `CoverageTests` green.
+- [ ] Remove `ReadPropertyLists`, `Fingerprint`, `RunningApplications`, `OpenSettings` from `Capability` and `Requests::members` in `src/osprey/packages/native/src/capability.ospml`, and remove `Run`'s `plist` field; product work travels as `HostCall`. Drop `read-plists`, `fingerprint`, `running-applications`, `open-settings` from `src/toolchain/hosts/gpui/src/coverage.rs` (UNANSWERED) and `src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs` (Unanswered). Check: `osprey src/osprey/packages/native/tests --run --memory=arc` and `--memory=gc` green; none of the four constructors remain in `capability.ospml`.
+- [ ] Remove `Evidence` and fold it into `Pair` (`Ui::pair`, wire `pair`): delete `Evidence` from `Node` in `src/osprey/packages/native/src/node.ospml`, delete `Ui::evidence` and the `encode.ospml` arm, and drop `evidence` from GPUI `coverage.rs` REFUSED and WinUI `Coverage.cs` Refused. Check: `pair` is in both hosts' drawn lists (already is) and `grep evidence src/osprey/packages/native/src` is empty.
+- [ ] Delete `Brand` from `Node`/`Ui`/`encode.ospml`; `Keyed::region`'s placeholder stays `Spacer` (`src/osprey/packages/native/src/reactive.ospml` already uses it); drop `brand` from GPUI `coverage.rs` REFUSED and WinUI `Coverage.cs` Refused. Check: `grep brand src/osprey/packages/native/src` is empty; `cargo test coverage` and WinUI `CoverageTests` green.
 
 ## 2. Conformance suite [NATIVE-HOSTS-CONFORMANCE]
 
-- [ ] Add `packages/native/conformance/`: the probe application's start context, a recorded event sequence and the expected envelopes, produced once from `Runtime::start`/`dispatch` and checked in.
-- [ ] Add an Osprey test that regenerates the envelopes from the fixtures and diffs them, so a framework change that alters the wire shape fails here first. Check: the test lives under `packages/native/tests` and fails on a wire change.
-- [ ] Wire each host's smoke to run the set: SwiftUI in Vigil's smoke, webview in `npm test --prefix vscode-extension`, GPUI in `hosts/gpui/run.sh --smoke`, WinUI in its smoke. Check: each smoke passes the conformance set.
+- [ ] Add `src/osprey/packages/native/conformance/`: the probe application's start context, a recorded event sequence and the expected envelopes, produced once from `Runtime::start`/`dispatch` and checked in.
+- [ ] Add an Osprey test that regenerates the envelopes from the fixtures and diffs them, so a framework change that alters the wire shape fails here first. Check: the test lives under `src/osprey/packages/native/tests` and fails on a wire change.
+- [ ] Wire each host's smoke to run the set: SwiftUI in Vigil's smoke, webview in `npm test --prefix vscode-extension`, GPUI in `src/toolchain/hosts/gpui/run.sh --smoke`, WinUI in its smoke. Check: each smoke passes the conformance set.
 
 ## 3. Coverage matrix [NATIVE-HOSTS-COVERAGE]
 
-- [ ] Add a script that reads `packages/native/src/node.ospml` and `capability.ospml` for constructor names plus each host's mapping table (`hosts/gpui/src/coverage.rs`, `hosts/winui/OspreyHost.Core/Coverage.cs`, `vscode-extension/client/src/osprey-ui/render.ts` + `capabilities.ts`), and writes `packages/native/COVERAGE.md`.
+- [ ] Add a script that reads `src/osprey/packages/native/src/node.ospml` and `capability.ospml` for constructor names plus each host's mapping table (`src/toolchain/hosts/gpui/src/coverage.rs`, `src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs`, `src/toolchain/vscode-extension/client/src/osprey-ui/render.ts` + `capabilities.ts`), and writes `src/osprey/packages/native/COVERAGE.md`.
 - [ ] Make CI regenerate it and fail on a diff, so a new constructor cannot land without every host's cell.
 - [ ] Each host README links its column.
 
 ## 4. Shared web renderer [NATIVE-HOSTS-FAMILY]
 
-- [ ] Extract `osprey-ui` (`protocol.ts`, `render.ts`, `styles.ts`, `theme.ts`, `icons.ts`, `session.ts`, `wasi.ts`) from `vscode-extension/client/src/osprey-ui` into `packages/web` as an npm package; `capabilities.ts` and the webview plumbing stay in the extension. Check: `vscode-extension` still builds and its renderer suite is green.
+- [ ] Extract `osprey-ui` (`protocol.ts`, `render.ts`, `styles.ts`, `theme.ts`, `icons.ts`, `session.ts`, `wasi.ts`) from `src/toolchain/vscode-extension/client/src/osprey-ui` into `packages/web` as an npm package; `capabilities.ts` and the webview plumbing stay in the extension. Check: `vscode-extension` still builds and its renderer suite is green.
 - [ ] Add a browser host page that loads the WASI module in a worker and renders into a `div`, with file and store capabilities on the browser APIs that exist.
 - [ ] Run the probe application in a browser tab and pass the conformance set.
 
 ## 5. Storage on GPUI, plus the two unrecorded measurements
 
-- [ ] Add the GPUI `MeasureFolders` adapter `hosts/gpui/src/adapters/measure.rs` ([UI-EFFECTS-MEASURE]): Rust on `std::fs`, `st_blocks` and `(st_dev, st_ino)` on Unix, the Windows rules from spec 0048's folder walk. Tests on a temporary tree: hidden file, symbolic link, a hard link counted once, an unreadable folder, deadline, cancel. Move `measure-folders` from UNANSWERED to ANSWERED in `coverage.rs`. Check: `cargo test --manifest-path hosts/gpui/Cargo.toml measure`.
-- [ ] Map `split` and `context-menu` in `hosts/gpui/src/render.rs` (+ `render/controls.rs`) so Storage's root split and row menus draw; move them from REFUSED to DRAWN in `coverage.rs`. Check: `cargo test coverage`; `make -C apps/macos storage` opens with no diagnostics.
-- [ ] Storage acceptance: `./target/release/osprey test examples/storage/test` green on every OS; no host source names Storage ([NATIVE-HOSTS-NEUTRAL]).
-- [ ] Record flat memory over ten minutes of Flock in the GPUI window; put the numbers in `hosts/gpui/README.md`.
-- [ ] Record a focused-window fps reading at 5,000 birds with the screen unlocked (M-series Mac); put it in `examples/gpui/flock/README.md`.
+- [ ] Add the GPUI `MeasureFolders` adapter `src/toolchain/hosts/gpui/src/adapters/measure.rs` ([UI-EFFECTS-MEASURE]): Rust on `std::fs`, `st_blocks` and `(st_dev, st_ino)` on Unix, the Windows rules from spec 0048's folder walk. Tests on a temporary tree: hidden file, symbolic link, a hard link counted once, an unreadable folder, deadline, cancel. Move `measure-folders` from UNANSWERED to ANSWERED in `coverage.rs`. Check: `cargo test --manifest-path src/toolchain/hosts/gpui/Cargo.toml measure`.
+- [ ] Map `split` and `context-menu` in `src/toolchain/hosts/gpui/src/render.rs` (+ `render/controls.rs`) so Storage's root split and row menus draw; move them from REFUSED to DRAWN in `coverage.rs`. Check: `cargo test coverage`; `make -C src/toolchain/targets/macos storage` opens with no diagnostics.
+- [ ] Storage acceptance: `./target/release/osprey test src/osprey/examples/storage/test` green on every OS; no host source names Storage ([NATIVE-HOSTS-NEUTRAL]).
+- [ ] Record flat memory over ten minutes of Flock in the GPUI window; put the numbers in `src/toolchain/hosts/gpui/README.md`.
+- [ ] Record a focused-window fps reading at 5,000 birds with the screen unlocked (M-series Mac); put it in `src/osprey/examples/gpui/flock/README.md`.
 
 ## 6. Storage: Windows walk, shortcuts, elevation [UI-EFFECTS-MEASURE] [UI-COMPONENTS-SHORTCUT]
 
 - [ ] GPUI Windows walk: capacity from `GetDiskFreeSpaceExW` (available after quotas); one `GetFileInformationByHandleEx(FileIdExtdDirectoryInfo)` batch per directory; hidden is `FILE_ATTRIBUTE_HIDDEN`; only `IO_REPARSE_TAG_SYMLINK` and `IO_REPARSE_TAG_MOUNT_POINT` are links; `WOF` files count allocated bytes and `APPEXECLINK` 0; cloud placeholders never opened (`CLOUD_*`, `RECALL_ON_DATA_ACCESS`, `RECALL_ON_OPEN`, `OFFLINE`); hard links once by volume serial + 128-bit file id; `ERROR_ACCESS_DENIED` adds one to `unreadable`. Run a shared fixture tree with expected JSON against both the Rust and C# walkers. Check: both adapters produce the same JSON.
-- [ ] Add `Shortcut`/`Chord` to `packages/native/src/node.ospml` ([UI-COMPONENTS-SHORTCUT]): a `Button` may carry a typed `Chord`; `Primary` is Command on Apple systems, Control elsewhere; the host shows the chord in its menu or tooltip; Osprey picks chords per platform (Alt+Up, F5, Ctrl+O on Windows; Command+Up, Command+R, Command+O on the Mac).
+- [ ] Add `Shortcut`/`Chord` to `src/osprey/packages/native/src/node.ospml` ([UI-COMPONENTS-SHORTCUT]): a `Button` may carry a typed `Chord`; `Primary` is Command on Apple systems, Control elsewhere; the host shows the chord in its menu or tooltip; Osprey picks chords per platform (Alt+Up, F5, Ctrl+O on Windows; Command+Up, Command+R, Command+O on the Mac).
 - [ ] Elevation on Windows: `HostCall` in the `windows` namespace for "restart as administrator", answered by the WinUI host with `ShellExecuteExW`/`runas` and `--elevated`; Osprey offers it only on Windows when the walk hit unreadable folders and the process is not elevated. Check: a Storage self-test drives it.
-- [ ] Measure a full `C:` drive (walk time, peak memory, gap vs used capacity) and record in `examples/storage/README.md`.
+- [ ] Measure a full `C:` drive (walk time, peak memory, gap vs used capacity) and record in `src/osprey/examples/storage/README.md`.
 
 ## 7. WinUI remaining: adapters, C fixture host, 60 Hz gate, packaging
 
-- [ ] Answer the remaining WinUI capabilities ([WINUI-HOST-CAPABILITIES]): `list-directories`, `read-texts`, `save-file`, `http` (on `HttpClient`) and the `windows` `HostCall` for elevated restart; move them from `Unanswered` to `Answered` in `hosts/winui/OspreyHost.Core/Coverage.cs`. Check: `dotnet test --project OspreyHost.Tests` (from PowerShell).
+- [ ] Answer the remaining WinUI capabilities ([WINUI-HOST-CAPABILITIES]): `list-directories`, `read-texts`, `save-file`, `http` (on `HttpClient`) and the `windows` `HostCall` for elevated restart; move them from `Unanswered` to `Answered` in `src/toolchain/hosts/winui/OspreyHost.Core/Coverage.cs`. Check: `dotnet test --project OspreyHost.Tests` (from PowerShell).
 - [ ] Add the MinGW C fixture host that loads the probe's DLL, binds both imports and calls both exports; run it in `ci-windows.yml` ([WINUI-HOST-DLL]).
 - [ ] Measure whether WinUI shapes hold Flock's 5,000 birds at 60 Hz on a named Windows machine; record it ([WINUI-HOST-SCENE]).
 - [ ] MSIX: sign a real `.msix` with a test certificate in CI (today `app.ps1` registers a loose layout via `Add-AppxPackage -Register`). Check: CI produces and installs the signed package.
@@ -58,9 +58,9 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 ## 8. SwiftUI host, and retiring the old Storage app
 
-- [ ] Extend `hosts/swift` (the in-repo SwiftUI host) to macOS and iOS, map every node and symbol (SF Symbols) and every capability including `measure-folders`, and run the conformance set. Check: Storage runs on `hosts/swift` with no diagnostics.
+- [ ] Extend `src/toolchain/hosts/swift` (the in-repo SwiftUI host) to macOS and iOS, map every node and symbol (SF Symbols) and every capability including `measure-folders`, and run the conformance set. Check: Storage runs on `src/toolchain/hosts/swift` with no diagnostics.
 - [ ] Move Storage's Apple-only requests to `HostCall`s only this host answers: Photos summary `HostCall "photos" "summary"`, Full Disk Access `HostCall "macos" "privacy-settings"`.
-- [ ] Retire `examples/macos` once Storage runs on GPUI, WinUI and SwiftUI; move every link to `examples/storage`; keep a website redirect.
+- [ ] Retire `src/osprey/examples/macos` once Storage runs on GPUI, WinUI and SwiftUI; move every link to `src/osprey/examples/storage`; keep a website redirect.
 
 ## 9. Issue Inbox [UI-COMPONENTS-RICH]
 
@@ -71,10 +71,10 @@ Depends on: [plan 0023](0023-gpu.md) (its Graphics plumbing section puts the sce
 
 ## 10. Remaining apps [NATIVE-APPS-ALL]
 
-- [ ] iPhone counter on `hosts/swift`.
+- [ ] iPhone counter on `src/toolchain/hosts/swift`.
 - [ ] Talon Bank's Android and iOS apps on the Compose and SwiftUI hosts; Talon Bank's web client on the browser host.
-- [ ] Graphics scenes in the WinUI host: `OspreyHost.exe --scene` draws into a `SwapChainPanel` and the Win32 window code (`examples/graphics/ospgfx_d3d12_window.c`) is deleted — [plan 0023](0023-gpu.md) Graphics plumbing. Check: `apps/windows.json` gains a `graphics` entry.
-- [ ] Counter, Inbox and Workbench on Osprey Native in the WinUI host as AppContainer packages (after the Inbox port); add entries to `apps/windows.json` with the capabilities listed in AGENTS.md § Apps.
+- [ ] Graphics scenes in the WinUI host: `OspreyHost.exe --scene` draws into a `SwapChainPanel` and the Win32 window code (`src/osprey/examples/graphics/ospgfx_d3d12_window.c`) is deleted — [plan 0023](0023-gpu.md) Graphics plumbing. Check: `src/toolchain/targets/windows.json` gains a `graphics` entry.
+- [ ] Counter, Inbox and Workbench on Osprey Native in the WinUI host as AppContainer packages (after the Inbox port); add entries to `src/toolchain/targets/windows.json` with the capabilities listed in AGENTS.md § Apps.
 - [ ] Bank and GPT-2 sandboxed in AppContainers launched by the apps Makefile.
 
 ## 11. Replace the JSON bridge with shared memory [NATIVE-SHM]
@@ -85,8 +85,8 @@ The request, verbatim: "replace the json bridge with SHARED MEMORY, in a similar
 
 Every `dispatch` encodes and parses text on both sides of the boundary:
 
-- `osprey_app_start` and `osprey_app_dispatch` take and return C strings ([hosts/gpui/src/ffi.rs](../../hosts/gpui/src/ffi.rs)), and the `saved` application state goes round the boundary as text on every event.
-- `packages/native/src/encode.ospml` writes each node as JSON. `hosts/gpui/src/envelope.rs`, `hosts/gpui/src/scene/decode.rs`, `hosts/swift/Sources/OspreyNative/Protocol.swift` and `JSONValue.swift` parse it again, and the WinUI and webview hosts each have their own parser.
+- `osprey_app_start` and `osprey_app_dispatch` take and return C strings ([src/toolchain/hosts/gpui/src/ffi.rs](../../src/toolchain/hosts/gpui/src/ffi.rs)), and the `saved` application state goes round the boundary as text on every event.
+- `src/osprey/packages/native/src/encode.ospml` writes each node as JSON. `src/toolchain/hosts/gpui/src/envelope.rs`, `src/toolchain/hosts/gpui/src/scene/decode.rs`, `src/toolchain/hosts/swift/Sources/OspreyNative/Protocol.swift` and `JSONValue.swift` parse it again, and the WinUI and webview hosts each have their own parser.
 - Renderers dispatch on kind strings, requests are `[String: JSONValue]` dictionaries, and `native_slice` looks up host text by string key under a mutex.
 - `native_shape` already avoids JSON for scene primitives, but pays one C call and one `Mutex<Vec<_>>` push per shape.
 
@@ -103,7 +103,7 @@ The same moves apply here: references in place of messages, one typed schema gen
 - **The in-memory layout is tdbin's layout.** Values are built in place using [tdbin's word layout](https://typediagram.dev/docs/tdbin-wire-format.html): schema-fixed data and pointer sections, little-endian 64-bit words and relative offsets. Relative offsets mean a value reads the same at any base address, including a wasm offset. There is no encode or decode step in-process, and if bytes ever must leave the process, a canonical tree is already tdbin. That gives one layout rather than a shared-memory layout plus a wire layout, which would be duplication.
 - **Serialisation happens only at a real process boundary, and always as tdbin.** The boundary known today is the VS Code webview, a separate process that cannot map the extension host's memory. Saved state on disk is the other case. JSON stays only where an outside party defines it: HTTP APIs, model providers, MCP, the Cast protocol, and files people edit such as `.mcp.json`. Those are payloads for an adapter, and they never cross the bridge as JSON.
 - **The bridge never parses.** Verification is one O(n) pass ([tdbin](https://typediagram.dev/docs/tdbin-wire-format.html)), so it runs only on bytes from outside the process, never on a commit from the linked application. The schema hash is checked once at load instead, and a mismatch refuses to start.
-- **Named copies are allowed where a platform forces them, and only there.** `paint_quad` and `paint_image` in GPUI, SwiftUI `String` and XAML's UTF-16 strings all take their own values. Each such copy is listed in `packages/native/README.md` with its byte count, and a copy that is not listed fails the gate below.
+- **Named copies are allowed where a platform forces them, and only there.** `paint_quad` and `paint_image` in GPUI, SwiftUI `String` and XAML's UTF-16 strings all take their own values. Each such copy is listed in `src/osprey/packages/native/README.md` with its byte count, and a copy that is not listed fails the gate below.
 
 ### Techniques
 
@@ -125,7 +125,7 @@ Each surface is cut over on every host in one change, then its JSON path is dele
 
 **Measure first**
 
-- [ ] Baseline with the existing instruction-count harness on Storage with a large tree, Flock at 5,000 birds, Casting playback and a long Osprey Agent transcript: instructions, bytes parsed, bytes copied and heap allocations per `dispatch`, plus p50 and p99 frame time on the Mac. Check: the numbers are in `packages/native/README.md`; targets below are set from them, not guessed.
+- [ ] Baseline with the existing instruction-count harness on Storage with a large tree, Flock at 5,000 birds, Casting playback and a long Osprey Agent transcript: instructions, bytes parsed, bytes copied and heap allocations per `dispatch`, plus p50 and p99 frame time on the Mac. Check: the numbers are in `src/osprey/packages/native/README.md`; targets below are set from them, not guessed.
 - [ ] Spike one patch end to end, Osprey to GPUI, to prove in-place Osprey writes coexist with ARC and GC: arena values are not collector objects, and an arena value may not reach into the managed heap. Decide how this meets [plan 0045](0045-compile-time-ownership.md), and report before building on it. Check: `--memory=arc` and `--memory=gc` both pass under ASan.
 - [ ] Spike the reservation: one contiguous virtual range per application so that relative offsets cross generations. Measure what iOS and Android allow without extra entitlements, and the limit on wasm32. Check: a table of the size chosen for each target.
 
@@ -154,6 +154,6 @@ Each surface is cut over on every host in one change, then its JSON path is dele
 - [ ] Self-test and smoke scripts stay readable files on disk and the test driver turns them into typed events; they never cross the bridge as JSON.
 - [ ] Lifetime tests: debug builds `mprotect` retired generations, so a stale host read crashes the test rather than reading garbage. Run journeys under ASan and TSan, the Rust view under Miri, publication under `loom`.
 - [ ] Fuzz the tdbin verifier at the process boundaries with hostile pointers, depth and amplification. Check: typed errors, never a panic.
-- [ ] No-JSON gate in CI: a counting allocator and a parse counter assert zero parsing and zero unlisted copies across the bridge in every app's self-test, and a source check rejects JSON types in the bridge paths of `packages/native` and `hosts/`. Adapters for outside formats are allowed by name.
-- [ ] Performance gate: instruction-count ratios against the recorded baseline in the existing CI job, with targets set by the first step. Check: the numbers are in `packages/native/README.md`, and a regression fails CI.
+- [ ] No-JSON gate in CI: a counting allocator and a parse counter assert zero parsing and zero unlisted copies across the bridge in every app's self-test, and a source check rejects JSON types in the bridge paths of `src/osprey/packages/native` and `src/toolchain/hosts/`. Adapters for outside formats are allowed by name.
+- [ ] Performance gate: instruction-count ratios against the recorded baseline in the existing CI job, with targets set by the first step. Check: the numbers are in `src/osprey/packages/native/README.md`, and a regression fails CI.
 - [ ] Every app on every host passes its existing journeys and goldens unchanged, with no test or golden weakened to get there.

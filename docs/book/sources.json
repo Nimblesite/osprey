@@ -1,0 +1,197 @@
+{
+  "schemaVersion": 1,
+  "sources": [
+    {
+      "id": "spec-introduction",
+      "kind": "repository-specification",
+      "path": "../specs/language/0001-Introduction.md",
+      "use": "language shape, explicit failure, runtime and platform qualifications"
+    },
+    {
+      "id": "spec-syntax",
+      "kind": "repository-specification",
+      "path": "../specs/language/0003-Syntax.md",
+      "use": "Default bindings, functions, records, unions, and expression syntax"
+    },
+    {
+      "id": "spec-types",
+      "kind": "repository-specification",
+      "path": "../specs/language/0004-TypeSystem.md",
+      "use": "inference, records, unions, collections, and Result preservation"
+    },
+    {
+      "id": "spec-functions",
+      "kind": "repository-specification",
+      "path": "../specs/language/0005-FunctionCalls.md",
+      "use": "Default call syntax and argument behavior"
+    },
+    {
+      "id": "spec-patterns",
+      "kind": "repository-specification",
+      "path": "../specs/language/0007-PatternMatching.md",
+      "use": "matching, destructuring, exhaustiveness, and fallback policy"
+    },
+    {
+      "id": "spec-iterators",
+      "kind": "repository-specification",
+      "path": "../specs/language/0010-LoopConstructsAndFunctionalIterators.md",
+      "use": "range pipelines, map, filter, fold, forEach, and stream fusion"
+    },
+    {
+      "id": "spec-errors",
+      "kind": "repository-specification",
+      "path": "../specs/language/0013-ErrorHandling.md",
+      "use": "Result handling, checked arithmetic, propagation, and explicit fallback"
+    },
+    {
+      "id": "spec-effects",
+      "kind": "repository-specification",
+      "path": "../specs/language/0017-AlgebraicEffects.md",
+      "use": "effect declarations, operations, handlers, and availability limits"
+    },
+    {
+      "id": "spec-fibers",
+      "kind": "repository-specification",
+      "path": "../specs/language/0011-LightweightFibersAndConcurrency.md",
+      "use": "fiber isolation, channels, scheduling, and native availability"
+    },
+    {
+      "id": "spec-wasm",
+      "kind": "repository-specification",
+      "path": "../specs/compiler/0022-WebAssemblyTarget.md",
+      "use": "WebAssembly build behavior and portable runtime subset"
+    },
+    {
+      "id": "spec-flavors",
+      "kind": "repository-specification",
+      "path": "../specs/language/0023-LanguageFlavors.md",
+      "use": "current Default and ML surfaces, selection, lowering boundary, and interop"
+    },
+    {
+      "id": "spec-ml",
+      "kind": "repository-specification",
+      "path": "../specs/language/0024-MLFlavorSyntax.md",
+      "use": "optional ML layout, currying, and source syntax"
+    },
+    {
+      "id": "spec-testing",
+      "kind": "repository-specification",
+      "path": "../specs/language/0027-TestingFramework.md",
+      "use": "Osprey test declarations, assertions, and test execution"
+    },
+    {
+      "id": "installation-guide",
+      "kind": "maintained-documentation",
+      "path": "../../src/toolchain/website/src/docs/installation.md",
+      "use": "no-install Playground path, local prerequisites, install commands, and verification"
+    },
+    {
+      "id": "project-messaging",
+      "kind": "editorial-authority",
+      "path": "../messaging.md",
+      "use": "practicality, safety, performance, elegance, and claim qualifications"
+    },
+    {
+      "id": "midnight-synthetic",
+      "kind": "visual-authority",
+      "path": "../designs/design.md",
+      "use": "authoritative palette, typography, spacing, shape, and component direction"
+    },
+    {
+      "id": "website-tokens",
+      "kind": "visual-implementation",
+      "path": "../../src/toolchain/website/src/css/variables.css",
+      "use": "implemented dark-theme tokens and long-form layout values"
+    },
+    {
+      "id": "chapter-one-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-01/",
+      "use": "checked and run Default and optional ML examples used by Chapter 1"
+    },
+    {
+      "id": "chapter-two-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-02/",
+      "use": "checked and run Default Flight Log example used by Chapter 2"
+    },
+    {
+      "id": "spec-interpolation",
+      "kind": "repository-specification",
+      "path": "../specs/language/0006-StringInterpolation.md",
+      "use": "Distinguish formatting values in interpolation from string concatenation requirements"
+    },
+    {
+      "id": "chapter-three-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-03/",
+      "use": "Inferred string heading, independently typed identity calls, Learner fields, and an exact compiler-rejection diagnostic"
+    },
+    {
+      "id": "chapter-eight-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-08/",
+      "use": "Seven behavior tests, exact TAP output, Result rejection, and exercised mutation checks"
+    },
+    {
+      "id": "chapter-nine-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-09/",
+      "use": "Typed requests, callback timing, nested scopes, composed handlers, control cancellation, static interpretation, and rejection fixtures"
+    },
+    {
+      "id": "chapter-ten-examples",
+      "kind": "executable-evidence",
+      "path": "examples/chapter-10/",
+      "use": "Scripted storage and HTTP outcomes, native file round trip, local native HTTP response adapter, and Result rejection"
+    },
+    {
+      "id": "spec-file-builtins",
+      "kind": "repository-specification",
+      "path": "../specs/runtime/0012-Built-InFunctions.md",
+      "use": "File read/write Result contracts and string decoding operations"
+    },
+    {
+      "id": "spec-http",
+      "kind": "repository-specification",
+      "path": "../specs/runtime/0014-HTTP.md",
+      "use": "Native response handles, status/body access, resource cleanup, and platform limits"
+    },
+    {
+      "id": "effects-delivery",
+      "kind": "implementation-status",
+      "path": "../plans/0016-algebraic-effects-and-handlers.md",
+      "use": "Implemented handler semantics and remaining row, continuation, and platform limits"
+    },
+    {
+      "id": "spec-memory",
+      "kind": "repository-authority",
+      "path": "../specs/compiler/0018-MemoryManagement.md",
+      "use": "Default allocator, native GC/ARC, fiber ownership, and runtime qualifications"
+    },
+    {
+      "id": "spec-modules",
+      "kind": "repository-authority",
+      "path": "../specs/language/0025-ModulesAndNamespaces.md",
+      "use": "Implemented projects, namespaces, imports, and project flavor selection"
+    },
+    {
+      "id": "spec-ios",
+      "kind": "repository-authority",
+      "path": "../specs/platforms/0038-iOSTarget.md",
+      "use": "Apple archive/header targets and native host requirements"
+    },
+    {
+      "id": "spec-android",
+      "kind": "repository-authority",
+      "path": "../specs/platforms/0039-AndroidTarget.md",
+      "use": "Android ABI targets and native host requirements"
+    },
+    {
+      "id": "structured-concurrency-delivery",
+      "kind": "repository-authority",
+      "path": "../plans/0026-structured-concurrency.md",
+      "use": "Distinguish planned scopes, cancellation, deadlines, and join from the current native fiber runtime"
+    }
+  ]
+}

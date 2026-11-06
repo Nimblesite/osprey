@@ -1,0 +1,6 @@
+// [GPU-KERNEL-EXTRACT]: gpuScan rejects an accumulator update that is an
+// unhandled Result, exactly as gpuFold does.
+fn main() = match toGpu([1, 2]) {
+    Success { value } => gpuScan(value, 0, fn(a, v) => checkedAdd(a, v))
+    Error { message } => Error { message: message }
+}

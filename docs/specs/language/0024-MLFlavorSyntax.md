@@ -16,7 +16,7 @@ a line at a lower column closes blocks until its indentation matches. Blank and
 comment-only lines do not affect layout. Parentheses and brackets suppress
 layout tokens until their matching delimiter.
 
-The implementation is in `crates/osprey-syntax/src/ml/lexer.rs` and
+The implementation is in `src/toolchain/crates/osprey-syntax/src/ml/lexer.rs` and
 `parser.rs`. Every token carries a source position.
 
 ## Comments

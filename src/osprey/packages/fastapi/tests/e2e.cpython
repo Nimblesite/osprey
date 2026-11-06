@@ -1,0 +1,389 @@
+"""Drive both managed backends in parallel over real HTTP, never a mocked transport."""
+import ast
+import concurrent.futures
+import gzip
+import http.client
+import importlib.machinery
+import importlib.util
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+from contextlib import closing
+from pathlib import Path
+
+if not __debug__:
+    raise RuntimeError("HTTP acceptance requires enabled assertions; do not use -O")
+
+ROOT = Path(__file__).resolve().parents[5]
+
+
+def request(port, method, path, body=None, headers=None):
+    with closing(http.client.HTTPConnection("127.0.0.1", port, timeout=5)) as connection:
+        connection.request(method, path, body=body, headers=headers or {})
+        reply = connection.getresponse()
+        return reply.status, dict(reply.getheaders()), reply.read()
+
+
+def assert_redirect(port, path, target):
+    status, headers, body = request(port, "GET", path)
+    assert (status, body) == (307, b"")
+    assert headers["Location"] == f"http://127.0.0.1:{port}{target}"
+
+
+def health_cases(port):
+    status, headers, body = request(port, "GET", "/health")
+    assert (status, body) == (200, b'{"status":"ok"}'), (status, body)
+    assert headers["Content-Type"] == "application/json", headers
+    assert request(port, "GET", "/health?probe=true")[0] == 200
+    assert_redirect(port, "/health/?probe=1", "/health?probe=1")
+    assert request(port, "GET", "/missing")[::2] == (404, b'{"detail":"Not Found"}')
+    status, headers, body = request(port, "GET", "/readyz")
+    assert (status, body) == (503, b'{"detail":"database unavailable"}')
+    assert headers["Cache-Control"] == "no-store"
+
+
+def method_cases(port):
+    for method in ("POST", "PUT", "DELETE", "HEAD", "OPTIONS", "PATCH", "TRACE", "CONNECT"):
+        status, headers, body = request(port, method, "/health")
+        assert status == 405, (method, status)
+        assert headers["Allow"] == "GET", headers
+        assert body == (b"" if method == "HEAD" else b'{"detail":"Method Not Allowed"}'), (method, body)
+
+
+def body_cases(port):
+    for payload in (b"", b"hello", "héllo ☕".encode(), b'{"x":[1,true,null]}', b"line1\r\nline2\n", b"\xff\xfe\x80", bytes(range(1, 256)), b"\x00", b"head\x00tail", b"tail\x00", bytes(range(256)), b"a" * 4096, "☕".encode() * 1000):
+        status, headers, body = request(port, "POST", "/echo", payload)
+        assert (status, body) == (201, payload), (status, body, payload)
+        assert headers["Content-Type"] == "application/octet-stream"
+        assert headers["X-Echo"] == "yes"
+        assert int(headers["Content-Length"]) == len(payload), (headers, payload)
+
+
+def binary_upload_cases(port):
+    """[FASTAPI-HTTP-FILES] Preserve body bytes and enforce the archive policy in order."""
+    media_types = [(None, False), ("", False), ("text/plain", False), ("application/octet-stream", False),
+                   ("APPLICATION/GZIP", False), ("application/gzip ; x=y", False),
+                   ("application/gzip", True), ("application/gzip; charset=binary", True),
+                   ("application/x-tar+gzip", True)]
+    payloads = (b"", b"\0", b"prefix\0suffix", bytes(range(256)), gzip.compress(bytes(range(256)), mtime=0),
+                b"\xff" * 8191, bytes(range(256)) * 32, b"\0" + b"z" * 8192)
+    for media_type, allowed in media_types:
+        for payload in payloads:
+            headers = {} if media_type is None else {"Content-Type": media_type}
+            status, received, body = request(port, "POST", "/upload/archive", payload, headers)
+            if not allowed:
+                expected = 415, b'{"detail":"Unsupported Media Type"}'
+            elif not payload:
+                expected = 400, b'{"detail":"Empty request body"}'
+            elif len(payload) > 8192:
+                expected = 413, b'{"detail":"Request body too large"}'
+            else:
+                expected = 201, payload
+            assert (status, body) == expected, (media_type, len(payload), status, body[:128])
+            received = {name.lower(): value for name, value in received.items()}
+            assert received["content-type"] == ("application/octet-stream" if status == 201 else "application/json")
+            assert int(received["content-length"]) == len(expected[1]), received
+    assert request(port, "GET", "/health")[::2] == (200, b'{"status":"ok"}')
+
+
+def hostless_redirect_cases(port):
+    for query in ("", "?probe=one%20two&probe=three"):
+        with socket.create_connection(("127.0.0.1", port), timeout=5) as connection:
+            connection.sendall(f"GET /health/{query} HTTP/1.0\r\n\r\n".encode("ascii"))
+            with closing(http.client.HTTPResponse(connection)) as response:
+                response.begin()
+                assert response.status == 307
+                assert response.getheader("Location") == f"/health{query}"
+                assert response.getheader("Content-Length") == "0"
+                assert response.read() == b""
+
+
+def exception_contract_cases(port):
+    """[FASTAPI-HTTP-ERRORS] Distinguish handled failures from ordinary status replies."""
+    def send(method, path, headers=None):
+        status, returned, body = request(port, method, path, headers=headers)
+        return status, {name.lower(): value for name, value in returned.items()}, body
+
+    for trace in ("case-1", "case-2", "tenant-a:42"):
+        for origin in ({}, {"Origin": "https://app.example"}):
+            supplied = {"x-trace-id": trace} | origin
+            status, headers, body = send("GET", "/contract/exception", headers=supplied)
+            expected = json.dumps({"error": "limit reached", "trace_id": trace}, separators=(",", ":")).encode()
+            assert (status, headers.get("content-type"), body) == (429, "application/json", expected), (status, headers, body)
+            assert headers["retry-after"] == "2" and headers["x-trace-id"] == trace
+            assert int(headers["content-length"]) == len(body)
+            assert headers.get("access-control-allow-origin") == ("*" if origin else None)
+    status, headers, body = send("GET", "/contract/exception/plain")
+    assert (status, body) == (429, b'{"detail":"explicit reply"}')
+    assert "x-trace-id" not in headers and "retry-after" not in headers
+    status, headers, body = send("GET", "/contract/exception/fallback")
+    assert (status, body) == (418, b'{"detail":"default detail"}')
+    assert headers["x-default"] == "yes"
+    status, headers, body = send("GET", "/contract/exception")
+    assert (status, body) == (429, b'{"detail":"limit reached"}')
+    assert headers["retry-after"] == "2"
+    assert "x-trace-id" not in headers and "x-error-handler" not in headers
+    status, headers, body = send("POST", "/contract/exception")
+    assert (status, body) == (405, b'{"detail":"Method Not Allowed"}')
+    assert headers["allow"] == "GET" and headers["x-error-handler"] == "typed"
+    status, headers, body = send("GET", "/deps", headers={"Authorization": "Bearer good", "X-Role": "reader"})
+    assert (status, body) == (403, b'{"detail":"writer_required"}')
+    assert headers["x-error-handler"] == "typed"
+    status, _, body = send("GET", "/dependency-trace")
+    assert (status, json.loads(body)) == (200, {"trace": ["open:1", "auth:1", "close:1"]})
+
+
+def body_contract_cases(port):
+    """Drive application contract errors through the real HTTP response path."""
+    for payload in (b"[]", b"false", b'"text"', b"42"):
+        for path in ("/contract/extras", "/contract/response"):
+            status, headers, body = request(port, "POST", path, payload, {"Content-Type": "application/json"})
+            assert (status, headers["Content-Type"], body) == (500, "text/plain; charset=utf-8", b"Internal Server Error")
+            assert int(headers["Content-Length"]) == len(body)
+    for payload, position in ((b"{", 1), (b"[1,", 3)):
+        status, headers, body = request(port, "POST", "/contract/validation", payload)
+        error = "expected a string" if payload == b"{" else "unexpected end of text"
+        assert (status, headers["Content-Type"], body) == (
+            500, "text/plain; charset=utf-8",
+            f"Invalid validation issue input: jsonDecode: byte {position}: {error}".encode(),
+        )
+    for key in ("content", "é", "😀"):
+        payload = f'{{"{key}" "value"}}'.encode()
+        status, headers, body = request(port, "POST", "/body/bundle", payload, {"Content-Type": "application/json"})
+        expected = {"detail": [{"type": "json_invalid", "loc": ["body", len(key) + 4],
+                                "msg": "JSON decode error", "input": {},
+                                "ctx": {"error": "Expecting ':' delimiter"}}]}
+        assert (status, headers["Content-Type"], json.loads(body)) == (422, "application/json", expected)
+        assert int(headers["Content-Length"]) == len(body)
+
+
+def body_records():
+    """Read the pinned HTTP oracle without executing Osprey Python source."""
+    nodes = ast.parse(Path(__file__).with_name("expected.py").read_text()).body
+    raw = next(ast.literal_eval(node.value) for node in nodes if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "BODY_JSON" for target in node.targets))
+    records = json.loads(raw)["cases"]
+    assert len(records) >= 180
+    return records
+
+
+def body_reference_cases(port):
+    """[FASTAPI-HTTP-VALIDATION] Exact real HTTP replies from generated reference models."""
+    records = body_records()
+    failures = []
+    for case in records:
+        status, headers, body = request(port, case["method"], case["path"], case["body_text"].encode(), case["headers"])
+        returned = {name.lower(): value for name, value in headers.items()}
+        correct = (status, body) == (case["status"], case["response_text"].encode())
+        fields = {name: returned.get(name) for name in ("content-type", "content-length")}
+        if not correct or fields != case["response_headers"] or int(returned["content-length"]) != len(body):
+            failures.append({"case": case, "actual": {"status": status, "body": body.decode(errors="replace"), "headers": fields}})
+    report = ROOT / "target/fastapi" / f"body-failures-{port}.json"
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text(json.dumps(failures, ensure_ascii=False, indent=2))
+    assert not failures, f"{len(failures)} of {len(records)} body cases differ; target/fastapi/body-failures-{port}.json"
+    body_contract_cases(port)
+    hostless_redirect_cases(port)
+    exception_contract_cases(port)
+
+
+def body_model_smoke(port):
+    """[FASTAPI-HTTP-VALIDATION] Typed request bodies must bind before handlers run."""
+    payload = rb'{"content":"hello \u2615","_secret":"drop this"}'
+    status, headers, body = request(port, "POST", "/body/bundle", payload, {"Content-Type": "application/json"})
+    assert (status, json.loads(body)) == (200, {"content": "hello ☕"}), (status, headers, body)
+    assert headers["Content-Type"] == "application/json"
+    assert b"_secret" not in body
+
+
+def parameter_cases(port):
+    path = Path(__file__).with_name("parameters.expected.json")
+    cases = json.loads(path.read_text())
+    wire = b"\x1e".join("".join(f"{name}: {value}\r\n" for name, value in case["headers"].items()).encode("latin-1") for case in cases)
+    assert path.with_name("parameters.headers.bin").read_bytes() == wire, "native header fixture must preserve the reference's exact Latin-1 wire bytes"
+    for case in cases:
+        status, headers, body = request(port, case["method"], case["path"], headers=case["headers"])
+        if case["status"] == 307:
+            assert headers["Location"].startswith(f"http://127.0.0.1:{port}/"), (case, headers)
+        else:
+            expected_type = "text/plain; charset=utf-8" if isinstance(case["body"], str) else "application/json"
+            assert headers.get("Content-Type") == expected_type, (case, headers)
+        assert int(headers["Content-Length"]) == len(body), (case, headers, body)
+        if case["status"] == 401:
+            assert headers.get("WWW-Authenticate") == "Bearer", (case, headers)
+        actual = json.loads(body) if body and headers.get("Content-Type", "").startswith("application/json") else body.decode() if body else None
+        assert body.decode() == case["body_text"], (case, status, body)
+        assert (status, actual) == (case["status"], case["body"]), (case, status, actual)
+
+
+
+def configuration_cases(port):
+    """Graph failures must close previously acquired resources and leave the next request clean."""
+    for name, detail, trace in (
+        ("cycle", "Dependency cycle: cycle", ["open:1", "close:1"]),
+        ("missing", "Expected exactly one dependency provider: missing", ["open:1", "close:1"]),
+        ("duplicate", "Expected exactly one dependency provider: session", []),
+    ):
+        status, headers, body = request(port, "GET", f"/deps/{name}")
+        assert (status, json.loads(body)) == (500, {"detail": detail}), (name, status, body)
+        assert headers["Content-Type"] == "application/json"
+        status, _, body = request(port, "GET", "/dependency-trace")
+        assert (status, json.loads(body)) == (200, {"trace": trace}), (name, status, body)
+        status, _, body = request(port, "GET", "/deps/validation", headers={"x-left": "7", "x-right": "-2"})
+        assert (status, json.loads(body)) == (200, {"sum": 5}), (name, status, body)
+        assert json.loads(request(port, "GET", "/dependency-trace")[2]) == {"trace": ["open:1", "left:1", "right:1", "close:1"]}
+
+
+def failure_cases(port):
+    status, _, body = request(port, "GET", "/bundle/%00")
+    assert (status, json.loads(body)) == (400, {"detail": "NUL is not representable in the native HTTP string boundary"})
+    assert_redirect(port, "/bundle?tags=x", "/bundle/?tags=x")
+
+
+def dependency_smoke(port):
+    status, _, body = request(port, "GET", "/deps", headers={"Authorization": "Bearer good", "X-Role": "writer", "X-Credit": "1"})
+    assert status == 200, (status, body)
+
+
+def cors_reference_cases(port, mode):
+    """Replay independently generated reference bytes and every security-relevant header."""
+    nodes = ast.parse(Path(__file__).with_name("expected.py").read_text()).body
+    corpus = next(ast.literal_eval(node.value) for node in nodes if isinstance(node, ast.Assign) and any(isinstance(target, ast.Name) and target.id == "CORS_JSON" for target in node.targets))
+    cases = [case for case in json.loads(corpus)["cases"] if case["mode"] == mode]
+    assert len(cases) >= 90, (mode, len(cases))
+    for case in cases:
+        status, headers, body = request(port, case["method"], case["path"], headers=case["headers"])
+        normalized = {name.lower(): value for name, value in headers.items()}
+        relevant = {name: value for name, value in normalized.items() if name.startswith("access-control-") or name in {"vary", "content-type", "content-length", "allow", "cache-control", "x-echo"}}
+        assert (status, body) == (case["status"], case["body_text"].encode()), (case, status, body)
+        assert relevant == case["response_headers"], (case, relevant)
+        assert int(normalized["content-length"]) == len(body), (case, normalized, body)
+
+
+def cors_browser_cases(port):
+    """[FASTAPI-HTTP-MIDDLEWARE] Browser reads must work on success and errors."""
+    for path, expected in (("/health", 200), ("/readyz", 503), ("/missing", 404)):
+        status, headers, body = request(port, "GET", path, headers={"Origin": "https://app.example"})
+        assert status == expected, (path, status, body)
+        assert headers.get("Access-Control-Allow-Origin") == "*", (path, headers, body)
+        assert headers.get("Access-Control-Expose-Headers") == "ETag, X-Trace-Id", headers
+        assert "Access-Control-Allow-Credentials" not in headers, headers
+
+
+def cases(port):
+    cors_browser_cases(port)
+    body_model_smoke(port)
+    body_reference_cases(port)
+    binary_upload_cases(port)
+    for _ in range(3):
+        health_cases(port)
+        method_cases(port)
+        body_cases(port)
+        parameter_cases(port)
+        failure_cases(port)
+        dependency_smoke(port)
+        configuration_cases(port)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        results = pool.map(lambda _: request(port, "GET", "/health"), range(32))
+        assert all(result[::2] == (200, b'{"status":"ok"}') for result in results)
+
+
+def build(memory, directory=None):
+    binary = (directory if directory is not None else ROOT / "target" / "fastapi") / f"e2e-{memory}"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([os.environ.get("OSPREY_COMPILER", str(ROOT / "target/release/osprey")), str(Path(__file__).parent / "service"),
+                    "--compile", f"--memory={memory}", "--no-warnings", "-o", str(binary)], check=True, timeout=60)
+    return binary
+
+
+def wait_ready(process, port):
+    for _ in range(100):
+        if process.poll() is not None:
+            raise RuntimeError(f"server exited {process.returncode}")
+        try:
+            assert request(port, "GET", "/health")[0] == 200
+            return
+        except OSError:
+            time.sleep(0.05)
+    raise TimeoutError("server did not listen within 5 seconds")
+
+
+def run(built, benchmark=False, mode=None):
+    memory, binary = built
+    port = {"gc": 18790, "arc": 18792}[memory] if benchmark else {"gc": 18786, "arc": 18788}[memory]
+    mode = mode or ("benchmark" if benchmark else "normal")
+    log_path = binary.with_suffix(".benchmark.log" if benchmark else ".log")
+    with log_path.open("w") as log:
+        process = subprocess.Popen([str(binary)], stdin=subprocess.PIPE, stdout=log, stderr=log)
+        try:
+            process.stdin.write(f"{port}\n{mode}\n".encode())
+            process.stdin.close()
+            wait_ready(process, port)
+            if mode.startswith("cors-"):
+                cors_reference_cases(port, mode)
+            elif benchmark:
+                benchmark_cases(port)
+            else:
+                cases(port)
+            print(f"FastAPI real HTTP E2E ({memory}, mode={mode}): PASS", flush=True)
+        except Exception as error:
+            trace = ROOT / "target" / f"fastapi-dependency-{port}.trace"
+            if trace.exists():
+                log.write("\nDependency trace before failure:\n" + trace.read_text())
+            raise RuntimeError(f"{memory} HTTP failure; server exit {process.poll()}; log {log_path}") from error
+        finally:
+            process.terminate()
+            process.wait(timeout=10)
+            (ROOT / "target" / f"fastapi-dependency-{port}.trace").unlink(missing_ok=True)
+
+
+def benchmark_cases(port):
+    """A comparable routing benchmark must perform no fixture trace-file IO."""
+    health_cases(port)
+    status, headers, body = request(port, "GET", "/bundle/hello%20world?tags=one&tags=two")
+    assert (status, json.loads(body)) == (200, {"path": "hello world", "tags": ["one", "two"]})
+    assert headers["Content-Type"] == "application/json"
+    assert not (ROOT / "target" / f"fastapi-dependency-{port}.trace").exists(), "benchmark mode must disable trace-file middleware"
+
+
+def run_guarded(command, name):
+    """Bound all owned descendants, retain live logs and clean up on interruption."""
+    path = ROOT / "scripts/packages/package_process.py"
+    loader = importlib.machinery.SourceFileLoader("fastapi_process_guard", str(path))
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    guard = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(guard)
+    os.environ.setdefault("OSPREY_PACKAGE_TIMEOUT_SECONDS", "150")
+    with guard.interrupts():
+        result, error = guard.run(command, ROOT, ROOT / "target/logs/fastapi" / name)
+    sys.stdout.buffer.write(result.stdout)
+    sys.stderr.buffer.write(result.stderr)
+    if error:
+        print(error, file=sys.stderr)
+    return 1 if error else result.returncode
+
+
+def execute():
+    built = [(memory, build(memory)) for memory in ("gc", "arc")]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as workers:
+        list(workers.map(run, built))
+        list(workers.map(lambda item: run(item, benchmark=True), built))
+        for mode in ("cors-nap", "cors-restricted", "cors-all"):
+            list(workers.map(lambda item: run(item, mode=mode), built))
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--worker"]:
+        execute()
+    elif len(sys.argv) == 3 and sys.argv[1] == "--body-port":
+        port = int(sys.argv[2])
+        body_reference_cases(port)
+        binary_upload_cases(port)
+    elif len(sys.argv) == 4 and sys.argv[1] == "--cors-port":
+        cors_reference_cases(int(sys.argv[2]), sys.argv[3])
+    elif sys.argv[1:]:
+        raise SystemExit("usage: python3 e2e.cpython")
+    else:
+        raise SystemExit(run_guarded([sys.executable, str(Path(__file__).resolve()), "--worker"], "http-acceptance"))

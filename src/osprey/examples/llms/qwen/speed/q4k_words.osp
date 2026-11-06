@@ -1,0 +1,68 @@
+// The Q4_K matvec reading the block bytes four at a time as uint32 words.
+fn weights() -> Result<GpuBuffer<uint32>, Error> = gpuMapFile("q4k.bin", 0, 12533760)
+fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
+fn word(w, i) = toInt(gpuGet(w, i) ?: toUint32(0))
+fn lane(v, r) = match r == 0 {
+    true => v
+    false => match r == 1 { true => shiftRight(v, 8)  false => match r == 2 { true => shiftRight(v, 16)  false => shiftRight(v, 24) } }
+}
+fn blockByte(w, bw, k) = bitAnd(lane(word(w, bw + intDiv(k, 4)), k % 4), 255)
+fn halfBits(bits) = toFloat32(float16FromBits(toInt16(match bits >= 32768 { true => bits - 65536  false => bits })))
+fn xAt(x, i) = gpuGet(x, i) ?: toFloat32(0.0)
+fn scaleOf(w, bw, j) = match j < 4 {
+    true => bitAnd(blockByte(w, bw, 4 + j), 63)
+    false => bitOr(bitAnd(blockByte(w, bw, 8 + j), 15), shiftLeft(shiftRight(blockByte(w, bw, j), 6), 4))
+}
+fn minOf(w, bw, j) = match j < 4 {
+    true => bitAnd(blockByte(w, bw, 8 + j), 63)
+    false => bitOr(shiftRight(blockByte(w, bw, 8 + j), 4), shiftLeft(shiftRight(blockByte(w, bw, 4 + j), 6), 4))
+}
+fn nib(v, high) = match high == 1 { true => bitAnd(shiftRight(v, 4), 15)  false => bitAnd(v, 15) }
+fn fourWeights(x, e, v, high, d1, m1, s) = {
+    let s0 = s + xAt(x, e) * (d1 * toFloat32(nib(bitAnd(v, 255), high)) - m1)
+    let s1 = s0 + xAt(x, e + 1) * (d1 * toFloat32(nib(bitAnd(shiftRight(v, 8), 255), high)) - m1)
+    let s2 = s1 + xAt(x, e + 2) * (d1 * toFloat32(nib(bitAnd(shiftRight(v, 16), 255), high)) - m1)
+    s2 + xAt(x, e + 3) * (d1 * toFloat32(nib(bitAnd(shiftRight(v, 24), 255), high)) - m1)
+}
+fn subBlock(w, x, d, dmin, bw, first, j, acc) = {
+    let d1 = d * toFloat32(scaleOf(w, bw, j))
+    let m1 = dmin * toFloat32(minOf(w, bw, j))
+    let g = intDiv(j, 2)
+    let high = j % 2
+    let q = bw + 4 + g * 8
+    let e = first + g * 64 + high * 32
+    fold(range(0, 8), acc, fn(s, m) => fourWeights(x, e + m * 4, word(w, q + m), high, d1, m1, s))
+}
+fn block(w, x, r, nb, blk, acc) = {
+    let bw = (r * nb + blk) * 36
+    let scales = word(w, bw)
+    let d = halfBits(bitAnd(scales, 65535))
+    let dmin = halfBits(shiftRight(scales, 16))
+    fold(range(0, 8), acc, fn(a, j) => subBlock(w, x, d, dmin, bw, blk * 256, j, a))
+}
+fn row(w, x, r, nb) = fold(range(0, nb), toFloat32(0.0), fn(acc, blk) => block(w, x, r, nb, blk, acc))
+fn matvec(w, x, rows, nb) = match gpuIota(rows) {
+    Success { value } => match value |> gpuMap(fn(r) => row(w, x, r, nb)) {
+        Success { value } => value
+        Error { message } => x
+    }
+    Error { message } => x
+}
+fn run() = match inputs() {
+    Error { message } => print(message)
+    Success { value } => {
+        let x = value
+        match weights() {
+            Error { message } => print(message)
+            Success { value } => {
+                let w = value
+                let y = fold(range(0, STEPS), x, fn(acc, _i) => matvec(w, x, 17408, 20))
+                print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 1) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 17407) ?: toFloat32(0.0))}")
+            }
+        }
+    }
+}
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    run()
+}

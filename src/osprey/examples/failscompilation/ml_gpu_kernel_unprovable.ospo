@@ -1,0 +1,11 @@
+// osprey: flavor=ml
+// [GPU-KERNEL-PURE] fails closed in this flavor too: a kernel received as a
+// bare function parameter has unknown effects at the combinator call site.
+effect Noise
+    blip : Unit => Unit
+
+runIt f = match toGpu [1]
+    Success value => gpuMap (value, f)
+    Error message => Error(message = message)
+
+main () = runIt (\x => x)

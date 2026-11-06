@@ -111,17 +111,17 @@ NEGATIVE: [see §9]
 
 Save each output to the path shown. Same basename → it slots straight into the site.
 
-### `building-web-apis-with-pattern-matching` → `src/assets/images/blog/building-web-apis-with-pattern-matching.png`
+### `building-web-apis-with-pattern-matching` → `src/toolchain/website/src/assets/images/blog/building-web-apis-with-pattern-matching.png`
 *"Building Type-Safe Web APIs with Osprey's Pattern Matching"*
 > Abstract geometric digital render of incoming data-flow paths converging into a glowing cyan decision-lattice — multiple inbound light-streams sorted into clean exhaustive branches, each branch capped with a small glowing cyan node, representing pattern matching routing requests. Electric cyan (#77D7F4) structure suspended in deep midnight-blue space (#070D1F to #0C1325), focal lattice centered, quiet negative space upper-left, directional cyan rim-light, soft bloom, glassmorphism, thin luminous outlines, faint dot-grid, high contrast, vignette to near black, minimalist, premium, futuristic, no text, no words, 1.9:1 wide banner, cinematic depth.
 > NEGATIVE: *(shared, §9)*
 
-### `the-memory-safe-revolution` → `src/assets/images/blog/the-memory-safe-revolution.png`
+### `the-memory-safe-revolution` → `src/toolchain/website/src/assets/images/blog/the-memory-safe-revolution.png`
 *"The Memory-Safe Revolution"*
 > Abstract geometric digital render of a glowing cyan protective shield-lattice formed from interlocking hexagonal cells around a secure luminous core, with a faint wireframe osprey silhouette ascending behind it, conveying memory safety and a secure future. Electric cyan (#77D7F4) on deep midnight-blue (#070D1F to #0C1325), focal shield centered, open negative space upper-right, dramatic directional cyan rim-light, soft glow, thin luminous outlines, glassmorphism, faint dot-grid, high contrast, vignette, minimalist, premium, futuristic, no text, no words, 1.9:1 wide banner, cinematic depth.
 > NEGATIVE: *(shared, §9)*
 
-### `persistent-collections` → `src/assets/images/blog/persistent-collections.png`
+### `persistent-collections` → `src/toolchain/website/src/assets/images/blog/persistent-collections.png`
 *"Persistent Collections: Immutable List and Map with Structural Sharing"*
 > Abstract geometric digital render of a glowing cyan branching tree / 32-way trie growing upward, where a new bright branch forks off while the older branches remain fully lit and intact — visualizing immutable structural sharing. Electric cyan (#77D7F4) lattice suspended in deep midnight-blue space (#070D1F to #0C1325), focal tree centered, quiet negative space upper-left, directional cyan rim-light, soft bloom, thin luminous outlines, glassmorphism, faint background dot-grid, high contrast, vignette to near black, minimalist, premium, futuristic, no text, no words, 1.9:1 wide banner, cinematic depth.
 > NEGATIVE: *(shared, §9)*
@@ -197,4 +197,4 @@ background, pure black, gray flat background, drop shadow, harsh shadows, bevel,
 
 ### File handoff
 
-Output PNG (or WebP), master ~`1600×840`, sRGB. Name each file exactly `<post-slug>.png` and place in `website/src/assets/images/blog/`. The site references that path; matching the basename means your generation slots in with **zero code changes**.
+Output PNG (or WebP), master ~`1600×840`, sRGB. Name each file exactly `<post-slug>.png` and place in `src/toolchain/website/src/assets/images/blog/`. The site references that path; matching the basename means your generation slots in with **zero code changes**.

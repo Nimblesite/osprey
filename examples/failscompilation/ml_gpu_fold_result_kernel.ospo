@@ -1,3 +1,0 @@
-// osprey: flavor=ml
-// [GPU-KERNEL-EXTRACT]: gpuFold rejects an unhandled Result accumulator update.
-main () = print (toGpu [1, 2] |> gpuFold 0 (\(a, v) => checkedAdd (a, v)))

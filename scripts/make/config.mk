@@ -2,13 +2,13 @@
 # =============================================================================
 # Standard Makefile — osprey
 # Cross-platform: Linux, macOS, Windows (via GNU Make)
-# Primary language: Rust (crates/ workspace → the osprey compiler), with a
-# pure-C runtime (compiler/runtime → lib*_runtime.a, linked by `osprey
+# Primary language: Rust (src/toolchain/crates/ workspace → the osprey compiler), with a
+# pure-C runtime (src/toolchain/compiler/runtime → lib*_runtime.a, linked by `osprey
 # --run`) and TypeScript sub-projects (vscode-extension, webcompiler, website).
 # =============================================================================
 
-.PHONY: build test lint fmt clean ci setup run install _bench _bench-osprey _wasm _wasm-site _wasm-serve _bank _bank-web _bank-test _bank-e2e hawk hawk-install _gpt2 _gpt2-train \
-	_registry-test _registry-serve _registry-serve-sample _registry-blockers _vsix-rebuild-reinstall \
+.PHONY: build test lint fmt clean ci setup run install \
+	\
 	_language-test _deslop _gpu-demo _graphics-shader \
 	_test_gc_stack_root _test_c_runtime _test_gpu_device _coverage_check_c_runtime _bank_test _test_bench_tools _test_registry _test_registry_blockers \
 	_runtime_klee _test_hunt_mock \
@@ -46,27 +46,26 @@ endif
 # lists `:=` assignments as if they were targets; `?=` keeps the panel clean.
 # ---------------------------------------------------------------------------
 # Coverage — single source of truth is coverage-thresholds.json.
-COVERAGE_THRESHOLDS_FILE ?= coverage-thresholds.json
+COVERAGE_THRESHOLDS_FILE ?= src/osprey/tests/coverage-thresholds.json
 
 # The folder Makefiles `make help` lists after the root's own targets.
-MAKE_FOLDERS ?= apps apps/tests apps/macos apps/macos/tests apps/windows apps/windows/tests packages tests/hunt vscode-extension website benchmarks examples/proof
+MAKE_FOLDERS ?= src/toolchain src/toolchain/targets src/toolchain/targets/tests src/toolchain/targets/macos src/toolchain/targets/macos/tests src/toolchain/targets/windows src/toolchain/targets/windows/tests src/osprey/packages src/osprey/tests/hunt src/toolchain/vscode-extension src/toolchain/zed-extension src/toolchain/website src/toolchain/benchmarks src/osprey/examples/proof
 
 # Toolchain / paths. BIN: the built CLI. RTB: C-runtime archive output dir
-# (osprey searches compiler/bin at --run time).
+# (osprey searches src/toolchain/compiler/bin at --run time).
 CC  ?= cc
 AR  ?= ar
 BIN ?= target/release/osprey
-RTB ?= compiler/bin
+RTB ?= src/toolchain/compiler/bin
 # The release version a build is stamped with (release.yml exports it); the
 # runtime reports it to a live-attach client [PROF-ATTACH-PROTOCOL].
 OSPREY_VERSION ?= 0.0.0-dev
-# cargo's parallel jobs, inherited by every recipe that builds Rust.
-export CARGO_BUILD_JOBS ?= 4
+# Cargo defaults are bounded in .cargo/config.toml, including direct pi builds.
 
 # VSIX (VSCode extension) — macOS only. Bundles the Rust binary as `osprey`.
 # All VSIX targets touch ONLY this extension id, ONLY in the default profile;
 # they never enumerate VSCode profiles and never affect any other extension.
-EXT_DIR        ?= vscode-extension
+EXT_DIR        ?= src/toolchain/vscode-extension
 EXT_ID         ?= nimblesite.osprey
 # The extension loads its bundled compiler from bin/<os>-<arch>/osprey
 # (resolveBundledCompiler in client/src/extension.ts), so bundling, packaging
@@ -99,10 +98,10 @@ EXT_PLATFORM   ?= $(EXT_OS)-$(EXT_ARCH)
 # stat rather than a reinstall. `npm ci` is the right installer precisely
 # because it refuses to paper over a package.json that disagrees with its lock.
 EXT_NODE_DEPS         = $(EXT_DIR)/node_modules/.package-lock.json
-WEBSITE_NODE_DEPS     = website/node_modules/.package-lock.json
-WEBCOMPILER_NODE_DEPS = webcompiler/node_modules/.package-lock.json
-BANK_WEB_NODE_DEPS    = examples/projects/modules/web/node_modules/.package-lock.json
-BANK_E2E_NODE_DEPS    = examples/projects/modules/e2e/node_modules/.package-lock.json
+WEBSITE_NODE_DEPS     = src/toolchain/website/node_modules/.package-lock.json
+WEBCOMPILER_NODE_DEPS = src/toolchain/webcompiler/node_modules/.package-lock.json
+BANK_WEB_NODE_DEPS    = src/osprey/examples/projects/modules/web/node_modules/.package-lock.json
+BANK_E2E_NODE_DEPS    = src/osprey/examples/projects/modules/e2e/node_modules/.package-lock.json
 
 # Build logs and coverage reports live under target/, never in the repo root.
 LOG_DIR      = target/logs
@@ -140,7 +139,7 @@ OSSL ?= -DOPENSSL_SUPPRESS_DEPRECATED -DOPENSSL_API_COMPAT=30000 -Wno-deprecated
 # executable (no -c/-fPIC/-fPIE). Named once so _test_c_runtime does not repeat
 # the flag list per suite.
 T    ?= -O2 -D_FORTIFY_SOURCE=2 -fstack-protector-strong $(WARN) -ftrapv -std=c11 -D_GNU_SOURCE
-# Object lists for the archives (paths relative to compiler/, where `ar` runs).
+# Object lists for the archives (paths relative to src/toolchain/compiler/, where `ar` runs).
 # The profiler's objects, linked into every native runtime archive
 # [PROF-ACTIVATE-ENV] [PROF-ATTACH-ENDPOINT].
 PROF_OBJ = bin/profiler_runtime.o bin/profiler_store.o bin/profiler_dump.o bin/profiler_sampler.o bin/profiler_stream.o bin/profiler_endpoint.o
@@ -161,7 +160,7 @@ FIB_OBJ_ARC  ?= bin/memory_arc.o bin/gpu_runtime.o bin/gpu_host.o bin/tensor_fil
 HTTP_OBJ_ARC ?= bin/http_shared.o bin/http_client_runtime.o bin/http_client_response.o bin/http_client_framing.o bin/http_client_chunks.o bin/http_server_request.o bin/http_server_response.o bin/http_server_runtime.o bin/websocket_client_runtime.o bin/websocket_server_runtime.o bin/tls_client_runtime.o bin/file_server_runtime.o bin/media_render_runtime.o $(FIB_OBJ_ARC)
 ifeq ($(UNAME_S),Darwin)
 GPU_DEVICE_OBJ ?= bin/gpu_metal.o
-GPU_DEVICE_NATIVE ?= compiler/bin/gpu_metal.o
+GPU_DEVICE_NATIVE ?= src/toolchain/compiler/bin/gpu_metal.o
 GPU_DEVICE_FLAGS ?= -DOSPREY_GPU_METAL=1
 GPU_DEVICE_LIBS ?= -framework Foundation -framework Metal
 FIB_OBJ += bin/gpu_metal.o
@@ -169,9 +168,9 @@ FIB_OBJ_GC += bin/gpu_metal.o
 FIB_OBJ_ARC += bin/gpu_metal.o
 endif
 GPU_DEVICE_OBJ += bin/gpu_opencl.o
-GPU_DEVICE_NATIVE += compiler/bin/gpu_opencl.o
+GPU_DEVICE_NATIVE += src/toolchain/compiler/bin/gpu_opencl.o
 GPU_DEVICE_FLAGS += -DOSPREY_GPU_OPENCL=1
-GPU_DEVICE_LINK = $(addprefix $(CURDIR)/compiler/,$(GPU_DEVICE_OBJ))
+GPU_DEVICE_LINK = $(addprefix $(CURDIR)/src/toolchain/compiler/,$(GPU_DEVICE_OBJ))
 FIB_OBJ += bin/gpu_opencl.o
 FIB_OBJ_GC += bin/gpu_opencl.o
 FIB_OBJ_ARC += bin/gpu_opencl.o
@@ -184,15 +183,15 @@ endif
 MOBILE_RT_SRC ?= $(filter-out system_runtime $(basename $(notdir $(GPU_DEVICE_OBJ))),$(basename $(notdir $(FIB_OBJ))))
 MOBILE_ARC_RT_SRC ?= memory_arc $(filter-out memory_runtime,$(MOBILE_RT_SRC))
 MOBILE_ARC_SHIM_SRC ?= $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
-NATIVE_RUNTIME_CONFIG ?= compiler/bin/.native-runtime-config
-NATIVE_RUNTIME_STAMP ?= compiler/bin/.native-runtime.stamp
-NATIVE_RUNTIME_INPUTS ?= $(filter-out compiler/runtime/%_tests.c compiler/runtime/test_http_length_validation.c compiler/runtime/test_openssl.c compiler/runtime/test_system_runtime.c compiler/runtime/test_file_runtime.c compiler/runtime/web_runtime.c,$(wildcard compiler/runtime/*.c)) $(wildcard compiler/runtime/*.h)
-NATIVE_RUNTIME_INPUTS += $(wildcard compiler/runtime/*.m compiler/runtime/*.metal)
-NATIVE_RUNTIME_ARCHIVES ?= compiler/bin/libfiber_runtime.a compiler/bin/libhttp_runtime.a compiler/bin/libfiber_runtime_gc.a compiler/bin/libhttp_runtime_gc.a compiler/bin/libfiber_runtime_arc.a compiler/bin/libhttp_runtime_arc.a compiler/lib/libfiber_runtime.a compiler/lib/libhttp_runtime.a compiler/lib/libfiber_runtime_gc.a compiler/lib/libhttp_runtime_gc.a compiler/lib/libfiber_runtime_arc.a compiler/lib/libhttp_runtime_arc.a
+NATIVE_RUNTIME_CONFIG ?= src/toolchain/compiler/bin/.native-runtime-config
+NATIVE_RUNTIME_STAMP ?= src/toolchain/compiler/bin/.native-runtime.stamp
+NATIVE_RUNTIME_INPUTS ?= $(filter-out src/toolchain/compiler/runtime/%_tests.c src/toolchain/compiler/runtime/test_http_length_validation.c src/toolchain/compiler/runtime/test_openssl.c src/toolchain/compiler/runtime/test_system_runtime.c src/toolchain/compiler/runtime/test_file_runtime.c src/toolchain/compiler/runtime/web_runtime.c,$(wildcard src/toolchain/compiler/runtime/*.c)) $(wildcard src/toolchain/compiler/runtime/*.h)
+NATIVE_RUNTIME_INPUTS += $(wildcard src/toolchain/compiler/runtime/*.m src/toolchain/compiler/runtime/*.metal)
+NATIVE_RUNTIME_ARCHIVES ?= src/toolchain/compiler/bin/libfiber_runtime.a src/toolchain/compiler/bin/libhttp_runtime.a src/toolchain/compiler/bin/libfiber_runtime_gc.a src/toolchain/compiler/bin/libhttp_runtime_gc.a src/toolchain/compiler/bin/libfiber_runtime_arc.a src/toolchain/compiler/bin/libhttp_runtime_arc.a src/toolchain/compiler/lib/libfiber_runtime.a src/toolchain/compiler/lib/libhttp_runtime.a src/toolchain/compiler/lib/libfiber_runtime_gc.a src/toolchain/compiler/lib/libhttp_runtime_gc.a src/toolchain/compiler/lib/libfiber_runtime_arc.a src/toolchain/compiler/lib/libhttp_runtime_arc.a
 
-# WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C website wasm`.
+# WebAssembly (wasm32-wasip1) cross-build toolchain — opt-in via `make -C src/toolchain/website wasm`.
 # Compiles the portable C-runtime subset (no pthreads/sockets/OpenSSL/syscalls)
-# to a wasm archive osprey links with `--target=wasm32`. See docs/specs/0022.
+# to a wasm archive osprey links with `--target=wasm32`. See docs/specs/compiler/0022-WebAssemblyTarget.md.
 WASM_LLVM_BIN ?= $(shell for d in /opt/homebrew/opt/llvm/bin /usr/local/opt/llvm/bin; do [ -x "$$d/clang" ] && { echo "$$d"; break; }; done)
 WASM_LLD_BIN  ?= $(shell for d in /opt/homebrew/opt/lld/bin /usr/local/opt/lld/bin "$(WASM_LLVM_BIN)"; do [ -n "$$d" ] && [ -x "$$d/wasm-ld" ] && { echo "$$d"; break; }; done)
 WASM_PATH_PREFIX ?= $(shell for d in "$(WASM_LLVM_BIN)" "$(WASM_LLD_BIN)"; do [ -n "$$d" ] && printf "%s:" "$$d"; done)
@@ -257,22 +256,22 @@ KLEE_LLVM_BIN ?= $(shell for d in "$$OSPREY_KLEE_LLVM" /opt/homebrew/opt/llvm@19
 KLEE_CC       ?= $(KLEE_LLVM_BIN)/clang
 KLEE_LINK     ?= $(KLEE_LLVM_BIN)/llvm-link
 KLEE_NM       ?= $(KLEE_LLVM_BIN)/llvm-nm
-KLEE_RT_SRC   ?= $(filter-out memory_runtime web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard compiler/runtime/klee/*.c)))
+KLEE_RT_SRC   ?= $(filter-out memory_runtime web_runtime wasm_builtins_runtime,$(WASM_RT_SRC)) $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 KLEE_CFLAGS   ?= --target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include \
   -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector \
   -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='
-KLEE_RUNTIME_BC ?= compiler/bin/libosprey_runtime_klee_gc.bc
+KLEE_RUNTIME_BC ?= src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc
 KLEE_GC_SHIMS := $(patsubst bin/gc/%.o,%,$(filter bin/gc/%,$(FIB_OBJ_GC)))
 KLEE_ARC_SHIMS := $(patsubst bin/arc/%.o,%,$(filter bin/arc/%,$(FIB_OBJ_ARC)))
-KLEE_ROOT_PLUGIN := compiler/bin/libosprey_gc_roots.so
+KLEE_ROOT_PLUGIN := src/toolchain/compiler/bin/libosprey_gc_roots.so
 # The mock C library built for the HOST, so its unit tests can run on any
 # machine (the mock's own klee/klee.h stands in for KLEE's) [SYMEX-MOCK-TESTS].
-HUNT_MOCK_SRC   := $(patsubst compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard compiler/runtime/klee/*.c)))
+HUNT_MOCK_SRC   := $(patsubst src/toolchain/compiler/runtime/%.c,%,$(filter-out %_tests.c,$(wildcard src/toolchain/compiler/runtime/klee/*.c)))
 HUNT_MOCK_HOST_CFLAGS ?= -nostdinc -isystem $(shell $(CC) -print-file-name=include) -isystem runtime/klee/include -ffreestanding -fno-builtin -std=c11 -O1 -g $(WARN_MAX) \
   -U_FORTIFY_SOURCE -fno-stack-protector -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='
 # Symbols KLEE itself defines, so the closed-module check [SYMEX-MOCK-CLOSED]
 # accepts them: its intrinsics, UBSan handlers, allocator and `--libc=klee`.
 KLEE_PROVIDED := ^(klee_|__ubsan_handle_|__assert_fail$$|abort$$|atexit$$|exit$$|_exit$$|calloc$$|free$$|malloc$$|realloc$$|mem(cmp|cpy|move|set|chr)$$|str(len|cmp|ncmp|chr|rchr|cpy|ncpy|cat|tol|toul)$$|to(lower|upper)$$|atoi$$)
-# `make -C website wasm-serve` static-host dir + port for the in-browser example.
-WASM_SERVE_DIR  ?= examples/wasm
+# `make -C src/toolchain/website wasm-serve` static-host dir + port for the in-browser example.
+WASM_SERVE_DIR  ?= src/osprey/examples/wasm
 WASM_SERVE_PORT ?= 8080

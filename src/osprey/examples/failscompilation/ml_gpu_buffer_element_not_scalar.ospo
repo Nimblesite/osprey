@@ -1,0 +1,5 @@
+// osprey: flavor=ml
+// [GPU-BUFFER-ELEM]: buffer elements are scalars; strings stay on the host.
+main () = match toGpu ["a", "b"]
+    Success value => Success(value = gpuLength value)
+    Error message => Error(message = message)

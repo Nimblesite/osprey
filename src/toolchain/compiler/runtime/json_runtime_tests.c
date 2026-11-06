@@ -1,0 +1,540 @@
+// Assertion-driven tests for json_runtime.c — the recursive-descent parser and
+// path accessors behind [BUILTIN-JSON] (docs/specs/runtime/0012-Built-InFunctions.md). Standalone link (the
+// unit is self-contained C11 + pthread).
+//
+// The contract under test: json_parse returns a 1-based handle or an EXACT
+// negative error (-1 NULL, -2 malformed, -3 trailing garbage, -4 table full);
+// json_get yields a scalar's text or NULL (arrays/objects are not scalars);
+// json_length counts arrays/objects or yields -1; json_free succeeds exactly
+// once. Escape decoding — including \uXXXX and surrogate pairs — must produce
+// exact UTF-8 bytes.
+#include <assert.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "json_tests_shared.h"
+#include "json_internal.h"
+#include "memory_hooks.h"
+#include "string_runtime.h"
+#include "test_alloc.h"
+
+long g_checks = 0;
+#define MAX_DOCS 1024 // mirrors MAX_JSON_DOCS
+#define BIG_ARRAY_LEN 1000
+
+// json_get result must equal `want`, exactly, and is caller-freed.
+void expect_get(int64_t h, const char *path, const char *want) {
+  char *got = json_get(h, (char *)(uintptr_t)path);
+  if (want == NULL) {
+    CHECK(got == NULL);
+    return;
+  }
+  CHECK(got != NULL);
+  CHECK(strcmp(got, want) == 0);
+  free(got);
+}
+
+int64_t parse_ok(const char *src) {
+  int64_t h = json_parse((char *)(uintptr_t)src);
+  CHECK(h >= 1);
+  return h;
+}
+
+// Scalars round-trip as their exact source text (numbers keep their raw
+// spelling); true/false/null print canonically.
+static void t_scalars(void) {
+  int64_t h = parse_ok("42");
+  expect_get(h, "", "42");
+  expect_get(h, NULL, "42"); // NULL path means the root
+  CHECK(json_length(h, "") == -1); // scalars have no length
+  CHECK(json_free(h) == 0);
+  const char *nums[][2] = {{"-3.5e2", "-3.5e2"}, {"1E+5", "1E+5"},
+                           {"-0.5", "-0.5"},     {"0", "0"}};
+  for (unsigned i = 0; i < sizeof(nums) / sizeof(nums[0]); i++) {
+    int64_t n = parse_ok(nums[i][0]);
+    expect_get(n, "", nums[i][1]);
+    CHECK(json_free(n) == 0);
+  }
+  int64_t t = parse_ok("true");
+  int64_t f = parse_ok("false");
+  int64_t z = parse_ok("null");
+  expect_get(t, "", "true");
+  expect_get(f, "", "false");
+  expect_get(z, "", "null");
+  CHECK(json_free(t) == 0 && json_free(f) == 0 && json_free(z) == 0);
+}
+
+// Escape decoding produces EXACT bytes: simple escapes, \uXXXX, multi-byte
+// UTF-8, and a surrogate pair assembling one astral code point.
+static void t_string_escapes(void) {
+  int64_t h = parse_ok("{\"s\":\"a\\\"b\\\\c\\/d\\n\\t\\r\\b\\f\"}");
+  expect_get(h, "s", "a\"b\\c/d\n\t\r\b\f");
+  CHECK(json_free(h) == 0);
+  int64_t u = parse_ok("\"\\u0041\\u00e9\\u20AC\"");
+  expect_get(u, "", "A\xC3\xA9\xE2\x82\xAC"); // A, é (2B), € (3B)
+  CHECK(json_free(u) == 0);
+  int64_t p = parse_ok("\"\\uD83D\\uDE00\"");
+  expect_get(p, "", "\xF0\x9F\x98\x80"); // 😀 via surrogate pair, 4 bytes
+  CHECK(json_free(p) == 0);
+  int64_t key = parse_ok("{\"\\u0041\":7}"); // escapes decode in KEYS too
+  expect_get(key, "A", "7");
+  CHECK(json_free(key) == 0);
+}
+
+// Path navigation: dotted keys, indexed arrays, arbitrary nesting, exact
+// lengths, and NULL for everything that is absent or not a scalar.
+static void t_paths_and_lengths(void) {
+  int64_t h = parse_ok(" { \"a\" : { \"b\" : [ 10 , 20 , { \"c\" : \"hi\" } ] },"
+                       " \"empty\" : [] , \"eobj\" : {} } ");
+  expect_get(h, "a.b[2].c", "hi");
+  expect_get(h, ".a.b[0]", "10"); // leading dots are tolerated
+  expect_get(h, "a.b[1]", "20");
+  CHECK(json_length(h, "a.b") == 3);
+  CHECK(json_length(h, "") == 3);        // root object: three keys
+  CHECK(json_length(h, "empty") == 0);   // empty array
+  CHECK(json_length(h, "eobj") == 0);    // empty object
+  CHECK(json_length(h, "a.b[0]") == -1); // scalar
+  CHECK(json_length(h, "missing") == -1);
+  expect_get(h, "a", NULL);        // object is not a scalar
+  expect_get(h, "a.b", NULL);      // array is not a scalar
+  expect_get(h, "a.b[3]", NULL);   // index out of bounds
+  expect_get(h, "a.b[-1]", NULL);  // malformed index
+  expect_get(h, "a.b[x]", NULL);   // non-numeric index
+  expect_get(h, "a.b[0", NULL);    // unclosed bracket
+  expect_get(h, "a.missing", NULL);
+  expect_get(h, "a.b[0].c", NULL); // indexing into a scalar
+  CHECK(json_free(h) == 0);
+  int64_t deep = parse_ok("[[[[[[42]]]]]]");
+  expect_get(deep, "[0][0][0][0][0][0]", "42");
+  CHECK(json_free(deep) == 0);
+  // A repeated member name is a rejection, not a first-wins lookup
+  // [BUILTIN-JSON-LIMITS]; json_codec_tests.c pins the cases.
+  CHECK(json_parse("{\"k\":1,\"k\":2}") == ERR_MALFORMED);
+}
+
+// Every malformed input maps to its EXACT error code, and no error perturbs
+// later parses.
+static void t_parse_errors(void) {
+  CHECK(json_parse(NULL) == ERR_NULL);
+  const char *bad[] = {"",       "   ",      "{",        "[1,",  "tru",
+                       "fals",   "nul",      "\"open",   "{\"a\" 1}",
+                       "{\"a\":}", "[1 2]",  "{1:2}",    "@",
+                       // a member that is neither followed by ',' nor closed
+                       "{\"a\":1 \"b\":2}", "{\"a\":1 2}", "{\"a\":1]"};
+  for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+    CHECK(json_parse((char *)(uintptr_t)bad[i]) == ERR_MALFORMED);
+  }
+  CHECK(json_parse((char *)(uintptr_t) "1 2") == ERR_TRAILING);
+  CHECK(json_parse((char *)(uintptr_t) "{} []") == ERR_TRAILING);
+  int64_t h = parse_ok("[3]"); // the table is intact after every rejection
+  CHECK(json_length(h, "") == 1);
+  CHECK(json_free(h) == 0);
+}
+
+// Handles are 1-based, sequential from the lowest free slot, and freed slots
+// are reused; every invalid/double free reports -1 and frees exactly once.
+static void t_handle_lifecycle(void) {
+  int64_t a = json_parse((char *)(uintptr_t) "1");
+  int64_t b = json_parse((char *)(uintptr_t) "2");
+  CHECK(a == 1 && b == 2); // lowest free slots, in order
+  expect_get(a, "", "1");
+  expect_get(b, "", "2");
+  CHECK(json_free(a) == 0);
+  CHECK(json_free(a) == -1); // double free
+  CHECK(json_get(a, (char *)(uintptr_t) "") == NULL); // freed: no scalar
+  CHECK(json_length(a, (char *)(uintptr_t) "") == -1);
+  int64_t c = json_parse((char *)(uintptr_t) "3");
+  CHECK(c == 1); // freed slot 1 is reused first
+  CHECK(json_free(0) == -1 && json_free(-5) == -1);
+  CHECK(json_free(MAX_DOCS) == -1 && json_free(99999) == -1);
+  CHECK(json_free(b) == 0 && json_free(c) == 0);
+}
+
+// The document table holds exactly MAX_DOCS-1 documents; the next parse
+// reports table-full, and freeing restores capacity.
+static void t_table_capacity_exact(void) {
+  int64_t handles[MAX_DOCS];
+  for (int64_t i = 1; i < MAX_DOCS; i++) {
+    handles[i] = json_parse((char *)(uintptr_t) "0");
+    CHECK(handles[i] == i);
+  }
+  CHECK(json_parse((char *)(uintptr_t) "0") == ERR_TABLE_FULL);
+  for (int64_t i = 1; i < MAX_DOCS; i++) {
+    CHECK(json_free(handles[i]) == 0);
+  }
+  int64_t again = parse_ok("7"); // capacity fully restored
+  CHECK(again == 1);
+  CHECK(json_free(again) == 0);
+}
+
+// A large flat array counts and indexes exactly.
+static void t_big_array(void) {
+  char *src = malloc((size_t)BIG_ARRAY_LEN * 8 + 16);
+  CHECK(src != NULL);
+  size_t off = 0;
+  src[off++] = '[';
+  for (int i = 0; i < BIG_ARRAY_LEN; i++) {
+    off += (size_t)sprintf(src + off, i ? ",%d" : "%d", i);
+  }
+  src[off++] = ']';
+  src[off] = '\0';
+  int64_t h = parse_ok(src);
+  CHECK(json_length(h, "") == BIG_ARRAY_LEN);
+  expect_get(h, "[0]", "0");
+  expect_get(h, "[999]", "999");
+  expect_get(h, "[500]", "500");
+  CHECK(json_free(h) == 0);
+  free(src);
+}
+
+// Deep enough to run PAST the last allocation either operation makes, which is
+// what `survived` below asserts. A sweep that never gets past the allocator
+// proves the arms it reached and silently says nothing about the rest.
+#define ALLOC_SWEEP_DEPTH 300
+
+// Every construct the parser allocates for, in one document: nested objects
+// and arrays, each scalar kind, an escape run, and a surrogate pair.
+#define ALLOC_SWEEP_DOC                                                        \
+  "{\"a\":[1,2.5,-3e4,true,false,null,\"\\u00e9\\ud83d\\ude00\\t\\\\\"],"      \
+  "\"b\":{\"c\":{\"d\":[{\"e\":\"f\"}]}},\"g\":\"h\","                        \
+  "\"long\":\"past the sixteen byte initial string buffer, twice over\"}"
+
+// Failing the Nth allocation of a parse must produce the DOCUMENTED rejection
+// — never a handle onto a half-built document, never a crash. Every
+// `if (!p) { free(...); ok = false; return NULL; }` arm in this parser is a
+// real contract, and no input can reach one: they exist for the day the
+// allocator says no. [BUILTIN-JSON]
+static void t_parse_survives_every_allocation_failure(void) {
+  // The parser's very first allocation failing is the same rejection as
+  // malformed input, not a different one: no input distinguishes them, so
+  // neither may the caller.
+  osp_alloc_fail_next();
+  CHECK(json_parse((char *)(uintptr_t) "{\"k\":\"v\"}") == ERR_MALFORMED);
+  osp_alloc_fail_off();
+  long refused = 0;
+  long survived = 0;
+  const long live_before = osp_alloc_live();
+  for (long nth = 0; nth < ALLOC_SWEEP_DEPTH; nth++) {
+    osp_alloc_fail_after(nth);
+    int64_t handle = json_parse((char *)(uintptr_t)ALLOC_SWEEP_DOC);
+    osp_alloc_fail_off();
+    if (handle >= 1) {
+      survived++;
+      // A parse that survived is WHOLE: the same document as an unfailed one.
+      expect_get(handle, "b.c.d[0].e", "f");
+      expect_get(handle, "a[3]", "true");
+      CHECK(json_length(handle, "a") == 7);
+      CHECK(json_free(handle) == 0);
+      continue;
+    }
+    refused++;
+    CHECK(handle == ERR_MALFORMED); // not -1, -3 or -4: the parse ran and failed
+  }
+  CHECK(refused > 0); // the sweep really did reach the allocator
+  CHECK(survived > 0); // ...and ran past the last allocation the parse makes
+  // An abandoned parse must free everything it built. Leaking the half-tree
+  // instead is the other way to fail this contract, and it is invisible to a
+  // return value.
+  CHECK(osp_alloc_live() == live_before);
+}
+
+// The same sweep over the accessors. A get that cannot allocate its result
+// must answer NULL; one that answers at all must be byte-exact, because a
+// truncated scalar is indistinguishable from a shorter one in the document.
+static void t_accessors_survive_every_allocation_failure(void) {
+  int64_t handle = parse_ok(ALLOC_SWEEP_DOC);
+  long refused = 0;
+  long survived = 0;
+  const long live_before = osp_alloc_live();
+  for (long nth = 0; nth < ALLOC_SWEEP_DEPTH; nth++) {
+    osp_alloc_fail_after(nth);
+    char *got = json_get(handle, (char *)(uintptr_t) "a[0]");
+    osp_alloc_fail_off();
+    if (got == NULL) {
+      refused++;
+      continue;
+    }
+    survived++;
+    CHECK(strcmp(got, "1") == 0);
+    free(got);
+    // Counting never allocates, so it must answer through a failed allocation.
+    osp_alloc_fail_after(nth);
+    int64_t length = json_length(handle, (char *)(uintptr_t) "a");
+    osp_alloc_fail_off();
+    CHECK(length == 7);
+  }
+  CHECK(refused > 0);
+  CHECK(survived > 0);
+  CHECK(osp_alloc_live() == live_before); // a refused get leaks nothing either
+  CHECK(json_free(handle) == 0);
+  CHECK(osp_alloc_live() < live_before); // ...and the document really is gone
+}
+
+// [PORT-STRING-NUL-KEYS] Isolate arena identity before the native String ABI admits NUL.
+// Parsing establishes lengths, then mutation supplies NUL without removing its guard.
+static void t_nul_arena_keys_keep_identity(void) {
+  int64_t status = 0;
+  JDoc *doc = json_parse_doc("{\"aXb\":1,\"aYc\":2,\"aZb\":3,\"a\":4}", "test", true, &status);
+  CHECK(doc != NULL);
+  for (size_t i = 1; i <= 3; i++) doc->text.data[doc->nodes[i].key + 1] = '\0';
+  size_t pending[] = {1, 2, 3, 4};
+  size_t used = 4;
+  CHECK(json_last_wins(doc, pending, &used, 0));
+  CHECK(used == 3); // a\0b, a\0c and a are distinct; repeated a\0b keeps its last value.
+  CHECK(pending[0] == 3 && pending[1] == 2 && pending[2] == 4);
+  json_doc_free(doc);
+}
+
+// [PORT-STRING-NUL-OWNERSHIP] The existing allocation owns the full text length.
+static void t_owned_text_preserves_nul_cursor_bounds(void) {
+  CHECK(osp_alloc_tagged(0, 7) == NULL && osp_alloc_tagged_noinit(-1, 7) == NULL);
+  CHECK(osp_alloc_tagged(INT64_MAX, 7) == NULL);
+  const char *samples[] = {"head\0tail", "\0lead", "tail\0", "é\0😀", "first\0middle\0last", ""};
+  const size_t lengths[] = {9, 5, 5, 7, 17, 0};
+  for (size_t i = 0; i < sizeof(lengths) / sizeof(*lengths); i++) {
+    char *text = osp_alloc_tagged((int64_t)(lengths[i] + 1), 7); // STRING layout ABI, independent of its implementation.
+    CHECK(text != NULL);
+    memcpy(text, samples[i], lengths[i] + 1);
+    CHECK(osp_strlen(text) == (int64_t)lengths[i]);
+    CHECK(osp_string_byte_length(text) == (int64_t)lengths[i]);
+    CHECK(osp_string_is_empty(text) == (lengths[i] == 0));
+    for (size_t at = 0; at < lengths[i]; at++) {
+      int64_t byte = -1;
+      CHECK(osp_string_byte_at(text, (int64_t)at, &byte) == NULL && byte == (unsigned char)samples[i][at]);
+      if (samples[i][at] == '\0') CHECK(osp_string_codepoint_at(text, (int64_t)at, &byte) == NULL && byte == 0);
+    }
+    osp_release(text);
+  }
+}
+
+// GC must retain length through table growth and a sweep; ARC must release all roots.
+void osp_collect(void);
+static void t_owned_text_survives_collection_and_growth(void) {
+  void *volatile roots[14000];
+  for (size_t i = 0; i < sizeof(roots) / sizeof(*roots); i++) {
+    char *text = osp_alloc_tagged(10, 7);
+    CHECK(text != NULL);
+    memcpy(text, "head\0tail", 10);
+    roots[i] = text;
+  }
+  osp_collect();
+  for (size_t i = 0; i < sizeof(roots) / sizeof(*roots); i++) {
+    CHECK(osp_strlen(roots[i]) == 9);
+    CHECK(memcmp(roots[i], "head\0tail", 10) == 0);
+    osp_release(roots[i]);
+  }
+}
+
+// Read-only string inspection must be safe while the owner invokes a finalizer.
+static void *g_finalizer_text;
+static size_t g_text_finalized;
+static void inspect_finalizer_text(void *body) {
+  (void)body;
+  CHECK(osp_mem_string_length(g_finalizer_text) == 9);
+  g_text_finalized++;
+}
+static void t_owned_text_finalizer_reads_do_not_deadlock(void) {
+  osp_mem_notify_multithreaded();
+  g_finalizer_text = osp_alloc_tagged(10, 7);
+  CHECK(g_finalizer_text != NULL);
+  memcpy(g_finalizer_text, "head\0tail", 10);
+  osp_mem_set_finalizer(inspect_finalizer_text);
+  for (size_t i = 0; i < 4096; i++) {
+    void *owner = osp_alloc_tagged(16, OSP_MEM_LIST_HDR_EXTERN);
+    CHECK(owner != NULL);
+    memset(owner, 0, 16);
+    osp_release(owner);
+  }
+  osp_collect();
+  CHECK(g_text_finalized > 4000);
+  osp_mem_set_finalizer(NULL);
+  osp_release(g_finalizer_text);
+  g_finalizer_text = NULL;
+}
+
+static char *owned_bytes(const char *bytes, size_t n) {
+  char *text = osp_alloc_tagged((int64_t)(n + 1), OSP_MEM_STRING);
+  CHECK(text != NULL); memcpy(text, bytes, n + 1); return text;
+}
+static void check_text(char *text, const char *want, size_t n) {
+  CHECK(text != NULL); CHECK(osp_strlen(text) == (int64_t)n);
+  CHECK(memcmp(text, want, n + 1) == 0); osp_release(text);
+}
+// [PORT-STRING-NUL-JSON] The Python codec must carry complete decoded spans.
+static void t_python_json_nul_round_trip(void) {
+  char wire[] = "{\"a\\u0000b\":\"first\",\"a\":\"head\",\"a\\u0000c\":\"\\u0000tail\","
+                "\"a\\u0000b\":\"head\\u0000\\u0000é😀\"}";
+  CHECK(json_decode_open(wire) == ERR_MALFORMED && json_parse(wire) == ERR_MALFORMED);
+  int64_t h = json_decode_python_open(wire);
+  CHECK(h > 0);
+  CHECK(json_node_first(h, 0) == 1 && json_node_end(h, 0) == 4);
+  check_text(json_node_key(h, 1), "a\0b", 3);
+  check_text(json_node_key(h, 2), "a", 1);
+  check_text(json_node_key(h, 3), "a\0c", 3);
+  char *text = json_node_text(h, 1);
+  check_text(json_node_text(h, 2), "head", 4);
+  check_text(json_node_text(h, 3), "\0tail", 5);
+  CHECK(json_decode_close(h) == 0);
+  int64_t w = json_writer_open();
+  CHECK(w > 0 && json_write_string(w, text) == 0);
+  char *encoded = json_writer_close(w);
+  CHECK(encoded && strcmp(encoded, "\"head\\u0000\\u0000é😀\"") == 0);
+  h = json_decode_python_open(encoded);
+  CHECK(h > 0 && json_decode_close(h) == 0);
+  free(encoded);
+  check_text(text, "head\0\0é😀", 12);
+}
+
+static void t_json_rejects_raw_nul(void) {
+  char *suffix = owned_bytes("{}\0true", 7);
+  char *inside = owned_bytes("\"a\0b\"", 5);
+  CHECK(json_decode_python_open(suffix) == ERR_MALFORMED);
+  CHECK(json_decode_open(suffix) == ERR_MALFORMED);
+  CHECK(json_parse(suffix) == ERR_MALFORMED);
+  CHECK(json_decode_python_open(inside) == ERR_MALFORMED);
+  CHECK(strcmp(osp_io_error(), "jsonDecode: byte 2: unescaped NUL in string") == 0);
+  char *wide = owned_bytes("\0{}", 3);
+  CHECK(json_decode_python_open(wide) == ERR_MALFORMED);
+  CHECK(strcmp(osp_io_error(), "jsonDecode: byte 0: truncated wide JSON encoding") == 0);
+  osp_release(wide);
+  osp_release(inside);
+  osp_release(suffix);
+}
+
+// [PORT-STRING-NUL-OPERATIONS] Same prefix before NUL must not alias the full value.
+static void t_owned_text_search_and_slices(void) {
+  char *text = owned_bytes("head\0tail", 9), *wrong = owned_bytes("head\0X", 6);
+  char *nul = owned_bytes("\0", 1), *prefix = owned_bytes("head\0t", 6);
+  CHECK(osp_string_starts_with(text, wrong) == 0);
+  CHECK(osp_string_starts_with(text, prefix) == 1 && osp_string_ends_with(text, "tail") == 1);
+  CHECK(osp_string_index_of(text, nul) == 4 && osp_string_index_of(text, "tail") == 5);
+  CHECK(osp_string_index_of(text, wrong) == -1);
+  check_text(osp_string_take(text, 7), "head\0ta", 7);
+  check_text(osp_string_drop(text, 4), "\0tail", 5);
+  check_text(osp_string_substring(text, 3, 8), "d\0tai", 5);
+  check_text(osp_string_to_upper(text), "HEAD\0TAIL", 9);
+  check_text(osp_string_reverse(text), "liat\0daeh", 9);
+  check_text(osp_string_replace(text, nul, "::"), "head::tail", 10);
+  check_text(osp_string_repeat(nul, 3), "\0\0\0", 3);
+  check_text(osp_string_pad_start(text, 12, nul), "\0\0\0head\0tail", 12);
+  check_text(osp_string_pad_end(text, 12, nul), "head\0tail\0\0\0", 12);
+  osp_release(text); osp_release(wrong); osp_release(nul); osp_release(prefix);
+}
+static void t_owned_text_trim_and_lists(void) {
+  char *text = owned_bytes(" \thead\0tail\r\n", 13), *nul = owned_bytes("\0", 1);
+  check_text(osp_string_trim(text), "head\0tail", 9);
+  check_text(osp_string_trim_start(text), "head\0tail\r\n", 11);
+  check_text(osp_string_trim_end(text), " \thead\0tail", 11);
+  char *words = owned_bytes("a\0b c\0d", 7);
+  osp_string_list *parts = osp_string_words(words);
+  CHECK(parts != NULL && parts->length == 2);
+  CHECK(osp_strlen(parts->items[0]) == 3 && memcmp(parts->items[0], "a\0b", 3) == 0);
+  CHECK(osp_strlen(parts->items[1]) == 3 && memcmp(parts->items[1], "c\0d", 3) == 0);
+  check_text(osp_string_join(parts, nul), "a\0b\0c\0d", 7);
+  osp_string_list_free(parts);
+  parts = osp_string_split(words, nul);
+  CHECK(parts != NULL && parts->length == 3);
+  CHECK(osp_strlen(parts->items[1]) == 3 && memcmp(parts->items[1], "b c", 3) == 0);
+  osp_string_list_free(parts);
+  osp_release(text); osp_release(nul); osp_release(words);
+}
+
+static int64_t reference_byte_find(const char *text, size_t n, const char *pattern, size_t m) {
+  if (m > n) return -1;
+  for (size_t i = 0; i <= n - m; i++) if (memcmp(text + i, pattern, m) == 0) return (int64_t)i;
+  return -1;
+}
+static void t_bounded_search_permutations(void) {
+  uint32_t seed = 1469598103;
+  char text[64], pattern[32];
+  for (size_t trial = 0; trial < 50000; trial++) {
+    seed = seed * 1664525u + 1013904223u; size_t n = seed % sizeof(text);
+    seed = seed * 1664525u + 1013904223u; size_t m = (seed >> 8) % sizeof(pattern);
+    for (size_t i = 0; i < n; i++) { seed = seed * 1664525u + 1013904223u; text[i] = (char)((seed >> 8) % 4); }
+    for (size_t i = 0; i < m; i++) { seed = seed * 1664525u + 1013904223u; pattern[i] = (char)((seed >> 8) % 4); }
+    if (trial % 3 == 0 && m <= n) memcpy(pattern, text + seed % (n - m + 1), m);
+    const char *found = osp_string_find_internal(text, n, pattern, m);
+    CHECK((found ? (int64_t)(found - text) : -1) == reference_byte_find(text, n, pattern, m));
+  }
+}
+static void t_bounded_search_long_repetitions(void) {
+  size_t n = 1048576, m = 32768;
+  char *text = malloc(n), *pattern = malloc(m); CHECK(text != NULL && pattern != NULL);
+  memset(text, 'a', n); memset(pattern, 'a', m); pattern[m - 1] = 'b';
+  CHECK(osp_string_find_internal(text, n, pattern, m) == NULL);
+  text[n - 1] = 'b';
+  CHECK(osp_string_find_internal(text, n, pattern, m) == text + n - m);
+  free(text); free(pattern);
+}
+
+static void t_bounded_search_exhaustive(void) {
+  char text[8], pattern[6];
+  for (size_t n = 0; n <= sizeof(text); n++) for (size_t word = 0; word < ((size_t)1 << n); word++) {
+    for (size_t i = 0; i < n; i++) text[i] = (char)((word >> i) & 1);
+    for (size_t m = 0; m <= sizeof(pattern); m++) for (size_t key = 0; key < ((size_t)1 << m); key++) {
+      for (size_t i = 0; i < m; i++) pattern[i] = (char)((key >> i) & 1);
+      const char *found = osp_string_find_internal(text, n, pattern, m);
+      CHECK((found ? (int64_t)(found - text) : -1) == reference_byte_find(text, n, pattern, m));
+    }
+  }
+}
+
+// A \u escape is four HEX digits. Decoding a non-hex digit as zero accepted
+// "\uZZZZ" as U+0000 — malformed input turned into an embedded NUL that
+// truncates the string the caller reads back, with no error anywhere.
+int main(int argc, char **argv) {
+  if (argc == 2 && strcmp(argv[1], "--python-json-nul") == 0) {
+    t_python_json_nul_round_trip();
+    t_json_rejects_raw_nul();
+    return 0;
+  }
+  if (argc == 2 && strcmp(argv[1], "--owned-operations") == 0) {
+    t_owned_text_search_and_slices();
+    t_owned_text_trim_and_lists();
+    t_bounded_search_exhaustive();
+    t_bounded_search_permutations();
+    t_bounded_search_long_repetitions();
+    return 0;
+  }
+  if (argc == 2 && strcmp(argv[1], "--owned-finalizer") == 0) {
+    t_owned_text_finalizer_reads_do_not_deadlock();
+    return 0;
+  }
+  if (argc == 2 && strcmp(argv[1], "--owned-text") == 0) {
+    t_owned_text_preserves_nul_cursor_bounds();
+    t_owned_text_survives_collection_and_growth();
+    return 0;
+  }
+  if (argc == 2 && strcmp(argv[1], "--nul-arena") == 0) {
+    t_nul_arena_keys_keep_identity();
+    return 0;
+  }
+  CHECK(argc == 1);
+  t_python_json_nul_round_trip();
+  t_json_rejects_raw_nul();
+  t_owned_text_preserves_nul_cursor_bounds();
+  t_owned_text_survives_collection_and_growth();
+  t_owned_text_finalizer_reads_do_not_deadlock();
+  t_nul_arena_keys_keep_identity();
+  t_owned_text_search_and_slices();
+  t_owned_text_trim_and_lists();
+  t_bounded_search_exhaustive();
+  t_bounded_search_permutations();
+  t_bounded_search_long_repetitions();
+  t_scalars();
+  t_string_escapes();
+  t_paths_and_lengths();
+  t_parse_errors();
+  t_handle_lifecycle();
+  t_table_capacity_exact();
+  t_big_array();
+  t_string_grammar_rejects_everything_outside_it();
+  t_number_grammar();
+  t_codec();
+  t_parse_survives_every_allocation_failure();
+  t_accessors_survive_every_allocation_failure();
+  printf("[ok] json_runtime: %ld assertions\n", g_checks);
+  return 0;
+}

@@ -1,0 +1,12 @@
+// osprey: flavor=ml
+// [GPU-FOLD]: a record accumulator is rejected at the gpuFold call in this
+// flavor too.
+type Pair =
+    lo : int
+    hi : int
+
+widen (p, v) = Pair(lo = p.lo, hi = v)
+
+main () = match toGpu [1, 2, 3]
+    Success value => gpuFold (value, Pair(lo = 0, hi = 0), widen)
+    Error message => Error(message = message)

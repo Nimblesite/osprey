@@ -1,0 +1,19 @@
+[package]
+name = "osprey-codegen"
+description = "LLVM IR (text) code generation for Osprey — emits textual IR handed to clang"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+num-traits.workspace = true
+osprey-ast.workspace = true
+osprey-debug.workspace = true
+osprey-types.workspace = true
+
+[dev-dependencies]
+osprey-syntax.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,5 @@
+// osprey: flavor=ml
+// [GPU-MATMUL]: an int buffer operand is a type error in this flavor too.
+main () = match toGpu [1, 2]
+    Success value => gpuMatMul (value, value, 1, 2, 1)
+    Error message => Error(message = message)

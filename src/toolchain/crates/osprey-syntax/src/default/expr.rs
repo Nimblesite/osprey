@@ -1,0 +1,1048 @@
+//! Expression lowering: every [`Expr`] form — literals, operators, call shapes
+//! and named arguments, match/handler arms, and string interpolation.
+
+use super::lower::Lowerer;
+use crate::strings::{lower_interpolation, unquote};
+use osprey_ast::SelectOperation;
+use osprey_ast::{
+    Expr, FieldAssignment, MapEntry, MatchArm, NamedArgument, Pattern, Stmt, SymbolPath,
+};
+use tree_sitter::Node;
+
+impl Lowerer<'_> {
+    pub(crate) fn lower_expr_field(&self, node: Node<'_>, field: &str) -> Expr {
+        match node.child_by_field_name(field) {
+            Some(n) => self.lower_expr(n),
+            None => Expr::Bool(false), // unreachable for well-formed trees
+        }
+    }
+
+    /// Lower an expression node, transparently unwrapping the `expression` and
+    /// `primary_expression` wrapper nodes tree-sitter inserts.
+    pub(crate) fn lower_expr(&self, mut node: Node<'_>) -> Expr {
+        // Parenthesised expressions can contain hundreds of alternating
+        // `expression`/`primary_expression` CST wrappers. They carry no AST
+        // meaning, so peel them iteratively instead of spending one Rust stack
+        // frame per wrapper before reaching the actual expression node.
+        while matches!(node.kind(), "expression" | "primary_expression") {
+            let Some(inner) = self.first_named(node) else {
+                return Expr::Bool(false);
+            };
+            node = inner;
+        }
+        match node.kind() {
+            "binary_expression" => Expr::Binary {
+                position: node
+                    .child_by_field_name("operator")
+                    .map(|op| super::position_from_point(op.start_position())),
+                op: self.field_text(node, "operator"),
+                left: Box::new(self.lower_expr_field(node, "left")),
+                right: Box::new(self.lower_expr_field(node, "right")),
+            },
+            "unary_expression" => self.lower_unary(node),
+            // `x |> f` desugars to `f(x)` and `x |> f(a, …)` to `f(x, a, …)` —
+            // the piped value becomes the callee's first positional argument, so
+            // both the type checker and codegen see an ordinary call.
+            "pipe_expression" => pipe_into(
+                self.lower_expr_field(node, "left"),
+                self.lower_expr_field(node, "right"),
+            ),
+            "call_expression" => self.lower_call(node),
+            "match_expression" => Expr::Match {
+                value: Box::new(self.lower_expr_field(node, "value")),
+                arms: self.lower_arms(node),
+            },
+            // Populist Default-flavor `if cond { a } else { b }` desugars to the
+            // same boolean `match` the ternary uses; `else if` nests into the
+            // `false` arm. No new AST node ([FLAVOR-BOUNDARY]).
+            "if_expression" => self.lower_if(node),
+            "select_expression" => self.lower_select(node),
+            // `handler E { arm… }` — the handler with no region attached, as a
+            // value. Implements [EFFECTS-HANDLER-VALUE].
+            "handler_value_expression" => osprey_ast::handler_value(
+                self.stage(node),
+                self.mentioned_effect(node),
+                self.lower_handler_arms(node),
+                self.lower_handler_clauses(node),
+                Some(self.pos(node)),
+            ),
+            "kernel_expression" => self.lower_kernel(node),
+            "perform_expression" => {
+                let (arguments, named_arguments) = self.lower_arg_list(node);
+                Expr::Perform {
+                    effect: self.mentioned_effect(node),
+                    operation: self.field_text(node, "operation"),
+                    arguments,
+                    named_arguments,
+                    position: Some(self.pos(node)),
+                }
+            }
+            // Implements [EFFECTS-MASK] and [EFFECTS-INSTANCE].
+            "mask_expression" => self.lower_mask(node),
+            "instance_expression" => Expr::Instance {
+                effect: self.mentioned_effect(node),
+                position: Some(self.pos(node)),
+            },
+            "resume_expression" => {
+                Expr::Resume(self.first_named(node).map(|n| Box::new(self.lower_expr(n))))
+            }
+            "spawn_expression" => Expr::Spawn(Box::new(self.lower_inner_expr(node))),
+            "yield_expression" => {
+                Expr::Yield(self.first_named(node).map(|n| Box::new(self.lower_expr(n))))
+            }
+            "await_call" => Expr::Await(Box::new(self.lower_inner_expr(node))),
+            "recv_call" => Expr::Recv(Box::new(self.lower_inner_expr(node))),
+            "send_call" => self.lower_send(node),
+            "lambda_expression" => Expr::Lambda {
+                parameters: self.lower_params(node.child_by_field_name("parameters").or_else(
+                    || {
+                        self.named_of_kind(node, "parameter_list")
+                            .into_iter()
+                            .next()
+                    },
+                )),
+                // The only direct type-kind child of a lambda node is its
+                // `-> ret` annotation (parameter types sit inside the
+                // parameter_list, the body is an expression kind).
+                return_type: self.last_type_child(node),
+                body: Box::new(self.lower_expr_field(node, "body")),
+                position: Some(self.pos(node)),
+            },
+            // Explicit construction-site type arguments (`Box<int> { ... }`)
+            // are captured for the checker. Implements [TYPE-GENERICS-DECL].
+            "type_constructor" => self.lower_brace_head(node),
+            "update_expression" => Expr::Update {
+                record: self.field_text(node, "record"),
+                fields: self.lower_field_assignments(node),
+            },
+            "object_literal" => Expr::Object(self.lower_field_assignments(node)),
+            "block" => self.lower_block(node),
+            "literal" => self.lower_literal(node),
+            "qualified_path" => Expr::Path(SymbolPath::new(
+                self.descendants_of_kind(node, "identifier")
+                    .into_iter()
+                    .map(|identifier| self.text(identifier)),
+            )),
+            "identifier" => Expr::Identifier(self.text(node)),
+            "ternary_expression" => self.lower_ternary(node),
+            _ => Expr::Bool(false),
+        }
+    }
+
+    fn lower_send(&self, node: Node<'_>) -> Expr {
+        let mut cursor = node.walk();
+        let mut expressions = node
+            .named_children(&mut cursor)
+            .filter(|child| child.kind() == "expression")
+            .map(|expression| self.lower_expr(expression));
+        Expr::Send {
+            channel: Box::new(expressions.next().unwrap_or(Expr::Bool(false))),
+            value: Box::new(expressions.next().unwrap_or(Expr::Bool(false))),
+        }
+    }
+
+    /// `select { value = recv(c) => … send(c, v) => … timeout(ms) => … _ => … }`.
+    fn lower_select(&self, node: Node<'_>) -> Expr {
+        let arms = self.named_of_kind(node, "select_arm");
+        Expr::Select {
+            operations: arms
+                .iter()
+                .map(|arm| self.lower_select_operation(*arm))
+                .collect(),
+            arms: arms
+                .iter()
+                .map(|arm| MatchArm {
+                    pattern: arm
+                        .child_by_field_name("binding")
+                        .map(|binding| self.text(binding))
+                        .filter(|name| name != "_")
+                        .map_or(Pattern::Wildcard, Pattern::Binding),
+                    body: crate::desugar::positioned(
+                        self.lower_expr_field(*arm, "body"),
+                        Some(self.pos(*arm)),
+                    ),
+                })
+                .collect(),
+        }
+    }
+
+    fn lower_select_operation(&self, arm: Node<'_>) -> SelectOperation {
+        let Some(operation) = arm.child_by_field_name("operation") else {
+            return SelectOperation::Default;
+        };
+        match (operation.kind(), self.lower_send(operation)) {
+            ("send_call", Expr::Send { channel, value }) => {
+                SelectOperation::Send { channel, value }
+            }
+            ("recv_call", _) => SelectOperation::Recv(Box::new(self.lower_inner_expr(operation))),
+            _ => SelectOperation::Timeout(Box::new(self.lower_inner_expr(operation))),
+        }
+    }
+
+    /// `if cond { a } else { b }` desugars to `match cond { true => a  false => b }`,
+    /// reusing the boolean-match path ([GRAMMAR-IF-ELSE]). `else if` is a nested
+    /// `if_expression` in the `alternative` field, so it recurses naturally into
+    /// the `false` arm.
+    fn lower_if(&self, node: Node<'_>) -> Expr {
+        crate::desugar::bool_match(
+            self.lower_expr_field(node, "condition"),
+            self.lower_expr_field(node, "consequence"),
+            self.lower_expr_field(node, "alternative"),
+        )
+    }
+
+    /// `cond ? then : else` desugars to a boolean match. The Elvis spelling
+    /// `result ?: fallback` instead becomes an explicit Success/Error match.
+    fn lower_ternary(&self, node: Node<'_>) -> Expr {
+        let condition = self.lower_expr_field(node, "condition");
+        // Structural form `cond { f1, f2 } ? then : else`: bind each field from
+        // `cond` and evaluate `then` — a record/object always carries its declared
+        // fields, so the structural check succeeds. The then/else are the two
+        // positional `expression` children after `condition`.
+        if let Some(fp) = self.first_child_of_kind(node, "field_pattern") {
+            let exprs = self.named_of_kind(node, "expression");
+            let then_expr = exprs
+                .get(1)
+                .map_or(Expr::Bool(false), |n| self.lower_expr(*n));
+            let statements = self
+                .texts_of_kind(fp, "identifier")
+                .into_iter()
+                .map(|f| Stmt::Let {
+                    name: f.clone(),
+                    mutable: false,
+                    ty: None,
+                    value: Expr::FieldAccess {
+                        target: Box::new(condition.clone()),
+                        field: f,
+                    },
+                    doc: None,
+                    position: None,
+                })
+                .collect();
+            return Expr::Block {
+                position: None,
+                statements,
+                value: Some(Box::new(then_expr)),
+            };
+        }
+        let else_expr = self.lower_expr_field(node, "else");
+        match node.child_by_field_name("then") {
+            Some(n) => crate::desugar::bool_match(condition, self.lower_expr(n), else_expr),
+            None => crate::desugar::result_default(condition, else_expr),
+        }
+    }
+
+    fn lower_inner_expr(&self, node: Node<'_>) -> Expr {
+        match self.first_named(node) {
+            Some(n) => self.lower_expr(n),
+            None => Expr::Bool(false),
+        }
+    }
+
+    fn lower_call(&self, node: Node<'_>) -> Expr {
+        let mut callee = self.lower_expr_field(node, "callee");
+        if let Some(member) = node.child_by_field_name("member") {
+            return Expr::FieldAccess {
+                target: Box::new(callee),
+                field: self.text(member),
+            };
+        }
+        if let Some(index) = node.child_by_field_name("index") {
+            return Expr::Index {
+                target: Box::new(callee),
+                index: Box::new(self.lower_expr(index)),
+            };
+        }
+        // Keep an ordinary dotted call until inference can distinguish a
+        // callable record field from receiver-first sugar [BUILTIN-STRING-UFCS].
+        // Written type arguments apply a named function's declared binders.
+        let (arguments, named_arguments) = self.lower_arg_list(node);
+        if let Some(args) = node.child_by_field_name("type_arguments") {
+            callee = Expr::TypeApply {
+                function: Box::new(callee),
+                type_args: self
+                    .named_of_kind(args, "type_list")
+                    .into_iter()
+                    .flat_map(|list| self.lower_type_list(list))
+                    .collect(),
+                position: Some(self.pos(node)),
+            };
+        }
+        match callee {
+            Expr::FieldAccess { target, field } => Expr::MethodCall {
+                target,
+                method: field,
+                arguments,
+                named_arguments,
+            },
+            // A saturated call of a positionally-declared constructor is a
+            // construction, not a call ([TYPE-UNION-POSITIONAL]) — the one
+            // call-shaped expression exempt from the named-argument rule,
+            // because a positional payload has no field names to supply.
+            Expr::Identifier(name) if named_arguments.is_empty() => {
+                crate::positional::construct(&name, arguments.clone()).unwrap_or(Expr::Call {
+                    function: Box::new(Expr::Identifier(name)),
+                    arguments,
+                    named_arguments,
+                })
+            }
+            other => Expr::Call {
+                function: Box::new(other),
+                arguments,
+                named_arguments,
+            },
+        }
+    }
+
+    /// Collect positional or all-named args from an `argument_list` child
+    /// ([CALL-ARGUMENTS]). Named
+    /// arguments live in a single direct `named_argument_list` child; a *direct*
+    /// lookup is essential — descending would steal the named arguments of a
+    /// nested call (`print(cc(c1: .., c2: ..))` must not hoist c1/c2 onto print).
+    fn lower_arg_list(&self, node: Node<'_>) -> (Vec<Expr>, Vec<NamedArgument>) {
+        let Some(list) = self.named_of_kind(node, "argument_list").into_iter().next() else {
+            return (Vec::new(), Vec::new());
+        };
+        if let Some(nal) = self.first_child_of_kind(list, "named_argument_list") {
+            let nodes = self.named_of_kind(nal, "named_argument");
+            let named = self.lower_name_value(&nodes, |name, value| NamedArgument { name, value });
+            return (Vec::new(), named);
+        }
+        let mut cursor = list.walk();
+        let positional = list
+            .named_children(&mut cursor)
+            .filter(|c| c.kind() == "expression")
+            .map(|c| self.lower_expr(c))
+            .collect();
+        (positional, Vec::new())
+    }
+
+    fn lower_arms(&self, node: Node<'_>) -> Vec<MatchArm> {
+        self.named_of_kind(node, "match_arm")
+            .iter()
+            .map(|arm| MatchArm {
+                pattern: arm
+                    .child_by_field_name("pattern")
+                    .map_or(Pattern::Wildcard, |p| self.lower_pattern(p)),
+                body: crate::desugar::positioned(
+                    self.lower_expr_field(*arm, "body"),
+                    Some(self.pos(*arm)),
+                ),
+            })
+            .collect()
+    }
+
+    /// The effect a `perform` or `handle` site names, INCLUDING the
+    /// instantiation when it wrote one: `Signal<Count>` and `Signal<Cursor>` are
+    /// different effects to a row, so they are different effects to the name a
+    /// row carries. Implements [STAGE-SIGNALS-EXACT].
+    pub(super) fn mentioned_effect(&self, node: Node<'_>) -> String {
+        let base = self.field_text(node, "effect");
+        let arguments = node
+            .child_by_field_name("instantiation")
+            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+            .map(|list| self.lower_type_list(list))
+            .unwrap_or_default();
+        osprey_ast::effect_name::instantiated(&base, &arguments)
+    }
+
+    /// `head { field: value, … }`. The grammar gives every brace head the
+    /// `type_constructor` shape (it wins the dynamic-precedence tie with
+    /// `update_expression`), so the lowerer decides what the author meant by
+    /// the same rule as ML: an uppercase or qualified head constructs, a
+    /// lowercase binding is updated ([TYPE-RECORD-UPDATE]). The checker and
+    /// the backend therefore never see an update dressed as a constructor.
+    fn lower_brace_head(&self, node: Node<'_>) -> Expr {
+        let name = self.field_text(node, "name");
+        let type_args = self
+            .first_child_of_kind(node, "type_arguments")
+            .and_then(|ta| self.first_child_of_kind(ta, "type_list"))
+            .map(|l| self.lower_type_list(l))
+            .unwrap_or_default();
+        let fields = self.lower_field_assignments(node);
+        if !osprey_ast::is_record_constructor(&name, !type_args.is_empty()) {
+            return Expr::Update {
+                record: name,
+                fields,
+            };
+        }
+        Expr::TypeConstructor {
+            name,
+            type_args,
+            fields,
+        }
+    }
+
+    fn lower_field_assignments(&self, node: Node<'_>) -> Vec<FieldAssignment> {
+        let nodes = self.descendants_of_kind(node, "field_assignment");
+        self.lower_name_value(&nodes, |name, value| FieldAssignment { name, value })
+    }
+
+    /// Map each node carrying a `name` field and a `value` expression into an AST
+    /// node built by `ctor` — the shared shape of named arguments and record
+    /// field assignments.
+    fn lower_name_value<T>(&self, nodes: &[Node<'_>], ctor: impl Fn(String, Expr) -> T) -> Vec<T> {
+        nodes
+            .iter()
+            .map(|n| {
+                ctor(
+                    self.field_text(*n, "name"),
+                    self.lower_expr_field(*n, "value"),
+                )
+            })
+            .collect()
+    }
+
+    fn lower_block(&self, node: Node<'_>) -> Expr {
+        let mut cursor = node.walk();
+        let children: Vec<Node<'_>> = node.named_children(&mut cursor).collect();
+        self.lower_block_items(&children)
+    }
+
+    /// Lower the items of one block. Taken as a slice rather than read from the
+    /// block node so a `handle` can be given the items after it as
+    /// its body. Implements [EFFECTS-HANDLE-REST].
+    ///
+    /// Written braces stay a [`Expr::Block`] even around a lone value: the
+    /// braces are the user's construct, and a doc above `{ … }` documents the
+    /// block, not what is inside it ([TESTING-DOC]). A `handle` is the
+    /// exception: it governs the rest of its block, so the block IS the
+    /// handled region — the same node ML's layout form lowers to
+    /// ([FLAVOR-IR-EQUIV]).
+    fn lower_block_items(&self, children: &[Node<'_>]) -> Expr {
+        let (statements, value, position) = self.block_items(children);
+        match value.as_deref() {
+            Some(Expr::Handler { .. }) => crate::desugar::block(statements, value, position),
+            _ => Expr::Block {
+                statements,
+                value,
+                position,
+            },
+        }
+    }
+
+    /// The statements and trailing value of one block's items.
+    fn block_items(
+        &self,
+        children: &[Node<'_>],
+    ) -> (Vec<Stmt>, Option<Box<Expr>>, Option<osprey_ast::Position>) {
+        let mut statements = Vec::new();
+        let mut value = None;
+        let mut position = None;
+        for (index, child) in children.iter().enumerate() {
+            if let Some(handler) = self.handler_over_rest(*child) {
+                let rest = children.get(index + 1..).unwrap_or_default();
+                return (
+                    statements,
+                    Some(Box::new(self.handling_rest(handler, rest))),
+                    Some(self.pos(*child)),
+                );
+            }
+            match child.kind() {
+                "statement" => {
+                    if let Some(s) = self.first_named(*child).and_then(|n| self.lower_stmt(n)) {
+                        statements.push(s);
+                    }
+                }
+                "expression" => {
+                    value = Some(Box::new(self.lower_expr(*child)));
+                    position = Some(self.pos(*child));
+                }
+                _ => {}
+            }
+        }
+        // A block evaluates to its last expression. The grammar sometimes emits
+        // that trailing expression as an `expression_statement`; recover it as
+        // the block value so the type of `{ ...; r }` is the type of `r`.
+        if value.is_none() && matches!(statements.last(), Some(Stmt::Expr { .. })) {
+            if let Some(Stmt::Expr {
+                value: e,
+                position: source,
+                ..
+            }) = statements.pop()
+            {
+                value = Some(Box::new(e));
+                position = source;
+            }
+        }
+        (statements, value, position)
+    }
+
+    /// A `handle E { … }` block statement governs the remaining block items.
+    /// Implements [EFFECTS-HANDLE-REST].
+    fn handler_over_rest<'t>(&self, item: Node<'t>) -> Option<Node<'t>> {
+        if item.kind() != "statement" {
+            return None;
+        }
+        let statement = self.first_named(item)?;
+        if statement.kind() != "expression_statement" {
+            return None;
+        }
+        let mut node = Self::last_named(statement)?;
+        while matches!(node.kind(), "expression" | "primary_expression") {
+            node = self.first_named(node)?;
+        }
+        (node.kind() == "handler_expression").then_some(node)
+    }
+
+    /// Install the handler over the remaining block items.
+    fn handling_rest(&self, handler: Node<'_>, rest: &[Node<'_>]) -> Expr {
+        Expr::Handler {
+            stage: self.stage(handler),
+            effect: self.mentioned_effect(handler),
+            arms: self.lower_handler_arms(handler),
+            return_clause: self.lower_handler_return(handler),
+            finally: self.lower_handler_finally(handler),
+            // The rest of the block is the region, not braces the user wrote:
+            // a lone trailing value is the body itself, as in ML layout.
+            body: Box::new({
+                let (statements, value, position) = self.block_items(rest);
+                crate::desugar::block(statements, value, position)
+            }),
+            position: Some(self.pos(handler)),
+        }
+    }
+
+    fn lower_literal(&self, node: Node<'_>) -> Expr {
+        let Some(inner) = self.first_named(node) else {
+            return Expr::Bool(false);
+        };
+        self.lower_literal_node(inner)
+    }
+
+    fn lower_unary(&self, node: Node<'_>) -> Expr {
+        let op = self.field_text(node, "operator");
+        let operand = node.child_by_field_name("operand");
+        // The magnitude of i64::MIN is one larger than i64::MAX. Accept that
+        // one spelling only under unary minus and lower it directly; every
+        // larger magnitude is reported by the frontend's numeric validator.
+        if op == "-" && operand.is_some_and(|n| super::is_i64_min_magnitude_text(&self.text(n))) {
+            return Expr::Integer(i64::MIN);
+        }
+        let lowered = self.lower_expr_field(node, "operand");
+        // A negated literal folds to the literal itself so `-1` stays an `int`
+        // rather than becoming a fallible `Result` ([ARITH-NEG-LITERAL]).
+        if op == "-" {
+            return Expr::negated(lowered);
+        }
+        Expr::Unary {
+            op,
+            operand: Box::new(lowered),
+        }
+    }
+
+    /// Lower an already-unwrapped literal node (`integer`/`string`/… directly,
+    /// not the `literal` wrapper) — shared by `lower_literal` and scalar pattern
+    /// lowering, where the grammar exposes the scalar node without a wrapper.
+    pub(crate) fn lower_literal_node(&self, inner: Node<'_>) -> Expr {
+        match inner.kind() {
+            "integer" => Expr::Integer(self.text(inner).parse().unwrap_or(0)),
+            "float" => Expr::Float(self.text(inner).parse().unwrap_or(0.0)),
+            "boolean" => Expr::Bool(self.text(inner) == "true"),
+            "string" => {
+                let raw = self.text(inner);
+                if raw.contains("${") {
+                    Expr::InterpolatedStr(lower_interpolation(
+                        &raw,
+                        Some(self.pos(inner)),
+                        crate::Flavor::Default,
+                        parse_fragment,
+                    ))
+                } else {
+                    Expr::Str(unquote(&raw))
+                }
+            }
+            "interpolated_string" => Expr::InterpolatedStr(lower_interpolation(
+                &self.text(inner),
+                Some(self.pos(inner)),
+                crate::Flavor::Default,
+                parse_fragment,
+            )),
+            "list_literal" => Expr::List(
+                self.exprs_of_kind(inner, "expression"),
+                Some(self.pos(inner)),
+            ),
+            "map_literal" => Expr::Map(
+                self.named_of_kind(inner, "map_entry")
+                    .iter()
+                    .map(|me| MapEntry {
+                        key: self.lower_expr_field(*me, "key"),
+                        value: self.lower_expr_field(*me, "value"),
+                    })
+                    .collect(),
+            ),
+            _ => Expr::Bool(false),
+        }
+    }
+
+    // Interpolation splitting and escape resolution are flavor-neutral and live
+    // in `crate::strings`; this frontend supplies its own fragment parser below.
+}
+
+/// Parse an interpolation fragment (`${ ... }` contents) into a single [`Expr`].
+fn parse_fragment(frag: &str) -> Expr {
+    let binding = crate::strings::fragment_binding(crate::Flavor::Default);
+    let parsed = super::parse(&format!("{binding}{frag}\n"));
+    if !parsed.errors.is_empty() {
+        return Expr::Identifier(frag.trim().to_owned());
+    }
+    match parsed.program.statements.into_iter().next() {
+        Some(Stmt::Let { value, .. }) => value,
+        _ => Expr::Identifier(frag.trim().to_string()),
+    }
+}
+
+/// Fold a piped value into its right-hand callee: `x |> f(a, …)` becomes
+/// `f(x, a, …)` (the piped value is prepended as the first positional
+/// argument). A bare callee `x |> f` becomes `f(x)`. Producing a plain
+/// [`Expr::Call`] keeps pipes invisible to every later stage.
+/// Implements [BUILTIN-ITER-PIPE].
+fn pipe_into(left: Expr, right: Expr) -> Expr {
+    match right {
+        Expr::Call {
+            function,
+            mut arguments,
+            named_arguments,
+        } => {
+            arguments.insert(0, left);
+            Expr::Call {
+                function,
+                arguments,
+                named_arguments,
+            }
+        }
+        callee => Expr::Call {
+            function: Box::new(callee),
+            arguments: vec![left],
+            named_arguments: Vec::new(),
+        },
+    }
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
+)]
+mod tests {
+    use crate::parse_tree;
+    use crate::test_support::find_kind;
+    use crate::test_support::stmts;
+    use osprey_ast::SelectOperation;
+    use osprey_ast::{Expr, InterpolatedPart, Pattern, Stmt};
+
+    fn let_value(src: &str) -> Expr {
+        match stmts(src).into_iter().next() {
+            Some(Stmt::Let { value, .. }) => value,
+            other => panic!("expected let, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn unquote_resolves_all_escapes() {
+        // Every recognised escape (\n \r \t \e \0 \" \\), plus an unknown escape
+        // (\q) that is kept verbatim.
+        match let_value("let s = \"\\n\\r\\t\\e\\0\\\"\\\\\\q\"\n") {
+            Expr::Str(s) => assert_eq!(s, "\n\r\t\u{1b}\0\"\\\\q"),
+            other => panic!("expected string, got {other:?}"),
+        }
+    }
+
+    /// A negated literal is a compile-time constant, so it folds to the literal
+    /// and keeps the plain `int`/`float` type; a negated *variable* stays a
+    /// checked `Unary` because `-i64::MIN` really can overflow.
+    /// Implements [ARITH-NEG-LITERAL].
+    #[test]
+    fn negated_literals_fold_but_negated_values_stay_checked() {
+        assert!(matches!(let_value("let r = -1\n"), Expr::Integer(-1)));
+        assert!(matches!(let_value("let r = -0\n"), Expr::Integer(0)));
+        match let_value("let r = -2.5\n") {
+            Expr::Float(f) => assert!((f + 2.5).abs() < f64::EPSILON, "got {f}"),
+            other => panic!("expected folded float, got {other:?}"),
+        }
+        // The one value whose negation overflows stays an unfolded, checked
+        // `Unary` rather than panicking or silently wrapping in the folder.
+        assert!(matches!(
+            let_value("let r = -(-9223372036854775808)\n"),
+            Expr::Unary { .. }
+        ));
+        assert!(matches!(let_value("let r = -x\n"), Expr::Unary { .. }));
+    }
+
+    #[test]
+    fn lowers_unary_and_block_recovery() {
+        // unary_expression arm.
+        assert!(matches!(let_value("let r = -x\n"), Expr::Unary { .. }));
+        // A function-body block whose trailing value is emitted as an
+        // expression_statement: lower_block recovers it as the block value.
+        match stmts("fn f() = {\n  print(1)\n  42\n}\n")
+            .into_iter()
+            .next()
+        {
+            Some(Stmt::Function {
+                body: Expr::Block {
+                    statements, value, ..
+                },
+                ..
+            }) => {
+                assert_eq!(statements.len(), 1);
+                assert!(matches!(value.as_deref(), Some(Expr::Integer(42))));
+            }
+            other => panic!("expected function with block body, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn interpolation_keeps_trailing_text_and_inner_expr() {
+        // `${1 + 2}` followed by trailing text exercises the tail-text push.
+        match let_value("let s = \"v ${1 + 2} end\"\n") {
+            Expr::InterpolatedStr(parts) => {
+                assert!(matches!(parts[0], InterpolatedPart::Text(ref t) if t == "v "));
+                assert!(matches!(
+                    parts[1],
+                    InterpolatedPart::Expr(Expr::Binary { .. })
+                ));
+                assert!(matches!(parts[2], InterpolatedPart::Text(ref t) if t == " end"));
+            }
+            other => panic!("expected interpolated, got {other:?}"),
+        }
+        // An interpolation that ends exactly at `}` leaves no trailing text, so
+        // the final empty-text branch is taken (no extra Text part is pushed).
+        match let_value("let s = \"${1}\"\n") {
+            Expr::InterpolatedStr(parts) => {
+                assert_eq!(parts.len(), 1);
+                assert!(matches!(parts[0], InterpolatedPart::Expr(_)));
+            }
+            other => panic!("expected interpolated, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_brace_head_is_an_update_or_a_construction_by_its_spelling() {
+        // [TYPE-RECORD-UPDATE] Both flavors lower `p { x: 1 }` to the SAME
+        // `Expr::Update` ([FLAVOR-IR-EQUIV]); a capitalised, qualified or
+        // type-applied head constructs.
+        assert!(matches!(
+            let_value("let q = p { x: 1 }\n"),
+            Expr::Update { record, .. } if record == "p"
+        ));
+        for source in [
+            "let q = Point { x: 1 }\n",
+            "let q = Ids::id { x: 1 }\n",
+            "let q = Box<int> { held: 1 }\n",
+        ] {
+            assert!(
+                matches!(let_value(source), Expr::TypeConstructor { .. }),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    fn spawn_and_yield_lower() {
+        assert!(matches!(let_value("let f = spawn g()\n"), Expr::Spawn(_)));
+        assert!(matches!(let_value("let y = yield\n"), Expr::Yield(None)));
+    }
+
+    #[test]
+    fn lowers_common_expression_forms() {
+        // Pipe desugars `x |> f(2)` to a call with x prepended
+        // [BUILTIN-ITER-PIPE].
+        match let_value("let r = x |> f(2)\n") {
+            Expr::Call { arguments, .. } => assert_eq!(arguments.len(), 2),
+            other => panic!("expected call, got {other:?}"),
+        }
+        // [BUILTIN-STRING-UFCS] Preserve the receiver until type checking can
+        // select its callable field or the free-function fallback.
+        assert_eq!(
+            let_value("let r = o.m(1)\n"),
+            Expr::MethodCall {
+                target: Box::new(Expr::Identifier("o".into())),
+                method: "m".into(),
+                arguments: vec![Expr::Integer(1)],
+                named_arguments: vec![],
+            }
+        );
+        // Plain field access and indexing.
+        assert!(matches!(
+            let_value("let r = o.field\n"),
+            Expr::FieldAccess { .. }
+        ));
+        assert!(matches!(let_value("let r = xs[0]\n"), Expr::Index { .. }));
+        // Named-argument call.
+        match let_value("let r = mk(a: 1, b: 2)\n") {
+            Expr::Call {
+                named_arguments, ..
+            } => assert_eq!(named_arguments.len(), 2),
+            other => panic!("expected call, got {other:?}"),
+        }
+        // Ternary desugars to a boolean match; Elvis desugars to an exhaustive
+        // Success/Error match [PATTERN-RESULT-DEFAULT].
+        assert!(matches!(
+            let_value("let r = c ? 1 : 2\n"),
+            Expr::Match { .. }
+        ));
+        assert!(matches!(let_value("let r = c ?: 2\n"), Expr::Match { .. }));
+        // Object literal and lambda.
+        assert!(matches!(
+            let_value("let r = { a: 1, b: 2 }\n"),
+            Expr::Object(_)
+        ));
+        assert!(matches!(
+            let_value("let r = |x| => x\n"),
+            Expr::Lambda { .. }
+        ));
+    }
+
+    #[test]
+    fn lowers_match_select_handler_perform() {
+        // match with a structural-field pattern body.
+        assert!(matches!(
+            let_value("let r = match x { Ok { value } => value  _ => 0 }\n"),
+            Expr::Match { .. }
+        ));
+        // select expression (reuses arm lowering).
+        match let_value("let r = select { m = recv(a) => m  recv(a) => 1  send(a, 2) => 3  timeout(4) => 5  _ => 6 }\n") {
+            Expr::Select { operations, arms } => {
+                assert!(matches!(
+                    operations.as_slice(),
+                    [
+                        SelectOperation::Recv(_),
+                        SelectOperation::Recv(_),
+                        SelectOperation::Send { .. },
+                        SelectOperation::Timeout(_),
+                        SelectOperation::Default
+                    ]
+                ));
+                assert_eq!(arms[0].pattern, Pattern::Binding("m".to_owned()));
+                assert_eq!(arms[1].pattern, Pattern::Wildcard);
+            }
+            other => panic!("expected a select, got {other:?}"),
+        }
+        // handler with params + perform inside its body.
+        // The handler over the rest of its block is the block's VALUE, and a
+        // block with nothing before it IS that value — the same node ML's
+        // layout form lowers to ([FLAVOR-IR-EQUIV]).
+        let handled =
+            let_value("let r = {\n  handle Log { info m => m }\n  perform Log.info(x: 1)\n}\n");
+        match handled {
+            Expr::Handler { effect, arms, .. } => {
+                assert_eq!(effect, "Log");
+                assert_eq!(arms[0].operation, "info");
+                assert_eq!(arms[0].params, vec!["m"]);
+            }
+            other => panic!("expected handler, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn parse_fragment_falls_back_to_identifier() {
+        // A fragment that does not parse to a `let` value returns the trimmed text.
+        assert_eq!(
+            super::parse_fragment(" fn "),
+            Expr::Identifier("fn".to_string())
+        );
+    }
+
+    #[test]
+    fn lowers_calls_literals_block_and_constructor() {
+        // send/recv/await call forms.
+        assert!(matches!(
+            let_value("let r = send(ch, 1)\n"),
+            Expr::Send { .. }
+        ));
+        assert!(matches!(let_value("let r = recv(ch)\n"), Expr::Recv(_)));
+        assert!(matches!(let_value("let r = await(f)\n"), Expr::Await(_)));
+        // type constructor carrying field assignments.
+        match let_value("let r = Point { x: 1, y: 2 }\n") {
+            Expr::TypeConstructor { name, fields, .. } => {
+                assert_eq!(name, "Point");
+                assert_eq!(fields.len(), 2);
+            }
+            other => panic!("expected constructor, got {other:?}"),
+        }
+        // List and string-key map literals [TYPE-MAP-LITERAL].
+        assert!(matches!(
+            let_value("let r = [1, 2, 3]\n"),
+            Expr::List(v, position) if v.len() == 3 && position.is_some()
+        ));
+        assert!(
+            matches!(let_value("let r = { \"a\": 1, \"b\": 2 }\n"), Expr::Map(m) if m.len() == 2)
+        );
+        // block with a statement plus a trailing value expression.
+        match let_value("let r = {\n  let a = 1\n  a\n}\n") {
+            Expr::Block {
+                statements, value, ..
+            } => {
+                assert_eq!(statements.len(), 1);
+                assert!(value.is_some());
+            }
+            other => panic!("expected block, got {other:?}"),
+        }
+        // structural ternary `cond { f } ? then : else` -> block binding fields.
+        assert!(matches!(
+            let_value("let r = rec { a } ? a : 0\n"),
+            Expr::Block { .. }
+        ));
+        // `if c { a } else { b }` reuses the ternary's boolean match, and an
+        // `else if` nests into the `false` arm ([GRAMMAR-IF-ELSE]).
+        match let_value("let r = if c { 1 } else if d { 2 } else { 3 }\n") {
+            Expr::Match { arms, .. } => {
+                assert_eq!(arms.len(), 2);
+                assert_eq!(arms[0].body, Expr::Integer(1));
+                assert!(matches!(arms[1].body, Expr::Match { .. }));
+            }
+            other => panic!("expected a boolean match, got {other:?}"),
+        }
+    }
+
+    /// Horizontal space between a callee and its argument list is legal, and
+    /// binds exactly as tightly as the unspaced spelling. Requiring
+    /// `token.immediate('(')` to keep a following `(a, b)` tuple-pattern arm
+    /// parseable silently rejected `print(id (1))` — ordinary source the
+    /// language has always accepted — so the same-line test moved into the
+    /// scanner instead ([PATTERN-TUPLE], src/toolchain/tree-sitter-osprey/src/scanner.c).
+    #[test]
+    fn a_call_accepts_horizontal_space_before_its_argument_list() {
+        for src in ["let r = id(1)\n", "let r = id (1)\n", "let r = id  (1)\n"] {
+            match let_value(src) {
+                Expr::Call {
+                    function,
+                    arguments,
+                    ..
+                } => {
+                    assert!(
+                        matches!(*function, Expr::Identifier(ref n) if n == "id"),
+                        "{src}"
+                    );
+                    assert_eq!(arguments, vec![Expr::Integer(1)], "{src}");
+                }
+                other => panic!("expected a call for {src:?}, got {other:?}"),
+            }
+        }
+    }
+
+    /// The spaced call still binds at `PREC.member`, so `1 + id (2)` is
+    /// `1 + id(2)` — never `(1 + id)(2)`. Resolving this with a GLR fork could
+    /// not preserve it: both readings contain exactly one spaced call, so their
+    /// dynamic precedences tie and the resolver chose the wrong one.
+    #[test]
+    fn a_spaced_call_binds_tighter_than_an_operator() {
+        match let_value("let r = 1 + id (2)\n") {
+            Expr::Binary { left, right, .. } => {
+                assert!(matches!(*left, Expr::Integer(1)));
+                assert!(matches!(*right, Expr::Call { .. }), "got {right:?}");
+            }
+            other => panic!("expected `1 + id(2)`, got {other:?}"),
+        }
+    }
+
+    /// Indexing is STRICTER than calling: the `[` must touch its target, so
+    /// `xs[0]` indexes and `xs [0]` does not. The asymmetry is deliberate and
+    /// this test is why it cannot simply be unified — list-arm matches are
+    /// written on a SINGLE line, so extending the call's same-line rule to `[`
+    /// reads the `0  [head` in
+    ///
+    ///     match xs { [] => 0  [head, ...tail] => … }
+    ///
+    /// as an index and breaks `src/toolchain/benchmarks/cases/listops/listops.osp`. Tuple
+    /// arms have no single-line usage, which is what lets `(` be looser.
+    /// [TYPE-LIST-PATTERNS]
+    #[test]
+    fn an_index_bracket_must_touch_its_target_unlike_a_call() {
+        const SPACED: &str = "let r = xs [0]\n";
+        match let_value("let r = xs[0]\n") {
+            Expr::Index { target, index } => {
+                assert!(matches!(*target, Expr::Identifier(ref n) if n == "xs"));
+                assert!(matches!(*index, Expr::Integer(0)));
+            }
+            other => panic!("expected an index, got {other:?}"),
+        }
+        // Spaced: NOT an index. The `[0]` can no longer become a silently
+        // discarded statement either, so the line is rejected outright
+        // [LEX-STATEMENT-BREAK]. BOTH halves are asserted: rejection alone
+        // would still hold if the `[` had wrongly bound as an index and some
+        // later rule complained, which is the very confusion under test.
+        assert!(
+            !crate::parse_program(SPACED).errors.is_empty(),
+            "a spaced `[` must not split the statement"
+        );
+        let Some(tree) = parse_tree(SPACED) else {
+            panic!("tree-sitter produced no tree for {SPACED:?}");
+        };
+        // An index binds inside `call_expression` (the postfix chain), so its
+        // absence is what proves the `[` did not attach to `xs`.
+        assert!(
+            find_kind(tree.root_node(), "call_expression").is_none(),
+            "a spaced `[` must not bind as an index; tree was {}",
+            tree.root_node().to_sexp()
+        );
+        // The single-line list-arm match the strict rule exists to protect.
+        match let_value("let r = match xs { [] => 0  [head, ...tail] => head }\n") {
+            Expr::Match { arms, .. } => assert_eq!(arms.len(), 2, "got {arms:?}"),
+            other => panic!("expected a match, got {other:?}"),
+        }
+    }
+
+    /// The boundary the scanner draws: a `(` that opens the NEXT line is the
+    /// following arm's tuple pattern, never an argument list extending the
+    /// previous arm's body. Both arms must survive, and the tuple arm binds its
+    /// slots positionally.
+    #[test]
+    fn a_newline_paren_opens_a_tuple_arm_not_a_call() {
+        let src = "let r = match v {\n    { held, .. } => render (held)\n    (n, s) => n\n}\n";
+        match let_value(src) {
+            Expr::Match { arms, .. } => {
+                assert_eq!(arms.len(), 2, "got {arms:?}");
+                // The first arm's body kept its spaced call ...
+                let Expr::Block {
+                    statements,
+                    value: Some(body),
+                    position,
+                } = &arms[0].body
+                else {
+                    panic!("arm 0 lost its source anchor: {:?}", arms[0].body);
+                };
+                assert_eq!(statements.as_slice(), []);
+                assert_eq!(*position, Some(osprey_ast::Position { line: 2, column: 4 }));
+                assert!(
+                    matches!(body.as_ref(), Expr::Call { .. }),
+                    "arm 0 body: {:?}",
+                    arms[0].body
+                );
+                // ... and did not swallow `(n, s)` as a second argument list.
+                match arms[1].pattern {
+                    Pattern::Structural { ref fields, open } => {
+                        assert!(!open);
+                        assert_eq!(
+                            fields,
+                            &[
+                                (String::from("0"), String::from("n")),
+                                (String::from("1"), String::from("s")),
+                            ]
+                        );
+                    }
+                    ref other => panic!("expected a tuple pattern, got {other:?}"),
+                }
+            }
+            other => panic!("expected a match, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn defensive_expr_fallbacks() {
+        // Direct calls on a `line_comment` (or a missing field) hit the
+        // best-effort `Expr::Bool(false)` arms that well-formed trees never reach.
+        let src = "// c\nlet x = 1\n";
+        let tree = parse_tree(src).unwrap();
+        let lw = super::Lowerer::new(src.as_bytes());
+        let comment = find_kind(tree.root_node(), "line_comment").unwrap();
+        let let_node = find_kind(tree.root_node(), "let_declaration").unwrap();
+
+        assert_eq!(lw.lower_expr(comment), Expr::Bool(false)); // `_` arm
+        assert_eq!(lw.lower_literal(comment), Expr::Bool(false)); // no named child
+        assert_eq!(lw.lower_literal_node(comment), Expr::Bool(false)); // `_` arm
+        assert_eq!(lw.lower_inner_expr(comment), Expr::Bool(false)); // no named child
+        assert_eq!(lw.lower_expr_field(let_node, "nope"), Expr::Bool(false)); // missing field
+    }
+}

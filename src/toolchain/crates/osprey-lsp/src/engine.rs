@@ -1,0 +1,377 @@
+//! [`OspreyEngine`] — the [`lspkit::EngineApi`] implementation.
+//!
+//! State is the open-document [`Vfs`] plus a [`Session`] (from `lspkit_server::live`)
+//! that owns the monotonic generation counter and broadcasts change events.
+//! Every analysis is recomputed from current document text via [`crate::model`]
+//! queries. Implements [LSP-ENGINE] and [LSP-REUSE-LSPKIT].
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use lspkit::vfs::{PositionEncoding, Vfs};
+use lspkit::{
+    Cause, EngineApi, Generation, GenerationEventStream, Progress, RescanScope, RescanTicket,
+    Snapshot,
+};
+use lspkit_server::live::Session;
+use tokio::sync::broadcast::error::RecvError;
+use tokio_util::sync::CancellationToken;
+
+use crate::analysis::collect_inferred_symbols;
+use crate::diagnostics;
+use crate::features;
+use crate::model::{At, EngineError, Query, Report};
+
+/// The Osprey analysis engine.
+#[derive(Debug, Clone)]
+pub struct OspreyEngine {
+    pub(crate) scope: Arc<std::sync::Mutex<crate::server::scope::Scope>>,
+    vfs: Vfs,
+    session: Session,
+    shutdown: Arc<AtomicBool>,
+    pub(crate) project_cache: Arc<crate::project_cache::ProjectCache>,
+}
+
+impl OspreyEngine {
+    /// New engine over `vfs`, starting at [`Generation::ZERO`].
+    #[must_use]
+    pub(crate) fn new(vfs: Vfs) -> Self {
+        Self {
+            scope: Arc::default(),
+            vfs,
+            session: Session::new(),
+            shutdown: Arc::new(AtomicBool::new(false)),
+            project_cache: Arc::default(),
+        }
+    }
+
+    /// The shared open-document store.
+    #[must_use]
+    pub(crate) fn vfs(&self) -> &Vfs {
+        &self.vfs
+    }
+
+    pub(crate) fn stop(&self) {
+        self.shutdown.store(true, Ordering::SeqCst);
+    }
+
+    fn encoding(&self) -> PositionEncoding {
+        self.vfs.encoding()
+    }
+
+    fn text(&self, uri: &lspkit::vfs::DocumentUri) -> String {
+        self.vfs.text(uri).unwrap_or_default()
+    }
+
+    fn diagnostic_text(&self, uri: &lspkit::vfs::DocumentUri) -> std::io::Result<String> {
+        if let Some(text) = self.vfs.text(uri) {
+            return Ok(text);
+        }
+        match crate::workspace::file_path(uri.as_str()) {
+            Some(path) => std::fs::read_to_string(path),
+            None => Ok(String::new()),
+        }
+    }
+
+    /// Compute the report for `query` against current document state.
+    fn answer(&self, query: Query) -> Report {
+        let enc = self.encoding();
+        match query {
+            Query::Diagnostics(uri) => Report::Diagnostics(match self.diagnostic_text(&uri) {
+                Ok(text) => {
+                    diagnostics::analyze_cached(
+                        &text,
+                        uri.as_str(),
+                        enc,
+                        Some(&self.vfs),
+                        &self.project_cache,
+                    )
+                    .diagnostics
+                }
+                Err(error) => vec![lspkit_server::Diagnostic::new(
+                    lspkit_server::Severity::Error,
+                    format!("Cannot read source file: {error}"),
+                    (0, 0, 0, 1),
+                )
+                .with_source("osprey")
+                .with_code("source-read-error")],
+            }),
+            Query::CodeActions { uri, range, only } => Report::CodeActions(
+                crate::code_actions::actions(&self.vfs, &uri, range, &only, &self.project_cache),
+            ),
+            Query::Symbols(uri) => {
+                let view = self.project_cache.view(uri.as_str(), &self.vfs);
+                Report::Symbols(collect_inferred_symbols(
+                    &view.program(uri.as_str(), &self.text(&uri)),
+                ))
+            }
+            Query::Hover(at) => Report::Hover(self.hover(&at)),
+            Query::Definition(at) => Report::Locations(self.locate(&at, true, false)),
+            Query::Implementation(at) => Report::Locations(crate::effects::implementations(
+                &self.text(&at.uri),
+                at.uri.as_str(),
+                at.line,
+                at.character,
+                enc,
+                &self.project_cache.view(at.uri.as_str(), &self.vfs),
+            )),
+            Query::References {
+                at,
+                include_declaration,
+            } => Report::Locations(self.locate(&at, false, include_declaration)),
+            Query::SignatureHelp(at) => Report::Signature(self.signature(&at)),
+            Query::Completion(at) => Report::Completion(crate::complete::completion(
+                &self.text(&at.uri),
+                at.uri.as_str(),
+                at.line,
+                at.character,
+                enc,
+                &self.project_cache.view(at.uri.as_str(), &self.vfs),
+            )),
+        }
+    }
+
+    fn hover(&self, at: &At) -> Option<String> {
+        crate::hover::hover(
+            &self.text(&at.uri),
+            at.uri.as_str(),
+            at.line,
+            at.character,
+            self.encoding(),
+            &self.project_cache.view(at.uri.as_str(), &self.vfs),
+        )
+    }
+
+    fn signature(&self, at: &At) -> Option<crate::model::SignatureInfo> {
+        features::signature_help(
+            &self.text(&at.uri),
+            at.uri.as_str(),
+            at.line,
+            at.character,
+            self.encoding(),
+            &self.project_cache.view(at.uri.as_str(), &self.vfs),
+        )
+    }
+
+    fn locate(
+        &self,
+        at: &At,
+        definition: bool,
+        include_declaration: bool,
+    ) -> Vec<crate::model::Location> {
+        let text = self.text(&at.uri);
+        let uri = at.uri.as_str();
+        if definition {
+            features::definition(
+                &text,
+                uri,
+                at.line,
+                at.character,
+                self.encoding(),
+                &self.project_cache.view(uri, &self.vfs),
+            )
+        } else {
+            features::references(
+                &text,
+                uri,
+                at.line,
+                at.character,
+                self.encoding(),
+                include_declaration,
+                &self.project_cache.view(uri, &self.vfs),
+            )
+        }
+    }
+}
+
+#[async_trait]
+impl EngineApi for OspreyEngine {
+    type Report = Report;
+    type Query = Query;
+    type Error = EngineError;
+
+    fn generation(&self) -> Generation {
+        self.session.generation()
+    }
+
+    async fn report(
+        &self,
+        query: Self::Query,
+        _cancel: CancellationToken,
+    ) -> Result<Snapshot<Self::Report>, Self::Error> {
+        if self.shutdown.load(Ordering::SeqCst) {
+            return Err(EngineError::ShuttingDown);
+        }
+        let generation = self.session.generation();
+        let report = self.answer(query);
+        if self.shutdown.load(Ordering::SeqCst) {
+            return Err(EngineError::ShuttingDown);
+        }
+        Ok(Snapshot::new(generation, report))
+    }
+
+    async fn rescan(
+        &self,
+        _scope: RescanScope,
+        _progress: Progress,
+    ) -> Result<RescanTicket, Self::Error> {
+        if self.shutdown.load(Ordering::SeqCst) {
+            return Err(EngineError::ShuttingDown);
+        }
+        Ok(RescanTicket::new(self.session.advance(Cause::Rescan)))
+    }
+
+    fn subscribe(&self) -> GenerationEventStream {
+        let rx = self.session.subscribe();
+        Box::pin(futures_util::stream::unfold(rx, |mut rx| async move {
+            loop {
+                match rx.recv().await {
+                    Ok(event) => return Some((event, rx)),
+                    Err(RecvError::Closed) => return None,
+                    // Dropped events: keep waiting for the next live one.
+                    Err(RecvError::Lagged(_)) => {}
+                }
+            }
+        }))
+    }
+
+    async fn shutdown(&self) -> Result<(), Self::Error> {
+        self.stop();
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lspkit::vfs::{DocumentUri, DocumentVersion};
+
+    fn engine_with(text: &str) -> (OspreyEngine, DocumentUri) {
+        let vfs = Vfs::new(PositionEncoding::Utf16);
+        let uri = DocumentUri::new("file:///a.osp");
+        vfs.open(uri.clone(), text, DocumentVersion::new(1));
+        (OspreyEngine::new(vfs), uri)
+    }
+
+    #[tokio::test]
+    async fn report_answers_symbols_and_advances_on_rescan() {
+        // The VFS and live generation session are owned by the one EngineApi
+        // implementation. [LSP-ENGINE], [LSP-REUSE-LSPKIT]
+        let (engine, uri) = engine_with("fn main() -> Unit = print(\"hi\")\n");
+        let snap = engine
+            .report(Query::Symbols(uri), CancellationToken::new())
+            .await
+            .expect("report");
+        match snap.data {
+            Report::Symbols(syms) => assert!(syms.iter().any(|s| s.name == "main")),
+            other => panic!("expected symbols, got {other:?}"),
+        }
+        assert_eq!(engine.generation(), Generation::ZERO);
+        let _ticket = engine
+            .rescan(RescanScope::All, Progress::noop())
+            .await
+            .expect("rescan");
+        assert_eq!(engine.generation(), Generation::ZERO.next());
+    }
+
+    #[tokio::test]
+    async fn shutdown_makes_further_calls_fail() {
+        let (engine, uri) = engine_with("fn main() = 1\n");
+        engine.shutdown().await.expect("shutdown");
+        let err = engine
+            .report(Query::Diagnostics(uri), CancellationToken::new())
+            .await;
+        assert!(matches!(err, Err(EngineError::ShuttingDown)));
+        // `rescan` is likewise refused after shutdown.
+        let rescan = engine.rescan(RescanScope::All, Progress::noop()).await;
+        assert!(matches!(rescan, Err(EngineError::ShuttingDown)));
+    }
+
+    #[tokio::test]
+    async fn report_answers_every_positional_query_kind() {
+        use crate::model::{At, Report};
+        let src = crate::test_support::ADD_SRC;
+        let (engine, uri) = engine_with(src);
+        let at = |line, character| At {
+            uri: uri.clone(),
+            line,
+            character,
+        };
+        let cancel = || CancellationToken::new();
+        let report = |q| async { engine.report(q, cancel()).await.expect("report").data };
+
+        // Hover over the call to `add` renders its signature.
+        match report(Query::Hover(at(1, 13))).await {
+            Report::Hover(Some(md)) => assert!(md.contains("fn add"), "{md}"),
+            other => panic!("expected hover, got {other:?}"),
+        }
+        // Definition lands on the declaration (line 0).
+        match report(Query::Definition(at(1, 13))).await {
+            Report::Locations(locs) => assert_eq!(locs.first().map(|l| l.span.0), Some(0)),
+            other => panic!("expected locations, got {other:?}"),
+        }
+        // References including the declaration: two occurrences of `add`.
+        let refs = report(Query::References {
+            at: at(0, 3),
+            include_declaration: true,
+        })
+        .await;
+        match refs {
+            Report::Locations(locs) => assert_eq!(locs.len(), 2, "{locs:?}"),
+            other => panic!("expected locations, got {other:?}"),
+        }
+        // Signature help over the second argument tracks the active parameter.
+        match report(Query::SignatureHelp(at(1, 19))).await {
+            Report::Signature(Some(sig)) => {
+                assert_eq!(sig.active_parameter, 1);
+                assert_eq!(sig.parameters.len(), 2);
+            }
+            other => panic!("expected signature, got {other:?}"),
+        }
+        // Completion lists keywords plus the document's own declarations.
+        match report(Query::Completion(at(2, 0))).await {
+            Report::Completion(items) => {
+                assert!(items.iter().any(|i| i.label == "fn"));
+                assert!(items.iter().any(|i| i.label == "add"));
+            }
+            other => panic!("expected completion, got {other:?}"),
+        }
+        // [TYPE-ANNOTATION-REDUNDANT] Each written Default annotation warns.
+        match report(Query::Diagnostics(uri.clone())).await {
+            Report::Diagnostics(diags) => diagnostics::assert_redundant_annotations(
+                &diags,
+                &[
+                    (
+                        "redundant type annotation on parameter `a` of `add`: inference derives `int` without it",
+                        (0, 8, 0, 13),
+                    ),
+                    (
+                        "redundant type annotation on parameter `b` of `add`: inference derives `int` without it",
+                        (0, 16, 0, 21),
+                    ),
+                ],
+            ),
+            other => panic!("expected diagnostics, got {other:?}"),
+        }
+        // The vfs getter exposes the shared store.
+        assert_eq!(engine.vfs().text(&uri).as_deref(), Some(src));
+    }
+
+    #[tokio::test]
+    async fn subscribe_streams_generation_events_until_closed() {
+        use futures_util::StreamExt as _;
+        let (engine, _uri) = engine_with("fn main() = 1\n");
+        let mut stream = engine.subscribe();
+        // A rescan advances the generation and broadcasts an event.
+        let _ticket = engine
+            .rescan(RescanScope::All, Progress::noop())
+            .await
+            .expect("rescan");
+        let event = stream.next().await.expect("generation event");
+        assert_eq!(event.generation, Generation::ZERO.next(), "{event:?}");
+        // Dropping the engine closes the broadcast channel, ending the stream.
+        drop(engine);
+        assert!(stream.next().await.is_none(), "stream ends on close");
+    }
+}

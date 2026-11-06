@@ -49,11 +49,11 @@ Read **every line** of `--log-failed` output. For each failure note the exact fi
    the whole story (see [MAKE-TARGETS] in REPO-STANDARDS-SPEC). At time of
    writing CI also runs, and you MUST run locally: the Shipwright manifest
    validation (`npm run test:shipwright` in `vscode-extension`), the example
-   compile/run checks, the **Docker web-compiler test** (`webcompiler/` —
+   compile/run checks, the **Docker web-compiler test** (`src/toolchain/webcompiler/` —
    `docker build` + run container + `./test.sh`), the separate `rust` job
    (`cargo fmt --all --check`, clippy, `cargo test --workspace`, the
    differential harness), and the `website` Playwright E2E suite (`npm test`
-   in `website/`). Re-derive the actual list from the workflows every time —
+   in `src/toolchain/website/`). Re-derive the actual list from the workflows every time —
    do not trust this list to be current.
 4. Note any environment variables, matrix strategies, or conditional steps that
    affect execution — including platform-only jobs (e.g. `ci-windows.yml` runs
@@ -83,16 +83,16 @@ For each command extracted from the CI workflow:
   (cargo clippy + extension lint; cargo test + coverage thresholds +
   differential harness + extension tests; C runtime archives + cargo release
   build + extension).
-- The compiler is the Rust workspace (`crates/`, binary `target/release/osprey`);
+- The compiler is the Rust workspace (`src/toolchain/crates/`, binary `target/release/osprey`);
   the C runtime archives are built by the internal `make _runtime` helper.
-- The differential harness is `zsh crates/run_test_corpus.sh [default|gc|arc]` —
+- The differential harness is `zsh src/toolchain/crates/run_test_corpus.sh [default|gc|arc]` —
   expect `TEST_CORPUS_FAIL=0` and `TEST_CORPUS_GOLDEN_FAIL=0
   TEST_CORPUS_GOLDEN_MISSING=0` at or above the golden floor the script prints
-  (160 natively). `OSPREY_TARGET=wasm32 zsh crates/run_test_corpus.sh` runs the
+  (160 natively). `OSPREY_TARGET=wasm32 zsh src/toolchain/crates/run_test_corpus.sh` runs the
   same corpus through the wasm32 backend under Node's WASI (103 compared, 57
   named skips). The must-reject ratchet moved into `cargo test` — it is the
   `every ill-formed program must be rejected` assertion in
-  `crates/osprey-cli/tests/examples_compile.rs`.
+  `src/toolchain/crates/osprey-cli/tests/examples_compile.rs`.
 - The Docker web-compiler test needs a running daemon. If `docker info` fails,
   start it (`open -a Docker` on macOS) and wait for readiness before running —
   do NOT treat an unavailable daemon as licence to skip the check.

@@ -1,0 +1,49 @@
+/// The package manager's file-system effect: one install, a real disk and
+/// three test doubles. The Playground opens on this program in every flavor.
+effect Files {
+    read: fn(string) -> Result<string, Error>
+    write: fn(string, string) -> Result<int, Error>
+}
+
+/// Write the lock file; if that fails, put the old manifest back.
+fn commitLock(previous, lock) = match perform Files.write("osprey.lock", lock) {
+    Success _ => "installed"
+    Error { message } => match perform Files.write("osprey.toml", previous) {
+        Success _ => "rolled back: ${message}"
+        Error _ => "manifest left changed: ${message}"
+    }
+}
+
+/// Update the manifest, then commit the lock. It never names a disk.
+fn install(manifest, lock) = match perform Files.read("osprey.toml") {
+    Error { message } => "no manifest: ${message}"
+    Success { value } => match perform Files.write("osprey.toml", manifest) {
+        Error { message } => "manifest not written: ${message}"
+        Success _ => commitLock(value, lock)
+    }
+}
+
+// Production passes the real disk (the Playground sandbox has none):
+// handler Files { read path => readFile(path)  write path text => writeFile(path, text) }
+
+/// Test doubles: canned disks, no files touched.
+let healthyDisk = handler Files {
+    read _ => Success { value: "version = 1" }
+    write _ text => Success { value: byteLength(text) }
+}
+
+let fullDisk = handler Files {
+    read _ => Success { value: "version = 1" }
+    write path text => if path == "osprey.lock" { Error { message: "disk full" } } else { Success { value: byteLength(text) } }
+}
+
+let readOnlyDisk = handler Files {
+    read _ => Success { value: "version = 1" }
+    write _ _ => Error { message: "read-only" }
+}
+
+fn upgrade() = install("version = 2", "locked")
+
+test("a healthy disk installs", fn() => expect(healthyDisk(upgrade), "installed"))
+test("a full disk rolls the manifest back", fn() => expect(fullDisk(upgrade), "rolled back: disk full"))
+test("a read-only disk changes nothing", fn() => expect(readOnlyDisk(upgrade), "manifest not written: read-only"))

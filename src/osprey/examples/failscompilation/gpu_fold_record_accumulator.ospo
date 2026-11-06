@@ -1,0 +1,11 @@
+// [GPU-FOLD]: the accumulator must itself be a scalar so the reduction can
+// execute on device hardware; a record accumulator is rejected at the gpuFold
+// call, not silently boxed.
+type Pair = Pair { lo: int, hi: int }
+
+fn widen(p, v) = Pair { lo: p.lo, hi: v }
+
+fn main() = match toGpu([1, 2, 3]) {
+    Success { value } => gpuFold(value, Pair { lo: 0, hi: 0 }, widen)
+    Error { message } => Error { message: message }
+}

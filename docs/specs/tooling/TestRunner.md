@@ -23,6 +23,8 @@ suite fails to compile, fails to run, or skips a case without naming a reason
 
 Standalone file suites run in separate temporary working directories, removed after each suite finishes, including failures. Source paths and the selected cache directory are resolved before changing directories. Relative output files therefore stay out of the caller's directory. Project suites retain the caller's working directory.
 
+**`[TESTING-CLI-RUN-SCRATCH]`** `osprey <file>.test.osp --run` and `osprey <file>.test.ospml --run` get the same treatment: the program runs in a temporary working directory removed when it exits, so a test run by hand cannot write into the repository root. Ordinary programs and project directories keep the caller's working directory.
+
 **`[TESTING-CLI-RUN-CONTEXT]`** Each suite process receives `OSPREY_TEST_COMPILER`, the executable running the suite, and `OSPREY_TEST_MEMORY`, its selected backend. The runner replaces inherited values for both variables; without a backend flag, the context reports the native GC default. Suites that launch another compiler can read these values and pass the backend through `--memory` to keep nested builds aligned.
 
 **`[TESTING-PROJECT-SUITE]`** A `path` that is a directory holding an
@@ -147,7 +149,7 @@ suites that measured the same file add their hits.
 
 **`[TESTING-COVERAGE-CODEGEN]`** With coverage on
 (`osprey_codegen::compile_program_coverage`,
-`crates/osprey-codegen/src/coverage.rs`), the coverable-line universe is
+`src/toolchain/crates/osprey-codegen/src/coverage.rs`), the coverable-line universe is
 seeded from the AST up front — function definition lines and positioned
 statements, recursing through blocks, lambdas, match/handler arms, and
 module/namespace bodies — so a never-executed (even never-lowered) line
@@ -158,7 +160,7 @@ each positioned statement. A generated `__osp_cov_init`, called at the top
 of `main` before user code, registers every counter with the runtime.
 Coverage builds keep release optimization and emit no DWARF.
 
-**`[TESTING-COVERAGE-RUNTIME]`** `compiler/runtime/coverage_runtime.c`
+**`[TESTING-COVERAGE-RUNTIME]`** `src/toolchain/compiler/runtime/coverage_runtime.c`
 (dependency-free C11, in every runtime archive) exposes
 `osp_cov_register_line(line, &counter)`. Inert unless
 **`[TESTING-COVERAGE-ENV]`** `OSPREY_COVERAGE=<path>` names the dump file at

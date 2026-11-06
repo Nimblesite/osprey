@@ -1,41 +1,40 @@
 {
   "binary": [
-    "crates/**",
-    "compiler/**",
-    "tree-sitter-osprey/**",
-    "webcompiler/**",
-    "Cargo.toml",
-    "Cargo.lock",
+    "src/toolchain/crates/**",
+    "src/toolchain/compiler/**",
+    "src/toolchain/tree-sitter-osprey/**",
+    "src/toolchain/webcompiler/**",
+    "src/toolchain/Cargo.toml",
+    "src/toolchain/Cargo.lock",
     "Makefile",
     "scripts/make/**"
   ],
   "vsix": [
-    "vscode-extension/**"
+    "src/toolchain/vscode-extension/**"
   ],
   "website": [
-    "website/**",
-    "benchmarks/**"
+    "src/toolchain/website/**",
+    "src/toolchain/benchmarks/**"
   ],
   "ignore": [
     "**/*.md",
     "docs/**",
-    "examples/**",
+    "src/osprey/examples/**",
     ".github/**",
     ".devcontainer/**",
     ".vscode/**",
     ".claude/**",
     ".cursor/**",
     ".clinerules/**",
-    ".cursorrules",
-    ".windsurfrules",
-    ".deslop.toml",
+    ".windsurf/**",
+    ".opencode/**",
+    ".config/deslop.toml",
     ".gitignore",
     ".dockerignore",
-    ".clippy.toml",
-    ".rustfmt.toml",
-    "coverage-thresholds.json",
-    "opencode.json",
-    "osprey.code-workspace",
+    "src/toolchain/.clippy.toml",
+    "src/toolchain/.rustfmt.toml",
+    "src/osprey/tests/coverage-thresholds.json",
+    ".vscode/osprey.code-workspace",
     "test_output.txt"
   ]
 }

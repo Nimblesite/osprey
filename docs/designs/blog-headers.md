@@ -2,7 +2,7 @@
 
 The four November 1 posts were absent from the live blog index when checked on November 1, 2026. Existing published articles retain their artwork.
 
-Generated with the built-in imagegen tool. PNG originals and optimized WebP headers live in `website/src/assets/images/blog/`; the original screenshots inside articles remain intact.
+Generated with the built-in imagegen tool. PNG originals and optimized WebP headers live in `src/toolchain/website/src/assets/images/blog/`; the original screenshots inside articles remain intact.
 
 ## Shared prompt [BLOG-HEADERS-PROMPT]
 

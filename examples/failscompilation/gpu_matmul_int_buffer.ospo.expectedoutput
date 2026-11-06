@@ -1,1 +1,0 @@
-5:4: `gpuMatMul` supports only GpuBuffer<float> | GpuBuffer<float32>; got GpuBuffer<int>

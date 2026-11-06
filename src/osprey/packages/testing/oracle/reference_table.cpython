@@ -1,0 +1,13 @@
+"""Builds an oracle's name -> value table from the names it exports.
+
+An expected module is a flat table keyed by the uppercased Rust-style name of the Python
+variable holding each value, and the long tables under `*/oracle/` used to spell every name
+twice (`"GAMMA_X": GAMMA_X`). `table` states each name once, in export order, so a table
+and its `__all__` keep the order the oracle lists
+([PORT-TEST-ORACLE], docs/specs/ecosystem/0043-PythonFlavorPorts.md).
+"""
+
+
+def table(names, namespace):
+    """`{name.upper(): namespace[name]}` for `names`, in that order."""
+    return {name.upper(): namespace[name] for name in names}

@@ -1,0 +1,46 @@
+// The GPU interpretation of `gpt2::Backends::Tensor`: every operation is a
+// kernel, a product or a loader of the GPU surface. Implements [STAGE-BACKEND],
+// [GPU-DEVICE].
+
+namespace gpt2;
+
+import gpt2::Backends::{Tensor, hit, minI}
+
+module Gpu {
+    /// A GPU result with the runtime's failure reason as text.
+    fn answered(result) = match result {
+        Success { value } => Success { value: value }
+        Error { message } => Error { message: toString(message) }
+    }
+
+    /// GPU buffers, and `device` reports which backend executes them. Kernels
+    /// and products run on Metal or OpenCL when `OSPREY_GPU` selects a device.
+    ///
+    /// # Parameters
+    /// - work: the computation to run, whose every `Tensor` operation this
+    ///   handler answers on the GPU.
+    export fn onGpu(work) = {
+        handle static Tensor<GpuBuffer<float32>> {
+            build n f => match gpuIota(n) {
+                Success { value } => answered(gpuMap(value, f))
+                Error { message } => Error { message: toString(message) }
+            }
+            get b i => gpuGet(b, i) ?: toFloat32(0.0)
+            length b => gpuLength(b)
+            zipWith a b f => answered(gpuZipWith(a, b, f))
+            reduce b seed f => answered(gpuFold(b, seed, f))
+            indexOf b x => match gpuIota(gpuLength(b)) {
+                Success { value } => match gpuMap(value, fn(i) => hit(gpuGet(b, i) ?: toFloat32(0.0), x, i, gpuLength(b))) {
+                    Success { value } => answered(gpuFold(value, gpuLength(b), minI))
+                    Error { message } => Error { message: toString(message) }
+                }
+                Error { message } => Error { message: toString(message) }
+            }
+            matMul a b rows inner cols => answered(gpuMatMul(a, b, rows, inner, cols))
+            fromList xs => answered(toGpu(xs))
+            load path name => answered(gpuLoadTensor(path, name))
+            device => gpuDevice()
+        }
+        work()
+    }
+}

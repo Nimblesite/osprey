@@ -1,3 +1,0 @@
-// osprey: flavor=ml
-// [GPU-KERNEL-EXTRACT]: gpuFilter rejects an unhandled Result verdict.
-main () = print (gpuLength (toGpu [1, 2] |> gpuFilter (\v => checkedMul (v, 2))))

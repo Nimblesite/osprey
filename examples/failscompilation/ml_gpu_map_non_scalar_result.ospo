@@ -1,6 +1,0 @@
-// osprey: flavor=ml
-// [GPU-MAP], [GPU-BUFFER-ELEM]: a string-producing kernel is rejected by the
-// codegen scalar backstop when no consumer constrains the buffer.
-main () =
-    out = toGpu [1, 2] |> gpuMap (\v => "${v}")
-    print (listLength [out])

@@ -1,0 +1,499 @@
+// The casting player end to end ([UI-MACHINE], [UI-MACHINE-TEST], [CAST-DESIGN-STATE]): the real
+// machine document, the real adapter and the real @osprey/chromecast port, driven through the
+// framework's resident start/dispatch boundary with host-shaped events, against an in-memory Cast
+// device: a handler for the port's `Wire` effect that reads every frame the sender writes and
+// answers as a Default Media Receiver does; receiver keys follow [CAST-MOBILE-RECEIVER-IDENTITY].
+import ui::Doc
+import ui::Runtime
+import ui::Canvases
+import uitest::Drive
+import uitest::Semantics
+import uitest::Views
+import casting::App
+import chromecast::Protocol
+(** The in-memory device: bytes queued for the sender, the message types it heard, its last read's status, its player, whether it can be reached, the folder a render makes ("" when the sender cannot render) and the content type the last LOAD named. *)
+type Fake =
+    fakeInbox : string
+    fakeSaid : string
+    fakeOut : string
+    fakeRead : int
+    fakePosition : float
+    fakeVolume : float
+    fakeRate : float
+    fakePlaying : string
+    fakeReason : string
+    fakeReachable : bool
+    fakeRender : string
+    fakeLoaded : string
+    fakeClosed : int
+    fakeCloseCode : int
+    fakeStopped : int
+effect Bench
+    rig : Fake => Unit
+    drive : uitest::Driven<casting::Store> => Unit
+    list : string => Unit
+    envelope : string => Unit
+fresh () = Fake(fakeInbox = "", fakeSaid = "", fakeOut = "", fakeRead = 0, fakePosition = 0.0, fakeVolume = 1.0, fakeRate = 1.0, fakePlaying = "IDLE", fakeReason = "", fakeReachable = true, fakeRender = "", fakeLoaded = "", fakeClosed = 0, fakeCloseCode = 0, fakeStopped = 0)
+browse = "Living\\032Room\\032TV._googlecast._tcp SRV 0 0 8009 living-room.local. ;\nLiving\\032Room\\032TV._googlecast._tcp TXT \"id=1\" \"fn=Living Room TV\"\nKitchen._googlecast._tcp SRV 0 0 8009 kitchen.local. ;\nKitchen._googlecast._tcp TXT \"fn=Kitchen\"\n"
+mut fake = fresh ()
+mut envelope = ""
+mut browsed = browse
+mut driven = Drive::idle (Runtime::idle (casting::Link::store (ui::MachineDocs::faulty "")))
+framed (ns, json) = Protocol::frame ("receiver-0", ns, json)
+queued (f, hex) = f(fakeInbox = "${f.fakeInbox}${hex}")
+mediaStatus f = "{\"type\":\"MEDIA_STATUS\",\"requestId\":0,\"status\":[{\"mediaSessionId\":1,\"playerState\":\"${f.fakePlaying}\"${ui::Pick::either (f.fakeReason == "", "", ",\"idleReason\":\"${f.fakeReason}\"")},\"currentTime\":${toString f.fakePosition},\"playbackRate\":${toString f.fakeRate},\"supportedMediaCommands\":15,\"media\":{\"duration\":200.0}}]}"
+receiverStatus f = "{\"type\":\"RECEIVER_STATUS\",\"requestId\":1,\"status\":{\"applications\":[{\"appId\":\"CC1AD845\",\"sessionId\":\"S-1\",\"transportId\":\"web-7\"}],\"volume\":{\"level\":${toString f.fakeVolume},\"muted\":false}}}"
+becomes (f, next) =
+    moved = f(fakePlaying = next)
+    queued (moved, framed ("media", mediaStatus moved))
+said hex = Doc::parse (Protocol::parse (drop hex 8)).payload
+answer (f, message) = match Doc::text (message, "type")
+    "LAUNCH" => queued (f, framed ("receiver", receiverStatus f))
+    "LOAD" => becomes (becomes (f(fakeLoaded = Doc::text (Doc::field (message, "media"), "contentType")), "BUFFERING"), "PLAYING")
+    "PAUSE" => becomes (f, "PAUSED")
+    "PLAY" => becomes (f, "PLAYING")
+    "SEEK" => becomes (f(fakePosition = Doc::decimal (message, "currentTime")), f.fakePlaying)
+    "SET_PLAYBACK_RATE" => becomes (f(fakeRate = Doc::decimal (message, "playbackRate")), f.fakePlaying)
+    "SET_VOLUME" =>
+        turned = f(fakeVolume = Doc::decimal (Doc::field (message, "volume"), "level"))
+        queued (turned, framed ("receiver", receiverStatus turned))
+    "STOP" => becomes (f(fakeReason = "CANCELLED"), "IDLE")
+    "PING" => queued (f, framed ("tp.heartbeat", "{\"type\":\"PONG\"}"))
+    _ => f
+heard (f, hex) =
+    message = said hex
+    answer (f(fakeSaid = "${f.fakeSaid}${Doc::text (message, "type")} "), message)
+onDevice work =
+    handle chromecast::Wire::Wire
+        dial _ _ _ => ui::Pick::either (fake.fakeReachable, 7, 0 - 4)
+        write _ hex =>
+            fake := heard (fake, hex)
+            0
+        read _ count _ =>
+            fake := match length fake.fakeInbox >= count * 2
+                true => fake(fakeOut = take fake.fakeInbox (count * 2), fakeInbox = drop fake.fakeInbox (count * 2), fakeRead = 0)
+                false => fake(fakeOut = "", fakeRead = 1)
+            fake.fakeOut
+        status _ => fake.fakeRead
+        close _ =>
+            fake := fake(fakeClosed = satAdd fake.fakeClosed 1)
+            fake.fakeCloseCode
+        route _ => "192.168.1.20"
+        serve _ _ _ => 5123
+        unserve _ =>
+            fake := fake(fakeStopped = satAdd fake.fakeStopped 1)
+            0
+        render _ => fake.fakeRender
+        unrender _ => 0
+    work ()
+heardTypes () = fake.fakeSaid
+reset () =
+    perform Bench.rig (fresh ())
+    perform Bench.list browse
+    perform Bench.drive (Drive::idle driven.drivenSession)
+unplug () = perform Bench.rig (fake(fakeReachable = false))
+rendering folder = perform Bench.rig (fake(fakeRender = folder))
+finishTrack () = perform Bench.rig (becomes (fake(fakeReason = "FINISHED", fakePosition = 200.0), "IDLE"))
+browsing text = perform Bench.list text
+kept (resident : ui::Resident<casting::Store>) =
+    perform Bench.drive (Drive::moved (driven, resident))
+    perform Bench.envelope resident.residentEnvelope
+hostedIn saved work =
+    handle ui::Slices
+        fetch key => match key == "casting.saved-skin"
+            true => saved
+            false => browsed
+    handle ui::SceneStream
+        shape _ => 0
+    onDevice work
+hosted work = hostedIn "" work
+bench work =
+    handle Bench
+        rig f => fake := f
+        drive d => driven := d
+        list text => browsed := text
+        envelope text => envelope := text
+    Runtime::guarded work
+beganIn saved document =
+    reset ()
+    hostedIn saved (\() => kept (App::begun document))
+began document = beganIn "" document
+started () = began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}"
+// The canvas session: the Sherbet artboard, driven only by pointer events ([UI-MACHINE-CANVAS]).
+drawn () = began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"sherbet\"]}"
+themeOf doc = match listGet (Doc::items (Doc::field (doc, "patches"))) 0
+    Success patch => match Doc::text (Doc::field (patch, "node"), "kind") == "themed"
+        true => Doc::field (Doc::field (patch, "node"), "theme")
+        false => Doc::field (doc, "theme")
+    Error _ => Doc::field (doc, "theme")
+token name = match listGet (filterList (Doc::items (Doc::field (themeOf (Doc::parse envelope), "tokens")), \t => Doc::text (t, "name") == name)) 0
+    Success found => Doc::text (found, "light")
+    Error _ => "missing"
+post event = hosted (\() => kept (Runtime::proceed (driven.drivenSession, event, App::update, App::regions)))
+completedIn (saved, ticket, ok, problem) =
+    hostedIn saved (\() => kept (Runtime::proceed (driven.drivenSession, "{\"kind\":\"completed\",\"ticket\":\"${ticket}\",\"ok\":${toString ok},\"error\":\"${problem}\",\"now\":3}", App::update, App::regions)))
+// ---- the appearance the host keeps between runs [CAST-MOBILE-SKIN-PERSISTENCE] ----
+slicesHere () = Doc::items (Doc::field (Doc::parse envelope, "slices"))
+requestsHere () = Doc::items (Doc::field (Doc::parse envelope, "requests"))
+ask ticket = listGet (filterList (requestsHere (), \r => Doc::text (r, "ticket") == ticket)) 0 ?: JsonNull
+askedKind ticket = Doc::text (ask ticket, "kind")
+askedName ticket = Doc::text (ask ticket, "name")
+askedLimit ticket = Doc::number (ask ticket, "limit")
+askedSlice ticket = Doc::text (ask ticket, "slice")
+staged key = Doc::text ((listGet (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) 0 ?: JsonNull), "text")
+hasSlice key = length (filterList (slicesHere (), \s => Doc::text (s, "key") == key)) > 0
+skinNow () = ui::Machines::text (driven.drivenSession.sessionStore.screen.screenMachine, "skin")
+// A Windows launch, whose host names its own browse helper with `--browse` ([CAST-DESIGN-NATIVE]).
+helped () = began "{\"now\":1,\"offset\":0,\"platform\":\"windows\",\"arguments\":[\"--skin\",\"midnight\",\"--browse\",\"C:/Apps/casting/cast-browse.exe\"]}"
+seen () = driven.drivenSeen
+shows label = Drive::shows (driven, label)
+control label = Views::control (seen (), label)
+enabledOf label = (control label).controlEnabled
+selected label = (control label).controlSelected
+requested kind = Views::requested (seen (), kind)
+browser () = match driven.drivenSession.sessionStore.finder
+    ui::Run executable arguments _ _ _ _ => join (listConcat [executable] arguments) " "
+    _ => ""
+// ---- the canvas's accessibility tree [UI-MACHINE-A11Y] ----
+elements () = (seen ()).renderedAccess
+labels () = Semantics::labels (elements ())
+element label = Semantics::element (elements (), label)
+valueOf label = Semantics::value (elements (), label)
+offers label = Drive::offers (elements (), label)
+letters text = Drive::letters (driven, text)
+press label = post (Drive::press (driven, label))
+choose (label, key) = post (Drive::choose (driven, label, key))
+pointer (x, y, down) = post (Drive::pointer (driven, x, y, down))
+tapAt (label, fraction) =
+    p = Semantics::point (element label, fraction)
+    pointer (p.pointX, p.pointY, true)
+    pointer (p.pointX, p.pointY, false)
+tap label = tapAt (label, 0.5)
+hover label =
+    p = Semantics::point (element label, 0.5)
+    pointer (p.pointX, p.pointY, false)
+opened path = post (Drive::opened (driven, path))
+frame seconds = post (Drive::frame (driven, seconds))
+discovered () = post (Drive::ran (driven, "discover", 0, ""))
+picked path = post (Drive::chosen (driven, "choose", path))
+test ("a whole cast: find TVs, open a file, play, pause, seek, change volume and speed, stop and replay", \() => bench (\() =>
+    started ()
+    expect (shows "Looking for TVs…", true)
+    expect (shows "Choose an audio file", true)
+    expect (requested "run", true)
+    expect (requested "animate", true)
+    discovered ()
+    expect (shows "Receiver", true)
+    expect (selected "Receiver", "living-room.local:8009")
+    expect (length (control "Receiver").controlChoices, 2)
+    expect (enabledOf "Play", false)
+    press "Open file…"
+    expect (requested "choose-file", true)
+    picked "/music/Sunroom.mp3"
+    expect (shows "Sunroom", true)
+    expect (enabledOf "Play", true)
+    opened "/music/Bullshit Jobs - Track 003.mp3"
+    expect (shows "Bullshit Jobs - Track 003", true)
+    expect (enabledOf "Play", true)
+    opened "/music/Sunroom.mp3"
+    expect (shows "Sunroom", true)
+    press "Play"
+    expect (heardTypes (), "CONNECT LAUNCH ")
+    expect (shows "Connecting to Living Room TV…", true)
+    frame 0.2
+    expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD ")
+    expect (fake.fakeLoaded, "audio/mpeg")
+    frame 0.2
+    expect (shows "Playing on Living Room TV", true)
+    expect (shows "Pause", true)
+    expect (shows "03:20", true)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"skin:poolside\",\"now\":2}"
+    expect (selected "Skin", "poolside")
+    expect (enabledOf "Back 10 seconds", true)
+    press "Pause"
+    frame 0.2
+    expect (shows "Paused", true)
+    expect (shows "Resume", true)
+    press "Resume"
+    frame 0.2
+    expect (shows "Playing on Living Room TV", true)
+    press "Forward 10 seconds"
+    frame 0.2
+    expect (shows "00:10", true)
+    choose ("Volume 100%", "0.5")
+    frame 0.2
+    expect (shows "Volume 50%", true)
+    choose ("Speed", "1.5")
+    frame 0.2
+    expect (selected "Speed", "1.5")
+    expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SEEK SET_VOLUME SET_PLAYBACK_RATE ")
+    press "Stop"
+    frame 0.2
+    expect (shows "Finished", true)
+    expect (shows "Play", true)
+    press "Play"
+    frame 0.2
+    frame 0.2
+    expect (shows "Playing on Living Room TV", true)
+    finishTrack ()
+    frame 0.2
+    expect (shows "Finished", true)))
+test ("a Windows launch finds the TVs with the helper `--browse` names, a Mac launch with dns-sd", \() => bench (\() =>
+    helped ()
+    expect (browser (), "C:/Apps/casting/cast-browse.exe")
+    expect (shows "Looking for TVs…", true)
+    expect (requested "run", true)
+    discovered ()
+    expect (selected "Receiver", "living-room.local:8009")
+    expect (length (control "Receiver").controlChoices, 2)
+    started ()
+    expect (browser (), "/usr/bin/perl -e alarm 3; exec @ARGV /usr/bin/dns-sd -Z _googlecast._tcp local")))
+skinContrast key = match readFile "src/osprey/examples/casting/player.machine.json"
+    Error problem => expect (problem, "readable casting machine")
+    Success source =>
+        base = App::loaded source
+        machine = ui::Machines::feed (base.screen.screenMachine, [ui::Fact(factName = "skin", factValue = ui::Values::text key)])
+        theme = ui::Templates::theme machine
+        match ui::Themes::named (theme, "accent")
+            Error _ => expect (key + " accent", "present")
+            Success fill => match ui::Themes::named (theme, "onAccent")
+                Error _ => expect (key + " onAccent", "present")
+                Success ink =>
+                    expect (ui::Contrast::ratio (fill.tokenLight, ink.tokenLight) >= 4.5, true)
+                    expect (ui::Contrast::ratio (fill.tokenDark, ink.tokenDark) >= 4.5, true)
+test ("skins change the palette, never the controls", \() => bench (\() =>
+    started ()
+    expect (token "background", "#10192B")
+    expect (token "accent", "#A8EED4")
+    discovered ()
+    choose ("Skin", "midnight")
+    expect (selected "Skin", "midnight")
+    expect (shows "Open file…", true)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"skin:poolside\",\"now\":2}"
+    expect (selected "Skin", "poolside")
+    post "{\"kind\":\"lifecycle\",\"phase\":\"skin:unknown\",\"now\":3}"
+    expect (selected "Skin", "poolside")
+    skinContrast "sherbet"
+    skinContrast "midnight"
+    skinContrast "poolside"
+    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    expect (token "background", "#FFF8EF")
+    drawn ()
+    expect (token "background", "#FFF8EF")
+    expect (offers "Appearance: Sherbet Signal", true)
+    tap "Appearance: Sherbet Signal"
+    expect (labels (), "Sherbet Signal|Midnight Mint|Poolside Pop|Receiver: none|Play|Open file…")
+    tap "Midnight Mint"
+    expect (token "background", "#10192B")))
+test ("the appearance the host keeps is read, restored, repaired and never overwritten by a stale read", \() => bench (\() =>
+    beganIn "" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    expect (askedKind "appearance:read", "store-read")
+    expect (askedName "appearance:read", "casting-appearance.txt")
+    expect (askedLimit "appearance:read", 128)
+    expect (askedSlice "appearance:read", "casting.saved-skin")
+    completedIn ("", "appearance:read", false, "no such store entry casting-appearance.txt")
+    expect (staged "casting.selected-skin", "sherbet")
+    expect (hasSlice "casting.appearance-warning", false)
+    beganIn "poolside" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("poolside", "appearance:read", true, "")
+    expect (skinNow (), "poolside")
+    expect (askedKind "appearance:write", "store-write")
+    expect (askedName "appearance:write", "casting-appearance.txt")
+    expect (askedSlice "appearance:write", "casting.selected-skin")
+    expect (staged "casting.selected-skin", "poolside")
+    expect (hasSlice "casting.appearance-warning", false)
+    completedIn ("poolside", "appearance:write", false, "permission denied")
+    expect (skinNow (), "poolside")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (staged "casting.appearance-error", "permission denied")
+    expect (askedKind "appearance:write", "")
+    beganIn "neon" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("neon", "appearance:read", true, "")
+    expect (skinNow (), "sherbet")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (askedKind "appearance:notice", "host-call")
+    expect (Doc::text (ask "appearance:notice", "namespace"), "ui")
+    expect (Doc::text (ask "appearance:notice", "operation"), "notice")
+    expect (Doc::text (Doc::field (ask "appearance:notice", "arguments"), "title"), "Appearance restored")
+    expect (staged "casting.selected-skin", "sherbet")
+    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("", "appearance:read", true, "")
+    expect (skinNow (), "sherbet")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (staged "casting.selected-skin", "sherbet")
+    beganIn "poolside" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    completedIn ("poolside", "appearance:read", false, "store entry casting-appearance.txt exceeds limit 128")
+    expect (skinNow (), "sherbet")
+    expect (hasSlice "casting.appearance-warning", true)
+    expect (hasSlice "casting.appearance-error", true)
+    expect (hasSlice "casting.selected-skin", false)
+    expect (askedKind "appearance:write", "")
+    beganIn "poolside" "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[\"--skin\",\"midnight\"]}"
+    expect (askedKind "appearance:read", "")
+    expect (staged "casting.selected-skin", "midnight")
+    completedIn ("poolside", "appearance:read", true, "")
+    expect (skinNow (), "midnight")
+    expect (hasSlice "casting.appearance-warning", false)
+    began "{\"now\":1,\"offset\":0,\"platform\":\"macos\",\"arguments\":[]}"
+    tap "Appearance: Sherbet Signal"
+    tap "Sherbet Signal"
+    expect (staged "casting.selected-skin", "sherbet")
+    completedIn ("poolside", "appearance:read", true, "")
+    expect (skinNow (), "sherbet")
+    expect (askedKind "appearance:write", "")))
+test ("no TVs found offers another search, and an unreachable TV shows why", \() => bench (\() =>
+    started ()
+    browsing ""
+    discovered ()
+    expect (shows "No TVs found", true)
+    browsing browse
+    press "Search again"
+    expect (shows "Looking for TVs…", true)
+    post "{\"kind\":\"completed\",\"ticket\":\"discover\",\"ok\":false,\"error\":\"browse ran past its deadline\",\"now\":2}"
+    expect (shows "browse ran past its deadline", true)
+    expect (shows "Looking for TVs…", false)
+    expect (shows "No TVs found", true)
+    press "Search again"
+    expect (shows "Looking for TVs…", true)
+    discovered ()
+    picked "/music/Sunroom.mp3"
+    unplug ()
+    press "Play"
+    expect (shows "living-room.local:8009: connection refused or timed out", true)
+    expect (shows "Play", true)
+    expect (length (filterList ((seen ()).renderedControls, \c => c.controlTone == "danger")), 1)))
+test ("the canvas: every control is reached by its accessible label, through pointer events alone", \() => bench (\() =>
+    drawn ()
+    expect (token "background", "#FFF8EF")
+    expect (letters "Looking for TVs…", true)
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: none|Play|Open file…")
+    discovered ()
+    expect (letters "Living Room TV", true)
+    expect (letters "Choose an audio file", true)
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: Living Room TV|Play|Open file…")
+    tap "Play"
+    expect (requested "choose-file", false)
+    expect (heardTypes (), "")
+    hover "Open file…"
+    expect (requested "choose-file", false)
+    tap "Open file…"
+    expect (requested "choose-file", true)
+    picked "/music/Sunroom.mp3"
+    expect (letters "Sunroom", true)
+    expect (letters "Ready", true)
+    rendering "/tmp/osprey-cast.test"
+    tap "Play"
+    expect (heardTypes (), "CONNECT LAUNCH ")
+    expect (letters "Connecting…", true)
+    frame 0.2
+    frame 0.2
+    expect (fake.fakeLoaded, "application/x-mpegURL")
+    expect (letters "Playing", true)
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
+    expect (valueOf "Volume", 1.0)
+    expect ((element "Volume").accessMin, 0.0)
+    expect ((element "Volume").accessMax, 1.0)
+    expect ((element "Position").accessMax, 200.0)
+    expect (Semantics::role (elements (), "Position"), "slider")
+    expect (Semantics::role (elements (), "Pause"), "button")
+    expect ((element "Volume").accessWidth, 302.0)
+    beforeResize = heardTypes ()
+    post (Drive::viewed (driven, 868.0, 1670.0))
+    expect ((element "Open file…").accessTop, 1564.0)
+    expect ((element "Volume").accessTop, 1582.0)
+    post (Drive::viewed (driven, 1080.0, 1800.0))
+    expect ((element "Open file…").accessLeft, 763.0)
+    expect ((element "Volume").accessTop, 1712.0)
+    expect (heardTypes (), beforeResize)
+    tap "Pause"
+    frame 0.2
+    expect (letters "Paused", true)
+    expect (offers "Resume", true)
+    tap "Resume"
+    frame 0.2
+    expect (letters "Playing", true)
+    tapAt ("Volume", 0.5)
+    frame 0.2
+    expect (valueOf "Volume", 0.5)
+    tapAt ("Position", 0.25)
+    frame 0.2
+    expect (letters "00:50", true)
+    expect (valueOf "Position", 50.0)
+    tap "Speed: 1×"
+    expect (labels (), "0.75×|1×|1.25×|1.5×|2×|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1×|Pause|Stop|Open file…|Position|Volume")
+    tap "1.5×"
+    frame 0.2
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (letters "1.5×", true)
+    tap "Receiver: Living Room TV"
+    expect (labels (), "Living Room TV|Kitchen|Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (letters "✓", true)
+    pointer (10.0, 10.0, true)
+    pointer (10.0, 10.0, false)
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: Living Room TV|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    tap "Receiver: Living Room TV"
+    tap "Kitchen"
+    expect (letters "Kitchen", true)
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: Kitchen|Speed: 1.5×|Pause|Stop|Open file…|Position|Volume")
+    expect (heardTypes (), "CONNECT LAUNCH CONNECT LOAD PAUSE PLAY SET_VOLUME SEEK SET_PLAYBACK_RATE ")
+    tap "Stop"
+    frame 0.2
+    expect (letters "Finished", true)
+    expect (labels (), "Appearance: Sherbet Signal|Receiver: Kitchen|Play|Open file…")
+    unplug ()
+    tap "Play"
+    expect (letters "kitchen.local:8009: connection refused or t…", true)
+    opened "/music/A very long name that will not fit on the title line at all.mp3"
+    expect (letters "A very long name that will no…", true)))
+test ("the player's accessibility tree reads clearly to an agent while it searches, once it has found none and once it has found some, and the artboard letters which", \() => bench (\() =>
+    drawn ()
+    expect (Semantics::unclear (elements ()), "")
+    expect (offers "Receiver: none", true)
+    expect (offers "Open file…", true)
+    expect (letters "Looking for TVs…", true)
+    expect (letters "No TVs found", false)
+    post "{\"kind\":\"completed\",\"ticket\":\"discover\",\"ok\":false,\"error\":\"the browse failed\",\"now\":2}"
+    expect (letters "Looking for TVs…", false)
+    expect (letters "No TVs found", true)
+    expect (Semantics::unclear (elements ()), "")
+    drawn ()
+    browsing ""
+    discovered ()
+    expect (letters "Looking for TVs…", false)
+    expect (letters "No TVs found", true)
+    drawn ()
+    browsing browse
+    discovered ()
+    expect (letters "Looking for TVs…", false)
+    expect (letters "No TVs found", false)
+    expect (offers "Receiver: Living Room TV", true)
+    expect (Semantics::unclear (elements ()), "")))
+// [CAST-MOBILE-DELIVERY] A native shell can be closed during launch or playback.
+test ("closing the native shell releases its connection and media server exactly once", \() => bench (\() =>
+    started ()
+    discovered ()
+    picked "/music/Sunroom.mp3"
+    press "Play"
+    expect (fake.fakeClosed, 0)
+    expect (fake.fakeStopped, 0)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":3}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":4}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+    started ()
+    discovered ()
+    picked "/music/Sunroom.mp3"
+    press "Play"
+    frame 0.2
+    frame 0.2
+    expect (shows "Playing on Living Room TV", true)
+    perform Bench.rig (fake(fakeCloseCode = 0 - 1))
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":5}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)
+    expect (shows "Cannot close cast services (-1)", true)
+    post "{\"kind\":\"lifecycle\",\"phase\":\"closed\",\"now\":6}"
+    expect (fake.fakeClosed, 1)
+    expect (fake.fakeStopped, 1)))

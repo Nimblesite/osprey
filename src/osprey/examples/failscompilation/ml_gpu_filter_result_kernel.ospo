@@ -1,0 +1,6 @@
+// osprey: flavor=ml
+// [GPU-KERNEL-EXTRACT]: gpuFilter rejects an unhandled Result verdict.
+main () =
+    match toGpu [1, 2]
+        Success buffer => gpuFilter (buffer, \v => checkedMul (v, 2))
+        Error message => Error (message = message)

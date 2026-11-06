@@ -1,0 +1,251 @@
+package org.ospreylang.casting;
+
+import android.app.AlertDialog;
+import android.app.NativeActivity;
+import android.content.Intent;
+import android.graphics.Insets;
+import android.net.Uri;
+import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
+import android.view.View;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
+import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.TimeUnit;
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
+// [CAST-MOBILE-GPUI] No interface lives here: src/toolchain/hosts/gpui draws everything. This activity only
+// answers what the platform alone can do, one JSON request in and one JSON answer out, on the
+// host's background thread: browsing for receivers and picking a document.
+public final class CastingActivity extends NativeActivity {
+    private static final int PICK_DOCUMENT = 1;
+    private static final int LOCAL_NETWORK = 2;
+    private static final long BROWSE_SECONDS = 10;
+    private static final long PICKER_SECONDS = 600;
+    private static final long NOTICE_MS = 600000;
+    private static final int NOTICE_TITLE_CHARS = 200;
+    private static final int NOTICE_MESSAGE_CHARS = 2000;
+    private static final int FIXTURE_LIMIT = 65536;
+
+    private final Handler main = new Handler(Looper.getMainLooper());
+    private CompletableFuture<Uri> picking;
+    private CompletableFuture<Boolean> permitting;
+    private CompletableFuture<Boolean> noticing;
+    private AlertDialog noticeDialog;
+
+    // Android draws edge to edge: margins on the content view move NativeActivity's content rect,
+    // which the GPUI backend reports as the safe area, so the shared layout clears the system bars.
+    @Override protected void onCreate(Bundle saved) {
+        super.onCreate(saved);
+        // The player's backdrop is light, so the status bar's icons must be dark to be read.
+        getWindow().getInsetsController().setSystemBarsAppearance(WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS);
+        View content = findViewById(android.R.id.content);
+        content.setOnApplyWindowInsetsListener((view, insets) -> {
+            Insets bars = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom);
+            return insets;
+        });
+    }
+
+    /** Called by the GPUI host, never on the main thread. Every failure is a typed answer. */
+    public String answer(String request) {
+        try {
+            JSONObject members = new JSONObject(request);
+            switch (members.getString("kind")) {
+                case "run": return browse(members).toString();
+                case "choose-file": return choose().toString();
+                case "host-call": return hostCall(members).toString();
+                default: return failed("unsupported capability " + members.getString("kind"));
+            }
+        } catch (Exception error) {
+            return failed(String.valueOf(error.getMessage()));
+        }
+    }
+
+    private JSONObject browse(JSONObject members) throws Exception {
+        if (!"discover".equals(members.optString("ticket")) || !"cast-browse".equals(members.optString("slice"))) {
+            throw new IllegalArgumentException("Mobile casting does not execute processes");
+        }
+        if (!localNetworkAllowed()) throw new SecurityException(getString(R.string.local_network_denied));
+        String fixture = getIntent().getStringExtra("testReceiver");
+        if ((getApplicationInfo().flags & android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0 && fixture != null) {
+            byte[] decoded = Base64.getDecoder().decode(fixture);
+            if (decoded.length > FIXTURE_LIMIT) throw new IllegalArgumentException("Receiver fixture exceeds the browse limit");
+            return browsed(new String(decoded, StandardCharsets.UTF_8));
+        }
+        CompletableFuture<String> found = new CompletableFuture<>();
+        main.post(() -> new CastDiscovery(this).start(found::complete, found::completeExceptionally));
+        return browsed(found.get(BROWSE_SECONDS, TimeUnit.SECONDS));
+    }
+
+    private static JSONObject browsed(String transcript) throws JSONException {
+        JSONObject slice = new JSONObject().put("key", "cast-browse").put("text", transcript);
+        return new JSONObject().put("ok", true).put("result", new JSONObject()).put("slices", new JSONArray().put(slice));
+    }
+
+    private boolean localNetworkAllowed() throws Exception {
+        String permission = android.Manifest.permission.ACCESS_LOCAL_NETWORK;
+        if (android.os.Build.VERSION.SDK_INT < 37 || checkSelfPermission(permission) == android.content.pm.PackageManager.PERMISSION_GRANTED) return true;
+        CompletableFuture<Boolean> asked = new CompletableFuture<>();
+        main.post(() -> {
+            permitting = asked;
+            requestPermissions(new String[]{permission}, LOCAL_NETWORK);
+        });
+        return asked.get(PICKER_SECONDS, TimeUnit.SECONDS);
+    }
+
+    @Override public void onRequestPermissionsResult(int code, String[] permissions, int[] results) {
+        super.onRequestPermissionsResult(code, permissions, results);
+        if (code == LOCAL_NETWORK && permitting != null) {
+            permitting.complete(results.length > 0 && results[0] == android.content.pm.PackageManager.PERMISSION_GRANTED);
+            permitting = null;
+        }
+    }
+
+    // [CAST-MOBILE-APPEARANCE-RECOVERY] The one host-call Android answers: a native
+    // notice in the `ui` namespace. Every other namespace, operation or malformed
+    // member is a typed refusal, never a guessed default.
+    private JSONObject hostCall(JSONObject members) throws Exception {
+        String space = text(members, "namespace");
+        if (!"ui".equals(space)) throw new IllegalArgumentException("unsupported host-call namespace " + space);
+        String operation = text(members, "operation");
+        if (!"notice".equals(operation)) throw new IllegalArgumentException("unsupported host-call operation " + operation);
+        Object raw = members.opt("arguments");
+        if (!(raw instanceof JSONObject)) throw new IllegalArgumentException("The request's arguments is not an object");
+        JSONObject arguments = (JSONObject) raw;
+        String title = noticeText(arguments, "title", NOTICE_TITLE_CHARS);
+        String message = noticeText(arguments, "message", NOTICE_MESSAGE_CHARS);
+        if (whole(members, "limit") < 2) throw new IllegalArgumentException("The notice limit must be at least 2");
+        if (!text(members, "slice").isEmpty()) throw new IllegalArgumentException("The notice writes no slice");
+        long timeout = whole(members, "timeout");
+        if (timeout < 1 || timeout > NOTICE_MS) {
+            throw new IllegalArgumentException("The requested " + timeout + " ms wait is outside 1..." + NOTICE_MS + " ms");
+        }
+        notice(title, message, timeout);
+        return new JSONObject().put("ok", true).put("result", new JSONObject()).put("slices", new JSONArray());
+    }
+
+    private static String noticeText(JSONObject arguments, String name, int limit) {
+        String value = text(arguments, name);
+        if (value.isEmpty() || value.codePointCount(0, value.length()) > limit) {
+            throw new IllegalArgumentException("The notice " + name + " must be 1..." + limit + " characters");
+        }
+        return value;
+    }
+
+    private static String text(JSONObject members, String name) {
+        Object value = members.opt(name);
+        if (!(value instanceof String)) throw new IllegalArgumentException("The request's " + name + " is not text");
+        return (String) value;
+    }
+
+    private static long whole(JSONObject members, String name) {
+        Object value = members.opt(name);
+        if (!(value instanceof Number)) throw new IllegalArgumentException("The request's " + name + " is not a whole number");
+        double number = ((Number) value).doubleValue();
+        if (!Double.isFinite(number) || number != Math.rint(number) || number < 0 || number >= 9e15) {
+            throw new IllegalArgumentException("The request's " + name + " is not a whole number");
+        }
+        return (long) number;
+    }
+
+    private void notice(String title, String message, long timeout) throws Exception {
+        CompletableFuture<Boolean> shown = new CompletableFuture<>();
+        main.post(() -> presentNotice(title, message, shown));
+        try {
+            shown.get(timeout, TimeUnit.MILLISECONDS);
+        } catch (java.util.concurrent.TimeoutException timedOut) {
+            throw new IllegalStateException("Timed out after " + timeout + " ms");
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        } finally {
+            cancelNotice(shown);
+        }
+    }
+
+    private void presentNotice(String title, String message, CompletableFuture<Boolean> shown) {
+        try {
+            if (noticing != null) throw new IllegalStateException("A notice is already open");
+            noticing = shown;
+            noticeDialog = new AlertDialog.Builder(this).setTitle(title).setMessage(message)
+                .setPositiveButton("OK", (ignored, which) -> completeNotice(shown)).create();
+            noticeDialog.setOnDismissListener(ignored -> completeNotice(shown));
+            noticeDialog.show();
+        } catch (Exception error) {
+            shown.completeExceptionally(error);
+            clearNotice(shown);
+        }
+    }
+
+    private void completeNotice(CompletableFuture<Boolean> shown) {
+        if (noticing != shown) return;
+        clearNotice(shown);
+        shown.complete(true);
+    }
+
+    private void clearNotice(CompletableFuture<Boolean> shown) {
+        if (noticing != shown) return;
+        AlertDialog dialog = noticeDialog;
+        noticing = null;
+        noticeDialog = null;
+        if (dialog != null) dialog.dismiss();
+    }
+
+    private void cancelNotice(CompletableFuture<Boolean> shown) {
+        shown.completeExceptionally(new IllegalStateException("Cancelled"));
+        main.post(() -> clearNotice(shown));
+    }
+
+    @Override protected void onDestroy() {
+        if (noticing != null) {
+            CompletableFuture<Boolean> active = noticing;
+            active.completeExceptionally(new IllegalStateException("The activity closed"));
+            clearNotice(active);
+        }
+        super.onDestroy();
+    }
+
+    private JSONObject choose() throws Exception {
+        CompletableFuture<Uri> chosen = new CompletableFuture<>();
+        main.post(() -> {
+            if (picking != null) {
+                chosen.completeExceptionally(new IllegalStateException("A file picker is already open"));
+                return;
+            }
+            picking = chosen;
+            startActivityForResult(new Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("audio/mpeg"), PICK_DOCUMENT);
+        });
+        Uri uri = chosen.get(PICKER_SECONDS, TimeUnit.SECONDS);
+        JSONObject result = new JSONObject();
+        if (uri == null) {
+            result.put("cancelled", true).put("path", "");
+        } else {
+            File file = MediaDocuments.importAudio(this, uri);
+            result.put("cancelled", false).put("path", file.getAbsolutePath());
+        }
+        return new JSONObject().put("ok", true).put("result", result).put("slices", new JSONArray());
+    }
+
+    @Override protected void onActivityResult(int code, int result, Intent data) {
+        super.onActivityResult(code, result, data);
+        if (code == PICK_DOCUMENT && picking != null) {
+            picking.complete(result == RESULT_OK && data != null ? data.getData() : null);
+            picking = null;
+        }
+    }
+
+    private static String failed(String problem) {
+        try {
+            return new JSONObject().put("ok", false).put("error", problem).toString();
+        } catch (JSONException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
+}

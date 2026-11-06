@@ -1,0 +1,14 @@
+// osprey: flavor=ml
+// [GPU-KERNEL-ELEM-TYPING]: one definition gets one overload in this flavor too.
+plus (a, b) = a + b
+
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    ints = match toGpu [1, 2, 3]
+        Success value => gpuFold (value, 0, plus)
+        Error message => Error(message = message)
+    floats = match toGpu [1.5, 2.5]
+        Success value => gpuFold (value, 0.0, plus)
+        Error message => Error(message = message)
+    print "${ints} ${floats}"

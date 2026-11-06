@@ -1,0 +1,102 @@
+# Deslop duplication gate
+# Single source of truth for this repo's code-duplication budget. Committed,
+# PR-reviewed, ratcheted DOWN only — never up without a written justification.
+# The REQUIRED `ci` job installs the pinned Deslop CLI (scripts/ci/install-deslop.sh) and exits non-zero —
+# FAILING THE BUILD — when measured duplication exceeds the ceiling below. Deslop parses
+# Rust/C#/Python/Dart, so this gates the Rust workspace (the C runtime is out
+# of scope here).
+# Docs: https://deslop.live/docs/for-ai/
+# Local `make ci` and hosted CI use the same installer and fail when measured
+# duplication exceeds the ceiling below (deslop exits 3).
+[threshold]
+# Run `make _deslop` before pushing so the locally measured verdict matches CI.
+# The current ceiling and comparable measurements are recorded below.
+#
+# The drop came from a round of real dedup: `analysis.rs`'s outline and hover
+# statement walkers became ONE walker parameterised by whether it descends into
+# bodies; `effect_rows.rs`'s four "receiver becomes the first argument"
+# desugarings share `receiver_first`; the web compiler's `/api/compile` and
+# `/api/run` handlers (and both directions of its LSP bridge trace) collapsed
+# onto one endpoint factory; the two wasm smoke scripts share their argv/
+# validation/golden-comparison support module; the site's Prism grammar is one
+# module the 11ty build and the browser studio both import; `ty.rs`'s nullary
+# and applied type constructors are two macro-generated families; the ML
+# parser's two group-scanning lookaheads share one; iterator codegen's
+# list/range loop prologues and predicate branches are helpers; and
+# `type_is_resolved` now delegates to `has_type_var` instead of restating the
+# traversal.
+#
+# NEXT: the remaining mass is inline `#[cfg(test)] mod tests` — repeated
+# `assert_eq!(doc.get(..).and_then(..), Some(..))` rows in the profiler
+# exporters, and per-case fixture scaffolding in the parser/lowering suites.
+# Rust inline test modules are still counted because they share product paths.
+#
+# The 5% was reached by a round of genuine dedup: the three AST expression
+# visitors
+# (osprey-codegen `freevars`/`effects`, osprey-lsp `analysis`) now share one
+# `osprey_ast::walk_each` collection-walker instead of each carrying its own
+# `walk_all`/`walk_named`/`walk_fields` trio; `wire.rs`'s request-field
+# accessors share a `nested` two-level lookup; and `default/lower.rs` folds its
+# "collect children of a kind, lower each" sites into one `map_of_kind`. The
+# committed threshold below remains the hard cap. Worst remaining
+# offenders are the `builtin_docs_*` documentation TABLES (repeated data rows,
+# not logic — see the [category=data] note deslop prints) and structural-only
+# CST-walk shapes that don't factor without obscuring intent.
+# 2026-10-16: latest Deslop 0.38.0 measures 3460/114390 LOC (3.0247%).
+# The same version measured main at 3460/114342 LOC (3.0260%).
+# 2026-10-23: capped at 3%. The staged-signal forwarder pass reuses
+# osprey_ast's function_definitions and the signal callee helper instead of
+# restating them.
+# 2026-11-04: Deslop 0.38.0 measures 6816/229147 LOC (2.9745%).
+# C is unsupported by this metric; the separate manual runtime review removes
+# duplicated lifecycle code without merging independent numeric oracles.
+# 2026-11-05: shared span scanning and statement-position dispatch.
+# Deslop 0.38.0 measures 6988/235951 LOC (2.9616%).
+max_duplication_percent = 2.962
+
+[defaults]
+exclude = [
+  # Book examples are outside the duplication calculation (maintainer instruction).
+  "docs/book/**",
+  # Test code, in every layout the repo uses. The gate scopes to hand-written
+  # PRODUCT code; test suites intentionally repeat setup/fixture scaffolding
+  # (that repetition is what keeps each test independently readable), so
+  # deduping them trades clarity for a metric. Covers Rust `src/osprey/tests/`, the VS Code
+  # extension's `test/suite/` (DAP harness + e2e), and any `*.test.ts`.
+  "**/tests/**",
+  "**/test/**",
+  "**/*.test.ts",
+  # Vendored, generated tree-sitter grammar bindings — not hand-written.
+  "src/toolchain/tree-sitter-osprey/**",
+  # Cross-language benchmark baselines: each case is a standalone single-file
+  # program compiled in isolation by src/toolchain/benchmarks/run.sh (no shared crate exists
+  # to factor into), so the identical scaffolding across cases is intrinsic to
+  # the benchmark design, not a refactorable product-code clone.
+  "src/toolchain/benchmarks/**",
+  # One-off website build/generation tooling (e.g. add-ml-twins.py, which emits
+  # the ML twin of each Default snippet for the docs). Same category as the
+  # benchmark baselines above: standalone generator scripts, not the shipped
+  # compiler product code the gate exists to guard. Their per-case scaffolding
+  # is intrinsic to a code generator, not a refactorable product clone.
+  "src/toolchain/website/scripts/**",
+  # Vendored, minified third-party JS (mermaid + katex ESM chunks) copied in by
+  # `npm run build`. This dir is gitignored build output, NOT hand-written
+  # product code — but deslop does NOT read .gitignore (only these explicit
+  # patterns are honored), so without this line the minified chunk-*.mjs /
+  # *Diagram-*.mjs bundles dominate the report as near-100% self-duplication and
+  # blow past the ceiling. They duplicate by design and we don't own them.
+  "src/toolchain/website/src/assets/vendor/**",
+  # Built-in documentation DATA tables: `builtin_doc!(name, description,
+  # [params], example)` rows — one per builtin — fill these files. deslop
+  # counts them as Type-1 clones because every row is the same macro shape, but
+  # the repetition is DATA enumeration, not duplicated logic: each row is unique
+  # doc content in an identical container, and the macro is already the DRY
+  # mechanism — there is nothing left to factor. This gate guards hand-written
+  # logic, so scope the data tables out, the same call already made for the
+  # benchmark baselines and generator scripts above.
+  "**/builtin_docs_sys.rs",
+  "**/builtin_docs_lang.rs",
+  # These are the same previously exempt rows, split out of builtin_docs_lang.rs.
+  "**/builtin_docs_core.rs",
+  "**/builtin_docs_gpu.rs",
+]

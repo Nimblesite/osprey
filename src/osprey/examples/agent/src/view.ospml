@@ -1,0 +1,568 @@
+// Implements [UI-COMPONENTS] for Osprey Agent. The layout is the conversation
+// shape of a modern coding agent: conversations in a vibrant sidebar, a centred
+// reading column with work folded into disclosures, a floating composer and an
+// inspector. Everything here is host-neutral nodes, frames and theme tokens, so
+// each host draws the same application with its own controls.
+namespace agentapp
+
+import ui::Doc
+import ui::Frames
+import ui::Lists
+import ui::Pick
+import ui::Symbols
+import ui::Ui
+import agent::Engine
+import agent::Highlight
+import agent::McpClient
+import agent::Transcript
+import agentapp::McpModel
+import agentapp::Model
+
+(** Frame recipes: this application's whole visual language. *)
+module Look
+    (** The width of the reading column. *)
+    export column = 760
+
+    (** A frame with only the given fill. *)
+    export filled fill =
+        style = Frames::plain
+        style(frameFill = fill)
+
+    (** Prose at the reading size. *)
+    export prose =
+        style = Frames::plain
+        style(frameTextSize = 14, frameLineHeight = 22.0, frameGap = 10)
+
+    (** A card: a surface, a hairline and rounded corners, with its padding. *)
+    export card (fill, vertical, horizontal, radius) =
+        style = Frames::inset (vertical, horizontal, vertical, horizontal)
+        style(frameFill = fill, frameLine = "line", frameRadius = radius, frameGap = 8)
+
+    (** Text at `size` in the `ink` token. *)
+    export sized (size, ink) =
+        style = Frames::plain
+        style(frameTextSize = size, frameInk = ink, frameHug = true)
+
+    (** Monospaced text at `size`. *)
+    export mono (size, ink) =
+        style = Frames::plain
+        style(frameFont = "mono", frameTextSize = size, frameLineHeight = Pick::either (size > 12, 20.0, 18.0), frameInk = ink)
+
+    (** A row of children at `gap` apart, filling its width. *)
+    (** What went wrong, in words, in the colour of danger. *)
+    export trouble words =
+        style = sized (12, "danger")
+        Ui::framed (style(frameHug = false), Ui::label (words, Symbols::name ui::Warning))
+
+    export gapped gap =
+        style = Frames::plain
+        style(frameGap = gap)
+
+(** How long ago, in the fewest words. *)
+module Ago
+    (** `then` read from `now`, both Unix seconds. *)
+    export text (now, then) =
+        seconds = satSub now then
+        minutes = intDiv seconds 60
+        hours = intDiv minutes 60
+        days = intDiv hours 24
+        match seconds < 60
+            true => "now"
+            false => match minutes < 60
+                true => "${minutes}m"
+                false => match hours < 24
+                    true => "${hours}h"
+                    false => "${days}d"
+
+(** Each block of an answer as nodes. *)
+module Blocks
+    // A span's run: `code` and `strong` carry their emphasis to the host.
+    run span = match span.spanKind
+        "code" => Ui::emphasised (span.spanText, "codeInk", "code")
+        "strong" => Ui::emphasised (span.spanText, "", "strong")
+        "em" => Ui::run (span.spanText, "", true)
+        _ => Ui::run (span.spanText, "", false)
+
+    // The ink token a highlight kind draws with; plain inherits the frame's ink.
+    tokenInk kind = match kind
+        "keyword" => "codeKeyword"
+        "string" => "codeString"
+        "comment" => "codeComment"
+        "number" => "codeNumber"
+        "function" => "codeFunction"
+        "type" => "codeType"
+        "builtin" => "codeBuiltin"
+        "meta" => "codeMeta"
+        "inserted" => "codeInserted"
+        "removed" => "codeRemoved"
+        _ => ""
+
+    (** One highlight token as a run, with its ink. *)
+    export tokenRun token = Ui::run (token.tokenText, tokenInk token.tokenKind, false)
+
+    runs spans = mapList (spans, \span => run span)
+
+    paragraph spans = Ui::rich (runs spans, ui::Body)
+
+    heading block =
+        size = match block.blockLevel
+            1 => 20
+            2 => 17
+            _ => 15
+        style = Frames::inset (6, 0, 0, 0)
+        Ui::framed (style(frameTextSize = size, frameLineHeight = toFloat size + 8.0), Ui::rich (runs block.blockSpans, ui::Heading))
+
+    listed (spans, prefix) =
+        style = Frames::inset (0, 0, 0, 6)
+        mark = Frames::plain
+        words = Frames::plain
+        Ui::framed (style(frameGap = 8, frameCross = "start"), Ui::row [Ui::framed (mark(frameHug = true, frameInk = "secondary"), Ui::text prefix), Ui::framed (words(frameGrow = true), paragraph spans)])
+
+    quote block =
+        style = Frames::inset (2, 0, 2, 12)
+        Ui::framed (style(frameLine = "line", frameLineEdge = "left", frameInk = "secondary"), paragraph block.blockSpans)
+
+    code block =
+        head = Ui::framed (Look::sized (11, "secondary"), Ui::text (Pick::either (block.blockLanguage == "", "code", block.blockLanguage)))
+        body = Ui::framed (Look::mono (12, "primary"), Ui::rich (mapList (Highlight::tokens_of (block.blockLanguage, block.blockCode), tokenRun), ui::Body))
+        Ui::framed (Look::card ("codeFill", 12, 14, 10), Ui::column [head, body])
+
+    cell (spans, header) =
+        style = Frames::inset (7, 10, 7, 10)
+        Ui::framed (style(frameGrow = true, frameTextSize = 13, frameLineHeight = 19.0), Ui::rich (runs (mapList (spans, \span => span)), Pick::either (header, ui::Headline, ui::Body)))
+
+    tableRow (cells, header) =
+        style = Frames::plain
+        Ui::framed (style(frameGap = 1, frameFill = Pick::either (header, "raised", ""), frameLine = Pick::either (header, "", "line"), frameLineEdge = "top"), Ui::row (mapList (cells, \one => cell (one, header))))
+
+    table block =
+        style = Look::card ("surface", 0, 0, 10)
+        rows = range (0, length block.blockRows) |> fold [] (\(acc, i) => listAppend acc (tableRow (listGet block.blockRows i ?: [], i == 0)))
+        Ui::framed (style(frameGap = 1), Ui::column rows)
+
+    (** One Markdown block. *)
+    export node block = match block.blockKind
+        "heading" => heading block
+        "bullet" => listed (block.blockSpans, "•")
+        "numbered" => listed (block.blockSpans, "${block.blockLevel}.")
+        "quote" => quote block
+        "code" => code block
+        "table" => table block
+        _ => paragraph block.blockSpans
+
+(** The transcript's items as nodes. *)
+module Items
+    user item =
+        bubble = Look::card ("bubble", 10, 14, 16)
+        outer = Frames::inset (10, 0, 2, 96)
+        Ui::framed (outer(frameCross = "end"), Ui::framed (bubble(frameLine = "", frameHug = true, frameTextSize = 14, frameLineHeight = 21.0), Ui::text item.itemText))
+
+    answer item = Ui::framed (Look::prose, Ui::column (mapList (item.itemBlocks, \block => Blocks::node block)))
+
+    thought (expanded, item) =
+        key = item.itemKey
+        body = Ui::framed (Look::sized (13, "secondary"), Ui::text item.itemText)
+        Ui::framed (Look::sized (13, "secondary"), Ui::disclosure ("Thought", listContains expanded key, ToggleSteps(stepsKey = key), [body]))
+
+    verb tool = match tool
+        "write_file" => "Edit"
+        "read_file" => "Read"
+        "list_files" => "List"
+        "run_command" => "$"
+        _ => tool
+
+    symbol tool = match tool
+        "write_file" => Symbols::name ui::Edit
+        "read_file" => Symbols::name ui::Document
+        "list_files" => Symbols::name ui::Folder
+        _ => Symbols::name ui::Terminal
+
+    status step = match step.stepDone
+        false => Ui::badge ("Running", Symbols::name ui::Clock, ui::Caution)
+        true => match step.stepFailed
+            true => Ui::badge ("Failed", Symbols::name ui::Warning, ui::Danger)
+            false => Ui::badge ("Done", Symbols::name ui::Check, ui::Good)
+
+    // At most this many lines of a tool's output are drawn; the model saw all of it.
+    shownLines () = 28
+
+    shown output =
+        lines = split output "\n" ?: []
+        match length lines > shownLines ()
+            true => join (Lists::slice (lines, 0, shownLines ()), "\n") + "\n… ${length lines - shownLines ()} more lines"
+            false => output
+
+    stepLines item =
+        language = Pick::either (item.stepTool == "read_file", Highlight::language_of_path (item.stepSummary), "")
+        Ui::framed (Look::mono (12, "secondary"), Ui::rich (mapList (Highlight::tokens_of (language, shown (trim item.stepOutput)), Blocks::tokenRun), ui::Body))
+
+    step item =
+        mcp = View::mcpNow ()
+        server = McpModel::serverLabel (mcp, item.stepTool)
+        headInk = Look::mono (12, "primary")
+        title = Ui::framed (headInk(frameHug = true), Ui::text (Pick::either (server == "", "${verb item.stepTool} ${item.stepSummary}", "${server} · ${McpClient::bare_tool (server, item.stepTool)} ${item.stepSummary}")))
+        head = Ui::row [Ui::framed (Look::sized (12, "secondary"), Ui::icon (symbol item.stepTool)), title, ui::Spacer, status item]
+        lines = stepLines item
+        Ui::framed (Look::card ("codeFill", 10, 12, 10), Ui::column (Pick::either (trim item.stepOutput == "", [head], [head, lines])))
+
+    tools (expanded, item) =
+        key = item.itemKey
+        Ui::framed (Look::gapped 8, Ui::disclosure (Transcript::step_title item.itemSteps, listContains expanded key, ToggleSteps(stepsKey = key), mapList (item.itemSteps, \one => step one)))
+
+    (** One transcript item. *)
+    export node (expanded, item) = match item.itemKind
+        "user" => user item
+        "thought" => thought (expanded, item)
+        "tools" => tools (expanded, item)
+        _ => answer item
+
+(** The regions of the window. *)
+module View
+    chatsNow () = (perform Signal<Chats>.read ()).chatList
+
+    panelNow () = perform Signal<Panel>.read ()
+
+    settingsNow () = perform Signal<Settings>.read ()
+
+    export mcpNow () = (perform Signal<McpSignal>.read ()).signalState
+
+    draftNow () = (perform Signal<Draft>.read ()).draftText
+
+    activeChat () =
+        panel = panelNow ()
+        chats = chatsNow ()
+        Lists::find (chats, \chat => chat.chatId == panel.panelActive) ?: (listGet chats 0 ?: Model::blank ("c0", "", "", "", 0))
+
+    folderName path =
+        parts = split path "/" ?: []
+        last = listGet parts (length parts - 1) ?: path
+        Pick::either (last == "", path, last)
+
+    (** The window: the sidebar beside the conversation and, when open, the inspector. *)
+    export root () =
+        panel = panelNow ()
+        settings = settingsNow ()
+        base1 = Look::filled "canvas"
+        base2 = Frames::plain
+        conversation = Pick::either (settings.settingsOpen, Ui::slot "settings", Ui::framed (base1(frameGrow = true), Ui::column [Ui::slot "header", Ui::framed (base2(frameGrow = true), Ui::slot "transcript"), Ui::slot "composer"]))
+        detail = match panel.panelOpen
+            true => Ui::boundedAside (conversation, ui::Trailing, Ui::slot "inspector", panel.panelWidth, 220, 420, 480, ResizePanel)
+            false => conversation
+        Ui::split [Ui::slot "sidebar", detail]
+
+    chatRow chat =
+        busy = Model::busy chat
+        note = Pick::either (busy, "Working…", Pick::either (chat.chatStage == "failed", "Stopped by an error", Engine::model_label chat.chatModel))
+        base3 = Frames::plain
+        words = Ui::column [Ui::framed (base3(frameHug = true, frameTextSize = 13), Ui::text chat.chatTitle), Ui::framed (Look::sized (11, Pick::either (busy, "accent", "secondary")), Ui::text note)]
+        base4 = Look::gapped 2
+        Ui::entry (chat.chatId, Pick::either (busy, Symbols::name ui::Clock, Symbols::name ui::Sparkle), folderName chat.chatFolder, Ui::framed (base4(frameTop = 3, frameBottom = 3), words))
+
+    (** The conversations, grouped by project, under the actions that start one. *)
+    export sidebar () =
+        panel = panelNow ()
+        settings = settingsNow ()
+        quiet = Frames::inset (8, 10, 4, 10)
+        actions = Ui::framed (quiet(frameQuietControls = true, frameGap = 2, frameTop = 44), Ui::column [Ui::button ("New chat", Symbols::name ui::Edit, NewChat)])
+        foot = Frames::inset (10, 16, 14, 16)
+        chat = activeChat ()
+        missing = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+        symbol = Pick::either (missing, Symbols::name ui::Warning, Symbols::name ui::Settings)
+        base5 = Frames::plain
+        settingsButton = Ui::framed (base5(frameQuietControls = true), Ui::button ("Settings", symbol, OpenSettings))
+        Ui::column [actions, Ui::framed (base5(frameGrow = true), Ui::rows (mapList (chatsNow (), \chat => chatRow chat), panel.panelActive, PickChat)), Ui::framed (foot, settingsButton)]
+
+    (** The conversation's title bar. *)
+    export header () =
+        chat = activeChat ()
+        panel = panelNow ()
+        bar = Frames::inset (10, 12, 10, 24)
+        base6 = Frames::plain
+        titles = Ui::framed (base6(frameTextSize = 14, frameHug = true), Ui::styled (chat.chatTitle, ui::Headline, ui::Primary))
+        base7 = Frames::plain
+        toggle = Ui::framed (base7(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button (Pick::either (panel.panelOpen, "Hide inspector", "Show inspector"), Symbols::name ui::Panel, TogglePanel))
+        Ui::framed (bar(frameHeight = 52, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center", frameGap = 2), Ui::row [titles, ui::Spacer, toggle])
+
+    suggestion (title, detail, prompt) =
+        base8 = Frames::plain
+        Ui::framed (Look::card ("surface", 2, 2, 12), Ui::framed (base8(frameQuietControls = true, frameControlHeight = 52, frameControlPadding = 12), Ui::button ("${title} — ${detail}", Symbols::name ui::Sparkle, Suggest(suggestion = prompt))))
+
+    welcome chat =
+        base9 = Frames::plain
+        big = Ui::framed (base9(frameTextSize = 28, frameHug = true), Ui::styled ("What should we build?", ui::Large, ui::Primary))
+        where = Ui::framed (Look::sized (13, "secondary"), Ui::text "Working in ${folderName chat.chatFolder}")
+        base10 = Look::gapped 8
+        ideas = Ui::framed (base10(frameTop = 18), Ui::column [
+            suggestion ("Explain this project", "what it does and how it is laid out", "Explain this project: what it does and how it is laid out. Read what you need first."),
+            suggestion ("Run the tests", "and fix whatever fails", "Find how this project runs its tests, run them, and fix whatever fails."),
+            suggestion ("Review the last change", "for bugs", "Look at the most recent change in this project and review it for bugs."),
+        ])
+        base11 = Frames::inset (0, 0, 0, 0)
+        Ui::framed (base11(frameGrow = true, frameAlign = "center", frameGap = 6, frameCross = "stretch"), Ui::column [big, where, ideas])
+
+    working chat =
+        spaced = Frames::inset (2, 0, 2, 0)
+        look = spaced(frameTextSize = 13)
+        match chat.chatStage
+            "thinking" => [Ui::framed (look, ui::Progress(label = "Thinking", detail = ""))]
+            "tools" => [Ui::framed (look, ui::Progress(label = "Working", detail = ""))]
+            _ => []
+
+    troubleWords chat =
+        provider = Engine::provider_label (Engine::provider_id_of chat.chatModel)
+        match chat.chatProblemStatus
+            401 => "This key was refused."
+            403 => "This key was refused."
+            402 => "${provider} has no credit left. Pick another model, or add credit."
+            429 => "${provider} is rate limiting: try again shortly."
+            _ => ""
+
+    trouble chat = match chat.chatStage == "failed"
+        false => []
+        true =>
+            card = Look::card ("surface", 12, 14, 12)
+            base14 = Frames::plain
+            title = Ui::framed (base14(frameInk = "danger", frameTextSize = 13), Ui::styled ("The request failed", ui::Headline, ui::Primary))
+            detail = Ui::framed (Look::mono (12, "secondary"), Ui::text chat.chatProblem)
+            sentence = Pick::either (troubleWords chat == "", [], [Ui::framed (Look::sized (13, "primary"), Ui::text (troubleWords chat))])
+            base15 = Frames::plain
+            buttons = listConcat [Ui::framed (base15(frameHug = true), Ui::button ("Try again", Symbols::name ui::Refresh, Retry))] (Pick::either (troubleWords chat == "", [], [Ui::framed (base15(frameHug = true), Ui::button ("Open Settings", Symbols::name ui::Settings, OpenSettings))]))
+            words = Ui::column (listConcat [title, detail] sentence)
+            [Ui::framed (card(frameLine = "danger"), Ui::column [words, Ui::framed (Look::gapped 8, Ui::row buttons)])]
+
+    saveTrouble () =
+        problem = (settingsNow ()).saveProblem
+        base = Frames::plain
+        Pick::either (problem == "", [], [Look::trouble problem])
+
+    // While a round of tools runs, its finished answers show before the round goes back to the model.
+    visibleHistory chat = Pick::either (length chat.chatResults > 0, Engine::add_returns (chat.chatHistory, chat.chatResults), chat.chatHistory)
+
+    (** The conversation in a centred reading column that follows new content. *)
+    export transcript () =
+        chat = activeChat ()
+        panel = panelNow ()
+        items = Transcript::items_of (visibleHistory chat)
+        reading = Look::gapped 18
+        body = match length items == 0
+            true => welcome chat
+            false => Ui::column (listConcat (mapList (items, \item => Items::node (panel.panelExpanded, item))) (listConcat (working chat) (listConcat (trouble chat) (saveTrouble ()))))
+        centred = Frames::inset (28, 24, 18, 24)
+        Ui::framed (centred(frameGrow = true, frameScrollY = length items > 0, frameAlign = Pick::either (length items > 0, "end", "center"), frameCross = "center"), Ui::framed (reading(frameWidth = Look::column, frameSelectionGroup = length items > 0, frameGrow = length items == 0), body))
+
+    effortLabel level = match level
+        "off" => "Off"
+        "low" => "Low"
+        "medium" => "Medium"
+        "high" => "High"
+        "max" => "Max"
+        "minimal" => "Minimal"
+        "xhigh" => "Extra high"
+        _ => level
+
+    modelName model = Engine::model_label model
+
+    modelLine model =
+        provider = Engine::provider_label (Engine::provider_id_of model)
+        label = Engine::model_label model
+        "${provider} · ${label}"
+
+    modelChoices (chat, settings) =
+        current = chat.chatModel
+        keyed = filterList (Engine::provider_ids (), \provider => Model::hasKey (settings, provider))
+        offered = foldList (keyed, [], \(acc, provider) => listConcat acc (mapList (Model::modelsOf (settings, provider), \model => Ui::choice (Engine::full_model (provider, model), modelLine (Engine::full_model (provider, model))))))
+        Pick::either (Lists::any (offered, \choice => choice.choiceKey == current), offered, listPrepend offered (Ui::choice (current, modelLine current)))
+
+    (** The picker for `model`'s effort, when it has any: each choice names itself, and the empty level leaves the choice to the provider. *)
+    effortPicker (model, effort, pick) =
+        levels = Engine::model_levels model
+        match length levels == 0
+            true => []
+            false => [Ui::picker ("Effort", listPrepend (mapList (levels, \level => Ui::choice (level, "Effort: ${effortLabel level}"))) (Ui::choice ("", "Effort: Default")), Model::effortFor (model, effort), pick)]
+
+    missingKey (chat, settings) = Model::keyOf (settings, Engine::provider_id_of chat.chatModel) == ""
+
+    (** Why nothing can be sent, in words. Only a missing key stops a send: a provider's own answer decides everything else. *)
+    keyProblem (chat, settings) =
+        provider = Engine::provider_label (Engine::provider_id_of chat.chatModel)
+        note = Frames::inset (4, 0, 0, 0)
+        match missingKey (chat, settings)
+            true => [Ui::framed (note(frameTextSize = 11, frameInk = "caution", frameHug = true), Ui::label ("No API key for ${provider}. Add one to send.", Symbols::name ui::Warning))]
+            false => []
+
+    primary (chat, words, settings) =
+        match Model::busy chat
+            true => Ui::action ("Stop", Symbols::name ui::Stop, ui::Filled, true, StopTurn)
+            false => match missingKey (chat, settings)
+                true => Ui::action ("Add an API key", Symbols::name ui::Settings, ui::Filled, true, OpenSettings)
+                false => Ui::action ("Send", Symbols::name ui::Send, ui::Filled, trim words != "", SendDraft)
+
+    (** The one-line truth about the agent's power, always on show under the composer. *)
+    access () =
+        above = Frames::inset (4, 0, 0, 0)
+        Ui::framed (above(frameTextSize = 11, frameInk = "secondary", frameHug = true), Ui::label ("Not sandboxed: the agent can run any command and change any file your account can.", Symbols::name ui::Warning))
+
+    (** The floating composer: the words, the model, its effort and the one action that matters. *)
+    export composer () =
+        chat = activeChat ()
+        settings = settingsNow ()
+        words = draftNow ()
+        base17 = Frames::plain
+        field = Ui::framed (base17(frameTextSize = 14, frameLineHeight = 21.0, frameQuietControls = true), ui::Field(label = "Message", value = words, prompt = "Ask Osprey to change something…", secure = false, multiline = true, commit = ui::OnEdit, bind = Typed))
+        base18 = Frames::plain
+        model = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::picker ("Model", modelChoices (chat, settings), chat.chatModel, PickModel))
+        effort = mapList (effortPicker (chat.chatModel, chat.chatEffort, PickEffort), \picker => Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), picker))
+        place = Ui::framed (base18(frameControlHeight = 26, frameTextSize = 12, frameHug = true), Ui::action (folderName chat.chatFolder, Symbols::name ui::Folder, ui::Plain, Model::busy chat == false, ChangeFolder))
+        base19 = Frames::plain
+        sending = Ui::framed (base19(frameIconOnly = Model::busy chat || missingKey (chat, settings) == false, frameControlHeight = 30, frameSymbolSize = 13, frameHug = true), primary (chat, words, settings))
+        controls = Ui::row (listConcat [place, model] (listConcat effort [ui::Spacer, sending]))
+        box = Look::card ("surface", 12, 14, 18)
+        outer = Frames::inset (0, 24, 2, 24)
+        inner = (Look::gapped 10)
+        Ui::framed (outer(frameCross = "center"), Ui::column [Ui::framed (box(frameWidth = Look::column, frameShadow = "floating"), Ui::framed (inner, Ui::column (listConcat [field, controls] (keyProblem (chat, settings))))), access ()])
+
+    providerCard (settings, provider) =
+        keySaved = Model::hasKey (settings, provider)
+        label = Engine::provider_label provider
+        badge = Pick::either (keySaved, Ui::badge ("Key saved", Symbols::name ui::Check, ui::Good), Ui::badge ("No key", Symbols::name ui::Warning, ui::Caution))
+        base21 = Frames::plain
+        head = Ui::row [Ui::framed (Look::sized (14, "primary"), Ui::text label), ui::Spacer, badge]
+        endpoint = Ui::framed (Look::mono (11, "secondary"), Ui::text (Engine::provider_base provider))
+        draft = Model::draftOf (settings, provider)
+        field = ui::Field(label = "${label} key", value = draft, prompt = "Paste the key", secure = true, multiline = false, commit = ui::OnEdit, bind = TypedKey(keyProvider = provider))
+        save = Ui::action ("Save ${label} key", "", ui::Filled, draft != "", SaveKey(keyProvider = provider))
+        remove = Ui::action ("Remove ${label} key", "", ui::Destructive, true, RemoveKey(keyProvider = provider))
+        controls = listConcat [Ui::framed (base21(frameGrow = true), field), save] (Pick::either (keySaved, [remove], []))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [head, endpoint, Ui::framed (Look::gapped 8, Ui::row controls)])
+
+    defaultModelSection settings =
+        base22 = Frames::plain
+        heading = Ui::framed (base22(frameHug = true), Ui::styled ("Default model", ui::Eyebrow, ui::Secondary))
+        providers = mapList (Engine::provider_ids (), \provider => Ui::choice (provider, Engine::provider_label provider))
+        providerPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Provider", providers, settings.providerOpen, PickProvider))
+        models = mapList (Model::modelsOf (settings, settings.providerOpen), \model => Ui::choice (Engine::full_model (settings.providerOpen, model), Engine::model_label (Engine::full_model (settings.providerOpen, model))))
+        modelPicker = Ui::framed (base22(frameGrow = true), Ui::picker ("Model", models, settings.defaultModel, PickDefaultModel))
+        effort = mapList (effortPicker (settings.defaultModel, settings.defaultEffort, PickDefaultEffort), \picker => Ui::framed (base22(frameGrow = true), picker))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column [heading, Ui::framed (Look::gapped 12, Ui::row (listConcat [providerPicker, modelPicker] effort))])
+
+    providersPane settings =
+        cards = Ui::framed (Look::gapped 12, Ui::column (mapList (Engine::provider_ids (), \provider => providerCard (settings, provider))))
+        Ui::column [cards, defaultModelSection settings]
+
+    // One server's coloured state, with its tool count when connected.
+    mcpBadge server = match server.serverPhase
+        "connected" => Ui::badge ("Connected · ${toString (length (Doc::items (Doc::parse (server.serverTools))))} tools", Symbols::name ui::Check, ui::Good)
+        "connecting" => Ui::badge ("Connecting", Symbols::name ui::Clock, ui::Caution)
+        "failed" => Ui::badge ("Failed", Symbols::name ui::Warning, ui::Danger)
+        _ => Ui::badge ("Off", Symbols::name ui::NoSymbol, ui::Secondary)
+
+    mcpProblem server = Pick::either (server.serverProblem == "", [], [Look::trouble server.serverProblem])
+
+    mcpToolRow tool =
+        base = Frames::plain
+        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (base(frameHug = true, frameTextSize = 12), Ui::styled (Doc::text (tool, "name"), ui::Headline, ui::Primary)), Ui::framed (Look::sized (12, "secondary"), Ui::text (Pick::either (Doc::text (tool, "description") == "", "No description.", Doc::text (tool, "description"))))])
+
+    mcpCard server =
+        mcp = mcpNow ()
+        base = Frames::plain
+        projectLabel = Pick::either (server.serverOrigin == "project", [Ui::framed (base(frameHug = true), Ui::badge (".mcp.json", Symbols::name ui::Document, ui::Secondary))], [])
+        head = Ui::row (listConcat [Ui::framed (Look::sized (14, "primary"), Ui::text server.serverName)] (listConcat projectLabel [ui::Spacer, mcpBadge server]))
+        endpoint = Ui::framed (Look::mono (11, "secondary"), Ui::text server.serverEndpoint)
+        switch = Ui::framed (base(frameHug = true), ui::Toggle(label = server.serverName, on = server.serverEnabled, bind = ToggleMcp(mcpActionName = server.serverName)))
+        reconnect = Pick::either (server.serverPhase == "failed" || server.serverPhase == "connected", [Ui::framed (base(frameHug = true), Ui::action ("Reconnect ${server.serverName}", Symbols::name ui::Refresh, ui::Plain, true, ReconnectMcp(mcpActionName = server.serverName)))], [])
+        remove = Pick::either (server.serverOrigin == "global", [Ui::framed (base(frameHug = true), Ui::action ("Remove ${server.serverName}", Symbols::name ui::Delete, ui::Destructive, true, RemoveMcp(mcpActionName = server.serverName)))], [])
+        tools = Ui::disclosure ("${server.serverName} tools", listContains (mcp.stateExpanded, server.serverName), ToggleMcpTools(mcpActionName = server.serverName), mapList (Doc::items (Doc::parse (server.serverTools)), \tool => mcpToolRow tool))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column (listConcat [head, endpoint] (listConcat (mcpProblem server) [Ui::framed (Look::gapped 8, Ui::row (listConcat (listPrepend reconnect switch) remove)), tools])))
+
+    mcpProblems mcp = mapList (mcp.stateProblems, \problem => Look::trouble problem)
+
+    // A labelled, bordered box for what takes several lines.
+    mcpBox (label, value, prompt, bind) =
+        base = Frames::plain
+        box = Look::card ("canvas", 6, 8, 6)
+        Ui::framed (Look::gapped 4, Ui::column [Ui::framed (Look::sized (12, "secondary"), Ui::text label), Ui::framed (box(frameGrow = true), Ui::framed (base(frameGrow = true), ui::Field(label = label, value = value, prompt = prompt, secure = false, multiline = true, commit = ui::OnEdit, bind = bind)))])
+
+    (** The Add server form: name, type, command or URL, environment, validated in words. *)
+    mcpForm mcp =
+        form = mcp.stateForm
+        base = Frames::plain
+        heading = Ui::framed (base(frameHug = true), Ui::styled ("Add server", ui::Eyebrow, ui::Secondary))
+        name = Ui::framed (base(frameGrow = true), ui::Field(label = "Name", value = form.formName, prompt = "demo", secure = false, multiline = false, commit = ui::OnEdit, bind = McpName))
+        typePicker = Ui::framed (base(frameHug = true), ui::Picker(label = "Type", choices = [Ui::choice ("command", "Command"), Ui::choice ("url", "URL")], selected = form.formType, bind = PickMcpType))
+        command = match form.formType
+            "url" => [Ui::framed (base(frameGrow = true), ui::Field(label = "URL", value = form.formUrl, prompt = "https://example.com/mcp", secure = false, multiline = false, commit = ui::OnEdit, bind = McpUrl)), mcpBox ("Headers", form.formHeaders, "Authorization=Bearer token", McpHeaders)]
+            _ => [Ui::framed (base(frameGrow = true), ui::Field(label = "Command", value = form.formCommand, prompt = "npx", secure = false, multiline = false, commit = ui::OnEdit, bind = McpCommand)), mcpBox ("Arguments", form.formArguments, "One argument per line", McpArguments)]
+        environment = mcpBox ("Environment", form.formEnvironment, "NAME=value", McpEnvironment)
+        problem = Pick::either (form.formProblem == "", [], [Look::trouble form.formProblem])
+        add = Ui::framed (base(frameHug = true), Ui::action ("Add", Symbols::name ui::Add, ui::Filled, true, AddMcpServer))
+        paste = mcpBox ("JSON config", form.formPaste, "{\"mcpServers\":{...}}", McpPaste)
+        pasteButton = Ui::framed (base(frameHug = true), Ui::action ("Paste JSON", Symbols::name ui::Document, ui::Plain, trim form.formPaste != "", PasteMcpServers))
+        Ui::framed (Look::card ("surface", 12, 14, 12), Ui::column (listConcat [heading, Ui::framed (Look::gapped 8, Ui::row [name, typePicker])] (listConcat command (listConcat [environment] (listConcat problem [Ui::framed (Look::gapped 8, Ui::row [ui::Spacer, add]), paste, pasteButton])))))
+
+    (** The MCP servers tab: a card per server, the problems from both files, and the Add server form. The empty state is one function. *)
+    mcpState () =
+        mcp = mcpNow ()
+        servers = match length mcp.stateServers == 0 && length mcp.stateProblems == 0
+            true => [Ui::empty ("package", "No MCP servers yet", "Add a server to give the agent more tools.")]
+            false => listConcat (mcpProblems mcp) (mapList (mcp.stateServers, \server => mcpCard server))
+        Ui::column (listConcat servers [mcpForm mcp])
+
+
+    settingsTab (settings, key, label, symbol) = Ui::action (label, Symbols::name symbol, Pick::either (settings.settingsTab == key, ui::Filled, ui::Plain), true, ShowSettingsTab(tabKey = key))
+
+    (** The settings pane, in place of the conversation column: providers first, then MCP servers. *)
+    export settings () =
+        settings = settingsNow ()
+        bar = Frames::inset (10, 24, 10, 24)
+        base23 = Frames::plain
+        title = Ui::framed (base23(frameTextSize = 17, frameHug = true), Ui::styled ("Settings", ui::Headline, ui::Primary))
+        close = Ui::framed (base23(frameQuietControls = true, frameIconOnly = true, frameControlHeight = 28, frameSymbolSize = 14, frameHug = true), Ui::button ("Close", Symbols::name ui::Dismiss, CloseSettings))
+        tabs = Ui::framed (Look::gapped 8, Ui::row [settingsTab (settings, "providers", "Providers", ui::Shield), settingsTab (settings, "mcp", "MCP servers", ui::Package), ui::Spacer])
+        pane = Pick::either (settings.settingsTab == "mcp", mcpState (), providersPane settings)
+        body = Frames::inset (20, 24, 20, 24)
+        Ui::framed (Look::filled "canvas", Ui::column [Ui::framed (bar(frameHeight = 52, frameLine = "line", frameLineEdge = "bottom", frameAlign = "center"), Ui::row [title, ui::Spacer, close]), Ui::framed (body(frameGrow = true, frameScrollY = true), Ui::framed (Look::gapped 16, Ui::column [tabs, pane]))])
+
+    (** One enabled server's line in the inspector: its state and tool count, opening Settings when pressed. *)
+    mcpLine one =
+        words = match one.serverPhase
+            "connected" => "Connected · ${toString (length (Doc::items (Doc::parse (one.serverTools))))} tools"
+            "connecting" => "Connecting"
+            "failed" => "Failed"
+            _ => "Off"
+        look = Frames::plain
+        Ui::framed (look(frameQuietControls = true, frameTextSize = 12, frameControlHeight = 24, frameCross = "start"), Ui::button ("${one.serverName} — ${words}", Symbols::name ui::Package, OpenMcpSettings))
+
+    fact (label, value) = Ui::pair (label, value)
+
+    heading text =
+        base20 = Frames::inset (10, 0, 0, 0)
+        Ui::framed (base20(frameHug = true), Ui::styled (text, ui::Eyebrow, ui::Secondary))
+
+    grouped n =
+        whole = toString n
+        match n >= 1000
+            true => "${intDiv n 1000}.${intDiv (n % 1000) 100}k"
+            false => whole
+
+    export inspector () =
+        chat = activeChat ()
+        usage = Engine::usage_of chat.chatHistory
+        files = Engine::files_changed chat.chatHistory
+        side = Frames::inset (58, 18, 18, 18)
+        fileLook = Frames::plain
+        changed = match length files == 0
+            true => [Ui::framed (Look::sized (12, "faint"), Ui::text "Nothing yet")]
+            false => mapList (files, \file => Ui::framed (fileLook(frameTextSize = 12), Ui::label (file, Symbols::name ui::Document)))
+        mcp = mcpNow ()
+        servers = match length (filterList (mcp.stateServers, \server => server.serverEnabled)) == 0
+            true => [Ui::framed (Look::sized (12, "faint"), Ui::text "None enabled")]
+            false => mapList (filterList (mcp.stateServers, \server => server.serverEnabled), \server => mcpLine server)
+        Ui::framed (side(frameFill = "inset", frameLine = "line", frameLineEdge = "left", frameGrow = true, frameGap = 8, frameTextSize = 12), Ui::column (listConcat (listConcat [
+            heading "Usage",
+            fact ("Context", grouped usage.lastInput),
+            fact ("Requests", toString usage.totalRequests),
+            fact ("Tool calls", toString usage.totalTools),
+            fact ("Tokens in", grouped usage.totalInput),
+            fact ("Tokens out", grouped usage.totalOutput),
+            heading "Files changed",
+        ] changed) (listConcat [heading "MCP"] servers)))

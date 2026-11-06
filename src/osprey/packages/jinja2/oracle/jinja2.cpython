@@ -1,0 +1,469 @@
+"""CPython Jinja2 render and value oracles for the supported chat subset.
+
+Two reference paths share this file. `TEMPLATES` renders through a plain
+`jinja2.Environment(trim_blocks=True, lstrip_blocks=True)`. The Qwen3.8 chat
+template renders through transformers' own chat-template environment —
+`transformers.utils.chat_template_utils.render_jinja_template`, the exact render
+step `apply_chat_template` calls — so its `tojson` override, `raise_exception`
+and sandbox match what a model's tokenizer does. The template fixture is byte
+identical to Qwen/Qwen3.8-27B at revision 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+(`chat_template.jinja`).
+"""
+import jinja2
+import json
+import pathlib
+from expected_module import write
+
+HERE = pathlib.Path(__file__).resolve().parent
+ROOT = HERE.parents[4]
+TEMPLATE_FIXTURE = ROOT / "src" / "osprey" / "packages" / "jinja2" / "tests" / "fixtures" / "qwen3.8-27b.chat_template.jinja"
+
+TEMPLATES = [
+    ("mixed dict keys", "{{ {1: 'number', '1': 'text'}[1] }}:{{ {1: 'number', '1': 'text'}['1'] }}"),
+    ("integer dict repr", "{{ {1: 'a'} }}"),
+    ("integer dict items", "{% for k, v in {1: 'a'}.items() %}{{ k is number }}={{ v }}{% endfor %}"),
+    ("integer dict contains", "{{ 1 in {1: 'a'} }}:{{ '1' in {1: 'a'} }}"),
+    ("integer dict get", "{{ {1: 'a'}.get(1) }}:{{ {1: 'a'}.get('1', 'missing') }}"),
+    ("hello", "Hello {{ name }}!"),
+    ("repr quote style (known RED)", "{{ [\"'\"] }}"),
+    ("int dict key lookup (known RED)", "{{ {1: 'a'}[1] }}"),
+    ("missing", "{{ missing|default('fallback') }}"),
+    ("numeric", "{{ 7 // 3 }}:{{ -7 % 3 }}:{{ 2 + 3 * 4 }}"),
+    ("concatenation", "{{ 2 ~ 3 }}"),
+    ("truth", "{% if enabled %}yes{% else %}no{% endif %}"),
+    ("loop", "{% for n in nums %}{{ loop.index }}={{ n }};{% endfor %}"),
+    ("empty loop", "{% for n in [] %}bad{% else %}empty{% endfor %}"),
+    ("set", "{% set n = 3 %}{{ n + 1 }}"),
+    ("join", "{{ nums|join(',') }}"),
+    ("case", "{{ name|upper }}:{{ name|capitalize }}"),
+    ("trim", "{{ ' a '|trim }}"),
+    ("replace", "{{ name|replace('world', 'reader') }}"),
+    ("length", "{{ name|length }}:{{ nums|length }}"),
+    ("endpoints", "{{ nums|first }}:{{ nums|last }}"),
+    ("method", "{{ name.upper() }}:{{ name.startswith('wo') }}"),
+    ("dict", "{{ obj.x }}:{{ obj['x'] }}"),
+    ("tests", "{{ enabled is boolean }}:{{ nothing is none }}:{{ name is string }}"),
+    ("membership", "{{ 2 in nums }}:{{ 'x' in obj }}"),
+    ("slice", "{{ name[1:4] }}:{{ nums[1:]|join(',') }}"),
+    ("whitespace", "a\n  {% if enabled %}\nb\n  {% endif %}\nc"),
+    ("strip markers", "a {{- name -}} b"),
+    ("comment", "a{# ignored #}b"),
+    ("namespace", "{% set ns = namespace(n=0) %}{% for x in nums %}{% set ns.n = ns.n + x %}{% endfor %}{{ ns.n }}"),
+    ("lower filter", "{{ 'WORLD'|lower }}"),
+    ("string filter", "{{ 23|string }}"),
+    ("list filter", "{{ name|list|join(',') }}"),
+    ("items filter", "{{ obj|items|list|length }}"),
+    ("mapped filter", "{{ ['a', 'b']|map('upper')|join(',') }}"),
+    ("mapped attribute", "{{ [obj, dict(x=8)]|map(attribute='x')|join(',') }}"),
+    ("mapped default", "{{ [obj]|map(attribute='missing', default='fallback')|join(',') }}"),
+    ("select truth", "{{ [0, 1, 2]|select|join(',') }}"),
+    ("select test", "{{ nums|select('equalto', 2)|join(',') }}"),
+    ("reject test", "{{ nums|reject('equalto', 2)|join(',') }}"),
+    ("select attribute", "{{ [dict(x=1), dict(x=0)]|selectattr('x')|map(attribute='x')|join(',') }}"),
+    ("reject attribute", "{{ [dict(x=1), dict(x=0)]|rejectattr('x')|map(attribute='x')|join(',') }}"),
+    ("dict methods", "{{ obj.get('x') }}:{{ obj.get('absent', 9) }}:{{ obj.keys()|join(',') }}:{{ obj.values()|join(',') }}"),
+    ("dict iteration", "{% for k, v in obj.items() %}{{ k }}={{ v }}{% endfor %}"),
+    ("filtered loop", "{% for n in nums if n > 1 %}{{ n }};{% endfor %}"),
+    ("conditional", "{{ 'yes' if enabled else 'no' }}"),
+    ("boolean operators", "{{ not false }}:{{ true and false }}:{{ false or 'yes' }}"),
+    ("group and subtraction", "{{ (9 - 4) / 2 }}"),
+    ("exponent literal", "{{ 1.25e2 }}:{{ 2.5e-1 }}"),
+    ("escaped string", "{{ 'a\\nb'|replace('\\n', '-') }}"),
+    ("dict literal", "{{ {'x': 1, 'y': 2}['y'] }}"),
+    ("stepped slices", "{{ nums[::-1]|join(',') }}:{{ name[::2] }}"),
+    ("range function", "{{ range(1, 6, 2)|join(',') }}:{{ range(5, 0, -2)|join(',') }}:{{ range(1, 5, -1)|join(',') }}:{{ range(5, 1, 1)|join(',') }}:{{ range(1, 1, 2)|join(',') }}"),
+    ("list equality", "{{ [1, 2] == [1, 2] }}:{{ [1] == [2] }}"),
+    ("dict equality", "{{ {'x': 1} == {'x': 1} }}:{{ {'x': 1} == {'x': 2} }}"),
+    ("repr containers", "{{ [1, 'x'] }}:{{ {'x': 1} }}"),
+    ("string membership", "{{ 'or' in name }}"),
+    ("list subscript", "{{ nums[-1] }}"),
+    ("exponent int", "{{ 1e2 }}:{{ 2E3 }}:{{ 1e-2 }}"),
+    ("exponent float", "{{ 1.5e2 }}:{{ 1.5 }}"),
+    ("compare operators", "{{ 1 != 2 }}:{{ 1 < 2 }}:{{ 1 <= 1 }}:{{ 2 >= 2 }}:{{ 2 >= 3 }}"),
+    ("not in", "{{ 5 not in nums }}:{{ 2 not in nums }}"),
+    ("unary plus", "{{ +5 }}:{{ -+5 }}"),
+    ("double negation", "{{ - -5 }}:{{ --5 }}"),
+    ("none literal", "{{ none is none }}:{{ none == none }}"),
+    ("float truthiness", "{{ 'yes' if 0.0 else 'no' }}:{{ 'yes' if 0.5 else 'no' }}"),
+    ("string truthiness", "{{ 'yes' if 'x' else 'no' }}:{{ 'yes' if '' else 'no' }}"),
+    ("list truthiness", "{{ 'yes' if nums else 'no' }}:{{ 'yes' if [] else 'no' }}"),
+    ("dict truthiness", "{{ 'yes' if obj else 'no' }}:{{ 'yes' if {} else 'no' }}"),
+    ("undefined branch", "{% if missing %}a{% else %}b{% endif %}"),
+    ("undefined equality", "{{ missing == also_missing }}"),
+    ("cross equality", "{{ 1 == 'a' }}:{{ name == 'world' }}:{{ true == false }}:{{ true == true }}"),
+    ("list length equality", "{{ [1] == [1, 2] }}:{{ [1, 2] == [1] }}"),
+    ("dict length equality", "{{ obj == {} }}:{{ {'a': 1} == {'a': 1} }}"),
+    ("string ordering", "{{ 'a' < 'b' }}:{{ 'b' < 'a' }}"),
+    ("floor division signs", "{{ 6 // 3 }}:{{ 7 // -2 }}:{{ -7 // -2 }}"),
+    ("none output", "[{{ none }}]"),
+    ("undefined string", "{{ missing|string }}"),
+    ("pair render", "{{ obj.items()|first }}:{{ obj.items()|first == obj.items()|first }}"),
+    ("repr control escapes", "{{ ['a\\r\\tb'] }}"),
+    ("empty substring", "{{ '' in 'abc' }}:{{ '' in name }}"),
+    ("negative slices", "{{ name[-4:] }}:{{ nums[-10:1]|join(',') }}:{{ nums[5::-1]|join(',') }}"),
+    ("tojson compact", "{{ {'a': none}|tojson }}:{{ true|tojson }}:{{ false|tojson }}:{{ 1.5|tojson }}:{{ 'a'|tojson }}:{{ [1, 'a']|tojson }}"),
+    ("tojson pretty scalars", "{{ [none]|tojson(indent=2) }}:{{ true|tojson(indent=2) }}:{{ 1.5|tojson(indent=2) }}:{{ 'a'|tojson(indent=2) }}"),
+    ("tojson pretty empty", "{{ []|tojson(indent=2) }}:{{ {}|tojson(indent=2) }}"),
+    ("tojson escapes", "{{ ['\"', '\\\\', '\\n', '\\r', '\\t', '\\b', '\\f']|tojson }}"),
+    ("string escapes", "{{ 'a\\vb'|replace('\\v','v') }}:{{ 'a\\bb'|replace('\\b','b') }}:{{ 'a\\fb'|replace('\\f','f') }}:{{ 'a\\rb'|replace('\\r','r') }}:{{ 'a\\tb'|replace('\\t','t') }}:{{ 'a\\\\b' }}:{{ 'a\\'b' }}:{{ \"a\\\"b\" }}"),
+    ("float promotion", "{{ 1 + 2.5 }}:{{ 0.5 + 0.25 }}:{{ -1.5 }}:{{ 2 * 1.5 }}"),
+    ("string addition", "{{ 'ab' + 'cd' }}:{{ 'a' ~ 'b' ~ 'c' }}"),
+    ("dict trailing comma", "{{ {'x': 1,}['x'] }}"),
+    ("empty dict", "{{ {} }}:{{ {}|length }}:{{ {}|tojson }}"),
+    ("dict length filter", "{{ obj|length }}:{{ nums|length }}:{{ name|length }}"),
+    ("empty first last", "{{ []|first }}|{{ []|last }}|{{ []|first is not defined }}|{{ []|last is defined }}"),
+    ("dict first", "{{ obj|first }}:{{ 'ab'|first }}"),
+    ("nonstring filters", "{{ 5|trim }}:{{ 1.5|upper }}:{{ 2|lower }}:{{ 3.0|capitalize }}"),
+    ("empty capitalize", "{{ ''|capitalize }}:{{ 'hELLO wORLD'|capitalize }}"),
+    ("count alias", "{{ nums|count }}:{{ name|count }}:{{ obj|count }}"),
+    ("default alias", "{{ missing|d('fb') }}:{{ name|d('fb') }}"),
+    ("default boolean", "{{ 0|default('x', true) }}:{{ 1|default('x', true) }}:{{ ''|default('e', true) }}:{{ nothing|default('n', true) }}"),
+    ("string methods", "{{ '  ab  '.strip() }}:{{ '  ab  '.lstrip() }}:{{ '  ab  '.rstrip() }}:{{ 'a b  c'.split()|join(',') }}:{{ 'a,b,,c'.split(',')|join('|') }}"),
+    ("string methods 2", "{{ name.endswith('ld') }}:{{ 'AbC'.lower() }}:{{ 'ab'.upper() }}:{{ 'hELLO'.capitalize() }}:{{ 'aXbXc'.replace('X', '-') }}:{{ 'ab'.startswith('a') }}"),
+    ("string subscript", "{{ name[0] }}:{{ name[-1] }}:{{ name[10] }}:{{ nums['x'] }}:{{ name['x'] }}"),
+    ("string attribute", "{{ 'abc'.foo }}|{{ name.bar }}|"),
+    ("out of range list", "{{ nums[10] }}|{{ nums[-10] }}|"),
+    ("if elif else", "{% if nothing %}a{% elif enabled %}b{% else %}c{% endif %}"),
+    ("if no else", "{% if nothing %}a{% endif %}d"),
+    ("dict loop", "{% for k in obj %}{{ k }};{% endfor %}"),
+    ("string loop", "{% for c in 'ab' %}{{ c }};{% endfor %}"),
+    ("trailing newline", "x\n"),
+    ("lstrip start", "  {{- name -}}!"),
+    ("trim end eof", "x {{ name -}}"),
+    ("brace in string", "{{ '}' }}:{{ '}}' }}"),
+    ("test predicates", "{{ missing is undefined }}:{{ 1 is number }}:{{ 1.5 is float }}:{{ 2 is eq 2 }}:{{ 2 is ne 3 }}:{{ 2 is in nums }}:{{ obj is mapping }}:{{ name is iterable }}:{{ name is sequence }}:{{ nums is sequence }}:{{ nothing is sameas none }}"),
+    ("float equality", "{{ 1.5 == 1.5 }}:{{ 2.5 == 2.0 }}"),
+    ("repr backslash", "{{ ['a\\\\b'] }}"),
+    ("tojson pretty list", "{{ [1, 'a']|tojson(indent=2) }}"),
+    ("default no arg", "{{ missing|default }}:{{ name|default }}"),
+    ("items of undefined", "{{ missing|items|list }}"),
+    ("loop over undefined is empty", "{% for x in missing %}{{ x }}{% else %}none{% endfor %}"),
+    ("safe filter", "{{ '<b>'|safe }}:{{ '<b>' }}"),
+    ("tuple membership", "{{ 'b' in ('a', 'b') }}:{{ 3 in (1, 2) }}:{{ 'c' not in ('a', 'b') }}"),
+    ("loop neighbours", "{% for n in nums %}[{{ loop.previtem }}:{{ n }}:{{ loop.nextitem }}]{% endfor %}"),
+    ("loop neighbours of string", "{% for c in 'ab' %}[{{ loop.previtem }}{{ c }}]{% endfor %}"),
+    ("macro basic", "{% macro hi(x) %}Hi {{ x }}{% endmacro %}{{ hi('a') }}"),
+    ("macro default", "{% macro m(a, b=7) %}{{ a }}{{ b }}{% endmacro %}{{ m(1) }}:{{ m(1, 2) }}"),
+    ("macro keyword", "{% macro m(a, b) %}{{ a }}-{{ b }}{% endmacro %}{{ m(b=2, a=1) }}"),
+    ("macro missing arg", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m() }}"),
+    ("macro recursion", "{% macro count(n) %}{{ n }}{% if n > 1 %}{{ count(n - 1) }}{% endif %}{% endmacro %}{{ count(3) }}"),
+    ("macro defined in loop", "{% for n in nums %}{% macro m() %}{{ n }}{% endmacro %}{{ m() }}{% endfor %}"),
+    ("macro sees later global", "{% macro m() %}{{ g }}{% endmacro %}{% set g = 5 %}{{ m() }}"),
+    ("macro default sees later global", "{% macro m(a=g) %}{{ a }}{% endmacro %}{% set g = 5 %}{{ m() }}"),
+    ("macro called from loop", "{% macro m() %}[{{ n }}]{% endmacro %}{% for n in nums %}{{ m() }}{% endfor %}"),
+    ("macro filters output", "{% macro m(x) %}  {{ x }}  {% endmacro %}{{ m('a')|trim }}!"),
+    ("macro loop inside", "{% macro items(xs) %}{% for x in xs %}{{ loop.index }}{{ x }}{% endfor %}{% endmacro %}{{ items(nums) }}"),
+]
+
+
+# Templates whose CPython failure message the port mirrors verbatim (TypeError/
+# ValueError/UndefinedError texts), asserted as the render `Error` payload.
+ERROR_TEMPLATES = [
+    ("negated failed test", "{{ none|first is not defined }}"),
+    ("select unknown test", "{{ [1]|select('nosuchtest')|join(',') }}"),
+    ("reject unknown test", "{{ [1]|reject('nosuchtest')|join(',') }}"),
+    ("map unknown filter", "{{ ['a']|map('nosuchfilter')|join(',') }}"),
+    ("map failed filter", "{{ [none]|map('first')|join(',') }}"),
+    ("items of string", "{{ 'ab'|items|list }}"),
+    ("first of none", "{{ none|first }}"),
+    ("last of none", "{{ none|last }}"),
+    ("str concat int", "{{ 'a' + 1 }}"),
+    ("str concat float", "{{ 'a' + 1.5 }}"),
+    ("str concat list", "{{ 'a' + [1] }}"),
+    ("str concat dict", "{{ 'a' + obj }}"),
+    ("str concat none", "{{ 'a' + none }}"),
+    ("str concat bool", "{{ 'a' + true }}"),
+    ("add undefined left", "{{ missing + 'a' }}"),
+    ("add undefined right", "{{ 'a' + missing }}"),
+    ("arith undefined attr", "{{ missing.x + 1 }}"),
+    ("sub undefined attr", "{{ missing.x - 1 }}"),
+    ("mul undefined attr", "{{ missing.x * 2 }}"),
+    ("div undefined attr", "{{ missing.x / 2 }}"),
+    ("floordiv undefined attr", "{{ missing.x // 2 }}"),
+    ("mod undefined attr", "{{ missing.x % 2 }}"),
+    ("neg undefined", "{{ -missing }}"),
+    ("neg undefined attr", "{{ -missing.x }}"),
+    ("neg string", "{{ -'a' }}"),
+    ("range zero step", "{{ range(1, 5, 0) }}"),
+    ("subscript undefined", "{{ missing[0] }}"),
+    ("add undefined attr right", "{{ 1 + missing.x }}"),
+    ("macro extra arg", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(1, 2) }}"),
+    ("macro unknown keyword", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(b=1) }}"),
+    ("macro duplicate argument", "{% macro m(a) %}[{{ a }}]{% endmacro %}{{ m(1, a=2) }}"),
+    ("iterate a number", "{% for x in 1 %}{{ x }}{% endfor %}"),
+]
+
+
+def main():
+    env = jinja2.Environment(trim_blocks=True, lstrip_blocks=True)
+    context = dict(name="world", nums=[1, 2, 3], enabled=True, nothing=None, obj={"x": 4})
+    cases = [[name, template, env.from_string(template).render(context)] for name, template in TEMPLATES]
+    errors = [[name, template, error_message(env, template, context)] for name, template in ERROR_TEMPLATES]
+    macro_source = "{% macro hi(x) %}Hi {{ x }}{% endmacro %}"
+    macro = env.parse(macro_source).body[0]
+    template = TEMPLATE_FIXTURE.read_text(encoding="utf-8")
+    renders = [[name, chat_context(messages, tools, kwargs), chat_render(template, messages, tools, kwargs)]
+               for name, messages, tools, kwargs in chat_cases()]
+    rejected = [[name, chat_context(messages, tools, kwargs), chat_error(template, messages, tools, kwargs)]
+                for name, messages, tools, kwargs in chat_error_cases()]
+    write("jinja2", "Jinja2 chat-environment renders and failure messages over a fixed JSON-like context, plus the "
+          "unmodified Qwen3.8 chat template rendered through transformers' own chat-template environment.",
+          {"jinja2": jinja2.__version__, "transformers": transformers_version()}, {
+              "RENDERS": cases, "CHARS": list("aé🙂"), "REVERSED": "aé🙂"[::-1],
+              "SPLIT": " a\t b\n c ".split(), "SEP_SPLIT": "a,,b,".split(","),
+              "CAPITALIZED": "hELLO".capitalize(), "REPR": repr("a\nb"), "BOOL_TEXT": str(True),
+              "JSON": json.dumps({"x": 2}), "PRETTY_JSON": json.dumps({"x": 2}, indent=2),
+              "PRETTY_LIST_JSON": json.dumps([1, 2], indent=2),
+              "FLOORDIV": -7 // 3, "MODULO": -7 % 3,
+              "MACRO_SOURCE": macro_source, "MACRO_NAME": macro.name, "MACRO_PARAMS": [arg.name for arg in macro.args],
+              "ERRORS": errors, "CHAT_TEMPLATE": template, "CHAT_RENDERS": renders, "CHAT_ERRORS": rejected,
+          })
+
+
+def error_message(env, template, context):
+    """CPython's exception text for a template the port also rejects."""
+    try:
+        env.from_string(template).render(context)
+    except Exception as error:
+        return str(error)
+    raise AssertionError(f"oracle template unexpectedly rendered: {template}")
+
+
+# The Qwen3.8 chat template, through transformers' chat-template environment.
+
+def transformers_version():
+    """transformers' version, imported here so `main` states it in the module header."""
+    import transformers
+
+    return transformers.__version__
+
+
+def chat_context(messages, tools, kwargs):
+    """The template's context as one JSON object: messages, tools when given, and each template keyword."""
+    context = {"messages": messages}
+    if tools is not None:
+        context["tools"] = tools
+    context.update(kwargs)
+    return json.dumps(context, ensure_ascii=False)
+
+
+def chat_render(template, messages, tools, kwargs):
+    """`apply_chat_template`'s render step for one conversation."""
+    from transformers.utils.chat_template_utils import render_jinja_template
+
+    rendered, _ = render_jinja_template(conversations=[messages], tools=tools, chat_template=template, **kwargs)
+    return rendered[0]
+
+
+def chat_error(template, messages, tools, kwargs):
+    """transformers' exception text for a conversation this template rejects."""
+    try:
+        chat_render(template, messages, tools, kwargs)
+    except Exception as error:
+        return str(error)
+    raise AssertionError(f"oracle conversation unexpectedly rendered: {messages}")
+
+
+WEATHER_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "get_weather",
+        "description": "Current weather for one city.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "city": {"type": "string", "description": "City name, e.g. Zürich"},
+                "units": {"type": "string", "enum": ["celsius", "fahrenheit"]},
+                "days": {"type": "integer", "minimum": 1, "maximum": 7},
+            },
+            "required": ["city"],
+            "additionalProperties": False,
+        },
+    },
+}
+
+SEARCH_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search",
+        "description": "Search a corpus. Multi-line description:\nsecond line\twith a tab, a \"quote\", "
+                       "a backslash \\, a control char \u0001 and 🔍.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "filters": {
+                    "type": "object",
+                    "properties": {"lang": {"type": "string"}, "pinned": {"type": "boolean"}},
+                },
+                "limit": {"type": "number", "default": 10.5},
+            },
+            "required": ["query"],
+        },
+    },
+}
+
+TOOLS = [WEATHER_TOOL, SEARCH_TOOL]
+
+
+def user(text):
+    """A plain user message."""
+    return {"role": "user", "content": text}
+
+
+def assistant(text, reasoning=None, calls=None):
+    """An assistant message, optionally carrying reasoning content and tool calls."""
+    message = {"role": "assistant", "content": text}
+    if reasoning is not None:
+        message["reasoning_content"] = reasoning
+    if calls is not None:
+        message["tool_calls"] = calls
+    return message
+
+
+def tool(text):
+    """A tool result message."""
+    return {"role": "tool", "content": text}
+
+
+CALL = {
+    "id": "call_1",
+    "type": "function",
+    "function": {"name": "get_weather", "arguments": {"city": "Zürich", "units": "celsius", "days": 2}},
+}
+
+CALL_ALL_TYPES = {
+    "id": "call_2",
+    "type": "function",
+    "function": {
+        "name": "search",
+        "arguments": {
+            "query": "日本語 and 🙂 and é",
+            "filters": {"lang": "ja", "pinned": True},
+            "limit": 10.5,
+            "ratio": 0.1,
+            "exact": [1, 2.5, "x", True, None, [3]],
+            "empty": {},
+            "blank": "",
+            "escaped": "quote \" backslash \\ tab\tnl\ncr\rff\f bs\b",
+        },
+    },
+}
+
+NESTED_CALL = {"function": {"name": "search", "arguments": {"query": "nested"}}}
+
+# A message far longer than the template, so the suite exercises a prompt whose
+# length dwarfs the template's own.
+LONG_MESSAGE = "".join(f"line {index} of a long message\n" for index in range(300)) + "émoji 🙂 中文"
+
+
+CHAT = [
+    ("chat single user", [user("Hello")], None, {}),
+    ("chat single user with prompt", [user("Hello")], None, {"add_generation_prompt": True}),
+    ("chat system and user", [{"role": "system", "content": "You are terse."}, user("Hi")], None, {}),
+    ("chat system and user with prompt", [{"role": "system", "content": "You are terse."}, user("Hi")], None,
+     {"add_generation_prompt": True}),
+    ("chat multi turn", [{"role": "system", "content": "sys"}, user("one"), assistant("two"), user("three")],
+     None, {}),
+    ("chat multi turn with prompt", [user("one"), assistant("two"), user("three")], None,
+     {"add_generation_prompt": True}),
+    ("chat text content blocks", [{"role": "system", "content": [{"type": "text", "text": "sys  "}]},
+                                  {"role": "user", "content": [{"type": "text", "text": "  hi"}]}], None,
+     {"add_generation_prompt": True}),
+    ("chat plain text in content block", [user([{"text": "plain"}])], None, {}),
+    ("chat empty content list", [user([])], None, {}),
+    ("chat empty system", [{"role": "system", "content": ""}, user("x")], None, {}),
+    ("chat whitespace content trimmed", [user("  \n padded \t ")], None, {}),
+    ("chat thinking on", [user("q")], None, {"enable_thinking": True, "add_generation_prompt": True}),
+    ("chat thinking off", [user("q")], None, {"enable_thinking": False, "add_generation_prompt": True}),
+    ("chat thinking off no prompt", [user("q")], None, {"enable_thinking": False}),
+    ("chat effort default", [user("q")], None, {"add_generation_prompt": True}),
+    ("chat effort xhigh", [user("q")], None, {"reasoning_effort": "xhigh", "add_generation_prompt": True}),
+    ("chat effort medium", [user("q")], None, {"reasoning_effort": "medium", "add_generation_prompt": True}),
+    ("chat effort low", [user("q")], None, {"reasoning_effort": "low", "add_generation_prompt": True}),
+    ("chat effort with system", [{"role": "system", "content": "be brief"}, user("q")], None,
+     {"reasoning_effort": "low", "add_generation_prompt": True}),
+    ("chat effort with empty system", [{"role": "system", "content": "  "}, user("q")], None,
+     {"reasoning_effort": "medium"}),
+    ("chat effort ignored when thinking off", [user("q")], None,
+     {"enable_thinking": False, "reasoning_effort": "low", "add_generation_prompt": True}),
+    ("chat reasoning content default", [user("q"), assistant("a", reasoning="  why  "), user("q2")], None, {}),
+    ("chat reasoning preserved", [user("q"), assistant("a", reasoning="why"), user("q2")], None,
+     {"preserve_thinking": True}),
+    ("chat reasoning dropped", [user("q"), assistant("a", reasoning="why"), user("q2")], None,
+     {"preserve_thinking": False}),
+    ("chat reasoning last answer kept", [user("q"), assistant("a", reasoning="why")], None,
+     {"preserve_thinking": False, "add_generation_prompt": True}),
+    ("chat reasoning without user after", [user("q"), assistant("a", reasoning="why")], None,
+     {"preserve_thinking": False}),
+    ("chat reasoning empty", [user("q"), assistant("a", reasoning="  "), user("q2")], None, {}),
+    ("chat reasoning non string", [user("q"), {"role": "assistant", "content": "a", "reasoning_content": 5},
+                                   user("q2")], None, {}),
+    ("chat tools", [user("weather in Zürich?")], TOOLS, {}),
+    ("chat tools with prompt", [user("weather?")], TOOLS, {"add_generation_prompt": True}),
+    ("chat tools with system", [{"role": "system", "content": "You are a weather bot."}, user("weather?")], TOOLS,
+     {"add_generation_prompt": True}),
+    ("chat tools with empty system", [{"role": "system", "content": ""}, user("weather?")], TOOLS, {}),
+    ("chat tools empty list", [user("hi")], [], {}),
+    ("chat tool call", [user("weather?"), assistant("", calls=[CALL])], TOOLS, {}),
+    ("chat tool call with text", [user("weather?"), assistant("Let me check.", calls=[CALL])], TOOLS, {}),
+    ("chat tool call all types", [user("search"), assistant("", calls=[CALL_ALL_TYPES])], TOOLS,
+     {"add_generation_prompt": True}),
+    ("chat tool call nested function", [user("search"), assistant("", calls=[NESTED_CALL])], TOOLS, {}),
+    ("chat tool call empty arguments", [user("search"), assistant("", calls=[{"function": {"name": "search", "arguments": ""}}])],
+     TOOLS, {}),
+    ("chat tool call no arguments", [user("search"), assistant("", calls=[{"function": {"name": "search"}}])], TOOLS, {}),
+    ("chat tool result", [user("weather?"), assistant("", calls=[CALL]), tool("sunny, 21C")], TOOLS,
+     {"add_generation_prompt": True}),
+    ("chat tool results twice", [user("weather?"), assistant("", calls=[CALL, CALL]),
+                                 tool("sunny"), tool("rainy")], TOOLS, {"add_generation_prompt": True}),
+    ("chat tool multi step", [user("weather?"), assistant("", calls=[CALL]), tool("sunny"),
+                              assistant("", calls=[CALL]), tool("rainy"), assistant("done"), user("again")],
+     TOOLS, {"add_generation_prompt": True}),
+    ("chat two tool turns", [user("q1"), assistant("", calls=[CALL]), tool("r1"), user("q2"),
+                             assistant("", calls=[CALL]), tool("r2")], TOOLS, {"add_generation_prompt": True}),
+    ("chat tool response tagged user", [user("q"), assistant("", calls=[CALL]), tool("r"), user("next")], TOOLS, {}),
+    ("chat unicode", [{"role": "system", "content": "Règles: 日本語 🙂"},
+                      user("émoji 🙂 中文 \u0001 combining e\u0301 rtl \u05d0\u05d1")], None,
+     {"add_generation_prompt": True}),
+    ("chat unicode assistant", [user("q"), assistant("回答 🙃", reasoning="思考…"), user("q2")], None, {}),
+    ("chat multi turn deep", [{"role": "system", "content": "sys"}, user("u1"), assistant("a1"), user("u2"),
+                               assistant("a2"), user("u3"), assistant("a3"), user("u4")], None,
+     {"add_generation_prompt": True}),
+    ("chat add vision id unused", [user("hi")], None, {"add_vision_id": False, "add_generation_prompt": True}),
+    ("chat image in user", [user([{"type": "image", "image": "x"}])], None, {"add_generation_prompt": True}),
+    ("chat image url in user", [user([{"image_url": "http://example/x.png"}])], None, {}),
+    ("chat text and image", [user([{"type": "text", "text": "look"}, {"type": "image"}])], None, {}),
+    ("chat two images", [user([{"type": "image"}, {"type": "image"}])], None, {"add_generation_prompt": True}),
+    ("chat video in user", [user([{"type": "video", "video": "v"}])], None, {}),
+    ("chat long message", [user(LONG_MESSAGE)], None, {"add_generation_prompt": True}),
+]
+
+CHAT_ERROR = [
+    ("chat no messages", [], None, {}),
+    ("chat system not first", [user("q"), {"role": "system", "content": "late"}], None, {}),
+    ("chat unexpected role", [user("q"), {"role": "wizard", "content": "x"}], None, {}),
+    ("chat assistant only", [assistant("x")], None, {}),
+    ("chat tool response only", [user("<tool_response>\nr\n</tool_response>")], None, {}),
+    ("chat unexpected content type", [{"role": "user", "content": 42}], None, {}),
+    ("chat unexpected item type", [user([{"type": "audio"}])], None, {}),
+    ("chat image in system", [{"role": "system", "content": [{"type": "image", "image": "x"}]}, user("q")],
+     None, {}),
+    ("chat video in system", [{"role": "system", "content": [{"type": "video", "video": "x"}]}, user("q")],
+     None, {}),
+    ("chat bad effort", [user("q")], None, {"reasoning_effort": "extreme"}),
+]
+
+
+def chat_cases():
+    """The conversations the template renders, as (name, messages, tools, kwargs)."""
+    return CHAT
+
+
+def chat_error_cases():
+    """The conversations the template rejects, as (name, messages, tools, kwargs)."""
+    return CHAT_ERROR
+
+
+if __name__ == "__main__":
+    main()

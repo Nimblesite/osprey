@@ -1,6 +1,6 @@
 # Repository map
 
-Start with the component you need to change. Run build and verification commands from the repository root.
+Start with the component you need to change. Run build and verification commands from the repository root. `src/osprey/` holds Osprey code; `src/toolchain/` holds the Rust, C and TypeScript that build it. The Cargo workspace is `src/toolchain/Cargo.toml`, so run `cargo` from there or pass `--manifest-path`; artifacts stay in the root `target/`.
 
 ## Compiler and runtime
 
@@ -8,15 +8,15 @@ The compiler pipeline follows these directories in order:
 
 | Stage | Source | Responsibility |
 | --- | --- | --- |
-| Parse | `tree-sitter-osprey/`, `crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
-| Lower | `crates/osprey-ast/` | Shared AST and static interpretation |
-| Check | `crates/osprey-types/` | Type inference and effect requirements |
-| Generate | `crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
-| Execute | `crates/osprey-cli/`, `compiler/runtime/` | CLI, target linking and C runtime |
+| Parse | `src/toolchain/tree-sitter-osprey/`, `src/toolchain/crates/osprey-syntax/` | Default grammar and Default, ML and Python front ends |
+| Lower | `src/toolchain/crates/osprey-ast/` | Shared AST and static interpretation |
+| Check | `src/toolchain/crates/osprey-types/` | Type inference and effect requirements |
+| Generate | `src/toolchain/crates/osprey-codegen/` | LLVM IR, closures, effects and GPU kernels |
+| Execute | `src/toolchain/crates/osprey-cli/`, `src/toolchain/compiler/runtime/` | CLI, target linking and C runtime |
 
-The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `compiler/runtime/` contains the native and portable runtime units; `compiler/bin/` and `compiler/lib/` are generated outputs.
+The remaining crates provide project resolution, formatting, documentation, language-server and debugger support. `src/toolchain/compiler/runtime/` contains the native and portable runtime units; `src/toolchain/compiler/bin/` and `src/toolchain/compiler/lib/` are generated outputs.
 
-A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `tests/` and, when appropriate, a rejection in `examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
+A language change starts with its normative contract in `docs/specs/language/` or `docs/specs/compiler/`, then a regression in `src/osprey/tests/` and, when appropriate, a rejection in `src/osprey/examples/failscompilation/`. Each ML twin shares its Default twin's golden. Delivery gaps belong in `docs/plans/`, not in misleading public support claims.
 
 ## Specification subjects
 
@@ -34,17 +34,17 @@ The root Makefile defines every public target, so `make` and editor task panels,
 | `scripts/make/apps.mk` | Graphics hosts, GPT-2 weights, benchmark tooling and website steps |
 | `scripts/make/extension.mk` | Extension packaging and installation verification |
 
-`scripts/ios.mk` and `scripts/android.mk` own the mobile runtime archives and test steps. Add a public target to the root Makefile and its private steps to the fragment for their responsibility; preserve its prerequisite checks. Keep `NAME := value` assignments in the fragments, because task panels list them as targets. The node dependency guard follows nested includes, so a moved recipe retains the same enforcement. Release detection classifies the shared fragments as binary inputs.
+`scripts/make/ios.mk` and `scripts/make/android.mk` own the mobile runtime archives and test steps. Add a public target to the root Makefile and its private steps to the fragment for their responsibility; preserve its prerequisite checks. Keep `NAME := value` assignments in the fragments, because task panels list them as targets. The node dependency guard follows nested includes, so a moved recipe retains the same enforcement. Release detection classifies the shared fragments as binary inputs.
 
 ## Applications and presentation
 
-`examples/` contains runnable applications and their platform hosts. `website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `website/src/spec/`.
+`src/osprey/examples/` contains runnable applications and their platform hosts. `src/toolchain/website/src/docs/` contains language guides; generated reference and spec copies are ignored build output. Edit specifications under `docs/specs/`, never under `src/toolchain/website/src/spec/`.
 
-The homepage, effects guide and handler post share their runnable draft-saving example through `website/src/_data/draftExample.json`. Browser tests execute all three homepage syntax flavors and the guide/post examples, verify the displayed output and actual file contents, and assert that the offline handler writes no file. The README shows the same source and is checked against that data.
+The homepage and README show the package-manager install example from `src/toolchain/website/src/_data/heroExample.json`; the handler post keeps its draft-saving example in `draftExample.json`. Browser tests execute all three homepage syntax flavors, verify the displayed output and the written lock file, and assert that a missing handler is rejected. The effects guide runs the package manager's `Files` effect under test-double handlers in all three flavors, and its browser test checks each suite's TAP output and the missing-handler diagnostic. The README shows the same source and is checked against that data.
 
-`packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `python/` contains the separate CPython interoperability bridge.
+`src/osprey/packages/` is the single package tree. `manager/` contains the server, client, resolver and verification suites; its sibling directories contain libraries. Default, ML and Python flavor use the same package system. Some libraries port APIs from Python projects; their implementation syntax does not make them a different package kind. `src/toolchain/python/` contains the separate CPython interoperability bridge.
 
-`vscode-extension/` and `webcompiler/` are separate Node projects with their own dependency locks. `Book/` and `benchmarks/` contain verification and publishing tools.
+`src/toolchain/vscode-extension/` and `src/toolchain/webcompiler/` are separate Node projects with their own dependency locks. `docs/book/` and `src/toolchain/benchmarks/` contain verification and publishing tools.
 
 ## Generated files and test isolation
 
@@ -56,6 +56,6 @@ Manual `osprey program.osp --run` retains normal application semantics: relative
 
 ## Supporting material
 
-`scripts/carbon/` renders source screenshots using the editor grammars. `scripts/homebrew/` contains historical local packaging experiments; official releases use `.github/workflows/release.yml` and the external Homebrew tap. `scripts/schemas/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
+Official releases use `.github/workflows/release.yml` and the external Homebrew tap. `.github/` holds tooling schemas. The single review is `docs/reviews/review.md`; each finding names its revision and status.
 
 Configuration files stay at the root when their tools discover them there. Workspace, compiler and release manifests are entry points, not miscellaneous project documentation.

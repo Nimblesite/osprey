@@ -1,0 +1,25 @@
+# @osprey/micrograd: licensing and upstream acknowledgement
+
+The Osprey implementation is provided under the normal [MIT license](LICENSE), Copyright (c) 2026 NIMBLESITE PTY LTD, Australia. This does not claim ownership of any third-party material identified below.
+
+## Upstream API and behavior references
+
+These repositories and releases are acknowledged as API, behavior and test-oracle references. Their licenses are not assigned to this implementation merely because the API is reimplemented. The port does not bundle or link the upstream Python package.
+
+- [micrograd](https://github.com/karpathy/micrograd): 0.1.0.
+- [lecturelicense](https://github.com/karpathy/nn-zero-to-hero): upstream audit snapshot.
+
+## Specifically retained third-party material
+
+`oracle/micrograd.cpython`, the CPython script that computes this package's test values, retains code by Andrej Karpathy under the MIT license:
+
+- `Value.backward` and the engine test cases are adapted from [micrograd](https://github.com/karpathy/micrograd) 0.1.0, Copyright (c) 2020 Andrej Karpathy. See [`LICENSES/micrograd-MIT.txt`](LICENSES/micrograd-MIT.txt). The change walks operands in order instead of the `_prev` set.
+- `Value.tanh` and `Value.exp` are reproduced verbatim from [nn-zero-to-hero](https://github.com/karpathy/nn-zero-to-hero), `lectures/micrograd/micrograd_lecture_second_half_roughly.ipynb`, Copyright (c) 2022 Andrej Karpathy. See [`LICENSES/nn-zero-to-hero-MIT.txt`](LICENSES/nn-zero-to-hero-MIT.txt).
+
+## License scope
+
+No additional upstream software license is imposed based solely on the API name, mathematical behavior, output of an oracle, short compatibility diagnostics or the label “port”. No substantive shared implementation block was identified in the recorded comparison. A matching API does not establish either copying or independent authorship; review any future incorporation of upstream source or data separately.
+
+## Distribution
+
+The publisher carries `LICENSE`, this acknowledgement and any required `LICENSES/` files in the digest-pinned release. Source or compiled redistributions containing the specifically retained material must carry its applicable notices. Upstream project names provide acknowledgement and imply no endorsement.

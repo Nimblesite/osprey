@@ -1,0 +1,198 @@
+//! Scope-aware free-variable analysis over the AST. The one collector behind
+//! every capture mechanism in the compiler — closure cells and `spawn` thunks
+//! in the backend, handler-owned `mut` promotion, and the checker's
+//! file-scope initialization order — so "what does this expression close over"
+//! has exactly one answer. Names bound *inside* the expression (lambda
+//! parameters, `let`s in blocks, `match`/`select`/handler pattern bindings)
+//! are subtracted; everything else referenced is free.
+
+use crate::{AstNode, Expr, MatchArm, Pattern, Stmt};
+use std::collections::BTreeSet;
+
+/// Collect the free identifiers of `e` into `out` (sorted, deduplicated).
+pub fn free_idents(e: &Expr, out: &mut BTreeSet<String>) {
+    let mut bound: Vec<String> = Vec::new();
+    walk(e, &mut bound, out);
+}
+
+fn note(name: &str, bound: &[String], out: &mut BTreeSet<String>) {
+    if !bound.iter().any(|b| b == name) {
+        let _ = out.insert(name.to_string());
+    }
+}
+
+/// Run `f` with `names` pushed onto the bound stack, restoring it after.
+fn scoped(
+    bound: &mut Vec<String>,
+    names: Vec<String>,
+    out: &mut BTreeSet<String>,
+    f: impl FnOnce(&mut Vec<String>, &mut BTreeSet<String>),
+) {
+    let depth = bound.len();
+    bound.extend(names);
+    f(bound, out);
+    bound.truncate(depth);
+}
+
+fn walk(e: &Expr, bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
+    match e {
+        Expr::Identifier(name) => note(name, bound, out),
+        Expr::Path(path) => note(&path.to_string(), bound, out),
+        Expr::Lambda {
+            parameters, body, ..
+        } => {
+            let names = parameters.iter().map(|p| p.name.clone()).collect();
+            scoped(bound, names, out, |b, o| walk(body, b, o));
+        }
+        Expr::Match { value, arms } => {
+            walk(value, bound, out);
+            walk_arms(arms, bound, out);
+        }
+        Expr::Select { operations, arms } => {
+            for operand in operations.iter().flat_map(crate::SelectOperation::operands) {
+                walk(operand, bound, out);
+            }
+            walk_arms(arms, bound, out);
+        }
+        Expr::Block {
+            statements, value, ..
+        } => walk_block(statements, value.as_deref(), bound, out),
+        // A constructor spelling can name a local record update. Consumers
+        // filter actual type names against locals; an update's base is a read.
+        Expr::TypeConstructor { name, fields, .. }
+        | Expr::Update {
+            record: name,
+            fields,
+        } => {
+            note(name, bound, out);
+            walk_slice(fields, bound, out, |field| &field.value);
+        }
+        // An effect form may name a capability binding: that name is read
+        // ([EFFECTS-INSTANCE]). An effect declaration's name binds nothing.
+        Expr::Perform { effect, .. } | Expr::Mask { effect, .. } => {
+            note(crate::effect_name::base(effect), bound, out);
+            AstNode::Expression(e).for_each_child(|child| {
+                if let AstNode::Expression(expression) = child {
+                    walk(expression, bound, out);
+                }
+            });
+        }
+        Expr::Handler {
+            effect,
+            arms,
+            body,
+            return_clause,
+            finally,
+            ..
+        } => {
+            note(crate::effect_name::base(effect), bound, out);
+            for arm in arms {
+                scoped(bound, arm.params.clone(), out, |b, o| walk(&arm.body, b, o));
+            }
+            walk(body, bound, out);
+            for clause in return_clause.iter().chain(finally) {
+                walk(clause, bound, out);
+            }
+        }
+        _ => AstNode::Expression(e).for_each_child(|child| {
+            if let AstNode::Expression(expression) = child {
+                walk(expression, bound, out);
+            }
+        }),
+    }
+}
+
+/// Free identifiers of a block continuation (`statements`, then the tail
+/// `value`) — the liveness query behind last-use drops [GC-ARC-PERCEUS].
+pub fn free_idents_of_stmts<S: std::borrow::Borrow<Stmt>>(
+    statements: &[S],
+    value: Option<&Expr>,
+    out: &mut BTreeSet<String>,
+) {
+    let mut bound: Vec<String> = Vec::new();
+    walk_block(statements, value, &mut bound, out);
+}
+
+/// `let`s bind for the *rest* of the block, so statements thread the bound
+/// stack left to right and the whole block's bindings pop together.
+fn walk_block<S: std::borrow::Borrow<Stmt>>(
+    statements: &[S],
+    value: Option<&Expr>,
+    bound: &mut Vec<String>,
+    out: &mut BTreeSet<String>,
+) {
+    let depth = bound.len();
+    for s in statements {
+        match s.borrow() {
+            Stmt::Let { name, value, .. } => {
+                walk(value, bound, out);
+                bound.push(name.clone());
+            }
+            Stmt::Assignment { name, value, .. } => {
+                // An assignment writes the existing binding; its target is a
+                // free use just as surely as an identifier on the RHS. Handler
+                // arms need this to capture `cell` in `cell = replacement`
+                // even when the replacement expression never reads `cell`.
+                note(name, bound, out);
+                walk(value, bound, out);
+            }
+            Stmt::Expr { value, .. } => walk(value, bound, out),
+            _ => {}
+        }
+    }
+    if let Some(v) = value {
+        walk(v, bound, out);
+    }
+    bound.truncate(depth);
+}
+
+fn walk_arms(arms: &[MatchArm], bound: &mut Vec<String>, out: &mut BTreeSet<String>) {
+    for arm in arms {
+        let names = pattern_bindings(&arm.pattern);
+        scoped(bound, names, out, |b, o| walk(&arm.body, b, o));
+    }
+}
+
+/// Every name a pattern binds in its arm's scope.
+pub(crate) fn pattern_bindings(p: &Pattern) -> Vec<String> {
+    match p {
+        Pattern::Wildcard | Pattern::Literal(_) => Vec::new(),
+        Pattern::Constructor {
+            fields,
+            sub_patterns,
+            ..
+        } => {
+            let mut names = if sub_patterns.is_empty() {
+                fields.clone()
+            } else {
+                Vec::new()
+            };
+            for sp in sub_patterns {
+                names.extend(pattern_bindings(sp));
+            }
+            names
+        }
+        Pattern::TypeAnnotated { name, .. } => vec![name.clone()],
+        Pattern::Structural { fields, .. } => {
+            fields.iter().map(|(_, binder)| binder.clone()).collect()
+        }
+        Pattern::List { elements, rest } => {
+            let mut names: Vec<String> = elements.iter().flat_map(pattern_bindings).collect();
+            names.extend(rest.clone());
+            names
+        }
+        Pattern::Binding(n) => vec![n.clone()],
+    }
+}
+
+/// Recurse into each element of `items`, projecting it to its sub-expression
+/// with `pick`. The one place the free-variable walker fans out over a
+/// collection node, threading `bound`/`out` through [`crate::walk_each`].
+fn walk_slice<T>(
+    items: &[T],
+    bound: &mut Vec<String>,
+    out: &mut BTreeSet<String>,
+    pick: impl Fn(&T) -> &Expr,
+) {
+    crate::walk_each(items, &mut (bound, out), pick, |e, (b, o)| walk(e, b, o));
+}

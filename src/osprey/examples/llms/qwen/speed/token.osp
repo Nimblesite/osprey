@@ -1,0 +1,85 @@
+// One synthetic Qwen3.8-27B decode step at the real shapes, 64 times: q, k, v, o
+// (5120x5120), gate and up (17408x5120), down (5120x17408), all Q4_K and decoded
+// in-kernel, with elementwise gate*up and the residual add. Attention, DeltaNet
+// and the norms are not here; this times the products, which are the bulk of
+// the 26G operations per token. Under Metal the 640 dispatches of a token form
+// one command buffer and the host reads one logit at the end.
+fn matrix(offset, bytes) -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("block.bin", offset, bytes)
+fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
+fn byte(w, i) = toInt(gpuGet(w, i) ?: toUint8(0))
+fn half(w, i) = {
+    let bits = byte(w, i) + byte(w, i + 1) * 256
+    toFloat32(float16FromBits(toInt16(match bits >= 32768 { true => bits - 65536  false => bits })))
+}
+fn xAt(x, i) = gpuGet(x, i) ?: toFloat32(0.0)
+fn scaleOf(w, base, j) = match j < 4 {
+    true => bitAnd(byte(w, base + 4 + j), 63)
+    false => bitOr(bitAnd(byte(w, base + 8 + j), 15), shiftLeft(shiftRight(byte(w, base + j), 6), 4))
+}
+fn minOf(w, base, j) = match j < 4 {
+    true => bitAnd(byte(w, base + 8 + j), 63)
+    false => bitOr(shiftRight(byte(w, base + 8 + j), 4), shiftLeft(shiftRight(byte(w, base + 4 + j), 6), 4))
+}
+fn nibble(w, i, high) = match high == 1 { true => shiftRight(byte(w, i), 4)  false => bitAnd(byte(w, i), 15) }
+fn subBlock(w, x, d, dmin, base, first, j, acc) = {
+    let d1 = d * toFloat32(scaleOf(w, base, j))
+    let m1 = dmin * toFloat32(minOf(w, base, j))
+    let g = intDiv(j, 2)
+    let high = j % 2
+    let q = base + 16 + g * 32
+    let e = first + g * 64 + high * 32
+    fold(range(0, 32), acc, fn(s, l) => s + xAt(x, e + l) * (d1 * toFloat32(nibble(w, q + l, high)) - m1))
+}
+fn block(w, x, r, nb, blk, acc) = {
+    let base = (r * nb + blk) * 144
+    let d = half(w, base)
+    let dmin = half(w, base + 2)
+    fold(range(0, 8), acc, fn(a, j) => subBlock(w, x, d, dmin, base, blk * 256, j, a))
+}
+fn row(w, x, r, nb) = fold(range(0, nb), toFloat32(0.0), fn(acc, blk) => block(w, x, r, nb, blk, acc))
+fn matvec(w, x, rows, nb) = match gpuIota(rows) {
+    Success { value } => match value |> gpuMap(fn(r) => row(w, x, r, nb)) {
+        Success { value } => value
+        Error { message } => x
+    }
+    Error { message } => x
+}
+fn kept(result, fallback) = match result {
+    Success { value } => value
+    Error { message } => fallback
+}
+fn product(a: GpuBuffer<float32>, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p * s), a)
+fn residual(x, o) = kept(gpuZipWith(x, o, fn(p, s) => p * toFloat32(0.5) + s), x)
+fn added(a: GpuBuffer<float32>, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p + s), a)
+fn step(m, x) = {
+    let q = matvec(m.q, x, 5120, 20)
+    let k = matvec(m.k, x, 5120, 20)
+    let v = matvec(m.v, x, 5120, 20)
+    let o = matvec(m.o, q, 5120, 20)
+    let g = matvec(m.gate, x, 17408, 20)
+    let u = matvec(m.up, x, 17408, 20)
+    let h = product(g, u)
+    let d = matvec(m.down, h, 5120, 68)
+    added(residual(x, o), d)
+}
+type Block = { q: GpuBuffer<uint8>, k: GpuBuffer<uint8>, v: GpuBuffer<uint8>, o: GpuBuffer<uint8>, gate: GpuBuffer<uint8>, up: GpuBuffer<uint8>, down: GpuBuffer<uint8> }
+fn token(m, x) = fold(range(0, 64), x, fn(acc, _layer) => step(m, acc))
+fn run() = match inputs() {
+    Error { message } => print(message)
+    Success { value } => {
+        let x = value
+        match matrix(0, 14745600) {
+            Error { message } => print(message)
+            Success { value } => {
+                let q = value
+                let m = Block { q: q, k: kept(matrix(14745600, 14745600), q), v: kept(matrix(29491200, 14745600), q), o: kept(matrix(44236800, 14745600), q), gate: kept(matrix(58982400, 50135040), q), up: kept(matrix(109117440, 50135040), q), down: kept(matrix(159252480, 50135040), q) }
+                let y = fold(range(0, TOKENS), x, fn(acc, _t) => token(m, acc))
+                print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))}")
+            }
+        }
+    }
+}
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    run()
+}

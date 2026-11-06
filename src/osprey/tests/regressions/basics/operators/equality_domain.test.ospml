@@ -1,0 +1,76 @@
+(** Every comparison [BOOL-EQUALITY] and [BOOL-ORDERING] decide, true and false:
+    scalars by value, payload-free union values by variant, a payload-free
+    constructor as a variant test on a union whose other variants carry
+    payloads, a generic caller at each decided type, and `listContains`
+    searching by the same `==` ([BUILTIN-LIST-CONTAINS]). The undecided
+    comparisons are pinned by src/osprey/examples/failscompilation/ml_equality_undecided.ospo. *)
+
+type Area =
+    Apps
+    Files
+    Reports
+
+type Shape =
+    Dot
+    Circle
+        r : int
+    Square
+        side : int
+
+same (a, b) = a == b
+differ (a, b) = a != b
+pick n = match n
+    0 => Apps
+    1 => Files
+    _ => Reports
+shapeOf n = match n
+    0 => Dot
+    1 => Circle(r = n)
+    _ => Square(side = n)
+isDot shape = shape == Dot
+notDot shape = shape != Dot
+
+scalarsCompareByValue () =
+    print "int ${toString (same (3, 3))} ${toString (same (3, 4))} float ${toString (same (0.5, 0.5))} ${toString (differ (0.5, 0.25))}"
+    checkAll "scalars compare by value" [
+        same (3, 3), !(same (3, 4)), differ (3, 4),
+        same (0.5, 0.5), !(same (0.5, 0.25)), sqrt (-1.0) != sqrt (-1.0),
+        same ("osprey", "osprey"), !(same ("osprey", "Osprey")), "" == "",
+        same (true, true), !(same (true, false)), differ (false, true),
+    ]
+
+scalarsOrder () =
+    checkAll "scalars order" [
+        1 < 2, !(2 < 1), 2 <= 2, 3 >= 2,
+        0.25 < 0.5, !(0.5 <= 0.25),
+        "abc" < "abd", "b" > "a", "same" >= "same",
+        false < true, !(true < false), true >= true,
+    ]
+
+payloadFreeUnionsCompareByVariant () =
+    print "area ${toString (pick 0 == Apps)} ${toString (pick 1 == Apps)} ${toString (same (pick 2, Reports))}"
+    checkAll "payload-free union values compare by variant" [
+        pick 0 == Apps, pick 1 != Apps, same (pick 1, Files), differ (pick 0, pick 2),
+        listContains [Apps, Reports] (pick 2), !(listContains [Apps, Reports] (pick 1)),
+    ]
+
+constructorsTestTheVariant () =
+    print "shape ${toString (isDot (shapeOf 0))} ${toString (isDot (shapeOf 1))} ${toString (notDot (shapeOf 2))}"
+    checkAll "a payload-free constructor tests the variant" [
+        isDot (shapeOf 0), !(isDot (shapeOf 1)), !(isDot (shapeOf 2)),
+        notDot (shapeOf 1), Dot == shapeOf 0, shapeOf 2 != Dot,
+    ]
+
+listContainsUsesEquality () =
+    checkAll "listContains searches by ==" [
+        listContains [1, 2, 3] 2, !(listContains [1, 2, 3] 4),
+        listContains ["a", "b"] "b", !(listContains ["a", "b"] "B"),
+        listContains [0.5, 1.5] 1.5, !(listContains [sqrt (-1.0)] (sqrt (-1.0))),
+        listContains [false] false, !(listContains [true] false),
+    ]
+
+test "scalars compare by value" scalarsCompareByValue
+test "scalars order" scalarsOrder
+test "payload-free union values compare by variant" payloadFreeUnionsCompareByVariant
+test "a payload-free constructor tests the variant" constructorsTestTheVariant
+test "listContains searches by ==" listContainsUsesEquality

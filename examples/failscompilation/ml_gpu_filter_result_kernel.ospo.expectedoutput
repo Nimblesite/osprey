@@ -1,1 +1,0 @@
-3:0: type mismatch: cannot unify bool with Result<int, Error>

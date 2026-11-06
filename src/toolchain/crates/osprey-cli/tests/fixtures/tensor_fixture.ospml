@@ -1,0 +1,21 @@
+(* Reads transformer.safetensors beside this file; `@FIXTURE@` is replaced
+   with the absolute path by tensor_fixture.rs before the program runs. *)
+at (b, i) = gpuGet (b, i) ?: toFloat32 0.0
+four b = "${at (b, 0)} ${at (b, 1)} ${at (b, 2)} ${at (b, 3)}"
+outcome r = match r
+    Success value => four value
+    Error message => message
+main () =
+    match gpuLoadTensor ("@FIXTURE@", "w")
+        Success w =>
+            match gpuLoadTensor ("@FIXTURE@", "h.1.b")
+                Success bias =>
+                    match gpuLoad ("@FIXTURE@", 124, 4)
+                        Success raw =>
+                            match gpuMatMul (w, w, 2, 2, 2)
+                                Success square =>
+                                    print "w ${four w}\nbias ${gpuGet (bias, 0) ?: toFloat16 0.0} ${gpuGet (bias, 1) ?: toFloat16 0.0}\nmissing ${outcome (gpuLoadTensor ("@FIXTURE@", "h.11.b"))}\nraw ${four raw}\nsquare ${four square}"
+                                Error message => print message
+                        Error message => print message
+                Error message => print message
+        Error message => print message

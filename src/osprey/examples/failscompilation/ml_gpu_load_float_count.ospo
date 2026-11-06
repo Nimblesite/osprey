@@ -1,0 +1,3 @@
+// osprey: flavor=ml
+// [GPU-BUFFER-LOAD]: a float element count is a type error in this flavor too.
+main () = gpuLoad ("weights.bin", 0, 2.5)

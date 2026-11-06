@@ -1,0 +1,5 @@
+[project]
+name = "qwen"
+source_roots = ["src", "../../../../packages/transformers/src"]
+python_sources = ["src/config.py", "src/device.py", "src/shapes.py", "src/cache.py", "src/norm.py", "src/rope.py", "src/mlp.py", "src/attention.py", "src/deltanet.py", "src/model.py", "src/hf.py", "src/tool_schema.py", "src/tool_json_scan.py", "src/tool_constrain.py", "src/tool_parser.py", "../../../../packages/transformers/src/math.py"]
+default_namespace = "qwen"

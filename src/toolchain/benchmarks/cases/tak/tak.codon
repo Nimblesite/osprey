@@ -1,0 +1,14 @@
+# Takeuchi function — heavy ternary self-recursion.
+def sub(a, b):
+    return a - b
+
+
+def tak(x, y, z):
+    match x > y:
+        case False:
+            return z
+        case _:
+            return tak(tak(sub(x, 1), y, z), tak(sub(y, 1), z, x), tak(sub(z, 1), x, y))
+
+
+print(f"{tak(32, 16, 8)}")

@@ -1,0 +1,26 @@
+// osprey: flavor=ml
+// [GPU-KERNEL-PURE], [STAGE-BACKEND]: a callback a static arm forwards into a kernel is judged where it lands.
+static effect Build
+    build : (int, (int) -> float) => Result<GpuBuffer<float>, Error>
+effect Log
+    write : string => Unit
+
+loud i =
+    perform Log.write "saw ${i}"
+    toFloat i
+
+twice n = perform Build.build n loud
+
+out =
+    handle Log
+        write m => print m
+    handle static Build
+        build n f => match gpuIota n
+            Success value => gpuMap (value, f)
+            Error message => Error(message = message)
+    twice 3
+match out
+    Success value => match gpuGet (value, 2)
+        Success value => print value
+        Error message => print message
+    Error message => print message

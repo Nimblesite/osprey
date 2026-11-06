@@ -41,10 +41,10 @@ A cluster's `kind` is the *weakest* pair against the canonical — **never assum
 No MCP? Use the installed CLI — what `make _deslop` runs:
 
 ```bash
-deslop . --nohtml --nojson --output "$PWD/target/deslop-report" --log-to-console --log-level error --no-color
+deslop . --config .config/deslop.toml --nohtml --nojson --output "$PWD/target/deslop-report" --log-to-console --log-level error --no-color
 ```
 
-Exit `3` means over the ceiling in `.deslop.toml`. Run `bash scripts/install-deslop.sh` before measuring: both local and hosted CI resolve the latest published release through this installer. Never change the version or threshold to move a number. The MCP index may use a different engine, so **find** with the MCP and **measure** with `make _deslop`.
+Exit `3` means over the ceiling in `.config/deslop.toml`. Run `bash scripts/ci/install-deslop.sh` before measuring: both local and hosted CI resolve the latest published release through this installer. Never change the version or threshold to move a number. The MCP index may use a different engine, so **find** with the MCP and **measure** with `make _deslop`.
 
 ## The ratchet
 
@@ -53,13 +53,13 @@ Exit `3` means over the ceiling in `.deslop.toml`. Run `bash scripts/install-des
 - **Never raise it.** Over the ceiling means you added duplication — remove it. The number is not the thing to edit.
 - **Lower it after every round** to the fresh `make _deslop` measurement. Slack above the measurement lets the next clone land free.
 - **A branch may not measure above `main`** — compare with the *same* CLI version, or the version gap alone will convict or exonerate falsely.
-- `.deslop.toml`'s comment block records the ratchet history. Extend it when you lower the ceiling; if that history and the live value disagree, someone raised it — **report a gate violation**.
+- `.config/deslop.toml`'s comment block records the ratchet history. Extend it when you lower the ceiling; if that history and the live value disagree, someone raised it — **report a gate violation**.
 
 ## Process
 
 - **Baseline.** `make _deslop` — record the percentage you start from.
 - **Gather.** `mcp__deslop__duplicates`, worst first. `cargo clippy --all-targets --all-features` is the whole dead-code scan (`dead_code`/`unused_*` are denied workspace-wide); grep the repo before deleting anything it flags.
-- **Triage.** Apply the judgement above. Record each keeper's two locations and intended helper, and each rejection's reason so nobody re-litigates it. `.deslop.toml` scopes the gate *by path*, so inline `#[cfg(test)]` and `#[path = "…"]` modules still inflate the number — an artifact, not a task.
+- **Triage.** Apply the judgement above. Record each keeper's two locations and intended helper, and each rejection's reason so nobody re-litigates it. `.config/deslop.toml` scopes the gate *by path*, so inline `#[cfg(test)]` and `#[path = "…"]` modules still inflate the number — an artifact, not a task.
 - **Apply.** One merge at a time, smallest diff that removes the duplication. Keep public and `pub(crate)` signatures intact so no caller has to change.
 - **Verify.** `make lint`, then `make _deslop`. Report what merged, what you left and why, and duplication vs baseline.
 

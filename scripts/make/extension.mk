@@ -1,4 +1,14 @@
 # --- vsix sub-steps ---------------------------------------------------------
+# Zed's artifact is built once, in the build phase; launch-policy tests are
+# covered by the Rust workspace and stdio acceptance reuses the compiler.
+.PHONY: _zed_build _test_zed_stdio
+_zed_build:
+	rustup target add wasm32-wasip2
+	$(MAKE) -C src/toolchain/zed-extension build
+
+_test_zed_stdio:
+	$(MAKE) -C src/toolchain/zed-extension stdio-test
+
 # Extension artefacts only. This used to run `$(MAKE) clean`, i.e. `cargo
 # clean` plus the C runtime archives, which bought a from-scratch release
 # build on every single reinstall and no correctness at all: cargo tracks its
@@ -22,7 +32,7 @@ _vsix_clean:
 # root manifest is the truthful local copy. [EDITOR-VERSIONING]
 # The editor ships a compiled Osprey package client; installations never compile
 # package-manager application sources on the user's machine. [PACKAGE-API]
-REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
+REGISTRY_CLIENT_SOURCES := $(shell find src/osprey/packages/manager -type f \( -name '*.osp' -o -name 'osprey.toml' \))
 # `--no-warnings` skips the warning pass: the redundant-annotation oracle
 # re-infers the whole program once per proof, which on the client is the
 # difference between 40 s and 31 min (one 7 s solve per annotation site).
@@ -30,33 +40,33 @@ REGISTRY_CLIENT_SOURCES := $(shell find packages/manager -type f \( -name '*.osp
 # still be computed. Package warnings are `osprey --check`'s and the editor's
 # to show; a packaging build only ships.
 target/osprey-pkg: $(BIN) $(REGISTRY_CLIENT_SOURCES)
-	$(BIN) build packages/manager/cli --quiet --no-warnings -o $@
+	$(BIN) build src/osprey/packages/manager/cli --quiet --no-warnings -o $@
 
-PACKAGE_WORKSPACE_SOURCES := $(shell find packages/manager/editor packages/native/src packages/graphics/src packages/json/src packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
+PACKAGE_WORKSPACE_SOURCES := $(shell find src/osprey/packages/manager/editor src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f \( -name '*.osp' -o -name '*.ospml' -o -name 'osprey.toml' \))
 target/package-workspace.wasm: $(BIN) $(PACKAGE_WORKSPACE_SOURCES) | _runtime_wasm
-	$(BIN) build packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
+	$(BIN) build src/osprey/packages/manager/editor --target=wasm32 --quiet --no-warnings -o $@
 
-WORKBENCH_SOURCES := apps/workbench/osprey.toml $(shell find apps/workbench/src examples/proof/kernel/src packages/native/src packages/graphics/src packages/json/src packages/vscode/src -type f -name '*.ospml')
+WORKBENCH_SOURCES := src/osprey/workbench/osprey.toml $(shell find src/osprey/workbench/src src/osprey/examples/proof/kernel/src src/osprey/packages/native/src src/osprey/packages/graphics/src src/osprey/packages/json/src src/osprey/packages/vscode/src -type f -name '*.ospml')
 target/workbench.wasm: $(BIN) $(WORKBENCH_SOURCES) | _runtime_wasm
-	$(BIN) build apps/workbench --target=wasm32 --quiet --no-warnings -o $@
+	$(BIN) build src/osprey/workbench --target=wasm32 --quiet --no-warnings -o $@
 
 # The local package registry ([PACKAGE-LOCAL-REGISTRY]): the Osprey folder-
 # registry server, and the repository's own packages published into a folder
-# registry with `publish --folder`. `make -C packages registry-serve` serves that tree and
+# registry with `publish --folder`. `make -C src/osprey/packages registry-serve` serves that tree and
 # the extension bundles both, so anyone can grab packages before the hosted
 # registry exists. The stamp sits outside the tree, where a stray file would be
 # refused by the catalog walk.
 target/osprey-registry: $(BIN) $(REGISTRY_CLIENT_SOURCES)
-	$(BIN) build packages/manager/api --quiet --no-warnings -o $@
+	$(BIN) build src/osprey/packages/manager/api --quiet --no-warnings -o $@
 
 #
 # Second expansion lists the sources only when the stamp is built: every other
 # target, such as the MSYS shell's `_runtime` where git is not on the PATH, runs
 # no git.
 .SECONDEXPANSION:
-LOCAL_REGISTRY_SOURCES = $(shell git ls-files packages | grep -v '^packages/manager/')
-target/local-registry.stamp: target/osprey-pkg scripts/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
-	scripts/stage-local-registry.sh target/osprey-pkg target/local-registry
+LOCAL_REGISTRY_SOURCES = $(shell git ls-files src/osprey/packages | grep -v '^src/osprey/packages/manager/')
+target/local-registry.stamp: target/osprey-pkg scripts/packages/stage-local-registry.sh $$(LOCAL_REGISTRY_SOURCES)
+	scripts/packages/stage-local-registry.sh target/osprey-pkg target/local-registry
 	@touch $@
 
 _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-registry target/local-registry.stamp target/workbench.wasm
@@ -68,14 +78,14 @@ _vsix_bundle: target/osprey-pkg target/package-workspace.wasm target/osprey-regi
 	cp target/package-workspace.wasm "$$DEST/package-workspace.wasm"; \
 	cp target/workbench.wasm "$$DEST/workbench.wasm"; \
 	$(RM) "$$DEST/workbench"; $(MKDIR) "$$DEST/workbench"; \
-	cp -R apps/workbench/lessons "$$DEST/workbench/"; \
-	cp -R apps/workbench/assets/. "$$DEST/workbench/"; \
-	python3 scripts/workbench-proof-assets.py "$$DEST/workbench"; \
-	cp website/src/assets/images/logo.png "$$DEST/workbench/osprey-logo.png"; \
+	cp -R src/osprey/workbench/lessons "$$DEST/workbench/"; \
+	cp -R src/osprey/workbench/assets/. "$$DEST/workbench/"; \
+	python3 scripts/proof/workbench-proof-assets.py "$$DEST/workbench"; \
+	cp src/toolchain/website/src/assets/images/logo.png "$$DEST/workbench/osprey-logo.png"; \
 	cp $(RTB)/libfiber_runtime.a $(RTB)/libhttp_runtime.a \
 	   $(RTB)/libfiber_runtime_gc.a $(RTB)/libhttp_runtime_gc.a \
 	   $(RTB)/libfiber_runtime_arc.a $(RTB)/libhttp_runtime_arc.a "$$DEST/"; \
-	cp shipwright.json $(EXT_DIR)/shipwright.json; \
+	cp .github/shipwright.json $(EXT_DIR)/shipwright.json; \
 	echo "  bundled $(BIN) + all native runtime archives -> $$DEST/"
 
 # Refuse missing or stale build artifacts before running the full editor suite.
@@ -88,10 +98,10 @@ _vsix_verify:
 	  cmp -s "$${INPUT%:*}" "$(EXT_DIR)/bin/$(EXT_PLATFORM)/$${INPUT#*:}" || \
 	    { echo "FAIL: missing or stale bundled $${INPUT#*:}; run make _vsix_bundle"; exit 1; }; \
 	done
-	diff -qr apps/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
-	diff -qr -x lessons -x osprey-logo.png -x proof-libraries apps/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
-	python3 scripts/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
-	cmp website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
+	diff -qr src/osprey/workbench/lessons "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/lessons"
+	diff -qr -x lessons -x osprey-logo.png -x proof-libraries src/osprey/workbench/assets "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench"
+	python3 scripts/proof/workbench-proof-assets.py "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench" --check
+	cmp src/toolchain/website/src/assets/images/logo.png "$(EXT_DIR)/bin/$(EXT_PLATFORM)/workbench/osprey-logo.png"
 	cd $(EXT_DIR) && node scripts/verify-package-client.mjs
 
 # Package, then prove the VSIX carries the bundled compiler: `vsce` ships

@@ -42,20 +42,20 @@ Website deployment depends on scope and the dependency audit; it does not wait f
 - **Required channels must succeed.** `release-complete` runs with `if: always()`, rejects failed/cancelled jobs, and requires success for each channel selected by scope and tag type. An expected scope-based skip is permitted; skipping a required channel fails.
 - **Matrix failures remain visible.** `fail-fast: false` lets sibling build/package legs finish; it does not suppress a failing result.
 
-[`scripts/verify-release-gates.mjs`](../scripts/verify-release-gates.mjs) checks the workflow shape during `make lint` and the required build job. Publication/deployment jobs must remain connected to `audit` and `release-complete`. The verifier's reviewed exceptions must still match their intended commands; stale exceptions fail.
+[`scripts/ci/verify-release-gates.mjs`](../scripts/ci/verify-release-gates.mjs) checks the workflow shape during `make lint` and the required build job. Publication/deployment jobs must remain connected to `audit` and `release-complete`. The verifier's reviewed exceptions must still match their intended commands; stale exceptions fail.
 
 ## Versioning — never hard-code it ([SWR-VERSION-BUILD-STAMPING])
 
 Source-controlled version fields MUST stay at the placeholder **`0.0.0-dev`**:
 
-- `Cargo.toml` (`[workspace.package] version`) and the CLI fallback in
-  `crates/osprey-cli/src/main.rs`
-- `vscode-extension/package.json` (`version`)
-- `shipwright.json` (`product.version` + each component `expectedVersion`)
+- `src/toolchain/Cargo.toml` (`[workspace.package] version`) and the CLI fallback in
+  `src/toolchain/crates/osprey-cli/src/main.rs`
+- `src/toolchain/vscode-extension/package.json` (`version`)
+- `.github/shipwright.json` (`product.version` + each component `expectedVersion`)
 
 The real version is stamped from the tag at build time — the `osprey` binary
 via the `OSPREY_VERSION` environment variable at `cargo build` time,
-`package.json`/`shipwright.json` via the release job. **A PR that changes a placeholder to a real version is a defect and
+`package.json`/`.github/shipwright.json` via the release job. **A PR that changes a placeholder to a real version is a defect and
 must be rejected in review.**
 
 The compiler honors the version contract ([SWR-VERSION-CLI-OUTPUT]):
@@ -102,7 +102,7 @@ scoop bucket add nimblesite https://github.com/Nimblesite/scoop-bucket
 scoop install osprey
 ```
 
-Osprey invokes the native LLVM/C toolchain to compile and link generated IR. Released package-manager definitions declare these dependencies: `llvm` for Homebrew and `llvm` plus `gcc` for Scoop. See the [installation guide](../website/src/docs/installation.md) for host prerequisites.
+Osprey invokes the native LLVM/C toolchain to compile and link generated IR. Released package-manager definitions declare these dependencies: `llvm` for Homebrew and `llvm` plus `gcc` for Scoop. See the [installation guide](../src/toolchain/website/src/docs/installation.md) for host prerequisites.
 
 ## Windows support status
 

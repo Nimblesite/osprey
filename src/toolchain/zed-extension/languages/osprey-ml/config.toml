@@ -1,0 +1,6 @@
+name = "Osprey ML"
+path_suffixes = ["ospml"]
+line_comments = ["// "]
+tab_size = 4
+code_fence_block_name = "ospml"
+# The canonical Default grammar does not parse ML layout. Do not mislabel it.

@@ -1,0 +1,312 @@
+# osprey: flavor=python
+# osprey: namespace=qwen_server
+# osprey: module=TableModel
+"""The fixture model behind `Generator`: four-token context counts over a transcript.
+
+Plan 0049 Phase 3 puts the real `qwen3_5` weights behind the same effect; until
+then every route is exercised against a model that is real but tiny. Its handle
+(`Model`) carries the vocabulary and the token ids of `CORPUS`, a transcript in
+the served chat framing: a step counts, for the four-token context at the end of
+the history, how often each token followed that context in the corpus, and asks
+`@osprey/transformers`' `generate` for one token from those counts. Nothing here
+is a canned reply — the text a turn produces is the model's own continuation of
+its prompt, and `tests/model_reference.cpython` recomputes that continuation
+independently from the same corpus.
+
+A context the corpus never showed falls back to a seeded row, so a prompt
+outside the training text still yields a deterministic token rather than an
+empty or zero answer. Ties break by token id, as `Math.argmax` breaks them, so
+the compiled model and the CPython reference agree exactly.
+
+Every integer operation here is one of the total helpers
+([BUILTIN-TOTAL-ARITH]): a server has no `Arith` policy to consult, and a
+wrapped hash or a clamped count is the definition rather than a fault.
+"""
+
+from qwen_server import Inference
+from qwen_server import Lists
+from transformers import Generation
+from transformers import LogitsProcess
+from transformers import Math
+from transformers import StoppingCriteria
+
+__all__ = ["CORPUS", "Table", "installed"]
+
+WINDOW = 12
+EOS_CHAR = "~"
+SEEDED_ROW = 1024
+DRAW_ROW = 1000000
+
+CORPUS = """<|im_start|>system
+You are a local coding model served by Osprey.<|im_end|>
+<|im_start|>user
+open the readme<|im_end|>
+<|im_start|>assistant
+<tool_call>
+<function=read_file>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
+~
+<|im_start|>user
+run the unit tests<|im_end|>
+<|im_start|>assistant
+<tool_call>
+<function=run_tests>
+<parameter=suite>
+unit
+</parameter>
+</function>
+</tool_call>
+~
+<|im_start|>user
+open the readme<|im_end|>
+<|im_start|>assistant
+<tool_call>
+<function=read_file>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
+~
+"""
+
+
+class Model:
+    """The fixture model's whole state: its vocabulary and its tokenized transcript."""
+    vocab: list[int]
+    ids: list[int]
+    corpus: list[int]
+    eos: int
+
+
+def installed():
+    """The model this server serves; Phase 3 returns the real weights' session here."""
+    return fixture(CORPUS)
+
+
+def fixture(corpus):
+    """The fixture model for `corpus`, or the tokenizer error its own text produced."""
+    vocab = vocabulary(corpus)
+    match tokenize(token_ids(vocab), corpus):
+        case Success(value=tokens):
+            return Success(value=Model(vocab=vocab, ids=token_ids(vocab), corpus=tokens, eos=len(vocab)))
+        case Error(message=message):
+            return Error(message=message)
+
+
+@handler(Inference.Generator)
+class Table:
+    """The `Generator` handler: a byte tokenizer over the model's vocabulary."""
+
+    def encode(model, text):
+        return tokenize(model.ids, text)
+
+    def decode(model, token):
+        return detokenize(model.vocab, model.eos, token)
+
+    def eos(model):
+        return model.eos
+
+    def step(model, history, sampling):
+        return next_token(model, history, sampling)
+
+
+# --- the vocabulary -------------------------------------------------------
+
+def bytes_of(text):
+    """The UTF-8 bytes of `text`, in order."""
+    return toList(map(range(len(text)), lambda at: unwrap_or(byteAt(text, at), -1)))
+
+
+def marker():
+    """The end-of-turn marker's byte."""
+    return unwrap_or(byteAt(EOS_CHAR, 0), -1)
+
+
+def distinct(values):
+    """`values` without repeats, in first-seen order."""
+    return foldList(values, [], lambda kept, value: kept if listContains(kept, value) else listAppend(kept, value))
+
+
+def ascending(values):
+    """`values` in ascending order."""
+    return listSortBy(values, lambda left, right: -1 if left < right else (1 if left > right else 0))
+
+
+def vocabulary(corpus):
+    """Every byte the corpus uses except the end-of-turn marker, ascending."""
+    return ascending(filterList(distinct(bytes_of(corpus)), lambda byte: byte != marker()))
+
+
+def token_ids(vocab):
+    """A token id for each byte value: -1 outside the vocabulary, `len(vocab)` for the marker."""
+    return toList(map(range(256), lambda byte: token_of(vocab, byte)))
+
+
+def token_of(vocab, byte):
+    """`byte`'s token id in `vocab`."""
+    return len(vocab) if byte == marker() else index_of(vocab, byte, 0)
+
+
+def index_of(vocab, byte, at):
+    """The index of `byte` in `vocab` from `at`, or -1."""
+    match listGet(vocab, at):
+        case Success(value=value):
+            return at if value == byte else index_of(vocab, byte, satAdd(at, 1))
+        case Error():
+            return -1
+
+
+def tokenize(ids, text):
+    """The token ids of `text`, or an error naming the first byte outside the vocabulary."""
+    return tokenized(ids, bytes_of(text), 0, [])
+
+
+def tokenized(ids, text, at, kept):
+    """Tokenize from byte `at`, or report the byte the vocabulary does not hold."""
+    match listGet(text, at):
+        case Success(value=byte):
+            return appended(ids, text, at, byte, kept)
+        case Error():
+            return Success(value=kept)
+
+
+def appended(ids, text, at, byte, kept):
+    """Append `byte`'s token id to `kept` and continue, or report the missing byte."""
+    match listGet(ids, byte):
+        case Success(value=token):
+            if token < 0:
+                return missing(byte, at)
+            else:
+                return tokenized(ids, text, satAdd(at, 1), listAppend(kept, token))
+        case Error():
+            return missing(byte, at)
+
+
+def missing(byte, at):
+    """The tokenizer's error for a byte the fixture vocabulary does not hold."""
+    return Error(message=f"tokenizer: byte {byte} at offset {at} is not in the fixture model's vocabulary")
+
+
+def detokenize(vocab, eos, token):
+    """The one-character text of `token`; the end-of-turn token has no text."""
+    if token == eos:
+        return Success(value="")
+    else:
+        return fromCodePoint(unwrap_or(listGet(vocab, token), -1))
+
+
+# --- the context counts ---------------------------------------------------
+
+def zeros(eos):
+    """One zero count per token id."""
+    return toList(map(range(satAdd(eos, 1)), lambda _token: 0))
+
+
+def bumped(counts, successor):
+    """`counts` with one more occurrence of `successor`."""
+    return toList(map(range(Lists.count(counts)), lambda at: satAdd(count_at(counts, at), 1) if at == successor else count_at(counts, at)))
+
+
+def count_at(counts, at):
+    """The count recorded at `at`, and zero where the row has none."""
+    return unwrap_or(listGet(counts, at), 0)
+
+
+def total(counts):
+    """The sum of one counts row."""
+    return foldList(counts, 0, lambda sum_so_far, count: satAdd(sum_so_far, count))
+
+
+def row(model, window):
+    """How often each token followed `window` in the corpus, one count per token id."""
+    return fold(range(Lists.count(model.corpus)), zeros(model.eos), lambda counts, at: bumped(counts, successor(model.corpus, at)) if follows(model.corpus, at, window) else counts)
+
+
+def follows(corpus, at, window):
+    """Whether the `WINDOW` tokens ending at `at` are `window`, which is nearest-first."""
+    return at >= WINDOW and fold(range(WINDOW), True, lambda same, back: same and unwrap_or(listGet(corpus, satSub(satSub(at, 1), back)), -1) == unwrap_or(listGet(window, back), -2))
+
+
+def successor(corpus, at):
+    """The token at `at`; the end-of-turn token where the corpus ends."""
+    return unwrap_or(listGet(corpus, at), -1)
+
+
+def newest(history):
+    """The newest `WINDOW` tokens of `history`, nearest first."""
+    return toList(map(range(WINDOW), lambda back: unwrap_or(listGet(history, satSub(satSub(Lists.count(history), 1), back)), -1)))
+
+
+# --- one sampling step ----------------------------------------------------
+
+def logits(model, history, sampling):
+    """One row of scores for the next token after `history`."""
+    if Lists.count(history) < WINDOW:
+        return seeded(model, history, sampling)
+    else:
+        counted = row(model, newest(history))
+        return seeded(model, history, sampling) if total(counted) == 0 else mapList(counted, lambda count: toFloat32(count))
+
+
+def seeded(model, history, sampling):
+    """The deterministic row for a context the corpus never showed."""
+    anchor = foldList(newest(history), sampling.seed, lambda state, token: satAdd(wrapMul(state, 131), token)) if Lists.count(history) >= WINDOW else sampling.seed
+    return toList(map(range(satAdd(model.eos, 1)), lambda token: toFloat32(bias(anchor, token))))
+
+
+def bias(anchor, token):
+    """A non-negative score below `SEEDED_ROW` from the context anchor and the token."""
+    return residue_seeded(satAdd(wrapMul(satAdd(anchor, token), 1103515245), 12345))
+
+
+def draw(seed, at):
+    """A deterministic draw in [0, 1) from the seed and the position."""
+    return toFloat32(toFloat(residue_draw(wrapMul(satAdd(seed, wrapMul(at, 2654435761)), 1103515245))) / 1000000.0)
+
+
+def residue_seeded(value):
+    """`value` modulo `SEEDED_ROW`, never negative."""
+    return satSub(abs(value), wrapMul(intDiv(abs(value), SEEDED_ROW), SEEDED_ROW))
+
+
+def residue_draw(value):
+    """`value` modulo `DRAW_ROW`, never negative."""
+    return satSub(abs(value), wrapMul(intDiv(abs(value), DRAW_ROW), DRAW_ROW))
+
+
+def temperature_processors(sampling):
+    """The temperature warper, or none for greedy sampling."""
+    return [] if sampling.temperature <= 0.0 else [LogitsProcess.TemperatureLogitsWarper(toFloat32(sampling.temperature))]
+
+
+def sampler(sampling, at):
+    """`argmax` for greedy sampling, and a seeded draw over the softmax otherwise."""
+    return Math.argmax if sampling.temperature <= 0.0 else (lambda scores: Math.multinomial(Math.softmax(scores), draw(sampling.seed, at)))
+
+
+def next_token(model, history, sampling):
+    """One token from `generate` over the fixture model's counts."""
+    return sampled(Generation.generate(lambda tokens: logits(model, tokens, sampling), history, temperature_processors(sampling), [StoppingCriteria.EosTokenCriteria([model.eos])], sampler(sampling, Lists.count(history)), 1))
+
+
+def sampled(result):
+    """The newest token of a one-token generation, or its error."""
+    match result:
+        case Success(value=tokens):
+            return newest_token(listGet(tokens, satSub(Lists.count(tokens), 1)))
+        case Error(message=message):
+            return Error(message=message)
+
+
+def newest_token(token):
+    """A generated token, or an error when the generation produced none."""
+    match token:
+        case Success(value=value):
+            return Success(value=value)
+        case Error(message=message):
+            return Error(message=f"generate produced no token: {message}")

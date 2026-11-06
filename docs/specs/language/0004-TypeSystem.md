@@ -197,7 +197,7 @@ cycle used at two types in one program.
 Variance markers are **not** permitted on function binders (variance is
 declaration-site on types and effects only — [TYPE-VARIANCE-DECL]).
 
-Specialization preserves lexical binding identity. A named function reads bindings from its declaration scope, including when it is passed as a callback or stored in a record; caller bindings with the same spelling cannot replace them. Arguments are evaluated exactly once in their caller scope, in application order. In a curried call, a function body runs before the arguments of the next application. Nested applications of the same generic function have independent type substitutions; nesting alone is not recursion. The Default/ML `tests/modules/file_scope_generic_binding.test` pair pins shadowing, ordinary closure captures, live global storage, nested instantiations and effect order. C callback lowering is also pinned by `generic_c_callbacks_do_not_capture_shadowing_callers`.
+Specialization preserves lexical binding identity. A named function reads bindings from its declaration scope, including when it is passed as a callback or stored in a record; caller bindings with the same spelling cannot replace them. Arguments are evaluated exactly once in their caller scope, in application order. In a curried call, a function body runs before the arguments of the next application. Nested applications of the same generic function have independent type substitutions; nesting alone is not recursion. The Default/ML `src/osprey/tests/modules/file_scope_generic_binding.test` pair pins shadowing, ordinary closure captures, live global storage, nested instantiations and effect order. C callback lowering is also pinned by `generic_c_callbacks_do_not_capture_shadowing_callers`.
 
 ```osprey
 fn pick<T>(first: T, second: T) = first
@@ -326,7 +326,7 @@ Erasure to `any` is a separate conversion. Supported list, Result and nominal re
 
 For `Feed<out T>` with a field containing `T`, `Feed<int>` can satisfy `Feed<any>`. For `Gate<in T>` with an `(T) -> bool` field, `Gate<any>` can satisfy `Gate<int>`: its callable adapter boxes the supplied integer for the original consumer. This does not recover an arbitrary `any` as an integer. Function-valued payloads require the corresponding callable adapters. Rebuilding a record or union preserves its constructor tag, fields and original immutable value, including nullary variants; recursive nominal conversions reuse a memoized converter.
 
-Variance markers therefore constrain both legal parameter positions and which erasure assignments are accepted. A pointer-sized ABI alone is not evidence that two payload representations agree. The [Default](../../../tests/regressions/basics/types/type_equality_comprehensive.test.osp) and [ML](../../../tests/regressions/basics/types/type_equality_comprehensive.test.ospml) regressions cover nominal conversion and preservation of the original values; the [pattern corpus](../../../tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp) and both [Default](../../../tests/effects/resume/answer_transform.test.osp) and [ML](../../../tests/effects/resume/answer_transform.test.ospml) resume regressions cover nested list and Result transport. Full acceptance still requires the combined compiler and provenance checks; a conversion's isolated backend result does not establish that wider acceptance.
+Variance markers therefore constrain both legal parameter positions and which erasure assignments are accepted. A pointer-sized ABI alone is not evidence that two payload representations agree. The [Default](../../../src/osprey/tests/regressions/basics/types/type_equality_comprehensive.test.osp) and [ML](../../../src/osprey/tests/regressions/basics/types/type_equality_comprehensive.test.ospml) regressions cover nominal conversion and preservation of the original values; the [pattern corpus](../../../src/osprey/tests/regressions/basics/pattern_matching/pattern_matching_complete.test.osp) and both [Default](../../../src/osprey/tests/effects/resume/answer_transform.test.osp) and [ML](../../../src/osprey/tests/effects/resume/answer_transform.test.ospml) resume regressions cover nested list and Result transport. Full acceptance still requires the combined compiler and provenance checks; a conversion's isolated backend result does not establish that wider acceptance.
 
 Built-in constructors' declared variance: `Result<out T, out E>`,
 `List<out T>`, `Fiber<out T>`, `Map<K, out V>` (keys invariant); `Channel<T>`
@@ -357,7 +357,7 @@ Mixed arithmetic between `int` and `float` promotes the `int` to `float`; that i
 
 ### Sized numeric types — [TYPE-NUMERIC-SIZED]
 
-Ten numeric types share one description: a kind (signed, unsigned or binary floating point) and a width. Every rule in this section is stated once over that description, and the compiler holds it in one table (`crates/osprey-types/src/numeric.rs`), so no type has a rule of its own.
+Ten numeric types share one description: a kind (signed, unsigned or binary floating point) and a width. Every rule in this section is stated once over that description, and the compiler holds it in one table (`src/toolchain/crates/osprey-types/src/numeric.rs`), so no type has a rule of its own.
 
 | Type | Kind | Bits | Range or format | LLVM | C |
 | --- | --- | --- | --- | --- | --- |
@@ -429,7 +429,7 @@ Consequently `(a != b) == !(a == b)` holds for every float pair. Finite values
 and infinities retain numeric ordering; positive and negative zero compare
 equal. The backend uses LLVM's unordered-or-not-equal predicate for `!=` and
 ordered predicates for the other five operators. Both-flavor truth tables in
-`tests/regressions/basics/operators/boolean_consolidated.test.*` pin NaN in
+`src/osprey/tests/regressions/basics/operators/boolean_consolidated.test.*` pin NaN in
 either operand, equality complements, finite controls, infinities and signed zero.
 
 ### Internal numeric narrowing — [FLOAT-CONVERT]

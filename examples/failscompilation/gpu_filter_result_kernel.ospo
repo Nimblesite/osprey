@@ -1,3 +1,0 @@
-// [GPU-KERNEL-EXTRACT]: gpuFilter rejects a verdict that is an unhandled
-// Result; the predicate must settle to a bool inside the kernel.
-fn main() = print(gpuLength(toGpu([1, 2]) |> gpuFilter(fn(v) => checkedMul(v, 2))))

@@ -16,7 +16,7 @@ flowchart LR
 
   vscode -->|LSP over stdio<br/>JSON-RPC| lsp
 
-  subgraph server["crates/osprey-lsp"]
+  subgraph server["src/toolchain/crates/osprey-lsp"]
     lsp["osprey lsp"]
     engine["OspreyEngine<br/>lspkit::EngineApi"]
     vfs["lspkit::vfs<br/>rope documents"]
@@ -34,7 +34,7 @@ flowchart LR
 
 The server **does not shell out** to `osprey` or scrape stderr. It calls the
 compiler front-end directly
-([`crates/osprey-lsp/src/diagnostics.rs`](../../../crates/osprey-lsp/src/diagnostics.rs)),
+([`src/toolchain/crates/osprey-lsp/src/diagnostics.rs`](../../../src/toolchain/crates/osprey-lsp/src/diagnostics.rs)),
 so diagnostics, hover, and navigation use the compiler parser and type checker.
 
 Consumed crates:
@@ -49,7 +49,7 @@ Consumed crates:
 Editor-neutral functionality MUST NOT be re-implemented in `osprey-lsp`; it
 comes from the `lspkit` crates. The remaining word-at-position, occurrence, and position
 measurement helpers are isolated in
-[`crates/osprey-lsp/src/text.rs`](../../../crates/osprey-lsp/src/text.rs).
+[`src/toolchain/crates/osprey-lsp/src/text.rs`](../../../src/toolchain/crates/osprey-lsp/src/text.rs).
 
 ## Transport `[LSP-TRANSPORT]`
 
@@ -61,7 +61,7 @@ osprey lsp
 
 It speaks LSP over **stdio** with `Content-Length` framing; there is no socket,
 port, or per-editor binary. The subcommand is
-implemented in [`crates/osprey-cli/src/main.rs`](../../../crates/osprey-cli/src/main.rs)
+implemented in [`src/toolchain/crates/osprey-cli/src/main.rs`](../../../src/toolchain/crates/osprey-cli/src/main.rs)
 (delegating to `osprey_lsp::run_stdio`).
 
 ## Lifecycle `[LSP-LIFECYCLE]`
@@ -96,6 +96,28 @@ The server exposes:
 
 ## Diagnostics `[LSP-DIAGNOSTICS]`
 
+### Analysis scope `[LSP-DIAGNOSTICS-SCOPE]`
+
+Compiler diagnostics default to **repository** scope: after initialization, the
+server checks unopened Osprey sources under each workspace folder's enclosing
+Git repository (or the workspace folder when there is no Git repository).
+`osprey.diagnostics.scope` selects `repository`, `roots`, or `openFiles`.
+`roots` analyzes every folder in `osprey.diagnostics.roots`; entries can be
+absolute paths, file URIs, or paths relative to each workspace folder. Multiple
+folders are supported. Open buffers are included in every enabled scope, and
+unsaved text takes precedence over disk. `openFiles` performs no background scan.
+
+Scope settings apply live without a restart. Startup, workspace-folder changes,
+and watched source/manifest changes refresh findings; shrinking the scope,
+closing an excluded buffer, deleting a file, or disabling diagnostics clears
+stale findings. Closing a buffer inside the active disk scope restores its disk
+diagnostics. Discovery skips hidden directories, `target`, `node_modules`,
+`build`, `dist`, and `__pycache__`, and does not follow directory symlinks.
+`.osp` and `.ospml` files are included, as are `.py` files explicitly selected by
+an Osprey manifest or a leading Python-flavor marker; ordinary CPython scripts
+are excluded. Other LSP clients can send the same diagnostics options through
+`initializationOptions` and `workspace/didChangeConfiguration`.
+
 Opening or changing a document publishes compiler diagnostics for that buffer.
 Flavor conflicts are reported alone as `flavor-error`; otherwise syntax errors
 short-circuit type checking. A syntax-error-free parse is assembled and type-checked through
@@ -114,7 +136,7 @@ file does not parse, since an unparsable buffer reports its syntax error alone.
 
 ### One analysis per edit `[LSP-PROJECT-BATCH]`
 
-Editing one file of a project republishes every open file of that project, and each of those answers needs the project assembled, type-checked and its warnings proved. That work is done **once per edit** and shared by the files answering it, rather than once per open file: on `examples/projects/modules` a single answer takes about six seconds, so repeating it per open buffer made the editor unusable with more than one file open.
+Editing one file of a project republishes every open file of that project, and each of those answers needs the project assembled, type-checked and its warnings proved. That work is done **once per edit** and shared by the files answering it, rather than once per open file: on `src/osprey/examples/projects/modules` a single answer takes about six seconds, so repeating it per open buffer made the editor unusable with more than one file open.
 
 Each language-server engine owns the latest analysis for each manifest root, including nested projects. Its inputs include the complete project configuration and each source's path, syntax flavor and text, compared exactly. Siblings answering the same edit share that result, and later requests with identical inputs may reuse it. Separate projects and server instances cannot evict each other's analysis; syntax is retained while any loaded project includes its file. Code actions use the same analysis as diagnostics; requesting a quick fix does not repeat an unchanged project proof.
 
@@ -148,8 +170,8 @@ Unused-symbol diagnostics use the four rules in [TYPE-WARNINGS-UNUSED](../langua
 `textDocument/hover` locates the word through `[LSP-REUSE-LSPKIT]`, walks the
 AST for its declaration, and returns Markdown: a fenced signature or
 `name: type`, followed by documentation when present. Implemented in
-[`crates/osprey-lsp/src/hover.rs`](../../../crates/osprey-lsp/src/hover.rs)
-over [`analysis.rs`](../../../crates/osprey-lsp/src/analysis.rs)
+[`src/toolchain/crates/osprey-lsp/src/hover.rs`](../../../src/toolchain/crates/osprey-lsp/src/hover.rs)
+over [`analysis.rs`](../../../src/toolchain/crates/osprey-lsp/src/analysis.rs)
 (`collect_all_symbols`).
 
 For a function with a written effect row, hover, signature help, completion
@@ -199,8 +221,8 @@ Every binding is hoverable:
   mechanism used for lambda parameters. The binding position is anchored
   on the declaration's `let`/`mut` keyword so a leading doc comment never shifts
   it. Implemented across
-  [`osprey-types`](../../../crates/osprey-types/src/check.rs) (`let_tys`) and
-  [`osprey-types/src/info.rs`](../../../crates/osprey-types/src/info.rs).
+  [`osprey-types`](../../../src/toolchain/crates/osprey-types/src/check.rs) (`let_tys`) and
+  [`osprey-types/src/info.rs`](../../../src/toolchain/crates/osprey-types/src/info.rs).
 
 ### Inferred signatures `[LSP-HOVER-INFERRED-SIGNATURE]`
 
@@ -233,9 +255,9 @@ with `-> Unit` fails as *cannot unify Unit with `Result<t5, t6>`*. That
 function now reports `-> Result<int, _>`.
 
 Implemented by `render_with_holes` in
-[`crates/osprey-types/src/ty.rs`](../../../crates/osprey-types/src/ty.rs) and
+[`src/toolchain/crates/osprey-types/src/ty.rs`](../../../src/toolchain/crates/osprey-types/src/ty.rs) and
 `fill_inferred` in
-[`crates/osprey-lsp/src/analysis.rs`](../../../crates/osprey-lsp/src/analysis.rs),
+[`src/toolchain/crates/osprey-lsp/src/analysis.rs`](../../../src/toolchain/crates/osprey-lsp/src/analysis.rs),
 over `ProgramTypes::param_types` / `return_type`. Hover and `--symbols` share
 that one path, so an outline entry and a tooltip can never disagree.
 
@@ -273,7 +295,7 @@ path can answer, and previously returned nothing — even though the highlighter
 colours a keyword exactly like the built-in types that *do* hover, so an author
 expects the same. The fixed reference table (shared with the built-in type
 summaries in
-[`osprey-lsp/src/reference_docs.rs`](../../../crates/osprey-lsp/src/reference_docs.rs))
+[`osprey-lsp/src/reference_docs.rs`](../../../src/toolchain/crates/osprey-lsp/src/reference_docs.rs))
 is flavor-blind — the reserved set is common to both surfaces even where a
 Default keyword such as `fn` has no ML spelling — and the summary is fenced in
 the **document's** flavor like every other hover.
@@ -291,9 +313,9 @@ for the full model, sigils, sections, and body markup.
 **Doc-link hover `[DOC-LINK]`.** A `[Symbol]` intra-doc link inside a doc
 comment is itself hoverable: putting the cursor on `[helper]` or
 `[Console.emit]` shows the referenced declaration's own hover. Rendering lives
-in [`osprey-lsp/src/hover.rs`](../../../crates/osprey-lsp/src/hover.rs)
+in [`osprey-lsp/src/hover.rs`](../../../src/toolchain/crates/osprey-lsp/src/hover.rs)
 (`doc_link_target` / `resolve_link`); doc capture lives in
-[`osprey-syntax/src/docparse.rs`](../../../crates/osprey-syntax/src/docparse.rs)
+[`osprey-syntax/src/docparse.rs`](../../../src/toolchain/crates/osprey-syntax/src/docparse.rs)
 and each flavor's lowerer.
 
 ### Effect operations `[LSP-HOVER-EFFECT-OPERATIONS]`
@@ -314,7 +336,7 @@ nothing in any `.osp` file, so neither scan finds it. Rather than return an
 empty result — which editors surface as "No definition found" over a function
 that hovers perfectly well — the built-in resolves to the identifier the cursor
 sits on, a graceful self-definition. Implemented in
-[`osprey-lsp/src/features.rs`](../../../crates/osprey-lsp/src/features.rs)
+[`osprey-lsp/src/features.rs`](../../../src/toolchain/crates/osprey-lsp/src/features.rs)
 (`builtin_definition`), reusing the same built-in table as `[LSP-HOVER]`.
 
 ### Union variants `[LSP-DEFINITION-VARIANTS]`
@@ -400,7 +422,7 @@ Normative requirements:
   unrelated syntax errors.
 
 Rendering lives in
-[`osprey-lsp/src/mlrender.rs`](../../../crates/osprey-lsp/src/mlrender.rs) and is
+[`osprey-lsp/src/mlrender.rs`](../../../src/toolchain/crates/osprey-lsp/src/mlrender.rs) and is
 applied at the feature boundary.
 
 Two limits are deliberate and current. Signature help on a curried call labels
@@ -411,7 +433,7 @@ the declaration list of `[LSP-COMPLETION-CONTEXT]`.
 ## Position-filtered completion `[LSP-COMPLETION-CONTEXT]`
 
 Completion classifies the cursor before answering
-([`osprey-lsp/src/context.rs`](../../../crates/osprey-lsp/src/context.rs)) and
+([`osprey-lsp/src/context.rs`](../../../src/toolchain/crates/osprey-lsp/src/context.rs)) and
 offers only what is legal there:
 
 | Cursor              | Offered                                                     |
@@ -457,7 +479,7 @@ lexically normalised path (`generate/../model/m.osp` is `model/m.osp`):
 assembling the projects together would declare the shared file twice and
 give the program two entries.
 
-The server uses the compiler's `osprey_project::discover`, source-root membership and flavor-aware `parse_text` contracts. An engine-owned syntax cache keys each file by its path, configured flavor and exact text, including failed parses. The manifest's flavor override applies to both the active file and every sibling, including formatting and warning fixes. Unchanged sources reuse their syntax across diagnostics, navigation and code actions. The checked project cache described in [LSP-PROJECT-BATCH] reuses assembly and inference until any input changes. URI/path conversion lives in [`workspace.rs`](../../../crates/osprey-lsp/src/workspace.rs); source snapshots live in [`project_sources.rs`](../../../crates/osprey-lsp/src/project_sources.rs).
+The server uses the compiler's `osprey_project::discover`, source-root membership and flavor-aware `parse_text` contracts. An engine-owned syntax cache keys each file by its path, configured flavor and exact text, including failed parses. The manifest's flavor override applies to both the active file and every sibling, including formatting and warning fixes. Unchanged sources reuse their syntax across diagnostics, navigation and code actions. The checked project cache described in [LSP-PROJECT-BATCH] reuses assembly and inference until any input changes. URI/path conversion lives in [`workspace.rs`](../../../src/toolchain/crates/osprey-lsp/src/workspace.rs); source snapshots live in [`project_sources.rs`](../../../src/toolchain/crates/osprey-lsp/src/project_sources.rs).
 
 Normative requirements:
 
@@ -487,6 +509,6 @@ The transport tests `project_features_follow_unsaved_siblings_in_both_flavors`, 
 The server advertises and uses **UTF-16** `positionEncoding`. Tree-sitter
 reports columns as **byte** offsets, so every position crossing the wire is
 re-measured into UTF-16 units
-([`crates/osprey-lsp/src/diagnostics.rs`](../../../crates/osprey-lsp/src/diagnostics.rs),
+([`src/toolchain/crates/osprey-lsp/src/diagnostics.rs`](../../../src/toolchain/crates/osprey-lsp/src/diagnostics.rs),
 `byte_col_to_encoding`). The internal helpers remain encoding-parameterized so
 conversion behavior can be unit-tested independently of the fixed wire choice.

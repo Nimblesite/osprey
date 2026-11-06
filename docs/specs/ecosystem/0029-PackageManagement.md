@@ -16,7 +16,7 @@
 > data plane. It is not needed to build, run, or use a registry, and it never
 > replaces the folder registry.
 
-**Status:** normative target; implementation is in progress under [`packages/manager/`](../../../packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](../../package-manager-research.md).
+**Status:** normative target; implementation is in progress under [`src/osprey/packages/manager/`](../../../src/osprey/packages/manager/README.md), whose README states what runs. Delivery is fixed by [plan 0020](../../plans/0020-package-manager.md); evidence is in [Package-manager research](PackageResearchBasis.md).
 
 This specification defines a source-derived, content-addressed package system.
 It deliberately rejects uploaded archives, publisher binaries, lifecycle hooks,
@@ -31,7 +31,7 @@ feature is not implemented merely because this document specifies it.
 ## Research basis `[PACKAGE-RESEARCH]`
 
 Every design decision below traces to the annotated corpus in
-[Package-manager research](../../package-manager-research.md) — peer-reviewed
+[Package-manager research](PackageResearchBasis.md) — peer-reviewed
 findings on breaking-change rates, NP-complete resolution, test/coverage
 blind spots, TUF/in-toto supply-chain controls, ranking fairness, and AI
 false-positive base rates. That document, not registry custom, is the
@@ -127,12 +127,12 @@ instead of detecting the attack:
 
 ## Capability confinement `[PACKAGE-CAPABILITY-CONFINEMENT]`
 
-Confinement requires every published package's file, process, network and terminal access to pass through consumer-handled effects or explicitly granted capabilities. Ambient builtins such as `readFile`, `writeFile`, `gpuLoad`, `loadTensor`, process operations, terminal operations and HTTP/WebSocket operations need checks beyond effect declarations.
+Confinement requires every published package's file, process, network and terminal access to pass through consumer-handled effects or explicitly granted capabilities. Ambient builtins such as `readFile`, `writeFile`, `gpuLoad`, `gpuMapFile`, `loadTensor`, process operations, terminal operations and HTTP/WebSocket operations need checks beyond effect declarations.
 
 **Publication boundary:** the source scanner records named ambient builtins and declared system capabilities. Raw native declarations (`extern fn`, ML `extern`, and Python `@extern`) are unclassified and source-bundle assembly rejects them with `source.unclassified-builtin` before local publication writes registry files. Comments, literal text and ordinary identifiers named `extern` do not count as native declarations. Installed-dependency execution remains unverified; this publication rule does not establish the complete runtime confinement requirement below.
 
 - Each ambient builtin belongs to exactly one **ambient capability**, named in
-  the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`,
+  the capability grammar of `[PACKAGE-MANIFEST]`: `io/files` (`readFile`, `readFileBytes`, `fileSize`,
   `writeFile`, `gpuLoad`, `loadTensor`), `io/process` (`spawnProcess`,
   `awaitProcess`, `cleanupProcess`), `io/network` (every `http*` and
   `websocket*` builtin) and `io/terminal` (`input`, `termRawMode`). The map is a
@@ -554,12 +554,12 @@ Until the hosted registry exists, the local registry is how anyone gets
 packages. It is this folder registry, run on loopback over the repository's
 own packages:
 
-- **Staging.** Every `packages/<dir>/osprey.toml` that declares a `[package]`
+- **Staging.** Every `src/osprey/packages/<dir>/osprey.toml` that declares a `[package]`
   name is placed into one registry root with `publish --folder`, so each release
   passes the same source, capability and digest checks the server applies. A
   package that fails them, such as one with a raw `extern` declaration under
   `[PACKAGE-CAPABILITY-CONFINEMENT]`, is reported and not staged.
-  `scripts/stage-local-registry.sh` does this and `make -C packages registry-serve` serves
+  `scripts/packages/stage-local-registry.sh` does this and `make -C src/osprey/packages registry-serve` serves
   the result on `http://127.0.0.1:8787`, the client's default registry.
 - **Editor.** The VS Code extension bundles the server (`osprey-registry`) and
   the staged root (`bin/<platform>/registry/`). Its *Start Local Package
@@ -690,7 +690,7 @@ Every root-witness lock activates Runtime/Build/Test edges from its selected roo
 and Runtime/Build, never Test, from non-root nodes. Published libraries attach
 that witness lock; consumers resolve their own. The lock uses RFC 8785
 canonical JSON and pins the selected-root tree, every package source, manifest,
-build plan, dependency edge, compiler/runtime/toolchain, target and flags,
+build plan, dependency edge, src/toolchain/compiler/runtime/toolchain, target and flags,
 system-provider artifact and its native closure, inferred effect/capability set,
 provenance, SBOM, catalog/TUF snapshot, solver policy, and resolution
 explanation by identity and digest. There are no floating inputs in a release

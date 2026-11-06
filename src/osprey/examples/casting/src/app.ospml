@@ -1,0 +1,107 @@
+// The shared casting callbacks: the machine document is the interface; host capabilities perform IO.
+namespace casting
+import ui::Runtime
+import ui::Requests
+import ui::Messages
+import ui::MachineDocs
+import ui::Machines
+import ui::Canvases
+import ui::Inputs
+import ui::Doc
+import ui::Values
+import ui::Templates
+import ui::Keyed
+import casting::Link
+module App
+    after (arguments, flag, otherwise) =
+        at = ui::Lists::position (arguments, \a => a == flag)
+        ui::Pick::either (at >= 0, listGet arguments (satAdd at 1) ?: otherwise, otherwise)
+    specified arguments = ui::Lists::position (arguments, \a => a == "--skin") >= 0
+    export documentPath arguments = after (arguments, "--machine", "src/osprey/examples/casting/player.machine.json")
+    opened arguments = after (arguments, "--open", (listGet (filterList (arguments, \a => endsWith (toLowerCase a) ".mp3")) 0) ?: "")
+    export loaded source = match MachineDocs::load source
+        Success machine => Link::store machine
+        Error problem => Link::store (MachineDocs::faulty problem)
+    fromPath path = match readFile path
+        Success source => loaded source
+        Error problem => Link::store (MachineDocs::faulty ("Cannot read the player interface: ${problem}"))
+    selected store = (Templates::skin store.screen.screenMachine).skinName
+    returned store = Link::fed (store, [ui::Fact(factName = "skinReturned", factValue = Values::flag true)])
+    pending store = Machines::flag (store.screen.screenMachine, "skinReturned") == false
+    notice text = ui::HostCall(hostNamespace = "ui", hostOperation = "notice", hostArguments = JsonObject [Doc::str ("title", ui::Pick::either (startsWith text "The selected appearance", "Appearance restored", "Appearance unavailable")), Doc::str ("message", text)], hostTimeout = 600000, hostLimit = 64, hostSlice = "")
+    warn (next, text) = next(writes = listAppend next.writes (Requests::write ("casting.appearance-warning", text)), requests = listAppend next.requests (Requests::ask ("appearance:notice", notice text)))
+    failed (store, operation, problem) =
+        next = Runtime::step store
+        recorded = next(writes = [Requests::write ("casting.appearance-error", problem)])
+        warn (recorded, "Your appearance could not be ${operation}. The current appearance is still available.")
+    // [CAST-MOBILE-SKIN-PERSISTENCE] A slice stages the value; the existing host store persists it atomically.
+    remember next = match selected next.stepStore == ""
+        true => next
+        false => next(writes = listAppend next.writes (Requests::write ("casting.selected-skin", selected next.stepStore)), requests = listAppend next.requests (Requests::ask ("appearance:write", ui::StoreWrite(writeName = "casting-appearance.txt", writeSlice = "casting.selected-skin"))))
+    restored (arguments, next) =
+        wanted = after (arguments, "--skin", "")
+        match specified arguments && wanted != selected next.stepStore
+            true => warn (next, "The selected appearance is unavailable. The default appearance has been restored.")
+            false => next
+    // Never write the fallback over a preference that has not been read yet.
+    export initial context =
+        path = documentPath context.arguments
+        launched = Link::launched (fromPath path, MachineDocs::folder path, after (context.arguments, "--skin", ""), opened context.arguments)
+        first = Link::settled (launched(finder = Link::browse (after (context.arguments, "--browse", ""))))
+        clocked = first(requests = listAppend first.requests (Requests::ask ("clock", ui::Animate(animated = true))))
+        match specified context.arguments
+            true => restored (context.arguments, remember (clocked(stepStore = returned clocked.stepStore)))
+            false => clocked(requests = listAppend clocked.requests (Requests::ask ("appearance:read", ui::StoreRead(readName = "casting-appearance.txt", readLimit = 128, readSlice = "casting.saved-skin"))))
+    export begun source =
+        first = initial (Runtime::context (Doc::parse source))
+        Runtime::begin (source, \_ => first, regions, Templates::theme first.stepStore.screen.screenMachine)
+    // [CAST-MOBILE-APPEARANCE-RECOVERY] Validation shares the ordinary skin-selection path.
+    saved (store, key) =
+        next = Link::skinned (returned store, key)
+        match key != "" && selected next.stepStore == key
+            true => next
+            false => warn (remember next, "The selected appearance is unavailable. The default appearance has been restored.")
+    read (store, outcome) = match pending store
+        false => Runtime::step store
+        true => match outcome
+            Success _ => saved (store, perform ui::Slices.fetch "casting.saved-skin")
+            Error problem => match problem == "no such store entry casting-appearance.txt"
+                true => remember (Runtime::step (returned store))
+                false => failed (returned store, "read", problem)
+    completed (store, ticket, outcome) = match ticket
+        "appearance:read" => read (store, outcome)
+        "appearance:notice" => match outcome
+            Success _ => Runtime::step store
+            Error problem => Runtime::step (Link::fed (store, [ui::Fact(factName = "error", factValue = Values::text ("Cannot show the appearance notice: ${problem}"))]))
+        "appearance:write" => match outcome
+            Success _ => Runtime::step store
+            Error problem => failed (store, "saved", problem)
+        _ => Link::completed (store, ticket, outcome)
+    // A deliberate choice of the already-current default also supersedes an outstanding read.
+    chosen (before, next) =
+        marked = next(stepStore = returned next.stepStore)
+        match selected before == selected marked.stepStore
+            true => remember marked
+            false => marked
+    pulled (store, lever, value) =
+        next = Link::pulled (store, lever, value)
+        ui::Pick::either (Machines::sets (lever, "skin"), chosen (store, next), next)
+    pointed (store, input) =
+        next = Link::pointed (store, input)
+        choosing = Inputs::route (input, \(_, _) => false, \(x, y, down, _) => Canvases::chooses (store.screen.screenMachine, "skin", x, y, down), \(_, _) => false)
+        ui::Pick::either (choosing, chosen (store, next), next)
+    phased (store, phase) =
+        next = Link::phased (store, phase)
+        ui::Pick::either (startsWith phase "skin:" && drop phase 5 == selected next.stepStore, chosen (store, next), next)
+    export update (_, store, message) =
+        next = Messages::route (message, \lever => pulled (store, lever, Values::none ()), \(lever, text) => pulled (store, lever, Values::text text), \(lever, on) => pulled (store, lever, Values::flag on), \(_, _) => Runtime::step store, \(ticket, outcome) => completed (store, ticket, outcome), \phase => phased (store, phase), \(_, _) => Runtime::step store, \(_, _) => Runtime::step store, \seconds => Link::ticked (store, seconds), \(_, input) => pointed (store, input))
+        match selected store == selected next.stepStore
+            true => next
+            false => remember next
+    screenSlice () = perform Signal<Screen>.read ()
+    export root () = Templates::view (screenSlice ()).screenMachine
+    export regions (before, store, frames, _) =
+        handle static Signal<Screen>
+            read => store.screen
+        changed = signalChanges before.screen store.screen (\s => MachineDocs::snapshot s.screenMachine) (signalDependencies screenSlice)
+        [Keyed::region (frames, "root", changed, root)]

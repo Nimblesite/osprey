@@ -1,0 +1,6 @@
+// [GPU-BUFFER-ELEM]: buffer elements are scalars (int, float, bool); strings
+// stay on the host side of the boundary.
+fn main() = match toGpu(["a", "b"]) {
+    Success { value } => Success { value: gpuLength(value) }
+    Error { message } => Error { message: message }
+}

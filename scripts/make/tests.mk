@@ -1,9 +1,9 @@
-# --- rust (crates/) ---------------------------------------------------------
+# --- rust (src/toolchain/crates/) ---------------------------------------------------------
 # cargo test is fail-fast at the binary level by
 # default (a failing test binary aborts the run); coverage via cargo-llvm-cov.
-# `--profile ci` is the workspace's fast-compile profile (see root Cargo.toml).
+# `--profile ci` is the workspace's fast-compile profile (see src/toolchain/Cargo.toml).
 # `_runtime_wasm` is a prerequisite because the coverage gate below already
-# DEPENDS on it: osprey-cli's wasm end-to-end test (crates/osprey-cli/src/wasm.rs)
+# DEPENDS on it: osprey-cli's wasm end-to-end test (src/toolchain/crates/osprey-cli/src/wasm.rs)
 # self-skips unless wasm-ld, a WASI sysroot and libosprey_runtime_wasm.a are all
 # present, and skipping it drops osprey-cli from 96.7% to 94.8% — under its 95%
 # floor. Without this line the archive is whatever an earlier target happened to
@@ -12,10 +12,10 @@
 _test_rust: _runtime_wasm
 	@echo "==> [rust] running tests with coverage..."
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
-	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) 2>&1 | tee $(RUST_LOG)
 
 # CI's shards of _test_rust: the slowest tests by name, each in its own job, and everything else.
-# The coverage job merges their reports; scripts/ci-scope.test.mjs holds the shards to one another.
+# The coverage job merges their reports; scripts/ci/ci-scope.test.mjs holds the shards to one another.
 RUST_SHARD_PACKAGES := every_ported_package_matches_its_cpython_oracle_under_every_memory_backend
 RUST_SHARD_WORKBENCH := workbench_retains_record_identity_through_shared_proof_helpers workbench_apple_host_includes_shared_proof_dependencies a_faulted_workbench_goal_formula_fails_its_case_without_fabricating_bottom
 RUST_SHARD_ARGS_packages := --test python_packages -- $(RUST_SHARD_PACKAGES)
@@ -26,16 +26,16 @@ RUST_SHARD_ARGS_rest := -- $(addprefix --skip ,$(RUST_SHARD_PACKAGES) $(RUST_SHA
 _test_rust_shard: _runtime_wasm
 	@echo "==> [rust] running shard $(RUST_SHARD) with coverage..."
 	@$(MKDIR) $(COVERAGE_DIR) $(LOG_DIR)
-	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
+	set -o pipefail && RUST_TEST_THREADS=$${RUST_TEST_THREADS:-4} cargo llvm-cov --manifest-path src/toolchain/Cargo.toml --workspace --profile ci --lcov --output-path $(RUST_LCOV) $(RUST_SHARD_ARGS_$(RUST_SHARD)) 2>&1 | tee $(RUST_LOG)
 
-# Every crate under crates/ must have a valid threshold and measured lines.
+# Every crate under src/toolchain/crates/ must have a valid threshold and measured lines.
 # Check inventory before results so an omitted crate cannot silently pass.
 _coverage_check_rust:
 	@if [ ! -f "$(COVERAGE_THRESHOLDS_FILE)" ]; then echo "FAIL: $(COVERAGE_THRESHOLDS_FILE) not found"; exit 1; fi; \
 	if [ ! -f $(RUST_LCOV) ]; then echo "[rust] FAIL: $(RUST_LCOV) not produced"; exit 1; fi; \
 	fail=0; \
-	for manifest in crates/*/Cargo.toml; do \
-	  crate=$${manifest%/Cargo.toml}; crate=$${crate#crates/}; \
+	for manifest in src/toolchain/crates/*/Cargo.toml; do \
+	  crate=$${manifest%/Cargo.toml}; crate=$${crate#src/toolchain/crates/}; \
 	  jq -e --arg c "$$crate" '.projects.rust | has($$c)' "$(COVERAGE_THRESHOLDS_FILE)" >/dev/null || { \
 	    echo "[rust] $$crate FAIL: missing coverage threshold"; fail=1; }; \
 	done; \
@@ -82,12 +82,9 @@ RT_THREADS  = runtime/fiber_runtime.c runtime/system_runtime.c runtime/file_runt
 PROF_T = -O2 -g -fno-omit-frame-pointer -D_FORTIFY_SOURCE=2 -fstack-protector-strong -Werror -Wall -Wextra -ftrapv -std=c11 -D_GNU_SOURCE
 
 # --- C runtime suite TABLE ---------------------------------------------------
-# One row per test binary. C_SRC_<name> lists sources relative to compiler/,
+# One row per test binary. C_SRC_<name> lists sources relative to src/toolchain/compiler/,
 # C_FLAGS_<name> extra compile flags, C_LIBS_<name> trailing libraries, and
-# C_PROFILE_<name> optionally replaces the default $(T) flag core. BOTH the
-# hardened run (_test_c_runtime) and the per-library coverage gate
-# (_coverage_check_c_runtime) iterate this same table, so adding one row wires
-# a suite into testing AND coverage measurement.
+# C_PROFILE_<name> optionally replaces the default $(T) flag core.
 C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   host_import_gc_tests host_import_arc_tests \
   memory_pool_tests memory_golden_tests gpu_runtime_tests gpu_shader_tests gpu_float_tests gpu_opencl_tests gpu_selection_tests gpu_no_device_tests \
@@ -100,7 +97,10 @@ C_TEST_SUITES ?= memory_gc_stack_root_tests memory_arc_tests memory_gc_tests \
   profiler_runtime_tests profiler_stream_tests coverage_runtime_tests
 C_SRC_memory_gc_stack_root_tests = runtime/memory_gc_stack_root_tests.c runtime/memory_gc.c
 C_LIBS_memory_gc_stack_root_tests = -pthread
-C_SRC_memory_arc_tests = runtime/memory_arc_tests.c runtime/memory_arc.c
+C_SRC_memory_arc_tests = runtime/memory_arc_tests.c
+# This suite includes memory_arc.c to inject allocator failures. Keep calls
+# to its ABI out of line so gcov measures the entry points used by programs.
+C_FLAGS_memory_arc_tests = -fno-inline
 C_LIBS_memory_arc_tests = -pthread
 C_SRC_memory_gc_tests = runtime/memory_gc_tests.c runtime/memory_gc.c
 C_SRC_host_import_gc_tests = runtime/host_import_tests.c runtime/string_runtime.c runtime/float_spelling.c runtime/memory_gc.c
@@ -122,10 +122,8 @@ C_FLAGS_gpu_device_tests = $(GPU_DEVICE_FLAGS)
 C_LIBS_gpu_device_tests = $(GPU_DEVICE_LINK) $(GPU_DEVICE_LIBS)
 C_SRC_gpu_shader_tests = runtime/gpu_shader_tests.c
 C_FLAGS_gpu_shader_tests = -ffp-contract=off
-C_LIBS_gpu_shader_tests = -lm
 C_SRC_gpu_float_tests = runtime/gpu_float_tests.c runtime/float_spelling.c
 C_FLAGS_gpu_float_tests = -ffp-contract=off
-C_LIBS_gpu_float_tests = -lm
 C_SRC_gpu_opencl_tests = runtime/gpu_opencl_tests.c runtime/gpu_opencl.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC)
 C_FLAGS_gpu_opencl_tests = -DOSPREY_GPU_TESTING=1
 C_LIBS_gpu_opencl_tests = -pthread $(if $(filter Linux,$(UNAME_S)),-ldl)
@@ -145,7 +143,7 @@ C_SRC_string_runtime_tests = runtime/string_runtime_tests.c runtime/string_runti
 # The same suite on the portable float-spelling path wasm32 uses.
 C_SRC_float_spelling_portable_tests = $(C_SRC_string_runtime_tests)
 C_FLAGS_float_spelling_portable_tests = -DOSP_FLOAT_SPELLING_PORTABLE
-C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
+C_SRC_json_runtime_tests = runtime/json_runtime_tests.c runtime/json_grammar_tests.c runtime/json_runtime.c runtime/json_text.c runtime/json_codec.c runtime/json_codec_tests.c runtime/file_runtime.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c runtime/string_runtime_list.c runtime/list_runtime.c
 C_LIBS_json_runtime_tests = -pthread
 C_SRC_effects_runtime_tests = runtime/effects_runtime_tests.c runtime/effects_runtime.c runtime/effects_coro.c runtime/memory_arc.c runtime/gpu_runtime.c runtime/file_runtime.c $(PROF_SRC)
 C_LIBS_effects_runtime_tests = -pthread
@@ -157,15 +155,15 @@ C_SRC_tensor_list_tests = runtime/tensor_list_tests.c runtime/tensor_list.c $(TE
 C_FLAGS_test_http_length_validation = $(OSSL_CFLAGS)
 C_SRC_test_http_length_validation = runtime/test_http_length_validation.c
 C_FLAGS_http_server_send_tests = $(OSSL_CFLAGS)
-C_SRC_http_server_send_tests = runtime/http_server_send_tests.c $(C_TEST_MEMORY_SRC)
+C_SRC_http_server_send_tests = runtime/http_server_send_tests.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
 C_LIBS_http_server_send_tests = -pthread
 C_FLAGS_http_server_request_tests = $(OSSL_CFLAGS)
-C_SRC_http_server_request_tests = runtime/http_server_request_tests.c $(C_TEST_MEMORY_SRC)
+C_SRC_http_server_request_tests = runtime/http_server_request_tests.c $(C_TEST_MEMORY_SRC) runtime/string_runtime.c runtime/float_spelling.c
 C_LIBS_http_server_request_tests = -pthread
 C_SRC_fiber_runtime_tests = runtime/fiber_runtime_tests.c runtime/fiber_handle_tests.c $(C_TEST_MEMORY_SRC) $(RT_THREADS)
 C_LIBS_fiber_runtime_tests = -pthread
 C_FLAGS_http_runtime_tests = $(OSSL_CFLAGS)
-C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_client_runtime.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
+C_SRC_http_runtime_tests = runtime/http_runtime_tests.c runtime/http_origin.c runtime/http_origin_tests.c runtime/http_read_tests.c runtime/http_chunked_tests.c runtime/http_framing_tests.c runtime/http_tls_tests.c runtime/http_server_live_tests.c runtime/http_server_closure_tests.c runtime/http_client_runtime.c runtime/http_client_response.c runtime/http_client_framing.c runtime/http_client_chunks.c runtime/http_server_runtime.c runtime/http_server_request.c runtime/http_server_response.c runtime/http_shared.c runtime/string_runtime.c runtime/float_spelling.c $(C_TEST_MEMORY_SRC) runtime/random_runtime.c $(RT_THREADS)
 C_LIBS_http_runtime_tests = -pthread $(OSSL_LIBS)
 # http_shared.c's coverage number is OWNED by this suite: it is the only one
 # that drives every helper in the unit rather than the subset one transport
@@ -202,26 +200,38 @@ C_SUITE_GC = $(if $(filter-out memory_gc_tests memory_gc_stack_root_tests,$(1)),
 C_SUITE_FLAGS = $(or $(C_PROFILE_$(1)),$(T)) $(C_FLAGS_$(1)) $(4)
 C_SUITE_OBJECT = $(3)-$(basename $(notdir $(2))).o
 C_GC_SHIM_SOURCES = $(patsubst bin/gc/%.o,runtime/%.c,$(filter bin/gc/%,$(FIB_OBJ_GC))) runtime/list_tests.c runtime/list_sort_tests.c runtime/map_tests.c
-C_SUITE_BUILD = $(foreach src,$(C_SRC_$(1)),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(C_SRC_$(1)),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) $(4) -o $(3)
+C_SUITE_BUILD = $(foreach src,$(C_SRC_$(1)),$(CC) $(call C_SUITE_FLAGS,$(1),,,$(4)) $(if $(and $(call C_SUITE_GC,$(1)),$(filter $(src),$(C_GC_SHIM_SOURCES))),-include $(2)runtime/osp_gc_shim.h) -c $(2)$(src) -o $(call C_SUITE_OBJECT,$(1),$(src),$(3)) && ) $(CC) $(foreach src,$(C_SRC_$(1)),$(call C_SUITE_OBJECT,$(1),$(src),$(3))) $(C_LIBS_$(1)) $(C_TEST_MEMORY_LIBS) -lm $(4) -o $(3)
 C_SUITE_CMD = echo "--- $(1)" && $(call C_SUITE_BUILD,$(1),,bin/$(1)) && ./bin/$(1)
 
 _test_gc_stack_root:
 	@echo "==> [c-runtime] GC caller-stack root regression..."
-	@cd compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
+	@cd src/toolchain/compiler && $(call C_SUITE_CMD,memory_gc_stack_root_tests)
 
-_test_c_runtime: $(GPU_DEVICE_NATIVE)
-	@echo "==> [c-runtime] memory/gpu/effects/json/builtins/system/string/HTTP/fiber suites..."
-	@cd compiler && set -e; $(foreach s,$(C_TEST_SUITES),$(call C_SUITE_CMD,$(s)) && ) true
+C_COV_DIR ?= src/toolchain/compiler/bin/cov
+C_BUILD_TARGETS = $(addprefix _build_c_suite_,$(C_TEST_SUITES))
+C_TEST_TARGETS = $(addprefix _test_c_suite_,$(C_TEST_SUITES))
+.PHONY: _build_c_runtime_tests $(C_BUILD_TARGETS) $(C_TEST_TARGETS)
+_build_c_runtime_tests: $(C_BUILD_TARGETS)
+
+$(C_BUILD_TARGETS): _build_c_suite_%: $(GPU_DEVICE_NATIVE)
+	@mkdir -p "$(C_COV_DIR)/$*"
+	@cd "$(C_COV_DIR)/$*" && $(call C_SUITE_BUILD,$*,../../../,$*,--coverage -DOSP_COVERAGE_DUMP) && rm -f -- *.o
+
+_test_c_runtime: $(C_TEST_TARGETS)
+
+$(C_TEST_TARGETS): _test_c_suite_%:
+	@echo "--- $*"
+	@cd "$(C_COV_DIR)/$*" && rm -f -- *.gcda summary.txt && ./$* && $(GCOV_TOOL) *.gcda > summary.txt
 
 _test_gpu_device: $(GPU_DEVICE_NATIVE)
-	@cd compiler && $(call C_SUITE_CMD,gpu_device_tests)
+	@cd src/toolchain/compiler && $(call C_SUITE_CMD,gpu_device_tests)
 
 # [SYMEX-MOCK-TESTS] the mock C library behind `osprey hunt`, compiled for the
 # host against its own headers and linked with the runtime units it must
 # intercept (`osp_input`, `readFile`); the driver is compiled against the host
 # headers. Runs without KLEE installed: the mock carries its own klee/klee.h.
-# Deterministic Hunt runs [SYMEX-CLI]: each tests/hunt/<name>.osp must
-# report exactly the findings in <name>.expected (see tests/hunt/README.md).
+# Deterministic Hunt runs [SYMEX-CLI]: each src/osprey/tests/hunt/<name>.osp must
+# report exactly the findings in <name>.expected (see src/osprey/tests/hunt/README.md).
 # Skipped loudly without KLEE, like the bitcode it needs. Like the two KLEE
 # targets below, it is run by hand: neither `make test` nor CI runs the KLEE
 # engine gates while issues #306 and #307 are open [SYMEX-CRASH-GATE].
@@ -236,40 +246,41 @@ HUNT_KNOWN_BUGS ?= clean
 # Known-bug verification target, run by hand: red until the fix lands.
 .PHONY: _test_hunt_clean
 _test_hunt_clean:
-	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
-	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
+	  echo "(KLEE not installed — src/osprey/tests/hunt skipped)"; exit 0; fi; \
 	set -e; fail=0; for backend in gc arc; do \
 	  out="target/hunt-tests/$$backend/clean.json"; $(MKDIR) "target/hunt-tests/$$backend"; \
-	  status=0; ./target/release/osprey hunt tests/hunt/clean.osp --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt_expect.py "$$out" tests/hunt/clean.expected "$$status" || fail=1; \
+	  status=0; ./target/release/osprey hunt src/osprey/tests/hunt/clean.osp --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
+	  python3 scripts/hunt/hunt_expect.py "$$out" src/osprey/tests/hunt/clean.expected "$$status" || fail=1; \
 	done; exit $$fail
 
 _test_hunt:
-	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
-	  echo "(KLEE not installed — tests/hunt skipped)"; exit 0; fi; \
-	echo "==> [hunt] tests/hunt expectations..."; \
-	set -e; fail=0; for backend in gc arc; do for p in tests/hunt/*.osp; do \
+	@if [ -z "$(KLEE_PREFIX)" ] || [ ! -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc ]; then \
+	  echo "(KLEE not installed — src/osprey/tests/hunt skipped)"; exit 0; fi; \
+	echo "==> [hunt] src/osprey/tests/hunt expectations..."; \
+	set -e; fail=0; for backend in gc arc; do for p in src/osprey/tests/hunt/*.osp; do \
 	  skip=0; for bug in $(HUNT_KNOWN_BUGS); do [ "$$(basename "$${p%.osp}")" = "$$bug" ] && skip=1; done; \
 	  [ "$$skip" = 1 ] && continue; \
 	  e="$${p%.osp}.expected"; out="target/hunt-tests/$$backend/$$(basename "$${p%.osp}").json"; \
 	  $(MKDIR) "target/hunt-tests/$$backend"; \
 	  status=0; ./target/release/osprey hunt "$$p" --memory=$$backend --json --quiet --no-replay --max-time 30 > "$$out" || status=$$?; \
-	  python3 scripts/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
+	  python3 scripts/hunt/hunt_expect.py "$$out" "$$e" "$$status" || fail=1; \
 	done; done; exit $$fail
 
-# No skip path: run by hand (`make -C tests/hunt hunt-crashes`), it must detect and natively
+# No skip path: run by hand (`make -C src/osprey/tests/hunt hunt-crashes`), it must detect and natively
 # reproduce every planted failure.
 .PHONY: _test_hunt_crashes
 _test_hunt_crashes:
 	@test -x "$(KLEE_PREFIX)/bin/klee" || { echo "FAIL: KLEE is required for planted crash tests"; exit 1; }
-	@test -f compiler/bin/libosprey_runtime_klee_gc.bc
-	@test -f compiler/bin/libosprey_runtime_klee_arc.bc
-	python3 scripts/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
-	@set -e; for backend in gc arc; do python3 scripts/hunt_crashes.py --memory $$backend; done
+	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_gc.bc
+	@test -f src/toolchain/compiler/bin/libosprey_runtime_klee_arc.bc
+	python3 scripts/hunt/test-hunt-default-budget.py
+	python3 scripts/hunt/test-hunt-gc-roots.py --llvm "$(KLEE_LLVM_BIN)" --klee "$(KLEE_PREFIX)/bin/klee"
+	@set -e; for backend in gc arc; do python3 scripts/hunt/hunt_crashes.py --memory $$backend; done
 
 _test_hunt_mock:
 	@echo "==> [hunt] mock C library unit tests..."
-	@cd compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
+	@cd src/toolchain/compiler && set -e && $(MKDIR) bin/hunt_mock && rm -f bin/hunt_mock/*.o && \
 	  for u in $(HUNT_MOCK_SRC) random_runtime file_runtime; do \
 	    $(CC) $(HUNT_MOCK_HOST_CFLAGS) -c runtime/$$u.c -o bin/hunt_mock/$$(basename $$u).o; \
 	  done && \
@@ -278,11 +289,11 @@ _test_hunt_mock:
 	  done && \
 	  $(CC) bin/hunt_mock/*.o -o bin/hunt_mock_tests && ./bin/hunt_mock_tests
 	@echo "==> [hunt] corpus scripts and the format oracle..."
-	@python3 scripts/test-hunt-scripts.py
-	@python3 scripts/test-hunt-sample.py
+	@python3 scripts/hunt/test-hunt-scripts.py
+	@python3 scripts/hunt/test-hunt-sample.py
 
 # Per-library C line-coverage gate. Rebuilds every table suite with gcov
-# instrumentation into compiler/bin/cov/<suite>/, reruns it there (a failing
+# instrumentation into src/toolchain/compiler/bin/cov/<suite>/, reruns it there (a failing
 # suite still contributes whatever it covered before aborting), reduces each
 # suite's gcov summaries, and gates every `language: "c"` entry in
 # coverage-thresholds.json at its threshold. A library's number is the MAX
@@ -309,7 +320,7 @@ C_SHIPPED_UNITS = $(sort $(basename $(notdir $(FIB_OBJ_GC) $(HTTP_OBJ_GC) $(FIB_
 # be: every one of their cases runs in a FORKED CHILD, whose gcov counters were
 # never flushed back, so gcov reported 0% against thousands of passing
 # assertions. The harness now calls __gcov_dump before the child _exits
-# (compiler/runtime/test_gcov.h), which is what that exemption was waiting for.
+# (src/toolchain/compiler/runtime/test_gcov.h), which is what that exemption was waiting for.
 C_COV_EXEMPT ?=
 GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
     if command -v xcrun >/dev/null 2>&1; then echo "xcrun llvm-cov gcov"; \
@@ -318,9 +329,6 @@ GCOV_TOOL ?= $(shell if $(CC) --version 2>/dev/null | grep -qi clang; then \
 
 _coverage_check_c_runtime:
 	@echo "==> [c-runtime] per-library line coverage (gcov)..."
-	@rm -rf compiler/bin/cov
-	@set -e; cd compiler/bin && mkdir -p cov && cd cov; \
-	$(foreach s,$(C_TEST_SUITES),mkdir -p $(s) && (cd $(s) && $(call C_SUITE_BUILD,$(s),../../../,$(s),--coverage -DOSP_COVERAGE_DUMP) && { ./$(s) >/dev/null 2>&1 || true; } && { $(GCOV_TOOL) *.gcda > summary.txt 2>/dev/null || true; }) && ) true
 	@command -v jq >/dev/null || { echo "[c] FAIL: jq is required to read $(COVERAGE_THRESHOLDS_FILE); a gate that cannot run must not report success"; exit 1; }
 	@libs=$$(jq -r --arg platform "$(if $(filter Darwin,$(UNAME_S)),darwin,$(if $(filter Linux,$(UNAME_S)),linux,windows))" '.projects.c_runtime | to_entries[] | select((.value.platform // $$platform)==$$platform) | .key' "$(COVERAGE_THRESHOLDS_FILE)"); \
 	if [ -z "$$libs" ]; then echo "[c] FAIL: no C entries in $(COVERAGE_THRESHOLDS_FILE) -- the gate would pass vacuously"; exit 1; fi; \
@@ -331,7 +339,7 @@ _coverage_check_c_runtime:
 	done; \
 	for lib in $$libs; do \
 	  thr=$$(jq -er --arg l "$$lib" '.projects.c_runtime[$$l] | (if has("threshold") then .threshold else 90 end) | if type == "number" and . >= 90 and . <= 100 and floor == . then . else error("coverage threshold must be an integer in 90..100") end' "$(COVERAGE_THRESHOLDS_FILE)") || exit 1; \
-	  best=$$(for f in compiler/bin/cov/*/summary.txt; do \
+	  best=$$(for f in "$(C_COV_DIR)"/*/summary.txt; do \
 	    [ -f "$$f" ] || continue; \
       sed -n "\#File '.*/runtime/$$lib\.[cmh]'#{n;s/Lines executed:\([0-9.]*\)% of .*/\1/p;}" "$$f"; \
 	  done | sort -rn | head -1); \
@@ -349,7 +357,7 @@ _coverage_check_c_runtime:
 # [PROF-TEST] end-to-end profiler gate: --profile runs, exports, and reports.
 _test_profiler:
 	@echo "==> [profiler] osprey --profile end-to-end..."
-	@bash scripts/test_profiler.sh
+	@bash scripts/tests/test_profiler.sh
 
 # --- vscode-extension -------------------------------------------------------
 # The extension's LSP server spawns the `osprey` binary at runtime, so the
@@ -417,36 +425,36 @@ _coverage_check_vscode_extension:
 #       Runs in the current terminal so the raw-mode key reader gets real stdin.
 _tui: build
 	@echo "==> launching TUI demo (live GitHub API browser)"
-	./$(BIN) examples/tui/api_browser.osp --run
+	./$(BIN) src/osprey/examples/tui/api_browser.osp --run
 
 # _gpu-demo: Render the gpu* kernel demo (fractal, shaded sphere, composite)
 #            on the host backend [GPU-BACKEND-HOST]; the raster suite uses
 #            gpuScan/gpuFilter, which have no device form yet, so a selected
-#            device would decline it. For pixels on the actual GPU, see `make -C apps graphics`.
+#            device would decline it. For pixels on the actual GPU, see `make -C src/toolchain/targets graphics`.
 #            FLAVOR=ml renders the ML twin, which prints byte-identical output.
 _gpu-demo: build
 	@echo "==> rendering gpu* kernel demo on the host backend (CPU)"
-	./$(BIN) tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
+	./$(BIN) src/osprey/tests/core/gpu/raster.test.$(if $(filter ml,$(FLAVOR)),ospml,osp) --run
 
 # The same suite against an ALREADY-BUILT binary. No prerequisites, so the
 # staged pipeline can run it on the downloaded `osprey-build` artifact. Going
-# through `bank-test` there rebuilt the whole workspace and then ran `tsc -b`
+# through the `bank` suite there rebuilt the whole workspace and then ran `tsc -b`
 # in vscode-extension, whose node_modules that job never installs — three
 # TS2688 errors and a dead stage, for work the build job had already done.
 _bank_test:
 	@echo "==> Bank native tests (osprey test)..."
-	./$(BIN) test examples/projects/modules/test
+	./$(BIN) test src/osprey/examples/projects/modules/test
 
-# Osprey package system (packages/manager/): one process runs every suite from the
-# packages/manager/tests project with core, host and CLI sources assembled together,
+# Osprey package system (src/osprey/packages/manager/): one process runs every suite from the
+# src/osprey/packages/manager/tests project with core, host and CLI sources assembled together,
 # because `osprey test` compiles suites in isolation and cannot import them.
-# packages/manager/fixture-check runs first and fails fast: every fixture is data,
+# src/osprey/packages/manager/fixture-check runs first and fails fast: every fixture is data,
 # parses strictly, cites a defined spec section and is indexed, every typed
 # fixture value is schema-valid and canonically ordered, and every registry
-# source cites only defined sections. packages/manager/manifest/tests is the TOML
+# source cites only defined sections. src/osprey/packages/manager/manifest/tests is the TOML
 # parser and manifest-rule suite, a separate program until that code joins
-# core. packages/manager/e2e runs last: it starts the
-# server over packages/manager/sample-registry on 127.0.0.1:18797, compares every
+# core. src/osprey/packages/manager/e2e runs last: it starts the
+# server over src/osprey/packages/manager/sample-registry on 127.0.0.1:18797, compares every
 # endpoint with the pure router, fetches every release, and builds and runs a
 # consumer project against the fetched sources. Local tests and CI run all
 # suites under both managed backends; the TAP runner propagates failed checks.
@@ -457,30 +465,30 @@ _test_registry: export OSPREY_E2E_MEMORY = $(REGISTRY_MEMORY)
 _test_registry:
 	@case "$(REGISTRY_MEMORY)" in gc|arc) ;; *) echo "Registry tests require GC or ARC"; exit 1 ;; esac
 	@echo "==> Registry fixture and schema validation (fail-fast)..."
-	./$(BIN) test packages/manager/fixture-check --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/fixture-check --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry manifest (TOML parser and manifest rules) tests..."
-	./$(BIN) test packages/manager/manifest/tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/manifest/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry CLI (package frontend) tests..."
-	./$(BIN) test packages/manager/cli/tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/cli/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry (Osprey package system) tests..."
-	./$(BIN) test packages/manager/tests --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/tests --memory=$(REGISTRY_MEMORY)
 	@echo "==> Registry end-to-end: server, fetch and consumer build..."
-	./$(BIN) test packages/manager/e2e --memory=$(REGISTRY_MEMORY)
+	./$(BIN) test src/osprey/packages/manager/e2e --memory=$(REGISTRY_MEMORY)
 	@echo "==> Native publication and installed-source integrity regressions..."
 	@if [ "$(REGISTRY_MEMORY)" = arc ] && [ -z "$$OSPREY_PACKAGE_CLIENT" ]; then \
 	  mkdir -p "$(CURDIR)/target/registry-tests" && \
-	  "$(abspath $(BIN))" build packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
+	  "$(abspath $(BIN))" build src/osprey/packages/manager/cli --memory=arc --quiet --no-warnings -o "$(REGISTRY_NATIVE_CLIENT)"; \
 	fi
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-publication.py
-	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/test-package-interruption.py
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/packages/test-package-publication.py
+	OSPREY_PACKAGE_CLIENT="$${OSPREY_PACKAGE_CLIENT:-$(REGISTRY_NATIVE_CLIENT)}" python3 scripts/packages/test-package-interruption.py
 
 # Blocked host capabilities, each asserted as the behavior the package system
 # needs. Red is the documented state until the capability lands in Osprey;
 # a probe turning green is the signal to delete its entry from
-# packages/manager/core/src/capabilities.osp.
+# src/osprey/packages/manager/core/src/capabilities.osp.
 _test_registry_blockers:
 	@echo "==> Registry blocked-capability probes (expected red until each lands)..."
-	./$(BIN) packages/manager/blockers --run
+	./$(BIN) src/osprey/packages/manager/blockers --run
 
 # _language-test: Run the assertion-driven Default + ML core language corpus.
 _language-test: build
@@ -488,25 +496,61 @@ _language-test: build
 
 _lint: $(EXT_NODE_DEPS)
 	@echo "==> Linting..."
-	node scripts/verify-node-deps-guard.mjs
-	node scripts/verify-no-dead-code.mjs
-	node scripts/verify-release-gates.mjs
-	node scripts/verify-package-licenses.mjs
-	node --test scripts/test-package-licenses.mjs
-	python3 scripts/test-release-gate.py
-	python3 scripts/test-package-coverage.py
-	python3 scripts/test-package-coverage-projects.py
-	python3 scripts/test-python-app-ports-contracts.py
-	cargo fmt --all --check
-	cargo clippy --workspace --all-targets -- -D warnings
+	node --test scripts/ci/root-layout.test.mjs
+	node scripts/ci/root-layout.mjs
+	node scripts/ci/verify-node-deps-guard.mjs
+	node scripts/ci/verify-no-dead-code.mjs
+	node scripts/ci/verify-release-gates.mjs
+	node scripts/packages/verify-package-licenses.mjs
+	node --test scripts/packages/test-package-licenses.mjs
+	python3 scripts/ci/test-release-gate.py
+	python3 scripts/packages/test-package-coverage.py
+	python3 scripts/packages/test-package-coverage-projects.py
+	python3 scripts/packages/test-python-app-ports-contracts.py
+	cargo fmt --manifest-path src/toolchain/Cargo.toml --all --check
+	cargo clippy --manifest-path src/toolchain/Cargo.toml --workspace --all-targets -- -D warnings
 	cd $(EXT_DIR) && npm run lint
 
 # _deslop: Code-duplication gate. Fails the build when measured
-# duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
+# duplication exceeds the ceiling in .config/deslop.toml (exit 3). Exclusions and the
 # threshold live in that committed config — the single source of truth.
 # The installer resolves the latest release for both local and hosted CI.
 
 _deslop:
 	@echo "==> Duplication gate (deslop)..."
-	bash scripts/install-deslop.sh
-	deslop . --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+	bash scripts/ci/install-deslop.sh
+	deslop . --config .config/deslop.toml --nohtml --nojson --output $(CURDIR)/target/deslop-report --log-to-console --log-level error --no-color
+
+# Package, agent and Python-port steps behind `make test`.
+.PHONY: _test_packages _coverage_check_packages
+# [PACKAGE-WORKSPACE] Every package checks on its own, as a consumer and the
+# editor see it. A package's tests list sibling source roots by hand, so they
+# stay green when the package's own manifest cannot resolve its dependencies.
+.PHONY: _check_packages
+_check_packages:
+	for manifest in src/osprey/packages/*/osprey.toml; do \
+		$(BIN) $${manifest%/osprey.toml} --check --quiet --no-warnings || exit 1; \
+	done
+
+# [PKG-COVERAGE-GATE] One report per package, never averaged. _test_packages
+# reruns all src/osprey/packages/<name>/tests suites concurrently with --coverage-json
+# into $(COVERAGE_DIR)/packages; _coverage_check_packages gates the collected
+# reports alone — no suite is re-run to check what it already measured — and
+# fails on a package below its projects.packages threshold or on missing,
+# empty, malformed or incomplete evidence.
+_test_packages:
+	python3 scripts/packages/package_coverage.py --collect --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+_coverage_check_packages:
+	python3 scripts/packages/package_coverage.py --compiler $(BIN) --reports $(COVERAGE_DIR)/packages --thresholds $(COVERAGE_THRESHOLDS_FILE)
+
+.PHONY: _test_agent 
+# Osprey Agent's turn logic and real update path: no network and no window.
+_test_agent:
+	set -o pipefail && $(BIN) src/osprey/examples/agent/test --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
+	$(BIN) src/osprey/examples/agent/test-app --run --quiet --no-warnings
+
+.PHONY: _test_python_app_ports
+
+_test_python_app_ports:
+	python3 scripts/packages/test-python-app-ports.py --compiler $(BIN)

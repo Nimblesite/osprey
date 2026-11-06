@@ -10,14 +10,14 @@ Start with the [repository map](docs/contributing/repository-map.md) to find the
 
 The compiler and runtime use:
 
-- **[Rust](https://www.rust-lang.org/)** - Compiler implementation (`crates/`)
-- **[tree-sitter](https://tree-sitter.github.io/)** - Grammar parsing (`tree-sitter-osprey/`)
+- **[Rust](https://www.rust-lang.org/)** - Compiler implementation (`src/toolchain/crates/`)
+- **[tree-sitter](https://tree-sitter.github.io/)** - Grammar parsing (`src/toolchain/tree-sitter-osprey/`)
 - **[LLVM](https://llvm.org/)** - Code generation (textual IR handed to clang)
-- **C** - The runtime (fibers, HTTP/WebSocket, collections) in `compiler/runtime/`
+- **C** - The runtime (fibers, HTTP/WebSocket, collections) in `src/toolchain/compiler/runtime/`
 
 ## Getting Started
 
-Start with the [installation guide](website/src/docs/installation.md) for host toolchain prerequisites. The [development-container guide](.devcontainer/README.md) records its configured environment and current LLVM/setup limits.
+Start with the [installation guide](src/toolchain/website/src/docs/installation.md) for host toolchain prerequisites. The [development-container guide](.devcontainer/README.md) records its configured environment and current LLVM/setup limits.
 
 ```bash
 # Fork and clone
@@ -31,7 +31,7 @@ make test
 
 ## Repository coordination
 
-Git worktrees are banned. There may be only **ONE active feature branch across ALL machines and clones combined**. Coordinate all work on the existing active branch; do not create a branch per machine, contributor, or task. A replacement branch may start only after the previous branch is merged or explicitly retired and all machines are coordinated. See [CLAUDE.md](CLAUDE.md) for the shared instructions.
+Git worktrees are banned. There may be only **ONE active feature branch across ALL machines and clones combined**. Coordinate all work on the existing active branch; do not create a branch per machine, contributor, or task. A replacement branch may start only after the previous branch is merged or explicitly retired and all machines are coordinated. See [AGENTS.md](AGENTS.md) for the shared instructions.
 
 ## What to Work On
 

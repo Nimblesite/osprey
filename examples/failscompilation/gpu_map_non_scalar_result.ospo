@@ -1,7 +1,0 @@
-// [GPU-MAP], [GPU-BUFFER-ELEM]: the kernel's result type must satisfy the
-// element restriction. Inference cannot see the consumer here (the buffer is
-// only stored in a list), so codegen's single scalar backstop rejects it.
-fn main() = {
-    let out = toGpu([1, 2]) |> gpuMap(fn(v) => "${v}")
-    print(listLength([out]))
-}

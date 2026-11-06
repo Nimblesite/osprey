@@ -1,0 +1,262 @@
+//! Type checking: functions.
+use std::ops::ControlFlow;
+
+use super::binding_order::BindingOrder;
+use super::{
+    BTreeSet, Checker, EffectRef, Expr, HashMap, Parameter, Position, Program, Scheme, Stmt, Type,
+    TypeEnv,
+};
+
+#[cfg(test)]
+std::thread_local! {
+    pub(super) static LATE_TRIAL_BODY_CHECKS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+impl Checker {
+    /// Pass two: infer bodies and run top-level statements.
+    pub(super) fn check(
+        &mut self,
+        program: &Program,
+        env: &mut TypeEnv,
+        probe: Option<(&str, &Type)>,
+    ) -> ControlFlow<()> {
+        self.check_statements(&mut program.statements.iter(), env, probe)
+    }
+
+    pub(super) fn check_statements(
+        &mut self,
+        statements: &mut dyn Iterator<Item = &Stmt>,
+        env: &mut TypeEnv,
+        probe: Option<(&str, &Type)>,
+    ) -> ControlFlow<()> {
+        let statements: Vec<&Stmt> = statements.collect();
+        let mut order = BindingOrder::new(statements.clone());
+        for (cursor, statement) in statements.into_iter().enumerate() {
+            match statement {
+                Stmt::Function { .. } => {
+                    self.check_callees_first(&mut order, cursor, cursor, env, probe)?;
+                }
+                Stmt::Module { body, .. } => {
+                    let mut inner = env.child();
+                    // Module declarations live in their own lexical scope. Run
+                    // both checker passes there: the old implementation only
+                    // ran pass two, so module functions were never registered
+                    // and their bodies were silently skipped.
+                    self.collect_statements(
+                        body.iter().map(|item| item.declaration.as_ref()),
+                        &mut inner,
+                    );
+                    self.check_statements(
+                        &mut body.iter().map(|item| item.declaration.as_ref()),
+                        &mut inner,
+                        probe,
+                    )?;
+                }
+                Stmt::Namespace { body, .. } => {
+                    let mut inner = env.child();
+                    self.collect_statements(body.iter(), &mut inner);
+                    self.check_statements(&mut body.iter(), &mut inner, probe)?;
+                }
+                // `let` / assignment / bare-expr statements infer the same way at
+                // top level and inside a block.
+                other => self.infer_block_stmt(other, env),
+            }
+        }
+        ControlFlow::Continue(())
+    }
+
+    /// Check the function at `index` after the later-defined functions it
+    /// calls, so each is generalized before its caller uses it. A function
+    /// already started (a recursive group) keeps its monomorphic signature,
+    /// and one reading a `let` that has not run yet keeps its source position.
+    /// Implements [TYPE-BINDING-ORDER].
+    fn check_callees_first(
+        &mut self,
+        order: &mut BindingOrder<'_>,
+        index: usize,
+        cursor: usize,
+        env: &mut TypeEnv,
+        probe: Option<(&str, &Type)>,
+    ) -> ControlFlow<()> {
+        let Some(statement) = order.start(index) else {
+            return ControlFlow::Continue(());
+        };
+        for callee in order.callees(index, cursor) {
+            self.check_callees_first(order, callee, cursor, env, probe)?;
+        }
+        self.check_function_stmt(statement, env);
+        if probe.is_some_and(|(owner, expected)| {
+            matches!(statement, Stmt::Function { name, .. }
+                if name == owner && self.fixed_signature_mismatch(env, name, expected))
+        }) {
+            return ControlFlow::Break(());
+        }
+        ControlFlow::Continue(())
+    }
+
+    /// A concrete signature cannot change under further substitution. A closed
+    /// deferred relation can also certify the signature's quantified variables.
+    fn fixed_signature_mismatch(&self, env: &TypeEnv, name: &str, expected: &Type) -> bool {
+        self.fn_sigs.get(name).is_some_and(|(params, ret)| {
+            let actual = Type::fun(
+                params.iter().map(|ty| self.ctx.apply(ty)).collect(),
+                self.ctx.apply(ret),
+            );
+            actual != *expected
+                && (super::type_is_resolved(&actual)
+                    || self.closed_deferred_signature(env, name, &actual))
+        })
+    }
+
+    fn closed_deferred_signature(&self, env: &TypeEnv, name: &str, actual: &Type) -> bool {
+        let Some(scheme) = env
+            .get(name)
+            .filter(|scheme| !scheme.obligations.is_empty())
+        else {
+            return false;
+        };
+        if crate::env::possibly_open(scheme)
+            || !env.declared_params(name).is_empty()
+            || super::has_open_handlers(self)
+        {
+            return false;
+        }
+        // Uses of a closed scheme instantiate fresh variables. The original
+        // variables can only still be constrained by pending solver work.
+        let mut free = BTreeSet::new();
+        self.ctx.free_vars(actual, &mut free);
+        if !free.iter().all(|id| scheme.vars.contains(id)) || env.shares_open_vars(&self.ctx, &free)
+        {
+            return false;
+        }
+        self.signature_vars_unshared(name, &free)
+    }
+
+    fn signature_vars_unshared(&self, name: &str, vars: &BTreeSet<crate::ty::VarId>) -> bool {
+        let mut pending = BTreeSet::new();
+        for (_, relation) in &self.builtin_uses {
+            self.ctx.free_vars(relation, &mut pending);
+        }
+        for (other, (params, ret)) in &self.fn_sigs {
+            if other != name {
+                for ty in params.iter().chain(std::iter::once(ret)) {
+                    self.ctx.free_vars(ty, &mut pending);
+                }
+            }
+        }
+        vars.is_disjoint(&pending)
+    }
+
+    fn check_function_stmt(&mut self, statement: &Stmt, env: &mut TypeEnv) {
+        let Stmt::Function {
+            name,
+            parameters,
+            effects,
+            body,
+            position,
+            ..
+        } = statement
+        else {
+            return;
+        };
+        #[cfg(test)]
+        if name == "late_trial_body" {
+            LATE_TRIAL_BODY_CHECKS.with(|checks| checks.set(checks.get() + 1));
+        }
+        let outer = std::mem::replace(&mut self.site, name.clone());
+        let outer_site = self.ctx.enter(name.clone());
+        self.check_function(name, parameters, effects, body, env, *position);
+        let _ = self.ctx.enter(outer_site);
+        self.site = outer;
+    }
+
+    pub(super) fn check_function(
+        &mut self,
+        name: &str,
+        parameters: &[Parameter],
+        effects: &[EffectRef],
+        body: &Expr,
+        env: &mut TypeEnv,
+        pos: Option<Position>,
+    ) {
+        let (params, ret) = match self.fn_sigs.get(name) {
+            Some(sig) => sig.clone(),
+            None => return,
+        };
+        let mut local = env.child();
+        for (p, ty) in parameters.iter().zip(&params) {
+            local.insert(p.name.clone(), Scheme::mono(ty.clone()));
+        }
+        // The declared effect row instantiates each referenced effect for the
+        // body's `perform` sites (`!State<int>` pins `T` to `int`).
+        // Implements [EFFECTS-GENERIC-ROWS].
+        let typarams = self.fn_typarams.get(name).cloned().unwrap_or_default();
+        let mut scopes = Vec::new();
+        let mut declared_rows = Vec::new();
+        for effect in effects {
+            let scope = self.effect_row_scope(effect, &typarams, pos);
+            declared_rows.push(
+                (!effect.type_args.is_empty())
+                    .then(|| scope.as_ref().map(|resolved| resolved.args.clone()))
+                    .flatten(),
+            );
+            if let Some(scope) = scope {
+                scopes.push(scope);
+            }
+        }
+        if let Some(position) = pos {
+            let _ = self
+                .declared_effect_rows
+                .insert((position.line, position.column), declared_rows);
+        }
+        let pushed = scopes.len();
+        self.handler_scopes.extend(scopes);
+        self.current_fn_typarams = typarams;
+        let enclosing = self.current_fn.replace(name.to_owned());
+        // A call has no position of its own: its failures anchor at this function.
+        let outer_position = self.expr_position;
+        self.expr_position = pos.or(outer_position);
+        let body_ty = self.infer_expr(body, &local);
+        // Release the body's snapshot before publishing into the parent scope.
+        drop(local);
+        self.expr_position = outer_position;
+        self.current_fn = enclosing;
+        self.current_fn_typarams = HashMap::new();
+        self.handler_scopes
+            .truncate(self.handler_scopes.len().saturating_sub(pushed));
+        self.unify_or_err(&ret, &body_ty, &format!("function `{name}` body"), pos);
+        // Generalize the now-constrained signature so later call sites can use
+        // the function polymorphically (HM let-generalization for top-level fns).
+        // Remove the function's own monomorphic entry first, else its signature
+        // variables would count as "free in the environment" and nothing would
+        // generalize.
+        let fun_ty = Type::fun(params, ret);
+        let declared = env.declared_params(name);
+        env.remove(name);
+        let mut scheme = self.generalize_with_obligations(env, &fun_ty);
+        self.quantify_declared(env, &declared, &mut scheme);
+        let _ = self
+            .scheme_obligations
+            .insert(format!("fn {name}"), scheme.obligations.clone());
+        env.insert(name, scheme);
+        env.declare_type_params(name, declared);
+    }
+
+    fn quantify_declared(&mut self, env: &TypeEnv, declared: &[Type], scheme: &mut Scheme) {
+        if declared.is_empty() {
+            return;
+        }
+        // Explicit binders are quantified even when the signature never uses
+        // them. Two applications of a phantom binder are still independent.
+        let env_vars = env.free_vars(&mut self.ctx);
+        for param in declared {
+            let mut vars = BTreeSet::new();
+            self.ctx.free_vars(param, &mut vars);
+            for var in vars.difference(&env_vars) {
+                if !scheme.vars.contains(var) {
+                    scheme.vars.push(*var);
+                }
+            }
+        }
+    }
+}

@@ -154,13 +154,18 @@ Each may be passed by name as a kernel, not only called directly.
 ```osprey
 toFloat(7)                        // 7.0
 toFloat32(0.1)                    // 0.1, the nearest binary32
-gpuIota(1000) |> gpuMap(toFloat32)  // GpuBuffer<float32>, 0.0 .. 999.0
+match gpuIota(1000) {
+    Success { value } => print(gpuLength(gpuMap(value, toFloat32)))
+    Error { message } => print(message)
+}  // 1000
 ```
 
 ```osprey-ml
 toFloat 7                         // 7.0
 toFloat32 0.1                     // 0.1, the nearest binary32
-gpuIota 1000 |> gpuMap toFloat32  // GpuBuffer<float32>, 0.0 .. 999.0
+match gpuIota 1000
+    Success value => print (gpuLength (gpuMap (value, toFloat32)))
+    Error message => print message  // 1000
 ```
 
 ### `sqrt` / `exp` / `ln` / `tanh` — [BUILTIN-MATH]
@@ -478,8 +483,8 @@ let same = structuralEquals(Route { tab: "home", depth: 1 }, Route { tab: "home"
 let differ = structuralEquals([1, 2], [1, 2, 3])                                                 // false
 ```
 
-The Default/ML twins `tests/regressions/basics/operators/structural_equals.test.*`
-pin every row; `examples/failscompilation/structural_equals_*.ospo` pin the
+The Default/ML twins `src/osprey/tests/regressions/basics/operators/structural_equals.test.*`
+pin every row; `src/osprey/examples/failscompilation/structural_equals_*.ospo` pin the
 rejected types.
 
 ## String Functions
@@ -767,6 +772,28 @@ Reads a complete stream. The length is whatever the stream produced, not what
 seeking to the end claimed it would be — a FIFO, socket or character device
 cannot be seeked and reports its size as `-1`, so a seek-derived length reads
 those sources as empty and truncates or overruns their contents.
+
+### `readFileBytes(path: string, offset: int, count: int) -> Result<List<int>, Error>` — [BUILTIN-FILE-BYTES]
+
+Reads at most `count` bytes of the file at `path`, starting at byte `offset`, as a list of integers from 0 to 255. It reads binary, so NUL is an ordinary byte; `readFile` returns text and a string ends at its first NUL. The list is shorter than `count` only because the file ended, and an `offset` at or past the end is an empty list. A negative `offset` or `count`, a file that can't be opened and a failed read are each an `Error` naming the reason; none of them yields a shorter list. `--no-fs` refuses it.
+
+```osprey
+match readFileBytes("model.gguf", 0, 4) {
+    Success { value } => print("${listLength(value)} bytes")
+    Error { message } => print(message)  // readFileBytes: model.gguf: No such file or directory
+}
+```
+
+### `fileSize(path: string) -> Result<int, Error>` — [BUILTIN-FILE-SIZE]
+
+The byte length of the regular file at `path`, as `stat` reports it, so a reader of a large binary file (a GGUF header, a tensor table) knows where the file ends before its first `readFileBytes`. A path that cannot be stated is an `Error` naming the system's reason; a path that is not a regular file (a directory, FIFO, socket or device, whose length `stat` cannot vouch for) is `fileSize: <path>: not a regular file`. It never returns a guessed or negative length. `--no-fs` refuses it.
+
+```osprey
+match fileSize("model.gguf") {
+    Success { value } => print("${value} bytes")
+    Error { message } => print(message)  // fileSize: model.gguf: No such file or directory
+}
+```
 
 ### `loadTensor(path: string, name: string) -> Result<List<float>, Error>` — [BUILTIN-FILE-TENSOR]
 

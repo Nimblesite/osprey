@@ -1,0 +1,60 @@
+# @osprey/pydantic-ai
+
+An Osprey Python-flavor port of the [pydantic-ai](https://github.com/pydantic/pydantic-ai) 2.46.0 agent engine: enough of the library to run a tool-calling agent against any OpenAI-compatible chat API, and to cut an application such as NAP across from CPython.
+
+| Module | CPython module | What is ported |
+| --- | --- | --- |
+| `Messages` | `pydantic_ai.messages` | `SystemPromptPart`, `UserPromptPart`, `ToolReturnPart`, `RetryPromptPart`, `InstructionPart`, `TextPart`, `ThinkingPart`, `ToolCallPart`, `ModelRequest`, `ModelResponse`, the stream events, `ModelResponse.text`, `args_as_dict`, `args_as_json_str`, `RetryPromptPart.model_response`, and `ModelMessagesTypeAdapter.dump_python`/`validate_python` as `dump_messages`/`validate_messages` |
+| `Usage` | `pydantic_ai.usage` | `RequestUsage`, `RunUsage`, `incr`, `total_tokens` |
+| `Settings` | `pydantic_ai.settings` | `ModelSettings` as a JSON map, `merge_model_settings` |
+| `Profiles` | `pydantic_ai.profiles` | `ModelProfile` as a JSON map, `merge_profile`, `openai_model_profile`, DeepSeek, Kimi (MoonshotAI), GLM (Z.AI) and Ollama profiles, `thinking_levels` and `thinking_setting` (Osprey additions) |
+| `Tools` | `pydantic_ai.tools` | `ToolDefinition`, `Tool` |
+| `Models` | `pydantic_ai.models` | `ModelRequestParameters`, `Model` |
+| `Providers` | `pydantic_ai.providers` | the `Provider` record and `scripted` for tests |
+| `ProvidersHttp` | `pydantic_ai.providers.*` | `OpenAIProvider`, `OllamaProvider`, `DeepSeekProvider`, `MoonshotAIProvider`, `ZaiProvider` over the runtime HTTPS client |
+| `ModelsOpenai` | `pydantic_ai.models.openai` | `OpenAIChatModel`: message, tool and settings mapping to a Chat Completions request, response parsing, usage, finish reasons, thinking tags and fields, and the unified `thinking` setting's `reasoning_effort`/Z.AI `extra_body` mapping |
+| `JsonSchema` | `pydantic_ai._json_schema`, `profiles.openai` | the OpenAI strict-mode schema transformer |
+| `ModelsTest` | `pydantic_ai.models.test` | `TestModel` with its schema-driven argument generator and usage estimate |
+| `Direct` | `pydantic_ai.direct` | `model_request`, `model_request_stream` (events replayed from the complete response) |
+| `Agent` | `pydantic_ai.agent` | `Agent`, `tool_plain`, `run_sync`: the tool-calling loop with `ModelRetry` as a tool's `Error`, the request limit, `AgentRunResult` |
+| `Mcp` | `pydantic_ai.mcp` | the MCP wire protocol as a sans-IO client: JSON-RPC messages and results, stdio line framing, streamable HTTP and SSE, `tools/list`/`tools/call` mapping, `MCPServerConfig` parsing with `${VAR}` expansion and merging |
+| `Exceptions` | `pydantic_ai.exceptions` | `ModelHTTPError`, `ModelAPIError`, `UserError`, `UnexpectedModelBehavior`, `UsageLimitExceeded` as the `ModelError` union, carried by `Outcome[T]` |
+
+## Origin, license and thanks
+
+**Original project:** [pydantic-ai](https://github.com/pydantic/pydantic-ai).
+
+**How it was ported.** Osprey's Python flavor reads like Python, so this port keeps pydantic-ai's module, function and argument names wherever it can, and its tests compare results with pydantic-ai 2.46.0 running under CPython. That keeps it closer to the original than a port to a different-looking language usually is. It is still a reimplementation: the code is written for Osprey's types, effects and runtime, and pydantic-ai is not bundled, linked or needed at run time.
+
+**License.** pydantic-ai is MIT licensed. This package is MIT, Copyright NIMBLESITE PTY LTD, Australia; that grant covers Osprey's own code and does not relicense anything of pydantic-ai's. [NOTICE.md](NOTICE.md) lists any third-party material the package carries and the terms that come with it.
+
+**Thanks** to Pydantic Services Inc. and the pydantic-ai contributors for [pydantic-ai](https://github.com/pydantic/pydantic-ai), and to OpenAI's [openai-python](https://github.com/openai/openai-python) (Apache-2.0), whose Chat Completions wire format the tests record. Naming pydantic-ai credits it; it does not imply that its maintainers endorse this port.
+
+## What differs from CPython
+
+- Osprey has no exceptions, optional fields or runtime introspection. A model request or agent run answers `Outcome[T]`: `Ok(value=)` or `Failed(error=)` with a `ModelError` variant. Optional strings are empty (`instructions`, `finish_reason`, `tool_name` of a plain retry, `model_name`), and `ModelMessage` wraps the two records as `Request(request=)` / `Response(response=)`.
+- A `Tool` spells its name, description and parameter schema beside its function, which takes the arguments as a JSON object and answers `Result[str, str]`; CPython derives those from the function signature and `ModelRetry`.
+- `ModelSettings` and `ModelProfile` are JSON maps keyed by the CPython names. `ToolDefinition.strict` is `False` for CPython's `None` (inferred by the schema transformer).
+- The runtime has no streaming bodies, so `model_request_stream` performs the request and replays the parts as start and end events. Files, structured output, output tools, native tools, the Responses API, instrumentation, dependencies and retries of validation errors are not ported.
+- Tool call ids are the provider's; `TestModel` uses `pyd_ai_tool_call_id__<name>` as CPython does.
+- `Profiles.thinking_levels(profile, provider_kind)` and `Profiles.thinking_setting(level)` are Osprey additions, not upstream. They list the effort levels a person may pick for a model (as text, in order: `[]` when the model does not think or always thinks with no level choice; Kimi reasoning models `minimal, low, medium, high`, never off; GLM-5.3 `low, high, max`; GLM-5.2 `off, minimal, low, medium, high, xhigh`; older thinking GLM `off, on`; DeepSeek v4 `off, on` plus every level) and map a picked level text to the JSON `thinking` value (`off`/`on` are the booleans, `max` is GLM-5.3's mapped `xhigh`).
+- The profile key `zai_thinking_body` is not upstream. The port has one model class where upstream has `ZaiModel` overriding `prepare_request`; this key marks Z.AI's request shape, where the unified `thinking` setting travels as `extra_body`'s `thinking` object (with `type` and `clear_thinking`) and a mapped `reasoning_effort`, rather than the OpenAI `reasoning_effort` parameter.
+- `mcp.py` is a sans-IO client, not a port of upstream's transport: upstream delegates its wire protocol to FastMCP and the MCP SDK, while here JSON-RPC over stdio line framing and streamable HTTP/SSE is written from the MCP specification, so every function is pure and the application owns the IO. `parse_config` reports each broken server entry beside the ones that parsed instead of raising on the whole file, and an `MCPError`'s `data` prints as JSON rather than a Python dict. Tools only: resources, prompts, sampling and elicitation are not ported.
+
+## Tests
+
+The [Python-flavor ports contract](../../../../docs/specs/ecosystem/0043-PythonFlavorPorts.md) defines [PORT-SUITE] and [PORT-TEST-ORACLE]. `tests/main.py` compares the port with values the real pydantic-ai computed over an httpx mock transport in `src/osprey/packages/pydantic_ai/oracle/pydantic_ai.cpython`: request bodies, parsed replies, the wire form, `TestModel` runs, a scripted multi-step tool-calling run and the error texts. `src/` is Osprey source, not CPython; run it with the Osprey compiler.
+
+```sh
+target/release/osprey src/osprey/packages/pydantic_ai/tests --run
+target/release/osprey src/osprey/packages/pydantic_ai/tests --run --memory=gc
+OSPREY_ARC_DEBUG=1 target/release/osprey src/osprey/packages/pydantic_ai/tests --run --memory=arc
+```
+
+`live/` is the real thing: an agent with two tools against DeepSeek over HTTPS, its answer judged by a second model call. It reads `DEEPSEEKKEY` from `.env` in the working directory, spends tokens and is not part of the offline matrix:
+
+```sh
+target/release/osprey src/osprey/packages/pydantic_ai/live --run
+```
+
+The Rust integration harness discovers `tests/osprey.toml`, compares stdout with `tests/expected_output.txt` under all three memory backends, and requires ARC to exit without live objects. Presence of a suite does not establish that it passes; compiler diagnostics, assertion failures and missing golden files remain failures.

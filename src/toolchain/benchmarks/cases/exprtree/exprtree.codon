@@ -1,0 +1,108 @@
+# exprtree — build a pseudo-random arithmetic expression tree (a recursive
+# union of Lit/Add/Mul records) to a fixed depth, then evaluate it under
+# modular arithmetic. Repeated K times with rolling seeds. Non-integer data
+# types: a recursive algebraic union + records, stressing constructor
+# allocation and pattern-match dispatch (distinct from binarytrees, which only
+# counts nodes — here every node carries an operation that is evaluated).
+#
+# Modes via the first stdin line: "0"/empty -> fixed seed (deterministic,
+# oracle-checked); "1" -> cryptographically-secure random seed (/dev/urandom).
+import sys
+
+
+class Expr:
+    pass
+
+
+class Lit(Expr):
+    v: int
+
+
+class Add(Expr):
+    l: Expr
+    r: Expr
+
+
+class Mul(Expr):
+    l: Expr
+    r: Expr
+
+
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def sub(a, b):
+    return a - b
+
+
+def mul(a, b):
+    return a * b
+
+
+def modp(a, b):
+    return a % b
+
+
+def r1(x):
+    return modp(mul(x, 16807), 2147483647)
+
+
+def hash_at(seed, i):
+    return r1(r1(add(seed, i)))
+
+
+def add_m(a, b):
+    return modp(add(a, b), 1000000007)
+
+
+def mul_m(a, b):
+    return modp(mul(a, b), 1000000007)
+
+
+def rand_seed():
+    with open("/dev/urandom", "rb") as source:
+        return add(modp(fold(source.read(4), 0, lambda acc, c: add(mul(acc, 256), int(c))), 2147483646), 1)
+
+
+def seed_of(s):
+    token = s.strip()
+    return rand_seed() if token.lstrip("-").isdigit() and int(token) != 0 else 1
+
+
+def build(seed, idx, depth) -> Expr:
+    match depth:
+        case 0:
+            return Lit(modp(hash_at(seed, idx), 1000))
+        case _:
+            match modp(hash_at(seed, idx), 2):
+                case 0:
+                    return Add(build(seed, add(mul(idx, 2), 1), sub(depth, 1)), build(seed, add(mul(idx, 2), 2), sub(depth, 1)))
+                case _:
+                    return Mul(build(seed, add(mul(idx, 2), 1), sub(depth, 1)), build(seed, add(mul(idx, 2), 2), sub(depth, 1)))
+
+
+def eval(e: Expr) -> int:
+    match e:
+        case Lit(v=v):
+            return v
+        case Add(l=l, r=r):
+            return add_m(eval(l), eval(r))
+        case Mul(l=l, r=r):
+            return mul_m(eval(l), eval(r))
+
+
+def run_one(seed, t):
+    return eval(build(add(seed, mul(t, 7)), 1, 14))
+
+
+seed = seed_of(sys.stdin.readline())
+answer = fold(range(0, 10), 0, lambda acc, t: add_m(acc, run_one(seed, t)))
+print(f"{answer}")

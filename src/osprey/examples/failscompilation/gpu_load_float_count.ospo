@@ -1,0 +1,3 @@
+// [GPU-BUFFER-LOAD]: the byte offset and the element count are ints; a float
+// count is a type error, not a truncation.
+fn main() = gpuLoad("weights.bin", 0, 2.5)

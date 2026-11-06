@@ -1,0 +1,10 @@
+// osprey: flavor=ml
+// [GPU-KERNEL-FORM]: an unresolvable recursive return type fails closed.
+spin i = spin (i - 1)
+
+main () =
+    handle Arith
+        overflow _ _ _ wrapped => wrapped
+    match gpuIota 3
+        Success value => gpuMap (value, \i => spin i)
+        Error message => Error(message = message)

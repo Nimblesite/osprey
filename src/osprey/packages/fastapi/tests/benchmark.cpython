@@ -1,0 +1,326 @@
+"""Assert every real HTTP reply while timing routing and NAP IDP body binding.
+
+Implements [FASTAPI-BENCHMARK-SUBSET]. Each request opens a fresh connection.
+Reported throughput includes client scheduling and response validation.
+"""
+import argparse
+import concurrent.futures
+import hashlib
+import importlib.machinery
+import importlib.util
+import json
+import os
+import platform
+import socket
+import statistics
+import subprocess
+import sys
+import time
+from contextlib import contextmanager
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Annotated, NamedTuple
+
+if not __debug__:
+    raise RuntimeError("HTTP benchmarks require enabled assertions; do not use -O")
+
+ROOT = Path(__file__).resolve().parents[5]
+OUTPUT = ROOT / "target/fastapi/benchmark"
+REFERENCE = ROOT.parent / "NimblesiteAgenticPlatform/.venv/bin/python"
+PINNED = "0.135.3"
+BODY_ORACLE = Path(__file__).resolve().parents[1] / "oracle" / "fastapi_body.cpython"
+
+
+def load_source(name, path):
+    loader = importlib.machinery.SourceFileLoader(name, str(path))
+    spec = importlib.util.spec_from_file_location(loader.name, path, loader=loader)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+HTTP = load_source("fastapi_http_acceptance", Path(__file__).with_name("e2e.cpython"))
+
+
+def json_bytes(value):
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":")).encode()
+
+
+HEALTH = [
+    ("/health", {"status": "ok"}),
+    ("/health?probe=true", {"status": "ok"}),
+]
+BUNDLE = [
+    ("/bundle/hello%20world?tags=one&tags=two", {"path": "hello world", "tags": ["one", "two"]}),
+    ("/bundle/%E2%98%95/%F0%9F%98%80?tags=a%2Bb&tags=", {"path": "☕/😀", "tags": ["a+b", ""]}),
+    ("/bundle/one/two?tags=one&tags=two&tags=three", {"path": "one/two", "tags": ["one", "two", "three"]}),
+    ("/bundle/quotes%22%5C?tags=%22%5C", {"path": 'quotes"\\', "tags": ['"\\']}),
+    ("/bundle/a%3Fb%23c?tags=a+b", {"path": "a?b#c", "tags": ["a b"]}),
+    ("/bundle/%E6%BC%A2%E5%AD%97?tags=%C3%A9", {"path": "漢字", "tags": ["é"]}),
+]
+
+
+class Scenario(NamedTuple):
+    method: str
+    path: str
+    request_body: bytes | None
+    request_headers: dict[str, str]
+    status: int
+    response_body: bytes
+    response_json: object
+
+
+def get_scenario(path, value):
+    return Scenario("GET", path, None, {}, 200, json_bytes(value), value)
+
+
+def body_scenario(record):
+    assert not any(name.lower() == "connection" for name in record["headers"])
+    assert record["response_headers"]["content-type"] == "application/json"
+    reply = record["response_text"]
+    return Scenario(record["method"], record["path"], record["body_text"].encode(), record["headers"],
+                    record["status"], reply.encode(), json.loads(reply))
+
+
+def workloads():
+    records = [case for case in HTTP.body_records() if case["path"] == "/body/idp"]
+    valid = [body_scenario(case) for case in records if case["status"] == 200]
+    invalid = [body_scenario(case) for case in records if case["status"] == 422]
+    assert valid and invalid and len(valid) + len(invalid) == len(records)
+    return [("health", [get_scenario(*item) for item in HEALTH]),
+            ("bundle", [get_scenario(*item) for item in BUNDLE]),
+            ("idp-valid", valid), ("idp-invalid", invalid)]
+
+
+def checked_request(port, scenario):
+    start = time.perf_counter_ns()
+    status, headers, body = HTTP.request(port, scenario.method, scenario.path, scenario.request_body,
+                                         scenario.request_headers | {"Connection": "close"})
+    headers = {name.lower(): value for name, value in headers.items()}
+    assert status == scenario.status, (scenario.path, status, body, scenario.status)
+    assert headers.get("content-type") == "application/json", (scenario.path, headers)
+    assert int(headers["content-length"]) == len(body), (scenario.path, headers, body)
+    assert body == scenario.response_body, (scenario.path, body, scenario.response_body)
+    assert json.loads(body) == scenario.response_json, (scenario.path, body)
+    return time.perf_counter_ns() - start
+
+
+def free_port():
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        return listener.getsockname()[1]
+
+
+def wait_ready(process, port):
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise RuntimeError(f"server exited during startup: {process.returncode}")
+        try:
+            checked_request(port, get_scenario(*HEALTH[0]))
+            return
+        except OSError:
+            time.sleep(0.02)
+    raise TimeoutError("benchmark listener did not become ready within 10 seconds")
+
+
+def stop(process):
+    if process.poll() is None:
+        process.terminate()
+    try:
+        process.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=5)
+
+
+@contextmanager
+def server(command, port, log_path, native):
+    with log_path.open("w") as log:
+        process = subprocess.Popen(command, cwd=ROOT, stdin=subprocess.PIPE, stdout=log, stderr=log)
+        try:
+            if native:
+                process.stdin.write(f"{port}\nbenchmark\n".encode())
+            process.stdin.close()
+            wait_ready(process, port)
+            yield process
+        finally:
+            stop(process)
+
+
+def rss_mib(process):
+    """Resident memory at this sampling instant, not a claimed peak."""
+    reply = subprocess.run(
+        ["ps", "-o", "rss=", "-p", str(process.pid)], check=True,
+        capture_output=True, text=True, timeout=2,
+    )
+    return int(reply.stdout.strip()) / 1024
+
+
+def batch(pool, process, port, scenarios, count):
+    if process.poll() is not None:
+        raise RuntimeError("server exited before a measurement")
+    start = time.perf_counter_ns()
+    replies = list(pool.map(lambda index: checked_request(port, scenarios[index % len(scenarios)]), range(count)))
+    elapsed = (time.perf_counter_ns() - start) / 1e9
+    if process.poll() is not None:
+        raise RuntimeError("server exited during a measurement")
+    assert len(replies) == count
+    return replies, elapsed
+
+
+def trial(pool, process, port, scenarios, count):
+    latencies, seconds = batch(pool, process, port, scenarios, count)
+    ordered = sorted(value / 1e6 for value in latencies)
+    rank = (95 * len(ordered) + 99) // 100
+    percentile = ordered[rank - 1]
+    assert sum(value < percentile for value in ordered) < rank <= sum(value <= percentile for value in ordered)
+    return {
+        "validated_responses": count, "seconds": seconds, "requests_per_second": count / seconds,
+        "median_latency_ms": statistics.median(ordered),
+        "p95_latency_ms": percentile,
+        "rss_after_mib": rss_mib(process),
+    }
+
+
+def workload(pool, process, port, name, scenarios, args):
+    batch(pool, process, port, scenarios, args.warmup)
+    trials = [trial(pool, process, port, scenarios, args.samples) for _ in range(args.trials)]
+    return {
+        "name": name, "input_permutations": len(scenarios), "warmup_responses": args.warmup,
+        "validated_responses": args.warmup + args.samples * args.trials,
+        "median_requests_per_second": statistics.median(item["requests_per_second"] for item in trials),
+        "median_latency_ms": statistics.median(item["median_latency_ms"] for item in trials),
+        "max_sampled_rss_mib": max(item["rss_after_mib"] for item in trials), "trials": trials,
+    }
+
+
+def measure(label, command, native, args):
+    port = free_port()
+    log = OUTPUT / f"{label}.log"
+    with server(command(port), port, log, native) as process:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.workers)
+        try:
+            rows = [workload(pool, process, port, name, scenarios, args)
+                    for name, scenarios in args.workloads]
+        finally:
+            pool.shutdown(wait=True, cancel_futures=True)
+    text = log.read_text()
+    evidence = "[http]" in text and "path=/health" in text if native else '"GET /health HTTP/1.1" 200' in text
+    assert evidence, f"{label}: own server log does not prove it served the requests: {log}"
+    return {"runtime": label, "readiness_responses": 1, "workloads": rows, "log": str(log)}
+
+
+def reference_app():
+    from fastapi import FastAPI, Query
+    from fastapi.responses import JSONResponse, Response
+
+    oracle = load_source("fastapi_nap_body_oracle", BODY_ORACLE)
+    model = oracle.EndUserIdpUpsertRequest
+    assert "_secret" not in model.model_fields
+    assert all(field.serialization_alias != "_secret" for field in model.model_fields.values())
+    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+
+    @app.post("/body/idp", response_model=model)
+    async def idp(body: model):
+        return body.model_dump(by_alias=True) | {"_secret": oracle.SECRET}
+
+    @app.get("/health")
+    async def health():
+        return Response(content='{"status":"ok"}', media_type="application/json")
+
+    @app.get("/bundle/{path:path}")
+    async def bundle(path: str, tags: Annotated[list[str], Query(default_factory=list)]):
+        return JSONResponse(content={"path": path, "tags": tags})
+
+    return app
+
+
+def reference_server(port):
+    from importlib.metadata import version
+
+    import uvicorn
+
+    if version("fastapi") != PINNED:
+        raise RuntimeError(f"expected FastAPI {PINNED}, got {version('fastapi')}")
+    uvicorn.run(reference_app(), host="127.0.0.1", port=port, workers=1,
+                access_log=True, use_colors=False, log_level="info")
+
+
+def arguments():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--reference-server", type=int)
+    parser.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--output", type=Path, default=OUTPUT / "results.json")
+    parser.add_argument("--reference-python", type=Path, default=REFERENCE)
+    parser.add_argument("--compiler", type=Path, default=Path(os.environ.get("OSPREY_COMPILER", ROOT / "target/debug/osprey")))
+    parser.add_argument("--samples", type=int, default=300)
+    parser.add_argument("--trials", type=int, default=5)
+    parser.add_argument("--warmup", type=int, default=50)
+    parser.add_argument("--workers", type=int, default=4)
+    args = parser.parse_args()
+    if not (1 <= args.samples <= 10000 and 3 <= args.trials <= 15 and 1 <= args.warmup <= 1000 and 1 <= args.workers <= 8):
+        parser.error("samples 1..10000, trials 3..15, warmup 1..1000, workers 1..8 required")
+    if args.reference_server is not None:
+        return args
+    args.workloads = workloads()
+    if args.samples < max(len(cases) for _, cases in args.workloads):
+        parser.error("each trial must cover every input permutation")
+    if len(args.workloads) * (args.samples * args.trials + args.warmup) > 20000:
+        parser.error("at most 20000 requests per server are allowed")
+    return args
+
+
+def metadata(args):
+    command = "import importlib.metadata as m,json,platform;print(json.dumps({'python':platform.python_version(),'fastapi':m.version('fastapi'),'uvicorn':m.version('uvicorn')}))"
+    versions = json.loads(subprocess.check_output([str(args.reference_python.absolute()), "-I", "-c", command], text=True, timeout=10))
+    if versions["fastapi"] != PINNED:
+        raise RuntimeError(f"reference version mismatch: {versions}")
+    return {
+        "recorded_utc": datetime.now(UTC).isoformat(),
+        "reference": versions, "compiler_sha256": hashlib.sha256(args.compiler.read_bytes()).hexdigest(),
+        "compiler": str(args.compiler), "native_optimization": os.environ.get("OSPREY_OPT", "-O2"),
+        "gc_debug": "OSPREY_GC_DEBUG" in os.environ, "arc_debug": "OSPREY_ARC_DEBUG" in os.environ,
+        "client_python": platform.python_version(), "platform": platform.platform(),
+        "workers": args.workers, "samples": args.samples, "trials": args.trials, "warmup": args.warmup,
+        "scope": "Health and bundle routing plus NAP IDP body binding, response filtering and validation failures.",
+        "body_oracle_sha256": hashlib.sha256(BODY_ORACLE.read_bytes()).hexdigest(),
+        "body_corpus_sha256": hashlib.sha256(Path(__file__).with_name("expected.py").read_bytes()).hexdigest(),
+        "method": "Sequential servers; fresh TCP connections; every reply asserted; throughput includes client validation. Shared-machine results.",
+        "memory": "RSS sampled after each trial; maximum sample is not a measured peak. CPU use is not measured separately.",
+    }
+
+
+def main(args):
+    OUTPUT.mkdir(parents=True, exist_ok=True)
+    result_path = args.output.absolute()
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    result_path.unlink(missing_ok=True)
+    os.environ["OSPREY_COMPILER"] = str(args.compiler.absolute())
+    report = {"metadata": metadata(args), "results": []}
+    for memory in ("gc", "arc"):
+        binary = HTTP.build(memory, OUTPUT / "bin")
+        digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+        result = measure(f"osprey-{memory}", lambda _port, path=binary: [str(path)], True, args)
+        assert hashlib.sha256(binary.read_bytes()).hexdigest() == digest, "native benchmark binary changed while running"
+        result["native_binary_sha256"] = digest
+        report["results"].append(result)
+        print(f"Verified benchmark: Osprey {memory}", flush=True)
+    report["results"].append(measure("cpython", lambda port: [
+        str(args.reference_python.absolute()), "-I", str(Path(__file__).resolve()),
+        "--reference-server", str(port),
+    ], False, args))
+    temporary = result_path.with_suffix(".tmp")
+    temporary.write_text(json.dumps(report, indent=2) + "\n")
+    temporary.replace(result_path)
+    print(f"Verified benchmark results: {result_path}", flush=True)
+
+
+if __name__ == "__main__":
+    options = arguments()
+    if options.reference_server is not None:
+        reference_server(options.reference_server)
+    elif options.worker:
+        main(options)
+    else:
+        raise SystemExit(HTTP.run_guarded([sys.executable, str(Path(__file__).resolve()), *sys.argv[1:], "--worker"], "http-benchmark"))

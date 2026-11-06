@@ -1,4 +1,4 @@
-import {chromium} from '../../../../../website/node_modules/playwright/index.mjs';
+import {chromium} from '../../../../../src/toolchain/website/node_modules/playwright/index.mjs';
 import assert from 'node:assert/strict';
 import {mkdir,readFile,unlink} from 'node:fs/promises';
 import path from 'node:path';

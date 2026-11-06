@@ -1,0 +1,3 @@
+# The host is its own workspace with its own artifacts, not the repo root target.
+[build]
+target-dir = "target"

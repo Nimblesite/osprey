@@ -1,0 +1,49 @@
+// token.osp through the library kernel gpuMatMulQuant [LLM-MATMUL-QUANT]: one synthetic
+// Qwen3.8-27B decode step at the real shapes, 64 times: q, k, v, o
+// (5120x5120), gate and up (17408x5120), down (5120x17408), all Q4_K and decoded
+// in-kernel, with elementwise gate*up and the residual add. Attention, DeltaNet
+// and the norms are not here; this times the products, which are the bulk of
+// the 26G operations per token. Under Metal the 640 dispatches of a token form
+// one command buffer and the host reads one logit at the end.
+fn matrix(offset, bytes) -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("block.bin", offset, bytes)
+fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
+fn matvec(w, x, rows, nb) = kept(gpuMatMulQuant(x, w, "Q4_K", 1, nb * 256, rows), x)
+fn kept(result, fallback) = match result {
+    Success { value } => value
+    Error { message } => fallback
+}
+fn product(a: GpuBuffer<float32>, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p * s), a)
+fn residual(x, o) = kept(gpuZipWith(x, o, fn(p, s) => p * toFloat32(0.5) + s), x)
+fn added(a: GpuBuffer<float32>, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p + s), a)
+fn step(m, x) = {
+    let q = matvec(m.q, x, 5120, 20)
+    let k = matvec(m.k, x, 5120, 20)
+    let v = matvec(m.v, x, 5120, 20)
+    let o = matvec(m.o, q, 5120, 20)
+    let g = matvec(m.gate, x, 17408, 20)
+    let u = matvec(m.up, x, 17408, 20)
+    let h = product(g, u)
+    let d = matvec(m.down, h, 5120, 68)
+    added(residual(x, o), d)
+}
+type Block = { q: GpuBuffer<uint8>, k: GpuBuffer<uint8>, v: GpuBuffer<uint8>, o: GpuBuffer<uint8>, gate: GpuBuffer<uint8>, up: GpuBuffer<uint8>, down: GpuBuffer<uint8> }
+fn token(m, x) = fold(range(0, 64), x, fn(acc, _layer) => step(m, acc))
+fn run() = match inputs() {
+    Error { message } => print(message)
+    Success { value } => {
+        let x = value
+        match matrix(0, 14745600) {
+            Error { message } => print(message)
+            Success { value } => {
+                let q = value
+                let m = Block { q: q, k: kept(matrix(14745600, 14745600), q), v: kept(matrix(29491200, 14745600), q), o: kept(matrix(44236800, 14745600), q), gate: kept(matrix(58982400, 50135040), q), up: kept(matrix(109117440, 50135040), q), down: kept(matrix(159252480, 50135040), q) }
+                let y = fold(range(0, TOKENS), x, fn(acc, _t) => token(m, acc))
+                print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))}")
+            }
+        }
+    }
+}
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    run()
+}

@@ -1,0 +1,40 @@
+# Counting change — ways to make an amount from coins [1,5,10,25,50] (SICP classic).
+def add(a, b):
+    return a + b
+
+
+def sub(a, b):
+    return a - b
+
+
+def coin(k):
+    match k:
+        case 1:
+            return 1
+        case 2:
+            return 5
+        case 3:
+            return 10
+        case 4:
+            return 25
+        case _:
+            return 50
+
+
+def ways(amount, kind):
+    match amount:
+        case 0:
+            return 1
+        case _:
+            match amount < 0:
+                case True:
+                    return 0
+                case _:
+                    match kind:
+                        case 0:
+                            return 0
+                        case _:
+                            return add(ways(sub(amount, coin(kind)), kind), ways(amount, sub(kind, 1)))
+
+
+print(f"{ways(600, 5)}")

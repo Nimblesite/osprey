@@ -1,0 +1,68 @@
+(** [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason. *)
+gpuSatisfies (result, predicate) = match result
+    Success value => predicate value
+    Error message =>
+        check ("GPU operation", "success", toString message)
+        false
+iotaOutcome result = match result
+    Success value => "unexpected success ${gpuLength value}"
+    Error message => toString message
+// Aspirational GPU frontend parity. In particular, unary minus must not turn
+// the minimum int literal or a negative gpuIota argument into a different ML
+// parse ([GPU-BUFFER-ELEM], [GPU-IOTA], [GPU-KERNEL-EXTRACT]).
+
+minimumIntCase () =
+    minimum = -9223372036854775808
+    match toGpu ([minimum])
+        Success value =>
+            buf = value
+            checkAll "minimum int literal crosses the GPU boundary" [
+                gpuLength buf == 1,
+                (gpuGet (buf, 0) ?: 0) == minimum,
+                gpuSatisfies (fromGpu (buf), \checked0 => (listGet (checked0, 0) ?: 0) == minimum)
+            ]
+        Error message => check ("GPU operation", "success", toString message)
+negativeIotaCase () =
+    direct = gpuIota -3
+    piped = -7 |> gpuIota
+    checkAll "negative gpuIota arguments report allocation errors" [
+        iotaOutcome direct == "gpu: buffer allocation: a negative element count",
+        iotaOutcome piped == "gpu: buffer allocation: a negative element count",
+        iotaOutcome direct == iotaOutcome piped,
+        iotaOutcome (gpuIota (-9223372036854775808)) == "gpu: buffer allocation: a negative element count"
+    ]
+test ("minimum int literals are flavor-equivalent in GPU buffers", minimumIntCase)
+test ("negative gpuIota arguments are flavor-equivalent", negativeIotaCase)
+denseFloatCombinatorsCase () =
+
+    values : List<float32>
+    values = [0.5, 1.0, 1.5]
+    match toGpu (values)
+        Success value =>
+            buffer = value
+            match gpuScan (buffer, toFloat32 0.0, \(acc, value) => acc + value)
+                Success value =>
+                    uploaded2 = value
+                    scan = uploaded2
+                    match gpuFilter (buffer, \value => value > toFloat32 0.5)
+                        Success value =>
+                            uploaded3 = value
+                            kept = uploaded3
+                            match gpuZipWith (buffer, buffer, \(a, b) => a + b)
+                                Success value =>
+                                    uploaded4 = value
+                                    zipped = uploaded4
+                                    checkAll "dense float32 combinators" [
+                                        gpuSatisfies (gpuFold (buffer, toFloat32 0.0, \(acc, value) => acc + value), \uploaded1 => uploaded1 == toFloat32 3.0),
+                                        gpuSatisfies (fromGpu (scan), \checked0 => join (mapList (checked0, toString), ",") == "0.5,1.5,3.0"),
+                                        gpuSatisfies (fromGpu (kept), \checked0 => join (mapList (checked0, toString), ",") == "1.0,1.5"),
+                                        gpuSatisfies (fromGpu (zipped), \checked0 => join (mapList (checked0, toString), ",") == "1.0,2.0,3.0")
+                                    ]
+
+                                Error message => check ("GPU operation", "success", toString message)
+
+                        Error message => check ("GPU operation", "success", toString message)
+
+                Error message => check ("GPU operation", "success", toString message)
+        Error message => check ("GPU operation", "success", toString message)
+test ("float32 reductions scans filters and zip keep their width", denseFloatCombinatorsCase)

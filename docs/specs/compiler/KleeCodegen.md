@@ -6,12 +6,12 @@ This document owns the compiler's side of symbolic bug hunting: the symbolic cod
 
 ## Symbolic codegen `[SYMEX-CODEGEN]`
 
-Symbolic codegen is `compile_program_symbolic` in `crates/osprey-codegen/src/lower.rs` — `CodegenOptions` with the `symbolic` flag set and a debug source always provided — called by the `osprey hunt` subcommand ([SYMEX-CLI](../tooling/SymbolicExecution.md#cli)); there is no `--symbolic` command-line flag. It is not a language change, and builds without it do not change. Under it:
+Symbolic codegen is `compile_program_symbolic` in `src/toolchain/crates/osprey-codegen/src/lower.rs` — `CodegenOptions` with the `symbolic` flag set and a debug source always provided — called by the `osprey hunt` subcommand ([SYMEX-CLI](../tooling/SymbolicExecution.md#cli)); there is no `--symbolic` command-line flag. It is not a language change, and builds without it do not change. Under it:
 
-- Every fatal path calls `abort()` after printing its message, never `exit()`. KLEE treats a clean `exit` as a completed path and writes no error file for it; `abort` is reported as `abort.err` ([KLEE termination types](https://github.com/klee/klee/blob/master/include/klee/Core/TerminationTypes.h)). Today the only fatal path in codegen is the unhandled-effect guard in [effects.rs](../../../crates/osprey-codegen/src/effects.rs), `emit_unhandled_guard`; new fatal paths follow the same rule.
+- Every fatal path calls `abort()` after printing its message, never `exit()`. KLEE treats a clean `exit` as a completed path and writes no error file for it; `abort` is reported as `abort.err` ([KLEE termination types](https://github.com/klee/klee/blob/master/include/klee/Core/TerminationTypes.h)). Today the only fatal path in codegen is the unhandled-effect guard in [effects.rs](../../../src/toolchain/crates/osprey-codegen/src/effects.rs), `emit_unhandled_guard`; new fatal paths follow the same rule.
 - Debug metadata is always emitted, with the same content as `--debug` ([DEBUGGER-BUILD](DebugArtifacts.md#debug-build-contract-debugger-build)), so KLEE's error files and `run.istats` name Osprey lines.
 - The module carries no `optnone` attribute and no `-O` passes have run on it. KLEE's documentation requires unoptimised input and runs its own passes under `--optimize`; `-O0` without `-Xclang -disable-O0-optnone` leaves `optnone` on every function, which stops those passes ([KLEE tutorial](https://klee-se.org/tutorials/testing-function/)).
-- The IR parses with KLEE's LLVM: the module is textual `.ll`, which KLEE accepts directly, so an unparseable module fails the hunt itself. KLEE 3.3 requires LLVM 15 or newer and supports 15 to 19 ([release notes](https://github.com/klee/klee/releases/tag/v3.3)). The planned `llvm-as` parse check over the whole `tests/` corpus is not built.
+- The IR parses with KLEE's LLVM: the module is textual `.ll`, which KLEE accepts directly, so an unparseable module fails the hunt itself. KLEE 3.3 requires LLVM 15 or newer and supports 15 to 19 ([release notes](https://github.com/klee/klee/releases/tag/v3.3)). The planned `llvm-as` parse check over the whole `src/osprey/tests/` corpus is not built.
 
 ## Synthetic entry point `[SYMEX-HARNESS-TYPED]`
 
@@ -39,9 +39,9 @@ For native replay the same entry is emitted with the same builders; the replay b
 
 ## Runtime bitcode `[SYMEX-RUNTIME-BITCODE]`
 
-`make _runtime_klee` builds `compiler/bin/libosprey_runtime_klee.bc` from the C runtime and the mock library. KLEE links it with `-link-llvm-lib=compiler/bin/libosprey_runtime_klee.bc`, the option KLEE provides for bitcode libraries ([Linking external libraries](https://klee-se.org/docs/options/)).
+`make _runtime_klee` builds `src/toolchain/compiler/bin/libosprey_runtime_klee.bc` from the C runtime and the mock library. KLEE links it with `-link-llvm-lib=src/toolchain/compiler/bin/libosprey_runtime_klee.bc`, the option KLEE provides for bitcode libraries ([Linking external libraries](https://klee-se.org/docs/options/)).
 
-- **Sources:** the portable, pthread-free `WASM_RT_SRC` list from `scripts/make/config.mk`, minus `web_runtime` and `wasm_builtins_runtime`, plus `compiler/runtime/klee/*.c` minus the unit-test driver. The list is reused, not copied.
+- **Sources:** the portable, pthread-free `WASM_RT_SRC` list from `scripts/make/config.mk`, minus `web_runtime` and `wasm_builtins_runtime`, plus `src/toolchain/compiler/runtime/klee/*.c` minus the unit-test driver. The list is reused, not copied.
 - **Compiler:** KLEE's own `clang` (Homebrew's `llvm@19`), found through `OSPREY_KLEE_LLVM` or the Homebrew prefixes, with the `klee` prefix through `OSPREY_KLEE_PREFIX` (`scripts/make/config.mk`). KLEE's LLVM cannot read bitcode written by a newer clang; the host's Apple clang 21 is not usable.
 - **Flags:** `--target=x86_64-unknown-linux-gnu -nostdlibinc -isystem runtime/klee/include -emit-llvm -c -g -O0 -Xclang -disable-O0-optnone -std=c11 $(WARN_MAX) -U_FORTIFY_SOURCE -fno-stack-protector -fsanitize=undefined -fno-sanitize=function -DOSP_SYMBOLIC -DOSP_FLOAT_SPELLING_PORTABLE -D_GNU_SOURCE '-D__thread=' '-D_Thread_local='` (`KLEE_CFLAGS` in `scripts/make/config.mk`; `$(WARN_MAX)` is the shared hardened `-Werror` warning set; the mock's own `klee/klee.h` stands in for KLEE's header).
   - `'-D__thread=' '-D_Thread_local='`: KLEE 3.3 has no `llvm.threadlocal.address` intrinsic, so a thread-local variable ends the path with "unimplemented intrinsic". One thread explores the program, so plain globals are equivalent. The corpus sweep found this through `json_codec.c`'s `_Thread_local` writer table.
@@ -53,9 +53,9 @@ For native replay the same entry is emitted with the same builders; the replay b
 
 ## Verification
 
-- `klee_mode_aborts_on_the_unhandled_effect_guard` (`crates/osprey-codegen/src/ir_tests/symbolic.rs`): the symbolic module contains `call void @abort()` and no `call void @exit` on the guard path, where the native build keeps `exit`.
+- `klee_mode_aborts_on_the_unhandled_effect_guard` (`src/toolchain/crates/osprey-codegen/src/ir_tests/symbolic.rs`): the symbolic module contains `call void @abort()` and no `call void @exit` on the guard path, where the native build keeps `exit`.
 - `klee_mode_carries_debug_metadata_without_debug_flag` (same file): the symbolic module has `!DICompileUnit` and `!DILocation` entries and no `optnone`.
-- `wrapped_module_targets_x86_64_and_sets_the_stream_cap` and `program_module_carries_locations_for_findings` (`crates/osprey-cli/src/hunt/module.rs`): the wrapped module targets x86_64 Linux and appends `@osp_hunt_input_bytes`.
+- `wrapped_module_targets_x86_64_and_sets_the_stream_cap` and `program_module_carries_locations_for_findings` (`src/toolchain/crates/osprey-cli/src/hunt/module.rs`): the wrapped module targets x86_64 Linux and appends `@osp_hunt_input_bytes`.
 - The closed-module check runs inside `_runtime_klee` (`make build`) when the toolchain is present, as above.
-- `hunt_tests.rs` (`crates/osprey-cli/src/hunt/`) runs the whole pipeline — compile, link, run, scan, replay, report, exit code — against a stand-in `klee`; the real engine is covered by the deterministic programs under `tests/hunt/`, and the mock library by `make _test_hunt_mock`.
+- `hunt_tests.rs` (`src/toolchain/crates/osprey-cli/src/hunt/`) runs the whole pipeline — compile, link, run, scan, replay, report, exit code — against a stand-in `klee`; the real engine is covered by the deterministic programs under `src/osprey/tests/hunt/`, and the mock library by `make _test_hunt_mock`.
 - Not built: `klee_entry_is_built_from_inferred_types` (the harness) and `klee_corpus_parses_with_pinned_llvm` (the `llvm-as` corpus check).

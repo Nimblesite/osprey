@@ -1,0 +1,1202 @@
+//! The Osprey abstract syntax tree.
+//!
+//! Two enums (`Stmt`, `Expr`) with struct-like variants model every statement and
+//! expression form in the language. Keeping the tree to two exhaustively-matched
+//! enums means the type checker and codegen get compiler-enforced totality for
+//! free: adding a variant breaks every consumer until it handles the new form.
+
+pub mod canonical;
+mod doc;
+mod documented;
+pub mod effect_name;
+pub mod freevars;
+mod generics;
+mod handler_value;
+pub mod json;
+mod kernel;
+mod lower_static;
+pub mod multiplicity;
+pub mod mutate;
+pub mod positional;
+mod resume;
+#[cfg(test)]
+mod resume_tests;
+pub mod span;
+mod stack;
+pub mod stage;
+mod stage_rows;
+pub mod stmt_meta;
+pub mod symbol;
+mod visit;
+pub use doc::{DocComment, DocExample, DocScope};
+pub use documented::Documented;
+pub use generics::{EffectRef, TypeParam, Variance};
+pub use handler_value::{handler_function, handler_value, Clauses};
+pub use multiplicity::{
+    Multiplicity, OperationMode, OperationTable, CONTROL_KEYWORD, REPLAYABLE_KEYWORD,
+};
+pub use resume::resumes_on_one_path;
+pub use stack::with_stack;
+pub use stage::{Stage, STATIC_STAGE_KEYWORD};
+pub use visit::{walk_each, walk_program, walk_statement, AstNode, AstVisitor};
+
+/// The one wording for an entry conflict [MODULES-ENTRYPOINT]. Two phases can
+/// reach it — the type checker for a plain source, the project assembler for a
+/// namespaced one — and a reader must not be able to tell which one spoke, so
+/// the text lives here, in the crate both already depend on.
+pub const ENTRY_CONFLICT: &str =
+    "a top-level executable statement cannot sit beside `main`: `main` is the \
+     program entry, so move the statement into it (a file-scope `let` or `mut` \
+     is a declaration and stays where it is)";
+
+/// A source position: 1-based line, 0-based column.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Position {
+    /// 1-based source line.
+    pub line: u32,
+    /// 0-based column within the line.
+    pub column: u32,
+}
+
+/// A canonical namespace/module/member path (`Tax::Rates::standard`).
+///
+/// Paths are structured at the flavor boundary so later phases never have to
+/// split source spelling or confuse qualification with value member access.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct SymbolPath {
+    /// Path segments in source order. A well-formed source path is non-empty;
+    /// the empty value is useful for namespace-only imports.
+    pub segments: Vec<String>,
+}
+
+impl SymbolPath {
+    /// Build a path from its ordered segments.
+    #[must_use]
+    pub fn new(segments: impl IntoIterator<Item = impl Into<String>>) -> Self {
+        Self {
+            segments: segments.into_iter().map(Into::into).collect(),
+        }
+    }
+
+    /// Build a one-segment path.
+    #[must_use]
+    pub fn single(segment: impl Into<String>) -> Self {
+        Self {
+            segments: vec![segment.into()],
+        }
+    }
+
+    /// Whether this path contains no segments.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.segments.is_empty()
+    }
+
+    /// The final segment, when present.
+    #[must_use]
+    pub fn last(&self) -> Option<&str> {
+        self.segments.last().map(String::as_str)
+    }
+}
+
+impl std::fmt::Display for SymbolPath {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.segments.join("::"))
+    }
+}
+
+/// A logical namespace label. Quotedness is preserved because quoted labels
+/// (notably slash labels) require an import alias before qualified use.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum NamespaceName {
+    /// An ordinary identifier label (`billing`).
+    Identifier(String),
+    /// A quoted opaque label (`"billing/api"`). The stored value is unquoted.
+    Quoted(String),
+}
+
+impl NamespaceName {
+    /// The semantic label without source quotes.
+    #[must_use]
+    pub fn label(&self) -> &str {
+        match self {
+            Self::Identifier(label) | Self::Quoted(label) => label,
+        }
+    }
+
+    /// Whether the source used the quoted namespace form.
+    #[must_use]
+    pub const fn is_quoted(&self) -> bool {
+        matches!(self, Self::Quoted(_))
+    }
+}
+
+/// The namespace plus optional nested path named by an import.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportTarget {
+    /// Logical namespace label (never a physical file path).
+    pub namespace: NamespaceName,
+    /// Module path inside the namespace; empty for a namespace-only import.
+    pub path: SymbolPath,
+}
+
+/// One explicitly imported member and its optional local alias.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportMember {
+    /// Exported member name.
+    pub name: String,
+    /// Local name introduced by `as`, when present.
+    pub alias: Option<String>,
+}
+
+/// The surface selected from an import target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ImportSelection {
+    /// Import the target namespace/module as a whole.
+    Whole,
+    /// Import only the listed exported members.
+    Members(Vec<ImportMember>),
+    /// Import every exported member (policy-checked in project mode).
+    Wildcard,
+}
+
+/// A canonical import edge as contributed by one source file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImportDecl {
+    /// Namespace/module being imported.
+    pub target: ImportTarget,
+    /// Alias for the whole target (`import billing::Tax as T`).
+    pub alias: Option<String>,
+    /// Whole target, explicit member list, or wildcard.
+    pub selection: ImportSelection,
+    /// Source position of the `import` keyword.
+    pub position: Option<Position>,
+}
+
+/// Whether a module owns ordinary declarations or durable private state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleKind {
+    /// A closed, stateless-by-default module boundary.
+    Plain,
+    /// A declared owner of durable private mutable state.
+    State,
+}
+
+/// Visibility of a declaration inside a closed module.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Visibility {
+    /// Visible only inside the owning module.
+    Private,
+    /// Part of the module's public surface.
+    Exported,
+}
+
+/// A module/signature ascription (`: StoreSig` / `: StoreSig + extra`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignatureAscription {
+    /// Signature path being ascribed.
+    pub path: SymbolPath,
+    /// Whether exports beyond the signature are explicitly allowed.
+    pub allow_extra: bool,
+}
+
+/// A parsed program: the sequence of top-level statements.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Program {
+    /// Top-level statements in source order.
+    pub statements: Vec<Stmt>,
+    /// The file's own `//!` documentation, when written. Inner scope: it
+    /// documents the file that contains it, not the first declaration in it
+    /// ([DOC-SIGIL-INNER]).
+    pub doc: Option<DocComment>,
+}
+
+/// A type expression — `Result<Int, Error>`, `[String]`, `fn(Int) -> Bool`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeExpr {
+    /// The head type name (`Result`, `Int`, the array/function marker aside).
+    pub name: String,
+    /// Generic arguments, e.g. `Int`/`Error` in `Result<Int, Error>`.
+    pub generic_params: Vec<TypeExpr>,
+    /// Whether this is an array type `[T]`.
+    pub is_array: bool,
+    /// The element type when [`is_array`](Self::is_array) is set.
+    pub array_element: Option<Box<TypeExpr>>,
+    /// Whether this is a function type `fn(...) -> R`.
+    pub is_function: bool,
+    /// Parameter types when [`is_function`](Self::is_function) is set.
+    pub parameter_types: Vec<TypeExpr>,
+    /// Return type when [`is_function`](Self::is_function) is set.
+    pub return_type: Option<Box<TypeExpr>>,
+    /// Source position, when the parser recorded one.
+    pub position: Option<Position>,
+}
+
+impl TypeExpr {
+    /// A module contract supplies a type without adding a written annotation.
+    /// Line zero is reserved for compiler-generated source metadata.
+    #[must_use]
+    pub fn as_contract_annotation(&self) -> Self {
+        let mut ty = self.clone();
+        ty.position = Some(Position { line: 0, column: 0 });
+        ty
+    }
+
+    /// Whether this annotation was supplied by module-signature elaboration.
+    #[must_use]
+    pub fn is_from_contract(&self) -> bool {
+        self.position.is_some_and(|position| position.line == 0)
+    }
+
+    /// A bare named type like `Int` or `Ptr`.
+    pub fn named(name: impl Into<String>) -> Self {
+        TypeExpr {
+            name: name.into(),
+            generic_params: Vec::new(),
+            is_array: false,
+            array_element: None,
+            is_function: false,
+            parameter_types: Vec::new(),
+            return_type: None,
+            position: None,
+        }
+    }
+}
+
+/// A function parameter with an optional type annotation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Parameter {
+    /// Parameter name.
+    pub name: String,
+    /// Declared type, if annotated (otherwise inferred).
+    pub ty: Option<TypeExpr>,
+    /// Lowering inserted a leading self-alias to check an additional written
+    /// inline type against a standalone signature. That alias is part of this
+    /// source parameter, not a separately written local binding.
+    pub inline_constraint: bool,
+}
+
+/// An `extern fn` parameter — type annotation required.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExternParameter {
+    /// Parameter name.
+    pub name: String,
+    /// Declared type (mandatory for externs).
+    pub ty: TypeExpr,
+}
+
+/// A variant of a union type.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeVariant {
+    /// Variant constructor name.
+    pub name: String,
+    /// Declared fields, in layout order.
+    pub fields: Vec<TypeField>,
+}
+
+/// The declared field name of positional payload slot `index`
+/// ([TYPE-UNION-POSITIONAL]). A decimal string is not a valid identifier in
+/// either flavor, so a positionally-declared payload can never be reached by
+/// name — `t.0` does not parse — and a generated slot name can never collide
+/// with a user-written field. This is the single definition of the encoding;
+/// [`is_positional_field`] is its inverse.
+#[must_use]
+pub fn positional_field_name(index: usize) -> String {
+    index.to_string()
+}
+
+/// Whether a declared field name was generated by [`positional_field_name`],
+/// i.e. the owning variant declared a positional payload and its binders are
+/// resolved by slot rather than by name.
+#[must_use]
+pub fn is_positional_field(name: &str) -> bool {
+    !name.is_empty() && name.bytes().all(|b| b.is_ascii_digit())
+}
+
+pub use symbol::{is_constructor_name, is_record_constructor};
+
+/// The canonical [`Pattern::Structural`] a tuple pattern `(a, b)` lowers to:
+/// slot *i* is the decimal field [`positional_field_name`], its binder the
+/// written name (empty for `_`). One definition for both flavors, so ML
+/// `(a, b)` and Default `(a, b)` produce byte-identical AST
+/// ([PATTERN-TUPLE], [FLAVOR-ML-TUPLE]).
+#[must_use]
+pub fn tuple_pattern(binders: Vec<String>) -> Pattern {
+    Pattern::Structural {
+        fields: binders
+            .into_iter()
+            .enumerate()
+            .map(|(i, binder)| (positional_field_name(i), binder))
+            .collect(),
+        open: false,
+    }
+}
+
+/// A compiler-generated binding name that no source can spell: `$` is absent
+/// from the Osprey identifier alphabet in both flavors, and is legal in an
+/// unquoted LLVM identifier, so the name survives codegen unescaped. `role`
+/// separates generators; `index` separates slots within one head.
+#[must_use]
+pub fn generated_name(role: &str, index: usize) -> String {
+    format!("${role}{index}")
+}
+
+/// The compiler-declared arithmetic effect, in scope in every program and
+/// never redeclarable. Implements [ARITH-EFFECT-OPS].
+pub const ARITH_EFFECT: &str = "Arith";
+
+/// The generated payload binder of the `Success` arm that `result ?: fallback`
+/// desugars to ([PATTERN-RESULT-DEFAULT]). It is named here, rather than inside
+/// the desugarer that emits it, because the type checker needs to tell that
+/// match apart from a hand-written one: an ordinary `Success` arm may auto-wrap
+/// a plain scrutinee, whereas `?:` may not — the spec requires a `Result` on its
+/// left and forbids reinterpreting a plain value as `Success`.
+pub const RESULT_DEFAULT_PAYLOAD: &str = "$__osprey_result_default";
+
+/// The generated name of an ignored `_` parameter in slot `index`
+/// ([PARAM-WILDCARD]) — unspellable, so repeated `_`s in one head cannot
+/// collide and none of them is referenceable from the body.
+#[must_use]
+pub fn wildcard_param_name(index: usize) -> String {
+    generated_name("wild", index)
+}
+
+/// The generated scrutinee name of an equational clause set's column `index`,
+/// used when no clause in the set spells that column with a plain identifier
+/// ([FLAVOR-ML-CLAUSES]).
+#[must_use]
+pub fn clause_param_name(index: usize) -> String {
+    generated_name("arg", index)
+}
+
+/// A field within a record/variant, with an optional `where` constraint.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeField {
+    /// Field name.
+    pub name: String,
+    /// Field type as written (`int`, `string`, `Point`, …).
+    pub ty: String,
+    /// An optional `where` validation expression over the field.
+    pub constraint: Option<Box<Expr>>,
+    /// The closed effect row written on a function-typed field
+    /// (`edit: fn(string) -> A ![]`), or `None` when the row is left to
+    /// inference. A construction must satisfy it and a call through the field
+    /// trusts it. Implements [EFFECTS-FIELD-ROWS].
+    pub effects: Option<Vec<EffectRef>>,
+}
+
+/// An operation declared inside an `effect` block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EffectOperation {
+    /// Operation name.
+    pub name: String,
+    /// Whether the operation was declared `control`. This — not a search of an
+    /// arm's body for `resume` — decides whether an arm supplies the
+    /// operation's result or the handler's answer. Implements
+    /// [EFFECTS-HANDLER-ARMS].
+    pub mode: OperationMode,
+    /// The multiplicity keyword as WRITTEN, absent when the operation is
+    /// undecorated. Kept as an option rather than defaulted at lowering because
+    /// [MULTI-AXIS-STATIC] rejects a multiplicity *written* on a static
+    /// operation, and `once` — the default — is a legal thing to write.
+    /// Read the effective value through [`EffectOperation::multiplicity`].
+    /// Implements [MULTI-DECL].
+    pub declared_multiplicity: Option<Multiplicity>,
+    /// Whether performing this operation twice with the same arguments in the
+    /// same handler context is acceptable to the program. Declared, never
+    /// inferred: it is a statement about the world outside the program.
+    /// Implements [MULTI-REPLAY].
+    pub replayable: bool,
+    /// The operation's written function type (`fn(T) -> R`).
+    pub ty: String,
+    /// Parsed parameters of the operation.
+    pub parameters: Vec<Parameter>,
+    /// The operation's return type as written.
+    pub return_type: String,
+    /// Structured documentation comment, when written ([DOC-MODEL]). An
+    /// operation documents ITSELF; the owning effect's doc describes the
+    /// capability as a whole and is only a fallback. Implements
+    /// [DOC-EFFECT-OP].
+    pub doc: Option<DocComment>,
+    /// Source position of the operation name. Implements
+    /// [LSP-HOVER-EFFECT-OPERATIONS].
+    pub position: Option<Position>,
+}
+
+impl EffectOperation {
+    /// How many times a handler may answer this operation's request: the
+    /// keyword when one was written, otherwise [`Multiplicity::Once`] — which
+    /// is what the runtime already enforces, so no existing program changes
+    /// meaning. Implements [MULTI-COMPAT].
+    #[must_use]
+    pub fn multiplicity(&self) -> Multiplicity {
+        self.declared_multiplicity.unwrap_or_default()
+    }
+
+    /// The defect in this operation's written modifiers under `stage`, if any.
+    ///
+    /// Multiplicity counts resumptions of a captured continuation, so it says
+    /// nothing about a value operation — whose normal return supplies the one
+    /// answer. And a static interpretation computes its answer at compile time,
+    /// where there is no continuation to hand over, so `control` and `static`
+    /// are a contradiction rather than a narrowing.
+    /// Implements [MULTI-DECL], [MULTI-AXIS-STATIC].
+    #[must_use]
+    pub fn modifier_error(&self, effect: &str, stage: Stage) -> Option<String> {
+        let name = &self.name;
+        if self.mode.is_control() && stage.is_compile_time() {
+            return Some(format!(
+                "`{CONTROL_KEYWORD}` on operation `{effect}.{name}` of a `{STATIC_STAGE_KEYWORD} effect`; a static interpretation answers at compile time and has no continuation to give away, so neither `{CONTROL_KEYWORD}` nor a multiplicity applies"
+            ));
+        }
+        let declared = self
+            .declared_multiplicity
+            .filter(|_| !self.mode.is_control())?;
+        Some(format!(
+            "`{}` on value operation `{name}`; multiplicity counts resumptions, so it is legal only on a `{CONTROL_KEYWORD}` operation",
+            declared.as_str()
+        ))
+    }
+}
+
+/// Whether a signature type is abstract or exposes a manifest representation.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignatureType {
+    /// No representation is visible to clients.
+    Abstract,
+    /// The public representation is the given type expression.
+    Manifest(TypeExpr),
+}
+
+/// One typed item in an explicit module signature.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SignatureItem {
+    /// An immutable exported value (`let empty: Store`).
+    Value {
+        /// Exported value name.
+        name: String,
+        /// Declared value type.
+        ty: TypeExpr,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// An exported function contract.
+    Function {
+        /// Exported function name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<TypeParam>,
+        /// Parameter types in call order (parameter names are not contractual).
+        parameters: Vec<TypeExpr>,
+        /// Declared result type.
+        return_type: TypeExpr,
+        /// Declared effect row.
+        effects: Vec<EffectRef>,
+        /// Optional open remainder of the effect row (`![Log | e]`).
+        effect_tail: Option<String>,
+        /// Whether a row was written, including the closed empty row `![]`.
+        effect_row_present: bool,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// An abstract or manifest exported type contract.
+    Type {
+        /// Exported type name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<TypeParam>,
+        /// Abstract or manifest representation.
+        definition: SignatureType,
+        /// Whether the representation stays opaque outside the module even
+        /// when the implementation supplies a manifest type.
+        opaque: bool,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// An exported algebraic-effect contract.
+    Effect {
+        /// Exported effect name.
+        name: String,
+        /// Declared generic binders.
+        type_params: Vec<TypeParam>,
+        /// Operation contracts.
+        operations: Vec<EffectOperation>,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+    /// A nested module constrained by another signature.
+    Module {
+        /// Nested module path.
+        path: SymbolPath,
+        /// Required signature and optional-extra policy.
+        signature: SignatureAscription,
+        /// Source position of the item.
+        position: Option<Position>,
+    },
+}
+
+/// A declaration inside a closed module, with its public-surface metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleItem {
+    /// Private by default; `export` makes the item public.
+    pub visibility: Visibility,
+    /// Representation-hiding marker for exported type declarations.
+    pub opaque: bool,
+    /// The underlying declaration.
+    pub declaration: Box<Stmt>,
+}
+
+/// A statement: every top-level declaration and binding form, plus bare
+/// expressions.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Stmt {
+    /// An import edge to a logical namespace/module surface.
+    Import(ImportDecl),
+    /// A block-scoped or file-scoped logical namespace contribution.
+    Namespace {
+        /// Opaque logical namespace label.
+        name: NamespaceName,
+        /// Statements contributed to the namespace. For a file-scoped
+        /// declaration this contains the declarations following the semicolon.
+        body: Vec<Stmt>,
+        /// `true` for `namespace name;`, `false` for a brace block.
+        file_scoped: bool,
+        /// The `///` documenting the namespace from outside ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// The `//!` documenting the namespace from inside its own body. A
+        /// namespace can carry both at once — they describe the same scope
+        /// from opposite sides ([DOC-SIGIL-INNER]).
+        inner_doc: Option<DocComment>,
+        /// Source position of the `namespace` keyword.
+        position: Option<Position>,
+    },
+    /// `let`/`mut` binding.
+    Let {
+        /// Bound name.
+        name: String,
+        /// Whether declared `mut`.
+        mutable: bool,
+        /// Declared type, if annotated.
+        ty: Option<TypeExpr>,
+        /// The bound value expression.
+        value: Expr,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+    /// Reassignment of a `mut` binding.
+    Assignment {
+        /// Target name.
+        name: String,
+        /// The new value expression.
+        value: Expr,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+    /// A function definition.
+    Function {
+        /// Function name.
+        name: String,
+        /// Declared type parameters (`fn map<T, U>`). Implements
+        /// [TYPE-GENERICS-FN].
+        type_params: Vec<TypeParam>,
+        /// Declared parameters.
+        parameters: Vec<Parameter>,
+        /// Declared return type, if annotated.
+        return_type: Option<TypeExpr>,
+        /// Declared effect row (`!Effect` / `![State<int>, Log]` annotations).
+        effects: Vec<EffectRef>,
+        /// Optional open remainder of the effect row (`![Log | e]`).
+        effect_tail: Option<String>,
+        /// Whether a row was written, including the closed empty row `![]`.
+        effect_row_present: bool,
+        /// Function body expression.
+        body: Expr,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+    /// An `extern fn` declaration (FFI).
+    Extern {
+        /// External symbol name.
+        name: String,
+        /// Declared parameters (all typed).
+        parameters: Vec<ExternParameter>,
+        /// Declared return type, if any.
+        return_type: Option<TypeExpr>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+    /// A record/union `type` declaration.
+    Type {
+        /// Type name.
+        name: String,
+        /// Generic type parameters, with declared variance.
+        type_params: Vec<TypeParam>,
+        /// Variants (one for a record, many for a union).
+        variants: Vec<TypeVariant>,
+        /// Manifest alias representation (`type UserId = int`), when this is a
+        /// type alias rather than a record/union declaration.
+        alias: Option<TypeExpr>,
+        /// An optional validation function name (`where`-constrained type).
+        validation_func: Option<String>,
+        /// Whether the representation is hidden outside the declaring module
+        /// ([MODULES-OPAQUE-TYPES]). Project assembly sets it on the flattened
+        /// declaration from the item's `export opaque` marker or an ascribed
+        /// signature's abstract type; a parser leaves it false because the
+        /// marker lives on the [`ModuleItem`].
+        opaque: bool,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+    /// An `effect` declaration listing its operations.
+    Effect {
+        /// When the effect's operations are answered: [`Stage::Static`] rewrites
+        /// them away before type checking, [`Stage::Dynamic`] (the default, and
+        /// every effect written without `static`) dispatches them at runtime.
+        /// Implements [STAGE-DECL].
+        stage: Stage,
+        /// Effect name.
+        name: String,
+        /// Declared type parameters (`effect State<T>`). Implements
+        /// [EFFECTS-GENERIC-DECL].
+        type_params: Vec<TypeParam>,
+        /// Declared operations.
+        operations: Vec<EffectOperation>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+    /// A closed `module` / `state module` implementation boundary.
+    Module {
+        /// Possibly nested module path.
+        path: SymbolPath,
+        /// Plain module or durable-state owner.
+        kind: ModuleKind,
+        /// Explicit signature ascription, when present.
+        signature: Option<SignatureAscription>,
+        /// Declarations and their module-local visibility metadata.
+        body: Vec<ModuleItem>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// The `//!` documenting the module from inside its own body, which
+        /// coexists with the outer `doc` above ([DOC-SIGIL-INNER]).
+        inner_doc: Option<DocComment>,
+        /// Source position of the `module` keyword (or leading `state`).
+        position: Option<Position>,
+    },
+    /// An explicit interface contract for modules.
+    Signature {
+        /// Signature name.
+        name: String,
+        /// Typed public-surface items.
+        items: Vec<SignatureItem>,
+        /// Structured documentation comment, when written ([DOC-MODEL]).
+        doc: Option<DocComment>,
+        /// Source position of the `signature` keyword.
+        position: Option<Position>,
+    },
+    /// A bare expression statement.
+    Expr {
+        /// The expression being evaluated for side effects.
+        value: Expr,
+        /// Structured documentation comment, when written ([DOC-MODEL]). A
+        /// `test("name", …)` case is an expression statement, so this is the
+        /// field that carries a test's documentation ([TESTING-DOC]).
+        doc: Option<DocComment>,
+        /// Source position, if recorded.
+        position: Option<Position>,
+    },
+}
+
+/// A named argument `name: value` in a call.
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedArgument {
+    /// Argument name.
+    pub name: String,
+    /// Argument value expression.
+    pub value: Expr,
+}
+
+/// A part of an interpolated string — literal text or an embedded expression.
+#[derive(Debug, Clone, PartialEq)]
+pub enum InterpolatedPart {
+    /// Literal text between interpolations.
+    Text(String),
+    /// An embedded `${expr}`.
+    Expr(Expr),
+}
+
+/// A match arm `pattern => body`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    /// The arm's pattern.
+    pub pattern: Pattern,
+    /// The arm body evaluated when the pattern matches.
+    pub body: Expr,
+}
+
+/// What one `select` arm waits for.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SelectOperation {
+    /// Receive from this channel.
+    Recv(Box<Expr>),
+    /// Send on a channel.
+    Send {
+        /// The channel.
+        channel: Box<Expr>,
+        /// The value to send.
+        value: Box<Expr>,
+    },
+    /// Give up after this many milliseconds.
+    Timeout(Box<Expr>),
+    /// Run at once when no other arm is ready.
+    Default,
+}
+
+impl SelectOperation {
+    /// The expressions evaluated on entry to the `select`.
+    #[must_use]
+    pub fn operands(&self) -> Vec<&Expr> {
+        match self {
+            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
+            Self::Send { channel, value } => vec![channel, value],
+            Self::Default => Vec::new(),
+        }
+    }
+
+    /// The expressions evaluated on entry to the `select`, for rewriting.
+    pub fn operands_mut(&mut self) -> Vec<&mut Expr> {
+        match self {
+            Self::Recv(operand) | Self::Timeout(operand) => vec![operand],
+            Self::Send { channel, value } => vec![channel, value],
+            Self::Default => Vec::new(),
+        }
+    }
+}
+
+/// A pattern in a match/select arm.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    /// `_` — matches anything, binds nothing.
+    Wildcard,
+    /// A literal pattern (int/float/string/bool).
+    Literal(Box<Expr>),
+    /// `Ctor` / `Ctor { a, b }` / `Ctor(p, ...)` constructor & destructuring forms.
+    Constructor {
+        /// Constructor name.
+        name: String,
+        /// Bound field names (`{ a, b }` form).
+        fields: Vec<String>,
+        /// Positional sub-patterns (`Ctor(p, ...)`), or binders aligned with
+        /// `fields` for explicitly named aliases (`Ctor(field=binder)`).
+        sub_patterns: Vec<Pattern>,
+    },
+    /// `value: Int` type-annotated binding.
+    TypeAnnotated {
+        /// Bound name.
+        name: String,
+        /// The annotated type.
+        ty: TypeExpr,
+    },
+    /// `{ name, age }` / `{ name, .. }` structural row pattern. A tuple pattern
+    /// `(a, b)` is the positional spelling: field names are the decimal slots
+    /// `"0"`, `"1"`, … ([`positional_field_name`]) with the written binders.
+    /// Implements [PATTERN-STRUCTURAL], [PATTERN-TUPLE].
+    Structural {
+        /// `(field name, binder name)` pairs in written order. A brace pattern
+        /// binds each field under its own name; an empty binder (`_` in a tuple
+        /// slot) matches the field without binding it.
+        fields: Vec<(String, String)>,
+        /// Whether a trailing `..` opens the row to any value carrying at
+        /// least the named fields; a closed pattern selects the exact row.
+        open: bool,
+    },
+    /// `[]` / `[a, b]` / `[head, ...tail]` list destructuring. `elements` are the
+    /// fixed-prefix position patterns; `rest` is the optional tail binder name
+    /// (`...rest`), `None` for a fixed-length match. Implements
+    /// [TYPE-LIST-PATTERNS].
+    List {
+        /// Patterns for the fixed-prefix element positions.
+        elements: Vec<Pattern>,
+        /// Tail rest-binder name, or `None` for a fixed-length pattern.
+        rest: Option<String>,
+    },
+    /// A bare identifier capture.
+    Binding(String),
+}
+
+/// A field assignment `name: value` in an object/type constructor.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldAssignment {
+    /// Field name.
+    pub name: String,
+    /// Assigned value expression.
+    pub value: Expr,
+}
+
+/// A map entry `key: value` in a map literal.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MapEntry {
+    /// Entry key expression.
+    pub key: Expr,
+    /// Entry value expression.
+    pub value: Expr,
+}
+
+/// An expression. Boxing breaks the recursive cycle; positions are attached
+/// where the parser records them.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Expr {
+    /// Integer literal.
+    Integer(i64),
+    /// Float literal.
+    Float(f64),
+    /// String literal.
+    Str(String),
+    /// Boolean literal.
+    Bool(bool),
+    /// Interpolated string literal (`"a ${x} b"`).
+    InterpolatedStr(Vec<InterpolatedPart>),
+    /// A bare identifier reference.
+    Identifier(String),
+    /// A namespace/module-qualified reference (`billing::Tax::addTax`).
+    Path(SymbolPath),
+    /// `[a, b, c]` list literal, with the source position inference keys its
+    /// resolved `List<T>` on ([`crate::Position`]). An EMPTY literal has no
+    /// element to read a representation from, so the backend can only recover
+    /// `T` — and with it the element-typed owner tag every later read depends
+    /// on — from what inference published at this position.
+    List(Vec<Expr>, Option<Position>),
+    /// `{ k: v, ... }` map literal.
+    Map(Vec<MapEntry>),
+    /// `{ field: value, ... }` anonymous object literal.
+    Object(Vec<FieldAssignment>),
+    /// A binary operation.
+    Binary {
+        /// Operator spelling (`+`, `==`, `&&`, …).
+        op: String,
+        /// Left operand.
+        left: Box<Expr>,
+        /// Right operand.
+        right: Box<Expr>,
+        /// Source location of the operator token.
+        position: Option<Position>,
+    },
+    /// A unary operation.
+    Unary {
+        /// Operator spelling (`-`, `!`).
+        op: String,
+        /// The operand.
+        operand: Box<Expr>,
+    },
+    /// `f(args)` — positional or named (UFCS dispatch resolved later).
+    Call {
+        /// The callee expression.
+        function: Box<Expr>,
+        /// Positional arguments.
+        arguments: Vec<Expr>,
+        /// Named arguments.
+        named_arguments: Vec<NamedArgument>,
+    },
+    /// Explicit declaration-binder arguments on a call's callee.
+    /// Both flavors use this node for [TYPE-GENERICS-APPLY]. Keeping the
+    /// application on the callee preserves ordinary and curried call nodes.
+    TypeApply {
+        /// The named function being instantiated.
+        function: Box<Expr>,
+        /// Written type arguments, in declaration order.
+        type_args: Vec<TypeExpr>,
+        /// Source position of the callee, for application diagnostics.
+        position: Option<Position>,
+    },
+    /// `a |> b` pipe.
+    Pipe {
+        /// Piped value.
+        left: Box<Expr>,
+        /// Function applied to it.
+        right: Box<Expr>,
+    },
+    /// `obj.field` field access.
+    FieldAccess {
+        /// The record/handle expression.
+        target: Box<Expr>,
+        /// Accessed field name.
+        field: String,
+    },
+    /// `obj.method(args)` method call.
+    MethodCall {
+        /// The receiver expression.
+        target: Box<Expr>,
+        /// Method name.
+        method: String,
+        /// Positional arguments.
+        arguments: Vec<Expr>,
+        /// Named arguments.
+        named_arguments: Vec<NamedArgument>,
+    },
+    /// `a[i]` index access (returns `Result`).
+    Index {
+        /// The indexed list/map expression.
+        target: Box<Expr>,
+        /// The index/key expression.
+        index: Box<Expr>,
+    },
+    /// A lambda `fn(params) => body`.
+    Lambda {
+        /// Lambda parameters.
+        parameters: Vec<Parameter>,
+        /// Declared return type, if annotated.
+        return_type: Option<TypeExpr>,
+        /// Lambda body.
+        body: Box<Expr>,
+        /// Source position — the key under which inference publishes this
+        /// lambda's resolved function type for the code generator.
+        position: Option<Position>,
+    },
+    /// A `match` expression.
+    Match {
+        /// The scrutinee expression.
+        value: Box<Expr>,
+        /// The match arms.
+        arms: Vec<MatchArm>,
+    },
+    /// A `{ ... }` block expression.
+    Block {
+        /// Block statements.
+        statements: Vec<Stmt>,
+        /// The trailing value-expression, if any.
+        value: Option<Box<Expr>>,
+        /// Source position of the trailing expression, retained for debugging.
+        position: Option<Position>,
+    },
+    /// `Type<T> { field: value }` type constructor.
+    TypeConstructor {
+        /// Type name.
+        name: String,
+        /// Generic type arguments.
+        type_args: Vec<TypeExpr>,
+        /// Field assignments.
+        fields: Vec<FieldAssignment>,
+    },
+    /// `record { field: newValue }` non-destructive update.
+    Update {
+        /// The base record variable.
+        record: String,
+        /// Overridden field assignments.
+        fields: Vec<FieldAssignment>,
+    },
+    /// `spawn expr` — start a fiber.
+    Spawn(Box<Expr>),
+    /// `yield`/`yield expr` from a fiber.
+    Yield(Option<Box<Expr>>),
+    /// `await expr` — await a fiber result.
+    Await(Box<Expr>),
+    /// `channel <- value` send.
+    Send {
+        /// Target channel expression.
+        channel: Box<Expr>,
+        /// Value to send.
+        value: Box<Expr>,
+    },
+    /// `<-channel` receive.
+    Recv(Box<Expr>),
+    /// A `select` over channel operations. Each operation's operands evaluate
+    /// once on entry, in source order; `arms[i]` runs when `operations[i]` is
+    /// chosen, its pattern binding a received value. [CONCURRENCY-SELECT]
+    Select {
+        /// What each arm waits for, parallel to `arms`.
+        operations: Vec<SelectOperation>,
+        /// The select arms.
+        arms: Vec<MatchArm>,
+    },
+    /// `perform Effect.operation(args)`.
+    Perform {
+        /// Effect name.
+        effect: String,
+        /// Operation name.
+        operation: String,
+        /// Positional arguments.
+        arguments: Vec<Expr>,
+        /// Named arguments.
+        named_arguments: Vec<NamedArgument>,
+        /// Source position — the key under which inference publishes this
+        /// site's instantiated operation signature. Implements
+        /// [EFFECTS-GENERIC-INSTANTIATION].
+        position: Option<Position>,
+    },
+    /// `handle Effect op params => body ... in body`.
+    Handler {
+        /// [`Stage::Static`] for a `handle static` region — the arms are a
+        /// rewrite rule, not a runtime handler. Implements
+        /// [STAGE-HANDLE-STATIC].
+        stage: Stage,
+        /// Handled effect name.
+        effect: String,
+        /// Per-operation handler arms.
+        arms: Vec<HandlerArm>,
+        /// Optional normal-completion transformation, represented as a unary
+        /// lambda. It executes outside this activation. [EFFECTS-HANDLER-ARMS]
+        return_clause: Option<Box<Expr>>,
+        /// Optional `finally => cleanup` clause: a `Unit` expression that runs
+        /// exactly once when the activation ends, after the return clause and
+        /// outside this activation. [EFFECTS-FINALIZATION]
+        finally: Option<Box<Expr>>,
+        /// The handled body expression.
+        body: Box<Expr>,
+        /// Source position — the key under which inference publishes this
+        /// handler's instantiated operation signatures. Implements
+        /// [EFFECTS-GENERIC-INSTANTIATION].
+        position: Option<Position>,
+    },
+    /// `mask E { body }` — evaluate `body` with the activation currently
+    /// answering `E` (an effect, or a capability bound by `instance`) hidden,
+    /// so its requests reach the next one out. Implements [EFFECTS-MASK].
+    Mask {
+        /// The masked effect or capability name.
+        effect: String,
+        /// The masked body.
+        body: Box<Expr>,
+        /// Source position — the key under which inference publishes the
+        /// masked effect's instantiation.
+        position: Option<Position>,
+    },
+    /// `instance E` — a fresh capability identity for effect `E`, with no
+    /// implementation installed. Implements [EFFECTS-INSTANCE].
+    Instance {
+        /// The effect the capability performs.
+        effect: String,
+        /// Source position — the key under which inference publishes the
+        /// capability's instantiation.
+        position: Option<Position>,
+    },
+    /// `resume(value)` — resume the performer's delimited continuation with
+    /// `value` (or `Unit` when absent). Legal only inside a handler arm body.
+    /// Implements [EFFECTS-RESUME].
+    Resume(Option<Box<Expr>>),
+}
+
+impl Expr {
+    /// Build `-operand`, folding a negated numeric **literal** into the literal
+    /// itself so it keeps the plain `int`/`float` type.
+    ///
+    /// A runtime negation is fallible (`-i64::MIN` overflows) and performs
+    /// `Arith.overflow` under [ARITH-CHECKED]. A *literal*
+    /// negation is a compile-time constant: the lexer already rejects every
+    /// magnitude above `i64::MAX`, so the fold below cannot lose a value. Not
+    /// folding used to make `-1` a `Result` and therefore unusable anywhere
+    /// an `int` was required — `let x: int = -1` failed to typecheck.
+    ///
+    /// `checked_neg` keeps the one genuinely-overflowing case (`-(i64::MIN)`,
+    /// reachable only by double negation) as a checked `Unary`, so this is
+    /// total: it never panics and never silently wraps.
+    /// Implements [ARITH-NEG-LITERAL].
+    #[must_use]
+    pub fn negated(operand: Self) -> Self {
+        match operand {
+            Self::Integer(value) => match value.checked_neg() {
+                Some(negated) => Self::Integer(negated),
+                None => Self::unary_minus(Self::Integer(value)),
+            },
+            Self::Float(value) => Self::Float(-value),
+            other => Self::unary_minus(other),
+        }
+    }
+
+    /// The unfolded `-operand` node.
+    fn unary_minus(operand: Self) -> Self {
+        Self::Unary {
+            op: String::from("-"),
+            operand: Box::new(operand),
+        }
+    }
+}
+
+/// One arm of a `handle ... in` expression (`ast` handler arm).
+#[derive(Debug, Clone, PartialEq)]
+pub struct HandlerArm {
+    /// The handled operation name.
+    pub operation: String,
+    /// The operation parameter names bound in the body.
+    pub params: Vec<String>,
+    /// The arm body.
+    pub body: Expr,
+    /// Source position of the operation name. Implements
+    /// [LSP-IMPLEMENTATIONS-EFFECT-HANDLERS].
+    pub position: Option<Position>,
+}
+
+#[cfg(test)]
+#[expect(
+    clippy::indexing_slicing,
+    reason = "test assertions: an out-of-bounds index is a test failure, not a production panic"
+)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn builds_a_small_program() {
+        let p = Program {
+            statements: vec![Stmt::Let {
+                name: "x".into(),
+                mutable: false,
+                ty: None,
+                value: Expr::Integer(1),
+                doc: None,
+                position: None,
+            }],
+            doc: None,
+        };
+        assert_eq!(p.statements.len(), 1);
+        match &p.statements[0] {
+            Stmt::Let { name, value, .. } => {
+                assert_eq!(name, "x");
+                assert_eq!(*value, Expr::Integer(1));
+            }
+            _ => panic!("expected let"),
+        }
+    }
+
+    #[test]
+    fn named_type_helper() {
+        let t = TypeExpr::named("Ptr");
+        assert_eq!(t.name, "Ptr");
+        assert!(!t.is_function);
+    }
+
+    #[test]
+    fn symbol_paths_report_emptiness() {
+        assert!(SymbolPath::new(Vec::<String>::new()).is_empty());
+        assert!(!SymbolPath::single("Bank").is_empty());
+    }
+
+    /// [TYPE-UNION-POSITIONAL]: slot names round-trip through their inverse and
+    /// can never be confused with a user-written field name.
+    #[test]
+    fn positional_slot_names_round_trip() {
+        assert_eq!(positional_field_name(0), "0");
+        assert_eq!(positional_field_name(12), "12");
+        assert!(is_positional_field(&positional_field_name(7)));
+        assert!(!is_positional_field(""));
+        assert!(!is_positional_field("left"));
+        assert!(!is_positional_field("0a"));
+    }
+
+    /// [PARAM-WILDCARD], [FLAVOR-ML-CLAUSES]: generated binders are unspellable
+    /// in source and separated by role, so two generators never collide.
+    #[test]
+    fn generated_names_are_unspellable_and_role_separated() {
+        assert_eq!(generated_name("tmp", 3), "$tmp3");
+        assert_eq!(wildcard_param_name(1), "$wild1");
+        assert_eq!(clause_param_name(1), "$arg1");
+        assert_ne!(wildcard_param_name(0), clause_param_name(0));
+        assert!(!is_positional_field(&clause_param_name(0)));
+    }
+}

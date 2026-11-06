@@ -1,0 +1,69 @@
+// Default Osprey memory backend — the swappable allocation boundary.
+//
+// Implements [MEM-BACKENDS] / [MEM-BACKENDS-CUSTOM] (docs/specs/compiler/0018-MemoryManagement.md). Compiler
+// codegen emits calls to `osp_alloc` / `osp_alloc_tagged` and never names
+// `malloc`, so the memory manager is chosen at link time, never baked into the
+// IR. This default backend is a `malloc` passthrough without general retain /
+// release reclamation. It only frees values codegen proves uniquely owned;
+// reclamation is otherwise unobservable [MEM-OPAQUE]. A custom manager (ARC,
+// tracing GC, arena, pool) replaces this object by linking its own
+// implementations of the same symbols.
+//
+// The full backend ABI (docs/specs/compiler/0018-MemoryManagement.md [MEM-BACKENDS]):
+// `osp_alloc_tagged` carries a layout word (kind + pointer mask) that only the
+// ARC backend reads; `osp_retain`/`osp_release` are dup/drop hooks that only
+// the ARC backend acts on; `osp_collect` is a full-collection hook that only
+// tracing backends act on. Defining every hook in every backend keeps the
+// emitted IR backend-agnostic [MEM-BACKENDS].
+//
+// The IR-level allocator attributes on `@osp_alloc` / `@osp_alloc_tagged` (see
+// osprey-codegen builder.rs OSP_ALLOC_DECL) let LLVM remove provably
+// non-escaping allocations at -O2, so most allocations never reach this
+// function at all.
+
+#include <stdint.h>
+#include <stdlib.h>
+#include "memory_baton_passthrough.h"
+
+void *osp_alloc(int64_t size) { return malloc((size_t)size); }
+
+// Link anchor (memory_hooks.h): main calls this so an allocation-free program
+// still extracts this object. The passthrough has no exit accounting to arm.
+void osp_mem_boot(void) {}
+
+// Layout-carrying allocation: the meta word (low 8 bits = kind, upper 56 =
+// managed-pointer word bitmask) is meaningful only to the ARC backend.
+void *osp_alloc_tagged(int64_t size, int64_t meta) {
+  (void)meta;
+  return malloc((size_t)size);
+}
+
+// Fully-initialized-by-caller twin (memory_hooks.h). This backend never
+// pre-zeroes, so it is identical to osp_alloc_tagged.
+void *osp_alloc_tagged_noinit(int64_t size, int64_t meta) {
+  (void)meta;
+  return malloc((size_t)size);
+}
+
+// dup/drop hooks — no-ops without a counting backend (Bacon/Cheng/Rajan
+// duality: under tracing or leak-everything, reference counts carry no work).
+void osp_retain(void *o) { (void)o; }
+void osp_release(void *o) { (void)o; }
+// Codegen-proved-unique drop (memory_hooks.h). Unlike the general release hook,
+// this value has no aliases, so the default backend can reclaim it directly.
+void osp_release_unique(void *o) { free(o); }
+// Singleton-immortality hook (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_immortal(void *p) { (void)p; }
+// Multithreaded-heap trip (memory_hooks.h) — this backend never locks the heap.
+void osp_mem_notify_multithreaded(void) {}
+// Layout-word stamp (memory_hooks.h) — meaningful only under ARC.
+void osp_mem_set_layout(void *p, int64_t meta) {
+  (void)p;
+  (void)meta;
+}
+// Finalizer registration (memory_hooks.h): this backend reclaims no general
+// allocation, so no body it frees carries a finalizer to run.
+void osp_mem_set_finalizer(void (*finalize)(void *body)) { (void)finalize; }
+
+// Full-collection hook — nothing to collect in a passthrough backend.
+void osp_collect(void) {}

@@ -11,7 +11,7 @@ that disabled it.
 - `--sandbox` disables HTTP, WebSocket, filesystem, process, and FFI access.
 - `--no-http` disables HTTP builtins.
 - `--no-websocket` disables WebSocket builtins.
-- `--no-fs` disables every built-in that touches a file: `readFile`, `writeFile`, and the tensor loaders `loadTensor`, `gpuLoadTensor` and `gpuLoad`.
+- `--no-fs` disables every built-in that touches a file: `readFile`, `readFileBytes`, `fileSize`, `writeFile`, `gpuMapFile`, and the tensor loaders `loadTensor`, `gpuLoadTensor` and `gpuLoad`.
 - `--no-ffi` rejects every `extern fn` declaration, including declarations in
   modules and namespaces.
 

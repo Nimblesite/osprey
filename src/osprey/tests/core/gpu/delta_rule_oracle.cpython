@@ -1,0 +1,91 @@
+"""CPython oracle for the `gpuDeltaRule` and `gpuSigmoid` library kernels
+([LLM-DELTA-RULE], [LLM-SIGMOID]): the exact expected words the `buffers` twins
+compare against, from the real Transformers step the builtin ports.
+
+The rule itself is `torch_recurrent_gated_delta_rule` in Transformers'
+`qwen3_5` modeling module, imported and called unchanged. Two of its inputs are
+in a different space than the builtin's, so they are mapped here:
+
+* `query` is divided by `sqrt(head_dim)` inside the function, while the builtin
+  takes the query as given. The tensor handed to torch is therefore
+  `q * sqrt(2)` (rounded to float32), which the function's own division turns
+  back into exactly `q`; the script asserts that round trip rather than
+  assuming it.
+* `g` is in log space (`decay_t = g.exp()`), while the builtin's `decay` is
+  already the per-head factor it multiplies the state by. `g` is passed as
+  `log(decay)` and the script asserts `g.float().exp()` is exactly the `decay`
+  the builtin receives.
+
+Run with the pinned Transformers virtualenv, no site packages:
+`~/.cache/osprey-llm/torch-venv/bin/python -I src/osprey/tests/core/gpu/delta_rule_oracle.cpython`
+"""
+import math
+
+import torch
+from transformers.models.qwen3_5.modeling_qwen3_5 import torch_recurrent_gated_delta_rule
+
+HEADS, DIM = 2, 2
+
+# Eighths, so every sum in the rule is exact in binary32.
+STATE = [0.125, -0.25, 0.5, 0.75, -0.375, 0.0625, -0.5, 0.25]
+QUERIES = [0.25, -0.125, 0.5, 0.375]
+KEYS = [0.5, -0.25, -0.125, 0.75]
+VALUES = [-0.5, 0.25, 0.125, -0.75]
+BETA = [0.5, 0.75]
+DECAY = [0.5, 0.75]
+SIGMOID = [-3.0, -1.0, 0.0, 1.0, 3.0]
+
+
+def words(values):
+    """The binary32 bit pattern of each value, big-endian hex."""
+    tensor = torch.tensor(values, dtype=torch.float32)
+    return [f"0x{int(w) & 0xFFFFFFFF:08x}" for w in tensor.view(torch.int32)]
+
+
+def shown(values):
+    """Nine significant digits round-trip a binary32, so these are the literals."""
+    return [f"{float(v):.9g}" for v in torch.tensor(values, dtype=torch.float32)]
+
+
+def query_for_torch():
+    """`q * sqrt(2)`, which torch's own division by `sqrt(2)` undoes exactly."""
+    scaled = torch.tensor([q * math.sqrt(DIM) for q in QUERIES], dtype=torch.float32)
+    back = scaled / (DIM ** 0.5)
+    assert torch.equal(back, torch.tensor(QUERIES, dtype=torch.float32)), back
+    return scaled.reshape(1, 1, HEADS, DIM)
+
+
+def log_decay():
+    """`log(decay)`, whose exp is exactly the decay the builtin multiplies by."""
+    g = torch.tensor([math.log(d) for d in DECAY], dtype=torch.float32).reshape(1, 1, HEADS)
+    assert torch.equal(g.exp(), torch.tensor(DECAY, dtype=torch.float32)), g.exp()
+    return g
+
+
+def rule():
+    out, final = torch_recurrent_gated_delta_rule(
+        query_for_torch(),
+        torch.tensor(KEYS, dtype=torch.float32).reshape(1, 1, HEADS, DIM),
+        torch.tensor(VALUES, dtype=torch.float32).reshape(1, 1, HEADS, DIM),
+        log_decay(),
+        torch.tensor(BETA, dtype=torch.float32).reshape(1, 1, HEADS),
+        initial_state=torch.tensor(STATE, dtype=torch.float32).reshape(1, HEADS, DIM, DIM),
+        output_final_state=True,
+    )
+    assert final is not None and tuple(out.shape) == (1, 1, HEADS, DIM)
+    return final.flatten().tolist() + out.flatten().tolist()
+
+
+def main():
+    expected = rule()
+    assert len(expected) == HEADS * DIM * DIM + HEADS * DIM
+    print("delta rule: new state (heads*dim*dim) then the read-out (heads*dim)")
+    for i, (hex_word, literal, value) in enumerate(zip(words(expected), shown(expected), expected)):
+        print(f"  {i:2d} {hex_word} {literal:>14} {float(value)!r}")
+    gates = torch.sigmoid(torch.tensor(SIGMOID, dtype=torch.float32))
+    print("sigmoid of", shown(SIGMOID))
+    for i, (hex_word, literal) in enumerate(zip(words(gates.tolist()), shown(gates.tolist()))):
+        print(f"  {i} {hex_word} {literal}")
+
+
+main()

@@ -1,0 +1,6 @@
+// [GPU-KERNEL-EXTRACT]: gpuFold rejects an accumulator update that is an
+// unhandled Result; the combine must hand back the accumulator's own scalar.
+fn main() = match toGpu([1, 2]) {
+    Success { value } => gpuFold(value, 0, fn(a, v) => checkedAdd(a, v))
+    Error { message } => Error { message: message }
+}

@@ -1,0 +1,17 @@
+[package]
+name = "osprey-zed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+zed_extension_api = "0.7.0"
+serde_json.workspace = true

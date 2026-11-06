@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Build one runtime slice with the Makefile's hardened flags.
+# The fingerprint includes every source, header, flag and selected Apple SDK.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+source scripts/mobile/runtime-memory.sh
+
+if [[ $(uname -s) != Darwin ]] || ! command -v xcrun >/dev/null; then
+    echo "Apple runtime builds require macOS and Xcode with the selected SDK" >&2
+    exit 1
+fi
+
+sdk=$1
+triple=$2
+archive=$3
+shift 3
+flags=()
+while [[ $# -gt 0 && $1 != -- ]]; do flags+=("$1"); shift; done
+[[ $# -gt 0 ]] || { echo "iOS runtime: missing source separator" >&2; exit 1; }
+shift
+[[ $# -gt 0 ]] || { echo "iOS runtime: no sources selected" >&2; exit 1; }
+sources=("$@")
+sdk_path=$(xcrun --sdk "$sdk" --show-sdk-path)
+clang=$(xcrun --sdk "$sdk" --find clang)
+libtool=$(xcrun --sdk "$sdk" --find libtool)
+mkdir -p "$(dirname "$archive")" src/toolchain/compiler/lib
+scratch=$(mktemp -d "$(dirname "$archive")/.ios-runtime.XXXXXX")
+trap 'rm -rf "$scratch"' EXIT
+fingerprint="$archive.inputs"
+mirror="src/toolchain/compiler/lib/$(basename "$archive")"
+
+runtime_inputs_are_newer() {
+    local input
+    for input in src/toolchain/compiler/runtime/*.c src/toolchain/compiler/runtime/*.h; do
+        [[ "$input" -nt "$archive" ]] && return 0
+    done
+    return 1
+}
+
+{
+    printf '%s\n' "$triple" "$sdk_path" "$clang" "$libtool" "${flags[@]}" "${OSPREY_RUNTIME_SHIMS:-}"
+    "$clang" --version
+    xcrun --sdk "$sdk" --show-sdk-build-version
+    for source in "${sources[@]}"; do cksum "src/toolchain/compiler/runtime/$source.c"; done
+    for source in ${OSPREY_RUNTIME_OBJC:-}; do cksum "src/toolchain/compiler/runtime/$source.m"; done
+    if [[ -n ${OSPREY_RUNTIME_OBJC:-} ]]; then cksum src/toolchain/compiler/bin/gpu_shader_source.h src/toolchain/compiler/runtime/*.metal; fi
+    cksum src/toolchain/compiler/runtime/*.h scripts/mobile/ios-runtime.sh scripts/mobile/runtime-memory.sh scripts/make/ios.mk Makefile
+} >"$scratch/inputs"
+
+if [[ ! -s "$archive" ]] || ! cmp -s "$scratch/inputs" "$fingerprint" || runtime_inputs_are_newer; then
+    echo "==> building Apple C runtime: $triple"
+    for source in "${sources[@]}"; do
+        compile_runtime_source "$source" "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}"
+    done
+    # Objective-C units, such as the Metal device adapter of the Mac slice ([GPU-DEVICE]).
+    for source in ${OSPREY_RUNTIME_OBJC:-}; do
+        "$clang" -target "$triple" -isysroot "$sdk_path" "${flags[@]}" -fobjc-arc \
+            "src/toolchain/compiler/runtime/$source.m" -o "$scratch/$source.o"
+    done
+    "$libtool" -static -o "$scratch/runtime.a" "$scratch"/*.o
+    mv "$scratch/runtime.a" "$archive"
+    mv "$scratch/inputs" "$fingerprint"
+fi
+if [[ "$archive" -nt "$mirror" ]] || ! cmp -s "$archive" "$mirror"; then cp "$archive" "$mirror"; fi

@@ -1,0 +1,81 @@
+---
+layout: layouts/base.njk
+---
+{% macro documentationSection(section, id, mobile) %}
+{% set currentSection = false %}
+{% for item in section.items %}
+{% if page.url == item.url or (item.url != '/docs/' and page.url.startsWith(item.url)) %}{% set currentSection = true %}{% endif %}
+{% endfor %}
+{% set groupTag = 'details' if mobile else 'section' %}
+{% set headingTag = 'summary' if mobile else 'h2' %}
+      <{{ groupTag }} class="docs-nav-section{% if currentSection %} docs-nav-current{% endif %}"{% if mobile %}{% if currentSection %} open{% endif %}{% else %} aria-labelledby="docs-nav-{{ id }}"{% endif %}>
+        <{{ headingTag }} class="docs-nav-section-title" id="docs-nav-{{ id }}">{{ section.title }}</{{ headingTag }}>
+        <ul class="docs-nav-list">
+{% for item in section.items %}
+          <li><a href="{{ item.url }}"{% if page.url == item.url %} class="active" aria-current="page"{% elif item.url != '/docs/' and page.url.startsWith(item.url) %} class="active" aria-current="location"{% endif %}>{{ item.text }}</a></li>
+{% endfor %}
+        </ul>
+      </{{ groupTag }}>
+{% endmacro %}
+{% macro documentationNavigation(extraClass, mobile=false) %}
+    <nav class="docs-nav {{ extraClass }}" aria-label="Documentation pages">
+{% if not mobile %}
+      <a class="docs-nav-home" href="/docs/">Documentation</a>
+{% endif %}
+{% for section in navigation.docs %}
+{{ documentationSection(section, loop.index ~ '-' ~ extraClass, mobile) }}
+{% endfor %}
+    </nav>
+{% endmacro %}
+{# Shared layout for every long-form page (docs, spec, blog posts, status).
+   One prose design and ONE side panel for all of them. Documentation pages
+   list the documentation navigation; other pages (blog posts, status) list
+   only their own headings. toc.js adds the headings in both cases. #}
+{% set listsDocs = page.url.startsWith('/docs/') or page.url.startsWith('/spec/') %}
+{% for section in navigation.docs %}{% for item in section.items %}{% if item.url == page.url %}{% set listsDocs = true %}{% endif %}{% endfor %}{% endfor %}
+<div class="prose-layout{% if wide %} prose-wide-layout{% endif %}">
+  <aside class="toc-aside">
+{% if listsDocs %}
+{{ documentationNavigation('docs-nav-desktop') }}
+    <details class="docs-nav-mobile">
+      <summary>Browse documentation</summary>
+{{ documentationNavigation('docs-nav-mobile-list', true) }}
+    </details>
+{% else %}
+    <nav class="docs-nav docs-nav-desktop" aria-label="On this page"></nav>
+    <details class="docs-nav-mobile">
+      <summary>On this page</summary>
+      <nav class="docs-nav docs-nav-mobile-list" aria-label="On this page"></nav>
+    </details>
+{% endif %}
+  </aside>
+  <article class="prose"{% if modified %} data-date-modified="{{ modified | isoDate }}"{% endif %}>
+{% if image %}
+{% if imageWebp %}    <picture class="prose-picture">
+      <source srcset="{{ imageWebp }}" type="image/webp">
+{% endif %}
+    <img class="prose-hero" src="{{ image }}" alt="{{ imageAlt | default(title) }}" width="1600" height="840" loading="eager">
+{% if imageWebp %}    </picture>
+{% endif %}
+{% endif %}
+{% set titleInContent = "<h1" in content %}
+{% set authorInContent = author and (("By " ~ author) in content) %}
+{% if not titleInContent %}
+    <h1>{{ title }}</h1>
+{% endif %}
+{% if author and not authorInContent %}
+    <p class="prose-meta">
+      <span class="prose-author"><span class="prose-author-label">By</span> {{ author }}</span>
+      {# `page.date` is the resolved Date. Front matter `date` may be one of
+         Eleventy's directives (e.g. "git Last Modified"), which is still a raw
+         string here — only `page.date` has been turned into a real date. #}
+      {% if page.date %}<time datetime="{{ page.date | htmlDateString }}">{{ page.date | readableDate }}</time>{% endif %}
+      {% if readingTime %}<span>{{ readingTime }} min read</span>{% endif %}
+    </p>
+{% endif %}
+{{ content | safe }}
+  </article>
+</div>
+{% if not wide %}
+<script src="/js/toc.js" defer></script>
+{% endif %}

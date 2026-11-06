@@ -1,6 +1,0 @@
-// [GPU-BUFFER-LOAD]: the byte offset and the element count are ints; a float
-// count is a type error, not a truncation.
-fn main() = {
-    let w = gpuLoad("weights.bin", 0, 2.5) ?: toGpu([0.0])
-    print(gpuLength(w))
-}

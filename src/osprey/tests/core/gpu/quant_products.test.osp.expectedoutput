@@ -1,0 +1,9 @@
+ok 1 - the Q8_0 product matches ggml's decode in the kernels' lane order
+ok 2 - the Q6_K product matches ggml's decode in the kernels' lane order
+ok 3 - the Q5_K product matches ggml's decode in the kernels' lane order
+ok 4 - the Q3_K product matches ggml's decode in the kernels' lane order
+ok 5 - the IQ4_NL product matches ggml's decode in the kernels' lane order
+ok 6 - the IQ4_XS product matches ggml's decode in the kernels' lane order
+ok 7 - the IQ3_S product matches ggml's decode in the kernels' lane order
+1..7
+# tests=7 passed=7 failed=0 skipped=0

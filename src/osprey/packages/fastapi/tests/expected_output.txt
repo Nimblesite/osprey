@@ -1,0 +1,5 @@
+ok 1 - FastAPI native HTTP lifecycle and NAP health/readiness
+ok 2 - FastAPI browser CORS reference over real HTTP
+ok 3 - FastAPI NAP generated request bodies over real HTTP
+1..3
+# tests=3 passed=3 failed=0 skipped=0

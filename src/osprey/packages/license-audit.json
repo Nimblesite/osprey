@@ -1,0 +1,717 @@
+{
+  "audit_date": "2026-10-25",
+  "copyright_holder": "NIMBLESITE PTY LTD, Australia",
+  "packages": {
+    "chromecast": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey port of a project-owned CPython CAST v2 sender; no third-party implementation or data.",
+      "source_notices": {}
+    },
+    "einops": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "einops",
+          "repository": "https://github.com/arogozhnikov/einops",
+          "reference": "0.8.2"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "faiss": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "faiss",
+          "repository": "https://github.com/facebookresearch/faiss",
+          "reference": "upstream audit snapshot"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "fastapi": {
+      "license": "MIT AND BSD-3-Clause",
+      "original_license_sha256": "87650e3bd18432543ec133ccbaa6b4cb25a0d924f21841ab5e911ca2e2a31e54",
+      "upstreams": [
+        {
+          "component": "fastapi",
+          "repository": "https://github.com/fastapi/fastapi",
+          "reference": "0.135.3",
+          "file": "LICENSES/FastAPI-MIT.txt",
+          "sha256": "4ec89ffc81485b97fec584b2d4a961032eeffe834453894fd9c1274906cc744e",
+          "source": "https://github.com/fastapi/fastapi/blob/0.135.3/LICENSE",
+          "git_blob_sha1": "3e92463e6bd522a2a21e5f0a80d8089d6c4be20d",
+          "applies_to": [
+            "src/applications.py",
+            "src/errors.py",
+            "src/models.py",
+            "src/params.py",
+            "src/paths.py",
+            "src/responses.py",
+            "src/results.py",
+            "src/routing.py",
+            "src/urls.py",
+            "src/uuids.py",
+            "src/validation.py",
+            "src/body.py"
+          ],
+          "basis": "The whole package is a port of FastAPI, so its notice is retained even though the aim is not to copy Python code verbatim",
+          "notice_attribution": [
+            "Sebastián Ramírez"
+          ]
+        },
+        {
+          "component": "starlette CORS policy",
+          "repository": "https://github.com/Kludex/starlette",
+          "reference": "1.3.1",
+          "file": "LICENSES/Starlette-BSD-3-Clause.txt",
+          "sha256": "dcb95677a02240243187e964f941847d19b17821cf99e5afae684fab328c19bf",
+          "source": "https://github.com/Kludex/starlette/blob/1.3.1/LICENSE.md",
+          "git_blob_sha1": "d16a60ec5b9963ef86b35a52ac92227014618e6c",
+          "applies_to": [
+            "src/applications.py"
+          ],
+          "basis": "CORS decision structure adapted from Starlette CORSMiddleware; retain BSD source and binary redistribution notice for this implementation only.",
+          "notice_attribution": [
+            "Encode OSS Ltd"
+          ]
+        }
+      ],
+      "references": [],
+      "review": "FastAPI MIT notice retained; adapted Starlette CORS decision structure has a scoped BSD-3-Clause notice. Development oracles use separately installed upstream distributions.",
+      "source_notices": {}
+    },
+    "flash_attn": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "flash_attn",
+          "repository": "https://github.com/Dao-AILab/flash-attention",
+          "reference": "upstream audit snapshot"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "gguf": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "llama.cpp",
+          "repository": "https://github.com/ggml-org/llama.cpp",
+          "reference": "ggml-quants.c",
+          "file": "LICENSES/llama.cpp-MIT.txt",
+          "sha256": "94f29bbed6a22c35b992c5c6ebf0e7c92f13b836b90f36f461c9cf2f0f1d010d",
+          "source": "https://github.com/ggml-org/llama.cpp/blob/master/LICENSE",
+          "git_blob_sha1": "e7dca554bcb802f98408383a864404e3aa4eacca",
+          "applies_to": [
+            "src/quant.py"
+          ],
+          "basis": "Block layouts and decode arithmetic of the ggml quantized tensor types",
+          "notice_attribution": [
+            "Copyright (c) 2023-2026 The ggml authors"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "component": "gguf",
+          "repository": "https://github.com/ggml-org/llama.cpp/tree/master/gguf-py",
+          "reference": "0.19.0"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison. The fixtures in tests/expected.py are GGUF files written by the upstream GGUFWriter, not copied data.",
+      "source_notices": {}
+    },
+    "jinja2": {
+      "license": "MIT AND Apache-2.0",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "Qwen3.8-27B chat template",
+          "repository": "https://huggingface.co/Qwen/Qwen3.8-27B/tree/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+          "reference": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+          "file": "LICENSES/Qwen3.8-27B-Apache-2.0.txt",
+          "sha256": "bbedc3fda3305820b977265f01b8619d87570a6739de3a5582c3464840f1e57a",
+          "source": "https://huggingface.co/Qwen/Qwen3.8-27B/blob/1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0/LICENSE",
+          "applies_to": [
+            "tests/fixtures/qwen3.8-27b.chat_template.jinja"
+          ],
+          "basis": "Chat template test fixture",
+          "notice_attribution": [
+            "Qwen3.8-27B",
+            "Apache-2.0"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "component": "jinja",
+          "repository": "https://github.com/pallets/jinja",
+          "reference": "3.1.6"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "micrograd": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "micrograd",
+          "repository": "https://github.com/karpathy/micrograd",
+          "reference": "0.1.0",
+          "file": "LICENSES/micrograd-MIT.txt",
+          "sha256": "f372f582c99dc5b0e8dcf5ca5542183a735365468857ec6416af628490187cc1",
+          "source": "https://github.com/karpathy/micrograd/blob/master/LICENSE",
+          "git_blob_sha1": "3d89960112452062baf36bb13d43a92028fc0f0e",
+          "applies_to": [
+            "oracle/micrograd.cpython"
+          ],
+          "basis": "Adapted Value.backward and the engine test cases in the CPython test oracle",
+          "notice_attribution": [
+            "Copyright (c) 2020 Andrej Karpathy"
+          ]
+        },
+        {
+          "component": "nn-zero-to-hero",
+          "repository": "https://github.com/karpathy/nn-zero-to-hero",
+          "reference": "lectures/micrograd/micrograd_lecture_second_half_roughly.ipynb",
+          "file": "LICENSES/nn-zero-to-hero-MIT.txt",
+          "sha256": "a59ec5cdb1c1e447e5266a014b3e7ded511f8d6e5a08931e931c87490ff821fe",
+          "source": "https://github.com/karpathy/nn-zero-to-hero/blob/master/LICENSE",
+          "git_blob_sha1": "329db5e33310fd5d98343e2bca690bfb07317526",
+          "applies_to": [
+            "oracle/micrograd.cpython"
+          ],
+          "basis": "Verbatim Value.tanh and Value.exp from the lecture notebook in the CPython test oracle",
+          "notice_attribution": [
+            "Copyright (c) 2022 Andrej Karpathy"
+          ]
+        }
+      ],
+      "references": [
+        {
+          "component": "micrograd",
+          "repository": "https://github.com/karpathy/micrograd",
+          "reference": "0.1.0"
+        },
+        {
+          "component": "lecturelicense",
+          "repository": "https://github.com/karpathy/nn-zero-to-hero",
+          "reference": "upstream audit snapshot"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "native": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey implementation; no third-party port identified.",
+      "source_notices": {}
+    },
+    "numpy": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "numpy",
+          "repository": "https://github.com/numpy/numpy",
+          "reference": "2.5.4"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "pydantic_ai": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "pydantic-ai",
+          "repository": "https://github.com/pydantic/pydantic-ai",
+          "reference": "2.46.0"
+        },
+        {
+          "component": "openai-python",
+          "repository": "https://github.com/openai/openai-python",
+          "reference": "3.16.2"
+        },
+        {
+          "component": "model-context-protocol",
+          "repository": "https://modelcontextprotocol.io/specification",
+          "reference": "2025-06-18"
+        },
+        {
+          "component": "pydantic-ai (MCP modules)",
+          "repository": "https://github.com/pydantic/pydantic-ai",
+          "reference": "2.46.0 mcp.py, _mcp.py, toolsets/prefixed.py"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison. The MCP protocol module is a sans-IO reimplementation of the wire protocol written from the MCP specification; upstream mcp.py/_mcp.py delegate that protocol to FastMCP and the MCP SDK.",
+      "source_notices": {}
+    },
+    "re": {
+      "license": "MIT AND Unicode-DFS-2016",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "unicode15",
+          "repository": "https://github.com/unicode-org/icu/tree/release-73-2",
+          "reference": "upstream audit snapshot",
+          "file": "LICENSES/Unicode-DFS-2016.txt",
+          "sha256": "f7830d126f59d83842565d3dddedc79db4ca978ed52aee0ebcc040ea76a85519",
+          "source": "https://github.com/unicode-org/icu/blob/release-73-2/icu4c/LICENSE",
+          "git_blob_sha1": "22472dc2ec219cd7d4d97a66e9a3cce6e2a4acc1",
+          "source_selection": "Complete Unicode data license preceding the unrelated ICU third-party notices",
+          "applies_to": [
+            "src/tables.py"
+          ],
+          "basis": "Derived Unicode 15.0.0 character-property tables, verified against the official UCD",
+          "data_version": "15.0.0",
+          "data_source": "https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt",
+          "data_sha256": "806e9aed65037197f1ec85e12be6e8cd870fc5608b4de0fffd990f689f376a73"
+        }
+      ],
+      "references": [
+        {
+          "component": "re",
+          "repository": "https://github.com/python/cpython",
+          "reference": "3.12.13"
+        }
+      ],
+      "review": "Only the specifically identified reused numerical implementation or derived data below carries additional terms.",
+      "source_notices": {
+        "src/tables.py": "# Derived Unicode data; required attribution and terms: ../NOTICE.md."
+      }
+    },
+    "rouge_score": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "rouge_score",
+          "repository": "https://github.com/google-research/google-research/tree/master/rouge",
+          "reference": "0.1.2"
+        },
+        {
+          "component": "nltk",
+          "repository": "https://github.com/nltk/nltk",
+          "reference": "3.10.4"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "sacrebleu": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "sacrebleu",
+          "repository": "https://github.com/mjpost/sacrebleu",
+          "reference": "2.6.0"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "safetensors": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "safetensors",
+          "repository": "https://github.com/safetensors/safetensors",
+          "reference": "0.8.0"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "scipy": {
+      "license": "MIT AND BSD-3-Clause AND BSL-1.0",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "xsf",
+          "repository": "https://github.com/scipy/xsf",
+          "reference": "upstream audit snapshot",
+          "file": "LICENSES/xsf.txt",
+          "sha256": "632f86f8bd24a264ac49c002f39866f407a38e8cbd8a6568df7596cc7fbe0048",
+          "source": "https://github.com/scipy/xsf/blob/main/LICENSE",
+          "git_blob_sha1": "57e414cb0302f6ab86b38f5aedfe1bbdfd2a7adc",
+          "applies_to": [
+            "src/gamma.py",
+            "src/beta.py",
+            "src/zeta.py",
+            "src/support.py",
+            "src/boxcox.py",
+            "src/information.py",
+            "src/logistic.py"
+          ],
+          "basis": "Translated numerical kernels and copied approximation coefficients"
+        },
+        {
+          "component": "cephes",
+          "repository": "https://github.com/scipy/xsf",
+          "reference": "upstream audit snapshot",
+          "file": "LICENSES/Cephes.txt",
+          "sha256": "d07c91099c218cc073aec1ff2a1057c34dcb8258ae28185fa4d3890f25fda85e",
+          "source": "https://github.com/scipy/xsf/blob/main/LICENSES_bundled.txt",
+          "git_blob_sha1": "49bc00d555b89260921f72f7cb7265ea847366c4",
+          "source_selection": "Cephes BSD license section only; other xsf components are not ported",
+          "applies_to": [
+            "src/gamma.py",
+            "src/beta.py",
+            "src/zeta.py",
+            "src/support.py"
+          ],
+          "basis": "Translated numerical kernels and copied approximation coefficients",
+          "source_fragments": [
+            {
+              "path": "include/xsf/cephes/gamma.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/gamma.h",
+              "git_blob_sha1": "662be1482522a60e87b1a49e336d6f4fce504b59",
+              "credit": "Copyright 1984, 1987, 1989, 1992 by Stephen L. Moshier"
+            },
+            {
+              "path": "include/xsf/cephes/beta.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/beta.h",
+              "git_blob_sha1": "a65d37fc34feafeab8c4c2a1941906b98dde1bff",
+              "credit": "Copyright 1984, 1987 by Stephen L. Moshier"
+            },
+            {
+              "path": "include/xsf/cephes/zeta.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/zeta.h",
+              "git_blob_sha1": "2002e6ff3cd8e12c1f98e6798127881feff49b6f",
+              "credit": "Copyright 1984, 1987 by Stephen L. Moshier"
+            },
+            {
+              "path": "include/xsf/cephes/zetac.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/zetac.h",
+              "git_blob_sha1": "0a21680e7eab5644023227694ea3c5a4841b6184",
+              "credit": "Copyright 1984, 1987, 1989 by Stephen L. Moshier"
+            },
+            {
+              "path": "include/xsf/cephes/rgamma.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/rgamma.h",
+              "git_blob_sha1": "114d3ef304a558b8d621f1de5b79de14b6bb82a7",
+              "credit": "Copyright 1985, 1987 by Stephen L. Moshier"
+            },
+            {
+              "path": "include/xsf/cephes/polevl.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/polevl.h",
+              "git_blob_sha1": "fa9b56e35f783020d2e084dd6f0cbbb2ae36d800",
+              "credit": "Copyright 1984, 1987, 1988 by Stephen L. Moshier"
+            },
+            {
+              "path": "include/xsf/cephes/psi.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/psi.h",
+              "git_blob_sha1": "cc43346f15c2453089609da0d18915e101a2ac02",
+              "credit": "Copyright 1984, 1987, 1992, 2000 by Stephen L. Moshier"
+            }
+          ],
+          "notice_attribution": [
+            "Copyright 1984, 1987, 1989, 1992 by Stephen L. Moshier",
+            "Copyright 1984, 1987 by Stephen L. Moshier",
+            "Copyright 1984, 1987, 1989 by Stephen L. Moshier",
+            "Copyright 1985, 1987 by Stephen L. Moshier",
+            "Copyright 1984, 1987, 1988 by Stephen L. Moshier",
+            "Copyright 1984, 1987, 1992, 2000 by Stephen L. Moshier"
+          ]
+        },
+        {
+          "component": "boost",
+          "repository": "https://github.com/boostorg/boost",
+          "reference": "upstream audit snapshot",
+          "file": "LICENSES/Boost-1.0.txt",
+          "sha256": "c9bff75738922193e67fa726fa225535870d2aa1059f91452c411736284ad566",
+          "source": "https://github.com/boostorg/boost/blob/master/LICENSE_1_0.txt",
+          "git_blob_sha1": "36b7cd93cdfbac762f5be4c6ce276df2ea6305c2",
+          "applies_to": [
+            "src/gamma.py"
+          ],
+          "basis": "Copied digamma rational coefficients and adapted psi_imp_1_2 on [1, 2]",
+          "notice_attribution": [
+            "(C) Copyright John Maddock 2006."
+          ],
+          "source_fragments": [
+            {
+              "path": "include/xsf/cephes/psi.h",
+              "url": "https://github.com/scipy/xsf/blob/473a8f81df855a1426d5148448babcbcb7696403/include/xsf/cephes/psi.h",
+              "git_blob_sha1": "cc43346f15c2453089609da0d18915e101a2ac02",
+              "credit": "(C) Copyright John Maddock 2006."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "component": "scipy",
+          "repository": "https://github.com/scipy/scipy",
+          "reference": "1.18.1"
+        },
+        {
+          "component": "xsf",
+          "repository": "https://github.com/scipy/xsf",
+          "reference": "upstream audit snapshot"
+        }
+      ],
+      "review": "Only the specifically identified reused numerical implementation or derived data below carries additional terms.",
+      "source_notices": {
+        "src/beta.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.",
+        "src/boxcox.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.",
+        "src/gamma.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.",
+        "src/information.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.",
+        "src/logistic.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.",
+        "src/support.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md.",
+        "src/zeta.py": "# Adapted Cephes/xsf numerical code; Osprey changes and required terms: ../NOTICE.md."
+      }
+    },
+    "sklearn": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "sklearn",
+          "repository": "https://github.com/scikit-learn/scikit-learn",
+          "reference": "1.9.1"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "testing": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "numpy",
+          "repository": "https://github.com/numpy/numpy",
+          "reference": "2.5.4"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "tiktoken": {
+      "license": "MIT AND Unicode-3.0",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "tiktoken",
+          "repository": "https://github.com/openai/tiktoken",
+          "reference": "0.14.0",
+          "file": "LICENSES/tiktoken.txt",
+          "sha256": "418cb499b436128d653d79941333a5437b7be2ea9213dcc2f04d15d5d2c51d86",
+          "source": "https://files.pythonhosted.org/packages/66/62/167a842aa0429d45f5e797354fd4343a96f6043d67d0513c675c7b8d36e6/tiktoken-0.14.0.tar.gz",
+          "archive_sha256": "231dec90efcdccf1b565a1416107736f1e09b1a08fe736ef9d6363e626d03874",
+          "applies_to": [
+            "tests/expected.py"
+          ],
+          "basis": "Copied encoding-rank subsets and upstream explicit MIT permission",
+          "scope": "test-fixtures-only",
+          "permission_source": "https://github.com/openai/tiktoken/issues/92#issuecomment-1497875652",
+          "permission_reference": "Collaborator clarification, 2023-04-05"
+        },
+        {
+          "component": "unicode3",
+          "repository": "https://github.com/unicode-org/icu",
+          "reference": "Unicode License v3 audit snapshot",
+          "file": "LICENSES/Unicode-3.0.txt",
+          "sha256": "5cba0cc0b60a659761e6c6a1a581e6fa64148aa6a3b118e89bcfcdbcf9a6fb8a",
+          "source": "https://github.com/unicode-org/icu/blob/main/LICENSE",
+          "git_blob_sha1": "fec99457b941a38283b6b2f6e128470182c73dc0",
+          "source_selection": "Complete Unicode License v3 preceding the unrelated ICU third-party notices",
+          "applies_to": [
+            "src/tables.py"
+          ],
+          "basis": "Derived Unicode 18.0.0 character-property tables, verified against the official UCD",
+          "data_version": "18.0.0",
+          "data_source": "https://www.unicode.org/Public/18.0.0/ucd/UnicodeData.txt",
+          "data_sha256": "0736451de439ae7baf1425136617da495e09ee5afbe6e394374db7009ea08950"
+        }
+      ],
+      "references": [
+        {
+          "component": "tiktoken",
+          "repository": "https://github.com/openai/tiktoken",
+          "reference": "0.14.0"
+        },
+        {
+          "component": "regex",
+          "repository": "https://github.com/mrabarnett/mrab-regex",
+          "reference": "2026.9.29"
+        },
+        {
+          "component": "re",
+          "repository": "https://github.com/python/cpython",
+          "reference": "3.12.13"
+        }
+      ],
+      "review": "Only the specifically identified reused numerical implementation or derived data below carries additional terms.",
+      "source_notices": {
+        "src/tables.py": "# Derived Unicode data; required attribution and terms: ../NOTICE.md."
+      }
+    },
+    "tokenizers": {
+      "license": "MIT AND Unicode-DFS-2016 AND Unicode-3.0",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [
+        {
+          "component": "unicode15",
+          "repository": "https://github.com/unicode-org/icu/tree/release-73-2",
+          "reference": "upstream audit snapshot",
+          "file": "LICENSES/Unicode-DFS-2016.txt",
+          "sha256": "f7830d126f59d83842565d3dddedc79db4ca978ed52aee0ebcc040ea76a85519",
+          "source": "https://github.com/unicode-org/icu/blob/release-73-2/icu4c/LICENSE",
+          "git_blob_sha1": "22472dc2ec219cd7d4d97a66e9a3cce6e2a4acc1",
+          "source_selection": "Complete Unicode data license preceding the unrelated ICU third-party notices",
+          "applies_to": [
+            "src/Unicode.py"
+          ],
+          "basis": "Derived Unicode 15.0.0 character-property tables, verified against the official UCD",
+          "data_version": "15.0.0",
+          "data_source": "https://www.unicode.org/Public/15.0.0/ucd/UnicodeData.txt",
+          "data_sha256": "806e9aed65037197f1ec85e12be6e8cd870fc5608b4de0fffd990f689f376a73"
+        },
+        {
+          "component": "gpt-2",
+          "repository": "https://github.com/openai/gpt-2",
+          "reference": "src/encoder.py",
+          "file": "LICENSES/gpt-2-Modified-MIT.txt",
+          "sha256": "0dbeda4bc78823b1d67ec0ee414d8690ee4cad826bc9c147b215adc3af202436",
+          "source": "https://github.com/openai/gpt-2/blob/master/LICENSE",
+          "git_blob_sha1": "f56abfef079f3850e93db8bd6ee32582c3e65956",
+          "applies_to": [
+            "oracle/tokenizers.cpython"
+          ],
+          "basis": "bytes_to_unicode adapted from src/encoder.py in the CPython test oracle",
+          "notice_attribution": [
+            "Copyright (c) 2019 OpenAI"
+          ]
+        },
+        {
+          "component": "unicode-tokenizers",
+          "repository": "https://github.com/unicode-org/icu",
+          "reference": "Unicode License v3 audit snapshot",
+          "file": "LICENSES/Unicode-3.0.txt",
+          "sha256": "5cba0cc0b60a659761e6c6a1a581e6fa64148aa6a3b118e89bcfcdbcf9a6fb8a",
+          "source": "https://github.com/unicode-org/icu/blob/main/LICENSE",
+          "git_blob_sha1": "fec99457b941a38283b6b2f6e128470182c73dc0",
+          "source_selection": "Complete Unicode License v3 preceding the unrelated ICU third-party notices",
+          "applies_to": [
+            "src/NfcData.py",
+            "src/Category.py"
+          ],
+          "basis": "Unicode decomposition, composition, combining-class and general-category tables recovered from tokenizers 0.23.3 output; the Unicode data version was not recorded"
+        }
+      ],
+      "references": [
+        {
+          "component": "tokenizers",
+          "repository": "https://github.com/huggingface/tokenizers",
+          "reference": "0.23.3"
+        }
+      ],
+      "review": "Only the specifically identified reused numerical implementation or derived data below carries additional terms.",
+      "source_notices": {
+        "src/Unicode.py": "# Derived Unicode data; required attribution and terms: ../NOTICE.md.",
+        "src/NfcData.py": "# Derived Unicode data; required attribution and terms: ../NOTICE.md.",
+        "src/Category.py": "# Derived Unicode data; required attribution and terms: ../NOTICE.md."
+      }
+    },
+    "torch": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "torch",
+          "repository": "https://github.com/pytorch/pytorch",
+          "reference": "upstream audit snapshot"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "transformers": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [
+        {
+          "component": "transformers",
+          "repository": "https://github.com/huggingface/transformers",
+          "reference": "5.20.2"
+        }
+      ],
+      "review": "API/behavioral reference; no substantive shared implementation block identified in the recorded comparison.",
+      "source_notices": {}
+    },
+    "graphics": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey typed scene library; no third-party implementation or data.",
+      "source_notices": {}
+    },
+    "json": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey JSON codec; no third-party implementation or data.",
+      "source_notices": {}
+    },
+    "signal_flow": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey signal-flow machine, app and skins; no third-party implementation or data.",
+      "source_notices": {}
+    },
+    "uitest": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey UI test library; no third-party implementation or data.",
+      "source_notices": {}
+    },
+    "vscode": {
+      "license": "MIT",
+      "original_license_sha256": "83e3f8aa4e2be7bff07607745cb71ab8362beaedeaedb5c2ef9dd62ac817d1fa",
+      "upstreams": [],
+      "references": [],
+      "review": "Original Osprey typed editor SDK; no copied third-party implementation or data.",
+      "source_notices": {}
+    }
+  }
+}

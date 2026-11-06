@@ -2,7 +2,7 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: "/"
+    directory: "/src/toolchain"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly
@@ -18,13 +18,12 @@ updates:
 
   - package-ecosystem: npm
     directories:
-      - "/vscode-extension"
-      - "/webcompiler"
-      - "/website"
-      - "/tree-sitter-osprey"
-      - "/scripts/carbon"
-      - "/examples/projects/modules/web"
-      - "/examples/projects/modules/e2e"
+      - "/src/toolchain/vscode-extension"
+      - "/src/toolchain/webcompiler"
+      - "/src/toolchain/website"
+      - "/src/toolchain/tree-sitter-osprey"
+      - "/src/osprey/examples/projects/modules/web"
+      - "/src/osprey/examples/projects/modules/e2e"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly
@@ -39,7 +38,7 @@ updates:
         patterns: ["*"]
 
   - package-ecosystem: pip
-    directory: "/python"
+    directory: "/src/toolchain/python"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly
@@ -55,8 +54,8 @@ updates:
 
   - package-ecosystem: gradle
     directories:
-      - "/examples/mobile/android"
-      - "/examples/projects/modules/mobile/android"
+      - "/src/osprey/examples/mobile/android"
+      - "/src/osprey/examples/projects/modules/mobile/android"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly
@@ -73,7 +72,7 @@ updates:
   - package-ecosystem: docker
     directories:
       - "/.devcontainer"
-      - "/webcompiler"
+      - "/src/toolchain/webcompiler"
     target-branch: "dependabot-upgrades"
     schedule:
       interval: weekly

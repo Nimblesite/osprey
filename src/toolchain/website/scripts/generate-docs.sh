@@ -1,0 +1,87 @@
+#!/bin/bash
+
+# Generate reference documentation from the Osprey compiler (`osprey --docs`).
+#
+# src/docs/functions/ and src/docs/stdlib.md are GENERATED build output — they
+# are gitignored, never committed. When a Rust compiler binary
+# (target/release/osprey) with --docs support is present, this script
+# regenerates them; otherwise it no-ops and exits successfully, so a
+# compiler-free `npm run build` still succeeds (just without the per-function
+# reference pages). CI and the GitHub Pages deploy both build the compiler
+# before `npm run build`, so the live site always ships freshly generated docs.
+# (types/, operators/ and keywords/ are hand-maintained — the current compiler
+# does not emit them — so they remain tracked in src/docs/.)
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+WEBSITE_DIR="$(dirname "$SCRIPT_DIR")"
+REPO_DIR="$(cd "$WEBSITE_DIR/../../.." && pwd)"
+OSPREY_BIN="${OSPREY_BIN:-$REPO_DIR/target/release/osprey}"
+DOCS_DIR="$WEBSITE_DIR/src/docs"
+
+echo "Generating Osprey reference documentation..."
+mkdir -p "$DOCS_DIR"
+
+if [ ! -x "$OSPREY_BIN" ]; then
+    echo "NOTE: $OSPREY_BIN not found (build with: make build)."
+    echo "API reference not regenerated; any existing generated pages are left in place."
+    exit 0
+fi
+
+# Older compilers predate the --docs flag; detect support at runtime so this
+# script degrades gracefully (leaves any existing docs in place) instead of
+# failing the build.
+if ! "$OSPREY_BIN" --help 2>&1 | grep -q -- '--docs'; then
+    echo "NOTE: osprey has no --docs support; API reference not regenerated."
+    exit 0
+fi
+
+echo "Generating API reference from compiler..."
+"$OSPREY_BIN" --docs --docs-dir "$DOCS_DIR"
+
+# Package API reference: each published package's own pages, exported by the
+# same compiler. Eleventy serves `x.md` at `x/`, so sibling links are rewritten
+# (`../x/` from a page, `x/` from the package index).
+PACKAGES=(json)
+for package in "${PACKAGES[@]}"; do
+    export_dir="$(mktemp -d)"
+    "$OSPREY_BIN" --docs "$REPO_DIR/src/osprey/packages/$package" --docs-dir "$export_dir"
+    target="$DOCS_DIR/packages/$package"
+    rm -rf "$target"
+    mkdir -p "$target"
+    cp "$export_dir"/api/*.md "$target/"
+    rm -rf "$export_dir"
+    sed -i.bak -E 's/\]\(([a-z0-9-]+)\.md\)/](..\/\1\/)/g' "$target"/*.md
+    sed -i.bak -E -e 's/\]\(\.\.\/([a-z0-9-]+)\/\)/](\1\/)/g' \
+        -e "s/API Reference/@osprey\/$package API Reference/" "$target/index.md"
+    rm -f "$target"/*.bak
+done
+
+if [ ! -f "$DOCS_DIR/index.md" ]; then
+    echo "Error: Documentation generation failed - no docs generated to $DOCS_DIR"
+    exit 1
+fi
+
+# Create the main API reference page from the generated content.
+cat > "$DOCS_DIR/stdlib.md" << 'EOF'
+---
+layout: page
+title: "API Reference - Osprey Programming Language"
+description: "Complete API reference for built-in functions, types, operators, and language constructs"
+---
+
+# Osprey API Reference
+
+Browse the generated reference for built-in functions, types, operators, and language constructs. For application architecture, read [Building Osprey Web Apps with React and WebAssembly](/docs/web-apps/).
+
+EOF
+if [ -f "$DOCS_DIR/README.md" ]; then
+    cat "$DOCS_DIR/README.md" >> "$DOCS_DIR/stdlib.md"
+fi
+
+echo "API reference documentation generated successfully!"
+echo "Generated files:"
+echo "  - $DOCS_DIR/stdlib.md (Main API Reference)"
+echo "  - $DOCS_DIR/functions/ (Individual function docs)"
+echo "Maintained source references are unchanged: types/, operators/, keywords/."

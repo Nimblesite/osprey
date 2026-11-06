@@ -1,0 +1,388 @@
+{
+  "_agent_pmo": "b636503",
+  "_doc": "Coverage gate policy and enforced thresholds only. The enforced minimum is 90%; only higher thresholds are explicit. Thresholds only increase. Verified measured counts are separate reports under target/coverage/packages/.",
+  "policy": {
+    "rust": [
+      "Per-crate line coverage from cargo-llvm-cov lcov.info. Floor: 95%."
+    ],
+    "c_runtime": [
+      "Per-library gcov line coverage: best measured suite linking each native library.",
+      "Every shipped native archive unit must be gated or explicitly exempt; wasm-only units do not build natively.",
+      "Thresholds must pass on both macOS and Linux. Remeasure both before raising; forked child tests must flush gcov counters.",
+      "Minimum: 90%. Only higher thresholds are explicit; omission enforces the minimum."
+    ],
+    "editor": [
+      "The VS Code extension threshold applies separately to lines, statements, branches and functions."
+    ],
+    "packages": [
+      "Each src/osprey/packages/<name>/osprey.toml requires its own entry and tests/osprey.toml suite. Minimum: 90%; only higher thresholds are explicit.",
+      "Shipped src/toolchain/targets/<name> projects are gated the same way under projects.apps.",
+      "Measure compiled E2E suites with osprey test --coverage-json and exact output goldens; unit-only results do not qualify. Gate only that package's src/ files, excluding tests and imported helpers.",
+      "Missing, empty, malformed or incomplete source reports fail. Data-only files have no executable line counters.",
+      "Reports and per-package totals: target/coverage/packages/. No averaging between packages.",
+      "Ratchet passing packages to verified covered/total line coverage rounded down to one decimal place. Every supported platform must pass; never lower an existing threshold."
+    ],
+    "ratchet": [
+      "Other projects: thresholds only increase. When coverage improves on every supported platform, raise to max(floor, weakest measured percentage minus one)."
+    ]
+  },
+  "projects": {
+    "rust": {
+      "osprey-ast": {
+        "threshold": 97,
+        "language": "rust"
+      },
+      "osprey-cli": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-codegen": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-debug": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-fmt": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-lsp": {
+        "threshold": 98,
+        "language": "rust"
+      },
+      "osprey-profiler": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-project": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "lsp-profiler-osprey": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-runtime-sys": {
+        "threshold": 99,
+        "language": "rust"
+      },
+      "osprey-syntax": {
+        "threshold": 95,
+        "language": "rust"
+      },
+      "osprey-types": {
+        "threshold": 98,
+        "language": "rust"
+      }
+    },
+    "c_runtime": {
+      "memory_arc": {
+        "threshold": 99,
+        "language": "c"
+      },
+      "memory_arc_alloc": {
+        "threshold": 99,
+        "language": "c"
+      },
+      "memory_arc_drop": {
+        "threshold": 99,
+        "language": "c"
+      },
+      "memory_arc_registry": {
+        "threshold": 99,
+        "language": "c"
+      },
+      "memory_gc": {
+        "language": "c",
+        "threshold": 93
+      },
+      "gpu_runtime": {
+        "language": "c"
+      },
+      "gpu_host": {
+        "language": "c"
+      },
+      "tensor_file": {
+        "language": "c"
+      },
+      "tensor_list": {
+        "language": "c"
+      },
+      "gpu_opencl": {
+        "language": "c"
+      },
+      "gpu_metal": {
+        "language": "c",
+        "platform": "darwin"
+      },
+      "effects_runtime": {
+        "language": "c"
+      },
+      "effects_coro": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "json_runtime": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "json_text": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "json_codec": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "float_spelling": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "ffi_runtime": {
+        "language": "c"
+      },
+      "random_runtime": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "system_runtime": {
+        "language": "c"
+      },
+      "system_process_posix": {
+        "language": "c"
+      },
+      "file_runtime": {
+        "language": "c",
+        "threshold": 92
+      },
+      "string_runtime": {
+        "threshold": 99,
+        "language": "c"
+      },
+      "string_runtime_list": {
+        "threshold": 100,
+        "language": "c"
+      },
+      "string_search": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "list_runtime": {
+        "language": "c"
+      },
+      "map_runtime": {
+        "language": "c"
+      },
+      "map_runtime_hamt": {
+        "language": "c"
+      },
+      "fiber_runtime": {
+        "language": "c"
+      },
+      "coverage_runtime": {
+        "language": "c"
+      },
+      "profiler_runtime": {
+        "language": "c"
+      },
+      "term_runtime": {
+        "language": "c"
+      },
+      "test_runtime": {
+        "threshold": 91,
+        "language": "c"
+      },
+      "profiler_sampler": {
+        "language": "c"
+      },
+      "profiler_store": {
+        "language": "c"
+      },
+      "profiler_dump": {
+        "threshold": 93,
+        "language": "c"
+      },
+      "profiler_stream": {
+        "threshold": 91,
+        "language": "c"
+      },
+      "profiler_endpoint": {
+        "threshold": 91,
+        "language": "c"
+      },
+      "http_shared": {
+        "language": "c"
+      },
+      "socket_safety": {
+        "threshold": 100,
+        "language": "c"
+      },
+      "http_client_runtime": {
+        "threshold": 96,
+        "language": "c"
+      },
+      "http_client_response": {
+        "threshold": 96,
+        "language": "c"
+      },
+      "http_client_framing": {
+        "threshold": 100,
+        "language": "c"
+      },
+      "http_client_chunks": {
+        "threshold": 100,
+        "language": "c"
+      },
+      "http_server_request": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "http_server_response": {
+        "language": "c"
+      },
+      "http_server_runtime": {
+        "threshold": 95,
+        "language": "c"
+      },
+      "websocket_client_runtime": {
+        "language": "c"
+      },
+      "websocket_server_runtime": {
+        "language": "c"
+      },
+      "tls_client_runtime": {
+        "language": "c"
+      },
+      "file_server_runtime": {
+        "language": "c"
+      },
+      "media_render_runtime": {
+        "threshold": 95,
+        "language": "c"
+      }
+    },
+    "editor": {
+      "vscode-extension": {
+        "threshold": 95,
+        "language": "typescript"
+      }
+    },
+    "packages": {
+      "fastapi": {
+        "threshold": 98.5,
+        "language": "osprey"
+      },
+      "einops": {
+        "threshold": 96.4,
+        "language": "osprey"
+      },
+      "faiss": {
+        "language": "osprey",
+        "threshold": 95.6
+      },
+      "flash_attn": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
+      "gguf": {
+        "threshold": 94.3,
+        "language": "osprey"
+      },
+      "jinja2": {
+        "threshold": 97.4,
+        "language": "osprey"
+      },
+      "pydantic_ai": {
+        "language": "osprey",
+        "threshold": 95.4
+      },
+      "micrograd": {
+        "language": "osprey",
+        "threshold": 97.5
+      },
+      "chromecast": {
+        "language": "osprey",
+        "threshold": 90.8
+      },
+      "native": {
+        "threshold": 98.0,
+        "language": "osprey"
+      },
+      "numpy": {
+        "language": "osprey",
+        "threshold": 98.3
+      },
+      "re": {
+        "threshold": 90.4,
+        "language": "osprey"
+      },
+      "rouge_score": {
+        "language": "osprey",
+        "threshold": 96.8
+      },
+      "sacrebleu": {
+        "language": "osprey",
+        "threshold": 99.6
+      },
+      "safetensors": {
+        "language": "osprey",
+        "threshold": 98.5
+      },
+      "scipy": {
+        "language": "osprey",
+        "threshold": 92.5
+      },
+      "sklearn": {
+        "language": "osprey",
+        "threshold": 99.2
+      },
+      "testing": {
+        "threshold": 98.6,
+        "language": "osprey"
+      },
+      "tiktoken": {
+        "language": "osprey",
+        "threshold": 95.3
+      },
+      "tokenizers": {
+        "language": "osprey",
+        "threshold": 98.0
+      },
+      "torch": {
+        "threshold": 98.9,
+        "language": "osprey"
+      },
+      "transformers": {
+        "language": "osprey",
+        "unfinished": true
+      },
+      "vscode": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
+      "graphics": {
+        "language": "osprey",
+        "threshold": 92.3
+      },
+      "json": {
+        "language": "osprey",
+        "threshold": 100.0
+      },
+      "signal_flow": {
+        "language": "osprey",
+        "threshold": 91.3
+      },
+      "uitest": {
+        "language": "osprey",
+        "threshold": 100.0
+      }
+    },
+    "apps": {
+      "workbench": {
+        "language": "osprey"
+      }
+    }
+  }
+}

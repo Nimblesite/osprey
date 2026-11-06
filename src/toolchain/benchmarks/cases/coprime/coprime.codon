@@ -1,0 +1,42 @@
+# Count coprime pairs (i,j), 1<=i,j<=N — nested iteration + Euclidean gcd.
+def add(a, b):
+    return a + b
+
+
+def sub(a, b):
+    return a - b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def gcd(a, b):
+    match b:
+        case 0:
+            return a
+        case _:
+            return gcd(b, mod_(a, b))
+
+
+def loop_j(i, j, acc):
+    match j:
+        case 0:
+            return acc
+        case _:
+            match gcd(i, j):
+                case 1:
+                    return loop_j(i, sub(j, 1), add(acc, 1))
+                case _:
+                    return loop_j(i, sub(j, 1), acc)
+
+
+def loop_i(i, n, acc):
+    match i:
+        case 0:
+            return acc
+        case _:
+            return loop_i(sub(i, 1), n, loop_j(i, n, acc))
+
+
+print(f"{loop_i(2000, 2000, 0)}")

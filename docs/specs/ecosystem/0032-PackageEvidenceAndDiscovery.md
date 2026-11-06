@@ -11,8 +11,8 @@
 discovery rules in [Registry Trust and Discovery](0030-PackageRegistryTrustAndDiscovery.md)
 reproducible. A conforming implementation MUST produce the same integer scores,
 candidate set, and ranking from the same signed inputs. The empirical basis is
-the [maintenance evidence](../../package-manager-research.md#3-maintenance-evidence-testing-static-analysis-and-ai)
-and [fair-discovery](../../package-manager-research.md#4-fair-discovery-and-resistance-to-popularity-capture)
+the [maintenance evidence](PackageResearchBasis.md#3-maintenance-evidence-testing-static-analysis-and-ai)
+and [fair-discovery](PackageResearchBasis.md#4-fair-discovery-and-resistance-to-popularity-capture)
 corpus,
 especially the findings that coverage is not a quality target, mutation testing
 better predicts fault detection, static tools have material blind spots, and

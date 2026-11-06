@@ -1,6 +1,6 @@
-# Graphics: settings and the platform hosts behind `make -C apps graphics` and
-# `make -C apps graphics-smoke`, which the root Makefile documents.
-GFX_DIR := examples/graphics
+# Graphics: settings and the platform hosts behind `make -C src/toolchain/targets graphics` and
+# `make -C src/toolchain/targets graphics-smoke`, which the root Makefile documents.
+GFX_DIR := src/osprey/examples/graphics
 GFX_WARN ?= -Wall -Werror
 SCENE ?= kali
 
@@ -28,7 +28,7 @@ GFX_OUT := target/gfx
 ifeq ($(MSYSTEM),)
 # Native PowerShell has neither bash for the recipes below nor a MinGW cc.
 _graphics _graphics-shader _graphics-smoke:
-	@Write-Host "make -C apps graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
+	@Write-Host "make -C src/toolchain/targets graphics needs the MSYS2 UCRT64 shell -- see $(GFX_DIR)/README.md"
 else
 $(GFX_LIB): $(GFX_SRC) $(GFX_DIR)/ospgfx_d3d12.h $(GFX_DIR)/ospgfx_abi.h
 	@echo "==> building Osprey -> Direct3D 12 graphics bridge"
@@ -111,7 +111,7 @@ _graphics-smoke: build _runtime_macos _graphics-shader
 endif
 
 # GPT-2 settings and the one-time weight download behind gpt2 and gpt2-train.
-GPT2_DIR    := examples/gpt2
+GPT2_DIR    := src/osprey/examples/llms/gpt2
 GPT2_SOURCE := https://huggingface.co/openai-community/gpt2/resolve/main
 PROMPT      ?= The capital of France is
 TOKENS      ?= 20
@@ -133,11 +133,11 @@ _uninstall:
 
 # _website-dev: Start local website development server
 _website-dev: $(WEBSITE_NODE_DEPS)
-	cd website && npm run dev
+	cd src/toolchain/website && npm run dev
 
 # _website-build: Build static site
 _website-build: $(WEBSITE_NODE_DEPS)
-	cd website && npm run build
+	cd src/toolchain/website && npm run build
 
 # _test_bench_tools: Unit-test the benchmark result merger and the README figure
 # generator. Every benchmark run stages and merges validated replacements, so
@@ -146,15 +146,15 @@ _website-build: $(WEBSITE_NODE_DEPS)
 # quoted binarytrees figure in step with that data.
 _test_bench_tools:
 	@echo "==> Bench tooling tests..."
-	python3 benchmarks/test_merge_results.py
-	python3 benchmarks/test_instruction_gate.py
+	python3 src/toolchain/benchmarks/test_merge_results.py
+	python3 src/toolchain/benchmarks/test_instruction_gate.py
 
 ## _gpui-self-test: Every desktop app's self-test.json, the script the WinUI host runs in a real
 ##                  window, on the GPUI host. Without a window by default; GPUI_WINDOW= opens one.
 ##                  [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-self-test
 GPUI_WINDOW ?= --headless
-GPUI_SCRIPTED := hosts/gpui:hosts/gpui/probe examples/gpui/flock:examples/gpui/flock examples/gpui/painting:examples/gpui/painting packages/signal_flow/app:packages/signal_flow/app examples/casting:examples/casting
+GPUI_SCRIPTED := src/toolchain/hosts/gpui:src/toolchain/hosts/gpui/probe src/osprey/examples/gpui/flock:src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting:src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app:src/osprey/packages/signal_flow/app src/osprey/examples/casting:src/osprey/examples/casting
 _gpui-self-test: _gpui-apps
 	for pair in $(GPUI_SCRIPTED); do \
 		app=$${pair%%:*}; script=$${pair##*:}; \
@@ -164,31 +164,52 @@ _gpui-self-test: _gpui-apps
 ## _gpui-app-self-test: One app's self-test.json on the GPUI host. [UI-MACHINE-SELF-TEST]
 .PHONY: _gpui-app-self-test
 _gpui-app-self-test: _runtime_macos
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash $(APP_DIR)/run.sh --self-test "$(CURDIR)/$(SCRIPT_DIR)/self-test.json" "$(CURDIR)/target/gpui-self-test/$(notdir $(SCRIPT_DIR))" $(GPUI_WINDOW)
-
-## _gpui-synth-smoke: The synth's recorded events through the GPUI host, with no window.
-.PHONY: _gpui-synth-smoke
-_gpui-synth-smoke: _runtime_macos
-	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/synth/run.sh --smoke
-
-## _storage-smoke: The Mac storage app through its Swift host.
-.PHONY: _storage-smoke
-_storage-smoke: _runtime_macos
-	cargo build --release -p osprey-cli
-	OSPREY_BIN="$(CURDIR)/$(BIN)" bash examples/macos/run.sh --smoke
 
 ## _app-suite: One app's host-free suites, named by SUITES.
 .PHONY: _app-suite
 _app-suite: _runtime
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in $(SUITES); do $(BIN) test $$suite || exit 1; done
 
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test
-UI_SUITES := packages/uitest/tests examples/casting/test packages/signal_flow/tests examples/synth/test
+UI_SUITES := src/osprey/packages/uitest/tests src/osprey/examples/casting/test src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test
 _ui-test: _runtime
-	cargo build --release -p osprey-cli
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in $(UI_SUITES); do $(BIN) test $$suite || exit 1; done
+
+.PHONY: _gpui-test _gpui-smoke 
+
+_gpui-test: _runtime_macos _runtime
+	python3 src/toolchain/hosts/gpui/dependencies.py
+	python3 src/toolchain/hosts/gpui/dependencies_test.py
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	for suite in src/osprey/packages/native/tests src/osprey/packages/signal_flow/tests src/osprey/examples/synth/test src/osprey/examples/gpui/flock/test src/osprey/examples/gpui/painting/test; do \
+		$(BIN) test $$suite || exit 1; \
+	done
+	$(MAKE) _gpui-smoke _gpui-self-test
+	cd src/toolchain/hosts/gpui && cargo test --release && cargo clippy --release -- -D warnings
+
+# Compile every app's archive once for the smoke and self-test targets. The synth wrapper bundles
+# and opens the app after its inner run.sh returns, so compile its archive directly instead.
+.PHONY: _gpui-apps
+_gpui-apps:
+	pids=; \
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/casting; do \
+		OSPREY_BIN="$(CURDIR)/$(BIN)" bash $$app/run.sh --compile & \
+		pids="$$pids $$!"; \
+	done; \
+	OSPREY_GPUI_APP="$(CURDIR)/src/osprey/examples/synth" OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/toolchain/hosts/gpui/run.sh --compile & \
+	pids="$$pids $$!"; \
+	status=0; \
+	for pid in $$pids; do wait $$pid || status=1; done; \
+	exit $$status
+
+# [UI-MACHINE-SELF-TEST] the scripts run in `_gpui-self-test`.
+# Every desktop app started in the GPUI host without a window, its smoke.jsonl replayed through the
+# real C boundary; the probe's has no script and taps its Add button. [GPUI-HOST-VERIFICATION]
+_gpui-smoke: _gpui-apps
+	for app in src/toolchain/hosts/gpui src/osprey/examples/gpui/flock src/osprey/examples/gpui/painting src/osprey/packages/signal_flow/app src/osprey/examples/synth src/osprey/examples/casting; do OSPREY_BIN="$(CURDIR)/$(BIN)" OSPREY_GPUI_PREBUILT=1 bash $$app/run.sh --smoke || exit 1; done

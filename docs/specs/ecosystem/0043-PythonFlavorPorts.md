@@ -1,6 +1,6 @@
 # Python-Flavor Package Ports
 
-**Status: in progress.** The [`packages/`](../../../packages) tree holds Osprey ports of popular CPython packages, written in the [Python flavor](../language/0041-PythonFlavorSyntax.md) and tested against the real CPython packages. `@osprey/testing` ships and is the harness every port reports through. The catalog distinguishes implemented subsets, ongoing ports and planned packages. The registry accepts Python-flavor packages ([PORT-PUBLISH]).
+**Status: in progress.** The [`src/osprey/packages/`](../../../src/osprey/packages) tree holds Osprey ports of popular CPython packages, written in the [Python flavor](../language/0041-PythonFlavorSyntax.md) and tested against the real CPython packages. `@osprey/testing` ships and is the harness every port reports through. The catalog distinguishes implemented subsets, ongoing ports and planned packages. The registry accepts Python-flavor packages ([PORT-PUBLISH]).
 
 ## What a port is — [PORT-SCOPE]
 
@@ -13,7 +13,7 @@ A port is behaviourally compatible where its suite says so and nowhere else. Pyt
 ## Layout — [PORT-LAYOUT]
 
 ```text
-packages/<name>/
+src/osprey/packages/<name>/
   osprey.toml            [project] with python_sources, [package], [dependencies]
   README.md              original package and version, API map, divergences
   src/*.py               the port: `# osprey: namespace=<name>` and one module per file
@@ -26,7 +26,7 @@ packages/<name>/
 
 The namespace is the Python package's import name. Each Python submodule or concept becomes one Osprey module with a PascalCase name, so `from numpy import Linalg` reaches `numpy.linalg`. Functions keep their Python snake_case names. Files stay under 500 lines and functions under 20.
 
-`[project].python_sources` lists every `.py` file the project compiles. Every `.py` file in a package tree is Python-flavor Osprey and begins with `# osprey: flavor=python`, because a release refuses any other `.py` file ([PACKAGE-SOURCE-CANONICAL]). The CPython oracle for a package is therefore not in the package: it is `scripts/oracles/<name>.py`, an ordinary Python script beside the repository's other CPython tools. A dependency on another port appears both in `[dependencies]`, for the registry, and as a `source_roots` and `python_sources` entry in the suite project. The suite entry needs the latter until projects resolve dependencies themselves.
+`[project].python_sources` lists every `.py` file the project compiles. Every `.py` file in a package tree is Python-flavor Osprey and begins with `# osprey: flavor=python`, because a release refuses any other `.py` file ([PACKAGE-SOURCE-CANONICAL]). The CPython oracle for a package therefore sits beside its sources as `oracle/<name>.cpython`: an ordinary CPython script whose suffix is not `.py`, shipped with the package together with the notices for anything it retains. A dependency on another port appears both in `[dependencies]`, for the registry, and as a `source_roots` and `python_sources` entry in the suite project. The suite entry needs the latter until projects resolve dependencies themselves.
 
 ## Device placement — [PORT-DEVICE]
 
@@ -34,31 +34,89 @@ A port that computes over tensors performs a static storage effect and never nam
 
 ## Tests against the real package — [PORT-TEST-ORACLE]
 
-Every assertion compares the port with a value that the real CPython package computed. `scripts/oracles/<name>.py` imports the original package, computes each case in its `main()` and writes `tests/expected.py`, a Python-flavor constants module, through the shared writer `scripts/oracles/expected_module.py`, which documents every constant. It records the CPython version and the package versions in its docstring. An oracle runs as `python -I scripts/oracles/oracle.py <name>`: the runner keeps `scripts/oracles/` off `sys.path`, because an oracle is named after the package it imports (`numpy.py`, `torch.py`, `re.py`) and would otherwise import itself. The oracle runs in a development virtual environment, not in CI. CI compares against the committed `expected.py`, so it needs neither CPython nor the package. Regenerating `expected.py` must be deterministic, so a case that the original computes from random state seeds it explicitly.
+Every assertion compares the port with a value that the real CPython package computed. `src/osprey/packages/<name>/oracle/<name>.cpython` imports the original package, computes each case in its `main()` and writes `tests/expected.py`, a Python-flavor constants module, through the shared writer `src/osprey/packages/testing/oracle/expected_module.cpython`, which documents every constant. It records the CPython version and the package versions in its docstring. An oracle runs as `python -I src/osprey/packages/testing/oracle/oracle.cpython <name>`: the runner keeps `oracle/` off `sys.path`, because an oracle is named after the package it imports (`numpy.cpython`, `torch.cpython`, `re.cpython`) and would otherwise import itself. The oracle runs in a development virtual environment, not in CI. CI compares against the committed `expected.py`, so it needs neither CPython nor the package. Regenerating `expected.py` must be deterministic, so a case that the original computes from random state seeds it explicitly.
 
 Integers, booleans, strings, shapes and token ids compare exactly. Floats compare with numpy's `isclose` rule, `abs(got - want) <= atol + rtol * abs(want)`, with equal infinities equal, opposite infinities unequal and NaN equal to NaN. A case states its own `rtol` and `atol`. A value computed only from `+ - * /` and `sqrt` is correctly rounded on every host, so the original's float64 result is compared at `rtol = 1e-12` or tighter. Values downstream of `exp`, `ln` or `tanh` differ in the last digits between libm implementations ([BUILTIN-MATH]) and use `rtol = 1e-9`. A looser tolerance names its reason beside the case. A port never weakens a tolerance to pass, and never copies the port's own output into `expected.py`.
 
+## Upstream test parity — [PORT-UPSTREAM-TEST-PARITY]
+
+A passing golden or high line coverage does not establish upstream behavioral parity. For each supported public API, record the pinned upstream test source/version and map its input families to assertions in the existing end-to-end suite. Include invalid inputs, interacting options, asymmetric values, empty/singleton cases, Unicode and numerical boundaries where relevant. Preserve old assertions when expanding a corpus. Counts describe the measured corpus, never an unmeasured whole upstream suite; missing families and unsupported APIs remain explicit unfinished work. Reference expectations come from the real pinned upstream implementation under [PORT-TEST-ORACLE].
+
+## Typed HTTP request bodies — [FASTAPI-HTTP-VALIDATION]
+
+Body binding must decode at the HTTP boundary into typeDiagram-generated records before invoking domain handlers. Tests use generated fixture models `BundleFileWriteRequest`, `ApiKeyCreateRequest`, `EndUserExecutionContext` and `EmbeddedResource` as the initial oracle set, with contract and schema hashes. Required behavior includes field-order error accumulation, original typed error inputs, nullable defaults, required fields, UUID conversion, wire/name aliases and alias precedence, strict extra-field rejection, response filtering, media types and exact JSON error locations. The compatibility suite also covers nested models and arrays.
+
+[FASTAPI-HTTP-VALIDATION-NESTED] Required nested objects validate their shape at the member path. Child decoders receive that complete path and append their fields without losing error order or the original input. The `ProviderErrorResponse` fixture returns the typed 502 envelope with only `detail.code` and `detail.message` on success. Invalid bodies return the pinned 422 at the exact nested locations.
+
+[FASTAPI-HTTP-VALIDATION-ARRAYS] Array item decoders receive the member path plus the numeric index. Validation accumulates issues in item and field order before rendering the enclosing field issues. The `ModelListResponse` fixture checks exact typed output, ignored extras, and indexed 422 failures through arrays of 128 items.
+
+The independently recorded corpus must run over real HTTP under both GC and ARC, including during native coverage collection. Duplicate keys, non-finite values, malformed JSON and escaped NUL remain tested even while they expose differences from the shared strict JSON codec; weakening that codec's default policy or dropping cases is not an acceptable compatibility fix. A failing parity suite cannot produce passing package coverage evidence.
+
+The explicit `jsonDecodePython` decoder implements first-key insertion order with the final value at every object depth, including equivalent escaped key spellings. It must handle large duplicate sets in O(n log n), preserve malformed-input rejection and keep the existing strict `jsonDecode` duplicate-key behavior. It additionally accepts Python's NaN/infinity literals and float overflow before model validation, so ignored or overwritten non-finite inputs may succeed while unencodable validation errors produce FastAPI's plain 500. Strict `jsonDecode` retains finite-only numbers. Native int64 and nesting limits remain explicit.
+
+## Native text integrity — [PORT-STRING-NUL]
+
+[PORT-STRING-NUL-JSON] The explicit Python decoder preserves the full byte extent of escaped NUL in JSON keys and values. The encoder emits an escaped NUL, including in validation messages and reflected inputs. The strict decoder retains its existing NUL policy. Complete native String support still requires length-aware container lookup, file I/O and audited C adapters.
+
+[PORT-STRING-NUL-HTTP] The HTTP server passes every request byte to its handler and sends every response byte with the corresponding Content-Length. A literal NUL in a JSON request may not hide a suffix after a complete value. The FastAPI body oracle checks raw NUL at the root, inside a member name or value, and after a complete document. Binary echo checks cover exact byte counts and values, including an input containing all 256 bytes. The client sends the full request length and keeps the decoded byte count for Content-Length, chunked and close-delimited responses. Retrieved bodies survive response handle cleanup. NUL in a header, chunk size or trailer is rejected as malformed framing.
+
+[PORT-STRING-NUL-KEYS] JSON member identity uses the complete decoded byte length. Member lookup, strict duplicate detection and Python last-wins ordering must share a bounded byte comparison, so `a\0b`, `a\0c` and `a` remain distinct while repeated identical full keys retain the final value at their first insertion position. Arena key lengths are captured before parsing their values can append more text. This internal guarantee does not authorize removing the native string guard.
+
+[PORT-STRING-NUL-OWNERSHIP] An internal immutable STRING allocation contains exactly its byte length plus one trailing C terminator. Its existing allocator descriptor owns that length: the GC retains a STRING flag with its exact allocation size through table growth and sweep, while ARC reads the live allocation header and rejects retired/pool entries. No second pointer registry or sentinel byte encoding is introduced. STRING allocation requires 1..UINT32_MAX tracked bytes and must fail rather than return untracked storage. Read-only length inspection must work while that same thread holds the allocator lock, including finalizers; stamping a GC layout must preserve existing finalizer ownership. Byte length, emptiness and byte/code-point cursors use this full owned length, with C's terminator contract reserved for borrowed C text. This is an internal migration prerequisite: other producers, comparisons, transformations, containers, serialization and external adapters still require audit before public NUL guards can be removed.
+
+[PORT-STRING-NUL-OPERATIONS] Native String search, slicing, transformations, splitting and joining use the full managed byte extent, including embedded NUL. Derived text retains that extent and its trailing C terminator. Numeric parsers reject embedded NUL rather than accepting a prefix. This requirement does not change the public JSON, file or code-point construction guards.
+
+[PORT-STRING-NUL-CODEGEN] Native concatenation, scalar and structural comparison, list membership, literal matching and test assertions use the complete byte length of managed text. Ordering compares unsigned bytes, with a shorter equal prefix sorting first. Concatenation allocates managed text with the complete combined extent.
+
+Text reads must return a typed error for file bytes the current native string representation cannot preserve. In particular, `readFile` must never return successful text containing only the prefix before NUL; plain UTF-8 and empty-file controls must remain successful. The CLI Python-flavor E2E regression exercises leading, middle, trailing and post-buffer-growth NUL under both GC and ARC and requires clean ARC ownership. Full NUL parity requires a length-aware owned representation and audited foreign-C adapters, with bounded storage and explicit errors at C-string-only boundaries; no sentinel substitution or unbounded pointer registry qualifies.
+
+## HTTP parameter binding — [FASTAPI-HTTP-PARAMETERS]
+
+[FASTAPI-HTTP-PARAMETERS-METADATA] Query pairs preserve order, repetitions and empty values. The raw query retains its encoded spelling, and decoded separators inside a value do not create new pairs. Header lookup is case-insensitive and preserves repeated field values. Real loopback tests verify both app and router composition with these values, and pinned FastAPI verifies the shared wire cases.
+
+## HTTP exception handlers — [FASTAPI-HTTP-ERRORS]
+
+A registered status handler receives the original request and typed HTTP exception. The most recent registration wins, including after router mounting. Route and dependency failures enter the status handler before outer middleware renders its headers. An ordinary response with the same status is served directly. Unregistered exceptions use their default detail and headers. The HTTP fixture compares these cases with pinned FastAPI, including CORS, trace headers, method rejection and dependency cleanup.
+
+## Browser access policy — [FASTAPI-HTTP-MIDDLEWARE]
+
+The Python-flavor FastAPI port must apply configured CORS to routing and error replies. The wildcard test policy allows all origins without credentials and permits GET, HEAD, POST, PUT, PATCH and DELETE. It accepts Authorization, Content-Type, If-None-Match, X-API-Key, X-Tenant-Id and X-Trace-Id request headers and exposes ETag and X-Trace-Id response headers. Policies are generated typed records from `fastapi/models.td`.
+
+Real HTTP acceptance must compare exact status, body and security-relevant headers against pinned FastAPI/Starlette for absent, empty, null, exact and denied origins, method/header preflights, mixed-case headers, credential reflection, Vary merging and error responses. Preflight failures accumulate their ordered reasons and never dispatch the endpoint. The same corpus must execute during native GC/ARC source coverage collection. Regex origins and allowed private-network access remain unimplemented; private-network preflights are rejected explicitly. Existing coverage ratchets remain enforced even while a new implementation falls below them.
+
+## Application lifespan — [FASTAPI-HTTP-LIFESPAN]
+
+Startup returns typed state or an error before the listener binds. The application and its shutdown hook receive the startup state. When startup succeeds, the scope stops the listener before running shutdown, including after a work error. It also runs shutdown after a failed bind. The result preserves work and cleanup errors in execution order. Real loopback tests verify state on the wire, socket closure before shutdown, startup refusal, occupied ports and cleanup failures. Request cancellation and disconnect cleanup remain open.
+
+## Binary uploads — [FASTAPI-HTTP-FILES]
+
+The raw body binder uses the first Content-Type header and compares its type token with the route's allowed tokens. It ignores parameters and keeps the configured token comparison exact. It rejects unsupported media with 415, empty bodies with 400 and payloads above the route's byte limit with 413, in that order. Successful handlers receive the complete original payload, including NUL and non-UTF-8 bytes. The route limit is inclusive and the native transport enforces its own total request limit first. The HTTP suite crosses nine Content-Type cases with eight payloads, including real gzip, all 256 byte values, and payloads below, at and above the route limit.
+
+## HTTP benchmark subset — [FASTAPI-BENCHMARK-SUBSET]
+
+`make -C src/osprey/packages fastapi-benchmark` measures health and path/repeated-query routing, successful identity-provider model binding and indexed validation failures against pinned CPython FastAPI. Every real HTTP reply must satisfy exact status, content type, byte length and body assertions before contributing a timing. GC, ARC and CPython servers run sequentially with matched requests, explicit response encoding and access logging; test-only trace middleware is disabled and that mode has acceptance assertions. Record compiler/reference versions, binary hashes, workers, warmups and trials. Report median trial throughput, median of trial median latencies, nearest-rank p95 per trial and sampled RSS with its sampling limitation. The identity-provider workloads reuse all 31 successful and 86 invalid requests in the pinned body corpus. Dependency injection, database, streaming and lifespan performance remain unmeasured. Both HTTP drivers refuse disabled Python assertions and bound their owned processes with the shared package process guard.
+
 ## The suite — [PORT-SUITE]
 
-`crates/osprey-cli/tests/python_packages.rs` discovers every library with both `packages/<name>/osprey.toml` and `packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `packages/manager/` and run through `make -C packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
+`src/toolchain/crates/osprey-cli/tests/python_packages.rs` discovers every library with both `src/osprey/packages/<name>/osprey.toml` and `src/osprey/packages/<name>/tests/osprey.toml` during `cargo test`. The package manager's projects live under `src/osprey/packages/manager/` and run through `make -C src/osprey/packages registry-test`. Under each of the default, GC and ARC memory backends, each library suite must:
 
 - exit successfully;
 - print exactly `expected_output.txt`: one `ok <case>` line per assertion and a final `N passed, 0 failed`;
 - under ARC, exit with zero live objects.
 
-A suite runs its assertions under `testing.Check.strictly`, so an integer overflow or zero division stops it and the transcript differs from the golden. The same test requires every package to declare an `@osprey/<name>` `[package]` and a README, every `python_sources` path to lie inside a `source_roots` entry, every `.py` file in the package tree to begin with `# osprey: flavor=python`, and `tests/expected.py` to carry the shared writer's provenance line naming an existing `scripts/oracles/<name>.py`.
+A suite runs its assertions under `testing.Check.strictly`, so an integer overflow or zero division stops it and the transcript differs from the golden. The same test requires every package to declare an `@osprey/<name>` `[package]` and a README, every `python_sources` path to lie inside a `source_roots` entry, every `.py` file in the package tree to begin with `# osprey: flavor=python`, and `tests/expected.py` to carry the shared writer's provenance line naming an existing `src/osprey/packages/<name>/oracle/<name>.cpython`.
 
-Every name a module's `__all__` exports must be spelled somewhere in the suite's own sources (`tests/*.py` other than `expected.py`). An export the suite never exercises fails `cargo test`, so a port cannot ship an untested public function, and a private helper cannot hide in the public API: it is tested or it leaves `__all__`.
+Every name a module's `__all__` exports must be spelled somewhere in the suite's own sources (`src/osprey/tests/*.py` other than `expected.py`). An export the suite never exercises fails `cargo test`, so a port cannot ship an untested public function, and a private helper cannot hide in the public API: it is tested or it leaves `__all__`.
 
 ## Individual source coverage — `[PKG-COVERAGE-GATE]`
 
-Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. `make -C packages package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
+Every library has its own entry in `coverage-thresholds.json` under `projects.packages`, with a threshold of at least 90%. An entry marked `"unfinished": true` still has its suite run, its evidence checked and its coverage reported, but has no 90% floor; its threshold defaults to 0. Only `transformers` is marked, by the user's decision on 2026-11-06, because its port is not finished. `make -C src/osprey/packages package-coverage` collects and checks each suite independently. A package's numerator and denominator include only its own `src/` lines reported by the compiler; tests, helpers and other packages cannot increase its result. This is source line coverage, not branch coverage or proof of correctness.
 
-`scripts/package_coverage.py` requires a successful suite execution, a positive assertion count, zero failures and byte-for-byte matching `tests/expected_output.txt`. It rejects missing reports, omitted executable source files, malformed counts and results below the package's threshold. Collection binds the report to hashes of its source, suite, manifests and golden, so changed inputs or altered evidence require a new run. A failing suite remains a failure even when its measured coverage exceeds 90%.
+`scripts/packages/package_coverage.py` requires a successful suite execution, a positive assertion count, zero failures and byte-for-byte matching `tests/expected_output.txt`. It rejects missing reports, omitted executable source files, malformed counts and results below the package's threshold. Collection binds the report to hashes of its source, suite, manifests and golden, so changed inputs or altered evidence require a new run. A failing suite remains a failure even when its measured coverage exceeds 90%.
 
-`projects.packages` contains required minimums, not measured percentages. `python3 scripts/package_coverage.py --record-measurements` records a dated, verified snapshot in the separate `package_measurements` section of the same file, including the measurement basis fingerprint. Unavailable or stale evidence is recorded as `null`; measured results below a threshold retain their actual counts. Recording never changes the minimums or turns a failing gate into a pass. CI always checks the collected reports rather than the recorded snapshot.
+`projects.packages` contains required minimums, not measured percentages. `python3 scripts/packages/package_coverage.py --record-measurements` records a dated, verified snapshot in the separate `package_measurements` section of the same file, including the measurement basis fingerprint. Unavailable or stale evidence is recorded as `null`; measured results below a threshold retain their actual counts. Recording never changes the minimums or turns a failing gate into a pass. CI always checks the collected reports rather than the recorded snapshot.
 
-`make test` runs collection and checks locally. CI collects in its package source coverage job and the required coverage job checks the uploaded evidence. `python3 scripts/test-package-coverage.py` exercises the gate's failure cases without compiling packages.
+`make test` runs collection and checks locally. CI collects in its package source coverage job and the required coverage job checks the uploaded evidence. `python3 scripts/packages/test-package-coverage.py` exercises the gate's failure cases without compiling packages.
 
 ## Bug hunts — [PORT-HUNT]
 
@@ -75,7 +133,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/testing` | numpy `isclose`/`allclose` assertions, the strict `Arith` policy | shipped |
 | `@osprey/numpy` | `ndarray` creation, shape, broadcasting, elementwise, reductions, `matmul`, `linalg`, host and GPU handlers | in progress |
 | `@osprey/torch` | `Tensor`, `nn.functional`, reverse-mode autograd, `nn` modules, `optim` | in progress |
-| `@osprey/micrograd` | Karpathy's micrograd `Value` engine (add, mul, pow, relu, tanh, exp, backward) and `nn` (Neuron, Layer, MLP) against micrograd 0.1.0 and torch (548 oracle assertions) | shipped |
+| `@osprey/micrograd` | Karpathy's micrograd `Value` engine (add, mul, pow, relu, tanh, exp, backward) and `nn` (Neuron, Layer, MLP) against micrograd 0.1.0 and torch (1,670 oracle assertions) | shipped |
 | `@osprey/tiktoken` | byte-level BPE encoding, decoding and training | in progress |
 | `@osprey/tokenizers` | Hugging Face WordPiece, Unigram and WordLevel models, BERT normalizer, pre-tokenizers, decoders and the BERT template post-processor against tokenizers 0.23.3 (1006 oracle assertions) | shipped |
 | `@osprey/chromecast` | a CAST v2 sender: dns-sd discovery, protobuf framing, a heartbeat-answering TLS session, LAUNCH/LOAD and the media-status loop, against the reference stdlib sender script (201 oracle and scripted-device assertions) | shipped |
@@ -85,7 +143,7 @@ Each port publishes as `@osprey/<name>`, epoch 1, release ordinal 1, from its pa
 | `@osprey/faiss` | `IndexFlatL2`/`IndexFlatIP`, ID maps, selectors, `normalize_L2`, k-means with explicit init, product and scalar quantizers, against faiss-cpu 1.15.1 (482 oracle assertions) | shipped |
 | `@osprey/re` | CPython's `re`: pattern parser, backtracking matcher, `match`/`search`/`findall`/`sub`/`split` | in progress |
 | `@osprey/safetensors` | the safetensors header and tensor layout, every dtype, `save` byte-identical | in progress |
-| `@osprey/gguf` | GGUF v3 reader and writer, ggml dequantization | planned; no package source yet |
+| `@osprey/gguf` | GGUF v3 reader, tensor layout and a header read that leaves weights on disk against gguf 0.19.0, plus block decoders from stored bytes to binary32 for the nine tensor types the chosen weights file uses, compared with ggml's own compiled `dequantize_row_*` (758 oracle assertions); the writer stays out of scope until a phase needs it | in progress |
 | `@osprey/jinja2` | the template lexer, parser, expressions, filters and tests | in progress |
 | `@osprey/pydantic-ai` | the pydantic-ai 2.46.0 agent engine: messages and their wire form, `OpenAIChatModel` request/response mapping, `TestModel`, direct requests, the tool-calling `Agent` loop, against pydantic-ai over a mock transport (111 oracle assertions) plus a live DeepSeek agent run judged by a model | shipped |
 | `@osprey/scipy` | `scipy.special` functions | in progress |

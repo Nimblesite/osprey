@@ -1,0 +1,9 @@
+[project]
+name = "qwen-server"
+source_roots = ["src", "../model/src", "../../../../packages/transformers/src"]
+python_sources = ["src/Wire.py", "src/Prompts.py", "src/Requests.py", "src/Inference.py", "src/Lists.py", "src/Numeric.py", "src/Completions.py", "src/TableModel.py", "src/Ollama.py", "src/OpenAi.py", "src/Routes.py", "src/Server.py", "../../../../packages/transformers/src/math.py", "../../../../packages/transformers/src/lists.py", "../../../../packages/transformers/src/logits_process.py", "../../../../packages/transformers/src/stopping_criteria.py", "../../../../packages/transformers/src/generation.py", "../model/src/tool_schema.py", "../model/src/tool_json_scan.py", "../model/src/tool_parser.py"]
+default_namespace = "qwen_server"
+entry = "src/Server.py"
+
+[modules]
+allow_wildcard_imports = false

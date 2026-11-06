@@ -63,7 +63,7 @@ jobs:
             ~/.cargo/registry/cache/
             ~/.cargo/git/db/
             target/
-          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('Cargo.lock') }}
+          key: ${{ runner.os }}-cargo-osprey-${{ hashFiles('src/toolchain/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-osprey-
 
       # gcc + winpthreads back the fiber/effects C runtime; the `clang` package
@@ -100,7 +100,7 @@ jobs:
         run: make _test_gc_stack_root CC=gcc
 
       - name: Build osprey (release)
-        run: cargo build --release -p osprey-cli
+        run: cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 
       - name: Verify version contract
         shell: msys2 {0}
@@ -123,13 +123,13 @@ jobs:
 
       # release.yml compiles the package manager client on this same runner
       # and ships it in the win32 tarball, so a Windows-only compile failure
-      # of packages/manager/cli must be caught here, not at tag time.
+      # of src/osprey/packages/manager/cli must be caught here, not at tag time.
       # --no-warnings skips the warning pass (see scripts/make/extension.mk).
       - name: Compile package manager client
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe build packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
+          ./target/release/osprey.exe build src/osprey/packages/manager/cli --quiet --no-warnings -o target/osprey-pkg.exe
           test -s target/osprey-pkg.exe
 
       # fiber_showcase exercises spawn/await/yield/channels/select — i.e. the
@@ -140,7 +140,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
+          ./target/release/osprey.exe test src/osprey/tests/regressions/fiber/fiber_showcase.test.osp --quiet > out.txt
           cat out.txt
           grep -Fq "=== Fiber Showcase Complete ===" out.txt
           grep -Fq "map-reduce total = 1400" out.txt
@@ -150,7 +150,7 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          ./target/release/osprey.exe test tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
+          ./target/release/osprey.exe test src/osprey/tests/core/feature_composition/feature_omnibus.test.osp --quiet > omni.txt
           cat omni.txt
 
       # Each invocation recursively exercises both Default and ML programs with
@@ -159,10 +159,10 @@ jobs:
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=gc
+          OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test src/osprey/tests --memory=gc
 
       - name: Core language assertion corpus — ARC
         shell: msys2 {0}
         run: |
           set -euo pipefail
-          OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test tests --memory=arc
+          OSPREY_ARC_DEBUG=1 OSPREY_TEST_JOBS=1 ./target/release/osprey.exe test src/osprey/tests --memory=arc

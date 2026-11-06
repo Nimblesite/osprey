@@ -1,0 +1,459 @@
+//! Shared checked mobile C boundary. [IOS-HOST-ABI] [ANDROID-HOST-ABI]
+//!
+//! Scalar functions receive stable C exports, and host-provided extern
+//! functions become imports. Thunks adapt Apple's bool attributes and Unit
+//! returns. Generic and aggregate function signatures stay internal; extern
+//! signatures must be scalar. Every export must discharge its own effects.
+
+use osprey_ast::{Program, Stmt};
+use osprey_types::numeric::Numeric;
+use osprey_types::{names, ProgramTypes, Type};
+use std::collections::BTreeSet;
+use std::fmt::Write;
+#[path = "ios_abi_header.rs"]
+mod c_header;
+#[path = "ios_abi_imports.rs"]
+mod import_adapters;
+pub(crate) use c_header::header_for_target;
+use import_adapters::{adapt_import, export_thunk};
+
+/// Prefix on every exported C symbol.
+const EXPORT_PREFIX: &str = "osprey_";
+/// The C-linkage entry point that replaces codegen's `main`, so the host app
+/// keeps its own. [IOS-TARGET-ENTRY]
+pub(crate) const ENTRY: &str = "osprey_main";
+const INIT_FUNCTION: &str = "__osprey_ios_initialize";
+const INIT_STATE: &str = "__osprey_ios_init_state";
+const INIT_STATUS: &str = "__osprey_ios_init_status";
+const HOST_STRING_COPY: &str = "osp_host_string_copy";
+const HOST_ABI_VERSION: &str = "osprey_host_abi_version";
+const RELEASE_STRING: &str = "osprey_release_string";
+/// Codegen's entry definition, exactly as `lower.rs` renders it.
+const CODEGEN_ENTRY_DEFINE: &str = "define i32 @main() ";
+/// The source-level entry, never exported as a function.
+const SOURCE_MAIN: &str = "main";
+
+/// An Osprey type with a direct C representation at the boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CType {
+    Num(Numeric),
+    Bool,
+    Str,
+    /// An opaque host handle [FFI-PTR]: Osprey stores and passes it back.
+    Ptr,
+    Unit,
+}
+
+impl CType {
+    pub(crate) const INT: Self = Self::Num(Numeric::INT);
+
+    fn from_type(ty: &Type) -> Option<Self> {
+        let Type::Con { name, args } = ty else {
+            return None;
+        };
+        if !args.is_empty() {
+            return None;
+        }
+        if let Some(numeric) = Numeric::of_type(ty) {
+            return Some(Self::Num(numeric));
+        }
+        match name.as_str() {
+            names::BOOL => Some(Self::Bool),
+            names::STRING => Some(Self::Str),
+            names::PTR => Some(Self::Ptr),
+            names::UNIT => Some(Self::Unit),
+            _ => None,
+        }
+    }
+
+    fn c(self) -> &'static str {
+        match self {
+            Self::Num(numeric) => numeric.c(),
+            Self::Bool => "bool",
+            Self::Str => "const char *",
+            Self::Ptr => "void *",
+            Self::Unit => "void",
+        }
+    }
+
+    pub(crate) fn osprey(self) -> &'static str {
+        match self {
+            Self::Num(numeric) => numeric.name(),
+            Self::Bool => names::BOOL,
+            Self::Str => names::STRING,
+            Self::Ptr => names::PTR,
+            Self::Unit => names::UNIT,
+        }
+    }
+
+    /// The LLVM type at the C boundary (`void` for `Unit`).
+    fn llvm(self) -> &'static str {
+        match self {
+            Self::Num(numeric) => numeric.llvm(),
+            Self::Bool => "i1",
+            Self::Str | Self::Ptr => "i8*",
+            Self::Unit => "void",
+        }
+    }
+
+    /// The LLVM type codegen gives the same value inside the archive: a
+    /// `Unit` function returns an `i64` there.
+    fn llvm_internal(self) -> &'static str {
+        match self {
+            Self::Unit => "i64",
+            other => other.llvm(),
+        }
+    }
+
+    /// Apple ARM64 and Android x86-64 extend bool; Android AAPCS64 does not.
+    /// The thunk must match clang for the chosen C ABI.
+    fn zeroext(self, extend_bool: bool) -> &'static str {
+        match self {
+            Self::Num(numeric) if extend_bool => numeric.c_extension(),
+            Self::Bool if extend_bool => "zeroext ",
+            _ => "",
+        }
+    }
+}
+
+/// An Osprey function the host may call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Export {
+    /// The C symbol (`osprey_greet`, `osprey_app_greet` for a project).
+    pub(crate) c_name: String,
+    /// The emitted LLVM function it forwards to.
+    pub(crate) symbol: String,
+    /// The source-level qualified name, for the header comment.
+    pub(crate) source_name: String,
+    pub(crate) params: Vec<(String, CType)>,
+    pub(crate) ret: CType,
+}
+
+/// An `extern fn` the host must define with C linkage.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Import {
+    pub(crate) symbol: String,
+    pub(crate) params: Vec<(String, CType)>,
+    pub(crate) ret: CType,
+}
+
+/// Both directions of the boundary.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct HostAbi {
+    pub(crate) exports: Vec<Export>,
+    pub(crate) imports: Vec<Import>,
+}
+
+/// Which functions a library publishes as C exports. [IOS-HOST-ABI]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ExportScope {
+    /// The host calls only `osprey_main` (`--entry-only`).
+    EntryOnly,
+    /// Every scalar function the entry source declares: those within its
+    /// flattened lines, or every function of a single-file program. Helpers
+    /// in other files are internal, however their signatures look.
+    EntrySource(Option<std::ops::RangeInclusive<u32>>),
+}
+
+impl ExportScope {
+    /// Whether a function declared at `position` crosses the boundary.
+    pub(crate) fn publishes(&self, position: Option<osprey_ast::Position>) -> bool {
+        match self {
+            Self::EntryOnly => false,
+            Self::EntrySource(None) => true,
+            Self::EntrySource(Some(lines)) => position.is_some_and(|at| lines.contains(&at.line)),
+        }
+    }
+}
+
+#[path = "ios_abi_selection.rs"]
+mod selection;
+#[path = "windows_dll.rs"]
+pub(crate) mod windows_dll;
+use selection::host_abi_selected;
+#[cfg(test)]
+use selection::{host_abi, host_abi_scoped};
+
+pub(crate) fn defines(ir: &str, symbol: &str) -> bool {
+    let needle = format!(" @{symbol}(");
+    ir.lines()
+        .any(|line| line.starts_with("define ") && line.contains(&needle))
+}
+
+/// The C signature of `symbol`, if every parameter and the return type map.
+fn c_signature<'a>(
+    types: &ProgramTypes,
+    symbol: &str,
+    param_names: impl Iterator<Item = &'a str>,
+) -> Option<(Vec<(String, CType)>, CType)> {
+    let (param_types, ret) = types.functions.get(symbol)?;
+    let params = param_names
+        .zip(param_types)
+        .map(|(name, ty)| {
+            CType::from_type(ty)
+                .filter(|c| *c != CType::Unit)
+                .map(|c| (name.to_string(), c))
+        })
+        .collect::<Option<Vec<_>>>()?;
+    Some((params, CType::from_type(ret)?))
+}
+
+fn export(symbol: &str, params: Vec<(String, CType)>, ret: CType) -> Export {
+    let source_name = osprey_ast::symbol::demangle(symbol).unwrap_or_else(|| symbol.to_string());
+    Export {
+        c_name: format!("{EXPORT_PREFIX}{}", source_name.replace("::", "_")),
+        symbol: symbol.to_string(),
+        source_name,
+        params,
+        ret,
+    }
+}
+
+fn reject_clashes(abi: &HostAbi, program: &Program, ir: &str) -> Result<(), String> {
+    reject_runtime_imports(abi, ir)?;
+    let mut taken: BTreeSet<_> = ir
+        .lines()
+        .filter_map(defined_symbol)
+        .map(str::to_owned)
+        .collect();
+    taken.extend(program.statements.iter().filter_map(|s| match s {
+        Stmt::Extern { name, .. } => Some(name.clone()),
+        _ => None,
+    }));
+    for symbol in [
+        ENTRY,
+        INIT_FUNCTION,
+        INIT_STATE,
+        INIT_STATUS,
+        HOST_STRING_COPY,
+        HOST_ABI_VERSION,
+        RELEASE_STRING,
+    ] {
+        reserve(&mut taken, symbol)?;
+    }
+    for e in &abi.exports {
+        reserve(&mut taken, &e.c_name)?;
+    }
+    for i in &abi.imports {
+        if !c_identifier(&i.symbol) || i.symbol == SOURCE_MAIN {
+            return Err(format!(
+                "import `{}` is not an available C function name",
+                i.symbol
+            ));
+        }
+        reserve(&mut taken, &import_adapter_name(i))?;
+    }
+    Ok(())
+}
+
+/// A host adapter may only replace its own internal declaration. Collecting
+/// names into a set loses incompatible runtime declarations of the same name;
+/// adapting that name would rewrite runtime calls to the wrong signature too.
+fn reject_runtime_imports(abi: &HostAbi, ir: &str) -> Result<(), String> {
+    for import in &abi.imports {
+        let params = import
+            .params
+            .iter()
+            .map(|(_, ty)| ty.llvm_internal())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let expected = format!(
+            "declare {} @{}({params})",
+            import.ret.llvm_internal(),
+            import.symbol
+        );
+        if ir
+            .lines()
+            .any(|line| defined_symbol(line) == Some(import.symbol.as_str()) && line != expected)
+        {
+            return Err(format!(
+                "host import `{}` collides with an incompatible runtime declaration; rename the import",
+                import.symbol
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn defined_symbol(line: &str) -> Option<&str> {
+    (line.starts_with("define ") || line.starts_with("declare ") || line.starts_with('@'))
+        .then(|| line.split_once('@'))??
+        .1
+        .split(['(', ' ', '='])
+        .next()
+}
+
+fn reserve(taken: &mut BTreeSet<String>, symbol: &str) -> Result<(), String> {
+    if !c_identifier(symbol) || !taken.insert(symbol.to_string()) {
+        return Err(format!(
+            "C ABI boundary symbol `{symbol}` is invalid or collides with another symbol; rename it"
+        ));
+    }
+    Ok(())
+}
+
+/// Wrap codegen's entry with initialization tracking and adapt C ABI calls.
+///
+/// # Errors
+///
+/// The IR must contain exactly the entry definition codegen renders; anything
+/// else means the backend changed underneath this driver, which must not be
+/// papered over with a guess.
+pub(crate) fn with_host_abi(ir: &str, abi: &HostAbi) -> Result<String, String> {
+    with_host_abi_for_target(ir, abi, true)
+}
+
+pub(crate) fn with_host_abi_for_target(
+    ir: &str,
+    abi: &HostAbi,
+    extend_bool: bool,
+) -> Result<String, String> {
+    if ir
+        .lines()
+        .filter(|line| line.starts_with(CODEGEN_ENTRY_DEFINE))
+        .count()
+        != 1
+    {
+        return Err(format!(
+            "codegen did not emit the `{CODEGEN_ENTRY_DEFINE}` entry the mobile target renames"
+        ));
+    }
+    let mut out = rename_symbol(ir, SOURCE_MAIN, INIT_FUNCTION);
+    if abi.imports.iter().any(|import| import.ret == CType::Str)
+        || abi
+            .exports
+            .iter()
+            .any(|export| export.params.iter().any(|(_, ty)| *ty == CType::Str))
+    {
+        writeln!(out, "\ndeclare i8* @{HOST_STRING_COPY}(i8*)")
+            .map_err(|error| error.to_string())?;
+    }
+    for import in &abi.imports {
+        out = adapt_import(&out, import, extend_bool);
+    }
+    for export in &abi.exports {
+        out.push_str(&export_thunk(export, extend_bool));
+    }
+    if !out
+        .lines()
+        .any(|line| defined_symbol(line) == Some("osp_release"))
+    {
+        out.push_str("\ndeclare void @osp_release(i8*)\n");
+    }
+    out.push_str(&ownership_thunks());
+    out.push_str(&initialization_thunk());
+    Ok(out)
+}
+
+fn ownership_thunks() -> String {
+    format!(
+        "\ndefine i32 @{HOST_ABI_VERSION}() {{\n  ret i32 1\n}}\n\
+         define void @{RELEASE_STRING}(i8* %value) {{\n  call void @osp_release(i8* %value)\n  ret void\n}}\n"
+    )
+}
+
+fn initialization_thunk() -> String {
+    format!(
+        "\n@{INIT_STATE} = internal global i8 0\n@{INIT_STATUS} = internal global i32 0\n\
+         define i32 @{ENTRY}() {{\nentry:\n  %state = load i8, i8* @{INIT_STATE}\n\
+           switch i8 %state, label %busy [ i8 0, label %initialize i8 2, label %complete ]\n\
+         initialize:\n  store i8 1, i8* @{INIT_STATE}\n  %status = call i32 @{INIT_FUNCTION}()\n\
+           store i32 %status, i32* @{INIT_STATUS}\n  store i8 2, i8* @{INIT_STATE}\n  ret i32 %status\n\
+         complete:\n  %cached = load i32, i32* @{INIT_STATUS}\n  ret i32 %cached\n\
+         busy:\n  ret i32 1\n}}\n"
+    )
+}
+
+fn import_adapter_name(import: &Import) -> String {
+    format!("__osprey_host_{}", import.symbol)
+}
+
+fn rename_symbol(ir: &str, from: &str, to: &str) -> String {
+    let mut out = String::new();
+    let mut quoted = false;
+    let mut chars = ir.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '"' {
+            quoted = !quoted;
+        }
+        out.push(c);
+        if c == '@' && !quoted {
+            let symbol: String = std::iter::from_fn(|| {
+                chars.next_if(|c| c.is_ascii_alphanumeric() || "_.$-".contains(*c))
+            })
+            .collect();
+            out.push_str(if symbol == from { to } else { &symbol });
+        }
+    }
+    out
+}
+
+fn llvm_params(params: &[(String, CType)], boundary: bool) -> String {
+    params
+        .iter()
+        .enumerate()
+        .map(|(i, (_, c))| format!("{} {}%p{i}", c.llvm(), c.zeroext(boundary)))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+fn c_identifier(name: &str) -> bool {
+    let reserved = "alignas alignof and and_eq asm atomic_auto atomic_cancel atomic_commit atomic_noexcept auto bitand bitor bool break case catch char char8_t char16_t char32_t class compl concept const consteval constexpr constinit const_cast continue co_await co_return co_yield decltype default delete do double dynamic_cast else enum explicit export extern false float for friend goto if inline int int32_t int64_t long mutable namespace new noexcept not not_eq nullptr operator or or_eq private protected public register reinterpret_cast requires restrict return short signed sizeof size_t static static_assert static_cast struct switch template this thread_local throw true try typedef typeid typename union unsigned using virtual void volatile wchar_t while xor xor_eq _Alignas _Alignof _Atomic _Bool _Complex _Generic _Imaginary _Noreturn _Static_assert _Thread_local";
+    !name.is_empty()
+        && !name.starts_with(|c: char| c.is_ascii_digit())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && !reserved.split_whitespace().any(|word| word == name)
+        && !c_header::reserved_identifier(name)
+}
+
+/// Check the entire library boundary before discovering a platform toolchain.
+/// Implements [IOS-HOST-ABI] and [ANDROID-HOST-ABI].
+pub(crate) fn source(
+    program: &Program,
+    path: &str,
+    target: &str,
+    extend_bool: bool,
+    scope: &ExportScope,
+) -> Result<(String, String), String> {
+    let (ir, abi) = source_with_abi(program, path, target, extend_bool, scope)?;
+    Ok((ir, header_for_target(&abi, path, target)))
+}
+
+/// Compile and adapt the common scalar host boundary. [PYTHON-HOST-ABI]
+pub(crate) fn source_with_abi(
+    program: &Program,
+    path: &str,
+    target: &str,
+    extend_bool: bool,
+    scope: &ExportScope,
+) -> Result<(String, HostAbi), String> {
+    crate::target_capabilities::validate(program, target)?;
+    let abi_error = |error: String| format!("{path}: target `{target}` C ABI: {error}");
+    let checked = osprey_codegen::retained_check(program)
+        .map_err(|errors| abi_error(selection::joined(&errors)))?;
+    let types = checked.types().clone();
+    let exports = checked.library_exports().clone();
+    osprey_codegen::set_reused_check(Some(checked));
+    // Entry-only programs have no later host calls needing globals. [IOS-TARGET-ENTRY]
+    let ir = if matches!(scope, ExportScope::EntryOnly) {
+        osprey_codegen::compile_host_program(program)
+    } else {
+        osprey_codegen::compile_library(program)
+    }
+    .map_err(|e| format!("{path}: {e}"))?;
+    let abi = host_abi_selected(program, &types, &exports, &ir, scope).map_err(abi_error)?;
+    let adapted = if extend_bool {
+        with_host_abi(&ir, &abi)?
+    } else {
+        with_host_abi_for_target(&ir, &abi, false)?
+    };
+    Ok((adapted, abi))
+}
+
+#[cfg(test)]
+#[path = "ios_abi_tests.rs"]
+mod tests;
+
+#[cfg(test)]
+#[path = "ios_abi_export_tests.rs"]
+mod export_tests;

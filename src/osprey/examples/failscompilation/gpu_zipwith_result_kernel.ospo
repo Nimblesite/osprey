@@ -1,0 +1,7 @@
+// [GPU-KERNEL-EXTRACT]: a kernel that would return an unhandled Result is
+// rejected before the program links; gpuZipWith rejects the stored element.
+// Handle failure inside the kernel with `?:` or `match`.
+fn main() = match toGpu([1, 2]) {
+    Success { value } => gpuZipWith(value, value, fn(x, y) => checkedMul(x, y))
+    Error { message } => Error { message: message }
+}

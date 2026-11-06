@@ -1,0 +1,17 @@
+[project]
+name = "tokenizers"
+source_roots = ["src"]
+python_sources = ["src/Unicode.py", "src/NfcData.py", "src/Category.py", "src/Nfc.py", "src/HfJson.py", "src/Normalizers.py", "src/PreTokenizers.py", "src/Models.py", "src/Decoders.py", "src/Processors.py", "src/Tokenizer.py", "src/GgufVocab.py"]
+default_namespace = "tokenizers"
+
+[package]
+name = "@osprey/tokenizers"
+license = "MIT AND Unicode-DFS-2016 AND Unicode-3.0"
+summary = "WordPiece, Unigram and WordLevel tokenizers with BERT normalizers, pre-tokenizers and post-processors"
+keywords = ["bert", "python-flavor", "tokenizers", "unigram", "wordpiece"]
+
+[dependencies]
+"@osprey/tiktoken" = { epoch = 1, min_release = 1 }
+
+[test-dependencies]
+"@osprey/testing" = { epoch = 1, min_release = 1 }

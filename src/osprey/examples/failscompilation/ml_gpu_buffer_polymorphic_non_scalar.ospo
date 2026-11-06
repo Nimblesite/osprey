@@ -1,0 +1,8 @@
+// osprey: flavor=ml
+// [GPU-BUFFER-ELEM]: the scalar obligation survives generalization of a
+// wrapper and rejects its List<string> instantiation.
+bufferLength xs = match toGpu xs
+    Success value => Success(value = gpuLength value)
+    Error message => Error(message = message)
+
+main () = print (bufferLength ["a", "b"])

@@ -1,0 +1,270 @@
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU operation", "success", toString(message))
+        false }
+}
+/// [FAILURE-EXPLICIT] Allocation failure stops the case before its consumer.
+fn withBuffer(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => check("GPU operation", "success", toString(message))
+}
+// Kernel-frontier conformance. The GPU contract requires element
+// types to flow from combinator slots before bodies default, and every pure
+// function form to remain usable as a kernel ([GPU-KERNEL-ELEM-TYPING],
+// [GPU-KERNEL-FORM], [GPU-KERNEL-EXTRACT]).
+
+fn addFloats(a, x) = a + x
+/// Numeric operators must specialize this definition from gpuFold's float slots.
+fn plus(a, x) = a + x
+fn atFloat(xs, i) = gpuGet(xs, i) ?: 0.0
+/// This deliberately has no signature. A concrete device specialization must
+/// be emitted from its use with GpuBuffer<float> values, including the self-call.
+fn rowDot(matrix, vector, cols, row, col) = match col == cols {
+    true => 0.0
+    false => atFloat(matrix, (((row * cols) ) + col) ) * atFloat(vector, col)
+    + rowDot(matrix, vector, cols, row, (col + 1) )
+}
+fn multiplicationOrderCase() = {
+    let t = 2.0
+    match toGpu([1.0, 2.0]) { Success { xs } => {
+            match toGpu([3.0, 4.0]) { Success { ys } => {
+                    match gpuZipWith(xs, ys, fn(x, y) => t * x * y) { Success { captureFirst } => {
+                            match gpuZipWith(xs, ys, fn(x, y) => x * y * t) { Success { captureLast } => {
+                                    checkAll("buffer slots type every multiplication order", [
+                                            gpuSatisfies(gpuFold(captureFirst, 0.0, addFloats), fn(uploaded203) => (uploaded203) == 22.0), gpuSatisfies(gpuFold(captureLast, 0.0, addFloats), fn(uploaded202) => (uploaded202) == 22.0), (gpuGet(captureFirst, 0) ?: 0.0) == 6.0, (gpuGet(captureLast, 1) ?: 0.0) == 16.0
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+fn genericCombineCase() = {
+    match toGpu([1.0, 2.0, 3.0]) { Success { xs } => {
+            checkAll("named generic float combines specialize from buffer slots", [
+                    gpuSatisfies(gpuFold(xs, 0.0, plus), fn(uploaded201) => (uploaded201) == 6.0), gpuSatisfies(gpuScan(xs, 0.0, plus), fn(uploaded200) => (gpuGet(uploaded200, 2) ?: 0.0) == 6.0)
+            ])
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+fn recursiveHelperCase() = withBuffer(gpuIota(2), recursiveHelperWith)
+fn recursiveHelperWith(indices) = {
+    match toGpu([1.0, 2.0, 3.0, 4.0]) { Success { matrix } => {
+            match toGpu([10.0, 20.0]) { Success { vector } => {
+                    match gpuMap(indices, fn(row) => rowDot(matrix, vector, 2, row, 0)) { Success { rows } => {
+                            checkAll("recursive GPU helpers monomorphize from their call site", [
+                                    gpuLength(rows) == 2, (gpuGet(rows, 0) ?: 0.0) == 50.0, (gpuGet(rows, 1) ?: 0.0) == 110.0, gpuSatisfies(gpuFold(rows, 0.0, addFloats), fn(uploaded1) => (uploaded1) == 160.0)
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+fn blockBodyCase() = {
+    let t = 2.0
+    match toGpu([1.0, 2.0, 3.0]) { Success { xs } => {
+            match gpuMap(xs, fn(x) => {
+                    let y = t * x
+                    y + t
+            }) { Success { mapped } => {
+                    checkAll("block-bodied kernels preserve local bindings", [
+                            gpuLength(mapped) == 3, (gpuGet(mapped, 0) ?: 0.0) == 4.0, (gpuGet(mapped, 1) ?: 0.0) == 6.0, (gpuGet(mapped, 2) ?: 0.0) == 8.0, gpuSatisfies(gpuFold(mapped, 0.0, addFloats), fn(uploaded198) => (uploaded198) == 18.0)
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+test("float kernel slots type both multiplication orders", fn() => exactArithmetic(multiplicationOrderCase))
+test("named generic float combines specialize from buffer slots", fn() => exactArithmetic(genericCombineCase))
+test("unannotated recursive helpers are valid GPU kernels", fn() => exactArithmetic(recursiveHelperCase))
+test("block-bodied GPU kernels keep local bindings", fn() => exactArithmetic(blockBodyCase))
+fn builtinMapCase() = {
+    match toGpu([9007199254740993, -7]) { Success { uploaded12 } => {
+            match gpuMap(uploaded12, toFloat) { Success { floats } => {
+                    match toGpu([-1.5, -0.0, 2.25]) { Success { uploaded13 } => {
+                            match gpuMap(uploaded13, abs) { Success { positive } => {
+                                    let abs = fn(x) => x * 2.0
+                                    match toGpu([3.0]) { Success { uploaded14 } => {
+                                            match gpuMap(uploaded14, abs) { Success { shadowed } => {
+                                                    checkAll("builtin maps preserve scalar types and lexical shadowing", [
+                                                            (gpuGet(floats, 0) ?: 0.0) == 9007199254740992.0, (gpuGet(floats, 1) ?: 0.0) == -7.0, (gpuGet(positive, 0) ?: 0.0) == 1.5, toString(gpuGet(positive, 1) ?: 1.0) == "0.0", (gpuGet(positive, 2) ?: 0.0) == 2.25, (gpuGet(shadowed, 0) ?: 0.0) == 6.0
+                                                    ])
+                                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+fn builtinZipCase() = withBuffer(toGpu([9223372036854775807, -9223372036854775808, 4000000000]), fn(left) => withBuffer(toGpu([1, -1, 4000000000]), fn(right) => builtinZipCaseUploaded(left, right)))
+fn builtinZipCaseUploaded(left, right) = {
+    match gpuZipWith(left, right, wrapAdd) { Success { added } => {
+            match gpuZipWith(left, right, wrapSub) { Success { subtracted } => {
+                    match gpuZipWith(left, right, wrapMul) { Success { multiplied } => {
+                            match gpuZipWith(left, right, satMul) { Success { saturated } => {
+                                    checkAll("builtin zip preserves wrapping and saturation boundaries", [
+                                            (gpuGet(added, 0) ?: 0) == -9223372036854775808, (gpuGet(added, 1) ?: 0) == 9223372036854775807, (gpuGet(subtracted, 0) ?: 0) == 9223372036854775806, (gpuGet(subtracted, 1) ?: 0) == -9223372036854775807, (gpuGet(multiplied, 1) ?: 0) == -9223372036854775808,
+                                            (gpuGet(multiplied, 2) ?: 0) == -2446744073709551616, (gpuGet(saturated, 1) ?: 0) == 9223372036854775807, (gpuGet(saturated, 2) ?: 0) == 9223372036854775807
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+fn builtinFoldCase() = {
+    match toGpu([1, 1]) { Success { source } => {
+            match gpuScan(source, -9223372036854775808, satSub) { Success { lower } => {
+                    match gpuScan(source, 9223372036854775807, satAdd) { Success { upper } => {
+                            checkAll("builtin folds and scans preserve accumulator policy", [
+                                    gpuSatisfies(gpuFold(source, 9223372036854775807, wrapAdd), fn(uploaded188) => uploaded188 == -9223372036854775807), gpuSatisfies(gpuFold(source, 9223372036854775807, satAdd), fn(uploaded187) => uploaded187 == 9223372036854775807), (gpuGet(lower, 1) ?: 0) == -9223372036854775808,
+                                    (gpuGet(upper, 1) ?: 0) == 9223372036854775807
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+fn builtinPolicyCase() = {
+    mut faults = 0
+    handle Arith {
+        overflow op left right wrapped => {
+            faults = wrapAdd(faults, 1)
+            checkAll("extracted absolute overflow preserves operation arguments", [
+                    op == "abs", left == -9223372036854775808, right == 0, wrapped == -9223372036854775808
+            ])
+            77
+        }
+    }
+    match toGpu([-9223372036854775808, -4, 5]) { Success { uploaded10 } => {
+            match gpuMap(uploaded10, abs) { Success { values } => {
+                    checkAll("builtin kernel dispatches to the active arithmetic policy", [
+                            faults == 1, (gpuGet(values, 0) ?: 0) == 77, (gpuGet(values, 1) ?: 0) == 4, (gpuGet(values, 2) ?: 0) == 5
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+test("builtin maps specialize and respect shadowing", builtinMapCase)
+test("builtin zip pins wrapping and saturation", builtinZipCase)
+test("builtin folds and scans preserve accumulator policy", builtinFoldCase)
+test("builtin kernels preserve the active overflow policy", builtinPolicyCase)
+fn builtinDivisionCase() = {
+    mut faults = ""
+    handle Arith {
+        overflow op left right wrapped => {
+            checkAll("division overflow arguments", [
+                    op == "intDiv", left == -9223372036854775808, right == -1, wrapped == left
+            ])
+            faults = faults + "overflow;"
+            41
+        }
+        remainderByZero left => {
+            expect(left, 7)
+            faults = faults + "zero;"
+            42
+        }
+    }
+    match toGpu([-9223372036854775808, 7, 9]) { Success { uploaded8 } => {
+            match toGpu([-1, 0, 2]) { Success { uploaded9 } => {
+                    match gpuZipWith(uploaded8, uploaded9, intDiv) { Success { values } => {
+                            checkAll("builtin division dispatches once in element order", [
+                                    faults == "overflow;zero;", (gpuGet(values, 0) ?: 0) == 41, (gpuGet(values, 1) ?: 0) == 42, (gpuGet(values, 2) ?: 0) == 4
+                            ])
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+test("builtin integer division preserves ordered recovery", builtinDivisionCase)
+fn lexicalKernelCase() = {
+    let enabled = true
+    let keep = fn(_x) => enabled
+    let choose = fn(a, x) => match enabled { true => a false => x }
+    let identity = fn(x) => match enabled { true => x false => x }
+    let enabled = false
+    match toGpu([1.0, 2.0]) { Success { source } => {
+            match toGpu([30.0, 40.0]) { Success { uploaded7 } => {
+                    match gpuZipWith(source, uploaded7, choose) { Success { zipped } => {
+                            match gpuScan(source, 42.0, choose) { Success { scanned } => {
+                                    checkAll("closed kernels keep their definition environment", [
+                                            enabled == false, gpuSatisfies(gpuFilter(source, keep), fn(uploaded182) => gpuLength(uploaded182) == 2), gpuSatisfies(gpuMap(source, identity), fn(uploaded181) => (gpuGet(uploaded181, 1) ?: 0.0) == 2.0), (gpuGet(zipped, 1) ?: 0.0) == 2.0,
+                                            gpuSatisfies(gpuFold(source, 42.0, choose), fn(uploaded180) => uploaded180 == 42.0), (gpuGet(scanned, 0) ?: 0.0) == 42.0, (gpuGet(scanned, 1) ?: 0.0) == 42.0
+                                    ])
+                                } Error { message } => check("GPU operation", "success", toString(message)) }
+                        } Error { message } => check("GPU operation", "success", toString(message)) }
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+effect KernelSwitch { disable: fn() -> int }
+fn liveKernelCellCase() = {
+    mut enabled = true
+    let keep = fn(_x) => enabled
+    handle KernelSwitch { disable => {
+            enabled = false
+            0
+        } }
+    let changed = perform KernelSwitch.disable()
+    checkAll("host-bound kernels retain live cell identity", [
+            changed == 0, gpuSatisfies(toGpu([1, 2]), fn(uploaded5) => gpuSatisfies(gpuFilter(uploaded5, keep), fn(uploaded179) => gpuLength(uploaded179) == 0))
+    ])
+}
+test("closed GPU kernels retain lexical uniforms", lexicalKernelCase)
+test("host GPU kernels retain live cells", liveKernelCellCase)
+fn managedKernelCase() = {
+    let label = "kept"
+    let keep = fn(_x) => length(label) > 0
+    let label = ""
+    checkAll("declined extraction retains the captured managed value", [
+            label == "", gpuSatisfies(toGpu([1, 2]), fn(uploaded4) => gpuSatisfies(gpuFilter(uploaded4, keep), fn(uploaded178) => gpuLength(uploaded178) == 2))
+    ])
+}
+fn capturedArithmeticCase() = {
+    let limit = 9223372036854775807
+    let add = fn(x) => x + limit
+    let limit = 0
+    mut faults = 0
+    handle Arith {
+        overflow op left right wrapped => {
+            faults = wrapAdd(faults, 1)
+            checkAll("captured kernel overflow arguments", [
+                    op == "+", left == 1, right == 9223372036854775807, wrapped == -9223372036854775808
+            ])
+            42
+        }
+    }
+    match toGpu([1, 0]) { Success { uploaded3 } => {
+            match gpuMap(uploaded3, add) { Success { values } => {
+                    checkAll("captured kernel dispatches through the active policy", [
+                            limit == 0, faults == 1, (gpuGet(values, 0) ?: 0) == 42, (gpuGet(values, 1) ?: 0) == 9223372036854775807
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+/// The float functions are total over IEEE doubles ([BUILTIN-MATH]): a domain
+/// error is NaN, an overflow is infinity, nothing performs Arith — and each
+/// is a kernel by name.
+fn mathTotalityCase() = {
+    let nan = sqrt(-1.0)
+    match toGpu([0.0, 1.0]) { Success { value } => {match gpuMap(value, exp) { Success { probabilities } => {
+                    checkAll("float math builtins are total over IEEE doubles", [
+                            sqrt(4.0) == 2.0, nan != nan, ln(0.0) < -1000.0, ln(0.0) == ln(0.0) * 2.0, exp(1000.0) == exp(2000.0), exp(1000.0) > 1.0, tanh(1000000.0) == 1.0, tanh(-1000000.0) == -1.0, (gpuGet(probabilities, 0) ?: 0.0) == 1.0,
+                            gpuSatisfies(toGpu([1.0, 4.0, 9.0]), fn(uploaded1) => gpuSatisfies(gpuMap(uploaded1, sqrt), fn(uploaded175) => gpuSatisfies(gpuFold(uploaded175, 0.0, addFloats), fn(uploaded206) => (uploaded206) == 6.0)))
+                    ])
+                } Error { message } => check("GPU operation", "success", toString(message)) }
+        } Error { message } => check("GPU operation", "success", toString(message)) }
+}
+test("declined GPU extraction preserves managed captures", managedKernelCase)
+test("captured GPU kernels preserve arithmetic policy", capturedArithmeticCase)
+test("float math builtins are total and name GPU kernels", mathTotalityCase)

@@ -1,0 +1,12 @@
+// [GPU-KERNEL-FORM]: a recursive helper is monomorphised from its call site,
+// but one whose RETURN type inference cannot resolve has no signature to emit
+// and fails closed with an instruction to annotate it.
+fn spin(i) = spin(i - 1)
+
+fn main() = {
+    handle Arith { overflow _ _ _ wrapped => wrapped }
+    match gpuIota(3) {
+        Success { value } => gpuMap(value, fn(i) => spin(i))
+        Error { message } => Error { message: message }
+    }
+}

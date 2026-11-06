@@ -1,6 +1,6 @@
 # Organization Package Governance
 
-**Status:** normative model and DataProvider structural migration; hosted permission endpoints and mutation policies remain delivery work. This refines [names and ownership](0029-PackageManagement.md#names-and-ownership-package-names), [deployment security](0044-PackageRegistryDeploymentAndOwnership.md) and [rollout](../../plans/0020-package-manager.md). The canonical typeDiagram is [package-registry.td](../../../schemas/package-registry.td); the database source is [DataProvider schema.yaml](../../../packages/manager/supabase/migrations/schema.yaml). Neither a diagram nor an applied structural migration proves working authenticated publication.
+**Status:** normative model and DataProvider structural migration; hosted permission endpoints and mutation policies remain delivery work. This refines [names and ownership](0029-PackageManagement.md#names-and-ownership-package-names), [deployment security](0044-PackageRegistryDeploymentAndOwnership.md) and [rollout](../../plans/0020-package-manager.md). The canonical typeDiagram is [package-registry.td](../../../src/toolchain/schemas/package-registry.td); the database source is [DataProvider schema.yaml](../../../src/osprey/packages/manager/supabase/migrations/schema.yaml). Neither a diagram nor an applied structural migration proves working authenticated publication.
 
 ## Prevent name sitting `[PACKAGE-NAMES-NO-SITTING]`
 

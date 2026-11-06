@@ -6,9 +6,9 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ## Prerequisites in place
 
-- Folder registry, verified fetch/install, deterministic CDCL/MaxSAT resolver, folder lock, local overlays, `publish --folder` and the uv Python plane run today (`packages/manager/{api,cli,core,host,manifest,resolver}/`), exercised by `make -C packages registry-test` and CI (`make test`, `.github/workflows/ci.yml` `test-registry-gc`/`test-registry-arc`, both required by the coverage gate).
-- `schemas/package-registry.td` is the canonical domain model; `packages/manager/supabase/migrations/schema.yaml` defines the eleven ownership tables (bootstrap FORCE-RLS, no allow policies/runtime grants).
-- Blocked host capabilities are recorded in `packages/manager/core/src/capabilities.osp` (argv, exit status, environment, binary-safe reads, directory/stat/rename/fsync, UTC clock); `make -C packages registry-blockers` probes them.
+- Folder registry, verified fetch/install, deterministic CDCL/MaxSAT resolver, folder lock, local overlays, `publish --folder` and the uv Python plane run today (`src/osprey/packages/manager/{api,cli,core,host,manifest,resolver}/`), exercised by `make -C src/osprey/packages registry-test` and CI (`make test`, `.github/workflows/ci.yml` `test-registry-gc`/`test-registry-arc`, both required by the coverage gate).
+- `src/toolchain/schemas/package-registry.td` is the canonical domain model; `src/osprey/packages/manager/supabase/migrations/schema.yaml` defines the eleven ownership tables (bootstrap FORCE-RLS, no allow policies/runtime grants).
+- Blocked host capabilities are recorded in `src/osprey/packages/manager/core/src/capabilities.osp` (argv, exit status, environment, binary-safe reads, directory/stat/rename/fsync, UTC clock); `make -C src/osprey/packages registry-blockers` probes them.
 - Blocker: DataProviderMigrate 0.9.11-beta applies the `registry` schema but its verifier hardcodes `public` (`.config/dotnet-tools.json`; `PostgresPolicyCatalogNormalizer.Inspect`); hosted migration convergence stays blocked until fixed.
 - Blocker: the `schema-check: long whitespace and identifiers` stress case SIGBUSes; the exact case is retained as a failing regression.
 - `login`, `audit`, `yank` are answered not-implemented by `cli/lib/dispatch.osp`; authenticated `publish` is the trust plane's.
@@ -27,7 +27,7 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ### Phase 2 — Release lock, provider catalog, CAS and atomic activation
 
-- [ ] Implement RFC 8785 `osprey.lock` read/write as the Milestone B `ReleaseLockfile`/`DevelopmentLockfile`: bind manifest, selected-root source, complete typed TUF/status/log verification bundle, catalog snapshot/`asOf`, policy, complete compiler/runtime/toolchain/SDK/sysroot, target/CPU/flags, sandbox, normalized environment/time/randomness, exact system artifacts/native closure/provenance, and the complete transitive graph. `[PACKAGE-TYPES]`
+- [ ] Implement RFC 8785 `osprey.lock` read/write as the Milestone B `ReleaseLockfile`/`DevelopmentLockfile`: bind manifest, selected-root source, complete typed TUF/status/log verification bundle, catalog snapshot/`asOf`, policy, complete src/toolchain/compiler/runtime/toolchain/SDK/sysroot, target/CPU/flags, sandbox, normalized environment/time/randomness, exact system artifacts/native closure/provenance, and the complete transitive graph. `[PACKAGE-TYPES]`
 - [ ] Canonically sort and deduplicate every set-like lock array; encode exact UTC millisecond times, non-negative integers and digests once; retain Merkle proof order; store deterministic structured reason-code proofs instead of localized explanation strings. `[PACKAGE-TYPE-INVARIANTS]`
 - [ ] Resolve each system capability through the threshold-signed provider catalog: one catalog entry/input per capability and one digest per provider identity across the graph; publishers never choose host packages. `[PACKAGE-MANIFEST]`
 - [ ] CAS-stage the manifest, optional release lock and immutable development state; commit one fsynced recovery journal and replay it before every read so all package mutations expose exactly old or new state; ignore nested overlays. `[PACKAGE-TYPE-INVARIANTS]`
@@ -108,7 +108,7 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 
 ### Phase 10 — Maintenance evidence and scoring
 
-- [ ] Implement the fixed five-component, 24-month methodology and neutral confidence prior from spec 0032 in integer-only `packages/manager/core`; version and sign every calculation (`registry::Arithmetic` primitives are in place). `[PACKAGE-MAINTENANCE]` `[PACKAGE-EVIDENCE-ARITHMETIC]`
+- [ ] Implement the fixed five-component, 24-month methodology and neutral confidence prior from spec 0032 in integer-only `src/osprey/packages/manager/core`; version and sign every calculation (`registry::Arithmetic` primitives are in place). `[PACKAGE-MAINTENANCE]` `[PACKAGE-EVIDENCE-ARITHMETIC]`
 - [ ] Measure median/p90 vulnerability response and propagation, reachable overdue risk, recurrence, continuity/handover, release reliability, tests/mutation/fuzz/client impact, normalized static findings, and response quality from immutable evidence. `[PACKAGE-MAINTENANCE]`
 - [ ] Treat missing data as `Unknown`; exclude raw vulnerabilities, commits, issues, stars, downloads, dependents, fame, age, and activity volume. `[PACKAGE-MAINTENANCE]`
 - [ ] Render score, confidence, component vector, raw evidence, timestamps, sample sizes, tools/rules, exclusions, and method changes on every page. `[PACKAGE-MAINTENANCE]`
@@ -142,14 +142,14 @@ Depends on: hosted Stages B–G on parent Milestone B (Phases 5–9) and Milesto
 ## Hosted rollout — Stage A (capabilities and contracts)
 
 - [ ] Map spec 0044 IDs to the existing packages and add named failing Osprey regressions before each implementation change. `[PACKAGE-HOSTED-CONFORMANCE]`
-- [ ] Run the existing `make -C packages registry-test` baseline; keep its folder-registry behavior while extending the same API. `[PACKAGE-FOLDER-REGISTRY]`
-- [ ] Inventory/probe JWT/JWKS verification, WebAuthn/DSSE, entropy, secure time, constant-time comparisons, TLS verification, credential storage, PostgreSQL transactions/pooling, headers/cookies, secret delivery and browser/WASM host interfaces; record absent capabilities in `packages/manager/blockers/` with failing assertions; resolve through Osprey, never a native/JavaScript shim. `[PACKAGE-HOSTED-AUTH]`
+- [ ] Run the existing `make -C src/osprey/packages registry-test` baseline; keep its folder-registry behavior while extending the same API. `[PACKAGE-FOLDER-REGISTRY]`
+- [ ] Inventory/probe JWT/JWKS verification, WebAuthn/DSSE, entropy, secure time, constant-time comparisons, TLS verification, credential storage, PostgreSQL transactions/pooling, headers/cookies, secret delivery and browser/WASM host interfaces; record absent capabilities in `src/osprey/packages/manager/blockers/` with failing assertions; resolve through Osprey, never a native/JavaScript shim. `[PACKAGE-HOSTED-AUTH]`
 - [ ] Verify the native API image's Cloud Run bind/port behavior and secret access; the current JSON bind/port config and missing environment support need an explicit tested solution; no shell secret interpolation or credentials baked into JSON/images. `[PACKAGE-HOSTED-TOPOLOGY]`
-- [ ] Extend the canonical domain model for stable principal/org/package IDs, accepted org memberships, the single administrator FK, explicit permission grants, epochs, sessions, invitations and handovers; reconcile spec 0031 and `schemas/package-registry.td` before generating implementation types; no duplicate handwritten model. `[PACKAGE-OWNERSHIP-MODEL]`
+- [ ] Extend the canonical domain model for stable principal/org/package IDs, accepted org memberships, the single administrator FK, explicit permission grants, epochs, sessions, invitations and handovers; reconcile spec 0031 and `src/toolchain/schemas/package-registry.td` before generating implementation types; no duplicate handwritten model. `[PACKAGE-OWNERSHIP-MODEL]`
 
 ## Hosted rollout — Stage B (Supabase ownership and RLS)
 
-Governed by spec 0045 and `packages/manager/supabase/migrations/schema.yaml`; provision the private `registry` schema as a platform resource before table migration; keep the bootstrap FORCE-RLS/default-deny with no runtime grants and reject `ownership.not-ready` until policies/handlers/tests ship together.
+Governed by spec 0045 and `src/osprey/packages/manager/supabase/migrations/schema.yaml`; provision the private `registry` schema as a platform resource before table migration; keep the bootstrap FORCE-RLS/default-deny with no runtime grants and reject `ownership.not-ready` until policies/handlers/tests ship together.
 
 - [ ] Create isolated local/staging projects and apply the pinned DataProvider migration YAML: same-org composite FKs, one non-null active-member administrator, organization/name uniqueness, immutable identities and non-cascading history; no handwritten SQL/ORM schema. `[PACKAGE-OWNERSHIP-DATABASE]`
 - [ ] Provision restricted runtime logins with no owner/BYPASSRLS/elevated role membership; separate migration/collector/eligibility/audit permissions; remove default grants and unused Data API/GraphQL/Realtime exposure. `[PACKAGE-OWNERSHIP-RLS]`
@@ -191,8 +191,8 @@ Governed by spec 0045 and `packages/manager/supabase/migrations/schema.yaml`; pr
 
 ## Hosted rollout — Stage F (deploy/recover rehearsal and release gates)
 
-- [ ] End the deferred CI arrangement before hosting: add registry/security/database/browser/edge suites to required checks, preserving every existing gate and coverage floor (folder-registry suites already run in `make test` and CI; the hosted suites under `packages/manager/{auth-tests,database-tests,governance-tests,hosted-tests}` are not yet wired); update required-check configuration and its verification together. `[PACKAGE-HOSTED-CONFORMANCE]`
-- [ ] Add dedicated registry build/deploy workflows; every staging/production/frontend/manual deployment depends on a fresh unconditional exact-SHA `audit` job; run `make audit`, `make ci`, `make -C packages registry-test` and all hosted conformance checks; never reuse a passing audit from another SHA. `[PACKAGE-HOSTED-RELEASE]`
+- [ ] End the deferred CI arrangement before hosting: add registry/security/database/browser/edge suites to required checks, preserving every existing gate and coverage floor (folder-registry suites already run in `make test` and CI; the hosted suites under `src/osprey/packages/manager/{auth-tests,database-tests,governance-tests,hosted-tests}` are not yet wired); update required-check configuration and its verification together. `[PACKAGE-HOSTED-CONFORMANCE]`
+- [ ] Add dedicated registry build/deploy workflows; every staging/production/frontend/manual deployment depends on a fresh unconditional exact-SHA `audit` job; run `make audit`, `make ci`, `make -C src/osprey/packages registry-test` and all hosted conformance checks; never reuse a passing audit from another SHA. `[PACKAGE-HOSTED-RELEASE]`
 - [ ] Build the native image/static artifacts once, record immutable digests, apply reviewed additive schema changes separately, verify RLS drift/tests, deploy a no-traffic revision and run release smoke checks through an operator-restricted candidate route retaining the ingress/edge controls; prove it reaches the candidate revision without public run.app/tag access; never migrate at build/startup. `[PACKAGE-HOSTED-RELEASE]`
 - [ ] Rehearse traffic/artifact rollback to the exact prior release, checking schema compatibility and preserving consumed nonces, authority epochs, revocations and log history. `[PACKAGE-HOSTED-RELEASE]`
 - [ ] Provision and rehearse `[PACKAGE-HOSTED-CONTROL]`: named mode-promotion authority, narrow independent incident job/credentials, freeze under edge/API outage, and jointly approved unfreeze; prove neither operator mode changes nor the independent incident path can grant package permissions or eligibility. `[PACKAGE-HOSTED-CONTROL]`

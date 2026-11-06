@@ -1,0 +1,22 @@
+// The Q4_K product through the library kernel [LLM-MATMUL-QUANT]: STEPS products
+// of the probe's 17408x5120 weights, one read at the end.
+fn weights() -> Result<GpuBuffer<uint8>, Error> = gpuMapFile("q4k.bin", 0, 50135040)
+fn inputs() -> Result<GpuBuffer<float32>, Error> = gpuMapFile("x.bin", 0, 5120)
+fn once(x, w) = match gpuMatMulQuant(x, w, "Q4_K", 1, 5120, 17408) {
+    Success { value } => value
+    Error { message } => x
+}
+fn main() = match inputs() {
+    Error { message } => print(message)
+    Success { value } => {
+        let x = value
+        match weights() {
+            Error { message } => print(message)
+            Success { value } => {
+                let w = value
+                let y = fold(range(0, STEPS), x, fn(acc, _i) => once(x, w))
+                print("${toFloat(gpuGet(y, 0) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 1) ?: toFloat32(0.0))} ${toFloat(gpuGet(y, 17407) ?: toFloat32(0.0))}")
+            }
+        }
+    }
+}

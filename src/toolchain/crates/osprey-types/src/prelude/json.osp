@@ -1,0 +1,178 @@
+//! The built-in JSON value and codec. Every program that names one of these
+//! declarations gets this file compiled beside it, so no application writes
+//! its own JSON type, escaper or serializer. Implements [BUILTIN-JSON-TYPED].
+
+/// A JSON value. Payloads are positional, so no field name here can collide
+/// with a field name in the program. Integers and floats stay distinct both
+/// ways: `1` decodes to `JsonInt` and `1.0` or `1e0` to `JsonFloat`.
+type Json =
+    JsonNull
+    | JsonBool(bool)
+    | JsonInt(int)
+    | JsonFloat(float)
+    | JsonString(string)
+    | JsonArray(List<Json>)
+    | JsonObject(List<JsonMember>)
+
+/// One object member — its name and value — in document order.
+type JsonMember = JsonMember(string, Json)
+
+/// Compact RFC 8259 text for a value, built in one buffer. Error when a float
+/// is not finite or a string is not valid UTF-8.
+fn jsonEncode(json) = __jsonEncode(json)
+
+/// Decode one complete document with the same strict grammar as `jsonParse`:
+/// nesting past 128 levels, a repeated member name, an integer outside 64
+/// bits or a float outside the finite range is an Error, never a guess.
+fn jsonDecode(text) = match __jsonDecodeOpen(text) {
+    Success { value } => __jsonRelease(value, __jsonNode(value, 0))
+    Error { message } => Error { message: message }
+}
+
+/// Decode Python JSON: last-wins keys, first insertion order, NaN and infinities.
+/// Escaped NUL survives in keys and values. Native int64 and nesting limits apply.
+fn jsonDecodePython(text) = match __jsonDecodePythonOpen(text) {
+    Success { value } => __jsonRelease(value, __jsonNode(value, 0))
+    Error { message } => Error { message: message }
+}
+
+/// One string as a quoted, escaped JSON literal.
+fn jsonQuote(text) = __jsonEncode(JsonString(text))
+
+/// The first member of an object with this name.
+fn jsonField(value, name) = match value {
+    JsonObject(members) => __jsonMember(members, name)
+    _ => Error { message: "jsonField: not an object" }
+}
+
+/// The array element at an index.
+fn jsonIndex(value, index) = match value {
+    JsonArray(items) => __jsonElement(listGet(items, index), index)
+    _ => Error { message: "jsonIndex: not an array" }
+}
+
+/// A string's text.
+fn jsonText(value) = match value {
+    JsonString(text) => Success { value: text }
+    _ => Error { message: "jsonText: not a string" }
+}
+
+/// An integer's value.
+fn jsonInt(value) = match value {
+    JsonInt(number) => Success { value: number }
+    _ => Error { message: "jsonInt: not an integer" }
+}
+
+/// A float's value; an integer widens, as plist reals written `1` need.
+fn jsonFloat(value) = match value {
+    JsonFloat(number) => Success { value: number }
+    JsonInt(number) => Success { value: toFloat(number) }
+    _ => Error { message: "jsonFloat: not a number" }
+}
+
+/// A boolean's value.
+fn jsonBool(value) = match value {
+    JsonBool(flag) => Success { value: flag }
+    _ => Error { message: "jsonBool: not a boolean" }
+}
+
+// Public functions never call each other: a program that declares its own
+// `jsonEncode` replaces that one alone, and `jsonQuote` keeps working.
+fn __jsonEncode(json) = match __jsonWriterOpen() {
+    Success { value } => __jsonFinish(value, json)
+    Error { message } => Error { message: message }
+}
+
+fn __jsonFinish(writer, value) = {
+    __jsonWrite(writer, value)
+    __jsonWriterClose(writer)
+}
+
+fn __jsonWrite(writer, value) = match value {
+    JsonNull => __jsonWriteRaw(writer, "null")
+    JsonBool(flag) => __jsonWriteRaw(writer, match flag { true => "true" false => "false" })
+    JsonInt(number) => __jsonWriteInt(writer, number)
+    JsonFloat(number) => __jsonWriteFloat(writer, number)
+    JsonString(text) => __jsonWriteString(writer, text)
+    JsonArray(items) => __jsonWriteItems(writer, items)
+    JsonObject(members) => __jsonWriteMembers(writer, members)
+}
+
+fn __jsonWriteItems(writer, items) = {
+    __jsonWriteRaw(writer, "[")
+    forEachList(items, fn(item) => __jsonWrite(writer, item))
+    __jsonWriteRaw(writer, "]")
+}
+
+fn __jsonWriteMembers(writer, members) = {
+    __jsonWriteRaw(writer, "{")
+    forEachList(members, fn(member) => __jsonWriteMember(writer, member))
+    __jsonWriteRaw(writer, "}")
+}
+
+fn __jsonWriteMember(writer, member) = match member {
+    JsonMember(name, item) => {
+        __jsonWriteString(writer, name)
+        __jsonWriteRaw(writer, ":")
+        __jsonWrite(writer, item)
+    }
+}
+
+fn __jsonRelease(document, json) = match __jsonDecodeClose(document) {
+    Error { message } => Error { message: message }
+    _ => Success { value: json }
+}
+
+// One value of an open document, by slot; the root is slot 0. Each value
+// costs one or two runtime questions, and a container's children are the
+// slot range [first, end), so the walk does no arithmetic of its own.
+fn __jsonNode(document, slot) = match __jsonNodeKind(document, slot) {
+    0 => JsonNull
+    1 => JsonBool(false)
+    2 => JsonBool(true)
+    3 => JsonInt(__jsonNodeInt(document, slot))
+    4 => JsonFloat(__jsonNodeFloat(document, slot))
+    5 => JsonString(__jsonNodeText(document, slot))
+    6 => JsonArray(__jsonChildren(document, slot) |> map(fn(child) => __jsonNode(document, child)) |> toList)
+    _ => JsonObject(__jsonChildren(document, slot) |> map(fn(child) => JsonMember(__jsonNodeKey(document, child), __jsonNode(document, child))) |> toList)
+}
+
+fn __jsonChildren(document, slot) = range(__jsonNodeFirst(document, slot), __jsonNodeEnd(document, slot))
+
+// The element lookup's own result when it found one, so a hit allocates
+// nothing more.
+fn __jsonElement(found, index) = match found {
+    Error => Error { message: "jsonIndex: no element ${index}" }
+    _ => found
+}
+
+// The member named `name`, scanning in order. A fold over the positions does
+// no arithmetic of its own, so a lookup raises no Arith effect in the caller,
+// and once a member matches the remaining steps compare integers only.
+fn __jsonMember(members, name) = __jsonMemberAt(members, fold(range(0, listLength(members)), -1, fn(found, index) => __jsonFirstNamed(members, name, found, index)), name)
+
+fn __jsonFirstNamed(members, name, found, index) = match found < 0 {
+    true => __jsonNamedAt(members, name, index)
+    false => found
+}
+
+fn __jsonNamedAt(members, name, index) = match listGet(members, index) {
+    Success { value } => __jsonIndexIfNamed(value, name, index)
+    Error => -1
+}
+
+fn __jsonIndexIfNamed(member, name, index) = match member {
+    JsonMember(key, _) => match key == name {
+        true => index
+        false => -1
+    }
+}
+
+fn __jsonMemberAt(members, found, name) = match listGet(members, found) {
+    Success { value } => __jsonMemberValue(value)
+    Error => Error { message: "jsonField: no member ${name}" }
+}
+
+fn __jsonMemberValue(member) = match member {
+    JsonMember(_, item) => Success { value: item }
+}

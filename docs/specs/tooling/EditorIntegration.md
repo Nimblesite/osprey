@@ -9,7 +9,7 @@ The VS Code integration is a thin client over `[LSP-TRANSPORT]`.
 ### VS Code `[EDITOR-VSCODE]`
 
 - Extension id `nimblesite.osprey`; client in
-  [`vscode-extension/client/src/extension.ts`](../../../vscode-extension/client/src/extension.ts)
+  [`src/toolchain/vscode-extension/client/src/extension.ts`](../../../src/toolchain/vscode-extension/client/src/extension.ts)
   spawns `osprey lsp` over stdio.
 - Packaged as a **per-platform VSIX** (`darwin-arm64`, `linux-x64`,
   `win32-x64`). Each VSIX **bundles** a version-matched `osprey` binary + runtime
@@ -17,13 +17,21 @@ The VS Code integration is a thin client over `[LSP-TRANSPORT]`.
   time.
 - Client resolves the server command in priority order: user setting
   (`osprey.server.compilerPath`) → bundled binary → `PATH` (per the Shipwright
-  `sources` list in [`shipwright.json`](../../../shipwright.json)).
+  `sources` list in [`shipwright.json`](../../../.github/shipwright.json)).
 - The extension's native DAP integration is specified in
   [Debugger](0021-Debugger.md); it is separate from the LSP request path.
 - Marketplace publication uses **OIDC** (no PAT) — see `[EDITOR-VERSIONING]` and
   the [release workflow](../../../.github/workflows/release.yml). Open VSX
   publication uses the same VSIX artifacts and an independent optional-token
   job, so either registry can succeed alone.
+
+### Zed `[EDITOR-ZED]`
+
+The client in `src/toolchain/zed-extension` launches the same `osprey lsp` stdio server. It registers distinct Osprey, Osprey ML and Osprey Python language IDs; ordinary Python files must retain their existing editor integration. Project membership and syntax-flavor precedence remain server responsibilities [LSP-TRANSPORT]. Default highlighting reuses the canonical Tree-sitter grammar and queries; ML/Python grammar support must be verified independently rather than claimed through the Default grammar.
+
+#### Launch settings `[EDITOR-ZED-LAUNCH]`
+
+Resolve `lsp.osprey.binary.path` before worktree PATH discovery. A blank explicit path is an error, never an implicit fallback. Default arguments are `["lsp"]`; explicit arguments replace them, including an empty list. Preserve configured environment variables, initialization options and workspace settings. Pass command and arguments directly without shell interpolation. Report missing binaries and settings failures explicitly. The local compiler is user-supplied; no automatic executable downloads or bundled-version claims apply to this client.
 
 ## Versioning & supply chain `[EDITOR-VERSIONING]`
 
@@ -33,7 +41,7 @@ extension and bundled binary MUST be version-matched.
 
 - The binary is the source of truth: `osprey --version` → `osprey X.Y.Z`;
   `osprey --version --json` → the version manifest (`[SWR-VERSION-CLI-OUTPUT]`).
-- Components are declared in [`shipwright.json`](../../../shipwright.json):
+- Components are declared in [`shipwright.json`](../../../.github/shipwright.json):
   `osprey` (the CLI — which _is_ the language server, via the `lsp`
   subcommand) and `osprey-vscode`. The component id **must** equal the name the
   binary reports from `osprey --version` (Shipwright matches the probed name

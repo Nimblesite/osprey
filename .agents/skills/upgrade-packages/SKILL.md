@@ -21,10 +21,10 @@ This repo has multiple manifests:
 
 | Location | Manifest file | Language | Package manager |
 |---|---|---|---|
-| repo root (workspace: `crates/*`, `tree-sitter-osprey/`) | `Cargo.toml` | Rust | cargo |
-| `vscode-extension/` | `package.json` | TypeScript | npm |
-| `webcompiler/` | `package.json` | Node.js | npm |
-| `website/` | `package.json` | Node.js | npm |
+| `src/toolchain/` (workspace: `crates/*`, `tree-sitter-osprey/`) | `Cargo.toml` | Rust | cargo |
+| `src/toolchain/vscode-extension/` | `package.json` | TypeScript | npm |
+| `src/toolchain/webcompiler/` | `package.json` | Node.js | npm |
+| `src/toolchain/website/` | `package.json` | Node.js | npm |
 
 Process each one in order.
 
@@ -32,17 +32,17 @@ Process each one in order.
 
 Run the appropriate command to list what's outdated BEFORE upgrading anything.
 
-### Rust (repo root workspace)
+### Rust (`src/toolchain` workspace)
 ```bash
 cargo update --dry-run --verbose
 ```
 **Read the docs:** https://doc.rust-lang.org/cargo/commands/cargo-update.html
 
-### Node.js/npm (`vscode-extension/`, `webcompiler/`, `website/`)
+### Node.js/npm (`src/toolchain/vscode-extension/`, `src/toolchain/webcompiler/`, `src/toolchain/website/`)
 ```bash
-cd vscode-extension && npm outdated
-cd webcompiler && npm outdated
-cd website && npm outdated
+cd src/toolchain/vscode-extension && npm outdated
+cd src/toolchain/webcompiler && npm outdated
+cd src/toolchain/website && npm outdated
 ```
 **Read the docs:** https://docs.npmjs.com/cli/v10/commands/npm-update
 
@@ -54,7 +54,7 @@ If `--check-only` was passed, **stop here** and report the outdated list.
 
 ## Step 4 — Upgrade packages
 
-### Rust (repo root workspace)
+### Rust (`src/toolchain` workspace)
 ```bash
 cargo update          # semver-compatible (within Cargo.toml ranges)
 ```
@@ -67,7 +67,7 @@ npm update                            # semver-compatible (within package.json r
 # --major flag:
 npx npm-check-updates -u && npm install   # bump package.json to latest majors
 ```
-Run in each of: `vscode-extension/`, `webcompiler/`, `website/`.
+Run in each of: `src/toolchain/vscode-extension/`, `src/toolchain/webcompiler/`, `src/toolchain/website/`.
 
 ## Step 5 — Verify the upgrade
 

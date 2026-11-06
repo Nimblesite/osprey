@@ -340,17 +340,17 @@ Today the workbench can request `Run` (a shell-free executable with arguments, a
 
 This feature is not implemented and does not start until every one of the following holds, checked on the day work begins and recorded as this gate's evidence before delivery work begins:
 
-- `apps/workbench/tests` passes under GC, ARC and wasm32 at the current source, with no skipped cases and no retained red test hidden by an exclusion.
-- The `apps/workbench` own-source coverage gate in `coverage-thresholds.json` passes at its registered threshold, and the measurement is not below the 90.8% baseline recorded for `apps/workbench`.
+- `src/osprey/workbench/tests` passes under GC, ARC and wasm32 at the current source, with no skipped cases and no retained red test hidden by an exclusion.
+- The `src/osprey/workbench` own-source coverage gate in `coverage-thresholds.json` passes at its registered threshold, and the measurement is not below the 90.8% baseline recorded for `src/osprey/workbench`.
 - `make ci` is green on `main`, and no gate listed in [AGENTS.md](../../../AGENTS.md) is red, waived or narrowed.
-- The application owner has recorded that `apps/workbench` accepts new modules; the open VSIX, screenshot and imported-proof acceptance items of [spec 0051](0051-ProofWorkbench.md) are either closed or explicitly unaffected by a second document kind.
-- The `packages/native` component and capability contracts this feature uses — `Run`, `SaveFile`, slices, tickets, `Math` — are the shipped ones, and no host adapter needs a new framework component (the one open question is the validation boundary of [WORKBENCH-CODEGEN-APP]).
+- The application owner has recorded that `src/osprey/workbench` accepts new modules; the open VSIX, screenshot and imported-proof acceptance items of [spec 0051](0051-ProofWorkbench.md) are either closed or explicitly unaffected by a second document kind.
+- The `src/osprey/packages/native` component and capability contracts this feature uses — `Run`, `SaveFile`, slices, tickets, `Math` — are the shipped ones, and no host adapter needs a new framework component (the one open question is the validation boundary of [WORKBENCH-CODEGEN-APP]).
 
 If any condition is unchecked the feature does not start. It does not start "in parallel", partially, behind a flag in a host adapter, or in TypeScript.
 
 ## Verification [WORKBENCH-CODEGEN-VERIFICATION]
 
-The suite lives in `apps/workbench/tests/`, runs under GC, ARC and wasm32 with no skips, and its own-source coverage must never fall below the gate already registered for `apps/workbench` in `coverage-thresholds.json`. Every case below is a delivery requirement; the matrix is [WORKBENCH-CODEGEN-MATRIX] in [plan formula-code-generation](../../plans/0042-proof-workbench.md#acceptance-matrix-workbench-codegen-matrix), which also carries the exit evidence per phase.
+The suite lives in `src/osprey/workbench/tests/`, runs under GC, ARC and wasm32 with no skips, and its own-source coverage must never fall below the gate already registered for `src/osprey/workbench` in `coverage-thresholds.json`. Every case below is a delivery requirement; the matrix is [WORKBENCH-CODEGEN-MATRIX] in [plan formula-code-generation](../../plans/0042-proof-workbench.md#acceptance-matrix-workbench-codegen-matrix), which also carries the exit evidence per phase.
 
 | Area | What must be proved |
 | --- | --- |
@@ -366,11 +366,11 @@ The suite lives in `apps/workbench/tests/`, runs under GC, ARC and wasm32 with n
 | Application | the fixture suite drives the real `start`/`dispatch`: entry, preview, source pane, export, states |
 | Hosts | the real shared application completes accepted and refused flows in the native app, installed VSIX and browser; each host has its own interaction and screenshot evidence |
 
-Nothing in this feature may disable, skip, weaken or narrow an existing gate: `make ci`, the differential corpus, the `apps/workbench` suite and its coverage gate, the `packages/native` tests, VSIX packaging checks and the release audit all keep their current requirements, and this feature adds cases to them rather than replacing any.
+Nothing in this feature may disable, skip, weaken or narrow an existing gate: `make ci`, the differential corpus, the `src/osprey/workbench` suite and its coverage gate, the `src/osprey/packages/native` tests, VSIX packaging checks and the release audit all keep their current requirements, and this feature adds cases to them rather than replacing any.
 
 ## Performance budgets [WORKBENCH-CODEGEN-PERFORMANCE]
 
-Proposed and measurable, not measured. Each is a benchmark under `benchmarks/` or a bounded assertion, never a story:
+Proposed and measurable, not measured. Each is a benchmark under `src/toolchain/benchmarks/` or a bounded assertion, never a story:
 
 | Budget | Target | How it is measured |
 | --- | --- | --- |
@@ -380,7 +380,7 @@ Proposed and measurable, not measured. Each is a benchmark under `benchmarks/` o
 | Validation round trip | bounded by the `Run` deadline of 15 s, cancelled by ticket, never blocks a keystroke | host test with a slow stand-in |
 | Memory | no live ARC objects after a document is replaced | the existing ARC live-object assertion |
 
-The workbench suite has no clock, so timing cases belong to `benchmarks/`; the suite asserts the structural guarantees (no re-read, bounded bytes) that timing would otherwise hide behind.
+The workbench suite has no clock, so timing cases belong to `src/toolchain/benchmarks/`; the suite asserts the structural guarantees (no re-read, bounded bytes) that timing would otherwise hide behind.
 
 ## Limits and follow-on fragments [WORKBENCH-CODEGEN-LIMITS]
 

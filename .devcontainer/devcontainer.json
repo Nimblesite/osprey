@@ -20,7 +20,7 @@
         "C_Cpp.default.cStandard": "c11",
         "C_Cpp.default.compilerPath": "/usr/bin/clang",
         "C_Cpp.default.includePath": [
-          "${workspaceFolder}/compiler/runtime"
+          "${workspaceFolder}/src/toolchain/compiler/runtime"
         ],
         "workbench.colorCustomizations": {
           "titleBar.activeBackground": "#2E7D32",

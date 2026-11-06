@@ -1,0 +1,16 @@
+node_modules/
+
+# VSIX build output
+*.vsix
+
+out/
+
+.vscode-test/
+
+# Release-time bundled artifacts (staged into the VSIX by release.yml; never committed)
+bin/
+shipwright.json
+
+# Generated at build time from the ONE canonical logo
+# (src/toolchain/website/src/assets/images/logo.png) by scripts/sync-icon.mjs. Never committed.
+icon.png

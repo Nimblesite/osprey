@@ -21,7 +21,11 @@ let label = match value {
 
 Every pattern binding belongs to its own arm. It shadows an enclosing binding only while that arm is evaluated. Sibling arms and code following the match retain their original bindings, including mutable cells and function values. Nested matches restore the containing arm's bindings on exit. A closure returned from an arm retains the binding it captured there. A function-valued binder retains its complete parameter and return types, including when extracted from a union, record, Result or list. A Result join preserves its callable Success payload even when the error type remains polymorphic.
 
-This applies equally to literal catch-all bindings, Result and union payloads, list elements and tails, structural fields and erased structural matches. The paired `tests/flavors/matching/matching.test` suites assert isolation between arms, restoration after nested matches, escaping captures, shadowing of mutable cells and callable payloads (including float-returning functions through Result joins) in both flavors.
+This applies equally to literal catch-all bindings, Result and union payloads, list elements and tails, structural fields and erased structural matches. The paired `src/osprey/tests/flavors/matching/matching.test` suites assert isolation between arms, restoration after nested matches, escaping captures, shadowing of mutable cells and callable payloads (including float-returning functions through Result joins) in both flavors.
+
+### Result binder roles — [PATTERN-RESULT-BINDERS]
+
+A Result binder's spelling never changes the constructor's payload role. A `Success` binder named `message` retains the successful value's type, including records and callable values; an `Error` binder named `value` retains the error message. Python keyword labels select payload slots and create only their written binders, so `Success(value=message)` never creates a hidden `value` binding.
 
 ## Union patterns
 

@@ -1,0 +1,375 @@
+// Implements [UI-STORE]: Osprey Agent's store and its session document. The
+// conversations' history stays in pydantic-ai's wire form, so a saved file reads
+// back with `ModelMessagesTypeAdapter`'s shape. Keys are never written to the
+// conversations file; they live in `providers.json` in the app's private store.
+namespace agentapp
+
+import ui::Doc
+import ui::Lists
+import ui::Pick
+import ui::Requests
+import ui::Runtime
+import agent::Engine
+import agent::Transcript
+import agent::Images
+import agentapp::McpModel
+
+(** Every control's action ([UI-EVENTS]). *)
+type AgentAction =
+    NewChat
+    ChangeFolder
+    SendDraft
+    StopTurn
+    Retry
+    TogglePanel
+    Suggest
+        suggestion : string
+    Typed
+    TypedKey
+        keyProvider : string
+    SaveKey
+        keyProvider : string
+    RemoveKey
+        keyProvider : string
+    PickChat
+    PickModel
+    PickEffort
+    PickProvider
+    PickDefaultModel
+    PickDefaultEffort
+    OpenSettings
+    ShowSettingsTab
+        tabKey : string
+    CloseSettings
+    ResizePanel
+    ToggleSteps
+        stepsKey : string
+    OpenMcpSettings
+    AddMcpServer
+    PasteMcpServers
+    RemoveMcp
+        mcpActionName : string
+    ReconnectMcp
+        mcpActionName : string
+    ToggleMcp
+        mcpActionName : string
+    ToggleMcpTools
+        mcpActionName : string
+    McpName
+    McpCommand
+    McpArguments
+    McpUrl
+    McpEnvironment
+    McpHeaders
+    McpPaste
+    PickMcpType
+
+(** One provider's saved or drafted key. *)
+type ProviderKey =
+    keyProvider : string
+    keyValue : string
+
+(** One conversation: its identity, title, project folder, model and effort, the history in wire form, what it is doing (`idle`, `thinking`, `tools` or `failed`), the ticket it waits on, the call running, the answers gathered this round, the last failure and its status. *)
+type Chat =
+    chatId : string
+    chatTitle : string
+    chatFolder : string
+    chatModel : string
+    chatEffort : string
+    chatHistory : Json
+    chatStage : string
+    chatTicket : string
+    chatCall : string
+    chatResults : List<Engine::ToolResult>
+    chatProblem : string
+    chatProblemStatus : int
+    chatStarted : int
+
+(** The conversations, as one signal. *)
+type Chats =
+    chatList : List<Chat>
+
+(** The composer's words. *)
+type Draft =
+    draftText : string
+
+(** What the person is looking at: the open conversation, the inspector and the disclosures they opened. *)
+type Panel =
+    panelActive : string
+    panelOpen : bool
+    panelWidth : int
+    panelExpanded : List<string>
+
+(** The models one provider's API named, in the order the pickers offer them. *)
+type ListedModels =
+    listedProvider : string
+    listedIds : List<string>
+
+(** Host facts, the provider keys, the models each provider's API named, the default model and effort, and the settings pane. *)
+type Settings =
+    platform : string
+    homeFolder : string
+    keys : List<ProviderKey>
+    keyDrafts : List<ProviderKey>
+    listed : List<ListedModels>
+    defaultModel : string
+    defaultEffort : string
+    settingsOpen : bool
+    settingsTab : string
+    providerOpen : string
+    saveProblem : string
+    saving : bool
+    savePending : List<string>
+    saveName : string
+
+(** Osprey Agent's whole store. *)
+type Store =
+    mcp : McpState
+    chats : List<Chat>
+    draft : Draft
+    panel : Panel
+    settings : Settings
+    ticketCount : int
+    clock : int
+
+(** Reading and writing the store. *)
+module Model
+    (** The default model: DeepSeek's chat model, named with its provider. *)
+    export defaultModel = "deepseek/deepseek-chat"
+
+    (** A provider key record. *)
+    export key (provider, value) = ProviderKey(keyProvider = provider, keyValue = value)
+
+    (** The saved key for `provider`, empty when none. *)
+    export keyOf (settings, provider) = match Lists::find (settings.keys, \key => key.keyProvider == provider)
+        Success found => found.keyValue
+        Error _ => ""
+
+    (** The key being typed for `provider`, empty when none. *)
+    export draftOf (settings, provider) = match Lists::find (settings.keyDrafts, \key => key.keyProvider == provider)
+        Success found => found.keyValue
+        Error _ => ""
+
+    (** `settings` with `provider`'s key set to `value`; an empty value removes it. *)
+    export withKey (settings, provider, value) =
+        others = filterList (settings.keys, \key => key.keyProvider != provider)
+        settings(keys = Pick::either (value == "", others, listPrepend others (key (provider, value))))
+
+    (** `settings` with `provider`'s draft set to `value`; an empty value removes it. *)
+    export withDraft (settings, provider, value) =
+        others = filterList (settings.keyDrafts, \key => key.keyProvider != provider)
+        settings(keyDrafts = Pick::either (value == "", others, listPrepend others (key (provider, value))))
+
+    (** Whether `provider` has a saved key. *)
+    export hasKey (settings, provider) = keyOf (settings, provider) != ""
+
+    (** The key under `names` in dotenv text, empty when none. `names` come from the catalogue, so the store names no provider. *)
+    export keyIn (text, names) =
+        lines = split text "\n" ?: []
+        named = filterList (lines, \line => Lists::any (names, \name => startsWith line "${name}="))
+        hit = listGet named 0 ?: ""
+        trim (drop hit ((indexOf hit "=" ?: -1) + 1))
+
+    (** Every provider's key in dotenv text, empty when a name is absent. *)
+    export keysIn text =
+        mapList (Engine::provider_ids (), \provider => key (provider, keyIn (text, Engine::provider_key_names provider)))
+
+    (** An empty draft for every provider, so each card's field starts blank. *)
+    export seedDrafts () =
+        mapList (Engine::provider_ids (), \provider => key (provider, ""))
+
+    (** The conversation `id` in `folder` on `model` at `effort`, empty. *)
+    export blank (id, folder, model, effort, now) = Chat(chatId = id, chatTitle = "New chat", chatFolder = folder, chatModel = model, chatEffort = effort, chatHistory = Engine::new_history (), chatStage = "idle", chatTicket = "", chatCall = "", chatResults = [], chatProblem = "", chatProblemStatus = 0, chatStarted = now)
+
+    (** The models `provider` offers: what its API said, or the catalogue until it has answered. *)
+    export modelsOf (settings, provider) = match Lists::find (settings.listed, \list => list.listedProvider == provider)
+        Success found => found.listedIds
+        Error _ => Engine::model_ids provider
+
+    (** `effort` when `model` has that level, otherwise the provider's default, which is the empty level. *)
+    export effortFor (model, effort) = Pick::either (Lists::any (Engine::model_levels model, \level => level == effort), effort, "")
+
+    (** Why `model` cannot be used, in words; a model the provider's API named always can. *)
+    export modelProblem (settings, model) = Pick::either (Lists::any (modelsOf (settings, Engine::provider_id_of model), \id => id == Engine::model_id_of model), "", Engine::provider_problem model)
+
+    (** Asks `provider`'s API which models it offers, with its key. *)
+    export listingOf (settings, provider) =
+        ticket = "models:${provider}"
+        Requests::ask (ticket, ui::Http(method = "GET", url = Engine::models_url provider, headers = [ui::Header(headerName = "Authorization", headerValue = "Bearer ${keyOf (settings, provider)}")], body = "", responseLimit = 4000000, deadline = 30000, httpSlice = ticket))
+
+    (** The listing requests for every provider whose key arrived between `before` and `after`. *)
+    export newlyKeyed (before, after) = mapList (filterList (Engine::provider_ids (), \provider => keyOf (before, provider) == "" && keyOf (after, provider) != ""), \provider => listingOf (after, provider))
+
+    (** `settings` without what `provider`'s API said. *)
+    export unlisted (settings, provider) = settings(listed = filterList (settings.listed, \list => list.listedProvider != provider))
+
+    (** The store after `provider`'s API named `ids`: catalogue order first, then the models only the provider knows. The default and any conversation with nothing said yet leave a model the provider no longer offers; a conversation in progress keeps its own. *)
+    export listing (store, provider, ids) =
+        known = filterList (Engine::model_ids provider, \model => Lists::any (ids, \id => id == model))
+        extra = filterList (ids, \id => Lists::any (known, \model => model == id) == false)
+        ordered = listConcat known extra
+        match listGet ordered 0
+            Error _ => store
+            Success head =>
+                replacement = Engine::full_model (provider, head)
+                gone = \model => Engine::provider_id_of model == provider && Lists::any (ordered, \id => id == Engine::model_id_of model) == false
+                settings = store.settings
+                saved = (unlisted (settings, provider))
+                withList = saved(listed = listAppend saved.listed (ListedModels(listedProvider = provider, listedIds = ordered)))
+                moved = Pick::either (gone settings.defaultModel, withList(defaultModel = replacement, defaultEffort = effortFor (replacement, settings.defaultEffort)), withList)
+                store(settings = moved, chats = mapList (store.chats, \chat => Pick::either (gone chat.chatModel && Engine::has_turns chat.chatHistory == false, chat(chatModel = replacement, chatEffort = effortFor (replacement, chat.chatEffort)), chat)))
+
+    (** Applies a provider's answer naming its models. A refusal or no answer leaves the catalogue on offer; a send reports why. *)
+    export modelsAnswered (store, ticket, outcome) = match outcome
+        Error _ => store
+        Success result => match Doc::number (result, "status") == 200
+            false => store
+            true => listing (store, drop ticket 7, filterList (mapList (Doc::items (Doc::field (Doc::parse (perform ui::Slices.fetch ticket), "data")), \item => Doc::text (item, "id")), \id => id != ""))
+
+    (** Reads the pasted images `names` as one base64 line each. *)
+    export imagesRead (settings, ticket, names) = Requests::ask (ticket, ui::Run(executable = "/bin/sh", arguments = Images::read_arguments (settings.homeFolder, names), timeout = 30000, outputLimit = 64000000, plist = false, runSlice = ticket))
+
+    (** The store at launch: one empty conversation in `folder`. *)
+    export launched (system, home, folder, now) =
+        settings = Settings(platform = system, homeFolder = home, keys = [], keyDrafts = seedDrafts (), listed = [], defaultModel = defaultModel, defaultEffort = "", settingsOpen = false, settingsTab = "providers", providerOpen = "deepseek", saveProblem = "", saving = false, savePending = [], saveName = "")
+        Store(mcp = McpModel::fresh folder, chats = [blank ("launch${now}", folder, settings.defaultModel, settings.defaultEffort, now)], draft = Draft(draftText = ""), panel = Panel(panelActive = "launch${now}", panelOpen = true, panelWidth = 288, panelExpanded = []), settings = settings, ticketCount = 2, clock = now)
+
+    (** The open conversation. *)
+    export active store = Lists::find (store.chats, \chat => chat.chatId == store.panel.panelActive) ?: (listGet store.chats 0 ?: blank ("c0", store.settings.homeFolder, store.settings.defaultModel, store.settings.defaultEffort, store.clock))
+
+    (** `chat` in the store, replacing the conversation with its id. *)
+    export putChat (store, chat) = store(chats = mapList (store.chats, \other => Pick::either (other.chatId == chat.chatId, chat, other)))
+
+    (** Opens a new conversation in `folder`, unless the open one is still empty in that folder; either way the new conversation starts on the default model and effort. *)
+    export opening (store, folder) =
+        id = "c${store.ticketCount}"
+        panel = store.panel
+        current = active store
+        match Engine::has_turns current.chatHistory == false && current.chatFolder == folder && Busy::idle current
+            true => Model::putChat (store, current(chatModel = store.settings.defaultModel, chatEffort = store.settings.defaultEffort))
+            false => store(chats = listPrepend store.chats (blank (id, folder, store.settings.defaultModel, store.settings.defaultEffort, store.clock)), ticketCount = satAdd store.ticketCount 1, panel = panel(panelActive = id), draft = Draft(draftText = ""))
+
+    (** `chat` on the default model and effort of `settings`, when nothing has been said in it yet. *)
+    export withDefaultModel (chat, settings) = Pick::either (length (Transcript::items_of chat.chatHistory) == 0, chat(chatModel = settings.defaultModel, chatEffort = settings.defaultEffort), chat)
+
+    (** Whether a conversation is waiting on the model or a tool. *)
+    export busy chat = Busy::idle chat == false
+
+    (** The calls of the last response still owed an answer, in order. *)
+    export pendingCalls chat = Engine::pending (chat.chatHistory, chat.chatResults)
+
+    (** The call with `id` in the last response. *)
+    export callNamed (chat, id) = Lists::find (Engine::last_calls chat.chatHistory, \call => call.callId == id) ?: Engine::ToolCall(callId = id, callName = "", callArgs = "{}")
+
+    (** The capability reading a small text file into `slice`: `Run` is the one every desktop host answers. *)
+    export readTextAt (system, path, slice) = match system == "windows"
+        true => ui::Run(executable = "C:\\Windows\\System32\\cmd.exe", arguments = ["/d", "/c", "type", path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = slice)
+        false => ui::Run(executable = "/bin/cat", arguments = [path], timeout = 5000, outputLimit = 1000000, plist = false, runSlice = slice)
+
+    export readText (system, path) = readTextAt (system, path, "env")
+
+    resultJson result = JsonObject [Doc::str ("id", result.resultId), Doc::str ("name", result.resultName), Doc::str ("content", result.resultContent)]
+
+    resultOf doc = Engine::ToolResult(resultId = Doc::text (doc, "id"), resultName = Doc::text (doc, "name"), resultContent = Doc::text (doc, "content"))
+
+    chatJson chat = JsonObject [Doc::str ("id", chat.chatId), Doc::str ("title", chat.chatTitle), Doc::str ("folder", chat.chatFolder), Doc::str ("model", chat.chatModel), Doc::str ("effort", chat.chatEffort), JsonMember "history" chat.chatHistory, Doc::str ("stage", chat.chatStage), Doc::str ("ticket", chat.chatTicket), Doc::str ("call", chat.chatCall), JsonMember "results" (JsonArray (mapList (chat.chatResults, \result => resultJson result))), Doc::str ("problem", chat.chatProblem), Doc::num ("status", chat.chatProblemStatus), Doc::num ("started", chat.chatStarted)]
+
+    chatOf doc = Chat(chatId = Doc::text (doc, "id"), chatTitle = Doc::text (doc, "title"), chatFolder = Doc::text (doc, "folder"), chatModel = Doc::text (doc, "model"), chatEffort = Doc::text (doc, "effort"), chatHistory = Doc::field (doc, "history"), chatStage = Doc::text (doc, "stage"), chatTicket = Doc::text (doc, "ticket"), chatCall = Doc::text (doc, "call"), chatResults = mapList (Doc::items (Doc::field (doc, "results")), \item => resultOf item), chatProblem = Doc::text (doc, "problem"), chatProblemStatus = Doc::number (doc, "status"), chatStarted = Doc::number (doc, "started"))
+
+    (** The conversations signal's encoding, for change detection. *)
+    export chatsJson chats = JsonArray (mapList (chats.chatList, \chat => chatJson chat))
+
+    (** The draft signal's encoding. *)
+    export draftJson draft = JsonString draft.draftText
+
+    (** The panel signal's encoding. *)
+    export panelJson panel = JsonObject [Doc::str ("active", panel.panelActive), Doc::bit ("open", panel.panelOpen), Doc::num ("width", panel.panelWidth), JsonMember "expanded" (Doc::strings panel.panelExpanded)]
+
+    keyJson key = JsonObject [Doc::str ("provider", key.keyProvider), Doc::str ("value", key.keyValue)]
+
+    keyOfJson doc = ProviderKey(keyProvider = Doc::text (doc, "provider"), keyValue = Doc::text (doc, "value"))
+
+    (** The settings signal's encoding, covering everything a view draws. *)
+    export settingsJson settings = JsonObject [
+        Doc::str ("platform", settings.platform),
+        Doc::str ("home", settings.homeFolder),
+        JsonMember "keys" (JsonArray (mapList (settings.keys, \key => keyJson key))),
+        JsonMember "drafts" (JsonArray (mapList (settings.keyDrafts, \key => keyJson key))),
+        JsonMember "listed" (JsonArray (mapList (settings.listed, \list => JsonObject [Doc::str ("provider", list.listedProvider), JsonMember "ids" (JsonArray (mapList (list.listedIds, \id => JsonString id)))]))),
+        Doc::str ("model", settings.defaultModel),
+        Doc::str ("effort", settings.defaultEffort),
+        Doc::bit ("open", settings.settingsOpen),
+        Doc::str ("tab", settings.settingsTab),
+        Doc::str ("provider", settings.providerOpen),
+        Doc::str ("saveProblem", settings.saveProblem),
+    ]
+
+    (** The store as the session document, which lives only in this process. *)
+    export storeJson store = JsonObject [JsonMember "mcp" (McpModel::storeJson store.mcp), JsonMember "chats" (JsonArray (mapList (store.chats, \chat => chatJson chat))), Doc::str ("draft", store.draft.draftText), JsonMember "panel" (panelJson store.panel), JsonMember "settings" (settingsJson store.settings), Doc::num ("tickets", store.ticketCount), Doc::num ("clock", store.clock)]
+
+    (** The store from its session document. *)
+    export storeOf doc =
+        panel = Doc::field (doc, "panel")
+        settingsDoc = Doc::field (doc, "settings")
+        settings = Settings(platform = Doc::text (settingsDoc, "platform"), homeFolder = Doc::text (settingsDoc, "home"), keys = mapList (Doc::items (Doc::field (settingsDoc, "keys")), \item => keyOfJson item), keyDrafts = mapList (Doc::items (Doc::field (settingsDoc, "drafts")), \item => keyOfJson item), listed = mapList (Doc::items (Doc::field (settingsDoc, "listed")), \item => ListedModels(listedProvider = Doc::text (item, "provider"), listedIds = mapList (Doc::items (Doc::field (item, "ids")), \id => Doc::string id))), defaultModel = Doc::text (settingsDoc, "model"), defaultEffort = Doc::text (settingsDoc, "effort"), settingsOpen = Doc::flag (settingsDoc, "open"), settingsTab = Doc::text (settingsDoc, "tab"), providerOpen = Doc::text (settingsDoc, "provider"), saveProblem = Doc::text (settingsDoc, "saveProblem"), saving = false, savePending = [], saveName = "")
+        Store(mcp = McpModel::storeOf (Doc::field (doc, "mcp")), chats = mapList (Doc::items (Doc::field (doc, "chats")), \item => chatOf item), draft = Draft(draftText = Doc::text (doc, "draft")), panel = Panel(panelActive = Doc::text (panel, "active"), panelOpen = Doc::flag (panel, "open"), panelWidth = Doc::number (panel, "width"), panelExpanded = Doc::texts (panel, "expanded")), settings = settings, ticketCount = Doc::number (doc, "tickets"), clock = Doc::number (doc, "clock"))
+
+    // A conversation with no words in it is not worth keeping.
+    kept chat = Engine::has_turns chat.chatHistory
+
+    fileJson store = JsonObject [JsonMember "chats" (JsonArray (mapList (filterList (store.chats, \chat => kept chat), \chat => chatJson chat))), Doc::num ("tickets", store.ticketCount)]
+
+    (** The providers file: every saved key, the default model and its effort. Never written to the conversations file. *)
+    export providersJson settings = JsonObject [
+        JsonMember "keys" (JsonArray (mapList (filterList (settings.keys, \key => key.keyValue != ""), \key => keyJson key))),
+        Doc::str ("model", settings.defaultModel),
+        Doc::str ("effort", settings.defaultEffort),
+    ]
+
+    (** `settings` with the providers file's saved keys and defaults; a key already there (pasted) is overwritten by the saved one, and absent keys stay as the dotenv left them. *)
+    export providersOf (settings, doc) =
+        keys = mapList (Doc::items (Doc::field (doc, "keys")), \item => keyOfJson item)
+        keyed = foldList (keys, settings, \(acc, key) => withKey (acc, key.keyProvider, key.keyValue))
+        keyed(defaultModel = Doc::text (doc, "model"), defaultEffort = Doc::text (doc, "effort"))
+
+    (** What one save failure names: the settings or the conversations. *)
+    export saveLabel name = match name
+        "providers.json" => "settings"
+        "mcp.json" => "MCP servers"
+        "mcp-state.json" => "MCP switches"
+        _ => "conversations"
+
+    (** The document `name` holds. *)
+    export saveDoc (store, name) = match name
+        "providers.json" => providersJson store.settings
+        "mcp.json" => Doc::parse store.mcp.stateGlobal
+        "mcp-state.json" => McpModel::switchesJson store.mcp
+        _ => fileJson store
+
+    (** The conversations or the providers written to the app's private store: never the keys into the conversations file. One write runs at a time, so an older one cannot land after a newer one; a change during a write waits, by file, and is saved when it ends. *)
+    export persisting (store, name) =
+        settings = store.settings
+        match settings.saving
+            true => ui::Step(stepStore = store(settings = settings(savePending = Pick::either (listContains (settings.savePending, name), settings.savePending, listAppend settings.savePending name))), requests = [], writes = [])
+            false => ui::Step(stepStore = store(settings = settings(saving = true, saveName = name)), requests = [Requests::ask ("save:${store.ticketCount}", ui::StoreWrite(writeName = name, writeSlice = "save-file"))], writes = [Requests::write ("save-file", Doc::write (saveDoc (store, name)))])
+
+    (** `chat` at rest, with each call still owed an answer told it was stopped, because a model refuses a history with an unanswered call. *)
+    export halted chat =
+        owed = pendingCalls chat
+        answered = listConcat chat.chatResults (mapList (owed, \call => Engine::ToolResult(resultId = call.callId, resultName = call.callName, resultContent = "Stopped before it ran.")))
+        history = Pick::either (length answered > 0, Engine::add_returns (chat.chatHistory, answered), chat.chatHistory)
+        chat(chatHistory = history, chatResults = [], chatStage = "idle", chatTicket = "", chatCall = "")
+
+    // A turn interrupted by quitting cannot resume: its ticket died with the process.
+    settled chat = Pick::either (Busy::idle chat, chat, halted chat)
+
+    (** The conversations read back from `text`, after the empty one launch opened. *)
+    export restored (store, text) =
+        doc = Doc::parse text
+        old = mapList (Doc::items (Doc::field (doc, "chats")), \item => settled (chatOf item))
+        store(chats = listConcat store.chats old, ticketCount = Pick::either (Doc::number (doc, "tickets") > store.ticketCount, Doc::number (doc, "tickets"), store.ticketCount))
+
+(** Whether a conversation is at rest. *)
+module Busy
+    (** At rest: nothing asked of the model or a tool. *)
+    export idle chat = chat.chatStage == "idle" || chat.chatStage == "failed"

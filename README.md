@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="website/src/assets/images/logo.png" alt="Osprey logo" width="120" />
+  <img src="src/toolchain/website/src/assets/images/logo.png" alt="Osprey logo" width="120" />
 </p>
 
 # Osprey
@@ -8,30 +8,49 @@ A functional language built on three pillars: **safety, elegance and performance
 
 Osprey is actively evolving. Try it on your projects, validate it against your workload, and assess the risks before relying on it in production. It compiles through LLVM to native binaries, WebAssembly and C ABI libraries for iOS, macOS and Android.
 
-## Choose storage once, at the application boundary
+## Write the logic once; the edge picks the disk
 
-The save callback calls application logic, which requests storage. Neither function takes a storage object:
+This is the package manager's install, trimmed. `install` and `writeLock` ask for a logger and a file write with `perform`, but nothing passes them a disk or a logger:
 
 ```osprey
-effect Drafts { save: fn(string, string) -> Result<int, Error> }
-fn saveDraft(path, text) = match perform Drafts.save(path, text) {
-    Success _ => "Saved"
-    Error { message } => "Retry: ${message}"
-}
-fn onSave() = saveDraft("draft.txt", "Ship it.")
+effect Files { write: fn(string, string) -> Result<int, Error> }
+effect Log { info: fn(string) -> Unit }
 
-let disk = handler Drafts {
-    save path text => writeFile(path, text)
+// Deep in the app: no disk or logger is passed in.
+fn writeLock(lock) = match perform Files.write("osprey.lock", lock) {
+    Success _ => "installed"
+    Error { message } => "rolled back: ${message}"
+}
+fn install(name) = {
+    perform Log.info("resolving ${name}")
+    writeLock("${name} = 2")
 }
 
-print(disk(onSave))
+// The app's edge picks the real disk and logger, once.
+let shipped = {
+    handle Files { write path text => writeFile(path, text) }
+    handle Log { info text => print("log: ${text}") }
+    install("serde")
+}
+print(shipped)
+
+// A test swaps in a full disk. The app code does not change.
+test("a full disk rolls back", fn() => {
+    handle Files { write _ _ => Error { message: "disk full" } }
+    handle Log { info text => expect(text, "resolving serde") }
+    expect(install("serde"), "rolled back: disk full")
+})
 ```
 
 ```text
-Saved
+log: resolving serde
+installed
+ok 1 - a full disk rolls back
+1..1
+# tests=1 passed=1 failed=0 skipped=0
 ```
 
-`disk(onSave)` supplies storage for the entire call chain: `onSave` → `saveDraft` → `Drafts.save`. The draft is written once. Intermediate functions need no storage parameters. A test can replace the handler's `writeFile(path, text)` with `Error { message: "offline" }` and exercise the same retry logic without touching disk. The compiler rejects the call if no handler supplies storage.
+The program's edge installs the real disk and logger once, and every function below it uses them. The test installs a disk that is always full and a logger that checks what was logged; the app code is unchanged and no file is touched. Types are inferred, the `match` must cover both `Success` and `Error`, and removing a handler is a compile error.
 
 Read the [effects guide, including the ML version](https://www.ospreylang.dev/docs/effects/), or [try Osprey online](https://www.ospreylang.dev/playground/).
 
@@ -60,17 +79,17 @@ See the [installation guide](https://www.ospreylang.dev/docs/installation/) for 
 
 | Start here | What you will find |
 | --- | --- |
-| [examples/](examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
-| [crates/](crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
-| [packages/](packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
-| [compiler/runtime/](compiler/runtime) | C runtime and GPU adapters |
-| [tree-sitter-osprey/](tree-sitter-osprey) | Default-flavor grammar |
-| [tests/](tests) | Default and ML language suites with shared golden output |
+| [src/osprey/examples/](src/osprey/examples/README.md) | Runnable programs, Talon Bank, Issue Inbox and GPT-2 |
+| [src/toolchain/crates/](src/toolchain/crates) | Rust compiler, type checker, code generation, formatter, language server and debugger |
+| [src/osprey/packages/](src/osprey/packages/README.md) | Package manager, registry server and Osprey libraries in every syntax flavor |
+| [src/toolchain/compiler/runtime/](src/toolchain/compiler/runtime) | C runtime and GPU adapters |
+| [src/toolchain/tree-sitter-osprey/](src/toolchain/tree-sitter-osprey) | Default-flavor grammar |
+| [src/osprey/tests/](src/osprey/tests) | Default and ML language suites with shared golden output |
 | [docs/](docs/README.md) | Specifications, delivery plans and contributor architecture |
-| [website/](website) | Language guides, reference pages and public website |
-| [vscode-extension/](vscode-extension/README.md), [webcompiler/](webcompiler) | Editor integration and online compiler |
+| [src/toolchain/website/](src/toolchain/website) | Language guides, reference pages and public website |
+| [src/toolchain/vscode-extension/](src/toolchain/vscode-extension/README.md), [src/toolchain/webcompiler/](src/toolchain/webcompiler) | Editor integration and online compiler |
 | [scripts/](scripts/README.md) | Build rules, validation, platform tooling and packaging support |
-| [Book/](Book/README.md), [benchmarks/](benchmarks/README.md) | The Osprey book and measured comparisons |
+| [docs/book/](docs/book/README.md), [src/toolchain/benchmarks/](src/toolchain/benchmarks/README.md) | The Osprey book and measured comparisons |
 
 The [repository map](docs/contributing/repository-map.md) explains the compilation pipeline, build entry points and where a change belongs. The [contributing guide](CONTRIBUTING.md) covers setup and coordination.
 
@@ -85,20 +104,20 @@ make ci
 
 Run these from the repository root. The compiler is written to `target/release/osprey`. The root Makefile defines every public target; their configuration and private steps live in `scripts/make/`.
 
-[Hunt](website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C tests/hunt hunt FILE=tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C packages registry-test` runs its separate suites.
+[Hunt](src/toolchain/website/src/docs/hunt.md) explores symbolic inputs with KLEE: `make -C src/osprey/tests/hunt hunt FILE=src/osprey/tests/hunt/crash.osp HUNT_ARGS="--input-bytes 1 --max-time 10"` finds input `"9"` and reproduces the demo's deliberately planted C abort. Open the printed HTML report; exit status 1 is expected. The [package guide](src/toolchain/website/src/docs/package-manager.md) covers the working folder registry, locked builds and planned package website; `make -C src/osprey/packages registry-test` runs its separate suites.
 
 ## Language and applications
 
-- **Effects:** typed requests, reusable value handlers, native single-shot control operations and static interpretation. [Guide](website/src/docs/algebraic-effects.md).
+- **Effects:** typed requests, reusable value handlers, native single-shot control operations and static interpretation. [Guide](src/toolchain/website/src/docs/algebraic-effects.md).
 - **Types:** inference, algebraic data types, exhaustive matching and explicit `Result` failures.
-- **Any syntax, one language:** every flavor's concrete syntax tree lowers into one canonical AST, so types, effects and project modules are shared. Default braces (`.osp`), ML layout (`.ospml`) and the [Python flavor](https://www.ospreylang.dev/docs/python-flavor/) (`.py`, Osprey that looks like Python) ship today and mix in one project.
+- **Any syntax, one language:** every flavor's concrete syntax tree lowers into one canonical AST, so types, effects and project modules are shared. Default braces (`.osp`), ML layout (`.ospml`) and the [Python flavor](https://www.ospreylang.dev/docs/python/flavor/) (`.py`, Osprey that looks like Python) ship today and mix in one project.
 - **Arithmetic:** integer faults require an explicit `Arith` policy. [Contract](docs/specs/language/0037-ArithmeticEffects.md).
 - **Native concurrency and memory:** isolated fibers; tracing GC by default, or reference counting with `--memory=arc`. Unmanaged allocation requires explicit `--memory=none`.
 
 GC is the native default to avoid ARC's per-ownership-change reference-count work, at the cost of deferred reclamation and collection pauses. Choose ARC for prompt reclamation, Windows or allocating fibers; neither backend is universally faster. See [memory choices and limits](docs/specs/compiler/0018-MemoryManagement.md#backend-selection-mem-backends).
 
-[Talon Bank](examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](examples/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
+[Talon Bank](src/osprey/examples/projects/modules/README.md) shares web and mobile application logic; [Issue Inbox](src/osprey/examples/mobile/README.md) shares iOS and Android state, UI descriptions and platform commands. Native hosts execute mobile SQL and HTTP commands and return completion events. [GPT-2](src/osprey/examples/llms/gpt2/README.md) uses two static tensor handlers for host lists and the GPU surface.
 
-Dynamic control effects require native execution. WebAssembly and mobile support value handlers and static discharge; unsupported capabilities are rejected. Full scoped effect rows and reusable continuations remain unfinished. See [feature status](website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
+Dynamic control effects require native execution. WebAssembly and mobile support value handlers and static discharge; unsupported capabilities are rejected. Full scoped effect rows and reusable continuations remain unfinished. See [feature status](src/toolchain/website/src/status.md), [specifications](docs/specs/README.md) and [active plans](docs/plans/) for the precise limits.
 
 MIT licensed. See [LICENSE](LICENSE) and the [release process](docs/RELEASING.md).

@@ -22,7 +22,7 @@ You MUST follow this exact workflow. Do NOT skip steps. Do NOT fix the bug befor
 - Write a test that **directly exercises the buggy behavior**
 - The test must assert the **correct/expected** behavior — so it FAILS against the current broken code
 - The test name should clearly describe the bug (e.g., `TestPatternMatchingNotExhaustive`)
-- Use the project's existing test framework and conventions (Go: `testing` package in `compiler/tests/`)
+- Use the project's existing test framework and conventions (Rust: `src/toolchain/crates/osprey-cli/tests/`; language suites: `src/osprey/tests/`)
 
 ## Step 3: Run the Test — Confirm It FAILS
 

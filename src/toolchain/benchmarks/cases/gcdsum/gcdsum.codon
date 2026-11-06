@@ -1,0 +1,29 @@
+# Sum of gcd(i, K) for i in 1..N — Euclidean-algorithm recursion (modulo heavy).
+def fold(items, start, step):
+    acc = start
+    for item in items:
+        acc = step(acc, item)
+    return acc
+
+
+def add(a, b):
+    return a + b
+
+
+def mod_(a, b):
+    return a % b
+
+
+def gcd(a, b):
+    match b:
+        case 0:
+            return a
+        case _:
+            return gcd(b, mod_(a, b))
+
+
+def step(acc, i):
+    return add(acc, gcd(i, 1234567))
+
+
+print(f"{fold(range(1, 2000000), 0, step)}")

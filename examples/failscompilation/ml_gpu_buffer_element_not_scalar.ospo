@@ -1,5 +1,0 @@
-// osprey: flavor=ml
-// [GPU-BUFFER-ELEM]: buffer elements are scalars; strings stay on the host.
-main () =
-    b = toGpu ["a", "b"]
-    print (gpuLength b)

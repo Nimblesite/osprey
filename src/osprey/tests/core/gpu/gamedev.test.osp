@@ -1,0 +1,484 @@
+/// [FAILURE-EXPLICIT] A failed allocation, combinator or reduction stops the case before its consumer.
+fn withBuffer(result, work) = match result {
+    Success { value } => work(value)
+    Error { message } => check("GPU operation", "success", toString(message))
+}
+/// [FAILURE-EXPLICIT] A GPU failure fails the predicate with its reason.
+fn gpuSatisfies(result, predicate) = match result {
+    Success { value } => predicate(value)
+    Error { message } => { check("GPU operation", "success", toString(message))
+        false }
+}
+/// [FAILURE-EXPLICIT] Allocation errors fail the case before its consumer runs.
+fn withIndices(n, work) = withBuffer(gpuIota(n), work)
+// Game-engine workloads on the GPU surface: Q10 fixed-point vector algebra over parallel component buffers, semi-implicit Euler integration, broadphase collision
+// predicates, bounding volumes built by folds, packed-colour blending, gpuIota-driven gathers (de-interleave, transpose, edge-clamped stencils), and per-frame pipelines
+// that combine six buffers at once ([GPU-ZIPWITH], [GPU-IOTA], [GPU-GET], [GPU-FOLD], [GPU-SCAN], [GPU-FILTER] — docs/specs/runtime/0034-GPUComputation.md). The
+// simulation half is deliberately fixed point: a frame that must replay identically on every backend cannot afford float reassociation, and integer kernels are what a
+// physics step and a blitter actually run.
+/// Q10 fixed point: one world unit is 1024 sub-units.
+fn unit() = 1024
+/// fpMul and fpDiv stay in Q10; a zero scale produces no displacement.
+fn fpMul(a, b) = intDiv((a * b) , unit())
+fn fpDiv(a, b) = {
+    // A singular scale produces no displacement.
+    handle Arith { remainderByZero _ => 0 }
+    intDiv(a * unit(), b)
+}
+/// The sign helpers every component-wise kernel needs.
+fn negFp(x) = (0 - x)
+fn fpAbs(x) = match x < 0 { true => negFp(x) false => x }
+/// Whole-buffer scale kernels at Q10.
+fn doubleFp(x) = fpMul(x, (2 * unit()) )
+fn halveFp(x) = fpMul(x, intDiv(unit(), 2) )
+/// sumInts doubles as elementwise vector addition; subInts is displacement.
+fn sumInts(a, x) = (a + x)
+fn subInts(a, b) = (a - b)
+fn sqrOf(v) = (v * v)
+/// Squared length in one pass, so a broadphase needs no product buffer.
+fn addSquares(dx, dy) = (sqrOf(dx) + sqrOf(dy))
+/// speedOf accumulates absolute magnitude — total speed, or total error.
+fn speedOf(acc, v) = (acc + fpAbs(v))
+/// The associative fold combines that grow an axis-aligned box.
+fn boundMin(a, b: int) = match a <= b { true => a false => b }
+fn boundMax(a, b: int) = match a >= b { true => a false => b }
+/// Collision is inclusive: volumes that merely touch already overlap.
+fn leqI(a, b: int) = a <= b
+fn bothOf(a, b) = a && b
+/// Flag-buffer helpers: total the hits, or compact them either way.
+fn hitCost(flag) = match flag { true => 1 false => 0 }
+fn isHit(flag) = flag == true
+fn isMiss(flag) = !flag
+/// The alpha-max-plus-beta-min length estimate, |v| ~= max + 3*min/8: what a broadphase reaches for because it needs no square root.
+fn octagonal(x, y) = {
+    let hi = boundMax(fpAbs(x), fpAbs(y))
+    let lo = boundMin(fpAbs(x), fpAbs(y))
+    let beta = intDiv((3 * lo) , 8)
+    hi + beta
+}
+/// A colour packs r:g:b into one int element, the way a framebuffer does.
+fn channelBits() = 256
+fn redShift() = (channelBits() * channelBits())
+fn clampChannel(v) = match v < 0 {
+    true => 0
+    false => match v > 255 { true => 255 false => v }
+}
+fn packRG(r, g) = ((clampChannel(r) * channelBits()) ) + clampChannel(g)
+fn packRGB(rg, b) = ((rg * channelBits()) ) + clampChannel(b)
+fn redOf(c) = intDiv(c, redShift())
+fn greenOf(c) = (intDiv(c, channelBits()) ) % channelBits()
+fn blueOf(c) = (c % channelBits())
+/// Integer Rec.601 grey; the weights sum to exactly 256, so white maps to 255.
+fn luminance(c) = intDiv(
+    ((77 * redOf(c)) ) + ((151 * greenOf(c)) ) + ((28 * blueOf(c)) ) ,
+    channelBits())
+/// A blend is two coverage-weighted scales and one add.
+fn scaleColor(c, w) = packRGB(
+    packRG(intDiv((redOf(c) * w) , channelBits()) ,
+        intDiv((greenOf(c) * w) , channelBits()) ),
+    intDiv((blueOf(c) * w) , channelBits()) )
+fn invAlpha(a) = (channelBits() - a)
+/// The reference colours; missingColor is the magenta a failed asset paints.
+fn black() = 0
+fn red() = 16711680
+fn green() = 65280
+fn white() = 16777215
+fn missingColor() = 16711935
+/// at turns [GPU-GET]'s out-of-range Error into the engine's chosen padding.
+fn at(buf, i, miss) = gpuGet(buf, i) ?: miss
+/// clampIdx keeps a stencil tap on the field; blurAt is the three-tap average.
+fn clampIdx(i, n) = boundMin(boundMax(i, 0), (n - 1) )
+fn blurAt(field, n, i) = intDiv(at(field, clampIdx((i - 1) , n), 0)
+    + at(field, i, 0) + at(field, clampIdx((i + 1) , n), 0) , 3)
+/// tileTranspose reads a w-by-h tile grid column-major: dest(x, y) = src(y, x).
+fn tileTranspose(src, w, h, indices, work) = withBuffer(
+    gpuMap(indices, fn(i) => at(src, ((((i % h) ) * w) ) + (intDiv(i, h) ) , 0)),
+    work)
+/// Semi-implicit Euler: velocity updates first, then position integrates the *new* velocity. Only a concrete signature gets a recursive helper emitted.
+fn velAfter(vel, acc, n, work) = match n {
+    0 => work(vel)
+    _ => withBuffer(gpuZipWith(vel, acc, sumInts), fn(stepped) => velAfter(stepped, acc, (n - 1) , work))
+}
+fn posAfter(pos, vel, acc, n, work) = match n {
+    0 => work(pos)
+    _ => posAfter(pos, vel, acc, (n - 1) , fn(place) => velAfter(vel, acc, n, fn(velocity) => withBuffer(gpuZipWith(place, velocity, sumInts), work)))
+}
+/// damp reruns a drag multiply over a velocity buffer n times.
+fn damp(vel, drag, n, work) = match n {
+    0 => work(vel)
+    _ => withBuffer(gpuMap(vel, fn(v) => fpMul(v, drag)), fn(slowed) => damp(slowed, drag, (n - 1) , work))
+}
+/// A tick is 0.1s; lerpQuarter eases a quarter of the way toward the target.
+fn integrate(p: float, v: float) = p + v * 0.1
+fn lerpQuarter(a, b) = a + (b - a) * 0.25
+/// The draw distance, the float reduction, and the survivor predicate.
+fn visible(d) = d < 100.0
+fn sumF(a, x) = a + x
+fn alive(h) = h > 0
+/// clamp01 keeps a normalized channel inside [0, 1].
+fn clamp01(x) = match x < 0.0 {
+    true => 0.0
+    false => match x > 1.0 { true => 1.0 false => x }
+}
+/// applyDamage resolves a hit, flooring health at zero.
+fn applyDamage(h, d) = match ((h - d) ) > 0 {
+    true => (h - d)
+    false => 0
+}
+/// fixedPointCase pins the Q10 contract, truncation included — a product below one sub-unit rounds toward zero — and runs the same arithmetic as kernels.
+fn fixedPointCase() = withBuffer(toGpu([unit(), 512, 0, negFp(256)]), fn(input0) => withBuffer(toGpu([]), fn(input1) => fixedPointCaseUploaded(input0, input1)))
+fn fixedPointCaseUploaded(input0, input1) = withBuffer(gpuMap(input0, doubleFp), fn(scaled) => checkAll("q10 fixed point", [
+            fpMul(unit(), unit()) == unit(), fpMul(unit(), 0) == 0, fpMul(0, unit()) == 0, fpMul(512, 512) == 256, fpMul(negFp(512), 512) == negFp(256),
+            fpMul(negFp(512), negFp(512)) == 256, fpMul(1, 1) == 0, fpMul(negFp(1), 1) == 0, fpDiv(unit(), (2 * unit()) ) == 512, fpDiv(768, 256) == 3072,
+            fpDiv(unit(), 0) == 0, fpDiv(0, unit()) == 0, fpDiv(negFp(512), 512) == negFp(1024), fpAbs(negFp(7)) == 7, fpAbs(0) == 0, fpAbs(7) == 7, negFp(negFp(9)) == 9,
+            at(scaled, 0, 0) == 2048, at(scaled, 1, 0) == 1024, at(scaled, 2, 1) == 0, at(scaled, 3, 0) == negFp(512), gpuSatisfies(gpuFold(scaled, 0, sumInts), fn(total) => total == 2560),
+            gpuSatisfies(gpuFold(scaled, 0, speedOf), fn(total) => total == 3584),
+            gpuSatisfies(gpuMap(scaled, halveFp), fn(half) => gpuSatisfies(gpuFold(half, 0, sumInts), fn(total) => total == 1280)),
+            gpuSatisfies(gpuMap(scaled, halveFp), fn(half) => gpuSatisfies(gpuMap(half, halveFp), fn(quarter) => gpuSatisfies(gpuFold(quarter, 0, sumInts), fn(total) => total == 640))),
+            gpuLength(scaled) == 4, gpuSatisfies(gpuMap(input1, doubleFp), fn(empty) => gpuLength(empty) == 0)
+    ]))
+/// vectorCase does 2D algebra across four parallel component buffers; dot and cross each combine two zipped products, and a . perp a and a x a vanish.
+fn vectorCase() = withBuffer(toGpu([1024, 2048, 0, 1024]), fn(input0) => withBuffer(toGpu([0, 0, 3072, 1024]), fn(input1) => withBuffer(toGpu([1024, 512, 0, 0]), fn(input2) => withBuffer(toGpu([0, 1024, 1024, 2048]), fn(input3) => vectorCaseUploaded(input0, input1, input2, input3)))))
+fn vectorCaseUploaded(input0, input1, input2, input3) = {
+    let ax = input0
+    let ay = input1
+    let bx = input2
+    let by = input3
+    withBuffer(gpuZipWith(ax, bx, fpMul), fn(axbx) =>
+        withBuffer(gpuZipWith(ay, by, fpMul), fn(ayby) =>
+            withBuffer(gpuZipWith(axbx, ayby, sumInts), fn(dots) =>
+                withBuffer(gpuZipWith(ax, by, fpMul), fn(axby) =>
+                    withBuffer(gpuZipWith(ay, bx, fpMul), fn(aybx) =>
+                        withBuffer(gpuZipWith(axby, aybx, subInts), fn(cross) =>
+                            withBuffer(gpuZipWith(ay, ax, fpMul), fn(ayax) =>
+                                withBuffer(gpuMap(ay, negFp), fn(negAy) =>
+                                    withBuffer(gpuZipWith(ax, negAy, fpMul), fn(axNegAy) =>
+                                        withBuffer(gpuZipWith(axNegAy, ayax, sumInts), fn(perp) =>
+                                            withBuffer(gpuZipWith(ax, ay, fpMul), fn(axay) =>
+                                                withBuffer(gpuZipWith(axay, ayax, subInts), fn(selfCross) =>
+                                                    checkAll("fixed-point vector algebra", [
+                                                            at(dots, 0, 0) == 1024, at(dots, 1, 0) == 1024, at(dots, 2, 0) == 3072, at(dots, 3, 0) == 2048, at(cross, 0, 1) == 0, at(cross, 1, 0) == 2048,
+                                                            at(cross, 2, 1) == 0, at(cross, 3, 0) == 2048, gpuSatisfies(gpuFold(dots, 0, sumInts), fn(total) => total == 7168), gpuSatisfies(gpuFold(cross, 0, sumInts), fn(total) => total == 4096),
+                                                            gpuSatisfies(gpuFold(perp, 0, speedOf), fn(total) => total == 0),
+                                                            at(perp, 3, 1) == 0, gpuSatisfies(gpuFold(selfCross, 0, speedOf), fn(total) => total == 0), gpuLength(dots) == 4, gpuLength(cross) == 4
+                                                    ])))))))))))))
+}
+/// magnitudeCase pins the octagonal estimate: exact on the axes, a slight undershoot on the diagonal, symmetric in both signs and in x/y.
+fn magnitudeCase() = withBuffer(toGpu([1024, 0, 3072, negFp(1024), 0]), fn(input0) => withBuffer(toGpu([0, 2048, 4096, negFp(1024), 0]), fn(input1) => magnitudeCaseUploaded(input0, input1)))
+fn magnitudeCaseUploaded(input0, input1) = withBuffer(gpuZipWith(input0,
+    input1, octagonal), fn(dist) => checkAll("octagonal distance", [
+            at(dist, 0, 0) == 1024, at(dist, 1, 0) == 2048, at(dist, 2, 0) == 5248, at(dist, 3, 0) == 1408, at(dist, 4, 1) == 0, gpuSatisfies(gpuFold(dist, 0, sumInts), fn(total) => total == 9728),
+            gpuSatisfies(gpuFold(dist, 0, boundMax), fn(total) => total == 5248), gpuSatisfies(gpuFold(dist, 99999, boundMin), fn(total) => total == 0),
+            gpuSatisfies(gpuFilter(dist, fn(d) => d <= 2048), fn(kept) => gpuLength(kept) == 4), octagonal(0, 0) == 0,
+            octagonal(negFp(1024), 0) == 1024, octagonal(1024, 1024) == 1408, octagonal(3072, 4096) == 5248, octagonal(4096, 3072) == 5248,
+            octagonal(negFp(4096), negFp(3072)) == 5248
+    ]))
+/// integrationCase runs four float physics ticks; a resting particle must not drift, and every tick is one elementwise pass over the same velocity.
+fn integrationCase() = withBuffer(toGpu([10.0, 0.0 - 20.0, 5.0, 0.0]), fn(input0) => withBuffer(toGpu([0.0, 100.0, 2.5, 42.0]), fn(input1) => integrationCaseUploaded(input0, input1)))
+fn integrationCaseUploaded(input0, input1) = {
+    let vel = input0
+    withBuffer(gpuZipWith(input1, vel, integrate), fn(tick1) =>
+        withBuffer(gpuZipWith(tick1, vel, integrate), fn(tick2) =>
+            withBuffer(gpuZipWith(tick2, vel, integrate), fn(tick3) =>
+                withBuffer(gpuZipWith(tick3, vel, integrate), fn(tick4) =>
+                    checkAll("particle integration", [
+                            at(tick1, 0, 0.0) == 1.0, at(tick1, 1, 0.0) == 98.0, at(tick1, 2, 0.0) == 3.0, at(tick1, 3, 0.0) == 42.0, at(tick2, 0, 0.0) == 2.0, at(tick2, 1, 0.0) == 96.0,
+                            at(tick2, 2, 0.0) == 3.5, at(tick4, 0, 0.0) == 4.0, at(tick4, 1, 0.0) == 92.0, at(tick4, 2, 0.0) == 4.5, at(tick4, 3, 0.0) == 42.0,
+                            gpuSatisfies(gpuFold(tick1, 0.0, sumF), fn(total) => total == 144.0), gpuSatisfies(gpuFold(tick4, 0.0, sumF), fn(total) => total == 142.5),
+                            gpuSatisfies(gpuFold(vel, 0.0, sumF), fn(total) => total == 0.0 - 5.0), gpuLength(tick4) == 4
+                    ])))))
+}
+/// eulerCase advances position, velocity and acceleration together, matching the closed forms v(n) = v0 + n*a and p(n) = p0 + n*v0 + a*n*(n+1)/2.
+fn eulerCase() = withBuffer(toGpu([0, 100, negFp(50)]), fn(input0) => withBuffer(toGpu([10, 0, 20]), fn(input1) => withBuffer(toGpu([negFp(2), 3, 0]), fn(input2) => eulerCaseUploaded(input0, input1, input2))))
+fn eulerCaseUploaded(input0, input1, input2) = {
+    let pos = input0
+    let vel = input1
+    let acc = input2
+    velAfter(vel, acc, 4, fn(v4) => posAfter(pos, vel, acc, 4, fn(p4) => posAfter(pos, vel, acc, 1, fn(p1) => velAfter(vel, acc, 0, fn(v0) => posAfter(pos, vel, acc, 0, fn(p0) => checkAll("semi-implicit euler", [
+                                at(v4, 0, 0) == 2, at(v4, 1, 0) == 12, at(v4, 2, 0) == 20, at(p1, 0, 0) == 8, at(p1, 1, 0) == 103, at(p1, 2, 0) == negFp(30), at(p4, 0, 0) == 20,
+                                at(p4, 1, 0) == 130, at(p4, 2, 0) == 30, gpuSatisfies(gpuFold(v4, 0, sumInts), fn(total) => total == 34), gpuSatisfies(gpuFold(p4, 0, sumInts), fn(total) => total == 180),
+                                gpuSatisfies(gpuFold(v0, 0, sumInts), fn(total) => total == 30), gpuSatisfies(gpuFold(p0, 0, sumInts), fn(total) => total == 50), gpuLength(p4) == 3, gpuLength(v4) == 3
+                        ]))))))
+}
+/// dragCase damps velocity by a Q10 coefficient every tick: total speed falls monotonically, drag 1.0 is the identity and drag 0 stops the world.
+fn dragCase() = withBuffer(toGpu([4096, negFp(2048), 1024, 0]), fn(input0) => dragCaseUploaded(input0))
+fn dragCaseUploaded(input0) = {
+    let vel = input0
+    damp(vel, 768, 3, fn(three) => damp(vel, 768, 1, fn(once) => damp(vel, 768, 2, fn(twice) => damp(vel, unit(), 5, fn(identity) => damp(vel, 0, 1, fn(stopped) => damp(vel, 768, 0, fn(unmoved) => checkAll("velocity damping", [
+                                    gpuSatisfies(gpuFold(vel, 0, speedOf), fn(total) => total == 7168), gpuSatisfies(gpuFold(three, 0, speedOf), fn(total) => total == 3024), gpuSatisfies(gpuFold(once, 0, speedOf), fn(total) => total == 5376),
+                                    gpuSatisfies(gpuFold(twice, 0, speedOf), fn(total) => total == 4032), at(three, 0, 0) == 1728, at(three, 1, 0) == negFp(864), at(three, 2, 0) == 432, at(three, 3, 1) == 0,
+                                    gpuSatisfies(gpuFold(identity, 0, speedOf), fn(total) => total == 7168), gpuSatisfies(gpuFold(stopped, 0, speedOf), fn(total) => total == 0),
+                                    gpuSatisfies(gpuFold(unmoved, 0, speedOf), fn(total) => total == 7168),
+                                    gpuLength(three) == 4
+                            ])))))))
+}
+/// aabbCase builds a box from four folds. The sentinel seeds are the empty-world contract: [GPU-FOLD] returns the seed, so the box comes back inverted.
+fn aabbCase() = withBuffer(toGpu([30, negFp(10), 75, 12, 0]), fn(input0) => withBuffer(toGpu([5, 60, negFp(20), 60, 0]), fn(input1) => withBuffer(toGpu([7]), fn(input2) => withBuffer(toGpu([7]), fn(input3) => withBuffer(toGpu([]), fn(input4) => withBuffer(toGpu([]), fn(input5) => aabbCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
+fn aabbCaseUploaded(input0, input1, input2, input3, input4, input5) = {
+    let xs = input0
+    let ys = input1
+    withBuffer(gpuFold(xs, 9999, boundMin), fn(loX) => withBuffer(gpuFold(xs, negFp(9999), boundMax), fn(hiX) => withBuffer(gpuFold(ys, 9999, boundMin), fn(loY) => withBuffer(gpuFold(ys, negFp(9999), boundMax), fn(hiY) => withBuffer(gpuFold(input2, 9999, boundMin), fn(singleLo) => withBuffer(gpuFold(input3, negFp(9999), boundMax), fn(singleHi) => withBuffer(gpuFold(input4, 9999, boundMin), fn(emptyLo) => withBuffer(gpuFold(input5, negFp(9999), boundMax), fn(emptyHi) => checkAll("bounding box", [
+                                    loX == negFp(10), hiX == 75, loY == negFp(20), hiY == 60, ((hiX - loX) ) == 85, ((hiY - loY) ) == 80, (intDiv((loX + hiX) , 2) ) == 32,
+                                    (intDiv((loY + hiY) , 2) ) == 20, gpuSatisfies(gpuFilter(xs, fn(x) => x >= loX && x <= hiX), fn(kept) => gpuLength(kept) == 5),
+                                    singleLo == 7, singleHi == 7, emptyLo == 9999, emptyHi == negFp(9999)
+                            ])))))))))
+}
+/// overlapCase is the four-buffer interval test every broadphase runs: two inclusive comparisons zipped into one flag buffer. Touching edges collide.
+fn overlapCase() = withBuffer(toGpu([0, 100, 0, 10]), fn(input0) => withBuffer(toGpu([10, 110, 100, 20]), fn(input1) => withBuffer(toGpu([15, 50, 300, 30]), fn(input2) => withBuffer(toGpu([5, 0, 200, 20]), fn(input3) => overlapCaseUploaded(input0, input1, input2, input3)))))
+fn overlapCaseUploaded(input0, input1, input2, input3) = {
+    let aLo = input0
+    let aHi = input1
+    withBuffer(gpuZipWith(aLo, input2, leqI), fn(started) =>
+        withBuffer(gpuZipWith(input3, aHi, leqI), fn(ended) =>
+            withBuffer(gpuZipWith(started, ended, bothOf), fn(hit) =>
+                withBuffer(gpuZipWith(aLo, aHi, leqI), fn(ordered) =>
+                    withBuffer(gpuZipWith(ordered, ordered, bothOf), fn(selfHit) =>
+                        checkAll("aabb overlap", [
+                                at(hit, 0, false) == true, at(hit, 1, true) == false, at(hit, 2, true) == false, at(hit, 3, false) == true,
+                                gpuSatisfies(gpuMap(hit, hitCost), fn(costs) => gpuSatisfies(gpuFold(costs, 0, sumInts), fn(total) => total == 2)),
+                                gpuSatisfies(gpuMap(selfHit, hitCost), fn(costs) => gpuSatisfies(gpuFold(costs, 0, sumInts), fn(total) => total == 4)),
+                                gpuSatisfies(gpuFilter(hit, isHit), fn(kept) => gpuLength(kept) == 2), gpuSatisfies(gpuFilter(hit, isMiss), fn(kept) => gpuLength(kept) == 2), gpuLength(hit) == 4,
+                                leqI(3, 3) == true, leqI(4, 3) == false, bothOf(true, false) == false, bothOf(true, true) == true
+                        ]))))))
+}
+/// circleCase combines six buffers — two positions, two radii, a squared distance and a squared reach; circles that exactly touch count as a hit.
+fn circleCase() = withBuffer(toGpu([0, 0, 3000, 0]), fn(input0) => withBuffer(toGpu([0, 3000, 0, 6000]), fn(input1) => withBuffer(toGpu([0, 4000, 4000, 0]), fn(input2) => withBuffer(toGpu([0, 0, 0, 8000]), fn(input3) => withBuffer(toGpu([100, 2000, 6000, 1000]), fn(input4) => withBuffer(toGpu([100, 3000, 1000, 1000]), fn(input5) => circleCaseUploaded(input0, input1, input2, input3, input4, input5)))))))
+fn circleCaseUploaded(input0, input1, input2, input3, input4, input5) =
+    withBuffer(gpuZipWith(input0, input1, subInts), fn(dx) =>
+        withBuffer(gpuZipWith(input2, input3, subInts), fn(dy) =>
+            withBuffer(gpuZipWith(dx, dy, addSquares), fn(dist2) =>
+                withBuffer(gpuZipWith(input4, input5, sumInts), fn(reach) =>
+                    withBuffer(gpuMap(reach, sqrOf), fn(thresh) =>
+                        withBuffer(gpuZipWith(dist2, thresh, leqI), fn(hit) =>
+                            checkAll("circle broadphase", [
+                                    at(dist2, 0, 1) == 0, at(dist2, 1, 0) == 25000000, at(dist2, 2, 0) == 25000000, at(dist2, 3, 0) == 100000000,
+                                    gpuSatisfies(gpuFold(dist2, 0, sumInts), fn(total) => total == 150000000),
+                                    at(thresh, 0, 0) == 40000, at(thresh, 1, 0) == 25000000, at(hit, 0, false) == true, at(hit, 1, false) == true, at(hit, 2, false) == true,
+                                    at(hit, 3, true) == false, gpuLength(hit) == 4, gpuSatisfies(gpuMap(hit, hitCost), fn(costs) => gpuSatisfies(gpuFold(costs, 0, sumInts), fn(total) => total == 3)),
+                                    addSquares(3, 4) == 25, addSquares(0, 0) == 0
+                            ])))))))
+/// cullCase draws only entities inside the view distance, in draw order, and pins that compaction publishes exactly the kept prefix.
+fn cullCase() = withBuffer(toGpu([12.5, 250.0, 99.9, 100.0, 3.0, 0.0]), fn(input0) => withBuffer(toGpu([500.0, 900.0]), fn(input1) => withBuffer(toGpu([1.0, 2.0]), fn(input2) => withBuffer(toGpu([100.0]), fn(input3) => cullCaseUploaded(input0, input1, input2, input3)))))
+fn cullCaseUploaded(input0, input1, input2, input3) = {
+    let dists = input0
+    withBuffer(gpuFilter(dists, visible), fn(drawn) =>
+        withBuffer(gpuFilter(input1, visible), fn(far) =>
+            withBuffer(gpuFilter(input2, visible), fn(close) =>
+                withBuffer(gpuFilter(input3, visible), fn(edge) =>
+                    checkAll("distance culling", [
+                            gpuLength(drawn) == 4, gpuLength(dists) == 6, at(drawn, 0, 0.0) == 12.5, at(drawn, 1, 0.0) == 99.9, at(drawn, 2, 0.0) == 3.0, at(drawn, 3, 9.5) == 0.0,
+                            at(drawn, 4, 7.5) == 7.5, gpuSatisfies(gpuFold(drawn, 0.0, sumF), fn(total) => total == 115.4), gpuLength(far) == 0, gpuLength(close) == 2,
+                            gpuLength(edge) == 0
+                    ])))))
+}
+/// damageCase resolves an attack wave: overkill floors at zero, zero damage is a no-op, and the survivors compact in place.
+fn damageCase() = withBuffer(toGpu([100, 40, 75, 10, 0]), fn(input0) => withBuffer(toGpu([30, 60, 0, 10, 5]), fn(input1) => damageCaseUploaded(input0, input1)))
+fn damageCaseUploaded(input0, input1) = {
+    let health = input0
+    withBuffer(gpuZipWith(health, input1, applyDamage), fn(after) =>
+        withBuffer(gpuFilter(after, alive), fn(survivors) =>
+            withBuffer(gpuZipWith(health, health, applyDamage), fn(wiped) =>
+                withBuffer(gpuFilter(wiped, alive), fn(cleared) =>
+                    checkAll("damage resolution", [
+                            at(after, 0, 0) == 70, at(after, 1, 9) == 0, at(after, 2, 0) == 75, at(after, 3, 9) == 0, at(after, 4, 9) == 0, gpuLength(survivors) == 2,
+                            at(survivors, 0, 0) == 70, at(survivors, 1, 0) == 75, gpuSatisfies(gpuFold(survivors, 0, sumInts), fn(total) => total == 145),
+                            gpuSatisfies(gpuFold(after, 0, sumInts), fn(total) => total == 145),
+                            gpuLength(cleared) == 0, gpuSatisfies(gpuFold(wiped, 0, sumInts), fn(total) => total == 0), gpuLength(wiped) == 5
+                    ])))))
+}
+/// easingCase eases a camera rig toward its targets and normalizes a channel buffer; a value already at its target is a fixed point of the ease.
+fn easingCase() = withBuffer(toGpu([4.0, 0.0, 1.0, 1.0]), fn(input0) => withBuffer(toGpu([0.0, 8.0, 1.0, 0.0]), fn(input1) => withBuffer(toGpu([0.0 - 0.5, 0.25, 1.75, 1.0, 0.0]), fn(input2) => easingCaseUploaded(input0, input1, input2))))
+fn easingCaseUploaded(input0, input1, input2) = {
+    let target = input0
+    withBuffer(gpuZipWith(input1, target, lerpQuarter), fn(eased) =>
+        withBuffer(gpuZipWith(eased, target, lerpQuarter), fn(twice) =>
+            withBuffer(gpuMap(input2, clamp01), fn(safe) =>
+                checkAll("easing and clamping", [
+                        at(eased, 0, 0.0) == 1.0, at(eased, 1, 0.0) == 6.0, at(eased, 2, 0.0) == 1.0, at(eased, 3, 0.0) == 0.25, at(twice, 0, 0.0) == 1.75, at(twice, 2, 0.0) == 1.0,
+                        gpuSatisfies(gpuFold(safe, 0.0, sumF), fn(total) => total == 2.25), at(safe, 0, 9.9) == 0.0, at(safe, 1, 0.0) == 0.25, at(safe, 2, 0.0) == 1.0, at(safe, 3, 0.0) == 1.0,
+                        at(safe, 4, 9.9) == 0.0, gpuLength(safe) == 5
+                ]))))
+}
+/// packCase meets three channel buffers in two passes and unpacks them again; an out-of-range channel clamps rather than bleeding into its neighbour.
+fn packCase() = withBuffer(toGpu([255, 0, 18, 300]), fn(input0) => withBuffer(toGpu([0, 255, 52, 128]), fn(input1) => withBuffer(toGpu([0, 0, 86, negFp(20)]), fn(input2) => packCaseUploaded(input0, input1, input2))))
+fn packCaseUploaded(input0, input1, input2) = withBuffer(gpuZipWith(input0, input1, packRG), fn(rg) => withBuffer(gpuZipWith(rg, input2, packRGB), fn(packed) => checkAll("colour packing", [
+                    at(packed, 0, 0) == red(), at(packed, 1, 0) == green(), at(packed, 2, 0) == 1193046, at(packed, 3, 0) == 16744448,
+                    gpuSatisfies(gpuMap(packed, redOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 528)),
+                    gpuSatisfies(gpuMap(packed, greenOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 435)),
+                    gpuSatisfies(gpuMap(packed, blueOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 86)),
+                    gpuSatisfies(gpuMap(packed, luminance), fn(levels) => gpuSatisfies(gpuFold(levels, 0, sumInts), fn(total) => total == 423)), gpuLength(packed) == 4,
+                    packRGB(packRG(0, 0), 0) == black(), packRGB(packRG(255, 255), 255) == white(), packRGB(packRG(255, 0), 0) == red(), packRGB(packRG(0, 255), 0) == green(),
+                    redOf(white()) == 255, greenOf(white()) == 255, blueOf(white()) == 255, redOf(black()) == 0, greenOf(green()) == 255, redOf(green()) == 0,
+                    redOf(packRGB(packRG(300, 0), 0)) == 255, blueOf(packRGB(packRG(0, 0), negFp(20))) == 0, clampChannel(255) == 255, clampChannel(256) == 255,
+                    clampChannel(negFp(1)) == 0, luminance(white()) == 255, luminance(black()) == 0, luminance(red()) == 76
+            ])))
+/// blendCase composites two colour layers through a coverage buffer. Coverage 0 keeps the base and 256 takes the layer exactly, with no rounding drift.
+fn blendCase() = withBuffer(toGpu([0, 128, 256, 64]), fn(input0) => withBuffer(toGpu([white(), red(), black(), green()]), fn(input1) => withBuffer(toGpu([black(), green(), white(), red()]), fn(input2) => blendCaseUploaded(input0, input1, input2))))
+fn blendCaseUploaded(input0, input1, input2) = {
+    let alpha = input0
+    withBuffer(gpuMap(alpha, invAlpha), fn(inverse) =>
+        withBuffer(gpuZipWith(input1, inverse, scaleColor), fn(base) =>
+            withBuffer(gpuZipWith(input2, alpha, scaleColor), fn(layer) =>
+                withBuffer(gpuZipWith(base, layer, sumInts), fn(blended) =>
+                    checkAll("alpha blending", [
+                            at(blended, 0, 0) == white(), at(blended, 2, 0) == white(), redOf(at(blended, 1, 0)) == 127, greenOf(at(blended, 1, 0)) == 127, blueOf(at(blended, 1, 0)) == 0,
+                            redOf(at(blended, 3, 0)) == 63, greenOf(at(blended, 3, 0)) == 191, blueOf(at(blended, 3, 0)) == 0,
+                            gpuSatisfies(gpuMap(blended, luminance), fn(levels) => gpuSatisfies(gpuFold(levels, 0, sumInts), fn(total) => total == 754)),
+                            scaleColor(white(), 256) == white(), scaleColor(white(), 0) == black(), invAlpha(0) == 256, invAlpha(256) == 0, gpuLength(blended) == 4
+                    ])))))
+}
+/// paletteCase gathers through an index buffer: a wrapped index tiles the palette, and one off the end becomes magenta rather than a silent black.
+fn paletteCase() = withIndices(8, fn(indices8) => withIndices(0, fn(indices0) => paletteWith(indices8, indices0)))
+fn paletteWith(indices8, indices0) = withBuffer(toGpu([black(), red(), green(), 255, white()]), fn(input0) => paletteWithUploaded(indices8, indices0, input0))
+fn paletteWithUploaded(indices8, indices0, input0) = {
+    let pal = input0
+    withBuffer(gpuMap(indices8, fn(i) => at(pal, (i % 5) , missingColor())), fn(tiled) =>
+        withBuffer(gpuMap(indices8, fn(i) => at(pal, i, missingColor())), fn(raw) =>
+            withBuffer(gpuMap(indices0, fn(i) => at(pal, i, missingColor())), fn(empty) =>
+                checkAll("palette gather", [
+                        gpuLength(tiled) == 8, gpuLength(raw) == 8, at(tiled, 0, 1) == black(), at(tiled, 4, 0) == white(), at(tiled, 5, 1) == black(), at(tiled, 6, 0) == red(),
+                        at(raw, 4, 0) == white(), at(raw, 5, 0) == missingColor(), at(raw, 7, 0) == missingColor(),
+                        gpuSatisfies(gpuMap(tiled, redOf), fn(channels) => gpuSatisfies(gpuFold(channels, 0, sumInts), fn(total) => total == 765)),
+                        gpuSatisfies(gpuFilter(raw, fn(c) => c == missingColor()), fn(kept) => gpuLength(kept) == 3), at(pal, negFp(1), missingColor()) == missingColor(), at(pal, 0, missingColor()) == black(),
+                        gpuLength(empty) == 0
+                ]))))
+}
+/// gatherCase de-interleaves an array-of-structs vertex stream with a strided gather; a read that overruns the stream must land on the padding value.
+fn gatherCase() = withIndices(4, fn(indices4) => withIndices(5, fn(indices5) => gatherWith(indices4, indices5)))
+fn gatherWith(indices4, indices5) = withBuffer(toGpu([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]), fn(input0) => gatherWithUploaded(indices4, indices5, input0))
+fn gatherWithUploaded(indices4, indices5, input0) = {
+    let flat = input0
+    withBuffer(gpuMap(indices4, fn(i) => at(flat, (3 * i) , 0)), fn(xs) =>
+        withBuffer(gpuMap(indices4, fn(i) => at(flat, ((3 * i) ) + 1 , 0)), fn(ys) =>
+            withBuffer(gpuMap(indices4, fn(i) => at(flat, ((3 * i) ) + 2 , 0)), fn(zs) =>
+                withBuffer(gpuMap(indices4, fn(i) => at(xs, (3 - i) , 0)), fn(flipped) =>
+                    withBuffer(gpuMap(indices5, fn(i) => at(flat, (3 * i) , negFp(1))), fn(over) =>
+                        checkAll("aos to soa gather", [
+                                gpuSatisfies(gpuFold(xs, 0, sumInts), fn(total) => total == 22), gpuSatisfies(gpuFold(ys, 0, sumInts), fn(total) => total == 26),
+                                gpuSatisfies(gpuFold(zs, 0, sumInts), fn(total) => total == 30), gpuSatisfies(gpuFold(flat, 0, sumInts), fn(total) => total == 78), at(xs, 0, 0) == 1,
+                                at(xs, 3, 0) == 10, at(ys, 2, 0) == 8, at(zs, 1, 0) == 6, at(flipped, 0, 0) == 10, at(flipped, 3, 0) == 1, gpuSatisfies(gpuFold(flipped, 0, sumInts), fn(total) => total == 22),
+                                at(over, 4, 0) == negFp(1), gpuLength(over) == 5, gpuLength(xs) == 4
+                        ]))))))
+}
+/// transposeCase gathers a tile grid column-major. A transpose permutes, so the total is invariant and transposing twice must differ from the source by 0.
+fn transposeCase() = withIndices(12, fn(indices12) => withIndices(1, fn(indices1) => transposeWith(indices12, indices1)))
+fn transposeWith(indices12, indices1) = {
+    let tiles = indices12
+    tileTranspose(tiles, 4, 3, indices12, fn(flip) => tileTranspose(flip, 3, 4, indices12, fn(back) => tileTranspose(indices1, 1, 1, indices1, fn(single) => checkAll("tile transpose", [
+                                gpuLength(flip) == 12, gpuLength(back) == 12, at(flip, 0, 1) == 0, at(flip, 1, 0) == 4, at(flip, 2, 0) == 8, at(flip, 3, 0) == 1, at(flip, 11, 0) == 11,
+                                gpuSatisfies(gpuFold(flip, 0, sumInts), fn(total) => total == 66), gpuSatisfies(gpuZipWith(back, tiles, subInts), fn(diffs) => gpuSatisfies(gpuFold(diffs, 0, speedOf), fn(total) => total == 0)),
+                                gpuSatisfies(gpuFold(flip, negFp(1), boundMax), fn(total) => total == 11),
+                                gpuLength(single) == 1, gpuSatisfies(gpuFold(single, 9, boundMin), fn(total) => total == 0)
+                        ]))))
+}
+/// stencilCase runs an edge-clamped three-tap blur over a heightfield. A spike spreads and flattens while its total survives; a plateau is a fixed point.
+fn stencilCase() = withIndices(5, fn(indices5) => stencilWith(indices5))
+fn stencilWith(indices5) = withBuffer(toGpu([0, 0, 90, 0, 0]), fn(input0) => withBuffer(toGpu([7, 7, 7, 7, 7]), fn(input1) => stencilWithUploaded(indices5, input0, input1)))
+fn stencilWithUploaded(indices5, input0, input1) = {
+    let spike = input0
+    withBuffer(gpuMap(indices5, fn(i) => blurAt(spike, 5, i)), fn(smoothed) =>
+        withBuffer(gpuMap(indices5, fn(i) => blurAt(input1, 5, i)), fn(plateau) =>
+            checkAll("edge-clamped stencil", [
+                    at(smoothed, 0, 1) == 0, at(smoothed, 1, 0) == 30, at(smoothed, 2, 0) == 30, at(smoothed, 3, 0) == 30, at(smoothed, 4, 1) == 0,
+                    gpuSatisfies(gpuFold(smoothed, 0, sumInts), fn(total) => total == 90), gpuSatisfies(gpuFold(smoothed, 0, boundMax), fn(total) => total == 30),
+                    gpuSatisfies(gpuFold(spike, 0, boundMax), fn(total) => total == 90), gpuSatisfies(gpuFold(plateau, 0, sumInts), fn(total) => total == 35),
+                    at(plateau, 0, 0) == 7, at(plateau, 4, 0) == 7, clampIdx(negFp(9), 5) == 0, clampIdx(99, 5) == 4, clampIdx(2, 5) == 2
+            ])))
+}
+/// budgetCase pins [GPU-SCAN] as an inclusive seeded prefix: the last element equals the fold, a carried budget shifts every prefix, max gives the peak.
+fn budgetCase() = withBuffer(toGpu([3, 5, 2, 7, 1, 9]), fn(input0) => withBuffer(toGpu([3]), fn(input1) => withBuffer(toGpu([]), fn(input2) => budgetCaseUploaded(input0, input1, input2))))
+fn budgetCaseUploaded(input0, input1, input2) = {
+    let costs = input0
+    withBuffer(gpuScan(costs, 0, sumInts), fn(running) =>
+        withBuffer(gpuScan(costs, 100, sumInts), fn(carried) =>
+            withBuffer(gpuScan(costs, 0, boundMax), fn(peak) =>
+                withBuffer(gpuScan(input1, 0, sumInts), fn(one) =>
+                    withBuffer(gpuScan(input2, 0, sumInts), fn(empty) =>
+                        checkAll("frame budget", [
+                                at(running, 0, 0) == 3, at(running, 1, 0) == 8, at(running, 3, 0) == 17, at(running, 5, 0) == 27,
+                                gpuSatisfies(gpuFold(costs, 0, sumInts), fn(total) => at(running, 5, 0) == total),
+                                gpuLength(running) == 6, at(carried, 0, 0) == 103, at(carried, 5, 0) == 127, at(peak, 2, 0) == 5, at(peak, 5, 0) == 9,
+                                gpuSatisfies(gpuFilter(running, fn(c) => c > 12), fn(over) => gpuLength(over) == 3), at(one, 0, 0) == 3, gpuLength(empty) == 0
+                        ]))))))
+}
+/// emptyWorldCase is the degenerate frame: maps and filters stay empty, a fold returns its seed untouched, and a read is an Error, never a zero.
+fn emptyWorldCase() = withIndices(0, fn(indices0) => emptyWorldWith(indices0))
+fn emptyWorldWith(indices0) = withBuffer(toGpu([]), fn(input0) => withBuffer(toGpu([1, 2, 3]), fn(input1) => withBuffer(toGpu([1, 2, 3]), fn(input2) => withBuffer(toGpu([1, 2]), fn(input3) => withBuffer(toGpu([9]), fn(input4) => emptyWorldWithUploaded(indices0, input0, input1, input2, input3, input4))))))
+fn emptyWorldWithUploaded(indices0, input0, input1, input2, input3, input4) = {
+    let none = input0
+    let idx = indices0
+    withBuffer(gpuMap(none, sqrOf), fn(squares) =>
+        withBuffer(gpuFilter(none, alive), fn(live) =>
+            withBuffer(gpuScan(none, 0, sumInts), fn(prefix) =>
+                withBuffer(gpuZipWith(none, input1, sumInts), fn(forward) =>
+                    withBuffer(gpuZipWith(input2, none, subInts), fn(backward) =>
+                        withBuffer(gpuZipWith(input3, none, sumInts), fn(left) =>
+                            withBuffer(gpuZipWith(left, input4, sumInts), fn(stepped) =>
+                                withBuffer(gpuFold(none, 0, sumInts), fn(total) =>
+                                    withBuffer(gpuFold(none, 9999, boundMin), fn(seeded) =>
+                                        withBuffer(gpuFold(none, 0, speedOf), fn(speed) =>
+                                            withBuffer(gpuMap(idx, fn(i) => at(none, i, 0)), fn(gathered) =>
+                                                checkAll("empty world", [
+                                                        gpuLength(none) == 0, gpuLength(idx) == 0, gpuLength(squares) == 0, gpuLength(live) == 0,
+                                                        gpuLength(prefix) == 0, gpuLength(forward) == 0, gpuLength(backward) == 0,
+                                                        gpuLength(stepped) == 0, total == 0, seeded == 9999,
+                                                        speed == 0, at(none, 0, negFp(1)) == negFp(1), at(idx, 0, negFp(1)) == negFp(1), gpuLength(gathered) == 0
+                                                ]))))))))))))
+}
+/// raggedCase pins [GPU-ZIPWITH] truncation: a three-buffer step narrows to its shortest stream instead of reading past the end.
+fn raggedCase() = withBuffer(toGpu([1, 2, 3, 4, 5]), fn(input0) => withBuffer(toGpu([10, 20, 30]), fn(input1) => withBuffer(toGpu([100, 200]), fn(input2) => withBuffer(toGpu([1]), fn(input3) => raggedCaseUploaded(input0, input1, input2, input3)))))
+fn raggedCaseUploaded(input0, input1, input2, input3) = {
+    let pos = input0
+    let vel = input1
+    let acc = input2
+    withBuffer(gpuZipWith(vel, acc, sumInts), fn(change) =>
+        withBuffer(gpuZipWith(pos, change, sumInts), fn(stepped) =>
+            withBuffer(gpuZipWith(change, pos, sumInts), fn(swapped) =>
+                withBuffer(gpuZipWith(pos, pos, sumInts), fn(doubled) =>
+                    withBuffer(gpuZipWith(input3, pos, subInts), fn(shortest) =>
+                        checkAll("ragged streams truncate", [
+                                gpuLength(change) == 2, gpuLength(stepped) == 2, at(stepped, 0, 0) == 111, at(stepped, 1, 0) == 222,
+                                gpuSatisfies(gpuFold(stepped, 0, sumInts), fn(total) => total == 333), at(stepped, 2, negFp(1)) == negFp(1), gpuLength(swapped) == 2,
+                                gpuSatisfies(gpuFold(swapped, 0, sumInts), fn(total) => total == 333),
+                                gpuLength(doubled) == 5, gpuLength(shortest) == 1
+                        ]))))))
+}
+/// Exact-value tests record any arithmetic fault as a failed assertion.
+fn exactArithmetic(work) = {
+    handle Arith {
+        overflow op _ _ wrapped => {
+            check("unexpected arithmetic overflow", "none", op)
+            wrapped
+        }
+        divideByZero op _ => {
+            check("unexpected zero divisor", "none", op)
+            0.0
+        }
+        remainderByZero _ => {
+            expectFalse(true)
+            0
+        }
+    }
+    work()
+}
+test("q10 fixed-point scalars and scale kernels truncate toward zero", fn() => exactArithmetic(fixedPointCase))
+test("vector algebra combines four component buffers", fn() => exactArithmetic(vectorCase))
+test("octagonal distance estimates length without a root", fn() => exactArithmetic(magnitudeCase))
+test("particles integrate velocity over ticks", fn() => exactArithmetic(integrationCase))
+test("semi-implicit euler advances three buffers together", fn() => exactArithmetic(eulerCase))
+test("drag damps velocity monotonically", fn() => exactArithmetic(dragCase))
+test("folds build a bounding box and survive an empty world", fn() => exactArithmetic(aabbCase))
+test("aabb overlap zips four interval buffers", fn() => exactArithmetic(overlapCase))
+test("circle broadphase combines six buffers", fn() => exactArithmetic(circleCase))
+test("culling keeps in-range entities in draw order", fn() => exactArithmetic(cullCase))
+test("damage resolves and survivors compact", fn() => exactArithmetic(damageCase))
+test("easing and clamping normalize float buffers", fn() => exactArithmetic(easingCase))
+test("three channel buffers pack, unpack and clamp", fn() => exactArithmetic(packCase))
+test("alpha blending composites through a coverage buffer", fn() => exactArithmetic(blendCase))
+test("palette gathers paint magenta where the index misses", fn() => exactArithmetic(paletteCase))
+test("a strided gather de-interleaves a vertex stream", fn() => exactArithmetic(gatherCase))
+test("transposing a tile grid twice is the identity", fn() => exactArithmetic(transposeCase))
+test("an edge-clamped stencil blurs a heightfield", fn() => exactArithmetic(stencilCase))
+test("scan accumulates a running frame budget", fn() => exactArithmetic(budgetCase))
+test("every combinator survives an empty world", fn() => exactArithmetic(emptyWorldCase))
+test("ragged entity streams truncate to the shortest", fn() => exactArithmetic(raggedCase))
