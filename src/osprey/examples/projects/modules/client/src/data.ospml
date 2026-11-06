@@ -14,12 +14,16 @@ module BankData
         Success found => found
         Error message => 0
 
-    export accountCount : string -> int
-    accountCount source =
+    // Parse an API document, project it, and release it: the one lifetime rule
+    // every read-only projection follows.
+    export withDoc source compute =
         doc = jsonParse source ?: 0
-        count = jsonLength doc ""
+        output = compute doc
         freed = jsonFree doc ?: 0
-        count
+        output
+
+    export accountCount : string -> int
+    accountCount source = withDoc source (\doc => jsonLength doc "")
 
     export activityCount : string -> int
     activityCount source = accountCount source
@@ -112,11 +116,7 @@ module BankData
                     totalFrom doc nextIndex nextTotal
 
     export total : string -> int
-    total source =
-        doc = jsonParse source ?: 0
-        amount = totalFrom doc 0 0
-        freed = jsonFree doc ?: 0
-        amount
+    total source = withDoc source (\doc => totalFrom doc 0 0)
 
     findIndex : int -> int -> int -> int
     findIndex doc index wanted =

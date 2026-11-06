@@ -20,8 +20,13 @@ __all__ = [
     "normalize_axis", "normalize_axes", "resolve_reshape", "drop_at",
     "second_dim", "diag_extent",
     "insert_at", "set_at", "permuted", "swap_perm", "moveaxis_perm",
-    "axis_of", "contains",
+    "axis_of", "contains", "map_indexed",
 ]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 def flat_size(shape):
@@ -45,7 +50,7 @@ def diag_extent(shape):
 def strides_of(shape):
     """Row-major strides: the element count one step along each dimension
     moves. The stride of the last dimension is 1; a rank-0 shape has none."""
-    return toList(map(range(len(shape)), lambda d: fold(range(d + 1, len(shape)), 1, lambda acc, k: acc * unwrap_or(listGet(shape, k), 1))))
+    return map_indexed(shape, lambda d: fold(range(d + 1, len(shape)), 1, lambda acc, k: acc * unwrap_or(listGet(shape, k), 1)))
 
 
 def offset_of(i, shape, strides):
@@ -58,7 +63,7 @@ def offset_of(i, shape, strides):
 
 def coords_of(i, shape):
     """The coordinates of flat index `i` over `shape` (unravel)."""
-    return toList(map(range(len(shape)), lambda d: (i // unwrap_or(listGet(strides_of(shape), d), 1)) % unwrap_or(listGet(shape, d), 1)))
+    return map_indexed(shape, lambda d: (i // unwrap_or(listGet(strides_of(shape), d), 1)) % unwrap_or(listGet(shape, d), 1))
 
 
 def ravel_index(coords, shape):
@@ -138,7 +143,7 @@ def broadcast_strides(shape, out_shape):
     dimensions it broadcasts, so a gather repeats its elements there."""
     inner = strides_of(shape)
     gap = len(out_shape) - len(shape)
-    return toList(map(range(len(out_shape)), lambda d: 0 if d < gap or unwrap_or(listGet(shape, d - gap), 1) == 1 else unwrap_or(listGet(inner, d - gap), 0)))
+    return map_indexed(out_shape, lambda d: 0 if d < gap or unwrap_or(listGet(shape, d - gap), 1) == 1 else unwrap_or(listGet(inner, d - gap), 0))
 
 
 def normalize_axis(axis, span, prefix):
@@ -173,7 +178,7 @@ def normalize_axes(axes, ndim):
     """Normalises a transpose axis list: every axis in range, none repeated,
     and one per dimension, with numpy's transpose messages."""
     g = Errors.require(len(axes) == ndim, "axes don't match array")
-    normed = toList(map(range(len(axes)), lambda i: normalize_axis(unwrap_or(listGet(axes, i), 0), ndim, "")))
+    normed = map_indexed(axes, lambda i: normalize_axis(unwrap_or(listGet(axes, i), 0), ndim, ""))
     g2 = Errors.require(not has_repeats(normed), "repeated axis in transpose")
     return normed
 
@@ -190,7 +195,7 @@ def insert_at(xs, i, x):
 
 def set_at(xs, i, x):
     """`xs` with its `i`-th element replaced by `x`."""
-    return toList(map(range(len(xs)), lambda d: x if d == i else unwrap_or(listGet(xs, d), 0)))
+    return map_indexed(xs, lambda d: x if d == i else unwrap_or(listGet(xs, d), 0))
 
 
 def permuted(shape, axes):
@@ -219,8 +224,8 @@ def moveaxis_perm(ndim, sources, dests):
     their destinations and the rest keep their relative order, with numpy's
     AxisError and repeat messages."""
     g = Errors.require(len(sources) == len(dests), "`source` and `destination` arguments must have the same number of elements")
-    normed_sources = toList(map(range(len(sources)), lambda i: normalize_axis(unwrap_or(listGet(sources, i), 0), ndim, "source")))
-    normed_dests = toList(map(range(len(dests)), lambda i: normalize_axis(unwrap_or(listGet(dests, i), 0), ndim, "destination")))
+    normed_sources = map_indexed(sources, lambda i: normalize_axis(unwrap_or(listGet(sources, i), 0), ndim, "source"))
+    normed_dests = map_indexed(dests, lambda i: normalize_axis(unwrap_or(listGet(dests, i), 0), ndim, "destination"))
     g2 = Errors.require(not has_repeats(normed_sources), "repeated axis in `source` argument")
     g3 = Errors.require(not has_repeats(normed_dests), "repeated axis in `destination` argument")
     return moveaxis_target(ndim, normed_sources, normed_dests)

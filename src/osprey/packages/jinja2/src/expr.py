@@ -8,7 +8,7 @@ return their operands, `is` tests, `|` filters and string/dict method calls.
 Filters, tests and methods live in `Filters`; this module parses and dispatches.
 """
 
-from jinja2.Value import halt
+from jinja2.Value import halt, map_indexed
 from jinja2 import Value as V
 from jinja2 import Filters as F
 from jinja2 import Render as R
@@ -958,8 +958,8 @@ def arg0(args):
 
 def kwargs_dict(kwargs):
     """A dict Value from keyword arguments."""
-    keys = toList(map(range(len(kwargs)), lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name))
-    vals = toList(map(range(len(kwargs)), lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).value))
+    keys = map_indexed(kwargs, lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).name)
+    vals = map_indexed(kwargs, lambda i: unwrap_or(listGet(kwargs, i), V.KwVal(name="", value=V.none())).value)
     return V.dict_(keys, vals)
 
 

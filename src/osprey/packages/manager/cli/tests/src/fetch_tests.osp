@@ -142,7 +142,7 @@ module FetchTests {
     /// every written path and byte are exact.
     fn newest() = {
         let rs = releases()
-        let newest = listGet(rs, 3) ?: Fixture::missingServed()
+        let newest = Fixture::at(rs, 3)
         let root = installRoot(newest)
         let a = attempt(catalogRoutes(localBase, rs), ["@finch/ledger"])
         checkAll("newest release by epoch then ordinal, exact report and writes", [
@@ -162,14 +162,14 @@ module FetchTests {
         let rs = releases()
         let routes = catalogRoutes(localBase, rs)
         let inEpoch = attempt(routes, ["@finch/ledger@e1"])
-        let byDigest = attempt(routes, [digestOf(listGet(rs, 2) ?: Fixture::missingServed())])
+        let byDigest = attempt(routes, [digestOf(Fixture::at(rs, 2))])
         checkAll("epoch and digest targets select the right release", [
             inEpoch.report.status == 0,
-            Fixture::line(inEpoch.report, 0) == "fetched: @finch/ledger@e1.r2#${digestOf(listGet(rs, 1) ?: Fixture::missingServed())}",
+            Fixture::line(inEpoch.report, 0) == "fetched: @finch/ledger@e1.r2#${digestOf(Fixture::at(rs, 1))}",
             Fixture::line(inEpoch.report, 2) == "files: 2",
             byDigest.report.status == 0,
-            Fixture::line(byDigest.report, 0) == "fetched: @finch/ledger@e2.r1#${digestOf(listGet(rs, 2) ?: Fixture::missingServed())}",
-            Fixture::line(byDigest.report, 1) == "into: ${installRoot(listGet(rs, 2) ?: Fixture::missingServed())}"
+            Fixture::line(byDigest.report, 0) == "fetched: @finch/ledger@e2.r1#${digestOf(Fixture::at(rs, 2))}",
+            Fixture::line(byDigest.report, 1) == "into: ${installRoot(Fixture::at(rs, 2))}"
         ])
     }
 
@@ -235,7 +235,7 @@ module FetchTests {
     /// even the package directory is created.
     fn tampered() = {
         let rs = releases()
-        let r21 = listGet(rs, 2) ?: Fixture::missingServed()
+        let r21 = Fixture::at(rs, 2)
         let routes = [route(localBase, sourcePathOf(r21), 200, tamperedBundle(r21))]
         let a = attempt(routes, [digestOf(r21)])
         checkAll("a tampered bundle is bundle.digest-mismatch and writes nothing", [
@@ -249,8 +249,8 @@ module FetchTests {
     /// same way, and a source body that is not a bundle is bundle.shape.
     fn wrongBundle() = {
         let rs = releases()
-        let r21 = listGet(rs, 2) ?: Fixture::missingServed()
-        let r22 = listGet(rs, 3) ?: Fixture::missingServed()
+        let r21 = Fixture::at(rs, 2)
+        let r22 = Fixture::at(rs, 3)
         let swapped = [route(localBase, sourcePathOf(r22), 200, Bundle::encode(r21) ?: "")]
         let notABundle = [route(localBase, "/v1/releases/${zeroDigest}/source", 200, "{\"digest\":\"${zeroDigest}\"}")]
         checkAll("unexpected digest and non-bundle source bodies", [
@@ -291,7 +291,7 @@ module FetchTests {
         let bare = dispatched(catalogRoutes(localBase, rs), [])
         checkAll("dispatch routes fetch and passes the remaining words", [
             d.report.status == 0,
-            Fixture::line(d.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(listGet(rs, 3) ?: Fixture::missingServed())}",
+            Fixture::line(d.report, 0) == "fetched: @finch/ledger@e2.r2#${digestOf(Fixture::at(rs, 3))}",
             bare.report.status == 1,
             Fixture::line(bare.report, 0) == "install.no-lock fixture: fetch never reads"
         ])

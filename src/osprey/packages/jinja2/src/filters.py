@@ -9,7 +9,7 @@
 `tojson` follows transformers' override (json.dumps with ensure_ascii=False).
 """
 
-from jinja2.Value import halt
+from jinja2.Value import halt, map_indexed
 from jinja2 import Value as V
 
 __all__ = ["apply_filter", "apply_test", "call_method"]
@@ -107,7 +107,7 @@ def f_join(v, args):
     """`|join(sep)`: concatenate the elements' text with `sep` (default "")."""
     sep = "" if len(args) == 0 else arg(args, 0).sval
     elems = iterable_elements(v)
-    return V.text(join(toList(map(range(len(elems)), lambda i: V.concat_text(unwrap_or(listGet(elems, i), V.none())))), sep))
+    return V.text(join(map_indexed(elems, lambda i: V.concat_text(unwrap_or(listGet(elems, i), V.none()))), sep))
 
 
 def f_replace(v, args):
@@ -187,7 +187,7 @@ def iterable_elements(v):
 
 def pairs_of(v):
     """A dict's `(key, value)` pair values."""
-    return toList(map(range(len(v.keys)), lambda i: V.typed_pair(unwrap_or(listGet(v.keys, i), V.none()), unwrap_or(listGet(v.vals, i), V.none()))))
+    return map_indexed(v.keys, lambda i: V.typed_pair(unwrap_or(listGet(v.keys, i), V.none()), unwrap_or(listGet(v.vals, i), V.none())))
 
 
 def select_or_reject(v, args, lookup_attr, keep):
@@ -396,9 +396,9 @@ def str_method(obj, name, args):
             return V.text(trimEnd(s))
         case "split":
             if len(args) == 0:
-                return V.list_(toList(map(range(len(V.str_split(s))), lambda i: V.text(unwrap_or(listGet(V.str_split(s), i), "")))))
+                return V.list_(map_indexed(V.str_split(s), lambda i: V.text(unwrap_or(listGet(V.str_split(s), i), ""))))
             else:
-                return V.list_(toList(map(range(len(V.str_split_sep(s, arg(args, 0).sval))), lambda i: V.text(unwrap_or(listGet(V.str_split_sep(s, arg(args, 0).sval), i), "")))))
+                return V.list_(map_indexed(V.str_split_sep(s, arg(args, 0).sval), lambda i: V.text(unwrap_or(listGet(V.str_split_sep(s, arg(args, 0).sval), i), ""))))
         case "startswith":
             return V.bool_(startsWith(s, arg(args, 0).sval))
         case "endswith":

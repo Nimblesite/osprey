@@ -22,50 +22,42 @@ allControlCase () = check "all representable JSON controls and Unicode round tri
 schemaFailureCase () =
     initial = App::initial ()
     failed = App::dispatch initial.model (Support::sql "schema" false "[]" "permission denied")
-    refreshed = App::dispatch failed.model (Support::event "refresh")
+    refreshed = Support::refresh failed
     response = App::dispatch refreshed.model (Support::http refreshed.model.pending 200 (Support::fixture ()) "")
-    check "schema failure visible" true (contains (View::render failed.model) "permission denied")
-    check "network remains usable" "2" (Support::projected (View::render response.model) "total")
-    check "no write to broken database" "[]" response.commands
-    check "memory only storage warning truthful" true (contains response.model.storageError "only in memory")
+    Support::each [Support::it "schema failure visible" "true" (toString (contains (View::render failed.model) "permission denied")), Support::it "memory only storage warning truthful" "true" (toString (contains response.model.storageError "only in memory"))]
+    Support::each [Support::it "network remains usable" "2" (Support::projected (View::render response.model) "total"), Support::it "no write to broken database" "[]" response.commands]
 
 staleSaveCase () =
     loaded = Support::loaded ()
     saved = App::dispatch loaded.model (Support::bookmark "101")
     stale = App::dispatch saved.model (Support::sql loaded.model.write false "[]" "old write failed")
-    check "older save cannot replace latest status" (Model::encode saved.model) (Model::encode stale.model)
-    check "older save emits nothing" "[]" stale.commands
+    Support::each [Support::it "older save cannot replace latest status" (Model::encode saved.model) (Model::encode stale.model), Support::it "older save emits nothing" "[]" stale.commands]
 
 invalidCacheCase () =
     model = Model::initial ()
     invalid = Storage::restore model "{\"version\":99,\"repo\":\"owner/repo\",\"items\":\"[]\"}"
     malformed = Storage::restore model "{\"version\":1,\"repo\":\"owner/repo\",\"items\":\"[{\\\"id\\\":7}]\"}"
-    check "new schema cannot be misread" false invalid.valid
-    check "malformed cached issues rejected" false malformed.valid
+    Support::each [Support::it "new schema cannot be misread" "false" (toString (invalid.valid)), Support::it "malformed cached issues rejected" "false" (toString (malformed.valid))]
     check "invalid cache does not change state" (Model::encode model) (Model::encode malformed.model)
 
 rateLimitCase () =
     awaiting = Support::awaiting ()
     response = App::dispatch awaiting.model (Support::http awaiting.model.pending 403 "{\"message\":\"API rate limit exceeded\"}" "")
-    check "HTTP status visible" true (contains response.model.error "403")
-    check "GitHub failure detail visible" true (contains response.model.error "rate limit")
+    Support::each [Support::it "HTTP status visible" "true" (toString (contains response.model.error "403")), Support::it "GitHub failure detail visible" "true" (toString (contains response.model.error "rate limit"))]
 
 clearAnnotationCase () =
     notes = Annotations::set "[]" "101" "Remember" "high"
     cleared = Annotations::set notes "101" "" "normal"
-    check "clearing annotation releases local capacity" "[]" cleared
-    check "normal default survives removal" "normal" (Annotations::get cleared "101").priority
+    Support::each [Support::it "clearing annotation releases local capacity" "[]" cleared, Support::it "normal default survives removal" "normal" (Annotations::get cleared "101").priority]
 
 saveDuringRefreshCase () =
     loaded = Support::loaded ()
-    refreshing = App::dispatch loaded.model (Support::event "refresh")
+    refreshing = Support::refresh loaded
     failed = App::dispatch refreshing.model (Support::sql loaded.model.write false "[]" "disk full")
-    check "save failure cannot end an independent HTTP request" "true" failed.model.loading
-    check "pending HTTP correlation remains intact" refreshing.model.pending failed.model.pending
+    Support::each [Support::it "save failure cannot end an independent HTTP request" "true" failed.model.loading, Support::it "pending HTTP correlation remains intact" refreshing.model.pending failed.model.pending]
 
 removedSelectionCase () =
     selected = TriageSupport::selected ()
-    refreshing = App::dispatch selected.model (Support::event "refresh")
+    refreshing = Support::refresh selected
     empty = App::dispatch refreshing.model (Support::http refreshing.model.pending 200 "[]" "")
-    check "removed issue closes its detail" "" empty.model.selected
-    check "valid empty issue page replaces cache" "[]" empty.model.items
+    Support::each [Support::it "removed issue closes its detail" "" empty.model.selected, Support::it "valid empty issue page replaces cache" "[]" empty.model.items]

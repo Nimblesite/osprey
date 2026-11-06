@@ -184,18 +184,18 @@ module StructureEtaTests
         test ("another family's constructor never collapses to its argument", \() => expect (conversionIn (packedEnv (), packedContext (), Terms::apps (Const "Packed.mk" [], [BVar 1, BVar 0]), BVar 0), false))
     familyBoundaries () =
         test ("a two-constructor family refuses eta even on matching projections", \() => expect (conversionIn (n2Env (), n2Context (), Terms::apps (Const "N2.succ2" [], [Proj "N2" 0 (BVar 0)]), BVar 0), false))
-        test ("a two-constructor family has no projections to project", \() => expect (Support::messageOf (Infer::infer (n2Env (), n2Context (), Proj "N2" 0 (BVar 0))), "invalid projection `N2.0`"))
+        test ("a two-constructor family has no projections to project", \() => expect (Support::inferMessage (n2Env (), n2Context (), Proj "N2" 0 (BVar 0)), "invalid projection `N2.0`"))
         test ("a recursive one-constructor family refuses eta even on matching projections", \() => expect (conversionIn (r1Env (), r1Context (), Terms::apps (Const "R1.mk" [], [Proj "R1" 0 (BVar 0)]), BVar 0), false))
         test ("an indexed one-constructor family refuses eta even on matching projections", \() => expect (conversionIn (i1Env (), i1Context (), Terms::apps (Const "I1.wrap" [], [Proj "I1" 0 (BVar 0)]), BVar 0), false))
     fakeBoundaries () =
-        test ("a constructor named only by an axiom never collapses to its argument", \() => expect (conversionIn (fkEnv (), fkContext (), App (Const "Fk.mk" []) (BVar 0), BVar 0), false))
-        test ("a projection of an axiom-named constructor never reduces", \() => expect (Terms::equal (Reduce::whnf (fkEnv (), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), Proj "Fk" 0 (App (Const "Fk.mk" []) (BVar 0))), true))
+        test ("a constructor named only by an axiom never collapses to its argument", \() => expect (conversionIn (fkEnv (), fkContext (), Support::applied ("Fk.mk"), BVar 0), false))
+        test ("a projection of an axiom-named constructor never reduces", \() => expect (Terms::equal (Reduce::whnf (fkEnv (), Proj "Fk" 0 (Support::applied ("Fk.mk"))), Proj "Fk" 0 (Support::applied ("Fk.mk"))), true))
     propositions () =
         test ("proof irrelevance still answers for a Prop family", \() => expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, true), true))
         test ("differing hidden data is never collapsed", \() => expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenMkOf (BVar 0), hiddenMkOf (BVar 1), false), false))
         test ("differing hidden data still answers irrelevant as proofs", \() => expect (Reduce::conversion (hiddenEnv (), hiddenTwoContext (), hiddenMkOf (BVar 0), hiddenMkOf (BVar 1), true), true))
         test ("a proof constructor is not its hidden witness without irrelevance", \() => expect (Reduce::conversion (hiddenEnv (), hiddenContext (), hiddenMkOf (BVar 1), BVar 0, false), false))
-        test ("eta cannot make a forbidden Prop projection inferable", \() => expect (Support::messageOf (Infer::infer (hiddenEnv (), hiddenContext (), Proj "Hidden" 0 (BVar 0))), "invalid projection `Hidden.0`"))
+        test ("eta cannot make a forbidden Prop projection inferable", \() => expect (Support::inferMessage (hiddenEnv (), hiddenContext (), Proj "Hidden" 0 (BVar 0)), "invalid projection `Hidden.0`"))
     // Terms and contexts under the Prod environment --
     (** Definitional equality in a binder context, without irrelevance:
         exactly what plain `defeq` is where terms mention binders. *)
@@ -221,7 +221,7 @@ module StructureEtaTests
     (** `id (Prod α β)`. *)
     idTerm () = Terms::apps (Const "id" [eqLevel ()], [prodTypeUnder ()])
     (** The level `Prod α β` lives at. *)
-    eqLevel () = Max (Succ Zero) (Max (Param "u") (Param "v"))
+    eqLevel () = Max (Succ Zero) (Support::maxUV ())
     eqOf (left, right) = equated (prodTypeUnder (), left, right)
     eqRefl (term) = reflOf (prodTypeUnder (), term)
     (** `Eq` and `Eq.refl` at `eqLevel ()` over `ofType`. *)

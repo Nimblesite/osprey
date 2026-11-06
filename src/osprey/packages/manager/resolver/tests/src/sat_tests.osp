@@ -35,6 +35,12 @@ module SatTests {
         Error => []
     }
 
+    /// The error message of a solve or assume, or "ok" when it succeeded.
+    fn codeOf(r) = match r {
+        Error { message } => message
+        Success => "ok"
+    }
+
     fn canonicalModel(vars, model) = length(model) == vars &&
         fold(range(0, vars), true, fn(ok, i) => ok && SatClauses::absLit(listGet(model, i) ?: 0) == i + 1)
 
@@ -180,11 +186,11 @@ module SatTests {
     ])
 
     fn rejects() = checkAll("malformed literals are rejected", [
-        match Sat::solve(2, [[3]]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::solve(2, [[1, 0]]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::solve(2, [[-3]]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::assume(2, [[1]], [3]) { Error { message } => message == "sat.bad-literal"  Success => false },
-        match Sat::assume(2, [], [0]) { Error { message } => message == "sat.bad-literal"  Success => false }
+        codeOf(Sat::solve(2, [[3]])) == "sat.bad-literal",
+        codeOf(Sat::solve(2, [[1, 0]])) == "sat.bad-literal",
+        codeOf(Sat::solve(2, [[-3]])) == "sat.bad-literal",
+        codeOf(Sat::assume(2, [[1]], [3])) == "sat.bad-literal",
+        codeOf(Sat::assume(2, [], [0])) == "sat.bad-literal"
     ])
 
     export fn run() = {

@@ -49,13 +49,29 @@ labelled (found, child, label) = match Doc::text (child, "label") == label
 // Strokes and dashes: the second path of a freehand line is its outline array.
 strokeOf envelope = Doc::write (jsonIndex (listGet (canvasShapes envelope) (satSub (length (canvasShapes envelope)) 1) ?: JsonNull) 2 ?: JsonNull)
 
+// A freehand press at (100, 500).
+pressLine envelope = pointer (envelope, 1, "100.0", "500.0", "true", "false")
+
+// A press at (100, 500) then a second point at (150, 550): one two-point line.
+twoPointLine envelope = nextPointer (pressLine envelope, 1, "150.0", "550.0", "true", "false")
+
+// A start, one two-point line, and the header tap that names `label`.
+tapOnDrawn label =
+    first = started ()
+    tap (twoPointLine first, first, label)
+
+// A Shift-held drag from (100, 500) to (x, y), read back as the line's points.
+shiftDrag (x, y) =
+    pressed = pointer (started (), 1, "100.0", "500.0", "true", "true")
+    lineText (nextPointer (pressed, 1, x, y, "true", "true"), 0)
+
 test ("start draws the five quads and sixteen paths of the original", \() =>
     first = started ()
     expect (length (canvasShapes first), 21))
 
 test ("a press, two drags and a release draw one three-point line", \() =>
     first = started ()
-    pressed = pointer (first, 1, "100.0", "500.0", "true", "false")
+    pressed = pressLine first
     dragged = nextPointer (nextPointer (pressed, 1, "120.0", "510.0", "true", "false"), 1, "140.0", "530.0", "true", "false")
     released = nextPointer (dragged, 1, "140.0", "530.0", "false", "false")
     expect (length (lines released), 1)
@@ -69,27 +85,19 @@ test ("a single press draws nothing until the line has two points", \() =>
     expect (length (canvasShapes pressed), 21))
 
 test ("Shift keeps the start's y when the drag moved more across than down", \() =>
-    pressed = pointer (started (), 1, "100.0", "500.0", "true", "true")
-    dragged = nextPointer (pressed, 1, "200.0", "520.0", "true", "true")
-    expect (lineText (dragged, 0), "[100.0,500.0,200.0,500.0]"))
+    expect (shiftDrag ("200.0", "520.0"), "[100.0,500.0,200.0,500.0]"))
 
 test ("Shift keeps the start's x when the drag moved more down than across", \() =>
-    pressed = pointer (started (), 1, "100.0", "500.0", "true", "true")
-    dragged = nextPointer (pressed, 1, "110.0", "600.0", "true", "true")
-    expect (lineText (dragged, 0), "[100.0,500.0,100.0,600.0]"))
+    expect (shiftDrag ("110.0", "600.0"), "[100.0,500.0,100.0,600.0]"))
 
 test ("Dashed restrokes every line four on two off and relabels itself Solid", \() =>
-    first = started ()
-    drawn = nextPointer (pointer (first, 1, "100.0", "500.0", "true", "false"), 1, "150.0", "550.0", "true", "false")
-    dashed = tap (drawn, first, "Dashed")
+    dashed = tapOnDrawn "Dashed"
     expect (strokeOf dashed, "[1,1.0,0,4.0,2.0]")
     expect (ordinalOf (header dashed, "Solid") >= 0, true)
     solid = tap (dashed, dashed, "Solid")
     expect (strokeOf solid, "[1,1.0,0]"))
 
 test ("Clear removes every line and keeps the original drawing", \() =>
-    first = started ()
-    drawn = nextPointer (pointer (first, 1, "100.0", "500.0", "true", "false"), 1, "150.0", "550.0", "true", "false")
-    cleared = tap (drawn, first, "Clear")
+    cleared = tapOnDrawn "Clear"
     expect (length (lines cleared), 0)
     expect (length (canvasShapes cleared), 21))

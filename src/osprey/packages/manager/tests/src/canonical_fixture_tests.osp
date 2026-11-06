@@ -17,12 +17,12 @@ import registry_tests::Fixtures
 module CanonicalFixtureTests {
     fn fixture(name) = Fixtures::load("canonical/${name}.json")
 
-    fn names() = Fixtures::texts(Fixtures::field(Fixtures::load("canonical/index.json"), "cases"))
+    fn names() = Fixtures::loadTexts("canonical/index.json", "cases")
 
     fn canonical(value) = Canonical::serialize(value) ?: "canonical.duplicate-key"
 
     fn domainDigestHolds(fx) = match Json::get(fx, "domain") {
-        Success { value } => Digests::hashText(Fixtures::text(value), canonical(Fixtures::field(fx, "value"))) == Fixtures::text(Fixtures::field(fx, "digest"))
+        Success { value } => Digests::hashText(Fixtures::text(value), canonical(Fixtures::field(fx, "value"))) == Fixtures::textOf(fx, "digest")
         Error => true
     }
 
@@ -30,8 +30,8 @@ module CanonicalFixtureTests {
         let fx = fixture(name)
         let bytes = canonical(Fixtures::field(fx, "value"))
         checkAll("canonical ${name}", [
-            bytes == Fixtures::text(Fixtures::field(fx, "canonical")),
-            byteLength(bytes) == Fixtures::number(Fixtures::field(fx, "canonicalLength")),
+            bytes == Fixtures::textOf(fx, "canonical"),
+            byteLength(bytes) == Fixtures::numberOf(fx, "canonicalLength"),
             domainDigestHolds(fx)
         ])
     }
@@ -59,24 +59,24 @@ module CanonicalFixtureTests {
     fn envelopeDigest(text) = Digests::format(Sha256::digest(Bytes::concatAll([Bytes::ofString(Domains::envelopeDomain()), [0], Bytes::ofString(text)])))
 
     fn derived(relation) = {
-        let bytes = canonical(omitted(relation, resolve(Fixtures::text(Fixtures::field(relation, "source")))))
-        let form = Fixtures::text(Fixtures::field(relation, "form"))
-        let hashed = Digests::hashText(Fixtures::text(Fixtures::field(relation, "domain")), bytes)
+        let bytes = canonical(omitted(relation, resolve(Fixtures::textOf(relation, "source"))))
+        let form = Fixtures::textOf(relation, "form")
+        let hashed = Digests::hashText(Fixtures::textOf(relation, "domain"), bytes)
         if form == "envelope" { envelopeDigest(bytes) } else if form == "hex" { Digests::hexOf(hashed) } else { hashed }
     }
 
-    fn relationHolds(relation) = match Fixtures::text(Fixtures::field(relation, "kind")) {
-        "digest" => Fixtures::text(resolve(Fixtures::text(Fixtures::field(relation, "target")))) == derived(relation)
-        "equal" => canonical(resolve(Fixtures::text(Fixtures::field(relation, "left")))) == canonical(resolve(Fixtures::text(Fixtures::field(relation, "right"))))
+    fn relationHolds(relation) = match Fixtures::textOf(relation, "kind") {
+        "digest" => Fixtures::text(resolve(Fixtures::textOf(relation, "target"))) == derived(relation)
+        "equal" => canonical(resolve(Fixtures::textOf(relation, "left"))) == canonical(resolve(Fixtures::textOf(relation, "right")))
         _ => false
     }
 
-    fn relationTest(relation) = test("canonical relation: ${Fixtures::text(Fixtures::field(relation, "name"))}", fn() => expectTrue(relationHolds(relation)))
+    fn relationTest(relation) = test("canonical relation: ${Fixtures::textOf(relation, "name")}", fn() => expectTrue(relationHolds(relation)))
 
     fn nothingDangles() = {
-        let relations = Fixtures::items(Fixtures::field(Fixtures::load("canonical/relations.json"), "relations"))
-        let digests = filterList(relations, fn(r) => Fixtures::text(Fixtures::field(r, "kind")) == "digest")
-        let targets = mapList(digests, fn(r) => resolve(Fixtures::text(Fixtures::field(r, "target"))))
+        let relations = Fixtures::loadItems("canonical/relations.json", "relations")
+        let digests = filterList(relations, fn(r) => Fixtures::textOf(r, "kind") == "digest")
+        let targets = mapList(digests, fn(r) => resolve(Fixtures::textOf(r, "target")))
         Fixtures::report("relation targets resolve to strings", targets, fn(t) => Fixtures::text(t) != "")
     }
 
@@ -85,6 +85,6 @@ module CanonicalFixtureTests {
         forEachList(names(), fn(name) => test("canonical: ${name}", fn() => fixtureHolds(name)))
         test("canonical: index lists 44 fixtures", fn() => check("canonical fixture count", 44, length(names())))
         test("canonical: digest relations name real fields", nothingDangles)
-        forEachList(Fixtures::items(Fixtures::field(Fixtures::load("canonical/relations.json"), "relations")), relationTest)
+        forEachList(Fixtures::loadItems("canonical/relations.json", "relations"), relationTest)
     }
 }

@@ -12,6 +12,7 @@ reader reports where each tensor's bytes are, so a later phase can decode them.
 """
 
 from gguf import Chain, Constants, Values
+from safetensors import Bytes
 
 __all__ = ["TensorInfo", "of", "alignment_of"]
 
@@ -88,11 +89,8 @@ def walk(data, offs, count, swapped):
 
 def checked_walk(data, offs, count, swapped):
     """The tensor info walk, once its count is known to fit inside the buffer."""
-    walked = fold(range(count), TensorWalk(offs=offs, drafts=[], problem=""), lambda acc, _i: tensor_step(data, acc, swapped))
-    if walked.problem != "":
-        return Error(message=walked.problem)
-    else:
-        return Success(value=walked)
+    step = lambda acc, _i: tensor_step(data, acc, swapped)
+    return Chain.walk_checked(count, TensorWalk(offs=offs, drafts=[], problem=""), step)
 
 
 def tensor_step(data, acc, swapped):
@@ -307,7 +305,7 @@ def truncated_tensor(name, offset):
 
 def element_count(dims):
     """The number of elements `dims` multiply to, or -1 when that overflows."""
-    return foldList(dims, 1, lambda acc, dim: checked_mul(acc, dim))
+    return foldList(dims, 1, lambda acc, dim: Bytes.checked_mul(acc, dim))
 
 
 def tensor_byte_count(dims, quant):
@@ -316,14 +314,4 @@ def tensor_byte_count(dims, quant):
     if elements < 0:
         return -1
     else:
-        return intDiv(checked_mul(elements, quant.size), quant.block)
-
-
-def checked_mul(a, b):
-    """a*b for non-negative a and b, or -1 when it overflows an int64."""
-    if a == 0 or b == 0:
-        return 0
-    elif a > intDiv(9223372036854775807, b):
-        return -1
-    else:
-        return a * b
+        return intDiv(Bytes.checked_mul(elements, quant.size), quant.block)

@@ -208,11 +208,17 @@ module Terms
         BVar index => listGet (names, index) ?: "#${toString index}"
         Const name levels => showConst (name, levels)
         App head arg => "(${show (head, names)} ${show (arg, names)})"
-        Lam name domain body => "(fun (${name} : ${show (domain, names)}) => ${show (body, listPrepend (names, name))})"
+        Lam name domain body => "(fun (${showTyped (name, domain, names)}) => ${showUnder (name, body, names)})"
         Pi name domain body => showPi (name, domain, body, names)
         Proj family index target => "(${family}.${toString index} ${show (target, names)})"
         NatLit value => Naturals::show value
-        Let name ty value body => "(let ${name} : ${show (ty, names)} := ${show (value, names)}; ${show (body, listPrepend (names, name))})"
+        Let name ty value body => "(let ${showTyped (name, ty, names)} := ${show (value, names)}; ${showUnder (name, body, names)})"
+
+    // `body` printed under one more binder, named `name`.
+    showUnder (name, body, names) = show (body, listPrepend (names, name))
+
+    // `name` and its type, printed inside a binder.
+    showTyped (name, domain, names) = "${name} : ${show (domain, names)}"
 
     showSort level = match Levels::show level
         "0" => "Prop"
@@ -224,8 +230,8 @@ module Terms
         [first, ...rest] => "${name}.{${foldList (rest, Levels::show first, \(text, level) => "${text}, ${Levels::show level}")}}"
 
     showPi (name, domain, body, names) = match mentions (body, 0)
-        true => "(∀ (${name} : ${show (domain, names)}), ${show (body, listPrepend (names, name))})"
-        false => "(${show (domain, names)} → ${show (body, listPrepend (names, name))})"
+        true => "(∀ (${showTyped (name, domain, names)}), ${showUnder (name, body, names)})"
+        false => "(${show (domain, names)} → ${showUnder (name, body, names)})"
 
     (** Structural equality: binder names are ignored (the indices carry the
         binding structure), universe levels are compared up to normal form,

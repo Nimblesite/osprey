@@ -204,4 +204,4 @@ module Tries
     export save tutor = JsonObject [JsonMember "tries" (JsonArray (mapList (tutor.tutorTries, \item => attemptJson item))), JsonMember "completed" (JsonArray (mapList (tutor.tutorCompleted, \key => JsonString key)))]
 
     (** The work saved by `save`. *)
-    export restore doc = Tutor(tutorTries = mapList (Doc::items (Doc::field (doc, "tries")), \item => attemptOf item), tutorCompleted = Doc::texts (doc, "completed"))
+    export restore doc = Tutor(tutorTries = mapList (Doc::fieldItems (doc, "tries"), \item => attemptOf item), tutorCompleted = Doc::texts (doc, "completed"))

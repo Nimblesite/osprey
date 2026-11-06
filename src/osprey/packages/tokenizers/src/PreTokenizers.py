@@ -12,7 +12,7 @@ MergedWithNext (Metaspace's `▁`).
 """
 from tiktoken.Unicode import utf8_of_cp
 from tokenizers import Category
-from tokenizers.Unicode import is_numeric, is_punctuation, is_whitespace, is_word_char, text_cps
+from tokenizers.Unicode import is_numeric, is_punctuation, is_whitespace, is_word_char, map_indexed, text_cps
 from tokenizers.Normalizers import Norm, append_norm, char_at, empty_norm, end_at, norm_each, prepend_cp, replace_space, start_at
 
 __all__ = [
@@ -460,4 +460,4 @@ def octet_step(acc, cps, i):
 
 def bytelevel_text(octets):
     """The byte-level spelling of a byte list."""
-    return join(toList(map(range(len(octets)), lambda i: unwrap_or(fromCodePoint(byte_char(unwrap_or(listGet(octets, i), 0))), "?"))), "")
+    return join(map_indexed(octets, lambda i: unwrap_or(fromCodePoint(byte_char(unwrap_or(listGet(octets, i), 0))), "?")), "")

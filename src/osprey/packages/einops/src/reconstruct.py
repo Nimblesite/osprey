@@ -9,6 +9,7 @@ Kept in its own module so `Recipe` holds the pattern parsing/agreement and
 `Reconstruct` holds the shape resolution. Errors are `Result` with the
 original's `EinopsError` message text.
 """
+from einops.Parsing import map_indexed
 from einops.Recipe import NamePos, PosElem, TransformRecipe, set_at
 
 __all__ = ["PosLen", "NameLen", "CookedRecipe", "reconstruct"]
@@ -85,7 +86,7 @@ def reconstruct_entry(recipe, shape, lengths, input_axis, need_init_reshape) -> 
 
 
 def reconstruct_product(recipe, shape, lengths, input_axis, need_after, known_axes, unknown_axes, dim) -> Result[CookedRecipe, str]:
-    known_product = foldList(toList(map(range(len(known_axes)), lambda i: unwrap_or(listGet(lengths, unwrap_or(listGet(known_axes, i), 0)), 0))), 1, lambda a, x: a * x)
+    known_product = foldList(map_indexed(known_axes, lambda i: unwrap_or(listGet(lengths, unwrap_or(listGet(known_axes, i), 0)), 0)), 1, lambda a, x: a * x)
     return reconstruct_check(recipe, shape, lengths, input_axis, need_after, unknown_axes, dim, known_product)
 
 
@@ -120,9 +121,9 @@ def cook(recipe, lengths, need_init_reshape) -> CookedRecipe:
     """The concrete reshapes from fully inferred elementary lengths."""
     n_perm = len(recipe.axes_permutation)
     init_shapes = take_list(lengths, n_perm) if need_init_reshape else []
-    final_shapes = toList(map(range(len(recipe.output_composite_axes)), lambda g: foldList(unwrap_or(listGet(recipe.output_composite_axes, g), []), 1, lambda acc, pos: acc * unwrap_or(listGet(lengths, pos), 0))))
+    final_shapes = map_indexed(recipe.output_composite_axes, lambda g: foldList(unwrap_or(listGet(recipe.output_composite_axes, g), []), 1, lambda acc, pos: acc * unwrap_or(listGet(lengths, pos), 0)))
     need_final = len(filterList(recipe.output_composite_axes, lambda g: len(g) != 1)) > 0
-    added = toList(map(range(len(recipe.added_axes)), lambda i: PosLen(pos=unwrap_or(listGet(recipe.added_axes, i), PosElem(pos=0, elementary=0)).pos, length=unwrap_or(listGet(lengths, unwrap_or(listGet(recipe.added_axes, i), PosElem(pos=0, elementary=0)).elementary), 0))))
+    added = map_indexed(recipe.added_axes, lambda i: PosLen(pos=unwrap_or(listGet(recipe.added_axes, i), PosElem(pos=0, elementary=0)).pos, length=unwrap_or(listGet(lengths, unwrap_or(listGet(recipe.added_axes, i), PosElem(pos=0, elementary=0)).elementary), 0)))
     reduced = toList(map(range(recipe.first_reduced_axis, n_perm), lambda i: i))
     reordering = [] if identity_perm(recipe.axes_permutation) else recipe.axes_permutation
     return CookedRecipe(

@@ -195,10 +195,7 @@ module GovernanceTransitions {
                                     unexpired(g, now))))))))
 
     fn handleChecks(registry, id, orgHandle) = match Names::scopeCode(orgHandle) {
-        "" => match Maybe::isPresent(Governance::organizationByHandle(registry, orgHandle)) {
-            true => Error { message: "governance.organization.duplicate-orgHandle" }
-            false => Success { value: id }
-        }
+        "" => Governance::unique(id, Maybe::isPresent(Governance::organizationByHandle(registry, orgHandle)), "governance.organization.duplicate-orgHandle")
         code => Error { message: code }
     }
 

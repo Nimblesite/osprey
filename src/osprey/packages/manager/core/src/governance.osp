@@ -61,12 +61,23 @@ module Governance {
     /// The row of `entries` matching `predicate`, or `code`.
     fn lookup(entries, predicate, code) = found(firstWhere(entries, predicate), code)
 
-    export fn principalOf(registry, id) = lookup(registry.principals, fn(p: Principal) => p.id == id, "governance.principal.missing")
-    export fn organizationOf(registry, id) = lookup(registry.organizations, fn(o: Organization) => o.id == id, "governance.organization.missing")
-    export fn membershipOf(registry, id) = lookup(registry.memberships, fn(m: Membership) => m.id == id, "governance.membership.missing")
-    export fn packageOf(registry, id) = lookup(registry.packages, fn(p: Package) => p.id == id, "governance.package.missing")
-    export fn transferOf(registry, id) = lookup(registry.transfers, fn(t: Transfer) => t.id == id, "governance.transfer.missing")
-    export fn grantOf(registry, id) = lookup(registry.grants, fn(g: Grant) => g.id == id, "governance.grant.missing")
+    /// `id` when nothing of its kind is already present, else `code`: the
+    /// uniqueness guard of organization handles and live transfer proposals.
+    export fn unique(id, present, code) = match present {
+        true => Error { message: code }
+        false => Success { value: id }
+    }
+
+    /// The row of `entries` whose `id` is `id`, or `code`. Every governance
+    /// row carries the same `id` field (issue #273), so one lookup serves all.
+    fn byId(entries, id, code) = lookup(entries, fn(row) => row.id == id, code)
+
+    export fn principalOf(registry, id) = byId(registry.principals, id, "governance.principal.missing")
+    export fn organizationOf(registry, id) = byId(registry.organizations, id, "governance.organization.missing")
+    export fn membershipOf(registry, id) = byId(registry.memberships, id, "governance.membership.missing")
+    export fn packageOf(registry, id) = byId(registry.packages, id, "governance.package.missing")
+    export fn transferOf(registry, id) = byId(registry.transfers, id, "governance.transfer.missing")
+    export fn grantOf(registry, id) = byId(registry.grants, id, "governance.grant.missing")
 
     /// The organization's package row for one leaf name, in any lifecycle
     /// status: tombstones keep occupying their key [PACKAGE-NAMES-NO-SITTING].

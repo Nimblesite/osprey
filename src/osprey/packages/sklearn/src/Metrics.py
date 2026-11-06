@@ -11,7 +11,7 @@ multiclass shape); the binary one-column spelling is expressed as its two-column
 equivalent. Implements [PORT-TEST-ORACLE].
 """
 
-from sklearn.Stats import argsort_float, encode_labels, mean_float, unique_ints
+from sklearn.Stats import argsort_float, encode_labels, map_indexed, mean_float, unique_ints
 
 __all__ = [
     "RocCurve", "PrecisionRecallCurve", "accuracy_score", "precision_score",
@@ -106,12 +106,12 @@ def tp_ratio(tp, denominator, i, zd):
 
 def class_stats(yt, yp, labels, zd):
     """Per-label tp, predicted and true counts, then precision/recall/f1."""
-    tp = toList(map(range(len(labels)), lambda i: count_both(yt, yp, unwrap_or(listGet(labels, i), 0))))
-    pred = toList(map(range(len(labels)), lambda i: count_of(yp, unwrap_or(listGet(labels, i), 0))))
-    true = toList(map(range(len(labels)), lambda i: count_of(yt, unwrap_or(listGet(labels, i), 0))))
-    precision = toList(map(range(len(labels)), lambda i: tp_ratio(tp, pred, i, zd)))
-    recall = toList(map(range(len(labels)), lambda i: tp_ratio(tp, true, i, zd)))
-    f1 = toList(map(range(len(labels)), lambda i: divide_z(2.0 * toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)) + toFloat(unwrap_or(listGet(pred, i), 0)), zd)))
+    tp = map_indexed(labels, lambda i: count_both(yt, yp, unwrap_or(listGet(labels, i), 0)))
+    pred = map_indexed(labels, lambda i: count_of(yp, unwrap_or(listGet(labels, i), 0)))
+    true = map_indexed(labels, lambda i: count_of(yt, unwrap_or(listGet(labels, i), 0)))
+    precision = map_indexed(labels, lambda i: tp_ratio(tp, pred, i, zd))
+    recall = map_indexed(labels, lambda i: tp_ratio(tp, true, i, zd))
+    f1 = map_indexed(labels, lambda i: divide_z(2.0 * toFloat(unwrap_or(listGet(tp, i), 0)), toFloat(unwrap_or(listGet(true, i), 0)) + toFloat(unwrap_or(listGet(pred, i), 0)), zd))
     return ClassStats(tp=tp, pred=pred, true=true, precision=precision, recall=recall, f1=f1)
 
 
@@ -157,17 +157,17 @@ def f1_score(y_true, y_pred, average, zero_division):
 def confusion_matrix(y_true, y_pred, labels):
     """`sklearn.metrics.confusion_matrix` over an explicit, sorted label list:
     entry `[i][j]` counts true `labels[i]` predicted as `labels[j]`."""
-    return toList(map(range(len(labels)), lambda i: toList(map(range(len(labels)), lambda j: count_pair(y_true, y_pred, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, j), 0))))))
+    return map_indexed(labels, lambda i: toList(map(range(len(labels)), lambda j: count_pair(y_true, y_pred, unwrap_or(listGet(labels, i), 0), unwrap_or(listGet(labels, j), 0)))))
 
 
 def gather_float(xs, indices):
     """`xs` gathered at the given indices, as floats."""
-    return toList(map(range(len(indices)), lambda i: unwrap_or(listGet(xs, unwrap_or(listGet(indices, i), 0)), 0.0)))
+    return map_indexed(indices, lambda i: unwrap_or(listGet(xs, unwrap_or(listGet(indices, i), 0)), 0.0))
 
 
 def negate_scores(ys):
     """`-ys` elementwise, so an ascending sort becomes descending."""
-    return toList(map(range(len(ys)), lambda i: 0.0 - unwrap_or(listGet(ys, i), 0.0)))
+    return map_indexed(ys, lambda i: 0.0 - unwrap_or(listGet(ys, i), 0.0))
 
 
 def threshold_indices(ss):
@@ -186,11 +186,11 @@ def threshold_points(yt, ys):
     """True/false-positive counts and scores at each distinct threshold,
     matching sklearn's stable descending sort and cumulative sums."""
     order = argsort_float(negate_scores(ys))
-    st = gather_float(toList(map(range(len(yt)), lambda i: 1.0 if unwrap_or(listGet(yt, i), 0) == 1 else 0.0)), order)
+    st = gather_float(map_indexed(yt, lambda i: 1.0 if unwrap_or(listGet(yt, i), 0) == 1 else 0.0), order)
     ss = gather_float(ys, order)
     tids = threshold_indices(ss)
-    tps = toList(map(range(len(tids)), lambda k: sum_first(st, unwrap_or(listGet(tids, k), 0) + 1)))
-    fps = toList(map(range(len(tids)), lambda k: 1.0 + toFloat(unwrap_or(listGet(tids, k), 0)) - unwrap_or(listGet(tps, k), 0.0)))
+    tps = map_indexed(tids, lambda k: sum_first(st, unwrap_or(listGet(tids, k), 0) + 1))
+    fps = map_indexed(tids, lambda k: 1.0 + toFloat(unwrap_or(listGet(tids, k), 0)) - unwrap_or(listGet(tps, k), 0.0))
     thresholds = gather_float(ss, tids)
     return Points(fps=fps, tps=tps, thresholds=thresholds)
 
@@ -215,7 +215,7 @@ def filter_floats(xs, flags):
 def divide_by_last(xs):
     """`xs / xs[-1]`, for the last element being the total count."""
     last = unwrap_or(listGet(xs, len(xs) - 1), 0.0)
-    return toList(map(range(len(xs)), lambda i: unwrap_or(listGet(xs, i), 0.0) / last))
+    return map_indexed(xs, lambda i: unwrap_or(listGet(xs, i), 0.0) / last)
 
 
 def all_nan(n):
@@ -257,8 +257,8 @@ def precision_recall_curve(y_true, y_score):
     """`sklearn.metrics.precision_recall_curve` (pos_label=1, no dropping)."""
     p = threshold_points(y_true, y_score)
     last = unwrap_or(listGet(p.tps, len(p.tps) - 1), 0.0)
-    precision = toList(map(range(len(p.tps)), lambda i: precision_at(p, i)))
-    recall = toList(map(range(len(p.tps)), lambda i: 1.0 if last == 0.0 else unwrap_or(listGet(p.tps, i), 0.0) / last))
+    precision = map_indexed(p.tps, lambda i: precision_at(p, i))
+    recall = map_indexed(p.tps, lambda i: 1.0 if last == 0.0 else unwrap_or(listGet(p.tps, i), 0.0) / last)
     return PrecisionRecallCurve(precision=listAppend(listReverse(precision), 1.0), recall=listAppend(listReverse(recall), 0.0), thresholds=listReverse(p.thresholds))
 
 
@@ -290,7 +290,7 @@ def log_loss(y_true, y_proba):
     """`sklearn.metrics.log_loss` over a list of per-class probability rows,
     clipping each to `[eps, 1 - eps]` with eps = float64 machine epsilon."""
     eps = 2.220446049250313e-16
-    losses = toList(map(range(len(y_true)), lambda i: 0.0 - ln(clip_prob(unwrap_or(listGet(unwrap_or(listGet(y_proba, i), []), unwrap_or(listGet(y_true, i), 0)), 0.0), eps))))
+    losses = map_indexed(y_true, lambda i: 0.0 - ln(clip_prob(unwrap_or(listGet(unwrap_or(listGet(y_proba, i), []), unwrap_or(listGet(y_true, i), 0)), 0.0), eps)))
     return mean_float(losses)
 
 
@@ -302,12 +302,12 @@ def sq_diff(yt, yp, i):
 
 def mean_squared_error(y_true, y_pred):
     """`sklearn.metrics.mean_squared_error`."""
-    return mean_float(toList(map(range(len(y_true)), lambda i: sq_diff(y_true, y_pred, i))))
+    return mean_float(map_indexed(y_true, lambda i: sq_diff(y_true, y_pred, i)))
 
 
 def mean_absolute_error(y_true, y_pred):
     """`sklearn.metrics.mean_absolute_error`."""
-    return mean_float(toList(map(range(len(y_true)), lambda i: abs(unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0)))))
+    return mean_float(map_indexed(y_true, lambda i: abs(unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0))))
 
 
 def assemble(num, den):
@@ -337,7 +337,7 @@ def r2_score(y_true, y_pred):
 def explained_variance_score(y_true, y_pred):
     """`sklearn.metrics.explained_variance_score`: 1 minus the ratio of the
     unexplained to the total variance."""
-    diffs = toList(map(range(len(y_true)), lambda i: unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0)))
+    diffs = map_indexed(y_true, lambda i: unwrap_or(listGet(y_true, i), 0.0) - unwrap_or(listGet(y_pred, i), 0.0))
     dm = mean_float(diffs)
     num = mean_sq_dev(diffs, dm)
     ym = mean_float(y_true)
@@ -347,7 +347,7 @@ def explained_variance_score(y_true, y_pred):
 
 def mean_sq_dev(xs, m):
     """The mean of the squared deviations of `xs` from `m`."""
-    return mean_float(toList(map(range(len(xs)), lambda i: (unwrap_or(listGet(xs, i), 0.0) - m) * (unwrap_or(listGet(xs, i), 0.0) - m))))
+    return mean_float(map_indexed(xs, lambda i: (unwrap_or(listGet(xs, i), 0.0) - m) * (unwrap_or(listGet(xs, i), 0.0) - m)))
 
 
 def row_sum(C, i):
@@ -370,10 +370,10 @@ def matthews_corrcoef(y_true, y_pred):
     labels = unique_ints(listConcat(y_true, y_pred))
     ey = encode_labels(labels, y_true)
     ep = encode_labels(labels, y_pred)
-    classes = toList(map(range(len(labels)), lambda i: i))
+    classes = map_indexed(labels, lambda i: i)
     C = confusion_matrix(ey, ep, classes)
-    t_sum = toList(map(range(len(labels)), lambda k: toFloat(row_sum(C, k))))
-    p_sum = toList(map(range(len(labels)), lambda k: toFloat(col_sum(C, k))))
+    t_sum = map_indexed(labels, lambda k: toFloat(row_sum(C, k)))
+    p_sum = map_indexed(labels, lambda k: toFloat(col_sum(C, k)))
     n_correct = toFloat(fold(range(len(labels)), 0, lambda acc, k: acc + unwrap_or(listGet(unwrap_or(listGet(C, k), []), k), 0)))
     n_samples = toFloat(len(y_true))
     cov_ytyp = n_correct * n_samples - dot_float(t_sum, p_sum)
@@ -403,5 +403,5 @@ def hit_top_k(label, scores, k):
 def top_k_accuracy_score(y_true, y_score, k):
     """`sklearn.metrics.top_k_accuracy_score` over a list of per-class score
     rows."""
-    hits = toList(map(range(len(y_true)), lambda i: hit_top_k(unwrap_or(listGet(y_true, i), 0), unwrap_or(listGet(y_score, i), []), k)))
+    hits = map_indexed(y_true, lambda i: hit_top_k(unwrap_or(listGet(y_true, i), 0), unwrap_or(listGet(y_score, i), []), k))
     return toFloat(sum_int(hits)) / toFloat(len(y_true))

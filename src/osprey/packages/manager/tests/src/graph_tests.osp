@@ -91,7 +91,7 @@ module GraphTests {
 
     fn indexCheck() = {
         let fx = Fixtures::load("graphs/index.json")
-        let cases = mapList(Fixtures::items(Fixtures::field(fx, "cases")), Fixtures::text)
+        let cases = mapList(Fixtures::itemsOf(fx, "cases"), Fixtures::text)
         checkAll("graphs: index lists exactly the checked-in fixtures", [
             structuralEquals(listSort(cases), listSort(expectedCases())),
             length(cases) == length(expectedCases())

@@ -11,8 +11,6 @@ type IssueRows =
 module View
     export saved model id = contains model.saved ("|" + id + "|")
 
-    text doc path = jsonGet doc path ?: ""
-
     export exists model wanted =
         doc = jsonParse model.items ?: 0
         found = containsId doc 0 (jsonLength doc "") wanted
@@ -21,26 +19,26 @@ module View
 
     containsId doc index count wanted = match index >= count
         true => false
-        false => text doc "[${index}].id" == wanted || containsId doc ((satAdd index 1) ) count wanted
+        false => Json::scalar doc "[${index}].id" == wanted || containsId doc ((satAdd index 1) ) count wanted
 
     visible model doc prefix bookmarked =
-        title = text doc (prefix + ".title")
-        author = text doc (prefix + ".author")
-        number = text doc (prefix + ".number")
+        title = Json::scalar doc (prefix + ".title")
+        author = Json::scalar doc (prefix + ".author")
+        number = Json::scalar doc (prefix + ".number")
         matchesSearch = contains (toLowerCase (title + " " + author + " #" + number)) (toLowerCase model.search)
         matchesSearch && (model.filter != "saved" || bookmarked)
 
     metadata model doc prefix =
-        local = Annotations::get model.annotations (text doc (prefix + ".id"))
-        Json::members [Json::strField "body" (text doc (prefix + ".body")), Json::strField "labels" (text doc (prefix + ".labels")), Json::strField "note" local.note, Json::strField "priority" local.priority]
+        local = Annotations::get model.annotations (Json::scalar doc (prefix + ".id"))
+        Json::members [Json::strField "body" (Json::scalar doc (prefix + ".body")), Json::strField "labels" (Json::scalar doc (prefix + ".labels")), Json::strField "note" local.note, Json::strField "priority" local.priority]
 
-    item model doc prefix bookmarked = Json::obj (Json::members [Json::strField "id" (text doc (prefix + ".id")), Json::numField "number" (parseInt (text doc (prefix + ".number")) ?: 0), Json::strField "title" (text doc (prefix + ".title")), Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + text doc (prefix + ".number")), Json::strField "author" (text doc (prefix + ".author")), Json::numField "comments" (parseInt (text doc (prefix + ".comments")) ?: 0), Json::rawField "bookmarked" (toString bookmarked), metadata model doc prefix])
+    item model doc prefix bookmarked = Json::obj (Json::members [Json::strField "id" (Json::scalar doc (prefix + ".id")), Json::numField "number" (parseInt (Json::scalar doc (prefix + ".number")) ?: 0), Json::strField "title" (Json::scalar doc (prefix + ".title")), Json::strField "url" ("https://github.com/" + model.repo + "/issues/" + Json::scalar doc (prefix + ".number")), Json::strField "author" (Json::scalar doc (prefix + ".author")), Json::numField "comments" (parseInt (Json::scalar doc (prefix + ".comments")) ?: 0), Json::rawField "bookmarked" (toString bookmarked), metadata model doc prefix])
 
     detail model doc index count = match index >= count
         true => "null"
         false =>
             prefix = "[${index}]"
-            match text doc (prefix + ".id") == model.selected
+            match Json::scalar doc (prefix + ".id") == model.selected
                 true => item model doc prefix (saved model model.selected)
                 false => detail model doc ((satAdd index 1) ) count
 
@@ -48,7 +46,7 @@ module View
         true => IssueRows(elements = output, total = count, bookmarked = marked)
         false =>
             prefix = "[${index}]"
-            bookmarked = saved model (text doc (prefix + ".id"))
+            bookmarked = saved model (Json::scalar doc (prefix + ".id"))
             nextMarked = match bookmarked
                 true => (satAdd marked 1)
                 false => marked

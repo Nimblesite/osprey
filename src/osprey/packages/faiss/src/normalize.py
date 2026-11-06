@@ -10,7 +10,7 @@ square root and the result is not exactly dyadic, so the suite compares at
 rtol 1e-6 (see README).
 """
 
-from faiss.Metrics import l2sqr
+from faiss.Metrics import l2sqr, map_indexed
 
 __all__ = ["normalize_L2"]
 
@@ -23,7 +23,7 @@ def normalize_L2(x):
 
 def normalize_row(row):
     """One row of `normalize_L2`: divide by the L2 norm when it is nonzero."""
-    norm = sqrt(l2sqr(row, toList(map(range(len(row)), lambda _i: 0.0))))
+    norm = sqrt(l2sqr(row, map_indexed(row, lambda _i: 0.0)))
     if norm > 0.0:
         return mapList(row, lambda v: v / norm)
     else:

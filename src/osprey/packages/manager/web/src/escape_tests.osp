@@ -1,7 +1,6 @@
 namespace registry_web;
 import registry_web::Browse
 import registry_web::Html
-import registry_web::Model
 import registry_web::WebFixtures
 
 /// Escape and identifier hardening: every untrusted byte reaching a
@@ -30,25 +29,18 @@ module EscapeTests {
     ])
 
     /// The search value rides in an attribute: quote injection must fail.
-    fn attributeInjection() = match Browse::render([WebFixtures::warnedAtlasUtil()], "\" onmouseover=\"alert(1)") {
-        Model::Shown { html } => checkAll("web: browse attribute injection", [
-            contains(html, "value=\"&quot; onmouseover=&quot;alert(1)\""),
-            !contains(html, "onmouseover=\"alert")
-        ])
-        Model::Hidden { reason } => check("web: browse attribute injection", "shown screen", "hidden: ${reason}")
-    }
+    fn attributeInjection() = WebFixtures::shows("web: browse attribute injection",
+        Browse::render([WebFixtures::warnedAtlasUtil()], "\" onmouseover=\"alert(1)"),
+        fn(html) => contains(html, "value=\"&quot; onmouseover=&quot;alert(1)\"") && !contains(html, "onmouseover=\"alert"))
 
     /// Hostile warning prose and organization handles come from the
     /// registry join, not the user, and must be escaped just the same.
-    fn hostileStrings() = match Browse::render([WebFixtures::hostileOrgHandleListing(), WebFixtures::warnedAtlasUtil()], "") {
-        Model::Shown { html } => checkAll("web: browse hostile strings", [
-            contains(html, "Organization: @atlas&quot; onload=&quot;alert(1)"),
-            !contains(html, "onload=\"alert"),
-            contains(html, "&lt;/code&gt;&lt;script&gt;alert(1)&lt;/script&gt;"),
-            !contains(html, "<script>")
-        ])
-        Model::Hidden { reason } => check("web: browse hostile strings", "shown screen", "hidden: ${reason}")
-    }
+    fn hostileStrings() = WebFixtures::shows("web: browse hostile strings",
+        Browse::render([WebFixtures::hostileOrgHandleListing(), WebFixtures::warnedAtlasUtil()], ""),
+        fn(html) => contains(html, "Organization: @atlas&quot; onload=&quot;alert(1)") &&
+            !contains(html, "onload=\"alert") &&
+            contains(html, "&lt;/code&gt;&lt;script&gt;alert(1)&lt;/script&gt;") &&
+            !contains(html, "<script>"))
 
     /// The suite.
     export fn run() = {

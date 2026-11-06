@@ -27,22 +27,28 @@ module Coach
 
     focused (bench, id, tutor) = bench(tutor = tutor, shelf = focus (bench.shelf, id))
 
+    // One tutorial operation on the challenge `id` names, with that challenge focused.
+    tutored (bench, id, op, arg) = focused (bench, id, op (bench.tutor, keyed (bench, id), arg))
+
+    // `withChallenge` over one tutorial operation, so the store alone carries the result.
+    applied (bench, id, op) = withChallenge (bench, id, \challenge => bench(tutor = op (bench.tutor, keyed (bench, id), challenge)))
+
     // `step` sees the challenge `id` names; a challenge that is not there leaves the store alone.
     withChallenge (bench, id, step) = match challengeOf (bench, id)
         Error _ => bench
         Success challenge => step challenge
 
     (** The answer to challenge `id` replaced by `text`; that challenge takes the focus. *)
-    export answer (bench, id, text) = focused (bench, id, Tutors::answer (bench.tutor, keyed (bench, id), text))
+    export answer (bench, id, text) = tutored (bench, id, Tutors::answer, text)
 
     (** The caret of challenge `id` moved to `offset`, kept within its answer; that challenge takes the focus. *)
-    export moved (bench, id, offset) = focused (bench, id, Tutors::moved (bench.tutor, keyed (bench, id), offset))
+    export moved (bench, id, offset) = tutored (bench, id, Tutors::moved, offset)
 
     (** A formula key's `text` inserted at the answer's caret; the text around it stays and the caret follows the key. *)
-    export insert (bench, id, text) = focused (bench, id, Tutors::insert (bench.tutor, keyed (bench, id), text))
+    export insert (bench, id, text) = tutored (bench, id, Tutors::insert, text)
 
     (** The learner's ruling on judge challenge `id`: `checks` or `fails`. *)
-    export pick (bench, id, choice) = focused (bench, id, Tutors::pick (bench.tutor, keyed (bench, id), Tutors::rulingOf choice))
+    export pick (bench, id, choice) = tutored (bench, id, Tutors::pick, Tutors::rulingOf choice)
 
     (** Challenge `id` submitted to the kernel; a newly right answer writes progress ([LESSONS-PROGRESS]). *)
     export submit (bench, id) = match challengeOf (bench, id)
@@ -54,10 +60,10 @@ module Coach
         true => ui::Step(stepStore = bench(tutor = tutor), requests = [Shelves::store ()], writes = [Shelves::progressWrite tutor])
 
     (** One more hint shown on challenge `id`. *)
-    export hint (bench, id) = withChallenge (bench, id, \challenge => bench(tutor = Tutors::hint (bench.tutor, keyed (bench, id), challenge)))
+    export hint (bench, id) = applied (bench, id, Tutors::hint)
 
     (** The solution of challenge `id` placed in its answer, when `Tutors::revealable` allows it. *)
-    export reveal (bench, id) = withChallenge (bench, id, \challenge => bench(tutor = Tutors::reveal (bench.tutor, keyed (bench, id), challenge)))
+    export reveal (bench, id) = applied (bench, id, Tutors::reveal)
 
     (** Challenge `id` and the learner's answer appended to the Work document as a declaration, and Work shown ([LESSONS-MODE]). *)
     export carry (bench, id) = match challengeOf (bench, id)

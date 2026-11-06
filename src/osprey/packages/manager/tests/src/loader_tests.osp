@@ -16,18 +16,18 @@ module LoaderTests {
 
     fn fixture() = Fixtures::load("folder/refusals.json")
 
-    fn contentRow(fx, path) = listGet(filterList(Fixtures::items(Fixtures::field(fx, "contents")), fn(c) => Fixtures::text(Fixtures::field(c, "path")) == path), 0)
+    fn contentRow(fx, path) = listGet(filterList(Fixtures::itemsOf(fx, "contents"), fn(c) => Fixtures::textOf(c, "path") == path), 0)
 
     /// A listed file's text; any other path is unreadable.
     fn contentOf(fx, path) = match contentRow(fx, path) {
-        Success { value } => Success { value: Fixtures::text(Fixtures::field(value, "text")) }
+        Success { value } => Success { value: Fixtures::textOf(value, "text") }
         Error => Error { message: "permission denied" }
     }
 
     fn walkOf(fx) = Host::Walk {
-        regular: Fixtures::texts(Fixtures::field(fx, "regular")),
-        executable: Fixtures::texts(Fixtures::field(fx, "executable")),
-        special: Fixtures::texts(Fixtures::field(fx, "special"))
+        regular: Fixtures::textsOf(fx, "regular"),
+        executable: Fixtures::textsOf(fx, "executable"),
+        special: Fixtures::textsOf(fx, "special")
     }
 
     // Every arm uses its parameters: an arm whose parameters go unused
@@ -62,13 +62,13 @@ module LoaderTests {
 
     fn refusedRows(catalog: Release::Catalog) = join(listSort(mapList(catalog.refused, fn(r: Release::Refused) => "${r.dir} ${r.code}")), ",")
 
-    fn expectedRows(fx) = join(listSort(mapList(Fixtures::items(Fixtures::field(fx, "refused")), fn(r) =>
-        "${Fixtures::text(Fixtures::field(r, "dir"))} ${Fixtures::text(Fixtures::field(r, "code"))}")), ",")
+    fn expectedRows(fx) = join(listSort(mapList(Fixtures::itemsOf(fx, "refused"), fn(r) =>
+        "${Fixtures::textOf(r, "dir")} ${Fixtures::textOf(r, "code")}")), ",")
 
     fn everyRefusal() = {
         let fx = fixture()
         let catalog = loaded()
-        check("served releases", join(Fixtures::texts(Fixtures::field(fx, "served")), ","), servedDirs(catalog))
+        check("served releases", join(Fixtures::textsOf(fx, "served"), ","), servedDirs(catalog))
         check("refused releases with reasons", expectedRows(fx), refusedRows(catalog))
     }
 

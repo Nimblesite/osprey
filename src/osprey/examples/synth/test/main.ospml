@@ -141,6 +141,40 @@ quietEdit before =
     silent ()
     expect (described () == before, false)
 
+// A press or release on a control: it moves nothing and it plays nothing.
+quietPointer (point, down) =
+    pointer (point.pointX, point.pointY, down)
+    silent ()
+
+quietClick (before, label) =
+    tap label
+    quietPatch before
+
+// A press, its release and the menu it closed, all silent.
+pressedAt (before, x, y) =
+    pointer (x, y, true)
+    pointer (x, y, false)
+    quietPatch before
+    layer ("menu", "closed")
+
+// The first clip, then the chooser `menu` opens.
+firstClip (menu, name) =
+    sounds ("A3", 17)
+    pressed = argument 2
+    tap menu
+    layer ("menu", name)
+    pressed
+
+// A menu entry picked, the readout it set and the silent key that follows.
+picked (label, wave) =
+    tap label
+    knobText ("wave", wave)
+    quietKey 17
+
+undone name =
+    tap "Undo"
+    flag (name, true)
+
 // A key struck: it lights, the readout shows it, and the patch plays at its pitch.
 struck (name, hertz) =
     tap "Play ${name}"
@@ -188,11 +222,9 @@ filterHistory () =
     tap "Bypass Filter"
     flag ("processOn", false)
     quietKey 75
-    tap "Undo"
-    flag ("processOn", true)
+    undone "processOn"
     quietKey 2
-    tap "Undo"
-    flag ("controlOn", true)
+    undone "controlOn"
     quietKey 17
     knobText ("note", "A3")
 
@@ -223,36 +255,24 @@ keyboard () =
 
 // Each wave from the Oscillator's chooser plays its own clip at the filtered peak.
 waves () =
-    sounds ("A3", 17)
-    sine = argument 2
-    tap "Oscillator Wave: Sine"
-    layer ("menu", "waves")
+    sine = firstClip ("Oscillator Wave: Sine", "waves")
     silent ()
-    tap "Square"
-    knobText ("wave", "Square")
-    quietKey 17
+    picked ("Square", "Square")
     square = argument 2
     expect (square == sine, false)
     tap "Oscillator Wave: Square"
-    tap "Saw"
-    knobText ("wave", "Saw")
-    quietKey 17
+    picked ("Saw", "Saw")
     expect (argument 2 == square, false)
     tap "Oscillator Wave: Saw"
     tap "Triangle"
     knobText ("wave", "Triangle")
     silent ()
-    tap "Undo"
-    knobText ("wave", "Saw")
-    quietKey 17
+    picked ("Undo", "Saw")
     expect (letters "Saw", true)
 
 // Each LFO rate sweeps the cutoff at its own speed, so the clip changes.
 rates () =
-    sounds ("A3", 17)
-    clip = argument 2
-    tap "LFO Rate: 1/4"
-    layer ("menu", "rates")
+    clip = firstClip ("LFO Rate: 1/4", "rates")
     tap "1/16"
     knobText ("rate", "1/16")
     near ((currentPatch ()).lfo, 8.0)
@@ -308,8 +328,7 @@ muteHistory () =
     flag ("outputOn", false)
     tap "Play A3"
     silent ()
-    tap "Undo"
-    flag ("outputOn", true)
+    undone "outputOn"
     quietKey 50
 
 muted (before, name) =
@@ -320,29 +339,17 @@ muted (before, name) =
 // ---- menus, skins and selection never ask the voice to play ----
 
 quietMenu before =
-    tap "Skin: Prism"
-    quietPatch before
+    quietClick (before, "Skin: Prism")
     layer ("menu", "skins")
-    pointer (1400.0, 700.0, true)
-    pointer (1400.0, 700.0, false)
-    quietPatch before
-    layer ("menu", "closed")
-    tap "Skin: Prism"
-    quietPatch before
-    tap "Topology"
-    quietPatch before
+    pressedAt (before, 1400.0, 700.0)
+    quietClick (before, "Skin: Prism")
+    quietClick (before, "Topology")
     knobText ("skin", "topology")
-    tap "Skin: Topology"
-    quietPatch before
-    tap "Prism"
-    quietPatch before
+    quietClick (before, "Skin: Topology")
+    quietClick (before, "Prism")
     knobText ("skin", "prism")
-    tap "Oscillator Wave: Sine"
-    quietPatch before
-    pointer (900.0, 700.0, true)
-    pointer (900.0, 700.0, false)
-    quietPatch before
-    layer ("menu", "closed")
+    quietClick (before, "Oscillator Wave: Sine")
+    pressedAt (before, 900.0, 700.0)
 
 quietSelection (name, role, before) =
     tap "Select ${name}"
@@ -375,29 +382,23 @@ quietDrag before =
 slidQuietly () =
     low = Semantics::point (element "Master Level", 0.2)
     high = Semantics::point (element "Master Level", 0.6)
-    pointer (low.pointX, low.pointY, true)
-    silent ()
-    pointer (high.pointX, high.pointY, true)
-    silent ()
+    quietPointer (low, true)
+    quietPointer (high, true)
     knobNumber ("volume", 0.6)
-    pointer (high.pointX, high.pointY, false)
-    silent ()
+    quietPointer (high, false)
     knobNumber ("volume", 0.6)
     sounds ("A3", 60)
 
 // A key is struck on release: pressing it, or hovering over it, plays nothing.
 keyPress () =
     at = Semantics::point (element "Play E3", 0.5)
-    pointer (at.pointX, at.pointY, false)
-    silent ()
-    pointer (at.pointX, at.pointY, true)
-    silent ()
+    quietPointer (at, false)
+    quietPointer (at, true)
     knobText ("note", "A3")
     pointer (at.pointX, at.pointY, false)
     expect (runCount (), 1)
     knobText ("note", "E3")
-    pointer (at.pointX, at.pointY, false)
-    silent ()
+    quietPointer (at, false)
 
 test ("the voice renders each wave, rate and level, exact silence and a PCM WAV header", \() => Runtime::guarded (\() =>
     shapes ()

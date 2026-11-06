@@ -20,36 +20,36 @@ module TufTests {
     }
 
     fn roleState(value) = TufCheck::RoleState {
-        version: Fixtures::number(Fixtures::field(value, "version")),
-        expiresAt: Fixtures::text(Fixtures::field(value, "expiresAt")),
-        metadataDigest: Fixtures::text(Fixtures::field(value, "metadataDigest"))
+        version: Fixtures::numberOf(value, "version"),
+        expiresAt: Fixtures::textOf(value, "expiresAt"),
+        metadataDigest: Fixtures::textOf(value, "metadataDigest")
     }
 
     fn rootCode(case) = TufCheck::rootUpdate(
-        Fixtures::number(Fixtures::field(case, "trustedVersion")),
-        Fixtures::number(Fixtures::field(case, "candidateVersion")),
-        Fixtures::number(Fixtures::field(case, "oldSigs")),
-        Fixtures::number(Fixtures::field(case, "newSigs")),
-        Fixtures::number(Fixtures::field(case, "oldThreshold")),
-        Fixtures::number(Fixtures::field(case, "newThreshold")))
+        Fixtures::numberOf(case, "trustedVersion"),
+        Fixtures::numberOf(case, "candidateVersion"),
+        Fixtures::numberOf(case, "oldSigs"),
+        Fixtures::numberOf(case, "newSigs"),
+        Fixtures::numberOf(case, "oldThreshold"),
+        Fixtures::numberOf(case, "newThreshold"))
 
     fn roleCode(case) = TufCheck::roleUpdate(
         roleState(Fixtures::field(case, "trusted")),
         roleState(Fixtures::field(case, "served")),
-        Fixtures::text(Fixtures::field(case, "now")),
+        Fixtures::textOf(case, "now"),
         flagOf(Fixtures::field(case, "thresholdMet")),
-        Fixtures::number(Fixtures::field(case, "metaVersion")),
-        Fixtures::text(Fixtures::field(case, "metaDigest")))
+        Fixtures::numberOf(case, "metaVersion"),
+        Fixtures::textOf(case, "metaDigest"))
 
     fn targetCode(case) = TufCheck::targetCheck(
-        Fixtures::number(Fixtures::field(case, "expectedLength")),
-        Fixtures::text(Fixtures::field(case, "expectedDigest")),
-        Fixtures::number(Fixtures::field(case, "servedLength")),
-        Fixtures::text(Fixtures::field(case, "servedDigest")))
+        Fixtures::numberOf(case, "expectedLength"),
+        Fixtures::textOf(case, "expectedDigest"),
+        Fixtures::numberOf(case, "servedLength"),
+        Fixtures::textOf(case, "servedDigest"))
 
     /// One vector row: dispatch on its `kind` and answer the decision code.
     fn vectorCode(case) = {
-        let kind = Fixtures::text(Fixtures::field(case, "kind"))
+        let kind = Fixtures::textOf(case, "kind")
         if kind == "rootUpdate" { rootCode(case) }
         else if kind == "roleUpdate" { roleCode(case) }
         else { targetCode(case) }
@@ -57,22 +57,22 @@ module TufTests {
 
     fn vectorTable(name, label) = Fixtures::report(label,
         Fixtures::items(Fixtures::field(Fixtures::load(name), "cases")), fn(case) =>
-            vectorCode(case) == Fixtures::text(Fixtures::field(case, "expect")))
+            vectorCode(case) == Fixtures::textOf(case, "expect"))
 
-    fn chains() = Fixtures::items(Fixtures::field(Fixtures::load("transitions/release-status.json"), "chains"))
+    fn chains() = Fixtures::loadItems("transitions/release-status.json", "chains")
 
     fn chainSteps(chains) = foldList(chains, [], fn(steps, chain) =>
-        listConcat(steps, Fixtures::items(Fixtures::field(chain, "steps"))))
+        listConcat(steps, Fixtures::itemsOf(chain, "steps")))
 
     fn transitionTable() = Fixtures::report("release-status transitions", chainSteps(chains()), fn(step) =>
         TufCheck::statusTransition(Fixtures::field(step, "previous"), Fixtures::field(step, "next"))
-            == Fixtures::text(Fixtures::field(step, "expect")))
+            == Fixtures::textOf(step, "expect"))
 
     /// The later steps of the valid chains, whose previousStatus goldens
     /// Osprey must reproduce from its own canonical form.
     fn goldenSteps(chain) = if flagOf(Fixtures::field(chain, "goldenPreviousStatus")) {
-        filterList(Fixtures::items(Fixtures::field(chain, "steps")), fn(step) =>
-            Fixtures::text(Fixtures::field(step, "expect")) == ""
+        filterList(Fixtures::itemsOf(chain, "steps"), fn(step) =>
+            Fixtures::textOf(step, "expect") == ""
             && Fixtures::text(Fixtures::field(Fixtures::field(step, "next"), "previousStatus")) != "")
     } else {
         []

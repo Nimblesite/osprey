@@ -63,11 +63,6 @@ def number_text(x) -> str:
     return unwrap_or(replace(text, ".0", ""), text) if endsWith(text, ".0") else text
 
 
-def tool_names(messages):
-    """Every tool name called across the run's responses, in order."""
-    return foldList(M.responses(messages), [], lambda acc, r: listConcat(acc, mapList(M.tool_calls(r), M.tool_name_of)))
-
-
 def tool_return_count(messages) -> int:
     return foldList(M.requests(messages), 0, lambda n, r: n + len(filterList(r.parts, is_return)))
 
@@ -98,7 +93,7 @@ def run_checks(key):
     agent = Agent.tool_plain(Agent.tool_plain(Agent.agent(model, "You are a precise assistant. Always use the tools to look up facts and to do arithmetic."), temperature_tool()), add_tool())
     match Agent.run_sync(agent, QUESTION, []):
         case E.Ok(value=result):
-            names = tool_names(result.messages)
+            names = Support.tool_names(result.messages)
             print(f"agent output: {result.output}")
             print(f"tools called: {join(names, ", ")}")
             print(f"requests: {result.usage.requests}, tool calls: {result.usage.tool_calls}, tokens: {result.usage.input_tokens} in / {result.usage.output_tokens} out")

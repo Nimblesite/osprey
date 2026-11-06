@@ -105,18 +105,20 @@ def sgd_3(momentum, dampening, nesterov, wd):
     return Optim.sgd(r2.params, grad_step(2), r2.state, 0.1, momentum, dampening, nesterov, wd)
 
 
-def adam_3(lr, beta1, beta2, eps, wd, amsgrad):
+def three_steps(step, lr, beta1, beta2, eps, wd, amsgrad):
+    """Three `step`s of an Adam-family optimizer over the shared parameter gradient."""
     s = Optim.AdamState(exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[], step=0)
-    r1 = Optim.adam(params0(), grad_step(0), s, lr, beta1, beta2, eps, wd, amsgrad)
-    r2 = Optim.adam(r1.params, grad_step(1), r1.state, lr, beta1, beta2, eps, wd, amsgrad)
-    return Optim.adam(r2.params, grad_step(2), r2.state, lr, beta1, beta2, eps, wd, amsgrad)
+    r1 = step(params0(), grad_step(0), s, lr, beta1, beta2, eps, wd, amsgrad)
+    r2 = step(r1.params, grad_step(1), r1.state, lr, beta1, beta2, eps, wd, amsgrad)
+    return step(r2.params, grad_step(2), r2.state, lr, beta1, beta2, eps, wd, amsgrad)
+
+
+def adam_3(lr, beta1, beta2, eps, wd, amsgrad):
+    return three_steps(Optim.adam, lr, beta1, beta2, eps, wd, amsgrad)
 
 
 def adamw_3(lr, beta1, beta2, eps, wd, amsgrad):
-    s = Optim.AdamState(exp_avg=[], exp_avg_sq=[], max_exp_avg_sq=[], step=0)
-    r1 = Optim.adamw(params0(), grad_step(0), s, lr, beta1, beta2, eps, wd, amsgrad)
-    r2 = Optim.adamw(r1.params, grad_step(1), r1.state, lr, beta1, beta2, eps, wd, amsgrad)
-    return Optim.adamw(r2.params, grad_step(2), r2.state, lr, beta1, beta2, eps, wd, amsgrad)
+    return three_steps(Optim.adamw, lr, beta1, beta2, eps, wd, amsgrad)
 
 
 def rmsprop_3(alpha, eps, wd, momentum, centered):
@@ -221,43 +223,48 @@ def adagrad_cases():
 
 # Learning-rate schedulers ------------------------------------------------
 
+def checked_float(tag, backend, compute, want):
+    """A float `compute` returns under the checked arithmetic policy, on one backend."""
+    return check_scalar(tag, apply(backend, lambda: Errors.checked_float(compute)), want, TIGHT)
+
+
+def checked_list(tag, backend, compute, want):
+    """A float list `compute` returns under the checked arithmetic policy, on one backend."""
+    return check_list(tag, apply(backend, lambda: Errors.checked_values(compute)), flat_expected(want), TIGHT)
+
+
+def lr_case(label, e, backend, compute, want):
+    """One scheduler's learning rate at epoch `e`: the tag names the scheduler and epoch."""
+    return checked_float(f"lr.{label}.{e}.{backend}", backend, compute, want)
+
+
 def step_lr_case(backend, e):
-    compute = lambda: LR.step_lr(0.5, e, 3, 0.7)
-    work = lambda: Errors.checked_float(compute)
-    return check_scalar(f"lr.step.{e}.{backend}", apply(backend, work), atf(Expected.STEP_LRS, e), TIGHT)
+    return lr_case("step", e, backend, lambda: LR.step_lr(0.5, e, 3, 0.7), atf(Expected.STEP_LRS, e))
 
 
 def multi_lr_case(backend, e):
-    compute = lambda: LR.multi_step_lr(0.5, e, [2, 5, 7], 0.5)
-    work = lambda: Errors.checked_float(compute)
-    return check_scalar(f"lr.multi.{e}.{backend}", apply(backend, work), atf(Expected.MULTI_LRS, e), TIGHT)
+    return lr_case("multi", e, backend, lambda: LR.multi_step_lr(0.5, e, [2, 5, 7], 0.5), atf(Expected.MULTI_LRS, e))
 
 
 def expo_lr_case(backend, e):
-    compute = lambda: LR.exponential_lr(0.5, e, 0.8)
-    work = lambda: Errors.checked_float(compute)
-    return check_scalar(f"lr.exponential.{e}.{backend}", apply(backend, work), atf(Expected.EXPONENTIAL_LRS, e), TIGHT)
+    return lr_case("exponential", e, backend, lambda: LR.exponential_lr(0.5, e, 0.8), atf(Expected.EXPONENTIAL_LRS, e))
 
 
 def lambda_lr_case(backend, e):
-    compute = lambda: LR.lambda_lr(0.5, e, lambda t: 1.0 / (1.0 + 0.1 * toFloat(t)))
-    work = lambda: Errors.checked_float(compute)
-    return check_scalar(f"lr.lambda.{e}.{backend}", apply(backend, work), atf(Expected.LAMBDA_LRS, e), TIGHT)
+    return lr_case("lambda", e, backend, lambda: LR.lambda_lr(0.5, e, lambda t: 1.0 / (1.0 + 0.1 * toFloat(t))), atf(Expected.LAMBDA_LRS, e))
 
 
 def linear_lr_case(backend, e):
-    compute = lambda: LR.linear_lr(0.5, e, 1.0 / 3.0, 1.0, 5)
-    work = lambda: Errors.checked_float(compute)
-    return check_scalar(f"lr.linear.{e}.{backend}", apply(backend, work), atf(Expected.LINEAR_LRS, e), TIGHT)
+    return lr_case("linear", e, backend, lambda: LR.linear_lr(0.5, e, 1.0 / 3.0, 1.0, 5), atf(Expected.LINEAR_LRS, e))
+
+
+def lr_group(build, epochs):
+    """Every epoch's learning rate for one scheduler, on both arithmetic backends."""
+    return fold(range(epochs), [], lambda acc, e: listConcat(acc, both(lambda b: [build(b, e)])))
 
 
 def lr_cases():
-    step = fold(range(9), [], lambda acc, e: listConcat(acc, both(lambda b: [step_lr_case(b, e)])))
-    multi = fold(range(9), [], lambda acc, e: listConcat(acc, both(lambda b: [multi_lr_case(b, e)])))
-    expo = fold(range(9), [], lambda acc, e: listConcat(acc, both(lambda b: [expo_lr_case(b, e)])))
-    lam = fold(range(9), [], lambda acc, e: listConcat(acc, both(lambda b: [lambda_lr_case(b, e)])))
-    lin = fold(range(9), [], lambda acc, e: listConcat(acc, both(lambda b: [linear_lr_case(b, e)])))
-    return listConcat(listConcat(listConcat(step, multi), listConcat(expo, lam)), lin)
+    return listConcat(lr_group(step_lr_case, 9), listConcat(lr_group(multi_lr_case, 9), listConcat(lr_group(expo_lr_case, 9), listConcat(lr_group(lambda_lr_case, 9), lr_group(linear_lr_case, 9)))))
 
 
 # Gradient clipping -------------------------------------------------------
@@ -266,26 +273,30 @@ def clip_grads():
     return [arr([3.0, 4.0, 0.0, -5.0]), arr([0.6, -0.8])]
 
 
+def clip_norm_type(i):
+    """The norm case `i` clips with: the L2 norm for the first two, +inf for the third."""
+    return 2.0 if i < 2 else exp(1000.0)
+
+
+def clip_norm_bound(i):
+    """The max norm case `i` clips with; the second raises it above the gradient norm."""
+    return 10.0 if i == 1 else 1.0
+
+
 def clip_norm_grads(backend, i):
-    norm_type = 2.0 if i < 2 else exp(1000.0)
-    max_norm = 1.0 if i != 1 else 10.0
-    compute = lambda: flat_list(Optim.clip_grad_norm_(clip_grads(), max_norm, norm_type).grads)
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"clip.norm.grads.{i}.{backend}", apply(backend, work), flat_expected(atl(Expected.CLIP_NORM_GRADS, i)), TIGHT)
+    return checked_list(f"clip.norm.grads.{i}.{backend}", backend,
+                        lambda: flat_list(Optim.clip_grad_norm_(clip_grads(), clip_norm_bound(i), clip_norm_type(i)).grads),
+                        atl(Expected.CLIP_NORM_GRADS, i))
 
 
 def clip_norm_total(backend, i):
-    norm_type = 2.0 if i < 2 else exp(1000.0)
-    max_norm = 1.0 if i != 1 else 10.0
-    compute = lambda: Optim.clip_grad_norm_(clip_grads(), max_norm, norm_type).total_norm
-    work = lambda: Errors.checked_float(compute)
-    return check_scalar(f"clip.norm.total.{i}.{backend}", apply(backend, work), atf(Expected.CLIP_NORM_TOTAL, i), TIGHT)
+    return checked_float(f"clip.norm.total.{i}.{backend}", backend,
+                         lambda: Optim.clip_grad_norm_(clip_grads(), clip_norm_bound(i), clip_norm_type(i)).total_norm,
+                         atf(Expected.CLIP_NORM_TOTAL, i))
 
 
 def clip_value_case(backend):
-    compute = lambda: flat_list(Optim.clip_grad_value_(clip_grads(), 0.5))
-    work = lambda: Errors.checked_values(compute)
-    return check_list(f"clip.value.{backend}", apply(backend, work), flat_expected(Expected.CLIP_VALUE_GRADS), TIGHT)
+    return checked_list(f"clip.value.{backend}", backend, lambda: flat_list(Optim.clip_grad_value_(clip_grads(), 0.5)), Expected.CLIP_VALUE_GRADS)
 
 
 def clip_cases():
@@ -415,9 +426,7 @@ def auto_compute(i):
 
 
 def auto_case(backend, i):
-    compute = auto_compute(i)
-    work = lambda: Errors.checked_values(compute)
-    result = apply(backend, work)
+    result = apply(backend, lambda: Errors.checked_values(auto_compute(i)))
     return [
         check_list(f"auto.analytic.{i}.{backend}", result, atl(Expected.AUTO_ANALYTIC, i), LOOSE),
         check_list(f"auto.fd.{i}.{backend}", result, atl(Expected.AUTO_FD, i), FD),

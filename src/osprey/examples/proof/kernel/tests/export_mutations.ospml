@@ -32,13 +32,13 @@ module ExportMutationTests
 
         test ("the outer binder typed by an unbound variable is rejected", \() => expect (Shapes::views [verdict (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1")), Shapes::statementKind (edit ("\"body\":5,\"name\":14,\"type\":0", "\"body\":5,\"name\":14,\"type\":1"), "id_imp")], "unbound variable #0 | a type"))
 
-        test ("the statement replaced by Prop makes the proof a mismatch", \() => expect (mismatch (edit ("\"type\":4,\"value\":6", "\"type\":0,\"value\":6"), "id_imp", prop (), idType ()), "type mismatch | a type | equal | equal"))
+        test ("the statement replaced by Prop makes the proof a mismatch", \() => expect (mismatch (restated ("0", "6"), "id_imp", prop (), idType ()), "type mismatch | a type | equal | equal"))
 
-        test ("an open statement is rejected before the proof is looked at", \() => expect (Shapes::views [verdict (edit ("\"type\":4,\"value\":6", "\"type\":3,\"value\":6")), Shapes::shapeOf (Shapes::statementOf (edit ("\"type\":4,\"value\":6", "\"type\":3,\"value\":6"), "id_imp"), Pi "a" (BVar 0) (BVar 1))], "unbound variable #0 | equal"))
+        test ("an open statement is rejected before the proof is looked at", \() => expect (Shapes::views [verdict (restated ("3", "6")), Shapes::shapeOf (Shapes::statementOf (restated ("3", "6"), "id_imp"), Pi "a" (BVar 0) (BVar 1))], "unbound variable #0 | equal"))
 
-        test ("the inner lambda alone as the proof is open", \() => expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":5")), "unbound variable #0"))
+        test ("the inner lambda alone as the proof is open", \() => expect (verdict (restated ("4", "5")), "unbound variable #0"))
 
-        test ("the statement offered as its own proof is a mismatch", \() => expect (mismatch (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":4"), "id_imp", idType (), prop ()), "type mismatch | a type | equal | equal"))
+        test ("the statement offered as its own proof is a mismatch", \() => expect (mismatch (restated ("4", "4"), "id_imp", idType (), prop ()), "type mismatch | a type | equal | equal"))
 
         test ("a weaker statement than the proof proves is a mismatch", \() => expect (mismatch (edit ("\"body\":3,\"name\":2,\"type\":0", "\"body\":1,\"name\":2,\"type\":0"), "id_imp", Pi "p" (prop ()) (BVar 0), idType ()), "type mismatch | a type | equal | equal"))
 
@@ -54,7 +54,7 @@ module ExportMutationTests
 
         test ("an export cut before its declaration declares nothing", \() => expect (verdict (swapped (Fixtures::idImp (), lastLine () + "\n", "")), "the export declares no `id_imp`"))
 
-        test ("a proof reference to an expression the file never defined names its line", \() => expect (verdict (edit ("\"type\":4,\"value\":6", "\"type\":4,\"value\":9")), "line 24: unknown expr 9"))
+        test ("a proof reference to an expression the file never defined names its line", \() => expect (verdict (restated ("4", "9")), "line 24: unknown expr 9"))
 
         test ("a binder annotation the reader does not know is refused on its line", \() => expect (verdict (edit ("{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"default\"", "{\"bvar\":0,\"ie\":1}\n{\"bvar\":1,\"ie\":2}\n{\"forallE\":{\"binderInfo\":\"weird\"")), "line 12: bad binderInfo weird"))
 
@@ -90,11 +90,11 @@ module ExportMutationTests
 
     (** `Prop`, the recorded theorem's statement `∀ (p : Prop), p → p`, and
         `idP p` under one binder, as terms the cases compare against. *)
-    prop () = Support::prop ()
+    prop () = Fixtures::prop ()
 
-    idType () = Support::idType ()
+    idType () = Fixtures::idType ()
 
-    idP () = App (Const "idP" []) (BVar 0)
+    idP () = Support::applied ("idP")
 
     (** A type-mismatch rejection of `name` in `text`, seen four ways: the
         verdict's kind, the statement's own sort check (it is a type, so the
@@ -106,6 +106,9 @@ module ExportMutationTests
         statement's own sort check, the statement as read, and the type of
         its body under its own two binders as read, which is `p`. *)
     notAType (text) = Shapes::views [Shapes::kindOf (verdict text), Shapes::statementKind (text, "id_imp"), Shapes::shapeOf (Shapes::statementOf (text, "id_imp"), Pi "p" (prop ()) (Pi "a" (BVar 0) (BVar 0))), Shapes::bodyTypeOf (text, "id_imp", BVar 1)]
+
+    (** The recorded export with its statement line restated at `sort` and `value`. *)
+    restated (sort, value) = edit ("\"type\":4,\"value\":6", "\"type\":${sort},\"value\":${value}")
 
     (** `checked`, or the rejection, for `id_imp` through the gate's own path. *)
     verdict (text) = named (text, "id_imp")

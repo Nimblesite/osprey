@@ -13,7 +13,7 @@ order (ascending label); `remove_ids` keeps labels compacted exactly as faiss's
 inputs, so binary64 matches faiss's float32 bit for bit.
 """
 
-from faiss.Metrics import l2sqr, inner_product, topk
+from faiss.Metrics import l2sqr, inner_product, map_indexed, topk
 from faiss.Selectors import selected
 
 __all__ = ["IndexFlat", "IndexFlatL2", "IndexFlatIP", "SearchResult", "RangeSearchResult", "add", "ntotal", "search", "range_search", "reconstruct", "reconstruct_n", "remove_ids", "reset", "search_rows"]
@@ -74,17 +74,17 @@ def distance(metric, a, b):
 
 def distances_to(index, q):
     """`q`'s distance to every stored row, in stored order."""
-    return toList(map(range(len(index.vectors)), lambda j: distance(index.metric, q, unwrap_or(listGet(index.vectors, j), []))))
+    return map_indexed(index.vectors, lambda j: distance(index.metric, q, unwrap_or(listGet(index.vectors, j), [])))
 
 
 def per_query(xq, row_of):
     """`row_of` applied to every query row, in query order."""
-    return toList(map(range(len(xq)), lambda q: row_of(unwrap_or(listGet(xq, q), []))))
+    return map_indexed(xq, lambda q: row_of(unwrap_or(listGet(xq, q), [])))
 
 
 def search_row(index, q, k):
     """One query's k results: faiss's heap selection over the stored rows."""
-    ids = toList(map(range(len(index.vectors)), lambda j: j))
+    ids = map_indexed(index.vectors, lambda j: j)
     return topk(k, index.metric, distances_to(index, q), ids)
 
 
@@ -105,7 +105,7 @@ def range_row(index, q, radius):
     """One query's range-search matches: every row within `radius`, ascending
     label (faiss's scan order)."""
     ds = distances_to(index, q)
-    kept = filterList(toList(map(range(len(index.vectors)), lambda j: j)), lambda j: within(index.metric, unwrap_or(listGet(ds, j), 0.0), radius))
+    kept = filterList(map_indexed(index.vectors, lambda j: j), lambda j: within(index.metric, unwrap_or(listGet(ds, j), 0.0), radius))
     return RangeRow(distances=mapList(kept, lambda j: unwrap_or(listGet(ds, j), 0.0)), labels=kept)
 
 
@@ -147,7 +147,7 @@ def remove_ids(index, selector):
     """faiss's `index.remove_ids(selector)`: the index without the selected rows,
     remaining labels compacted to 0..ntotal-1 in order (nremoved is the old
     ntotal minus the new one)."""
-    kept = filterList(toList(map(range(len(index.vectors)), lambda j: j)), lambda j: not selected(selector, j))
+    kept = filterList(map_indexed(index.vectors, lambda j: j), lambda j: not selected(selector, j))
     return IndexFlat(metric=index.metric, d=index.d, vectors=mapList(kept, lambda j: unwrap_or(listGet(index.vectors, j), [])))
 
 

@@ -25,7 +25,7 @@ module ReduceTests
 
     computations () =
         test ("whnf beta-reduces a lambda applied to a term", \() =>
-            expect (Support::whnfOf (Environment::empty (), App (Lam "x" (Sort Zero) (BVar 0)) (closed ())), "Type"))
+            expect (Support::whnfOf (Environment::empty (), App (Support::selfLam ()) (closed ())), "Type"))
 
         test ("whnf unfolds a definition but not a theorem or an axiom", \() => expectAll [Support::whnfOf (Support::envWith (Definition (closed ())), Const "c" []) == "Type", Support::whnfOf (Support::envWith (Theorem (closed ())), Const "c" []) == "c", Support::whnfOf (Support::envWith Axiom, Const "c" []) == "c"])
 

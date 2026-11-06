@@ -56,7 +56,7 @@ def all_messages(result) -> list[M.ModelMessage]:
 
 def new_messages(result) -> list[M.ModelMessage]:
     """`AgentRunResult.new_messages()`: the messages this run added."""
-    indexes = filterList(toList(map(range(len(result.messages)), lambda i: i)), lambda i: i >= result.new_message_index)
+    indexes = filterList(M.map_indexed(result.messages, lambda i: i), lambda i: i >= result.new_message_index)
     return mapList(indexes, lambda i: unwrap_or(listGet(result.messages, i), M.of_request(M.model_request([]))))
 
 

@@ -108,6 +108,29 @@ module RegistryFixture {
     /// `runWith` with no tree to walk.
     export fn run(reads, webs, args) = runWith(reads, [], webs, args)
 
+    /// Run the read-only command `args` over `reads` and `walks`: a write, an
+    /// ensure, a fetch or a process run is a fixture failure named after
+    /// `label`, so no case can pass on a hidden effect.
+    export fn runReadOnly(reads, walks, args, label) = {
+        let files = handler Host::Files {
+            read path => Fixture::readFor(reads, path)
+            exists path => Fixture::existsIn(reads, path)
+            remove path => Error { message: "fixture: unexpected remove ${path}" }
+            write path content => Error { message: "fixture: ${label} never writes ${path} (${byteLength(content)} bytes)" }
+        }
+        let tree = handler Host::Tree {
+            walk dir => if isEmpty(walks) { Error { message: "fixture: ${label} never walks ${dir}" } } else { Fixture::walkFor(walks, dir) }
+            ensure dir => Error { message: "fixture: ${label} never ensures ${dir}" }
+        }
+        let web = handler Host::Web {
+            get base path => Error { message: "fixture: ${label} never fetches ${base}${path}" }
+        }
+        let process = handler Host::Process {
+            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: ${label} never runs ${command}" }
+        }
+        process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
+    }
+
     export fn removedPath(a: Attempt, path) = listContains(a.removed, path)
 
     /// The commands the run executed, in order.
@@ -123,6 +146,12 @@ module RegistryFixture {
     export fn writesTo(a: Attempt, path) = length(filterList(a.written, fn(w) => writtenAt(w) == path))
 
     export fn statusOf(a: Attempt) = a.report.status
+
+    /// Whether the run was accepted (status 0).
+    export fn accepted(a: Attempt) = statusOf(a) == 0
+
+    /// The run's status and its first report line, the pair every refusal asserts.
+    export fn reported(a: Attempt, status, code) = statusOf(a) == status && lineOf(a, 0) == code
     export fn linesOf(a: Attempt) = a.report.lines
     export fn lineOf(a: Attempt, i) = Fixture::line(a.report, i)
 

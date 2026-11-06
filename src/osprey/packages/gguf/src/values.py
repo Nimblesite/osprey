@@ -61,9 +61,6 @@ class Counts:
     kv_count: int
 
 
-INT_KINDS = ["uint8", "int8", "uint16", "int16", "uint32", "int32", "uint64", "int64"]
-
-
 def header_at(data):
     """The magic, the version and the two counts, in the file's own byte order."""
     return Chain.then(require_magic(data), lambda _: version_at(data))
@@ -277,11 +274,9 @@ def values_at(data, off, count, kind, swapped):
 
 def walked(data, off, count, kind, swapped):
     """The fold that reads `count` values from `off` without recursing per element."""
-    walk = fold(range(count), ArrayWalk(offs=off, items=[], problem=""), lambda acc, _i: value_step(data, acc, kind, swapped))
-    if walk.problem != "":
-        return Error(message=walk.problem)
-    else:
-        return Success(value=Sized(value=array_value(kind, count, mapList(walk.items, item_value)), size=walk.offs - off))
+    step = lambda acc, _i: value_step(data, acc, kind, swapped)
+    walk = Chain.walk_checked(count, ArrayWalk(offs=off, items=[], problem=""), step)
+    return Chain.then(walk, lambda done: Success(value=Sized(value=array_value(kind, count, mapList(done.items, item_value)), size=done.offs - off)))
 
 
 def item_value(sized):

@@ -43,9 +43,9 @@ module ActivityView
         account = BankData::value doc "[${index}].account" "—"
         cents = BankData::integer doc "[${index}].cents"
         icon = UI::text "movement-icon ${kind}" (mark kind)
-        copy = UI::node "span" (UI::prop "className" "movement-copy") (UI::leaf "strong" "" note + "," + UI::leaf "small" "" "${owner} · Account #${account}")
-        meta = UI::node "span" (UI::prop "className" "movement-meta") (UI::leaf "strong" (UI::prop "className" "movement-amount ${kind}") (amount kind cents) + "," + UI::leaf "small" "" (label kind))
-        UI::node "div" (UI::prop "className" "movement-row ${kind}") (icon + "," + copy + "," + meta)
+        copy = UI::node "span" (UI::cls "movement-copy") (UI::leaf "strong" "" note + "," + UI::leaf "small" "" "${owner} · Account #${account}")
+        meta = UI::node "span" (UI::cls "movement-meta") (UI::leaf "strong" (UI::cls "movement-amount ${kind}") (amount kind cents) + "," + UI::leaf "small" "" (label kind))
+        UI::block "movement-row ${kind}" (icon + "," + copy + "," + meta)
 
     rowsFrom doc index limit filter search shown = match shown >= limit
         true => ""
@@ -68,11 +68,7 @@ module ActivityView
                             true => row doc index
                             false => row doc index + "," + rest
 
-    export rows source limit filter search =
-        doc = jsonParse source ?: 0
-        content = rowsFrom doc 0 limit filter search 0
-        freed = jsonFree doc ?: 0
-        content
+    export rows source limit filter search = BankData::withDoc source (\doc => rowsFrom doc 0 limit filter search 0)
 
     countFrom doc index kind running =
         found = jsonGet doc "[${index}].kind"
@@ -85,8 +81,4 @@ module ActivityView
                 nextIndex = wrapAdd index 1
                 countFrom doc nextIndex kind nextCount
 
-    export count source kind =
-        doc = jsonParse source ?: 0
-        total = countFrom doc 0 kind 0
-        freed = jsonFree doc ?: 0
-        total
+    export count source kind = BankData::withDoc source (\doc => countFrom doc 0 kind 0)

@@ -120,7 +120,17 @@ patchKeys envelope = join (mapList (Doc::items (Doc::field (envelope, "patches")
 
 problemsOf envelope = join (Doc::texts (envelope, "diagnostics")) ";"
 
-shows (envelope, region, text) = contains (Doc::write (nodeOf (envelope, region))) text
+// Runs of reads that only their literals distinguish are tables: each case names
+// the control and the value it must read.
+expectShows (envelope, region, parts) = expect (containsAll (Doc::write (nodeOf (envelope, region))) parts, true)
+
+expectHides (envelope, region, parts) = expect (containsNone (Doc::write (nodeOf (envelope, region))) parts, true)
+
+expectEvidence (envelope, region, cases) = forEachList (cases, \c => expect (evidenceValue (envelope, region, c.label), c.want))
+
+pick (envelope, region, key) = post (envelope, chooseRow (envelope, region, key))
+
+tap (envelope, region, label) = post (envelope, tapAt (envelope, region, label))
 
 completed (ticket, result) = "{\"kind\":\"completed\",\"ticket\":${quote ticket},\"ok\":true,\"result\":${quote result},\"now\":9}"
 
@@ -175,154 +185,126 @@ completeBoth (envelope, findings) =
 
 browsed envelope = post (envelope, chooseTab (envelope, "packages", "browse"))
 
-test ("missing workspace graph never reports zero installed in the package footer", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+missingFooter () =
     after = completeBoth (startEnvelope loopback, ["tree.no-lock"])
-    expect (shows (after, "packages", "installed ·"), false)
-    expect (shows (after, "packages", "Installed counts unavailable"), true))
+    expectHides (after, "packages", ["installed ·"])
+    expectShows (after, "packages", ["Installed counts unavailable"])
 
-test ("installed counts only present entries while missing lock entries warn", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+installedCounts () =
     after = completeBoth (startEnvelope loopback, [])
-    expect (evidenceValue (after, "root", "Installed"), "2")
-    expect (evidenceValue (after, "root", "Direct"), "1")
-    expect (evidenceValue (after, "root", "Missing"), "1")
-    expect (shows (after, "packages", "@demo/ghost"), false)
-    expect (shows (after, "root", "@demo/ghost · missing from disk"), true)
-    expect (shows (after, "root", workspace), true)
-    expect (badgeTone (after, "root", "Audit unverified"), "caution"))
+    expectEvidence (after, "root", [
+        { label = "Installed", want = "2" },
+        { label = "Direct", want = "1" },
+        { label = "Missing", want = "1" },
+    ])
+    expectHides (after, "packages", ["@demo/ghost"])
+    expectShows (after, "root", ["@demo/ghost · missing from disk", workspace])
+    expect (badgeTone (after, "root", "Audit unverified"), "caution")
 
-test ("empty findings read as unverified caution and never as an audit", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+emptyFindings () =
     after = browsed (completeBoth (startEnvelope loopback, []))
-    chosen = post (after, chooseRow (after, "packages", "@demo/new"))
+    chosen = pick (after, "packages", "@demo/new")
     expect (badgeTone (chosen, "details", unverified), "caution")
-    expect (shows (chosen, "details", unverified), true)
-    expect (shows (chosen, "details", "requires explicit confirmation"), true)
-    expect (shows (chosen, "details", "Audited"), false)
+    expectShows (chosen, "details", [unverified, "requires explicit confirmation"])
+    expectHides (chosen, "details", ["Audited"])
     expect (hasTone (chosen, "details", "good"), false)
-    expect (buttonEnabled (chosen, "details", "Add to project"), true))
+    expect (buttonEnabled (chosen, "details", "Add to project"), true)
 
-test ("missing direct dependencies can be inspected and removed without hiding findings", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+missingDirect () =
     first = startEnvelope loopback
     catalogued = post (first, completed (ticketAt (first, 0), Doc::write (catalogDoc ())))
     graph = JsonObject [Doc::str ("project", workspace), JsonMember "direct" (Doc::strings ["@demo/ghost"]), JsonMember "findings" (Doc::strings []), JsonMember "packages" (JsonArray [packageJson ("@demo/ghost", "e1.r2", true, false, [], [], ["verify.missing"])])]
     report = Doc::write (JsonObject [Doc::num ("status", 0), JsonMember "lines" (Doc::strings [Doc::write graph])])
     ready = post (catalogued, completed (ticketAt (first, 1), report))
-    chosen = post (ready, chooseRow (ready, "root", "@demo/ghost"))
-    expect (shows (chosen, "details", "verify.missing"), true)
+    chosen = pick (ready, "root", "@demo/ghost")
+    expectShows (chosen, "details", ["verify.missing"])
     expect (badgeTone (chosen, "details", "Missing from disk"), "caution")
     expect (buttonEnabled (chosen, "details", "Remove dependency"), true)
-    asked = post (chosen, tapAt (chosen, "details", "Remove dependency"))
-    confirmed = post (asked, tapAt (asked, "details", "Confirm remove @demo/ghost"))
+    asked = tap (chosen, "details", "Remove dependency")
+    confirmed = tap (asked, "details", "Confirm remove @demo/ghost")
     expect (requestCount confirmed, 1)
-    expect (contains (requestText (confirmed, 0)) "remove @demo/ghost", true))
+    expect (contains (requestText (confirmed, 0)) "remove @demo/ghost", true)
 
-test ("recorded findings are visible danger warnings that block adding", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+recordedFindings () =
     after = browsed (completeBoth (startEnvelope loopback, []))
-    chosen = post (after, chooseRow (after, "packages", "@demo/risky"))
-    expect (shows (chosen, "details", cve), true)
+    chosen = pick (after, "packages", "@demo/risky")
+    expectShows (chosen, "details", [cve])
     expect (badgeTone (chosen, "details", "1 findings"), "danger")
-    expect (buttonEnabled (chosen, "details", "Add to project"), false))
+    expect (buttonEnabled (chosen, "details", "Add to project"), false)
 
-test ("a local unverified add needs explicit confirmation and pending work blocks it", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+unverifiedAdd () =
     first = startEnvelope loopback
     pending = post (first, completed (ticketAt (first, 0), Doc::write (catalogDoc ())))
-    chosen = post (browsed pending, chooseRow (browsed pending, "packages", "@demo/new"))
-    blocked = post (chosen, tapAt (chosen, "details", "Add to project"))
+    chosen = pick (browsed pending, "packages", "@demo/new")
+    blocked = tap (chosen, "details", "Add to project")
     expect (pendingOf blocked, true)
     expect (requestCount blocked, 0)
     expect (confirmingOf blocked, "")
     expect (problemsOf blocked, "")
     resolved = post (chosen, completed (ticketAt (first, 1), graphResult []))
-    asked = post (resolved, tapAt (resolved, "details", "Add to project"))
+    asked = tap (resolved, "details", "Add to project")
     expect (requestCount asked, 0)
     expect (confirmingOf asked, "add")
-    expect (shows (asked, "details", "Confirm add @demo/new"), true)
-    expect (buttonEnabled (asked, "details", "Confirm add @demo/new"), true))
+    expectShows (asked, "details", ["Confirm add @demo/new"])
+    expect (buttonEnabled (asked, "details", "Confirm add @demo/new"), true)
 
-test ("confirming a local add issues one change request and stale completions are ignored", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+confirmedAdd () =
     first = startEnvelope loopback
     resolved = completeBoth (first, [])
-    chosen = post (browsed resolved, chooseRow (browsed resolved, "packages", "@demo/new"))
-    asked = post (chosen, tapAt (chosen, "details", "Add to project"))
-    confirmed = post (asked, tapAt (asked, "details", "Confirm add @demo/new"))
+    chosen = pick (browsed resolved, "packages", "@demo/new")
+    asked = tap (chosen, "details", "Add to project")
+    confirmed = tap (asked, "details", "Confirm add @demo/new")
     expect (requestCount confirmed, 1)
     expect (contains (ticketAt (confirmed, 0)) "package/add:2", true)
     expect (contains (requestText (confirmed, 0)) "add @demo/new", true)
     stale = post (confirmed, completed (ticketAt (first, 0), "{\"packages\":[]}"))
     expect (patchKeys stale, "")
     expect (problemsOf stale, "")
-    expect (contains (noticeOf stale) "add @demo/new", true))
+    expect (contains (noticeOf stale) "add @demo/new", true)
 
-test ("hosted unverified installs are blocked with a visible warning", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+hostedAdd () =
     after = browsed (completeBoth (startEnvelope hosted, []))
-    chosen = post (after, chooseRow (after, "packages", "@demo/new"))
+    chosen = pick (after, "packages", "@demo/new")
     expect (buttonEnabled (chosen, "details", "Add to project"), false)
-    refused = post (chosen, tapAt (chosen, "details", "Add to project"))
+    refused = tap (chosen, "details", "Add to project")
     expect (requestCount refused, 0)
     expect (faultOf refused, true)
     expect (contains (noticeOf refused) "installation is disabled", true)
-    expect (shows (refused, "root", "installation is disabled"), true)
-    expect (confirmingOf refused, ""))
+    expectShows (refused, "root", ["installation is disabled"])
+    expect (confirmingOf refused, "")
 
-test ("removing a direct dependency warns and names the project before confirming", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+removeDirect () =
     after = completeBoth (startEnvelope loopback, [])
-    chosen = post (after, chooseRow (after, "packages", "@demo/report"))
-    asked = post (chosen, tapAt (chosen, "details", "Remove dependency"))
+    chosen = pick (after, "packages", "@demo/report")
+    asked = tap (chosen, "details", "Remove dependency")
     expect (requestCount asked, 0)
     expect (confirmingOf asked, "remove")
-    expect (shows (asked, "details", "Removing @demo/report"), true)
-    expect (shows (asked, "details", workspace), true)
-    confirmed = post (asked, tapAt (asked, "details", "Confirm remove @demo/report"))
+    expectShows (asked, "details", ["Removing @demo/report", workspace])
+    confirmed = tap (asked, "details", "Confirm remove @demo/report")
     expect (requestCount confirmed, 1)
-    expect (contains (requestText (confirmed, 0)) "remove @demo/report", true))
+    expect (contains (requestText (confirmed, 0)) "remove @demo/report", true)
 
-test ("installed and workspace security findings stay visible", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+securityFindings () =
     after = completeBoth (startEnvelope loopback, [cve])
-    chosen = post (after, chooseRow (after, "packages", "@demo/base"))
-    expect (shows (chosen, "details", cve), true)
+    chosen = pick (after, "packages", "@demo/base")
+    expectShows (chosen, "details", [cve])
     expect (hasTone (chosen, "details", "danger"), true)
-    expect (shows (after, "root", "Workspace security findings"), true)
-    expect (shows (after, "root", cve), true))
+    expectShows (after, "root", ["Workspace security findings", cve])
 
-test ("unavailable package data hides counts and keeps the selected project", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+unavailableData () =
     first = startEnvelope loopback
     expect (evidenceValue (first, "root", "Installed"), "")
-    expect (shows (first, "root", workspace), true)
+    expectShows (first, "root", [workspace])
     failure = "{\"kind\":\"completed\",\"ticket\":${quote (ticketAt (first, 1))},\"ok\":false,\"error\":\"Package executable is missing\",\"now\":9}"
     failed = post (first, failure)
-    expect (evidenceValue (failed, "root", "Installed"), "")
-    expect (evidenceValue (failed, "root", "Catalog"), "")
-    expect (shows (failed, "root", "Package data unavailable"), true)
-    expect (shows (failed, "root", workspace), true))
+    expectEvidence (failed, "root", [{ label = "Installed", want = "" }, { label = "Catalog", want = "" }])
+    expectShows (failed, "root", ["Package data unavailable", workspace])
 
-test ("add waits for verified fetch before refreshing installed packages", \() =>
-    handle Arith
-        overflow _ _ _ wrapped => wrapped
+verifiedFetch () =
     ready = browsed (completeBoth (startEnvelope loopback, []))
-    selected = post (ready, chooseRow (ready, "packages", "@demo/new"))
-    asked = post (selected, tapAt (selected, "details", "Add to project"))
-    confirmed = post (asked, tapAt (asked, "details", "Confirm add @demo/new"))
+    selected = pick (ready, "packages", "@demo/new")
+    asked = tap (selected, "details", "Add to project")
+    confirmed = tap (asked, "details", "Confirm add @demo/new")
     report = "{\"lines\":[],\"status\":0}"
     added = post (confirmed, completed (ticketAt (confirmed, 0), report))
     expect (requestCount added, 1)
@@ -334,5 +316,29 @@ test ("add waits for verified fetch before refreshing installed packages", \() =
     expect (requestCount failed, 0)
     expect (pendingOf failed, false)
     expect (faultOf failed, true)
-    expect (shows (failed, "root", "Digest mismatch"), true)
-    expect (evidenceValue (failed, "root", "Installed"), ""))
+    expectShows (failed, "root", ["Digest mismatch"])
+    expect (evidenceValue (failed, "root", "Installed"), "")
+
+test ("missing workspace graph never reports zero installed in the package footer", \() => exactArithmetic missingFooter)
+
+test ("installed counts only present entries while missing lock entries warn", \() => exactArithmetic installedCounts)
+
+test ("empty findings read as unverified caution and never as an audit", \() => exactArithmetic emptyFindings)
+
+test ("missing direct dependencies can be inspected and removed without hiding findings", \() => exactArithmetic missingDirect)
+
+test ("recorded findings are visible danger warnings that block adding", \() => exactArithmetic recordedFindings)
+
+test ("a local unverified add needs explicit confirmation and pending work blocks it", \() => exactArithmetic unverifiedAdd)
+
+test ("confirming a local add issues one change request and stale completions are ignored", \() => exactArithmetic confirmedAdd)
+
+test ("hosted unverified installs are blocked with a visible warning", \() => exactArithmetic hostedAdd)
+
+test ("removing a direct dependency warns and names the project before confirming", \() => exactArithmetic removeDirect)
+
+test ("installed and workspace security findings stay visible", \() => exactArithmetic securityFindings)
+
+test ("unavailable package data hides counts and keeps the selected project", \() => exactArithmetic unavailableData)
+
+test ("add waits for verified fetch before refreshing installed packages", \() => exactArithmetic verifiedFetch)

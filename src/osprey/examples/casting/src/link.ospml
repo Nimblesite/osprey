@@ -66,6 +66,7 @@ module Link
 
     machineOf store = store.screen.screenMachine
 
+    // One field of the cast replaced, the rest as they were.
     relinked (store, linked, player, polled) =
         l = store.link
         store(link = Connection(linked = linked, player = player, devices = l.devices, clock = l.clock, polled = polled))
@@ -87,25 +88,28 @@ module Link
 
     asked (store, asks) = Served(servedStore = store, servedAsks = asks)
 
+    // A refusal: the failure fed to the machine as its `error` input, and no request.
+    declined (store, problem) = asked (failed (store, problem), [])
+
     // A control's result: the next player, or the failure as the `error` input.
     commanded (store, result) = match result
         Success next => asked (relinked (store, store.link.linked, next, store.link.polled), [])
-        Error problem => asked (failed (store, problem), [])
+        Error problem => declined (store, problem)
 
     started (store, result) = match result
         Success next => asked (fed (relinked (store, true, next, store.link.clock), [fact ("connected", Values::flag true), fact ("error", Values::text ""), fact ("ended", Values::text "")]), [])
-        Error problem => asked (failed (store, problem), [])
+        Error problem => declined (store, problem)
 
     // [CAST-MOBILE-RECEIVER-IDENTITY] Friendly names are labels, never routing keys.
     endpoint d = "${d.host}:${toString d.port}"
 
     start (store, ask) = match ui::Lists::find (store.link.devices, \d => endpoint d == Machines::askedText (ask, "receiver"))
         Success device => started (store, Player::begin (device, Machines::askedText (ask, "file"), store.link.clock))
-        Error _ => asked (failed (store, "choose a receiver first"), [])
+        Error _ => declined (store, "choose a receiver first")
 
     live (store, act) = match store.link.linked
         true => commanded (store, act store.link.player)
-        false => asked (failed (store, "nothing is casting"), [])
+        false => declined (store, "nothing is casting")
 
     // One request the machine made.
     answer (store, ask) = match ask.askName
@@ -120,7 +124,7 @@ module Link
         "cast.seek" => live (store, \p => Player::seek (p, ui::Pick::either (Machines::askedNumber (ask, "position") + Machines::askedNumber (ask, "skip") < 0.0, 0.0, Machines::askedNumber (ask, "position") + Machines::askedNumber (ask, "skip"))))
         "cast.volume" => live (store, \p => Player::volume (p, Machines::askedNumber (ask, "wantVolume")))
         "cast.rate" => live (store, \p => Player::rate (p, Machines::askedNumber (ask, "wantRate")))
-        _ => asked (failed (store, "the machine asked for an unknown request ${ask.askName}"), [])
+        _ => declined (store, "the machine asked for an unknown request ${ask.askName}")
 
     served (out, ask) =
         next = answer (out.servedStore, ask)

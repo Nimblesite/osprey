@@ -32,26 +32,29 @@ module ExportJson
         Success _ => true
         Error _ => false
 
-    export textIn (json, name) = upon (fieldIn (json, name), \value => textAs (value, name))
+    export textIn (json, name) = asIn (json, name, textAs)
+
+    // The member `name`, read by `read`.
+    asIn (json, name, read) = upon (fieldIn (json, name), \value => read (value, name))
 
     textAs (value, name) = match jsonText value
         Success text => Success(value = text)
         Error _ => Error(message = "${name} is not a string")
 
-    export intIn (json, name) = upon (fieldIn (json, name), \value => intAs (value, name))
+    export intIn (json, name) = asIn (json, name, intAs)
 
     (** The integer `value`, which `name` names. *)
     export intAs (value, name) = match jsonInt value
         Success number => Success(value = number)
         Error _ => Error(message = "${name} is not an integer")
 
-    export arrayIn (json, name) = upon (fieldIn (json, name), \value => arrayAs (value, name))
+    export arrayIn (json, name) = asIn (json, name, arrayAs)
 
     arrayAs (value, name) = match value
         JsonArray items => Success(value = items)
         other => Error(message = "${name} is not an array")
 
-    export boolIn (json, name) = upon (fieldIn (json, name), \value => boolAs (value, name))
+    export boolIn (json, name) = asIn (json, name, boolAs)
 
     boolAs (value, name) = match jsonBool value
         Success flag => Success(value = flag)

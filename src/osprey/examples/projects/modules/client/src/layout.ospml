@@ -17,25 +17,25 @@ module Layout
         current = match model.route == route
             true => "," + UI::prop "aria-current" "page"
             false => ""
-        UI::node "button" (UI::prop "id" "nav-${route}" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::prop "className" "nav-item${active}" + current) (UI::text "nav-icon" icon + "," + UI::text "nav-label" label)
+        UI::node "button" (UI::prop "id" "nav-${route}" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::cls "nav-item${active}" + current) (UI::text "nav-icon" icon + "," + UI::text "nav-label" label)
 
     sidebar model =
         mobile = match model.menu
             "open" => " open"
             _ => ""
-        brand = UI::node "div" (UI::prop "className" "brand") (UI::node "span" (UI::prop "className" "brand-mark") (UI::leaf "span" "" "T") + "," + UI::node "span" (UI::prop "className" "brand-copy") (UI::leaf "strong" "" "Talon" + "," + UI::leaf "small" "" "PRIVATE BANK"))
-        nav = UI::node "nav" (UI::prop "className" "main-nav" + "," + UI::prop "aria-label" "Primary navigation") (UI::text "nav-section-label" "BANKING" + "," + navItem model "overview" "⌂" "Overview" + "," + navItem model "accounts" "◫" "Accounts" + "," + navItem model "move" "⇄" "Move money" + "," + navItem model "activity" "◎" "Activity" + "," + UI::text "nav-section-label secondary" "SYSTEM" + "," + navItem model "security" "◇" "Security")
-        profile = UI::node "div" (UI::prop "className" "sidebar-profile") (UI::text "avatar" "TO" + "," + UI::node "span" "" (UI::leaf "strong" "" "Talon Operations" + "," + UI::leaf "small" "" "Bank console") + "," + UI::text "profile-more" "•••")
-        UI::node "aside" (UI::prop "className" "sidebar${mobile}") (brand + "," + nav + "," + UI::node "div" (UI::prop "className" "sidebar-bottom") (UI::node "div" (UI::prop "className" "secure-chip") (UI::leaf "span" "" "◇" + "," + UI::leaf "span" "" "Protected session") + "," + profile))
+        brand = UI::block "brand" (UI::node "span" (UI::cls "brand-mark") (UI::leaf "span" "" "T") + "," + UI::node "span" (UI::cls "brand-copy") (UI::leaf "strong" "" "Talon" + "," + UI::leaf "small" "" "PRIVATE BANK"))
+        nav = UI::node "nav" (UI::cls "main-nav" + "," + UI::prop "aria-label" "Primary navigation") (UI::text "nav-section-label" "BANKING" + "," + navItem model "overview" "⌂" "Overview" + "," + navItem model "accounts" "◫" "Accounts" + "," + navItem model "move" "⇄" "Move money" + "," + navItem model "activity" "◎" "Activity" + "," + UI::text "nav-section-label secondary" "SYSTEM" + "," + navItem model "security" "◇" "Security")
+        profile = UI::block "sidebar-profile" (UI::text "avatar" "TO" + "," + UI::node "span" "" (UI::leaf "strong" "" "Talon Operations" + "," + UI::leaf "small" "" "Bank console") + "," + UI::text "profile-more" "•••")
+        UI::node "aside" (UI::cls "sidebar${mobile}") (brand + "," + nav + "," + UI::block "sidebar-bottom" (UI::block "secure-chip" (UI::leaf "span" "" "◇" + "," + UI::leaf "span" "" "Protected session") + "," + profile))
 
     topbar model =
         title = routeTitle model.route
         menu = UI::button "toggle-menu" "icon-button mobile-menu" "Menu" "☰"
-        greeting = UI::node "div" (UI::prop "className" "topbar-title") (UI::leaf "small" "" "LIVE OPERATIONS · OSPREY ONLINE" + "," + UI::leaf "strong" "" title)
-        actions = UI::node "div" (UI::prop "className" "topbar-actions") (UI::button "topbar-refresh" "icon-button" "Refresh" "↻" + "," + UI::node "button" (UI::prop "id" "topbar-activity" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::prop "className" "icon-button notification-button" + "," + UI::prop "aria-label" "Activity notifications") (UI::leaf "span" "" "♢" + "," + UI::text "notification-dot" "") + "," + UI::button "topbar-open" "button primary top-open" "Open account" "+")
-        UI::node "header" (UI::prop "className" "topbar") (menu + "," + greeting + "," + actions)
+        greeting = UI::block "topbar-title" (UI::leaf "small" "" "LIVE OPERATIONS · OSPREY ONLINE" + "," + UI::leaf "strong" "" title)
+        actions = UI::block "topbar-actions" (UI::button "topbar-refresh" "icon-button" "Refresh" "↻" + "," + UI::node "button" (UI::prop "id" "topbar-activity" + "," + UI::prop "event" "click" + "," + UI::prop "type" "button" + "," + UI::cls "icon-button notification-button" + "," + UI::prop "aria-label" "Activity notifications") (UI::leaf "span" "" "♢" + "," + UI::text "notification-dot" "") + "," + UI::button "topbar-open" "button primary top-open" "Open account" "+")
+        UI::node "header" (UI::cls "topbar") (menu + "," + greeting + "," + actions)
 
-    loading () = UI::node "div" (UI::prop "className" "page loading-page" + "," + UI::prop "aria-label" "Loading bank data") (UI::node "div" (UI::prop "className" "skeleton skeleton-hero") "" + "," + UI::node "div" (UI::prop "className" "skeleton-grid") (UI::text "skeleton" "" + "," + UI::text "skeleton" "" + "," + UI::text "skeleton" "") + "," + UI::node "div" (UI::prop "className" "skeleton skeleton-table") "")
+    loading () = UI::node "div" (UI::cls "page loading-page" + "," + UI::prop "aria-label" "Loading bank data") (UI::node "div" (UI::cls "skeleton skeleton-hero") "" + "," + UI::block "skeleton-grid" (UI::text "skeleton" "" + "," + UI::text "skeleton" "" + "," + UI::text "skeleton" "") + "," + UI::node "div" (UI::cls "skeleton skeleton-table") "")
 
     notice model = match length model.noticeTone == 0
         true => ""
@@ -44,25 +44,23 @@ module Layout
                 "success" => "✓"
                 "error" => "!"
                 _ => "◎"
-            UI::node "aside" (UI::prop "className" "toast ${model.noticeTone}" + "," + UI::prop "role" "status") (UI::text "toast-icon" icon + "," + UI::node "span" (UI::prop "className" "toast-copy") (UI::leaf "strong" "" model.noticeTitle + "," + UI::leaf "small" "" model.noticeBody) + "," + UI::button "dismiss-notice" "toast-close" "Dismiss" "×")
+            UI::node "aside" (UI::cls "toast ${model.noticeTone}" + "," + UI::prop "role" "status") (UI::text "toast-icon" icon + "," + UI::node "span" (UI::cls "toast-copy") (UI::leaf "strong" "" model.noticeTitle + "," + UI::leaf "small" "" model.noticeBody) + "," + UI::button "dismiss-notice" "toast-close" "Dismiss" "×")
 
     modal model = match model.modal == "open"
         false => ""
         true =>
-            head = UI::node "div" (UI::prop "className" "modal-heading") (UI::node "div" "" (UI::text "eyebrow" "NEW TALON ACCOUNT" + "," + UI::leaf "h2" (UI::prop "id" "open-account-title") "Open account" + "," + UI::leaf "p" "" "Create a protected client account in one step.") + "," + UI::button "close-modal" "icon-button modal-close" "Close" "×")
+            head = UI::block "modal-heading" (UI::node "div" "" (UI::text "eyebrow" "NEW TALON ACCOUNT" + "," + UI::leaf "h2" (UI::prop "id" "open-account-title") "Open account" + "," + UI::leaf "p" "" "Create a protected client account in one step.") + "," + UI::button "close-modal" "icon-button modal-close" "Close" "×")
             owner = UI::field "new-owner" "name" "Account owner" "Full legal name" "text"
-            reassurance = UI::node "div" (UI::prop "className" "modal-reassurance") (UI::leaf "span" "" "◇" + "," + UI::leaf "p" "" "Storage access remains server-side. The app receives only the account response.")
-            actions = UI::node "div" (UI::prop "className" "modal-actions") (UI::button "cancel-modal" "button secondary" "Cancel" "" + "," + UI::node "button" (UI::prop "type" "submit" + "," + UI::prop "className" "button primary") (UI::leaf "span" "" "Open account" + "," + UI::leaf "span" "" "→"))
-            form = UI::node "form" (UI::prop "id" "submit-open-account" + "," + UI::prop "event" "submit" + "," + UI::prop "className" "modal-form") (head + "," + owner + "," + reassurance + "," + actions)
-            UI::node "div" (UI::prop "className" "modal-backdrop") (UI::node "section" (UI::prop "className" "modal" + "," + UI::prop "role" "dialog" + "," + UI::prop "aria-modal" "true" + "," + UI::prop "aria-labelledby" "open-account-title") form)
+            reassurance = UI::block "modal-reassurance" (UI::leaf "span" "" "◇" + "," + UI::leaf "p" "" "Storage access remains server-side. The app receives only the account response.")
+            actions = UI::block "modal-actions" (UI::button "cancel-modal" "button secondary" "Cancel" "" + "," + UI::node "button" (UI::prop "type" "submit" + "," + UI::cls "button primary") (UI::leaf "span" "" "Open account" + "," + UI::leaf "span" "" "→"))
+            form = UI::node "form" (UI::prop "id" "submit-open-account" + "," + UI::prop "event" "submit" + "," + UI::cls "modal-form") (head + "," + owner + "," + reassurance + "," + actions)
+            UI::block "modal-backdrop" (UI::node "section" (UI::cls "modal" + "," + UI::prop "role" "dialog" + "," + UI::prop "aria-modal" "true" + "," + UI::prop "aria-labelledby" "open-account-title") form)
 
     export shell model content =
         progress = match model.loading == "true" || model.busy == "true"
-            true => UI::leaf "div" (UI::prop "className" "top-progress") ""
+            true => UI::leaf "div" (UI::cls "top-progress") ""
             false => ""
-        progressPart = match length progress == 0
-            true => ""
-            false => "," + progress
+        progressPart = UI::leading progress
         body = match model.loading == "true"
             true => loading ()
             false => content
@@ -70,10 +68,6 @@ module Layout
         dialog = modal model
         extras = match length toast == 0
             true => dialog
-            false => match length dialog == 0
-                true => toast
-                false => toast + "," + dialog
-        suffix = match length extras == 0
-            true => ""
-            false => "," + extras
-        UI::node "div" (UI::prop "className" "app-shell") (sidebar model + "," + UI::node "div" (UI::prop "className" "app-main") (topbar model + progressPart + "," + UI::node "main" (UI::prop "className" "content" + "," + UI::prop "id" "main-content") body) + suffix)
+            false => UI::append toast dialog
+        suffix = UI::leading extras
+        UI::block "app-shell" (sidebar model + "," + UI::block "app-main" (topbar model + progressPart + "," + UI::node "main" (UI::cls "content" + "," + UI::prop "id" "main-content") body) + suffix)

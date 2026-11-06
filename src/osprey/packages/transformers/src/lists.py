@@ -8,7 +8,12 @@ sentinel instead of failing."""
 
 from transformers.Math import min_i
 
-__all__ = ["contains_int", "last_n"]
+__all__ = ["contains_int", "last_n", "map_indexed"]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 def contains_int(xs, x):

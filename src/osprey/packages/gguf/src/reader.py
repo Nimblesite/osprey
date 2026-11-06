@@ -120,11 +120,9 @@ def fields_of(data, head):
 
 def checked_walk(data, head):
     """The metadata walk, once its count is known to fit inside the buffer."""
-    walk = fold(range(head.kv_count), FieldWalk(offs=head.offs, items=header_fields(head), problem=""), lambda acc, _i: field_step(data, acc, head.swapped))
-    if walk.problem != "":
-        return Error(message=walk.problem)
-    else:
-        return Success(value=Section(offs=walk.offs, fields=walk.items))
+    step = lambda acc, _i: field_step(data, acc, head.swapped)
+    walk = Chain.walk_checked(head.kv_count, FieldWalk(offs=head.offs, items=header_fields(head), problem=""), step)
+    return Chain.then(walk, lambda done: Success(value=Section(offs=done.offs, fields=done.items)))
 
 
 def header_fields(head):

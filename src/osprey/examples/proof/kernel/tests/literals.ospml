@@ -60,4 +60,4 @@ module NaturalLiteralTests
 
     shadowNat () = Support::envWithDecl (Decl(name = "Nat", params = [], ty = Sort (Succ Zero), body = Axiom))
 
-    repeated (text) = Terms::apps (Const "Nat.rec" [Succ Zero], [Lam "n" (Const "Nat" []) (Const "Nat" []), literal "0", Lam "n" (Const "Nat" []) (Lam "ih" (Const "Nat" []) (App (Const "Nat.succ" []) (BVar 0))), literal text])
+    repeated (text) = Terms::apps (Const "Nat.rec" [Succ Zero], [Lam "n" (Const "Nat" []) (Const "Nat" []), literal "0", Lam "n" (Const "Nat" []) (Lam "ih" (Const "Nat" []) (Support::applied ("Nat.succ"))), literal text])

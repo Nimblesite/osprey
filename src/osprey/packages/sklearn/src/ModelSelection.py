@@ -10,7 +10,7 @@ deterministic and matches sklearn's index order exactly. Implements
 [PORT-TEST-ORACLE].
 """
 
-from sklearn.Stats import index_of, unique_ints
+from sklearn.Stats import cmp_int, index_of, map_indexed, unique_ints
 
 __all__ = [
     "Split", "train_test_split", "kfold_splits", "stratified_kfold_splits",
@@ -21,11 +21,6 @@ class Split:
     """One train/test split: the indices of each side, in ascending order."""
     train: list[int]
     test: list[int]
-
-
-def cmp_int(a, b):
-    """Total integer comparison: negative/zero/positive."""
-    return -1 if a < b else (1 if a > b else 0)
 
 
 def train_test_split(permutation, test_size):
@@ -73,14 +68,9 @@ def rank_of(fps, v):
 def appearance_encode(y):
     """Labels encoded by order of first appearance, as StratifiedKFold does."""
     u = unique_ints(y)
-    fps = toList(map(range(len(u)), lambda i: first_pos(y, unwrap_or(listGet(u, i), 0))))
-    perm = toList(map(range(len(u)), lambda i: rank_of(fps, unwrap_or(listGet(fps, i), 0))))
-    return toList(map(range(len(y)), lambda j: unwrap_or(listGet(perm, index_of(u, unwrap_or(listGet(y, j), 0))), 0)))
-
-
-def count_of(xs, v):
-    """Number of elements of an int list equal to `v`."""
-    return foldList(xs, 0, lambda acc, x: acc + 1 if x == v else acc)
+    fps = map_indexed(u, lambda i: first_pos(y, unwrap_or(listGet(u, i), 0)))
+    perm = map_indexed(u, lambda i: rank_of(fps, unwrap_or(listGet(fps, i), 0)))
+    return map_indexed(y, lambda j: unwrap_or(listGet(perm, index_of(u, unwrap_or(listGet(y, j), 0))), 0))
 
 
 def count_stride(sorted_encoded, n_splits, i, k):
@@ -112,7 +102,7 @@ def test_fold_at(y_encoded, allocation, n_splits, j):
 
 def test_folds_list(y_encoded, allocation, n_splits):
     """Per-sample fold indices."""
-    return toList(map(range(len(y_encoded)), lambda j: test_fold_at(y_encoded, allocation, n_splits, j)))
+    return map_indexed(y_encoded, lambda j: test_fold_at(y_encoded, allocation, n_splits, j))
 
 
 def indices_where(test_folds, i, keep):

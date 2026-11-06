@@ -322,7 +322,7 @@ def validate_size(data, infos, info):
     if nelems < 0:
         return Error(message="overflow computing buffer size from shape and/or element type")
     else:
-        size = checked_mul(nelems, Dtype.dtype_size(info.dtype))
+        size = Bytes.checked_mul(nelems, Dtype.dtype_size(info.dtype))
         if size < 0:
             return Error(message="overflow computing buffer size from shape and/or element type")
         elif info.end - info.start != size:
@@ -339,17 +339,7 @@ def tail(xs):
 
 def shape_product(shape):
     """Product of `shape` dims, or -1 when it overflows int64."""
-    return fold(range(len(shape)), 1, lambda acc, i: checked_mul(acc, unwrap_or(listGet(shape, i), 0)))
-
-
-def checked_mul(a, b):
-    """a*b for non-negative a and b, or -1 when it overflows int64."""
-    if a == 0 or b == 0:
-        return 0
-    elif a > intDiv(9223372036854775807, b):
-        return -1
-    else:
-        return a * b
+    return fold(range(len(shape)), 1, lambda acc, i: Bytes.checked_mul(acc, unwrap_or(listGet(shape, i), 0)))
 
 
 def keys(file):

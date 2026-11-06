@@ -102,10 +102,7 @@ module GovernanceHandover {
                     Checked::andThen(Governance::livePrincipal(p), fn(_) =>
                         Checked::andThen(Governance::humanPrincipal(p), fn(_) => Success { value: p.id })))))
 
-    fn noLiveProposal(registry, id) = match Maybe::isPresent(Governance::liveTransferFor(registry, id)) {
-        true => Error { message: "governance.transfer.pending-exists" }
-        false => Success { value: id }
-    }
+    fn noLiveProposal(registry, id) = Governance::unique(id, Maybe::isPresent(Governance::liveTransferFor(registry, id)), "governance.transfer.pending-exists")
 
     fn recipient(registry, pkg: Governance::Package, proposed) = match proposed == pkg.admin {
         true => Error { message: "governance.recipient.self" }

@@ -85,8 +85,8 @@ module SchemaCheckTests {
         Error => false
     }
 
-    fn rejectionOk(model, case) = match SchemaCheck::validate(model, Fixtures::text(Fixtures::field(case, "type")), Fixtures::field(case, "value")) {
-        Error { message } => message == "${Fixtures::text(Fixtures::field(case, "code"))} at ${Fixtures::text(Fixtures::field(case, "at"))}"
+    fn rejectionOk(model, case) = match SchemaCheck::validate(model, Fixtures::textOf(case, "type"), Fixtures::field(case, "value")) {
+        Error { message } => message == "${Fixtures::textOf(case, "code")} at ${Fixtures::textOf(case, "at")}"
         Success => false
     }
 
@@ -95,7 +95,7 @@ module SchemaCheckTests {
         match result {
             Success { value } => {
                 let fx = Fixtures::load("schema/accepts.json")
-                Fixtures::report("schema accepts", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) => validated(value, Fixtures::text(Fixtures::field(c, "type")), Fixtures::field(c, "value")))
+                Fixtures::report("schema accepts", Fixtures::itemsOf(fx, "cases"), fn(c) => validated(value, Fixtures::textOf(c, "type"), Fixtures::field(c, "value")))
             }
             Error { message } => check("typeDiagram parses", "ok", message)
         }
@@ -106,7 +106,7 @@ module SchemaCheckTests {
         match result {
             Success { value } => {
                 let fx = Fixtures::load("schema/rejections.json")
-                Fixtures::report("schema rejections", Fixtures::items(Fixtures::field(fx, "cases")), fn(c) => rejectionOk(value, c))
+                Fixtures::report("schema rejections", Fixtures::itemsOf(fx, "cases"), fn(c) => rejectionOk(value, c))
             }
             Error { message } => check("typeDiagram parses", "ok", message)
         }
@@ -114,8 +114,8 @@ module SchemaCheckTests {
 
     fn datetimes() = {
         let fx = Fixtures::load("time/datetimes.json")
-        Fixtures::report("datetimes valid", Fixtures::items(Fixtures::field(fx, "valid")), fn(c) => SchemaCheck::dateTimeCode(Fixtures::text(Fixtures::field(c, "text"))) == "")
-        Fixtures::report("datetimes invalid", Fixtures::items(Fixtures::field(fx, "invalid")), fn(c) => SchemaCheck::dateTimeCode(Fixtures::text(Fixtures::field(c, "text"))) == "schema.datetime")
+        Fixtures::report("datetimes valid", Fixtures::itemsOf(fx, "valid"), fn(c) => SchemaCheck::dateTimeCode(Fixtures::textOf(c, "text")) == "")
+        Fixtures::report("datetimes invalid", Fixtures::itemsOf(fx, "invalid"), fn(c) => SchemaCheck::dateTimeCode(Fixtures::textOf(c, "text")) == "schema.datetime")
     }
 
     fn floatProblem(text) = match Json::parse(text) {

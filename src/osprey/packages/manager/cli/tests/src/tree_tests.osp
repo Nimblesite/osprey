@@ -1,8 +1,7 @@
 namespace registry_tests;
-import registry_host::Host
-import registry_cli::Dispatch
 import registry_cli::Lockfile
 import registry_tests::Fixture
+import registry_tests::RegistryFixture
 import registry::ManifestModel
 import registry::Names
 
@@ -16,25 +15,7 @@ module TreeTests {
     let manifestText = "[project]\nname = \"app\"\nsource_roots = [\"src\"]\n"
     let rootDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-    fn runCommand(reads, args) = {
-        let files = handler Host::Files {
-            read path => Fixture::readFor(reads, path)
-            exists path => Fixture::existsIn(reads, path)
-            remove path => Error { message: "fixture: unexpected remove ${path}" }
-            write path content => Error { message: "fixture: tree never writes ${path} (${byteLength(content)} bytes)" }
-        }
-        let tree = handler Host::Tree {
-            walk dir => Error { message: "fixture: tree never walks ${dir}" }
-            ensure dir => Error { message: "fixture: tree never ensures ${dir}" }
-        }
-        let web = handler Host::Web {
-            get base path => Error { message: "fixture: tree never fetches ${base}${path}" }
-        }
-        let process = handler Host::Process {
-            run command => Host::Run { status: 0, stdout: "", stderr: "fixture: tree never runs ${command}" }
-        }
-        process(fn() => files(fn() => tree(fn() => web(fn() => Dispatch::run(args)))))
-    }
+    fn runCommand(reads, args) = RegistryFixture::runReadOnly(reads, [], args, "tree")
 
     // ---- the lock: app -> report (runtime), tool (build); report -> greeting, maths; maths -> greeting ----
 

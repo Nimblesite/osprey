@@ -17,7 +17,12 @@ dyadic-input contract: every distance here is a sum of products of dyadic
 rationals, so binary64 matches faiss's float32 bit for bit.
 """
 
-__all__ = ["Topk", "l2sqr", "inner_product", "topk"]
+__all__ = ["Topk", "l2sqr", "inner_product", "topk", "map_indexed"]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 
 class Topk:
@@ -84,12 +89,12 @@ def hgeti(xs, i):
 
 def hsetf(xs, i, v):
     """A copy of `xs` with 1-based position i holding `v`."""
-    return toList(map(range(len(xs)), lambda j: v if j + 1 == i else unwrap_or(listGet(xs, j), 0.0)))
+    return map_indexed(xs, lambda j: v if j + 1 == i else unwrap_or(listGet(xs, j), 0.0))
 
 
 def hseti(xs, i, v):
     """A copy of `xs` with 1-based position i holding `v`."""
-    return toList(map(range(len(xs)), lambda j: v if j + 1 == i else unwrap_or(listGet(xs, j), -1)))
+    return map_indexed(xs, lambda j: v if j + 1 == i else unwrap_or(listGet(xs, j), -1))
 
 
 def sift(is_max, size, h, i, val, id):

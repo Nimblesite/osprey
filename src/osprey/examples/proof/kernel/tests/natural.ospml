@@ -20,6 +20,17 @@ module NaturalTests
 
     difference (a, b) = Naturals::show (Naturals::sub (nat a, nat b))
 
+    product (a, b) = shown (Naturals::multiply (nat a, nat b))
+
+    orderOf (a, b) = Naturals::compare (nat a, nat b)
+
+    same (a, b) = Naturals::equal (nat a, nat b)
+
+    atMost (a, b) = Naturals::le (nat a, nat b)
+
+    (** `text` as an int, or `-1` where it does not fit one. *)
+    asInt (text) = Naturals::toInt (nat text) ?: -1
+
     (** Every ordered pair of the grid, `(a + b) - b == a` and
         `a - (a + b) == 0`, counted. *)
     laws (grid) = foldList (grid, 0, \(count, a) => foldList (grid, count, \(inner, b) => satAdd inner (lawHolds (a, b))))
@@ -39,18 +50,19 @@ module NaturalTests
         order ()
         products ()
 
-    product (a, b) = shown (Naturals::multiply (nat a, nat b))
-
     export products () =
         test ("multiply handles zero, one and small exact products", \() => expectAll [product ("0", "18446744073709551616") == "0", product ("18446744073709551616", "0") == "0", product ("1", "18446744073709551616") == "18446744073709551616", product ("123", "456") == "56088", product ("456", "123") == "56088"])
         test ("multiply carries exactly beyond the machine integer range", \() => expectAll [product ("999999999", "999999999") == "999999998000000001", product ("4294967296", "4294967296") == "18446744073709551616", product ("12345678901234567890", "98765432109876543210") == "1219326311370217952237463801111263526900"])
         test ("multiply rejects malformed limbs before word multiplication", \() => expectAll [shown (Naturals::multiply (Natural(naturalLimbs = [0]), Naturals::one ())) == "error: invalid natural multiplication operand", shown (Naturals::multiply (Naturals::one (), Natural(naturalLimbs = [1000000000]))) == "error: invalid natural multiplication operand"])
 
     spellings () =
-        test ("parse and show round-trip every spelling, across limb borders", \() => expectAll [shown (Naturals::parse "0") == "0", shown (Naturals::parse "1") == "1", shown (Naturals::parse "999999999") == "999999999", shown (Naturals::parse "1000000000") == "1000000000", shown (Naturals::parse "1000000001") == "1000000001", shown (Naturals::parse "1000000010000000000") == "1000000010000000000", shown (Naturals::parse "1123456789") == "1123456789", shown (Naturals::parse "100000000000000000000") == "100000000000000000000", shown (Naturals::parse "1606938044258990275541962092341162602522202993782792835301376") == "1606938044258990275541962092341162602522202993782792835301376", Naturals::isZero (nat "0") == true, Naturals::isZero (nat "1000000000") == false])
+        test ("parse and show round-trip every spelling, across limb borders", \() =>
+            forEachList (["0", "1", "999999999", "1000000000", "1000000001", "1000000010000000000", "1123456789", "100000000000000000000", "1606938044258990275541962092341162602522202993782792835301376"], \text => expect (shown (Naturals::parse text), text))
+            expect (Naturals::isZero (nat "0"), true)
+            expect (Naturals::isZero (nat "1000000000"), false))
 
     refusals () =
-        test ("parse refuses every spelling lean4export does not write", \() => expectAll [shown (Naturals::parse "") == "error: not a natural literal: \"\"", shown (Naturals::parse "-1") == "error: not a natural literal: \"-1\"", shown (Naturals::parse "+1") == "error: not a natural literal: \"+1\"", shown (Naturals::parse "01") == "error: not a natural literal: \"01\"", shown (Naturals::parse "00") == "error: not a natural literal: \"00\"", shown (Naturals::parse " 1") == "error: not a natural literal: \" 1\"", shown (Naturals::parse "1 ") == "error: not a natural literal: \"1 \"", shown (Naturals::parse "1.0") == "error: not a natural literal: \"1.0\"", shown (Naturals::parse "1e3") == "error: not a natural literal: \"1e3\"", shown (Naturals::parse "abc") == "error: not a natural literal: \"abc\"", shown (Naturals::parse "１") == "error: not a natural literal: \"１\""])
+        test ("parse refuses every spelling lean4export does not write", \() => forEachList (["", "-1", "+1", "01", "00", " 1", "1 ", "1.0", "1e3", "abc", "１"], \text => expect (shown (Naturals::parse text), "error: not a natural literal: \"${text}\"")))
 
     sums () =
         test ("add carries across limbs exactly", \() =>
@@ -74,10 +86,10 @@ module NaturalTests
     successors () =
         test ("succ and predecessor are inverse, and zero has no predecessor", \() => expectAll [Naturals::show (Naturals::succ (nat "999999999999999999")) == "1000000000000000000", shown (Naturals::predecessor (nat "1000000000000000000")) == "999999999999999999", shown (Naturals::predecessor (nat "1")) == "0", shown (Naturals::predecessor (nat "0")) == "error: 0 is not a successor", Naturals::isZero (Naturals::one ()) == false])
 
-        test ("ofInt and toInt convert exactly where an int fits, and refuse elsewhere", \() => expectAll [shown (Naturals::ofInt 0) == "0", shown (Naturals::ofInt 1000000000) == "1000000000", shown (Naturals::ofInt 9223372036854775807) == "9223372036854775807", shown (Naturals::ofInt (-1)) == "error: -1 is negative", (Naturals::toInt (nat "999999999999999999") ?: -1) == 999999999999999999, (Naturals::toInt (nat "0") ?: -1) == 0, (Naturals::toInt (nat "1000000000000000000") ?: -1) == -1])
+        test ("ofInt and toInt convert exactly where an int fits, and refuse elsewhere", \() => expectAll [shown (Naturals::ofInt 0) == "0", shown (Naturals::ofInt 1000000000) == "1000000000", shown (Naturals::ofInt 9223372036854775807) == "9223372036854775807", shown (Naturals::ofInt (-1)) == "error: -1 is negative", asInt ("999999999999999999") == 999999999999999999, asInt ("0") == 0, asInt ("1000000000000000000") == -1])
 
     order () =
-        test ("compare, equal and le order by value, not spelling length of a limb", \() => expectAll [Naturals::compare (nat "999999999", nat "1000000000") == -1, Naturals::compare (nat "1000000000", nat "999999999") == 1, Naturals::compare (nat "1000000001", nat "1000000002") == -1, Naturals::compare (nat "2000000001", nat "1000000002") == 1, Naturals::compare (nat "0", nat "0") == 0, Naturals::equal (nat "18446744073709551616", nat "18446744073709551616") == true, Naturals::equal (nat "18446744073709551616", nat "18446744073709551617") == false, Naturals::le (nat "3", nat "3") == true, Naturals::le (nat "4", nat "3") == false, Naturals::le (nat "0", nat "123456789012345678901234567890") == true])
+        test ("compare, equal and le order by value, not spelling length of a limb", \() => expectAll [orderOf ("999999999", "1000000000") == -1, orderOf ("1000000000", "999999999") == 1, orderOf ("1000000001", "1000000002") == -1, orderOf ("2000000001", "1000000002") == 1, orderOf ("0", "0") == 0, same ("18446744073709551616", "18446744073709551616") == true, same ("18446744073709551616", "18446744073709551617") == false, atMost ("3", "3") == true, atMost ("4", "3") == false, atMost ("0", "123456789012345678901234567890") == true])
 
         test ("add and sub laws hold over every ordered pair of a 12-value grid", \() =>
             expect (laws (grid ()), 144))

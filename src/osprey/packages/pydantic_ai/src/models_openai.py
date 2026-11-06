@@ -208,8 +208,8 @@ def map_messages(profile, messages, parameters) -> list[Json]:
     else:
         role = system_prompt_role(profile)
         n = count_leading(mapped, role, 0)
-        head = filterList(toList(map(range(len(mapped)), lambda i: unwrap_or(listGet(mapped, i), JsonNull()) if i < n else JsonNull())), lambda m: not J.is_null(m))
-        tail = filterList(toList(map(range(len(mapped)), lambda i: unwrap_or(listGet(mapped, i), JsonNull()) if i >= n else JsonNull())), lambda m: not J.is_null(m))
+        head = filterList(M.map_indexed(mapped, lambda i: unwrap_or(listGet(mapped, i), JsonNull()) if i < n else JsonNull()), lambda m: not J.is_null(m))
+        tail = filterList(M.map_indexed(mapped, lambda i: unwrap_or(listGet(mapped, i), JsonNull()) if i >= n else JsonNull()), lambda m: not J.is_null(m))
         return listConcat(listAppend(head, role_message(role, instructions)), tail)
 
 

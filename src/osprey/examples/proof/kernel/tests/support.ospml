@@ -7,23 +7,41 @@ import proof::Reduce
 import proof::Infer
 import proof::Inductive
 import proof
-    Zero Succ Sort BVar Const App Lam Pi Decl Axiom Definition Theorem
+    Zero Succ Max IMax Param Sort BVar Const App Lam Pi Decl Axiom Definition Theorem
 
 (** Builders and renderings the kernel cases share. Every helper that can
     fail reports the failure through a soft assertion or an `error:` string,
     so a broken kernel can never read as a pass. *)
 module Support
-    (** `Prop`. *)
-    export prop () = Sort Zero
+    (** `name` applied to the innermost bound variable. *)
+    export applied (name) = App (Const name []) (BVar 0)
 
-    (** `∀ (p : Prop), p → p` *)
-    export idType () = Pi "p" (prop ()) (Pi "h" (BVar 0) (BVar 1))
+    (** The refusal `Infer::infer` gives `term` under `env` and `context`. *)
+    export inferMessage (env, context, term) = messageOf (Infer::infer (env, context, term))
 
-    (** `fun (p : Prop) (h : p) => h` *)
-    export idProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 0))
+    (** `fun (x : Prop) => x`. *)
+    export selfLam () = Lam "x" (Sort Zero) (BVar 0)
 
-    (** `fun (p : Prop) (h : p) => p`, which does not prove `idType ()`. *)
-    export badProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 1))
+    (** `fun (x : Prop) => #1`: an identity lambda under one more binder. *)
+    export selfLamOuter () = Lam "x" (Sort Zero) (BVar 1)
+
+    (** `∀ (x : Prop), x`. *)
+    export selfPi () = Pi "x" (Sort Zero) (BVar 0)
+
+    (** The level `max u v`. *)
+    export maxUV () = Max (Param "u") (Param "v")
+
+    (** The level `imax u v`. *)
+    export imaxUV () = IMax (Param "u") (Param "v")
+
+    (** The level `max u 1`. *)
+    export maxUOne () = Max (Param "u") (Succ Zero)
+
+    (** The level `imax u 1`. *)
+    export imaxUOne () = IMax (Param "u") (Succ Zero)
+
+    (** The level `imax u 0`. *)
+    export imaxUZero () = IMax (Param "u") Zero
 
     (** A declaration of `name` with the given body. *)
     export decl (name, body) = Decl(name = name, params = [], ty = Sort Zero, body = body)

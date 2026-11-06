@@ -5,6 +5,18 @@ import talon::Model
 import talonmobile::Mobile
 
 module Support
+    (** One assertion's label, expected and actual value, checked in a case list. *)
+    type Case =
+        label : string
+        expected : string
+        actual : string
+
+    (** One labeled assertion's case. *)
+    export it label expected actual = Case(label = label, expected = expected, actual = actual)
+
+    (** Checks every case in `cases`, each with its own label. *)
+    export each cases = forEachList cases (\entry => check entry.label entry.expected entry.actual)
+
     export projected source path = Json::getOr source path "MISSING"
     export model envelope = Model::decode (projected envelope "model")
     export event envelope members = Json::obj (Json::strField "model" (projected envelope "model") + "," + members)

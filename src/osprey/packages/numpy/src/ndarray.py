@@ -205,7 +205,7 @@ def transpose(a, axes):
 
 def transpose_all(a):
     """numpy's `a.T`: every axis reversed."""
-    return transpose_perm(a, listReverse(toList(map(range(len(a.shape)), lambda i: i))))
+    return transpose_perm(a, listReverse(Layout.map_indexed(a.shape, lambda i: i)))
 
 def along(a, axis):
     """The axis `axis` names for `a`, normalised (a negative axis counts from
@@ -323,7 +323,7 @@ def take(a, indices, axis):
     nd = len(a.shape)
     ax = Layout.normalize_axis(axis, nd, "")
     n = unwrap_or(listGet(a.shape, ax), 0)
-    normed = toList(map(range(len(indices)), lambda k: normalize_index(unwrap_or(listGet(indices, k), 0), n, ax)))
+    normed = Layout.map_indexed(indices, lambda k: normalize_index(unwrap_or(listGet(indices, k), 0), n, ax))
     out_shape = Layout.set_at(a.shape, ax, len(indices))
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: take_read(i, out_shape, a.data, a.shape, normed, ax)))))
 
@@ -352,7 +352,7 @@ def flip_all(a):
 def flip_all_read(i, a):
     """One flip-all output element: every coordinate is mirrored."""
     coords = Layout.coords_of(i, a.shape)
-    mirrored = toList(map(range(len(a.shape)), lambda d: unwrap_or(listGet(a.shape, d), 0) - 1 - unwrap_or(listGet(coords, d), 0)))
+    mirrored = Layout.map_indexed(a.shape, lambda d: unwrap_or(listGet(a.shape, d), 0) - 1 - unwrap_or(listGet(coords, d), 0))
     return Storage.at(a.data, Layout.ravel_index(mirrored, a.shape))
 
 def roll(a, shift, axis):
@@ -387,14 +387,14 @@ def tile(a, reps):
     g = Errors.require(len(reps) >= len(a.shape), "tile reps must have at least as many dimensions as the array")
     gap = len(reps) - len(a.shape)
     pad = listConcat(toList(map(range(gap), lambda _: 1)), a.shape)
-    out_shape = toList(map(range(len(reps)), lambda d: unwrap_or(listGet(pad, d), 1) * unwrap_or(listGet(reps, d), 1)))
+    out_shape = Layout.map_indexed(reps, lambda d: unwrap_or(listGet(pad, d), 1) * unwrap_or(listGet(reps, d), 1))
     return NDArray(shape=out_shape, data=Storage.built(perform(Storage.Buffer.build(Layout.flat_size(out_shape), lambda i: tile_read(i, out_shape, a, gap)))))
 
 def tile_read(i, out_shape, a, gap):
     """One tile output element: each coordinate is its source's coordinate
     modulo the source dimension."""
     coords = Layout.coords_of(i, out_shape)
-    src_coords = toList(map(range(len(a.shape)), lambda d: unwrap_or(listGet(coords, d + gap), 0) % unwrap_or(listGet(a.shape, d), 1)))
+    src_coords = Layout.map_indexed(a.shape, lambda d: unwrap_or(listGet(coords, d + gap), 0) % unwrap_or(listGet(a.shape, d), 1))
     return Storage.at(a.data, Layout.ravel_index(src_coords, a.shape))
 
 # Elementwise -------------------------------------------------------------

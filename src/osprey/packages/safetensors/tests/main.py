@@ -26,37 +26,36 @@ def concat_all(xs):
     return fold(range(len(xs)), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(xs, i), [])))
 
 
+def file_of(data):
+    """The loaded file, or the empty fallback that fails every assertion for it."""
+    return unwrap_or(SafeTensors.load(data), empty_file())
+
+
+def tensor_of(file, name):
+    """The named tensor, or the empty fallback that fails every assertion for it."""
+    return unwrap_or(SafeTensors.get_tensor(file, name), empty_tensor())
+
+
+def slice_of(file, name, start, stop):
+    """The named slice, or the empty fallback that fails every assertion for it."""
+    return unwrap_or(SafeTensors.get_slice(file, name, start, stop), empty_tensor())
+
+
 def float_case(tag, name, data, want):
     """One float tensor: its kind and its decoded values."""
-    file = unwrap_or(SafeTensors.load(data), empty_file())
-    got = unwrap_or(SafeTensors.get_tensor(file, name), empty_tensor())
+    got = tensor_of(file_of(data), name)
     return [Check.truth(tag + ".kind", got.kind == "floats", "kind " + got.kind), Check.close_all(tag + ".values", got.floats, want, RTOL, ATOL)]
 
 
 def int_case(tag, name, data, want):
     """One int tensor: its kind and its decoded values."""
-    file = unwrap_or(SafeTensors.load(data), empty_file())
-    got = unwrap_or(SafeTensors.get_tensor(file, name), empty_tensor())
+    got = tensor_of(file_of(data), name)
     return [Check.truth(tag + ".kind", got.kind == "ints", "kind " + got.kind), Check.ints_equal(tag + ".values", got.ints, want)]
 
 
 def err_case(tag, data, want):
     """One malformed file: load must fail with exactly `want`."""
-    match SafeTensors.load(data):
-        case Success(value=value):
-            return [Check.failed(tag, "load succeeded")]
-        case Error(message=message):
-            return [Check.equal(tag, message, want)]
-
-
-def json_err_case(tag, data):
-    """A malformed JSON header: load must fail with the serde-style prefix."""
-    match SafeTensors.load(data):
-        case Success(value=value):
-            return [Check.failed(tag, "load succeeded")]
-        case Error(message=message):
-            ok = len(message) >= 23 and unwrap_or(substring(message, 0, 23), "") == "invalid JSON in header:"
-            return [Check.truth(tag, ok, message)]
+    return [rejection_check(tag, SafeTensors.load(data), want, "load succeeded")]
 
 
 def dtype_cases():
@@ -80,10 +79,10 @@ def dtype_cases():
 
 def multi_cases():
     """A multi-tensor file: keys in offset order and each tensor's values."""
-    file = unwrap_or(SafeTensors.load(Expected.MULTI_BYTES), empty_file())
-    a = unwrap_or(SafeTensors.get_tensor(file, "a"), empty_tensor())
-    b = unwrap_or(SafeTensors.get_tensor(file, "b"), empty_tensor())
-    c = unwrap_or(SafeTensors.get_tensor(file, "c"), empty_tensor())
+    file = file_of(Expected.MULTI_BYTES)
+    a = tensor_of(file, "a")
+    b = tensor_of(file, "b")
+    c = tensor_of(file, "c")
     return [
         str_list_equal("multi.keys", SafeTensors.keys(file), Expected.MULTI_KEYS),
         str_list_equal("multi.offset_keys", SafeTensors.offset_keys(file), Expected.MULTI_OFFSET_KEYS),
@@ -114,7 +113,7 @@ def str_cmp(a, b):
 
 def meta_cases():
     """The `__metadata__` string map round-trips through load."""
-    file = unwrap_or(SafeTensors.load(Expected.META_BYTES), empty_file())
+    file = file_of(Expected.META_BYTES)
     meta = SafeTensors.metadata(file)
     keys = listSortBy(mapKeys(meta), str_cmp)
     return [
@@ -126,9 +125,9 @@ def meta_cases():
 
 def slice_cases():
     """get_slice rows of the first dimension."""
-    file = unwrap_or(SafeTensors.load(Expected.SLICE_BYTES), empty_file())
-    rows = unwrap_or(SafeTensors.get_slice(file, "m", 1, 3), empty_tensor())
-    whole = unwrap_or(SafeTensors.get_tensor(file, "m"), empty_tensor())
+    file = file_of(Expected.SLICE_BYTES)
+    rows = slice_of(file, "m", 1, 3)
+    whole = tensor_of(file, "m")
     return [
         Check.close_all("slice.rows", rows.floats, Expected.SLICE_ROWS, RTOL, ATOL),
         Check.close_all("slice.whole", whole.floats, Expected.SLICE_WHOLE, RTOL, ATOL),
@@ -137,8 +136,8 @@ def slice_cases():
 
 def special_cases():
     """Non-finite and subnormal float32 values decode exactly."""
-    file = unwrap_or(SafeTensors.load(Expected.SPECIAL_BYTES), empty_file())
-    got = unwrap_or(SafeTensors.get_tensor(file, "special"), empty_tensor())
+    file = file_of(Expected.SPECIAL_BYTES)
+    got = tensor_of(file, "special")
     want = Expected.SPECIAL_VALUES
     return toList(map(range(len(want)), lambda i: Check.close("special." + toString(i), unwrap_or(listGet(got.floats, i), 0.0), Check.float_of(unwrap_or(listGet(want, i), "")), RTOL, ATOL)))
 
@@ -151,7 +150,7 @@ def error_cases():
         err_case("err.len", Expected.ERR_LEN_BYTES, Expected.ERR_LEN),
         err_case("err.large", Expected.ERR_LARGE_BYTES, Expected.ERR_LARGE),
         err_case("err.utf8", Expected.ERR_UTF8_BYTES, Expected.ERR_UTF8),
-        json_err_case("err.json", Expected.ERR_JSON_BYTES),
+        header_prefix_case("err.json", Expected.ERR_JSON_BYTES, "invalid JSON in header:"),
         err_case("err.info", Expected.ERR_INFO_BYTES, Expected.ERR_INFO),
         err_case("err.offset", Expected.ERR_OFFSET_BYTES, Expected.ERR_OFFSET),
         err_case("err.overflow", Expected.ERR_OVERFLOW_BYTES, Expected.ERR_OVERFLOW),
@@ -161,12 +160,7 @@ def error_cases():
 
 def notfound_cases():
     """A missing tensor name reports the wrapper's not-found message."""
-    file = unwrap_or(SafeTensors.load(Expected.ERR_NOTFOUND_BYTES), empty_file())
-    match SafeTensors.get_tensor(file, "missing"):
-        case Success(value=value):
-            return [Check.failed("notfound", "get_tensor succeeded")]
-        case Error(message=message):
-            return [Check.equal("notfound", message, Expected.ERR_NOTFOUND)]
+    return [rejection_check("notfound", SafeTensors.get_tensor(file_of(Expected.ERR_NOTFOUND_BYTES), "missing"), Expected.ERR_NOTFOUND, "get_tensor succeeded")]
 
 
 def dtype_helper_cases():
@@ -298,35 +292,45 @@ def header_size_cases():
 
 def slice_edge_cases():
     """One row, an empty range, a 1-D vector, a 0-d scalar and a whole scalar."""
-    m = unwrap_or(SafeTensors.load(Expected.SLICE_BYTES), empty_file())
-    v = unwrap_or(SafeTensors.load(Expected.VECTOR_BYTES), empty_file())
-    s = unwrap_or(SafeTensors.load(Expected.SCALAR_BYTES), empty_file())
-    row = unwrap_or(SafeTensors.get_slice(m, "m", 2, 3), empty_tensor())
-    none = unwrap_or(SafeTensors.get_slice(m, "m", 1, 1), empty_tensor())
-    part = unwrap_or(SafeTensors.get_slice(v, "v", 1, 3), empty_tensor())
-    whole = unwrap_or(SafeTensors.get_tensor(s, "x"), empty_tensor())
+    m = file_of(Expected.SLICE_BYTES)
+    v = file_of(Expected.VECTOR_BYTES)
+    s = file_of(Expected.SCALAR_BYTES)
+    row = slice_of(m, "m", 2, 3)
+    none = slice_of(m, "m", 1, 1)
+    part = slice_of(v, "v", 1, 3)
+    whole = tensor_of(s, "x")
     return [
         Check.close_all("slice.one_row", row.floats, Expected.SLICE_ONE_ROW, RTOL, ATOL),
         Check.close_all("slice.empty_rows", none.floats, Expected.SLICE_EMPTY_ROWS, RTOL, ATOL),
         Check.close_all("slice.vector", part.floats, Expected.VECTOR_SLICE, RTOL, ATOL),
-        rejection_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR),
+        rejection_check("slice.scalar", SafeTensors.get_slice(s, "x", 0, 1), Expected.SCALAR_SLICE_ERROR, "operation succeeded instead of rejecting invalid input"),
         Check.close_all("slice.scalar_whole", whole.floats, Expected.SCALAR_VALUE, RTOL, ATOL),
     ]
 
 
-def rejection_check(tag, result, want):
+def rejection_check(tag, result, want, detail):
+    """A read that must fail with exactly `want`; `detail` says what a wrong success did."""
     match result:
-        case Success():
-            return Check.failed(tag, "operation succeeded instead of rejecting invalid input")
+        case Success(value=_value):
+            return Check.failed(tag, detail)
         case Error(message=message):
             return Check.equal(tag, message, want)
 
 
+def rejection(tag, result, describe):
+    """A read that must fail with a diagnostic, `describe(value)` naming a wrong success."""
+    match result:
+        case Success(value=value):
+            return Check.failed(tag, describe(value))
+        case Error(message=message):
+            return Check.truth(tag, len(message) > 0, message)
+
+
 def zero_shape_cases():
     """A file whose tensors are all zero-length is valid and decodes to nothing."""
-    file = unwrap_or(SafeTensors.load(Expected.ZERO_BYTES), empty_file())
-    a = unwrap_or(SafeTensors.get_tensor(file, "a"), empty_tensor())
-    b = unwrap_or(SafeTensors.get_tensor(file, "b"), empty_tensor())
+    file = file_of(Expected.ZERO_BYTES)
+    a = tensor_of(file, "a")
+    b = tensor_of(file, "b")
     return [
         str_list_equal("zero.keys", SafeTensors.keys(file), Expected.ZERO_KEYS),
         Check.equal("zero.floats", len(a.floats), 0),
@@ -336,21 +340,12 @@ def zero_shape_cases():
 
 def slice_notfound_cases():
     """get_slice on an absent tensor reports the crate's not-found message."""
-    file = unwrap_or(SafeTensors.load(Expected.ERR_NOTFOUND_BYTES), empty_file())
-    match SafeTensors.get_slice(file, "missing", 0, 1):
-        case Success(value=value):
-            return [Check.failed("slice.notfound", "get_slice succeeded")]
-        case Error(message=message):
-            return [Check.equal("slice.notfound", message, Expected.SLICE_NOTFOUND)]
+    return [rejection_check("slice.notfound", SafeTensors.get_slice(file_of(Expected.ERR_NOTFOUND_BYTES), "missing", 0, 1), Expected.SLICE_NOTFOUND, "get_slice succeeded")]
 
 
 def byte_error(tag, result):
     """A byte read that must fail instead of inventing bytes."""
-    match result:
-        case Success(value=value):
-            return Check.failed(tag, "read succeeded")
-        case Error(message=message):
-            return Check.truth(tag, len(message) > 0, message)
+    return rejection(tag, result, lambda _value: "read succeeded")
 
 
 def byte_guard_cases():
@@ -365,11 +360,7 @@ def byte_guard_cases():
 
 def utf8_error(tag, bs):
     """A UTF-8 decode that must fail rather than substitute replacement text."""
-    match Bytes.bytes_to_string(bs):
-        case Success(value=value):
-            return Check.failed(tag, "decoded to " + value)
-        case Error(message=message):
-            return Check.truth(tag, len(message) > 0, message)
+    return rejection(tag, Bytes.bytes_to_string(bs), lambda value: "decoded to " + value)
 
 
 def utf8_cases():
@@ -493,18 +484,14 @@ def json_number_case():
 
 def json_reject(tag, text):
     """A text CPython's json module rejects must not parse here either."""
-    match JsonParser.parse(text):
-        case Success(value=value):
-            return Check.failed(tag, "parsed as " + value.kind)
-        case Error(message=message):
-            return Check.truth(tag, len(message) > 0, message)
+    return rejection(tag, JsonParser.parse(text), lambda value: "parsed as " + value.kind)
 
 
 def json_reject_cases():
     """Each malformed JSON text CPython rejects is an error here too."""
     return listConcat(toList(map(range(len(Expected.JSON_INVALID)), lambda i: json_reject("json.reject_" + toString(i), unwrap_or(listGet(Expected.JSON_INVALID, i), "")))), [
-        rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape"),
-        rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape"),
+        rejection_check('json.unterminated_escape', JsonParser.parse('"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
+        rejection_check('json.unterminated_member_escape', JsonParser.parse('{"\\'), "invalid JSON: unterminated escape", "operation succeeded instead of rejecting invalid input"),
     ])
 
 

@@ -1,6 +1,7 @@
 namespace prooftests
 
 import proof::Environment
+import proof::Fixtures
 import proof::Infer
 import proof
     Zero Succ Param Sort BVar Const App Lam Pi Let Decl Axiom Definition
@@ -38,13 +39,13 @@ module InferTests
 
         test ("a declaration may not use an undeclared universe parameter", \() => expectAll [Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = [], ty = Sort (Param "u"), body = Axiom))) == "constant `G` uses a universe parameter it does not declare, or declares one twice", Support::messageOf (Environment::add (Environment::empty (), Decl(name = "G", params = ["u", "u"], ty = Sort (Param "u"), body = Axiom))) == "constant `G` uses a universe parameter it does not declare, or declares one twice"])
 
-        test ("infer of Prop is Type", \() => expectAll [Support::inferred (Environment::empty (), [], Sort Zero) == "Type", Support::sorted (Environment::empty (), [], Support::idType ()) == "0"])
+        test ("infer of Prop is Type", \() => expectAll [Support::inferred (Environment::empty (), [], Sort Zero) == "Type", Support::sorted (Environment::empty (), [], Fixtures::idType ()) == "0"])
 
         test ("the id proof checks against the id type", \() =>
-            expect (Support::checked (Environment::empty (), Support::idProof (), Support::idType ()), "ok: (∀ (p : Prop), (p → p))"))
+            expect (Support::checked (Environment::empty (), Fixtures::idProof (), Fixtures::idType ()), "ok: (∀ (p : Prop), (p → p))"))
 
         test ("a proof of the wrong type is rejected", \() =>
-            expect (Support::checked (Environment::empty (), Support::badProof (), Support::idType ()), "error: ${mismatch}"))
+            expect (Support::checked (Environment::empty (), Fixtures::badProof (), Fixtures::idType ()), "error: ${mismatch}"))
 
         test ("applying a non-function reports the head type", \() =>
             expect (Support::inferred (Environment::empty (), [], App (Sort Zero) (Sort Zero)), "error: not a function: `Prop` is applied but has type `Type`"))
@@ -53,7 +54,7 @@ module InferTests
             expect (Support::inferred (Environment::empty (), [], BVar 3), "error: unbound variable #3"))
 
         test ("sort rejects a lambda", \() =>
-            expect (Support::sorted (Environment::empty (), [], Lam "x" (Sort Zero) (BVar 0)), "error: not a type: `(fun (x : Prop) => x)` has type `(Prop → Prop)`"))
+            expect (Support::sorted (Environment::empty (), [], Support::selfLam ()), "error: not a type: `(fun (x : Prop) => x)` has type `(Prop → Prop)`"))
 
         test ("a let whose value has the wrong type is rejected", \() =>
             expect (Support::inferred (Environment::empty (), [], Let "x" (Sort Zero) (Sort (Succ Zero)) (BVar 0)), "error: type mismatch: `Type` has type `Sort 2` but `Prop` was expected"))

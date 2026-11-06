@@ -18,8 +18,13 @@ produce.
 __all__ = [
     "is_whitespace", "is_control", "is_chinese_char", "is_punctuation",
     "is_numeric", "is_word_char", "lowercase", "strip_base",
-    "text_cps", "text_cp_starts", "cps_text", "in_ranges",
+    "text_cps", "text_cp_starts", "cps_text", "in_ranges", "map_indexed",
 ]
+
+
+def map_indexed(xs, read):
+    """`xs` rebuilt with its indices: element `i` of the result is `read(i)`."""
+    return toList(map(range(len(xs)), read))
 
 PUNCT_RANGES = [
     33, 35, 37, 42, 44, 47, 58, 59, 63, 64, 91, 93,
@@ -292,7 +297,7 @@ def starts_cp(s, k):
 
 def cps_text(cps):
     """The string a code point list spells."""
-    return join(toList(map(range(len(cps)), lambda i: unwrap_or(fromCodePoint(unwrap_or(listGet(cps, i), 63)), "?"))), "")
+    return join(map_indexed(cps, lambda i: unwrap_or(fromCodePoint(unwrap_or(listGet(cps, i), 63)), "?")), "")
 
 
 def in_ranges(ranges, cp):

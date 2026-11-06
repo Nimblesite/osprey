@@ -20,7 +20,7 @@ at, and it is the documented tie order for larger vocabs.
 """
 
 from transformers.Math import log_softmax, max_f, max_i, min_f, min_i, neg_inf, softmax
-from transformers.Lists import contains_int, last_n
+from transformers.Lists import contains_int, last_n, map_indexed
 
 __all__ = [
     "Processor",
@@ -296,7 +296,7 @@ def entropy_term(x):
 
 def sort_indices_by(values):
     """Indices 0..n-1 sorted by ascending value, ties broken by smaller index."""
-    idx = toList(map(range(len(values)), lambda i: i))
+    idx = map_indexed(values, lambda i: i)
     return listSortBy(idx, lambda a, b: cmp_entries(values, a, b))
 
 
@@ -322,7 +322,7 @@ def kth_largest(scores, k):
 
 def top_k_indices(scores, k):
     """Indices of the k largest scores, ties broken by smaller index."""
-    idx = toList(map(range(len(scores)), lambda i: i))
+    idx = map_indexed(scores, lambda i: i)
     ordered = listSortBy(idx, lambda a, b: cmp_entries_desc(scores, a, b))
     return toList(map(range(k), lambda i: unwrap_or(listGet(ordered, i), 0)))
 
@@ -354,7 +354,7 @@ def top_p_warper(p, fv, m, scores):
     # boundary lands on the same side torch chose.
     cutoff = toFloat32(1.0 - toFloat(p))
     keep_from = len(scores) - m
-    return toList(map(range(len(scores)), lambda i: fv if removed_top_p(i, idx, cum, cutoff, keep_from) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if removed_top_p(i, idx, cum, cutoff, keep_from) else score_at(scores, i))
 
 
 def removed_top_p(i, idx, cum, cutoff, keep_from):
@@ -366,7 +366,7 @@ def min_p_warper(p, fv, m, scores):
     probs = softmax(scores)
     scaled = p * fold(range(len(probs)), neg_inf(), lambda a, i: max_f(a, unwrap_or(listGet(probs, i), neg_inf())))
     keep = top_k_indices(scores, min_i(m, len(scores)))
-    return toList(map(range(len(scores)), lambda i: fv if prob_at(probs, i) < scaled and not contains_int(keep, i) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if prob_at(probs, i) < scaled and not contains_int(keep, i) else score_at(scores, i))
 
 
 def typical_warper(mass, fv, m, scores):
@@ -377,7 +377,7 @@ def typical_warper(mass, fv, m, scores):
     cum = cumsum(softmax(sorted_logits))
     last = min_i(count_lt(cum, mass), len(scores) - 1)
     threshold = score_at(sorted_shifted, last)
-    return toList(map(range(len(scores)), lambda i: fv if removed_typical(i, idx, shifted, threshold, m) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if removed_typical(i, idx, shifted, threshold, m) else score_at(scores, i))
 
 
 def removed_typical(i, idx, shifted, threshold, m):
@@ -397,14 +397,14 @@ def below_cutoff(limit, fv, m, scores):
     """Filter every token whose probability is under `limit`, keeping the `m` best."""
     probs = softmax(scores)
     threshold = kth_largest(scores, min_i(m, len(scores)))
-    return toList(map(range(len(scores)), lambda i: fv if prob_at(probs, i) < limit and score_at(scores, i) < threshold else score_at(scores, i)))
+    return map_indexed(scores, lambda i: fv if prob_at(probs, i) < limit and score_at(scores, i) < threshold else score_at(scores, i))
 
 
 # --- processors over the token history ------------------------------------
 
 def repetition_warper(pen, ig, ids, scores):
     tail = toList(map(range(len(ids) - ig), lambda i: unwrap_or(listGet(ids, i + ig), 0)))
-    return toList(map(range(len(scores)), lambda i: penalized(score_at(scores, i), pen) if contains_int(tail, i) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: penalized(score_at(scores, i), pen) if contains_int(tail, i) else score_at(scores, i))
 
 
 def penalized(score, penalty):
@@ -413,12 +413,12 @@ def penalized(score, penalty):
 
 def masked(scores, ids):
     """`scores` with every listed token id set to -inf."""
-    return toList(map(range(len(scores)), lambda i: neg_inf() if contains_int(ids, i) else score_at(scores, i)))
+    return map_indexed(scores, lambda i: neg_inf() if contains_int(ids, i) else score_at(scores, i))
 
 
 def forced(scores, ids):
     """A row that allows only the listed token ids: 0 for them, -inf elsewhere."""
-    return toList(map(range(len(scores)), lambda i: 0.0 if contains_int(ids, i) else neg_inf()))
+    return map_indexed(scores, lambda i: 0.0 if contains_int(ids, i) else neg_inf())
 
 
 def no_repeat_warper(n, ids, scores):
@@ -482,4 +482,4 @@ def last_token(xs):
 
 
 def set_neg_inf(scores, i):
-    return toList(map(range(len(scores)), lambda j: neg_inf() if j == i else score_at(scores, j)))
+    return map_indexed(scores, lambda j: neg_inf() if j == i else score_at(scores, j))

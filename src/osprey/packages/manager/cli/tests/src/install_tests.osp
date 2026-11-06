@@ -75,6 +75,10 @@ module InstallTests {
     fn one() = served("@demo/one/1.1", "fn one() = 1\n")
     fn two() = served("@demo/two/1.1", "fn two() = 2\n")
 
+    fn both() = [one(), two()]
+
+    fn accepted(a) = a.report.status == 0
+
     fn pkgOf(s: Release::Served) = Lockfile::Package { release: s.id, dependencies: [], surface: [] }
 
     fn lockText(served) = Lockfile::encode(Lockfile::release(Lockfile::Root { manifestDigest: rootDigest, dependencies: [] }, mapList(served, pkgOf))) ?: ""
@@ -93,11 +97,11 @@ module InstallTests {
 
     /// Both trees installed and matching: two `=` lines, no fetch, nothing written.
     fn allPresent() = {
-        let os = [one(), two()]
-        let a = runInstall(listConcat([lockRead(os)], listConcat(readsOf(listGet(os, 0) ?: Fixture::missingServed()), readsOf(listGet(os, 1) ?: Fixture::missingServed()))),
-            [walkOf(listGet(os, 0) ?: Fixture::missingServed()), walkOf(listGet(os, 1) ?: Fixture::missingServed())], [], [])
+        let os = both()
+        let a = runInstall(listConcat([lockRead(os)], listConcat(readsOf(Fixture::at(os, 0)), readsOf(Fixture::at(os, 1)))),
+            [walkOf(Fixture::at(os, 0)), walkOf(Fixture::at(os, 1))], [], [])
         checkAll("installed trees are skipped with = lines and no writes", [
-            a.report.status == 0,
+            accepted(a),
             length(a.report.lines) == 2,
             startsWith(Fixture::line(a.report, 0), "= @demo/one"),
             startsWith(Fixture::line(a.report, 1), "= @demo/two"),
@@ -109,16 +113,16 @@ module InstallTests {
 
     /// One installed, one missing: the missing one is fetched through the web fixture.
     fn oneMissing() = {
-        let os = [one(), two()]
-        let first = listGet(os, 0) ?: Fixture::missingServed()
-        let second = listGet(os, 1) ?: Fixture::missingServed()
+        let os = both()
+        let first = Fixture::at(os, 0)
+        let second = Fixture::at(os, 1)
         let a = runInstall(
             listConcat([lockRead(os)], readsOf(first)),
             [walkOf(first)],
             [sourceWeb(second)],
             [])
         checkAll("a missing tree is fetched with a + line", [
-            a.report.status == 0,
+            accepted(a),
             length(a.report.lines) == 2,
             startsWith(Fixture::line(a.report, 0), "= @demo/one"),
             startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
@@ -128,9 +132,9 @@ module InstallTests {
 
     /// An installed tree whose bytes differ is re-fetched, not trusted.
     fn corrupt() = {
-        let os = [one(), two()]
-        let first = listGet(os, 0) ?: Fixture::missingServed()
-        let second = listGet(os, 1) ?: Fixture::missingServed()
+        let os = both()
+        let first = Fixture::at(os, 0)
+        let second = Fixture::at(os, 1)
         let corruptReads = mapList(second.files, fn(f: Release::File) => Fixture::readRoute("${installDir(second)}/${f.relPath}", "${f.content} tampered"))
         let a = runInstall(
             listConcat([lockRead(os)], listConcat(readsOf(first), corruptReads)),
@@ -138,7 +142,7 @@ module InstallTests {
             [sourceWeb(second)],
             [])
         checkAll("a corrupt installed tree is re-fetched", [
-            a.report.status == 0,
+            accepted(a),
             startsWith(Fixture::line(a.report, 0), "= @demo/one"),
             startsWith(Fixture::line(a.report, 1), "+ @demo/two"),
             a.fetched == "${sourcePath(second)}|"
@@ -147,9 +151,9 @@ module InstallTests {
 
     /// A failed fetch is that package's code line; the next package still runs.
     fn fetchFailure() = {
-        let os = [one(), two()]
-        let first = listGet(os, 0) ?: Fixture::missingServed()
-        let second = listGet(os, 1) ?: Fixture::missingServed()
+        let os = both()
+        let first = Fixture::at(os, 0)
+        let second = Fixture::at(os, 1)
         let broken = webRoute(localBase, sourcePath(first), 404, "")
         let a = runInstall([lockRead(os)], [], [broken, sourceWeb(second)], [])
         checkAll("one failed fetch keeps the run going and ends status 1", [

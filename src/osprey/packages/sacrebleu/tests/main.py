@@ -76,13 +76,16 @@ def ngram_cases():
     ]
 
 
+def tok_checks(label, fn, want):
+    """Every tokenizer case's text under one tokenizer, `fn` applied to each case."""
+    return toList(map(range(len(want)), lambda i: Check.equal(f"tok.{label}[{i}]", fn(str_at(Expected.TOK_CASES, i)), str_at(want, i))))
+
+
 def tokenizer_cases():
-    n = len(Expected.TOK_CASES)
-    plain = toList(map(range(n), lambda i: Check.equal(f"tok.none[{i}]", Tokenizer.tokenize_none(str_at(Expected.TOK_CASES, i)), str_at(Expected.TOK_NONE, i))))
-    char = toList(map(range(n), lambda i: Check.equal(f"tok.char[{i}]", Tokenizer.tokenize_char(str_at(Expected.TOK_CASES, i)), str_at(Expected.TOK_CHAR, i))))
-    v13a = toList(map(range(n), lambda i: Check.equal(f"tok.13a[{i}]", Tokenizer.tokenize_13a(str_at(Expected.TOK_CASES, i)), str_at(Expected.TOK_13A, i))))
-    dispatch = toList(map(range(n), lambda i: Check.equal(f"tok.dispatch[{i}]", Tokenizer.tokenize(str_at(Expected.TOK_CASES, i), "13a"), str_at(Expected.TOK_13A, i))))
-    return listConcat(listConcat(plain, char), listConcat(v13a, dispatch))
+    return listConcat(tok_checks("none", Tokenizer.tokenize_none, Expected.TOK_NONE),
+                      listConcat(tok_checks("char", Tokenizer.tokenize_char, Expected.TOK_CHAR),
+                                 listConcat(tok_checks("13a", Tokenizer.tokenize_13a, Expected.TOK_13A),
+                                            tok_checks("dispatch", lambda text: Tokenizer.tokenize(text, "13a"), Expected.TOK_13A))))
 
 
 def bleu_config(i):
@@ -157,11 +160,17 @@ def raw_cases():
 
 
 def compute_bleu_cases():
-    return fold(range(len(Expected.CBL_SCORE)), [], lambda acc, i: listConcat(acc, [
-        Check.close(f"compute.score[{i}]", Bleu.compute_bleu(floatlist_at(Expected.CBL_CORRECT, i), floatlist_at(Expected.CBL_TOTAL, i), 2, 2, "none", -1.0, True, 4).score, float_at(Expected.CBL_SCORE, i), EXP, EXP),
-        Check.close_all(f"compute.prec[{i}]", Bleu.compute_bleu(floatlist_at(Expected.CBL_CORRECT, i), floatlist_at(Expected.CBL_TOTAL, i), 2, 2, "none", -1.0, True, 4).precisions, floatlist_at(Expected.CBL_PREC, i), DIV, DIV),
-        Check.close(f"compute.bp[{i}]", Bleu.compute_bleu(floatlist_at(Expected.CBL_CORRECT, i), floatlist_at(Expected.CBL_TOTAL, i), 2, 2, "none", -1.0, True, 4).bp, float_at(Expected.CBL_BP, i), EXP, EXP),
-    ]))
+    return foldList(toList(map(range(len(Expected.CBL_SCORE)), compute_bleu_case)), [], listConcat)
+
+
+def compute_bleu_case(i):
+    """One `compute_bleu` call's score, precisions and brevity penalty."""
+    sc = Bleu.compute_bleu(floatlist_at(Expected.CBL_CORRECT, i), floatlist_at(Expected.CBL_TOTAL, i), 2, 2, "none", -1.0, True, 4)
+    return [
+        Check.close(f"compute.score[{i}]", sc.score, float_at(Expected.CBL_SCORE, i), EXP, EXP),
+        Check.close_all(f"compute.prec[{i}]", sc.precisions, floatlist_at(Expected.CBL_PREC, i), DIV, DIV),
+        Check.close(f"compute.bp[{i}]", sc.bp, float_at(Expected.CBL_BP, i), EXP, EXP),
+    ]
 
 
 def chrf_config(i):
@@ -182,9 +191,13 @@ def chrf_of(i):
         return Chrf.sentence_chrf(hyp, refs, cfg.co, cfg.wo, cfg.beta, cfg.rw, cfg.eps)
 
 
+def chrf_scores(label, compute, want):
+    """Each CHRF case's score, `compute(i)` naming the call and `label` the metric."""
+    return toList(map(range(len(want)), lambda i: Check.close(f"chrf.{label}[{i}]", compute(i).score, float_at(want, i), DIV, DIV)))
+
+
 def chrf_cases():
-    return toList(map(range(len(Expected.CHRF_SCORE)), lambda i: Check.close(
-        f"chrf.score[{i}]", chrf_of(i).score, float_at(Expected.CHRF_SCORE, i), DIV, DIV)))
+    return chrf_scores("score", chrf_of, Expected.CHRF_SCORE)
 
 
 def chrf_corpus_of(i):
@@ -196,8 +209,7 @@ def chrf_corpus_of(i):
 
 
 def chrf_corpus_cases():
-    return toList(map(range(len(Expected.CHRF_CORPUS_SCORE)), lambda i: Check.close(
-        f"chrf.corpus[{i}]", chrf_corpus_of(i).score, float_at(Expected.CHRF_CORPUS_SCORE, i), DIV, DIV)))
+    return chrf_scores("corpus", chrf_corpus_of, Expected.CHRF_CORPUS_SCORE)
 
 
 def score_corpus_cases():

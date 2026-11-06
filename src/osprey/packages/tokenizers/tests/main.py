@@ -35,6 +35,26 @@ from tokenizers.Unicode import (
 )
 
 
+def atl(xs, i):
+    """The list at `i`, [] past the end."""
+    return unwrap_or(listGet(xs, i), [])
+
+
+def ats(xs, i):
+    """The string at `i`, "" past the end."""
+    return unwrap_or(listGet(xs, i), "")
+
+
+def atb(xs, i):
+    """The bool at `i`, false past the end."""
+    return unwrap_or(listGet(xs, i), False)
+
+
+def ati(xs, i):
+    """The int at `i`, 0 past the end."""
+    return unwrap_or(listGet(xs, i), 0)
+
+
 def offs_list(enc):
     offs = enc.offsets
     return toList(map(range(len(offs)), lambda i: pair(unwrap_or(listGet(offs, i), Offset(start=0, end=0)))))
@@ -46,7 +66,7 @@ def pair(o):
 
 def concat_all(groups):
     """One flat list of cases from a list of case groups."""
-    return fold(range(len(groups)), [], lambda acc, i: listConcat(acc, unwrap_or(listGet(groups, i), [])))
+    return fold(range(len(groups)), [], lambda acc, i: listConcat(acc, atl(groups, i)))
 
 
 def strs_text(xs):
@@ -82,27 +102,27 @@ def wp_enc_cases(name, enc, want_ids, want_tokens, want_offsets, want_type_ids):
 
 
 def wp_case(wp, cls_id, sep_id, i):
-    text = unwrap_or(listGet(Expected.WP_INPUTS, i), "")
+    text = ats(Expected.WP_INPUTS, i)
     enc = wordpiece_encode(wp, text, cls_id, sep_id)
     return listConcat(
-        wp_enc_cases(f"wp.{i}", enc, unwrap_or(listGet(Expected.WP_IDS, i), []), unwrap_or(listGet(Expected.WP_TOKENS, i), []), unwrap_or(listGet(Expected.WP_OFFSETS, i), []), unwrap_or(listGet(Expected.WP_TYPE_IDS, i), [])),
-        [Check.equal(f"wp.{i}.decode", wordpiece_decode_pipeline(wp, enc.ids), unwrap_or(listGet(Expected.WP_DECODES, i), ""))],
+        wp_enc_cases(f"wp.{i}", enc, atl(Expected.WP_IDS, i), atl(Expected.WP_TOKENS, i), atl(Expected.WP_OFFSETS, i), atl(Expected.WP_TYPE_IDS, i)),
+        [Check.equal(f"wp.{i}.decode", wordpiece_decode_pipeline(wp, enc.ids), ats(Expected.WP_DECODES, i))],
     )
 
 
 def wp_pair_case(wp, cls_id, sep_id, i):
-    a = unwrap_or(listGet(Expected.WP_PAIR_A, i), "")
-    b = unwrap_or(listGet(Expected.WP_PAIR_B, i), "")
+    a = ats(Expected.WP_PAIR_A, i)
+    b = ats(Expected.WP_PAIR_B, i)
     enc = wordpiece_encode_pair(wp, a, b, cls_id, sep_id)
-    return wp_enc_cases(f"wp.pair.{i}", enc, unwrap_or(listGet(Expected.WP_PAIR_IDS, i), []), unwrap_or(listGet(Expected.WP_PAIR_TOKENS, i), []), unwrap_or(listGet(Expected.WP_PAIR_OFFSETS, i), []), unwrap_or(listGet(Expected.WP_PAIR_TYPE_IDS, i), []))
+    return wp_enc_cases(f"wp.pair.{i}", enc, atl(Expected.WP_PAIR_IDS, i), atl(Expected.WP_PAIR_TOKENS, i), atl(Expected.WP_PAIR_OFFSETS, i), atl(Expected.WP_PAIR_TYPE_IDS, i))
 
 
 def uni_case(m, tag, byte_fallback_mode, i, ids_c, tokens_c, offsets_c, decodes_c):
-    text = unwrap_or(listGet(Expected.UNI_INPUTS, i), "")
+    text = ats(Expected.UNI_INPUTS, i)
     enc = unigram_encode_pipeline(m, text)
     return listConcat(
-        core_cases(f"{tag}.{i}", enc, unwrap_or(listGet(ids_c, i), []), unwrap_or(listGet(tokens_c, i), []), unwrap_or(listGet(offsets_c, i), [])),
-        [Check.equal(f"{tag}.{i}.decode", unigram_decode_pipeline(m, enc.ids, byte_fallback_mode), unwrap_or(listGet(decodes_c, i), ""))],
+        core_cases(f"{tag}.{i}", enc, atl(ids_c, i), atl(tokens_c, i), atl(offsets_c, i)),
+        [Check.equal(f"{tag}.{i}.decode", unigram_decode_pipeline(m, enc.ids, byte_fallback_mode), ats(decodes_c, i))],
     )
 
 
@@ -111,11 +131,11 @@ def uni_cases(m, tag, byte_fallback_mode, ids_c, tokens_c, offsets_c, decodes_c)
 
 
 def wl_case(wl, i):
-    text = unwrap_or(listGet(Expected.WL_INPUTS, i), "")
+    text = ats(Expected.WL_INPUTS, i)
     enc = wordlevel_encode_pipeline(wl, text)
     return listConcat(
-        core_cases(f"wl.{i}", enc, unwrap_or(listGet(Expected.WL_IDS, i), []), unwrap_or(listGet(Expected.WL_TOKENS, i), []), unwrap_or(listGet(Expected.WL_OFFSETS, i), [])),
-        [Check.equal(f"wl.{i}.decode", wordlevel_decode_pipeline(wl, enc.ids), unwrap_or(listGet(Expected.WL_DECODES, i), ""))],
+        core_cases(f"wl.{i}", enc, atl(Expected.WL_IDS, i), atl(Expected.WL_TOKENS, i), atl(Expected.WL_OFFSETS, i)),
+        [Check.equal(f"wl.{i}.decode", wordlevel_decode_pipeline(wl, enc.ids), ats(Expected.WL_DECODES, i))],
     )
 
 
@@ -132,12 +152,12 @@ def split_off(n, byte_char, nchars):
 
 
 def pretok_case(name, split_fn, want_tokens_c, want_offsets_c, i):
-    text = unwrap_or(listGet(Expected.PRE_INPUTS, i), "")
+    text = ats(Expected.PRE_INPUTS, i)
     splits = split_fn(norm_of(text))
     toks = toList(map(range(len(splits)), lambda k: norm_text(unwrap_or(listGet(splits, k), Norm(chars=[], starts=[], ends=[])))))
     return [
-        strs_equal(f"{name}.{i}.tokens", toks, unwrap_or(listGet(want_tokens_c, i), [])),
-        offs_equal(f"{name}.{i}.offsets", pretok_offsets(text, splits), unwrap_or(listGet(want_offsets_c, i), [])),
+        strs_equal(f"{name}.{i}.tokens", toks, atl(want_tokens_c, i)),
+        offs_equal(f"{name}.{i}.offsets", pretok_offsets(text, splits), atl(want_offsets_c, i)),
     ]
 
 
@@ -145,23 +165,30 @@ def pretok_cases(name, split_fn, want_tokens_c, want_offsets_c):
     return fold(range(len(Expected.PRE_INPUTS)), [], lambda acc, i: listConcat(acc, pretok_case(name, split_fn, want_tokens_c, want_offsets_c, i)))
 
 
+BERT_MODES = ["default", "clean", "lower", "strip", "chinese"]
+"""The `bert_normalize` flag combinations, each named after the pass it leaves on."""
+BERT_FLAGS = [[True, True, True, True], [True, False, False, False], [False, False, False, True], [False, False, True, False], [False, True, False, False]]
+"""One flag row per mode: clean, chinese, strip-accents and lowercase, in that order."""
+BERT_WANTS = [Expected.NORM_DEFAULT, Expected.NORM_CLEAN_ONLY, Expected.NORM_LOWER_ONLY, Expected.NORM_STRIP_ONLY, Expected.NORM_CHINESE_ONLY]
+
+
 def norm_case(i):
-    text = unwrap_or(listGet(Expected.NORM_INPUTS, i), "")
-    return [
-        Check.equal(f"norm.{i}.default", norm_text(bert_normalize(text, True, True, True, True)), unwrap_or(listGet(Expected.NORM_DEFAULT, i), "")),
-        Check.equal(f"norm.{i}.clean", norm_text(bert_normalize(text, True, False, False, False)), unwrap_or(listGet(Expected.NORM_CLEAN_ONLY, i), "")),
-        Check.equal(f"norm.{i}.lower", norm_text(bert_normalize(text, False, False, False, True)), unwrap_or(listGet(Expected.NORM_LOWER_ONLY, i), "")),
-        Check.equal(f"norm.{i}.strip", norm_text(bert_normalize(text, False, False, True, False)), unwrap_or(listGet(Expected.NORM_STRIP_ONLY, i), "")),
-        Check.equal(f"norm.{i}.chinese", norm_text(bert_normalize(text, False, True, False, False)), unwrap_or(listGet(Expected.NORM_CHINESE_ONLY, i), "")),
-    ]
+    """Every `bert_normalize` mode's output for one input."""
+    text = ats(Expected.NORM_INPUTS, i)
+    return toList(map(range(len(BERT_MODES)), lambda k: Check.equal(f"norm.{i}.{ats(BERT_MODES, k)}", norm_mode(text, atl(BERT_FLAGS, k)), unwrap_or(listGet(atl(BERT_WANTS, k), i), ""))))
+
+
+def norm_mode(text, flags):
+    """`bert_normalize` under one row of `BERT_FLAGS`."""
+    return norm_text(bert_normalize(text, unwrap_or(listGet(flags, 0), False), unwrap_or(listGet(flags, 1), False), unwrap_or(listGet(flags, 2), False), unwrap_or(listGet(flags, 3), False)))
 
 
 def uni_pred_case(name, pred, want_c):
-    return fold(range(len(Expected.UNI_CPS)), [], lambda acc, i: listAppend(acc, Check.equal(f"{name}.{i}", pred(unwrap_or(listGet(Expected.UNI_CPS, i), 0)), unwrap_or(listGet(want_c, i), False))))
+    return fold(range(len(Expected.UNI_CPS)), [], lambda acc, i: listAppend(acc, Check.equal(f"{name}.{i}", pred(ati(Expected.UNI_CPS, i)), atb(want_c, i))))
 
 
 def uni_list_case(name, f, want_c):
-    return fold(range(len(Expected.UNI_CPS)), [], lambda acc, i: listAppend(acc, Check.ints_equal(f"{name}.{i}", f(unwrap_or(listGet(Expected.UNI_CPS, i), 0)), unwrap_or(listGet(want_c, i), []))))
+    return fold(range(len(Expected.UNI_CPS)), [], lambda acc, i: listAppend(acc, Check.ints_equal(f"{name}.{i}", f(ati(Expected.UNI_CPS, i)), atl(want_c, i))))
 
 
 def unicode_cases():
@@ -178,20 +205,30 @@ def unicode_cases():
     ])
 
 
+def empty_token():
+    """The token the accessors report for an index past the end."""
+    return Token(id=0, value="", start=0, end=0)
+
+
+def token_field(toks, get):
+    """One field of every token, `get` picking it, the empty token past the end."""
+    return toList(map(range(len(toks)), lambda k: get(unwrap_or(listGet(toks, k), empty_token()))))
+
+
 def token_ids(toks):
-    return toList(map(range(len(toks)), lambda k: unwrap_or(listGet(toks, k), Token(id=0, value="", start=0, end=0)).id))
+    return token_field(toks, lambda token: token.id)
 
 
 def token_values(toks):
-    return toList(map(range(len(toks)), lambda k: unwrap_or(listGet(toks, k), Token(id=0, value="", start=0, end=0)).value))
+    return token_field(toks, lambda token: token.value)
 
 
 def token_starts(toks):
-    return toList(map(range(len(toks)), lambda k: unwrap_or(listGet(toks, k), Token(id=0, value="", start=0, end=0)).start))
+    return token_field(toks, lambda token: token.start)
 
 
 def token_ends(toks):
-    return toList(map(range(len(toks)), lambda k: unwrap_or(listGet(toks, k), Token(id=0, value="", start=0, end=0)).end))
+    return token_field(toks, lambda token: token.end)
 
 
 def model_row_case(name, toks, want_ids, want_values, want_starts, want_ends):
@@ -204,7 +241,7 @@ def model_row_case(name, toks, want_ids, want_values, want_starts, want_ends):
 
 
 def model_rows_case(name, rows_fn, texts_c, ids_c, values_c, starts_c, ends_c):
-    return fold(range(len(ids_c)), [], lambda acc, i: listConcat(acc, model_row_case(f"{name}.{i}", rows_fn(unwrap_or(listGet(texts_c, i), "")), unwrap_or(listGet(ids_c, i), []), unwrap_or(listGet(values_c, i), []), unwrap_or(listGet(starts_c, i), []), unwrap_or(listGet(ends_c, i), []))))
+    return fold(range(len(ids_c)), [], lambda acc, i: listConcat(acc, model_row_case(f"{name}.{i}", rows_fn(ats(texts_c, i)), atl(ids_c, i), atl(values_c, i), atl(starts_c, i), atl(ends_c, i))))
 
 
 def wp_model_cases(wp):
@@ -220,8 +257,8 @@ def wl_model_cases(wl):
 
 
 def uni_encode_case(uni_nobf, i):
-    s = unwrap_or(listGet(Expected.MODEL_UNI_TEXTS, i), "")
-    return strs_equal(f"muni.encode.{i}", unigram_encode(uni_nobf, s), unwrap_or(listGet(Expected.MODEL_UNI_VALUES, i), []))
+    s = ats(Expected.MODEL_UNI_TEXTS, i)
+    return strs_equal(f"muni.encode.{i}", unigram_encode(uni_nobf, s), atl(Expected.MODEL_UNI_VALUES, i))
 
 
 def uni_encode_cases(uni_nobf):
@@ -229,8 +266,8 @@ def uni_encode_cases(uni_nobf):
 
 
 def id_to_token_case(wp, i):
-    id = unwrap_or(listGet(Expected.MODEL_WP_IDS, i), 0)
-    return Check.equal(f"mwp.id_to_token.{i}", id_to_token(wp.tokens, id), unwrap_or(listGet(Expected.MODEL_WP_ID_TO_TOKEN, i), ""))
+    id = ati(Expected.MODEL_WP_IDS, i)
+    return Check.equal(f"mwp.id_to_token.{i}", id_to_token(wp.tokens, id), ats(Expected.MODEL_WP_ID_TO_TOKEN, i))
 
 
 def id_to_token_cases(wp):
@@ -238,8 +275,8 @@ def id_to_token_cases(wp):
 
 
 def decode_case(name, dec_fn, toks_c, want_c, i):
-    toks = unwrap_or(listGet(toks_c, i), [])
-    return Check.equal(f"{name}.{i}", dec_fn(toks), unwrap_or(listGet(want_c, i), ""))
+    toks = atl(toks_c, i)
+    return Check.equal(f"{name}.{i}", dec_fn(toks), ats(want_c, i))
 
 
 def decoder_cases():
@@ -252,8 +289,8 @@ def decoder_cases():
 
 def meta_helper_cases():
     """Metaspace's replacement and prepend primitives on a Norm."""
-    repl = fold(range(len(Expected.META_HELPER_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.replace.{i}", norm_text(replace_space(norm_of(unwrap_or(listGet(Expected.META_HELPER_INPUTS, i), "")), META_CP)), unwrap_or(listGet(Expected.META_REPLACE, i), ""))))
-    prep = fold(range(len(Expected.META_PREPEND_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.prepend.{i}", norm_text(prepend_cp(norm_of(unwrap_or(listGet(Expected.META_PREPEND_INPUTS, i), "")), META_CP)), unwrap_or(listGet(Expected.META_PREPEND, i), ""))))
+    repl = fold(range(len(Expected.META_HELPER_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.replace.{i}", norm_text(replace_space(norm_of(ats(Expected.META_HELPER_INPUTS, i)), META_CP)), ats(Expected.META_REPLACE, i))))
+    prep = fold(range(len(Expected.META_PREPEND_INPUTS)), [], lambda acc, i: listAppend(acc, Check.equal(f"norm.prepend.{i}", norm_text(prepend_cp(norm_of(ats(Expected.META_PREPEND_INPUTS, i)), META_CP)), ats(Expected.META_PREPEND, i))))
     return concat_all([repl, prep, alignment_cases()])
 
 
@@ -381,7 +418,7 @@ def utf8_cases():
     names = ["utf8.empty", "utf8.ascii", "utf8.two", "utf8.three", "utf8.four", "utf8.long"]
     byte_rows = [[], [104, 105], [195, 169], [230, 151, 165], [240, 159, 152, 128], long_cps]
     text_rows = ["", "hi", cps_text([233]), cps_text([26085]), cps_text([128512]), long_text]
-    cases = fold(range(len(names)), [], lambda acc, i: listAppend(acc, utf8_text(unwrap_or(listGet(names, i), ""), unwrap_or(listGet(byte_rows, i), []), unwrap_or(listGet(text_rows, i), ""))))
+    cases = fold(range(len(names)), [], lambda acc, i: listAppend(acc, utf8_text(ats(names, i), atl(byte_rows, i), ats(text_rows, i))))
     return listConcat(cases, [
         Check.truth("utf8.lone continuation", is_error(utf8_decode([128], 0, "")), "a lone continuation byte decoded"),
         Check.truth("utf8.truncated", is_error(utf8_decode([230, 151], 0, "")), "a truncated sequence decoded"),
@@ -439,7 +476,7 @@ def qwen_added():
 
 
 def at_str(row, i):
-    return unwrap_or(listGet(row, i), "")
+    return ats(row, i)
 
 
 def at_int(row, i):
@@ -476,12 +513,12 @@ def unicode_table_cases():
 
 
 def nfc_row(i):
-    text = unwrap_or(listGet(Expected.NFC_INPUTS, i), "")
+    text = ats(Expected.NFC_INPUTS, i)
     return [
-        Check.equal(f"nfc.{i}", nfc_text(text), unwrap_or(listGet(Expected.NFC_EXPECTED, i), "")),
-        Check.equal(f"nfd.{i}", nfd_text(text), unwrap_or(listGet(Expected.NFD_EXPECTED, i), "")),
-        Check.equal(f"nfc.cps.{i}", cps_text(nfc_cps(text_cps(text))), unwrap_or(listGet(Expected.NFC_EXPECTED, i), "")),
-        Check.equal(f"nfd.cps.{i}", cps_text(nfd_cps(text_cps(text))), unwrap_or(listGet(Expected.NFD_EXPECTED, i), "")),
+        Check.equal(f"nfc.{i}", nfc_text(text), ats(Expected.NFC_EXPECTED, i)),
+        Check.equal(f"nfd.{i}", nfd_text(text), ats(Expected.NFD_EXPECTED, i)),
+        Check.equal(f"nfc.cps.{i}", cps_text(nfc_cps(text_cps(text))), ats(Expected.NFC_EXPECTED, i)),
+        Check.equal(f"nfd.cps.{i}", cps_text(nfd_cps(text_cps(text))), ats(Expected.NFD_EXPECTED, i)),
         Check.truth(f"nfc.stable.{i}", nfc_text(nfc_text(text)) == nfc_text(text), "NFC is not idempotent here"),
     ]
 
@@ -554,22 +591,22 @@ def refused(name, result, want):
 
 
 def replace_at(xs, position, value):
-    return toList(map(range(len(xs)), lambda i: value if i == position else unwrap_or(listGet(xs, i), "")))
+    return toList(map(range(len(xs)), lambda i: value if i == position else ats(xs, i)))
 
 
 def qwen_row(tok, i, label):
-    text = unwrap_or(listGet(Expected.QWEN_INPUTS, i), "")
+    text = ats(Expected.QWEN_INPUTS, i)
     match qwen_encode(tok, text):
         case Success(value=enc):
             return listConcat([
-                Check.ints_equal(f"{label}.{i}.ids", enc.ids, unwrap_or(listGet(Expected.QWEN_IDS, i), [])),
-                strs_equal(f"{label}.{i}.tokens", enc.tokens, unwrap_or(listGet(Expected.QWEN_TOKENS, i), [])),
+                Check.ints_equal(f"{label}.{i}.ids", enc.ids, atl(Expected.QWEN_IDS, i)),
+                strs_equal(f"{label}.{i}.tokens", enc.tokens, atl(Expected.QWEN_TOKENS, i)),
             ], [
-                Check.ints_equal(f"{label}.{i}.type_ids", enc.type_ids, unwrap_or(listGet(Expected.QWEN_TYPE_IDS, i), [])),
-                offs_equal(f"{label}.{i}.offsets", offs_list(enc), unwrap_or(listGet(Expected.QWEN_OFFSETS, i), [])),
-                Check.equal(f"{label}.{i}.decode", decoded(tok, enc.ids, False), unwrap_or(listGet(Expected.QWEN_DECODES, i), "")),
-                Check.equal(f"{label}.{i}.skip", decoded(tok, enc.ids, True), unwrap_or(listGet(Expected.QWEN_SKIP_DECODES, i), "")),
-                strs_equal(f"{label}.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), unwrap_or(listGet(Expected.QWEN_PRETOK_PIECES, i), [])),
+                Check.ints_equal(f"{label}.{i}.type_ids", enc.type_ids, atl(Expected.QWEN_TYPE_IDS, i)),
+                offs_equal(f"{label}.{i}.offsets", offs_list(enc), atl(Expected.QWEN_OFFSETS, i)),
+                Check.equal(f"{label}.{i}.decode", decoded(tok, enc.ids, False), ats(Expected.QWEN_DECODES, i)),
+                Check.equal(f"{label}.{i}.skip", decoded(tok, enc.ids, True), ats(Expected.QWEN_SKIP_DECODES, i)),
+                strs_equal(f"{label}.{i}.pretok", mapList(qwen_pretokenize(norm_of(nfc_text(text))), lambda p: cps_text(p.chars)), atl(Expected.QWEN_PRETOK_PIECES, i)),
             ])
         case Error(message=message):
             return [Check.failed(f"{label}.{i}", "Error: " + message)]
@@ -611,8 +648,8 @@ def split_oracle_case(i):
     text = nfc_text(at_str(Expected.SPLIT_INPUTS, i))
     pieces = qwen_pretokenize(norm_of(text))
     return [
-        strs_equal(f"split.{i}.pieces", mapList(pieces, norm_text), unwrap_or(listGet(Expected.SPLIT_PIECES, i), [])),
-        offs_equal(f"split.{i}.offsets", pretok_offsets(text, pieces), unwrap_or(listGet(Expected.SPLIT_OFFSETS, i), [])),
+        strs_equal(f"split.{i}.pieces", mapList(pieces, norm_text), atl(Expected.SPLIT_PIECES, i)),
+        offs_equal(f"split.{i}.offsets", pretok_offsets(text, pieces), atl(Expected.SPLIT_OFFSETS, i)),
     ]
 
 

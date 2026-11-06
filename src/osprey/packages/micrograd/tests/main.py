@@ -14,6 +14,48 @@ from micrograd_tests import Ops
 from testing import Check
 
 
+class Loss:
+    """A loss graph, its value and the gradients backward produced for it."""
+    graph: Engine.Graph
+    value: float
+    grads: list[float]
+
+
+def node_datas(graph):
+    """Every node's data, numbered."""
+    return toList(map(range(Engine.size(graph)), lambda i: Engine.data(graph, i)))
+
+
+def node_cases(graph, prefix, want_datas, want_grads, rtol):
+    """Every node's data and gradient of `graph`, backward from its top node."""
+    grads = Engine.backward(graph, Engine.top(graph))
+    return listConcat(Ops.list_cases(f"{prefix}.data", node_datas(graph), want_datas, rtol),
+                      Ops.list_cases(f"{prefix}.grads", grads, want_grads, rtol))
+
+
+def trained(graph, outs, ys, n):
+    """The loss `graph` reaches over `n` points, its gradients and value."""
+    loss = sum_squares(graph, outs, ys, n)
+    grads = Engine.backward(loss, Engine.top(loss))
+    return Loss(graph=loss, value=Engine.data(loss, Engine.top(loss)), grads=grads)
+
+
+def seeded(nin, nouts, params, xs):
+    """A model holding `params` in a fresh graph, called on `xs`."""
+    g = NN.init_mlp(Engine.empty(), nin, nouts, params)
+    return NN.call_mlp(g, NN.mlp_of(nin, nouts), xs)
+
+
+def layer_of(m, i):
+    """Layer `i` of a model, or an empty one when the model is shorter."""
+    return unwrap_or(listGet(m.layers, i), NN.Layer(neurons=[]))
+
+
+def neuron_of(layer, i):
+    """Neuron `i` of a layer, or an empty one when the layer is shorter."""
+    return unwrap_or(listGet(layer.neurons, i), NN.Neuron(weights=[], bias=-1, nonlin=True))
+
+
 class ForwardAll:
     """A finished forward pass: the graph and the ids this step hands on."""
     graph: Engine.Graph
@@ -72,10 +114,10 @@ def nn_records_cases():
     """NN's records and construction helpers: Neuron/Layer/MLP/Forward/neuron_at/layer_at."""
     na = NN.neuron_at(0, 3, True)
     la = NN.layer_at(16, 4, 4, True)
-    first_of_layer = unwrap_or(listGet(la.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+    first_of_layer = neuron_of(la, 0)
     m = NN.mlp_of(3, [4, 4, 1])
-    first_layer = unwrap_or(listGet(m.layers, 0), NN.Layer(neurons=[]))
-    n0 = unwrap_or(listGet(first_layer.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+    first_layer = layer_of(m, 0)
+    n0 = neuron_of(first_layer, 0)
     return [
         Check.equal("nn.param_count.matches", NN.param_count(3, [4, 4, 1]), len(Expected.MLP_WEIGHTS)),
         Check.ints_equal("nn.neuron_at.weights", na.weights, [0, 1, 2]),
@@ -101,10 +143,10 @@ def nn_record_cases():
 def nn_neuron_cases():
     """`call_neuron`/`call_neuron_values` outputs match the oracle's nodes."""
     m = NN.mlp_of(3, [4, 4, 1])
-    first_layer = unwrap_or(listGet(m.layers, 0), NN.Layer(neurons=[]))
-    n0 = unwrap_or(listGet(first_layer.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
-    second_layer = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
-    n1 = unwrap_or(listGet(second_layer.neurons, 0), NN.Neuron(weights=[], bias=-1, nonlin=True))
+    first_layer = layer_of(m, 0)
+    n0 = neuron_of(first_layer, 0)
+    second_layer = layer_of(m, 1)
+    n1 = neuron_of(second_layer, 0)
     g0 = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
     neuron = NN.call_neuron(g0, n0, [2.0, 3.0, -1.0])
     layer0 = NN.call_layer(g0, first_layer, [2.0, 3.0, -1.0])
@@ -118,8 +160,8 @@ def nn_neuron_cases():
 def nn_layer_cases():
     """`call_layer`/`call_layer_values` output ids match the oracle's layout."""
     m = NN.mlp_of(3, [4, 4, 1])
-    first_layer = unwrap_or(listGet(m.layers, 0), NN.Layer(neurons=[]))
-    second_layer = unwrap_or(listGet(m.layers, 1), NN.Layer(neurons=[]))
+    first_layer = layer_of(m, 0)
+    second_layer = layer_of(m, 1)
     g0 = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
     layer = NN.call_layer(g0, first_layer, [2.0, 3.0, -1.0])
     layer_values = NN.call_layer_values(layer.graph, second_layer, layer.outputs)
@@ -175,7 +217,7 @@ def sanity_cases():
     y = done.graph
     yid = unwrap_or(listGet(done.outs, 1), 0)
     grads = Engine.backward(y, yid)
-    datas = toList(map(range(Engine.size(y)), lambda i: Engine.data(y, i)))
+    datas = node_datas(y)
     return listConcat(listConcat(Ops.list_cases("sanity.data", datas, Expected.SANITY_DATA, 1e-12), Ops.list_cases("sanity.grads", grads, Expected.SANITY_GRADS, 1e-12)), [
         Check.close("sanity.torch.data", Engine.data(y, yid), unwrap_or(listGet(Expected.SANITY_TORCH, 0), 0.0), 1e-12, 0.0),
         Check.close("sanity.torch.grad", unwrap_or(listGet(grads, xid), 0.0), unwrap_or(listGet(Expected.SANITY_TORCH, 1), 0.0), 1e-12, 0.0),
@@ -246,7 +288,7 @@ def more_cases():
     aid = unwrap_or(listGet(done.outs, 0), 0)
     bid = unwrap_or(listGet(done.outs, 1), 0)
     grads = Engine.backward(g, gid2)
-    datas = toList(map(range(Engine.size(g)), lambda i: Engine.data(g, i)))
+    datas = node_datas(g)
     return listConcat(listConcat(Ops.list_cases("more.data", datas, Expected.MORE_DATA, 1e-12), Ops.list_cases("more.grads", grads, Expected.MORE_GRADS, 1e-12)), [
         Check.close("more.torch.data", Engine.data(g, gid2), unwrap_or(listGet(Expected.MORE_TORCH, 0), 0.0), 1e-6, 0.0),
         Check.close("more.torch.a", unwrap_or(listGet(grads, aid), 0.0), unwrap_or(listGet(Expected.MORE_TORCH, 1), 0.0), 1e-6, 0.0),
@@ -256,24 +298,12 @@ def more_cases():
 
 def mlp_cases():
     """MLP(3, [4, 4, 1]) with the oracle's seeded weights: forward and backward."""
-    g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], Expected.MLP_WEIGHTS)
-    m = NN.mlp_of(3, [4, 4, 1])
-    g2 = NN.call_mlp(g, m, [2.0, 3.0, -1.0])
-    root = Engine.top(g2)
-    grads = Engine.backward(g2, root)
-    datas = toList(map(range(Engine.size(g2)), lambda i: Engine.data(g2, i)))
-    return listConcat(Ops.list_cases("mlp.data", datas, Expected.MLP_FORWARD_DATA, 1e-12), Ops.list_cases("mlp.grads", grads, Expected.MLP_FORWARD_GRADS, 1e-12))
+    return node_cases(seeded(3, [4, 4, 1], Expected.MLP_WEIGHTS, [2.0, 3.0, -1.0]), "mlp", Expected.MLP_FORWARD_DATA, Expected.MLP_FORWARD_GRADS, 1e-12)
 
 
 def mlp2_cases():
     """MLP(2, [3, 2, 1]) with the oracle's second seeded weights."""
-    g = NN.init_mlp(Engine.empty(), 2, [3, 2, 1], Expected.MLP2_WEIGHTS)
-    m = NN.mlp_of(2, [3, 2, 1])
-    g2 = NN.call_mlp(g, m, [0.5, -1.5])
-    root = Engine.top(g2)
-    grads = Engine.backward(g2, root)
-    datas = toList(map(range(Engine.size(g2)), lambda i: Engine.data(g2, i)))
-    return listConcat(Ops.list_cases("mlp2.data", datas, Expected.MLP2_FORWARD_DATA, 1e-12), Ops.list_cases("mlp2.grads", grads, Expected.MLP2_FORWARD_GRADS, 1e-12))
+    return node_cases(seeded(2, [3, 2, 1], Expected.MLP2_WEIGHTS, [0.5, -1.5]), "mlp2", Expected.MLP2_FORWARD_DATA, Expected.MLP2_FORWARD_GRADS, 1e-12)
 
 
 def forward_all(g, m, xs):
@@ -311,14 +341,11 @@ def train_step(st, _):
     g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], st.params)
     m = NN.mlp_of(3, [4, 4, 1])
     f = forward_all(g, m, Expected.DATASET_X)
-    lg = sum_squares(f.graph, f.outs, Expected.DATASET_Y, 4)
-    root = Engine.top(lg)
-    loss_val = Engine.data(lg, root)
-    grads = Engine.backward(lg, root)
+    loss = trained(f.graph, f.outs, Expected.DATASET_Y, 4)
     ids = NN.parameters(m)
-    param_grads = toList(map(range(len(ids)), lambda i: unwrap_or(listGet(grads, unwrap_or(listGet(ids, i), 0)), 0.0)))
-    new_params = NN.sgd_step(st.params, grads, ids, 0.05)
-    return TrainState(params=new_params, losses=listAppend(st.losses, loss_val), grads=listAppend(st.grads, param_grads))
+    param_grads = toList(map(range(len(ids)), lambda i: unwrap_or(listGet(loss.grads, unwrap_or(listGet(ids, i), 0)), 0.0)))
+    new_params = NN.sgd_step(st.params, loss.grads, ids, 0.05)
+    return TrainState(params=new_params, losses=listAppend(st.losses, loss.value), grads=listAppend(st.grads, param_grads))
 
 
 def readme_cases():
@@ -327,8 +354,7 @@ def readme_cases():
     g = NN.init_mlp(Engine.empty(), 3, [4, 4, 1], st.params)
     m = NN.mlp_of(3, [4, 4, 1])
     f = forward_all(g, m, Expected.DATASET_X)
-    lg = sum_squares(f.graph, f.outs, Expected.DATASET_Y, 4)
-    losses = listAppend(st.losses, Engine.data(lg, Engine.top(lg)))
+    losses = listAppend(st.losses, trained(f.graph, f.outs, Expected.DATASET_Y, 4).value)
     preds = toList(map(range(4), lambda i: Engine.data(f.graph, unwrap_or(listGet(f.outs, i), 0))))
     loss_cases = listConcat(listConcat(Ops.list_cases("train.losses", losses, Expected.TRAIN_LOSSES, 1e-12), Ops.list_cases("train.params", st.params, Expected.TRAIN_PARAMS, 1e-12)), Ops.list_cases("train.preds", preds, Expected.TRAIN_PREDS, 1e-12))
     return listConcat(loss_cases, Ops.nested_cases("train.step_grads", st.grads, Expected.TRAIN_STEP_GRADS, 1e-12))
@@ -392,12 +418,9 @@ def tanh_step(st, _):
     g = tanh_weights(st.params)
     W = toList(map(range(9), lambda i: i))
     f = tanh_forward(g, W, Expected.TANH_X)
-    lg = sum_squares(f.graph, f.outs, Expected.TANH_Y, 3)
-    root = Engine.top(lg)
-    loss_val = Engine.data(lg, root)
-    grads = Engine.backward(lg, root)
-    new_params = NN.sgd_step(st.params, grads, W, 0.1)
-    return TanhState(params=new_params, losses=listAppend(st.losses, loss_val))
+    loss = trained(f.graph, f.outs, Expected.TANH_Y, 3)
+    new_params = NN.sgd_step(st.params, loss.grads, W, 0.1)
+    return TanhState(params=new_params, losses=listAppend(st.losses, loss.value))
 
 
 def tanh_init():
@@ -405,10 +428,8 @@ def tanh_init():
     g = tanh_weights(Expected.TANH_W0)
     W = toList(map(range(9), lambda i: i))
     f = tanh_forward(g, W, Expected.TANH_X)
-    lg = sum_squares(f.graph, f.outs, Expected.TANH_Y, 3)
-    root = Engine.top(lg)
-    grads = Engine.backward(lg, root)
-    return TanhInit(loss=Engine.data(lg, root), grads=toList(map(range(9), lambda i: unwrap_or(listGet(grads, i), 0.0))))
+    loss = trained(f.graph, f.outs, Expected.TANH_Y, 3)
+    return TanhInit(loss=loss.value, grads=toList(map(range(9), lambda i: unwrap_or(listGet(loss.grads, i), 0.0))))
 
 
 def tanh_cases():
@@ -418,8 +439,7 @@ def tanh_cases():
     W = toList(map(range(9), lambda i: i))
     g2 = tanh_weights(st.params)
     f2 = tanh_forward(g2, W, Expected.TANH_X)
-    lg2 = sum_squares(f2.graph, f2.outs, Expected.TANH_Y, 3)
-    losses = listAppend(st.losses, Engine.data(lg2, Engine.top(lg2)))
+    losses = listAppend(st.losses, trained(f2.graph, f2.outs, Expected.TANH_Y, 3).value)
     return listConcat(listConcat([Check.close("tanh.init_loss", init.loss, Expected.TANH_INIT_LOSS, 1e-9, 0.0)], Ops.list_cases("tanh.init_grads", init.grads, Expected.TANH_INIT_GRADS, 1e-9)), listConcat(Ops.list_cases("tanh.losses", losses, Expected.TANH_LOSSES, 1e-9), Ops.list_cases("tanh.w", st.params, Expected.TANH_W, 1e-9)))
 
 

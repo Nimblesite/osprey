@@ -8,7 +8,7 @@ joins that list with the empty separator, matching Decoder::decode.
 """
 
 from tokenizers.PreTokenizers import bytelevel_raw
-from tokenizers.Unicode import cps_text
+from tokenizers.Unicode import cps_text, map_indexed
 
 __all__ = [
     "wordpiece_decode", "metaspace_decode_chain", "byte_fallback_decode_chain",
@@ -68,13 +68,13 @@ def wordpiece_decode(tokens, prefix, cleanup):
 def metaspace_decode_chain(tokens, replacement, scheme):
     """Replace the meta char with a space, dropping the leading one unless the
     scheme is never, token by token."""
-    return toList(map(range(len(tokens)), lambda i: meta_token(unwrap_or(listGet(tokens, i), ""), i, replacement, scheme)))
+    return map_indexed(tokens, lambda i: meta_token(unwrap_or(listGet(tokens, i), ""), i, replacement, scheme))
 
 
 def meta_token(token, i, replacement, scheme):
     cps = cps_of(token)
     outs = fold(range(len(cps)), [], lambda acc, k: meta_char(acc, unwrap_or(listGet(cps, k), 32), i, replacement, scheme))
-    return join(toList(map(range(len(outs)), lambda k: unwrap_or(fromCodePoint(unwrap_or(listGet(outs, k), 63)), "?"))), "")
+    return join(map_indexed(outs, lambda k: unwrap_or(fromCodePoint(unwrap_or(listGet(outs, k), 63)), "?")), "")
 
 
 def meta_char(acc, cp, i, replacement, scheme):
@@ -132,7 +132,7 @@ def flush_bytes(buf, acc):
             case Success(value=value):
                 return listAppend(acc, value)
             case Error():
-                return listConcat(acc, toList(map(range(len(buf)), lambda _: "\ufffd")))
+                return listConcat(acc, map_indexed(buf, lambda _: "\ufffd"))
 
 
 def seq_len(b):

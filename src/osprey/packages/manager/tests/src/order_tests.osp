@@ -6,13 +6,13 @@ import registry_tests::Fixtures
 /// sorted, swapped and same-key case. Implements the list rules of
 /// [PACKAGE-TYPE-INVARIANTS].
 module OrderTests {
-    fn verdict(c) = SetOrder::listCode(Fixtures::text(Fixtures::field(c, "element")), Fixtures::text(Fixtures::field(c, "field")), Fixtures::items(Fixtures::field(c, "items")))
+    fn verdict(c) = SetOrder::listCode(Fixtures::textOf(c, "element"), Fixtures::textOf(c, "field"), Fixtures::itemsOf(c, "items"))
 
-    fn caseHolds(c) = verdict(c) == Fixtures::text(Fixtures::field(c, "code"))
+    fn caseHolds(c) = verdict(c) == Fixtures::textOf(c, "code")
 
-    fn cases() = Fixtures::items(Fixtures::field(Fixtures::load("order/lists.json"), "cases"))
+    fn cases() = Fixtures::loadItems("order/lists.json", "cases")
 
-    fn caseTest(c) = test("order: ${Fixtures::text(Fixtures::field(c, "why"))}", fn() => check(Fixtures::text(Fixtures::field(c, "why")), Fixtures::text(Fixtures::field(c, "code")), verdict(c)))
+    fn caseTest(c) = test("order: ${Fixtures::textOf(c, "why")}", fn() => check(Fixtures::textOf(c, "why"), Fixtures::textOf(c, "code"), verdict(c)))
 
     /// One test per order vector.
     export fn run() = forEachList(cases(), caseTest)

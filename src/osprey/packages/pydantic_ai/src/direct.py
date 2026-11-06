@@ -30,8 +30,8 @@ def model_request(model, messages, model_settings, model_request_parameters) -> 
 
 def events_of(response) -> list[M.ModelResponseStreamEvent]:
     """The events replaying a complete response: a start per part, then an end per part."""
-    starts = toList(map(range(len(response.parts)), lambda i: M.PartStartEvent(index=i, part=unwrap_or(listGet(response.parts, i), M.TextPart(content="")))))
-    ends = toList(map(range(len(response.parts)), lambda i: M.PartEndEvent(index=i, part=unwrap_or(listGet(response.parts, i), M.TextPart(content="")))))
+    starts = M.map_indexed(response.parts, lambda i: M.PartStartEvent(index=i, part=unwrap_or(listGet(response.parts, i), M.TextPart(content=""))))
+    ends = M.map_indexed(response.parts, lambda i: M.PartEndEvent(index=i, part=unwrap_or(listGet(response.parts, i), M.TextPart(content=""))))
     return listConcat(starts, ends)
 
 

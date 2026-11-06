@@ -13,6 +13,8 @@ README). Implements [PORT-SCOPE]'s Result-instead-of-exception rule.
 """
 from typing import Callable
 
+from numpy import Layout
+
 __all__ = [
     "ValueError", "raising", "fail", "require", "checked", "checked_float",
     "checked_int", "checked_bool", "checked_values", "checked_ints", "shape_text",
@@ -139,7 +141,7 @@ def reshape_unknown_text(size, requested, unknown):
     a leading unknown disappears from the text, any other prints as
     `newaxis`, and a lone dimension prints without a trailing comma."""
     dims = requested if unknown != 0 else drop_first(requested)
-    inner = join(toList(map(range(len(dims)), lambda d: "newaxis" if unwrap_or(listGet(dims, d), 0) < 0 else toString(unwrap_or(listGet(dims, d), 0)))), ",")
+    inner = join(Layout.map_indexed(dims, lambda d: "newaxis" if unwrap_or(listGet(dims, d), 0) < 0 else toString(unwrap_or(listGet(dims, d), 0))), ",")
     return f"cannot reshape array of size {size} into shape ({inner})"
 
 

@@ -103,7 +103,7 @@ def merges_of(ranks):
 
 def bpe_encode(ranks, piece) -> Result[list[int], str]:
     """Byte-pair encode one piece's bytes into token ids."""
-    syms = toList(map(range(len(piece)), lambda i: key_char(Unicode.at(piece, i))))
+    syms = Unicode.map_indexed(piece, lambda i: key_char(Unicode.at(piece, i)))
     return encode_syms(ranks, syms)
 
 

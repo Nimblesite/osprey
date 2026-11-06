@@ -40,18 +40,36 @@ def run_op(op, pattern, text, flags):
         return Api.fullmatch(pattern, text, flags)
 
 
+class Call:
+    """The leading fields every regex case carries: its pattern, flags, text and the
+    encoded verdict the oracle recorded."""
+    pattern: str
+    flags: int
+    text: str
+    enc: list[str]
+
+
+def call_of(case, start, enc_at):
+    """The pattern, flags and text a case carries from `start` on, and the encoded
+    verdict at `enc_at` — later for the operations that take a count."""
+    return Call(pattern=f(case, start), flags=int_of(f(case, start + 1)), text=f(case, start + 2), enc=fields(f(case, enc_at)))
+
+
+def ran(tag, detail, result, step):
+    """`step` applied to the operation's verdict, or the one failure a refused call reports."""
+    match result:
+        case Success(value=value):
+            return step(value)
+        case Error(message=message):
+            return [Check.failed(tag, detail + ": " + message)]
+
+
 def match_case(case):
     """One match/search/fullmatch case: a list of assertions."""
     op = f(case, 0)
-    pattern = f(case, 1)
-    flags = int_of(f(case, 2))
-    text = f(case, 3)
-    enc = fields(f(case, 4))
-    match run_op(op, pattern, text, flags):
-        case Error(message=message):
-            return [Check.failed(op + " " + pattern, "compile error: " + message)]
-        case Success(value=value):
-            return match_verdict(op, pattern, text, value, enc)
+    c = call_of(case, 1, 4)
+    return ran(op + " " + c.pattern, "compile error", run_op(op, c.pattern, c.text, c.flags),
+               lambda value: match_verdict(op, c.pattern, c.text, value, c.enc))
 
 
 def match_verdict(op, pattern, text, mr, enc):
@@ -100,15 +118,9 @@ def named_check(name, m, enc, ng, j):
 
 def findall_case(case):
     """One findall case: a list of assertions."""
-    pattern = f(case, 0)
-    flags = int_of(f(case, 1))
-    text = f(case, 2)
-    enc = fields(f(case, 3))
-    match Api.findall(pattern, text, flags):
-        case Error(message=message):
-            return [Check.failed("findall " + pattern, "compile error: " + message)]
-        case Success(value=value):
-            return findall_verdict(pattern, text, value, enc)
+    c = call_of(case, 0, 3)
+    return ran("findall " + c.pattern, "compile error", Api.findall(c.pattern, c.text, c.flags),
+               lambda value: findall_verdict(c.pattern, c.text, value, c.enc))
 
 
 def findall_verdict(pattern, text, fr, enc):
@@ -143,16 +155,15 @@ def row_ok(fr, enc, start, i):
 
 def finditer_case(case):
     """One finditer case: a list of assertions."""
-    pattern = f(case, 0)
-    flags = int_of(f(case, 1))
-    text = f(case, 2)
-    enc = fields(f(case, 3))
-    match Api.finditer(pattern, text, flags):
-        case Error(message=message):
-            return [Check.failed("finditer " + pattern, "compile error: " + message)]
-        case Success(value=value):
-            n = int_of(f(enc, 0))
-            return [Check.equal("finditer " + pattern + " / " + text + ".count", len(value), n)] + iter_ok(value, enc, n)
+    c = call_of(case, 0, 3)
+    return ran("finditer " + c.pattern, "compile error", Api.finditer(c.pattern, c.text, c.flags),
+               lambda value: finditer_verdict(c.pattern, c.text, value, c.enc))
+
+
+def finditer_verdict(pattern, text, matches, enc):
+    """The match count, then each Match's span and groups."""
+    n = int_of(f(enc, 0))
+    return [Check.equal("finditer " + pattern + " / " + text + ".count", len(matches), n)] + iter_ok(matches, enc, n)
 
 
 def iter_ok(matches, enc, n):
@@ -181,17 +192,16 @@ def iter_match(matches, enc, i, offset, end):
 
 def split_case(case):
     """One split case: a list of assertions."""
-    pattern = f(case, 0)
-    flags = int_of(f(case, 1))
-    text = f(case, 2)
+    c = call_of(case, 0, 4)
     maxsplit = int_of(f(case, 3))
-    enc = fields(f(case, 4))
-    match Api.split(pattern, text, maxsplit, flags):
-        case Error(message=message):
-            return [Check.failed("split " + pattern, "compile error: " + message)]
-        case Success(value=value):
-            n = int_of(f(enc, 0))
-            return [Check.equal("split " + pattern + " / " + text + ".count", len(value), n)] + split_ok(value, enc, n)
+    return ran("split " + c.pattern, "compile error", Api.split(c.pattern, c.text, maxsplit, c.flags),
+               lambda value: split_verdict(c.pattern, c.text, value, c.enc))
+
+
+def split_verdict(pattern, text, parts, enc):
+    """The element count, then each element."""
+    n = int_of(f(enc, 0))
+    return [Check.equal("split " + pattern + " / " + text + ".count", len(parts), n)] + split_ok(parts, enc, n)
 
 
 def split_ok(got, enc, n):
@@ -201,34 +211,22 @@ def split_ok(got, enc, n):
 
 def sub_case(case):
     """One sub case: a list of assertions."""
-    pattern = f(case, 0)
-    repl = f(case, 1)
-    text = f(case, 2)
-    count = int_of(f(case, 3))
-    flags = int_of(f(case, 4))
-    want = f(case, 5)
-    match Api.sub(pattern, repl, text, count, flags):
-        case Error(message=message):
-            return [Check.failed("sub " + pattern, "error: " + message)]
-        case Success(value=value):
-            return [Check.equal("sub " + pattern + " / " + text, value, want)]
+    c = call_of(case, 0, 4)
+    return ran("sub " + c.pattern, "error", Api.sub(c.pattern, f(case, 1), c.text, int_of(f(case, 3)), c.flags),
+               lambda value: [Check.equal("sub " + c.pattern + " / " + c.text, value, f(case, 5))])
 
 
 def subn_case(case):
     """One subn case: a list of assertions."""
-    pattern = f(case, 0)
-    repl = f(case, 1)
-    text = f(case, 2)
-    count = int_of(f(case, 3))
-    flags = int_of(f(case, 4))
-    want = f(case, 5)
-    wantn = int_of(f(case, 6))
-    match Api.subn(pattern, repl, text, count, flags):
-        case Error(message=message):
-            return [Check.failed("subn " + pattern, "error: " + message)]
-        case Success(value=value):
-            return [Check.equal("subn " + pattern + " / " + text, value.text, want),
-                    Check.equal("subn " + pattern + ".n", value.count, wantn)]
+    c = call_of(case, 0, 4)
+    return ran("subn " + c.pattern, "error", Api.subn(c.pattern, f(case, 1), c.text, int_of(f(case, 3)), c.flags),
+               lambda value: subn_verdict(c.pattern, c.text, value, f(case, 5), int_of(f(case, 6))))
+
+
+def subn_verdict(pattern, text, value, want, wantn):
+    """The replaced text and the replacement count."""
+    return [Check.equal("subn " + pattern + " / " + text, value.text, want),
+            Check.equal("subn " + pattern + ".n", value.count, wantn)]
 
 
 def escape_case(case):
@@ -239,12 +237,10 @@ def escape_case(case):
 def error_case(case):
     """One compile-error case: the port must return CPython's exact message."""
     pattern = f(case, 0)
-    flags = int_of(f(case, 1))
-    want = f(case, 2)
-    match Api.compile(pattern, flags):
+    match Api.compile(pattern, int_of(f(case, 1))):
         case Error(message=message):
-            return [Check.equal("error " + pattern, message, want)]
-        case Success(value=value):
+            return [Check.equal("error " + pattern, message, f(case, 2))]
+        case Success(value=_value):
             return [Check.failed("error " + pattern, "compiled but should fail")]
 
 

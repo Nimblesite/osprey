@@ -380,12 +380,18 @@ def oracle_response(response, expected):
             return check("oracle request", "success", message)
 
 
-def wire_case(client, document, headers):
-    match scenario(document):
-        case Success(value=parsed):
-            return oracle_response(httpGetResponse(client, parsed.first, headers), parsed.second)
+def attempt(result, tag, want, step):
+    """`step` applied to the value a call produced, or a failed check naming why."""
+    match result:
+        case Success(value=value):
+            return step(value)
         case Error(message=message):
-            return check("oracle case", "valid scenario", message)
+            return check(tag, want, message)
+
+
+def wire_case(client, document, headers):
+    return attempt(scenario(document), "oracle case", "valid scenario",
+                   lambda parsed: oracle_response(httpGetResponse(client, parsed.first, headers), parsed.second))
 
 
 def oracle_document(client, document, headers):
@@ -398,22 +404,17 @@ def oracle_document(client, document, headers):
 
 
 def wire_record(client, document, headers):
-    match B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire))):
-        case Success(value=pair):
-            return wire_case(client, pair.first, pair.second)
-        case Error(message=message):
-            return check("oracle wire record", "present JSON case and Latin-1 headers", message)
+    return attempt(B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire))),
+                   "oracle wire record", "present JSON case and Latin-1 headers",
+                   lambda pair: wire_case(client, pair.first, pair.second))
 
 
 def parameter_cases(client):
     document = jsonDecode(Expected.CASES_JSON)
     headers = B.bind(readFile("src/osprey/packages/fastapi/tests/parameters.headers.bin"), lambda text: split(text, "\x1e"))
     source = B.bind(document, lambda item: B.mapped(headers, lambda wire: M.Pair(first=item, second=wire)))
-    match source:
-        case Success(value=pair):
-            return oracle_document(client, pair.first, pair.second)
-        case Error(message=message):
-            return check("oracle corpus", "readable JSON and Latin-1 wire fixtures", message)
+    return attempt(source, "oracle corpus", "readable JSON and Latin-1 wire fixtures",
+                   lambda pair: oracle_document(client, pair.first, pair.second))
 
 
 

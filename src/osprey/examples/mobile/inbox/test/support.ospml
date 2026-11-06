@@ -5,6 +5,18 @@ import mobile::App
 import mobile::Model
 
 module Support
+    (** One assertion's label, expected and actual value, checked in a case list. *)
+    type Case =
+        label : string
+        expected : string
+        actual : string
+
+    (** One labeled assertion's case. *)
+    export it label expected actual = Case(label = label, expected = expected, actual = actual)
+
+    (** Checks every case in `cases`, each with its own label. *)
+    export each cases = forEachList cases (\entry => check entry.label entry.expected entry.actual)
+
     export event kind = Json::obj (Json::strField "type" kind)
     export value kind content = Json::obj (Json::strField "type" kind + "," + Json::strField "value" content)
     export bookmark id = Json::obj (Json::strField "type" "bookmark" + "," + Json::strField "id" id)
@@ -15,13 +27,18 @@ module Support
 
     export fixture () = "[{\"id\":101,\"number\":42,\"title\":\"Fix parser\",\"user\":{\"login\":\"alice\"},\"comments\":3},{\"id\":102,\"number\":43,\"title\":\"Windows paths \\\"C:\\\\tmp\\\"\",\"user\":{\"login\":\"bob\"},\"comments\":0},{\"id\":103,\"number\":44,\"pull_request\":{\"url\":\"ignored\"}}]"
 
-    export awaiting () =
-        initial = App::initial ()
-        schema = App::dispatch initial.model (sql "schema" true "[]" "")
-        App::dispatch schema.model (sql "load" true "[]" "")
+    export awaiting () = loadOf (schemaOf (App::initial ()))
 
     export loaded () =
         loading = awaiting ()
         App::dispatch loading.model (http loading.model.pending 200 (fixture ()) "")
 
     export projected source path = Json::getOr source path "MISSING"
+
+    export refresh envelope = App::dispatch envelope.model (event "refresh")
+
+    export schemaOf envelope = App::dispatch envelope.model (sql "schema" true "[]" "")
+
+    export loadOf envelope = App::dispatch envelope.model (sql "load" true "[]" "")
+
+    export bookmarked id = App::dispatch (loaded ()).model (bookmark id)

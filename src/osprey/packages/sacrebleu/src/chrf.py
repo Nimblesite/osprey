@@ -11,6 +11,7 @@ points spell its inverse as `remove_whitespace`).
 """
 
 from sacrebleu.Ngrams import char_ngrams, word_ngrams_from_tokens, counter_total, counter_matched
+from sacrebleu.Text import map_indexed
 
 __all__ = ["CHRFScore", "CHRF", "score_sentence", "score_corpus", "sentence_chrf", "corpus_chrf"]
 
@@ -190,7 +191,7 @@ def segment_stats(chrf, hyp, refs):
 
 def add_int_lists(xs, ys):
     """Elementwise sum of two int lists."""
-    return toList(map(range(len(xs)), lambda i: unwrap_or(listGet(xs, i), 0) + unwrap_or(listGet(ys, i), 0)))
+    return map_indexed(xs, lambda i: unwrap_or(listGet(xs, i), 0) + unwrap_or(listGet(ys, i), 0))
 
 
 def zeros_int(n):
@@ -217,7 +218,7 @@ def score_sentence(chrf, hypothesis, references):
 
 def transpose_row(docs, i):
     """Reference segment `i` of every document."""
-    return toList(map(range(len(docs)), lambda d: unwrap_or(listGet(unwrap_or(listGet(docs, d), []), i), "")))
+    return map_indexed(docs, lambda d: unwrap_or(listGet(unwrap_or(listGet(docs, d), []), i), ""))
 
 
 def transpose(docs):

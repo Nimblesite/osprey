@@ -16,6 +16,7 @@ not landed, so it is not ported yet (see README).
 """
 
 from faiss.Flat import search_rows
+from faiss.Metrics import map_indexed
 
 __all__ = ["ScalarQuantizer", "QT_8bit", "QT_4bit", "QT_8bit_uniform", "train", "compute_codes", "decode", "IndexScalarQuantizer", "sq_add", "sq_search"]
 
@@ -225,7 +226,7 @@ def sq_search(index, xq, k):
     """faiss's `IndexScalarQuantizer.search`: reconstruct every code, measure
     the metric to each query and heap-select. Reconstruction is float32, so
     distances compare at rtol 1e-6 (labels stay exact on well-separated data)."""
-    rows = toList(map(range(len(index.codes)), lambda j: decode_one(index.sq, unwrap_or(listGet(index.codes, j), []))))
+    rows = map_indexed(index.codes, lambda j: decode_one(index.sq, unwrap_or(listGet(index.codes, j), [])))
     return search_rows(index.metric, rows, xq, k)
 
 

@@ -13,6 +13,7 @@ floats because `add-k` makes them fractional.
 """
 
 from sacrebleu.Ngrams import word_ngrams, word_ngrams_from_tokens, counter_total, counter_matched, counter_merge_max
+from sacrebleu.Text import map_indexed
 from sacrebleu.Tokenizer import tokenize
 
 __all__ = ["BLEUScore", "BLEU", "compute_bleu", "score_sentence", "score_corpus", "sentence_bleu", "corpus_bleu", "raw_corpus_bleu"]
@@ -96,7 +97,7 @@ def pad_zeros(xs, n):
 
 def add_k_adjust(xs, k):
     """`xs` with `k` added to every element except the first (add-k smoothing)."""
-    return toList(map(range(len(xs)), lambda i: unwrap_or(listGet(xs, i), 0.0) + (k if i >= 1 else 0.0)))
+    return map_indexed(xs, lambda i: unwrap_or(listGet(xs, i), 0.0) + (k if i >= 1 else 0.0))
 
 
 def first_zero(total, max_order, k):
@@ -210,7 +211,7 @@ def segment_stats(bleu, hyp, info):
 
 def add_float_lists(xs, ys):
     """Elementwise sum of two float lists."""
-    return toList(map(range(len(xs)), lambda i: unwrap_or(listGet(xs, i), 0.0) + unwrap_or(listGet(ys, i), 0.0)))
+    return map_indexed(xs, lambda i: unwrap_or(listGet(xs, i), 0.0) + unwrap_or(listGet(ys, i), 0.0))
 
 
 def sum_stats(a, b):
@@ -229,7 +230,7 @@ def score_sentence(bleu, hypothesis, references):
 
 def transpose_row(docs, i):
     """Reference segment `i` of every document."""
-    return toList(map(range(len(docs)), lambda d: unwrap_or(listGet(unwrap_or(listGet(docs, d), []), i), "")))
+    return map_indexed(docs, lambda d: unwrap_or(listGet(unwrap_or(listGet(docs, d), []), i), ""))
 
 
 def transpose(docs):

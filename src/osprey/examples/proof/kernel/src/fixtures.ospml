@@ -4,6 +4,18 @@ namespace proof
     strings so the same cases run on wasm32, where a module has no files.
     `exports/id_imp.ndjson` is the on-disk twin the benchmark reads. *)
 module Fixtures
+    (** `Prop`. *)
+    export prop () = Sort Zero
+
+    (** `∀ (p : Prop), p → p` *)
+    export idType () = Pi "p" (prop ()) (Pi "h" (BVar 0) (BVar 1))
+
+    (** `fun (p : Prop) (h : p) => h` *)
+    export idProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 0))
+
+    (** `fun (p : Prop) (h : p) => p`, which does not prove `idType ()`. *)
+    export badProof () = Lam "p" (prop ()) (Lam "h" (BVar 0) (BVar 1))
+
     (** Corrupt only the recorded arithmetic proof, leaving its statement. *)
     export natAddCommBad () = replace (natAddComm (), "\"name\":235,\"type\":730,\"value\":817", "\"name\":235,\"type\":730,\"value\":730") ?: ""
 

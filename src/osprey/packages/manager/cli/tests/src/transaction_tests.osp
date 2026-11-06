@@ -20,6 +20,7 @@ module TransactionTests {
     fn one2() = RegistryFixture::one2()
     fn two() = RegistryFixture::two()
     fn compact(s) = RegistryFixture::compact(s)
+
     fn plain() = RegistryFixture::manifestText("app")
     fn args(words) = listConcat(words, ["--project", project])
 
@@ -27,6 +28,18 @@ module TransactionTests {
 
     fn manifestOf(a) = RegistryFixture::writtenTo(a, manifestPath)
     fn lockOf(a) = RegistryFixture::writtenTo(a, lockPath)
+
+    fn pair() = [one(), two()]
+
+
+    fn said(a, i, code) = RegistryFixture::lineOf(a, i) == code
+    fn wroteNothing(a) = RegistryFixture::writesTo(a, manifestPath) == 0
+
+    fn addPlain(served) = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one"])
+
+    fn lockedReads(served) = RegistryFixture::readsWithLock(RegistryFixture::rootManifest(1), RegistryFixture::previousLock(one(), two()), served)
+
+    fn runUpdate(served, words) = runOver(lockedReads(served), served, words)
 
     // ---- the pure manifest edits ----
 
@@ -52,12 +65,11 @@ module TransactionTests {
         let named = RegistryFixture::run([], [], ["package", "init", "--name", "demo", "--project", project])
         let existing = RegistryFixture::run([Fixture::readRoute(manifestPath, plain())], [], ["package", "init", "--project", project])
         checkAll("package init writes the smallest manifest once", [
-            RegistryFixture::statusOf(fresh) == 0,
+            RegistryFixture::accepted(fresh),
             manifestOf(fresh) == Init::skeleton("abs"),
             RegistryFixture::lineOf(fresh, 0) == "wrote ${manifestPath}",
             manifestOf(named) == Init::skeleton("demo"),
-            RegistryFixture::statusOf(existing) == 1,
-            RegistryFixture::lineOf(existing, 0) == "init.exists ${manifestPath}",
+            RegistryFixture::reported(existing, 1, "init.exists ${manifestPath}"),
             RegistryFixture::writesTo(existing, manifestPath) == 0
         ])
     }
@@ -66,10 +78,10 @@ module TransactionTests {
 
     /// `add` writes the dependency line, relocks and reports the delta.
     fn addNew() = {
-        let served = [one(), two()]
-        let a = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one"])
+        let served = pair()
+        let a = addPlain(served)
         checkAll("add writes the dependency line and the resolved lock", [
-            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::accepted(a),
             manifestOf(a) == RegistryFixture::rootManifest(1),
             lockOf(a) == RegistryFixture::expectedLock(RegistryFixture::rootManifest(1), one(), two()),
             structuralEquals(RegistryFixture::linesOf(a), ["added @demo/one e1.r1", "+ ${compact(one())}", "+ ${compact(two())}"])
@@ -79,41 +91,38 @@ module TransactionTests {
     /// `add` chooses the newest ordinal of the newest epoch as the floor.
     fn addNewest() = {
         let served = [one(), one2(), two()]
-        let a = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one"])
+        let a = addPlain(served)
         checkAll("add floors at the newest ordinal", [
-            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::accepted(a),
             manifestOf(a) == RegistryFixture::rootManifest(2),
-            RegistryFixture::lineOf(a, 0) == "added @demo/one e1.r2"
+            said(a, 0, "added @demo/one e1.r2")
         ])
     }
 
     /// The refusals: already declared, unknown key, unknown epoch, bad word.
     fn addRefusals() = {
-        let served = [one(), two()]
+        let served = pair()
         let exists = runOver(RegistryFixture::reads(RegistryFixture::rootManifest(1), served), served, ["add", "@demo/one"])
         let unknown = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/none"])
         let epoch = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one", "--epoch", "7"])
         let word = RegistryFixture::run([], [], ["add", "@nonsense"])
         checkAll("add.exists, listing.unknown-package, listing.unknown-epoch, add.usage; nothing written", [
-            RegistryFixture::statusOf(exists) == 1,
-            RegistryFixture::lineOf(exists, 0) == "add.exists @demo/one",
-            RegistryFixture::lineOf(unknown, 0) == "listing.unknown-package @demo/none",
-            RegistryFixture::lineOf(epoch, 0) == "listing.unknown-epoch @demo/one e7",
-            RegistryFixture::statusOf(word) == 2,
-            RegistryFixture::lineOf(word, 0) == "add.usage",
-            RegistryFixture::writesTo(exists, manifestPath) + RegistryFixture::writesTo(unknown, manifestPath) + RegistryFixture::writesTo(epoch, manifestPath) == 0
+            RegistryFixture::reported(exists, 1, "add.exists @demo/one"),
+            RegistryFixture::reported(unknown, 1, "listing.unknown-package @demo/none"),
+            RegistryFixture::reported(epoch, 1, "listing.unknown-epoch @demo/one e7"),
+            RegistryFixture::reported(word, 2, "add.usage"),
+            wroteNothing(exists) && wroteNothing(unknown) && wroteNothing(epoch)
         ])
     }
 
     /// Failed resolution never writes the proposed manifest or a lock.
     fn addRestores() = {
         let served = [one()]
-        let a = runOver(RegistryFixture::reads(plain(), served), served, ["add", "@demo/one"])
+        let a = addPlain(served)
         checkAll("a failed relock never changes the manifest", [
-            RegistryFixture::statusOf(a) == 1,
-            RegistryFixture::lineOf(a, 0) == "resolution.missing-package",
-            RegistryFixture::lineOf(a, 1) == "@demo/two",
-            RegistryFixture::writesTo(a, manifestPath) == 0,
+            RegistryFixture::reported(a, 1, "resolution.missing-package"),
+            said(a, 1, "@demo/two"),
+            wroteNothing(a),
             manifestOf(a) == "",
             lockOf(a) == ""
         ])
@@ -122,11 +131,10 @@ module TransactionTests {
     fn runDamaged(reads, served, path) = RegistryFixture::runPartial(reads, RegistryFixture::websOf(served), args(["add", "@demo/one"]), path)
 
     fn partialManifestWrite() = {
-        let served = [one(), two()]
+        let served = pair()
         let a = runDamaged(RegistryFixture::reads(plain(), served), served, manifestPath)
         checkAll("a partial manifest write is restored before reporting failure", [
-            RegistryFixture::statusOf(a) == 1,
-            RegistryFixture::lineOf(a, 0) == "fixture: partial write",
+            RegistryFixture::reported(a, 1, "fixture: partial write"),
             manifestOf(a) == plain(),
             RegistryFixture::writesTo(a, manifestPath) == 2,
             lockOf(a) == ""
@@ -134,13 +142,12 @@ module TransactionTests {
     }
 
     fn partialLockWrite() = {
-        let served = [one(), two()]
+        let served = pair()
         let a = runDamaged(RegistryFixture::reads(plain(), served), served, lockPath)
         let previous = RegistryFixture::expectedLockOf(plain(), [])
         let existing = runDamaged(RegistryFixture::readsWithLock(plain(), previous, served), served, lockPath)
         checkAll("a partial lock write restores the manifest and removes the new lock", [
-            RegistryFixture::statusOf(a) == 1,
-            RegistryFixture::lineOf(a, 0) == "fixture: partial write",
+            RegistryFixture::reported(a, 1, "fixture: partial write"),
             manifestOf(a) == plain(),
             RegistryFixture::removedPath(a, lockPath),
             lockOf(a) == "",
@@ -154,12 +161,12 @@ module TransactionTests {
     // ---- remove ----
 
     fn removeDeclared() = {
-        let served = [one(), two()]
-        let reads = RegistryFixture::readsWithLock(RegistryFixture::rootManifest(1), RegistryFixture::previousLock(one(), two()), served)
+        let served = pair()
+        let reads = lockedReads(served)
         let a = runOver(reads, served, ["remove", "@demo/one"])
         let expectedManifest = plain() + "\n[dependencies]\n"
         checkAll("remove drops the line and the lock loses both packages", [
-            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::accepted(a),
             manifestOf(a) == expectedManifest,
             lockOf(a) == RegistryFixture::expectedLockOf(expectedManifest, []),
             structuralEquals(RegistryFixture::linesOf(a), ["removed @demo/one", "- ${compact(one())}", "- ${compact(two())}"])
@@ -169,9 +176,8 @@ module TransactionTests {
     fn removeMissing() = {
         let a = runOver(RegistryFixture::reads(plain(), []), [], ["remove", "@demo/one"])
         checkAll("remove.missing writes nothing", [
-            RegistryFixture::statusOf(a) == 1,
-            RegistryFixture::lineOf(a, 0) == "remove.missing @demo/one",
-            RegistryFixture::writesTo(a, manifestPath) == 0
+            RegistryFixture::reported(a, 1, "remove.missing @demo/one"),
+            wroteNothing(a)
         ])
     }
 
@@ -180,10 +186,10 @@ module TransactionTests {
     /// `update` moves to the newest ordinal inside the epoch.
     fn updateInside() = {
         let served = [one(), one2(), two()]
-        let a = runOver(RegistryFixture::readsWithLock(RegistryFixture::rootManifest(1), RegistryFixture::previousLock(one(), two()), served), served, ["update"])
+        let a = runUpdate(served, ["update"])
         checkAll("update relocks without sticky choices", [
-            RegistryFixture::statusOf(a) == 0,
-            RegistryFixture::writesTo(a, manifestPath) == 0,
+            RegistryFixture::accepted(a),
+            wroteNothing(a),
             lockOf(a) == RegistryFixture::expectedLock(RegistryFixture::rootManifest(1), one2(), two()),
             structuralEquals(RegistryFixture::linesOf(a), ["~ ${compact(one2())}", "= ${compact(two())}"])
         ])
@@ -193,9 +199,9 @@ module TransactionTests {
     fn updateBreaking() = {
         let next = RegistryFixture::oneNextEpoch()
         let served = [one(), next, two()]
-        let a = runOver(RegistryFixture::readsWithLock(RegistryFixture::rootManifest(1), RegistryFixture::previousLock(one(), two()), served), served, ["update", "--breaking"])
+        let a = runUpdate(served, ["update", "--breaking"])
         checkAll("update --breaking moves the manifest to the newer epoch", [
-            RegistryFixture::statusOf(a) == 0,
+            RegistryFixture::accepted(a),
             manifestOf(a) == RegistryFixture::rootManifestAt(2),
             lockOf(a) == RegistryFixture::expectedLock(RegistryFixture::rootManifestAt(2), next, two()),
             structuralEquals(RegistryFixture::linesOf(a), ["epoch @demo/one e1 -> e2", "~ ${compact(next)}", "= ${compact(two())}"])

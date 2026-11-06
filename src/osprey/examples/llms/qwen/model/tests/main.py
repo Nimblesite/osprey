@@ -71,13 +71,18 @@ def record_at(records, i):
     return unwrap_or(listGet(records, i), JsonNull)
 
 
+def violation(message):
+    """A schema violation message as `keyword/path`."""
+    return f"{ToolSchema.violation_keyword(message)}/{ToolSchema.violation_path(message)}"
+
+
 def verdict_text(verdict):
     """A schema verdict as `keyword/path`, or "" when it held."""
     match verdict:
         case Success(_accepted):
             return ""
         case Error(message=message):
-            return f"{ToolSchema.violation_keyword(message)}/{ToolSchema.violation_path(message)}"
+            return violation(message)
 
 
 def want_text(record):
@@ -125,7 +130,7 @@ def coercion_text(record):
         case Success(value=value):
             return encoded(value)
         case Error(message=message):
-            return f"{ToolSchema.violation_keyword(message)}/{ToolSchema.violation_path(message)}"
+            return violation(message)
 
 
 def coercion_want(record):
@@ -279,7 +284,7 @@ def truncated_text(tools, wire):
         case Success(value=step):
             return f"parsed {toString(len(step.calls))}"
         case Error(message=message):
-            return f"{ToolSchema.violation_keyword(message)}/{ToolSchema.violation_path(message)}"
+            return violation(message)
 
 
 # Masked sampling: a schema-invalid call is unsamplable.
@@ -311,9 +316,19 @@ def completed_enum_call(tools, text):
             return False
 
 
+def case_tokens(record):
+    """The fixture case's token texts."""
+    return texts_of(unwrap_or(jsonField(record, "tokens"), JsonNull))
+
+
+def case_constraint(tools, record):
+    """The constraint a server installs: the case's tokens under `tools`."""
+    return ToolConstrain.Constrain(tools, case_tokens(record), toFloat32(0.0) - toFloat32(exp(1000.0)))
+
+
 def constrain_case(tools, record, i):
-    tokens = texts_of(unwrap_or(jsonField(record, "tokens"), JsonNull))
-    constraint = ToolConstrain.Constrain(tools, tokens, toFloat32(0.0) - toFloat32(exp(1000.0)))
+    tokens = case_tokens(record)
+    constraint = case_constraint(tools, record)
     started = spelled(tokens, ints_of(unwrap_or(jsonField(record, "prefix"), JsonNull)))
     return [
         Check.equal(f"target[{i}]", walked(tools, constraint, record, started), want_fingerprint(record)),
@@ -676,8 +691,7 @@ def logits_processor_cases():
 
 
 def processor_case(tools, record, i):
-    tokens = texts_of(unwrap_or(jsonField(record, "tokens"), JsonNull))
-    constraint = ToolConstrain.Constrain(tools, tokens, toFloat32(0.0) - toFloat32(exp(1000.0)))
+    constraint = case_constraint(tools, record)
     ids = ints_of(unwrap_or(jsonField(record, "prefix"), JsonNull))
     machine = machine_after(tools, ToolConstrain.decode(constraint, ids))
     scores = mapList(toList(range(len(constraint.vocabulary))), lambda k: corpus_score(record, k))
@@ -950,12 +964,17 @@ def checkpoint_conversion_cases():
     ]
 
 
-def checked_device_cases(cfg):
-    match run_device_cases(cfg):
+def guarded_cases(label, run):
+    """A run's check list, or one failed case naming the run's label."""
+    match run():
         case Success(value=checks):
             return checks
         case Error(message=message):
-            return [Check.failed("model.device", message)]
+            return [Check.failed(label, message)]
+
+
+def checked_device_cases(cfg):
+    return guarded_cases("model.device", lambda: run_device_cases(cfg))
 
 
 def run_device_cases(cfg):
@@ -1065,11 +1084,7 @@ def public_greedy(model, logits):
 
 
 def model_interface_cases(model):
-    match run_model_interfaces(model):
-        case Success(value=checks):
-            return checks
-        case Error(message=message):
-            return [Check.failed("model.interfaces", message)]
+    return guarded_cases("model.interfaces", lambda: run_model_interfaces(model))
 
 
 def run_model_interfaces(model):

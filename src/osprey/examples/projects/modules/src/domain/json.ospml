@@ -20,10 +20,12 @@ signature JsonApi
     members : List<string> -> string
     append : string -> string -> string
     validArray : string -> int -> (int -> int -> int -> bool) -> bool
+    everyRow : int -> int -> (int -> bool) -> bool
     obj : string -> string
     arr : string -> string
     error : string -> string
     getOr : string -> string -> string -> string
+    scalar : int -> string -> string
 
 module Json : JsonApi
     controlEscape code =
@@ -94,6 +96,14 @@ module Json : JsonApi
                 valid = count <= limit && rows doc 0 count
                 freed = jsonFree doc ?: 0
                 valid
+
+    // A field of an already-parsed document, empty when the document lacks it.
+    scalar doc path = jsonGet doc path ?: ""
+
+    // Every row index below `count` accepted by `row`: the loop `validArray` folds.
+    everyRow index count row = match index >= count
+        true => true
+        false => row index && everyRow (satAdd index 1) count row
 
     // Scalar-only projection used by the browser model boundary. Documents
     // are always freed here, so consumers cannot accidentally retain handles.

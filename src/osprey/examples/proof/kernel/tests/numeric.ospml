@@ -10,6 +10,7 @@ import proof
     Const App Lam BVar NatLit Natural NumericReduced NoNumericRule Decl Definition Constructor Ctor Recursor Rule Env Succ Zero
 
 import proof::Fixtures
+import prooftests::Support
 
 (** Exact numeric reductions and forged/malformed controls. Implements [PROOF-KERNEL-THEORY]. *)
 module NumericTests
@@ -60,7 +61,7 @@ module NumericTests
         allowed (env, "two successors exceed the intervening value", successor (successor (small 2)), small 3, "false")
         allowed (env, "successor of zero exceeds zero", successor (small 0), small 0, "false")
 
-    beta (value) = App (Lam "n" (Const "Nat" []) (App (Const "Nat.succ" []) (BVar 0))) value
+    beta (value) = App (Lam "n" (Const "Nat" []) (Support::applied ("Nat.succ"))) value
     identity (value) = App (Lam "n" (Const "Nat" []) (BVar 0)) value
     successor (value) = App (Const "Nat.succ" []) value
     multiplied (left, right) = App (App (Const "Nat.mul" []) left) right

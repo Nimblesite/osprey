@@ -34,15 +34,15 @@ def strlist_at(xs, i):
     return unwrap_or(listGet(xs, i), [])
 
 
+def field_at(p_tables, r_tables, f_tables, k):
+    """Rouge type `k`'s precision, recall and fmeasure tables, named for its tag."""
+    return Field(p=unwrap_or(listGet(p_tables, k), []), r=unwrap_or(listGet(r_tables, k), []), f=unwrap_or(listGet(f_tables, k), []), name=unwrap_or(listGet(ROUGE_TYPES, k), ""))
+
+
 def field_of(k):
-    if k == 0:
-        return Field(p=Expected.rouge1_p, r=Expected.rouge1_r, f=Expected.rouge1_f, name="rouge1")
-    elif k == 1:
-        return Field(p=Expected.rouge2_p, r=Expected.rouge2_r, f=Expected.rouge2_f, name="rouge2")
-    elif k == 2:
-        return Field(p=Expected.rougeL_p, r=Expected.rougeL_r, f=Expected.rougeL_f, name="rougeL")
-    else:
-        return Field(p=Expected.rougeLsum_p, r=Expected.rougeLsum_r, f=Expected.rougeLsum_f, name="rougeLsum")
+    return field_at([Expected.rouge1_p, Expected.rouge2_p, Expected.rougeL_p, Expected.rougeLsum_p],
+                    [Expected.rouge1_r, Expected.rouge2_r, Expected.rougeL_r, Expected.rougeLsum_r],
+                    [Expected.rouge1_f, Expected.rouge2_f, Expected.rougeL_f, Expected.rougeLsum_f], k)
 
 
 def zero_scored():
@@ -64,10 +64,13 @@ def rouge_scores(i):
     return RougeScorer.score(scorer, str_at(Expected.ROUGE_TARGET, i), str_at(Expected.ROUGE_PRED, i))
 
 
+def rouge_fields(i, field, scores):
+    """Every rouge type's precision, recall and fmeasure for one case."""
+    return fold(range(4), [], lambda acc, k: listConcat(acc, type_checks(i, field(k), unwrap_or(listGet(scores, k), zero_scored()))))
+
+
 def rouge_case(i):
-    scores = rouge_scores(i)
-    return fold(range(4), [], lambda acc, k: listConcat(acc, type_checks(
-        i, field_of(k), unwrap_or(listGet(scores, k), zero_scored()))))
+    return rouge_fields(i, field_of, rouge_scores(i))
 
 
 def rouge_cases():
@@ -80,31 +83,26 @@ def stem_cases():
         f"stem[{i}]", Stemmer.stem(str_at(Expected.STEM_WORDS, i)), str_at(Expected.STEM_OUT, i))))
 
 
+def token_checks(label, stemmed, want, detail):
+    """Every text tokenized, `stemmed` selecting the stemmed form, against its oracle lists."""
+    return toList(map(range(len(Expected.TOKENIZE_TEXT)), lambda i: Check.truth(
+        f"tokenize.{label}[{i}]", structuralEquals(Tokenize.tokenize(str_at(Expected.TOKENIZE_TEXT, i), stemmed), strlist_at(want, i)), detail)))
+
+
 def tokenize_cases():
-    n = len(Expected.TOKENIZE_TEXT)
-    plain = toList(map(range(n), lambda i: Check.truth(
-        f"tokenize.plain[{i}]", structuralEquals(Tokenize.tokenize(str_at(Expected.TOKENIZE_TEXT, i), False), strlist_at(Expected.TOKENIZE_PLAIN, i)), "plain tokens")))
-    stem = toList(map(range(n), lambda i: Check.truth(
-        f"tokenize.stem[{i}]", structuralEquals(Tokenize.tokenize(str_at(Expected.TOKENIZE_TEXT, i), True), strlist_at(Expected.TOKENIZE_STEM, i)), "stemmed tokens")))
-    return listConcat(plain, stem)
+    return listConcat(token_checks("plain", False, Expected.TOKENIZE_PLAIN, "plain tokens"),
+                      token_checks("stem", True, Expected.TOKENIZE_STEM, "stemmed tokens"))
 
 
 def multi_field(k):
-    if k == 0:
-        return Field(p=Expected.MULTI_rouge1_p, r=Expected.MULTI_rouge1_r, f=Expected.MULTI_rouge1_f, name="rouge1")
-    elif k == 1:
-        return Field(p=Expected.MULTI_rouge2_p, r=Expected.MULTI_rouge2_r, f=Expected.MULTI_rouge2_f, name="rouge2")
-    elif k == 2:
-        return Field(p=Expected.MULTI_rougeL_p, r=Expected.MULTI_rougeL_r, f=Expected.MULTI_rougeL_f, name="rougeL")
-    else:
-        return Field(p=Expected.MULTI_rougeLsum_p, r=Expected.MULTI_rougeLsum_r, f=Expected.MULTI_rougeLsum_f, name="rougeLsum")
+    return field_at([Expected.MULTI_rouge1_p, Expected.MULTI_rouge2_p, Expected.MULTI_rougeL_p, Expected.MULTI_rougeLsum_p],
+                    [Expected.MULTI_rouge1_r, Expected.MULTI_rouge2_r, Expected.MULTI_rougeL_r, Expected.MULTI_rougeLsum_r],
+                    [Expected.MULTI_rouge1_f, Expected.MULTI_rouge2_f, Expected.MULTI_rougeL_f, Expected.MULTI_rougeLsum_f], k)
 
 
 def multi_case(i):
     scorer = RougeScorer.RougeScorer(rouge_types=ROUGE_TYPES, use_stemmer=False, split_summaries=False)
-    scores = RougeScorer.score_multi(scorer, strlist_at(Expected.MULTI_TARGETS, i), str_at(Expected.MULTI_PRED, i))
-    return fold(range(4), [], lambda acc, k: listConcat(acc, type_checks(
-        i, multi_field(k), unwrap_or(listGet(scores, k), zero_scored()))))
+    return rouge_fields(i, multi_field, RougeScorer.score_multi(scorer, strlist_at(Expected.MULTI_TARGETS, i), str_at(Expected.MULTI_PRED, i)))
 
 
 def multi_cases():

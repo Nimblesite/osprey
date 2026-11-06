@@ -13,8 +13,7 @@ unicodeBodyCase () =
     body = Json::arr (Json::obj ("\"id\":101,\"number\":42,\"title\":\"Unicode\",\"user\":{\"login\":\"alice\"},\"comments\":0," + Json::strField "body" (expected + "extra")))
     loaded = App::dispatch waiting.model (Support::http waiting.model.pending 200 body "")
     envelope = App::envelope loaded
-    check "description keeps 2000 complete Unicode scalars" expected (Support::projected envelope "view.items[0].body")
-    check "description envelope remains valid JSON" (Model::encode loaded.model) (Support::projected envelope "model")
+    Support::each [Support::it "description keeps 2000 complete Unicode scalars" expected (Support::projected envelope "view.items[0].body"), Support::it "description envelope remains valid JSON" (Model::encode loaded.model) (Support::projected envelope "model")]
 
 unicodeSearchCase () =
     loaded = Support::loaded ()
@@ -28,8 +27,6 @@ unicodeNoteCase () =
     edited = App::dispatch selected.model (TriageSupport::edit "note" "101" expected)
     restored = Storage::restore (Model::initial ()) (Model::snapshot edited.model)
     rejected = App::dispatch edited.model (TriageSupport::edit "note" "101" (expected + "x"))
-    check "2000 Unicode scalars fit the note limit" "" edited.model.error
-    check "Unicode note reaches the host intact" expected (Support::projected (App::envelope edited) "view.detail.note")
-    check "Unicode notes survive cache validation" true restored.valid
+    Support::each [Support::it "2000 Unicode scalars fit the note limit" "" edited.model.error, Support::it "Unicode note reaches the host intact" expected (Support::projected (App::envelope edited) "view.detail.note")]
+    Support::each [Support::it "Unicode notes survive cache validation" "true" (toString (restored.valid)), Support::it "overlong note reports its limit" "true" (toString (contains rejected.model.error "2000"))]
     check "overlong notes are rejected without losing the saved note" edited.model.annotations rejected.model.annotations
-    check "overlong note reports its limit" true (contains rejected.model.error "2000")

@@ -139,7 +139,7 @@ module Lessons
         Success doc => checked (doc, Doc::text (doc, "slug"))
 
     checked (doc, slug) = match header (doc, slug)
-        "" => gathered (doc, slug, (foldList (Doc::items (Doc::field (doc, "blocks")), { at = 0, done = Gathering [] }, \(walk, item) => { at = satAdd walk.at 1, done = gather (walk.done, slug, item, walk.at) })).done)
+        "" => gathered (doc, slug, (foldList (Doc::fieldItems (doc, "blocks"), { at = 0, done = Gathering [] }, \(walk, item) => { at = satAdd walk.at 1, done = gather (walk.done, slug, item, walk.at) })).done)
         problem => Error(message = problem)
 
     gather (done, slug, item, at) = match done
@@ -270,7 +270,7 @@ module Catalogues
     problem doc = Lessons::firstOf [
         format doc,
         slugsProblem (Doc::texts (doc, "lessons")),
-        stagesProblem (mapList (Doc::items (Doc::field (doc, "stages")), \item => stage item)),
+        stagesProblem (mapList (Doc::fieldItems (doc, "stages"), \item => stage item)),
     ]
 
     format doc = match Doc::number (doc, "format") == 1
@@ -289,5 +289,5 @@ module Catalogues
     export read source = match jsonDecode source
         Error _ => Error(message = "the catalogue is not JSON")
         Success doc => match problem doc
-            "" => Success(value = Catalogue(catalogueStages = mapList (Doc::items (Doc::field (doc, "stages")), \item => stage item), catalogueSlugs = Doc::texts (doc, "lessons")))
+            "" => Success(value = Catalogue(catalogueStages = mapList (Doc::fieldItems (doc, "stages"), \item => stage item), catalogueSlugs = Doc::texts (doc, "lessons")))
             found => Error(message = found)

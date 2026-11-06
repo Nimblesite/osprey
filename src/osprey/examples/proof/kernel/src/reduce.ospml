@@ -441,31 +441,17 @@ module Reduce
             [other, ...others] => conversion (env, context, first, other, proofs) && allConvert (env, context, rest, others, proofs)
 
     normal (env, context, left, right, proofs) = match left
-        Sort u => sortEq (u, right)
-        BVar i => varEq (i, right)
-        Const a la => constEq (a, la, right)
         App f a => appEq (env, context, f, a, right, proofs)
         Lam x a f => lamEq (env, context, x, a, f, right, proofs)
         Pi x a f => piEq (env, context, x, a, f, right, proofs)
         Let x t v b => false
         Proj family index target => projectionEq (env, context, family, index, target, right, proofs)
         NatLit value => naturalEqual (env, context, value, right, proofs)
+        other => Terms::equal (other, right)
 
     projectionEq (env, context, family, index, target, right, proofs) = match right
         Proj other field value => family == other && index == field && conversion (env, context, target, value, proofs)
         Lam name domain body => eta (env, context, name, domain, body, Proj family index target, proofs)
-        other => false
-
-    sortEq (u, right) = match right
-        Sort v => Levels::equal u v
-        other => false
-
-    varEq (i, right) = match right
-        BVar j => i == j
-        other => false
-
-    constEq (a, la, right) = match right
-        Const b lb => a == b && Terms::equalLevels (la, lb)
         other => false
 
     appEq (env, context, f, a, right, proofs) = match right
