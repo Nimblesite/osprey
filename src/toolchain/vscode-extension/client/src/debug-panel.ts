@@ -75,6 +75,14 @@ export interface DebugNode {
   variable?: VarInfo;
 }
 
+/** An "info" node with a label, one-line description, and icon. */
+const infoNode = (label: string, description: string, icon: string): DebugNode => ({
+  kind: "info",
+  label,
+  description,
+  icon,
+});
+
 /** "Program" section: source, compiled binary, and live state. */
 export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
   const stateLabel: Record<DebugState, string> = {
@@ -82,29 +90,12 @@ export function buildProgramNodes(snapshot: DebugSnapshot): DebugNode[] {
     running: "Running",
     stopped: "Paused",
   };
-  const nodes: DebugNode[] = [
-    {
-      kind: "info",
-      label: "State",
-      description: stateLabel[snapshot.state],
-      icon: "pulse",
-    },
-  ];
+  const nodes: DebugNode[] = [infoNode("State", stateLabel[snapshot.state], "pulse")];
   if (snapshot.program?.sourceProgram) {
-    nodes.push({
-      kind: "info",
-      label: "Source",
-      description: pathBasename(snapshot.program.sourceProgram),
-      icon: "file-code",
-    });
+    nodes.push(infoNode("Source", pathBasename(snapshot.program.sourceProgram), "file-code"));
   }
   if (snapshot.program?.debugBinary) {
-    nodes.push({
-      kind: "info",
-      label: "Debug binary",
-      description: pathBasename(snapshot.program.debugBinary),
-      icon: "file-binary",
-    });
+    nodes.push(infoNode("Debug binary", pathBasename(snapshot.program.debugBinary), "file-binary"));
   }
   return nodes;
 }

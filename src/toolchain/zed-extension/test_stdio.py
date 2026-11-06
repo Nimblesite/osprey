@@ -114,6 +114,16 @@ class ZedStdio(unittest.TestCase):
         self.assertIn(uri, self.reports, "opening must publish diagnostics")
         return uri
 
+    def change(self, uri, version, source):
+        """Send an edit and refresh symbols, which republishes diagnostics."""
+        self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": version},
+                    "contentChanges": [{"text": source}]})
+        self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+
+    def errors(self, uri):
+        """Error-severity diagnostics currently published for `uri`."""
+        return [d for d in self.reports[uri] if d.get("severity") == 1]
+
     @staticmethod
     def at(uri, line, character):
         return {"textDocument": {"uri": uri},
@@ -128,7 +138,7 @@ class ZedStdio(unittest.TestCase):
         for name, language, source, line, column in cases:
             with self.subTest(language=language):
                 uri = self.document(name, language, source)
-                self.assertFalse([d for d in self.reports[uri] if d.get("severity") == 1])
+                self.assertFalse(self.errors(uri))
                 hover = self.request("textDocument/hover", self.at(uri, line, column))
                 self.assertIn("double", str(hover))
                 definition = self.request("textDocument/definition", self.at(uri, line, column))
@@ -155,11 +165,9 @@ class ZedStdio(unittest.TestCase):
                 self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
                             "contentChanges": [{"text": source.replace("double(3)", "missing(3)").replace("double 3", "missing 3")}]})
                 self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
-                self.assertTrue([d for d in self.reports[uri] if d.get("severity") == 1])
-                self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 3},
-                            "contentChanges": [{"text": source}]})
-                self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
-                self.assertFalse([d for d in self.reports[uri] if d.get("severity") == 1])
+                self.assertTrue(self.errors(uri))
+                self.change(uri, 3, source)
+                self.assertFalse(self.errors(uri))
                 self.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
         self.assertIsNone(self.request("shutdown", None))
         self.notify("exit", None)
@@ -185,7 +193,7 @@ class ZedStdio(unittest.TestCase):
         helper_path = self.root / "src/helper.ospml"
         helper_path.write_text(helper)
         uri = self.document("src/main.osp", "osprey", "let total = increment(3)\n")
-        self.assertFalse([d for d in self.reports[uri] if d.get("severity") == 1])
+        self.assertFalse(self.errors(uri))
         definition = self.request("textDocument/definition", self.at(uri, 0, 15))
         self.assertIn(helper_path.as_uri(), str(definition))
         hover = self.request("textDocument/hover", self.at(uri, 0, 15))
@@ -194,11 +202,9 @@ class ZedStdio(unittest.TestCase):
         self.notify("textDocument/didChange", {"textDocument": {"uri": helper_uri, "version": 2},
                     "contentChanges": [{"text": "increment value = missingName\n"}]})
         self.request("textDocument/documentSymbol", {"textDocument": {"uri": helper_uri}})
-        self.assertTrue([d for d in self.reports[helper_uri] if d.get("severity") == 1], self.reports)
-        self.notify("textDocument/didChange", {"textDocument": {"uri": helper_uri, "version": 3},
-                    "contentChanges": [{"text": helper}]})
-        self.request("textDocument/documentSymbol", {"textDocument": {"uri": helper_uri}})
-        self.assertFalse([d for d in self.reports[helper_uri] if d.get("severity") == 1])
+        self.assertTrue(self.errors(helper_uri), self.reports)
+        self.change(helper_uri, 3, helper)
+        self.assertFalse(self.errors(helper_uri))
         self.assertIn(helper_path.as_uri(), str(self.request(
             "textDocument/definition", self.at(uri, 0, 15))))
 
@@ -225,12 +231,10 @@ class ZedStdio(unittest.TestCase):
             lines[start["line"]] = line[:start["character"]] + edit["newText"] + line[end["character"]:]
         fixed = "".join(lines)
         self.assertNotEqual(fixed, source)
-        self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
-                    "contentChanges": [{"text": fixed}]})
-        self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+        self.change(uri, 2, fixed)
         remaining = [item for item in self.reports[uri] if item.get("code") == "redundant-annotation"]
         self.assertLess(len(remaining), len(warnings), self.reports[uri])
-        self.assertFalse([item for item in self.reports[uri] if item.get("severity") == 1])
+        self.assertFalse(self.errors(uri))
 
 
 if __name__ == "__main__":

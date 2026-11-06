@@ -74,6 +74,13 @@ class MergeResultsTests(unittest.TestCase):
     def snapshot(self, root: Path) -> dict[str, bytes]:
         return {str(p.relative_to(root)): p.read_bytes() for p in root.rglob("*") if p.is_file()}
 
+    def assert_merge_refused(self, destination: Path, update: Path) -> None:
+        """A refused merge must leave every published file untouched."""
+        before = self.snapshot(destination)
+        with self.assertRaises(ValueError):
+            merge(destination, update, {"osprey-gc"})
+        self.assertEqual(self.snapshot(destination), before)
+
     def test_missing_or_invalid_timing_refuses_the_merge_before_any_write(self) -> None:
         for result in (None, {}, {"command": "osprey-gc", "mean": 0},
                        {"command": "osprey-gc", **RecordedTimingTests.TIMING, "mean": float("nan")}):
@@ -81,10 +88,7 @@ class MergeResultsTests(unittest.TestCase):
                 destination, update = self.fixture(Path(directory))
                 if result is not None:
                     (update / "hf/fib.json").write_text(json.dumps({"results": [result]}))
-                before = self.snapshot(destination)
-                with self.assertRaises(ValueError):
-                    merge(destination, update, {"osprey-gc"})
-                self.assertEqual(self.snapshot(destination), before)
+                self.assert_merge_refused(destination, update)
 
     def test_incompatible_skip_cannot_replace_a_published_measurement(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -100,10 +104,7 @@ class MergeResultsTests(unittest.TestCase):
             with (update / "raw.jsonl").open("a") as raw:
                 raw.write('{"case":"sort","lang":"osprey-gc","status":"ok","rss":20}\n')
             (update / "hf/sort.json").write_text("{broken")
-            before = self.snapshot(destination)
-            with self.assertRaises(ValueError):
-                merge(destination, update, {"osprey-gc"})
-            self.assertEqual(self.snapshot(destination), before)
+            self.assert_merge_refused(destination, update)
 
     def test_unmeasured_rss_keeps_the_last_peak_when_timing_is_replaced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -334,15 +335,20 @@ class HarnessPublicationTests(unittest.TestCase):
             self.assertNotIn("osprey", data["fib"])
             self.assertEqual(present_langs(data), ["rust"])
 
+    def codon_fixture(self, root: Path, value: int) -> tuple[Path, dict[str, str]]:
+        """Benchmark fixture whose codon case runs `value`, with a codon that prints it."""
+        bench = self.fixture(root)
+        self.compiler(root)
+        (bench / "cases/fib/fib.codon").write_text(f"print({value})\n")
+        tools = self.timing_tools(root)
+        self.executable(root / "tools/codon", '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\n'
+                        f'printf "#!/bin/sh\\nprintf {value}" > "$2"\nchmod +x "$2"\n')
+        return bench, tools
+
     def test_selected_column_is_timed_and_every_other_column_keeps_its_record(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            bench = self.fixture(root)
-            self.compiler(root)
-            (bench / "cases/fib/fib.codon").write_text("print(42)\n")
-            tools = self.timing_tools(root)
-            self.executable(root / "tools/codon", '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\n'
-                            'printf "#!/bin/sh\\nprintf 42" > "$2"\nchmod +x "$2"\n')
+            bench, tools = self.codon_fixture(root, 42)
             before = json.loads((bench / "results/results.json").read_text())["cases"]["fib"]["rust"]
             result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -361,12 +367,7 @@ class HarnessPublicationTests(unittest.TestCase):
     def test_wrong_codon_output_publishes_nothing(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            bench = self.fixture(root)
-            self.compiler(root)
-            (bench / "cases/fib/fib.codon").write_text("print(41)\n")
-            tools = self.timing_tools(root)
-            self.executable(root / "tools/codon", '#!/bin/sh\nwhile [ "$1" != "-o" ]; do shift; done\n'
-                            'printf "#!/bin/sh\\nprintf 41" > "$2"\nchmod +x "$2"\n')
+            bench, tools = self.codon_fixture(root, 41)
             before = MergeResultsTests().snapshot(bench / "results")
             result = self.run_harness(bench, {**tools, "BENCH_LANGS": "codon"})
             self.assertNotEqual(result.returncode, 0)

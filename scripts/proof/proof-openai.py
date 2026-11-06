@@ -220,18 +220,15 @@ def classical_choice_shape(universe):
 
 def approved_axiom(axiom, names, levels):
     name, parameters = names[axiom["name"]], axiom["levelParams"]
+    shapes = {"Quot.sound": quot_sound_shape, "Classical.choice": classical_choice_shape}
     if name == "propext" and not parameters:
-        one = next((i for i, row in levels.items() if row == {"il": i, "succ": 0}), None)
-        if one is not None:
-            return propext_shape(one)
-    if name == "Quot.sound" and len(parameters) == 1:
+        universe = next((i for i, row in levels.items() if row == {"il": i, "succ": 0}), None)
+    elif name in shapes and len(parameters) == 1:
         universe = next((i for i, row in levels.items() if row == {"il": i, "param": parameters[0]}), None)
-        if universe is not None:
-            return quot_sound_shape(universe)
-    if name == "Classical.choice" and len(parameters) == 1:
-        universe = next((i for i, row in levels.items() if row == {"il": i, "param": parameters[0]}), None)
-        if universe is not None:
-            return classical_choice_shape(universe)
+    else:
+        universe = None
+    if universe is not None:
+        return propext_shape(universe) if name == "propext" else shapes[name](universe)
     raise ValueError("unapproved axiom or universe")
 
 

@@ -423,16 +423,20 @@ class CheckerTests(CoverageTestCase):
         fixture.write_spec({"demo": {"report": own_report("demo", 4, 4)}})
         self.assertEqual(fixture.collect().returncode, 0)
 
+    def barrier_fixture(self, names, members):
+        """Every package measures 9/10 and waits for each of `members` to overlap."""
+        fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
+        fixture.write_spec({name: {
+            "report": own_report(name, 9, 10),
+            "barrier": members if name in members else [],
+        } for name in names})
+        return fixture
+
     def test_configured_pool_bounds_actual_collection_overlap(self):
         names = ["demo", *(f"peer{i}" for i in range(18))]
         for count, expected_exit in ((5, 1), (4, 0)):
             with self.subTest(required_overlap=count):
-                fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
-                barrier = names[:count]
-                fixture.write_spec({name: {
-                    "report": own_report(name, 9, 10),
-                    "barrier": barrier if name in barrier else [],
-                } for name in names})
+                fixture = self.barrier_fixture(names, names[:count])
                 with patch.dict(os.environ, {"OSPREY_PACKAGE_JOBS": "4"}):
                     result = fixture.collect()
                 self.assert_exit(result, expected_exit)
@@ -446,11 +450,7 @@ class CheckerTests(CoverageTestCase):
         # are the first worker_count of them; every later suite still runs.
         checker = runpy.run_path(str(ROOT / "scripts/packages/package_coverage.py"))
         overlapping = names[: checker["worker_count"](names)]
-        fixture = self.fixture({name: {"sources": {"src/lib.py": py_source(10)}} for name in names})
-        fixture.write_spec({
-            name: {"report": own_report(name, 9, 10), "barrier": overlapping if name in overlapping else []}
-            for name in names
-        })
+        fixture = self.barrier_fixture(names, overlapping)
         result = fixture.collect()
         self.assert_exit(result, 0)
         self.assertTrue((fixture.reports / "demo.json").is_file())

@@ -32,8 +32,7 @@ class ProjectTests(CoverageTestCase):
                             apps={"workbench": {"sources": {"src/lib.py": py_source(10)}}})
 
     def test_apps_project_is_gated_at_the_90_floor(self):
-        fixture = self.fixture({"demo": {"sources": {"src/lib.py": py_source(10)}}},
-                               apps={"workbench": {"sources": {"src/lib.py": py_source(10)}}})
+        fixture = self.two_projects()
         fixture.write_report("demo", own_report("demo", 9, 10))
         for covered, code in ((9, 0), (8, 1)):
             with self.subTest(covered=covered):
