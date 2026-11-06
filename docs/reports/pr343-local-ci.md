@@ -13,8 +13,8 @@ pass on the HEAD that will be pushed. Every push rule in AGENTS.md still applies
 | Rust workspace (packages) | `make _test_rust_shard RUST_SHARD=packages` | OspreyCodex | [ ] |
 | Package source coverage | `make _check_packages && make _test_packages` | OspreyCodex | [ ] |
 | Package manager (gc, arc) | `make _test_registry REGISTRY_MEMORY=gc` and `=arc` | OspreyCodex | [ ] |
-| Python application ports | `make _test_python_app_ports` | OspreyCodex | [ ] |
-| C runtime | `make -j2 _test_c_runtime && make _test_hunt_mock` | OspreyCodex | [ ] |
+| Python application ports | `make _test_python_app_ports` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
+| C runtime | `make -j2 _test_c_runtime && make _test_hunt_mock` | OspreyCodex | [x] pi deepseek-flash 2026-11-06, verified log |
 | Language corpus (gc, arc) | `make _conformance-gc` and `make _conformance-arc` | pi deepseek-flash | [ ] |
 | WebAssembly target | `make _test_wasm_goldens` | pi deepseek-flash | [ ] |
 | Website E2E | `cd src/toolchain/website && npm test`; `make -C docs/book check check-examples` | pi deepseek-flash | [ ] |
