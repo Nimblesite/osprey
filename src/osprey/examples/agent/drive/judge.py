@@ -25,24 +25,30 @@ def main(env_file, outline_file, verification):
     return 0 if answer == "PASS" else 1
 
 
-def ui_evidence(records):
-    """Actual native UI outlines and executable files, not a manufactured transcript."""
+def checked_ui_records(root):
+    """Require completed real-window traces and actual captured images."""
     import hashlib
-    root = pathlib.Path(records)
-    live, replay = (root / "live.log").read_text(), (root / "replay.log").read_text()
-    assert "self-test passed:" in live and "self-test passed:" in replay, "UI framework failed"
-    assert sum(line.startswith("ok ") for line in live.splitlines()) >= 77, "incomplete UI script"
-    assert sum(line.startswith("ok ") for line in replay.splitlines()) >= 32, "incomplete replay script"
+    logs = {name: (root / (name + ".log")).read_text() for name in ["preflight", "live", "replay"]}
+    for name, minimum in [("preflight", 26), ("live", 77), ("replay", 32)]:
+        assert "self-test passed:" in logs[name], f"{name} UI framework failed"
+        assert sum(line.startswith("ok ") for line in logs[name].splitlines()) >= minimum, f"incomplete {name}"
     shots = sorted((root / "coding").glob("*.png"))
     assert len(shots) >= 12 and len(list((root / "replay").glob("*.png"))) >= 5, "missing screenshots"
+    return {"framework": logs, "screenshots": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in shots}}
+
+
+def ui_evidence(records):
+    """Actual native UI outlines and executable files, not a manufactured transcript."""
+    root = pathlib.Path(records)
     return {"task": "Fix add and mean without removing tests, then implement median with new tests. "
                     "Median must support odd/even/single/float inputs without mutating the input.",
             "code": (root / "work/calc-project/calc/__init__.py").read_text(),
             "tests": (root / "work/calc-project/test_calc.py").read_text(),
             "ui": (root / "coding/qwen-restored.access.txt").read_text(),
+            "project_before": (root / "project-before.log").read_text(),
+            "original_tests": (root / "original-test_calc.py").read_text(),
             "project_test_output": (root / "project-tests.log").read_text(),
-            "framework": {"live": live, "replay": replay},
-            "screenshots": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in shots}}
+            **checked_ui_records(root)}
 
 
 async def judge_local(payload):

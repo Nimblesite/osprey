@@ -44,6 +44,10 @@ os_goldens=${OSPREY_AGENT_GOLDENS:-"$here/goldens/macos-$(sw_vers -productVersio
 if [ "$mode" = qwen ]; then
     # The ui harness owns the real Osprey server and weights; no cloud key or HTTP double is read.
     cp "$project/test_calc.py" "$records/original-test_calc.py"
+    if (cd "$project" && python3 test_calc.py) > "$records/project-before.log" 2>&1; then
+        echo "FAILED: the starting project must have the two real defects" >&2; exit 1
+    fi
+    grep -q '^FAILED (failures=2)$' "$records/project-before.log" || { cat "$records/project-before.log"; exit 1; }
     mkdir -p "$work/store"
     printf '{"keys":[],"model":"osprey/qwen3.8:27b","effort":""}' > "$work/store/providers.json"
     python3 - "$here/self-test/coding.json" "$work" <<'SCRIPT'
