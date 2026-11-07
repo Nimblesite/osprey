@@ -273,7 +273,8 @@ def prefill(model, cache, tokens) -> Result[Next, str]:
 
 def prefill_by(model, cache, tokens, chunk) -> Result[Next, str]:
     """`prefill` stacking `chunk` tokens per pass: each pass reads every weight once
-    for all its rows, and only a mixer's cache update steps a position at a time."""
+    for all its rows, the DeltaNet steps its positions inside one kernel, and only
+    attention's cache update steps a position at a time ([LLM-STATE-OWNED])."""
     if chunk <= 0:
         return Error(message="prefill: chunk must be positive")
     else:
@@ -286,25 +287,77 @@ def prefilled(model, cache, tokens, chunk):
     if len(tokens) == 0:
         return Error(message="prefill: no tokens")
     else:
-        first = passed(model, cache, tokens, 0, chunk)
-        return fold(range(1, (len(tokens) + chunk - 1) // chunk), first, lambda acc, c: repassed(model, tokens, acc, c, chunk))
+        passes = (len(tokens) + chunk - 1) // chunk
+        ready = fold(range(0, passes - 1), Success(value=cache), lambda acc, c: repassed(model, tokens, acc, c, chunk))
+        match ready:
+            case Error(message=message):
+                return Error(message=message)
+            case Success(value=last):
+                return passed(model, last, tokens, (passes - 1) * chunk, chunk)
 
 
 def repassed(model, tokens, acc, c, chunk):
+    """The cache after pass `c`, given the passes before it: nothing reads its logits,
+    so only the layers run and the vocabulary head waits for the last pass."""
     match acc:
-        case Error():
-            return acc
-        case Success(value=next):
-            return passed(model, next.walk.cache, tokens, c * chunk, chunk)
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=cache):
+            return walked(model, cache, tokens, c * chunk, chunk)
+
+
+def walked(model, cache, tokens, first, chunk):
+    """The cache after one pass over the tokens from `first`, at most `chunk` of them."""
+    count = span(tokens, first, chunk)
+    match embedded(model, tokens, first, count):
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=x):
+            match forward(model, cache, x, count):
+                case Error(message=message):
+                    return Error(message=message)
+                case Success(value=walk):
+                    return Success(value=walk.cache)
+
+
+def span(tokens, first, chunk):
+    """How many tokens a pass from `first` takes: `chunk`, or what is left."""
+    return chunk if first + chunk <= len(tokens) else len(tokens) - first
+
+
+def embedded(model, tokens, first, count) -> Result[GpuBuffer[float32], str]:
+    """The `[count, hidden]` embeddings of the tokens from `first`."""
+    rows = fold(range(0, count), Success(value=[]), lambda acc, t: embedded_row(model, tokens, first + t, acc))
+    match rows:
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=stack):
+            return Success(value=stacked(stack, model.config.hidden_size))
+
+
+def embedded_row(model, tokens, index, acc):
+    match acc:
+        case Error(message=message):
+            return Error(message=message)
+        case Success(value=rows):
+            match listGet(tokens, index):
+                case Success(value=token):
+                    return Success(value=listConcat(rows, [embed(model, token)]))
+                case Error(message=message):
+                    return Error(message=f"prefill: token {index}: {toString(message)}")
 
 
 def passed(model, cache, tokens, first, chunk):
-    """One prefill pass over the tokens from `first`, at most `chunk` of them."""
-    count = chunk if first + chunk <= len(tokens) else len(tokens) - first
+    """The last prefill pass over the tokens from `first`: the layers, then the
+    vocabulary head at the last row."""
+    count = span(tokens, first, chunk)
     hidden = model.config.hidden_size
-    x = stacked(toList(map(range(count), lambda t: embed(model, unwrap_or(listGet(tokens, first + t), 0)))), hidden)
-    match forward(model, cache, x, count):
-        case Success(value=walk):
-            return finished(model, row_at(x, count - 1, count, hidden, model.shapes.hidden), Walk(hidden=row_at(walk.hidden, count - 1, count, hidden, model.shapes.hidden), cache=walk.cache, stages=walk.stages))
+    match embedded(model, tokens, first, count):
         case Error(message=message):
             return Error(message=message)
+        case Success(value=x):
+            match forward(model, cache, x, count):
+                case Success(value=walk):
+                    return finished(model, row_at(x, count - 1, count, hidden, model.shapes.hidden), Walk(hidden=row_at(walk.hidden, count - 1, count, hidden, model.shapes.hidden), cache=walk.cache, stages=walk.stages))
+                case Error(message=message):
+                    return Error(message=message)

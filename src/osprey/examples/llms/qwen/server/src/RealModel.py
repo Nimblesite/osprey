@@ -10,8 +10,8 @@ through `Qwen3_5Gguf`; a missing or invalid file is the startup error, never a s
 500. A `Session` is the handle: the model, the tokenizer, and a one-slot channel holding
 the `State` of the cache: the tokens it has seen, the logits after the last of them and
 the checkpoints kept behind it. A step takes the state out of the slot, feeds only the
-tokens the history adds past what the cache holds, and puts the state back, so a turn
-costs one forward pass per token and the next request starts where this one ended; the
+tokens the history adds past what the cache holds in one prefill ([LLM-PREFILL]), and
+puts the state back, so the next request starts where this one ended; the
 slot is the one place the server mutates, and a request waits on it for the request
 before ([LLM-MODEL-CACHE], [LLM-API-QUEUE]). The KV cache could be cut back but the
 recurrent state cannot, so when a history stops extending the cache (an agent that

@@ -168,12 +168,12 @@ def sigmoid(x) -> GpuBuffer[float32]:
     return must(gpuSigmoid(x))
 
 
-def rsqrt(x: float32) -> float32:
+def rsqrt(x) -> float32:
     """`torch.rsqrt` as the device library's `exp` and `ln` form it."""
     return exp(toFloat32(-0.5) * ln(x))
 
 
-def softplus(x: float32) -> float32:
+def softplus(x) -> float32:
     """`F.softplus(x)`: `ln(1 + exp(x))`."""
     return ln(toFloat32(1.0) + exp(x))
 
@@ -200,6 +200,7 @@ def stacked(rows, width) -> GpuBuffer[float32]:
 
 
 def stacked_span(rows, lo, hi, width):
+    """Rows `[lo, hi)` as one buffer, `hi - lo` at least one: a span of one is that row."""
     if hi - lo == 1:
         return unwrap_or(listGet(rows, lo), zeros(grid(width)))
     else:
@@ -208,5 +209,5 @@ def stacked_span(rows, lo, hi, width):
 
 
 def row_at(x, t, count, width, g) -> GpuBuffer[float32]:
-    """Row `t` of the `[count, width]` buffer `x` (`g` spans `width`): `x` itself when it is one row."""
+    """Row `t` of the `[count, width]` buffer `x` (`g` spans `width`), `0 <= t < count`: `x` itself when it is one row."""
     return x if count == 1 else slice_of(x, t * width, g)

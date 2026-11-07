@@ -33,6 +33,7 @@ def rms_rows(x, w, config, shapes, rows) -> GpuBuffer[float32]:
 
 
 def total(pieces, first, count):
+    """The sum of `count` pieces from `first`, in order."""
     return fold(range(0, count), toFloat32(0.0), lambda a, c: a + at(pieces, wrapAdd(first, c)))
 
 
@@ -42,7 +43,7 @@ def head_scales(x, heads, width, eps):
     return must(gpuMap(heads, lambda h: rsqrt(squares(x, wrapMul(h, width), width) * mean + eps)))
 
 
-def rms_heads(x, w, heads, cells, div, width, eps: float32) -> GpuBuffer[float32]:
+def rms_heads(x, w, heads, cells, div, width, eps) -> GpuBuffer[float32]:
     """`Qwen3_5RMSNorm` over each head of `x`: `w` is `1 + weight`, `width` long."""
     mul = div.mul
     shift = div.shift
@@ -50,7 +51,7 @@ def rms_heads(x, w, heads, cells, div, width, eps: float32) -> GpuBuffer[float32
     return must(gpuMap(cells, lambda i: at(x, i) * at(scales, quot(i, mul, shift)) * at(w, rem(i, mul, shift, width))))
 
 
-def gated(x, z, w, heads, cells, div, width, eps: float32) -> GpuBuffer[float32]:
+def gated(x, z, w, heads, cells, div, width, eps) -> GpuBuffer[float32]:
     """`Qwen3_5RMSNormGated`: each head of `x` normed, times `w`, times `silu(z)`."""
     mul = div.mul
     shift = div.shift
