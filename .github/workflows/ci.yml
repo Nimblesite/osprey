@@ -316,6 +316,28 @@ jobs:
       - name: Dead-code gate (hawk)
         run: make -C src/toolchain hawk
 
+  # [CI-PROGRAMS-COMPILE] Static check on stage 1's compiler: every tracked
+  # Osprey program lowers to LLVM IR, or CI fails.
+  check-programs:
+    name: "Check: every Osprey program compiles"
+    needs: [changes, build]
+    if: ${{ needs.changes.outputs.code == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Osprey toolchain (no rebuild)
+        uses: ./.github/actions/setup-osprey-compiler
+        with:
+          build: "false"
+      - uses: actions/download-artifact@v8
+        with:
+          name: osprey-build
+      - name: Restore artifact permissions
+        run: chmod +x target/release/osprey
+      - name: Every Osprey program compiles
+        run: make _check_programs
+
   # ═══ STAGE 3 ════════════════════════════════════════════════════════════════
   # Every suite, in parallel, each instrumented. None of these rebuilds the
   # compiler: they download stage 1's artifacts.
@@ -414,8 +436,6 @@ jobs:
           name: osprey-build
       - name: Restore artifact permissions
         run: chmod +x target/release/osprey
-      - name: Every Osprey program compiles
-        run: make _check_programs
       - name: Package coverage collection
         run: make _test_packages
       - name: Upload package coverage
@@ -1373,6 +1393,7 @@ jobs:
       - changes
       - build
       - analyse
+      - check-programs
       - test-rust
       - test-packages
       - test-registry-gc

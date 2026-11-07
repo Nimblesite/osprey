@@ -526,10 +526,11 @@ _deslop:
 # [CI-PROGRAMS-COMPILE] [PACKAGE-WORKSPACE] Every tracked Osprey program
 # compiles: each osprey.toml project as a consumer and the editor see it, and
 # every other .osp, .ospml or Python-flavour .py on its own, 16 at a time.
-# failscompilation/ programs never count (the book's goldens check their
-# errors). The Osprey script lists each failure with the compiler's message and
+# failscompilation/ and the registry data are left out: each is checked
+# elsewhere (see the script's docstring). The Osprey script lists each failure with the compiler's message and
 # ends on "N programs, F failed"; any F above 0 fails the build.
 .PHONY: _check_programs
+_check_programs: export OSPREY_BIN = $(abspath $(BIN))
 _check_programs:
 	set -o pipefail && $(BIN) scripts/ci/check-programs.py --run --quiet --no-warnings | awk '{print; last = $$0} END {exit last !~ / 0 failed$$/}'
 
