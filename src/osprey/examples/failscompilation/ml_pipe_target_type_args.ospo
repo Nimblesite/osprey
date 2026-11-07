@@ -1,0 +1,4 @@
+// [FLAVOR-ML-GENERICS] A pipe target is a function value, so it cannot take type arguments: write the call instead.
+// osprey: flavor=ml
+id x = x
+print (3 |> id<int>)

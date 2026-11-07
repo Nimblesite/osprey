@@ -1,0 +1,4 @@
+// [FLAVOR-ML-GENERICS] Type parameters belong to a signature, so a binding cannot declare them without one.
+// osprey: flavor=ml
+same<T> x = x
+print (same 3)

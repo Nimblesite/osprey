@@ -515,8 +515,8 @@ _lint: $(EXT_NODE_DEPS)
 	cd $(EXT_DIR) && npm run lint
 
 # _deslop: Code-duplication gate. Fails the build when measured
-# duplication exceeds the ceiling in .deslop.toml (exit 3). Exclusions and the
-# threshold live in that committed config — the single source of truth.
+# duplication exceeds the ceiling in .deslop.toml (exit 3). The ceiling (no exclusions: every file counts)
+# lives in that committed config — the single source of truth.
 # The installer resolves the latest release for both local and hosted CI.
 
 _deslop:

@@ -298,6 +298,7 @@ static int push_entries(DIR *dir, const char *path, OspreyListBuilder *builder) 
 // recurses without a second syscall per entry; "." and ".." never appear. A
 // failure anywhere is NULL with the reason recorded, never a partial list.
 OspreyList *osprey_list_dir(const char *path) {
+  osp_io_error_clear();
   if (path == NULL) {
     osp_io_error_text(OP_LIST_DIR, NULL, "no path");
     return NULL;
@@ -323,6 +324,7 @@ OspreyList *osprey_list_dir(const char *path) {
 // one classification every walker shares. A path that cannot be stated is
 // NULL with the reason recorded, never a guessed kind.
 char *osprey_kind_of(const char *path) {
+  osp_io_error_clear();
   struct stat info;
   if (path == NULL || stat(path, &info) != 0) {
     osp_io_error_set(OP_KIND_OF, path, path == NULL ? EINVAL : errno);
@@ -340,6 +342,7 @@ char *osprey_kind_of(const char *path) {
 // directory at `path` is Success. A failure (a file in the way, permission
 // denied) is -1 with the reason recorded, never silence.
 int64_t osprey_make_dir(const char *path) {
+  osp_io_error_clear();
   if (path == NULL) {
     osp_io_error_set(OP_MAKE_DIR, NULL, EINVAL);
     return -1;
