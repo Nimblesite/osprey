@@ -401,6 +401,12 @@ fn stringAnswerBody() -> string !StringAnswerRecovery = {
     value + "!"
 }
 
+/// Assert one runtime-built managed string, its single handler call, and its length.
+fn managedStringCheck(label, calls, value, expected, width) = checkAll(label, [
+    value == expected,
+    structuralEquals([calls, length(value)], [1, width])
+])
+
 /// A managed continuation answer reaches the caller and owns exactly one
 /// reference: the ARC exit audit sees no survivor. Both the resume value and
 /// the answer are built at runtime, so neither is an immortal literal whose
@@ -417,10 +423,7 @@ fn stringAnswerCase() = {
         stringAnswerBody()
     }
 
-    checkAll("managed continuation answer", [
-        answer == "ready!",
-        structuralEquals([calls, length(answer)], [1, 6])
-    ])
+    managedStringCheck("managed continuation answer", calls, answer, "ready!", 6)
 }
 
 /// SixteenArgumentRecovery locks the largest operation payload the current runtime transports.
@@ -433,6 +436,15 @@ effect SixteenArgumentRecovery {
 fn sixteenArgumentBody() ![SixteenArgumentRecovery, Arith] =
     perform SixteenArgumentRecovery.recover(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16) + 100 
 
+/// Render transported arguments as one bar-separated row so every mailbox position stays visible.
+fn barRow(args) = join(mapList(args, toString), "|")
+
+/// Assert one boundary case's result row plus the full bar-separated row of transported arguments.
+fn boundaryCheck(label, resultRow, observed, expectedRow) = checkAll(label, [
+    resultRow,
+    observed == expectedRow
+])
+
 /// The supported boundary preserves every argument and resumes from the final one.
 fn sixteenArgumentBoundaryCase() = {
     mut calls = 0
@@ -441,16 +453,13 @@ fn sixteenArgumentBoundaryCase() = {
         handle SixteenArgumentRecovery {
             recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 => {
                 calls = calls + 1 
-                observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}"
+                observed = barRow([a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16])
                 resume(a16)
             }
         }
         sixteenArgumentBody()
     }
-    checkAll("sixteen-argument resume boundary", [
-        structuralEquals([result, calls], [116, 1]),
-        observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16"
-    ])
+    boundaryCheck("sixteen-argument resume boundary", structuralEquals([result, calls], [116, 1]), observed, "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16")
 }
 
 /// WideArgumentRecovery reaches past the sixteen slots the mailbox once held.
@@ -479,17 +488,14 @@ fn seventeenArgumentCase() = {
     let result = {
         handle WideArgumentRecovery {
             recover a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17 => {
-                observed = "${a1}|${a2}|${a3}|${a4}|${a5}|${a6}|${a7}|${a8}|${a9}|${a10}|${a11}|${a12}|${a13}|${a14}|${a15}|${a16}|${a17}"
+                observed = barRow([a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15, a16, a17])
                 resume(a17)
             }
         }
         seventeenArgumentBody()
     }
 
-    checkAll("seventeen-argument resume boundary", [
-        result == 17,
-        observed == "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17"
-    ])
+    boundaryCheck("seventeen-argument resume boundary", result == 17, observed, "1|2|3|4|5|6|7|8|9|10|11|12|13|14|15|16|17")
 }
 
 /// Managed and scalar slots past that boundary all arrive, and every managed
@@ -507,10 +513,7 @@ fn wideManagedArgumentCase() = {
         wideManagedBody()
     }
 
-    checkAll("wide managed argument transport", [
-        joined == "s11s22s33s44s55s66s77s88s99",
-        structuralEquals([calls, length(joined)], [1, 27])
-    ])
+    managedStringCheck("wide managed argument transport", calls, joined, "s11s22s33s44s55s66s77s88s99", 27)
 }
 
 // Register recovery that resumes the caller with a fallback.
