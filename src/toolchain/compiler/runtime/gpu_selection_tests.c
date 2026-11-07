@@ -189,6 +189,17 @@ static void host_delta_case(void) {
   exact(r1, 6, first);
   void *r2 = osprey_gpu_delta_rule(r1, q, k, v, b, d, 1, 2);
   exact(r2, 6, second); exact(r1, 6, first);
+  // [LLM-PREFILL] Two tokens in one call: the second token's state, then both outputs.
+  float query2[4] = {0.5f, 0.25f, 0.5f, 0.25f}, key2[4] = {1.0f, 2.0f, 1.0f, 2.0f}, value2[4] = {3.0f, 4.0f, 3.0f, 4.0f};
+  float ones2[2] = {1.0f, 1.0f}, both[8] = {-9, -12, -18, -24, 3, 4, -9, -12}, odd[3] = {0};
+  void *q2 = floats_of(query2, 4), *k2 = floats_of(key2, 4), *v2 = floats_of(value2, 4), *b2 = floats_of(ones2, 2);
+  void *d2 = floats_of(ones2, 2), *q3 = floats_of(odd, 3);
+  void *r3 = osprey_gpu_delta_rule(state, q2, k2, v2, b2, d2, 1, 2);
+  exact(r3, 8, both);
+  refused(osprey_gpu_delta_rule(state, q3, k2, v2, b2, d2, 1, 2));
+  refused(osprey_gpu_delta_rule(state, q2, k, v2, b2, d2, 1, 2));
+  osprey_gpu_finalize(q2); osprey_gpu_finalize(k2); osprey_gpu_finalize(v2); osprey_gpu_finalize(b2);
+  osprey_gpu_finalize(d2); osprey_gpu_finalize(q3); osprey_gpu_finalize(r3);
   exact(state, 6, zero6); exact(q, 2, query); exact(k, 2, key); exact(v, 2, value);
   exact(b, 1, beta); exact(d, 1, decay);
   osprey_gpu_finalize(state); osprey_gpu_finalize(q); osprey_gpu_finalize(k);

@@ -717,36 +717,43 @@ QUANT_KERNEL(iq4_xs, iq4_xs_lane, 256, 136)
 QUANT_KERNEL(iq3_s, iq3_s_lane, 256, 110)
 #undef QUANT_KERNEL
 
-// [LLM-DELTA-RULE] One token of the recurrent gated delta rule, fused into one
-// kernel: thread t is value element v = t % dim of head h = t / dim. It decays
-// its column of the [heads, dim, dim] state, recalls through the keys, writes the
-// updated column and reads it out through the queries. `out` holds the new state
-// then the heads * dim outputs, and every product is rounded before its add, as
-// the host oracle in gpu_host.c does.
+// [LLM-DELTA-RULE] `steps` tokens of the recurrent gated delta rule, fused into
+// one kernel ([LLM-PREFILL]): thread t is value element v = t % dim of head
+// h = t / dim and owns column v of the [heads, dim, dim] state outright, so it
+// steps through the tokens with no other thread to wait for. Each step it decays
+// its column, recalls through that token's keys, writes the updated column and
+// reads it out through that token's queries. `out` holds the final state then
+// the steps * heads * dim outputs in token order, and every product is rounded
+// before its add, as the host oracle in gpu_host.c does.
 kernel void osprey_delta_rule(GPU_GLOBAL const float *state GPU_BUFFER(0), GPU_GLOBAL const float *queries GPU_BUFFER(1),
                               GPU_GLOBAL const float *keys GPU_BUFFER(2), GPU_GLOBAL const float *values GPU_BUFFER(3),
                               GPU_GLOBAL const float *beta GPU_BUFFER(4), GPU_GLOBAL const float *decay GPU_BUFFER(5),
                               GPU_GLOBAL float *out GPU_BUFFER(6), GPU_PARAM heads GPU_BUFFER(7),
-                              GPU_PARAM dim GPU_BUFFER(8) GPU_THREAD) {
-    uint t = (uint)GPU_INDEX, d = (uint)dim;
+                              GPU_PARAM dim GPU_BUFFER(8), GPU_PARAM steps GPU_BUFFER(9) GPU_THREAD) {
+    uint t = (uint)GPU_INDEX, d = (uint)dim, cells = (uint)(heads * dim);
     if ((ulong)t >= heads * dim) return;
     uint h = t / d, v = t % d, plane = h * d * d;
-    float fade = decay[h], recalled = 0.0f;
-    for (uint k = 0; k < d; k++) {
-        float kept = state[plane + k * d + v] * fade;
-        float product = kept * keys[h * d + k];
-        recalled = recalled + product;
+    GPU_GLOBAL const float *column = state;
+    for (uint s = 0; s < (uint)steps; s++) {
+        GPU_GLOBAL const float *q = queries + s * cells, *k = keys + s * cells;
+        float fade = decay[s * (uint)heads + h], recalled = 0.0f;
+        for (uint i = 0; i < d; i++) {
+            float kept = column[plane + i * d + v] * fade;
+            float product = kept * k[h * d + i];
+            recalled = recalled + product;
+        }
+        float delta = (values[s * cells + t] - recalled) * beta[s * (uint)heads + h], read = 0.0f;
+        for (uint i = 0; i < d; i++) {
+            float kept = column[plane + i * d + v] * fade;
+            float update = k[h * d + i] * delta;
+            float next = kept + update;
+            out[plane + i * d + v] = next;
+            float product = next * q[h * d + i];
+            read = read + product;
+        }
+        out[(uint)(heads * dim * dim) + s * cells + t] = read;
+        column = out;
     }
-    float delta = (values[t] - recalled) * beta[h], read = 0.0f;
-    for (uint k = 0; k < d; k++) {
-        float kept = state[plane + k * d + v] * fade;
-        float update = keys[h * d + k] * delta;
-        float next = kept + update;
-        out[plane + k * d + v] = next;
-        float product = next * queries[h * d + k];
-        read = read + product;
-    }
-    out[(uint)(heads * dim * dim) + t] = read;
 }
 
 // [LLM-SIGMOID] The logistic function of every element, on the target's native

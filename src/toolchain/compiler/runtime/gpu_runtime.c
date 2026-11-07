@@ -194,13 +194,14 @@ int osprey_gpu_device_sigmoid(void *x, void *out, int64_t count) {
   return settled(osprey_gpu_device_dispatch(&sigmoid), out);
 }
 
-// [LLM-DELTA-RULE] One token of the delta rule as one library-kernel dispatch.
-int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim) {
+// [LLM-DELTA-RULE] `steps` tokens of the delta rule as one library-kernel dispatch.
+int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim, int64_t steps) {
   OspreyGpuDispatch rule = {"osprey_delta_rule", NULL, {{0, NULL, NULL, 0, NULL, 8, NULL, 0, 0}}, 0, (uint64_t)(heads * dim)};
   for (unsigned i = 0; i < 6; i++) buffer_argument(&rule, OSPREY_GPU_INPUT, operands[i]);
   buffer_argument(&rule, OSPREY_GPU_OUTPUT, out);
   scalar_argument(&rule, heads);
   scalar_argument(&rule, dim);
+  scalar_argument(&rule, steps);
   return settled(osprey_gpu_device_dispatch(&rule), out);
 }
 

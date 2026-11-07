@@ -59,7 +59,7 @@ int osprey_gpu_device_matmul(void *left, void *right, void *out, int64_t rows, i
 // library kernel's name; `out` is left on the device.
 int osprey_gpu_device_sigmoid(void *x, void *out, int64_t count);
 void *osprey_gpu_sigmoid(void *x);
-int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim);
+int osprey_gpu_device_delta_rule(void *const operands[6], void *out, int64_t heads, int64_t dim, int64_t steps);
 void *osprey_gpu_delta_rule(void *state, void *queries, void *keys, void *values, void *beta, void *decay, int64_t heads, int64_t dim);
 // The rows one tile of the quantized product kernels covers (QUANT_ROWS in
 // gpu_device_lib.metal), for the dispatch that sizes their grid.

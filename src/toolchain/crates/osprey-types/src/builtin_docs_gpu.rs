@@ -84,8 +84,8 @@ pub(crate) static GPU: &[BuiltinDoc] = &[
     ),
     builtin_doc!(
         "gpuDeltaRule",
-        "One token of the recurrent gated delta rule [LLM-DELTA-RULE], fused into one library kernel: each value element decays its state column, recalls through the keys, writes the updated column and reads it out through the queries, in one fixed order on every backend. The result holds heads x dim x dim state cells, then heads x dim outputs, and feeds the next step as its state.",
-        ["state" => "A previous result, or zeros of its length", "queries" => "dim values per head", "keys" => "dim values per head", "values" => "dim values per head", "beta" => "One value per head", "decay" => "One value per head", "heads" => "The head count", "dim" => "The width of a head"],
+        "The recurrent gated delta rule [LLM-DELTA-RULE] over one or more tokens, fused into one library kernel: each value element owns a state column and, token by token, decays it, recalls through that token's keys, writes the updated column and reads it out through its queries, in one fixed order on every backend. The token count is how many times heads x dim divides the queries. The result holds heads x dim x dim state cells, then heads x dim outputs per token in order, and feeds the next call as its state.",
+        ["state" => "A previous result, or zeros holding at least the state cells", "queries" => "dim values per head per token", "keys" => "dim values per head per token", "values" => "dim values per head per token", "beta" => "One value per head per token", "decay" => "One value per head per token", "heads" => "The head count", "dim" => "The width of a head"],
         "fn showStep(previous, queries, keys, values, beta, decay) = match gpuDeltaRule(previous, queries, keys, values, beta, decay, 48, 128) {\n    Success { value } => print(gpuLength(value))\n    Error { message } => print(message)\n}"
     ),
     builtin_doc!(

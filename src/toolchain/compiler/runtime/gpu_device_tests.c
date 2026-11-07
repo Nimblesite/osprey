@@ -338,7 +338,52 @@ static void shared_file(const QuantCase *c) {
   free(device);
 }
 
+// [LLM-DELTA-RULE] One `steps`-token call's words, host and device, bit for bit:
+// `shape` is {heads, dim, steps}, the operands seeded in [-1, 1).
+static void delta_words(const char *mode, const int64_t shape[3], void *const in[6], float **words) {
+  assert(setenv("OSPREY_GPU", mode, 1) == 0);
+  osp_io_error_clear();
+  void *result = osprey_gpu_delta_rule(in[0], in[1], in[2], in[3], in[4], in[5], shape[0], shape[1]);
+  if (!result) fprintf(stderr, "delta rule: %s\n", osp_io_error());
+  int64_t cells = shape[0] * shape[1], total = cells * shape[1] + shape[2] * cells;
+  assert(result && !osp_io_error() && osprey_gpu_len(result) == total && osprey_gpu_elem_bytes(result) == 4);
+  *words = malloc((size_t)total * sizeof(float));
+  assert(*words);
+  memcpy(*words, osprey_gpu_data(result), (size_t)total * sizeof(float));
+  osprey_gpu_finalize(result);
+}
+
+static void *seeded(int64_t count) {
+  void *b = osprey_gpu_alloc(count, 4);
+  float *xs = osprey_gpu_data(b);
+  for (int64_t i = 0; i < count; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;
+  return b;
+}
+
+// One token and three tokens through the host oracle and the device: the device
+// steps every token inside one dispatch and must write the oracle's words.
+static void delta_parity(int64_t steps) {
+  const int64_t shape[3] = {2, 4, steps}, cells = shape[0] * shape[1];
+  void *in[6] = {seeded(cells * shape[1] + cells), seeded(steps * cells), seeded(steps * cells), seeded(steps * cells),
+                 seeded(steps * shape[0]), seeded(steps * shape[0])};
+  float *host, *device;
+  delta_words("host", shape, in, &host);
+  delta_words(selected, shape, in, &device);
+  int64_t total = cells * shape[1] + steps * cells;
+  for (int64_t i = 0; i < total; i++) {
+    if (memcmp(&host[i], &device[i], 4) != 0)
+      fprintf(stderr, "delta rule parity at %lld of %lld steps: host %a device %a\n", (long long)i, (long long)steps, host[i], device[i]);
+    assert(memcmp(&host[i], &device[i], 4) == 0);
+    checks++;
+  }
+  for (unsigned i = 0; i < 6; i++) osprey_gpu_finalize(in[i]);
+  free(host);
+  free(device);
+}
+
 static void quantized_products(void) {
+  delta_parity(1);
+  delta_parity(3);
   for (size_t i = 0; i < sizeof QUANT_CASES / sizeof QUANT_CASES[0]; i++) {
     const QuantCase *c = &QUANT_CASES[i];
     quant_parity(c->type, c->bytes, c->elements, c->scale_at, c->scales);
@@ -462,19 +507,19 @@ int main(void) {
   compiled_fault();
   quantized_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 24);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
 #endif
   native_float32_rounding();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 25);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 27);
 #endif
   native_byte_transfers();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 26);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 28);
 #endif
   native_float32_products();
 #if defined(OSPREY_GPU_METAL)
-  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 29);
+  if (strcmp(selected, "opencl") != 0) assert(osprey_gpu_metal_completed() == 31);
 #endif
   printf("[ok] device parity: %u checks over binary64 and binary32 products, compiled kernels, reductions, faults, byte transfers and the quantized products\n", checks);
   return 0;
