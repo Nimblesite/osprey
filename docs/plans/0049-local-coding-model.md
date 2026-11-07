@@ -123,6 +123,9 @@ Gate [LLM-MODEL-ORACLE]: all activations within tolerance on host and GPU handle
 
 Gate [LLM-MEMORY]: peak RSS at or under 24 GB at full context, measured by the test (local gate).
 
+- [x] Qwen prefill argument guard (2026-11-08, `13a9cb9a`): zero chunk reproduced SIGBUS with repeated `stacked_span` crash frames; zero/negative chunk regressions now return typed errors. Crash and run evidence: `target/logs/plan0049/transformers-review/qwen-red.ips` and `qwen-green-arc.out`.
+- [ ] Revalidate the integrated Qwen suite with matching DeltaNet runtime archives: the above ARC run passed both guard cases but retained nine multi-token `gpuDeltaRule` shape failures (2477 passed, 9 failed). Source `gpu_host.c` was newer than the linked runtime archive; OspreyClaude1 owns the matching-runtime rebuild and integration. Preserve the failing assertions and golden.
+
 ## Phase 5 — Language layer
 
 - [x] Generation boundary review (2026-11-08): six invalid-input regressions reproduced before the fix; negative budgets, empty/all-masked logits and invalid/masked sampler IDs now return errors. Transformers GC and ARC each pass 411 checks, including all existing oracle cases and zero-budget/partial-mask controls; warnings-as-errors passes. Receipts: `target/logs/plan0049/transformers-review/`. This does not close the real-model sampling or IEEE kernel gates.
