@@ -94,6 +94,11 @@ def canon(value):
     return J.encode(canonical(value))
 
 
+def canon_at(xs, i):
+    """The canonical JSON of a list element at i, `null` past the end."""
+    return canon(unwrap_or(listGet(xs, i), JsonNull()))
+
+
 # Fixtures mirroring the oracle
 
 def schema(text):
@@ -113,9 +118,19 @@ def tools():
     ]
 
 
+def blank_tool():
+    """The empty tool definition list lookups fall back to past the end."""
+    return Tools.tool_definition("", "", JsonNull())
+
+
+def one_tool():
+    """One strict-compatible tool, so `tool_choice` and `strict` are exercised."""
+    return unwrap_or(listGet(tools(), 0), blank_tool())
+
+
 def two_of(xs, start):
     """The tool definition at `start` and the one after it, blank ones past the end."""
-    return toList(map(range(start, start + 2), lambda i: unwrap_or(listGet(xs, i), Tools.tool_definition("", "", JsonNull()))))
+    return toList(map(range(start, start + 2), lambda i: unwrap_or(listGet(xs, i), blank_tool())))
 
 
 def plain():
@@ -123,17 +138,21 @@ def plain():
 
 
 def history():
-    return [
-        M.of_request(M.ModelRequest(parts=[M.SystemPromptPart(content="sys"), M.UserPromptPart(content="hello")], instructions="")),
+    return listConcat(plain(), [
         M.of_response(M.model_response([M.ThinkingPart(content="hmm"), M.TextPart(content="calling"), M.ToolCallPart(tool_name="add", args="{\"a\": 1, \"b\": 2}", tool_call_id="c1")], "")),
         M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name="add", content="3", tool_call_id="c1"), M.RetryPromptPart(content="bad", tool_name="add", tool_call_id="c2"), M.RetryPromptPart(content="plain", tool_name="", tool_call_id="c0")], instructions="be brief")),
         M.of_response(M.model_response([M.TextPart(content="first"), M.TextPart(content="second"), M.ToolCallPart(tool_name="get_temperature", args="", tool_call_id="c3")], "")),
         M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name="get_temperature", content="21", tool_call_id="c3"), M.UserPromptPart(content="and?")], instructions="")),
-    ]
+    ])
 
 
 def openai_model(name, profile):
     return ModelsOpenai.OpenAIChatModel(name, ProvidersHttp.OpenAIProvider("http://x/v1", "k"), profile)
+
+
+def gpt4o():
+    """The stock OpenAI chat model the suite points at a mock base URL."""
+    return openai_model("gpt-4o", {})
 
 
 def params_with(function_tools, allow_text, instruction_parts):
@@ -151,14 +170,14 @@ class Scenario:
 def scenario(i):
     name = ats(Expected.SCENARIO_NAMES, i)
     if name == "plain":
-        return Scenario(model=openai_model("gpt-4o", {}), messages=plain(), settings={}, parameters=Models.model_request_parameters())
+        return Scenario(model=gpt4o(), messages=plain(), settings={}, parameters=Models.model_request_parameters())
     elif name == "tools_settings":
         settings = {"max_tokens": JsonInt(50), "temperature": JsonFloat(0.2), "top_p": JsonFloat(0.9), "seed": JsonInt(7), "stop_sequences": JsonArray([JsonString("END")]), "presence_penalty": JsonFloat(0.1), "frequency_penalty": JsonFloat(0.2), "extra_body": JsonObject([JsonMember("foo", JsonInt(1))])}
-        return Scenario(model=openai_model("gpt-4o", {}), messages=plain(), settings=settings, parameters=Models.with_tools(tools()))
+        return Scenario(model=gpt4o(), messages=plain(), settings=settings, parameters=Models.with_tools(tools()))
     elif name == "no_max_completion":
         return Scenario(model=openai_model("gpt-4o", {"openai_chat_supports_max_completion_tokens": JsonBool(False)}), messages=plain(), settings={"max_tokens": JsonInt(10)}, parameters=Models.model_request_parameters())
     elif name == "history":
-        return Scenario(model=openai_model("gpt-4o", {}), messages=history(), settings={}, parameters=params_with(two_of(tools(), 0), True, [M.InstructionPart(content="inst")]))
+        return Scenario(model=gpt4o(), messages=history(), settings={}, parameters=params_with(two_of(tools(), 0), True, [M.InstructionPart(content="inst")]))
     elif name == "deepseek_history":
         return Scenario(model=ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}), messages=history(), settings={}, parameters=Models.with_tools(two_of(tools(), 0)))
     elif name == "o1_mini":
@@ -166,7 +185,7 @@ def scenario(i):
     elif name == "ollama":
         return Scenario(model=ModelsOpenai.OpenAIChatModel("llama3", ProvidersHttp.OllamaProvider("http://localhost:11434/v1"), {}), messages=plain(), settings={}, parameters=Models.with_tools(two_of(tools(), 1)))
     else:
-        return Scenario(model=openai_model("gpt-4o", {}), messages=plain(), settings={}, parameters=params_with([unwrap_or(listGet(tools(), 0), Tools.tool_definition("", "", JsonNull()))], False, []))
+        return Scenario(model=gpt4o(), messages=plain(), settings={}, parameters=params_with([one_tool()], False, []))
 
 
 def body_case(i):
@@ -194,7 +213,7 @@ def describe(response):
 
 def parse_case(i):
     provider = ats(Expected.REPLY_PROVIDERS, i)
-    model = ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}) if provider == "deepseek" else openai_model("gpt-4o", {})
+    model = ModelsOpenai.OpenAIChatModel("deepseek-chat", ProvidersHttp.DeepSeekProvider("k"), {}) if provider == "deepseek" else gpt4o()
     expected_error = ats(Expected.PARSED_ERRORS, i)
     match ModelsOpenai.process_response(model.model_name, provider, model.profile, ats(Expected.REPLY_BODIES, i)):
         case E.Ok(value=response):
@@ -240,14 +259,14 @@ def retry_case(i):
 
 def dump_case(i):
     dumped = J.items_of(M.dump_messages(history()))
-    return Check.equal(f"dump[{i}]", canon(unwrap_or(listGet(dumped, i), JsonNull())), ats(Expected.DUMP_PROJECTED, i))
+    return Check.equal(f"dump[{i}]", canon_at(dumped, i), ats(Expected.DUMP_PROJECTED, i))
 
 
 def validate_cases():
     match M.validate_messages(decode(Expected.DUMP_FULL)):
         case Success(value=messages):
             redumped = J.items_of(M.dump_messages(messages))
-            return listPrepend(cases(len(Expected.DUMP_PROJECTED), lambda i: Check.equal(f"validate[{i}]", canon(unwrap_or(listGet(redumped, i), JsonNull())), ats(Expected.DUMP_PROJECTED, i))), Check.equal("validate.count", len(messages), len(Expected.DUMP_PROJECTED)))
+            return listPrepend(cases(len(Expected.DUMP_PROJECTED), lambda i: Check.equal(f"validate[{i}]", canon_at(redumped, i), ats(Expected.DUMP_PROJECTED, i))), Check.equal("validate.count", len(messages), len(Expected.DUMP_PROJECTED)))
         case Error(message=message):
             return [Check.failed("validate", message)]
 
@@ -287,11 +306,12 @@ def gen_case(i):
 
 
 def temperature(args, retry):
-    city = toLowerCase(unwrap_or(jsonText(unwrap_or(mapGet(args, "city"), JsonNull())), ""))
+    raw = unwrap_or(jsonText(unwrap_or(mapGet(args, "city"), JsonNull())), "")
+    city = toLowerCase(raw)
     if city == "paris":
         return Success(value="21")
     elif retry:
-        return Error(message=f"Unknown city {unwrap_or(jsonText(unwrap_or(mapGet(args, "city"), JsonNull())), "")}; known cities are Paris and London")
+        return Error(message=f"Unknown city {raw}; known cities are Paris and London")
     else:
         return Success(value="unknown")
 
@@ -310,41 +330,43 @@ def dumped_messages(messages):
     return mapList(J.items_of(M.dump_messages(messages)), canon)
 
 
-def test_agent_cases():
-    match Agent.run_sync(build(ModelsTest.TestModel("", ["all"]), False), "go", []):
+def run_ok(tag, agent, prompt, on_ok):
+    """A synchronous agent run as checks: `on_ok` maps a good run's result, a failed run is one failed check."""
+    match Agent.run_sync(agent, prompt, []):
         case E.Ok(value=result):
-            return listConcat([
-                Check.equal("test_agent.output", result.output, Expected.TEST_AGENT_OUTPUT),
-                Check.equal("test_agent.message_count", len(result.messages), len(Expected.TEST_AGENT_MESSAGES)),
-                Check.ints_equal("test_agent.usage", [result.usage.requests, result.usage.tool_calls], Expected.TEST_AGENT_USAGE),
-                Check.equal("test_agent.new_messages", len(Agent.new_messages(result)), len(result.messages)),
-            ], cases(len(Expected.TEST_AGENT_MESSAGES), lambda i: Check.equal(f"test_agent.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.TEST_AGENT_MESSAGES, i))))
+            return on_ok(result)
         case E.Failed(error=error):
-            return [Check.failed("test_agent", E.message_of(error))]
+            return [Check.failed(tag, E.message_of(error))]
+
+
+def run_expect_error(tag, agent, prompt, why, on_error):
+    """A synchronous agent run that must fail: `why` names the expected error, `on_error` checks the one raised."""
+    match Agent.run_sync(agent, prompt, []):
+        case E.Ok(value=_result):
+            return [Check.failed(tag, why)]
+        case E.Failed(error=error):
+            return on_error(error)
+
+
+def test_agent_cases():
+    return run_ok("test_agent", build(ModelsTest.TestModel("", ["all"]), False), "go", lambda result: listConcat([
+        Check.equal("test_agent.output", result.output, Expected.TEST_AGENT_OUTPUT),
+        Check.equal("test_agent.message_count", len(result.messages), len(Expected.TEST_AGENT_MESSAGES)),
+        Check.ints_equal("test_agent.usage", [result.usage.requests, result.usage.tool_calls], Expected.TEST_AGENT_USAGE),
+        Check.equal("test_agent.new_messages", len(Agent.new_messages(result)), len(result.messages)),
+    ], cases(len(Expected.TEST_AGENT_MESSAGES), lambda i: Check.equal(f"test_agent.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.TEST_AGENT_MESSAGES, i)))))
 
 
 def test_agent_custom_cases():
-    match Agent.run_sync(build(ModelsTest.TestModel("done", ["all"]), False), "go", []):
-        case E.Ok(value=result):
-            return [Check.equal("test_agent.custom_output", result.output, Expected.TEST_AGENT_CUSTOM_OUTPUT), Check.equal("test_agent.custom_requests", result.usage.requests, Expected.TEST_AGENT_CUSTOM_REQUESTS)]
-        case E.Failed(error=error):
-            return [Check.failed("test_agent.custom", E.message_of(error))]
+    return run_ok("test_agent.custom", build(ModelsTest.TestModel("done", ["all"]), False), "go", lambda result: [Check.equal("test_agent.custom_output", result.output, Expected.TEST_AGENT_CUSTOM_OUTPUT), Check.equal("test_agent.custom_requests", result.usage.requests, Expected.TEST_AGENT_CUSTOM_REQUESTS)])
 
 
 def test_agent_no_tools_case():
-    match Agent.run_sync(Agent.agent(ModelsTest.TestModel("", ["all"]), "sys"), "go", []):
-        case E.Ok(value=result):
-            return Check.equal("test_agent.no_tools", result.output, Expected.TEST_AGENT_NO_TOOLS_OUTPUT)
-        case E.Failed(error=error):
-            return Check.failed("test_agent.no_tools", E.message_of(error))
+    return run_ok("test_agent.no_tools", Agent.agent(ModelsTest.TestModel("", ["all"]), "sys"), "go", lambda result: [Check.equal("test_agent.no_tools", result.output, Expected.TEST_AGENT_NO_TOOLS_OUTPUT)])
 
 
 def test_agent_unknown_tool_case():
-    match Agent.run_sync(build(ModelsTest.TestModel("", ["missing"]), False), "go", []):
-        case E.Ok(value=_result):
-            return Check.failed("test_agent.unknown_tool", "expected a UserError")
-        case E.Failed(error=error):
-            return Check.equal("test_agent.unknown_tool", E.message_of(error), "TestModel was configured to call unknown tool 'missing'.")
+    return run_expect_error("test_agent.unknown_tool", build(ModelsTest.TestModel("", ["missing"]), False), "go", "expected a UserError", lambda error: [Check.equal("test_agent.unknown_tool", E.message_of(error), "TestModel was configured to call unknown tool 'missing'.")])
 
 
 # Scripted OpenAIChatModel run
@@ -365,32 +387,20 @@ def prefix(messages, n):
 def scripted_cases():
     model = scripted_model(Expected.SCRIPTED_REPLIES, 200)
     agent = build(model, True)
-    match Agent.run_sync(agent, "What is the temperature in Paris plus 10?", []):
-        case E.Ok(value=result):
-            parameters = Models.with_tools(mapList(agent.tools, Tools.tool_definition_of))
-            bodies = cases(len(Expected.SCRIPTED_BODIES), lambda i: Check.equal(f"scripted.body[{i}]", canon(ModelsOpenai.completions_body("gpt-4o", model.profile, prefix(result.messages, 2 * i + 1), {}, parameters)), ats(Expected.SCRIPTED_BODIES, i)))
-            messages = cases(len(Expected.SCRIPTED_MESSAGES), lambda i: Check.equal(f"scripted.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.SCRIPTED_MESSAGES, i)))
-            return concat([[
-                Check.equal("scripted.output", result.output, Expected.SCRIPTED_OUTPUT),
-                Check.equal("scripted.message_count", len(result.messages), len(Expected.SCRIPTED_MESSAGES)),
-                Check.ints_equal("scripted.usage", [result.usage.requests, result.usage.tool_calls, result.usage.input_tokens, result.usage.output_tokens], Expected.SCRIPTED_USAGE),
-                Check.equal("scripted.total_tokens", Usage.run_total_tokens(result.usage), ati(Expected.SCRIPTED_USAGE, 2) + ati(Expected.SCRIPTED_USAGE, 3)),
-            ], bodies, messages])
-        case E.Failed(error=error):
-            return [Check.failed("scripted", E.message_of(error))]
+    return run_ok("scripted", agent, "What is the temperature in Paris plus 10?", lambda result: concat([[
+        Check.equal("scripted.output", result.output, Expected.SCRIPTED_OUTPUT),
+        Check.equal("scripted.message_count", len(result.messages), len(Expected.SCRIPTED_MESSAGES)),
+        Check.ints_equal("scripted.usage", [result.usage.requests, result.usage.tool_calls, result.usage.input_tokens, result.usage.output_tokens], Expected.SCRIPTED_USAGE),
+        Check.equal("scripted.total_tokens", Usage.run_total_tokens(result.usage), ati(Expected.SCRIPTED_USAGE, 2) + ati(Expected.SCRIPTED_USAGE, 3)),
+    ], cases(len(Expected.SCRIPTED_BODIES), lambda i: Check.equal(f"scripted.body[{i}]", canon(ModelsOpenai.completions_body("gpt-4o", model.profile, prefix(result.messages, 2 * i + 1), {}, Models.with_tools(mapList(agent.tools, Tools.tool_definition_of)))), ats(Expected.SCRIPTED_BODIES, i))), cases(len(Expected.SCRIPTED_MESSAGES), lambda i: Check.equal(f"scripted.messages[{i}]", ats(dumped_messages(result.messages), i), ats(Expected.SCRIPTED_MESSAGES, i)))]))
 
 
 def status_error_cases():
-    model = scripted_model(["{\"error\":{\"message\":\"rate limited\"}}"], 429)
-    match Agent.run_sync(build(model, True), "go", []):
-        case E.Ok(value=_result):
-            return [Check.failed("status_error", "expected ModelHTTPError")]
-        case E.Failed(error=error):
-            return [
-                Check.equal("status_error.status", E.status_code_of(error), Expected.HTTP_ERROR_STATUS),
-                Check.equal("status_error.message", E.message_of(error), f"status_code: 429, model_name: {Expected.HTTP_ERROR_MODEL}, body: {{\"error\":{{\"message\":\"rate limited\"}}}}"),
-                Check.equal("status_error.text", E.message_of(E.status_error(429, "gpt-4o", "{\"error\":\"x\"}")), Expected.HTTP_ERROR_MESSAGE),
-            ]
+    return run_expect_error("status_error", build(scripted_model(["{\"error\":{\"message\":\"rate limited\"}}"], 429), True), "go", "expected ModelHTTPError", lambda error: [
+        Check.equal("status_error.status", E.status_code_of(error), Expected.HTTP_ERROR_STATUS),
+        Check.equal("status_error.message", E.message_of(error), f"status_code: 429, model_name: {Expected.HTTP_ERROR_MODEL}, body: {{\"error\":{{\"message\":\"rate limited\"}}}}"),
+        Check.equal("status_error.text", E.message_of(E.status_error(429, "gpt-4o", "{\"error\":\"x\"}")), Expected.HTTP_ERROR_MESSAGE),
+    ])
 
 
 def transport_error_case():
@@ -439,12 +449,7 @@ def http_close_case(i):
 
 
 def usage_limit_case():
-    model = scripted_model([ats(Expected.SCRIPTED_REPLIES, 0)], 200)
-    match Agent.run_sync(build(model, False), "go", []):
-        case E.Ok(value=_result):
-            return Check.failed("usage_limit", "expected UsageLimitExceeded")
-        case E.Failed(error=error):
-            return Check.equal("usage_limit", E.message_of(error), Expected.USAGE_LIMIT_MESSAGE)
+    return run_expect_error("usage_limit", build(scripted_model([ats(Expected.SCRIPTED_REPLIES, 0)], 200), False), "go", "expected UsageLimitExceeded", lambda error: [Check.equal("usage_limit", E.message_of(error), Expected.USAGE_LIMIT_MESSAGE)])
 
 
 # Profiles, settings, usage, direct
@@ -519,9 +524,14 @@ def provider_of(kind):
         return ProvidersHttp.OpenAIProvider("", "k")
 
 
-def one_tool():
-    """One strict-compatible tool, so `tool_choice` and `strict` are exercised."""
-    return unwrap_or(listGet(tools(), 0), Tools.tool_definition("", "", JsonNull()))
+def model_of(name, kind):
+    """The chat model a provider kind gives a name, as the app would build it."""
+    return ModelsOpenai.OpenAIChatModel(name, provider_of(kind), {})
+
+
+def profile_of(name, kind):
+    """The chat profile a provider kind gives a model."""
+    return model_of(name, kind).profile
 
 
 def thinking_settings(i):
@@ -546,7 +556,7 @@ def forced_tools():
 def thinking_body_case(i):
     row = atl(THINKING_TABLE, i)
     model_name = ats(row, 1)
-    model = ModelsOpenai.OpenAIChatModel(model_name, provider_of(ats(row, 0)), {})
+    model = model_of(model_name, ats(row, 0))
     projections = join(cases(8, lambda j: body_projection(ModelsOpenai.completions_body(model_name, model.profile, plain(), thinking_settings(j), forced_tools()))), ";")
     return Check.equal(f"thinking.body.{model_name}", projections, ats(row, 2))
 
@@ -554,7 +564,7 @@ def thinking_body_case(i):
 def thinking_levels_case(i):
     row = atl(THINKING_TABLE, i)
     model_name = ats(row, 1)
-    profile = ModelsOpenai.OpenAIChatModel(model_name, provider_of(ats(row, 0)), {}).profile
+    profile = model_of(model_name, ats(row, 0)).profile
     return Check.equal(f"thinking.levels.{model_name}", join(Profiles.thinking_levels(profile, ats(row, 0)), ","), ats(row, 3))
 
 
@@ -573,17 +583,19 @@ def pick_projection(model_name, profile, level):
     return body_projection(ModelsOpenai.completions_body(model_name, profile, plain(), settings, forced_tools()))
 
 
+def pick_case(model_name, kind, expected):
+    """The projections of a model's thinking levels, picked through `thinking_setting`."""
+    profile = model_of(model_name, kind).profile
+    return Check.equal(f"thinking.pick.{model_name}", join(mapList(Profiles.thinking_levels(profile, kind), lambda level: pick_projection(model_name, profile, level)), ";"), expected)
+
+
 def thinking_pick_cases():
-    glm53 = ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {})
-    kimi = ModelsOpenai.OpenAIChatModel("kimi-k3", ProvidersHttp.MoonshotAIProvider("k"), {})
-    glm47 = ModelsOpenai.OpenAIChatModel("glm-4.7", ProvidersHttp.ZaiProvider("k"), {})
-    v4 = ModelsOpenai.OpenAIChatModel("deepseek-v4-flash", ProvidersHttp.DeepSeekProvider("k"), {})
     enabled = '{"clear_thinking":false,"type":"enabled"}'
     return [
-        Check.equal("thinking.pick.glm-5.3", join(mapList(Profiles.thinking_levels(glm53.profile, "zai"), lambda level: pick_projection("glm-5.3", glm53.profile, level)), ";"), f"low|{enabled}|required;high|{enabled}|required;max|{enabled}|required"),
-        Check.equal("thinking.pick.kimi-k3", join(mapList(Profiles.thinking_levels(kimi.profile, "moonshotai"), lambda level: pick_projection("kimi-k3", kimi.profile, level)), ";"), "minimal||auto;low||auto;medium||auto;high||auto"),
-        Check.equal("thinking.pick.glm-4.7", join(mapList(Profiles.thinking_levels(glm47.profile, "zai"), lambda level: pick_projection("glm-4.7", glm47.profile, level)), ";"), '|{"clear_thinking":false,"type":"disabled"}|required;|' + enabled + "|required"),
-        Check.equal("thinking.pick.deepseek-v4-flash", join(mapList(Profiles.thinking_levels(v4.profile, "deepseek"), lambda level: pick_projection("deepseek-v4-flash", v4.profile, level)), ";"), "none||required;medium||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto"),
+        pick_case("glm-5.3", "zai", f"low|{enabled}|required;high|{enabled}|required;max|{enabled}|required"),
+        pick_case("kimi-k3", "moonshotai", "minimal||auto;low||auto;medium||auto;high||auto"),
+        pick_case("glm-4.7", "zai", '|{"clear_thinking":false,"type":"disabled"}|required;|' + enabled + "|required"),
+        pick_case("deepseek-v4-flash", "deepseek", "none||required;medium||auto;minimal||auto;low||auto;medium||auto;high||auto;xhigh||auto"),
     ]
 
 
@@ -595,14 +607,15 @@ def provider_flag_cases():
     glm3 = Profiles.zai_provider_profile("glm-3-turbo")
     v4 = Profiles.deepseek_model_profile("deepseek-v4-flash")
     reasoner = Profiles.deepseek_model_profile("deepseek-reasoner")
+    kimi_model = Profiles.moonshotai_model_profile("kimi-k3")
     return [
         same("providers.kimi_flags", [
             Profiles.profile_bool(kimi, "openai_supports_tool_choice_required", True),
             Profiles.profile_bool(kimi, "thinking_always_enabled", False),
             Profiles.profile_bool(kimi, "supports_thinking", False),
             Profiles.profile_bool(kimi, "supports_json_object_output", False),
-            Profiles.profile_bool(Profiles.moonshotai_model_profile("kimi-k3"), "supports_thinking", False),
-            Profiles.profile_bool(Profiles.moonshotai_model_profile("kimi-k3"), "ignore_streamed_leading_whitespace", False),
+            Profiles.profile_bool(kimi_model, "supports_thinking", False),
+            Profiles.profile_bool(kimi_model, "ignore_streamed_leading_whitespace", False),
             Profiles.profile_bool(Profiles.moonshotai_model_profile("moonshot-v1-8k"), "supports_thinking", True),
         ], [False, True, True, True, True, True, False]),
         same("providers.kimi_texts", [
@@ -656,19 +669,23 @@ def provider_reuse_cases():
     ]
 
 
+def settings_body(model_name, profile, settings):
+    """The completions body `settings` produces under the forced-tool parameters."""
+    return ModelsOpenai.completions_body(model_name, profile, plain(), settings, forced_tools())
+
+
 def thinking_extra_cases():
-    glm53 = ModelsOpenai.OpenAIChatModel("glm-5.3", ProvidersHttp.ZaiProvider("k"), {}).profile
-    glm52 = ModelsOpenai.OpenAIChatModel("glm-5.2", ProvidersHttp.ZaiProvider("k"), {}).profile
-    glm47 = ModelsOpenai.OpenAIChatModel("glm-4.7", ProvidersHttp.ZaiProvider("k"), {}).profile
-    glm3 = ModelsOpenai.OpenAIChatModel("glm-3-turbo", ProvidersHttp.ZaiProvider("k"), {}).profile
-    v4 = ModelsOpenai.OpenAIChatModel("deepseek-v4-flash", ProvidersHttp.DeepSeekProvider("k"), {}).profile
-    parameters = forced_tools()
-    merged = ModelsOpenai.completions_body("glm-5.3", glm53, plain(), {"thinking": JsonBool(True), "extra_body": decode("{\"foo\":1}")}, parameters)
-    clash = ModelsOpenai.completions_body("glm-5.3", glm53, plain(), {"thinking": JsonBool(True), "extra_body": decode("{\"thinking\":{\"type\":\"disabled\"}}")}, parameters)
-    clear = ModelsOpenai.completions_body("glm-4.7", glm47, plain(), {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)}, parameters)
-    explicit = ModelsOpenai.completions_body("deepseek-v4-flash", v4, plain(), {"thinking": JsonString("high"), "openai_reasoning_effort": JsonString("low")}, parameters)
-    zai_explicit = ModelsOpenai.completions_body("glm-5.2", glm52, plain(), {"thinking": JsonString("low"), "openai_reasoning_effort": JsonString("high")}, parameters)
-    nonthinking = ModelsOpenai.completions_body("glm-3-turbo", glm3, plain(), {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)}, parameters)
+    glm53 = profile_of("glm-5.3", "zai")
+    glm52 = profile_of("glm-5.2", "zai")
+    glm47 = profile_of("glm-4.7", "zai")
+    glm3 = profile_of("glm-3-turbo", "zai")
+    v4 = profile_of("deepseek-v4-flash", "deepseek")
+    merged = settings_body("glm-5.3", glm53, {"thinking": JsonBool(True), "extra_body": decode("{\"foo\":1}")})
+    clash = settings_body("glm-5.3", glm53, {"thinking": JsonBool(True), "extra_body": decode("{\"thinking\":{\"type\":\"disabled\"}}")})
+    clear = settings_body("glm-4.7", glm47, {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)})
+    explicit = settings_body("deepseek-v4-flash", v4, {"thinking": JsonString("high"), "openai_reasoning_effort": JsonString("low")})
+    zai_explicit = settings_body("glm-5.2", glm52, {"thinking": JsonString("low"), "openai_reasoning_effort": JsonString("high")})
+    nonthinking = settings_body("glm-3-turbo", glm3, {"thinking": JsonBool(True), "zai_clear_thinking": JsonBool(True)})
     return [
         Check.truth("thinking.extra_body_kept", contains(canon(merged), "\"foo\":1") and body_projection(merged) == '|{"clear_thinking":false,"type":"enabled"}|required', canon(merged)),
         Check.equal("thinking.extra_body_replaced", body_projection(clash), '|{"clear_thinking":false,"type":"enabled"}|required'),
@@ -681,19 +698,19 @@ def thinking_extra_cases():
 
 def reasoning_round_trip_cases():
     reply = '{"id":"r1","model":"m","choices":[{"message":{"role":"assistant","content":"calling","reasoning_content":"hmm","tool_calls":[{"id":"c1","type":"function","function":{"name":"add","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":1,"completion_tokens":2}}'
-    kimi = ModelsOpenai.OpenAIChatModel("kimi-k3", ProvidersHttp.MoonshotAIProvider("k"), {})
-    glm = ModelsOpenai.OpenAIChatModel("glm-4.7", ProvidersHttp.ZaiProvider("k"), {})
+    kimi = profile_of("kimi-k3", "moonshotai")
+    glm = profile_of("glm-4.7", "zai")
     second = M.of_response(M.model_response([M.ToolCallPart(tool_name="get_temperature", args="{}", tool_call_id="c3")], ""))
     parameters = Models.with_tools([one_tool()])
-    match ModelsOpenai.process_response("kimi-k3", "moonshotai", kimi.profile, reply):
+    match ModelsOpenai.process_response("kimi-k3", "moonshotai", kimi, reply):
         case E.Ok(value=response):
             messages = listConcat(history(), [M.of_response(response), M.of_request(M.ModelRequest(parts=[M.ToolReturnPart(tool_name="add", content="3", tool_call_id="c1")], instructions="")), second])
-            body = ModelsOpenai.completions_body("kimi-k3", kimi.profile, messages, {}, parameters)
+            body = ModelsOpenai.completions_body("kimi-k3", kimi, messages, {}, parameters)
             mapped = J.list_at(body, "messages")
-            kimi_assistant = canon(unwrap_or(listGet(mapped, 9), JsonNull()))
-            kimi_backfill = canon(unwrap_or(listGet(mapped, 11), JsonNull()))
-            glm_body = J.list_at(ModelsOpenai.completions_body("glm-4.7", glm.profile, messages, {}, parameters), "messages")
-            glm_assistant = canon(unwrap_or(listGet(glm_body, 9), JsonNull()))
+            kimi_assistant = canon_at(mapped, 9)
+            kimi_backfill = canon_at(mapped, 11)
+            glm_body = J.list_at(ModelsOpenai.completions_body("glm-4.7", glm, messages, {}, parameters), "messages")
+            glm_assistant = canon_at(glm_body, 9)
             return [
                 Check.equal("thinking.reasoning_read", join(mapList(response.parts, describe_part), "|"), "thinking:hmm|text:calling|tool-call:add|{}|c1"),
                 Check.truth("thinking.kimi_sends_field", contains(kimi_assistant, '\"reasoning_content\":\"hmm\"'), kimi_assistant),
@@ -765,14 +782,66 @@ def mcp_tool_checks():
             return [Check.failed("mcp.tool_of", message)]
 
 
+INCOMING_MESSAGES = [
+    ["mcp.error_response", '{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"no such tool","data":{"k":1}}}', 'error:6:no such tool (code: -32601, data: {"k":1})'],
+    ["mcp.server_request", '{"jsonrpc":"2.0","id":9,"method":"roots/list","params":{}}', "request:9:roots/list"],
+    ["mcp.server_notification", '{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}', "notification:notifications/tools/list_changed"],
+]
+"""Wire messages and the `Incoming` each reads as."""
+
+
+def incoming_case(i):
+    """One recorded wire message read through `read_message`."""
+    row = atl(INCOMING_MESSAGES, i)
+    return Check.equal(ats(row, 0), incoming_text(Mcp.read_message(ats(row, 1))), ats(row, 2))
+
+
+CALL_REPLIES = [
+    ["mcp.call_text", '{"content":[{"type":"text","text":"3"}]}', "3"],
+    ["mcp.call_json_text", '{"content":[{"type":"text","text":"[1, 2]"}]}', "[1,2]"],
+    ["mcp.call_bad_json_text", '{"content":[{"type":"text","text":"{not json"}]}', "{not json"],
+    ["mcp.call_structured", '{"structuredContent":{"result":7},"content":[{"type":"text","text":"7"}]}', "7"],
+    ["mcp.call_structured_object", '{"structuredContent":{"a":1,"b":[2]}}', "{\"a\":1,\"b\":[2]}"],
+    ["mcp.call_mixed", '{"content":[{"type":"text","text":"a"},{"type":"image","mimeType":"image/png","data":"QUJD"}]}', "a\n[image: image/png, 3 bytes]"],
+    ["mcp.call_audio", '{"content":[{"type":"audio","mimeType":"audio/wav","data":"QQ=="}]}', "[audio: audio/wav, 1 bytes]"],
+    ["mcp.call_resource", '{"content":[{"type":"resource_link","uri":"file:///x"},{"type":"resource","resource":{"uri":"file:///y","mimeType":"text/plain","text":"hi"}},{"type":"resource","resource":{"uri":"file:///z","mimeType":"application/octet-stream","blob":"QUJD"}}]}', "file:///x\nhi\n[resource: application/octet-stream, 3 bytes]"],
+    ["mcp.call_unsupported", '{"content":[{"type":"weird"}]}', "[unsupported content type: weird]"],
+]
+"""Tool-call reply bodies and the text each carries."""
+
+
+def call_text(body):
+    """The text of a tool-call reply body, empty on failure."""
+    return unwrap_or(Mcp.call_result("t", decode(body)), "")
+
+
+def call_text_case(i):
+    """The text one recorded tool-call reply carries."""
+    row = atl(CALL_REPLIES, i)
+    return Check.equal(ats(row, 0), call_text(ats(row, 1)), ats(row, 2))
+
+
+CALL_ERRORS = [
+    ["mcp.call_is_error", '{"isError":true,"content":[{"type":"text","text":"boom"}]}', "boom"],
+    ["mcp.call_is_error_empty", '{"isError":true}', "Tool 't' returned an error"],
+    ["mcp.call_is_error_structured", '{"isError":true,"structuredContent":{"why":"bad"},"content":[{"type":"image","mimeType":"image/png","data":"QUJD"}]}', "{\"why\":\"bad\"}"],
+]
+"""Tool-call reply bodies that are errors, and the message each carries."""
+
+
+def call_error_case(i):
+    """The message one error tool-call reply carries."""
+    row = atl(CALL_ERRORS, i)
+    return Check.equal(ats(row, 0), error_text(Mcp.call_result("t", decode(ats(row, 1)))), ats(row, 2))
+
+
 def mcp_session_cases():
     session_checks = session_checks_of(Mcp.initialize_result(J.object_at(decode(INIT_REPLY), "result")))
     bad_version = Mcp.initialize_result(decode('{"protocolVersion":"2024-11-05","serverInfo":{"name":"s","version":"1"},"capabilities":{}}'))
     page1 = Mcp.list_tools_result(decode('{"tools":[{"name":"add","description":"adds","inputSchema":{"type":"object"}},{"name":"broken"},{"name":"get","inputSchema":{"type":"object"},"description":""}],"nextCursor":"c2"}'))
     page2 = Mcp.list_tools_result(decode('{"tools":[{"name":"last","inputSchema":{"type":"array"}}]}'))
-    call_reply = Mcp.call_result("add", decode('{"content":[{"type":"text","text":"3"}]}'))
     line = Mcp.encode_line(Mcp.call_tool_request(JsonInt(7), "log", {"message": JsonString("two\nlines")}))
-    return listConcat(session_checks, listConcat([
+    return concat([session_checks, [
         Check.equal("mcp.bad_version", initialize_error_text(bad_version), "Server requested protocol version 2024-11-05, which this client does not support (code: -32602)"),
         Check.equal("mcp.initialized", canon(Mcp.initialized_notification()), '{"jsonrpc":"2.0","method":"notifications/initialized"}'),
         Check.equal("mcp.list_tools_request", canon(Mcp.list_tools_request(JsonInt(2), "")) + "/" + canon(Mcp.list_tools_request(JsonInt(3), "c2")), '{"id":2,"jsonrpc":"2.0","method":"tools/list","params":{}}/{"id":3,"jsonrpc":"2.0","method":"tools/list","params":{"cursor":"c2"}}'),
@@ -780,24 +849,10 @@ def mcp_session_cases():
         Check.equal("mcp.list_tools_page2", join(mapList(page2.tools, lambda t: t.name), ";") + "/" + page2.next_cursor, "last/"),
         Check.equal("mcp.call_tool_request", canon(Mcp.call_tool_request(JsonInt(4), "add", {"a": JsonInt(1), "b": JsonInt(2)})), '{"id":4,"jsonrpc":"2.0","method":"tools/call","params":{"arguments":{"a":1,"b":2},"name":"add"}}'),
         Check.equal("mcp.ping", canon(Mcp.ping_request(JsonInt(5))) + "/" + canon(Mcp.ping_response(JsonInt(5))), '{"id":5,"jsonrpc":"2.0","method":"ping","params":{}}/{"id":5,"jsonrpc":"2.0","result":{}}'),
-        Check.equal("mcp.error_response", incoming_text(Mcp.read_message('{"jsonrpc":"2.0","id":6,"error":{"code":-32601,"message":"no such tool","data":{"k":1}}}')), 'error:6:no such tool (code: -32601, data: {"k":1})'),
-        Check.equal("mcp.server_request", incoming_text(Mcp.read_message('{"jsonrpc":"2.0","id":9,"method":"roots/list","params":{}}')), "request:9:roots/list"),
-        Check.equal("mcp.server_notification", incoming_text(Mcp.read_message('{"jsonrpc":"2.0","method":"notifications/tools/list_changed"}')), "notification:notifications/tools/list_changed"),
-        Check.equal("mcp.call_text", unwrap_or(call_reply, ""), "3"),
-        Check.equal("mcp.call_json_text", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"text","text":"[1, 2]"}]}')), ""), "[1,2]"),
-        Check.equal("mcp.call_bad_json_text", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"text","text":"{not json"}]}')), ""), "{not json"),
-        Check.equal("mcp.call_structured", unwrap_or(Mcp.call_result("t", decode('{"structuredContent":{"result":7},"content":[{"type":"text","text":"7"}]}')), ""), "7"),
-        Check.equal("mcp.call_structured_object", unwrap_or(Mcp.call_result("t", decode('{"structuredContent":{"a":1,"b":[2]}}')), ""), "{\"a\":1,\"b\":[2]}"),
-        Check.equal("mcp.call_mixed", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"text","text":"a"},{"type":"image","mimeType":"image/png","data":"QUJD"}]}')), ""), "a\n[image: image/png, 3 bytes]"),
-        Check.equal("mcp.call_audio", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"audio","mimeType":"audio/wav","data":"QQ=="}]}')), ""), "[audio: audio/wav, 1 bytes]"),
-        Check.equal("mcp.call_resource", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"resource_link","uri":"file:///x"},{"type":"resource","resource":{"uri":"file:///y","mimeType":"text/plain","text":"hi"}},{"type":"resource","resource":{"uri":"file:///z","mimeType":"application/octet-stream","blob":"QUJD"}}]}')), ""), "file:///x\nhi\n[resource: application/octet-stream, 3 bytes]"),
-        Check.equal("mcp.call_unsupported", unwrap_or(Mcp.call_result("t", decode('{"content":[{"type":"weird"}]}')), ""), "[unsupported content type: weird]"),
-        Check.equal("mcp.call_is_error", error_text(Mcp.call_result("t", decode('{"isError":true,"content":[{"type":"text","text":"boom"}]}'))), "boom"),
-        Check.equal("mcp.call_is_error_empty", error_text(Mcp.call_result("t", decode('{"isError":true}'))), "Tool 't' returned an error"),
-        Check.equal("mcp.call_is_error_structured", error_text(Mcp.call_result("t", decode('{"isError":true,"structuredContent":{"why":"bad"},"content":[{"type":"image","mimeType":"image/png","data":"QUJD"}]}'))), "{\"why\":\"bad\"}"),
+    ], cases(len(INCOMING_MESSAGES), incoming_case), cases(len(CALL_REPLIES), call_text_case), cases(len(CALL_ERRORS), call_error_case), [
         Check.truth("mcp.encode_line", endsWith(line, "\n") and not contains(take(line, length(line) - 1), "\n") and incoming_text(Mcp.read_message(line)) == "request:7:tools/call", line),
         Check.equal("mcp.tool_of_bad", error_text(Mcp.tool_of(decode('{"name":""}'))) + "/" + error_text(Mcp.tool_of(decode('{"name":"x"}'))), "a tool needs a name/tool 'x' needs an inputSchema object"),
-    ], mcp_tool_checks()))
+    ], mcp_tool_checks()])
 
 
 MALFORMED_MESSAGES = [
@@ -1173,8 +1228,8 @@ def schema_cases():
 
 
 def review_cases():
-    no_message = ModelsOpenai.process_response("m", "openai", openai_model("gpt-4o", {}).profile, "{\"choices\":[{}]}")
-    override = J.encode(ModelsOpenai.completions_body("gpt-4o", openai_model("gpt-4o", {}).profile, plain(), {"extra_body": decode("{\"stream\":true,\"extra\":1}")}, Models.model_request_parameters()))
+    no_message = ModelsOpenai.process_response("m", "openai", gpt4o().profile, "{\"choices\":[{}]}")
+    override = J.encode(ModelsOpenai.completions_body("gpt-4o", gpt4o().profile, plain(), {"extra_body": decode("{\"stream\":true,\"extra\":1}")}, Models.model_request_parameters()))
     nested = JsonSchema.transform(decode("{\"type\":\"object\",\"properties\":{\"box\":{\"$defs\":{\"S\":{\"type\":\"string\"}},\"$ref\":\"#/properties/box/$defs/S\"}},\"required\":[\"box\"]}"))
     return [
         Check.truth("review.missing_message_refused", outcome_failed(no_message), "accepted a choice with no message"),
@@ -1199,6 +1254,7 @@ def accessor_cases():
     call = M.ToolCallPart(tool_name="f", args="{}", tool_call_id="c")
     round_trip = M.validate_messages(M.dump_messages([request]))
     numeric = M.validate_messages(decode("[{\"kind\":\"request\",\"parts\":[{\"part_kind\":\"tool-return\",\"tool_name\":\"f\",\"tool_call_id\":\"c\",\"content\":3},{\"part_kind\":\"tool-return\",\"tool_name\":\"g\",\"tool_call_id\":\"d\"}]}]"))
+    dumped = canon(M.dump_messages(unwrap_or(numeric, [])))
     return [
         Check.equal("access.call_id", M.generate_tool_call_id(7), "pyd_ai_7"),
         same("access.is_response", [M.is_response(response), M.is_response(request)], [True, False]),
@@ -1208,9 +1264,9 @@ def accessor_cases():
         same("access.has_calls", [M.has_tool_calls(M.model_response([call], "m")), M.has_tool_calls(M.model_response([thinking], "m"))], [True, False]),
         Check.equal("access.non_call_fields", M.tool_name_of(thinking) + M.tool_call_id_of(thinking) + M.part_text(call), ""),
         Check.equal("access.instruction_round_trip", error_text(round_trip), ""),
-        Check.truth("access.scalar_contents", contains(canon(M.dump_messages(unwrap_or(numeric, []))), "\"content\":\"3\"") and contains(canon(M.dump_messages(unwrap_or(numeric, []))), "\"content\":\"\""), "contents must read as text"),
+        Check.truth("access.scalar_contents", contains(dumped, "\"content\":\"3\"") and contains(dumped, "\"content\":\"\""), "contents must read as text"),
         Check.equal("access.bad_response_part", error_text(M.validate_messages(decode("[{\"kind\":\"response\",\"parts\":[{\"part_kind\":\"mystery\"}]}]"))), "unknown response part_kind: mystery"),
-        Check.truth("access.instruction_stays_off_the_messages", not contains(J.encode(ModelsOpenai.completions_body("gpt-4o", openai_model("gpt-4o", {}).profile, [request], {}, Models.model_request_parameters())), "be brief"), "instructions travel through the parameters"),
+        Check.truth("access.instruction_stays_off_the_messages", not contains(J.encode(ModelsOpenai.completions_body("gpt-4o", gpt4o().profile, [request], {}, Models.model_request_parameters())), "be brief"), "instructions travel through the parameters"),
         same("access.finish_reasons", [ModelsOpenai.map_finish_reason("function_call"), ModelsOpenai.map_finish_reason("mystery")], ["tool_call", ""]),
         Check.equal("access.float_from_int", J.float_at(decode("{\"n\":2}"), "n", 0.0), 2.0),
         Check.equal("access.json_makers", J.encode(J.jtext("a")) + J.encode(J.jint(3)), "\"a\"3"),
@@ -1236,10 +1292,11 @@ def export_cases():
     request = M.model_request([M.UserPromptPart(content="hello")])
     message = M.of_request(request)
     answer = M.of_response(response)
-    profile = openai_model("gpt-4o", {}).profile
+    profile = gpt4o().profile
     tool = Tools.tool_definition("f", "does f", schema(ADD_SCHEMA))
     value = decode("{\"t\":\"x\",\"b\":true,\"l\":[1],\"n\":null}")
     built = J.obj([J.member("k", JsonInt(1))])
+    merged = Usage.details_merge({"a": 1}, {"a": 2, "b": 3})
     return [
         Check.equal("export.request_limit", Agent.REQUEST_LIMIT, 50),
         Check.truth("export.strict_keys", listContains(JsonSchema.STRICT_INCOMPATIBLE_KEYS, "minLength") and listContains(JsonSchema.STRICT_COMPATIBLE_STRING_FORMATS, "date-time"), "the strict tables lost their entries"),
@@ -1257,8 +1314,8 @@ def export_cases():
         same("export.is_text", mapList(response.parts, M.is_text), [True, False]),
         same("export.is_tool_call", mapList(response.parts, M.is_tool_call), [False, True]),
         Check.equal("export.responses", len(M.responses([message, answer, message])), 1),
-        Check.equal("export.map_request", canon(unwrap_or(listGet(ModelsOpenai.map_request(profile, request), 0), JsonNull())), "{\"content\":\"hello\",\"role\":\"user\"}"),
-        Check.truth("export.map_response", contains(canon(unwrap_or(listGet(ModelsOpenai.map_response(profile, response), 0), JsonNull())), "\"tool_calls\""), "the response lost its call"),
+        Check.equal("export.map_request", canon_at(ModelsOpenai.map_request(profile, request), 0), "{\"content\":\"hello\",\"role\":\"user\"}"),
+        Check.truth("export.map_response", contains(canon_at(ModelsOpenai.map_response(profile, response), 0), "\"tool_calls\""), "the response lost its call"),
         Check.equal("export.map_messages", len(ModelsOpenai.map_messages(profile, [message, answer], Models.model_request_parameters())), 2),
         Check.equal("export.map_tool_definition", J.text_at(J.object_at(ModelsOpenai.map_tool_definition(profile, tool), "function"), "name", ""), "f"),
         Check.equal("export.map_usage", ModelsOpenai.map_usage(decode("{\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":4}}")).input_tokens, 3),
@@ -1266,7 +1323,7 @@ def export_cases():
         Check.equal("export.char_of", ModelsTest.char_of(0) + ModelsTest.char_of(1), "ab"),
         Check.equal("export.test_model", ModelsTest.test_model("named", "hi", [], 0).model_name, "named"),
         Check.equal("export.request_usage", Usage.request_usage().input_tokens, 0),
-        Check.equal("export.details_merge", unwrap_or(mapGet(Usage.details_merge({"a": 1}, {"a": 2, "b": 3}), "a"), 0) + unwrap_or(mapGet(Usage.details_merge({"a": 1}, {"a": 2, "b": 3}), "b"), 0), 6),
+        Check.equal("export.details_merge", unwrap_or(mapGet(merged, "a"), 0) + unwrap_or(mapGet(merged, "b"), 0), 6),
         post_json_case(),
     ]
 
@@ -1385,10 +1442,10 @@ def suite():
         cases(len(Expected.GEN_SCHEMAS), gen_case),
         test_agent_cases(),
         test_agent_custom_cases(),
-        [test_agent_no_tools_case(), test_agent_unknown_tool_case()],
+        listConcat(test_agent_no_tools_case(), test_agent_unknown_tool_case()),
         scripted_cases(),
         status_error_cases(),
-        [transport_error_case(), usage_limit_case()],
+        listConcat([transport_error_case()], usage_limit_case()),
         cases(27, http_reply_case),
         cases(6, http_close_case),
         profile_cases(),
