@@ -14,17 +14,23 @@ mode=double
 env_file=""
 goldens_flag=()
 case "${1:-}" in
+    --qwen) mode=qwen ;;
     --live) mode=live; env_file=${2:-"$repo/.env"}; live_model=${3:-deepseek/deepseek-chat} ;;
     --update-goldens) goldens_flag=(--update-goldens) ;;
     "") ;;
-    *) echo "Usage: self-test.sh [--live [dotenv] | --update-goldens]" >&2; exit 2 ;;
+    *) echo "Usage: self-test.sh [--qwen | --live [dotenv] | --update-goldens]" >&2; exit 2 ;;
 esac
 records=${OSPREY_AGENT_RECORDS:-$(mktemp -d "${TMPDIR:-/tmp}/osprey-agent-self-test.XXXXXX")}
 # One fixed folder on every machine: its path shows in the pictures, and TMPDIR differs per user.
 work=/tmp/osprey-agent-work
-rm -rf "$work"
+[ "$mode" != qwen ] || work="$records/work"
+if [ "$mode" = qwen ]; then
+    [ ! -e "$work" ] || { echo "Refusing to overwrite real-run evidence: $work" >&2; exit 1; }
+else
+    rm -rf "$work"
+fi
 mkdir -p "$work"
-trap 'rm -rf "$work"' EXIT
+[ "$mode" = qwen ] || trap 'rm -rf "$work"' EXIT
 echo "records: $records"
 export OSPREY_SWIFT_APP="$here" OSPREY_SWIFT_NAME="$name" OSPREY_SWIFT_BUNDLE_ID=org.ospreylang.agent
 bundle=$(bash "$repo/src/toolchain/hosts/swift/run.sh" --build | tail -1)
@@ -34,6 +40,28 @@ iconutil -c iconset "$bundle/Contents/Resources/AppIcon.icns" -o "$work/AppIcon.
 project="$work/calc-project"
 bash "$here/drive/demo-project.sh" "$project" >/dev/null
 os_goldens=${OSPREY_AGENT_GOLDENS:-"$here/goldens/macos-$(sw_vers -productVersion | cut -d. -f1)"}
+
+if [ "$mode" = qwen ]; then
+    # The ui harness owns the real Osprey server and weights; no cloud key or HTTP double is read.
+    cp "$project/test_calc.py" "$records/original-test_calc.py"
+    mkdir -p "$work/store"
+    printf '{"keys":[],"model":"osprey/qwen3.8:27b","effort":""}' > "$work/store/providers.json"
+    python3 - "$here/self-test/coding.json" "$work" <<'SCRIPT'
+import json, pathlib, sys
+suite = json.loads(pathlib.Path(sys.argv[1]).read_text())
+for name, steps in (("preflight", suite["qwenBefore"]), ("live", suite["qwenBefore"] + suite["steps"] + suite["qwenAfter"]), ("replay", suite["qwenAfter"])):
+    pathlib.Path(sys.argv[2], name + ".json").write_text(json.dumps({"steps": steps}))
+SCRIPT
+    "$host" --self-test "$work/preflight.json" "$records/preflight" --store "$work/store" --patience 30 --goldens "$os_goldens-qwen" "$project" 2>&1 | tee "$records/preflight.log"
+    # Capture a real run, then compare the persisted conversation on a fresh real window.
+    # Fresh model prose is not a stable pixel oracle; replay uses the exact saved output.
+    "$host" --self-test "$work/live.json" "$records/coding" --store "$work/store" --patience 600 --goldens "$records/goldens" --update-goldens "$project" 2>&1 | tee "$records/live.log"
+    python3 "$here/self-test/verify_calc.py" "$project" --tests --original "$records/original-test_calc.py" 2>&1 | tee "$records/project-tests.log"
+    "$host" --self-test "$work/replay.json" "$records/replay" --store "$work/store" --patience 30 --goldens "$records/goldens" "$project" 2>&1 | tee "$records/replay.log"
+    "${OSPREY_QWEN_PYTHON:?the real ui harness supplies its Python}" "$here/drive/judge.py" --qwen "$records"
+    echo "real Qwen UI E2E passed; actual screenshots, replay comparisons and judge: $records"
+    exit 0
+fi
 
 if [ "$mode" = live ]; then
     # The key leaves ~/Documents first: the app reading a file there would raise a privacy prompt.

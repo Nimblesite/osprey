@@ -212,7 +212,7 @@ _qwen-suite:
 	test "$(QWEN_GPU)" != metal || grep -q '^\[gpu\] metal:.*completed dispatch' $(QWEN_RUN).err || { echo 'qwen: no Metal dispatch completed; the suite ran on the host' >&2; exit 1; }
 
 _qwen-lanes:
-	$(if $(filter real pydantic,$(LANES)),GGUF=$$(sh $(QWEN_DIR)/pull.sh) &&) OSPREY_QWEN_GGUF="$$GGUF" OSPREY_COMPILER="$(CURDIR)/$(BIN)" $(QWEN_PYTHON) -I $(QWEN_DIR)/server/tests/clients.cpython $(LANES)
+	$(if $(filter real pydantic ui,$(LANES)),GGUF=$$(sh $(QWEN_DIR)/pull.sh) &&) OSPREY_QWEN_GGUF="$$GGUF" OSPREY_COMPILER="$(CURDIR)/$(BIN)" $(QWEN_PYTHON) -I $(QWEN_DIR)/server/tests/clients.cpython $(LANES)
 
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]

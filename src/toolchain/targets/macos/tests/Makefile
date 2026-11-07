@@ -20,7 +20,7 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live examples graphics qwen qwen-headless storage-headless synth-headless workbench
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live agent-qwen examples graphics qwen qwen-headless storage-headless synth-headless workbench
 
 ## casting: The casting player's self-test in a real GPUI window; casting-headless runs it with no
 ##          window. The same goes for flock, painting, probe and signal-flow.
@@ -80,6 +80,12 @@ agent-headless: _runtime_macos
 agent-live: _runtime_macos
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	OSPREY_BIN="$(CURDIR)/$(BIN)" bash src/osprey/examples/agent/self-test.sh --live
+
+## agent-qwen: Local-only full E2E: actual Agent window and Osprey Qwen GGUF, real coding/tools,
+##             independent project checks, screenshot goldens and direct Qwen judgement. No doubles.
+agent-qwen: _runtime _runtime_macos_arc
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) -C $(ROOT) _qwen-lanes LANES=ui
 
 ## workbench: Build the Mac Workbench host, then `0 failures` from its Swift suite. Fetch the LFS
 ##            lesson assets first.
