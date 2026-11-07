@@ -115,6 +115,16 @@ client that advertises `window.workDoneProgress` sees "Checking Osprey files"
 progress begin when files are queued and end once every queued file has been
 published.
 
+### Excluded files `[LSP-DIAGNOSTICS-EXCLUDE]`
+
+`osprey.diagnostics.exclude` lists glob patterns, absolute or relative to each
+workspace folder (`**` spans folders, `*` and `?` stay within one). A matching
+file gets no diagnostics, whether it is open or not. The default,
+`**/failscompilation/**`, hides the programs the compiler must reject, which
+are red by design. The setting is for the editor only: `osprey <file> --check`
+on an excluded file still prints every error and fails, and the book's
+`.expectederror` goldens check those errors.
+
 Scope settings apply live without a restart. Startup, workspace-folder changes,
 and watched source/manifest changes refresh findings; shrinking the scope,
 closing an excluded buffer, deleting a file, or disabling diagnostics clears

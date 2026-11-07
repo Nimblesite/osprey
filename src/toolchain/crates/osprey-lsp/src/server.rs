@@ -225,7 +225,7 @@ fn apply_changes(vfs: &Vfs, doc: &DocumentUri, params: &Value) {
 /// Compute and broadcast diagnostics for `doc`.
 /// Implements [LSP-DIAGNOSTICS].
 async fn publish(engine: &OspreyEngine, bus: &lspkit_server::DiagnosticsBus, doc: DocumentUri) {
-    if !scope::lock(engine).enabled() {
+    if !scope::lock(engine).covers(doc.as_str()) {
         return;
     }
     scope::lock(engine).remember(doc.as_str());

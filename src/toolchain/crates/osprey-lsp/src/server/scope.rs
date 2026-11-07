@@ -1,4 +1,5 @@
-//! Workspace diagnostic discovery and live scope changes [LSP-DIAGNOSTICS-SCOPE].
+//! Workspace diagnostic discovery and live scope changes [LSP-DIAGNOSTICS-SCOPE],
+//! less the files `osprey.diagnostics.exclude` names [LSP-DIAGNOSTICS-EXCLUDE].
 
 use super::{publish, OspreyEngine};
 use crate::workspace::{file_path, uri_of};
@@ -10,6 +11,10 @@ use serde_json::Value;
 use std::collections::{BTreeSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::{MutexGuard, PoisonError};
+
+/// Programs the compiler must reject: red by design, so the editor stays
+/// quiet unless the user overrides `osprey.diagnostics.exclude`.
+const DEFAULT_EXCLUDE: &str = "**/failscompilation/**";
 
 #[derive(Debug, Default)]
 pub(crate) struct Scope {
@@ -63,7 +68,7 @@ impl Scope {
     /// Check `uri` off the request path, ahead of the repository sweep, then
     /// its siblings when `siblings` is set.
     pub(super) fn queue_now(&mut self, uri: &str, siblings: bool) {
-        if self.enabled() && !self.urgent.iter().any(|(queued, _)| queued == uri) {
+        if self.covers(uri) && !self.urgent.iter().any(|(queued, _)| queued == uri) {
             self.remember(uri);
             self.urgent.push_back((uri.into(), siblings));
         }
@@ -84,7 +89,7 @@ impl Scope {
     /// since a refresh may have dropped it while it was being checked.
     pub(super) fn swept(&mut self, uri: &str) -> bool {
         self.in_flight = self.in_flight.saturating_sub(1);
-        self.enabled() && self.published.contains(uri)
+        self.covers(uri) && self.published.contains(uri)
     }
 
     pub(super) fn configure(&mut self, settings: &Value) {
@@ -149,6 +154,7 @@ impl Scope {
         for root in self.roots() {
             discover(&root, &mut documents);
         }
+        documents.retain(|uri| !self.excludes(uri));
         documents
     }
 
@@ -160,8 +166,80 @@ impl Scope {
         self.published.iter().map(DocumentUri::new).collect()
     }
 
-    pub(super) fn enabled(&self) -> bool {
+    fn enabled(&self) -> bool {
         self.diagnostics.get("enabled").and_then(Value::as_bool) != Some(false)
+    }
+
+    /// Whether `uri` gets diagnostics: they are enabled and no exclude glob
+    /// matches it. The CLI never reads this setting: `osprey <file> --check`
+    /// still reports every error.
+    pub(super) fn covers(&self, uri: &str) -> bool {
+        self.enabled() && !self.excludes(uri)
+    }
+
+    /// Exclude globs match the absolute path or the path under a workspace
+    /// folder; `**` spans folders, `*` and `?` stay within one.
+    fn excludes(&self, uri: &str) -> bool {
+        let Some(path) = file_path(uri) else {
+            return false;
+        };
+        let candidates = std::iter::once(path.as_path())
+            .chain(
+                self.folders
+                    .iter()
+                    .filter_map(|folder| path.strip_prefix(folder).ok()),
+            )
+            .map(segments)
+            .collect::<Vec<_>>();
+        self.exclude_globs().iter().any(|glob| {
+            let glob = glob
+                .split('/')
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>();
+            candidates.iter().any(|path| glob_match(&glob, path))
+        })
+    }
+
+    fn exclude_globs(&self) -> Vec<&str> {
+        match self.diagnostics.get("exclude").and_then(Value::as_array) {
+            Some(globs) => globs.iter().filter_map(Value::as_str).collect(),
+            None => vec![DEFAULT_EXCLUDE],
+        }
+    }
+}
+
+fn segments(path: &Path) -> Vec<String> {
+    path.components()
+        .filter_map(|part| match part {
+            std::path::Component::Normal(name) => name.to_str().map(String::from),
+            _ => None,
+        })
+        .collect()
+}
+
+fn glob_match(glob: &[&str], path: &[String]) -> bool {
+    match glob.split_first() {
+        None => path.is_empty(),
+        Some((&"**", rest)) => (0..=path.len())
+            .filter_map(|skip| path.get(skip..))
+            .any(|tail| glob_match(rest, tail)),
+        Some((part, rest)) => path.split_first().is_some_and(|(name, tail)| {
+            wildcard(part.as_bytes(), name.as_bytes()) && glob_match(rest, tail)
+        }),
+    }
+}
+
+fn wildcard(pattern: &[u8], name: &[u8]) -> bool {
+    match (pattern.split_first(), name.split_first()) {
+        (None, _) => name.is_empty(),
+        (Some((b'*', rest)), _) => (0..=name.len())
+            .filter_map(|skip| name.get(skip..))
+            .any(|tail| wildcard(rest, tail)),
+        (Some((b'?', rest)), Some((_, tail))) => wildcard(rest, tail),
+        (Some((expected, rest)), Some((actual, tail))) => {
+            expected == actual && wildcard(rest, tail)
+        }
+        (Some(_), None) => false,
     }
 }
 
