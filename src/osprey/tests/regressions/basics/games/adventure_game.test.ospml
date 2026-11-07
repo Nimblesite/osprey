@@ -87,6 +87,28 @@ hasRoomKey roomNumber =
         2 => 1  // Library has key
         _ => 0  // No key in other rooms
 
+(** Gold after banking a room's treasure or a reward `amount`. *)
+goldAfter balance amount = exactArithmetic (\() => balance + amount)
+
+(** A room's treasure and the gold total after banking it. *)
+type RoomLoot =
+    treasure : int
+    gold : int
+
+(** Enters a room, printing its entry line, and returns its treasure with the new gold total. *)
+enterRoom roomNumber arrival balance =
+    print "${arrival} ${exploreRoom roomNumber}"
+    treasure = getRoomTreasure roomNumber
+    RoomLoot(treasure = treasure, gold = goldAfter balance treasure)
+
+(** Runs one battle round: prints the strike and the health left, returning that health. *)
+battleRound strike health damage =
+    print strike
+    remaining = exactArithmetic (\() => health - damage)
+    print "Dragon health remaining: ${remaining}"
+    print ""
+    remaining
+
 // Game progression and storytelling
 print "⚔️  Your Quest Begins! ⚔️"
 print ""
@@ -98,18 +120,14 @@ print "Health: ${playerHealth} ❤️  | Gold: ${goldCoins} 💰"
 print ""
 
 // Explore multiple rooms
-print "🚪 Room 1: You enter ${exploreRoom 1}"
-room1Gold = getRoomTreasure 1
-newGold1 = exactArithmetic (\() => goldCoins + room1Gold)
-print "You find ${room1Gold} gold coins! Total: ${newGold1} 💰"
+room1 = enterRoom 1 "🚪 Room 1: You enter" goldCoins
+print "You find ${room1.treasure} gold coins! Total: ${room1.gold} 💰"
 print ""
 
-print "📚 Room 2: You discover ${exploreRoom 2}"
-room2Gold = getRoomTreasure 2
-newGold2 = exactArithmetic (\() => newGold1 + room2Gold)
+room2 = enterRoom 2 "📚 Room 2: You discover" room1.gold
 foundKey = hasRoomKey 2
-print "You find ${room2Gold} gold coins and acquire a mysterious key! 🗝️"
-print "Total gold: ${newGold2} 💰"
+print "You find ${room2.treasure} gold coins and acquire a mysterious key! 🗝️"
+print "Total gold: ${room2.gold} 💰"
 print ""
 
 print "⚔️  Room 3: You enter ${exploreRoom 3}"
@@ -141,24 +159,16 @@ print "Your attack power: ${playerDamage} ⚔️"
 print ""
 
 (** Battle calculation *)
-totalDamageNeeded = enemyHealth
-attacksNeeded = exactArithmetic (\() =>
-    totalDamageNeeded / playerDamage)
+attacksNeeded = exactArithmetic (\() => enemyHealth / playerDamage)
 
 print "⚡ BATTLE COMMENCES! ⚡"
 print "You need ${attacksNeeded} successful attacks to defeat the ${enemyName}!"
 print ""
 
 // Simulate battle rounds
-print "🥊 Round 1: You strike for ${playerDamage} damage!"
-remainingHealth1 = exactArithmetic (\() => enemyHealth - playerDamage)
-print "Dragon health remaining: ${remainingHealth1}"
-print ""
+remainingHealth1 = battleRound "🥊 Round 1: You strike for ${playerDamage} damage!" enemyHealth playerDamage
 
-print "🥊 Round 2: Another powerful blow for ${playerDamage} damage!"
-remainingHealth2 = exactArithmetic (\() => remainingHealth1 - playerDamage)
-print "Dragon health remaining: ${remainingHealth2}"
-print ""
+remainingHealth2 = battleRound "🥊 Round 2: Another powerful blow for ${playerDamage} damage!" remainingHealth1 playerDamage
 
 print "🥊 FINAL ROUND: You deliver the finishing blow!"
 finalDamage = remainingHealth2
@@ -170,7 +180,7 @@ newMonstersDefeated = exactArithmetic (\() => monstersDefeated + 1)
 newLevel = calculatePlayerLevel newMonstersDefeated
 newTitle = getPlayerTitle newLevel
 victoryGold = 200
-finalGold = exactArithmetic (\() => newGold2 + victoryGold)
+finalGold = goldAfter room2.gold victoryGold
 
 print "🎉 VICTORY! 🎉"
 print "The ${enemyName} has been defeated!"
@@ -184,12 +194,10 @@ print "New: ${newTitle} (Level ${newLevel})"
 print ""
 
 // Final treasure room
-print "🏆 Room 4: You enter ${exploreRoom 4}"
-treasureGold = getRoomTreasure 4
-ultimateGold = exactArithmetic (\() => finalGold + treasureGold)
+room4 = enterRoom 4 "🏆 Room 4: You enter" finalGold
 print "You discover the legendary treasure chest!"
-print "Inside: ${treasureGold} gold coins! 💎"
-print "Your final wealth: ${ultimateGold} 💰"
+print "Inside: ${room4.treasure} gold coins! 💎"
+print "Your final wealth: ${room4.gold} 💰"
 print ""
 
 // Epic conclusion
@@ -199,11 +207,14 @@ print "You have conquered the Mystical Castle!"
 print "Final Stats:"
 print "  - Level: ${newLevel}"
 print "  - Monsters Defeated: ${newMonstersDefeated}"
-print "  - Gold Collected: ${ultimateGold} 💰"
+print "  - Gold Collected: ${room4.gold} 💰"
 print "  - Artifacts: Sword ⚔️ & Key 🗝️"
 print ""
 print "🌟 Your legend will be remembered forever! 🌟"
 print "Thanks for playing the Osprey Adventure Game!"
+
+(** Checks `probe` at every input in `inputs` against the expected row. *)
+probeRows probe inputs expected = structuralEquals (mapList inputs probe) expected
 
 (** Replay the quest calculations and check every helper's branch table. *)
 adventureGameCase () =
@@ -217,31 +228,31 @@ adventureGameCase () =
     questBalance = (rewardBalance + getRoomTreasure 4) 
 
     checkAll "adventure branch tables" [
-        structuralEquals [calculatePlayerLevel 0, calculatePlayerLevel 1, calculatePlayerLevel 2] [1, 2, 3],
-        structuralEquals [calculatePlayerLevel 3, calculatePlayerLevel 9, calculateWeaponDamage 1] [4, 5, 25],
-        structuralEquals [calculateWeaponDamage 2, calculateWeaponDamage 3, calculateWeaponDamage 9] [40, 60, 15],
-        structuralEquals [calculateBarehandDamage 1, calculateBarehandDamage 2, calculateBarehandDamage 3] [10, 15, 20],
-        structuralEquals [calculateBarehandDamage 9, getEnemyHealth 1, getEnemyHealth 2] [5, 30, 60],
-        structuralEquals [getEnemyHealth 3, getEnemyHealth 9] [120, 25],
-        structuralEquals [getPlayerTitle 1, getPlayerTitle 2] ["Novice Adventurer", "Brave Explorer"],
-        structuralEquals [getPlayerTitle 3, getPlayerTitle 4] ["Seasoned Warrior", "Legendary Hero"],
-        structuralEquals [getPlayerTitle 5, getEnemyName 1] ["Master of the Realm", "Sneaky Goblin"],
-        structuralEquals [getEnemyName 2, getEnemyName 3] ["Fierce Orc", "Ancient Dragon"],
-        getEnemyName 9 == "Mysterious Shadow"
+        probeRows calculatePlayerLevel [0, 1, 2, 3, 9] [1, 2, 3, 4, 5],
+        probeRows calculateWeaponDamage [1, 2, 3, 9] [25, 40, 60, 15],
+        probeRows calculateBarehandDamage [1, 2, 3, 9] [10, 15, 20, 5],
+        probeRows getEnemyHealth [1, 2, 3, 9] [30, 60, 120, 25],
+        probeRows getPlayerTitle [1, 2, 3, 4, 5] [
+            "Novice Adventurer", "Brave Explorer", "Seasoned Warrior",
+            "Legendary Hero", "Master of the Realm"
+        ],
+        probeRows getEnemyName [1, 2, 3, 9] ["Sneaky Goblin", "Fierce Orc", "Ancient Dragon", "Mysterious Shadow"]
     ]
     checkAll "adventure room and quest state" [
-        exploreRoom 1 == "the Grand Entrance Hall with marble columns",
-        exploreRoom 2 == "a dusty Library filled with ancient tomes",
-        exploreRoom 3 == "the Armory containing gleaming weapons",
-        exploreRoom 4 == "the Treasure Chamber sparkling with gold",
-        exploreRoom 5 == "the Throne Room where shadows dance",
-        exploreRoom 9 == "a mysterious room filled with swirling mist",
+        probeRows exploreRoom [1, 2, 3, 4, 5, 9] [
+            "the Grand Entrance Hall with marble columns",
+            "a dusty Library filled with ancient tomes",
+            "the Armory containing gleaming weapons",
+            "the Treasure Chamber sparkling with gold",
+            "the Throne Room where shadows dance",
+            "a mysterious room filled with swirling mist"
+        ],
+        probeRows getRoomTreasure [1, 2, 3, 4, 5, 9] [10, 25, 0, 100, 50, 5],
+        probeRows hasRoomWeapon [3, 2] [1, 0],
+        probeRows hasRoomKey [2, 3] [1, 0],
         getPlayerTitle (calculatePlayerLevel defeated) == "Brave Explorer",
-        structuralEquals [getRoomTreasure 1, getRoomTreasure 2, getRoomTreasure 3, getRoomTreasure 4] [10, 25, 0, 100],
-        structuralEquals [getRoomTreasure 5, getRoomTreasure 9, hasRoomWeapon 3, hasRoomWeapon 2] [50, 5, 1, 0],
-        structuralEquals [hasRoomKey 2, hasRoomKey 3, afterRoomOne, afterRoomTwo] [1, 0, 60, 85],
-        structuralEquals [damage, healthAfterOne, healthAfterTwo, defeated] [60, 60, 0, 1],
-        structuralEquals [calculatePlayerLevel defeated, rewardBalance, questBalance] [2, 285, 385],
+        structuralEquals [afterRoomOne, afterRoomTwo, damage, healthAfterOne, healthAfterTwo] [60, 85, 60, 60, 0],
+        structuralEquals [defeated, calculatePlayerLevel defeated, rewardBalance, questBalance] [1, 2, 285, 385],
         (getEnemyHealth 3 / damage ) == 2.0
     ]
 
