@@ -270,7 +270,13 @@ fn unignored(root: &Path) -> Option<HashSet<PathBuf>> {
     let listed = std::process::Command::new("git")
         .arg("-C")
         .arg(root)
-        .args(["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
+        .args([
+            "ls-files",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "-z",
+        ])
         .output()
         .ok()?;
     listed.status.success().then(|| {
@@ -315,10 +321,7 @@ fn visit(
     if kind.is_dir() && !excluded(&path) {
         discover(&path, unignored, documents);
     }
-    if kind.is_file()
-        && source_file(&path)
-        && unignored.is_none_or(|files| files.contains(&path))
-    {
+    if kind.is_file() && source_file(&path) && unignored.is_none_or(|files| files.contains(&path)) {
         if let Some(uri) = uri_of(&path) {
             let _ = documents.insert(uri);
         }
