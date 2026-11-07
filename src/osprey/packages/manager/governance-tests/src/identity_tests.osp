@@ -24,16 +24,22 @@ module IdentityTests {
     fn createWren(world, k, id, admin, adminPrincipal) =
         create(world, "o-wren", "p-dave", "m-dave", k, id, admin, adminPrincipal)
 
-    /// One leaf, two organizations, no interaction between them.
+    /// One leaf, two organizations, no interaction between them. The second
+    /// organization's admin must be a human member: [PACKAGE-OWNERSHIP-ADMIN]
+    /// constrains `admin_principal_kind` to `human` and requires that "Null
+    /// admins, workflow admins, administrators from another org" fail, so the
+    /// workflow principal m-ci can never hold the seat.
     fn sameLeafTwoOrganizations() = {
         let world = Fixture::world()
         let finchToolkit = Fixture::orKeep(world, fn(w) => createFinch(w, key("finch", "toolkit"), "pkg-f2", "m-bob", "p-bob"))
-        let bothToolkit = Fixture::orKeep(finchToolkit, fn(w) => createWren(w, key("wren", "toolkit"), "pkg-w2", "m-ci", "p-ci"))
+        let bothToolkit = Fixture::orKeep(finchToolkit, fn(w) => createWren(w, key("wren", "toolkit"), "pkg-w2", "m-dave", "p-dave"))
         checkAll("the same leaf name serves two organizations independently", [
             Fixture::code(createFinch(world, key("finch", "toolkit"), "pkg-f2", "m-bob", "p-bob")) == "",
             Fixture::code(createFinch(world, key("finch", "ledger"), "pkg-f9", "m-bob", "p-bob")) == "governance.package.duplicate-name",
-            Fixture::code(createWren(finchToolkit, key("wren", "toolkit"), "pkg-w2", "m-ci", "p-ci")) == "",
+            Fixture::code(createWren(finchToolkit, key("wren", "toolkit"), "pkg-w2", "m-dave", "p-dave")) == "",
             Fixture::code(createWren(world, key("wren", "ledger"), "pkg-w9", "m-dave", "p-dave")) == "governance.package.duplicate-name",
+            // A workflow principal is refused the seat, so it never creates a package.
+            Fixture::code(createWren(world, key("wren", "toolkit"), "pkg-w2", "m-ci", "p-ci")) == "governance.principal.workflow",
             Names::same(key("finch", "toolkit"), key("wren", "toolkit")) == false,
             Names::compare(key("finch", "toolkit"), key("wren", "toolkit")) != 0,
             length(bothToolkit.packages) == 4

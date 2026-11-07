@@ -32,27 +32,33 @@ module GovernanceTransitions {
     /// custodians' fresh proofs [PACKAGE-OWNERSHIP-MODEL]. A sole-custodian
     /// organization cannot elevate itself: that path is the hosted recovery
     /// ceremony with a pre-enrolled independent recovery principal, and is
-    /// deliberately not modeled here.
+    /// deliberately not modeled here. The two signatures must come from two
+    /// distinct memberships before anything else is considered; the
+    /// recipient must be a human member; each custodian's proof is then
+    /// verified for this exact decision.
     export fn grantCustodianship(registry, org, target, proofA, proofB) =
-        Checked::andThen(Governance::membershipOf(registry, target), fn(m: Governance::Membership) =>
+        Checked::andThen(Governance::membershipOf(registry, target), fn(m) =>
             Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
                 Checked::andThen(Governance::sameOrgMember(m, org), fn(_) =>
-                    Checked::andThen(Governance::humanMemberOf(registry, m), fn(_) =>
-                        Checked::andThen(custodianQuorum(registry, org, target, proofA, proofB), fn(_) =>
-                            Success { value: Governance::replaceMembership(registry,
-                                m { role: Governance::Custodian, authorityEpoch: m.authorityEpoch + 1 }) })))))
+                    Checked::andThen(distinctProofs(proofA, proofB), fn(_) =>
+                        Checked::andThen(Governance::humanMemberOf(registry, m), fn(_) =>
+                            Checked::andThen(custodianQuorum(registry, org, target, proofA, proofB), fn(_) =>
+                                Success { value: Governance::replaceMembership(registry,
+                                    m { role: Governance::Custodian, authorityEpoch: m.authorityEpoch + 1 }) }))))))
 
     /// Revoking a membership [PACKAGE-OWNERSHIP-MODEL]: a custodian's signed
     /// decision, never the organization's last accepted custodian, never one
     /// still administering a package. The row stays as evidence; its grants
-    /// die through the live predicate, not through deletion.
+    /// die through the live predicate, not through deletion. The signed
+    /// decision is checked first: an actor who is no active custodian of the
+    /// target's organization never reaches the structural protections.
     export fn revokeMembership(registry, target, proof) =
-        Checked::andThen(Governance::membershipOf(registry, target), fn(m: Governance::Membership) =>
+        Checked::andThen(Governance::membershipOf(registry, target), fn(m) =>
             Checked::andThen(Governance::activeMemberOf(m), fn(_) =>
-                Checked::andThen(notLastCustodian(registry, m), fn(_) =>
-                    Checked::andThen(administersNothing(registry, m), fn(_) =>
-                        Checked::andThen(custodianProof(registry, m.org,
-                            Governance::revocationStatement(m.org, target), proof), fn(_) =>
+                Checked::andThen(custodianProof(registry, m.org,
+                    Governance::revocationStatement(m.org, target), proof), fn(_) =>
+                    Checked::andThen(notLastCustodian(registry, m), fn(_) =>
+                        Checked::andThen(administersNothing(registry, m), fn(_) =>
                             Success { value: Governance::replaceMembership(registry,
                                 m { status: Governance::Revoked, authorityEpoch: m.authorityEpoch + 1 }) })))))
 
@@ -137,15 +143,24 @@ module GovernanceTransitions {
     export fn grantPermission(registry, id, grantId, proof, membership, permission, expiresAt, now) =
         Checked::andThen(Governance::packageOf(registry, id), fn(pkg: Governance::Package) =>
             Checked::andThen(Governance::writable(pkg), fn(_) =>
-                Checked::andThen(subject(registry, pkg, membership), fn(m: Governance::Membership) =>
+                Checked::andThen(subject(registry, pkg, membership), fn(m) =>
                     Checked::andThen(Governance::requireAdmin(registry, pkg, proof,
                         Governance::grantStatement(pkg.key, pkg.authorityEpoch, membership, permission, expiresAt)), fn(_) =>
-                        Checked::andThen(freshExpiry(expiresAt, now), fn(_) =>
-                            Checked::andThen(unduplicated(registry, id, membership, permission), fn(_) =>
-                                Success { value: registry { grants: listAppend(registry.grants,
-                                    Governance::Grant { id: grantId, package: id, membership: membership, permission: permission,
-                                        grantor: pkg.admin, packageEpoch: pkg.authorityEpoch, memberEpoch: m.authorityEpoch,
-                                        expiresAt: expiresAt, status: Governance::GrantActive }) } })))))) 
+                        Checked::andThen(freshAndUnduplicated(registry, id, membership, permission, expiresAt, now), fn(_) =>
+                            Success { value: recorded(registry, pkg, m, grantId, membership, permission, expiresAt) })))))
+
+    /// The trailing grant guards: a workable expiry and a free live slot.
+    /// One named function, not another nested closure: the arguments are
+    /// positional, so every guard sees exactly the values passed in.
+    fn freshAndUnduplicated(registry, id, membership, permission, expiresAt, now) =
+        Checked::andThen(freshExpiry(expiresAt, now), fn(_) =>
+            unduplicated(registry, id, membership, permission))
+
+    /// The new grant row appended to the registry.
+    fn recorded(registry, pkg, m, grantId, membership, permission, expiresAt) = registry { grants: listAppend(registry.grants,
+        Governance::Grant { id: grantId, package: pkg.id, membership: membership, permission: permission,
+            grantor: pkg.admin, packageEpoch: pkg.authorityEpoch, memberEpoch: m.authorityEpoch,
+            expiresAt: expiresAt, status: Governance::GrantActive }) }
 
     /// The administrator can revoke one grant immediately
     /// [PACKAGE-OWNERSHIP-PERMISSIONS]; the row remains auditable.
@@ -195,7 +210,7 @@ module GovernanceTransitions {
                                     unexpired(g, now))))))))
 
     fn handleChecks(registry, id, orgHandle) = match Names::scopeCode(orgHandle) {
-        "" => Governance::unique(id, Maybe::isPresent(Governance::organizationByHandle(registry, orgHandle)), "governance.organization.duplicate-orgHandle")
+        "" => Governance::unique(id, Maybe::isPresent(Governance::organizationByHandle(registry, orgHandle)), "governance.organization.duplicate-handle")
         code => Error { message: code }
     }
 
@@ -216,11 +231,13 @@ module GovernanceTransitions {
                 true => Governance::requireProof(proof, m.principal, m.id, statement)
             })
 
-    fn custodianQuorum(registry, org, target, proofA, proofB) = match proofA.membership == proofB.membership {
-        true => Error { message: "governance.custodian.quorum" }
-        false => Checked::andThen(custodianProof(registry, org, Governance::custodianStatement(org, target), proofA), fn(_) =>
+    /// Two custodial signatures must belong to two distinct memberships: one
+    /// member signing twice is never a quorum [PACKAGE-OWNERSHIP-MODEL].
+    fn distinctProofs(proofA, proofB) = Governance::unique(proofA.membership, proofA.membership == proofB.membership, "governance.custodian.quorum")
+
+    fn custodianQuorum(registry, org, target, proofA, proofB) =
+        Checked::andThen(custodianProof(registry, org, Governance::custodianStatement(org, target), proofA), fn(_) =>
             custodianProof(registry, org, Governance::custodianStatement(org, target), proofB))
-    }
 
     fn otherCustodians(registry, m: Governance::Membership) = filterList(registry.memberships, fn(x: Governance::Membership) =>
         Governance::isCustodian(x) && Governance::isActive(x) && x.org == m.org && x.id != m.id)
@@ -254,7 +271,7 @@ module GovernanceTransitions {
     /// free.
     fn keyChecks(registry, o: Governance::Organization, key: Names::Key, id) = match Names::scopeCode(key.scope) + Names::nameCode(key.name) {
         "" => match key.scope == o.orgHandle {
-            false => Error { message: "governance.package.org-orgHandle-mismatch" }
+            false => Error { message: "governance.package.org-handle-mismatch" }
             true => match Maybe::isPresent(Governance::packageByName(registry, o.id, key.name)) {
                 true => Error { message: "governance.package.duplicate-name" }
                 false => Success { value: id }

@@ -33,293 +33,205 @@ fn divideResult(a, b) = {
 /// A user-declared fallible function: its Error message must reach the arm.
 fn failWith(reason) -> Result<int, string> = Error { message: reason }
 
+/// Prints `label` and `value` joined by `=` on one line.
+fn printValue(label, value) = print("${label}=${value}\n")
+
+/// Prints `label=` followed by `value` inside literal double quotes.
+fn printQuoted(label, value) = print("${label}=\"${value}\"\n")
+
+/// Prints `label FAILED: message`.
+fn printFailed(label, message) = print("${label} FAILED: ${message}\n")
+
+/// Prints `outcome`'s `Success` value quoted when `quoted`, bare otherwise,
+/// or FAILED with its message.
+fn printOutcomeLike(label, outcome, quoted) = match outcome {
+    Success { value } => match quoted {
+        true => printQuoted(label, value)
+        false => printValue(label, value)
+    }
+    Error { message } => printFailed(label, message)
+}
+
+/// Prints the `Success` value of `outcome` bare, or FAILED with its message.
+fn printOutcome(label, outcome) = printOutcomeLike(label, outcome, false)
+
+/// Prints the `Success` value of `outcome` quoted, or FAILED with its message.
+fn printOutcomeQuoted(label, outcome) = printOutcomeLike(label, outcome, true)
+
+/// Prints that `outcome` succeeding was unexpected.
+fn printUnexpected(label) = print("${label} unexpected\n")
+
+/// Prints that `outcome` succeeding was unexpected, or its rejection message.
+fn printRejection(label, outcome) = match outcome {
+    Success => printUnexpected(label)
+    Error { message } => printValue(label, message)
+}
+
+/// Prints that `outcome` succeeding was unexpected, or that it was rejected.
+fn printRejected(label, outcome) = match outcome {
+    Success => printUnexpected(label)
+    Error => print("${label} rejected\n")
+}
+
+/// True when every condition listed in `wanted` holds.
+fn allHold(wanted) = match wanted {
+    [] => true
+    [head, ...tail] => head && allHold(tail)
+}
+
+/// True when `outcome` is an `Error` carrying a non-empty message.
+fn rejectedNonEmpty(outcome) = match outcome {
+    Success => false
+    Error { message } => message != ""
+}
+
+/// `s` is a single byte whose value is exactly `byte` ([BUILTIN-STRING-CURSOR]).
+fn singleByte(s, byte) = structuralEquals([length(s) == 1, (byteAt(s, 0) ?: 0) == byte], [true, true])
+
+/// `indexOf(s, needle)` succeeds with byte index `wanted` ([BUILTIN-STRING-INDEXOF]).
+fn indexOfIs(s, needle, wanted) = (indexOf(s, needle) ?: (0 - 1)) == wanted
+
+/// `substring(s, from, to)` succeeds with exactly `wanted` ([BUILTIN-STRING-SUBSTRING]).
+fn substringIs(s, from, to, wanted) = (substring(s, from, to) ?: "missing") == wanted
+
+/// `replace(s, needle, replacement)` succeeds with exactly `wanted` ([BUILTIN-STRING-REPLACE]).
+fn replaceIs(s, needle, replacement, wanted) = (replace(s, needle, replacement) ?: "missing") == wanted
+
+/// `repeat(s, n)` succeeds with exactly `wanted` ([BUILTIN-STRING-REPEAT]).
+fn repeatIs(s, n, wanted) = (repeat(s, n) ?: "missing") == wanted
+
+/// `padStart(s, width, fill)` succeeds with exactly `wanted` ([BUILTIN-STRING-PADSTART]).
+fn padStartIs(s, width, fill, wanted) = (padStart(s, width, fill) ?: "missing") == wanted
+
+/// `padEnd(s, width, fill)` succeeds with exactly `wanted` ([BUILTIN-STRING-PADEND]).
+fn padEndIs(s, width, fill, wanted) = (padEnd(s, width, fill) ?: "missing") == wanted
+
+/// `take(s, n)` and `drop(s, n)` reassemble `s` exactly at the cut `n`.
+fn partitionsAt(s, n) = take(s, n) + drop(s, n) == s
+
+/// The hole for `v` and `toString(v)` both render exactly `text` ([BUILTIN-TOSTRING]).
+fn holeAndToString(v, text) = structuralEquals(["${v}" == text, toString(v) == text], [true, true])
+
+/// The hole for `v`, `toString(v)` and their agreement all render `text`.
+fn holeToStringAgree(v, text) =
+    structuralEquals(["${v}" == text, toString(v) == text, "${v}" == toString(v)], [true, true, true])
+
+/// `toString(v)` and the interpolation hole for `v` render identically.
+fn holeIsToString(v) = toString(v) == "${v}"
+
   // ---- isEmpty edges ----
-  print("empty-emp=${"" |> isEmpty}\n")
-  print("empty-x=${"x" |> isEmpty}\n")
+  printValue("empty-emp", "" |> isEmpty)
+  printValue("empty-x", "x" |> isEmpty)
 
   // ---- startsWith / endsWith with empty needle ----
-  print("starts-empty=${"abc" |> startsWith("")}\n")
-  print("ends-empty=${"abc" |> endsWith("")}\n")
+  printValue("starts-empty", "abc" |> startsWith(""))
+  printValue("ends-empty", "abc" |> endsWith(""))
   // suffix/prefix longer than s
-  print("starts-long=${"hi"  |> startsWith("hello")}\n")
-  print("ends-long=${"hi"    |> endsWith("hello")}\n")
+  printValue("starts-long", "hi" |> startsWith("hello"))
+  printValue("ends-long", "hi" |> endsWith("hello"))
 
   // ---- take / drop clamping ----
-  print("take-neg=\"${"hi" |> take((0 - 5) )}\"\n")
-  print("take-big=\"${"hi" |> take(99)}\"\n")
-  print("drop-neg=\"${"hi" |> drop((0 - 5) )}\"\n")
-  print("drop-big=\"${"hi" |> drop(99)}\"\n")
+  printQuoted("take-neg", "hi" |> take((0 - 5) ))
+  printQuoted("take-big", "hi" |> take(99))
+  printQuoted("drop-neg", "hi" |> drop((0 - 5) ))
+  printQuoted("drop-big", "hi" |> drop(99))
 
   // ---- trim on all-whitespace ----
-  print("trim-allws=\"${"   " |> trim}\"\n")
-  print("trim-empty=\"${"" |> trim}\"\n")
+  printQuoted("trim-allws", "   " |> trim)
+  printQuoted("trim-empty", "" |> trim)
 
   // ---- substring boundaries ----
-  match substring("hi", 0, 0) {
-Success { value }   => print("sub-empty=\"${value}\"\n")
-Error => print("sub-empty FAILED\n")
-  }
-  match substring("hi", 0, 2) {
-Success { value }   => print("sub-full=\"${value}\"\n")
-Error => print("sub-full FAILED\n")
-  }
-  match substring("hi", (0 - 1) , 2) {
-Success   => print("sub-neg unexpected\n")
-Error => print("sub-neg rejected\n")
-  }
-  match substring("hi", 0, 99) {
-Success   => print("sub-over unexpected\n")
-Error => print("sub-over rejected\n")
-  }
-  match substring("hi", 2, 0) {
-Success   => print("sub-inverted unexpected\n")
-Error => print("sub-inverted rejected\n")
-  }
+  printOutcomeQuoted("sub-empty", substring("hi", 0, 0))
+  printOutcomeQuoted("sub-full", substring("hi", 0, 2))
+  printRejected("sub-neg", substring("hi", (0 - 1) , 2))
+  printRejected("sub-over", substring("hi", 0, 99))
+  printRejected("sub-inverted", substring("hi", 2, 0))
 
   // ---- indexOf empty needle and not-found ----
-  match indexOf("hello", "") {
-Success { value }   => print("idx-empty=${value}\n")
-Error => print("idx-empty FAILED\n")
-  }
-  match indexOf("hello", "xyz") {
-Success   => print("idx-missing unexpected\n")
-Error => print("idx-missing rejected\n")
-  }
+  printOutcome("idx-empty", indexOf("hello", ""))
+  printRejected("idx-missing", indexOf("hello", "xyz"))
 
   // ---- replace empty needle rejected ----
-  match replace("hello", "", "x") {
-Success   => print("rep-empty unexpected\n")
-Error => print("rep-empty rejected\n")
-  }
+  printRejected("rep-empty", replace("hello", "", "x"))
   // replace shrinking
-  match replace("hello", "l", "") {
-Success { value }   => print("rep-shrink=\"${value}\"\n")
-Error => print("rep-shrink FAILED\n")
-  }
+  printOutcomeQuoted("rep-shrink", replace("hello", "l", ""))
 
   // ---- repeat n=0 and n<0 ----
-  match repeat("ab", 0) {
-Success { value }   => print("rep0=\"${value}\"\n")
-Error => print("rep0 FAILED\n")
-  }
-  match repeat("ab", (0 - 1) ) {
-Success   => print("rep-neg unexpected\n")
-Error => print("rep-neg rejected\n")
-  }
+  printOutcomeQuoted("rep0", repeat("ab", 0))
+  printRejected("rep-neg", repeat("ab", (0 - 1) ))
 
   // ---- padStart / padEnd empty fill rejected ----
-  match padStart("hi", 5, "") {
-Success   => print("padS-empty unexpected\n")
-Error => print("padS-empty rejected\n")
-  }
-  match padEnd("hi", 5, "") {
-Success   => print("padE-empty unexpected\n")
-Error => print("padE-empty rejected\n")
-  }
+  printRejected("padS-empty", padStart("hi", 5, ""))
+  printRejected("padE-empty", padEnd("hi", 5, ""))
   // target <= len → no padding
-  match padStart("hi", 1, "x") {
-Success { value }   => print("padS-noop=\"${value}\"\n")
-Error => print("padS-noop FAILED\n")
-  }
+  printOutcomeQuoted("padS-noop", padStart("hi", 1, "x"))
   // multi-char fill cycles
-  match padStart("42", 5, "ab") {
-Success { value }   => print("padS-multi=\"${value}\"\n")
-Error => print("padS-multi FAILED\n")
-  }
+  printOutcomeQuoted("padS-multi", padStart("42", 5, "ab"))
 
   // ---- parseFloat rejects junk ----
-  match parseFloat("") {
-Success   => print("pf-empty unexpected\n")
-Error => print("pf-empty rejected\n")
-  }
-  match parseFloat("3.14x") {
-Success   => print("pf-trailing unexpected\n")
-Error => print("pf-trailing rejected\n")
-  }
-  match parseFloat(" 3.14") {
-Success   => print("pf-space unexpected\n")
-Error => print("pf-space rejected\n")
-  }
-  match parseFloat("nan") {
-Success   => print("pf-nan unexpected\n")
-Error => print("pf-nan rejected\n")
-  }
-  match parseFloat("0x1p2") {
-Success   => print("pf-hex unexpected\n")
-Error => print("pf-hex rejected\n")
-  }
-  match parseFloat("1e9999") {
-Success   => print("pf-infinite unexpected\n")
-Error => print("pf-infinite rejected\n")
-  }
+  printRejected("pf-empty", parseFloat(""))
+  printRejected("pf-trailing", parseFloat("3.14x"))
+  printRejected("pf-space", parseFloat(" 3.14"))
+  printRejected("pf-nan", parseFloat("nan"))
+  printRejected("pf-hex", parseFloat("0x1p2"))
+  printRejected("pf-infinite", parseFloat("1e9999"))
 
   // ---- parseInt overflow ----
-  match parseInt("99999999999999999999") {
-Success   => print("pi-overflow unexpected\n")
-Error => print("pi-overflow rejected\n")
-  }
-  match parseInt("-9223372036854775808") {
-Success { value }   => print("pi-min=${value}\n")
-Error => print("pi-min FAILED\n")
-  }
-  match parseInt(" 42") {
-Success   => print("pi-leading-space unexpected\n")
-Error => print("pi-leading-space rejected\n")
-  }
+  printRejected("pi-overflow", parseInt("99999999999999999999"))
+  printOutcome("pi-min", parseInt("-9223372036854775808"))
+  printRejected("pi-leading-space", parseInt(" 42"))
 
   // ---- O(1) byte / codepoint cursor [BUILTIN-STRING-CURSOR] ----
   // "héllo": é is U+00E9 (bytes 0xC3 0xA9), so byteLength is 6, not 5.
-  print("byteLen=${byteLength("héllo")}\n")
-  match byteAt("héllo", 1) {
-Success { value }   => print("byteAt1=${value}\n")
-Error   { message } => print("byteAt1 FAILED: ${message}\n")
-  }
-  match byteAt("héllo", 99) {
-Success   => print("byteAt-oob unexpected\n")
-Error   { message } => print("byteAt-oob=${message}\n")
-  }
-  match codePointAt("héllo", 1) {
-Success { value }   => print("cpAt1=${value}\n")
-Error   { message } => print("cpAt1 FAILED: ${message}\n")
-  }
-  match codePointAt("héllo", 2) {
-Success   => print("cpAt-mid unexpected\n")
-Error   { message } => print("cpAt-mid=${message}\n")
-  }
-  match codePointWidth(128512) {
-Success { value }   => print("cpWidth=${value}\n")
-Error   { message } => print("cpWidth FAILED: ${message}\n")
-  }
-  match codePointWidth(55296) {
-Success   => print("cpWidth-surrogate unexpected\n")
-Error   { message } => print("cpWidth-surrogate=${message}\n")
-  }
-  match fromCodePoint(128512) {
-Success { value }   => print("fromCp=${value}\n")
-Error   { message } => print("fromCp FAILED: ${message}\n")
-  }
-  match fromCodePoint(2000000) {
-Success   => print("fromCp-bad unexpected\n")
-Error   { message } => print("fromCp-bad=${message}\n")
-  }
+  printValue("byteLen", byteLength("héllo"))
+  printOutcome("byteAt1", byteAt("héllo", 1))
+  printRejection("byteAt-oob", byteAt("héllo", 99))
+  printOutcome("cpAt1", codePointAt("héllo", 1))
+  printRejection("cpAt-mid", codePointAt("héllo", 2))
+  printOutcome("cpWidth", codePointWidth(128512))
+  printRejection("cpWidth-surrogate", codePointWidth(55296))
+  printOutcome("fromCp", fromCodePoint(128512))
+  printRejection("fromCp-bad", fromCodePoint(2000000))
   // U+0000 is a scalar, but cannot inhabit the runtime's NUL-terminated
   // [BUILTIN-STRING-FROMCODEPOINT] representation.
-  match fromCodePoint(0) {
-Success   => print("fromCp-nul unexpected\n")
-Error   { message } => print("fromCp-nul=${message}\n")
-  }
+  printRejection("fromCp-nul", fromCodePoint(0))
   // Round-trip: encode U+00E9 then decode byte 0 back to the same scalar.
   match fromCodePoint(233) {
-Success { value }   => match codePointAt(value, 0) {
-  Success { value }   => print("roundtrip=${value}\n")
-  Error   { message } => print("roundtrip FAILED: ${message}\n")
-}
-Error   { message } => print("roundtrip FAILED: ${message}\n")
+    Success { value } => printOutcome("roundtrip", codePointAt(value, 0))
+    Error { message } => print("roundtrip FAILED: ${message}\n")
   }
 
   // ---- real error payloads reach the Error arm ([ERR-PAYLOAD]) ----
-  match parseInt("oops") {
-Success   => print("pi-msg unexpected\n")
-Error   { message } => print("pi-msg=${message}\n")
-  }
-exactArithmetic(fn() =>   match divideResult(10, 0) {
-Success   => print("div-msg unexpected\n")
-Error   { message } => print("div-msg=${message}\n")
-  })
-  match failWith("custom boom") {
-Success   => print("user-msg unexpected\n")
-Error   { message } => print("user-msg=${message}\n")
-  }
+  printRejection("pi-msg", parseInt("oops"))
+exactArithmetic(fn() => printRejection("div-msg", divideResult(10, 0)))
+  printRejection("user-msg", failWith("custom boom"))
 
   print("=== Edge Cases Complete ===\n")
 
 /// Re-evaluates successful boundaries, rejected inputs, cursor values, and payloads.
 fn stringEdgeCase() = {
     let negativeOne = (0 - 1) 
-    let substringNegative = match substring("hi", negativeOne, 2) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let substringOverrun = match substring("hi", 0, 99) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let substringInverted = match substring("hi", 2, 0) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let indexMissing = match indexOf("hello", "xyz") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let replaceEmpty = match replace("hello", "", "x") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let repeatNegative = match repeat("ab", negativeOne) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let padStartEmpty = match padStart("hi", 5, "") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let padEndEmpty = match padEnd("hi", 5, "") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let emptyFloat = match parseFloat("") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let trailingFloat = match parseFloat("3.14x") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let spacedFloat = match parseFloat(" 3.14") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let nanFloat = match parseFloat("nan") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let hexFloat = match parseFloat("0x1p2") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let infiniteFloat = match parseFloat("1e9999") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let integerOverflow = match parseInt("99999999999999999999") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let integerLeadingSpace = match parseInt(" 42") {
-        Success => false
-        Error { message } => message != ""
-    }
-    let byteOutOfBounds = match byteAt("héllo", 99) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let codePointMidSequence = match codePointAt("héllo", 2) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let surrogateRejected = match codePointWidth(55296) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let invalidCodePoint = match fromCodePoint(2000000) {
-        Success => false
-        Error { message } => message != ""
-    }
-    let nulCodePoint = match fromCodePoint(0) {
-        Success => false
-        Error { message } => message != ""
-    }
+    let substringNegative = rejectedNonEmpty(substring("hi", negativeOne, 2))
+    let substringOverrun = rejectedNonEmpty(substring("hi", 0, 99))
+    let substringInverted = rejectedNonEmpty(substring("hi", 2, 0))
+    let indexMissing = rejectedNonEmpty(indexOf("hello", "xyz"))
+    let replaceEmpty = rejectedNonEmpty(replace("hello", "", "x"))
+    let repeatNegative = rejectedNonEmpty(repeat("ab", negativeOne))
+    let padStartEmpty = rejectedNonEmpty(padStart("hi", 5, ""))
+    let padEndEmpty = rejectedNonEmpty(padEnd("hi", 5, ""))
+    let emptyFloat = rejectedNonEmpty(parseFloat(""))
+    let trailingFloat = rejectedNonEmpty(parseFloat("3.14x"))
+    let spacedFloat = rejectedNonEmpty(parseFloat(" 3.14"))
+    let nanFloat = rejectedNonEmpty(parseFloat("nan"))
+    let hexFloat = rejectedNonEmpty(parseFloat("0x1p2"))
+    let infiniteFloat = rejectedNonEmpty(parseFloat("1e9999"))
+    let integerOverflow = rejectedNonEmpty(parseInt("99999999999999999999"))
+    let integerLeadingSpace = rejectedNonEmpty(parseInt(" 42"))
+    let byteOutOfBounds = rejectedNonEmpty(byteAt("héllo", 99))
+    let codePointMidSequence = rejectedNonEmpty(codePointAt("héllo", 2))
+    let surrogateRejected = rejectedNonEmpty(codePointWidth(55296))
+    let invalidCodePoint = rejectedNonEmpty(fromCodePoint(2000000))
+    let nulCodePoint = rejectedNonEmpty(fromCodePoint(0))
     let roundTrip = match fromCodePoint(233) {
         Success { value } => (codePointAt(value, 0) ?: 0) == 233
         Error => false
@@ -328,10 +240,7 @@ fn stringEdgeCase() = {
         Success => false
         Error { message } => message == "custom boom"
     }
-    let divisionRejected = match divideResult(10, 0) {
-        Success => false
-        Error { message } => message != ""
-    }
+    let divisionRejected = rejectedNonEmpty(divideResult(10, 0))
 
     checkAll("total string boundary values", [
         isEmpty(""),
@@ -346,13 +255,13 @@ fn stringEdgeCase() = {
         drop("hi", 99) == "",
         trim("   ") == "",
         trim("") == "",
-        (substring("hi", 0, 0) ?: "missing") == "",
-        (substring("hi", 0, 2) ?: "missing") == "hi",
-        (indexOf("hello", "") ?: negativeOne) == 0,
-        (replace("hello", "l", "") ?: "missing") == "heo",
-        (repeat("ab", 0) ?: "missing") == "",
-        (padStart("hi", 1, "x") ?: "missing") == "hi",
-        (padStart("42", 5, "ab") ?: "missing") == "aba42"
+        substringIs("hi", 0, 0, ""),
+        substringIs("hi", 0, 2, "hi"),
+        indexOfIs("hello", "", 0),
+        replaceIs("hello", "l", "", "heo"),
+        repeatIs("ab", 0, ""),
+        padStartIs("hi", 1, "x", "hi"),
+        padStartIs("42", 5, "ab", "aba42")
     ])
     checkAll("rejected string inputs", [
         substringNegative,
@@ -407,23 +316,14 @@ fn interpolationScalarCase() = {
     // Integers: no thousands separator, no sign for a positive, an explicit
     // "-" for a negative, and the two 64-bit extremes spelled in full.
     checkAll("integers render identically in a hole and in toString", [
-        "${0}" == "0",
+        holeToStringAgree(0, "0"),
         "${1}" == "1",
-        "${42}" == "42",
-        "${negativeSeven}" == "-7",
-        "${intMax}" == "9223372036854775807",
-        "${intMin}" == "-9223372036854775808",
-        toString(0) == "0",
-        toString(42) == "42",
-        toString(negativeSeven) == "-7",
-        toString(intMax) == "9223372036854775807",
-        toString(intMin) == "-9223372036854775808",
-        "${0}" == toString(0),
-        "${negativeSeven}" == toString(negativeSeven),
-        "${intMax}" == toString(intMax),
-        "${intMin}" == toString(intMin),
+        holeAndToString(42, "42"),
+        holeToStringAgree(negativeSeven, "-7"),
         length("${0}") == 1,
+        holeToStringAgree(intMax, "9223372036854775807"),
         length("${negativeSeven}") == 2,
+        holeToStringAgree(intMin, "-9223372036854775808"),
         length("${intMin}") == 20,
         "${0}" != "0.0",
         "${1}" != "true"
@@ -433,24 +333,20 @@ fn interpolationScalarCase() = {
     // renders as an int; [BUILTIN-CONVERT-FLOAT] pins toFloat(7) == 7.0 and
     // toFloat(-3) == -3.0. Float + - * are plain, not Result ([ARITH-CHECKED]).
     checkAll("floats and booleans render with their scalar spelling", [
-        "${0.0}" == "0.0",
+        holeAndToString(0.0, "0.0"),
         "${1.5}" == "1.5",
-        "${3.5}" == "3.5",
+        holeAndToString(3.5, "3.5"),
         "${2.0}" == "2.0",
         "${100000.0}" == "100000.0",
         "${0.0 - 0.25}" == "-0.25",
         "${1.5 + 2.5}" == "4.0",
         "${1.5 * 2.0}" == "3.0",
-        toString(0.0) == "0.0",
-        toString(3.5) == "3.5",
         "${2.0}" == toString(2.0),
         "${toFloat(7)}" == "7.0",
         "${toFloat(0)}" == "0.0",
         "${toFloat(negativeSeven)}" == "-7.0",
-        "${true}" == "true",
-        "${false}" == "false",
-        toString(true) == "true",
-        toString(false) == "false",
+        holeAndToString(true, "true"),
+        holeAndToString(false, "false"),
         "${1 == 1}" == "true",
         "${1 != 1}" == "false",
         "${!(1 == 2)}" == "true",
@@ -465,8 +361,7 @@ fn interpolationScalarCase() = {
         "${"x"}" == "x",
         "${"a b"}" == "a b",
         "${"  padded  "}" == "  padded  ",
-        toString("abc") == "abc",
-        "${"abc"}" == toString("abc"),
+        holeAndToString("abc", "abc"),
         length("${emptyText}") == 0,
         length("${spaceText}") == 1,
         length("${"  padded  "}") == 10,
@@ -492,57 +387,29 @@ fn interpolationResultCase() = {
     let negativeFive = (0 - 5) 
 
     checkAll("Results retain their wrapper and arithmetic stays plain", [
-        "${parseInt("42")}" == "Success(42)",
-        "${parseInt("0")}" == "Success(0)",
-        "${parseInt("-9223372036854775808")}" == "Success(-9223372036854775808)",
-        "${parseFloat("3.5")}" == "Success(3.5)",
-        "${parseFloat("2")}" == "Success(2.0)",
-        "${parseFloat("1e3")}" == "Success(1000.0)",
-        "${parseFloat("-0.5")}" == "Success(-0.5)",
-        "${intDiv(7, 2)}" == "3",
-        "${intDiv(255643, 10)}" == "25564",
-        "${10 / 4}" == "2.5",
-        "${abs(negativeFive)}" == "5",
-        "${fromCodePoint(65)}" == "Success(A)",
-        "${indexOf("banana", "na")}" == "Success(2)",
-        "${substring("banana", 1, 4)}" == "Success(ana)",
-        "${repeat("ab", 2)}" == "Success(abab)",
-        "${padStart("7", 3, "0")}" == "Success(007)",
-        "${byteAt("A", 0)}" == "Success(65)",
-        "${codePointWidth(233)}" == "Success(2)"
+        allHold(["${parseInt("42")}" == "Success(42)", "${parseInt("0")}" == "Success(0)", "${parseInt("-9223372036854775808")}" == "Success(-9223372036854775808)"]),
+        allHold(["${parseFloat("3.5")}" == "Success(3.5)", "${parseFloat("2")}" == "Success(2.0)", "${parseFloat("1e3")}" == "Success(1000.0)", "${parseFloat("-0.5")}" == "Success(-0.5)"]),
+        allHold(["${intDiv(7, 2)}" == "3", "${intDiv(255643, 10)}" == "25564", "${10 / 4}" == "2.5", "${abs(negativeFive)}" == "5"]),
+        allHold(["${fromCodePoint(65)}" == "Success(A)", "${indexOf("banana", "na")}" == "Success(2)", "${substring("banana", 1, 4)}" == "Success(ana)", "${repeat("ab", 2)}" == "Success(abab)", "${padStart("7", 3, "0")}" == "Success(007)", "${byteAt("A", 0)}" == "Success(65)", "${codePointWidth(233)}" == "Success(2)"])
     ])
 
     // Every message here is the reason the runtime actually produces; a
     // placeholder reason would break the byte-for-byte comparison ([ERR-PAYLOAD]).
     checkAll("a failed Result renders as Error(message) and keeps its reason", [
-        "${parseInt("oops")}" == "Error(parseInt: invalid integer)",
-        "${parseInt(" 42")}" == "Error(parseInt: invalid integer)",
-        "${parseFloat("nan")}" == "Error(parseFloat: invalid number)",
-        "${parseFloat("")}" == "Error(parseFloat: invalid number)",
-        "${divideResult(5, 0)}" == "Error(division by zero)",
-        "${divideResult(10, 0)}" == "Error(division by zero)",
-        "${indexOf("hello", "zz")}" == "Error(indexOf: substring not found)",
-        "${replace("h", "", "")}" == "Error(replace: needle must not be empty)",
-        "${repeat("a", negativeOne)}" == "Error(repeat: count must not be negative)",
-        "${padStart("x", 5, "")}" == "Error(padStart: fill must not be empty)",
-        "${padEnd("x", 5, "")}" == "Error(padEnd: fill must not be empty)",
-        "${substring("hi", 0, 99)}" == "Error(substring: index out of range)",
-        "${byteAt("a", 9)}" == "Error(byteAt: index out of range)",
-        "${codePointAt("é", 1)}" == "Error(codePointAt: invalid UTF-8 lead byte)",
-        "${codePointWidth(55296)}" == "Error(codePointWidth: surrogate is not a scalar)",
-        "${codePointWidth(1114112)}" == "Error(codePointWidth: code point out of range)",
-        "${fromCodePoint(0)}" == "Error(fromCodePoint: invalid code point)",
-        "${failWith("custom boom")}" == "Error(custom boom)"
+        allHold(["${parseInt("oops")}" == "Error(parseInt: invalid integer)", "${parseInt(" 42")}" == "Error(parseInt: invalid integer)"]),
+        allHold(["${parseFloat("nan")}" == "Error(parseFloat: invalid number)", "${parseFloat("")}" == "Error(parseFloat: invalid number)"]),
+        allHold(["${divideResult(5, 0)}" == "Error(division by zero)", "${divideResult(10, 0)}" == "Error(division by zero)", "${indexOf("hello", "zz")}" == "Error(indexOf: substring not found)", "${replace("h", "", "")}" == "Error(replace: needle must not be empty)", "${repeat("a", negativeOne)}" == "Error(repeat: count must not be negative)", "${padStart("x", 5, "")}" == "Error(padStart: fill must not be empty)", "${padEnd("x", 5, "")}" == "Error(padEnd: fill must not be empty)"]),
+        allHold(["${substring("hi", 0, 99)}" == "Error(substring: index out of range)", "${byteAt("a", 9)}" == "Error(byteAt: index out of range)", "${codePointAt("é", 1)}" == "Error(codePointAt: invalid UTF-8 lead byte)", "${codePointWidth(55296)}" == "Error(codePointWidth: surrogate is not a scalar)", "${codePointWidth(1114112)}" == "Error(codePointWidth: code point out of range)", "${fromCodePoint(0)}" == "Error(fromCodePoint: invalid code point)", "${failWith("custom boom")}" == "Error(custom boom)"])
     ])
 
     // Plain "2" is one byte; "Error(division by zero)" is 6 + 16 + 1 = 23.
     checkAll("toString and a hole agree on every Result", [
-        toString(parseInt("42")) == "${parseInt("42")}",
-        toString(parseInt("oops")) == "${parseInt("oops")}",
-        toString(divideResult(10, 0)) == "${divideResult(10, 0)}",
-        toString(intDiv(7, 2)) == "${intDiv(7, 2)}",
-        toString(fromCodePoint(65)) == "${fromCodePoint(65)}",
-        toString(failWith("custom boom")) == "${failWith("custom boom")}",
+        holeIsToString(parseInt("42")),
+        holeIsToString(parseInt("oops")),
+        holeIsToString(divideResult(10, 0)),
+        holeIsToString(intDiv(7, 2)),
+        holeIsToString(fromCodePoint(65)),
+        holeIsToString(failWith("custom boom")),
         "value=${intDiv(10, 5)}" == "value=2",
         "a${divideResult(5, 0)}b" == "aError(division by zero)b",
         "${intDiv(7, 2)}${intDiv(7, 2)}" == "33",
@@ -572,18 +439,12 @@ fn escapeSequenceCase() = {
 
     // ASCII: LF 10, CR 13, TAB 9, ESC 27, '"' 34, '\' 92, 'a' 97, 'b' 98.
     checkAll("each recognised escape collapses to exactly one byte", [
-        length("\n") == 1,
-        (byteAt("\n", 0) ?: 0) == 10,
-        length("\r") == 1,
-        (byteAt("\r", 0) ?: 0) == 13,
-        length("\t") == 1,
-        (byteAt("\t", 0) ?: 0) == 9,
-        length("\e") == 1,
-        (byteAt("\e", 0) ?: 0) == 27,
-        length("\"") == 1,
-        (byteAt("\"", 0) ?: 0) == 34,
-        length("\\") == 1,
-        (byteAt("\\", 0) ?: 0) == 92,
+        singleByte("\n", 10),
+        singleByte("\r", 13),
+        singleByte("\t", 9),
+        singleByte("\e", 27),
+        singleByte("\"", 34),
+        singleByte("\\", 92),
         byteLength("\n\r\t\e") == 4,
         (byteAt("\n\r\t\e", 0) ?: 0) == 10,
         (byteAt("\n\r\t\e", 3) ?: 0) == 27,
@@ -673,19 +534,8 @@ fn substringPositionCase() = {
 
     // "banana" byte layout: b0 a1 n2 a3 n4 a5, length 6.
     checkAll("contains finds a needle at the start, middle, end and nowhere", [
-        contains(subject, "ban"),
-        contains(subject, "nan"),
-        contains(subject, "ana"),
-        contains(subject, "banana"),
-        contains(subject, "b"),
-        contains(subject, "a"),
-        contains(subject, "n"),
-        contains(subject, ""),
-        !contains(subject, "bananas"),
-        !contains(subject, "xyz"),
-        !contains(subject, "BAN"),
-        !contains(subject, "bn"),
-        !contains(subject, " "),
+        allHold([contains(subject, "ban"), contains(subject, "nan"), contains(subject, "ana"), contains(subject, "banana"), contains(subject, "b"), contains(subject, "a"), contains(subject, "n"), contains(subject, "")]),
+        allHold([!contains(subject, "bananas"), !contains(subject, "xyz"), !contains(subject, "BAN"), !contains(subject, "bn"), !contains(subject, " ")]),
         contains("", ""),
         !contains("", "a"),
         contains("a", "a"),
@@ -696,49 +546,37 @@ fn substringPositionCase() = {
     ])
 
     checkAll("startsWith and endsWith agree with contains at both ends", [
-        startsWith(subject, ""),
-        startsWith(subject, "b"),
-        startsWith(subject, "ba"),
-        startsWith(subject, "banana"),
-        !startsWith(subject, "banana!"),
-        !startsWith(subject, "anana"),
-        !startsWith(subject, "B"),
-        endsWith(subject, ""),
-        endsWith(subject, "a"),
-        endsWith(subject, "na"),
-        endsWith(subject, "ana"),
-        endsWith(subject, "banana"),
-        !endsWith(subject, "!banana"),
-        !endsWith(subject, "banan"),
-        !endsWith(subject, "A"),
+        allHold([startsWith(subject, ""), startsWith(subject, "b"), startsWith(subject, "ba"), startsWith(subject, "banana")]),
+        allHold([!startsWith(subject, "banana!"), !startsWith(subject, "anana"), !startsWith(subject, "B")]),
+        allHold([endsWith(subject, ""), endsWith(subject, "a"), endsWith(subject, "na"), endsWith(subject, "ana"), endsWith(subject, "banana")]),
+        allHold([!endsWith(subject, "!banana"), !endsWith(subject, "banan"), !endsWith(subject, "A")]),
         startsWith("", ""),
         !startsWith("", "a"),
         endsWith("", ""),
         !endsWith("", "a"),
         startsWith("a", "a"),
         endsWith("a", "a"),
-        contains(subject, "ba"),
-        contains(subject, "na")
+        allHold([contains(subject, "ba"), contains(subject, "na")])
     ])
 
     // The reported index must reconstruct the needle through substring/take/drop.
     checkAll("indexOf returns the first occurrence as a byte index", [
-        (indexOf(subject, "b") ?: missing) == 0,
-        (indexOf(subject, "a") ?: missing) == 1,
-        (indexOf(subject, "n") ?: missing) == 2,
-        (indexOf(subject, "na") ?: missing) == 2,
-        (indexOf(subject, "ana") ?: missing) == 1,
-        (indexOf(subject, "banana") ?: missing) == 0,
-        (indexOf(subject, "") ?: missing) == 0,
-        (indexOf("", "") ?: missing) == 0,
-        (indexOf("a", "a") ?: missing) == 0,
+        indexOfIs(subject, "b", 0),
+        indexOfIs(subject, "a", 1),
+        indexOfIs(subject, "n", 2),
+        indexOfIs(subject, "na", 2),
+        indexOfIs(subject, "ana", 1),
+        indexOfIs(subject, "banana", 0),
+        indexOfIs(subject, "", 0),
+        indexOfIs("", "", 0),
+        indexOfIs("a", "a", 0),
         indexAbsent,
         indexEmptySubject,
-        (substring(subject, 1, 4) ?: "missing") == "ana",
-        (substring(subject, 2, 4) ?: "missing") == "na",
-        (substring(subject, 0, 6) ?: "missing") == subject,
-        (substring(subject, 6, 6) ?: "missing") == "",
-        (substring(subject, 3, 3) ?: "missing") == "",
+        substringIs(subject, 1, 4, "ana"),
+        substringIs(subject, 2, 4, "na"),
+        substringIs(subject, 0, 6, subject),
+        substringIs(subject, 6, 6, ""),
+        substringIs(subject, 3, 3, ""),
         take(subject, (indexOf(subject, "na") ?: missing)) == "ba",
         drop(subject, (indexOf(subject, "na") ?: missing)) == "nana",
         startsWith(drop(subject, (indexOf(subject, "ana") ?: missing)), "ana"),
@@ -753,7 +591,6 @@ fn substringPositionCase() = {
 fn caseFoldingCase() = {
     let mixed = "MiXeD 123!"
     let accented = "héllo"
-    let missing = (0 - 1) 
 
     checkAll("ASCII letters fold and every other byte is copied unchanged", [
         toUpperCase("") == "",
@@ -772,10 +609,7 @@ fn caseFoldingCase() = {
         toLowerCase("HÉLLO") == "hÉllo",
         length(toUpperCase(accented)) == 6,
         byteLength(toLowerCase(accented)) == 6,
-        (byteAt(toUpperCase(accented), 0) ?: 0) == 72,
-        (byteAt(toUpperCase(accented), 1) ?: 0) == 195,
-        (byteAt(toUpperCase(accented), 2) ?: 0) == 169,
-        (byteAt(toUpperCase(accented), 3) ?: 0) == 76
+        allHold([(byteAt(toUpperCase(accented), 0) ?: 0) == 72, (byteAt(toUpperCase(accented), 1) ?: 0) == 195, (byteAt(toUpperCase(accented), 2) ?: 0) == 169, (byteAt(toUpperCase(accented), 3) ?: 0) == 76])
     ])
 
     // Idempotent, length preserving, and a lower/upper round trip that survives
@@ -812,15 +646,15 @@ fn caseFoldingCase() = {
         !startsWith("GET /x", "get "),
         endsWith(toUpperCase("image.png"), ".PNG"),
         !endsWith("image.png", ".PNG"),
-        (indexOf(toUpperCase("banana"), "NA") ?: missing) == 2,
-        (indexOf(toLowerCase("BANANA"), "na") ?: missing) == 2,
+        indexOfIs(toUpperCase("banana"), "NA", 2),
+        indexOfIs(toLowerCase("BANANA"), "na", 2),
         toUpperCase(take("hello", 3)) == take(toUpperCase("hello"), 3),
         toLowerCase(drop("HELLO", 3)) == drop(toLowerCase("HELLO"), 3),
-        (replace(toLowerCase("A-B"), "-", "+") ?: "missing") == "a+b",
-        (repeat(toUpperCase("ab"), 2) ?: "missing") == "ABAB",
-        (padStart(toUpperCase("z"), 3, "y") ?: "missing") == "yyZ",
-        (padEnd(toLowerCase("Z"), 3, "y") ?: "missing") == "zyy",
-        (substring(toUpperCase("banana"), 0, 3) ?: "missing") == "BAN",
+        replaceIs(toLowerCase("A-B"), "-", "+", "a+b"),
+        repeatIs(toUpperCase("ab"), 2, "ABAB"),
+        padStartIs(toUpperCase("z"), 3, "y", "yyZ"),
+        padEndIs(toLowerCase("Z"), 3, "y", "zyy"),
+        substringIs(toUpperCase("banana"), 0, 3, "BAN"),
         trim(toUpperCase("  a  ")) == "A",
         toUpperCase(trim("  a  ")) == "A",
         join([toUpperCase("a"), toLowerCase("B")], "-") == "A-b",
@@ -869,12 +703,12 @@ fn concatLengthCase() = {
 
     // take(s, n) + drop(s, n) == s must hold at, inside and outside both ends.
     checkAll("take and drop partition a string at every boundary", [
-        take(joined, 0) + drop(joined, 0) == joined,
-        take(joined, 1) + drop(joined, 1) == joined,
-        take(joined, 3) + drop(joined, 3) == joined,
-        take(joined, 6) + drop(joined, 6) == joined,
-        take(joined, 7) + drop(joined, 7) == joined,
-        take(joined, negativeFive) + drop(joined, negativeFive) == joined,
+        partitionsAt(joined, 0),
+        partitionsAt(joined, 1),
+        partitionsAt(joined, 3),
+        partitionsAt(joined, 6),
+        partitionsAt(joined, 7),
+        partitionsAt(joined, negativeFive),
         take(joined, 0) == "",
         drop(joined, 0) == joined,
         take(joined, 6) == joined,
@@ -888,18 +722,18 @@ fn concatLengthCase() = {
         ((length(take(joined, 2)) + length(drop(joined, 2))) ) == length(joined),
         take(joined, 3) == (substring(joined, 0, 3) ?: "missing"),
         drop(joined, 3) == (substring(joined, 3, 6) ?: "missing"),
-        (substring(joined, 0, 0) ?: "missing") == "",
-        (substring(joined, 6, 6) ?: "missing") == "",
-        (substring(joined, 0, 6) ?: "missing") == joined
+        substringIs(joined, 0, 0, ""),
+        substringIs(joined, 6, 6, ""),
+        substringIs(joined, 0, 6, joined)
     ])
 
     // "ab--cd--ef" is 3 parts (6 bytes) plus 2 separators (4 bytes) = 10.
     checkAll("repeat, reverse, padding and join keep their length contracts", [
-        (repeat(left, 0) ?: "missing") == "",
-        (repeat(left, 1) ?: "missing") == left,
-        (repeat(left, 3) ?: "missing") == "ababab",
+        repeatIs(left, 0, ""),
+        repeatIs(left, 1, left),
+        repeatIs(left, 3, "ababab"),
         length(repeat(left, 5) ?: "") == 10,
-        (repeat("", 5) ?: "missing") == "",
+        repeatIs("", 5, ""),
         length(repeat("", 5) ?: "x") == 0,
         reverse("") == "",
         reverse("a") == "a",
@@ -911,12 +745,12 @@ fn concatLengthCase() = {
         reverse(left + middle) == reverse(middle) + reverse(left),
         length(padStart("7", 5, "0") ?: "") == 5,
         length(padEnd("7", 5, "0") ?: "") == 5,
-        (padStart("7", 5, "0") ?: "missing") == "00007",
-        (padEnd("7", 5, "0") ?: "missing") == "70000",
-        (padStart("x", 6, "ab") ?: "missing") == "ababax",
-        (padEnd("x", 6, "ab") ?: "missing") == "xababa",
-        (padStart("hello", 3, "0") ?: "missing") == "hello",
-        (padEnd("hello", 3, "0") ?: "missing") == "hello",
+        padStartIs("7", 5, "0", "00007"),
+        padEndIs("7", 5, "0", "70000"),
+        padStartIs("x", 6, "ab", "ababax"),
+        padEndIs("x", 6, "ab", "xababa"),
+        padStartIs("hello", 3, "0", "hello"),
+        padEndIs("hello", 3, "0", "hello"),
         join(["a", "b", "c"], "") == "abc",
         join(["a"], "-") == "a",
         join(["", ""], "-") == "-",
@@ -1040,12 +874,12 @@ fn utf8CutCase() = {
         drop(quote, 6) == "",
         take(eagle, 1) == "🦅",
         drop(eagle, 1) == "x",
-        take(quote, 2) + drop(quote, 2) == quote,
-        take(eagle, 3) + drop(eagle, 3) == eagle
+        partitionsAt(quote, 2),
+        partitionsAt(eagle, 3)
     ])
     checkAll("utf-8 substring bounds", [
-        (substring(quote, 0, 3) ?: "bad") == "“",
-        (substring(quote, 3, 5) ?: "bad") == "ok",
+        substringIs(quote, 0, 3, "“"),
+        substringIs(quote, 3, 5, "ok"),
         byteLength(substring(quote, 1, 3) ?: "") == 2,
         byteLength(substring(quote, 0, 1) ?: "") == 1
     ])

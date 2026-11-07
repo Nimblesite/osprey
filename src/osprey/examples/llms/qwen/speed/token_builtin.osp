@@ -18,9 +18,11 @@ fn residual(x, o) = kept(gpuZipWith(x, o, fn(p, s) => p * toFloat32(0.5) + s), x
 fn added(a, b: GpuBuffer<float32>) = kept(gpuZipWith(a, b, fn(p, s) => p + s), a)
 fn step(m, x) = {
     let q = matvec(m.q, x, 5120, 20)
-    let _k = matvec(m.k, x, 5120, 20)
-    let _v = matvec(m.v, x, 5120, 20)
-    let o = matvec(m.o, q, 5120, 20)
+    let k = matvec(m.k, x, 5120, 20)
+    let v = matvec(m.v, x, 5120, 20)
+    // Attention stand-in: q, k and v all feed the output projection, so every
+    // projection the real layer runs is timed and used.
+    let o = matvec(m.o, added(q, product(k, v)), 5120, 20)
     let g = matvec(m.gate, x, 17408, 20)
     let u = matvec(m.up, x, 17408, 20)
     let h = product(g, u)
