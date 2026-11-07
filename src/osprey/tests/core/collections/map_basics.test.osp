@@ -4,7 +4,34 @@
 type Entry = { title: string, score: float, active: bool }
 
 /// The int bound to `key` in `m`, or -999 when it is absent.
-fn intAt(m, key) = mapGet(m, key) ?: (0 - 999)
+fn intAt(m, key) = getOr(m, key, (0 - 999))
+
+/// The value bound to `key` in `m`, or `fallback` when it is absent.
+fn getOr(m, key, fallback) = mapGet(m, key) ?: fallback
+
+/// True when `mapGet(m, key)` fails with the exact missing-key message.
+fn missingAt(m, key) = match mapGet(m, key) {
+    Success => false
+    Error { message } => message == "mapGet: key not found"
+}
+
+/// The int at `key` in the other map or near-miss key, or the -998 sentinel.
+fn otherAt(m, key) = getOr(m, key, (0 - 998))
+
+/// The int at list index `i`, or the -999 sentinel past the end.
+fn listAt(xs, i) = listGet(xs, i) ?: (0 - 999)
+
+/// The key at view index `i`, or "absent" when the view is shorter.
+fn keyAt(keys, i) = listGet(keys, i) ?: "absent"
+
+/// True when `m` binds the key at view index `i` to the value-view entry at `i`.
+fn pairedAt(m, keys, values, i) = getOr(m, keyAt(keys, i), (0 - 1)) == (listGet(values, i) ?: (0 - 2))
+
+/// Sum of a value view; identical in any traversal order.
+fn viewTotal(values) = match values {
+    [] => 0
+    [first, ...rest] => first + viewTotal(rest)
+}
 
 /// constructionAndOverwriteCase preserves empty, set, contains, overwrite, and source-isolation observations.
 fn constructionAndOverwriteCase() = {
@@ -13,10 +40,7 @@ fn constructionAndOverwriteCase() = {
     let m2 = mapSet(m1, "bob", 30)
     let m3 = mapSet(m2, "charlie", 35)
     let m4 = mapSet(m3, "alice", 99)
-    let m4Missing = match mapGet(m4, "dave") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let m4Missing = missingAt(m4, "dave")
 
     // Every legacy empty, growth, contains, and overwrite-length observation remains independent.
     checkAll("legacy map construction observations", [
@@ -94,10 +118,7 @@ fn removalAndMergeCase() = {
     let mergedAB = mapMerge(a, b)
     let mergedBA = mapMerge(b, a)
     let mergedPlus = a + b
-    let removedMissing = match mapGet(removed, "k3") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let removedMissing = missingAt(removed, "k3")
 
     // All four legacy removal observations remain direct predicates.
     checkAll("persistent removal legacy observations", [
@@ -165,8 +186,8 @@ fn viewsAndCrossCollectionCase() = {
 
     // Added cross-collection checks prove list and map descendants remain isolated from both source structures.
     checkAll("list and map cross-collection isolation", [
-            structuralEquals([(listGet(xs, 0) ?: ((0 - 999) )), (listGet(xs, 2) ?: ((0 - 999) ))], [100, 300]),
-            structuralEquals([(listGet(xs2, 3) ?: ((0 - 999) )), intAt(mm2, "d")], [400, 4]),
+            structuralEquals([listAt(xs, 0), listAt(xs, 2)], [100, 300]),
+            structuralEquals([listAt(xs2, 3), intAt(mm2, "d")], [400, 4]),
             structuralEquals([intAt(g3, "k3"), intAt(g5, "k5")], [3, 5]),
             !listContains(xs, 400),
             !mapContains(g3, "d"),
@@ -180,10 +201,7 @@ fn literalsAndDispatchCase() = {
     let empty = Map()
     let prices = { "apple": 2, "banana": 3, "cherry": 5 }
     let duplicate = { "key": 1, "key": 2 }
-    let priceMissing = match mapGet(prices, "mango") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let priceMissing = missingAt(prices, "mango")
 
     // All three legacy literal lookup outcomes remain asserted with exact missing-key behavior.
     checkAll("map literal lookup behavior", [
@@ -238,30 +256,36 @@ fn typedValueRetrievalCase() = {
         "right",
         Entry { title: "Right", score: 2.5, active: false }
     )
-    let leftEntry = mapGet(entries, "left") ?: blank
-    let rightEntry = mapGet(entries, "right") ?: blank
-    let absentEntry = mapGet(entries, "middle") ?: blank
+    let leftEntry = getOr(entries, "left", blank)
+    let rightEntry = getOr(entries, "right", blank)
+    let absentEntry = getOr(entries, "middle", blank)
     let absentTitle = match mapGet(titles, "zzz") {
         Success { value } => value
         Error { message } => message
     }
+    let titlesReplaced = mapSet(titles, "a", "replaced")
+    let titlesNoB = mapRemove(titles, "b")
+    let deltaMap = mapSet(Map(), "d", "delta")
+    let titlesPlusDelta = mapMerge(titles, deltaMap)
+    let entriesLeftBlank = mapSet(entries, "left", blank)
+    let entriesNoLeft = mapRemove(entries, "left")
 
     // A string value comes back as its own string, through both spellings the
     // spec calls equivalent, and a missing key still takes the `Error` branch.
     checkAll("string values survive mapGet", [
-        structuralEquals([(mapGet(titles, "a") ?: "none"), (mapGet(titles, "b") ?: "none")], ["alpha", "beta"]),
-        structuralEquals([(mapGet(titles, "c") ?: "none"), (titles["a"] ?: "none")], ["gamma", "alpha"]),
+        structuralEquals([getOr(titles, "a", "none"), getOr(titles, "b", "none")], ["alpha", "beta"]),
+        structuralEquals([getOr(titles, "c", "none"), (titles["a"] ?: "none")], ["gamma", "alpha"]),
         structuralEquals([(titles["b"] ?: "none"), (titles["c"] ?: "none")], ["beta", "gamma"]),
-        toUpperCase(mapGet(titles, "b") ?: "none") == "BETA",
-        "${mapGet(titles, "a") ?: "none"}+${mapGet(titles, "b") ?: "none"}" == "alpha+beta",
-        structuralEquals([absentTitle, (mapGet(titles, "zzz") ?: "absent")], ["mapGet: key not found", "absent"]),
-        (mapGet(titles, "a") ?: "none") == (titles["a"] ?: "other"),
-        (mapGet(titles, "c") ?: "none") == (titles["c"] ?: "other"),
-        structuralEquals([length(mapGet(titles, "a") ?: ""), length(mapGet(titles, "b") ?: "")], [5, 4]),
+        toUpperCase(getOr(titles, "b", "none")) == "BETA",
+        "${getOr(titles, "a", "none")}+${getOr(titles, "b", "none")}" == "alpha+beta",
+        structuralEquals([absentTitle, getOr(titles, "zzz", "absent")], ["mapGet: key not found", "absent"]),
+        getOr(titles, "a", "none") == (titles["a"] ?: "other"),
+        getOr(titles, "c", "none") == (titles["c"] ?: "other"),
+        structuralEquals([length(getOr(titles, "a", "")), length(getOr(titles, "b", ""))], [5, 4]),
         mapLength(titles) == 3,
-        contains(mapGet(titles, "c") ?: "none", "amm"),
-        startsWith(mapGet(titles, "a") ?: "none", "alp"),
-        endsWith(mapGet(titles, "b") ?: "none", "eta"),
+        contains(getOr(titles, "c", "none"), "amm"),
+        startsWith(getOr(titles, "a", "none"), "alp"),
+        endsWith(getOr(titles, "b", "none"), "eta"),
         mapContains(titles, "a"),
         !mapContains(titles, "zzz")
     ])
@@ -270,18 +294,18 @@ fn typedValueRetrievalCase() = {
     // merged map still yields strings ([BUILTIN-MAP-SET], [BUILTIN-MAP-REMOVE],
     // [BUILTIN-MAP-MERGE]).
     checkAll("string values survive every map producer", [
-        (mapGet(mapSet(titles, "a", "replaced"), "a") ?: "none") == "replaced",
-        (mapGet(mapSet(titles, "a", "replaced"), "b") ?: "none") == "beta",
-        (mapGet(titles, "a") ?: "none") == "alpha",
-        (mapGet(mapRemove(titles, "b"), "a") ?: "none") == "alpha",
-        (mapGet(mapRemove(titles, "b"), "c") ?: "none") == "gamma",
-        (mapGet(mapRemove(titles, "b"), "b") ?: "gone") == "gone",
-        (mapGet(mapMerge(titles, mapSet(Map(), "d", "delta")), "d") ?: "none") == "delta",
-        (mapGet(mapMerge(titles, mapSet(Map(), "d", "delta")), "a") ?: "none") == "alpha",
-        (mapGet(mapMerge(titles, mapSet(Map(), "a", "right wins")), "a") ?: "none") == "right wins",
-        !mapContains(mapRemove(titles, "b"), "b"),
-        structuralEquals([mapLength(mapRemove(titles, "b")), mapLength(titles)], [2, 3]),
-        mapLength(mapMerge(titles, mapSet(Map(), "d", "delta"))) == 4,
+        getOr(titlesReplaced, "a", "none") == "replaced",
+        getOr(titlesReplaced, "b", "none") == "beta",
+        getOr(titles, "a", "none") == "alpha",
+        getOr(titlesNoB, "a", "none") == "alpha",
+        getOr(titlesNoB, "c", "none") == "gamma",
+        getOr(titlesNoB, "b", "gone") == "gone",
+        getOr(titlesPlusDelta, "d", "none") == "delta",
+        getOr(titlesPlusDelta, "a", "none") == "alpha",
+        getOr(mapMerge(titles, mapSet(Map(), "a", "right wins")), "a", "none") == "right wins",
+        !mapContains(titlesNoB, "b"),
+        structuralEquals([mapLength(titlesNoB), mapLength(titles)], [2, 3]),
+        mapLength(titlesPlusDelta) == 4,
         listLength(mapKeys(titles)) == 3,
         listContains(mapKeys(titles), "a"),
         listContains(mapKeys(titles), "c")
@@ -289,21 +313,21 @@ fn typedValueRetrievalCase() = {
 
     // A float value keeps its IEEE value; a bool value keeps true/false.
     checkAll("float and bool values survive mapGet", [
-        structuralEquals([(mapGet(scores, "half") ?: 0.0), (mapGet(scores, "quarter") ?: 0.0)], [0.5, 1.25]),
+        structuralEquals([getOr(scores, "half", 0.0), getOr(scores, "quarter", 0.0)], [0.5, 1.25]),
         (scores["half"] ?: 0.0) == 0.5,
-        (mapGet(scores, "half") ?: 0.0) + (mapGet(scores, "quarter") ?: 0.0) == 1.75,
-        structuralEquals([(mapGet(scores, "quarter") ?: 0.0) * 4.0, (mapGet(scores, "missing") ?: 9.5)], [5.0, 9.5]),
-        (mapGet(mapSet(scores, "half", 3.5), "half") ?: 0.0) == 3.5,
-        (mapGet(scores, "half") ?: 0.0) == 0.5,
+        getOr(scores, "half", 0.0) + getOr(scores, "quarter", 0.0) == 1.75,
+        structuralEquals([getOr(scores, "quarter", 0.0) * 4.0, getOr(scores, "missing", 9.5)], [5.0, 9.5]),
+        getOr(mapSet(scores, "half", 3.5), "half", 0.0) == 3.5,
+        getOr(scores, "half", 0.0) == 0.5,
         structuralEquals([mapLength(scores), mapLength(flags)], [2, 2]),
-        (mapGet(flags, "on") ?: false),
-        !(mapGet(flags, "off") ?: true),
+        getOr(flags, "on", false),
+        !getOr(flags, "off", true),
         (flags["on"] ?: false),
         !(flags["off"] ?: true),
-        (mapGet(flags, "on") ?: false) != (mapGet(flags, "off") ?: true),
-        !(mapGet(flags, "unknown") ?: false),
-        (mapGet(mapSet(flags, "on", false), "on") ?: true) == false,
-        (mapGet(flags, "on") ?: false),
+        getOr(flags, "on", false) != getOr(flags, "off", true),
+        !getOr(flags, "unknown", false),
+        getOr(mapSet(flags, "on", false), "on", true) == false,
+        getOr(flags, "on", false),
         mapContains(flags, "off"),
         !mapContains(flags, "unknown")
     ])
@@ -313,11 +337,11 @@ fn typedValueRetrievalCase() = {
     checkAll("record values survive mapGet whole", [
         structuralEquals([leftEntry.title, rightEntry.title], ["Left", "Right"]),
         structuralEquals(["${leftEntry.title}/${rightEntry.title}", absentEntry.title], ["Left/Right", "none"]),
-        (mapGet(mapSet(entries, "left", blank), "left") ?: rightEntry).title == "none",
-        (mapGet(mapSet(entries, "left", blank), "right") ?: blank).title == "Right",
-        (mapGet(mapRemove(entries, "left"), "left") ?: blank).title == "none",
+        getOr(entriesLeftBlank, "left", rightEntry).title == "none",
+        getOr(entriesLeftBlank, "right", blank).title == "Right",
+        getOr(entriesNoLeft, "left", blank).title == "none",
         structuralEquals([leftEntry.score, rightEntry.score, leftEntry.score + rightEntry.score], [1.5, 2.5, 4.0]),
-        structuralEquals([absentEntry.score, (mapGet(mapRemove(entries, "left"), "right") ?: blank).score], [0.0, 2.5]),
+        structuralEquals([absentEntry.score, getOr(entriesNoLeft, "right", blank).score], [0.0, 2.5]),
         leftEntry.active,
         !rightEntry.active,
         leftEntry.title != rightEntry.title,
@@ -343,10 +367,8 @@ fn keyShapeCase() = {
     let longKeyPrefix = "abcdefghijklmnopqrstuvwxyz0123456789abc"
     let shapedLong = mapSet(shaped, longKey, 12)
     let gap = " "
-    let emptyKeyMissing = match mapGet(mapRemove(shaped, ""), "") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let emptyKeyMissing = missingAt(mapRemove(shaped, ""), "")
+    let emptyKeyOverwritten = mapSet(shaped, "", 99)
 
     // Twelve literal keys carry values 0..11 in declaration order and the long
     // key carries 12; the long key spells 26 letters + 10 digits + "abcd" = 40.
@@ -381,21 +403,21 @@ fn keyShapeCase() = {
     // computed keys reach the same bindings as literal ones, and overwriting the
     // empty-string key leaves the source generation at its original value.
     checkAll("case, spacing and punctuation keys stay distinct", [
-            intAt(shaped, "a") != (mapGet(shaped, "A") ?: ((0 - 998) )),
-            intAt(shaped, " a") != (mapGet(shaped, "a ") ?: ((0 - 998) )),
-            intAt(shaped, "a b") != (mapGet(shaped, "a.b") ?: ((0 - 998) )),
-            intAt(shaped, "a.b") != (mapGet(shaped, "a-b") ?: ((0 - 998) )),
-            intAt(shaped, "a-b") != (mapGet(shaped, "a_b") ?: ((0 - 998) )),
-            intAt(shaped, "007") != (mapGet(shaped, "7") ?: ((0 - 998) )),
-            intAt(shaped, "") != (mapGet(shaped, " ") ?: ((0 - 998) )),
-            (mapGet(shaped, toUpperCase("a")) ?: ((0 - 999) )) == 2,
-            structuralEquals([(mapGet(shaped, toLowerCase("A")) ?: ((0 - 999) )), intAt(shaped, "a${gap}b")], [1, 6]),
+            intAt(shaped, "a") != otherAt(shaped, "A"),
+            intAt(shaped, " a") != otherAt(shaped, "a "),
+            intAt(shaped, "a b") != otherAt(shaped, "a.b"),
+            intAt(shaped, "a.b") != otherAt(shaped, "a-b"),
+            intAt(shaped, "a-b") != otherAt(shaped, "a_b"),
+            intAt(shaped, "007") != otherAt(shaped, "7"),
+            intAt(shaped, "") != otherAt(shaped, " "),
+            intAt(shaped, toUpperCase("a")) == 2,
+            structuralEquals([intAt(shaped, toLowerCase("A")), intAt(shaped, "a${gap}b")], [1, 6]),
             structuralEquals([intAt(shaped, "${gap}a"), intAt(shaped, "a${gap}")], [4, 5]),
             structuralEquals([(shaped[""] ?: ((0 - 999) )), (shaped["a b"] ?: ((0 - 999) ))], [0, 6]),
             (shaped["007"] ?: ((0 - 999) )) == 10,
-            (mapGet(mapSet(shaped, "", 99), "") ?: ((0 - 999) )) == 99,
-            structuralEquals([mapLength(mapSet(shaped, "", 99)), intAt(shaped, "")], [12, 0]),
-            (mapGet(mapSet(shaped, "A", 99), "a") ?: ((0 - 999) )) == 1,
+            intAt(emptyKeyOverwritten, "") == 99,
+            structuralEquals([mapLength(emptyKeyOverwritten), intAt(shaped, "")], [12, 0]),
+            intAt(mapSet(shaped, "A", 99), "a") == 1,
             mapLength(mapSet(shaped, "b", 99)) == 13
     ])
 
@@ -404,26 +426,11 @@ fn keyShapeCase() = {
     checkAll("map key and value views report each shape once", [
             structuralEquals([listLength(mapKeys(shapedLong)), listLength(mapValues(shapedLong))], [13, 13]),
             listLength(mapKeys(shapedLong)) == mapLength(shapedLong),
-            listContains(mapKeys(shapedLong), ""),
-            listContains(mapKeys(shapedLong), "a"),
-            listContains(mapKeys(shapedLong), "A"),
-            listContains(mapKeys(shapedLong), " "),
-            listContains(mapKeys(shapedLong), " a"),
-            listContains(mapKeys(shapedLong), "a "),
-            listContains(mapKeys(shapedLong), "a b"),
-            listContains(mapKeys(shapedLong), "a.b"),
-            listContains(mapKeys(shapedLong), "a-b"),
-            listContains(mapKeys(shapedLong), "a_b"),
-            listContains(mapKeys(shapedLong), "007"),
-            listContains(mapKeys(shapedLong), "7"),
-            listContains(mapKeys(shapedLong), longKey),
-            !listContains(mapKeys(shapedLong), longKeyPrefix),
-            !listContains(mapKeys(shapedLong), "b"),
-            !listContains(mapKeys(shapedLong), "  "),
+            structuralEquals(mapList(["", "a", "A", " ", " a", "a "], fn(k) => listContains(mapKeys(shapedLong), k)), [true, true, true, true, true, true]),
+            structuralEquals(mapList(["a b", "a.b", "a-b", "a_b", "007", "7", longKey], fn(k) => listContains(mapKeys(shapedLong), k)), [true, true, true, true, true, true, true]),
+            structuralEquals(mapList([longKeyPrefix, "b", "  "], fn(k) => !listContains(mapKeys(shapedLong), k)), [true, true, true]),
             !listContains(mapKeys(shaped), longKey),
-            listContains(mapValues(shapedLong), 0),
-            listContains(mapValues(shapedLong), 6),
-            listContains(mapValues(shapedLong), 12),
+            structuralEquals(mapList([0, 6, 12], fn(k) => listContains(mapValues(shapedLong), k)), [true, true, true]),
             !listContains(mapValues(shapedLong), 13),
             !listContains(mapValues(shaped), 12)
     ])
@@ -450,6 +457,14 @@ fn overwriteChainCase() = {
     let v7 = mapSet(v6, "slot", 5)
     let prefixes = { "p": 1, "pa": 2, "pat": 3, "path": 4 }
     let prefixOverwritten = mapSet(prefixes, "pa", 20)
+    let kkOverwritten = mapSet(mapSet(v0, "k", 1), "k", 2)
+    let kKFresh = mapSet(mapSet(v0, "k", 1), "K", 2)
+    let freshSet = mapSet(v6, "fresh", 7)
+    let freshRoundTrip = mapRemove(freshSet, "fresh")
+    let noSlot = mapRemove(v6, "slot")
+    let noSlotTwice = mapRemove(noSlot, "slot")
+    let noSlotNoOther = mapRemove(noSlot, "other")
+    let slotBack = mapSet(noSlot, "slot", 5)
 
     // Three overwrites of "slot" never grow the map; adding "other" grows it once
     // and re-setting "slot" to the value it already holds changes nothing.
@@ -467,18 +482,18 @@ fn overwriteChainCase() = {
     // Length arithmetic separates a fresh key (+1) from an overwrite (+0), and a
     // key differing only in case counts as fresh.
     checkAll("set length arithmetic separates fresh keys from overwrites", [
-            mapLength(mapSet(v6, "fresh", 7)) == (mapLength(v6) + 1 ),
+            mapLength(freshSet) == (mapLength(v6) + 1),
             mapLength(mapSet(v6, "slot", 7)) == mapLength(v6),
             mapLength(mapSet(v6, "other", 7)) == mapLength(v6),
             mapLength(mapSet(v0, "first", 1)) == 1,
-            mapLength(mapSet(mapSet(v0, "k", 1), "k", 2)) == 1,
-            mapLength(mapSet(mapSet(v0, "k", 1), "K", 2)) == 2,
-            (mapGet(mapSet(mapSet(v0, "k", 1), "k", 2), "k") ?: ((0 - 999) )) == 2,
-            (mapGet(mapSet(mapSet(v0, "k", 1), "K", 2), "k") ?: ((0 - 999) )) == 1,
-            (mapGet(mapSet(mapSet(v0, "k", 1), "K", 2), "K") ?: ((0 - 999) )) == 2,
-            structuralEquals([mapLength(v6), (mapGet(mapSet(v6, "slot", 7), "slot") ?: ((0 - 999) ))], [2, 7]),
-            structuralEquals([(mapGet(mapSet(v6, "slot", 7), "other") ?: ((0 - 999) )), intAt(v6, "slot")], [60, 5]),
-            mapContains(mapSet(v6, "fresh", 7), "fresh"),
+            mapLength(kkOverwritten) == 1,
+            mapLength(kKFresh) == 2,
+            intAt(kkOverwritten, "k") == 2,
+            intAt(kKFresh, "k") == 1,
+            intAt(kKFresh, "K") == 2,
+            structuralEquals([mapLength(v6), intAt(mapSet(v6, "slot", 7), "slot")], [2, 7]),
+            structuralEquals([intAt(mapSet(v6, "slot", 7), "other"), intAt(v6, "slot")], [60, 5]),
+            mapContains(freshSet, "fresh"),
             !mapContains(v6, "fresh")
     ])
 
@@ -486,19 +501,19 @@ fn overwriteChainCase() = {
     // because "a missing key leaves the map unchanged", and draining both keys
     // must land on an empty map rather than a stale one.
     checkAll("set and remove round-trip without disturbing neighbours", [
-            mapLength(mapRemove(mapSet(v6, "fresh", 7), "fresh")) == 2,
-            (mapGet(mapRemove(mapSet(v6, "fresh", 7), "fresh"), "slot") ?: ((0 - 999) )) == 5,
-            (mapGet(mapRemove(mapSet(v6, "fresh", 7), "fresh"), "other") ?: ((0 - 999) )) == 60,
-            mapLength(mapRemove(v6, "slot")) == 1,
-            mapLength(mapRemove(mapRemove(v6, "slot"), "slot")) == 1,
-            mapLength(mapRemove(mapRemove(v6, "slot"), "other")) == 0,
+            mapLength(freshRoundTrip) == 2,
+            intAt(freshRoundTrip, "slot") == 5,
+            intAt(freshRoundTrip, "other") == 60,
+            mapLength(noSlot) == 1,
+            mapLength(noSlotTwice) == 1,
+            mapLength(noSlotNoOther) == 0,
             structuralEquals([mapLength(mapRemove(v6, "absent")), mapLength(mapRemove(v0, "absent"))], [2, 0]),
-            (mapGet(mapSet(mapRemove(v6, "slot"), "slot", 5), "slot") ?: ((0 - 999) )) == 5,
-            (mapGet(mapSet(mapRemove(v6, "slot"), "slot", 5), "other") ?: ((0 - 999) )) == 60,
-            mapLength(mapSet(mapRemove(v6, "slot"), "slot", 5)) == 2,
-            structuralEquals([(mapGet(mapRemove(v6, "slot"), "other") ?: ((0 - 999) )), mapLength(v6)], [60, 2]),
-            !mapContains(mapRemove(mapSet(v6, "fresh", 7), "fresh"), "fresh"),
-            isEmpty(mapRemove(mapRemove(v6, "slot"), "other")),
+            intAt(slotBack, "slot") == 5,
+            intAt(slotBack, "other") == 60,
+            mapLength(slotBack) == 2,
+            structuralEquals([intAt(noSlot, "other"), mapLength(v6)], [60, 2]),
+            !mapContains(freshRoundTrip, "fresh"),
+            isEmpty(noSlotNoOther),
             mapContains(v6, "slot")
     ])
 
@@ -536,6 +551,11 @@ fn mergeAlgebraCase() = {
     let leftThenRt = mapMerge(left, mapMerge(right, third))
     let plusChain = left + right + third
     let overrideK = mapSet(empty, "k", 999)
+    let emptyLeft = mapMerge(empty, left)
+    let leftEmpty = mapMerge(left, empty)
+    let leftLeft = mapMerge(left, left)
+    let rightRight = mapMerge(right, right)
+    let lrNoK = mapRemove(lr, "k")
 
     // left ∪ right keeps six distinct keys: "k" and "" come from the right (10, 40),
     // "K" and "k.k" only exist on the left (2, 3), "k-k" and " " only on the right.
@@ -545,8 +565,8 @@ fn mergeAlgebraCase() = {
             structuralEquals([intAt(lr, "k.k"), intAt(lr, ""), intAt(lr, "k-k")], [3, 40, 30]),
             structuralEquals([intAt(lr, " "), intAt(rl, "k"), intAt(rl, " ")], [50, 1, 50]),
             structuralEquals(mapList(["K", "k.k", "", "k-k"], fn(k) => intAt(rl, k)), [2, 3, 4, 30]),
-            intAt(lr, "k") != (mapGet(rl, "k") ?: ((0 - 998) )),
-            intAt(lr, "") != (mapGet(rl, "") ?: ((0 - 998) )),
+            intAt(lr, "k") != otherAt(rl, "k"),
+            intAt(lr, "") != otherAt(rl, ""),
             !mapContains(lr, "q"),
             !mapContains(rl, "q")
     ])
@@ -554,16 +574,16 @@ fn mergeAlgebraCase() = {
     // The empty map is a two-sided identity, merging a map with itself is the
     // identity too, and neither operand is disturbed by any of it.
     checkAll("merge identity, idempotence and operand preservation", [
-            structuralEquals([mapLength(mapMerge(empty, left)), mapLength(mapMerge(left, empty))], [4, 4]),
-            (mapGet(mapMerge(empty, left), "k") ?: ((0 - 999) )) == 1,
-            (mapGet(mapMerge(empty, left), "") ?: ((0 - 999) )) == 4,
-            (mapGet(mapMerge(left, empty), "K") ?: ((0 - 999) )) == 2,
-            (mapGet(mapMerge(left, empty), "k.k") ?: ((0 - 999) )) == 3,
-            structuralEquals([mapLength(mapMerge(empty, empty)), mapLength(mapMerge(left, left))], [0, 4]),
-            (mapGet(mapMerge(left, left), "k") ?: ((0 - 999) )) == 1,
-            (mapGet(mapMerge(left, left), "") ?: ((0 - 999) )) == 4,
-            mapLength(mapMerge(right, right)) == 4,
-            structuralEquals([(mapGet(mapMerge(right, right), " ") ?: ((0 - 999) )), mapLength(left)], [50, 4]),
+            structuralEquals([mapLength(emptyLeft), mapLength(leftEmpty)], [4, 4]),
+            intAt(emptyLeft, "k") == 1,
+            intAt(emptyLeft, "") == 4,
+            intAt(leftEmpty, "K") == 2,
+            intAt(leftEmpty, "k.k") == 3,
+            structuralEquals([mapLength(mapMerge(empty, empty)), mapLength(leftLeft)], [0, 4]),
+            intAt(leftLeft, "k") == 1,
+            intAt(leftLeft, "") == 4,
+            mapLength(rightRight) == 4,
+            structuralEquals([intAt(rightRight, " "), mapLength(left)], [50, 4]),
             structuralEquals([mapLength(right), intAt(left, "k"), intAt(right, "k"), intAt(left, "")], [4, 1, 10, 4]),
             intAt(right, "") == 40,
             isEmpty(mapMerge(empty, empty)),
@@ -582,8 +602,8 @@ fn mergeAlgebraCase() = {
             structuralEquals(mapList(["k-k", " "], fn(k) => intAt(lrThenThird, k)), [300, 50]),
             structuralEquals(mapList(["k.k", "", "k-k"], fn(k) => intAt(leftThenRt, k)), [3, 40, 300]),
             structuralEquals(mapList(["k-k", "q"], fn(k) => intAt(plusChain, k)), [300, 700]),
-            intAt(lrThenThird, "K") == (mapGet(leftThenRt, "K") ?: ((0 - 998) )),
-            intAt(lrThenThird, "k-k") == (mapGet(leftThenRt, "k-k") ?: ((0 - 998) ))
+            intAt(lrThenThird, "K") == otherAt(leftThenRt, "K"),
+            intAt(lrThenThird, "k-k") == otherAt(leftThenRt, "k-k")
     ])
 
     // Views of a merged map hold exactly the surviving bindings — 1 and 30 lost
@@ -592,11 +612,11 @@ fn mergeAlgebraCase() = {
     checkAll("merged views and single-key override interaction", [
             structuralEquals([listLength(mapKeys(lr)), listLength(mapValues(lr))], [6, 6]),
             structuralEquals([listLength(mapKeys(lrThenThird)), mapLength(mapMerge(lr, overrideK))], [7, 6]),
-            (mapGet(mapMerge(lr, overrideK), "k") ?: ((0 - 999) )) == 999,
-            (mapGet(mapMerge(overrideK, lr), "k") ?: ((0 - 999) )) == 10,
-            mapLength(mapMerge(lr, mapRemove(lr, "k"))) == 6,
-            mapLength(mapMerge(mapRemove(lr, "k"), lr)) == 6,
-            (mapGet(mapMerge(mapRemove(lr, "k"), lr), "k") ?: ((0 - 999) )) == 10,
+            intAt(mapMerge(lr, overrideK), "k") == 999,
+            intAt(mapMerge(overrideK, lr), "k") == 10,
+            mapLength(mapMerge(lr, lrNoK)) == 6,
+            mapLength(mapMerge(lrNoK, lr)) == 6,
+            intAt(mapMerge(lrNoK, lr), "k") == 10,
             structuralEquals(mapList(["", " "], fn(k) => listContains(mapKeys(lr), k)), [true, true]),
             structuralEquals(mapList(["k-k", "K"], fn(k) => listContains(mapKeys(lr), k)), [true, true]),
             structuralEquals([listContains(mapKeys(lr), "q"), listContains(mapValues(lr), 10)], [false, true]),
@@ -627,10 +647,15 @@ fn removalSweepCase() = {
     let baFirst = mapRemove(mapRemove(base, "b"), "a")
     let drained = mapRemove(mapRemove(mapRemove(mapRemove(mapRemove(base, "a"), "b"), "c"), "d"), "e")
     let widened = mapMerge(base, extra)
-    let drainedMissing = match mapGet(drained, "a") {
-        Success => false
-        Error { message } => message == "mapGet: key not found"
-    }
+    let drainedMissing = missingAt(drained, "a")
+    let baseZ = mapRemove(base, "z")
+    let baseATwice = mapRemove(mapRemove(base, "a"), "a")
+    let drainedA = mapRemove(drained, "a")
+    let noBBase = mapMerge(noB, base)
+    let baseNoB = mapMerge(base, noB)
+    let noCSet = mapSet(noC, "c", 33)
+    let drainedSetA = mapSet(drained, "a", 1)
+    let widenedNoF = mapRemove(widened, "f")
 
     // Each of the five single removals leaves four bindings, and the four that
     // survive keep their original values.
@@ -656,9 +681,9 @@ fn removalSweepCase() = {
             structuralEquals([listLength(mapValues(drained)), mapLength(base)], [0, 5]),
             structuralEquals(mapList(["a", "b"], fn(k) => mapContains(abFirst, k)), [false, false]),
             structuralEquals(mapList(["a", "b"], fn(k) => mapContains(baFirst, k)), [false, false]),
-            intAt(abFirst, "c") == (mapGet(baFirst, "c") ?: ((0 - 998) )),
-            intAt(abFirst, "d") == (mapGet(baFirst, "d") ?: ((0 - 998) )),
-            intAt(abFirst, "e") == (mapGet(baFirst, "e") ?: ((0 - 998) )),
+            intAt(abFirst, "c") == otherAt(baFirst, "c"),
+            intAt(abFirst, "d") == otherAt(baFirst, "d"),
+            intAt(abFirst, "e") == otherAt(baFirst, "e"),
             isEmpty(drained),
             drainedMissing,
             !mapContains(drained, "c"),
@@ -672,35 +697,35 @@ fn removalSweepCase() = {
             structuralEquals([mapLength(mapRemove(base, "z")), mapLength(mapRemove(base, ""))], [5, 5]),
             structuralEquals([mapLength(mapRemove(base, " ")), mapLength(mapRemove(base, "A"))], [5, 5]),
             structuralEquals([mapLength(mapRemove(base, "ab")), mapLength(mapRemove(base, "a "))], [5, 5]),
-            (mapGet(mapRemove(base, "A"), "a") ?: ((0 - 999) )) == 1,
-            (mapGet(mapRemove(base, ""), "a") ?: ((0 - 999) )) == 1,
-            (mapGet(mapRemove(base, "ab"), "b") ?: ((0 - 999) )) == 2,
-            (mapGet(mapRemove(base, "a "), "a") ?: ((0 - 999) )) == 1,
-            mapLength(mapRemove(drained, "a")) == 0,
-            mapLength(mapRemove(mapRemove(base, "a"), "a")) == 4,
-            (mapGet(mapRemove(mapRemove(base, "a"), "a"), "b") ?: ((0 - 999) )) == 2,
-            listLength(mapKeys(mapRemove(base, "z"))) == 5,
-            mapContains(mapRemove(base, "z"), "a"),
-            mapContains(mapRemove(base, "z"), "e"),
-            isEmpty(mapRemove(drained, "a")),
-            !mapContains(mapRemove(mapRemove(base, "a"), "a"), "a")
+            intAt(mapRemove(base, "A"), "a") == 1,
+            intAt(mapRemove(base, ""), "a") == 1,
+            intAt(mapRemove(base, "ab"), "b") == 2,
+            intAt(mapRemove(base, "a "), "a") == 1,
+            mapLength(drainedA) == 0,
+            mapLength(baseATwice) == 4,
+            intAt(baseATwice, "b") == 2,
+            listLength(mapKeys(baseZ)) == 5,
+            mapContains(baseZ, "a"),
+            mapContains(baseZ, "e"),
+            isEmpty(drainedA),
+            !mapContains(baseATwice, "a")
     ])
 
     // Merging a removed generation back against the full map restores the missing
     // binding from whichever side holds it, and set-after-remove rebinds the key
     // without disturbing the source generation.
     checkAll("removal composes with set and merge", [
-            mapLength(mapMerge(noB, base)) == 5,
-            (mapGet(mapMerge(noB, base), "b") ?: ((0 - 999) )) == 2,
-            mapLength(mapMerge(base, noB)) == 5,
-            structuralEquals([(mapGet(mapMerge(base, noB), "b") ?: ((0 - 999) )), mapLength(widened)], [2, 6]),
-            structuralEquals([intAt(widened, "f"), mapLength(mapRemove(widened, "f"))], [6, 5]),
-            mapLength(mapSet(noC, "c", 33)) == 5,
-            structuralEquals([(mapGet(mapSet(noC, "c", 33), "c") ?: ((0 - 999) )), intAt(base, "c")], [33, 3]),
-            mapLength(mapSet(drained, "a", 1)) == 1,
-            (mapGet(mapSet(drained, "a", 1), "a") ?: ((0 - 999) )) == 1,
+            mapLength(noBBase) == 5,
+            intAt(noBBase, "b") == 2,
+            mapLength(baseNoB) == 5,
+            structuralEquals([intAt(baseNoB, "b"), mapLength(widened)], [2, 6]),
+            structuralEquals([intAt(widened, "f"), mapLength(widenedNoF)], [6, 5]),
+            mapLength(noCSet) == 5,
+            structuralEquals([intAt(noCSet, "c"), intAt(base, "c")], [33, 3]),
+            mapLength(drainedSetA) == 1,
+            intAt(drainedSetA, "a") == 1,
             structuralEquals([listLength(mapKeys(noA)), listLength(mapValues(noA))], [4, 4]),
-            !mapContains(mapRemove(widened, "f"), "f"),
+            !mapContains(widenedNoF, "f"),
             !listContains(mapKeys(noA), "a"),
             listContains(mapKeys(noA), "b"),
             !listContains(mapValues(noA), 1),
@@ -772,7 +797,7 @@ fn nestedCollectionCase() = {
             isEmpty(thirdNested),
             structuralEquals([mapContains(firstNested, "z"), mapContains(secondNested, "y")], [false, false]),
             !mapContains(thirdNested, "x"),
-            intAt(firstNested, "x") != (mapGet(secondNested, "x") ?: ((0 - 998) ))
+            intAt(firstNested, "x") != otherAt(secondNested, "x")
     ])
 
     // A map of maps answers three outer keys while each inner map keeps its own
@@ -795,13 +820,13 @@ fn nestedCollectionCase() = {
     // list produces a four-element list while the stored three-element one stands.
     checkAll("lists stored as map values keep index order", [
             structuralEquals([mapLength(byParity), listLength(oddsBack), listLength(evensBack)], [2, 3, 4]),
-            structuralEquals([(listGet(oddsBack, 0) ?: ((0 - 999) )), (listGet(oddsBack, 1) ?: ((0 - 999) ))], [1, 3]),
-            structuralEquals([(listGet(oddsBack, 2) ?: ((0 - 999) )), (listGet(evensBack, 0) ?: ((0 - 999) ))], [5, 2]),
-            structuralEquals([(listGet(evensBack, 3) ?: ((0 - 999) )), listLength(listMissing)], [8, 1]),
-            structuralEquals([(listGet(listMissing, 0) ?: ((0 - 999) )), listLength(oddsGrown)], [0, 4]),
-            structuralEquals([(listGet(oddsGrown, 3) ?: ((0 - 999) )), listLength(oddsBack)], [7, 3]),
-            structuralEquals([listLength(odds), (listGet(listReverse(evensBack), 0) ?: ((0 - 999) ))], [3, 8]),
-            (listGet(oddsBack, 3) ?: ((0 - 999) )) == ((0 - 999) ),
+            structuralEquals([listAt(oddsBack, 0), listAt(oddsBack, 1)], [1, 3]),
+            structuralEquals([listAt(oddsBack, 2), listAt(evensBack, 0)], [5, 2]),
+            structuralEquals([listAt(evensBack, 3), listLength(listMissing)], [8, 1]),
+            structuralEquals([listAt(listMissing, 0), listLength(oddsGrown)], [0, 4]),
+            structuralEquals([listAt(oddsGrown, 3), listLength(oddsBack)], [7, 3]),
+            structuralEquals([listLength(odds), listAt(listReverse(evensBack), 0)], [3, 8]),
+            listAt(oddsBack, 3) == (0 - 999),
             structuralEquals(mapList([5, 2], fn(k) => listContains(oddsBack, k)), [true, false]),
             structuralEquals(mapList([8, 1], fn(k) => listContains(evensBack, k)), [true, false])
     ])
@@ -840,15 +865,15 @@ fn keyValueViewPairingCase() = {
     let m = { "a": 1, "b": 2, "c": 3, "d": 4, "e": 5, "f": 6 }
     let keys = mapKeys(m)
     let values = mapValues(m)
-    let total = (listGet(values, 0) ?: 0) + (listGet(values, 1) ?: 0) + (listGet(values, 2) ?: 0) + (listGet(values, 3) ?: 0) + (listGet(values, 4) ?: 0) + (listGet(values, 5) ?: 0) 
+    let total = viewTotal(values)
     let bumped = mapSet(m, "c", 33)
     let bumpedKeys = mapKeys(bumped)
     let bumpedValues = mapValues(bumped)
-    let bumpedTotal = (listGet(bumpedValues, 0) ?: 0) + (listGet(bumpedValues, 1) ?: 0) + (listGet(bumpedValues, 2) ?: 0) + (listGet(bumpedValues, 3) ?: 0) + (listGet(bumpedValues, 4) ?: 0) + (listGet(bumpedValues, 5) ?: 0) 
+    let bumpedTotal = viewTotal(bumpedValues)
     let trimmed = mapRemove(m, "e")
     let trimmedKeys = mapKeys(trimmed)
     let trimmedValues = mapValues(trimmed)
-    let trimmedTotal = (listGet(trimmedValues, 0) ?: 0) + (listGet(trimmedValues, 1) ?: 0) + (listGet(trimmedValues, 2) ?: 0) + (listGet(trimmedValues, 3) ?: 0) + (listGet(trimmedValues, 4) ?: 0) 
+    let trimmedTotal = viewTotal(trimmedValues)
 
     // Whatever order the views come back in, index i of one must address index i
     // of the other; 1+2+3+4+5+6 = 21 is order-independent. The two sentinels
@@ -857,18 +882,8 @@ fn keyValueViewPairingCase() = {
             structuralEquals([listLength(keys), listLength(values), total], [6, 6, 21]),
             listLength(keys) == mapLength(m),
             listLength(values) == mapLength(m),
-            (mapGet(m, (listGet(keys, 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(values, 0) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(keys, 1) ?: "absent")) ?: ((0 - 1) )) == (listGet(values, 1) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(keys, 2) ?: "absent")) ?: ((0 - 1) )) == (listGet(values, 2) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(keys, 3) ?: "absent")) ?: ((0 - 1) )) == (listGet(values, 3) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(keys, 4) ?: "absent")) ?: ((0 - 1) )) == (listGet(values, 4) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(keys, 5) ?: "absent")) ?: ((0 - 1) )) == (listGet(values, 5) ?: ((0 - 2) )),
-            mapContains(m, (listGet(keys, 0) ?: "absent")),
-            mapContains(m, (listGet(keys, 1) ?: "absent")),
-            mapContains(m, (listGet(keys, 2) ?: "absent")),
-            mapContains(m, (listGet(keys, 3) ?: "absent")),
-            mapContains(m, (listGet(keys, 4) ?: "absent")),
-            mapContains(m, (listGet(keys, 5) ?: "absent"))
+            structuralEquals(mapList([0, 1, 2, 3, 4, 5], fn(i) => pairedAt(m, keys, values, i)), [true, true, true, true, true, true]),
+            structuralEquals(mapList([0, 1, 2, 3, 4, 5], fn(i) => mapContains(m, keyAt(keys, i))), [true, true, true, true, true, true])
     ])
 
     // Both views hold every binding and nothing extra. Reversing both preserves
@@ -879,9 +894,7 @@ fn keyValueViewPairingCase() = {
             structuralEquals(mapList([1, 2, 3, 4], fn(k) => listContains(values, k)), [true, true, true, true]),
             structuralEquals(mapList([5, 6, 0, 7], fn(k) => listContains(values, k)), [true, true, false, false]),
             listLength(listReverse(keys)) == 6,
-            (mapGet(m, (listGet(listReverse(keys), 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(listReverse(values), 0) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(listReverse(keys), 3) ?: "absent")) ?: ((0 - 1) )) == (listGet(listReverse(values), 3) ?: ((0 - 2) )),
-            (mapGet(m, (listGet(listReverse(keys), 5) ?: "absent")) ?: ((0 - 1) )) == (listGet(listReverse(values), 5) ?: ((0 - 2) ))
+            structuralEquals(mapList([0, 3, 5], fn(i) => pairedAt(m, listReverse(keys), listReverse(values), i)), [true, true, true])
     ])
 
     // Overwriting "c" from 3 to 33 raises the total by exactly 30 (21 -> 51),
@@ -893,12 +906,7 @@ fn keyValueViewPairingCase() = {
             structuralEquals(mapList([33, 3], fn(k) => listContains(bumpedValues, k)), [true, false]),
             structuralEquals(mapList([3, 33], fn(k) => listContains(values, k)), [true, false]),
             listContains(bumpedKeys, "c"),
-            (mapGet(bumped, (listGet(bumpedKeys, 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 0) ?: ((0 - 2) )),
-            (mapGet(bumped, (listGet(bumpedKeys, 1) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 1) ?: ((0 - 2) )),
-            (mapGet(bumped, (listGet(bumpedKeys, 2) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 2) ?: ((0 - 2) )),
-            (mapGet(bumped, (listGet(bumpedKeys, 3) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 3) ?: ((0 - 2) )),
-            (mapGet(bumped, (listGet(bumpedKeys, 4) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 4) ?: ((0 - 2) )),
-            (mapGet(bumped, (listGet(bumpedKeys, 5) ?: "absent")) ?: ((0 - 1) )) == (listGet(bumpedValues, 5) ?: ((0 - 2) ))
+            structuralEquals(mapList([0, 1, 2, 3, 4, 5], fn(i) => pairedAt(bumped, bumpedKeys, bumpedValues, i)), [true, true, true, true, true, true])
     ])
 
     // Removing "e" drops the total by exactly its value 5 (21 -> 16) and both
@@ -911,11 +919,7 @@ fn keyValueViewPairingCase() = {
             structuralEquals([listContains(trimmedKeys, "e"), listContains(trimmedValues, 5)], [false, false]),
             structuralEquals([listContains(trimmedKeys, "a"), listContains(trimmedValues, 6)], [true, true]),
             listContains(keys, "e"),
-            (mapGet(trimmed, (listGet(trimmedKeys, 0) ?: "absent")) ?: ((0 - 1) )) == (listGet(trimmedValues, 0) ?: ((0 - 2) )),
-            (mapGet(trimmed, (listGet(trimmedKeys, 1) ?: "absent")) ?: ((0 - 1) )) == (listGet(trimmedValues, 1) ?: ((0 - 2) )),
-            (mapGet(trimmed, (listGet(trimmedKeys, 2) ?: "absent")) ?: ((0 - 1) )) == (listGet(trimmedValues, 2) ?: ((0 - 2) )),
-            (mapGet(trimmed, (listGet(trimmedKeys, 3) ?: "absent")) ?: ((0 - 1) )) == (listGet(trimmedValues, 3) ?: ((0 - 2) )),
-            (mapGet(trimmed, (listGet(trimmedKeys, 4) ?: "absent")) ?: ((0 - 1) )) == (listGet(trimmedValues, 4) ?: ((0 - 2) ))
+            structuralEquals(mapList([0, 1, 2, 3, 4], fn(i) => pairedAt(trimmed, trimmedKeys, trimmedValues, i)), [true, true, true, true, true])
     ])
 }
 
