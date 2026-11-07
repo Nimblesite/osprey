@@ -24,7 +24,7 @@ __all__ = [
     "PARAMETERS", "WEIGHTS_BYTES", "WEIGHT_FILE", "REVISION", "INSTANT", "EPOCH",
     "VERSION", "TEMPERATURE",
     "Sampling", "Chat", "Generate",
-    "show_request", "chat_request", "generate_request",
+    "show_request", "chat_request", "openai_chat_request", "generate_request",
 ]
 
 MODEL = "qwen3.8:27b"
@@ -142,34 +142,44 @@ def advertised(document):
 
 
 def chat_request(body):
-    """An `/api/chat` or `/v1/chat/completions` body as a `Chat` ([LLM-API-OLLAMA])."""
+    """Decode Ollama's chat body ([LLM-API-OLLAMA])."""
+    return decode_chat(body, False)
+
+
+def openai_chat_request(body):
+    """Decode OpenAI's chat body and its serialized tool history ([LLM-API-OPENAI])."""
+    return decode_chat(body, True)
+
+
+def decode_chat(body, openai):
     match Wire.decode(body):
         case Success(value=document):
-            return named(Wire.text(document, "model"), document)
+            messages = Wire.items(Wire.field(document, "messages"))
+            return named(Wire.text(document, "model"), document, Wire.openai_history(messages) if openai else messages)
         case Error(message=message):
             return Error(message=message)
 
 
-def named(model, document):
+def named(model, document, messages):
     """Build a `Chat` once its body decoded and its model name is present."""
     match required(model):
         case Success(value=name):
-            return chat_request_named(name, document)
+            return chat_request_named(name, document, messages)
         case Error(message=message):
             return Error(message=message)
 
 
-def chat_request_named(name, document):
+def chat_request_named(name, document, messages):
     """The chat turn for a request whose model name is present, or the refusal the prompt's
     rendering made of one of its tool calls."""
     tools = advertised(document)
-    match Prompts.render(Wire.items(Wire.field(document, "messages")), tools):
+    match Prompts.render(messages, tools):
         case Success(value=prompt):
             return Success(value=Chat(
                 model=name,
                 prompt=prompt,
                 tools=tools,
-                loading=len(Wire.items(Wire.field(document, "messages"))) == 0,
+                loading=len(messages) == 0,
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))

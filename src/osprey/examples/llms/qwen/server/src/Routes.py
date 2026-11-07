@@ -35,7 +35,7 @@ def openai(method, path, body, model):
     if path == "/v1/models":
         return read_only(method, OpenAi.models())
     elif path == "/v1/chat/completions":
-        return posted(method, body, lambda request: OpenAi.completions(model, request), Q.chat_request)
+        return posted(method, body, lambda request: OpenAi.completions(model, request), Q.openai_chat_request)
     else:
         return OpenAi.failed(404, f"no route for {path}")
 

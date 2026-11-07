@@ -3,8 +3,8 @@
 # osprey: module=Prompts
 """Render the GGUF chat template pinned in tests/chat_template.jinja [LLM-TEMPLATE].
 
-The server drops historical thinking and omits the generation prompt's trailing
-<think> line, so the model's reasoning arrives in the reply ([LLM-API-OLLAMA]).
+The server keeps thinking within the active turn, drops older reasoning and
+omits the generation prompt's trailing <think> line ([LLM-API-OLLAMA]).
 """
 
 from qwen_server import Lists
@@ -98,26 +98,34 @@ def turn(message):
 
 
 def turns(messages, start):
-    """Every message's turn, from message `start`, concatenated in order."""
-    return fold(range(start, Lists.count(messages)), "", lambda rendered, at: rendered + turn_at(messages, at))
+    count = Lists.count(messages)
+    latest = fold(range(start, count), satSub(count, 1), lambda last, at: at if is_query(messages, at) else last)
+    return fold(range(start, count), "", lambda rendered, at: rendered + turn_at(messages, at, latest))
 
 
-def turn_at(messages, at):
-    """The turn for the message at `at`."""
+def is_query(messages, at):
     match listGet(messages, at):
         case Success(value=message):
-            return message_turn(messages, at, message)
+            content = trim(Wire.text(message, "content"))
+            return Wire.text(message, "role") == "user" and not (startsWith(content, "<tool_response>") and endsWith(content, "</tool_response>"))
+        case Error():
+            return False
+
+
+def turn_at(messages, at, latest):
+    match listGet(messages, at):
+        case Success(value=message):
+            return message_turn(messages, at, message, at > latest)
         case Error():
             return ""
 
 
-def message_turn(messages, at, message):
-    """A message's turn: a tool response, an assistant turn carrying calls, or a plain turn."""
+def message_turn(messages, at, message, active):
     role = Wire.text(message, "role")
     if role == "tool":
         return tool_turn(messages, at, message)
-    elif role == "assistant" and has_calls(message):
-        return call_turn(message)
+    elif role == "assistant":
+        return assistant_turn(message, active)
     else:
         return turn(message)
 
@@ -168,24 +176,16 @@ def merged_message(merged, message):
         return f"{merged}\n{content}"
 
 
-# --- assistant turns that call tools --------------------------------------
-
-
-def has_calls(message):
-    """Whether the message carries a non-empty `tool_calls` array."""
-    return Lists.count(calls_of(message)) > 0
-
-
 def calls_of(message):
     """The message's `tool_calls`, or none."""
     return Wire.items(Wire.field(message, "tool_calls"))
 
 
-def call_turn(message):
-    """An assistant turn carrying tool calls, as the template writes it for a history turn:
-    its trimmed content, then one `<tool_call>` block per call."""
+def assistant_turn(message, active):
     content = trim(Wire.text(message, "content"))
-    return f"{OPEN}assistant\n{content}{call_blocks(calls_of(message), content)}{CLOSE}\n"
+    reasoning = trim(Wire.text(message, "reasoning_content"))
+    thinking = f"<think>\n{reasoning}\n</think>\n\n" if active else ""
+    return f"{OPEN}assistant\n{thinking}{content}{call_blocks(calls_of(message), content)}{CLOSE}\n"
 
 
 def call_blocks(calls, content):
