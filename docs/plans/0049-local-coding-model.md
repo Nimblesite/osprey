@@ -7,7 +7,7 @@ Depends on: 0050-sized-numeric-types.md (Phase 5 gate), 0023-gpu.md (the kernel-
 
 ## Ownership — 2026-11-08
 
-Three agents work the plan on the shared `qwen-prefill` branch; OspreyClaude1 coordinates. One owner per open item; an owner ticks an item only with a named test or a dated receipt, and every red or green run is reported on Too Many Cooks. Edit a file only under its TMC lock; GPU time is a slot asked for and released on TMC. Pi agents do bounded legwork only, announced on TMC, and their output is reviewed by the owner.
+**OspreyClaude1 leads Plan 0049** and owns integration and GPU scheduling on the shared `qwen-prefill` branch. Each item has one owner, who reports red and green runs on Too Many Cooks and ticks an item only with a named test or a dated receipt. Lock files before editing and coordinate GPU handoffs on TMC. Register each pi worker under its own TMC identity before launch, assign only bounded legwork, independently review its output and remove its identity after confirming the process has exited.
 
 | Owner | Items |
 | --- | --- |
