@@ -9,16 +9,21 @@ effect FlavorCounter {
     tick: fn(int) -> Unit
 }
 
+/// The list stored under `key` in `m`, or the sentinel `[99]` when it is absent.
+fn storedList(m, key) = mapGet(m, key) ?: [99]
+
+/// The length and index-`i` element of the list stored under `key`, or sentinels.
+fn listShape(m, key, i) = [listLength(storedList(m, key)), listGet(storedList(m, key), i) ?: 99]
+
 fn runBatchAssertions() = {
     mut total = 10
-    let empty = [99]
     let base = { "first": [2, 3], "second": [5, 9] }
     let grown = mapSet(base, "third", [7, 11, 13])
     let replaced = mapSet(grown, "first", [20])
     let removed = mapRemove(replaced, "second")
-    let first = mapGet(base, "first") ?: empty
-    let second = mapGet(base, "second") ?: empty
-    let missing = mapGet(base, "missing") ?: [99]
+    let first = storedList(base, "first")
+    let second = storedList(base, "second")
+    let missing = storedList(base, "missing")
 
     checkAll("effect batch collection preconditions", [
             structuralEquals([total, mapLength(base), mapLength(grown)], [10, 2, 3]),
@@ -52,13 +57,9 @@ fn runBatchAssertions() = {
     ])
 
     checkAll("handler exit preserves state and persistent collection versions", [
-            structuralEquals([total, mapLength(base), mapLength(grown)], [25, 2, 3]),
-            listLength(grown.mapGet("third") ?: empty) == 3,
-            ((grown.mapGet("third") ?: empty).listGet(2) ?: 99) == 13,
-            listLength(replaced.mapGet("first") ?: empty) == 1,
-            ((replaced.mapGet("first") ?: empty).listGet(0) ?: 99) == 20,
-            structuralEquals([listLength(base.mapGet("first") ?: empty), listLength(mapKeys(grown))], [2, 3]),
-            listLength(mapValues(grown)) == 3
+            structuralEquals([listShape(grown, "third", 2), listShape(replaced, "first", 0)], [[3, 13], [1, 20]]),
+            structuralEquals([total, mapLength(base), mapLength(grown), listLength(mapValues(grown))], [25, 2, 3, 3]),
+            structuralEquals([listLength(storedList(base, "first")), listLength(mapKeys(grown))], [2, 3])
     ])
 }
 
