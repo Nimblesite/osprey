@@ -207,11 +207,12 @@ static void quant_words(const char *type, void *x, void *w, const int64_t shape[
   }
 }
 
-// One block format's parity: seeded operands, the words compared, and the three
-// errors a wrong format, a short row and a short weight buffer are.
+// One block format's parity: seeded operands over one full row tile and one
+// partial tile (QUANT_ROWS is 8), the words compared, and the three errors a
+// wrong format, a short row and a short weight buffer are.
 static void quant_parity(const char *type, int64_t block_bytes, int64_t block_elements, const int64_t *scale_at,
                          unsigned scales) {
-  const int64_t shape[3] = {3, 512, 5}, blocks = shape[1] / block_elements;
+  const int64_t shape[3] = {11, 512, 5}, blocks = shape[1] / block_elements;
   void *x = osprey_gpu_alloc(shape[0] * shape[1], 4);
   float *xs = osprey_gpu_data(x);
   for (int64_t i = 0; i < shape[0] * shape[1]; i++) xs[i] = (float)(int64_t)(random_word() % 2001) / 1000.0f - 1.0f;

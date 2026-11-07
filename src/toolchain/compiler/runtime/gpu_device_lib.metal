@@ -650,15 +650,22 @@ float iq3_s_lane(float acc, GPU_GLOBAL const float *x, GPU_GLOBAL const uchar *b
     return acc;
 }
 
-// [LLM-MATMUL-QUANT] One output per 32 consecutive threads: lane l owns weights
-// [8l, 8l + 8) of every block it visits (a 256-weight block has 32 lanes; eight
-// 32-weight blocks share them), summing its products in block order from 0.0f,
-// and quant_reduce combines the lanes. The host oracle in gpu_host.c compiles
-// these same lane functions and runs the same rounds, so every backend writes
-// the same words. Threadgroups are a multiple of 32 threads (gpu_metal.m,
-// gpu_opencl.c), at most QUANT_GROUP, so a lane's group never straddles two.
+// [LLM-MATMUL-QUANT] One tile of QUANT_ROWS outputs of one column per 32
+// consecutive threads: lane l owns weights [8l, 8l + 8) of every block it visits
+// (a 256-weight block has 32 lanes; eight 32-weight blocks share them), decodes
+// each weight once and multiplies it into every row of the tile, summing each
+// row's products in block order from 0.0f, and quant_reduce combines the lanes
+// row by row. A prompt of T rows so reads and decodes the weights T / QUANT_ROWS
+// times instead of T ([LLM-PREFILL]); one row is one tile with the other rows
+// idle, the decode path unchanged. Each output's sum is the same lane-for-lane
+// chain whatever the tile holds, so the host oracle in gpu_host.c, which compiles
+// these same lane functions and runs the same rounds one output at a time,
+// writes the same words as every backend. Threadgroups are a multiple of 32
+// threads (gpu_metal.m, gpu_opencl.c), at most QUANT_GROUP, so a lane's group
+// never straddles two.
 #define QUANT_LANES 32
 #define QUANT_GROUP 256
+#define QUANT_ROWS 8
 
 // The 32 lane sums of one output in a fixed butterfly: each round adds to every
 // lane the lane `off` away, so lane 0 ends with the total. The order never
@@ -682,18 +689,23 @@ kernel void osprey_matmul_##TYPE(GPU_GLOBAL const float *x GPU_BUFFER(0), \
                                  GPU_PARAM rows GPU_BUFFER(3), GPU_PARAM inner GPU_BUFFER(4), \
                                  GPU_PARAM cols GPU_BUFFER(5) GPU_LANE_THREAD) { \
     GPU_LOCAL float sums[QUANT_GROUP]; \
-    ulong i = GPU_INDEX / QUANT_LANES; \
+    ulong i = GPU_INDEX / QUANT_LANES, tiles = (rows + QUANT_ROWS - 1) / QUANT_ROWS; \
     uint lane = (uint)(GPU_INDEX % QUANT_LANES), per_block = (ELEMENTS) / 8, per_span = QUANT_LANES / per_block; \
-    bool live = i < rows * cols; \
-    ulong r = live ? i / cols : 0, c = live ? i % cols : 0; \
+    bool live = i < tiles * cols; \
+    ulong r0 = live ? (i / cols) * QUANT_ROWS : 0, c = live ? i % cols : 0; \
+    uint span = live ? (uint)(rows - r0 < QUANT_ROWS ? rows - r0 : QUANT_ROWS) : 0; \
     uint blocks = live ? (uint)(inner / (ELEMENTS)) : 0; \
-    GPU_GLOBAL const float *xr = x + r * inner; \
+    GPU_GLOBAL const float *xr = x + r0 * inner; \
     GPU_GLOBAL const uchar *row = w + c * (ulong)(inner / (ELEMENTS)) * (BYTES); \
-    float acc = 0.0f; \
+    float acc[QUANT_ROWS]; \
+    for (uint k = 0; k < QUANT_ROWS; k++) acc[k] = 0.0f; \
     for (uint blk = lane / per_block; blk < blocks; blk += per_span) \
-        acc = LANE(acc, xr + (ulong)blk * (ELEMENTS), row + (ulong)blk * (BYTES), lane % per_block); \
-    acc = quant_reduce(sums, GPU_LOCAL_INDEX, acc); \
-    if (live && lane == 0) out[i] = acc; \
+        for (uint k = 0; k < span; k++) \
+            acc[k] = LANE(acc[k], xr + k * inner + (ulong)blk * (ELEMENTS), row + (ulong)blk * (BYTES), lane % per_block); \
+    for (uint k = 0; k < QUANT_ROWS; k++) { \
+        float total = quant_reduce(sums, GPU_LOCAL_INDEX, acc[k]); \
+        if (live && lane == 0 && k < span) out[(r0 + k) * cols + c] = total; \
+    } \
 }
 QUANT_KERNEL(q4_k, q4_k_lane, 256, 144)
 QUANT_KERNEL(q8_0, q8_0_lane, 32, 34)

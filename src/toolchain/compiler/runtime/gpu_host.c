@@ -196,6 +196,8 @@ static float butterfly(float *sums) {
   return sums[0];
 }
 
+int64_t osprey_gpu_quant_rows(void) { return QUANT_ROWS; }
+
 // The oracle of the library kernels `osprey_matmul_<type>`, lane for lane.
 static void product_quant(const QuantFormat *format, float *out, const float *x, const unsigned char *w, int64_t rows,
                           int64_t inner, int64_t cols) {
