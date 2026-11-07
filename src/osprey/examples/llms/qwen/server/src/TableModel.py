@@ -1,13 +1,13 @@
 # osprey: flavor=python
 # osprey: namespace=qwen_server
 # osprey: module=TableModel
-"""The fixture model behind `Generator`: four-token context counts over a transcript.
+"""The fixture model behind `Generator`: twelve-token context counts over a transcript.
 
 It is the CI stand-in for the real weights (`RealModel.py`), which the server
 installs when started with a GGUF path; every route is exercised against a model
 that is real but tiny. Its handle
 (`Model`) carries the vocabulary and the token ids of `CORPUS`, a transcript in
-the served chat framing: a step counts, for the four-token context at the end of
+the served chat framing: a step counts, for the twelve-token context at the end of
 the history, how often each token followed that context in the corpus, and asks
 `@osprey/transformers`' `generate` for one token from those counts. Nothing here
 is a canned reply — the text a turn produces is the model's own continuation of
@@ -37,9 +37,52 @@ EOS_CHAR = "~"
 SEEDED_ROW = 1024
 
 CORPUS = """<|im_start|>system
-You are a local coding model served by Osprey.<|im_end|>
+# Tools
+
+You have access to the following functions:
+
+<tools>
+{"function": {"description": "Read one file from the workspace", "name": "read_file", "parameters": {"properties": {"path": {"type": "string"}}, "required": ["path"], "type": "object"}}, "type": "function"}
+{"function": {"description": "Run one test suite", "name": "run_tests", "parameters": {"properties": {"suite": {"type": "string"}}, "required": ["suite"], "type": "object"}}, "type": "function"}
+</tools>
+
+If you choose to call a function ONLY reply in the following format with NO suffix:
+
+<tool_call>
+<function=example_function_name>
+<parameter=example_parameter_1>
+value_1
+</parameter>
+<parameter=example_parameter_2>
+This is the value for the second parameter
+that can span
+multiple lines
+</parameter>
+</function>
+</tool_call>
+
+<IMPORTANT>
+Reminder:
+- Function calls MUST follow the specified format: an inner <function=...></function> block must be nested within <tool_call></tool_call> XML tags
+- Required parameters MUST be specified
+- You may provide optional reasoning for your function call in natural language BEFORE the function call, but NOT after
+- If there is no function call available, answer the question like normal with your current knowledge and do not tell the user about function calls
+</IMPORTANT><|im_end|>
 <|im_start|>user
 open the readme<|im_end|>
+<|im_start|>assistant
+<tool_call>
+<function=read_file>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
+~
+<|im_start|>user
+<tool_response>
+{"status": "ok", "tests": 12}
+</tool_response><|im_end|>
 <|im_start|>assistant
 <tool_call>
 <function=read_file>
@@ -71,8 +114,35 @@ README.md
 </function>
 </tool_call>
 ~
+<|im_start|>user
+<tool_response>
+{"status": "ok", "tests": 12}
+</tool_response><|im_end|>
+<|im_start|>assistant
+<tool_call>
+<function=read_file>
+<parameter=path>
+README.md
+</parameter>
+</function>
+</tool_call>
+~
+<|im_start|>user
+run the unit tests<|im_end|>
+<|im_start|>assistant
+<tool_call>
+<function=run_tests>
+<parameter=suite>
+unit
+</parameter>
+</function>
+</tool_call>
+~
 """
-"""The transcript the fixture counts four-token contexts over, in the served chat framing."""
+"""The transcript the fixture counts twelve-token contexts over, in the served chat framing.
+Its system turn is the template's own tools turn (`src/Prompts.py`), because a request that
+advertises tools renders those bytes and the fixture's vocabulary is the transcript's; the
+assistant turns end at `~`, the fixture's end-of-turn token ([LLM-TOOL-PARSE])."""
 
 
 class Model:
@@ -162,29 +232,22 @@ def index_of(vocab, byte, at):
 
 
 def tokenize(ids, text):
-    """The token ids of `text`, or an error naming the first byte outside the vocabulary."""
-    return tokenized(ids, bytes_of(text), 0, [])
+    """The token ids of `text`, or an error naming the first byte outside the vocabulary.
+    A fold, not a recursion per byte: an agent's prompt runs to tens of thousands of
+    bytes, and a frame per byte overflowed the fiber's stack at about 3,000 ([LLM-API-LIMIT]
+    rejects a prompt by its count, never by crashing)."""
+    bytes_ = bytes_of(text)
+    tokens = mapList(bytes_, lambda byte: unwrap_or(listGet(ids, byte), -1))
+    at = first_missing(tokens)
+    if at < 0:
+        return Success(value=tokens)
+    else:
+        return missing(unwrap_or(listGet(bytes_, at), -1), at)
 
 
-def tokenized(ids, text, at, kept):
-    """Tokenize from byte `at`, or report the byte the vocabulary does not hold."""
-    match listGet(text, at):
-        case Success(value=byte):
-            return appended(ids, text, at, byte, kept)
-        case Error():
-            return Success(value=kept)
-
-
-def appended(ids, text, at, byte, kept):
-    """Append `byte`'s token id to `kept` and continue, or report the missing byte."""
-    match listGet(ids, byte):
-        case Success(value=token):
-            if token < 0:
-                return missing(byte, at)
-            else:
-                return tokenized(ids, text, satAdd(at, 1), listAppend(kept, token))
-        case Error():
-            return missing(byte, at)
+def first_missing(tokens):
+    """The offset of the first byte the vocabulary does not hold (its token id is -1), or -1."""
+    return fold(range(len(tokens)), -1, lambda found, at: found if found >= 0 else (at if unwrap_or(listGet(tokens, at), 0) < 0 else -1))
 
 
 def missing(byte, at):

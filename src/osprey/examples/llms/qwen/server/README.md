@@ -96,7 +96,8 @@ With an empty path the handler is `src/TableModel.py`, the CI stand-in: a real
 model that is tiny — a twelve-token context whose successor counts come from
 `CORPUS`, a transcript in the served chat framing. Its turns are the model's
 own continuation of the prompt — `tests/model_reference.cpython` recomputes
-them independently from the same corpus, and the suite compares the two —
+them independently from the same corpus, and renders the prompt through
+`tests/chat_template.jinja` so every byte the suite asserts is the template's —
 never a string the server was handed.
 
 A `/api/chat` turn runs its text through plan 0049 Phase 6's streaming tool
@@ -144,10 +145,16 @@ that lost its instructions would answer wrongly with nothing to warn it.
 
 The fixture tokenizer's vocabulary is the characters of `CORPUS`, so under the
 table a prompt with any other byte is a 400 naming that byte's offset; the real
-handler tokenizes with the GGUF's vocabulary. The chat framing is the
-`<|im_start|>` subset in `src/Prompts.py`, not the full chat template, so
-tools reach the real model as text the parser reads back rather than as the
-template's tool block. Two protocols' timestamps are one fixed instant because
+handler tokenizes with the GGUF's vocabulary. The prompt is the GGUF's own
+`tokenizer.chat_template`, rendered as `src/Prompts.py` writes it and checked
+byte for byte against `tests/chat_template.jinja` (the GGUF's metadata, kept
+under the model's Apache-2.0 notice): the `# Tools` system turn with each tool's
+JSON, an assistant turn's `<tool_call>` blocks and a `tool` message's
+`<tool_response>` are the template's, and what the server leaves to the model is
+the `<think>` block of a history turn (rendered with `preserve_thinking=false`)
+and the generation prompt's trailing `<think>`. `CORPUS` therefore carries the
+template's tools turn, since the fixture vocabulary is the transcript's. Two
+protocols' timestamps are one fixed instant because
 Osprey has no clock builtin. Nothing here streams over the socket as it is
 produced: the runtime writes one response body, so streaming means one NDJSON
 line per token in that body, which both clients parse identically.
@@ -166,7 +173,8 @@ objects, so a wire shape is only accepted when the client accepts it.
 `tests/harness.cpython` compiles the server, waits for its listener, runs every
 registered case and reports one `ok <lane>/<case>` line each;
 `tests/model_reference.cpython` is the independent CPython model the table's
-answers are compared with.
+answers are compared with, and `tests/limit_cases.cpython` holds the cases a
+prompt over the context is rejected by.
 
 Three lanes: `gc` and `arc` drive the fixture table (CI runs these; no weights
 are downloaded), and `real` drives the ARC binary over the GGUF named by

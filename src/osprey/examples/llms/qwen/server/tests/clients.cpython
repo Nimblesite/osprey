@@ -23,7 +23,6 @@ from pathlib import Path
 import httpx
 import jsonschema
 import ollama
-import openai
 
 HERE = Path(__file__).resolve().parent
 _loader = importlib.machinery.SourceFileLoader("harness", str(HERE / "harness.cpython"))
@@ -213,9 +212,16 @@ def generate_streams_ndjson_one_line_per_token(port):
 
 @case
 def chat_and_generate_template_the_same_turn(port):
-    chat = [part for part in client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE], stream=True)]
+    module = reference()
+    model = module.Model()
+    asked = [{"role": "user", "content": READ_PROMPT}]
+    chat = [part for part in client(port).chat(model=MODEL, messages=asked, tools=[READ_FILE], stream=True)]
     generated = [part for part in client(port).generate(model=MODEL, prompt=READ_PROMPT, stream=True)]
-    assert [part.prompt_eval_count for part in generated if part.done] == [part.prompt_eval_count for part in chat if part.done]
+    chat_count = [part.prompt_eval_count for part in chat if part.done]
+    generate_count = [part.prompt_eval_count for part in generated if part.done]
+    assert chat_count == [len(model.tokenize(module.rendered_chat(asked, [READ_FILE])))], chat_count
+    assert generate_count == [len(model.tokenize(module.rendered(READ_PROMPT)))], generate_count
+    assert chat_count[0] > generate_count[0], (chat_count, generate_count)
     assert [part.eval_count for part in generated if part.done] == [part.eval_count for part in chat if part.done]
     text = "".join(part.message.content or "" for part in chat)
     response = "".join(part.response for part in generated)
@@ -237,16 +243,56 @@ def generate_matches_the_model_reference(port):
 
 @case
 def chat_matches_the_model_reference(port):
-    module = reference()
-    model = module.Model()
-    rendered = module.rendered(READ_PROMPT)
-    name, arguments = module.call_of(model.continuation(rendered))
-    reply = client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE, RUN_TESTS])
-    assert reply.prompt_eval_count == len(model.tokenize(rendered)), reply
-    call = reply.message.tool_calls[0]
-    assert (call.function.name, dict(call.function.arguments)) == (name, arguments), (call, name, arguments)
+    reply = answered(port, reference(), [{"role": "user", "content": READ_PROMPT}], [READ_FILE, RUN_TESTS])
     assert "<tool_call>" not in (reply.message.content or ""), reply
     assert reply.done_reason == "stop", reply
+
+
+def answered(port, module, messages, tools):
+    """One turn answered against the template's rendering of `messages`: the prompt's token
+    count and the reply's call are the reference model's, and the reply is returned."""
+    model = module.Model()
+    rendered = module.rendered_chat(messages, tools)
+    reply = client(port).chat(model=MODEL, messages=messages, tools=tools)
+    assert reply.prompt_eval_count == len(model.tokenize(rendered)), (reply.prompt_eval_count, len(model.tokenize(rendered)))
+    name, arguments = module.call_of(model.continuation(rendered))
+    call = reply.message.tool_calls[0]
+    assert (call.function.name, dict(call.function.arguments)) == (name, arguments), (call, name, arguments)
+    return reply
+
+
+@case
+def chat_with_tools_renders_the_template_system_block(port):
+    module = reference()
+    tools = [READ_FILE, RUN_TESTS]
+    asked = [{"role": "user", "content": READ_PROMPT}]
+    plain = answered(port, module, asked, tools).prompt_eval_count
+    terse = answered(port, module, [{"role": "system", "content": "You are terse."}] + asked, tools).prompt_eval_count
+    assert plain < terse, (plain, terse)
+
+
+@case
+def chat_tool_result_turn_continues_the_conversation(port):
+    module = reference()
+    tools = [READ_FILE, RUN_TESTS]
+    asked = {"role": "user", "content": READ_PROMPT}
+    called = {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "read_file", "arguments": {"path": "README.md"}}}]}
+    read = {"role": "tool", "content": "# Osprey\n"}
+    follow = {"role": "user", "content": "now run the unit tests"}
+    one = answered(port, module, [asked, called, read, follow], tools).prompt_eval_count
+    two = answered(port, module, [asked, called, read, dict(read, content="second\n"), follow], tools).prompt_eval_count
+    assert one < two, (one, two)
+
+
+@case
+def chat_tool_call_arguments_given_as_a_string_are_rejected(port):
+    asked = {"role": "user", "content": READ_PROMPT}
+    called = {"role": "assistant", "content": "", "tool_calls": [{"function": {"name": "read_file", "arguments": "{\"path\": \"x\"}"}}]}
+    reply = httpx.post(base(port) + "/api/chat", json={"model": MODEL, "messages": [asked, called], "tools": [READ_FILE]}, timeout=30.0)
+    assert reply.status_code == 400, reply.text
+    message = reply.json()["error"]
+    assert "read_file" in message, message
+    assert "JSON string" in message, message
 
 
 @case
@@ -288,9 +334,10 @@ def openai_chat_completes_one_turn(port):
 def openai_chat_answer_matches_the_model_reference(port):
     module = reference()
     model = module.Model()
-    rendered = module.rendered(READ_PROMPT)
+    asked = [{"role": "user", "content": READ_PROMPT}]
+    rendered = module.rendered_chat(asked, [READ_FILE, RUN_TESTS])
     name, arguments = module.call_of(model.continuation(rendered))
-    reply = openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], tools=[READ_FILE, RUN_TESTS])
+    reply = openai_client(port).chat.completions.create(model=MODEL, messages=asked, tools=[READ_FILE, RUN_TESTS])
     assert reply.usage.prompt_tokens == len(model.tokenize(rendered)), reply.usage
     call = reply.choices[0].message.tool_calls[0]
     assert (call.function.name, json.loads(call.function.arguments)) == (name, arguments), call
@@ -367,7 +414,7 @@ def concurrent_turns_each_answer_their_own_prompt(port):
         assert status == 200, body
         answer = json.loads(body)
         assert answer["done"] is True, answer
-        rendered = module.rendered(prompts[index])
+        rendered = module.rendered_chat([{"role": "user", "content": prompts[index]}], [READ_FILE, RUN_TESTS])
         name, arguments = module.call_of(model.continuation(rendered))
         call = answer["message"]["tool_calls"][0]
         assert (call["function"]["name"], call["function"]["arguments"]) == (name, arguments), (index, call, name, arguments)
@@ -389,56 +436,9 @@ def a_client_that_disconnects_does_not_wedge_the_server(port):
     assert reply.prompt_eval_count > 0, reply
 
 
-# --- step 5: a prompt over num_ctx names both counts ----------------------
+# --- step 5: a prompt over num_ctx names both counts, registered from limit_cases.cpython ---
 
-
-@case
-def a_prompt_over_num_ctx_is_rejected_naming_both_counts(port):
-    module = reference()
-    model = module.Model()
-    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
-    for over in (1, 7):
-        boundary = tokens - over
-        for call in (
-            lambda: client(port).generate(model=MODEL, prompt=READ_PROMPT, options={"num_ctx": boundary}),
-            lambda: client(port).chat(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], options={"num_ctx": boundary}),
-        ):
-            try:
-                call()
-            except ollama.ResponseError as error:
-                assert error.status_code == 400, error.status_code
-                message = str(error)
-                assert str(tokens) in message, message
-                assert str(boundary) in message, message
-                assert "num_ctx" in message, message
-            else:
-                raise AssertionError(f"a prompt of {tokens} tokens was accepted under num_ctx {boundary}")
-
-
-@case
-def a_prompt_that_exactly_fills_num_ctx_is_rejected_naming_both_counts(port):
-    module = reference()
-    model = module.Model()
-    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
-    try:
-        openai_client(port).chat.completions.create(model=MODEL, messages=[{"role": "user", "content": READ_PROMPT}], extra_body={"options": {"num_ctx": tokens}})
-    except openai.BadRequestError as error:
-        message = str(error.message)
-        assert str(tokens) in message, message
-        assert "num_ctx" in message, message
-    else:
-        raise AssertionError(f"a prompt filling num_ctx {tokens} was accepted")
-
-
-@case
-def a_prompt_that_fits_is_served_whole(port):
-    module = reference()
-    model = module.Model()
-    tokens = len(model.tokenize(module.rendered(READ_PROMPT)))
-    reply = client(port).generate(model=MODEL, prompt=READ_PROMPT, options={"num_ctx": tokens + 256, "num_predict": 256})
-    assert reply.done is True, reply
-    assert reply.prompt_eval_count == tokens, reply
-    assert reply.response == model.continuation(module.rendered(READ_PROMPT)), reply
+load("limit_cases")
 
 
 # --- the real weights: registered from real_cases.cpython, run on the `real` lane only ---

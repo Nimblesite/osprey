@@ -1,12 +1,12 @@
 """The server's real-weights lane: every `real_case` here runs on the `real` lane only,
 when `OSPREY_QWEN_GGUF` names the GGUF; otherwise the harness prints a named skip for
 each. Loaded by `clients.cpython`, which owns the fixture-table cases and `main`.
-Implements [LLM-API-OLLAMA], [LLM-API-OPENAI], [LLM-API-LIMIT] and
+Implements [LLM-API-OLLAMA], [LLM-API-OPENAI], [LLM-API-LIMIT], [LLM-TOOL-CONSTRAIN] and
 [LLM-CACHE-CHECKPOINT] of docs/specs/applications/LocalCodingModel.md on the mapped weights.
 """
 import ollama
 
-from harness import real_case, client, openai_client, MODEL, ROOT
+from harness import real_case, client, openai_client, MODEL, READ_FILE, ROOT
 
 
 @real_case
@@ -82,3 +82,19 @@ def real_prompt_over_num_ctx_is_rejected_by_the_real_tokenizer(port):
             assert str(tokens) in message and str(num_ctx) in message and phrase in message, message
         else:
             raise AssertionError(f"a prompt of {tokens} real tokens was accepted under num_ctx {num_ctx}")
+
+
+@real_case
+def real_tool_call_is_schema_valid_on_the_real_vocabulary(port):
+    """[LLM-TOOL-CONSTRAIN] over the real 248,320-token vocabulary: the template's tools
+    system turn is in the prompt, and the weights answer it by calling the advertised
+    `read_file` with an argument object its schema accepts, ending the turn themselves."""
+    asked = [{"role": "user", "content": "Use the read_file tool to read README.md. Call the tool; do not answer in words."}]
+    reply = client(port).chat(model=MODEL, messages=asked, tools=[READ_FILE], options={"num_predict": 256})
+    assert reply.message.tool_calls, reply
+    call = reply.message.tool_calls[0]
+    assert call.function.name == "read_file", call
+    arguments = call.function.arguments
+    assert isinstance(arguments, dict), call.function
+    assert isinstance(arguments.get("path"), str) and "README" in arguments["path"], arguments
+    assert reply.done_reason == "stop", (reply.done_reason, reply.message.content)

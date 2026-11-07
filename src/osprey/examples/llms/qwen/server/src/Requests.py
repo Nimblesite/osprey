@@ -150,10 +150,21 @@ def named(model, document):
     """Build a `Chat` once its body decoded and its model name is present."""
     match required(model):
         case Success(value=name):
+            return chat_request_named(name, document)
+        case Error(message=message):
+            return Error(message=message)
+
+
+def chat_request_named(name, document):
+    """The chat turn for a request whose model name is present, or the refusal the prompt's
+    rendering made of one of its tool calls."""
+    tools = advertised(document)
+    match Prompts.render(Wire.items(Wire.field(document, "messages")), tools):
+        case Success(value=prompt):
             return Success(value=Chat(
                 model=name,
-                prompt=Prompts.render(Wire.items(Wire.field(document, "messages"))),
-                tools=advertised(document),
+                prompt=prompt,
+                tools=tools,
                 stream=Wire.flag(document, "stream"),
                 sampling=sampling_of(Wire.field(document, "options")),
             ))
