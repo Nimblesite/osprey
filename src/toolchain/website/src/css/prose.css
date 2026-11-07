@@ -12,7 +12,7 @@
 .prose { max-width: var(--content-width); min-width: 0; }
 .toc-aside[hidden] + .prose { grid-column: 2; }
 .prose-wide-layout { max-width: 1800px; grid-template-columns: minmax(0, 1fr); }
-.prose-wide-layout .toc-aside { display: none; }
+.prose-wide-layout .docs-nav-desktop { display: none; }
 .prose-wide-layout .prose { max-width: none; }
 .prose-wide-layout .prose > :not(.comparison-table) { max-width: var(--content-width); margin-inline: auto; }
 @media (min-width: 1200px) {
