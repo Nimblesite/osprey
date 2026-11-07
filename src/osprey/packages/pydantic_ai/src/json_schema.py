@@ -93,7 +93,7 @@ def item_step(acc, item):
     return Transformed(schema=JsonArray(listAppend(J.items_of(acc.schema), inner.schema)), is_strict_compatible=acc.is_strict_compatible and inner.is_strict_compatible)
 
 
-def replaced(members, key, value) -> Json:
+def replaced(members, key, value):
     """The object `members` with the member `key` replaced by `value`."""
     return J.obj(listAppend(without(members, [key]), J.member(key, value)))
 

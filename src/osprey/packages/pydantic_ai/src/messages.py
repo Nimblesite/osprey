@@ -284,7 +284,7 @@ def has_tool_calls(response) -> bool:
     return len(tool_calls(response)) > 0
 
 
-def tool_field(part, want_id) -> str:
+def tool_field(part, want_id):
     """A `ToolCallPart`'s name or id; empty for any other part."""
     match part:
         case ToolCallPart(tool_name=tool_name, tool_call_id=tool_call_id):
@@ -338,7 +338,7 @@ def is_object_text(raw):
             return False
 
 
-def has_object_shape(value) -> bool:
+def has_object_shape(value):
     """Whether a decoded JSON value is an object, the empty one included."""
     return len(J.members_of(value)) > 0 or J.encode(value) == "{}"
 
@@ -361,12 +361,12 @@ def null_if_empty(value):
     return JsonNull() if value == "" else JsonString(value)
 
 
-def part_json(members, kind) -> Json:
+def part_json(members, kind):
     """A part's JSON form: its members closed by its `part_kind` tag."""
     return J.obj(listConcat(members, [J.member("part_kind", JsonString(kind))]))
 
 
-def content_part(content, kind) -> Json:
+def content_part(content, kind):
     """A part's JSON form when its content and its part_kind are all it has."""
     return part_json([J.member("content", JsonString(content))], kind)
 

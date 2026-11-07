@@ -55,7 +55,7 @@ def merge_profile(base, overrides):
     return mapMerge(base, overrides)
 
 
-def profile_setting(profile, key) -> Json:
+def profile_setting(profile, key):
     """The value under `key`, JSON null when absent."""
     return unwrap_or(mapGet(profile, key), JsonNull())
 

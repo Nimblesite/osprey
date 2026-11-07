@@ -34,7 +34,7 @@ def has_setting(settings, key) -> bool:
     return mapContains(settings, key)
 
 
-def setting(settings, key) -> Json:
+def setting(settings, key):
     """The value under `key`, JSON null when absent (CPython's `None`)."""
     return unwrap_or(mapGet(settings, key), JsonNull())
 
