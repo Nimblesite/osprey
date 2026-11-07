@@ -405,6 +405,16 @@ print(packet(Success { value: Packet { payload: "packet" } }) + ":" + packet(Err
 "#,
         ),
         (
+            "osp",
+            r#"type Packet = { payload: string }
+fn packet(result) = match result {
+    Success(found) => found.payload
+    Error(reason) => reason
+}
+print(packet(Success { value: Packet { payload: "packet" } }) + ":" + packet(Error { message: "refused" }))
+"#,
+        ),
+        (
             "ospml",
             r#"type Packet =
     payload : string

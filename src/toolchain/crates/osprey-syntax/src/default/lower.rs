@@ -726,6 +726,13 @@ impl<'a> Lowerer<'a> {
                     };
                 }
                 let subs = self.map_of_kind(pat, "pattern", Self::lower_pattern);
+                // `Success(found)` binds the payload by ROLE, as ML's `Success found`
+                // does, so it shares ML's lowering ([PATTERN-RESULT-BINDERS]).
+                if let [Pattern::Binding(binder)] = subs.as_slice() {
+                    if crate::desugar::is_result_ctor(&name) {
+                        return crate::desugar::ctor_pattern(name, vec![binder.clone()]);
+                    }
+                }
                 if !subs.is_empty() {
                     return Pattern::Constructor {
                         name,

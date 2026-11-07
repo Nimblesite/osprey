@@ -69,7 +69,7 @@ column and may be renamed freely. `Success`/`Error` are the single exception:
 each has one payload that binds by ROLE, not by spelling — ML `Success section`
 and `Error reason` bind the success value and the error message under the
 chosen names, exactly as Default's `Success { value }` and `Error { message }`
-do — so the binder's type is the payload's type wherever it is used, including
+(or the positional `Success(section)` and `Error(reason)`) do — so the binder's type is the payload's type wherever it is used, including
 as the argument of a generic call.
 
 ## Wildcard patterns
