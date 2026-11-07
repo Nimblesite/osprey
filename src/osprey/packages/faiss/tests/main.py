@@ -39,7 +39,7 @@ def vectors(s):
 
 
 def d_of(xq):
-    """The dimension of a scenario, read from its first query row."""
+    """The dimension of a matrix, read from its first row."""
     return len(cell(xq, 0, []))
 
 
@@ -88,6 +88,11 @@ def both_metrics(one):
 def each(table, one):
     """Every case of an oracle table, each checked by `one`."""
     return fold(range(len(table)), [], lambda acc, i: listConcat(acc, one(i)))
+
+
+def concat_all(lists):
+    """The left-to-right concatenation of a list of lists."""
+    return fold(range(len(lists)), [], lambda acc, i: listConcat(acc, cell(lists, i, [])))
 
 
 def search_scenario(metric, s):
@@ -143,8 +148,7 @@ def recon_one(t):
     ni0 = cell(idx, 2, 0)
     want = cell(Expected.RECON_V, t, [])
     v = vectors(s)
-    built = add(IndexFlatL2(d_of(v.query)), v.base)
-    got = reconstruct_n(built, i0, ni0)
+    got = reconstruct_n(built("L2", v.base, d_of(v.query)), i0, ni0)
     return close_rows(f"recon.{t}", value_of(got), want, RTOL_EXACT, ATOL_EXACT)
 
 
@@ -173,8 +177,8 @@ def remove_one(t):
     want_i = cell(Expected.REMOVE_SEARCH_I, t, [])
     v = vectors(s)
     sel = IDSelectorBatch(arg) if kind == "batch" else IDSelectorRange(cell(arg, 0, 0), cell(arg, 1, 0))
-    before = ntotal(add(IndexFlatL2(d_of(v.query)), v.base))
-    after_idx = remove_ids(add(IndexFlatL2(d_of(v.query)), v.base), sel)
+    before = ntotal(built("L2", v.base, d_of(v.query)))
+    after_idx = remove_ids(built("L2", v.base, d_of(v.query)), sel)
     res = search(after_idx, v.query, 5)
     return listConcat(
         [Check.equal(f"remove.{t}.n", before - ntotal(after_idx), want_n)],
@@ -203,7 +207,9 @@ def idmap_searches(t, m, m2, removed, xq):
     want_map = cell(Expected.IDMAP_SEARCH_I, t, [])
     want_map2 = cell(Expected.IDMAP2_SEARCH_I, t, [])
     want_remove = cell(Expected.IDMAP_REMOVE_I, t, [])
-    return listConcat(listConcat(int_rows(f"idmap.{t}.search", idmap_search(m, xq, 5).labels, want_map), int_rows(f"idmap.{t}.search2", idmap_search(m2, xq, 5).labels, want_map2)), int_rows(f"idmap.{t}.remove", idmap_search(removed, xq, 5).labels, want_remove))
+    return concat_all([int_rows(f"idmap.{t}.search", idmap_search(m, xq, 5).labels, want_map),
+                       int_rows(f"idmap.{t}.search2", idmap_search(m2, xq, 5).labels, want_map2),
+                       int_rows(f"idmap.{t}.remove", idmap_search(removed, xq, 5).labels, want_remove)])
 
 
 def idmap_recons(t, m, m2, ids):
@@ -243,10 +249,9 @@ def kmeans_one(t):
     want_a = cell(Expected.KM_ASSIGN, t, [])
     match train(Kmeans(d, k, niter, seed), x, init):
         case Success(value=value):
-            return listConcat(listConcat(
-                    close_rows(f"kmeans.{t}.centroids", value.centroids, want_c, RTOL_EXACT, ATOL_EXACT),
-                    [Check.close_all(f"kmeans.{t}.obj", value.obj, want_o, RTOL_EXACT, ATOL_EXACT)]),
-                [Check.ints_equal(f"kmeans.{t}.assign", assign(value, x), want_a)])
+            return concat_all([close_rows(f"kmeans.{t}.centroids", value.centroids, want_c, RTOL_EXACT, ATOL_EXACT),
+                               [Check.close_all(f"kmeans.{t}.obj", value.obj, want_o, RTOL_EXACT, ATOL_EXACT)],
+                               [Check.ints_equal(f"kmeans.{t}.assign", assign(value, x), want_a)]])
         case Error(message=message):
             return [Check.truth(f"kmeans.{t}.ok", False, message)]
 
@@ -264,7 +269,7 @@ def scalar_one(t):
     x = cell(Expected.SQ_X, t, [])
     want_codes = cell(Expected.SQ_CODES, t, [])
     want_decode = cell(Expected.SQ_DECODE, t, [])
-    sq = sq_train(ScalarQuantizer(len(cell(x, 0, [])), qtype), x)
+    sq = sq_train(ScalarQuantizer(d_of(x), qtype), x)
     codes = compute_codes(sq, x)
     return code_rows(f"sq.{t}", codes, want_codes, decode(sq, codes), want_decode, RTOL_SQRT, ATOL_SQRT)
 
@@ -281,7 +286,7 @@ def sqidx_one(t):
     x = cell(Expected.SQIDX_X, t, [])
     q = cell(Expected.SQIDX_Q, t, [])
     k = cell(Expected.SQIDX_K, t, 1)
-    d = len(cell(x, 0, []))
+    d = d_of(x)
     sq = sq_train(ScalarQuantizer(d, qtype), x)
     idx = sq_add(IndexScalarQuantizer(d, qtype, metric), sq, x)
     return result_rows(f"sqidx.{t}", sq_search(idx, q, k), Expected.SQIDX_D, Expected.SQIDX_I, t, RTOL_SQRT, ATOL_SQRT)
@@ -332,19 +337,41 @@ def pqidx_cases():
     return each(Expected.PQIDX_METRIC, pqidx_one)
 
 
+def topk_case(tag, k, metric, vals, ids, want):
+    """One topk assertion: the ids topk returns for one metric and input."""
+    return Check.ints_equal(tag, topk(k, metric, vals, ids).ids, want)
+
+
+def topk_cases():
+    """The exported topk over L2, IP and short-input padding."""
+    return [
+        topk_case("metrics.topk.l2", 2, "L2", [3.0, 1.0, 2.0], [0, 1, 2], [1, 2]),
+        topk_case("metrics.topk.ip", 2, "IP", [3.0, 1.0, 2.0], [0, 1, 2], [0, 2]),
+        topk_case("metrics.topk.pad", 4, "L2", [1.0], [7], [7, -1, -1, -1]),
+    ]
+
+
+def selected_case(tag, sel, probe, want, why):
+    """One selector-membership assertion, negated when `want` is false."""
+    return Check.truth(tag, selected(sel, probe) if want else not selected(sel, probe), why)
+
+
+def selector_cases():
+    """IDSelectorBatch and IDSelectorRange membership, a hit and a miss each."""
+    return [
+        selected_case("select.batch", IDSelectorBatch([1, 3]), 3, True, "3 is selected"),
+        selected_case("select.batch.not", IDSelectorBatch([1, 3]), 2, False, "2 is not selected"),
+        selected_case("select.range", IDSelectorRange(1, 4), 3, True, "3 in [1,4)"),
+        selected_case("select.range.not", IDSelectorRange(1, 4), 4, False, "4 not in [1,4)"),
+    ]
+
+
 def metric_cases():
     """Direct checks of the shared metrics and selectors (the exported helpers)."""
-    return [
-        Check.close("metrics.l2sqr", l2sqr([0.0, 1.0], [0.0, 3.0]), 4.0, RTOL_EXACT, ATOL_EXACT),
-        Check.close("metrics.ip", inner_product([1.0, 2.0], [3.0, 4.0]), 11.0, RTOL_EXACT, ATOL_EXACT),
-        Check.ints_equal("metrics.topk.l2", topk(2, "L2", [3.0, 1.0, 2.0], [0, 1, 2]).ids, [1, 2]),
-        Check.ints_equal("metrics.topk.ip", topk(2, "IP", [3.0, 1.0, 2.0], [0, 1, 2]).ids, [0, 2]),
-        Check.ints_equal("metrics.topk.pad", topk(4, "L2", [1.0], [7]).ids, [7, -1, -1, -1]),
-        Check.truth("select.batch", selected(IDSelectorBatch([1, 3]), 3), "3 is selected"),
-        Check.truth("select.batch.not", not selected(IDSelectorBatch([1, 3]), 2), "2 is not selected"),
-        Check.truth("select.range", selected(IDSelectorRange(1, 4), 3), "3 in [1,4)"),
-        Check.truth("select.range.not", not selected(IDSelectorRange(1, 4), 4), "4 not in [1,4)"),
-    ]
+    return listConcat(
+        [Check.close("metrics.l2sqr", l2sqr([0.0, 1.0], [0.0, 3.0]), 4.0, RTOL_EXACT, ATOL_EXACT),
+         Check.close("metrics.ip", inner_product([1.0, 2.0], [3.0, 4.0]), 11.0, RTOL_EXACT, ATOL_EXACT)],
+        concat_all([topk_cases(), selector_cases()]))
 
 
 def record_cases():
@@ -363,11 +390,13 @@ def record_cases():
 
 
 def helper_cases():
+    """The exported result, selector and quantizer-constant checks."""
     return listConcat(metric_cases(), record_cases())
 
 
 def all_cases():
-    return listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(listConcat(search_cases(), range_cases()), listConcat(recon_cases(), remove_cases())), listConcat(idmap_cases(), norm_cases())), kmeans_cases()), listConcat(scalar_cases(), sqidx_cases())), listConcat(pq_cases(), pqidx_cases())), helper_cases())
+    """Every suite's cases, in suite order."""
+    return concat_all([search_cases(), range_cases(), recon_cases(), remove_cases(), idmap_cases(), norm_cases(), kmeans_cases(), scalar_cases(), sqidx_cases(), pq_cases(), pqidx_cases(), helper_cases()])
 
 
 def main():
