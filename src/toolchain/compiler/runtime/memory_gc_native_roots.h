@@ -23,6 +23,23 @@ static void gc_scan_data(void) {
   extern char __data_start[];
   extern char _end[];
   gc_scan_range((uintptr_t)__data_start, (uintptr_t)_end);
+#elif defined(_WIN32)
+  // The executable's writable sections (.data, .bss and their kin) from its PE
+  // headers: a global holding the only reference to a managed block is a root
+  // here exactly as on macOS and Linux.
+  const uint8_t *image = (const uint8_t *)GetModuleHandleW(NULL);
+  if (!image) {
+    return;
+  }
+  const IMAGE_NT_HEADERS *nt =
+      (const IMAGE_NT_HEADERS *)(image + ((const IMAGE_DOS_HEADER *)image)->e_lfanew);
+  const IMAGE_SECTION_HEADER *section = IMAGE_FIRST_SECTION(nt);
+  for (WORD i = 0; i < nt->FileHeader.NumberOfSections; i++) {
+    if (section[i].Characteristics & IMAGE_SCN_MEM_WRITE) {
+      uintptr_t lo = (uintptr_t)image + section[i].VirtualAddress;
+      gc_scan_range(lo, lo + section[i].Misc.VirtualSize);
+    }
+  }
 #endif
 }
 
