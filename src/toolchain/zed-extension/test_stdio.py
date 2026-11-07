@@ -94,15 +94,32 @@ class ZedStdio(unittest.TestCase):
         TRANSPORT.send(self.process, method, params, self.next_id)
         deadline = time.monotonic() + 20
         while True:
-            message = self.incoming.get(timeout=max(0, deadline - time.monotonic()))
-            if isinstance(message, Exception):
-                raise message
-            if message.get("method") == "textDocument/publishDiagnostics":
-                report = message["params"]
-                self.reports[report["uri"]] = report["diagnostics"]
+            message = self.receive(deadline)
             if message.get("id") == self.next_id:
                 self.assertNotIn("error", message, message)
                 return message.get("result")
+
+    def receive(self, deadline):
+        """The next server message, recording any diagnostics it publishes."""
+        message = self.incoming.get(timeout=max(0, deadline - time.monotonic()))
+        if isinstance(message, Exception):
+            raise message
+        if message.get("method") == "textDocument/publishDiagnostics":
+            report = message["params"]
+            self.reports[report["uri"]] = report["diagnostics"]
+        return message
+
+    def published(self, uri, holds, why):
+        """Wait until `uri`'s published diagnostics satisfy `holds`. Buffers are
+        checked on a background thread beside the request loop, so a reply may
+        overtake its buffer's diagnostics [LSP-DIAGNOSTICS-SCOPE]; the report
+        still has to arrive, and within the deadline."""
+        deadline = time.monotonic() + 20
+        while not (uri in self.reports and holds(self.reports[uri])):
+            try:
+                self.receive(deadline)
+            except queue.Empty:
+                self.fail(f"{why}: {self.reports.get(uri)}")
 
     def document(self, name, language, source):
         path = self.root / name
@@ -110,15 +127,29 @@ class ZedStdio(unittest.TestCase):
         uri = path.as_uri()
         self.notify("textDocument/didOpen", {"textDocument": {
             "uri": uri, "languageId": language, "version": 1, "text": source}})
+        self.reports.pop(uri, None)
         self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
-        self.assertIn(uri, self.reports, "opening must publish diagnostics")
+        self.published(uri, lambda _: True, "opening must publish diagnostics")
         return uri
 
-    def change(self, uri, version, source):
-        """Send an edit and refresh symbols, which republishes diagnostics."""
+    def change(self, uri, version, source, holds, why):
+        """Send an edit and wait until its republished diagnostics satisfy `holds`."""
         self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": version},
                     "contentChanges": [{"text": source}]})
         self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+        self.published(uri, holds, why)
+
+    @staticmethod
+    def has_errors(report):
+        return any(d.get("severity") == 1 for d in report)
+
+    @staticmethod
+    def annotations(report):
+        return [item for item in report if item.get("code") == "redundant-annotation"]
+
+    @staticmethod
+    def clean(report):
+        return not any(d.get("severity") == 1 for d in report)
 
     def errors(self, uri):
         """Error-severity diagnostics currently published for `uri`."""
@@ -162,11 +193,10 @@ class ZedStdio(unittest.TestCase):
                     "textDocument": {"uri": uri},
                     "options": {"tabSize": 4, "insertSpaces": True}})
                 self.assertIsInstance(formatting, list)
-                self.notify("textDocument/didChange", {"textDocument": {"uri": uri, "version": 2},
-                            "contentChanges": [{"text": source.replace("double(3)", "missing(3)").replace("double 3", "missing 3")}]})
-                self.request("textDocument/documentSymbol", {"textDocument": {"uri": uri}})
+                broken = source.replace("double(3)", "missing(3)").replace("double 3", "missing 3")
+                self.change(uri, 2, broken, self.has_errors, "an unknown name must publish an error")
                 self.assertTrue(self.errors(uri))
-                self.change(uri, 3, source)
+                self.change(uri, 3, source, self.clean, "the restored source must publish no error")
                 self.assertFalse(self.errors(uri))
                 self.notify("textDocument/didClose", {"textDocument": {"uri": uri}})
         self.assertIsNone(self.request("shutdown", None))
@@ -199,11 +229,10 @@ class ZedStdio(unittest.TestCase):
         hover = self.request("textDocument/hover", self.at(uri, 0, 15))
         self.assertIn("increment", str(hover))
         helper_uri = self.document("src/helper.ospml", "osprey-ml", helper)
-        self.notify("textDocument/didChange", {"textDocument": {"uri": helper_uri, "version": 2},
-                    "contentChanges": [{"text": "increment value = missingName\n"}]})
-        self.request("textDocument/documentSymbol", {"textDocument": {"uri": helper_uri}})
+        self.change(helper_uri, 2, "increment value = missingName\n", self.has_errors,
+                    "the broken helper must publish an error")
         self.assertTrue(self.errors(helper_uri), self.reports)
-        self.change(helper_uri, 3, helper)
+        self.change(helper_uri, 3, helper, self.clean, "the restored helper must publish no error")
         self.assertFalse(self.errors(helper_uri))
         self.assertIn(helper_path.as_uri(), str(self.request(
             "textDocument/definition", self.at(uri, 0, 15))))
@@ -211,7 +240,7 @@ class ZedStdio(unittest.TestCase):
     def test_quick_fix_edits_the_live_document_and_removes_its_warning(self):
         source = "fn add(a: int, b: int) -> int = satAdd(a, b)\nlet total = add(1, 2)\n"
         uri = self.document("fix.osp", "osprey", source)
-        warnings = [item for item in self.reports[uri] if item.get("code") == "redundant-annotation"]
+        warnings = self.annotations(self.reports[uri])
         self.assertEqual(len(warnings), 2, self.reports[uri])
         actions = self.request("textDocument/codeAction", {
             "textDocument": {"uri": uri}, "range": warnings[0]["range"],
@@ -231,8 +260,9 @@ class ZedStdio(unittest.TestCase):
             lines[start["line"]] = line[:start["character"]] + edit["newText"] + line[end["character"]:]
         fixed = "".join(lines)
         self.assertNotEqual(fixed, source)
-        self.change(uri, 2, fixed)
-        remaining = [item for item in self.reports[uri] if item.get("code") == "redundant-annotation"]
+        self.change(uri, 2, fixed, lambda report: len(self.annotations(report)) < len(warnings),
+                    "the quick fix must remove an annotation warning")
+        remaining = self.annotations(self.reports[uri])
         self.assertLess(len(remaining), len(warnings), self.reports[uri])
         self.assertFalse(self.errors(uri))
 
