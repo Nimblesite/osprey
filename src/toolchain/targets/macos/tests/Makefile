@@ -20,7 +20,7 @@ script_probe := src/toolchain/hosts/gpui/probe
 app_signal-flow := src/osprey/packages/signal_flow/app
 script_signal-flow := src/osprey/packages/signal_flow/app
 
-.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live storage-headless synth-headless
+.PHONY: $(GPUI_APPS) $(GPUI_APPS:%=%-headless) agent-headless agent-live qwen qwen-headless storage-headless synth-headless
 
 ## casting: The casting player's self-test in a real GPUI window; casting-headless runs it with no
 ##          window. The same goes for flock, painting, probe and signal-flow.
@@ -29,6 +29,19 @@ $(GPUI_APPS):
 
 $(GPUI_APPS:%=%-headless): %-headless:
 	$(MAKE) -C $(ROOT) _gpui-app-self-test APP_DIR=$(app_$*) SCRIPT_DIR=$(script_$*)
+
+## qwen: The Qwen server on the real weights and Metal: generate, chat with tools, the OpenAI route,
+##       checkpoint reuse and the num_ctx limit, through the real ollama and openai clients; the GGUF is
+##       pulled first if it is missing. Unload Ollama's resident model first.
+qwen: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) -C $(ROOT) _qwen-lanes LANES=real
+
+## qwen-headless: The Qwen model suite on the Metal device, equal to the golden byte for byte, with at
+##                least one Metal dispatch completed (plan 0049 Phase 3).
+qwen-headless: _runtime
+	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
+	$(MAKE) -C $(ROOT) _qwen-suite MEMORY=arc QWEN_GPU=metal
 
 ## synth-headless: The synth's recorded events through the GPUI host's C boundary, with no window.
 # The synth's recorded events through the GPUI host, with no window.

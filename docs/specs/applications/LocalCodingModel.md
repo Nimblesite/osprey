@@ -6,7 +6,7 @@
 
 The model is [`Qwen/Qwen3.8-27B`](https://huggingface.co/Qwen/Qwen3.8-27B), revision `1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0`, with weights from [`unsloth/Qwen3.8-27B-GGUF`](https://huggingface.co/unsloth/Qwen3.8-27B-GGUF), revision `4ca720788d1e01f1bff70c033e0d0028fd02e502`.
 
-**[LLM-WEIGHTS-PULL]:** the weights are fetched by `make -C src/toolchain/targets qwen-pull` (`QUANT=UD-Q4_K_XL|UD-Q5_K_M|UD-IQ3_XXS`) into `~/.cache/osprey-llm/gguf`: the hub's tree API at the pinned revision gives the file's size and LFS SHA-256, the download resumes whatever a `.part` already holds, and the file is named `.gguf` only when its size and digest match; a mismatch deletes nothing and names the file. Tested offline against a local Range-capable hub (`qwen-pull-headless`).
+**[LLM-WEIGHTS-PULL]:** the weights are fetched by `make -C src/toolchain/targets qwen-pull` (`QWEN_QUANT=UD-Q4_K_XL|UD-Q5_K_M|UD-IQ3_XXS`) into `~/.cache/osprey-llm/gguf`: the hub's tree API at the pinned revision gives the file's size and LFS SHA-256, the download resumes whatever a `.part` already holds, and the file is named `.gguf` only when its size and digest match; a mismatch deletes nothing and names the file. Tested offline against a local Range-capable hub (`qwen-pull-headless`).
 
 The fallback is `Qwen/Qwen3.6-27B`, which has the same `qwen3_5` architecture and the identical parameter count (27,781,427,952): a weights swap that leaves the rest of this specification unchanged.
 

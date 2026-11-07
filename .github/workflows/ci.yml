@@ -1181,7 +1181,7 @@ jobs:
             run: make -C src/toolchain/targets macos-test
           - part: Qwen model (Metal)
             minutes: 30
-            run: make -C src/toolchain/targets/tests qwen-metal
+            run: make -C src/toolchain/targets/macos/tests qwen-headless
           - part: Qwen pull
             minutes: 5
             run: make -C src/toolchain/targets/tests qwen-pull-headless

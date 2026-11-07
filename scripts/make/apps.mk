@@ -173,6 +173,34 @@ _app-suite: _runtime
 	cargo build --manifest-path src/toolchain/Cargo.toml --release -p osprey-cli
 	for suite in $(SUITES); do $(BIN) test $$suite || exit 1; done
 
+## _qwen-serve: Compile the Qwen server and serve the GGUF pull.sh names (pulled first if missing,
+##              QWEN_QUANT picks the quant) on Metal at QWEN_PORT. Uses the compiler and runtime as built.
+## _qwen-suite: The Qwen model suite under MEMORY, on the device QWEN_GPU names (the host when empty),
+##              its stdout equal to the golden byte for byte; on metal at least one Metal dispatch must
+##              complete, or the run proves nothing about the device.
+## _qwen-lanes: The Qwen server suite's LANES (gc, arc: the fixture table; real: the pulled GGUF) through
+##              the real ollama and openai clients in QWEN_PYTHON's environment.
+QWEN_DIR := src/osprey/examples/llms/qwen
+QWEN_OUT := target/llms/qwen-model
+QWEN_SERVER := target/llms/qwen-server/server-arc
+QWEN_PORT ?= 11435
+QWEN_PYTHON ?= $(HOME)/.cache/osprey-llm/oracle-venv/bin/python
+QWEN_RUN = $(QWEN_OUT)/$(or $(QWEN_GPU),host)-$(MEMORY)
+.PHONY: _qwen-serve _qwen-suite _qwen-lanes
+_qwen-serve:
+	mkdir -p $(dir $(QWEN_SERVER))
+	./$(BIN) $(QWEN_DIR)/server --compile --memory=arc -o $(QWEN_SERVER)
+	GGUF=$$(sh $(QWEN_DIR)/pull.sh) && printf '%s\n%s\n' "$(QWEN_PORT)" "$$GGUF" | OSPREY_GPU=metal $(QWEN_SERVER)
+
+_qwen-suite:
+	mkdir -p $(QWEN_OUT)
+	$(if $(QWEN_GPU),OSPREY_GPU=$(QWEN_GPU)) $(BIN) $(QWEN_DIR)/model/tests --run --quiet --memory=$(MEMORY) > $(QWEN_RUN).out 2> $(QWEN_RUN).err
+	cmp $(QWEN_RUN).out $(QWEN_DIR)/model/tests/expected_output.txt
+	test "$(QWEN_GPU)" != metal || grep -q '^\[gpu\] metal:.*completed dispatch' $(QWEN_RUN).err || { echo 'qwen: no Metal dispatch completed; the suite ran on the host' >&2; exit 1; }
+
+_qwen-lanes:
+	$(if $(filter real,$(LANES)),GGUF=$$(sh $(QWEN_DIR)/pull.sh) &&) OSPREY_QWEN_GGUF="$$GGUF" OSPREY_COMPILER="$(CURDIR)/$(BIN)" $(QWEN_PYTHON) -I $(QWEN_DIR)/server/tests/clients.cpython $(LANES)
+
 ## _ui-test: The UI test framework's own suite and the apps it drives by accessible
 ##           label alone, casting, signal flow and the synth, with no host or window. [UI-MACHINE-TEST]
 .PHONY: _ui-test

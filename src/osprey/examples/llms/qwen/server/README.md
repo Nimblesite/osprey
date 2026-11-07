@@ -27,8 +27,8 @@ That GGUF comes from `make -C src/toolchain/targets qwen-pull`: it fetches the
 pinned quant from `unsloth/Qwen3.8-27B-GGUF` into `~/.cache/osprey-llm/gguf`,
 resuming a partial download and checking its SHA-256 against Hugging Face's LFS
 metadata before the file is named `.gguf`. The baseline's other quants:
-`QUANT=UD-Q5_K_M make -C src/toolchain/targets qwen-pull` (also
-`QUANT=UD-IQ3_XXS`).
+`QWEN_QUANT=UD-Q5_K_M make -C src/toolchain/targets qwen-pull` (also
+`QWEN_QUANT=UD-IQ3_XXS`).
 
 ## What it serves
 
